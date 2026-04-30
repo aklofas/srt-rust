@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/srt-sys",
+    "crates/srt-core",
 ]
 
 [workspace.package]
@@ -17,6 +18,9 @@ libc       = "0.2"
 bindgen    = "0.72"
 cmake      = "0.1"
 pkg-config = "0.3"
+thiserror  = "1.0"
+secrecy    = "0.10"
+log        = "0.4"
 
 [profile.release]
 lto           = "thin"

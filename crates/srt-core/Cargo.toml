@@ -1,0 +1,27 @@
+[package]
+name        = "srt-core"
+description = "Safe Rust API for libsrt — sockets, configuration, error model"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[lib]
+crate-type = ["rlib"]
+doctest    = false
+
+[features]
+default = ["log"]
+log     = ["dep:log"]
+
+[dependencies]
+srt-sys   = { path = "../srt-sys" }
+libc      = { workspace = true }
+thiserror = { workspace = true }
+secrecy   = { workspace = true }
+log       = { workspace = true, optional = true }
+
+[dev-dependencies]
+libc = { workspace = true }

@@ -21,7 +21,7 @@ fn build_mbedtls() -> PathBuf {
         );
     }
 
-    let dst = cmake::Config::new(&mbedtls_dir)
+    cmake::Config::new(&mbedtls_dir)
         .define("ENABLE_PROGRAMS", "OFF")
         .define("ENABLE_TESTING", "OFF")
         .define("USE_SHARED_MBEDTLS_LIBRARY", "OFF")
@@ -29,9 +29,7 @@ fn build_mbedtls() -> PathBuf {
         .define("MBEDTLS_FATAL_WARNINGS", "OFF")
         // Hide mbedTLS from -Wall sweeps; we don't author this code.
         .define("CMAKE_C_FLAGS", "-w")
-        .build();
-
-    dst
+        .build()
 }
 
 fn main() {

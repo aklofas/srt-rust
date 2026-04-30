@@ -14,8 +14,12 @@ env:
 
 jobs:
   test-linux:
-    name: test (linux-x86_64, vendored libsrt)
+    name: test (linux-x86_64, vendored libsrt, MSRV)
     runs-on: ubuntu-latest
+    # Pin to MSRV via env so rust-toolchain.toml ("stable" for local dev)
+    # doesn't relax the verification done in CI.
+    env:
+      RUSTUP_TOOLCHAIN: "1.85"
     steps:
       - uses: actions/checkout@v4
         with:

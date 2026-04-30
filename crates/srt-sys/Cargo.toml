@@ -20,3 +20,11 @@ libc = { workspace = true }
 bindgen    = { workspace = true }
 cmake      = { workspace = true }
 pkg-config = { workspace = true }
+
+[features]
+default = ["mbedtls"]
+
+# Enable encryption support by building mbedTLS from the vendored submodule
+# at vendor/mbedtls and linking it into libsrt with USE_ENCLIB=mbedtls.
+# Disabling this feature reverts to the v0 ENABLE_ENCRYPTION=OFF build.
+mbedtls = []

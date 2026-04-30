@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -36,6 +39,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
+            !target/debug/incremental
+            !target/debug/.fingerprint
+            !target/debug/deps
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 

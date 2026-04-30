@@ -21,6 +21,7 @@ fn main() {
 
     let mut builder = bindgen::Builder::default()
         .header("wrapper.h")
+        .rust_edition(bindgen::RustEdition::Edition2024)
         .allowlist_function("srt_.*")
         .allowlist_type("SRT_.*|SRTSOCKET|UDPSOCKET|CBytePerfMon")
         .allowlist_var("SRT_.*")

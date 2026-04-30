@@ -14,7 +14,7 @@ repository   = "https://github.com/aklofas/srt-rust"
 
 [workspace.dependencies]
 libc       = "0.2"
-bindgen    = "0.69"
+bindgen    = "0.72"
 cmake      = "0.1"
 pkg-config = "0.3"
 

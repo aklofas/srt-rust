@@ -1,6 +1,39 @@
 use std::env;
 use std::path::PathBuf;
 
+/// Build the vendored mbedTLS to a private install prefix.
+/// Returns the install prefix path.
+///
+/// Only called when the `mbedtls` cargo feature is enabled.
+fn build_mbedtls() -> PathBuf {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let mbedtls_dir = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("vendor/mbedtls"))
+        .expect("Cannot resolve vendor/mbedtls path from CARGO_MANIFEST_DIR");
+
+    if !mbedtls_dir.join("CMakeLists.txt").exists() {
+        panic!(
+            "Vendored mbedTLS not found at {}. \
+             Run `git submodule update --init --recursive` from the workspace root.",
+            mbedtls_dir.display()
+        );
+    }
+
+    let dst = cmake::Config::new(&mbedtls_dir)
+        .define("ENABLE_PROGRAMS", "OFF")
+        .define("ENABLE_TESTING", "OFF")
+        .define("USE_SHARED_MBEDTLS_LIBRARY", "OFF")
+        .define("USE_STATIC_MBEDTLS_LIBRARY", "ON")
+        .define("MBEDTLS_FATAL_WARNINGS", "OFF")
+        // Hide mbedTLS from -Wall sweeps; we don't author this code.
+        .define("CMAKE_C_FLAGS", "-w")
+        .build();
+
+    dst
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=build.rs");
@@ -9,6 +42,13 @@ fn main() {
 
     let force_vendored = env::var_os("SRT_FORCE_VENDORED").is_some();
     let no_pkg_config = env::var_os("SRT_NO_PKG_CONFIG").is_some();
+    let want_mbedtls = env::var_os("CARGO_FEATURE_MBEDTLS").is_some();
+
+    let _mbedtls_prefix: Option<PathBuf> = if want_mbedtls {
+        Some(build_mbedtls())
+    } else {
+        None
+    };
 
     let include_paths: Vec<PathBuf> = if force_vendored || no_pkg_config {
         build_vendored()

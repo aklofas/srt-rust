@@ -21,6 +21,9 @@ bindgen    = { workspace = true }
 cmake      = { workspace = true }
 pkg-config = { workspace = true }
 
+[dev-dependencies]
+libc = { workspace = true }
+
 [features]
 default = ["mbedtls"]
 

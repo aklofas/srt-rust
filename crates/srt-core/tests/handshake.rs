@@ -1,4 +1,11 @@
 //! Encrypted + unencrypted handshake; reject-reason matching.
+//!
+//! Encrypted tests require srt-sys's mbedtls feature, which propagates from
+//! srt-core's `mbedtls` feature (default-on). Without `mbedtls`, libsrt is
+//! built with ENABLE_ENCRYPTION=OFF and passphrase-bearing connects fail at
+//! the option-application layer rather than the handshake layer.
+
+#![cfg(feature = "mbedtls")]
 
 mod common;
 

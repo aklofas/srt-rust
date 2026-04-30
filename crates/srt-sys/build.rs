@@ -71,6 +71,13 @@ fn build_vendored() -> Vec<PathBuf> {
         .define("ENABLE_STATIC", "ON")
         .define("ENABLE_ENCRYPTION", "OFF")
         .define("ENABLE_UNITTESTS", "OFF")
+        // Heavy logging is ON by default in Debug builds and causes a C++
+        // static-initialization-order fiasco: the CUDTException constructor
+        // (called from a static CThreadError object) tries to log via aclog
+        // before aclog and srt_logger_config are initialized.  Disabling it
+        // avoids the SIGSEGV at process startup when libsrt is statically
+        // linked.
+        .define("ENABLE_HEAVY_LOGGING", "OFF")
         .build();
 
     println!("cargo:rustc-link-search=native={}/lib", dst.display());

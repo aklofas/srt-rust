@@ -44,21 +44,18 @@ fn main() {
     let no_pkg_config = env::var_os("SRT_NO_PKG_CONFIG").is_some();
     let want_mbedtls = env::var_os("CARGO_FEATURE_MBEDTLS").is_some();
 
-    let _mbedtls_prefix: Option<PathBuf> = if want_mbedtls {
+    let mbedtls_prefix: Option<PathBuf> = if want_mbedtls {
         Some(build_mbedtls())
     } else {
         None
     };
 
     let include_paths: Vec<PathBuf> = if force_vendored || no_pkg_config {
-        build_vendored()
+        build_vendored(mbedtls_prefix.as_ref())
     } else {
-        match pkg_config::Config::new()
-            .atleast_version("1.5.0")
-            .probe("srt")
-        {
+        match pkg_config::Config::new().atleast_version("1.5.0").probe("srt") {
             Ok(lib) => lib.include_paths,
-            Err(_) => build_vendored(),
+            Err(_) => build_vendored(mbedtls_prefix.as_ref()),
         }
     };
 
@@ -89,11 +86,15 @@ fn main() {
         .expect("Failed to write bindings.rs to OUT_DIR");
 }
 
-/// Build the vendored libsrt source via cmake (no encryption in v0).
-/// Returns the include paths bindgen should use.
-fn build_vendored() -> Vec<PathBuf> {
+/// Build the vendored libsrt source via cmake.
+///
+/// If `mbedtls_prefix` is `Some`, libsrt is configured with
+/// `ENABLE_ENCRYPTION=ON` + `USE_ENCLIB=mbedtls` and uses the prefix
+/// to locate mbedTLS via `find_package(MbedTLS)`.
+///
+/// Otherwise, libsrt is built with `ENABLE_ENCRYPTION=OFF` (v0 behavior).
+fn build_vendored(mbedtls_prefix: Option<&PathBuf>) -> Vec<PathBuf> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    // CARGO_MANIFEST_DIR points at crates/srt-sys; vendor/srt is two levels up.
     let vendor_dir = manifest_dir
         .parent()
         .and_then(|p| p.parent())
@@ -108,11 +109,10 @@ fn build_vendored() -> Vec<PathBuf> {
         );
     }
 
-    let dst = cmake::Config::new(&vendor_dir)
-        .define("ENABLE_APPS", "OFF")
+    let mut cfg = cmake::Config::new(&vendor_dir);
+    cfg.define("ENABLE_APPS", "OFF")
         .define("ENABLE_SHARED", "OFF")
         .define("ENABLE_STATIC", "ON")
-        .define("ENABLE_ENCRYPTION", "OFF")
         .define("ENABLE_UNITTESTS", "OFF")
         // Heavy logging is ON by default in Debug builds and causes a C++
         // static-initialization-order fiasco: the CUDTException constructor
@@ -120,12 +120,35 @@ fn build_vendored() -> Vec<PathBuf> {
         // before aclog and srt_logger_config are initialized.  Disabling it
         // avoids the SIGSEGV at process startup when libsrt is statically
         // linked.
-        .define("ENABLE_HEAVY_LOGGING", "OFF")
-        .build();
+        .define("ENABLE_HEAVY_LOGGING", "OFF");
+
+    match mbedtls_prefix {
+        Some(prefix) => {
+            cfg.define("ENABLE_ENCRYPTION", "ON")
+                .define("USE_ENCLIB", "mbedtls")
+                .define("CMAKE_PREFIX_PATH", prefix);
+        }
+        None => {
+            cfg.define("ENABLE_ENCRYPTION", "OFF");
+        }
+    }
+
+    let dst = cfg.build();
 
     println!("cargo:rustc-link-search=native={}/lib", dst.display());
     println!("cargo:rustc-link-search=native={}/lib64", dst.display());
     println!("cargo:rustc-link-lib=static=srt");
+
+    // Link the mbedTLS static libs (libsrt's pkg-config file references them
+    // but our static link line doesn't go through pkg-config).
+    if let Some(prefix) = mbedtls_prefix {
+        println!("cargo:rustc-link-search=native={}/lib", prefix.display());
+        println!("cargo:rustc-link-search=native={}/lib64", prefix.display());
+        // Order matters: libsrt -> libmbedtls -> libmbedx509 -> libmbedcrypto.
+        println!("cargo:rustc-link-lib=static=mbedtls");
+        println!("cargo:rustc-link-lib=static=mbedx509");
+        println!("cargo:rustc-link-lib=static=mbedcrypto");
+    }
 
     // libsrt is C++ internally; link the C++ stdlib explicitly.
     if cfg!(target_os = "linux") {

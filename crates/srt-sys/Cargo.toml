@@ -1,0 +1,22 @@
+[package]
+name        = "srt-sys"
+description = "Raw FFI bindings to Haivision libsrt 1.5.x"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+links       = "srt"
+
+[lib]
+crate-type = ["rlib"]
+doctest    = false
+
+[dependencies]
+libc = { workspace = true }
+
+[build-dependencies]
+bindgen    = { workspace = true }
+cmake      = { workspace = true }
+pkg-config = { workspace = true }

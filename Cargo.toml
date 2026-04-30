@@ -1,13 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    # Crates are added here as they're scaffolded.
-    # See ../docs/specs/2026-04-29-srt-libraries-design.md for the planned layout:
-    #   crates/srt-sys      — libsrt FFI bindings (bindgen against libsrt 1.5.5)
-    #   crates/srt-core     — safe Rust API: srt::, klv::, mpegts::, pipeline::
-    #   crates/srt-c        — cdylib + cbindgen header (embedded, future Panama)
-    #   crates/srt-jni      — JNI bindings, packaged into the Maven JAR
-    #   crates/srt-uniffi   — Swift/Kotlin bindings via UniFFI (iOS/Android)
+    "crates/srt-sys",
 ]
 
 [workspace.package]
@@ -19,7 +13,10 @@ authors      = ["Andrew Klofas <aklofas@gmail.com>"]
 repository   = "https://github.com/aklofas/srt-rust"
 
 [workspace.dependencies]
-# Centralized version pinning lands here as crates are added.
+libc       = "0.2"
+bindgen    = "0.69"
+cmake      = "0.1"
+pkg-config = "0.3"
 
 [profile.release]
 lto           = "thin"

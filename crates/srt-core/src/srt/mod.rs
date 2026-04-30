@@ -1,14 +1,14 @@
 //! Safe libsrt socket API. See module-level files for details.
 
-pub mod options;
 pub mod addr;
-pub mod config;
 pub mod builder;
-pub mod socket;
+pub mod config;
 pub mod listener;
+pub mod options;
+pub mod socket;
 
-pub use builder::{SocketBuilder, ListenerBuilder};
-pub use config::{SocketConfig, ListenerConfig};
-pub use socket::{Socket, Stats};
+pub use builder::{ListenerBuilder, SocketBuilder};
+pub use config::{ListenerConfig, SocketConfig};
 pub use listener::Listener;
-pub use options::{Passphrase, KeyLength, MaxBandwidth, Congestion, StreamId, PacketFilter};
+pub use options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId};
+pub use socket::{Socket, Stats};

@@ -6,7 +6,9 @@
 use crate::error::{BindError, ConnectError, OptionError, StreamIdError};
 use crate::srt::config::{ListenerConfig, SocketConfig};
 use crate::srt::listener::Listener;
-use crate::srt::options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId};
+use crate::srt::options::{
+    Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId,
+};
 use crate::srt::socket::Socket;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
@@ -85,7 +87,10 @@ impl SocketBuilder {
         self
     }
     /// Convenience: validate-and-set from `&str` / `String`. Returns error if invalid.
-    pub fn try_stream_id(mut self, id: impl TryInto<StreamId, Error = StreamIdError>) -> Result<Self, OptionError> {
+    pub fn try_stream_id(
+        mut self,
+        id: impl TryInto<StreamId, Error = StreamIdError>,
+    ) -> Result<Self, OptionError> {
         self.config.stream_id = Some(id.try_into()?);
         Ok(self)
     }

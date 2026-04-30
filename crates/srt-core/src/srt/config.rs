@@ -4,7 +4,9 @@
 //! Bindings (UniFFI dictionaries, JNI POJOs, cbindgen C structs) consume
 //! these directly.
 
-use crate::srt::options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId};
+use crate::srt::options::{
+    Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId,
+};
 use std::time::Duration;
 
 /// Configuration for a caller-side data socket.

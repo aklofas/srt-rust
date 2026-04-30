@@ -1,12 +1,10 @@
 //! Passive (listening) SRT socket.
 
-use crate::error::{last_error, AcceptError, BindError, IoError, OptionError};
+use crate::error::{AcceptError, BindError, IoError, OptionError, last_error};
 use crate::init::ensure_initialized;
 use crate::srt::addr::{from_sockaddr, to_sockaddr};
 use crate::srt::config::ListenerConfig;
-use crate::srt::socket::{
-    apply_listener_config, duration_to_ms, set_int, Socket,
-};
+use crate::srt::socket::{Socket, apply_listener_config, duration_to_ms, set_int};
 use std::ffi::c_int;
 use std::mem;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -26,10 +24,7 @@ pub struct Listener {
 unsafe impl Send for Listener {}
 
 impl Listener {
-    pub fn bind_with(
-        config: &ListenerConfig,
-        addr: impl ToSocketAddrs,
-    ) -> Result<Self, BindError> {
+    pub fn bind_with(config: &ListenerConfig, addr: impl ToSocketAddrs) -> Result<Self, BindError> {
         ensure_initialized();
 
         let addr = addr
@@ -79,9 +74,8 @@ impl Listener {
         let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
         let mut len = mem::size_of::<libc::sockaddr_storage>() as c_int;
 
-        let accepted = unsafe {
-            srt_sys::srt_accept(self.handle, (&raw mut storage).cast(), &raw mut len)
-        };
+        let accepted =
+            unsafe { srt_sys::srt_accept(self.handle, (&raw mut storage).cast(), &raw mut len) };
         if accepted == SRT_INVALID_SOCK {
             return Err(last_error().into());
         }

@@ -27,8 +27,7 @@ impl Passphrase {
 
     /// Read from environment variable. Errors if unset or empty.
     pub fn from_env(var: &str) -> Result<Self, PassphraseError> {
-        let val = std::env::var(var)
-            .map_err(|_| PassphraseError::EnvUnset(var.to_string()))?;
+        let val = std::env::var(var).map_err(|_| PassphraseError::EnvUnset(var.to_string()))?;
         if val.is_empty() {
             return Err(PassphraseError::EnvUnset(var.to_string()));
         }
@@ -107,9 +106,9 @@ impl MaxBandwidth {
     #[allow(dead_code)]
     pub(crate) fn as_libsrt_i64(self) -> i64 {
         match self {
-            MaxBandwidth::Unlimited    => 0,
-            MaxBandwidth::Auto         => -1,
-            MaxBandwidth::Infinite     => -2,
+            MaxBandwidth::Unlimited => 0,
+            MaxBandwidth::Auto => -1,
+            MaxBandwidth::Infinite => -2,
             MaxBandwidth::Limited(bps) => bps as i64,
         }
     }
@@ -190,7 +189,8 @@ impl PacketFilter {
         if spec.len() > 512 {
             return Err(PacketFilterError::TooLong);
         }
-        let allowed = |c: char| c.is_ascii_alphanumeric() || matches!(c, ',' | ':' | '/' | '_' | '-');
+        let allowed =
+            |c: char| c.is_ascii_alphanumeric() || matches!(c, ',' | ':' | '/' | '_' | '-');
         if !spec.chars().all(allowed) {
             return Err(PacketFilterError::InvalidCharset);
         }
@@ -249,7 +249,9 @@ mod tests {
     fn passphrase_from_env_unset() {
         let var = "_SRT_CORE_TEST_NEVER_SET_";
         // SAFETY: removing an env var is process-wide; this var name is unique.
-        unsafe { std::env::remove_var(var); }
+        unsafe {
+            std::env::remove_var(var);
+        }
         assert!(matches!(
             Passphrase::from_env(var).unwrap_err(),
             PassphraseError::EnvUnset(_)

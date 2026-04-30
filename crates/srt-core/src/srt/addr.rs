@@ -52,7 +52,9 @@ pub(crate) fn from_sockaddr(storage: &libc::sockaddr_storage) -> Result<SocketAd
             Ok(SocketAddr::V4(std::net::SocketAddrV4::new(ip, port)))
         }
         libc::AF_INET6 => Err(AddrError::Ipv6Unsupported),
-        other => Err(AddrError::Resolve(format!("unknown address family: {other}"))),
+        other => Err(AddrError::Resolve(format!(
+            "unknown address family: {other}"
+        ))),
     }
 }
 

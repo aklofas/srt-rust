@@ -1,7 +1,7 @@
 //! Connected SRT data socket.
 
 use crate::error::{
-    last_error, ConnectError, IoError, OptionError, RecvError, SendError, SrtErrno,
+    ConnectError, IoError, OptionError, RecvError, SendError, SrtErrno, last_error,
 };
 use crate::init::ensure_initialized;
 use crate::srt::addr::{from_sockaddr, to_sockaddr};
@@ -80,9 +80,7 @@ impl Socket {
         }
 
         let (sa, salen) = to_sockaddr(addr).map_err(ConnectError::InvalidAddress)?;
-        let rc = unsafe {
-            srt_sys::srt_connect(handle, (&raw const sa).cast(), salen as c_int)
-        };
+        let rc = unsafe { srt_sys::srt_connect(handle, (&raw const sa).cast(), salen as c_int) };
         if rc < 0 {
             let raw = last_error();
             unsafe { srt_sys::srt_close(handle) };
@@ -105,15 +103,26 @@ impl Socket {
         recv_timeout: Option<Duration>,
     ) -> Result<Self, IoError> {
         if let Some(t) = send_timeout {
-            set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_SNDTIMEO, duration_to_ms(t))
-                .map_err(io_from_option_error)?;
+            set_int(
+                handle,
+                srt_sys::SRT_SOCKOPT_SRTO_SNDTIMEO,
+                duration_to_ms(t),
+            )
+            .map_err(io_from_option_error)?;
         }
         if let Some(t) = recv_timeout {
-            set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO, duration_to_ms(t))
-                .map_err(io_from_option_error)?;
+            set_int(
+                handle,
+                srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO,
+                duration_to_ms(t),
+            )
+            .map_err(io_from_option_error)?;
         }
         let cached_stream_id = read_stream_id(handle);
-        Ok(Self { handle, cached_stream_id })
+        Ok(Self {
+            handle,
+            cached_stream_id,
+        })
     }
 
     /// Send a buffer. Returns bytes sent. Live mode requires `buf.len() ≤ payload_size`.
@@ -198,7 +207,11 @@ impl Socket {
     }
 
     pub fn set_max_bandwidth(&mut self, bw: MaxBandwidth) -> Result<(), OptionError> {
-        set_i64(self.handle, srt_sys::SRT_SOCKOPT_SRTO_MAXBW, bw.as_libsrt_i64())
+        set_i64(
+            self.handle,
+            srt_sys::SRT_SOCKOPT_SRTO_MAXBW,
+            bw.as_libsrt_i64(),
+        )
     }
 
     pub fn set_input_bandwidth(&mut self, bw: u64) -> Result<(), OptionError> {
@@ -293,12 +306,7 @@ pub(crate) fn set_string(
     value: &str,
 ) -> Result<(), OptionError> {
     let rc = unsafe {
-        srt_sys::srt_setsockflag(
-            handle,
-            opt,
-            value.as_ptr().cast(),
-            value.len() as c_int,
-        )
+        srt_sys::srt_setsockflag(handle, opt, value.as_ptr().cast(), value.len() as c_int)
     };
     if rc < 0 {
         return Err(last_error().into());
@@ -332,23 +340,43 @@ pub(crate) fn apply_socket_config(
 ) -> Result<(), OptionError> {
     if let Some(p) = &cfg.passphrase {
         // Set key length BEFORE passphrase.
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PBKEYLEN, cfg.key_length.as_bytes())?;
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_PBKEYLEN,
+            cfg.key_length.as_bytes(),
+        )?;
         set_passphrase(handle, p)?;
     }
     if let Some(t) = cfg.send_timeout {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_SNDTIMEO, duration_to_ms(t))?;
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_SNDTIMEO,
+            duration_to_ms(t),
+        )?;
     }
     if let Some(t) = cfg.recv_timeout {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO, duration_to_ms(t))?;
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO,
+            duration_to_ms(t),
+        )?;
     }
     if let Some(d) = cfg.latency {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LATENCY, duration_to_ms(d))?;
     }
     if let Some(d) = cfg.peer_latency {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PEERLATENCY, duration_to_ms(d))?;
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_PEERLATENCY,
+            duration_to_ms(d),
+        )?;
     }
     if let Some(d) = cfg.recv_latency {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVLATENCY, duration_to_ms(d))?;
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_RCVLATENCY,
+            duration_to_ms(d),
+        )?;
     }
     if let Some(n) = cfg.recv_buf_packets {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, n as i32)?;
@@ -402,14 +430,22 @@ pub(crate) fn apply_listener_config(
     cfg: &crate::srt::config::ListenerConfig,
 ) -> Result<(), OptionError> {
     if let Some(p) = &cfg.passphrase {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PBKEYLEN, cfg.key_length.as_bytes())?;
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_PBKEYLEN,
+            cfg.key_length.as_bytes(),
+        )?;
         set_passphrase(handle, p)?;
     }
     if let Some(d) = cfg.latency {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LATENCY, duration_to_ms(d))?;
     }
     if let Some(d) = cfg.recv_latency {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVLATENCY, duration_to_ms(d))?;
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_RCVLATENCY,
+            duration_to_ms(d),
+        )?;
     }
     if let Some(n) = cfg.recv_buf_packets {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, n as i32)?;
@@ -448,7 +484,11 @@ pub(crate) fn apply_listener_config(
     }
     set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_REUSEADDR, cfg.reuse_addr)?;
     if let Some(t) = cfg.recv_timeout {
-        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO, duration_to_ms(t))?;
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO,
+            duration_to_ms(t),
+        )?;
     }
     Ok(())
 }

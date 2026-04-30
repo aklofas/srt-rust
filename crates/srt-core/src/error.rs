@@ -132,7 +132,10 @@ pub enum ConnectError {
     #[error("encryption configuration rejected: {detail}")]
     BadEncryption { detail: String },
     #[error("peer rejected connection: {reason:?} - {detail}")]
-    Rejected { reason: RejectReason, detail: String },
+    Rejected {
+        reason: RejectReason,
+        detail: String,
+    },
     #[error("connection timed out")]
     TimedOut,
     #[error("connection refused")]
@@ -168,7 +171,10 @@ pub enum AcceptError {
     #[error("listener was closed")]
     ListenerClosed,
     #[error("peer rejected during handshake: {reason:?} - {detail}")]
-    PeerRejected { reason: RejectReason, detail: String },
+    PeerRejected {
+        reason: RejectReason,
+        detail: String,
+    },
     #[error("system error: {0}")]
     System(#[from] io::Error),
     #[error("libsrt error: {kind:?} - {message}")]
@@ -444,7 +450,10 @@ mod tests {
     #[test]
     fn validation_error_displays() {
         let e = PassphraseError::InvalidLength(5);
-        assert_eq!(e.to_string(), "passphrase length must be 10-79 chars (got 5)");
+        assert_eq!(
+            e.to_string(),
+            "passphrase length must be 10-79 chars (got 5)"
+        );
     }
 
     #[test]

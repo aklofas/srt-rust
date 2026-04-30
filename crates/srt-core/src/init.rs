@@ -28,7 +28,7 @@ pub(crate) fn ensure_initialized() {
 
 #[cfg(feature = "log")]
 fn install_log_handler() {
-    use std::ffi::{c_char, c_int, c_void, CStr};
+    use std::ffi::{CStr, c_char, c_int, c_void};
 
     extern "C" fn forward(
         _opaque: *mut c_void,

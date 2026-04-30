@@ -1,14 +1,477 @@
-//! Socket type. Filled in Task 9.
+//! Connected SRT data socket.
 
-use crate::error::ConnectError;
+use crate::error::{
+    last_error, ConnectError, IoError, OptionError, RecvError, SendError, SrtErrno,
+};
+use crate::init::ensure_initialized;
+use crate::srt::addr::{from_sockaddr, to_sockaddr};
 use crate::srt::config::SocketConfig;
-use std::net::ToSocketAddrs;
+use crate::srt::options::{MaxBandwidth, Passphrase};
+use std::ffi::{c_char, c_int};
+use std::mem;
+use std::net::{SocketAddr, ToSocketAddrs};
+use std::time::Duration;
 
-pub struct Socket;
-pub struct Stats;
+const SRT_INVALID_SOCK: srt_sys::SRTSOCKET = -1;
+
+/// Connected, bidirectional SRT data socket.
+///
+/// Constructed via [`SocketBuilder`](crate::srt::SocketBuilder), via
+/// [`Socket::connect_with`], or returned from [`Listener::accept`](crate::srt::Listener::accept).
+pub struct Socket {
+    handle: srt_sys::SRTSOCKET,
+    /// Cached at construction; libsrt allows reading via getsockflag, but
+    /// reading once is cheaper.
+    cached_stream_id: Option<String>,
+}
+
+/// Snapshot of libsrt's per-socket performance counters (subset of `CBytePerfMon`).
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub struct Stats {
+    pub bytes_sent: u64,
+    pub bytes_received: u64,
+    pub bytes_lost: u64,
+    pub packets_sent: u64,
+    pub packets_received: u64,
+    pub packets_lost: u64,
+    pub packets_retransmitted: u64,
+    pub packets_dropped: u64,
+    pub rtt: Duration,
+    pub send_bandwidth_bps: u64,
+    pub recv_bandwidth_bps: u64,
+    pub mbps_estimated_bandwidth: f64,
+    pub send_buffer_packets: u32,
+    pub recv_buffer_packets: u32,
+}
+
+// SAFETY: a SRTSOCKET is just an integer handle; libsrt is internally
+// thread-safe per-socket (concurrent operations on the same handle from two
+// threads are still UB, but moving across threads is fine). Mirrors std::net.
+unsafe impl Send for Socket {}
 
 impl Socket {
-    pub fn connect_with(_config: &SocketConfig, _addr: impl ToSocketAddrs) -> Result<Socket, ConnectError> {
-        unimplemented!("Task 9")
+    /// Open a socket, apply config, and connect to `addr`.
+    pub fn connect_with(
+        config: &SocketConfig,
+        addr: impl ToSocketAddrs,
+    ) -> Result<Self, ConnectError> {
+        ensure_initialized();
+
+        let addr = addr
+            .to_socket_addrs()
+            .map_err(|e| ConnectError::InvalidAddress(e.into()))?
+            .next()
+            .ok_or_else(|| {
+                ConnectError::InvalidAddress(crate::error::AddrError::Resolve(
+                    "no addresses resolved".into(),
+                ))
+            })?;
+
+        let handle = unsafe { srt_sys::srt_create_socket() };
+        if handle == SRT_INVALID_SOCK {
+            return Err(last_error().into());
+        }
+
+        // Apply config. If anything fails, close the socket before returning.
+        if let Err(e) = apply_socket_config(handle, config) {
+            unsafe { srt_sys::srt_close(handle) };
+            return Err(ConnectError::InvalidOption(e));
+        }
+
+        let (sa, salen) = to_sockaddr(addr).map_err(ConnectError::InvalidAddress)?;
+        let rc = unsafe {
+            srt_sys::srt_connect(handle, (&raw const sa).cast(), salen as c_int)
+        };
+        if rc < 0 {
+            let raw = last_error();
+            unsafe { srt_sys::srt_close(handle) };
+            return Err(classify_connect_error(raw));
+        }
+
+        let cached_stream_id = read_stream_id(handle);
+
+        Ok(Self {
+            handle,
+            cached_stream_id,
+        })
     }
+
+    /// Internal: wrap an already-accepted handle (called from `Listener::accept`).
+    #[allow(dead_code)]
+    pub(crate) fn from_accepted(
+        handle: srt_sys::SRTSOCKET,
+        send_timeout: Option<Duration>,
+        recv_timeout: Option<Duration>,
+    ) -> Result<Self, IoError> {
+        if let Some(t) = send_timeout {
+            set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_SNDTIMEO, duration_to_ms(t))
+                .map_err(io_from_option_error)?;
+        }
+        if let Some(t) = recv_timeout {
+            set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO, duration_to_ms(t))
+                .map_err(io_from_option_error)?;
+        }
+        let cached_stream_id = read_stream_id(handle);
+        Ok(Self { handle, cached_stream_id })
+    }
+
+    /// Send a buffer. Returns bytes sent. Live mode requires `buf.len() ≤ payload_size`.
+    pub fn send(&mut self, buf: &[u8]) -> Result<usize, SendError> {
+        let n = unsafe {
+            srt_sys::srt_send(
+                self.handle,
+                buf.as_ptr().cast::<c_char>(),
+                buf.len() as c_int,
+            )
+        };
+        if n >= 0 {
+            return Ok(n as usize);
+        }
+        let raw = last_error();
+        Err(classify_send_error(raw, buf.len()))
+    }
+
+    /// Receive into a buffer. Returns bytes received (one libsrt message).
+    pub fn recv(&mut self, buf: &mut [u8]) -> Result<usize, RecvError> {
+        let n = unsafe {
+            srt_sys::srt_recv(
+                self.handle,
+                buf.as_mut_ptr().cast::<c_char>(),
+                buf.len() as c_int,
+            )
+        };
+        if n >= 0 {
+            return Ok(n as usize);
+        }
+        let raw = last_error();
+        Err(classify_recv_error(raw, buf.len()))
+    }
+
+    pub fn peer_addr(&self) -> Result<SocketAddr, IoError> {
+        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
+        let mut len = mem::size_of::<libc::sockaddr_storage>() as c_int;
+        let rc = unsafe {
+            srt_sys::srt_getpeername(self.handle, (&raw mut storage).cast(), &raw mut len)
+        };
+        if rc < 0 {
+            return Err(last_error().into());
+        }
+        from_sockaddr(&storage).map_err(|e| IoError::System(std::io::Error::other(e.to_string())))
+    }
+
+    pub fn local_addr(&self) -> Result<SocketAddr, IoError> {
+        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
+        let mut len = mem::size_of::<libc::sockaddr_storage>() as c_int;
+        let rc = unsafe {
+            srt_sys::srt_getsockname(self.handle, (&raw mut storage).cast(), &raw mut len)
+        };
+        if rc < 0 {
+            return Err(last_error().into());
+        }
+        from_sockaddr(&storage).map_err(|e| IoError::System(std::io::Error::other(e.to_string())))
+    }
+
+    /// Stream ID negotiated during handshake. Cached at construction.
+    pub fn stream_id(&self) -> Option<&str> {
+        self.cached_stream_id.as_deref()
+    }
+
+    /// Snapshot of libsrt's per-socket performance counters.
+    pub fn stats(&self) -> Result<Stats, IoError> {
+        let mut perf: srt_sys::CBytePerfMon = unsafe { mem::zeroed() };
+        let rc = unsafe { srt_sys::srt_bistats(self.handle, &raw mut perf, 0, 0) };
+        if rc < 0 {
+            return Err(last_error().into());
+        }
+        Ok(perf_to_stats(&perf))
+    }
+
+    pub fn set_send_timeout(&mut self, timeout: Option<Duration>) -> Result<(), OptionError> {
+        let ms = timeout.map(duration_to_ms).unwrap_or(-1);
+        set_int(self.handle, srt_sys::SRT_SOCKOPT_SRTO_SNDTIMEO, ms)
+    }
+
+    pub fn set_recv_timeout(&mut self, timeout: Option<Duration>) -> Result<(), OptionError> {
+        let ms = timeout.map(duration_to_ms).unwrap_or(-1);
+        set_int(self.handle, srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO, ms)
+    }
+
+    pub fn set_max_bandwidth(&mut self, bw: MaxBandwidth) -> Result<(), OptionError> {
+        set_i64(self.handle, srt_sys::SRT_SOCKOPT_SRTO_MAXBW, bw.as_libsrt_i64())
+    }
+
+    pub fn set_input_bandwidth(&mut self, bw: u64) -> Result<(), OptionError> {
+        set_i64(self.handle, srt_sys::SRT_SOCKOPT_SRTO_INPUTBW, bw as i64)
+    }
+
+    pub fn set_overhead_bandwidth_pct(&mut self, pct: u8) -> Result<(), OptionError> {
+        if !(5..=100).contains(&pct) {
+            return Err(OptionError::OutOfRange(format!(
+                "overhead_bandwidth_pct must be 5..=100, got {pct}"
+            )));
+        }
+        set_int(self.handle, srt_sys::SRT_SOCKOPT_SRTO_OHEADBW, pct as i32)
+    }
+
+    /// Explicit close; rare. Drop handles the normal path.
+    pub fn close(self) -> Result<(), IoError> {
+        let handle = self.handle;
+        std::mem::forget(self); // prevent Drop from running
+        let rc = unsafe { srt_sys::srt_close(handle) };
+        if rc < 0 {
+            return Err(last_error().into());
+        }
+        Ok(())
+    }
+}
+
+impl Drop for Socket {
+    fn drop(&mut self) {
+        unsafe { srt_sys::srt_close(self.handle) };
+    }
+}
+
+// ============================================================================
+// Helpers (private to crate; consumed by listener.rs in Task 10)
+// ============================================================================
+
+pub(crate) fn duration_to_ms(d: Duration) -> i32 {
+    d.as_millis().min(i32::MAX as u128) as i32
+}
+
+pub(crate) fn set_int(
+    handle: srt_sys::SRTSOCKET,
+    opt: srt_sys::SRT_SOCKOPT,
+    value: i32,
+) -> Result<(), OptionError> {
+    let rc = unsafe {
+        srt_sys::srt_setsockflag(
+            handle,
+            opt,
+            (&raw const value).cast(),
+            mem::size_of::<i32>() as c_int,
+        )
+    };
+    if rc < 0 {
+        return Err(last_error().into());
+    }
+    Ok(())
+}
+
+pub(crate) fn set_i64(
+    handle: srt_sys::SRTSOCKET,
+    opt: srt_sys::SRT_SOCKOPT,
+    value: i64,
+) -> Result<(), OptionError> {
+    let rc = unsafe {
+        srt_sys::srt_setsockflag(
+            handle,
+            opt,
+            (&raw const value).cast(),
+            mem::size_of::<i64>() as c_int,
+        )
+    };
+    if rc < 0 {
+        return Err(last_error().into());
+    }
+    Ok(())
+}
+
+pub(crate) fn set_bool(
+    handle: srt_sys::SRTSOCKET,
+    opt: srt_sys::SRT_SOCKOPT,
+    value: bool,
+) -> Result<(), OptionError> {
+    let v: i32 = if value { 1 } else { 0 };
+    set_int(handle, opt, v)
+}
+
+pub(crate) fn set_string(
+    handle: srt_sys::SRTSOCKET,
+    opt: srt_sys::SRT_SOCKOPT,
+    value: &str,
+) -> Result<(), OptionError> {
+    let rc = unsafe {
+        srt_sys::srt_setsockflag(
+            handle,
+            opt,
+            value.as_ptr().cast(),
+            value.len() as c_int,
+        )
+    };
+    if rc < 0 {
+        return Err(last_error().into());
+    }
+    Ok(())
+}
+
+pub(crate) fn set_passphrase(
+    handle: srt_sys::SRTSOCKET,
+    p: &Passphrase,
+) -> Result<(), OptionError> {
+    let bytes = p.as_bytes();
+    let rc = unsafe {
+        srt_sys::srt_setsockflag(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_PASSPHRASE,
+            bytes.as_ptr().cast(),
+            bytes.len() as c_int,
+        )
+    };
+    if rc < 0 {
+        return Err(last_error().into());
+    }
+    Ok(())
+}
+
+/// Apply every set field of a `SocketConfig` to the handle.
+pub(crate) fn apply_socket_config(
+    handle: srt_sys::SRTSOCKET,
+    cfg: &SocketConfig,
+) -> Result<(), OptionError> {
+    if let Some(p) = &cfg.passphrase {
+        // Set key length BEFORE passphrase.
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PBKEYLEN, cfg.key_length.as_bytes())?;
+        set_passphrase(handle, p)?;
+    }
+    if let Some(t) = cfg.send_timeout {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_SNDTIMEO, duration_to_ms(t))?;
+    }
+    if let Some(t) = cfg.recv_timeout {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO, duration_to_ms(t))?;
+    }
+    if let Some(d) = cfg.latency {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LATENCY, duration_to_ms(d))?;
+    }
+    if let Some(d) = cfg.peer_latency {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PEERLATENCY, duration_to_ms(d))?;
+    }
+    if let Some(d) = cfg.recv_latency {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVLATENCY, duration_to_ms(d))?;
+    }
+    if let Some(n) = cfg.recv_buf_packets {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, n as i32)?;
+    }
+    if let Some(n) = cfg.send_buf_packets {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_SNDBUF, n as i32)?;
+    }
+    if let Some(bw) = cfg.max_bandwidth {
+        set_i64(handle, srt_sys::SRT_SOCKOPT_SRTO_MAXBW, bw.as_libsrt_i64())?;
+    }
+    if let Some(bw) = cfg.input_bandwidth {
+        set_i64(handle, srt_sys::SRT_SOCKOPT_SRTO_INPUTBW, bw as i64)?;
+    }
+    if let Some(pct) = cfg.overhead_bandwidth_pct {
+        if !(5..=100).contains(&pct) {
+            return Err(OptionError::OutOfRange(format!(
+                "overhead_bandwidth_pct must be 5..=100, got {pct}"
+            )));
+        }
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_OHEADBW, pct as i32)?;
+    }
+    if let Some(mss) = cfg.mss {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_MSS, mss as i32)?;
+    }
+    if let Some(n) = cfg.payload_size {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PAYLOADSIZE, n as i32)?;
+    }
+    if let Some(id) = &cfg.stream_id {
+        set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_STREAMID, id.as_str())?;
+    }
+    if let Some(n) = cfg.loss_max_ttl {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LOSSMAXTTL, n as i32)?;
+    }
+    if let Some(on) = cfg.too_late_packet_drop {
+        set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_TLPKTDROP, on)?;
+    }
+    if let Some(n) = cfg.flow_window_packets {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_FC, n as i32)?;
+    }
+    if let Some(pf) = &cfg.packet_filter {
+        set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_PACKETFILTER, pf.as_str())?;
+    }
+    if let Some(c) = cfg.congestion {
+        set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_CONGESTION, c.as_str())?;
+    }
+    Ok(())
+}
+
+pub(crate) fn read_stream_id(handle: srt_sys::SRTSOCKET) -> Option<String> {
+    let mut buf = [0u8; 513];
+    let mut len = buf.len() as c_int;
+    let rc = unsafe {
+        srt_sys::srt_getsockflag(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_STREAMID,
+            buf.as_mut_ptr().cast(),
+            &raw mut len,
+        )
+    };
+    if rc < 0 || len <= 0 {
+        return None;
+    }
+    let s = std::str::from_utf8(&buf[..len as usize]).ok()?;
+    if s.is_empty() {
+        None
+    } else {
+        Some(s.to_string())
+    }
+}
+
+pub(crate) fn perf_to_stats(p: &srt_sys::CBytePerfMon) -> Stats {
+    Stats {
+        bytes_sent: p.byteSentTotal,
+        bytes_received: p.byteRecvTotal,
+        bytes_lost: p.byteRcvLossTotal,
+        packets_sent: p.pktSentTotal as u64,
+        packets_received: p.pktRecvTotal as u64,
+        packets_lost: p.pktRcvLossTotal as u64,
+        packets_retransmitted: p.pktRetransTotal as u64,
+        packets_dropped: p.pktRcvDropTotal as u64,
+        rtt: Duration::from_millis(p.msRTT.max(0.0) as u64),
+        send_bandwidth_bps: (p.mbpsSendRate * 1_000_000.0).max(0.0) as u64,
+        recv_bandwidth_bps: (p.mbpsRecvRate * 1_000_000.0).max(0.0) as u64,
+        mbps_estimated_bandwidth: p.mbpsBandwidth,
+        send_buffer_packets: p.pktSndBuf as u32,
+        recv_buffer_packets: p.pktRcvBuf as u32,
+    }
+}
+
+#[allow(dead_code)]
+fn io_from_option_error(e: OptionError) -> IoError {
+    match e {
+        OptionError::Other { kind, message } => IoError::Other { kind, message },
+        other => IoError::Other {
+            kind: SrtErrno::Unknown(0),
+            message: other.to_string(),
+        },
+    }
+}
+
+fn classify_connect_error(raw: crate::error::RawError) -> ConnectError {
+    raw.into()
+}
+
+fn classify_send_error(raw: crate::error::RawError, payload_len: usize) -> SendError {
+    if raw.message.contains("Message has no destination address")
+        || raw.message.contains("payload size")
+        || raw.message.contains("Invalid argument")
+    {
+        return SendError::PayloadTooLarge {
+            actual: payload_len,
+            limit: 1316,
+        };
+    }
+    raw.into()
+}
+
+fn classify_recv_error(raw: crate::error::RawError, buf_len: usize) -> RecvError {
+    if raw.message.contains("Message size exceeds buffer") {
+        return RecvError::BufferTooSmall {
+            buf_len,
+            message_len: 0,
+        };
+    }
+    raw.into()
 }

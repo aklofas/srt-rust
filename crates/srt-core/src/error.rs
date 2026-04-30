@@ -326,6 +326,117 @@ pub(crate) fn is_broken(raw: &RawError) -> bool {
         && (raw.message.contains("broken") || raw.message.contains("Broken"))
 }
 
+// ============================================================================
+// From<RawError> impls — translate raw libsrt errors into typed variants.
+// Each per-call enum has an `Other { kind, message }` catch-all populated here.
+// Specific cases (timeout, broken, refused, rejected, address-in-use,
+// permission-denied) are detected by classifier helpers and string matching.
+// ============================================================================
+
+impl From<RawError> for ConnectError {
+    fn from(raw: RawError) -> Self {
+        if matches!(raw.kind, SrtErrno::Connection) {
+            // Could be a typed reject. Check.
+            let reason = last_reject();
+            // RejectReason::Other(0) is the libsrt sentinel for "no reject info".
+            if reason != RejectReason::Other(0) {
+                return ConnectError::Rejected {
+                    reason,
+                    detail: raw.message,
+                };
+            }
+            if raw.message.contains("refused") || raw.message.contains("Refused") {
+                return ConnectError::Refused;
+            }
+        }
+        if is_timeout(&raw) {
+            return ConnectError::TimedOut;
+        }
+        ConnectError::Other {
+            kind: raw.kind,
+            message: raw.message,
+        }
+    }
+}
+
+impl From<RawError> for BindError {
+    fn from(raw: RawError) -> Self {
+        if raw.message.contains("in use") || raw.message.contains("already") {
+            return BindError::AddressInUse;
+        }
+        if raw.message.contains("permission") || raw.message.contains("Permission") {
+            return BindError::PermissionDenied;
+        }
+        BindError::Other {
+            kind: raw.kind,
+            message: raw.message,
+        }
+    }
+}
+
+impl From<RawError> for AcceptError {
+    fn from(raw: RawError) -> Self {
+        if is_timeout(&raw) {
+            return AcceptError::TimedOut;
+        }
+        if matches!(raw.kind, SrtErrno::Setup) || raw.message.contains("closed") {
+            return AcceptError::ListenerClosed;
+        }
+        AcceptError::Other {
+            kind: raw.kind,
+            message: raw.message,
+        }
+    }
+}
+
+impl From<RawError> for SendError {
+    fn from(raw: RawError) -> Self {
+        if is_timeout(&raw) {
+            return SendError::TimedOut;
+        }
+        if is_broken(&raw) {
+            return SendError::ConnectionBroken;
+        }
+        SendError::Other {
+            kind: raw.kind,
+            message: raw.message,
+        }
+    }
+}
+
+impl From<RawError> for RecvError {
+    fn from(raw: RawError) -> Self {
+        if is_timeout(&raw) {
+            return RecvError::TimedOut;
+        }
+        if is_broken(&raw) {
+            return RecvError::ConnectionBroken;
+        }
+        RecvError::Other {
+            kind: raw.kind,
+            message: raw.message,
+        }
+    }
+}
+
+impl From<RawError> for OptionError {
+    fn from(raw: RawError) -> Self {
+        OptionError::Other {
+            kind: raw.kind,
+            message: raw.message,
+        }
+    }
+}
+
+impl From<RawError> for IoError {
+    fn from(raw: RawError) -> Self {
+        IoError::Other {
+            kind: raw.kind,
+            message: raw.message,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

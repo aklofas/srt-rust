@@ -1,0 +1,27 @@
+# Cargo build artifacts
+/target/
+**/target/
+
+# Rust analyzer
+.rust-analyzer/
+
+# Editor / IDE
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated bindings (committed deliberately for inspection during dev; can flip later)
+# /crates/srt-sys/src/bindings.rs
+
+# Future: jextract / cbindgen output if we treat them as build artifacts
+# /crates/srt-c/include/generated/
+
+# Local environment files
+.env
+.env.local

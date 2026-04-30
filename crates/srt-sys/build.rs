@@ -53,7 +53,10 @@ fn main() {
     let include_paths: Vec<PathBuf> = if force_vendored || no_pkg_config {
         build_vendored(mbedtls_prefix.as_ref())
     } else {
-        match pkg_config::Config::new().atleast_version("1.5.0").probe("srt") {
+        match pkg_config::Config::new()
+            .atleast_version("1.5.0")
+            .probe("srt")
+        {
             Ok(lib) => lib.include_paths,
             Err(_) => build_vendored(mbedtls_prefix.as_ref()),
         }

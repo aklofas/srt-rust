@@ -50,7 +50,12 @@ unsafe fn set_passphrase(sock: SRTSOCKET, passphrase: &str) {
             cstr.as_bytes().len() as libc::c_int,
         )
     };
-    assert_eq!(rc, 0, "srt_setsockflag(PASSPHRASE) failed: {}", last_error());
+    assert_eq!(
+        rc,
+        0,
+        "srt_setsockflag(PASSPHRASE) failed: {}",
+        last_error()
+    );
 }
 
 unsafe fn set_int_opt(sock: SRTSOCKET, opt: SRT_SOCKOPT, value: i32) {
@@ -137,13 +142,7 @@ fn matching_passphrase_round_trips_payload() {
     let listener_handle = thread::spawn(move || {
         let mut peer: libc::sockaddr_storage = unsafe { mem::zeroed() };
         let mut peer_len = mem::size_of::<libc::sockaddr_storage>() as libc::c_int;
-        let accepted = unsafe {
-            srt_accept(
-                listener,
-                (&raw mut peer).cast(),
-                &raw mut peer_len,
-            )
-        };
+        let accepted = unsafe { srt_accept(listener, (&raw mut peer).cast(), &raw mut peer_len) };
         if accepted == SRT_INVALID_SOCK {
             return Err(format!("accept failed: {}", last_error()));
         }
@@ -179,7 +178,12 @@ fn matching_passphrase_round_trips_payload() {
     let server: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
     let (sa, salen) = sockaddr_from(server);
     let rc = unsafe { srt_connect(caller, (&raw const sa).cast(), salen as libc::c_int) };
-    assert_eq!(rc, 0, "connect failed (matching passphrase): {}", last_error());
+    assert_eq!(
+        rc,
+        0,
+        "connect failed (matching passphrase): {}",
+        last_error()
+    );
 
     let payload = b"hello, encrypted srt!";
     let n = unsafe {
@@ -215,13 +219,7 @@ fn mismatched_passphrase_rejects_connect() {
     let listener_handle = thread::spawn(move || {
         let mut peer: libc::sockaddr_storage = unsafe { mem::zeroed() };
         let mut peer_len = mem::size_of::<libc::sockaddr_storage>() as libc::c_int;
-        let accepted = unsafe {
-            srt_accept(
-                listener,
-                (&raw mut peer).cast(),
-                &raw mut peer_len,
-            )
-        };
+        let accepted = unsafe { srt_accept(listener, (&raw mut peer).cast(), &raw mut peer_len) };
         if accepted != SRT_INVALID_SOCK {
             unsafe { srt_close(accepted) };
         }

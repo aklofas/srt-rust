@@ -9,8 +9,6 @@
 
 use srt_sys::*;
 
-const SRT_INVALID_SOCK: SRTSOCKET = -1;
-
 /// libsrt's startup is process-global and refcounted internally.
 /// Cargo runs each integration-test binary in its own process,
 /// giving us isolation across files. Inside one process, multiple

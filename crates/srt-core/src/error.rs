@@ -229,6 +229,103 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+// ============================================================================
+// libsrt-error → typed-enum mapping
+// ============================================================================
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(crate) struct RawError {
+    pub kind: SrtErrno,
+    pub message: String,
+}
+
+/// Read libsrt's last-error state. Call immediately after a libsrt FFI call
+/// returned an error indicator.
+#[allow(dead_code)]
+pub(crate) fn last_error() -> RawError {
+    let kind = unsafe { srt_sys::srt_getlasterror(std::ptr::null_mut()) };
+    let msg_ptr = unsafe { srt_sys::srt_getlasterror_str() };
+    let message = if msg_ptr.is_null() {
+        "<no error string>".to_string()
+    } else {
+        unsafe { std::ffi::CStr::from_ptr(msg_ptr) }
+            .to_string_lossy()
+            .into_owned()
+    };
+    RawError {
+        kind: SrtErrno::from_raw(kind),
+        message,
+    }
+}
+
+/// Read the typed reject code (only meaningful after a connection-rejected error).
+#[allow(dead_code)]
+pub(crate) fn last_reject() -> RejectReason {
+    let raw = unsafe { srt_sys::srt_getrejectreason(0) };
+    RejectReason::from_raw(raw)
+}
+
+impl SrtErrno {
+    /// Map the raw `srt_getlasterror` int to a typed variant.
+    /// libsrt encodes `MJ_*` in upper bits; we drop sub-codes here.
+    pub(crate) fn from_raw(raw: i32) -> Self {
+        // libsrt's MJ_* values (see vendor/srt/srtcore/srt.h SRT_ERRNO enum).
+        // Major category is encoded as (major * 1000 + minor) in the SRT_ERRNO enum.
+        let major = raw / 1000;
+        match major {
+            1 => SrtErrno::Setup,
+            2 => SrtErrno::Connection,
+            3 => SrtErrno::SystemRes,
+            4 => SrtErrno::FileSystem,
+            5 => SrtErrno::Notsup,
+            6 => SrtErrno::Async,
+            7 => SrtErrno::PeerError,
+            _ => SrtErrno::Unknown(raw),
+        }
+    }
+}
+
+impl RejectReason {
+    /// Map the raw reject reason code to a typed variant.
+    /// See vendor/srt/srtcore/access_control.h and srt.h SRT_REJECT_REASON.
+    pub(crate) fn from_raw(raw: i32) -> Self {
+        match raw {
+            1001 => RejectReason::BadSecret,
+            1002 => RejectReason::Unsecure,
+            1003 => RejectReason::ValueLearn,
+            1004 => RejectReason::UnknownStreamId,
+            1005 => RejectReason::Resource,
+            1006 => RejectReason::Rogue,
+            1007 => RejectReason::Backlog,
+            1008 => RejectReason::Ipe,
+            1009 => RejectReason::Close,
+            1010 => RejectReason::Version,
+            1011 => RejectReason::RdvCookie,
+            1012 => RejectReason::BadRequest,
+            1013 => RejectReason::Forbidden,
+            1014 => RejectReason::NotFound,
+            other => RejectReason::Other(other),
+        }
+    }
+}
+
+/// Decide whether a `RawError` indicates a timeout.
+#[allow(dead_code)]
+pub(crate) fn is_timeout(raw: &RawError) -> bool {
+    matches!(raw.kind, SrtErrno::Async)
+        && (raw.message.contains("Timeout")
+            || raw.message.contains("timeout")
+            || raw.message.contains("timed out"))
+}
+
+/// Decide whether a `RawError` indicates the connection has been broken.
+#[allow(dead_code)]
+pub(crate) fn is_broken(raw: &RawError) -> bool {
+    matches!(raw.kind, SrtErrno::Connection)
+        && (raw.message.contains("broken") || raw.message.contains("Broken"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,5 +352,45 @@ mod tests {
             OptionError::InvalidStreamId(StreamIdError::TooLong(600)) => {}
             _ => panic!("expected InvalidStreamId(TooLong(600))"),
         }
+    }
+
+    #[test]
+    fn srt_errno_mapping() {
+        assert_eq!(SrtErrno::from_raw(1000), SrtErrno::Setup);
+        assert_eq!(SrtErrno::from_raw(1003), SrtErrno::Setup); // sub-codes folded into major
+        assert_eq!(SrtErrno::from_raw(2000), SrtErrno::Connection);
+        assert_eq!(SrtErrno::from_raw(3001), SrtErrno::SystemRes);
+        assert_eq!(SrtErrno::from_raw(4000), SrtErrno::FileSystem);
+        assert_eq!(SrtErrno::from_raw(5000), SrtErrno::Notsup);
+        assert_eq!(SrtErrno::from_raw(6000), SrtErrno::Async);
+        assert_eq!(SrtErrno::from_raw(7000), SrtErrno::PeerError);
+        assert_eq!(SrtErrno::from_raw(99999), SrtErrno::Unknown(99999));
+    }
+
+    #[test]
+    fn reject_reason_mapping() {
+        assert_eq!(RejectReason::from_raw(1001), RejectReason::BadSecret);
+        assert_eq!(RejectReason::from_raw(1002), RejectReason::Unsecure);
+        assert_eq!(RejectReason::from_raw(1010), RejectReason::Version);
+        assert_eq!(RejectReason::from_raw(1014), RejectReason::NotFound);
+        assert_eq!(RejectReason::from_raw(9999), RejectReason::Other(9999));
+    }
+
+    #[test]
+    fn timeout_classifier() {
+        let r = RawError {
+            kind: SrtErrno::Async,
+            message: "Operation timed out".into(),
+        };
+        assert!(is_timeout(&r));
+    }
+
+    #[test]
+    fn broken_classifier() {
+        let r = RawError {
+            kind: SrtErrno::Connection,
+            message: "Connection broken".into(),
+        };
+        assert!(is_broken(&r));
     }
 }

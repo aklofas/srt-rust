@@ -397,6 +397,62 @@ pub(crate) fn apply_socket_config(
     Ok(())
 }
 
+pub(crate) fn apply_listener_config(
+    handle: srt_sys::SRTSOCKET,
+    cfg: &crate::srt::config::ListenerConfig,
+) -> Result<(), OptionError> {
+    if let Some(p) = &cfg.passphrase {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PBKEYLEN, cfg.key_length.as_bytes())?;
+        set_passphrase(handle, p)?;
+    }
+    if let Some(d) = cfg.latency {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LATENCY, duration_to_ms(d))?;
+    }
+    if let Some(d) = cfg.recv_latency {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVLATENCY, duration_to_ms(d))?;
+    }
+    if let Some(n) = cfg.recv_buf_packets {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVBUF, n as i32)?;
+    }
+    if let Some(bw) = cfg.max_bandwidth {
+        set_i64(handle, srt_sys::SRT_SOCKOPT_SRTO_MAXBW, bw.as_libsrt_i64())?;
+    }
+    if let Some(pct) = cfg.overhead_bandwidth_pct {
+        if !(5..=100).contains(&pct) {
+            return Err(OptionError::OutOfRange(format!(
+                "overhead_bandwidth_pct must be 5..=100, got {pct}"
+            )));
+        }
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_OHEADBW, pct as i32)?;
+    }
+    if let Some(mss) = cfg.mss {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_MSS, mss as i32)?;
+    }
+    if let Some(n) = cfg.payload_size {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PAYLOADSIZE, n as i32)?;
+    }
+    if let Some(n) = cfg.loss_max_ttl {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LOSSMAXTTL, n as i32)?;
+    }
+    if let Some(on) = cfg.too_late_packet_drop {
+        set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_TLPKTDROP, on)?;
+    }
+    if let Some(n) = cfg.flow_window_packets {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_FC, n as i32)?;
+    }
+    if let Some(pf) = &cfg.packet_filter {
+        set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_PACKETFILTER, pf.as_str())?;
+    }
+    if let Some(c) = cfg.congestion {
+        set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_CONGESTION, c.as_str())?;
+    }
+    set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_REUSEADDR, cfg.reuse_addr)?;
+    if let Some(t) = cfg.recv_timeout {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO, duration_to_ms(t))?;
+    }
+    Ok(())
+}
+
 pub(crate) fn read_stream_id(handle: srt_sys::SRTSOCKET) -> Option<String> {
     let mut buf = [0u8; 513];
     let mut len = buf.len() as c_int;

@@ -26,6 +26,7 @@ fn main() {
         .allowlist_var("SRT_.*")
         .blocklist_type("sockaddr.*")
         .ctypes_prefix("libc")
+        .raw_line("use libc::{sockaddr, sockaddr_storage};")
         .derive_debug(true)
         .derive_default(true)
         .derive_copy(true)

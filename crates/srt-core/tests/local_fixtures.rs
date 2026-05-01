@@ -120,9 +120,10 @@ fn assert_unchecked_only(bytes: &[u8]) -> Result<(), String> {
 /// followed by an ST 0601 LS:
 /// `[ts UL][BER 0x09][status(1)+µs(8)][ST 0601 UL][BER len][body]`.
 /// `decode` on the whole buffer is expected to FAIL (it tries to
-/// parse the time stamp pack UL as ST 0601). The record-iterator
-/// path, gating on `UniversalLabel::is_st0601_family`, must find at
-/// least one successfully decoded ST 0601 record.
+/// parse the time stamp pack UL as ST 0601). The leading record must
+/// decode via `klv::st0605::decode`; the record-iterator path gating
+/// on `UniversalLabel::is_st0601_family` must find at least one
+/// successfully decoded ST 0601 record.
 fn assert_multi_record_pes(bytes: &[u8]) -> Result<(), String> {
     if decode(bytes).is_ok() {
         return Err(
@@ -131,6 +132,20 @@ fn assert_multi_record_pes(bytes: &[u8]) -> Result<(), String> {
         );
     }
 
+    // Expect the FIRST record to be a Precision Time Stamp Pack (per ST 0605).
+    let pack = srt_core::klv::st0605::decode(bytes)
+        .map_err(|e| format!("Time Stamp Pack decode failed: {e}"))?;
+    if !pack.time_status.reserved_bits_valid() {
+        return Err(format!(
+            "Time Stamp Pack reserved bits invalid: status=0x{:02X}",
+            pack.time_status.0
+        ));
+    }
+    if pack.timestamp_us == 0 {
+        return Err("Time Stamp Pack has zero timestamp".into());
+    }
+
+    // Then iterate the rest of the buffer and find at least one ST 0601 record.
     let mut i = 0usize;
     let mut decoded = 0usize;
     while i + 16 <= bytes.len() {

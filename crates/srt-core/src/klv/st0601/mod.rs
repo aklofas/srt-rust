@@ -1032,7 +1032,10 @@ mod tests {
         let n = encode_with(&r, &opts, &mut buf).unwrap();
         let bytes = &buf[..n];
         let err = decode_strict(bytes).unwrap_err();
-        assert!(matches!(err, KlvDecodeError::UnexpectedUniversalLabel { .. }));
+        assert!(matches!(
+            err,
+            KlvDecodeError::UnexpectedUniversalLabel { .. }
+        ));
         // decode (non-strict) accepts any UL.
         let parsed = decode(bytes).unwrap();
         assert_eq!(parsed.universal_label, UniversalLabel::new([0xAB; 16]));

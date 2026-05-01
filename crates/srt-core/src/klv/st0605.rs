@@ -165,7 +165,10 @@ mod tests {
         buf.push(0x1F);
         buf.extend_from_slice(&[0u8; 8]);
         let err = decode(&buf).unwrap_err();
-        assert!(matches!(err, KlvDecodeError::UnexpectedUniversalLabel { .. }));
+        assert!(matches!(
+            err,
+            KlvDecodeError::UnexpectedUniversalLabel { .. }
+        ));
     }
 
     #[test]
@@ -182,7 +185,10 @@ mod tests {
         buf.push(0x05); // declared 5, not 9
         buf.extend_from_slice(&[0u8; 5]);
         let err = decode(&buf).unwrap_err();
-        assert!(matches!(err, KlvDecodeError::BadTimeStampPackLength { got: 5 }));
+        assert!(matches!(
+            err,
+            KlvDecodeError::BadTimeStampPackLength { got: 5 }
+        ));
     }
 
     #[test]

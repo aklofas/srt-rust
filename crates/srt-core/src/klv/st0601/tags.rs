@@ -398,6 +398,28 @@ pub(crate) const TAGS: &[TagSpec] = &[
         encoding: Encoding::U8,
         range: None,
     },
+    TagSpec {
+        id: 75,
+        name: "Sensor Ellipsoid Height",
+        encoding: Encoding::U16Range,
+        range: Some(LinearRange {
+            signed: false,
+            byte_length: 2,
+            min: -900.0,
+            max: 19000.0,
+        }),
+    },
+    TagSpec {
+        id: 78,
+        name: "Frame Center Height Above Ellipsoid",
+        encoding: Encoding::U16Range,
+        range: Some(LinearRange {
+            signed: false,
+            byte_length: 2,
+            min: -900.0,
+            max: 19000.0,
+        }),
+    },
     // Image corners — full lat/lon (tags 82-89, added in ST 0601.13)
     TagSpec {
         id: 82,
@@ -485,6 +507,28 @@ pub(crate) const TAGS: &[TagSpec] = &[
             byte_length: 4,
             min: -180.0,
             max: 180.0,
+        }),
+    },
+    TagSpec {
+        id: 90,
+        name: "Platform Pitch Angle (Full)",
+        encoding: Encoding::I32Range,
+        range: Some(LinearRange {
+            signed: true,
+            byte_length: 4,
+            min: -90.0,
+            max: 90.0,
+        }),
+    },
+    TagSpec {
+        id: 91,
+        name: "Platform Roll Angle (Full)",
+        encoding: Encoding::I32Range,
+        range: Some(LinearRange {
+            signed: true,
+            byte_length: 4,
+            min: -90.0,
+            max: 90.0,
         }),
     },
 ];

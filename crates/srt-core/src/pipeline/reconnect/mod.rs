@@ -58,7 +58,171 @@ impl Default for ReconnectPolicy {
     }
 }
 
-// Filled in by Task 9.
-pub struct ManagedTransport<T: crate::pipeline::Transport> {
-    _inner: T,
+use crate::pipeline::transport::{Transport, TransportError};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::thread;
+
+/// Decorator that wraps an inner `Transport` with reconnect + gap-buffer
+/// behavior.
+///
+/// On `send_bytes` returning `TransportError::Broken`, the bytes go into
+/// the gap buffer (subject to the configured overflow policy) and the
+/// inner transport is rebuilt via the user-supplied factory closure.
+/// Reconnect attempts run synchronously on the caller's thread with the
+/// configured backoff. After the inner transport reconnects, the gap
+/// buffer is drained before resuming new sends.
+///
+/// `ManagedTransport` itself implements `Transport`, so all three sender
+/// shells (`Sender`, `TsSender`, `RawSender`) compose with it
+/// transparently:
+///
+/// ```ignore
+/// let factory = || SrtTransport::connect(...);
+/// let inner = factory()?;
+/// let managed = ManagedTransport::new(inner, factory, ReconnectPolicy::default());
+/// let sender = Sender::new(config, managed)?;
+/// // sender now silently reconnects on transport breakage
+/// ```
+pub struct ManagedTransport<T: Transport> {
+    inner: Arc<Mutex<Option<T>>>,
+    factory: Arc<dyn Fn() -> Result<T, TransportError> + Send + Sync>,
+    policy: ReconnectPolicy,
+    gap: Arc<Mutex<GapBuffer>>,
+}
+
+impl<T: Transport + 'static> ManagedTransport<T> {
+    pub fn new<F>(inner: T, factory: F, policy: ReconnectPolicy) -> Self
+    where
+        F: Fn() -> Result<T, TransportError> + Send + Sync + 'static,
+    {
+        let gap = GapBuffer::new(policy.gap_buffer_capacity, policy.overflow_policy);
+        Self {
+            inner: Arc::new(Mutex::new(Some(inner))),
+            factory: Arc::new(factory),
+            policy,
+            gap: Arc::new(Mutex::new(gap)),
+        }
+    }
+
+    /// Try to send via the inner transport. On Broken/Closed, queue bytes
+    /// and attempt reconnect.
+    fn send_managed(&self, bytes: &[u8]) -> Result<(), TransportError> {
+        // Drain any queued bytes first.
+        self.drain_gap_if_alive()?;
+
+        // Try the new bytes.
+        if let Some(transport) = self.inner.lock().unwrap().as_mut() {
+            match transport.send_bytes(bytes) {
+                Ok(()) => return Ok(()),
+                Err(TransportError::Backpressure(_)) => {
+                    // Backpressure is recoverable without reconnect — propagate.
+                    // Caller may retry the same bytes.
+                    return Err(TransportError::Backpressure("inner backpressure".into()));
+                }
+                Err(TransportError::TooLarge { len, max }) => {
+                    return Err(TransportError::TooLarge { len, max });
+                }
+                Err(TransportError::Broken(_)) | Err(TransportError::Closed) => {
+                    // Fall through to reconnect path.
+                }
+            }
+        }
+
+        // Inner is broken/closed. Queue this message and attempt reconnect.
+        {
+            let mut gap = self.gap.lock().unwrap();
+            let _ = gap.enqueue(bytes.to_vec()); // overflow policy applies
+        }
+        self.reconnect_and_drain()
+    }
+
+    /// Drain the gap buffer if the inner transport is alive.
+    fn drain_gap_if_alive(&self) -> Result<(), TransportError> {
+        let mut transport_guard = self.inner.lock().unwrap();
+        let Some(transport) = transport_guard.as_mut() else {
+            return Ok(()); // can't drain without a transport
+        };
+        let mut gap = self.gap.lock().unwrap();
+        while let Some(msg) = gap.front() {
+            match transport.send_bytes(msg) {
+                Ok(()) => {
+                    gap.pop_front();
+                }
+                Err(TransportError::Backpressure(_)) => {
+                    return Err(TransportError::Backpressure("drain backpressure".into()));
+                }
+                Err(TransportError::Broken(_)) | Err(TransportError::Closed) => {
+                    *transport_guard = None;
+                    return Err(TransportError::Broken(
+                        "transport broken during drain".into(),
+                    ));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(())
+    }
+
+    fn reconnect_and_drain(&self) -> Result<(), TransportError> {
+        let mut attempt: u32 = 0;
+        loop {
+            attempt += 1;
+            if let Some(max) = self.policy.max_attempts {
+                if attempt > max {
+                    return Err(TransportError::Broken(format!(
+                        "reconnect gave up after {max} attempts"
+                    )));
+                }
+            }
+            let wait = match &self.policy.backoff {
+                BackoffStrategy::Constant(d) => *d,
+                BackoffStrategy::Exponential { base, max } => {
+                    let exp = (*base).saturating_mul(1 << attempt.saturating_sub(1).min(20));
+                    if exp > *max { *max } else { exp }
+                }
+            };
+            thread::sleep(wait);
+            match (self.factory)() {
+                Ok(new_inner) => {
+                    *self.inner.lock().unwrap() = Some(new_inner);
+                    // Drain gap buffer.
+                    return self.drain_gap_if_alive();
+                }
+                Err(_) => {
+                    continue; // try again
+                }
+            }
+        }
+    }
+}
+
+impl<T: Transport + 'static> Transport for ManagedTransport<T> {
+    fn send_bytes(&mut self, msg: &[u8]) -> Result<(), TransportError> {
+        self.send_managed(msg)
+    }
+
+    fn max_payload(&self) -> usize {
+        self.inner
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|t| t.max_payload())
+            .unwrap_or(1316)
+    }
+
+    fn is_alive(&self) -> bool {
+        self.inner
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|t| t.is_alive())
+            .unwrap_or(false)
+    }
+
+    fn close(&mut self) {
+        if let Some(t) = self.inner.lock().unwrap().as_mut() {
+            t.close();
+        }
+    }
 }

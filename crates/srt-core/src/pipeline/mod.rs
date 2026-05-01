@@ -17,7 +17,7 @@ pub mod transport;
 pub mod ts_sender;
 
 pub use raw_sender::{RawSender, RawSenderConfig};
-pub use reconnect::{ManagedTransport, ReconnectPolicy};
+pub use reconnect::{BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy};
 pub use sender::{Sender, SenderError};
 pub use srt_transport::SrtTransport;
 pub use transport::{Transport, TransportError};

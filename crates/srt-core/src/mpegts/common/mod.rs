@@ -177,7 +177,7 @@ mod tests {
         assert_eq!(pcr.base(), 1);
 
         // Far-above-mask value: only the low 33 bits should survive.
-        let pcr = Pcr27mhz((1u64 << 50 | 0x1234_5678) * 300);
+        let pcr = Pcr27mhz(((1u64 << 50) | 0x1234_5678) * 300);
         assert_eq!(pcr.base(), 0x1234_5678);
     }
 }

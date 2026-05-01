@@ -24,4 +24,5 @@ pub mod st0605;
 pub mod universal_label;
 
 pub use pack::{Iter, OwnedRawField, RawField};
+pub use st0605::{PrecisionTimeStampPack, TimeStatus};
 pub use universal_label::UniversalLabel;

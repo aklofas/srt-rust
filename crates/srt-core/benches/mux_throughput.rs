@@ -69,7 +69,7 @@ fn bench_mux_end_to_end(c: &mut Criterion) {
             }
             let mut buf = vec![0u8; 1316];
             loop {
-                let n = mux.pull(&mut buf).unwrap();
+                let n = mux.pull(&mut buf);
                 if n == 0 {
                     break;
                 }

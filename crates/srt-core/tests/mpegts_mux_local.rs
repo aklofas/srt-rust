@@ -137,7 +137,7 @@ fn process_one(path: &Path) {
         }
         // Drain after each push to keep the queue small.
         loop {
-            let n = mux.pull(&mut drain_buf).expect("pull");
+            let n = mux.pull(&mut drain_buf);
             if n == 0 {
                 break;
             }

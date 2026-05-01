@@ -42,7 +42,7 @@ fn main() -> std::io::Result<()> {
 
         // Drain into the file.
         loop {
-            let n = mux.pull(&mut buf).expect("pull");
+            let n = mux.pull(&mut buf);
             if n == 0 {
                 break;
             }

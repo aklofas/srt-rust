@@ -12,7 +12,7 @@ fn drain_all(mux: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();
     let mut buf = vec![0u8; 1316];
     loop {
-        let n = mux.pull(&mut buf).unwrap();
+        let n = mux.pull(&mut buf);
         if n == 0 {
             return out;
         }

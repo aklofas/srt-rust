@@ -19,7 +19,7 @@
 //! // Drain TS packets into your transport:
 //! let mut buf = [0u8; 1316]; // SRT live-mode payload size = 7 × 188
 //! loop {
-//!     let n = mux.pull(&mut buf).unwrap();
+//!     let n = mux.pull(&mut buf);
 //!     if n == 0 { break; }
 //!     // socket.send(&buf[..n]).unwrap();
 //! }

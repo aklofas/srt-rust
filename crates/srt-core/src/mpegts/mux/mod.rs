@@ -343,17 +343,19 @@ impl Muxer {
     /// Drain ready TS packets into `out`.
     ///
     /// Returns the number of bytes written: 0 or a positive multiple of 188.
-    /// `Ok(0)` indicates either an empty queue or `out.len() < 188`.
-    pub fn pull(&mut self, out: &mut [u8]) -> Result<usize, MuxError> {
+    /// `0` indicates either an empty queue or `out.len() < 188`. Pull is
+    /// infallible — there are no failure modes that don't already surface
+    /// at `push_video` / `push_klv` time (buffer-full, validation).
+    pub fn pull(&mut self, out: &mut [u8]) -> usize {
         if out.len() < 188 {
-            return Ok(0);
+            return 0;
         }
         let max_packets = (out.len() / 188).min(self.queue.len());
         for i in 0..max_packets {
             let pkt = self.queue.pop_front().expect("checked count");
             out[i * 188..(i + 1) * 188].copy_from_slice(&pkt);
         }
-        Ok(max_packets * 188)
+        max_packets * 188
     }
 
     fn psi_due(&self, pts_90khz: i64) -> bool {
@@ -616,7 +618,7 @@ mod tests {
     fn pull_returns_zero_on_empty_queue() {
         let mut mux = Muxer::new(Config::default()).unwrap();
         let mut buf = [0u8; 1316];
-        assert_eq!(mux.pull(&mut buf).unwrap(), 0);
+        assert_eq!(mux.pull(&mut buf), 0);
     }
 
     #[test]
@@ -625,7 +627,7 @@ mod tests {
         let nal = [0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
         mux.push_video(&nal, 0, true).unwrap();
         let mut buf = [0u8; 100];
-        assert_eq!(mux.pull(&mut buf).unwrap(), 0);
+        assert_eq!(mux.pull(&mut buf), 0);
     }
 
     #[test]
@@ -651,7 +653,7 @@ mod tests {
         let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0x88, 0x99];
         mux.push_video(&nal, 0, true).unwrap();
         let mut buf = [0u8; 4096];
-        let n = mux.pull(&mut buf).unwrap();
+        let n = mux.pull(&mut buf);
         assert!(n >= 188 * 3, "expected at least PAT + PMT + 1 video packet");
         // First packet should be PAT (PID 0)
         let pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;
@@ -703,7 +705,7 @@ mod tests {
         let _ = mux.push_video(&nal, 0, true);
         // Queue should be empty (push didn't commit).
         let mut buf = [0u8; 1316];
-        assert_eq!(mux.pull(&mut buf).unwrap(), 0);
+        assert_eq!(mux.pull(&mut buf), 0);
     }
 
     #[test]
@@ -718,9 +720,9 @@ mod tests {
         let well_past_wrap = 9_500;
         mux.push_video(&nal, just_before_wrap, true).unwrap();
         let mut buf = vec![0u8; 188 * 64];
-        while mux.pull(&mut buf).unwrap() > 0 {}
+        while mux.pull(&mut buf) > 0 {}
         mux.push_video(&nal, well_past_wrap, false).unwrap();
-        let n = mux.pull(&mut buf).unwrap();
+        let n = mux.pull(&mut buf);
         assert!(n > 0);
         // First packet should be PAT (PID 0x0000) since PSI is due.
         let first_pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;
@@ -735,10 +737,10 @@ mod tests {
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
         mux.push_video(&nal, 100_000, true).unwrap();
         let mut buf = vec![0u8; 188 * 64];
-        while mux.pull(&mut buf).unwrap() > 0 {}
+        while mux.pull(&mut buf) > 0 {}
         // Now push a backward PTS (display order earlier). Should NOT emit PSI.
         mux.push_video(&nal, 100_000 - 270, false).unwrap(); // -3ms
-        let n = mux.pull(&mut buf).unwrap();
+        let n = mux.pull(&mut buf);
         assert!(n > 0);
         let first_pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;
         assert_eq!(first_pid, 0x1011, "PSI emitted on backward PTS, got first PID 0x{:04X}", first_pid);
@@ -751,10 +753,10 @@ mod tests {
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
         mux.push_video(&nal, 0, true).unwrap();
         let mut buf = vec![0u8; 188 * 64];
-        while mux.pull(&mut buf).unwrap() > 0 {}
+        while mux.pull(&mut buf) > 0 {}
         // psi_interval default = 100ms = 9000 ticks at 90kHz.
         mux.push_video(&nal, 9_000, false).unwrap();
-        let n = mux.pull(&mut buf).unwrap();
+        let n = mux.pull(&mut buf);
         assert!(n > 0);
         // First packet should be PAT (PID 0x0000) since PSI was due.
         let first_pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;

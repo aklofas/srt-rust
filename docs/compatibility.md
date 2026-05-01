@@ -113,12 +113,13 @@ aren't yet wrapped are reachable via `srt-sys`.
 
 | Spec / Feature | Status | Notes |
 | --- | --- | --- |
-| MPEG-TS muxer | ⏳ Planned | `mpegts::mux` is the next major workstream after KLV. |
+| MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — single-program, H.264/H.265 video + ST 0601 KLV (sync + async per ST 1402), VBR. |
 | MPEG-TS demuxer | ❌ Out of scope | Receivers use FFmpeg / JavaCV / Bento4 / platform demuxers. |
-| Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ⏳ Planned | Wire-format target; muxer not started. |
-| Synchronous Metadata Multiplex Method (ST 1402.2 §9.4) | ⏳ Planned | Decode path: 5-byte AU cell header is currently recovered via UL-prefix scan. |
+| Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ✅ Full | Default in `mpegts::mux::Config` (`klv_stream_type = PrivateData`, `klv_carries_pts = false`). |
+| ST 1402.3 Synchronous metadata stream | ✅ Full | `KlvStreamType::SynchronousMetadata` + `klv_carries_pts = true` in `Config`. |
+| ST 1910 AU cell wrapping (sync KLV with timestamp) | ✅ Full | `klv::st1910::wrap_au_cell` / `unwrap_au_cell`. Compose with `Muxer::push_klv` when `klv_carries_pts = true`. |
 | Variable-length PES splitting | ⏳ Planned | Required for ≥ 65 000-byte KLV records (rare in practice). |
-| KLVA registration descriptor (`stream_type 0x06` + `0x05 "KLVA"`) | ✅ Full | Detected/recognised on decode side; emitted by muxer when it lands. |
+| KLVA registration descriptor (`stream_type 0x06` + `0x05 "KLVA"`) | ✅ Full | Detected/recognised on decode side; emitted by muxer on the KLV PID. |
 
 ---
 
@@ -255,9 +256,9 @@ covers.
 | **MISB ST 0903.6** | Video Moving Target Indicator (VMTI) | ❌ Out of scope; add when a consumer needs VMTI |
 | **MISB ST 1201.5** | IMAPB / IMAPA Floating-Point Mapping | ⚙️ §7.1.2 / §7.2 implemented; §7.1.3 special values not |
 | **MISB ST 1303.2** | Multi-Dimensional Array Pack (MDAP) | ❌ Out of scope (no ST 0903 consumer) |
-| **MISB ST 1402.2** | KLV in MPEG-2 Transport Streams | ⏳ Decode-side recovery in place (UL-prefix scan); muxer planned |
+| **MISB ST 1402.2** | KLV in MPEG-2 Transport Streams | ✅ Async (0x06) + sync (0x15) modes in `mpegts::mux`; decode-side recovery via UL-prefix scan |
 | **MISB ST 1607.2** | Constructs to Amend / Segment KLV | ❌ Out of scope (no multi-PES KLV in corpus) |
-| **MISB ST 1910.1** | Inserting KLV in MPEG-TS for ISR | ⏳ Planned (muxer target topology) |
+| **MISB ST 1910.1** | Inserting KLV in MPEG-TS for ISR | ✅ AU cell wrap/unwrap in `klv::st1910`; compose with `mpegts::mux` for full pipeline |
 | **MISB TRM 0909.4** | Motion Imagery Quality Metadata | ⚙️ §7 multi-record PES pattern handled |
 | **MISB RP 0802.2** | UAS Streaming Pipeline Recommendation | 📖 Reference reading |
 | **MISB RP 1011.1** | Local Set Inheritance Recommendation | 📖 Reference reading |

@@ -4,12 +4,14 @@ Cross-platform SRT-based libraries for live video streaming from **gimbaled plat
 
 **Status:** early development. The `srt-sys` (raw FFI + encryption), `srt-core::srt` (safe `Socket`/`Listener` API), and `srt-core::klv` (MISB ST 0601 typed codec + generic substrate) crates/modules are implemented; the binding crates and the MPEG-TS muxer are not yet started.
 
-## Scope (v0)
+## Scope
 
 - Container: **MPEG-TS**
 - Metadata: **MISB ST 0601 KLV** (multiplexed per MISB ST 1402 / ST 1910)
 - Transport: **SRT** (Haivision libsrt 1.5.5, vendored)
 - Encryption: **mbedTLS 3.6.x LTS** (vendored, statically linked, on by default)
+
+For a feature-by-feature support matrix — SRT options, MISB specs, typed ST 0601 items, and what's planned vs. out of scope — see [`docs/compatibility.md`](docs/compatibility.md).
 
 ## Architecture
 
@@ -55,7 +57,7 @@ srt-sys = { git = "https://github.com/aklofas/srt-rust", default-features = fals
 
 ### `srt-core` — safe Rust API
 
-Built on `srt-sys`. Provides `Socket`, `Listener`, `SocketConfig`, `ListenerConfig`, fluent builders, and a per-call-category error model. Sync blocking API in v0; async/reactor are deferred.
+Built on `srt-sys`. Provides `Socket`, `Listener`, `SocketConfig`, `ListenerConfig`, fluent builders, and a per-call-category error model. Sync blocking API today; async/reactor are deferred.
 
 #### Features
 
@@ -95,8 +97,7 @@ The `SocketConfig` / `ListenerConfig` structs are the canonical configuration ty
 
 The `srt-core` crate also includes a KLV codec: a generic substrate (BER/BER-OID lengths,
 SMPTE Universal Labels, ST 1201 IMAPB, generic local-set/universal-set pack-and-iterate)
-plus typed MISB ST 0601 + ST 0605 layers. See `crates/srt-core/src/klv/` and the design
-doc at `docs/specs/2026-04-30-srt-core-klv-design.md` in the parent workspace.
+plus typed MISB ST 0601 + ST 0605 layers. See `crates/srt-core/src/klv/`.
 
 For a feature-by-feature support matrix — which SRT options, MISB specs, and ST 0601
 items are wired up vs. planned vs. out of scope — see [`docs/compatibility.md`](docs/compatibility.md).

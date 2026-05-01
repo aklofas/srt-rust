@@ -25,5 +25,40 @@ test              = false
 doc               = false
 bench             = false
 
+[[bin]]
+name              = "mux_push_video"
+path              = "fuzz_targets/mux_push_video.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
+name              = "mux_push_klv"
+path              = "fuzz_targets/mux_push_klv.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
+name              = "mux_pull"
+path              = "fuzz_targets/mux_pull.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
+name              = "ts_parser"
+path              = "fuzz_targets/ts_parser.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
+name              = "klv_st1910_unwrap"
+path              = "fuzz_targets/klv_st1910_unwrap.rs"
+test              = false
+doc               = false
+bench             = false
+
 [workspace]
 members = []

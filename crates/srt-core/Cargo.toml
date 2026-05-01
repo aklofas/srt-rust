@@ -25,5 +25,10 @@ secrecy   = { workspace = true }
 log       = { workspace = true, optional = true }
 
 [dev-dependencies]
-libc     = { workspace = true }
-proptest = { workspace = true }
+libc      = { workspace = true }
+proptest  = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name    = "mux_throughput"
+harness = false

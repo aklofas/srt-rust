@@ -20,10 +20,12 @@
 
 pub mod error;
 mod init;
+pub mod klv;
 pub mod srt;
 
 // Top-level re-exports for the most common types.
 pub use error::{Error, Result};
+pub use klv::{Iter, OwnedRawField, RawField, UniversalLabel};
 pub use srt::{
     Congestion, KeyLength, Listener, ListenerBuilder, ListenerConfig, MaxBandwidth, PacketFilter,
     Passphrase, Socket, SocketBuilder, SocketConfig, Stats, StreamId,

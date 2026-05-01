@@ -92,6 +92,17 @@ pub fn decode(buf: &[u8]) -> Result<PrecisionTimeStampPack, KlvDecodeError> {
     })
 }
 
+/// Encode a Precision Time Stamp Pack to a 26-byte buffer:
+/// `[UL:16][BER 0x09:1][status:1][microseconds:8 BE]`.
+pub fn encode(pack: &PrecisionTimeStampPack) -> [u8; 26] {
+    let mut out = [0u8; 26];
+    out[..16].copy_from_slice(&UniversalLabel::PRECISION_TIMESTAMP_PACK_UL.0);
+    out[16] = 0x09;
+    out[17] = pack.time_status.0;
+    out[18..26].copy_from_slice(&pack.timestamp_us.to_be_bytes());
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,5 +183,30 @@ mod tests {
         buf.extend_from_slice(&[0u8; 5]);
         let err = decode(&buf).unwrap_err();
         assert!(matches!(err, KlvDecodeError::BadTimeStampPackLength { got: 5 }));
+    }
+
+    #[test]
+    fn encode_round_trip() {
+        let pack = PrecisionTimeStampPack {
+            time_status: TimeStatus(0x1F),
+            timestamp_us: 1_700_000_000_123_456,
+        };
+        let buf = encode(&pack);
+        assert_eq!(buf.len(), 26); // 16 UL + 1 BER + 9 body
+        let back = decode(&buf).unwrap();
+        assert_eq!(back, pack);
+    }
+
+    #[test]
+    fn encode_starts_with_ul_and_length() {
+        let pack = PrecisionTimeStampPack {
+            time_status: TimeStatus(0x9F),
+            timestamp_us: 0,
+        };
+        let buf = encode(&pack);
+        assert_eq!(&buf[..16], &UniversalLabel::PRECISION_TIMESTAMP_PACK_UL.0);
+        assert_eq!(buf[16], 0x09);
+        assert_eq!(buf[17], 0x9F);
+        assert_eq!(&buf[18..26], &[0u8; 8]);
     }
 }

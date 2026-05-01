@@ -5,6 +5,10 @@
 //!
 //! Registered in MISB ST 0807.27 row 1061 (UL CRC 23259).
 
+use crate::error::KlvDecodeError;
+use crate::klv::length::read_ber;
+use crate::klv::universal_label::UniversalLabel;
+
 /// Time Status byte per MISB ST 0603 §7.4 Table 3.
 ///
 /// - bit 7: 0 = Locked, 1 = Lock Unknown
@@ -46,6 +50,48 @@ pub struct PrecisionTimeStampPack {
     pub timestamp_us: u64,
 }
 
+/// Decode a Precision Time Stamp Pack from a buffer that starts with
+/// the 16-byte UL. Returns the typed view; verifies the UL and body
+/// length match MISB ST 0605 §7. Does **not** validate the reserved
+/// bits in the status byte — call `time_status.reserved_bits_valid()`
+/// on the returned struct if you need that check.
+pub fn decode(buf: &[u8]) -> Result<PrecisionTimeStampPack, KlvDecodeError> {
+    if buf.len() < 16 {
+        return Err(KlvDecodeError::Truncated {
+            offset: 0,
+            needed: 16,
+            have: buf.len(),
+        });
+    }
+    let mut ul = [0u8; 16];
+    ul.copy_from_slice(&buf[..16]);
+    let label = UniversalLabel::new(ul);
+    if label != UniversalLabel::PRECISION_TIMESTAMP_PACK_UL {
+        return Err(KlvDecodeError::UnexpectedUniversalLabel {
+            expected: UniversalLabel::PRECISION_TIMESTAMP_PACK_UL,
+            found: label,
+        });
+    }
+    let (declared_len, after_len) = read_ber(&buf[16..])?;
+    if declared_len != 9 {
+        return Err(KlvDecodeError::BadTimeStampPackLength { got: declared_len });
+    }
+    if after_len.len() < 9 {
+        return Err(KlvDecodeError::Truncated {
+            offset: buf.len() - after_len.len(),
+            needed: 9,
+            have: after_len.len(),
+        });
+    }
+    let body = &after_len[..9];
+    let mut ts_bytes = [0u8; 8];
+    ts_bytes.copy_from_slice(&body[1..9]);
+    Ok(PrecisionTimeStampPack {
+        time_status: TimeStatus(body[0]),
+        timestamp_us: u64::from_be_bytes(ts_bytes),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,5 +130,47 @@ mod tests {
         // Reserved bits must be 11111; 0x10 = 0b 0001 0000 has bits 3-0 = 0
         let s = TimeStatus(0x10);
         assert!(!s.reserved_bits_valid());
+    }
+
+    #[test]
+    fn decode_locked_pack() {
+        // UL + BER 0x09 + status 0x1F + 8-byte BE timestamp
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&UniversalLabel::PRECISION_TIMESTAMP_PACK_UL.0);
+        buf.push(0x09);
+        buf.push(0x1F); // locked, normal
+        buf.extend_from_slice(&1_753_983_356_565_441u64.to_be_bytes());
+        let pack = decode(&buf).unwrap();
+        assert!(pack.time_status.is_locked());
+        assert!(pack.time_status.reserved_bits_valid());
+        assert_eq!(pack.timestamp_us, 1_753_983_356_565_441);
+    }
+
+    #[test]
+    fn decode_rejects_wrong_ul() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+        buf.push(0x09);
+        buf.push(0x1F);
+        buf.extend_from_slice(&[0u8; 8]);
+        let err = decode(&buf).unwrap_err();
+        assert!(matches!(err, KlvDecodeError::UnexpectedUniversalLabel { .. }));
+    }
+
+    #[test]
+    fn decode_rejects_short_buffer() {
+        let buf = [0u8; 8];
+        let err = decode(&buf).unwrap_err();
+        assert!(matches!(err, KlvDecodeError::Truncated { .. }));
+    }
+
+    #[test]
+    fn decode_rejects_wrong_body_length() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&UniversalLabel::PRECISION_TIMESTAMP_PACK_UL.0);
+        buf.push(0x05); // declared 5, not 9
+        buf.extend_from_slice(&[0u8; 5]);
+        let err = decode(&buf).unwrap_err();
+        assert!(matches!(err, KlvDecodeError::BadTimeStampPackLength { got: 5 }));
     }
 }

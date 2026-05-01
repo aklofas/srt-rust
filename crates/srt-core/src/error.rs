@@ -312,6 +312,22 @@ pub enum KlvFieldError {
 }
 
 // ============================================================================
+// MPEG-TS mux errors
+// ============================================================================
+
+#[derive(Debug, Error)]
+pub enum MuxError {
+    #[error("muxer configuration is invalid: {0}")]
+    InvalidConfig(&'static str),
+
+    #[error("video input is not Annex-B framed (no start code prefix)")]
+    InvalidNal,
+
+    #[error("muxer packet buffer is full ({capacity_packets} packets); drain via pull and retry")]
+    BufferFull { capacity_packets: usize },
+}
+
+// ============================================================================
 // Umbrella `Error` + `Result<T>` alias
 // ============================================================================
 
@@ -337,6 +353,8 @@ pub enum Error {
     KlvEncode(#[from] KlvEncodeError),
     #[error(transparent)]
     KlvField(#[from] KlvFieldError),
+    #[error(transparent)]
+    Mux(#[from] MuxError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -669,5 +687,34 @@ mod tests {
     fn umbrella_from_klv_field() {
         let e: Error = KlvFieldError::InvalidUtf8 { tag: 50 }.into();
         matches!(e, Error::KlvField(KlvFieldError::InvalidUtf8 { tag: 50 }));
+    }
+
+    #[test]
+    fn mux_error_displays() {
+        let e = MuxError::BufferFull {
+            capacity_packets: 10000,
+        };
+        assert_eq!(
+            e.to_string(),
+            "muxer packet buffer is full (10000 packets); drain via pull and retry"
+        );
+    }
+
+    #[test]
+    fn mux_invalid_config_displays() {
+        let e = MuxError::InvalidConfig("video_pid must differ from klv_pid");
+        assert_eq!(
+            e.to_string(),
+            "muxer configuration is invalid: video_pid must differ from klv_pid"
+        );
+    }
+
+    #[test]
+    fn umbrella_from_mux() {
+        let e: Error = MuxError::InvalidNal.into();
+        match e {
+            Error::Mux(MuxError::InvalidNal) => {}
+            _ => panic!("expected Mux(InvalidNal)"),
+        }
     }
 }

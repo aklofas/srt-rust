@@ -21,6 +21,7 @@
 pub mod error;
 mod init;
 pub mod klv;
+pub mod mpegts;
 pub mod srt;
 
 // Top-level re-exports for the most common types.

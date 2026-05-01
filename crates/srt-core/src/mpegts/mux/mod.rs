@@ -384,10 +384,8 @@ impl Muxer {
                 // then compare in 90 kHz units.
                 let now_base_masked = Pts90khz(pts_90khz).masked_33bit();
                 let last_base_masked = (last / 300) & ((1u64 << 33) - 1);
-                let delta_90khz = crate::mpegts::common::pts_diff_33bit(
-                    now_base_masked,
-                    last_base_masked,
-                );
+                let delta_90khz =
+                    crate::mpegts::common::pts_diff_33bit(now_base_masked, last_base_masked);
                 let threshold_90khz = (self.pcr_interval_27mhz / 300) as i64;
                 delta_90khz >= threshold_90khz
             }
@@ -732,7 +730,11 @@ mod tests {
         assert!(n > 0);
         // First packet should be PAT (PID 0x0000) since PSI is due.
         let first_pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;
-        assert_eq!(first_pid, 0x0000, "PSI suppressed across rollover; got first PID 0x{:04X}", first_pid);
+        assert_eq!(
+            first_pid, 0x0000,
+            "PSI suppressed across rollover; got first PID 0x{:04X}",
+            first_pid
+        );
     }
 
     #[test]
@@ -749,7 +751,11 @@ mod tests {
         let n = mux.pull(&mut buf);
         assert!(n > 0);
         let first_pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;
-        assert_eq!(first_pid, 0x1011, "PSI emitted on backward PTS, got first PID 0x{:04X}", first_pid);
+        assert_eq!(
+            first_pid, 0x1011,
+            "PSI emitted on backward PTS, got first PID 0x{:04X}",
+            first_pid
+        );
     }
 
     #[test]
@@ -789,7 +795,8 @@ mod tests {
         let mut mux = Muxer::new(Config::default()).unwrap();
         // 65532 with no PTS is the spec-imposed ceiling.
         let max_klv = vec![0xAB; 65_532];
-        mux.push_klv(&max_klv, 0).expect("max-size KLV must succeed");
+        mux.push_klv(&max_klv, 0)
+            .expect("max-size KLV must succeed");
     }
 
     #[test]

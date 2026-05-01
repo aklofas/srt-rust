@@ -431,6 +431,10 @@ fn each_typed_field<F: FnMut(u8, usize)>(
             87 => record.corner_lon_p3_deg.map(|_| 4),
             88 => record.corner_lat_p4_deg.map(|_| 4),
             89 => record.corner_lon_p4_deg.map(|_| 4),
+            75 => record.sensor_ellipsoid_height_m.map(|_| 2),
+            78 => record.frame_center_ellipsoid_height_m.map(|_| 2),
+            90 => record.platform_pitch_full_deg.map(|_| 4),
+            91 => record.platform_roll_full_deg.map(|_| 4),
             _ => None,
         };
         if let Some(len) = len {
@@ -529,6 +533,10 @@ fn write_typed_fields(
             87 => encode_ranged(record.corner_lon_p3_deg, spec, &mut scratch)?,
             88 => encode_ranged(record.corner_lat_p4_deg, spec, &mut scratch)?,
             89 => encode_ranged(record.corner_lon_p4_deg, spec, &mut scratch)?,
+            75 => encode_ranged(record.sensor_ellipsoid_height_m, spec, &mut scratch)?,
+            78 => encode_ranged(record.frame_center_ellipsoid_height_m, spec, &mut scratch)?,
+            90 => encode_ranged(record.platform_pitch_full_deg, spec, &mut scratch)?,
+            91 => encode_ranged(record.platform_roll_full_deg, spec, &mut scratch)?,
             _ => None,
         };
         if let Some(value) = value {
@@ -856,6 +864,10 @@ fn assign_ranged(record: &mut UasDatalinkLs, tag: u32, v: f64) {
         87 => record.corner_lon_p3_deg = Some(v),
         88 => record.corner_lat_p4_deg = Some(v),
         89 => record.corner_lon_p4_deg = Some(v),
+        75 => record.sensor_ellipsoid_height_m = Some(v),
+        78 => record.frame_center_ellipsoid_height_m = Some(v),
+        90 => record.platform_pitch_full_deg = Some(v),
+        91 => record.platform_roll_full_deg = Some(v),
         _ => {}
     }
 }
@@ -1292,5 +1304,34 @@ mod tests {
         // Acceptable error: Tag1NotLast OR ChecksumMismatch (since checksum doesn't include trailing bytes).
         // We assert specifically for Tag1NotLast since the strict pass detects ordering before checksum verifies.
         assert!(matches!(err, KlvDecodeError::Tag1NotLast));
+    }
+
+    #[test]
+    fn decode_picks_up_tag_75_sensor_ellipsoid_height() {
+        let mut record = UasDatalinkLs {
+            timestamp_us: Some(1_700_000_000_000_000),
+            sensor_ellipsoid_height_m: Some(14190.7195),
+            ..Default::default()
+        };
+        let _ = &mut record;
+        let buf = encode_to_vec(&record).unwrap();
+        let back = decode(&buf).unwrap();
+        assert!(back.sensor_ellipsoid_height_m.is_some());
+        let h = back.sensor_ellipsoid_height_m.unwrap();
+        assert!((h - 14190.7195).abs() < 0.5, "got {h}");
+    }
+
+    #[test]
+    fn decode_picks_up_tag_90_platform_pitch_full() {
+        let record = UasDatalinkLs {
+            timestamp_us: Some(1_700_000_000_000_000),
+            platform_pitch_full_deg: Some(-0.4315),
+            ..Default::default()
+        };
+        let buf = encode_to_vec(&record).unwrap();
+        let back = decode(&buf).unwrap();
+        assert!(back.platform_pitch_full_deg.is_some());
+        let p = back.platform_pitch_full_deg.unwrap();
+        assert!((p - (-0.4315)).abs() < 1e-4, "got {p}");
     }
 }

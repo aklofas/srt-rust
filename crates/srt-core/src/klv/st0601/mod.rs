@@ -602,7 +602,10 @@ fn decode_inner(
     let ul = UniversalLabel::new(ul_bytes);
 
     if strict_ul && !ul.is_st0601_family() {
-        return Err(KlvDecodeError::BadUniversalLabel { found: ul });
+        return Err(KlvDecodeError::UnexpectedUniversalLabel {
+            expected: UniversalLabel::ST_0601_LS,
+            found: ul,
+        });
     }
 
     // Outer BER length
@@ -1029,7 +1032,7 @@ mod tests {
         let n = encode_with(&r, &opts, &mut buf).unwrap();
         let bytes = &buf[..n];
         let err = decode_strict(bytes).unwrap_err();
-        matches!(err, KlvDecodeError::BadUniversalLabel { .. });
+        assert!(matches!(err, KlvDecodeError::UnexpectedUniversalLabel { .. }));
         // decode (non-strict) accepts any UL.
         let parsed = decode(bytes).unwrap();
         assert_eq!(parsed.universal_label, UniversalLabel::new([0xAB; 16]));

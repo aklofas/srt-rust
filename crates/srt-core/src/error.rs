@@ -233,8 +233,11 @@ pub enum KlvDecodeError {
     #[error("malformed BER-OID tag at offset {offset}")]
     MalformedTag { offset: usize },
 
-    #[error("universal label does not match ST 0601 family: {found}")]
-    BadUniversalLabel { found: crate::klv::UniversalLabel },
+    #[error("unexpected universal label: expected {expected}, got {found}")]
+    UnexpectedUniversalLabel {
+        expected: crate::klv::UniversalLabel,
+        found: crate::klv::UniversalLabel,
+    },
 
     #[error("checksum mismatch: declared {expected:#06x}, computed {found:#06x}")]
     ChecksumMismatch { expected: u16, found: u16 },
@@ -244,6 +247,12 @@ pub enum KlvDecodeError {
 
     #[error("trailing bytes after declared length: {len} extra")]
     TrailingBytes { len: usize },
+
+    #[error("Precision Time Stamp Pack body must be 9 bytes, got {got}")]
+    BadTimeStampPackLength { got: usize },
+
+    #[error("Time Status reserved bits 4-0 must be 0b11111, got {got:#04x}")]
+    ReservedBitsInvalid { got: u8 },
 }
 
 #[derive(Debug, Error)]

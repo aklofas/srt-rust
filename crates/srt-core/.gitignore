@@ -1,0 +1,2 @@
+# Sensitive real-world fixtures — never commit.
+tests/fixtures/local/

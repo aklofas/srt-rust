@@ -92,13 +92,16 @@ fn local_fixtures_decode() {
 
 /// Single ST 0601 record at offset 0. `decode` must succeed; if its
 /// checksum is broken, `decode_unchecked` must succeed instead.
+/// Every fixture in our corpus has the timestamp.
 fn assert_single_record(bytes: &[u8]) -> Result<(), String> {
-    if decode(bytes).is_ok() {
-        return Ok(());
+    let rec = match decode(bytes) {
+        Ok(r) => r,
+        Err(_) => decode_unchecked(bytes).map_err(|e| format!("decode_unchecked failed: {e}"))?,
+    };
+    if rec.timestamp_us.is_none() {
+        return Err("decoded record missing Tag 2 (timestamp_us)".into());
     }
-    decode_unchecked(bytes)
-        .map(|_| ())
-        .map_err(|e| format!("decode_unchecked failed: {e}"))
+    Ok(())
 }
 
 /// Record with broken checksum: `decode` must fail with

@@ -176,3 +176,28 @@ fn psi_re_emitted_after_interval() {
         "expected 3 PAT emissions for 3 frames at 200ms apart"
     );
 }
+
+#[test]
+fn pcr_pid_on_klv_is_declared_in_pmt() {
+    // Caller pins PCR to the KLV PID; muxer must reflect this in the PMT's
+    // PCR_PID field so receivers know where to look.
+    let default = Config::default();
+    let cfg = Config {
+        pcr_pid: Some(default.klv_pid),
+        klv_carries_pts: true,
+        ..default
+    };
+    let klv_pid = cfg.klv_pid;
+    let mut mux = Muxer::new(cfg).unwrap();
+    mux.push_video(&synthetic_nal::h264_au(500, true), 0, true)
+        .unwrap();
+    mux.push_klv(&synthetic_nal::klv_blob(64), 0).unwrap();
+    let bytes = drain_all(&mut mux);
+
+    let parsed = ts_parser::parse(&bytes);
+    assert_eq!(
+        parsed.pcr_pid,
+        Some(klv_pid),
+        "PMT should declare PCR_PID = klv_pid when pcr_pid is configured to it"
+    );
+}

@@ -315,7 +315,7 @@ pub enum KlvFieldError {
 // MPEG-TS mux errors
 // ============================================================================
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum MuxError {
     #[error("muxer configuration is invalid: {0}")]
     InvalidConfig(&'static str),

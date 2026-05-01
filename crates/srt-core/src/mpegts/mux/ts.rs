@@ -39,13 +39,6 @@ impl ContinuityCounters {
         *entry = (*entry + 1) & 0x0F;
         cc
     }
-
-    /// Get the current value without incrementing — used by adaptation-only
-    /// packets which must keep the counter unchanged per spec §2.4.3.3.
-    #[allow(dead_code)]
-    fn current(&self, pid: u16) -> u8 {
-        self.counters.get(&pid).copied().unwrap_or(0) & 0x0F
-    }
 }
 
 /// Optional adaptation field contents to attach to a packet.

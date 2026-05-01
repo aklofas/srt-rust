@@ -3,6 +3,12 @@
 //! See `docs/specs/2026-05-01-srt-core-mpegts-mux-design.md` for the full
 //! design. The public surface is `Muxer`, `Config`, `VideoCodec`,
 //! `KlvStreamType`. Internal helpers live in `ts`, `psi`, `pes` submodules.
+//!
+//! Re-export note: `Muxer`, `VideoCodec`, and `KlvStreamType` are re-exported
+//! at the crate root (`srt_core::Muxer` etc.). `Config` deliberately is not —
+//! callers reach it via `mpegts::mux::Config` so the construction site is
+//! visually distinct from the SRT `SocketConfig` / `ListenerConfig` already
+//! at the crate root. Don't "symmetry-fix" this.
 
 pub(crate) mod pes;
 pub(crate) mod psi;

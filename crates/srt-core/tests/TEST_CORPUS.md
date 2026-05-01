@@ -342,16 +342,29 @@ Cross-checked against MISB ST 0601 (UAS Datalink LS), MISB ST 0102.12
 - KLV-in-MPEG-TS detection via stream_type 0x06 + `registration_descriptor`
   (tag 0x05) with `format_identifier = "KLVA"` (`0x4B4C5641`) matches
   ST 1402.2-03/-19/-25 (Asynchronous Metadata Multiplex Method).
+- **Precision Time Stamp Pack** typed handler (`klv::st0605::decode`)
+  decodes the `[time_status:1][microseconds:8 BE]` body per MISB
+  ST 0605 §7. `TimeStatus(u8)` newtype exposes `is_locked()`,
+  `has_discontinuity()`, `is_reverse_jump()`, and
+  `reserved_bits_valid()` per MISB ST 0603 §7.4 Table 3.
+- **ST 0601 strict-compliance decode** (`klv::st0601::decode_strict_compliance`)
+  enforces ST 0601.8-09 (Tag 2 first), ST 0601.8-11 (Tag 1 last),
+  and ST 0601.8-12 (Tag 65 present). `decode` remains permissive for
+  real-world captures.
+- **ST 0601.19 Items 75, 78, 90, 91** typed in `UasDatalinkLs` —
+  Sensor Ellipsoid Height, Frame Center Height Above Ellipsoid,
+  Platform Pitch Angle (Full), Platform Roll Angle (Full). Brings
+  typed coverage from 41 to 45 of the 143 ST 0601.19 items.
 
 **Permissive (deliberate, accepts non-strict captures):**
 
 - ST 0601.8-09 says Tag 2 (timestamp) **must be the first element** and
-  ST 0601.8-11 says Tag 1 (checksum) **must be the last**. Our decoder
-  accepts any field order. Strict-validation mode would enforce.
+  ST 0601.8-11 says Tag 1 (checksum) **must be the last**. Our `decode`
+  accepts any field order; `decode_strict_compliance` enforces.
 - ST 0601.8-12 says Tag 65 (UAS LS Version) **shall be present**. Our
-  struct treats it as `Option<u8>`. Across the test corpus, 0/234
-  KLV-bearing files include Tag 65 — a real-world deviation that
-  permissive decoding accommodates.
+  `decode` treats it as `Option<u8>`. Across the test corpus, all
+  KLV-bearing files include Tag 65. `decode_strict_compliance` enforces
+  the spec rule.
 - Tags 3, 4, 10, 11, 12 are spec-required to be ISO 646 (7-bit ASCII).
   Our impl accepts any UTF-8 string. All observed captures use
   plain ASCII, so this hasn't surfaced as an issue.
@@ -387,13 +400,6 @@ Cross-checked against MISB ST 0601 (UAS Datalink LS), MISB ST 0102.12
   with sync metadata also have a redundant async PID, so no real
   records are missed today; a hypothetical sync-only capture would
   go undetected.
-- **Precision Time Stamp Pack (MISB ST 0605, ST 0807.27 row 1061)**:
-  the leading record in some multi-record PES payloads is the
-  Precision Time Stamp Pack with body `[time_status:1][µs:8 BE]`.
-  Our typed decoder skips it (correct under the future-proof rule);
-  a principled handler would surface `(Locked? Discontinuity?,
-  microseconds)` to consumers. See "Multi-record PES" section above.
-
 **Out of scope (not exercised by the corpus, deferred):**
 
 - MISB ST 0102 Security Metadata Universal Set / Local Set (UL

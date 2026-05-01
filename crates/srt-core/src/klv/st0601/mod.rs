@@ -14,14 +14,14 @@
 pub(crate) mod mapping;
 pub(crate) mod tags;
 
-use crate::error::{KlvDecodeError, KlvEncodeError};
+use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
 use crate::klv::checksum::checksum_running_sum_16;
-use crate::klv::length::{ber_len, ber_oid_len, write_ber, write_ber_oid};
-use crate::klv::pack::OwnedRawField;
-use crate::klv::st0601::mapping::encode_fixed_range;
+use crate::klv::length::{ber_len, ber_oid_len, read_ber, write_ber, write_ber_oid};
+use crate::klv::pack::{Iter, OwnedRawField};
+use crate::klv::st0601::mapping::{decode_fixed_range, encode_fixed_range};
 use crate::klv::st0601::tags::{Encoding, TAGS};
+use crate::klv::st0601::tags::lookup;
 use crate::klv::universal_label::UniversalLabel;
-use crate::error::KlvFieldError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UasDatalinkLs {
@@ -560,28 +560,222 @@ fn check_string(tag: u32, s: &str, enc: &Encoding) -> Result<(), KlvEncodeError>
     Ok(())
 }
 
-pub fn decode(_buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
-    Err(KlvDecodeError::Truncated {
-        offset: 0,
-        needed: 0,
-        have: 0,
-    }) // placeholder; replaced in Task 13
+pub fn decode(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
+    decode_inner(buf, /* verify_checksum */ true, /* strict_ul */ false)
 }
 
-pub fn decode_unchecked(_buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
-    Err(KlvDecodeError::Truncated {
-        offset: 0,
-        needed: 0,
-        have: 0,
-    }) // placeholder; replaced in Task 13
+pub fn decode_unchecked(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
+    decode_inner(buf, false, false)
 }
 
-pub fn decode_strict(_buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
-    Err(KlvDecodeError::Truncated {
-        offset: 0,
-        needed: 0,
-        have: 0,
-    }) // placeholder; replaced in Task 13
+pub fn decode_strict(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
+    decode_inner(buf, true, true)
+}
+
+fn decode_inner(
+    buf: &[u8],
+    verify_checksum: bool,
+    strict_ul: bool,
+) -> Result<UasDatalinkLs, KlvDecodeError> {
+    if buf.len() < 16 {
+        return Err(KlvDecodeError::Truncated {
+            offset: 0,
+            needed: 16,
+            have: buf.len(),
+        });
+    }
+    let mut ul_bytes = [0u8; 16];
+    ul_bytes.copy_from_slice(&buf[..16]);
+    let ul = UniversalLabel::new(ul_bytes);
+
+    if strict_ul && !ul.is_st0601_family() {
+        return Err(KlvDecodeError::BadUniversalLabel { found: ul });
+    }
+
+    // Outer BER length
+    let (declared_len, after_len) = read_ber(&buf[16..])?;
+    let body_offset = buf.len() - after_len.len();
+    if after_len.len() < declared_len {
+        return Err(KlvDecodeError::Truncated {
+            offset: body_offset,
+            needed: declared_len,
+            have: after_len.len(),
+        });
+    }
+    let body = &after_len[..declared_len];
+
+    let mut record = UasDatalinkLs {
+        universal_label: ul,
+        declared_version: ul.version_byte(),
+        ..UasDatalinkLs::default()
+    };
+
+    let mut declared_checksum: Option<(u16, usize)> = None; // (value, offset_into_buf_of_value)
+
+    for r in Iter::local_set(body) {
+        let f = r?;
+        if f.tag == 1 {
+            // Checksum: capture for later verification.
+            if f.value.len() != 2 {
+                return Err(KlvDecodeError::Truncated {
+                    offset: 0,
+                    needed: 2,
+                    have: f.value.len(),
+                });
+            }
+            let cksum = u16::from_be_bytes([f.value[0], f.value[1]]);
+            // Compute the byte offset of f.value within buf for checksum coverage.
+            let value_offset_in_buf =
+                (f.value.as_ptr() as usize).wrapping_sub(buf.as_ptr() as usize);
+            declared_checksum = Some((cksum, value_offset_in_buf));
+            continue;
+        }
+        if let Err(field_err) = apply_typed_tag(&mut record, &f) {
+            record.field_errors.push(field_err);
+        }
+    }
+
+    if verify_checksum {
+        if let Some((expected, value_offset)) = declared_checksum {
+            let computed = crate::klv::checksum::checksum_running_sum_16(&buf[..value_offset]);
+            if computed != expected {
+                return Err(KlvDecodeError::ChecksumMismatch {
+                    expected,
+                    found: computed,
+                });
+            }
+        } else {
+            // ST 0601 mandates Tag 1; treat absence as a structural error in
+            // verifying modes. Permissive `decode_unchecked` skips this check.
+            return Err(KlvDecodeError::Truncated {
+                offset: body_offset,
+                needed: 3,
+                have: 0,
+            });
+        }
+    }
+
+    Ok(record)
+}
+
+fn apply_typed_tag(
+    record: &mut UasDatalinkLs,
+    f: &crate::klv::pack::RawField<'_>,
+) -> Result<(), KlvFieldError> {
+    let tag = f.tag;
+    let Some(spec) = lookup(tag as u8) else {
+        // Unknown tag — pass through.
+        record.unknown.push(OwnedRawField::from(f.clone()));
+        return Ok(());
+    };
+    match spec.encoding {
+        Encoding::U8 => {
+            if f.value.len() != 1 {
+                return Err(KlvFieldError::InvalidLength {
+                    tag,
+                    expected: 1,
+                    got: f.value.len(),
+                });
+            }
+            let v = f.value[0];
+            match tag {
+                47 => record.generic_flag_data = Some(v),
+                65 => record.uas_ls_version = Some(v),
+                _ => unreachable!(),
+            }
+        }
+        Encoding::U64 => {
+            if f.value.len() != 8 {
+                return Err(KlvFieldError::InvalidLength {
+                    tag,
+                    expected: 8,
+                    got: f.value.len(),
+                });
+            }
+            let mut a = [0u8; 8];
+            a.copy_from_slice(f.value);
+            let v = u64::from_be_bytes(a);
+            match tag {
+                2 => record.timestamp_us = Some(v),
+                _ => unreachable!(),
+            }
+        }
+        Encoding::Utf8 { max_bytes } => {
+            if f.value.len() > max_bytes {
+                return Err(KlvFieldError::InvalidLength {
+                    tag,
+                    expected: max_bytes,
+                    got: f.value.len(),
+                });
+            }
+            let s = std::str::from_utf8(f.value)
+                .map_err(|_| KlvFieldError::InvalidUtf8 { tag })?
+                .to_owned();
+            match tag {
+                3 => record.mission_id = Some(s),
+                4 => record.platform_tail_number = Some(s),
+                10 => record.platform_designation = Some(s),
+                11 => record.image_source_sensor = Some(s),
+                12 => record.image_coordinate_system = Some(s),
+                50 => record.platform_call_sign = Some(s),
+                _ => unreachable!(),
+            }
+        }
+        Encoding::RawBytes => match tag {
+            48 => record.security_local_set = Some(f.value.to_vec()),
+            _ => unreachable!(),
+        },
+        Encoding::U8Range
+        | Encoding::U16Range
+        | Encoding::I16Range
+        | Encoding::U32Range
+        | Encoding::I32Range => {
+            let r = spec.range.as_ref().expect("ranged tag has range");
+            let v = decode_fixed_range(r, tag, f.value)?;
+            assign_ranged(record, tag, v);
+        }
+    }
+    Ok(())
+}
+
+fn assign_ranged(record: &mut UasDatalinkLs, tag: u32, v: f64) {
+    match tag {
+        5 => record.platform_heading_deg = Some(v),
+        6 => record.platform_pitch_deg = Some(v),
+        7 => record.platform_roll_deg = Some(v),
+        8 => record.platform_true_airspeed = Some(v),
+        9 => record.platform_indicated_airspeed = Some(v),
+        13 => record.sensor_lat_deg = Some(v),
+        14 => record.sensor_lon_deg = Some(v),
+        15 => record.sensor_alt_m = Some(v),
+        16 => record.sensor_hfov_deg = Some(v),
+        17 => record.sensor_vfov_deg = Some(v),
+        18 => record.sensor_rel_az_deg = Some(v),
+        19 => record.sensor_rel_el_deg = Some(v),
+        20 => record.sensor_rel_roll_deg = Some(v),
+        21 => record.slant_range_m = Some(v),
+        22 => record.target_width_m = Some(v),
+        23 => record.frame_center_lat_deg = Some(v),
+        24 => record.frame_center_lon_deg = Some(v),
+        25 => record.frame_center_elev_m = Some(v),
+        26 => record.corner_lat_offset_p1_deg = Some(v),
+        27 => record.corner_lon_offset_p1_deg = Some(v),
+        28 => record.corner_lat_offset_p2_deg = Some(v),
+        29 => record.corner_lon_offset_p2_deg = Some(v),
+        30 => record.corner_lat_offset_p3_deg = Some(v),
+        31 => record.corner_lon_offset_p3_deg = Some(v),
+        32 => record.corner_lat_offset_p4_deg = Some(v),
+        33 => record.corner_lon_offset_p4_deg = Some(v),
+        82 => record.corner_lat_p1_deg = Some(v),
+        83 => record.corner_lon_p1_deg = Some(v),
+        84 => record.corner_lat_p2_deg = Some(v),
+        85 => record.corner_lon_p2_deg = Some(v),
+        86 => record.corner_lat_p3_deg = Some(v),
+        87 => record.corner_lon_p3_deg = Some(v),
+        88 => record.corner_lat_p4_deg = Some(v),
+        89 => record.corner_lon_p4_deg = Some(v),
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -763,5 +957,128 @@ mod tests {
         let bytes = encode_to_vec(&r).unwrap();
         assert!(!bytes.is_empty());
         assert_eq!(&bytes[..16], &UniversalLabel::ST_0601_LS.0);
+    }
+
+    #[allow(clippy::field_reassign_with_default)]
+    #[test]
+    fn round_trip_full_record() {
+        let mut r = UasDatalinkLs::default();
+        r.timestamp_us = Some(1_700_000_000_000_000);
+        r.platform_designation = Some("DRONE-A".to_owned());
+        r.platform_heading_deg = Some(123.45);
+        r.platform_pitch_deg = Some(-5.0);
+        r.platform_roll_deg = Some(10.0);
+        r.sensor_lat_deg = Some(45.123);
+        r.sensor_lon_deg = Some(-122.456);
+        r.sensor_alt_m = Some(1500.0);
+        r.frame_center_lat_deg = Some(45.0);
+        r.frame_center_lon_deg = Some(-122.0);
+        r.slant_range_m = Some(2500.0);
+
+        let bytes = encode_to_vec(&r).unwrap();
+        let parsed = decode(&bytes).unwrap();
+
+        assert_eq!(parsed.timestamp_us, r.timestamp_us);
+        assert_eq!(parsed.platform_designation, r.platform_designation);
+        assert!((parsed.platform_heading_deg.unwrap() - 123.45).abs() < 0.01);
+        assert!((parsed.sensor_lat_deg.unwrap() - 45.123).abs() < 1e-6);
+        assert_eq!(parsed.universal_label, UniversalLabel::ST_0601_LS);
+        assert_eq!(parsed.declared_version, 0x13);
+        assert_eq!(parsed.uas_ls_version, Some(0x13));
+        assert!(parsed.field_errors.is_empty());
+    }
+
+    #[allow(clippy::field_reassign_with_default)]
+    #[test]
+    fn decode_unchecked_accepts_bad_checksum() {
+        let mut r = UasDatalinkLs::default();
+        r.timestamp_us = Some(123);
+        let mut bytes = encode_to_vec(&r).unwrap();
+        // Corrupt the last checksum byte
+        let last = bytes.len() - 1;
+        bytes[last] ^= 0xFF;
+        // decode should fail; decode_unchecked should succeed.
+        assert!(decode(&bytes).is_err());
+        let parsed = decode_unchecked(&bytes).unwrap();
+        assert_eq!(parsed.timestamp_us, Some(123));
+    }
+
+    #[allow(clippy::field_reassign_with_default)]
+    #[test]
+    fn decode_strict_rejects_funky_ul() {
+        let mut r = UasDatalinkLs::default();
+        r.timestamp_us = Some(456);
+        let opts = EncodeOptions {
+            universal_label: UniversalLabel::new([0xAB; 16]),
+            version: 0x13,
+        };
+        let mut buf = vec![0u8; 256];
+        let n = encode_with(&r, &opts, &mut buf).unwrap();
+        let bytes = &buf[..n];
+        let err = decode_strict(bytes).unwrap_err();
+        matches!(err, KlvDecodeError::BadUniversalLabel { .. });
+        // decode (non-strict) accepts any UL.
+        let parsed = decode(bytes).unwrap();
+        assert_eq!(parsed.universal_label, UniversalLabel::new([0xAB; 16]));
+    }
+
+    #[allow(clippy::field_reassign_with_default)]
+    #[test]
+    fn decode_passes_through_unknown_tags() {
+        let mut r = UasDatalinkLs::default();
+        r.unknown.push(OwnedRawField {
+            tag: 99,
+            value: vec![0xDE, 0xAD],
+        });
+        let bytes = encode_to_vec(&r).unwrap();
+        let parsed = decode(&bytes).unwrap();
+        assert_eq!(parsed.unknown.len(), 1);
+        assert_eq!(parsed.unknown[0].tag, 99);
+        assert_eq!(parsed.unknown[0].value, vec![0xDE, 0xAD]);
+    }
+
+    #[allow(clippy::field_reassign_with_default)]
+    #[test]
+    fn decode_field_errors_accumulate() {
+        // Hand-build a record with a malformed Tag 13 (lat) value (1 byte instead of 4).
+        // We synthesize the bytes by building a valid record and then patching it.
+        let mut r = UasDatalinkLs::default();
+        r.sensor_lat_deg = Some(45.0);
+        r.timestamp_us = Some(123);
+        let bytes = encode_to_vec(&r).unwrap();
+
+        // Easier path: construct a body that has a deliberately-malformed tag.
+        // The simplest approach: replace the typed field with a malformed
+        // unknown field via a hand-constructed input.
+        let mut body = vec![];
+        // Tag 2, len 8, [zeros]
+        body.extend_from_slice(&[0x02, 0x08]);
+        body.extend_from_slice(&[0u8; 8]);
+        // Tag 13, len 1 (malformed; should be 4)
+        body.extend_from_slice(&[0x0D, 0x01, 0x00]);
+
+        // Reserve checksum slot: tag(1) + len(1) + value(2) = 4 bytes
+        let body_with_cksum_len = body.len() + 4;
+
+        let mut full = vec![];
+        full.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+        // Outer BER length
+        let mut len_buf = [0u8; 8];
+        let n = crate::klv::length::write_ber(body_with_cksum_len, &mut len_buf).unwrap();
+        full.extend_from_slice(&len_buf[..n]);
+        full.extend_from_slice(&body);
+        full.push(0x01);
+        full.push(0x02);
+        let cksum = crate::klv::checksum::checksum_running_sum_16(&full);
+        full.push((cksum >> 8) as u8);
+        full.push(cksum as u8);
+
+        let parsed = decode(&full).unwrap();
+        assert!(parsed.timestamp_us.is_some(), "good field still parses");
+        assert!(
+            !parsed.field_errors.is_empty(),
+            "malformed field accumulates"
+        );
+        let _ = bytes;
     }
 }

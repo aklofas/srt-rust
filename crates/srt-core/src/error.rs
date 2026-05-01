@@ -338,7 +338,9 @@ pub enum MuxError {
 }
 
 // ============================================================================
-// Umbrella `Error` + `Result<T>` alias
+// Pipeline transport errors (re-exported for convenience; defined in
+// pipeline::transport because they describe a behavioral contract that's
+// part of the pipeline module's public surface)
 // ============================================================================
 
 #[derive(Debug, Error)]
@@ -365,6 +367,8 @@ pub enum Error {
     KlvField(#[from] KlvFieldError),
     #[error(transparent)]
     Mux(#[from] MuxError),
+    #[error(transparent)]
+    Transport(#[from] crate::pipeline::transport::TransportError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

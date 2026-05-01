@@ -253,6 +253,15 @@ pub enum KlvDecodeError {
 
     #[error("Time Status reserved bits 4-0 must be 0b11111, got {got:#04x}")]
     ReservedBitsInvalid { got: u8 },
+
+    #[error("Tag 2 (timestamp) must be the first element per ST 0601.8-09")]
+    Tag2NotFirst,
+
+    #[error("Tag 1 (checksum) must be the last element per ST 0601.8-11")]
+    Tag1NotLast,
+
+    #[error("Tag 65 (UAS LS Version) is required per ST 0601.8-12")]
+    MissingTag65,
 }
 
 #[derive(Debug, Error)]

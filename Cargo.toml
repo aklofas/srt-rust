@@ -21,6 +21,7 @@ pkg-config = "0.3"
 thiserror  = "1.0"
 secrecy    = "0.10"
 log        = "0.4"
+proptest   = "1"
 
 [profile.release]
 lto           = "thin"

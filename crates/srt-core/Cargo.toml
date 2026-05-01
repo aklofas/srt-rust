@@ -25,4 +25,5 @@ secrecy   = { workspace = true }
 log       = { workspace = true, optional = true }
 
 [dev-dependencies]
-libc = { workspace = true }
+libc     = { workspace = true }
+proptest = { workspace = true }

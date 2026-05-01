@@ -212,6 +212,87 @@ pub enum RecvError {
 }
 
 // ============================================================================
+// KLV errors
+// ============================================================================
+
+#[derive(Debug, Error)]
+pub enum KlvDecodeError {
+    #[error("buffer truncated at offset {offset}: needed {needed} bytes, have {have}")]
+    Truncated {
+        offset: usize,
+        needed: usize,
+        have: usize,
+    },
+
+    #[error("malformed BER length at offset {offset}")]
+    MalformedLength { offset: usize },
+
+    #[error("BER length {value} exceeds maximum supported size")]
+    LengthOverflow { value: u64 },
+
+    #[error("malformed BER-OID tag at offset {offset}")]
+    MalformedTag { offset: usize },
+
+    #[error("universal label does not match ST 0601 family: {found}")]
+    BadUniversalLabel {
+        found: crate::klv::UniversalLabel,
+    },
+
+    #[error("checksum mismatch: declared {expected:#06x}, computed {found:#06x}")]
+    ChecksumMismatch { expected: u16, found: u16 },
+
+    #[error("duplicate tag {tag} at offset {offset}")]
+    DuplicateTag { tag: u32, offset: usize },
+
+    #[error("trailing bytes after declared length: {len} extra")]
+    TrailingBytes { len: usize },
+}
+
+#[derive(Debug, Error)]
+pub enum KlvEncodeError {
+    #[error("output buffer too small: needed {needed} bytes, got {got}")]
+    BufferTooSmall { needed: usize, got: usize },
+
+    #[error("record exceeds maximum BER-encodable length")]
+    RecordTooLarge,
+
+    #[error("value out of range for tag {tag}: {value} not in [{min}, {max}]")]
+    OutOfRange {
+        tag: u32,
+        value: f64,
+        min: f64,
+        max: f64,
+    },
+
+    #[error("string field for tag {tag} exceeds {max} bytes")]
+    StringTooLong { tag: u32, max: usize },
+}
+
+#[derive(Debug, Clone, Error, PartialEq)]
+pub enum KlvFieldError {
+    #[error("tag {tag}: value {value} out of declared range [{min}, {max}]")]
+    OutOfRange {
+        tag: u32,
+        value: f64,
+        min: f64,
+        max: f64,
+    },
+
+    #[error("tag {tag}: invalid UTF-8 in string field")]
+    InvalidUtf8 { tag: u32 },
+
+    #[error("tag {tag}: expected {expected} value bytes, got {got}")]
+    InvalidLength {
+        tag: u32,
+        expected: usize,
+        got: usize,
+    },
+
+    #[error("tag {tag}: value reserved as INVALID by spec")]
+    InvalidSentinel { tag: u32 },
+}
+
+// ============================================================================
 // Umbrella `Error` + `Result<T>` alias
 // ============================================================================
 
@@ -231,6 +312,12 @@ pub enum Error {
     Option(#[from] OptionError),
     #[error(transparent)]
     Io(#[from] IoError),
+    #[error(transparent)]
+    KlvDecode(#[from] KlvDecodeError),
+    #[error(transparent)]
+    KlvEncode(#[from] KlvEncodeError),
+    #[error(transparent)]
+    KlvField(#[from] KlvFieldError),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -512,5 +599,53 @@ mod tests {
             message: "Connection broken".into(),
         };
         assert!(is_broken(&r));
+    }
+
+    #[test]
+    fn klv_decode_displays() {
+        let e = KlvDecodeError::ChecksumMismatch {
+            expected: 0xDEAD,
+            found: 0xBEEF,
+        };
+        assert_eq!(
+            e.to_string(),
+            "checksum mismatch: declared 0xdead, computed 0xbeef"
+        );
+    }
+
+    #[test]
+    fn klv_encode_displays() {
+        let e = KlvEncodeError::BufferTooSmall {
+            needed: 256,
+            got: 100,
+        };
+        assert_eq!(e.to_string(), "output buffer too small: needed 256 bytes, got 100");
+    }
+
+    #[test]
+    fn klv_field_clone_and_eq() {
+        let a = KlvFieldError::InvalidUtf8 { tag: 50 };
+        let b = a.clone();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn umbrella_from_klv_decode() {
+        let e: Error = KlvDecodeError::Truncated {
+            offset: 42,
+            needed: 8,
+            have: 3,
+        }
+        .into();
+        match e {
+            Error::KlvDecode(KlvDecodeError::Truncated { offset: 42, .. }) => {}
+            _ => panic!("expected KlvDecode(Truncated{{offset:42, ...}})"),
+        }
+    }
+
+    #[test]
+    fn umbrella_from_klv_field() {
+        let e: Error = KlvFieldError::InvalidUtf8 { tag: 50 }.into();
+        matches!(e, Error::KlvField(KlvFieldError::InvalidUtf8 { tag: 50 }));
     }
 }

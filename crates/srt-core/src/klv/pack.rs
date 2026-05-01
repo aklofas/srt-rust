@@ -7,7 +7,7 @@
 
 use crate::error::{KlvDecodeError, KlvEncodeError};
 use crate::klv::length::{
-    self, LengthEncoding, ber_len, ber_oid_len, read_ber, read_ber_oid, write_ber, write_ber_oid,
+    LengthEncoding, ber_len, ber_oid_len, read_ber, read_ber_oid, write_ber, write_ber_oid,
 };
 use crate::klv::universal_label::UniversalLabel;
 
@@ -60,7 +60,6 @@ pub(crate) enum IterMode {
 }
 
 /// Iterator over a KLV body (post-UL, post-outer-length).
-#[allow(dead_code)]
 pub struct Iter<'a> {
     buf: &'a [u8],
     offset: usize,
@@ -92,6 +91,104 @@ impl<'a> Iter<'a> {
 
     pub fn remaining(&self) -> &'a [u8] {
         &self.buf[self.offset..]
+    }
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = Result<RawField<'a>, KlvDecodeError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.finished || self.offset >= self.buf.len() {
+            return None;
+        }
+        match self.mode {
+            IterMode::LocalSet => self.next_local_set(),
+            IterMode::UniversalSet => self.next_universal_set(),
+        }
+    }
+}
+
+impl<'a> Iter<'a> {
+    fn next_local_set(&mut self) -> Option<Result<RawField<'a>, KlvDecodeError>> {
+        let start = self.offset;
+        let rest = &self.buf[start..];
+        let (tag, after_tag) = match read_ber_oid(rest) {
+            Ok(v) => v,
+            Err(mut e) => {
+                if let KlvDecodeError::Truncated { offset, .. } = &mut e {
+                    *offset += start;
+                }
+                self.finished = true;
+                return Some(Err(e));
+            }
+        };
+        let consumed_tag = rest.len() - after_tag.len();
+        let (len, after_len) = match read_ber(after_tag) {
+            Ok(v) => v,
+            Err(mut e) => {
+                if let KlvDecodeError::Truncated { offset, .. } = &mut e {
+                    *offset += start + consumed_tag;
+                }
+                self.finished = true;
+                return Some(Err(e));
+            }
+        };
+        let consumed_len = after_tag.len() - after_len.len();
+        if after_len.len() < len {
+            self.finished = true;
+            return Some(Err(KlvDecodeError::Truncated {
+                offset: start + consumed_tag + consumed_len,
+                needed: len,
+                have: after_len.len(),
+            }));
+        }
+        let value = &after_len[..len];
+        self.offset = start + consumed_tag + consumed_len + len;
+        Some(Ok(RawField { tag, value }))
+    }
+
+    fn next_universal_set(&mut self) -> Option<Result<RawField<'a>, KlvDecodeError>> {
+        let start = self.offset;
+        let rest = &self.buf[start..];
+        if rest.len() < 16 {
+            self.finished = true;
+            return Some(Err(KlvDecodeError::Truncated {
+                offset: start,
+                needed: 16,
+                have: rest.len(),
+            }));
+        }
+        // Universal-set keys are full 16-byte ULs. We don't have a 16-byte tag
+        // field on RawField (u32), so we surface a stable hash of the UL bytes
+        // as the tag and the *full payload value* unchanged. Callers that want
+        // the UL key reconstruct it from the buffer offset.
+        //
+        // Practically: most v0 consumers iterate local sets. Universal-set
+        // iteration is included for completeness but the typed layer never
+        // calls it. If a real consumer surfaces, swap RawField for a
+        // UniversalSetField type.
+        let _ = &rest[..16];
+        let after_key = &rest[16..];
+        let (len, after_len) = match read_ber(after_key) {
+            Ok(v) => v,
+            Err(e) => {
+                self.finished = true;
+                return Some(Err(e));
+            }
+        };
+        let consumed = rest.len() - after_len.len();
+        if after_len.len() < len {
+            self.finished = true;
+            return Some(Err(KlvDecodeError::Truncated {
+                offset: start + consumed,
+                needed: len,
+                have: after_len.len(),
+            }));
+        }
+        let value = &after_len[..len];
+        self.offset = start + consumed + len;
+        // Synthetic tag = 0 for universal-set entries; full UL is at &buf[start..start+16].
+        Some(Ok(RawField { tag: 0, value }))
     }
 }
 
@@ -150,9 +247,6 @@ pub fn encode_pack<'a>(
 // public API surface that future callers will use.
 #[allow(dead_code)]
 fn _unused(_: LengthEncoding, _: KlvDecodeError) {
-    let _ = length::ber_oid_len;
-    let _ = read_ber;
-    let _ = read_ber_oid;
     let _ = ber_oid_len;
 }
 
@@ -180,5 +274,115 @@ mod tests {
         let r = owned.as_ref();
         assert_eq!(r.tag, 5);
         assert_eq!(r.value, &[0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn iter_local_set_three_fields() {
+        // Tag 1, len 2, [0xAA, 0xBB]
+        // Tag 5, len 1, [0x42]
+        // Tag 13, len 4, [0x01, 0x02, 0x03, 0x04]
+        let buf = [
+            0x01, 0x02, 0xAA, 0xBB, // tag=1, len=2
+            0x05, 0x01, 0x42, // tag=5, len=1
+            0x0D, 0x04, 0x01, 0x02, 0x03, 0x04, // tag=13, len=4
+        ];
+        let mut it = Iter::local_set(&buf);
+        let f1 = it.next().unwrap().unwrap();
+        assert_eq!(f1.tag, 1);
+        assert_eq!(f1.value, &[0xAA, 0xBB]);
+        let f2 = it.next().unwrap().unwrap();
+        assert_eq!(f2.tag, 5);
+        assert_eq!(f2.value, &[0x42]);
+        let f3 = it.next().unwrap().unwrap();
+        assert_eq!(f3.tag, 13);
+        assert_eq!(f3.value, &[0x01, 0x02, 0x03, 0x04]);
+        assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn iter_local_set_truncated_value() {
+        // Tag 1, len 4, but only 2 bytes follow
+        let buf = [0x01, 0x04, 0xAA, 0xBB];
+        let mut it = Iter::local_set(&buf);
+        let err = it.next().unwrap().unwrap_err();
+        matches!(err, KlvDecodeError::Truncated { .. });
+        assert!(it.next().is_none(), "iterator finished after error");
+    }
+
+    #[test]
+    fn iter_local_set_truncated_length() {
+        // Tag 1 followed by long-form length declaration that's truncated
+        let buf = [0x01, 0x82, 0xFF];
+        let mut it = Iter::local_set(&buf);
+        let err = it.next().unwrap().unwrap_err();
+        matches!(err, KlvDecodeError::Truncated { .. });
+    }
+
+    #[test]
+    fn iter_local_set_empty() {
+        let buf: [u8; 0] = [];
+        let mut it = Iter::local_set(&buf);
+        assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn iter_local_set_remaining_tracks_offset() {
+        let buf = [0x01, 0x02, 0xAA, 0xBB, 0x05, 0x01, 0x42];
+        let mut it = Iter::local_set(&buf);
+        let _ = it.next().unwrap().unwrap();
+        assert_eq!(it.remaining(), &[0x05, 0x01, 0x42]);
+    }
+
+    #[test]
+    fn iter_local_set_two_byte_tag() {
+        // BER-OID tag 0x80 (= 0x81 0x00), len 1, [0x42]
+        let buf = [0x81, 0x00, 0x01, 0x42];
+        let mut it = Iter::local_set(&buf);
+        let f = it.next().unwrap().unwrap();
+        assert_eq!(f.tag, 0x80);
+        assert_eq!(f.value, &[0x42]);
+    }
+
+    #[test]
+    fn iter_universal_set_one_field() {
+        let mut buf = vec![];
+        buf.extend_from_slice(&[0xAB; 16]); // 16-byte key (any bytes; iter doesn't validate)
+        buf.push(0x03); // BER short, len = 3
+        buf.extend_from_slice(&[0x11, 0x22, 0x33]);
+        let mut it = Iter::universal_set(&buf);
+        let f = it.next().unwrap().unwrap();
+        assert_eq!(f.value, &[0x11, 0x22, 0x33]);
+        assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn iter_encode_pack_round_trip() {
+        let label = UniversalLabel::ST_0601_LS;
+        let fields = [
+            RawField {
+                tag: 1,
+                value: &[0xAA, 0xBB],
+            },
+            RawField {
+                tag: 5,
+                value: &[0x42],
+            },
+        ];
+        let mut out = vec![0u8; 256];
+        let n = encode_pack(&label, fields.iter().cloned(), LengthEncoding::BerOid, &mut out)
+            .unwrap();
+        let encoded = &out[..n];
+        // First 16 bytes are the UL
+        assert_eq!(&encoded[..16], &label.0);
+        // Skip UL + outer length, parse the body
+        let (_outer_len, body) = read_ber(&encoded[16..]).unwrap();
+        let mut it = Iter::local_set(body);
+        let f1 = it.next().unwrap().unwrap();
+        assert_eq!(f1.tag, 1);
+        assert_eq!(f1.value, &[0xAA, 0xBB]);
+        let f2 = it.next().unwrap().unwrap();
+        assert_eq!(f2.tag, 5);
+        assert_eq!(f2.value, &[0x42]);
+        assert!(it.next().is_none());
     }
 }

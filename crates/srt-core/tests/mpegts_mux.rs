@@ -201,3 +201,52 @@ fn pcr_pid_on_klv_is_declared_in_pmt() {
         "PMT should declare PCR_PID = klv_pid when pcr_pid is configured to it"
     );
 }
+
+#[test]
+fn pcr_is_carried_on_klv_pid_packets_when_pcr_pinned_to_klv() {
+    // Wire-level companion to `pcr_pid_on_klv_is_declared_in_pmt`: not just the
+    // PMT field, but real TS packets on the KLV PID must carry the PCR
+    // adaptation field. Otherwise the muxer would advertise a PCR_PID it never
+    // populates and receivers would never see a clock reference.
+    let default = Config::default();
+    let cfg = Config {
+        pcr_pid: Some(default.klv_pid),
+        klv_carries_pts: true,
+        ..default
+    };
+    let video_pid = cfg.video_pid;
+    let klv_pid = cfg.klv_pid;
+    let mut mux = Muxer::new(cfg).unwrap();
+    // Push a few frames so a PCR is guaranteed to fire (the first KLV packet
+    // qualifies on its own, but extra frames make the signal less fragile to
+    // future PCR-cadence tweaks).
+    for i in 0..3 {
+        mux.push_video(&synthetic_nal::h264_au(500, true), i * 3_600_000, true)
+            .unwrap();
+        mux.push_klv(&synthetic_nal::klv_blob(64), i * 3_600_000)
+            .unwrap();
+    }
+    let bytes = drain_all(&mut mux);
+
+    let parsed = ts_parser::parse(&bytes);
+    let on_klv = parsed
+        .pcr_samples
+        .iter()
+        .filter(|(pid, _)| *pid == klv_pid)
+        .count();
+    let on_video = parsed
+        .pcr_samples
+        .iter()
+        .filter(|(pid, _)| *pid == video_pid)
+        .count();
+    assert!(
+        on_klv > 0,
+        "expected at least one PCR adaptation field on klv_pid={klv_pid:#06x}; pcr_samples={:?}",
+        parsed.pcr_samples
+    );
+    assert_eq!(
+        on_video, 0,
+        "PCR pinned to klv_pid; no PCR should appear on video_pid={video_pid:#06x}; pcr_samples={:?}",
+        parsed.pcr_samples
+    );
+}

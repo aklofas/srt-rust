@@ -22,6 +22,9 @@ pub struct ParsedStream {
     /// Per-PID list of (PTS_or_None, payload_bytes) PES units, in order.
     #[allow(clippy::type_complexity)]
     pub pes_by_pid: HashMap<u16, Vec<(Option<u64>, Vec<u8>)>>,
+    /// Sequence of PCR samples observed in adaptation fields, in TS-packet order.
+    /// Each entry is `(pid, pcr_27mhz)`.
+    pub pcr_samples: Vec<(u16, u64)>,
 }
 
 /// Parse a buffer of TS packets emitted by our muxer.
@@ -43,6 +46,13 @@ pub fn parse(buf: &[u8]) -> ParsedStream {
         let mut payload_offset = 4;
         if afc & 0x2 != 0 {
             let af_len = pkt[4] as usize;
+            if af_len > 0 {
+                let flags = pkt[5];
+                let pcr_present = (flags & 0x10) != 0;
+                if pcr_present && af_len >= 7 {
+                    state.pcr_samples.push((pid, decode_pcr(&pkt[6..12])));
+                }
+            }
             payload_offset = 5 + af_len;
         }
         if afc & 0x1 == 0 || payload_offset >= 188 {
@@ -176,6 +186,19 @@ fn parse_pes_start(buf: &[u8]) -> (Option<u64>, &[u8]) {
         None
     };
     (pts, &buf[body_start..])
+}
+
+/// Decode a 6-byte PCR field (program_clock_reference) into 27 MHz units.
+/// Layout: 33-bit base (90 kHz) + 6 reserved bits + 9-bit extension (27 MHz mod 300).
+/// Final value = base * 300 + extension.
+fn decode_pcr(buf: &[u8]) -> u64 {
+    let base = ((buf[0] as u64) << 25)
+        | ((buf[1] as u64) << 17)
+        | ((buf[2] as u64) << 9)
+        | ((buf[3] as u64) << 1)
+        | ((buf[4] as u64) >> 7);
+    let ext = (((buf[4] as u64) & 0x01) << 8) | (buf[5] as u64);
+    base * 300 + ext
 }
 
 fn decode_pts(buf: &[u8]) -> u64 {

@@ -58,8 +58,6 @@ enum State {
 }
 
 pub struct TsFraming {
-    #[allow(dead_code)] // used in Task 7 (TsSender dispatch)
-    mode: TsFramingMode,
     max_unsynced_bytes: usize,
     state: State,
     /// Bytes pending: in UNSYNCED these are the scan window; in SYNCED
@@ -72,9 +70,8 @@ pub struct TsFraming {
 }
 
 impl TsFraming {
-    pub fn new(mode: TsFramingMode, max_unsynced_bytes: usize) -> Self {
+    pub fn new(max_unsynced_bytes: usize) -> Self {
         Self {
-            mode,
             max_unsynced_bytes,
             state: State::Unsynced,
             buffer: VecDeque::new(),
@@ -299,7 +296,7 @@ mod tests {
 
     #[test]
     fn unsynced_acquires_after_three_sync_bytes() {
-        let mut framing = TsFraming::new(TsFramingMode::Recover, 18800);
+        let mut framing = TsFraming::new(18800);
         let ts = synthetic_ts_stream(3);
         let (out, stats) = framing.push(&ts);
         // 3 packets ≠ 7, so no bundle emitted; framing acquired sync.
@@ -313,7 +310,7 @@ mod tests {
 
     #[test]
     fn unsynced_skips_misaligned_prefix() {
-        let mut framing = TsFraming::new(TsFramingMode::Recover, 18800);
+        let mut framing = TsFraming::new(18800);
         // 50 bytes of garbage prefix, then a valid TS stream.
         let prefix: Vec<u8> = (0..50).map(|i| 0x80 | (i as u8)).collect();
         let ts = synthetic_ts_stream(3);
@@ -332,7 +329,7 @@ mod tests {
 
     #[test]
     fn emits_one_bundle_per_seven_packets() {
-        let mut framing = TsFraming::new(TsFramingMode::Recover, 18800);
+        let mut framing = TsFraming::new(18800);
         let ts = synthetic_ts_stream(7);
         let (out, _stats) = framing.push(&ts);
         assert_eq!(out.len(), 1);
@@ -341,7 +338,7 @@ mod tests {
 
     #[test]
     fn emits_two_bundles_per_fourteen_packets() {
-        let mut framing = TsFraming::new(TsFramingMode::Recover, 18800);
+        let mut framing = TsFraming::new(18800);
         let ts = synthetic_ts_stream(14);
         let (out, _stats) = framing.push(&ts);
         assert_eq!(out.len(), 2);
@@ -351,7 +348,7 @@ mod tests {
 
     #[test]
     fn one_byte_at_a_time_acquires_sync() {
-        let mut framing = TsFraming::new(TsFramingMode::Recover, 18800);
+        let mut framing = TsFraming::new(18800);
         let ts = synthetic_ts_stream(7);
         let mut accumulated_out = Vec::new();
         for &b in &ts {
@@ -368,7 +365,7 @@ mod tests {
 
     #[test]
     fn loss_of_sync_resyncs() {
-        let mut framing = TsFraming::new(TsFramingMode::Recover, 18800);
+        let mut framing = TsFraming::new(18800);
         // 7 valid packets, then garbage that breaks alignment, then 7
         // more valid packets with their own valid sync.
         let ts1 = synthetic_ts_stream(7);
@@ -380,7 +377,7 @@ mod tests {
         let (out, stats) = framing.push(&input);
         // 7 + 7 = 14 packets, but the garbage breaks alignment; after
         // resync the second 7 packets get bundled.
-        assert!(out.len() >= 1, "first bundle must emit");
+        assert!(!out.is_empty(), "first bundle must emit");
         assert!(
             stats.resync_events >= 1,
             "must have at least one resync event"
@@ -389,7 +386,7 @@ mod tests {
 
     #[test]
     fn strict_mode_rejects_misalignment() {
-        let mut framing = TsFraming::new(TsFramingMode::Strict, 18800);
+        let mut framing = TsFraming::new(18800);
         let prefix = vec![0x80, 0x81, 0x82];
         let ts = synthetic_ts_stream(3);
         let mut input = prefix;
@@ -404,7 +401,7 @@ mod tests {
         // max_unsynced_bytes knob is RECOVER-mode-only and is not
         // exercised here. (RECOVER mode tracks bytes_skipped_for_sync in
         // stats but does not auto-error on threshold.)
-        let mut framing = TsFraming::new(TsFramingMode::Strict, 200);
+        let mut framing = TsFraming::new(200);
         let no_sync = vec![0x00; 300]; // 300 bytes, never 0x47
         let result = framing.push_strict(&no_sync);
         assert!(
@@ -415,7 +412,7 @@ mod tests {
 
     #[test]
     fn flush_emits_pending_partial_bundle() {
-        let mut framing = TsFraming::new(TsFramingMode::Recover, 18800);
+        let mut framing = TsFraming::new(18800);
         let ts = synthetic_ts_stream(3);
         let (out, _stats) = framing.push(&ts);
         assert!(out.is_empty(), "3 < 7 → no bundle yet");

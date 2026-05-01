@@ -2,8 +2,7 @@
 //! `TsSender<T: Transport>` — pre-muxed TS bytes → SRT, with framing.
 //!
 //! See `framing.rs` for the sync-acquisition / loss-detection state
-//! machine. `TsSender` itself (defined in Task 7) just composes that
-//! with a `Transport`.
+//! machine. `TsSender` composes `TsFraming` with a `Transport`.
 
 mod framing;
 
@@ -29,9 +28,90 @@ impl Default for TsSenderConfig {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum TsSenderError {
+    #[error(transparent)]
+    Framing(#[from] TsFramingError),
+    #[error(transparent)]
+    Transport(#[from] crate::pipeline::TransportError),
+}
+
 /// Pre-muxed TS bytes → SRT transport with sync framing/recovery.
-///
-/// Filled in by Task 7.
 pub struct TsSender<T: Transport> {
-    _phantom: std::marker::PhantomData<T>,
+    framing: TsFraming,
+    transport: T,
+    closed: bool,
+    mode: TsFramingMode,
+}
+
+impl<T: Transport> TsSender<T> {
+    pub fn new(transport: T, config: TsSenderConfig) -> Self {
+        Self {
+            framing: TsFraming::new(config.max_unsynced_bytes),
+            transport,
+            closed: false,
+            mode: config.framing_mode,
+        }
+    }
+
+    /// Push pre-muxed TS bytes. RECOVER mode silently skips/recovers; in
+    /// STRICT mode returns an error on misalignment.
+    pub fn send_ts(&mut self, bytes: &[u8]) -> Result<(), TsSenderError> {
+        if self.closed {
+            return Err(TsSenderError::Transport(
+                crate::pipeline::TransportError::Closed,
+            ));
+        }
+        let bundles = if self.mode == TsFramingMode::Recover {
+            let (bundles, _stats) = self.framing.push(bytes);
+            bundles
+        } else {
+            self.framing.push_strict(bytes)?
+        };
+        for bundle in bundles {
+            self.transport
+                .send_bytes(&bundle)
+                .map_err(TsSenderError::Transport)?;
+        }
+        Ok(())
+    }
+
+    /// Emit any buffered partial bundle.
+    pub fn flush(&mut self) -> Result<(), TsSenderError> {
+        if self.closed {
+            return Err(TsSenderError::Transport(
+                crate::pipeline::TransportError::Closed,
+            ));
+        }
+        let bundles = self.framing.flush();
+        for bundle in bundles {
+            self.transport
+                .send_bytes(&bundle)
+                .map_err(TsSenderError::Transport)?;
+        }
+        Ok(())
+    }
+
+    pub fn stats(&self) -> &TsSenderStats {
+        self.framing.stats()
+    }
+
+    pub fn close(&mut self) {
+        self.closed = true;
+        self.transport.close();
+    }
+
+    pub fn is_alive(&self) -> bool {
+        !self.closed && self.transport.is_alive()
+    }
+}
+
+impl<T: Transport> Drop for TsSender<T> {
+    fn drop(&mut self) {
+        if !self.closed {
+            // Best-effort flush; ignore errors.
+            let _ = self.flush();
+            self.transport.close();
+        }
+    }
 }

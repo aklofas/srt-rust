@@ -21,4 +21,4 @@ pub use reconnect::{ManagedTransport, ReconnectPolicy};
 pub use sender::{Sender, SenderError};
 pub use srt_transport::SrtTransport;
 pub use transport::{Transport, TransportError};
-pub use ts_sender::{TsFramingMode, TsSender, TsSenderConfig, TsSenderStats};
+pub use ts_sender::{TsFramingMode, TsSender, TsSenderConfig, TsSenderError, TsSenderStats};

@@ -585,6 +585,60 @@ pub fn decode_strict(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
     decode_inner(buf, true, true)
 }
 
+/// Strict ST 0601 compliance decode. In addition to checksum
+/// verification (`decode`) and ST 0601-family UL gating
+/// (`decode_strict`), this also enforces the spec's mandatory
+/// structure rules:
+///
+/// - ST 0601.8-09: Tag 2 (Precision Time Stamp) must be the first
+///   element in the Local Set body.
+/// - ST 0601.8-11: Tag 1 (Checksum) must be the last element.
+/// - ST 0601.8-12: Tag 65 (UAS LS Version) must be present.
+///
+/// Use this only when validating compliance against published
+/// captures or reference test vectors. Real-world captures from the
+/// corpus often violate -09/-11/-12 in benign ways; prefer `decode`
+/// for production parsing.
+pub fn decode_strict_compliance(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
+    // Step 1: walk the LS body and record tag order WITHOUT ST 0601
+    // typed-decode. We need raw tag positions to enforce ordering.
+    if buf.len() < 16 {
+        return Err(KlvDecodeError::Truncated {
+            offset: 0,
+            needed: 16,
+            have: buf.len(),
+        });
+    }
+    let (declared_len, after_len) = read_ber(&buf[16..])?;
+    if after_len.len() < declared_len {
+        return Err(KlvDecodeError::Truncated {
+            offset: buf.len() - after_len.len(),
+            needed: declared_len,
+            have: after_len.len(),
+        });
+    }
+    let body = &after_len[..declared_len];
+    let mut tag_order: Vec<u32> = Vec::new();
+    for r in Iter::local_set(body) {
+        let f = r?;
+        tag_order.push(f.tag);
+    }
+    if tag_order.first() != Some(&2) {
+        return Err(KlvDecodeError::Tag2NotFirst);
+    }
+    if tag_order.last() != Some(&1) {
+        return Err(KlvDecodeError::Tag1NotLast);
+    }
+    if !tag_order.contains(&65) {
+        return Err(KlvDecodeError::MissingTag65);
+    }
+    // Step 2: delegate to existing strict decode (verifies checksum + UL
+    // family). All the typed dispatch happens there.
+    decode_inner(
+        buf, /* verify_checksum */ true, /* strict_ul */ true,
+    )
+}
+
 fn decode_inner(
     buf: &[u8],
     verify_checksum: bool,
@@ -1099,5 +1153,132 @@ mod tests {
             "malformed field accumulates"
         );
         let _ = bytes;
+    }
+
+    #[test]
+    fn decode_strict_compliance_accepts_valid_record() {
+        // Build a minimal compliant record: Tag 2 first, Tag 65 present, Tag 1 last.
+        let record = UasDatalinkLs {
+            timestamp_us: Some(1_700_000_000_000_000),
+            uas_ls_version: Some(0x13),
+            ..UasDatalinkLs::default()
+        };
+        let buf = encode_to_vec(&record).unwrap();
+        let r = decode_strict_compliance(&buf).expect("compliant record decodes");
+        assert_eq!(r.timestamp_us, Some(1_700_000_000_000_000));
+        assert_eq!(r.uas_ls_version, Some(0x13));
+    }
+
+    #[test]
+    fn decode_strict_compliance_rejects_missing_tag65() {
+        // Encode without Tag 65 by skipping auto-version: pre-construct fields.
+        // We rely on `encode_to_vec` defaulting auto_version=true — to force
+        // missing, decode a hand-crafted record without the version tag.
+        // Build manually: UL + BER + body{ Tag 2, Tag 1 }.
+        use crate::klv::checksum::checksum_running_sum_16;
+        use crate::klv::length::{ber_len, write_ber};
+        use crate::klv::universal_label::UniversalLabel;
+        // Body: Tag 2 (LEN 8 + 8-byte ts), then Tag 1 (LEN 2 + 2-byte placeholder).
+        let mut body = Vec::new();
+        body.push(0x02);
+        body.push(0x08);
+        body.extend_from_slice(&1u64.to_be_bytes());
+        body.push(0x01);
+        body.push(0x02);
+        body.extend_from_slice(&[0, 0]); // placeholder; we'll fix the checksum
+        // Wrap with UL + BER.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+        let mut len_bytes = [0u8; 9];
+        let nlen = write_ber(body.len(), &mut len_bytes).unwrap();
+        buf.extend_from_slice(&len_bytes[..nlen]);
+        let body_offset_in_buf = buf.len();
+        buf.extend_from_slice(&body);
+        // Compute checksum over UL through length-of-checksum-item.
+        let cksum_value_offset = body_offset_in_buf + body.len() - 2;
+        let computed = checksum_running_sum_16(&buf[..cksum_value_offset]);
+        buf[cksum_value_offset] = (computed >> 8) as u8;
+        buf[cksum_value_offset + 1] = (computed & 0xFF) as u8;
+        let _ = (ber_len, nlen); // silence unused warnings if any
+        let err = decode_strict_compliance(&buf).unwrap_err();
+        assert!(matches!(err, KlvDecodeError::MissingTag65));
+    }
+
+    #[test]
+    fn decode_strict_compliance_rejects_tag2_not_first() {
+        // Build a record where Tag 65 appears before Tag 2.
+        use crate::klv::checksum::checksum_running_sum_16;
+        use crate::klv::length::write_ber;
+        use crate::klv::universal_label::UniversalLabel;
+        let mut body = vec![0x41u8, 0x01, 0x13]; // Tag 65
+        body.extend_from_slice(&[0x02, 0x08]); // Tag 2
+        body.extend_from_slice(&1u64.to_be_bytes());
+        body.extend_from_slice(&[0x01, 0x02, 0x00, 0x00]); // Tag 1 (checksum placeholder)
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+        let mut len_bytes = [0u8; 9];
+        let nlen = write_ber(body.len(), &mut len_bytes).unwrap();
+        buf.extend_from_slice(&len_bytes[..nlen]);
+        let body_offset = buf.len();
+        buf.extend_from_slice(&body);
+        let cksum_value_offset = body_offset + body.len() - 2;
+        let computed = checksum_running_sum_16(&buf[..cksum_value_offset]);
+        buf[cksum_value_offset] = (computed >> 8) as u8;
+        buf[cksum_value_offset + 1] = (computed & 0xFF) as u8;
+        let _ = nlen;
+        let err = decode_strict_compliance(&buf).unwrap_err();
+        assert!(matches!(err, KlvDecodeError::Tag2NotFirst));
+    }
+
+    #[test]
+    fn decode_strict_compliance_rejects_tag1_not_last() {
+        // Build a record where Tag 1 (checksum) is NOT last.
+        use crate::klv::checksum::checksum_running_sum_16;
+        use crate::klv::length::write_ber;
+        use crate::klv::universal_label::UniversalLabel;
+        let mut body = Vec::new();
+        body.push(0x02); // Tag 2 first (correct)
+        body.push(0x08);
+        body.extend_from_slice(&1u64.to_be_bytes());
+        body.push(0x01); // Tag 1 (checksum) — NOT last
+        body.push(0x02);
+        body.extend_from_slice(&[0, 0]);
+        body.push(0x41); // Tag 65 after the checksum (wrong)
+        body.push(0x01);
+        body.push(0x13);
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+        let mut len_bytes = [0u8; 9];
+        let nlen = write_ber(body.len(), &mut len_bytes).unwrap();
+        buf.extend_from_slice(&len_bytes[..nlen]);
+        let body_offset = buf.len();
+        buf.extend_from_slice(&body);
+        // Checksum covers up to (and including) the length byte of Tag 1.
+        // Find Tag 1's value-offset: scan body for tag=0x01 len=0x02.
+        let mut idx = 0;
+        let mut cksum_value_offset = 0;
+        let body_slice = &buf[body_offset..body_offset + body.len()];
+        while idx + 2 <= body_slice.len() {
+            if body_slice[idx] == 0x01 && body_slice[idx + 1] == 0x02 {
+                cksum_value_offset = body_offset + idx + 2;
+                break;
+            }
+            // BER-OID tag 1 byte + BER length 1 byte short form
+            let t = body_slice[idx];
+            idx += 1;
+            // assume short-form lengths < 128 in this hand-crafted body
+            let l = body_slice[idx] as usize;
+            idx += 1 + l;
+            let _ = t;
+        }
+        let computed = checksum_running_sum_16(&buf[..cksum_value_offset]);
+        buf[cksum_value_offset] = (computed >> 8) as u8;
+        buf[cksum_value_offset + 1] = (computed & 0xFF) as u8;
+        let _ = nlen;
+        // strict_compliance should reject — Tag 65 follows Tag 1.
+        let err = decode_strict_compliance(&buf).unwrap_err();
+        // Acceptable error: Tag1NotLast OR ChecksumMismatch (since checksum doesn't include trailing bytes).
+        // We assert specifically for Tag1NotLast since the strict pass detects ordering before checksum verifies.
+        assert!(matches!(err, KlvDecodeError::Tag1NotLast));
     }
 }

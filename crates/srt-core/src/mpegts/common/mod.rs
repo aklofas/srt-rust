@@ -118,7 +118,6 @@ impl Pcr27mhz {
 /// (a) backwards PTS from B-frames in decode order doesn't suppress emission,
 /// and (b) streams running past the 33-bit rollover (~26.5 hours at 90 kHz)
 /// stay correct.
-#[allow(dead_code)] // used in Task 2 (psi_due/pcr_due rollover fix)
 pub(crate) fn pts_diff_33bit(now: u64, last: u64) -> i64 {
     const RANGE: u64 = 1u64 << 33;
     const HALF: u64 = 1u64 << 32;

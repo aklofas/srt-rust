@@ -167,9 +167,8 @@ pub struct Muxer {
     queue: VecDeque<[u8; 188]>,
     counters: ContinuityCounters,
 
-    /// 90 kHz PTS at which the most recent PSI emission happened. None until
-    /// the first PSI emission is queued.
-    last_psi_emission_pts: Option<i64>,
+    /// Last PSI emission PTS, masked to 33 bits (0..2^33). None until first.
+    last_psi_emission_pts: Option<u64>,
     /// 27 MHz PCR value at the most recent PCR emission. None until first.
     last_pcr_emission_27mhz: Option<u64>,
 }
@@ -349,7 +348,11 @@ impl Muxer {
     fn psi_due(&self, pts_90khz: i64) -> bool {
         match self.last_psi_emission_pts {
             None => true,
-            Some(last) => pts_90khz - last >= self.psi_interval_90khz,
+            Some(last_masked) => {
+                let now_masked = Pts90khz(pts_90khz).masked_33bit();
+                let delta = crate::mpegts::common::pts_diff_33bit(now_masked, last_masked);
+                delta >= self.psi_interval_90khz
+            }
         }
     }
 
@@ -357,8 +360,17 @@ impl Muxer {
         match self.last_pcr_emission_27mhz {
             None => true,
             Some(last) => {
-                let now = Pts90khz(pts_90khz).masked_33bit() * 300;
-                now.wrapping_sub(last) >= self.pcr_interval_27mhz
+                // PCR is at 27 MHz; the 33-bit base wraps at 2^33 base ticks.
+                // Convert both to 33-bit base and use the same modular helper,
+                // then compare in 90 kHz units.
+                let now_base_masked = Pts90khz(pts_90khz).masked_33bit();
+                let last_base_masked = (last / 300) & ((1u64 << 33) - 1);
+                let delta_90khz = crate::mpegts::common::pts_diff_33bit(
+                    now_base_masked,
+                    last_base_masked,
+                );
+                let threshold_90khz = (self.pcr_interval_27mhz / 300) as i64;
+                delta_90khz >= threshold_90khz
             }
         }
     }
@@ -395,7 +407,7 @@ impl Muxer {
         write_pmt_packet(&mut pmt, self.pcr_pid, &entries, &mut self.counters);
         self.queue.push_back(pmt);
 
-        self.last_psi_emission_pts = Some(pts_90khz);
+        self.last_psi_emission_pts = Some(Pts90khz(pts_90khz).masked_33bit());
     }
 }
 
@@ -681,5 +693,60 @@ mod tests {
         // Queue should be empty (push didn't commit).
         let mut buf = [0u8; 1316];
         assert_eq!(mux.pull(&mut buf).unwrap(), 0);
+    }
+
+    #[test]
+    fn psi_emission_survives_pts_rollover() {
+        // Push a video AU just before 33-bit rollover, then another well past.
+        // True modular delta is +9590 ticks (~106ms), greater than psi_interval
+        // default of 9000 ticks (100ms), so PSI MUST re-emit. Buggy raw i64
+        // subtraction yields a huge negative and wrongly suppresses PSI.
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
+        let just_before_wrap = (1i64 << 33) - 90;
+        let well_past_wrap = 9_500;
+        mux.push_video(&nal, just_before_wrap, true).unwrap();
+        let mut buf = vec![0u8; 188 * 64];
+        while mux.pull(&mut buf).unwrap() > 0 {}
+        mux.push_video(&nal, well_past_wrap, false).unwrap();
+        let n = mux.pull(&mut buf).unwrap();
+        assert!(n > 0);
+        // First packet should be PAT (PID 0x0000) since PSI is due.
+        let first_pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;
+        assert_eq!(first_pid, 0x0000, "PSI suppressed across rollover; got first PID 0x{:04X}", first_pid);
+    }
+
+    #[test]
+    fn psi_not_due_on_backward_pts() {
+        // B-frame display-order: PTS may zigzag backward by a few frames. PSI
+        // cadence must NOT trigger on a backward step (it would wrongly emit).
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
+        mux.push_video(&nal, 100_000, true).unwrap();
+        let mut buf = vec![0u8; 188 * 64];
+        while mux.pull(&mut buf).unwrap() > 0 {}
+        // Now push a backward PTS (display order earlier). Should NOT emit PSI.
+        mux.push_video(&nal, 100_000 - 270, false).unwrap(); // -3ms
+        let n = mux.pull(&mut buf).unwrap();
+        assert!(n > 0);
+        let first_pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;
+        assert_eq!(first_pid, 0x1011, "PSI emitted on backward PTS, got first PID 0x{:04X}", first_pid);
+    }
+
+    #[test]
+    fn psi_due_after_threshold_forward() {
+        // Sanity: forward by exactly psi_interval triggers PSI.
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
+        mux.push_video(&nal, 0, true).unwrap();
+        let mut buf = vec![0u8; 188 * 64];
+        while mux.pull(&mut buf).unwrap() > 0 {}
+        // psi_interval default = 100ms = 9000 ticks at 90kHz.
+        mux.push_video(&nal, 9_000, false).unwrap();
+        let n = mux.pull(&mut buf).unwrap();
+        assert!(n > 0);
+        // First packet should be PAT (PID 0x0000) since PSI was due.
+        let first_pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;
+        assert_eq!(first_pid, 0x0000, "expected PAT, got 0x{:04X}", first_pid);
     }
 }

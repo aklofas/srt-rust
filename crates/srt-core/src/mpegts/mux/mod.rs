@@ -1,4 +1,6 @@
-// crates/srt-core/src/mpegts/mux/mod.rs
 //! Sender-side MPEG-TS muxer.
 //!
-//! Filled in by Tasks 4-8.
+//! Public surface filled in by Tasks 7-8. Internal helpers in `ts`, `psi`,
+//! `pes` submodules.
+
+pub(crate) mod ts;

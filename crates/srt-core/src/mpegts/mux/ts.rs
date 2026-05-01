@@ -105,16 +105,24 @@ pub(crate) fn write_packet(
 
     // Capacity bookkeeping. `af_min` is the AF byte count when content is
     // present (length + flags + optional PCR). When af_min == 0 but payload
-    // can't fill 184 bytes, we still need an AF (just a length byte and
-    // stuffing) — that costs 1 byte for the length. `af_overhead` captures
-    // both cases.
+    // can't fill 184 bytes, we still need a stuffing-only AF.
+    //
+    // ISO/IEC 13818-1 §2.4.3.4: when adaptation_field_length > 0, the AF
+    // body must begin with the flags byte. So a stuffing-only AF needs
+    // 2 bytes overhead (length + 0x00 flags) — except in the exact 183-byte
+    // payload case, where af_length=0 (length byte alone, no flags) is the
+    // spec-compliant choice.
     let af_min = adaptation.min_size();
     let no_af_payload_capacity: usize = 188 - 4; // 184
     let needs_padding_only_af = af_min == 0 && payload.len() < no_af_payload_capacity;
     let af_overhead = if af_min > 0 {
         af_min
     } else if needs_padding_only_af {
-        1
+        if payload.len() == no_af_payload_capacity - 1 {
+            1 // exact fit with af_length=0
+        } else {
+            2 // length + 0x00 flags byte, then stuffing
+        }
     } else {
         0
     };
@@ -131,9 +139,12 @@ pub(crate) fn write_packet(
     let mut cursor = 4;
 
     if afc == 0b11 {
-        // adaptation_field_length is the count of bytes after the length byte
-        // itself: flags+PCR (= af_min - 1 if af_min > 0 else 0) plus stuffing.
-        let af_body_after_length = if af_min > 0 { af_min - 1 } else { 0 } + stuffing;
+        // adaptation_field_length = bytes after the length byte itself.
+        // = (af_overhead - 1) for the structural part (flags + optional PCR
+        //   when af_min > 0; flags alone when stuffing-only with af_overhead=2;
+        //   nothing when af_overhead=1, the af_length=0 case)
+        // + stuffing
+        let af_body_after_length = (af_overhead - 1) + stuffing;
         out[cursor] = af_body_after_length as u8;
         cursor += 1;
 
@@ -149,6 +160,10 @@ pub(crate) fn write_packet(
                 write_pcr(&mut out[cursor..cursor + 6], pcr);
                 cursor += 6;
             }
+        } else if af_overhead == 2 {
+            // Stuffing-only AF with non-zero length — write 0x00 flags byte.
+            out[cursor] = 0x00;
+            cursor += 1;
         }
 
         // Stuffing bytes (0xFF per spec).
@@ -335,6 +350,11 @@ mod tests {
 
     #[test]
     fn stuffing_when_payload_short() {
+        // ISO/IEC 13818-1 §2.4.3.4: when adaptation_field_length > 0, the
+        // first byte after the length is the AF flags byte. A bare-stuffing
+        // AF must therefore write a 0x00 flags byte before any 0xFF
+        // stuffing — otherwise a strict decoder reads the leading 0xFF as
+        // PCR_flag=1 and expects a PCR that isn't there.
         let mut cc = ContinuityCounters::new();
         let payload = vec![0xAA; 50];
         let mut buf = [0u8; 188];
@@ -346,19 +366,46 @@ mod tests {
             &payload,
             &mut cc,
         );
-        // Without explicit AF, short payload still needs stuffing — afc = 11
-        // (adaptation present) with a length covering the stuffing.
+        // afc = 11 (adaptation field present)
         assert_eq!(buf[3] >> 4, 0b11);
-        // 188 - 4 (header) - 1 (af length byte) = 183 bytes available for
-        // AF body + payload. payload is 50; stuffing is 183 - 50 = 133.
-        // af_length value = 133 (the count of bytes after the length byte).
+        // 188 - 4 (TS header) - 1 (af length) - 1 (af flags) = 182 bytes
+        // available for AF stuffing + payload. payload is 50; stuffing is
+        // 182 - 50 = 132. af_length = 1 (flags) + 132 (stuffing) = 133.
         assert_eq!(buf[4], 133);
-        // Stuffing bytes are 0xFF.
-        for &b in &buf[5..5 + 133] {
+        // Flags byte: 0x00 — no flags set.
+        assert_eq!(buf[5], 0x00);
+        // 132 bytes of 0xFF stuffing.
+        for &b in &buf[6..6 + 132] {
             assert_eq!(b, 0xFF);
         }
-        // Then payload.
+        // Then payload starting at byte 138.
         for &b in &buf[138..] {
+            assert_eq!(b, 0xAA);
+        }
+    }
+
+    #[test]
+    fn stuffing_zero_length_af_no_flags_byte() {
+        // Edge case: when payload is exactly 183 bytes, the stuffing path
+        // emits a zero-length AF (just the length byte = 0, no flags byte,
+        // no stuffing). ISO/IEC 13818-1 §2.4.3.4 explicitly allows this —
+        // adaptation_field_length=0 means the AF consists of the length
+        // byte alone.
+        let mut cc = ContinuityCounters::new();
+        let payload = vec![0xAA; 183];
+        let mut buf = [0u8; 188];
+        write_packet(
+            &mut buf,
+            0x1011,
+            true,
+            AdaptationField::default(),
+            &payload,
+            &mut cc,
+        );
+        assert_eq!(buf[3] >> 4, 0b11);
+        // af_length = 0 — no flags, no stuffing, payload starts at byte 5.
+        assert_eq!(buf[4], 0);
+        for &b in &buf[5..] {
             assert_eq!(b, 0xAA);
         }
     }

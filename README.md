@@ -2,7 +2,7 @@
 
 Cross-platform SRT-based libraries for live video streaming from **gimbaled platforms** — drones (rotary and fixed-wing UAVs), manned fixed-wing aircraft with sensor pods, helicopters with EO/IR turrets, and other manned/unmanned platforms carrying stabilized imaging payloads.
 
-**Status:** early development. The `srt-sys` (raw FFI + encryption) and `srt-core` (safe `Socket`/`Listener` API) crates are implemented; the binding crates and KLV/MPEG-TS modules are not yet started.
+**Status:** early development. The `srt-sys` (raw FFI + encryption), `srt-core::srt` (safe `Socket`/`Listener` API), and `srt-core::klv` (MISB ST 0601 typed codec + generic substrate) crates/modules are implemented; the binding crates and the MPEG-TS muxer are not yet started.
 
 ## Scope (v0)
 
@@ -20,7 +20,7 @@ A Rust core wrapping libsrt via FFI, with bindings for JVM (JNI, JDK 17+), iOS/A
 ```
 crates/
   srt-sys/      raw libsrt FFI (bindgen-generated against libsrt 1.5.5)  ✅ done
-  srt-core/     safe Rust API — srt:: ✅ done; klv::, mpegts::, pipeline:: planned
+  srt-core/     safe Rust API — srt:: ✅ done, klv:: ✅ done, mpegts::/pipeline:: planned
   srt-c/        cdylib + cbindgen header — embedded, future Panama/FFM    planned
   srt-jni/      JNI bindings — JAR for JDK 17+ JVM consumers              planned
   srt-uniffi/   Swift/Kotlin via UniFFI — iOS/Android frameworks          planned
@@ -92,6 +92,12 @@ socket.send(b"hello")?;
 ```
 
 The `SocketConfig` / `ListenerConfig` structs are the canonical configuration types — bindings (UniFFI, JNI, cbindgen) consume them as plain dictionaries / POJOs / C structs. The builders are sugar over the same types.
+
+The `srt-core` crate also includes a KLV codec: a generic substrate (BER/BER-OID lengths,
+SMPTE Universal Labels, ST 1201 IMAPB, generic local-set/universal-set pack-and-iterate)
+plus a typed MISB ST 0601 layer (`UasDatalinkLs` with ~41 typed tags + escape hatch). See
+`crates/srt-core/src/klv/` and the design doc at `docs/specs/2026-04-30-srt-core-klv-design.md`
+in the parent workspace.
 
 ## Building
 

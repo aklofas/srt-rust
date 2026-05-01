@@ -606,9 +606,9 @@ pub fn decode_strict(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
 }
 
 /// Strict ST 0601 compliance decode. In addition to checksum
-/// verification (`decode`) and ST 0601-family UL gating
-/// (`decode_strict`), this also enforces the spec's mandatory
-/// structure rules:
+/// verification (`decode`) and ST 0601-family UL gating (same
+/// restriction as `decode_strict`), this also enforces the spec's
+/// mandatory structure rules:
 ///
 /// - ST 0601.8-09: Tag 2 (Precision Time Stamp) must be the first
 ///   element in the Local Set body.

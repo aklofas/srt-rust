@@ -251,6 +251,9 @@ pub enum KlvDecodeError {
     #[error("Precision Time Stamp Pack body must be 9 bytes, got {got}")]
     BadTimeStampPackLength { got: usize },
 
+    /// Not produced by `klv::st0605::decode` (which is permissive about
+    /// reserved bits per its doc); call `time_status.reserved_bits_valid()`
+    /// on the decoded pack and raise this if a stricter caller wants it.
     #[error("Time Status reserved bits 4-0 must be 0b11111, got {got:#04x}")]
     ReservedBitsInvalid { got: u8 },
 

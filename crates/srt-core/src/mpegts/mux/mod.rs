@@ -278,6 +278,17 @@ impl Muxer {
             PesPtsField::None
         };
 
+        // PES_packet_length is u16; subtract flags1+flags2+header_data_length
+        // (3 bytes) and the optional PTS (5 bytes if klv_carries_pts).
+        let pes_overhead = 3usize + if self.config.klv_carries_pts { 5 } else { 0 };
+        let max_klv = (u16::MAX as usize) - pes_overhead;
+        if klv.len() > max_klv {
+            return Err(MuxError::KlvTooLarge {
+                size: klv.len(),
+                max: max_klv,
+            });
+        }
+
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
         let header_len = write_pes_header(
             &mut header,
@@ -748,5 +759,48 @@ mod tests {
         // First packet should be PAT (PID 0x0000) since PSI was due.
         let first_pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;
         assert_eq!(first_pid, 0x0000, "expected PAT, got 0x{:04X}", first_pid);
+    }
+
+    #[test]
+    fn push_klv_rejects_oversized_blob() {
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        // PES_packet_length is u16; with PTS off, max KLV payload = 65535 - 3 = 65532.
+        let too_big = vec![0u8; 65_533];
+        let err = mux.push_klv(&too_big, 0).unwrap_err();
+        match err {
+            MuxError::KlvTooLarge { size, max } => {
+                assert_eq!(size, 65_533);
+                assert_eq!(max, 65_532);
+            }
+            other => panic!("expected MuxError::KlvTooLarge, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn push_klv_accepts_largest_legal_blob() {
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        // 65532 with no PTS is the spec-imposed ceiling.
+        let max_klv = vec![0xAB; 65_532];
+        mux.push_klv(&max_klv, 0).expect("max-size KLV must succeed");
+    }
+
+    #[test]
+    fn push_klv_with_pts_reduces_max() {
+        // With klv_carries_pts=true, header_data_length=5, so max payload =
+        // 65535 - 3 - 5 = 65527.
+        let mut mux = Muxer::new(Config {
+            klv_carries_pts: true,
+            ..Config::default()
+        })
+        .unwrap();
+        let too_big = vec![0u8; 65_528];
+        let err = mux.push_klv(&too_big, 90_000).unwrap_err();
+        match err {
+            MuxError::KlvTooLarge { size, max } => {
+                assert_eq!(size, 65_528);
+                assert_eq!(max, 65_527);
+            }
+            other => panic!("expected MuxError::KlvTooLarge, got {:?}", other),
+        }
     }
 }

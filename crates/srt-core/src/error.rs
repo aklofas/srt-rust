@@ -325,6 +325,16 @@ pub enum MuxError {
 
     #[error("muxer packet buffer is full ({capacity_packets} packets); drain via pull and retry")]
     BufferFull { capacity_packets: usize },
+
+    /// KLV blob exceeds the 16-bit `PES_packet_length` ceiling.
+    ///
+    /// PES_packet_length is at most 65535 and must cover flags1, flags2,
+    /// header_data_length, the PTS field (if present), and the ES payload —
+    /// so the KLV payload itself is bounded to 65532 bytes (no PTS) or
+    /// 65527 bytes (with PTS). MISB ST 0601 packs are typically <2 KB so
+    /// this is a sanity check, not a regular failure mode.
+    #[error("KLV blob is {size} bytes, exceeds PES_packet_length ceiling of {max} bytes")]
+    KlvTooLarge { size: usize, max: usize },
 }
 
 // ============================================================================

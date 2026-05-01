@@ -65,6 +65,14 @@ impl UniversalLabel {
         0x00,
     ]);
 
+    /// MISB ST 0605 §7 Precision Time Stamp Pack UL.
+    /// Registered in MISB ST 0807.27 row 1061 as the Microsecond Timestamp Pack.
+    /// Body: `[time_status:1][microseconds_since_epoch:8 BE]`.
+    pub const PRECISION_TIMESTAMP_PACK_UL: UniversalLabel = UniversalLabel([
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x05, 0x01, 0x01, 0x0E, 0x01, 0x01, 0x03, 0x11, 0x00, 0x00,
+        0x00,
+    ]);
+
     /// True if this UL belongs to the ST 0601 family — bytes 0-13 match
     /// the canonical prefix `06 0E 2B 34 02 0B 01 01 0E 01 03 01 01 ??`,
     /// byte 14 may be any document version, byte 15 must be `0x00`.

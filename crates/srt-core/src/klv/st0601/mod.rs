@@ -46,11 +46,17 @@ pub struct UasDatalinkLs {
     pub platform_roll_deg: Option<f64>,
     pub platform_true_airspeed: Option<f64>,
     pub platform_indicated_airspeed: Option<f64>,
+    /// Item 90: Platform Pitch Angle (Full) — int32 mapped to ±90°.
+    pub platform_pitch_full_deg: Option<f64>,
+    /// Item 91: Platform Roll Angle (Full) — int32 mapped to ±90°.
+    pub platform_roll_full_deg: Option<f64>,
 
     // Sensor pose & position
     pub sensor_lat_deg: Option<f64>,
     pub sensor_lon_deg: Option<f64>,
     pub sensor_alt_m: Option<f64>,
+    /// Item 75: Sensor Ellipsoid Height (WGS84-relative meters).
+    pub sensor_ellipsoid_height_m: Option<f64>,
     pub sensor_hfov_deg: Option<f64>,
     pub sensor_vfov_deg: Option<f64>,
     pub sensor_rel_az_deg: Option<f64>,
@@ -63,6 +69,8 @@ pub struct UasDatalinkLs {
     pub frame_center_lat_deg: Option<f64>,
     pub frame_center_lon_deg: Option<f64>,
     pub frame_center_elev_m: Option<f64>,
+    /// Item 78: Frame Center Height Above Ellipsoid (WGS84-relative meters).
+    pub frame_center_ellipsoid_height_m: Option<f64>,
 
     // Image corners — offsets from frame center (tags 26-33)
     pub corner_lat_offset_p1_deg: Option<f64>,
@@ -111,9 +119,12 @@ impl Default for UasDatalinkLs {
             platform_roll_deg: None,
             platform_true_airspeed: None,
             platform_indicated_airspeed: None,
+            platform_pitch_full_deg: None,
+            platform_roll_full_deg: None,
             sensor_lat_deg: None,
             sensor_lon_deg: None,
             sensor_alt_m: None,
+            sensor_ellipsoid_height_m: None,
             sensor_hfov_deg: None,
             sensor_vfov_deg: None,
             sensor_rel_az_deg: None,
@@ -124,6 +135,7 @@ impl Default for UasDatalinkLs {
             frame_center_lat_deg: None,
             frame_center_lon_deg: None,
             frame_center_elev_m: None,
+            frame_center_ellipsoid_height_m: None,
             corner_lat_offset_p1_deg: None,
             corner_lon_offset_p1_deg: None,
             corner_lat_offset_p2_deg: None,

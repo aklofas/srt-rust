@@ -107,11 +107,40 @@ impl<T: Transport + 'static> ManagedTransport<T> {
 
     /// Try to send via the inner transport. On Broken/Closed, queue bytes
     /// and attempt reconnect.
+    ///
+    /// Pre-checks `bytes.len() > max_payload` against the inner transport
+    /// before any state mutation, so oversized messages never enter the gap
+    /// buffer (where they'd block drain forever).
     fn send_managed(&self, bytes: &[u8]) -> Result<(), TransportError> {
-        // Drain any queued bytes first.
-        self.drain_gap_if_alive()?;
+        // Pre-check size against inner before queuing — oversized messages
+        // would otherwise sit in the gap buffer and fail every drain.
+        let max = self
+            .inner
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|t| t.max_payload())
+            .unwrap_or(1316);
+        if bytes.len() > max {
+            return Err(TransportError::TooLarge {
+                len: bytes.len(),
+                max,
+            });
+        }
 
-        // Try the new bytes.
+        // Drain any queued bytes first. If drain breaks the transport
+        // mid-flight (Broken), the caller's `bytes` would be lost without
+        // queuing. Capture that case and fall through to enqueue+reconnect.
+        match self.drain_gap_if_alive() {
+            Ok(()) => {}
+            Err(TransportError::Broken(_)) | Err(TransportError::Closed) => {
+                // Fall through to enqueue + reconnect — the new bytes get
+                // queued alongside whatever's still in the gap buffer.
+            }
+            Err(e) => return Err(e),
+        }
+
+        // Try the new bytes if the transport is still alive after drain.
         if let Some(transport) = self.inner.lock().unwrap().as_mut() {
             match transport.send_bytes(bytes) {
                 Ok(()) => return Ok(()),

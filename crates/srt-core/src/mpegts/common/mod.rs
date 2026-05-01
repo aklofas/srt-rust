@@ -104,6 +104,34 @@ impl Pcr27mhz {
     }
 }
 
+/// Signed 33-bit modular difference between two masked PTS values, in 90 kHz ticks.
+///
+/// Both inputs must already be masked to the 33-bit PTS range
+/// (`Pts90khz::masked_33bit()` output). Returns the shortest signed delta in
+/// modular 2^33 arithmetic: positive if `now` is ahead of `last`, negative if
+/// behind. Handles 33-bit rollover correctly — when `last` is near 2^33-1 and
+/// `now` is small, the result is the small positive delta across the wrap.
+///
+/// Convention at the half-range boundary (delta == 2^32): treated as forward.
+///
+/// Used by the `mpegts::mux` cadence checks (`psi_due`, `pcr_due`) so that
+/// (a) backwards PTS from B-frames in decode order doesn't suppress emission,
+/// and (b) streams running past the 33-bit rollover (~26.5 hours at 90 kHz)
+/// stay correct.
+#[allow(dead_code)] // used in Task 2 (psi_due/pcr_due rollover fix)
+pub(crate) fn pts_diff_33bit(now: u64, last: u64) -> i64 {
+    const RANGE: u64 = 1u64 << 33;
+    const HALF: u64 = 1u64 << 32;
+    debug_assert!(now < RANGE, "now must be 33-bit-masked");
+    debug_assert!(last < RANGE, "last must be 33-bit-masked");
+    let raw = (now + RANGE - last) % RANGE;
+    if raw > HALF {
+        (raw as i64) - (RANGE as i64)
+    } else {
+        raw as i64
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,5 +207,50 @@ mod tests {
         // Far-above-mask value: only the low 33 bits should survive.
         let pcr = Pcr27mhz(((1u64 << 50) | 0x1234_5678) * 300);
         assert_eq!(pcr.base(), 0x1234_5678);
+    }
+
+    #[test]
+    fn pts_diff_33bit_forward_simple() {
+        // Forward by 90 ticks (1ms at 90kHz).
+        assert_eq!(pts_diff_33bit(1_000, 910), 90);
+    }
+
+    #[test]
+    fn pts_diff_33bit_backward_simple() {
+        // Backward by 90 ticks — signed delta is negative.
+        assert_eq!(pts_diff_33bit(910, 1_000), -90);
+    }
+
+    #[test]
+    fn pts_diff_33bit_zero() {
+        assert_eq!(pts_diff_33bit(0, 0), 0);
+        assert_eq!(pts_diff_33bit(12_345, 12_345), 0);
+    }
+
+    #[test]
+    fn pts_diff_33bit_wrap_forward() {
+        // last is just below 2^33-1, now is 100 (wrapped past zero).
+        // True delta is +100 + (2^33 - (2^33 - 50)) = +150.
+        let last = (1u64 << 33) - 50;
+        let now = 100u64;
+        assert_eq!(pts_diff_33bit(now, last), 150);
+    }
+
+    #[test]
+    fn pts_diff_33bit_wrap_backward() {
+        // The opposite: now is just below 2^33, last is small. Backward by ~50.
+        let last = 100u64;
+        let now = (1u64 << 33) - 50;
+        assert_eq!(pts_diff_33bit(now, last), -150);
+    }
+
+    #[test]
+    fn pts_diff_33bit_half_range_boundary() {
+        // Exactly half the 33-bit range — by convention, treat as forward.
+        let last = 0u64;
+        let now = 1u64 << 32;
+        assert_eq!(pts_diff_33bit(now, last), 1i64 << 32);
+        // One past half: treated as backward (raw > HALF → negative delta).
+        assert_eq!(pts_diff_33bit((1u64 << 32) + 1, 0), -(1i64 << 32) + 1);
     }
 }

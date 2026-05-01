@@ -20,6 +20,7 @@ pub mod imapb;
 pub mod length;
 pub mod pack;
 pub mod st0601;
+pub mod st0605;
 pub mod universal_label;
 
 pub use pack::{Iter, OwnedRawField, RawField};

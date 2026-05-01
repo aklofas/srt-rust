@@ -13,11 +13,11 @@ not listed below are intentionally **not yet implemented**.
 | 🔁 Pass-through | Not typed; preserved verbatim through the parser and re-emitted. |
 | 🟡 Permissive | Wire format accepted; spec-mandated strictness is opt-in. |
 | ⏳ Planned | On the roadmap, not yet implemented. |
-| ❌ Out of scope | Deferred indefinitely (see `docs/deferred-features.md` in the parent workspace). |
+| ❌ Out of scope | Deferred indefinitely. |
 
 The `srt-rust` workspace deliberately scopes to **MPEG-TS + MISB ST 0601 KLV
-over SRT** for v0. Containers (MP4/CMAF/RIST/WebRTC), ST 0903 VMTI, raw
-elementary streams, and so on are out of scope until a consumer asks. See
+over SRT**. Containers (MP4/CMAF/RIST/WebRTC), ST 0903 VMTI, raw elementary
+streams, and so on are out of scope until a consumer asks. See
 `crates/srt-core/tests/TEST_CORPUS.md` for the parsing-side compliance ledger
 that this document summarises.
 
@@ -53,7 +53,7 @@ on (default).
 | Message API (datagram-style send/recv) | ✅ Full | `Socket::send` / `Socket::recv`. |
 | Stream API (`SRTO_TSBPDMODE=false`, `SRTO_MESSAGEAPI=false`) | ⏳ Planned | Reachable only via `srt-sys` today. |
 | Bonded sockets / groups (`SRT_GROUP_*`) | ❌ Out of scope | No consumer demand. |
-| Async / poll API (`srt_epoll_*`) | ⏳ Planned | v0 is sync blocking. Reactor is on the roadmap. |
+| Async / poll API (`srt_epoll_*`) | ⏳ Planned | Today's API is sync blocking. Reactor is on the roadmap. |
 
 ### Encryption (AES-CTR over SRT)
 
@@ -114,10 +114,10 @@ aren't yet wrapped are reachable via `srt-sys`.
 | Spec / Feature | Status | Notes |
 | --- | --- | --- |
 | MPEG-TS muxer | ⏳ Planned | `mpegts::mux` is the next major workstream after KLV. |
-| MPEG-TS demuxer | ❌ Out of scope (v0) | Receivers use FFmpeg / JavaCV / Bento4 / platform demuxers. |
+| MPEG-TS demuxer | ❌ Out of scope | Receivers use FFmpeg / JavaCV / Bento4 / platform demuxers. |
 | Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ⏳ Planned | Wire-format target; muxer not started. |
 | Synchronous Metadata Multiplex Method (ST 1402.2 §9.4) | ⏳ Planned | Decode path: 5-byte AU cell header is currently recovered via UL-prefix scan. |
-| Variable-length PES splitting | ⏳ Planned | Required for ≥ 65,000-byte KLV records (rare in practice). |
+| Variable-length PES splitting | ⏳ Planned | Required for ≥ 65 000-byte KLV records (rare in practice). |
 | KLVA registration descriptor (`stream_type 0x06` + `0x05 "KLVA"`) | ✅ Full | Detected/recognised on decode side; emitted by muxer when it lands. |
 
 ---
@@ -235,37 +235,37 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 
 ## Standards reference — what we cite vs. what we implement
 
-The MISB / SMPTE / IETF documents we read while building `srt-rust`. The
+The MISB / SMPTE / IETF documents that bear on `srt-rust`. The
 "Implemented?" column reflects what `srt-rust` does, not what the spec
 covers.
 
-| Spec | Title | Local copy | Implemented? |
-| --- | --- | --- | --- |
-| **SMPTE ST 336** | Data Encoding Protocol Using Key-Length-Value | (referenced via MISB) | ✅ KLV substrate in `klv::pack` / `klv::length` / `klv::universal_label` |
-| **MISB ST 0102.12** | Security Metadata Universal & Local Sets | `reference/ST0102.12.pdf` | 🔁 Pass-through (Tag 48 raw bytes); not typed |
-| **MISB ST 0107.5** | KLV Metadata in Motion Imagery | `reference/ST0107.5.pdf` | ✅ Future-proof skip rule, UL family helpers |
-| **MISB ST 0601.19** | UAS Datalink Local Set | `reference/ST0601.19.pdf` | ⚙️ 49 of 143 items typed (see table above) |
-| **MISB ST 0603.5** | Time Stamping Motion Imagery | `reference/ST0603.5.pdf` | ✅ For ST 0605 Time Status byte |
-| **MISB ST 0604.6** | Time Stamping & Transport in MISB Motion Imagery | `reference/ST0604.6.pdf` | ⏳ Planned (PCR / PTS in muxer) |
-| **MISB ST 0605.10** | Encoding & Inserting Time Codes / Stamps | `reference/ST0605.10.pdf` | ✅ Precision Time Stamp Pack |
-| **MISB ST 0607.5** | UAS Datalink LS Time-Stamped Records | `reference/ST0607.5.pdf` | 🔁 Pass-through; not exercised by corpus |
-| **MISB ST 0805.1** | KLV Metadata over RTP | `reference/ST0805.1.docx` | ❌ Out of scope (we transport over SRT/MPEG-TS) |
-| **MISB ST 0807.27** | KLV Metadata Registry | `reference/ST0807.27.xls` | ⚙️ Used as canonical source for UL constants |
-| **MISB ST 0902.8** | Motion Imagery Sensor Minimum Metadata Set | `reference/ST0902.8.pdf` | ❌ Out of scope (subset of ST 0601 we already cover) |
-| **MISB ST 0903.6** | Video Moving Target Indicator (VMTI) | `reference/ST0903.6.pdf` | ❌ Out of scope (v0); add when a consumer needs VMTI |
-| **MISB ST 1201.5** | IMAPB / IMAPA Floating-Point Mapping | `reference/ST1201.5.pdf` | ⚙️ §7.1.2 / §7.2 implemented; §7.1.3 special values not |
-| **MISB ST 1303.2** | Multi-Dimensional Array Pack (MDAP) | `reference/ST1303.2.pdf` | ❌ Out of scope (no ST 0903 consumer) |
-| **MISB ST 1402.2** | KLV in MPEG-2 Transport Streams | `reference/ST1402.2.pdf` | ⏳ Decode-side recovery in place (UL-prefix scan); muxer planned |
-| **MISB ST 1607.2** | Constructs to Amend / Segment KLV | `reference/ST1607.2.pdf` | ❌ Out of scope (no multi-PES KLV in corpus) |
-| **MISB ST 1910.1** | Inserting KLV in MPEG-TS for ISR | `reference/ST1910.1.pdf` | ⏳ Planned (muxer target topology) |
-| **MISB TRM 0909.4** | Motion Imagery Quality Metadata | `reference/TRM0909.4.pdf` | ⚙️ §7 multi-record PES pattern handled |
-| **MISB RP 0802.2** | UAS Streaming Pipeline Recommendation | `reference/RP0802.2.pdf` | 📖 Reference reading |
-| **MISB RP 1011.1** | Local Set Inheritance Recommendation | `reference/RP1011.1.pdf` | 📖 Reference reading |
-| **MISP-2025.1** | Motion Imagery Standards Profile | `reference/MISP-2025.1.pdf` | 📖 Roadmap reference |
-| **MISP-2025.1 Handbook** | MIS Handbook (companion to MISP) | `reference/MISP-2025.1_Motion_Imagery_Handbook.pdf` | 📖 Reference reading |
-| **MISP-2023.2** | Motion Imagery Standards Profile (prior) | `reference/MISP-2023.2.pdf` | 📖 Reference reading |
-| `draft-sharabayko-srt` (IETF) | Secure Reliable Transport Protocol | `haivision/srt-rfc/draft-sharabayko-srt.md` | ✅ via `vendor/srt` |
-| `draft-sharabayko-srt-over-quic` | SRT over QUIC | `haivision/srt-rfc/` | ❌ Out of scope |
+| Spec | Title | Implemented? |
+| --- | --- | --- |
+| **SMPTE ST 336** | Data Encoding Protocol Using Key-Length-Value | ✅ KLV substrate in `klv::pack` / `klv::length` / `klv::universal_label` |
+| **MISB ST 0102.12** | Security Metadata Universal & Local Sets | 🔁 Pass-through (Tag 48 raw bytes); not typed |
+| **MISB ST 0107.5** | KLV Metadata in Motion Imagery | ✅ Future-proof skip rule, UL family helpers |
+| **MISB ST 0601.19** | UAS Datalink Local Set | ⚙️ 49 of 143 items typed (see table above) |
+| **MISB ST 0603.5** | Time Stamping Motion Imagery | ✅ For ST 0605 Time Status byte |
+| **MISB ST 0604.6** | Time Stamping & Transport in MISB Motion Imagery | ⏳ Planned (PCR / PTS in muxer) |
+| **MISB ST 0605.10** | Encoding & Inserting Time Codes / Stamps | ✅ Precision Time Stamp Pack |
+| **MISB ST 0607.5** | UAS Datalink LS Time-Stamped Records | 🔁 Pass-through; not exercised by corpus |
+| **MISB ST 0805.1** | KLV Metadata over RTP | ❌ Out of scope (we transport over SRT/MPEG-TS) |
+| **MISB ST 0807.27** | KLV Metadata Registry | ⚙️ Used as canonical source for UL constants |
+| **MISB ST 0902.8** | Motion Imagery Sensor Minimum Metadata Set | ❌ Out of scope (subset of ST 0601 we already cover) |
+| **MISB ST 0903.6** | Video Moving Target Indicator (VMTI) | ❌ Out of scope; add when a consumer needs VMTI |
+| **MISB ST 1201.5** | IMAPB / IMAPA Floating-Point Mapping | ⚙️ §7.1.2 / §7.2 implemented; §7.1.3 special values not |
+| **MISB ST 1303.2** | Multi-Dimensional Array Pack (MDAP) | ❌ Out of scope (no ST 0903 consumer) |
+| **MISB ST 1402.2** | KLV in MPEG-2 Transport Streams | ⏳ Decode-side recovery in place (UL-prefix scan); muxer planned |
+| **MISB ST 1607.2** | Constructs to Amend / Segment KLV | ❌ Out of scope (no multi-PES KLV in corpus) |
+| **MISB ST 1910.1** | Inserting KLV in MPEG-TS for ISR | ⏳ Planned (muxer target topology) |
+| **MISB TRM 0909.4** | Motion Imagery Quality Metadata | ⚙️ §7 multi-record PES pattern handled |
+| **MISB RP 0802.2** | UAS Streaming Pipeline Recommendation | 📖 Reference reading |
+| **MISB RP 1011.1** | Local Set Inheritance Recommendation | 📖 Reference reading |
+| **MISP-2025.1** | Motion Imagery Standards Profile | 📖 Roadmap reference |
+| **MISP-2025.1 Handbook** | MIS Handbook (companion to MISP) | 📖 Reference reading |
+| **MISP-2023.2** | Motion Imagery Standards Profile (prior) | 📖 Reference reading |
+| `draft-sharabayko-srt` (IETF) | Secure Reliable Transport Protocol | ✅ via `vendor/srt` |
+| `draft-sharabayko-srt-over-quic` | SRT over QUIC | ❌ Out of scope |
 
 📖 = read for context; nothing to implement directly.
 
@@ -295,9 +295,9 @@ covers.
 
 ---
 
-## Out of scope (v0)
+## Out of scope
 
-These items appear in nearby specs but are explicitly **not** on the v0
+These items appear in nearby specs but are explicitly **not** on the
 roadmap. They are revisitable on consumer ask — not philosophical refusals.
 
 - Containers other than MPEG-TS (MP4 / fMP4 / CMAF, Matroska / WebM, RTP).

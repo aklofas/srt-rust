@@ -21,8 +21,10 @@ pub mod length;
 pub mod pack;
 pub mod st0601;
 pub mod st0605;
+pub mod st1910;
 pub mod universal_label;
 
 pub use pack::{Iter, OwnedRawField, RawField};
 pub use st0605::{PrecisionTimeStampPack, TimeStatus};
+pub use st1910::{unwrap_au_cell, wrap_au_cell};
 pub use universal_label::UniversalLabel;

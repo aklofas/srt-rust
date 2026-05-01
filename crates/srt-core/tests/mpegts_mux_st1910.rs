@@ -6,7 +6,7 @@ use common::synthetic_nal;
 use common::ts_parser;
 use srt_core::klv::st0605::{PrecisionTimeStampPack, TimeStatus};
 use srt_core::klv::st1910;
-use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer};
+use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, StreamSpec};
 
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();
@@ -22,11 +22,14 @@ fn drain_all(mux: &mut Muxer) -> Vec<u8> {
 
 #[test]
 fn sync_klv_with_st1910_wrapper_roundtrip() {
-    let cfg = Config {
-        klv_stream_type: KlvStreamType::PrivateData,
-        klv_carries_pts: true,
-        ..Default::default()
-    };
+    let mut cfg = Config::default();
+    if let Some(StreamSpec::Klv { carries_pts, .. }) = cfg
+        .streams
+        .iter_mut()
+        .find(|s| matches!(s, StreamSpec::Klv { .. }))
+    {
+        *carries_pts = true;
+    }
     let mut mux = Muxer::new(cfg).unwrap();
 
     let video = synthetic_nal::h264_au(800, true);
@@ -57,11 +60,19 @@ fn sync_klv_with_st1910_wrapper_roundtrip() {
 
 #[test]
 fn sync_metadata_stream_type_with_wrapped_klv() {
-    let cfg = Config {
-        klv_stream_type: KlvStreamType::SynchronousMetadata,
-        klv_carries_pts: true,
-        ..Default::default()
-    };
+    let mut cfg = Config::default();
+    if let Some(StreamSpec::Klv {
+        stream_type,
+        carries_pts,
+        ..
+    }) = cfg
+        .streams
+        .iter_mut()
+        .find(|s| matches!(s, StreamSpec::Klv { .. }))
+    {
+        *stream_type = KlvStreamType::SynchronousMetadata;
+        *carries_pts = true;
+    }
     let mut mux = Muxer::new(cfg).unwrap();
     mux.push_video(&synthetic_nal::h264_au(500, true), 0, true)
         .unwrap();

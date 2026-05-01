@@ -29,7 +29,7 @@ fn bench_push_video(c: &mut Criterion) {
             b.iter(|| {
                 let cfg = Config {
                     buffer_packets: 100_000,
-                    ..Default::default()
+                    ..Config::default()
                 };
                 let mut mux = Muxer::new(cfg).unwrap();
                 mux.push_video(black_box(nal), 0, true).unwrap();
@@ -60,7 +60,7 @@ fn bench_mux_end_to_end(c: &mut Criterion) {
         b.iter(|| {
             let cfg = Config {
                 buffer_packets: 200_000,
-                ..Default::default()
+                ..Config::default()
             };
             let mut mux = Muxer::new(cfg).unwrap();
             for (i, f) in frames.iter().enumerate() {

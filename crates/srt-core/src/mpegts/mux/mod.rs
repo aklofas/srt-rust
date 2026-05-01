@@ -33,48 +33,75 @@ pub enum VideoCodec {
 /// `PrivateData` (PMT stream_type 0x06) is the broadly-recognized form;
 /// `SynchronousMetadata` (0x15) is strict ST 1402 sync.
 ///
-/// Whether the KLV PES carries a PTS is controlled separately via
-/// `Config::klv_carries_pts`.
+/// Whether the KLV PES carries a PTS is controlled separately via the
+/// `carries_pts` field in `StreamSpec::Klv`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KlvStreamType {
     PrivateData,
     SynchronousMetadata,
 }
 
+/// One elementary stream in the muxer's output TS.
+///
+/// v0 enforces "≤1 video + ≤1 KLV" via [`Config::validate`]; multi-stream
+/// support is Path 3 (see `docs/proposals/2026-05-01-multi-stream-mpegts-mux.md`).
+/// The shape is multi-stream-from-day-one so Path 3 lifts the limit
+/// additively, without breaking ABI for v0 callers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StreamSpec {
+    Video {
+        /// PID for the video PES stream. Must be in `0x0010..=0x1FFE`.
+        pid: u16,
+        /// Video codec — drives PMT stream_type (0x1B for H.264, 0x24 for H.265).
+        codec: VideoCodec,
+    },
+    Klv {
+        /// PID for the KLV metadata stream. Must be in `0x0010..=0x1FFE`,
+        /// distinct from any video PID.
+        pid: u16,
+        /// Transport-stream type — drives the PMT stream_type byte
+        /// (0x06 PrivateData / 0x15 SynchronousMetadata).
+        stream_type: KlvStreamType,
+        /// Whether the KLV PES carries a PTS in its header.
+        /// `false` = ST 1402 async (no PTS).
+        /// `true`  = sync KLV (PTS aligns with video).
+        /// `SynchronousMetadata` + `false` is invalid.
+        carries_pts: bool,
+    },
+}
+
+impl StreamSpec {
+    pub(crate) fn pid(&self) -> u16 {
+        match self {
+            StreamSpec::Video { pid, .. } => *pid,
+            StreamSpec::Klv { pid, .. } => *pid,
+        }
+    }
+}
+
 /// Muxer construction parameters.
 ///
-/// All defaults match the dominant pattern measured in real STANAG 4609
-/// captures (see the design doc's corpus measurement). Override with field
-/// updates on a `Config::default()` value.
+/// **Multi-stream-shaped from day one.** v0 enforces "at most one Video
+/// stream and at most one Klv stream; at least one of either" via
+/// [`Config::validate`]. Path 3 lifts the limit additively without
+/// disturbing existing callers.
+///
+/// Construct with [`Config::builder()`] for ergonomic chaining, or directly
+/// with field updates over [`Config::default()`] for the canonical
+/// single-video-plus-single-KLV case.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// PID for the video PES stream. Default 0x1011.
-    pub video_pid: u16,
+    /// Elementary streams the muxer carries. v0: ≤1 Video, ≤1 Klv, ≥1 of either.
+    pub streams: Vec<StreamSpec>,
 
-    /// Video codec — drives PMT stream_type (0x1B for H.264, 0x24 for H.265).
-    pub video_codec: VideoCodec,
-
-    /// PID for the KLV metadata stream. Default 0x1031.
-    pub klv_pid: u16,
-
-    /// Transport-stream type for the KLV PID. Default `PrivateData` (0x06).
-    pub klv_stream_type: KlvStreamType,
-
-    /// Whether the KLV PES carries a PTS in its header.
-    /// `false` (default) = ST 1402 async — no PTS.
-    /// `true` = sync KLV (PTS aligns with video).
-    /// Combination `SynchronousMetadata` + `false` is invalid.
-    pub klv_carries_pts: bool,
-
-    /// PID carrying the PCR. `None` (default) = use `video_pid`.
+    /// PID carrying the PCR. `None` = use the first video stream's PID, or
+    /// the first KLV stream's PID if no video stream is configured.
     pub pcr_pid: Option<u16>,
 
-    /// PCR re-emission interval, in milliseconds. Default 40.
-    /// Validation: 1..=100 (spec ceiling).
+    /// PCR re-emission interval, in milliseconds. Default 40. Validation 1..=100.
     pub pcr_interval_ms: u32,
 
-    /// PAT/PMT re-emission interval, in milliseconds. Default 100.
-    /// Validation: >= 10.
+    /// PAT/PMT re-emission interval, in milliseconds. Default 100. Validation >= 10.
     pub psi_interval_ms: u32,
 
     /// Maximum buffered TS packets before push returns `BufferFull`.
@@ -84,12 +111,20 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        // Same defaults as v0: H.264 video at 0x1011, KLV PrivateData at
+        // 0x1031, async KLV (no PTS), PCR pinned to video.
         Self {
-            video_pid: 0x1011,
-            video_codec: VideoCodec::H264,
-            klv_pid: 0x1031,
-            klv_stream_type: KlvStreamType::PrivateData,
-            klv_carries_pts: false,
+            streams: vec![
+                StreamSpec::Video {
+                    pid: 0x1011,
+                    codec: VideoCodec::H264,
+                },
+                StreamSpec::Klv {
+                    pid: 0x1031,
+                    stream_type: KlvStreamType::PrivateData,
+                    carries_pts: false,
+                },
+            ],
             pcr_pid: None,
             pcr_interval_ms: 40,
             psi_interval_ms: 100,
@@ -99,29 +134,88 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Start a new builder. Equivalent to `ConfigBuilder::default()`.
+    pub fn builder() -> ConfigBuilder {
+        ConfigBuilder::default()
+    }
+
     /// Validate the configuration. Returns `Err(MuxError::InvalidConfig)`
     /// with a static message describing the failed rule.
     pub fn validate(&self) -> Result<(), MuxError> {
-        if !pid::is_user_pid(self.video_pid) {
+        // v0: ≥1 stream of either kind.
+        if self.streams.is_empty() {
             return Err(MuxError::InvalidConfig(
-                "video_pid must be in 0x0010..=0x1FFE",
+                "at least one stream (video or klv) is required",
             ));
         }
-        if !pid::is_user_pid(self.klv_pid) {
+
+        // v0: ≤1 video and ≤1 klv. Path 3 lifts this restriction additively.
+        let mut video_count = 0;
+        let mut klv_count = 0;
+        for s in &self.streams {
+            match s {
+                StreamSpec::Video { .. } => video_count += 1,
+                StreamSpec::Klv { .. } => klv_count += 1,
+            }
+        }
+        if video_count > 1 {
             return Err(MuxError::InvalidConfig(
-                "klv_pid must be in 0x0010..=0x1FFE",
+                "v0 muxer accepts at most one video stream",
             ));
         }
-        if self.video_pid == self.klv_pid {
-            return Err(MuxError::InvalidConfig("video_pid and klv_pid must differ"));
+        if klv_count > 1 {
+            return Err(MuxError::InvalidConfig(
+                "v0 muxer accepts at most one klv stream",
+            ));
         }
+
+        // Per-stream validation.
+        for s in &self.streams {
+            match s {
+                StreamSpec::Video { pid, .. } => {
+                    if !pid::is_user_pid(*pid) {
+                        return Err(MuxError::InvalidConfig(
+                            "video pid must be in 0x0010..=0x1FFE",
+                        ));
+                    }
+                }
+                StreamSpec::Klv {
+                    pid,
+                    stream_type,
+                    carries_pts,
+                } => {
+                    if !pid::is_user_pid(*pid) {
+                        return Err(MuxError::InvalidConfig(
+                            "klv pid must be in 0x0010..=0x1FFE",
+                        ));
+                    }
+                    if *stream_type == KlvStreamType::SynchronousMetadata && !*carries_pts {
+                        return Err(MuxError::InvalidConfig(
+                            "klv stream_type=SynchronousMetadata requires carries_pts=true",
+                        ));
+                    }
+                }
+            }
+        }
+
+        // PIDs must be distinct.
+        for (i, s1) in self.streams.iter().enumerate() {
+            for s2 in &self.streams[i + 1..] {
+                if s1.pid() == s2.pid() {
+                    return Err(MuxError::InvalidConfig("stream PIDs must all be distinct"));
+                }
+            }
+        }
+
+        // pcr_pid (if specified) must equal a configured stream's PID.
         if let Some(pcr) = self.pcr_pid {
-            if pcr != self.video_pid && pcr != self.klv_pid {
+            if !self.streams.iter().any(|s| s.pid() == pcr) {
                 return Err(MuxError::InvalidConfig(
-                    "pcr_pid must equal video_pid or klv_pid",
+                    "pcr_pid must equal a configured stream PID",
                 ));
             }
         }
+
         if !(1..=100).contains(&self.pcr_interval_ms) {
             return Err(MuxError::InvalidConfig(
                 "pcr_interval_ms must be in 1..=100",
@@ -133,17 +227,132 @@ impl Config {
         if self.buffer_packets < 10 {
             return Err(MuxError::InvalidConfig("buffer_packets must be >= 10"));
         }
-        if self.klv_stream_type == KlvStreamType::SynchronousMetadata && !self.klv_carries_pts {
-            return Err(MuxError::InvalidConfig(
-                "klv_stream_type=SynchronousMetadata requires klv_carries_pts=true",
-            ));
-        }
+
         Ok(())
     }
 
-    /// Resolve the PCR PID, defaulting to `video_pid` when `pcr_pid` is None.
+    /// Resolve the PCR PID. If `pcr_pid` is `None`:
+    /// - prefer the first video stream's PID;
+    /// - if no video stream, use the first KLV stream's PID.
+    ///
+    /// Caller MUST have called `validate()` first; this helper assumes ≥1 stream.
     pub(crate) fn resolved_pcr_pid(&self) -> u16 {
-        self.pcr_pid.unwrap_or(self.video_pid)
+        if let Some(pid) = self.pcr_pid {
+            return pid;
+        }
+        if let Some(pid) = self.streams.iter().find_map(|s| match s {
+            StreamSpec::Video { pid, .. } => Some(*pid),
+            _ => None,
+        }) {
+            return pid;
+        }
+        // No video — use the first KLV stream. validate() guarantees ≥1.
+        self.streams
+            .iter()
+            .find_map(|s| match s {
+                StreamSpec::Klv { pid, .. } => Some(*pid),
+                _ => None,
+            })
+            .expect("validate() guarantees at least one stream")
+    }
+
+    /// Iterate over video streams. Convenience accessor for the muxer's
+    /// internals; callers shouldn't need this directly.
+    pub(crate) fn video_streams(&self) -> impl Iterator<Item = (u16, VideoCodec)> + '_ {
+        self.streams.iter().filter_map(|s| match s {
+            StreamSpec::Video { pid, codec } => Some((*pid, *codec)),
+            _ => None,
+        })
+    }
+
+    /// Iterate over klv streams. Convenience accessor for the muxer's
+    /// internals.
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn klv_streams(&self) -> impl Iterator<Item = (u16, KlvStreamType, bool)> + '_ {
+        self.streams.iter().filter_map(|s| match s {
+            StreamSpec::Klv {
+                pid,
+                stream_type,
+                carries_pts,
+            } => Some((*pid, *stream_type, *carries_pts)),
+            _ => None,
+        })
+    }
+
+    /// First (and in v0, only) video stream's PID, if configured.
+    pub fn primary_video_pid(&self) -> Option<u16> {
+        self.video_streams().next().map(|(pid, _)| pid)
+    }
+
+    /// First (and in v0, only) KLV stream's PID, if configured.
+    pub fn primary_klv_pid(&self) -> Option<u16> {
+        self.klv_streams().next().map(|(pid, _, _)| pid)
+    }
+}
+
+/// Ergonomic construction of [`Config`] with one chain of method calls.
+///
+/// Mirrors the C-side builder shape (`srtc_mux_config_*`). Build then
+/// call [`ConfigBuilder::build`] to get a validated [`Config`].
+#[derive(Debug, Clone, Default)]
+pub struct ConfigBuilder {
+    streams: Vec<StreamSpec>,
+    pcr_pid: Option<u16>,
+    pcr_interval_ms: Option<u32>,
+    psi_interval_ms: Option<u32>,
+    buffer_packets: Option<usize>,
+}
+
+impl ConfigBuilder {
+    pub fn add_stream(mut self, spec: StreamSpec) -> Self {
+        self.streams.push(spec);
+        self
+    }
+
+    pub fn add_video(self, pid: u16, codec: VideoCodec) -> Self {
+        self.add_stream(StreamSpec::Video { pid, codec })
+    }
+
+    pub fn add_klv(self, pid: u16, stream_type: KlvStreamType, carries_pts: bool) -> Self {
+        self.add_stream(StreamSpec::Klv {
+            pid,
+            stream_type,
+            carries_pts,
+        })
+    }
+
+    pub fn pcr_pid(mut self, pid: u16) -> Self {
+        self.pcr_pid = Some(pid);
+        self
+    }
+
+    pub fn pcr_interval_ms(mut self, ms: u32) -> Self {
+        self.pcr_interval_ms = Some(ms);
+        self
+    }
+
+    pub fn psi_interval_ms(mut self, ms: u32) -> Self {
+        self.psi_interval_ms = Some(ms);
+        self
+    }
+
+    pub fn buffer_packets(mut self, n: usize) -> Self {
+        self.buffer_packets = Some(n);
+        self
+    }
+
+    /// Finalize. Returns a validated [`Config`] or an error describing the
+    /// failed rule.
+    pub fn build(self) -> Result<Config, MuxError> {
+        let cfg = Config {
+            streams: self.streams,
+            pcr_pid: self.pcr_pid,
+            pcr_interval_ms: self.pcr_interval_ms.unwrap_or(40),
+            psi_interval_ms: self.psi_interval_ms.unwrap_or(100),
+            buffer_packets: self.buffer_packets.unwrap_or(10_000),
+        };
+        cfg.validate()?;
+        Ok(cfg)
     }
 }
 
@@ -166,6 +375,13 @@ use self::ts::{AdaptationField, ContinuityCounters, write_packet};
 /// `docs/specs/2026-05-01-srt-core-mpegts-mux-design.md`.
 pub struct Muxer {
     config: Config,
+    // Cached scalars derived from config.streams at construction time.
+    // Avoids repeated iteration through the streams vec in hot paths.
+    video_pid: u16,
+    video_codec: VideoCodec,
+    klv_pid: u16,
+    klv_stream_type: KlvStreamType,
+    klv_carries_pts: bool,
     pcr_pid: u16,
     pcr_interval_27mhz: u64,
     psi_interval_90khz: i64,
@@ -183,11 +399,35 @@ impl Muxer {
     /// Construct and validate.
     pub fn new(config: Config) -> Result<Self, MuxError> {
         config.validate()?;
+
+        // v0 muxer requires both video and KLV streams. Path 3 lifts this.
+        if config.video_streams().next().is_none() {
+            return Err(MuxError::InvalidConfig(
+                "v0 muxer requires exactly one video stream",
+            ));
+        }
+        if config.klv_streams().next().is_none() {
+            return Err(MuxError::InvalidConfig(
+                "v0 muxer requires exactly one klv stream",
+            ));
+        }
+
         let pcr_pid = config.resolved_pcr_pid();
         let pcr_interval_27mhz = (config.pcr_interval_ms as u64) * 27_000;
         let psi_interval_90khz = (config.psi_interval_ms as i64) * 90;
+
+        // v0 always has ≤1 video and ≤1 klv. Pull them out via the helpers.
+        let (video_pid, video_codec) = config.video_streams().next().expect("checked above");
+        let (klv_pid, klv_stream_type, klv_carries_pts) =
+            config.klv_streams().next().expect("checked above");
+
         Ok(Self {
             config,
+            video_pid,
+            video_codec,
+            klv_pid,
+            klv_stream_type,
+            klv_carries_pts,
             pcr_pid,
             pcr_interval_27mhz,
             psi_interval_90khz,
@@ -249,7 +489,7 @@ impl Muxer {
                 if key_frame {
                     adaptation.random_access = true;
                 }
-                if self.pcr_pid == self.config.video_pid && self.pcr_due(pts_90khz) {
+                if self.pcr_pid == self.video_pid && self.pcr_due(pts_90khz) {
                     let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
                     adaptation.pcr = Some(pcr);
                     self.last_pcr_emission_27mhz = Some(pcr.0);
@@ -258,7 +498,7 @@ impl Muxer {
             let mut pkt = [0u8; 188];
             let result = write_packet(
                 &mut pkt,
-                self.config.video_pid,
+                self.video_pid,
                 first,
                 adaptation,
                 &pes_buf[cursor..],
@@ -274,11 +514,11 @@ impl Muxer {
 
     /// Push one KLV metadata blob.
     ///
-    /// `pts_90khz` becomes the PES PTS when `Config::klv_carries_pts` is
-    /// true; ignored otherwise.
+    /// `pts_90khz` becomes the PES PTS when the KLV stream was configured with
+    /// `carries_pts: true` in [`StreamSpec::Klv`]; ignored otherwise.
     /// Returns `Err(MuxError::BufferFull)` like `push_video`.
     pub fn push_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
-        let pts_field = if self.config.klv_carries_pts {
+        let pts_field = if self.klv_carries_pts {
             PesPtsField::PtsOnly(Pts90khz(pts_90khz))
         } else {
             PesPtsField::None
@@ -286,7 +526,7 @@ impl Muxer {
 
         // PES_packet_length is u16; subtract flags1+flags2+header_data_length
         // (3 bytes) and the optional PTS (5 bytes if klv_carries_pts).
-        let pes_overhead = 3usize + if self.config.klv_carries_pts { 5 } else { 0 };
+        let pes_overhead = 3usize + if self.klv_carries_pts { 5 } else { 0 };
         let max_klv = (u16::MAX as usize) - pes_overhead;
         if klv.len() > max_klv {
             return Err(MuxError::KlvTooLarge {
@@ -324,7 +564,7 @@ impl Muxer {
         while cursor < pes_buf.len() {
             let mut adaptation = AdaptationField::default();
             // PCR rides on KLV PID only if pcr_pid was explicitly set to it.
-            if first && self.pcr_pid == self.config.klv_pid && self.pcr_due(pts_90khz) {
+            if first && self.pcr_pid == self.klv_pid && self.pcr_due(pts_90khz) {
                 let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
                 adaptation.pcr = Some(pcr);
                 self.last_pcr_emission_27mhz = Some(pcr.0);
@@ -332,7 +572,7 @@ impl Muxer {
             let mut pkt = [0u8; 188];
             let result = write_packet(
                 &mut pkt,
-                self.config.klv_pid,
+                self.klv_pid,
                 first,
                 adaptation,
                 &pes_buf[cursor..],
@@ -401,23 +641,23 @@ impl Muxer {
         self.queue.push_back(pat);
 
         let mut pmt = [0u8; 188];
-        let video_st = match self.config.video_codec {
+        let video_st = match self.video_codec {
             VideoCodec::H264 => StreamType::H264,
             VideoCodec::H265 => StreamType::H265,
         };
-        let klv_st = match self.config.klv_stream_type {
+        let klv_st = match self.klv_stream_type {
             KlvStreamType::PrivateData => StreamType::KlvPrivate,
             KlvStreamType::SynchronousMetadata => StreamType::KlvSyncMetadata,
         };
         let entries = [
             PmtStreamEntry {
                 stream_type: video_st,
-                elementary_pid: self.config.video_pid,
+                elementary_pid: self.video_pid,
                 descriptors: &[],
             },
             PmtStreamEntry {
                 stream_type: klv_st,
-                elementary_pid: self.config.klv_pid,
+                elementary_pid: self.klv_pid,
                 descriptors: KLVA_REGISTRATION_DESCRIPTOR,
             },
         ];
@@ -457,73 +697,82 @@ mod tests {
 
     #[test]
     fn rejects_video_pid_zero() {
-        let cfg = Config {
-            video_pid: 0x0000,
-            ..Default::default()
-        };
+        let mut cfg = Config::default();
+        if let Some(StreamSpec::Video { pid, .. }) = cfg
+            .streams
+            .iter_mut()
+            .find(|s| matches!(s, StreamSpec::Video { .. }))
+        {
+            *pid = 0x0000;
+        }
         assert!(matches!(
             cfg.validate(),
             Err(MuxError::InvalidConfig(
-                "video_pid must be in 0x0010..=0x1FFE"
+                "video pid must be in 0x0010..=0x1FFE"
             ))
         ));
     }
 
     #[test]
     fn rejects_klv_pid_null() {
-        let cfg = Config {
-            klv_pid: 0x1FFF,
-            ..Default::default()
-        };
+        let mut cfg = Config::default();
+        if let Some(StreamSpec::Klv { pid, .. }) = cfg
+            .streams
+            .iter_mut()
+            .find(|s| matches!(s, StreamSpec::Klv { .. }))
+        {
+            *pid = 0x1FFF;
+        }
         assert!(matches!(
             cfg.validate(),
             Err(MuxError::InvalidConfig(
-                "klv_pid must be in 0x0010..=0x1FFE"
+                "klv pid must be in 0x0010..=0x1FFE"
             ))
         ));
     }
 
     #[test]
     fn rejects_pid_collision() {
-        let cfg = Config {
-            video_pid: 0x1234,
-            klv_pid: 0x1234,
-            ..Default::default()
-        };
+        let cfg = Config::builder()
+            .add_video(0x1234, VideoCodec::H264)
+            .add_klv(0x1234, KlvStreamType::PrivateData, false)
+            .build();
         assert!(matches!(
-            cfg.validate(),
-            Err(MuxError::InvalidConfig("video_pid and klv_pid must differ"))
+            cfg,
+            Err(MuxError::InvalidConfig("stream PIDs must all be distinct"))
         ));
     }
 
     #[test]
     fn rejects_unrelated_pcr_pid() {
-        let cfg = Config {
-            pcr_pid: Some(0x0500),
-            ..Default::default()
-        };
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .pcr_pid(0x0500)
+            .build();
         assert!(matches!(
-            cfg.validate(),
+            cfg,
             Err(MuxError::InvalidConfig(
-                "pcr_pid must equal video_pid or klv_pid"
+                "pcr_pid must equal a configured stream PID"
             ))
         ));
     }
 
     #[test]
     fn accepts_pcr_pid_on_klv() {
-        let cfg = Config {
-            pcr_pid: Some(0x1031), // = default klv_pid
-            ..Default::default()
-        };
-        cfg.validate().expect("pcr_pid on klv is allowed");
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .pcr_pid(0x1031)
+            .build();
+        cfg.expect("pcr_pid on klv is allowed");
     }
 
     #[test]
     fn rejects_pcr_interval_zero() {
         let cfg = Config {
             pcr_interval_ms: 0,
-            ..Default::default()
+            ..Config::default()
         };
         assert!(cfg.validate().is_err());
     }
@@ -532,7 +781,7 @@ mod tests {
     fn rejects_pcr_interval_over_100() {
         let cfg = Config {
             pcr_interval_ms: 150,
-            ..Default::default()
+            ..Config::default()
         };
         assert!(matches!(
             cfg.validate(),
@@ -546,7 +795,7 @@ mod tests {
     fn rejects_psi_interval_too_small() {
         let cfg = Config {
             psi_interval_ms: 5,
-            ..Default::default()
+            ..Config::default()
         };
         assert!(matches!(
             cfg.validate(),
@@ -558,7 +807,7 @@ mod tests {
     fn rejects_buffer_too_small() {
         let cfg = Config {
             buffer_packets: 5,
-            ..Default::default()
+            ..Config::default()
         };
         assert!(matches!(
             cfg.validate(),
@@ -568,37 +817,37 @@ mod tests {
 
     #[test]
     fn rejects_sync_without_pts() {
-        let cfg = Config {
-            klv_stream_type: KlvStreamType::SynchronousMetadata,
-            klv_carries_pts: false,
-            ..Default::default()
-        };
-        assert!(cfg.validate().is_err());
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::SynchronousMetadata, false)
+            .build();
+        assert!(cfg.is_err());
     }
 
     #[test]
     fn accepts_async_with_pts_combo() {
         // 0x06 + PTS — the common-practice "sync KLV everyone recognizes"
-        let cfg = Config {
-            klv_stream_type: KlvStreamType::PrivateData,
-            klv_carries_pts: true,
-            ..Default::default()
-        };
-        cfg.validate().expect("0x06 + PTS is valid");
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, true)
+            .build();
+        cfg.expect("0x06 + PTS is valid");
     }
 
     #[test]
     fn resolved_pcr_pid_default() {
         let cfg = Config::default();
-        assert_eq!(cfg.resolved_pcr_pid(), cfg.video_pid);
+        assert_eq!(cfg.resolved_pcr_pid(), cfg.primary_video_pid().unwrap());
     }
 
     #[test]
     fn resolved_pcr_pid_explicit() {
-        let cfg = Config {
-            pcr_pid: Some(0x1031),
-            ..Default::default()
-        };
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .pcr_pid(0x1031)
+            .build()
+            .unwrap();
         assert_eq!(cfg.resolved_pcr_pid(), 0x1031);
     }
 
@@ -610,10 +859,14 @@ mod tests {
 
     #[test]
     fn muxer_rejects_invalid_config() {
-        let cfg = Config {
-            video_pid: 0,
-            ..Default::default()
-        };
+        let mut cfg = Config::default();
+        if let Some(StreamSpec::Video { pid, .. }) = cfg
+            .streams
+            .iter_mut()
+            .find(|s| matches!(s, StreamSpec::Video { .. }))
+        {
+            *pid = 0;
+        }
         let res = Muxer::new(cfg);
         assert!(res.is_err());
     }
@@ -671,7 +924,7 @@ mod tests {
     fn buffer_full_returned_when_overcommitted() {
         let cfg = Config {
             buffer_packets: 10,
-            ..Default::default()
+            ..Config::default()
         };
         let mut mux = Muxer::new(cfg).unwrap();
         // A 50KB IDR is much larger than 10 packets can hold.
@@ -697,7 +950,7 @@ mod tests {
     fn buffer_full_does_not_modify_state() {
         let cfg = Config {
             buffer_packets: 10,
-            ..Default::default()
+            ..Config::default()
         };
         let mut mux = Muxer::new(cfg).unwrap();
         let nal = vec![0u8; 50_000];
@@ -803,10 +1056,13 @@ mod tests {
     fn push_klv_with_pts_reduces_max() {
         // With klv_carries_pts=true, header_data_length=5, so max payload =
         // 65535 - 3 - 5 = 65527.
-        let mut mux = Muxer::new(Config {
-            klv_carries_pts: true,
-            ..Config::default()
-        })
+        let mut mux = Muxer::new(
+            Config::builder()
+                .add_video(0x1011, VideoCodec::H264)
+                .add_klv(0x1031, KlvStreamType::PrivateData, true)
+                .build()
+                .unwrap(),
+        )
         .unwrap();
         let too_big = vec![0u8; 65_528];
         let err = mux.push_klv(&too_big, 90_000).unwrap_err();
@@ -817,5 +1073,74 @@ mod tests {
             }
             other => panic!("expected MuxError::KlvTooLarge, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn config_rejects_empty_streams() {
+        let cfg = Config {
+            streams: vec![],
+            ..Config::default()
+        };
+        let err = cfg.validate().unwrap_err();
+        assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("at least one stream")));
+    }
+
+    #[test]
+    fn config_rejects_two_video_streams() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_video(0x1021, VideoCodec::H265)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .build();
+        let err = cfg.unwrap_err();
+        assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("at most one video")));
+    }
+
+    #[test]
+    fn config_rejects_two_video_same_pid_with_count_error_first() {
+        // When the caller passes two video streams sharing a PID, the
+        // count check fires before the distinct-PIDs check. Pinned here so
+        // the validation order is part of the contract — callers debugging
+        // this error see "at most one video stream" rather than "PIDs must
+        // all be distinct".
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_video(0x1011, VideoCodec::H265)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .build();
+        let err = cfg.unwrap_err();
+        assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("at most one video")));
+    }
+
+    #[test]
+    fn config_rejects_two_klv_streams() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .add_klv(0x1032, KlvStreamType::PrivateData, true)
+            .build();
+        let err = cfg.unwrap_err();
+        assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("at most one klv")));
+    }
+
+    #[test]
+    fn config_rejects_duplicate_pids() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1011, KlvStreamType::PrivateData, false)
+            .build();
+        let err = cfg.unwrap_err();
+        assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("distinct")));
+    }
+
+    #[test]
+    fn config_pcr_pid_must_match_stream() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .pcr_pid(0x1099) // not configured
+            .build();
+        let err = cfg.unwrap_err();
+        assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("pcr_pid")));
     }
 }

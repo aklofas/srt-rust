@@ -10,7 +10,7 @@
 mod common;
 
 use common::ts_parser;
-use srt_core::mpegts::mux::{Config, Muxer, VideoCodec};
+use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 use std::fs;
 use std::path::Path;
 
@@ -65,13 +65,12 @@ fn process_one(path: &Path) {
     };
 
     // Re-mux with our Muxer.
-    let cfg = Config {
-        video_pid: 0x1011,
-        klv_pid: 0x1031,
-        video_codec: codec,
-        buffer_packets: 200_000,
-        ..Default::default()
-    };
+    let cfg = Config::builder()
+        .add_video(0x1011, codec)
+        .add_klv(0x1031, KlvStreamType::PrivateData, false)
+        .buffer_packets(200_000)
+        .build()
+        .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
 
     // Interleave video + KLV pushes by PTS, draining incrementally to keep

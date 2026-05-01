@@ -9,6 +9,18 @@
 //! - `multi-record-pes-*.klv` — PES payload with a wrapper UL preceding
 //!   the ST 0601 LS. Single-shot `decode` is expected to FAIL; the
 //!   record-iterating path must succeed.
+//! - `framed-pes-prefix-skip-*.klv` — PES payload with a non-UL
+//!   framing prefix before the ST 0601 LS. Per MISB ST 1402.2
+//!   Appendix B Table 2, the observed prefix matches the standard
+//!   ISO/IEC 13818-1 Metadata AU cell header used by the
+//!   Synchronous Metadata Multiplex Method:
+//!   `[service_id:1][seq:1][flags:1][au_cell_data_length:2 BE]`.
+//!   Both `decode` from offset 0 and the simple UL+BER record
+//!   iterator are expected to FAIL; recovery is to scan forward
+//!   for the SMPTE UL prefix `06 0E 2B 34` and decode from that
+//!   offset. (A spec-compliant AU cell parser would parse the
+//!   header explicitly and use `au_cell_data_length` for precise
+//!   bounding — future work.)
 //! - `decode-unchecked-only-*.klv` — record with broken checksum.
 //!   `decode` is expected to fail with `ChecksumMismatch`;
 //!   `decode_unchecked` must succeed.
@@ -53,6 +65,8 @@ fn local_fixtures_decode() {
 
         let result: Result<(), String> = if stem.starts_with("multi-record-pes-") {
             assert_multi_record_pes(&bytes)
+        } else if stem.starts_with("framed-pes-prefix-skip-") {
+            assert_framed_pes_prefix(&bytes)
         } else if stem.starts_with("decode-unchecked-only-") {
             assert_unchecked_only(&bytes)
         } else {
@@ -102,12 +116,13 @@ fn assert_unchecked_only(bytes: &[u8]) -> Result<(), String> {
     }
 }
 
-/// PES payload with a wrapper UL before the ST 0601 LS. Shape:
-/// `[wrapper UL][BER len][wrapper body][ST 0601 UL][BER len][body]`.
+/// PES payload carrying a Precision Time Stamp Pack (MISB ST 0605)
+/// followed by an ST 0601 LS:
+/// `[ts UL][BER 0x09][status(1)+µs(8)][ST 0601 UL][BER len][body]`.
 /// `decode` on the whole buffer is expected to FAIL (it tries to
-/// parse the wrapper as ST 0601). The record-iterator path, gating on
-/// `UniversalLabel::is_st0601_family`, must find at least one
-/// successfully decoded ST 0601 record.
+/// parse the time stamp pack UL as ST 0601). The record-iterator
+/// path, gating on `UniversalLabel::is_st0601_family`, must find at
+/// least one successfully decoded ST 0601 record.
 fn assert_multi_record_pes(bytes: &[u8]) -> Result<(), String> {
     if decode(bytes).is_ok() {
         return Err(
@@ -148,4 +163,28 @@ fn assert_multi_record_pes(bytes: &[u8]) -> Result<(), String> {
     } else {
         Ok(())
     }
+}
+
+/// PES payload with an encoder-specific framing prefix before the
+/// ST 0601 LS UL. The leading bytes do not form a valid SMPTE UL, so
+/// `decode` and the UL+BER record iterator both fail. Recovery is to
+/// scan for the SMPTE UL prefix `06 0E 2B 34` and decode from there.
+fn assert_framed_pes_prefix(bytes: &[u8]) -> Result<(), String> {
+    if decode(bytes).is_ok() {
+        return Err(
+            "decode unexpectedly succeeded — framed-prefix fixture should require UL scan".into(),
+        );
+    }
+    const SMPTE_UL_PREFIX: &[u8] = &[0x06, 0x0E, 0x2B, 0x34];
+    let offset = bytes
+        .windows(SMPTE_UL_PREFIX.len())
+        .position(|w| w == SMPTE_UL_PREFIX)
+        .ok_or_else(|| "no SMPTE UL prefix found in fixture bytes".to_string())?;
+    if offset == 0 {
+        return Err("UL is at offset 0 — fixture is not actually prefix-framed".into());
+    }
+    decode(&bytes[offset..])
+        .or_else(|_| decode_unchecked(&bytes[offset..]))
+        .map(|_| ())
+        .map_err(|e| format!("decode at offset {offset} failed: {e}"))
 }

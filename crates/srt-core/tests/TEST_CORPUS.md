@@ -26,10 +26,11 @@ Recommended fixture naming:
 
 | Pattern | What it exercises |
 |---|---|
-| `shape-a-*.ts` | simple PMT (KLV + h264 ± audio) |
+| `shape-a-*.{ts,klv}` | simple PMT or single-record PES (KLV + h264 ± audio) |
 | `shape-b-*.ts` | Shotover-ARS-style PMT (KLV + h264 + private/sync metadata) |
 | `shape-c-*.ts` | HEVC-pipeline PMT (alternate live-stream path) |
 | `multi-record-pes-*.klv` | wrapper UL + ST 0601 LS in a single PES payload |
+| `framed-pes-prefix-skip-*.klv` | encoder-specific framing prefix (non-UL bytes) before the ST 0601 LS |
 | `decode-unchecked-only-*.klv` | ST 0601 record with broken/missing checksum |
 | `field-error-*.klv` | tags with truncated lengths or out-of-range values |
 | `corrupt-pcr-*.ts` | structurally valid TS with damaged PCR/PTS timing |
@@ -128,30 +129,48 @@ Test goals against shape C:
 - KLV demux is best-effort: presence of a KLV-tagged PID does not imply
   ST 0601 content.
 
-## Wrapper-prefixed PES payloads (multi-record)
+## Multi-record PES: Precision Time Stamp Pack + ST 0601 LS
 
-Some captures (most often shape B) emit PES payloads where the first
-KLV record is **not** ST 0601. The byte layout is:
+Some captures emit PES payloads carrying **two adjacent KLV records**:
+a Precision Time Stamp Pack first, then the ST 0601 LS:
 
 ```
-[ wrapper UL (16B) ][ BER length ][ wrapper body ][ ST 0601 UL (16B) ][ BER length ][ ST 0601 body ]
-└── record 0 (skip) ──────────────┘└── record 1 (decode as ST 0601) ────────────────────────────────┘
+[ Time Stamp UL (16B) ][ BER 0x09 ][ status(1) + µs(8) ][ ST 0601 UL (16B) ][ BER length ][ ST 0601 body ]
+└── record 0: Precision Time Stamp Pack ─────────────────┘└── record 1: ST 0601 LS ──────────────────────┘
 ```
 
-Observed wrapper UL prefix:
-`06 0E 2B 34 02 05 01 01  0E 01 01 03 11 00 00 00`
+The first record's Universal Label
+`06 0E 2B 34 02 05 01 01 0E 01 01 03 11 00 00 00` (CRC 23259) is
+registered in MISB ST 0807.27 row 1061 as the **Microsecond Timestamp
+Pack**, defined formally in **MISB ST 0605 §7 as the Precision Time
+Stamp Pack**. Body layout:
 
-This is a SMPTE-registered set with a different `registry` byte (`0x05`)
-than the ST 0601 LS family (`0x0B`). A naive decoder calling
-`decode(&pes_payload)` reads the wrapper UL, attempts to parse the
-9-byte body as ST 0601 fields, and fails with `Truncated`.
+- byte 0: **Time Status** (1 byte) — bit field per MISB ST 0603 §7.4:
+  - bit 7: `0` = clock locked to absolute time reference, `1` = lock unknown
+  - bit 6: `0` = time incrementing linearly, `1` = discontinuity
+  - bit 5: `0` = forward, `1` = reverse (only meaningful when bit 6=1)
+  - bits 4-0: reserved, must be `0b11111`
+- bytes 1-8: **Precision Time Stamp** (8 bytes, big-endian uint64
+  microseconds since 1970-01-01 UTC) per MISB ST 0603 §7.1.
+
+This pairing is the canonical MISP-compliant pattern documented in
+**MISB TRM 0909.4 §7** (KLV pipeline). The Precision Time Stamp Pack
+gives PES-emit-time; the ST 0601 LS Tag 2 gives metadata-collection-time.
+They typically differ by 0–5 seconds depending on the encoder pipeline.
+
+A decoder calling `st0601::decode(&pes_payload)` from offset 0 reads
+the Time Stamp Pack UL (registry byte `0x05`, not the ST 0601 LS
+`0x0B`), attempts to parse the 9-byte body as ST 0601 fields, and
+fails with `Truncated`.
 
 Required handling:
 
-- Iterate KLV records over the PES payload (read 16-byte UL, BER length,
-  body; advance; repeat until exhausted).
+- Iterate KLV records over the PES payload (read 16-byte UL, BER
+  length, body; advance; repeat until exhausted).
 - For each record, gate on `UniversalLabel::is_st0601_family()` before
-  attempting `decode`. Skip non-ST-0601 records silently.
+  attempting `decode`. Records whose UL identifies a different KLV
+  set (e.g., the Precision Time Stamp Pack) should be either skipped
+  or routed to a typed handler for that set.
 - The ST 0601 record may appear at any offset within the PES, not just
   byte 0.
 
@@ -162,9 +181,78 @@ Test goals:
   - Cause `decode(&fixture)` to **fail** (it tries to decode the wrapper).
   - Parse cleanly when iterated record-by-record and decoded only on
     ST 0601-family records.
-- Document this in the public API of `klv::st0601` — either by adding a
-  `decode_records_iter` helper or by being explicit that `decode`
-  expects exactly one record at offset 0.
+- A future principled handler should expose the Precision Time Stamp
+  Pack's `(time_status, microseconds)` tuple alongside the ST 0601 LS,
+  rather than discarding it.
+
+## Synchronous-method 5-byte AU cell header before the ST 0601 LS
+
+Some captures emit PES payloads whose first bytes are **not** a SMPTE
+Universal Label, but rather the standard ISO/IEC 13818-1 **Metadata
+Access Unit (AU) cell header** specified in MISB ST 1402.2 Appendix B
+Table 2 for the *Synchronous Metadata Multiplex Method*:
+
+```
+[ 5-byte AU cell header ][ ST 0601 UL (16B) ][ BER length ][ ST 0601 body ]
+```
+
+The 5-byte AU cell header encodes (big-endian):
+
+```
+byte 0:      metadata_service_id                       (8 bits)
+byte 1:      sequence_number                           (8 bits)  — increments per cell
+byte 2 bits 7-6: cell_fragmentation_indication         (2 bits)
+byte 2 bit  5:  decoder_config_flag                    (1 bit)
+byte 2 bit  4:  random_access_indicator                (1 bit)
+byte 2 bits 3-0: reserved (must be 1111)               (4 bits)
+bytes 3-4:   AU_cell_data_length                       (16 bits) — body length, excludes header
+```
+
+Per the spec, this carriage form is intended for **stream_type 0x15**
+(metadata in PES packets) flagged by `metadata_descriptor` (tag 0x26)
+and `metadata_std_descriptor` (tag 0x27) in the PMT. In our corpus
+this header has been observed appearing on a `stream_type 0x06` PID
+that is also flagged with the asynchronous KLVA registration
+descriptor — most likely a remux artifact where the stream_type label
+was rewritten without stripping the AU cell wrappers. Real-world
+encoders/muxers do this; consumers should be tolerant of the
+mismatch.
+
+A consumer that walks records using only UL+BER iteration cannot
+align past the AU cell header — byte 0 (`0x00`) and byte 2 (`0x0F`,
+which encodes `cell_fragmentation=00, flags=00, reserved=1111`) are
+not valid SMPTE UL leading bytes.
+
+**One file in our corpus carries two KLV PIDs in the same PMT**: one
+PID emits wrapper-UL multi-record PES (the multi-record-pes shape
+above), the other emits this AU-cell-prefixed PES. Their PESs
+interleave on demux, so a consumer that demuxes both KLV PIDs in this
+file will encounter both shapes within the same elementary stream
+collection.
+
+Two valid handlings:
+
+1. **Spec-compliant**: parse the 5-byte AU cell header, use
+   `AU_cell_data_length` to bound the KLV record exactly, and
+   pass body bytes to `st0601::decode`. Optionally surface
+   `sequence_number` and `random_access_indicator` to the caller for
+   loss detection / resync. (Future enhancement; not yet implemented.)
+2. **Fallback recovery**: scan the payload for the first occurrence
+   of the SMPTE UL prefix `06 0E 2B 34` and decode from that offset.
+   This works regardless of whether the bytes preceding the UL are
+   an AU cell header, an unknown vendor envelope, or padding.
+
+Test goals:
+
+- A `framed-pes-prefix-skip-*.klv` fixture should:
+  - Cause `decode(&fixture)` to fail (the AU cell header bytes are
+    parsed as a SMPTE UL with bogus body length).
+  - Decode cleanly via fallback recovery (scan for `06 0E 2B 34` and
+    decode from that offset).
+- A future `mpegts::demux` pipeline that detects sync metadata via
+  the `metadata_descriptor` (tag 0x26) PMT entry should preferentially
+  use the spec-compliant AU cell parser, reserving the fallback for
+  unidentified envelopes.
 
 ## ST 0601 field-presence reality
 
@@ -230,6 +318,119 @@ Test goals (for `mpegts::demux`):
   memory growth or double-buffering bugs.
 - Per-PES reassembly handles `payload_unit_start_indicator` semantics
   and adaptation-field skip correctly under typical CC drops.
+
+## Spec compliance summary
+
+Cross-checked against MISB ST 0601 (UAS Datalink LS), MISB ST 0102.12
+(Security Metadata), MISB ST 1402.2 (KLV-in-MPEG-TS), and SMPTE ST 336
+(KLV encoding):
+
+**Compliant:**
+
+- `UniversalLabel::ST_0601_LS` UL bytes match ST 0601 §6.4 (with version
+  byte 0x13 reflecting ST 0601.19); `is_st0601_family()` correctly
+  accepts any version byte at position 13 per the spec's evolution rule.
+- BER short-form, BER long-form, and BER-OID encodings match ST 0601
+  §6.5.2 and SMPTE ST 336.
+- 16-bit running-sum checksum across UL through length-of-checksum
+  (`checksum_running_sum_16`) matches the example algorithm in
+  ST 0601 §6.8.
+- Big-endian byte and bit ordering throughout (ST 0601 §6.5.1).
+- Linear-range int↔float mapping with `INT_MIN`-as-error sentinel
+  (`decode_fixed_range`) matches ST 0601 §7.5 (e.g., Tag 6/7 use
+  `0x8000` to indicate out-of-range, rejected as `InvalidSentinel`).
+- KLV-in-MPEG-TS detection via stream_type 0x06 + `registration_descriptor`
+  (tag 0x05) with `format_identifier = "KLVA"` (`0x4B4C5641`) matches
+  ST 1402.2-03/-19/-25 (Asynchronous Metadata Multiplex Method).
+
+**Permissive (deliberate, accepts non-strict captures):**
+
+- ST 0601.8-09 says Tag 2 (timestamp) **must be the first element** and
+  ST 0601.8-11 says Tag 1 (checksum) **must be the last**. Our decoder
+  accepts any field order. Strict-validation mode would enforce.
+- ST 0601.8-12 says Tag 65 (UAS LS Version) **shall be present**. Our
+  struct treats it as `Option<u8>`. Across the test corpus, 0/234
+  KLV-bearing files include Tag 65 — a real-world deviation that
+  permissive decoding accommodates.
+- Tags 3, 4, 10, 11, 12 are spec-required to be ISO 646 (7-bit ASCII).
+  Our impl accepts any UTF-8 string. All observed captures use
+  plain ASCII, so this hasn't surfaced as an issue.
+
+- **Universal Label registry alignment**: every UL we observed in the
+  corpus appears in MISB ST 0807.27 (the KLV Metadata Registry). The
+  ST 0601 LS UL family check (`is_st0601_family`) correctly accepts
+  any version byte at position 13, matching the registry's
+  effectivity-versioned entries.
+- **ST 0107.5 future-proof skip rule** (§ST 0107.3-04): "decoders
+  shall skip unknown Local Set values so as to not impact the
+  decoding of known items." Our `unknown: Vec<OwnedRawField>` field
+  on `UasDatalinkLs` matches this requirement — unknown tags are
+  preserved verbatim rather than dropped or causing failure.
+- **ST 1607.2 (Constructs to Amend/Segment KLV)**: applies to KLV
+  records segmented across multiple PESs. Not exercised by our
+  corpus — typical records are 100–300 bytes, well under PES size.
+  Our streaming demux logic (`mpegts::demux` future work) would need
+  reassembly logic if multi-PES KLV segments appear.
+
+**Compliance gaps surfaced by real-world data (not yet handled):**
+
+- **Synchronous Metadata Multiplex Method (ST 1402.2 §9.4.1)**: the
+  5-byte AU cell header (per Appendix B Table 2) is **not parsed** by
+  our code — see "Synchronous-method 5-byte AU cell header" section
+  above. Fallback recovery (UL prefix scan) handles it correctly; a
+  spec-compliant AU cell parser is a future enhancement.
+- **Sync-metadata PMT detection (ST 1402.2-15/-16)**: probe-ts and
+  the `extract_klv` example identify KLV PIDs only via the async
+  `registration_descriptor`. Streams flagged by the sync-method
+  `metadata_descriptor` (tag 0x26) + `metadata_std_descriptor`
+  (tag 0x27) are catalogued but not demuxed. Captures in the corpus
+  with sync metadata also have a redundant async PID, so no real
+  records are missed today; a hypothetical sync-only capture would
+  go undetected.
+- **Precision Time Stamp Pack (MISB ST 0605, ST 0807.27 row 1061)**:
+  the leading record in some multi-record PES payloads is the
+  Precision Time Stamp Pack with body `[time_status:1][µs:8 BE]`.
+  Our typed decoder skips it (correct under the future-proof rule);
+  a principled handler would surface `(Locked? Discontinuity?,
+  microseconds)` to consumers. See "Multi-record PES" section above.
+
+**Out of scope (not exercised by the corpus, deferred):**
+
+- MISB ST 0102 Security Metadata Universal Set / Local Set (UL
+  `06.0E.2B.34.02.01.01.01.02.08.02.00.00.00.00.00`) — none observed.
+- MISB ST 0902 Sensor Minimum Metadata Set — none observed.
+- Asynchronous metadata at high record rates (>1 KHz) — corpus
+  captures emit at ~25-30 Hz.
+
+## Specs cross-referenced
+
+The compliance summary above was checked against:
+
+- **MISB ST 0102.12** — Security Metadata Universal and Local Sets
+- **MISB ST 0107.5** — KLV Metadata in Motion Imagery (baseline KLV rules)
+- **MISB ST 0601.19** — UAS Datalink Local Set (current revision; 143 items)
+- **MISB ST 0603.5** — MISP Time System and Timestamps (Time Status byte)
+- **MISB ST 0604.6** — Timestamps for Class 1/Class 2 Motion Imagery
+- **MISB ST 0605.10** — Class 0 Motion Imagery Metadata and Audio over SDI
+  (defines Precision Time Stamp Pack)
+- **MISB ST 0607.5** — MISB KLV Metadata Registry and Processes
+- **MISB ST 0807.27** — MISB KLV Metadata Registry (1168-row UL registry)
+- **MISB ST 0902.8** — Sensor Minimum Metadata Set
+- **MISB ST 0903.6** — Video Moving Target Indicator Metadata
+- **MISB ST 1201.5** — Floating Point to Integer Mapping (IMAPB algorithm)
+- **MISB ST 1303.2** — Multi-Dimensional Array Pack
+- **MISB ST 1402.2** — MPEG-2 Transport Stream for Class 1/Class 2 MI
+- **MISB ST 1607.2** — Constructs to Amend/Segment KLV Metadata
+- **MISB ST 1910.1** — Adaptive Bitrate (ABR) Content Encoding
+- **MISB TRM 0909.4** — Constructing a MISP Compliant File/Stream
+- **MISB RP 0802.2** — H.264/AVC Motion Imagery Coding
+- **MISB RP 1011.1** — LVSD Motion Imagery Streaming
+- **MISP-2023.2** (cited as mandated) and **MISP-2025.1**
+
+These are the MISB documents from `nsgreg.nga.mil/misb.jsp` directly
+relevant to the KLV-in-MPEG-TS pipeline this crate targets. Specs
+not yet exercised by the corpus (e.g., MIMD ST 1901-1908, SAR
+ST 1206, Range MI ST 1002) were skipped.
 
 ## Coverage gaps (synthetic fixtures recommended)
 

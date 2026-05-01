@@ -234,6 +234,18 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 
 ---
 
+## Pipeline composition (`srt-core::pipeline`)
+
+| Feature / Type | Status | Notes |
+| --- | --- | --- |
+| `Sender<T>` | ✅ Full | Composes `Muxer` + `Transport` for the canonical NAL+KLV → TS → SRT path. Internally synchronized; lossless across transient transport failures via in-flight buffer. |
+| `TsSender<T>` | ✅ Full | Pre-muxed TS bytes → SRT with sync framing/recovery. 3-byte sync verify, 7-packet bundling, RECOVER + STRICT modes. |
+| `RawSender<T>` | ✅ Full | Byte-blind one-shot sender. One `send` call = one SRT message; size-cap validation at construction. |
+| `ManagedTransport<T>` | ✅ Full | Reconnect + gap-buffer decorator over any `Transport`. Synchronous reconnect on caller's thread; drop-oldest-message overflow policy; v0 single-thread receiver. |
+| Single-stream-shaped `Config` (Path 2 forward compat.) | ✅ Full | ≤1 video + ≤1 KLV stream today; multi-stream additive in future Path 3 without breaking changes. |
+
+---
+
 ## Standards reference — what we cite vs. what we implement
 
 The MISB / SMPTE / IETF documents that bear on `srt-rust`. The

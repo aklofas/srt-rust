@@ -29,6 +29,11 @@ pub mod srt;
 pub use error::{Error, Result};
 pub use klv::{Iter, OwnedRawField, RawField, UniversalLabel};
 pub use mpegts::mux::{KlvStreamType, Muxer, VideoCodec};
+pub use pipeline::{
+    BackoffStrategy, ManagedTransport, OverflowPolicy, RawSender, RawSenderConfig, ReconnectPolicy,
+    Sender, SenderError, SrtTransport, Transport, TransportError, TsFramingMode, TsSender,
+    TsSenderConfig, TsSenderError, TsSenderStats,
+};
 pub use srt::{
     Congestion, KeyLength, Listener, ListenerBuilder, ListenerConfig, MaxBandwidth, PacketFilter,
     Passphrase, Socket, SocketBuilder, SocketConfig, Stats, StreamId,

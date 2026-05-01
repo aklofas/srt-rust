@@ -22,12 +22,10 @@ use std::collections::BTreeMap;
 /// `BTreeMap` rather than `HashMap` to avoid pulling in a hasher dep and
 /// keep the data path zero-allocation after warm-up (we have ≤ 4 PIDs in v0).
 #[derive(Debug, Default)]
-#[allow(dead_code)] // Exercised by orchestrator in Task 8.
 pub(crate) struct ContinuityCounters {
     counters: BTreeMap<u16, u8>,
 }
 
-#[allow(dead_code)] // Exercised by orchestrator in Task 8.
 impl ContinuityCounters {
     pub fn new() -> Self {
         Self::default()
@@ -44,7 +42,7 @@ impl ContinuityCounters {
 
     /// Get the current value without incrementing — used by adaptation-only
     /// packets which must keep the counter unchanged per spec §2.4.3.3.
-    #[allow(dead_code)] // Exercised by orchestrator in Task 8.
+    #[allow(dead_code)]
     fn current(&self, pid: u16) -> u8 {
         self.counters.get(&pid).copied().unwrap_or(0) & 0x0F
     }
@@ -52,7 +50,6 @@ impl ContinuityCounters {
 
 /// Optional adaptation field contents to attach to a packet.
 #[derive(Debug, Clone, Copy, Default)]
-#[allow(dead_code)] // Exercised by orchestrator in Task 8.
 pub(crate) struct AdaptationField {
     /// Set the `random_access_indicator` flag — used on the first packet of
     /// an IDR access unit so receivers can find a tune-in point.
@@ -61,7 +58,6 @@ pub(crate) struct AdaptationField {
     pub pcr: Option<Pcr27mhz>,
 }
 
-#[allow(dead_code)] // Exercised by orchestrator in Task 8.
 impl AdaptationField {
     pub fn is_empty(&self) -> bool {
         !self.random_access && self.pcr.is_none()
@@ -81,7 +77,6 @@ impl AdaptationField {
 
 /// Result of writing a TS packet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Exercised by orchestrator in Task 8.
 pub(crate) struct WriteResult {
     /// Bytes of payload consumed from the input.
     pub payload_consumed: usize,
@@ -98,7 +93,6 @@ pub(crate) struct WriteResult {
 ///
 /// `payload_unit_start` should be true on the first packet of a new PES or
 /// PSI section.
-#[allow(dead_code)] // Exercised by orchestrator in Task 8.
 pub(crate) fn write_packet(
     out: &mut [u8; 188],
     pid: u16,
@@ -184,7 +178,6 @@ pub(crate) fn write_packet(
 
 /// Encode a PCR into 6 bytes per ISO/IEC 13818-1 §2.4.3.5:
 ///   33-bit base (90 kHz) | 6 reserved bits (set to 1) | 9-bit extension (27 MHz mod 300)
-#[allow(dead_code)] // Called from write_packet; suppressed at module level until Task 8.
 fn write_pcr(out: &mut [u8], pcr: Pcr27mhz) {
     debug_assert!(out.len() == 6);
     let base = pcr.base();

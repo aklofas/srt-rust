@@ -136,10 +136,292 @@ impl Config {
     }
 
     /// Resolve the PCR PID, defaulting to `video_pid` when `pcr_pid` is None.
-    #[allow(dead_code)] // Used in Task 8.
     pub(crate) fn resolved_pcr_pid(&self) -> u16 {
         self.pcr_pid.unwrap_or(self.video_pid)
     }
+}
+
+use crate::mpegts::common::{Pcr27mhz, Pts90khz, StreamType};
+use std::collections::VecDeque;
+
+use self::pes::{
+    MAX_PES_HEADER_SIZE, PtsDtsFlags, STREAM_ID_KLV, STREAM_ID_VIDEO, write_pes_header,
+};
+use self::psi::{KLVA_REGISTRATION_DESCRIPTOR, PmtStreamEntry, write_pat_packet, write_pmt_packet};
+use self::ts::{AdaptationField, ContinuityCounters, write_packet};
+
+/// Sender-side MPEG-TS muxer.
+///
+/// Construct with `Muxer::new(config)`, push encoded frames via `push_video`
+/// and `push_klv`, then drain TS packets with `pull`. The muxer is
+/// deterministic — output is a function of inputs only, not wall-clock time.
+///
+/// See the design doc for full semantics:
+/// `docs/specs/2026-05-01-srt-core-mpegts-mux-design.md`.
+pub struct Muxer {
+    config: Config,
+    pcr_pid: u16,
+    pcr_interval_27mhz: u64,
+    psi_interval_90khz: i64,
+
+    queue: VecDeque<[u8; 188]>,
+    counters: ContinuityCounters,
+
+    /// 90 kHz PTS at which the most recent PSI emission happened. None until
+    /// the first PSI emission is queued.
+    last_psi_emission_pts: Option<i64>,
+    /// 27 MHz PCR value at the most recent PCR emission. None until first.
+    last_pcr_emission_27mhz: Option<u64>,
+}
+
+impl Muxer {
+    /// Construct and validate.
+    pub fn new(config: Config) -> Result<Self, MuxError> {
+        config.validate()?;
+        let pcr_pid = config.resolved_pcr_pid();
+        let pcr_interval_27mhz = (config.pcr_interval_ms as u64) * 27_000;
+        let psi_interval_90khz = (config.psi_interval_ms as i64) * 90;
+        Ok(Self {
+            config,
+            pcr_pid,
+            pcr_interval_27mhz,
+            psi_interval_90khz,
+            queue: VecDeque::with_capacity(64),
+            counters: ContinuityCounters::new(),
+            last_psi_emission_pts: None,
+            last_pcr_emission_27mhz: None,
+        })
+    }
+
+    /// Push one H.264 / H.265 access unit in Annex-B framing.
+    ///
+    /// `key_frame=true` causes the first TS packet of the resulting PES to
+    /// carry an adaptation field with `random_access_indicator` set.
+    ///
+    /// Returns `Err(MuxError::InvalidNal)` if `nal` doesn't begin with an
+    /// Annex-B start code.
+    /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets would
+    /// exceed `Config::buffer_packets`. State is unchanged in either error
+    /// case.
+    pub fn push_video(
+        &mut self,
+        nal: &[u8],
+        pts_90khz: i64,
+        key_frame: bool,
+    ) -> Result<(), MuxError> {
+        validate_annex_b(nal)?;
+
+        let mut header = [0u8; MAX_PES_HEADER_SIZE];
+        let header_len = write_pes_header(
+            &mut header,
+            STREAM_ID_VIDEO,
+            PtsDtsFlags::PtsOnly,
+            Some(Pts90khz(pts_90khz)),
+            None, // unbounded for video
+        );
+
+        let total = header_len + nal.len();
+        let video_packets = ts_packets_for(total);
+        let psi_packets = if self.psi_due(pts_90khz) { 2 } else { 0 };
+
+        if self.queue.len() + psi_packets + video_packets > self.config.buffer_packets {
+            return Err(MuxError::BufferFull {
+                capacity_packets: self.config.buffer_packets,
+            });
+        }
+
+        self.maybe_emit_psi(pts_90khz);
+
+        // Build a Vec for the full PES bytes (header + NAL).
+        let mut pes_buf = Vec::with_capacity(total);
+        pes_buf.extend_from_slice(&header[..header_len]);
+        pes_buf.extend_from_slice(nal);
+
+        let mut cursor = 0;
+        let mut first = true;
+        while cursor < pes_buf.len() {
+            let mut adaptation = AdaptationField::default();
+            if first {
+                if key_frame {
+                    adaptation.random_access = true;
+                }
+                if self.pcr_pid == self.config.video_pid && self.pcr_due(pts_90khz) {
+                    let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
+                    adaptation.pcr = Some(pcr);
+                    self.last_pcr_emission_27mhz = Some(pcr.0);
+                }
+            }
+            let mut pkt = [0u8; 188];
+            let result = write_packet(
+                &mut pkt,
+                self.config.video_pid,
+                first,
+                adaptation,
+                &pes_buf[cursor..],
+                &mut self.counters,
+            );
+            cursor += result.payload_consumed;
+            self.queue.push_back(pkt);
+            first = false;
+        }
+
+        Ok(())
+    }
+
+    /// Push one KLV metadata blob.
+    ///
+    /// `pts_90khz` becomes the PES PTS when `Config::klv_carries_pts` is
+    /// true; ignored otherwise.
+    /// Returns `Err(MuxError::BufferFull)` like `push_video`.
+    pub fn push_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
+        let flags = if self.config.klv_carries_pts {
+            PtsDtsFlags::PtsOnly
+        } else {
+            PtsDtsFlags::None
+        };
+        let pts = if self.config.klv_carries_pts {
+            Some(Pts90khz(pts_90khz))
+        } else {
+            None
+        };
+
+        let mut header = [0u8; MAX_PES_HEADER_SIZE];
+        let header_len = write_pes_header(
+            &mut header,
+            STREAM_ID_KLV,
+            flags,
+            pts,
+            Some(klv.len() as u16),
+        );
+
+        let total = header_len + klv.len();
+        let klv_packets = ts_packets_for(total);
+        let psi_packets = if self.psi_due(pts_90khz) { 2 } else { 0 };
+
+        if self.queue.len() + psi_packets + klv_packets > self.config.buffer_packets {
+            return Err(MuxError::BufferFull {
+                capacity_packets: self.config.buffer_packets,
+            });
+        }
+
+        self.maybe_emit_psi(pts_90khz);
+
+        let mut pes_buf = Vec::with_capacity(total);
+        pes_buf.extend_from_slice(&header[..header_len]);
+        pes_buf.extend_from_slice(klv);
+
+        let mut cursor = 0;
+        let mut first = true;
+        while cursor < pes_buf.len() {
+            let mut adaptation = AdaptationField::default();
+            // PCR rides on KLV PID only if pcr_pid was explicitly set to it.
+            if first && self.pcr_pid == self.config.klv_pid && self.pcr_due(pts_90khz) {
+                let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
+                adaptation.pcr = Some(pcr);
+                self.last_pcr_emission_27mhz = Some(pcr.0);
+            }
+            let mut pkt = [0u8; 188];
+            let result = write_packet(
+                &mut pkt,
+                self.config.klv_pid,
+                first,
+                adaptation,
+                &pes_buf[cursor..],
+                &mut self.counters,
+            );
+            cursor += result.payload_consumed;
+            self.queue.push_back(pkt);
+            first = false;
+        }
+
+        Ok(())
+    }
+
+    /// Drain ready TS packets into `out`.
+    ///
+    /// Returns the number of bytes written: 0 or a positive multiple of 188.
+    /// `Ok(0)` indicates either an empty queue or `out.len() < 188`.
+    pub fn pull(&mut self, out: &mut [u8]) -> Result<usize, MuxError> {
+        if out.len() < 188 {
+            return Ok(0);
+        }
+        let max_packets = (out.len() / 188).min(self.queue.len());
+        for i in 0..max_packets {
+            let pkt = self.queue.pop_front().expect("checked count");
+            out[i * 188..(i + 1) * 188].copy_from_slice(&pkt);
+        }
+        Ok(max_packets * 188)
+    }
+
+    fn psi_due(&self, pts_90khz: i64) -> bool {
+        match self.last_psi_emission_pts {
+            None => true,
+            Some(last) => pts_90khz - last >= self.psi_interval_90khz,
+        }
+    }
+
+    fn pcr_due(&self, pts_90khz: i64) -> bool {
+        match self.last_pcr_emission_27mhz {
+            None => true,
+            Some(last) => {
+                let now = Pts90khz(pts_90khz).masked_33bit() * 300;
+                now.wrapping_sub(last) >= self.pcr_interval_27mhz
+            }
+        }
+    }
+
+    fn maybe_emit_psi(&mut self, pts_90khz: i64) {
+        if !self.psi_due(pts_90khz) {
+            return;
+        }
+        let mut pat = [0u8; 188];
+        write_pat_packet(&mut pat, &mut self.counters);
+        self.queue.push_back(pat);
+
+        let mut pmt = [0u8; 188];
+        let video_st = match self.config.video_codec {
+            VideoCodec::H264 => StreamType::H264,
+            VideoCodec::H265 => StreamType::H265,
+        };
+        let klv_st = match self.config.klv_stream_type {
+            KlvStreamType::PrivateData => StreamType::KlvPrivate,
+            KlvStreamType::SynchronousMetadata => StreamType::KlvSyncMetadata,
+        };
+        let entries = [
+            PmtStreamEntry {
+                stream_type: video_st,
+                elementary_pid: self.config.video_pid,
+                descriptors: &[],
+            },
+            PmtStreamEntry {
+                stream_type: klv_st,
+                elementary_pid: self.config.klv_pid,
+                descriptors: KLVA_REGISTRATION_DESCRIPTOR,
+            },
+        ];
+        write_pmt_packet(&mut pmt, self.pcr_pid, &entries, &mut self.counters);
+        self.queue.push_back(pmt);
+
+        self.last_psi_emission_pts = Some(pts_90khz);
+    }
+}
+
+fn validate_annex_b(nal: &[u8]) -> Result<(), MuxError> {
+    if nal.starts_with(&[0x00, 0x00, 0x00, 0x01]) || nal.starts_with(&[0x00, 0x00, 0x01]) {
+        Ok(())
+    } else {
+        Err(MuxError::InvalidNal)
+    }
+}
+
+/// Number of 188-byte TS packets needed to carry `payload_size` bytes of
+/// PES (header + ES). 184 = 188 - 4 byte TS header. Adaptation field eats
+/// further capacity but for sizing purposes the worst case is no AF (gives
+/// the smallest packet count). The orchestrator may emit one more packet
+/// than this if AF stuffing pushes a byte over; we allow a 1-packet slop
+/// in the buffer reservation.
+fn ts_packets_for(payload_size: usize) -> usize {
+    payload_size.div_ceil(184).max(1) + 1
 }
 
 #[cfg(test)]
@@ -296,5 +578,115 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(cfg.resolved_pcr_pid(), 0x1031);
+    }
+
+    #[test]
+    fn muxer_constructs_with_valid_config() {
+        let mux = Muxer::new(Config::default());
+        assert!(mux.is_ok());
+    }
+
+    #[test]
+    fn muxer_rejects_invalid_config() {
+        let cfg = Config {
+            video_pid: 0,
+            ..Default::default()
+        };
+        let res = Muxer::new(cfg);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn pull_returns_zero_on_empty_queue() {
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut buf = [0u8; 1316];
+        assert_eq!(mux.pull(&mut buf).unwrap(), 0);
+    }
+
+    #[test]
+    fn pull_returns_zero_on_short_buffer() {
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
+        mux.push_video(&nal, 0, true).unwrap();
+        let mut buf = [0u8; 100];
+        assert_eq!(mux.pull(&mut buf).unwrap(), 0);
+    }
+
+    #[test]
+    fn push_video_rejects_non_annex_b() {
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let bad = [0x12, 0x34, 0x56];
+        assert!(matches!(
+            mux.push_video(&bad, 0, false),
+            Err(MuxError::InvalidNal)
+        ));
+    }
+
+    #[test]
+    fn push_video_accepts_3byte_start_code() {
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let nal = [0x00, 0x00, 0x01, 0x09, 0x10];
+        assert!(mux.push_video(&nal, 0, true).is_ok());
+    }
+
+    #[test]
+    fn first_pull_includes_pat_pmt() {
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0x88, 0x99];
+        mux.push_video(&nal, 0, true).unwrap();
+        let mut buf = [0u8; 4096];
+        let n = mux.pull(&mut buf).unwrap();
+        assert!(n >= 188 * 3, "expected at least PAT + PMT + 1 video packet");
+        // First packet should be PAT (PID 0)
+        let pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;
+        assert_eq!(pid, 0x0000);
+        // Second packet should be PMT (PID 0x1000 from psi.rs)
+        let pid_2 = (((buf[188 + 1] as u16) & 0x1F) << 8) | buf[188 + 2] as u16;
+        assert_eq!(pid_2, 0x1000);
+    }
+
+    #[test]
+    fn buffer_full_returned_when_overcommitted() {
+        let cfg = Config {
+            buffer_packets: 10,
+            ..Default::default()
+        };
+        let mut mux = Muxer::new(cfg).unwrap();
+        // A 50KB IDR is much larger than 10 packets can hold.
+        let big_nal = {
+            let mut v = vec![0u8; 50_000];
+            v[0] = 0;
+            v[1] = 0;
+            v[2] = 0;
+            v[3] = 1;
+            v[4] = 0x65; // IDR slice NAL type
+            v
+        };
+        let res = mux.push_video(&big_nal, 0, true);
+        assert!(matches!(
+            res,
+            Err(MuxError::BufferFull {
+                capacity_packets: 10
+            })
+        ));
+    }
+
+    #[test]
+    fn buffer_full_does_not_modify_state() {
+        let cfg = Config {
+            buffer_packets: 10,
+            ..Default::default()
+        };
+        let mut mux = Muxer::new(cfg).unwrap();
+        let nal = vec![0u8; 50_000];
+        let nal = {
+            let mut v = nal;
+            v[..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
+            v
+        };
+        let _ = mux.push_video(&nal, 0, true);
+        // Queue should be empty (push didn't commit).
+        let mut buf = [0u8; 1316];
+        assert_eq!(mux.pull(&mut buf).unwrap(), 0);
     }
 }

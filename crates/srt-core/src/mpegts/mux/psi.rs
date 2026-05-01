@@ -13,19 +13,16 @@ use super::ts::{AdaptationField, ContinuityCounters, write_packet};
 use crate::mpegts::common::{StreamType, crc32::crc32_mpeg2, descriptor, pid};
 
 /// Single program is fixed at program_number = 0x0001 in v0.
-#[allow(dead_code)] // Used in Task 8.
 pub(crate) const PROGRAM_NUMBER: u16 = 0x0001;
 
 /// PMT lives at this PID in v0. Not configurable — receivers find it via
 /// PAT, so the value is internal.
-#[allow(dead_code)] // Used in Task 8.
 pub(crate) const PMT_PID: u16 = 0x1000;
 
 /// Build the full 188-byte PAT packet for a single-program TS.
 ///
 /// Caller passes a fresh `ContinuityCounters` for the very first PAT, then
 /// the same instance on subsequent calls so the CC field increments.
-#[allow(dead_code)] // Used in Task 8.
 pub(crate) fn write_pat_packet(out: &mut [u8; 188], counters: &mut ContinuityCounters) {
     // Section body (table_id through last byte before CRC) — 12 bytes.
     let mut body = [0u8; 12];
@@ -72,7 +69,6 @@ pub(crate) fn write_pat_packet(out: &mut [u8; 188], counters: &mut ContinuityCou
 }
 
 /// PMT entry for one elementary stream.
-#[allow(dead_code)] // Used in Task 8.
 pub(crate) struct PmtStreamEntry {
     pub stream_type: StreamType,
     pub elementary_pid: u16,
@@ -83,7 +79,6 @@ pub(crate) struct PmtStreamEntry {
 
 /// Pre-built KLVA registration descriptor body.
 /// descriptor_tag(1) + descriptor_length(1) + format_identifier(4)
-#[allow(dead_code)] // Used in Task 8.
 pub(crate) const KLVA_REGISTRATION_DESCRIPTOR: &[u8] = &[
     descriptor::REGISTRATION,
     4,
@@ -97,7 +92,6 @@ pub(crate) const KLVA_REGISTRATION_DESCRIPTOR: &[u8] = &[
 ///
 /// `pcr_pid` is the PID carrying PCR (typically the video PID).
 /// `streams` is the list of ES entries — order is preserved in the PMT.
-#[allow(dead_code)] // Used in Task 8.
 pub(crate) fn write_pmt_packet(
     out: &mut [u8; 188],
     pcr_pid: u16,

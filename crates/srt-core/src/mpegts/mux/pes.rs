@@ -16,12 +16,9 @@
 
 use crate::mpegts::common::Pts90khz;
 
-#[allow(dead_code)]
 pub(crate) const STREAM_ID_VIDEO: u8 = 0xE0;
-#[allow(dead_code)]
 pub(crate) const STREAM_ID_KLV: u8 = 0xFC;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PtsDtsFlags {
     /// No PTS, no DTS — async metadata.
@@ -32,7 +29,6 @@ pub(crate) enum PtsDtsFlags {
 
 /// Maximum size of a PES header for our v0 cases.
 /// = 3(start) + 1(stream_id) + 2(length) + 1(flags1) + 1(flags2) + 1(header_data_length) + 5(PTS) = 14
-#[allow(dead_code)]
 pub(crate) const MAX_PES_HEADER_SIZE: usize = 14;
 
 /// Write a PES header to `out`. Returns bytes written.
@@ -42,7 +38,6 @@ pub(crate) const MAX_PES_HEADER_SIZE: usize = 14;
 ///   header_data_length, PES header data, and ES payload (i.e., everything
 ///   after PES_packet_length itself).
 /// - `None` — unbounded (PES_packet_length = 0). Used for video PES.
-#[allow(dead_code)]
 pub(crate) fn write_pes_header(
     out: &mut [u8],
     stream_id: u8,

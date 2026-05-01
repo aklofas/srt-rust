@@ -234,9 +234,7 @@ pub enum KlvDecodeError {
     MalformedTag { offset: usize },
 
     #[error("universal label does not match ST 0601 family: {found}")]
-    BadUniversalLabel {
-        found: crate::klv::UniversalLabel,
-    },
+    BadUniversalLabel { found: crate::klv::UniversalLabel },
 
     #[error("checksum mismatch: declared {expected:#06x}, computed {found:#06x}")]
     ChecksumMismatch { expected: u16, found: u16 },
@@ -619,7 +617,10 @@ mod tests {
             needed: 256,
             got: 100,
         };
-        assert_eq!(e.to_string(), "output buffer too small: needed 256 bytes, got 100");
+        assert_eq!(
+            e.to_string(),
+            "output buffer too small: needed 256 bytes, got 100"
+        );
     }
 
     #[test]

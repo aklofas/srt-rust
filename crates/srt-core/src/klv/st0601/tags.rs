@@ -16,7 +16,9 @@ pub(crate) enum Encoding {
     /// 1-byte value mapped to an integer airspeed range (m/s).
     U8Range,
     /// UTF-8 string with a maximum length.
-    Utf8 { max_bytes: usize },
+    Utf8 {
+        max_bytes: usize,
+    },
     /// Raw bytes (variable length); pass-through.
     RawBytes,
     /// Raw 8-byte big-endian unsigned (e.g. timestamp_us).

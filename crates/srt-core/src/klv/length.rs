@@ -284,7 +284,9 @@ mod tests {
 
     #[test]
     fn ber_oid_round_trip_sweep() {
-        for v in [0u32, 1, 0x7F, 0x80, 0xFF, 0x3FFF, 0x4000, 0xFFFF, 0xFFFFFFFF] {
+        for v in [
+            0u32, 1, 0x7F, 0x80, 0xFF, 0x3FFF, 0x4000, 0xFFFF, 0xFFFFFFFF,
+        ] {
             let mut buf = [0u8; 8];
             let n = write_ber_oid(v, &mut buf).unwrap();
             let (parsed, rest) = read_ber_oid(&buf[..n]).unwrap();

@@ -55,7 +55,7 @@ impl OwnedRawField {
 /// What encoding `Iter` uses for tag and length.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IterMode {
-    LocalSet,     // 1-byte tag + BER-OID length (note: ST 0601 LS uses 1-byte tag + BER-OID length)
+    LocalSet, // 1-byte tag + BER-OID length (note: ST 0601 LS uses 1-byte tag + BER-OID length)
     UniversalSet, // 16-byte UL key + BER length
 }
 
@@ -369,8 +369,13 @@ mod tests {
             },
         ];
         let mut out = vec![0u8; 256];
-        let n = encode_pack(&label, fields.iter().cloned(), LengthEncoding::BerOid, &mut out)
-            .unwrap();
+        let n = encode_pack(
+            &label,
+            fields.iter().cloned(),
+            LengthEncoding::BerOid,
+            &mut out,
+        )
+        .unwrap();
         let encoded = &out[..n];
         // First 16 bytes are the UL
         assert_eq!(&encoded[..16], &label.0);

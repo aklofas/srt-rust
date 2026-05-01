@@ -15,12 +15,12 @@
 //! Top-level re-exports (substrate types likely useful to consumers) live in
 //! the crate root via `crate::lib.rs`.
 
-pub mod universal_label;
-pub mod length;
 pub mod checksum;
 pub mod imapb;
+pub mod length;
 pub mod pack;
 pub mod st0601;
+pub mod universal_label;
 
-pub use universal_label::UniversalLabel;
 pub use pack::{Iter, OwnedRawField, RawField};
+pub use universal_label::UniversalLabel;

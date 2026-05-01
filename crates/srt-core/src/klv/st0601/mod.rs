@@ -19,8 +19,8 @@ use crate::klv::checksum::checksum_running_sum_16;
 use crate::klv::length::{ber_len, ber_oid_len, read_ber, write_ber, write_ber_oid};
 use crate::klv::pack::{Iter, OwnedRawField};
 use crate::klv::st0601::mapping::{decode_fixed_range, encode_fixed_range};
-use crate::klv::st0601::tags::{Encoding, TAGS};
 use crate::klv::st0601::tags::lookup;
+use crate::klv::st0601::tags::{Encoding, TAGS};
 use crate::klv::universal_label::UniversalLabel;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -259,10 +259,22 @@ impl UasDatalinkLs {
         // Fall back to offsets + frame center.
         let lat0 = self.frame_center_lat_deg?;
         let lon0 = self.frame_center_lon_deg?;
-        let (dl1, do1) = (self.corner_lat_offset_p1_deg?, self.corner_lon_offset_p1_deg?);
-        let (dl2, do2) = (self.corner_lat_offset_p2_deg?, self.corner_lon_offset_p2_deg?);
-        let (dl3, do3) = (self.corner_lat_offset_p3_deg?, self.corner_lon_offset_p3_deg?);
-        let (dl4, do4) = (self.corner_lat_offset_p4_deg?, self.corner_lon_offset_p4_deg?);
+        let (dl1, do1) = (
+            self.corner_lat_offset_p1_deg?,
+            self.corner_lon_offset_p1_deg?,
+        );
+        let (dl2, do2) = (
+            self.corner_lat_offset_p2_deg?,
+            self.corner_lon_offset_p2_deg?,
+        );
+        let (dl3, do3) = (
+            self.corner_lat_offset_p3_deg?,
+            self.corner_lon_offset_p3_deg?,
+        );
+        let (dl4, do4) = (
+            self.corner_lat_offset_p4_deg?,
+            self.corner_lon_offset_p4_deg?,
+        );
         Some(Corners {
             p1: (lat0 + dl1, lon0 + do1),
             p2: (lat0 + dl2, lon0 + do2),
@@ -395,11 +407,10 @@ fn each_typed_field<F: FnMut(u8, usize)>(
             47 => record.generic_flag_data.map(|_| 1),
             48 => record.security_local_set.as_ref().map(|v| v.len()),
             50 => record.platform_call_sign.as_ref().map(|s| s.len()),
-            65 => record.uas_ls_version.map(|_| 1).or(if auto_version {
-                Some(1)
-            } else {
-                None
-            }),
+            65 => record
+                .uas_ls_version
+                .map(|_| 1)
+                .or(if auto_version { Some(1) } else { None }),
             82 => record.corner_lat_p1_deg.map(|_| 4),
             83 => record.corner_lon_p1_deg.map(|_| 4),
             84 => record.corner_lat_p2_deg.map(|_| 4),
@@ -561,7 +572,9 @@ fn check_string(tag: u32, s: &str, enc: &Encoding) -> Result<(), KlvEncodeError>
 }
 
 pub fn decode(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
-    decode_inner(buf, /* verify_checksum */ true, /* strict_ul */ false)
+    decode_inner(
+        buf, /* verify_checksum */ true, /* strict_ul */ false,
+    )
 }
 
 pub fn decode_unchecked(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {

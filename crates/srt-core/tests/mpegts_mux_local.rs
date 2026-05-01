@@ -27,18 +27,6 @@ fn list_ts_files() -> Vec<std::path::PathBuf> {
     }
 }
 
-fn drain_all(mux: &mut Muxer) -> Vec<u8> {
-    let mut out = Vec::new();
-    let mut buf = vec![0u8; 1316];
-    loop {
-        let n = mux.pull(&mut buf).unwrap();
-        if n == 0 {
-            return out;
-        }
-        out.extend_from_slice(&buf[..n]);
-    }
-}
-
 #[test]
 fn corpus_replay_structural_match() {
     let files = list_ts_files();
@@ -86,32 +74,81 @@ fn process_one(path: &Path) {
     };
     let mut mux = Muxer::new(cfg).unwrap();
 
-    if let Some(orig_video) = original.pes_by_pid.get(&video_stream.pid) {
-        for (i, (pts, body)) in orig_video.iter().enumerate() {
-            // We can't perfectly detect IDR without parsing slice headers —
-            // assume every 30th frame is a key frame for the replay.
-            let key = i % 30 == 0;
-            if !body.starts_with(&[0x00, 0x00, 0x00, 0x01])
-                && !body.starts_with(&[0x00, 0x00, 0x01])
-            {
-                eprintln!("  skipping non-Annex-B AU at index {}", i);
-                continue;
-            }
-            mux.push_video(body, pts.unwrap_or(0) as i64, key)
-                .expect("push_video");
-        }
-    }
+    // Interleave video + KLV pushes by PTS, draining incrementally to keep
+    // the muxer queue bounded for real-corpus-sized inputs (>100 MB).
+    let mut video_iter = original
+        .pes_by_pid
+        .get(&video_stream.pid)
+        .map(|v| v.iter().enumerate())
+        .into_iter()
+        .flatten()
+        .peekable();
+    let mut klv_iter = klv_stream
+        .and_then(|ks| original.pes_by_pid.get(&ks.pid))
+        .map(|v| v.iter())
+        .into_iter()
+        .flatten()
+        .peekable();
 
-    if let Some(ks) = klv_stream {
-        if let Some(orig_klv) = original.pes_by_pid.get(&ks.pid) {
-            for (pts, body) in orig_klv {
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut drain_buf = vec![0u8; 188 * 4096];
+    let mut skipped_video = 0usize;
+
+    loop {
+        let v_pts = video_iter.peek().map(|(_, (p, _))| p.unwrap_or(0));
+        let k_pts = klv_iter.peek().map(|(p, _)| p.unwrap_or(0));
+        match (v_pts, k_pts) {
+            (None, None) => break,
+            (Some(_), None) => {
+                let (i, (pts, body)) = video_iter.next().unwrap();
+                if !body.starts_with(&[0x00, 0x00, 0x00, 0x01])
+                    && !body.starts_with(&[0x00, 0x00, 0x01])
+                {
+                    skipped_video += 1;
+                    continue;
+                }
+                let key = i % 30 == 0;
+                mux.push_video(body, pts.unwrap_or(0) as i64, key)
+                    .expect("push_video");
+            }
+            (None, Some(_)) => {
+                let (pts, body) = klv_iter.next().unwrap();
                 mux.push_klv(body, pts.unwrap_or(0) as i64)
                     .expect("push_klv");
             }
+            (Some(vp), Some(kp)) => {
+                if vp <= kp {
+                    let (i, (pts, body)) = video_iter.next().unwrap();
+                    if !body.starts_with(&[0x00, 0x00, 0x00, 0x01])
+                        && !body.starts_with(&[0x00, 0x00, 0x01])
+                    {
+                        skipped_video += 1;
+                        continue;
+                    }
+                    let key = i % 30 == 0;
+                    mux.push_video(body, pts.unwrap_or(0) as i64, key)
+                        .expect("push_video");
+                } else {
+                    let (pts, body) = klv_iter.next().unwrap();
+                    mux.push_klv(body, pts.unwrap_or(0) as i64)
+                        .expect("push_klv");
+                }
+            }
+        }
+        // Drain after each push to keep the queue small.
+        loop {
+            let n = mux.pull(&mut drain_buf).expect("pull");
+            if n == 0 {
+                break;
+            }
+            bytes.extend_from_slice(&drain_buf[..n]);
         }
     }
 
-    let bytes = drain_all(&mut mux);
+    if skipped_video > 0 {
+        eprintln!("  skipped {} non-Annex-B video AUs", skipped_video);
+    }
+
     let recovered = ts_parser::parse(&bytes);
 
     // Structural assertions:

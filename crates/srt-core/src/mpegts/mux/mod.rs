@@ -145,7 +145,7 @@ use crate::mpegts::common::{Pcr27mhz, Pts90khz, StreamType};
 use std::collections::VecDeque;
 
 use self::pes::{
-    MAX_PES_HEADER_SIZE, PtsDtsFlags, STREAM_ID_KLV, STREAM_ID_VIDEO, write_pes_header,
+    MAX_PES_HEADER_SIZE, PesPtsField, STREAM_ID_KLV, STREAM_ID_VIDEO, write_pes_header,
 };
 use self::psi::{KLVA_REGISTRATION_DESCRIPTOR, PmtStreamEntry, write_pat_packet, write_pmt_packet};
 use self::ts::{AdaptationField, ContinuityCounters, write_packet};
@@ -215,8 +215,7 @@ impl Muxer {
         let header_len = write_pes_header(
             &mut header,
             STREAM_ID_VIDEO,
-            PtsDtsFlags::PtsOnly,
-            Some(Pts90khz(pts_90khz)),
+            PesPtsField::PtsOnly(Pts90khz(pts_90khz)),
             None, // unbounded for video
         );
 
@@ -274,23 +273,17 @@ impl Muxer {
     /// true; ignored otherwise.
     /// Returns `Err(MuxError::BufferFull)` like `push_video`.
     pub fn push_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
-        let flags = if self.config.klv_carries_pts {
-            PtsDtsFlags::PtsOnly
+        let pts_field = if self.config.klv_carries_pts {
+            PesPtsField::PtsOnly(Pts90khz(pts_90khz))
         } else {
-            PtsDtsFlags::None
-        };
-        let pts = if self.config.klv_carries_pts {
-            Some(Pts90khz(pts_90khz))
-        } else {
-            None
+            PesPtsField::None
         };
 
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
         let header_len = write_pes_header(
             &mut header,
             STREAM_ID_KLV,
-            flags,
-            pts,
+            pts_field,
             Some(klv.len() as u16),
         );
 

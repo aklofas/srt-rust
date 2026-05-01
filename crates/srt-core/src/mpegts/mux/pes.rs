@@ -19,12 +19,14 @@ use crate::mpegts::common::Pts90khz;
 pub(crate) const STREAM_ID_VIDEO: u8 = 0xE0;
 pub(crate) const STREAM_ID_KLV: u8 = 0xFC;
 
+/// PES PTS/DTS field selector. Embeds the PTS so callers can't construct an
+/// inconsistent state (e.g. PtsOnly with no value).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PtsDtsFlags {
+pub(crate) enum PesPtsField {
     /// No PTS, no DTS — async metadata.
     None,
     /// PTS present, no DTS — video without B-frame reorder, sync KLV.
-    PtsOnly,
+    PtsOnly(Pts90khz),
 }
 
 /// Maximum size of a PES header for our v0 cases.
@@ -41,21 +43,15 @@ pub(crate) const MAX_PES_HEADER_SIZE: usize = 14;
 pub(crate) fn write_pes_header(
     out: &mut [u8],
     stream_id: u8,
-    flags: PtsDtsFlags,
-    pts: Option<Pts90khz>,
+    pts_field: PesPtsField,
     payload_length: Option<u16>,
 ) -> usize {
     debug_assert!(out.len() >= MAX_PES_HEADER_SIZE);
 
     // flags2 high two bits = PTS_DTS_flags. We only support None (0b00) and PtsOnly (0b10).
-    let pts_dts_flags = match flags {
-        PtsDtsFlags::None => 0b00,
-        PtsDtsFlags::PtsOnly => 0b10,
-    };
-    let pts_size = if matches!(flags, PtsDtsFlags::PtsOnly) {
-        5
-    } else {
-        0
+    let (pts_dts_flags, pts_size) = match pts_field {
+        PesPtsField::None => (0b00u8, 0u8),
+        PesPtsField::PtsOnly(_) => (0b10u8, 5u8),
     };
 
     // PES_header_data_length = bytes after this field that are PES-header (PTS/DTS/etc.)
@@ -86,8 +82,7 @@ pub(crate) fn write_pes_header(
     out[8] = header_data_length;
 
     let mut idx = 9;
-    if let Some(pts) = pts {
-        debug_assert!(matches!(flags, PtsDtsFlags::PtsOnly));
+    if let PesPtsField::PtsOnly(pts) = pts_field {
         write_pts(&mut out[idx..idx + 5], pts, /*marker_high=*/ 0b0010);
         idx += 5;
     }
@@ -143,8 +138,7 @@ mod tests {
         let n = write_pes_header(
             &mut buf,
             STREAM_ID_VIDEO,
-            PtsDtsFlags::PtsOnly,
-            Some(Pts90khz(90_000)),
+            PesPtsField::PtsOnly(Pts90khz(90_000)),
             None,
         );
         assert_eq!(n, 14);
@@ -165,7 +159,7 @@ mod tests {
     #[test]
     fn klv_async_pes_header_no_pts() {
         let mut buf = [0u8; MAX_PES_HEADER_SIZE];
-        let n = write_pes_header(&mut buf, STREAM_ID_KLV, PtsDtsFlags::None, None, Some(20));
+        let n = write_pes_header(&mut buf, STREAM_ID_KLV, PesPtsField::None, Some(20));
         assert_eq!(n, 9);
         assert_eq!(buf[3], STREAM_ID_KLV);
         // PES_packet_length = 3 + 0 + 20 = 23
@@ -183,8 +177,7 @@ mod tests {
         let n = write_pes_header(
             &mut buf,
             STREAM_ID_KLV,
-            PtsDtsFlags::PtsOnly,
-            Some(Pts90khz(45_000)),
+            PesPtsField::PtsOnly(Pts90khz(45_000)),
             Some(100),
         );
         assert_eq!(n, 14);

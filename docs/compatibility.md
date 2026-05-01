@@ -136,7 +136,7 @@ The generic SMPTE/MISB substrate underneath the typed layers.
 | 16-bit running-sum checksum (ST 0601 §6.8) | ✅ Full | `checksum::checksum_running_sum_16`. |
 | **MISB ST 1201.5** — IMAPB integer↔float mapping | ⚙️ Partial | `imapb` matches §7.1.2 / §7.2 forward and inverse; ±∞/±NaN special-value bit (§7.1.3) not modelled — pure additive future work. |
 | Universal-label introspection | ✅ Full | `UniversalLabel::oid` / `category` / `registry` / `structure` / `version_byte` / `is_st0601_family`. |
-| `Iter::local_set` / `Iter::universal_set` | ✅ Full | Universal-set iterator currently exposes `tag: 0` synthetic ID; UL bytes accessor is a future tightening (see `docs/deferred-features.md`). |
+| `Iter::local_set` / `Iter::universal_set` | ✅ Full | Universal-set iterator currently exposes `tag: 0` synthetic ID; UL bytes accessor is a future tightening. |
 | `OwnedRawField` pass-through | ✅ Full | Unknown / non-typed tags preserved verbatim, round-trip safe. |
 
 ### Real-world recovery shapes
@@ -307,6 +307,3 @@ roadmap. They are revisitable on consumer ask — not philosophical refusals.
 - ST 1201.5 §7.1.3 special-value bit (±∞ / ±NaN passthrough).
 - Async / reactor SRT API.
 - Bonded / grouped sockets.
-
-See `docs/deferred-features.md` in the parent workspace for the full
-rationale ledger.

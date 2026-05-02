@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use srt_core::{SrtUrl, UrlError};
 
 #[test]
@@ -145,4 +147,130 @@ fn congestion_unknown_rejects() {
 fn packetfilter_query() {
     let u = SrtUrl::parse("srt://1.2.3.4:9000?packetfilter=fec,cols:10,rows:5,arq:onreq").unwrap();
     assert!(u.overlay.packet_filter.is_some());
+}
+
+#[test]
+fn pbkeylen_16() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?pbkeylen=16").unwrap();
+    assert!(matches!(
+        u.overlay.key_length,
+        Some(srt_core::KeyLength::Aes128)
+    ));
+}
+
+#[test]
+fn pbkeylen_24() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?pbkeylen=24").unwrap();
+    assert!(matches!(
+        u.overlay.key_length,
+        Some(srt_core::KeyLength::Aes192)
+    ));
+}
+
+#[test]
+fn pbkeylen_32() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?pbkeylen=32").unwrap();
+    assert!(matches!(
+        u.overlay.key_length,
+        Some(srt_core::KeyLength::Aes256)
+    ));
+}
+
+#[test]
+fn pbkeylen_invalid() {
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?pbkeylen=15").unwrap_err();
+    assert!(matches!(e, UrlError::OptionValidation { .. }));
+}
+
+#[test]
+fn latency_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?latency=200").unwrap();
+    assert_eq!(u.overlay.latency, Some(Duration::from_millis(200)));
+}
+
+#[test]
+fn latency_with_suffix_rejects() {
+    // Strict-A: no "ms"/"s" suffixes.
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?latency=200ms").unwrap_err();
+    assert!(matches!(e, UrlError::InvalidValue { ref key, .. } if key == "latency"));
+}
+
+#[test]
+fn latency_negative_rejects() {
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?latency=-1").unwrap_err();
+    assert!(matches!(e, UrlError::InvalidValue { .. }));
+}
+
+#[test]
+fn latency_overflow_rejects() {
+    // 2^31 = 2147483648 — outside i32 range; libsrt SRTO_LATENCY is i32.
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?latency=2147483648").unwrap_err();
+    assert!(matches!(e, UrlError::InvalidValue { .. }));
+}
+
+#[test]
+fn rcvlatency_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?rcvlatency=120").unwrap();
+    assert_eq!(u.overlay.recv_latency, Some(Duration::from_millis(120)));
+}
+
+#[test]
+fn peerlatency_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?peerlatency=80").unwrap();
+    assert_eq!(u.overlay.peer_latency, Some(Duration::from_millis(80)));
+}
+
+#[test]
+fn mss_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?mss=1400").unwrap();
+    assert_eq!(u.overlay.mss, Some(1400));
+}
+
+#[test]
+fn payloadsize_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?payloadsize=1316").unwrap();
+    assert_eq!(u.overlay.payload_size, Some(1316));
+}
+
+#[test]
+fn maxbw_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?maxbw=10000000").unwrap();
+    assert!(matches!(
+        u.overlay.max_bandwidth,
+        Some(srt_core::MaxBandwidth::Limited(10_000_000))
+    ));
+}
+
+#[test]
+fn inputbw_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?inputbw=5000000").unwrap();
+    assert_eq!(u.overlay.input_bandwidth, Some(5_000_000));
+}
+
+#[test]
+fn oheadbw_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?oheadbw=25").unwrap();
+    assert_eq!(u.overlay.overhead_bandwidth_pct, Some(25));
+}
+
+#[test]
+fn oheadbw_out_of_range() {
+    // Builder enforces 5..=100 in apply_socket_config; URL parser rejects
+    // here at value-conversion since we know the bound.
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?oheadbw=4").unwrap_err();
+    assert!(matches!(e, UrlError::InvalidValue { .. }));
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?oheadbw=101").unwrap_err();
+    assert!(matches!(e, UrlError::InvalidValue { .. }));
+}
+
+#[test]
+fn lossmaxttl_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?lossmaxttl=20").unwrap();
+    assert_eq!(u.overlay.loss_max_ttl, Some(20));
+}
+
+#[test]
+fn fc_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?fc=8192").unwrap();
+    assert_eq!(u.overlay.flow_window_packets, Some(8192));
 }

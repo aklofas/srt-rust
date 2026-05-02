@@ -32,19 +32,19 @@ pub struct SrtUrl {
 pub struct UrlOverlay {
     // Group 1 — libsrt-URL honored keys.
     pub passphrase: Option<Passphrase>,
-    pub(crate) key_length: Option<KeyLength>,
-    pub(crate) latency: Option<Duration>,
-    pub(crate) recv_latency: Option<Duration>,
-    pub(crate) peer_latency: Option<Duration>,
-    pub(crate) mss: Option<u16>,
-    pub(crate) payload_size: Option<u16>,
-    pub(crate) max_bandwidth: Option<MaxBandwidth>,
-    pub(crate) input_bandwidth: Option<u64>,
-    pub(crate) overhead_bandwidth_pct: Option<u8>,
+    pub key_length: Option<KeyLength>,
+    pub latency: Option<Duration>,
+    pub recv_latency: Option<Duration>,
+    pub peer_latency: Option<Duration>,
+    pub mss: Option<u16>,
+    pub payload_size: Option<u16>,
+    pub max_bandwidth: Option<MaxBandwidth>,
+    pub input_bandwidth: Option<u64>,
+    pub overhead_bandwidth_pct: Option<u8>,
     pub stream_id: Option<StreamId>,
-    pub(crate) loss_max_ttl: Option<u32>,
+    pub loss_max_ttl: Option<u32>,
     pub(crate) too_late_packet_drop: Option<bool>,
-    pub(crate) flow_window_packets: Option<u32>,
+    pub flow_window_packets: Option<u32>,
     pub packet_filter: Option<PacketFilter>,
     pub congestion: Option<Congestion>,
 
@@ -140,8 +140,88 @@ impl SrtUrl {
     }
 }
 
+fn parse_int_nonneg<T>(key: &str, value: &str) -> Result<T, UrlError>
+where
+    T: std::str::FromStr<Err = std::num::ParseIntError>,
+{
+    // Strict-A: bare decimal, no suffix, non-negative. We rely on T's
+    // from_str to enforce both range and non-negativity (u8/u16/u32/u64
+    // all reject negatives natively; i32 callers must check separately).
+    value.parse::<T>().map_err(|e| UrlError::InvalidValue {
+        key: key.to_string(),
+        detail: format!("expected non-negative decimal integer in range, got '{value}': {e}"),
+    })
+}
+
+fn parse_i32_nonneg(key: &str, value: &str) -> Result<i32, UrlError> {
+    let n: i32 = value.parse().map_err(|e| UrlError::InvalidValue {
+        key: key.to_string(),
+        detail: format!("expected i32 decimal, got '{value}': {e}"),
+    })?;
+    if n < 0 {
+        return Err(UrlError::InvalidValue {
+            key: key.to_string(),
+            detail: format!("must be non-negative, got {n}"),
+        });
+    }
+    Ok(n)
+}
+
+fn parse_oheadbw(value: &str) -> Result<u8, UrlError> {
+    let n: u32 = parse_int_nonneg("oheadbw", value)?;
+    if !(5..=100).contains(&n) {
+        return Err(UrlError::InvalidValue {
+            key: "oheadbw".into(),
+            detail: format!("must be in 5..=100, got {n}"),
+        });
+    }
+    Ok(n as u8)
+}
+
 fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<(), UrlError> {
     match key {
+        "congestion" => {
+            overlay.congestion = Some(Congestion::from_str_strict(value).map_err(|source| {
+                UrlError::OptionValidation {
+                    key: "congestion".into(),
+                    source,
+                }
+            })?);
+        }
+        "fc" => {
+            overlay.flow_window_packets = Some(parse_int_nonneg("fc", value)?);
+        }
+        "inputbw" => {
+            overlay.input_bandwidth = Some(parse_int_nonneg("inputbw", value)?);
+        }
+        "latency" => {
+            let n = parse_i32_nonneg("latency", value)?;
+            overlay.latency = Some(Duration::from_millis(n as u64));
+        }
+        "lossmaxttl" => {
+            overlay.loss_max_ttl = Some(parse_int_nonneg("lossmaxttl", value)?);
+        }
+        "maxbw" => {
+            // SRTO_MAXBW is i64; we expose non-negative as Limited(u64).
+            // Negative-sentinel forms (Auto/Infinite) are not URL-settable
+            // under strict-A.
+            let n = parse_int_nonneg::<u64>("maxbw", value)?;
+            overlay.max_bandwidth = Some(MaxBandwidth::Limited(n));
+        }
+        "mss" => {
+            overlay.mss = Some(parse_int_nonneg::<u16>("mss", value)?);
+        }
+        "oheadbw" => {
+            overlay.overhead_bandwidth_pct = Some(parse_oheadbw(value)?);
+        }
+        "packetfilter" => {
+            overlay.packet_filter = Some(PacketFilter::new(value.to_string()).map_err(|e| {
+                UrlError::OptionValidation {
+                    key: "packetfilter".into(),
+                    source: OptionError::from(e),
+                }
+            })?);
+        }
         "passphrase" => {
             overlay.passphrase = Some(Passphrase::new(value.to_string()).map_err(|e| {
                 UrlError::OptionValidation {
@@ -149,6 +229,27 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
                     source: OptionError::from(e),
                 }
             })?);
+        }
+        "payloadsize" => {
+            overlay.payload_size = Some(parse_int_nonneg::<u16>("payloadsize", value)?);
+        }
+        "pbkeylen" => {
+            let n = parse_i32_nonneg("pbkeylen", value)?;
+            overlay.key_length =
+                Some(
+                    KeyLength::from_bytes(n).map_err(|source| UrlError::OptionValidation {
+                        key: "pbkeylen".into(),
+                        source,
+                    })?,
+                );
+        }
+        "peerlatency" => {
+            let n = parse_i32_nonneg("peerlatency", value)?;
+            overlay.peer_latency = Some(Duration::from_millis(n as u64));
+        }
+        "rcvlatency" => {
+            let n = parse_i32_nonneg("rcvlatency", value)?;
+            overlay.recv_latency = Some(Duration::from_millis(n as u64));
         }
         "streamid" => {
             overlay.stream_id =
@@ -159,23 +260,6 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
                     })?,
                 );
         }
-        "packetfilter" => {
-            overlay.packet_filter = Some(PacketFilter::new(value.to_string()).map_err(|e| {
-                UrlError::OptionValidation {
-                    key: "packetfilter".into(),
-                    source: OptionError::from(e),
-                }
-            })?);
-        }
-        "congestion" => {
-            overlay.congestion = Some(Congestion::from_str_strict(value).map_err(|source| {
-                UrlError::OptionValidation {
-                    key: "congestion".into(),
-                    source,
-                }
-            })?);
-        }
-        // INT / INT64 keys land in Task 4.
         // BOOL keys land in Task 5.
         // Group 2 (x-*) and Group 3 (rejects) land in Tasks 6 and 7.
         // For now, anything unrecognized is UnknownKey.

@@ -24,49 +24,73 @@ pub struct Listener {
 unsafe impl Send for Listener {}
 
 impl Listener {
+    /// Open a passive socket, apply config, bind, and start listening.
+    ///
+    /// Walks every address resolved from `addr` in iterator order; first
+    /// successful bind+listen wins. Same rationale as
+    /// [`Socket::connect_with`]: on dual-stack hosts the iterator may
+    /// return AAAA before A and the v6 entry may be unbindable (e.g. v6
+    /// disabled on the interface), so we fall through to v4. Mirrors
+    /// ffmpeg's `ai_next` walk.
     pub fn bind_with(config: &ListenerConfig, addr: impl ToSocketAddrs) -> Result<Self, BindError> {
         ensure_initialized();
 
-        let addr = addr
+        let addrs: Vec<SocketAddr> = addr
             .to_socket_addrs()
             .map_err(|e| BindError::InvalidAddress(e.into()))?
-            .next()
-            .ok_or_else(|| {
-                BindError::InvalidAddress(crate::error::AddrError::Resolve(
-                    "no addresses resolved".into(),
-                ))
-            })?;
-
-        let handle = unsafe { srt_sys::srt_create_socket() };
-        if handle == SRT_INVALID_SOCK {
-            return Err(last_error().into());
+            .collect();
+        if addrs.is_empty() {
+            return Err(BindError::InvalidAddress(crate::error::AddrError::Resolve(
+                "no addresses resolved".into(),
+            )));
         }
 
-        if let Err(e) = apply_listener_config(handle, config) {
-            unsafe { srt_sys::srt_close(handle) };
-            return Err(BindError::InvalidOption(e));
-        }
+        let mut last_err: Option<BindError> = None;
+        for sa in addrs {
+            let handle = unsafe { srt_sys::srt_create_socket() };
+            if handle == SRT_INVALID_SOCK {
+                last_err = Some(last_error().into());
+                continue;
+            }
 
-        let (sa, salen) = to_sockaddr(addr).map_err(BindError::InvalidAddress)?;
-        let rc = unsafe { srt_sys::srt_bind(handle, (&raw const sa).cast(), salen as c_int) };
-        if rc < 0 {
-            let raw = last_error();
-            unsafe { srt_sys::srt_close(handle) };
-            return Err(raw.into());
-        }
+            if let Err(e) = apply_listener_config(handle, config) {
+                unsafe { srt_sys::srt_close(handle) };
+                last_err = Some(BindError::InvalidOption(e));
+                continue;
+            }
 
-        let rc = unsafe { srt_sys::srt_listen(handle, config.backlog as c_int) };
-        if rc < 0 {
-            let raw = last_error();
-            unsafe { srt_sys::srt_close(handle) };
-            return Err(raw.into());
-        }
+            let (raw_sa, salen) = match to_sockaddr(sa) {
+                Ok(p) => p,
+                Err(e) => {
+                    unsafe { srt_sys::srt_close(handle) };
+                    last_err = Some(BindError::InvalidAddress(e));
+                    continue;
+                }
+            };
+            let rc =
+                unsafe { srt_sys::srt_bind(handle, (&raw const raw_sa).cast(), salen as c_int) };
+            if rc < 0 {
+                let raw = last_error();
+                unsafe { srt_sys::srt_close(handle) };
+                last_err = Some(raw.into());
+                continue;
+            }
 
-        Ok(Self {
-            handle,
-            accepted_send_timeout: config.send_timeout,
-            accepted_recv_timeout: config.recv_timeout,
-        })
+            let rc = unsafe { srt_sys::srt_listen(handle, config.backlog as c_int) };
+            if rc < 0 {
+                let raw = last_error();
+                unsafe { srt_sys::srt_close(handle) };
+                last_err = Some(raw.into());
+                continue;
+            }
+
+            return Ok(Self {
+                handle,
+                accepted_send_timeout: config.send_timeout,
+                accepted_recv_timeout: config.recv_timeout,
+            });
+        }
+        Err(last_err.expect("non-empty addrs always populates last_err on full-walk failure"))
     }
 
     /// Block until an incoming connection completes the SRT handshake.

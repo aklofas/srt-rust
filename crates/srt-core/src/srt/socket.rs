@@ -62,49 +62,76 @@ impl Socket {
     }
 
     /// Open a socket, apply config, and connect to `addr`.
+    ///
+    /// `addr` may resolve to multiple `SocketAddr`s (e.g. `localhost` →
+    /// `[::1]:N` + `127.0.0.1:N`). We walk every resolved address in the
+    /// order returned by `to_socket_addrs()` and return the first
+    /// successful connection. On dual-stack hosts where AAAA records
+    /// resolve before A but v6 is unroutable (tethered cellular, some
+    /// VPNs, some corporate networks), this lets the v4 fallback succeed
+    /// instead of failing fast on `[::1]`. Mirrors ffmpeg's
+    /// `getaddrinfo(AF_UNSPEC)` + `ai_next` walk in
+    /// `libavformat/libsrt.c`. Sequential, no Happy Eyeballs.
     pub fn connect_with(
         config: &SocketConfig,
         addr: impl ToSocketAddrs,
     ) -> Result<Self, ConnectError> {
         ensure_initialized();
 
-        let addr = addr
+        let addrs: Vec<SocketAddr> = addr
             .to_socket_addrs()
             .map_err(|e| ConnectError::InvalidAddress(e.into()))?
-            .next()
-            .ok_or_else(|| {
-                ConnectError::InvalidAddress(crate::error::AddrError::Resolve(
-                    "no addresses resolved".into(),
-                ))
-            })?;
-
-        let handle = unsafe { srt_sys::srt_create_socket() };
-        if handle == SRT_INVALID_SOCK {
-            return Err(last_error().into());
+            .collect();
+        if addrs.is_empty() {
+            return Err(ConnectError::InvalidAddress(
+                crate::error::AddrError::Resolve("no addresses resolved".into()),
+            ));
         }
 
-        // Apply config. If anything fails, close the socket before returning.
-        if let Err(e) = apply_socket_config(handle, config) {
-            unsafe { srt_sys::srt_close(handle) };
-            return Err(ConnectError::InvalidOption(e));
+        let mut last_err: Option<ConnectError> = None;
+        for sa in addrs {
+            // Each iteration starts on a fresh handle. libsrt PRE options
+            // must be set before srt_connect; once a handle has been
+            // through a failed srt_connect we can't reuse it cleanly.
+            let handle = unsafe { srt_sys::srt_create_socket() };
+            if handle == SRT_INVALID_SOCK {
+                last_err = Some(last_error().into());
+                continue;
+            }
+
+            if let Err(e) = apply_socket_config(handle, config) {
+                unsafe { srt_sys::srt_close(handle) };
+                last_err = Some(ConnectError::InvalidOption(e));
+                continue;
+            }
+
+            let (raw_sa, salen) = match to_sockaddr(sa) {
+                Ok(p) => p,
+                Err(e) => {
+                    unsafe { srt_sys::srt_close(handle) };
+                    last_err = Some(ConnectError::InvalidAddress(e));
+                    continue;
+                }
+            };
+            let rc =
+                unsafe { srt_sys::srt_connect(handle, (&raw const raw_sa).cast(), salen as c_int) };
+            if rc < 0 {
+                let raw = last_error();
+                unsafe { srt_sys::srt_close(handle) };
+                last_err = Some(classify_connect_error(raw));
+                continue;
+            }
+
+            let cached_stream_id = read_stream_id(handle);
+            let cached_payload_limit = read_payload_size(handle);
+
+            return Ok(Self {
+                handle,
+                cached_stream_id,
+                cached_payload_limit,
+            });
         }
-
-        let (sa, salen) = to_sockaddr(addr).map_err(ConnectError::InvalidAddress)?;
-        let rc = unsafe { srt_sys::srt_connect(handle, (&raw const sa).cast(), salen as c_int) };
-        if rc < 0 {
-            let raw = last_error();
-            unsafe { srt_sys::srt_close(handle) };
-            return Err(classify_connect_error(raw));
-        }
-
-        let cached_stream_id = read_stream_id(handle);
-        let cached_payload_limit = read_payload_size(handle);
-
-        Ok(Self {
-            handle,
-            cached_stream_id,
-            cached_payload_limit,
-        })
+        Err(last_err.expect("non-empty addrs always populates last_err on full-walk failure"))
     }
 
     /// Internal: wrap an already-accepted handle (called from `Listener::accept`).

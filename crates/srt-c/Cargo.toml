@@ -10,7 +10,7 @@ repository.workspace   = true
 
 [lib]
 name       = "srtc"
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 doctest    = false
 
 [features]

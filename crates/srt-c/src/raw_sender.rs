@@ -9,10 +9,7 @@ use crate::mux_sender::parse_c_url;
 use srt_core::pipeline::{ManagedTransport, RawSender, SrtTransport};
 use srt_core::srt::SocketBuilder;
 
-fn connect_srt(
-    host: &str,
-    port: u16,
-) -> Result<SrtTransport, srt_core::pipeline::TransportError> {
+fn connect_srt(host: &str, port: u16) -> Result<SrtTransport, srt_core::pipeline::TransportError> {
     let socket = SocketBuilder::new()
         .connect(format!("{host}:{port}").as_str())
         .map_err(|e| srt_core::pipeline::TransportError::Broken(format!("connect: {e}")))?;

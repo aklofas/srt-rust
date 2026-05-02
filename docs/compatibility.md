@@ -246,6 +246,24 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 
 ---
 
+## C ABI (`srt-c`)
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| `srtc_muxer_t` standalone utility | ✅ Full | open/push_video/push_klv/pull/close. |
+| `srtc_mux_sender_t` (plain L1) | ✅ Full | NAL+KLV in, TS+SRT out via `SrtTransport`. |
+| `srtc_managed_mux_sender_t` (managed L2) | ✅ Full | reconnect + gap buffer; synchronous retries on caller's thread. |
+| `srtc_ts_sender_t` / `srtc_managed_ts_sender_t` | ✅ Full | pre-muxed TS bytes in; sync framing/recovery (RECOVER + STRICT). |
+| `srtc_raw_sender_t` / `srtc_managed_raw_sender_t` | ✅ Full | one _send call = one outbound SRT message. |
+| Builder-style configs | ✅ Full | mux + ts_sender + raw_sender + reconnect. |
+| Thread-local last-error idiom | ✅ Full | `srtc_get_last_error()` + `srtc_get_last_error_str()`. |
+| URL parsing | ⚙️ Partial | `srt://host:port` plain only; query parameters deferred. |
+| Stats accessors | ⚙️ Partial | `srtc_ts_sender_get_stats` only; mux/raw stats deferred. |
+| Linux x86_64 build | ✅ Full | cdylib + staticlib + pkg-config; tarball distribution manual. |
+| Other platforms | ⏳ Planned | macOS, Windows, Linux aarch64 follow demand. |
+
+---
+
 ## Standards reference — what we cite vs. what we implement
 
 The MISB / SMPTE / IETF documents that bear on `srt-rust`. The
@@ -290,7 +308,7 @@ covers.
 | --- | --- | --- |
 | `srt-sys` | ✅ Full | Bindgen-generated FFI to libsrt 1.5.5; encryption via mbedTLS. |
 | `srt-core` | ✅ Full (sync) | Safe Rust API — `Socket`, `Listener`, builders, KLV. |
-| `srt-c` | ⏳ Planned | cdylib + cbindgen header for embedded Linux / Panama / FFM. |
+| `srt-c` | ✅ Full | cdylib + staticlib + cbindgen header + pkg-config; Linux x86_64. |
 | `srt-jni` | ⏳ Planned | JVM JAR for JDK 17+ consumers. |
 | `srt-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |
 

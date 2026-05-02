@@ -141,8 +141,8 @@ pub enum SrtcVideoCodec {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub enum SrtcKlvStreamType {
-    PrivateData          = 0,
-    SynchronousMetadata  = 1,
+    PrivateData = 0,
+    SynchronousMetadata = 1,
 }
 
 // ------------------------------------------------------------------
@@ -171,7 +171,7 @@ pub unsafe extern "C" fn srtc_ts_sender_config_free(p: *mut SrtcTsSenderConfig) 
 #[derive(Clone, Copy)]
 pub enum SrtcTsFramingMode {
     Recover = 0,
-    Strict  = 1,
+    Strict = 1,
 }
 
 #[unsafe(no_mangle)]
@@ -309,7 +309,7 @@ pub unsafe extern "C" fn srtc_reconnect_policy_set_gap_buffer_capacity(
 #[derive(Clone, Copy)]
 pub enum SrtcOverflowPolicy {
     DropOldest = 0,
-    Reject     = 1,
+    Reject = 1,
 }
 
 #[unsafe(no_mangle)]
@@ -337,7 +337,10 @@ mod tests {
         unsafe {
             let p = srtc_mux_config_new();
             assert!(!p.is_null());
-            assert_eq!(srtc_mux_config_add_video(p, 0x1011, SrtcVideoCodec::H264), 0);
+            assert_eq!(
+                srtc_mux_config_add_video(p, 0x1011, SrtcVideoCodec::H264),
+                0
+            );
             assert_eq!(
                 srtc_mux_config_add_klv(p, 0x1031, SrtcKlvStreamType::PrivateData, false),
                 0,

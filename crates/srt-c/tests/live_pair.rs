@@ -8,11 +8,13 @@
 //! integration test can call the crate's Rust API directly — the same
 //! `unsafe extern "C"` functions exported to C consumers.
 
+use srt_core::srt::ListenerBuilder;
 use srtc::config::{SrtcKlvStreamType, SrtcMuxConfig, SrtcVideoCodec};
-use srtc::config::{srtc_mux_config_add_klv, srtc_mux_config_add_video, srtc_mux_config_free, srtc_mux_config_new};
+use srtc::config::{
+    srtc_mux_config_add_klv, srtc_mux_config_add_video, srtc_mux_config_free, srtc_mux_config_new,
+};
 use srtc::error::srtc_get_last_error_str;
 use srtc::mux_sender::{srtc_mux_sender_close, srtc_mux_sender_open, srtc_mux_sender_send_video};
-use srt_core::srt::ListenerBuilder;
 use std::ffi::CString;
 use std::sync::mpsc;
 use std::thread;

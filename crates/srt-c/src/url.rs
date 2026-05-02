@@ -67,7 +67,10 @@ pub(crate) fn parse(s: &str) -> Result<ParsedSrtUrl, UrlError> {
 
     let port: u16 = port_str.parse().map_err(|_| UrlError::InvalidPort)?;
 
-    Ok(ParsedSrtUrl { host: host.to_string(), port })
+    Ok(ParsedSrtUrl {
+        host: host.to_string(),
+        port,
+    })
 }
 
 #[cfg(test)]
@@ -77,19 +80,37 @@ mod tests {
     #[test]
     fn ipv4_with_port() {
         let r = parse("srt://1.2.3.4:9000").unwrap();
-        assert_eq!(r, ParsedSrtUrl { host: "1.2.3.4".into(), port: 9000 });
+        assert_eq!(
+            r,
+            ParsedSrtUrl {
+                host: "1.2.3.4".into(),
+                port: 9000
+            }
+        );
     }
 
     #[test]
     fn dns_with_port() {
         let r = parse("srt://example.com:9000").unwrap();
-        assert_eq!(r, ParsedSrtUrl { host: "example.com".into(), port: 9000 });
+        assert_eq!(
+            r,
+            ParsedSrtUrl {
+                host: "example.com".into(),
+                port: 9000
+            }
+        );
     }
 
     #[test]
     fn bracketed_ipv6() {
         let r = parse("srt://[2001:db8::1]:9000").unwrap();
-        assert_eq!(r, ParsedSrtUrl { host: "2001:db8::1".into(), port: 9000 });
+        assert_eq!(
+            r,
+            ParsedSrtUrl {
+                host: "2001:db8::1".into(),
+                port: 9000
+            }
+        );
     }
 
     #[test]

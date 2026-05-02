@@ -32,10 +32,7 @@ fn cdylib_exports_only_prefixed_symbols() {
             None => continue,
         };
         // Standard ELF housekeeping symbols.
-        if matches!(
-            name,
-            "_init" | "_fini" | "__bss_start" | "_edata" | "_end"
-        ) {
+        if matches!(name, "_init" | "_fini" | "__bss_start" | "_edata" | "_end") {
             continue;
         }
         // Rust runtime symbols emitted by the toolchain.

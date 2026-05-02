@@ -45,5 +45,8 @@ fn smoke_c_compiles_links_runs() {
         panic!("smoke binary failed: {:?}", out.status);
     }
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("smoke OK"), "stdout missing 'smoke OK': {stdout}");
+    assert!(
+        stdout.contains("smoke OK"),
+        "stdout missing 'smoke OK': {stdout}"
+    );
 }

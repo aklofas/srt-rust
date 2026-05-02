@@ -60,14 +60,16 @@ pub unsafe extern "C" fn srtc_muxer_push_video(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(nal, len) };
-    handle.inner.with_inner_mut(|m| match m.push_video(slice, pts_90khz, key_frame) {
-        Ok(()) => 0,
-        Err(e) => {
-            record_mux_error(&e);
-            // Find the matching SRTC_E_* code via the recorded last-error.
-            unsafe { crate::error::srtc_get_last_error() }
-        }
-    })
+    handle
+        .inner
+        .with_inner_mut(|m| match m.push_video(slice, pts_90khz, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                // Find the matching SRTC_E_* code via the recorded last-error.
+                unsafe { crate::error::srtc_get_last_error() }
+            }
+        })
 }
 
 /// Push one pre-built KLV blob.
@@ -87,13 +89,15 @@ pub unsafe extern "C" fn srtc_muxer_push_klv(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(klv, len) };
-    handle.inner.with_inner_mut(|m| match m.push_klv(slice, pts_90khz) {
-        Ok(()) => 0,
-        Err(e) => {
-            record_mux_error(&e);
-            unsafe { crate::error::srtc_get_last_error() }
-        }
-    })
+    handle
+        .inner
+        .with_inner_mut(|m| match m.push_klv(slice, pts_90khz) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                unsafe { crate::error::srtc_get_last_error() }
+            }
+        })
 }
 
 /// Drain TS bytes into `out_buf` (capacity `out_cap`). Returns the number

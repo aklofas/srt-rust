@@ -74,7 +74,10 @@ use srt_core::pipeline::{SenderError, TransportError, TsSenderError};
 pub(crate) fn record_mux_error(e: &MuxError) {
     let (code, msg) = match e {
         MuxError::InvalidConfig(s) => (SrtcError::InvalidConfig, (*s).to_string()),
-        MuxError::InvalidNal => (SrtcError::InvalidNal, "video input is not Annex-B framed".into()),
+        MuxError::InvalidNal => (
+            SrtcError::InvalidNal,
+            "video input is not Annex-B framed".into(),
+        ),
         MuxError::BufferFull { capacity_packets } => (
             SrtcError::BufferFull,
             format!("muxer buffer full ({capacity_packets} packets)"),
@@ -130,7 +133,10 @@ mod tests {
     #[test]
     fn set_then_get_roundtrips() {
         set_last_error(SrtcError::InvalidConfig, "bad pid");
-        assert_eq!(unsafe { srtc_get_last_error() }, SrtcError::InvalidConfig as i32);
+        assert_eq!(
+            unsafe { srtc_get_last_error() },
+            SrtcError::InvalidConfig as i32
+        );
         let s_ptr = unsafe { srtc_get_last_error_str() };
         let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
         assert_eq!(s.to_str().unwrap(), "bad pid");

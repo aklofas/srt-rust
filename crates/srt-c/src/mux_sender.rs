@@ -88,13 +88,15 @@ pub unsafe extern "C" fn srtc_mux_sender_send_video(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(nal, len) };
-    handle.inner.with_inner_ref(|s| match s.send_video(slice, pts_90khz, key_frame) {
-        Ok(()) => 0,
-        Err(e) => {
-            record_sender_error(&e);
-            unsafe { srtc_get_last_error() }
-        }
-    })
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_video(slice, pts_90khz, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_sender_error(&e);
+                unsafe { srtc_get_last_error() }
+            }
+        })
 }
 
 #[unsafe(no_mangle)]
@@ -113,13 +115,15 @@ pub unsafe extern "C" fn srtc_mux_sender_send_klv(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(klv, len) };
-    handle.inner.with_inner_ref(|s| match s.send_klv(slice, pts_90khz) {
-        Ok(()) => 0,
-        Err(e) => {
-            record_sender_error(&e);
-            unsafe { srtc_get_last_error() }
-        }
-    })
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_klv(slice, pts_90khz) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_sender_error(&e);
+                unsafe { srtc_get_last_error() }
+            }
+        })
 }
 
 #[unsafe(no_mangle)]
@@ -232,13 +236,15 @@ pub unsafe extern "C" fn srtc_managed_mux_sender_send_video(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(nal, len) };
-    handle.inner.with_inner_ref(|s| match s.send_video(slice, pts_90khz, key_frame) {
-        Ok(()) => 0,
-        Err(e) => {
-            record_sender_error(&e);
-            unsafe { srtc_get_last_error() }
-        }
-    })
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_video(slice, pts_90khz, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_sender_error(&e);
+                unsafe { srtc_get_last_error() }
+            }
+        })
 }
 
 #[unsafe(no_mangle)]
@@ -257,13 +263,15 @@ pub unsafe extern "C" fn srtc_managed_mux_sender_send_klv(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(klv, len) };
-    handle.inner.with_inner_ref(|s| match s.send_klv(slice, pts_90khz) {
-        Ok(()) => 0,
-        Err(e) => {
-            record_sender_error(&e);
-            unsafe { srtc_get_last_error() }
-        }
-    })
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_klv(slice, pts_90khz) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_sender_error(&e);
+                unsafe { srtc_get_last_error() }
+            }
+        })
 }
 
 #[unsafe(no_mangle)]

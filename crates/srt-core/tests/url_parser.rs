@@ -274,3 +274,47 @@ fn fc_query() {
     let u = SrtUrl::parse("srt://1.2.3.4:9000?fc=8192").unwrap();
     assert_eq!(u.overlay.flow_window_packets, Some(8192));
 }
+
+#[test]
+fn tlpktdrop_zero() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?tlpktdrop=0").unwrap();
+    assert_eq!(u.overlay.too_late_packet_drop, Some(false));
+}
+
+#[test]
+fn tlpktdrop_one() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?tlpktdrop=1").unwrap();
+    assert_eq!(u.overlay.too_late_packet_drop, Some(true));
+}
+
+#[test]
+fn tlpktdrop_true_rejects() {
+    // Strict-A: BOOL is "0"/"1" only.
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?tlpktdrop=true").unwrap_err();
+    assert!(matches!(e, UrlError::InvalidValue { ref key, .. } if key == "tlpktdrop"));
+}
+
+#[test]
+fn tlpktdrop_two_rejects() {
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?tlpktdrop=2").unwrap_err();
+    assert!(matches!(e, UrlError::InvalidValue { .. }));
+}
+
+#[test]
+fn x_recvtimeout_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?x-recvtimeout=5000").unwrap();
+    assert_eq!(u.overlay.recv_timeout, Some(Duration::from_millis(5000)));
+}
+
+#[test]
+fn x_sendtimeout_query() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?x-sendtimeout=2000").unwrap();
+    assert_eq!(u.overlay.send_timeout, Some(Duration::from_millis(2000)));
+}
+
+#[test]
+fn x_unknown_extension_rejects() {
+    // x- prefix is reserved but not a free-for-all (spec §4.2).
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?x-foo=bar").unwrap_err();
+    assert!(matches!(e, UrlError::UnknownKey { ref key } if key == "x-foo"));
+}

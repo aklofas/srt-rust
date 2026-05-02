@@ -28,7 +28,6 @@ pub struct SrtUrl {
 /// Typed overlay of query-parameter values. Apply via `apply_to_socket`
 /// or `apply_to_listener`. URL wins on conflict (Q4-A precedence rule).
 #[derive(Debug, Default, Clone)]
-#[allow(dead_code)] // Fields populated by Tasks 3–7; applied to socket in Task 8.
 pub struct UrlOverlay {
     // Group 1 — libsrt-URL honored keys.
     pub passphrase: Option<Passphrase>,
@@ -43,14 +42,14 @@ pub struct UrlOverlay {
     pub overhead_bandwidth_pct: Option<u8>,
     pub stream_id: Option<StreamId>,
     pub loss_max_ttl: Option<u32>,
-    pub(crate) too_late_packet_drop: Option<bool>,
+    pub too_late_packet_drop: Option<bool>,
     pub flow_window_packets: Option<u32>,
     pub packet_filter: Option<PacketFilter>,
     pub congestion: Option<Congestion>,
 
     // Group 2 — `srt-c` extension keys.
-    pub(crate) recv_timeout: Option<Duration>,
-    pub(crate) send_timeout: Option<Duration>,
+    pub recv_timeout: Option<Duration>,
+    pub send_timeout: Option<Duration>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -178,6 +177,17 @@ fn parse_oheadbw(value: &str) -> Result<u8, UrlError> {
     Ok(n as u8)
 }
 
+fn parse_bool_strict(key: &str, value: &str) -> Result<bool, UrlError> {
+    match value {
+        "0" => Ok(false),
+        "1" => Ok(true),
+        other => Err(UrlError::InvalidValue {
+            key: key.to_string(),
+            detail: format!("expected '0' or '1', got '{other}'"),
+        }),
+    }
+}
+
 fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<(), UrlError> {
     match key {
         "congestion" => {
@@ -261,8 +271,18 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
                     })?,
                 );
         }
-        // BOOL keys land in Task 5.
-        // Group 2 (x-*) and Group 3 (rejects) land in Tasks 6 and 7.
+        "tlpktdrop" => {
+            overlay.too_late_packet_drop = Some(parse_bool_strict("tlpktdrop", value)?);
+        }
+        "x-recvtimeout" => {
+            let n = parse_i32_nonneg("x-recvtimeout", value)?;
+            overlay.recv_timeout = Some(Duration::from_millis(n as u64));
+        }
+        "x-sendtimeout" => {
+            let n = parse_i32_nonneg("x-sendtimeout", value)?;
+            overlay.send_timeout = Some(Duration::from_millis(n as u64));
+        }
+        // Group 3 (rejects) lands in Task 6.
         // For now, anything unrecognized is UnknownKey.
         other => {
             return Err(UrlError::UnknownKey {

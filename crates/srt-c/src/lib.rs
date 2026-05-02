@@ -13,6 +13,7 @@ pub mod error;
 mod handle;
 pub mod mux_sender;
 pub mod muxer;
+pub mod raw_sender;
 pub mod ts_sender;
 pub(crate) mod url;
 

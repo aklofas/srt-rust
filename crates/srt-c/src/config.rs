@@ -204,7 +204,7 @@ pub unsafe extern "C" fn srtc_ts_sender_config_set_max_unsynced_bytes(
 }
 
 // ------------------------------------------------------------------
-// srtc_raw_sender_config_t (empty in v0; reserved for future setters)
+// srtc_raw_sender_config_t (empty today; reserved for future setters)
 // ------------------------------------------------------------------
 
 pub struct SrtcRawSenderConfig {

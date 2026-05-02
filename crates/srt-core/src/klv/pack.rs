@@ -163,7 +163,7 @@ impl<'a> Iter<'a> {
         // as the tag and the *full payload value* unchanged. Callers that want
         // the UL key reconstruct it from the buffer offset.
         //
-        // Practically: most v0 consumers iterate local sets. Universal-set
+        // Practically: most consumers iterate local sets. Universal-set
         // iteration is included for completeness but the typed layer never
         // calls it. If a real consumer surfaces, swap RawField for a
         // UniversalSetField type.
@@ -222,7 +222,7 @@ pub fn encode_pack<'a>(
             LengthEncoding::Ber => {
                 // For universal-set form, "tag" is a full UL — but RawField only
                 // carries u32. encode_pack with Ber is reserved for use cases that
-                // wrap encode_pack with a UL-keyed table; in v0 we error.
+                // wrap encode_pack with a UL-keyed table; here we error.
                 return Err(KlvEncodeError::RecordTooLarge);
             }
             _ => return Err(KlvEncodeError::RecordTooLarge),

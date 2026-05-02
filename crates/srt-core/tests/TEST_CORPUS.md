@@ -1,7 +1,7 @@
 # Test corpus shape catalog
 
 Real-world MPEG-TS captures from gimbaled platforms exhibit more variation
-than the v0 synthetic golden fixtures cover. This document catalogs the
+than the synthetic golden fixtures cover. This document catalogs the
 structural shapes and content variants we've observed in the wild, so
 fixtures dropped into the gitignored `tests/fixtures/local/` slot can be
 named and asserted against shape rather than against any specific recording.
@@ -452,4 +452,4 @@ fixtures should fill these:
 - Asynchronous KLV streaming per ST 1909 §7 (multi-segment records
   spanning PESes).
 
-These are listed for future test authors; not blocking for v0.
+These are listed for future test authors; not blocking today.

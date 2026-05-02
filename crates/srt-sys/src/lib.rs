@@ -13,8 +13,10 @@
 //! compiles the vendored copy at `vendor/srt` (a git submodule pinned
 //! at libsrt v1.5.5) via `cmake` and links it statically.
 //!
-//! Encryption is disabled in v0; re-enabling it (with mbedTLS or
-//! vendored OpenSSL) is a focused follow-up plan.
+//! Encryption is on by default via the `mbedtls` cargo feature, which
+//! builds the vendored mbedTLS submodule and links it into libsrt with
+//! `USE_ENCLIB=mbedtls`. Disable with `--no-default-features` for an
+//! `ENABLE_ENCRYPTION=OFF` build.
 //!
 //! Build environment variables:
 //!

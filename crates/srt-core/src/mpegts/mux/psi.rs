@@ -1,8 +1,8 @@
 //! PSI section generation — PAT and PMT.
 //!
-//! Both are single-section, fit in one TS packet for our v0 scope (one
-//! program, one or two elementary streams). The CRC-32/MPEG-2 over the
-//! section is computed via `crate::mpegts::common::crc32::crc32_mpeg2`.
+//! Both are single-section, fit in one TS packet for the current scope
+//! (one program, one or two elementary streams). The CRC-32/MPEG-2 over
+//! the section is computed via `crate::mpegts::common::crc32::crc32_mpeg2`.
 //!
 //! Padding convention: PSI packets fill unused payload bytes with `0xFF`
 //! *within* the TS packet payload (after the section), not via the
@@ -12,11 +12,11 @@
 use super::ts::{AdaptationField, ContinuityCounters, write_packet};
 use crate::mpegts::common::{StreamType, crc32::crc32_mpeg2, descriptor, pid};
 
-/// Single program is fixed at program_number = 0x0001 in v0.
+/// Single program, fixed at program_number = 0x0001.
 pub(crate) const PROGRAM_NUMBER: u16 = 0x0001;
 
-/// PMT lives at this PID in v0. Not configurable — receivers find it via
-/// PAT, so the value is internal.
+/// PMT lives at this PID. Not configurable — receivers find it via PAT,
+/// so the value is internal.
 pub(crate) const PMT_PID: u16 = 0x1000;
 
 /// Build the full 188-byte PAT packet for a single-program TS.

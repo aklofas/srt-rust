@@ -4,7 +4,7 @@
 //! We marshal between Rust's `std::net::SocketAddr` and the C representation
 //! exclusively through these helpers so callers never touch raw FFI.
 //!
-//! v0 supports IPv4 only. IPv6 is straightforward to add but isn't load-bearing
+//! IPv4 only today. IPv6 is straightforward to add but isn't load-bearing
 //! for current consumers (loopback in tests; well-known IPs in deployments).
 
 use crate::error::AddrError;

@@ -1,8 +1,6 @@
 //! Safe Rust API for libsrt 1.5.5 — sockets, configuration, error model.
 //!
-//! This is a thin safety layer on top of `srt-sys`. See the design document
-//! for the full architecture: docs/specs/2026-04-30-srt-core-srt-design.md
-//! (in the parent workspace, not in this repo).
+//! This is a thin safety layer on top of `srt-sys`.
 //!
 //! Quick start:
 //!

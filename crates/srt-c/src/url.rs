@@ -1,7 +1,7 @@
 //! Minimal `srt://host:port` URL parser. Hand-rolled to avoid pulling in
 //! the `url` crate for one parse site.
 //!
-//! Accepted forms (v0):
+//! Accepted forms:
 //!
 //! - `srt://1.2.3.4:9000`         (IPv4 + port)
 //! - `srt://example.com:9000`     (DNS + port)
@@ -32,7 +32,7 @@ impl std::fmt::Display for UrlError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingScheme => write!(f, "url must begin with 'srt://'"),
-            Self::QueryNotSupported => write!(f, "query parameters not supported in v0"),
+            Self::QueryNotSupported => write!(f, "query parameters not supported"),
             Self::MissingPort => write!(f, "url must include a port"),
             Self::InvalidPort => write!(f, "port is not a valid u16"),
             Self::EmptyHost => write!(f, "host part is empty"),

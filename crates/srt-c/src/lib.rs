@@ -2,9 +2,7 @@
 //!
 //! This crate is binding-only. Rust callers should consume `srt-core`
 //! directly. The C ABI is documented in `include/srtc.h` (cbindgen-generated,
-//! committed to the source tree); the design lives at
-//! `~/Projects/srt/docs/specs/2026-05-01-srt-c-design.md` (in the parent
-//! workspace, not in this repo).
+//! committed to the source tree).
 
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
 

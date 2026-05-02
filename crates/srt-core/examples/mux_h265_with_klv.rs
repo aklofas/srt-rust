@@ -33,10 +33,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // -----------------------------------------------------------------
     // Canonical "build a Config from scratch" pattern. The
     // `streams: Vec<StreamSpec>` field is multi-stream-shaped from day
-    // one — v0 enforces "at most one Video and at most one Klv" via
-    // `Config::validate`, but the layout is already what Path 3 needs
+    // one — `Config::validate` enforces "at most one Video and at most
+    // one Klv" today, but the layout is already what Path 3 needs
     // (multiple video / multiple KLV) so future expansion lands
-    // additively without breaking ABI for v0 callers.
+    // additively without breaking ABI for existing callers.
     //
     // The `..Config::default()` form preserves the PCR/PSI/buffer
     // defaults (`pcr_interval_ms: 40`, `psi_interval_ms: 100`,

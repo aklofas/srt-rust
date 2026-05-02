@@ -20,7 +20,7 @@ use crate::mpegts::common::pid;
 /// Video codec carried by the muxer's video PID.
 ///
 /// Drives the PMT `stream_type` byte: 0x1B for H.264 / AVC,
-/// 0x24 for H.265 / HEVC. v0 supports both; mid-stream codec change is
+/// 0x24 for H.265 / HEVC. Both supported; mid-stream codec change is
 /// out of scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoCodec {
@@ -43,10 +43,10 @@ pub enum KlvStreamType {
 
 /// One elementary stream in the muxer's output TS.
 ///
-/// v0 enforces "≤1 video + ≤1 KLV" via [`Config::validate`]; multi-stream
-/// support is Path 3 (see `docs/proposals/2026-05-01-multi-stream-mpegts-mux.md`).
-/// The shape is multi-stream-from-day-one so Path 3 lifts the limit
-/// additively, without breaking ABI for v0 callers.
+/// [`Config::validate`] enforces "≤1 video + ≤1 KLV" today; multi-stream
+/// support is Path 3 (additive, planned). The shape is multi-stream-from-
+/// day-one so Path 3 lifts the limit without breaking ABI for existing
+/// callers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamSpec {
     Video {
@@ -81,9 +81,9 @@ impl StreamSpec {
 
 /// Muxer construction parameters.
 ///
-/// **Multi-stream-shaped from day one.** v0 enforces "at most one Video
-/// stream and at most one Klv stream; at least one of either" via
-/// [`Config::validate`]. Path 3 lifts the limit additively without
+/// **Multi-stream-shaped from day one.** [`Config::validate`] enforces
+/// "at most one Video stream and at most one Klv stream; at least one
+/// of either" today. Path 3 lifts the limit additively without
 /// disturbing existing callers.
 ///
 /// Construct with [`Config::builder()`] for ergonomic chaining, or directly
@@ -91,7 +91,7 @@ impl StreamSpec {
 /// single-video-plus-single-KLV case.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Elementary streams the muxer carries. v0: ≤1 Video, ≤1 Klv, ≥1 of either.
+    /// Elementary streams the muxer carries. Today: ≤1 Video, ≤1 Klv, ≥1 of either.
     pub streams: Vec<StreamSpec>,
 
     /// PID carrying the PCR. `None` = use the first video stream's PID, or
@@ -111,8 +111,8 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        // Same defaults as v0: H.264 video at 0x1011, KLV PrivateData at
-        // 0x1031, async KLV (no PTS), PCR pinned to video.
+        // Defaults: H.264 video at 0x1011, KLV PrivateData at 0x1031,
+        // async KLV (no PTS), PCR pinned to video.
         Self {
             streams: vec![
                 StreamSpec::Video {
@@ -142,14 +142,14 @@ impl Config {
     /// Validate the configuration. Returns `Err(MuxError::InvalidConfig)`
     /// with a static message describing the failed rule.
     pub fn validate(&self) -> Result<(), MuxError> {
-        // v0: ≥1 stream of either kind.
+        // ≥1 stream of either kind.
         if self.streams.is_empty() {
             return Err(MuxError::InvalidConfig(
                 "at least one stream (video or klv) is required",
             ));
         }
 
-        // v0: ≤1 video and ≤1 klv. Path 3 lifts this restriction additively.
+        // ≤1 video and ≤1 klv. Path 3 lifts this restriction additively.
         let mut video_count = 0;
         let mut klv_count = 0;
         for s in &self.streams {
@@ -160,12 +160,12 @@ impl Config {
         }
         if video_count > 1 {
             return Err(MuxError::InvalidConfig(
-                "v0 muxer accepts at most one video stream",
+                "muxer accepts at most one video stream",
             ));
         }
         if klv_count > 1 {
             return Err(MuxError::InvalidConfig(
-                "v0 muxer accepts at most one klv stream",
+                "muxer accepts at most one klv stream",
             ));
         }
 
@@ -279,12 +279,12 @@ impl Config {
         })
     }
 
-    /// First (and in v0, only) video stream's PID, if configured.
+    /// First (and currently, only) video stream's PID, if configured.
     pub fn primary_video_pid(&self) -> Option<u16> {
         self.video_streams().next().map(|(pid, _)| pid)
     }
 
-    /// First (and in v0, only) KLV stream's PID, if configured.
+    /// First (and currently, only) KLV stream's PID, if configured.
     pub fn primary_klv_pid(&self) -> Option<u16> {
         self.klv_streams().next().map(|(pid, _, _)| pid)
     }
@@ -400,15 +400,15 @@ impl Muxer {
     pub fn new(config: Config) -> Result<Self, MuxError> {
         config.validate()?;
 
-        // v0 muxer requires both video and KLV streams. Path 3 lifts this.
+        // The muxer requires both video and KLV streams today. Path 3 lifts this.
         if config.video_streams().next().is_none() {
             return Err(MuxError::InvalidConfig(
-                "v0 muxer requires exactly one video stream",
+                "muxer requires exactly one video stream",
             ));
         }
         if config.klv_streams().next().is_none() {
             return Err(MuxError::InvalidConfig(
-                "v0 muxer requires exactly one klv stream",
+                "muxer requires exactly one klv stream",
             ));
         }
 
@@ -416,7 +416,7 @@ impl Muxer {
         let pcr_interval_27mhz = (config.pcr_interval_ms as u64) * 27_000;
         let psi_interval_90khz = (config.psi_interval_ms as i64) * 90;
 
-        // v0 always has ≤1 video and ≤1 klv. Pull them out via the helpers.
+        // ≤1 video and ≤1 klv (enforced above). Pull them out via the helpers.
         let (video_pid, video_codec) = config.video_streams().next().expect("checked above");
         let (klv_pid, klv_stream_type, klv_carries_pts) =
             config.klv_streams().next().expect("checked above");

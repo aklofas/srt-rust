@@ -9,7 +9,7 @@ pub mod crc32;
 /// MPEG-TS PMT `stream_type` values used by this library.
 ///
 /// Single enum covers both directions: mux looks up by codec / KLV mode,
-/// demux looks up by parsed byte. Variants kept narrow to v0 scope —
+/// demux looks up by parsed byte. Variants kept narrow to current scope —
 /// not a general MPEG-TS type registry.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

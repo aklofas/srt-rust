@@ -39,10 +39,9 @@ fn cdylib_exports_only_prefixed_symbols() {
         if name.starts_with("rust_") || name.starts_with("__rust_") {
             continue;
         }
-        // libsrt's own C API surfaces through our static link. Allowlisted for
-        // v0; tracked in docs/plans/2026-05-01-srt-c-design.md as a known
-        // impurity. A future version-script build option will restrict exports
-        // to srtc_*/SRTC_* only (option (b) from the audit design note).
+        // libsrt's own C API surfaces through our static link. Allowlisted as
+        // a known impurity. A future version-script build option will restrict
+        // exports to srtc_*/SRTC_* only.
         if name.starts_with("srt_") {
             continue;
         }

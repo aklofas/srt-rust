@@ -240,9 +240,8 @@ examples and tests; never hard-code real call signs or operational
 identifiers in source. Filter logic is intentionally caller-side:
 `Listener::accept` returns every successful handshake and the
 application's accept loop decides whether to keep the connection. See
-"Stream-ID filtering on Listener" in
-`~/Projects/srt/docs/deferred-features.md` (parent workspace) for the
-rationale.
+"Stream-ID filtering on `Listener`" in
+[`docs/deferred-features.md`](deferred-features.md) for the rationale.
 
 ## Packet filters
 
@@ -267,8 +266,9 @@ fn fec_caller() -> Result<(), Box<dyn std::error::Error>> {
 
 The spec format — FEC column / row sizing, ARQ modes, filter chaining —
 is documented upstream at the Haivision libsrt repository
-(`Haivision/srt`). A typed FEC builder is deferred — see "Typed FEC /
-packet-filter builder" in `~/Projects/srt/docs/deferred-features.md`.
+(`Haivision/srt`). A typed FEC builder is deferred — see "Typed
+packet-filter / FEC builder" in
+[`docs/deferred-features.md`](deferred-features.md).
 
 ## `Stats`
 
@@ -350,7 +350,7 @@ Recovery summary:
 
 ## Blocking semantics
 
-The v0 API is sync blocking. Calls that block:
+The public API is sync blocking. Calls that block:
 
 - `SocketBuilder::connect` / `Socket::connect_with` — until the SRT
   handshake completes or an error fires.
@@ -375,22 +375,22 @@ expires, `accept` returns `AcceptError::TimedOut`. There is no separate
 `accept_timeout` setter; it shares the listener's underlying recv
 timeout.
 
-There is no `set_nonblocking` in v0. Async support is deferred — see
-the sync-vs-async section in [architecture.md](architecture.md).
+There is no `set_nonblocking`. Async support is deferred — see the
+sync-vs-async section in [architecture.md](architecture.md).
 
 ## What's deferred
 
 Each item below maps to an entry in
-`~/Projects/srt/docs/deferred-features.md` (parent workspace).
+[`docs/deferred-features.md`](deferred-features.md).
 
 - Reactor / async / `srt_epoll_*` exposure — connection counts of ten
   or fewer per process make thread-per-connection adequate.
-- Bonding / connection groups (`SRTO_GROUP*`) — no v0 consumer needs
-  link bonding.
+- Bonding / connection groups (`SRTO_GROUP*`) — no current consumer
+  needs link bonding.
 - Key rotation (`SRTO_KMREFRESHRATE`, `SRTO_KMPREANNOUNCE`) — typical
   stream durations don't trigger AES rekey thresholds.
-- Linger tuning (`SRTO_LINGER`) — v0 uses a sensible internal value;
-  live mode doesn't need a long linger.
+- Linger tuning (`SRTO_LINGER`) — the library uses a sensible
+  internal value; live mode doesn't need a long linger.
 - Protocol-version pinning (`SRTO_PEERVERSION`, `SRTO_MINVERSION`) —
   libsrt 1.5.5 negotiates with anything 1.3 or newer.
 - Typed FEC / packet-filter builder — pass the libsrt spec string

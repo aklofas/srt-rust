@@ -12,7 +12,7 @@ use crate::pipeline::transport::{Transport, TransportError};
 
 /// Construction-time knobs for [`RawSender`].
 ///
-/// Currently empty — no behavior knobs are needed for v0. Reserved as a
+/// Currently empty — no behavior knobs are needed today. Reserved as a
 /// distinct type so future additions are non-breaking.
 #[derive(Debug, Clone, Default)]
 pub struct RawSenderConfig {

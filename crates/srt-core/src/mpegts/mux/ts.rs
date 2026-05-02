@@ -20,7 +20,8 @@ use std::collections::BTreeMap;
 /// Per-PID 4-bit continuity counters.
 ///
 /// `BTreeMap` rather than `HashMap` to avoid pulling in a hasher dep and
-/// keep the data path zero-allocation after warm-up (we have ≤ 4 PIDs in v0).
+/// keep the data path zero-allocation after warm-up (≤ 4 PIDs in the
+/// single-stream configuration the muxer enforces today).
 #[derive(Debug, Default)]
 pub(crate) struct ContinuityCounters {
     counters: BTreeMap<u16, u8>,

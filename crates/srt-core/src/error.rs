@@ -44,7 +44,7 @@ pub enum PacketFilterError {
 pub enum AddrError {
     #[error("could not resolve address: {0}")]
     Resolve(String),
-    #[error("IPv6 not supported in v0")]
+    #[error("IPv6 not supported")]
     Ipv6Unsupported,
     #[error("IO error reading address: {0}")]
     Io(#[from] io::Error),

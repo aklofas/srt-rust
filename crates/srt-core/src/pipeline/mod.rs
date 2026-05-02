@@ -3,10 +3,8 @@
 //! into ergonomic sender shells for the canonical platform-to-ground-station
 //! send path.
 //!
-//! See the design doc for architecture and decisions:
-//! `docs/specs/2026-05-01-srt-c-design.md` (in the parent workspace, not in
-//! this repo). All three sender shells (`Sender`, `TsSender`, `RawSender`)
-//! are generic over a `Transport`; the `ManagedTransport` decorator (in
+//! All three sender shells (`Sender`, `TsSender`, `RawSender`) are generic
+//! over a `Transport`; the `ManagedTransport` decorator (in
 //! `pipeline::reconnect`) wraps any of them with reconnect + gap buffering.
 
 pub mod raw_sender;

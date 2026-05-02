@@ -10,7 +10,7 @@ integrators may want it as background but should start at
 [getting-started.md](getting-started.md) if they just want to use the
 library.
 
-The vocabulary established here — `Transport`, "sender shell", "v0 sender
+The vocabulary established here — `Transport`, "sender shell", "sender
 pipeline", the layering rule — is reused by the per-module guides
 ([guide-srt.md](guide-srt.md), [guide-klv.md](guide-klv.md),
 [guide-mpegts-mux.md](guide-mpegts-mux.md),
@@ -137,13 +137,13 @@ error. The full mechanics of each shell are covered in
 
 ## Sync vs. async
 
-The v0 API is sync blocking. `Socket::send` and `Socket::recv` block the
-calling thread; `Sender::send_video` blocks until the underlying SRT
+The public API is sync blocking. `Socket::send` and `Socket::recv` block
+the calling thread; `Sender::send_video` blocks until the underlying SRT
 socket has accepted the bytes; reconnect inside `ManagedTransport` runs
 on the caller's thread.
 
-Sync was chosen for v0 for three reasons. First, the target deployment
-shape is small — a process talks to ≤10 SRT peers, so the thread-per-
+Sync was chosen for three reasons. First, the target deployment shape
+is small — a process talks to ≤10 SRT peers, so the thread-per-
 connection cost is negligible. Second, sync code is simpler to reason
 about and debug, especially when bridging into C / JVM / Swift / Kotlin
 through the binding crates, none of which have a portable async story.
@@ -158,9 +158,7 @@ internals. The heavier path is a full async reactor backed by libsrt's
 `srt_epoll_*` family with `tokio::io::unix::AsyncFd` or equivalent
 registration — better scalability, much bigger surface to design and
 test. The choice is consumer-driven; until then the sync API stays. See
-the deferred-features entry "Reactor / `srt_epoll_*` exposure" in the
-parent workspace doc at `~/Projects/srt/docs/deferred-features.md` (not
-part of the published repo) for the current note.
+[`docs/deferred-features.md`](deferred-features.md) for the current note.
 
 Note that "sync" applies to the public API surface — internally, the
 `Sender` family uses an internal mutex so the data path is safe to call
@@ -171,11 +169,8 @@ producing.
 
 ## What's deferred
 
-The deferred-features doc lives in the parent workspace at
-`~/Projects/srt/docs/deferred-features.md`. It is intentionally outside
-the published repo because it tracks design-state context the public
-artifact does not need to carry. The summary below points at it once;
-each item below maps to an entry there.
+The summary below points at the canonical list once; each item maps to
+an entry in [`docs/deferred-features.md`](deferred-features.md).
 
 - `mpegts::demux` — receiver-side TS demuxer. Receivers use FFmpeg / JavaCV / Bento4 / platform demuxers.
 - Audio carriage in `mpegts::mux` — video + KLV only today.
@@ -187,17 +182,5 @@ each item below maps to an entry there.
 - `serde` / `no_std` for `klv` — pure additive; behind feature flags when added.
 - Rustdoc lift to docs.rs — these markdown files are written CommonMark-clean so the lift is mechanical when scheduled.
 
-See `~/Projects/srt/docs/deferred-features.md` for the canonical list and
-the rationale for each entry.
-
-## Where the design specs live
-
-Architecture decisions, design rationale, and per-plan implementation
-notes live at `~/Projects/srt/docs/specs/` and `~/Projects/srt/docs/plans/`
-in the parent workspace — not in this published repo. The split is
-deliberate: the parent workspace tracks the project's full design state
-(research, prior-art analyses, decision logs, plan-by-plan execution
-records); the `srt-rust` repo carries only what a consumer or contributor
-needs to use or extend the shipping artifact. Contributors who want to
-read the architecture rationale, scope-discipline trail, or pre-ship plan
-documents should look in the parent workspace.
+See [`docs/deferred-features.md`](deferred-features.md) for the
+canonical list and the rationale for each entry.

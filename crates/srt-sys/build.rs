@@ -93,7 +93,7 @@ fn main() {
 /// `ENABLE_ENCRYPTION=ON` + `USE_ENCLIB=mbedtls` and uses the prefix
 /// to locate mbedTLS via `find_package(MbedTLS)`.
 ///
-/// Otherwise, libsrt is built with `ENABLE_ENCRYPTION=OFF` (v0 behavior).
+/// Otherwise, libsrt is built with `ENABLE_ENCRYPTION=OFF`.
 fn build_vendored(mbedtls_prefix: Option<&PathBuf>) -> Vec<PathBuf> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let vendor_dir = manifest_dir

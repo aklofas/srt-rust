@@ -2,8 +2,8 @@
 //!
 //! Reads muxed bytes from `Muxer::pull`, identifies PAT and PMT, reassembles
 //! PES on a chosen PID, extracts the payload and (if present) the PTS. Not
-//! intended for production use — error recovery is minimal, only the v0
-//! mux's output shape is supported.
+//! intended for production use — error recovery is minimal, only this
+//! crate's mux output shape is supported.
 
 use std::collections::HashMap;
 

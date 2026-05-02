@@ -29,7 +29,7 @@ pub(crate) enum PesPtsField {
     PtsOnly(Pts90khz),
 }
 
-/// Maximum size of a PES header for our v0 cases.
+/// Maximum size of a PES header for the cases this muxer emits.
 /// = 3(start) + 1(stream_id) + 2(length) + 1(flags1) + 1(flags2) + 1(header_data_length) + 5(PTS) = 14
 pub(crate) const MAX_PES_HEADER_SIZE: usize = 14;
 

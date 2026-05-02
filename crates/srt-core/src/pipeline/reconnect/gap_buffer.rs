@@ -7,10 +7,10 @@
 //! the front of the queue to make room; `Reject` returns an error
 //! signaling the caller to back off.
 //!
-//! In v0, drop policy is uniform across all sender types — drop oldest
-//! message. The previously-considered drop-oldest-GOP policy is deferred;
-//! it would require IDR-boundary metadata in the mux path and byte
-//! scanning in the ts/raw paths.
+//! Drop policy is uniform across all sender types — drop oldest message.
+//! The previously-considered drop-oldest-GOP policy is deferred; it would
+//! require IDR-boundary metadata in the mux path and byte scanning in
+//! the ts/raw paths.
 
 use std::collections::VecDeque;
 

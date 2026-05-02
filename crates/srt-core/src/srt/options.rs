@@ -111,21 +111,24 @@ impl KeyLength {
 // ============================================================================
 
 /// `SRTO_MAXBW` value. Wraps libsrt's overloaded sentinel ints.
+///
+/// libsrt accepts `0` ("unlimited"), `-1` ("auto, derive from input bw"),
+/// or a positive byte/sec rate. Any other negative value is rejected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MaxBandwidth {
+    /// No cap (libsrt sentinel `0`). Default for live mode.
     Unlimited,
+    /// Auto-derive from `SRTO_INPUTBW` × (1 + `SRTO_OHEADBW`/100) (libsrt sentinel `-1`).
     Auto,
-    Infinite,
+    /// Explicit cap in bytes per second.
     Limited(u64),
 }
 
 impl MaxBandwidth {
-    #[allow(dead_code)]
     pub(crate) fn as_libsrt_i64(self) -> i64 {
         match self {
             MaxBandwidth::Unlimited => 0,
             MaxBandwidth::Auto => -1,
-            MaxBandwidth::Infinite => -2,
             MaxBandwidth::Limited(bps) => bps as i64,
         }
     }
@@ -297,7 +300,6 @@ mod tests {
     fn max_bandwidth_libsrt_repr() {
         assert_eq!(MaxBandwidth::Unlimited.as_libsrt_i64(), 0);
         assert_eq!(MaxBandwidth::Auto.as_libsrt_i64(), -1);
-        assert_eq!(MaxBandwidth::Infinite.as_libsrt_i64(), -2);
         assert_eq!(MaxBandwidth::Limited(1_000_000).as_libsrt_i64(), 1_000_000);
     }
 

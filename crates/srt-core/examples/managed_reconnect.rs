@@ -84,64 +84,66 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // path more than once, while still terminating in finite time.
     // ---------------------------------------------------------------------
     let peer_done = listener_done.clone();
-    let peer_handle = thread::spawn(move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Latency must match the sender's (120 ms) — SRT negotiates the max
-        // of the two peers' values, and a mismatch is a common config
-        // smell to flag.
-        let mut listener = ListenerBuilder::new()
-            .latency(Duration::from_millis(120))
-            .bind(bind_addr.as_str())?;
-        ready_tx.send(()).ok();
+    let peer_handle = thread::spawn(
+        move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            // Latency must match the sender's (120 ms) — SRT negotiates the max
+            // of the two peers' values, and a mismatch is a common config
+            // smell to flag.
+            let mut listener = ListenerBuilder::new()
+                .latency(Duration::from_millis(120))
+                .bind(bind_addr.as_str())?;
+            ready_tx.send(()).ok();
 
-        for round in 0..3 {
-            let (mut socket, peer) = listener.accept()?;
-            eprintln!("peer: round {round} accepted from {peer}");
+            for round in 0..3 {
+                let (mut socket, peer) = listener.accept()?;
+                eprintln!("peer: round {round} accepted from {peer}");
 
-            // 1500 bytes ≥ default SRT payload (1316), so each `recv`
-            // returns a whole message.
-            let mut buf = [0u8; 1500];
-            let mut messages = 0;
-            loop {
-                match socket.recv(&mut buf) {
-                    Ok(_) => {
-                        messages += 1;
-                        if messages >= 5 && round < 2 {
-                            eprintln!("peer: round {round} dropping after {messages} messages");
-                            // Dropping the `Socket` runs its `Drop` impl,
-                            // which calls `srt_close` on the underlying
-                            // libsrt handle. libsrt sends a teardown to the
-                            // remote peer; the sender sees that as a
-                            // broken connection on its next `send`, which
-                            // surfaces as `TransportError::Broken`.
-                            // *That* is what triggers `ManagedTransport`'s
-                            // gap-buffer-and-reconnect path. So this
-                            // single line `drop(socket)` is the entire
-                            // disconnect simulation.
-                            drop(socket);
+                // 1500 bytes ≥ default SRT payload (1316), so each `recv`
+                // returns a whole message.
+                let mut buf = [0u8; 1500];
+                let mut messages = 0;
+                loop {
+                    match socket.recv(&mut buf) {
+                        Ok(_) => {
+                            messages += 1;
+                            if messages >= 5 && round < 2 {
+                                eprintln!("peer: round {round} dropping after {messages} messages");
+                                // Dropping the `Socket` runs its `Drop` impl,
+                                // which calls `srt_close` on the underlying
+                                // libsrt handle. libsrt sends a teardown to the
+                                // remote peer; the sender sees that as a
+                                // broken connection on its next `send`, which
+                                // surfaces as `TransportError::Broken`.
+                                // *That* is what triggers `ManagedTransport`'s
+                                // gap-buffer-and-reconnect path. So this
+                                // single line `drop(socket)` is the entire
+                                // disconnect simulation.
+                                drop(socket);
+                                break;
+                            }
+                        }
+                        // Canonical clean-close signal — the sender called
+                        // `close()` and we should exit the recv loop.
+                        Err(srt_core::error::RecvError::ConnectionBroken) => {
+                            eprintln!("peer: round {round} clean close after {messages} messages");
                             break;
                         }
+                        // No recv timeout is configured, so this branch is
+                        // defensive. Continue and try again.
+                        Err(srt_core::error::RecvError::TimedOut) => continue,
+                        Err(e) => return Err(Box::new(e)),
                     }
-                    // Canonical clean-close signal — the sender called
-                    // `close()` and we should exit the recv loop.
-                    Err(srt_core::error::RecvError::ConnectionBroken) => {
-                        eprintln!("peer: round {round} clean close after {messages} messages");
-                        break;
-                    }
-                    // No recv timeout is configured, so this branch is
-                    // defensive. Continue and try again.
-                    Err(srt_core::error::RecvError::TimedOut) => continue,
-                    Err(e) => return Err(Box::new(e)),
+                }
+                // Honor coordinated shutdown — main flips this flag once the
+                // sender has finished, so we don't loop into a 4th `accept()`
+                // that would never complete.
+                if peer_done.load(Ordering::SeqCst) {
+                    break;
                 }
             }
-            // Honor coordinated shutdown — main flips this flag once the
-            // sender has finished, so we don't loop into a 4th `accept()`
-            // that would never complete.
-            if peer_done.load(Ordering::SeqCst) {
-                break;
-            }
-        }
-        Ok(())
-    });
+            Ok(())
+        },
+    );
 
     // Wait for `bind()` to return on the peer thread, then a small extra
     // pause to let the kernel start servicing UDP on the listening socket

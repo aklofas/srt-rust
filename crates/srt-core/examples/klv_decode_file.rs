@@ -94,10 +94,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     // not KLV bytes. Surface the last
                                     // error to the caller — there's
                                     // nothing more to try.
-                                    return Err(format!(
-                                        "all decoders rejected; last error: {e4}"
-                                    )
-                                    .into());
+                                    return Err(
+                                        format!("all decoders rejected; last error: {e4}").into()
+                                    );
                                 }
                             }
                         }

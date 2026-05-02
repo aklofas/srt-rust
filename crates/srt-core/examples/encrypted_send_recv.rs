@@ -64,60 +64,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `Result<(), Box<dyn Error + Send + Sync>>` rather than the bare
     // `Box<dyn Error>` main uses — `Send + Sync` is required to move the
     // error across the thread boundary in `join()`.
-    let listener_handle = thread::spawn(move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // `Passphrase::new` validates: 10–79 ASCII-printable bytes (libsrt's
-        // own constraint). The constant above sits comfortably inside that.
-        let passphrase = Passphrase::new(PASSPHRASE)?;
-        let mut listener = ListenerBuilder::new()
-            .passphrase(passphrase)
-            // AES-256 is overkill for 16 short messages but mirrors what a
-            // production deployment would pick; switching the constant to
-            // `Aes128` or `Aes192` is a one-line change.
-            .key_length(KeyLength::Aes256)
-            .latency(Duration::from_millis(120))
-            .bind(bind_addr.as_str())?;
+    let listener_handle = thread::spawn(
+        move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            // `Passphrase::new` validates: 10–79 ASCII-printable bytes (libsrt's
+            // own constraint). The constant above sits comfortably inside that.
+            let passphrase = Passphrase::new(PASSPHRASE)?;
+            let mut listener = ListenerBuilder::new()
+                .passphrase(passphrase)
+                // AES-256 is overkill for 16 short messages but mirrors what a
+                // production deployment would pick; switching the constant to
+                // `Aes128` or `Aes192` is a one-line change.
+                .key_length(KeyLength::Aes256)
+                .latency(Duration::from_millis(120))
+                .bind(bind_addr.as_str())?;
 
-        // Bind succeeded — wake the main thread so it can launch the sender.
-        // `.ok()` because if the receiver was dropped we don't care: we'll
-        // discover the failure via the next `accept()` or `recv()`.
-        ready_tx.send(()).ok();
+            // Bind succeeded — wake the main thread so it can launch the sender.
+            // `.ok()` because if the receiver was dropped we don't care: we'll
+            // discover the failure via the next `accept()` or `recv()`.
+            ready_tx.send(()).ok();
 
-        // Blocking accept. Returns when the sender's connect handshake
-        // completes — and that handshake includes the SRT key-material
-        // exchange (KMREQ/KMRSP), so a successful `accept` means encryption
-        // is already negotiated. A passphrase mismatch would surface here as
-        // an error instead.
-        let (mut socket, peer) = listener.accept()?;
-        // Once accepted, the listener can read the caller's stream ID — this
-        // is the natural place for routing or per-stream authorization in a
-        // real server (look up the publisher, attach a recording sink, etc.).
-        eprintln!("listener: accepted from {peer}, stream_id={:?}", socket.stream_id());
+            // Blocking accept. Returns when the sender's connect handshake
+            // completes — and that handshake includes the SRT key-material
+            // exchange (KMREQ/KMRSP), so a successful `accept` means encryption
+            // is already negotiated. A passphrase mismatch would surface here as
+            // an error instead.
+            let (mut socket, peer) = listener.accept()?;
+            // Once accepted, the listener can read the caller's stream ID — this
+            // is the natural place for routing or per-stream authorization in a
+            // real server (look up the publisher, attach a recording sink, etc.).
+            eprintln!(
+                "listener: accepted from {peer}, stream_id={:?}",
+                socket.stream_id()
+            );
 
-        // 1500 bytes is comfortably above SRT's default payload size of 1316
-        // (`SRTO_PAYLOADSIZE`), so each `recv` returns a whole message.
-        let mut buf = [0u8; 1500];
-        let mut received = 0usize;
-        loop {
-            // Same three-arm pattern as in `srt_listener_to_file`: Ok counts
-            // a message, ConnectionBroken is the canonical close signal,
-            // TimedOut is defensive (no recv timeout is set so it shouldn't
-            // fire), other errors are fatal.
-            match socket.recv(&mut buf) {
-                Ok(n) => {
-                    eprintln!("listener: recv {n} bytes (msg {received})");
-                    received += 1;
-                    if received >= NUM_MESSAGES {
-                        break;
+            // 1500 bytes is comfortably above SRT's default payload size of 1316
+            // (`SRTO_PAYLOADSIZE`), so each `recv` returns a whole message.
+            let mut buf = [0u8; 1500];
+            let mut received = 0usize;
+            loop {
+                // Same three-arm pattern as in `srt_listener_to_file`: Ok counts
+                // a message, ConnectionBroken is the canonical close signal,
+                // TimedOut is defensive (no recv timeout is set so it shouldn't
+                // fire), other errors are fatal.
+                match socket.recv(&mut buf) {
+                    Ok(n) => {
+                        eprintln!("listener: recv {n} bytes (msg {received})");
+                        received += 1;
+                        if received >= NUM_MESSAGES {
+                            break;
+                        }
                     }
+                    Err(srt_core::error::RecvError::ConnectionBroken) => break,
+                    Err(srt_core::error::RecvError::TimedOut) => continue,
+                    Err(e) => return Err(Box::new(e)),
                 }
-                Err(srt_core::error::RecvError::ConnectionBroken) => break,
-                Err(srt_core::error::RecvError::TimedOut) => continue,
-                Err(e) => return Err(Box::new(e)),
             }
-        }
-        done_tx.send(received).ok();
-        Ok(())
-    });
+            done_tx.send(received).ok();
+            Ok(())
+        },
+    );
 
     // Belt-and-suspenders. `ready_rx.recv()` already proves bind() returned;
     // the brief sleep gives the kernel a tick to start servicing UDP on the
@@ -128,37 +133,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     thread::sleep(Duration::from_millis(50));
 
     // Sender thread (could be inline; threaded to mirror real deployments).
-    let sender_handle = thread::spawn(move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let passphrase = Passphrase::new(PASSPHRASE)?;
-        let stream_id = StreamId::new(STREAM_ID)?;
-        let mut socket = SocketBuilder::new()
-            .passphrase(passphrase)
-            .key_length(KeyLength::Aes256)
-            .stream_id(stream_id)
-            .latency(Duration::from_millis(120))
-            .connect(connect_addr.as_str())?;
+    let sender_handle = thread::spawn(
+        move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+            let passphrase = Passphrase::new(PASSPHRASE)?;
+            let stream_id = StreamId::new(STREAM_ID)?;
+            let mut socket = SocketBuilder::new()
+                .passphrase(passphrase)
+                .key_length(KeyLength::Aes256)
+                .stream_id(stream_id)
+                .latency(Duration::from_millis(120))
+                .connect(connect_addr.as_str())?;
 
-        // 20 ms cadence is deliberately slow so the listener's per-message
-        // log line is human-readable as the example runs. A real publisher
-        // would push messages back-to-back and let SRT's pacing layer
-        // handle wire-rate shaping — pacing in the application layer
-        // is the wrong place to do it.
-        for i in 0..NUM_MESSAGES {
-            let msg = format!("encrypted message {i:02}").into_bytes();
-            socket.send(&msg)?;
-            thread::sleep(Duration::from_millis(20));
-        }
-        eprintln!("sender: sent {NUM_MESSAGES} messages");
-        // Give the receiver a beat to drain in-flight packets before close.
-        // SRT's latency window (120 ms here) covers retransmits inside that
-        // budget, but `close()` tears the link down promptly — sleeping more
-        // than `latency` lets the tail of the stream get ACKed and delivered
-        // before the socket goes away. Without this, the close can race the
-        // last few datagrams and the listener sees fewer messages than sent.
-        thread::sleep(Duration::from_millis(200));
-        socket.close()?;
-        Ok(())
-    });
+            // 20 ms cadence is deliberately slow so the listener's per-message
+            // log line is human-readable as the example runs. A real publisher
+            // would push messages back-to-back and let SRT's pacing layer
+            // handle wire-rate shaping — pacing in the application layer
+            // is the wrong place to do it.
+            for i in 0..NUM_MESSAGES {
+                let msg = format!("encrypted message {i:02}").into_bytes();
+                socket.send(&msg)?;
+                thread::sleep(Duration::from_millis(20));
+            }
+            eprintln!("sender: sent {NUM_MESSAGES} messages");
+            // Give the receiver a beat to drain in-flight packets before close.
+            // SRT's latency window (120 ms here) covers retransmits inside that
+            // budget, but `close()` tears the link down promptly — sleeping more
+            // than `latency` lets the tail of the stream get ACKed and delivered
+            // before the socket goes away. Without this, the close can race the
+            // last few datagrams and the listener sees fewer messages than sent.
+            thread::sleep(Duration::from_millis(200));
+            socket.close()?;
+            Ok(())
+        },
+    );
 
     // Each `.join()` returns `Result<Result<(), BoxedSendSyncError>, JoinError>`.
     // The outer Result is the panic-or-not from the thread; the inner Result
@@ -179,7 +186,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `recv()` would deadlock the test forever; the timeout converts that
     // into a clean error.
     let received = done_rx.recv_timeout(Duration::from_secs(2))?;
-    assert_eq!(received, NUM_MESSAGES, "received {received} of {NUM_MESSAGES}");
+    assert_eq!(
+        received, NUM_MESSAGES,
+        "received {received} of {NUM_MESSAGES}"
+    );
 
     println!("OK: {NUM_MESSAGES} encrypted messages round-tripped");
     Ok(())

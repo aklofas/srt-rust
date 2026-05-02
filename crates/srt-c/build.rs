@@ -32,4 +32,15 @@ fn main() {
 
     println!("cargo:rerun-if-changed=cbindgen.toml");
     println!("cargo:rerun-if-changed=src");
+
+    // pkg-config substitution.
+    let version = env!("CARGO_PKG_VERSION");
+    let template_path = PathBuf::from(&crate_dir).join("srtc.pc.in");
+    let template = std::fs::read_to_string(&template_path).expect("read srtc.pc.in");
+    let pc = template
+        .replace("@VERSION@", version)
+        .replace("@PREFIX@", "/usr/local"); // tarball install default; consumer can sed it
+    let pc_path = profile_dir.join("srtc.pc");
+    std::fs::write(&pc_path, pc).expect("write srtc.pc");
+    println!("cargo:rerun-if-changed=srtc.pc.in");
 }

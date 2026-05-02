@@ -10,13 +10,13 @@ use crate::error::{
     SrtcError, record_mux_error, record_sender_error, set_last_error, srtc_get_last_error,
 };
 use crate::handle::Handle;
-use crate::url::parse;
 use srt_core::pipeline::{ManagedTransport, Sender, SrtTransport, TransportError};
 use srt_core::srt::SocketBuilder;
+use srt_core::srt::config::SocketConfig;
 
-/// Build a fresh `SrtTransport` connected to `host:port`. Used both for
-/// the plain-sender's one-shot connect and as the body of the managed
-/// sender's reconnect closure.
+/// Build a fresh `SrtTransport` connected to `host:port`. Used by the
+/// managed sender's reconnect closure (plain sender uses
+/// `crate::connect::connect_srt` with a full `SocketConfig` instead).
 fn connect_srt(host: &str, port: u16) -> Result<SrtTransport, TransportError> {
     let socket = SocketBuilder::new()
         .connect(format!("{host}:{port}").as_str())
@@ -41,7 +41,7 @@ pub unsafe extern "C" fn srtc_mux_sender_open(
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
         return std::ptr::null_mut();
     };
-    let url = match unsafe { parse_c_url(srt_url) } {
+    let url = match unsafe { parse_c_srt_url(srt_url) } {
         Ok(u) => u,
         Err(()) => return std::ptr::null_mut(),
     };
@@ -52,7 +52,9 @@ pub unsafe extern "C" fn srtc_mux_sender_open(
             return std::ptr::null_mut();
         }
     };
-    let transport = match connect_srt(&url.host, url.port) {
+    let mut socket_cfg = SocketConfig::default();
+    url.overlay.apply_to_socket(&mut socket_cfg);
+    let transport = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
         Ok(t) => t,
         Err(e) => {
             crate::error::record_transport_error(&e);
@@ -136,11 +138,10 @@ pub unsafe extern "C" fn srtc_mux_sender_close(p: *mut SrtcMuxSender) {
     drop(boxed);
 }
 
-/// Borrow `srt_url` as a Rust string and parse. Sets last-error and returns
-/// `Err(())` on any failure path; caller treats `Err` as "return NULL".
-pub(crate) unsafe fn parse_c_url(
-    srt_url: *const libc::c_char,
-) -> Result<crate::url::ParsedSrtUrl, ()> {
+/// Borrow `srt_url` as a Rust string and run it through `srt_core`'s
+/// rich URL parser. Sets last-error and returns `Err(())` on any failure
+/// path; caller treats `Err(())` as "return NULL".
+pub(crate) unsafe fn parse_c_srt_url(srt_url: *const libc::c_char) -> Result<srt_core::SrtUrl, ()> {
     if srt_url.is_null() {
         set_last_error(SrtcError::InvalidConfig, "null srt_url");
         return Err(());
@@ -153,7 +154,7 @@ pub(crate) unsafe fn parse_c_url(
             return Err(());
         }
     };
-    parse(s).map_err(|e| {
+    srt_core::SrtUrl::parse(s).map_err(|e| {
         set_last_error(SrtcError::InvalidConfig, &format!("invalid srt url: {e}"));
     })
 }
@@ -180,7 +181,7 @@ pub unsafe extern "C" fn srtc_managed_mux_sender_open(
         Some(p) => p.inner.clone(),
         None => srt_core::pipeline::ReconnectPolicy::default(),
     };
-    let url = match unsafe { parse_c_url(srt_url) } {
+    let url = match unsafe { parse_c_srt_url(srt_url) } {
         Ok(u) => u,
         Err(()) => return std::ptr::null_mut(),
     };

@@ -5,7 +5,7 @@
 use crate::config::{SrtcRawSenderConfig, SrtcReconnectPolicy};
 use crate::error::{SrtcError, record_transport_error, set_last_error, srtc_get_last_error};
 use crate::handle::Handle;
-use crate::mux_sender::parse_c_url;
+use crate::mux_sender::parse_c_srt_url;
 use srt_core::pipeline::{ManagedTransport, RawSender, SrtTransport};
 use srt_core::srt::SocketBuilder;
 
@@ -33,11 +33,13 @@ pub unsafe extern "C" fn srtc_raw_sender_open(
         Some(c) => c.inner.clone(),
         None => srt_core::pipeline::RawSenderConfig::default(),
     };
-    let url = match unsafe { parse_c_url(srt_url) } {
+    let url = match unsafe { parse_c_srt_url(srt_url) } {
         Ok(u) => u,
         Err(()) => return std::ptr::null_mut(),
     };
-    let transport = match connect_srt(&url.host, url.port) {
+    let mut socket_cfg = srt_core::srt::config::SocketConfig::default();
+    url.overlay.apply_to_socket(&mut socket_cfg);
+    let transport = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
         Ok(t) => t,
         Err(e) => {
             record_transport_error(&e);
@@ -105,7 +107,7 @@ pub unsafe extern "C" fn srtc_managed_raw_sender_open(
         Some(p) => p.inner.clone(),
         None => srt_core::pipeline::ReconnectPolicy::default(),
     };
-    let url = match unsafe { parse_c_url(srt_url) } {
+    let url = match unsafe { parse_c_srt_url(srt_url) } {
         Ok(u) => u,
         Err(()) => return std::ptr::null_mut(),
     };

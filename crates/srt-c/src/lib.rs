@@ -13,6 +13,7 @@ pub mod error;
 mod handle;
 pub mod mux_sender;
 pub mod muxer;
+pub mod ts_sender;
 pub(crate) mod url;
 
 /// Major version (compile-time macro in the generated header).

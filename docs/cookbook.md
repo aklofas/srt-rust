@@ -1,0 +1,324 @@
+# Cookbook
+
+Common multi-step recipes. Each recipe is a short narrative + a code block + a link to the corresponding runnable example. Run any example with `cargo run --example <name>`. The full set of examples lives at `crates/srt-core/examples/`.
+
+## Recipes
+
+### 1. Send video + KLV with passphrase encryption
+
+Reach for this when you need a secure uplink. SRT's encryption is AES-CTR with a passphrase-derived key, negotiated during the handshake; both peers must agree on the same passphrase and key length.
+
+The diff against an unencrypted setup is small: `passphrase(...)` plus `key_length(...)` on both the `SocketBuilder` and the `ListenerBuilder`. `Passphrase::new` validates length (10–79 ASCII-printable bytes, libsrt's own constraint).
+
+```rust,no_run
+use srt_core::srt::{KeyLength, Passphrase, SocketBuilder};
+use std::time::Duration;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let passphrase = Passphrase::new("shared-secret-not-for-production")?;
+    let mut socket = SocketBuilder::new()
+        .passphrase(passphrase)
+        .key_length(KeyLength::Aes256)
+        .latency(Duration::from_millis(120))
+        .connect("127.0.0.1:9000")?;
+    socket.send(b"encrypted hello")?;
+    socket.close()?;
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/encrypted_send_recv.rs](../crates/srt-core/examples/encrypted_send_recv.rs).
+
+### 2. Survive a flaky transport with reconnect + gap buffer
+
+Reach for this when the wire is lossy — radio links, NAT timeouts, listener restarts. `ManagedTransport<T>` decorates any `Transport` impl with a reconnect loop and a bounded gap buffer; the wrapped sender shell sees a `Transport` that occasionally pauses but never fails on transient breakage.
+
+The factory closure rebuilds the inner transport on demand. `ReconnectPolicy` controls retries, backoff, and gap-buffer overflow behaviour.
+
+```rust,no_run
+use srt_core::mpegts::mux::Config;
+use srt_core::pipeline::{
+    BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy,
+    Sender, SrtTransport, TransportError,
+};
+use srt_core::srt::SocketBuilder;
+use std::time::Duration;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let factory = || -> Result<SrtTransport, TransportError> {
+        let socket = SocketBuilder::new()
+            .latency(Duration::from_millis(120))
+            .connect("127.0.0.1:9000")
+            .map_err(|e| TransportError::Broken(format!("connect failed: {e}")))?;
+        Ok(SrtTransport::new(socket))
+    };
+    let initial = factory()?;
+    let policy = ReconnectPolicy {
+        max_attempts: Some(20),
+        backoff: BackoffStrategy::Exponential {
+            base: Duration::from_millis(100),
+            max: Duration::from_secs(10),
+        },
+        gap_buffer_capacity: 256,
+        overflow_policy: OverflowPolicy::DropOldest,
+    };
+    let managed = ManagedTransport::new(initial, factory, policy);
+    let _sender = Sender::new(Config::default(), managed)?;
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/managed_reconnect.rs](../crates/srt-core/examples/managed_reconnect.rs).
+
+### 3. Mux to a file (no SRT, no transport)
+
+Reach for this when you want the muxer's output without any networking — building test fixtures, validating output against TSDuck/ffprobe, or running an offline pipeline. `Muxer` is the standalone TS muxer; `push_video` and `push_klv` queue input, `pull` drains 188-byte-aligned TS packets into a caller-provided buffer.
+
+The drain loop is the standard pattern: push input, then pull until `pull` returns 0. Drain after every push so muxer memory stays bounded.
+
+```rust,no_run
+use srt_core::mpegts::mux::{Config, Muxer};
+use std::fs::File;
+use std::io::Write;
+
+fn main() -> std::io::Result<()> {
+    let mut mux = Muxer::new(Config::default()).expect("valid config");
+    let mut out = File::create("out.ts")?;
+    let mut buf = [0u8; 1316];
+    for i in 0..150i64 {
+        let pts = i * 3000; // 30 fps on 90 kHz clock
+        let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0xAA];
+        let klv = vec![0x06, 0x0E, 0x2B, 0x34, /* ... */];
+        mux.push_video(&nal, pts, i == 0).expect("push_video");
+        mux.push_klv(&klv, pts).expect("push_klv");
+        loop {
+            let n = mux.pull(&mut buf);
+            if n == 0 { break; }
+            out.write_all(&buf[..n])?;
+        }
+    }
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/mux_to_file.rs](../crates/srt-core/examples/mux_to_file.rs).
+
+### 4. Relay a captured `.ts` file over SRT
+
+Reach for this when you have a `.ts` capture you want to replay over SRT — regression-testing receivers, rebroadcasting an archive, exercising a downstream pipeline. `TsSender` accepts arbitrary byte chunks, verifies TS sync, and emits 7-packet (1316-byte) bundles to the wrapped transport.
+
+The sender is byte-stream oriented — file reads of any size are fine, the sender handles 188-alignment and bundling internally. `flush()` emits any buffered partial bundle so the tail of a finite input reaches the wire.
+
+```rust,no_run
+use srt_core::pipeline::{SrtTransport, TsSender, TsSenderConfig};
+use srt_core::srt::SocketBuilder;
+use std::fs::File;
+use std::io::Read;
+use std::time::Duration;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let socket = SocketBuilder::new()
+        .latency(Duration::from_millis(120))
+        .connect("127.0.0.1:9000")?;
+    let mut sender = TsSender::new(SrtTransport::new(socket), TsSenderConfig::default());
+    let mut file = File::open("input.ts")?;
+    let mut buf = vec![0u8; 4096];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 { break; }
+        sender.send_ts(&buf[..n])?;
+    }
+    sender.flush()?;
+    sender.close();
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/ts_relay_from_file.rs](../crates/srt-core/examples/ts_relay_from_file.rs).
+
+### 5. Receive into a file
+
+Reach for this when archiving a stream or building a test fixture from a live producer. `Listener::accept` returns a connected `Socket`; the recv loop drains until `ConnectionBroken`.
+
+A 1500-byte buffer comfortably fits SRT's default 1316-byte payload, so each `recv` returns one whole message. The three-arm match handles data, clean close, and defensive timeout.
+
+```rust,no_run
+use srt_core::srt::ListenerBuilder;
+use std::fs::File;
+use std::io::Write;
+use std::time::Duration;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut listener = ListenerBuilder::new()
+        .latency(Duration::from_millis(120))
+        .bind("0.0.0.0:9000")?;
+    let (mut socket, _peer) = listener.accept()?;
+    let mut out = File::create("out.ts")?;
+    let mut buf = [0u8; 1500];
+    loop {
+        match socket.recv(&mut buf) {
+            Ok(n) => out.write_all(&buf[..n])?,
+            Err(srt_core::error::RecvError::ConnectionBroken) => break,
+            Err(srt_core::error::RecvError::TimedOut) => continue,
+            Err(e) => return Err(Box::new(e)),
+        }
+    }
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/srt_listener_to_file.rs](../crates/srt-core/examples/srt_listener_to_file.rs).
+
+### 6. Decode ST 0601 from a captured `.klv` blob
+
+Reach for this when validating producer output, building dashboards on top of captured data, or debugging a receiver. The two-step pipeline is: extract KLV blobs from the `.ts` first, then decode each blob through the strictness ladder.
+
+`extract_klv` parses PAT and PMT to find the KLV PID (registration descriptor `KLVA`), demuxes PES packets on that PID, and writes each PES payload as `<prefix>_NNNN.klv` (0-indexed via `enumerate()`). Each `.klv` blob then feeds `klv_decode_file`, which walks the ladder `decode_strict_compliance` → `decode_strict` → `decode` → `decode_unchecked`, reporting which level accepted.
+
+```rust,no_run
+use srt_core::klv::st0601::{decode, decode_strict, decode_strict_compliance};
+use std::fs;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let buf = fs::read("capture_0000.klv")?;
+    let parsed = decode_strict_compliance(&buf)
+        .or_else(|_| decode_strict(&buf))
+        .or_else(|_| decode(&buf))?;
+    if let Some(ts) = parsed.timestamp_us {
+        println!("timestamp_us: {ts}");
+    }
+    if let (Some(lat), Some(lon)) = (parsed.sensor_lat_deg, parsed.sensor_lon_deg) {
+        println!("sensor: {lat:.6}, {lon:.6}");
+    }
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/extract_klv.rs](../crates/srt-core/examples/extract_klv.rs) and [../crates/srt-core/examples/klv_decode_file.rs](../crates/srt-core/examples/klv_decode_file.rs).
+
+### 7. Encode ST 0601 from typed values
+
+Reach for this when synthesizing KLV for tests, generating fixtures, or translating from a different metadata format in a gateway. Every field on `UasDatalinkLs` is `Option<T>` — set `Some(...)` on the fields you want emitted, leave the rest as `None`.
+
+`encode_to_vec` auto-emits Tag 1 (16-bit BCC checksum, mandated last) and Tag 65 (UAS LS Version Number, mandated present) when the caller didn't set them. So a default-constructed record with a few typed fields produces wire bytes that satisfy strict-compliance validation out of the box.
+
+```rust,no_run
+use srt_core::klv::st0601::{UasDatalinkLs, encode_to_vec};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut rec = UasDatalinkLs::default();
+    rec.timestamp_us = Some(1_700_000_000_000_000);
+    rec.platform_designation = Some("test-platform".into());
+    rec.sensor_lat_deg = Some(33.6800);
+    rec.sensor_lon_deg = Some(-118.5500);
+    rec.sensor_alt_m = Some(3500.0);
+    rec.platform_heading_deg = Some(217.456);
+    rec.platform_pitch_deg = Some(-2.150);
+    rec.platform_roll_deg = Some(-1.875);
+    let encoded = encode_to_vec(&rec)?;
+    println!("encoded {} bytes", encoded.len());
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/klv_encode_minimal.rs](../crates/srt-core/examples/klv_encode_minimal.rs).
+
+### 8. Use a custom (non-SRT) transport
+
+Reach for this when the sender shells fit but the wire isn't SRT — UDP, file, in-memory test harness, your own protocol. `Sender`, `TsSender`, and `RawSender` are all generic over `T: Transport`; implement the trait once and they all compose.
+
+The trait is four methods: `send_bytes`, `max_payload`, `is_alive`, `close`. Your impl needs to be `Send`, not `Sync` — the shells handle internal synchronization where required.
+
+```rust,no_run
+use srt_core::pipeline::{Transport, TransportError};
+use std::sync::{Arc, Mutex};
+
+struct MemTransport {
+    packets: Arc<Mutex<Vec<Vec<u8>>>>,
+    alive: bool,
+    max_payload: usize,
+}
+
+impl Transport for MemTransport {
+    fn send_bytes(&mut self, msg: &[u8]) -> Result<(), TransportError> {
+        if msg.len() > self.max_payload {
+            return Err(TransportError::TooLarge { len: msg.len(), max: self.max_payload });
+        }
+        if !self.alive { return Err(TransportError::Closed); }
+        self.packets.lock().unwrap().push(msg.to_vec());
+        Ok(())
+    }
+    fn max_payload(&self) -> usize { self.max_payload }
+    fn is_alive(&self) -> bool { self.alive }
+    fn close(&mut self) { self.alive = false; }
+}
+```
+
+Runnable: [../crates/srt-core/examples/custom_transport.rs](../crates/srt-core/examples/custom_transport.rs).
+
+### 9. Mux H.265 + sync KLV
+
+Reach for this when the encoder produces HEVC, or when the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15) instead of the default async private-data shape. Three knobs flip on `Config`: codec → `H265`, KLV stream type → `SynchronousMetadata`, `carries_pts` → `true`.
+
+**Caller wraps for sync KLV.** `Muxer::push_klv` does NOT auto-wrap — it treats whatever bytes the caller hands it as the opaque PES payload. For sync KLV, wrap the inner blob in an ST 1910 AU cell carrying a Precision Time Stamp Pack via `klv::st1910::wrap_au_cell` BEFORE calling `push_klv`. Without this wrap, the PMT advertises stream_type 0x15 but the payload is bare KLV — non-conformant, and a strict receiver will reject it. See [guide-mpegts-mux.md](guide-mpegts-mux.md) §"KLV-in-TS modes".
+
+```rust,no_run
+use srt_core::klv::st0605::{PrecisionTimeStampPack, TimeStatus};
+use srt_core::klv::st1910::wrap_au_cell;
+use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, StreamSpec, VideoCodec};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cfg = Config {
+        streams: vec![
+            StreamSpec::Video { pid: 0x1011, codec: VideoCodec::H265 },
+            StreamSpec::Klv {
+                pid: 0x1031,
+                stream_type: KlvStreamType::SynchronousMetadata,
+                carries_pts: true,
+            },
+        ],
+        ..Config::default()
+    };
+    let mut mux = Muxer::new(cfg)?;
+    let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
+    let timestamp = PrecisionTimeStampPack {
+        time_status: TimeStatus(0x1F),
+        timestamp_us: 1_700_000_000_000_000,
+    };
+    let wrapped = wrap_au_cell(&inner_klv, timestamp);
+    mux.push_klv(&wrapped, 0)?;
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/mux_h265_with_klv.rs](../crates/srt-core/examples/mux_h265_with_klv.rs).
+
+### 10. Print live `Stats` from a sender
+
+Reach for this when building an operational dashboard, instrumenting a sender for production telemetry, or debugging packet loss in the field. `Socket::stats()` returns a snapshot of libsrt's per-socket counters — call it periodically and surface the deltas.
+
+The most operationally interesting fields: `bytes_sent`, `packets_lost`, `packets_retransmitted`, `rtt`, and `mbps_estimated_bandwidth`. There's no standalone example for this; see [guide-srt.md](guide-srt.md) §`Stats` for the full field list and [../crates/srt-core/examples/managed_reconnect.rs](../crates/srt-core/examples/managed_reconnect.rs) for similar peer-thread observation patterns.
+
+```rust,no_run
+use srt_core::srt::SocketBuilder;
+use std::thread;
+use std::time::Duration;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let socket = SocketBuilder::new()
+        .latency(Duration::from_millis(120))
+        .connect("127.0.0.1:9000")?;
+    for _ in 0..10 {
+        thread::sleep(Duration::from_secs(1));
+        let s = socket.stats()?;
+        println!(
+            "bytes_sent={} packets_lost={} retrans={} rtt={:?} bw_mbps={:.2}",
+            s.bytes_sent, s.packets_lost, s.packets_retransmitted,
+            s.rtt, s.mbps_estimated_bandwidth,
+        );
+    }
+    Ok(())
+}
+```
+
+No standalone example; see [../crates/srt-core/examples/managed_reconnect.rs](../crates/srt-core/examples/managed_reconnect.rs) and [guide-srt.md](guide-srt.md) §`Stats`.

@@ -13,9 +13,24 @@
 #![allow(unused_unsafe)]
 
 use srt_core::srt::ListenerBuilder;
-use srtc::config::{srtc_ts_sender_config_free, srtc_ts_sender_config_new};
+use srtc::config::{
+    SrtcKlvStreamType, SrtcVideoCodec, srtc_mux_config_add_klv, srtc_mux_config_add_video,
+    srtc_mux_config_free, srtc_mux_config_new, srtc_raw_sender_config_free,
+    srtc_raw_sender_config_new, srtc_ts_sender_config_free, srtc_ts_sender_config_new,
+};
 use srtc::error::srtc_get_last_error_str;
-use srtc::ts_sender::{srtc_ts_sender_close, srtc_ts_sender_open};
+use srtc::mux_sender::{
+    srtc_managed_mux_sender_close, srtc_managed_mux_sender_open, srtc_mux_sender_close,
+    srtc_mux_sender_open,
+};
+use srtc::raw_sender::{
+    srtc_managed_raw_sender_close, srtc_managed_raw_sender_open, srtc_raw_sender_close,
+    srtc_raw_sender_open,
+};
+use srtc::ts_sender::{
+    srtc_managed_ts_sender_close, srtc_managed_ts_sender_open, srtc_ts_sender_close,
+    srtc_ts_sender_open,
+};
 use std::ffi::CString;
 use std::sync::mpsc;
 use std::thread;
@@ -630,6 +645,300 @@ fn ts_sender_packetfilter_url_open_succeeds() {
 
         srtc_ts_sender_close(s);
         srtc_ts_sender_config_free(cfg);
+    }
+
+    listener_thread.join().expect("listener thread panicked");
+}
+
+// ============================================================================
+// Per-sender-variant roundtrip — confirms URL plumbing works in all six
+// _open entry points (spec §8.3 second paragraph).
+// ============================================================================
+
+#[test]
+fn variant_mux_sender_open_with_url() {
+    let (port_tx, port_rx) = mpsc::channel::<u16>();
+    let (sid_tx, sid_rx) = mpsc::channel::<Option<String>>();
+
+    let listener_thread = thread::spawn(move || {
+        let mut listener = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(5))
+            .bind("127.0.0.1:0")
+            .expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        port_tx.send(port).expect("send port");
+        let (accepted, _peer) = listener.accept().expect("accept");
+        sid_tx
+            .send(accepted.stream_id().map(str::to_string))
+            .expect("send stream_id");
+    });
+
+    let port = port_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("listener did not bind in time");
+    let url = CString::new(format!("srt://127.0.0.1:{port}?streamid=mux-plain")).unwrap();
+
+    unsafe {
+        let cfg = srtc_mux_config_new();
+        assert_eq!(
+            srtc_mux_config_add_video(cfg, 0x1011, SrtcVideoCodec::H264),
+            0
+        );
+        assert_eq!(
+            srtc_mux_config_add_klv(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false),
+            0
+        );
+        let s = srtc_mux_sender_open(url.as_ptr(), cfg);
+        assert!(!s.is_null(), "open failed: {}", last_error_msg());
+
+        let observed = sid_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("listener did not send stream_id in time");
+        assert_eq!(
+            observed.as_deref(),
+            Some("mux-plain"),
+            "expected stream_id 'mux-plain', got {:?}",
+            observed
+        );
+
+        srtc_mux_sender_close(s);
+        srtc_mux_config_free(cfg);
+    }
+
+    listener_thread.join().expect("listener thread panicked");
+}
+
+#[test]
+fn variant_managed_mux_sender_open_with_url() {
+    let (port_tx, port_rx) = mpsc::channel::<u16>();
+    let (sid_tx, sid_rx) = mpsc::channel::<Option<String>>();
+
+    let listener_thread = thread::spawn(move || {
+        let mut listener = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(5))
+            .bind("127.0.0.1:0")
+            .expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        port_tx.send(port).expect("send port");
+        let (accepted, _peer) = listener.accept().expect("accept");
+        sid_tx
+            .send(accepted.stream_id().map(str::to_string))
+            .expect("send stream_id");
+    });
+
+    let port = port_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("listener did not bind in time");
+    let url = CString::new(format!("srt://127.0.0.1:{port}?streamid=mux-managed")).unwrap();
+
+    unsafe {
+        let cfg = srtc_mux_config_new();
+        assert_eq!(
+            srtc_mux_config_add_video(cfg, 0x1011, SrtcVideoCodec::H264),
+            0
+        );
+        assert_eq!(
+            srtc_mux_config_add_klv(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false),
+            0
+        );
+        let s = srtc_managed_mux_sender_open(url.as_ptr(), cfg, std::ptr::null());
+        assert!(!s.is_null(), "open failed: {}", last_error_msg());
+
+        let observed = sid_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("listener did not send stream_id in time");
+        assert_eq!(
+            observed.as_deref(),
+            Some("mux-managed"),
+            "expected stream_id 'mux-managed', got {:?}",
+            observed
+        );
+
+        srtc_managed_mux_sender_close(s);
+        srtc_mux_config_free(cfg);
+    }
+
+    listener_thread.join().expect("listener thread panicked");
+}
+
+#[test]
+fn variant_ts_sender_open_with_url() {
+    // ts_sender_streamid_observed_on_listener in Group 1 already exercises
+    // this entry point; this test is included here for completeness alongside
+    // the other five variants.
+    let (port_tx, port_rx) = mpsc::channel::<u16>();
+    let (sid_tx, sid_rx) = mpsc::channel::<Option<String>>();
+
+    let listener_thread = thread::spawn(move || {
+        let mut listener = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(5))
+            .bind("127.0.0.1:0")
+            .expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        port_tx.send(port).expect("send port");
+        let (accepted, _peer) = listener.accept().expect("accept");
+        sid_tx
+            .send(accepted.stream_id().map(str::to_string))
+            .expect("send stream_id");
+    });
+
+    let port = port_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("listener did not bind in time");
+    let url = CString::new(format!("srt://127.0.0.1:{port}?streamid=ts-plain")).unwrap();
+
+    unsafe {
+        let cfg = srtc_ts_sender_config_new();
+        let s = srtc_ts_sender_open(url.as_ptr(), cfg);
+        assert!(!s.is_null(), "open failed: {}", last_error_msg());
+
+        let observed = sid_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("listener did not send stream_id in time");
+        assert_eq!(
+            observed.as_deref(),
+            Some("ts-plain"),
+            "expected stream_id 'ts-plain', got {:?}",
+            observed
+        );
+
+        srtc_ts_sender_close(s);
+        srtc_ts_sender_config_free(cfg);
+    }
+
+    listener_thread.join().expect("listener thread panicked");
+}
+
+#[test]
+fn variant_managed_ts_sender_open_with_url() {
+    let (port_tx, port_rx) = mpsc::channel::<u16>();
+    let (sid_tx, sid_rx) = mpsc::channel::<Option<String>>();
+
+    let listener_thread = thread::spawn(move || {
+        let mut listener = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(5))
+            .bind("127.0.0.1:0")
+            .expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        port_tx.send(port).expect("send port");
+        let (accepted, _peer) = listener.accept().expect("accept");
+        sid_tx
+            .send(accepted.stream_id().map(str::to_string))
+            .expect("send stream_id");
+    });
+
+    let port = port_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("listener did not bind in time");
+    let url = CString::new(format!("srt://127.0.0.1:{port}?streamid=ts-managed")).unwrap();
+
+    unsafe {
+        let cfg = srtc_ts_sender_config_new();
+        let s = srtc_managed_ts_sender_open(url.as_ptr(), cfg, std::ptr::null());
+        assert!(!s.is_null(), "open failed: {}", last_error_msg());
+
+        let observed = sid_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("listener did not send stream_id in time");
+        assert_eq!(
+            observed.as_deref(),
+            Some("ts-managed"),
+            "expected stream_id 'ts-managed', got {:?}",
+            observed
+        );
+
+        srtc_managed_ts_sender_close(s);
+        srtc_ts_sender_config_free(cfg);
+    }
+
+    listener_thread.join().expect("listener thread panicked");
+}
+
+#[test]
+fn variant_raw_sender_open_with_url() {
+    let (port_tx, port_rx) = mpsc::channel::<u16>();
+    let (sid_tx, sid_rx) = mpsc::channel::<Option<String>>();
+
+    let listener_thread = thread::spawn(move || {
+        let mut listener = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(5))
+            .bind("127.0.0.1:0")
+            .expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        port_tx.send(port).expect("send port");
+        let (accepted, _peer) = listener.accept().expect("accept");
+        sid_tx
+            .send(accepted.stream_id().map(str::to_string))
+            .expect("send stream_id");
+    });
+
+    let port = port_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("listener did not bind in time");
+    let url = CString::new(format!("srt://127.0.0.1:{port}?streamid=raw-plain")).unwrap();
+
+    unsafe {
+        let cfg = srtc_raw_sender_config_new();
+        let s = srtc_raw_sender_open(url.as_ptr(), cfg);
+        assert!(!s.is_null(), "open failed: {}", last_error_msg());
+
+        let observed = sid_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("listener did not send stream_id in time");
+        assert_eq!(
+            observed.as_deref(),
+            Some("raw-plain"),
+            "expected stream_id 'raw-plain', got {:?}",
+            observed
+        );
+
+        srtc_raw_sender_close(s);
+        srtc_raw_sender_config_free(cfg);
+    }
+
+    listener_thread.join().expect("listener thread panicked");
+}
+
+#[test]
+fn variant_managed_raw_sender_open_with_url() {
+    let (port_tx, port_rx) = mpsc::channel::<u16>();
+    let (sid_tx, sid_rx) = mpsc::channel::<Option<String>>();
+
+    let listener_thread = thread::spawn(move || {
+        let mut listener = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(5))
+            .bind("127.0.0.1:0")
+            .expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        port_tx.send(port).expect("send port");
+        let (accepted, _peer) = listener.accept().expect("accept");
+        sid_tx
+            .send(accepted.stream_id().map(str::to_string))
+            .expect("send stream_id");
+    });
+
+    let port = port_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("listener did not bind in time");
+    let url = CString::new(format!("srt://127.0.0.1:{port}?streamid=raw-managed")).unwrap();
+
+    unsafe {
+        let cfg = srtc_raw_sender_config_new();
+        let s = srtc_managed_raw_sender_open(url.as_ptr(), cfg, std::ptr::null());
+        assert!(!s.is_null(), "open failed: {}", last_error_msg());
+
+        let observed = sid_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("listener did not send stream_id in time");
+        assert_eq!(
+            observed.as_deref(),
+            Some("raw-managed"),
+            "expected stream_id 'raw-managed', got {:?}",
+            observed
+        );
+
+        srtc_managed_raw_sender_close(s);
+        srtc_raw_sender_config_free(cfg);
     }
 
     listener_thread.join().expect("listener thread panicked");

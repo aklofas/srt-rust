@@ -50,9 +50,9 @@ Fix: confirm the listener is up with `ss -ulpn | grep <port>`; verify both sides
 
 **`Listener::accept` blocks forever**
 
-`accept()` is blocking with no built-in timeout. There is no `accept_timeout` knob on `ListenerBuilder` today.
+`accept()` is blocking. There is no separate `accept_timeout` setter, but `recv_timeout` on `ListenerBuilder` doubles as the accept bound — when set, `accept` returns `AcceptError::TimedOut` once the duration elapses. Note that the same value is also inherited by accepted `Socket`s as their `recv_timeout` default; retune per-socket post-`accept` with `Socket::set_recv_timeout` if you want a different read timeout than accept timeout.
 
-Fix: if you need to bound the wait, run `accept` on a dedicated thread and signal it from your shutdown path, or close the listener from another thread to unblock it (the close call wakes the accept with `AcceptError::ListenerClosed`).
+Fix: set `ListenerBuilder::recv_timeout(Duration::from_secs(N))` (or call `Listener::set_recv_timeout` post-bind) to bound the wait. If you'd rather not put a timer on `accept` at all, run it on a dedicated thread and `Listener::close` from your shutdown path — that wakes the call with `AcceptError::ListenerClosed`.
 
 **Connection establishes but no data arrives**
 

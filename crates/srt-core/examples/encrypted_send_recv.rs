@@ -149,12 +149,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             thread::sleep(Duration::from_millis(20));
         }
         eprintln!("sender: sent {NUM_MESSAGES} messages");
-        // Give the receiver a beat to drain in-flight packets before the
-        // close. `socket.close()` triggers SRT's TLPKTDROP and recv-buffer
-        // drain logic, but those run against in-flight UDP datagrams — if
-        // the close races the last few datagrams the listener may see fewer
-        // messages than were sent. 200 ms is well over the 120 ms latency
-        // budget, so by then everything has been delivered.
+        // Give the receiver a beat to drain in-flight packets before close.
+        // SRT's latency window (120 ms here) covers retransmits inside that
+        // budget, but `close()` tears the link down promptly — sleeping more
+        // than `latency` lets the tail of the stream get ACKed and delivered
+        // before the socket goes away. Without this, the close can race the
+        // last few datagrams and the listener sees fewer messages than sent.
         thread::sleep(Duration::from_millis(200));
         socket.close()?;
         Ok(())

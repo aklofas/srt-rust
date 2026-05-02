@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/srt-sys",
     "crates/srt-core",
+    "crates/srt-c",
 ]
 
 [workspace.package]
@@ -16,6 +17,8 @@ repository   = "https://github.com/aklofas/srt-rust"
 [workspace.dependencies]
 libc       = "0.2"
 bindgen    = "0.72"
+cbindgen   = "0.29"
+cc         = "1.0"
 cmake      = "0.1"
 pkg-config = "0.3"
 thiserror  = "1.0"

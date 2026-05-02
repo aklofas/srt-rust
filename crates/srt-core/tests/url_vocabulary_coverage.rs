@@ -124,7 +124,6 @@ fn group3_keys_all_reject_with_srto() {
     }
 }
 
-#[ignore = "enabled in Task 22 once guide-srt.md grows the URL parsing section"]
 #[test]
 fn guide_srt_md_keytable_count_matches() {
     // Cargo test CWD is the crate root (crates/srt-core/), so guide-srt.md

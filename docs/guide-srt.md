@@ -378,6 +378,84 @@ timeout.
 There is no `set_nonblocking`. Async support is deferred — see the
 sync-vs-async section in [architecture.md](architecture.md).
 
+## URL parsing
+
+Senders accept `srt://host:port?key=value&...` URLs in addition to
+builder-style configuration. The URL parser uses libsrt's published URL
+key vocabulary; values from the URL override values set on the builder
+when both name the same option.
+
+### Honored keys (Group 1)
+
+| URL key | libsrt option | Type | Notes |
+|---|---|---|---|
+| `passphrase` | `SRTO_PASSPHRASE` | STRING | 10-79 ASCII printable bytes |
+| `pbkeylen` | `SRTO_PBKEYLEN` | INT | 16, 24, or 32 |
+| `latency` | `SRTO_LATENCY` | INT (ms) | non-negative |
+| `rcvlatency` | `SRTO_RCVLATENCY` | INT (ms) | non-negative |
+| `peerlatency` | `SRTO_PEERLATENCY` | INT (ms) | non-negative |
+| `mss` | `SRTO_MSS` | INT | u16 range |
+| `payloadsize` | `SRTO_PAYLOADSIZE` | INT | u16 range |
+| `maxbw` | `SRTO_MAXBW` | INT64 | u64 range; non-negative only |
+| `inputbw` | `SRTO_INPUTBW` | INT64 | u64 range |
+| `oheadbw` | `SRTO_OHEADBW` | INT | 5..=100 |
+| `streamid` | `SRTO_STREAMID` | STRING | ASCII, ≤512 bytes |
+| `lossmaxttl` | `SRTO_LOSSMAXTTL` | INT | u32 range |
+| `tlpktdrop` | `SRTO_TLPKTDROP` | BOOL | `0` or `1` only |
+| `fc` | `SRTO_FC` | INT | u32 range |
+| `packetfilter` | `SRTO_PACKETFILTER` | STRING | filter spec |
+| `congestion` | `SRTO_CONGESTION` | ENUM | `live` or `file` (lowercase) |
+
+### `srt-rust` extension keys (Group 2)
+
+These two keys have no libsrt-URL precedent and are specific to this
+library. The `x-` prefix marks them as extensions and reserves the
+namespace from accidental collision with future libsrt URL keys. These
+keys are **not portable to other SRT tooling** (`srt-live-transmit`,
+FFmpeg, GStreamer, etc.) — use builder-style config if portability matters.
+
+| URL key | libsrt option | Type | Notes |
+|---|---|---|---|
+| `x-recvtimeout` | `SRTO_RCVTIMEO` | INT (ms) | bounds blocking recv; on a Listener also bounds `accept` |
+| `x-sendtimeout` | `SRTO_SNDTIMEO` | INT (ms) | bounds blocking send and synchronous handshake |
+
+### Mode and authority
+
+`mode=caller` is accepted (no-op — only caller-direction senders ship
+today). `mode=listener` and `mode=rendezvous` reject with
+`UrlError::UnsupportedMode`. Userinfo (`srt://user:pass@host:port`) is
+explicitly rejected, with a hint pointing at `?passphrase=...` —
+userinfo is not used by mainstream SRT tooling and is too easy to
+leak through logs.
+
+### Conflict resolution
+
+When a URL query parameter and a builder setter both target the same
+option, **the URL value wins**. Last-occurrence wins on duplicate keys.
+Caller's `SocketBuilder` / config struct is never mutated by URL parsing.
+
+### Strictness
+
+Strict ASCII canonical forms — matches libsrt apps' own URL parser:
+
+- Integers: decimal only, no `ms`/`s` suffixes, non-negative.
+- Booleans: `0` or `1` only — not `true`/`false`/`yes`/`no`.
+- Enums: lowercase only — `live`, not `Live`.
+- Strings: percent-decoded once via the form-urlencoded convention
+  (`+` is treated as space; literal `+` must be encoded as `%2B`).
+
+Anything else rejects with `UrlError::InvalidValue` carrying the key
+name and a description.
+
+### Deferred / unsupported keys
+
+About two dozen libsrt URL keys are recognized by name but not yet
+exposed (the parser knows them and rejects with `UrlError::UnsupportedKey`
+carrying the libsrt `SRTO_*` name so the operator can tell whether a
+URL was malformed or asked for an option this library doesn't ship
+yet). See [`deferred-features.md`](deferred-features.md) for the full
+list and the trigger to revisit each one.
+
 ## What's deferred
 
 Each item below maps to an entry in

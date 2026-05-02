@@ -145,8 +145,8 @@ where
     T: std::str::FromStr<Err = std::num::ParseIntError>,
 {
     // Strict-A: bare decimal, no suffix, non-negative. We rely on T's
-    // from_str to enforce both range and non-negativity (u8/u16/u32/u64
-    // all reject negatives natively; i32 callers must check separately).
+    // from_str to enforce range. Use this for unsigned T (u8/u16/u32/u64);
+    // signed callers go through parse_i32_nonneg, which adds the sign check.
     value.parse::<T>().map_err(|e| UrlError::InvalidValue {
         key: key.to_string(),
         detail: format!("expected non-negative decimal integer in range, got '{value}': {e}"),
@@ -196,6 +196,7 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
         }
         "latency" => {
             let n = parse_i32_nonneg("latency", value)?;
+            // n is a non-negative i32; widening to u64 is lossless.
             overlay.latency = Some(Duration::from_millis(n as u64));
         }
         "lossmaxttl" => {

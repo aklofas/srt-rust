@@ -104,15 +104,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Floats don't round-trip exactly through IMAPB encoding because
     // each tag fixes a bit-width and a value range, which together
-    // quantize to a finite step. The eps values here are chosen well
-    // above the per-tag IMAPB resolution:
-    //   - heading ±0..360 in 2 bytes → ~0.0055°/step → eps 0.01 is
-    //     comfortably above.
-    //   - lat at ±90, lon at ±180, both 4-byte mappings → ~4.3e-7°/step
-    //     → eps 1e-6 is comfortable.
-    //   - frame-center elevation typically ±19km in 2 bytes → ~0.6m/step
-    //     → eps 0.5 is just above the step (still passes for the value
-    //     used here, well within the linear range of the mapping).
+    // quantize to a finite step. The eps values here all sit well above
+    // the actual per-tag IMAPB resolution (verified against
+    // crates/srt-core/src/klv/st0601/{tags,mapping}.rs):
+    //   - heading 0..360 unsigned in 2 bytes → 360/65535 ≈ 5.49e-3°/step
+    //     → eps 0.01 leaves ~2x headroom.
+    //   - sensor lat ±90 signed in 4 bytes  → 180/(2·(2³¹−1)) ≈ 4.19e-8°/step.
+    //   - sensor lon ±180 signed in 4 bytes → 360/(2·(2³¹−1)) ≈ 8.38e-8°/step.
+    //     eps 1e-6 leaves >10x headroom on both.
+    //   - frame-center elevation -900..19000 unsigned in 2 bytes
+    //     → 19900/65535 ≈ 0.30 m/step → eps 0.5 leaves ~1.7x headroom.
     let approx_eq = |a: f64, b: f64, eps: f64| (a - b).abs() < eps;
     assert!(approx_eq(
         decoded.platform_heading_deg.unwrap(),

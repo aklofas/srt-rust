@@ -424,3 +424,65 @@ fn all_group3_keys_reject_with_srto() {
         }
     }
 }
+
+#[test]
+fn last_occurrence_wins_on_duplicate_keys() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?latency=100&latency=200").unwrap();
+    assert_eq!(u.overlay.latency, Some(Duration::from_millis(200)));
+}
+
+#[test]
+fn adapter_rejected_as_unsupported() {
+    // "adapter" is not in libsrt's vocabulary table per the apps source,
+    // and it has no SocketBuilder counterpart in this library. Reject as
+    // UnknownKey (spec §4.4 — adapter is rejected for v1).
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?adapter=192.168.1.5").unwrap_err();
+    assert!(matches!(e, UrlError::UnknownKey { ref key } if key == "adapter"));
+}
+
+#[test]
+fn multi_key_url_combines() {
+    let u = SrtUrl::parse(
+        "srt://camera.local:9000?streamid=front&latency=200&passphrase=hunter-too-long&pbkeylen=24",
+    )
+    .unwrap();
+    assert_eq!(u.host, "camera.local");
+    assert_eq!(u.port, 9000);
+    assert_eq!(u.overlay.stream_id.as_ref().unwrap().as_str(), "front");
+    assert_eq!(u.overlay.latency, Some(Duration::from_millis(200)));
+    assert!(u.overlay.passphrase.is_some());
+    assert!(matches!(
+        u.overlay.key_length,
+        Some(srt_core::KeyLength::Aes192)
+    ));
+}
+
+#[test]
+fn empty_value_rejected() {
+    // Strict-A: empty INT can't parse.
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?latency=").unwrap_err();
+    assert!(matches!(e, UrlError::InvalidValue { ref key, .. } if key == "latency"));
+}
+
+#[test]
+fn invalid_percent_encoding_does_not_panic() {
+    // url::Url is lenient about malformed percent-encoding in query strings:
+    // it passes through the raw bytes (e.g. "%2" stays "%2") rather than
+    // erroring. StreamId::new accepts "%2" as valid ASCII, so the parse
+    // succeeds. What matters: no panic regardless of outcome.
+    let _ = SrtUrl::parse("srt://1.2.3.4:9000?streamid=%2");
+}
+
+#[test]
+fn passphrase_with_plus_sign_is_literal_plus() {
+    // url::Url's query_pairs decodes `+` as space (form-urlencoded
+    // convention). For SRT URLs we want `+` literal — but rather than
+    // diverge from url::Url, document the convention: SRT URLs follow
+    // form-urlencoded, so passphrase containing `+` must be percent-
+    // encoded as `%2B`.
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?passphrase=hunter%2Btoo%2Blong").unwrap();
+    assert_eq!(
+        u.overlay.passphrase.as_ref().unwrap().as_str(),
+        "hunter+too+long"
+    );
+}

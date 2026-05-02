@@ -488,6 +488,12 @@ pub(crate) fn apply_socket_config(
     if let Some(n) = cfg.payload_size {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PAYLOADSIZE, n as i32)?;
     }
+    if let Some(n) = cfg.udp_recv_buffer_bytes {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_UDP_RCVBUF, n as i32)?;
+    }
+    if let Some(n) = cfg.udp_send_buffer_bytes {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_UDP_SNDBUF, n as i32)?;
+    }
     if let Some(id) = &cfg.stream_id {
         set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_STREAMID, id.as_str())?;
     }
@@ -553,6 +559,9 @@ pub(crate) fn apply_listener_config(
     }
     if let Some(n) = cfg.payload_size {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_PAYLOADSIZE, n as i32)?;
+    }
+    if let Some(n) = cfg.udp_recv_buffer_bytes {
+        set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_UDP_RCVBUF, n as i32)?;
     }
     if let Some(n) = cfg.loss_max_ttl {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LOSSMAXTTL, n as i32)?;

@@ -31,6 +31,8 @@ const GROUP1_KEYS: &[&str] = &[
     "congestion",
     "conntimeo",
     "linger",
+    "udprcvbuf",
+    "udpsndbuf",
 ];
 
 const GROUP2_KEYS: &[&str] = &["x-recvtimeout", "x-sendtimeout"];
@@ -86,6 +88,8 @@ fn group1_keys_all_parse_and_wire() {
         ("congestion", "live"),
         ("conntimeo", "10000"),
         ("linger", "5"),
+        ("udprcvbuf", "2000000"),
+        ("udpsndbuf", "2000000"),
     ];
     assert_eq!(
         representative_value.len(),

@@ -50,6 +50,12 @@ pub struct SocketConfig {
     pub mss: Option<u16>,
     pub payload_size: Option<u16>,
 
+    // Underlying UDP socket buffer sizes (separate from SRT's own packet queue).
+    // For >25 Mbps streams, kernel UDP drops can masquerade as transmission
+    // losses; raising these helps. Linux clamps to net.core.{r,w}mem_max.
+    pub udp_recv_buffer_bytes: Option<u32>,
+    pub udp_send_buffer_bytes: Option<u32>,
+
     // Identification
     pub stream_id: Option<StreamId>,
     /// Direction this socket is opened for. Drives `SRTO_SENDER` for
@@ -90,6 +96,10 @@ pub struct ListenerConfig {
     pub mss: Option<u16>,
     pub payload_size: Option<u16>,
 
+    /// Underlying UDP socket recv buffer (separate from SRT's packet queue).
+    /// See `SocketConfig::udp_recv_buffer_bytes` for context.
+    pub udp_recv_buffer_bytes: Option<u32>,
+
     // Reliability / loss
     pub loss_max_ttl: Option<u32>,
 
@@ -126,6 +136,7 @@ impl Default for ListenerConfig {
             overhead_bandwidth_pct: None,
             mss: None,
             payload_size: None,
+            udp_recv_buffer_bytes: None,
             loss_max_ttl: None,
             too_late_packet_drop: None,
             flow_window_packets: None,

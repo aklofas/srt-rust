@@ -407,6 +407,8 @@ when both name the same option.
 | `congestion` | `SRTO_CONGESTION` | ENUM | `live` or `file` (lowercase) |
 | `conntimeo` | `SRTO_CONNTIMEO` | INT (ms) | non-negative; ffmpeg-style alias `connect_timeout` |
 | `linger` | `SRTO_LINGER` | INT (seconds) | non-negative; matches ffmpeg URL units; `0` closes immediately |
+| `udprcvbuf` | `SRTO_UDP_RCVBUF` | INT (bytes) | kernel UDP recv buffer; ffmpeg-style alias `recv_buffer_size`; Linux clamps to `net.core.rmem_max` |
+| `udpsndbuf` | `SRTO_UDP_SNDBUF` | INT (bytes) | kernel UDP send buffer; ffmpeg-style alias `send_buffer_size`; Linux clamps to `net.core.wmem_max` |
 
 ### `srt-rust` extension keys (Group 2)
 

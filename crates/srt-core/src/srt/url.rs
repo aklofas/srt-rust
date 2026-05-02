@@ -116,6 +116,12 @@ pub struct UrlOverlay {
 
     // Group 1 — `SRTO_LINGER` close-grace period (seconds, matching ffmpeg).
     pub linger: Option<Duration>,
+
+    // Group 1 — kernel UDP socket buffer sizes. Honored from libsrt URL
+    // vocabulary (`udprcvbuf`/`udpsndbuf`); also accepts ffmpeg-style
+    // aliases `recv_buffer_size`/`send_buffer_size`.
+    pub udp_recv_buffer_bytes: Option<u32>,
+    pub udp_send_buffer_bytes: Option<u32>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -372,6 +378,12 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
         "tlpktdrop" => {
             overlay.too_late_packet_drop = Some(parse_bool_strict("tlpktdrop", value)?);
         }
+        "udprcvbuf" | "recv_buffer_size" => {
+            overlay.udp_recv_buffer_bytes = Some(parse_int_nonneg("udprcvbuf", value)?);
+        }
+        "udpsndbuf" | "send_buffer_size" => {
+            overlay.udp_send_buffer_bytes = Some(parse_int_nonneg("udpsndbuf", value)?);
+        }
         "x-recvtimeout" => {
             let n = parse_i32_nonneg("x-recvtimeout", value)?;
             overlay.recv_timeout = Some(Duration::from_millis(n as u64));
@@ -466,6 +478,12 @@ impl UrlOverlay {
         if let Some(v) = self.linger {
             cfg.linger = Some(v);
         }
+        if let Some(v) = self.udp_recv_buffer_bytes {
+            cfg.udp_recv_buffer_bytes = Some(v);
+        }
+        if let Some(v) = self.udp_send_buffer_bytes {
+            cfg.udp_send_buffer_bytes = Some(v);
+        }
     }
 
     /// Same shape for `ListenerConfig` (for symmetry with future
@@ -519,6 +537,10 @@ impl UrlOverlay {
         if let Some(v) = self.linger {
             cfg.linger = Some(v);
         }
+        if let Some(v) = self.udp_recv_buffer_bytes {
+            cfg.udp_recv_buffer_bytes = Some(v);
+        }
+        // udp_send_buffer_bytes is sender-only — no listener field.
         // ListenerConfig has no peer_latency, stream_id, or input_bandwidth.
         // peer_latency is a caller-side option (libsrt allows it to be set
         // on listeners but it has no effect there).
@@ -595,5 +617,29 @@ mod tests {
     fn url_linger_parses() {
         let u = SrtUrl::parse("srt://h:9000?linger=5").unwrap();
         assert_eq!(u.overlay.linger, Some(Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn url_udprcvbuf_parses() {
+        let u = SrtUrl::parse("srt://h:9000?udprcvbuf=2000000").unwrap();
+        assert_eq!(u.overlay.udp_recv_buffer_bytes, Some(2_000_000));
+    }
+
+    #[test]
+    fn url_udpsndbuf_parses() {
+        let u = SrtUrl::parse("srt://h:9000?udpsndbuf=2000000").unwrap();
+        assert_eq!(u.overlay.udp_send_buffer_bytes, Some(2_000_000));
+    }
+
+    #[test]
+    fn url_recv_buffer_size_alias_parses() {
+        let u = SrtUrl::parse("srt://h:9000?recv_buffer_size=2000000").unwrap();
+        assert_eq!(u.overlay.udp_recv_buffer_bytes, Some(2_000_000));
+    }
+
+    #[test]
+    fn url_send_buffer_size_alias_parses() {
+        let u = SrtUrl::parse("srt://h:9000?send_buffer_size=2000000").unwrap();
+        assert_eq!(u.overlay.udp_send_buffer_bytes, Some(2_000_000));
     }
 }

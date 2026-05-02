@@ -75,6 +75,19 @@ impl SocketBuilder {
         self.config.payload_size = Some(n);
         self
     }
+    /// Set `SRTO_UDP_RCVBUF` (kernel UDP socket recv buffer in bytes).
+    /// For >25 Mbps streams; default is OS-dependent (~208 KB on Linux).
+    /// Linux clamps to `net.core.rmem_max`.
+    pub fn udp_recv_buffer_bytes(mut self, n: u32) -> Self {
+        self.config.udp_recv_buffer_bytes = Some(n);
+        self
+    }
+    /// Set `SRTO_UDP_SNDBUF` (kernel UDP socket send buffer in bytes).
+    /// For >25 Mbps streams. Linux clamps to `net.core.wmem_max`.
+    pub fn udp_send_buffer_bytes(mut self, n: u32) -> Self {
+        self.config.udp_send_buffer_bytes = Some(n);
+        self
+    }
     pub fn max_bandwidth(mut self, bw: MaxBandwidth) -> Self {
         self.config.max_bandwidth = Some(bw);
         self
@@ -180,6 +193,11 @@ impl ListenerBuilder {
     }
     pub fn payload_size(mut self, n: u16) -> Self {
         self.config.payload_size = Some(n);
+        self
+    }
+    /// See `SocketBuilder::udp_recv_buffer_bytes`.
+    pub fn udp_recv_buffer_bytes(mut self, n: u32) -> Self {
+        self.config.udp_recv_buffer_bytes = Some(n);
         self
     }
     pub fn max_bandwidth(mut self, bw: MaxBandwidth) -> Self {

@@ -9,6 +9,7 @@
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
 
 pub mod error;
+mod url;
 
 /// Major version (compile-time macro in the generated header).
 #[unsafe(no_mangle)]

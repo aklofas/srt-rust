@@ -57,10 +57,23 @@ jobs:
           SRT_FORCE_VENDORED: "1"
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # `cargo test` only builds the rlib of crates with multiple crate-types.
+      # srt-c's smoke test asserts on target/debug/libsrtc.so, so we need an
+      # explicit `cargo build` to produce the cdylib + staticlib first.
+      - name: cargo build (all crate types, with mbedtls)
+        env:
+          SRT_FORCE_VENDORED: "1"
+        run: cargo build --workspace
+
       - name: cargo test (default features, with mbedtls)
         env:
           SRT_FORCE_VENDORED: "1"
         run: cargo test --workspace
+
+      - name: cargo build (all crate types, no-default-features)
+        env:
+          SRT_FORCE_VENDORED: "1"
+        run: cargo build --workspace --no-default-features
 
       - name: cargo test (no-default-features, no encryption)
         env:

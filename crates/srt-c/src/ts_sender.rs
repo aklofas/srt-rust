@@ -42,6 +42,18 @@ pub struct SrtcTsSender {
     inner: Handle<TsSender<SrtTransport>>,
 }
 
+/// Open a `srtc_ts_sender_t` connected via SRT.
+///
+/// `srt_url` is a `srt://host:port?key=value&...` URL. Query
+/// parameters apply libsrt-vocabulary options to the connection
+/// (passphrase, latency, streamid, etc.). URL values override config
+/// values for the same option. See
+/// `docs/guide-srt.md#url-parsing` for the recognized key table.
+///
+/// Returns `NULL` with `SRTC_E_INVALID_CONFIG` set in the thread-local
+/// last-error for any malformed URL, unsupported key, unknown key, or
+/// invalid value. The detail string from
+/// `srtc_get_last_error_str()` describes the specific problem.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_ts_sender_open(
     srt_url: *const libc::c_char,
@@ -146,6 +158,18 @@ pub struct SrtcManagedTsSender {
     inner: Handle<TsSender<ManagedTransport<SrtTransport>>>,
 }
 
+/// Open a `srtc_managed_ts_sender_t` connected via SRT.
+///
+/// `srt_url` is a `srt://host:port?key=value&...` URL. Query
+/// parameters apply libsrt-vocabulary options to the connection
+/// (passphrase, latency, streamid, etc.). URL values override config
+/// values for the same option. See
+/// `docs/guide-srt.md#url-parsing` for the recognized key table.
+///
+/// Returns `NULL` with `SRTC_E_INVALID_CONFIG` set in the thread-local
+/// last-error for any malformed URL, unsupported key, unknown key, or
+/// invalid value. The detail string from
+/// `srtc_get_last_error_str()` describes the specific problem.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_managed_ts_sender_open(
     srt_url: *const libc::c_char,

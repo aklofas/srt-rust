@@ -198,6 +198,20 @@ int srtc_reconnect_policy_set_overflow_policy(struct srtc_reconnect_policy_t *p,
  */
  const char *srtc_get_last_error_str(void);
 
+/**
+ * Open a `srtc_mux_sender_t` connected via SRT.
+ *
+ * `srt_url` is a `srt://host:port?key=value&...` URL. Query
+ * parameters apply libsrt-vocabulary options to the connection
+ * (passphrase, latency, streamid, etc.). URL values override config
+ * values for the same option. See
+ * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ *
+ * Returns `NULL` with `SRTC_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. The detail string from
+ * `srtc_get_last_error_str()` describes the specific problem.
+ */
 
 struct srtc_mux_sender_t *srtc_mux_sender_open(const char *srt_url,
                                                const struct srtc_mux_config_t *cfg);
@@ -217,6 +231,20 @@ int srtc_mux_sender_send_klv(struct srtc_mux_sender_t *p,
 
  void srtc_mux_sender_close(struct srtc_mux_sender_t *p);
 
+/**
+ * Open a `srtc_managed_mux_sender_t` connected via SRT.
+ *
+ * `srt_url` is a `srt://host:port?key=value&...` URL. Query
+ * parameters apply libsrt-vocabulary options to the connection
+ * (passphrase, latency, streamid, etc.). URL values override config
+ * values for the same option. See
+ * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ *
+ * Returns `NULL` with `SRTC_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. The detail string from
+ * `srtc_get_last_error_str()` describes the specific problem.
+ */
 
 struct srtc_managed_mux_sender_t *srtc_managed_mux_sender_open(const char *srt_url,
                                                                const struct srtc_mux_config_t *cfg,
@@ -273,6 +301,20 @@ int srtc_muxer_push_video(struct srtc_muxer_t *p,
  */
  void srtc_muxer_close(struct srtc_muxer_t *p);
 
+/**
+ * Open a `srtc_raw_sender_t` connected via SRT.
+ *
+ * `srt_url` is a `srt://host:port?key=value&...` URL. Query
+ * parameters apply libsrt-vocabulary options to the connection
+ * (passphrase, latency, streamid, etc.). URL values override config
+ * values for the same option. See
+ * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ *
+ * Returns `NULL` with `SRTC_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. The detail string from
+ * `srtc_get_last_error_str()` describes the specific problem.
+ */
 
 struct srtc_raw_sender_t *srtc_raw_sender_open(const char *srt_url,
                                                const struct srtc_raw_sender_config_t *cfg);
@@ -281,6 +323,20 @@ struct srtc_raw_sender_t *srtc_raw_sender_open(const char *srt_url,
 
  void srtc_raw_sender_close(struct srtc_raw_sender_t *p);
 
+/**
+ * Open a `srtc_managed_raw_sender_t` connected via SRT.
+ *
+ * `srt_url` is a `srt://host:port?key=value&...` URL. Query
+ * parameters apply libsrt-vocabulary options to the connection
+ * (passphrase, latency, streamid, etc.). URL values override config
+ * values for the same option. See
+ * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ *
+ * Returns `NULL` with `SRTC_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. The detail string from
+ * `srtc_get_last_error_str()` describes the specific problem.
+ */
 
 struct srtc_managed_raw_sender_t *srtc_managed_raw_sender_open(const char *srt_url,
                                                                const struct srtc_raw_sender_config_t *cfg,
@@ -293,6 +349,20 @@ int srtc_managed_raw_sender_send(struct srtc_managed_raw_sender_t *p,
 
  void srtc_managed_raw_sender_close(struct srtc_managed_raw_sender_t *p);
 
+/**
+ * Open a `srtc_ts_sender_t` connected via SRT.
+ *
+ * `srt_url` is a `srt://host:port?key=value&...` URL. Query
+ * parameters apply libsrt-vocabulary options to the connection
+ * (passphrase, latency, streamid, etc.). URL values override config
+ * values for the same option. See
+ * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ *
+ * Returns `NULL` with `SRTC_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. The detail string from
+ * `srtc_get_last_error_str()` describes the specific problem.
+ */
 
 struct srtc_ts_sender_t *srtc_ts_sender_open(const char *srt_url,
                                              const struct srtc_ts_sender_config_t *cfg);
@@ -305,6 +375,20 @@ struct srtc_ts_sender_t *srtc_ts_sender_open(const char *srt_url,
 
  void srtc_ts_sender_close(struct srtc_ts_sender_t *p);
 
+/**
+ * Open a `srtc_managed_ts_sender_t` connected via SRT.
+ *
+ * `srt_url` is a `srt://host:port?key=value&...` URL. Query
+ * parameters apply libsrt-vocabulary options to the connection
+ * (passphrase, latency, streamid, etc.). URL values override config
+ * values for the same option. See
+ * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ *
+ * Returns `NULL` with `SRTC_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. The detail string from
+ * `srtc_get_last_error_str()` describes the specific problem.
+ */
 
 struct srtc_managed_ts_sender_t *srtc_managed_ts_sender_open(const char *srt_url,
                                                              const struct srtc_ts_sender_config_t *cfg,

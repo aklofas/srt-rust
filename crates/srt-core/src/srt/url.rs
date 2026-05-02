@@ -16,6 +16,30 @@ use crate::srt::options::{
 };
 use std::time::Duration;
 
+/// `?latency=N` is parsed as N milliseconds (libsrt-URL canonical), but
+/// ffmpeg's URL parses it as microseconds. A user copying an ffmpeg URL
+/// gets 1000x too much receiver buffer with no error. This threshold
+/// (10s) is well above any realistic live-streaming latency, so any
+/// value at or above it is almost certainly a unit-misunderstanding.
+const SUSPICIOUS_LATENCY_MS: i32 = 10_000;
+
+fn warn_if_suspicious_latency(key: &str, ms: i32) {
+    if ms >= SUSPICIOUS_LATENCY_MS {
+        tracing::warn!(
+            url_key = key,
+            value_ms = ms,
+            "SRT URL '{}={}' parses to {}ms ({}s) of buffer - \
+             unusually high. Note: ffmpeg uses microseconds while srt-rust \
+             (libsrt-URL canonical) uses milliseconds. If you copied this \
+             from an ffmpeg URL, divide by 1000.",
+            key,
+            ms,
+            ms,
+            ms / 1000,
+        );
+    }
+}
+
 /// Group 3 (spec §4.3): libsrt-URL keys we recognize but don't yet expose.
 /// Each entry maps the URL key to its `SRTO_*` name for error messages.
 const GROUP3_REJECTED: &[(&str, &str)] = &[
@@ -260,6 +284,7 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
         }
         "latency" => {
             let n = parse_i32_nonneg("latency", value)?;
+            warn_if_suspicious_latency("latency", n);
             // n is a non-negative i32; widening to u64 is lossless.
             overlay.latency = Some(Duration::from_millis(n as u64));
         }
@@ -310,10 +335,12 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
         }
         "peerlatency" => {
             let n = parse_i32_nonneg("peerlatency", value)?;
+            warn_if_suspicious_latency("peerlatency", n);
             overlay.peer_latency = Some(Duration::from_millis(n as u64));
         }
         "rcvlatency" => {
             let n = parse_i32_nonneg("rcvlatency", value)?;
+            warn_if_suspicious_latency("rcvlatency", n);
             overlay.recv_latency = Some(Duration::from_millis(n as u64));
         }
         "streamid" => {
@@ -472,5 +499,51 @@ impl UrlOverlay {
         // stream_id is set by the caller during handshake; the listener
         // reads it via Socket::stream_id on accepted sockets.
         // input_bandwidth (SRTO_INPUTBW) is sender-side bandwidth budgeting.
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tracing_test::traced_test;
+
+    #[test]
+    #[traced_test]
+    fn warns_on_high_latency_likely_ffmpeg_units() {
+        // 120000 ms = 120s; ffmpeg URLs use µs, so this is a likely paste-from-ffmpeg.
+        let _ = SrtUrl::parse("srt://h:9000?latency=120000").unwrap();
+        assert!(
+            logs_contain("ffmpeg uses microseconds while srt-rust"),
+            "expected µs/ms warning to fire for latency=120000",
+        );
+    }
+
+    #[test]
+    #[traced_test]
+    fn no_warn_on_realistic_latency() {
+        let _ = SrtUrl::parse("srt://h:9000?latency=200").unwrap();
+        assert!(
+            !logs_contain("ffmpeg uses microseconds"),
+            "should not warn on realistic 200ms latency",
+        );
+        let _ = SrtUrl::parse("srt://h:9000?latency=4000").unwrap();
+        assert!(
+            !logs_contain("ffmpeg uses microseconds"),
+            "should not warn on 4000ms latency (still realistic)",
+        );
+    }
+
+    #[test]
+    #[traced_test]
+    fn warns_on_high_rcvlatency() {
+        let _ = SrtUrl::parse("srt://h:9000?rcvlatency=15000").unwrap();
+        assert!(logs_contain("ffmpeg uses microseconds"));
+    }
+
+    #[test]
+    #[traced_test]
+    fn warns_on_high_peerlatency() {
+        let _ = SrtUrl::parse("srt://h:9000?peerlatency=15000").unwrap();
+        assert!(logs_contain("ffmpeg uses microseconds"));
     }
 }

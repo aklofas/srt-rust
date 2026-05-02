@@ -60,5 +60,12 @@ test              = false
 doc               = false
 bench             = false
 
+[[bin]]
+name              = "url_parse"
+path              = "fuzz_targets/url_parse.rs"
+test              = false
+doc               = false
+bench             = false
+
 [workspace]
 members = []

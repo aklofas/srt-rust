@@ -130,6 +130,24 @@ pub enum UrlError {
 
 impl SrtUrl {
     /// Parse `srt://host:port?key=value&...` into validated parts.
+    ///
+    /// Strict ASCII canonical forms (decimal-only integers, `0`/`1` for
+    /// bools, lowercase enums); the `url` crate URL-decodes percent
+    /// sequences. Last-occurrence wins on duplicate keys.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use srt_core::SrtUrl;
+    /// use std::time::Duration;
+    ///
+    /// let u = SrtUrl::parse(
+    ///     "srt://camera.local:9000?streamid=front&latency=200",
+    /// ).unwrap();
+    /// assert_eq!(u.host, "camera.local");
+    /// assert_eq!(u.port, 9000);
+    /// assert_eq!(u.overlay.latency, Some(Duration::from_millis(200)));
+    /// ```
     pub fn parse(s: &str) -> Result<Self, UrlError> {
         let parsed = url::Url::parse(s).map_err(|e| {
             // url::ParseError::EmptyHost means the URL had a bare ":" after the

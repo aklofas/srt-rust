@@ -181,3 +181,97 @@ the trigger that would unblock it.
   publishes, docs.rs has nothing to auto-build. The markdown guides
   are written rustdoc-compatibly so the future lift is mechanical.
 - **Trigger to revisit:** Immediately before publishing to crates.io.
+
+## URL parameter coverage (Group 3 — recognized but unsupported)
+
+- **Status:** Parser recognizes the libsrt URL key by name and rejects
+  with `UrlError::UnsupportedKey` carrying its `SRTO_*` name. No
+  silent failure; the operator gets a clear "this option exists but
+  isn't yet exposed" message.
+- **The list:** `bindtodevice` (`SRTO_BINDTODEVICE`), `conntimeo`
+  (`SRTO_CONNTIMEO`), `cryptomode` (`SRTO_CRYPTOMODE`), `drifttracer`
+  (`SRTO_DRIFTTRACER`), `enforcedencryption` (`SRTO_ENFORCEDENCRYPTION`),
+  `groupconnect` (`SRTO_GROUPCONNECT`), `groupminstabletimeo`
+  (`SRTO_GROUPMINSTABLETIMEO`), `iptos` (`SRTO_IPTOS`), `ipttl`
+  (`SRTO_IPTTL`), `ipv6only` (`SRTO_IPV6ONLY`), `kmpreannounce`
+  (`SRTO_KMPREANNOUNCE`), `kmrefreshrate` (`SRTO_KMREFRESHRATE`),
+  `maxrexmitbw` (`SRTO_MAXREXMITBW`), `messageapi` (`SRTO_MESSAGEAPI`),
+  `mininputbw` (`SRTO_MININPUTBW`), `minversion` (`SRTO_MINVERSION`),
+  `nakreport` (`SRTO_NAKREPORT`), `peeridletimeo` (`SRTO_PEERIDLETIMEO`),
+  `retransmitalgo` (`SRTO_RETRANSMITALGO`), `snddropdelay`
+  (`SRTO_SNDDROPDELAY`), `transtype` (`SRTO_TRANSTYPE`), `tsbpdmode`
+  (`SRTO_TSBPDMODE`).
+- **Why deferred:** Each requires a new `SocketBuilder` setter on
+  `srt-core` plus its typed wrapper / validation. Single-developer
+  scope discipline — none of these has a current consumer ask.
+- **Trigger to revisit:** A consumer asks for any specific key. Adding
+  one is mechanical: add the builder setter + URL parser arm + remove
+  it from this list and the parser's `GROUP3_REJECTED` table.
+
+## URL parameter coverage — `rcvbuf` / `sndbuf` (units mismatch)
+
+- **Status:** Listed in the URL parser as Group 3 (rejected). Separate
+  entry from the rest because the blocker is units, not "no setter
+  yet."
+- **Why deferred:** libsrt's `SRTO_RCVBUF` / `SRTO_SNDBUF` are byte
+  counts; this library's `recv_buf_packets` / `send_buf_packets`
+  builder setters are packet counts. Exposing `?rcvbuf=1048576` would
+  silently mean different things in libsrt-tools vs. our parser.
+- **Trigger to revisit:** Resolve the byte-vs-packets question on the
+  builder side first (either rename to `_bytes`, add a `_bytes`
+  variant, or document the unit conversion). Then the URL key can
+  expose the chosen semantic without the foot-gun.
+
+## URL-vs-builder conflict warning channel
+
+- **Status:** Today the URL parser silently overrides builder values
+  on conflict (per the documented "URL wins" rule). There's no
+  channel to surface "FYI, your builder said X but the URL changed
+  it to Y."
+- **Why deferred:** No warning channel exists in the C ABI today —
+  `srtc_get_last_error_str()` is for failures, not warnings. Adding a
+  warning surface is its own design (separate buffer? log callback?
+  per-thread storage like the error?). Out of scope for the URL
+  parser ship.
+- **Trigger to revisit:** A consumer reports a debugging session
+  where they spent more than a few minutes wondering why their
+  builder values didn't take effect; OR an unrelated request for a
+  warning surface lands first.
+
+## URL parser: additional test coverage
+
+- **Status:** Three test categories not in the initial ship:
+  1. Property-based roundtrip via `proptest` (random valid URLs
+     roundtrip cleanly through parse and apply).
+  2. Concurrent-open smoke (50–100 threads, no shared parser state).
+  3. Atomicity-under-load 1000-iteration smoke (Q9-A invariant
+     defended against future regression).
+- **Why deferred:** The initial ship includes a fuzz target for
+  panic-freedom and a one-shot atomicity test. Property testing needs
+  a `proptest` dev-dependency; the parser's structural invariants (no
+  shared mutable state, clone-then-mutate) make 2–3 redundant for
+  initial coverage. They're additive regression-guards, not must-have
+  for first ship.
+- **Trigger to revisit:** First consumer-reported URL parser bug
+  becomes a property test; concurrent-open returns when adding builder
+  setters from Group 3 (more parser surface = more potential for
+  shared state); atomicity-under-load gets re-considered if the Q9-A
+  invariant gets touched (e.g. someone optimizes the clone away for
+  performance).
+
+## URL parser: strict percent-encoding validation
+
+- **Status:** The parser inherits `url::Url::query_pairs()`'s lenient
+  handling of malformed percent-encoding in queries. Sequences like
+  `%2` or `%XY` pass through as literal substrings rather than
+  rejecting with `UrlError::Syntax`. The fuzz target enforces
+  panic-freedom; functional rejection of malformed sequences is not
+  enforced.
+- **Why deferred:** Strict rejection would mean either pre-validating
+  the query string before handing to `url::Url::parse` or adding a
+  manual percent-decode pass. Non-trivial work for a low-risk failure
+  mode — the worst that happens is the typed validator on the per-key
+  value rejects the literal `%2` substring (e.g. `StreamId::new("%2")`
+  accepts ASCII, so even that escape hatch is partial).
+- **Trigger to revisit:** A consumer reports a malformed URL silently
+  parsing where they expected an error.

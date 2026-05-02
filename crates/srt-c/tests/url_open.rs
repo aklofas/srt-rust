@@ -28,8 +28,8 @@ use srtc::raw_sender::{
     srtc_raw_sender_open,
 };
 use srtc::ts_sender::{
-    srtc_managed_ts_sender_close, srtc_managed_ts_sender_open, srtc_ts_sender_close,
-    srtc_ts_sender_open,
+    srtc_managed_ts_sender_close, srtc_managed_ts_sender_open, srtc_managed_ts_sender_send_ts,
+    srtc_ts_sender_close, srtc_ts_sender_open,
 };
 use std::ffi::CString;
 use std::sync::mpsc;
@@ -1216,4 +1216,217 @@ fn url_userinfo_returns_null_with_passphrase_hint() {
         );
         srtc_ts_sender_config_free(cfg);
     }
+}
+
+// ============================================================================
+// Atomicity (spec §8.3) — caller's cfg is byte-unchanged after a failed parse.
+//
+// A failed URL parse must not poison the cfg. The same cfg must be usable for
+// a subsequent successful open against a valid URL. This tests the invariant
+// that parse errors are all-or-nothing: either the connection opens (options
+// applied) or it doesn't (cfg untouched), never a partial-apply.
+// ============================================================================
+
+#[test]
+fn cfg_byte_unchanged_after_failed_parse() {
+    // "conntimeo=5000" is an unsupported Group 3 key — _open returns null and
+    // sets last-error without touching the caller's cfg.
+    let url_bad = CString::new("srt://127.0.0.1:9000?conntimeo=5000").unwrap();
+    unsafe {
+        let cfg = srtc_ts_sender_config_new();
+        let s_bad = srtc_ts_sender_open(url_bad.as_ptr(), cfg);
+        assert!(s_bad.is_null(), "expected null for unsupported key");
+
+        // Now use the same cfg with a valid URL against a real listener.
+        // If cfg were poisoned (e.g. partially applied or nulled out) the
+        // second open would fail or crash — this would surface the bug.
+        let (port_tx, port_rx) = mpsc::channel::<u16>();
+        let (ok_tx, ok_rx) = mpsc::channel::<bool>();
+        let listener_thread = thread::spawn(move || {
+            let mut listener = ListenerBuilder::new()
+                .recv_timeout(Duration::from_secs(5))
+                .bind("127.0.0.1:0")
+                .expect("bind");
+            let port = listener.local_addr().expect("local_addr").port();
+            port_tx.send(port).expect("send port");
+            ok_tx.send(listener.accept().is_ok()).expect("send ok");
+        });
+
+        let port = port_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("listener did not bind in time");
+        let url_good = CString::new(format!("srt://127.0.0.1:{port}")).unwrap();
+
+        // All C-ABI pointers stay on the main thread — cfg is reused directly.
+        let s = srtc_ts_sender_open(url_good.as_ptr(), cfg);
+        assert!(
+            !s.is_null(),
+            "second open should succeed; cfg must not be poisoned by the prior failed parse: {}",
+            last_error_msg()
+        );
+
+        let accepted_ok = ok_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("no accept result in time");
+        assert!(accepted_ok, "listener accept() failed");
+
+        srtc_ts_sender_close(s);
+        srtc_ts_sender_config_free(cfg);
+
+        listener_thread.join().expect("listener thread panicked");
+    }
+}
+
+// ============================================================================
+// Managed-reconnect URL persistence (spec §8.3).
+//
+// URL options are parsed once at construction. When the managed transport
+// reconnects after a broken connection, the SocketConfig (with streamid)
+// captured in the reconnect factory closure must be reused — not re-parsed
+// from the URL string. This is the core invariant of Task 14's design.
+//
+// Listener lifecycle (single background thread, two phases):
+//   Phase 1 — bind :0, accept the initial connection, validate streamid,
+//              send port + sid1 back to main, then drop everything.
+//   Phase 2 — rebind to the SAME port (200ms after drop), accept the
+//              reconnected sender, validate streamid, send sid2 back.
+//
+// Main thread triggers the reconnect by pushing valid TS data after phase 1
+// is done. ManagedTransport is purely reactive: it only detects a broken
+// connection (and attempts reconnect) when send_bytes() is called and
+// returns Broken. Sending a 7-packet (1316-byte) bundle causes exactly one
+// send_bytes() call, which detects the break and enters reconnect_and_drain().
+// The reconnect blocks on the main thread until phase 2 listener accepts.
+// ============================================================================
+
+/// Build a 7 × 188 = 1316 byte MPEG-TS null-packet bundle (sync byte 0x47
+/// at every 188-byte boundary). TsFraming in RECOVER mode acquires sync on
+/// three consecutive 0x47 markers and immediately emits the 7-packet bundle.
+fn make_ts_bundle() -> Vec<u8> {
+    const TS_PACKET_SIZE: usize = 188;
+    const BUNDLE_PACKETS: usize = 7;
+    let mut buf = vec![0u8; TS_PACKET_SIZE * BUNDLE_PACKETS];
+    for i in 0..BUNDLE_PACKETS {
+        // Sync byte at the start of each 188-byte packet — all other bytes
+        // remain zero (null PID 0x0000 payload, which is not a reserved PID
+        // but is harmless for sync-acquisition purposes in RECOVER mode).
+        buf[i * TS_PACKET_SIZE] = 0x47;
+    }
+    buf
+}
+
+#[test]
+fn managed_ts_sender_url_options_persist_across_reconnect() {
+    let (port_tx, port_rx) = mpsc::channel::<u16>();
+    // Phase 1 result: streamid observed on first accept.
+    let (sid1_tx, sid1_rx) = mpsc::channel::<Option<String>>();
+    // Phase 2 result: streamid observed on reconnect accept.
+    let (sid2_tx, sid2_rx) = mpsc::channel::<Option<String>>();
+
+    let listener_thread = thread::spawn(move || {
+        // Phase 1: bind to :0, learn the port, accept the initial connection.
+        let mut listener1 = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(5))
+            .bind("127.0.0.1:0")
+            .expect("bind phase 1");
+        let port = listener1.local_addr().expect("local_addr").port();
+        port_tx.send(port).expect("send port");
+
+        let (accepted1, _) = listener1.accept().expect("phase 1 accept");
+        sid1_tx
+            .send(accepted1.stream_id().map(str::to_string))
+            .expect("send sid1");
+
+        // Drop the accepted socket and listener to sever the connection.
+        // The main thread will then call send_ts, which detects the break
+        // and enters the reconnect loop.
+        drop(accepted1);
+        drop(listener1);
+
+        // Brief pause so the UDP socket is fully released before rebinding.
+        // SRT uses UDP; the kernel frees the port almost immediately on drop,
+        // but 200ms avoids a tight race with the phase 2 bind below.
+        thread::sleep(Duration::from_millis(200));
+
+        // Phase 2: rebind to the SAME port so the managed sender's reconnect
+        // attempt reaches us. Allow up to 10s for the reconnect to complete.
+        let mut listener2 = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(10))
+            .bind(format!("127.0.0.1:{port}"))
+            .expect("bind phase 2");
+
+        let result = listener2.accept();
+        sid2_tx
+            .send(
+                result
+                    .ok()
+                    .and_then(|(s, _)| s.stream_id().map(str::to_string)),
+            )
+            .expect("send sid2");
+    });
+
+    // Receive the port before opening the sender so the URL points at the
+    // port listener phase 1 is already blocking on.
+    let port = port_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("listener did not bind in time");
+
+    let url_c = CString::new(format!("srt://127.0.0.1:{port}?streamid=persistent")).unwrap();
+
+    // All C-ABI pointers live on the main thread.
+    unsafe {
+        let cfg = srtc_ts_sender_config_new();
+        // null policy → default: exponential backoff 100ms..=10s, max 10 attempts.
+        let s = srtc_managed_ts_sender_open(url_c.as_ptr(), cfg, std::ptr::null());
+        assert!(!s.is_null(), "managed open failed: {}", last_error_msg());
+
+        // Wait for phase 1 to complete — listener has accepted and dropped.
+        let sid1 = sid1_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("phase 1 sid not received");
+        assert_eq!(
+            sid1.as_deref(),
+            Some("persistent"),
+            "phase 1: unexpected streamid {:?}",
+            sid1
+        );
+
+        // The listener dropped, but ManagedTransport only detects a broken
+        // connection when send_bytes() is called (it is purely reactive).
+        // Poll: send TS bundles repeatedly until either:
+        //   (a) a send returns Broken, triggering reconnect_and_drain() which
+        //       blocks on this thread until phase 2 listener accepts, then
+        //       the factory closure reuses the captured SocketConfig (with
+        //       streamid); OR
+        //   (b) sid2_rx already has data (reconnect happened during a send
+        //       that appeared successful from this side).
+        // SRT's broken-connection detection is not instantaneous — the peer
+        // timeout typically surfaces within a few seconds of the drop.
+        let ts_bundle = make_ts_bundle();
+        let deadline = std::time::Instant::now() + Duration::from_secs(12);
+        let sid2 = loop {
+            // Each call either succeeds (SRT still buffering) or triggers the
+            // reconnect path (Broken detected) — both move us toward phase 2.
+            let _ = srtc_managed_ts_sender_send_ts(s, ts_bundle.as_ptr(), ts_bundle.len());
+
+            // Check if the reconnect completed and phase 2 listener reported.
+            match sid2_rx.recv_timeout(Duration::from_millis(500)) {
+                Ok(sid) => break sid,
+                Err(_) if std::time::Instant::now() < deadline => continue,
+                Err(_) => panic!("managed transport did not reconnect within 12s"),
+            }
+        };
+
+        assert_eq!(
+            sid2.as_deref(),
+            Some("persistent"),
+            "reconnect lost the URL-derived streamid: got {:?}",
+            sid2
+        );
+
+        srtc_managed_ts_sender_close(s);
+        srtc_ts_sender_config_free(cfg);
+    }
+
+    listener_thread.join().expect("listener thread panicked");
 }

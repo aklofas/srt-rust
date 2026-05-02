@@ -41,6 +41,11 @@ impl Passphrase {
         Self::new(s)
     }
 
+    /// Expose the passphrase as a string slice. Prefer not to log the result.
+    pub fn as_str(&self) -> &str {
+        self.0.expose_secret()
+    }
+
     /// Internal: hand the secret to libsrt's `srt_setsockflag`.
     #[allow(dead_code)]
     pub(crate) fn as_bytes(&self) -> &[u8] {

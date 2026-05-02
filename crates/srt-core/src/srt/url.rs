@@ -28,10 +28,10 @@ pub struct SrtUrl {
 /// Typed overlay of query-parameter values. Apply via `apply_to_socket`
 /// or `apply_to_listener`. URL wins on conflict (Q4-A precedence rule).
 #[derive(Debug, Default, Clone)]
-#[allow(dead_code)] // Fields populated in Task 2; used in Task 8.
+#[allow(dead_code)] // Fields populated by Tasks 3–7; applied to socket in Task 8.
 pub struct UrlOverlay {
     // Group 1 — libsrt-URL honored keys.
-    pub(crate) passphrase: Option<Passphrase>,
+    pub passphrase: Option<Passphrase>,
     pub(crate) key_length: Option<KeyLength>,
     pub(crate) latency: Option<Duration>,
     pub(crate) recv_latency: Option<Duration>,
@@ -41,12 +41,12 @@ pub struct UrlOverlay {
     pub(crate) max_bandwidth: Option<MaxBandwidth>,
     pub(crate) input_bandwidth: Option<u64>,
     pub(crate) overhead_bandwidth_pct: Option<u8>,
-    pub(crate) stream_id: Option<StreamId>,
+    pub stream_id: Option<StreamId>,
     pub(crate) loss_max_ttl: Option<u32>,
     pub(crate) too_late_packet_drop: Option<bool>,
     pub(crate) flow_window_packets: Option<u32>,
-    pub(crate) packet_filter: Option<PacketFilter>,
-    pub(crate) congestion: Option<Congestion>,
+    pub packet_filter: Option<PacketFilter>,
+    pub congestion: Option<Congestion>,
 
     // Group 2 — `srt-c` extension keys.
     pub(crate) recv_timeout: Option<Duration>,
@@ -125,10 +125,12 @@ impl SrtUrl {
         };
         let port = parsed.port().ok_or(UrlError::MissingPort)?;
 
-        // Query parsing arrives in Task 3; for now an empty overlay.
-        let overlay = UrlOverlay::default();
-
-        let _ = parsed; // silence unused-once-query-lands warning.
+        let mut overlay = UrlOverlay::default();
+        // url::Url::query_pairs() URL-decodes values automatically.
+        // Last-occurrence wins (Q4-A): we just overwrite as we go.
+        for (key, value) in parsed.query_pairs() {
+            apply_query_pair(&mut overlay, &key, &value)?;
+        }
 
         Ok(Self {
             host,
@@ -136,6 +138,54 @@ impl SrtUrl {
             overlay,
         })
     }
+}
+
+fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<(), UrlError> {
+    match key {
+        "passphrase" => {
+            overlay.passphrase = Some(Passphrase::new(value.to_string()).map_err(|e| {
+                UrlError::OptionValidation {
+                    key: "passphrase".into(),
+                    source: OptionError::from(e),
+                }
+            })?);
+        }
+        "streamid" => {
+            overlay.stream_id =
+                Some(
+                    StreamId::new(value.to_string()).map_err(|e| UrlError::OptionValidation {
+                        key: "streamid".into(),
+                        source: OptionError::from(e),
+                    })?,
+                );
+        }
+        "packetfilter" => {
+            overlay.packet_filter = Some(PacketFilter::new(value.to_string()).map_err(|e| {
+                UrlError::OptionValidation {
+                    key: "packetfilter".into(),
+                    source: OptionError::from(e),
+                }
+            })?);
+        }
+        "congestion" => {
+            overlay.congestion = Some(Congestion::from_str_strict(value).map_err(|source| {
+                UrlError::OptionValidation {
+                    key: "congestion".into(),
+                    source,
+                }
+            })?);
+        }
+        // INT / INT64 keys land in Task 4.
+        // BOOL keys land in Task 5.
+        // Group 2 (x-*) and Group 3 (rejects) land in Tasks 6 and 7.
+        // For now, anything unrecognized is UnknownKey.
+        other => {
+            return Err(UrlError::UnknownKey {
+                key: other.to_string(),
+            });
+        }
+    }
+    Ok(())
 }
 
 impl UrlOverlay {

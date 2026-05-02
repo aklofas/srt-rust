@@ -318,3 +318,109 @@ fn x_unknown_extension_rejects() {
     let e = SrtUrl::parse("srt://1.2.3.4:9000?x-foo=bar").unwrap_err();
     assert!(matches!(e, UrlError::UnknownKey { ref key } if key == "x-foo"));
 }
+
+#[test]
+fn mode_caller_accepted_noop() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?mode=caller&latency=100").unwrap();
+    assert_eq!(u.overlay.latency, Some(Duration::from_millis(100)));
+}
+
+#[test]
+fn mode_listener_rejected() {
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?mode=listener").unwrap_err();
+    assert!(matches!(e, UrlError::UnsupportedMode { ref mode } if mode == "listener"));
+}
+
+#[test]
+fn mode_rendezvous_rejected() {
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?mode=rendezvous").unwrap_err();
+    assert!(matches!(e, UrlError::UnsupportedMode { ref mode } if mode == "rendezvous"));
+}
+
+#[test]
+fn group3_conntimeo_rejected() {
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?conntimeo=5000").unwrap_err();
+    let UrlError::UnsupportedKey { key, srto } = e else {
+        panic!("wrong variant");
+    };
+    assert_eq!(key, "conntimeo");
+    assert_eq!(srto, "SRTO_CONNTIMEO");
+}
+
+#[test]
+fn group3_transtype_rejected() {
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?transtype=live").unwrap_err();
+    let UrlError::UnsupportedKey { key, srto } = e else {
+        panic!("wrong variant");
+    };
+    assert_eq!(key, "transtype");
+    assert_eq!(srto, "SRTO_TRANSTYPE");
+}
+
+#[test]
+fn group3_rcvbuf_rejected() {
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?rcvbuf=1048576").unwrap_err();
+    let UrlError::UnsupportedKey { key, srto } = e else {
+        panic!("wrong variant");
+    };
+    assert_eq!(key, "rcvbuf");
+    assert_eq!(srto, "SRTO_RCVBUF");
+}
+
+#[test]
+fn group3_sndbuf_rejected() {
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?sndbuf=1048576").unwrap_err();
+    assert!(matches!(e, UrlError::UnsupportedKey { ref key, .. } if key == "sndbuf"));
+}
+
+#[test]
+fn unknown_typo_rejected() {
+    // Distinct from UnsupportedKey: this name is not in the libsrt
+    // vocabulary at all (typo of "latency").
+    let e = SrtUrl::parse("srt://1.2.3.4:9000?lattency=100").unwrap_err();
+    assert!(matches!(e, UrlError::UnknownKey { ref key } if key == "lattency"));
+}
+
+/// Smoke test that all 24 Group 3 keys reject with a non-empty `srto`.
+/// Catches drift if someone forgets to fill in the SRTO_* string.
+#[test]
+fn all_group3_keys_reject_with_srto() {
+    let group3 = [
+        "bindtodevice",
+        "conntimeo",
+        "cryptomode",
+        "drifttracer",
+        "enforcedencryption",
+        "groupconnect",
+        "groupminstabletimeo",
+        "iptos",
+        "ipttl",
+        "ipv6only",
+        "kmpreannounce",
+        "kmrefreshrate",
+        "maxrexmitbw",
+        "messageapi",
+        "mininputbw",
+        "minversion",
+        "nakreport",
+        "peeridletimeo",
+        "rcvbuf",
+        "retransmitalgo",
+        "sndbuf",
+        "snddropdelay",
+        "transtype",
+        "tsbpdmode",
+    ];
+    for key in group3 {
+        let url = format!("srt://1.2.3.4:9000?{key}=1");
+        let e = SrtUrl::parse(&url).unwrap_err();
+        match e {
+            UrlError::UnsupportedKey { key: k, srto } => {
+                assert_eq!(k, key, "wrong key in error");
+                assert!(!srto.is_empty(), "{key}: srto must not be empty");
+                assert!(srto.starts_with("SRTO_"), "{key}: srto must be SRTO_*");
+            }
+            other => panic!("{key}: expected UnsupportedKey, got {other:?}"),
+        }
+    }
+}

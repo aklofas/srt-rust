@@ -16,6 +16,42 @@ use crate::srt::options::{
 };
 use std::time::Duration;
 
+/// Group 3 (spec §4.3): libsrt-URL keys we recognize but don't yet expose.
+/// Each entry maps the URL key to its `SRTO_*` name for error messages.
+const GROUP3_REJECTED: &[(&str, &str)] = &[
+    ("bindtodevice", "SRTO_BINDTODEVICE"),
+    ("conntimeo", "SRTO_CONNTIMEO"),
+    ("cryptomode", "SRTO_CRYPTOMODE"),
+    ("drifttracer", "SRTO_DRIFTTRACER"),
+    ("enforcedencryption", "SRTO_ENFORCEDENCRYPTION"),
+    ("groupconnect", "SRTO_GROUPCONNECT"),
+    ("groupminstabletimeo", "SRTO_GROUPMINSTABLETIMEO"),
+    ("iptos", "SRTO_IPTOS"),
+    ("ipttl", "SRTO_IPTTL"),
+    ("ipv6only", "SRTO_IPV6ONLY"),
+    ("kmpreannounce", "SRTO_KMPREANNOUNCE"),
+    ("kmrefreshrate", "SRTO_KMREFRESHRATE"),
+    ("maxrexmitbw", "SRTO_MAXREXMITBW"),
+    ("messageapi", "SRTO_MESSAGEAPI"),
+    ("mininputbw", "SRTO_MININPUTBW"),
+    ("minversion", "SRTO_MINVERSION"),
+    ("nakreport", "SRTO_NAKREPORT"),
+    ("peeridletimeo", "SRTO_PEERIDLETIMEO"),
+    ("rcvbuf", "SRTO_RCVBUF"),
+    ("retransmitalgo", "SRTO_RETRANSMITALGO"),
+    ("sndbuf", "SRTO_SNDBUF"),
+    ("snddropdelay", "SRTO_SNDDROPDELAY"),
+    ("transtype", "SRTO_TRANSTYPE"),
+    ("tsbpdmode", "SRTO_TSBPDMODE"),
+];
+
+fn group3_lookup(key: &str) -> Option<&'static str> {
+    GROUP3_REJECTED
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, srto)| *srto)
+}
+
 /// Parsed `srt://host:port?...` URL: connection target + a typed overlay
 /// of the recognized query parameters.
 #[derive(Debug)]
@@ -282,9 +318,21 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
             let n = parse_i32_nonneg("x-sendtimeout", value)?;
             overlay.send_timeout = Some(Duration::from_millis(n as u64));
         }
-        // Group 3 (rejects) lands in Task 6.
-        // For now, anything unrecognized is UnknownKey.
+        "mode" => match value {
+            "caller" => { /* no-op */ }
+            other => {
+                return Err(UrlError::UnsupportedMode {
+                    mode: other.to_string(),
+                });
+            }
+        },
         other => {
+            if let Some(srto) = group3_lookup(other) {
+                return Err(UrlError::UnsupportedKey {
+                    key: other.to_string(),
+                    srto,
+                });
+            }
             return Err(UrlError::UnknownKey {
                 key: other.to_string(),
             });

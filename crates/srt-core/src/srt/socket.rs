@@ -30,17 +30,28 @@ pub struct Socket {
 }
 
 /// Snapshot of libsrt's per-socket performance counters (subset of `CBytePerfMon`).
+///
+/// Loss/drop counters are split by which side observed the event:
+/// - `*_send_side` — what the sender knows is lost/dropped (receiver NAKs received,
+///   too-late drops on outgoing path). Read these on a sender; they will be
+///   ~0 on a receiver.
+/// - `*_recv_side` — what the receiver detected (sequence-gap discoveries,
+///   too-late drops on incoming path). Read these on a receiver; they will
+///   be ~0 on a sender.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub struct Stats {
     pub bytes_sent: u64,
     pub bytes_received: u64,
-    pub bytes_lost: u64,
+    pub bytes_lost_recv_side: u64,
+    pub bytes_lost_send_side: u64,
     pub packets_sent: u64,
     pub packets_received: u64,
-    pub packets_lost: u64,
+    pub packets_lost_recv_side: u64,
+    pub packets_lost_send_side: u64,
     pub packets_retransmitted: u64,
-    pub packets_dropped: u64,
+    pub packets_dropped_recv_side: u64,
+    pub packets_dropped_send_side: u64,
     pub rtt: Duration,
     pub send_bandwidth_bps: u64,
     pub recv_bandwidth_bps: u64,
@@ -636,12 +647,18 @@ pub(crate) fn perf_to_stats(p: &srt_sys::CBytePerfMon) -> Stats {
     Stats {
         bytes_sent: p.byteSentTotal,
         bytes_received: p.byteRecvTotal,
-        bytes_lost: p.byteRcvLossTotal,
+        bytes_lost_recv_side: p.byteRcvLossTotal,
+        // CBytePerfMon doesn't expose byteSndLossTotal — sender-side loss is
+        // only reported as packet count (pktSndLossTotal). We surface 0 for
+        // bytes-lost-send-side; consumers should use packets_lost_send_side.
+        bytes_lost_send_side: 0,
         packets_sent: p.pktSentTotal as u64,
         packets_received: p.pktRecvTotal as u64,
-        packets_lost: p.pktRcvLossTotal as u64,
+        packets_lost_recv_side: p.pktRcvLossTotal as u64,
+        packets_lost_send_side: p.pktSndLossTotal as u64,
         packets_retransmitted: p.pktRetransTotal as u64,
-        packets_dropped: p.pktRcvDropTotal as u64,
+        packets_dropped_recv_side: p.pktRcvDropTotal as u64,
+        packets_dropped_send_side: p.pktSndDropTotal as u64,
         rtt: Duration::from_millis(p.msRTT.max(0.0) as u64),
         send_bandwidth_bps: (p.mbpsSendRate * 1_000_000.0).max(0.0) as u64,
         recv_bandwidth_bps: (p.mbpsRecvRate * 1_000_000.0).max(0.0) as u64,
@@ -699,4 +716,20 @@ fn classify_recv_error(raw: crate::error::RawError, buf_len: usize) -> RecvError
         };
     }
     raw.into()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn stats_struct_has_role_split_loss_fields() {
+        // Compile-check that the new public fields exist.
+        let _ = |s: super::Stats| {
+            let _ = s.packets_lost_recv_side;
+            let _ = s.packets_lost_send_side;
+            let _ = s.bytes_lost_recv_side;
+            let _ = s.bytes_lost_send_side;
+            let _ = s.packets_dropped_recv_side;
+            let _ = s.packets_dropped_send_side;
+        };
+    }
 }

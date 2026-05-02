@@ -174,7 +174,8 @@ The `latency` setter takes a `Duration` and maps to libsrt's
   archival capture, store-and-forward, low-priority feeds.
 
 The recovery window is bounded by `latency`. Too low and late packets
-are dropped (counted in `Stats::packets_dropped` under
+are dropped (counted in `Stats::packets_dropped_send_side` on the sender
+or `Stats::packets_dropped_recv_side` on the receiver, under
 `Congestion::Live`); too high and you pay the full setting in wall-clock
 delay. Tune by measurement.
 
@@ -276,9 +277,20 @@ packet-filter / FEC builder" in
 libsrt's per-socket performance counters. The fields most useful for
 operational dashboards:
 
-- `bytes_sent`, `bytes_received`, `bytes_lost` (`u64`).
-- `packets_sent`, `packets_received`, `packets_lost`,
-  `packets_retransmitted`, `packets_dropped` (`u64`).
+- `bytes_sent`, `bytes_received` (`u64`).
+- `bytes_lost_recv_side`, `bytes_lost_send_side` (`u64`) — split by
+  which side observed the loss. `bytes_lost_send_side` is always 0
+  (libsrt's `CBytePerfMon` doesn't expose a byte counter for sender
+  loss; use `packets_lost_send_side` instead).
+- `packets_sent`, `packets_received` (`u64`).
+- `packets_lost_recv_side`, `packets_lost_send_side` (`u64`) — read
+  the `_send_side` field on a sender (counts NAKs received), the
+  `_recv_side` field on a receiver (counts sequence-gap discoveries).
+  The opposite side's counter is always ~0.
+- `packets_dropped_recv_side`, `packets_dropped_send_side` (`u64`) —
+  same role split: too-late drops on the path the local socket
+  controls.
+- `packets_retransmitted` (`u64`).
 - `rtt: Duration` — smoothed round-trip estimate.
 - `mbps_estimated_bandwidth: f64` — libsrt's bandwidth probe.
 - `send_buffer_packets`, `recv_buffer_packets` (`u32`) — queue depth;
@@ -295,8 +307,9 @@ fn dashboard(socket: &Socket) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let s = socket.stats()?;
         eprintln!(
-            "rtt={:?} sent={} recv={} lost={} retx={} mbps={:.2} sndq={} rcvq={}",
-            s.rtt, s.packets_sent, s.packets_received, s.packets_lost,
+            "rtt={:?} sent={} recv={} lost_send={} lost_recv={} retx={} mbps={:.2} sndq={} rcvq={}",
+            s.rtt, s.packets_sent, s.packets_received,
+            s.packets_lost_send_side, s.packets_lost_recv_side,
             s.packets_retransmitted, s.mbps_estimated_bandwidth,
             s.send_buffer_packets, s.recv_buffer_packets,
         );

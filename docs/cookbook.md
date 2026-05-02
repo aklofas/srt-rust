@@ -297,7 +297,7 @@ Runnable: [../crates/srt-core/examples/mux_h265_with_klv.rs](../crates/srt-core/
 
 Reach for this when building an operational dashboard, instrumenting a sender for production telemetry, or debugging packet loss in the field. `Socket::stats()` returns a snapshot of libsrt's per-socket counters — call it periodically and surface the deltas.
 
-The most operationally interesting fields: `bytes_sent`, `packets_lost`, `packets_retransmitted`, `rtt`, and `mbps_estimated_bandwidth`. There's no standalone example for this; see [guide-srt.md](guide-srt.md) §`Stats` for the full field list and [../crates/srt-core/examples/managed_reconnect.rs](../crates/srt-core/examples/managed_reconnect.rs) for similar peer-thread observation patterns.
+The most operationally interesting fields on a sender: `bytes_sent`, `packets_lost_send_side`, `packets_retransmitted`, `rtt`, and `mbps_estimated_bandwidth`. (Loss/drop counters are split by which side observed them — read `*_send_side` on a sender, `*_recv_side` on a receiver.) There's no standalone example for this; see [guide-srt.md](guide-srt.md) §`Stats` for the full field list and [../crates/srt-core/examples/managed_reconnect.rs](../crates/srt-core/examples/managed_reconnect.rs) for similar peer-thread observation patterns.
 
 ```rust,no_run
 use srt_core::srt::SocketBuilder;
@@ -312,8 +312,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         thread::sleep(Duration::from_secs(1));
         let s = socket.stats()?;
         println!(
-            "bytes_sent={} packets_lost={} retrans={} rtt={:?} bw_mbps={:.2}",
-            s.bytes_sent, s.packets_lost, s.packets_retransmitted,
+            "bytes_sent={} packets_lost_send_side={} retrans={} rtt={:?} bw_mbps={:.2}",
+            s.bytes_sent, s.packets_lost_send_side, s.packets_retransmitted,
             s.rtt, s.mbps_estimated_bandwidth,
         );
     }

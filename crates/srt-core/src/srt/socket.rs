@@ -23,6 +23,10 @@ pub struct Socket {
     /// Cached at construction; libsrt allows reading via getsockflag, but
     /// reading once is cheaper.
     cached_stream_id: Option<String>,
+    /// `SRTO_PAYLOADSIZE` read after handshake. Used to give accurate
+    /// `SendError::PayloadTooLarge { limit }` values without a per-send
+    /// getsockopt round-trip. Defaults to 1316 (libsrt live default) if read fails.
+    cached_payload_limit: usize,
 }
 
 /// Snapshot of libsrt's per-socket performance counters (subset of `CBytePerfMon`).
@@ -88,10 +92,12 @@ impl Socket {
         }
 
         let cached_stream_id = read_stream_id(handle);
+        let cached_payload_limit = read_payload_size(handle);
 
         Ok(Self {
             handle,
             cached_stream_id,
+            cached_payload_limit,
         })
     }
 
@@ -119,9 +125,11 @@ impl Socket {
             .map_err(io_from_option_error)?;
         }
         let cached_stream_id = read_stream_id(handle);
+        let cached_payload_limit = read_payload_size(handle);
         Ok(Self {
             handle,
             cached_stream_id,
+            cached_payload_limit,
         })
     }
 
@@ -138,7 +146,11 @@ impl Socket {
             return Ok(n as usize);
         }
         let raw = last_error();
-        Err(classify_send_error(raw, buf.len()))
+        Err(classify_send_error(
+            raw,
+            buf.len(),
+            self.cached_payload_limit,
+        ))
     }
 
     /// Receive into a buffer. Returns bytes received (one libsrt message).
@@ -515,6 +527,24 @@ pub(crate) fn read_stream_id(handle: srt_sys::SRTSOCKET) -> Option<String> {
     }
 }
 
+pub(crate) fn read_payload_size(handle: srt_sys::SRTSOCKET) -> usize {
+    let mut value: c_int = 0;
+    let mut len = std::mem::size_of::<c_int>() as c_int;
+    let rc = unsafe {
+        srt_sys::srt_getsockflag(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_PAYLOADSIZE,
+            (&raw mut value).cast(),
+            &raw mut len,
+        )
+    };
+    if rc < 0 || value <= 0 {
+        // SRT_LIVE_DEF_PLSIZE = 1316 (8 x 188-byte TS packets).
+        return 1316;
+    }
+    value as usize
+}
+
 pub(crate) fn perf_to_stats(p: &srt_sys::CBytePerfMon) -> Stats {
     Stats {
         bytes_sent: p.byteSentTotal,
@@ -549,14 +579,26 @@ fn classify_connect_error(raw: crate::error::RawError) -> ConnectError {
     raw.into()
 }
 
-fn classify_send_error(raw: crate::error::RawError, payload_len: usize) -> SendError {
+fn classify_send_error(raw: crate::error::RawError, payload_len: usize, limit: usize) -> SendError {
+    // Deterministic check: if the caller's buffer obviously exceeds the
+    // configured payload size, classify regardless of libsrt's specific
+    // error wording (which has shifted across versions).
+    if payload_len > limit {
+        return SendError::PayloadTooLarge {
+            actual: payload_len,
+            limit,
+        };
+    }
     if raw.message.contains("Message has no destination address")
         || raw.message.contains("payload size")
         || raw.message.contains("Invalid argument")
+        || raw
+            .message
+            .contains("Incorrect use of Message API (sendmsg/recvmsg)")
     {
         return SendError::PayloadTooLarge {
             actual: payload_len,
-            limit: 1316,
+            limit,
         };
     }
     raw.into()

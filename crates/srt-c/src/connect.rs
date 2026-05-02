@@ -14,14 +14,22 @@ use std::time::Duration;
 /// (LOS-over-terrain interruptions, antenna repointing, radio warm-up).
 const SENDER_DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// Sender-pipeline default for `SRTO_LINGER`. libsrt's default is 180s
+/// (3 minutes), which lets `Socket::Drop` block for that long when the
+/// peer doesn't ACK pending sends — particularly painful inside a
+/// `ManagedTransport` reconnect cycle. 5s is long enough to drain a
+/// small backlog under healthy conditions, short enough to never stall
+/// reconnect noticeably.
+const SENDER_DEFAULT_LINGER: Duration = Duration::from_secs(5);
+
 /// Build a fresh `SrtTransport` connected to `host:port` using the
 /// provided socket config (passphrase, latency, etc. set as captured
 /// from the URL overlay). Returns `TransportError::Broken` on connect
 /// failure for unified surfacing through `record_transport_error`.
 ///
 /// Applies sender-pipeline defaults to the config in place when the
-/// caller hasn't set them (currently: `connect_timeout = 15s`). User-set
-/// values are preserved.
+/// caller hasn't set them (currently: `connect_timeout = 15s`,
+/// `linger = 5s`). User-set values are preserved.
 pub(crate) fn connect_srt(
     host: &str,
     port: u16,
@@ -30,6 +38,9 @@ pub(crate) fn connect_srt(
     let mut cfg = cfg.clone();
     if cfg.connect_timeout.is_none() {
         cfg.connect_timeout = Some(SENDER_DEFAULT_CONNECT_TIMEOUT);
+    }
+    if cfg.linger.is_none() {
+        cfg.linger = Some(SENDER_DEFAULT_LINGER);
     }
     let socket = Socket::connect_with(&cfg, format!("{host}:{port}").as_str())
         .map_err(|e| TransportError::Broken(format!("connect: {e}")))?;

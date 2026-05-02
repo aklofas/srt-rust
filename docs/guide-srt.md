@@ -406,6 +406,7 @@ when both name the same option.
 | `packetfilter` | `SRTO_PACKETFILTER` | STRING | filter spec |
 | `congestion` | `SRTO_CONGESTION` | ENUM | `live` or `file` (lowercase) |
 | `conntimeo` | `SRTO_CONNTIMEO` | INT (ms) | non-negative; ffmpeg-style alias `connect_timeout` |
+| `linger` | `SRTO_LINGER` | INT (seconds) | non-negative; matches ffmpeg URL units; `0` closes immediately |
 
 ### `srt-rust` extension keys (Group 2)
 

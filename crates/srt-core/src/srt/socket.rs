@@ -326,6 +326,32 @@ pub(crate) fn set_string(
     Ok(())
 }
 
+/// Set `SRTO_LINGER`. Unlike most SRT options it takes a `struct linger`
+/// (not an `int`), so we can't go through `set_int`. `Duration::ZERO` (or
+/// any sub-second duration) disables linger entirely (`l_onoff = 0`),
+/// causing `srt_close` to return immediately and discard any unsent
+/// payload. Non-zero seconds are clamped into `i32` range.
+pub(crate) fn set_linger(handle: srt_sys::SRTSOCKET, d: Duration) -> Result<(), OptionError> {
+    let secs = d.as_secs().min(i32::MAX as u64) as c_int;
+    let lin = libc::linger {
+        l_onoff: if secs > 0 { 1 } else { 0 },
+        l_linger: secs,
+    };
+    let rc = unsafe {
+        srt_sys::srt_setsockopt(
+            handle,
+            0,
+            srt_sys::SRT_SOCKOPT_SRTO_LINGER,
+            (&raw const lin).cast(),
+            std::mem::size_of::<libc::linger>() as c_int,
+        )
+    };
+    if rc < 0 {
+        return Err(last_error().into());
+    }
+    Ok(())
+}
+
 pub(crate) fn set_passphrase(
     handle: srt_sys::SRTSOCKET,
     p: &Passphrase,
@@ -382,6 +408,9 @@ pub(crate) fn apply_socket_config(
             srt_sys::SRT_SOCKOPT_SRTO_CONNTIMEO,
             duration_to_ms(t),
         )?;
+    }
+    if let Some(d) = cfg.linger {
+        set_linger(handle, d)?;
     }
     if let Some(d) = cfg.latency {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LATENCY, duration_to_ms(d))?;
@@ -511,6 +540,9 @@ pub(crate) fn apply_listener_config(
             srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO,
             duration_to_ms(t),
         )?;
+    }
+    if let Some(d) = cfg.linger {
+        set_linger(handle, d)?;
     }
     Ok(())
 }

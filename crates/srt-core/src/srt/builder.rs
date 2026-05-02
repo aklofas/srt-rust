@@ -45,6 +45,13 @@ impl SocketBuilder {
         self.config.connect_timeout = Some(t);
         self
     }
+    /// Set `SRTO_LINGER` — drop/close grace period for unsent data.
+    /// `Duration::ZERO` closes immediately; libsrt default is 180s.
+    /// For live streaming, prefer 0 or a few seconds.
+    pub fn linger(mut self, d: Duration) -> Self {
+        self.config.linger = Some(d);
+        self
+    }
     pub fn latency(mut self, d: Duration) -> Self {
         self.config.latency = Some(d);
         self
@@ -215,6 +222,13 @@ impl ListenerBuilder {
     }
     pub fn send_timeout(mut self, t: Duration) -> Self {
         self.config.send_timeout = Some(t);
+        self
+    }
+    /// Set `SRTO_LINGER` — drop/close grace period for unsent data.
+    /// `Duration::ZERO` closes immediately; libsrt default is 180s.
+    /// Inherited by accepted sockets.
+    pub fn linger(mut self, d: Duration) -> Self {
+        self.config.linger = Some(d);
         self
     }
 

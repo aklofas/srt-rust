@@ -27,6 +27,12 @@ pub struct SocketConfig {
     /// (LOS interruptions, antenna repointing) the `pipeline::Sender`
     /// defaults this to 15s.
     pub connect_timeout: Option<Duration>,
+    /// Time to wait inside `Drop`/`close` for unsent data to flush.
+    /// `None` preserves libsrt's 180-second default. Explicit
+    /// `Some(Duration::ZERO)` closes immediately (recommended for live
+    /// streaming, where late frames are useless). The default sender
+    /// connect path in `srt-c` defaults this to 5s.
+    pub linger: Option<Duration>,
 
     // Latency / buffering
     pub latency: Option<Duration>,
@@ -96,6 +102,12 @@ pub struct ListenerConfig {
     // Inherited by accepted sockets
     pub recv_timeout: Option<Duration>,
     pub send_timeout: Option<Duration>,
+
+    /// Time to wait inside `Drop`/`close` for unsent data to flush.
+    /// `None` preserves libsrt's 180-second default. Explicit
+    /// `Some(Duration::ZERO)` closes immediately. Inherited by accepted
+    /// sockets via libsrt's option-inheritance (PRE options).
+    pub linger: Option<Duration>,
 }
 
 impl Default for ListenerConfig {
@@ -119,6 +131,7 @@ impl Default for ListenerConfig {
             reuse_addr: true,
             recv_timeout: None,
             send_timeout: None,
+            linger: None,
         }
     }
 }

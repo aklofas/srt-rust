@@ -113,6 +113,9 @@ pub struct UrlOverlay {
     // Group 1 — connect timeout. Honored from libsrt URL vocabulary
     // (`conntimeo`); also accepts ffmpeg-style alias `connect_timeout`.
     pub connect_timeout: Option<Duration>,
+
+    // Group 1 — `SRTO_LINGER` close-grace period (seconds, matching ffmpeg).
+    pub linger: Option<Duration>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -297,6 +300,11 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
             // n is a non-negative i32; widening to u64 is lossless.
             overlay.latency = Some(Duration::from_millis(n as u64));
         }
+        "linger" => {
+            // SRTO_LINGER value is in seconds (matches ffmpeg's URL).
+            let n = parse_i32_nonneg("linger", value)?;
+            overlay.linger = Some(Duration::from_secs(n as u64));
+        }
         "lossmaxttl" => {
             overlay.loss_max_ttl = Some(parse_int_nonneg("lossmaxttl", value)?);
         }
@@ -455,6 +463,9 @@ impl UrlOverlay {
         if let Some(v) = self.connect_timeout {
             cfg.connect_timeout = Some(v);
         }
+        if let Some(v) = self.linger {
+            cfg.linger = Some(v);
+        }
     }
 
     /// Same shape for `ListenerConfig` (for symmetry with future
@@ -504,6 +515,9 @@ impl UrlOverlay {
         }
         if let Some(v) = self.send_timeout {
             cfg.send_timeout = Some(v);
+        }
+        if let Some(v) = self.linger {
+            cfg.linger = Some(v);
         }
         // ListenerConfig has no peer_latency, stream_id, or input_bandwidth.
         // peer_latency is a caller-side option (libsrt allows it to be set
@@ -575,5 +589,11 @@ mod tests {
             u.overlay.connect_timeout,
             Some(Duration::from_millis(10000))
         );
+    }
+
+    #[test]
+    fn url_linger_parses() {
+        let u = SrtUrl::parse("srt://h:9000?linger=5").unwrap();
+        assert_eq!(u.overlay.linger, Some(Duration::from_secs(5)));
     }
 }

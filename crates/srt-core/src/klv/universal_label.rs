@@ -4,9 +4,10 @@
 //!
 //! Per SMPTE 336M / MISB ST 0107, a Universal Label is a 16-byte key. Bytes
 //! 0-3 are the SMPTE OID prefix, byte 4 is the category, byte 5 is the
-//! registry, byte 6 is the structure designator. For ST 0601, byte 14 carries
-//! the document version (e.g. `0x13` for ST 0601.19), and byte 15 is reserved
-//! (must be `0x00` for the ST 0601 family).
+//! registry, byte 6 is the structure designator. For ST 0601, byte 13 carries
+//! the document version (e.g. `0x13` for ST 0601.19); byte 14 is reserved/
+//! unchecked by the family gate; byte 15 must be `0x00` for the ST 0601
+//! family.
 //!
 //! Real-world records contain malformed or non-standard labels. This type is
 //! deliberately permissive: `UniversalLabel::new` accepts any 16 bytes;
@@ -73,9 +74,10 @@ impl UniversalLabel {
         0x00,
     ]);
 
-    /// True if this UL belongs to the ST 0601 family — bytes 0-13 match
-    /// the canonical prefix `06 0E 2B 34 02 0B 01 01 0E 01 03 01 01 ??`,
-    /// byte 14 may be any document version, byte 15 must be `0x00`.
+    /// True if this UL belongs to the ST 0601 family — bytes 0-12 match
+    /// the canonical prefix `06 0E 2B 34 02 0B 01 01 0E 01 03 01 01`,
+    /// byte 15 must be `0x00`. Bytes 13 (the document version byte; see
+    /// `version_byte()`) and 14 are not validated by this gate.
     pub const fn is_st0601_family(&self) -> bool {
         let canonical = [
             0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01,

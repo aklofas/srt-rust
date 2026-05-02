@@ -8,7 +8,8 @@
 //!
 //! To produce `.klv` blobs from a captured `.ts`:
 //!   cargo run --example extract_klv -- path/to/capture.ts /tmp/klv_out
-//! (the second arg is an output *prefix*, producing `/tmp/klv_out_0001.klv`...)
+//! (the second arg is an output *prefix*, producing `/tmp/klv_out_0000.klv`...
+//! 0-indexed via `enumerate()`)
 
 use srt_core::klv::st0601::{
     UasDatalinkLs, decode, decode_strict, decode_strict_compliance, decode_unchecked,

@@ -40,11 +40,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // ----- platform attitude + airspeed -----
     // ST 0601 Tag 5/6/7 (heading/pitch/roll) and Tag 8/9 (true/indicated
-    // airspeed). The attitude tags use IMAPB to map small integer
-    // encodings to bounded float ranges — heading 0..360 packs into 2
-    // bytes, pitch/roll ±20° also pack into 2 bytes — so the float
-    // values you set here are quantized to the wire resolution on
-    // encode and recovered (within that resolution) on decode.
+    // airspeed). The attitude tags use ST 0601's `LinearRange` mapping
+    // (see `klv::st0601::mapping`) to map small integer encodings to
+    // bounded float ranges — heading 0..360 packs into 2 bytes,
+    // pitch/roll ±20° also pack into 2 bytes — so the float values you
+    // set here are quantized to the wire resolution on encode and
+    // recovered (within that resolution) on decode.
     rec.platform_heading_deg = Some(217.456);
     rec.platform_pitch_deg = Some(-2.150);
     rec.platform_roll_deg = Some(-1.875);
@@ -102,10 +103,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(decoded.platform_designation, rec.platform_designation);
     assert_eq!(decoded.image_coordinate_system, rec.image_coordinate_system);
 
-    // Floats don't round-trip exactly through IMAPB encoding because
-    // each tag fixes a bit-width and a value range, which together
+    // Floats don't round-trip exactly through ST 0601's bounded numeric
+    // encoding (the typed tags exercised here all use `LinearRange` —
+    // see `klv::st0601::mapping`; some other ST 0601 tags use ST 1201.5
+    // IMAPB instead, exposed as the separate `klv::imapb` substrate).
+    // Both schemes fix a bit-width and a value range, which together
     // quantize to a finite step. The eps values here all sit well above
-    // the actual per-tag IMAPB resolution (verified against
+    // the actual per-tag resolution (verified against
     // crates/srt-core/src/klv/st0601/{tags,mapping}.rs):
     //   - heading 0..360 unsigned in 2 bytes → 360/65535 ≈ 5.49e-3°/step
     //     → eps 0.01 leaves ~2x headroom.

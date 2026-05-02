@@ -68,8 +68,11 @@ referenced as MISB ST 0107). Each byte has a documented role:
 The `klv::universal_label` module exposes well-known constants —
 `ST_0601_LS`, `SMPTE_336M_LS_KEY`, `PRECISION_TIMESTAMP_PACK_UL` — and a
 family check: `is_st0601_family()` returns true when the label belongs
-to the ST 0601 family (bytes 0-12 match the canonical prefix, byte 14
-is any version, byte 15 is `0x00`). The constructor is non-validating —
+to the ST 0601 family. The check validates bytes 0-12 against the
+canonical prefix (universal designator + ST 0601 set kind) and requires
+byte 15 to be `0x00`. Bytes 13 (the document version byte; accessor
+`version_byte()`) and 14 (reserved) are not validated by the family
+gate. The constructor is non-validating —
 `UniversalLabel::new([..])` accepts any 16 bytes — because real-world
 records do contain malformed or non-standard labels, and the typed
 layer's `decode_strict` is the opt-in validation point.
@@ -214,7 +217,7 @@ fn build_minimal() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 ```
 
 For a worked example with attitude + sensor pose + frame center, plus
-explicit IMAPB step-size calculations for each ranged tag, see
+explicit `LinearRange` step-size calculations for each ranged tag, see
 [../crates/srt-core/examples/klv_encode_minimal.rs](../crates/srt-core/examples/klv_encode_minimal.rs).
 
 ## ST 0605 Precision Time Stamp Pack
@@ -307,25 +310,36 @@ Switch to `OwnedRawField` (via `OwnedRawField::from(field)`) when you
 need to stash a parsed field beyond the lifetime of the input — `Iter`
 is happy to feed either side.
 
-## IMAPB (ST 1201.5)
+## Bounded numeric encoding
 
-IMAPB is the bit-packed integer-to-float mapping used by many ST 0601
-fields with bounded ranges. The typed layer applies it per tag based on
-the spec — callers don't normally call it directly. The substrate
-exposes `klv::imapb::encode_imapb(&params, value, out)` and
-`klv::imapb::decode_imapb(&params, bytes)` for callers who do need it,
-where `ImapbParams { min, max, length }` controls the floating-point
-range and the number of bytes on the wire.
+ST 0601's ranged numeric tags use one of two related-but-distinct
+schemes to map a bounded floating-point range into a fixed-width
+integer on the wire. The typed layer applies the right scheme per tag
+based on the spec — callers don't normally call either directly.
 
-A concrete example: ST 0601 Tag 5 (Platform Heading) maps `0..360°` into
-2 bytes unsigned. The step size is `360 / 65535 ≈ 5.49e-3 °/step` — a
-heading of 217.456° quantizes to one of two adjacent codepoints around
-that resolution and recovers within `~5e-3°` on decode. Per-tag
-precision is documented in
+- `klv::st0601::mapping` (`LinearRange` — `U16Range` / `U32Range` /
+  `S16Range` / `S32Range`). Uniform linear mapping with step
+  `(max - min) / 2^bits`. This is what every ranged tag in the typed
+  ST 0601 table currently uses (see
+  [../crates/srt-core/src/klv/st0601/tags.rs](../crates/srt-core/src/klv/st0601/tags.rs)).
+- `klv::imapb` (ST 1201.5 IMAPB). Power-of-two-aligned scale factor
+  with INT_MIN reserved as INVALID — a different scheme; not
+  interchangeable with `LinearRange`. Exposed as substrate so callers
+  working with custom local sets or future ST 0601 tags that adopt
+  IMAPB can call it directly: `klv::imapb::encode_imapb(&params, value,
+  out)` / `klv::imapb::decode_imapb(&params, bytes)` with
+  `ImapbParams { min, max, length }`. No tag in the current typed
+  ST 0601 table uses IMAPB.
+
+A concrete example: ST 0601 Tag 5 (Platform Heading) is a `LinearRange`
+mapping of `0..360°` into 2 bytes unsigned. The step size is
+`360 / 65535 ≈ 5.49e-3 °/step` — a heading of 217.456° quantizes to
+one of two adjacent codepoints around that resolution and recovers
+within `~5e-3°` on decode. Per-tag precision is documented in
 [../crates/srt-core/src/klv/st0601/tags.rs](../crates/srt-core/src/klv/st0601/tags.rs);
 [../crates/srt-core/examples/klv_encode_minimal.rs](../crates/srt-core/examples/klv_encode_minimal.rs)
-walks four representative tags with their step calculations spelled out
-in comments.
+walks four representative `LinearRange` tags with their step
+calculations spelled out in comments.
 
 ## Working with real captures
 
@@ -337,14 +351,18 @@ Three steps to take a captured `.ts`, pull the KLV out, and decode it.
    cargo run --example extract_klv -- capture.ts /tmp/klv_out
    ```
 
-   The second argument is an output prefix; the example produces
-   `/tmp/klv_out_0001.klv`, `/tmp/klv_out_0002.klv`, ... — one file per
-   KLV record found in the stream.
+   The second argument is a filename prefix; the example writes files
+   into the input file's parent directory as `<prefix>_NNNN.klv`
+   (`enumerate()`-indexed, 4-digit zero-padded — so the first blob is
+   `_0000.klv`). Passing an absolute path as the prefix (e.g.
+   `/tmp/klv_out`) works on Unix because `Path::join` replaces the base
+   when the second argument is absolute — the files land in `/tmp/` as
+   `/tmp/klv_out_0000.klv`, `/tmp/klv_out_0001.klv`, ...
 
 2. Decode one blob through the strictness ladder:
 
    ```bash
-   cargo run --example klv_decode_file -- /tmp/klv_out_0001.klv
+   cargo run --example klv_decode_file -- /tmp/klv_out_0000.klv
    ```
 
    The example tries `decode_strict_compliance` first and walks down to

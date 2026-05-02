@@ -18,11 +18,8 @@ pub mod ts_sender;
 pub(crate) mod url;
 
 /// Major version (compile-time macro in the generated header).
-#[unsafe(no_mangle)]
-pub static SRTC_VERSION_MAJOR: libc::c_int = 0;
+pub const SRTC_VERSION_MAJOR: libc::c_int = 0;
 /// Minor version.
-#[unsafe(no_mangle)]
-pub static SRTC_VERSION_MINOR: libc::c_int = 1;
+pub const SRTC_VERSION_MINOR: libc::c_int = 1;
 /// Patch version.
-#[unsafe(no_mangle)]
-pub static SRTC_VERSION_PATCH: libc::c_int = 0;
+pub const SRTC_VERSION_PATCH: libc::c_int = 0;

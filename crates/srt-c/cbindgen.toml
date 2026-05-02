@@ -16,12 +16,37 @@ sys_includes  = ["stddef.h"]
 cpp_compat    = true
 documentation = true
 documentation_style = "doxy"
+usize_is_size_t = true
 
 [export]
-include = ["SrtcError"]
+include = [
+    "SrtcError",
+    "SrtcVideoCodec",
+    "SrtcKlvStreamType",
+    "SrtcTsFramingMode",
+    "SrtcOverflowPolicy",
+]
 
 [export.rename]
-"SrtcError" = "srtc_e"
+# Enums (repr(C)): no _t suffix, so prefix_with_name produces clean SRTC_* variant prefixes
+"SrtcError"             = "srtc_e"
+"SrtcVideoCodec"        = "srtc_video_codec"
+"SrtcKlvStreamType"     = "srtc_klv_stream_type"
+"SrtcTsFramingMode"     = "srtc_ts_framing_mode"
+"SrtcOverflowPolicy"    = "srtc_overflow_policy"
+# Opaque handles: idiomatic C _t suffix
+"SrtcMuxer"             = "srtc_muxer_t"
+"SrtcMuxConfig"         = "srtc_mux_config_t"
+"SrtcMuxSender"         = "srtc_mux_sender_t"
+"SrtcManagedMuxSender"  = "srtc_managed_mux_sender_t"
+"SrtcTsSender"          = "srtc_ts_sender_t"
+"SrtcManagedTsSender"   = "srtc_managed_ts_sender_t"
+"SrtcRawSender"         = "srtc_raw_sender_t"
+"SrtcManagedRawSender"  = "srtc_managed_raw_sender_t"
+"SrtcTsSenderConfig"    = "srtc_ts_sender_config_t"
+"SrtcRawSenderConfig"   = "srtc_raw_sender_config_t"
+"SrtcReconnectPolicy"   = "srtc_reconnect_policy_t"
+"SrtcTsSenderStats"     = "srtc_ts_sender_stats_t"
 
 [enum]
 prefix_with_name = true

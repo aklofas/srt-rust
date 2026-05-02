@@ -26,4 +26,5 @@ thiserror = { workspace = true }
 cbindgen = { workspace = true }
 
 [dev-dependencies]
-cc = { workspace = true }
+cc       = { workspace = true }
+cbindgen = { workspace = true }

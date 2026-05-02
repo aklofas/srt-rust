@@ -17,6 +17,23 @@ For a feature-by-feature support matrix — SRT options, MISB specs, typed ST 06
 
 A Rust core wrapping libsrt via FFI, with bindings for JVM (JNI, JDK 17+), iOS/Android (UniFFI), and embedded Linux (cdylib + cbindgen). MPEG-TS demux stays out of scope — receivers use FFmpeg / JavaCV / Bento4 / platform demuxers and feed extracted KLV bytes through `srt_core::klv::st0601::decode` (or `st0605::decode` for Precision Time Stamp Packs).
 
+## Documentation
+
+The repo's documentation lives under [`docs/`](docs/):
+
+- **[`getting-started.md`](docs/getting-started.md)** — install, first send, first receive in 10 minutes.
+- **[`architecture.md`](docs/architecture.md)** — crate graph, pipeline composition model, sync vs. async stance.
+- **[`guide-srt.md`](docs/guide-srt.md)** — `Socket` / `Listener`, encryption, latency, stats, error model.
+- **[`guide-klv.md`](docs/guide-klv.md)** — generic substrate plus typed ST 0601 / ST 0605 / ST 1910 layers; the four-rung decode strictness ladder.
+- **[`guide-mpegts-mux.md`](docs/guide-mpegts-mux.md)** — `Config` / `ConfigBuilder`, codec + KLV-mode selection, PCR/PSI cadence, push/pull contract.
+- **[`guide-pipeline.md`](docs/guide-pipeline.md)** — picking among `Sender` / `TsSender` / `RawSender`; the `Transport` trait; `ManagedTransport` reconnect + gap buffer.
+- **[`cookbook.md`](docs/cookbook.md)** — recipes linking to runnable examples.
+- **[`troubleshooting.md`](docs/troubleshooting.md)** — diagnose build failures, connection failures, KLV rejection, TS framing issues, reconnect loops.
+- **[`deferred-features.md`](docs/deferred-features.md)** — what's not yet supported and the trigger conditions to revisit.
+- **[`compatibility.md`](docs/compatibility.md)** — feature-by-feature support matrix.
+
+Runnable Rust examples live at [`crates/srt-core/examples/`](crates/srt-core/examples/) — see `cookbook.md` for which example illustrates which recipe.
+
 ## Workspace layout
 
 ```

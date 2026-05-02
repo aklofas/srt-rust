@@ -1070,3 +1070,150 @@ fn ts_sender_x_sendtimeout_url_open_succeeds() {
 
     listener_thread.join().expect("listener thread panicked");
 }
+
+// ============================================================================
+// Conflict precedence — URL wins over builder defaults.
+// ============================================================================
+
+#[test]
+fn url_streamid_overrides_builder_streamid() {
+    // Today's C ABI for ts_sender has no streamid builder setter — the URL
+    // is the only path for setting streamid. This test documents the invariant
+    // that the URL-supplied streamid is observed on the listener, so that when
+    // a builder setter lands it can be tested for correct precedence.
+    let (port_tx, port_rx) = mpsc::channel::<u16>();
+    let (sid_tx, sid_rx) = mpsc::channel::<Option<String>>();
+
+    let listener_thread = thread::spawn(move || {
+        let mut listener = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(5))
+            .bind("127.0.0.1:0")
+            .expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        port_tx.send(port).expect("send port");
+        let (accepted, _peer) = listener.accept().expect("accept");
+        sid_tx
+            .send(accepted.stream_id().map(str::to_string))
+            .expect("send stream_id");
+    });
+
+    let port = port_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("listener did not bind in time");
+    let url_c = CString::new(format!("srt://127.0.0.1:{port}?streamid=url-wins")).unwrap();
+
+    unsafe {
+        let cfg = srtc_ts_sender_config_new();
+        let s = srtc_ts_sender_open(url_c.as_ptr(), cfg);
+        assert!(!s.is_null(), "open failed: {}", last_error_msg());
+
+        let observed = sid_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("listener did not send stream_id in time");
+        assert_eq!(
+            observed.as_deref(),
+            Some("url-wins"),
+            "expected stream_id 'url-wins', got {:?}",
+            observed
+        );
+
+        srtc_ts_sender_close(s);
+        srtc_ts_sender_config_free(cfg);
+    }
+
+    listener_thread.join().expect("listener thread panicked");
+}
+
+// ============================================================================
+// Malformed URLs return NULL with a useful last-error message.
+// ============================================================================
+
+#[test]
+fn malformed_url_returns_null() {
+    // "not-a-url" has no scheme — url::Url::parse rejects it, producing a
+    // UrlError::Syntax. parse_c_srt_url wraps it as "invalid srt url: URL
+    // parse failed: ...".
+    let url_c = CString::new("not-a-url").unwrap();
+    unsafe {
+        let cfg = srtc_ts_sender_config_new();
+        let s = srtc_ts_sender_open(url_c.as_ptr(), cfg);
+        assert!(s.is_null(), "expected null for malformed URL");
+        let msg = last_error_msg();
+        assert!(msg.contains("invalid srt url"), "msg = {msg}");
+        srtc_ts_sender_config_free(cfg);
+    }
+}
+
+#[test]
+fn url_unknown_key_returns_null() {
+    // "lattency" is a misspelling of "latency" — the parser treats it as an
+    // unknown key and returns UrlError::UnknownKey { key: "lattency" }.
+    let url_c = CString::new("srt://127.0.0.1:9000?lattency=100").unwrap();
+    unsafe {
+        let cfg = srtc_ts_sender_config_new();
+        let s = srtc_ts_sender_open(url_c.as_ptr(), cfg);
+        assert!(s.is_null(), "expected null for unknown key");
+        let msg = last_error_msg();
+        assert!(msg.contains("unknown URL key"), "msg = {msg}");
+        assert!(msg.contains("lattency"), "msg = {msg}");
+        srtc_ts_sender_config_free(cfg);
+    }
+}
+
+#[test]
+fn url_unsupported_key_returns_null_with_srto() {
+    // "conntimeo" is in the Group 3 reject table — it maps to SRTO_CONNTIMEO
+    // but is not yet exposed. The error message names both the URL key and the
+    // libsrt option so the caller can find documentation for it.
+    let url_c = CString::new("srt://127.0.0.1:9000?conntimeo=5000").unwrap();
+    unsafe {
+        let cfg = srtc_ts_sender_config_new();
+        let s = srtc_ts_sender_open(url_c.as_ptr(), cfg);
+        assert!(s.is_null(), "expected null for unsupported key");
+        let msg = last_error_msg();
+        assert!(msg.contains("conntimeo"), "msg = {msg}");
+        assert!(msg.contains("SRTO_CONNTIMEO"), "msg = {msg}");
+        srtc_ts_sender_config_free(cfg);
+    }
+}
+
+#[test]
+fn url_mode_listener_returns_null() {
+    // mode=listener is rejected — the library only supports mode=caller.
+    // The error names both "mode" and "listener" so the caller understands
+    // which mode was requested and why it was rejected.
+    let url_c = CString::new("srt://127.0.0.1:9000?mode=listener").unwrap();
+    unsafe {
+        let cfg = srtc_ts_sender_config_new();
+        let s = srtc_ts_sender_open(url_c.as_ptr(), cfg);
+        assert!(s.is_null(), "expected null for mode=listener");
+        let msg = last_error_msg();
+        assert!(
+            msg.contains("mode") && msg.contains("listener"),
+            "msg = {msg}"
+        );
+        srtc_ts_sender_config_free(cfg);
+    }
+}
+
+#[test]
+fn url_userinfo_returns_null_with_passphrase_hint() {
+    // Embedding credentials as user:pass@ in the SRT URL is not supported.
+    // The error message directs the caller to use ?passphrase=... instead.
+    let url_c = CString::new("srt://op:hunter2@127.0.0.1:9000").unwrap();
+    unsafe {
+        let cfg = srtc_ts_sender_config_new();
+        let s = srtc_ts_sender_open(url_c.as_ptr(), cfg);
+        assert!(s.is_null(), "expected null for userinfo in URL");
+        let msg = last_error_msg();
+        assert!(
+            msg.contains("userinfo") || msg.contains("user:pass"),
+            "msg = {msg}"
+        );
+        assert!(
+            msg.contains("passphrase"),
+            "hint should mention passphrase: {msg}"
+        );
+        srtc_ts_sender_config_free(cfg);
+    }
+}

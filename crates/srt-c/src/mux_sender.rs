@@ -17,6 +17,7 @@ use srt_core::srt::config::SocketConfig;
 /// Build a fresh `SrtTransport` connected to `host:port`. Used by the
 /// managed sender's reconnect closure (plain sender uses
 /// `crate::connect::connect_srt` with a full `SocketConfig` instead).
+#[allow(dead_code)] // Task 15 deletes this helper once no caller remains
 fn connect_srt(host: &str, port: u16) -> Result<SrtTransport, TransportError> {
     let socket = SocketBuilder::new()
         .connect(format!("{host}:{port}").as_str())
@@ -192,9 +193,11 @@ pub unsafe extern "C" fn srtc_managed_mux_sender_open(
             return std::ptr::null_mut();
         }
     };
+    let mut socket_cfg = SocketConfig::default();
+    url.overlay.apply_to_socket(&mut socket_cfg);
 
     // Initial connect.
-    let initial = match connect_srt(&url.host, url.port) {
+    let initial = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
         Ok(t) => t,
         Err(e) => {
             crate::error::record_transport_error(&e);
@@ -202,10 +205,13 @@ pub unsafe extern "C" fn srtc_managed_mux_sender_open(
         }
     };
 
-    // Factory closure: captures host (String) + port (u16) by move.
-    let host = url.host;
+    // Reconnect closure: same host/port AND same socket config so URL
+    // overlay options (passphrase/latency/etc.) survive reconnects.
+    // URL is parsed once at construction and never re-parsed.
+    let host = url.host.clone();
     let port = url.port;
-    let factory = move || connect_srt(&host, port);
+    let cfg_for_reconnect = socket_cfg.clone();
+    let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
 
     let managed = ManagedTransport::new(initial, factory, policy);
     let sender = match Sender::new(built, managed) {

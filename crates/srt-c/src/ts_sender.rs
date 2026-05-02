@@ -35,6 +35,7 @@ impl From<&TsSenderStats> for SrtcTsSenderStats {
     }
 }
 
+#[allow(dead_code)] // Task 15 deletes this helper once no caller remains
 fn connect_srt(host: &str, port: u16) -> Result<SrtTransport, srt_core::pipeline::TransportError> {
     let socket = SocketBuilder::new()
         .connect(format!("{host}:{port}").as_str())
@@ -172,7 +173,10 @@ pub unsafe extern "C" fn srtc_managed_ts_sender_open(
         Ok(u) => u,
         Err(()) => return std::ptr::null_mut(),
     };
-    let initial = match connect_srt(&url.host, url.port) {
+    let mut socket_cfg = srt_core::srt::config::SocketConfig::default();
+    url.overlay.apply_to_socket(&mut socket_cfg);
+
+    let initial = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
         Ok(t) => t,
         Err(e) => {
             record_transport_error(&e);
@@ -181,7 +185,8 @@ pub unsafe extern "C" fn srtc_managed_ts_sender_open(
     };
     let host = url.host.clone();
     let port = url.port;
-    let factory = move || connect_srt(&host, port);
+    let cfg_for_reconnect = socket_cfg.clone();
+    let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
     let managed = ManagedTransport::new(initial, factory, policy);
     Box::into_raw(Box::new(SrtcManagedTsSender {
         inner: Handle::new(TsSender::new(managed, cfg)),

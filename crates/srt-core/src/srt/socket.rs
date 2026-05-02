@@ -373,6 +373,16 @@ pub(crate) fn apply_socket_config(
             duration_to_ms(t),
         )?;
     }
+    if let Some(t) = cfg.connect_timeout {
+        // SRTO_CONNTIMEO is a PRE option (set before srt_connect); this
+        // function is called between srt_create_socket and srt_connect, so
+        // ordering is satisfied.
+        set_int(
+            handle,
+            srt_sys::SRT_SOCKOPT_SRTO_CONNTIMEO,
+            duration_to_ms(t),
+        )?;
+    }
     if let Some(d) = cfg.latency {
         set_int(handle, srt_sys::SRT_SOCKOPT_SRTO_LATENCY, duration_to_ms(d))?;
     }

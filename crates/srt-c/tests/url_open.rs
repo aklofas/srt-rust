@@ -1168,17 +1168,17 @@ fn url_unknown_key_returns_null() {
 
 #[test]
 fn url_unsupported_key_returns_null_with_srto() {
-    // "conntimeo" is in the Group 3 reject table — it maps to SRTO_CONNTIMEO
+    // "transtype" is in the Group 3 reject table — it maps to SRTO_TRANSTYPE
     // but is not yet exposed. The error message names both the URL key and the
     // libsrt option so the caller can find documentation for it.
-    let url_c = CString::new("srt://127.0.0.1:9000?conntimeo=5000").unwrap();
+    let url_c = CString::new("srt://127.0.0.1:9000?transtype=live").unwrap();
     unsafe {
         let cfg = srtc_ts_sender_config_new();
         let s = srtc_ts_sender_open(url_c.as_ptr(), cfg);
         assert!(s.is_null(), "expected null for unsupported key");
         let msg = last_error_msg();
-        assert!(msg.contains("conntimeo"), "msg = {msg}");
-        assert!(msg.contains("SRTO_CONNTIMEO"), "msg = {msg}");
+        assert!(msg.contains("transtype"), "msg = {msg}");
+        assert!(msg.contains("SRTO_TRANSTYPE"), "msg = {msg}");
         srtc_ts_sender_config_free(cfg);
     }
 }
@@ -1235,9 +1235,9 @@ fn url_userinfo_returns_null_with_passphrase_hint() {
 
 #[test]
 fn cfg_byte_unchanged_after_failed_parse() {
-    // "conntimeo=5000" is an unsupported Group 3 key — _open returns null and
+    // "transtype=live" is an unsupported Group 3 key — _open returns null and
     // sets last-error without touching the caller's cfg.
-    let url_bad = CString::new("srt://127.0.0.1:9000?conntimeo=5000").unwrap();
+    let url_bad = CString::new("srt://127.0.0.1:9000?transtype=live").unwrap();
     unsafe {
         let cfg = srtc_ts_sender_config_new();
         let s_bad = srtc_ts_sender_open(url_bad.as_ptr(), cfg);

@@ -405,6 +405,7 @@ when both name the same option.
 | `fc` | `SRTO_FC` | INT | u32 range |
 | `packetfilter` | `SRTO_PACKETFILTER` | STRING | filter spec |
 | `congestion` | `SRTO_CONGESTION` | ENUM | `live` or `file` (lowercase) |
+| `conntimeo` | `SRTO_CONNTIMEO` | INT (ms) | non-negative; ffmpeg-style alias `connect_timeout` |
 
 ### `srt-rust` extension keys (Group 2)
 

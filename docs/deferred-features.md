@@ -188,8 +188,8 @@ the trigger that would unblock it.
   with `UrlError::UnsupportedKey` carrying its `SRTO_*` name. No
   silent failure; the operator gets a clear "this option exists but
   isn't yet exposed" message.
-- **The list:** `bindtodevice` (`SRTO_BINDTODEVICE`), `conntimeo`
-  (`SRTO_CONNTIMEO`), `cryptomode` (`SRTO_CRYPTOMODE`), `drifttracer`
+- **The list:** `bindtodevice` (`SRTO_BINDTODEVICE`),
+  `cryptomode` (`SRTO_CRYPTOMODE`), `drifttracer`
   (`SRTO_DRIFTTRACER`), `enforcedencryption` (`SRTO_ENFORCEDENCRYPTION`),
   `groupconnect` (`SRTO_GROUPCONNECT`), `groupminstabletimeo`
   (`SRTO_GROUPMINSTABLETIMEO`), `iptos` (`SRTO_IPTOS`), `ipttl`

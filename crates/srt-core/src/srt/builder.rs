@@ -39,6 +39,12 @@ impl SocketBuilder {
         self.config.recv_timeout = Some(t);
         self
     }
+    /// Set `SRTO_CONNTIMEO` — maximum handshake-wait duration on `connect`.
+    /// libsrt default 3s; recommend 10–15s for radio links.
+    pub fn connect_timeout(mut self, t: Duration) -> Self {
+        self.config.connect_timeout = Some(t);
+        self
+    }
     pub fn latency(mut self, d: Duration) -> Self {
         self.config.latency = Some(d);
         self

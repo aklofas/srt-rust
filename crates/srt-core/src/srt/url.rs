@@ -44,7 +44,6 @@ fn warn_if_suspicious_latency(key: &str, ms: i32) {
 /// Each entry maps the URL key to its `SRTO_*` name for error messages.
 const GROUP3_REJECTED: &[(&str, &str)] = &[
     ("bindtodevice", "SRTO_BINDTODEVICE"),
-    ("conntimeo", "SRTO_CONNTIMEO"),
     ("cryptomode", "SRTO_CRYPTOMODE"),
     ("drifttracer", "SRTO_DRIFTTRACER"),
     ("enforcedencryption", "SRTO_ENFORCEDENCRYPTION"),
@@ -110,6 +109,10 @@ pub struct UrlOverlay {
     // Group 2 — `srt-c` extension keys.
     pub recv_timeout: Option<Duration>,
     pub send_timeout: Option<Duration>,
+
+    // Group 1 — connect timeout. Honored from libsrt URL vocabulary
+    // (`conntimeo`); also accepts ffmpeg-style alias `connect_timeout`.
+    pub connect_timeout: Option<Duration>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -275,6 +278,12 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
                     source,
                 }
             })?);
+        }
+        "conntimeo" | "connect_timeout" => {
+            // libsrt-URL canonical key is `conntimeo` (milliseconds);
+            // `connect_timeout` is the ffmpeg-style alias.
+            let n = parse_i32_nonneg("conntimeo", value)?;
+            overlay.connect_timeout = Some(Duration::from_millis(n as u64));
         }
         "fc" => {
             overlay.flow_window_packets = Some(parse_int_nonneg("fc", value)?);
@@ -443,6 +452,9 @@ impl UrlOverlay {
         if let Some(v) = self.send_timeout {
             cfg.send_timeout = Some(v);
         }
+        if let Some(v) = self.connect_timeout {
+            cfg.connect_timeout = Some(v);
+        }
     }
 
     /// Same shape for `ListenerConfig` (for symmetry with future
@@ -545,5 +557,23 @@ mod tests {
     fn warns_on_high_peerlatency() {
         let _ = SrtUrl::parse("srt://h:9000?peerlatency=15000").unwrap();
         assert!(logs_contain("ffmpeg uses microseconds"));
+    }
+
+    #[test]
+    fn url_conntimeo_parses() {
+        let u = SrtUrl::parse("srt://h:9000?conntimeo=10000").unwrap();
+        assert_eq!(
+            u.overlay.connect_timeout,
+            Some(Duration::from_millis(10000))
+        );
+    }
+
+    #[test]
+    fn url_connect_timeout_alias_parses() {
+        let u = SrtUrl::parse("srt://h:9000?connect_timeout=10000").unwrap();
+        assert_eq!(
+            u.overlay.connect_timeout,
+            Some(Duration::from_millis(10000))
+        );
     }
 }

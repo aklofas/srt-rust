@@ -339,13 +339,13 @@ fn mode_rendezvous_rejected() {
 }
 
 #[test]
-fn group3_conntimeo_rejected() {
-    let e = SrtUrl::parse("srt://1.2.3.4:9000?conntimeo=5000").unwrap_err();
-    let UrlError::UnsupportedKey { key, srto } = e else {
-        panic!("wrong variant");
-    };
-    assert_eq!(key, "conntimeo");
-    assert_eq!(srto, "SRTO_CONNTIMEO");
+fn group1_conntimeo_honored() {
+    // `conntimeo` was promoted from Group 3 (rejected) to Group 1 (honored).
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?conntimeo=5000").unwrap();
+    assert_eq!(
+        u.overlay.connect_timeout,
+        Some(std::time::Duration::from_millis(5000))
+    );
 }
 
 #[test]
@@ -382,13 +382,12 @@ fn unknown_typo_rejected() {
     assert!(matches!(e, UrlError::UnknownKey { ref key } if key == "lattency"));
 }
 
-/// Smoke test that all 24 Group 3 keys reject with a non-empty `srto`.
+/// Smoke test that all Group 3 keys reject with a non-empty `srto`.
 /// Catches drift if someone forgets to fill in the SRTO_* string.
 #[test]
 fn all_group3_keys_reject_with_srto() {
     let group3 = [
         "bindtodevice",
-        "conntimeo",
         "cryptomode",
         "drifttracer",
         "enforcedencryption",

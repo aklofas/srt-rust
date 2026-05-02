@@ -29,13 +29,13 @@ const GROUP1_KEYS: &[&str] = &[
     "fc",
     "packetfilter",
     "congestion",
+    "conntimeo",
 ];
 
 const GROUP2_KEYS: &[&str] = &["x-recvtimeout", "x-sendtimeout"];
 
 const GROUP3_KEYS: &[&str] = &[
     "bindtodevice",
-    "conntimeo",
     "cryptomode",
     "drifttracer",
     "enforcedencryption",
@@ -83,6 +83,7 @@ fn group1_keys_all_parse_and_wire() {
         ("fc", "8192"),
         ("packetfilter", "fec,cols:10,rows:5"),
         ("congestion", "live"),
+        ("conntimeo", "10000"),
     ];
     assert_eq!(
         representative_value.len(),

@@ -22,6 +22,11 @@ pub struct SocketConfig {
     // Timeouts
     pub send_timeout: Option<Duration>,
     pub recv_timeout: Option<Duration>,
+    /// Maximum time `connect_with` waits for handshake completion before
+    /// giving up. `None` keeps libsrt's 3-second default. For radio links
+    /// (LOS interruptions, antenna repointing) the `pipeline::Sender`
+    /// defaults this to 15s.
+    pub connect_timeout: Option<Duration>,
 
     // Latency / buffering
     pub latency: Option<Duration>,

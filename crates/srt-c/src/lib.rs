@@ -11,6 +11,7 @@
 pub mod config;
 pub mod error;
 mod handle;
+pub mod muxer;
 mod url;
 
 /// Major version (compile-time macro in the generated header).

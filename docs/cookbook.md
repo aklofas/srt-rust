@@ -322,3 +322,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 No standalone example; see [../crates/srt-core/examples/managed_reconnect.rs](../crates/srt-core/examples/managed_reconnect.rs) and [guide-srt.md](guide-srt.md) §`Stats`.
+
+### 11. Open a sender from an `srt://...?...` URL
+
+Useful when the connection target and tuning live in deployment config
+files (or are passed in by an orchestrator). Build a `SocketConfig`
+from the parsed URL's overlay, then connect.
+
+```rust,no_run
+use srt_core::{SocketBuilder, SrtUrl};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let parsed = SrtUrl::parse(
+        "srt://camera.local:9000?streamid=front&latency=200&passphrase=hunter-too-long",
+    )?;
+    let mut config = SocketBuilder::new().config();
+    parsed.overlay.apply_to_socket(&mut config);
+    let _socket = srt_core::srt::Socket::connect_with(
+        &config,
+        format!("{}:{}", parsed.host, parsed.port).as_str(),
+    )?;
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/sender_from_url.rs](../crates/srt-core/examples/sender_from_url.rs).

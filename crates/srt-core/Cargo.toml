@@ -24,11 +24,17 @@ thiserror = { workspace = true }
 secrecy   = { workspace = true }
 url       = "2"
 log       = { workspace = true, optional = true }
+# Used for non-fatal warnings (e.g. ms-vs-µs URL pitfall in srt::url).
+# Default features include `attributes`/`std`. We only need `std`;
+# consumers attach their own subscriber.
+tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 libc      = { workspace = true }
 proptest  = { workspace = true }
 criterion = { workspace = true }
+# Captures `tracing` events in tests for assertion.
+tracing-test = "0.2"
 
 [[bench]]
 name    = "mux_throughput"

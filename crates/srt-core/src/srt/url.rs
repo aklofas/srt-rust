@@ -95,8 +95,46 @@ pub enum UrlError {
 
 impl SrtUrl {
     /// Parse `srt://host:port?key=value&...` into validated parts.
-    pub fn parse(_s: &str) -> Result<Self, UrlError> {
-        unimplemented!("see Task 2")
+    pub fn parse(s: &str) -> Result<Self, UrlError> {
+        let parsed = url::Url::parse(s).map_err(|e| {
+            // url::ParseError::EmptyHost means the URL had a bare ":" after the
+            // authority separator with no host — surface as MissingHost rather
+            // than the opaque Syntax variant.
+            if e == url::ParseError::EmptyHost {
+                UrlError::MissingHost
+            } else {
+                UrlError::Syntax(e)
+            }
+        })?;
+        if parsed.scheme() != "srt" {
+            return Err(UrlError::WrongScheme {
+                got: parsed.scheme().to_string(),
+            });
+        }
+        if !parsed.username().is_empty() || parsed.password().is_some() {
+            return Err(UrlError::UserinfoNotSupported);
+        }
+        // Use parsed.host() (the enum) rather than host_str() so that IPv6
+        // addresses come back without brackets. host_str() preserves the
+        // bracketed form "[::1]"; Ipv6Addr::to_string() gives "::1".
+        let host = match parsed.host() {
+            Some(url::Host::Ipv4(addr)) => addr.to_string(),
+            Some(url::Host::Ipv6(addr)) => addr.to_string(),
+            Some(url::Host::Domain(d)) if !d.is_empty() => d.to_string(),
+            _ => return Err(UrlError::MissingHost),
+        };
+        let port = parsed.port().ok_or(UrlError::MissingPort)?;
+
+        // Query parsing arrives in Task 3; for now an empty overlay.
+        let overlay = UrlOverlay::default();
+
+        let _ = parsed; // silence unused-once-query-lands warning.
+
+        Ok(Self {
+            host,
+            port,
+            overlay,
+        })
     }
 }
 

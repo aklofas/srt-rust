@@ -7,6 +7,7 @@
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
 
 pub mod config;
+mod connect;
 pub mod error;
 mod handle;
 pub mod mux_sender;

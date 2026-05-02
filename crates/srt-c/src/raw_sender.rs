@@ -7,15 +7,6 @@ use crate::error::{SrtcError, record_transport_error, set_last_error, srtc_get_l
 use crate::handle::Handle;
 use crate::mux_sender::parse_c_srt_url;
 use srt_core::pipeline::{ManagedTransport, RawSender, SrtTransport};
-use srt_core::srt::SocketBuilder;
-
-#[allow(dead_code)] // Task 15 deletes this helper once no caller remains
-fn connect_srt(host: &str, port: u16) -> Result<SrtTransport, srt_core::pipeline::TransportError> {
-    let socket = SocketBuilder::new()
-        .connect(format!("{host}:{port}").as_str())
-        .map_err(|e| srt_core::pipeline::TransportError::Broken(format!("connect: {e}")))?;
-    Ok(SrtTransport::new(socket))
-}
 
 // ------------------------------------------------------------------
 // srtc_raw_sender_t

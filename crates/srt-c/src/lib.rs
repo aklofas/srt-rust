@@ -14,8 +14,6 @@ pub mod mux_sender;
 pub mod muxer;
 pub mod raw_sender;
 pub mod ts_sender;
-pub(crate) mod url;
-
 /// Major version (compile-time macro in the generated header).
 pub const SRTC_VERSION_MAJOR: libc::c_int = 0;
 /// Minor version.

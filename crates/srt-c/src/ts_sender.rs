@@ -10,7 +10,6 @@ use crate::error::{
 use crate::handle::Handle;
 use crate::mux_sender::parse_c_srt_url;
 use srt_core::pipeline::{ManagedTransport, SrtTransport, TsSender, TsSenderStats};
-use srt_core::srt::SocketBuilder;
 
 /// Public-ABI mirror of `srt_core::pipeline::TsSenderStats`. Same fields,
 /// same units. Caller passes a pointer to a stack-allocated struct;
@@ -33,14 +32,6 @@ impl From<&TsSenderStats> for SrtcTsSenderStats {
             packets_sent: s.packets_sent,
         }
     }
-}
-
-#[allow(dead_code)] // Task 15 deletes this helper once no caller remains
-fn connect_srt(host: &str, port: u16) -> Result<SrtTransport, srt_core::pipeline::TransportError> {
-    let socket = SocketBuilder::new()
-        .connect(format!("{host}:{port}").as_str())
-        .map_err(|e| srt_core::pipeline::TransportError::Broken(format!("connect: {e}")))?;
-    Ok(SrtTransport::new(socket))
 }
 
 // ------------------------------------------------------------------

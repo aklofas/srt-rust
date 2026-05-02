@@ -12,8 +12,6 @@ use srt_core::srt::{Socket, SocketConfig};
 /// provided socket config (passphrase, latency, etc. set as captured
 /// from the URL overlay). Returns `TransportError::Broken` on connect
 /// failure for unified surfacing through `record_transport_error`.
-// Callers wired in Task 13/14.
-#[allow(dead_code)]
 pub(crate) fn connect_srt(
     host: &str,
     port: u16,

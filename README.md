@@ -2,7 +2,7 @@
 
 Cross-platform SRT-based libraries for live video streaming from **gimbaled platforms** — drones (rotary and fixed-wing UAVs), manned fixed-wing aircraft with sensor pods, helicopters with EO/IR turrets, and other manned/unmanned platforms carrying stabilized imaging payloads.
 
-**Status:** active development. `srt-sys` (raw FFI + mbedTLS encryption), `srt-core::srt` (safe `Socket` / `Listener` / config + builder API), and `srt-core::klv` (typed MISB ST 0601 + ST 0605 with four decode strictness levels and a generic SMPTE / MISB substrate) are implemented and exercised by ~130 unit tests plus a real-world `.klv` fixture suite. The MPEG-TS muxer (`mpegts::mux`) and the binding crates (`srt-c`, `srt-jni`, `srt-uniffi`) are next on the roadmap.
+**Status:** v0 sender pipeline complete on Linux x86_64. `srt-sys` (raw FFI + vendored mbedTLS), `srt-core::srt` (safe `Socket` / `Listener` / config + builder API), `srt-core::klv` (typed MISB ST 0601 + ST 0605 over a generic SMPTE / MISB substrate), `srt-core::mpegts::mux` (single-program TS muxer with H.264/H.265 video + ST 0601 KLV per ST 1402 / ST 1910), and `srt-core::pipeline` (composition layer: `Transport` trait, `Sender` / `TsSender` / `RawSender`, reconnecting `ManagedTransport`) are all implemented. `srt-c` exposes the v0 sender pipeline as a stable C ABI (`cdylib` + `staticlib` + cbindgen-generated `srtc.h` + `srtc.pc`). Workspace ships ~313 tests across both feature modes. The remaining binding crates (`srt-jni`, `srt-uniffi`) are next on the roadmap.
 
 ## Scope
 
@@ -22,10 +22,10 @@ A Rust core wrapping libsrt via FFI, with bindings for JVM (JNI, JDK 17+), iOS/A
 ```
 crates/
   srt-sys/      raw libsrt FFI (bindgen-generated against libsrt 1.5.5)        ✅ done
-  srt-core/     safe Rust API — srt:: ✅, klv:: ✅, mpegts::/pipeline::         ⏳ planned
-  srt-c/        cdylib + cbindgen header — embedded, future Panama/FFM         ⏳ planned
+  srt-core/     safe Rust API — srt:: ✅, klv:: ✅, mpegts::mux:: ✅, pipeline:: ✅
+  srt-c/        cdylib + staticlib + cbindgen header — Linux x86_64             ✅ done
   srt-jni/      JNI bindings — JAR for JDK 17+ JVM consumers                    ⏳ planned
-  srt-uniffi/   Swift/Kotlin via UniFFI — iOS/Android frameworks               ⏳ planned
+  srt-uniffi/   Swift/Kotlin via UniFFI — iOS/Android frameworks                ⏳ planned
 vendor/
   srt/          Haivision libsrt git submodule, pinned at v1.5.5
   mbedtls/      mbedTLS git submodule, pinned at v3.6.6 (LTS)
@@ -60,7 +60,9 @@ srt-sys = { git = "https://github.com/aklofas/srt-rust", default-features = fals
 Built on `srt-sys`. Provides:
 
 - **SRT transport** (`srt_core::srt`) — `Socket`, `Listener`, `SocketConfig` / `ListenerConfig`, fluent `SocketBuilder` / `ListenerBuilder`, AES-128/192/256 passphrase-based encryption, packet-filter strings, latency / bandwidth / TLPKTDROP / flow-window / SRTO_STREAMID tunables, and `Stats` snapshots. Per-call-category error model. Sync blocking API today; async / reactor are deferred.
-- **KLV codec** (`srt_core::klv`) — generic SMPTE / MISB substrate plus typed MISB ST 0601 and ST 0605 layers (see below).
+- **KLV codec** (`srt_core::klv`) — generic SMPTE / MISB substrate plus typed MISB ST 0601 and ST 0605 layers (see below). Also includes `klv::st1910` AU-cell wrap/unwrap for sync KLV in TS.
+- **MPEG-TS muxer** (`srt_core::mpegts::mux`) — sender-side `Muxer` for single-program TS with H.264 / H.265 video and ST 0601 KLV multiplexed per ST 1402 (async via `stream_type 0x06` + KLVA registration descriptor, or sync via ST 1910 AU cell). Multi-stream-shaped `Config` (Path 2) ready for additive Path 3 expansion. PCR/PTS/PSI cadence configurable; deterministic output (no wall-clock dependency).
+- **Pipeline composition** (`srt_core::pipeline`) — composes the muxer with a `Transport` (the SRT socket, or any custom transport) into ergonomic sender shells: `Sender` (NAL+KLV → TS → SRT, internally synchronized, lossless across transient failures), `TsSender` (pre-muxed TS → SRT with sync-byte framing/recovery in RECOVER or STRICT mode), `RawSender` (one byte-blind message per send). All three are generic over `Transport`; wrap any of them with `ManagedTransport<T>` for reconnect + gap-buffer behavior with configurable backoff and overflow policy.
 
 #### Features
 
@@ -108,6 +110,54 @@ A two-layer codec living entirely inside `srt-core`:
 
 For the full feature-by-feature matrix — SRT options, MISB specs, every typed ST 0601 item, decode strictness ladder, planned vs. out of scope — see [`docs/compatibility.md`](docs/compatibility.md).
 
+### `srt-c` — stable C ABI for the v0 sender pipeline
+
+A binding crate that exposes `srt-core::pipeline` to non-Rust callers (C / C++ directly, plus anything else that can call into a C ABI). Built as `cdylib` + `staticlib` so consumers either dynamic-link `libsrtc.so` or static-link `libsrtc.a`; libsrt and mbedTLS are statically embedded into both, so consumers don't need libsrt installed system-wide. The C header (`srtc.h`) is generated by cbindgen, committed at [`crates/srt-c/include/srtc.h`](crates/srt-c/include/srtc.h), and CI verifies no drift.
+
+#### What's exposed
+
+Seven opaque-handle types covering the v0 send-side pipeline:
+
+- **`srtc_muxer_t`** — standalone TS muxer utility (no transport). Push NALs and KLV blobs, pull TS bytes; useful for callers that send TS through their own transport (UDP, file, ffmpeg pipe, etc.).
+- **`srtc_mux_sender_t`** / **`srtc_managed_mux_sender_t`** — canonical NAL+KLV → TS → SRT sender. Plain L1 connects once; managed L2 wraps with reconnect + gap buffer.
+- **`srtc_ts_sender_t`** / **`srtc_managed_ts_sender_t`** — pre-muxed TS bytes → SRT, with sync framing/recovery (RECOVER auto-resync or STRICT fail-fast). Plus `srtc_ts_sender_get_stats()` for `bytes_pushed` / `bytes_skipped_for_sync` / `resync_events` / `packets_sent`.
+- **`srtc_raw_sender_t`** / **`srtc_managed_raw_sender_t`** — byte-blind one-shot primitive. One `_send` call = one outbound SRT message of the exact length passed in.
+
+Configuration is via opaque builders (`srtc_mux_config_t`, `srtc_ts_sender_config_t`, `srtc_raw_sender_config_t`, `srtc_reconnect_policy_t`) — `_new` / setters / `_free`. Errors follow libsrt's idiom: every fallible call returns `0` on success or a negative `SRTC_E_*` code, with thread-local detail accessible via `srtc_get_last_error()` / `srtc_get_last_error_str()`.
+
+#### Distribution (Linux x86_64, v0)
+
+`cargo build -p srt-c --release` produces:
+
+- `target/release/libsrtc.so` — runtime cdylib (~1.6 MB, libsrt + mbedTLS + libstdc++ statically embedded).
+- `target/release/libsrtc.a` — static library.
+- `target/release/include/srtc.h` — cbindgen header.
+- `target/release/srtc.pc` — pkg-config metadata (`pkg-config --cflags --libs srtc`).
+
+#### Usage
+
+```c
+#include "srtc.h"
+
+srtc_mux_config_t* cfg = srtc_mux_config_new();
+srtc_mux_config_add_video(cfg, 0x1011, SRTC_VIDEO_CODEC_H264);
+srtc_mux_config_add_klv(cfg, 0x1031, SRTC_KLV_STREAM_TYPE_PRIVATE_DATA, false);
+
+srtc_mux_sender_t* s = srtc_mux_sender_open("srt://10.0.0.1:9000", cfg);
+srtc_mux_config_free(cfg);
+if (!s) {
+    fprintf(stderr, "open failed: %s\n", srtc_get_last_error_str());
+    return 1;
+}
+
+srtc_mux_sender_send_video(s, nal_bytes, nal_len, /* pts_90khz */ 0, /* key_frame */ true);
+srtc_mux_sender_send_klv(s, klv_bytes, klv_len, /* pts_90khz */ 0);
+
+srtc_mux_sender_close(s);
+```
+
+A complete C example lives at [`crates/srt-c/examples/c/send_synthetic.c`](crates/srt-c/examples/c/send_synthetic.c). Multi-platform builds (macOS, Windows, Linux aarch64) and the JVM (`srt-jni`) / iOS-Android (`srt-uniffi`) sibling crates are next on the roadmap.
+
 ## Building
 
 ### Prerequisites
@@ -137,13 +187,21 @@ git submodule update --init --recursive
 By default the build script tries `pkg-config srt ≥ 1.5.0` first, falling back to compiling the vendored `vendor/srt`. Force the vendored path with `SRT_FORCE_VENDORED=1` (recommended for reproducible builds):
 
 ```bash
-SRT_FORCE_VENDORED=1 cargo test --workspace
-SRT_FORCE_VENDORED=1 cargo test --workspace --no-default-features  # unencrypted variant
+SRT_FORCE_VENDORED=1 cargo test --workspace                        # ~313 tests (default features)
+SRT_FORCE_VENDORED=1 cargo test --workspace --no-default-features  # ~308 tests (no encryption)
 SRT_FORCE_VENDORED=1 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
 A clean rebuild compiles libsrt and mbedTLS from source — expect 3–5 minutes the first time, seconds on warm builds. The `--no-default-features` test path skips the mbedTLS build entirely (~1–2 min faster on cold cache).
+
+To build just the C ABI artifacts (cdylib, staticlib, header, pc-file):
+
+```bash
+SRT_FORCE_VENDORED=1 cargo build -p srt-c --release
+ls target/release/libsrtc.so target/release/libsrtc.a \
+   target/release/include/srtc.h target/release/srtc.pc
+```
 
 ### KLV examples & fixtures
 

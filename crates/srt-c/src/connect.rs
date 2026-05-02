@@ -6,6 +6,7 @@
 //! managed senders capture (host, port, cfg) in the reconnect closure.
 
 use srt_core::pipeline::{SrtTransport, TransportError};
+use srt_core::srt::options::Role;
 use srt_core::srt::{Socket, SocketConfig};
 use std::time::Duration;
 
@@ -29,7 +30,10 @@ const SENDER_DEFAULT_LINGER: Duration = Duration::from_secs(5);
 ///
 /// Applies sender-pipeline defaults to the config in place when the
 /// caller hasn't set them (currently: `connect_timeout = 15s`,
-/// `linger = 5s`). User-set values are preserved.
+/// `linger = 5s`). User-set values are preserved. Always sets
+/// `role = Role::Sender` (drives `SRTO_SENDER=1` for HSv4-peer
+/// latency-negotiation compatibility — the canonical "default sender
+/// connect path"; harmless under HSv5).
 pub(crate) fn connect_srt(
     host: &str,
     port: u16,
@@ -42,6 +46,7 @@ pub(crate) fn connect_srt(
     if cfg.linger.is_none() {
         cfg.linger = Some(SENDER_DEFAULT_LINGER);
     }
+    cfg.role = Role::Sender;
     let socket = Socket::connect_with(&cfg, format!("{host}:{port}").as_str())
         .map_err(|e| TransportError::Broken(format!("connect: {e}")))?;
     Ok(SrtTransport::new(socket))

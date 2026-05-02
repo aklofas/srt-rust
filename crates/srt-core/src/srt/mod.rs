@@ -11,5 +11,5 @@ pub mod url;
 pub use builder::{ListenerBuilder, SocketBuilder};
 pub use config::{ListenerConfig, SocketConfig};
 pub use listener::Listener;
-pub use options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId};
+pub use options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, Role, StreamId};
 pub use socket::{Socket, Stats};

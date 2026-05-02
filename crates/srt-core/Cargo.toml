@@ -33,6 +33,9 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 libc      = { workspace = true }
 proptest  = { workspace = true }
 criterion = { workspace = true }
+# Used by integration tests that read raw libsrt socket flags
+# (e.g. SRTO_SENDER) via Socket::raw_handle().
+srt-sys   = { path = "../srt-sys", default-features = false }
 # Captures `tracing` events in tests for assertion.
 tracing-test = "0.2"
 

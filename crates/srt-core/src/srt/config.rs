@@ -5,7 +5,7 @@
 //! these directly.
 
 use crate::srt::options::{
-    Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId,
+    Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, Role, StreamId,
 };
 use std::time::Duration;
 
@@ -52,6 +52,10 @@ pub struct SocketConfig {
 
     // Identification
     pub stream_id: Option<StreamId>,
+    /// Direction this socket is opened for. Drives `SRTO_SENDER` for
+    /// HSv4-peer latency-negotiation compatibility. Defaults to
+    /// `Role::Unspecified` (libsrt default).
+    pub role: Role,
 
     // Reliability / loss
     pub loss_max_ttl: Option<u32>,

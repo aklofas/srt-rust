@@ -55,6 +55,12 @@ pub struct Stats {
 unsafe impl Send for Socket {}
 
 impl Socket {
+    /// Raw libsrt socket handle. **Unstable, used for low-level interop tests.**
+    #[doc(hidden)]
+    pub fn raw_handle(&self) -> srt_sys::SRTSOCKET {
+        self.handle
+    }
+
     /// Open a socket, apply config, and connect to `addr`.
     pub fn connect_with(
         config: &SocketConfig,
@@ -472,6 +478,9 @@ pub(crate) fn apply_socket_config(
     }
     if let Some(c) = cfg.congestion {
         set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_CONGESTION, c.as_str())?;
+    }
+    if matches!(cfg.role, crate::srt::options::Role::Sender) {
+        set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_SENDER, true)?;
     }
     Ok(())
 }

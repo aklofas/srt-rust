@@ -7,7 +7,7 @@ use crate::error::{BindError, ConnectError, OptionError, StreamIdError};
 use crate::srt::config::{ListenerConfig, SocketConfig};
 use crate::srt::listener::Listener;
 use crate::srt::options::{
-    Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId,
+    Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, Role, StreamId,
 };
 use crate::srt::socket::Socket;
 use std::net::ToSocketAddrs;
@@ -125,6 +125,12 @@ impl SocketBuilder {
     }
     pub fn congestion(mut self, c: Congestion) -> Self {
         self.config.congestion = Some(c);
+        self
+    }
+    /// Set the role (drives `SRTO_SENDER` for HSv4-peer compatibility).
+    /// Defaults to `Role::Unspecified` (libsrt default).
+    pub fn role(mut self, role: Role) -> Self {
+        self.config.role = role;
         self
     }
 

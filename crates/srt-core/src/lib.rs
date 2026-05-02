@@ -35,5 +35,5 @@ pub use pipeline::{
 pub use srt::url::{SrtUrl, UrlError, UrlOverlay};
 pub use srt::{
     Congestion, KeyLength, Listener, ListenerBuilder, ListenerConfig, MaxBandwidth, PacketFilter,
-    Passphrase, Socket, SocketBuilder, SocketConfig, Stats, StreamId,
+    Passphrase, Role, Socket, SocketBuilder, SocketConfig, Stats, StreamId,
 };

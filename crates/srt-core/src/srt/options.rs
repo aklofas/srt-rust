@@ -207,6 +207,27 @@ impl TryFrom<&str> for StreamId {
 }
 
 // ============================================================================
+// Role
+// ============================================================================
+
+/// Direction this socket is opened for. Drives `SRTO_SENDER` for HSv4-peer
+/// latency-negotiation compatibility (mostly informational under HSv5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Role {
+    /// Don't set `SRTO_SENDER`. libsrt defaults to 0 (= receiver under HSv4
+    /// negotiation). Use this for receiver pipelines or when role is
+    /// genuinely undefined.
+    #[default]
+    Unspecified,
+    /// Set `SRTO_SENDER=1`. Required for HSv4 peers (older Teradek/Makito
+    /// gear, cable-industry hardware); harmless under HSv5.
+    Sender,
+    /// Reserved for the receiver pipeline (planned). For now, equivalent
+    /// to `Unspecified` — does not set `SRTO_SENDER`.
+    Receiver,
+}
+
+// ============================================================================
 // PacketFilter
 // ============================================================================
 

@@ -6,6 +6,7 @@ pub mod config;
 pub mod listener;
 pub mod options;
 pub mod socket;
+pub mod url;
 
 pub use builder::{ListenerBuilder, SocketBuilder};
 pub use config::{ListenerConfig, SocketConfig};

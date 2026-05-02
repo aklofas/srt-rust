@@ -4,7 +4,7 @@
 //! never has to re-validate. Bindings present these as their underlying
 //! representations (string, u32, etc.).
 
-use crate::error::{PacketFilterError, PassphraseError, StreamIdError};
+use crate::error::{OptionError, PacketFilterError, PassphraseError, StreamIdError};
 use secrecy::{ExposeSecret, SecretString};
 use std::path::Path;
 
@@ -87,6 +87,18 @@ impl KeyLength {
             KeyLength::Aes256 => 32,
         }
     }
+
+    /// Construct from libsrt-compatible byte count (16, 24, or 32).
+    pub fn from_bytes(n: i32) -> Result<Self, OptionError> {
+        match n {
+            16 => Ok(KeyLength::Aes128),
+            24 => Ok(KeyLength::Aes192),
+            32 => Ok(KeyLength::Aes256),
+            other => Err(OptionError::OutOfRange(format!(
+                "pbkeylen must be 16, 24, or 32, got {other}"
+            ))),
+        }
+    }
 }
 
 // ============================================================================
@@ -132,6 +144,17 @@ impl Congestion {
         match self {
             Congestion::Live => "live",
             Congestion::File => "file",
+        }
+    }
+
+    /// Parse libsrt-compatible enum name (`"live"` or `"file"`, lowercase).
+    pub fn from_str_strict(s: &str) -> Result<Self, OptionError> {
+        match s {
+            "live" => Ok(Congestion::Live),
+            "file" => Ok(Congestion::File),
+            other => Err(OptionError::OutOfRange(format!(
+                "congestion must be 'live' or 'file' (lowercase), got '{other}'"
+            ))),
         }
     }
 }

@@ -32,6 +32,7 @@ pub use pipeline::{
     Sender, SenderError, SrtTransport, Transport, TransportError, TsFramingMode, TsSender,
     TsSenderConfig, TsSenderError, TsSenderStats,
 };
+pub use srt::url::{SrtUrl, UrlError, UrlOverlay};
 pub use srt::{
     Congestion, KeyLength, Listener, ListenerBuilder, ListenerConfig, MaxBandwidth, PacketFilter,
     Passphrase, Socket, SocketBuilder, SocketConfig, Stats, StreamId,

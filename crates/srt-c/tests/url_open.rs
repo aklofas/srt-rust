@@ -311,6 +311,12 @@ fn ts_sender_fc_url_open_succeeds() {
 // full AES-128 key exchange rather than just option forwarding.
 // ============================================================================
 
+// Encryption-gated: with --no-default-features, srt-core/srt-sys build libsrt
+// with ENABLE_ENCRYPTION=OFF, and SRTO_PBKEYLEN / SRTO_PASSPHRASE on the
+// listener fail at bind time with "encryption not enabled at compile time".
+// The URL parser still accepts these keys; they just can't actually negotiate
+// against an encryption-disabled listener.
+#[cfg(feature = "mbedtls")]
 #[test]
 fn ts_sender_passphrase_handshake_ok() {
     let (port_tx, port_rx) = mpsc::channel::<u16>();

@@ -11,8 +11,9 @@
 pub mod config;
 pub mod error;
 mod handle;
+pub mod mux_sender;
 pub mod muxer;
-mod url;
+pub(crate) mod url;
 
 /// Major version (compile-time macro in the generated header).
 #[unsafe(no_mangle)]

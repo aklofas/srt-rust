@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use srt_core::srt::config::{ListenerConfig, SocketConfig};
 use srt_core::{SrtUrl, UrlError};
 
 #[test]
@@ -485,4 +486,58 @@ fn passphrase_with_plus_sign_is_literal_plus() {
         u.overlay.passphrase.as_ref().unwrap().as_str(),
         "hunter+too+long"
     );
+}
+
+#[test]
+fn apply_to_socket_writes_through() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?latency=200&streamid=front&pbkeylen=24").unwrap();
+    let mut cfg = SocketConfig::default();
+    u.overlay.apply_to_socket(&mut cfg);
+    assert_eq!(cfg.latency, Some(Duration::from_millis(200)));
+    assert_eq!(cfg.stream_id.as_ref().unwrap().as_str(), "front");
+    assert!(matches!(cfg.key_length, srt_core::KeyLength::Aes192));
+}
+
+#[test]
+fn apply_to_socket_url_wins_over_existing() {
+    // Pre-populate cfg with a builder value; overlay should overwrite.
+    let mut cfg = SocketConfig {
+        latency: Some(Duration::from_millis(100)),
+        ..Default::default()
+    };
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?latency=200").unwrap();
+    u.overlay.apply_to_socket(&mut cfg);
+    assert_eq!(cfg.latency, Some(Duration::from_millis(200)));
+}
+
+#[test]
+fn apply_to_socket_does_not_clear_unset_fields() {
+    // Overlay has only latency set; other pre-populated fields stay.
+    let mut cfg = SocketConfig {
+        mss: Some(1316),
+        ..Default::default()
+    };
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?latency=100").unwrap();
+    u.overlay.apply_to_socket(&mut cfg);
+    assert_eq!(cfg.latency, Some(Duration::from_millis(100)));
+    assert_eq!(cfg.mss, Some(1316)); // preserved
+}
+
+#[test]
+fn apply_to_socket_x_recvtimeout_lands() {
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?x-recvtimeout=5000").unwrap();
+    let mut cfg = SocketConfig::default();
+    u.overlay.apply_to_socket(&mut cfg);
+    assert_eq!(cfg.recv_timeout, Some(Duration::from_millis(5000)));
+}
+
+#[test]
+fn apply_to_listener_subset() {
+    // ListenerConfig shares many fields with SocketConfig; the apply
+    // method writes the overlapping subset.
+    let u = SrtUrl::parse("srt://1.2.3.4:9000?latency=100&passphrase=hunter-too-long").unwrap();
+    let mut cfg = ListenerConfig::default();
+    u.overlay.apply_to_listener(&mut cfg);
+    assert_eq!(cfg.latency, Some(Duration::from_millis(100)));
+    assert!(cfg.passphrase.is_some());
 }

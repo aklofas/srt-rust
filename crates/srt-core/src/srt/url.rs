@@ -343,13 +343,116 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
 
 impl UrlOverlay {
     /// Write `Some(_)` fields through to `cfg`. URL wins on conflict.
-    pub fn apply_to_socket(&self, _cfg: &mut SocketConfig) {
-        unimplemented!("see Task 8")
+    pub fn apply_to_socket(&self, cfg: &mut SocketConfig) {
+        if let Some(v) = self.passphrase.as_ref() {
+            cfg.passphrase = Some(v.clone());
+        }
+        if let Some(v) = self.key_length {
+            cfg.key_length = v;
+        }
+        if let Some(v) = self.latency {
+            cfg.latency = Some(v);
+        }
+        if let Some(v) = self.recv_latency {
+            cfg.recv_latency = Some(v);
+        }
+        if let Some(v) = self.peer_latency {
+            cfg.peer_latency = Some(v);
+        }
+        if let Some(v) = self.mss {
+            cfg.mss = Some(v);
+        }
+        if let Some(v) = self.payload_size {
+            cfg.payload_size = Some(v);
+        }
+        if let Some(v) = self.max_bandwidth {
+            cfg.max_bandwidth = Some(v);
+        }
+        if let Some(v) = self.input_bandwidth {
+            cfg.input_bandwidth = Some(v);
+        }
+        if let Some(v) = self.overhead_bandwidth_pct {
+            cfg.overhead_bandwidth_pct = Some(v);
+        }
+        if let Some(v) = self.stream_id.as_ref() {
+            cfg.stream_id = Some(v.clone());
+        }
+        if let Some(v) = self.loss_max_ttl {
+            cfg.loss_max_ttl = Some(v);
+        }
+        if let Some(v) = self.too_late_packet_drop {
+            cfg.too_late_packet_drop = Some(v);
+        }
+        if let Some(v) = self.flow_window_packets {
+            cfg.flow_window_packets = Some(v);
+        }
+        if let Some(v) = self.packet_filter.as_ref() {
+            cfg.packet_filter = Some(v.clone());
+        }
+        if let Some(v) = self.congestion {
+            cfg.congestion = Some(v);
+        }
+        if let Some(v) = self.recv_timeout {
+            cfg.recv_timeout = Some(v);
+        }
+        if let Some(v) = self.send_timeout {
+            cfg.send_timeout = Some(v);
+        }
     }
 
     /// Same shape for `ListenerConfig` (for symmetry with future
     /// listener-side URL support; v1 has no listener-side _open in srt-c).
-    pub fn apply_to_listener(&self, _cfg: &mut ListenerConfig) {
-        unimplemented!("see Task 8")
+    pub fn apply_to_listener(&self, cfg: &mut ListenerConfig) {
+        if let Some(v) = self.passphrase.as_ref() {
+            cfg.passphrase = Some(v.clone());
+        }
+        if let Some(v) = self.key_length {
+            cfg.key_length = v;
+        }
+        if let Some(v) = self.latency {
+            cfg.latency = Some(v);
+        }
+        if let Some(v) = self.recv_latency {
+            cfg.recv_latency = Some(v);
+        }
+        if let Some(v) = self.mss {
+            cfg.mss = Some(v);
+        }
+        if let Some(v) = self.payload_size {
+            cfg.payload_size = Some(v);
+        }
+        if let Some(v) = self.max_bandwidth {
+            cfg.max_bandwidth = Some(v);
+        }
+        if let Some(v) = self.overhead_bandwidth_pct {
+            cfg.overhead_bandwidth_pct = Some(v);
+        }
+        if let Some(v) = self.loss_max_ttl {
+            cfg.loss_max_ttl = Some(v);
+        }
+        if let Some(v) = self.too_late_packet_drop {
+            cfg.too_late_packet_drop = Some(v);
+        }
+        if let Some(v) = self.flow_window_packets {
+            cfg.flow_window_packets = Some(v);
+        }
+        if let Some(v) = self.packet_filter.as_ref() {
+            cfg.packet_filter = Some(v.clone());
+        }
+        if let Some(v) = self.congestion {
+            cfg.congestion = Some(v);
+        }
+        if let Some(v) = self.recv_timeout {
+            cfg.recv_timeout = Some(v);
+        }
+        if let Some(v) = self.send_timeout {
+            cfg.send_timeout = Some(v);
+        }
+        // ListenerConfig has no peer_latency, stream_id, or input_bandwidth.
+        // peer_latency is a caller-side option (libsrt allows it to be set
+        // on listeners but it has no effect there).
+        // stream_id is set by the caller during handshake; the listener
+        // reads it via Socket::stream_id on accepted sockets.
+        // input_bandwidth (SRTO_INPUTBW) is sender-side bandwidth budgeting.
     }
 }

@@ -396,6 +396,44 @@ in one PAT) with per-program PCR is out of scope for this version.
 resulting `dual_camera.ts` should report two video streams and one
 data (KLV) stream under `ffprobe -show_streams`.
 
+### From the C ABI
+
+The same fan-out is exposed in `srt-c`. Two transparent `uint32_t`
+typedefs (`srtc_video_stream_handle_t` / `srtc_klv_stream_handle_t`)
+plus a `SRTC_INVALID_STREAM_HANDLE` sentinel back the C surface:
+
+```c
+srtc_mux_config_t* cfg = srtc_mux_config_new();
+srtc_video_stream_handle_t h_eo =
+    srtc_mux_config_add_video_stream(cfg, 0x1011, SRTC_VIDEO_CODEC_H264);
+srtc_video_stream_handle_t h_ir =
+    srtc_mux_config_add_video_stream(cfg, 0x1021, SRTC_VIDEO_CODEC_H264);
+srtc_klv_stream_handle_t h_klv =
+    srtc_mux_config_add_klv_stream(cfg, 0x1031, SRTC_KLV_STREAM_TYPE_PRIVATE_DATA, false);
+
+srtc_muxer_t* mux = srtc_muxer_open(cfg);
+srtc_mux_config_free(cfg);
+
+srtc_muxer_push_video_to(mux, h_eo, nal, sizeof(nal), pts, true);
+srtc_muxer_push_video_to(mux, h_ir, nal, sizeof(nal), pts, true);
+srtc_muxer_push_klv_to(mux, h_klv, klv, sizeof(klv), pts);
+```
+
+Same shape on the network senders: `srtc_mux_sender_send_video_to` /
+`_send_klv_to` and `srtc_managed_mux_sender_send_video_to` /
+`_send_klv_to`. The single-target entry points (`srtc_*_send_video`,
+`srtc_*_send_klv`) keep their v0 signatures and start returning
+`SRTC_E_INVALID_USAGE` (`MuxError::AmbiguousTarget`) on multi-stream
+muxers — single-stream callers see no behaviour change.
+
+The `srtc_ts_sender_t` and `srtc_raw_sender_t` variants do **not**
+have handle-aware siblings — they take pre-muxed TS bytes
+(`send_ts(bytes)`) or opaque payload bytes (`send(bytes)`), so
+multi-stream fan-out doesn't apply.
+
+See `crates/srt-c/examples/c/mux_dual_camera.c` for a worked end-to-end
+example mirroring the Rust analogue.
+
 ## Examples
 
 Three runnable examples cover the muxer's surface:

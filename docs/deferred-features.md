@@ -141,45 +141,28 @@ the trigger that would unblock it.
 - **Trigger to revisit:** An embedded target with a hard `no_std`
   requirement.
 
-## Multi-stream `mpegts::mux` — `srt-c` binding surface
+## Multi-stream `mpegts::mux` — `srt-jni` / `srt-uniffi` binding surface
 
-- **Status:** Once the Rust-core multi-stream lift lands, the matching
-  C ABI follow-up is deliberately scheduled as a separate plan. The
-  Rust-core plan ships pure Rust only: `add_video_stream` /
-  `add_klv_stream` / `StreamHandle` / `push_video_to` / `push_klv_to`
-  on `Muxer`, plus the `_to(handle, ...)` siblings on `Sender` /
-  `TsSender` / `RawSender`. The C ABI does NOT gain those siblings in
-  the same ship.
-- **Why deferred:** The C ABI surface is its own design (opaque
-  handle representation across the FFI, last-error invariants when a
-  stale handle is passed, header/cbindgen drift, end-to-end C smoke
-  coverage for multi-stream). Bundling that with the Rust-core lift
-  doubles the plan and slows the Rust-core ship; consumers driving
-  multi-stream are expected to reach via Rust first.
-- **What ships in the binding crates today, even before the
-  follow-up:** the existing single-target C entry points
-  (`srtc_muxer_push_video`, `srtc_muxer_push_klv`,
-  `srtc_mux_sender_send_video`, `srtc_mux_sender_send_klv`,
-  `srtc_managed_mux_sender_send_video`,
-  `srtc_managed_mux_sender_send_klv`,
-  `srtc_ts_sender_send_video`, `srtc_ts_sender_send_klv`,
-  `srtc_managed_ts_sender_send_video`,
-  `srtc_managed_ts_sender_send_klv`) keep their v0 signatures and
-  start returning a multi-stream rejection (`SRTC_E_INVALID_USAGE` or
-  the equivalent code) when the wrapped `Muxer` has more than one
-  stream of that kind. C callers that only ever build single-stream
-  muxers see no behaviour change.
-- **What lands in the binding follow-up:** `srtc_stream_handle_t`
-  opaque type, `srtc_mux_config_add_video_stream` /
-  `srtc_mux_config_add_klv_stream` returning handles, and the
-  `_video_to` / `_klv_to` siblings on every sender variant
-  (`srtc_muxer`, `srtc_mux_sender`, `srtc_managed_mux_sender`,
-  `srtc_ts_sender`, `srtc_managed_ts_sender`). Same shape lands later
-  in `srt-jni` and `srt-uniffi` once each binding ships.
-- **Trigger to revisit:** First C / JNI / UniFFI consumer that
-  actually wants multi-stream output. Until then the Rust-core lift
-  is the contract; the binding follow-up is mechanical fan-out and
-  can be scoped on demand.
+- **Status:** The `srt-c` C ABI fan-out shipped — `srtc_video_stream_handle_t` /
+  `srtc_klv_stream_handle_t` typedefs, `srtc_mux_config_add_video_stream` /
+  `_add_klv_stream` returning handles, and `_video_to(handle, ...)` /
+  `_klv_to(handle, ...)` siblings on `srtc_muxer_t`, `srtc_mux_sender_t`,
+  and `srtc_managed_mux_sender_t`. The single-target entry points keep
+  their v0 signatures and surface `MuxError::AmbiguousTarget` as
+  `SRTC_E_INVALID_USAGE` on multi-stream muxers. The same handle-aware
+  shape has NOT yet landed in `srt-jni` or `srt-uniffi`.
+- **Note on TsSender / RawSender:** the original deferred-features entry
+  said `srtc_ts_sender_*` / `srtc_managed_ts_sender_*` would also gain
+  `_video_to` / `_klv_to` siblings. That was wrong: `pipeline::TsSender`
+  exposes only `send_ts(bytes)` (pre-muxed TS bytes) and `pipeline::RawSender`
+  exposes only `send(bytes)`. Neither carries a `Muxer`, so handle-aware
+  fan-out is meaningless on those variants. Only the three muxer-owning
+  C variants (`srtc_muxer_t`, `srtc_mux_sender_t`, `srtc_managed_mux_sender_t`)
+  have the new `_to` surface.
+- **Trigger to revisit:** First JNI or UniFFI consumer that actually wants
+  multi-stream output. The pattern is mechanical — mirror the same
+  handle-typedef + `_to(handle, ...)` fan-out across the JNI/UniFFI
+  binding once each ships.
 
 ## Typed SPS / VPS / PPS payload parser
 

@@ -199,7 +199,7 @@ the trigger that would unblock it.
   AV1 specifically is OBU-shaped (not NAL-shaped), so adding it
   requires either a separate `SamplePayload::Video` shape with
   `Vec<Obu>` instead of `Vec<NalUnit>`, or a cross-codec rework of the
-  video payload type. Either is bigger than v1 demuxer scope.
+  video payload type. Either is bigger than the current demuxer scope.
 - **Trigger to revisit:** A consumer ships AV1 or H.266 in MPEG-TS.
 
 ## Rustdoc lift to docs.rs via `#![doc = include_str!(...)]`

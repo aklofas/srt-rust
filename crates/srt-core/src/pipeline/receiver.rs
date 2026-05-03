@@ -50,7 +50,7 @@ pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
 /// for result in &mut rx {
 ///     match result.unwrap() {
 ///         DemuxEvent::ProgramMap(pmt) => { /* inspect PMT */ }
-///         DemuxEvent::Sample { stream_id, payload, .. } => { /* forward AU */ }
+///         DemuxEvent::Sample { stream, payload, .. } => { /* forward AU */ }
 ///         _ => {}
 ///     }
 /// }

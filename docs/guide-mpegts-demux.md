@@ -88,7 +88,7 @@ Runnable: [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/ex
 | `NonConformantIssue` | `StreamTypeMismatchSyncOnAsyncPid`, `StreamTypeMismatchAsyncOnSyncPid`, `MissingMetadataDescriptor`, `PcrAnomaly { delta }`, `PsiChecksumMismatch { pid }`, `PusiMidPes`, `Other(String)`. |
 | `DiscontinuityKind` | `ContinuityJump { expected, observed }`, `PesOversize { pid }`, `PesTotalOversize`, `AdaptationFieldFlag`. |
 | `StrictMode` | `Off` (default), `TimingOnly`, `DescriptorsOnly`, `Full`. |
-| `pts_to_duration(pts: i64) -> Duration` | Convenience: 90 kHz ticks to `std::time::Duration`. Diagnostic / test use. |
+| `pts_to_duration(pts_90khz: i64) -> Duration` | Convenience: 90 kHz ticks to `std::time::Duration`. Diagnostic / test use. |
 
 The complete enum / struct definitions live in
 [../crates/srt-core/src/mpegts/demux/event.rs](../crates/srt-core/src/mpegts/demux/event.rs).

@@ -4,6 +4,7 @@
 //! so the caller may free immediately after a successful open.
 
 use crate::error::{SrtcError, set_last_error};
+use crate::handle::{SRTC_INVALID_STREAM_HANDLE, SrtcKlvStreamHandle, SrtcVideoStreamHandle};
 use srt_core::mpegts::mux::{ConfigBuilder, KlvStreamType, VideoCodec};
 use srt_core::pipeline::{
     BackoffStrategy, OverflowPolicy, RawSenderConfig, ReconnectPolicy, TsFramingMode,
@@ -20,12 +21,16 @@ use std::time::Duration;
 /// inner). Caller is responsible for calling `srtc_mux_config_free`.
 pub struct SrtcMuxConfig {
     pub(crate) builder: ConfigBuilder,
+    pub(crate) video_count: u32,
+    pub(crate) klv_count: u32,
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_config_new() -> *mut SrtcMuxConfig {
     Box::into_raw(Box::new(SrtcMuxConfig {
         builder: ConfigBuilder::default(),
+        video_count: 0,
+        klv_count: 0,
     }))
 }
 
@@ -52,6 +57,7 @@ pub unsafe extern "C" fn srtc_mux_config_add_video(
     };
     let taken = std::mem::take(&mut cfg.builder);
     cfg.builder = taken.add_video(pid, codec);
+    cfg.video_count += 1;
     0
 }
 
@@ -72,7 +78,71 @@ pub unsafe extern "C" fn srtc_mux_config_add_klv(
     };
     let taken = std::mem::take(&mut cfg.builder);
     cfg.builder = taken.add_klv(pid, stream_type, carries_pts);
+    cfg.klv_count += 1;
     0
+}
+
+/// Add a video elementary stream to the mux config and return its handle.
+///
+/// Returns the stream handle (a zero-based ordinal) on success. The handle is
+/// stable across the config→open boundary and across managed-sender reconnects,
+/// and can be passed to the `_video_to` push siblings to fan out to a specific
+/// elementary stream.
+///
+/// Returns `SRTC_INVALID_STREAM_HANDLE` and sets last-error on null pointer.
+/// Cap-violation errors (`TooManyVideoStreams`) surface at `_open` time, not
+/// here, so this function always succeeds on a valid pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_mux_config_add_video_stream(
+    p: *mut SrtcMuxConfig,
+    pid: u16,
+    codec: SrtcVideoCodec,
+) -> SrtcVideoStreamHandle {
+    let Some(cfg) = (unsafe { p.as_mut() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null config pointer");
+        return SRTC_INVALID_STREAM_HANDLE;
+    };
+    let codec = match codec {
+        SrtcVideoCodec::H264 => VideoCodec::H264,
+        SrtcVideoCodec::H265 => VideoCodec::H265,
+    };
+    let taken = std::mem::take(&mut cfg.builder);
+    cfg.builder = taken.add_video(pid, codec);
+    let handle = cfg.video_count;
+    cfg.video_count += 1;
+    handle
+}
+
+/// Add a KLV elementary stream to the mux config and return its handle.
+///
+/// Returns the stream handle (a zero-based ordinal) on success. The handle is
+/// stable across the config→open boundary and across managed-sender reconnects,
+/// and can be passed to the `_klv_to` push siblings to fan out to a specific
+/// elementary stream.
+///
+/// Returns `SRTC_INVALID_STREAM_HANDLE` and sets last-error on null pointer.
+/// Cap-violation errors (`TooManyKlvStreams`) surface at `_open` time, not
+/// here, so this function always succeeds on a valid pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_mux_config_add_klv_stream(
+    p: *mut SrtcMuxConfig,
+    pid: u16,
+    stream_type: SrtcKlvStreamType,
+    carries_pts: bool,
+) -> SrtcKlvStreamHandle {
+    let Some(cfg) = (unsafe { p.as_mut() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null config pointer");
+        return SRTC_INVALID_STREAM_HANDLE;
+    };
+    let stream_type = match stream_type {
+        SrtcKlvStreamType::PrivateData => KlvStreamType::PrivateData,
+        SrtcKlvStreamType::SynchronousMetadata => KlvStreamType::SynchronousMetadata,
+    };
+    let taken = std::mem::take(&mut cfg.builder);
+    cfg.builder = taken.add_klv(pid, stream_type, carries_pts);
+    let handle = cfg.klv_count;
+    cfg.klv_count += 1;
+    handle
 }
 
 #[unsafe(no_mangle)]
@@ -388,6 +458,42 @@ mod tests {
                 srtc_mux_config_add_video(std::ptr::null_mut(), 0, SrtcVideoCodec::H264),
                 SrtcError::InvalidConfig as i32,
             );
+        }
+    }
+
+    #[test]
+    fn add_video_stream_returns_increasing_handles() {
+        unsafe {
+            let p = srtc_mux_config_new();
+            let h0 = srtc_mux_config_add_video_stream(p, 0x1011, SrtcVideoCodec::H264);
+            let h1 = srtc_mux_config_add_video_stream(p, 0x1012, SrtcVideoCodec::H265);
+            assert_eq!(h0, 0);
+            assert_eq!(h1, 1);
+            srtc_mux_config_free(p);
+        }
+    }
+
+    #[test]
+    fn add_klv_stream_returns_increasing_handles() {
+        unsafe {
+            let p = srtc_mux_config_new();
+            let h0 = srtc_mux_config_add_klv_stream(
+                p, 0x1031, SrtcKlvStreamType::PrivateData, false);
+            let h1 = srtc_mux_config_add_klv_stream(
+                p, 0x1032, SrtcKlvStreamType::SynchronousMetadata, true);
+            assert_eq!(h0, 0);
+            assert_eq!(h1, 1);
+            srtc_mux_config_free(p);
+        }
+    }
+
+    #[test]
+    fn add_video_stream_null_returns_sentinel() {
+        use crate::handle::SRTC_INVALID_STREAM_HANDLE;
+        unsafe {
+            let h = srtc_mux_config_add_video_stream(
+                std::ptr::null_mut(), 0, SrtcVideoCodec::H264);
+            assert_eq!(h, SRTC_INVALID_STREAM_HANDLE);
         }
     }
 }

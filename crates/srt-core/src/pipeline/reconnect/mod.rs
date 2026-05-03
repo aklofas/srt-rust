@@ -87,7 +87,7 @@ impl ReconnectPolicy {
     }
 }
 
-use crate::pipeline::transport::{Transport, TransportError};
+use crate::pipeline::transport::{Transport, TransportCancel, TransportError};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
@@ -118,6 +118,10 @@ pub struct ManagedTransport<T: Transport> {
     factory: Arc<dyn Fn() -> Result<T, TransportError> + Send + Sync>,
     policy: ReconnectPolicy,
     gap: Arc<Mutex<GapBuffer>>,
+    /// Latched true by `cancel_handle().cancel()` or `close()`. The
+    /// reconnect loop checks this each iteration so a cancel mid-retry
+    /// breaks out instead of waiting through the full backoff budget.
+    closed: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl<T: Transport + 'static> ManagedTransport<T> {
@@ -131,6 +135,7 @@ impl<T: Transport + 'static> ManagedTransport<T> {
             factory: Arc::new(factory),
             policy,
             gap: Arc::new(Mutex::new(gap)),
+            closed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -141,6 +146,9 @@ impl<T: Transport + 'static> ManagedTransport<T> {
     /// before any state mutation, so oversized messages never enter the gap
     /// buffer (where they'd block drain forever).
     fn send_managed(&self, bytes: &[u8]) -> Result<(), TransportError> {
+        if self.closed.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(TransportError::Closed);
+        }
         // Pre-check size against inner before queuing — oversized messages
         // would otherwise sit in the gap buffer and fail every drain.
         let max = self
@@ -225,6 +233,9 @@ impl<T: Transport + 'static> ManagedTransport<T> {
     fn reconnect_and_drain(&self) -> Result<(), TransportError> {
         let mut attempt: u32 = 0;
         loop {
+            if self.closed.load(std::sync::atomic::Ordering::Acquire) {
+                return Err(TransportError::Closed);
+            }
             attempt += 1;
             let Some(wait) = self.policy.next_delay(attempt) else {
                 let max = self.policy.max_attempts.unwrap_or(0);
@@ -271,8 +282,151 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
     }
 
     fn close(&mut self) {
+        self.closed
+            .store(true, std::sync::atomic::Ordering::Release);
         if let Some(t) = self.inner.lock().unwrap().as_mut() {
             t.close();
         }
+    }
+
+    fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
+        let inner = self.inner.clone();
+        let closed = self.closed.clone();
+        Some(Box::new(ManagedCancel { inner, closed }))
+    }
+}
+
+struct ManagedCancel<T: Transport + 'static> {
+    inner: Arc<Mutex<Option<T>>>,
+    closed: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl<T: Transport + 'static> TransportCancel for ManagedCancel<T> {
+    fn cancel(&self) {
+        // Latch closed first so the reconnect loop exits next iteration.
+        self.closed
+            .store(true, std::sync::atomic::Ordering::Release);
+        // Then cancel the current inner if any. We re-acquire the inner
+        // mutex briefly to grab a cancel-handle from it, then release;
+        // we do NOT hold the inner mutex while invoking cancel (which
+        // could call srt_close — sub-millisecond, but still better off
+        // the lock).
+        let inner_cancel = {
+            let guard = self.inner.lock().ok();
+            guard.and_then(|g| g.as_ref().and_then(|t| t.cancel_handle()))
+        };
+        if let Some(c) = inner_cancel {
+            c.cancel();
+        }
+    }
+}
+
+#[cfg(test)]
+mod cancel_tests {
+    use super::*;
+    use crate::pipeline::transport::{Transport, TransportCancel, TransportError};
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// Stub Transport whose cancel_handle records cancel() calls and
+    /// makes is_alive() return false after cancel.
+    struct CancellableMock {
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+        cancel_calls: Arc<AtomicU32>,
+    }
+    struct CancellableMockCancel {
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+        calls: Arc<AtomicU32>,
+    }
+    impl TransportCancel for CancellableMockCancel {
+        fn cancel(&self) {
+            self.cancelled.store(true, Ordering::SeqCst);
+            self.calls.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    impl Transport for CancellableMock {
+        fn send_bytes(&mut self, _: &[u8]) -> Result<(), TransportError> {
+            if self.cancelled.load(Ordering::SeqCst) {
+                Err(TransportError::Broken("cancelled".into()))
+            } else {
+                Ok(())
+            }
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn is_alive(&self) -> bool {
+            !self.cancelled.load(Ordering::SeqCst)
+        }
+        fn close(&mut self) {
+            self.cancelled.store(true, Ordering::SeqCst);
+        }
+        fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
+            Some(Box::new(CancellableMockCancel {
+                cancelled: self.cancelled.clone(),
+                calls: self.cancel_calls.clone(),
+            }))
+        }
+    }
+
+    #[test]
+    fn managed_cancel_handle_cancels_current_inner() {
+        let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let calls = Arc::new(AtomicU32::new(0));
+        let inner = CancellableMock {
+            cancelled: cancelled.clone(),
+            cancel_calls: calls.clone(),
+        };
+        let factory = move || -> Result<CancellableMock, TransportError> {
+            Err(TransportError::Broken("test factory always fails".into()))
+        };
+        let managed = ManagedTransport::new(inner, factory, ReconnectPolicy::default());
+
+        let handle = managed.cancel_handle().expect("cancellable inner -> Some");
+        handle.cancel();
+        assert!(cancelled.load(Ordering::SeqCst));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn managed_cancel_latches_closed_so_reconnect_loop_exits() {
+        let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let calls = Arc::new(AtomicU32::new(0));
+        let inner = CancellableMock {
+            cancelled: cancelled.clone(),
+            cancel_calls: calls.clone(),
+        };
+        let factory_calls = Arc::new(AtomicU32::new(0));
+        let factory_calls_cl = factory_calls.clone();
+        let cancelled_cl = cancelled.clone();
+        let calls_cl2 = calls.clone();
+        let factory = move || -> Result<CancellableMock, TransportError> {
+            factory_calls_cl.fetch_add(1, Ordering::SeqCst);
+            Ok(CancellableMock {
+                cancelled: cancelled_cl.clone(),
+                cancel_calls: calls_cl2.clone(),
+            })
+        };
+        let policy = ReconnectPolicy {
+            max_attempts: Some(100),
+            backoff: BackoffStrategy::Constant(std::time::Duration::from_millis(0)),
+            ..Default::default()
+        };
+        let mut managed = ManagedTransport::new(inner, factory, policy);
+
+        // Trigger cancel before any send.
+        let h = managed.cancel_handle().unwrap();
+        h.cancel();
+
+        // After cancel, send_bytes should return Broken without burning
+        // through reconnect attempts (the closed flag short-circuits the
+        // reconnect loop).
+        let err = managed.send_bytes(b"x").unwrap_err();
+        assert!(matches!(
+            err,
+            TransportError::Broken(_) | TransportError::Closed
+        ));
+        // The factory should NOT have been called repeatedly trying to
+        // reconnect after cancel.
+        assert!(factory_calls.load(Ordering::SeqCst) <= 1);
     }
 }

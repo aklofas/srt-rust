@@ -13,6 +13,7 @@
 
 pub mod raw_receiver;
 pub mod raw_sender;
+pub mod receiver;
 pub mod reconnect;
 pub mod recv_transport;
 pub mod sender;
@@ -23,6 +24,7 @@ pub mod ts_sender;
 
 pub use raw_receiver::RawReceiver;
 pub use raw_sender::{RawSender, RawSenderConfig};
+pub use receiver::{Receiver, ReceiverError};
 pub use reconnect::{BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy};
 pub use recv_transport::RecvTransport;
 pub use sender::{Sender, SenderError};

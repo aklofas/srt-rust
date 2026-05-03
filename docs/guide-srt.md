@@ -404,20 +404,20 @@ when both name the same option.
 |---|---|---|---|
 | `passphrase` | `SRTO_PASSPHRASE` | STRING | 10-79 ASCII printable bytes |
 | `pbkeylen` | `SRTO_PBKEYLEN` | INT | 16, 24, or 32 |
-| `latency` | `SRTO_LATENCY` | INT (ms) | non-negative |
+| `latency` | `SRTO_LATENCY` | INT (ms) | non-negative; ffmpeg-style alias `tsbpddelay` (still ms — note ffmpeg's URL parses it as µs, so a value ≥10s logs a warn-level unit-mismatch hint) |
 | `rcvlatency` | `SRTO_RCVLATENCY` | INT (ms) | non-negative |
 | `peerlatency` | `SRTO_PEERLATENCY` | INT (ms) | non-negative |
 | `mss` | `SRTO_MSS` | INT | u16 range |
-| `payloadsize` | `SRTO_PAYLOADSIZE` | INT | u16 range |
+| `payloadsize` | `SRTO_PAYLOADSIZE` | INT | u16 range; ffmpeg-style aliases `pkt_size`, `payload_size` |
 | `maxbw` | `SRTO_MAXBW` | INT64 | u64 range; non-negative only |
 | `inputbw` | `SRTO_INPUTBW` | INT64 | u64 range |
 | `oheadbw` | `SRTO_OHEADBW` | INT | 5..=100 |
-| `streamid` | `SRTO_STREAMID` | STRING | ASCII, ≤512 bytes |
+| `streamid` | `SRTO_STREAMID` | STRING | ASCII, ≤512 bytes; ffmpeg-style alias `srt_streamid` |
 | `lossmaxttl` | `SRTO_LOSSMAXTTL` | INT | u32 range |
 | `tlpktdrop` | `SRTO_TLPKTDROP` | BOOL | `0` or `1` only |
-| `fc` | `SRTO_FC` | INT | u32 range |
+| `fc` | `SRTO_FC` | INT | u32 range; ffmpeg-style alias `ffs` |
 | `packetfilter` | `SRTO_PACKETFILTER` | STRING | filter spec |
-| `congestion` | `SRTO_CONGESTION` | ENUM | `live` or `file` (lowercase) |
+| `congestion` | `SRTO_CONGESTION` | ENUM | `live` or `file` (lowercase); ffmpeg-style alias `smoother` (libsrt's pre-1.4.1 name) |
 | `conntimeo` | `SRTO_CONNTIMEO` | INT (ms) | non-negative; ffmpeg-style alias `connect_timeout` |
 | `linger` | `SRTO_LINGER` | INT (seconds) | non-negative; matches ffmpeg URL units; `0` closes immediately |
 | `udprcvbuf` | `SRTO_UDP_RCVBUF` | INT (bytes) | kernel UDP recv buffer; ffmpeg-style alias `recv_buffer_size`; Linux clamps to `net.core.rmem_max` |

@@ -280,7 +280,9 @@ fn parse_bool_strict(key: &str, value: &str) -> Result<bool, UrlError> {
 
 fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<(), UrlError> {
     match key {
-        "congestion" => {
+        "congestion" | "smoother" => {
+            // libsrt-URL canonical key is `congestion` (renamed from `smoother`
+            // in libsrt 1.4.1); `smoother` is the pre-rename ffmpeg-style alias.
             overlay.congestion = Some(Congestion::from_str_strict(value).map_err(|source| {
                 UrlError::OptionValidation {
                     key: "congestion".into(),
@@ -294,13 +296,18 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
             let n = parse_i32_nonneg("conntimeo", value)?;
             overlay.connect_timeout = Some(Duration::from_millis(n as u64));
         }
-        "fc" => {
+        "fc" | "ffs" => {
+            // libsrt-URL canonical key is `fc` (flow control window);
+            // `ffs` is the ffmpeg-style alias (flight flag size).
             overlay.flow_window_packets = Some(parse_int_nonneg("fc", value)?);
         }
         "inputbw" => {
             overlay.input_bandwidth = Some(parse_int_nonneg("inputbw", value)?);
         }
-        "latency" => {
+        "latency" | "tsbpddelay" => {
+            // libsrt-URL canonical key is `latency`; `tsbpddelay` is the
+            // ffmpeg-style alias (the `SRTO_*` constant for SRT's TSBPD
+            // mechanism is `SRTO_LATENCY`).
             let n = parse_i32_nonneg("latency", value)?;
             warn_if_suspicious_latency("latency", n);
             // n is a non-negative i32; widening to u64 is lossless.
@@ -343,7 +350,9 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
                 }
             })?);
         }
-        "payloadsize" => {
+        "payloadsize" | "pkt_size" | "payload_size" => {
+            // libsrt-URL canonical key is `payloadsize`; `pkt_size` and
+            // `payload_size` are ffmpeg-style aliases.
             overlay.payload_size = Some(parse_int_nonneg::<u16>("payloadsize", value)?);
         }
         "pbkeylen" => {
@@ -366,7 +375,9 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
             warn_if_suspicious_latency("rcvlatency", n);
             overlay.recv_latency = Some(Duration::from_millis(n as u64));
         }
-        "streamid" => {
+        "streamid" | "srt_streamid" => {
+            // libsrt-URL canonical key is `streamid`; `srt_streamid` is the
+            // ffmpeg-style alias.
             overlay.stream_id =
                 Some(
                     StreamId::new(value.to_string()).map_err(|e| UrlError::OptionValidation {
@@ -641,5 +652,66 @@ mod tests {
     fn url_send_buffer_size_alias_parses() {
         let u = SrtUrl::parse("srt://h:9000?send_buffer_size=2000000").unwrap();
         assert_eq!(u.overlay.udp_send_buffer_bytes, Some(2_000_000));
+    }
+
+    #[test]
+    fn url_alias_pkt_size_matches_payloadsize() {
+        let canonical = SrtUrl::parse("srt://h:9000?payloadsize=1316").unwrap();
+        let alias = SrtUrl::parse("srt://h:9000?pkt_size=1316").unwrap();
+        assert_eq!(canonical.overlay.payload_size, alias.overlay.payload_size);
+        assert_eq!(alias.overlay.payload_size, Some(1316));
+    }
+
+    #[test]
+    fn url_alias_payload_size_matches_payloadsize() {
+        let alias = SrtUrl::parse("srt://h:9000?payload_size=1316").unwrap();
+        assert_eq!(alias.overlay.payload_size, Some(1316));
+    }
+
+    #[test]
+    fn url_alias_srt_streamid_matches_streamid() {
+        let canonical = SrtUrl::parse("srt://h:9000?streamid=abc").unwrap();
+        let alias = SrtUrl::parse("srt://h:9000?srt_streamid=abc").unwrap();
+        assert_eq!(
+            canonical.overlay.stream_id.as_ref().map(|s| s.as_str()),
+            alias.overlay.stream_id.as_ref().map(|s| s.as_str()),
+        );
+        assert_eq!(
+            alias.overlay.stream_id.as_ref().map(|s| s.as_str()),
+            Some("abc")
+        );
+    }
+
+    #[test]
+    fn url_alias_tsbpddelay_matches_latency() {
+        let alias = SrtUrl::parse("srt://h:9000?tsbpddelay=200").unwrap();
+        assert_eq!(alias.overlay.latency, Some(Duration::from_millis(200)));
+    }
+
+    #[test]
+    #[traced_test]
+    fn url_alias_tsbpddelay_high_value_warns() {
+        let _ = SrtUrl::parse("srt://h:9000?tsbpddelay=120000").unwrap();
+        assert!(
+            logs_contain("ffmpeg uses microseconds while srt-rust"),
+            "the µs/ms warning should fire through the tsbpddelay alias too",
+        );
+    }
+
+    #[test]
+    fn url_alias_smoother_matches_congestion() {
+        let canonical = SrtUrl::parse("srt://h:9000?congestion=live").unwrap();
+        let alias = SrtUrl::parse("srt://h:9000?smoother=live").unwrap();
+        assert_eq!(canonical.overlay.congestion, alias.overlay.congestion);
+    }
+
+    #[test]
+    fn url_alias_ffs_matches_fc() {
+        let canonical = SrtUrl::parse("srt://h:9000?fc=25600").unwrap();
+        let alias = SrtUrl::parse("srt://h:9000?ffs=25600").unwrap();
+        assert_eq!(
+            canonical.overlay.flow_window_packets,
+            alias.overlay.flow_window_packets
+        );
     }
 }

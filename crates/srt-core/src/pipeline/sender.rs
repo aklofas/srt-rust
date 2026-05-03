@@ -15,8 +15,26 @@
 use crate::error::MuxError;
 use crate::mpegts::mux::{Config, KlvStreamHandle, Muxer, VideoStreamHandle};
 use crate::pipeline::transport::{Transport, TransportError};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
+
+/// Stats snapshot for [`Sender`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SenderStats {
+    /// Cumulative bytes successfully handed off to the transport.
+    pub bytes_sent: u64,
+    /// Cumulative chunk count successfully handed off to the transport.
+    /// Each chunk is one `transport.send_bytes` call that returned `Ok`.
+    pub packets_sent: u64,
+    /// Live gauge — bytes currently buffered in `pending_bytes` after
+    /// a transport flap. NOT a counter; reflects current state.
+    pub pending_bytes_queued: u64,
+    /// Live gauge — chunk count currently in the pending buffer.
+    pub pending_chunks_queued: u64,
+    /// Per-stream push counters, keyed by PID. Delegated from the wrapped
+    /// `Muxer`; not double-booked here.
+    pub per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
+}
 
 pub struct Sender<T: Transport> {
     inner: Mutex<Inner<T>>,
@@ -34,6 +52,8 @@ struct Inner<T: Transport> {
     /// gap-buffer with overflow policy.
     pending_bytes: VecDeque<Vec<u8>>,
     closed: bool,
+    bytes_sent: u64,
+    packets_sent: u64,
 }
 
 impl<T: Transport> Sender<T> {
@@ -45,6 +65,8 @@ impl<T: Transport> Sender<T> {
                 transport,
                 pending_bytes: VecDeque::new(),
                 closed: false,
+                bytes_sent: 0,
+                packets_sent: 0,
             }),
         })
     }
@@ -105,6 +127,32 @@ impl<T: Transport> Sender<T> {
     /// Snapshot all KLV stream handles for this sender's muxer.
     pub fn klv_handles(&self) -> Vec<KlvStreamHandle> {
         self.inner.lock().unwrap().muxer.klv_handles()
+    }
+
+    /// Return a point-in-time stats snapshot. `per_stream` is delegated from
+    /// the inner `Muxer`; `pending_*` fields are live gauges.
+    pub fn stats(&self) -> SenderStats {
+        let inner = self.inner.lock().unwrap();
+        let mux_stats = inner.muxer.stats();
+        let pending_bytes_queued: u64 = inner.pending_bytes.iter().map(|c| c.len() as u64).sum();
+        let pending_chunks_queued = inner.pending_bytes.len() as u64;
+        SenderStats {
+            bytes_sent: inner.bytes_sent,
+            packets_sent: inner.packets_sent,
+            pending_bytes_queued,
+            pending_chunks_queued,
+            per_stream: mux_stats.per_stream,
+        }
+    }
+
+    /// Zero all flow counters and delegate to `Muxer::reset_stats`.
+    /// `pending_bytes_queued` / `pending_chunks_queued` are live gauges and
+    /// are NOT cleared.
+    pub fn reset_stats(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.bytes_sent = 0;
+        inner.packets_sent = 0;
+        inner.muxer.reset_stats();
     }
 
     pub fn close(&self) {
@@ -198,28 +246,39 @@ impl<T: Transport> Inner<T> {
                 return Ok(());
             }
             let chunk = buf[..n].to_vec();
-            if let Err(e) = self.transport.send_bytes(&chunk) {
-                self.pending_bytes.push_back(chunk);
-                // Drain any further muxer output into pending_bytes too,
-                // so the muxer's internal buffer doesn't fill up while
-                // transport is unavailable.
-                loop {
-                    let n2 = self.muxer.pull(&mut buf);
-                    if n2 == 0 {
-                        break;
-                    }
-                    self.pending_bytes.push_back(buf[..n2].to_vec());
+            match self.transport.send_bytes(&chunk) {
+                Ok(()) => {
+                    self.bytes_sent += chunk.len() as u64;
+                    self.packets_sent += 1;
                 }
-                return Err(SenderError::Transport(e));
+                Err(e) => {
+                    // Transport rejected the chunk — buffer it; do NOT count as sent.
+                    self.pending_bytes.push_back(chunk);
+                    // Drain any further muxer output into pending_bytes too,
+                    // so the muxer's internal buffer doesn't fill up while
+                    // transport is unavailable.
+                    loop {
+                        let n2 = self.muxer.pull(&mut buf);
+                        if n2 == 0 {
+                            break;
+                        }
+                        self.pending_bytes.push_back(buf[..n2].to_vec());
+                    }
+                    return Err(SenderError::Transport(e));
+                }
             }
         }
     }
 
     fn drain_pending(&mut self) -> Result<(), SenderError> {
         while let Some(chunk) = self.pending_bytes.front() {
+            let len = chunk.len() as u64;
             self.transport
                 .send_bytes(chunk)
                 .map_err(SenderError::Transport)?;
+            // Only count after successful send.
+            self.bytes_sent += len;
+            self.packets_sent += 1;
             self.pending_bytes.pop_front();
         }
         Ok(())
@@ -303,6 +362,58 @@ mod multi_stream_tests {
         // We can't read the transport bytes directly from outside the lock,
         // but we can confirm the call returns Ok and the sender is alive.
         assert!(s.is_alive());
+    }
+
+    #[test]
+    fn stats_starts_with_per_stream_entries_for_configured_streams() {
+        let cfg = Config::builder()
+            .add_video(0x100, VideoCodec::H264)
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .build()
+            .unwrap();
+        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let st = s.stats();
+        assert_eq!(st.bytes_sent, 0);
+        assert_eq!(st.packets_sent, 0);
+        assert_eq!(st.pending_bytes_queued, 0);
+        assert_eq!(st.pending_chunks_queued, 0);
+        assert_eq!(st.per_stream.len(), 2);
+        assert!(st.per_stream.contains_key(&0x100));
+    }
+
+    #[test]
+    fn stats_count_video_pushes() {
+        let cfg = Config::builder()
+            .add_video(0x100, VideoCodec::H264)
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .build()
+            .unwrap();
+        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+        s.send_video(nal, 0, true).unwrap();
+        let st = s.stats();
+        assert_eq!(st.per_stream[&0x100].items, 1);
+        assert_eq!(st.per_stream[&0x100].bytes, nal.len() as u64);
+        assert!(st.bytes_sent > 0);
+        assert!(st.packets_sent > 0);
+    }
+
+    #[test]
+    fn reset_stats_zeros_counters_keeps_per_stream() {
+        let cfg = Config::builder()
+            .add_video(0x100, VideoCodec::H264)
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .build()
+            .unwrap();
+        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+        s.send_video(nal, 0, true).unwrap();
+        s.reset_stats();
+        let st = s.stats();
+        assert_eq!(st.bytes_sent, 0);
+        assert_eq!(st.packets_sent, 0);
+        assert_eq!(st.per_stream.len(), 2);
+        assert_eq!(st.per_stream[&0x100].items, 0);
     }
 
     #[test]

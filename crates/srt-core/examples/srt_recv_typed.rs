@@ -27,8 +27,7 @@
 //!   "peer closed cleanly".
 
 use srt_core::mpegts::demux::DemuxEvent;
-use srt_core::pipeline::transport::TransportError;
-use srt_core::pipeline::{Receiver, ReceiverError, SrtTransport};
+use srt_core::pipeline::{Receiver, SrtTransport};
 use srt_core::srt::ListenerBuilder;
 use std::env;
 use std::time::Duration;
@@ -68,9 +67,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rx = Receiver::new(SrtTransport::new(socket));
 
     // `Receiver` implements `Iterator<Item = Result<DemuxEvent, ReceiverError>>`,
-    // so `for result in &mut rx` is the idiomatic drain pattern. EOF
-    // (`Ok(None)`, surfaced as iterator termination) means the
-    // transport closed cleanly + the demuxer flushed its trailing PES.
+    // so `for result in &mut rx` is the idiomatic drain pattern.
+    //
+    // Stream-end contract:
+    //
+    //   - **Iterator termination** (the `for` loop simply ends) is the
+    //     canonical clean-exit signal. It fires when the underlying
+    //     `RecvTransport` returns `TransportError::Closed`, which
+    //     `Receiver::recv_event` translates into `Ok(None)` after first
+    //     calling `Demuxer::flush()` to recover any trailing PES. Loop
+    //     callers do not see `Closed` as an error variant.
+    //
+    //   - **`Err(ReceiverError::Transport(TransportError::Broken(_)))`**
+    //     fires for both peer-initiated cleanup and unrecoverable
+    //     links. `SrtTransport` collapses these into one `Broken`
+    //     surface by design — it lets a managed-receive decorator
+    //     distinguish a self-initiated close (`Closed`) from a
+    //     peer-initiated break (`Broken`). For a non-managed example
+    //     like this one, both are terminal. Note: on `Broken` the
+    //     demuxer is NOT auto-flushed, so any trailing PES is lost
+    //     (the receive thread can't tell mid-stream hiccup from a
+    //     clean end).
+    //
+    //   - **`Err(ReceiverError::Demux(_))`** is a strict-mode rejection
+    //     or malformed PES — fatal for this example.
     for item in &mut rx {
         match item {
             Ok(DemuxEvent::ProgramMap(m)) => {
@@ -102,28 +122,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(DemuxEvent::NonConformant { stream, issue }) => {
                 eprintln!("NonConformant PID=0x{:04X} {issue:?}", stream.pid);
             }
-            // `Transport(Closed)` is the canonical "we're done" signal.
-            // It fires when the peer closes cleanly OR when libsrt has
-            // decided the link is unrecoverable; in both cases the
-            // demuxer has already been flushed by `Receiver` so any
-            // trailing event was emitted before this point. Note: the
-            // auto-flush only fires on `Closed`, not on `Broken` —
-            // a broken-mid-stream link does NOT recover the trailing
-            // PES (the receive thread doesn't know the stream is
-            // legitimately ending vs just hiccuping).
-            Err(ReceiverError::Transport(TransportError::Closed)) => {
-                eprintln!("peer closed cleanly");
-                break;
-            }
-            // Anything else is unexpected: a transport-broken state we
-            // didn't initiate, or a demuxer error (strict-mode
-            // rejection or a malformed PES). Print and bail rather
-            // than spinning.
+            // Any error variant terminates this single-shot example.
+            // `Broken` is what fires on peer disconnect (clean or not);
+            // `Demux` only fires in strict mode or on a malformed PES.
+            // Clean EOF is iterator termination, not an `Err` arm.
             Err(e) => {
                 eprintln!("receiver error: {e}");
                 break;
             }
         }
     }
+    eprintln!("peer disconnected");
     Ok(())
 }

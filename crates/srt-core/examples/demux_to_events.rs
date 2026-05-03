@@ -60,8 +60,13 @@ fn main() {
     // alignment requirement on the caller. For a streaming source you
     // would call `feed` repeatedly as bytes arrive; the event queue
     // accumulates across feeds.
+    // Lenient mode never errors on PSI / PES non-conformance — those
+    // surface as inline `NonConformant` events. It can still return
+    // `Unrecoverable` (no 0x47 sync byte within the search window;
+    // i.e. input isn't TS at all) or `MalformedPes` — both are fatal
+    // for an offline triage tool, so panic with a useful message.
     d.feed(&bytes)
-        .expect("lenient demux returns Ok on any well-formed-or-not bytes");
+        .expect("input could not be decoded as MPEG-TS");
 
     // `flush` is the canonical end-of-stream signal. It matters because
     // a video PES with `PES_packet_length=0` (the common shape for video
@@ -109,10 +114,11 @@ fn main() {
                         nals.len()
                     );
                 }
-                // Audio + Subtitle are reserved variants today (no typed
-                // codecs ship in v1) but matching them keeps this
-                // example exhaustive — adding `AudioCodec::Aac` later
-                // won't silently change behavior here.
+                // Audio + Subtitle are reserved variants today (no
+                // typed codec values are defined yet) but matching
+                // them keeps this example exhaustive — adding e.g.
+                // `AudioCodec::Aac` later won't silently change
+                // behavior here.
                 SamplePayload::Audio { codec, frames } => {
                     println!(
                         "Sample PID=0x{:04X} pts={pts} audio={codec:?} bytes={}",

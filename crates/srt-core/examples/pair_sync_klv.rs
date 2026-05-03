@@ -68,10 +68,13 @@ fn main() {
     let bytes = fs::read(&path).expect("read input");
 
     // Lenient demuxer — same posture as `demux_to_events`. We want every
-    // recoverable record, even from imperfect captures.
+    // recoverable record, even from imperfect captures. Lenient mode
+    // never errors on PSI / PES non-conformance, but it can still
+    // return `Unrecoverable` (no TS sync byte within the search
+    // window) or `MalformedPes` — both fatal for offline triage.
     let mut d = Demuxer::new();
     d.feed(&bytes)
-        .expect("lenient demux returns Ok on any well-formed-or-not bytes");
+        .expect("input could not be decoded as MPEG-TS");
     // End-of-stream flush recovers the trailing AU (PES with length=0
     // is only committed when the next PES starts; without `flush` the
     // last frame is silently dropped). Run before draining events.

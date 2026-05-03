@@ -26,7 +26,7 @@
 
 use srt_core::mpegts::demux::DemuxEvent;
 use srt_core::pipeline::transport::TransportError;
-use srt_core::pipeline::{Receiver, ReceiverError, RecvTransport};
+use srt_core::pipeline::{Receiver, RecvTransport};
 use std::collections::VecDeque;
 use std::env;
 use std::fs::{self, File};
@@ -144,16 +144,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut samples = 0usize;
     let mut metadata = 0usize;
+    // Clean EOF is iterator termination — `Receiver::recv_event`
+    // translates `TransportError::Closed` into `Ok(None)` after
+    // auto-flushing the demuxer, and the `Iterator` impl turns that
+    // into `None`. Any `Err` here is a real error (a `Demux` strict
+    // rejection or malformed PES on corrupt input).
     for item in &mut rx {
         match item {
             Ok(DemuxEvent::Sample { .. }) => samples += 1,
             Ok(DemuxEvent::Metadata { .. }) => metadata += 1,
             Ok(_) => {}
-            // `Transport(Closed)` is normal EOF here — the iterator
-            // already consumed the auto-flushed trailing PES. Anything
-            // else is unexpected for this offline replay (a `Demux`
-            // error from a corrupt input, e.g.); print and bail.
-            Err(ReceiverError::Transport(TransportError::Closed)) => break,
             Err(e) => {
                 eprintln!("receiver error: {e}");
                 break;

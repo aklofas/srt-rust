@@ -9,7 +9,8 @@ use crate::config::{SrtcMuxConfig, SrtcReconnectPolicy};
 use crate::error::{
     SrtcError, record_mux_error, record_sender_error, set_last_error, srtc_get_last_error,
 };
-use crate::handle::Handle;
+use crate::handle::{Handle, SrtcKlvStreamHandle, SrtcVideoStreamHandle};
+use srt_core::mpegts::mux::{KlvStreamHandle, VideoStreamHandle};
 use srt_core::pipeline::{ManagedTransport, Sender, SrtTransport};
 use srt_core::srt::config::SocketConfig;
 
@@ -121,6 +122,82 @@ pub unsafe extern "C" fn srtc_mux_sender_send_klv(
     handle
         .inner
         .with_inner_ref(|s| match s.send_klv(slice, pts_90khz) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_sender_error(&e);
+                unsafe { srtc_get_last_error() }
+            }
+        })
+}
+
+/// Push one Annex-B NAL targeting a specific video elementary stream.
+///
+/// `stream_handle` is obtained from `srtc_mux_config_add_video_stream` at
+/// config time and is stable across the config→open boundary. Out-of-range
+/// handles surface as `SRTC_E_INVALID_USAGE` (carrying
+/// `MuxError::InvalidStreamHandle`).
+///
+/// On a single-stream sender, prefer `srtc_mux_sender_send_video` — same
+/// effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_mux_sender_send_video_to(
+    p: *mut SrtcMuxSender,
+    stream_handle: SrtcVideoStreamHandle,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    if nal.is_null() && len > 0 {
+        set_last_error(SrtcError::InvalidConfig, "null nal with non-zero len");
+        return SrtcError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(nal, len) };
+    let stream = VideoStreamHandle::new(stream_handle as usize);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_video_to(stream, slice, pts_90khz, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_sender_error(&e);
+                unsafe { srtc_get_last_error() }
+            }
+        })
+}
+
+/// Push one pre-built KLV blob targeting a specific KLV elementary stream.
+///
+/// For `KlvStreamType::SynchronousMetadata` streams, callers must
+/// pre-wrap the KLV via `srt_core::klv::st1910::wrap_au_cell` — the
+/// muxer does not auto-wrap.
+///
+/// On a single-stream sender, prefer `srtc_mux_sender_send_klv` — same
+/// effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_mux_sender_send_klv_to(
+    p: *mut SrtcMuxSender,
+    stream_handle: SrtcKlvStreamHandle,
+    klv: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    if klv.is_null() && len > 0 {
+        set_last_error(SrtcError::InvalidConfig, "null klv with non-zero len");
+        return SrtcError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(klv, len) };
+    let stream = KlvStreamHandle::new(stream_handle as usize);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_klv_to(stream, slice, pts_90khz) {
             Ok(()) => 0,
             Err(e) => {
                 record_sender_error(&e);
@@ -285,6 +362,84 @@ pub unsafe extern "C" fn srtc_managed_mux_sender_send_klv(
     handle
         .inner
         .with_inner_ref(|s| match s.send_klv(slice, pts_90khz) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_sender_error(&e);
+                unsafe { srtc_get_last_error() }
+            }
+        })
+}
+
+/// Push one Annex-B NAL targeting a specific video elementary stream on a
+/// managed (auto-reconnecting) sender.
+///
+/// `stream_handle` is obtained from `srtc_mux_config_add_video_stream` at
+/// config time and is stable across reconnects. Out-of-range handles
+/// surface as `SRTC_E_INVALID_USAGE` (carrying
+/// `MuxError::InvalidStreamHandle`).
+///
+/// On a single-stream sender, prefer `srtc_managed_mux_sender_send_video` —
+/// same effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_managed_mux_sender_send_video_to(
+    p: *mut SrtcManagedMuxSender,
+    stream_handle: SrtcVideoStreamHandle,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    if nal.is_null() && len > 0 {
+        set_last_error(SrtcError::InvalidConfig, "null nal with non-zero len");
+        return SrtcError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(nal, len) };
+    let stream = VideoStreamHandle::new(stream_handle as usize);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_video_to(stream, slice, pts_90khz, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_sender_error(&e);
+                unsafe { srtc_get_last_error() }
+            }
+        })
+}
+
+/// Push one pre-built KLV blob targeting a specific KLV elementary stream on
+/// a managed (auto-reconnecting) sender.
+///
+/// For `KlvStreamType::SynchronousMetadata` streams, callers must
+/// pre-wrap the KLV via `srt_core::klv::st1910::wrap_au_cell` — the
+/// muxer does not auto-wrap.
+///
+/// On a single-stream sender, prefer `srtc_managed_mux_sender_send_klv` —
+/// same effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_managed_mux_sender_send_klv_to(
+    p: *mut SrtcManagedMuxSender,
+    stream_handle: SrtcKlvStreamHandle,
+    klv: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    if klv.is_null() && len > 0 {
+        set_last_error(SrtcError::InvalidConfig, "null klv with non-zero len");
+        return SrtcError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(klv, len) };
+    let stream = KlvStreamHandle::new(stream_handle as usize);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_klv_to(stream, slice, pts_90khz) {
             Ok(()) => 0,
             Err(e) => {
                 record_sender_error(&e);

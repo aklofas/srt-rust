@@ -148,6 +148,20 @@ pub struct Config {
     /// Maximum buffered TS packets before push returns `BufferFull`.
     /// Default 10000 (~1.88 MB, ~600 ms at 25 Mbps). Validation: >= 10.
     pub buffer_packets: usize,
+
+    /// Per-stream caller-supplied PMT descriptors. Outer Vec indexed by
+    /// `streams[i]`; inner Vec is the descriptor list for that stream
+    /// (each inner Vec<u8> is one complete descriptor TLV — tag + length
+    /// byte + body, as built by the helpers in [`crate::mpegts::descriptors`]).
+    /// Empty by default — populate via
+    /// [`ConfigBuilder::stream_descriptors_for_video`] /
+    /// `_for_klv` / `_for_stream`.
+    ///
+    /// Hand-built `Config` callers must keep `stream_descriptors.len()
+    /// == streams.len()`; [`Config::validate`] enforces this. Outer-Vec
+    /// growth happens in `ConfigBuilder::build` to match the final
+    /// stream set.
+    pub stream_descriptors: Vec<Vec<Vec<u8>>>,
 }
 
 impl Default for Config {
@@ -170,6 +184,7 @@ impl Default for Config {
             pcr_interval_ms: 40,
             psi_interval_ms: 100,
             buffer_packets: 10_000,
+            stream_descriptors: vec![Vec::new(), Vec::new()],
         }
     }
 }
@@ -391,12 +406,14 @@ impl ConfigBuilder {
     /// Finalize. Returns a validated [`Config`] or an error describing the
     /// failed rule.
     pub fn build(self) -> Result<Config, MuxError> {
+        let n = self.streams.len();
         let cfg = Config {
             streams: self.streams,
             pcr_pid: self.pcr_pid,
             pcr_interval_ms: self.pcr_interval_ms.unwrap_or(40),
             psi_interval_ms: self.psi_interval_ms.unwrap_or(100),
             buffer_packets: self.buffer_packets.unwrap_or(10_000),
+            stream_descriptors: vec![Vec::new(); n],
         };
         cfg.validate()?;
         Ok(cfg)
@@ -1662,6 +1679,15 @@ mod tests {
             ),
             "expected AmbiguousTarget {{ klv, 0 }}, got {err:?}",
         );
+    }
+
+    #[test]
+    fn default_config_has_empty_per_stream_descriptors() {
+        let cfg = Config::default();
+        assert_eq!(cfg.stream_descriptors.len(), cfg.streams.len());
+        for descs in &cfg.stream_descriptors {
+            assert!(descs.is_empty());
+        }
     }
 }
 

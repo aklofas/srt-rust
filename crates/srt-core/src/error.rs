@@ -369,6 +369,29 @@ pub enum MuxError {
     /// `Config::validate` rejects more than 16 KLV streams.
     #[error("too many klv streams: {count} configured, cap is {cap}")]
     TooManyKlvStreams { count: usize, cap: usize },
+
+    /// `Config::validate` rejected a configuration whose total PMT
+    /// section length wouldn't fit in a single TS packet. `used_bytes`
+    /// is the sum of (5 ES-header bytes + descriptor-loop bytes) across
+    /// all configured streams; `max_bytes` is `MAX_DESCRIPTOR_LOOP_PER_PMT`
+    /// (currently 166). Multi-section PMT support is out of scope; if
+    /// you hit this, drop one or more user-supplied descriptors or
+    /// shorten their payloads.
+    #[error(
+        "PMT too large: {used_bytes} bytes used, {max_bytes} max (single-section PMT must fit in one TS packet)"
+    )]
+    PmtTooLarge { used_bytes: usize, max_bytes: usize },
+
+    /// Caller-supplied descriptor TLV bytes are not well-formed.
+    /// Length byte must equal `data.len() - 2` and must not exceed 253.
+    #[error(
+        "malformed descriptor for stream {stream_index} descriptor {descriptor_index}: {reason}"
+    )]
+    MalformedDescriptor {
+        stream_index: usize,
+        descriptor_index: usize,
+        reason: &'static str,
+    },
 }
 
 // ============================================================================
@@ -845,5 +868,30 @@ mod tests {
             e.to_string(),
             "too many klv streams: 20 configured, cap is 16",
         );
+    }
+
+    #[test]
+    fn mux_error_pmt_too_large_displays() {
+        let e = MuxError::PmtTooLarge {
+            used_bytes: 200,
+            max_bytes: 166,
+        };
+        let s = format!("{e}");
+        assert!(s.contains("200"));
+        assert!(s.contains("166"));
+        assert!(s.contains("PMT"));
+    }
+
+    #[test]
+    fn mux_error_malformed_descriptor_displays() {
+        let e = MuxError::MalformedDescriptor {
+            stream_index: 2,
+            descriptor_index: 1,
+            reason: "length byte exceeds slice",
+        };
+        let s = format!("{e}");
+        assert!(s.contains("stream 2"));
+        assert!(s.contains("descriptor 1"));
+        assert!(s.contains("length byte exceeds slice"));
     }
 }

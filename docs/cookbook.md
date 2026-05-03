@@ -347,3 +347,131 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 Runnable: [../crates/srt-core/examples/sender_from_url.rs](../crates/srt-core/examples/sender_from_url.rs).
+
+### 12. Pair sync-KLV with video AUs by nearest PTS
+
+Reach for this when an encoder emits KLV inside ST 1910 AU cells synchronized to video frames (one KLV per frame, KLV PTS = frame PTS) and you want to consume frame + telemetry as a paired record. By design, `mpegts::demux` does NOT pair sync-KLV with video AUs — it surfaces them as independent stream-tagged events with full timing info, and the pairing tolerance is consumer-domain knowledge. This recipe is the canonical nearest-PTS pattern.
+
+Match BOTH `MetadataKind::KlvSyncAuCell` AND `MetadataKind::KlvAsync`. The natural intuition is "sync KLV is the kind that needs pairing," but many production ISR encoders emit a `stream_type=0x15` PID whose AU cell wraps an async-shape inner UL — the demuxer peels the outer AU cell wrap and surfaces the bytes as `KlvAsync` with the AU cell's PTS preserved on the parent event. That `KlvAsync` is still PTS-aligned with video; matching only `KlvSyncAuCell` silently drops the most common shape we see in the field.
+
+```rust,no_run
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
+use std::collections::VecDeque;
+use std::fs;
+
+// 0.3 s at 90 kHz — wide enough to absorb encoder timestamp drift,
+// narrow enough to reject a coincidental near-match from the next GOP.
+const PAIRING_TOLERANCE_TICKS: i64 = 3 * 9_000;
+// 32 entries of KLV history. ~1 s at 30 fps + 1 KLV/frame; 32 s at 1 Hz KLV.
+const KLV_HISTORY_LEN: usize = 32;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = fs::read("input.ts")?;
+    let mut d = Demuxer::new();
+    d.feed(&bytes)?;
+    d.flush();
+    let mut history: VecDeque<(i64, Vec<u8>)> = VecDeque::with_capacity(KLV_HISTORY_LEN);
+    let (mut paired, mut unpaired) = (0usize, 0usize);
+    while let Some(e) = d.next_event() {
+        match e {
+            DemuxEvent::Metadata {
+                pts,
+                kind: MetadataKind::KlvSyncAuCell | MetadataKind::KlvAsync,
+                payload,
+                ..
+            } => {
+                history.push_back((pts, payload));
+                if history.len() > KLV_HISTORY_LEN {
+                    history.pop_front();
+                }
+            }
+            DemuxEvent::Sample {
+                pts,
+                payload: SamplePayload::Video { .. },
+                ..
+            } => {
+                let nearest = history.iter().min_by_key(|(kpts, _)| (kpts - pts).abs());
+                match nearest {
+                    Some((kpts, _)) if (kpts - pts).abs() <= PAIRING_TOLERANCE_TICKS => {
+                        paired += 1;
+                    }
+                    _ => unpaired += 1,
+                }
+            }
+            _ => {}
+        }
+    }
+    println!("paired={paired} unpaired={unpaired}");
+    Ok(())
+}
+```
+
+Tolerance is consumer-domain knowledge. Most ST 1910 encoders emit KLV PTS exactly equal to frame PTS; a window of a few hundred milliseconds covers minor encoder drift. See [examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs) for the full runnable form.
+
+Runnable: [../crates/srt-core/examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs); see also [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs) for the file-feed shape.
+
+### 13. Sample-and-hold async-KLV against video frames
+
+Reach for this when KLV is emitted independently of video — typically 1–10 Hz async metadata against 25–60 fps video. The canonical pairing is "the most recent KLV record where `klv.pts <= frame.pts`." There is no ambiguity about which KLV pairs with which frame; the only knob is whether to drop a frame when the most recent KLV is too stale.
+
+```rust,no_run
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut d = Demuxer::new();
+    // Maintain "current KLV state" per metadata PID:
+    let mut last_klv: Option<(i64, Vec<u8>)> = None;
+    while let Some(e) = d.next_event() {
+        match e {
+            DemuxEvent::Metadata { pts, kind: MetadataKind::KlvAsync, payload, .. } => {
+                last_klv = Some((pts, payload));
+            }
+            DemuxEvent::Sample { payload: SamplePayload::Video { .. }, pts: _frame_pts, .. } => {
+                // Use last_klv if available, regardless of how stale.
+                // Optional: compare ages and drop if stale beyond a freshness window.
+                let _telemetry = last_klv.as_ref().map(|(_, payload)| payload);
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+```
+
+Runnable: see [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs) for the file-feed shape; [../crates/srt-core/examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs) is the related nearest-PTS sibling for sync KLV.
+
+### 14. EO + IR sensor pair with shared async-KLV
+
+Reach for this when the platform carries two sensors (visible + thermal) and one async metadata stream serves both. Both video streams attach the same KLV state; there is no per-stream pairing logic. The demuxer surfaces the topology as a `ProgramMap` with two `StreamInfo` rows of `StreamKind::Video(_)` and one `StreamKind::KlvAsync`; the `klv_links` table reports the encoder-declared (or inferred / overridden) linkage.
+
+```rust,no_run
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
+
+fn process_eo(_pts: i64, _klv: Option<&[u8]>) {}
+fn process_ir(_pts: i64, _klv: Option<&[u8]>) {}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut d = Demuxer::new();
+    let mut last_klv: Option<Vec<u8>> = None;
+    while let Some(e) = d.next_event() {
+        match e {
+            DemuxEvent::Metadata { kind: MetadataKind::KlvAsync, payload, .. } => {
+                last_klv = Some(payload);
+            }
+            DemuxEvent::Sample { stream, payload: SamplePayload::Video { .. }, pts, .. } => {
+                match stream.pid {
+                    0x100 => process_eo(pts, last_klv.as_deref()),
+                    0x101 => process_ir(pts, last_klv.as_deref()),
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+```
+
+If the encoder declares the linkage via `metadata_descriptor`, the demuxer surfaces it as `KlvLink { source: LinkSource::Declared, .. }` in `ProgramMap.klv_links`. Use it as a hint when assigning routes; trust your `treat_as` overrides if you know the encoder lies.
+
+Runnable: see [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs) for the file-feed shape; [../crates/srt-core/examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs) is the related sync-KLV sibling.

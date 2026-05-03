@@ -116,7 +116,7 @@ aren't yet wrapped are reachable via `srt-sys`.
 | Spec / Feature | Status | Notes |
 | --- | --- | --- |
 | MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — single-program, H.264/H.265 video + ST 0601 KLV (sync + async per ST 1402), VBR. |
-| MPEG-TS demuxer | ❌ Out of scope | Receivers use FFmpeg / JavaCV / Bento4 / platform demuxers. |
+| MPEG-TS demuxer | ✅ Full | `mpegts::demux::Demuxer` — single-program, lenient by default, four-tier `StrictMode` ladder. See `mpegts::demux` block below. |
 | Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ✅ Full | Default in `mpegts::mux::Config` (`klv_stream_type = PrivateData`, `klv_carries_pts = false`). |
 | ST 1402.3 Synchronous metadata stream | ✅ Full | `KlvStreamType::SynchronousMetadata` + `klv_carries_pts = true` in `Config`. |
 | ST 1910 AU cell wrapping (sync KLV with timestamp) | ✅ Full | `klv::st1910::wrap_au_cell` / `unwrap_au_cell`. Compose with `Muxer::push_klv` when `klv_carries_pts = true`. |
@@ -236,7 +236,46 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 
 ---
 
+## MPEG-TS demuxer (`srt-core::mpegts::demux`)
+
+| Feature / Type | Status | Notes |
+| --- | --- | --- |
+| `Demuxer` | ✅ Full | Stateful TS demuxer; `feed` bytes in, `next_event` typed events out, `flush` drains trailing PES on stream end. Bytes need not be 188-aligned. |
+| `DemuxerBuilder` / `DemuxerOptions` | ✅ Full | Fluent builder + plain-struct config form. |
+| `DemuxEvent::ProgramMap` | ✅ Full | Emitted on PAT/PMT discovery and version-bump; carries `program_number`, `pcr_pid`, `streams`, `klv_links`. |
+| `DemuxEvent::Sample` | ✅ Full | Generic ES sample; payload typed for video, reserved for audio + subtitle, `Unknown` for unrecognized stream_types. |
+| `DemuxEvent::Metadata` | ✅ Full | Standalone metadata events; `MetadataKind::KlvSyncAuCell` (AU cell unwrapped), `KlvAsync` (bare LS), `Unknown(u8)`. |
+| `DemuxEvent::Discontinuity` | ✅ Full | `ContinuityJump`, `PesOversize`, `PesTotalOversize`, `AdaptationFieldFlag`. |
+| `DemuxEvent::NonConformant` | ✅ Full | Lenient-mode signal for spec violations; converts to fatal in strict modes. |
+| H.264 NAL split (stream_type 0x1B) | ✅ Full | Annex-B start codes stripped; `NalUnit::H264 { nal_type, ref_idc, payload }`. Emulation-prevention bytes preserved. |
+| H.265 NAL split (stream_type 0x24) | ✅ Full | `NalUnit::H265 { nal_type, layer_id, temporal_id_plus1, payload }`. |
+| Async KLV (stream_type 0x06 + KLVA) | ✅ Full | Detected via registration descriptor `KLVA`; emitted as `KlvAsync`. |
+| Sync KLV (stream_type 0x15) | ✅ Full | ST 1910 AU cell unwrapped; AU cell PTS surfaced on the parent event. |
+| AU cell wrap-peeling (sync→async fallback) | ✅ Full | Sync-PID payloads with non-sync inner ULs surface as `KlvAsync` with AU cell PTS preserved. |
+| `metadata_descriptor` parser | ✅ Full | KLV→video link emitted in `ProgramMap.klv_links` as `LinkSource::Declared`. |
+| KLV link inference (single video + single KLV) | ✅ Full | `LinkSource::Inferred` when no descriptor but topology is unambiguous. |
+| `DemuxerBuilder::link_klv` override | ✅ Full | Caller-supplied klv→video PID link (`LinkSource::Override`). |
+| `DemuxerBuilder::treat_as` override | ✅ Full | Caller-supplied `StreamKind` override per PID — overrides the PMT-derived kind. |
+| PES reassembly cap (`pes_cap_per_pid`) | ✅ Full | Default 4 MiB per-PID; overflow surfaces as `Discontinuity::PesOversize`. |
+| PES reassembly cap (`pes_cap_total`) | ✅ Full | Default 64 MiB aggregate; overflow surfaces as `Discontinuity::PesTotalOversize`. |
+| Sync recovery (HUNT/VERIFY/LOCKED) | ✅ Full | Internal syncer state machine; ~6 KiB search window, then `DemuxError::Unrecoverable`. |
+| `StrictMode::Off` (lenient default) | ✅ Full | `NonConformant` events surface as data; receive loop continues. |
+| `StrictMode::TimingOnly` | ✅ Full | Hard-fail on `PcrAnomaly`, `PusiMidPes`, `PsiChecksumMismatch`. |
+| `StrictMode::DescriptorsOnly` | ✅ Full | Hard-fail on `MissingMetadataDescriptor`, `StreamTypeMismatch{Sync,Async}OnPid`. |
+| `StrictMode::Full` | ✅ Full | Hard-fail on every `NonConformantIssue` variant including future-added ones. |
+| KLV-mismatch event coalescing | ✅ Full | One `StreamTypeMismatch*` event per (PID, PMT version); avoids flooding. |
+| PSI version-bump detection | ✅ Full | Re-emits `ProgramMap` only on PMT/PAT version change. |
+| `pts_to_duration` helper | ✅ Full | 90 kHz ticks → `std::time::Duration`. |
+| Multi-program TS | ⏳ Planned | Single PMT only today; `ProgramMap.program_number` carries number for additive lift. |
+| Typed audio codec values on `AudioCodec` | ⏳ Planned | Reserved variant exists; AAC + others additive. |
+| Typed subtitle codec values on `SubtitleCodec` | ⏳ Planned | Same as audio. |
+| AV1 / H.266 codec variants on `VideoCodec` | ⏳ Planned | Surface as `SamplePayload::Unknown` today. |
+| Typed SPS/VPS/PPS payload parser | ⏳ Planned | SPS/VPS/PPS surface as `NalUnit` with raw RBSP; consumers use external codec lib. |
+| Sync-KLV ↔ video AU pairing helper | ❌ Out of scope | Pairing is a consumer-domain decision; cookbook recipes 12–14 are the canonical patterns. |
+
 ## Pipeline composition (`srt-core::pipeline`)
+
+### Send side
 
 | Feature / Type | Status | Notes |
 | --- | --- | --- |
@@ -245,6 +284,21 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `RawSender<T>` | ✅ Full | Byte-blind one-shot sender. One `send` call = one SRT message; size-cap validation at construction. |
 | `ManagedTransport<T>` | ✅ Full | Reconnect + gap-buffer decorator over any `Transport`. Synchronous reconnect on caller's thread; drop-oldest-message overflow policy; single-thread receiver. |
 | Single-stream-shaped `Config` (Path 2 forward compat.) | ✅ Full | ≤1 video + ≤1 KLV stream today; multi-stream additive in future Path 3 without breaking changes. |
+
+### Receive side
+
+| Feature / Type | Status | Notes |
+| --- | --- | --- |
+| `Receiver<R>` | ✅ Full | `RecvTransport → TsReceiver → Demuxer` shell. `recv_event` → `DemuxEvent`; auto-flushes demuxer on `Closed`. Implements `Iterator<Item = Result<DemuxEvent, ReceiverError>>`. |
+| `TsReceiver<R>` | ✅ Full | Pull bytes from a `RecvTransport`, run TS sync recovery, emit 188-byte aligned packets via `next_packet`. |
+| `RawReceiver<R>` | ✅ Full | One `recv_one` call returns one owned byte vec — no TS framing or demux. |
+| `ManagedReceiveTransport<R>` | ✅ Full | Reconnect decorator for the receive direction. No gap buffer (recv-side bytes that never arrived can't be replayed); restarts on `Closed` / `Broken` per `ReconnectPolicy`. |
+| `RecvTransport` trait | ✅ Full | Receive-side counterpart to `Transport`: `recv_bytes`, `max_payload`, `is_alive`, `close`. Implemented by `SrtTransport` and any consumer-side mock. |
+| `SrtTransport` impl `RecvTransport` | ✅ Full | Same `SrtTransport` wrapper handles both send and receive directions on a connected SRT `Socket`. |
+| `Receiver::add_byte_sink` fan-out | ✅ Full | Register `Box<dyn FnMut(&[u8]) + Send>` callbacks; each sink sees every 188-byte TS packet in registration order before the demuxer parses it. |
+| `Receiver::with_demux_options` | ✅ Full | Construct a receiver around a custom `DemuxerOptions` (e.g. strict mode, PES caps, link overrides). |
+| Stream-end contract | ✅ Full | `TransportError::Closed` → iterator termination after `Demuxer::flush`. `Broken` → `ReceiverError::Transport(Broken(_))`. `Demux` → strict-mode rejection or malformed PES. |
+| Receive-side gap buffer | ❌ Out of scope | Receive-side bytes that never arrived can't be replayed; no symmetric counterpart to `ManagedTransport`'s gap buffer. |
 
 ---
 
@@ -325,7 +379,7 @@ covers.
 | **MISB ST 0903.6** | Video Moving Target Indicator (VMTI) | ❌ Out of scope; add when a consumer needs VMTI |
 | **MISB ST 1201.5** | IMAPB / IMAPA Floating-Point Mapping | ⚙️ §7.1.2 / §7.2 implemented; §7.1.3 special values not |
 | **MISB ST 1303.2** | Multi-Dimensional Array Pack (MDAP) | ❌ Out of scope (no ST 0903 consumer) |
-| **MISB ST 1402.2** | KLV in MPEG-2 Transport Streams | ✅ Async (0x06) + sync (0x15) modes in `mpegts::mux`; decode-side recovery via UL-prefix scan |
+| **MISB ST 1402.2** | KLV in MPEG-2 Transport Streams | ✅ Async (0x06) + sync (0x15) modes in both `mpegts::mux` (encode) and `mpegts::demux` (decode) |
 | **MISB ST 1607.2** | Constructs to Amend / Segment KLV | ❌ Out of scope (no multi-PES KLV in corpus) |
 | **MISB ST 1910.1** | Inserting KLV in MPEG-TS for ISR | ✅ AU cell wrap/unwrap in `klv::st1910`; compose with `mpegts::mux` for full pipeline |
 | **MISB TRM 0909.4** | Motion Imagery Quality Metadata | ⚙️ §7 multi-record PES pattern handled |

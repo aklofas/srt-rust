@@ -10,10 +10,11 @@ integrators may want it as background but should start at
 [getting-started.md](getting-started.md) if they just want to use the
 library.
 
-The vocabulary established here — `Transport`, "sender shell", "sender
-pipeline", the layering rule — is reused by the per-module guides
-([guide-srt.md](guide-srt.md), [guide-klv.md](guide-klv.md),
+The vocabulary established here — `Transport`, `RecvTransport`, "sender
+shell", "receive shell", the layering rule — is reused by the per-module
+guides ([guide-srt.md](guide-srt.md), [guide-klv.md](guide-klv.md),
 [guide-mpegts-mux.md](guide-mpegts-mux.md),
+[guide-mpegts-demux.md](guide-mpegts-demux.md),
 [guide-pipeline.md](guide-pipeline.md)). Read this first if you plan to
 read more than one of those.
 
@@ -49,7 +50,8 @@ or libmbedtls.
 - `srt::*` — safe wrapper for libsrt sockets and listeners.
 - `klv::*` — KLV codec, generic substrate plus typed ST 0601 / ST 0605 / ST 1910 layers.
 - `mpegts::mux::*` — sender-side MPEG-TS muxer for H.264 / H.265 + KLV.
-- `pipeline::*` — composition of the above into ergonomic sender shells.
+- `mpegts::demux::*` — receiver-side MPEG-TS demuxer; bytes in, typed `DemuxEvent` out.
+- `pipeline::*` — composition of the above into ergonomic sender + receiver shells.
 
 Each module is independently usable. A consumer who only needs KLV decode
 can pull in `srt-core` and use `klv::st0601::decode` without touching the
@@ -59,12 +61,15 @@ consumer who only wants the SRT socket — for an entirely different
 streaming protocol on top — can use `srt::Socket` and `srt::Listener`
 directly.
 
-`pipeline::*` is the only module that depends on the other three. It is
+`pipeline::*` is the only module that depends on the other four. It is
 deliberately the thinnest layer in the crate: its job is composition, not
-new behaviour. The shells delegate framing to `mpegts::mux::Muxer`,
-metadata typing to `klv::st0601` / `klv::st0605` / `klv::st1910`, and
-wire transport to a `Transport` implementation — usually
-`SrtTransport` over `srt::Socket`.
+new behaviour. The send shells delegate framing to `mpegts::mux::Muxer`
+and wire transport to a `Transport` implementation; the receive shells
+delegate framing recovery to `mpegts::demux::Demuxer` and bytes-in to a
+`RecvTransport` implementation. Metadata typing for both directions is
+`klv::st0601` / `klv::st0605` / `klv::st1910`. The canonical
+`Transport` + `RecvTransport` impl is `SrtTransport` over `srt::Socket`
+— the same wrapper handles both directions on a connected socket.
 
 ## The pipeline composition model
 
@@ -135,6 +140,74 @@ construction; one `send` either lands as one SRT message or returns an
 error. The full mechanics of each shell are covered in
 [guide-pipeline.md](guide-pipeline.md).
 
+## The receive pipeline
+
+```
+              ┌───────────────────────────────────────┐
+              │  RawReceiver  /  TsReceiver           │
+              │  Receiver  (full demux)               │
+              │  generic over R: RecvTransport        │
+              └──────────────┬────────────────────────┘
+                             │ R: RecvTransport
+              ┌──────────────┴────────────────────────┐
+              │  ManagedReceiveTransport<R>           │  (optional)
+              │  reconnect on Closed/Broken           │
+              └──────────────┬────────────────────────┘
+                             │ R: RecvTransport
+              ┌──────────────┴────────────────────────┐
+              │  SrtTransport (canonical)             │
+              │  Custom RecvTransport impl (yours)    │
+              └───────────────────────────────────────┘
+```
+
+The receive side mirrors the send side. Three shells differ by what
+they emit: `RawReceiver::recv_one` returns one byte vec per call (no
+TS framing), `TsReceiver::next_packet` emits one 188-byte aligned TS
+packet per call (sync recovery internal), `Receiver::recv_event` emits
+one typed `DemuxEvent` per call (full TS sync + PSI parse + PES
+reassembly + NAL split + KLV unwrap). All three are generic over the
+`RecvTransport` trait — the receive-side counterpart to `Transport`,
+exposing `recv_bytes`, `max_payload`, `is_alive`, and `close`.
+`SrtTransport` implements both `Transport` and `RecvTransport`, so the
+same wrapper handles both directions on a connected `srt::Socket`.
+
+`Receiver` is the canonical full-demux shell. It composes
+`TsReceiver → Demuxer` internally and exposes a single `recv_event`
+draining loop. It also implements `Iterator<Item = Result<DemuxEvent,
+ReceiverError>>` so the idiomatic drain pattern is `for result in &mut rx`.
+Iterator termination is the clean-EOF signal: when the underlying
+`RecvTransport` returns `TransportError::Closed`, `Receiver` calls
+`Demuxer::flush` (recovering any trailing PES) and returns `Ok(None)`,
+which the iterator turns into `None`. Peer-disconnect or unrecoverable
+link errors surface as `Err(ReceiverError::Transport(Broken(_)))`;
+strict-mode rejections surface as `Err(ReceiverError::Demux(_))`.
+
+`Receiver::add_byte_sink` is the fan-out hook: register a callback
+(`Box<dyn FnMut(&[u8]) + Send>`), and the callback receives every
+188-byte TS packet pulled from the transport — in registration order,
+before the demuxer parses them. The canonical use case is a
+"write-to-disk + forward-via-RTP + demux-for-KLV" workflow where
+multiple consumers tee off the same byte stream in one pass.
+
+`ManagedReceiveTransport<R>` is the receive-side reconnect decorator,
+sibling to `ManagedTransport<T>`. It implements `RecvTransport`, so it
+slots between any receive shell and the underlying transport
+transparently. **It has no gap buffer** — receive-side bytes that
+never arrived can't be replayed, so the decorator simply restarts the
+recv loop on a fresh transport when the inner returns `Closed` or
+`Broken`. The demuxer-side state (sync alignment, PES reassembly) does
+carry over across reconnect, which costs at most one re-VERIFY pass
+on the syncer.
+
+**Decoupled pairing.** The demuxer surfaces every video AU and every
+KLV record as an independent stream-tagged event with full timing.
+It does **not** pair sync-KLV with video AUs — pairing tolerance,
+sample-and-hold semantics, and multi-stream routing are
+consumer-domain decisions the library can't make correctly for
+everyone. The three canonical pairing patterns live as cookbook
+recipes (12, 13, 14) with runnable example companions
+(`pair_sync_klv.rs`, `tee_disk_and_demux.rs`).
+
 ## Sync vs. async
 
 The public API is sync blocking. `Socket::send` and `Socket::recv` block
@@ -172,10 +245,11 @@ producing.
 The summary below points at the canonical list once; each item maps to
 an entry in [`docs/deferred-features.md`](deferred-features.md).
 
-- `mpegts::demux` — receiver-side TS demuxer. Receivers use FFmpeg / JavaCV / Bento4 / platform demuxers.
-- Audio carriage in `mpegts::mux` — video + KLV only today.
-- Subtitles, captions, and other PMT entries — out of scope; PMT shape is video + KLV.
-- `pipeline::receiver` — receive-side pipeline shell; depends on `mpegts::demux` shipping first.
+- Audio carriage in `mpegts::mux` and typed audio in `mpegts::demux` — video + KLV only today; `SamplePayload::Audio` reserved for additive lift.
+- Subtitle, caption, and auxiliary-data channels — same shape as audio; `SamplePayload::Subtitle` reserved.
+- AV1 / H.266 codec variants — surface as `SamplePayload::Unknown` today; OBU-shaped (AV1) variant requires a cross-codec rework.
+- Multi-program TS in `mpegts::demux` — single PMT only today; `ProgramMap.program_number` carries the number for additive lift.
+- `pipeline::pairing` — opt-in convenience pairing utility; cookbook recipes 12–14 are the canonical patterns until consumers ask for shared substrate.
 - Reactor / async / `srt_epoll_*` — see the sync-vs-async section above.
 - Bonding / connection groups (`SRTO_GROUP*`) — no consumer demand.
 - Other typed MISB sets — ST 0903 VMTI, ST 0806, ST 0102 typed view; pass-through today.

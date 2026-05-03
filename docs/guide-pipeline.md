@@ -449,9 +449,203 @@ re-creating the sender.
 Don't over-engineer this. The typical deployment has one sender per
 process, or a small fixed number of senders each on its own thread.
 
+## Receive side
+
+The receive shells mirror the send shells. They differ by what they
+emit; all three are generic over a `RecvTransport` (the receive
+counterpart to `Transport`).
+
+### Picking a receiver
+
+- **Typed events out → `Receiver`.** Composes `TsReceiver → Demuxer`;
+  emits `DemuxEvent` per call. Auto-flushes the demuxer's reassembly
+  state on `TransportError::Closed`. The default for "I want a stream
+  of NALs and KLV records out of an SRT socket."
+- **TS-aligned packets out → `TsReceiver`.** One 188-byte aligned TS
+  packet per `next_packet` call. Internal sync recovery via the
+  HUNT/VERIFY/LOCKED state machine. Use when you want to feed bytes
+  into your own demuxer (FFmpeg, JavaCV, Bento4).
+- **One byte vec per recv → `RawReceiver`.** No TS framing, no demux —
+  one transport message per `recv_one` call, returned as `Vec<u8>`.
+  Use as the receive counterpart to `RawSender`, or as a building
+  block for tests.
+
+### `Receiver` walkthrough
+
+```rust,ignore
+impl<R: RecvTransport> Receiver<R> {
+    pub fn new(transport: R) -> Self;
+    pub fn with_demux_options(transport: R, options: DemuxerOptions) -> Self;
+    pub fn add_byte_sink(&mut self, sink: ByteSink);
+    pub fn recv_event(&mut self) -> Result<Option<DemuxEvent>, ReceiverError>;
+    pub fn is_alive(&self) -> bool;
+    pub fn close(&mut self);
+}
+```
+
+`Receiver` also implements `Iterator<Item = Result<DemuxEvent,
+ReceiverError>>`, so `for result in &mut rx` is the idiomatic drain
+pattern. Iterator termination (`for` loop simply ends) is the
+clean-EOF signal — `recv_event` returned `Ok(None)` after auto-flushing
+the demuxer.
+
+`ReceiverError` is two-variant: `Transport(TransportError)` for
+transport failures, `Demux(DemuxError)` for strict-mode rejections,
+unrecoverable sync loss, or malformed PES.
+
+```rust,no_run
+use srt_core::mpegts::demux::DemuxEvent;
+use srt_core::pipeline::{Receiver, SrtTransport};
+use srt_core::srt::ListenerBuilder;
+use std::time::Duration;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut listener = ListenerBuilder::new()
+        .latency(Duration::from_millis(120))
+        .bind("0.0.0.0:9000")?;
+    let (socket, _peer) = listener.accept()?;
+    let mut rx = Receiver::new(SrtTransport::new(socket));
+    for item in &mut rx {
+        match item? {
+            DemuxEvent::ProgramMap(m) => println!("PMT streams={}", m.streams.len()),
+            DemuxEvent::Sample { stream, pts, .. } => {
+                println!("Sample PID=0x{:04X} pts={pts}", stream.pid);
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+```
+
+Mirroring [../crates/srt-core/examples/srt_recv_typed.rs](../crates/srt-core/examples/srt_recv_typed.rs).
+
+### `add_byte_sink` fan-out
+
+```rust,ignore
+pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
+
+impl<R: RecvTransport> Receiver<R> {
+    pub fn add_byte_sink(&mut self, sink: ByteSink);
+}
+```
+
+Register a callback that sees every 188-byte TS packet pulled from the
+transport, in registration order, before the demuxer parses them. The
+canonical "save raw `.ts` to disk AND parse for KLV in one pass"
+workflow. Multiple sinks may be registered; each sees the same bytes.
+
+Contract:
+
+- Sinks fire once per TS packet (188 bytes — NOT 1316; the demuxer
+  pulls 1316-byte SRT messages and breaks them down to packet-aligned
+  chunks before the sinks fire).
+- Sinks fire in registration order, all before the demuxer feed.
+- The slice is valid only for the duration of the call. Copy bytes
+  into an owned buffer if they need to outlive the callback.
+- Sinks must not panic — a panic unwinds through `recv_event`.
+- Sinks run synchronously on the receive thread. For high-throughput
+  workflows or expensive work, push to a channel and let a worker
+  thread do the slow work.
+
+Mirroring [../crates/srt-core/examples/tee_disk_and_demux.rs](../crates/srt-core/examples/tee_disk_and_demux.rs).
+
+### `TsReceiver` and `RawReceiver`
+
+```rust,ignore
+impl<R: RecvTransport> TsReceiver<R> {
+    pub fn new(transport: R) -> Self;
+    pub fn next_packet(&mut self) -> Result<[u8; 188], TransportError>;
+    pub fn is_alive(&self) -> bool;
+    pub fn close(&mut self);
+}
+
+impl<R: RecvTransport> RawReceiver<R> {
+    pub fn new(transport: R) -> Self;
+    pub fn recv_one(&mut self) -> Result<Vec<u8>, TransportError>;
+    pub fn is_alive(&self) -> bool;
+    pub fn close(&mut self);
+}
+```
+
+Both are simple drain loops. `TsReceiver` runs the syncer state machine
+internally — feed bytes from any source, get out 188-byte aligned TS
+packets. `RawReceiver` is the simplest possible shell; one transport
+message per call.
+
+### `RecvTransport` trait
+
+```rust,ignore
+pub trait RecvTransport: Send {
+    fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError>;
+    fn max_payload(&self) -> usize;
+    fn is_alive(&self) -> bool;
+    fn close(&mut self) {}
+}
+```
+
+Receive-side counterpart to `Transport`. `SrtTransport` implements
+both — the same wrapper handles both directions on a connected socket.
+`close` is defaulted as a no-op so test mocks and channel-backed
+implementors can opt in only when they own a tear-down resource.
+
+`recv_bytes` returns the number of bytes written. Returns
+`TransportError::Closed` once the transport is closed or the connection
+has been broken; `TransportError::Backpressure` on a recv timeout
+(transport still alive, caller may retry).
+
+### `ManagedReceiveTransport<R>`
+
+```rust,ignore
+impl<R: RecvTransport> ManagedReceiveTransport<R> {
+    pub fn new(
+        inner: R,
+        factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,
+        policy: ReconnectPolicy,
+    ) -> Self;
+}
+```
+
+Sibling to `ManagedTransport<T>` for the receive direction — same
+factory-closure + `ReconnectPolicy` cadence pattern.
+
+**No gap buffer.** Receive-side bytes that never arrived can't be
+replayed, so the decorator simply restarts the recv loop on a fresh
+transport when the inner returns `Closed` or `Broken`. The demuxer-side
+state (sync alignment, PES reassembly) carries over across reconnect,
+which costs at most one re-VERIFY pass on the syncer.
+
+The factory is `Box<dyn FnMut + Send>` rather than the send-side
+`Arc<dyn Fn + Send + Sync>` because `recv_bytes(&mut self, …)` is
+exclusive-mutable — there's no concurrent close-from-any-thread
+requirement to design around.
+
+### Stream-end contract
+
+The receive surface distinguishes three end-of-stream signals:
+
+- **Iterator termination (`for` loop ends naturally).** The clean-EOF
+  signal. Fires when the underlying `RecvTransport` returns
+  `TransportError::Closed`, which `Receiver::recv_event` translates
+  into `Ok(None)` after first calling `Demuxer::flush()` to recover
+  any trailing PES. Loop callers do not see `Closed` as an `Err`.
+- **`Err(ReceiverError::Transport(TransportError::Broken(_)))`.** Peer-
+  initiated cleanup or unrecoverable link. `SrtTransport` collapses
+  these into one `Broken` surface by design — it lets a managed-receive
+  decorator distinguish a self-initiated close (`Closed`) from a peer-
+  initiated break (`Broken`). On `Broken` the demuxer is NOT auto-
+  flushed (the receive thread can't tell mid-stream hiccup from a
+  clean end).
+- **`Err(ReceiverError::Demux(_))`.** Strict-mode rejection or
+  malformed PES. Re-entry into `recv_event` after a `MalformedPes` is
+  discouraged — the demuxer's reassembly state is undefined past a bad
+  PES header. Treat as stream-fatal until lenient PES recovery lands.
+
 ## Examples
 
-Four runnable examples cover the pipeline surface:
+Eight runnable examples cover the pipeline surface — four send, four receive.
+
+Send side:
 
 - [../crates/srt-core/examples/pipeline_send_to_socket.rs](../crates/srt-core/examples/pipeline_send_to_socket.rs)
   — `Sender` → `SrtTransport` → connected SRT socket. The canonical
@@ -465,3 +659,17 @@ Four runnable examples cover the pipeline surface:
 - [../crates/srt-core/examples/custom_transport.rs](../crates/srt-core/examples/custom_transport.rs)
   — implementing the `Transport` trait against an in-memory byte
   collector. Template for any non-SRT sink.
+
+Receive side:
+
+- [../crates/srt-core/examples/srt_recv_typed.rs](../crates/srt-core/examples/srt_recv_typed.rs)
+  — `Receiver` → `SrtTransport` → typed `DemuxEvent` stream from a
+  live SRT peer. Mirror of `pipeline_send_to_socket.rs`.
+- [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs)
+  — `Demuxer` driven by a file (no transport). Triage-grade
+  diagnostic for any `.ts` capture.
+- [../crates/srt-core/examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs)
+  — nearest-PTS pairing of KLV records with video AUs (Cookbook §12).
+- [../crates/srt-core/examples/tee_disk_and_demux.rs](../crates/srt-core/examples/tee_disk_and_demux.rs)
+  — `add_byte_sink` fan-out: write `.ts` to disk while consuming
+  typed events, in a single pass.

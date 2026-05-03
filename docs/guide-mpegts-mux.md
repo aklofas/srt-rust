@@ -13,10 +13,11 @@ a function of inputs only, with no wall-clock dependency, so the same
 input sequence produces the same output bytes regardless of how the
 caller paces its calls.
 
-This is sender-only. Receiver-side TS demux is on the deferred-
-features list — see [`mpegts::demux` in deferred-features.md](deferred-features.md).
-Receivers use FFmpeg / Bento4 / JavaCV / platform demuxers to recover
-the elementary streams.
+This is the sender-side guide. The symmetric receiver-side guide is
+[guide-mpegts-demux.md](guide-mpegts-demux.md) — `mpegts::demux` ships
+a Rust-native TS demuxer covering the same wire shape. Consumers can
+also feed extracted bytes to FFmpeg / Bento4 / JavaCV / platform
+demuxers if they prefer.
 
 ## `Config` shape
 
@@ -334,7 +335,4 @@ Each item below maps to an entry in
 - Multi-stream `mpegts::mux` (multiple video PIDs / multiple KLV PIDs
   per output TS) — `Config` is multi-stream-shaped; the cap lifts
   additively when a consumer needs it. See
-  [deferred-features.md](deferred-features.md).
-- `mpegts::demux` — receiver-side TS demuxer. Receivers use FFmpeg /
-  Bento4 / JavaCV / platform demuxers. See
   [deferred-features.md](deferred-features.md).

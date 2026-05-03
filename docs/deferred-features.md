@@ -4,44 +4,33 @@ Things deliberately out of scope today with a clear path back if they
 become load-bearing. Each entry records the reason it was deferred and
 the trigger that would unblock it.
 
-## `mpegts::demux` — receiver-side TS demuxer in the Rust core
+## Audio carriage in `mpegts::mux` and `mpegts::demux`
 
-- **Status:** Not implemented.
-- **Why deferred:** Receiver-side TS demux is well-served by FFmpeg /
-  Bento4 / Media3 / AVFoundation. A Rust-native demux would duplicate
-  that work without producing a better demux for the consumers that
-  exist today.
-- **Trigger to revisit:** A consumer that can't use FFmpeg or Bento4
-  for footprint, licensing, or embedded-target reasons.
-
-## Audio carriage in `mpegts::mux`
-
-- **Status:** Not implemented; muxer carries video + KLV only.
+- **Status:** Sender-side `mpegts::mux` carries video + KLV only.
+  Receiver-side `mpegts::demux` reserves audio surface in
+  `SamplePayload::Audio { codec: AudioCodec, .. }`; `AudioCodec`
+  exists today as an enum with a single hidden `__Reserved` variant
+  so a future typed value (e.g. `Aac`) lands additively rather than
+  as a breaking change.
 - **Why deferred:** Gimbaled-platform streams typically deliver video
   plus KLV with no audio track. Adding audio speculatively means
   guessing codec, framing, and PTS-sync questions that no shipping
-  consumer is asking.
+  consumer is asking. Adding the typed `AudioCodec` variants and the
+  decode path is mechanical when one is asked for.
 - **Trigger to revisit:** A consumer ships requiring synchronized
   audio in the same TS as the video and KLV.
 
-## Subtitle, caption, and auxiliary-data channels in `mpegts::mux`
+## Subtitle, caption, and auxiliary-data channels in `mpegts::mux` and `mpegts::demux`
 
-- **Status:** Not implemented.
+- **Status:** Same shape as audio — sender side does not emit;
+  receiver side reserves `SamplePayload::Subtitle { codec: SubtitleCodec, .. }`
+  with `SubtitleCodec` carrying a single hidden `__Reserved` variant.
 - **Why deferred:** Same situation as audio — no shipping consumer
   asks for them. The shapes also diverge enough across codecs (DVB
   subtitling, CEA-608/708, teletext, ARIB) that "generic auxiliary
   track" is the wrong abstraction.
 - **Trigger to revisit:** A specific channel type asked for by a
   consumer, designed against that channel's actual semantics.
-
-## `pipeline::receiver` — receive-side composition convenience
-
-- **Status:** Not implemented.
-- **Why deferred:** Depends on `mpegts::demux`. Without a Rust-native
-  demuxer, the receive side is whatever the binding language assembles
-  itself — SRT bytes feed into the consumer's TS demuxer of choice,
-  which feeds into a KLV decoder.
-- **Trigger to revisit:** Ships when `mpegts::demux` ships.
 
 ## Async / reactor exposure
 
@@ -163,6 +152,55 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A consumer needs multiple video PIDs or
   multiple KLV PIDs in one TS. The cap is the only thing that needs
   to lift; the API shape is already right.
+
+## Typed SPS / VPS / PPS payload parser
+
+- **Status:** Not implemented; SPS/VPS/PPS surface as ordinary
+  `NalUnit::H264 { nal_type: 7, .. }` / `NalUnit::H265 { nal_type: 32 or 33, .. }`
+  with raw RBSP payload. Consumers needing width / height / profile /
+  level parse the RBSP themselves (e.g. with `h264-reader`,
+  `h265-parser`).
+- **Why deferred:** The `mpegts::demux` ship surfaces NAL boundaries +
+  typed headers; consumers wanting frame dimensions reach for an
+  in-tree codec library. Adding a dependency-free typed SPS parser
+  duplicates existing well-trodden code.
+- **Trigger to revisit:** A consumer asks for resolution / profile /
+  level on `Sample::Video` without wanting to embed a codec library.
+
+## `pipeline::pairing` — opt-in convenience pairing utility
+
+- **Status:** Not implemented; consumers pair sync-KLV ↔ video AUs and
+  sample-and-hold async-KLV themselves. Three cookbook recipes
+  (`docs/cookbook.md` 12–14) cover the canonical patterns in ~20 lines
+  each.
+- **Why deferred:** Per the demux spec §4 (decoupled-pairing decision),
+  pairing is a consumer-domain decision. A library-side helper would
+  abstract over choices the library can't make correctly (tolerance
+  windows, sample-and-hold semantics, multi-stream routing). The
+  cookbook recipes are the recommended path until consumers ask for
+  more.
+- **Trigger to revisit:** Multiple consumers reimplement the same
+  nearest-PTS pairing; converging strategies become a candidate for
+  shared substrate.
+
+## Multi-program TS in `mpegts::demux`
+
+- **Status:** Single-program TS only (one PMT). `ProgramMap` carries
+  `program_number` so multi-program lifts additively.
+- **Why deferred:** No current consumer ships a multi-program TS.
+- **Trigger to revisit:** A consumer needs to separate-and-route
+  multiple programs from a single TS.
+
+## AV1 / H.266 codec variants on `SamplePayload::Video`
+
+- **Status:** `VideoCodec` covers H.264 + H.265. Other codecs surface
+  as `SamplePayload::Unknown { stream_type, raw }`.
+- **Why deferred:** No current consumer asks for AV1 / H.266 carriage.
+  AV1 specifically is OBU-shaped (not NAL-shaped), so adding it
+  requires either a separate `SamplePayload::Video` shape with
+  `Vec<Obu>` instead of `Vec<NalUnit>`, or a cross-codec rework of the
+  video payload type. Either is bigger than v1 demuxer scope.
+- **Trigger to revisit:** A consumer ships AV1 or H.266 in MPEG-TS.
 
 ## Rustdoc lift to docs.rs via `#![doc = include_str!(...)]`
 

@@ -2,7 +2,7 @@
 
 Cross-platform SRT-based libraries for live video streaming from **gimbaled platforms** — drones (rotary and fixed-wing UAVs), manned fixed-wing aircraft with sensor pods, helicopters with EO/IR turrets, and other manned/unmanned platforms carrying stabilized imaging payloads.
 
-**Status:** Sender pipeline complete on Linux x86_64. `srt-sys` (raw FFI + vendored mbedTLS), `srt-core::srt` (safe `Socket` / `Listener` / config + builder API), `srt-core::klv` (typed MISB ST 0601 + ST 0605 over a generic SMPTE / MISB substrate), `srt-core::mpegts::mux` (single-program TS muxer with H.264/H.265 video + ST 0601 KLV per ST 1402 / ST 1910), and `srt-core::pipeline` (composition layer: `Transport` trait, `Sender` / `TsSender` / `RawSender`, reconnecting `ManagedTransport`) are all implemented. `srt-c` exposes the sender pipeline as a stable C ABI (`cdylib` + `staticlib` + cbindgen-generated `srtc.h` + `srtc.pc`). Workspace ships ~313 tests across both feature modes. The remaining binding crates (`srt-jni`, `srt-uniffi`) are next on the roadmap.
+**Status:** Sender + receiver pipelines complete on Linux x86_64. `srt-sys` (raw FFI + vendored mbedTLS), `srt-core::srt` (safe `Socket` / `Listener` / config + builder API), `srt-core::klv` (typed MISB ST 0601 + ST 0605 over a generic SMPTE / MISB substrate), `srt-core::mpegts::mux` (single-program TS muxer with H.264/H.265 video + ST 0601 KLV per ST 1402 / ST 1910), `srt-core::mpegts::demux` (receiver-side TS demuxer — bytes in, typed `DemuxEvent` out; lenient by default with four-tier `StrictMode` ladder; AU-cell unwrap; consumer-side pairing via cookbook recipes), and `srt-core::pipeline` (composition layer: `Transport` + `RecvTransport` traits, `Sender` / `TsSender` / `RawSender`, `Receiver` / `TsReceiver` / `RawReceiver`, reconnecting `ManagedTransport` + `ManagedReceiveTransport`, `add_byte_sink` fan-out for tee patterns) are all implemented. `srt-c` exposes the sender pipeline as a stable C ABI (`cdylib` + `staticlib` + cbindgen-generated `srtc.h` + `srtc.pc`). Workspace ships hundreds of tests across both feature modes. The remaining binding crates (`srt-jni`, `srt-uniffi`) are next on the roadmap.
 
 ## Scope
 
@@ -15,7 +15,7 @@ For a feature-by-feature support matrix — SRT options, MISB specs, typed ST 06
 
 ## Architecture
 
-A Rust core wrapping libsrt via FFI, with bindings for JVM (JNI, JDK 17+), iOS/Android (UniFFI), and embedded Linux (cdylib + cbindgen). MPEG-TS demux stays out of scope — receivers use FFmpeg / JavaCV / Bento4 / platform demuxers and feed extracted KLV bytes through `srt_core::klv::st0601::decode` (or `st0605::decode` for Precision Time Stamp Packs).
+A Rust core wrapping libsrt via FFI, with bindings for JVM (JNI, JDK 17+), iOS/Android (UniFFI), and embedded Linux (cdylib + cbindgen). Both directions are first-class: `mpegts::mux` muxes encoded NALs + KLV into a TS stream; `mpegts::demux` reverses it (bytes in, typed `DemuxEvent` stream out — with sync recovery, AU cell unwrap, NAL split, and lenient handling of real-world non-conformance). Consumers can still feed extracted bytes to FFmpeg / JavaCV / Bento4 if they prefer, but Rust-native demux is now the default.
 
 ## Documentation
 
@@ -26,7 +26,8 @@ The repo's documentation lives under [`docs/`](docs/):
 - **[`guide-srt.md`](docs/guide-srt.md)** — `Socket` / `Listener`, encryption, latency, stats, error model.
 - **[`guide-klv.md`](docs/guide-klv.md)** — generic substrate plus typed ST 0601 / ST 0605 / ST 1910 layers; the four-rung decode strictness ladder.
 - **[`guide-mpegts-mux.md`](docs/guide-mpegts-mux.md)** — `Config` / `ConfigBuilder`, codec + KLV-mode selection, PCR/PSI cadence, push/pull contract.
-- **[`guide-pipeline.md`](docs/guide-pipeline.md)** — picking among `Sender` / `TsSender` / `RawSender`; the `Transport` trait; `ManagedTransport` reconnect + gap buffer.
+- **[`guide-mpegts-demux.md`](docs/guide-mpegts-demux.md)** — `Demuxer`, `DemuxEvent`, `StrictMode` ladder, override surface, robustness behaviours, decoupled-pairing rationale.
+- **[`guide-pipeline.md`](docs/guide-pipeline.md)** — picking among `Sender` / `TsSender` / `RawSender` (send) and `Receiver` / `TsReceiver` / `RawReceiver` (receive); the `Transport` and `RecvTransport` traits; `ManagedTransport` / `ManagedReceiveTransport` reconnect; `add_byte_sink` fan-out.
 - **[`cookbook.md`](docs/cookbook.md)** — recipes linking to runnable examples.
 - **[`troubleshooting.md`](docs/troubleshooting.md)** — diagnose build failures, connection failures, KLV rejection, TS framing issues, reconnect loops.
 - **[`deferred-features.md`](docs/deferred-features.md)** — what's not yet supported and the trigger conditions to revisit.

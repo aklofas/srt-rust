@@ -43,10 +43,8 @@ pub enum KlvStreamType {
 
 /// One elementary stream in the muxer's output TS.
 ///
-/// [`Config::validate`] enforces "≤1 video + ≤1 KLV" today; multi-stream
-/// support is Path 3 (additive, planned). The shape is multi-stream-from-
-/// day-one so Path 3 lifts the limit without breaking ABI for existing
-/// callers.
+/// [`Config::validate`] caps at 16 video + 16 KLV streams, with at least
+/// one of either kind required.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamSpec {
     Video {
@@ -126,17 +124,15 @@ impl KlvStreamHandle {
 
 /// Muxer construction parameters.
 ///
-/// **Multi-stream-shaped from day one.** [`Config::validate`] enforces
-/// "at most one Video stream and at most one Klv stream; at least one
-/// of either" today. Path 3 lifts the limit additively without
-/// disturbing existing callers.
+/// **Multi-stream.** [`Config::validate`] enforces at most 16 Video and
+/// 16 Klv streams, with at least one of either kind required.
 ///
 /// Construct with [`Config::builder()`] for ergonomic chaining, or directly
 /// with field updates over [`Config::default()`] for the canonical
 /// single-video-plus-single-KLV case.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Elementary streams the muxer carries. Today: ≤1 Video, ≤1 Klv, ≥1 of either.
+    /// Elementary streams the muxer carries. ≤16 Video, ≤16 Klv, ≥1 of either.
     pub streams: Vec<StreamSpec>,
 
     /// PID carrying the PCR. `None` = use the first video stream's PID, or
@@ -194,7 +190,11 @@ impl Config {
             ));
         }
 
-        // ≤1 video and ≤1 klv. Path 3 lifts this restriction additively.
+        // Cap at 16 video + 16 KLV streams. Well above realistic
+        // gimbaled-platform topologies (EO + IR + maybe IR-narrow + a
+        // depth channel = 4 in the wild today). Lift trivially if asked.
+        const VIDEO_CAP: usize = 16;
+        const KLV_CAP: usize = 16;
         let mut video_count = 0;
         let mut klv_count = 0;
         for s in &self.streams {
@@ -203,15 +203,17 @@ impl Config {
                 StreamSpec::Klv { .. } => klv_count += 1,
             }
         }
-        if video_count > 1 {
-            return Err(MuxError::InvalidConfig(
-                "muxer accepts at most one video stream",
-            ));
+        if video_count > VIDEO_CAP {
+            return Err(MuxError::TooManyVideoStreams {
+                count: video_count,
+                cap: VIDEO_CAP,
+            });
         }
-        if klv_count > 1 {
-            return Err(MuxError::InvalidConfig(
-                "muxer accepts at most one klv stream",
-            ));
+        if klv_count > KLV_CAP {
+            return Err(MuxError::TooManyKlvStreams {
+                count: klv_count,
+                cap: KLV_CAP,
+            });
         }
 
         // Per-stream validation.
@@ -461,7 +463,9 @@ impl Muxer {
     pub fn new(config: Config) -> Result<Self, MuxError> {
         config.validate()?;
 
-        // Build per-stream state in declaration order.
+        // Build per-stream state in declaration order. Either vec may be
+        // empty (video-only or KLV-only output is valid as of Path 3);
+        // Config::validate enforces ≥1 stream of either kind.
         let video_streams: Vec<VideoStreamState> = config
             .video_streams()
             .map(|(pid, codec)| VideoStreamState { pid, codec })
@@ -474,19 +478,6 @@ impl Muxer {
                 carries_pts,
             })
             .collect();
-
-        // The muxer requires both video and KLV streams today. Path 3
-        // lifts this in Task 7; for now the existing v0 contract holds.
-        if video_streams.is_empty() {
-            return Err(MuxError::InvalidConfig(
-                "muxer requires exactly one video stream",
-            ));
-        }
-        if klv_streams.is_empty() {
-            return Err(MuxError::InvalidConfig(
-                "muxer requires exactly one klv stream",
-            ));
-        }
 
         let pcr_pid = config.resolved_pcr_pid();
         let pcr_interval_27mhz = (config.pcr_interval_ms as u64) * 27_000;
@@ -1252,44 +1243,6 @@ mod tests {
     }
 
     #[test]
-    fn config_rejects_two_video_streams() {
-        let cfg = Config::builder()
-            .add_video(0x1011, VideoCodec::H264)
-            .add_video(0x1021, VideoCodec::H265)
-            .add_klv(0x1031, KlvStreamType::PrivateData, false)
-            .build();
-        let err = cfg.unwrap_err();
-        assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("at most one video")));
-    }
-
-    #[test]
-    fn config_rejects_two_video_same_pid_with_count_error_first() {
-        // When the caller passes two video streams sharing a PID, the
-        // count check fires before the distinct-PIDs check. Pinned here so
-        // the validation order is part of the contract — callers debugging
-        // this error see "at most one video stream" rather than "PIDs must
-        // all be distinct".
-        let cfg = Config::builder()
-            .add_video(0x1011, VideoCodec::H264)
-            .add_video(0x1011, VideoCodec::H265)
-            .add_klv(0x1031, KlvStreamType::PrivateData, false)
-            .build();
-        let err = cfg.unwrap_err();
-        assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("at most one video")));
-    }
-
-    #[test]
-    fn config_rejects_two_klv_streams() {
-        let cfg = Config::builder()
-            .add_video(0x1011, VideoCodec::H264)
-            .add_klv(0x1031, KlvStreamType::PrivateData, false)
-            .add_klv(0x1032, KlvStreamType::PrivateData, true)
-            .build();
-        let err = cfg.unwrap_err();
-        assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("at most one klv")));
-    }
-
-    #[test]
     fn config_rejects_duplicate_pids() {
         let cfg = Config::builder()
             .add_video(0x1011, VideoCodec::H264)
@@ -1425,5 +1378,74 @@ mod tests {
             }
             other => panic!("expected InvalidStreamHandle, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn config_validate_accepts_dual_video_plus_klv() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264) // EO
+            .add_video(0x1021, VideoCodec::H264) // IR
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .build();
+        assert!(cfg.is_ok(), "dual-video + KLV must validate");
+    }
+
+    #[test]
+    fn config_validate_accepts_dual_klv_plus_video() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .add_klv(0x1041, KlvStreamType::PrivateData, true)
+            .build();
+        assert!(cfg.is_ok(), "video + dual-KLV must validate");
+    }
+
+    #[test]
+    fn config_validate_rejects_seventeen_video_streams() {
+        let mut b = Config::builder();
+        for i in 0..17u16 {
+            b = b.add_video(0x1010 + i, VideoCodec::H264);
+        }
+        b = b.add_klv(0x1100, KlvStreamType::PrivateData, false);
+        let err = b.build().unwrap_err();
+        assert!(
+            matches!(err, MuxError::TooManyVideoStreams { count: 17, cap: 16 }),
+            "expected TooManyVideoStreams {{ 17, 16 }}, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn config_validate_rejects_seventeen_klv_streams() {
+        let mut b = Config::builder().add_video(0x1011, VideoCodec::H264);
+        for i in 0..17u16 {
+            b = b.add_klv(0x1100 + i, KlvStreamType::PrivateData, false);
+        }
+        let err = b.build().unwrap_err();
+        assert!(
+            matches!(err, MuxError::TooManyKlvStreams { count: 17, cap: 16 }),
+            "expected TooManyKlvStreams {{ 17, 16 }}, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn muxer_new_accepts_video_only() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .build()
+            .unwrap();
+        let mux = Muxer::new(cfg);
+        assert!(mux.is_ok(), "video-only muxer must construct");
+    }
+
+    #[test]
+    fn muxer_new_accepts_klv_only() {
+        // KLV-only requires PCR pinned to KLV PID (it carries PCR).
+        let cfg = Config::builder()
+            .add_klv(0x1031, KlvStreamType::PrivateData, true)
+            .pcr_pid(0x1031)
+            .build()
+            .unwrap();
+        let mux = Muxer::new(cfg);
+        assert!(mux.is_ok(), "klv-only muxer must construct");
     }
 }

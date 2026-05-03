@@ -25,6 +25,8 @@ include = [
     "SrtcKlvStreamType",
     "SrtcTsFramingMode",
     "SrtcOverflowPolicy",
+    "SrtcVideoStreamHandle",
+    "SrtcKlvStreamHandle",
 ]
 
 [export.rename]
@@ -47,6 +49,9 @@ include = [
 "SrtcRawSenderConfig"   = "srtc_raw_sender_config_t"
 "SrtcReconnectPolicy"   = "srtc_reconnect_policy_t"
 "SrtcTsSenderStats"     = "srtc_ts_sender_stats_t"
+# Stream handle typedefs (transparent u32; idiomatic C _t suffix)
+"SrtcVideoStreamHandle" = "srtc_video_stream_handle_t"
+"SrtcKlvStreamHandle"   = "srtc_klv_stream_handle_t"
 
 [enum]
 prefix_with_name = true

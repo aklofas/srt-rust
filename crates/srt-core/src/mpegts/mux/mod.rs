@@ -678,6 +678,40 @@ impl Muxer {
         max_packets * 188
     }
 
+    /// All `VideoStreamHandle`s for this muxer, in declaration order.
+    /// Returns one handle per `StreamSpec::Video` in the original config.
+    pub fn video_handles(&self) -> Vec<VideoStreamHandle> {
+        (0..self.video_streams.len())
+            .map(VideoStreamHandle::new)
+            .collect()
+    }
+
+    /// All `KlvStreamHandle`s for this muxer, in declaration order.
+    pub fn klv_handles(&self) -> Vec<KlvStreamHandle> {
+        (0..self.klv_streams.len())
+            .map(KlvStreamHandle::new)
+            .collect()
+    }
+
+    /// Handle for the i-th video stream, or `None` if out of range.
+    /// Convenience for callers who add streams in known order.
+    pub fn video_stream_handle(&self, index: usize) -> Option<VideoStreamHandle> {
+        if index < self.video_streams.len() {
+            Some(VideoStreamHandle::new(index))
+        } else {
+            None
+        }
+    }
+
+    /// Handle for the i-th KLV stream, or `None` if out of range.
+    pub fn klv_stream_handle(&self, index: usize) -> Option<KlvStreamHandle> {
+        if index < self.klv_streams.len() {
+            Some(KlvStreamHandle::new(index))
+        } else {
+            None
+        }
+    }
+
     fn psi_due(&self, pts_90khz: i64) -> bool {
         match self.last_psi_emission_pts {
             None => true,
@@ -1248,5 +1282,24 @@ mod tests {
         assert!(format!("{v:?}").contains('2'));
         assert!(format!("{k:?}").contains("Klv"));
         assert!(format!("{k:?}").contains('0'));
+    }
+
+    #[test]
+    fn handles_single_stream_returns_one_each() {
+        let cfg = Config::default();
+        let mux = Muxer::new(cfg).unwrap();
+        let vs = mux.video_handles();
+        let ks = mux.klv_handles();
+        assert_eq!(vs.len(), 1);
+        assert_eq!(ks.len(), 1);
+        assert_eq!(mux.video_stream_handle(0), Some(vs[0]));
+        assert_eq!(mux.klv_stream_handle(0), Some(ks[0]));
+    }
+
+    #[test]
+    fn handles_out_of_range_returns_none() {
+        let mux = Muxer::new(Config::default()).unwrap();
+        assert_eq!(mux.video_stream_handle(1), None);
+        assert_eq!(mux.klv_stream_handle(1), None);
     }
 }

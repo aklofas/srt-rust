@@ -39,3 +39,6 @@
 pub mod common;
 pub mod demux;
 pub mod mux;
+pub mod stats;
+
+pub use stats::StreamStats;

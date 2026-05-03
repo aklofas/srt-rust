@@ -223,6 +223,58 @@ pub fn has_klva_registration(descs: &[RawDescriptor]) -> bool {
         .any(|d| d.tag == 0x05 && d.data.starts_with(b"KLVA"))
 }
 
+/// Extract a human-readable label from a PMT-stream descriptor list.
+///
+/// First match wins, in priority order:
+///   1. Component descriptor (tag 0x50, ETSI EN 300 468 §6.2.8) — body
+///      starting at offset 6 is UTF-8 free text. ISO/IEC 13818-1 Annex.
+///   2. Stream Identifier descriptor (tag 0x52, ETSI EN 300 468 §6.2.40) —
+///      single `component_tag` byte rendered as `"tag=NN"`.
+///   3. Metadata descriptor (tag 0x26) — when present, label is `"KLV"`
+///      (the descriptor itself signals metadata streams without carrying
+///      free-text labels in the common shapes we see).
+///   4. ISO 639 Language descriptor (tag 0x0A) — first 3 bytes are an
+///      ISO 639-2 language code.
+///
+/// Returns `None` if no usable descriptor is found. Truncated /
+/// malformed bodies fall through to the next descriptor.
+pub fn extract_user_label(descs: &[RawDescriptor]) -> Option<String> {
+    // 1. Component descriptor — UTF-8 free text after the 6-byte header.
+    if let Some(d) = descs.iter().find(|d| d.tag == 0x50) {
+        if d.data.len() > 6 {
+            let raw = &d.data[6..];
+            if let Ok(s) = std::str::from_utf8(raw) {
+                let trimmed = s.trim_end_matches('\0').trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+    // 2. Stream Identifier — single component_tag byte.
+    if let Some(d) = descs.iter().find(|d| d.tag == 0x52) {
+        if let Some(&t) = d.data.first() {
+            return Some(format!("tag={t}"));
+        }
+    }
+    // 3. Metadata descriptor — generic "KLV" label.
+    if descs.iter().any(|d| d.tag == 0x26) {
+        return Some("KLV".to_string());
+    }
+    // 4. ISO 639 Language — first 3 bytes.
+    if let Some(d) = descs.iter().find(|d| d.tag == 0x0A) {
+        if d.data.len() >= 3 {
+            if let Ok(s) = std::str::from_utf8(&d.data[..3]) {
+                let trimmed = s.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Returns the `linked_pid` from a `metadata_descriptor` if present, else
 /// `None`. The descriptor's structure is per H.222.0 §2.6.58; encoders
 /// vary on whether they include the linked PID at all.
@@ -542,5 +594,52 @@ mod pmt_tests {
         // tag=5, len=10 declared but only 4 bytes follow.
         let buf = vec![0x05, 0x0A, b'K', b'L', b'V', b'A'];
         assert!(walk_descriptors(&buf).is_err());
+    }
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::*;
+
+    #[test]
+    fn extract_user_label_picks_component_descriptor() {
+        // Component descriptor (tag 0x50): 4 bytes header + UTF-8 text body.
+        // Body shape: stream_content(4) + component_type(8) + component_tag(8) + ISO_639(24) + text...
+        // We accept the trailing text as the label.
+        let descs = vec![RawDescriptor {
+            tag: 0x50,
+            data: vec![
+                0x09, 0x07, // stream_content + component_type
+                0x01, // component_tag
+                b'e', b'n', b'g', // ISO 639 language
+                b'E', b'O', b' ', b'1', b'0', b'8', b'0', b'p',
+            ],
+        }];
+        assert_eq!(extract_user_label(&descs).as_deref(), Some("EO 1080p"));
+    }
+
+    #[test]
+    fn extract_user_label_falls_back_to_iso639() {
+        // ISO 639 Language descriptor (tag 0x0A): 3-byte language code + 1 audio_type
+        // We take the language code as the label when nothing better is present.
+        let descs = vec![RawDescriptor {
+            tag: 0x0A,
+            data: vec![b'e', b'n', b'g', 0x00],
+        }];
+        assert_eq!(extract_user_label(&descs).as_deref(), Some("eng"));
+    }
+
+    #[test]
+    fn extract_user_label_returns_none_when_nothing_matches() {
+        let descs = vec![RawDescriptor {
+            tag: 0x05,
+            data: b"KLVA".to_vec(),
+        }];
+        assert_eq!(extract_user_label(&descs), None);
+    }
+
+    #[test]
+    fn extract_user_label_empty_descriptors() {
+        assert_eq!(extract_user_label(&[]), None);
     }
 }

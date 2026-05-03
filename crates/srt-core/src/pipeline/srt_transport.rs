@@ -6,7 +6,7 @@
 //! the canonical reconnecting setup.
 
 use crate::error::{SendError, SrtErrno};
-use crate::pipeline::transport::{Transport, TransportError};
+use crate::pipeline::transport::{Transport, TransportCancel, TransportError};
 use crate::srt::Socket;
 
 pub struct SrtTransport {
@@ -101,11 +101,10 @@ impl Transport for SrtTransport {
         }
     }
 
-    fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
-        self.socket.as_ref().map(|s| {
-            Box::new(SrtCancel(s.cancel_handle()))
-                as Box<dyn crate::pipeline::transport::TransportCancel>
-        })
+    fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
+        self.socket
+            .as_ref()
+            .map(|s| Box::new(SrtCancel(s.cancel_handle())) as Box<dyn TransportCancel>)
     }
 }
 
@@ -156,11 +155,10 @@ impl crate::pipeline::recv_transport::RecvTransport for SrtTransport {
         <Self as crate::pipeline::transport::Transport>::close(self);
     }
 
-    fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
-        self.socket.as_ref().map(|s| {
-            Box::new(SrtCancel(s.cancel_handle()))
-                as Box<dyn crate::pipeline::transport::TransportCancel>
-        })
+    fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
+        self.socket
+            .as_ref()
+            .map(|s| Box::new(SrtCancel(s.cancel_handle())) as Box<dyn TransportCancel>)
     }
 }
 
@@ -173,7 +171,7 @@ impl Drop for SrtTransport {
 /// Adapter: wraps `srt::CancelHandle` as a `TransportCancel`.
 struct SrtCancel(crate::srt::CancelHandle);
 
-impl crate::pipeline::transport::TransportCancel for SrtCancel {
+impl TransportCancel for SrtCancel {
     fn cancel(&self) {
         self.0.cancel();
     }

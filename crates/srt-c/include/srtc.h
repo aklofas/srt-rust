@@ -33,6 +33,13 @@
  */
 #define SRTC_VERSION_PATCH 0
 
+/**
+ * Sentinel returned by `srtc_mux_config_add_*_stream` on failure.
+ * On failure, the last-error is also populated; check
+ * `srtc_get_last_error()` for the negative `SRTC_E_*` code.
+ */
+#define SRTC_INVALID_STREAM_HANDLE UINT32_MAX
+
 typedef enum srtc_video_codec {
   SRTC_VIDEO_CODEC_H264 = 0,
   SRTC_VIDEO_CODEC_H265 = 1,
@@ -108,6 +115,25 @@ typedef struct srtc_ts_sender_t srtc_ts_sender_t;
 typedef struct srtc_ts_sender_config_t srtc_ts_sender_config_t;
 
 /**
+ * Opaque per-program ordinal for a video elementary stream. Obtained from
+ * [`srtc_mux_config_add_video_stream`] at config time and reused with the
+ * `_video_to` push siblings on every muxer-owning C variant.
+ *
+ * Handles are stable across the config→open boundary and across managed
+ * reconnects. They are NOT interchangeable between muxers — passing a
+ * handle from one muxer to a different one yields `SRTC_E_INVALID_USAGE`
+ * via `MuxError::InvalidStreamHandle` (the index simply happens to be
+ * out of range on the new muxer in practice).
+ */
+typedef uint32_t srtc_video_stream_handle_t;
+
+/**
+ * Opaque per-program ordinal for a KLV elementary stream. See
+ * [`SrtcVideoStreamHandle`] for semantics.
+ */
+typedef uint32_t srtc_klv_stream_handle_t;
+
+/**
  * Public-ABI mirror of `srt_core::pipeline::TsSenderStats`. Same fields,
  * same units. Caller passes a pointer to a stack-allocated struct;
  * `srtc_ts_sender_get_stats` fills it in.
@@ -137,6 +163,41 @@ int srtc_mux_config_add_klv(struct srtc_mux_config_t *p,
                             uint16_t pid,
                             enum srtc_klv_stream_type stream_type,
                             bool carries_pts);
+
+/**
+ * Add a video elementary stream to the mux config and return its handle.
+ *
+ * Returns the stream handle (a zero-based ordinal) on success. The handle is
+ * stable across the config→open boundary and across managed-sender reconnects,
+ * and can be passed to the `_video_to` push siblings to fan out to a specific
+ * elementary stream.
+ *
+ * Returns `SRTC_INVALID_STREAM_HANDLE` and sets last-error on null pointer.
+ * Cap-violation errors (`TooManyVideoStreams`) surface at `_open` time, not
+ * here, so this function always succeeds on a valid pointer.
+ */
+
+srtc_video_stream_handle_t srtc_mux_config_add_video_stream(struct srtc_mux_config_t *p,
+                                                            uint16_t pid,
+                                                            enum srtc_video_codec codec);
+
+/**
+ * Add a KLV elementary stream to the mux config and return its handle.
+ *
+ * Returns the stream handle (a zero-based ordinal) on success. The handle is
+ * stable across the config→open boundary and across managed-sender reconnects,
+ * and can be passed to the `_klv_to` push siblings to fan out to a specific
+ * elementary stream.
+ *
+ * Returns `SRTC_INVALID_STREAM_HANDLE` and sets last-error on null pointer.
+ * Cap-violation errors (`TooManyKlvStreams`) surface at `_open` time, not
+ * here, so this function always succeeds on a valid pointer.
+ */
+
+srtc_klv_stream_handle_t srtc_mux_config_add_klv_stream(struct srtc_mux_config_t *p,
+                                                        uint16_t pid,
+                                                        enum srtc_klv_stream_type stream_type,
+                                                        bool carries_pts);
 
  int srtc_mux_config_set_pcr_pid(struct srtc_mux_config_t *p, uint16_t pid);
 
@@ -229,6 +290,42 @@ int srtc_mux_sender_send_klv(struct srtc_mux_sender_t *p,
                              size_t len,
                              int64_t pts_90khz);
 
+/**
+ * Push one Annex-B NAL targeting a specific video elementary stream.
+ *
+ * `stream_handle` is obtained from `srtc_mux_config_add_video_stream` at
+ * config time and is stable across the config→open boundary. Out-of-range
+ * handles surface as `SRTC_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream sender, prefer `srtc_mux_sender_send_video` — same
+ * effect, no handle required.
+ */
+
+int srtc_mux_sender_send_video_to(struct srtc_mux_sender_t *p,
+                                  srtc_video_stream_handle_t stream_handle,
+                                  const uint8_t *nal,
+                                  size_t len,
+                                  int64_t pts_90khz,
+                                  bool key_frame);
+
+/**
+ * Push one pre-built KLV blob targeting a specific KLV elementary stream.
+ *
+ * For `KlvStreamType::SynchronousMetadata` streams, callers must
+ * pre-wrap the KLV via `srt_core::klv::st1910::wrap_au_cell` — the
+ * muxer does not auto-wrap.
+ *
+ * On a single-stream sender, prefer `srtc_mux_sender_send_klv` — same
+ * effect, no handle required.
+ */
+
+int srtc_mux_sender_send_klv_to(struct srtc_mux_sender_t *p,
+                                srtc_klv_stream_handle_t stream_handle,
+                                const uint8_t *klv,
+                                size_t len,
+                                int64_t pts_90khz);
+
  void srtc_mux_sender_close(struct srtc_mux_sender_t *p);
 
 /**
@@ -263,6 +360,44 @@ int srtc_managed_mux_sender_send_klv(struct srtc_managed_mux_sender_t *p,
                                      size_t len,
                                      int64_t pts_90khz);
 
+/**
+ * Push one Annex-B NAL targeting a specific video elementary stream on a
+ * managed (auto-reconnecting) sender.
+ *
+ * `stream_handle` is obtained from `srtc_mux_config_add_video_stream` at
+ * config time and is stable across reconnects. Out-of-range handles
+ * surface as `SRTC_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream sender, prefer `srtc_managed_mux_sender_send_video` —
+ * same effect, no handle required.
+ */
+
+int srtc_managed_mux_sender_send_video_to(struct srtc_managed_mux_sender_t *p,
+                                          srtc_video_stream_handle_t stream_handle,
+                                          const uint8_t *nal,
+                                          size_t len,
+                                          int64_t pts_90khz,
+                                          bool key_frame);
+
+/**
+ * Push one pre-built KLV blob targeting a specific KLV elementary stream on
+ * a managed (auto-reconnecting) sender.
+ *
+ * For `KlvStreamType::SynchronousMetadata` streams, callers must
+ * pre-wrap the KLV via `srt_core::klv::st1910::wrap_au_cell` — the
+ * muxer does not auto-wrap.
+ *
+ * On a single-stream sender, prefer `srtc_managed_mux_sender_send_klv` —
+ * same effect, no handle required.
+ */
+
+int srtc_managed_mux_sender_send_klv_to(struct srtc_managed_mux_sender_t *p,
+                                        srtc_klv_stream_handle_t stream_handle,
+                                        const uint8_t *klv,
+                                        size_t len,
+                                        int64_t pts_90khz);
+
  void srtc_managed_mux_sender_close(struct srtc_managed_mux_sender_t *p);
 
 /**
@@ -287,6 +422,42 @@ int srtc_muxer_push_video(struct srtc_muxer_t *p,
  * Push one pre-built KLV blob.
  */
  int srtc_muxer_push_klv(struct srtc_muxer_t *p, const uint8_t *klv, size_t len, int64_t pts_90khz);
+
+/**
+ * Push one Annex-B NAL targeting a specific video elementary stream.
+ *
+ * `handle` is obtained from `srtc_mux_config_add_video_stream` at config
+ * time and is stable across managed-sender reconnects. Out-of-range
+ * handles surface as `SRTC_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream muxer, prefer `srtc_muxer_push_video` — it has the
+ * same effect and doesn't require a handle.
+ */
+
+int srtc_muxer_push_video_to(struct srtc_muxer_t *p,
+                             srtc_video_stream_handle_t handle,
+                             const uint8_t *nal,
+                             size_t len,
+                             int64_t pts_90khz,
+                             bool key_frame);
+
+/**
+ * Push one pre-built KLV blob targeting a specific KLV elementary stream.
+ *
+ * `handle` is obtained from `srtc_mux_config_add_klv_stream`. Same
+ * semantics as `srtc_muxer_push_video_to`.
+ *
+ * For `KlvStreamType::SynchronousMetadata` streams, callers must
+ * pre-wrap the KLV via `srt_core::klv::st1910::wrap_au_cell` (or the
+ * equivalent in their consumer language) — the muxer does NOT auto-wrap.
+ */
+
+int srtc_muxer_push_klv_to(struct srtc_muxer_t *p,
+                           srtc_klv_stream_handle_t handle,
+                           const uint8_t *klv,
+                           size_t len,
+                           int64_t pts_90khz);
 
 /**
  * Drain TS bytes into `out_buf` (capacity `out_cap`). Returns the number

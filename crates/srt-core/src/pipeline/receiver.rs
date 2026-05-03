@@ -153,6 +153,12 @@ impl<R: RecvTransport> Receiver<R> {
     pub fn close(&mut self) {
         self.ts.close();
     }
+
+    /// Snapshot of the underlying recv-transport's cancel handle. Wakes
+    /// a thread parked in `recv_event()`'s `next_packet()` call.
+    pub fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+        self.ts.cancel_handle()
+    }
 }
 
 /// `Receiver` implements `Iterator` so callers can use `for result in &mut rx`

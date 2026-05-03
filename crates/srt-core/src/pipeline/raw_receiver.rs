@@ -79,6 +79,11 @@ impl<R: RecvTransport> RawReceiver<R> {
     pub fn close(&mut self) {
         self.transport.close();
     }
+
+    /// Snapshot of the underlying recv-transport's cancel handle.
+    pub fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+        self.transport.cancel_handle()
+    }
 }
 
 #[cfg(test)]

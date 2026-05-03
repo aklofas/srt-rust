@@ -110,6 +110,12 @@ impl<T: Transport> TsSender<T> {
     pub fn is_alive(&self) -> bool {
         !self.closed && self.transport.is_alive()
     }
+
+    /// Snapshot of the underlying transport's cancel handle. See
+    /// [`crate::pipeline::Sender::cancel_handle`] for the rationale.
+    pub fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+        self.transport.cancel_handle()
+    }
 }
 
 impl<T: Transport> Drop for TsSender<T> {

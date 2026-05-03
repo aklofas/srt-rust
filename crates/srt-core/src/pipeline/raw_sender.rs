@@ -75,6 +75,11 @@ impl<T: Transport> RawSender<T> {
         &self.transport
     }
 
+    /// Snapshot of the underlying transport's cancel handle.
+    pub fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+        self.transport.cancel_handle()
+    }
+
     /// Snapshot stats counters.
     pub fn stats(&self) -> RawSenderStats {
         self.stats

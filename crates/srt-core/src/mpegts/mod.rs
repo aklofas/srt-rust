@@ -38,6 +38,7 @@
 
 pub mod common;
 pub mod demux;
+pub mod descriptors;
 pub mod mux;
 pub mod stats;
 

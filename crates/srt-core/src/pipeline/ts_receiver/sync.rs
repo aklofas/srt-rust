@@ -45,6 +45,13 @@ pub enum SyncState {
 pub struct Syncer {
     state: SyncState,
     buf: Vec<u8>,
+    /// Bytes drained while scanning for alignment (HUNT skips + VERIFY
+    /// single-byte drops on failed confirmation).
+    pub(crate) bytes_skipped_for_sync: u64,
+    /// Number of times the syncer has transitioned from HUNT/VERIFY to
+    /// LOCKED — counts successful lock acquisitions (initial lock-on and
+    /// re-locks after sync loss).
+    pub(crate) resync_events: u64,
 }
 
 impl Syncer {
@@ -53,6 +60,8 @@ impl Syncer {
         Self {
             state: SyncState::Hunt,
             buf: Vec::new(),
+            bytes_skipped_for_sync: 0,
+            resync_events: 0,
         }
     }
 
@@ -68,9 +77,18 @@ impl Syncer {
     /// straddle the reconnect boundary and must not contribute to the new
     /// alignment search. Higher-level shells (a future `ManagedReceiver`)
     /// call this after a transport rebuild before feeding fresh bytes.
+    ///
+    /// Does NOT reset stat counters — those are owned by [`TsReceiver`] and
+    /// reset via [`TsReceiver::reset_stats`].
     pub fn reset(&mut self) {
         self.buf.clear();
         self.state = SyncState::Hunt;
+    }
+
+    /// Zero the sync-recovery counters. Called by `TsReceiver::reset_stats`.
+    pub(crate) fn reset_stats(&mut self) {
+        self.bytes_skipped_for_sync = 0;
+        self.resync_events = 0;
     }
 
     /// Pull the next 188-byte aligned packet from the buffer, if one is ready.
@@ -96,6 +114,7 @@ impl Syncer {
                     // everything before it — those bytes can never be the
                     // start of a valid packet.
                     let pos = self.buf.iter().position(|&b| b == 0x47)?;
+                    self.bytes_skipped_for_sync += pos as u64;
                     self.buf.drain(..pos);
                     // buf[0] is now 0x47. One confirmation seen.
                     self.state = SyncState::Verify { count: 1 };
@@ -120,6 +139,10 @@ impl Syncer {
                         if new_count >= 4 {
                             // Four confirmations — alignment is solid.
                             self.state = SyncState::Locked;
+                            // Count each lock acquisition (initial + re-locks
+                            // after sync loss) as one resync event, mirroring
+                            // the sender-side framing convention.
+                            self.resync_events += 1;
                         } else {
                             self.state = SyncState::Verify { count: new_count };
                         }
@@ -128,6 +151,7 @@ impl Syncer {
                         // Candidate failed. Drop one byte and re-hunt.
                         // We can't just advance 188 bytes because buf[1..188]
                         // may contain a real sync byte for a different alignment.
+                        self.bytes_skipped_for_sync += 1;
                         self.buf.drain(..1);
                         self.state = SyncState::Hunt;
                     }

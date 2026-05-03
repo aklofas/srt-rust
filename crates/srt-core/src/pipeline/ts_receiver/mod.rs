@@ -17,6 +17,27 @@ use crate::pipeline::recv_transport::RecvTransport;
 use crate::pipeline::transport::TransportError;
 use sync::Syncer;
 
+/// Application-level stats for [`TsReceiver`].
+///
+/// Mirrors the shape of [`crate::pipeline::TsSenderStats`] on the receive
+/// side. The sync-recovery counters (`bytes_skipped_for_sync`,
+/// `resync_events`) reflect the [`sync::Syncer`] state machine: bytes
+/// drained while hunting for alignment, and successful lock acquisitions
+/// (initial lock-on and re-locks after losing sync mid-stream).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TsReceiverStats {
+    /// Total bytes returned to callers as valid 188-byte TS packets.
+    pub bytes_received: u64,
+    /// Bytes discarded while scanning for the 0x47 sync byte (HUNT and
+    /// failed-VERIFY drops combined).
+    pub bytes_skipped_for_sync: u64,
+    /// Number of times the syncer transitioned from HUNT/VERIFY to LOCKED —
+    /// counts both the initial lock-on and any re-locks after sync loss.
+    pub resync_events: u64,
+    /// Number of 188-byte TS packets returned to callers.
+    pub packets_received: u64,
+}
+
 /// Receive shell that emits one 188-byte TS packet per call, with automatic
 /// sync recovery.
 ///
@@ -31,6 +52,11 @@ pub struct TsReceiver<R: RecvTransport> {
     /// Reusable scratch buffer sized to `transport.max_payload()` on
     /// construction. Avoids a per-call heap allocation for the recv itself.
     recv_buf: Vec<u8>,
+    /// Transport-level counters (bytes and packets received). The
+    /// sync-recovery counters live in `self.syncer` and are read out on
+    /// each `stats()` call.
+    bytes_received: u64,
+    packets_received: u64,
 }
 
 impl<R: RecvTransport> TsReceiver<R> {
@@ -42,6 +68,8 @@ impl<R: RecvTransport> TsReceiver<R> {
             transport,
             syncer: Syncer::new(),
             recv_buf: vec![0u8; cap],
+            bytes_received: 0,
+            packets_received: 0,
         }
     }
 
@@ -65,6 +93,8 @@ impl<R: RecvTransport> TsReceiver<R> {
                 // the conversion is infallible. A Vec-to-array conversion via
                 // try_into panics only if len != 188, which cannot happen here.
                 let arr: [u8; 188] = pkt.try_into().unwrap();
+                self.bytes_received += 188;
+                self.packets_received += 1;
                 return Ok(arr);
             }
             let n = self.transport.recv_bytes(&mut self.recv_buf)?;
@@ -96,11 +126,122 @@ impl<R: RecvTransport> TsReceiver<R> {
         self.syncer.reset();
     }
 
+    /// Snapshot of application-level receive stats.
+    ///
+    /// The sync-recovery counters are read from the [`sync::Syncer`] (where
+    /// the recovery logic lives); transport counters are owned by this struct.
+    pub fn stats(&self) -> TsReceiverStats {
+        TsReceiverStats {
+            bytes_received: self.bytes_received,
+            packets_received: self.packets_received,
+            bytes_skipped_for_sync: self.syncer.bytes_skipped_for_sync,
+            resync_events: self.syncer.resync_events,
+        }
+    }
+
+    /// Zero all stats counters. Does not affect transport state or sync state.
+    pub fn reset_stats(&mut self) {
+        self.bytes_received = 0;
+        self.packets_received = 0;
+        self.syncer.reset_stats();
+    }
+
     /// Close the underlying transport. Idempotent. After close, `next_packet`
     /// will return `TransportError::Closed` once the syncer's internal buffer
     /// is exhausted. Mirrors `RawReceiver::close`.
     pub fn close(&mut self) {
         self.transport.close();
+    }
+}
+
+#[cfg(test)]
+mod stats_tests {
+    use super::*;
+    use crate::pipeline::transport::TransportError;
+    use std::collections::VecDeque;
+
+    struct MemRecv {
+        queue: VecDeque<Vec<u8>>,
+        alive: bool,
+    }
+
+    impl RecvTransport for MemRecv {
+        fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+            match self.queue.pop_front() {
+                Some(v) => {
+                    let n = v.len().min(buf.len());
+                    buf[..n].copy_from_slice(&v[..n]);
+                    Ok(n)
+                }
+                None => Err(TransportError::Closed),
+            }
+        }
+
+        fn max_payload(&self) -> usize {
+            1316
+        }
+
+        fn is_alive(&self) -> bool {
+            self.alive
+        }
+
+        fn close(&mut self) {
+            self.alive = false;
+        }
+    }
+
+    fn one_packet() -> Vec<u8> {
+        let mut v = vec![0x47];
+        v.extend_from_slice(&[0u8; 187]);
+        v
+    }
+
+    #[test]
+    fn stats_starts_zero() {
+        let r = TsReceiver::new(MemRecv {
+            queue: VecDeque::new(),
+            alive: true,
+        });
+        let st = r.stats();
+        assert_eq!(st.bytes_received, 0);
+        assert_eq!(st.packets_received, 0);
+        assert_eq!(st.bytes_skipped_for_sync, 0);
+        assert_eq!(st.resync_events, 0);
+    }
+
+    #[test]
+    fn stats_increment_on_aligned_packet() {
+        // Feed 5 identical aligned packets so the syncer locks (needs 4
+        // confirmations) and emits the first packet.
+        let mut queue = VecDeque::new();
+        let mut stream = Vec::new();
+        for _ in 0..5 {
+            stream.extend_from_slice(&one_packet());
+        }
+        queue.push_back(stream);
+        let mut r = TsReceiver::new(MemRecv { queue, alive: true });
+        let _ = r.next_packet();
+        let st = r.stats();
+        assert_eq!(st.bytes_received, 188);
+        assert_eq!(st.packets_received, 1);
+    }
+
+    #[test]
+    fn reset_zeros_counters() {
+        let mut queue = VecDeque::new();
+        let mut stream = Vec::new();
+        for _ in 0..5 {
+            stream.extend_from_slice(&one_packet());
+        }
+        queue.push_back(stream);
+        let mut r = TsReceiver::new(MemRecv { queue, alive: true });
+        let _ = r.next_packet();
+        r.reset_stats();
+        let st = r.stats();
+        assert_eq!(st.bytes_received, 0);
+        assert_eq!(st.packets_received, 0);
+        assert_eq!(st.bytes_skipped_for_sync, 0);
+        assert_eq!(st.resync_events, 0);
     }
 }
 

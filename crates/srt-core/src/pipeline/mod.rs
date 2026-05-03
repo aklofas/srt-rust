@@ -32,5 +32,5 @@ pub use recv_transport::RecvTransport;
 pub use sender::{Sender, SenderError};
 pub use srt_transport::SrtTransport;
 pub use transport::{Transport, TransportError};
-pub use ts_receiver::TsReceiver;
+pub use ts_receiver::{TsReceiver, TsReceiverStats};
 pub use ts_sender::{TsFramingMode, TsSender, TsSenderConfig, TsSenderError, TsSenderStats};

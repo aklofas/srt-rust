@@ -108,9 +108,7 @@ impl crate::pipeline::recv_transport::RecvTransport for SrtTransport {
         let socket = self.socket.as_mut().ok_or(TransportError::Closed)?;
         match socket.recv(buf) {
             Ok(n) => Ok(n),
-            Err(RecvError::TimedOut) => {
-                Err(TransportError::Backpressure("recv timed out".into()))
-            }
+            Err(RecvError::TimedOut) => Err(TransportError::Backpressure("recv timed out".into())),
             Err(RecvError::ConnectionBroken) => {
                 // Peer hung up or mid-stream abort. Surface as Broken (not
                 // Closed) so a managed receive decorator can distinguish a
@@ -120,7 +118,10 @@ impl crate::pipeline::recv_transport::RecvTransport for SrtTransport {
                 self.socket = None;
                 Err(TransportError::Broken("connection broken".into()))
             }
-            Err(RecvError::BufferTooSmall { buf_len, message_len }) => {
+            Err(RecvError::BufferTooSmall {
+                buf_len,
+                message_len,
+            }) => {
                 // The caller passed a buf smaller than the incoming message.
                 // Surface as Broken — the receive shell is misconfigured (it
                 // should have sized buf to at least max_payload()).

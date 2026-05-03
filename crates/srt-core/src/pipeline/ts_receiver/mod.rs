@@ -173,9 +173,7 @@ mod tests {
     #[test]
     fn emits_packets_across_transport_messages() {
         // Each transport message is exactly one TS packet.
-        let messages: Vec<Vec<u8>> = (0..5u16)
-            .map(|i| ts_packet(i).to_vec())
-            .collect();
+        let messages: Vec<Vec<u8>> = (0..5u16).map(|i| ts_packet(i).to_vec()).collect();
         let mut rx = TsReceiver::new(MockRecv::new(messages));
 
         let mut got = 0;
@@ -193,9 +191,6 @@ mod tests {
     #[test]
     fn closed_transport_returns_closed() {
         let mut rx = TsReceiver::new(MockRecv::new(vec![]));
-        assert_eq!(
-            rx.next_packet().unwrap_err(),
-            TransportError::Closed,
-        );
+        assert_eq!(rx.next_packet().unwrap_err(), TransportError::Closed,);
     }
 }

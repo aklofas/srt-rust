@@ -9,9 +9,9 @@ use std::collections::VecDeque;
 
 use srt_core::mpegts::demux::DemuxEvent;
 use srt_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use srt_core::pipeline::Receiver;
 use srt_core::pipeline::recv_transport::RecvTransport;
 use srt_core::pipeline::transport::TransportError;
-use srt_core::pipeline::Receiver;
 
 // ---------------------------------------------------------------------------
 // CannedTransport — replay a queue of byte chunks, then signal Closed.
@@ -66,8 +66,8 @@ fn minimal_klv() -> Vec<u8> {
     let body: &[u8] = &[2u8, 8, 0, 0, 0, 0, 0, 0, 0, 0];
     let mut out = Vec::with_capacity(17 + body.len());
     out.extend_from_slice(&[
-        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01,
-        0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00,
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00,
+        0x00,
     ]);
     out.push(body.len() as u8);
     out.extend_from_slice(body);
@@ -185,7 +185,10 @@ fn byte_sinks_see_every_chunk() {
         *cap.lock().unwrap() += b.len();
     }));
 
-    // Drive the receiver to EOF.
+    // Drive the receiver to EOF. CannedTransport only emits Closed (never
+    // Broken), so any Err here would be a Demux strict-mode rejection — none
+    // are expected on a clean stream. The `is_some` discard pattern is safe
+    // *here*; production code should match each `Item` and surface errors.
     while rx.next().is_some() {}
 
     let saw = *captured.lock().unwrap();

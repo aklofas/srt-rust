@@ -7,9 +7,9 @@
 //! generic over a `Transport`; the `ManagedTransport` decorator (in
 //! `pipeline::reconnect`) wraps any of them with reconnect + gap buffering.
 //!
-//! **Receive side:** receive shells (`RawReceiver`, `TsReceiver`, and the
-//! forthcoming `Receiver`) are generic over a `RecvTransport`. `SrtTransport`
-//! implements both `Transport` and `RecvTransport`.
+//! **Receive side:** receive shells (`RawReceiver`, `TsReceiver`, `Receiver`)
+//! are generic over a `RecvTransport`. `SrtTransport` implements both
+//! `Transport` and `RecvTransport`.
 
 pub mod raw_receiver;
 pub mod raw_sender;
@@ -24,7 +24,7 @@ pub mod ts_sender;
 
 pub use raw_receiver::RawReceiver;
 pub use raw_sender::{RawSender, RawSenderConfig};
-pub use receiver::{Receiver, ReceiverError};
+pub use receiver::{ByteSink, Receiver, ReceiverError};
 pub use reconnect::{BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy};
 pub use recv_transport::RecvTransport;
 pub use sender::{Sender, SenderError};

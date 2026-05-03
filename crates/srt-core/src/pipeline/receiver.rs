@@ -179,6 +179,12 @@ pub enum ReceiverError {
     Transport(#[from] TransportError),
     /// The demuxer rejected a packet (strict-mode violation, unrecoverable
     /// packet malformation, or malformed PES header).
+    ///
+    /// Re-entry into [`Receiver::recv_event`] after this variant is
+    /// discouraged for `DemuxError::MalformedPes`: the demuxer's reassembly
+    /// state is undefined past a bad PES header, so subsequent events may
+    /// be inconsistent. Treat it as a stream-fatal signal until the demuxer
+    /// gains lenient PES recovery.
     #[error(transparent)]
     Demux(#[from] DemuxError),
 }

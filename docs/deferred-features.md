@@ -141,17 +141,45 @@ the trigger that would unblock it.
 - **Trigger to revisit:** An embedded target with a hard `no_std`
   requirement.
 
-## Multi-stream `mpegts::mux`
+## Multi-stream `mpegts::mux` — `srt-c` binding surface
 
-- **Status:** Single video PID + single KLV PID per output TS.
-  `Config::streams: Vec<StreamSpec>` is multi-stream-shaped from day
-  one; `Config::validate` enforces the cap.
-- **Why deferred:** Current consumers run single-program TS. Lifting
-  the cap means writing and testing multi-program behaviour without a
-  driving use case.
-- **Trigger to revisit:** A consumer needs multiple video PIDs or
-  multiple KLV PIDs in one TS. The cap is the only thing that needs
-  to lift; the API shape is already right.
+- **Status:** Once the Rust-core multi-stream lift lands, the matching
+  C ABI follow-up is deliberately scheduled as a separate plan. The
+  Rust-core plan ships pure Rust only: `add_video_stream` /
+  `add_klv_stream` / `StreamHandle` / `push_video_to` / `push_klv_to`
+  on `Muxer`, plus the `_to(handle, ...)` siblings on `Sender` /
+  `TsSender` / `RawSender`. The C ABI does NOT gain those siblings in
+  the same ship.
+- **Why deferred:** The C ABI surface is its own design (opaque
+  handle representation across the FFI, last-error invariants when a
+  stale handle is passed, header/cbindgen drift, end-to-end C smoke
+  coverage for multi-stream). Bundling that with the Rust-core lift
+  doubles the plan and slows the Rust-core ship; consumers driving
+  multi-stream are expected to reach via Rust first.
+- **What ships in the binding crates today, even before the
+  follow-up:** the existing single-target C entry points
+  (`srtc_muxer_push_video`, `srtc_muxer_push_klv`,
+  `srtc_mux_sender_send_video`, `srtc_mux_sender_send_klv`,
+  `srtc_managed_mux_sender_send_video`,
+  `srtc_managed_mux_sender_send_klv`,
+  `srtc_ts_sender_send_video`, `srtc_ts_sender_send_klv`,
+  `srtc_managed_ts_sender_send_video`,
+  `srtc_managed_ts_sender_send_klv`) keep their v0 signatures and
+  start returning a multi-stream rejection (`SRTC_E_INVALID_USAGE` or
+  the equivalent code) when the wrapped `Muxer` has more than one
+  stream of that kind. C callers that only ever build single-stream
+  muxers see no behaviour change.
+- **What lands in the binding follow-up:** `srtc_stream_handle_t`
+  opaque type, `srtc_mux_config_add_video_stream` /
+  `srtc_mux_config_add_klv_stream` returning handles, and the
+  `_video_to` / `_klv_to` siblings on every sender variant
+  (`srtc_muxer`, `srtc_mux_sender`, `srtc_managed_mux_sender`,
+  `srtc_ts_sender`, `srtc_managed_ts_sender`). Same shape lands later
+  in `srt-jni` and `srt-uniffi` once each binding ships.
+- **Trigger to revisit:** First C / JNI / UniFFI consumer that
+  actually wants multi-stream output. Until then the Rust-core lift
+  is the contract; the binding follow-up is mechanical fan-out and
+  can be scoped on demand.
 
 ## Typed SPS / VPS / PPS payload parser
 

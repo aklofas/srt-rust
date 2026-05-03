@@ -422,6 +422,15 @@ impl Config {
     }
 }
 
+/// How a `descriptors_for_*` call was scoped — preserved verbatim until
+/// `build()` resolves it against the final stream set.
+#[derive(Debug, Clone)]
+enum DescriptorTarget {
+    Video(usize),
+    Klv(usize),
+    Absolute(usize),
+}
+
 /// Ergonomic construction of [`Config`] with one chain of method calls.
 ///
 /// Mirrors the C-side builder shape (`srtc_mux_config_*`). Build then
@@ -433,6 +442,12 @@ pub struct ConfigBuilder {
     pcr_interval_ms: Option<u32>,
     psi_interval_ms: Option<u32>,
     buffer_packets: Option<usize>,
+    /// Append-order list of (target, descriptors) pairs. `build()` walks
+    /// this and materializes `Config::stream_descriptors`. A later entry
+    /// for the same resolved absolute index overwrites earlier entries
+    /// (caller's last word wins) — same behavior as overwriting any
+    /// builder field.
+    pending_descriptors: Vec<(DescriptorTarget, Vec<Vec<u8>>)>,
 }
 
 impl ConfigBuilder {
@@ -473,17 +488,103 @@ impl ConfigBuilder {
         self
     }
 
+    /// Set descriptor list for the n-th video stream (zero-indexed
+    /// among `StreamSpec::Video` entries in add-order). Replaces any
+    /// previously set list for that stream. `video_index` out of range
+    /// surfaces as [`MuxError::InvalidStreamHandle`] from
+    /// [`ConfigBuilder::build`] (resolved at build time so chain-order
+    /// doesn't matter).
+    ///
+    /// Each `Vec<u8>` is one complete descriptor TLV — build them with
+    /// the helpers in [`crate::mpegts::descriptors`].
+    pub fn stream_descriptors_for_video(
+        mut self,
+        video_index: usize,
+        descriptors: Vec<Vec<u8>>,
+    ) -> Self {
+        self.pending_descriptors
+            .push((DescriptorTarget::Video(video_index), descriptors));
+        self
+    }
+
+    /// Set descriptor list for the n-th KLV stream (zero-indexed among
+    /// `StreamSpec::Klv` entries in add-order).
+    pub fn stream_descriptors_for_klv(
+        mut self,
+        klv_index: usize,
+        descriptors: Vec<Vec<u8>>,
+    ) -> Self {
+        self.pending_descriptors
+            .push((DescriptorTarget::Klv(klv_index), descriptors));
+        self
+    }
+
+    /// Set descriptor list by absolute stream index in `streams`
+    /// (across both kinds). Lower-level escape hatch for callers that
+    /// already track absolute indices.
+    pub fn stream_descriptors_for_stream(
+        mut self,
+        stream_index: usize,
+        descriptors: Vec<Vec<u8>>,
+    ) -> Self {
+        self.pending_descriptors
+            .push((DescriptorTarget::Absolute(stream_index), descriptors));
+        self
+    }
+
     /// Finalize. Returns a validated [`Config`] or an error describing the
     /// failed rule.
     pub fn build(self) -> Result<Config, MuxError> {
         let n = self.streams.len();
+        let mut stream_descriptors: Vec<Vec<Vec<u8>>> = vec![Vec::new(); n];
+
+        // Resolve each pending target against the final stream set.
+        // Iteration is in caller-call order so a later set on the same
+        // resolved index overwrites an earlier one.
+        for (target, descs) in self.pending_descriptors {
+            let absolute = match target {
+                DescriptorTarget::Video(vi) => self
+                    .streams
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| matches!(s, StreamSpec::Video { .. }))
+                    .nth(vi)
+                    .map(|(abs, _)| abs)
+                    .ok_or(MuxError::InvalidStreamHandle {
+                        kind: "video",
+                        index: vi,
+                    })?,
+                DescriptorTarget::Klv(ki) => self
+                    .streams
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| matches!(s, StreamSpec::Klv { .. }))
+                    .nth(ki)
+                    .map(|(abs, _)| abs)
+                    .ok_or(MuxError::InvalidStreamHandle {
+                        kind: "klv",
+                        index: ki,
+                    })?,
+                DescriptorTarget::Absolute(ai) => {
+                    if ai >= n {
+                        return Err(MuxError::InvalidStreamHandle {
+                            kind: "stream",
+                            index: ai,
+                        });
+                    }
+                    ai
+                }
+            };
+            stream_descriptors[absolute] = descs;
+        }
+
         let cfg = Config {
             streams: self.streams,
             pcr_pid: self.pcr_pid,
             pcr_interval_ms: self.pcr_interval_ms.unwrap_or(40),
             psi_interval_ms: self.psi_interval_ms.unwrap_or(100),
             buffer_packets: self.buffer_packets.unwrap_or(10_000),
-            stream_descriptors: vec![Vec::new(); n],
+            stream_descriptors,
         };
         cfg.validate()?;
         Ok(cfg)
@@ -1789,8 +1890,48 @@ mod tests {
         ));
     }
 
-    // validate_rejects_oversized_pmt — uncommented in Task 6 once
-    // stream_descriptors_for_stream is wired through ConfigBuilder.
+    #[test]
+    fn validate_rejects_oversized_pmt() {
+        // 4 streams × 100-byte descriptor = ~400 bytes > 166 max.
+        let big = crate::mpegts::descriptors::user_private(&[0u8; 100]);
+        let cfg = Config::builder()
+            .add_video(0x100, VideoCodec::H264)
+            .add_video(0x101, VideoCodec::H264)
+            .add_klv(0x102, KlvStreamType::PrivateData, false)
+            .add_klv(0x103, KlvStreamType::PrivateData, false)
+            .stream_descriptors_for_stream(0, vec![big.clone()])
+            .stream_descriptors_for_stream(1, vec![big.clone()])
+            .stream_descriptors_for_stream(2, vec![big.clone()])
+            .stream_descriptors_for_stream(3, vec![big])
+            .build();
+        assert!(matches!(cfg, Err(MuxError::PmtTooLarge { .. })));
+    }
+
+    #[test]
+    fn builder_routes_video_descriptors_by_video_index() {
+        // 2 video, 1 KLV. Setting video_index=1 should land on absolute index 2.
+        let cfg = Config::builder()
+            .add_video(0x100, VideoCodec::H264)
+            .add_klv(0x102, KlvStreamType::PrivateData, false)
+            .add_video(0x101, VideoCodec::H264)
+            .stream_descriptors_for_video(1, vec![crate::mpegts::descriptors::user_private(b"V2")])
+            .build()
+            .unwrap();
+
+        assert_eq!(cfg.stream_descriptors[0], Vec::<Vec<u8>>::new());
+        assert_eq!(cfg.stream_descriptors[1], Vec::<Vec<u8>>::new());
+        assert_eq!(cfg.stream_descriptors[2].len(), 1);
+        assert_eq!(cfg.stream_descriptors[2][0][0], 0xFF);
+    }
+
+    #[test]
+    fn builder_rejects_out_of_range_video_index() {
+        let res = Config::builder()
+            .add_video(0x100, VideoCodec::H264)
+            .stream_descriptors_for_video(7, vec![crate::mpegts::descriptors::user_private(b"X")])
+            .build();
+        assert!(matches!(res, Err(MuxError::InvalidStreamHandle { .. })));
+    }
 }
 
 #[cfg(test)]

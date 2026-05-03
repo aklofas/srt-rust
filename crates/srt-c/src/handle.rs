@@ -91,6 +91,30 @@ impl<T> Handle<T> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Stream handle types (multi-stream `mpegts::mux` fan-out)
+// ---------------------------------------------------------------------------
+
+/// Opaque per-program ordinal for a video elementary stream. Obtained from
+/// [`srtc_mux_config_add_video_stream`] at config time and reused with the
+/// `_video_to` push siblings on every muxer-owning C variant.
+///
+/// Handles are stable across the config→open boundary and across managed
+/// reconnects. They are NOT interchangeable between muxers — passing a
+/// handle from one muxer to a different one yields `SRTC_E_INVALID_USAGE`
+/// via `MuxError::InvalidStreamHandle` (the index simply happens to be
+/// out of range on the new muxer in practice).
+pub type SrtcVideoStreamHandle = u32;
+
+/// Opaque per-program ordinal for a KLV elementary stream. See
+/// [`SrtcVideoStreamHandle`] for semantics.
+pub type SrtcKlvStreamHandle = u32;
+
+/// Sentinel returned by `srtc_mux_config_add_*_stream` on failure.
+/// On failure, the last-error is also populated; check
+/// `srtc_get_last_error()` for the negative `SRTC_E_*` code.
+pub const SRTC_INVALID_STREAM_HANDLE: u32 = u32::MAX;
+
 #[cfg(test)]
 mod tests {
     use super::*;

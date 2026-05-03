@@ -9,7 +9,7 @@
 pub mod config;
 mod connect;
 pub mod error;
-mod handle;
+pub mod handle;
 pub mod mux_sender;
 pub mod muxer;
 pub mod raw_sender;

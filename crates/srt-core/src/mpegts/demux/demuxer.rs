@@ -55,6 +55,12 @@ pub struct Demuxer {
     pes: Reassembler,
     queue: VecDeque<DemuxEvent>,
     bytes_since_sync: usize,
+    /// First strict-mode-rejected issue captured this `feed` call. Drained
+    /// at the end of each packet's processing and converted into a
+    /// `DemuxError::StrictRejection` return. The `NonConformant` event
+    /// itself is still pushed onto `queue` so a caller that already
+    /// drained events sees the rejection narrative if they wish.
+    fatal: Option<NonConformantIssue>,
 }
 
 impl Demuxer {
@@ -80,6 +86,7 @@ impl Demuxer {
             pes: Reassembler::new(cap_per_pid, cap_total),
             queue: VecDeque::new(),
             bytes_since_sync: 0,
+            fatal: None,
         }
     }
 
@@ -117,6 +124,14 @@ impl Demuxer {
             // ends the receive loop. A future task may convert it to a
             // NonConformant event so the loop survives a single corrupt PES.
             self.process_packet(&pkt_buf)?;
+            // Strict-mode hatch: if the packet just processed produced a
+            // `NonConformant` event whose issue category is rejected by the
+            // configured `StrictMode`, surface it as a fatal error here. The
+            // event itself is still in the queue; the caller can drain it
+            // alongside the error if they want the narrative.
+            if let Some(fatal) = self.fatal.take() {
+                return Err(DemuxError::StrictRejection(format!("{fatal:?}")));
+            }
         }
     }
 
@@ -542,12 +557,11 @@ impl Demuxer {
     }
 
     fn queue_nonconformant(&mut self, stream: StreamId, issue: NonConformantIssue) {
-        if self.options.strict.rejects(&issue) {
-            // Strict-mode rejection emits via next_event; we surface as
-            // an event here, and Task 9 wires the `feed` return to error
-            // out. For the lenient-only Task 7 ship, queue + return-via-
-            // event keeps the loop alive.
-            // (Task 9 reroutes this to DemuxError::StrictRejection.)
+        // Capture the first strict-rejected issue per `feed` call. The
+        // event itself is still queued so a caller draining events
+        // before/after the `feed` error sees the narrative.
+        if self.options.strict.rejects(&issue) && self.fatal.is_none() {
+            self.fatal = Some(issue.clone());
         }
         self.queue
             .push_back(DemuxEvent::NonConformant { stream, issue });

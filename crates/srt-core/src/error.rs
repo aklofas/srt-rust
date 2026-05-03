@@ -335,6 +335,40 @@ pub enum MuxError {
     /// this is a sanity check, not a regular failure mode.
     #[error("KLV blob is {size} bytes, exceeds PES_packet_length ceiling of {max} bytes")]
     KlvTooLarge { size: usize, max: usize },
+
+    /// Caller passed a `VideoStreamHandle` / `KlvStreamHandle` that doesn't
+    /// match a configured stream on this `Muxer`. Handles are obtained from
+    /// `Muxer::video_handles()` / `klv_handles()` and are tied to the
+    /// muxer that produced them — passing one from a different muxer is
+    /// also rejected here.
+    #[error("invalid {kind} stream handle (index {index}) — not a configured stream")]
+    InvalidStreamHandle {
+        kind: &'static str, // "video" or "klv"
+        index: usize,
+    },
+
+    /// Caller invoked the no-suffix `push_video` / `push_klv` (or the
+    /// `Sender::send_video` / `send_klv` wrappers) on a muxer that has more
+    /// than one stream of that kind. The single-target API can only resolve
+    /// to a single handle when exactly one stream of that kind is configured.
+    #[error(
+        "ambiguous push: {count} {kind} streams configured — call push_{kind}_to(handle, ...) instead"
+    )]
+    AmbiguousTarget {
+        kind: &'static str, // "video" or "klv"
+        count: usize,
+    },
+
+    /// `Config::validate` rejects more than 16 video streams.
+    /// Trivially lifted if a consumer asks; 16 is well above realistic
+    /// gimbaled-platform topologies (EO + IR + maybe IR-narrow + a depth
+    /// channel = 4 in the wild today).
+    #[error("too many video streams: {count} configured, cap is {cap}")]
+    TooManyVideoStreams { count: usize, cap: usize },
+
+    /// `Config::validate` rejects more than 16 KLV streams.
+    #[error("too many klv streams: {count} configured, cap is {cap}")]
+    TooManyKlvStreams { count: usize, cap: usize },
 }
 
 // ============================================================================
@@ -769,5 +803,44 @@ mod tests {
             Error::Mux(MuxError::InvalidNal) => {}
             _ => panic!("expected Mux(InvalidNal)"),
         }
+    }
+
+    #[test]
+    fn mux_error_invalid_stream_handle_displays_kind_and_index() {
+        let e = MuxError::InvalidStreamHandle {
+            kind: "video",
+            index: 7,
+        };
+        assert_eq!(
+            e.to_string(),
+            "invalid video stream handle (index 7) — not a configured stream",
+        );
+    }
+
+    #[test]
+    fn mux_error_ambiguous_target_displays_kind_and_count() {
+        let e = MuxError::AmbiguousTarget { kind: "klv", count: 3 };
+        assert_eq!(
+            e.to_string(),
+            "ambiguous push: 3 klv streams configured — call push_klv_to(handle, ...) instead",
+        );
+    }
+
+    #[test]
+    fn mux_error_too_many_video_streams_reports_cap() {
+        let e = MuxError::TooManyVideoStreams { count: 17, cap: 16 };
+        assert_eq!(
+            e.to_string(),
+            "too many video streams: 17 configured, cap is 16",
+        );
+    }
+
+    #[test]
+    fn mux_error_too_many_klv_streams_reports_cap() {
+        let e = MuxError::TooManyKlvStreams { count: 20, cap: 16 };
+        assert_eq!(
+            e.to_string(),
+            "too many klv streams: 20 configured, cap is 16",
+        );
     }
 }

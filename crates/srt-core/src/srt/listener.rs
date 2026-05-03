@@ -16,6 +16,11 @@ const SRT_INVALID_SOCK: srt_sys::SRTSOCKET = -1;
 /// or [`Listener::bind_with`].
 pub struct Listener {
     handle: srt_sys::SRTSOCKET,
+    /// Shared close-once primitive. Cloned out via `cancel_handle()` so a
+    /// thread parked in `accept` can be woken from another thread. Drop
+    /// calls `cancel.cancel()` so explicit `close()` and Drop never
+    /// double-close.
+    cancel: crate::srt::CancelHandle,
     /// Stored for inheritance into accepted Sockets.
     accepted_send_timeout: Option<Duration>,
     accepted_recv_timeout: Option<Duration>,
@@ -86,6 +91,7 @@ impl Listener {
 
             return Ok(Self {
                 handle,
+                cancel: make_cancel_handle(handle),
                 accepted_send_timeout: config.send_timeout,
                 accepted_recv_timeout: config.recv_timeout,
             });
@@ -139,19 +145,38 @@ impl Listener {
         Ok(())
     }
 
+    /// Explicit close. Wakes any thread parked in `accept()` with
+    /// `AcceptError::ListenerClosed`. Drop also calls cancel; both paths
+    /// are idempotent.
+    ///
+    /// **Always returns `Ok`.** The `Result` is retained for API stability
+    /// and may carry an error in a future revision (the underlying
+    /// `srt_close` rc is currently swallowed by the `CancelHandle` closer).
     pub fn close(self) -> Result<(), IoError> {
-        let handle = self.handle;
-        std::mem::forget(self);
-        let rc = unsafe { srt_sys::srt_close(handle) };
-        if rc < 0 {
-            return Err(last_error().into());
-        }
+        self.cancel.cancel();
         Ok(())
+    }
+
+    /// Clone-able close handle. Calling `cancel()` from any thread
+    /// closes the underlying SRT listener socket. Idempotent.
+    pub fn cancel_handle(&self) -> crate::srt::CancelHandle {
+        self.cancel.clone()
     }
 }
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        unsafe { srt_sys::srt_close(self.handle) };
+        // No-op if explicit close() / cancel() already fired.
+        self.cancel.cancel();
     }
+}
+
+/// Build a CancelHandle that closes the SRTSOCKET on first cancel.
+fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> crate::srt::CancelHandle {
+    crate::srt::CancelHandle::new(handle as i64, |h| {
+        // SAFETY: h was the same SRTSOCKET we stored; libsrt accepts
+        // srt_close from any thread; the atomic-swap in CancelHandle
+        // guarantees this runs at most once.
+        let _ = unsafe { srt_sys::srt_close(h as srt_sys::SRTSOCKET) };
+    })
 }

@@ -14,7 +14,7 @@ use crate::mpegts::demux::psi::{
 };
 use crate::mpegts::demux::strict::StrictMode;
 use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 const DEFAULT_PES_CAP_PER_PID: usize = 4 * 1024 * 1024;
 const DEFAULT_PES_CAP_TOTAL: usize = 64 * 1024 * 1024;
@@ -59,6 +59,11 @@ pub struct Demuxer {
     cc_by_pid: HashMap<u16, u8>,
     last_pcr_27mhz: Option<u64>,
     last_pts_by_pid: HashMap<u16, i64>,
+    /// PIDs that have already surfaced a `StreamTypeMismatch{Sync,Async}On*Pid`
+    /// nonconformance for the current PMT version. Real captures emit the
+    /// same mismatch on every record (often thousands per stream), so we
+    /// coalesce to one event per (PID, PMT version). Cleared on PMT bump.
+    klv_mismatch_emitted_pids: HashSet<u16>,
     pes: Reassembler,
     queue: VecDeque<DemuxEvent>,
     bytes_since_sync: usize,
@@ -91,6 +96,7 @@ impl Demuxer {
             cc_by_pid: HashMap::new(),
             last_pcr_27mhz: None,
             last_pts_by_pid: HashMap::new(),
+            klv_mismatch_emitted_pids: HashSet::new(),
             pes: Reassembler::new(cap_per_pid, cap_total),
             queue: VecDeque::new(),
             bytes_since_sync: 0,
@@ -356,6 +362,9 @@ impl Demuxer {
         self.pmt_version = Some(pmt.version);
         let map = self.build_program_map(&pmt);
         self.pmt = Some(pmt);
+        // PMT changed — re-arm KLV mismatch coalescing so the new layout
+        // gets one fresh nonconformance event per affected PID.
+        self.klv_mismatch_emitted_pids.clear();
         // Fill stream_kind_by_pid so PES dispatch knows codec.
         self.stream_kind_by_pid.clear();
         for s in &map.streams {
@@ -523,8 +532,12 @@ impl Demuxer {
                 let shape = classify_klv(&pes.payload);
                 let (kind_meta, payload, used_pts) = match (shape, kind) {
                     (KlvShape::SyncAuCell { klv, au_cell_pts }, _) => {
-                        // If declared async but payload is sync, surface mismatch.
-                        if matches!(kind, StreamKind::KlvAsync) {
+                        // If declared async but payload is sync, surface mismatch
+                        // — but only once per PID per PMT version. Coalesces
+                        // what would otherwise be thousands of identical events.
+                        if matches!(kind, StreamKind::KlvAsync)
+                            && self.klv_mismatch_emitted_pids.insert(pes.pid)
+                        {
                             self.queue_nonconformant(
                                 stream,
                                 NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid,
@@ -533,10 +546,12 @@ impl Demuxer {
                         (MetadataKind::KlvSyncAuCell, klv, au_cell_pts)
                     }
                     (KlvShape::Async { klv }, StreamKind::KlvSync { .. }) => {
-                        self.queue_nonconformant(
-                            stream,
-                            NonConformantIssue::StreamTypeMismatchAsyncOnSyncPid,
-                        );
+                        if self.klv_mismatch_emitted_pids.insert(pes.pid) {
+                            self.queue_nonconformant(
+                                stream,
+                                NonConformantIssue::StreamTypeMismatchAsyncOnSyncPid,
+                            );
+                        }
                         (MetadataKind::KlvAsync, klv, pts)
                     }
                     (KlvShape::Async { klv }, _) => (MetadataKind::KlvAsync, klv, pts),

@@ -187,3 +187,352 @@ mod pat_tests {
         assert!(matches!(err, PsiParseError::Truncated { .. }));
     }
 }
+
+/// Decoded Program Map Table (ISO/IEC 13818-1 §2.4.4.8).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pmt {
+    pub program_number: u16,
+    pub version: u8,
+    pub current_next_indicator: bool,
+    pub pcr_pid: u16,
+    pub program_descriptors: Vec<RawDescriptor>,
+    pub streams: Vec<PmtStream>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PmtStream {
+    pub stream_type: u8,
+    pub elementary_pid: u16,
+    pub descriptors: Vec<RawDescriptor>,
+}
+
+/// Raw, unparsed descriptor. The walker (`walk_descriptors`) and the
+/// typed extractors (`extract_klva_registration`, `extract_metadata_link`)
+/// interpret these.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawDescriptor {
+    pub tag: u8,
+    pub data: Vec<u8>,
+}
+
+/// Returns true if the descriptor list contains `registration_descriptor`
+/// (tag 0x05) with format identifier `KLVA`.
+pub fn has_klva_registration(descs: &[RawDescriptor]) -> bool {
+    descs
+        .iter()
+        .any(|d| d.tag == 0x05 && d.data.starts_with(b"KLVA"))
+}
+
+/// Returns the `linked_pid` from a `metadata_descriptor` if present, else
+/// `None`. The descriptor's structure is per H.222.0 §2.6.58; encoders
+/// vary on whether they include the linked PID at all.
+///
+/// This implementation accepts the common ST 1402 shape: a
+/// `metadata_descriptor` (tag 0x26) whose body ends with a
+/// `metadata_locator_record` of length ≥ 2 carrying the linked
+/// `elementary_PID`. Other shapes return `None`; the caller treats that
+/// as "no declared link."
+pub fn extract_metadata_link(descs: &[RawDescriptor]) -> Option<u16> {
+    let d = descs.iter().find(|d| d.tag == 0x26)?;
+    // metadata_descriptor body:
+    //   metadata_application_format (16) + maybe metadata_application_format_identifier (32)
+    //   metadata_format (8) + maybe metadata_format_identifier (32)
+    //   metadata_service_id (8)
+    //   decoder_config_flags (3) + DSM_CC_flag (1) + reserved (4)
+    //   if DSM_CC_flag: service_identification_length (8) + service_identification_record(...)
+    //   for body remainder: private_data
+    //
+    // Many real encoders produce a 5-byte body with the linked PID encoded
+    // in private_data as the trailing 2 bytes. We accept that lenient
+    // shape: if the descriptor body is at least 5 bytes long and the
+    // trailing 2 bytes look like a valid PID (0x0010..=0x1FFE), return it.
+    if d.data.len() >= 5 {
+        let candidate = u16::from_be_bytes([d.data[d.data.len() - 2], d.data[d.data.len() - 1]]);
+        if (0x0010..=0x1FFE).contains(&candidate) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Walk a descriptor loop, returning the parsed list. Returns
+/// `DescriptorLoopOverflow` if the declared loop length doesn't match
+/// what's actually present.
+pub fn walk_descriptors(buf: &[u8]) -> Result<Vec<RawDescriptor>, PsiParseError> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < buf.len() {
+        if i + 2 > buf.len() {
+            return Err(PsiParseError::DescriptorLoopOverflow {
+                declared: i + 2,
+                remaining: buf.len() - i,
+            });
+        }
+        let tag = buf[i];
+        let len = buf[i + 1] as usize;
+        let start = i + 2;
+        let end = start + len;
+        if end > buf.len() {
+            return Err(PsiParseError::DescriptorLoopOverflow {
+                declared: end,
+                remaining: buf.len(),
+            });
+        }
+        out.push(RawDescriptor {
+            tag,
+            data: buf[start..end].to_vec(),
+        });
+        i = end;
+    }
+    Ok(out)
+}
+
+/// Parse a fully-assembled PMT section (ISO/IEC 13818-1 §2.4.4.8).
+pub fn parse_pmt(section: &[u8]) -> Result<Pmt, PsiParseError> {
+    if section.len() < 16 {
+        return Err(PsiParseError::Truncated {
+            have: section.len(),
+            need: 16,
+        });
+    }
+    if section[0] != 0x02 {
+        return Err(PsiParseError::TableIdMismatch {
+            got: section[0],
+            expected: 0x02,
+        });
+    }
+    let section_length = (((section[1] & 0x0F) as u16) << 8) | section[2] as u16;
+    if section_length as usize > 1021 {
+        return Err(PsiParseError::SectionTooLong(section_length));
+    }
+    let total_len = 3 + section_length as usize;
+    if section.len() < total_len {
+        return Err(PsiParseError::Truncated {
+            have: section.len(),
+            need: total_len,
+        });
+    }
+    let computed = crc32_mpeg2(&section[..total_len - 4]);
+    let declared = u32::from_be_bytes([
+        section[total_len - 4],
+        section[total_len - 3],
+        section[total_len - 2],
+        section[total_len - 1],
+    ]);
+    if computed != declared {
+        return Err(PsiParseError::CrcMismatch { computed, declared });
+    }
+    let program_number = u16::from_be_bytes([section[3], section[4]]);
+    let version = (section[5] >> 1) & 0x1F;
+    let current_next_indicator = (section[5] & 0x01) != 0;
+    let pcr_pid = u16::from_be_bytes([section[8] & 0x1F, section[9]]);
+    let program_info_length = (((section[10] & 0x0F) as usize) << 8) | section[11] as usize;
+    let pi_start = 12;
+    let pi_end = pi_start + program_info_length;
+    if pi_end > total_len - 4 {
+        return Err(PsiParseError::DescriptorLoopOverflow {
+            declared: pi_end,
+            remaining: total_len - 4,
+        });
+    }
+    let program_descriptors = walk_descriptors(&section[pi_start..pi_end])?;
+    let mut streams = Vec::new();
+    let mut off = pi_end;
+    while off + 5 <= total_len - 4 {
+        let stream_type = section[off];
+        let elementary_pid = u16::from_be_bytes([section[off + 1] & 0x1F, section[off + 2]]);
+        let es_info_length =
+            (((section[off + 3] & 0x0F) as usize) << 8) | section[off + 4] as usize;
+        let desc_start = off + 5;
+        let desc_end = desc_start + es_info_length;
+        if desc_end > total_len - 4 {
+            return Err(PsiParseError::DescriptorLoopOverflow {
+                declared: desc_end,
+                remaining: total_len - 4,
+            });
+        }
+        let descriptors = walk_descriptors(&section[desc_start..desc_end])?;
+        streams.push(PmtStream {
+            stream_type,
+            elementary_pid,
+            descriptors,
+        });
+        off = desc_end;
+    }
+    if off != total_len - 4 {
+        return Err(PsiParseError::MalformedProgramEntry { offset: off });
+    }
+    Ok(Pmt {
+        program_number,
+        version,
+        current_next_indicator,
+        pcr_pid,
+        program_descriptors,
+        streams,
+    })
+}
+
+#[cfg(test)]
+mod pmt_tests {
+    use super::*;
+
+    fn build_pmt_section(
+        program_number: u16,
+        version: u8,
+        pcr_pid: u16,
+        program_descs: &[RawDescriptor],
+        streams: &[PmtStream],
+    ) -> Vec<u8> {
+        // section_syntax_indicator(1) | '0'(1) | reserved(2) | section_length(12)
+        // Body length is computed below; section_length covers from byte 3 to end including CRC.
+        let mut s: Vec<u8> = vec![
+            0x02, // table_id = PMT
+            0xB0, // placeholder for top nibble of section_length
+            0x00, // placeholder low byte
+            (program_number >> 8) as u8,
+            (program_number & 0xFF) as u8,
+            0xC1 | ((version & 0x1F) << 1),
+            0x00, // section_number
+            0x00, // last_section_number
+            0xE0 | ((pcr_pid >> 8) as u8 & 0x1F),
+            (pcr_pid & 0xFF) as u8,
+        ];
+        // program_info_length (12 bits, top 4 reserved)
+        let mut prog_desc_buf = Vec::new();
+        for d in program_descs {
+            prog_desc_buf.push(d.tag);
+            prog_desc_buf.push(d.data.len() as u8);
+            prog_desc_buf.extend_from_slice(&d.data);
+        }
+        s.push(0xF0 | ((prog_desc_buf.len() >> 8) as u8 & 0x0F));
+        s.push((prog_desc_buf.len() & 0xFF) as u8);
+        s.extend_from_slice(&prog_desc_buf);
+        // streams loop
+        for st in streams {
+            s.push(st.stream_type);
+            s.push(0xE0 | ((st.elementary_pid >> 8) as u8 & 0x1F));
+            s.push((st.elementary_pid & 0xFF) as u8);
+            let mut sd_buf = Vec::new();
+            for d in &st.descriptors {
+                sd_buf.push(d.tag);
+                sd_buf.push(d.data.len() as u8);
+                sd_buf.extend_from_slice(&d.data);
+            }
+            s.push(0xF0 | ((sd_buf.len() >> 8) as u8 & 0x0F));
+            s.push((sd_buf.len() & 0xFF) as u8);
+            s.extend_from_slice(&sd_buf);
+        }
+        // Backfill section_length (from byte 3 forward, including CRC).
+        let section_length = (s.len() - 3 + 4) as u16;
+        s[1] = 0xB0 | ((section_length >> 8) as u8 & 0x0F);
+        s[2] = (section_length & 0xFF) as u8;
+        // CRC.
+        let crc = crc32_mpeg2(&s);
+        s.push((crc >> 24) as u8);
+        s.push((crc >> 16) as u8);
+        s.push((crc >> 8) as u8);
+        s.push(crc as u8);
+        s
+    }
+
+    fn klva_descriptor() -> RawDescriptor {
+        RawDescriptor {
+            tag: 0x05,
+            data: b"KLVA".to_vec(),
+        }
+    }
+
+    #[test]
+    fn parses_minimal_pmt_video_only() {
+        let bytes = build_pmt_section(
+            1,
+            0,
+            0x100,
+            &[],
+            &[PmtStream {
+                stream_type: 0x1B,
+                elementary_pid: 0x100,
+                descriptors: vec![],
+            }],
+        );
+        let pmt = parse_pmt(&bytes).unwrap();
+        assert_eq!(pmt.program_number, 1);
+        assert_eq!(pmt.pcr_pid, 0x100);
+        assert_eq!(pmt.streams.len(), 1);
+        assert_eq!(pmt.streams[0].stream_type, 0x1B);
+    }
+
+    #[test]
+    fn parses_video_plus_klva() {
+        let bytes = build_pmt_section(
+            1,
+            0,
+            0x100,
+            &[],
+            &[
+                PmtStream {
+                    stream_type: 0x1B,
+                    elementary_pid: 0x100,
+                    descriptors: vec![],
+                },
+                PmtStream {
+                    stream_type: 0x06,
+                    elementary_pid: 0x101,
+                    descriptors: vec![klva_descriptor()],
+                },
+            ],
+        );
+        let pmt = parse_pmt(&bytes).unwrap();
+        assert!(has_klva_registration(&pmt.streams[1].descriptors));
+        assert!(!has_klva_registration(&pmt.streams[0].descriptors));
+    }
+
+    #[test]
+    fn extracts_metadata_link_when_descriptor_present() {
+        // metadata_descriptor (tag 0x26) with trailing 2 bytes 0x0100 (PID 256).
+        let metadata_desc = RawDescriptor {
+            tag: 0x26,
+            data: vec![0x01, 0x00, 0xFF, 0x01, 0x00],
+        };
+        let bytes = build_pmt_section(
+            1,
+            0,
+            0x100,
+            &[],
+            &[PmtStream {
+                stream_type: 0x15,
+                elementary_pid: 0x101,
+                descriptors: vec![metadata_desc],
+            }],
+        );
+        let pmt = parse_pmt(&bytes).unwrap();
+        assert_eq!(
+            extract_metadata_link(&pmt.streams[0].descriptors),
+            Some(0x0100)
+        );
+    }
+
+    #[test]
+    fn rejects_wrong_table_id_for_pmt() {
+        let mut bytes = build_pmt_section(1, 0, 0x100, &[], &[]);
+        bytes[0] = 0x00;
+        let err = parse_pmt(&bytes).unwrap_err();
+        assert!(matches!(err, PsiParseError::TableIdMismatch { .. }));
+    }
+
+    #[test]
+    fn walk_descriptors_handles_two_descriptors() {
+        let buf = vec![0x05, 0x04, b'K', b'L', b'V', b'A', 0x26, 0x02, 0x00, 0x00];
+        let descs = walk_descriptors(&buf).unwrap();
+        assert_eq!(descs.len(), 2);
+        assert_eq!(descs[0].tag, 0x05);
+        assert_eq!(descs[1].data.len(), 2);
+    }
+
+    #[test]
+    fn walk_descriptors_rejects_overflow() {
+        // tag=5, len=10 declared but only 4 bytes follow.
+        let buf = vec![0x05, 0x0A, b'K', b'L', b'V', b'A'];
+        assert!(walk_descriptors(&buf).is_err());
+    }
+}

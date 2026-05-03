@@ -532,14 +532,14 @@ impl Demuxer {
                         }
                         (MetadataKind::KlvSyncAuCell, klv, au_cell_pts)
                     }
-                    (KlvShape::Async, StreamKind::KlvSync { .. }) => {
+                    (KlvShape::Async { klv }, StreamKind::KlvSync { .. }) => {
                         self.queue_nonconformant(
                             stream,
                             NonConformantIssue::StreamTypeMismatchAsyncOnSyncPid,
                         );
-                        (MetadataKind::KlvAsync, pes.payload, pts)
+                        (MetadataKind::KlvAsync, klv, pts)
                     }
-                    (KlvShape::Async, _) => (MetadataKind::KlvAsync, pes.payload, pts),
+                    (KlvShape::Async { klv }, _) => (MetadataKind::KlvAsync, klv, pts),
                     (KlvShape::Other, _) => {
                         let raw = pes.payload;
                         self.queue.push_back(DemuxEvent::Sample {

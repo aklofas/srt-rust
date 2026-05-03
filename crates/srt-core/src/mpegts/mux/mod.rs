@@ -513,8 +513,14 @@ impl Muxer {
         pts_90khz: i64,
         key_frame: bool,
     ) -> Result<(), MuxError> {
-        // Delegate to push_video_to with the only handle. After Task 8
-        // this also rejects with AmbiguousTarget when N > 1.
+        // The single-target API only resolves when exactly one video stream
+        // is configured. N=0 and N>1 are both ambiguous.
+        if self.video_streams.len() != 1 {
+            return Err(MuxError::AmbiguousTarget {
+                kind: "video",
+                count: self.video_streams.len(),
+            });
+        }
         let handle = VideoStreamHandle::new(0);
         self.push_video_to(handle, nal, pts_90khz, key_frame)
     }
@@ -525,6 +531,12 @@ impl Muxer {
     /// `carries_pts: true` in [`StreamSpec::Klv`]; ignored otherwise.
     /// Returns `Err(MuxError::BufferFull)` like `push_video`.
     pub fn push_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
+        if self.klv_streams.len() != 1 {
+            return Err(MuxError::AmbiguousTarget {
+                kind: "klv",
+                count: self.klv_streams.len(),
+            });
+        }
         let handle = KlvStreamHandle::new(0);
         self.push_klv_to(handle, klv, pts_90khz)
     }
@@ -1447,5 +1459,69 @@ mod tests {
             .unwrap();
         let mux = Muxer::new(cfg);
         assert!(mux.is_ok(), "klv-only muxer must construct");
+    }
+
+    #[test]
+    fn push_video_rejects_when_multiple_video_streams_configured() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_video(0x1021, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
+        let err = mux.push_video(&nal, 0, true).unwrap_err();
+        assert!(
+            matches!(err, MuxError::AmbiguousTarget { kind: "video", count: 2 }),
+            "expected AmbiguousTarget {{ video, 2 }}, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn push_klv_rejects_when_multiple_klv_streams_configured() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .add_klv(0x1041, KlvStreamType::PrivateData, true)
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+        let err = mux.push_klv(&[0; 16], 0).unwrap_err();
+        assert!(
+            matches!(err, MuxError::AmbiguousTarget { kind: "klv", count: 2 }),
+            "expected AmbiguousTarget {{ klv, 2 }}, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn push_video_rejects_when_no_video_streams_configured() {
+        // KLV-only muxer — push_video has no possible target.
+        let cfg = Config::builder()
+            .add_klv(0x1031, KlvStreamType::PrivateData, true)
+            .pcr_pid(0x1031)
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
+        let err = mux.push_video(&nal, 0, true).unwrap_err();
+        assert!(
+            matches!(err, MuxError::AmbiguousTarget { kind: "video", count: 0 }),
+            "expected AmbiguousTarget {{ video, 0 }}, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn push_klv_rejects_when_no_klv_streams_configured() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+        let err = mux.push_klv(&[0; 16], 0).unwrap_err();
+        assert!(
+            matches!(err, MuxError::AmbiguousTarget { kind: "klv", count: 0 }),
+            "expected AmbiguousTarget {{ klv, 0 }}, got {err:?}",
+        );
     }
 }

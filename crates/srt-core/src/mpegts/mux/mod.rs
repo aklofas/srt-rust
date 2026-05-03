@@ -712,6 +712,178 @@ impl Muxer {
         }
     }
 
+    /// Push one H.264 / H.265 access unit on a specific video stream.
+    ///
+    /// `pts_90khz` and `key_frame` carry the same semantics as
+    /// [`Self::push_video`]. The caller selects the destination stream
+    /// via the [`VideoStreamHandle`] obtained from
+    /// [`Self::video_handles`] / [`Self::video_stream_handle`].
+    ///
+    /// Returns [`MuxError::InvalidStreamHandle`] if the handle's index
+    /// is out of range for this muxer's configured video stream count.
+    pub fn push_video_to(
+        &mut self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts_90khz: i64,
+        key_frame: bool,
+    ) -> Result<(), MuxError> {
+        validate_annex_b(nal)?;
+
+        let idx = handle.index();
+        if idx >= self.video_streams.len() {
+            return Err(MuxError::InvalidStreamHandle {
+                kind: "video",
+                index: idx,
+            });
+        }
+        let video_pid = self.video_streams[idx].pid;
+
+        let mut header = [0u8; MAX_PES_HEADER_SIZE];
+        let header_len = write_pes_header(
+            &mut header,
+            STREAM_ID_VIDEO,
+            PesPtsField::PtsOnly(Pts90khz(pts_90khz)),
+            None,
+        );
+
+        let total = header_len + nal.len();
+        let video_packets = ts_packets_for(total);
+        let psi_packets = if self.psi_due(pts_90khz) { 2 } else { 0 };
+
+        if self.queue.len() + psi_packets + video_packets > self.config.buffer_packets {
+            return Err(MuxError::BufferFull {
+                capacity_packets: self.config.buffer_packets,
+            });
+        }
+
+        self.maybe_emit_psi(pts_90khz);
+
+        let mut pes_buf = Vec::with_capacity(total);
+        pes_buf.extend_from_slice(&header[..header_len]);
+        pes_buf.extend_from_slice(nal);
+
+        let mut cursor = 0;
+        let mut first = true;
+        while cursor < pes_buf.len() {
+            let mut adaptation = AdaptationField::default();
+            if first {
+                if key_frame {
+                    adaptation.random_access = true;
+                }
+                if self.pcr_pid == video_pid && self.pcr_due(pts_90khz) {
+                    let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
+                    adaptation.pcr = Some(pcr);
+                    self.last_pcr_emission_27mhz = Some(pcr.0);
+                }
+            }
+            let mut pkt = [0u8; 188];
+            let result = write_packet(
+                &mut pkt,
+                video_pid,
+                first,
+                adaptation,
+                &pes_buf[cursor..],
+                &mut self.counters,
+            );
+            cursor += result.payload_consumed;
+            self.queue.push_back(pkt);
+            first = false;
+        }
+
+        Ok(())
+    }
+
+    /// Push one KLV metadata blob on a specific KLV stream.
+    ///
+    /// `pts_90khz` carries the same semantics as [`Self::push_klv`] —
+    /// used as the PES PTS only when the targeted KLV stream was
+    /// configured with `carries_pts: true`; ignored otherwise.
+    ///
+    /// Returns [`MuxError::InvalidStreamHandle`] if the handle's index
+    /// is out of range.
+    pub fn push_klv_to(
+        &mut self,
+        handle: KlvStreamHandle,
+        klv: &[u8],
+        pts_90khz: i64,
+    ) -> Result<(), MuxError> {
+        let idx = handle.index();
+        if idx >= self.klv_streams.len() {
+            return Err(MuxError::InvalidStreamHandle {
+                kind: "klv",
+                index: idx,
+            });
+        }
+        let k = &self.klv_streams[idx];
+        let klv_pid = k.pid;
+        let klv_carries_pts = k.carries_pts;
+
+        let pts_field = if klv_carries_pts {
+            PesPtsField::PtsOnly(Pts90khz(pts_90khz))
+        } else {
+            PesPtsField::None
+        };
+
+        let pes_overhead = 3usize + if klv_carries_pts { 5 } else { 0 };
+        let max_klv = (u16::MAX as usize) - pes_overhead;
+        if klv.len() > max_klv {
+            return Err(MuxError::KlvTooLarge {
+                size: klv.len(),
+                max: max_klv,
+            });
+        }
+
+        let mut header = [0u8; MAX_PES_HEADER_SIZE];
+        let header_len = write_pes_header(
+            &mut header,
+            STREAM_ID_KLV,
+            pts_field,
+            Some(klv.len() as u16),
+        );
+
+        let total = header_len + klv.len();
+        let klv_packets = ts_packets_for(total);
+        let psi_packets = if self.psi_due(pts_90khz) { 2 } else { 0 };
+
+        if self.queue.len() + psi_packets + klv_packets > self.config.buffer_packets {
+            return Err(MuxError::BufferFull {
+                capacity_packets: self.config.buffer_packets,
+            });
+        }
+
+        self.maybe_emit_psi(pts_90khz);
+
+        let mut pes_buf = Vec::with_capacity(total);
+        pes_buf.extend_from_slice(&header[..header_len]);
+        pes_buf.extend_from_slice(klv);
+
+        let mut cursor = 0;
+        let mut first = true;
+        while cursor < pes_buf.len() {
+            let mut adaptation = AdaptationField::default();
+            if first && self.pcr_pid == klv_pid && self.pcr_due(pts_90khz) {
+                let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
+                adaptation.pcr = Some(pcr);
+                self.last_pcr_emission_27mhz = Some(pcr.0);
+            }
+            let mut pkt = [0u8; 188];
+            let result = write_packet(
+                &mut pkt,
+                klv_pid,
+                first,
+                adaptation,
+                &pes_buf[cursor..],
+                &mut self.counters,
+            );
+            cursor += result.payload_consumed;
+            self.queue.push_back(pkt);
+            first = false;
+        }
+
+        Ok(())
+    }
+
     fn psi_due(&self, pts_90khz: i64) -> bool {
         match self.last_psi_emission_pts {
             None => true,
@@ -1301,5 +1473,79 @@ mod tests {
         let mux = Muxer::new(Config::default()).unwrap();
         assert_eq!(mux.video_stream_handle(1), None);
         assert_eq!(mux.klv_stream_handle(1), None);
+    }
+
+    #[test]
+    fn push_video_to_routes_to_correct_pid() {
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let h = mux.video_stream_handle(0).unwrap();
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0x42];
+        mux.push_video_to(h, &nal, 0, true).unwrap();
+        // Drain and inspect: at least one packet should carry video_pid (0x1011).
+        let mut buf = vec![0u8; 188 * 16];
+        let n = mux.pull(&mut buf);
+        assert!(n > 0);
+        let mut found = false;
+        for chunk in buf[..n].chunks_exact(188) {
+            // PID is bits 4..16 of bytes 1..3.
+            let pid = ((chunk[1] as u16 & 0x1F) << 8) | chunk[2] as u16;
+            if pid == 0x1011 {
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "expected at least one packet on video PID 0x1011");
+    }
+
+    #[test]
+    fn push_klv_to_routes_to_correct_pid() {
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let h = mux.klv_stream_handle(0).unwrap();
+        // Minimal KLV blob — UL + length=0 (16 bytes UL + 1 byte length).
+        let mut klv = vec![0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01,
+                           0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00];
+        klv.push(0x00);
+        mux.push_klv_to(h, &klv, 0).unwrap();
+        let mut buf = vec![0u8; 188 * 16];
+        let n = mux.pull(&mut buf);
+        assert!(n > 0);
+        let mut found = false;
+        for chunk in buf[..n].chunks_exact(188) {
+            let pid = ((chunk[1] as u16 & 0x1F) << 8) | chunk[2] as u16;
+            if pid == 0x1031 {
+                found = true;
+                break;
+            }
+        }
+        assert!(found, "expected at least one packet on KLV PID 0x1031");
+    }
+
+    #[test]
+    fn push_video_to_invalid_handle_rejects() {
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let bogus = VideoStreamHandle::for_test(99);
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
+        let err = mux.push_video_to(bogus, &nal, 0, true).unwrap_err();
+        match err {
+            MuxError::InvalidStreamHandle { kind, index } => {
+                assert_eq!(kind, "video");
+                assert_eq!(index, 99);
+            }
+            other => panic!("expected InvalidStreamHandle, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn push_klv_to_invalid_handle_rejects() {
+        let mut mux = Muxer::new(Config::default()).unwrap();
+        let bogus = KlvStreamHandle::for_test(99);
+        let err = mux.push_klv_to(bogus, &[0; 16], 0).unwrap_err();
+        match err {
+            MuxError::InvalidStreamHandle { kind, index } => {
+                assert_eq!(kind, "klv");
+                assert_eq!(index, 99);
+            }
+            other => panic!("expected InvalidStreamHandle, got {other:?}"),
+        }
     }
 }

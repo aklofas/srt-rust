@@ -293,18 +293,108 @@ fn drain_pattern() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Multi-stream shape
+## Multi-stream output
 
-The muxer ships single-program TS today: `Config::validate` enforces
-"at most one Video and at most one Klv". `Muxer::new` further requires
-exactly one of each (a future lift relaxes this on either side). The
-`Config::streams: Vec<StreamSpec>` shape is multi-stream-from-day-one
-so a future multi-stream lift can land additively without breaking
-ABI for existing callers — the cap is the only thing that needs to
-move.
+The muxer accepts up to **16 video** + **16 KLV** elementary streams in
+a single program (one PMT, one PAT). Use this shape when you need:
 
-See "Multi-stream `mpegts::mux`" in [deferred-features.md](deferred-features.md)
-for the trigger to revisit.
+- **Dual-camera platforms.** EO (visible) + IR (thermal) sensors on a
+  stabilized turret, both streamed in the same TS — typical for ISR
+  pods.
+- **Multi-metadata pods.** Vehicle telemetry on one KLV PID, sensor
+  metadata on another (common when the sensor and platform are
+  separately instrumented).
+- **Combinations of the above.** N video + M KLV in any ratio (N+M ≥ 1,
+  N ≤ 16, M ≤ 16).
+
+### Building a multi-stream Config
+
+Build with the existing `ConfigBuilder::add_video` / `add_klv` calls —
+just call them more than once:
+
+```rust
+use srt_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+
+let cfg = Config::builder()
+    .add_video(0x1011, VideoCodec::H264) // EO
+    .add_video(0x1021, VideoCodec::H264) // IR
+    .add_klv(0x1031, KlvStreamType::PrivateData, false)
+    .pcr_pid(0x1011) // pin PCR to the EO stream — see "PCR rule" below
+    .build()?;
+```
+
+Validation:
+
+- More than 16 streams of either kind → `MuxError::TooManyVideoStreams`
+  / `TooManyKlvStreams` (cap is generous; ask if you need more).
+- Duplicate PIDs across any pair of streams → `MuxError::InvalidConfig`.
+- `pcr_pid` (if set) must equal a configured stream's PID, or
+  validation rejects.
+- A `Config` with at least one video OR at least one KLV stream is
+  valid. Video-only and KLV-only outputs are both supported.
+
+### Stream handles
+
+After `Muxer::new` succeeds, obtain a handle per configured stream:
+
+```rust
+let mut mux = Muxer::new(cfg)?;
+let eo = mux.video_stream_handle(0).unwrap();
+let ir = mux.video_stream_handle(1).unwrap();
+let klv = mux.klv_stream_handle(0).unwrap();
+```
+
+Handles are opaque (`VideoStreamHandle` / `KlvStreamHandle` — both
+`Copy + Eq + Hash`). They're tied to the muxer that produced them —
+passing one to a different muxer surfaces as
+`MuxError::InvalidStreamHandle`.
+
+You can also enumerate everything in declaration order:
+
+```rust
+for h in mux.video_handles() { /* ... */ }
+for h in mux.klv_handles()   { /* ... */ }
+```
+
+### Pushing to a specific stream
+
+```rust
+mux.push_video_to(eo, &eo_nal, pts, key_frame)?;
+mux.push_video_to(ir, &ir_nal, pts, key_frame)?;
+mux.push_klv_to(klv, &klv_blob, pts)?;
+```
+
+Each push is independent — no cross-stream synchronization is
+implied by the API. PSI (PAT/PMT) is re-emitted on a single timeline
+driven by whichever push call fired most recently.
+
+### Single-target convenience APIs in the multi-stream world
+
+The no-suffix `Muxer::push_video` and `Muxer::push_klv` (and the
+`Sender::send_video` / `send_klv` wrappers) only work when **exactly
+one** stream of that kind is configured. Otherwise they return
+`MuxError::AmbiguousTarget`. This keeps single-stream callers
+unchanged while making it impossible to accidentally route bytes to
+the wrong stream when N > 1.
+
+### PCR rule
+
+`Config::pcr_pid` controls which PID carries the PCR:
+
+- If unset, the muxer pins PCR to the first video stream's PID
+  (or the first KLV stream's PID if the muxer is KLV-only).
+- If set to a value that matches no configured stream, validation
+  rejects with `MuxError::InvalidConfig`.
+
+There is exactly one PCR pin per muxer — multi-program (multiple PMTs
+in one PAT) with per-program PCR is out of scope for this version.
+
+### Runnable example
+
+`crates/srt-core/examples/mux_dual_camera.rs` builds a 30-frame EO + IR
++ KLV TS file. Run it with `cargo run --example mux_dual_camera`; the
+resulting `dual_camera.ts` should report two video streams and one
+data (KLV) stream under `ffprobe -show_streams`.
 
 ## Examples
 
@@ -331,8 +421,4 @@ Each item below maps to an entry in
 - Subtitle, caption, and auxiliary-data channels — same situation as
   audio, plus the abstraction varies enough across channel types
   that a generic shape is the wrong call. See
-  [deferred-features.md](deferred-features.md).
-- Multi-stream `mpegts::mux` (multiple video PIDs / multiple KLV PIDs
-  per output TS) — `Config` is multi-stream-shaped; the cap lifts
-  additively when a consumer needs it. See
   [deferred-features.md](deferred-features.md).

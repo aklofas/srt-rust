@@ -32,6 +32,19 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A specific channel type asked for by a
   consumer, designed against that channel's actual semantics.
 
+## Other PMT entries / auxiliary services
+
+- **Status:** The muxer emits PAT + PMT with video PID + KLV PID(s)
+  only. SCTE-35 splice info, EMM/ECM (conditional access), data
+  carousels (DSM-CC), and private-data PIDs beyond KLV are not
+  emitted.
+- **Why deferred:** No shipping consumer asks for any of them. Adding
+  them speculatively risks the same wrong-abstraction trap as
+  subtitles — each is its own descriptor + stream_type + PES shape.
+- **Trigger to revisit:** A consumer asks for one specifically.
+- **Scope when added:** Case-by-case; each carries its own
+  descriptor + stream_type + PES framing.
+
 ## Async / reactor exposure
 
 - **Status:** Not implemented; the public API is sync blocking.
@@ -121,6 +134,30 @@ the trigger that would unblock it.
   driving use case.
 - **Trigger to revisit:** A consumer needing the typed layer for one
   of these sets specifically.
+
+## KLV conformance cross-check vs. Python `klvdata`
+
+- **Status:** Default test suite uses synthetic + MISB public fixtures
+  as ground truth. No automated cross-decoder agreement check.
+- **Why deferred:** Adding Python to CI is marginal value when MISB
+  public test vectors are already authoritative ground truth.
+- **Trigger to revisit:** A parsing bug ships that golden-file tests
+  would have missed — i.e., the library and the spec disagreed without
+  the test suite catching it.
+- **Scope when added:** A `--features conformance` cargo feature plus
+  a separate CI job that runs Python with `pip install klvdata`,
+  parses each fixture with both decoders, and asserts typed-field
+  agreement within tolerance.
+
+## Streaming / chunked KLV decode
+
+- **Status:** Buffer-in / buffer-out. The decoder consumes a complete
+  KLV LS in one call.
+- **Why deferred:** ST 0601 records are sub-1 KB typical and sub-10 KB
+  worst case. A streaming decoder is implementation cost without a
+  beneficiary.
+- **Trigger to revisit:** Implausible — would require a consumer with
+  records over 100 KB.
 
 ## `serde` integration for typed KLV records
 

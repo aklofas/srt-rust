@@ -200,6 +200,60 @@ pub unsafe extern "C" fn srtc_muxer_pull(
     n
 }
 
+/// Snapshot stats for a `srtc_muxer_t` into `*out`.
+///
+/// Returns 0 on success, `SRTC_E_INVALID_CONFIG` if either pointer is
+/// null, or `SRTC_E_CLOSED` if the muxer has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_muxer_get_stats(
+    p: *mut SrtcMuxer,
+    out: *mut crate::stats::SrtcMuxerStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null muxer pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(SrtcError::InvalidConfig, "null out pointer");
+        return SrtcError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|m| {
+        let stats = m.stats();
+        let mut per_stream =
+            [crate::stats::SrtcStreamStats::default(); crate::stats::SRTC_STATS_MAX_STREAMS];
+        let (per_stream_count, truncated) =
+            crate::stats::fill_per_stream(&mut per_stream, &stats.per_stream);
+        let dst = crate::stats::SrtcMuxerStats {
+            ts_packets_emitted: stats.ts_packets_emitted,
+            ts_bytes_emitted: stats.ts_bytes_emitted,
+            per_stream_count,
+            per_stream_truncated: if truncated { 1 } else { 0 },
+            per_stream,
+        };
+        unsafe { *out = dst };
+        0
+    })
+}
+
+/// Reset stats counters for a `srtc_muxer_t` to zero.
+///
+/// Per-stream entries are preserved (identity fields remain); only flow
+/// counters (`items`, `bytes`, `discontinuities`) are zeroed.
+///
+/// Returns 0 on success, `SRTC_E_INVALID_CONFIG` if the pointer is
+/// null, or `SRTC_E_CLOSED` if the muxer has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_muxer_reset_stats(p: *mut SrtcMuxer) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null muxer pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    handle.inner.with_inner_mut(|m| {
+        m.reset_stats();
+        0
+    })
+}
+
 /// Close and free the muxer. Idempotent — passing NULL is a no-op.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_muxer_close(p: *mut SrtcMuxer) {

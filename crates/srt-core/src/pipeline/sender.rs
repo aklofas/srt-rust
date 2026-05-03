@@ -38,6 +38,10 @@ pub struct SenderStats {
 
 pub struct Sender<T: Transport> {
     inner: Mutex<Inner<T>>,
+    /// Cancel handle snapshot, taken from the transport at construction
+    /// time. Held outside the inner Mutex so `close()` can fire it
+    /// without competing with a concurrent `send_*` for the lock.
+    cancel: Option<Box<dyn crate::pipeline::transport::TransportCancel>>,
 }
 
 struct Inner<T: Transport> {
@@ -59,6 +63,7 @@ struct Inner<T: Transport> {
 impl<T: Transport> Sender<T> {
     pub fn new(config: Config, transport: T) -> Result<Self, MuxError> {
         let muxer = Muxer::new(config)?;
+        let cancel = transport.cancel_handle();
         Ok(Self {
             inner: Mutex::new(Inner {
                 muxer,
@@ -68,6 +73,7 @@ impl<T: Transport> Sender<T> {
                 bytes_sent: 0,
                 packets_sent: 0,
             }),
+            cancel,
         })
     }
 
@@ -156,9 +162,24 @@ impl<T: Transport> Sender<T> {
     }
 
     pub fn close(&self) {
+        // Cancel-first: wake any peer thread parked inside
+        // transport.send_bytes so they return TransportError::Broken and
+        // release the inner Mutex. Otherwise we'd deadlock here waiting
+        // for the lock.
+        if let Some(c) = &self.cancel {
+            c.cancel();
+        }
         let mut inner = self.inner.lock().unwrap();
         inner.closed = true;
         inner.transport.close();
+    }
+
+    /// Snapshot of the underlying transport's cancel handle, if it
+    /// supports cancellation. Equivalent to what `close()` calls
+    /// internally; exposed for callers who want to keep the Sender
+    /// alive but still have an out-of-band wake-up mechanism.
+    pub fn cancel_handle(&self) -> Option<&dyn crate::pipeline::transport::TransportCancel> {
+        self.cancel.as_deref()
     }
 
     pub fn is_alive(&self) -> bool {
@@ -434,5 +455,104 @@ mod multi_stream_tests {
             }) => {}
             other => panic!("expected AmbiguousTarget, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod cancel_tests {
+    use super::*;
+    use crate::mpegts::mux::{KlvStreamType, VideoCodec};
+    use crate::pipeline::transport::{Transport, TransportCancel, TransportError};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    /// Mock transport whose send_bytes blocks (parks) until cancel is
+    /// triggered, simulating libsrt's send buffer being full.
+    struct ParkableTransport {
+        cancelled: Arc<AtomicBool>,
+    }
+    struct ParkableCancel {
+        cancelled: Arc<AtomicBool>,
+    }
+    impl TransportCancel for ParkableCancel {
+        fn cancel(&self) {
+            self.cancelled.store(true, Ordering::SeqCst);
+        }
+    }
+    impl Transport for ParkableTransport {
+        fn send_bytes(&mut self, _: &[u8]) -> Result<(), TransportError> {
+            // Spin-park until cancelled, then return Broken.
+            for _ in 0..1000 {
+                if self.cancelled.load(Ordering::SeqCst) {
+                    return Err(TransportError::Broken("cancelled".into()));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            Err(TransportError::Broken(
+                "test timeout (cancel never fired)".into(),
+            ))
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn close(&mut self) {
+            self.cancelled.store(true, Ordering::SeqCst);
+        }
+        fn is_alive(&self) -> bool {
+            !self.cancelled.load(Ordering::SeqCst)
+        }
+        fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
+            Some(Box::new(ParkableCancel {
+                cancelled: self.cancelled.clone(),
+            }))
+        }
+    }
+
+    /// `close()` from another thread unblocks a sender thread parked
+    /// inside `send_video()`. Without cancel-first, the close call would
+    /// itself block on the inner Mutex held by the parked sender.
+    #[test]
+    fn close_unblocks_parked_sender_thread() {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cfg = Config::builder()
+            .add_video(0x100, VideoCodec::H264)
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .build()
+            .unwrap();
+        let s = Arc::new(
+            Sender::new(
+                cfg,
+                ParkableTransport {
+                    cancelled: cancelled.clone(),
+                },
+            )
+            .unwrap(),
+        );
+        let s_send = s.clone();
+
+        let nal = vec![0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+        let send_thread = std::thread::spawn(move || s_send.send_video(&nal, 0, true));
+
+        // Give the send thread a moment to grab the lock and park.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // close() must NOT itself block on the inner Mutex; it cancels
+        // first, the parked send returns Broken, then close lock-acquires.
+        let close_start = std::time::Instant::now();
+        s.close();
+        let close_elapsed = close_start.elapsed();
+
+        // Allow generous slack: the send thread sleeps 1ms between
+        // checks, so the parked send returns within ~5ms after cancel.
+        assert!(
+            close_elapsed < std::time::Duration::from_millis(200),
+            "close() blocked for {close_elapsed:?} — should have been near-instant via cancel"
+        );
+
+        let result = send_thread.join().unwrap();
+        assert!(matches!(
+            result,
+            Err(SenderError::Transport(TransportError::Broken(_)))
+        ));
     }
 }

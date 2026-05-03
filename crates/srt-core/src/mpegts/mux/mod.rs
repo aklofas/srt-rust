@@ -97,10 +97,10 @@ pub struct VideoStreamHandle(usize);
 pub struct KlvStreamHandle(usize);
 
 impl VideoStreamHandle {
-    pub(crate) fn new(index: usize) -> Self {
+    pub fn new(index: usize) -> Self {
         Self(index)
     }
-    pub(crate) fn index(self) -> usize {
+    pub fn index(self) -> usize {
         self.0
     }
     #[cfg(test)]
@@ -110,10 +110,10 @@ impl VideoStreamHandle {
 }
 
 impl KlvStreamHandle {
-    pub(crate) fn new(index: usize) -> Self {
+    pub fn new(index: usize) -> Self {
         Self(index)
     }
-    pub(crate) fn index(self) -> usize {
+    pub fn index(self) -> usize {
         self.0
     }
     #[cfg(test)]

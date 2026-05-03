@@ -11,10 +11,16 @@
 use srt_core::srt::ListenerBuilder;
 use srtc::config::{SrtcKlvStreamType, SrtcMuxConfig, SrtcVideoCodec};
 use srtc::config::{
-    srtc_mux_config_add_klv, srtc_mux_config_add_video, srtc_mux_config_free, srtc_mux_config_new,
+    srtc_mux_config_add_klv, srtc_mux_config_add_klv_stream, srtc_mux_config_add_video,
+    srtc_mux_config_add_video_stream, srtc_mux_config_free, srtc_mux_config_new,
+    srtc_reconnect_policy_free, srtc_reconnect_policy_new,
 };
 use srtc::error::srtc_get_last_error_str;
-use srtc::mux_sender::{srtc_mux_sender_close, srtc_mux_sender_open, srtc_mux_sender_send_video};
+use srtc::mux_sender::{
+    srtc_managed_mux_sender_close, srtc_managed_mux_sender_open,
+    srtc_managed_mux_sender_send_klv_to, srtc_managed_mux_sender_send_video_to,
+    srtc_mux_sender_close, srtc_mux_sender_open, srtc_mux_sender_send_video,
+};
 use std::ffi::CString;
 use std::sync::mpsc;
 use std::thread;
@@ -80,4 +86,168 @@ fn mux_sender_to_listener_roundtrip() {
     }
 
     listener_thread.join().expect("listener thread panicked");
+}
+
+// ---------------------------------------------------------------------------
+// Multi-stream: managed_mux_sender with 2 video + 1 KLV stream
+// ---------------------------------------------------------------------------
+
+#[test]
+fn managed_mux_sender_multi_stream_loopback() {
+    let (port_tx, port_rx) = mpsc::channel::<u16>();
+    let (bytes_tx, bytes_rx) = mpsc::channel::<Vec<u8>>();
+
+    let listener_thread = thread::spawn(move || {
+        let mut listener = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(5))
+            .bind("127.0.0.1:0")
+            .expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        port_tx.send(port).expect("send port");
+        let (mut accepted, _peer) = listener.accept().expect("accept");
+
+        // Read until we've seen all three stream PIDs or the deadline expires.
+        // Each srt_recv call delivers one SRT message (7 TS packets = 1316
+        // bytes for the v0 bundle size). We need enough messages to see PAT,
+        // PMT, and at least one packet from each of the three elementary
+        // streams (EO video at 0x1011, IR video at 0x1012, KLV at 0x1031).
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let mut accumulated = Vec::with_capacity(64 * 1024);
+        let mut buf = vec![0u8; 4096];
+        while std::time::Instant::now() < deadline {
+            match accepted.recv(&mut buf) {
+                Ok(n) if n > 0 => accumulated.extend_from_slice(&buf[..n]),
+                Ok(_) => break, // 0-byte recv means connection closed
+                Err(_) => break,
+            }
+            // Stop as soon as all three elementary-stream PIDs have appeared.
+            // PAT (0x0000) and PMT will be present too, but what matters for
+            // the assertion below is the three stream-level PIDs.
+            let seen = pids_seen(&accumulated);
+            if seen.contains(&0x1011) && seen.contains(&0x1012) && seen.contains(&0x1031) {
+                break;
+            }
+        }
+        bytes_tx.send(accumulated).expect("send bytes");
+    });
+
+    let port = port_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("listener didn't bind in time");
+    let url = CString::new(format!("srt://127.0.0.1:{port}")).unwrap();
+
+    unsafe {
+        let cfg: *mut SrtcMuxConfig = srtc_mux_config_new();
+
+        // Add two video streams (EO + IR) and one KLV stream, capturing the
+        // handles returned by the _stream variants so we can fan out later.
+        let h_eo = srtc_mux_config_add_video_stream(cfg, 0x1011, SrtcVideoCodec::H264);
+        let h_ir = srtc_mux_config_add_video_stream(cfg, 0x1012, SrtcVideoCodec::H264);
+        let h_klv =
+            srtc_mux_config_add_klv_stream(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false);
+
+        // Use a default reconnect policy (no forced backoff — connect immediately).
+        let policy = srtc_reconnect_policy_new();
+        let s = srtc_managed_mux_sender_open(url.as_ptr(), cfg, policy);
+        assert!(!s.is_null(), "open failed: {}", last_error_msg());
+        srtc_mux_config_free(cfg);
+        srtc_reconnect_policy_free(policy);
+
+        // Minimal Annex-B IDR NAL: start code + NAL header byte 0x65 (IDR,
+        // nal_unit_type=5 for H.264). Payload bytes are synthetic filler.
+        let nal: [u8; 9] = [0x00, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xAA, 0xAA, 0xAA];
+
+        // Minimal KLV packet: 16-byte UL key from ST 0601 followed by
+        // zero-length BER length. The muxer wraps this in a PES but does
+        // not validate KLV content.
+        let klv: [u8; 16] = [
+            0x06, 0x0e, 0x2b, 0x34, 0x02, 0x0b, 0x01, 0x01, 0x0e, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00,
+        ];
+
+        // PTS values must be strictly increasing across all streams so the
+        // muxer's PCR/PTS ordering logic stays happy. Send two rounds to
+        // give the muxer enough elementary-stream data to flush output
+        // bundles containing all three PIDs; PTS increments by ~3003 each
+        // round (≈1/30 s at 90 kHz).
+        for round in 0u64..3 {
+            let base_pts = (round * 3003) as i64;
+            let rc_eo = srtc_managed_mux_sender_send_video_to(
+                s,
+                h_eo,
+                nal.as_ptr(),
+                nal.len(),
+                base_pts,
+                true,
+            );
+            assert_eq!(rc_eo, 0, "send_video_to EO round {round} failed: {}", last_error_msg());
+
+            let rc_ir = srtc_managed_mux_sender_send_video_to(
+                s,
+                h_ir,
+                nal.as_ptr(),
+                nal.len(),
+                base_pts + 1,
+                true,
+            );
+            assert_eq!(rc_ir, 0, "send_video_to IR round {round} failed: {}", last_error_msg());
+
+            let rc_klv =
+                srtc_managed_mux_sender_send_klv_to(s, h_klv, klv.as_ptr(), klv.len(), base_pts + 2);
+            assert_eq!(rc_klv, 0, "send_klv_to round {round} failed: {}", last_error_msg());
+        }
+
+        let received = bytes_rx
+            .recv_timeout(Duration::from_secs(15))
+            .expect("listener thread didn't deliver bytes within 15s");
+
+        assert!(!received.is_empty(), "received empty buffer");
+        assert_eq!(
+            received[0], 0x47,
+            "expected TS sync byte 0x47 at offset 0; got 0x{:02x}",
+            received[0]
+        );
+
+        let pids = pids_seen(&received);
+        eprintln!("pids_seen = {:?}", pids);
+        assert!(
+            pids.contains(&0x1011),
+            "missing EO video PID 0x1011; pids_seen = {:?}",
+            pids
+        );
+        assert!(
+            pids.contains(&0x1012),
+            "missing IR video PID 0x1012; pids_seen = {:?}",
+            pids
+        );
+        assert!(
+            pids.contains(&0x1031),
+            "missing KLV PID 0x1031; pids_seen = {:?}",
+            pids
+        );
+
+        srtc_managed_mux_sender_close(s);
+    }
+
+    listener_thread.join().expect("listener thread panicked");
+}
+
+/// Walk a byte buffer treating every 188-byte aligned run as a TS packet and
+/// collect all 13-bit PIDs encountered.  Byte 0 of each packet must be the
+/// TS sync byte 0x47; if it isn't the walker advances one byte at a time to
+/// re-align (handles minor framing skew).
+fn pids_seen(bytes: &[u8]) -> std::collections::HashSet<u16> {
+    let mut pids = std::collections::HashSet::new();
+    let mut offset = 0;
+    while offset + 188 <= bytes.len() {
+        if bytes[offset] != 0x47 {
+            // Not aligned — step forward one byte and try again.
+            offset += 1;
+            continue;
+        }
+        let pid = (((bytes[offset + 1] & 0x1F) as u16) << 8) | (bytes[offset + 2] as u16);
+        pids.insert(pid);
+        offset += 188;
+    }
+    pids
 }

@@ -522,67 +522,10 @@ impl Muxer {
         pts_90khz: i64,
         key_frame: bool,
     ) -> Result<(), MuxError> {
-        validate_annex_b(nal)?;
-
-        // Single-stream-only invariant: there is exactly one video stream
-        // (Config::validate enforces `≤1`, Muxer::new enforces `≥1`).
-        // Task 9 will add AmbiguousTarget when N>1 becomes possible.
-        let v = &self.video_streams[0];
-        let video_pid = v.pid;
-
-        let mut header = [0u8; MAX_PES_HEADER_SIZE];
-        let header_len = write_pes_header(
-            &mut header,
-            STREAM_ID_VIDEO,
-            PesPtsField::PtsOnly(Pts90khz(pts_90khz)),
-            None,
-        );
-
-        let total = header_len + nal.len();
-        let video_packets = ts_packets_for(total);
-        let psi_packets = if self.psi_due(pts_90khz) { 2 } else { 0 };
-
-        if self.queue.len() + psi_packets + video_packets > self.config.buffer_packets {
-            return Err(MuxError::BufferFull {
-                capacity_packets: self.config.buffer_packets,
-            });
-        }
-
-        self.maybe_emit_psi(pts_90khz);
-
-        let mut pes_buf = Vec::with_capacity(total);
-        pes_buf.extend_from_slice(&header[..header_len]);
-        pes_buf.extend_from_slice(nal);
-
-        let mut cursor = 0;
-        let mut first = true;
-        while cursor < pes_buf.len() {
-            let mut adaptation = AdaptationField::default();
-            if first {
-                if key_frame {
-                    adaptation.random_access = true;
-                }
-                if self.pcr_pid == video_pid && self.pcr_due(pts_90khz) {
-                    let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
-                    adaptation.pcr = Some(pcr);
-                    self.last_pcr_emission_27mhz = Some(pcr.0);
-                }
-            }
-            let mut pkt = [0u8; 188];
-            let result = write_packet(
-                &mut pkt,
-                video_pid,
-                first,
-                adaptation,
-                &pes_buf[cursor..],
-                &mut self.counters,
-            );
-            cursor += result.payload_consumed;
-            self.queue.push_back(pkt);
-            first = false;
-        }
-
-        Ok(())
+        // Delegate to push_video_to with the only handle. After Task 8
+        // this also rejects with AmbiguousTarget when N > 1.
+        let handle = VideoStreamHandle::new(0);
+        self.push_video_to(handle, nal, pts_90khz, key_frame)
     }
 
     /// Push one KLV metadata blob.
@@ -591,73 +534,8 @@ impl Muxer {
     /// `carries_pts: true` in [`StreamSpec::Klv`]; ignored otherwise.
     /// Returns `Err(MuxError::BufferFull)` like `push_video`.
     pub fn push_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
-        let k = &self.klv_streams[0];
-        let klv_pid = k.pid;
-        let klv_carries_pts = k.carries_pts;
-
-        let pts_field = if klv_carries_pts {
-            PesPtsField::PtsOnly(Pts90khz(pts_90khz))
-        } else {
-            PesPtsField::None
-        };
-
-        let pes_overhead = 3usize + if klv_carries_pts { 5 } else { 0 };
-        let max_klv = (u16::MAX as usize) - pes_overhead;
-        if klv.len() > max_klv {
-            return Err(MuxError::KlvTooLarge {
-                size: klv.len(),
-                max: max_klv,
-            });
-        }
-
-        let mut header = [0u8; MAX_PES_HEADER_SIZE];
-        let header_len = write_pes_header(
-            &mut header,
-            STREAM_ID_KLV,
-            pts_field,
-            Some(klv.len() as u16),
-        );
-
-        let total = header_len + klv.len();
-        let klv_packets = ts_packets_for(total);
-        let psi_packets = if self.psi_due(pts_90khz) { 2 } else { 0 };
-
-        if self.queue.len() + psi_packets + klv_packets > self.config.buffer_packets {
-            return Err(MuxError::BufferFull {
-                capacity_packets: self.config.buffer_packets,
-            });
-        }
-
-        self.maybe_emit_psi(pts_90khz);
-
-        let mut pes_buf = Vec::with_capacity(total);
-        pes_buf.extend_from_slice(&header[..header_len]);
-        pes_buf.extend_from_slice(klv);
-
-        let mut cursor = 0;
-        let mut first = true;
-        while cursor < pes_buf.len() {
-            let mut adaptation = AdaptationField::default();
-            if first && self.pcr_pid == klv_pid && self.pcr_due(pts_90khz) {
-                let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
-                adaptation.pcr = Some(pcr);
-                self.last_pcr_emission_27mhz = Some(pcr.0);
-            }
-            let mut pkt = [0u8; 188];
-            let result = write_packet(
-                &mut pkt,
-                klv_pid,
-                first,
-                adaptation,
-                &pes_buf[cursor..],
-                &mut self.counters,
-            );
-            cursor += result.payload_consumed;
-            self.queue.push_back(pkt);
-            first = false;
-        }
-
-        Ok(())
+        let handle = KlvStreamHandle::new(0);
+        self.push_klv_to(handle, klv, pts_90khz)
     }
 
     /// Drain ready TS packets into `out`.

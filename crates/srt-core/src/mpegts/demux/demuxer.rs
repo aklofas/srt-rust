@@ -495,6 +495,7 @@ impl Demuxer {
                 pid: s.elementary_pid,
                 stream_type: s.stream_type,
                 kind,
+                raw_descriptors: s.descriptors.clone(),
             });
         }
         // Build klv_links table.
@@ -967,5 +968,48 @@ mod tests {
         assert_eq!(st.discontinuities, 0);
         assert_eq!(st.nonconformant, 0);
         assert!(st.per_stream.is_empty());
+    }
+
+    #[test]
+    fn pmt_program_map_event_carries_raw_descriptors() {
+        use crate::mpegts::demux::event::DemuxEvent;
+        use crate::mpegts::descriptors;
+        use crate::mpegts::mux::{Config, VideoCodec as MuxVideoCodec};
+
+        let cfg = Config::builder()
+            .add_video(0x100, MuxVideoCodec::H264)
+            .stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
+            .build()
+            .unwrap();
+        let mut mux = crate::mpegts::mux::Muxer::new(cfg).unwrap();
+        // Push a minimal H.264 AU to trigger PSI + PES emission.
+        mux.push_video(&[0, 0, 0, 1, 0x09, 0x10], 9000, true)
+            .unwrap();
+        let mut buf = vec![0u8; 188 * 32];
+        let n = mux.pull(&mut buf);
+
+        let mut demuxer = Demuxer::new();
+        demuxer.feed(&buf[..n]).unwrap();
+
+        let mut events = Vec::new();
+        while let Some(e) = demuxer.next_event() {
+            events.push(e);
+        }
+
+        let pm = events
+            .iter()
+            .find_map(|e| match e {
+                DemuxEvent::ProgramMap(pm) => Some(pm),
+                _ => None,
+            })
+            .expect("ProgramMap event emitted");
+        let stream = pm
+            .streams
+            .iter()
+            .find(|s| s.pid == 0x100)
+            .expect("video PID 0x100 in ProgramMap");
+        assert_eq!(stream.raw_descriptors.len(), 1);
+        assert_eq!(stream.raw_descriptors[0].tag, 0xFF);
+        assert_eq!(stream.raw_descriptors[0].data, b"EO 1080p".to_vec());
     }
 }

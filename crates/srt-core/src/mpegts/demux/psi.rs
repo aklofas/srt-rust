@@ -272,6 +272,17 @@ pub fn extract_user_label(descs: &[RawDescriptor]) -> Option<String> {
             }
         }
     }
+    // 5. User-private descriptor (tag 0xFF) — Family B (ARS) corpus
+    // shape; reserved per ISO/IEC 13818-1 but used in practice as the
+    // de-facto label slot. Best-effort UTF-8.
+    if let Some(d) = descs.iter().find(|d| d.tag == 0xFF) {
+        if let Ok(s) = std::str::from_utf8(&d.data) {
+            let trimmed = s.trim_end_matches('\0').trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
     None
 }
 
@@ -641,5 +652,32 @@ mod label_tests {
     #[test]
     fn extract_user_label_empty_descriptors() {
         assert_eq!(extract_user_label(&[]), None);
+    }
+
+    #[test]
+    fn extract_user_label_picks_user_private_tag_0xff() {
+        // Standalone tag 0xFF — should be picked up.
+        let descs = vec![RawDescriptor {
+            tag: 0xFF,
+            data: b"VIDEO-ARS".to_vec(),
+        }];
+        assert_eq!(extract_user_label(&descs).as_deref(), Some("VIDEO-ARS"));
+    }
+
+    #[test]
+    fn extract_user_label_prefers_component_over_user_private() {
+        // When both Component (0x50) and tag 0xFF are present, Component wins —
+        // conformant descriptors take priority.
+        let descs = vec![
+            RawDescriptor {
+                tag: 0x50,
+                data: vec![0xF9, 0, 0, b'e', b'n', b'g', b'C', b'O', b'M', b'P'],
+            },
+            RawDescriptor {
+                tag: 0xFF,
+                data: b"PRIVATE".to_vec(),
+            },
+        ];
+        assert_eq!(extract_user_label(&descs).as_deref(), Some("COMP"));
     }
 }

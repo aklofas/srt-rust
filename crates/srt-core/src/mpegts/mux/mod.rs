@@ -290,6 +290,76 @@ impl Config {
             return Err(MuxError::InvalidConfig("buffer_packets must be >= 10"));
         }
 
+        // stream_descriptors must be the same length as streams. Hand-built
+        // Config callers must keep them in sync; ConfigBuilder::build does
+        // this automatically.
+        if self.stream_descriptors.len() != self.streams.len() {
+            return Err(MuxError::InvalidConfig(
+                "stream_descriptors.len() must equal streams.len()",
+            ));
+        }
+
+        // Per-stream descriptor well-formedness: each TLV must declare a
+        // length that matches its slice length, and the length byte itself
+        // must be ≤ 253 (so total descriptor bytes ≤ 255).
+        for (si, descs) in self.stream_descriptors.iter().enumerate() {
+            for (di, tlv) in descs.iter().enumerate() {
+                if tlv.len() < 2 {
+                    return Err(MuxError::MalformedDescriptor {
+                        stream_index: si,
+                        descriptor_index: di,
+                        reason: "descriptor TLV must be at least 2 bytes (tag + length)",
+                    });
+                }
+                let declared = tlv[1] as usize;
+                if declared != tlv.len() - 2 {
+                    return Err(MuxError::MalformedDescriptor {
+                        stream_index: si,
+                        descriptor_index: di,
+                        reason: "length byte does not match payload length",
+                    });
+                }
+                if declared > 253 {
+                    return Err(MuxError::MalformedDescriptor {
+                        stream_index: si,
+                        descriptor_index: di,
+                        reason: "descriptor body length must fit in u8 (max 253 useful bytes)",
+                    });
+                }
+            }
+        }
+
+        // PMT must fit in one TS packet. Sum 5 ES-header bytes per stream
+        // + auto-emitted descriptor bytes (KLVA Registration on KLV PIDs)
+        // + caller bytes. The 17-byte fixed PMT overhead (header + CRC +
+        // PCR/info length) leaves 166 bytes for the ES loop.
+        let mut total_es_loop_bytes = 0usize;
+        for (i, spec) in self.streams.iter().enumerate() {
+            let auto_bytes = match spec {
+                StreamSpec::Klv {
+                    stream_type: KlvStreamType::PrivateData,
+                    ..
+                } => 6, // KLVA Registration descriptor body
+                _ => 0,
+            };
+            // If caller supplied a Registration descriptor on a KLV PID,
+            // auto-emit is suppressed (Task 7). Detect that here so the
+            // validation budget matches what the muxer actually emits.
+            let caller_overrides_klva = matches!(spec, StreamSpec::Klv { .. })
+                && self.stream_descriptors[i]
+                    .iter()
+                    .any(|tlv| !tlv.is_empty() && tlv[0] == 0x05);
+            let effective_auto = if caller_overrides_klva { 0 } else { auto_bytes };
+            let caller_bytes: usize = self.stream_descriptors[i].iter().map(Vec::len).sum();
+            total_es_loop_bytes += 5 + effective_auto + caller_bytes;
+        }
+        if total_es_loop_bytes > crate::mpegts::descriptors::MAX_DESCRIPTOR_LOOP_PER_PMT {
+            return Err(MuxError::PmtTooLarge {
+                used_bytes: total_es_loop_bytes,
+                max_bytes: crate::mpegts::descriptors::MAX_DESCRIPTOR_LOOP_PER_PMT,
+            });
+        }
+
         Ok(())
     }
 
@@ -1689,6 +1759,38 @@ mod tests {
             assert!(descs.is_empty());
         }
     }
+
+    #[test]
+    fn validate_rejects_descriptor_count_mismatch() {
+        let cfg = Config {
+            stream_descriptors: vec![Vec::new()], // streams has 2, descs has 1
+            ..Config::default()
+        };
+        let err = cfg.validate().unwrap_err();
+        assert!(matches!(err, MuxError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn validate_rejects_malformed_descriptor() {
+        // Length byte claims 5 bytes of body but only 1 follows.
+        let bad = vec![0xFF, 0x05, 0x00];
+        let cfg = Config {
+            stream_descriptors: vec![vec![bad], Vec::new()],
+            ..Config::default()
+        };
+        let err = cfg.validate().unwrap_err();
+        assert!(matches!(
+            err,
+            MuxError::MalformedDescriptor {
+                stream_index: 0,
+                descriptor_index: 0,
+                ..
+            }
+        ));
+    }
+
+    // validate_rejects_oversized_pmt — uncommented in Task 6 once
+    // stream_descriptors_for_stream is wired through ConfigBuilder.
 }
 
 #[cfg(test)]

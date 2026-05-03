@@ -134,7 +134,7 @@ fn parse_pmt(body: &[u8]) -> (u16, Vec<PmtStream>) {
     let pcr_pid = (((body[8] as u16) & 0x1F) << 8) | (body[9] as u16);
     let program_info_length = (((body[10] as u16) & 0x0F) << 8) | (body[11] as u16);
     let mut i = 12 + program_info_length as usize;
-    let loop_end = 3 + section_length as usize - 4; // CRC
+    let loop_end = (3 + section_length as usize - 4).min(body.len()); // CRC, clamped
 
     let mut streams = Vec::new();
     while i + 5 <= loop_end {
@@ -142,7 +142,10 @@ fn parse_pmt(body: &[u8]) -> (u16, Vec<PmtStream>) {
         let pid = (((body[i + 1] as u16) & 0x1F) << 8) | (body[i + 2] as u16);
         let es_info_length = (((body[i + 3] as u16) & 0x0F) << 8) | (body[i + 4] as u16);
         let descriptors_start = i + 5;
-        let descriptors_end = descriptors_start + es_info_length as usize;
+        // Real-world PMTs occasionally declare ES-descriptor lengths that
+        // overrun the section bound. Clamp so the test helper survives —
+        // production demux handles this in its own parser.
+        let descriptors_end = (descriptors_start + es_info_length as usize).min(loop_end);
         let descriptors = &body[descriptors_start..descriptors_end];
         let klva = scan_for_klva(descriptors);
         streams.push(PmtStream {

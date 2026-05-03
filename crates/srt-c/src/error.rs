@@ -105,6 +105,27 @@ pub(crate) fn record_mux_error(e: &MuxError) {
             SrtcError::InvalidConfig,
             format!("too many klv streams: {count} configured, cap is {cap}"),
         ),
+        MuxError::PmtTooLarge {
+            used_bytes,
+            max_bytes,
+        } => (
+            SrtcError::InvalidConfig,
+            format!(
+                "PMT too large: {used_bytes} bytes used, {max_bytes} max \
+                 (drop some user-supplied descriptors or shorten their payloads)"
+            ),
+        ),
+        MuxError::MalformedDescriptor {
+            stream_index,
+            descriptor_index,
+            reason,
+        } => (
+            SrtcError::InvalidConfig,
+            format!(
+                "malformed descriptor for stream {stream_index} \
+                 descriptor {descriptor_index}: {reason}"
+            ),
+        ),
     };
     set_last_error(code, &msg);
 }

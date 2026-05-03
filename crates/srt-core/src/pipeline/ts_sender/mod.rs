@@ -96,6 +96,12 @@ impl<T: Transport> TsSender<T> {
         self.framing.stats()
     }
 
+    /// Zero all stats counters. The framing state machine is untouched —
+    /// only the counters on top of it.
+    pub fn reset_stats(&mut self) {
+        self.framing.reset_stats();
+    }
+
     pub fn close(&mut self) {
         self.closed = true;
         self.transport.close();
@@ -113,5 +119,41 @@ impl<T: Transport> Drop for TsSender<T> {
             let _ = self.flush();
             self.transport.close();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pipeline::{Transport, TransportError};
+
+    struct Mem;
+    impl Transport for Mem {
+        fn send_bytes(&mut self, _: &[u8]) -> Result<(), TransportError> {
+            Ok(())
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn close(&mut self) {}
+        fn is_alive(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn reset_stats_zeros_counters_in_ts_sender() {
+        let mut s = TsSender::new(Mem, TsSenderConfig::default());
+        // One 188-byte TS packet starting with the sync byte.
+        let mut pkt = vec![0x47u8];
+        pkt.extend(vec![0u8; 187]);
+        s.send_ts(&pkt).unwrap();
+        assert!(s.stats().bytes_pushed > 0);
+        s.reset_stats();
+        let st = s.stats();
+        assert_eq!(st.bytes_pushed, 0);
+        assert_eq!(st.bytes_skipped_for_sync, 0);
+        assert_eq!(st.resync_events, 0);
+        assert_eq!(st.packets_sent, 0);
     }
 }

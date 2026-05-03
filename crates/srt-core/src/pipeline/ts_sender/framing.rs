@@ -88,6 +88,13 @@ impl TsFraming {
         &self.stats
     }
 
+    /// Zero all stats counters. The framing-state machine (sync-byte
+    /// recovery state, partial-bundle buffer) is NOT reset — only the
+    /// counters on top of it.
+    pub fn reset_stats(&mut self) {
+        self.stats = TsSenderStats::default();
+    }
+
     /// Push bytes (RECOVER mode): returns any complete 7-packet bundles
     /// emitted. Sync is acquired silently; loss-of-sync is silently
     /// recovered. Stats reflect events.

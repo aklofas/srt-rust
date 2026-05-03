@@ -77,6 +77,14 @@ impl CancelHandle {
     }
 }
 
+impl std::fmt::Debug for CancelHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CancelHandle")
+            .field("cancelled", &self.is_cancelled())
+            .finish()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,17 +117,27 @@ mod tests {
 
     #[test]
     fn cancel_concurrent_runs_closer_once() {
+        use std::sync::Barrier;
         use std::sync::atomic::{AtomicU32, Ordering};
         let calls = std::sync::Arc::new(AtomicU32::new(0));
         let calls_cl = calls.clone();
-        let h = std::sync::Arc::new(CancelHandle::new(7, move |_| {
+        let h = std::sync::Arc::new(CancelHandle::new(7, move |handle| {
+            // Verify the closer receives the original handle value, not the
+            // CANCELLED sentinel. Catches a future bug where someone might
+            // "fix" cancel() to pass CANCELLED instead of prev.
+            assert_eq!(handle, 7);
             calls_cl.fetch_add(1, Ordering::SeqCst);
         }));
+        let barrier = std::sync::Arc::new(Barrier::new(16));
 
         let mut threads = Vec::new();
         for _ in 0..16 {
             let h2 = h.clone();
-            threads.push(std::thread::spawn(move || h2.cancel()));
+            let b2 = barrier.clone();
+            threads.push(std::thread::spawn(move || {
+                b2.wait();
+                h2.cancel();
+            }));
         }
         for t in threads {
             t.join().unwrap();

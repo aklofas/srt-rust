@@ -40,6 +40,14 @@
  */
 #define SRTC_INVALID_STREAM_HANDLE UINT32_MAX
 
+/**
+ * Maximum number of per-stream entries in any stats struct exposed at
+ * the C ABI. Rarely exceeded — multi-stream `mpegts::mux` caps at
+ * 16 video + 16 KLV = 32, leaving 32 slots of headroom for receiver
+ * PSI + observed streams.
+ */
+#define SRTC_STATS_MAX_STREAMS 64
+
 typedef enum srtc_video_codec {
   SRTC_VIDEO_CODEC_H264 = 0,
   SRTC_VIDEO_CODEC_H265 = 1,
@@ -132,6 +140,55 @@ typedef uint32_t srtc_video_stream_handle_t;
  * [`SrtcVideoStreamHandle`] for semantics.
  */
 typedef uint32_t srtc_klv_stream_handle_t;
+
+/**
+ * `repr(C)` mirror of `srt_core::mpegts::StreamStats`. Size 96 B.
+ */
+typedef struct srtc_stream_stats_t {
+  uint64_t items;
+  uint64_t bytes;
+  uint64_t discontinuities;
+  uint16_t pid;
+  uint8_t stream_type;
+  uint8_t _pad[5];
+  /**
+   * NUL-terminated UTF-8. label[0]==0 means None. Truncated at 63
+   * bytes (first 63 + NUL).
+   */
+  char label[64];
+} srtc_stream_stats_t;
+
+/**
+ * `repr(C)` mirror of `srt_core::pipeline::SenderStats`. Size 6184 B.
+ */
+typedef struct srtc_sender_stats_t {
+  uint64_t bytes_sent;
+  uint64_t packets_sent;
+  uint64_t pending_bytes_queued;
+  uint64_t pending_chunks_queued;
+  uint32_t per_stream_count;
+  uint32_t per_stream_truncated;
+  struct srtc_stream_stats_t per_stream[SRTC_STATS_MAX_STREAMS];
+} srtc_sender_stats_t;
+
+/**
+ * `repr(C)` mirror of `srt_core::mpegts::mux::MuxerStats`. Size 6168 B.
+ */
+typedef struct srtc_muxer_stats_t {
+  uint64_t ts_packets_emitted;
+  uint64_t ts_bytes_emitted;
+  uint32_t per_stream_count;
+  uint32_t per_stream_truncated;
+  struct srtc_stream_stats_t per_stream[SRTC_STATS_MAX_STREAMS];
+} srtc_muxer_stats_t;
+
+/**
+ * `repr(C)` mirror of `srt_core::pipeline::RawSenderStats`. Size 16 B.
+ */
+typedef struct srtc_raw_sender_stats_t {
+  uint64_t bytes_sent;
+  uint64_t packets_sent;
+} srtc_raw_sender_stats_t;
 
 /**
  * Public-ABI mirror of `srt_core::pipeline::TsSenderStats`. Same fields,
@@ -326,6 +383,22 @@ int srtc_mux_sender_send_klv_to(struct srtc_mux_sender_t *p,
                                 size_t len,
                                 int64_t pts_90khz);
 
+/**
+ * Snapshot stats for a `srtc_mux_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `SRTC_E_INVALID_CONFIG` if either pointer is
+ * null, or `SRTC_E_CLOSED` if the sender has been closed.
+ */
+ int srtc_mux_sender_get_stats(struct srtc_mux_sender_t *p, struct srtc_sender_stats_t *out);
+
+/**
+ * Reset stats counters for a `srtc_mux_sender_t` to zero.
+ *
+ * Returns 0 on success, `SRTC_E_INVALID_CONFIG` if the pointer is
+ * null, or `SRTC_E_CLOSED` if the sender has been closed.
+ */
+ int srtc_mux_sender_reset_stats(struct srtc_mux_sender_t *p);
+
  void srtc_mux_sender_close(struct srtc_mux_sender_t *p);
 
 /**
@@ -398,6 +471,24 @@ int srtc_managed_mux_sender_send_klv_to(struct srtc_managed_mux_sender_t *p,
                                         size_t len,
                                         int64_t pts_90khz);
 
+/**
+ * Snapshot stats for a `srtc_managed_mux_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `SRTC_E_INVALID_CONFIG` if either pointer is
+ * null, or `SRTC_E_CLOSED` if the sender has been closed.
+ */
+
+int srtc_managed_mux_sender_get_stats(struct srtc_managed_mux_sender_t *p,
+                                      struct srtc_sender_stats_t *out);
+
+/**
+ * Reset stats counters for a `srtc_managed_mux_sender_t` to zero.
+ *
+ * Returns 0 on success, `SRTC_E_INVALID_CONFIG` if the pointer is
+ * null, or `SRTC_E_CLOSED` if the sender has been closed.
+ */
+ int srtc_managed_mux_sender_reset_stats(struct srtc_managed_mux_sender_t *p);
+
  void srtc_managed_mux_sender_close(struct srtc_managed_mux_sender_t *p);
 
 /**
@@ -468,6 +559,25 @@ int srtc_muxer_push_klv_to(struct srtc_muxer_t *p,
  size_t srtc_muxer_pull(struct srtc_muxer_t *p, uint8_t *out_buf, size_t out_cap);
 
 /**
+ * Snapshot stats for a `srtc_muxer_t` into `*out`.
+ *
+ * Returns 0 on success, `SRTC_E_INVALID_CONFIG` if either pointer is
+ * null, or `SRTC_E_CLOSED` if the muxer has been closed.
+ */
+ int srtc_muxer_get_stats(struct srtc_muxer_t *p, struct srtc_muxer_stats_t *out);
+
+/**
+ * Reset stats counters for a `srtc_muxer_t` to zero.
+ *
+ * Per-stream entries are preserved (identity fields remain); only flow
+ * counters (`items`, `bytes`, `discontinuities`) are zeroed.
+ *
+ * Returns 0 on success, `SRTC_E_INVALID_CONFIG` if the pointer is
+ * null, or `SRTC_E_CLOSED` if the muxer has been closed.
+ */
+ int srtc_muxer_reset_stats(struct srtc_muxer_t *p);
+
+/**
  * Close and free the muxer. Idempotent — passing NULL is a no-op.
  */
  void srtc_muxer_close(struct srtc_muxer_t *p);
@@ -521,6 +631,40 @@ int srtc_managed_raw_sender_send(struct srtc_managed_raw_sender_t *p,
  void srtc_managed_raw_sender_close(struct srtc_managed_raw_sender_t *p);
 
 /**
+ * Snapshot stats for a `srtc_raw_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `SRTC_E_INVALID_CONFIG` if either pointer is
+ * null, or `SRTC_E_CLOSED` if the sender has been closed.
+ */
+ int srtc_raw_sender_get_stats(struct srtc_raw_sender_t *p, struct srtc_raw_sender_stats_t *out);
+
+/**
+ * Reset stats counters for a `srtc_raw_sender_t` to zero.
+ *
+ * Returns 0 on success, `SRTC_E_INVALID_CONFIG` if the pointer is
+ * null, or `SRTC_E_CLOSED` if the sender has been closed.
+ */
+ int srtc_raw_sender_reset_stats(struct srtc_raw_sender_t *p);
+
+/**
+ * Snapshot stats for a `srtc_managed_raw_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `SRTC_E_INVALID_CONFIG` if either pointer is
+ * null, or `SRTC_E_CLOSED` if the sender has been closed.
+ */
+
+int srtc_managed_raw_sender_get_stats(struct srtc_managed_raw_sender_t *p,
+                                      struct srtc_raw_sender_stats_t *out);
+
+/**
+ * Reset stats counters for a `srtc_managed_raw_sender_t` to zero.
+ *
+ * Returns 0 on success, `SRTC_E_INVALID_CONFIG` if the pointer is
+ * null, or `SRTC_E_CLOSED` if the sender has been closed.
+ */
+ int srtc_managed_raw_sender_reset_stats(struct srtc_managed_raw_sender_t *p);
+
+/**
  * Open a `srtc_ts_sender_t` connected via SRT.
  *
  * `srt_url` is a `srt://host:port?key=value&...` URL. Query
@@ -543,6 +687,8 @@ struct srtc_ts_sender_t *srtc_ts_sender_open(const char *srt_url,
  int srtc_ts_sender_flush(struct srtc_ts_sender_t *p);
 
  int srtc_ts_sender_get_stats(struct srtc_ts_sender_t *p, struct srtc_ts_sender_stats_t *out);
+
+ int srtc_ts_sender_reset_stats(struct srtc_ts_sender_t *p);
 
  void srtc_ts_sender_close(struct srtc_ts_sender_t *p);
 
@@ -575,6 +721,8 @@ int srtc_managed_ts_sender_send_ts(struct srtc_managed_ts_sender_t *p,
 
 int srtc_managed_ts_sender_get_stats(struct srtc_managed_ts_sender_t *p,
                                      struct srtc_ts_sender_stats_t *out);
+
+ int srtc_managed_ts_sender_reset_stats(struct srtc_managed_ts_sender_t *p);
 
  void srtc_managed_ts_sender_close(struct srtc_managed_ts_sender_t *p);
 

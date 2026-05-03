@@ -27,6 +27,11 @@ include = [
     "SrtcOverflowPolicy",
     "SrtcVideoStreamHandle",
     "SrtcKlvStreamHandle",
+    "SrtcStreamStats",
+    "SrtcMuxerStats",
+    "SrtcSenderStats",
+    "SrtcRawSenderStats",
+    "SRTC_STATS_MAX_STREAMS",
 ]
 
 [export.rename]
@@ -52,6 +57,11 @@ include = [
 # Stream handle typedefs (transparent u32; idiomatic C _t suffix)
 "SrtcVideoStreamHandle" = "srtc_video_stream_handle_t"
 "SrtcKlvStreamHandle"   = "srtc_klv_stream_handle_t"
+# Stats structs
+"SrtcStreamStats"       = "srtc_stream_stats_t"
+"SrtcMuxerStats"        = "srtc_muxer_stats_t"
+"SrtcSenderStats"       = "srtc_sender_stats_t"
+"SrtcRawSenderStats"    = "srtc_raw_sender_stats_t"
 
 [enum]
 prefix_with_name = true

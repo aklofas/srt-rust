@@ -109,6 +109,48 @@ int main(void) {
 
     srtc_muxer_close(mmux);
 
+    /* Stats accessor smoke. Confirms srtc_muxer_get_stats / reset_stats
+     * link, return 0 on success, populate per_stream_count from the
+     * eager-on-construction config, and reject null pointers with a
+     * non-zero return. Live round-trip is covered by the Rust
+     * integration test crates/srt-c/tests/stats.rs. */
+    {
+        srtc_mux_config_t* scfg = srtc_mux_config_new();
+        srtc_mux_config_add_video(scfg, 0x0100, SRTC_VIDEO_CODEC_H264);
+        srtc_mux_config_add_klv(scfg, 0x0101, SRTC_KLV_STREAM_TYPE_PRIVATE_DATA, false);
+        srtc_muxer_t* sm = srtc_muxer_open(scfg);
+        if (!sm) { fprintf(stderr, "stats: mux open failed: %s\n", srtc_get_last_error_str()); return 21; }
+
+        srtc_muxer_stats_t st;
+        int src = srtc_muxer_get_stats(sm, &st);
+        if (src != 0) { fprintf(stderr, "stats: get_stats failed: %d\n", src); return 22; }
+        /* One video + one KLV = 2 streams; per_stream_count mirrors the
+         * stream count declared in the config at construction time. */
+        if (st.per_stream_count != 2) {
+            fprintf(stderr, "stats: expected 2 streams, got %u\n", st.per_stream_count);
+            return 23;
+        }
+
+        src = srtc_muxer_reset_stats(sm);
+        if (src != 0) { fprintf(stderr, "stats: reset_stats failed: %d\n", src); return 24; }
+
+        /* Null-pointer paths must return non-zero — the C API treats null
+         * handles and null out-pointers as caller bugs and reports them
+         * immediately rather than crashing. */
+        if (srtc_muxer_get_stats(NULL, &st) == 0) {
+            fprintf(stderr, "stats: null muxer should fail\n");
+            return 25;
+        }
+        if (srtc_muxer_get_stats(sm, NULL) == 0) {
+            fprintf(stderr, "stats: null out should fail\n");
+            return 26;
+        }
+
+        srtc_muxer_close(sm);
+        srtc_mux_config_free(scfg);
+        fprintf(stderr, "stats smoke OK\n");
+    }
+
     printf("smoke OK\n");
     return 0;
 }

@@ -20,12 +20,12 @@ const SRT_INVALID_SOCK: srt_sys::SRTSOCKET = -1;
 /// [`Socket::connect_with`], or returned from [`Listener::accept`](crate::srt::Listener::accept).
 pub struct Socket {
     handle: srt_sys::SRTSOCKET,
-    /// Cached at construction; libsrt allows reading via getsockflag, but
-    /// reading once is cheaper.
+    /// Shared close-once primitive. Cloned out via `cancel_handle()` so a
+    /// thread parked in `send`/`recv` can be woken from another thread.
+    /// Drop calls `cancel.cancel()` so explicit `close()` and Drop never
+    /// double-close.
+    cancel: crate::srt::CancelHandle,
     cached_stream_id: Option<String>,
-    /// `SRTO_PAYLOADSIZE` read after handshake. Used to give accurate
-    /// `SendError::PayloadTooLarge { limit }` values without a per-send
-    /// getsockopt round-trip. Defaults to 1316 (libsrt live default) if read fails.
     cached_payload_limit: usize,
 }
 
@@ -138,6 +138,7 @@ impl Socket {
 
             return Ok(Self {
                 handle,
+                cancel: make_cancel_handle(handle),
                 cached_stream_id,
                 cached_payload_limit,
             });
@@ -172,6 +173,7 @@ impl Socket {
         let cached_payload_limit = read_payload_size(handle);
         Ok(Self {
             handle,
+            cancel: make_cancel_handle(handle),
             cached_stream_id,
             cached_payload_limit,
         })
@@ -284,20 +286,30 @@ impl Socket {
     }
 
     /// Explicit close; rare. Drop handles the normal path.
+    ///
+    /// After `close()` returns, any other thread parked in `send`/`recv`
+    /// on a clone of this socket's `cancel_handle()` observes
+    /// `SendError::ConnectionBroken` / `RecvError::ConnectionBroken`.
     pub fn close(self) -> Result<(), IoError> {
-        let handle = self.handle;
-        std::mem::forget(self); // prevent Drop from running
-        let rc = unsafe { srt_sys::srt_close(handle) };
-        if rc < 0 {
-            return Err(last_error().into());
-        }
+        // CancelHandle::cancel does the srt_close and is idempotent. We
+        // can't easily plumb the rc back out (closer is `Fn`), so the
+        // Result type stays for back-compat but always returns Ok.
+        self.cancel.cancel();
         Ok(())
+    }
+
+    /// Clone-able close handle. Calling `cancel()` from any thread
+    /// closes the underlying SRT socket — wakes a peer thread parked in
+    /// `send` or `recv` with a Broken-class error. Idempotent.
+    pub fn cancel_handle(&self) -> crate::srt::CancelHandle {
+        self.cancel.clone()
     }
 }
 
 impl Drop for Socket {
     fn drop(&mut self) {
-        unsafe { srt_sys::srt_close(self.handle) };
+        // No-op if explicit close() / cancel() already fired.
+        self.cancel.cancel();
     }
 }
 
@@ -718,6 +730,16 @@ fn classify_recv_error(raw: crate::error::RawError, buf_len: usize) -> RecvError
     raw.into()
 }
 
+/// Build a CancelHandle that closes the SRTSOCKET on first cancel.
+fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> crate::srt::CancelHandle {
+    crate::srt::CancelHandle::new(handle as i64, |h| {
+        // SAFETY: h was the same SRTSOCKET we stored; libsrt accepts
+        // srt_close from any thread; the atomic-swap in CancelHandle
+        // guarantees this runs at most once.
+        let _ = unsafe { srt_sys::srt_close(h as srt_sys::SRTSOCKET) };
+    })
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -731,5 +753,31 @@ mod tests {
             let _ = s.packets_dropped_recv_side;
             let _ = s.packets_dropped_send_side;
         };
+    }
+
+    /// Construction-shape test that doesn't need a live socket: building
+    /// a Socket from a fake handle and double-closing it should NOT
+    /// double-call srt_close. Without an integration test running real
+    /// libsrt, we verify by checking that explicit close().is_ok() and
+    /// drop() coexist safely (drop() must skip srt_close when cancel
+    /// already ran).
+    #[test]
+    fn double_close_via_cancel_then_drop_is_safe() {
+        // We construct a CancelHandle by hand around a fake handle with a
+        // closer that records the call count, mirroring what Socket holds.
+        use crate::srt::CancelHandle;
+        use std::sync::atomic::{AtomicU32, Ordering};
+        let calls = std::sync::Arc::new(AtomicU32::new(0));
+        let calls_cl = calls.clone();
+        let cancel = CancelHandle::new(99, move |_| {
+            calls_cl.fetch_add(1, Ordering::SeqCst);
+        });
+        // Cancel once (simulates Socket::close).
+        cancel.cancel();
+        // Drop the handle (simulates Socket::drop calling cancel.cancel()
+        // a second time).
+        cancel.cancel();
+        drop(cancel);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }

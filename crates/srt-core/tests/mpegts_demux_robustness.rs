@@ -109,9 +109,11 @@ fn corrupted_pat_surfaces_psi_checksum_event() {
     //                affect the checksum and the test would silently pass
     //                without exercising the path under test.
     //
-    // Offset 10 lands in the transport_stream_id field, inside the
-    // CRC-protected region. XOR with 0xFF flips the value but leaves the
-    // section's section_length intact so the parser still reaches the
+    // Offset 10 lands in the `version/current_next_indicator` byte
+    // (PAT section offset 5: TS header 0..4 + pointer_field at 4 + section
+    // bytes table_id/section_length/transport_stream_id occupy 5..10),
+    // inside the CRC-protected region. XOR with 0xFF flips the value but
+    // leaves section_length intact so the parser still reaches the
     // checksum step.
     let mut patched = false;
     for i in (0..bytes.len()).step_by(188) {

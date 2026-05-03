@@ -102,6 +102,44 @@ impl Transport for SrtTransport {
     }
 }
 
+impl crate::pipeline::recv_transport::RecvTransport for SrtTransport {
+    fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+        use crate::error::RecvError;
+        let socket = self.socket.as_mut().ok_or(TransportError::Closed)?;
+        match socket.recv(buf) {
+            Ok(n) => Ok(n),
+            Err(RecvError::TimedOut) => {
+                Err(TransportError::Backpressure("recv timed out".into()))
+            }
+            Err(RecvError::ConnectionBroken) => {
+                self.socket = None;
+                Err(TransportError::Closed)
+            }
+            Err(RecvError::BufferTooSmall { buf_len, message_len }) => {
+                // The caller passed a buf smaller than the incoming message.
+                // Surface as Broken — the receive shell is misconfigured (it
+                // should have sized buf to at least max_payload()).
+                self.socket = None;
+                Err(TransportError::Broken(format!(
+                    "recv buf too small: {buf_len} < {message_len}"
+                )))
+            }
+            Err(other) => {
+                self.socket = None;
+                Err(TransportError::Broken(other.to_string()))
+            }
+        }
+    }
+
+    fn max_payload(&self) -> usize {
+        self.max_payload
+    }
+
+    fn is_alive(&self) -> bool {
+        <Self as crate::pipeline::transport::Transport>::is_alive(self)
+    }
+}
+
 impl Drop for SrtTransport {
     fn drop(&mut self) {
         self.close();

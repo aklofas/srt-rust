@@ -40,7 +40,14 @@ pub struct DemuxerOptions {
 pub struct Demuxer {
     options: DemuxerOptions,
     /// Bytes that haven't yet been sync-aligned into 188-byte packets.
+    /// `sync_consumed` is the cursor into this buffer; the live region is
+    /// `sync_buf[sync_consumed..]`. Avoiding `drain(..n)` per packet is
+    /// what keeps `feed` amortized-linear on whole-file inputs (a naive
+    /// drain is O(remaining) per call → O(N²) total).
     sync_buf: Vec<u8>,
+    /// Cursor into `sync_buf`; bytes before this index are consumed and
+    /// will be reclaimed on the next compaction.
+    sync_consumed: usize,
     /// Per-PID PSI assembly buffer (PAT/PMT). Drained when `section_length`
     /// + 3 bytes have been seen.
     psi_buf: HashMap<u16, Vec<u8>>,
@@ -74,6 +81,7 @@ impl Demuxer {
         Self {
             options,
             sync_buf: Vec::new(),
+            sync_consumed: 0,
             psi_buf: HashMap::new(),
             pat_pmt_pid: None,
             pmt: None,
@@ -100,13 +108,15 @@ impl Demuxer {
     pub fn feed(&mut self, bytes: &[u8]) -> Result<(), DemuxError> {
         self.sync_buf.extend_from_slice(bytes);
         loop {
-            if self.sync_buf.len() < 188 {
+            let live = &self.sync_buf[self.sync_consumed..];
+            if live.len() < 188 {
+                self.compact_sync_buf();
                 return Ok(());
             }
             // Sync to next 0x47.
-            if self.sync_buf[0] != 0x47 {
+            if live[0] != 0x47 {
                 let mut i = 1;
-                while i < self.sync_buf.len() && self.sync_buf[i] != 0x47 {
+                while i < live.len() && live[i] != 0x47 {
                     i += 1;
                 }
                 self.bytes_since_sync += i;
@@ -115,15 +125,17 @@ impl Demuxer {
                         after_bytes: self.bytes_since_sync,
                     });
                 }
-                self.sync_buf.drain(..i);
+                self.sync_consumed += i;
+                self.compact_sync_buf();
                 continue;
             }
             // Have sync; try to parse one packet.
             self.bytes_since_sync = 0;
             // Need to read 188 bytes; if the next byte after isn't 0x47 (or
             // we don't have enough buffer to check), we'll re-sync next loop.
-            let pkt_buf: [u8; 188] = self.sync_buf[..188].try_into().unwrap();
-            self.sync_buf.drain(..188);
+            let pkt_buf: [u8; 188] = live[..188].try_into().unwrap();
+            self.sync_consumed += 188;
+            self.compact_sync_buf();
             // TODO: consider catching MalformedPes here per Task 4 review —
             // the plan currently propagates this fatally out of `feed`, which
             // ends the receive loop. A future task may convert it to a
@@ -144,6 +156,19 @@ impl Demuxer {
     /// currently queued — feed more bytes and try again.
     pub fn next_event(&mut self) -> Option<DemuxEvent> {
         self.queue.pop_front()
+    }
+
+    /// Reclaim the consumed prefix of `sync_buf` once it grows past half
+    /// the live size (or 1 MiB, whichever is larger). The half-and-compact
+    /// rule keeps total memmove work amortized-linear in bytes fed; the
+    /// 1 MiB floor avoids churn on tiny live regions.
+    fn compact_sync_buf(&mut self) {
+        let consumed = self.sync_consumed;
+        let live = self.sync_buf.len() - consumed;
+        if consumed >= live.max(1 << 20) {
+            self.sync_buf.drain(..consumed);
+            self.sync_consumed = 0;
+        }
     }
 
     /// Drain any partial PES still buffered in the reassembler — emit any

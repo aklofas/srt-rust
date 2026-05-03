@@ -3,7 +3,7 @@
 //!
 //! Filled in by Tasks 8–10. This file currently exposes only the public
 //! type signatures so callers can compile against the API; the bodies
-//! return `unimplemented!()` until Task 8.
+//! are `todo!()` placeholders until Task 8.
 
 use crate::error::DemuxError;
 use crate::mpegts::demux::event::DemuxEvent;
@@ -17,6 +17,7 @@ const DEFAULT_PES_CAP_TOTAL: usize = 64 * 1024 * 1024;
 
 /// Caller-supplied overrides for the demuxer.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct DemuxerOptions {
     pub strict: StrictMode,
     pub pes_cap_per_pid: Option<usize>,
@@ -27,31 +28,31 @@ pub struct DemuxerOptions {
 
 #[derive(Debug)]
 pub struct Demuxer {
-    // Filled in by Task 8.
-    _options: DemuxerOptions,
+    #[allow(dead_code)] // wired up by Task 8
+    options: DemuxerOptions,
 }
 
 impl Demuxer {
     pub fn new() -> Self {
         Self {
-            _options: DemuxerOptions::default(),
+            options: DemuxerOptions::default(),
         }
     }
 
     pub fn with_options(options: DemuxerOptions) -> Self {
-        Self { _options: options }
+        Self { options }
     }
 
     /// Feed bytes into the demuxer. Bytes need not be 188-aligned; the
     /// demuxer handles TS sync recovery internally.
     pub fn feed(&mut self, _bytes: &[u8]) -> Result<(), DemuxError> {
-        unimplemented!("filled in by Task 8")
+        todo!("filled in by Task 8")
     }
 
     /// Pull the next available event. Returns `None` if no event is
     /// currently queued — feed more bytes and try again.
     pub fn next_event(&mut self) -> Option<DemuxEvent> {
-        unimplemented!("filled in by Task 8")
+        todo!("filled in by Task 8")
     }
 }
 
@@ -118,8 +119,8 @@ mod tests {
     #[test]
     fn builder_carries_defaults() {
         let d = DemuxerBuilder::new().build();
-        assert_eq!(d._options.strict, StrictMode::Off);
-        assert_eq!(d._options.pes_cap_per_pid, None);
+        assert_eq!(d.options.strict, StrictMode::Off);
+        assert_eq!(d.options.pes_cap_per_pid, None);
     }
 
     #[test]
@@ -130,10 +131,22 @@ mod tests {
             .pes_cap_total(8 << 20)
             .link_klv(0x100, 0x101)
             .build();
-        assert_eq!(d._options.strict, StrictMode::TimingOnly);
-        assert_eq!(d._options.pes_cap_per_pid, Some(1 << 20));
-        assert_eq!(d._options.pes_cap_total, Some(8 << 20));
-        assert_eq!(d._options.klv_link_overrides, vec![(0x100, 0x101)]);
+        assert_eq!(d.options.strict, StrictMode::TimingOnly);
+        assert_eq!(d.options.pes_cap_per_pid, Some(1 << 20));
+        assert_eq!(d.options.pes_cap_total, Some(8 << 20));
+        assert_eq!(d.options.klv_link_overrides, vec![(0x100, 0x101)]);
+    }
+
+    #[test]
+    fn builder_treat_as_override_applies() {
+        use crate::mpegts::demux::event::{StreamKind, VideoCodec};
+        let d = DemuxerBuilder::new()
+            .treat_as(0x100, StreamKind::Video(VideoCodec::H265))
+            .build();
+        assert_eq!(
+            d.options.stream_kind_overrides.get(&0x100),
+            Some(&StreamKind::Video(VideoCodec::H265))
+        );
     }
 
     #[test]

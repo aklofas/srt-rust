@@ -196,4 +196,14 @@ mod tests {
         assert_eq!(st.bytes_sent, 0);
         assert_eq!(st.packets_sent, 0);
     }
+
+    #[test]
+    fn mem_transport_default_cancel_handle_is_none() {
+        let t = MemTransport {
+            max: 1316,
+            alive: true,
+            accept: true,
+        };
+        assert!(t.cancel_handle().is_none());
+    }
 }

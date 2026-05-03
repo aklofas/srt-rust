@@ -31,6 +31,6 @@ pub use reconnect::{BackoffStrategy, ManagedTransport, OverflowPolicy, Reconnect
 pub use recv_transport::RecvTransport;
 pub use sender::{Sender, SenderError, SenderStats};
 pub use srt_transport::SrtTransport;
-pub use transport::{Transport, TransportError};
+pub use transport::{Transport, TransportCancel, TransportError};
 pub use ts_receiver::{TsReceiver, TsReceiverStats};
 pub use ts_sender::{TsFramingMode, TsSender, TsSenderConfig, TsSenderError, TsSenderStats};

@@ -38,4 +38,11 @@ pub trait RecvTransport: Send {
     /// Defaulted as a no-op so test mocks and channel-backed implementors can
     /// opt in only when they own a tear-down resource.
     fn close(&mut self) {}
+
+    /// Optional cancellation accessor. See
+    /// [`crate::pipeline::transport::Transport::cancel_handle`] for the
+    /// shape; this one wakes a thread parked in `recv_bytes` instead.
+    fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+        None
+    }
 }

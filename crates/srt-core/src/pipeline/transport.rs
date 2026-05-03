@@ -84,4 +84,30 @@ pub trait Transport: Send {
     /// contract in the wider design lives at the sender-shell layer,
     /// not on `Transport` itself.
     fn close(&mut self);
+
+    /// Optional cancellation accessor. Implementors that own a wakeable
+    /// blocking primitive (a real socket, an MPSC channel sender, etc.)
+    /// return `Some(handle)`; pure in-memory test mocks return `None`.
+    ///
+    /// The returned handle is `Send + Sync` and can be moved/cloned to
+    /// any thread; calling `cancel()` while another thread is parked in
+    /// [`Self::send_bytes`] makes that parked call return
+    /// `TransportError::Broken`.
+    fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
+        None
+    }
+}
+
+/// Type-erased cancel-handle accessor returned by
+/// [`Transport::cancel_handle`] and
+/// [`crate::pipeline::recv_transport::RecvTransport::cancel_handle`].
+///
+/// `cancel()` from any thread interrupts the transport's current blocking
+/// send or receive — the parked call returns `Broken` (or whatever the
+/// inner mapping produces). Idempotent.
+///
+/// `Send + Sync` is required so consumers can stash one in an
+/// `Arc<dyn TransportCancel>` and share it across worker threads.
+pub trait TransportCancel: Send + Sync {
+    fn cancel(&self);
 }

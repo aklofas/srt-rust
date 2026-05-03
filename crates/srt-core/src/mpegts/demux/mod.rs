@@ -19,6 +19,7 @@ pub mod payload;
 pub mod pes;
 pub mod psi;
 pub mod strict;
+pub mod ts;
 
 pub use demuxer::{Demuxer, DemuxerBuilder, DemuxerOptions};
 pub use event::{

@@ -1345,8 +1345,10 @@ mod tests {
         let mut mux = Muxer::new(Config::default()).unwrap();
         let h = mux.klv_stream_handle(0).unwrap();
         // Minimal KLV blob — UL + length=0 (16 bytes UL + 1 byte length).
-        let mut klv = vec![0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01,
-                           0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00];
+        let mut klv = vec![
+            0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00,
+        ];
         klv.push(0x00);
         mux.push_klv_to(h, &klv, 0).unwrap();
         let mut buf = vec![0u8; 188 * 16];
@@ -1473,7 +1475,13 @@ mod tests {
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
         let err = mux.push_video(&nal, 0, true).unwrap_err();
         assert!(
-            matches!(err, MuxError::AmbiguousTarget { kind: "video", count: 2 }),
+            matches!(
+                err,
+                MuxError::AmbiguousTarget {
+                    kind: "video",
+                    count: 2
+                }
+            ),
             "expected AmbiguousTarget {{ video, 2 }}, got {err:?}",
         );
     }
@@ -1489,7 +1497,13 @@ mod tests {
         let mut mux = Muxer::new(cfg).unwrap();
         let err = mux.push_klv(&[0; 16], 0).unwrap_err();
         assert!(
-            matches!(err, MuxError::AmbiguousTarget { kind: "klv", count: 2 }),
+            matches!(
+                err,
+                MuxError::AmbiguousTarget {
+                    kind: "klv",
+                    count: 2
+                }
+            ),
             "expected AmbiguousTarget {{ klv, 2 }}, got {err:?}",
         );
     }
@@ -1506,7 +1520,13 @@ mod tests {
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
         let err = mux.push_video(&nal, 0, true).unwrap_err();
         assert!(
-            matches!(err, MuxError::AmbiguousTarget { kind: "video", count: 0 }),
+            matches!(
+                err,
+                MuxError::AmbiguousTarget {
+                    kind: "video",
+                    count: 0
+                }
+            ),
             "expected AmbiguousTarget {{ video, 0 }}, got {err:?}",
         );
     }
@@ -1520,7 +1540,13 @@ mod tests {
         let mut mux = Muxer::new(cfg).unwrap();
         let err = mux.push_klv(&[0; 16], 0).unwrap_err();
         assert!(
-            matches!(err, MuxError::AmbiguousTarget { kind: "klv", count: 0 }),
+            matches!(
+                err,
+                MuxError::AmbiguousTarget {
+                    kind: "klv",
+                    count: 0
+                }
+            ),
             "expected AmbiguousTarget {{ klv, 0 }}, got {err:?}",
         );
     }

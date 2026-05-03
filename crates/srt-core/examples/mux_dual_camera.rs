@@ -62,9 +62,8 @@ fn main() -> std::io::Result<()> {
 
     // Minimal 17-byte KLV — 16-byte UAS Datalink LS UL + 1-byte length=0.
     let klv_blob: [u8; 17] = [
-        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01,
-        0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00,
-        0x00,
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00,
+        0x00, 0x00,
     ];
 
     let mut out = File::create("dual_camera.ts")?;
@@ -79,10 +78,8 @@ fn main() -> std::io::Result<()> {
     for i in 0..30 {
         let pts = i * 3000;
         let key = i == 0;
-        mux.push_video_to(eo, &nal_eo, pts, key)
-            .expect("EO push");
-        mux.push_video_to(ir, &nal_ir, pts, key)
-            .expect("IR push");
+        mux.push_video_to(eo, &nal_eo, pts, key).expect("EO push");
+        mux.push_video_to(ir, &nal_ir, pts, key).expect("IR push");
         mux.push_klv_to(klv, &klv_blob, pts).expect("KLV push");
 
         // Drain after every frame so the muxer's internal buffer doesn't

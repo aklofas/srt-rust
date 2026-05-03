@@ -28,7 +28,7 @@ fn drain_all(mux: &mut Muxer) -> Vec<u8> {
 fn pids_present(ts: &[u8]) -> std::collections::BTreeSet<u16> {
     let mut s = std::collections::BTreeSet::new();
     for chunk in ts.chunks_exact(188) {
-        let pid = ((chunk[1] as u16 & 0x1F) << 8) | chunk[2] as u16;
+        let pid = (((chunk[1] as u16) & 0x1F) << 8) | (chunk[2] as u16);
         s.insert(pid);
     }
     s
@@ -42,9 +42,8 @@ fn h264_au(payload: u8) -> Vec<u8> {
 /// Minimal 17-byte KLV (16-byte UL + 1-byte length=0).
 fn klv_blob() -> Vec<u8> {
     vec![
-        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01,
-        0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00,
-        0x00,
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00,
+        0x00, 0x00,
     ]
 }
 
@@ -82,7 +81,7 @@ fn video_plus_dual_klv_routes_to_three_pids() {
     let cfg = Config::builder()
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(0x1031, KlvStreamType::PrivateData, false) // vehicle telemetry
-        .add_klv(0x1041, KlvStreamType::PrivateData, true)  // sensor metadata (sync)
+        .add_klv(0x1041, KlvStreamType::PrivateData, true) // sensor metadata (sync)
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
@@ -113,7 +112,10 @@ fn video_only_emits_video_pid_only() {
 
     let pids = pids_present(&drain_all(&mut mux));
     assert!(pids.contains(&0x1011));
-    assert!(!pids.contains(&0x1031), "no KLV stream configured — must not emit on default KLV PID");
+    assert!(
+        !pids.contains(&0x1031),
+        "no KLV stream configured — must not emit on default KLV PID"
+    );
 }
 
 #[test]
@@ -129,7 +131,10 @@ fn klv_only_emits_klv_pid_only() {
 
     let pids = pids_present(&drain_all(&mut mux));
     assert!(pids.contains(&0x1031));
-    assert!(!pids.contains(&0x1011), "no video stream configured — must not emit on default video PID");
+    assert!(
+        !pids.contains(&0x1011),
+        "no video stream configured — must not emit on default video PID"
+    );
 }
 
 #[test]
@@ -160,7 +165,7 @@ fn dual_video_plus_dual_klv_pmt_lists_all_four() {
     // names all four elementary PIDs in its payload.
     let pmt_pkt = ts
         .chunks_exact(188)
-        .find(|p| ((p[1] as u16 & 0x1F) << 8 | p[2] as u16) == 0x1000)
+        .find(|p| ((((p[1] as u16) & 0x1F) << 8) | (p[2] as u16)) == 0x1000)
         .expect("at least one PMT packet");
     // Search the entire 188-byte packet for each elementary PID encoded as
     // two consecutive bytes (high << 8 | low) — a coarse but reliable check
@@ -168,7 +173,12 @@ fn dual_video_plus_dual_klv_pmt_lists_all_four() {
     for elem in [0x1011u16, 0x1021, 0x1031, 0x1041] {
         let hi = (elem >> 8) as u8;
         let lo = elem as u8;
-        let found = pmt_pkt.windows(2).any(|w| w[0] & 0x1F == hi & 0x1F && w[1] == lo);
-        assert!(found, "PMT body does not reference elementary PID 0x{elem:04X}");
+        let found = pmt_pkt
+            .windows(2)
+            .any(|w| w[0] & 0x1F == hi & 0x1F && w[1] == lo);
+        assert!(
+            found,
+            "PMT body does not reference elementary PID 0x{elem:04X}"
+        );
     }
 }

@@ -167,7 +167,8 @@ impl<T: Transport> Inner<T> {
             return Err(SenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        self.muxer.push_video_to(handle, nal, pts_90khz, key_frame)?;
+        self.muxer
+            .push_video_to(handle, nal, pts_90khz, key_frame)?;
         self.drain_muxer()
     }
 
@@ -316,7 +317,10 @@ mod multi_stream_tests {
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
         let err = s.send_video(&nal, 0, true).unwrap_err();
         match err {
-            SenderError::Mux(MuxError::AmbiguousTarget { kind: "video", count: 2 }) => {}
+            SenderError::Mux(MuxError::AmbiguousTarget {
+                kind: "video",
+                count: 2,
+            }) => {}
             other => panic!("expected AmbiguousTarget, got {other:?}"),
         }
     }

@@ -819,7 +819,10 @@ mod tests {
 
     #[test]
     fn mux_error_ambiguous_target_displays_kind_and_count() {
-        let e = MuxError::AmbiguousTarget { kind: "klv", count: 3 };
+        let e = MuxError::AmbiguousTarget {
+            kind: "klv",
+            count: 3,
+        };
         assert_eq!(
             e.to_string(),
             "ambiguous push: 3 klv streams configured — call push_klv_to(handle, ...) instead",

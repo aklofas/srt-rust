@@ -86,6 +86,25 @@ pub(crate) fn record_mux_error(e: &MuxError) {
             SrtcError::KlvTooLarge,
             format!("KLV blob is {size} bytes, max {max}"),
         ),
+        MuxError::InvalidStreamHandle { kind, index } => (
+            SrtcError::InvalidUsage,
+            format!("invalid {kind} stream handle (index {index})"),
+        ),
+        MuxError::AmbiguousTarget { kind, count } => (
+            SrtcError::InvalidUsage,
+            format!(
+                "ambiguous push: {count} {kind} streams configured \
+                 — multi-stream Muxer needs handle-aware C ABI (deferred)"
+            ),
+        ),
+        MuxError::TooManyVideoStreams { count, cap } => (
+            SrtcError::InvalidConfig,
+            format!("too many video streams: {count} configured, cap is {cap}"),
+        ),
+        MuxError::TooManyKlvStreams { count, cap } => (
+            SrtcError::InvalidConfig,
+            format!("too many klv streams: {count} configured, cap is {cap}"),
+        ),
     };
     set_last_error(code, &msg);
 }

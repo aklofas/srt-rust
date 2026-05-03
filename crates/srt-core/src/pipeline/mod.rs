@@ -24,7 +24,7 @@ pub mod ts_receiver;
 pub mod ts_sender;
 
 pub use managed_receive::ManagedReceiveTransport;
-pub use raw_receiver::RawReceiver;
+pub use raw_receiver::{RawReceiver, RawReceiverStats};
 pub use raw_sender::{RawSender, RawSenderConfig, RawSenderStats};
 pub use receiver::{ByteSink, Receiver, ReceiverError};
 pub use reconnect::{BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy};

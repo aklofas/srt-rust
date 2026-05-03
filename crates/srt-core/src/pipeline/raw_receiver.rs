@@ -13,6 +13,15 @@
 use crate::pipeline::recv_transport::RecvTransport;
 use crate::pipeline::transport::TransportError;
 
+/// Aggregate receive stats for [`RawReceiver`].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RawReceiverStats {
+    /// Total bytes received from the transport.
+    pub bytes_received: u64,
+    /// Count of successful `recv_one()` calls.
+    pub packets_received: u64,
+}
+
 /// Receive shell that emits one raw byte vec per transport message.
 ///
 /// `R` is any [`RecvTransport`] — typically `SrtTransport` for live
@@ -23,6 +32,7 @@ pub struct RawReceiver<R: RecvTransport> {
     /// construction. Avoids a per-call allocation for the recv itself;
     /// `recv_one` still allocates a `Vec` for the returned slice.
     buf: Vec<u8>,
+    stats: RawReceiverStats,
 }
 
 impl<R: RecvTransport> RawReceiver<R> {
@@ -33,6 +43,7 @@ impl<R: RecvTransport> RawReceiver<R> {
         Self {
             transport,
             buf: vec![0u8; cap],
+            stats: RawReceiverStats::default(),
         }
     }
 
@@ -43,7 +54,19 @@ impl<R: RecvTransport> RawReceiver<R> {
     /// transport is still alive; the caller may call `recv_one` again.
     pub fn recv_one(&mut self) -> Result<Vec<u8>, TransportError> {
         let n = self.transport.recv_bytes(&mut self.buf)?;
+        self.stats.bytes_received += n as u64;
+        self.stats.packets_received += 1;
         Ok(self.buf[..n].to_vec())
+    }
+
+    /// Return a snapshot of aggregate receive stats.
+    pub fn stats(&self) -> RawReceiverStats {
+        self.stats
+    }
+
+    /// Zero all counters. Does not affect the underlying transport.
+    pub fn reset_stats(&mut self) {
+        self.stats = RawReceiverStats::default();
     }
 
     /// Advisory liveness check. Delegates to the underlying transport.
@@ -61,7 +84,73 @@ impl<R: RecvTransport> RawReceiver<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pipeline::recv_transport::RecvTransport;
     use crate::pipeline::transport::TransportError;
+
+    struct MemRecv {
+        queue: std::collections::VecDeque<Vec<u8>>,
+        alive: bool,
+    }
+    impl RecvTransport for MemRecv {
+        fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+            match self.queue.pop_front() {
+                Some(v) => {
+                    let n = v.len().min(buf.len());
+                    buf[..n].copy_from_slice(&v[..n]);
+                    Ok(n)
+                }
+                None => Err(TransportError::Closed),
+            }
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn is_alive(&self) -> bool {
+            self.alive
+        }
+    }
+
+    #[test]
+    fn stats_starts_zero() {
+        let r = RawReceiver::new(MemRecv {
+            queue: Default::default(),
+            alive: true,
+        });
+        let st = r.stats();
+        assert_eq!(st.bytes_received, 0);
+        assert_eq!(st.packets_received, 0);
+    }
+
+    #[test]
+    fn stats_increment_on_recv() {
+        let mut q = std::collections::VecDeque::new();
+        q.push_back(vec![1u8; 100]);
+        q.push_back(vec![2u8; 50]);
+        let mut r = RawReceiver::new(MemRecv {
+            queue: q,
+            alive: true,
+        });
+        let _ = r.recv_one();
+        let _ = r.recv_one();
+        let st = r.stats();
+        assert_eq!(st.bytes_received, 150);
+        assert_eq!(st.packets_received, 2);
+    }
+
+    #[test]
+    fn reset_zeros_counters() {
+        let mut q = std::collections::VecDeque::new();
+        q.push_back(vec![1u8; 100]);
+        let mut r = RawReceiver::new(MemRecv {
+            queue: q,
+            alive: true,
+        });
+        let _ = r.recv_one();
+        r.reset_stats();
+        let st = r.stats();
+        assert_eq!(st.bytes_received, 0);
+        assert_eq!(st.packets_received, 0);
+    }
 
     /// Minimal `RecvTransport` mock that plays back a fixed sequence of
     /// messages then signals closed.

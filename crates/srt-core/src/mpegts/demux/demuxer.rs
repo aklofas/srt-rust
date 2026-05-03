@@ -92,6 +92,11 @@ impl Demuxer {
 
     /// Feed bytes into the demuxer. Bytes need not be 188-aligned; the
     /// demuxer handles TS sync recovery internally.
+    ///
+    /// When `feed` returns `Err(DemuxError::StrictRejection(_))`, the
+    /// corresponding `NonConformant` event has already been pushed onto the
+    /// internal queue. Drain `next_event()` after the error to retrieve the
+    /// structured issue alongside the human-readable error string.
     pub fn feed(&mut self, bytes: &[u8]) -> Result<(), DemuxError> {
         self.sync_buf.extend_from_slice(bytes);
         loop {

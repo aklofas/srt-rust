@@ -128,14 +128,15 @@ pub unsafe extern "C" fn srtc_muxer_push_video_to(
     }
     let slice = unsafe { std::slice::from_raw_parts(nal, len) };
     let stream = VideoStreamHandle::new(handle as usize);
-    h.inner
-        .with_inner_mut(|m| match m.push_video_to(stream, slice, pts_90khz, key_frame) {
+    h.inner.with_inner_mut(
+        |m| match m.push_video_to(stream, slice, pts_90khz, key_frame) {
             Ok(()) => 0,
             Err(e) => {
                 record_mux_error(&e);
                 unsafe { crate::error::srtc_get_last_error() }
             }
-        })
+        },
+    )
 }
 
 /// Push one pre-built KLV blob targeting a specific KLV elementary stream.

@@ -178,9 +178,7 @@ mod tests {
         };
         record_mux_error(&e);
         let s_ptr = unsafe { srtc_get_last_error_str() };
-        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }
-            .to_str()
-            .unwrap();
+        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }.to_str().unwrap();
         assert!(msg.contains("srtc_*_video_to"), "got: {msg}");
         assert!(!msg.contains("deferred"), "got: {msg}");
     }

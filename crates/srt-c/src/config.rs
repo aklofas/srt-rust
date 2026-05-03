@@ -477,10 +477,14 @@ mod tests {
     fn add_klv_stream_returns_increasing_handles() {
         unsafe {
             let p = srtc_mux_config_new();
-            let h0 = srtc_mux_config_add_klv_stream(
-                p, 0x1031, SrtcKlvStreamType::PrivateData, false);
+            let h0 =
+                srtc_mux_config_add_klv_stream(p, 0x1031, SrtcKlvStreamType::PrivateData, false);
             let h1 = srtc_mux_config_add_klv_stream(
-                p, 0x1032, SrtcKlvStreamType::SynchronousMetadata, true);
+                p,
+                0x1032,
+                SrtcKlvStreamType::SynchronousMetadata,
+                true,
+            );
             assert_eq!(h0, 0);
             assert_eq!(h1, 1);
             srtc_mux_config_free(p);
@@ -491,8 +495,7 @@ mod tests {
     fn add_video_stream_null_returns_sentinel() {
         use crate::handle::SRTC_INVALID_STREAM_HANDLE;
         unsafe {
-            let h = srtc_mux_config_add_video_stream(
-                std::ptr::null_mut(), 0, SrtcVideoCodec::H264);
+            let h = srtc_mux_config_add_video_stream(std::ptr::null_mut(), 0, SrtcVideoCodec::H264);
             assert_eq!(h, SRTC_INVALID_STREAM_HANDLE);
         }
     }

@@ -5,9 +5,7 @@ use srtc::config::{
     srtc_mux_config_add_video_stream, srtc_mux_config_free, srtc_mux_config_new,
 };
 use srtc::handle::SRTC_INVALID_STREAM_HANDLE;
-use srtc::muxer::{
-    srtc_muxer_close, srtc_muxer_open, srtc_muxer_pull, srtc_muxer_push_video_to,
-};
+use srtc::muxer::{srtc_muxer_close, srtc_muxer_open, srtc_muxer_pull, srtc_muxer_push_video_to};
 
 const NAL_SPS: &[u8] = &[
     0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0xc0, 0x1e, 0xda, 0x02, 0x80, 0xf6, 0xc0,

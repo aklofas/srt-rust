@@ -180,7 +180,12 @@ fn managed_mux_sender_multi_stream_loopback() {
                 base_pts,
                 true,
             );
-            assert_eq!(rc_eo, 0, "send_video_to EO round {round} failed: {}", last_error_msg());
+            assert_eq!(
+                rc_eo,
+                0,
+                "send_video_to EO round {round} failed: {}",
+                last_error_msg()
+            );
 
             let rc_ir = srtc_managed_mux_sender_send_video_to(
                 s,
@@ -190,11 +195,26 @@ fn managed_mux_sender_multi_stream_loopback() {
                 base_pts + 1,
                 true,
             );
-            assert_eq!(rc_ir, 0, "send_video_to IR round {round} failed: {}", last_error_msg());
+            assert_eq!(
+                rc_ir,
+                0,
+                "send_video_to IR round {round} failed: {}",
+                last_error_msg()
+            );
 
-            let rc_klv =
-                srtc_managed_mux_sender_send_klv_to(s, h_klv, klv.as_ptr(), klv.len(), base_pts + 2);
-            assert_eq!(rc_klv, 0, "send_klv_to round {round} failed: {}", last_error_msg());
+            let rc_klv = srtc_managed_mux_sender_send_klv_to(
+                s,
+                h_klv,
+                klv.as_ptr(),
+                klv.len(),
+                base_pts + 2,
+            );
+            assert_eq!(
+                rc_klv,
+                0,
+                "send_klv_to round {round} failed: {}",
+                last_error_msg()
+            );
         }
 
         let received = bytes_rx

@@ -34,7 +34,14 @@ mod tests {
 
     #[test]
     fn equality_is_field_wise() {
-        let a = StreamStats { pid: 0x100, stream_type: 0x1B, label: Some("EO".into()), items: 5, bytes: 1024, discontinuities: 0 };
+        let a = StreamStats {
+            pid: 0x100,
+            stream_type: 0x1B,
+            label: Some("EO".into()),
+            items: 5,
+            bytes: 1024,
+            discontinuities: 0,
+        };
         let b = a.clone();
         assert_eq!(a, b);
         let mut c = a.clone();

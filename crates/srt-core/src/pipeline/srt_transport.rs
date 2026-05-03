@@ -112,8 +112,13 @@ impl crate::pipeline::recv_transport::RecvTransport for SrtTransport {
                 Err(TransportError::Backpressure("recv timed out".into()))
             }
             Err(RecvError::ConnectionBroken) => {
+                // Peer hung up or mid-stream abort. Surface as Broken (not
+                // Closed) so a managed receive decorator can distinguish a
+                // self-initiated close from a peer-initiated break and drive
+                // reconnect. Matches the send-side mapping for the same
+                // RecvError-equivalent variant.
                 self.socket = None;
-                Err(TransportError::Closed)
+                Err(TransportError::Broken("connection broken".into()))
             }
             Err(RecvError::BufferTooSmall { buf_len, message_len }) => {
                 // The caller passed a buf smaller than the incoming message.
@@ -136,7 +141,11 @@ impl crate::pipeline::recv_transport::RecvTransport for SrtTransport {
     }
 
     fn is_alive(&self) -> bool {
-        <Self as crate::pipeline::transport::Transport>::is_alive(self)
+        self.socket.is_some()
+    }
+
+    fn close(&mut self) {
+        <Self as crate::pipeline::transport::Transport>::close(self);
     }
 }
 

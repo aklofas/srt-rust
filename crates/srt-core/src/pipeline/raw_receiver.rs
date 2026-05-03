@@ -1,5 +1,5 @@
 // crates/srt-core/src/pipeline/raw_receiver.rs
-//! `RawReceiver<R>` — emit one byte slice per recv, no TS framing.
+//! `RawReceiver<R>` — return one owned byte vec per recv, no TS framing.
 //!
 //! This is the simplest receive shell: one `recv_one` call blocks until a
 //! single SRT message arrives, then returns the bytes verbatim. There is no
@@ -49,6 +49,12 @@ impl<R: RecvTransport> RawReceiver<R> {
     /// Advisory liveness check. Delegates to the underlying transport.
     pub fn is_alive(&self) -> bool {
         self.transport.is_alive()
+    }
+
+    /// Close the underlying transport. Idempotent. After close, `recv_one`
+    /// returns `TransportError::Closed`. Mirrors `RawSender::close`.
+    pub fn close(&mut self) {
+        self.transport.close();
     }
 }
 

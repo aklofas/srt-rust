@@ -30,4 +30,12 @@ pub trait RecvTransport: Send {
     /// Advisory liveness check. Returns `false` when the transport is known
     /// dead. `true` does not guarantee the next `recv_bytes` succeeds.
     fn is_alive(&self) -> bool;
+
+    /// Close the transport. Idempotent. After close, `recv_bytes` returns
+    /// `TransportError::Closed`.
+    ///
+    /// Mirrors [`Transport::close`][crate::pipeline::transport::Transport::close].
+    /// Defaulted as a no-op so test mocks and channel-backed implementors can
+    /// opt in only when they own a tear-down resource.
+    fn close(&mut self) {}
 }

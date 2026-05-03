@@ -13,7 +13,7 @@
 //! is the right wrapper.
 
 use crate::error::MuxError;
-use crate::mpegts::mux::{Config, Muxer};
+use crate::mpegts::mux::{Config, KlvStreamHandle, Muxer, VideoStreamHandle};
 use crate::pipeline::transport::{Transport, TransportError};
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -69,6 +69,44 @@ impl<T: Transport> Sender<T> {
         inner.send_klv(klv, pts_90khz)
     }
 
+    /// Send one video access unit to a specific configured video stream.
+    /// `handle` is obtained from [`Self::video_handles`]; passing a handle
+    /// from a different sender / muxer surfaces as
+    /// [`MuxError::InvalidStreamHandle`] inside [`SenderError::Mux`].
+    pub fn send_video_to(
+        &self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts_90khz: i64,
+        key_frame: bool,
+    ) -> Result<(), SenderError> {
+        let mut inner = self.inner.lock().unwrap();
+        inner.send_video_to(handle, nal, pts_90khz, key_frame)
+    }
+
+    /// Send one KLV blob to a specific configured KLV stream.
+    pub fn send_klv_to(
+        &self,
+        handle: KlvStreamHandle,
+        klv: &[u8],
+        pts_90khz: i64,
+    ) -> Result<(), SenderError> {
+        let mut inner = self.inner.lock().unwrap();
+        inner.send_klv_to(handle, klv, pts_90khz)
+    }
+
+    /// Snapshot all video stream handles for this sender's muxer, in
+    /// declaration order. Allocates an owned Vec so callers don't need
+    /// to hold the lock.
+    pub fn video_handles(&self) -> Vec<VideoStreamHandle> {
+        self.inner.lock().unwrap().muxer.video_handles()
+    }
+
+    /// Snapshot all KLV stream handles for this sender's muxer.
+    pub fn klv_handles(&self) -> Vec<KlvStreamHandle> {
+        self.inner.lock().unwrap().muxer.klv_handles()
+    }
+
     pub fn close(&self) {
         let mut inner = self.inner.lock().unwrap();
         inner.closed = true;
@@ -115,6 +153,35 @@ impl<T: Transport> Inner<T> {
         }
         self.drain_pending()?;
         self.muxer.push_klv(klv, pts_90khz)?;
+        self.drain_muxer()
+    }
+
+    fn send_video_to(
+        &mut self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts_90khz: i64,
+        key_frame: bool,
+    ) -> Result<(), SenderError> {
+        if self.closed {
+            return Err(SenderError::Transport(TransportError::Closed));
+        }
+        self.drain_pending()?;
+        self.muxer.push_video_to(handle, nal, pts_90khz, key_frame)?;
+        self.drain_muxer()
+    }
+
+    fn send_klv_to(
+        &mut self,
+        handle: KlvStreamHandle,
+        klv: &[u8],
+        pts_90khz: i64,
+    ) -> Result<(), SenderError> {
+        if self.closed {
+            return Err(SenderError::Transport(TransportError::Closed));
+        }
+        self.drain_pending()?;
+        self.muxer.push_klv_to(handle, klv, pts_90khz)?;
         self.drain_muxer()
     }
 
@@ -165,4 +232,92 @@ pub enum SenderError {
     Mux(#[from] MuxError),
     #[error(transparent)]
     Transport(#[from] TransportError),
+}
+
+#[cfg(test)]
+mod multi_stream_tests {
+    use super::*;
+    use crate::mpegts::mux::{KlvStreamType, VideoCodec};
+    use crate::pipeline::transport::{Transport, TransportError};
+
+    /// In-memory transport that records every byte sent.
+    struct MemTransport {
+        bytes: std::sync::Mutex<Vec<u8>>,
+        alive: std::sync::atomic::AtomicBool,
+    }
+    impl MemTransport {
+        fn new() -> Self {
+            Self {
+                bytes: std::sync::Mutex::new(Vec::new()),
+                alive: std::sync::atomic::AtomicBool::new(true),
+            }
+        }
+        #[allow(dead_code)]
+        fn taken(&self) -> Vec<u8> {
+            self.bytes.lock().unwrap().clone()
+        }
+    }
+    impl Transport for MemTransport {
+        fn send_bytes(&mut self, bytes: &[u8]) -> Result<(), TransportError> {
+            self.bytes.lock().unwrap().extend_from_slice(bytes);
+            Ok(())
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn close(&mut self) {
+            self.alive.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+        fn is_alive(&self) -> bool {
+            self.alive.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    #[test]
+    fn sender_video_handles_returns_one_per_configured_video_stream() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_video(0x1021, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .build()
+            .unwrap();
+        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        assert_eq!(s.video_handles().len(), 2);
+        assert_eq!(s.klv_handles().len(), 1);
+    }
+
+    #[test]
+    fn sender_send_video_to_routes_through() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_video(0x1021, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .pcr_pid(0x1011)
+            .build()
+            .unwrap();
+        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let ir = s.video_handles()[1];
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+        s.send_video_to(ir, &nal, 0, true).unwrap();
+        // We can't read the transport bytes directly from outside the lock,
+        // but we can confirm the call returns Ok and the sender is alive.
+        assert!(s.is_alive());
+    }
+
+    #[test]
+    fn sender_send_video_rejects_when_multiple_video_streams_configured() {
+        let cfg = Config::builder()
+            .add_video(0x1011, VideoCodec::H264)
+            .add_video(0x1021, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .build()
+            .unwrap();
+        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
+        let err = s.send_video(&nal, 0, true).unwrap_err();
+        match err {
+            SenderError::Mux(MuxError::AmbiguousTarget { kind: "video", count: 2 }) => {}
+            other => panic!("expected AmbiguousTarget, got {other:?}"),
+        }
+    }
 }

@@ -132,6 +132,14 @@ pub fn classify_klv(payload: &[u8]) -> KlvShape {
                 au_cell_pts: pts_90khz,
             };
         }
+        // Fall-through: a malformed AU cell whose UL prefix matched but
+        // whose inner length/PTS pack failed parsing degrades to the
+        // Async/Other check below. The async check will then return
+        // KlvShape::Async because the AU cell UL starts with the same
+        // SMPTE UL header `06 0E 2B 34`. This lenient degradation lets
+        // the demuxer keep going on partially-corrupt sync-KLV streams;
+        // strict mode upstream pairs this with `stream_type` to decide
+        // whether to surface a NonConformantIssue.
     }
     // Bare KLV LS: starts with a 16-byte SMPTE UL. The first 4 bytes are the
     // canonical UL header `06 0E 2B 34`; treat any payload with those as
@@ -206,5 +214,44 @@ mod tests {
     #[test]
     fn classifies_unknown_payload() {
         assert_eq!(classify_klv(&[0xDE, 0xAD, 0xBE, 0xEF]), KlvShape::Other);
+    }
+
+    #[test]
+    fn h264_single_nal_3byte_start() {
+        // Single NAL preceded by the 3-byte start code — exercises the
+        // trailing-NAL branch of split_nals where the inner-NAL loop
+        // doesn't fire. Locks in the fix for the find_start_codes
+        // slice-boundary bug (NAL bytes must NOT include any next-NAL
+        // prefix bytes — there's no next NAL here).
+        let buf = vec![0x00, 0x00, 0x01, 0x67, 0xAA, 0xBB];
+        let nals = split_nals(&buf, VideoCodec::H264);
+        assert_eq!(nals.len(), 1);
+        match &nals[0] {
+            NalUnit::H264 {
+                nal_type, payload, ..
+            } => {
+                assert_eq!(*nal_type, 7); // SPS
+                assert_eq!(payload, &vec![0xAA, 0xBB]);
+            }
+            _ => panic!("wrong codec"),
+        }
+    }
+
+    #[test]
+    fn split_nals_empty_input() {
+        // Empty input produces no NALs. find_start_codes returns vec![],
+        // both the inner-window loop and the trailing-NAL branch no-op.
+        assert_eq!(split_nals(&[], VideoCodec::H264), vec![]);
+        assert_eq!(split_nals(&[], VideoCodec::H265), vec![]);
+    }
+
+    #[test]
+    fn split_nals_no_start_codes() {
+        // Bytes with no start code at all produce no NALs. Garbage
+        // before/between expected boundaries is silently discarded —
+        // sync recovery is the demuxer state machine's job (Task 7),
+        // not the leaf NAL splitter's.
+        let buf = vec![0xAA, 0xBB, 0xCC, 0xDD, 0xEE];
+        assert_eq!(split_nals(&buf, VideoCodec::H264), vec![]);
     }
 }

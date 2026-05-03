@@ -94,7 +94,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
             SrtcError::InvalidUsage,
             format!(
                 "ambiguous push: {count} {kind} streams configured \
-                 — multi-stream Muxer needs handle-aware C ABI (deferred)"
+                 — use srtc_*_{kind}_to(handle, ...) to disambiguate"
             ),
         ),
         MuxError::TooManyVideoStreams { count, cap } => (
@@ -168,5 +168,20 @@ mod tests {
         let s_ptr = unsafe { srtc_get_last_error_str() };
         let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
         assert_eq!(s.to_str().unwrap(), "");
+    }
+
+    #[test]
+    fn ambiguous_target_message_points_to_to_siblings() {
+        let e = MuxError::AmbiguousTarget {
+            kind: "video",
+            count: 2,
+        };
+        record_mux_error(&e);
+        let s_ptr = unsafe { srtc_get_last_error_str() };
+        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }
+            .to_str()
+            .unwrap();
+        assert!(msg.contains("srtc_*_video_to"), "got: {msg}");
+        assert!(!msg.contains("deferred"), "got: {msg}");
     }
 }

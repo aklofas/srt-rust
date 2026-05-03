@@ -79,6 +79,51 @@ impl StreamSpec {
     }
 }
 
+/// Opaque handle to a configured video stream on a `Muxer`.
+///
+/// Obtained from [`Muxer::video_handles`] / [`Muxer::video_stream_handle`].
+/// Handles are valid only on the muxer that produced them; passing a handle
+/// to a different muxer is rejected with [`MuxError::InvalidStreamHandle`].
+///
+/// The internal index is the ordinal position among video streams in
+/// [`Config::streams`] (filtered to `StreamSpec::Video` only). Callers can
+/// rely on the handles being assigned in the order video streams were
+/// added to the builder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct VideoStreamHandle(usize);
+
+/// Opaque handle to a configured KLV stream on a `Muxer`.
+///
+/// Same semantics as [`VideoStreamHandle`] but for KLV streams.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KlvStreamHandle(usize);
+
+impl VideoStreamHandle {
+    pub(crate) fn new(index: usize) -> Self {
+        Self(index)
+    }
+    pub(crate) fn index(self) -> usize {
+        self.0
+    }
+    #[cfg(test)]
+    pub(crate) fn for_test(index: usize) -> Self {
+        Self(index)
+    }
+}
+
+impl KlvStreamHandle {
+    pub(crate) fn new(index: usize) -> Self {
+        Self(index)
+    }
+    pub(crate) fn index(self) -> usize {
+        self.0
+    }
+    #[cfg(test)]
+    pub(crate) fn for_test(index: usize) -> Self {
+        Self(index)
+    }
+}
+
 /// Muxer construction parameters.
 ///
 /// **Multi-stream-shaped from day one.** [`Config::validate`] enforces
@@ -1142,5 +1187,29 @@ mod tests {
             .build();
         let err = cfg.unwrap_err();
         assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("pcr_pid")));
+    }
+
+    #[test]
+    fn handle_types_are_copy_eq_hash() {
+        // Compile-time assertion: handles must be Copy + Eq + Hash so
+        // consumers can stash them in HashMaps / HashSets and pass them
+        // around freely.
+        fn assert_copy<T: Copy>() {}
+        fn assert_eq_hash<T: Eq + std::hash::Hash>() {}
+        assert_copy::<VideoStreamHandle>();
+        assert_copy::<KlvStreamHandle>();
+        assert_eq_hash::<VideoStreamHandle>();
+        assert_eq_hash::<KlvStreamHandle>();
+    }
+
+    #[test]
+    fn handle_debug_includes_kind_and_index() {
+        let v = VideoStreamHandle::for_test(2);
+        let k = KlvStreamHandle::for_test(0);
+        // Don't lock the exact format, just sanity-check it carries both bits.
+        assert!(format!("{v:?}").contains("Video"));
+        assert!(format!("{v:?}").contains('2'));
+        assert!(format!("{k:?}").contains("Klv"));
+        assert!(format!("{k:?}").contains('0'));
     }
 }

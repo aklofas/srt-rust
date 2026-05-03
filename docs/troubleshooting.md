@@ -78,6 +78,12 @@ Caller and listener disagree on whether encryption is in use at all. Most common
 
 Fix: build both sides with the same feature configuration. If you need encryption on the link, neither side may be built `--no-default-features`.
 
+**Sender hangs for ~3 minutes when dropping a `Socket`**
+
+`Socket::Drop` blocks the calling thread for up to 180 seconds. Cause: libsrt's default `SRTO_LINGER` is 180 seconds. With no peer ACK on pending sends, `srt_close` (called from `Drop`) blocks until the linger timer expires.
+
+Fix: set `SocketConfig::linger = Some(Duration::ZERO)` for live streaming where late frames are useless, or use the `SocketBuilder::linger(Duration)` setter. The `srt-c` connect path (`crates/srt-c/src/connect.rs::connect_srt`) defaults to 5 seconds — long enough to drain a small backlog, short enough to never block reconnect noticeably.
+
 ## KLV decode rejection
 
 **`decode_strict_compliance` rejects**
@@ -163,3 +169,13 @@ Set `SRT_FORCE_VENDORED=1` (equivalent: `SRT_NO_PKG_CONFIG=1`). This skips pkg-c
 **Want to skip the encryption build to iterate faster**
 
 Run `cargo build --no-default-features`. This disables the `mbedtls` feature, drops the mbedTLS submodule from the build, and compiles libsrt with `ENABLE_ENCRYPTION=OFF`. Cold builds become roughly 1-2 minutes faster. Both peers must be built the same way — see [Connection failures](#connection-failures) above for the symptom when they disagree.
+
+## Performance and reliability
+
+**High `pktRcvLossTotal` on a stable network**
+
+SRT reports loss / retransmits on a network you know is healthy. Cause: kernel UDP socket buffer overflow, common above ~25 Mbps. The kernel drops UDP packets before SRT can drain them; SRT sees the gaps as transmission losses and triggers ARQ retransmits.
+
+Diagnosis: `cat /proc/net/udp` (or `ss -unp`) — non-zero `drops` column on the SRT port confirms.
+
+Fix: set `SocketConfig::udp_recv_buffer_bytes = Some(12_500_000)` (or higher) for the receiver. For 100 ms RTT @ 25 Mbps, ~12.5 MB is the recommended floor. Linux clamps to `net.core.rmem_max` — raise with `sysctl -w net.core.rmem_max=33554432` if needed.

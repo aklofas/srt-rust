@@ -73,15 +73,6 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A 24/7 unattended stream, or a compliance
   regime that requires periodic rekey.
 
-## Linger tuning (`SRTO_LINGER`)
-
-- **Status:** Not exposed; library uses a sensible internal value.
-- **Why deferred:** Live streams use TLPKTDROP, so a long linger
-  window on shutdown is a foot-gun rather than a feature. A live
-  consumer doesn't need to tune linger.
-- **Trigger to revisit:** A non-live (file-mode) consumer that needs
-  a real linger window on close.
-
 ## Protocol-version pinning (`SRTO_PEERVERSION`, `SRTO_MINVERSION`)
 
 - **Status:** Not exposed.
@@ -217,6 +208,11 @@ the trigger that would unblock it.
   counts; this library's `recv_buf_packets` / `send_buf_packets`
   builder setters are packet counts. Exposing `?rcvbuf=1048576` would
   silently mean different things in libsrt-tools vs. our parser.
+- **Note:** distinct from `udprcvbuf` / `udpsndbuf` (kernel UDP socket
+  buffer sizes via `SRTO_UDP_RCVBUF` / `SRTO_UDP_SNDBUF`), which **are**
+  exposed as URL keys (and as `recv_buffer_size` / `send_buffer_size`
+  ffmpeg aliases). The unresolved unit-mismatch is for the
+  SRT-internal packet queue setters.
 - **Trigger to revisit:** Resolve the byte-vs-packets question on the
   builder side first (either rename to `_bytes`, add a `_bytes`
   variant, or document the unit conversion). Then the URL key can
@@ -275,3 +271,102 @@ the trigger that would unblock it.
   accepts ASCII, so even that escape hatch is partial).
 - **Trigger to revisit:** A consumer reports a malformed URL silently
   parsing where they expected an error.
+
+## `Listener::accept_timeout` — bounded blocking accept
+
+- **Status:** Not implemented. `Listener::set_recv_timeout` writes
+  `SRTO_RCVTIMEO` on the listener handle, but verification against
+  libsrt 1.5.5 (`srtcore/api.cpp::CUDTUnited::accept` ~line 1299) shows
+  the blocking accept calls `accept_sync.wait()` unconditionally —
+  `SRTO_RCVTIMEO` does NOT drive `srt_accept` blocking in this libsrt
+  version.
+- **Why deferred:** Implementing accept-with-timeout requires either
+  switching the listener to non-blocking (`SRTO_RCVSYN=0`) and using
+  `srt_epoll_wait`, or otherwise integrating the existing async-deferred
+  surface. Both are larger than this audit's scope.
+- **Trigger to revisit:** A consumer needs a bounded accept (e.g. for
+  graceful shutdown without a sentinel-thread workaround) AND has the
+  context to motivate exposing `srt_epoll_*` from `srt-core`. Until
+  then, the documented workaround is "run accept on a dedicated thread,
+  call `Listener::close` from your shutdown path — that wakes the call
+  with `AcceptError::ListenerClosed`."
+
+## Errno-based error classification (`SrtErrno` minor codes)
+
+- **Status:** Several `From<RawError> for *Error` impls match libsrt
+  error message strings (`raw.message.contains("refused")`,
+  `contains("in use")`, `contains("permission")`, `contains("closed")`,
+  etc.) instead of the libsrt errno (`SRT_ENOSERVER`, `SRT_ECONNREJ`,
+  `SRT_ELARGEMSG`, `SRT_EMSGSIZE`, etc.). The current `SrtErrno` enum
+  collapses to major categories only.
+- **Why deferred:** String-matching works against libsrt 1.5.5 today;
+  the audit recommended deferring this refactor until either a libsrt
+  upgrade breaks a string match or a user reports a misclassified
+  error. Either trigger is well-defined and should reach the
+  maintainer.
+- **Trigger to revisit:** libsrt minor-version upgrade (1.5.x → 1.6.x)
+  with classification regressions, OR a user-reported wrong-variant.
+
+## `KeyLength` → `Option<KeyLength>` ergonomics
+
+- **Status:** `SocketConfig::key_length` is `KeyLength` (default
+  `Aes128`) and is unconditionally written to `SRTO_PBKEYLEN` whenever
+  a passphrase is set. ffmpeg only sets `SRTO_PBKEYLEN` when the user
+  explicitly passes `?pbkeylen=`, letting libsrt auto-negotiate.
+- **Why deferred:** Negligible interop impact. AES-128 is the de-facto
+  default everywhere; the only failure mode is a peer hardcoded to
+  AES-256 rejecting our handshake.
+- **Trigger to revisit:** A user reports an interop failure with an
+  AES-256-only peer.
+
+## `srt_cleanup()` shutdown hatch
+
+- **Status:** Never called. `ensure_initialized()` runs once and libsrt
+  stays initialized for the process lifetime. `init.rs` documents the
+  rationale (drop-order ambiguity vs. negligible OS-reclaimed leaks).
+- **Why deferred:** For long-running services this is correct. For
+  short-lived CLIs and tests, valgrind / LeakSanitizer / Miri may
+  report leaks; for dynamically-loadable modules unloaded by host
+  processes, there's no escape hatch.
+- **Trigger to revisit:** A consumer reports problems with libsrt
+  init persisting beyond their module's lifetime (e.g. host plugin
+  framework with hot-reload), OR LeakSanitizer integration becomes
+  load-bearing in CI.
+
+## Rust-API-only sender pipeline defaults
+
+- **Status:** The 15 s `connect_timeout`, 5 s `linger`, and
+  `Role::Sender` defaults applied for the audit's "live-streaming
+  sensible defaults" set live in
+  `crates/srt-c/src/connect.rs::connect_srt` (the canonical "default
+  sender connect path" used by all six `srtc_*_open` calls).
+  Pure-Rust users who construct a `SrtTransport` via `SocketBuilder`
+  directly do NOT get these defaults — they get libsrt's defaults
+  (3 s, 180 s, `Unspecified`).
+- **Why deferred:** `pipeline::Sender` takes a pre-built `Transport`,
+  so there's no SocketConfig construction point in the Rust pipeline
+  layer to inject the defaults. Adding a
+  `SocketConfig::sender_defaults()` helper or a
+  `SocketBuilder::sender_preset()` shortcut is mechanical but adds API
+  surface; the audit deferred this design choice to on-demand.
+- **Trigger to revisit:** A pure-Rust consumer builds a sender pipeline
+  and reports surprise at one of these libsrt defaults (e.g. their drop
+  hangs 180 s, or their connect fails after 3 s on a radio link).
+
+## URL parameter coverage — bigger Group 3 keys (audit Issue 6 Cat B/C)
+
+- **Status:** The audit identified roughly 14 Group 3 keys that ffmpeg
+  honors. This plan accepted only Category A (5 cheap aliases mapping
+  to existing setters). Categories B (`rcvbuf` / `sndbuf` /
+  `messageapi` / `nakreport` / `minversion`) and C
+  (`enforcedencryption` / `kmrefreshrate` / `kmpreannounce` / `iptos` /
+  `ipttl` / `snddropdelay` / `transtype` / `tsbpdmode`) remain
+  deferred. Each Category C key needs a new `SocketConfig` field plus
+  typed wrapper plus URL parser arm.
+- **Why deferred:** Per the audit's recommendation: "duplicates work
+  the project will eventually do anyway as deferred features get
+  unblocked one by one — don't try to land them all in this audit
+  fix."
+- **Trigger to revisit:** Each individual key's existing trigger in
+  the general "Group 3 unsupported keys" entry above; nothing
+  additional.

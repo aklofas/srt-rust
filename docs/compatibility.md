@@ -261,7 +261,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | Thread-local last-error idiom | ✅ Full | `srtc_get_last_error()` + `srtc_get_last_error_str()`; ten `SRTC_E_*` codes covering all `srt_core` failure shapes. |
 | `SRTC_VERSION_MAJOR` / `MINOR` / `PATCH` macros | ✅ Full | Compile-time `#define`s in `srtc.h`. |
 | Lifecycle (`_open` / `_close`) | ✅ Full | `_open` returns NULL on failure with last-error set; `_close` is idempotent and NULL-safe; close-from-any-thread serializes through `Mutex<Option<...>>`. |
-| URL parsing | ⚙️ Partial | `srt://host:port` plain only (IPv4 / DNS / bracketed IPv6); query parameters (`?streamid=...`, `?passphrase=...`, `?latency=...`) deferred to additive follow-up. |
+| URL parsing | ✅ Full | `srt://host:port?key=value&...` — IPv4 / DNS / bracketed IPv6 hosts plus the libsrt-URL Group 1 vocabulary (`streamid` / `passphrase` / `latency` / `payloadsize` / `congestion` / `conntimeo` / `linger` / `udprcvbuf` / `udpsndbuf` / etc.) plus a handful of ffmpeg-style aliases (`pkt_size`, `payload_size`, `srt_streamid`, `tsbpddelay`, `smoother`, `ffs`, `connect_timeout`, `recv_buffer_size`, `send_buffer_size`). See "FFmpeg URL interop quirks" below for unit divergence. |
 | Stats accessors | ⚙️ Partial | `srtc_ts_sender_get_stats` / `srtc_managed_ts_sender_get_stats` shipped (mirror `pipeline::TsSenderStats`). Mux/raw stats await `Sender::stats()` / `RawSender::stats()` upstream. |
 | `srtc_*_add_stream` (multi-stream Path 3) | ⏳ Planned | Today: `add_video` / `add_klv` only. Path 3 lifts the current single-stream cap additively without ABI break. |
 | cbindgen-generated `srtc.h` | ✅ Full | Committed at `crates/srt-c/include/srtc.h`; CI verifies no drift via `tests/header_drift.rs`. |
@@ -274,6 +274,32 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | Linux x86_64 build | ✅ Full | cdylib + staticlib + cbindgen header + pkg-config. |
 | macOS / Windows / Linux aarch64 | ⏳ Planned | Cross-compilation follows demonstrated demand. |
 | Pre-emptive close cancellation while parked in libsrt | ⏳ Planned | Close blocks until any in-flight send returns; tightening to libsrt's "close-anywhere unblocks the parked send" idiom is a follow-up. |
+
+---
+
+## FFmpeg URL interop quirks
+
+`srt-rust` follows the libsrt-URL canonical conventions
+(`srt-live-transmit`, OBS, mediamtx, gstreamer's `srtsink`/`srtsrc`,
+Haivision Connect). FFmpeg's `srt://` protocol diverges in a few unit
+conventions; users copying URLs between tools should be aware.
+
+| URL key | FFmpeg unit | srt-rust unit | Notes |
+| --- | --- | --- | --- |
+| `latency` | µs | ms | srt-rust warns when value ≥ 10 s (likely paste from ffmpeg URL). |
+| `rcvlatency` | µs | ms | Same warning. |
+| `peerlatency` | µs | ms | Same warning. |
+| `snddropdelay` | µs | (deferred) | Currently rejected as unsupported. |
+
+When migrating an ffmpeg pipeline URL to srt-rust, divide the latency
+values by 1000.
+
+ffmpeg-style key aliases honored by srt-rust (zero new functionality —
+just alternate spellings of existing keys): `pkt_size` / `payload_size`
+(→ `payloadsize`), `srt_streamid` (→ `streamid`), `tsbpddelay` (→
+`latency`), `smoother` (→ `congestion`), `ffs` (→ `fc`),
+`recv_buffer_size` / `send_buffer_size` (→ `udprcvbuf` / `udpsndbuf`),
+`connect_timeout` (→ `conntimeo`).
 
 ---
 

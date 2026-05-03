@@ -296,6 +296,23 @@ When a transport is marked broken, the wrapped `Socket` is dropped
 internally — subsequent `send_bytes` calls return `Closed` until a
 new `SrtTransport` is built.
 
+### Default sender SocketConfig overrides (srt-c connect path)
+
+When you use the C ABI's `srtc_*_open` family or call
+`srt_c::connect::connect_srt` directly, the underlying `SocketConfig`
+gets these overrides applied (only if the user hasn't set them):
+
+| Field | Default | libsrt default | Why |
+| --- | --- | --- | --- |
+| `connect_timeout` | 15 s | 3 s | Radio links: LOS-over-terrain, antenna repointing, radio warm-up |
+| `linger` | 5 s | 180 s | Live frames are useless once late; avoid 3-minute Drop hangs |
+| `role` | `Role::Sender` | `Role::Unspecified` | Sets `SRTO_SENDER=1` for HSv4-peer compatibility |
+
+Pure-Rust users who build a `SrtTransport` via `SocketBuilder` directly
+do **not** get these defaults — set them explicitly via the builder if
+needed. The defaults live in the `srt-c` connect path because that's
+where the canonical "default sender Socket" is constructed.
+
 ## `ManagedTransport<T>` — reconnect + gap buffer
 
 ```rust,ignore

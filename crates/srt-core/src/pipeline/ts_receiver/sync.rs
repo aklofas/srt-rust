@@ -70,6 +70,12 @@ impl Syncer {
     /// VERIFY state is peek-only: bytes are not consumed while confirming
     /// alignment, so all bytes pushed during the verification window remain
     /// available for LOCKED to emit as real packets.
+    ///
+    /// Allocates one `Vec<u8>` per emitted packet (heap alloc on the hot
+    /// path). The caller (`TsReceiver`) immediately copies the result into a
+    /// `[u8; 188]`. Both costs disappear if/when this struct is reshaped to a
+    /// ring buffer; deferred to a follow-up so Task 12 stays scoped to the
+    /// state machine.
     pub fn next_packet(&mut self) -> Option<Vec<u8>> {
         loop {
             match self.state {

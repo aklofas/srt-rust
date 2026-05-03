@@ -20,9 +20,20 @@ pub struct RawSenderConfig {
     _private: (),
 }
 
+/// Stats for [`RawSender`]. Aggregate-only — there are no streams at
+/// this layer.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RawSenderStats {
+    /// Bytes that succeeded through the transport.
+    pub bytes_sent: u64,
+    /// Count of successful `send()` calls.
+    pub packets_sent: u64,
+}
+
 pub struct RawSender<T: Transport> {
     transport: T,
     _config: RawSenderConfig,
+    stats: RawSenderStats,
 }
 
 impl<T: Transport> RawSender<T> {
@@ -30,6 +41,7 @@ impl<T: Transport> RawSender<T> {
         Self {
             transport,
             _config: config,
+            stats: RawSenderStats::default(),
         }
     }
 
@@ -43,7 +55,10 @@ impl<T: Transport> RawSender<T> {
                 max,
             });
         }
-        self.transport.send_bytes(bytes)
+        self.transport.send_bytes(bytes)?;
+        self.stats.bytes_sent += bytes.len() as u64;
+        self.stats.packets_sent += 1;
+        Ok(())
     }
 
     pub fn close(&mut self) {
@@ -58,5 +73,127 @@ impl<T: Transport> RawSender<T> {
     /// the transport type).
     pub fn transport(&self) -> &T {
         &self.transport
+    }
+
+    /// Snapshot stats counters.
+    pub fn stats(&self) -> RawSenderStats {
+        self.stats
+    }
+
+    /// Zero all stats counters. Stats-only — does not affect transport,
+    /// pending data, or any other state.
+    pub fn reset_stats(&mut self) {
+        self.stats = RawSenderStats::default();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pipeline::transport::{Transport, TransportError};
+
+    struct MemTransport {
+        max: usize,
+        alive: bool,
+        accept: bool,
+    }
+    impl Transport for MemTransport {
+        fn send_bytes(&mut self, _bytes: &[u8]) -> Result<(), TransportError> {
+            if self.accept {
+                Ok(())
+            } else {
+                Err(TransportError::Broken("test".into()))
+            }
+        }
+        fn max_payload(&self) -> usize {
+            self.max
+        }
+        fn close(&mut self) {
+            self.alive = false;
+        }
+        fn is_alive(&self) -> bool {
+            self.alive
+        }
+    }
+
+    #[test]
+    fn stats_starts_zero() {
+        let s = RawSender::new(
+            MemTransport {
+                max: 1316,
+                alive: true,
+                accept: true,
+            },
+            RawSenderConfig::default(),
+        );
+        let st = s.stats();
+        assert_eq!(st.bytes_sent, 0);
+        assert_eq!(st.packets_sent, 0);
+    }
+
+    #[test]
+    fn stats_increment_on_successful_send() {
+        let mut s = RawSender::new(
+            MemTransport {
+                max: 1316,
+                alive: true,
+                accept: true,
+            },
+            RawSenderConfig::default(),
+        );
+        s.send(&[0u8; 100]).unwrap();
+        s.send(&[0u8; 200]).unwrap();
+        let st = s.stats();
+        assert_eq!(st.bytes_sent, 300);
+        assert_eq!(st.packets_sent, 2);
+    }
+
+    #[test]
+    fn stats_unchanged_on_too_large() {
+        let mut s = RawSender::new(
+            MemTransport {
+                max: 100,
+                alive: true,
+                accept: true,
+            },
+            RawSenderConfig::default(),
+        );
+        let _ = s.send(&[0u8; 200]); // exceeds max
+        let st = s.stats();
+        assert_eq!(st.bytes_sent, 0);
+        assert_eq!(st.packets_sent, 0);
+    }
+
+    #[test]
+    fn stats_unchanged_on_transport_error() {
+        let mut s = RawSender::new(
+            MemTransport {
+                max: 1316,
+                alive: true,
+                accept: false,
+            },
+            RawSenderConfig::default(),
+        );
+        let _ = s.send(&[0u8; 100]);
+        let st = s.stats();
+        assert_eq!(st.bytes_sent, 0);
+        assert_eq!(st.packets_sent, 0);
+    }
+
+    #[test]
+    fn reset_zeros_counters() {
+        let mut s = RawSender::new(
+            MemTransport {
+                max: 1316,
+                alive: true,
+                accept: true,
+            },
+            RawSenderConfig::default(),
+        );
+        s.send(&[0u8; 100]).unwrap();
+        s.reset_stats();
+        let st = s.stats();
+        assert_eq!(st.bytes_sent, 0);
+        assert_eq!(st.packets_sent, 0);
     }
 }

@@ -939,7 +939,11 @@ impl Muxer {
         }
 
         let mut pmt = [0u8; 188];
-        write_pmt_packet(&mut pmt, self.pcr_pid, &entries, &mut self.counters);
+        // Errors here would mean Muxer::new accepted a Config that
+        // Config::validate should have rejected — guard with expect to
+        // surface the bug rather than silently dropping a PSI packet.
+        write_pmt_packet(&mut pmt, self.pcr_pid, &entries, &mut self.counters)
+            .expect("validated Config must produce single-section PMT");
         self.queue.push_back(pmt);
 
         self.last_psi_emission_pts = Some(Pts90khz(pts_90khz).masked_33bit());

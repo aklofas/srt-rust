@@ -69,12 +69,14 @@ pub(crate) fn write_pat_packet(out: &mut [u8; 188], counters: &mut ContinuityCou
 }
 
 /// PMT entry for one elementary stream.
-pub(crate) struct PmtStreamEntry {
+pub(crate) struct PmtStreamEntry<'a> {
     pub stream_type: StreamType,
     pub elementary_pid: u16,
-    /// Optional ES descriptor bytes (we only ever use this for the KLVA
-    /// registration descriptor on the KLV PID).
-    pub descriptors: &'static [u8],
+    /// Pre-composed descriptor-loop bytes for this ES (already concatenated
+    /// across auto-emitted + caller-supplied descriptors). Empty slice
+    /// means no descriptors. Owned by the [`crate::mpegts::mux::Muxer`]'s
+    /// per-stream cache, borrowed at PMT emission time.
+    pub descriptors: &'a [u8],
 }
 
 /// Pre-built KLVA registration descriptor body.
@@ -95,9 +97,9 @@ pub(crate) const KLVA_REGISTRATION_DESCRIPTOR: &[u8] = &[
 pub(crate) fn write_pmt_packet(
     out: &mut [u8; 188],
     pcr_pid: u16,
-    streams: &[PmtStreamEntry],
+    streams: &[PmtStreamEntry<'_>],
     counters: &mut ContinuityCounters,
-) {
+) -> Result<(), crate::error::MuxError> {
     // Compute the section body size first so we can fill in section_length.
     // PMT body layout:
     //   table_id(1) + section_syntax+length(2) + program_number(2) +
@@ -117,7 +119,12 @@ pub(crate) fn write_pmt_packet(
     let total_body_size: usize = 3 + section_length as usize; // table_id + length_bytes + section_length
 
     // PMT must fit in one TS packet. 188 - 4 (TS header) - 1 (pointer) = 183.
-    debug_assert!(total_body_size <= 183, "PMT too large for single packet");
+    if total_body_size > 183 {
+        return Err(crate::error::MuxError::PmtTooLarge {
+            used_bytes: total_body_size,
+            max_bytes: 183,
+        });
+    }
 
     // Full 184-byte payload: pointer(1) + body(total_body_size) + 0xFF padding.
     let mut payload = [0xFFu8; 184];
@@ -180,6 +187,7 @@ pub(crate) fn write_pmt_packet(
         &payload,
         counters,
     );
+    Ok(())
 }
 
 #[cfg(test)]
@@ -244,7 +252,7 @@ mod tests {
                 descriptors: KLVA_REGISTRATION_DESCRIPTOR,
             },
         ];
-        write_pmt_packet(&mut buf, 0x1011, &streams, &mut cc);
+        write_pmt_packet(&mut buf, 0x1011, &streams, &mut cc).expect("PMT fits");
 
         assert_eq!(buf[0], 0x47);
         // PMT PID
@@ -295,11 +303,49 @@ mod tests {
                 descriptors: KLVA_REGISTRATION_DESCRIPTOR,
             },
         ];
-        write_pmt_packet(&mut buf, 0x1011, &streams, &mut cc);
+        write_pmt_packet(&mut buf, 0x1011, &streams, &mut cc).expect("PMT fits");
         // H.265 stream_type
         assert_eq!(buf[17], 0x24);
         // Sync KLV stream_type
         assert_eq!(buf[22], 0x15);
+    }
+
+    #[test]
+    fn pmt_too_large_returns_error() {
+        use crate::error::MuxError;
+        use crate::mpegts::common::StreamType;
+
+        // Build 4 streams, each carrying a 255-byte descriptor blob.
+        // write_pmt_packet doesn't validate TLV well-formedness — it only
+        // checks total section size. Sum: 4 * (5 ES-header + 255 desc) =
+        // 1040 bytes — far beyond the 183-byte single-packet PMT budget.
+        let big_desc = vec![0xFFu8; 255];
+        let entries = [
+            PmtStreamEntry {
+                stream_type: StreamType::H264,
+                elementary_pid: 0x100,
+                descriptors: &big_desc,
+            },
+            PmtStreamEntry {
+                stream_type: StreamType::H264,
+                elementary_pid: 0x101,
+                descriptors: &big_desc,
+            },
+            PmtStreamEntry {
+                stream_type: StreamType::H264,
+                elementary_pid: 0x102,
+                descriptors: &big_desc,
+            },
+            PmtStreamEntry {
+                stream_type: StreamType::H264,
+                elementary_pid: 0x103,
+                descriptors: &big_desc,
+            },
+        ];
+        let mut buf = [0u8; 188];
+        let mut cc = ContinuityCounters::new();
+        let err = write_pmt_packet(&mut buf, 0x100, &entries, &mut cc).unwrap_err();
+        assert!(matches!(err, MuxError::PmtTooLarge { .. }));
     }
 
     #[test]
@@ -311,7 +357,7 @@ mod tests {
             elementary_pid: 0x1011,
             descriptors: &[],
         }];
-        write_pmt_packet(&mut buf, 0x1011, &streams, &mut cc);
+        write_pmt_packet(&mut buf, 0x1011, &streams, &mut cc).expect("PMT fits");
 
         // section_length is at bytes 6-7
         let section_length = (((buf[6] as u16) & 0x0F) << 8) | (buf[7] as u16);

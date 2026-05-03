@@ -135,3 +135,19 @@ fn mux_sender_stats_round_trip() {
         srtc_mux_config_free(cfg);
     }
 }
+
+#[test]
+fn ts_sender_reset_stats_returns_ok_on_valid_handle() {
+    unsafe {
+        let rc = srtc::ts_sender::srtc_ts_sender_reset_stats(std::ptr::null_mut());
+        assert_ne!(rc, 0);
+    }
+}
+
+#[test]
+fn managed_ts_sender_reset_stats_returns_ok_on_valid_handle() {
+    unsafe {
+        let rc = srtc::ts_sender::srtc_managed_ts_sender_reset_stats(std::ptr::null_mut());
+        assert_ne!(rc, 0);
+    }
+}

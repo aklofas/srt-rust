@@ -141,6 +141,18 @@ pub unsafe extern "C" fn srtc_ts_sender_get_stats(
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_ts_sender_reset_stats(p: *mut SrtcTsSender) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    handle.inner.with_inner_mut(|s| {
+        s.reset_stats();
+        0
+    })
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_ts_sender_close(p: *mut SrtcTsSender) {
     if p.is_null() {
         return;
@@ -263,6 +275,20 @@ pub unsafe extern "C" fn srtc_managed_ts_sender_get_stats(
     handle.inner.with_inner_ref(|s| {
         let stats = SrtcTsSenderStats::from(s.stats());
         unsafe { *out = stats };
+        0
+    })
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_managed_ts_sender_reset_stats(
+    p: *mut SrtcManagedTsSender,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    handle.inner.with_inner_mut(|s| {
+        s.reset_stats();
         0
     })
 }

@@ -45,20 +45,29 @@ fn sync_klv_au_cell_unwraps_on_receive() {
     let mut d = Demuxer::new();
     d.feed(&bytes).unwrap();
     let mut found = false;
+    let mut saw_program_map = false;
     while let Some(ev) = d.next_event() {
-        if let DemuxEvent::Metadata {
-            kind: MetadataKind::KlvSyncAuCell,
-            payload,
-            ..
-        } = ev
-        {
-            assert_eq!(
-                payload, inner_klv,
-                "demuxer should unwrap AU cell and surface the inner KLV LS"
-            );
-            found = true;
+        match ev {
+            DemuxEvent::ProgramMap(_) => saw_program_map = true,
+            DemuxEvent::Metadata {
+                kind: MetadataKind::KlvSyncAuCell,
+                payload,
+                ..
+            } => {
+                assert_eq!(
+                    payload, inner_klv,
+                    "demuxer should unwrap AU cell and surface the inner KLV LS"
+                );
+                found = true;
+            }
+            _ => {}
         }
     }
+    // Saw the ProgramMap topology event, not just the metadata payload.
+    // Regression guard: a future PSI parsing change that drops the
+    // ProgramMap on sync-KLV configs would still pass the metadata
+    // assertion if we didn't check this.
+    assert!(saw_program_map, "expected ProgramMap event before metadata");
     assert!(
         found,
         "expected at least one DemuxEvent::Metadata with KlvSyncAuCell"

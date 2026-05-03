@@ -126,6 +126,21 @@ impl Demuxer {
         self.queue.pop_front()
     }
 
+    /// Drain any partial PES still buffered in the reassembler — emit any
+    /// complete events from them. Use on stream end (e.g. SRT receive loop
+    /// reaching `TransportError::Closed`) to flush the last in-flight video AU
+    /// or any other unbounded-PES payload that hadn't yet been finalized
+    /// by a subsequent PUSI.
+    ///
+    /// Idempotent: calling twice with no further `feed` between them is safe
+    /// and a no-op the second time.
+    pub fn flush(&mut self) {
+        let partials = self.pes.drain_partial();
+        for pes in partials {
+            self.handle_complete_pes(pes);
+        }
+    }
+
     fn process_packet(&mut self, buf: &[u8; 188]) -> Result<(), DemuxError> {
         let pkt = match parse_ts_packet(buf) {
             Ok(p) => p,
@@ -651,5 +666,16 @@ mod tests {
         let big = vec![0xAA; SYNC_SEARCH_WINDOW * 2];
         let err = d.feed(&big).unwrap_err();
         assert!(matches!(err, DemuxError::Unrecoverable { .. }));
+    }
+
+    #[test]
+    fn flush_is_idempotent_and_safe_with_no_state() {
+        let mut d = Demuxer::new();
+        // Empty — no events queued by flush.
+        d.flush();
+        assert!(d.next_event().is_none());
+        // Second call also a no-op.
+        d.flush();
+        assert!(d.next_event().is_none());
     }
 }

@@ -73,16 +73,14 @@ fn h264_async_klv_roundtrip() {
     mux.push_video(&au, 90_000, true).unwrap();
     let klv = build_dummy_klv();
     mux.push_klv(&klv, 90_000).unwrap();
-    // Push a second video AU so the first PES is finalized on the receive
-    // side: video PES uses `PES_packet_length=0` (unbounded), so the
-    // reassembler only completes the previous PES when the next PUSI=1
-    // packet arrives on the video PID. Without this second push, the demuxer
-    // never emits a Sample event for the first AU.
-    mux.push_video(&au, 93_000, false).unwrap();
     let bytes = drain_mux(&mut mux);
 
     let mut d = Demuxer::new();
     d.feed(&bytes).unwrap();
+    // Drain partial-PES buffered by unbounded video PES (PES_packet_length=0).
+    // In live receive loops this happens at TransportError::Closed; here we
+    // call it explicitly because the test produces a finite byte stream.
+    d.flush();
     let evs = collect_events(&mut d);
 
     assert!(
@@ -129,12 +127,14 @@ fn h265_async_klv_roundtrip() {
     let au = build_minimal_h265_au();
     mux.push_video(&au, 90_000, true).unwrap();
     mux.push_klv(&build_dummy_klv(), 90_000).unwrap();
-    // Second push to flush the first video PES — see comment in the H.264 case.
-    mux.push_video(&au, 93_000, false).unwrap();
     let bytes = drain_mux(&mut mux);
 
     let mut d = Demuxer::new();
     d.feed(&bytes).unwrap();
+    // Drain partial-PES buffered by unbounded video PES (PES_packet_length=0).
+    // In live receive loops this happens at TransportError::Closed; here we
+    // call it explicitly because the test produces a finite byte stream.
+    d.flush();
     let evs = collect_events(&mut d);
 
     assert!(

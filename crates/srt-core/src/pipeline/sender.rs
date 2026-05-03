@@ -161,6 +161,14 @@ impl<T: Transport> Sender<T> {
         inner.muxer.reset_stats();
     }
 
+    /// Close the sender. Idempotent.
+    ///
+    /// Wakes any thread parked inside `send_video` / `send_klv` / `send_*_to`
+    /// by cancelling the underlying transport BEFORE acquiring the inner
+    /// lock — so a peer thread waiting on libsrt's `srt_sendmsg` returns
+    /// promptly with `TransportError::Broken`. Without this cancel-first
+    /// step the close would deadlock against the parked send for the
+    /// duration of `SRTO_SNDTIMEO` (or forever, on the libsrt default).
     pub fn close(&self) {
         // Cancel-first: wake any peer thread parked inside
         // transport.send_bytes so they return TransportError::Broken and

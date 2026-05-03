@@ -67,5 +67,26 @@ test              = false
 doc               = false
 bench             = false
 
+[[bin]]
+name              = "demux_feed"
+path              = "fuzz_targets/demux_feed.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
+name              = "demux_psi"
+path              = "fuzz_targets/demux_psi.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
+name              = "demux_pes_reassembly"
+path              = "fuzz_targets/demux_pes_reassembly.rs"
+test              = false
+doc               = false
+bench             = false
+
 [workspace]
 members = []

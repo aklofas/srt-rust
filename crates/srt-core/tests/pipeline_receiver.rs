@@ -197,3 +197,50 @@ fn byte_sinks_see_every_chunk() {
         "byte sink saw {saw} bytes; expected {total} ± 188"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test 3: ManagedReceiveTransport invokes the factory on broken inner.
+// ---------------------------------------------------------------------------
+
+/// Confirms that `ManagedReceiveTransport` rebuilds via the supplied factory
+/// when its inner transport breaks. The initial inner is constructed empty
+/// (so the very first `recv_bytes` returns `Closed`), driving the decorator
+/// straight into the reconnect path; the factory then supplies a fresh
+/// transport with one well-formed chunk that the next `recv_bytes` returns.
+#[test]
+fn managed_receive_reconnects_through_factory() {
+    use srt_core::pipeline::ManagedReceiveTransport;
+    use srt_core::pipeline::reconnect::{BackoffStrategy, ReconnectPolicy};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    let attempts = Arc::new(Mutex::new(0u32));
+    let attempts_cl = attempts.clone();
+    let factory = Box::new(move || {
+        *attempts_cl.lock().unwrap() += 1;
+        Ok(CannedTransport {
+            chunks: VecDeque::from(vec![vec![0x47; 188]]),
+        })
+    });
+
+    // Initial transport is empty — first recv_bytes gets Closed and the
+    // decorator falls into the reconnect path.
+    let initial = CannedTransport {
+        chunks: VecDeque::new(),
+    };
+
+    // Zero-delay constant backoff so the test doesn't actually sleep.
+    let policy = ReconnectPolicy {
+        max_attempts: Some(3),
+        backoff: BackoffStrategy::Constant(Duration::from_millis(0)),
+        ..Default::default()
+    };
+
+    let mut managed = ManagedReceiveTransport::new(initial, factory, policy);
+
+    let mut buf = [0u8; 188];
+    let n = managed.recv_bytes(&mut buf).unwrap();
+    assert_eq!(n, 188);
+    assert_eq!(buf[0], 0x47);
+    assert!(*attempts.lock().unwrap() >= 1);
+}

@@ -11,6 +11,7 @@
 //! are generic over a `RecvTransport`. `SrtTransport` implements both
 //! `Transport` and `RecvTransport`.
 
+pub mod managed_receive;
 pub mod raw_receiver;
 pub mod raw_sender;
 pub mod receiver;
@@ -22,6 +23,7 @@ pub mod transport;
 pub mod ts_receiver;
 pub mod ts_sender;
 
+pub use managed_receive::ManagedReceiveTransport;
 pub use raw_receiver::RawReceiver;
 pub use raw_sender::{RawSender, RawSenderConfig};
 pub use receiver::{ByteSink, Receiver, ReceiverError};

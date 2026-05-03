@@ -58,6 +58,35 @@ impl Default for ReconnectPolicy {
     }
 }
 
+impl ReconnectPolicy {
+    /// Compute the wait before the next reconnect attempt, or `None` if the
+    /// budget is exhausted.
+    ///
+    /// `attempt` is the 1-based index of the attempt about to be made (i.e.
+    /// the very first reconnect after a transport break is `attempt = 1`).
+    /// When `max_attempts == Some(n)`, returns `None` once `attempt > n`.
+    /// When `max_attempts == None`, retries forever (always returns `Some`).
+    ///
+    /// Used by both `ManagedTransport` (send side) and
+    /// `ManagedReceiveTransport` (receive side) so the backoff math lives in
+    /// one place.
+    pub fn next_delay(&self, attempt: u32) -> Option<Duration> {
+        if let Some(max) = self.max_attempts {
+            if attempt > max {
+                return None;
+            }
+        }
+        let wait = match &self.backoff {
+            BackoffStrategy::Constant(d) => *d,
+            BackoffStrategy::Exponential { base, max } => {
+                let exp = (*base).saturating_mul(1 << attempt.saturating_sub(1).min(20));
+                if exp > *max { *max } else { exp }
+            }
+        };
+        Some(wait)
+    }
+}
+
 use crate::pipeline::transport::{Transport, TransportError};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -197,19 +226,11 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         let mut attempt: u32 = 0;
         loop {
             attempt += 1;
-            if let Some(max) = self.policy.max_attempts {
-                if attempt > max {
-                    return Err(TransportError::Broken(format!(
-                        "reconnect gave up after {max} attempts"
-                    )));
-                }
-            }
-            let wait = match &self.policy.backoff {
-                BackoffStrategy::Constant(d) => *d,
-                BackoffStrategy::Exponential { base, max } => {
-                    let exp = (*base).saturating_mul(1 << attempt.saturating_sub(1).min(20));
-                    if exp > *max { *max } else { exp }
-                }
+            let Some(wait) = self.policy.next_delay(attempt) else {
+                let max = self.policy.max_attempts.unwrap_or(0);
+                return Err(TransportError::Broken(format!(
+                    "reconnect gave up after {max} attempts"
+                )));
             };
             thread::sleep(wait);
             match (self.factory)() {

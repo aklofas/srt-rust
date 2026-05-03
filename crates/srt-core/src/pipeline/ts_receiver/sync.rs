@@ -61,6 +61,18 @@ impl Syncer {
         self.buf.extend_from_slice(bytes);
     }
 
+    /// Reset to HUNT and discard any buffered bytes.
+    ///
+    /// Intended for reconnect scenarios where the underlying transport has
+    /// been re-established: bytes left over from a dead connection cannot
+    /// straddle the reconnect boundary and must not contribute to the new
+    /// alignment search. Higher-level shells (a future `ManagedReceiver`)
+    /// call this after a transport rebuild before feeding fresh bytes.
+    pub fn reset(&mut self) {
+        self.buf.clear();
+        self.state = SyncState::Hunt;
+    }
+
     /// Pull the next 188-byte aligned packet from the buffer, if one is ready.
     ///
     /// Returns `None` when more bytes must be [`push`]ed before the next

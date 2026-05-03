@@ -84,6 +84,18 @@ impl<R: RecvTransport> TsReceiver<R> {
         self.transport.is_alive()
     }
 
+    /// Drop any buffered bytes and force the syncer back to HUNT.
+    ///
+    /// Intended for reconnect scenarios at a higher composition layer: when
+    /// the underlying transport has been re-established, bytes left over
+    /// from the dead connection must not seed the new alignment search.
+    /// Note that `ManagedReceiveTransport` itself does **not** own the
+    /// `TsReceiver` (it lives one layer up, inside `Receiver`); this method
+    /// exists for a future `ManagedReceiver` shell to call.
+    pub fn reset_sync(&mut self) {
+        self.syncer.reset();
+    }
+
     /// Close the underlying transport. Idempotent. After close, `next_packet`
     /// will return `TransportError::Closed` once the syncer's internal buffer
     /// is exhausted. Mirrors `RawReceiver::close`.

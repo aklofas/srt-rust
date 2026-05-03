@@ -2,7 +2,7 @@
 //! Top-level `Demuxer` state machine.
 
 use crate::error::DemuxError;
-use crate::mpegts::common::pts_diff_33bit;
+use crate::mpegts::common::{pcr_diff_27mhz, pts_diff_33bit};
 use crate::mpegts::demux::event::{
     DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NonConformantIssue,
     ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, VideoCodec,
@@ -150,7 +150,7 @@ impl Demuxer {
         // for MSRV 1.85 compatibility — let-chains require Rust 1.88.
         if let Some(now) = pkt.pcr_27mhz {
             if let Some(last) = self.last_pcr_27mhz {
-                let diff = now as i64 - last as i64;
+                let diff = pcr_diff_27mhz(now, last);
                 if diff.abs() > PCR_ANOMALY_THRESHOLD {
                     let issue = NonConformantIssue::PcrAnomaly { delta: diff };
                     if let Some(stream) = self.lookup_stream(pkt.pid) {

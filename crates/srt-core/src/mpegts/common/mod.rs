@@ -122,6 +122,27 @@ pub fn pts_diff_33bit(now: u64, last: u64) -> i64 {
     }
 }
 
+/// Signed difference `now - last` for PCR-27MHz values, interpreted across
+/// the 33-bit-base × 300 wrap. PCR-27MHz = `base × 300 + ext` where `base`
+/// is 33 bits and `ext` is 9 bits. The full 27 MHz value wraps at
+/// `(1 << 33) × 300 ≈ 2.577 × 10^12`, which is once every ~26.5 hours.
+///
+/// Used by the demuxer to detect PCR jumps without false-positives across
+/// the long-stream rollover boundary.
+pub fn pcr_diff_27mhz(now: u64, last: u64) -> i64 {
+    const WRAP: i128 = (1i128 << 33) * 300;
+    const HALF: i128 = WRAP / 2;
+    let diff = now as i128 - last as i128;
+    let adjusted = if diff > HALF {
+        diff - WRAP
+    } else if diff < -HALF {
+        diff + WRAP
+    } else {
+        diff
+    };
+    adjusted as i64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,5 +263,34 @@ mod tests {
         assert_eq!(pts_diff_33bit(now, last), 1i64 << 32);
         // One past half: treated as backward (raw > HALF → negative delta).
         assert_eq!(pts_diff_33bit((1u64 << 32) + 1, 0), -(1i64 << 32) + 1);
+    }
+
+    #[test]
+    fn pcr_diff_27mhz_forward_simple() {
+        // 1000 ticks forward.
+        assert_eq!(pcr_diff_27mhz(2_000, 1_000), 1_000);
+    }
+
+    #[test]
+    fn pcr_diff_27mhz_backward_simple() {
+        assert_eq!(pcr_diff_27mhz(1_000, 2_000), -1_000);
+    }
+
+    #[test]
+    fn pcr_diff_27mhz_wrap_forward() {
+        // last just before wrap, now just after wrap.
+        let wrap = (1u64 << 33) * 300;
+        let last = wrap - 100;
+        let now = 50; // wrapped
+        assert_eq!(pcr_diff_27mhz(now, last), 150);
+    }
+
+    #[test]
+    fn pcr_diff_27mhz_wrap_backward() {
+        // last just after wrap, now just before wrap (a real backward jump).
+        let wrap = (1u64 << 33) * 300;
+        let last = 50;
+        let now = wrap - 100;
+        assert_eq!(pcr_diff_27mhz(now, last), -150);
     }
 }

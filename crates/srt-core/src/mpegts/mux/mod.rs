@@ -404,7 +404,29 @@ impl ConfigBuilder {
 }
 
 use crate::mpegts::common::{Pcr27mhz, Pts90khz, StreamType};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
+
+/// Stats snapshot for [`Muxer`].
+///
+/// Returned by [`Muxer::stats`]. All counters are cumulative since
+/// construction (or the last [`Muxer::reset_stats`] call).
+///
+/// `per_stream` is keyed by PID. Entries are created eagerly at
+/// [`Muxer::new`] for every configured video and KLV stream so callers
+/// can always index by a known PID without first checking for key
+/// presence.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MuxerStats {
+    /// Total 188-byte TS packets drained via [`Muxer::pull`].
+    pub ts_packets_emitted: u64,
+    /// Total bytes drained via [`Muxer::pull`] (`ts_packets_emitted * 188`).
+    pub ts_bytes_emitted: u64,
+    /// Per-stream counters, keyed by PID. One entry per configured
+    /// video or KLV stream. `StreamStats::items` = push_video_to /
+    /// push_klv_to call count; `StreamStats::bytes` = raw ES bytes pushed
+    /// (before PES/TS framing overhead).
+    pub per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
+}
 
 use self::pes::{
     MAX_PES_HEADER_SIZE, PesPtsField, STREAM_ID_KLV, STREAM_ID_VIDEO, write_pes_header,
@@ -450,12 +472,21 @@ pub struct Muxer {
 
     /// Last PSI emission PTS, masked to 33 bits (0..2^33). None until first.
     /// PSI cadence is single-timeline (driven by whichever push_*_to call
-    /// passed the most recent PTS) — that matches v0 semantics exactly when
-    /// only one stream is configured.
+    /// passed the most recent PTS) — that matches single-stream semantics
+    /// exactly when only one stream is configured.
     last_psi_emission_pts: Option<u64>,
     /// 27 MHz PCR value at the most recent PCR emission. None until first.
     /// PCR rides one PID (`self.pcr_pid`) so a single timeline is correct.
     last_pcr_emission_27mhz: Option<u64>,
+
+    // ── Stats counters ────────────────────────────────────────────────────
+    ts_packets_emitted: u64,
+    ts_bytes_emitted: u64,
+    /// Keyed by PID. Populated eagerly at construction for every configured
+    /// stream; only the `items` / `bytes` / `discontinuities` fields change
+    /// at runtime. `pid` and `stream_type` are set at construction and
+    /// never modified.
+    per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
 }
 
 impl Muxer {
@@ -483,6 +514,39 @@ impl Muxer {
         let pcr_interval_27mhz = (config.pcr_interval_ms as u64) * 27_000;
         let psi_interval_90khz = (config.psi_interval_ms as i64) * 90;
 
+        // Eagerly create per-stream stats entries for every configured stream.
+        // Identity fields (pid, stream_type) are set here and never change;
+        // flow counters (items, bytes, discontinuities) start at zero.
+        let mut per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats> = BTreeMap::new();
+        for v in &video_streams {
+            let stream_type_byte = match v.codec {
+                VideoCodec::H264 => StreamType::H264.as_u8(),
+                VideoCodec::H265 => StreamType::H265.as_u8(),
+            };
+            per_stream.insert(
+                v.pid,
+                crate::mpegts::stats::StreamStats {
+                    pid: v.pid,
+                    stream_type: stream_type_byte,
+                    ..Default::default()
+                },
+            );
+        }
+        for k in &klv_streams {
+            let stream_type_byte = match k.stream_type {
+                KlvStreamType::PrivateData => StreamType::KlvPrivate.as_u8(),
+                KlvStreamType::SynchronousMetadata => StreamType::KlvSyncMetadata.as_u8(),
+            };
+            per_stream.insert(
+                k.pid,
+                crate::mpegts::stats::StreamStats {
+                    pid: k.pid,
+                    stream_type: stream_type_byte,
+                    ..Default::default()
+                },
+            );
+        }
+
         Ok(Self {
             config,
             video_streams,
@@ -494,6 +558,9 @@ impl Muxer {
             counters: ContinuityCounters::new(),
             last_psi_emission_pts: None,
             last_pcr_emission_27mhz: None,
+            ts_packets_emitted: 0,
+            ts_bytes_emitted: 0,
+            per_stream,
         })
     }
 
@@ -556,7 +623,10 @@ impl Muxer {
             let pkt = self.queue.pop_front().expect("checked count");
             out[i * 188..(i + 1) * 188].copy_from_slice(&pkt);
         }
-        max_packets * 188
+        let n = max_packets * 188;
+        self.ts_packets_emitted += max_packets as u64;
+        self.ts_bytes_emitted += n as u64;
+        n
     }
 
     /// All `VideoStreamHandle`s for this muxer, in declaration order.
@@ -672,6 +742,12 @@ impl Muxer {
             first = false;
         }
 
+        // Count on the Ok path only — after all early-returns above.
+        if let Some(s) = self.per_stream.get_mut(&video_pid) {
+            s.items += 1;
+            s.bytes += nal.len() as u64;
+        }
+
         Ok(())
     }
 
@@ -762,7 +838,40 @@ impl Muxer {
             first = false;
         }
 
+        // Count on the Ok path only — after all early-returns above.
+        if let Some(s) = self.per_stream.get_mut(&klv_pid) {
+            s.items += 1;
+            s.bytes += klv.len() as u64;
+        }
+
         Ok(())
+    }
+
+    /// Return a snapshot of the current stats counters.
+    ///
+    /// All per-stream entries are present regardless of whether any data has
+    /// been pushed to that stream yet.
+    pub fn stats(&self) -> MuxerStats {
+        MuxerStats {
+            ts_packets_emitted: self.ts_packets_emitted,
+            ts_bytes_emitted: self.ts_bytes_emitted,
+            per_stream: self.per_stream.clone(),
+        }
+    }
+
+    /// Zero all flow counters.
+    ///
+    /// Per-stream entries are preserved (their `pid` and `stream_type`
+    /// identity fields remain set); only the flow counters (`items`,
+    /// `bytes`, `discontinuities`) are zeroed.
+    pub fn reset_stats(&mut self) {
+        self.ts_packets_emitted = 0;
+        self.ts_bytes_emitted = 0;
+        for s in self.per_stream.values_mut() {
+            s.items = 0;
+            s.bytes = 0;
+            s.discontinuities = 0;
+        }
     }
 
     fn psi_due(&self, pts_90khz: i64) -> bool {
@@ -1549,5 +1658,73 @@ mod tests {
             ),
             "expected AmbiguousTarget {{ klv, 0 }}, got {err:?}",
         );
+    }
+}
+
+#[cfg(test)]
+mod stats_tests {
+    use super::*;
+
+    #[test]
+    fn stats_starts_with_per_stream_entries_for_configured_streams() {
+        let cfg = Config::builder()
+            .add_video(0x100, VideoCodec::H264)
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .build()
+            .unwrap();
+        let m = Muxer::new(cfg).unwrap();
+        let st = m.stats();
+        assert_eq!(st.ts_packets_emitted, 0);
+        assert_eq!(st.ts_bytes_emitted, 0);
+        assert_eq!(st.per_stream.len(), 2);
+        assert!(st.per_stream.contains_key(&0x100));
+        assert!(st.per_stream.contains_key(&0x101));
+        assert_eq!(st.per_stream[&0x100].stream_type, 0x1B);
+        assert_eq!(st.per_stream[&0x101].stream_type, 0x06);
+        assert_eq!(st.per_stream[&0x100].items, 0);
+    }
+
+    #[test]
+    fn stats_count_pushed_items_and_pulled_packets() {
+        let cfg = Config::builder()
+            .add_video(0x100, VideoCodec::H264)
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .build()
+            .unwrap();
+        let mut m = Muxer::new(cfg).unwrap();
+        let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB, 0xCC];
+        m.push_video(nal, 0, true).unwrap();
+        let klv: &[u8] = &[
+            0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00, 0x00,
+        ];
+        m.push_klv(klv, 0).unwrap();
+        let mut buf = vec![0u8; 64 * 188];
+        let n = m.pull(&mut buf);
+        let st = m.stats();
+        assert_eq!(st.per_stream[&0x100].items, 1);
+        assert_eq!(st.per_stream[&0x100].bytes, nal.len() as u64);
+        assert_eq!(st.per_stream[&0x101].items, 1);
+        assert_eq!(st.per_stream[&0x101].bytes, klv.len() as u64);
+        assert_eq!(st.ts_bytes_emitted, n as u64);
+        assert_eq!(st.ts_packets_emitted, (n / 188) as u64);
+    }
+
+    #[test]
+    fn reset_stats_zeros_counters_keeps_entries() {
+        let cfg = Config::builder()
+            .add_video(0x100, VideoCodec::H264)
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .build()
+            .unwrap();
+        let mut m = Muxer::new(cfg).unwrap();
+        let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+        m.push_video(nal, 0, true).unwrap();
+        m.reset_stats();
+        let st = m.stats();
+        assert_eq!(st.ts_packets_emitted, 0);
+        assert_eq!(st.per_stream.len(), 2);
+        assert_eq!(st.per_stream[&0x100].items, 0);
+        assert_eq!(st.per_stream[&0x100].bytes, 0);
     }
 }

@@ -338,6 +338,43 @@ pub enum MuxError {
 }
 
 // ============================================================================
+// MPEG-TS demux errors
+// ============================================================================
+
+/// Errors emitted by `mpegts::demux`.
+///
+/// Lenient-mode demuxing typically does NOT return errors — non-conformance
+/// surfaces as `DemuxEvent::NonConformant { issue }` so the receive loop
+/// keeps running. The error variants below fire when something is genuinely
+/// fatal (the byte stream is unrecoverable, or strict mode converts a
+/// `NonConformantIssue` into a hard failure).
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum DemuxError {
+    /// Byte stream is unrecoverable: too few bytes after a long sync-search
+    /// window to make progress, or repeated PSI checksum failures.
+    #[error("demuxer cannot recover sync after {after_bytes} bytes")]
+    Unrecoverable { after_bytes: usize },
+
+    /// Strict mode rejected a `NonConformantIssue`. Lenient mode would have
+    /// emitted a `NonConformant` event instead and continued.
+    #[error("strict-mode rejection: {0}")]
+    StrictRejection(String),
+
+    /// PSI section claimed a length that doesn't fit a valid PAT/PMT.
+    /// Distinct from a checksum mismatch (which is `NonConformant` in
+    /// lenient mode); this is structurally impossible.
+    #[error("malformed PSI section at PID 0x{pid:04X}: {reason}")]
+    MalformedPsi { pid: u16, reason: &'static str },
+
+    /// PES header at PID 0x{pid:04X} declared a length that's too short to
+    /// contain its own claimed flags. Unlike PSI checksum failures (which
+    /// surface as `NonConformant` in lenient mode), this prevents the
+    /// reassembler from making any forward progress.
+    #[error("malformed PES header at PID 0x{pid:04X}: {reason}")]
+    MalformedPes { pid: u16, reason: &'static str },
+}
+
+// ============================================================================
 // Pipeline transport errors (re-exported for convenience; defined in
 // pipeline::transport because they describe a behavioral contract that's
 // part of the pipeline module's public surface)
@@ -367,6 +404,8 @@ pub enum Error {
     KlvField(#[from] KlvFieldError),
     #[error(transparent)]
     Mux(#[from] MuxError),
+    #[error(transparent)]
+    Demux(#[from] DemuxError),
     #[error(transparent)]
     Transport(#[from] crate::pipeline::transport::TransportError),
 }

@@ -104,21 +104,12 @@ impl Pcr27mhz {
     }
 }
 
-/// Signed 33-bit modular difference between two masked PTS values, in 90 kHz ticks.
+/// Signed difference `now - last` interpreted across the 33-bit PTS
+/// rollover boundary. Returns the smaller-magnitude wrap-aware delta.
 ///
-/// Both inputs must already be masked to the 33-bit PTS range
-/// (`Pts90khz::masked_33bit()` output). Returns the shortest signed delta in
-/// modular 2^33 arithmetic: positive if `now` is ahead of `last`, negative if
-/// behind. Handles 33-bit rollover correctly — when `last` is near 2^33-1 and
-/// `now` is small, the result is the small positive delta across the wrap.
-///
-/// Convention at the half-range boundary (delta == 2^32): treated as forward.
-///
-/// Used by the `mpegts::mux` cadence checks (`psi_due`, `pcr_due`) so that
-/// (a) backwards PTS from B-frames in decode order doesn't suppress emission,
-/// and (b) streams running past the 33-bit rollover (~26.5 hours at 90 kHz)
-/// stay correct.
-pub(crate) fn pts_diff_33bit(now: u64, last: u64) -> i64 {
+/// Used by both the muxer (to detect backward-PTS bugs) and the demuxer
+/// (to maintain stream-monotonic timing across PTS rollover).
+pub fn pts_diff_33bit(now: u64, last: u64) -> i64 {
     const RANGE: u64 = 1u64 << 33;
     const HALF: u64 = 1u64 << 32;
     debug_assert!(now < RANGE, "now must be 33-bit-masked");

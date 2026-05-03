@@ -37,4 +37,5 @@
 //! - Annex-B input; one access unit per [`mux::Muxer::push_video`] call
 
 pub mod common;
+pub mod demux;
 pub mod mux;

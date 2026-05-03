@@ -13,6 +13,7 @@ pub mod handle;
 pub mod mux_sender;
 pub mod muxer;
 pub mod raw_sender;
+pub mod stats;
 pub mod ts_sender;
 /// Major version (compile-time macro in the generated header).
 pub const SRTC_VERSION_MAJOR: libc::c_int = 0;

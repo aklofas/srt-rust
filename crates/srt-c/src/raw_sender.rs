@@ -181,6 +181,88 @@ pub unsafe extern "C" fn srtc_managed_raw_sender_close(p: *mut SrtcManagedRawSen
     drop(boxed);
 }
 
+/// Snapshot stats for a `srtc_raw_sender_t` into `*out`.
+///
+/// Returns 0 on success, `SRTC_E_INVALID_CONFIG` if either pointer is
+/// null, or `SRTC_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_raw_sender_get_stats(
+    p: *mut SrtcRawSender,
+    out: *mut crate::stats::SrtcRawSenderStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(SrtcError::InvalidConfig, "null out pointer");
+        return SrtcError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|s| {
+        let stats = crate::stats::SrtcRawSenderStats::from(&s.stats());
+        unsafe { *out = stats };
+        0
+    })
+}
+
+/// Reset stats counters for a `srtc_raw_sender_t` to zero.
+///
+/// Returns 0 on success, `SRTC_E_INVALID_CONFIG` if the pointer is
+/// null, or `SRTC_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_raw_sender_reset_stats(p: *mut SrtcRawSender) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    handle.inner.with_inner_mut(|s| {
+        s.reset_stats();
+        0
+    })
+}
+
+/// Snapshot stats for a `srtc_managed_raw_sender_t` into `*out`.
+///
+/// Returns 0 on success, `SRTC_E_INVALID_CONFIG` if either pointer is
+/// null, or `SRTC_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_managed_raw_sender_get_stats(
+    p: *mut SrtcManagedRawSender,
+    out: *mut crate::stats::SrtcRawSenderStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(SrtcError::InvalidConfig, "null out pointer");
+        return SrtcError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|s| {
+        let stats = crate::stats::SrtcRawSenderStats::from(&s.stats());
+        unsafe { *out = stats };
+        0
+    })
+}
+
+/// Reset stats counters for a `srtc_managed_raw_sender_t` to zero.
+///
+/// Returns 0 on success, `SRTC_E_INVALID_CONFIG` if the pointer is
+/// null, or `SRTC_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_managed_raw_sender_reset_stats(
+    p: *mut SrtcManagedRawSender,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    handle.inner.with_inner_mut(|s| {
+        s.reset_stats();
+        0
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

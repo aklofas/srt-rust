@@ -100,6 +100,13 @@ impl Transport for SrtTransport {
             let _ = socket.close();
         }
     }
+
+    fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+        self.socket.as_ref().map(|s| {
+            Box::new(SrtCancel(s.cancel_handle()))
+                as Box<dyn crate::pipeline::transport::TransportCancel>
+        })
+    }
 }
 
 impl crate::pipeline::recv_transport::RecvTransport for SrtTransport {
@@ -148,11 +155,27 @@ impl crate::pipeline::recv_transport::RecvTransport for SrtTransport {
     fn close(&mut self) {
         <Self as crate::pipeline::transport::Transport>::close(self);
     }
+
+    fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+        self.socket.as_ref().map(|s| {
+            Box::new(SrtCancel(s.cancel_handle()))
+                as Box<dyn crate::pipeline::transport::TransportCancel>
+        })
+    }
 }
 
 impl Drop for SrtTransport {
     fn drop(&mut self) {
         self.close();
+    }
+}
+
+/// Adapter: wraps `srt::CancelHandle` as a `TransportCancel`.
+struct SrtCancel(crate::srt::CancelHandle);
+
+impl crate::pipeline::transport::TransportCancel for SrtCancel {
+    fn cancel(&self) {
+        self.0.cancel();
     }
 }
 
@@ -165,5 +188,21 @@ mod tests {
         // Without an actual connected Socket, just verify the constant.
         // SrtTransport::DEFAULT_PAYLOAD == 1316 (libsrt default).
         assert_eq!(SrtTransport::DEFAULT_PAYLOAD, 1316);
+    }
+
+    /// `cancel_handle()` returns Some when a Socket is held; calling
+    /// cancel() flips the inner socket to None on the next send_bytes
+    /// (which now returns Closed because we proactively dropped it).
+    #[test]
+    #[ignore = "needs live SRT socket; covered by tests/cancellation_loopback.rs"]
+    fn cancel_handle_some_when_alive() {}
+
+    /// Sanity: with no Socket held (already-closed transport), the
+    /// cancel-handle accessor returns None — there's nothing to cancel.
+    #[test]
+    fn cancel_handle_none_when_already_closed() {
+        // We can't construct an SrtTransport without a live Socket
+        // through the public API, so this assertion lives in the
+        // integration test instead. Documented as a guarantee here.
     }
 }

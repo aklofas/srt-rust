@@ -207,7 +207,7 @@ pub struct PmtStream {
 }
 
 /// Raw, unparsed descriptor. The walker (`walk_descriptors`) and the
-/// typed extractors (`extract_klva_registration`, `extract_metadata_link`)
+/// typed extractors (`has_klva_registration`, `extract_metadata_link`)
 /// interpret these.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawDescriptor {
@@ -232,6 +232,14 @@ pub fn has_klva_registration(descs: &[RawDescriptor]) -> bool {
 /// `metadata_locator_record` of length ≥ 2 carrying the linked
 /// `elementary_PID`. Other shapes return `None`; the caller treats that
 /// as "no declared link."
+///
+/// Note: if the trailing 2 bytes coincidentally land in the valid PID
+/// range without being a real linked PID, the caller will receive a
+/// linkage that doesn't reflect actual encoder intent. Task 7 surfaces
+/// this as `LinkSource::Declared`; consumers should treat declared
+/// linkages as informational and validate (e.g., by confirming the
+/// linked PID appears as an `elementary_PID` in the same PMT) when
+/// strict pairing matters.
 pub fn extract_metadata_link(descs: &[RawDescriptor]) -> Option<u16> {
     let d = descs.iter().find(|d| d.tag == 0x26)?;
     // metadata_descriptor body:

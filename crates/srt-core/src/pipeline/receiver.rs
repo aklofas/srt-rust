@@ -188,3 +188,108 @@ pub enum ReceiverError {
     #[error(transparent)]
     Demux(#[from] DemuxError),
 }
+
+/// Stats snapshot for [`Receiver`]. Composes the underlying
+/// [`crate::pipeline::TsReceiverStats`] (bytes/packets received, sync-recovery
+/// counters) with the [`crate::mpegts::demux::DemuxerStats`] (events emitted,
+/// per-PID counters). Sync-recovery counters (`bytes_skipped_for_sync`,
+/// `resync_events`) live only on `TsReceiverStats` — call
+/// `TsReceiver::stats()` directly to read them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReceiverStats {
+    pub bytes_received: u64,
+    pub packets_received: u64,
+    pub program_maps_seen: u64,
+    pub pmt_versions_seen: u64,
+    pub discontinuities: u64,
+    pub nonconformant: u64,
+    pub per_stream: std::collections::BTreeMap<u16, crate::mpegts::stats::StreamStats>,
+}
+
+impl<R: RecvTransport> Receiver<R> {
+    /// Snapshot the current counters. Composes transport-layer byte/packet
+    /// counts from the inner `TsReceiver` with demux-layer event counts from
+    /// the inner `Demuxer`.
+    pub fn stats(&self) -> ReceiverStats {
+        let ts = self.ts.stats();
+        let dx = self.demux.stats();
+        ReceiverStats {
+            bytes_received: ts.bytes_received,
+            packets_received: ts.packets_received,
+            program_maps_seen: dx.program_maps_seen,
+            pmt_versions_seen: dx.pmt_versions_seen,
+            discontinuities: dx.discontinuities,
+            nonconformant: dx.nonconformant,
+            per_stream: dx.per_stream,
+        }
+    }
+
+    /// Reset all counters to zero. Delegates to both the inner `TsReceiver`
+    /// and the inner `Demuxer`.
+    pub fn reset_stats(&mut self) {
+        self.ts.reset_stats();
+        self.demux.reset_stats();
+    }
+}
+
+#[cfg(test)]
+mod stats_tests {
+    use super::*;
+    use crate::pipeline::recv_transport::RecvTransport;
+    use crate::pipeline::transport::TransportError;
+    use std::collections::VecDeque;
+
+    struct CannedRecv {
+        chunks: VecDeque<Vec<u8>>,
+        alive: bool,
+    }
+
+    impl RecvTransport for CannedRecv {
+        fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+            match self.chunks.pop_front() {
+                Some(v) => {
+                    let n = v.len().min(buf.len());
+                    buf[..n].copy_from_slice(&v[..n]);
+                    Ok(n)
+                }
+                None => Err(TransportError::Closed),
+            }
+        }
+
+        fn max_payload(&self) -> usize {
+            1316
+        }
+
+        fn is_alive(&self) -> bool {
+            self.alive
+        }
+
+        fn close(&mut self) {
+            self.alive = false;
+        }
+    }
+
+    #[test]
+    fn stats_starts_zero_with_empty_per_stream() {
+        let r = Receiver::new(CannedRecv {
+            chunks: VecDeque::new(),
+            alive: true,
+        });
+        let st = r.stats();
+        assert_eq!(st.bytes_received, 0);
+        assert_eq!(st.packets_received, 0);
+        assert_eq!(st.program_maps_seen, 0);
+        assert_eq!(st.per_stream.len(), 0);
+    }
+
+    #[test]
+    fn reset_stats_clears_per_stream() {
+        let mut r = Receiver::new(CannedRecv {
+            chunks: VecDeque::new(),
+            alive: true,
+        });
+        r.reset_stats();
+        let st = r.stats();
+        assert!(st.per_stream.is_empty());
+    }
+}

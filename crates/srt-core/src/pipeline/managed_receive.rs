@@ -66,6 +66,7 @@
 use crate::pipeline::reconnect::ReconnectPolicy;
 use crate::pipeline::recv_transport::RecvTransport;
 use crate::pipeline::transport::TransportError;
+use std::sync::{Arc, Mutex};
 
 /// Receive-side reconnect decorator.
 ///
@@ -82,9 +83,15 @@ pub struct ManagedReceiveTransport<R: RecvTransport> {
     factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,
     /// Backoff cadence + retry budget.
     policy: ReconnectPolicy,
-    /// Latched once the reconnect budget is exhausted or `close()` is
-    /// called. After this point all `recv_bytes` calls return `Closed`.
+    /// Local latched-close, set by `close(&mut self)`.
     closed: bool,
+    /// Shared latched-close, set by the cancel handle from any thread.
+    /// Read at every loop iteration in `recv_bytes`.
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    /// Most-recently-built inner's cancel handle, snapshotted on each
+    /// successful build. Held in an Arc<Mutex<>> so the cancel handle
+    /// (separate object) can read without owning &mut self.
+    inner_cancel: Arc<Mutex<Option<Box<dyn crate::pipeline::transport::TransportCancel>>>>,
 }
 
 impl<R: RecvTransport> ManagedReceiveTransport<R> {
@@ -98,22 +105,30 @@ impl<R: RecvTransport> ManagedReceiveTransport<R> {
         factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,
         policy: ReconnectPolicy,
     ) -> Self {
+        let inner_cancel: Arc<Mutex<Option<Box<dyn crate::pipeline::transport::TransportCancel>>>> =
+            Arc::new(Mutex::new(inner.cancel_handle()));
         Self {
             inner: Some(inner),
             factory,
             policy,
             closed: false,
+            cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            inner_cancel,
         }
     }
 }
 
 impl<R: RecvTransport> RecvTransport for ManagedReceiveTransport<R> {
     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
-        if self.closed {
+        if self.closed || self.cancelled.load(std::sync::atomic::Ordering::Acquire) {
             return Err(TransportError::Closed);
         }
         let mut attempt: u32 = 0;
         loop {
+            if self.cancelled.load(std::sync::atomic::Ordering::Acquire) {
+                self.closed = true;
+                return Err(TransportError::Closed);
+            }
             // Get-or-rebuild inner. The factory may itself fail (e.g. DNS
             // didn't resolve, peer is still down) — treat factory failure
             // exactly like a recv break and back off via the policy.
@@ -125,7 +140,10 @@ impl<R: RecvTransport> RecvTransport for ManagedReceiveTransport<R> {
                 };
                 std::thread::sleep(delay);
                 match (self.factory)() {
-                    Ok(t) => self.inner = Some(t),
+                    Ok(t) => {
+                        *self.inner_cancel.lock().unwrap() = t.cancel_handle();
+                        self.inner = Some(t);
+                    }
                     Err(_) => continue,
                 }
             }
@@ -164,6 +182,29 @@ impl<R: RecvTransport> RecvTransport for ManagedReceiveTransport<R> {
         self.closed = true;
         if let Some(t) = self.inner.as_mut() {
             t.close();
+        }
+    }
+
+    fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+        Some(Box::new(ManagedRecvCancel {
+            cancelled: self.cancelled.clone(),
+            inner_cancel: self.inner_cancel.clone(),
+        }))
+    }
+}
+
+struct ManagedRecvCancel {
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    inner_cancel: Arc<Mutex<Option<Box<dyn crate::pipeline::transport::TransportCancel>>>>,
+}
+
+impl crate::pipeline::transport::TransportCancel for ManagedRecvCancel {
+    fn cancel(&self) {
+        self.cancelled
+            .store(true, std::sync::atomic::Ordering::Release);
+        let inner = self.inner_cancel.lock().ok().and_then(|mut g| g.take());
+        if let Some(c) = inner {
+            c.cancel();
         }
     }
 }
@@ -331,5 +372,58 @@ mod tests {
             TransportError::Closed
         );
         assert_eq!(*factory_calls.lock().unwrap(), 0);
+    }
+
+    /// Stub RecvTransport whose cancel_handle latches a flag.
+    struct CancellableRecv {
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    }
+    struct CancellableRecvCancel {
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+    }
+    impl crate::pipeline::transport::TransportCancel for CancellableRecvCancel {
+        fn cancel(&self) {
+            self.cancelled
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    impl RecvTransport for CancellableRecv {
+        fn recv_bytes(&mut self, _: &mut [u8]) -> Result<usize, TransportError> {
+            if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
+                Err(TransportError::Broken("cancelled".into()))
+            } else {
+                Ok(0)
+            }
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn is_alive(&self) -> bool {
+            !self.cancelled.load(std::sync::atomic::Ordering::SeqCst)
+        }
+        fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+            Some(Box::new(CancellableRecvCancel {
+                cancelled: self.cancelled.clone(),
+            }))
+        }
+    }
+
+    #[test]
+    fn managed_recv_cancel_handle_latches_and_cancels_inner() {
+        let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let inner = CancellableRecv {
+            cancelled: cancelled.clone(),
+        };
+        let cancelled_cl = cancelled.clone();
+        let factory = Box::new(move || -> Result<CancellableRecv, TransportError> {
+            Ok(CancellableRecv {
+                cancelled: cancelled_cl.clone(),
+            })
+        });
+        let managed = ManagedReceiveTransport::new(inner, factory, fast_policy(Some(2)));
+
+        let h = managed.cancel_handle().expect("cancellable inner -> Some");
+        h.cancel();
+        assert!(cancelled.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

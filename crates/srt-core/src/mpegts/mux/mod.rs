@@ -418,15 +418,27 @@ use self::ts::{AdaptationField, ContinuityCounters, write_packet};
 ///
 /// See the design doc for full semantics:
 /// `docs/specs/2026-05-01-srt-core-mpegts-mux-design.md`.
+/// Per-video-stream cached state. Built once at `Muxer::new` time.
+struct VideoStreamState {
+    pid: u16,
+    codec: VideoCodec,
+}
+
+/// Per-KLV-stream cached state. Each KLV stream tracks its own `last_pts`
+/// for the per-stream-clock decision (locked design point 4).
+struct KlvStreamState {
+    pid: u16,
+    stream_type: KlvStreamType,
+    carries_pts: bool,
+}
+
 pub struct Muxer {
     config: Config,
-    // Cached scalars derived from config.streams at construction time.
-    // Avoids repeated iteration through the streams vec in hot paths.
-    video_pid: u16,
-    video_codec: VideoCodec,
-    klv_pid: u16,
-    klv_stream_type: KlvStreamType,
-    klv_carries_pts: bool,
+    /// One entry per video stream in `config.streams` (filtered to Video),
+    /// in the order they appear. Index = `VideoStreamHandle`.
+    video_streams: Vec<VideoStreamState>,
+    /// One entry per KLV stream. Index = `KlvStreamHandle`.
+    klv_streams: Vec<KlvStreamState>,
     pcr_pid: u16,
     pcr_interval_27mhz: u64,
     psi_interval_90khz: i64,
@@ -435,8 +447,12 @@ pub struct Muxer {
     counters: ContinuityCounters,
 
     /// Last PSI emission PTS, masked to 33 bits (0..2^33). None until first.
+    /// PSI cadence is single-timeline (driven by whichever push_*_to call
+    /// passed the most recent PTS) — that matches v0 semantics exactly when
+    /// only one stream is configured.
     last_psi_emission_pts: Option<u64>,
     /// 27 MHz PCR value at the most recent PCR emission. None until first.
+    /// PCR rides one PID (`self.pcr_pid`) so a single timeline is correct.
     last_pcr_emission_27mhz: Option<u64>,
 }
 
@@ -445,13 +461,28 @@ impl Muxer {
     pub fn new(config: Config) -> Result<Self, MuxError> {
         config.validate()?;
 
-        // The muxer requires both video and KLV streams today. Path 3 lifts this.
-        if config.video_streams().next().is_none() {
+        // Build per-stream state in declaration order.
+        let video_streams: Vec<VideoStreamState> = config
+            .video_streams()
+            .map(|(pid, codec)| VideoStreamState { pid, codec })
+            .collect();
+        let klv_streams: Vec<KlvStreamState> = config
+            .klv_streams()
+            .map(|(pid, stream_type, carries_pts)| KlvStreamState {
+                pid,
+                stream_type,
+                carries_pts,
+            })
+            .collect();
+
+        // The muxer requires both video and KLV streams today. Path 3
+        // lifts this in Task 7; for now the existing v0 contract holds.
+        if video_streams.is_empty() {
             return Err(MuxError::InvalidConfig(
                 "muxer requires exactly one video stream",
             ));
         }
-        if config.klv_streams().next().is_none() {
+        if klv_streams.is_empty() {
             return Err(MuxError::InvalidConfig(
                 "muxer requires exactly one klv stream",
             ));
@@ -461,18 +492,10 @@ impl Muxer {
         let pcr_interval_27mhz = (config.pcr_interval_ms as u64) * 27_000;
         let psi_interval_90khz = (config.psi_interval_ms as i64) * 90;
 
-        // ≤1 video and ≤1 klv (enforced above). Pull them out via the helpers.
-        let (video_pid, video_codec) = config.video_streams().next().expect("checked above");
-        let (klv_pid, klv_stream_type, klv_carries_pts) =
-            config.klv_streams().next().expect("checked above");
-
         Ok(Self {
             config,
-            video_pid,
-            video_codec,
-            klv_pid,
-            klv_stream_type,
-            klv_carries_pts,
+            video_streams,
+            klv_streams,
             pcr_pid,
             pcr_interval_27mhz,
             psi_interval_90khz,
@@ -501,12 +524,18 @@ impl Muxer {
     ) -> Result<(), MuxError> {
         validate_annex_b(nal)?;
 
+        // Single-stream-only invariant: there is exactly one video stream
+        // (Config::validate enforces `≤1`, Muxer::new enforces `≥1`).
+        // Task 9 will add AmbiguousTarget when N>1 becomes possible.
+        let v = &self.video_streams[0];
+        let video_pid = v.pid;
+
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
         let header_len = write_pes_header(
             &mut header,
             STREAM_ID_VIDEO,
             PesPtsField::PtsOnly(Pts90khz(pts_90khz)),
-            None, // unbounded for video
+            None,
         );
 
         let total = header_len + nal.len();
@@ -521,7 +550,6 @@ impl Muxer {
 
         self.maybe_emit_psi(pts_90khz);
 
-        // Build a Vec for the full PES bytes (header + NAL).
         let mut pes_buf = Vec::with_capacity(total);
         pes_buf.extend_from_slice(&header[..header_len]);
         pes_buf.extend_from_slice(nal);
@@ -534,7 +562,7 @@ impl Muxer {
                 if key_frame {
                     adaptation.random_access = true;
                 }
-                if self.pcr_pid == self.video_pid && self.pcr_due(pts_90khz) {
+                if self.pcr_pid == video_pid && self.pcr_due(pts_90khz) {
                     let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
                     adaptation.pcr = Some(pcr);
                     self.last_pcr_emission_27mhz = Some(pcr.0);
@@ -543,7 +571,7 @@ impl Muxer {
             let mut pkt = [0u8; 188];
             let result = write_packet(
                 &mut pkt,
-                self.video_pid,
+                video_pid,
                 first,
                 adaptation,
                 &pes_buf[cursor..],
@@ -563,15 +591,17 @@ impl Muxer {
     /// `carries_pts: true` in [`StreamSpec::Klv`]; ignored otherwise.
     /// Returns `Err(MuxError::BufferFull)` like `push_video`.
     pub fn push_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
-        let pts_field = if self.klv_carries_pts {
+        let k = &self.klv_streams[0];
+        let klv_pid = k.pid;
+        let klv_carries_pts = k.carries_pts;
+
+        let pts_field = if klv_carries_pts {
             PesPtsField::PtsOnly(Pts90khz(pts_90khz))
         } else {
             PesPtsField::None
         };
 
-        // PES_packet_length is u16; subtract flags1+flags2+header_data_length
-        // (3 bytes) and the optional PTS (5 bytes if klv_carries_pts).
-        let pes_overhead = 3usize + if self.klv_carries_pts { 5 } else { 0 };
+        let pes_overhead = 3usize + if klv_carries_pts { 5 } else { 0 };
         let max_klv = (u16::MAX as usize) - pes_overhead;
         if klv.len() > max_klv {
             return Err(MuxError::KlvTooLarge {
@@ -608,8 +638,7 @@ impl Muxer {
         let mut first = true;
         while cursor < pes_buf.len() {
             let mut adaptation = AdaptationField::default();
-            // PCR rides on KLV PID only if pcr_pid was explicitly set to it.
-            if first && self.pcr_pid == self.klv_pid && self.pcr_due(pts_90khz) {
+            if first && self.pcr_pid == klv_pid && self.pcr_due(pts_90khz) {
                 let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
                 adaptation.pcr = Some(pcr);
                 self.last_pcr_emission_27mhz = Some(pcr.0);
@@ -617,7 +646,7 @@ impl Muxer {
             let mut pkt = [0u8; 188];
             let result = write_packet(
                 &mut pkt,
-                self.klv_pid,
+                klv_pid,
                 first,
                 adaptation,
                 &pes_buf[cursor..],
@@ -685,27 +714,35 @@ impl Muxer {
         write_pat_packet(&mut pat, &mut self.counters);
         self.queue.push_back(pat);
 
-        let mut pmt = [0u8; 188];
-        let video_st = match self.video_codec {
-            VideoCodec::H264 => StreamType::H264,
-            VideoCodec::H265 => StreamType::H265,
-        };
-        let klv_st = match self.klv_stream_type {
-            KlvStreamType::PrivateData => StreamType::KlvPrivate,
-            KlvStreamType::SynchronousMetadata => StreamType::KlvSyncMetadata,
-        };
-        let entries = [
-            PmtStreamEntry {
-                stream_type: video_st,
-                elementary_pid: self.video_pid,
+        // Enumerate all configured streams. Single-stream output emits the
+        // same two PMT entries as before, in the same order (video first
+        // then KLV) — preserving byte-level test parity.
+        let mut entries: Vec<PmtStreamEntry> =
+            Vec::with_capacity(self.video_streams.len() + self.klv_streams.len());
+        for v in &self.video_streams {
+            let stream_type = match v.codec {
+                VideoCodec::H264 => StreamType::H264,
+                VideoCodec::H265 => StreamType::H265,
+            };
+            entries.push(PmtStreamEntry {
+                stream_type,
+                elementary_pid: v.pid,
                 descriptors: &[],
-            },
-            PmtStreamEntry {
-                stream_type: klv_st,
-                elementary_pid: self.klv_pid,
+            });
+        }
+        for k in &self.klv_streams {
+            let stream_type = match k.stream_type {
+                KlvStreamType::PrivateData => StreamType::KlvPrivate,
+                KlvStreamType::SynchronousMetadata => StreamType::KlvSyncMetadata,
+            };
+            entries.push(PmtStreamEntry {
+                stream_type,
+                elementary_pid: k.pid,
                 descriptors: KLVA_REGISTRATION_DESCRIPTOR,
-            },
-        ];
+            });
+        }
+
+        let mut pmt = [0u8; 188];
         write_pmt_packet(&mut pmt, self.pcr_pid, &entries, &mut self.counters);
         self.queue.push_back(pmt);
 

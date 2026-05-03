@@ -513,3 +513,19 @@ the trigger that would unblock it.
   `_set_klv_stream_descriptors` with bounded array params + a
   `SrtcRawDescriptor` `repr(C)` shape for the receive side's
   `StreamInfo::raw_descriptors`.
+
+## `Socket::close` Result-type cleanup
+
+- **Status:** `srt::Socket::close(self) -> Result<(), IoError>` always
+  returns `Ok` after the 2026-05-03 cancellation refactor. The
+  underlying `srt_close` return code is consumed inside the
+  `CancelHandle` closer (which has a `Fn` signature, no return path).
+  Same applies to `srt::Listener::close`.
+- **Why deferred:** The signature is preserved for API stability —
+  changing it now would be a breaking change for consumers who pattern
+  on `if let Err(e) = sock.close()`. A future breaking-change cycle
+  could either drop the `Result` entirely (close becomes infallible)
+  or plumb `srt_close`'s rc back via a richer `CloseError` channel.
+- **Trigger to revisit:** Next breaking-change cycle, OR a consumer
+  reports needing the `srt_close` rc (e.g., to distinguish
+  graceful-close from race-close errors).

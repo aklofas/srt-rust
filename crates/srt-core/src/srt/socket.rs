@@ -25,7 +25,12 @@ pub struct Socket {
     /// Drop calls `cancel.cancel()` so explicit `close()` and Drop never
     /// double-close.
     cancel: crate::srt::CancelHandle,
+    /// Cached at construction; libsrt allows reading via getsockflag, but
+    /// reading once is cheaper.
     cached_stream_id: Option<String>,
+    /// `SRTO_PAYLOADSIZE` read after handshake. Used to give accurate
+    /// `SendError::PayloadTooLarge { limit }` values without a per-send
+    /// getsockopt round-trip. Defaults to 1316 (libsrt live default) if read fails.
     cached_payload_limit: usize,
 }
 
@@ -290,6 +295,10 @@ impl Socket {
     /// After `close()` returns, any other thread parked in `send`/`recv`
     /// on a clone of this socket's `cancel_handle()` observes
     /// `SendError::ConnectionBroken` / `RecvError::ConnectionBroken`.
+    ///
+    /// **Always returns `Ok`.** The `Result` is retained for API stability
+    /// and may carry an error in a future revision (the underlying
+    /// `srt_close` rc is currently swallowed by the `CancelHandle` closer).
     pub fn close(self) -> Result<(), IoError> {
         // CancelHandle::cancel does the srt_close and is idempotent. We
         // can't easily plumb the rc back out (closer is `Fn`), so the

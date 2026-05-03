@@ -18,6 +18,7 @@
 //! Invocation:
 //!   cargo run --example mux_dual_camera
 
+use srt_core::mpegts::descriptors;
 use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 use std::fs::File;
 use std::io::Write;
@@ -39,8 +40,26 @@ fn main() -> std::io::Result<()> {
     //   reading the example see the explicit form.
     let cfg = Config::builder()
         .add_video(0x1011, VideoCodec::H264) // EO (visible-light)
+        // Tag 0xFF (user_private) is the de-facto label slot used in the
+        // wild — it's ISO-reserved, but every ARS-shape sender in real
+        // corpus files (CI641, 0SM) puts the human-readable stream name
+        // here. Our own Demuxer's `extract_user_label` reads it first.
+        // TSDuck will flag it as "Forbidden Descriptor Id 0xFF" — that's
+        // expected; the bytes are still parsed. See
+        // docs/guide-mpegts-mux.md for the full descriptor builder menu
+        // including spec-conformant alternatives (Component 0x50, Stream
+        // Identifier 0x52).
+        .stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
         .add_video(0x1021, VideoCodec::H264) // IR (thermal)
+        .stream_descriptors_for_video(1, vec![descriptors::user_private(b"IR 640x480")])
         .add_klv(0x1031, KlvStreamType::PrivateData, false)
+        // KLV is PrivateData here (no PTS in PES), so we skip the
+        // canonical 0x26 + 0x27 metadata-service descriptor pair — those
+        // are conventional only for SynchronousMetadata KLV (stream_type
+        // 0x15). For PrivateData (stream_type 0x06) a user_private label
+        // is enough: receivers that call us out by label still find this
+        // stream, and tools like ffprobe surface it as "Data: KLVA".
+        .stream_descriptors_for_klv(0, vec![descriptors::user_private(b"KLV_META")])
         .pcr_pid(0x1011)
         .build()
         .expect("config validation");

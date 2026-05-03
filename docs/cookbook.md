@@ -475,3 +475,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 If the encoder declares the linkage via `metadata_descriptor`, the demuxer surfaces it as `KlvLink { source: LinkSource::Declared, .. }` in `ProgramMap.klv_links`. Use it as a hint when assigning routes; trust your `treat_as` overrides if you know the encoder lies.
 
 Runnable: see [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs) for the file-feed shape; [../crates/srt-core/examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs) is the related sync-KLV sibling.
+
+### 15. Label EO + IR + KLV streams in a multi-stream program
+
+Multi-stream programs (`mpegts::mux` Path 3) carry several PIDs in one
+program. Per-stream PMT descriptors let receivers (TSDuck, ffprobe, our
+own `Demuxer`) render which PID is which without external configuration.
+
+```rust,no_run
+use srt_core::mpegts::descriptors as desc;
+use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+
+const EO_PID: u16 = 0x0100;
+const IR_PID: u16 = 0x0101;
+const KLV_PID: u16 = 0x0102;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cfg = Config::builder()
+        .add_video(EO_PID, VideoCodec::H264)
+        .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
+        .add_video(IR_PID, VideoCodec::H264)
+        .stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640x480")])
+        .add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true)
+        .stream_descriptors_for_klv(0, vec![
+            // 0x26 + 0x27 are the canonical pair for stream_type=0x15 KLV
+            // (the muxer's auto-emitted KLVA Registration only fires for
+            // PrivateData KLV, not SynchronousMetadata).
+            desc::metadata_klva(0x00),
+            desc::metadata_std(0, 0, 0),
+            // Plus a human label.
+            desc::user_private(b"KLV_SYNC"),
+        ])
+        .build()?;
+
+    let mut _mux = Muxer::new(cfg)?;
+    // ...push frames as usual...
+    Ok(())
+}
+```
+
+Validate the labels show up on the receiving end:
+
+```bash
+tstables --pid <pmt-pid> output.ts | grep -A1 "Forbidden Descriptor"
+```
+
+Or in Rust on the receive side, decode `StreamInfo::raw_descriptors`
+directly (see `guide-mpegts-demux.md` "Reading per-stream descriptors").
+
+Runnable example: `cargo run --example mux_dual_camera`.

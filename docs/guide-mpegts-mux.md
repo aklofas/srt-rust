@@ -434,6 +434,96 @@ multi-stream fan-out doesn't apply.
 See `crates/srt-c/examples/c/mux_dual_camera.c` for a worked end-to-end
 example mirroring the Rust analogue.
 
+## Per-stream PMT descriptors
+
+Each PMT entry in the per-stream loop can carry caller-supplied
+descriptor TLVs alongside the muxer's auto-emitted KLVA Registration.
+Use this when:
+
+- You're producing a multi-stream program (EO + IR + KLV) and want
+  receivers to render which PID is which without external config.
+- You're emitting `KlvStreamType::SynchronousMetadata` and need the
+  canonical `metadata_descriptor` (0x26) + `metadata_STD_descriptor`
+  (0x27) pair that strict ST 1402 receivers expect.
+- You're interoperating with a sender stack that uses tag 0xFF
+  (user-private) labels on every PID.
+
+### Building descriptor TLVs
+
+The `mpegts::descriptors` module ships byte-builders for the
+descriptor types real-world senders actually emit:
+
+| Helper | Tag | Purpose |
+|---|---|---|
+| `registration(format_id, additional)` | 0x05 | "KLVA" on KLV PIDs (also auto-emitted on PrivateData), "HDMV" + trailing bytes on video PIDs |
+| `metadata_klva(service_id)` | 0x26 | Canonical KLVA Metadata descriptor for `stream_type=0x15` KLV |
+| `metadata_std(in, buf, out)` | 0x27 | STD-buffer dimensions, paired with 0x26 |
+| `user_private(payload)` | 0xFF | De-facto label slot used in the wild ("VIDEO-ARS", "KLV_SYNC") |
+| `user_private_with_tag(tag, payload)` | 0x40..=0xFF | Vendor-defined label slots |
+| `component(content, type, tag, lang, text)` | 0x50 | Textbook DVB free-text label |
+| `stream_identifier(component_tag)` | 0x52 | Pairs with Component for routing |
+| `iso_639_language(lang, audio_type)` | 0x0A | 3-byte language code, conventional on audio |
+
+Each helper returns a `Vec<u8>` containing the complete descriptor
+(tag + length byte + body). Hand the result list to one of the
+`ConfigBuilder` methods.
+
+### Setting descriptors on the builder
+
+```rust
+use srt_core::mpegts::descriptors as desc;
+use srt_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+
+let cfg = Config::builder()
+    .add_video(0x100, VideoCodec::H264)
+    .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
+    .add_video(0x101, VideoCodec::H264)
+    .stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640")])
+    .add_klv(0x102, KlvStreamType::SynchronousMetadata, true)
+    .stream_descriptors_for_klv(
+        0,
+        vec![
+            desc::metadata_klva(0x00),
+            desc::metadata_std(0, 0, 0),
+            desc::user_private(b"KLV_SYNC"),
+        ],
+    )
+    .build()?;
+```
+
+The video / KLV index passed to `stream_descriptors_for_video` /
+`stream_descriptors_for_klv` is the ordinal among streams of that
+kind (in add-order), not the absolute stream index. For absolute
+indexing use `stream_descriptors_for_stream(absolute_idx, ...)`.
+
+### Auto-emit and conflict suppression
+
+The muxer auto-emits Registration `KLVA` (tag 0x05) on KLV PIDs
+configured as `KlvStreamType::PrivateData`. If the caller supplies
+their own Registration descriptor on the same PID (any
+`format_identifier`), the auto-emit is suppressed — TSDuck and
+ffprobe both flag duplicate Registration descriptors as malformed.
+
+If the caller's Registration on a KLV PID has a non-`KLVA`
+`format_identifier` (e.g., a vendor-specific KLV transport tag),
+the muxer emits a `tracing::warn!` since receivers that look for
+the standard `KLVA` registration will not recognize the stream as
+KLV. The PMT bytes still go out as the caller specified.
+
+### PMT size limits
+
+The muxer emits single-section PMT — the entire PMT must fit in one
+188-byte TS packet. After the 17-byte PMT header overhead, the
+per-stream ES loop has 166 bytes total to spend (across all streams)
+on `5 + descriptor-loop-bytes` per stream. `Config::validate`
+rejects oversized configurations with `MuxError::PmtTooLarge`.
+
+For typical configurations (3–4 streams with ~30 bytes of
+descriptors each), this is plenty. If you hit the limit, drop one
+or more user-supplied descriptors or shorten their payloads.
+Multi-section PMT support is not currently planned (see
+`deferred-features.md`).
+
 ## Examples
 
 Three runnable examples cover the muxer's surface:

@@ -456,3 +456,60 @@ the trigger that would unblock it.
 - **Trigger to revisit:** Each individual key's existing trigger in
   the general "Group 3 unsupported keys" entry above; nothing
   additional.
+
+## Reconnect counters on `ManagedTransport` stats
+
+- **Status:** `SenderStats` / `ReceiverStats` aggregate transport-level
+  byte / packet counters but not reconnect-cycle counters
+  (`reconnect_attempts`, `reconnect_successes`, `last_reconnect_at`).
+  Plain `Sender<SrtTransport>` has no such concept; only the managed
+  variants do.
+- **Why deferred:** Surfacing these on `SenderStats` / `ReceiverStats`
+  forces optional fields that are always zero for plain (non-managed)
+  handles, which muddies the C ABI shape. The cleaner home is a
+  separate `ManagedTransportStats` accessor exposed on the
+  `Sender<ManagedTransport<...>>` / `Receiver<ManagedReceiveTransport<...>>`
+  variants only — but that means a second per-handle accessor, a
+  second C struct, and decisions about how plain handles behave when
+  callers ask (return zeros / return error). The first stats pass
+  ships pipeline-level counters; reconnect telemetry slots in next.
+- **Trigger to revisit:** A consumer running a managed-reconnect
+  pipeline asks for visibility into how often the link is flapping
+  (e.g. for alarm thresholds / backoff tuning).
+
+## Last-activity-wall-clock gauges per stream
+
+- **Status:** `StreamStats` carries item / byte counters but no
+  `last_seen_at: Option<SystemTime>` gauge. Consumers that want
+  "is this stream stalled?" detection have to compare deltas across
+  successive `stats()` calls themselves.
+- **Why deferred:** Adding a `SystemTime` field across what's
+  otherwise plain integer counters cascades into the C ABI: the
+  layout has to encode either epoch nanos in a `uint64_t` (overflows
+  in 2554 — fine, but explicit) or a `(seconds, nanos)` split
+  (extra two fields per `srtc_stream_stats_t`). Either way it's a
+  bigger surface than the rest of the stats struct, and consumers
+  who care can derive staleness from `items` deltas + their own
+  wall-clock sampling cadence.
+- **Trigger to revisit:** A consumer ships a watchdog that needs
+  per-stream staleness without holding two snapshots, or asks for
+  millisecond-resolution event timing in the stats surface.
+
+## Per-stream PMT descriptor surface at the C ABI
+
+- **Status:** The Rust core ships per-stream PMT descriptors via the
+  `mpegts::descriptors` module and `ConfigBuilder::stream_descriptors_for_video` /
+  `stream_descriptors_for_klv` / `stream_descriptors_for_stream` methods.
+  The C ABI exposure is deferred.
+- **Why deferred:** The descriptor-construction surface and the future
+  receiver C ABI's per-stream descriptor surface should land together —
+  exposing a send-only C ABI shape now would need reshaping when the
+  receiver C ABI lands (which will also need `SrtcRawDescriptor` and
+  read access to `StreamInfo::raw_descriptors`).
+- **Trigger to revisit:** The receiver-surface design lands and pulls
+  the descriptor surface into scope. At that point the C ABI gets
+  descriptor builders mirroring `mpegts::descriptors` plus
+  `srtc_mux_config_set_video_stream_descriptors` /
+  `_set_klv_stream_descriptors` with bounded array params + a
+  `SrtcRawDescriptor` `repr(C)` shape for the receive side's
+  `StreamInfo::raw_descriptors`.

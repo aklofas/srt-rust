@@ -312,6 +312,61 @@ subtitles, and AV1 / H.266 all fall through here today; typed variants
 on `AudioCodec` / `SubtitleCodec` / `VideoCodec` land additively when
 a consumer asks. See [deferred-features.md](deferred-features.md).
 
+## Reading per-stream descriptors
+
+Every `DemuxEvent::ProgramMap`'s `streams: Vec<StreamInfo>` carries
+the parsed PMT descriptor list for each PID in
+`StreamInfo::raw_descriptors: Vec<RawDescriptor>`. Use this to
+decode vendor-specific or stack-shape descriptors that the standard
+label decoder can't generalize over.
+
+```rust,no_run
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer};
+use srt_core::mpegts::demux::psi::extract_user_label;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut d = Demuxer::new();
+    // ... feed bytes ...
+    while let Some(event) = d.next_event() {
+        if let DemuxEvent::ProgramMap(pm) = event {
+            for stream in &pm.streams {
+                // Quick label decode — picks up Component, Stream Identifier,
+                // Metadata, ISO 639, and tag 0xFF (user-private) UTF-8.
+                let label = extract_user_label(&stream.raw_descriptors)
+                    .unwrap_or_else(|| "(unlabeled)".into());
+                println!("PID 0x{:04X} ({}): {} descriptors", stream.pid, label,
+                    stream.raw_descriptors.len());
+
+                // Custom decoding for vendor-specific descriptors (e.g.,
+                // ARS-shape senders that use tag 0xFF as the de-facto label slot,
+                // or senders with HDMV trailing bytes on video PIDs).
+                for d in &stream.raw_descriptors {
+                    if d.tag == 0x05 && d.data.starts_with(b"HDMV") {
+                        println!("  HDMV trailing bytes: {:02X?}", &d.data[4..]);
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+```
+
+### What `extract_user_label` reads
+
+In priority order:
+
+1. Component descriptor (tag 0x50) — UTF-8 text after the 6-byte header.
+2. Stream Identifier descriptor (tag 0x52) — formatted as `tag=N`.
+3. Metadata descriptor (tag 0x26) — generic `"KLV"` label.
+4. ISO 639 Language (tag 0x0A) — 3-byte language code.
+5. User-private (tag 0xFF) — best-effort UTF-8 (added so labels round-trip
+   with ARS-shape senders that use tag 0xFF as the de-facto label slot).
+
+Conformant descriptors win when present. If none of these match,
+returns `None` — the demuxer-side stats label stays unset for that
+PID.
+
 ## Pairing is a consumer concern
 
 The demuxer surfaces every video AU and every KLV record as an

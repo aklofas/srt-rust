@@ -4,17 +4,43 @@
 use crate::error::DemuxError;
 use crate::mpegts::common::{pcr_diff_27mhz, pts_diff_33bit};
 use crate::mpegts::demux::event::{
-    DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NonConformantIssue,
+    DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit, NonConformantIssue,
     ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, VideoCodec,
 };
 use crate::mpegts::demux::payload::{KlvShape, classify_klv, split_nals};
 use crate::mpegts::demux::pes::{Reassembler, ReassemblyOutcome};
 use crate::mpegts::demux::psi::{
-    Pmt, PsiParseError, extract_metadata_link, has_klva_registration, parse_pat, parse_pmt,
+    Pmt, PsiParseError, extract_metadata_link, extract_user_label, has_klva_registration,
+    parse_pat, parse_pmt,
 };
 use crate::mpegts::demux::strict::StrictMode;
 use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+
+/// Stats snapshot for [`Demuxer`]. Used by
+/// [`crate::pipeline::receiver::Receiver`] to compose its own `ReceiverStats`;
+/// also exposed publicly for callers using `Demuxer` directly.
+///
+/// Per-stream entries are created lazily as events are emitted — the
+/// receiver discovers topology rather than configuring it up front. PSI
+/// PIDs (PAT 0x0000, active PMT PID) get hardcoded labels "PAT" / "PMT".
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DemuxerStats {
+    /// Number of `ProgramMap` events emitted (one per PMT version seen).
+    pub program_maps_seen: u64,
+    /// Number of distinct PMT version_number values seen, including the
+    /// initial sighting. Resets to zero on `reset_stats`, so the next PMT
+    /// always increments this counter.
+    pub pmt_versions_seen: u64,
+    /// Total discontinuity events emitted across all PIDs.
+    pub discontinuities: u64,
+    /// Total non-conformant events emitted across all PIDs.
+    pub nonconformant: u64,
+    /// Per-PID counters. Keys are PIDs. Entries are created on first event
+    /// for a given PID; PSI PIDs (0x0000 for PAT, the PMT PID) are added
+    /// with fixed "PAT"/"PMT" labels when a `ProgramMap` event fires.
+    pub per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
+}
 
 const DEFAULT_PES_CAP_PER_PID: usize = 4 * 1024 * 1024;
 const DEFAULT_PES_CAP_TOTAL: usize = 64 * 1024 * 1024;
@@ -73,6 +99,16 @@ pub struct Demuxer {
     /// itself is still pushed onto `queue` so a caller that already
     /// drained events sees the rejection narrative if they wish.
     fatal: Option<NonConformantIssue>,
+    // ── stats counters ──────────────────────────────────────────────────
+    program_maps_seen: u64,
+    pmt_versions_seen: u64,
+    discontinuities_count: u64,
+    nonconformant_count: u64,
+    /// Per-PID counters; entries created lazily on first event per PID.
+    stats_per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
+    /// PMT PID last seen — needed to attach the "PMT" label on stats
+    /// refresh without re-deriving it from scratch.
+    stats_pmt_pid: Option<u16>,
 }
 
 impl Demuxer {
@@ -101,6 +137,12 @@ impl Demuxer {
             queue: VecDeque::new(),
             bytes_since_sync: 0,
             fatal: None,
+            program_maps_seen: 0,
+            pmt_versions_seen: 0,
+            discontinuities_count: 0,
+            nonconformant_count: 0,
+            stats_per_stream: BTreeMap::new(),
+            stats_pmt_pid: None,
         }
     }
 
@@ -238,6 +280,15 @@ impl Demuxer {
             let expected = (prev_cc + 1) & 0x0F;
             if expected != pkt.continuity_counter {
                 if let Some(stream) = self.lookup_stream(pkt.pid) {
+                    self.discontinuities_count += 1;
+                    self.stats_per_stream
+                        .entry(stream.pid)
+                        .or_insert_with(|| crate::mpegts::stats::StreamStats {
+                            pid: stream.pid,
+                            stream_type: stream_type_from_kind(&stream.kind),
+                            ..Default::default()
+                        })
+                        .discontinuities += 1;
                     self.queue.push_back(DemuxEvent::Discontinuity {
                         stream,
                         kind: DiscontinuityKind::ContinuityJump {
@@ -250,6 +301,15 @@ impl Demuxer {
         }
         if pkt.discontinuity_indicator {
             if let Some(stream) = self.lookup_stream(pkt.pid) {
+                self.discontinuities_count += 1;
+                self.stats_per_stream
+                    .entry(stream.pid)
+                    .or_insert_with(|| crate::mpegts::stats::StreamStats {
+                        pid: stream.pid,
+                        stream_type: stream_type_from_kind(&stream.kind),
+                        ..Default::default()
+                    })
+                    .discontinuities += 1;
                 self.queue.push_back(DemuxEvent::Discontinuity {
                     stream,
                     kind: DiscontinuityKind::AdaptationFieldFlag,
@@ -361,6 +421,48 @@ impl Demuxer {
         }
         self.pmt_version = Some(pmt.version);
         let map = self.build_program_map(&pmt);
+        // Update stats: ProgramMap event about to be emitted.
+        self.program_maps_seen += 1;
+        self.pmt_versions_seen += 1;
+        // Upsert PSI PIDs with hardcoded labels.
+        self.stats_per_stream
+            .entry(0x0000)
+            .or_insert_with(|| crate::mpegts::stats::StreamStats {
+                pid: 0x0000,
+                stream_type: 0x00,
+                label: Some("PAT".into()),
+                ..Default::default()
+            });
+        // Record the active PMT PID with a "PMT" label.
+        self.stats_pmt_pid = Some(pid);
+        self.stats_per_stream
+            .entry(pid)
+            .or_insert_with(|| crate::mpegts::stats::StreamStats {
+                pid,
+                stream_type: 0x00,
+                label: Some("PMT".into()),
+                ..Default::default()
+            })
+            .label = Some("PMT".into());
+        // Upsert per-stream entries from the PMT, populating user labels
+        // via psi::extract_user_label on the per-stream descriptor list.
+        for (pmt_stream, map_info) in pmt.streams.iter().zip(map.streams.iter()) {
+            let label = extract_user_label(&pmt_stream.descriptors);
+            let entry = self
+                .stats_per_stream
+                .entry(map_info.pid)
+                .or_insert_with(|| crate::mpegts::stats::StreamStats {
+                    pid: map_info.pid,
+                    stream_type: map_info.stream_type,
+                    label: label.clone(),
+                    ..Default::default()
+                });
+            // Refresh stream_type and label on PMT version bump.
+            entry.stream_type = map_info.stream_type;
+            if label.is_some() {
+                entry.label = label;
+            }
+        }
         self.pmt = Some(pmt);
         // PMT changed — re-arm KLV mismatch coalescing so the new layout
         // gets one fresh nonconformance event per affected PID.
@@ -484,6 +586,15 @@ impl Demuxer {
                 }
                 ReassemblyOutcome::Overflow { pid } => {
                     if let Some(stream) = self.lookup_stream(pid) {
+                        self.discontinuities_count += 1;
+                        self.stats_per_stream
+                            .entry(stream.pid)
+                            .or_insert_with(|| crate::mpegts::stats::StreamStats {
+                                pid: stream.pid,
+                                stream_type: stream_type_from_kind(&stream.kind),
+                                ..Default::default()
+                            })
+                            .discontinuities += 1;
                         self.queue.push_back(DemuxEvent::Discontinuity {
                             stream,
                             kind: DiscontinuityKind::PesOversize { pid },
@@ -492,6 +603,15 @@ impl Demuxer {
                 }
                 ReassemblyOutcome::OverflowTotal => {
                     if let Some(stream) = self.lookup_stream(pkt.pid) {
+                        self.discontinuities_count += 1;
+                        self.stats_per_stream
+                            .entry(stream.pid)
+                            .or_insert_with(|| crate::mpegts::stats::StreamStats {
+                                pid: stream.pid,
+                                stream_type: stream_type_from_kind(&stream.kind),
+                                ..Default::default()
+                            })
+                            .discontinuities += 1;
                         self.queue.push_back(DemuxEvent::Discontinuity {
                             stream,
                             kind: DiscontinuityKind::PesTotalOversize,
@@ -521,11 +641,22 @@ impl Demuxer {
         match kind {
             StreamKind::Video(codec) => {
                 let nals = split_nals(&pes.payload, codec);
+                let payload_bytes = nal_payload_bytes(&nals);
+                let sample = SamplePayload::Video { codec, nals };
+                self.stats_per_stream
+                    .entry(stream.pid)
+                    .or_insert_with(|| crate::mpegts::stats::StreamStats {
+                        pid: stream.pid,
+                        stream_type: stream_type_from_kind(&stream.kind),
+                        ..Default::default()
+                    })
+                    .items += 1;
+                self.stats_per_stream.get_mut(&stream.pid).unwrap().bytes += payload_bytes as u64;
                 self.queue.push_back(DemuxEvent::Sample {
                     stream,
                     pts,
                     dts: pes.dts,
-                    payload: SamplePayload::Video { codec, nals },
+                    payload: sample,
                 });
             }
             StreamKind::KlvSync { .. } | StreamKind::KlvAsync => {
@@ -556,7 +687,17 @@ impl Demuxer {
                     }
                     (KlvShape::Async { klv }, _) => (MetadataKind::KlvAsync, klv, pts),
                     (KlvShape::Other, _) => {
+                        let payload_len = pes.payload.len();
                         let raw = pes.payload;
+                        let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
+                            crate::mpegts::stats::StreamStats {
+                                pid: stream.pid,
+                                stream_type: stream_type_from_kind(&stream.kind),
+                                ..Default::default()
+                            }
+                        });
+                        entry.items += 1;
+                        entry.bytes += payload_len as u64;
                         self.queue.push_back(DemuxEvent::Sample {
                             stream,
                             pts,
@@ -569,6 +710,16 @@ impl Demuxer {
                         return;
                     }
                 };
+                let meta_len = payload.len();
+                let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
+                    crate::mpegts::stats::StreamStats {
+                        pid: stream.pid,
+                        stream_type: stream_type_from_kind(&stream.kind),
+                        ..Default::default()
+                    }
+                });
+                entry.items += 1;
+                entry.bytes += meta_len as u64;
                 self.queue.push_back(DemuxEvent::Metadata {
                     stream,
                     pts: used_pts,
@@ -577,6 +728,16 @@ impl Demuxer {
                 });
             }
             StreamKind::Unknown(stream_type) => {
+                let payload_len = pes.payload.len();
+                let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
+                    crate::mpegts::stats::StreamStats {
+                        pid: stream.pid,
+                        stream_type,
+                        ..Default::default()
+                    }
+                });
+                entry.items += 1;
+                entry.bytes += payload_len as u64;
                 self.queue.push_back(DemuxEvent::Sample {
                     stream,
                     pts,
@@ -608,8 +769,57 @@ impl Demuxer {
         if self.options.strict.rejects(&issue) && self.fatal.is_none() {
             self.fatal = Some(issue.clone());
         }
+        self.nonconformant_count += 1;
         self.queue
             .push_back(DemuxEvent::NonConformant { stream, issue });
+    }
+
+    /// Return a snapshot of current demuxer statistics.
+    pub fn stats(&self) -> DemuxerStats {
+        DemuxerStats {
+            program_maps_seen: self.program_maps_seen,
+            pmt_versions_seen: self.pmt_versions_seen,
+            discontinuities: self.discontinuities_count,
+            nonconformant: self.nonconformant_count,
+            per_stream: self.stats_per_stream.clone(),
+        }
+    }
+
+    /// Reset all stats counters to zero and clear per-stream entries.
+    ///
+    /// Also drops the cached PMT version so the next incoming PMT will
+    /// increment `pmt_versions_seen` even if the version_number hasn't
+    /// changed.
+    pub fn reset_stats(&mut self) {
+        self.program_maps_seen = 0;
+        self.pmt_versions_seen = 0;
+        self.discontinuities_count = 0;
+        self.nonconformant_count = 0;
+        self.stats_per_stream.clear();
+        // Drop cached PMT version so the next PMT triggers pmt_versions_seen += 1.
+        self.pmt_version = None;
+    }
+}
+
+/// Compute the total payload byte count for a slice of NAL units.
+fn nal_payload_bytes(nals: &[NalUnit]) -> usize {
+    nals.iter()
+        .map(|n| match n {
+            NalUnit::H264 { payload, .. } | NalUnit::H265 { payload, .. } => payload.len(),
+        })
+        .sum()
+}
+
+/// Map a `StreamKind` to its MPEG-TS `stream_type` byte (PMT value).
+fn stream_type_from_kind(k: &StreamKind) -> u8 {
+    match k {
+        StreamKind::Video(VideoCodec::H264) => 0x1B,
+        StreamKind::Video(VideoCodec::H265) => 0x24,
+        StreamKind::Audio(_) => 0x0F,
+        StreamKind::Subtitle(_) => 0x06,
+        StreamKind::KlvSync { .. } => 0x15,
+        StreamKind::KlvAsync => 0x06,
+        StreamKind::Unknown(t) => *t,
     }
 }
 
@@ -736,5 +946,26 @@ mod tests {
         // Second call also a no-op.
         d.flush();
         assert!(d.next_event().is_none());
+    }
+
+    #[test]
+    fn stats_lazy_creates_per_stream_on_first_event() {
+        let d = Demuxer::new();
+        let st = d.stats();
+        assert_eq!(st.program_maps_seen, 0);
+        assert_eq!(st.pmt_versions_seen, 0);
+        assert_eq!(st.per_stream.len(), 0);
+    }
+
+    #[test]
+    fn stats_reset_clears_per_stream_and_zeroes_counters() {
+        let mut d = Demuxer::new();
+        d.reset_stats();
+        let st = d.stats();
+        assert_eq!(st.program_maps_seen, 0);
+        assert_eq!(st.pmt_versions_seen, 0);
+        assert_eq!(st.discontinuities, 0);
+        assert_eq!(st.nonconformant, 0);
+        assert!(st.per_stream.is_empty());
     }
 }

@@ -21,7 +21,7 @@ pub mod psi;
 pub mod strict;
 pub mod ts;
 
-pub use demuxer::{Demuxer, DemuxerBuilder, DemuxerOptions};
+pub use demuxer::{Demuxer, DemuxerBuilder, DemuxerOptions, DemuxerStats};
 pub use event::{
     AudioCodec, DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit,
     NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, SubtitleCodec,

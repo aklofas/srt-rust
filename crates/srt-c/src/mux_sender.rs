@@ -206,6 +206,59 @@ pub unsafe extern "C" fn srtc_mux_sender_send_klv_to(
         })
 }
 
+/// Snapshot stats for a `srtc_mux_sender_t` into `*out`.
+///
+/// Returns 0 on success, `SRTC_E_INVALID_CONFIG` if either pointer is
+/// null, or `SRTC_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_mux_sender_get_stats(
+    p: *mut SrtcMuxSender,
+    out: *mut crate::stats::SrtcSenderStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(SrtcError::InvalidConfig, "null out pointer");
+        return SrtcError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|s| {
+        let stats = s.stats();
+        let mut per_stream =
+            [crate::stats::SrtcStreamStats::default(); crate::stats::SRTC_STATS_MAX_STREAMS];
+        let (per_stream_count, truncated) =
+            crate::stats::fill_per_stream(&mut per_stream, &stats.per_stream);
+        let dst = crate::stats::SrtcSenderStats {
+            bytes_sent: stats.bytes_sent,
+            packets_sent: stats.packets_sent,
+            pending_bytes_queued: stats.pending_bytes_queued,
+            pending_chunks_queued: stats.pending_chunks_queued,
+            per_stream_count,
+            per_stream_truncated: if truncated { 1 } else { 0 },
+            per_stream,
+        };
+        unsafe { *out = dst };
+        0
+    })
+}
+
+/// Reset stats counters for a `srtc_mux_sender_t` to zero.
+///
+/// Returns 0 on success, `SRTC_E_INVALID_CONFIG` if the pointer is
+/// null, or `SRTC_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_mux_sender_reset_stats(p: *mut SrtcMuxSender) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    handle.inner.with_inner_ref(|s| {
+        s.reset_stats();
+        0
+    })
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_sender_close(p: *mut SrtcMuxSender) {
     if p.is_null() {
@@ -446,6 +499,61 @@ pub unsafe extern "C" fn srtc_managed_mux_sender_send_klv_to(
                 unsafe { srtc_get_last_error() }
             }
         })
+}
+
+/// Snapshot stats for a `srtc_managed_mux_sender_t` into `*out`.
+///
+/// Returns 0 on success, `SRTC_E_INVALID_CONFIG` if either pointer is
+/// null, or `SRTC_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_managed_mux_sender_get_stats(
+    p: *mut SrtcManagedMuxSender,
+    out: *mut crate::stats::SrtcSenderStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(SrtcError::InvalidConfig, "null out pointer");
+        return SrtcError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|s| {
+        let stats = s.stats();
+        let mut per_stream =
+            [crate::stats::SrtcStreamStats::default(); crate::stats::SRTC_STATS_MAX_STREAMS];
+        let (per_stream_count, truncated) =
+            crate::stats::fill_per_stream(&mut per_stream, &stats.per_stream);
+        let dst = crate::stats::SrtcSenderStats {
+            bytes_sent: stats.bytes_sent,
+            packets_sent: stats.packets_sent,
+            pending_bytes_queued: stats.pending_bytes_queued,
+            pending_chunks_queued: stats.pending_chunks_queued,
+            per_stream_count,
+            per_stream_truncated: if truncated { 1 } else { 0 },
+            per_stream,
+        };
+        unsafe { *out = dst };
+        0
+    })
+}
+
+/// Reset stats counters for a `srtc_managed_mux_sender_t` to zero.
+///
+/// Returns 0 on success, `SRTC_E_INVALID_CONFIG` if the pointer is
+/// null, or `SRTC_E_CLOSED` if the sender has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_managed_mux_sender_reset_stats(
+    p: *mut SrtcManagedMuxSender,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null sender pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    handle.inner.with_inner_ref(|s| {
+        s.reset_stats();
+        0
+    })
 }
 
 #[unsafe(no_mangle)]

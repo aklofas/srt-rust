@@ -62,3 +62,76 @@ fn muxer_get_stats_null_pointer_returns_invalid_config() {
         assert_ne!(rc, 0);
     }
 }
+
+#[test]
+#[cfg(target_os = "linux")]
+fn mux_sender_stats_round_trip() {
+    use srt_core::srt::ListenerBuilder;
+    use srtc::config::{
+        SrtcKlvStreamType, SrtcVideoCodec, srtc_mux_config_add_klv, srtc_mux_config_add_video,
+        srtc_mux_config_free, srtc_mux_config_new,
+    };
+    use srtc::mux_sender::{
+        srtc_mux_sender_close, srtc_mux_sender_get_stats, srtc_mux_sender_open,
+        srtc_mux_sender_reset_stats, srtc_mux_sender_send_video,
+    };
+    use srtc::stats::SrtcSenderStats;
+    use std::ffi::CString;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let (port_tx, port_rx) = mpsc::channel::<u16>();
+
+    let _accept_thread = std::thread::spawn(move || {
+        let mut listener = ListenerBuilder::new()
+            .recv_timeout(Duration::from_secs(5))
+            .bind("127.0.0.1:0")
+            .expect("bind");
+        let port = listener.local_addr().expect("local_addr").port();
+        port_tx.send(port).expect("send port");
+        let _ = listener.accept();
+        std::thread::sleep(Duration::from_secs(2));
+    });
+
+    let port = port_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("listener didn't bind in time");
+
+    unsafe {
+        let cfg = srtc_mux_config_new();
+        srtc_mux_config_add_video(cfg, 0x0100, SrtcVideoCodec::H264);
+        srtc_mux_config_add_klv(cfg, 0x0101, SrtcKlvStreamType::PrivateData, false);
+        let url = CString::new(format!("srt://127.0.0.1:{port}?latency=120")).unwrap();
+        let s = srtc_mux_sender_open(url.as_ptr(), cfg);
+        assert!(!s.is_null());
+
+        let nal: [u8; 7] = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB, 0xCC];
+        let rc = srtc_mux_sender_send_video(s, nal.as_ptr(), nal.len(), 0, true);
+        assert_eq!(rc, 0);
+
+        let mut st = SrtcSenderStats::default();
+        let rc = srtc_mux_sender_get_stats(s, &mut st);
+        assert_eq!(rc, 0);
+        assert_eq!(st.per_stream_count, 2);
+        let video_entry = st
+            .per_stream
+            .iter()
+            .find(|e| e.pid == 0x0100)
+            .expect("video entry");
+        assert_eq!(video_entry.items, 1);
+
+        let rc = srtc_mux_sender_reset_stats(s);
+        assert_eq!(rc, 0);
+        let mut st2 = SrtcSenderStats::default();
+        srtc_mux_sender_get_stats(s, &mut st2);
+        let video_entry2 = st2
+            .per_stream
+            .iter()
+            .find(|e| e.pid == 0x0100)
+            .expect("video entry after reset");
+        assert_eq!(video_entry2.items, 0);
+
+        srtc_mux_sender_close(s);
+        srtc_mux_config_free(cfg);
+    }
+}

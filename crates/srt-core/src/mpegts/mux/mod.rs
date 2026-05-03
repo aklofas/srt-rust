@@ -646,6 +646,14 @@ struct KlvStreamState {
 
 pub struct Muxer {
     config: Config,
+    /// Per-stream pre-composed PMT descriptor bytes, indexed parallel to
+    /// `config.streams`. Each entry is the concatenation of:
+    ///   - auto-emitted bytes (KLVA Registration on PrivateData KLV PIDs,
+    ///     suppressed when caller supplies their own Registration), then
+    ///   - caller-supplied bytes from `config.stream_descriptors`.
+    ///
+    /// Borrowed at PMT emission time; never reallocated after construction.
+    pmt_descriptor_cache: Vec<Vec<u8>>,
     /// One entry per video stream in `config.streams` (filtered to Video),
     /// in the order they appear. Index = `VideoStreamHandle`.
     video_streams: Vec<VideoStreamState>,
@@ -698,6 +706,52 @@ impl Muxer {
             })
             .collect();
 
+        // Pre-compose per-stream descriptor bytes once. The auto-emitted
+        // KLVA Registration on PrivateData KLV PIDs is suppressed when the
+        // caller supplies their own Registration descriptor on the same
+        // PID — TSDuck and ffprobe both flag duplicate Registration
+        // descriptors, and the corpus shows real senders never duplicate.
+        let mut pmt_descriptor_cache: Vec<Vec<u8>> = Vec::with_capacity(config.streams.len());
+        for (i, spec) in config.streams.iter().enumerate() {
+            let caller_descs = &config.stream_descriptors[i];
+            let caller_has_registration = caller_descs
+                .iter()
+                .any(|tlv| !tlv.is_empty() && tlv[0] == 0x05);
+
+            // If a caller supplied a Registration descriptor on a KLV PID
+            // with a non-KLVA format_identifier, log a warning — they're
+            // probably tagging a vendor-specific KLV transport, but it
+            // means receivers won't recognize the stream as KLV via the
+            // standard registration path.
+            if matches!(spec, StreamSpec::Klv { .. }) {
+                for tlv in caller_descs {
+                    if tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] != b"KLVA" {
+                        tracing::warn!(
+                            "caller-supplied Registration descriptor on KLV PID has \
+                             non-KLVA format_identifier ({:?}); receivers may not \
+                             recognize the stream as KLV",
+                            std::str::from_utf8(&tlv[2..6]).unwrap_or("?")
+                        );
+                    }
+                }
+            }
+
+            let mut bytes = Vec::new();
+            if let StreamSpec::Klv {
+                stream_type: KlvStreamType::PrivateData,
+                ..
+            } = spec
+            {
+                if !caller_has_registration {
+                    bytes.extend_from_slice(KLVA_REGISTRATION_DESCRIPTOR);
+                }
+            }
+            for tlv in caller_descs {
+                bytes.extend_from_slice(tlv);
+            }
+            pmt_descriptor_cache.push(bytes);
+        }
+
         let pcr_pid = config.resolved_pcr_pid();
         let pcr_interval_27mhz = (config.pcr_interval_ms as u64) * 27_000;
         let psi_interval_90khz = (config.psi_interval_ms as i64) * 90;
@@ -737,6 +791,7 @@ impl Muxer {
 
         Ok(Self {
             config,
+            pmt_descriptor_cache,
             video_streams,
             klv_streams,
             pcr_pid,
@@ -1098,38 +1153,37 @@ impl Muxer {
         write_pat_packet(&mut pat, &mut self.counters);
         self.queue.push_back(pat);
 
-        // Enumerate all configured streams. Single-stream output emits the
-        // same two PMT entries as before, in the same order (video first
-        // then KLV) — preserving byte-level test parity.
-        let mut entries: Vec<PmtStreamEntry> =
-            Vec::with_capacity(self.video_streams.len() + self.klv_streams.len());
-        for v in &self.video_streams {
-            let stream_type = match v.codec {
-                VideoCodec::H264 => StreamType::H264,
-                VideoCodec::H265 => StreamType::H265,
+        // Walk config.streams in order so descriptor-cache indices align.
+        // Single-stream output preserves the existing video-then-klv
+        // ordering — no test bytes change for that case.
+        let mut entries: Vec<PmtStreamEntry> = Vec::with_capacity(self.config.streams.len());
+        for (i, spec) in self.config.streams.iter().enumerate() {
+            let stream_type = match spec {
+                StreamSpec::Video {
+                    codec: VideoCodec::H264,
+                    ..
+                } => StreamType::H264,
+                StreamSpec::Video {
+                    codec: VideoCodec::H265,
+                    ..
+                } => StreamType::H265,
+                StreamSpec::Klv {
+                    stream_type: KlvStreamType::PrivateData,
+                    ..
+                } => StreamType::KlvPrivate,
+                StreamSpec::Klv {
+                    stream_type: KlvStreamType::SynchronousMetadata,
+                    ..
+                } => StreamType::KlvSyncMetadata,
             };
             entries.push(PmtStreamEntry {
                 stream_type,
-                elementary_pid: v.pid,
-                descriptors: &[],
-            });
-        }
-        for k in &self.klv_streams {
-            let stream_type = match k.stream_type {
-                KlvStreamType::PrivateData => StreamType::KlvPrivate,
-                KlvStreamType::SynchronousMetadata => StreamType::KlvSyncMetadata,
-            };
-            entries.push(PmtStreamEntry {
-                stream_type,
-                elementary_pid: k.pid,
-                descriptors: KLVA_REGISTRATION_DESCRIPTOR,
+                elementary_pid: spec.pid(),
+                descriptors: &self.pmt_descriptor_cache[i],
             });
         }
 
         let mut pmt = [0u8; 188];
-        // Errors here would mean Muxer::new accepted a Config that
-        // Config::validate should have rejected — guard with expect to
-        // surface the bug rather than silently dropping a PSI packet.
         write_pmt_packet(&mut pmt, self.pcr_pid, &entries, &mut self.counters)
             .expect("validated Config must produce single-section PMT");
         self.queue.push_back(pmt);
@@ -1931,6 +1985,68 @@ mod tests {
             .stream_descriptors_for_video(7, vec![crate::mpegts::descriptors::user_private(b"X")])
             .build();
         assert!(matches!(res, Err(MuxError::InvalidStreamHandle { .. })));
+    }
+
+    #[test]
+    fn cache_composes_auto_emit_then_caller_bytes_on_klv_private() {
+        let cfg = Config::builder()
+            .add_video(0x100, VideoCodec::H264)
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .stream_descriptors_for_klv(
+                0,
+                vec![crate::mpegts::descriptors::user_private(b"KLV_LBL")],
+            )
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+
+        // Stream 0 (video) — no auto-emit, no caller — empty cache entry.
+        assert!(muxer.pmt_descriptor_cache[0].is_empty());
+
+        // Stream 1 (KLV PrivateData) — KLVA Registration (6 bytes) +
+        // user_private("KLV_LBL") (9 bytes) = 15 bytes.
+        let entry = &muxer.pmt_descriptor_cache[1];
+        assert_eq!(entry.len(), 15);
+        assert_eq!(&entry[..6], &[0x05, 0x04, b'K', b'L', b'V', b'A']);
+        assert_eq!(entry[6], 0xFF); // user_private tag
+        assert_eq!(entry[7], 7); // body length
+        assert_eq!(&entry[8..], b"KLV_LBL");
+    }
+
+    #[test]
+    fn cache_suppresses_klva_auto_emit_when_caller_supplies_registration() {
+        let cfg = Config::builder()
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .stream_descriptors_for_klv(
+                0,
+                vec![crate::mpegts::descriptors::registration(*b"KLVA", &[])],
+            )
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+
+        // Caller's Registration only — auto-emit suppressed. Total = 6 bytes.
+        assert_eq!(muxer.pmt_descriptor_cache[0].len(), 6);
+    }
+
+    #[test]
+    fn cache_no_auto_emit_on_sync_klv() {
+        let cfg = Config::builder()
+            .add_klv(0x101, KlvStreamType::SynchronousMetadata, true)
+            .stream_descriptors_for_klv(
+                0,
+                vec![
+                    crate::mpegts::descriptors::metadata_klva(0x00),
+                    crate::mpegts::descriptors::metadata_std(0, 0, 0),
+                ],
+            )
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+        // No KLVA auto-emit on SynchronousMetadata. 11 + 11 = 22 bytes.
+        assert_eq!(muxer.pmt_descriptor_cache[0].len(), 22);
+        assert_eq!(muxer.pmt_descriptor_cache[0][0], 0x26);
+        assert_eq!(muxer.pmt_descriptor_cache[0][11], 0x27);
     }
 }
 

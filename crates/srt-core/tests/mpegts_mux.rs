@@ -138,7 +138,11 @@ fn h264_sync_metadata_stream_type() {
         .iter()
         .find(|s| s.stream_type == 0x15)
         .unwrap();
-    assert!(klv_stream.klva);
+    // SynchronousMetadata KLV PIDs do NOT receive an auto-emitted KLVA
+    // Registration descriptor — the correct descriptors for 0x15 streams
+    // are metadata_klva (0x26) + metadata_std (0x27), supplied by the
+    // caller. A bare 0x15 stream with no caller descriptors has no klva.
+    assert!(!klv_stream.klva);
 }
 
 #[test]

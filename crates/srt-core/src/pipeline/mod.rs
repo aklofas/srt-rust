@@ -18,6 +18,7 @@ pub mod recv_transport;
 pub mod sender;
 pub mod srt_transport;
 pub mod transport;
+pub mod ts_receiver;
 pub mod ts_sender;
 
 pub use raw_receiver::RawReceiver;
@@ -27,4 +28,5 @@ pub use recv_transport::RecvTransport;
 pub use sender::{Sender, SenderError};
 pub use srt_transport::SrtTransport;
 pub use transport::{Transport, TransportError};
+pub use ts_receiver::TsReceiver;
 pub use ts_sender::{TsFramingMode, TsSender, TsSenderConfig, TsSenderError, TsSenderStats};

@@ -7,3 +7,4 @@
 //! sections are noted on each module.
 
 mod bitreader;
+mod profile_tier_level;

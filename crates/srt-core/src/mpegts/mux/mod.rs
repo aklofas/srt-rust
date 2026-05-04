@@ -802,6 +802,31 @@ impl ProgramBuilder {
         self
     }
 
+    /// Set the descriptor list for the `audio_idx`-th audio stream in this
+    /// program (zero-indexed among `StreamSpec::Audio` entries in add-order).
+    ///
+    /// # Panics
+    /// Panics if `audio_idx` is out of range. Call after the corresponding
+    /// [`add_audio`][Self::add_audio].
+    pub fn stream_descriptors_for_audio(mut self, audio_idx: usize, descs: Vec<Vec<u8>>) -> Self {
+        let prog = &mut self.parent.programs[self.idx];
+        let abs_idx = prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Audio { .. }))
+            .nth(audio_idx)
+            .map(|(i, _)| i)
+            .unwrap_or_else(|| {
+                panic!(
+                    "audio_idx {audio_idx} out of range — call after add_audio (program {})",
+                    prog.program_number
+                )
+            });
+        prog.stream_descriptors[abs_idx] = descs;
+        self
+    }
+
     /// Set the descriptor list for a stream by absolute index within this
     /// program (across both video and KLV streams in add-order).
     ///
@@ -2850,6 +2875,26 @@ mod tests {
 
         // Unknown program number rejects.
         assert!(muxer.audio_handles_for_program(99).is_err());
+    }
+
+    #[test]
+    fn stream_descriptors_for_audio_attaches_at_build_time() {
+        use crate::mpegts::descriptors::iso_639_language;
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_audio(0x300, AudioCodec::Aac)
+            .stream_descriptors_for_audio(0, vec![iso_639_language(*b"eng", 0)])
+            .end_program()
+            .build()
+            .unwrap();
+        // The descriptor list reaches the per-program stream_descriptors slot.
+        let prog = &cfg.programs[0];
+        let audio_idx = prog
+            .streams
+            .iter()
+            .position(|s| matches!(s, StreamSpec::Audio { .. }))
+            .unwrap();
+        assert_eq!(prog.stream_descriptors[audio_idx].len(), 1);
     }
 }
 

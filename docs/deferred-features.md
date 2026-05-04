@@ -231,13 +231,21 @@ the trigger that would unblock it.
   nearest-PTS pairing; converging strategies become a candidate for
   shared substrate.
 
-## Multi-program TS in `mpegts::demux`
+## Multi-program demux at the C ABI
 
-- **Status:** Single-program TS only (one PMT). `ProgramMap` carries
-  `program_number` so multi-program lifts additively.
-- **Why deferred:** No current consumer ships a multi-program TS.
-- **Trigger to revisit:** A consumer needs to separate-and-route
-  multiple programs from a single TS.
+- **Status:** Deferred.
+- **Why deferred:** `mpegts::demux` gained multi-program support in 2026-05-03,
+  but the C ABI receiver surface itself doesn't yet exist — `srt-c` exposes
+  only sender-side handles today. Multi-program demux exposure rides with the
+  future receiver C ABI plan so receiver-side surface is designed coherently in
+  one pass rather than piecemeal.
+- **Trigger to revisit:** When the receiver-side `srt-c` plan is written and
+  the receiver-surface design is settled, multi-program demux event emission
+  to C callers gets folded into that plan.
+- **Scope when added:** `SrtcDemuxEvent` discriminator with `ProgramMap` arm
+  carrying `program_number`; `SrtcStreamInfo` C-side analogue with
+  `program_number` field; per-program tracker query API if useful
+  (`srtc_demuxer_program_count`, `srtc_demuxer_get_program_info(idx)`).
 
 ## AV1 / H.266 codec variants on `SamplePayload::Video`
 

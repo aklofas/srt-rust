@@ -524,6 +524,59 @@ or more user-supplied descriptors or shorten their payloads.
 Multi-section PMT support is not currently planned (see
 `deferred-features.md`).
 
+## Multi-program output
+
+A single TS multiplex can carry several independent programs, each with its
+own PMT, PCR, and elementary stream set. Use this when a consumer needs to
+ship multiple logically separate "channels" through one transport (e.g. two
+aircraft each emitting an EO+IR+KLV bundle, aggregated through one SRT socket).
+
+```rust
+let config = Config::builder()
+    .add_program(1, 0x1000)
+        .add_video(0x1011, VideoCodec::H264)
+        .add_klv(0x1031, KlvStreamType::PrivateData, false)
+        .end_program()
+    .add_program(2, 0x1100)
+        .add_video(0x1111, VideoCodec::H265)
+        .add_klv(0x1131, KlvStreamType::PrivateData, false)
+        .end_program()
+    .build()?;
+```
+
+### PID uniqueness
+
+PIDs MUST be unique across programs. Validation rejects with
+`MuxError::DuplicatePidAcrossPrograms` if two programs declare the same
+stream PID. This is by design — PES packets carry only PID, so PES dispatch
+on the demux side can't disambiguate same-PID-different-program. For
+repacking workflows that mix sources with overlapping PID ranges, renumber
+program 2's streams into a non-conflicting range.
+
+### Per-program PCR
+
+Each program has its own PCR PID. Set explicitly via `.pcr_pid(N)` inside
+the `add_program(...)` block, or omit and let it auto-fall-back to the
+program's first video PID (or first KLV PID for KLV-only programs). PCR
+cadence is independent per-program — program 2's PCR doesn't drift when
+program 1 is stalled.
+
+### Push routing with handles
+
+Multi-program callers must use `Muxer::push_video_to(handle, ...)` and
+`push_klv_to(handle, ...)`. The bare `push_video` / `push_klv` reject with
+`MuxError::AmbiguousTarget` when there's more than one stream of that kind
+across all programs. Resolve handles per-program via
+`video_handles_for_program(N)` / `klv_handles_for_program(N)`.
+
+### Limits
+
+`MAX_PROGRAMS = 16`. Per-program limits are unchanged from single-program:
+≤16 video + ≤16 KLV streams per program. Each PMT must individually fit in
+one TS packet (the size budget is per-PMT, not per-multiplex).
+
+For a runnable end-to-end repacking example, see `examples/repack_two_programs.rs`.
+
 ## Examples
 
 Three runnable examples cover the muxer's surface:

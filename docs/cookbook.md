@@ -524,3 +524,44 @@ Or in Rust on the receive side, decode `StreamInfo::raw_descriptors`
 directly (see `guide-mpegts-demux.md` "Reading per-stream descriptors").
 
 Runnable example: `cargo run --example mux_dual_camera`.
+
+### 16. Repack two single-program inputs into one multi-program TS
+
+When you have two independent (EO + IR + KLV) feeds and need to ship them
+through one SRT socket without forcing each to its own UDP port:
+
+```rust,no_run
+use srt_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::builder()
+        .add_program(1, 0x1000)
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .end_program()
+        .add_program(2, 0x1100)
+            .add_video(0x1111, VideoCodec::H264)
+            .add_klv(0x1131, KlvStreamType::PrivateData, false)
+            .end_program()
+        .build()?;
+
+    // Resolve handles per-program; push_video_to/push_klv_to route to
+    // the correct elementary stream even when two programs carry the same
+    // codec.  The bare push_video / push_klv reject with AmbiguousTarget
+    // when more than one stream of that kind exists across all programs.
+    // let mux = Muxer::new(config)?;
+    // let [v1] = mux.video_handles_for_program(1)[..] else { ... };
+    // let [v2] = mux.video_handles_for_program(2)[..] else { ... };
+    // mux.push_video_to(v1, pts, dts, is_keyframe, &nal_bytes)?;
+    Ok(())
+}
+```
+
+On the receive side, the consumer sees two independent `ProgramMap` events
+and can route `Sample`/`Metadata` events by `stream.program_number`. The
+receiver picks one program of interest with ffmpeg `-map p:N` or TSDuck
+`--pid-only`. PID uniqueness across programs is required by the muxer;
+renumber program 2's input PIDs into a non-conflicting range during the
+demux→remux step.
+
+Runnable: [../crates/srt-core/examples/repack_two_programs.rs](../crates/srt-core/examples/repack_two_programs.rs).

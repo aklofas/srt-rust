@@ -115,8 +115,8 @@ aren't yet wrapped are reachable via `srt-sys`.
 
 | Spec / Feature | Status | Notes |
 | --- | --- | --- |
-| MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — single-program, multi-stream (≤16 video + ≤16 KLV PIDs per output TS), H.264/H.265 video + ST 0601 KLV (sync + async per ST 1402), VBR. |
-| MPEG-TS demuxer | ✅ Full | `mpegts::demux::Demuxer` — single-program, lenient by default, four-tier `StrictMode` ladder. See `mpegts::demux` block below. |
+| MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — multi-program (≤16 programs), multi-stream (≤16 video + ≤16 KLV PIDs per program), H.264/H.265 video + ST 0601 KLV (sync + async per ST 1402), VBR. |
+| MPEG-TS demuxer | ✅ Full | `mpegts::demux::Demuxer` — multi-program, lenient by default, four-tier `StrictMode` ladder. See `mpegts::demux` block below. |
 | Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ✅ Full | Default in `mpegts::mux::Config` (`klv_stream_type = PrivateData`, `klv_carries_pts = false`). |
 | ST 1402.3 Synchronous metadata stream | ✅ Full | `KlvStreamType::SynchronousMetadata` + `klv_carries_pts = true` in `Config`. |
 | ST 1910 AU cell wrapping (sync KLV with timestamp) | ✅ Full | `klv::st1910::wrap_au_cell` / `unwrap_au_cell`. Compose with `Muxer::push_klv` when `klv_carries_pts = true`. |
@@ -266,7 +266,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | KLV-mismatch event coalescing | ✅ Full | One `StreamTypeMismatch*` event per (PID, PMT version); avoids flooding. |
 | PSI version-bump detection | ✅ Full | Re-emits `ProgramMap` only on PMT/PAT version change. |
 | `pts_to_duration` helper | ✅ Full | 90 kHz ticks → `std::time::Duration`. |
-| Multi-program TS | ⏳ Planned | Single PMT only today; `ProgramMap.program_number` carries number for additive lift. |
+| Multi-program TS | ✅ Full | Multi-PMT; one `ProgramMap` event per program + on PAT/PMT version bumps; `StreamInfo.program_number` on every `Sample`/`Metadata` event; PAT version diffing drops disappeared programs; `NonConformantIssue::PidReusedAcrossPrograms` on cross-program PID collision. |
 | Typed audio codec values on `AudioCodec` | ⏳ Planned | Reserved variant exists; AAC + others additive. |
 | Typed subtitle codec values on `SubtitleCodec` | ⏳ Planned | Same as audio. |
 | AV1 / H.266 codec variants on `VideoCodec` | ⏳ Planned | Surface as `SamplePayload::Unknown` today. |
@@ -283,7 +283,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `TsSender<T>` | ✅ Full | Pre-muxed TS bytes → SRT with sync framing/recovery. 3-byte sync verify, 7-packet bundling, RECOVER + STRICT modes. |
 | `RawSender<T>` | ✅ Full | Byte-blind one-shot sender. One `send` call = one SRT message; size-cap validation at construction. |
 | `ManagedTransport<T>` | ✅ Full | Reconnect + gap-buffer decorator over any `Transport`. Synchronous reconnect on caller's thread; drop-oldest-message overflow policy; single-thread receiver. |
-| Multi-stream `Config` | ✅ Full | ≤16 video + ≤16 KLV streams per output TS; opaque `StreamHandle` returned by `add_video_stream` / `add_klv_stream`; `push_video_to(handle, …)` / `push_klv_to(handle, …)` siblings on `Muxer` and on `Sender` / `TsSender` / `RawSender`. Single-stream `push_video` / `push_klv` still work when exactly one stream of that kind exists. |
+| Multi-stream / multi-program `Config` | ✅ Full | ≤16 programs, ≤16 video + ≤16 KLV streams per program; nested `add_program(N, pmt_pid).add_video(...).end_program()` builder; opaque handles from `video_handles_for_program(N)` / `klv_handles_for_program(N)`; `push_video_to(handle, …)` / `push_klv_to(handle, …)` on `Muxer` and `Sender`. Single-program single-stream callers keep the old flat API unchanged. |
 
 ### Receive side
 
@@ -316,8 +316,10 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `SRTC_VERSION_MAJOR` / `MINOR` / `PATCH` macros | ✅ Full | Compile-time `#define`s in `srtc.h`. |
 | Lifecycle (`_open` / `_close`) | ✅ Full | `_open` returns NULL on failure with last-error set; `_close` is idempotent and NULL-safe; close-from-any-thread serializes through `Mutex<Option<...>>`. |
 | URL parsing | ✅ Full | `srt://host:port?key=value&...` — IPv4 / DNS / bracketed IPv6 hosts plus the libsrt-URL Group 1 vocabulary (`streamid` / `passphrase` / `latency` / `payloadsize` / `congestion` / `conntimeo` / `linger` / `udprcvbuf` / `udpsndbuf` / etc.) plus a handful of ffmpeg-style aliases (`pkt_size`, `payload_size`, `srt_streamid`, `tsbpddelay`, `smoother`, `ffs`, `connect_timeout`, `recv_buffer_size`, `send_buffer_size`). See "FFmpeg URL interop quirks" below for unit divergence. |
-| Stats accessors | ⚙️ Partial | `srtc_ts_sender_get_stats` / `srtc_managed_ts_sender_get_stats` shipped (mirror `pipeline::TsSenderStats`). Mux/raw stats await `Sender::stats()` / `RawSender::stats()` upstream. |
-| Multi-stream `mpegts::mux` fan-out | ✅ Full | `srtc_video_stream_handle_t` / `srtc_klv_stream_handle_t` typedefs (transparent `uint32_t`); `srtc_mux_config_add_video_stream` / `_add_klv_stream` return handles at config time; `_video_to(handle, ...)` / `_klv_to(handle, ...)` siblings on `srtc_muxer_t`, `srtc_mux_sender_t`, and `srtc_managed_mux_sender_t` (≤16 video + ≤16 KLV streams per program — same caps as the Rust core). Single-target entry points (`srtc_*_send_video` / `_send_klv`) keep their v0 signatures and surface `MuxError::AmbiguousTarget` as `SRTC_E_INVALID_USAGE` on multi-stream muxers. The TsSender / RawSender variants don't carry a `Muxer`, so multi-stream is N/A there. |
+| Stats accessors | ✅ Full | `srtc_muxer_get_stats` / `_reset_stats`; `srtc_mux_sender_*` and `srtc_managed_mux_sender_*` (get + reset); `srtc_ts_sender_*` and `srtc_managed_ts_sender_*` (get + reset); `srtc_raw_sender_*` and `srtc_managed_raw_sender_*` (get + reset). `SrtcSenderStats` + `SrtcMuxerStats` + `SrtcRawSenderStats` `repr(C)` types; receiver-side C stats deferred. |
+| Multi-stream `mpegts::mux` fan-out | ✅ Full | `srtc_video_stream_handle_t` / `srtc_klv_stream_handle_t` typedefs (transparent `uint32_t`); `srtc_mux_config_add_video_stream` / `_add_klv_stream` return handles at config time; `_video_to(handle, ...)` / `_klv_to(handle, ...)` siblings on `srtc_muxer_t`, `srtc_mux_sender_t`, and `srtc_managed_mux_sender_t` (≤16 video + ≤16 KLV streams per program — same caps as the Rust core). Single-target entry points (`srtc_*_send_video` / `_send_klv`) keep their signatures and surface `MuxError::AmbiguousTarget` as `SRTC_E_INVALID_USAGE` on multi-stream muxers. The TsSender / RawSender variants don't carry a `Muxer`, so multi-stream is N/A there. |
+| Multi-program `mpegts::mux` config | ✅ Full | `srtc_program_handle_t` (transparent `uint32_t`); `srtc_mux_config_add_program` returns a handle; `srtc_mux_config_add_video_stream_to_program` / `_add_klv_stream_to_program` scope streams to a program; ≤16 programs per muxer config. |
+| Multi-program demux at the C ABI | ❌ Deferred | Rust demuxer fully supports multi-program; C ABI receiver surface doesn't yet exist. Rides with the future receiver-side `srt-c` plan. |
 | cbindgen-generated `srtc.h` | ✅ Full | Committed at `crates/srt-c/include/srtc.h`; CI verifies no drift via `tests/header_drift.rs`. |
 | Symbol-prefix audit | ✅ Full | `tests/symbol_audit.rs` runs `nm -D` and asserts every exported symbol matches `^(srtc_|SRTC_|srt_)` (`srt_*` allowlisted because libsrt is statically linked). |
 | `pkg-config` metadata | ✅ Full | `srtc.pc` generated by `build.rs` from `srtc.pc.in`; substitutes `@VERSION@` and `@PREFIX@`. |

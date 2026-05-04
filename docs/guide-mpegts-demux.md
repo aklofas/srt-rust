@@ -457,6 +457,57 @@ Two existing examples were also retrofitted to use `Demuxer` internally:
 - [../crates/srt-core/examples/extract_video_au.rs](../crates/srt-core/examples/extract_video_au.rs)
   — extract video access units, re-emit Annex-B framing.
 
+## Multi-program parsing
+
+A multi-program TS is parsed transparently — `Demuxer` tracks each program in
+its PAT and emits one `ProgramMap` event per program (plus on PMT version
+bumps and PAT version bumps that add programs).
+
+```rust,no_run
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer};
+
+fn main() {
+    let mut d = Demuxer::new();
+    // feed bytes via d.feed(...) in a loop, then:
+    while let Some(event) = d.next_event() {
+        match event {
+            DemuxEvent::ProgramMap(pm) => {
+                println!("program {} on PMT PID 0x{:04X} carries {} streams",
+                    pm.program_number, pm.pmt_pid, pm.streams.len());
+            }
+            DemuxEvent::Sample { stream, .. } => {
+                // stream.program_number tells you which program owns this PID.
+            }
+            DemuxEvent::Metadata { stream, .. } => {
+                // Same — stream.program_number disambiguates.
+            }
+            _ => {}
+        }
+    }
+}
+```
+
+### PAT version diffing
+
+When the PAT version bumps, the demuxer compares the new program list against
+the previous one:
+
+- Programs that disappeared have their tracker dropped and their PIDs cleaned
+  from the per-PID stream-kind cache. Subsequent PES on those PIDs is silently
+  dropped (the demuxer no longer knows what to do with them).
+- New programs get an empty tracker; the next PMT to arrive on the new PMT PID
+  populates it and triggers a `ProgramMap` event.
+
+### PID collision across programs
+
+ISO 13818-1 technically allows the same PID to appear in multiple programs
+(different programs, different meanings). The demuxer requires uniqueness —
+when a PMT introduces a PID already bound to another program, it emits
+`NonConformantIssue::PidReusedAcrossPrograms` and keeps the first-program-wins
+binding. The second program's tracker records the colliding stream's
+`StreamInfo` entry, but PES packets on that PID continue to dispatch to the
+first program.
+
 ## What's deferred
 
 Each item below maps to an entry in
@@ -468,8 +519,6 @@ Each item below maps to an entry in
   `h265-parser`).
 - **`pipeline::pairing` opt-in helper** — pairing stays consumer-side
   via cookbook recipes; library-level helper is deferred.
-- **Multi-program TS** — single PMT only today. `ProgramMap` carries
-  `program_number` so multi-program lifts additively.
 - **AV1 / H.266 codec variants** — surface as `SamplePayload::Unknown`
   today. AV1 is OBU-shaped (not NAL-shaped), so adding it requires a
   cross-codec rework of `SamplePayload::Video`.

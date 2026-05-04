@@ -72,8 +72,10 @@ fn close_unblocks_libsrt_parked_send() {
 
     let transport = SrtTransport::new(socket);
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
+        .end_program()
         .build()
         .unwrap();
     let s = Arc::new(Sender::new(cfg, transport).unwrap());

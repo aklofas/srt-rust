@@ -88,10 +88,12 @@ fn ffprobe_recognizes_dual_camera_plus_klv() {
 
     use srt_core::mpegts::mux::{KlvStreamType, VideoCodec};
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264) // EO
         .add_video(0x1021, VideoCodec::H264) // IR
         .add_klv(0x1031, KlvStreamType::PrivateData, false)
         .pcr_pid(0x1011)
+        .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();

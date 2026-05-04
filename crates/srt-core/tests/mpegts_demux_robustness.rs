@@ -38,8 +38,10 @@ fn drain(m: &mut Muxer) -> Vec<u8> {
 /// no KLV payload is pushed — the goal is just a valid stream to corrupt.
 fn build_clean_stream() -> Vec<u8> {
     let cfg = ConfigBuilder::default()
+        .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
+        .end_program()
         .build()
         .unwrap();
     let mut m = Muxer::new(cfg).unwrap();

@@ -23,7 +23,7 @@ fn drain_all(mux: &mut Muxer) -> Vec<u8> {
 #[test]
 fn sync_klv_with_st1910_wrapper_roundtrip() {
     let mut cfg = Config::default();
-    if let Some(StreamSpec::Klv { carries_pts, .. }) = cfg
+    if let Some(StreamSpec::Klv { carries_pts, .. }) = cfg.programs[0]
         .streams
         .iter_mut()
         .find(|s| matches!(s, StreamSpec::Klv { .. }))
@@ -65,7 +65,7 @@ fn sync_metadata_stream_type_with_wrapped_klv() {
         stream_type,
         carries_pts,
         ..
-    }) = cfg
+    }) = cfg.programs[0]
         .streams
         .iter_mut()
         .find(|s| matches!(s, StreamSpec::Klv { .. }))

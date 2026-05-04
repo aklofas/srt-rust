@@ -50,10 +50,12 @@ fn klv_blob() -> Vec<u8> {
 #[test]
 fn dual_video_plus_klv_routes_to_three_pids() {
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264) // EO
         .add_video(0x1021, VideoCodec::H264) // IR
         .add_klv(0x1031, KlvStreamType::PrivateData, false)
         .pcr_pid(0x1011)
+        .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
@@ -79,9 +81,11 @@ fn dual_video_plus_klv_routes_to_three_pids() {
 #[test]
 fn video_plus_dual_klv_routes_to_three_pids() {
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(0x1031, KlvStreamType::PrivateData, false) // vehicle telemetry
         .add_klv(0x1041, KlvStreamType::PrivateData, true) // sensor metadata (sync)
+        .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
@@ -103,7 +107,9 @@ fn video_plus_dual_klv_routes_to_three_pids() {
 #[test]
 fn video_only_emits_video_pid_only() {
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
+        .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
@@ -121,8 +127,10 @@ fn video_only_emits_video_pid_only() {
 #[test]
 fn klv_only_emits_klv_pid_only() {
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_klv(0x1031, KlvStreamType::PrivateData, true)
         .pcr_pid(0x1031)
+        .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
@@ -143,11 +151,13 @@ fn dual_video_plus_dual_klv_pmt_lists_all_four() {
     const PAT_PID: u16 = 0x0000;
 
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_video(0x1021, VideoCodec::H265)
         .add_klv(0x1031, KlvStreamType::PrivateData, false)
         .add_klv(0x1041, KlvStreamType::SynchronousMetadata, true)
         .pcr_pid(0x1011)
+        .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();

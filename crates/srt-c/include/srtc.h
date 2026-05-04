@@ -105,6 +105,10 @@ typedef struct srtc_managed_ts_sender_t srtc_managed_ts_sender_t;
  * Opaque mux-config builder. Constructed via `srtc_mux_config_new`,
  * populated with setters, consumed by `srtc_*_open` (which clones the
  * inner). Caller is responsible for calling `srtc_mux_config_free`.
+ *
+ * Internally stores the accumulated state as a `ConfigBuilder` that has
+ * already opened a single-program block via `add_program(1, 0x1000)`.
+ * `build_config()` closes the program block and calls `.build()`.
  */
 typedef struct srtc_mux_config_t srtc_mux_config_t;
 
@@ -330,9 +334,7 @@ int srtc_reconnect_policy_set_overflow_policy(struct srtc_reconnect_policy_t *p,
  * invalid value. The detail string from
  * `srtc_get_last_error_str()` describes the specific problem.
  */
-
-struct srtc_mux_sender_t *srtc_mux_sender_open(const char *srt_url,
-                                               const struct srtc_mux_config_t *cfg);
+ struct srtc_mux_sender_t *srtc_mux_sender_open(const char *srt_url, struct srtc_mux_config_t *cfg);
 
 
 int srtc_mux_sender_send_video(struct srtc_mux_sender_t *p,
@@ -417,7 +419,7 @@ int srtc_mux_sender_send_klv_to(struct srtc_mux_sender_t *p,
  */
 
 struct srtc_managed_mux_sender_t *srtc_managed_mux_sender_open(const char *srt_url,
-                                                               const struct srtc_mux_config_t *cfg,
+                                                               struct srtc_mux_config_t *cfg,
                                                                const struct srtc_reconnect_policy_t *policy);
 
 
@@ -492,11 +494,11 @@ int srtc_managed_mux_sender_get_stats(struct srtc_managed_mux_sender_t *p,
  void srtc_managed_mux_sender_close(struct srtc_managed_mux_sender_t *p);
 
 /**
- * Open a standalone muxer. Clones the inner of `cfg` so the caller may
+ * Open a standalone muxer. Builds the config from `cfg` so the caller may
  * free it immediately after this returns. Returns NULL on failure with
  * last-error set.
  */
- struct srtc_muxer_t *srtc_muxer_open(const struct srtc_mux_config_t *cfg);
+ struct srtc_muxer_t *srtc_muxer_open(struct srtc_mux_config_t *cfg);
 
 /**
  * Push one Annex-B-framed video access unit. Returns 0 on success or a

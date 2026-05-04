@@ -64,8 +64,10 @@ fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
 fn h264_async_klv_roundtrip() {
     // Async KLV per ST 1402: PrivateData stream_type with no PTS in PES.
     let cfg = ConfigBuilder::default()
+        .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
+        .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
@@ -119,8 +121,10 @@ fn h264_async_klv_roundtrip() {
 #[test]
 fn h265_async_klv_roundtrip() {
     let cfg = ConfigBuilder::default()
+        .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H265)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
+        .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();

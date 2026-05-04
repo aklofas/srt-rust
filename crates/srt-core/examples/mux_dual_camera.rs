@@ -39,6 +39,7 @@ fn main() -> std::io::Result<()> {
     //   `.pcr_pid(0x1011)` is redundant — included here so consumers
     //   reading the example see the explicit form.
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264) // EO (visible-light)
         // Tag 0xFF (user_private) is the de-facto label slot used in the
         // wild — it's ISO-reserved, but every ARS-shape sender in real
@@ -61,6 +62,7 @@ fn main() -> std::io::Result<()> {
         // stream, and tools like ffprobe surface it as "Data: KLVA".
         .stream_descriptors_for_klv(0, vec![descriptors::user_private(b"KLV_META")])
         .pcr_pid(0x1011)
+        .end_program()
         .build()
         .expect("config validation");
 

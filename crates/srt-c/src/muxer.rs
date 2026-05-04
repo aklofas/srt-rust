@@ -13,16 +13,16 @@ pub struct SrtcMuxer {
     inner: Handle<Muxer>,
 }
 
-/// Open a standalone muxer. Clones the inner of `cfg` so the caller may
+/// Open a standalone muxer. Builds the config from `cfg` so the caller may
 /// free it immediately after this returns. Returns NULL on failure with
 /// last-error set.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn srtc_muxer_open(cfg: *const SrtcMuxConfig) -> *mut SrtcMuxer {
-    let Some(cfg) = (unsafe { cfg.as_ref() }) else {
+pub unsafe extern "C" fn srtc_muxer_open(cfg: *mut SrtcMuxConfig) -> *mut SrtcMuxer {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
         return std::ptr::null_mut();
     };
-    let built = match cfg.builder.clone().build() {
+    let built = match cfg.build_config() {
         Ok(c) => c,
         Err(e) => {
             record_mux_error(&e);

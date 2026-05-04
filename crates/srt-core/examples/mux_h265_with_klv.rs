@@ -11,7 +11,7 @@
 
 use srt_core::klv::st0605::{PrecisionTimeStampPack, TimeStatus};
 use srt_core::klv::st1910::wrap_au_cell;
-use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, StreamSpec, VideoCodec};
+use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 use std::env;
 use std::fs::File;
 use std::io::Write;
@@ -33,50 +33,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_path = env::args().nth(1).unwrap_or_else(|| "h265.ts".into());
 
     // -----------------------------------------------------------------
-    // Canonical "build a Config from scratch" pattern. The
-    // `streams: Vec<StreamSpec>` field is multi-stream-shaped from day
-    // one — `Config::validate` enforces "at most one Video and at most
-    // one Klv" today, but the layout is already what Path 3 needs
-    // (multiple video / multiple KLV) so future expansion lands
-    // additively without breaking ABI for existing callers.
-    //
-    // The `..Config::default()` form preserves the PCR/PSI/buffer
-    // defaults (`pcr_interval_ms: 40`, `psi_interval_ms: 100`,
-    // `buffer_packets: 10_000`, `pcr_pid: None`) while letting us
-    // override just the streams.
+    // Canonical "build a Config from scratch" pattern using the builder.
+    // `add_program(1, 0x1000)` opens the single-program block; all
+    // stream specs nest inside it and `end_program()` closes the block.
+    // Calling `.build()` applies defaults for PCR/PSI/buffer intervals.
     // -----------------------------------------------------------------
-    let cfg = Config {
-        streams: vec![
-            StreamSpec::Video {
-                pid: VIDEO_PID,
-                // H.265 maps to PMT stream_type 0x24 (vs. H.264's 0x1B).
-                // Receivers signal which decoder to instantiate from
-                // this byte — TSDuck/ffprobe will report "HEVC video"
-                // in the resulting stream.
-                codec: VideoCodec::H265,
-            },
-            StreamSpec::Klv {
-                pid: KLV_PID,
-                // SynchronousMetadata (PMT stream_type 0x15) is strict
-                // ST 1402 sync KLV. Conformant output requires each
-                // KLV blob to be wrapped in an ST 1910 AU cell header
-                // carrying a Precision Time Stamp Pack — the muxer
-                // does NOT auto-wrap. The caller (this example, see
-                // the `wrap_au_cell` call below) is responsible for
-                // building the AU cell and handing the wrapped bytes
-                // to `push_klv`. See `docs/guide-mpegts-mux.md` §5
-                // ("KLV-in-TS modes") for the full contract.
-                stream_type: KlvStreamType::SynchronousMetadata,
-                // SynchronousMetadata requires `carries_pts: true` —
-                // the PTS is what lets a receiver align each metadata
-                // record with the corresponding video frame. The
-                // combo `SynchronousMetadata + carries_pts: false` is
-                // rejected by `Config::validate`.
-                carries_pts: true,
-            },
-        ],
-        ..Config::default()
-    };
+    let cfg = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(VIDEO_PID, VideoCodec::H265)
+        // SynchronousMetadata (PMT stream_type 0x15) is strict
+        // ST 1402 sync KLV. Conformant output requires each
+        // KLV blob to be wrapped in an ST 1910 AU cell header
+        // carrying a Precision Time Stamp Pack — the muxer
+        // does NOT auto-wrap. The caller (this example, see
+        // the `wrap_au_cell` call below) is responsible for
+        // building the AU cell and handing the wrapped bytes
+        // to `push_klv`. See `docs/guide-mpegts-mux.md` §5
+        // ("KLV-in-TS modes") for the full contract.
+        //
+        // SynchronousMetadata requires `carries_pts: true` —
+        // the PTS is what lets a receiver align each metadata
+        // record with the corresponding video frame. The
+        // combo `SynchronousMetadata + carries_pts: false` is
+        // rejected by `Config::validate`.
+        .add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true)
+        .end_program()
+        .build()?;
 
     // `Muxer::new` runs `Config::validate` and returns
     // `MuxError::InvalidConfig` if anything is wrong (duplicate PIDs,

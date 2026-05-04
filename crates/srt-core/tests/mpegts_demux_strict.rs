@@ -55,8 +55,10 @@ fn drain(m: &mut Muxer) -> Vec<u8> {
 /// on that PID is bare async KLV. Returns the muxed bytes.
 fn build_mismatched_stream() -> Vec<u8> {
     let cfg = ConfigBuilder::default()
+        .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H264)
         .add_klv(0x101, KlvStreamType::SynchronousMetadata, true)
+        .end_program()
         .build()
         .unwrap();
     let mut m = Muxer::new(cfg).unwrap();

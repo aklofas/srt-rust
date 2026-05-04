@@ -89,8 +89,10 @@ fn end_to_end_sender_to_receiver() {
         // recognition path — `false` means the muxer doesn't emit a PTS on
         // the KLV PES (typical for low-rate metadata).
         let cfg = ConfigBuilder::default()
+            .add_program(1, 0x1000)
             .add_video(0x100, MuxVideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .end_program()
             .build()
             .expect("build mux config");
         let sender = Sender::new(cfg, SrtTransport::new(socket)).expect("sender");

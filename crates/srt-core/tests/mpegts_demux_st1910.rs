@@ -10,8 +10,10 @@ fn sync_klv_au_cell_unwraps_on_receive() {
     // Sync KLV per ST 1402 §8 / ST 1910: SynchronousMetadata stream_type
     // with PTS in PES and ST 1910 AU cell wrap on the payload.
     let cfg = ConfigBuilder::default()
+        .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H264)
         .add_klv(0x101, KlvStreamType::SynchronousMetadata, true)
+        .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();

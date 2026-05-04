@@ -34,6 +34,7 @@ fn drain_events(bytes: &[u8]) -> Vec<DemuxEvent> {
 #[test]
 fn family_b_klv_descriptor_stack_round_trips() {
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
         .add_klv(0x102, KlvStreamType::SynchronousMetadata, true)
@@ -45,6 +46,7 @@ fn family_b_klv_descriptor_stack_round_trips() {
                 descriptors::user_private(b"KLV_SYNC"),
             ],
         )
+        .end_program()
         .build()
         .unwrap();
 
@@ -83,9 +85,11 @@ fn family_b_klv_descriptor_stack_round_trips() {
 #[test]
 fn klva_auto_emit_suppressed_when_caller_supplies_registration() {
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
         .stream_descriptors_for_klv(0, vec![descriptors::registration(*b"KLVA", &[])])
+        .end_program()
         .build()
         .unwrap();
 
@@ -120,6 +124,7 @@ fn family_a_hdmv_video_registration_round_trips() {
     // Replicate the bench-11 / N4717V / N77HS shape: video PID with
     // Registration "HDMV" + 4 trailing bytes.
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .stream_descriptors_for_video(
             0,
@@ -128,6 +133,7 @@ fn family_a_hdmv_video_registration_round_trips() {
                 &[0xFF, 0x1B, 0x44, 0x3F],
             )],
         )
+        .end_program()
         .build()
         .unwrap();
 
@@ -152,8 +158,10 @@ fn family_a_hdmv_video_registration_round_trips() {
 #[test]
 fn non_klva_registration_on_klv_pid_logs_warning() {
     let cfg = Config::builder()
+        .add_program(1, 0x1000)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
         .stream_descriptors_for_klv(0, vec![descriptors::registration(*b"VEND", &[])])
+        .end_program()
         .build()
         .unwrap();
     let _ = Muxer::new(cfg).unwrap();

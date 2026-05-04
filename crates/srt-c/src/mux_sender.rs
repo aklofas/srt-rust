@@ -37,9 +37,9 @@ pub struct SrtcMuxSender {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_sender_open(
     srt_url: *const libc::c_char,
-    cfg: *const SrtcMuxConfig,
+    cfg: *mut SrtcMuxConfig,
 ) -> *mut SrtcMuxSender {
-    let Some(cfg) = (unsafe { cfg.as_ref() }) else {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
         return std::ptr::null_mut();
     };
@@ -47,7 +47,7 @@ pub unsafe extern "C" fn srtc_mux_sender_open(
         Ok(u) => u,
         Err(()) => return std::ptr::null_mut(),
     };
-    let built = match cfg.builder.clone().build() {
+    let built = match cfg.build_config() {
         Ok(c) => c,
         Err(e) => {
             record_mux_error(&e);
@@ -313,10 +313,10 @@ pub struct SrtcManagedMuxSender {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_managed_mux_sender_open(
     srt_url: *const libc::c_char,
-    cfg: *const SrtcMuxConfig,
+    cfg: *mut SrtcMuxConfig,
     policy: *const SrtcReconnectPolicy,
 ) -> *mut SrtcManagedMuxSender {
-    let Some(cfg) = (unsafe { cfg.as_ref() }) else {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
         return std::ptr::null_mut();
     };
@@ -328,7 +328,7 @@ pub unsafe extern "C" fn srtc_managed_mux_sender_open(
         Ok(u) => u,
         Err(()) => return std::ptr::null_mut(),
     };
-    let built = match cfg.builder.clone().build() {
+    let built = match cfg.build_config() {
         Ok(c) => c,
         Err(e) => {
             record_mux_error(&e);

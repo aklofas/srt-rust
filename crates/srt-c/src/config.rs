@@ -5,7 +5,8 @@
 
 use crate::error::{SrtcError, set_last_error};
 use crate::handle::{SRTC_INVALID_STREAM_HANDLE, SrtcKlvStreamHandle, SrtcVideoStreamHandle};
-use srt_core::mpegts::mux::{ConfigBuilder, KlvStreamType, VideoCodec};
+use srt_core::error::MuxError;
+use srt_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
 use srt_core::pipeline::{
     BackoffStrategy, OverflowPolicy, RawSenderConfig, ReconnectPolicy, TsFramingMode,
     TsSenderConfig,
@@ -19,16 +20,64 @@ use std::time::Duration;
 /// Opaque mux-config builder. Constructed via `srtc_mux_config_new`,
 /// populated with setters, consumed by `srtc_*_open` (which clones the
 /// inner). Caller is responsible for calling `srtc_mux_config_free`.
+///
+/// Internally stores the accumulated state as a `ConfigBuilder` that has
+/// already opened a single-program block via `add_program(1, 0x1000)`.
+/// `build_config()` closes the program block and calls `.build()`.
 pub struct SrtcMuxConfig {
-    pub(crate) builder: ConfigBuilder,
+    /// In-progress builder. Always holds a `ProgramBuilder` returned by
+    /// `ConfigBuilder::add_program` — we store it as a raw enum so we can
+    /// move it out and pass it through `mem::replace`. Since
+    /// `ProgramBuilder` is not `Clone`, we use `Option` + `unwrap` here;
+    /// the `Option` is always `Some` while the config is live.
+    pub(crate) program_builder: Option<srt_core::mpegts::mux::ProgramBuilder>,
+    /// Top-level interval / buffer overrides (set before or between
+    /// add_program blocks; we carry them separately and apply at
+    /// build_config() time because they live on `ConfigBuilder`, not on
+    /// `ProgramBuilder`).
+    pub(crate) pcr_interval_ms: Option<u32>,
+    pub(crate) psi_interval_ms: Option<u32>,
+    pub(crate) buffer_packets: Option<usize>,
     pub(crate) video_count: u32,
     pub(crate) klv_count: u32,
+}
+
+impl SrtcMuxConfig {
+    /// Finish building and return a validated `Config`.
+    ///
+    /// Takes the `ProgramBuilder` out of `self`, closes the program block
+    /// with `end_program()`, applies top-level overrides, and calls
+    /// `ConfigBuilder::build()`.
+    pub(crate) fn build_config(&mut self) -> Result<Config, MuxError> {
+        let pb = self
+            .program_builder
+            .take()
+            .expect("SrtcMuxConfig: program_builder already consumed");
+        let mut cb = pb.end_program();
+        if let Some(ms) = self.pcr_interval_ms {
+            cb = cb.pcr_interval_ms(ms);
+        }
+        if let Some(ms) = self.psi_interval_ms {
+            cb = cb.psi_interval_ms(ms);
+        }
+        if let Some(n) = self.buffer_packets {
+            cb = cb.buffer_packets(n);
+        }
+        let cfg = cb.build()?;
+        // Re-open the program block so the config can be used again (the
+        // C API allows free after _open, but tests call _open twice).
+        self.program_builder = Some(Config::builder().add_program(1, 0x1000));
+        Ok(cfg)
+    }
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_config_new() -> *mut SrtcMuxConfig {
     Box::into_raw(Box::new(SrtcMuxConfig {
-        builder: ConfigBuilder::default(),
+        program_builder: Some(Config::builder().add_program(1, 0x1000)),
+        pcr_interval_ms: None,
+        psi_interval_ms: None,
+        buffer_packets: None,
         video_count: 0,
         klv_count: 0,
     }))
@@ -55,8 +104,8 @@ pub unsafe extern "C" fn srtc_mux_config_add_video(
         SrtcVideoCodec::H264 => VideoCodec::H264,
         SrtcVideoCodec::H265 => VideoCodec::H265,
     };
-    let taken = std::mem::take(&mut cfg.builder);
-    cfg.builder = taken.add_video(pid, codec);
+    let pb = cfg.program_builder.take().expect("program_builder missing");
+    cfg.program_builder = Some(pb.add_video(pid, codec));
     cfg.video_count += 1;
     0
 }
@@ -76,8 +125,8 @@ pub unsafe extern "C" fn srtc_mux_config_add_klv(
         SrtcKlvStreamType::PrivateData => KlvStreamType::PrivateData,
         SrtcKlvStreamType::SynchronousMetadata => KlvStreamType::SynchronousMetadata,
     };
-    let taken = std::mem::take(&mut cfg.builder);
-    cfg.builder = taken.add_klv(pid, stream_type, carries_pts);
+    let pb = cfg.program_builder.take().expect("program_builder missing");
+    cfg.program_builder = Some(pb.add_klv(pid, stream_type, carries_pts));
     cfg.klv_count += 1;
     0
 }
@@ -106,8 +155,8 @@ pub unsafe extern "C" fn srtc_mux_config_add_video_stream(
         SrtcVideoCodec::H264 => VideoCodec::H264,
         SrtcVideoCodec::H265 => VideoCodec::H265,
     };
-    let taken = std::mem::take(&mut cfg.builder);
-    cfg.builder = taken.add_video(pid, codec);
+    let pb = cfg.program_builder.take().expect("program_builder missing");
+    cfg.program_builder = Some(pb.add_video(pid, codec));
     let handle = cfg.video_count;
     cfg.video_count += 1;
     handle
@@ -138,8 +187,8 @@ pub unsafe extern "C" fn srtc_mux_config_add_klv_stream(
         SrtcKlvStreamType::PrivateData => KlvStreamType::PrivateData,
         SrtcKlvStreamType::SynchronousMetadata => KlvStreamType::SynchronousMetadata,
     };
-    let taken = std::mem::take(&mut cfg.builder);
-    cfg.builder = taken.add_klv(pid, stream_type, carries_pts);
+    let pb = cfg.program_builder.take().expect("program_builder missing");
+    cfg.program_builder = Some(pb.add_klv(pid, stream_type, carries_pts));
     let handle = cfg.klv_count;
     cfg.klv_count += 1;
     handle
@@ -154,8 +203,8 @@ pub unsafe extern "C" fn srtc_mux_config_set_pcr_pid(
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
         return SrtcError::InvalidConfig as i32;
     };
-    let taken = std::mem::take(&mut cfg.builder);
-    cfg.builder = taken.pcr_pid(pid);
+    let pb = cfg.program_builder.take().expect("program_builder missing");
+    cfg.program_builder = Some(pb.pcr_pid(pid));
     0
 }
 
@@ -168,8 +217,7 @@ pub unsafe extern "C" fn srtc_mux_config_set_pcr_interval_ms(
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
         return SrtcError::InvalidConfig as i32;
     };
-    let taken = std::mem::take(&mut cfg.builder);
-    cfg.builder = taken.pcr_interval_ms(ms);
+    cfg.pcr_interval_ms = Some(ms);
     0
 }
 
@@ -182,8 +230,7 @@ pub unsafe extern "C" fn srtc_mux_config_set_psi_interval_ms(
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
         return SrtcError::InvalidConfig as i32;
     };
-    let taken = std::mem::take(&mut cfg.builder);
-    cfg.builder = taken.psi_interval_ms(ms);
+    cfg.psi_interval_ms = Some(ms);
     0
 }
 
@@ -196,8 +243,7 @@ pub unsafe extern "C" fn srtc_mux_config_set_buffer_packets(
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
         return SrtcError::InvalidConfig as i32;
     };
-    let taken = std::mem::take(&mut cfg.builder);
-    cfg.builder = taken.buffer_packets(n);
+    cfg.buffer_packets = Some(n);
     0
 }
 

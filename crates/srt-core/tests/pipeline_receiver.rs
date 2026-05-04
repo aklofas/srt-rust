@@ -108,9 +108,11 @@ fn drain_to_chunks(mux: &mut Muxer, chunk_size: usize) -> (VecDeque<Vec<u8>>, us
 /// syncer lock and emit events.
 fn build_and_preload_muxer() -> Muxer {
     let cfg = ConfigBuilder::default()
+        .psi_interval_ms(10)
+        .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
-        .psi_interval_ms(10)
+        .end_program()
         .build()
         .unwrap();
     let mut m = Muxer::new(cfg).unwrap();

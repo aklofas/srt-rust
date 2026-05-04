@@ -529,3 +529,27 @@ the trigger that would unblock it.
 - **Trigger to revisit:** Next breaking-change cycle, OR a consumer
   reports needing the `srt_close` rc (e.g., to distinguish
   graceful-close from race-close errors).
+
+## Pre-emptive close cancellation at the C ABI
+
+- **Status:** The Rust core ships `srt::CancelHandle` plus
+  `Transport::cancel_handle()` / `RecvTransport::cancel_handle()` and
+  threads them through every sender + receiver shell.
+  `Sender::close()` cancels-first to unblock a peer thread parked in
+  libsrt's `srt_sendmsg`. The `srt-c` ABI surface is deferred.
+- **Why deferred:** The C ABI's `Handle<T>` (= `Mutex<Option<T>>`) has
+  the same blocking issue at the C layer that the Rust shells had —
+  `srtc_*_close` waits on the handle's mutex, so it competes with a
+  parked C-side data-path call. Fixing it cleanly means giving every
+  C handle type a separate cancel-token field outside the mutex, plus
+  a `srtc_*_cancel(handle)` entry point per variant. That work is
+  scoped to land alongside the receiver-side C ABI plan so both
+  designs reach the C surface in one coherent shape (e.g. cancel
+  semantics for the future `srtc_receiver_t` recv loop are designed
+  jointly with the existing sender variants, rather than retrofitting
+  later).
+- **Trigger to revisit:** The receiver-side C ABI design lands and
+  pulls cancel into its scope. At that point all six sender variants
+  plus the new receiver variants gain `_cancel` entry points and
+  thread-safe cancel tokens; the cancel tokens map directly to the
+  Rust-side `Box<dyn TransportCancel>` already exposed.

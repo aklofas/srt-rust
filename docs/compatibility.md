@@ -327,7 +327,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | Live-socket roundtrip test | ✅ Full | `tests/live_pair.rs` binds a real `Listener` on 127.0.0.1, connects `srtc_mux_sender_t`, sends a NAL, asserts the listener receives a TS sync byte. |
 | Linux x86_64 build | ✅ Full | cdylib + staticlib + cbindgen header + pkg-config. |
 | macOS / Windows / Linux aarch64 | ⏳ Planned | Cross-compilation follows demonstrated demand. |
-| Pre-emptive close cancellation while parked in libsrt | ⏳ Planned | Close blocks until any in-flight send returns; tightening to libsrt's "close-anywhere unblocks the parked send" idiom is a follow-up. |
+| Pre-emptive close cancellation while parked in libsrt | ✅ Full | `Sender::close()` (and the underlying `Socket::cancel_handle()`) atomically closes the SRT handle from any thread, unblocking a peer thread parked in `srt_sendmsg`/`srt_recvmsg`. See `guide-pipeline.md`. |
 
 ---
 

@@ -641,6 +641,42 @@ The receive surface distinguishes three end-of-stream signals:
   discouraged — the demuxer's reassembly state is undefined past a bad
   PES header. Treat as stream-fatal until lenient PES recovery lands.
 
+## Out-of-band cancellation
+
+By default `Sender` (and `Receiver`, `TsReceiver`, etc.) hold their
+underlying transport behind an internal lock. A naive `close()` would
+have to wait for any in-flight `send_*`/`recv_*` call to return before
+it could acquire that lock — which means a thread parked inside
+libsrt's `srt_sendmsg` (e.g. when the peer stopped draining and
+back-pressure built up) would block the close indefinitely.
+
+Every shell exposes a `cancel_handle()` that returns a clone-able,
+`Send + Sync` token. Calling `.cancel()` on that token from any thread
+atomically closes the underlying SRT handle, which causes any thread
+parked inside libsrt to return promptly (typically as
+`TransportError::Broken`).
+
+`Sender::close()` already does this internally — a `close()` call from
+a watchdog thread wakes any sender thread parked inside `send_video`
+within milliseconds, then completes. You only need to grab a
+`cancel_handle()` directly when you want to keep the shell alive but
+still wake a worker:
+
+```rust,ignore
+let s = Arc::new(Sender::new(config, transport)?);
+let cancel = s.cancel_handle().expect("real SRT transport supports cancel");
+
+// Worker thread parks in s.send_video(...) when peer back-pressures.
+let s_worker = s.clone();
+std::thread::spawn(move || s_worker.send_video(&nal, pts, true));
+
+// On a SIGINT or watchdog timeout, wake the worker out-of-band:
+cancel.cancel();
+```
+
+`cancel()` is idempotent: calling it many times (or from multiple
+threads concurrently) closes the SRT handle exactly once.
+
 ## Examples
 
 Eight runnable examples cover the pipeline surface — four send, four receive.

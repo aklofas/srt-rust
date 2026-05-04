@@ -49,12 +49,16 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H264Sps, ParseError> {
     let bit_reader = BitReader::new(byte_reader);
     let parsed = SeqParameterSet::from_bits(bit_reader)
         .map_err(|e| ParseError::EngineError(format!("{e:?}")))?;
-    Ok(convert_sps(&parsed, rbsp))
+    convert_sps(&parsed, rbsp)
 }
 
-fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> H264Sps {
+fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> Result<H264Sps, ParseError> {
     // pixel_dimensions() implements the spec crop math correctly.
-    let (width, height) = p.pixel_dimensions().unwrap_or((0, 0));
+    // Propagate errors (FieldValueTooLarge, CroppingError) rather than
+    // silently returning (0, 0) on malformed streams.
+    let (width, height) = p
+        .pixel_dimensions()
+        .map_err(|e| ParseError::EngineError(format!("{e:?}")))?;
 
     let chroma_format = match p.chroma_info.chroma_format {
         h264_reader::nal::sps::ChromaFormat::Monochrome => ChromaFormat::Monochrome,
@@ -66,7 +70,7 @@ fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> H264Sps {
 
     let frame_mbs_only = matches!(p.frame_mbs_flags, h264_reader::nal::sps::FrameMbsFlags::Frames);
 
-    H264Sps {
+    Ok(H264Sps {
         seq_parameter_set_id: p.seq_parameter_set_id.id(),
         width,
         height,
@@ -83,7 +87,7 @@ fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> H264Sps {
         has_b_frames: extract_has_b_frames(p),
         color: extract_color(p),
         raw_rbsp: rbsp.to_vec(),
-    }
+    })
 }
 
 fn extract_frame_rate(p: &SeqParameterSet) -> Option<Rational> {

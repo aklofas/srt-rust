@@ -79,46 +79,88 @@ impl StreamSpec {
 
 /// Opaque handle to a configured video stream on a `Muxer`.
 ///
-/// Obtained from [`Muxer::video_handles`] / [`Muxer::video_stream_handle`].
+/// Obtained from [`Muxer::video_handles`] / [`Muxer::video_stream_handle`] /
+/// [`Muxer::video_handles_for_program`].
 /// Handles are valid only on the muxer that produced them; passing a handle
 /// to a different muxer is rejected with [`MuxError::InvalidStreamHandle`].
 ///
-/// The internal index is the ordinal position among video streams in
-/// [`Config::streams`] (filtered to `StreamSpec::Video` only). Callers can
-/// rely on the handles being assigned in the order video streams were
-/// added to the builder.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct VideoStreamHandle(usize);
+/// The internal representation encodes `(program_index, within_program_index)`
+/// in a packed `u32`. Callers treat this as an opaque token.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct VideoStreamHandle(u32);
+
+impl std::fmt::Debug for VideoStreamHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (prog, within) = self.unpack();
+        write!(f, "VideoStreamHandle(prog={prog}, stream={within})")
+    }
+}
 
 /// Opaque handle to a configured KLV stream on a `Muxer`.
 ///
 /// Same semantics as [`VideoStreamHandle`] but for KLV streams.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct KlvStreamHandle(usize);
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KlvStreamHandle(u32);
+
+impl std::fmt::Debug for KlvStreamHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (prog, within) = self.unpack();
+        write!(f, "KlvStreamHandle(prog={prog}, stream={within})")
+    }
+}
 
 impl VideoStreamHandle {
-    pub fn new(index: usize) -> Self {
-        Self(index)
+    /// Pack `(program_index, within_program_index)` into the opaque u32.
+    ///
+    /// Bit layout: bits 0..=3 = within_program_index (0..=15),
+    /// bits 4..=7 = program_index (0..=15), upper bits zero.
+    ///
+    /// Public so `srt-c` can construct handles at the FFI boundary. Single-
+    /// program callers pass `program_index = 0`.
+    pub fn pack(program_index: usize, within_index: usize) -> Self {
+        debug_assert!(program_index < MAX_PROGRAMS);
+        debug_assert!(within_index < 16);
+        Self(((program_index as u32) << 4) | (within_index as u32))
     }
-    pub fn index(self) -> usize {
-        self.0
+
+    /// Unpack the opaque u32 into `(program_index, within_program_index)`.
+    pub fn unpack(self) -> (usize, usize) {
+        let prog = ((self.0 >> 4) & 0x0F) as usize;
+        let within = (self.0 & 0x0F) as usize;
+        (prog, within)
     }
+
     #[cfg(test)]
-    pub(crate) fn for_test(index: usize) -> Self {
-        Self(index)
+    pub(crate) fn for_test(raw: usize) -> Self {
+        // Bypass packing — store raw as opaque u32 so out-of-range test values
+        // (e.g. 99) survive the debug_assert in pack() without triggering it.
+        Self(raw as u32)
     }
 }
 
 impl KlvStreamHandle {
-    pub fn new(index: usize) -> Self {
-        Self(index)
+    /// Pack `(program_index, within_program_index)` into the opaque u32.
+    ///
+    /// Same bit layout as [`VideoStreamHandle::pack`]. Public so `srt-c`
+    /// can construct handles at the FFI boundary.
+    pub fn pack(program_index: usize, within_index: usize) -> Self {
+        debug_assert!(program_index < MAX_PROGRAMS);
+        debug_assert!(within_index < 16);
+        Self(((program_index as u32) << 4) | (within_index as u32))
     }
-    pub fn index(self) -> usize {
-        self.0
+
+    /// Unpack the opaque u32 into `(program_index, within_program_index)`.
+    pub fn unpack(self) -> (usize, usize) {
+        let prog = ((self.0 >> 4) & 0x0F) as usize;
+        let within = (self.0 & 0x0F) as usize;
+        (prog, within)
     }
+
     #[cfg(test)]
-    pub(crate) fn for_test(index: usize) -> Self {
-        Self(index)
+    pub(crate) fn for_test(raw: usize) -> Self {
+        // Bypass packing — store raw as opaque u32 so out-of-range test values
+        // survive the debug_assert in pack() without triggering it.
+        Self(raw as u32)
     }
 }
 
@@ -368,17 +410,15 @@ impl Config {
                 }
             }
 
-            // Per-program PMT size budget. NOTE: estimate_pmt_section_size
-            // does NOT exist yet — it's added in Task 4. For now, leave a
-            // TODO comment and skip the size check. Task 4 uncomments this:
-            //
-            //   let pmt_size = crate::mpegts::mux::psi::estimate_pmt_section_size(prog);
-            //   if pmt_size > crate::mpegts::mux::psi::MAX_PMT_SECTION_BYTES {
-            //       return Err(MuxError::PmtTooLarge {
-            //           used_bytes: pmt_size,
-            //           max_bytes: crate::mpegts::mux::psi::MAX_PMT_SECTION_BYTES,
-            //       });
-            //   }
+            // Per-program PMT size budget. Reject configs that would produce a
+            // PMT section body larger than 183 bytes (one TS packet payload).
+            let pmt_size = crate::mpegts::mux::psi::estimate_pmt_section_size(prog);
+            if pmt_size > crate::mpegts::mux::psi::MAX_PMT_SECTION_BYTES {
+                return Err(MuxError::PmtTooLarge {
+                    used_bytes: pmt_size,
+                    max_bytes: crate::mpegts::mux::psi::MAX_PMT_SECTION_BYTES,
+                });
+            }
         }
 
         // Cross-program checks: program_number unique, pmt_pid unique, all
@@ -437,73 +477,6 @@ impl Config {
         }
 
         Ok(())
-    }
-
-    /// TEMPORARY (removed in Task 3): convenience for code mid-migration.
-    /// Returns the streams of the first program. Panics if `programs` is empty.
-    #[doc(hidden)]
-    pub fn streams_compat_temp(&self) -> &[StreamSpec] {
-        &self.programs[0].streams
-    }
-
-    /// Resolve the PCR PID for the first program. If `pcr_pid` is `None`:
-    /// - prefer the first video stream's PID;
-    /// - if no video stream, use the first KLV stream's PID.
-    ///
-    /// Caller MUST have called `validate()` first; this helper assumes ≥1
-    /// stream in programs[0].
-    pub(crate) fn resolved_pcr_pid(&self) -> u16 {
-        let prog = &self.programs[0];
-        if let Some(pid) = prog.pcr_pid {
-            return pid;
-        }
-        if let Some(pid) = prog.streams.iter().find_map(|s| match s {
-            StreamSpec::Video { pid, .. } => Some(*pid),
-            _ => None,
-        }) {
-            return pid;
-        }
-        // No video — use the first KLV stream. validate() guarantees ≥1.
-        prog.streams
-            .iter()
-            .find_map(|s| match s {
-                StreamSpec::Klv { pid, .. } => Some(*pid),
-                _ => None,
-            })
-            .expect("validate() guarantees at least one stream")
-    }
-
-    /// Iterate over video streams in programs[0]. Convenience accessor for
-    /// the muxer's internals; callers shouldn't need this directly.
-    pub(crate) fn video_streams(&self) -> impl Iterator<Item = (u16, VideoCodec)> + '_ {
-        self.programs[0].streams.iter().filter_map(|s| match s {
-            StreamSpec::Video { pid, codec } => Some((*pid, *codec)),
-            _ => None,
-        })
-    }
-
-    /// Iterate over KLV streams in programs[0]. Convenience accessor for
-    /// the muxer's internals.
-    #[allow(clippy::type_complexity)]
-    pub(crate) fn klv_streams(&self) -> impl Iterator<Item = (u16, KlvStreamType, bool)> + '_ {
-        self.programs[0].streams.iter().filter_map(|s| match s {
-            StreamSpec::Klv {
-                pid,
-                stream_type,
-                carries_pts,
-            } => Some((*pid, *stream_type, *carries_pts)),
-            _ => None,
-        })
-    }
-
-    /// First video stream's PID in programs[0], if configured.
-    pub fn primary_video_pid(&self) -> Option<u16> {
-        self.video_streams().next().map(|(pid, _)| pid)
-    }
-
-    /// First KLV stream's PID in programs[0], if configured.
-    pub fn primary_klv_pid(&self) -> Option<u16> {
-        self.klv_streams().next().map(|(pid, _, _)| pid)
     }
 }
 
@@ -715,6 +688,19 @@ use self::pes::{
 use self::psi::{KLVA_REGISTRATION_DESCRIPTOR, PmtStreamEntry, write_pat_packet, write_pmt_packet};
 use self::ts::{AdaptationField, ContinuityCounters, write_packet};
 
+/// Per-video-stream cached state. Built once at `Muxer::new` time.
+struct VideoStreamState {
+    pid: u16,
+    codec: VideoCodec,
+}
+
+/// Per-KLV-stream cached state.
+struct KlvStreamState {
+    pid: u16,
+    stream_type: KlvStreamType,
+    carries_pts: bool,
+}
+
 /// Sender-side MPEG-TS muxer.
 ///
 /// Construct with `Muxer::new(config)`, push encoded frames via `push_video`
@@ -723,50 +709,40 @@ use self::ts::{AdaptationField, ContinuityCounters, write_packet};
 ///
 /// See the design doc for full semantics:
 /// `docs/specs/2026-05-01-srt-core-mpegts-mux-design.md`.
-/// Per-video-stream cached state. Built once at `Muxer::new` time.
-struct VideoStreamState {
-    pid: u16,
-    codec: VideoCodec,
-}
-
-/// Per-KLV-stream cached state. Each KLV stream tracks its own `last_pts`
-/// for the per-stream-clock decision (locked design point 4).
-struct KlvStreamState {
-    pid: u16,
-    stream_type: KlvStreamType,
-    carries_pts: bool,
-}
-
 pub struct Muxer {
     config: Config,
-    /// Per-stream pre-composed PMT descriptor bytes, indexed parallel to
-    /// `config.streams`. Each entry is the concatenation of:
-    ///   - auto-emitted bytes (KLVA Registration on PrivateData KLV PIDs,
-    ///     suppressed when caller supplies their own Registration), then
-    ///   - caller-supplied bytes from `config.stream_descriptors`.
-    ///
-    /// Borrowed at PMT emission time; never reallocated after construction.
-    pmt_descriptor_cache: Vec<Vec<u8>>,
-    /// One entry per video stream in `config.streams` (filtered to Video),
-    /// in the order they appear. Index = `VideoStreamHandle`.
-    video_streams: Vec<VideoStreamState>,
-    /// One entry per KLV stream. Index = `KlvStreamHandle`.
-    klv_streams: Vec<KlvStreamState>,
-    pcr_pid: u16,
+
+    /// Per-program pre-composed PMT descriptor bytes.
+    /// `pmt_descriptor_caches[prog_idx][stream_idx]` = concatenated TLVs for
+    /// that stream (KLVA auto-emit + caller-supplied). Indexed parallel to
+    /// `config.programs[prog_idx].streams`. Borrowed at PMT emission time;
+    /// never reallocated after construction.
+    pmt_descriptor_caches: Vec<Vec<Vec<u8>>>,
+
+    /// Per-program video stream state. `video_streams[prog_idx]` is the
+    /// list of video streams for program `prog_idx`, in declaration order.
+    /// `VideoStreamHandle::unpack()` → `(prog_idx, within_idx)` indexes here.
+    video_streams: Vec<Vec<VideoStreamState>>,
+
+    /// Per-program KLV stream state. Same indexing as `video_streams`.
+    klv_streams: Vec<Vec<KlvStreamState>>,
+
+    /// Per-program resolved PCR PID. Indexed parallel to `config.programs`.
+    pcr_pids: Vec<u16>,
+
     pcr_interval_27mhz: u64,
     psi_interval_90khz: i64,
 
     queue: VecDeque<[u8; 188]>,
     counters: ContinuityCounters,
 
-    /// Last PSI emission PTS, masked to 33 bits (0..2^33). None until first.
-    /// PSI cadence is single-timeline (driven by whichever push_*_to call
-    /// passed the most recent PTS) — that matches single-stream semantics
-    /// exactly when only one stream is configured.
-    last_psi_emission_pts: Option<u64>,
-    /// 27 MHz PCR value at the most recent PCR emission. None until first.
-    /// PCR rides one PID (`self.pcr_pid`) so a single timeline is correct.
-    last_pcr_emission_27mhz: Option<u64>,
+    /// Per-program last PSI emission PTS, masked to 33 bits. None until first.
+    /// Indexed parallel to `config.programs`.
+    psi_last: Vec<Option<u64>>,
+
+    /// Per-program last PCR emission value at 27 MHz. None until first.
+    /// Indexed parallel to `config.programs`.
+    pcr_last: Vec<Option<u64>>,
 
     // ── Stats counters ────────────────────────────────────────────────────
     ts_packets_emitted: u64,
@@ -783,118 +759,153 @@ impl Muxer {
     pub fn new(config: Config) -> Result<Self, MuxError> {
         config.validate()?;
 
-        // Build per-stream state in declaration order. Either vec may be
-        // empty (video-only or KLV-only output is valid as of Path 3);
-        // Config::validate enforces ≥1 stream of either kind.
-        let video_streams: Vec<VideoStreamState> = config
-            .video_streams()
-            .map(|(pid, codec)| VideoStreamState { pid, codec })
-            .collect();
-        let klv_streams: Vec<KlvStreamState> = config
-            .klv_streams()
-            .map(|(pid, stream_type, carries_pts)| KlvStreamState {
-                pid,
-                stream_type,
-                carries_pts,
-            })
-            .collect();
-
-        // Pre-compose per-stream descriptor bytes once. The auto-emitted
-        // KLVA Registration on PrivateData KLV PIDs is suppressed when the
-        // caller supplies their own Registration descriptor on the same
-        // PID — TSDuck and ffprobe both flag duplicate Registration
-        // descriptors, and the corpus shows real senders never duplicate.
-        let mut pmt_descriptor_cache: Vec<Vec<u8>> =
-            Vec::with_capacity(config.programs[0].streams.len());
-        for (i, spec) in config.programs[0].streams.iter().enumerate() {
-            let caller_descs = &config.programs[0].stream_descriptors[i];
-            let caller_has_registration = caller_descs
-                .iter()
-                .any(|tlv| !tlv.is_empty() && tlv[0] == 0x05);
-
-            // If a caller supplied a Registration descriptor on a KLV PID
-            // with a non-KLVA format_identifier, log a warning — they're
-            // probably tagging a vendor-specific KLV transport, but it
-            // means receivers won't recognize the stream as KLV via the
-            // standard registration path.
-            if matches!(spec, StreamSpec::Klv { .. }) {
-                for tlv in caller_descs {
-                    if tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] != b"KLVA" {
-                        tracing::warn!(
-                            "caller-supplied Registration descriptor on KLV PID has \
-                             non-KLVA format_identifier ({:?}); receivers may not \
-                             recognize the stream as KLV",
-                            std::str::from_utf8(&tlv[2..6]).unwrap_or("?")
-                        );
-                    }
-                }
-            }
-
-            let mut bytes = Vec::new();
-            if let StreamSpec::Klv {
-                stream_type: KlvStreamType::PrivateData,
-                ..
-            } = spec
-            {
-                if !caller_has_registration {
-                    bytes.extend_from_slice(KLVA_REGISTRATION_DESCRIPTOR);
-                }
-            }
-            for tlv in caller_descs {
-                bytes.extend_from_slice(tlv);
-            }
-            pmt_descriptor_cache.push(bytes);
-        }
-
-        let pcr_pid = config.resolved_pcr_pid();
+        let n_programs = config.programs.len();
         let pcr_interval_27mhz = (config.pcr_interval_ms as u64) * 27_000;
         let psi_interval_90khz = (config.psi_interval_ms as i64) * 90;
 
-        // Eagerly create per-stream stats entries for every configured stream.
-        // Identity fields (pid, stream_type) are set here and never change;
-        // flow counters (items, bytes, discontinuities) start at zero.
+        // Build per-program state vectors in a single pass over programs.
+        let mut video_streams: Vec<Vec<VideoStreamState>> = Vec::with_capacity(n_programs);
+        let mut klv_streams: Vec<Vec<KlvStreamState>> = Vec::with_capacity(n_programs);
+        let mut pcr_pids: Vec<u16> = Vec::with_capacity(n_programs);
+        let mut pmt_descriptor_caches: Vec<Vec<Vec<u8>>> = Vec::with_capacity(n_programs);
         let mut per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats> = BTreeMap::new();
-        for v in &video_streams {
-            let stream_type_byte = match v.codec {
-                VideoCodec::H264 => StreamType::H264.as_u8(),
-                VideoCodec::H265 => StreamType::H265.as_u8(),
-            };
-            per_stream.insert(
-                v.pid,
-                crate::mpegts::stats::StreamStats {
-                    pid: v.pid,
-                    stream_type: stream_type_byte,
-                    ..Default::default()
-                },
-            );
-        }
-        for k in &klv_streams {
-            let stream_type_byte = match k.stream_type {
-                KlvStreamType::PrivateData => StreamType::KlvPrivate.as_u8(),
-                KlvStreamType::SynchronousMetadata => StreamType::KlvSyncMetadata.as_u8(),
-            };
-            per_stream.insert(
-                k.pid,
-                crate::mpegts::stats::StreamStats {
-                    pid: k.pid,
-                    stream_type: stream_type_byte,
-                    ..Default::default()
-                },
-            );
+
+        for prog in &config.programs {
+            // Per-program video + KLV stream state.
+            let prog_video: Vec<VideoStreamState> = prog
+                .streams
+                .iter()
+                .filter_map(|s| match s {
+                    StreamSpec::Video { pid, codec } => Some(VideoStreamState {
+                        pid: *pid,
+                        codec: *codec,
+                    }),
+                    _ => None,
+                })
+                .collect();
+            let prog_klv: Vec<KlvStreamState> = prog
+                .streams
+                .iter()
+                .filter_map(|s| match s {
+                    StreamSpec::Klv {
+                        pid,
+                        stream_type,
+                        carries_pts,
+                    } => Some(KlvStreamState {
+                        pid: *pid,
+                        stream_type: *stream_type,
+                        carries_pts: *carries_pts,
+                    }),
+                    _ => None,
+                })
+                .collect();
+
+            // Resolve PCR PID for this program: caller-pin or auto-fallback.
+            let pcr_pid = prog.pcr_pid.unwrap_or_else(|| {
+                prog.streams
+                    .iter()
+                    .find_map(|s| match s {
+                        StreamSpec::Video { pid, .. } => Some(*pid),
+                        _ => None,
+                    })
+                    .or_else(|| {
+                        prog.streams.iter().find_map(|s| match s {
+                            StreamSpec::Klv { pid, .. } => Some(*pid),
+                            _ => None,
+                        })
+                    })
+                    .expect("validate() guarantees ≥1 stream per program")
+            });
+
+            // Pre-compose per-stream descriptor bytes for this program.
+            // The auto-emitted KLVA Registration on PrivateData KLV PIDs is
+            // suppressed when the caller supplies their own Registration
+            // descriptor — TSDuck and ffprobe both flag duplicate Registrations,
+            // and the corpus shows real senders never duplicate.
+            let mut prog_cache: Vec<Vec<u8>> = Vec::with_capacity(prog.streams.len());
+            for (i, spec) in prog.streams.iter().enumerate() {
+                let caller_descs = &prog.stream_descriptors[i];
+                let caller_has_registration = caller_descs
+                    .iter()
+                    .any(|tlv| !tlv.is_empty() && tlv[0] == 0x05);
+
+                if matches!(spec, StreamSpec::Klv { .. }) {
+                    for tlv in caller_descs {
+                        if tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] != b"KLVA" {
+                            tracing::warn!(
+                                "caller-supplied Registration descriptor on KLV PID has \
+                                 non-KLVA format_identifier ({:?}); receivers may not \
+                                 recognize the stream as KLV",
+                                std::str::from_utf8(&tlv[2..6]).unwrap_or("?")
+                            );
+                        }
+                    }
+                }
+
+                let mut bytes = Vec::new();
+                if let StreamSpec::Klv {
+                    stream_type: KlvStreamType::PrivateData,
+                    ..
+                } = spec
+                {
+                    if !caller_has_registration {
+                        bytes.extend_from_slice(KLVA_REGISTRATION_DESCRIPTOR);
+                    }
+                }
+                for tlv in caller_descs {
+                    bytes.extend_from_slice(tlv);
+                }
+                prog_cache.push(bytes);
+            }
+
+            // Eagerly create per-stream stats entries.
+            for v in &prog_video {
+                let stream_type_byte = match v.codec {
+                    VideoCodec::H264 => StreamType::H264.as_u8(),
+                    VideoCodec::H265 => StreamType::H265.as_u8(),
+                };
+                per_stream.insert(
+                    v.pid,
+                    crate::mpegts::stats::StreamStats {
+                        pid: v.pid,
+                        stream_type: stream_type_byte,
+                        ..Default::default()
+                    },
+                );
+            }
+            for k in &prog_klv {
+                let stream_type_byte = match k.stream_type {
+                    KlvStreamType::PrivateData => StreamType::KlvPrivate.as_u8(),
+                    KlvStreamType::SynchronousMetadata => StreamType::KlvSyncMetadata.as_u8(),
+                };
+                per_stream.insert(
+                    k.pid,
+                    crate::mpegts::stats::StreamStats {
+                        pid: k.pid,
+                        stream_type: stream_type_byte,
+                        ..Default::default()
+                    },
+                );
+            }
+
+            video_streams.push(prog_video);
+            klv_streams.push(prog_klv);
+            pcr_pids.push(pcr_pid);
+            pmt_descriptor_caches.push(prog_cache);
         }
 
         Ok(Self {
             config,
-            pmt_descriptor_cache,
+            pmt_descriptor_caches,
             video_streams,
             klv_streams,
-            pcr_pid,
+            pcr_pids,
             pcr_interval_27mhz,
             psi_interval_90khz,
             queue: VecDeque::with_capacity(64),
             counters: ContinuityCounters::new(),
-            last_psi_emission_pts: None,
-            last_pcr_emission_27mhz: None,
+            psi_last: vec![None; n_programs],
+            pcr_last: vec![None; n_programs],
             ts_packets_emitted: 0,
             ts_bytes_emitted: 0,
             per_stream,
@@ -918,14 +929,15 @@ impl Muxer {
         key_frame: bool,
     ) -> Result<(), MuxError> {
         // The single-target API only resolves when exactly one video stream
-        // is configured. N=0 and N>1 are both ambiguous.
-        if self.video_streams.len() != 1 {
+        // is configured across all programs. N=0 and N>1 are both ambiguous.
+        let total_video: usize = self.video_streams.iter().map(|v| v.len()).sum();
+        if total_video != 1 {
             return Err(MuxError::AmbiguousTarget {
                 kind: "video",
-                count: self.video_streams.len(),
+                count: total_video,
             });
         }
-        let handle = VideoStreamHandle::new(0);
+        let handle = VideoStreamHandle::pack(0, 0);
         self.push_video_to(handle, nal, pts_90khz, key_frame)
     }
 
@@ -935,13 +947,14 @@ impl Muxer {
     /// `carries_pts: true` in [`StreamSpec::Klv`]; ignored otherwise.
     /// Returns `Err(MuxError::BufferFull)` like `push_video`.
     pub fn push_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
-        if self.klv_streams.len() != 1 {
+        let total_klv: usize = self.klv_streams.iter().map(|k| k.len()).sum();
+        if total_klv != 1 {
             return Err(MuxError::AmbiguousTarget {
                 kind: "klv",
-                count: self.klv_streams.len(),
+                count: total_klv,
             });
         }
-        let handle = KlvStreamHandle::new(0);
+        let handle = KlvStreamHandle::pack(0, 0);
         self.push_klv_to(handle, klv, pts_90khz)
     }
 
@@ -966,38 +979,86 @@ impl Muxer {
         n
     }
 
-    /// All `VideoStreamHandle`s for this muxer, in declaration order.
-    /// Returns one handle per `StreamSpec::Video` in the original config.
+    /// All `VideoStreamHandle`s for this muxer, in `(program, within-program)`
+    /// declaration order. One handle per `StreamSpec::Video` across all programs.
     pub fn video_handles(&self) -> Vec<VideoStreamHandle> {
-        (0..self.video_streams.len())
-            .map(VideoStreamHandle::new)
+        self.video_streams
+            .iter()
+            .enumerate()
+            .flat_map(|(p_idx, prog)| {
+                (0..prog.len()).map(move |s_idx| VideoStreamHandle::pack(p_idx, s_idx))
+            })
             .collect()
     }
 
-    /// All `KlvStreamHandle`s for this muxer, in declaration order.
+    /// All `KlvStreamHandle`s for this muxer, in `(program, within-program)`
+    /// declaration order. One handle per `StreamSpec::Klv` across all programs.
     pub fn klv_handles(&self) -> Vec<KlvStreamHandle> {
-        (0..self.klv_streams.len())
-            .map(KlvStreamHandle::new)
+        self.klv_streams
+            .iter()
+            .enumerate()
+            .flat_map(|(p_idx, prog)| {
+                (0..prog.len()).map(move |s_idx| KlvStreamHandle::pack(p_idx, s_idx))
+            })
             .collect()
     }
 
-    /// Handle for the i-th video stream, or `None` if out of range.
-    /// Convenience for callers who add streams in known order.
+    /// Handle for the i-th video stream in programs[0], or `None` if out of
+    /// range. Convenience for single-program callers.
     pub fn video_stream_handle(&self, index: usize) -> Option<VideoStreamHandle> {
-        if index < self.video_streams.len() {
-            Some(VideoStreamHandle::new(index))
+        if !self.video_streams.is_empty() && index < self.video_streams[0].len() {
+            Some(VideoStreamHandle::pack(0, index))
         } else {
             None
         }
     }
 
-    /// Handle for the i-th KLV stream, or `None` if out of range.
+    /// Handle for the i-th KLV stream in programs[0], or `None` if out of
+    /// range. Convenience for single-program callers.
     pub fn klv_stream_handle(&self, index: usize) -> Option<KlvStreamHandle> {
-        if index < self.klv_streams.len() {
-            Some(KlvStreamHandle::new(index))
+        if !self.klv_streams.is_empty() && index < self.klv_streams[0].len() {
+            Some(KlvStreamHandle::pack(0, index))
         } else {
             None
         }
+    }
+
+    /// Video stream handles for the named program, in declaration order.
+    ///
+    /// Returns `Err(MuxError::ProgramNotFound)` if no program with the given
+    /// number exists.
+    pub fn video_handles_for_program(
+        &self,
+        program_number: u16,
+    ) -> Result<Vec<VideoStreamHandle>, MuxError> {
+        let prog_idx = self
+            .config
+            .programs
+            .iter()
+            .position(|p| p.program_number == program_number)
+            .ok_or(MuxError::ProgramNotFound { program_number })?;
+        Ok((0..self.video_streams[prog_idx].len())
+            .map(|s_idx| VideoStreamHandle::pack(prog_idx, s_idx))
+            .collect())
+    }
+
+    /// KLV stream handles for the named program, in declaration order.
+    ///
+    /// Returns `Err(MuxError::ProgramNotFound)` if no program with the given
+    /// number exists.
+    pub fn klv_handles_for_program(
+        &self,
+        program_number: u16,
+    ) -> Result<Vec<KlvStreamHandle>, MuxError> {
+        let prog_idx = self
+            .config
+            .programs
+            .iter()
+            .position(|p| p.program_number == program_number)
+            .ok_or(MuxError::ProgramNotFound { program_number })?;
+        Ok((0..self.klv_streams[prog_idx].len())
+            .map(|s_idx| KlvStreamHandle::pack(prog_idx, s_idx))
+            .collect())
     }
 
     /// Push one H.264 / H.265 access unit on a specific video stream.
@@ -1018,14 +1079,17 @@ impl Muxer {
     ) -> Result<(), MuxError> {
         validate_annex_b(nal)?;
 
-        let idx = handle.index();
-        if idx >= self.video_streams.len() {
+        let (prog_idx, within_idx) = handle.unpack();
+        if prog_idx >= self.video_streams.len() || within_idx >= self.video_streams[prog_idx].len()
+        {
+            // Report the raw packed value as an opaque index so the error message
+            // carries the full handle encoding without confusing prog vs within.
             return Err(MuxError::InvalidStreamHandle {
                 kind: "video",
-                index: idx,
+                index: handle.0 as usize,
             });
         }
-        let video_pid = self.video_streams[idx].pid;
+        let video_pid = self.video_streams[prog_idx][within_idx].pid;
 
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
         let header_len = write_pes_header(
@@ -1037,7 +1101,11 @@ impl Muxer {
 
         let total = header_len + nal.len();
         let video_packets = ts_packets_for(total);
-        let psi_packets = if self.psi_due(pts_90khz) { 2 } else { 0 };
+        let psi_packets = if self.psi_due(prog_idx, pts_90khz) {
+            2
+        } else {
+            0
+        };
 
         if self.queue.len() + psi_packets + video_packets > self.config.buffer_packets {
             return Err(MuxError::BufferFull {
@@ -1045,7 +1113,7 @@ impl Muxer {
             });
         }
 
-        self.maybe_emit_psi(pts_90khz);
+        self.maybe_emit_psi(prog_idx, pts_90khz);
 
         let mut pes_buf = Vec::with_capacity(total);
         pes_buf.extend_from_slice(&header[..header_len]);
@@ -1059,10 +1127,10 @@ impl Muxer {
                 if key_frame {
                     adaptation.random_access = true;
                 }
-                if self.pcr_pid == video_pid && self.pcr_due(pts_90khz) {
+                if self.pcr_pids[prog_idx] == video_pid && self.pcr_due(prog_idx, pts_90khz) {
                     let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
                     adaptation.pcr = Some(pcr);
-                    self.last_pcr_emission_27mhz = Some(pcr.0);
+                    self.pcr_last[prog_idx] = Some(pcr.0);
                 }
             }
             let mut pkt = [0u8; 188];
@@ -1102,14 +1170,14 @@ impl Muxer {
         klv: &[u8],
         pts_90khz: i64,
     ) -> Result<(), MuxError> {
-        let idx = handle.index();
-        if idx >= self.klv_streams.len() {
+        let (prog_idx, within_idx) = handle.unpack();
+        if prog_idx >= self.klv_streams.len() || within_idx >= self.klv_streams[prog_idx].len() {
             return Err(MuxError::InvalidStreamHandle {
                 kind: "klv",
-                index: idx,
+                index: handle.0 as usize,
             });
         }
-        let k = &self.klv_streams[idx];
+        let k = &self.klv_streams[prog_idx][within_idx];
         let klv_pid = k.pid;
         let klv_carries_pts = k.carries_pts;
 
@@ -1138,7 +1206,11 @@ impl Muxer {
 
         let total = header_len + klv.len();
         let klv_packets = ts_packets_for(total);
-        let psi_packets = if self.psi_due(pts_90khz) { 2 } else { 0 };
+        let psi_packets = if self.psi_due(prog_idx, pts_90khz) {
+            2
+        } else {
+            0
+        };
 
         if self.queue.len() + psi_packets + klv_packets > self.config.buffer_packets {
             return Err(MuxError::BufferFull {
@@ -1146,7 +1218,7 @@ impl Muxer {
             });
         }
 
-        self.maybe_emit_psi(pts_90khz);
+        self.maybe_emit_psi(prog_idx, pts_90khz);
 
         let mut pes_buf = Vec::with_capacity(total);
         pes_buf.extend_from_slice(&header[..header_len]);
@@ -1156,10 +1228,10 @@ impl Muxer {
         let mut first = true;
         while cursor < pes_buf.len() {
             let mut adaptation = AdaptationField::default();
-            if first && self.pcr_pid == klv_pid && self.pcr_due(pts_90khz) {
+            if first && self.pcr_pids[prog_idx] == klv_pid && self.pcr_due(prog_idx, pts_90khz) {
                 let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
                 adaptation.pcr = Some(pcr);
-                self.last_pcr_emission_27mhz = Some(pcr.0);
+                self.pcr_last[prog_idx] = Some(pcr.0);
             }
             let mut pkt = [0u8; 188];
             let result = write_packet(
@@ -1211,8 +1283,8 @@ impl Muxer {
         }
     }
 
-    fn psi_due(&self, pts_90khz: i64) -> bool {
-        match self.last_psi_emission_pts {
+    fn psi_due(&self, prog_idx: usize, pts_90khz: i64) -> bool {
+        match self.psi_last[prog_idx] {
             None => true,
             Some(last_masked) => {
                 let now_masked = Pts90khz(pts_90khz).masked_33bit();
@@ -1222,8 +1294,8 @@ impl Muxer {
         }
     }
 
-    fn pcr_due(&self, pts_90khz: i64) -> bool {
-        match self.last_pcr_emission_27mhz {
+    fn pcr_due(&self, prog_idx: usize, pts_90khz: i64) -> bool {
+        match self.pcr_last[prog_idx] {
             None => true,
             Some(last) => {
                 // PCR is at 27 MHz; the 33-bit base wraps at 2^33 base ticks.
@@ -1239,17 +1311,18 @@ impl Muxer {
         }
     }
 
-    fn maybe_emit_psi(&mut self, pts_90khz: i64) {
-        if !self.psi_due(pts_90khz) {
+    fn maybe_emit_psi(&mut self, prog_idx: usize, pts_90khz: i64) {
+        if !self.psi_due(prog_idx, pts_90khz) {
             return;
         }
+        // NOTE: PAT/PMT byte generation still uses single-program (programs[0])
+        // logic in Task 3. Task 4 rewrites this to iterate all programs and
+        // emit a multi-program PAT + per-program PMTs.
         let mut pat = [0u8; 188];
         write_pat_packet(&mut pat, &mut self.counters);
         self.queue.push_back(pat);
 
         // Walk programs[0].streams in order so descriptor-cache indices align.
-        // Single-stream output preserves the existing video-then-klv
-        // ordering — no test bytes change for that case.
         let mut entries: Vec<PmtStreamEntry> =
             Vec::with_capacity(self.config.programs[0].streams.len());
         for (i, spec) in self.config.programs[0].streams.iter().enumerate() {
@@ -1274,16 +1347,16 @@ impl Muxer {
             entries.push(PmtStreamEntry {
                 stream_type,
                 elementary_pid: spec.pid(),
-                descriptors: &self.pmt_descriptor_cache[i],
+                descriptors: &self.pmt_descriptor_caches[0][i],
             });
         }
 
         let mut pmt = [0u8; 188];
-        write_pmt_packet(&mut pmt, self.pcr_pid, &entries, &mut self.counters)
+        write_pmt_packet(&mut pmt, self.pcr_pids[0], &entries, &mut self.counters)
             .expect("validated Config must produce single-section PMT");
         self.queue.push_back(pmt);
 
-        self.last_psi_emission_pts = Some(Pts90khz(pts_90khz).masked_33bit());
+        self.psi_last[prog_idx] = Some(Pts90khz(pts_90khz).masked_33bit());
     }
 }
 
@@ -1317,7 +1390,7 @@ mod tests {
     #[test]
     fn rejects_video_pid_zero() {
         let mut cfg = Config::default();
-        if let Some(StreamSpec::Video { pid, .. }) = cfg
+        if let Some(StreamSpec::Video { pid, .. }) = cfg.programs[0]
             .streams
             .iter_mut()
             .find(|s| matches!(s, StreamSpec::Video { .. }))
@@ -1335,7 +1408,7 @@ mod tests {
     #[test]
     fn rejects_klv_pid_null() {
         let mut cfg = Config::default();
-        if let Some(StreamSpec::Klv { pid, .. }) = cfg
+        if let Some(StreamSpec::Klv { pid, .. }) = cfg.programs[0]
             .streams
             .iter_mut()
             .find(|s| matches!(s, StreamSpec::Klv { .. }))
@@ -1358,7 +1431,9 @@ mod tests {
             .build();
         assert!(matches!(
             cfg,
-            Err(MuxError::InvalidConfig("stream PIDs must all be distinct"))
+            Err(MuxError::InvalidConfig(
+                "stream PIDs within a program must be distinct"
+            ))
         ));
     }
 
@@ -1372,7 +1447,7 @@ mod tests {
         assert!(matches!(
             cfg,
             Err(MuxError::InvalidConfig(
-                "pcr_pid must equal a configured stream PID"
+                "pcr_pid must equal a configured stream PID in the same program"
             ))
         ));
     }
@@ -1455,8 +1530,10 @@ mod tests {
 
     #[test]
     fn resolved_pcr_pid_default() {
-        let cfg = Config::default();
-        assert_eq!(cfg.resolved_pcr_pid(), cfg.primary_video_pid().unwrap());
+        // Muxer auto-resolves PCR to the first video stream (0x1011) when
+        // pcr_pid is None. Verify via the constructed Muxer's state.
+        let mux = Muxer::new(Config::default()).unwrap();
+        assert_eq!(mux.pcr_pids[0], 0x1011);
     }
 
     #[test]
@@ -1467,7 +1544,8 @@ mod tests {
             .pcr_pid(0x1031)
             .build()
             .unwrap();
-        assert_eq!(cfg.resolved_pcr_pid(), 0x1031);
+        let mux = Muxer::new(cfg).unwrap();
+        assert_eq!(mux.pcr_pids[0], 0x1031);
     }
 
     #[test]
@@ -1479,7 +1557,7 @@ mod tests {
     #[test]
     fn muxer_rejects_invalid_config() {
         let mut cfg = Config::default();
-        if let Some(StreamSpec::Video { pid, .. }) = cfg
+        if let Some(StreamSpec::Video { pid, .. }) = cfg.programs[0]
             .streams
             .iter_mut()
             .find(|s| matches!(s, StreamSpec::Video { .. }))
@@ -1696,12 +1774,13 @@ mod tests {
 
     #[test]
     fn config_rejects_empty_streams() {
-        let cfg = Config {
-            streams: vec![],
-            ..Config::default()
-        };
+        let mut cfg = Config::default();
+        cfg.programs[0].streams.clear();
         let err = cfg.validate().unwrap_err();
-        assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("at least one stream")));
+        assert!(
+            matches!(err, MuxError::EmptyProgram { program_number: 1 }),
+            "expected EmptyProgram, got {err:?}",
+        );
     }
 
     #[test]
@@ -2004,18 +2083,18 @@ mod tests {
     #[test]
     fn default_config_has_empty_per_stream_descriptors() {
         let cfg = Config::default();
-        assert_eq!(cfg.stream_descriptors.len(), cfg.streams.len());
-        for descs in &cfg.stream_descriptors {
+        let prog = &cfg.programs[0];
+        assert_eq!(prog.stream_descriptors.len(), prog.streams.len());
+        for descs in &prog.stream_descriptors {
             assert!(descs.is_empty());
         }
     }
 
     #[test]
     fn validate_rejects_descriptor_count_mismatch() {
-        let cfg = Config {
-            stream_descriptors: vec![Vec::new()], // streams has 2, descs has 1
-            ..Config::default()
-        };
+        let mut cfg = Config::default();
+        // streams has 2, overwrite with 1-entry descriptor vec
+        cfg.programs[0].stream_descriptors = vec![Vec::new()];
         let err = cfg.validate().unwrap_err();
         assert!(matches!(err, MuxError::InvalidConfig(_)));
     }
@@ -2024,10 +2103,8 @@ mod tests {
     fn validate_rejects_malformed_descriptor() {
         // Length byte claims 5 bytes of body but only 1 follows.
         let bad = vec![0xFF, 0x05, 0x00];
-        let cfg = Config {
-            stream_descriptors: vec![vec![bad], Vec::new()],
-            ..Config::default()
-        };
+        let mut cfg = Config::default();
+        cfg.programs[0].stream_descriptors = vec![vec![bad], Vec::new()];
         let err = cfg.validate().unwrap_err();
         assert!(matches!(
             err,
@@ -2058,7 +2135,8 @@ mod tests {
 
     #[test]
     fn builder_routes_video_descriptors_by_video_index() {
-        // 2 video, 1 KLV. Setting video_index=1 should land on absolute index 2.
+        // 2 video, 1 KLV. Setting video_index=1 should land on absolute index 2
+        // (streams: [video0, klv, video1]).
         let cfg = Config::builder()
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x102, KlvStreamType::PrivateData, false)
@@ -2066,11 +2144,11 @@ mod tests {
             .stream_descriptors_for_video(1, vec![crate::mpegts::descriptors::user_private(b"V2")])
             .build()
             .unwrap();
-
-        assert_eq!(cfg.stream_descriptors[0], Vec::<Vec<u8>>::new());
-        assert_eq!(cfg.stream_descriptors[1], Vec::<Vec<u8>>::new());
-        assert_eq!(cfg.stream_descriptors[2].len(), 1);
-        assert_eq!(cfg.stream_descriptors[2][0][0], 0xFF);
+        let prog = &cfg.programs[0];
+        assert_eq!(prog.stream_descriptors[0], Vec::<Vec<u8>>::new());
+        assert_eq!(prog.stream_descriptors[1], Vec::<Vec<u8>>::new());
+        assert_eq!(prog.stream_descriptors[2].len(), 1);
+        assert_eq!(prog.stream_descriptors[2][0][0], 0xFF);
     }
 
     #[test]
@@ -2096,11 +2174,11 @@ mod tests {
         let muxer = Muxer::new(cfg).unwrap();
 
         // Stream 0 (video) — no auto-emit, no caller — empty cache entry.
-        assert!(muxer.pmt_descriptor_cache[0].is_empty());
+        assert!(muxer.pmt_descriptor_caches[0][0].is_empty());
 
         // Stream 1 (KLV PrivateData) — KLVA Registration (6 bytes) +
         // user_private("KLV_LBL") (9 bytes) = 15 bytes.
-        let entry = &muxer.pmt_descriptor_cache[1];
+        let entry = &muxer.pmt_descriptor_caches[0][1];
         assert_eq!(entry.len(), 15);
         assert_eq!(&entry[..6], &[0x05, 0x04, b'K', b'L', b'V', b'A']);
         assert_eq!(entry[6], 0xFF); // user_private tag
@@ -2121,7 +2199,7 @@ mod tests {
         let muxer = Muxer::new(cfg).unwrap();
 
         // Caller's Registration only — auto-emit suppressed. Total = 6 bytes.
-        assert_eq!(muxer.pmt_descriptor_cache[0].len(), 6);
+        assert_eq!(muxer.pmt_descriptor_caches[0][0].len(), 6);
     }
 
     #[test]
@@ -2139,9 +2217,9 @@ mod tests {
             .unwrap();
         let muxer = Muxer::new(cfg).unwrap();
         // No KLVA auto-emit on SynchronousMetadata. 11 + 11 = 22 bytes.
-        assert_eq!(muxer.pmt_descriptor_cache[0].len(), 22);
-        assert_eq!(muxer.pmt_descriptor_cache[0][0], 0x26);
-        assert_eq!(muxer.pmt_descriptor_cache[0][11], 0x27);
+        assert_eq!(muxer.pmt_descriptor_caches[0][0].len(), 22);
+        assert_eq!(muxer.pmt_descriptor_caches[0][0][0], 0x26);
+        assert_eq!(muxer.pmt_descriptor_caches[0][0][11], 0x27);
     }
 }
 

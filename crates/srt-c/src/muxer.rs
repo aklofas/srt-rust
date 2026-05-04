@@ -127,7 +127,7 @@ pub unsafe extern "C" fn srtc_muxer_push_video_to(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(nal, len) };
-    let stream = VideoStreamHandle::new(handle as usize);
+    let stream = VideoStreamHandle::pack(0, handle as usize);
     h.inner.with_inner_mut(
         |m| match m.push_video_to(stream, slice, pts_90khz, key_frame) {
             Ok(()) => 0,
@@ -164,7 +164,7 @@ pub unsafe extern "C" fn srtc_muxer_push_klv_to(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(klv, len) };
-    let stream = KlvStreamHandle::new(handle as usize);
+    let stream = KlvStreamHandle::pack(0, handle as usize);
     h.inner
         .with_inner_mut(|m| match m.push_klv_to(stream, slice, pts_90khz) {
             Ok(()) => 0,

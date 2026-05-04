@@ -90,6 +90,51 @@ pub(crate) const KLVA_REGISTRATION_DESCRIPTOR: &[u8] = &[
     descriptor::KLVA[3],
 ];
 
+/// Maximum PMT section body size that fits in one 188-byte TS packet.
+/// 188 - 4 (TS header) - 1 (pointer field) = 183 bytes.
+pub(crate) const MAX_PMT_SECTION_BYTES: usize = 183;
+
+/// Estimate the PMT section body size (bytes) for a `ProgramConfig`.
+///
+/// Used by `Config::validate()` to reject configurations that would produce
+/// a PMT section too large for one TS packet. Accounts for the pre-composed
+/// descriptor cache bytes (KLVA auto-emit + caller-supplied).
+///
+/// The estimate is exact for the expected common case (no program-level
+/// descriptors — `program_info_length = 0`), which matches our current
+/// output. If Task 4 adds program-level descriptors, this estimate must
+/// also account for `prog.program_descriptors`.
+pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig) -> usize {
+    let mut es_loop_size: usize = 0;
+    for (i, _spec) in prog.streams.iter().enumerate() {
+        // stream_type(1) + reserved+ES_PID(2) + reserved+ES_info_length(2) + descriptor bytes.
+        // Descriptor bytes = sum of caller-supplied TLV lengths (KLVA auto-emit is included
+        // in stream_descriptors for validated configs, but for the size check we must count
+        // both auto-emitted and caller-supplied). The pre-composed cache bytes live in the
+        // Muxer struct, not in ProgramConfig — so here we only count caller-supplied bytes,
+        // and add KLVA auto-emit size (6 bytes) when applicable.
+        let caller_descs_len: usize = prog.stream_descriptors[i].iter().map(|d| d.len()).sum();
+        let auto_klva_len = match &prog.streams[i] {
+            crate::mpegts::mux::StreamSpec::Klv {
+                stream_type: crate::mpegts::mux::KlvStreamType::PrivateData,
+                ..
+            } => {
+                // Auto-emit KLVA Registration (6 bytes) unless caller already supplies one.
+                let caller_has_reg = prog.stream_descriptors[i]
+                    .iter()
+                    .any(|d| !d.is_empty() && d[0] == 0x05);
+                if caller_has_reg { 0 } else { 6 }
+            }
+            _ => 0,
+        };
+        es_loop_size += 5 + caller_descs_len + auto_klva_len;
+    }
+    // table_id(1) + section_syntax+length(2) + program_number(2) +
+    // ver+curr(1) + section_number(1) + last_section_number(1) +
+    // reserved+PCR_PID(2) + reserved+program_info_length(2) + es_loop + CRC(4)
+    3 + 9 + es_loop_size + 4
+}
+
 /// Build the full 188-byte PMT packet.
 ///
 /// `pcr_pid` is the PID carrying PCR (typically the video PID).

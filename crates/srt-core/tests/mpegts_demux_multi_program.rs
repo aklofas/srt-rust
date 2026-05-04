@@ -328,6 +328,180 @@ fn program_map_event_fires_per_program() {
     assert!(prog_maps.iter().any(|pm| pm.program_number == 2));
 }
 
+// ── Edge-case integration tests (Task 15) ─────────────────────────────────────
+
+/// A PMT that declares a PID already owned by another program should produce a
+/// `NonConformant` event with `PidReusedAcrossPrograms`, and first-program-wins
+/// semantics must hold: program 1 keeps PID 0x1011, program 2 does not.
+#[test]
+fn pid_collision_across_programs_emits_nonconformant() {
+    use srt_core::mpegts::demux::{DemuxEvent, NonConformantIssue};
+    let mut demuxer = Demuxer::new();
+    demuxer
+        .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+        .unwrap();
+    // Program 1 declares PID 0x1011 as H.264 video.
+    demuxer
+        .feed(&pmt_packet_for_test(
+            0x1000,
+            1,
+            0x1011,
+            &[(0x1B, 0x1011)],
+            0,
+        ))
+        .unwrap();
+    // Program 2 tries to claim the *same* PID 0x1011 — must emit NonConformant.
+    demuxer
+        .feed(&pmt_packet_for_test(
+            0x1100,
+            2,
+            0x1011,
+            &[(0x1B, 0x1011)],
+            0,
+        ))
+        .unwrap();
+
+    let mut nonconformant_seen = false;
+    while let Some(ev) = demuxer.next_event() {
+        if let DemuxEvent::NonConformant { issue, .. } = ev {
+            if matches!(
+                issue,
+                NonConformantIssue::PidReusedAcrossPrograms { pid: 0x1011, .. }
+            ) {
+                nonconformant_seen = true;
+            }
+        }
+    }
+    assert!(
+        nonconformant_seen,
+        "expected PidReusedAcrossPrograms event for PID 0x1011"
+    );
+
+    // First-program-wins: program 1's tracker still has 0x1011.
+    let progs = demuxer.programs_for_test();
+    assert!(
+        progs[&0x1000].streams.iter().any(|s| s.pid == 0x1011),
+        "program 1 should retain ownership of PID 0x1011"
+    );
+    // Program 2's tracker must NOT list 0x1011.
+    assert!(
+        !progs[&0x1100].streams.iter().any(|s| s.pid == 0x1011),
+        "program 2 must not own PID 0x1011 after collision"
+    );
+}
+
+/// A PAT version bump that *adds* a program must not disturb the stream
+/// tracking for the surviving program.  Both programs' streams should be
+/// independently visible via `programs_for_test` after the bump.
+#[test]
+fn stream_kind_by_pid_tracks_across_pat_changes() {
+    let mut demuxer = Demuxer::new();
+
+    // Initial state: one program with a single H.264 stream on PID 0x1011.
+    demuxer
+        .feed(&pat_packet_with_programs(&[(1, 0x1000)], 0))
+        .unwrap();
+    demuxer
+        .feed(&pmt_packet_for_test(
+            0x1000,
+            1,
+            0x1011,
+            &[(0x1B, 0x1011)],
+            0,
+        ))
+        .unwrap();
+
+    let progs = demuxer.programs_for_test();
+    assert!(progs.contains_key(&0x1000), "program 1 tracker missing");
+    assert_eq!(progs[&0x1000].streams.len(), 1);
+    assert_eq!(progs[&0x1000].streams[0].pid, 0x1011);
+
+    // PAT version bump: program 2 joins on PMT PID 0x1100.
+    demuxer
+        .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 1))
+        .unwrap();
+    demuxer
+        .feed(&pmt_packet_for_test(
+            0x1100,
+            2,
+            0x1111,
+            &[(0x1B, 0x1111)],
+            0,
+        ))
+        .unwrap();
+
+    let progs = demuxer.programs_for_test();
+    assert_eq!(progs.len(), 2, "expected 2 program trackers after add");
+    assert!(
+        progs.contains_key(&0x1000),
+        "program 1 tracker must survive"
+    );
+    assert!(progs.contains_key(&0x1100), "program 2 tracker must appear");
+    assert!(
+        progs[&0x1000].streams.iter().any(|s| s.pid == 0x1011),
+        "program 1 stream 0x1011 must survive after PAT bump"
+    );
+    assert!(
+        progs[&0x1100].streams.iter().any(|s| s.pid == 0x1111),
+        "program 2 stream 0x1111 must be tracked"
+    );
+}
+
+/// When a PAT version bump removes a program, its tracker and its streams must
+/// be cleaned up.  The surviving program's streams must be unaffected.
+#[test]
+fn program_removed_drops_streams_from_tracker() {
+    let mut demuxer = Demuxer::new();
+    demuxer
+        .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+        .unwrap();
+    demuxer
+        .feed(&pmt_packet_for_test(
+            0x1000,
+            1,
+            0x1011,
+            &[(0x1B, 0x1011)],
+            0,
+        ))
+        .unwrap();
+    demuxer
+        .feed(&pmt_packet_for_test(
+            0x1100,
+            2,
+            0x1111,
+            &[(0x1B, 0x1111)],
+            0,
+        ))
+        .unwrap();
+
+    // Confirm both programs are tracked before the removal.
+    assert_eq!(
+        demuxer.programs_for_test().len(),
+        2,
+        "expected 2 trackers before removal"
+    );
+
+    // PAT version bump: program 2 removed.
+    demuxer
+        .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+        .unwrap();
+
+    let progs = demuxer.programs_for_test();
+    assert_eq!(progs.len(), 1, "expected 1 tracker after removal");
+    assert!(
+        progs.contains_key(&0x1000),
+        "surviving program 1 tracker missing"
+    );
+    assert!(
+        !progs.contains_key(&0x1100),
+        "dropped program 2 tracker still present"
+    );
+    assert!(
+        progs[&0x1000].streams.iter().any(|s| s.pid == 0x1011),
+        "program 1 stream 0x1011 must survive program 2 removal"
+    );
+}
+
 // ── Stats tests ───────────────────────────────────────────────────────────────
 
 #[test]

@@ -1315,46 +1315,56 @@ impl Muxer {
         if !self.psi_due(prog_idx, pts_90khz) {
             return;
         }
-        // NOTE: PAT/PMT byte generation still uses single-program (programs[0])
-        // logic in Task 3. Task 4 rewrites this to iterate all programs and
-        // emit a multi-program PAT + per-program PMTs.
+        // Emit one PAT that lists all programs, then one PMT per program.
+        // The PAT is emitted on every PSI tick regardless of which program
+        // triggered the tick, so all programs' state is always visible to
+        // receivers after a single PSI interval.
         let mut pat = [0u8; 188];
-        write_pat_packet(&mut pat, &mut self.counters);
+        write_pat_packet(&mut pat, &self.config, &mut self.counters);
         self.queue.push_back(pat);
 
-        // Walk programs[0].streams in order so descriptor-cache indices align.
-        let mut entries: Vec<PmtStreamEntry> =
-            Vec::with_capacity(self.config.programs[0].streams.len());
-        for (i, spec) in self.config.programs[0].streams.iter().enumerate() {
-            let stream_type = match spec {
-                StreamSpec::Video {
-                    codec: VideoCodec::H264,
-                    ..
-                } => StreamType::H264,
-                StreamSpec::Video {
-                    codec: VideoCodec::H265,
-                    ..
-                } => StreamType::H265,
-                StreamSpec::Klv {
-                    stream_type: KlvStreamType::PrivateData,
-                    ..
-                } => StreamType::KlvPrivate,
-                StreamSpec::Klv {
-                    stream_type: KlvStreamType::SynchronousMetadata,
-                    ..
-                } => StreamType::KlvSyncMetadata,
-            };
-            entries.push(PmtStreamEntry {
-                stream_type,
-                elementary_pid: spec.pid(),
-                descriptors: &self.pmt_descriptor_caches[0][i],
-            });
-        }
+        // One PMT per program — iterate the full program set so every program
+        // gets a fresh PMT on the tick (not just the triggering program).
+        for pidx in 0..self.config.programs.len() {
+            let prog = &self.config.programs[pidx];
+            let mut entries: Vec<PmtStreamEntry> = Vec::with_capacity(prog.streams.len());
+            for (i, spec) in prog.streams.iter().enumerate() {
+                let stream_type = match spec {
+                    StreamSpec::Video {
+                        codec: VideoCodec::H264,
+                        ..
+                    } => StreamType::H264,
+                    StreamSpec::Video {
+                        codec: VideoCodec::H265,
+                        ..
+                    } => StreamType::H265,
+                    StreamSpec::Klv {
+                        stream_type: KlvStreamType::PrivateData,
+                        ..
+                    } => StreamType::KlvPrivate,
+                    StreamSpec::Klv {
+                        stream_type: KlvStreamType::SynchronousMetadata,
+                        ..
+                    } => StreamType::KlvSyncMetadata,
+                };
+                entries.push(PmtStreamEntry {
+                    stream_type,
+                    elementary_pid: spec.pid(),
+                    descriptors: &self.pmt_descriptor_caches[pidx][i],
+                });
+            }
 
-        let mut pmt = [0u8; 188];
-        write_pmt_packet(&mut pmt, self.pcr_pids[0], &entries, &mut self.counters)
+            let mut pmt = [0u8; 188];
+            write_pmt_packet(
+                &mut pmt,
+                prog,
+                self.pcr_pids[pidx],
+                &entries,
+                &mut self.counters,
+            )
             .expect("validated Config must produce single-section PMT");
-        self.queue.push_back(pmt);
+            self.queue.push_back(pmt);
+        }
 
         self.psi_last[prog_idx] = Some(Pts90khz(pts_90khz).masked_33bit());
     }

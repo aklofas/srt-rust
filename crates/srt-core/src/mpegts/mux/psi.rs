@@ -12,51 +12,72 @@
 use super::ts::{AdaptationField, ContinuityCounters, write_packet};
 use crate::mpegts::common::{StreamType, crc32::crc32_mpeg2, descriptor, pid};
 
-/// Single program, fixed at program_number = 0x0001.
-pub(crate) const PROGRAM_NUMBER: u16 = 0x0001;
-
-/// PMT lives at this PID. Not configurable — receivers find it via PAT,
-/// so the value is internal.
-pub(crate) const PMT_PID: u16 = 0x1000;
-
-/// Build the full 188-byte PAT packet for a single-program TS.
+/// Build the full 188-byte PAT packet for a single- or multi-program TS.
 ///
-/// Caller passes a fresh `ContinuityCounters` for the very first PAT, then
-/// the same instance on subsequent calls so the CC field increments.
-pub(crate) fn write_pat_packet(out: &mut [u8; 188], counters: &mut ContinuityCounters) {
-    // Section body (table_id through last byte before CRC) — 12 bytes.
-    let mut body = [0u8; 12];
-    body[0] = 0x00; // table_id = PAT
-    // section_syntax_indicator=1 | '0' | reserved '11' | section_length(12 bits)
-    // section_length covers everything after itself: tsid(2) + ver/sect/last(3)
-    // + prog_entry(4) + CRC(4) = 13.
-    let section_length: u16 = 13;
-    body[1] = 0xB0 | (((section_length >> 8) as u8) & 0x0F);
-    body[2] = (section_length & 0xFF) as u8;
-    // transport_stream_id = 0x0001
-    body[3] = 0x00;
-    body[4] = 0x01;
-    // version_number(5)=0 | current_next_indicator=1 -> 0xC1 (reserved bits 11)
-    body[5] = 0xC1;
-    body[6] = 0x00; // section_number
-    body[7] = 0x00; // last_section_number
-    // Program loop: program_number(2) + reserved(3 bits) + pmt_pid(13 bits)
-    body[8] = (PROGRAM_NUMBER >> 8) as u8;
-    body[9] = (PROGRAM_NUMBER & 0xFF) as u8;
-    body[10] = 0xE0 | ((PMT_PID >> 8) as u8 & 0x1F); // reserved bits = 0b111
-    body[11] = (PMT_PID & 0xFF) as u8;
+/// Iterates over all programs in `config` and encodes one `(program_number,
+/// pmt_pid)` entry per program. Single-program configs produce byte-identical
+/// output to the prior hardcoded single-entry implementation.
+///
+/// Caller passes the shared `ContinuityCounters` so the PAT CC field
+/// increments correctly across successive PSI ticks.
+pub(crate) fn write_pat_packet(
+    out: &mut [u8; 188],
+    config: &crate::mpegts::mux::Config,
+    counters: &mut ContinuityCounters,
+) {
+    let n_programs = config.programs.len();
+    // section_length = bytes after the section_length field itself through the
+    // final CRC byte:
+    //   tsid(2) + ver/cni(1) + sect_no(1) + last_sect(1) = 5 fixed bytes
+    //   + 4 bytes per program entry (program_number(2) + reserved+pmt_pid(2))
+    //   + CRC(4)
+    //   = 9 + 4 * n_programs
+    let section_length: usize = 9 + 4 * n_programs;
 
-    let crc = crc32_mpeg2(&body[..12]);
-
-    // Assemble the full 184-byte payload: pointer(1) + body(12) + CRC(4) + 0xFF padding(167).
+    // Full payload: pointer(1) + table_id(1) + length(2) + fixed header(5)
+    //               + program loop + CRC(4) + 0xFF padding.
     let mut payload = [0xFFu8; 184];
-    payload[0] = 0x00; // pointer field
-    payload[1..13].copy_from_slice(&body[..12]);
-    payload[13] = (crc >> 24) as u8;
-    payload[14] = (crc >> 16) as u8;
-    payload[15] = (crc >> 8) as u8;
-    payload[16] = crc as u8;
-    // payload[17..184] already 0xFF from the [0xFFu8; 184] initialiser.
+    let mut idx = 0usize;
+
+    payload[idx] = 0x00; // pointer field — section starts immediately after
+    idx += 1;
+    // table_id = 0x00 (PAT)
+    payload[idx] = 0x00;
+    idx += 1;
+    // section_syntax_indicator=1 | '0' | reserved=11 | section_length(12 bits)
+    payload[idx] = 0xB0 | (((section_length >> 8) as u8) & 0x0F);
+    payload[idx + 1] = (section_length & 0xFF) as u8;
+    idx += 2;
+    // transport_stream_id = 0x0001
+    payload[idx] = 0x00;
+    payload[idx + 1] = 0x01;
+    idx += 2;
+    // version_number(5)=0 | current_next_indicator=1 → 0xC1 (reserved bits 11)
+    payload[idx] = 0xC1;
+    idx += 1;
+    payload[idx] = 0x00; // section_number
+    payload[idx + 1] = 0x00; // last_section_number
+    idx += 2;
+
+    // Program loop: one 4-byte entry per program.
+    let body_start = 1; // pointer byte excluded from CRC body; table_id is at payload[1]
+    for prog in &config.programs {
+        payload[idx] = (prog.program_number >> 8) as u8;
+        payload[idx + 1] = (prog.program_number & 0xFF) as u8;
+        idx += 2;
+        // reserved(3 bits) = 0b111 | pmt_pid(13 bits)
+        payload[idx] = 0xE0 | ((prog.pmt_pid >> 8) as u8 & 0x1F);
+        payload[idx + 1] = (prog.pmt_pid & 0xFF) as u8;
+        idx += 2;
+    }
+
+    // CRC over section body: from table_id through last program entry byte.
+    let crc = crc32_mpeg2(&payload[body_start..idx]);
+    payload[idx] = (crc >> 24) as u8;
+    payload[idx + 1] = (crc >> 16) as u8;
+    payload[idx + 2] = (crc >> 8) as u8;
+    payload[idx + 3] = crc as u8;
+    // Bytes after CRC remain 0xFF from the initialiser.
 
     write_packet(
         out,
@@ -135,12 +156,16 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig
     3 + 9 + es_loop_size + 4
 }
 
-/// Build the full 188-byte PMT packet.
+/// Build the full 188-byte PMT packet for one program.
 ///
-/// `pcr_pid` is the PID carrying PCR (typically the video PID).
+/// `prog.pmt_pid` is used as the TS packet PID (the PAT points receivers
+/// here). `prog.program_number` is encoded in the PMT section header.
+/// `pcr_pid` is the resolved PCR PID for this program (may differ from
+/// `prog.pcr_pid` if auto-fallback was applied at `Muxer::new` time).
 /// `streams` is the list of ES entries — order is preserved in the PMT.
 pub(crate) fn write_pmt_packet(
     out: &mut [u8; 188],
+    prog: &crate::mpegts::mux::ProgramConfig,
     pcr_pid: u16,
     streams: &[PmtStreamEntry<'_>],
     counters: &mut ContinuityCounters,
@@ -177,14 +202,14 @@ pub(crate) fn write_pmt_packet(
     let body_start = 1;
     let mut idx = body_start;
 
-    payload[idx] = 0x02; // table_id
+    payload[idx] = 0x02; // table_id = PMT
     idx += 1;
     payload[idx] = 0xB0 | (((section_length >> 8) as u8) & 0x0F);
     payload[idx + 1] = (section_length & 0xFF) as u8;
     idx += 2;
-    // program_number
-    payload[idx] = (PROGRAM_NUMBER >> 8) as u8;
-    payload[idx + 1] = (PROGRAM_NUMBER & 0xFF) as u8;
+    // program_number — use the actual program number from the config (not a constant).
+    payload[idx] = (prog.program_number >> 8) as u8;
+    payload[idx + 1] = (prog.program_number & 0xFF) as u8;
     idx += 2;
     // version+current
     payload[idx] = 0xC1;
@@ -224,9 +249,10 @@ pub(crate) fn write_pmt_packet(
     payload[idx + 3] = crc as u8;
     // Bytes after the CRC remain 0xFF from the initialiser.
 
+    // Emit on prog.pmt_pid — the PAT entry points receivers to this PID.
     write_packet(
         out,
-        PMT_PID,
+        prog.pmt_pid,
         true,
         AdaptationField::default(),
         &payload,
@@ -239,13 +265,42 @@ pub(crate) fn write_pmt_packet(
 mod tests {
     use super::*;
     use crate::mpegts::common::pid;
+    use crate::mpegts::mux::{Config, KlvStreamType, ProgramConfig, StreamSpec, VideoCodec};
+
+    /// Build a minimal single-program config for unit tests.
+    fn single_prog_config() -> Config {
+        Config::default()
+    }
+
+    /// Build a minimal ProgramConfig for tests that call write_pmt_packet directly.
+    fn prog_config_h264_klv() -> ProgramConfig {
+        ProgramConfig {
+            program_number: 1,
+            pmt_pid: 0x1000,
+            streams: vec![
+                StreamSpec::Video {
+                    pid: 0x1011,
+                    codec: VideoCodec::H264,
+                },
+                StreamSpec::Klv {
+                    pid: 0x1031,
+                    stream_type: KlvStreamType::PrivateData,
+                    carries_pts: false,
+                },
+            ],
+            pcr_pid: None,
+            program_descriptors: Vec::new(),
+            stream_descriptors: vec![Vec::new(), Vec::new()],
+        }
+    }
 
     /// Re-decode a PAT from our generated bytes and assert PMT PID matches.
     #[test]
     fn pat_round_trips() {
         let mut buf = [0u8; 188];
         let mut cc = ContinuityCounters::new();
-        write_pat_packet(&mut buf, &mut cc);
+        let cfg = single_prog_config();
+        write_pat_packet(&mut buf, &cfg, &mut cc);
 
         // TS header sanity
         assert_eq!(buf[0], 0x47);
@@ -262,7 +317,7 @@ mod tests {
         assert_eq!(buf[4], 0x00); // pointer = 0
         assert_eq!(buf[5], 0x00); // table_id = PAT
 
-        // Body is 12 bytes (table_id through last byte before CRC) at buf[5..17].
+        // Single program: body is 12 bytes (table_id through last byte before CRC) at buf[5..17].
         // CRC at buf[17..21].
         let body = &buf[5..17];
         let crc_computed = crc32_mpeg2(body);
@@ -274,7 +329,10 @@ mod tests {
 
         // PMT PID embedded in last 2 bytes of program loop = body[10..12] = buf[15..17].
         let pmt_pid = (((buf[15] as u16) & 0x1F) << 8) | (buf[16] as u16);
-        assert_eq!(pmt_pid, PMT_PID);
+        assert_eq!(
+            pmt_pid, 0x1000,
+            "single-program PAT must list pmt_pid=0x1000"
+        );
 
         // Padding after CRC should be 0xFF (sanity check).
         assert_eq!(buf[21], 0xFF);
@@ -285,6 +343,7 @@ mod tests {
     fn pmt_round_trips_with_klva() {
         let mut buf = [0u8; 188];
         let mut cc = ContinuityCounters::new();
+        let prog = prog_config_h264_klv();
         let streams = [
             PmtStreamEntry {
                 stream_type: StreamType::H264,
@@ -297,12 +356,12 @@ mod tests {
                 descriptors: KLVA_REGISTRATION_DESCRIPTOR,
             },
         ];
-        write_pmt_packet(&mut buf, 0x1011, &streams, &mut cc).expect("PMT fits");
+        write_pmt_packet(&mut buf, &prog, 0x1011, &streams, &mut cc).expect("PMT fits");
 
         assert_eq!(buf[0], 0x47);
-        // PMT PID
+        // PMT PID — must match prog.pmt_pid (0x1000)
         let pid_value = (((buf[1] as u16) & 0x1F) << 8) | (buf[2] as u16);
-        assert_eq!(pid_value, PMT_PID);
+        assert_eq!(pid_value, 0x1000, "PMT packet PID must equal prog.pmt_pid");
         // afc = 01 (no AF)
         assert_eq!(buf[3] >> 4, 0b01);
         // pointer = 0
@@ -336,6 +395,24 @@ mod tests {
     fn pmt_with_sync_klv_stream_type() {
         let mut buf = [0u8; 188];
         let mut cc = ContinuityCounters::new();
+        let prog = ProgramConfig {
+            program_number: 1,
+            pmt_pid: 0x1000,
+            streams: vec![
+                StreamSpec::Video {
+                    pid: 0x1011,
+                    codec: VideoCodec::H265,
+                },
+                StreamSpec::Klv {
+                    pid: 0x1031,
+                    stream_type: KlvStreamType::SynchronousMetadata,
+                    carries_pts: true,
+                },
+            ],
+            pcr_pid: None,
+            program_descriptors: Vec::new(),
+            stream_descriptors: vec![Vec::new(), Vec::new()],
+        };
         let streams = [
             PmtStreamEntry {
                 stream_type: StreamType::H265,
@@ -348,7 +425,7 @@ mod tests {
                 descriptors: KLVA_REGISTRATION_DESCRIPTOR,
             },
         ];
-        write_pmt_packet(&mut buf, 0x1011, &streams, &mut cc).expect("PMT fits");
+        write_pmt_packet(&mut buf, &prog, 0x1011, &streams, &mut cc).expect("PMT fits");
         // H.265 stream_type
         assert_eq!(buf[17], 0x24);
         // Sync KLV stream_type
@@ -387,9 +464,17 @@ mod tests {
                 descriptors: &big_desc,
             },
         ];
+        let prog = ProgramConfig {
+            program_number: 1,
+            pmt_pid: 0x1000,
+            streams: Vec::new(), // streams field unused by write_pmt_packet directly
+            pcr_pid: None,
+            program_descriptors: Vec::new(),
+            stream_descriptors: Vec::new(),
+        };
         let mut buf = [0u8; 188];
         let mut cc = ContinuityCounters::new();
-        let err = write_pmt_packet(&mut buf, 0x100, &entries, &mut cc).unwrap_err();
+        let err = write_pmt_packet(&mut buf, &prog, 0x100, &entries, &mut cc).unwrap_err();
         assert!(matches!(err, MuxError::PmtTooLarge { .. }));
     }
 
@@ -397,12 +482,13 @@ mod tests {
     fn pmt_crc_validates() {
         let mut buf = [0u8; 188];
         let mut cc = ContinuityCounters::new();
+        let prog = prog_config_h264_klv();
         let streams = [PmtStreamEntry {
             stream_type: StreamType::H264,
             elementary_pid: 0x1011,
             descriptors: &[],
         }];
-        write_pmt_packet(&mut buf, 0x1011, &streams, &mut cc).expect("PMT fits");
+        write_pmt_packet(&mut buf, &prog, 0x1011, &streams, &mut cc).expect("PMT fits");
 
         // section_length is at bytes 6-7
         let section_length = (((buf[6] as u16) & 0x0F) << 8) | (buf[7] as u16);

@@ -302,6 +302,32 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 
 ---
 
+## Codec parameter set parsing (`srt-core::codec`)
+
+Stateless typed parsers for codec parameter sets. The demuxer event surface
+is unchanged — NAL bytes surface as `NalUnit` with raw RBSP. Consumers call
+these parsers explicitly when they need typed fields (resolution, profile,
+level, color, frame rate). See [`guide-codec.md`](guide-codec.md).
+
+| Codec | Rust core | C ABI |
+| --- | --- | --- |
+| H.264 SPS / PPS (`codec::h264`) | ✅ Full | ❌ Deferred (rides with receiver C ABI) |
+| H.265 VPS / SPS / PPS (`codec::h265`) | ✅ Full | ❌ Deferred |
+| AV1 sequence header (`codec::av1`) | ❌ Deferred (future slice) | ❌ Deferred |
+| H.266 VPS / SPS / PPS / APS (`codec::h266`) | ❌ Deferred (future slice) | ❌ Deferred |
+
+**H.264 notes:** wraps `h264-reader` 0.8; `parse_sps` / `parse_pps` /
+`parse_parameter_sets`; partial-success-tolerant on combined call; strict on
+per-set functions. 13/13 corpus fixtures matched ffprobe.
+
+**H.265 notes:** hand-rolled per spec; `parse_vps` / `parse_sps` / `parse_pps` /
+`parse_parameter_sets`. Known limitation: bails with `UnsupportedProfile` on
+`scaling_list_data` and `num_short_term_ref_pic_sets > 0` paths (not
+exercised by x265 default config or current corpus; full RPS parser is a
+future enhancement).
+
+---
+
 ## C ABI (`srt-c`)
 
 | Feature | Status | Notes |

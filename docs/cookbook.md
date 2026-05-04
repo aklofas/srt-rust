@@ -565,3 +565,94 @@ renumber program 2's input PIDs into a non-conflicting range during the
 demux→remux step.
 
 Runnable: [../crates/srt-core/examples/repack_two_programs.rs](../crates/srt-core/examples/repack_two_programs.rs).
+
+### 17. Extract video resolution and profile from a demuxed stream
+
+Reach for this when you need typed codec information (width, height, profile,
+level, frame rate, color) and are already demuxing the stream. The demuxer
+surfaces raw NAL bytes; you call the matching `codec::*` parser explicitly
+on each `Sample` event. `parse_parameter_sets` is safe to call on every
+sample — it skips non-SPS/PPS NALs silently and returns `Ok` with empty
+maps on P-frames.
+
+```rust,no_run
+use srt_core::codec::h264;
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut dx = Demuxer::new();
+    // ... feed bytes to dx ...
+    while let Some(ev) = dx.next_event() {
+        if let DemuxEvent::Sample {
+            payload: SamplePayload::Video { codec: VideoCodec::H264, ref nals },
+            ..
+        } = ev
+        {
+            if let Ok(ps) = h264::parse_parameter_sets(nals) {
+                if let Some(sps) = ps.sps_by_id.values().next() {
+                    println!(
+                        "{}x{} profile={} level={}",
+                        sps.width, sps.height, sps.profile_idc, sps.level_idc
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}
+```
+
+For H.265 substitute `h265::parse_parameter_sets` and use
+`sps.general_profile_idc` / `sps.general_level_idc` (level is `× 30` — level
+4.0 is stored as 120). The pattern is identical; only the import and field
+names differ.
+
+Runnable: [../crates/srt-core/examples/parse_video_parameters.rs](../crates/srt-core/examples/parse_video_parameters.rs) — shows change-driven logging per PID across H.264 and H.265 in one pass.
+
+### 18. Reconstitute Annex B parameter sets for decoder replay
+
+Reach for this when you need to hand SPS / PPS bytes to a hardware decoder,
+encoder re-init, or a library that expects Annex-B-framed codec configuration.
+The `raw_rbsp` field on each parsed struct preserves the input bytes verbatim
+(including emulation-prevention bytes) exactly as received from the demuxer.
+Prepend a 4-byte start code to get conformant Annex B framing:
+
+```rust,no_run
+use srt_core::codec::h264;
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec};
+
+fn to_annex_b(rbsp: &[u8]) -> Vec<u8> {
+    // Same for H.264 and H.265 — the demuxer includes the NAL header byte(s)
+    // in the payload field, so raw_rbsp already contains the full NAL unit
+    // minus its Annex-B start code. Just prepend the start code.
+    let mut out = vec![0x00, 0x00, 0x00, 0x01];
+    out.extend_from_slice(rbsp);
+    out
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut dx = Demuxer::new();
+    // ... feed bytes ...
+    while let Some(ev) = dx.next_event() {
+        if let DemuxEvent::Sample {
+            payload: SamplePayload::Video { codec: VideoCodec::H264, ref nals },
+            ..
+        } = ev
+        {
+            if let Ok(ps) = h264::parse_parameter_sets(nals) {
+                let mut decoder_config: Vec<u8> = Vec::new();
+                for sps in ps.sps_by_id.values() {
+                    decoder_config.extend(to_annex_b(&sps.raw_rbsp));
+                }
+                for pps in ps.pps_by_id.values() {
+                    decoder_config.extend(to_annex_b(&pps.raw_rbsp));
+                }
+                // Pass decoder_config to your hardware decoder or codec library.
+            }
+        }
+    }
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/parse_video_parameters.rs](../crates/srt-core/examples/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guide-codec.md` for the decoder-replay section.

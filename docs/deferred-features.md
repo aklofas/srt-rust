@@ -201,19 +201,87 @@ the trigger that would unblock it.
   handle-typedef + `_to(handle, ...)` fan-out across the JNI/UniFFI
   binding once each ships.
 
-## Typed SPS / VPS / PPS payload parser
+## Codec parameter set parsing at the C ABI
 
-- **Status:** Not implemented; SPS/VPS/PPS surface as ordinary
-  `NalUnit::H264 { nal_type: 7, .. }` / `NalUnit::H265 { nal_type: 32 or 33, .. }`
-  with raw RBSP payload. Consumers needing width / height / profile /
-  level parse the RBSP themselves (e.g. with `h264-reader`,
-  `h265-parser`).
-- **Why deferred:** The `mpegts::demux` ship surfaces NAL boundaries +
-  typed headers; consumers wanting frame dimensions reach for an
-  in-tree codec library. Adding a dependency-free typed SPS parser
-  duplicates existing well-trodden code.
-- **Trigger to revisit:** A consumer asks for resolution / profile /
-  level on `Sample::Video` without wanting to embed a codec library.
+- **Status:** Deferred. The Rust core ships `srt_core::codec::h264` and
+  `srt_core::codec::h265` with typed parsers for SPS / PPS (H.264) and
+  VPS / SPS / PPS (H.265). The C ABI exposure is deferred.
+- **Why deferred:** The receiver-surface C ABI plan is the natural carrier
+  for all FFI parser exposure — consistent ownership and error semantics
+  across receiver fields, parameter-set fields, and future audio / subtitle
+  parser exposure are best designed in one pass rather than piecemeal. An
+  interim send-only or codec-only C ABI shape would need reshaping when the
+  receiver C ABI lands anyway.
+- **Trigger to revisit:** The receiver-surface C ABI plan starts execution.
+  At that point the codec parsers get C entry points alongside the receiver
+  event surface, sharing the same error-reporting and lifetime conventions.
+
+## AV1 codec parser (`codec::av1`)
+
+- **Status:** Deferred. H.264 and H.265 are the only typed codec parsers
+  today. AV1 surfaces as `SamplePayload::Unknown { stream_type, raw }` in the
+  demuxer (the `VideoCodec::Av1` arm does not yet exist on `SamplePayload::Video`).
+- **Why deferred:** AV1 is OBU-shaped (Open Bitstream Unit), not NAL-shaped.
+  Adding it requires either a separate `SamplePayload::Video` shape with
+  `Vec<Obu>` instead of `Vec<NalUnit>`, or a cross-codec rework of the video
+  payload type. Either is bigger than the current demuxer scope, and no
+  current corpus file or consumer ask has surfaced AV1 in MPEG-TS.
+- **Trigger to revisit:** AV1 in the local corpus, or a consumer shipping AV1
+  in MPEG-TS.
+
+## H.266 codec parser (`codec::h266`)
+
+- **Status:** Deferred. H.266 (VVC) uses a NAL-shaped bitstream (VPS / SPS /
+  PPS / APS NAL types), so it fits the existing `codec::*` pattern structurally.
+  No mature Rust parser crate exists; the engine would be hand-rolled following
+  the `codec::h265` blueprint.
+- **Why deferred:** No H.266 encoder in the corpus or in the consumer base.
+  The spec (ITU-T H.266 V3, 2023) is large and the parameter-set syntax is
+  more complex than H.265.
+- **Trigger to revisit:** H.266 in the corpus or an explicit consumer pull.
+
+## SEI parsing for video codecs
+
+- **Status:** Deferred. SEI NALs surface as `NalUnit::H264 { nal_type: 6, .. }`
+  / `NalUnit::H265 { nal_type: 39 or 40, .. }` with raw RBSP payload — the same
+  pass-through treatment as non-parameter-set NALs today.
+- **Why deferred:** SEI parsing would expose HDR mastering display info (SEI 137),
+  content light level (SEI 144), picture timing, and recovery-point info. Each
+  SEI message type is its own sub-parser. No consumer has asked for any
+  specific SEI type yet.
+- **Trigger to revisit:** A consumer asks for a specific SEI type — most likely
+  HDR mastering display (SEI 137) or content light level (SEI 144) for an HDR
+  delivery pipeline.
+- **Scope when added:** Case-by-case; each SEI type is a separate parser
+  function in the same `codec::h264` / `codec::h265` module namespace.
+
+## Audio framing parsers (`codec::aac`, `codec::ac3`)
+
+- **Status:** Deferred. `SamplePayload::Audio` is `__Reserved` today — the
+  demuxer does not yet carry an audio variant, so there are no audio NALs to
+  parse. Even if audio bytes surfaced, the frame-header parsers for AAC ADTS
+  and AC-3 do not yet exist.
+- **Why deferred:** Two gates: (1) the audio carrier in `mpegts::mux` and
+  `mpegts::demux` does not yet ship (see "Audio carriage" entry above), and
+  (2) even with that gate lifted, no current consumer has asked for audio
+  metadata. The `codec::aac` / `codec::ac3` parsers are mechanical to write
+  once the carrier exists.
+- **Trigger to revisit:** Audio carriage lands in the demuxer AND a consumer
+  asks for audio frame-header fields (sample rate, channel count, etc.).
+
+## Heuristic payload-kind detection (`codec::detect`)
+
+- **Status:** Deferred. The demuxer maps `Unknown { stream_type, raw }` for
+  PIDs it can't classify from the PMT (unregistered stream_types, missing
+  descriptors). No heuristic inspection is applied.
+- **Why deferred:** Heuristics (looks-like-ADTS, looks-like-UL+BER,
+  looks-like-Annex-B H.264, etc.) are useful for the `testfiles/local/`
+  exploration use case — feeding in an unfamiliar capture and learning what's
+  in it — but they add complexity and false-positive risk. A dedicated
+  inspection plan is the right home.
+- **Trigger to revisit:** A consumer asks for content-type detection on
+  `Unknown` PIDs, or a corpus analysis workflow needs stream-kind heuristics
+  without PMT descriptors.
 
 ## `pipeline::pairing` — opt-in convenience pairing utility
 

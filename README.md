@@ -23,11 +23,12 @@ The repo's documentation lives under [`docs/`](docs/):
 
 - **[`getting-started.md`](docs/getting-started.md)** — install, first send, first receive in 10 minutes.
 - **[`architecture.md`](docs/architecture.md)** — crate graph, pipeline composition model, sync vs. async stance.
-- **[`guide-srt.md`](docs/guide-srt.md)** — `Socket` / `Listener`, encryption, latency, stats, error model.
+- **[`guide-codec.md`](docs/guide-codec.md)** — typed codec parameter-set parsers (`codec::h264`, `codec::h265`); stateless SPS / VPS / PPS parsing from demuxer NAL bytes; shared color and frame-rate types.
 - **[`guide-klv.md`](docs/guide-klv.md)** — generic substrate plus typed ST 0601 / ST 0605 / ST 1910 layers; the four-rung decode strictness ladder.
-- **[`guide-mpegts-mux.md`](docs/guide-mpegts-mux.md)** — `Config` / `ConfigBuilder`, codec + KLV-mode selection, PCR/PSI cadence, push/pull contract.
 - **[`guide-mpegts-demux.md`](docs/guide-mpegts-demux.md)** — `Demuxer`, `DemuxEvent`, `StrictMode` ladder, override surface, robustness behaviours, decoupled-pairing rationale.
+- **[`guide-mpegts-mux.md`](docs/guide-mpegts-mux.md)** — `Config` / `ConfigBuilder`, codec + KLV-mode selection, PCR/PSI cadence, push/pull contract.
 - **[`guide-pipeline.md`](docs/guide-pipeline.md)** — picking among `Sender` / `TsSender` / `RawSender` (send) and `Receiver` / `TsReceiver` / `RawReceiver` (receive); the `Transport` and `RecvTransport` traits; `ManagedTransport` / `ManagedReceiveTransport` reconnect; `add_byte_sink` fan-out.
+- **[`guide-srt.md`](docs/guide-srt.md)** — `Socket` / `Listener`, encryption, latency, stats, error model.
 - **[`cookbook.md`](docs/cookbook.md)** — recipes linking to runnable examples.
 - **[`troubleshooting.md`](docs/troubleshooting.md)** — diagnose build failures, connection failures, KLV rejection, TS framing issues, reconnect loops.
 - **[`deferred-features.md`](docs/deferred-features.md)** — what's not yet supported and the trigger conditions to revisit.

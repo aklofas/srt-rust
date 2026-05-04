@@ -365,9 +365,11 @@ mod multi_stream_tests {
     #[test]
     fn sender_video_handles_returns_one_per_configured_video_stream() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_video(0x1021, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .end_program()
             .build()
             .unwrap();
         let s = Sender::new(cfg, MemTransport::new()).unwrap();
@@ -378,10 +380,12 @@ mod multi_stream_tests {
     #[test]
     fn sender_send_video_to_routes_through() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_video(0x1021, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
             .pcr_pid(0x1011)
+            .end_program()
             .build()
             .unwrap();
         let s = Sender::new(cfg, MemTransport::new()).unwrap();
@@ -396,8 +400,10 @@ mod multi_stream_tests {
     #[test]
     fn stats_starts_with_per_stream_entries_for_configured_streams() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .end_program()
             .build()
             .unwrap();
         let s = Sender::new(cfg, MemTransport::new()).unwrap();
@@ -413,8 +419,10 @@ mod multi_stream_tests {
     #[test]
     fn stats_count_video_pushes() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .end_program()
             .build()
             .unwrap();
         let s = Sender::new(cfg, MemTransport::new()).unwrap();
@@ -430,8 +438,10 @@ mod multi_stream_tests {
     #[test]
     fn reset_stats_zeros_counters_keeps_per_stream() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .end_program()
             .build()
             .unwrap();
         let s = Sender::new(cfg, MemTransport::new()).unwrap();
@@ -448,9 +458,11 @@ mod multi_stream_tests {
     #[test]
     fn sender_send_video_rejects_when_multiple_video_streams_configured() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_video(0x1021, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .end_program()
             .build()
             .unwrap();
         let s = Sender::new(cfg, MemTransport::new()).unwrap();
@@ -523,8 +535,10 @@ mod cancel_tests {
     fn close_unblocks_parked_sender_thread() {
         let cancelled = Arc::new(AtomicBool::new(false));
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .end_program()
             .build()
             .unwrap();
         let s = Arc::new(

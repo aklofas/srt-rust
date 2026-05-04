@@ -480,55 +480,48 @@ impl Config {
     }
 }
 
-/// How a `descriptors_for_*` call was scoped — preserved verbatim until
-/// `build()` resolves it against the final stream set.
-#[derive(Debug, Clone)]
-enum DescriptorTarget {
-    Video(usize),
-    Klv(usize),
-    Absolute(usize),
-}
-
-/// Ergonomic construction of [`Config`] with one chain of method calls.
+/// Ergonomic construction of [`Config`] with nested `add_program` blocks.
 ///
-/// Mirrors the C-side builder shape (`srtc_mux_config_*`). Build then
-/// call [`ConfigBuilder::build`] to get a validated [`Config`].
-#[derive(Debug, Clone, Default)]
+/// Use [`Config::builder()`] to obtain a `ConfigBuilder`, then open each
+/// program with [`ConfigBuilder::add_program`] (returns a [`ProgramBuilder`]),
+/// add streams and descriptors on the `ProgramBuilder`, then close the block
+/// with [`ProgramBuilder::end_program`] (returns back to the `ConfigBuilder`).
+/// Finish with [`ConfigBuilder::build`].
+///
+/// ```
+/// use srt_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+///
+/// let config = Config::builder()
+///     .add_program(1, 0x1000)
+///         .add_video(0x1011, VideoCodec::H264)
+///         .add_klv(0x1031, KlvStreamType::PrivateData, false)
+///         .end_program()
+///     .build()
+///     .unwrap();
+/// ```
+#[derive(Default, Debug)]
 pub struct ConfigBuilder {
-    streams: Vec<StreamSpec>,
-    pcr_pid: Option<u16>,
+    programs: Vec<ProgramConfig>,
     pcr_interval_ms: Option<u32>,
     psi_interval_ms: Option<u32>,
     buffer_packets: Option<usize>,
-    /// Append-order list of (target, descriptors) pairs. `build()` walks
-    /// this and materializes `Config::stream_descriptors`. A later entry
-    /// for the same resolved absolute index overwrites earlier entries
-    /// (caller's last word wins) — same behavior as overwriting any
-    /// builder field.
-    pending_descriptors: Vec<(DescriptorTarget, Vec<Vec<u8>>)>,
 }
 
 impl ConfigBuilder {
-    pub fn add_stream(mut self, spec: StreamSpec) -> Self {
-        self.streams.push(spec);
-        self
-    }
-
-    pub fn add_video(self, pid: u16, codec: VideoCodec) -> Self {
-        self.add_stream(StreamSpec::Video { pid, codec })
-    }
-
-    pub fn add_klv(self, pid: u16, stream_type: KlvStreamType, carries_pts: bool) -> Self {
-        self.add_stream(StreamSpec::Klv {
-            pid,
-            stream_type,
-            carries_pts,
-        })
-    }
-
-    pub fn pcr_pid(mut self, pid: u16) -> Self {
-        self.pcr_pid = Some(pid);
-        self
+    /// Begin a new program block. Returns a [`ProgramBuilder`] that owns
+    /// `self` (consume-by-value); close the block with
+    /// [`ProgramBuilder::end_program`] to recover the `ConfigBuilder`.
+    pub fn add_program(mut self, program_number: u16, pmt_pid: u16) -> ProgramBuilder {
+        self.programs.push(ProgramConfig {
+            program_number,
+            pmt_pid,
+            streams: Vec::new(),
+            pcr_pid: None,
+            program_descriptors: Vec::new(),
+            stream_descriptors: Vec::new(),
+        });
+        let idx = self.programs.len() - 1;
+        ProgramBuilder { parent: self, idx }
     }
 
     pub fn pcr_interval_ms(mut self, ms: u32) -> Self {
@@ -546,114 +539,138 @@ impl ConfigBuilder {
         self
     }
 
-    /// Set descriptor list for the n-th video stream (zero-indexed
-    /// among `StreamSpec::Video` entries in add-order). Replaces any
-    /// previously set list for that stream. `video_index` out of range
-    /// surfaces as [`MuxError::InvalidStreamHandle`] from
-    /// [`ConfigBuilder::build`] (resolved at build time so chain-order
-    /// doesn't matter).
-    ///
-    /// Each `Vec<u8>` is one complete descriptor TLV — build them with
-    /// the helpers in [`crate::mpegts::descriptors`].
-    pub fn stream_descriptors_for_video(
-        mut self,
-        video_index: usize,
-        descriptors: Vec<Vec<u8>>,
-    ) -> Self {
-        self.pending_descriptors
-            .push((DescriptorTarget::Video(video_index), descriptors));
-        self
-    }
-
-    /// Set descriptor list for the n-th KLV stream (zero-indexed among
-    /// `StreamSpec::Klv` entries in add-order).
-    pub fn stream_descriptors_for_klv(
-        mut self,
-        klv_index: usize,
-        descriptors: Vec<Vec<u8>>,
-    ) -> Self {
-        self.pending_descriptors
-            .push((DescriptorTarget::Klv(klv_index), descriptors));
-        self
-    }
-
-    /// Set descriptor list by absolute stream index in `streams`
-    /// (across both kinds). Lower-level escape hatch for callers that
-    /// already track absolute indices.
-    pub fn stream_descriptors_for_stream(
-        mut self,
-        stream_index: usize,
-        descriptors: Vec<Vec<u8>>,
-    ) -> Self {
-        self.pending_descriptors
-            .push((DescriptorTarget::Absolute(stream_index), descriptors));
-        self
-    }
-
     /// Finalize. Returns a validated [`Config`] or an error describing the
     /// failed rule.
     pub fn build(self) -> Result<Config, MuxError> {
-        let n = self.streams.len();
-        let mut stream_descriptors: Vec<Vec<Vec<u8>>> = vec![Vec::new(); n];
-
-        // Resolve each pending target against the final stream set.
-        // Iteration is in caller-call order so a later set on the same
-        // resolved index overwrites an earlier one.
-        for (target, descs) in self.pending_descriptors {
-            let absolute = match target {
-                DescriptorTarget::Video(vi) => self
-                    .streams
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, s)| matches!(s, StreamSpec::Video { .. }))
-                    .nth(vi)
-                    .map(|(abs, _)| abs)
-                    .ok_or(MuxError::InvalidStreamHandle {
-                        kind: "video",
-                        index: vi,
-                    })?,
-                DescriptorTarget::Klv(ki) => self
-                    .streams
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, s)| matches!(s, StreamSpec::Klv { .. }))
-                    .nth(ki)
-                    .map(|(abs, _)| abs)
-                    .ok_or(MuxError::InvalidStreamHandle {
-                        kind: "klv",
-                        index: ki,
-                    })?,
-                DescriptorTarget::Absolute(ai) => {
-                    if ai >= n {
-                        return Err(MuxError::InvalidStreamHandle {
-                            kind: "stream",
-                            index: ai,
-                        });
-                    }
-                    ai
-                }
-            };
-            stream_descriptors[absolute] = descs;
-        }
-
-        // TEMPORARY (Task 5 rewrites ConfigBuilder for multi-program): wrap the
-        // single accumulated stream set into programs[0] with default
-        // program_number=1 and pmt_pid=0x1000.
         let cfg = Config {
-            programs: vec![ProgramConfig {
-                program_number: 1,
-                pmt_pid: 0x1000,
-                streams: self.streams,
-                pcr_pid: self.pcr_pid,
-                program_descriptors: Vec::new(),
-                stream_descriptors,
-            }],
+            programs: self.programs,
             pcr_interval_ms: self.pcr_interval_ms.unwrap_or(40),
             psi_interval_ms: self.psi_interval_ms.unwrap_or(100),
             buffer_packets: self.buffer_packets.unwrap_or(10_000),
         };
         cfg.validate()?;
         Ok(cfg)
+    }
+}
+
+/// Sub-builder for one [`ProgramConfig`]. Returned by
+/// [`ConfigBuilder::add_program`]; close with [`ProgramBuilder::end_program`]
+/// to return to the outer [`ConfigBuilder`] for additional `.add_program(...)`
+/// calls or `.build()`.
+///
+/// Every method consumes `self` and returns `Self` so calls can be chained.
+#[derive(Debug)]
+pub struct ProgramBuilder {
+    parent: ConfigBuilder,
+    /// Index into `parent.programs` for the program under construction.
+    idx: usize,
+}
+
+impl ProgramBuilder {
+    /// Add a video elementary stream to this program.
+    pub fn add_video(mut self, pid: u16, codec: VideoCodec) -> Self {
+        let prog = &mut self.parent.programs[self.idx];
+        prog.streams.push(StreamSpec::Video { pid, codec });
+        prog.stream_descriptors.push(Vec::new());
+        self
+    }
+
+    /// Add a KLV metadata elementary stream to this program.
+    pub fn add_klv(mut self, pid: u16, stream_type: KlvStreamType, carries_pts: bool) -> Self {
+        let prog = &mut self.parent.programs[self.idx];
+        prog.streams.push(StreamSpec::Klv {
+            pid,
+            stream_type,
+            carries_pts,
+        });
+        prog.stream_descriptors.push(Vec::new());
+        self
+    }
+
+    /// Pin this program's PCR to a specific PID. Default: first video stream's
+    /// PID (or first KLV PID for KLV-only programs).
+    pub fn pcr_pid(mut self, pid: u16) -> Self {
+        self.parent.programs[self.idx].pcr_pid = Some(pid);
+        self
+    }
+
+    /// Set program-level descriptors (PMT program info loop, before per-stream
+    /// entries). Each `Vec<u8>` is one complete descriptor TLV.
+    pub fn program_descriptors(mut self, descs: Vec<Vec<u8>>) -> Self {
+        self.parent.programs[self.idx].program_descriptors = descs;
+        self
+    }
+
+    /// Set the descriptor list for the `video_idx`-th video stream in this
+    /// program (zero-indexed among `StreamSpec::Video` entries in add-order).
+    ///
+    /// # Panics
+    /// Panics if `video_idx` is out of range relative to the number of video
+    /// streams added so far. Call after the corresponding [`add_video`][Self::add_video].
+    pub fn stream_descriptors_for_video(mut self, video_idx: usize, descs: Vec<Vec<u8>>) -> Self {
+        let prog = &mut self.parent.programs[self.idx];
+        let abs_idx = prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Video { .. }))
+            .nth(video_idx)
+            .map(|(i, _)| i)
+            .unwrap_or_else(|| {
+                panic!(
+                    "video_idx {video_idx} out of range — call after add_video (program {})",
+                    prog.program_number
+                )
+            });
+        prog.stream_descriptors[abs_idx] = descs;
+        self
+    }
+
+    /// Set the descriptor list for the `klv_idx`-th KLV stream in this
+    /// program (zero-indexed among `StreamSpec::Klv` entries in add-order).
+    ///
+    /// # Panics
+    /// Panics if `klv_idx` is out of range. Call after the corresponding
+    /// [`add_klv`][Self::add_klv].
+    pub fn stream_descriptors_for_klv(mut self, klv_idx: usize, descs: Vec<Vec<u8>>) -> Self {
+        let prog = &mut self.parent.programs[self.idx];
+        let abs_idx = prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Klv { .. }))
+            .nth(klv_idx)
+            .map(|(i, _)| i)
+            .unwrap_or_else(|| {
+                panic!(
+                    "klv_idx {klv_idx} out of range — call after add_klv (program {})",
+                    prog.program_number
+                )
+            });
+        prog.stream_descriptors[abs_idx] = descs;
+        self
+    }
+
+    /// Set the descriptor list for a stream by absolute index within this
+    /// program (across both video and KLV streams in add-order).
+    ///
+    /// # Panics
+    /// Panics if `abs_idx` is out of range.
+    pub fn stream_descriptors_for_stream(mut self, abs_idx: usize, descs: Vec<Vec<u8>>) -> Self {
+        let prog = &mut self.parent.programs[self.idx];
+        assert!(
+            abs_idx < prog.streams.len(),
+            "abs_idx {abs_idx} out of range (program {} has {} streams)",
+            prog.program_number,
+            prog.streams.len()
+        );
+        prog.stream_descriptors[abs_idx] = descs;
+        self
+    }
+
+    /// Close this program block and return to the outer [`ConfigBuilder`].
+    pub fn end_program(self) -> ConfigBuilder {
+        self.parent
     }
 }
 
@@ -1436,8 +1453,10 @@ mod tests {
     #[test]
     fn rejects_pid_collision() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1234, VideoCodec::H264)
             .add_klv(0x1234, KlvStreamType::PrivateData, false)
+            .end_program()
             .build();
         assert!(matches!(
             cfg,
@@ -1450,9 +1469,11 @@ mod tests {
     #[test]
     fn rejects_unrelated_pcr_pid() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
             .pcr_pid(0x0500)
+            .end_program()
             .build();
         assert!(matches!(
             cfg,
@@ -1465,9 +1486,11 @@ mod tests {
     #[test]
     fn accepts_pcr_pid_on_klv() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
             .pcr_pid(0x1031)
+            .end_program()
             .build();
         cfg.expect("pcr_pid on klv is allowed");
     }
@@ -1522,8 +1545,10 @@ mod tests {
     #[test]
     fn rejects_sync_without_pts() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::SynchronousMetadata, false)
+            .end_program()
             .build();
         assert!(cfg.is_err());
     }
@@ -1532,8 +1557,10 @@ mod tests {
     fn accepts_async_with_pts_combo() {
         // 0x06 + PTS — the common-practice "sync KLV everyone recognizes"
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, true)
+            .end_program()
             .build();
         cfg.expect("0x06 + PTS is valid");
     }
@@ -1549,9 +1576,11 @@ mod tests {
     #[test]
     fn resolved_pcr_pid_explicit() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
             .pcr_pid(0x1031)
+            .end_program()
             .build()
             .unwrap();
         let mux = Muxer::new(cfg).unwrap();
@@ -1765,8 +1794,10 @@ mod tests {
         // 65535 - 3 - 5 = 65527.
         let mut mux = Muxer::new(
             Config::builder()
+                .add_program(1, 0x1000)
                 .add_video(0x1011, VideoCodec::H264)
                 .add_klv(0x1031, KlvStreamType::PrivateData, true)
+                .end_program()
                 .build()
                 .unwrap(),
         )
@@ -1796,8 +1827,10 @@ mod tests {
     #[test]
     fn config_rejects_duplicate_pids() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1011, KlvStreamType::PrivateData, false)
+            .end_program()
             .build();
         let err = cfg.unwrap_err();
         assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("distinct")));
@@ -1806,9 +1839,11 @@ mod tests {
     #[test]
     fn config_pcr_pid_must_match_stream() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
             .pcr_pid(0x1099) // not configured
+            .end_program()
             .build();
         let err = cfg.unwrap_err();
         assert!(matches!(err, MuxError::InvalidConfig(msg) if msg.contains("pcr_pid")));
@@ -1936,9 +1971,11 @@ mod tests {
     #[test]
     fn config_validate_accepts_dual_video_plus_klv() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264) // EO
             .add_video(0x1021, VideoCodec::H264) // IR
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .end_program()
             .build();
         assert!(cfg.is_ok(), "dual-video + KLV must validate");
     }
@@ -1946,21 +1983,23 @@ mod tests {
     #[test]
     fn config_validate_accepts_dual_klv_plus_video() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
             .add_klv(0x1041, KlvStreamType::PrivateData, true)
+            .end_program()
             .build();
         assert!(cfg.is_ok(), "video + dual-KLV must validate");
     }
 
     #[test]
     fn config_validate_rejects_seventeen_video_streams() {
-        let mut b = Config::builder();
+        let mut pb = Config::builder().add_program(1, 0x1000);
         for i in 0..17u16 {
-            b = b.add_video(0x1010 + i, VideoCodec::H264);
+            pb = pb.add_video(0x1010 + i, VideoCodec::H264);
         }
-        b = b.add_klv(0x1100, KlvStreamType::PrivateData, false);
-        let err = b.build().unwrap_err();
+        pb = pb.add_klv(0x1100, KlvStreamType::PrivateData, false);
+        let err = pb.end_program().build().unwrap_err();
         assert!(
             matches!(err, MuxError::TooManyVideoStreams { count: 17, cap: 16 }),
             "expected TooManyVideoStreams {{ 17, 16 }}, got {err:?}",
@@ -1969,11 +2008,13 @@ mod tests {
 
     #[test]
     fn config_validate_rejects_seventeen_klv_streams() {
-        let mut b = Config::builder().add_video(0x1011, VideoCodec::H264);
+        let mut pb = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x1011, VideoCodec::H264);
         for i in 0..17u16 {
-            b = b.add_klv(0x1100 + i, KlvStreamType::PrivateData, false);
+            pb = pb.add_klv(0x1100 + i, KlvStreamType::PrivateData, false);
         }
-        let err = b.build().unwrap_err();
+        let err = pb.end_program().build().unwrap_err();
         assert!(
             matches!(err, MuxError::TooManyKlvStreams { count: 17, cap: 16 }),
             "expected TooManyKlvStreams {{ 17, 16 }}, got {err:?}",
@@ -1983,7 +2024,9 @@ mod tests {
     #[test]
     fn muxer_new_accepts_video_only() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
+            .end_program()
             .build()
             .unwrap();
         let mux = Muxer::new(cfg);
@@ -1994,8 +2037,10 @@ mod tests {
     fn muxer_new_accepts_klv_only() {
         // KLV-only requires PCR pinned to KLV PID (it carries PCR).
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_klv(0x1031, KlvStreamType::PrivateData, true)
             .pcr_pid(0x1031)
+            .end_program()
             .build()
             .unwrap();
         let mux = Muxer::new(cfg);
@@ -2005,9 +2050,11 @@ mod tests {
     #[test]
     fn push_video_rejects_when_multiple_video_streams_configured() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_video(0x1021, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .end_program()
             .build()
             .unwrap();
         let mut mux = Muxer::new(cfg).unwrap();
@@ -2028,9 +2075,11 @@ mod tests {
     #[test]
     fn push_klv_rejects_when_multiple_klv_streams_configured() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
             .add_klv(0x1041, KlvStreamType::PrivateData, true)
+            .end_program()
             .build()
             .unwrap();
         let mut mux = Muxer::new(cfg).unwrap();
@@ -2051,8 +2100,10 @@ mod tests {
     fn push_video_rejects_when_no_video_streams_configured() {
         // KLV-only muxer — push_video has no possible target.
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_klv(0x1031, KlvStreamType::PrivateData, true)
             .pcr_pid(0x1031)
+            .end_program()
             .build()
             .unwrap();
         let mut mux = Muxer::new(cfg).unwrap();
@@ -2073,7 +2124,9 @@ mod tests {
     #[test]
     fn push_klv_rejects_when_no_klv_streams_configured() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
+            .end_program()
             .build()
             .unwrap();
         let mut mux = Muxer::new(cfg).unwrap();
@@ -2131,6 +2184,7 @@ mod tests {
         // 4 streams × 100-byte descriptor = ~400 bytes > 166 max.
         let big = crate::mpegts::descriptors::user_private(&[0u8; 100]);
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_video(0x101, VideoCodec::H264)
             .add_klv(0x102, KlvStreamType::PrivateData, false)
@@ -2139,6 +2193,7 @@ mod tests {
             .stream_descriptors_for_stream(1, vec![big.clone()])
             .stream_descriptors_for_stream(2, vec![big.clone()])
             .stream_descriptors_for_stream(3, vec![big])
+            .end_program()
             .build();
         assert!(matches!(cfg, Err(MuxError::PmtTooLarge { .. })));
     }
@@ -2148,10 +2203,12 @@ mod tests {
         // 2 video, 1 KLV. Setting video_index=1 should land on absolute index 2
         // (streams: [video0, klv, video1]).
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x102, KlvStreamType::PrivateData, false)
             .add_video(0x101, VideoCodec::H264)
             .stream_descriptors_for_video(1, vec![crate::mpegts::descriptors::user_private(b"V2")])
+            .end_program()
             .build()
             .unwrap();
         let prog = &cfg.programs[0];
@@ -2163,22 +2220,34 @@ mod tests {
 
     #[test]
     fn builder_rejects_out_of_range_video_index() {
-        let res = Config::builder()
-            .add_video(0x100, VideoCodec::H264)
-            .stream_descriptors_for_video(7, vec![crate::mpegts::descriptors::user_private(b"X")])
-            .build();
-        assert!(matches!(res, Err(MuxError::InvalidStreamHandle { .. })));
+        // With the new ProgramBuilder, out-of-range video_idx panics (not Err).
+        // Use std::panic::catch_unwind to assert the panic fires.
+        let result = std::panic::catch_unwind(|| {
+            Config::builder()
+                .add_program(1, 0x1000)
+                .add_video(0x100, VideoCodec::H264)
+                .stream_descriptors_for_video(
+                    7,
+                    vec![crate::mpegts::descriptors::user_private(b"X")],
+                )
+                .end_program()
+                .build()
+                .unwrap()
+        });
+        assert!(result.is_err(), "expected panic for out-of-range video_idx");
     }
 
     #[test]
     fn cache_composes_auto_emit_then_caller_bytes_on_klv_private() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
             .stream_descriptors_for_klv(
                 0,
                 vec![crate::mpegts::descriptors::user_private(b"KLV_LBL")],
             )
+            .end_program()
             .build()
             .unwrap();
         let muxer = Muxer::new(cfg).unwrap();
@@ -2199,11 +2268,13 @@ mod tests {
     #[test]
     fn cache_suppresses_klva_auto_emit_when_caller_supplies_registration() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
             .stream_descriptors_for_klv(
                 0,
                 vec![crate::mpegts::descriptors::registration(*b"KLVA", &[])],
             )
+            .end_program()
             .build()
             .unwrap();
         let muxer = Muxer::new(cfg).unwrap();
@@ -2215,6 +2286,7 @@ mod tests {
     #[test]
     fn cache_no_auto_emit_on_sync_klv() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_klv(0x101, KlvStreamType::SynchronousMetadata, true)
             .stream_descriptors_for_klv(
                 0,
@@ -2223,6 +2295,7 @@ mod tests {
                     crate::mpegts::descriptors::metadata_std(0, 0, 0),
                 ],
             )
+            .end_program()
             .build()
             .unwrap();
         let muxer = Muxer::new(cfg).unwrap();
@@ -2240,8 +2313,10 @@ mod stats_tests {
     #[test]
     fn stats_starts_with_per_stream_entries_for_configured_streams() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .end_program()
             .build()
             .unwrap();
         let m = Muxer::new(cfg).unwrap();
@@ -2259,8 +2334,10 @@ mod stats_tests {
     #[test]
     fn stats_count_pushed_items_and_pulled_packets() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .end_program()
             .build()
             .unwrap();
         let mut m = Muxer::new(cfg).unwrap();
@@ -2285,8 +2362,10 @@ mod stats_tests {
     #[test]
     fn reset_stats_zeros_counters_keeps_entries() {
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .end_program()
             .build()
             .unwrap();
         let mut m = Muxer::new(cfg).unwrap();

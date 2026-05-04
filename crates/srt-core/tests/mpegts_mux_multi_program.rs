@@ -204,3 +204,50 @@ fn single_program_pat_unchanged() {
         "single-program PAT must have 0xFF padding after the one entry + CRC"
     );
 }
+
+#[test]
+fn config_builder_emits_multi_program_config() {
+    let config = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x1011, VideoCodec::H264)
+        .add_klv(0x1031, KlvStreamType::PrivateData, false)
+        .end_program()
+        .add_program(2, 0x1100)
+        .add_video(0x1111, VideoCodec::H265)
+        .add_klv(0x1131, KlvStreamType::PrivateData, false)
+        .end_program()
+        .build()
+        .unwrap();
+
+    assert_eq!(config.programs.len(), 2);
+    assert_eq!(config.programs[0].program_number, 1);
+    assert_eq!(config.programs[0].pmt_pid, 0x1000);
+    assert_eq!(config.programs[0].streams.len(), 2);
+    assert_eq!(config.programs[1].program_number, 2);
+    assert_eq!(config.programs[1].pmt_pid, 0x1100);
+}
+
+#[test]
+fn config_builder_descriptors_for_video_attaches_to_correct_program() {
+    use srt_core::mpegts::descriptors as desc;
+    let config = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x1011, VideoCodec::H264)
+        .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
+        .end_program()
+        .add_program(2, 0x1100)
+        .add_video(0x1111, VideoCodec::H265)
+        .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 4K")])
+        .end_program()
+        .build()
+        .unwrap();
+
+    assert_eq!(
+        config.programs[0].stream_descriptors[0][0],
+        desc::user_private(b"EO 1080p")
+    );
+    assert_eq!(
+        config.programs[1].stream_descriptors[0][0],
+        desc::user_private(b"EO 4K")
+    );
+}

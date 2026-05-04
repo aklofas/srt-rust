@@ -977,8 +977,10 @@ mod tests {
         use crate::mpegts::mux::{Config, VideoCodec as MuxVideoCodec};
 
         let cfg = Config::builder()
+            .add_program(1, 0x1000)
             .add_video(0x100, MuxVideoCodec::H264)
             .stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
+            .end_program()
             .build()
             .unwrap();
         let mut mux = crate::mpegts::mux::Muxer::new(cfg).unwrap();

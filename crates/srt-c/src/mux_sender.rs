@@ -157,7 +157,7 @@ pub unsafe extern "C" fn srtc_mux_sender_send_video_to(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(nal, len) };
-    let stream = VideoStreamHandle::pack(0, stream_handle as usize);
+    let stream = VideoStreamHandle::from_raw(stream_handle);
     wrapper.inner.with_inner_ref(
         |s| match s.send_video_to(stream, slice, pts_90khz, key_frame) {
             Ok(()) => 0,
@@ -194,7 +194,7 @@ pub unsafe extern "C" fn srtc_mux_sender_send_klv_to(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(klv, len) };
-    let stream = KlvStreamHandle::pack(0, stream_handle as usize);
+    let stream = KlvStreamHandle::from_raw(stream_handle);
     wrapper
         .inner
         .with_inner_ref(|s| match s.send_klv_to(stream, slice, pts_90khz) {
@@ -451,7 +451,7 @@ pub unsafe extern "C" fn srtc_managed_mux_sender_send_video_to(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(nal, len) };
-    let stream = VideoStreamHandle::pack(0, stream_handle as usize);
+    let stream = VideoStreamHandle::from_raw(stream_handle);
     wrapper.inner.with_inner_ref(
         |s| match s.send_video_to(stream, slice, pts_90khz, key_frame) {
             Ok(()) => 0,
@@ -489,7 +489,7 @@ pub unsafe extern "C" fn srtc_managed_mux_sender_send_klv_to(
         return SrtcError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(klv, len) };
-    let stream = KlvStreamHandle::pack(0, stream_handle as usize);
+    let stream = KlvStreamHandle::from_raw(stream_handle);
     wrapper
         .inner
         .with_inner_ref(|s| match s.send_klv_to(stream, slice, pts_90khz) {

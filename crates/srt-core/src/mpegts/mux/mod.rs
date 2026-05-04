@@ -130,6 +130,17 @@ impl VideoStreamHandle {
         (prog, within)
     }
 
+    /// Wrap a raw packed `u32` handle that was previously produced by
+    /// [`pack`](Self::pack) and returned to a C caller. Use this at FFI
+    /// push-time entry points where the handle is already packed — calling
+    /// `pack(0, raw)` would be wrong because it re-encodes `raw` as a
+    /// `within_index`, which trips the `within_index < 16` debug-assert for
+    /// any out-of-range value the C caller passes (e.g. an invalid-handle
+    /// test fixture with value 99).
+    pub fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+
     #[cfg(test)]
     pub(crate) fn for_test(raw: usize) -> Self {
         // Bypass packing — store raw as opaque u32 so out-of-range test values
@@ -154,6 +165,13 @@ impl KlvStreamHandle {
         let prog = ((self.0 >> 4) & 0x0F) as usize;
         let within = (self.0 & 0x0F) as usize;
         (prog, within)
+    }
+
+    /// Wrap a raw packed `u32` handle that was previously produced by
+    /// [`pack`](Self::pack) and returned to a C caller. Same semantics as
+    /// [`VideoStreamHandle::from_raw`].
+    pub fn from_raw(raw: u32) -> Self {
+        Self(raw)
     }
 
     #[cfg(test)]

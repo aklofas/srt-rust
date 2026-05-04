@@ -163,67 +163,56 @@ pub struct ProgramConfig {
 
 /// Muxer construction parameters.
 ///
-/// **Multi-stream.** [`Config::validate`] enforces at most 16 Video and
-/// 16 Klv streams, with at least one of either kind required.
+/// Contains one or more [`ProgramConfig`]s. Multi-program transport streams
+/// carry a PAT that lists all programs; each program has its own PMT.
 ///
 /// Construct with [`Config::builder()`] for ergonomic chaining, or directly
 /// with field updates over [`Config::default()`] for the canonical
-/// single-video-plus-single-KLV case.
+/// single-program single-video-plus-single-KLV case.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Elementary streams the muxer carries. ≤16 Video, ≤16 Klv, ≥1 of either.
-    pub streams: Vec<StreamSpec>,
-
-    /// PID carrying the PCR. `None` = use the first video stream's PID, or
-    /// the first KLV stream's PID if no video stream is configured.
-    pub pcr_pid: Option<u16>,
+    /// Programs in this multiplex. ≤ `MAX_PROGRAMS`, ≥ 1.
+    pub programs: Vec<ProgramConfig>,
 
     /// PCR re-emission interval, in milliseconds. Default 40. Validation 1..=100.
+    /// Applied per-program (each program's PCR PID re-emits independently).
     pub pcr_interval_ms: u32,
 
     /// PAT/PMT re-emission interval, in milliseconds. Default 100. Validation >= 10.
+    /// One PAT + N PMTs emitted per tick.
     pub psi_interval_ms: u32,
 
     /// Maximum buffered TS packets before push returns `BufferFull`.
     /// Default 10000 (~1.88 MB, ~600 ms at 25 Mbps). Validation: >= 10.
     pub buffer_packets: usize,
-
-    /// Per-stream caller-supplied PMT descriptors. Outer Vec indexed by
-    /// `streams[i]`; inner Vec is the descriptor list for that stream
-    /// (each inner Vec<u8> is one complete descriptor TLV — tag + length
-    /// byte + body, as built by the helpers in [`crate::mpegts::descriptors`]).
-    /// Empty by default — populate via
-    /// [`ConfigBuilder::stream_descriptors_for_video`] /
-    /// `_for_klv` / `_for_stream`.
-    ///
-    /// Hand-built `Config` callers must keep `stream_descriptors.len()
-    /// == streams.len()`; [`Config::validate`] enforces this. Outer-Vec
-    /// growth happens in `ConfigBuilder::build` to match the final
-    /// stream set.
-    pub stream_descriptors: Vec<Vec<Vec<u8>>>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        // Defaults: H.264 video at 0x1011, KLV PrivateData at 0x1031,
-        // async KLV (no PTS), PCR pinned to video.
+        // Single program: H.264 video at 0x1011, KLV PrivateData at 0x1031,
+        // async KLV (no PTS), PCR auto-resolved to first video stream.
         Self {
-            streams: vec![
-                StreamSpec::Video {
-                    pid: 0x1011,
-                    codec: VideoCodec::H264,
-                },
-                StreamSpec::Klv {
-                    pid: 0x1031,
-                    stream_type: KlvStreamType::PrivateData,
-                    carries_pts: false,
-                },
-            ],
-            pcr_pid: None,
+            programs: vec![ProgramConfig {
+                program_number: 1,
+                pmt_pid: 0x1000,
+                streams: vec![
+                    StreamSpec::Video {
+                        pid: 0x1011,
+                        codec: VideoCodec::H264,
+                    },
+                    StreamSpec::Klv {
+                        pid: 0x1031,
+                        stream_type: KlvStreamType::PrivateData,
+                        carries_pts: false,
+                    },
+                ],
+                pcr_pid: None,
+                program_descriptors: Vec::new(),
+                stream_descriptors: vec![Vec::new(), Vec::new()],
+            }],
             pcr_interval_ms: 40,
             psi_interval_ms: 100,
             buffer_packets: 10_000,
-            stream_descriptors: vec![Vec::new(), Vec::new()],
         }
     }
 }
@@ -234,89 +223,207 @@ impl Config {
         ConfigBuilder::default()
     }
 
-    /// Validate the configuration. Returns `Err(MuxError::InvalidConfig)`
-    /// with a static message describing the failed rule.
+    /// Validate the configuration. Returns a `MuxError` describing the first
+    /// failed rule.
     pub fn validate(&self) -> Result<(), MuxError> {
-        // ≥1 stream of either kind.
-        if self.streams.is_empty() {
-            return Err(MuxError::InvalidConfig(
-                "at least one stream (video or klv) is required",
-            ));
+        if self.programs.is_empty() {
+            return Err(MuxError::InvalidConfig("at least one program is required"));
         }
-
-        // Cap at 16 video + 16 KLV streams. Well above realistic
-        // gimbaled-platform topologies (EO + IR + maybe IR-narrow + a
-        // depth channel = 4 in the wild today). Lift trivially if asked.
-        const VIDEO_CAP: usize = 16;
-        const KLV_CAP: usize = 16;
-        let mut video_count = 0;
-        let mut klv_count = 0;
-        for s in &self.streams {
-            match s {
-                StreamSpec::Video { .. } => video_count += 1,
-                StreamSpec::Klv { .. } => klv_count += 1,
-            }
-        }
-        if video_count > VIDEO_CAP {
-            return Err(MuxError::TooManyVideoStreams {
-                count: video_count,
-                cap: VIDEO_CAP,
-            });
-        }
-        if klv_count > KLV_CAP {
-            return Err(MuxError::TooManyKlvStreams {
-                count: klv_count,
-                cap: KLV_CAP,
+        if self.programs.len() > MAX_PROGRAMS {
+            return Err(MuxError::TooManyPrograms {
+                count: self.programs.len(),
+                cap: MAX_PROGRAMS,
             });
         }
 
-        // Per-stream validation.
-        for s in &self.streams {
-            match s {
-                StreamSpec::Video { pid, .. } => {
-                    if !pid::is_user_pid(*pid) {
-                        return Err(MuxError::InvalidConfig(
-                            "video pid must be in 0x0010..=0x1FFE",
-                        ));
-                    }
-                }
-                StreamSpec::Klv {
-                    pid,
-                    stream_type,
-                    carries_pts,
-                } => {
-                    if !pid::is_user_pid(*pid) {
-                        return Err(MuxError::InvalidConfig(
-                            "klv pid must be in 0x0010..=0x1FFE",
-                        ));
-                    }
-                    if *stream_type == KlvStreamType::SynchronousMetadata && !*carries_pts {
-                        return Err(MuxError::InvalidConfig(
-                            "klv stream_type=SynchronousMetadata requires carries_pts=true",
-                        ));
-                    }
-                }
-            }
-        }
-
-        // PIDs must be distinct.
-        for (i, s1) in self.streams.iter().enumerate() {
-            for s2 in &self.streams[i + 1..] {
-                if s1.pid() == s2.pid() {
-                    return Err(MuxError::InvalidConfig("stream PIDs must all be distinct"));
-                }
-            }
-        }
-
-        // pcr_pid (if specified) must equal a configured stream's PID.
-        if let Some(pcr) = self.pcr_pid {
-            if !self.streams.iter().any(|s| s.pid() == pcr) {
+        // Per-program validation.
+        for prog in &self.programs {
+            if prog.program_number == 0 {
                 return Err(MuxError::InvalidConfig(
-                    "pcr_pid must equal a configured stream PID",
+                    "program_number 0 is reserved for network information",
                 ));
             }
+            if !pid::is_user_pid(prog.pmt_pid) {
+                return Err(MuxError::InvalidConfig(
+                    "pmt_pid must be in 0x0010..=0x1FFE",
+                ));
+            }
+            if prog.streams.is_empty() {
+                return Err(MuxError::EmptyProgram {
+                    program_number: prog.program_number,
+                });
+            }
+
+            // Per-program stream cap (mirrors plan #14).
+            const VIDEO_CAP: usize = 16;
+            const KLV_CAP: usize = 16;
+            let mut video_count = 0;
+            let mut klv_count = 0;
+            for s in &prog.streams {
+                match s {
+                    StreamSpec::Video { .. } => video_count += 1,
+                    StreamSpec::Klv { .. } => klv_count += 1,
+                }
+            }
+            if video_count > VIDEO_CAP {
+                return Err(MuxError::TooManyVideoStreams {
+                    count: video_count,
+                    cap: VIDEO_CAP,
+                });
+            }
+            if klv_count > KLV_CAP {
+                return Err(MuxError::TooManyKlvStreams {
+                    count: klv_count,
+                    cap: KLV_CAP,
+                });
+            }
+
+            // Per-stream validation (PID range, KLV invariant).
+            for s in &prog.streams {
+                match s {
+                    StreamSpec::Video { pid, .. } => {
+                        if !pid::is_user_pid(*pid) {
+                            return Err(MuxError::InvalidConfig(
+                                "video pid must be in 0x0010..=0x1FFE",
+                            ));
+                        }
+                    }
+                    StreamSpec::Klv {
+                        pid,
+                        stream_type,
+                        carries_pts,
+                    } => {
+                        if !pid::is_user_pid(*pid) {
+                            return Err(MuxError::InvalidConfig(
+                                "klv pid must be in 0x0010..=0x1FFE",
+                            ));
+                        }
+                        if *stream_type == KlvStreamType::SynchronousMetadata && !*carries_pts {
+                            return Err(MuxError::InvalidConfig(
+                                "klv stream_type=SynchronousMetadata requires carries_pts=true",
+                            ));
+                        }
+                    }
+                }
+            }
+
+            // Within-program PID uniqueness.
+            for (i, s1) in prog.streams.iter().enumerate() {
+                for s2 in &prog.streams[i + 1..] {
+                    if s1.pid() == s2.pid() {
+                        return Err(MuxError::InvalidConfig(
+                            "stream PIDs within a program must be distinct",
+                        ));
+                    }
+                }
+            }
+
+            // pmt_pid must not collide with any stream PID in this program.
+            if prog.streams.iter().any(|s| s.pid() == prog.pmt_pid) {
+                return Err(MuxError::PmtPidConflictsWithStream {
+                    pmt_pid: prog.pmt_pid,
+                    program_number: prog.program_number,
+                });
+            }
+
+            // pcr_pid (if specified) must equal a configured stream's PID.
+            if let Some(pcr) = prog.pcr_pid {
+                if !prog.streams.iter().any(|s| s.pid() == pcr) {
+                    return Err(MuxError::InvalidConfig(
+                        "pcr_pid must equal a configured stream PID in the same program",
+                    ));
+                }
+            }
+
+            // stream_descriptors length match + per-TLV well-formedness.
+            if prog.stream_descriptors.len() != prog.streams.len() {
+                return Err(MuxError::InvalidConfig(
+                    "stream_descriptors.len() must equal streams.len()",
+                ));
+            }
+            for (si, descs) in prog.stream_descriptors.iter().enumerate() {
+                for (di, tlv) in descs.iter().enumerate() {
+                    if tlv.len() < 2 {
+                        return Err(MuxError::MalformedDescriptor {
+                            stream_index: si,
+                            descriptor_index: di,
+                            reason: "descriptor TLV must be at least 2 bytes (tag + length)",
+                        });
+                    }
+                    let declared = tlv[1] as usize;
+                    if declared != tlv.len() - 2 {
+                        return Err(MuxError::MalformedDescriptor {
+                            stream_index: si,
+                            descriptor_index: di,
+                            reason: "length byte does not match payload length",
+                        });
+                    }
+                    if declared > 253 {
+                        return Err(MuxError::MalformedDescriptor {
+                            stream_index: si,
+                            descriptor_index: di,
+                            reason: "descriptor body length must fit in u8 (max 253 useful bytes)",
+                        });
+                    }
+                }
+            }
+
+            // Per-program PMT size budget. NOTE: estimate_pmt_section_size
+            // does NOT exist yet — it's added in Task 4. For now, leave a
+            // TODO comment and skip the size check. Task 4 uncomments this:
+            //
+            //   let pmt_size = crate::mpegts::mux::psi::estimate_pmt_section_size(prog);
+            //   if pmt_size > crate::mpegts::mux::psi::MAX_PMT_SECTION_BYTES {
+            //       return Err(MuxError::PmtTooLarge {
+            //           used_bytes: pmt_size,
+            //           max_bytes: crate::mpegts::mux::psi::MAX_PMT_SECTION_BYTES,
+            //       });
+            //   }
         }
 
+        // Cross-program checks: program_number unique, pmt_pid unique, all
+        // stream PIDs unique across programs.
+        for (i, p1) in self.programs.iter().enumerate() {
+            for p2 in &self.programs[i + 1..] {
+                if p1.program_number == p2.program_number {
+                    return Err(MuxError::DuplicateProgramNumber {
+                        program_number: p1.program_number,
+                    });
+                }
+                if p1.pmt_pid == p2.pmt_pid {
+                    return Err(MuxError::DuplicatePmtPid {
+                        pid: p1.pmt_pid,
+                        programs: [p1.program_number, p2.program_number],
+                    });
+                }
+                for s1 in &p1.streams {
+                    if p2.pmt_pid == s1.pid() {
+                        return Err(MuxError::DuplicatePidAcrossPrograms {
+                            pid: s1.pid(),
+                            programs: [p1.program_number, p2.program_number],
+                        });
+                    }
+                    for s2 in &p2.streams {
+                        if s1.pid() == s2.pid() {
+                            return Err(MuxError::DuplicatePidAcrossPrograms {
+                                pid: s1.pid(),
+                                programs: [p1.program_number, p2.program_number],
+                            });
+                        }
+                    }
+                }
+                for s2 in &p2.streams {
+                    if p1.pmt_pid == s2.pid() {
+                        return Err(MuxError::DuplicatePidAcrossPrograms {
+                            pid: s2.pid(),
+                            programs: [p1.program_number, p2.program_number],
+                        });
+                    }
+                }
+            }
+        }
+
+        // Cadence + buffer.
         if !(1..=100).contains(&self.pcr_interval_ms) {
             return Err(MuxError::InvalidConfig(
                 "pcr_interval_ms must be in 1..=100",
@@ -329,96 +436,35 @@ impl Config {
             return Err(MuxError::InvalidConfig("buffer_packets must be >= 10"));
         }
 
-        // stream_descriptors must be the same length as streams. Hand-built
-        // Config callers must keep them in sync; ConfigBuilder::build does
-        // this automatically.
-        if self.stream_descriptors.len() != self.streams.len() {
-            return Err(MuxError::InvalidConfig(
-                "stream_descriptors.len() must equal streams.len()",
-            ));
-        }
-
-        // Per-stream descriptor well-formedness: each TLV must declare a
-        // length that matches its slice length, and the length byte itself
-        // must be ≤ 253 (so total descriptor bytes ≤ 255).
-        for (si, descs) in self.stream_descriptors.iter().enumerate() {
-            for (di, tlv) in descs.iter().enumerate() {
-                if tlv.len() < 2 {
-                    return Err(MuxError::MalformedDescriptor {
-                        stream_index: si,
-                        descriptor_index: di,
-                        reason: "descriptor TLV must be at least 2 bytes (tag + length)",
-                    });
-                }
-                let declared = tlv[1] as usize;
-                if declared != tlv.len() - 2 {
-                    return Err(MuxError::MalformedDescriptor {
-                        stream_index: si,
-                        descriptor_index: di,
-                        reason: "length byte does not match payload length",
-                    });
-                }
-                if declared > 253 {
-                    return Err(MuxError::MalformedDescriptor {
-                        stream_index: si,
-                        descriptor_index: di,
-                        reason: "descriptor body length must fit in u8 (max 253 useful bytes)",
-                    });
-                }
-            }
-        }
-
-        // PMT must fit in one TS packet. Sum 5 ES-header bytes per stream
-        // + auto-emitted descriptor bytes (KLVA Registration on KLV PIDs)
-        // + caller bytes. The 17-byte fixed PMT overhead (header + CRC +
-        // PCR/info length) leaves 166 bytes for the ES loop.
-        let mut total_es_loop_bytes = 0usize;
-        for (i, spec) in self.streams.iter().enumerate() {
-            let auto_bytes = match spec {
-                StreamSpec::Klv {
-                    stream_type: KlvStreamType::PrivateData,
-                    ..
-                } => 6, // KLVA Registration descriptor body
-                _ => 0,
-            };
-            // If caller supplied a Registration descriptor on a KLV PID,
-            // auto-emit is suppressed (Task 7). Detect that here so the
-            // validation budget matches what the muxer actually emits.
-            let caller_overrides_klva = matches!(spec, StreamSpec::Klv { .. })
-                && self.stream_descriptors[i]
-                    .iter()
-                    .any(|tlv| !tlv.is_empty() && tlv[0] == 0x05);
-            let effective_auto = if caller_overrides_klva { 0 } else { auto_bytes };
-            let caller_bytes: usize = self.stream_descriptors[i].iter().map(Vec::len).sum();
-            total_es_loop_bytes += 5 + effective_auto + caller_bytes;
-        }
-        if total_es_loop_bytes > crate::mpegts::descriptors::MAX_DESCRIPTOR_LOOP_PER_PMT {
-            return Err(MuxError::PmtTooLarge {
-                used_bytes: total_es_loop_bytes,
-                max_bytes: crate::mpegts::descriptors::MAX_DESCRIPTOR_LOOP_PER_PMT,
-            });
-        }
-
         Ok(())
     }
 
-    /// Resolve the PCR PID. If `pcr_pid` is `None`:
+    /// TEMPORARY (removed in Task 3): convenience for code mid-migration.
+    /// Returns the streams of the first program. Panics if `programs` is empty.
+    #[doc(hidden)]
+    pub fn streams_compat_temp(&self) -> &[StreamSpec] {
+        &self.programs[0].streams
+    }
+
+    /// Resolve the PCR PID for the first program. If `pcr_pid` is `None`:
     /// - prefer the first video stream's PID;
     /// - if no video stream, use the first KLV stream's PID.
     ///
-    /// Caller MUST have called `validate()` first; this helper assumes ≥1 stream.
+    /// Caller MUST have called `validate()` first; this helper assumes ≥1
+    /// stream in programs[0].
     pub(crate) fn resolved_pcr_pid(&self) -> u16 {
-        if let Some(pid) = self.pcr_pid {
+        let prog = &self.programs[0];
+        if let Some(pid) = prog.pcr_pid {
             return pid;
         }
-        if let Some(pid) = self.streams.iter().find_map(|s| match s {
+        if let Some(pid) = prog.streams.iter().find_map(|s| match s {
             StreamSpec::Video { pid, .. } => Some(*pid),
             _ => None,
         }) {
             return pid;
         }
         // No video — use the first KLV stream. validate() guarantees ≥1.
-        self.streams
+        prog.streams
             .iter()
             .find_map(|s| match s {
                 StreamSpec::Klv { pid, .. } => Some(*pid),
@@ -427,20 +473,20 @@ impl Config {
             .expect("validate() guarantees at least one stream")
     }
 
-    /// Iterate over video streams. Convenience accessor for the muxer's
-    /// internals; callers shouldn't need this directly.
+    /// Iterate over video streams in programs[0]. Convenience accessor for
+    /// the muxer's internals; callers shouldn't need this directly.
     pub(crate) fn video_streams(&self) -> impl Iterator<Item = (u16, VideoCodec)> + '_ {
-        self.streams.iter().filter_map(|s| match s {
+        self.programs[0].streams.iter().filter_map(|s| match s {
             StreamSpec::Video { pid, codec } => Some((*pid, *codec)),
             _ => None,
         })
     }
 
-    /// Iterate over klv streams. Convenience accessor for the muxer's
-    /// internals.
+    /// Iterate over KLV streams in programs[0]. Convenience accessor for
+    /// the muxer's internals.
     #[allow(clippy::type_complexity)]
     pub(crate) fn klv_streams(&self) -> impl Iterator<Item = (u16, KlvStreamType, bool)> + '_ {
-        self.streams.iter().filter_map(|s| match s {
+        self.programs[0].streams.iter().filter_map(|s| match s {
             StreamSpec::Klv {
                 pid,
                 stream_type,
@@ -450,12 +496,12 @@ impl Config {
         })
     }
 
-    /// First (and currently, only) video stream's PID, if configured.
+    /// First video stream's PID in programs[0], if configured.
     pub fn primary_video_pid(&self) -> Option<u16> {
         self.video_streams().next().map(|(pid, _)| pid)
     }
 
-    /// First (and currently, only) KLV stream's PID, if configured.
+    /// First KLV stream's PID in programs[0], if configured.
     pub fn primary_klv_pid(&self) -> Option<u16> {
         self.klv_streams().next().map(|(pid, _, _)| pid)
     }
@@ -617,13 +663,21 @@ impl ConfigBuilder {
             stream_descriptors[absolute] = descs;
         }
 
+        // TEMPORARY (Task 5 rewrites ConfigBuilder for multi-program): wrap the
+        // single accumulated stream set into programs[0] with default
+        // program_number=1 and pmt_pid=0x1000.
         let cfg = Config {
-            streams: self.streams,
-            pcr_pid: self.pcr_pid,
+            programs: vec![ProgramConfig {
+                program_number: 1,
+                pmt_pid: 0x1000,
+                streams: self.streams,
+                pcr_pid: self.pcr_pid,
+                program_descriptors: Vec::new(),
+                stream_descriptors,
+            }],
             pcr_interval_ms: self.pcr_interval_ms.unwrap_or(40),
             psi_interval_ms: self.psi_interval_ms.unwrap_or(100),
             buffer_packets: self.buffer_packets.unwrap_or(10_000),
-            stream_descriptors,
         };
         cfg.validate()?;
         Ok(cfg)
@@ -750,9 +804,10 @@ impl Muxer {
         // caller supplies their own Registration descriptor on the same
         // PID — TSDuck and ffprobe both flag duplicate Registration
         // descriptors, and the corpus shows real senders never duplicate.
-        let mut pmt_descriptor_cache: Vec<Vec<u8>> = Vec::with_capacity(config.streams.len());
-        for (i, spec) in config.streams.iter().enumerate() {
-            let caller_descs = &config.stream_descriptors[i];
+        let mut pmt_descriptor_cache: Vec<Vec<u8>> =
+            Vec::with_capacity(config.programs[0].streams.len());
+        for (i, spec) in config.programs[0].streams.iter().enumerate() {
+            let caller_descs = &config.programs[0].stream_descriptors[i];
             let caller_has_registration = caller_descs
                 .iter()
                 .any(|tlv| !tlv.is_empty() && tlv[0] == 0x05);
@@ -1192,11 +1247,12 @@ impl Muxer {
         write_pat_packet(&mut pat, &mut self.counters);
         self.queue.push_back(pat);
 
-        // Walk config.streams in order so descriptor-cache indices align.
+        // Walk programs[0].streams in order so descriptor-cache indices align.
         // Single-stream output preserves the existing video-then-klv
         // ordering — no test bytes change for that case.
-        let mut entries: Vec<PmtStreamEntry> = Vec::with_capacity(self.config.streams.len());
-        for (i, spec) in self.config.streams.iter().enumerate() {
+        let mut entries: Vec<PmtStreamEntry> =
+            Vec::with_capacity(self.config.programs[0].streams.len());
+        for (i, spec) in self.config.programs[0].streams.iter().enumerate() {
             let stream_type = match spec {
                 StreamSpec::Video {
                     codec: VideoCodec::H264,

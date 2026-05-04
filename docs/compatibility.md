@@ -115,13 +115,15 @@ aren't yet wrapped are reachable via `srt-sys`.
 
 | Spec / Feature | Status | Notes |
 | --- | --- | --- |
-| MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — multi-program (≤16 programs), multi-stream (≤16 video + ≤16 KLV PIDs per program), H.264/H.265 video + ST 0601 KLV (sync + async per ST 1402), VBR. |
+| MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — multi-program (≤16 programs), multi-stream (≤16 video + ≤16 audio + ≤16 KLV PIDs per program), H.264/H.265 video + MP2/AAC/AC-3 audio + ST 0601 KLV (sync + async per ST 1402), VBR. |
 | MPEG-TS demuxer | ✅ Full | `mpegts::demux::Demuxer` — multi-program, lenient by default, four-tier `StrictMode` ladder. See `mpegts::demux` block below. |
 | Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ✅ Full | Default in `mpegts::mux::Config` (`klv_stream_type = PrivateData`, `klv_carries_pts = false`). |
 | ST 1402.3 Synchronous metadata stream | ✅ Full | `KlvStreamType::SynchronousMetadata` + `klv_carries_pts = true` in `Config`. |
 | ST 1910 AU cell wrapping (sync KLV with timestamp) | ✅ Full | `klv::st1910::wrap_au_cell` / `unwrap_au_cell`. Compose with `Muxer::push_klv` when `klv_carries_pts = true`. |
 | Variable-length PES splitting | ⏳ Planned | Required for ≥ 65 000-byte KLV records (rare in practice). |
 | KLVA registration descriptor (`stream_type 0x06` + `0x05 "KLVA"`) | ✅ Full | Detected/recognised on decode side; emitted by muxer on the KLV PID. |
+| Audio carriage (mux side) | ✅ Full | MP2 / AAC ADTS / AAC LATM / AC-3; `Muxer::push_audio` / `push_audio_to`; PTS-only PES headers. |
+| Audio carriage (demux side) | ✅ Full | Typed `AudioCodec`; raw PES bytes in `SamplePayload::Audio { frames }`. |
 
 ---
 
@@ -267,8 +269,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | PSI version-bump detection | ✅ Full | Re-emits `ProgramMap` only on PMT/PAT version change. |
 | `pts_to_duration` helper | ✅ Full | 90 kHz ticks → `std::time::Duration`. |
 | Multi-program TS | ✅ Full | Multi-PMT; one `ProgramMap` event per program + on PAT/PMT version bumps; `StreamInfo.program_number` on every `Sample`/`Metadata` event; PAT version diffing drops disappeared programs; `NonConformantIssue::PidReusedAcrossPrograms` on cross-program PID collision. |
-| Typed audio codec values on `AudioCodec` | ⏳ Planned | Reserved variant exists; AAC + others additive. |
-| Typed subtitle codec values on `SubtitleCodec` | ⏳ Planned | Same as audio. |
+| Typed subtitle codec values on `SubtitleCodec` | ⏳ Planned | Reserved variant exists; additive when consumer asks. |
 | AV1 / H.266 codec variants on `VideoCodec` | ⏳ Planned | Surface as `SamplePayload::Unknown` today. |
 | Typed SPS/VPS/PPS payload parser | ⏳ Planned | SPS/VPS/PPS surface as `NalUnit` with raw RBSP; consumers use external codec lib. |
 | Sync-KLV ↔ video AU pairing helper | ❌ Out of scope | Pairing is a consumer-domain decision; cookbook recipes 12–14 are the canonical patterns. |

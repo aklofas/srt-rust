@@ -577,6 +577,69 @@ one TS packet (the size budget is per-PMT, not per-multiplex).
 
 For a runnable end-to-end repacking example, see `examples/repack_two_programs.rs`.
 
+## Audio output
+
+`mpegts::mux` carries four audio codecs alongside video and KLV:
+
+| Codec | PMT `stream_type` | Use case |
+|---|---|---|
+| `AudioCodec::Mp2` | `0x03` | MPEG-1 Layer II (the most common form in ISR captures) |
+| `AudioCodec::Aac` | `0x0F` | AAC ADTS (most widespread internet-streaming form) |
+| `AudioCodec::AacLatm` | `0x11` | AAC LATM (ETSI / ATSC mandated for HD pipelines) |
+| `AudioCodec::Ac3` | `0x81` | ATSC AC-3 |
+
+Add an audio stream to a program via the nested builder chain:
+
+```rust
+let cfg = ConfigBuilder::new()
+    .add_program(1, 0x1000)
+    .add_video(0x100, VideoCodec::H264)
+    .add_audio(0x300, AudioCodec::Aac)   // ← NEW
+    .end_program()
+    .build()?;
+```
+
+Push pre-framed audio frames with PTS:
+
+```rust
+muxer.push_audio(&adts_frames, pts_90khz)?;
+```
+
+The library treats `frames` as opaque bytes — caller is responsible
+for the codec-specific framing (ADTS sync words, LATM length prefix,
+AC-3 sync, MP2 frame header). One PES per `push_audio` call; bundle
+multiple frames per call for tighter PES grouping if your bitrate
+warrants it.
+
+For multi-stream programs (≤16 audio streams per program), use
+`push_audio_to(handle, pts, frames)` with handles from
+`Muxer::audio_handles()` or `audio_handles_for_program()`. The bare
+`push_audio` rejects with `MuxError::AmbiguousTarget` when the muxer
+has more than one audio stream configured — disambiguating which
+stream gets the call is the caller's job.
+
+### Audio descriptors
+
+Audio PMT entries are bare by default — the library writes only the
+stream_type byte. Attach descriptors via `stream_descriptors_for_audio`,
+typically for ISO 639 language tagging:
+
+```rust
+use srt_core::mpegts::descriptors::iso_639_language;
+
+let cfg = ConfigBuilder::new()
+    .add_program(1, 0x1000)
+    .add_audio(0x300, AudioCodec::Aac)
+    .end_program()
+    .stream_descriptors_for_audio(0, vec![iso_639_language(b"eng", 0)])
+    .build()?;
+```
+
+The `mpegts::descriptors` module ships an `iso_639_language` helper.
+Codec-specific audio descriptors (AC-3 audio descriptor 0x6A, AAC
+audio descriptor 0x7C) are not pre-built — assemble via
+`user_private_with_tag(tag, payload)` if needed.
+
 ## Examples
 
 Three runnable examples cover the muxer's surface:

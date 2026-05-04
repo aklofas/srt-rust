@@ -435,6 +435,58 @@ violate descriptor and stream-type rules routinely. Use lenient by
 default; reach for strict only for a CI gate against a known-good
 encoder, or for triage of a specific non-conformance category.
 
+## Reading audio frames
+
+The demuxer surfaces audio via `SamplePayload::Audio { codec, frames }`:
+
+```rust
+for event in receiver {
+    if let DemuxEvent::Sample {
+        stream,
+        pts,
+        payload: SamplePayload::Audio { codec, frames },
+        ..
+    } = event {
+        match codec {
+            AudioCodec::Mp2 => decode_mp2(&frames, pts),
+            AudioCodec::Aac => decode_aac_adts(&frames, pts),
+            AudioCodec::AacLatm => decode_aac_latm(&frames, pts),
+            AudioCodec::Ac3 => decode_ac3(&frames, pts),
+        }
+    }
+}
+```
+
+`frames` holds the raw PES payload bytes — one or more codec frames
+concatenated. Per-frame splitting (sync-word scanning) is the
+caller's job today; future `codec::aac` / `codec::ac3` parsers will
+add typed split helpers (deferred).
+
+`pts` is in 90 kHz ticks (the MPEG-TS standard). `dts` is always
+`None` for audio (no B-frame reorder).
+
+### Non-conformant captures
+
+Real-world captures sometimes carry audio on non-conformant PMT
+stream_types — for example, the Shotover-ARS encoder family puts
+MP3 audio on user-private stream_type `0xF1` alongside KLV. The
+demuxer's default classification surfaces these PIDs as
+`StreamKind::Unknown(0xF1)`.
+
+To route them to typed audio, use `DemuxerOptions::treat_as`:
+
+```rust
+let mut options = DemuxerOptions::default();
+options.treat_as.insert(0x101, StreamKind::Audio(AudioCodec::Mp2));
+let demuxer = Demuxer::with_options(options);
+```
+
+The override fires before the PMT-driven classification, so PIDs
+listed in `treat_as` always get the caller-specified `StreamKind`.
+The bitstream-vs-stream_type mismatch isn't validated at the
+carriage layer — caller's decoder handles whatever bytes come
+through.
+
 ## Examples
 
 Four runnable examples cover the demuxer's surface:

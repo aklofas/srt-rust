@@ -656,3 +656,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 Runnable: [../crates/srt-core/examples/parse_video_parameters.rs](../crates/srt-core/examples/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guide-codec.md` for the decoder-replay section.
+
+### 19. Mux audio + video + KLV in a single program
+
+Build a three-stream program where audio PTS-aligns with video for
+synchronized playback, and KLV records emit on the same PCR clock.
+
+```rust
+use srt_core::mpegts::mux::{
+    AudioCodec, ConfigBuilder, KlvStreamType, Muxer, VideoCodec,
+};
+
+let cfg = ConfigBuilder::new()
+    .add_program(1, 0x1000)
+    .add_video(0x100, VideoCodec::H264)
+    .add_klv(0x200, KlvStreamType::PrivateData, /*carries_pts=*/ false)
+    .add_audio(0x300, AudioCodec::Aac)
+    .end_program()
+    .build()?;
+
+let mut muxer = Muxer::new(cfg)?;
+
+for frame_idx in 0..30 {
+    let pts = 90_000 + frame_idx * 3000;
+    muxer.push_video(&video_au_bytes, pts, /*key_frame=*/ frame_idx % 30 == 0)?;
+    muxer.push_audio(&aac_frame_bytes, pts)?;
+    if frame_idx % 30 == 0 {
+        muxer.push_klv(&klv_record, pts)?;
+    }
+    // Drain to your transport.
+}
+```
+
+Full example: [`../crates/srt-core/examples/mux_audio_video_klv.rs`](../crates/srt-core/examples/mux_audio_video_klv.rs).

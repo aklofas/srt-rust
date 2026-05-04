@@ -9,7 +9,9 @@ use crate::mpegts::demux::event::{
 };
 use crate::mpegts::demux::payload::{KlvShape, classify_klv, split_nals};
 use crate::mpegts::demux::pes::{Reassembler, ReassemblyOutcome};
-use crate::mpegts::demux::psi::{Pmt, extract_metadata_link, has_klva_registration};
+use crate::mpegts::demux::psi::{
+    Pmt, PsiParseError, extract_metadata_link, has_klva_registration, parse_pat,
+};
 use crate::mpegts::demux::strict::StrictMode;
 use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -61,9 +63,12 @@ pub struct DemuxerOptions {
 
 /// Per-program state tracked after a PAT entry is discovered and a PMT
 /// arrives. One entry per `pmt_pid` in `Demuxer::programs`.
+///
+/// Exposed `pub` so that `programs_for_test` can name it in its return type.
+/// Not part of the stable API — treat as opaque outside this crate.
 #[derive(Debug)]
 #[allow(dead_code)] // TASK 10/11: fields populated/read once PAT + PMT handlers land
-pub(crate) struct ProgramTracker {
+pub struct ProgramTracker {
     pub(crate) program_number: u16,
     pub(crate) pmt_pid: u16,
     pub(crate) pmt_version: Option<u8>,
@@ -93,8 +98,6 @@ pub struct Demuxer {
     /// O(1) lookup when routing PMT-bound packets.
     programs: HashMap<u16, ProgramTracker>,
     /// Latest PAT version. Bump triggers PAT diff (programs added/removed).
-    /// Written by Task 10's handle_pat_section; unused until that task lands.
-    #[allow(dead_code)]
     pat_version: Option<u8>,
     /// Per-PID stream kind cache for PES dispatch. Flat across all programs
     /// (PIDs must be unique cross-program per ISO 13818-1).
@@ -382,9 +385,73 @@ impl Demuxer {
         Ok(())
     }
 
-    fn handle_pat_section(&mut self, _section: &[u8]) {
-        // TASK 10: PAT diffing logic — programs added/removed via version bump.
-        // Stubbed: no-op until Task 10 lands.
+    fn handle_pat_section(&mut self, section: &[u8]) {
+        let pat = match parse_pat(section) {
+            Ok(p) => p,
+            Err(PsiParseError::CrcMismatch { .. }) => {
+                self.queue_nonconformant(
+                    StreamId {
+                        pid: 0x0000,
+                        kind: StreamKind::Unknown(0),
+                    },
+                    NonConformantIssue::PsiChecksumMismatch { pid: 0x0000 },
+                );
+                return;
+            }
+            Err(_) => return,
+        };
+        // Same version — nothing changed, skip the diff.
+        if Some(pat.version) == self.pat_version {
+            return;
+        }
+        self.pat_version = Some(pat.version);
+
+        // Build the set of PMT PIDs in the new PAT, skipping program 0 (NIT).
+        let new_pmt_pids: HashSet<u16> = pat
+            .programs
+            .iter()
+            .filter(|e| e.program_number != 0)
+            .map(|e| e.pid)
+            .collect();
+
+        // Drop trackers for programs that disappeared from this PAT version.
+        let removed: Vec<u16> = self
+            .programs
+            .keys()
+            .copied()
+            .filter(|pid| !new_pmt_pids.contains(pid))
+            .collect();
+        for pmt_pid in removed {
+            if let Some(tracker) = self.programs.remove(&pmt_pid) {
+                // Remove the PES stream-kind entries owned by this program.
+                for stream in &tracker.streams {
+                    self.stream_kind_by_pid.remove(&stream.pid);
+                }
+                // Free the PSI assembly buffer for this PMT PID.
+                self.psi_buffers.remove(&pmt_pid);
+            }
+        }
+
+        // Add empty trackers for programs that are new in this PAT version.
+        // PMT contents will populate them when handle_pmt_section fires.
+        for entry in &pat.programs {
+            if entry.program_number == 0 {
+                continue; // program 0 = Network PID, not a real program
+            }
+            self.programs
+                .entry(entry.pid)
+                .or_insert_with(|| ProgramTracker {
+                    program_number: entry.program_number,
+                    pmt_pid: entry.pid,
+                    pmt_version: None,
+                    pcr_pid: None,
+                    streams: Vec::new(),
+                    klv_mismatch_coalesce: HashSet::new(),
+                });
+            // Seed the PSI buffer for this PMT PID so handle_psi can accumulate
+            // bytes without a separate "first packet" init step.
+            self.psi_buffers.entry(entry.pid).or_default();
+        }
     }
 
     fn handle_pmt_section(&mut self, _pmt_pid: u16, _section: &[u8]) {
@@ -708,6 +775,15 @@ impl Demuxer {
         self.nonconformant_count += 1;
         self.queue
             .push_back(DemuxEvent::NonConformant { stream, issue });
+    }
+
+    /// Return a reference to the programs map for integration tests.
+    ///
+    /// Keyed by `pmt_pid`. Exposed for white-box testing of PAT/PMT diffing
+    /// logic; not part of the stable API.
+    #[doc(hidden)]
+    pub fn programs_for_test(&self) -> &HashMap<u16, ProgramTracker> {
+        &self.programs
     }
 
     /// Return a snapshot of current demuxer statistics.

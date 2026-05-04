@@ -1,6 +1,14 @@
 /*
  * mux_dual_camera.c — Dual-camera (EO + IR) + KLV → MPEG-TS file.
  *
+ * Multi-stream within ONE program: EO + IR + KLV are bound together
+ * as a single logical channel. Receivers tune to "the program" and
+ * get all three time-aligned via shared PCR.
+ *
+ * For multi-PROGRAM examples (multiple independent channels in one TS,
+ * e.g. two aircraft each with their own program), see
+ * `examples/c/mux_two_programs.c`.
+ *
  * Build (from the srt-rust workspace root):
  *   SRT_FORCE_VENDORED=1 cargo build -p srt-c
  *   cc -I crates/srt-c/include \
@@ -103,7 +111,7 @@ int main(void) {
      */
     srtc_program_handle_t prog =
         srtc_mux_config_add_program(cfg, /*program_number=*/1, /*pmt_pid=*/0x1000);
-    if (prog.value == SRTC_INVALID_PROGRAM_HANDLE.value) {
+    if (prog == SRTC_INVALID_PROGRAM_HANDLE) {
         fprintf(stderr, "add_program failed: %s\n", srtc_get_last_error_str());
         srtc_mux_config_free(cfg);
         return 2;

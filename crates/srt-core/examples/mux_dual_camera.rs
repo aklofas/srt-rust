@@ -1,5 +1,13 @@
 //! Dual-camera (EO + IR) + KLV → MPEG-TS file.
 //!
+//! Multi-stream within ONE program. EO + IR + KLV all bound together as
+//! a single logical channel. Receivers tune to "the program" and get all
+//! three time-aligned via shared PCR.
+//!
+//! For multi-PROGRAM examples (multiple independent channels in one TS,
+//! e.g. two aircraft each with their own program), see
+//! `examples/repack_two_programs.rs`.
+//!
 //! Demonstrates the multi-stream shape of `mpegts::mux::Muxer`:
 //! - Two video elementary streams on distinct PIDs (0x1011 EO,
 //!   0x1021 IR), both H.264.

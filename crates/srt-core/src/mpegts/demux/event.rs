@@ -72,13 +72,15 @@ pub enum VideoCodec {
     H265,
 }
 
+/// Audio codec carried in `SamplePayload::Audio`. Identifies the codec
+/// for typed dispatch but does not parse the bitstream — `frames` holds
+/// the raw PES payload bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AudioCodec {
-    /// Reserved variant — no typed audio codec yet. The presence of this
-    /// enum is the surface guarantee that adding e.g. `Aac` later is
-    /// additive, not a breaking change.
-    #[doc(hidden)]
-    __Reserved,
+    Mp2,
+    Aac,
+    AacLatm,
+    Ac3,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -259,5 +261,16 @@ mod tests {
     fn pts_to_duration_simple() {
         // 90,000 ticks @ 90 kHz = 1 second.
         assert_eq!(pts_to_duration(90_000), Duration::from_secs(1));
+    }
+
+    #[test]
+    fn audio_codec_real_variants_in_demux_event_surface() {
+        let codecs = [
+            AudioCodec::Mp2,
+            AudioCodec::Aac,
+            AudioCodec::AacLatm,
+            AudioCodec::Ac3,
+        ];
+        assert_ne!(codecs[0], codecs[1]);
     }
 }

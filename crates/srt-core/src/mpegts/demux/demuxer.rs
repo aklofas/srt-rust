@@ -498,7 +498,7 @@ impl Demuxer {
         let mut collision_issues: Vec<(StreamId, NonConformantIssue)> = Vec::new();
 
         for s in &pmt.streams {
-            let (kind, _declared_link) = self.derive_stream_kind(s);
+            let (kind, _declared_link) = self.get_stream_kind(s.elementary_pid, s);
 
             // Cross-program PID collision check: scan all other programs'
             // stream lists. First-program-wins — skip this PID if already owned.
@@ -659,6 +659,20 @@ impl Demuxer {
             }
         };
         (kind, declared_link)
+    }
+
+    fn get_stream_kind(
+        &self,
+        pid: u16,
+        s: &crate::mpegts::demux::psi::PmtStream,
+    ) -> (StreamKind, Option<u16>) {
+        // Caller override wins over PMT classification.
+        if let Some(&kind) = self.options.stream_kind_overrides.get(&pid) {
+            let declared_link = extract_metadata_link(&s.descriptors);
+            (kind, declared_link)
+        } else {
+            self.derive_stream_kind(s)
+        }
     }
 
     fn handle_pes_packet(
@@ -1250,5 +1264,76 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn treat_as_overrides_pmt_classification_to_typed_audio() {
+        use crate::mpegts::demux::event::AudioCodec;
+        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, ConfigBuilder};
+
+        // Mux an AAC audio stream (PMT stream_type = 0x0F, default classifies
+        // as Aac).
+        let cfg = ConfigBuilder::default()
+            .add_program(1, 0x1000)
+            .add_audio(0x300, MuxAudioCodec::Aac)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut muxer = crate::mpegts::mux::Muxer::new(cfg).unwrap();
+        let audio_payload: Vec<u8> = vec![
+            0xFF, 0xF1, 0x4C, 0x80, 0x00, 0x1F, 0xFC, 0xDE, 0xAD, 0xBE, 0xEF,
+        ];
+        muxer.push_audio(&audio_payload, 90_000).unwrap();
+        let mut buf = vec![0u8; 188 * 64];
+        let n = muxer.pull(&mut buf);
+        buf.truncate(n);
+
+        // Demux WITHOUT treat_as: classification follows PMT → Audio(Aac).
+        let mut demuxer = Demuxer::new();
+        demuxer.feed(&buf).unwrap();
+        demuxer.flush();
+        let mut events = Vec::new();
+        while let Some(e) = demuxer.next_event() {
+            events.push(e);
+        }
+        let aac_classified = events.iter().any(|e| {
+            matches!(
+                e,
+                DemuxEvent::Sample {
+                    payload: SamplePayload::Audio {
+                        codec: AudioCodec::Aac,
+                        ..
+                    },
+                    ..
+                }
+            )
+        });
+        assert!(aac_classified, "default: PMT classifies as Aac");
+
+        // Demux WITH treat_as override: classifies as Mp2 (override wins).
+        let mut options = DemuxerOptions::default();
+        options
+            .stream_kind_overrides
+            .insert(0x300, StreamKind::Audio(AudioCodec::Mp2));
+        let mut demuxer = Demuxer::with_options(options);
+        demuxer.feed(&buf).unwrap();
+        demuxer.flush();
+        let mut events = Vec::new();
+        while let Some(e) = demuxer.next_event() {
+            events.push(e);
+        }
+        let mp2_overridden = events.iter().any(|e| {
+            matches!(
+                e,
+                DemuxEvent::Sample {
+                    payload: SamplePayload::Audio {
+                        codec: AudioCodec::Mp2,
+                        ..
+                    },
+                    ..
+                }
+            )
+        });
+        assert!(mp2_overridden, "treat_as override: classifies as Mp2");
     }
 }

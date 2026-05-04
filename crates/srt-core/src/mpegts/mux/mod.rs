@@ -2722,10 +2722,7 @@ mod tests {
         }
         let err = builder.end_program().build().unwrap_err();
         assert!(
-            matches!(
-                err,
-                MuxError::TooManyAudioStreams { count: 17, cap: 16 }
-            ),
+            matches!(err, MuxError::TooManyAudioStreams { count: 17, cap: 16 }),
             "expected TooManyAudioStreams {{ 17, 16 }}, got {err:?}",
         );
     }

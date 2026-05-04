@@ -92,6 +92,24 @@ int main(void) {
     }
 
     /*
+     * Register program 1. Every mux config must have at least one program
+     * before streams can be added. The program handle (an ordinal) is passed
+     * to subsequent stream-add calls.
+     *
+     * WHY program_number=1 and pmt_pid=0x1000?
+     *   MPEG-TS PAT reserves program_number=0 for the NIT pointer; our data
+     *   program is program 1. PMT PID 0x1000 is a widely-used convention for
+     *   single-program TS — most decoders accept it without configuration.
+     */
+    srtc_program_handle_t prog =
+        srtc_mux_config_add_program(cfg, /*program_number=*/1, /*pmt_pid=*/0x1000);
+    if (prog.value == SRTC_INVALID_PROGRAM_HANDLE.value) {
+        fprintf(stderr, "add_program failed: %s\n", srtc_get_last_error_str());
+        srtc_mux_config_free(cfg);
+        return 2;
+    }
+
+    /*
      * Add two video streams (EO visible-light, IR thermal) and one KLV stream.
      *
      * WHY these specific PID values (0x1011, 0x1021, 0x1031)?
@@ -99,27 +117,22 @@ int main(void) {
      *   The constraints are:
      *     - PIDs 0x0000–0x000F are reserved (PAT, CAT, NIT, etc.).
      *     - PID 0x1FFF is the null packet PID.
-     *     - PMT PID defaults to 0x1000 in this muxer.
-     *   Spreading our PIDs by ≥16 (0x10 hex) does two things:
-     *     1. Makes them visually distinct in a Wireshark or TSDuck capture
-     *        — easy to spot at a glance which packet belongs to which feed.
-     *     2. Avoids accidental adjacency to the PMT PID (0x1000). If you
-     *        assign video at 0x1001 and PMT lands at 0x1000 by default, a
-     *        typo-by-one produces a corrupt stream.
+     *     - PMT PID is 0x1000 for this program.
+     *   Spreading our PIDs by ≥16 (0x10 hex) makes them visually distinct in a
+     *   Wireshark or TSDuck capture and avoids accidental adjacency to the PMT.
      *
-     * WHY use srtc_mux_config_add_video_stream (not srtc_mux_config_add_video)?
-     *   The _stream variant returns a srtc_video_stream_handle_t — a stable
-     *   uint32_t ordinal that identifies this stream within the muxer.
-     *   You MUST use handles when pushing to a multi-stream muxer:
-     *   srtc_muxer_push_video (no handle) would return SRTC_E_INVALID_USAGE
-     *   with "AmbiguousTarget" once two video streams are configured.
-     *   Capture the handle now; it remains valid for the lifetime of the muxer
-     *   (and across managed-sender reconnects if you use srtc_managed_mux_sender_t).
+     * srtc_mux_config_add_video_stream returns a srtc_video_stream_handle_t —
+     * a packed uint32_t encoding (program_index, within-program stream index).
+     * You MUST use handles when pushing to a multi-stream muxer: the single-
+     * stream push variants (push_video, push_klv) return SRTC_E_INVALID_USAGE
+     * when more than one stream of that kind is configured. Capture the handle
+     * now; it remains valid for the lifetime of the muxer (and across
+     * managed-sender reconnects).
      */
     srtc_video_stream_handle_t h_eo =
-        srtc_mux_config_add_video_stream(cfg, 0x1011, SRTC_VIDEO_CODEC_H264);
+        srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SRTC_VIDEO_CODEC_H264);
     srtc_video_stream_handle_t h_ir =
-        srtc_mux_config_add_video_stream(cfg, 0x1021, SRTC_VIDEO_CODEC_H264);
+        srtc_mux_config_add_video_stream(cfg, prog, 0x1021, SRTC_VIDEO_CODEC_H264);
 
     /*
      * WHY SRTC_KLV_STREAM_TYPE_PRIVATE_DATA (async KLV)?
@@ -132,20 +145,16 @@ int main(void) {
      *       "synchronous" KLV. The PES carries a PTS, so a demuxer can
      *       pair each KLV packet with the nearest-PTS video frame.
      *       IMPORTANT: for synchronous KLV, callers MUST pre-wrap each blob
-     *       via srt_core::klv::st1910::wrap_au_cell (or equivalent) BEFORE
-     *       calling push_klv_to. The muxer does NOT auto-wrap. There is no
-     *       C-side wrap_au_cell binding yet (deferred feature); to use
-     *       synchronous KLV from C today, construct the AU cell header
-     *       manually per MISB ST 1910 section 6.
-     *   This example uses async (carries_pts=false) — the simpler shape for
-     *   a teaching example.
+     *       via the ST 1910 AU cell wrapper BEFORE calling push_klv_to. The
+     *       muxer does NOT auto-wrap.
+     *   This example uses async (carries_pts=false) — the simpler shape.
      *
      * The handle returned here is a srtc_klv_stream_handle_t (also uint32_t).
-     * SRTC_INVALID_STREAM_HANDLE (UINT32_MAX) signals failure, with the
-     * reason available via srtc_get_last_error_str().
+     * SRTC_INVALID_STREAM_HANDLE (UINT32_MAX) signals failure; check
+     * srtc_get_last_error_str() for the reason.
      */
     srtc_klv_stream_handle_t h_klv =
-        srtc_mux_config_add_klv_stream(cfg, 0x1031,
+        srtc_mux_config_add_klv_stream(cfg, prog, 0x1031,
                                        SRTC_KLV_STREAM_TYPE_PRIVATE_DATA,
                                        /*carries_pts=*/false);
 
@@ -155,7 +164,7 @@ int main(void) {
         h_klv == SRTC_INVALID_STREAM_HANDLE) {
         fprintf(stderr, "stream-add failed: %s\n", srtc_get_last_error_str());
         srtc_mux_config_free(cfg);
-        return 2;
+        return 3;
     }
 
     /*
@@ -174,7 +183,7 @@ int main(void) {
      *   example see the explicit form and know how to override it (e.g., if
      *   you wanted PCR driven by the IR feed instead).
      */
-    srtc_mux_config_set_pcr_pid(cfg, 0x1011);
+    srtc_mux_config_set_pcr_pid(cfg, prog, 0x1011);
 
     /*
      * ── Step 2: Open the muxer ────────────────────────────────────────────
@@ -193,7 +202,7 @@ int main(void) {
 
     if (!mux) {
         fprintf(stderr, "srtc_muxer_open failed: %s\n", srtc_get_last_error_str());
-        return 3;
+        return 4;
     }
 
     /*

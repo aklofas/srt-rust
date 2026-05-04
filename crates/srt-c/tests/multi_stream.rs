@@ -1,8 +1,9 @@
 //! Multi-stream `mpegts::mux` fan-out via the C ABI.
 
 use srtc::config::{
-    SrtcKlvStreamType, SrtcVideoCodec, srtc_mux_config_add_klv_stream,
-    srtc_mux_config_add_video_stream, srtc_mux_config_free, srtc_mux_config_new,
+    SrtcKlvStreamType, SrtcProgramHandle, SrtcVideoCodec, srtc_mux_config_add_klv_stream,
+    srtc_mux_config_add_program, srtc_mux_config_add_video_stream, srtc_mux_config_free,
+    srtc_mux_config_new,
 };
 use srtc::handle::SRTC_INVALID_STREAM_HANDLE;
 use srtc::muxer::{srtc_muxer_close, srtc_muxer_open, srtc_muxer_pull, srtc_muxer_push_video_to};
@@ -15,10 +16,16 @@ const NAL_SPS: &[u8] = &[
 fn muxer_push_video_to_routes_to_correct_handle() {
     unsafe {
         let cfg = srtc_mux_config_new();
-        let h_eo = srtc_mux_config_add_video_stream(cfg, 0x1011, SrtcVideoCodec::H264);
-        let h_ir = srtc_mux_config_add_video_stream(cfg, 0x1012, SrtcVideoCodec::H264);
-        let h_klv =
-            srtc_mux_config_add_klv_stream(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false);
+        let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+        let h_eo = srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SrtcVideoCodec::H264);
+        let h_ir = srtc_mux_config_add_video_stream(cfg, prog, 0x1012, SrtcVideoCodec::H264);
+        let h_klv = srtc_mux_config_add_klv_stream(
+            cfg,
+            prog,
+            0x1031,
+            SrtcKlvStreamType::PrivateData,
+            false,
+        );
         assert_ne!(h_eo, SRTC_INVALID_STREAM_HANDLE);
         assert_ne!(h_ir, SRTC_INVALID_STREAM_HANDLE);
         assert_ne!(h_klv, SRTC_INVALID_STREAM_HANDLE);
@@ -44,7 +51,8 @@ fn muxer_push_video_to_routes_to_correct_handle() {
 fn muxer_push_video_to_invalid_handle_returns_invalid_usage() {
     unsafe {
         let cfg = srtc_mux_config_new();
-        srtc_mux_config_add_video_stream(cfg, 0x1011, SrtcVideoCodec::H264);
+        let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+        srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SrtcVideoCodec::H264);
         let mux = srtc_muxer_open(cfg);
         srtc_mux_config_free(cfg);
         assert!(!mux.is_null());
@@ -54,5 +62,21 @@ fn muxer_push_video_to_invalid_handle_returns_invalid_usage() {
         assert_eq!(rc, -9 /* SRTC_E_INVALID_USAGE */);
 
         srtc_muxer_close(mux);
+    }
+}
+
+#[test]
+fn add_program_invalid_handle_returns_sentinel() {
+    unsafe {
+        let cfg = srtc_mux_config_new();
+        // No programs added — SrtcProgramHandle(0) is invalid.
+        let h = srtc_mux_config_add_video_stream(
+            cfg,
+            SrtcProgramHandle(0),
+            0x1011,
+            SrtcVideoCodec::H264,
+        );
+        assert_eq!(h, SRTC_INVALID_STREAM_HANDLE);
+        srtc_mux_config_free(cfg);
     }
 }

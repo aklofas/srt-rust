@@ -103,12 +103,13 @@ typedef struct srtc_managed_ts_sender_t srtc_managed_ts_sender_t;
 
 /**
  * Opaque mux-config builder. Constructed via `srtc_mux_config_new`,
- * populated with setters, consumed by `srtc_*_open` (which clones the
- * inner). Caller is responsible for calling `srtc_mux_config_free`.
+ * populated via `srtc_mux_config_add_program` + stream-add / descriptor-set
+ * entry points, then consumed by `srtc_*_open` (which clones the inner).
+ * Caller is responsible for calling `srtc_mux_config_free`.
  *
- * Internally stores the accumulated state as a `ConfigBuilder` that has
- * already opened a single-program block via `add_program(1, 0x1000)`.
- * `build_config()` closes the program block and calls `.build()`.
+ * Unlike the pre-multi-program API, the config starts **empty** — no program
+ * is pre-created. The caller must call `srtc_mux_config_add_program` at
+ * least once before opening a muxer or sender.
  */
 typedef struct srtc_mux_config_t srtc_mux_config_t;
 
@@ -127,21 +128,31 @@ typedef struct srtc_ts_sender_t srtc_ts_sender_t;
 typedef struct srtc_ts_sender_config_t srtc_ts_sender_config_t;
 
 /**
+ * Opaque handle returned by `srtc_mux_config_add_program`. Used as an
+ * argument to subsequent stream-add and config-set entry points to
+ * disambiguate which program's streams or descriptors are being modified.
+ *
+ * The value is a zero-based index into the program list. Programs are
+ * numbered in the order they were added. Handles are stable across the
+ * config→open boundary — the same index applies after `srtc_muxer_open`.
+ */
+typedef uint32_t srtc_program_handle_t;
+
+/**
  * Opaque per-program ordinal for a video elementary stream. Obtained from
  * [`srtc_mux_config_add_video_stream`] at config time and reused with the
  * `_video_to` push siblings on every muxer-owning C variant.
  *
  * Handles are stable across the config→open boundary and across managed
- * reconnects. They are NOT interchangeable between muxers — passing a
- * handle from one muxer to a different one yields `SRTC_E_INVALID_USAGE`
- * via `MuxError::InvalidStreamHandle` (the index simply happens to be
- * out of range on the new muxer in practice).
+ * reconnects. They encode `(program_index, within_program_index)` as a
+ * packed `u32` (bits 4..=7 = program, bits 0..=3 = within). They are NOT
+ * interchangeable between muxers.
  */
 typedef uint32_t srtc_video_stream_handle_t;
 
 /**
- * Opaque per-program ordinal for a KLV elementary stream. See
- * [`SrtcVideoStreamHandle`] for semantics.
+ * Opaque per-program ordinal for a KLV elementary stream. Same packed
+ * encoding as [`SrtcVideoStreamHandle`].
  */
 typedef uint32_t srtc_klv_stream_handle_t;
 
@@ -232,67 +243,175 @@ typedef struct srtc_ts_sender_stats_t {
   uint64_t packets_sent;
 } srtc_ts_sender_stats_t;
 
+/**
+ * Sentinel returned by `srtc_mux_config_add_program` on failure (null cfg
+ * or other hard error). Check `srtc_get_last_error()` for the reason.
+ */
+#define SRTC_INVALID_PROGRAM_HANDLE UINT32_MAX
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
+/**
+ * Create a new, empty mux config. No programs are added — call
+ * `srtc_mux_config_add_program` before using this config to open a muxer
+ * or sender. Returns NULL only on allocation failure (OOM).
+ */
  struct srtc_mux_config_t *srtc_mux_config_new(void);
 
+/**
+ * Free a mux config previously returned by `srtc_mux_config_new`. No-op on
+ * NULL. The config must not be used after this call.
+ */
  void srtc_mux_config_free(struct srtc_mux_config_t *p);
 
-
-int srtc_mux_config_add_video(struct srtc_mux_config_t *p,
-                              uint16_t pid,
-                              enum srtc_video_codec codec);
-
-
-int srtc_mux_config_add_klv(struct srtc_mux_config_t *p,
-                            uint16_t pid,
-                            enum srtc_klv_stream_type stream_type,
-                            bool carries_pts);
-
 /**
- * Add a video elementary stream to the mux config and return its handle.
+ * Begin a new program in this multiplex. Returns a handle used as the
+ * `program` argument to subsequent stream-add and descriptor-set entry
+ * points. Programs are numbered in insertion order starting at 0.
  *
- * Returns the stream handle (a zero-based ordinal) on success. The handle is
- * stable across the config→open boundary and across managed-sender reconnects,
- * and can be passed to the `_video_to` push siblings to fan out to a specific
- * elementary stream.
+ * `program_number` is the PAT program_number field (must be > 0 and unique
+ * within the config). `pmt_pid` is the PID on which this program's PMT will
+ * be carried (must be unique within the config and not collide with any
+ * stream PID).
  *
- * Returns `SRTC_INVALID_STREAM_HANDLE` and sets last-error on null pointer.
- * Cap-violation errors (`TooManyVideoStreams`) surface at `_open` time, not
- * here, so this function always succeeds on a valid pointer.
+ * Returns `SRTC_INVALID_PROGRAM_HANDLE` and sets last-error on null `cfg`.
+ * Validation (duplicate program_number, colliding PMT PID, etc.) is deferred
+ * to `srtc_muxer_open` / `srtc_*_sender_open` time.
  */
 
-srtc_video_stream_handle_t srtc_mux_config_add_video_stream(struct srtc_mux_config_t *p,
+srtc_program_handle_t srtc_mux_config_add_program(struct srtc_mux_config_t *cfg,
+                                                  uint16_t program_number,
+                                                  uint16_t pmt_pid);
+
+/**
+ * Add a video elementary stream to the specified program and return its
+ * handle.
+ *
+ * The returned `srtc_video_stream_handle_t` is stable across the config→open
+ * boundary and across managed-sender reconnects. Pass it to
+ * `srtc_muxer_push_video_to` / `srtc_mux_sender_send_video_to` /
+ * `srtc_managed_mux_sender_send_video_to` to fan out to this specific stream.
+ *
+ * Returns `SRTC_INVALID_STREAM_HANDLE` and sets last-error on: null `cfg`,
+ * invalid `program` handle, or per-program stream cap exceeded (>16 streams
+ * of any kind per program). Hard validation errors surface at `_open` time.
+ */
+
+srtc_video_stream_handle_t srtc_mux_config_add_video_stream(struct srtc_mux_config_t *cfg,
+                                                            srtc_program_handle_t program,
                                                             uint16_t pid,
                                                             enum srtc_video_codec codec);
 
 /**
- * Add a KLV elementary stream to the mux config and return its handle.
+ * Add a KLV elementary stream to the specified program and return its handle.
  *
- * Returns the stream handle (a zero-based ordinal) on success. The handle is
- * stable across the config→open boundary and across managed-sender reconnects,
- * and can be passed to the `_klv_to` push siblings to fan out to a specific
- * elementary stream.
+ * `stream_type`: `SRTC_KLV_STREAM_TYPE_PRIVATE_DATA` (0x06, async — no AU
+ * cell wrapping required) or `SRTC_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`
+ * (0x15 — callers MUST pre-wrap each blob via the ST 1910 AU cell wrapper
+ * before calling `push_klv_to`; the muxer does not auto-wrap).
  *
- * Returns `SRTC_INVALID_STREAM_HANDLE` and sets last-error on null pointer.
- * Cap-violation errors (`TooManyKlvStreams`) surface at `_open` time, not
- * here, so this function always succeeds on a valid pointer.
+ * `carries_pts`: set `true` for synchronous KLV (PTS carried in PES header),
+ * `false` for async KLV.
+ *
+ * Returns `SRTC_INVALID_STREAM_HANDLE` on error (same conditions as
+ * `srtc_mux_config_add_video_stream`).
  */
 
-srtc_klv_stream_handle_t srtc_mux_config_add_klv_stream(struct srtc_mux_config_t *p,
+srtc_klv_stream_handle_t srtc_mux_config_add_klv_stream(struct srtc_mux_config_t *cfg,
+                                                        srtc_program_handle_t program,
                                                         uint16_t pid,
                                                         enum srtc_klv_stream_type stream_type,
                                                         bool carries_pts);
 
- int srtc_mux_config_set_pcr_pid(struct srtc_mux_config_t *p, uint16_t pid);
+/**
+ * Pin the PCR PID for the specified program. By default the muxer uses the
+ * first video stream's PID (or first KLV PID for KLV-only programs).
+ *
+ * Returns 0 on success, or a negative `SRTC_E_*` code on null pointer or
+ * invalid program handle.
+ */
 
+int srtc_mux_config_set_pcr_pid(struct srtc_mux_config_t *cfg,
+                                srtc_program_handle_t program,
+                                uint16_t pid);
+
+/**
+ * Set the PCR re-emission interval for this mux config (applies to all
+ * programs). Default is 40 ms. Must be in range 1..=100.
+ */
  int srtc_mux_config_set_pcr_interval_ms(struct srtc_mux_config_t *p, uint32_t ms);
 
+/**
+ * Set the PAT/PMT re-emission interval for this mux config. Default 100 ms.
+ * Must be >= 10.
+ */
  int srtc_mux_config_set_psi_interval_ms(struct srtc_mux_config_t *p, uint32_t ms);
 
+/**
+ * Set the TS-packet output buffer capacity. Default 10000 (~1.88 MB).
+ * Must be >= 10.
+ */
  int srtc_mux_config_set_buffer_packets(struct srtc_mux_config_t *p, size_t n);
+
+/**
+ * Set program-level PMT descriptors for the specified program.
+ *
+ * `tlv_bytes` points to the concatenation of `tlv_count` TLV triples,
+ * totalling `tlv_total_len` bytes. Each TLV has the layout:
+ *   byte 0: tag
+ *   byte 1: length of body (N)
+ *   bytes 2..2+N: body
+ *
+ * Calling with `tlv_total_len == 0` or `tlv_count == 0` clears any
+ * previously set program descriptors for this program.
+ *
+ * Returns 0 on success or a negative `SRTC_E_*` code on: null `cfg`,
+ * null `tlv_bytes` with non-zero count, invalid program handle, or a
+ * malformed TLV byte stream (truncated length or body).
+ */
+
+int srtc_mux_config_set_program_descriptors(struct srtc_mux_config_t *cfg,
+                                            srtc_program_handle_t program,
+                                            const uint8_t *tlv_bytes,
+                                            size_t tlv_total_len,
+                                            size_t tlv_count);
+
+/**
+ * Set per-stream PMT descriptors for the specified video stream.
+ *
+ * `video` is a handle previously returned by `srtc_mux_config_add_video_stream`.
+ * The TLV byte format is the same as `srtc_mux_config_set_program_descriptors`.
+ *
+ * Calling with `tlv_total_len == 0` or `tlv_count == 0` clears any
+ * previously set stream descriptors for this stream.
+ *
+ * Returns 0 on success or a negative `SRTC_E_*` code on: null `cfg`,
+ * invalid handle, null `tlv_bytes` with non-zero count, or malformed TLV.
+ */
+
+int srtc_mux_config_set_stream_descriptors_for_video(struct srtc_mux_config_t *cfg,
+                                                     srtc_video_stream_handle_t video,
+                                                     const uint8_t *tlv_bytes,
+                                                     size_t tlv_total_len,
+                                                     size_t tlv_count);
+
+/**
+ * Set per-stream PMT descriptors for the specified KLV stream.
+ *
+ * `klv` is a handle previously returned by `srtc_mux_config_add_klv_stream`.
+ * The TLV byte format is the same as `srtc_mux_config_set_program_descriptors`.
+ *
+ * Returns 0 on success or a negative `SRTC_E_*` code on the same conditions
+ * as `srtc_mux_config_set_stream_descriptors_for_video`.
+ */
+
+int srtc_mux_config_set_stream_descriptors_for_klv(struct srtc_mux_config_t *cfg,
+                                                   srtc_klv_stream_handle_t klv,
+                                                   const uint8_t *tlv_bytes,
+                                                   size_t tlv_total_len,
+                                                   size_t tlv_count);
 
  struct srtc_ts_sender_config_t *srtc_ts_sender_config_new(void);
 

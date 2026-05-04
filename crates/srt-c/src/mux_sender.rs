@@ -578,8 +578,15 @@ mod tests {
     fn open_with_invalid_url_returns_null_and_sets_error() {
         unsafe {
             let cfg = srtc_mux_config_new();
-            srtc_mux_config_add_video(cfg, 0x1011, SrtcVideoCodec::H264);
-            srtc_mux_config_add_klv(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false);
+            let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+            srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SrtcVideoCodec::H264);
+            srtc_mux_config_add_klv_stream(
+                cfg,
+                prog,
+                0x1031,
+                SrtcKlvStreamType::PrivateData,
+                false,
+            );
             let bad = CString::new("not-an-srt-url").unwrap();
             let p = srtc_mux_sender_open(bad.as_ptr(), cfg);
             assert!(p.is_null());
@@ -595,8 +602,15 @@ mod tests {
     fn open_with_unreachable_host_returns_null_with_transport_error() {
         unsafe {
             let cfg = srtc_mux_config_new();
-            srtc_mux_config_add_video(cfg, 0x1011, SrtcVideoCodec::H264);
-            srtc_mux_config_add_klv(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false);
+            let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+            srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SrtcVideoCodec::H264);
+            srtc_mux_config_add_klv_stream(
+                cfg,
+                prog,
+                0x1031,
+                SrtcKlvStreamType::PrivateData,
+                false,
+            );
             // Reserved-for-documentation address that should reject quickly.
             let url = CString::new("srt://192.0.2.1:9").unwrap();
             let p = srtc_mux_sender_open(url.as_ptr(), cfg);

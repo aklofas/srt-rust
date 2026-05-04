@@ -14,9 +14,10 @@
 
 use srt_core::srt::ListenerBuilder;
 use srtc::config::{
-    SrtcKlvStreamType, SrtcVideoCodec, srtc_mux_config_add_klv, srtc_mux_config_add_video,
-    srtc_mux_config_free, srtc_mux_config_new, srtc_raw_sender_config_free,
-    srtc_raw_sender_config_new, srtc_ts_sender_config_free, srtc_ts_sender_config_new,
+    SrtcKlvStreamType, SrtcVideoCodec, srtc_mux_config_add_klv_stream, srtc_mux_config_add_program,
+    srtc_mux_config_add_video_stream, srtc_mux_config_free, srtc_mux_config_new,
+    srtc_raw_sender_config_free, srtc_raw_sender_config_new, srtc_ts_sender_config_free,
+    srtc_ts_sender_config_new,
 };
 use srtc::error::srtc_get_last_error_str;
 use srtc::mux_sender::{
@@ -686,14 +687,9 @@ fn variant_mux_sender_open_with_url() {
 
     unsafe {
         let cfg = srtc_mux_config_new();
-        assert_eq!(
-            srtc_mux_config_add_video(cfg, 0x1011, SrtcVideoCodec::H264),
-            0
-        );
-        assert_eq!(
-            srtc_mux_config_add_klv(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false),
-            0
-        );
+        let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+        srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SrtcVideoCodec::H264);
+        srtc_mux_config_add_klv_stream(cfg, prog, 0x1031, SrtcKlvStreamType::PrivateData, false);
         let s = srtc_mux_sender_open(url.as_ptr(), cfg);
         assert!(!s.is_null(), "open failed: {}", last_error_msg());
 
@@ -739,14 +735,9 @@ fn variant_managed_mux_sender_open_with_url() {
 
     unsafe {
         let cfg = srtc_mux_config_new();
-        assert_eq!(
-            srtc_mux_config_add_video(cfg, 0x1011, SrtcVideoCodec::H264),
-            0
-        );
-        assert_eq!(
-            srtc_mux_config_add_klv(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false),
-            0
-        );
+        let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+        srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SrtcVideoCodec::H264);
+        srtc_mux_config_add_klv_stream(cfg, prog, 0x1031, SrtcKlvStreamType::PrivateData, false);
         let s = srtc_managed_mux_sender_open(url.as_ptr(), cfg, std::ptr::null());
         assert!(!s.is_null(), "open failed: {}", last_error_msg());
 

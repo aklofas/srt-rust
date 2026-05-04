@@ -11,9 +11,9 @@
 use srt_core::srt::ListenerBuilder;
 use srtc::config::{SrtcKlvStreamType, SrtcMuxConfig, SrtcVideoCodec};
 use srtc::config::{
-    srtc_mux_config_add_klv, srtc_mux_config_add_klv_stream, srtc_mux_config_add_video,
-    srtc_mux_config_add_video_stream, srtc_mux_config_free, srtc_mux_config_new,
-    srtc_reconnect_policy_free, srtc_reconnect_policy_new,
+    srtc_mux_config_add_klv_stream, srtc_mux_config_add_program, srtc_mux_config_add_video_stream,
+    srtc_mux_config_free, srtc_mux_config_new, srtc_reconnect_policy_free,
+    srtc_reconnect_policy_new,
 };
 use srtc::error::srtc_get_last_error_str;
 use srtc::mux_sender::{
@@ -61,8 +61,9 @@ fn mux_sender_to_listener_roundtrip() {
 
     unsafe {
         let cfg: *mut SrtcMuxConfig = srtc_mux_config_new();
-        srtc_mux_config_add_video(cfg, 0x1011, SrtcVideoCodec::H264);
-        srtc_mux_config_add_klv(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false);
+        let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+        srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SrtcVideoCodec::H264);
+        srtc_mux_config_add_klv_stream(cfg, prog, 0x1031, SrtcKlvStreamType::PrivateData, false);
 
         let s = srtc_mux_sender_open(url.as_ptr(), cfg);
         assert!(!s.is_null(), "open failed: {}", last_error_msg());
@@ -141,10 +142,16 @@ fn managed_mux_sender_multi_stream_loopback() {
 
         // Add two video streams (EO + IR) and one KLV stream, capturing the
         // handles returned by the _stream variants so we can fan out later.
-        let h_eo = srtc_mux_config_add_video_stream(cfg, 0x1011, SrtcVideoCodec::H264);
-        let h_ir = srtc_mux_config_add_video_stream(cfg, 0x1012, SrtcVideoCodec::H264);
-        let h_klv =
-            srtc_mux_config_add_klv_stream(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false);
+        let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+        let h_eo = srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SrtcVideoCodec::H264);
+        let h_ir = srtc_mux_config_add_video_stream(cfg, prog, 0x1012, SrtcVideoCodec::H264);
+        let h_klv = srtc_mux_config_add_klv_stream(
+            cfg,
+            prog,
+            0x1031,
+            SrtcKlvStreamType::PrivateData,
+            false,
+        );
 
         // Use a default reconnect policy (no forced backoff — connect immediately).
         let policy = srtc_reconnect_policy_new();

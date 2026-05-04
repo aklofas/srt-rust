@@ -275,8 +275,15 @@ mod tests {
     fn open_with_default_config_succeeds() {
         unsafe {
             let cfg = srtc_mux_config_new();
-            srtc_mux_config_add_video(cfg, 0x1011, SrtcVideoCodec::H264);
-            srtc_mux_config_add_klv(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false);
+            let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+            srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SrtcVideoCodec::H264);
+            srtc_mux_config_add_klv_stream(
+                cfg,
+                prog,
+                0x1031,
+                SrtcKlvStreamType::PrivateData,
+                false,
+            );
             let m = srtc_muxer_open(cfg);
             assert!(!m.is_null());
             srtc_muxer_close(m);
@@ -288,14 +295,22 @@ mod tests {
     fn push_then_pull_emits_bytes() {
         unsafe {
             let cfg = srtc_mux_config_new();
-            srtc_mux_config_add_video(cfg, 0x1011, SrtcVideoCodec::H264);
-            srtc_mux_config_add_klv(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false);
+            let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+            // Single-stream muxer: push_video (no handle) is unambiguous.
+            let hv = srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SrtcVideoCodec::H264);
+            srtc_mux_config_add_klv_stream(
+                cfg,
+                prog,
+                0x1031,
+                SrtcKlvStreamType::PrivateData,
+                false,
+            );
             let m = srtc_muxer_open(cfg);
             srtc_mux_config_free(cfg);
 
             // Annex-B IDR NAL.
             let nal: [u8; 9] = [0, 0, 0, 1, 0x65, 0xAA, 0xAA, 0xAA, 0xAA];
-            let rc = srtc_muxer_push_video(m, nal.as_ptr(), nal.len(), 0, true);
+            let rc = srtc_muxer_push_video_to(m, hv, nal.as_ptr(), nal.len(), 0, true);
             assert_eq!(rc, 0);
 
             let mut buf = vec![0u8; 4096];
@@ -311,8 +326,15 @@ mod tests {
     fn push_video_with_invalid_nal_returns_invalid_nal() {
         unsafe {
             let cfg = srtc_mux_config_new();
-            srtc_mux_config_add_video(cfg, 0x1011, SrtcVideoCodec::H264);
-            srtc_mux_config_add_klv(cfg, 0x1031, SrtcKlvStreamType::PrivateData, false);
+            let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+            srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SrtcVideoCodec::H264);
+            srtc_mux_config_add_klv_stream(
+                cfg,
+                prog,
+                0x1031,
+                SrtcKlvStreamType::PrivateData,
+                false,
+            );
             let m = srtc_muxer_open(cfg);
             srtc_mux_config_free(cfg);
 

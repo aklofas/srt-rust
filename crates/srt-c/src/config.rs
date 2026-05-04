@@ -6,7 +6,10 @@
 use crate::error::{SrtcError, set_last_error};
 use crate::handle::{SRTC_INVALID_STREAM_HANDLE, SrtcKlvStreamHandle, SrtcVideoStreamHandle};
 use srt_core::error::MuxError;
-use srt_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+use srt_core::mpegts::mux::{
+    Config, KlvStreamHandle, KlvStreamType, ProgramConfig, StreamSpec, VideoCodec,
+    VideoStreamHandle,
+};
 use srt_core::pipeline::{
     BackoffStrategy, OverflowPolicy, RawSenderConfig, ReconnectPolicy, TsFramingMode,
     TsSenderConfig,
@@ -14,75 +17,90 @@ use srt_core::pipeline::{
 use std::time::Duration;
 
 // ------------------------------------------------------------------
+// srtc_program_handle_t
+// ------------------------------------------------------------------
+
+/// Opaque handle returned by `srtc_mux_config_add_program`. Used as an
+/// argument to subsequent stream-add and config-set entry points to
+/// disambiguate which program's streams or descriptors are being modified.
+///
+/// The value is a zero-based index into the program list. Programs are
+/// numbered in the order they were added. Handles are stable across the
+/// config→open boundary — the same index applies after `srtc_muxer_open`.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SrtcProgramHandle(pub u32);
+
+/// Sentinel returned by `srtc_mux_config_add_program` on failure (null cfg
+/// or other hard error). Check `srtc_get_last_error()` for the reason.
+pub const SRTC_INVALID_PROGRAM_HANDLE: SrtcProgramHandle = SrtcProgramHandle(u32::MAX);
+
+// ------------------------------------------------------------------
 // srtc_mux_config_t
 // ------------------------------------------------------------------
 
 /// Opaque mux-config builder. Constructed via `srtc_mux_config_new`,
-/// populated with setters, consumed by `srtc_*_open` (which clones the
-/// inner). Caller is responsible for calling `srtc_mux_config_free`.
+/// populated via `srtc_mux_config_add_program` + stream-add / descriptor-set
+/// entry points, then consumed by `srtc_*_open` (which clones the inner).
+/// Caller is responsible for calling `srtc_mux_config_free`.
 ///
-/// Internally stores the accumulated state as a `ConfigBuilder` that has
-/// already opened a single-program block via `add_program(1, 0x1000)`.
-/// `build_config()` closes the program block and calls `.build()`.
+/// Unlike the pre-multi-program API, the config starts **empty** — no program
+/// is pre-created. The caller must call `srtc_mux_config_add_program` at
+/// least once before opening a muxer or sender.
 pub struct SrtcMuxConfig {
-    /// In-progress builder. Always holds a `ProgramBuilder` returned by
-    /// `ConfigBuilder::add_program` — we store it as a raw enum so we can
-    /// move it out and pass it through `mem::replace`. Since
-    /// `ProgramBuilder` is not `Clone`, we use `Option` + `unwrap` here;
-    /// the `Option` is always `Some` while the config is live.
-    pub(crate) program_builder: Option<srt_core::mpegts::mux::ProgramBuilder>,
-    /// Top-level interval / buffer overrides (set before or between
-    /// add_program blocks; we carry them separately and apply at
-    /// build_config() time because they live on `ConfigBuilder`, not on
-    /// `ProgramBuilder`).
+    /// Programs accumulated so far. Each `srtc_mux_config_add_program` call
+    /// pushes one entry; subsequent stream-add / descriptor-set calls index
+    /// into this vec by the returned `SrtcProgramHandle` ordinal.
+    pub(crate) programs: Vec<ProgramConfig>,
+    /// Per-call interval overrides forwarded to `Config` at build time.
     pub(crate) pcr_interval_ms: Option<u32>,
     pub(crate) psi_interval_ms: Option<u32>,
     pub(crate) buffer_packets: Option<usize>,
-    pub(crate) video_count: u32,
-    pub(crate) klv_count: u32,
 }
 
 impl SrtcMuxConfig {
     /// Finish building and return a validated `Config`.
     ///
-    /// Takes the `ProgramBuilder` out of `self`, closes the program block
-    /// with `end_program()`, applies top-level overrides, and calls
-    /// `ConfigBuilder::build()`.
-    pub(crate) fn build_config(&mut self) -> Result<Config, MuxError> {
-        let pb = self
-            .program_builder
-            .take()
-            .expect("SrtcMuxConfig: program_builder already consumed");
-        let mut cb = pb.end_program();
+    /// Assembles a `Config` from the accumulated programs and any interval /
+    /// buffer overrides. The `programs` vec is cloned so the config may be
+    /// opened multiple times (the C API allows `_free` after `_open`, but
+    /// tests call `_open` more than once in practice).
+    pub(crate) fn build_config(&self) -> Result<Config, MuxError> {
+        let mut cfg = Config {
+            programs: self.programs.clone(),
+            pcr_interval_ms: 40,
+            psi_interval_ms: 100,
+            buffer_packets: 10_000,
+        };
         if let Some(ms) = self.pcr_interval_ms {
-            cb = cb.pcr_interval_ms(ms);
+            cfg.pcr_interval_ms = ms;
         }
         if let Some(ms) = self.psi_interval_ms {
-            cb = cb.psi_interval_ms(ms);
+            cfg.psi_interval_ms = ms;
         }
         if let Some(n) = self.buffer_packets {
-            cb = cb.buffer_packets(n);
+            cfg.buffer_packets = n;
         }
-        let cfg = cb.build()?;
-        // Re-open the program block so the config can be used again (the
-        // C API allows free after _open, but tests call _open twice).
-        self.program_builder = Some(Config::builder().add_program(1, 0x1000));
+        cfg.validate()?;
         Ok(cfg)
     }
 }
 
+/// Create a new, empty mux config. No programs are added — call
+/// `srtc_mux_config_add_program` before using this config to open a muxer
+/// or sender. Returns NULL only on allocation failure (OOM).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_config_new() -> *mut SrtcMuxConfig {
     Box::into_raw(Box::new(SrtcMuxConfig {
-        program_builder: Some(Config::builder().add_program(1, 0x1000)),
+        programs: Vec::new(),
         pcr_interval_ms: None,
         psi_interval_ms: None,
         buffer_packets: None,
-        video_count: 0,
-        klv_count: 0,
     }))
 }
 
+/// Free a mux config previously returned by `srtc_mux_config_new`. No-op on
+/// NULL. The config must not be used after this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_config_free(p: *mut SrtcMuxConfig) {
     if !p.is_null() {
@@ -90,124 +108,178 @@ pub unsafe extern "C" fn srtc_mux_config_free(p: *mut SrtcMuxConfig) {
     }
 }
 
+/// Begin a new program in this multiplex. Returns a handle used as the
+/// `program` argument to subsequent stream-add and descriptor-set entry
+/// points. Programs are numbered in insertion order starting at 0.
+///
+/// `program_number` is the PAT program_number field (must be > 0 and unique
+/// within the config). `pmt_pid` is the PID on which this program's PMT will
+/// be carried (must be unique within the config and not collide with any
+/// stream PID).
+///
+/// Returns `SRTC_INVALID_PROGRAM_HANDLE` and sets last-error on null `cfg`.
+/// Validation (duplicate program_number, colliding PMT PID, etc.) is deferred
+/// to `srtc_muxer_open` / `srtc_*_sender_open` time.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn srtc_mux_config_add_video(
-    p: *mut SrtcMuxConfig,
-    pid: u16,
-    codec: SrtcVideoCodec,
-) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
+pub unsafe extern "C" fn srtc_mux_config_add_program(
+    cfg: *mut SrtcMuxConfig,
+    program_number: u16,
+    pmt_pid: u16,
+) -> SrtcProgramHandle {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
-        return SrtcError::InvalidConfig as i32;
+        return SRTC_INVALID_PROGRAM_HANDLE;
     };
-    let codec = match codec {
-        SrtcVideoCodec::H264 => VideoCodec::H264,
-        SrtcVideoCodec::H265 => VideoCodec::H265,
-    };
-    let pb = cfg.program_builder.take().expect("program_builder missing");
-    cfg.program_builder = Some(pb.add_video(pid, codec));
-    cfg.video_count += 1;
-    0
+    cfg.programs.push(ProgramConfig {
+        program_number,
+        pmt_pid,
+        streams: Vec::new(),
+        pcr_pid: None,
+        program_descriptors: Vec::new(),
+        stream_descriptors: Vec::new(),
+    });
+    SrtcProgramHandle((cfg.programs.len() - 1) as u32)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn srtc_mux_config_add_klv(
-    p: *mut SrtcMuxConfig,
-    pid: u16,
-    stream_type: SrtcKlvStreamType,
-    carries_pts: bool,
-) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
-        set_last_error(SrtcError::InvalidConfig, "null config pointer");
-        return SrtcError::InvalidConfig as i32;
-    };
-    let stream_type = match stream_type {
-        SrtcKlvStreamType::PrivateData => KlvStreamType::PrivateData,
-        SrtcKlvStreamType::SynchronousMetadata => KlvStreamType::SynchronousMetadata,
-    };
-    let pb = cfg.program_builder.take().expect("program_builder missing");
-    cfg.program_builder = Some(pb.add_klv(pid, stream_type, carries_pts));
-    cfg.klv_count += 1;
-    0
-}
-
-/// Add a video elementary stream to the mux config and return its handle.
+/// Add a video elementary stream to the specified program and return its
+/// handle.
 ///
-/// Returns the stream handle (a zero-based ordinal) on success. The handle is
-/// stable across the config→open boundary and across managed-sender reconnects,
-/// and can be passed to the `_video_to` push siblings to fan out to a specific
-/// elementary stream.
+/// The returned `srtc_video_stream_handle_t` is stable across the config→open
+/// boundary and across managed-sender reconnects. Pass it to
+/// `srtc_muxer_push_video_to` / `srtc_mux_sender_send_video_to` /
+/// `srtc_managed_mux_sender_send_video_to` to fan out to this specific stream.
 ///
-/// Returns `SRTC_INVALID_STREAM_HANDLE` and sets last-error on null pointer.
-/// Cap-violation errors (`TooManyVideoStreams`) surface at `_open` time, not
-/// here, so this function always succeeds on a valid pointer.
+/// Returns `SRTC_INVALID_STREAM_HANDLE` and sets last-error on: null `cfg`,
+/// invalid `program` handle, or per-program stream cap exceeded (>16 streams
+/// of any kind per program). Hard validation errors surface at `_open` time.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_config_add_video_stream(
-    p: *mut SrtcMuxConfig,
+    cfg: *mut SrtcMuxConfig,
+    program: SrtcProgramHandle,
     pid: u16,
     codec: SrtcVideoCodec,
 ) -> SrtcVideoStreamHandle {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
         return SRTC_INVALID_STREAM_HANDLE;
     };
-    let codec = match codec {
+    let prog_idx = program.0 as usize;
+    if prog_idx >= cfg.programs.len() {
+        set_last_error(SrtcError::InvalidUsage, "invalid program handle");
+        return SRTC_INVALID_STREAM_HANDLE;
+    }
+    let prog = &mut cfg.programs[prog_idx];
+    // within_idx for video handles is the index among video streams only
+    // (Muxer builds video_streams[prog] as a filtered subset of streams).
+    let within_idx = prog
+        .streams
+        .iter()
+        .filter(|s| matches!(s, StreamSpec::Video { .. }))
+        .count();
+    if within_idx >= 16 {
+        // VideoStreamHandle::pack() debug_asserts within_index < 16; reject
+        // before that fires so the C caller gets a defined error.
+        set_last_error(
+            SrtcError::InvalidUsage,
+            "per-program video stream cap (16) exceeded",
+        );
+        return SRTC_INVALID_STREAM_HANDLE;
+    }
+    let rust_codec = match codec {
         SrtcVideoCodec::H264 => VideoCodec::H264,
         SrtcVideoCodec::H265 => VideoCodec::H265,
     };
-    let pb = cfg.program_builder.take().expect("program_builder missing");
-    cfg.program_builder = Some(pb.add_video(pid, codec));
-    let handle = cfg.video_count;
-    cfg.video_count += 1;
-    handle
+    prog.streams.push(StreamSpec::Video {
+        pid,
+        codec: rust_codec,
+    });
+    prog.stream_descriptors.push(Vec::new());
+    VideoStreamHandle::pack(prog_idx, within_idx).raw()
 }
 
-/// Add a KLV elementary stream to the mux config and return its handle.
+/// Add a KLV elementary stream to the specified program and return its handle.
 ///
-/// Returns the stream handle (a zero-based ordinal) on success. The handle is
-/// stable across the config→open boundary and across managed-sender reconnects,
-/// and can be passed to the `_klv_to` push siblings to fan out to a specific
-/// elementary stream.
+/// `stream_type`: `SRTC_KLV_STREAM_TYPE_PRIVATE_DATA` (0x06, async — no AU
+/// cell wrapping required) or `SRTC_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`
+/// (0x15 — callers MUST pre-wrap each blob via the ST 1910 AU cell wrapper
+/// before calling `push_klv_to`; the muxer does not auto-wrap).
 ///
-/// Returns `SRTC_INVALID_STREAM_HANDLE` and sets last-error on null pointer.
-/// Cap-violation errors (`TooManyKlvStreams`) surface at `_open` time, not
-/// here, so this function always succeeds on a valid pointer.
+/// `carries_pts`: set `true` for synchronous KLV (PTS carried in PES header),
+/// `false` for async KLV.
+///
+/// Returns `SRTC_INVALID_STREAM_HANDLE` on error (same conditions as
+/// `srtc_mux_config_add_video_stream`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_config_add_klv_stream(
-    p: *mut SrtcMuxConfig,
+    cfg: *mut SrtcMuxConfig,
+    program: SrtcProgramHandle,
     pid: u16,
     stream_type: SrtcKlvStreamType,
     carries_pts: bool,
 ) -> SrtcKlvStreamHandle {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
         return SRTC_INVALID_STREAM_HANDLE;
     };
-    let stream_type = match stream_type {
+    let prog_idx = program.0 as usize;
+    if prog_idx >= cfg.programs.len() {
+        set_last_error(SrtcError::InvalidUsage, "invalid program handle");
+        return SRTC_INVALID_STREAM_HANDLE;
+    }
+    let prog = &mut cfg.programs[prog_idx];
+    // within_idx for klv handles is the index among klv streams only
+    // (Muxer builds klv_streams[prog] as a filtered subset of streams).
+    let within_idx = prog
+        .streams
+        .iter()
+        .filter(|s| matches!(s, StreamSpec::Klv { .. }))
+        .count();
+    if within_idx >= 16 {
+        set_last_error(
+            SrtcError::InvalidUsage,
+            "per-program klv stream cap (16) exceeded",
+        );
+        return SRTC_INVALID_STREAM_HANDLE;
+    }
+    let rust_stream_type = match stream_type {
         SrtcKlvStreamType::PrivateData => KlvStreamType::PrivateData,
         SrtcKlvStreamType::SynchronousMetadata => KlvStreamType::SynchronousMetadata,
     };
-    let pb = cfg.program_builder.take().expect("program_builder missing");
-    cfg.program_builder = Some(pb.add_klv(pid, stream_type, carries_pts));
-    let handle = cfg.klv_count;
-    cfg.klv_count += 1;
-    handle
+    prog.streams.push(StreamSpec::Klv {
+        pid,
+        stream_type: rust_stream_type,
+        carries_pts,
+    });
+    prog.stream_descriptors.push(Vec::new());
+    KlvStreamHandle::pack(prog_idx, within_idx).raw()
 }
 
+/// Pin the PCR PID for the specified program. By default the muxer uses the
+/// first video stream's PID (or first KLV PID for KLV-only programs).
+///
+/// Returns 0 on success, or a negative `SRTC_E_*` code on null pointer or
+/// invalid program handle.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_config_set_pcr_pid(
-    p: *mut SrtcMuxConfig,
+    cfg: *mut SrtcMuxConfig,
+    program: SrtcProgramHandle,
     pid: u16,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
         set_last_error(SrtcError::InvalidConfig, "null config pointer");
         return SrtcError::InvalidConfig as i32;
     };
-    let pb = cfg.program_builder.take().expect("program_builder missing");
-    cfg.program_builder = Some(pb.pcr_pid(pid));
+    let prog_idx = program.0 as usize;
+    if prog_idx >= cfg.programs.len() {
+        set_last_error(SrtcError::InvalidUsage, "invalid program handle");
+        return SrtcError::InvalidUsage as i32;
+    }
+    cfg.programs[prog_idx].pcr_pid = Some(pid);
     0
 }
 
+/// Set the PCR re-emission interval for this mux config (applies to all
+/// programs). Default is 40 ms. Must be in range 1..=100.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_config_set_pcr_interval_ms(
     p: *mut SrtcMuxConfig,
@@ -221,6 +293,8 @@ pub unsafe extern "C" fn srtc_mux_config_set_pcr_interval_ms(
     0
 }
 
+/// Set the PAT/PMT re-emission interval for this mux config. Default 100 ms.
+/// Must be >= 10.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_config_set_psi_interval_ms(
     p: *mut SrtcMuxConfig,
@@ -234,6 +308,8 @@ pub unsafe extern "C" fn srtc_mux_config_set_psi_interval_ms(
     0
 }
 
+/// Set the TS-packet output buffer capacity. Default 10000 (~1.88 MB).
+/// Must be >= 10.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_mux_config_set_buffer_packets(
     p: *mut SrtcMuxConfig,
@@ -245,6 +321,215 @@ pub unsafe extern "C" fn srtc_mux_config_set_buffer_packets(
     };
     cfg.buffer_packets = Some(n);
     0
+}
+
+/// Set program-level PMT descriptors for the specified program.
+///
+/// `tlv_bytes` points to the concatenation of `tlv_count` TLV triples,
+/// totalling `tlv_total_len` bytes. Each TLV has the layout:
+///   byte 0: tag
+///   byte 1: length of body (N)
+///   bytes 2..2+N: body
+///
+/// Calling with `tlv_total_len == 0` or `tlv_count == 0` clears any
+/// previously set program descriptors for this program.
+///
+/// Returns 0 on success or a negative `SRTC_E_*` code on: null `cfg`,
+/// null `tlv_bytes` with non-zero count, invalid program handle, or a
+/// malformed TLV byte stream (truncated length or body).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_mux_config_set_program_descriptors(
+    cfg: *mut SrtcMuxConfig,
+    program: SrtcProgramHandle,
+    tlv_bytes: *const u8,
+    tlv_total_len: usize,
+    tlv_count: usize,
+) -> libc::c_int {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null config pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    let prog_idx = program.0 as usize;
+    if prog_idx >= cfg.programs.len() {
+        set_last_error(SrtcError::InvalidUsage, "invalid program handle");
+        return SrtcError::InvalidUsage as i32;
+    }
+    if tlv_total_len == 0 || tlv_count == 0 {
+        cfg.programs[prog_idx].program_descriptors = Vec::new();
+        return 0;
+    }
+    let descs = unsafe {
+        match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
+            Ok(d) => d,
+            Err(rc) => return rc,
+        }
+    };
+    cfg.programs[prog_idx].program_descriptors = descs;
+    0
+}
+
+/// Set per-stream PMT descriptors for the specified video stream.
+///
+/// `video` is a handle previously returned by `srtc_mux_config_add_video_stream`.
+/// The TLV byte format is the same as `srtc_mux_config_set_program_descriptors`.
+///
+/// Calling with `tlv_total_len == 0` or `tlv_count == 0` clears any
+/// previously set stream descriptors for this stream.
+///
+/// Returns 0 on success or a negative `SRTC_E_*` code on: null `cfg`,
+/// invalid handle, null `tlv_bytes` with non-zero count, or malformed TLV.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_mux_config_set_stream_descriptors_for_video(
+    cfg: *mut SrtcMuxConfig,
+    video: SrtcVideoStreamHandle,
+    tlv_bytes: *const u8,
+    tlv_total_len: usize,
+    tlv_count: usize,
+) -> libc::c_int {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null config pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    let (prog_idx, video_within_idx) = VideoStreamHandle::from_raw(video).unpack();
+    if prog_idx >= cfg.programs.len() {
+        set_last_error(
+            SrtcError::InvalidUsage,
+            "invalid video stream handle (program out of range)",
+        );
+        return SrtcError::InvalidUsage as i32;
+    }
+    let prog = &mut cfg.programs[prog_idx];
+    // video_within_idx is the index among video streams only; find the parallel
+    // position in prog.streams (which holds all stream kinds interleaved).
+    let stream_idx = match prog
+        .streams
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| matches!(s, StreamSpec::Video { .. }))
+        .nth(video_within_idx)
+        .map(|(i, _)| i)
+    {
+        Some(i) => i,
+        None => {
+            set_last_error(
+                SrtcError::InvalidUsage,
+                "invalid video stream handle (stream out of range)",
+            );
+            return SrtcError::InvalidUsage as i32;
+        }
+    };
+    let descs = unsafe {
+        match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
+            Ok(d) => d,
+            Err(rc) => return rc,
+        }
+    };
+    prog.stream_descriptors[stream_idx] = descs;
+    0
+}
+
+/// Set per-stream PMT descriptors for the specified KLV stream.
+///
+/// `klv` is a handle previously returned by `srtc_mux_config_add_klv_stream`.
+/// The TLV byte format is the same as `srtc_mux_config_set_program_descriptors`.
+///
+/// Returns 0 on success or a negative `SRTC_E_*` code on the same conditions
+/// as `srtc_mux_config_set_stream_descriptors_for_video`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn srtc_mux_config_set_stream_descriptors_for_klv(
+    cfg: *mut SrtcMuxConfig,
+    klv: SrtcKlvStreamHandle,
+    tlv_bytes: *const u8,
+    tlv_total_len: usize,
+    tlv_count: usize,
+) -> libc::c_int {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+        set_last_error(SrtcError::InvalidConfig, "null config pointer");
+        return SrtcError::InvalidConfig as i32;
+    };
+    let (prog_idx, klv_within_idx) = KlvStreamHandle::from_raw(klv).unpack();
+    if prog_idx >= cfg.programs.len() {
+        set_last_error(
+            SrtcError::InvalidUsage,
+            "invalid klv stream handle (program out of range)",
+        );
+        return SrtcError::InvalidUsage as i32;
+    }
+    let prog = &mut cfg.programs[prog_idx];
+    // klv_within_idx is the index among KLV streams only; find the parallel
+    // position in prog.streams (which holds all stream kinds interleaved).
+    let stream_idx = match prog
+        .streams
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| matches!(s, StreamSpec::Klv { .. }))
+        .nth(klv_within_idx)
+        .map(|(i, _)| i)
+    {
+        Some(i) => i,
+        None => {
+            set_last_error(
+                SrtcError::InvalidUsage,
+                "invalid klv stream handle (stream out of range)",
+            );
+            return SrtcError::InvalidUsage as i32;
+        }
+    };
+    let descs = unsafe {
+        match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
+            Ok(d) => d,
+            Err(rc) => return rc,
+        }
+    };
+    prog.stream_descriptors[stream_idx] = descs;
+    0
+}
+
+// Internal helper: parse a concatenated TLV byte stream (tag + length + body
+// per descriptor) into a Vec<Vec<u8>>. Returns Err(SRTC_E_*) on malformed input.
+//
+// # Safety
+// Caller must ensure `tlv_bytes` is valid for `tlv_total_len` bytes when
+// `tlv_total_len > 0` and `tlv_count > 0`.
+unsafe fn parse_tlv_list(
+    tlv_bytes: *const u8,
+    tlv_total_len: usize,
+    tlv_count: usize,
+) -> Result<Vec<Vec<u8>>, libc::c_int> {
+    if tlv_total_len == 0 || tlv_count == 0 {
+        return Ok(Vec::new());
+    }
+    if tlv_bytes.is_null() {
+        set_last_error(
+            SrtcError::InvalidUsage,
+            "null tlv_bytes pointer with non-zero count",
+        );
+        return Err(SrtcError::InvalidUsage as i32);
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(tlv_bytes, tlv_total_len) };
+    let mut descs = Vec::with_capacity(tlv_count);
+    let mut offset = 0usize;
+    for _ in 0..tlv_count {
+        if offset + 2 > bytes.len() {
+            set_last_error(
+                SrtcError::InvalidConfig,
+                "TLV byte stream truncated (no tag+length)",
+            );
+            return Err(SrtcError::InvalidConfig as i32);
+        }
+        let body_len = bytes[offset + 1] as usize;
+        let total = 2 + body_len;
+        if offset + total > bytes.len() {
+            set_last_error(
+                SrtcError::InvalidConfig,
+                "TLV byte stream truncated (body too short)",
+            );
+            return Err(SrtcError::InvalidConfig as i32);
+        }
+        descs.push(bytes[offset..offset + total].to_vec());
+        offset += total;
+    }
+    Ok(descs)
 }
 
 #[repr(C)]
@@ -453,13 +738,22 @@ mod tests {
         unsafe {
             let p = srtc_mux_config_new();
             assert!(!p.is_null());
+            let prog = srtc_mux_config_add_program(p, 1, 0x1000);
+            assert_ne!(prog, SRTC_INVALID_PROGRAM_HANDLE);
             assert_eq!(
-                srtc_mux_config_add_video(p, 0x1011, SrtcVideoCodec::H264),
-                0
-            );
-            assert_eq!(
-                srtc_mux_config_add_klv(p, 0x1031, SrtcKlvStreamType::PrivateData, false),
+                srtc_mux_config_add_video_stream(p, prog, 0x1011, SrtcVideoCodec::H264),
+                // VideoStreamHandle::pack(0, 0) = 0
                 0,
+            );
+            assert_ne!(
+                srtc_mux_config_add_klv_stream(
+                    p,
+                    prog,
+                    0x1031,
+                    SrtcKlvStreamType::PrivateData,
+                    false
+                ),
+                SRTC_INVALID_STREAM_HANDLE,
             );
             assert_eq!(srtc_mux_config_set_pcr_interval_ms(p, 30), 0);
             srtc_mux_config_free(p);
@@ -500,19 +794,22 @@ mod tests {
     #[test]
     fn null_pointer_setters_return_invalid_config() {
         unsafe {
-            assert_eq!(
-                srtc_mux_config_add_video(std::ptr::null_mut(), 0, SrtcVideoCodec::H264),
-                SrtcError::InvalidConfig as i32,
+            assert_ne!(
+                srtc_mux_config_add_program(std::ptr::null_mut(), 1, 0x1000),
+                SrtcProgramHandle(0),
             );
         }
     }
 
     #[test]
-    fn add_video_stream_returns_increasing_handles() {
+    fn add_video_stream_returns_packed_handles() {
         unsafe {
             let p = srtc_mux_config_new();
-            let h0 = srtc_mux_config_add_video_stream(p, 0x1011, SrtcVideoCodec::H264);
-            let h1 = srtc_mux_config_add_video_stream(p, 0x1012, SrtcVideoCodec::H265);
+            let prog = srtc_mux_config_add_program(p, 1, 0x1000);
+            // VideoStreamHandle::pack(0, 0) = (0<<4)|0 = 0
+            let h0 = srtc_mux_config_add_video_stream(p, prog, 0x1011, SrtcVideoCodec::H264);
+            // VideoStreamHandle::pack(0, 1) = (0<<4)|1 = 1
+            let h1 = srtc_mux_config_add_video_stream(p, prog, 0x1012, SrtcVideoCodec::H265);
             assert_eq!(h0, 0);
             assert_eq!(h1, 1);
             srtc_mux_config_free(p);
@@ -520,13 +817,22 @@ mod tests {
     }
 
     #[test]
-    fn add_klv_stream_returns_increasing_handles() {
+    fn add_klv_stream_returns_packed_handles() {
         unsafe {
             let p = srtc_mux_config_new();
-            let h0 =
-                srtc_mux_config_add_klv_stream(p, 0x1031, SrtcKlvStreamType::PrivateData, false);
+            let prog = srtc_mux_config_add_program(p, 1, 0x1000);
+            // KlvStreamHandle::pack(0, 0) = 0
+            let h0 = srtc_mux_config_add_klv_stream(
+                p,
+                prog,
+                0x1031,
+                SrtcKlvStreamType::PrivateData,
+                false,
+            );
+            // KlvStreamHandle::pack(0, 1) = 1
             let h1 = srtc_mux_config_add_klv_stream(
                 p,
+                prog,
                 0x1032,
                 SrtcKlvStreamType::SynchronousMetadata,
                 true,
@@ -541,8 +847,57 @@ mod tests {
     fn add_video_stream_null_returns_sentinel() {
         use crate::handle::SRTC_INVALID_STREAM_HANDLE;
         unsafe {
-            let h = srtc_mux_config_add_video_stream(std::ptr::null_mut(), 0, SrtcVideoCodec::H264);
+            // Null cfg: no program handle needed
+            let h = srtc_mux_config_add_video_stream(
+                std::ptr::null_mut(),
+                SrtcProgramHandle(0),
+                0,
+                SrtcVideoCodec::H264,
+            );
             assert_eq!(h, SRTC_INVALID_STREAM_HANDLE);
+        }
+    }
+
+    #[test]
+    fn add_video_stream_invalid_program_returns_sentinel() {
+        unsafe {
+            let p = srtc_mux_config_new();
+            // No programs added yet; any handle is invalid.
+            let h = srtc_mux_config_add_video_stream(
+                p,
+                SrtcProgramHandle(0),
+                0x1011,
+                SrtcVideoCodec::H264,
+            );
+            assert_eq!(h, SRTC_INVALID_STREAM_HANDLE);
+            srtc_mux_config_free(p);
+        }
+    }
+
+    #[test]
+    fn multi_program_handles_are_distinct() {
+        unsafe {
+            let p = srtc_mux_config_new();
+            let prog1 = srtc_mux_config_add_program(p, 1, 0x1000);
+            let prog2 = srtc_mux_config_add_program(p, 2, 0x1100);
+            assert_eq!(prog1, SrtcProgramHandle(0));
+            assert_eq!(prog2, SrtcProgramHandle(1));
+
+            // VideoStreamHandle::pack(0, 0) = 0, pack(1, 0) = 0x10
+            let v1 = srtc_mux_config_add_video_stream(p, prog1, 0x1011, SrtcVideoCodec::H264);
+            let v2 = srtc_mux_config_add_video_stream(p, prog2, 0x1111, SrtcVideoCodec::H265);
+            assert_ne!(v1, v2);
+            assert_ne!(v1, SRTC_INVALID_STREAM_HANDLE);
+            assert_ne!(v2, SRTC_INVALID_STREAM_HANDLE);
+            srtc_mux_config_free(p);
+        }
+    }
+
+    #[test]
+    fn add_program_null_returns_sentinel() {
+        unsafe {
+            let h = srtc_mux_config_add_program(std::ptr::null_mut(), 1, 0x1000);
+            assert_eq!(h, SRTC_INVALID_PROGRAM_HANDLE);
         }
     }
 }

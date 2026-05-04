@@ -100,14 +100,13 @@ impl<T> Handle<T> {
 /// `_video_to` push siblings on every muxer-owning C variant.
 ///
 /// Handles are stable across the config→open boundary and across managed
-/// reconnects. They are NOT interchangeable between muxers — passing a
-/// handle from one muxer to a different one yields `SRTC_E_INVALID_USAGE`
-/// via `MuxError::InvalidStreamHandle` (the index simply happens to be
-/// out of range on the new muxer in practice).
+/// reconnects. They encode `(program_index, within_program_index)` as a
+/// packed `u32` (bits 4..=7 = program, bits 0..=3 = within). They are NOT
+/// interchangeable between muxers.
 pub type SrtcVideoStreamHandle = u32;
 
-/// Opaque per-program ordinal for a KLV elementary stream. See
-/// [`SrtcVideoStreamHandle`] for semantics.
+/// Opaque per-program ordinal for a KLV elementary stream. Same packed
+/// encoding as [`SrtcVideoStreamHandle`].
 pub type SrtcKlvStreamHandle = u32;
 
 /// Sentinel returned by `srtc_mux_config_add_*_stream` on failure.

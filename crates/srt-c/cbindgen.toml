@@ -27,6 +27,8 @@ include = [
     "SrtcOverflowPolicy",
     "SrtcVideoStreamHandle",
     "SrtcKlvStreamHandle",
+    "SrtcProgramHandle",
+    "SRTC_INVALID_PROGRAM_HANDLE",
     "SrtcStreamStats",
     "SrtcMuxerStats",
     "SrtcSenderStats",
@@ -57,6 +59,8 @@ include = [
 # Stream handle typedefs (transparent u32; idiomatic C _t suffix)
 "SrtcVideoStreamHandle" = "srtc_video_stream_handle_t"
 "SrtcKlvStreamHandle"   = "srtc_klv_stream_handle_t"
+# Program handle typedef
+"SrtcProgramHandle"     = "srtc_program_handle_t"
 # Stats structs
 "SrtcStreamStats"       = "srtc_stream_stats_t"
 "SrtcMuxerStats"        = "srtc_muxer_stats_t"

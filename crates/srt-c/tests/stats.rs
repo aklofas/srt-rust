@@ -27,16 +27,17 @@ fn muxer_stats_layout() {
 fn muxer_get_stats_after_push() {
     use srtc::config::{SrtcKlvStreamType, SrtcVideoCodec};
     use srtc::config::{
-        srtc_mux_config_add_klv, srtc_mux_config_add_video, srtc_mux_config_free,
-        srtc_mux_config_new,
+        srtc_mux_config_add_klv_stream, srtc_mux_config_add_program,
+        srtc_mux_config_add_video_stream, srtc_mux_config_free, srtc_mux_config_new,
     };
     use srtc::muxer::{
         srtc_muxer_close, srtc_muxer_get_stats, srtc_muxer_open, srtc_muxer_reset_stats,
     };
     unsafe {
         let cfg = srtc_mux_config_new();
-        srtc_mux_config_add_video(cfg, 0x0100, SrtcVideoCodec::H264);
-        srtc_mux_config_add_klv(cfg, 0x0101, SrtcKlvStreamType::PrivateData, false);
+        let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+        srtc_mux_config_add_video_stream(cfg, prog, 0x0100, SrtcVideoCodec::H264);
+        srtc_mux_config_add_klv_stream(cfg, prog, 0x0101, SrtcKlvStreamType::PrivateData, false);
         let m = srtc_muxer_open(cfg);
         assert!(!m.is_null());
         // Fresh muxer: stats start zero, but per_stream_count == 2 (eager).
@@ -68,8 +69,9 @@ fn muxer_get_stats_null_pointer_returns_invalid_config() {
 fn mux_sender_stats_round_trip() {
     use srt_core::srt::ListenerBuilder;
     use srtc::config::{
-        SrtcKlvStreamType, SrtcVideoCodec, srtc_mux_config_add_klv, srtc_mux_config_add_video,
-        srtc_mux_config_free, srtc_mux_config_new,
+        SrtcKlvStreamType, SrtcVideoCodec, srtc_mux_config_add_klv_stream,
+        srtc_mux_config_add_program, srtc_mux_config_add_video_stream, srtc_mux_config_free,
+        srtc_mux_config_new,
     };
     use srtc::mux_sender::{
         srtc_mux_sender_close, srtc_mux_sender_get_stats, srtc_mux_sender_open,
@@ -99,8 +101,9 @@ fn mux_sender_stats_round_trip() {
 
     unsafe {
         let cfg = srtc_mux_config_new();
-        srtc_mux_config_add_video(cfg, 0x0100, SrtcVideoCodec::H264);
-        srtc_mux_config_add_klv(cfg, 0x0101, SrtcKlvStreamType::PrivateData, false);
+        let prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+        srtc_mux_config_add_video_stream(cfg, prog, 0x0100, SrtcVideoCodec::H264);
+        srtc_mux_config_add_klv_stream(cfg, prog, 0x0101, SrtcKlvStreamType::PrivateData, false);
         let url = CString::new(format!("srt://127.0.0.1:{port}?latency=120")).unwrap();
         let s = srtc_mux_sender_open(url.as_ptr(), cfg);
         assert!(!s.is_null());

@@ -130,6 +130,12 @@ impl VideoStreamHandle {
         (prog, within)
     }
 
+    /// Return the packed `u32` representation. Used at the FFI boundary when
+    /// `srt-c` needs to return a handle to a C caller as a bare integer.
+    pub fn raw(self) -> u32 {
+        self.0
+    }
+
     /// Wrap a raw packed `u32` handle that was previously produced by
     /// [`pack`](Self::pack) and returned to a C caller. Use this at FFI
     /// push-time entry points where the handle is already packed — calling
@@ -165,6 +171,12 @@ impl KlvStreamHandle {
         let prog = ((self.0 >> 4) & 0x0F) as usize;
         let within = (self.0 & 0x0F) as usize;
         (prog, within)
+    }
+
+    /// Return the packed `u32` representation. Used at the FFI boundary when
+    /// `srt-c` needs to return a handle to a C caller as a bare integer.
+    pub fn raw(self) -> u32 {
+        self.0
     }
 
     /// Wrap a raw packed `u32` handle that was previously produced by

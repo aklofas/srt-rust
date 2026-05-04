@@ -46,8 +46,9 @@ int main(int argc, char **argv) {
     fprintf(stderr, "sending to %s\n", url);
 
     srtc_mux_config_t *cfg = srtc_mux_config_new();
-    srtc_mux_config_add_video(cfg, 0x1011, SRTC_VIDEO_CODEC_H264);
-    srtc_mux_config_add_klv(cfg, 0x1031, SRTC_KLV_STREAM_TYPE_PRIVATE_DATA, false);
+    srtc_program_handle_t prog = srtc_mux_config_add_program(cfg, 1, 0x1000);
+    srtc_mux_config_add_video_stream(cfg, prog, 0x1011, SRTC_VIDEO_CODEC_H264);
+    srtc_mux_config_add_klv_stream(cfg, prog, 0x1031, SRTC_KLV_STREAM_TYPE_PRIVATE_DATA, false);
 
     srtc_mux_sender_t *s = srtc_mux_sender_open(url, cfg);
     if (!s) {

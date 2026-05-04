@@ -286,3 +286,168 @@ fn ffprobe_recognizes_two_programs_with_distinct_streams() {
 
     let _ = std::fs::remove_file(&tmp);
 }
+
+#[test]
+fn ffprobe_roundtrip_audio_video_klv_three_streams() {
+    if !have_ffprobe() {
+        eprintln!("[skip] ffprobe not on PATH");
+        return;
+    }
+
+    use srt_core::mpegts::mux::{AudioCodec, KlvStreamType, VideoCodec};
+
+    let cfg = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x100, VideoCodec::H264)
+        .add_audio(0x300, AudioCodec::Aac)
+        .add_klv(0x200, KlvStreamType::PrivateData, true)
+        .end_program()
+        .build()
+        .unwrap();
+    let mut muxer = Muxer::new(cfg).unwrap();
+
+    // Drive enough content for ffprobe to recognize all three streams.
+    // Audio frames can be any non-empty bytes; ffprobe identifies the codec
+    // from the PMT stream_type byte, not by parsing the audio bitstream.
+    for i in 0..30 {
+        let pts = 90_000 + (i as i64) * 3000;
+        let nal = synthetic_nal::h264_au(128, i % 5 == 0);
+        muxer.push_video(&nal, pts, i % 5 == 0).unwrap();
+        // Minimal synthetic audio frame — ffprobe identifies codec from
+        // stream_type 0x0F (AAC) in the PMT, not from bitstream analysis.
+        muxer.push_audio(b"aac_frame_data", pts).unwrap();
+        let klv = synthetic_nal::klv_blob(32);
+        muxer.push_klv(&klv, pts).unwrap();
+    }
+
+    let ts = drain_all(&mut muxer);
+    let tmp = std::env::temp_dir().join("srt_core_ffprobe_audio_three_streams.ts");
+    std::fs::write(&tmp, &ts).expect("write temp ts");
+
+    let out = Command::new("ffprobe")
+        .args(["-v", "error", "-show_streams", "-of", "json"])
+        .arg(&tmp)
+        .output()
+        .expect("run ffprobe");
+    assert!(
+        out.status.success(),
+        "ffprobe exited non-zero: stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    eprintln!("ffprobe output: {}", stdout);
+
+    // ffprobe should report >=3 streams: video (h264), audio (aac), data (KLV).
+    let video_count = stdout.matches("\"codec_type\": \"video\"").count();
+    let audio_count = stdout.matches("\"codec_type\": \"audio\"").count();
+    let data_count = stdout.matches("\"codec_type\": \"data\"").count();
+    assert!(
+        video_count >= 1,
+        "expected >= 1 video stream, got {}: {}",
+        video_count,
+        stdout,
+    );
+    assert!(
+        audio_count >= 1,
+        "expected >= 1 audio stream, got {}: {}",
+        audio_count,
+        stdout,
+    );
+    assert!(
+        data_count >= 1,
+        "expected >= 1 data stream (KLV), got {}: {}",
+        data_count,
+        stdout,
+    );
+    // Confirm the audio codec is recognized as AAC (stream_type 0x0F).
+    assert!(
+        stdout.contains("\"codec_name\": \"aac\""),
+        "audio codec_name missing or not aac: {}",
+        stdout
+    );
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn ffprobe_roundtrip_each_audio_codec() {
+    if !have_ffprobe() {
+        eprintln!("[skip] ffprobe not on PATH");
+        return;
+    }
+
+    use srt_core::mpegts::mux::{AudioCodec, VideoCodec};
+
+    // Test each audio codec variant, verifying that ffprobe reports the stream.
+    // Stream type values per ISO/IEC 13818-1:
+    //   0x03 = ISO/IEC 11172-3 Audio (MP2)
+    //   0x0F = ISO/IEC 13818-7 ADTS AAC
+    //   0x11 = ISO/IEC 14496-3 LATM AAC
+    //   0x81 = User private (AC-3)
+    let cases = vec![
+        (AudioCodec::Mp2, 0x03),
+        (AudioCodec::Aac, 0x0F),
+        (AudioCodec::AacLatm, 0x11),
+        (AudioCodec::Ac3, 0x81),
+    ];
+
+    for (codec, expected_stream_type) in cases {
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
+            .add_audio(0x300, codec)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut muxer = Muxer::new(cfg).unwrap();
+
+        // Drive a few frames of synthetic audio/video.
+        for i in 0..20 {
+            let pts = 90_000 + (i as i64) * 3000;
+            let nal = synthetic_nal::h264_au(128, i % 5 == 0);
+            muxer.push_video(&nal, pts, i % 5 == 0).unwrap();
+            // Minimal synthetic audio — without real bitstream data, ffprobe
+            // cannot determine codec_type, but it does report the stream and
+            // its codec_tag (which reflects the stream_type from the PMT).
+            muxer.push_audio(b"audio_data", pts).unwrap();
+        }
+
+        let ts = drain_all(&mut muxer);
+        let tmp = std::env::temp_dir().join(format!("srt_core_ffprobe_audio_{:?}.ts", codec));
+        std::fs::write(&tmp, &ts).expect("write temp ts");
+
+        let out = Command::new("ffprobe")
+            .args(["-v", "error", "-show_streams", "-of", "json"])
+            .arg(&tmp)
+            .output()
+            .expect("run ffprobe");
+        assert!(
+            out.status.success(),
+            "ffprobe exited non-zero for {:?}: stderr={}",
+            codec,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+
+        // Verify ffprobe reports a stream with PID 0x300 and the correct codec_tag.
+        // The codec_tag in ffprobe output reflects the stream_type from the PMT.
+        // Format: `codec_tag`: "0xHHHH" (hex), e.g. 0x03 for MP2, 0x0F for AAC, etc.
+        let expected_tag = format!("\"codec_tag\": \"0x{:04x}\"", expected_stream_type);
+        assert!(
+            stdout.contains(&expected_tag),
+            "codec {:?}: expected codec_tag {}, ffprobe output: {}",
+            codec,
+            expected_tag,
+            stdout
+        );
+        // Also confirm PID 0x300 is in the output.
+        assert!(
+            stdout.contains("\"id\": \"0x300\""),
+            "codec {:?}: expected audio PID 0x300 in ffprobe output: {}",
+            codec,
+            stdout
+        );
+
+        let _ = std::fs::remove_file(&tmp);
+    }
+}

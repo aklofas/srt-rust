@@ -336,6 +336,16 @@ pub enum MuxError {
     #[error("KLV blob is {size} bytes, exceeds PES_packet_length ceiling of {max} bytes")]
     KlvTooLarge { size: usize, max: usize },
 
+    /// Audio frames exceed the 16-bit `PES_packet_length` ceiling.
+    ///
+    /// PES_packet_length is at most 65535 and must cover flags1, flags2,
+    /// header_data_length, the PTS field (always present for audio), and
+    /// the ES payload — so the audio frames themselves are bounded to 65527 bytes.
+    /// In practice audio frames are far smaller than this limit (KB scale), but
+    /// the guard prevents silent wraparound on pathologically large inputs.
+    #[error("audio frames too large: {size} bytes, max {max}")]
+    AudioTooLarge { size: usize, max: usize },
+
     /// Caller passed a `VideoStreamHandle` / `KlvStreamHandle` that doesn't
     /// match a configured stream on this `Muxer`. Handles are obtained from
     /// `Muxer::video_handles()` / `klv_handles()` and are tied to the
@@ -937,5 +947,17 @@ mod tests {
         assert!(s.contains("stream 2"));
         assert!(s.contains("descriptor 1"));
         assert!(s.contains("length byte exceeds slice"));
+    }
+
+    #[test]
+    fn mux_error_audio_too_large_reports_max() {
+        let e = MuxError::AudioTooLarge {
+            size: 70_000,
+            max: 65527,
+        };
+        assert_eq!(
+            e.to_string(),
+            "audio frames too large: 70000 bytes, max 65527",
+        );
     }
 }

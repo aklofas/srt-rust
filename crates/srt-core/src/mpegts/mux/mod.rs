@@ -1211,6 +1211,18 @@ impl Muxer {
         }
         let audio_pid = self.audio_streams[prog_idx][within_idx].pid;
 
+        // Audio always uses PTS, so PES overhead is 3 (start code) + 5 (PTS) = 8 bytes.
+        // The remaining space in the u16 PES_packet_length field is for flags, header_data_length,
+        // and the payload. Guard against frames that would overflow PES_packet_length.
+        let pes_overhead = 3usize + 5;
+        let max_audio = (u16::MAX as usize) - pes_overhead;
+        if frames.len() > max_audio {
+            return Err(MuxError::AudioTooLarge {
+                size: frames.len(),
+                max: max_audio,
+            });
+        }
+
         let pts = PesPtsField::PtsOnly(Pts90khz(pts_90khz));
         let mut pes_buf = Vec::with_capacity(MAX_PES_HEADER_SIZE + frames.len());
         write_audio_pes(&mut pes_buf, within_idx as u8, pts, frames);

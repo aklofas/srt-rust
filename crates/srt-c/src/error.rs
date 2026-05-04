@@ -163,6 +163,10 @@ pub(crate) fn record_mux_error(e: &MuxError) {
                 "pmt_pid 0x{pmt_pid:04X} of program {program_number} conflicts with a stream PID"
             ),
         ),
+        MuxError::AudioTooLarge { size, max } => (
+            SrtcError::InvalidUsage,
+            format!("audio frames too large: {size} bytes, max {max}"),
+        ),
     };
     set_last_error(code, &msg);
 }

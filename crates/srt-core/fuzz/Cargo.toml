@@ -88,5 +88,12 @@ test              = false
 doc               = false
 bench             = false
 
+[[bin]]
+name              = "parse_parameter_sets"
+path              = "fuzz_targets/parse_parameter_sets.rs"
+test              = false
+doc               = false
+bench             = false
+
 [workspace]
 members = []

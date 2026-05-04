@@ -303,3 +303,112 @@ fn config_builder_descriptors_for_video_attaches_to_correct_program() {
         desc::user_private(b"EO 4K")
     );
 }
+
+// ── PCR pacing tests ─────────────────────────────────────────────────────────
+
+/// Return true if any 188-byte TS packet in `data` with the given PID carries
+/// a PCR: adaptation field present, AF length ≥ 7, and PCR_flag set.
+fn has_pcr_on_pid(data: &[u8], pid: u16) -> bool {
+    data.chunks_exact(188).any(|p| {
+        let p_pid = ((p[1] as u16 & 0x1F) << 8) | p[2] as u16;
+        p_pid == pid
+            && (p[3] & 0x20) != 0  // adaptation_field_control has AF
+            && p[4] >= 7           // AF length covers at least 1 + 6 PCR bytes
+            && (p[5] & 0x10) != 0 // PCR_flag set
+    })
+}
+
+#[test]
+fn per_program_pcr_pids_resolved_independently() {
+    // Program 1 pins PCR to its KLV PID (0x1031).  Program 2 leaves
+    // pcr_pid = None, so it auto-falls back to its first video PID (0x1111).
+    // We verify the actual byte output: PCR-bearing packets must appear on
+    // 0x1031 for program 1 and on 0x1111 for program 2, and NOT on each
+    // program's other streams.
+    let mut config = two_program_config();
+    config.programs[0].pcr_pid = Some(0x1031); // program 1 PCR → KLV PID
+
+    let mut muxer = Muxer::new(config).unwrap();
+    let p1_video = muxer.video_handles_for_program(1).unwrap()[0];
+    let p1_klv = muxer.klv_handles_for_program(1).unwrap()[0];
+    let p2_video = muxer.video_handles_for_program(2).unwrap()[0];
+    let p2_klv = muxer.klv_handles_for_program(2).unwrap()[0];
+
+    let nal = synthetic_nal::h264_au(64, true);
+    let klv = synthetic_nal::klv_blob(32);
+
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; 64 * 188];
+    for tick in 0..30i64 {
+        let pts = tick * 3_003;
+        muxer.push_video_to(p1_video, &nal, pts, tick == 0).unwrap();
+        muxer.push_klv_to(p1_klv, &klv, pts).unwrap();
+        muxer.push_video_to(p2_video, &nal, pts, tick == 0).unwrap();
+        muxer.push_klv_to(p2_klv, &klv, pts).unwrap();
+        loop {
+            let n = muxer.pull(&mut buf);
+            if n == 0 {
+                break;
+            }
+            out.extend_from_slice(&buf[..n]);
+        }
+    }
+
+    // Program 1: PCR must appear on the pinned KLV PID, not the video PID.
+    assert!(
+        has_pcr_on_pid(&out, 0x1031),
+        "program 1 PCR PID 0x1031 (KLV, pinned) must carry PCR-bearing packets"
+    );
+    assert!(
+        !has_pcr_on_pid(&out, 0x1011),
+        "program 1 video PID 0x1011 must NOT carry PCR when PCR is pinned to KLV"
+    );
+
+    // Program 2: PCR must appear on the auto-fallback video PID.
+    assert!(
+        has_pcr_on_pid(&out, 0x1111),
+        "program 2 PCR PID 0x1111 (video, auto-fallback) must carry PCR-bearing packets"
+    );
+    assert!(
+        !has_pcr_on_pid(&out, 0x1131),
+        "program 2 KLV PID 0x1131 must NOT carry PCR when PCR is on video"
+    );
+}
+
+#[test]
+fn per_program_pcr_emitted_on_each_program_pid() {
+    // Default two-program config: both programs leave pcr_pid = None, so
+    // each falls back to its first video PID (0x1011 and 0x1111 respectively).
+    // Push enough frames (~1 second of 30 fps) to span several PCR intervals
+    // (default interval is 40 ms) and confirm PCR-bearing packets land on
+    // both video PIDs independently.
+    let mut muxer = Muxer::new(two_program_config()).unwrap();
+    let p1_video = muxer.video_handles_for_program(1).unwrap()[0];
+    let p2_video = muxer.video_handles_for_program(2).unwrap()[0];
+
+    let nal = synthetic_nal::h264_au(64, true);
+
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; 64 * 188];
+    for tick in 0..30i64 {
+        let pts = tick * 3_003; // ~33 ms per frame at 90 kHz
+        muxer.push_video_to(p1_video, &nal, pts, tick == 0).unwrap();
+        muxer.push_video_to(p2_video, &nal, pts, tick == 0).unwrap();
+        loop {
+            let n = muxer.pull(&mut buf);
+            if n == 0 {
+                break;
+            }
+            out.extend_from_slice(&buf[..n]);
+        }
+    }
+
+    assert!(
+        has_pcr_on_pid(&out, 0x1011),
+        "program 1 PCR PID 0x1011 must carry at least one PCR-bearing TS packet"
+    );
+    assert!(
+        has_pcr_on_pid(&out, 0x1111),
+        "program 2 PCR PID 0x1111 must carry at least one PCR-bearing TS packet"
+    );
+}

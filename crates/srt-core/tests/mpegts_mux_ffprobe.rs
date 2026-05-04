@@ -164,3 +164,125 @@ fn ffprobe_recognizes_dual_camera_plus_klv() {
 
     let _ = std::fs::remove_file(&tmp);
 }
+
+#[test]
+fn ffprobe_recognizes_two_programs_with_distinct_streams() {
+    if !have_ffprobe() {
+        eprintln!("[skip] ffprobe not on PATH");
+        return;
+    }
+
+    use srt_core::mpegts::mux::{
+        Config, KlvStreamType, Muxer, ProgramConfig, StreamSpec, VideoCodec,
+    };
+
+    let config = Config {
+        programs: vec![
+            ProgramConfig {
+                program_number: 1,
+                pmt_pid: 0x1000,
+                streams: vec![
+                    StreamSpec::Video {
+                        pid: 0x1011,
+                        codec: VideoCodec::H264,
+                    },
+                    StreamSpec::Klv {
+                        pid: 0x1031,
+                        stream_type: KlvStreamType::PrivateData,
+                        carries_pts: false,
+                    },
+                ],
+                pcr_pid: None,
+                program_descriptors: Vec::new(),
+                stream_descriptors: vec![Vec::new(), Vec::new()],
+            },
+            ProgramConfig {
+                program_number: 2,
+                pmt_pid: 0x1100,
+                streams: vec![
+                    StreamSpec::Video {
+                        pid: 0x1111,
+                        codec: VideoCodec::H265,
+                    },
+                    StreamSpec::Klv {
+                        pid: 0x1131,
+                        stream_type: KlvStreamType::PrivateData,
+                        carries_pts: false,
+                    },
+                ],
+                pcr_pid: None,
+                program_descriptors: Vec::new(),
+                stream_descriptors: vec![Vec::new(), Vec::new()],
+            },
+        ],
+        ..Config::default()
+    };
+    let mut mux = Muxer::new(config).unwrap();
+
+    let p1_video = mux.video_handles_for_program(1).unwrap()[0];
+    let p2_video = mux.video_handles_for_program(2).unwrap()[0];
+    let p1_klv = mux.klv_handles_for_program(1).unwrap()[0];
+    let p2_klv = mux.klv_handles_for_program(2).unwrap()[0];
+
+    // Minimal Annex B access units — enough for ffprobe to identify codec
+    // from the PMT stream_type byte.
+    let nal_h264 = synthetic_nal::h264_au(64, true);
+    let nal_h265 = synthetic_nal::h265_au(64, true);
+    let klv = synthetic_nal::klv_blob(32);
+
+    let mut ts = Vec::new();
+    let mut buf = vec![0u8; 188 * 64];
+    for i in 0..20i64 {
+        let pts = i * 3_003;
+        mux.push_video_to(p1_video, &nal_h264, pts, i == 0).unwrap();
+        mux.push_video_to(p2_video, &nal_h265, pts, i == 0).unwrap();
+        mux.push_klv_to(p1_klv, &klv, pts).unwrap();
+        mux.push_klv_to(p2_klv, &klv, pts).unwrap();
+        loop {
+            let n = mux.pull(&mut buf);
+            if n == 0 {
+                break;
+            }
+            ts.extend_from_slice(&buf[..n]);
+        }
+    }
+
+    let tmp = std::env::temp_dir().join("srt_core_ffprobe_two_programs.ts");
+    std::fs::write(&tmp, &ts).expect("write temp ts");
+
+    // -show_programs reports the program table; -of json gives structured output.
+    let out = Command::new("ffprobe")
+        .args(["-v", "error", "-show_programs", "-of", "json"])
+        .arg(&tmp)
+        .output()
+        .expect("run ffprobe");
+    assert!(
+        out.status.success(),
+        "ffprobe exited non-zero: stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    eprintln!("ffprobe -show_programs output: {}", stdout);
+
+    // ffprobe JSON contains one entry per program in the "programs" array.
+    // Both program_num 1 and 2 must be present.
+    let program_count = stdout.matches("\"program_num\":").count();
+    assert_eq!(
+        program_count, 2,
+        "expected 2 programs in ffprobe output, got {}: {}",
+        program_count, stdout
+    );
+    // ffprobe may format as `"program_num": 1` (with space) or `"program_num":1`.
+    assert!(
+        stdout.contains("\"program_num\": 1") || stdout.contains("\"program_num\":1"),
+        "program_num 1 missing from ffprobe output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("\"program_num\": 2") || stdout.contains("\"program_num\":2"),
+        "program_num 2 missing from ffprobe output: {}",
+        stdout
+    );
+
+    let _ = std::fs::remove_file(&tmp);
+}

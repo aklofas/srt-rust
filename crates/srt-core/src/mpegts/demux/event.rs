@@ -161,6 +161,10 @@ pub struct StreamInfo {
     pub pid: u16,
     pub stream_type: u8,
     pub kind: StreamKind,
+    /// Program number from the PAT entry whose PMT owns this stream.
+    /// Apps filtering `Sample`/`Metadata` events by program can build a
+    /// `pid → program_number` map from `ProgramMap` events.
+    pub program_number: u16,
     /// Raw PMT per-stream descriptors for this PID, in PMT loop order.
     /// Empty when the PMT carried no descriptors for this stream. Use
     /// [`crate::mpegts::demux::psi::extract_user_label`] for a quick
@@ -203,6 +207,11 @@ pub enum NonConformantIssue {
     /// PUSI mid-PES — a new PUSI packet arrived before the previous PES
     /// completed. Lenient mode discards the partial PES and starts fresh.
     PusiMidPes,
+    /// A PMT introduced a stream PID that's already bound to a different
+    /// program. PID uniqueness across programs is required by ISO 13818-1;
+    /// the demuxer keeps the first-program-wins binding and drops the second.
+    PidReusedAcrossPrograms { pid: u16, programs: [u16; 2] },
+
     /// Other.
     Other(String),
 }

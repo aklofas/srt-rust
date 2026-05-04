@@ -10,7 +10,7 @@ use crate::mpegts::demux::event::{
 use crate::mpegts::demux::payload::{KlvShape, classify_klv, split_nals};
 use crate::mpegts::demux::pes::{Reassembler, ReassemblyOutcome};
 use crate::mpegts::demux::psi::{
-    Pmt, PsiParseError, extract_metadata_link, has_klva_registration, parse_pat,
+    Pmt, PsiParseError, extract_metadata_link, has_klva_registration, parse_pat, parse_pmt,
 };
 use crate::mpegts::demux::strict::StrictMode;
 use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
@@ -67,13 +67,12 @@ pub struct DemuxerOptions {
 /// Exposed `pub` so that `programs_for_test` can name it in its return type.
 /// Not part of the stable API — treat as opaque outside this crate.
 #[derive(Debug)]
-#[allow(dead_code)] // TASK 10/11: fields populated/read once PAT + PMT handlers land
 pub struct ProgramTracker {
-    pub(crate) program_number: u16,
-    pub(crate) pmt_pid: u16,
-    pub(crate) pmt_version: Option<u8>,
-    pub(crate) pcr_pid: Option<u16>,
-    pub(crate) streams: Vec<StreamInfo>,
+    pub program_number: u16,
+    pub pmt_pid: u16,
+    pub pmt_version: Option<u8>,
+    pub pcr_pid: Option<u16>,
+    pub streams: Vec<StreamInfo>,
     /// PIDs that have already had a KLV stream-type-mismatch nonconformant
     /// emitted for the current PMT version. Cleared on PMT version bump.
     pub(crate) klv_mismatch_coalesce: HashSet<u16>,
@@ -454,32 +453,123 @@ impl Demuxer {
         }
     }
 
-    fn handle_pmt_section(&mut self, _pmt_pid: u16, _section: &[u8]) {
-        // TASK 11: per-program PMT routing + ProgramMap event emission.
-        // Stubbed: no-op until Task 11 lands.
-    }
+    fn handle_pmt_section(&mut self, pmt_pid: u16, section: &[u8]) {
+        let pmt = match parse_pmt(section) {
+            Ok(p) => p,
+            Err(PsiParseError::CrcMismatch { .. }) => {
+                self.queue_nonconformant(
+                    StreamId {
+                        pid: pmt_pid,
+                        kind: StreamKind::Unknown(0),
+                    },
+                    NonConformantIssue::PsiChecksumMismatch { pid: pmt_pid },
+                );
+                return;
+            }
+            Err(_) => return,
+        };
 
-    /// Build a `ProgramMap` event payload from a parsed PMT.
-    /// Called by `handle_pmt_section` — re-wired in Task 11.
-    #[allow(dead_code)] // TASK 11: called from handle_pmt_section stub
-    fn build_program_map(&mut self, pmt: &Pmt) -> ProgramMap {
-        let mut streams = Vec::new();
-        let mut klv_pids: Vec<(u16, Option<u16>)> = Vec::new();
-        let mut video_pids: Vec<u16> = Vec::new();
+        // Look up the tracker — must exist if PAT pre-populated us.
+        let program_number = match self.programs.get(&pmt_pid) {
+            Some(t) => t.program_number,
+            None => return, // PMT arriving on PID not in PAT — drop.
+        };
+
+        // Dedup: re-emit only if version changed or first ever.
+        if let Some(tracker) = self.programs.get(&pmt_pid) {
+            if Some(pmt.version) == tracker.pmt_version {
+                return;
+            }
+        }
+
+        // Build StreamInfo list + check cross-program PID collisions.
+        // Collect work to do before mutating self — satisfies borrow checker.
+        let mut stream_infos: Vec<StreamInfo> = Vec::with_capacity(pmt.streams.len());
+        let mut kind_inserts: Vec<(u16, StreamKind)> = Vec::new();
+        let mut collision_issues: Vec<(StreamId, NonConformantIssue)> = Vec::new();
+
         for s in &pmt.streams {
-            let (kind, declared_link) = self.derive_stream_kind(s);
-            if let StreamKind::Video(_) = kind {
-                video_pids.push(s.elementary_pid);
+            let (kind, _declared_link) = self.derive_stream_kind(s);
+
+            // Cross-program PID collision check: scan all other programs'
+            // stream lists. First-program-wins — skip this PID if already owned.
+            let other_prog = self
+                .programs
+                .iter()
+                .find(|(other_pmt_pid, t)| {
+                    **other_pmt_pid != pmt_pid
+                        && t.streams.iter().any(|st| st.pid == s.elementary_pid)
+                })
+                .map(|(_, t)| t.program_number);
+
+            if let Some(other_program_number) = other_prog {
+                collision_issues.push((
+                    StreamId {
+                        pid: s.elementary_pid,
+                        kind: StreamKind::Unknown(0),
+                    },
+                    NonConformantIssue::PidReusedAcrossPrograms {
+                        pid: s.elementary_pid,
+                        programs: [other_program_number, program_number],
+                    },
+                ));
+                continue; // Skip this stream — first-program-wins.
             }
-            if matches!(kind, StreamKind::KlvSync { .. } | StreamKind::KlvAsync) {
-                klv_pids.push((s.elementary_pid, declared_link));
-            }
-            streams.push(StreamInfo {
+
+            stream_infos.push(StreamInfo {
                 pid: s.elementary_pid,
                 stream_type: s.stream_type,
                 kind,
+                program_number,
                 raw_descriptors: s.descriptors.clone(),
             });
+            kind_inserts.push((s.elementary_pid, kind));
+        }
+
+        // Emit collision NonConformant events.
+        for (stream_id, issue) in collision_issues {
+            self.queue_nonconformant(stream_id, issue);
+        }
+
+        // Update stream_kind_by_pid for all non-colliding streams.
+        for (pid, kind) in kind_inserts {
+            self.stream_kind_by_pid.insert(pid, kind);
+        }
+
+        // Build klv_links from the accepted streams.
+        let prog_map = self.build_program_map(&pmt, program_number, &stream_infos);
+
+        // Update tracker.
+        let tracker = self.programs.get_mut(&pmt_pid).expect("checked above");
+        tracker.pmt_version = Some(pmt.version);
+        tracker.pcr_pid = Some(pmt.pcr_pid);
+        tracker.streams = stream_infos;
+        tracker.klv_mismatch_coalesce.clear();
+
+        // Emit ProgramMap event.
+        self.queue.push_back(DemuxEvent::ProgramMap(prog_map));
+        self.program_maps_seen += 1;
+        self.pmt_versions_seen += 1;
+    }
+
+    /// Build a `ProgramMap` event payload from a parsed PMT and the accepted
+    /// stream list (after cross-program collision filtering).
+    fn build_program_map(
+        &mut self,
+        pmt: &Pmt,
+        program_number: u16,
+        streams: &[StreamInfo],
+    ) -> ProgramMap {
+        let mut klv_pids: Vec<(u16, Option<u16>)> = Vec::new();
+        let mut video_pids: Vec<u16> = Vec::new();
+        for info in streams {
+            if let StreamKind::Video(_) = info.kind {
+                video_pids.push(info.pid);
+            }
+            if matches!(info.kind, StreamKind::KlvSync { .. } | StreamKind::KlvAsync) {
+                let declared_link = extract_metadata_link_for_pid(pmt, info.pid);
+                klv_pids.push((info.pid, declared_link));
+            }
         }
         // Build klv_links table.
         let mut klv_links = Vec::new();
@@ -528,14 +618,13 @@ impl Demuxer {
             }
         }
         ProgramMap {
-            program_number: pmt.program_number,
+            program_number,
             pcr_pid: pmt.pcr_pid,
-            streams,
+            streams: streams.to_vec(),
             klv_links,
         }
     }
 
-    #[allow(dead_code)] // TASK 11: called from build_program_map
     fn derive_stream_kind(
         &self,
         s: &crate::mpegts::demux::psi::PmtStream,
@@ -816,6 +905,16 @@ impl Demuxer {
     }
 }
 
+/// Extract the `metadata_descriptor` declared link for a specific PID from
+/// a parsed PMT. Used by `build_program_map` to rebuild klv_links after
+/// collision filtering has already reduced the stream list.
+fn extract_metadata_link_for_pid(pmt: &Pmt, pid: u16) -> Option<u16> {
+    pmt.streams
+        .iter()
+        .find(|s| s.elementary_pid == pid)
+        .and_then(|s| extract_metadata_link(&s.descriptors))
+}
+
 /// Compute the total payload byte count for a slice of NAL units.
 fn nal_payload_bytes(nals: &[NalUnit]) -> usize {
     nals.iter()
@@ -984,8 +1083,48 @@ mod tests {
         assert!(st.per_stream.is_empty());
     }
 
-    // TASK 10/11: PSI handlers are stubbed — no ProgramMap events emitted.
-    // Re-enable once Tasks 10–11 wire up PAT diffing + per-program PMT routing.
-    // #[test]
-    // fn pmt_program_map_event_carries_raw_descriptors() { ... }
+    #[test]
+    fn pmt_program_map_event_carries_raw_descriptors() {
+        use crate::mpegts::demux::event::DemuxEvent;
+        use crate::mpegts::descriptors;
+        use crate::mpegts::mux::{ConfigBuilder, VideoCodec as MuxVideoCodec};
+
+        let cfg = ConfigBuilder::default()
+            .add_program(1, 0x1000)
+            .add_video(0x100, MuxVideoCodec::H264)
+            .stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = crate::mpegts::mux::Muxer::new(cfg).unwrap();
+        // Push a minimal H.264 AU to trigger PSI + PES emission.
+        mux.push_video(&[0, 0, 0, 1, 0x09, 0x10], 9000, true)
+            .unwrap();
+        let mut buf = vec![0u8; 188 * 32];
+        let n = mux.pull(&mut buf);
+
+        let mut demuxer = Demuxer::new();
+        demuxer.feed(&buf[..n]).unwrap();
+
+        let mut events = Vec::new();
+        while let Some(e) = demuxer.next_event() {
+            events.push(e);
+        }
+
+        let pm = events
+            .iter()
+            .find_map(|e| match e {
+                DemuxEvent::ProgramMap(pm) => Some(pm),
+                _ => None,
+            })
+            .expect("ProgramMap event emitted");
+        let stream = pm
+            .streams
+            .iter()
+            .find(|s| s.pid == 0x100)
+            .expect("video PID 0x100 in ProgramMap");
+        assert_eq!(stream.raw_descriptors.len(), 1);
+        assert_eq!(stream.raw_descriptors[0].tag, 0xFF);
+        assert_eq!(stream.raw_descriptors[0].data, b"EO 1080p".to_vec());
+    }
 }

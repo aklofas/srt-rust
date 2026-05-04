@@ -846,9 +846,31 @@ impl Demuxer {
                     },
                 });
             }
-            StreamKind::Audio(_) | StreamKind::Subtitle(_) => {
-                // Reserved variants; not yet emitted by the demuxer
-                // until typed audio/subtitle codecs land.
+            StreamKind::Audio(codec) => {
+                let payload_len = pes.payload.len();
+                let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
+                    crate::mpegts::stats::StreamStats {
+                        pid: stream.pid,
+                        stream_type: stream_type_from_kind(&stream.kind),
+                        program_number,
+                        ..Default::default()
+                    }
+                });
+                entry.items += 1;
+                entry.bytes += payload_len as u64;
+                self.queue.push_back(DemuxEvent::Sample {
+                    stream,
+                    pts,
+                    dts: None,
+                    payload: SamplePayload::Audio {
+                        codec,
+                        frames: pes.payload.to_vec(),
+                    },
+                });
+            }
+            StreamKind::Subtitle(_) => {
+                // Reserved variant; not yet emitted by the demuxer
+                // until typed subtitle codecs land.
             }
         }
     }
@@ -1162,5 +1184,71 @@ mod tests {
         assert_eq!(stream.raw_descriptors.len(), 1);
         assert_eq!(stream.raw_descriptors[0].tag, 0xFF);
         assert_eq!(stream.raw_descriptors[0].data, b"EO 1080p".to_vec());
+    }
+
+    #[test]
+    fn demuxer_emits_audio_sample_for_aac_pes() {
+        use crate::mpegts::demux::event::AudioCodec;
+        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, ConfigBuilder};
+
+        // Mux: single-program with one AAC audio stream.
+        let cfg = ConfigBuilder::default()
+            .add_program(1, 0x1000)
+            .add_audio(0x300, MuxAudioCodec::Aac)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut muxer = crate::mpegts::mux::Muxer::new(cfg).unwrap();
+        let audio_payload: Vec<u8> = vec![
+            0xFF, 0xF1, 0x4C, 0x80, 0x00, 0x1F, 0xFC, 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02,
+            0x03, 0x04,
+        ];
+        muxer.push_audio(&audio_payload, 90_000).unwrap();
+        let mut buf = vec![0u8; 188 * 64];
+        let n = muxer.pull(&mut buf);
+        buf.truncate(n);
+
+        // Demux: feed the muxed bytes, capture events.
+        let mut demuxer = Demuxer::new();
+        demuxer.feed(&buf).unwrap();
+        demuxer.flush();
+        let mut events = Vec::new();
+        while let Some(e) = demuxer.next_event() {
+            events.push(e);
+        }
+
+        let sample = events
+            .iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    DemuxEvent::Sample {
+                        payload: SamplePayload::Audio { .. },
+                        ..
+                    }
+                )
+            })
+            .expect("audio Sample event present");
+
+        if let DemuxEvent::Sample {
+            stream,
+            pts,
+            dts,
+            payload: event_payload,
+        } = sample
+        {
+            assert_eq!(stream.pid, 0x300);
+            assert!(matches!(stream.kind, StreamKind::Audio(AudioCodec::Aac)));
+            assert_eq!(*pts, 90_000);
+            assert_eq!(*dts, None, "audio has no DTS");
+            if let SamplePayload::Audio { codec, frames } = event_payload {
+                assert_eq!(*codec, AudioCodec::Aac);
+                assert_eq!(
+                    frames.as_slice(),
+                    audio_payload.as_slice(),
+                    "all payload bytes recovered"
+                );
+            }
+        }
     }
 }

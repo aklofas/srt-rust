@@ -11,6 +11,9 @@
 pub struct StreamStats {
     pub pid: u16,
     pub stream_type: u8,
+    /// Program number from the PAT/PMT that owns this stream. `0` for PSI
+    /// PIDs (PAT, PMT) and for streams that were created before a PMT arrived.
+    pub program_number: u16,
     pub label: Option<String>,
     pub items: u64,
     pub bytes: u64,
@@ -37,6 +40,7 @@ mod tests {
         let a = StreamStats {
             pid: 0x100,
             stream_type: 0x1B,
+            program_number: 1,
             label: Some("EO".into()),
             items: 5,
             bytes: 1024,

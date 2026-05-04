@@ -147,6 +147,17 @@ typedef uint32_t srtc_klv_stream_handle_t;
 
 /**
  * `repr(C)` mirror of `srt_core::mpegts::StreamStats`. Size 96 B.
+ *
+ * Layout (offsets):
+ *   0: items (u64, 8 B)
+ *   8: bytes (u64, 8 B)
+ *  16: discontinuities (u64, 8 B)
+ *  24: pid (u16, 2 B)
+ *  26: stream_type (u8, 1 B)
+ *  27: _pad (3 B, alignment bridge)
+ *  30: program_number (u16, 2 B)
+ *  32: label ([c_char; 64], 64 B)
+ * Total: 96 B — identical to the pre-program_number layout.
  */
 typedef struct srtc_stream_stats_t {
   uint64_t items;
@@ -154,7 +165,14 @@ typedef struct srtc_stream_stats_t {
   uint64_t discontinuities;
   uint16_t pid;
   uint8_t stream_type;
-  uint8_t _pad[5];
+  /**
+   * Alignment padding bridging stream_type → program_number.
+   */
+  uint8_t _pad[3];
+  /**
+   * Program number from the PAT that owns this stream. 0 for PSI PIDs.
+   */
+  uint16_t program_number;
   /**
    * NUL-terminated UTF-8. label[0]==0 means None. Truncated at 63
    * bytes (first 63 + NUL).
@@ -163,24 +181,32 @@ typedef struct srtc_stream_stats_t {
 } srtc_stream_stats_t;
 
 /**
- * `repr(C)` mirror of `srt_core::pipeline::SenderStats`. Size 6184 B.
+ * `repr(C)` mirror of `srt_core::pipeline::SenderStats`. Size 6188 B.
  */
 typedef struct srtc_sender_stats_t {
   uint64_t bytes_sent;
   uint64_t packets_sent;
   uint64_t pending_bytes_queued;
   uint64_t pending_chunks_queued;
+  /**
+   * Number of programs (PAT entries) in the muxer configuration.
+   */
+  uint32_t programs_configured;
   uint32_t per_stream_count;
   uint32_t per_stream_truncated;
   struct srtc_stream_stats_t per_stream[SRTC_STATS_MAX_STREAMS];
 } srtc_sender_stats_t;
 
 /**
- * `repr(C)` mirror of `srt_core::mpegts::mux::MuxerStats`. Size 6168 B.
+ * `repr(C)` mirror of `srt_core::mpegts::mux::MuxerStats`. Size 6172 B.
  */
 typedef struct srtc_muxer_stats_t {
   uint64_t ts_packets_emitted;
   uint64_t ts_bytes_emitted;
+  /**
+   * Number of programs (PAT entries) in this muxer's configuration.
+   */
+  uint32_t programs_configured;
   uint32_t per_stream_count;
   uint32_t per_stream_truncated;
   struct srtc_stream_stats_t per_stream[SRTC_STATS_MAX_STREAMS];

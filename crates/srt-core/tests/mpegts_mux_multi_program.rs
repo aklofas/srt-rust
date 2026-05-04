@@ -412,3 +412,60 @@ fn per_program_pcr_emitted_on_each_program_pid() {
         "program 2 PCR PID 0x1111 must carry at least one PCR-bearing TS packet"
     );
 }
+
+// ── Stats tests ───────────────────────────────────────────────────────────────
+
+#[test]
+fn muxer_stats_per_stream_carries_program_number() {
+    let muxer = Muxer::new(two_program_config()).unwrap();
+    let stats = muxer.stats();
+    assert_eq!(stats.programs_configured, 2);
+
+    let prog1_pids: Vec<u16> = stats
+        .per_stream
+        .values()
+        .filter(|s| s.program_number == 1)
+        .map(|s| s.pid)
+        .collect();
+    assert_eq!(prog1_pids.len(), 2, "program 1 should have 2 streams");
+    assert!(
+        prog1_pids.contains(&0x1011),
+        "program 1 video PID 0x1011 missing"
+    );
+    assert!(
+        prog1_pids.contains(&0x1031),
+        "program 1 KLV PID 0x1031 missing"
+    );
+
+    let prog2_pids: Vec<u16> = stats
+        .per_stream
+        .values()
+        .filter(|s| s.program_number == 2)
+        .map(|s| s.pid)
+        .collect();
+    assert_eq!(prog2_pids.len(), 2, "program 2 should have 2 streams");
+    assert!(
+        prog2_pids.contains(&0x1111),
+        "program 2 video PID 0x1111 missing"
+    );
+    assert!(
+        prog2_pids.contains(&0x1131),
+        "program 2 KLV PID 0x1131 missing"
+    );
+}
+
+#[test]
+fn single_program_muxer_stats_programs_configured_is_one() {
+    let muxer = Muxer::new(srt_core::mpegts::mux::Config::default()).unwrap();
+    let stats = muxer.stats();
+    assert_eq!(
+        stats.programs_configured, 1,
+        "single-program default config must report programs_configured=1"
+    );
+    for s in stats.per_stream.values() {
+        assert_eq!(
+            s.program_number, 1,
+            "default-config streams must carry program_number=1"
+        );
+    }
+}

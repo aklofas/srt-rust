@@ -226,6 +226,7 @@ pub unsafe extern "C" fn srtc_muxer_get_stats(
         let dst = crate::stats::SrtcMuxerStats {
             ts_packets_emitted: stats.ts_packets_emitted,
             ts_bytes_emitted: stats.ts_bytes_emitted,
+            programs_configured: stats.programs_configured,
             per_stream_count,
             per_stream_truncated: if truncated { 1 } else { 0 },
             per_stream,

@@ -31,6 +31,9 @@ pub struct SenderStats {
     pub pending_bytes_queued: u64,
     /// Live gauge — chunk count currently in the pending buffer.
     pub pending_chunks_queued: u64,
+    /// Number of programs (PAT entries) in the muxer configuration.
+    /// Delegated from the inner `MuxerStats`.
+    pub programs_configured: u32,
     /// Per-stream push counters, keyed by PID. Delegated from the wrapped
     /// `Muxer`; not double-booked here.
     pub per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
@@ -147,6 +150,7 @@ impl<T: Transport> Sender<T> {
             packets_sent: inner.packets_sent,
             pending_bytes_queued,
             pending_chunks_queued,
+            programs_configured: mux_stats.programs_configured,
             per_stream: mux_stats.per_stream,
         }
     }

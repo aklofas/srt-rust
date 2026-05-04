@@ -710,6 +710,8 @@ pub struct MuxerStats {
     pub ts_packets_emitted: u64,
     /// Total bytes drained via [`Muxer::pull`] (`ts_packets_emitted * 188`).
     pub ts_bytes_emitted: u64,
+    /// Number of programs (PAT entries) in this muxer's configuration.
+    pub programs_configured: u32,
     /// Per-stream counters, keyed by PID. One entry per configured
     /// video or KLV stream. `StreamStats::items` = push_video_to /
     /// push_klv_to call count; `StreamStats::bytes` = raw ES bytes pushed
@@ -904,6 +906,7 @@ impl Muxer {
                     crate::mpegts::stats::StreamStats {
                         pid: v.pid,
                         stream_type: stream_type_byte,
+                        program_number: prog.program_number,
                         ..Default::default()
                     },
                 );
@@ -918,6 +921,7 @@ impl Muxer {
                     crate::mpegts::stats::StreamStats {
                         pid: k.pid,
                         stream_type: stream_type_byte,
+                        program_number: prog.program_number,
                         ..Default::default()
                     },
                 );
@@ -1299,6 +1303,7 @@ impl Muxer {
         MuxerStats {
             ts_packets_emitted: self.ts_packets_emitted,
             ts_bytes_emitted: self.ts_bytes_emitted,
+            programs_configured: self.config.programs.len() as u32,
             per_stream: self.per_stream.clone(),
         }
     }

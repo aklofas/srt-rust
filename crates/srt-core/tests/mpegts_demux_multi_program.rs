@@ -327,3 +327,35 @@ fn program_map_event_fires_per_program() {
     assert!(prog_maps.iter().any(|pm| pm.program_number == 1));
     assert!(prog_maps.iter().any(|pm| pm.program_number == 2));
 }
+
+// ── Stats tests ───────────────────────────────────────────────────────────────
+
+#[test]
+fn demuxer_stats_programs_seen_reflects_pat_size() {
+    let mut demuxer = Demuxer::new();
+    assert_eq!(
+        demuxer.stats().programs_seen,
+        0,
+        "no PAT received yet — programs_seen must be 0"
+    );
+
+    // Feed a PAT with two programs.
+    demuxer
+        .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+        .unwrap();
+    assert_eq!(
+        demuxer.stats().programs_seen,
+        2,
+        "after 2-program PAT, programs_seen must be 2"
+    );
+
+    // Feed a new PAT version that drops program 2.
+    demuxer
+        .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+        .unwrap();
+    assert_eq!(
+        demuxer.stats().programs_seen,
+        1,
+        "after dropping program 2, programs_seen must be 1"
+    );
+}

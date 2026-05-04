@@ -35,6 +35,10 @@ pub struct DemuxerStats {
     pub discontinuities: u64,
     /// Total non-conformant events emitted across all PIDs.
     pub nonconformant: u64,
+    /// Number of programs currently tracked (entries in the PAT that have
+    /// been received). Reflects the live PAT — increases when a PAT version
+    /// bump adds a program, decreases when one is removed.
+    pub programs_seen: u32,
     /// Per-PID counters. Keys are PIDs. Entries are created on first event
     /// for a given PID; PSI PIDs (0x0000 for PAT, the PMT PID) are added
     /// with fixed "PAT"/"PMT" labels when a `ProgramMap` event fires.
@@ -292,11 +296,13 @@ impl Demuxer {
             if expected != pkt.continuity_counter {
                 if let Some(stream) = self.lookup_stream(pkt.pid) {
                     self.discontinuities_count += 1;
+                    let program_number = self.program_number_for_pid(stream.pid);
                     self.stats_per_stream
                         .entry(stream.pid)
                         .or_insert_with(|| crate::mpegts::stats::StreamStats {
                             pid: stream.pid,
                             stream_type: stream_type_from_kind(&stream.kind),
+                            program_number,
                             ..Default::default()
                         })
                         .discontinuities += 1;
@@ -313,11 +319,13 @@ impl Demuxer {
         if pkt.discontinuity_indicator {
             if let Some(stream) = self.lookup_stream(pkt.pid) {
                 self.discontinuities_count += 1;
+                let program_number = self.program_number_for_pid(stream.pid);
                 self.stats_per_stream
                     .entry(stream.pid)
                     .or_insert_with(|| crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
                         stream_type: stream_type_from_kind(&stream.kind),
+                        program_number,
                         ..Default::default()
                     })
                     .discontinuities += 1;
@@ -661,11 +669,13 @@ impl Demuxer {
                 ReassemblyOutcome::Overflow { pid } => {
                     if let Some(stream) = self.lookup_stream(pid) {
                         self.discontinuities_count += 1;
+                        let program_number = self.program_number_for_pid(stream.pid);
                         self.stats_per_stream
                             .entry(stream.pid)
                             .or_insert_with(|| crate::mpegts::stats::StreamStats {
                                 pid: stream.pid,
                                 stream_type: stream_type_from_kind(&stream.kind),
+                                program_number,
                                 ..Default::default()
                             })
                             .discontinuities += 1;
@@ -678,11 +688,13 @@ impl Demuxer {
                 ReassemblyOutcome::OverflowTotal => {
                     if let Some(stream) = self.lookup_stream(pkt.pid) {
                         self.discontinuities_count += 1;
+                        let program_number = self.program_number_for_pid(stream.pid);
                         self.stats_per_stream
                             .entry(stream.pid)
                             .or_insert_with(|| crate::mpegts::stats::StreamStats {
                                 pid: stream.pid,
                                 stream_type: stream_type_from_kind(&stream.kind),
+                                program_number,
                                 ..Default::default()
                             })
                             .discontinuities += 1;
@@ -712,6 +724,7 @@ impl Demuxer {
             }
         }
         self.last_pts_by_pid.insert(pes.pid, pts);
+        let program_number = self.program_number_for_pid(stream.pid);
         match kind {
             StreamKind::Video(codec) => {
                 let nals = split_nals(&pes.payload, codec);
@@ -722,6 +735,7 @@ impl Demuxer {
                     .or_insert_with(|| crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
                         stream_type: stream_type_from_kind(&stream.kind),
+                        program_number,
                         ..Default::default()
                     })
                     .items += 1;
@@ -767,6 +781,7 @@ impl Demuxer {
                             crate::mpegts::stats::StreamStats {
                                 pid: stream.pid,
                                 stream_type: stream_type_from_kind(&stream.kind),
+                                program_number,
                                 ..Default::default()
                             }
                         });
@@ -789,6 +804,7 @@ impl Demuxer {
                     crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
                         stream_type: stream_type_from_kind(&stream.kind),
+                        program_number,
                         ..Default::default()
                     }
                 });
@@ -807,6 +823,7 @@ impl Demuxer {
                     crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
                         stream_type,
+                        program_number,
                         ..Default::default()
                     }
                 });
@@ -834,6 +851,17 @@ impl Demuxer {
             .get(&pid)
             .copied()
             .map(|kind| StreamId { pid, kind })
+    }
+
+    /// Look up the program_number for a PID by searching active ProgramTrackers.
+    /// Returns 0 if the PID is not owned by any known program (e.g. PSI PIDs).
+    fn program_number_for_pid(&self, pid: u16) -> u16 {
+        for tracker in self.programs.values() {
+            if tracker.streams.iter().any(|s| s.pid == pid) {
+                return tracker.program_number;
+            }
+        }
+        0
     }
 
     /// Insert `pid` into the KLV mismatch coalesce set for whichever program
@@ -882,6 +910,7 @@ impl Demuxer {
             pmt_versions_seen: self.pmt_versions_seen,
             discontinuities: self.discontinuities_count,
             nonconformant: self.nonconformant_count,
+            programs_seen: self.programs.len() as u32,
             per_stream: self.stats_per_stream.clone(),
         }
     }

@@ -392,6 +392,37 @@ pub enum MuxError {
         descriptor_index: usize,
         reason: &'static str,
     },
+
+    /// Configured `programs.len()` exceeded `MAX_PROGRAMS`.
+    #[error("too many programs configured: {configured} (max {max})")]
+    TooManyPrograms { configured: usize, max: usize },
+
+    /// A program in `Config::programs` had zero streams. Programs must
+    /// carry at least one elementary stream.
+    #[error("program {program_number} has no streams configured")]
+    EmptyProgram { program_number: u16 },
+
+    /// Two programs in `Config::programs` share the same `program_number`.
+    #[error("duplicate program_number {program_number} across programs")]
+    DuplicateProgramNumber { program_number: u16 },
+
+    /// Two programs in `Config::programs` share the same `pmt_pid`.
+    #[error("pmt_pid 0x{pid:04X} reused by programs {programs:?}")]
+    DuplicatePmtPid { pid: u16, programs: [u16; 2] },
+
+    /// A stream PID appears in two different programs. PID uniqueness across
+    /// programs is required (repacking workflows control renumbering).
+    #[error("stream PID 0x{pid:04X} used by programs {programs:?}")]
+    DuplicatePidAcrossPrograms { pid: u16, programs: [u16; 2] },
+
+    /// Caller referenced a program_number that doesn't exist in `Config::programs`.
+    #[error("program {program_number} not found")]
+    ProgramNotFound { program_number: u16 },
+
+    /// A program's `pmt_pid` collides with one of its own (or another program's)
+    /// stream PIDs.
+    #[error("pmt_pid 0x{pmt_pid:04X} of program {program_number} conflicts with a stream PID")]
+    PmtPidConflictsWithStream { pmt_pid: u16, program_number: u16 },
 }
 
 // ============================================================================

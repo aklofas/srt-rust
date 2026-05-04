@@ -126,6 +126,39 @@ pub(crate) fn record_mux_error(e: &MuxError) {
                  descriptor {descriptor_index}: {reason}"
             ),
         ),
+        MuxError::TooManyPrograms { configured, max } => (
+            SrtcError::InvalidConfig,
+            format!("too many programs configured: {configured} (max {max})"),
+        ),
+        MuxError::EmptyProgram { program_number } => (
+            SrtcError::InvalidConfig,
+            format!("program {program_number} has no streams configured"),
+        ),
+        MuxError::DuplicateProgramNumber { program_number } => (
+            SrtcError::InvalidConfig,
+            format!("duplicate program_number {program_number} across programs"),
+        ),
+        MuxError::DuplicatePmtPid { pid, programs } => (
+            SrtcError::InvalidConfig,
+            format!("pmt_pid 0x{pid:04X} reused by programs {programs:?}"),
+        ),
+        MuxError::DuplicatePidAcrossPrograms { pid, programs } => (
+            SrtcError::InvalidConfig,
+            format!("stream PID 0x{pid:04X} used by programs {programs:?}"),
+        ),
+        MuxError::ProgramNotFound { program_number } => (
+            SrtcError::InvalidUsage,
+            format!("program {program_number} not found"),
+        ),
+        MuxError::PmtPidConflictsWithStream {
+            pmt_pid,
+            program_number,
+        } => (
+            SrtcError::InvalidConfig,
+            format!(
+                "pmt_pid 0x{pmt_pid:04X} of program {program_number} conflicts with a stream PID"
+            ),
+        ),
     };
     set_last_error(code, &msg);
 }

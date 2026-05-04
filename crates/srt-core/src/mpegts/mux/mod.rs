@@ -122,6 +122,45 @@ impl KlvStreamHandle {
     }
 }
 
+/// Maximum number of programs in one transport stream multiplex.
+/// Mirrors the per-program 16-video + 16-KLV stream caps; far above any
+/// realistic gimbaled-platform aggregation use case.
+pub const MAX_PROGRAMS: usize = 16;
+
+/// One program in a multi-program TS multiplex. Each program has its own
+/// PMT (carried on `pmt_pid`), its own PCR (driven by `pcr_pid` or
+/// auto-falling-back to the first video stream's PID), and its own
+/// elementary stream set.
+#[derive(Debug, Clone)]
+pub struct ProgramConfig {
+    /// Program number (PAT entry). Must be > 0 (program 0 is reserved for
+    /// network information). Must be unique across all programs in the Config.
+    pub program_number: u16,
+
+    /// PID carrying this program's PMT. PAT lists `(program_number, pmt_pid)`
+    /// tuples. Must not collide with any stream PID in any program, and must
+    /// be unique across all programs in the Config.
+    pub pmt_pid: u16,
+
+    /// Elementary streams in this program. ≤16 video, ≤16 KLV, ≥1 of either.
+    pub streams: Vec<StreamSpec>,
+
+    /// PID carrying this program's PCR. `None` = first video stream's PID,
+    /// or first KLV stream's PID if the program is KLV-only.
+    pub pcr_pid: Option<u16>,
+
+    /// Caller-supplied descriptors at the program (PMT-level) loop, before
+    /// the per-stream descriptor loops. Each `Vec<u8>` is one complete TLV
+    /// (tag + length + body).
+    pub program_descriptors: Vec<Vec<u8>>,
+
+    /// Per-stream descriptors. Outer Vec indexed parallel to `streams`;
+    /// inner is the descriptor list for that stream. Hand-built `ProgramConfig`
+    /// callers must keep `stream_descriptors.len() == streams.len()`;
+    /// `ConfigBuilder::build()` enforces this.
+    pub stream_descriptors: Vec<Vec<Vec<u8>>>,
+}
+
 /// Muxer construction parameters.
 ///
 /// **Multi-stream.** [`Config::validate`] enforces at most 16 Video and

@@ -269,6 +269,65 @@ the trigger that would unblock it.
 - **Trigger to revisit:** Audio carriage lands in the demuxer AND a consumer
   asks for audio frame-header fields (sample rate, channel count, etc.).
 
+## Audio carriage at the `srt-c` C ABI
+
+- **Status:** Deferred. Audio carriage in `mpegts::mux` and `mpegts::demux`
+  ships in Rust (codec scope: MP2 + AAC ADTS + AAC LATM + AC-3, plus
+  `DemuxerOptions::treat_as` for non-conformant stream_type cases). The
+  `srt-c` C ABI exposure is held back to land jointly with the receiver-surface
+  plan, so the muxer-side audio entry points (e.g. `srtc_mux_config_add_audio_stream`,
+  `srtc_*_send_audio_to`, `srtc_audio_stream_handle_t`) and the receive-side
+  audio classification surface (`SrtcAudioCodec` mirror, `SrtcDemuxEvent`
+  audio arm) are designed in one coherent shape rather than piecemeal.
+- **Why deferred:** Same rationale as the per-stream PMT descriptors,
+  pre-emptive cancel, multi-program demux, and codec parsers at the C ABI —
+  the receiver-surface plan is the natural carrier for FFI exposure across
+  all post-v0 Rust features.
+- **Trigger to revisit:** The receiver-surface `srt-c` plan starts
+  execution. At that point the C ABI gets audio entry points alongside the
+  receiver event surface, sharing the same handle types and error semantics.
+
+## Non-ATSC AC-3 variants (E-AC-3, DVB-shaped AC-3)
+
+- **Status:** Deferred. `mpegts::mux` emits and `mpegts::demux` recognizes
+  ATSC-shaped AC-3 only — `stream_type 0x81`, with `format_identifier =
+  "AC-3"` in a registration descriptor (the shape ffmpeg's mpegts muxer
+  emits by default). E-AC-3 (`stream_type 0x87`) and DVB-shaped AC-3
+  (`stream_type 0x06` + AC-3 registration descriptor) are not classified
+  as `AudioCodec::Ac3` automatically.
+- **Why deferred:** Neither variant appears in the local corpus. Adding
+  them means either (a) parsing registration descriptors on every
+  `stream_type 0x06` PID to disambiguate "AC-3" from "KLVA" / "HDMV" /
+  etc. (a structural complication that isn't justified without a corpus
+  signal), or (b) adding a new `AudioCodec::EAc3` variant plus the
+  corresponding stream_type byte / muxer / demuxer plumbing.
+- **Workaround:** `DemuxerOptions::treat_as` lets callers map an
+  `Unknown(0x87)` PID or a `0x06` PID with the AC-3 registration
+  descriptor to `AudioCodec::Ac3`. The library hands back raw PES
+  bytes; the caller's decoder handles whatever framing is actually
+  present.
+- **Trigger to revisit:** A capture surfaces in the corpus or a consumer
+  ships either variant.
+
+## Typed audio descriptor helpers in `mpegts::descriptors`
+
+- **Status:** Deferred. Per-stream PMT descriptors are caller-supplied via
+  `ConfigBuilder::stream_descriptors_for_audio` (parallel to `_for_video` /
+  `_for_klv` from plan #17), and the `mpegts::descriptors` module already
+  ships an `iso_639_language` helper for language tagging — by far the
+  most common audio descriptor. Codec-specific helpers (`ac3_audio()` —
+  descriptor tag 0x6A in DVB / 0x81 in ATSC; `aac_audio()` — tag 0x7C;
+  `mpeg2_audio()`) are not added.
+- **Why deferred:** No consumer has asked for typed audio descriptors,
+  and the corpus shape is bare PMT entries (no audio descriptors at all
+  on AAC / MP2 streams across the local capture set). Callers who need a
+  codec-specific audio descriptor today assemble one via
+  `user_private_with_tag(tag, payload)` from the existing helper menu and
+  attach via `stream_descriptors_for_audio`.
+- **Trigger to revisit:** A consumer needs a specific typed audio
+  descriptor, OR the audio frame parser plan lands and pulls the descriptor
+  surface into scope alongside the parsed frame metadata.
+
 ## Heuristic payload-kind detection (`codec::detect`)
 
 - **Status:** Deferred. The demuxer maps `Unknown { stream_type, raw }` for
@@ -286,9 +345,12 @@ the trigger that would unblock it.
 ## `pipeline::pairing` — opt-in convenience pairing utility
 
 - **Status:** Not implemented; consumers pair sync-KLV ↔ video AUs and
-  sample-and-hold async-KLV themselves. Three cookbook recipes
-  (`docs/cookbook.md` 12–14) cover the canonical patterns in ~20 lines
-  each.
+  sample-and-hold async-KLV themselves, and likewise pair audio ↔ video
+  for PTS-locked playback (lip-sync) themselves. Three cookbook recipes
+  (`docs/cookbook.md` 12–14) cover the canonical KLV patterns in ~20
+  lines each. Audio↔video pairing follows the same shape — caller
+  matches `SamplePayload::Audio` and `SamplePayload::Video` events on
+  PTS without library involvement.
 - **Why deferred:** Per the demux spec §4 (decoupled-pairing decision),
   pairing is a consumer-domain decision. A library-side helper would
   abstract over choices the library can't make correctly (tolerance

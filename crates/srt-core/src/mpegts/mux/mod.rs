@@ -301,6 +301,33 @@ pub struct ProgramConfig {
     pub stream_descriptors: Vec<Vec<Vec<u8>>>,
 }
 
+impl ProgramConfig {
+    /// Returns the PID of the first video stream in this program, if any.
+    pub(crate) fn first_video_pid(&self) -> Option<u16> {
+        self.streams.iter().find_map(|s| match s {
+            StreamSpec::Video { pid, .. } => Some(*pid),
+            _ => None,
+        })
+    }
+
+    /// Returns the PID of the first KLV stream in this program, if any.
+    pub(crate) fn first_klv_pid(&self) -> Option<u16> {
+        self.streams.iter().find_map(|s| match s {
+            StreamSpec::Klv { pid, .. } => Some(*pid),
+            _ => None,
+        })
+    }
+
+    /// Returns the PID of the first audio stream in this program, if any.
+    /// This will be used for PCR fallback in audio-only programs (Task 7).
+    pub(crate) fn first_audio_pid(&self) -> Option<u16> {
+        self.streams.iter().find_map(|s| match s {
+            StreamSpec::Audio { pid, .. } => Some(*pid),
+            _ => None,
+        })
+    }
+}
+
 /// Muxer construction parameters.
 ///
 /// Contains one or more [`ProgramConfig`]s. Multi-program transport streams
@@ -928,19 +955,11 @@ impl Muxer {
                 .collect();
 
             // Resolve PCR PID for this program: caller-pin or auto-fallback.
+            // Priority: caller-pinned > first video > first KLV > first audio.
             let pcr_pid = prog.pcr_pid.unwrap_or_else(|| {
-                prog.streams
-                    .iter()
-                    .find_map(|s| match s {
-                        StreamSpec::Video { pid, .. } => Some(*pid),
-                        _ => None,
-                    })
-                    .or_else(|| {
-                        prog.streams.iter().find_map(|s| match s {
-                            StreamSpec::Klv { pid, .. } => Some(*pid),
-                            _ => None,
-                        })
-                    })
+                prog.first_video_pid()
+                    .or_else(|| prog.first_klv_pid())
+                    .or_else(|| prog.first_audio_pid())
                     .expect("validate() guarantees ≥1 stream per program")
             });
 

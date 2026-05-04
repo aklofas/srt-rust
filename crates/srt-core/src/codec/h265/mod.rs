@@ -11,9 +11,11 @@ mod profile_tier_level;
 mod vps;
 mod sps;
 mod vui;
+mod pps;
 
 pub use vps::{H265Vps, parse_vps};
 pub use sps::{H265Sps, parse_sps};
+pub use pps::{H265Pps, parse_pps};
 
 #[cfg(test)]
 mod tests {
@@ -94,5 +96,26 @@ mod sps_tests {
     #[test]
     fn parse_sps_returns_err_on_garbage() {
         assert!(parse_sps(&[0xff; 16]).is_err());
+    }
+}
+
+#[cfg(test)]
+mod pps_tests {
+    use super::*;
+
+    const PPS_1080P_MAIN40: &[u8] = include_bytes!(
+        "../../../tests/fixtures/codec/h265/h265_1080p_main40_pps.bin"
+    );
+
+    #[test]
+    fn parse_pps_basics() {
+        let pps = parse_pps(PPS_1080P_MAIN40).expect("parse PPS");
+        assert_eq!(pps.pps_pic_parameter_set_id, 0);
+        assert_eq!(pps.pps_seq_parameter_set_id, 0);
+    }
+
+    #[test]
+    fn parse_pps_returns_err_on_empty() {
+        assert!(parse_pps(&[]).is_err());
     }
 }

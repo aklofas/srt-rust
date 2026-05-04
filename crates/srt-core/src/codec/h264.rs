@@ -2,10 +2,13 @@
 //!
 //! See [`crate::codec`] for umbrella architecture and design rationale.
 
+use std::collections::BTreeMap;
+
 use crate::codec::{
     ChromaFormat, ColorInfo, ColourPrimaries, MatrixCoefficients, ParseError, Rational,
     TransferCharacteristics,
 };
+use crate::mpegts::demux::event::NalUnit;
 
 use h264_reader::nal::sps::SeqParameterSet;
 use h264_reader::rbsp::{BitRead, BitReader, ByteReader};
@@ -48,6 +51,66 @@ pub enum EntropyCodingMode {
     Cavlc,
     /// Context-Adaptive Binary Arithmetic Coding (used by Main/High profiles).
     Cabac,
+}
+
+/// All SPS and PPS NAL units parsed from a single access unit.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct H264ParameterSets {
+    pub sps_by_id: BTreeMap<u8, H264Sps>,
+    pub pps_by_id: BTreeMap<u8, H264Pps>,
+}
+
+/// Parse all SPS/PPS NAL units from a slice of [`NalUnit`]s.
+///
+/// Behavior is partial-success-tolerant: bad parameter set NALs emit a
+/// `tracing::warn!` and are skipped. If every parameter set NAL in the
+/// input failed, the function returns `Err`. Inputs that contain no
+/// parameter set NALs (e.g., non-IDR access units, H.265-only slices)
+/// return `Ok(H264ParameterSets::default())`.
+pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H264ParameterSets, ParseError> {
+    let mut out = H264ParameterSets::default();
+    let mut had_param_set = false;
+    let mut all_failed = true;
+
+    for nal in nals {
+        let NalUnit::H264 { nal_type, payload, .. } = nal else { continue };
+        match *nal_type {
+            7 => {
+                had_param_set = true;
+                match parse_sps(payload) {
+                    Ok(sps) => {
+                        out.sps_by_id.insert(sps.seq_parameter_set_id, sps);
+                        all_failed = false;
+                    }
+                    Err(e) => {
+                        tracing::warn!(target: "srt_core::codec::h264",
+                            error = ?e, "skipping malformed SPS");
+                    }
+                }
+            }
+            8 => {
+                had_param_set = true;
+                match parse_pps(payload) {
+                    Ok(pps) => {
+                        out.pps_by_id.insert(pps.pic_parameter_set_id, pps);
+                        all_failed = false;
+                    }
+                    Err(e) => {
+                        tracing::warn!(target: "srt_core::codec::h264",
+                            error = ?e, "skipping malformed PPS");
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if had_param_set && all_failed {
+        return Err(ParseError::EngineError(
+            "every parameter set NAL in the input failed to parse".into(),
+        ));
+    }
+    Ok(out)
 }
 
 /// Parse a single PPS RBSP. Same input contract as `parse_sps`. Strict
@@ -242,6 +305,11 @@ fn extract_color(p: &SeqParameterSet) -> Option<ColorInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mpegts::demux::event::NalUnit;
+
+    fn nal_h264(nal_type: u8, payload: Vec<u8>) -> NalUnit {
+        NalUnit::H264 { nal_type, ref_idc: 3, payload }
+    }
 
     const SPS_1080P_HIGH40: &[u8] = include_bytes!(
         "../../tests/fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin"
@@ -320,5 +388,75 @@ mod tests {
     #[test]
     fn parse_pps_returns_err_on_empty() {
         assert!(parse_pps(&[]).is_err());
+    }
+
+    #[test]
+    fn parse_parameter_sets_sps_plus_pps() {
+        let nals = vec![
+            nal_h264(7, SPS_1080P_HIGH40.to_vec()),
+            nal_h264(8, PPS_1080P_HIGH40.to_vec()),
+        ];
+        let ps = parse_parameter_sets(&nals).expect("parse");
+        assert_eq!(ps.sps_by_id.len(), 1);
+        assert_eq!(ps.pps_by_id.len(), 1);
+        assert_eq!(ps.sps_by_id[&0].width, 1920);
+        assert_eq!(ps.pps_by_id[&0].seq_parameter_set_id, 0);
+    }
+
+    #[test]
+    fn parse_parameter_sets_skips_slice_nals_silently() {
+        let nals = vec![
+            nal_h264(5, vec![0xff; 32]),
+            nal_h264(7, SPS_1080P_HIGH40.to_vec()),
+            nal_h264(8, PPS_1080P_HIGH40.to_vec()),
+        ];
+        let ps = parse_parameter_sets(&nals).expect("parse");
+        assert_eq!(ps.sps_by_id.len(), 1);
+    }
+
+    #[test]
+    fn parse_parameter_sets_skips_h265_nals_silently() {
+        let nals = vec![
+            NalUnit::H265 { nal_type: 32, layer_id: 0, temporal_id_plus1: 1, payload: vec![0; 8] },
+            nal_h264(7, SPS_1080P_HIGH40.to_vec()),
+        ];
+        let ps = parse_parameter_sets(&nals).expect("parse");
+        assert_eq!(ps.sps_by_id.len(), 1);
+    }
+
+    #[test]
+    fn parse_parameter_sets_empty_input_returns_ok_empty() {
+        let ps = parse_parameter_sets(&[]).expect("parse");
+        assert!(ps.sps_by_id.is_empty());
+        assert!(ps.pps_by_id.is_empty());
+    }
+
+    #[test]
+    fn parse_parameter_sets_only_slice_nals_returns_ok_empty() {
+        let nals = vec![nal_h264(1, vec![0; 16])];
+        let ps = parse_parameter_sets(&nals).expect("parse");
+        assert!(ps.sps_by_id.is_empty());
+        assert!(ps.pps_by_id.is_empty());
+    }
+
+    #[test]
+    fn parse_parameter_sets_partial_success_one_bad_sps() {
+        let nals = vec![
+            nal_h264(7, SPS_1080P_HIGH40.to_vec()),
+            nal_h264(7, vec![0xff; 8]),
+        ];
+        let ps = parse_parameter_sets(&nals).expect("parse — good SPS keeps it Ok");
+        assert_eq!(ps.sps_by_id.len(), 1);
+    }
+
+    #[test]
+    fn parse_parameter_sets_all_param_sets_fail_returns_err() {
+        // 0xff bytes: SPS fails (SeqParameterSet::from_bits rejects garbage profile/level).
+        // 0x00 bytes: PPS fails (all-zero Golomb prefix exhausts the bit buffer mid-read).
+        let nals = vec![
+            nal_h264(7, vec![0xff; 8]),
+            nal_h264(8, vec![0x00; 8]),
+        ];
+        assert!(parse_parameter_sets(&nals).is_err());
     }
 }

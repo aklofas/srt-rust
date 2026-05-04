@@ -26,12 +26,20 @@ pub struct BitReader<'a> {
 
 impl<'a> BitReader<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
-        Self { bytes, bit_pos: 0, bit_cap: (bytes.len() as u32).saturating_mul(8) }
+        Self {
+            bytes,
+            bit_pos: 0,
+            bit_cap: (bytes.len() as u32).saturating_mul(8),
+        }
     }
 
-    pub fn position(&self) -> u32 { self.bit_pos }
+    pub fn position(&self) -> u32 {
+        self.bit_pos
+    }
 
-    fn byte_at(&self, idx: usize) -> Option<u8> { self.bytes.get(idx).copied() }
+    fn byte_at(&self, idx: usize) -> Option<u8> {
+        self.bytes.get(idx).copied()
+    }
 
     /// Read `n` bits (n ≤ 32). RBSP reading: if the previous two bytes
     /// were `00 00`, skip a single `03` byte before reading further.
@@ -56,7 +64,8 @@ impl<'a> BitReader<'a> {
             let bit_in_byte = self.bit_pos % 8;
             // EP-byte detection: at the start of a byte, if the prior two
             // bytes are 00 00 and the current byte is 03, skip it.
-            if bit_in_byte == 0 && byte_idx >= 2
+            if bit_in_byte == 0
+                && byte_idx >= 2
                 && self.bytes.get(byte_idx) == Some(&0x03)
                 && self.bytes.get(byte_idx - 1) == Some(&0x00)
                 && self.bytes.get(byte_idx - 2) == Some(&0x00)
@@ -64,8 +73,10 @@ impl<'a> BitReader<'a> {
                 self.bit_pos += 8;
                 continue;
             }
-            let b = self.byte_at(byte_idx)
-                .ok_or(ParseError::TruncatedRbsp { offset_bits: self.bit_pos, needed_bits: 1 })?;
+            let b = self.byte_at(byte_idx).ok_or(ParseError::TruncatedRbsp {
+                offset_bits: self.bit_pos,
+                needed_bits: 1,
+            })?;
             let bit = (b >> (7 - bit_in_byte)) & 1;
             self.bit_pos += 1;
             return Ok(bit);
@@ -81,7 +92,9 @@ impl<'a> BitReader<'a> {
                 return Err(ParseError::InvalidGolomb { offset_bits: start });
             }
             let b = self.read_one_bit()?;
-            if b == 1 { break; }
+            if b == 1 {
+                break;
+            }
             zeros += 1;
         }
         let suffix = if zeros == 0 { 0 } else { self.read_u(zeros)? };
@@ -99,11 +112,15 @@ impl<'a> BitReader<'a> {
     }
 
     pub fn skip(&mut self, n: u32) -> Result<(), ParseError> {
-        for _ in 0..n { self.read_one_bit()?; }
+        for _ in 0..n {
+            self.read_one_bit()?;
+        }
         Ok(())
     }
 
-    pub fn at_end(&self) -> bool { self.bit_pos >= self.bit_cap }
+    pub fn at_end(&self) -> bool {
+        self.bit_pos >= self.bit_cap
+    }
 }
 
 #[cfg(test)]
@@ -141,9 +158,12 @@ mod tests {
     #[test]
     fn read_se_basic() {
         // ue(0)=0 → se=0; ue(1)=1 → se=1; ue(2)=2 → se=-1
-        let mut br = BitReader::new(&[0b10000000]); assert_eq!(br.read_se().unwrap(), 0);
-        let mut br = BitReader::new(&[0b01000000]); assert_eq!(br.read_se().unwrap(), 1);
-        let mut br = BitReader::new(&[0b01100000]); assert_eq!(br.read_se().unwrap(), -1);
+        let mut br = BitReader::new(&[0b10000000]);
+        assert_eq!(br.read_se().unwrap(), 0);
+        let mut br = BitReader::new(&[0b01000000]);
+        assert_eq!(br.read_se().unwrap(), 1);
+        let mut br = BitReader::new(&[0b01100000]);
+        assert_eq!(br.read_se().unwrap(), -1);
     }
 
     #[test]
@@ -164,6 +184,9 @@ mod tests {
     #[test]
     fn invalid_golomb_long_zeros_errors() {
         let mut br = BitReader::new(&[0; 8]);
-        assert!(matches!(br.read_ue(), Err(ParseError::InvalidGolomb { .. })));
+        assert!(matches!(
+            br.read_ue(),
+            Err(ParseError::InvalidGolomb { .. })
+        ));
     }
 }

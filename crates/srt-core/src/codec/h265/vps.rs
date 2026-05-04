@@ -22,7 +22,10 @@ pub struct H265Vps {
 /// header bytes, no Annex B start code, emulation prevention preserved).
 pub fn parse_vps(rbsp: &[u8]) -> Result<H265Vps, ParseError> {
     if rbsp.is_empty() {
-        return Err(ParseError::TruncatedRbsp { offset_bits: 0, needed_bits: 8 });
+        return Err(ParseError::TruncatedRbsp {
+            offset_bits: 0,
+            needed_bits: 8,
+        });
     }
     let mut br = BitReader::new(rbsp);
     let vps_video_parameter_set_id = br.read_u(4)? as u8;

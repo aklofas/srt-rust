@@ -5,10 +5,10 @@
 //! output. Skips silently if no fixtures are present, no ffprobe is
 //! available, or if no video PID is found.
 
-use std::path::Path;
-use std::process::Command;
 use srt_core::codec::{h264, h265};
 use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec};
+use std::path::Path;
+use std::process::Command;
 
 fn ffprobe_video_stream(path: &Path) -> Option<(u32, u32, String, String)> {
     let out = Command::new("ffprobe")
@@ -142,6 +142,10 @@ fn local_corpus_parameter_sets_match_ffprobe() {
         }
     }
 
-    assert!(mismatches.is_empty(), "mismatches:\n{}", mismatches.join("\n"));
+    assert!(
+        mismatches.is_empty(),
+        "mismatches:\n{}",
+        mismatches.join("\n")
+    );
     eprintln!("(checked {checked} fixture(s))");
 }

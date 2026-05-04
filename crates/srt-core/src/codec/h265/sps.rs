@@ -24,7 +24,10 @@ pub struct H265Sps {
 
 pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
     if rbsp.is_empty() {
-        return Err(ParseError::TruncatedRbsp { offset_bits: 0, needed_bits: 8 });
+        return Err(ParseError::TruncatedRbsp {
+            offset_bits: 0,
+            needed_bits: 8,
+        });
     }
     let mut br = BitReader::new(rbsp);
     let sps_video_parameter_set_id = br.read_u(4)? as u8;
@@ -35,7 +38,11 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
 
     let sps_seq_parameter_set_id = br.read_ue()? as u8;
     let chroma_format_idc = br.read_ue()?;
-    let separate_colour_plane_flag = if chroma_format_idc == 3 { br.read_bool()? } else { false };
+    let separate_colour_plane_flag = if chroma_format_idc == 3 {
+        br.read_bool()?
+    } else {
+        false
+    };
 
     let pic_width_in_luma_samples = br.read_ue()?;
     let pic_height_in_luma_samples = br.read_ue()?;
@@ -87,7 +94,9 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
     if scaling_list_enabled_flag {
         let sps_scaling_list_data_present_flag = br.read_bool()?;
         if sps_scaling_list_data_present_flag {
-            return Err(ParseError::UnsupportedProfile { profile_idc: ptl.general_profile_idc });
+            return Err(ParseError::UnsupportedProfile {
+                profile_idc: ptl.general_profile_idc,
+            });
         }
     }
 
@@ -104,7 +113,9 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
 
     let num_short_term_ref_pic_sets = br.read_ue()?;
     if num_short_term_ref_pic_sets > 0 {
-        return Err(ParseError::UnsupportedProfile { profile_idc: ptl.general_profile_idc });
+        return Err(ParseError::UnsupportedProfile {
+            profile_idc: ptl.general_profile_idc,
+        });
     }
 
     let long_term_ref_pics_present_flag = br.read_bool()?;
@@ -123,7 +134,10 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
     let vui_out = if vui_parameters_present_flag {
         vui::parse(&mut br, max_sub_layers_minus1)?
     } else {
-        vui::VuiOut { frame_rate: None, color: None }
+        vui::VuiOut {
+            frame_rate: None,
+            color: None,
+        }
     };
 
     let chroma_format = match chroma_format_idc {
@@ -132,10 +146,12 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
         2 => ChromaFormat::Yuv422,
         3 if !separate_colour_plane_flag => ChromaFormat::Yuv444,
         3 => ChromaFormat::Yuv444,
-        other => return Err(ParseError::ReservedValue {
-            field: "chroma_format_idc",
-            value: other,
-        }),
+        other => {
+            return Err(ParseError::ReservedValue {
+                field: "chroma_format_idc",
+                value: other,
+            });
+        }
     };
 
     let raw_w = pic_width_in_luma_samples;

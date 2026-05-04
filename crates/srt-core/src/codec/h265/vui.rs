@@ -3,18 +3,20 @@
 //! are skipped.
 
 use super::bitreader::BitReader;
-use crate::codec::{ColorInfo, ColourPrimaries, MatrixCoefficients,
-    Rational, TransferCharacteristics};
 use crate::codec::ParseError;
+use crate::codec::{
+    ColorInfo, ColourPrimaries, MatrixCoefficients, Rational, TransferCharacteristics,
+};
 
 pub(crate) struct VuiOut {
     pub frame_rate: Option<Rational>,
     pub color: Option<ColorInfo>,
 }
 
-pub(crate) fn parse(br: &mut BitReader<'_>, _max_sub_layers_minus1: u8)
-    -> Result<VuiOut, ParseError>
-{
+pub(crate) fn parse(
+    br: &mut BitReader<'_>,
+    _max_sub_layers_minus1: u8,
+) -> Result<VuiOut, ParseError> {
     let aspect_ratio_info_present_flag = br.read_bool()?;
     let mut sample_aspect_ratio = None;
     if aspect_ratio_info_present_flag {
@@ -28,7 +30,9 @@ pub(crate) fn parse(br: &mut BitReader<'_>, _max_sub_layers_minus1: u8)
     }
 
     let overscan_info_present_flag = br.read_bool()?;
-    if overscan_info_present_flag { br.skip(1)?; }
+    if overscan_info_present_flag {
+        br.skip(1)?;
+    }
 
     let video_signal_type_present_flag = br.read_bool()?;
     let mut full_range = false;
@@ -72,14 +76,25 @@ pub(crate) fn parse(br: &mut BitReader<'_>, _max_sub_layers_minus1: u8)
         let num_units_in_tick = br.read_u(32)?;
         let time_scale = br.read_u(32)?;
         if num_units_in_tick > 0 {
-            frame_rate = Some(Rational { num: time_scale, den: num_units_in_tick });
+            frame_rate = Some(Rational {
+                num: time_scale,
+                den: num_units_in_tick,
+            });
         }
     }
 
-    let color = if video_signal_type_present_flag || chroma_loc_info_present_flag
+    let color = if video_signal_type_present_flag
+        || chroma_loc_info_present_flag
         || aspect_ratio_info_present_flag
     {
-        Some(ColorInfo { primaries, transfer, matrix, full_range, chroma_loc, sample_aspect_ratio })
+        Some(ColorInfo {
+            primaries,
+            transfer,
+            matrix,
+            full_range,
+            chroma_loc,
+            sample_aspect_ratio,
+        })
     } else {
         None
     };

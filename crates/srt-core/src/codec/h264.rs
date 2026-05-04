@@ -73,7 +73,12 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H264ParameterSets, Parse
     let mut all_failed = true;
 
     for nal in nals {
-        let NalUnit::H264 { nal_type, payload, .. } = nal else { continue };
+        let NalUnit::H264 {
+            nal_type, payload, ..
+        } = nal
+        else {
+            continue;
+        };
         match *nal_type {
             7 => {
                 had_param_set = true;
@@ -141,10 +146,14 @@ pub fn parse_pps(rbsp: &[u8]) -> Result<H264Pps, ParseError> {
         .read_bool("entropy_coding_mode_flag")
         .map_err(|e| ParseError::EngineError(format!("{e:?}")))?;
     // Both IDs are constrained to [0, 255] by the H.264 spec (Table 7-1).
-    let pic_parameter_set_id = u8::try_from(pps_id)
-        .map_err(|_| ParseError::ReservedValue { field: "pic_parameter_set_id", value: pps_id })?;
-    let seq_parameter_set_id = u8::try_from(sps_id)
-        .map_err(|_| ParseError::ReservedValue { field: "seq_parameter_set_id", value: sps_id })?;
+    let pic_parameter_set_id = u8::try_from(pps_id).map_err(|_| ParseError::ReservedValue {
+        field: "pic_parameter_set_id",
+        value: pps_id,
+    })?;
+    let seq_parameter_set_id = u8::try_from(sps_id).map_err(|_| ParseError::ReservedValue {
+        field: "seq_parameter_set_id",
+        value: sps_id,
+    })?;
     Ok(H264Pps {
         pic_parameter_set_id,
         seq_parameter_set_id,
@@ -194,7 +203,10 @@ fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> Result<H264Sps, ParseError> 
         h264_reader::nal::sps::ChromaFormat::Invalid(_) => ChromaFormat::Yuv420,
     };
 
-    let frame_mbs_only = matches!(p.frame_mbs_flags, h264_reader::nal::sps::FrameMbsFlags::Frames);
+    let frame_mbs_only = matches!(
+        p.frame_mbs_flags,
+        h264_reader::nal::sps::FrameMbsFlags::Frames
+    );
 
     Ok(H264Sps {
         seq_parameter_set_id: p.seq_parameter_set_id.id(),
@@ -251,30 +263,30 @@ fn extract_has_b_frames(p: &SeqParameterSet) -> bool {
 fn extract_color(p: &SeqParameterSet) -> Option<ColorInfo> {
     let vui = p.vui_parameters.as_ref()?;
 
-    let (full_range, primaries, transfer, matrix) =
-        if let Some(vs) = vui.video_signal_type.as_ref() {
-            let full_range = vs.video_full_range_flag;
-            let (prim, trc, mat) = match &vs.colour_description {
-                Some(cd) => (
-                    ColourPrimaries::from_h273(cd.colour_primaries),
-                    TransferCharacteristics::from_h273(cd.transfer_characteristics),
-                    MatrixCoefficients::from_h273(cd.matrix_coefficients),
-                ),
-                None => (
-                    ColourPrimaries::Unspecified,
-                    TransferCharacteristics::Unspecified,
-                    MatrixCoefficients::Unspecified,
-                ),
-            };
-            (full_range, prim, trc, mat)
-        } else {
-            (
-                false,
+    let (full_range, primaries, transfer, matrix) = if let Some(vs) = vui.video_signal_type.as_ref()
+    {
+        let full_range = vs.video_full_range_flag;
+        let (prim, trc, mat) = match &vs.colour_description {
+            Some(cd) => (
+                ColourPrimaries::from_h273(cd.colour_primaries),
+                TransferCharacteristics::from_h273(cd.transfer_characteristics),
+                MatrixCoefficients::from_h273(cd.matrix_coefficients),
+            ),
+            None => (
                 ColourPrimaries::Unspecified,
                 TransferCharacteristics::Unspecified,
                 MatrixCoefficients::Unspecified,
-            )
+            ),
         };
+        (full_range, prim, trc, mat)
+    } else {
+        (
+            false,
+            ColourPrimaries::Unspecified,
+            TransferCharacteristics::Unspecified,
+            MatrixCoefficients::Unspecified,
+        )
+    };
 
     let chroma_loc = vui
         .chroma_loc_info
@@ -308,15 +320,17 @@ mod tests {
     use crate::mpegts::demux::event::NalUnit;
 
     fn nal_h264(nal_type: u8, payload: Vec<u8>) -> NalUnit {
-        NalUnit::H264 { nal_type, ref_idc: 3, payload }
+        NalUnit::H264 {
+            nal_type,
+            ref_idc: 3,
+            payload,
+        }
     }
 
-    const SPS_1080P_HIGH40: &[u8] = include_bytes!(
-        "../../tests/fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin"
-    );
-    const SPS_720P_MAIN31: &[u8] = include_bytes!(
-        "../../tests/fixtures/codec/h264/h264_720p_main31_sps.bin"
-    );
+    const SPS_1080P_HIGH40: &[u8] =
+        include_bytes!("../../tests/fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin");
+    const SPS_720P_MAIN31: &[u8] =
+        include_bytes!("../../tests/fixtures/codec/h264/h264_720p_main31_sps.bin");
 
     #[test]
     fn parse_sps_1080p_high_dimensions() {
@@ -368,9 +382,8 @@ mod tests {
         assert!(parse_sps(&[]).is_err());
     }
 
-    const PPS_1080P_HIGH40: &[u8] = include_bytes!(
-        "../../tests/fixtures/codec/h264/h264_1080p_high40_bt709_pps.bin"
-    );
+    const PPS_1080P_HIGH40: &[u8] =
+        include_bytes!("../../tests/fixtures/codec/h264/h264_1080p_high40_bt709_pps.bin");
 
     #[test]
     fn parse_pps_1080p_high_basics() {
@@ -417,7 +430,12 @@ mod tests {
     #[test]
     fn parse_parameter_sets_skips_h265_nals_silently() {
         let nals = vec![
-            NalUnit::H265 { nal_type: 32, layer_id: 0, temporal_id_plus1: 1, payload: vec![0; 8] },
+            NalUnit::H265 {
+                nal_type: 32,
+                layer_id: 0,
+                temporal_id_plus1: 1,
+                payload: vec![0; 8],
+            },
             nal_h264(7, SPS_1080P_HIGH40.to_vec()),
         ];
         let ps = parse_parameter_sets(&nals).expect("parse");
@@ -453,10 +471,7 @@ mod tests {
     fn parse_parameter_sets_all_param_sets_fail_returns_err() {
         // 0xff bytes: SPS fails (SeqParameterSet::from_bits rejects garbage profile/level).
         // 0x00 bytes: PPS fails (all-zero Golomb prefix exhausts the bit buffer mid-read).
-        let nals = vec![
-            nal_h264(7, vec![0xff; 8]),
-            nal_h264(8, vec![0x00; 8]),
-        ];
+        let nals = vec![nal_h264(7, vec![0xff; 8]), nal_h264(8, vec![0x00; 8])];
         assert!(parse_parameter_sets(&nals).is_err());
     }
 }

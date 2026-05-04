@@ -10,10 +10,8 @@ use srt_core::codec::h264;
 use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
 use srt_core::mpegts::mux::{Config, Muxer, VideoCodec};
 
-const SPS_RBSP: &[u8] =
-    include_bytes!("fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin");
-const PPS_RBSP: &[u8] =
-    include_bytes!("fixtures/codec/h264/h264_1080p_high40_bt709_pps.bin");
+const SPS_RBSP: &[u8] = include_bytes!("fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin");
+const PPS_RBSP: &[u8] = include_bytes!("fixtures/codec/h264/h264_1080p_high40_bt709_pps.bin");
 
 /// Build a minimal Annex-B access unit: SPS NAL + PPS NAL + IDR slice NAL.
 ///
@@ -62,7 +60,9 @@ fn h264_idr_au_round_trips_through_mux_demux_parse() {
 
     let au = build_annexb_au(SPS_RBSP, PPS_RBSP);
     // Push as a keyframe at PTS 0.
-    muxer.push_video_to(video_h, &au, 0, true).expect("push_video_to");
+    muxer
+        .push_video_to(video_h, &au, 0, true)
+        .expect("push_video_to");
 
     // Drain all TS packets.  `pull` fills the provided slice one 188-byte
     // packet at a time and returns the number of bytes written (always a
@@ -94,7 +94,11 @@ fn h264_idr_au_round_trips_through_mux_demux_parse() {
     // --- Parse side ---
     let mut found_sps = false;
     while let Some(ev) = dx.next_event() {
-        if let DemuxEvent::Sample { payload: SamplePayload::Video { nals, .. }, .. } = ev {
+        if let DemuxEvent::Sample {
+            payload: SamplePayload::Video { nals, .. },
+            ..
+        } = ev
+        {
             // parse_parameter_sets walks every NalUnit in the AU and collects
             // SPS and PPS entries into typed maps.  Non-parameter-set NALs
             // (slice headers, IDR slices) are silently skipped.
@@ -102,12 +106,18 @@ fn h264_idr_au_round_trips_through_mux_demux_parse() {
             if let Some(sps) = ps.sps_by_id.get(&0) {
                 assert_eq!(sps.width, 1920, "width mismatch");
                 assert_eq!(sps.height, 1080, "height mismatch");
-                assert_eq!(sps.profile_idc, 100, "profile_idc mismatch (expected High=100)");
+                assert_eq!(
+                    sps.profile_idc, 100,
+                    "profile_idc mismatch (expected High=100)"
+                );
                 assert_eq!(sps.level_idc, 40, "level_idc mismatch (expected Level 4.0)");
                 found_sps = true;
             }
         }
     }
 
-    assert!(found_sps, "demuxer did not emit a Sample event carrying the SPS NAL");
+    assert!(
+        found_sps,
+        "demuxer did not emit a Sample event carrying the SPS NAL"
+    );
 }

@@ -14,7 +14,10 @@ pub struct H265Pps {
 
 pub fn parse_pps(rbsp: &[u8]) -> Result<H265Pps, ParseError> {
     if rbsp.is_empty() {
-        return Err(ParseError::TruncatedRbsp { offset_bits: 0, needed_bits: 8 });
+        return Err(ParseError::TruncatedRbsp {
+            offset_bits: 0,
+            needed_bits: 8,
+        });
     }
     let mut br = BitReader::new(rbsp);
     let pps_pic_parameter_set_id = br.read_ue()? as u8;

@@ -79,12 +79,7 @@ mod tests {
     #[test]
     fn parse_minimal_no_sub_layers() {
         // Byte 0: profile_space=0b00, tier_flag=1, profile_idc=0b00001 → 0b0010_0001
-        let buf: [u8; 12] = [
-            0b0010_0001,
-            0x60, 0x00, 0x00, 0x00,
-            0, 0, 0, 0, 0, 0,
-            120,
-        ];
+        let buf: [u8; 12] = [0b0010_0001, 0x60, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0, 0, 120];
         let mut br = BitReader::new(&buf);
         let ptl = parse(&mut br, 0).unwrap();
         assert!(ptl.general_tier_flag);

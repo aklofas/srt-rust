@@ -95,7 +95,9 @@ fn main() -> ExitCode {
     drain_and_print(&mut dx, &mut last_summary);
 
     if last_summary.is_empty() {
-        eprintln!("no video streams found — check that the file is MPEG-TS with H.264 or H.265 video");
+        eprintln!(
+            "no video streams found — check that the file is MPEG-TS with H.264 or H.265 video"
+        );
         return ExitCode::from(1);
     }
 

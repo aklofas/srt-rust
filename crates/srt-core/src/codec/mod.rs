@@ -224,8 +224,14 @@ pub enum ParseError {
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::TruncatedRbsp { offset_bits, needed_bits } => {
-                write!(f, "truncated RBSP at bit {offset_bits} (needed {needed_bits} more bits)")
+            Self::TruncatedRbsp {
+                offset_bits,
+                needed_bits,
+            } => {
+                write!(
+                    f,
+                    "truncated RBSP at bit {offset_bits} (needed {needed_bits} more bits)"
+                )
             }
             Self::InvalidGolomb { offset_bits } => {
                 write!(f, "invalid Exp-Golomb code at bit {offset_bits}")
@@ -237,10 +243,16 @@ impl std::fmt::Display for ParseError {
                 write!(f, "unsupported profile_idc {profile_idc}")
             }
             Self::DanglingSpsReference { sps_id } => {
-                write!(f, "PPS references SPS id {sps_id} which was not in the input")
+                write!(
+                    f,
+                    "PPS references SPS id {sps_id} which was not in the input"
+                )
             }
             Self::DanglingVpsReference { vps_id } => {
-                write!(f, "SPS references VPS id {vps_id} which was not in the input")
+                write!(
+                    f,
+                    "SPS references VPS id {vps_id} which was not in the input"
+                )
             }
             Self::EngineError(msg) => write!(f, "parser engine: {msg}"),
         }
@@ -262,7 +274,10 @@ mod tests {
 
     #[test]
     fn rational_basic_construction() {
-        let r = Rational { num: 30000, den: 1001 };
+        let r = Rational {
+            num: 30000,
+            den: 1001,
+        };
         assert_eq!(r.num, 30000);
         assert_eq!(r.den, 1001);
     }
@@ -276,24 +291,42 @@ mod tests {
 
     #[test]
     fn colour_primaries_unknown_arm_preserves_byte() {
-        assert_eq!(ColourPrimaries::from_h273(99), ColourPrimaries::Reserved(99));
+        assert_eq!(
+            ColourPrimaries::from_h273(99),
+            ColourPrimaries::Reserved(99)
+        );
     }
 
     #[test]
     fn transfer_characteristics_pq_and_hlg() {
-        assert_eq!(TransferCharacteristics::from_h273(16), TransferCharacteristics::SmpteSt2084);
-        assert_eq!(TransferCharacteristics::from_h273(18), TransferCharacteristics::AribStdB67);
+        assert_eq!(
+            TransferCharacteristics::from_h273(16),
+            TransferCharacteristics::SmpteSt2084
+        );
+        assert_eq!(
+            TransferCharacteristics::from_h273(18),
+            TransferCharacteristics::AribStdB67
+        );
     }
 
     #[test]
     fn matrix_coefficients_bt2020() {
-        assert_eq!(MatrixCoefficients::from_h273(9), MatrixCoefficients::Bt2020NonConstant);
-        assert_eq!(MatrixCoefficients::from_h273(10), MatrixCoefficients::Bt2020Constant);
+        assert_eq!(
+            MatrixCoefficients::from_h273(9),
+            MatrixCoefficients::Bt2020NonConstant
+        );
+        assert_eq!(
+            MatrixCoefficients::from_h273(10),
+            MatrixCoefficients::Bt2020Constant
+        );
     }
 
     #[test]
     fn parse_error_displays_helpfully() {
-        let e = ParseError::TruncatedRbsp { offset_bits: 80, needed_bits: 5 };
+        let e = ParseError::TruncatedRbsp {
+            offset_bits: 80,
+            needed_bits: 5,
+        };
         let s = format!("{e}");
         assert!(s.contains("truncated"));
         assert!(s.contains("80"));
@@ -308,7 +341,10 @@ mod tests {
 
     #[test]
     fn parse_error_reserved_value_carries_field_name() {
-        let e = ParseError::ReservedValue { field: "chroma_format_idc", value: 4 };
+        let e = ParseError::ReservedValue {
+            field: "chroma_format_idc",
+            value: 4,
+        };
         let s = format!("{e}");
         assert!(s.contains("chroma_format_idc"));
     }

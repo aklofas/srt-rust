@@ -4,22 +4,6 @@ Things deliberately out of scope today with a clear path back if they
 become load-bearing. Each entry records the reason it was deferred and
 the trigger that would unblock it.
 
-## Audio carriage in `mpegts::mux` and `mpegts::demux`
-
-- **Status:** Sender-side `mpegts::mux` carries video + KLV only.
-  Receiver-side `mpegts::demux` reserves audio surface in
-  `SamplePayload::Audio { codec: AudioCodec, .. }`; `AudioCodec`
-  exists today as an enum with a single hidden `__Reserved` variant
-  so a future typed value (e.g. `Aac`) lands additively rather than
-  as a breaking change.
-- **Why deferred:** Gimbaled-platform streams typically deliver video
-  plus KLV with no audio track. Adding audio speculatively means
-  guessing codec, framing, and PTS-sync questions that no shipping
-  consumer is asking. Adding the typed `AudioCodec` variants and the
-  decode path is mechanical when one is asked for.
-- **Trigger to revisit:** A consumer ships requiring synchronized
-  audio in the same TS as the video and KLV.
-
 ## Subtitle, caption, and auxiliary-data channels in `mpegts::mux` and `mpegts::demux`
 
 - **Status:** Same shape as audio — sender side does not emit;
@@ -257,17 +241,17 @@ the trigger that would unblock it.
 
 ## Audio framing parsers (`codec::aac`, `codec::ac3`)
 
-- **Status:** Deferred. `SamplePayload::Audio` is `__Reserved` today — the
-  demuxer does not yet carry an audio variant, so there are no audio NALs to
-  parse. Even if audio bytes surfaced, the frame-header parsers for AAC ADTS
-  and AC-3 do not yet exist.
-- **Why deferred:** Two gates: (1) the audio carrier in `mpegts::mux` and
-  `mpegts::demux` does not yet ship (see "Audio carriage" entry above), and
-  (2) even with that gate lifted, no current consumer has asked for audio
-  metadata. The `codec::aac` / `codec::ac3` parsers are mechanical to write
-  once the carrier exists.
-- **Trigger to revisit:** Audio carriage lands in the demuxer AND a consumer
-  asks for audio frame-header fields (sample rate, channel count, etc.).
+- **Status:** Deferred. Audio carriage in `mpegts::mux` and `mpegts::demux`
+  ships; `SamplePayload::Audio { codec, frames: Vec<u8> }` carries raw
+  PES payload bytes. Per-frame parsers (`codec::aac` for ADTS / LATM
+  framing, `codec::ac3` for AC-3 framing, `codec::mp2` for MPEG-1
+  Layer II) that split `frames` into typed per-frame structs do not
+  yet exist.
+- **Why deferred:** No current consumer asks for typed audio frame
+  metadata (sample rate, channel count, profile, bit depth). The
+  parsers are mechanical to write once a use case appears.
+- **Trigger to revisit:** A consumer asks for audio frame-header
+  metadata. See ROADMAP P5 for the planned parser layer.
 
 ## Audio carriage at the `srt-c` C ABI
 

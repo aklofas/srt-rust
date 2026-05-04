@@ -41,6 +41,25 @@ pub enum KlvStreamType {
     SynchronousMetadata,
 }
 
+/// Audio codec carried by an audio elementary stream.
+///
+/// Drives the PMT `stream_type` byte:
+/// - `Mp2` → 0x03 (ISO/IEC 11172-3 Audio — covers MPEG-1 Layer I/II/III)
+/// - `Aac` → 0x0F (ISO/IEC 13818-7 ADTS Audio)
+/// - `AacLatm` → 0x11 (ISO/IEC 14496-3 LATM Audio)
+/// - `Ac3` → 0x81 (ATSC AC-3)
+///
+/// E-AC-3, DVB-shaped AC-3 (`stream_type 0x06` + AC-3 registration),
+/// MP3 on user-private stream_types: not classified automatically;
+/// callers route via `DemuxerOptions::treat_as` on the demux side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AudioCodec {
+    Mp2,
+    Aac,
+    AacLatm,
+    Ac3,
+}
+
 /// One elementary stream in the muxer's output TS.
 ///
 /// [`Config::validate`] caps at 16 video + 16 KLV streams, with at least
@@ -66,6 +85,12 @@ pub enum StreamSpec {
         /// `SynchronousMetadata` + `false` is invalid.
         carries_pts: bool,
     },
+    Audio {
+        /// PID for the audio PES stream. Must be in `0x0010..=0x1FFE`.
+        pid: u16,
+        /// Audio codec — drives PMT stream_type (0x03 MP2, 0x0F AAC, 0x11 LATM, 0x81 AC-3).
+        codec: AudioCodec,
+    },
 }
 
 impl StreamSpec {
@@ -73,6 +98,7 @@ impl StreamSpec {
         match self {
             StreamSpec::Video { pid, .. } => *pid,
             StreamSpec::Klv { pid, .. } => *pid,
+            StreamSpec::Audio { pid, .. } => *pid,
         }
     }
 }
@@ -191,6 +217,48 @@ impl KlvStreamHandle {
         // Bypass packing — store raw as opaque u32 so out-of-range test values
         // survive the debug_assert in pack() without triggering it.
         Self(raw as u32)
+    }
+}
+
+/// Opaque handle to a configured audio stream on a `Muxer`.
+///
+/// Obtained from [`Muxer::audio_handles`] / [`Muxer::audio_handles_for_program`].
+/// Handles are valid only on the muxer that produced them; passing a handle
+/// to a different muxer is rejected with [`MuxError::InvalidStreamHandle`].
+///
+/// The internal representation encodes `(program_index, within_program_index)`
+/// in a packed `u32`. Callers treat this as an opaque token.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AudioStreamHandle(u32);
+
+impl std::fmt::Debug for AudioStreamHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (prog, within) = self.unpack();
+        write!(f, "AudioStreamHandle(prog={prog}, stream={within})")
+    }
+}
+
+impl AudioStreamHandle {
+    /// Pack `(program_index, within_program_index)` into the opaque u32.
+    /// Both inputs are bounded by `MAX_PROGRAMS` and 16 respectively;
+    /// out-of-range arguments trip a `debug_assert!`.
+    pub fn pack(program_index: usize, within_index: usize) -> Self {
+        debug_assert!(program_index < MAX_PROGRAMS);
+        debug_assert!(within_index < 16);
+        Self(((program_index as u32) << 4) | (within_index as u32 & 0x0F))
+    }
+
+    /// Inverse of `pack`. Returns `(program_index, within_index)`.
+    pub fn unpack(self) -> (usize, usize) {
+        let prog = ((self.0 >> 4) & 0x0F) as usize;
+        let within = (self.0 & 0x0F) as usize;
+        (prog, within)
+    }
+
+    /// Wrap an already-packed `u32` (used at the C ABI boundary in `srt-c`
+    /// when handles arrive from the C caller).
+    pub fn from_raw(raw: u32) -> Self {
+        Self(raw)
     }
 }
 
@@ -335,6 +403,9 @@ impl Config {
                 match s {
                     StreamSpec::Video { .. } => video_count += 1,
                     StreamSpec::Klv { .. } => klv_count += 1,
+                    StreamSpec::Audio { .. } => {
+                        // Audio stream count validation will be added in a later task.
+                    }
                 }
             }
             if video_count > VIDEO_CAP {
@@ -373,6 +444,13 @@ impl Config {
                         if *stream_type == KlvStreamType::SynchronousMetadata && !*carries_pts {
                             return Err(MuxError::InvalidConfig(
                                 "klv stream_type=SynchronousMetadata requires carries_pts=true",
+                            ));
+                        }
+                    }
+                    StreamSpec::Audio { pid, .. } => {
+                        if !pid::is_user_pid(*pid) {
+                            return Err(MuxError::InvalidConfig(
+                                "audio pid must be in 0x0010..=0x1FFE",
                             ));
                         }
                     }
@@ -1398,6 +1476,9 @@ impl Muxer {
                         stream_type: KlvStreamType::SynchronousMetadata,
                         ..
                     } => StreamType::KlvSyncMetadata,
+                    StreamSpec::Audio { .. } => {
+                        panic!("audio streams not yet supported in PMT generation");
+                    }
                 };
                 entries.push(PmtStreamEntry {
                     stream_type,
@@ -1447,6 +1528,41 @@ mod tests {
     #[test]
     fn default_config_validates() {
         Config::default().validate().expect("default is valid");
+    }
+
+    #[test]
+    fn audio_codec_real_variants() {
+        let codecs = [
+            AudioCodec::Mp2,
+            AudioCodec::Aac,
+            AudioCodec::AacLatm,
+            AudioCodec::Ac3,
+        ];
+        // Trivially constructible; equality holds.
+        assert_ne!(codecs[0], codecs[1]);
+    }
+
+    #[test]
+    fn stream_spec_audio_variant() {
+        let spec = StreamSpec::Audio {
+            pid: 0x300,
+            codec: AudioCodec::Aac,
+        };
+        assert_eq!(spec.pid(), 0x300);
+    }
+
+    #[test]
+    fn audio_stream_handle_pack_unpack_round_trip() {
+        let h = AudioStreamHandle::pack(2, 5);
+        assert_eq!(h.unpack(), (2, 5));
+    }
+
+    #[test]
+    fn audio_stream_handle_from_raw() {
+        let h = AudioStreamHandle::pack(3, 7);
+        let raw: u32 = unsafe { std::mem::transmute_copy(&h) };
+        let h2 = AudioStreamHandle::from_raw(raw);
+        assert_eq!(h, h2);
     }
 
     #[test]

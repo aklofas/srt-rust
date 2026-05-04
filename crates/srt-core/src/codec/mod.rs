@@ -180,6 +180,75 @@ impl MatrixCoefficients {
     }
 }
 
+/// Errors returned by codec parameter-set parsers.
+///
+/// All variants are non-panicking: bitstream walks are bounded, Golomb
+/// decoders are capped at 32 leading zeros, enum casts use try-from with
+/// `Err → ReservedValue`. See [crate root](crate::codec) for partial-success
+/// behavioral rules.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParseError {
+    /// Bitstream cursor walked past end of input. `needed_bits` is the
+    /// shortfall in bits at the position where parsing failed.
+    TruncatedRbsp { offset_bits: u32, needed_bits: u32 },
+
+    /// Malformed Exp-Golomb code (leading zeros run > 32, or missing
+    /// terminator bit).
+    InvalidGolomb { offset_bits: u32 },
+
+    /// Field carries a spec-reserved value that affects framing or
+    /// downstream parsing semantics. `field` is a `&'static str` for
+    /// cheap formatting; consumers should not pattern-match on it.
+    ReservedValue { field: &'static str, value: u32 },
+
+    /// Profile we cannot VUI-extract for. Fires only for profiles whose
+    /// downstream framing semantics differ enough to produce wrong
+    /// fields. Most uncommon profiles are supported as opaque integers.
+    UnsupportedProfile { profile_idc: u8 },
+
+    /// `parse_pps` standalone references an SPS id that wasn't seen.
+    /// Does not fire from `parse_parameter_sets` (which collects SPSes
+    /// before resolving PPSes).
+    DanglingSpsReference { sps_id: u8 },
+
+    /// H.265 only: `parse_sps` standalone references a VPS id that
+    /// wasn't seen. Does not fire from `parse_parameter_sets`.
+    DanglingVpsReference { vps_id: u8 },
+
+    /// Underlying engine returned an error that doesn't map cleanly to
+    /// our enum. The string is for diagnostics only — consumers should
+    /// not pattern-match on it.
+    EngineError(String),
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TruncatedRbsp { offset_bits, needed_bits } => {
+                write!(f, "truncated RBSP at bit {offset_bits} (needed {needed_bits} more bits)")
+            }
+            Self::InvalidGolomb { offset_bits } => {
+                write!(f, "invalid Exp-Golomb code at bit {offset_bits}")
+            }
+            Self::ReservedValue { field, value } => {
+                write!(f, "reserved value {value} in field '{field}'")
+            }
+            Self::UnsupportedProfile { profile_idc } => {
+                write!(f, "unsupported profile_idc {profile_idc}")
+            }
+            Self::DanglingSpsReference { sps_id } => {
+                write!(f, "PPS references SPS id {sps_id} which was not in the input")
+            }
+            Self::DanglingVpsReference { vps_id } => {
+                write!(f, "SPS references VPS id {vps_id} which was not in the input")
+            }
+            Self::EngineError(msg) => write!(f, "parser engine: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for ParseError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,5 +289,27 @@ mod tests {
     fn matrix_coefficients_bt2020() {
         assert_eq!(MatrixCoefficients::from_h273(9), MatrixCoefficients::Bt2020NonConstant);
         assert_eq!(MatrixCoefficients::from_h273(10), MatrixCoefficients::Bt2020Constant);
+    }
+
+    #[test]
+    fn parse_error_displays_helpfully() {
+        let e = ParseError::TruncatedRbsp { offset_bits: 80, needed_bits: 5 };
+        let s = format!("{e}");
+        assert!(s.contains("truncated"));
+        assert!(s.contains("80"));
+    }
+
+    #[test]
+    fn parse_error_is_std_error() {
+        fn assert_error<E: std::error::Error>(_: &E) {}
+        let e = ParseError::EngineError("test".into());
+        assert_error(&e);
+    }
+
+    #[test]
+    fn parse_error_reserved_value_carries_field_name() {
+        let e = ParseError::ReservedValue { field: "chroma_format_idc", value: 4 };
+        let s = format!("{e}");
+        assert!(s.contains("chroma_format_idc"));
     }
 }

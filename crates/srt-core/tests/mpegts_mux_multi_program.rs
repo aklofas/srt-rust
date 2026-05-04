@@ -228,6 +228,58 @@ fn config_builder_emits_multi_program_config() {
 }
 
 #[test]
+fn push_video_to_routes_to_correct_program_and_pid() {
+    let mut muxer = Muxer::new(two_program_config()).unwrap();
+    let prog1_video = muxer.video_handles_for_program(1).unwrap();
+    let prog2_video = muxer.video_handles_for_program(2).unwrap();
+    assert_eq!(prog1_video.len(), 1);
+    assert_eq!(prog2_video.len(), 1);
+
+    // Annex B IDR NAL — valid for both H.264 (prog 1) and H.265 (prog 2):
+    // validate_annex_b only checks for the start code, not the codec.
+    let nal = synthetic_nal::h264_au(64, true);
+    muxer
+        .push_video_to(prog1_video[0], &nal, 90_000, true)
+        .unwrap();
+    muxer
+        .push_video_to(prog2_video[0], &nal, 90_000, true)
+        .unwrap();
+
+    let mut out = vec![0u8; 64 * 188];
+    let n = muxer.pull(&mut out);
+    let out = &out[..n];
+
+    let prog1_pid_count = out
+        .chunks_exact(188)
+        .filter(|p| (((p[1] as u16 & 0x1F) << 8) | p[2] as u16) == 0x1011)
+        .count();
+    let prog2_pid_count = out
+        .chunks_exact(188)
+        .filter(|p| (((p[1] as u16 & 0x1F) << 8) | p[2] as u16) == 0x1111)
+        .count();
+    assert!(
+        prog1_pid_count > 0,
+        "video on program 1 PID 0x1011 must be emitted"
+    );
+    assert!(
+        prog2_pid_count > 0,
+        "video on program 2 PID 0x1111 must be emitted"
+    );
+}
+
+#[test]
+fn bare_push_video_returns_ambiguous_target_with_two_programs() {
+    use srt_core::error::MuxError;
+    let mut muxer = Muxer::new(two_program_config()).unwrap();
+    let nal = synthetic_nal::h264_au(64, true);
+    let err = muxer.push_video(&nal, 90_000, true).unwrap_err();
+    assert!(
+        matches!(err, MuxError::AmbiguousTarget { count: 2, .. }),
+        "expected AmbiguousTarget {{ count: 2, .. }}, got {err:?}"
+    );
+}
+
+#[test]
 fn config_builder_descriptors_for_video_attaches_to_correct_program() {
     use srt_core::mpegts::descriptors as desc;
     let config = Config::builder()

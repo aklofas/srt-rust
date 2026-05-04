@@ -16,6 +16,7 @@
 //! socket.send(b"hello").expect("send");
 //! ```
 
+pub mod codec;
 pub mod error;
 mod init;
 pub mod klv;

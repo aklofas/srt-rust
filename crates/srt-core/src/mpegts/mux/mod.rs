@@ -836,7 +836,8 @@ pub struct MuxerStats {
 }
 
 use self::pes::{
-    MAX_PES_HEADER_SIZE, PesPtsField, STREAM_ID_KLV, STREAM_ID_VIDEO, write_pes_header,
+    MAX_PES_HEADER_SIZE, PesPtsField, STREAM_ID_KLV, STREAM_ID_VIDEO, write_audio_pes,
+    write_pes_header,
 };
 use self::psi::{KLVA_REGISTRATION_DESCRIPTOR, PmtStreamEntry, write_pat_packet, write_pmt_packet};
 use self::ts::{AdaptationField, ContinuityCounters, write_packet};
@@ -852,6 +853,12 @@ struct KlvStreamState {
     pid: u16,
     stream_type: KlvStreamType,
     carries_pts: bool,
+}
+
+/// Per-audio-stream cached state.
+struct AudioStreamState {
+    pid: u16,
+    codec: AudioCodec,
 }
 
 /// Sender-side MPEG-TS muxer.
@@ -879,6 +886,10 @@ pub struct Muxer {
 
     /// Per-program KLV stream state. Same indexing as `video_streams`.
     klv_streams: Vec<Vec<KlvStreamState>>,
+
+    /// Per-program audio stream state. Same indexing as `video_streams`.
+    /// `AudioStreamHandle::unpack()` → `(prog_idx, within_idx)` indexes here.
+    audio_streams: Vec<Vec<AudioStreamState>>,
 
     /// Per-program resolved PCR PID. Indexed parallel to `config.programs`.
     pcr_pids: Vec<u16>,
@@ -919,6 +930,7 @@ impl Muxer {
         // Build per-program state vectors in a single pass over programs.
         let mut video_streams: Vec<Vec<VideoStreamState>> = Vec::with_capacity(n_programs);
         let mut klv_streams: Vec<Vec<KlvStreamState>> = Vec::with_capacity(n_programs);
+        let mut audio_streams: Vec<Vec<AudioStreamState>> = Vec::with_capacity(n_programs);
         let mut pcr_pids: Vec<u16> = Vec::with_capacity(n_programs);
         let mut pmt_descriptor_caches: Vec<Vec<Vec<u8>>> = Vec::with_capacity(n_programs);
         let mut per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats> = BTreeMap::new();
@@ -948,6 +960,17 @@ impl Muxer {
                         pid: *pid,
                         stream_type: *stream_type,
                         carries_pts: *carries_pts,
+                    }),
+                    _ => None,
+                })
+                .collect();
+            let prog_audio: Vec<AudioStreamState> = prog
+                .streams
+                .iter()
+                .filter_map(|s| match s {
+                    StreamSpec::Audio { pid, codec } => Some(AudioStreamState {
+                        pid: *pid,
+                        codec: *codec,
                     }),
                     _ => None,
                 })
@@ -1034,9 +1057,27 @@ impl Muxer {
                     },
                 );
             }
+            for a in &prog_audio {
+                let stream_type_byte = match a.codec {
+                    AudioCodec::Mp2 => StreamType::AudioMp2.as_u8(),
+                    AudioCodec::Aac => StreamType::AudioAac.as_u8(),
+                    AudioCodec::AacLatm => StreamType::AudioAacLatm.as_u8(),
+                    AudioCodec::Ac3 => StreamType::AudioAc3.as_u8(),
+                };
+                per_stream.insert(
+                    a.pid,
+                    crate::mpegts::stats::StreamStats {
+                        pid: a.pid,
+                        stream_type: stream_type_byte,
+                        program_number: prog.program_number,
+                        ..Default::default()
+                    },
+                );
+            }
 
             video_streams.push(prog_video);
             klv_streams.push(prog_klv);
+            audio_streams.push(prog_audio);
             pcr_pids.push(pcr_pid);
             pmt_descriptor_caches.push(prog_cache);
         }
@@ -1046,6 +1087,7 @@ impl Muxer {
             pmt_descriptor_caches,
             video_streams,
             klv_streams,
+            audio_streams,
             pcr_pids,
             pcr_interval_27mhz,
             psi_interval_90khz,
@@ -1103,6 +1145,153 @@ impl Muxer {
         }
         let handle = KlvStreamHandle::pack(0, 0);
         self.push_klv_to(handle, klv, pts_90khz)
+    }
+
+    /// Push one audio frame buffer, single-stream shorthand.
+    ///
+    /// `pts_90khz` is required and becomes the PES PTS; audio has no DTS
+    /// (no B-frame reorder). `frames` is one or more pre-framed audio frames
+    /// concatenated by the caller.
+    ///
+    /// Resolves only when exactly one audio stream is configured across all
+    /// programs. Otherwise rejects with [`MuxError::AmbiguousTarget`].
+    ///
+    /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets would
+    /// exceed `Config::buffer_packets`.
+    pub fn push_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
+        let total_audio: usize = self.audio_streams.iter().map(|a| a.len()).sum();
+        if total_audio != 1 {
+            return Err(MuxError::AmbiguousTarget {
+                kind: "audio",
+                count: total_audio,
+            });
+        }
+        // Mirror push_video / push_klv: when exactly one stream exists, it is
+        // at (prog_idx=0, within_idx=0) in audio_streams — the first program
+        // that has audio is always index 0 in the nested vec. Note: if the lone
+        // audio stream is in program 1 (prog_idx=1 in config), audio_streams[1]
+        // is non-empty and audio_streams[0] is empty; pack(0,0) would resolve
+        // to the wrong slot. Iterate to find the actual location.
+        let (prog_idx, _within_idx) = self
+            .audio_streams
+            .iter()
+            .enumerate()
+            .find(|(_p, a)| !a.is_empty())
+            .map(|(p, _)| (p, 0))
+            .expect("total_audio == 1 guarantees one non-empty program");
+        let handle = AudioStreamHandle::pack(prog_idx, 0);
+        self.push_audio_to(handle, pts_90khz, frames)
+    }
+
+    /// Push one audio frame buffer on a specific audio stream.
+    ///
+    /// Routes to the audio stream identified by `handle`. Use the bare
+    /// [`push_audio`][Self::push_audio] shorthand when exactly one audio
+    /// stream is configured. Handles are obtained from
+    /// [`audio_handles`][Self::audio_handles] /
+    /// [`audio_handles_for_program`][Self::audio_handles_for_program].
+    ///
+    /// Returns [`MuxError::InvalidStreamHandle`] if the handle's index is out
+    /// of range for this muxer's configured audio stream count.
+    /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets would
+    /// exceed `Config::buffer_packets`.
+    pub fn push_audio_to(
+        &mut self,
+        handle: AudioStreamHandle,
+        pts_90khz: i64,
+        frames: &[u8],
+    ) -> Result<(), MuxError> {
+        let (prog_idx, within_idx) = handle.unpack();
+        if prog_idx >= self.audio_streams.len() || within_idx >= self.audio_streams[prog_idx].len()
+        {
+            return Err(MuxError::InvalidStreamHandle {
+                kind: "audio",
+                index: handle.0 as usize,
+            });
+        }
+        let audio_pid = self.audio_streams[prog_idx][within_idx].pid;
+
+        let pts = PesPtsField::PtsOnly(Pts90khz(pts_90khz));
+        let mut pes_buf = Vec::with_capacity(MAX_PES_HEADER_SIZE + frames.len());
+        write_audio_pes(&mut pes_buf, within_idx as u8, pts, frames);
+
+        let total = pes_buf.len();
+        let audio_packets = ts_packets_for(total);
+        let psi_packets = if self.psi_due(prog_idx, pts_90khz) {
+            2
+        } else {
+            0
+        };
+
+        if self.queue.len() + psi_packets + audio_packets > self.config.buffer_packets {
+            return Err(MuxError::BufferFull {
+                capacity_packets: self.config.buffer_packets,
+            });
+        }
+
+        self.maybe_emit_psi(prog_idx, pts_90khz);
+
+        let mut cursor = 0;
+        let mut first = true;
+        while cursor < pes_buf.len() {
+            let mut adaptation = AdaptationField::default();
+            if first && self.pcr_pids[prog_idx] == audio_pid && self.pcr_due(prog_idx, pts_90khz) {
+                let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
+                adaptation.pcr = Some(pcr);
+                self.pcr_last[prog_idx] = Some(pcr.0);
+            }
+            let mut pkt = [0u8; 188];
+            let result = write_packet(
+                &mut pkt,
+                audio_pid,
+                first,
+                adaptation,
+                &pes_buf[cursor..],
+                &mut self.counters,
+            );
+            cursor += result.payload_consumed;
+            self.queue.push_back(pkt);
+            first = false;
+        }
+
+        // Count on the Ok path only — after all early-returns above.
+        if let Some(s) = self.per_stream.get_mut(&audio_pid) {
+            s.items += 1;
+            s.bytes += frames.len() as u64;
+        }
+
+        Ok(())
+    }
+
+    /// All `AudioStreamHandle`s for this muxer, in `(program, within-program)`
+    /// declaration order. One handle per `StreamSpec::Audio` across all programs.
+    pub fn audio_handles(&self) -> Vec<AudioStreamHandle> {
+        self.audio_streams
+            .iter()
+            .enumerate()
+            .flat_map(|(p_idx, prog)| {
+                (0..prog.len()).map(move |s_idx| AudioStreamHandle::pack(p_idx, s_idx))
+            })
+            .collect()
+    }
+
+    /// Audio stream handles for the named program, in declaration order.
+    ///
+    /// Returns `Err(MuxError::ProgramNotFound)` if no program with the given
+    /// number exists.
+    pub fn audio_handles_for_program(
+        &self,
+        program_number: u16,
+    ) -> Result<Vec<AudioStreamHandle>, MuxError> {
+        let prog_idx = self
+            .config
+            .programs
+            .iter()
+            .position(|p| p.program_number == program_number)
+            .ok_or(MuxError::ProgramNotFound { program_number })?;
+        Ok((0..self.audio_streams[prog_idx].len())
+            .map(|s_idx| AudioStreamHandle::pack(prog_idx, s_idx))
+            .collect())
     }
 
     /// Drain ready TS packets into `out`.
@@ -1494,9 +1683,22 @@ impl Muxer {
                         stream_type: KlvStreamType::SynchronousMetadata,
                         ..
                     } => StreamType::KlvSyncMetadata,
-                    StreamSpec::Audio { .. } => {
-                        panic!("audio streams not yet supported in PMT generation");
-                    }
+                    StreamSpec::Audio {
+                        codec: AudioCodec::Mp2,
+                        ..
+                    } => StreamType::AudioMp2,
+                    StreamSpec::Audio {
+                        codec: AudioCodec::Aac,
+                        ..
+                    } => StreamType::AudioAac,
+                    StreamSpec::Audio {
+                        codec: AudioCodec::AacLatm,
+                        ..
+                    } => StreamType::AudioAacLatm,
+                    StreamSpec::Audio {
+                        codec: AudioCodec::Ac3,
+                        ..
+                    } => StreamType::AudioAc3,
                 };
                 entries.push(PmtStreamEntry {
                     stream_type,

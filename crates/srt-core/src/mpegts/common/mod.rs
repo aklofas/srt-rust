@@ -22,6 +22,14 @@ pub enum StreamType {
     KlvPrivate = 0x06,
     /// Synchronous metadata stream per ST 1402 sync.
     KlvSyncMetadata = 0x15,
+    /// MPEG-1 Audio (ISO/IEC 11172-3) — covers Layer I, II, and III (MP3).
+    AudioMp2 = 0x03,
+    /// AAC audio in ADTS framing (ISO/IEC 13818-7).
+    AudioAac = 0x0F,
+    /// AAC audio in LATM framing (ISO/IEC 14496-3).
+    AudioAacLatm = 0x11,
+    /// ATSC AC-3 audio.
+    AudioAc3 = 0x81,
 }
 
 impl StreamType {

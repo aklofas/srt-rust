@@ -1,9 +1,10 @@
 //! PES (Packetized Elementary Stream) header packing.
 //!
-//! Three call shapes on the muxer hot path:
+//! Four call shapes on the muxer hot path:
 //! - Video: stream_id 0xE0, PTS only, PES_packet_length = 0 (unbounded).
 //! - KLV asynchronous: stream_id 0xFC, no PTS, bounded length.
 //! - KLV synchronous: stream_id 0xFC, PTS only, bounded length.
+//! - Audio: stream_id 0xC0..=0xCF (base + within-program index), PTS only, bounded length.
 //!
 //! PES header layout (per ISO/IEC 13818-1 §2.4.3.6):
 //!   start_code(3): 0x00 0x00 0x01
@@ -18,6 +19,12 @@ use crate::mpegts::common::Pts90khz;
 
 pub(crate) const STREAM_ID_VIDEO: u8 = 0xE0;
 pub(crate) const STREAM_ID_KLV: u8 = 0xFC;
+/// Base PES `stream_id` for audio elementary streams.
+///
+/// Audio streams within a program use `STREAM_ID_AUDIO_BASE + within_program_index`,
+/// consuming the `0xC0..=0xCF` range of ISO/IEC 13818-1's audio stream_id space
+/// (supports up to 16 audio streams per program).
+pub(crate) const STREAM_ID_AUDIO_BASE: u8 = 0xC0;
 
 /// PES PTS/DTS field selector. Embeds the PTS so callers can't construct an
 /// inconsistent state (e.g. PtsOnly with no value).
@@ -32,6 +39,29 @@ pub(crate) enum PesPtsField {
 /// Maximum size of a PES header for the cases this muxer emits.
 /// = 3(start) + 1(stream_id) + 2(length) + 1(flags1) + 1(flags2) + 1(header_data_length) + 5(PTS) = 14
 pub(crate) const MAX_PES_HEADER_SIZE: usize = 14;
+
+/// Write a complete audio PES packet (header + caller's frame bytes) into `out`.
+///
+/// `within_program_index` selects the PES `stream_id`:
+/// `STREAM_ID_AUDIO_BASE + within_program_index` (range `0xC0..=0xCF`).
+///
+/// PES_packet_length is bounded (audio frames are bounded, unlike video's 0 =
+/// unbounded sentinel). Callers must ensure `frames.len()` fits in u16 after
+/// accounting for the 3-byte PES header overhead — this is enforced by the
+/// per-stream payload cap checked in `push_audio_to`.
+pub(crate) fn write_audio_pes(
+    out: &mut Vec<u8>,
+    within_program_index: u8,
+    pts: PesPtsField,
+    frames: &[u8],
+) {
+    debug_assert!(within_program_index < 16, "audio cap is 16 per program");
+    let stream_id = STREAM_ID_AUDIO_BASE + within_program_index;
+    let mut header = [0u8; MAX_PES_HEADER_SIZE];
+    let header_len = write_pes_header(&mut header, stream_id, pts, Some(frames.len() as u16));
+    out.extend_from_slice(&header[..header_len]);
+    out.extend_from_slice(frames);
+}
 
 /// Write a PES header to `out`. Returns bytes written.
 ///

@@ -319,7 +319,6 @@ impl ProgramConfig {
     }
 
     /// Returns the PID of the first audio stream in this program, if any.
-    /// This will be used for PCR fallback in audio-only programs (Task 7).
     pub(crate) fn first_audio_pid(&self) -> Option<u16> {
         self.streams.iter().find_map(|s| match s {
             StreamSpec::Audio { pid, .. } => Some(*pid),

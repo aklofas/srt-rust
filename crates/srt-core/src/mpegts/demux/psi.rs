@@ -286,6 +286,22 @@ pub fn extract_user_label(descs: &[RawDescriptor]) -> Option<String> {
     None
 }
 
+/// Maps PMT `stream_type` byte → typed audio codec. Returns `None` for
+/// unrecognized stream_types; caller routes those to `StreamKind::Unknown(_)`
+/// or maps them via `DemuxerOptions::treat_as`.
+pub(crate) fn classify_audio_stream_type(
+    stream_type: u8,
+) -> Option<crate::mpegts::demux::event::AudioCodec> {
+    use crate::mpegts::demux::event::AudioCodec;
+    match stream_type {
+        0x03 | 0x04 => Some(AudioCodec::Mp2),
+        0x0F => Some(AudioCodec::Aac),
+        0x11 => Some(AudioCodec::AacLatm),
+        0x81 => Some(AudioCodec::Ac3),
+        _ => None,
+    }
+}
+
 /// Returns the `linked_pid` from a `metadata_descriptor` if present, else
 /// `None`. The descriptor's structure is per H.222.0 §2.6.58; encoders
 /// vary on whether they include the linked PID at all.
@@ -679,5 +695,18 @@ mod label_tests {
             },
         ];
         assert_eq!(extract_user_label(&descs).as_deref(), Some("COMP"));
+    }
+
+    #[test]
+    fn classify_audio_stream_types() {
+        use crate::mpegts::demux::event::AudioCodec;
+        assert_eq!(classify_audio_stream_type(0x03), Some(AudioCodec::Mp2));
+        assert_eq!(classify_audio_stream_type(0x04), Some(AudioCodec::Mp2));
+        assert_eq!(classify_audio_stream_type(0x0F), Some(AudioCodec::Aac));
+        assert_eq!(classify_audio_stream_type(0x11), Some(AudioCodec::AacLatm));
+        assert_eq!(classify_audio_stream_type(0x81), Some(AudioCodec::Ac3));
+        assert_eq!(classify_audio_stream_type(0x87), None); // E-AC-3: not classified
+        assert_eq!(classify_audio_stream_type(0xF1), None); // user-private: not classified
+        assert_eq!(classify_audio_stream_type(0x1B), None); // H.264: not audio
     }
 }

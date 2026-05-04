@@ -10,7 +10,8 @@ use crate::mpegts::demux::event::{
 use crate::mpegts::demux::payload::{KlvShape, classify_klv, split_nals};
 use crate::mpegts::demux::pes::{Reassembler, ReassemblyOutcome};
 use crate::mpegts::demux::psi::{
-    Pmt, PsiParseError, extract_metadata_link, has_klva_registration, parse_pat, parse_pmt,
+    Pmt, PsiParseError, classify_audio_stream_type, extract_metadata_link, has_klva_registration,
+    parse_pat, parse_pmt,
 };
 use crate::mpegts::demux::strict::StrictMode;
 use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
@@ -649,7 +650,13 @@ impl Demuxer {
                 }
             }
             0x15 => StreamKind::KlvSync { declared_link },
-            other => StreamKind::Unknown(other),
+            other => {
+                if let Some(codec) = classify_audio_stream_type(other) {
+                    StreamKind::Audio(codec)
+                } else {
+                    StreamKind::Unknown(other)
+                }
+            }
         };
         (kind, declared_link)
     }

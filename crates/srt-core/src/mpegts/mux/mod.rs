@@ -423,15 +423,15 @@ impl Config {
             // Per-program stream cap (mirrors plan #14).
             const VIDEO_CAP: usize = 16;
             const KLV_CAP: usize = 16;
+            const AUDIO_CAP: usize = 16;
             let mut video_count = 0;
             let mut klv_count = 0;
+            let mut audio_count = 0;
             for s in &prog.streams {
                 match s {
                     StreamSpec::Video { .. } => video_count += 1,
                     StreamSpec::Klv { .. } => klv_count += 1,
-                    StreamSpec::Audio { .. } => {
-                        // Audio stream count validation will be added in a later task.
-                    }
+                    StreamSpec::Audio { .. } => audio_count += 1,
                 }
             }
             if video_count > VIDEO_CAP {
@@ -444,6 +444,12 @@ impl Config {
                 return Err(MuxError::TooManyKlvStreams {
                     count: klv_count,
                     cap: KLV_CAP,
+                });
+            }
+            if audio_count > AUDIO_CAP {
+                return Err(MuxError::TooManyAudioStreams {
+                    count: audio_count,
+                    cap: AUDIO_CAP,
                 });
             }
 
@@ -717,6 +723,17 @@ impl ProgramBuilder {
             stream_type,
             carries_pts,
         });
+        prog.stream_descriptors.push(Vec::new());
+        self
+    }
+
+    /// Add an audio elementary stream to this program.
+    ///
+    /// `pid` must be in `0x0010..=0x1FFE` and distinct from all other PIDs in
+    /// this program. `codec` drives the PMT `stream_type` byte.
+    pub fn add_audio(mut self, pid: u16, codec: AudioCodec) -> Self {
+        let prog = &mut self.parent.programs[self.idx];
+        prog.streams.push(StreamSpec::Audio { pid, codec });
         prog.stream_descriptors.push(Vec::new());
         self
     }
@@ -1630,6 +1647,13 @@ impl Muxer {
             s.bytes = 0;
             s.discontinuities = 0;
         }
+    }
+
+    /// Return the resolved PCR PID for program at `prog_idx` (0-based index).
+    /// Returns `None` if `prog_idx` is out of range.
+    #[cfg(test)]
+    pub(crate) fn pcr_pid_for_program(&self, prog_idx: usize) -> Option<u16> {
+        self.pcr_pids.get(prog_idx).copied()
     }
 
     fn psi_due(&self, prog_idx: usize, pts_90khz: i64) -> bool {
@@ -2686,6 +2710,149 @@ mod tests {
         assert_eq!(muxer.pmt_descriptor_caches[0][0].len(), 22);
         assert_eq!(muxer.pmt_descriptor_caches[0][0][0], 0x26);
         assert_eq!(muxer.pmt_descriptor_caches[0][0][11], 0x27);
+    }
+
+    // ── Task 7: add_audio + audio cap + audio-only program tests ─────────
+
+    #[test]
+    fn config_validate_rejects_too_many_audio_streams() {
+        let mut builder = Config::builder().add_program(1, 0x1000);
+        for i in 0..17 {
+            builder = builder.add_audio(0x300 + i as u16, AudioCodec::Aac);
+        }
+        let err = builder.end_program().build().unwrap_err();
+        assert!(
+            matches!(
+                err,
+                MuxError::TooManyAudioStreams { count: 17, cap: 16 }
+            ),
+            "expected TooManyAudioStreams {{ 17, 16 }}, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn pcr_falls_back_to_first_audio_pid_for_audio_only_program() {
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_audio(0x300, AudioCodec::Aac)
+            .add_audio(0x301, AudioCodec::Mp2)
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+        // First audio PID = 0x300, no video, no KLV → 0x300 wins PCR.
+        assert_eq!(muxer.pcr_pid_for_program(0).unwrap(), 0x300);
+    }
+
+    #[test]
+    fn push_audio_to_writes_pes_with_pts_only_header() {
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
+            .add_audio(0x300, AudioCodec::Aac)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut muxer = Muxer::new(cfg).unwrap();
+        let handles = muxer.audio_handles();
+        assert_eq!(handles.len(), 1);
+
+        // Push 100 bytes of synthetic audio data with PTS = 90000 (1 second).
+        let frames: Vec<u8> = (0..100).map(|i| i as u8).collect();
+        muxer.push_audio_to(handles[0], 90_000, &frames).unwrap();
+
+        // Pull the resulting TS bytes; locate the PES start packet for PID 0x300.
+        let mut buf = vec![0u8; 188 * 64];
+        let n = muxer.pull(&mut buf);
+        assert!(n > 0);
+
+        // Find the audio PES packet — first TS packet for PID 0x300 with PUSI=1.
+        let packet = buf[..n]
+            .chunks_exact(188)
+            .find(|p| {
+                p[0] == 0x47
+                    && (((p[1] as u16 & 0x1F) << 8) | (p[2] as u16)) == 0x300
+                    && (p[1] & 0x40) != 0 // payload_unit_start_indicator
+            })
+            .expect("audio PES start packet present");
+
+        // Locate the PES payload start. The adaptation_field_control bits
+        // (bits 5-4 of byte 3) determine whether an adaptation field is
+        // present. When set to 0b11 the adaptation field comes first, and
+        // byte 4 holds its length — skip past it to reach the payload.
+        let afc = (packet[3] >> 4) & 0b11;
+        let payload_start = if afc == 0b11 {
+            5 + packet[4] as usize // 4 (TS hdr) + 1 (af_length byte) + af_length
+        } else {
+            4 // payload-only (afc == 0b01): payload starts right after TS header
+        };
+
+        let pes = &packet[payload_start..];
+        assert_eq!(&pes[0..3], &[0x00, 0x00, 0x01], "PES start code");
+        assert_eq!(pes[3], 0xC0, "stream_id = first audio (0xC0)");
+        // flags2 byte at PES offset 7 — high two bits are PTS_DTS_flags
+        assert_eq!(pes[7] >> 6, 0b10, "PTS only (no DTS)");
+    }
+
+    #[test]
+    fn bare_push_audio_rejects_when_two_audio_streams_configured() {
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
+            .add_audio(0x300, AudioCodec::Aac)
+            .add_audio(0x301, AudioCodec::Mp2)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut muxer = Muxer::new(cfg).unwrap();
+        let err = muxer.push_audio(b"frame", 90_000).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                MuxError::AmbiguousTarget {
+                    kind: "audio",
+                    count: 2
+                }
+            ),
+            "expected AmbiguousTarget {{ audio, 2 }}, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn audio_handles_lists_in_declaration_order() {
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_audio(0x300, AudioCodec::Aac)
+            .add_audio(0x301, AudioCodec::Mp2)
+            .end_program()
+            .add_program(2, 0x1100)
+            .add_audio(0x400, AudioCodec::Ac3)
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+        let handles = muxer.audio_handles();
+        assert_eq!(handles.len(), 3);
+        assert_eq!(handles[0].unpack(), (0, 0));
+        assert_eq!(handles[1].unpack(), (0, 1));
+        assert_eq!(handles[2].unpack(), (1, 0));
+    }
+
+    #[test]
+    fn audio_handles_for_program_filters_correctly() {
+        let cfg = Config::builder()
+            .add_program(7, 0x1000)
+            .add_audio(0x300, AudioCodec::Aac)
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+        let handles = muxer.audio_handles_for_program(7).unwrap();
+        assert_eq!(handles.len(), 1);
+        assert_eq!(handles[0].unpack(), (0, 0));
+
+        // Unknown program number rejects.
+        assert!(muxer.audio_handles_for_program(99).is_err());
     }
 }
 

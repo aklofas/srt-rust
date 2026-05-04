@@ -126,9 +126,9 @@ pub(crate) fn record_mux_error(e: &MuxError) {
                  descriptor {descriptor_index}: {reason}"
             ),
         ),
-        MuxError::TooManyPrograms { configured, max } => (
+        MuxError::TooManyPrograms { count, cap } => (
             SrtcError::InvalidConfig,
-            format!("too many programs configured: {configured} (max {max})"),
+            format!("too many programs: {count} configured, cap is {cap}"),
         ),
         MuxError::EmptyProgram { program_number } => (
             SrtcError::InvalidConfig,

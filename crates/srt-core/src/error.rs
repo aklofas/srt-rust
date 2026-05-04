@@ -394,8 +394,8 @@ pub enum MuxError {
     },
 
     /// Configured `programs.len()` exceeded `MAX_PROGRAMS`.
-    #[error("too many programs configured: {configured} (max {max})")]
-    TooManyPrograms { configured: usize, max: usize },
+    #[error("too many programs: {count} configured, cap is {cap}")]
+    TooManyPrograms { count: usize, cap: usize },
 
     /// A program in `Config::programs` had zero streams. Programs must
     /// carry at least one elementary stream.

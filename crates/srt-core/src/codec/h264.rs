@@ -8,7 +8,7 @@ use crate::codec::{
 };
 
 use h264_reader::nal::sps::SeqParameterSet;
-use h264_reader::rbsp::{BitReader, ByteReader};
+use h264_reader::rbsp::{BitRead, BitReader, ByteReader};
 
 /// Parsed H.264 Sequence Parameter Set.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,6 +29,69 @@ pub struct H264Sps {
     pub color: Option<ColorInfo>,
     /// The original RBSP bytes as supplied by the caller.
     pub raw_rbsp: Vec<u8>,
+}
+
+/// Parsed H.264 Picture Parameter Set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct H264Pps {
+    pub pic_parameter_set_id: u8,
+    pub seq_parameter_set_id: u8,
+    pub entropy_coding_mode: EntropyCodingMode,
+    /// The original RBSP bytes as supplied by the caller.
+    pub raw_rbsp: Vec<u8>,
+}
+
+/// H.264 entropy coding mode signalled in the PPS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntropyCodingMode {
+    /// Context-Adaptive Variable Length Coding (used by Baseline/Main profiles).
+    Cavlc,
+    /// Context-Adaptive Binary Arithmetic Coding (used by Main/High profiles).
+    Cabac,
+}
+
+/// Parse a single PPS RBSP. Same input contract as `parse_sps`. Strict
+/// (returns Err on first failure). Note: this standalone variant cannot
+/// validate that `seq_parameter_set_id` references a real SPS — that
+/// check happens in [`parse_parameter_sets`] which has the SPS context.
+pub fn parse_pps(rbsp: &[u8]) -> Result<H264Pps, ParseError> {
+    if rbsp.is_empty() {
+        return Err(ParseError::TruncatedRbsp {
+            offset_bits: 0,
+            needed_bits: 8,
+        });
+    }
+    // ByteReader::without_skip strips emulation-prevention-three bytes,
+    // matching the same setup as parse_sps. We only need the first three
+    // fields (pic_parameter_set_id, seq_parameter_set_id,
+    // entropy_coding_mode_flag) — all three are at the very start of the
+    // PPS RBSP, so we never need SPS context to read them.
+    let byte_reader = ByteReader::without_skip(std::io::Cursor::new(rbsp));
+    let mut bit_reader = BitReader::new(byte_reader);
+    let pps_id = bit_reader
+        .read_ue("pic_parameter_set_id")
+        .map_err(|e| ParseError::EngineError(format!("{e:?}")))?;
+    let sps_id = bit_reader
+        .read_ue("seq_parameter_set_id")
+        .map_err(|e| ParseError::EngineError(format!("{e:?}")))?;
+    let cabac = bit_reader
+        .read_bool("entropy_coding_mode_flag")
+        .map_err(|e| ParseError::EngineError(format!("{e:?}")))?;
+    // Both IDs are constrained to [0, 255] by the H.264 spec (Table 7-1).
+    let pic_parameter_set_id = u8::try_from(pps_id)
+        .map_err(|_| ParseError::ReservedValue { field: "pic_parameter_set_id", value: pps_id })?;
+    let seq_parameter_set_id = u8::try_from(sps_id)
+        .map_err(|_| ParseError::ReservedValue { field: "seq_parameter_set_id", value: sps_id })?;
+    Ok(H264Pps {
+        pic_parameter_set_id,
+        seq_parameter_set_id,
+        entropy_coding_mode: if cabac {
+            EntropyCodingMode::Cabac
+        } else {
+            EntropyCodingMode::Cavlc
+        },
+        raw_rbsp: rbsp.to_vec(),
+    })
 }
 
 /// Parse a single SPS RBSP. Input contract: RBSP body only — Annex B
@@ -235,5 +298,27 @@ mod tests {
     #[test]
     fn parse_sps_returns_err_on_empty() {
         assert!(parse_sps(&[]).is_err());
+    }
+
+    const PPS_1080P_HIGH40: &[u8] = include_bytes!(
+        "../../tests/fixtures/codec/h264/h264_1080p_high40_bt709_pps.bin"
+    );
+
+    #[test]
+    fn parse_pps_1080p_high_basics() {
+        let pps = parse_pps(PPS_1080P_HIGH40).expect("parse PPS");
+        assert_eq!(pps.pic_parameter_set_id, 0);
+        assert_eq!(pps.seq_parameter_set_id, 0);
+    }
+
+    #[test]
+    fn parse_pps_preserves_raw_rbsp() {
+        let pps = parse_pps(PPS_1080P_HIGH40).expect("parse");
+        assert_eq!(pps.raw_rbsp, PPS_1080P_HIGH40);
+    }
+
+    #[test]
+    fn parse_pps_returns_err_on_empty() {
+        assert!(parse_pps(&[]).is_err());
     }
 }

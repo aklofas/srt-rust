@@ -105,6 +105,10 @@ pub(crate) fn record_mux_error(e: &MuxError) {
             SrtcError::InvalidConfig,
             format!("too many klv streams: {count} configured, cap is {cap}"),
         ),
+        MuxError::TooManyAudioStreams { count, cap } => (
+            SrtcError::InvalidConfig,
+            format!("too many audio streams: {count} configured, cap is {cap}"),
+        ),
         MuxError::PmtTooLarge {
             used_bytes,
             max_bytes,

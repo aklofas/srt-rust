@@ -370,6 +370,10 @@ pub enum MuxError {
     #[error("too many klv streams: {count} configured, cap is {cap}")]
     TooManyKlvStreams { count: usize, cap: usize },
 
+    /// `Config::validate` rejects more than 16 audio streams in any program.
+    #[error("too many audio streams: {count} configured, cap is {cap}")]
+    TooManyAudioStreams { count: usize, cap: usize },
+
     /// `Config::validate` rejected a configuration whose total PMT
     /// section length wouldn't fit in a single TS packet. `used_bytes`
     /// is the sum of (5 ES-header bytes + descriptor-loop bytes) across
@@ -898,6 +902,15 @@ mod tests {
         assert_eq!(
             e.to_string(),
             "too many klv streams: 20 configured, cap is 16",
+        );
+    }
+
+    #[test]
+    fn mux_error_too_many_audio_streams_reports_cap() {
+        let e = MuxError::TooManyAudioStreams { count: 18, cap: 16 };
+        assert_eq!(
+            e.to_string(),
+            "too many audio streams: 18 configured, cap is 16",
         );
     }
 

@@ -20,6 +20,36 @@ pub struct StreamStats {
     pub discontinuities: u64,
 }
 
+/// Mux-side codec label. Used to populate [`StreamStats::label`] for
+/// subtitle PIDs at `Muxer::new` time. Static labels cover the four
+/// supported subtitle codecs:
+/// * `DvbSubtitling` → `"DVB-Subtitling"`
+/// * `DvbTeletext`   → `"DVB-Teletext"`
+/// * `Cea708Standalone` → `"CEA-708-Standalone"`
+/// * `WebVttInTs`    → `"WebVTT-in-TS"`
+pub fn subtitle_codec_label(codec: &crate::mpegts::mux::SubtitleCodec) -> &'static str {
+    match codec {
+        crate::mpegts::mux::SubtitleCodec::DvbSubtitling { .. } => "DVB-Subtitling",
+        crate::mpegts::mux::SubtitleCodec::DvbTeletext { .. } => "DVB-Teletext",
+        crate::mpegts::mux::SubtitleCodec::Cea708Standalone => "CEA-708-Standalone",
+        crate::mpegts::mux::SubtitleCodec::WebVttInTs => "WebVTT-in-TS",
+    }
+}
+
+/// Demux-side codec label. Same labels as [`subtitle_codec_label`] but
+/// over the param-less demux-side enum `mpegts::demux::event::SubtitleCodec`.
+pub fn demux_subtitle_codec_label(
+    codec: crate::mpegts::demux::event::SubtitleCodec,
+) -> &'static str {
+    use crate::mpegts::demux::event::SubtitleCodec;
+    match codec {
+        SubtitleCodec::DvbSubtitling => "DVB-Subtitling",
+        SubtitleCodec::DvbTeletext => "DVB-Teletext",
+        SubtitleCodec::Cea708Standalone => "CEA-708-Standalone",
+        SubtitleCodec::WebVttInTs => "WebVTT-in-TS",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

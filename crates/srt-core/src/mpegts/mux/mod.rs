@@ -1106,6 +1106,10 @@ pub struct MuxerStats {
     pub ts_bytes_emitted: u64,
     /// Number of programs (PAT entries) in this muxer's configuration.
     pub programs_configured: u32,
+    /// Number of subtitle streams configured across all programs in this
+    /// muxer. Counts the `StreamSpec::Subtitle` entries from
+    /// `Config::programs`.
+    pub subtitle_streams_configured: u32,
     /// Per-stream counters, keyed by PID. One entry per configured
     /// video or KLV stream. `StreamStats::items` = push_video_to /
     /// push_klv_to call count; `StreamStats::bytes` = raw ES bytes pushed
@@ -1143,7 +1147,6 @@ struct AudioStreamState {
 /// store it owned per-stream — same shape as `SubtitleCodec` itself.
 struct SubtitleStreamState {
     pid: u16,
-    #[allow(dead_code)] // consulted in Task 9 (PMT auto-emit descriptor)
     codec: SubtitleCodec,
 }
 
@@ -1421,13 +1424,17 @@ impl Muxer {
                 // All four subtitle codecs ride PMT stream_type 0x06
                 // (PrivateData); the per-stream PMT descriptor
                 // disambiguates between DVB-sub, teletext, CEA-708
-                // standalone, and WebVTT-in-TS.
+                // standalone, and WebVTT-in-TS. The codec-derived label
+                // is the one human-readable distinguisher in stats.
                 per_stream.insert(
                     s.pid,
                     crate::mpegts::stats::StreamStats {
                         pid: s.pid,
                         stream_type: StreamType::KlvPrivate.as_u8(),
                         program_number: prog.program_number,
+                        label: Some(
+                            crate::mpegts::stats::subtitle_codec_label(&s.codec).to_string(),
+                        ),
                         ..Default::default()
                     },
                 );
@@ -2140,6 +2147,7 @@ impl Muxer {
             ts_packets_emitted: self.ts_packets_emitted,
             ts_bytes_emitted: self.ts_bytes_emitted,
             programs_configured: self.config.programs.len() as u32,
+            subtitle_streams_configured: self.subtitle_streams.iter().map(|s| s.len() as u32).sum(),
             per_stream: self.per_stream.clone(),
         }
     }
@@ -3901,5 +3909,35 @@ mod stats_tests {
         assert_eq!(st.per_stream.len(), 2);
         assert_eq!(st.per_stream[&0x100].items, 0);
         assert_eq!(st.per_stream[&0x100].bytes, 0);
+    }
+
+    #[test]
+    fn muxer_stats_reports_subtitle_streams_configured() {
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .add_subtitle(
+                0x201,
+                SubtitleCodec::DvbTeletext {
+                    language: *b"eng",
+                    teletext_type: 0x02,
+                    magazine_number: 1,
+                    page_number: 0x88,
+                },
+            )
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+        mux.push_subtitle_to(SubtitleStreamHandle::pack(0, 0), 90_000, b"x")
+            .unwrap();
+        let s = mux.stats();
+        assert_eq!(s.subtitle_streams_configured, 2);
+        let stream_stat = s.per_stream.get(&0x200).unwrap();
+        assert_eq!(stream_stat.label.as_deref(), Some("WebVTT-in-TS"));
+        assert!(stream_stat.items >= 1);
+        let teletext_stat = s.per_stream.get(&0x201).unwrap();
+        assert_eq!(teletext_stat.label.as_deref(), Some("DVB-Teletext"));
     }
 }

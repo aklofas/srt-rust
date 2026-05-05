@@ -40,6 +40,10 @@ pub struct DemuxerStats {
     /// been received). Reflects the live PAT — increases when a PAT version
     /// bump adds a program, decreases when one is removed.
     pub programs_seen: u32,
+    /// Number of distinct subtitle PIDs the demuxer has seen at least one
+    /// PES sample for. Increments on the first `SamplePayload::Subtitle`
+    /// event per PID; resets to zero on `reset_stats`.
+    pub subtitle_streams_seen: u32,
     /// Per-PID counters. Keys are PIDs. Entries are created on first event
     /// for a given PID; PSI PIDs (0x0000 for PAT, the PMT PID) are added
     /// with fixed "PAT"/"PMT" labels when a `ProgramMap` event fires.
@@ -123,12 +127,18 @@ pub struct Demuxer {
     pmt_versions_seen: u64,
     discontinuities_count: u64,
     nonconformant_count: u64,
+    subtitle_streams_seen_count: u32,
     /// Per-PID counters; entries created lazily on first event per PID.
     stats_per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
     /// PIDs that have already emitted `SubtitleMissingDescriptor` for the
     /// current PMT version. Cleared at the top of each PMT-version bump so
     /// a fresh PMT re-fires if the descriptor is still missing.
     subtitle_missing_descriptor_emitted: HashSet<u16>,
+    /// PIDs the demuxer has emitted at least one `SamplePayload::Subtitle`
+    /// event for. Used to dedupe `subtitle_streams_seen` increments so
+    /// repeat samples on the same PID don't double-count. Cleared on
+    /// `reset_stats`.
+    subtitle_pids_seen: HashSet<u16>,
 }
 
 impl Demuxer {
@@ -162,8 +172,10 @@ impl Demuxer {
             pmt_versions_seen: 0,
             discontinuities_count: 0,
             nonconformant_count: 0,
+            subtitle_streams_seen_count: 0,
             stats_per_stream: BTreeMap::new(),
             subtitle_missing_descriptor_emitted: HashSet::new(),
+            subtitle_pids_seen: HashSet::new(),
         }
     }
 
@@ -913,11 +925,17 @@ impl Demuxer {
             }
             StreamKind::Subtitle(codec) => {
                 let payload_len = pes.payload.len();
+                if self.subtitle_pids_seen.insert(stream.pid) {
+                    self.subtitle_streams_seen_count += 1;
+                }
                 let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
                     crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
                         stream_type: stream_type_from_kind(&stream.kind),
                         program_number,
+                        label: Some(
+                            crate::mpegts::stats::demux_subtitle_codec_label(codec).to_string(),
+                        ),
                         ..Default::default()
                     }
                 });
@@ -1001,6 +1019,7 @@ impl Demuxer {
             discontinuities: self.discontinuities_count,
             nonconformant: self.nonconformant_count,
             programs_seen: self.programs.len() as u32,
+            subtitle_streams_seen: self.subtitle_streams_seen_count,
             per_stream: self.stats_per_stream.clone(),
         }
     }
@@ -1015,6 +1034,8 @@ impl Demuxer {
         self.pmt_versions_seen = 0;
         self.discontinuities_count = 0;
         self.nonconformant_count = 0;
+        self.subtitle_streams_seen_count = 0;
+        self.subtitle_pids_seen.clear();
         self.stats_per_stream.clear();
         // Drop cached PMT versions on each ProgramTracker so the next PMT
         // triggers pmt_versions_seen += 1 even if the version_number hasn't changed.
@@ -1677,5 +1698,43 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn demuxer_stats_increments_subtitle_streams_seen() {
+        use crate::mpegts::mux::{ConfigBuilder, SubtitleCodec, VideoCodec as MuxVideoCodec};
+
+        let cfg = ConfigBuilder::default()
+            .add_program(1, 0x100)
+            .add_video(0x101, MuxVideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = crate::mpegts::mux::Muxer::new(cfg).unwrap();
+        let h = mux.subtitle_handles()[0];
+        // Push twice on the same PID — the dedupe HashSet should keep
+        // subtitle_streams_seen at 1 (one distinct PID seen).
+        mux.push_subtitle_to(h, 90_000, b"WEBVTT\n").unwrap();
+        mux.push_subtitle_to(h, 180_000, b"WEBVTT\n\n").unwrap();
+        let mut bytes = vec![0u8; 188 * 64];
+        let n = mux.pull(&mut bytes);
+        bytes.truncate(n);
+
+        let mut demux = Demuxer::new();
+        demux.feed(&bytes).unwrap();
+        demux.flush();
+        while demux.next_event().is_some() {}
+        let s = demux.stats();
+        assert_eq!(s.subtitle_streams_seen, 1);
+        let stream_stat = s.per_stream.get(&0x200).unwrap();
+        assert_eq!(stream_stat.label.as_deref(), Some("WebVTT-in-TS"));
+        assert!(stream_stat.items >= 1);
+
+        // reset_stats clears the dedup set + counter so a fresh sample
+        // would re-bump.
+        demux.reset_stats();
+        let s = demux.stats();
+        assert_eq!(s.subtitle_streams_seen, 0);
     }
 }

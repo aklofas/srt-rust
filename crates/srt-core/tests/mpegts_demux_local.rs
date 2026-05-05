@@ -97,7 +97,7 @@ fn corpus_files_demux_cleanly_in_lenient_mode() {
                     ..
                 } => saw_video = true,
                 DemuxEvent::Metadata {
-                    kind: MetadataKind::KlvSyncAuCell | MetadataKind::KlvAsync,
+                    kind: MetadataKind::KlvSyncAuCell { .. } | MetadataKind::KlvAsync,
                     ..
                 } => saw_klv = true,
                 DemuxEvent::NonConformant { .. } => nonconformant += 1,

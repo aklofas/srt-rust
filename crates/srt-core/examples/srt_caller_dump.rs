@@ -390,7 +390,7 @@ fn print_metadata(
 ) {
     let kind_str = match kind {
         MetadataKind::KlvAsync => "async",
-        MetadataKind::KlvSyncAuCell => "sync",
+        MetadataKind::KlvSyncAuCell { .. } => "sync",
         MetadataKind::Unknown(t) => {
             return eprintln!(
                 "[meta] PID=0x{:04X} pts={pts} kind=Unknown(0x{:02X}) bytes={}",

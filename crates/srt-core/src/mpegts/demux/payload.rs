@@ -220,11 +220,15 @@ pub fn split_obus(es_payload: &[u8]) -> (Vec<Obu>, Vec<NonConformantIssue>) {
 /// KLV payload classification result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KlvShape {
-    /// Payload begins with the ST 1910 AU cell UL — sync KLV.
-    /// Returns the unwrapped inner KLV bytes plus the AU cell's PTS pack.
-    SyncAuCell { klv: Vec<u8>, au_cell_pts: i64 },
-    /// Async-shape KLV (bare SMPTE UL at offset 0, possibly via an
-    /// ISO 13818-1 metadata AU cell wrapper). `klv` is the unwrapped
+    /// H.222.0 V9 §2.12.4.2 Metadata_AU_cell — sync KLV. Returns the
+    /// unwrapped inner KLV bytes plus the parsed AU cell header. PES PTS
+    /// is carried separately by the demuxer event (per H.222.0 §2.12.4.1
+    /// the AU cell carries no embedded timestamp).
+    SyncAuCell {
+        klv: Vec<u8>,
+        header: crate::mpegts::au_cell::AuCellHeader,
+    },
+    /// Async-shape KLV (bare SMPTE UL at offset 0). `klv` is the unwrapped
     /// LS bytes ready to feed to `klv::st0601::decode`.
     Async { klv: Vec<u8> },
     /// Payload is something else; pass-through as `Unknown`.
@@ -237,55 +241,33 @@ pub enum KlvShape {
 /// pairs the sniff result with the declared `stream_type` and emits a
 /// `NonConformantIssue::StreamTypeMismatch*` if they disagree.
 pub fn classify_klv(payload: &[u8]) -> KlvShape {
-    use crate::klv::st1910::{AU_CELL_UL, unwrap_au_cell};
-    if payload.len() >= 16 && payload[..16] == AU_CELL_UL.0 {
-        if let Ok((klv, ts)) = unwrap_au_cell(payload) {
-            // Convert the AU cell's microseconds-since-1970 to a 90 kHz PTS the
-            // demuxer can carry on the event. The conversion is `µs * 9 / 100`.
-            let micros = ts.timestamp_us;
-            let pts_90khz = (micros as i128 * 9 / 100) as i64;
-            return KlvShape::SyncAuCell {
-                klv: klv.to_vec(),
-                au_cell_pts: pts_90khz,
-            };
+    use crate::mpegts::au_cell::read_metadata_au_cell;
+
+    // First try: H.222.0 V9 §2.12.4.2 Metadata_AU_cell (sync metadata,
+    // PMT stream_type 0x15, mandated by STANAG 4609 / MISB ST 1402.2
+    // §9.4.1 + Appendix B Table 2). Recognized by a valid 5-byte header
+    // whose declared AU_cell_data_length doesn't overrun the payload, AND
+    // whose inner payload starts with the canonical SMPTE UL header
+    // `06 0E 2B 34` (i.e. the AU cell's payload IS a KLV LS — this is
+    // what ST 1402.2 §9.4.1 specializes the H.222.0 generic AU cell for).
+    if payload.len() >= 5 + 16 {
+        if let Ok((header, inner)) = read_metadata_au_cell(payload) {
+            if inner.len() >= 16 && inner[0..4] == [0x06, 0x0E, 0x2B, 0x34] {
+                return KlvShape::SyncAuCell {
+                    klv: inner.to_vec(),
+                    header,
+                };
+            }
         }
-        // Fall-through: a malformed AU cell whose UL prefix matched but
-        // whose inner length/PTS pack failed parsing degrades to the
-        // Async/Other check below. The async check will then return
-        // KlvShape::Async because the AU cell UL starts with the same
-        // SMPTE UL header `06 0E 2B 34`. This lenient degradation lets
-        // the demuxer keep going on partially-corrupt sync-KLV streams;
-        // strict mode upstream pairs this with `stream_type` to decide
-        // whether to surface a NonConformantIssue.
     }
-    // Bare KLV LS: starts with a 16-byte SMPTE UL. The first 4 bytes are the
-    // canonical UL header `06 0E 2B 34`; treat any payload with those as
-    // bare KLV.
+
+    // Second try: bare KLV LS (SMPTE UL at offset 0). Async metadata.
     if payload.len() >= 16 && payload[0..4] == [0x06, 0x0E, 0x2B, 0x34] {
         return KlvShape::Async {
             klv: payload.to_vec(),
         };
     }
-    // ISO/IEC 13818-1 metadata AU cell header (used by the Synchronous
-    // Metadata Multiplex Method — PMT stream_type 0x15, mandated by
-    // STANAG 4609 / MISB ST 1402.2 Appendix B). 5-byte prefix wraps the
-    // underlying KLV record:
-    //
-    //   [service_id:u8][sequence_number:u8][flags:u8][au_cell_data_length:u16 BE]
-    //
-    // followed by `au_cell_data_length` bytes of inner payload. Peel the
-    // header and recurse — the inner is typically a bare KLV LS (SMPTE UL
-    // at offset 0) or, occasionally, an ST 1910 AU cell. We validate by
-    // checking that bytes 5..9 are the canonical SMPTE UL header so we
-    // don't mis-identify random byte patterns as wrapped KLV.
-    if payload.len() >= 5 + 16 && payload[5..9] == [0x06, 0x0E, 0x2B, 0x34] {
-        let au_len = u16::from_be_bytes([payload[3], payload[4]]) as usize;
-        let inner_end = (5 + au_len).min(payload.len());
-        // Recurse into the inner payload — handles both bare KLV LS (the
-        // common case in real-world ISR captures) and the rare nested
-        // ST 1910 AU cell.
-        return classify_klv(&payload[5..inner_end]);
-    }
+
     KlvShape::Other
 }
 
@@ -351,18 +333,29 @@ mod tests {
     }
 
     #[test]
-    fn classifies_iso13818_wrapped_async_klv() {
-        // 5-byte ISO 13818-1 metadata AU cell header [service][seq][flags][len:u16]
-        // followed by 16-byte SMPTE UL + filler. au_cell_data_length = 26 bytes
-        // (16 UL + 10 body).
+    fn classifies_sync_klv_via_h222_au_cell_header() {
+        // 5-byte H.222.0 §2.12.4.2 Metadata_AU_cell header
+        // [metadata_service_id][sequence_number][flags][AU_cell_data_length BE]
+        // followed by 16-byte SMPTE UL + 10 filler bytes.
+        // AU_cell_data_length = 26 bytes (16 UL + 10 body). This is the
+        // spec-conformant sync KLV wire form per ST 1402.2 §9.4.1.
         let inner: Vec<u8> = [0x06, 0x0E, 0x2B, 0x34]
             .into_iter()
             .chain(std::iter::repeat_n(0xAA, 12))
             .chain(std::iter::repeat_n(0x55, 10))
             .collect();
-        let mut buf = vec![0x00, 0xB7, 0x0F, 0x00, 0x1A]; // au_cell_data_length = 26
+        // flags byte 0x0F: cfi=00 (middle), dcf=0, rai=0, reserved=1111.
+        // (Synthetic; muxer auto-wrap defaults to cfi=11 reserved=1111 = 0xDF.)
+        let mut buf = vec![0x00, 0xB7, 0x0F, 0x00, 0x1A];
         buf.extend_from_slice(&inner);
-        assert_eq!(classify_klv(&buf), KlvShape::Async { klv: inner });
+        match classify_klv(&buf) {
+            KlvShape::SyncAuCell { klv, header } => {
+                assert_eq!(klv, inner);
+                assert_eq!(header.metadata_service_id, 0x00);
+                assert_eq!(header.sequence_number, 0xB7);
+            }
+            other => panic!("expected SyncAuCell, got {other:?}"),
+        }
     }
 
     #[test]
@@ -513,5 +506,60 @@ mod tests {
         let (obus, issues) = split_obus(&[]);
         assert!(obus.is_empty());
         assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn classify_klv_recognizes_h222_metadata_au_cell_with_header_fields() {
+        // Build an AU cell with non-default header field values, carrying a
+        // synthetic ST 0601 LS payload. classify_klv must surface ALL 5
+        // header fields verbatim through KlvShape (per H.222.0 §2.12.4.2
+        // Table 2-156).
+        use crate::mpegts::au_cell::{
+            write_metadata_au_cell, AuCellHeader, CellFragmentIndication,
+        };
+        let mut inner_klv = Vec::new();
+        inner_klv.extend_from_slice(&[
+            0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00,
+        ]);
+        inner_klv.push(0x04);
+        inner_klv.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
+
+        let hdr_in = AuCellHeader {
+            metadata_service_id: 0x42, // non-default to detect drift
+            sequence_number: 0x07,
+            cell_fragment_indication: CellFragmentIndication::Complete,
+            decoder_config_flag: true,
+            random_access_indicator: false,
+        };
+        let mut wrapped = Vec::new();
+        write_metadata_au_cell(&mut wrapped, hdr_in, &inner_klv).unwrap();
+
+        match classify_klv(&wrapped) {
+            KlvShape::SyncAuCell { klv, header } => {
+                assert_eq!(klv, inner_klv);
+                assert_eq!(header.metadata_service_id, 0x42);
+                assert_eq!(header.sequence_number, 0x07);
+                assert_eq!(
+                    header.cell_fragment_indication,
+                    CellFragmentIndication::Complete
+                );
+                assert!(header.decoder_config_flag);
+                assert!(!header.random_access_indicator);
+            }
+            other => panic!("expected SyncAuCell, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_klv_async_arm_unchanged_for_bare_ls() {
+        let bare_klv = [
+            0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00, 0x04, 0xDE, 0xAD, 0xBE, 0xEF,
+        ];
+        match classify_klv(&bare_klv) {
+            KlvShape::Async { klv } => assert_eq!(klv, &bare_klv[..]),
+            other => panic!("expected Async, got {other:?}"),
+        }
     }
 }

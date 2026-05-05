@@ -891,7 +891,7 @@ impl Demuxer {
             StreamKind::KlvSync { .. } | StreamKind::KlvAsync => {
                 let shape = classify_klv(&pes.payload);
                 let (kind_meta, payload, used_pts) = match (shape, kind) {
-                    (KlvShape::SyncAuCell { klv, au_cell_pts }, _) => {
+                    (KlvShape::SyncAuCell { klv, header }, _) => {
                         // If declared async but payload is sync, surface mismatch
                         // — but only once per PID per PMT version. Coalesces
                         // what would otherwise be thousands of identical events.
@@ -903,7 +903,16 @@ impl Demuxer {
                                 NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid,
                             );
                         }
-                        (MetadataKind::KlvSyncAuCell, klv, au_cell_pts)
+                        let kind_meta = MetadataKind::KlvSyncAuCell {
+                            metadata_service_id: header.metadata_service_id,
+                            sequence_number: header.sequence_number,
+                            cell_fragment_indication: header.cell_fragment_indication,
+                            decoder_config_flag: header.decoder_config_flag,
+                            random_access_indicator: header.random_access_indicator,
+                        };
+                        // PES PTS surfaces unchanged; per H.222.0 §2.12.4.1 the
+                        // AU cell itself carries no embedded timestamp.
+                        (kind_meta, klv, pts)
                     }
                     (KlvShape::Async { klv }, StreamKind::KlvSync { .. }) => {
                         if self.klv_mismatch_insert(pes.pid) {

@@ -53,7 +53,7 @@ fn sync_klv_au_cell_unwraps_on_receive() {
         match ev {
             DemuxEvent::ProgramMap(_) => saw_program_map = true,
             DemuxEvent::Metadata {
-                kind: MetadataKind::KlvSyncAuCell,
+                kind: MetadataKind::KlvSyncAuCell { .. },
                 payload,
                 ..
             } => {

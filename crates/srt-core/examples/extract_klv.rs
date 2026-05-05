@@ -94,7 +94,7 @@ fn main() {
             //   completeness so this example never silently drops an
             //   event it doesn't understand.
             let suffix = match kind {
-                MetadataKind::KlvSyncAuCell => "sync",
+                MetadataKind::KlvSyncAuCell { .. } => "sync",
                 MetadataKind::KlvAsync => "async",
                 MetadataKind::Unknown(_) => "unknown",
             };

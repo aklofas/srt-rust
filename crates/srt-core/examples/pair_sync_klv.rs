@@ -98,7 +98,7 @@ fn main() {
             // `klv::st0601::decode` if you want the typed fields.
             DemuxEvent::Metadata {
                 pts,
-                kind: MetadataKind::KlvSyncAuCell | MetadataKind::KlvAsync,
+                kind: MetadataKind::KlvSyncAuCell { .. } | MetadataKind::KlvAsync,
                 payload,
                 ..
             } => {

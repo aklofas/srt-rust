@@ -119,7 +119,7 @@ fn reference_counts(bytes: &[u8]) -> Result<Counts, DemuxError> {
                 ..
             } => c.video += 1,
             DemuxEvent::Metadata {
-                kind: MetadataKind::KlvSyncAuCell | MetadataKind::KlvAsync,
+                kind: MetadataKind::KlvSyncAuCell { .. } | MetadataKind::KlvAsync,
                 ..
             } => c.klv += 1,
             DemuxEvent::NonConformant { .. } => c.nonconformant += 1,
@@ -244,7 +244,7 @@ fn run_one(path: &Path) -> RunOutcome {
                     ..
                 } => c.video += 1,
                 DemuxEvent::Metadata {
-                    kind: MetadataKind::KlvSyncAuCell | MetadataKind::KlvAsync,
+                    kind: MetadataKind::KlvSyncAuCell { .. } | MetadataKind::KlvAsync,
                     ..
                 } => c.klv += 1,
                 DemuxEvent::NonConformant { .. } => c.nonconformant += 1,

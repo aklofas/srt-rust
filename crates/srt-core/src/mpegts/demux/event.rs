@@ -223,11 +223,34 @@ pub enum NalUnit {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MetadataKind {
-    /// ST 1910 AU cell wrapped KLV. The demuxer has unwrapped the AU cell;
-    /// `payload` is the inner KLV LS ready to feed to `klv::st0601::decode`.
-    /// `pts` on the parent event is the AU cell's metadata access unit
-    /// timestamp (from `klv::st0605::PrecisionTimeStampPack`).
-    KlvSyncAuCell,
+    /// H.222.0 V9 §2.12.4.2 Metadata_AU_cell — sync metadata. The demuxer
+    /// has peeled the 5-byte AU cell header; `payload` (on the parent
+    /// event) is the inner KLV LS ready to feed to `klv::st0601::decode`.
+    /// The parent event's `pts` is the PES PTS (per H.222.0 §2.12.4.1 —
+    /// the AU cell carries no embedded timestamp).
+    ///
+    /// Field names match the spec (Table 2-156) verbatim for FFI
+    /// traceability across `srt-c` / `srt-jni` / `srt-uniffi` wrappers.
+    KlvSyncAuCell {
+        /// `metadata_service_id` u8. ST 1402.2 App. B Table 2: `0x00` typical.
+        metadata_service_id: u8,
+        /// 8-bit cell counter wrapping mod 256. Useful for loss detection on
+        /// the metadata path (gaps in the sequence indicate dropped cells).
+        sequence_number: u8,
+        /// Cell fragmentation per H.222.0 Table 2-157. Today the demuxer
+        /// only delivers `Complete` (single-cell AUs); multi-cell support
+        /// is deferred (see `docs/deferred-features.md`).
+        cell_fragment_indication: crate::mpegts::au_cell::CellFragmentIndication,
+        /// True if this cell carries decoder configuration data per the
+        /// H.222.0 §2.12.4.2 definition. The current muxer never sets this;
+        /// surfaced for receivers consuming streams from other sources.
+        decoder_config_flag: bool,
+        /// True if this cell is an entry point — decoding is possible
+        /// without information from previous cells. Meaning is metadata-
+        /// format-defined; for ST 0601 LS payloads (self-contained per
+        /// record) this is typically `true` on every cell.
+        random_access_indicator: bool,
+    },
 
     /// Bare KLV LS (no AU cell wrap). Async metadata, typically 1–10 Hz.
     /// `pts` on the parent event is the PES PTS.

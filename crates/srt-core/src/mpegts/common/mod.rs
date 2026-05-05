@@ -18,6 +18,10 @@ pub enum StreamType {
     H264 = 0x1B,
     /// H.265 / HEVC video (ITU-T H.265 / ISO/IEC 23008-2).
     H265 = 0x24,
+    /// H.266 / VVC video (ITU-T H.266 V4 / ISO/IEC 23090-3).
+    /// Stream_type assignment from ISO/IEC 13818-1 (ITU-T H.222.0
+    /// 2023-08, §2.4.4.x).
+    H266 = 0x33,
     /// PES private data, typically used for KLV per ST 1402 async.
     KlvPrivate = 0x06,
     /// Synchronous metadata stream per ST 1402 sync.
@@ -161,6 +165,11 @@ mod tests {
         assert_eq!(StreamType::H265.as_u8(), 0x24);
         assert_eq!(StreamType::KlvPrivate.as_u8(), 0x06);
         assert_eq!(StreamType::KlvSyncMetadata.as_u8(), 0x15);
+    }
+
+    #[test]
+    fn stream_type_h266_byte() {
+        assert_eq!(StreamType::H266.as_u8(), 0x33);
     }
 
     #[test]

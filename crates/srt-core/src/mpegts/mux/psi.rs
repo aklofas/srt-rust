@@ -433,6 +433,36 @@ mod tests {
     }
 
     #[test]
+    fn pmt_emits_h266_stream_type_0x33() {
+        let mut buf = [0u8; 188];
+        let mut cc = ContinuityCounters::new();
+        let prog = ProgramConfig {
+            program_number: 1,
+            pmt_pid: 0x1000,
+            streams: vec![StreamSpec::Video {
+                pid: 0x1011,
+                codec: VideoCodec::H266,
+            }],
+            pcr_pid: None,
+            program_descriptors: Vec::new(),
+            stream_descriptors: vec![Vec::new()],
+        };
+        let streams = [PmtStreamEntry {
+            stream_type: StreamType::H266,
+            elementary_pid: 0x1011,
+            descriptors: &[],
+        }];
+        write_pmt_packet(&mut buf, &prog, 0x1011, &streams, &mut cc).expect("PMT fits");
+        // ES loop entry 1 stream_type byte at buf[17] — same offset as
+        // pmt_round_trips_with_klva (single-program, no program-info loop).
+        assert_eq!(
+            buf[17], 0x33,
+            "expected H.266 stream_type 0x33, got {:#x}",
+            buf[17]
+        );
+    }
+
+    #[test]
     fn pmt_too_large_returns_error() {
         use crate::error::MuxError;
         use crate::mpegts::common::StreamType;

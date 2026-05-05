@@ -1383,12 +1383,10 @@ impl Muxer {
                 let stream_type_byte = match v.codec {
                     VideoCodec::H264 => StreamType::H264.as_u8(),
                     VideoCodec::H265 => StreamType::H265.as_u8(),
-                    VideoCodec::H266 => {
-                        unimplemented!("H266 stream_type byte mapping lands in Task 4")
-                    }
-                    VideoCodec::Av1 => {
-                        unimplemented!("AV1 stream_type byte mapping lands in Task 18")
-                    }
+                    VideoCodec::H266 => StreamType::H266.as_u8(),
+                    // AV1 rides PMT stream_type 0x06; the AV01
+                    // registration_descriptor disambiguator lands in Task 18.
+                    VideoCodec::Av1 => StreamType::KlvPrivate.as_u8(),
                 };
                 per_stream.insert(
                     v.pid,
@@ -2244,11 +2242,13 @@ impl Muxer {
                     StreamSpec::Video {
                         codec: VideoCodec::H266,
                         ..
-                    } => unimplemented!("H266 PMT emission lands in Task 4"),
+                    } => StreamType::H266,
+                    // AV1 rides PMT stream_type 0x06; the AV01
+                    // registration_descriptor disambiguator lands in Task 18.
                     StreamSpec::Video {
                         codec: VideoCodec::Av1,
                         ..
-                    } => unimplemented!("AV1 PMT emission lands in Task 18"),
+                    } => StreamType::KlvPrivate,
                     StreamSpec::Klv {
                         stream_type: KlvStreamType::PrivateData,
                         ..
@@ -3929,6 +3929,22 @@ mod stats_tests {
         assert_eq!(st.per_stream.len(), 2);
         assert_eq!(st.per_stream[&0x100].items, 0);
         assert_eq!(st.per_stream[&0x100].bytes, 0);
+    }
+
+    #[test]
+    fn h266_video_per_stream_stats_records_stream_type_0x33() {
+        // Exercises the VideoCodec::H266 -> StreamType::H266 mapping arm in
+        // Muxer::new's per_stream stats setup (the second of two H266 sites
+        // in mux/mod.rs that previously panicked with unimplemented!()).
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::H266)
+            .end_program()
+            .build()
+            .unwrap();
+        let m = Muxer::new(cfg).unwrap();
+        let st = m.stats();
+        assert_eq!(st.per_stream[&0x101].stream_type, 0x33);
     }
 
     #[test]

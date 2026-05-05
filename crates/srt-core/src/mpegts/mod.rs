@@ -29,13 +29,14 @@
 //!
 //! - Single-program TS, one video PID, one KLV PID, no audio
 //! - H.264 (stream_type 0x1B) and H.265 (stream_type 0x24)
-//! - ST 1402 KLV — both `PrivateData` (0x06) and `SynchronousMetadata` (0x15)
-//! - ST 1910 AU cell wrapping is in [`crate::klv::st1910`], not the muxer —
-//!   wrap KLV bytes there before calling [`mux::Muxer::push_klv`] when you want
-//!   the per-frame timestamp embedded
+//! - ST 1402 KLV — both `PrivateData` (0x06) and `SynchronousMetadata` (0x15);
+//!   sync streams auto-wrap inside [`mux::Muxer::push_klv`] with a 5-byte
+//!   `Metadata_AU_cell` header per ITU-T H.222.0 V9 §2.12.4.2 (see
+//!   [`crate::mpegts::au_cell`])
 //! - VBR output, no null padding
 //! - Annex-B input; one access unit per [`mux::Muxer::push_video`] call
 
+pub mod au_cell;
 pub mod common;
 pub mod demux;
 pub mod descriptors;

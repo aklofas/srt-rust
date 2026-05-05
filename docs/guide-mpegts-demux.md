@@ -76,8 +76,8 @@ Runnable: [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/ex
 | `StreamId` | `{ pid: u16, kind: StreamKind }` — identifies the source stream of every event. |
 | `StreamKind` | `Video(VideoCodec)`, `Audio(AudioCodec)`, `Subtitle(SubtitleCodec)`, `KlvSync { declared_link }`, `KlvAsync`, `Unknown(u8)`. |
 | `VideoCodec` | `H264`, `H265`. |
-| `AudioCodec` | Reserved variant placeholder; typed audio codec values land additively. |
-| `SubtitleCodec` | Reserved variant placeholder; typed subtitle codec values land additively. |
+| `AudioCodec` | `Mp2`, `Aac` (ADTS), `AacLatm`, `Ac3`. Codec tag for typed dispatch; bitstream bytes ride on `SamplePayload::Audio.frames`. |
+| `SubtitleCodec` | `DvbSubtitling`, `DvbTeletext`, `Cea708Standalone` (separate ES, "GA94"), `WebVttInTs` ("VTTC"). |
 | `SamplePayload` | `Video { codec, nals }`, `Audio { codec, frames }`, `Subtitle { codec, payload }`, `Unknown { stream_type, raw }`. |
 | `NalUnit` | `H264 { nal_type, ref_idc, payload }` / `H265 { nal_type, layer_id, temporal_id_plus1, payload }`. RBSP bytes; Annex-B start codes stripped. |
 | `MetadataKind` | `KlvSyncAuCell` (AU cell unwrapped), `KlvAsync` (bare LS), `Unknown(u8)`. |
@@ -85,7 +85,7 @@ Runnable: [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/ex
 | `StreamInfo` | `{ pid, stream_type, kind }` — one row per declared stream in the PMT. |
 | `KlvLink` | `{ klv_pid, video_pid, source: LinkSource }`. |
 | `LinkSource` | `Declared` (PMT `metadata_descriptor`), `Inferred` (single video + single KLV topology), `Override` (`DemuxerBuilder::link_klv`). |
-| `NonConformantIssue` | `StreamTypeMismatchSyncOnAsyncPid`, `StreamTypeMismatchAsyncOnSyncPid`, `MissingMetadataDescriptor`, `PcrAnomaly { delta }`, `PsiChecksumMismatch { pid }`, `PusiMidPes`, `Other(String)`. |
+| `NonConformantIssue` | `StreamTypeMismatchSyncOnAsyncPid`, `StreamTypeMismatchAsyncOnSyncPid`, `MissingMetadataDescriptor`, `PcrAnomaly { delta }`, `PsiChecksumMismatch { pid }`, `PusiMidPes`, `PidReusedAcrossPrograms { pid, programs }`, `SubtitleMissingDescriptor { pid }`, `SubtitleDescriptorMalformed { pid, tag }` (reserved — not currently emitted), `Other(String)`. |
 | `DiscontinuityKind` | `ContinuityJump { expected, observed }`, `PesOversize { pid }`, `PesTotalOversize`, `AdaptationFieldFlag`. |
 | `StrictMode` | `Off` (default), `TimingOnly`, `DescriptorsOnly`, `Full`. |
 | `pts_to_duration(pts_90khz: i64) -> Duration` | Convenience: 90 kHz ticks to `std::time::Duration`. Diagnostic / test use. |

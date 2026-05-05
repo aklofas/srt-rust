@@ -239,6 +239,14 @@ pub enum NonConformantIssue {
     /// Subtitle descriptor tag was recognized but the inner length /
     /// payload bytes did not satisfy spec invariants. Per-stream params
     /// fall back to defaults (language `*b"und"`, page ids 0).
+    ///
+    /// Reserved variant: not currently emitted by the demuxer. The
+    /// classification cascade in [`Demuxer`](crate::mpegts::demux::Demuxer)
+    /// is tag-presence-based via `find_descriptor_tag`, so malformed
+    /// descriptor bodies pass through. Typed-parser integration in the
+    /// cascade — and therefore this variant's first emission — is
+    /// deferred to the typed WebVTT cue / DVB-sub data-segment /
+    /// teletext data-unit substrate session.
     SubtitleDescriptorMalformed { pid: u16, tag: u8 },
 
     /// Other.

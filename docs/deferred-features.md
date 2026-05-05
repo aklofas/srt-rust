@@ -691,7 +691,11 @@ the trigger that would unblock it.
   typed layer is a separate session's worth of work per codec.
 - **Trigger to revisit:** A consumer asks for typed access to
   specific fields (page composition pixel-data, teletext line
-  Hamming-decoded text, CEA-708 caption text channel).
+  Hamming-decoded text, CEA-708 caption text channel). Resolving
+  this entry will also wire `NonConformantIssue::SubtitleDescriptorMalformed`
+  (currently a reserved variant — the classification cascade is
+  tag-presence-based via `find_descriptor_tag`, so malformed
+  descriptor bodies pass through today).
 
 ## Subtitle carriage at the `srt-c` C ABI
 

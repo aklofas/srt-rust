@@ -43,6 +43,7 @@ impl StrictMode {
                 NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid
                     | NonConformantIssue::StreamTypeMismatchAsyncOnSyncPid
                     | NonConformantIssue::MissingMetadataDescriptor
+                    | NonConformantIssue::SubtitleMissingDescriptor { .. }
             ),
             StrictMode::Full => true,
         }
@@ -73,6 +74,15 @@ mod tests {
         assert!(m.rejects(&NonConformantIssue::MissingMetadataDescriptor));
         assert!(m.rejects(&NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid));
         assert!(!m.rejects(&NonConformantIssue::PcrAnomaly { delta: 100_000 }));
+    }
+
+    #[test]
+    fn descriptors_only_rejects_subtitle_missing_descriptor() {
+        // SubtitleMissingDescriptor is the subtitle-side parallel to
+        // MissingMetadataDescriptor for KLV — both are descriptor-shape
+        // concerns and DescriptorsOnly should escalate both.
+        let m = StrictMode::DescriptorsOnly;
+        assert!(m.rejects(&NonConformantIssue::SubtitleMissingDescriptor { pid: 0x100 }));
     }
 
     #[test]

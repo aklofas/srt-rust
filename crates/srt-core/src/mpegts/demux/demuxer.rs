@@ -5,7 +5,7 @@ use crate::error::DemuxError;
 use crate::mpegts::common::{pcr_diff_27mhz, pts_diff_33bit};
 use crate::mpegts::demux::event::{
     DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit, NonConformantIssue,
-    ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, VideoCodec,
+    ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, SubtitleCodec, VideoCodec,
 };
 use crate::mpegts::demux::payload::{KlvShape, classify_klv, split_nals};
 use crate::mpegts::demux::pes::{Reassembler, ReassemblyOutcome};
@@ -642,13 +642,7 @@ impl Demuxer {
         let kind = match s.stream_type {
             0x1B => StreamKind::Video(VideoCodec::H264),
             0x24 => StreamKind::Video(VideoCodec::H265),
-            0x06 => {
-                if has_klva_registration(&s.descriptors) {
-                    StreamKind::KlvAsync
-                } else {
-                    StreamKind::Unknown(0x06)
-                }
-            }
+            0x06 => classify_0x06(&s.descriptors),
             0x15 => StreamKind::KlvSync { declared_link },
             other => {
                 if let Some(codec) = classify_audio_stream_type(other) {
@@ -1009,6 +1003,39 @@ fn stream_type_from_kind(k: &StreamKind) -> u8 {
     }
 }
 
+/// Classify a stream_type 0x06 ("PES private data") by inspecting its
+/// PMT-stream descriptors. Subtitle-disambiguating tags take priority
+/// over the existing KLV registration check; if no subtitle descriptor
+/// is present the result is identical to the prior behavior.
+///
+/// Priority (most-specific first):
+///   1. `subtitling_descriptor` (tag 0x59, ETSI EN 300 468) → DVB subtitling.
+///   2. `teletext_descriptor` (tag 0x56) or `VBI_teletext_descriptor`
+///      (tag 0x46) → DVB teletext.
+///   3. `registration_descriptor` (tag 0x05) format_identifier `"VTTC"` →
+///      WebVTT-in-MPEG-TS.
+///   4. `registration_descriptor` format_identifier `"GA94"` → CEA-708
+///      standalone.
+///   5. `registration_descriptor` format_identifier `"KLVA"` → asynchronous
+///      MISB KLV (existing behavior).
+///   6. Otherwise → `StreamKind::Unknown(0x06)`.
+fn classify_0x06(descriptors: &[crate::mpegts::demux::psi::RawDescriptor]) -> StreamKind {
+    use crate::mpegts::descriptors::{find_descriptor_tag, find_format_identifier};
+    if find_descriptor_tag(descriptors, 0x59) {
+        StreamKind::Subtitle(SubtitleCodec::DvbSubtitling)
+    } else if find_descriptor_tag(descriptors, 0x56) || find_descriptor_tag(descriptors, 0x46) {
+        StreamKind::Subtitle(SubtitleCodec::DvbTeletext)
+    } else if find_format_identifier(descriptors, b"VTTC") {
+        StreamKind::Subtitle(SubtitleCodec::WebVttInTs)
+    } else if find_format_identifier(descriptors, b"GA94") {
+        StreamKind::Subtitle(SubtitleCodec::Cea708Standalone)
+    } else if has_klva_registration(descriptors) {
+        StreamKind::KlvAsync
+    } else {
+        StreamKind::Unknown(0x06)
+    }
+}
+
 impl Default for Demuxer {
     fn default() -> Self {
         Self::new()
@@ -1335,5 +1362,74 @@ mod tests {
             )
         });
         assert!(mp2_overridden, "treat_as override: classifies as Mp2");
+    }
+
+    // -- classify_0x06: PSI cascade for stream_type 0x06 ----------------------
+
+    fn raw_desc(tag: u8, data: Vec<u8>) -> crate::mpegts::demux::psi::RawDescriptor {
+        crate::mpegts::demux::psi::RawDescriptor { tag, data }
+    }
+
+    #[test]
+    fn classify_0x06_subtitling_descriptor_wins() {
+        // subtitling_descriptor (tag 0x59) — body shape per ETSI EN 300 468:
+        // ISO 639 lang (3) + subtitling_type (1) + composition_page_id (2) +
+        // ancillary_page_id (2). Content irrelevant to classification.
+        let descs = vec![raw_desc(
+            0x59,
+            vec![b'e', b'n', b'g', 0x10, 0x00, 0x01, 0x00, 0x01],
+        )];
+        assert_eq!(
+            classify_0x06(&descs),
+            StreamKind::Subtitle(SubtitleCodec::DvbSubtitling)
+        );
+    }
+
+    #[test]
+    fn classify_0x06_teletext_descriptor_wins() {
+        // teletext_descriptor (tag 0x56) — body: ISO 639 lang (3) +
+        // (teletext_type<<3 | teletext_magazine_number) + teletext_page_number.
+        let descs = vec![raw_desc(
+            0x56,
+            vec![b'e', b'n', b'g', (0x02 << 3) | 1, 0x88],
+        )];
+        assert_eq!(
+            classify_0x06(&descs),
+            StreamKind::Subtitle(SubtitleCodec::DvbTeletext)
+        );
+    }
+
+    #[test]
+    fn classify_0x06_vbi_teletext_descriptor_also_classifies_teletext() {
+        // VBI_teletext_descriptor (tag 0x46) — same outcome as 0x56.
+        let descs = vec![raw_desc(0x46, vec![])];
+        assert_eq!(
+            classify_0x06(&descs),
+            StreamKind::Subtitle(SubtitleCodec::DvbTeletext)
+        );
+    }
+
+    #[test]
+    fn classify_0x06_vttc_format_identifier_classifies_webvtt() {
+        let descs = vec![raw_desc(0x05, b"VTTC".to_vec())];
+        assert_eq!(
+            classify_0x06(&descs),
+            StreamKind::Subtitle(SubtitleCodec::WebVttInTs)
+        );
+    }
+
+    #[test]
+    fn classify_0x06_ga94_format_identifier_classifies_cea708_standalone() {
+        let descs = vec![raw_desc(0x05, b"GA94".to_vec())];
+        assert_eq!(
+            classify_0x06(&descs),
+            StreamKind::Subtitle(SubtitleCodec::Cea708Standalone)
+        );
+    }
+
+    #[test]
+    fn classify_0x06_klva_still_klv_async_regression_guard() {
+        let descs = vec![raw_desc(0x05, b"KLVA".to_vec())];
+        assert_eq!(classify_0x06(&descs), StreamKind::KlvAsync);
     }
 }

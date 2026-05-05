@@ -125,6 +125,10 @@ pub struct Demuxer {
     nonconformant_count: u64,
     /// Per-PID counters; entries created lazily on first event per PID.
     stats_per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
+    /// PIDs that have already emitted `SubtitleMissingDescriptor` for the
+    /// current PMT version. Cleared at the top of each PMT-version bump so
+    /// a fresh PMT re-fires if the descriptor is still missing.
+    subtitle_missing_descriptor_emitted: HashSet<u16>,
 }
 
 impl Demuxer {
@@ -159,6 +163,7 @@ impl Demuxer {
             discontinuities_count: 0,
             nonconformant_count: 0,
             stats_per_stream: BTreeMap::new(),
+            subtitle_missing_descriptor_emitted: HashSet::new(),
         }
     }
 
@@ -491,11 +496,21 @@ impl Demuxer {
             }
         }
 
+        // Fresh PMT version — clear the per-PID guard for SubtitleMissingDescriptor
+        // emission so that a new PMT version re-fires the warning if the
+        // descriptor is still absent. Only PIDs owned by *this* PMT are
+        // dropped to leave any other program's state intact.
+        for s in &pmt.streams {
+            self.subtitle_missing_descriptor_emitted
+                .remove(&s.elementary_pid);
+        }
+
         // Build StreamInfo list + check cross-program PID collisions.
         // Collect work to do before mutating self — satisfies borrow checker.
         let mut stream_infos: Vec<StreamInfo> = Vec::with_capacity(pmt.streams.len());
         let mut kind_inserts: Vec<(u16, StreamKind)> = Vec::new();
         let mut collision_issues: Vec<(StreamId, NonConformantIssue)> = Vec::new();
+        let mut subtitle_missing: Vec<(u16, StreamKind)> = Vec::new();
 
         for s in &pmt.streams {
             let (kind, _declared_link) = self.get_stream_kind(s.elementary_pid, s);
@@ -525,6 +540,16 @@ impl Demuxer {
                 continue; // Skip this stream — first-program-wins.
             }
 
+            // Subtitle-resolved PIDs without a recognized subtitle descriptor
+            // (subtitling/teletext/VTTC/GA94) are non-conformant — most often
+            // because a `treat_as` override forced StreamKind::Subtitle on a
+            // PID whose PMT entry doesn't carry the corresponding tag.
+            if matches!(kind, StreamKind::Subtitle(_))
+                && !has_recognized_subtitle_descriptor(&s.descriptors)
+            {
+                subtitle_missing.push((s.elementary_pid, kind));
+            }
+
             stream_infos.push(StreamInfo {
                 pid: s.elementary_pid,
                 stream_type: s.stream_type,
@@ -538,6 +563,16 @@ impl Demuxer {
         // Emit collision NonConformant events.
         for (stream_id, issue) in collision_issues {
             self.queue_nonconformant(stream_id, issue);
+        }
+
+        // Emit SubtitleMissingDescriptor once per PID per fresh PMT version.
+        for (pid, kind) in subtitle_missing {
+            if self.subtitle_missing_descriptor_emitted.insert(pid) {
+                self.queue_nonconformant(
+                    StreamId { pid, kind },
+                    NonConformantIssue::SubtitleMissingDescriptor { pid },
+                );
+            }
         }
 
         // Update stream_kind_by_pid for all non-colliding streams.
@@ -1054,6 +1089,27 @@ fn classify_0x06(descriptors: &[crate::mpegts::demux::psi::RawDescriptor]) -> St
     }
 }
 
+/// True iff `descriptors` contains any descriptor that lets the demuxer
+/// recognize this stream as a subtitle/caption track:
+///   * `subtitling_descriptor`  (tag 0x59)
+///   * `teletext_descriptor`    (tag 0x56)
+///   * `VBI_teletext_descriptor`(tag 0x46)
+///   * `registration_descriptor` with format_identifier `"VTTC"` or `"GA94"`.
+///
+/// Used by the PMT classifier to surface `SubtitleMissingDescriptor`
+/// when a `treat_as` override (or any other path) routes a PID to
+/// `StreamKind::Subtitle(_)` but the PMT entry has none of the above.
+fn has_recognized_subtitle_descriptor(
+    descriptors: &[crate::mpegts::demux::psi::RawDescriptor],
+) -> bool {
+    use crate::mpegts::descriptors::{find_descriptor_tag, find_format_identifier};
+    find_descriptor_tag(descriptors, 0x59)
+        || find_descriptor_tag(descriptors, 0x56)
+        || find_descriptor_tag(descriptors, 0x46)
+        || find_format_identifier(descriptors, b"VTTC")
+        || find_format_identifier(descriptors, b"GA94")
+}
+
 impl Default for Demuxer {
     fn default() -> Self {
         Self::new()
@@ -1380,6 +1436,108 @@ mod tests {
             )
         });
         assert!(mp2_overridden, "treat_as override: classifies as Mp2");
+    }
+
+    #[test]
+    fn treat_as_routes_arbitrary_pid_to_subtitle_codec() {
+        use crate::mpegts::demux::event::SubtitleCodec as DemuxSubtitleCodec;
+        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, ConfigBuilder};
+
+        // Mux an audio stream on PID 0x200 (PMT stream_type = 0x04 for MP2).
+        // The PMT entry will have no subtitle descriptor — but the
+        // `stream_kind_overrides` map will remap the PID to
+        // `StreamKind::Subtitle(WebVttInTs)`. The demuxer should dispatch
+        // through the subtitle arm of `handle_complete_pes` and produce a
+        // `SamplePayload::Subtitle` event.
+        let cfg = ConfigBuilder::default()
+            .add_program(1, 0x1000)
+            .add_audio(0x200, MuxAudioCodec::Mp2)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut muxer = crate::mpegts::mux::Muxer::new(cfg).unwrap();
+        // Body content irrelevant to dispatch — just needs to traverse
+        // PES reassembly cleanly. Use a WEBVTT-like header for clarity.
+        let payload = b"WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n".to_vec();
+        muxer.push_audio(&payload, 90_000).unwrap();
+        let mut buf = vec![0u8; 188 * 64];
+        let n = muxer.pull(&mut buf);
+        buf.truncate(n);
+
+        let mut options = DemuxerOptions::default();
+        options
+            .stream_kind_overrides
+            .insert(0x200, StreamKind::Subtitle(DemuxSubtitleCodec::WebVttInTs));
+        let mut demuxer = Demuxer::with_options(options);
+        demuxer.feed(&buf).unwrap();
+        demuxer.flush();
+
+        let mut got_subtitle = false;
+        while let Some(ev) = demuxer.next_event() {
+            if let DemuxEvent::Sample {
+                stream,
+                payload: SamplePayload::Subtitle { codec, .. },
+                ..
+            } = ev
+            {
+                if stream.pid == 0x200 && codec == DemuxSubtitleCodec::WebVttInTs {
+                    got_subtitle = true;
+                }
+            }
+        }
+        assert!(
+            got_subtitle,
+            "treat_as remap produced subtitle Sample event"
+        );
+    }
+
+    #[test]
+    fn treat_as_routes_subtitle_without_descriptor_emits_non_conformant() {
+        use crate::mpegts::demux::event::SubtitleCodec as DemuxSubtitleCodec;
+        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, ConfigBuilder};
+
+        // PMT entry for 0x200 carries no subtitle descriptor. `treat_as`
+        // remaps it to a subtitle codec — classifier should surface
+        // `NonConformantIssue::SubtitleMissingDescriptor` once for that PID.
+        let cfg = ConfigBuilder::default()
+            .add_program(1, 0x1000)
+            .add_audio(0x200, MuxAudioCodec::Mp2)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut muxer = crate::mpegts::mux::Muxer::new(cfg).unwrap();
+        muxer.push_audio(b"WEBVTT\n", 90_000).unwrap();
+        let mut buf = vec![0u8; 188 * 64];
+        let n = muxer.pull(&mut buf);
+        buf.truncate(n);
+
+        let mut options = DemuxerOptions::default();
+        options
+            .stream_kind_overrides
+            .insert(0x200, StreamKind::Subtitle(DemuxSubtitleCodec::WebVttInTs));
+        let mut demuxer = Demuxer::with_options(options);
+        demuxer.feed(&buf).unwrap();
+        demuxer.flush();
+
+        let mut got_missing_descriptor = false;
+        let mut count = 0;
+        while let Some(ev) = demuxer.next_event() {
+            if let DemuxEvent::NonConformant {
+                issue: NonConformantIssue::SubtitleMissingDescriptor { pid },
+                ..
+            } = ev
+            {
+                if pid == 0x200 {
+                    got_missing_descriptor = true;
+                    count += 1;
+                }
+            }
+        }
+        assert!(
+            got_missing_descriptor,
+            "expected SubtitleMissingDescriptor for PID 0x200"
+        );
+        assert_eq!(count, 1, "deduped: one event per PID per PMT version");
     }
 
     // -- classify_0x06: PSI cascade for stream_type 0x06 ----------------------

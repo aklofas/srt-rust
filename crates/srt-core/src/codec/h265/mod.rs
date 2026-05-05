@@ -6,7 +6,7 @@
 //! are crate-private, and `h265-parser` does not exist); reference
 //! sections are noted on each module.
 
-mod bitreader;
+pub(crate) mod bitreader;
 mod pps;
 mod profile_tier_level;
 mod sps;

@@ -6,11 +6,14 @@
 //! the parser explicitly when typed fields are needed.
 //!
 //! Shipped this slice: H.264 ([`h264`]) and H.265 ([`h265`]).
-//! Future slices in the same umbrella: AV1, H.266, audio framing,
+//! H.266 ([`h266`]) is scaffolded — per-set parsers are stubs that
+//! return `ParseError::EngineError` until Tasks 8–11 of the AV1/H.266
+//! plan land. Future slices in the same umbrella: AV1, audio framing,
 //! subtitle parsers — each will appear here as `codec::<name>`.
 
 pub mod h264;
 pub mod h265;
+pub mod h266;
 
 /// Chroma subsampling format. From H.264 / H.265 `chroma_format_idc`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

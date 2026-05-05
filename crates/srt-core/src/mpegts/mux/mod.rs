@@ -60,6 +60,61 @@ pub enum AudioCodec {
     Ac3,
 }
 
+/// Subtitle / caption codec carried by a subtitle elementary stream.
+///
+/// All four variants emit PMT `stream_type = 0x06` (PES private data);
+/// disambiguation happens via the auto-emitted PMT descriptor at PSI
+/// generation time. See `mpegts::descriptors` for the descriptor
+/// encoders this enum drives.
+///
+/// `Clone` but not `Copy` — DVB-sub and DVB-teletext variants carry a
+/// 3-byte language code plus integer parameters that are structurally
+/// part of the codec for emission.
+///
+/// CEA-608/708 in SEI (the typical "captions in H.264/H.265") is NOT
+/// in scope for this enum — that's the deferred SEI parsing plan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SubtitleCodec {
+    /// DVB subtitling (bitmap-shaped). Per ETSI EN 300 468 §6.2.41 +
+    /// ETSI EN 300 743.
+    DvbSubtitling {
+        /// ISO 639-2 language code, lowercase ASCII (e.g. *b"eng").
+        language: [u8; 3],
+        /// ETSI EN 300 468 Table 26. Common values: 0x10 (DVB sub,
+        /// no AR signalling), 0x14 (DVB sub for 4:3 aspect-ratio).
+        subtitling_type: u8,
+        /// Composition page identifier (0..=0xFFFF).
+        composition_page_id: u16,
+        /// Ancillary page identifier (0..=0xFFFF).
+        ancillary_page_id: u16,
+    },
+    /// DVB teletext. Per ETSI EN 300 468 §6.2.43 + ETSI EN 300 706.
+    DvbTeletext {
+        /// ISO 639-2 language code, lowercase ASCII.
+        language: [u8; 3],
+        /// 5-bit teletext_type. Common values: 0x01 (initial page),
+        /// 0x02 (subtitle page), 0x05 (programme schedule).
+        teletext_type: u8,
+        /// Magazine number, 0..=7. (3-bit field.)
+        magazine_number: u8,
+        /// BCD-encoded page number, 0x00..=0x99. The convention for
+        /// subtitles is magazine 8 page 88 (= magazine_number=0,
+        /// page_number=0x88 in this representation since
+        /// magazine "8" wraps to 0 in the 3-bit field).
+        page_number: u8,
+    },
+    /// CEA-708 caption data carried as a separate elementary stream
+    /// (rather than embedded in H.264 / H.265 SEI). Best-effort against
+    /// the under-specified ATSC standalone-CC carry-out form;
+    /// auto-emits `registration_descriptor` with `format_identifier =
+    /// "GA94"`.
+    Cea708Standalone,
+    /// WebVTT cues carried inside MPEG-TS PES per Apple's HLS
+    /// authoring spec. Auto-emits `registration_descriptor` with
+    /// `format_identifier = "VTTC"`.
+    WebVttInTs,
+}
+
 /// One elementary stream in the muxer's output TS.
 ///
 /// [`Config::validate`] caps at 16 video + 16 KLV streams, with at least
@@ -91,6 +146,13 @@ pub enum StreamSpec {
         /// Audio codec — drives PMT stream_type (0x03 MP2, 0x0F AAC, 0x11 LATM, 0x81 AC-3).
         codec: AudioCodec,
     },
+    Subtitle {
+        /// PID for the subtitle PES stream. Must be in `0x0010..=0x1FFE`.
+        pid: u16,
+        /// Subtitle codec — all variants emit PMT `stream_type = 0x06`;
+        /// the auto-emitted PMT descriptor disambiguates.
+        codec: SubtitleCodec,
+    },
 }
 
 impl StreamSpec {
@@ -99,6 +161,7 @@ impl StreamSpec {
             StreamSpec::Video { pid, .. } => *pid,
             StreamSpec::Klv { pid, .. } => *pid,
             StreamSpec::Audio { pid, .. } => *pid,
+            StreamSpec::Subtitle { pid, .. } => *pid,
         }
     }
 }
@@ -257,6 +320,53 @@ impl AudioStreamHandle {
 
     /// Wrap an already-packed `u32` (used at the C ABI boundary in `srt-c`
     /// when handles arrive from the C caller).
+    pub fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+}
+
+/// Per-program upper bound on subtitle streams. Total program-stream
+/// cap with all kinds saturated: ≤16 video + ≤16 KLV + ≤16 audio +
+/// ≤16 subtitle = ≤64; well within the PMT single-section limit.
+pub const MAX_SUBTITLE_STREAMS_PER_PROGRAM: usize = 16;
+
+/// Opaque handle to a configured subtitle stream on a `Muxer`.
+///
+/// Obtained from [`Muxer::subtitle_handles`] /
+/// [`Muxer::subtitle_handles_for_program`]. Handles are valid only on
+/// the muxer that produced them; passing a handle to a different
+/// muxer is rejected with [`MuxError::InvalidStreamHandle`].
+///
+/// The internal representation encodes `(program_index,
+/// within_program_index)` in a packed `u32`. Callers treat this as an
+/// opaque token.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SubtitleStreamHandle(u32);
+
+impl std::fmt::Debug for SubtitleStreamHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (prog, within) = self.unpack();
+        write!(f, "SubtitleStreamHandle(prog={prog}, stream={within})")
+    }
+}
+
+impl SubtitleStreamHandle {
+    pub fn pack(program_index: usize, within_index: usize) -> Self {
+        debug_assert!(program_index < MAX_PROGRAMS);
+        debug_assert!(within_index < MAX_SUBTITLE_STREAMS_PER_PROGRAM);
+        Self(((program_index as u32) << 4) | (within_index as u32 & 0x0F))
+    }
+
+    pub fn unpack(self) -> (usize, usize) {
+        let prog = ((self.0 >> 4) & 0x0F) as usize;
+        let within = (self.0 & 0x0F) as usize;
+        (prog, within)
+    }
+
+    pub fn as_raw(self) -> u32 {
+        self.0
+    }
+
     pub fn from_raw(raw: u32) -> Self {
         Self(raw)
     }
@@ -432,6 +542,9 @@ impl Config {
                     StreamSpec::Video { .. } => video_count += 1,
                     StreamSpec::Klv { .. } => klv_count += 1,
                     StreamSpec::Audio { .. } => audio_count += 1,
+                    StreamSpec::Subtitle { .. } => {
+                        // Subtitle stream count validation will be added in a later task.
+                    }
                 }
             }
             if video_count > VIDEO_CAP {
@@ -483,6 +596,13 @@ impl Config {
                         if !pid::is_user_pid(*pid) {
                             return Err(MuxError::InvalidConfig(
                                 "audio pid must be in 0x0010..=0x1FFE",
+                            ));
+                        }
+                    }
+                    StreamSpec::Subtitle { pid, .. } => {
+                        if !pid::is_user_pid(*pid) {
+                            return Err(MuxError::InvalidConfig(
+                                "subtitle pid must be in 0x0010..=0x1FFE",
                             ));
                         }
                     }
@@ -1760,6 +1880,9 @@ impl Muxer {
                         codec: AudioCodec::Ac3,
                         ..
                     } => StreamType::AudioAc3,
+                    StreamSpec::Subtitle { .. } => {
+                        panic!("subtitle streams not yet supported in PMT generation");
+                    }
                 };
                 entries.push(PmtStreamEntry {
                     stream_type,
@@ -1843,6 +1966,49 @@ mod tests {
         let h = AudioStreamHandle::pack(3, 7);
         let raw: u32 = unsafe { std::mem::transmute_copy(&h) };
         let h2 = AudioStreamHandle::from_raw(raw);
+        assert_eq!(h, h2);
+    }
+
+    #[test]
+    fn subtitle_codec_real_variants() {
+        let dvb_sub = SubtitleCodec::DvbSubtitling {
+            language: *b"eng",
+            subtitling_type: 0x10,
+            composition_page_id: 1,
+            ancillary_page_id: 1,
+        };
+        let dvb_tt = SubtitleCodec::DvbTeletext {
+            language: *b"eng",
+            teletext_type: 0x02,
+            magazine_number: 1,
+            page_number: 0x88,
+        };
+        let cea = SubtitleCodec::Cea708Standalone;
+        let vtt = SubtitleCodec::WebVttInTs;
+        assert_ne!(dvb_sub, dvb_tt);
+        assert_ne!(cea, vtt);
+    }
+
+    #[test]
+    fn stream_spec_subtitle_variant() {
+        let spec = StreamSpec::Subtitle {
+            pid: 0x400,
+            codec: SubtitleCodec::WebVttInTs,
+        };
+        assert_eq!(spec.pid(), 0x400);
+    }
+
+    #[test]
+    fn subtitle_stream_handle_pack_unpack_round_trip() {
+        let h = SubtitleStreamHandle::pack(2, 5);
+        assert_eq!(h.unpack(), (2, 5));
+    }
+
+    #[test]
+    fn subtitle_stream_handle_from_raw() {
+        let h = SubtitleStreamHandle::pack(3, 7);
+        let raw: u32 = h.as_raw();
+        let h2 = SubtitleStreamHandle::from_raw(raw);
         assert_eq!(h, h2);
     }
 

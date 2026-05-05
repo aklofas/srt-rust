@@ -188,29 +188,111 @@ the trigger that would unblock it.
   At that point the codec parsers get C entry points alongside the receiver
   event surface, sharing the same error-reporting and lifetime conventions.
 
-## AV1 codec parser (`codec::av1`)
+## AV1 full Frame Header parsing
 
-- **Status:** Deferred. H.264 and H.265 are the only typed codec parsers
-  today. AV1 surfaces as `SamplePayload::Unknown { stream_type, raw }` in the
-  demuxer (the `VideoCodec::Av1` arm does not yet exist on `SamplePayload::Video`).
-- **Why deferred:** AV1 is OBU-shaped (Open Bitstream Unit), not NAL-shaped.
-  Adding it requires either a separate `SamplePayload::Video` shape with
-  `Vec<Obu>` instead of `Vec<NalUnit>`, or a cross-codec rework of the video
-  payload type. Either is bigger than the current demuxer scope, and no
-  current corpus file or consumer ask has surfaced AV1 in MPEG-TS.
-- **Trigger to revisit:** AV1 in the local corpus, or a consumer shipping AV1
-  in MPEG-TS.
+- **Status:** Deferred. `codec::av1::parse_frame_header_light` ships
+  surfacing `frame_type` (KEY / INTER / INTRA_ONLY / SWITCH),
+  `show_frame`, and `show_existing_frame`. Full Frame Header parsing
+  (reference frame management, segmentation, loop filter, film grain,
+  per-frame display size) is not in scope.
+- **Why deferred:** Crosses into "you want a decoder." The light
+  scope covers keyframe detection — the load-bearing use case for
+  metadata extraction — and the cookbook recipes route off
+  `frame_type == KEY` + `show_frame` for keyframe gating today.
+- **Trigger to revisit:** A consumer shipping per-frame display-time,
+  per-frame aspect-ratio, or `film_grain_params` consumption.
 
-## H.266 codec parser (`codec::h266`)
+## AV1 still-picture / AVIF detection helper
 
-- **Status:** Deferred. H.266 (VVC) uses a NAL-shaped bitstream (VPS / SPS /
-  PPS / APS NAL types), so it fits the existing `codec::*` pattern structurally.
-  No mature Rust parser crate exists; the engine would be hand-rolled following
-  the `codec::h265` blueprint.
-- **Why deferred:** No H.266 encoder in the corpus or in the consumer base.
-  The spec (ITU-T H.266 V3, 2023) is large and the parameter-set syntax is
-  more complex than H.265.
-- **Trigger to revisit:** H.266 in the corpus or an explicit consumer pull.
+- **Status:** Deferred. `Av1SequenceHeader::still_picture` and
+  `reduced_still_picture_header` are parsed and surfaced, but no
+  consumer-facing helper for "is this an AVIF?" exists yet.
+- **Why deferred:** AVIF-in-MPEG-TS isn't a common consumer pattern;
+  no consumer ask. Callers that need it can read the two raw flags off
+  the parsed Sequence Header today.
+- **Trigger to revisit:** A consumer shipping AVIF over SRT.
+
+## AV1 multi-operating-point streams
+
+- **Status:** Deferred. Operating points beyond OP 0 are walked past
+  in the Sequence Header parser but not surfaced — `Av1SequenceHeader::level`
+  and `tier` reflect OP 0 only.
+- **Why deferred:** Single-OP is the common live-streaming pattern.
+  Multi-OP (used for scalable encodes) is rare in real-world captures
+  and absent from the local corpus.
+- **Trigger to revisit:** A real-world capture with multi-OP AV1
+  streams, or a consumer shipping scalable AV1.
+
+## `AV1_video_descriptor` (typed PMT descriptor)
+
+- **Status:** Deferred. The muxer auto-emits the AV01 `registration_descriptor`
+  (AV1-in-MPEG-2-TS binding §2.1) but not the optional typed
+  `AV1_video_descriptor` from binding §2.2.
+- **Why deferred:** The registration descriptor alone is sufficient for
+  receiver classification — the demuxer routes off `format_identifier =
+  "AV01"` today. The typed descriptor adds metadata (profile, level,
+  tier, bit depth) that consumers can recover by parsing the Sequence
+  Header OBU directly via `codec::av1::parse_sequence_header`.
+- **Trigger to revisit:** A consumer that strictly requires the typed
+  descriptor for transport-level metadata extraction without parsing
+  the elementary stream.
+
+## H.266 APS (Adaptation Parameter Set) parsing
+
+- **Status:** Deferred. APS NALs (type 17 PREFIX_APS_NUT, type 18
+  SUFFIX_APS_NUT) pass through as untyped `NalUnit::H266 { nal_type, .. }`
+  with raw RBSP payload. VPS / SPS / PPS are typed via `codec::h266`.
+- **Why deferred:** APS carries ALF (Adaptive Loop Filter), LMCS
+  (Luma Mapping with Chroma Scaling), and scaling-list data — all of
+  it useful only for full decode, not stream-level metadata extraction.
+- **Trigger to revisit:** A consumer needing typed APS access for
+  decoder pipeline introspection.
+
+## H.266 Picture Header (PH_NUT, type 19) parsing
+
+- **Status:** Deferred. Picture Header NALs pass through as untyped
+  `NalUnit::H266 { nal_type: 19, .. }` with raw RBSP payload.
+- **Why deferred:** Picture Header carries per-picture flags relevant
+  to the decoder pipeline (picture_output_flag, GDR fields, partitioning
+  overrides) — not load-bearing for stream-level metadata.
+- **Trigger to revisit:** A consumer needing per-picture state
+  extraction.
+
+## H.266 multi-layer streams (`nuh_layer_id != 0`)
+
+- **Status:** Deferred. The `nuh_layer_id` field is parsed off every
+  NAL header but parameter sets aren't tracked per-layer — `parse_parameter_sets`
+  fills a single (vps_id → vps, sps_id → sps, pps_id → pps) map across
+  all layers.
+- **Why deferred:** Multi-layer H.266 (the VVC scalability extension)
+  isn't shipped by common encoders today and isn't in the local corpus.
+- **Trigger to revisit:** A consumer using H.266 with scalability
+  layers (spatial, quality, or multi-view).
+
+## H.266 `stream_type 0x32` (VVC temporal video subsets)
+
+- **Status:** Deferred. Only `stream_type 0x33` (VVC main video stream)
+  is recognized as `VideoCodec::H266` by the demuxer.
+- **Why deferred:** `stream_type 0x32` is for temporal subsetting in
+  scalable VVC video — a rare use case absent from the corpus.
+- **Trigger to revisit:** A consumer using temporal subsetting, or a
+  capture surfacing 0x32 in the corpus. Workaround today:
+  `DemuxerOptions::treat_as` lets callers manually classify the PID.
+
+## AV1 on `0x80` user-private `stream_type`
+
+- **Status:** Deferred. Only the binding-conformant AV1 carriage —
+  `stream_type = 0x06` plus AV01 `registration_descriptor` — is
+  auto-classified as `VideoCodec::Av1`. Non-conformant captures using
+  `stream_type = 0x80` (user-private) require manual classification
+  via `DemuxerOptions::treat_as`.
+- **Why deferred:** 0x80 is reserved by H.222.0 for user-private use;
+  some early AV1 captures used it before the binding settled.
+  `DemuxerOptions::treat_as` covers the corner case without baking a
+  non-conformant default into the auto-classifier.
+- **Trigger to revisit:** A real-world capture stream with `stream_type
+  0x80` plus AV01 registration that needs auto-classification (rather
+  than a `treat_as` hint).
 
 ## SEI parsing for video codecs
 
@@ -348,17 +430,6 @@ the trigger that would unblock it.
   carrying `program_number`; `SrtcStreamInfo` C-side analogue with
   `program_number` field; per-program tracker query API if useful
   (`srtc_demuxer_program_count`, `srtc_demuxer_get_program_info(idx)`).
-
-## AV1 / H.266 codec variants on `SamplePayload::Video`
-
-- **Status:** `VideoCodec` covers H.264 + H.265. Other codecs surface
-  as `SamplePayload::Unknown { stream_type, raw }`.
-- **Why deferred:** No current consumer asks for AV1 / H.266 carriage.
-  AV1 specifically is OBU-shaped (not NAL-shaped), so adding it
-  requires either a separate `SamplePayload::Video` shape with
-  `Vec<Obu>` instead of `Vec<NalUnit>`, or a cross-codec rework of the
-  video payload type. Either is bigger than the current demuxer scope.
-- **Trigger to revisit:** A consumer ships AV1 or H.266 in MPEG-TS.
 
 ## Rustdoc lift to docs.rs via `#![doc = include_str!(...)]`
 

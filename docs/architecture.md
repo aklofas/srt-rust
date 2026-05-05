@@ -247,7 +247,7 @@ an entry in [`docs/deferred-features.md`](deferred-features.md).
 
 - Audio carriage in `mpegts::mux` and typed audio in `mpegts::demux` — video + KLV only today; `SamplePayload::Audio` reserved for additive lift.
 - Subtitle, caption, and auxiliary-data channels — same shape as audio; `SamplePayload::Subtitle` reserved.
-- AV1 / H.266 codec variants — surface as `SamplePayload::Unknown` today; OBU-shaped (AV1) variant requires a cross-codec rework.
+- AV1 / H.266 carriage ships; explicit non-goals remain — full AV1 Frame Header (decoder-scope), AV1 multi-OP, `AV1_video_descriptor`, AVIF helper, H.266 APS / Picture Header NAL parsing, multi-layer H.266, `stream_type 0x32`, AV1 on `0x80`.
 - Multi-program TS in `mpegts::demux` — single PMT only today; `ProgramMap.program_number` carries the number for additive lift.
 - `pipeline::pairing` — opt-in convenience pairing utility; cookbook recipes 12–14 are the canonical patterns until consumers ask for shared substrate.
 - Reactor / async / `srt_epoll_*` — see the sync-vs-async section above.

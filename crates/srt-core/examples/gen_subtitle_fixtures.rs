@@ -184,7 +184,9 @@ fn build_dvb_teletext_eng() -> Vec<u8> {
             SubtitleCodec::DvbTeletext {
                 language: *b"eng",
                 teletext_type: 0x02,
-                magazine_number: 1,
+                // 3-bit field; 0 = magazine 8 per the canonical EBU
+                // subtitle convention (magazine 8 page 88).
+                magazine_number: 0,
                 page_number: 0x88,
             },
         )

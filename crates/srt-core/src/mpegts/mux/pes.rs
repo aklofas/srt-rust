@@ -96,9 +96,9 @@ pub(crate) fn write_audio_pes(
 /// Routes to the correct PES_data_field envelope per codec:
 /// - `DvbSub` — wraps payload in `0x20 + 0x00 + payload + 0xFF` per
 ///   ETSI EN 300 743 §6.2 (`wrap_dvb_sub_pes_data_field`).
-/// - `DvbTeletext` — currently passes through; the EN 300 472 §4.2-conformant
-///   45-byte stuffed PES header plus N×184 padding writer is not yet
-///   implemented.
+/// - `DvbTeletext` — emits a 45-byte stuffed PES header
+///   (`PES_header_data_length=0x24`) and pads the PES with `0xFF` to reach
+///   `N × 184` bytes total per ETSI EN 300 472 §4.2.
 /// - `Passthrough` — `Cea708Standalone` / `WebVttInTs` — no codec-specific
 ///   envelope; payload passes through verbatim (informal industry conventions).
 ///
@@ -127,12 +127,75 @@ pub(crate) fn write_subtitle_pes(
             write_subtitle_pes_passthrough(out, pts_90khz, &wrapped);
         }
         SubtitlePesShape::DvbTeletext => {
-            write_subtitle_pes_passthrough(out, pts_90khz, payload);
+            write_dvb_teletext_pes(out, pts_90khz, payload);
         }
         SubtitlePesShape::Passthrough => {
             write_subtitle_pes_passthrough(out, pts_90khz, payload);
         }
     }
+}
+
+/// Write a complete DVB teletext PES packet per ETSI EN 300 472 §4.2.
+///
+/// - 45-byte PES header total: `start_code(3) + stream_id(1) + length(2) +
+///   flags1(1) + flags2(1) + PES_header_data_length(1) + PTS(5) +
+///   stuffing(31×0xFF)`.
+/// - `PES_header_data_length = 0x24` (36 — covers 5 PTS bytes + 31 stuffing
+///   bytes).
+/// - `PES_packet_length = (N × 184) − 6`, where
+///   `N = ceil((45 + payload.len()) / 184)`. The PES packet is exactly
+///   `N × 184` bytes (filling exactly N TS packets' worth of PES payload
+///   area), with `0xFF` stuffing in the tail past `payload`.
+/// - `data_alignment_indicator = 1` (every PES carries one logical teletext
+///   data unit).
+fn write_dvb_teletext_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
+    /// Total PES header size for EBU teletext (EN 300 472 §4.2).
+    const HEADER_TOTAL: usize = 45;
+    /// `PES_header_data_length` for EBU teletext: 36 = 5 PTS + 31 stuffing.
+    const PES_HEADER_DATA_LENGTH: u8 = 0x24;
+    /// Stuffing byte per EN 300 472 §4.2.
+    const STUFFING_BYTE: u8 = 0xFF;
+    /// TS packet payload area when no adaptation field is present.
+    const TS_PAYLOAD_PER_PKT: usize = 184;
+
+    let useful = HEADER_TOTAL + payload.len();
+    let n = useful.div_ceil(TS_PAYLOAD_PER_PKT).max(1);
+    let total_pes_bytes = n * TS_PAYLOAD_PER_PKT;
+    // PES_packet_length excludes the 6 fixed bytes (start_code + stream_id +
+    // length itself) per ISO/IEC 13818-1 §2.4.3.7.
+    let pes_packet_length = total_pes_bytes - 6;
+
+    // Fixed prefix: start_code(3) + stream_id(1).
+    out.extend_from_slice(&[0x00, 0x00, 0x01]);
+    out.push(STREAM_ID_SUBTITLE);
+    // PES_packet_length (BE u16).
+    out.extend_from_slice(&(pes_packet_length as u16).to_be_bytes());
+    // flags1: '10' marker (bits 7..6) | data_alignment_indicator (bit 2).
+    //   bit 7..6 = '10' (marker)
+    //   bit 5..4 = PES_scrambling_control = 0
+    //   bit 3    = PES_priority = 0
+    //   bit 2    = data_alignment_indicator = 1
+    //   bit 1    = copyright = 0
+    //   bit 0    = original_or_copy = 0
+    out.push(0b1000_0100);
+    // flags2: PTS_DTS_flags = '10' (PTS only) in bits 7..6, all other flags 0.
+    out.push(0b1000_0000);
+    // PES_header_data_length.
+    out.push(PES_HEADER_DATA_LENGTH);
+    // PTS (5 bytes) per ISO/IEC 13818-1 §2.4.3.6.
+    let mut pts_buf = [0u8; 5];
+    write_pts(&mut pts_buf, Pts90khz(pts_90khz), 0b0010);
+    out.extend_from_slice(&pts_buf);
+    // Stuffing to reach 45-byte header total. After the PTS we are at byte 14
+    // (3 + 1 + 2 + 1 + 1 + 1 + 5).
+    debug_assert_eq!(out.len(), 14);
+    out.resize(HEADER_TOTAL, STUFFING_BYTE);
+    debug_assert_eq!(out.len(), HEADER_TOTAL);
+    // Caller payload.
+    out.extend_from_slice(payload);
+    // Tail stuffing per EN 300 472 §4.2: pad to N × 184 bytes total.
+    out.resize(total_pes_bytes, STUFFING_BYTE);
+    debug_assert_eq!(out.len(), total_pes_bytes);
 }
 
 /// Wrap caller-supplied DVB subtitling segment bytes in the EN 300 743

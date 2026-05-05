@@ -1812,19 +1812,27 @@ impl Muxer {
         };
         let envelope_overhead = match pes_shape {
             SubtitlePesShape::DvbSub => 3, // 0x20 + 0x00 + 0xFF
-            // DVB-teletext header overhead is not yet accounted for here; the
-            // teletext writer (45-byte stuffed header + N×184 padding) will
-            // land separately. For now teletext is passthrough, so 0 envelope
-            // bytes.
+            // DVB-teletext writes its own 45-byte PES header per EN 300 472 §4.2
+            // (rather than reusing the shared 14-byte header path), so it does
+            // not contribute envelope bytes — its overhead is folded into
+            // `pes_overhead` below.
             SubtitlePesShape::DvbTeletext => 0,
             SubtitlePesShape::Passthrough => 0,
         };
 
-        // Subtitle PES always carries a PTS (PTS-only header, no DTS), so PES
-        // overhead is 3 (covered by PES_packet_length: flags1 + flags2 +
-        // header_data_length) + 5 (PTS field) = 8 bytes, plus any codec
-        // envelope. Bound payload so PES_packet_length u16 doesn't overflow.
-        let pes_overhead = 3usize + 5 + envelope_overhead;
+        // PES overhead in u16 PES_packet_length terms:
+        // - DVB-teletext: writer emits a 45-byte header (everything before the
+        //   caller payload) and pads the PES tail to N×184 bytes. The size cap
+        //   is still header(45) + payload <= u16::MAX since PES_packet_length
+        //   (which excludes the 6 fixed prefix bytes) holds 45 − 6 + payload =
+        //   39 + payload + tail_stuffing.
+        // - Other codecs: standard 14-byte header (3 byte prefix + flags(3) +
+        //   PTS(5)), so PES_packet_length covers flags(3) + PTS(5) + envelope
+        //   + payload.
+        let pes_overhead = match pes_shape {
+            SubtitlePesShape::DvbTeletext => 45,
+            _ => 3usize + 5 + envelope_overhead,
+        };
         let max_subtitle = (u16::MAX as usize) - pes_overhead;
         if payload.len() > max_subtitle {
             return Err(MuxError::SubtitleTooLarge {
@@ -1835,8 +1843,15 @@ impl Muxer {
 
         let subtitle_pid = self.subtitle_streams[prog_idx][within_idx].pid;
 
-        let mut pes_buf =
-            Vec::with_capacity(MAX_PES_HEADER_SIZE + envelope_overhead + payload.len());
+        // Capacity hint: DVB-teletext rounds up to N×184 bytes total, so the
+        // tail stuffing can add up to one TS packet's payload area (184 bytes)
+        // beyond header + payload. Other codecs only need MAX_PES_HEADER_SIZE
+        // + envelope + payload.
+        let buf_capacity = match pes_shape {
+            SubtitlePesShape::DvbTeletext => 45 + payload.len() + 184,
+            _ => MAX_PES_HEADER_SIZE + envelope_overhead + payload.len(),
+        };
+        let mut pes_buf = Vec::with_capacity(buf_capacity);
         write_subtitle_pes(&mut pes_buf, pts_90khz, pes_shape, payload);
 
         let subtitle_packets = ts_packets_for(pes_buf.len());

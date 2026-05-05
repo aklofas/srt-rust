@@ -87,18 +87,35 @@ fn roundtrip_dvb_subtitling_payload_byte_identical() {
 }
 
 #[test]
-fn roundtrip_dvb_teletext_payload_byte_identical() {
+fn roundtrip_dvb_teletext_payload_prefixes_pes_with_tail_stuffing() {
+    // EN 300 472 §4.2 mandates a 45-byte stuffed PES header and a PES that
+    // is exactly N×184 bytes long — the muxer pads the tail with 0xFF
+    // stuffing to reach that boundary. The demuxer surfaces everything
+    // after the 45-byte header (PES payload + 0xFF stuffing), so the
+    // round-tripped bytes start with the input and the rest is 0xFF.
     let input = vec![0x10, 0x02, 0x10, 0xFC, 0x40, 0x40, 0x80];
     let output = round_trip(
         MuxSub::DvbTeletext {
             language: *b"eng",
             teletext_type: 0x02,
-            magazine_number: 1,
+            magazine_number: 0,
             page_number: 0x88,
         },
         &input,
     );
-    assert_eq!(input, output);
+    assert_eq!(&output[..input.len()], &input[..]);
+    assert!(
+        output[input.len()..].iter().all(|&b| b == 0xFF),
+        "EN 300 472 §4.2 PES tail past caller payload must be 0xFF stuffing",
+    );
+    // PES is exactly N×184 bytes; demuxer surfaces (N×184 − 45) bytes of body.
+    let body_len = output.len();
+    let total = body_len + 45;
+    assert_eq!(
+        total % 184,
+        0,
+        "demuxed body length implies non-conformant PES total length"
+    );
 }
 
 #[test]

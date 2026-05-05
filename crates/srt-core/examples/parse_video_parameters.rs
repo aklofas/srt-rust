@@ -29,7 +29,7 @@ use std::env;
 use std::io::Read;
 use std::process::ExitCode;
 
-use srt_core::codec::{h264, h265};
+use srt_core::codec::{av1, h264, h265, h266};
 use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 fn main() -> ExitCode {
@@ -96,7 +96,7 @@ fn main() -> ExitCode {
 
     if last_summary.is_empty() {
         eprintln!(
-            "no video streams found — check that the file is MPEG-TS with H.264 or H.265 video"
+            "no video streams found — check that the file is MPEG-TS with H.264, H.265, H.266, or AV1 video"
         );
         return ExitCode::from(1);
     }
@@ -193,30 +193,83 @@ fn drain_and_print(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
                     }),
                     Err(e) => Some(format!("H.265 parse error: {e}")),
                 },
-                // H.266 carriage works end-to-end (mux emits stream_type 0x33,
-                // demux classifies and routes through split_nals). Typed VPS/SPS/PPS
-                // extraction lands in a follow-up; for now we just log NAL counts
-                // so consumers can see the carriage path is live.
-                VideoCodec::H266 => Some(format!(
-                    "H.266 {} NAL(s) — typed parser lands later",
-                    nals.len()
-                )),
+                VideoCodec::H266 => match h266::parse_parameter_sets(&nals) {
+                    // H266ParameterSets exposes spses as a Vec<H266Sps> (already
+                    // BTreeMap-deduped + collected by id internally), so `.first()`
+                    // is the right access — no `.values()` indirection like H.264/265.
+                    // general_level_idc is per ITU-T H.266 Annex A.4: stored as
+                    // a plain u8 (e.g. level 4.0 → 64, level 6.0 → 96). Reporting
+                    // verbatim, same convention as H.264/H.265.
+                    Ok(sets) => sets.spses.first().map(|sps| {
+                        let color = sps.color_info.as_ref().map_or_else(
+                            || "color=unspecified".to_string(),
+                            |c| format!("primaries={:?} transfer={:?}", c.primaries, c.transfer),
+                        );
+                        let fps = sps.frame_rate.as_ref().map_or_else(
+                            || "fps=unknown".to_string(),
+                            |r| format!("fps={}/{}", r.num, r.den),
+                        );
+                        format!(
+                            "H.266 {}x{} profile={} level={} {}-bit {:?} {fps} {color}",
+                            sps.width,
+                            sps.height,
+                            sps.profile_tier_level.general_profile_idc,
+                            sps.profile_tier_level.general_level_idc,
+                            sps.bit_depth_luma,
+                            sps.chroma_format,
+                        )
+                    }),
+                    Err(e) => Some(format!("H.266 parse error: {e}")),
+                },
                 // The demuxer guarantees AV1 ⇒ Obus, never Nals. If we ever
                 // see this combination, that's a demuxer bug; degrade to silent
                 // skip rather than crash.
                 VideoCodec::Av1 => None,
             },
             VideoPayload::Obus(obus) => match codec {
-                // AV1 carriage works end-to-end (mux emits stream_type 0x06
-                // with AV01 registration descriptor + AV1 video descriptor;
-                // demux classifies and routes through split_obus). Typed
-                // Sequence Header / Frame Header extraction lands in a
-                // follow-up; for now we just log OBU counts so consumers
-                // can see the carriage path is live.
-                VideoCodec::Av1 => Some(format!(
-                    "AV1 {} OBU(s) — typed parser lands later",
-                    obus.len()
-                )),
+                VideoCodec::Av1 => {
+                    // parse_obu_stream is infallible — bad OBUs are bucketed
+                    // into stream.unparseable rather than failing the whole
+                    // call. AV1 level is uvlc-coded inside the OBU per
+                    // AV1 spec §5.5.4 (operating_parameters_info); the parser
+                    // already decoded it to the plain u8 we report here
+                    // (e.g. seq.level=8 = level 4.0, =13 = level 5.1).
+                    let stream = av1::parse_obu_stream(&obus);
+                    if let Some(seq) = stream.sequence_headers.first() {
+                        let color = seq.color_info.as_ref().map_or_else(
+                            || "color=unspecified".to_string(),
+                            |c| format!("primaries={:?} transfer={:?}", c.primaries, c.transfer),
+                        );
+                        let fps = seq.frame_rate.as_ref().map_or_else(
+                            || "fps=unknown".to_string(),
+                            |r| format!("fps={}/{}", r.num, r.den),
+                        );
+                        Some(format!(
+                            "AV1 {}x{} profile={} level={} tier={} {}-bit {:?} {fps} {color}",
+                            seq.max_frame_width,
+                            seq.max_frame_height,
+                            seq.profile,
+                            seq.level,
+                            seq.tier,
+                            seq.bit_depth,
+                            seq.chroma_format,
+                        ))
+                    } else if !stream.unparseable.is_empty() {
+                        // Sequence Header didn't parse cleanly — surface the
+                        // count so a consumer staring at silent output knows
+                        // there IS AV1 OBU traffic, just nothing typed yet.
+                        Some(format!(
+                            "AV1 {} OBU(s), {} unparseable",
+                            obus.len(),
+                            stream.unparseable.len()
+                        ))
+                    } else {
+                        // No SH yet (just TD / Frame / Tile OBUs in this PES).
+                        // Silent until the next keyframe re-emits the SH —
+                        // change-driven logging upstream avoids per-frame spam.
+                        None
+                    }
+                }
                 // The demuxer guarantees H.264/H.265/H.266 ⇒ Nals, never Obus.
                 // Same degrade-to-silent-skip rationale as the AV1-on-Nals arm
                 // above.

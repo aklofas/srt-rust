@@ -14,14 +14,6 @@ pub use parse::{
     find_format_identifier, parse_subtitling_descriptor, parse_teletext_descriptor,
 };
 
-/// Maximum total descriptor-loop length per ES PID, bounded by the
-/// PMT-fits-in-one-TS-packet rule. Computed as: 183 PMT payload bytes −
-/// 17 PMT fixed overhead = 166 bytes available for the entire ES loop
-/// (header + descriptors) summed across all streams in the same PMT.
-/// `Config::validate` returns `MuxError::PmtTooLarge` when the actual
-/// sum exceeds this.
-pub const MAX_DESCRIPTOR_LOOP_PER_PMT: usize = 166;
-
 /// Registration descriptor (tag 0x05) — H.222.0 §2.6.8.
 ///
 /// `format_identifier` is a 4-byte ASCII tag. `additional` is the

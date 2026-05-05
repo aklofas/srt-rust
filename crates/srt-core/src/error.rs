@@ -431,11 +431,12 @@ pub enum MuxError {
 
     /// `Config::validate` rejected a configuration whose total PMT
     /// section length wouldn't fit in a single TS packet. `used_bytes`
-    /// is the sum of (5 ES-header bytes + descriptor-loop bytes) across
-    /// all configured streams; `max_bytes` is `MAX_DESCRIPTOR_LOOP_PER_PMT`
-    /// (currently 166). Multi-section PMT support is out of scope; if
-    /// you hit this, drop one or more user-supplied descriptors or
-    /// shorten their payloads.
+    /// is the estimated full PMT section size (header + program-level
+    /// descriptors + per-stream entries with their auto-emit + caller-
+    /// supplied descriptor bytes + CRC); `max_bytes` is the single-TS-
+    /// packet payload cap (`MAX_PMT_SECTION_BYTES = 183`). Multi-section
+    /// PMT support is out of scope; if you hit this, drop one or more
+    /// user-supplied descriptors or shorten their payloads.
     #[error(
         "PMT too large: {used_bytes} bytes used, {max_bytes} max (single-section PMT must fit in one TS packet)"
     )]

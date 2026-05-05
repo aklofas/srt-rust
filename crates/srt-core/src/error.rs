@@ -384,6 +384,24 @@ pub enum MuxError {
     #[error("too many audio streams: {count} configured, cap is {cap}")]
     TooManyAudioStreams { count: usize, cap: usize },
 
+    /// `Config::validate` rejects more than 16 subtitle streams in any program.
+    #[error("too many subtitle streams: {count} (cap {cap})")]
+    TooManySubtitleStreams { count: usize, cap: usize },
+
+    /// `push_subtitle` payload exceeds the PES packet length budget. PES
+    /// packet length is at most 65535 and must cover flags + PTS field +
+    /// payload, bounding subtitle payloads to 65527 bytes.
+    #[error("subtitle PES payload too large: {size} bytes (max {max})")]
+    SubtitleTooLarge { size: usize, max: usize },
+
+    /// Caller pinned a subtitle PID as the PCR PID. Subtitles are sparse
+    /// and event-driven; using one for PCR pacing produces poor PCR
+    /// spacing. Move PCR to a video / audio / KLV PID.
+    #[error(
+        "subtitle PID 0x{pid:04x} cannot be used as the PCR PID; subtitles are too sparse for PCR pacing"
+    )]
+    SubtitlePidUsedAsPcrPid { pid: u16 },
+
     /// `Config::validate` rejected a configuration whose total PMT
     /// section length wouldn't fit in a single TS packet. `used_bytes`
     /// is the sum of (5 ES-header bytes + descriptor-loop bytes) across
@@ -959,5 +977,15 @@ mod tests {
             e.to_string(),
             "audio frames too large: 70000 bytes, max 65527",
         );
+    }
+
+    #[test]
+    fn mux_error_subtitle_variants_construct() {
+        let _ = MuxError::TooManySubtitleStreams { count: 17, cap: 16 };
+        let _ = MuxError::SubtitleTooLarge {
+            size: 70_000,
+            max: 65527,
+        };
+        let _ = MuxError::SubtitlePidUsedAsPcrPid { pid: 0x400 };
     }
 }

@@ -214,6 +214,17 @@ pub enum NonConformantIssue {
     /// the demuxer keeps the first-program-wins binding and drops the second.
     PidReusedAcrossPrograms { pid: u16, programs: [u16; 2] },
 
+    /// `treat_as` (or fallback) routed a PID to a subtitle codec but no
+    /// recognized subtitle descriptor (subtitling/teletext/VTTC/GA94) is
+    /// present on the PMT entry. Lenient mode classifies anyway; strict
+    /// mode converts to `DemuxError::StrictRejection`.
+    SubtitleMissingDescriptor { pid: u16 },
+
+    /// Subtitle descriptor tag was recognized but the inner length /
+    /// payload bytes did not satisfy spec invariants. Per-stream params
+    /// fall back to defaults (language `*b"und"`, page ids 0).
+    SubtitleDescriptorMalformed { pid: u16, tag: u8 },
+
     /// Other.
     Other(String),
 }

@@ -167,6 +167,21 @@ pub(crate) fn record_mux_error(e: &MuxError) {
             SrtcError::InvalidUsage,
             format!("audio frames too large: {size} bytes, max {max}"),
         ),
+        MuxError::TooManySubtitleStreams { count, cap } => (
+            SrtcError::InvalidConfig,
+            format!("too many subtitle streams: {count} (cap {cap})"),
+        ),
+        MuxError::SubtitleTooLarge { size, max } => (
+            SrtcError::InvalidUsage,
+            format!("subtitle PES payload too large: {size} bytes (max {max})"),
+        ),
+        MuxError::SubtitlePidUsedAsPcrPid { pid } => (
+            SrtcError::InvalidConfig,
+            format!(
+                "subtitle PID 0x{pid:04x} cannot be used as the PCR PID; \
+                 subtitles are too sparse for PCR pacing"
+            ),
+        ),
     };
     set_last_error(code, &msg);
 }

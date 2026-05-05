@@ -85,8 +85,24 @@ pub enum AudioCodec {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SubtitleCodec {
-    #[doc(hidden)]
-    __Reserved,
+    /// DVB subtitling (bitmap-shaped). Per ETSI EN 300 468 §6.2.41 +
+    /// ETSI EN 300 743. Per-stream params (language, page IDs)
+    /// surface on `StreamInfo::raw_descriptors`; decode lazily via
+    /// `parse_subtitling_descriptor`.
+    DvbSubtitling,
+    /// DVB teletext. Per ETSI EN 300 468 §6.2.43 + ETSI EN 300 706.
+    /// Per-stream params (language, magazine, page) surface on
+    /// `StreamInfo::raw_descriptors`; decode lazily via
+    /// `parse_teletext_descriptor`.
+    DvbTeletext,
+    /// CEA-708 caption data carried as a separate elementary stream
+    /// (rather than embedded in H.264/H.265 SEI). Marked via
+    /// registration_descriptor format_identifier "GA94".
+    Cea708Standalone,
+    /// WebVTT cues carried inside MPEG-TS PES per Apple's HLS
+    /// authoring spec. Marked via registration_descriptor
+    /// format_identifier "VTTC".
+    WebVttInTs,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -283,5 +299,17 @@ mod tests {
             AudioCodec::Ac3,
         ];
         assert_ne!(codecs[0], codecs[1]);
+    }
+
+    #[test]
+    fn demux_subtitle_codec_real_variants_in_event_surface() {
+        let codecs = [
+            SubtitleCodec::DvbSubtitling,
+            SubtitleCodec::DvbTeletext,
+            SubtitleCodec::Cea708Standalone,
+            SubtitleCodec::WebVttInTs,
+        ];
+        assert_ne!(codecs[0], codecs[1]);
+        assert_ne!(codecs[2], codecs[3]);
     }
 }

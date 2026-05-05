@@ -1149,6 +1149,10 @@ struct KlvStreamState {
     pid: u16,
     stream_type: KlvStreamType,
     carries_pts: bool,
+    /// For `SynchronousMetadata` streams: incrementing AU cell `sequence_number`,
+    /// wraps modulo 256 per H.222.0 §2.12.4.2 Table 2-156 semantics. Unused
+    /// for `PrivateData` streams.
+    au_cell_sequence_number: u8,
 }
 
 /// Per-audio-stream cached state.
@@ -1268,6 +1272,7 @@ impl Muxer {
                         pid: *pid,
                         stream_type: *stream_type,
                         carries_pts: *carries_pts,
+                        au_cell_sequence_number: 0,
                     }),
                     _ => None,
                 })
@@ -2113,6 +2118,14 @@ impl Muxer {
     /// used as the PES PTS only when the targeted KLV stream was
     /// configured with `carries_pts: true`; ignored otherwise.
     ///
+    /// For [`KlvStreamType::SynchronousMetadata`] streams, the muxer
+    /// auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T
+    /// H.222.0 V9 §2.12.4.2 Tables 2-155+2-156 (see
+    /// [`crate::mpegts::au_cell`]). Pass raw KLV LS bytes; do not
+    /// pre-wrap. PTS lives in the PES header (per §2.12.4.1).
+    /// [`KlvStreamType::PrivateData`] streams pass payload through
+    /// unchanged.
+    ///
     /// Returns [`MuxError::InvalidStreamHandle`] if the handle's index
     /// is out of range.
     pub fn push_klv_to(
@@ -2131,6 +2144,35 @@ impl Muxer {
         let k = &self.klv_streams[prog_idx][within_idx];
         let klv_pid = k.pid;
         let klv_carries_pts = k.carries_pts;
+        let is_sync = k.stream_type == KlvStreamType::SynchronousMetadata;
+        let seq_num = k.au_cell_sequence_number;
+
+        // Auto-wrap sync KLV in an H.222.0 §2.12.4.2 Metadata_AU_cell header.
+        // PrivateData streams pass payload through as-is (caller controls shape).
+        let wrapped_storage: Option<Vec<u8>> = if is_sync {
+            let header = crate::mpegts::au_cell::AuCellHeader {
+                metadata_service_id: 0x00, // ST 1402.2 App. B Table 2 default.
+                sequence_number: seq_num,
+                cell_fragment_indication: crate::mpegts::au_cell::CellFragmentIndication::Complete,
+                decoder_config_flag: false,
+                random_access_indicator: true, // ST 0601 records are self-contained.
+            };
+            let mut buf = Vec::with_capacity(5 + klv.len());
+            crate::mpegts::au_cell::write_metadata_au_cell(&mut buf, header, klv).map_err(
+                |e| match e {
+                    crate::mpegts::au_cell::AuCellError::PayloadTooLarge { size, .. } => {
+                        MuxError::KlvTooLarge {
+                            size,
+                            max: crate::mpegts::au_cell::MAX_AU_CELL_PAYLOAD,
+                        }
+                    }
+                },
+            )?;
+            Some(buf)
+        } else {
+            None
+        };
+        let effective_klv: &[u8] = wrapped_storage.as_deref().unwrap_or(klv);
 
         let pts_field = if klv_carries_pts {
             PesPtsField::PtsOnly(Pts90khz(pts_90khz))
@@ -2140,10 +2182,15 @@ impl Muxer {
 
         let pes_overhead = 3usize + if klv_carries_pts { 5 } else { 0 };
         let max_klv = (u16::MAX as usize) - pes_overhead;
-        if klv.len() > max_klv {
+        if effective_klv.len() > max_klv {
+            // Report the inner caller payload size in the error, since that's
+            // what they control. Subtract 5-byte AU cell header overhead from
+            // the cap when sync.
+            let report_size = klv.len();
+            let report_max = if is_sync { max_klv - 5 } else { max_klv };
             return Err(MuxError::KlvTooLarge {
-                size: klv.len(),
-                max: max_klv,
+                size: report_size,
+                max: report_max,
             });
         }
 
@@ -2152,10 +2199,10 @@ impl Muxer {
             &mut header,
             STREAM_ID_KLV,
             pts_field,
-            Some(klv.len() as u16),
+            Some(effective_klv.len() as u16),
         );
 
-        let total = header_len + klv.len();
+        let total = header_len + effective_klv.len();
         let klv_packets = ts_packets_for(total);
         let psi_packets = if self.psi_due(prog_idx, pts_90khz) {
             2
@@ -2173,7 +2220,7 @@ impl Muxer {
 
         let mut pes_buf = Vec::with_capacity(total);
         pes_buf.extend_from_slice(&header[..header_len]);
-        pes_buf.extend_from_slice(klv);
+        pes_buf.extend_from_slice(effective_klv);
 
         let mut cursor = 0;
         let mut first = true;
@@ -2198,10 +2245,15 @@ impl Muxer {
             first = false;
         }
 
-        // Count on the Ok path only — after all early-returns above.
+        // Count on the Ok path only — after all early-returns above. Stats
+        // count caller's payload bytes, not auto-wrapped bytes.
         if let Some(s) = self.per_stream.get_mut(&klv_pid) {
             s.items += 1;
             s.bytes += klv.len() as u64;
+        }
+        if is_sync {
+            self.klv_streams[prog_idx][within_idx].au_cell_sequence_number =
+                seq_num.wrapping_add(1);
         }
 
         Ok(())
@@ -3960,6 +4012,121 @@ mod tests {
             .build()
             .unwrap_err();
         assert!(matches!(err, MuxError::InvalidTeletextField { .. }));
+    }
+
+    /// Reassemble the PES payload bytes for a single PID across the TS packets
+    /// emitted in `buf[..n]`. Strips PES header. Used by AU cell auto-wrap tests.
+    fn reassemble_pes_payload_for_pid(buf: &[u8], n: usize, target_pid: u16) -> Vec<u8> {
+        let mut payload = Vec::new();
+        for pkt in buf[..n].chunks_exact(188) {
+            let pid = ((pkt[1] as u16 & 0x1F) << 8) | pkt[2] as u16;
+            if pid != target_pid {
+                continue;
+            }
+            let payload_unit_start = (pkt[1] & 0x40) != 0;
+            let adaptation_present = (pkt[3] & 0x20) != 0;
+            let mut idx = 4usize;
+            if adaptation_present {
+                let af_len = pkt[idx] as usize;
+                idx += 1 + af_len;
+            }
+            if payload_unit_start && idx + 9 <= 188 {
+                // Standard PES: start_code(3) + stream_id(1) + length(2) +
+                // flags(2) + PES_header_data_length(1) + N PTS bytes.
+                let pes_header_data_length = pkt[idx + 8] as usize;
+                idx += 9 + pes_header_data_length;
+            }
+            if idx < 188 {
+                payload.extend_from_slice(&pkt[idx..188]);
+            }
+        }
+        payload
+    }
+
+    #[test]
+    fn sync_klv_push_auto_wraps_with_5_byte_au_cell_header() {
+        use crate::mpegts::au_cell::{read_metadata_au_cell, CellFragmentIndication};
+
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::SynchronousMetadata, true)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+
+        // Push first sync-KLV blob — synthetic ST 0601-shaped LS.
+        let mut inner_klv = Vec::new();
+        inner_klv.extend_from_slice(&[
+            0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00,
+        ]);
+        inner_klv.push(0x04);
+        inner_klv.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
+        mux.push_klv(&inner_klv, 90_000).unwrap();
+
+        let mut buf = vec![0u8; 188 * 32];
+        let n = mux.pull(&mut buf);
+        let pes_payload = reassemble_pes_payload_for_pid(&buf, n, 0x1031);
+        assert!(
+            !pes_payload.is_empty(),
+            "expected at least one TS packet on KLV PID 0x1031"
+        );
+
+        // PES payload must start with the 5-byte AU cell header followed by
+        // the inner KLV bytes verbatim.
+        let (hdr, body) = read_metadata_au_cell(&pes_payload).expect("valid AU cell header");
+        assert_eq!(hdr.metadata_service_id, 0x00, "ST 1402.2 App. B default");
+        assert_eq!(hdr.sequence_number, 0, "first push starts at seq 0");
+        assert_eq!(
+            hdr.cell_fragment_indication,
+            CellFragmentIndication::Complete
+        );
+        assert!(!hdr.decoder_config_flag);
+        assert!(hdr.random_access_indicator);
+        assert_eq!(body, &inner_klv[..]);
+
+        // Push second blob; sequence_number must increment.
+        mux.push_klv(&inner_klv, 90_000 * 2).unwrap();
+        let n2 = mux.pull(&mut buf);
+        let pes2 = reassemble_pes_payload_for_pid(&buf, n2, 0x1031);
+        let (hdr2, _) = read_metadata_au_cell(&pes2).expect("valid AU cell header");
+        assert_eq!(
+            hdr2.sequence_number, 1,
+            "sequence_number must increment per push"
+        );
+    }
+
+    #[test]
+    fn private_data_klv_does_not_auto_wrap() {
+        // PrivateData streams must pass payload through as-is; the muxer
+        // must NOT prepend an AU cell header.
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+
+        let mut inner_klv = Vec::new();
+        inner_klv.extend_from_slice(&[
+            0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00,
+        ]);
+        inner_klv.push(0x00);
+        mux.push_klv(&inner_klv, 0).unwrap();
+
+        let mut buf = vec![0u8; 188 * 32];
+        let n = mux.pull(&mut buf);
+        let pes_payload = reassemble_pes_payload_for_pid(&buf, n, 0x1031);
+        assert_eq!(
+            &pes_payload[..inner_klv.len()],
+            &inner_klv[..],
+            "PrivateData payload must pass through unchanged"
+        );
     }
 }
 

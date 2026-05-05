@@ -20,6 +20,7 @@ fn drain_all(mux: &mut Muxer) -> Vec<u8> {
     }
 }
 
+#[ignore = "fictional wire format; deleted in Plan #25 Task 5"]
 #[test]
 fn sync_klv_with_st1910_wrapper_roundtrip() {
     let mut cfg = Config::default();
@@ -58,6 +59,7 @@ fn sync_klv_with_st1910_wrapper_roundtrip() {
     assert_eq!(recovered_pack.timestamp_us, micros);
 }
 
+#[ignore = "fictional wire format; deleted in Plan #25 Task 5"]
 #[test]
 fn sync_metadata_stream_type_with_wrapped_klv() {
     let mut cfg = Config::default();

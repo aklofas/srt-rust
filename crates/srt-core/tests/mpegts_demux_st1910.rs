@@ -5,6 +5,7 @@ use srt_core::klv::st1910::wrap_au_cell;
 use srt_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind};
 use srt_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
 
+#[ignore = "fictional wire format; deleted in Plan #25 Task 5"]
 #[test]
 fn sync_klv_au_cell_unwraps_on_receive() {
     // Sync KLV per ST 1402 §8 / ST 1910: SynchronousMetadata stream_type

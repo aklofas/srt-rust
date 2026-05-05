@@ -169,7 +169,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
         ),
         MuxError::TooManySubtitleStreams { count, cap } => (
             SrtcError::InvalidConfig,
-            format!("too many subtitle streams: {count} (cap {cap})"),
+            format!("too many subtitle streams: {count} configured, cap is {cap}"),
         ),
         MuxError::SubtitleTooLarge { size, max } => (
             SrtcError::InvalidUsage,
@@ -178,7 +178,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
         MuxError::SubtitlePidUsedAsPcrPid { pid } => (
             SrtcError::InvalidConfig,
             format!(
-                "subtitle PID 0x{pid:04x} cannot be used as the PCR PID; \
+                "subtitle PID 0x{pid:04X} cannot be used as the PCR PID; \
                  subtitles are too sparse for PCR pacing"
             ),
         ),

@@ -385,7 +385,7 @@ pub enum MuxError {
     TooManyAudioStreams { count: usize, cap: usize },
 
     /// `Config::validate` rejects more than 16 subtitle streams in any program.
-    #[error("too many subtitle streams: {count} (cap {cap})")]
+    #[error("too many subtitle streams: {count} configured, cap is {cap}")]
     TooManySubtitleStreams { count: usize, cap: usize },
 
     /// `push_subtitle` payload exceeds the PES packet length budget. PES
@@ -398,7 +398,7 @@ pub enum MuxError {
     /// and event-driven; using one for PCR pacing produces poor PCR
     /// spacing. Move PCR to a video / audio / KLV PID.
     #[error(
-        "subtitle PID 0x{pid:04x} cannot be used as the PCR PID; subtitles are too sparse for PCR pacing"
+        "subtitle PID 0x{pid:04X} cannot be used as the PCR PID; subtitles are too sparse for PCR pacing"
     )]
     SubtitlePidUsedAsPcrPid { pid: u16 },
 

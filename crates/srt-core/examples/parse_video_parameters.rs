@@ -111,97 +111,117 @@ fn drain_and_print(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
         // skipped — run demux_to_events.rs for the full annotated event dump.
         let DemuxEvent::Sample {
             stream,
-            payload:
-                SamplePayload::Video {
-                    codec,
-                    payload: VideoPayload::Nals(nals),
-                },
+            payload: SamplePayload::Video { codec, payload },
             ..
         } = ev
         else {
             continue;
         };
 
-        // Route to the matching codec parser. Each module's parse_parameter_sets
-        // skips NALs that don't belong to it (it pattern-matches on NalUnit::H264
-        // vs NalUnit::H265), so accidentally calling the wrong parser is safe —
-        // it returns Ok with empty maps. We route explicitly here for clarity and
-        // to show both code paths.
+        // Two payload shapes ride VideoPayload:
+        //   * Nals(Vec<NalUnit>) for H.264 / H.265 / H.266 — NAL-framed codecs
+        //     using Annex-B start-code delimiting in the elementary stream.
+        //   * Obus(Vec<Obu>) for AV1 — OBU-framed using the AV1 low-overhead
+        //     bitstream format inside Length-Delimited OBUs in PES.
         //
-        // parse_parameter_sets is partial-success-tolerant: individual bad NALs
-        // emit a tracing::warn and are skipped. The function returns Err only if
-        // EVERY parameter-set NAL in the input failed to parse. Non-parameter-set
-        // NALs (P-frame slices, IDR slice data) are always silently skipped, so
-        // calling this on a P-frame returns Ok with empty maps — not an error.
-        let summary = match codec {
-            VideoCodec::H264 => match h264::parse_parameter_sets(&nals) {
-                Ok(ps) => ps.sps_by_id.values().next().map(|sps| {
-                    // H.264 level_idc is x10 — level 4.0 is stored as 40,
-                    // level 5.1 is stored as 51, etc. Reporting verbatim is
-                    // correct; consumers that want "4.0" format it themselves.
-                    let color = sps.color.as_ref().map_or_else(
-                        || "color=unspecified".to_string(),
-                        |c| format!("primaries={:?} transfer={:?}", c.primaries, c.transfer),
-                    );
-                    let fps = sps.frame_rate.map_or_else(
-                        || "fps=unknown".to_string(),
-                        |r| {
-                            // num/den from the SPS VUI timing_info. Common values:
-                            // 60000/1001 ≈ 59.94, 30000/1001 ≈ 29.97, 25/1 = 25.
-                            format!("fps={}/{}", r.num, r.den)
-                        },
-                    );
-                    format!(
-                        "H.264 {}x{} profile={} level={} {}-bit {:?} {fps} {color}",
-                        sps.width,
-                        sps.height,
-                        sps.profile_idc,
-                        sps.level_idc,
-                        sps.bit_depth_luma,
-                        sps.chroma_format,
-                    )
-                }),
-                Err(e) => Some(format!("H.264 parse error: {e}")),
+        // The demuxer guarantees the (codec, payload) pairing — H.264/H.265/
+        // H.266 always arrive as Nals, AV1 always as Obus. The exhaustive
+        // match below crosses both axes so any future codec addition forces
+        // a compile-time decision; the "impossible" arms return None rather
+        // than panicking, so a hypothetical demuxer bug degrades to silent
+        // skip rather than a crash in a long-running offline tool.
+        //
+        // parse_parameter_sets (NAL-shaped codecs) is partial-success-tolerant:
+        // individual bad NALs emit a tracing::warn and are skipped. The
+        // function returns Err only if EVERY parameter-set NAL in the input
+        // failed to parse. Non-parameter-set NALs (P-frame slices, IDR slice
+        // data) are always silently skipped, so calling this on a P-frame
+        // returns Ok with empty maps — not an error.
+        let summary = match payload {
+            VideoPayload::Nals(nals) => match codec {
+                VideoCodec::H264 => match h264::parse_parameter_sets(&nals) {
+                    Ok(ps) => ps.sps_by_id.values().next().map(|sps| {
+                        // H.264 level_idc is x10 — level 4.0 is stored as 40,
+                        // level 5.1 is stored as 51, etc. Reporting verbatim is
+                        // correct; consumers that want "4.0" format it themselves.
+                        let color = sps.color.as_ref().map_or_else(
+                            || "color=unspecified".to_string(),
+                            |c| format!("primaries={:?} transfer={:?}", c.primaries, c.transfer),
+                        );
+                        let fps = sps.frame_rate.map_or_else(
+                            || "fps=unknown".to_string(),
+                            |r| {
+                                // num/den from the SPS VUI timing_info. Common values:
+                                // 60000/1001 ≈ 59.94, 30000/1001 ≈ 29.97, 25/1 = 25.
+                                format!("fps={}/{}", r.num, r.den)
+                            },
+                        );
+                        format!(
+                            "H.264 {}x{} profile={} level={} {}-bit {:?} {fps} {color}",
+                            sps.width,
+                            sps.height,
+                            sps.profile_idc,
+                            sps.level_idc,
+                            sps.bit_depth_luma,
+                            sps.chroma_format,
+                        )
+                    }),
+                    Err(e) => Some(format!("H.264 parse error: {e}")),
+                },
+                VideoCodec::H265 => match h265::parse_parameter_sets(&nals) {
+                    Ok(ps) => ps.sps_by_id.values().next().map(|sps| {
+                        // H.265 general_level_idc is x30 — level 4.0 is stored as 120,
+                        // level 5.1 is stored as 153. Same verbatim-report convention
+                        // as H.264 above.
+                        let color = sps.color.as_ref().map_or_else(
+                            || "color=unspecified".to_string(),
+                            |c| format!("primaries={:?} transfer={:?}", c.primaries, c.transfer),
+                        );
+                        let fps = sps.frame_rate.map_or_else(
+                            || "fps=unknown".to_string(),
+                            |r| format!("fps={}/{}", r.num, r.den),
+                        );
+                        format!(
+                            "H.265 {}x{} profile_idc={} level_idc={} {}-bit {:?} {fps} {color}",
+                            sps.width,
+                            sps.height,
+                            sps.general_profile_idc,
+                            sps.general_level_idc,
+                            sps.bit_depth_luma,
+                            sps.chroma_format,
+                        )
+                    }),
+                    Err(e) => Some(format!("H.265 parse error: {e}")),
+                },
+                // H.266 carriage works end-to-end (mux emits stream_type 0x33,
+                // demux classifies and routes through split_nals). Typed VPS/SPS/PPS
+                // extraction lands in a follow-up; for now we just log NAL counts
+                // so consumers can see the carriage path is live.
+                VideoCodec::H266 => Some(format!(
+                    "H.266 {} NAL(s) — typed parser lands later",
+                    nals.len()
+                )),
+                // The demuxer guarantees AV1 ⇒ Obus, never Nals. If we ever
+                // see this combination, that's a demuxer bug; degrade to silent
+                // skip rather than crash.
+                VideoCodec::Av1 => None,
             },
-            VideoCodec::H265 => match h265::parse_parameter_sets(&nals) {
-                Ok(ps) => ps.sps_by_id.values().next().map(|sps| {
-                    // H.265 general_level_idc is x30 — level 4.0 is stored as 120,
-                    // level 5.1 is stored as 153. Same verbatim-report convention
-                    // as H.264 above.
-                    let color = sps.color.as_ref().map_or_else(
-                        || "color=unspecified".to_string(),
-                        |c| format!("primaries={:?} transfer={:?}", c.primaries, c.transfer),
-                    );
-                    let fps = sps.frame_rate.map_or_else(
-                        || "fps=unknown".to_string(),
-                        |r| format!("fps={}/{}", r.num, r.den),
-                    );
-                    format!(
-                        "H.265 {}x{} profile_idc={} level_idc={} {}-bit {:?} {fps} {color}",
-                        sps.width,
-                        sps.height,
-                        sps.general_profile_idc,
-                        sps.general_level_idc,
-                        sps.bit_depth_luma,
-                        sps.chroma_format,
-                    )
-                }),
-                Err(e) => Some(format!("H.265 parse error: {e}")),
+            VideoPayload::Obus(obus) => match codec {
+                // AV1 carriage works end-to-end (mux emits stream_type 0x06
+                // with AV01 registration descriptor + AV1 video descriptor;
+                // demux classifies and routes through split_obus). Typed
+                // Sequence Header / Frame Header extraction lands in a
+                // follow-up; for now we just log OBU counts so consumers
+                // can see the carriage path is live.
+                VideoCodec::Av1 => Some(format!(
+                    "AV1 {} OBU(s) — typed parser lands later",
+                    obus.len()
+                )),
+                // The demuxer guarantees H.264/H.265/H.266 ⇒ Nals, never Obus.
+                // Same degrade-to-silent-skip rationale as the AV1-on-Nals arm
+                // above.
+                VideoCodec::H264 | VideoCodec::H265 | VideoCodec::H266 => None,
             },
-            // H.266 carriage works end-to-end (mux emits stream_type 0x33,
-            // demux classifies and routes through split_nals). Typed VPS/SPS/PPS
-            // extraction lands in a follow-up; for now we just log NAL counts
-            // so consumers can see the carriage path is live.
-            VideoCodec::H266 => Some(format!(
-                "H.266 {} NAL(s) — typed parser lands later",
-                nals.len()
-            )),
-            // AV1 uses OBU framing, not NAL. Carriage + parser are staged work;
-            // the variant exists in the public enum so consumer match blocks
-            // are exhaustive once those land.
-            VideoCodec::Av1 => {
-                Some("AV1 OBU parser not yet shipped (OBU framing, not NAL)".to_string())
-            }
         };
 
         if let Some(s) = summary {

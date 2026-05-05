@@ -4,9 +4,9 @@
 use crate::error::DemuxError;
 use crate::mpegts::common::{pcr_diff_27mhz, pts_diff_33bit};
 use crate::mpegts::demux::event::{
-    DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit, NonConformantIssue,
-    ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, SubtitleCodec, VideoCodec,
-    VideoPayload,
+    AudioCodec, DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit,
+    NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, SubtitleCodec,
+    VideoCodec, VideoPayload,
 };
 use crate::mpegts::demux::payload::{KlvShape, classify_klv, split_nals, split_obus};
 use crate::mpegts::demux::pes::{Reassembler, ReassemblyOutcome};
@@ -1146,16 +1146,22 @@ fn nal_payload_bytes(nals: &[NalUnit]) -> usize {
 }
 
 /// Map a `StreamKind` to its MPEG-TS `stream_type` byte (PMT value).
+///
+/// Used for `StreamStats.stream_type` labelling on the receiver side; not
+/// emitted on the wire (the demuxer reads stream_type from the PMT). See
+/// `mpegts::common::StreamType` for the canonical mux-side encoding.
 fn stream_type_from_kind(k: &StreamKind) -> u8 {
     match k {
         StreamKind::Video(VideoCodec::H264) => 0x1B,
         StreamKind::Video(VideoCodec::H265) => 0x24,
         StreamKind::Video(VideoCodec::H266) => 0x33,
-        // AV1 carries stream_type 0x06 (PES private data) plus an AV01
-        // registration_descriptor in the PMT — descriptor emission lands
-        // in Phase 4. The byte returned here is the PMT value.
+        // AV1 rides stream_type 0x06 (PES private data) plus an AV01
+        // registration_descriptor in the PMT.
         StreamKind::Video(VideoCodec::Av1) => 0x06,
-        StreamKind::Audio(_) => 0x0F,
+        StreamKind::Audio(AudioCodec::Mp2) => 0x03,
+        StreamKind::Audio(AudioCodec::Aac) => 0x0F,
+        StreamKind::Audio(AudioCodec::AacLatm) => 0x11,
+        StreamKind::Audio(AudioCodec::Ac3) => 0x81,
         StreamKind::Subtitle(_) => 0x06,
         StreamKind::KlvSync { .. } => 0x15,
         StreamKind::KlvAsync => 0x06,
@@ -1331,6 +1337,17 @@ mod tests {
             d.options.stream_kind_overrides.get(&0x100),
             Some(&StreamKind::Video(VideoCodec::H265))
         );
+    }
+
+    /// Per-codec dispatch in stats `stream_type` byte. Prior code returned
+    /// 0x0F (ADTS AAC) for every audio kind; MP2/LATM/AC-3 streams misreported
+    /// in StreamStats.
+    #[test]
+    fn stream_type_from_kind_per_audio_codec() {
+        assert_eq!(stream_type_from_kind(&StreamKind::Audio(AudioCodec::Mp2)), 0x03);
+        assert_eq!(stream_type_from_kind(&StreamKind::Audio(AudioCodec::Aac)), 0x0F);
+        assert_eq!(stream_type_from_kind(&StreamKind::Audio(AudioCodec::AacLatm)), 0x11);
+        assert_eq!(stream_type_from_kind(&StreamKind::Audio(AudioCodec::Ac3)), 0x81);
     }
 
     #[test]

@@ -876,9 +876,27 @@ impl Demuxer {
                     },
                 });
             }
-            StreamKind::Subtitle(_) => {
-                // Reserved variant; not yet emitted by the demuxer
-                // until typed subtitle codecs land.
+            StreamKind::Subtitle(codec) => {
+                let payload_len = pes.payload.len();
+                let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
+                    crate::mpegts::stats::StreamStats {
+                        pid: stream.pid,
+                        stream_type: stream_type_from_kind(&stream.kind),
+                        program_number,
+                        ..Default::default()
+                    }
+                });
+                entry.items += 1;
+                entry.bytes += payload_len as u64;
+                self.queue.push_back(DemuxEvent::Sample {
+                    stream,
+                    pts,
+                    dts: None,
+                    payload: SamplePayload::Subtitle {
+                        codec,
+                        payload: pes.payload.to_vec(),
+                    },
+                });
             }
         }
     }
@@ -1431,5 +1449,75 @@ mod tests {
     fn classify_0x06_klva_still_klv_async_regression_guard() {
         let descs = vec![raw_desc(0x05, b"KLVA".to_vec())];
         assert_eq!(classify_0x06(&descs), StreamKind::KlvAsync);
+    }
+
+    #[test]
+    fn demuxer_emits_subtitle_sample_for_webvtt_pes() {
+        use crate::mpegts::demux::event::SubtitleCodec as DemuxSubtitleCodec;
+        use crate::mpegts::mux::{ConfigBuilder, SubtitleCodec as MuxSubtitleCodec, VideoCodec};
+
+        // Mux: single-program with one video stream and one WebVTT subtitle
+        // stream. Video is required because Config::validate enforces at least
+        // one video or KLV per program; subtitle alone wouldn't be a valid
+        // program shape.
+        let cfg = ConfigBuilder::default()
+            .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
+            .add_subtitle(0x200, MuxSubtitleCodec::WebVttInTs)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut muxer = crate::mpegts::mux::Muxer::new(cfg).unwrap();
+        let h = muxer.subtitle_handles()[0];
+        let cue = b"WEBVTT\n\nx-cue\n";
+        muxer.push_subtitle_to(h, 90_000, cue).unwrap();
+        let mut buf = vec![0u8; 188 * 64];
+        let n = muxer.pull(&mut buf);
+        buf.truncate(n);
+
+        // Demux: feed the muxed bytes, capture events.
+        let mut demuxer = Demuxer::new();
+        demuxer.feed(&buf).unwrap();
+        demuxer.flush();
+        let mut events = Vec::new();
+        while let Some(e) = demuxer.next_event() {
+            events.push(e);
+        }
+
+        let sample = events
+            .iter()
+            .find(|e| {
+                matches!(
+                    e,
+                    DemuxEvent::Sample {
+                        payload: SamplePayload::Subtitle { .. },
+                        ..
+                    }
+                )
+            })
+            .expect("subtitle Sample event present");
+
+        if let DemuxEvent::Sample {
+            stream,
+            pts,
+            dts,
+            payload: event_payload,
+        } = sample
+        {
+            assert_eq!(stream.pid, 0x200);
+            assert!(matches!(
+                stream.kind,
+                StreamKind::Subtitle(DemuxSubtitleCodec::WebVttInTs)
+            ));
+            assert_eq!(*pts, 90_000);
+            assert_eq!(*dts, None, "subtitles have no DTS (no B-frame reorder)");
+            if let SamplePayload::Subtitle { codec, payload } = event_payload {
+                assert_eq!(*codec, DemuxSubtitleCodec::WebVttInTs);
+                assert!(
+                    payload.windows(6).any(|w| w == b"WEBVTT"),
+                    "WEBVTT signature recovered from payload"
+                );
+            }
+        }
     }
 }

@@ -690,6 +690,7 @@ impl Demuxer {
         let kind = match s.stream_type {
             0x1B => StreamKind::Video(VideoCodec::H264),
             0x24 => StreamKind::Video(VideoCodec::H265),
+            0x33 => StreamKind::Video(VideoCodec::H266),
             0x06 => classify_0x06(&s.descriptors),
             0x15 => StreamKind::KlvSync { declared_link },
             other => {
@@ -1075,12 +1076,11 @@ fn stream_type_from_kind(k: &StreamKind) -> u8 {
     match k {
         StreamKind::Video(VideoCodec::H264) => 0x1B,
         StreamKind::Video(VideoCodec::H265) => 0x24,
-        StreamKind::Video(VideoCodec::H266) => {
-            unimplemented!("H266 stream_type mapping lands in Phase 2 (Tasks 3-6)")
-        }
-        StreamKind::Video(VideoCodec::Av1) => {
-            unimplemented!("AV1 stream_type mapping lands in Phase 4 (Tasks 15-21)")
-        }
+        StreamKind::Video(VideoCodec::H266) => 0x33,
+        // AV1 carries stream_type 0x06 (PES private data) plus an AV01
+        // registration_descriptor in the PMT — descriptor emission lands
+        // in Phase 4. The byte returned here is the PMT value.
+        StreamKind::Video(VideoCodec::Av1) => 0x06,
         StreamKind::Audio(_) => 0x0F,
         StreamKind::Subtitle(_) => 0x06,
         StreamKind::KlvSync { .. } => 0x15,

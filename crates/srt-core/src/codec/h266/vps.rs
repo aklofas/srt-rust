@@ -63,4 +63,24 @@ mod tests {
         let truncated = vec![];
         assert!(parse_vps(&truncated).is_err());
     }
+
+    #[test]
+    fn parse_vps_truncated_byte_returns_err() {
+        // Parser needs 4+6+3 = 13 bits; one byte (8 bits) is insufficient.
+        // The 3-bit max_sublayers_minus1 read should bail with TruncatedRbsp.
+        assert!(parse_vps(&[0x00]).is_err());
+    }
+
+    #[test]
+    fn parse_vps_max_fields() {
+        // vps_id=15 (max u4), max_layers_minus1=63 (max u6), max_sublayers_minus1=7 (max u3).
+        // All-ones across 13 bits:
+        //   byte 0: vps_id(4)=1111 | max_layers[upper 4]=1111 → 0xFF
+        //   byte 1: max_layers[lower 2]=11 | max_sublayers(3)=111 | pad=000 → 0xF8
+        let rbsp = vec![0xFF, 0xF8];
+        let vps = parse_vps(&rbsp).expect("max-field VPS should parse");
+        assert_eq!(vps.vps_id, 15);
+        assert_eq!(vps.max_layers, 64); // saturating_add(1) on 63
+        assert_eq!(vps.max_sub_layers, 8);
+    }
 }

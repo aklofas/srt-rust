@@ -278,4 +278,11 @@ mod tests {
     fn parse_sps_truncated_returns_err() {
         assert!(parse_sps(&[]).is_err());
     }
+
+    #[test]
+    fn parse_sps_truncated_byte_returns_err() {
+        // Parser reads sps_id(4) + vps_id(4) = 8 bits, then max_sublayers(3)
+        // beyond a single byte should bail with TruncatedRbsp.
+        assert!(parse_sps(&[0x00]).is_err());
+    }
 }

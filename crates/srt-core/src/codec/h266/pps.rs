@@ -42,4 +42,28 @@ mod tests {
         assert_eq!(pps.pps_id, 0);
         assert_eq!(pps.sps_id, 0);
     }
+
+    #[test]
+    fn parse_pps_truncated_returns_err() {
+        // Empty input — bitreader bails on the first read.
+        assert!(parse_pps(&[]).is_err());
+    }
+
+    #[test]
+    fn parse_pps_truncated_byte_returns_err() {
+        // Parser needs 6+4 = 10 bits; one byte (8 bits) is insufficient.
+        assert!(parse_pps(&[0xFF]).is_err());
+    }
+
+    #[test]
+    fn parse_pps_max_ids() {
+        // pps_id=63 (max u6), sps_id=15 (max u4); 10 bits all-ones.
+        //   byte 0: pps_id(6)=111111 | sps_id[upper 2]=11 → 0xFF
+        //   byte 1: sps_id[lower 2]=11 | pad=000000 → 0xC0
+        // Trailing bits are unread by the v0 parser, so no rbsp_trailing_bits
+        // pattern is required.
+        let pps = parse_pps(&[0xFF, 0xC0]).expect("max-id PPS should parse");
+        assert_eq!(pps.pps_id, 63);
+        assert_eq!(pps.sps_id, 15);
+    }
 }

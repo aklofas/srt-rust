@@ -232,6 +232,8 @@ fn describe_stream_kind(k: &StreamKind) -> String {
     match k {
         StreamKind::Video(VideoCodec::H264) => "Video(H.264)".into(),
         StreamKind::Video(VideoCodec::H265) => "Video(H.265)".into(),
+        StreamKind::Video(VideoCodec::H266) => "Video(H.266)".into(),
+        StreamKind::Video(VideoCodec::Av1) => "Video(AV1)".into(),
         StreamKind::Audio(_) => "Audio".into(),
         StreamKind::Subtitle(_) => "Subtitle".into(),
         StreamKind::KlvSync { declared_link } => match declared_link {

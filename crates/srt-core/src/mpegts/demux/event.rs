@@ -70,6 +70,11 @@ pub enum StreamKind {
 pub enum VideoCodec {
     H264,
     H265,
+    /// H.266 / VVC (ITU-T H.266 V4). PMT stream_type = 0x33.
+    H266,
+    /// AV1 (AOM Bitstream Spec). PMT stream_type = 0x06 with
+    /// `registration_descriptor` `format_identifier = "AV01"`.
+    Av1,
 }
 
 /// Audio codec carried in `SamplePayload::Audio`. Identifies the codec

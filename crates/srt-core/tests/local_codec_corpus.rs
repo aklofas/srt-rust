@@ -111,6 +111,9 @@ fn local_corpus_parameter_sets_match_ffprobe() {
                             }
                         }
                     }
+                    // H.266 / AV1 typed parameter-set parsers ship in
+                    // staged work; no corpus fixture targets them today.
+                    VideoCodec::H266 | VideoCodec::Av1 => {}
                 }
             }
         }

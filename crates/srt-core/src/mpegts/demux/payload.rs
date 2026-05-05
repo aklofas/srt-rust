@@ -99,6 +99,15 @@ fn parse_one_nal(nal: &[u8], codec: VideoCodec) -> Option<NalUnit> {
                 payload: nal[2..].to_vec(),
             })
         }
+        VideoCodec::H266 => {
+            unimplemented!("H266 NAL parsing lands in Phase 2 (Tasks 3-6)")
+        }
+        VideoCodec::Av1 => {
+            // AV1 is OBU-shaped, not NAL-shaped — it should never reach
+            // this NAL splitter. Phase 4 (Tasks 15-21) routes AV1 to a
+            // separate OBU parser before this function is called.
+            unimplemented!("AV1 uses OBU framing, not NAL — routed separately in Phase 4")
+        }
     }
 }
 

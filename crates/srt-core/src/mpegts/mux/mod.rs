@@ -20,12 +20,18 @@ use crate::mpegts::common::pid;
 /// Video codec carried by the muxer's video PID.
 ///
 /// Drives the PMT `stream_type` byte: 0x1B for H.264 / AVC,
-/// 0x24 for H.265 / HEVC. Both supported; mid-stream codec change is
-/// out of scope.
+/// 0x24 for H.265 / HEVC, 0x33 for H.266 / VVC. AV1 sits on
+/// `stream_type 0x06` with an auto-emitted AV01 `registration_descriptor`.
+/// Mid-stream codec change is out of scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoCodec {
     H264,
     H265,
+    /// H.266 / VVC. Drives PMT stream_type 0x33.
+    H266,
+    /// AV1. Drives PMT stream_type 0x06 with auto-emitted AV01
+    /// `registration_descriptor`.
+    Av1,
 }
 
 /// Transport-stream type for the KLV PID.
@@ -1377,6 +1383,12 @@ impl Muxer {
                 let stream_type_byte = match v.codec {
                     VideoCodec::H264 => StreamType::H264.as_u8(),
                     VideoCodec::H265 => StreamType::H265.as_u8(),
+                    VideoCodec::H266 => {
+                        unimplemented!("H266 stream_type byte mapping lands in Task 4")
+                    }
+                    VideoCodec::Av1 => {
+                        unimplemented!("AV1 stream_type byte mapping lands in Task 18")
+                    }
                 };
                 per_stream.insert(
                     v.pid,
@@ -2229,6 +2241,14 @@ impl Muxer {
                         codec: VideoCodec::H265,
                         ..
                     } => StreamType::H265,
+                    StreamSpec::Video {
+                        codec: VideoCodec::H266,
+                        ..
+                    } => unimplemented!("H266 PMT emission lands in Task 4"),
+                    StreamSpec::Video {
+                        codec: VideoCodec::Av1,
+                        ..
+                    } => unimplemented!("AV1 PMT emission lands in Task 18"),
                     StreamSpec::Klv {
                         stream_type: KlvStreamType::PrivateData,
                         ..

@@ -188,6 +188,14 @@ fn drain_and_print(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
                 }),
                 Err(e) => Some(format!("H.265 parse error: {e}")),
             },
+            // H.266 / AV1 carriage and typed parameter-set parsers are
+            // staged work — variants exist in the public enum so consumer
+            // match blocks are exhaustive once those parsers ship, but
+            // this example doesn't have anything to call yet.
+            VideoCodec::H266 => Some("H.266 parameter-set parser not yet shipped".to_string()),
+            VideoCodec::Av1 => {
+                Some("AV1 OBU parser not yet shipped (OBU framing, not NAL)".to_string())
+            }
         };
 
         if let Some(s) = summary {

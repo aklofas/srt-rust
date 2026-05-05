@@ -1235,9 +1235,7 @@ fn has_recognized_subtitle_descriptor(
 /// through to `StreamKind::Unknown(0x06)` from the standard cascade;
 /// strict mode (`StrictMode::Full`) converts the issue to a fatal
 /// `DemuxError::StrictRejection`.
-fn is_malformed_av1_registration(
-    descriptors: &[crate::mpegts::demux::psi::RawDescriptor],
-) -> bool {
+fn is_malformed_av1_registration(descriptors: &[crate::mpegts::demux::psi::RawDescriptor]) -> bool {
     descriptors
         .iter()
         .any(|d| d.tag == 0x05 && d.data.len() < 4 && d.data.starts_with(b"AV"))

@@ -73,7 +73,10 @@ fn build_av1_obu(obu_type: u8, body: &[u8]) -> Vec<u8> {
     // full LEB128 encoder for larger OBUs; this synthetic helper
     // intentionally caps at 127 bytes so the assertion below catches
     // accidental misuse.
-    assert!(body.len() < 128, "synthetic AU helper supports only small bodies");
+    assert!(
+        body.len() < 128,
+        "synthetic AU helper supports only small bodies"
+    );
     v.push(body.len() as u8);
     v.extend_from_slice(body);
     v

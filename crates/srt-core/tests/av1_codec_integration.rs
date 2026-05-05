@@ -2,9 +2,7 @@
 
 use srt_core::codec::av1::parse_obu_stream;
 use srt_core::mpegts::demux::Demuxer;
-use srt_core::mpegts::demux::event::{
-    DemuxEvent, Obu, SamplePayload, VideoCodec, VideoPayload,
-};
+use srt_core::mpegts::demux::event::{DemuxEvent, Obu, SamplePayload, VideoCodec, VideoPayload};
 use srt_core::mpegts::mux::{Config, Muxer, VideoCodec as MuxVideoCodec};
 
 fn obu_with_size(obu_type: u8, payload: &[u8]) -> Vec<u8> {
@@ -66,7 +64,10 @@ fn av1_end_to_end_parses_seq_header_via_obu_stream() {
             all_obus.extend(obus);
         }
     }
-    assert!(!all_obus.is_empty(), "expected at least one Sample with OBUs");
+    assert!(
+        !all_obus.is_empty(),
+        "expected at least one Sample with OBUs"
+    );
 
     let stream = parse_obu_stream(&all_obus);
     assert_eq!(stream.sequence_headers.len(), 1, "expected one SH");

@@ -49,9 +49,7 @@ pub fn parse_obu_stream(obus: &[Obu]) -> Av1ObuStream {
                 } else {
                     unparseable.push((
                         obu.obu_type,
-                        ParseError::EngineError(
-                            "frame header before sequence header".into(),
-                        ),
+                        ParseError::EngineError("frame header before sequence header".into()),
                     ));
                 }
             }

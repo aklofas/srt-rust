@@ -223,6 +223,34 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A real-world capture with multi-OP AV1
   streams, or a consumer shipping scalable AV1.
 
+## AV1-in-MPEG-2-TS binding §3.2 / §3.4 carriage conformance
+
+- **Status:** Deferred. Three binding-spec deviations in current AV1
+  carriage: (1) §3.2 `ts_open_bitstream_unit()` framing — binding
+  mandates a `0x000001` start-code prefix per OBU plus emulation-
+  prevention escapes; library carries raw OBUs in PES (low-overhead
+  bitstream format directly). (2) §3.4 PES `stream_id` — binding
+  mandates `0xBD` (private_stream_1); library uses `0xE0` (audio range,
+  common for video but not what the binding says). (3) §3.4
+  `data_alignment_indicator = 1` — binding mandates; library doesn't
+  set.
+- **Why deferred:** ffmpeg's `mpegtsenc` muxer with libaom encoders
+  also doesn't follow §3.2 framing (per project memory) and likewise
+  doesn't emit the AV01 registration_descriptor. Switching to spec-
+  conformant carriage would break loopback with ffmpeg-encoded AV1
+  TS streams. Current behavior interops with ffmpeg + libaom + hls.js
+  + mediamtx (the de facto AV1-in-TS toolchain).
+- **Trigger to revisit:** A real-world AV1 receiver surfaces that
+  requires §3.2 framing or §3.4 stream_id (likely a strict-conformance
+  decoder). Or the binding spec gets adopted widely enough that
+  ffmpeg's mpegtsenc switches and breaks our current loopback.
+- **Scope when added:** Implement §3.2 OBU-to-`ts_open_bitstream_unit`
+  wrapper in `mpegts::mux` AV1 path with matching unwrap in
+  `mpegts::demux`. Switch `stream_id` to `0xBD` in `write_pes_header`
+  AV1 branch; set `data_alignment_indicator = 1`. Strict-mode would
+  raise `NonConformantIssue::Av1MissingTsObuFraming` /
+  `Av1WrongStreamId` on incoming streams that don't match.
+
 ## `AV1_video_descriptor` (typed PMT descriptor)
 
 - **Status:** Deferred. The muxer auto-emits the AV01 `registration_descriptor`

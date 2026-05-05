@@ -88,7 +88,11 @@ impl<'a> BitReader<'a> {
         let start = self.bit_pos;
         let mut zeros = 0u32;
         loop {
-            if zeros > 32 {
+            // Guard at >= 32: codeNum = 2^zeros − 1 + suffix, where the
+            // maximum representable codeNum in u32 is 2^32 − 1 (requires
+            // zeros = 31, suffix = 2^31 − 1). zeros = 32 makes `1u32 << 32`
+            // undefined behavior (panics in debug, wraps in release).
+            if zeros >= 32 {
                 return Err(ParseError::InvalidGolomb { offset_bits: start });
             }
             let b = self.read_one_bit()?;
@@ -188,5 +192,25 @@ mod tests {
             br.read_ue(),
             Err(ParseError::InvalidGolomb { .. })
         ));
+    }
+
+    #[test]
+    fn read_ue_32_leading_zeros_does_not_overflow() {
+        // Per H.265 §9.2.1 Eq 9-2: codeNum = 2^leadingZeros − 1 + suffix.
+        // With zeros = 32, codeNum requires (1u32 << 32) which is UB in u32:
+        // panics in debug, wraps to 1 in release. The maximum representable
+        // codeNum in u32 is 2^32 − 1, requiring zeros = 31 with all-ones
+        // suffix yielding 2^32 − 2. zeros = 32 is unrepresentable.
+        //
+        // Bit stream: 32 zero bits + 1 marker bit + 32-bit suffix.
+        // Bytes 0-3 = 0x00 (32 zeros), byte 4 = 0x80 (marker '1' + 7 zeros),
+        // bytes 5-8 = 0x00 (suffix bits).
+        let bytes = [0x00, 0x00, 0x00, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00];
+        let mut br = BitReader::new(&bytes);
+        let result = br.read_ue();
+        assert!(
+            matches!(result, Err(ParseError::InvalidGolomb { .. })),
+            "expected InvalidGolomb on 32-zero codeword, got {result:?}",
+        );
     }
 }

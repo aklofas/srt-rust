@@ -299,10 +299,16 @@ fn build_subtitle_with_klv() -> Vec<u8> {
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
-    // Dummy KLV payload: just the SMPTE 336M UL header bytes — not a
-    // real ST 0601 packet, but enough for the demuxer to surface as a
-    // KLV sample.
-    mux.push_klv(b"\x06\x0E\x2B\x34short", 90_000).unwrap();
+    // Dummy KLV payload: the full 16-byte SMPTE 336M UL header (which
+    // `classify_klv` requires for the bare-LS path) plus a trailing
+    // length+value stub. Not a real ST 0601 packet, but enough for the
+    // demuxer to surface as a KLV `Metadata` event (the 16-byte UL
+    // minimum is enforced inside `classify_klv`).
+    mux.push_klv(
+        b"\x06\x0E\x2B\x34\x02\x0B\x01\x01\x0E\x01\x03\x01\x01\x00\x00\x00\x02\xAB\xCD",
+        90_000,
+    )
+    .unwrap();
     let h = mux.subtitle_handles()[0];
     mux.push_subtitle_to(h, 90_000, b"WEBVTT\n").unwrap();
     drain_all(&mut mux)

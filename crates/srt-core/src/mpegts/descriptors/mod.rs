@@ -8,6 +8,12 @@
 //!
 //! Reference: ISO/IEC 13818-1 §2.6 and ETSI EN 300 468 §6.2.
 
+pub mod parse;
+pub use parse::{
+    ParseError, SubtitlingDescriptorEntry, TeletextDescriptorEntry, find_descriptor_tag,
+    find_format_identifier, parse_subtitling_descriptor, parse_teletext_descriptor,
+};
+
 /// Maximum total descriptor-loop length per ES PID, bounded by the
 /// PMT-fits-in-one-TS-packet rule. Computed as: 183 PMT payload bytes −
 /// 17 PMT fixed overhead = 166 bytes available for the entire ES loop

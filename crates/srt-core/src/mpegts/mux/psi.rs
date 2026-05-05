@@ -118,33 +118,66 @@ pub(crate) const MAX_PMT_SECTION_BYTES: usize = 183;
 /// Estimate the PMT section body size (bytes) for a `ProgramConfig`.
 ///
 /// Used by `Config::validate()` to reject configurations that would produce
-/// a PMT section too large for one TS packet. Accounts for the pre-composed
-/// descriptor cache bytes (KLVA auto-emit + caller-supplied) and program-
-/// level descriptors.
+/// a PMT section too large for one TS packet. Counts:
+/// * fixed header bytes (16 = 3 + 9 + CRC4)
+/// * program-level descriptor bytes (caller-supplied)
+/// * per-stream entry overhead (5 bytes each)
+/// * caller-supplied per-stream descriptor TLV bytes
+/// * per-stream auto-emit bytes — KLVA Registration (6 B) on PrivateData KLV
+///   without a caller Registration; AV01 Registration (6 B) on AV1 video
+///   without a caller AV01; subtitling_descriptor (10 B), teletext_descriptor
+///   (7 B), VTTC Registration (6 B), or GA94 Registration (6 B) on subtitle
+///   streams (always — the auto-emit IS the codec marker).
 pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig) -> usize {
+    use crate::mpegts::mux::{KlvStreamType, StreamSpec, SubtitleCodec, VideoCodec};
+
     let mut es_loop_size: usize = 0;
-    for (i, _spec) in prog.streams.iter().enumerate() {
-        // stream_type(1) + reserved+ES_PID(2) + reserved+ES_info_length(2) + descriptor bytes.
-        // Descriptor bytes = sum of caller-supplied TLV lengths (KLVA auto-emit is included
-        // in stream_descriptors for validated configs, but for the size check we must count
-        // both auto-emitted and caller-supplied). The pre-composed cache bytes live in the
-        // Muxer struct, not in ProgramConfig — so here we only count caller-supplied bytes,
-        // and add KLVA auto-emit size (6 bytes) when applicable.
-        let caller_descs_len: usize = prog.stream_descriptors[i].iter().map(|d| d.len()).sum();
-        let auto_klva_len = match &prog.streams[i] {
-            crate::mpegts::mux::StreamSpec::Klv {
-                stream_type: crate::mpegts::mux::KlvStreamType::PrivateData,
+    for (i, spec) in prog.streams.iter().enumerate() {
+        let caller_descs = &prog.stream_descriptors[i];
+        let caller_descs_len: usize = caller_descs.iter().map(|d| d.len()).sum();
+        let caller_has_registration =
+            caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x05);
+
+        let auto_emit_len = match spec {
+            StreamSpec::Klv {
+                stream_type: KlvStreamType::PrivateData,
                 ..
             } => {
-                // Auto-emit KLVA Registration (6 bytes) unless caller already supplies one.
-                let caller_has_reg = prog.stream_descriptors[i]
-                    .iter()
-                    .any(|d| !d.is_empty() && d[0] == 0x05);
-                if caller_has_reg { 0 } else { 6 }
+                // KLVA Registration suppressed when caller supplies any Registration.
+                if caller_has_registration { 0 } else { 6 }
             }
+            StreamSpec::Video {
+                codec: VideoCodec::Av1,
+                ..
+            } => {
+                // AV01 Registration suppressed only on caller-supplied AV01 (mirrors
+                // the precise suppression in mux/mod.rs:1349-1366).
+                let caller_has_av01 = caller_descs
+                    .iter()
+                    .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] == b"AV01");
+                if caller_has_av01 { 0 } else { 6 }
+            }
+            // Subtitle auto-emit always fires — codec marker for stream_type 0x06.
+            StreamSpec::Subtitle {
+                codec: SubtitleCodec::DvbSubtitling { .. },
+                ..
+            } => 10, // tag(1) + length(1) + 8-byte single entry
+            StreamSpec::Subtitle {
+                codec: SubtitleCodec::DvbTeletext { .. },
+                ..
+            } => 7, // tag(1) + length(1) + 5-byte single entry
+            StreamSpec::Subtitle {
+                codec: SubtitleCodec::Cea708Standalone,
+                ..
+            } => 6, // GA94 Registration
+            StreamSpec::Subtitle {
+                codec: SubtitleCodec::WebVttInTs,
+                ..
+            } => 6, // VTTC Registration
             _ => 0,
         };
-        es_loop_size += 5 + caller_descs_len + auto_klva_len;
+        // stream_type(1) + reserved+ES_PID(2) + reserved+ES_info_length(2) + descriptor bytes.
+        es_loop_size += 5 + caller_descs_len + auto_emit_len;
     }
     let program_info_len: usize = prog.program_descriptors.iter().map(|d| d.len()).sum();
     // table_id(1) + section_syntax+length(2) + program_number(2) +
@@ -352,6 +385,51 @@ mod tests {
         // Padding after CRC should be 0xFF (sanity check).
         assert_eq!(buf[21], 0xFF);
         assert_eq!(buf[187], 0xFF);
+    }
+
+    /// Regression for audit 2026-05-05 §3 Critical #1:
+    /// `estimate_pmt_section_size` only accounted for KLVA auto-emit;
+    /// missed AV01 (6 B), DVB subtitling (10 B), DVB teletext (7 B),
+    /// CEA-708 GA94 (6 B), WebVTT VTTC (6 B). Configs near the 183-byte
+    /// budget passed `validate()` then failed at PMT emission with
+    /// `PmtTooLarge` — defeating build-time validation.
+    ///
+    /// This test builds a config with 15 DVB-sub streams whose auto-emit
+    /// (10 bytes each = 150 bytes) blows past the budget. Pre-fix
+    /// `validate()` returned Ok (estimate ignored auto-emit, came in at
+    /// ~96 bytes); post-fix it correctly returns Err(PmtTooLarge).
+    #[test]
+    fn estimate_pmt_size_includes_subtitle_auto_emit() {
+        use crate::mpegts::mux::SubtitleCodec;
+
+        let mut builder = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264);
+        for i in 0..15u16 {
+            builder = builder.add_subtitle(
+                0x200 + i,
+                SubtitleCodec::DvbSubtitling {
+                    language: *b"eng",
+                    subtitling_type: 0x10,
+                    composition_page_id: 1,
+                    ancillary_page_id: 1,
+                },
+            );
+        }
+        let result = builder.end_program().build();
+        match result {
+            Err(crate::error::MuxError::PmtTooLarge { used_bytes, .. }) => {
+                assert!(
+                    used_bytes > MAX_PMT_SECTION_BYTES,
+                    "PmtTooLarge must report a size > {MAX_PMT_SECTION_BYTES}, got {used_bytes}",
+                );
+            }
+            other => panic!(
+                "expected Err(PmtTooLarge) — config has 15 DVB-sub streams whose \
+                 auto-emit (10 B each) blows past {MAX_PMT_SECTION_BYTES} byte budget; \
+                 got {other:?}",
+            ),
+        }
     }
 
     /// Regression for audit 2026-05-05 §2 Critical #1: caller-supplied

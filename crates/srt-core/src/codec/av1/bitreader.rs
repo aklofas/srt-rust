@@ -1,0 +1,145 @@
+//! AV1-specific bit reader. Per AV1 Bitstream Spec §4.7 / §4.10.
+//!
+//! Distinct from H.26x's Annex-B Exp-Golomb reader (which lives in
+//! `crate::codec::h265::bitreader`). AV1 has its own primitive set:
+//!   * `f(n)` — fixed-width unsigned read (§4.7.2)
+//!   * `uvlc()` — variable-length code (§4.10.3)
+//!   * `byte_align()` — skip to next byte boundary (§5.3.1)
+//!   * (LEB128 lives in [`super::leb128`].)
+//!
+//! AV1 OBU bodies do NOT use emulation-prevention bytes, so this
+//! reader is byte-clean — no `00 00 03` skip logic like H.26x.
+
+#![allow(dead_code)] // primitives surface in Tasks 23-25
+
+use crate::codec::ParseError;
+
+pub struct Av1BitReader<'a> {
+    buf: &'a [u8],
+    bit_pos: usize, // total bits consumed (MSB-first per byte)
+}
+
+impl<'a> Av1BitReader<'a> {
+    pub fn new(buf: &'a [u8]) -> Self {
+        Self { buf, bit_pos: 0 }
+    }
+
+    /// `f(n)` per AV1 §4.7.2 — read n bits as unsigned.
+    pub fn f(&mut self, n: usize) -> Result<u64, ParseError> {
+        if n > 64 {
+            return Err(ParseError::EngineError(format!(
+                "f(n>64) not supported (n={n})"
+            )));
+        }
+        if self.bit_pos + n > self.buf.len() * 8 {
+            return Err(ParseError::TruncatedRbsp {
+                offset_bits: self.bit_pos as u32,
+                needed_bits: n as u32,
+            });
+        }
+        let mut v: u64 = 0;
+        for _ in 0..n {
+            let byte_idx = self.bit_pos / 8;
+            let bit_idx = 7 - (self.bit_pos % 8);
+            let bit = (self.buf[byte_idx] >> bit_idx) & 1;
+            v = (v << 1) | u64::from(bit);
+            self.bit_pos += 1;
+        }
+        Ok(v)
+    }
+
+    /// `uvlc()` per AV1 §4.10.3.
+    ///
+    /// Read leading zero bits until 1; let `n` be the count. Then
+    /// read `n` more bits as unsigned `extra`. Result is
+    /// `(1 << n) - 1 + extra`. If leading zeros >= 32, return the
+    /// spec sentinel `2^32 - 1`.
+    pub fn uvlc(&mut self) -> Result<u64, ParseError> {
+        let mut leading_zeros = 0usize;
+        while leading_zeros < 32 {
+            let bit = self.f(1)?;
+            if bit == 1 {
+                break;
+            }
+            leading_zeros += 1;
+        }
+        if leading_zeros >= 32 {
+            // Spec: return 2^32 - 1 (the "infinity" / overflow sentinel).
+            return Ok((1u64 << 32) - 1);
+        }
+        let extra = if leading_zeros == 0 {
+            0
+        } else {
+            self.f(leading_zeros)?
+        };
+        Ok((1u64 << leading_zeros) - 1 + extra)
+    }
+
+    /// Skip until next byte boundary (`byte_alignment()` per §5.3.1).
+    pub fn byte_align(&mut self) {
+        self.bit_pos = (self.bit_pos + 7) & !7;
+    }
+
+    pub fn bit_pos(&self) -> usize {
+        self.bit_pos
+    }
+    pub fn buf_len_bits(&self) -> usize {
+        self.buf.len() * 8
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn f_n_reads_msb_first() {
+        let mut br = Av1BitReader::new(&[0b1010_0110]);
+        assert_eq!(br.f(4).unwrap(), 0b1010);
+        assert_eq!(br.f(4).unwrap(), 0b0110);
+    }
+
+    #[test]
+    fn uvlc_zero() {
+        // uvlc encoding of 0 is the single bit 1.
+        let mut br = Av1BitReader::new(&[0b1000_0000]);
+        assert_eq!(br.uvlc().unwrap(), 0);
+    }
+
+    #[test]
+    fn uvlc_three() {
+        // uvlc(3) = leading zeros count = 2; extra = 0b00; value = (1<<2) - 1 + 0 = 3.
+        // Bitstream: 0 0 1 0 0 ... = 0b0010_0000
+        let mut br = Av1BitReader::new(&[0b0010_0000]);
+        assert_eq!(br.uvlc().unwrap(), 3);
+    }
+
+    #[test]
+    fn uvlc_six() {
+        // uvlc(6) = leading zeros count = 2; extra = 0b11; value = (1<<2) - 1 + 3 = 6.
+        // Bitstream: 0 0 1 1 1 = 0b0011_1000
+        let mut br = Av1BitReader::new(&[0b0011_1000]);
+        assert_eq!(br.uvlc().unwrap(), 6);
+    }
+
+    #[test]
+    fn truncated_returns_err() {
+        let mut br = Av1BitReader::new(&[0xFF]);
+        assert!(br.f(16).is_err());
+    }
+
+    #[test]
+    fn byte_align_skips_to_next_byte_boundary() {
+        let mut br = Av1BitReader::new(&[0xFF, 0xFF]);
+        let _ = br.f(3); // consume 3 bits
+        br.byte_align();
+        assert_eq!(br.bit_pos(), 8);
+    }
+
+    #[test]
+    fn byte_align_noop_when_already_aligned() {
+        let mut br = Av1BitReader::new(&[0xFF]);
+        br.byte_align();
+        assert_eq!(br.bit_pos(), 0);
+    }
+}

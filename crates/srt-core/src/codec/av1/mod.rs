@@ -14,6 +14,7 @@
 //! - Other OBU types (Tile Group, Metadata, Padding) pass through
 //!   unparsed; see `mpegts::demux::event::Obu`.
 
+pub(crate) mod bitreader;
 pub mod frame_header;
 pub mod leb128;
 pub mod obu_stream;

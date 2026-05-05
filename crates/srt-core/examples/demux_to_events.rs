@@ -121,6 +121,11 @@ fn main() {
                     codec,
                     payload: VideoPayload::Obus(obus),
                 } => {
+                    // OBU-shaped video (AV1) carriage lands in a later
+                    // task; the demuxer does not emit this variant today,
+                    // so this arm exists only to keep the match
+                    // exhaustive — adding AV1 wiring later won't silently
+                    // change behavior here.
                     println!(
                         "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} obus={}",
                         stream.pid,

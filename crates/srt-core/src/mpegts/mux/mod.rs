@@ -1322,6 +1322,47 @@ impl Muxer {
                         bytes.extend_from_slice(KLVA_REGISTRATION_DESCRIPTOR);
                     }
                 }
+                // Subtitle auto-emit: codec-disambiguating per-stream descriptor.
+                // All four SubtitleCodec variants ride PMT stream_type 0x06; the
+                // descriptor here is what tells receivers which codec rides on
+                // this PID. Unlike KLV's KLVA Registration auto-emit (suppressed
+                // when the caller supplies their own Registration), the subtitle
+                // auto-emit ALWAYS fires — caller-supplied descriptors append
+                // afterwards. The auto-emit IS the codec marker; suppressing
+                // would silently break receiver classification.
+                if let StreamSpec::Subtitle { codec, .. } = spec {
+                    let auto = match codec {
+                        SubtitleCodec::DvbSubtitling {
+                            language,
+                            subtitling_type,
+                            composition_page_id,
+                            ancillary_page_id,
+                        } => crate::mpegts::descriptors::subtitling_descriptor(
+                            *language,
+                            *subtitling_type,
+                            *composition_page_id,
+                            *ancillary_page_id,
+                        ),
+                        SubtitleCodec::DvbTeletext {
+                            language,
+                            teletext_type,
+                            magazine_number,
+                            page_number,
+                        } => crate::mpegts::descriptors::teletext_descriptor(
+                            *language,
+                            *teletext_type,
+                            *magazine_number,
+                            *page_number,
+                        ),
+                        SubtitleCodec::Cea708Standalone => {
+                            crate::mpegts::descriptors::format_identifier_ga94()
+                        }
+                        SubtitleCodec::WebVttInTs => {
+                            crate::mpegts::descriptors::format_identifier_vttc()
+                        }
+                    };
+                    bytes.extend_from_slice(&auto);
+                }
                 for tlv in caller_descs {
                     bytes.extend_from_slice(tlv);
                 }
@@ -1378,9 +1419,9 @@ impl Muxer {
             }
             for s in &prog_subtitle {
                 // All four subtitle codecs ride PMT stream_type 0x06
-                // (PrivateData); the per-stream PMT descriptor (added in
-                // Task 9) disambiguates between DVB-sub, teletext,
-                // CEA-708 standalone, and WebVTT-in-TS.
+                // (PrivateData); the per-stream PMT descriptor
+                // disambiguates between DVB-sub, teletext, CEA-708
+                // standalone, and WebVTT-in-TS.
                 per_stream.insert(
                     s.pid,
                     crate::mpegts::stats::StreamStats {
@@ -3237,6 +3278,138 @@ mod tests {
         assert_eq!(muxer.pmt_descriptor_caches[0][0].len(), 22);
         assert_eq!(muxer.pmt_descriptor_caches[0][0][0], 0x26);
         assert_eq!(muxer.pmt_descriptor_caches[0][0][11], 0x27);
+    }
+
+    // ── Task 9: subtitle PMT descriptor auto-emit ────────────────────────
+
+    #[test]
+    fn pmt_emits_subtitle_entry_with_subtitling_descriptor() {
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(
+                0x200,
+                SubtitleCodec::DvbSubtitling {
+                    language: *b"eng",
+                    subtitling_type: 0x10,
+                    composition_page_id: 0x0001,
+                    ancillary_page_id: 0x0001,
+                },
+            )
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+
+        // Stream 0 (video) — no auto-emit, no caller — empty cache entry.
+        assert!(muxer.pmt_descriptor_caches[0][0].is_empty());
+
+        // Stream 1 (subtitle) — subtitling_descriptor: tag 0x59, len 0x08,
+        // 3 bytes language + 1 type + 2 composition_page_id + 2 ancillary_page_id
+        // = 10 bytes total.
+        let entry = &muxer.pmt_descriptor_caches[0][1];
+        assert_eq!(entry.len(), 10);
+        assert_eq!(entry[0], 0x59); // subtitling_descriptor tag
+        assert_eq!(entry[1], 0x08); // length
+        assert_eq!(&entry[2..5], b"eng");
+        assert_eq!(entry[5], 0x10);
+        assert_eq!(&entry[6..8], &[0x00, 0x01]);
+        assert_eq!(&entry[8..10], &[0x00, 0x01]);
+    }
+
+    #[test]
+    fn pmt_emits_subtitle_entry_with_vttc_registration_for_webvtt() {
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+
+        // WebVttInTs auto-emit: registration_descriptor tag 0x05, len 0x04,
+        // format_identifier == "VTTC" — 6 bytes total.
+        let entry = &muxer.pmt_descriptor_caches[0][1];
+        assert_eq!(entry.len(), 6);
+        assert_eq!(entry[0], 0x05); // registration_descriptor tag
+        assert_eq!(entry[1], 0x04); // length
+        assert_eq!(&entry[2..6], b"VTTC");
+    }
+
+    #[test]
+    fn pmt_emits_subtitle_entry_with_ga94_registration_for_cea708_standalone() {
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::Cea708Standalone)
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+
+        // Cea708Standalone auto-emit: registration_descriptor "GA94".
+        let entry = &muxer.pmt_descriptor_caches[0][1];
+        assert_eq!(entry.len(), 6);
+        assert_eq!(entry[0], 0x05);
+        assert_eq!(entry[1], 0x04);
+        assert_eq!(&entry[2..6], b"GA94");
+    }
+
+    #[test]
+    fn pmt_emits_subtitle_entry_with_teletext_descriptor() {
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(
+                0x200,
+                SubtitleCodec::DvbTeletext {
+                    language: *b"eng",
+                    teletext_type: 0x02,
+                    magazine_number: 1,
+                    page_number: 0x88,
+                },
+            )
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+
+        // teletext_descriptor: tag 0x56, len 0x05 — 7 bytes total.
+        let entry = &muxer.pmt_descriptor_caches[0][1];
+        assert_eq!(entry.len(), 7);
+        assert_eq!(entry[0], 0x56);
+        assert_eq!(entry[1], 0x05);
+        assert_eq!(&entry[2..5], b"eng");
+        // teletext_type (5 bits) << 3 | magazine_number (3 bits) = 0x02<<3 | 1 = 0x11
+        assert_eq!(entry[5], (0x02 << 3) | 0x01);
+        assert_eq!(entry[6], 0x88);
+    }
+
+    #[test]
+    fn pmt_appends_caller_supplied_descriptors_after_auto_emit() {
+        // Caller-supplied stream_identifier_descriptor (tag 0x52, len 0x01,
+        // component_tag 0x42 — 3 bytes) appends AFTER the VTTC auto-emit.
+        // Contrast with KLV's KLVA-suppression rule: for subtitles the
+        // auto-emit IS the codec marker, so caller bytes never suppress it.
+        let extra: Vec<Vec<u8>> = vec![vec![0x52u8, 0x01, 0x42]];
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .stream_descriptors_for_subtitle(0, extra)
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+
+        // VTTC auto-emit (6 bytes) + stream_identifier (3 bytes) = 9 bytes.
+        let entry = &muxer.pmt_descriptor_caches[0][1];
+        assert_eq!(entry.len(), 9);
+        // Auto-emit first.
+        assert_eq!(&entry[..6], &[0x05, 0x04, b'V', b'T', b'T', b'C']);
+        // Caller's stream_identifier_descriptor after.
+        assert_eq!(&entry[6..9], &[0x52, 0x01, 0x42]);
     }
 
     // ── Task 7: add_audio + audio cap + audio-only program tests ─────────

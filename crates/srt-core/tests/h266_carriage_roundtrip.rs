@@ -4,10 +4,10 @@
 //! muxer + demuxer round-trip preserves the codec classification (PMT
 //! stream_type 0x33 -> `VideoCodec::H266`) and the per-NAL header fields.
 
+use srt_core::mpegts::demux::Demuxer;
 use srt_core::mpegts::demux::event::{
     DemuxEvent, NalUnit, SamplePayload, StreamKind, VideoCodec, VideoPayload,
 };
-use srt_core::mpegts::demux::Demuxer;
 use srt_core::mpegts::mux::{Config, Muxer, VideoCodec as MuxVideoCodec};
 
 /// Build a minimal valid Annex-B H.266 access unit: AUD + VPS + SPS + PPS + IDR.

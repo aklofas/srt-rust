@@ -12,7 +12,7 @@ use crate::codec::{ColorInfo, ParseError, Rational};
 /// Stub — returns `(None, None)`. Real implementation per H.266 V4
 /// §7.3.2.5 is deferred. See `docs/deferred-features.md` for trigger.
 #[allow(dead_code)] // Wired in when VUI walk lands; today only kept-warm
-                    // by an unused reference inside parse_sps.
+// by an unused reference inside parse_sps.
 pub(super) fn parse_h266_vui(
     _br: &mut BitReader<'_>,
     _payload_size_bytes: usize,

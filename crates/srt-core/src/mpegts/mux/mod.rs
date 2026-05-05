@@ -1419,7 +1419,8 @@ impl Muxer {
                     VideoCodec::H265 => StreamType::H265.as_u8(),
                     VideoCodec::H266 => StreamType::H266.as_u8(),
                     // AV1 rides PMT stream_type 0x06; the AV01
-                    // registration_descriptor disambiguator lands in Task 18.
+                    // registration_descriptor disambiguates on the receiver
+                    // (auto-emitted in the per-stream descriptor cache).
                     VideoCodec::Av1 => StreamType::KlvPrivate.as_u8(),
                 };
                 per_stream.insert(

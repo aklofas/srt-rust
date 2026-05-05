@@ -1331,6 +1331,40 @@ impl Muxer {
                         bytes.extend_from_slice(KLVA_REGISTRATION_DESCRIPTOR);
                     }
                 }
+                // AV1 auto-emit: AV01 registration_descriptor (binding §2.1).
+                // MUST be the FIRST descriptor in the per-stream PMT loop —
+                // receivers gate AV1 classification on stream_type 0x06 +
+                // first-position AV01 Registration. Suppress when the caller
+                // has already supplied an AV01 Registration (mirrors KLVA
+                // suppression). If the caller supplied a Registration with a
+                // non-AV01 format_identifier, log warn but still auto-emit so
+                // the stream stays classifiable as AV1 — we don't silently
+                // override caller intent, but we don't let a stray non-AV01
+                // Registration silently break receiver classification either.
+                if let StreamSpec::Video {
+                    codec: VideoCodec::Av1,
+                    ..
+                } = spec
+                {
+                    let caller_has_av01 = caller_descs
+                        .iter()
+                        .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] == b"AV01");
+                    let caller_has_other_registration = caller_descs
+                        .iter()
+                        .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] != b"AV01");
+                    if caller_has_other_registration && !caller_has_av01 {
+                        tracing::warn!(
+                            "caller-supplied Registration descriptor on AV1 PID has \
+                             non-AV01 format_identifier; receivers may not recognize \
+                             the stream as AV1"
+                        );
+                    }
+                    if !caller_has_av01 {
+                        bytes.extend_from_slice(
+                            &crate::mpegts::descriptors::format_identifier_av01(),
+                        );
+                    }
+                }
                 // Subtitle auto-emit: codec-disambiguating per-stream descriptor.
                 // All four SubtitleCodec variants ride PMT stream_type 0x06; the
                 // descriptor here is what tells receivers which codec rides on
@@ -3438,6 +3472,52 @@ mod tests {
         assert_eq!(&entry[..6], &[0x05, 0x04, b'V', b'T', b'T', b'C']);
         // Caller's stream_identifier_descriptor after.
         assert_eq!(&entry[6..9], &[0x52, 0x01, 0x42]);
+    }
+
+    // ── Task 18: AV1 PMT descriptor auto-emit ────────────────────────────
+
+    #[test]
+    fn pmt_emits_av1_with_av01_registration_first() {
+        // VideoCodec::Av1 must auto-emit the AV01 registration_descriptor as
+        // the FIRST descriptor in the per-stream PMT loop (binding §2.1).
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::Av1)
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+        let entry = &muxer.pmt_descriptor_caches[0][0];
+        // AV01 Registration: 0x05 0x04 'A' 'V' '0' '1' = 6 bytes.
+        assert!(
+            entry.len() >= 6,
+            "expected AV01 auto-emit (≥6 bytes), got {}",
+            entry.len()
+        );
+        assert_eq!(&entry[..6], &[0x05, 0x04, b'A', b'V', b'0', b'1']);
+    }
+
+    #[test]
+    fn pmt_av1_with_caller_supplied_av01_suppresses_auto_emit() {
+        // When caller has already supplied an AV01 Registration, suppress the
+        // auto-emit — mirrors KLVA suppression. Result is exactly the caller's
+        // bytes.
+        let custom_av01 = vec![0x05, 0x04, b'A', b'V', b'0', b'1'];
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::Av1)
+            .stream_descriptors_for_video(0, vec![custom_av01.clone()])
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+        let entry = &muxer.pmt_descriptor_caches[0][0];
+        assert_eq!(
+            entry.len(),
+            6,
+            "auto-emit should suppress when caller provides AV01"
+        );
+        assert_eq!(&entry[..], &custom_av01[..]);
     }
 
     // ── Task 7: add_audio + audio cap + audio-only program tests ─────────

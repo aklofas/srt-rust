@@ -188,11 +188,17 @@ fn drain_and_print(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
                 }),
                 Err(e) => Some(format!("H.265 parse error: {e}")),
             },
-            // H.266 / AV1 carriage and typed parameter-set parsers are
-            // staged work — variants exist in the public enum so consumer
-            // match blocks are exhaustive once those parsers ship, but
-            // this example doesn't have anything to call yet.
-            VideoCodec::H266 => Some("H.266 parameter-set parser not yet shipped".to_string()),
+            // H.266 carriage works end-to-end (mux emits stream_type 0x33,
+            // demux classifies and routes through split_nals). Typed VPS/SPS/PPS
+            // extraction lands in a follow-up; for now we just log NAL counts
+            // so consumers can see the carriage path is live.
+            VideoCodec::H266 => Some(format!(
+                "H.266 {} NAL(s) — typed parser lands later",
+                nals.len()
+            )),
+            // AV1 uses OBU framing, not NAL. Carriage + parser are staged work;
+            // the variant exists in the public enum so consumer match blocks
+            // are exhaustive once those land.
             VideoCodec::Av1 => {
                 Some("AV1 OBU parser not yet shipped (OBU framing, not NAL)".to_string())
             }

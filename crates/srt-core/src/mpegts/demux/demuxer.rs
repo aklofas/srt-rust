@@ -1107,6 +1107,11 @@ fn stream_type_from_kind(k: &StreamKind) -> u8 {
 ///   6. Otherwise → `StreamKind::Unknown(0x06)`.
 fn classify_0x06(descriptors: &[crate::mpegts::demux::psi::RawDescriptor]) -> StreamKind {
     use crate::mpegts::descriptors::{find_descriptor_tag, find_format_identifier};
+    // AV1 in MPEG-2 TS binding §2.1: format_identifier = "AV01".
+    // AV01 registration is exclusive — wins over any other descriptor.
+    if find_format_identifier(descriptors, b"AV01") {
+        return StreamKind::Video(VideoCodec::Av1);
+    }
     if find_descriptor_tag(descriptors, 0x59) {
         StreamKind::Subtitle(SubtitleCodec::DvbSubtitling)
     } else if find_descriptor_tag(descriptors, 0x56) || find_descriptor_tag(descriptors, 0x46) {
@@ -1640,6 +1645,23 @@ mod tests {
     fn classify_0x06_klva_still_klv_async_regression_guard() {
         let descs = vec![raw_desc(0x05, b"KLVA".to_vec())];
         assert_eq!(classify_0x06(&descs), StreamKind::KlvAsync);
+    }
+
+    #[test]
+    fn classify_0x06_av1_registration_takes_priority() {
+        let descs = vec![raw_desc(0x05, b"AV01".to_vec())];
+        assert_eq!(classify_0x06(&descs), StreamKind::Video(VideoCodec::Av1));
+    }
+
+    #[test]
+    fn classify_0x06_av01_wins_over_klva_and_subtitle_arms() {
+        // AV01 registration alongside (hypothetical, spec-violating) KLVA
+        // registration — AV01 wins per descriptor exclusivity (binding §2.1).
+        let descs = vec![
+            raw_desc(0x05, b"AV01".to_vec()),
+            raw_desc(0x05, b"KLVA".to_vec()),
+        ];
+        assert_eq!(classify_0x06(&descs), StreamKind::Video(VideoCodec::Av1));
     }
 
     #[test]

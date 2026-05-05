@@ -213,6 +213,14 @@ pub fn format_identifier_ga94() -> Vec<u8> {
     vec![0x05, 0x04, b'G', b'A', b'9', b'4']
 }
 
+/// `registration_descriptor` (tag 0x05) carrying ASCII format_identifier
+/// `"AV01"` — the AV1-in-MPEG-2-TS binding §2.1 marker. Per the binding
+/// spec, this descriptor MUST be the first in the per-stream PMT
+/// descriptor loop.
+pub fn format_identifier_av01() -> Vec<u8> {
+    vec![0x05, 0x04, b'A', b'V', b'0', b'1']
+}
+
 /// ISO 639 Language descriptor (tag 0x0A) — H.222.0 §2.6.18.
 /// 3-byte language code + 1-byte audio_type. Conventional on audio PIDs;
 /// valid on any ES.
@@ -402,5 +410,11 @@ mod tests {
     fn format_identifier_ga94_descriptor_round_trip_bytes() {
         let bytes = format_identifier_ga94();
         assert_eq!(bytes, vec![0x05, 0x04, b'G', b'A', b'9', b'4']);
+    }
+
+    #[test]
+    fn format_identifier_av01_descriptor_round_trip_bytes() {
+        let bytes = format_identifier_av01();
+        assert_eq!(bytes, vec![0x05, 0x04, b'A', b'V', b'0', b'1']);
     }
 }

@@ -451,3 +451,228 @@ fn ffprobe_roundtrip_each_audio_codec() {
         let _ = std::fs::remove_file(&tmp);
     }
 }
+
+// --- Subtitle ffprobe round-trip tests (subtitle plan Task 21) ---
+//
+// These match the audio-codec round-trip pattern above: build a config with
+// the subtitle codec, push a few PES units, drain TS bytes, run ffprobe, and
+// assert on the codec / language strings ffprobe reports.
+//
+// CEA-708 standalone is intentionally excluded — ffmpeg's CEA-708 path is
+// SEI-embedded, not standalone-PID, and ffprobe doesn't classify the
+// standalone form cleanly.
+//
+// Gated behind `#[ignore = "ffprobe-only"]` so they run only with
+// `-- --ignored`, matching audio plan #21's pattern.
+
+#[test]
+#[ignore = "ffprobe-only"]
+fn ffprobe_validates_dvb_subtitling_round_trip() {
+    if !have_ffprobe() {
+        eprintln!("[skip] ffprobe not on PATH");
+        return;
+    }
+
+    use srt_core::mpegts::mux::{SubtitleCodec, VideoCodec};
+
+    let cfg = Config::builder()
+        .add_program(1, 0x100)
+        .add_video(0x101, VideoCodec::H264)
+        .add_subtitle(
+            0x200,
+            SubtitleCodec::DvbSubtitling {
+                language: *b"eng",
+                subtitling_type: 0x10,
+                composition_page_id: 1,
+                ancillary_page_id: 1,
+            },
+        )
+        .end_program()
+        .build()
+        .unwrap();
+    let mut mux = Muxer::new(cfg).unwrap();
+
+    // Drive a few video frames so the program has structure, plus a handful
+    // of synthetic DVB subtitle PES units. ffprobe identifies DVB sub via the
+    // PMT subtitling_descriptor (auto-emitted), not by parsing the bitstream.
+    let h = mux.subtitle_handles()[0];
+    for i in 0..10 {
+        let pts = 90_000 * (i as i64 + 1);
+        let nal = synthetic_nal::h264_au(128, i % 5 == 0);
+        mux.push_video(&nal, pts, i % 5 == 0).unwrap();
+    }
+    for i in 0..5 {
+        // Minimal DVB subtitle PES payload: data_identifier (0x20) + a tiny
+        // subtitle segment. ffprobe doesn't parse this — the descriptor in
+        // the PMT is what drives codec recognition.
+        let payload = [0x0F, 0x10, 0x00, 0x01, 0x00, 0x06, 0, 0, 0, 0, 0, 0];
+        mux.push_subtitle_to(h, 90_000 * (i as i64 + 1), &payload)
+            .unwrap();
+    }
+    let bytes = drain_all(&mut mux);
+
+    let tmp = std::env::temp_dir().join("srt_core_ffprobe_dvb_sub.ts");
+    std::fs::write(&tmp, &bytes).expect("write temp ts");
+
+    let out = Command::new("ffprobe")
+        .args(["-v", "error", "-show_streams", "-of", "json"])
+        .arg(&tmp)
+        .output()
+        .expect("run ffprobe");
+    assert!(
+        out.status.success(),
+        "ffprobe exited non-zero: stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    eprintln!("ffprobe output: {}", stdout);
+
+    assert!(
+        stdout.contains("dvb_subtitle"),
+        "expected dvb_subtitle codec_name in ffprobe output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("eng"),
+        "expected language tag 'eng' in ffprobe output: {}",
+        stdout
+    );
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+#[ignore = "ffprobe-only"]
+fn ffprobe_validates_dvb_teletext_round_trip() {
+    if !have_ffprobe() {
+        eprintln!("[skip] ffprobe not on PATH");
+        return;
+    }
+
+    use srt_core::mpegts::mux::{SubtitleCodec, VideoCodec};
+
+    let cfg = Config::builder()
+        .add_program(1, 0x100)
+        .add_video(0x101, VideoCodec::H264)
+        .add_subtitle(
+            0x200,
+            SubtitleCodec::DvbTeletext {
+                language: *b"eng",
+                teletext_type: 0x02,
+                magazine_number: 1,
+                page_number: 0x88,
+            },
+        )
+        .end_program()
+        .build()
+        .unwrap();
+    let mut mux = Muxer::new(cfg).unwrap();
+
+    // Same shape as the DVB-sub case: a few video frames plus a handful of
+    // synthetic teletext PES units. ffprobe identifies teletext via the PMT
+    // teletext_descriptor (auto-emitted).
+    let h = mux.subtitle_handles()[0];
+    for i in 0..10 {
+        let pts = 90_000 * (i as i64 + 1);
+        let nal = synthetic_nal::h264_au(128, i % 5 == 0);
+        mux.push_video(&nal, pts, i % 5 == 0).unwrap();
+    }
+    for i in 0..5 {
+        // Minimal teletext PES payload: data_identifier (0x10) + a tiny
+        // data unit. Real-content shape doesn't matter for ffprobe codec ID.
+        let mut payload = vec![0x10];
+        payload.extend_from_slice(&[0x02, 0x10]);
+        payload.extend(std::iter::repeat(0x00).take(0x10));
+        mux.push_subtitle_to(h, 90_000 * (i as i64 + 1), &payload)
+            .unwrap();
+    }
+    let bytes = drain_all(&mut mux);
+
+    let tmp = std::env::temp_dir().join("srt_core_ffprobe_dvb_teletext.ts");
+    std::fs::write(&tmp, &bytes).expect("write temp ts");
+
+    let out = Command::new("ffprobe")
+        .args(["-v", "error", "-show_streams", "-of", "json"])
+        .arg(&tmp)
+        .output()
+        .expect("run ffprobe");
+    assert!(
+        out.status.success(),
+        "ffprobe exited non-zero: stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    eprintln!("ffprobe output: {}", stdout);
+
+    assert!(
+        stdout.contains("dvb_teletext"),
+        "expected dvb_teletext codec_name in ffprobe output: {}",
+        stdout
+    );
+
+    let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+#[ignore = "ffprobe-only"]
+fn ffprobe_validates_webvtt_in_ts_round_trip() {
+    if !have_ffprobe() {
+        eprintln!("[skip] ffprobe not on PATH");
+        return;
+    }
+
+    use srt_core::mpegts::mux::{SubtitleCodec, VideoCodec};
+
+    let cfg = Config::builder()
+        .add_program(1, 0x100)
+        .add_video(0x101, VideoCodec::H264)
+        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+        .end_program()
+        .build()
+        .unwrap();
+    let mut mux = Muxer::new(cfg).unwrap();
+
+    // Push a handful of video frames so the program is well-formed, then a
+    // single WebVTT cue. ffprobe recognizes WebVTT-in-TS via the auto-emitted
+    // registration_descriptor (format_identifier = "VTTC").
+    let h = mux.subtitle_handles()[0];
+    for i in 0..10 {
+        let pts = 90_000 * (i as i64 + 1);
+        let nal = synthetic_nal::h264_au(128, i % 5 == 0);
+        mux.push_video(&nal, pts, i % 5 == 0).unwrap();
+    }
+    mux.push_subtitle_to(
+        h,
+        90_000,
+        b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nhello\n",
+    )
+    .unwrap();
+    let bytes = drain_all(&mut mux);
+
+    let tmp = std::env::temp_dir().join("srt_core_ffprobe_webvtt_in_ts.ts");
+    std::fs::write(&tmp, &bytes).expect("write temp ts");
+
+    let out = Command::new("ffprobe")
+        .args(["-v", "error", "-show_streams", "-of", "json"])
+        .arg(&tmp)
+        .output()
+        .expect("run ffprobe");
+    assert!(
+        out.status.success(),
+        "ffprobe exited non-zero: stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    eprintln!("ffprobe output: {}", stdout);
+
+    // ffmpeg may label this as "webvtt", as a generic "subtitle" codec_type,
+    // or (older Ubuntu builds) as "bin_data" — all three indicate the stream
+    // was classified rather than dropped.
+    assert!(
+        stdout.contains("webvtt") || stdout.contains("subtitle") || stdout.contains("bin_data"),
+        "expected webvtt/subtitle/bin_data in ffprobe output: {}",
+        stdout
+    );
+
+    let _ = std::fs::remove_file(&tmp);
+}

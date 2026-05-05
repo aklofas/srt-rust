@@ -233,6 +233,19 @@ pub enum KlvDecodeError {
     #[error("malformed BER-OID tag at offset {offset}")]
     MalformedTag { offset: usize },
 
+    /// Non-canonical BER long-form length encoding (per MISB ST 0107.5
+    /// §6.3.2: encoders shall use the fewest bytes). Returned by
+    /// `read_ber_strict`; the permissive `read_ber` accepts non-canonical
+    /// for legacy capture interop.
+    #[error("non-canonical BER length encoding at offset {offset}")]
+    NonCanonicalLength { offset: usize },
+
+    /// Non-canonical BER-OID encoding (per MISB ST 0107.5 §6.3.1:
+    /// leading `0x80` byte forbidden). Returned by `read_ber_oid_strict`;
+    /// the permissive `read_ber_oid` accepts non-canonical for legacy.
+    #[error("non-canonical BER-OID tag at offset {offset}")]
+    NonCanonicalTag { offset: usize },
+
     #[error("unexpected universal label: expected {expected}, got {found}")]
     UnexpectedUniversalLabel {
         expected: crate::klv::UniversalLabel,

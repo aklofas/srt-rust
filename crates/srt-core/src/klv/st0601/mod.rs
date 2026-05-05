@@ -16,7 +16,9 @@ pub(crate) mod tags;
 
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
 use crate::klv::checksum::checksum_running_sum_16;
-use crate::klv::length::{ber_len, ber_oid_len, read_ber, write_ber, write_ber_oid};
+use crate::klv::length::{
+    ber_len, ber_oid_len, read_ber, read_ber_strict, write_ber, write_ber_oid,
+};
 use crate::klv::pack::{Iter, OwnedRawField};
 use crate::klv::st0601::mapping::{decode_fixed_range, encode_fixed_range};
 use crate::klv::st0601::tags::lookup;
@@ -619,6 +621,9 @@ pub fn decode_strict(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
 ///   element in the Local Set body.
 /// - ST 0601.8-11: Tag 1 (Checksum) must be the last element.
 /// - ST 0601.8-12: Tag 65 (UAS LS Version) must be present.
+/// - ST 0107.5 §6.3.2: outer BER length encoding must be canonical
+///   (fewest-bytes). The body iteration via `Iter::local_set` remains
+///   permissive on per-tag BER encoding for now.
 ///
 /// Use this only when validating compliance against published
 /// captures or reference test vectors. Real-world captures from the
@@ -634,7 +639,7 @@ pub fn decode_strict_compliance(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeEr
             have: buf.len(),
         });
     }
-    let (declared_len, after_len) = read_ber(&buf[16..])?;
+    let (declared_len, after_len) = read_ber_strict(&buf[16..])?;
     if after_len.len() < declared_len {
         return Err(KlvDecodeError::Truncated {
             offset: buf.len() - after_len.len(),
@@ -1203,6 +1208,13 @@ mod tests {
         assert_eq!(r.timestamp_us, Some(1_700_000_000_000_000));
         assert_eq!(r.uas_ls_version, Some(0x13));
     }
+
+    // Note: a full integration test for the non-canonical-BER strict path
+    // (build a record with tampered outer BER + recomputed checksum) is
+    // overkill — `read_ber_strict` is unit-tested in `klv::length::tests`,
+    // and the wiring in `decode_strict_compliance` is a single line. The
+    // strict-compliance Tag 2/Tag 1/Tag 65 ordering tests above exercise
+    // the same code path.
 
     #[test]
     fn decode_strict_compliance_rejects_missing_tag65() {

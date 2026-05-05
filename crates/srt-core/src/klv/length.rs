@@ -60,6 +60,30 @@ pub fn read_ber(buf: &[u8]) -> Result<(usize, &[u8]), KlvDecodeError> {
     }
 }
 
+/// Strict variant of [`read_ber`] that rejects non-canonical encodings per
+/// MISB ST 0107.5 §6.3.2 ("encoders shall use the fewest bytes"):
+///   * long-form for values that fit in short form (value < 128)
+///   * long-form with a leading zero byte (e.g. `0x82 0x00 0x10` for value 16)
+///
+/// Use in compliance-validation paths only; default decode keeps the
+/// permissive `read_ber` for legacy capture interop.
+pub fn read_ber_strict(buf: &[u8]) -> Result<(usize, &[u8]), KlvDecodeError> {
+    let (value, rest) = read_ber(buf)?;
+    let first = buf[0]; // safe — read_ber would have errored on empty buf
+    if first & 0x80 != 0 {
+        // Long form. Reject if value would have fit in short form.
+        if value < 0x80 {
+            return Err(KlvDecodeError::NonCanonicalLength { offset: 0 });
+        }
+        // Reject if the long-form payload starts with a zero byte (overlong).
+        let n = (first & 0x7F) as usize;
+        if n > 0 && buf.len() >= 1 + n && buf[1] == 0 {
+            return Err(KlvDecodeError::NonCanonicalLength { offset: 1 });
+        }
+    }
+    Ok((value, rest))
+}
+
 /// Read a BER-OID variable-length integer from `buf`. Returns `(value, &buf[consumed..])`.
 pub fn read_ber_oid(buf: &[u8]) -> Result<(u32, &[u8]), KlvDecodeError> {
     let mut value: u64 = 0;
@@ -83,6 +107,18 @@ pub fn read_ber_oid(buf: &[u8]) -> Result<(u32, &[u8]), KlvDecodeError> {
             return Err(KlvDecodeError::MalformedTag { offset: 0 });
         }
     }
+}
+
+/// Strict variant of [`read_ber_oid`] that rejects non-canonical encodings
+/// per MISB ST 0107.5 §6.3.1 (PDF p.4): "ASN.1 forbids the use of `0x80`
+/// in the first byte of a BER-OID value." A leading `0x80` is the
+/// continuation-bit-set encoding of value 0, but value 0 must always be
+/// encoded as a single byte `0x00`.
+pub fn read_ber_oid_strict(buf: &[u8]) -> Result<(u32, &[u8]), KlvDecodeError> {
+    if buf.first() == Some(&0x80) {
+        return Err(KlvDecodeError::NonCanonicalTag { offset: 0 });
+    }
+    read_ber_oid(buf)
 }
 
 /// Number of bytes BER would use to encode `value`.
@@ -327,5 +363,62 @@ mod tests {
         let (v, rest) = read_ber_oid(&buf).unwrap();
         assert_eq!(v, 5);
         assert_eq!(rest, &[0xAA, 0xBB]);
+    }
+
+    // ---------- Strict variants ----------
+
+    #[test]
+    fn ber_strict_accepts_canonical_short_form() {
+        // 0x10 encodes value 16 in canonical short form.
+        let buf = [0x10];
+        let (v, _) = read_ber_strict(&buf).unwrap();
+        assert_eq!(v, 16);
+    }
+
+    #[test]
+    fn ber_strict_accepts_canonical_long_form() {
+        // 0x82 0x01 0x00 encodes value 256 in canonical long form.
+        let buf = [0x82, 0x01, 0x00];
+        let (v, _) = read_ber_strict(&buf).unwrap();
+        assert_eq!(v, 256);
+    }
+
+    #[test]
+    fn ber_strict_rejects_long_form_for_short_value() {
+        // 0x81 0x10 = long-form encoding of value 16 (which fits in short
+        // form 0x10). Per ST 0107.5 §6.3.2 (fewest-bytes), reject.
+        let buf = [0x81, 0x10];
+        let err = read_ber_strict(&buf).unwrap_err();
+        assert!(matches!(err, KlvDecodeError::NonCanonicalLength { .. }));
+        // Permissive read_ber still accepts it for legacy interop.
+        let (v, _) = read_ber(&buf).unwrap();
+        assert_eq!(v, 16);
+    }
+
+    #[test]
+    fn ber_strict_rejects_long_form_with_leading_zero() {
+        // 0x82 0x00 0x10 = long-form value 16 with overlong encoding.
+        let buf = [0x82, 0x00, 0x10];
+        let err = read_ber_strict(&buf).unwrap_err();
+        assert!(matches!(err, KlvDecodeError::NonCanonicalLength { .. }));
+    }
+
+    #[test]
+    fn ber_oid_strict_rejects_leading_0x80() {
+        // 0x80 0x00 = continuation-set encoding of value 0. Per ST 0107.5
+        // §6.3.1 forbidden — value 0 must be the single byte 0x00.
+        let buf = [0x80, 0x00];
+        let err = read_ber_oid_strict(&buf).unwrap_err();
+        assert!(matches!(err, KlvDecodeError::NonCanonicalTag { .. }));
+        // Permissive read_ber_oid accepts it.
+        let (v, _) = read_ber_oid(&buf).unwrap();
+        assert_eq!(v, 0);
+    }
+
+    #[test]
+    fn ber_oid_strict_accepts_canonical_zero() {
+        let buf = [0x00];
+        let (v, _) = read_ber_oid_strict(&buf).unwrap();
+        assert_eq!(v, 0);
     }
 }

@@ -115,7 +115,7 @@ aren't yet wrapped are reachable via `srt-sys`.
 
 | Spec / Feature | Status | Notes |
 | --- | --- | --- |
-| MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — multi-program (≤16 programs), multi-stream (≤16 video + ≤16 audio + ≤16 KLV + ≤16 subtitle PIDs per program), H.264/H.265 video + MP2/AAC/AC-3 audio + DVB/teletext/CEA-708/WebVTT subtitles + ST 0601 KLV (sync + async per ST 1402), VBR. |
+| MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — multi-program (≤16 programs), multi-stream (≤16 video + ≤16 audio + ≤16 KLV + ≤16 subtitle PIDs per program), H.264/H.265/H.266/AV1 video + MP2/AAC/AC-3 audio + DVB/teletext/CEA-708/WebVTT subtitles + ST 0601 KLV (sync + async per ST 1402), VBR. |
 | MPEG-TS demuxer | ✅ Full | `mpegts::demux::Demuxer` — multi-program, lenient by default, four-tier `StrictMode` ladder. See `mpegts::demux` block below. |
 | Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ✅ Full | Default in `mpegts::mux::Config` (`klv_stream_type = PrivateData`, `klv_carries_pts = false`). |
 | ST 1402.3 Synchronous metadata stream | ✅ Full | `KlvStreamType::SynchronousMetadata` + `klv_carries_pts = true` in `Config`. |
@@ -274,6 +274,8 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `DemuxEvent::NonConformant` | ✅ Full | Lenient-mode signal for spec violations; converts to fatal in strict modes. |
 | H.264 NAL split (stream_type 0x1B) | ✅ Full | Annex-B start codes stripped; `NalUnit::H264 { nal_type, ref_idc, payload }`. Emulation-prevention bytes preserved. |
 | H.265 NAL split (stream_type 0x24) | ✅ Full | `NalUnit::H265 { nal_type, layer_id, temporal_id_plus1, payload }`. |
+| H.266 NAL split (stream_type 0x33) | ✅ Full | `NalUnit::H266 { nal_type, layer_id, temporal_id_plus1, payload }`. |
+| AV1 OBU split (stream_type 0x06 + AV01 registration) | ✅ Full | LEB128 `obu_size` consumed; `Obu { obu_type, extension, payload }`. Disambiguates from KLV-async via `format_identifier`. |
 | Async KLV (stream_type 0x06 + KLVA) | ✅ Full | Detected via registration descriptor `KLVA`; emitted as `KlvAsync`. |
 | Sync KLV (stream_type 0x15) | ✅ Full | ST 1910 AU cell unwrapped; AU cell PTS surfaced on the parent event. |
 | AU cell wrap-peeling (sync→async fallback) | ✅ Full | Sync-PID payloads with non-sync inner ULs surface as `KlvAsync` with AU cell PTS preserved. |
@@ -293,8 +295,8 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `pts_to_duration` helper | ✅ Full | 90 kHz ticks → `std::time::Duration`. |
 | Multi-program TS | ✅ Full | Multi-PMT; one `ProgramMap` event per program + on PAT/PMT version bumps; `StreamInfo.program_number` on every `Sample`/`Metadata` event; PAT version diffing drops disappeared programs; `NonConformantIssue::PidReusedAcrossPrograms` on cross-program PID collision. |
 | Subtitle classification on `stream_type 0x06` | ✅ Full | Cascade: subtitling/teletext/`VTTC`/`GA94` descriptors → `Subtitle` payload; KLV cases unchanged when no subtitle descriptor present. |
-| AV1 / H.266 codec variants on `VideoCodec` | ⏳ Planned | Surface as `SamplePayload::Unknown` today. |
-| Typed SPS/VPS/PPS payload parser | ⏳ Planned | SPS/VPS/PPS surface as `NalUnit` with raw RBSP; consumers use external codec lib. |
+| AV1 / H.266 codec variants on `VideoCodec` | ✅ Full | `H266` (`stream_type=0x33`) emits `VideoPayload::Nals(_)`; `Av1` (`stream_type=0x06` + AV01 registration) emits `VideoPayload::Obus(_)`. |
+| Typed SPS/VPS/PPS payload parser | ✅ Full | `codec::h264` / `codec::h265` / `codec::h266` for NAL-shaped codecs; `codec::av1` for OBU-shaped. See `codec` block below. |
 | Sync-KLV ↔ video AU pairing helper | ❌ Out of scope | Pairing is a consumer-domain decision; cookbook recipes 12–14 are the canonical patterns. |
 
 ## Pipeline composition (`srt-core::pipeline`)
@@ -337,8 +339,8 @@ level, color, frame rate). See [`guide-codec.md`](guide-codec.md).
 | --- | --- | --- |
 | H.264 SPS / PPS (`codec::h264`) | ✅ Full | ❌ Deferred (rides with receiver C ABI) |
 | H.265 VPS / SPS / PPS (`codec::h265`) | ✅ Full | ❌ Deferred |
-| AV1 sequence header (`codec::av1`) | ❌ Deferred (future slice) | ❌ Deferred |
-| H.266 VPS / SPS / PPS / APS (`codec::h266`) | ❌ Deferred (future slice) | ❌ Deferred |
+| H.266 VPS / SPS / PPS (`codec::h266`) | ⚙️ Partial (VPS+SPS+PPS) | ❌ Deferred |
+| AV1 Sequence Header + Frame Header light (`codec::av1`) | ⚙️ Partial | ❌ Deferred |
 
 **H.264 notes:** wraps `h264-reader` 0.8; `parse_sps` / `parse_pps` /
 `parse_parameter_sets`; partial-success-tolerant on combined call; strict on
@@ -349,6 +351,22 @@ per-set functions. 13/13 corpus fixtures matched ffprobe.
 `scaling_list_data` and `num_short_term_ref_pic_sets > 0` paths (not
 exercised by x265 default config or current corpus; full RPS parser is a
 future enhancement).
+
+**H.266 notes:** hand-rolled per H.266 V4 §7.3 / §7.4; `parse_vps` /
+`parse_sps` / `parse_pps` / `parse_parameter_sets`. APS NALs (types 17 / 18),
+Picture Header NALs (type 19), and multi-layer streams (`nuh_layer_id != 0`)
+pass through unparsed. `color_info` / `frame_rate` surface as `None` until
+the deeper SPS field-walk lands. Bails `UnsupportedProfile` on
+`sps_subpic_info_present_flag = 1` / `sps_scaling_list_data_present_flag = 1`
+(rare; not in reference encoder defaults).
+
+**AV1 notes:** OBU-shaped (not NAL-shaped); `parse_sequence_header` /
+`parse_frame_header_light` / `parse_obu_stream`. `Av1FrameHeaderLight`
+surfaces `frame_type` + `show_frame` + `show_existing_frame` only;
+`frame_size` is always `None` (full per-frame decode requires reference-
+frame management beyond this parser's scope). Operating points beyond 0
+walked but not surfaced. Tile Group / Metadata / Padding OBUs pass through
+as `Obu { obu_type, payload, .. }` without further parsing.
 
 ---
 

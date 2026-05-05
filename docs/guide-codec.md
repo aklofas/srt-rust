@@ -137,6 +137,127 @@ color / frame_rate shape as `H264Sps`, plus `general_profile_idc`,
 
 **`H265Pps` key fields:** `pps_pic_parameter_set_id`, `pps_seq_parameter_set_id`.
 
+## H.266 / VVC quick start
+
+H.266 (Versatile Video Coding) parses identically in shape to H.265 — VPS, SPS,
+PPS — with a different bitstream syntax. PMT `stream_type = 0x33`.
+
+```rust,no_run
+use srt_core::codec::h266;
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+
+let mut dx = Demuxer::new();
+// ... feed bytes ...
+
+while let Some(ev) = dx.next_event() {
+    if let DemuxEvent::Sample {
+        payload: SamplePayload::Video { codec: VideoCodec::H266, payload: VideoPayload::Nals(ref nals) },
+        ..
+    } = ev
+    {
+        if let Ok(ps) = h266::parse_parameter_sets(nals) {
+            if let Some(sps) = ps.spses.first() {
+                println!(
+                    "H.266 {}x{} profile_idc={} tier={} level_idc={} {}-bit {:?}",
+                    sps.width,
+                    sps.height,
+                    sps.profile_tier_level.general_profile_idc,
+                    sps.profile_tier_level.general_tier_flag as u8,
+                    sps.profile_tier_level.general_level_idc,
+                    sps.bit_depth_luma,
+                    sps.chroma_format,
+                );
+            }
+        }
+    }
+}
+```
+
+**`H266Vps` key fields:** `vps_id`, plus the headline `profile_tier_level`
+fields (carried on the VPS for the operating point set).
+
+**`H266Sps` key fields:** `sps_id`, `vps_id`, `profile_tier_level`
+(`general_profile_idc` / `general_tier_flag` / `general_level_idc`),
+`width`, `height`, `chroma_format`, `bit_depth_luma`, `bit_depth_chroma`,
+`color_info: Option<ColorInfo>`, `frame_rate: Option<Rational>`, `raw_rbsp`.
+
+**`H266Pps` key fields:** `pps_id`, `sps_id`.
+
+### Known limitations
+
+- VPS + SPS + PPS only; APS NALs (types 17 / 18), Picture Header NALs
+  (type 19), and multi-layer streams (`nuh_layer_id != 0`) pass through
+  unparsed.
+- Bails `ParseError::UnsupportedProfile` on `sps_subpic_info_present_flag = 1`
+  and `sps_scaling_list_data_present_flag = 1` (rare; not in reference
+  encoder defaults).
+- `color_info` and `frame_rate` are surfaced as `None` today — VUI walking
+  is stubbed pending the deeper SPS field-walk.
+- See [deferred-features.md](deferred-features.md).
+
+## AV1 quick start
+
+AV1 has different bitstream framing — OBU (Open Bitstream Unit)
+length-prefixed via LEB128, no Annex-B start codes. PMT `stream_type = 0x06`
+with auto-emitted AV01 `registration_descriptor` per the AV1-in-MPEG-2-TS
+binding §2.1. The demuxer surfaces AV1 access units as
+`VideoPayload::Obus(Vec<Obu>)` rather than `Nals(_)`.
+
+```rust,no_run
+use srt_core::codec::av1;
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+
+let mut dx = Demuxer::new();
+// ... feed bytes ...
+
+while let Some(ev) = dx.next_event() {
+    if let DemuxEvent::Sample {
+        payload: SamplePayload::Video { codec: VideoCodec::Av1, payload: VideoPayload::Obus(ref obus) },
+        ..
+    } = ev
+    {
+        let stream = av1::parse_obu_stream(obus);
+        if let Some(seq) = &stream.sequence_header {
+            println!(
+                "AV1 {}x{} profile={} level={} tier={} {}-bit {:?}",
+                seq.max_frame_width,
+                seq.max_frame_height,
+                seq.profile,
+                seq.level,
+                seq.tier,
+                seq.bit_depth,
+                seq.chroma_format,
+            );
+        }
+    }
+}
+```
+
+**`Av1SequenceHeader` key fields:** `profile`, `level`, `tier`,
+`max_frame_width`, `max_frame_height`, `bit_depth`, `monochrome`,
+`chroma_format`, `still_picture`, `reduced_still_picture_header`,
+`color_info: Option<ColorInfo>`, `frame_rate: Option<Rational>`, `raw`.
+
+**`Av1FrameHeaderLight` key fields:** `frame_type` (0 = KEY,
+1 = INTER, 2 = INTRA_ONLY, 3 = SWITCH), `show_frame`,
+`show_existing_frame`, `frame_size: Option<(u32, u32)>`. The size field
+is always `None` in this slice — full per-frame decode would require
+reference-frame management beyond the parser's scope.
+
+**`Av1ObuStream` (returned by `parse_obu_stream`)** holds an optional
+`sequence_header` and a `Vec<Av1FrameHeaderLight>` collected from the
+input OBUs. Use it when you want a single call against an AU's OBU list
+rather than walking individual OBUs.
+
+### Known limitations
+
+- Sequence Header + Frame Header light scope; full Frame Header parsing
+  crosses into "you want a decoder."
+- Operating points beyond 0 are walked past but not surfaced.
+- Tile Group / Metadata / Padding OBUs pass through as
+  `Obu::Other { obu_type, payload }` without further parsing.
+- See [deferred-features.md](deferred-features.md).
+
 ## Error handling
 
 All parse functions return `Result<T, ParseError>`. The two tiers:
@@ -266,15 +387,16 @@ Table 4 assignments.
 ## Roadmap
 
 `srt_core::codec` is an umbrella for typed payload parsing across codec and
-stream types. The H.264 and H.265 parameter-set parsers are the first slice.
+stream types. H.264, H.265, H.266, and AV1 parameter-set parsers ship today.
 Future slices in the same umbrella (each landing additively when a consumer
 asks):
 
-- **AV1 sequence header** (`codec::av1`) — requires `VideoCodec::Av1` in the
-  demuxer event surface. AV1 is OBU-shaped rather than NAL-shaped, so the
-  demuxer event shape will differ from `NalUnit`.
-- **H.266 VPS / SPS / PPS / APS** (`codec::h266`) — NAL-shaped per H.266;
-  fits the existing `codec::*` pattern.
+- **H.266 APS / Picture Header** — APS NALs (types 17 / 18) and Picture
+  Header NALs (type 19) pass through unparsed today; typed surfaces follow
+  on consumer ask.
+- **AV1 full Frame Header** — current `parse_frame_header_light` extracts
+  type / show flags only; per-frame size + reference-frame management is a
+  decoder-scope expansion.
 - **SEI parsing** for H.264 and H.265 — HDR mastering display info, content
   light level, picture timing, etc.
 - **Audio framing parsers** (`codec::aac`, `codec::ac3`) — frame-header

@@ -75,11 +75,12 @@ Runnable: [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/ex
 | `DemuxEvent` | Top-level event enum: `ProgramMap`, `Sample`, `Metadata`, `Discontinuity`, `NonConformant`. |
 | `StreamId` | `{ pid: u16, kind: StreamKind }` — identifies the source stream of every event. |
 | `StreamKind` | `Video(VideoCodec)`, `Audio(AudioCodec)`, `Subtitle(SubtitleCodec)`, `KlvSync { declared_link }`, `KlvAsync`, `Unknown(u8)`. |
-| `VideoCodec` | `H264`, `H265`. |
+| `VideoCodec` | `H264`, `H265`, `H266`, `Av1`. |
 | `AudioCodec` | `Mp2`, `Aac` (ADTS), `AacLatm`, `Ac3`. Codec tag for typed dispatch; bitstream bytes ride on `SamplePayload::Audio.frames`. |
 | `SubtitleCodec` | `DvbSubtitling`, `DvbTeletext`, `Cea708Standalone` (separate ES, "GA94"), `WebVttInTs` ("VTTC"). |
 | `SamplePayload` | `Video { codec, payload: VideoPayload }`, `Audio { codec, frames }`, `Subtitle { codec, payload }`, `Unknown { stream_type, raw }`. `VideoPayload` is `Nals(Vec<NalUnit>)` for H.264 / H.265 / H.266 or `Obus(Vec<Obu>)` for AV1. |
-| `NalUnit` | `H264 { nal_type, ref_idc, payload }` / `H265 { nal_type, layer_id, temporal_id_plus1, payload }`. RBSP bytes; Annex-B start codes stripped. |
+| `NalUnit` | `H264 { nal_type, ref_idc, payload }` / `H265 { nal_type, layer_id, temporal_id_plus1, payload }` / `H266 { nal_type, layer_id, temporal_id_plus1, payload }`. RBSP bytes; Annex-B start codes stripped. |
+| `Obu` | AV1 OBU: `{ obu_type, extension: Option<ObuExtension>, payload }`. Header byte + optional extension byte + LEB128 `obu_size` consumed; `payload` is OBU body bytes. `obu_type` = 1 SequenceHeader / 2 TemporalDelimiter / 3 FrameHeader / 6 Frame / etc. (AV1 §5.3.2). |
 | `MetadataKind` | `KlvSyncAuCell` (AU cell unwrapped), `KlvAsync` (bare LS), `Unknown(u8)`. |
 | `ProgramMap` | `{ program_number, pcr_pid, streams: Vec<StreamInfo>, klv_links: Vec<KlvLink> }`. |
 | `StreamInfo` | `{ pid, stream_type, kind }` — one row per declared stream in the PMT. |
@@ -304,13 +305,25 @@ is why pairing recipes (cookbook §12) match BOTH `KlvSyncAuCell` AND
 `KlvAsync` for sync-style consumers — many real captures present as
 the latter after wrap-peeling.
 
+**Recognized video stream types.**
+
+| PMT `stream_type` byte | `VideoCodec` | Payload shape |
+| --- | --- | --- |
+| `0x1B` | `H264` | `VideoPayload::Nals(Vec<NalUnit::H264>)` (Annex-B stripped). |
+| `0x24` | `H265` | `VideoPayload::Nals(Vec<NalUnit::H265>)` (Annex-B stripped). |
+| `0x33` | `H266` | `VideoPayload::Nals(Vec<NalUnit::H266>)` (Annex-B stripped). |
+| `0x06` + AV01 registration | `Av1` | `VideoPayload::Obus(Vec<Obu>)` (LEB128-framed). |
+
+The AV1 case shares stream_type `0x06` with KLV-async; the demuxer
+disambiguates via the `registration_descriptor` `format_identifier`
+(`AV01` for AV1, `KLVA` for async KLV).
+
 **Unknown stream types.** PIDs with `stream_type` not in the
-`{0x1B, 0x24, 0x06+KLVA, 0x15}` set surface as
+`{0x1B, 0x24, 0x33, 0x06+AV01, 0x06+KLVA, 0x15}` set surface as
 `SamplePayload::Unknown { stream_type, raw }`. The PES payload is
-preserved verbatim. Audio (`stream_type=0x0F`/AAC, `0x03`/MP1, etc.),
-subtitles, and AV1 / H.266 all fall through here today; typed variants
-on `AudioCodec` / `SubtitleCodec` / `VideoCodec` land additively when
-a consumer asks. See [deferred-features.md](deferred-features.md).
+preserved verbatim. Audio not declared via the recognized stream_type
+bytes also falls through here; use `treat_as` to route by-PID. See
+[deferred-features.md](deferred-features.md).
 
 ## Reading per-stream descriptors
 
@@ -646,15 +659,13 @@ first program.
 Each item below maps to an entry in
 [deferred-features.md](deferred-features.md).
 
-- **Typed SPS / VPS / PPS payload parser** — SPS/VPS/PPS surface as
-  ordinary `NalUnit` with raw RBSP. Consumers wanting frame
-  width/height/profile use an external codec library (`h264-reader`,
-  `h265-parser`).
 - **`pipeline::pairing` opt-in helper** — pairing stays consumer-side
   via cookbook recipes; library-level helper is deferred.
-- **AV1 / H.266 codec variants** — surface as `SamplePayload::Unknown`
-  today. AV1 is OBU-shaped (not NAL-shaped), so adding it requires a
-  cross-codec rework of `SamplePayload::Video`.
+- **AV1 full Frame Header parser** — current `codec::av1::parse_frame_header_light`
+  surfaces type / show flags only; per-frame size + reference management
+  is decoder-scope and not in this slice.
+- **H.266 APS / Picture Header NAL parsers** — APS NALs (types 17 / 18)
+  and Picture Header NALs (type 19) pass through unparsed today.
 
 See [compatibility.md](compatibility.md)'s `mpegts::demux` block for
 the full feature-by-feature status.

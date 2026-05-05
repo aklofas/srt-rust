@@ -104,10 +104,16 @@ fn build() -> Result<Config, srt_core::error::MuxError> {
 
 ## Codec selection
 
-`VideoCodec::H264` produces a PMT entry with `stream_type = 0x1B`;
-`VideoCodec::H265` produces `stream_type = 0x24`. Both are first-class.
-Mid-stream codec change is out of scope — destroy the muxer and create
-a new one if you need to switch codecs in a single output file.
+| `VideoCodec` variant | PMT `stream_type` byte | Notes |
+| --- | --- | --- |
+| `VideoCodec::H264` | `0x1B` | Annex-B framing on `push_video`. |
+| `VideoCodec::H265` | `0x24` | Annex-B framing on `push_video`. |
+| `VideoCodec::H266` | `0x33` | Annex-B framing on `push_video`. |
+| `VideoCodec::Av1` | `0x06` | OBU-framed (`obu_has_size_field = 1`); auto-emitted AV01 `registration_descriptor` per AV1-in-MPEG-2-TS binding §2.1. |
+
+All four are first-class. Mid-stream codec change is out of scope — destroy
+the muxer and create a new one if you need to switch codecs in a single
+output file.
 
 The diff between [../crates/srt-core/examples/mux_to_file.rs](../crates/srt-core/examples/mux_to_file.rs)
 (H.264 + async KLV via `Config::default()`) and

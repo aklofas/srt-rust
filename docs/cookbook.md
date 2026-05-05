@@ -746,3 +746,88 @@ while let Some(e) = demux.next_event() {
 ```
 
 Runnable: `cargo run --example demux_subtitle_file -- input.ts`.
+
+### 22. Streaming H.266 / VVC video with synchronous KLV metadata
+
+H.266 (VVC) carries in MPEG-TS under PMT `stream_type = 0x33` per the
+ITU-T H.222.0 amendment for VVC; the muxer emits that byte automatically
+when `VideoCodec::H266` is configured. The push contract is identical to
+H.264 / H.265 — Annex-B framing on `push_video`, one PES per call. Only
+the codec flag and the SPS / PPS / VPS bytes change.
+
+The recipe below mirrors recipe 9 (H.265 + sync KLV) — flip the codec to
+`VideoCodec::H266` and feed H.266 NAL bytes (NAL types 14 / 15 / 16 for
+VPS / SPS / PPS).
+
+```rust,no_run
+use srt_core::klv::st0605::{PrecisionTimeStampPack, TimeStatus};
+use srt_core::klv::st1910::wrap_au_cell;
+use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, StreamSpec, VideoCodec};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cfg = Config {
+        streams: vec![
+            StreamSpec::Video { pid: 0x1011, codec: VideoCodec::H266 },
+            StreamSpec::Klv {
+                pid: 0x1031,
+                stream_type: KlvStreamType::SynchronousMetadata,
+                carries_pts: true,
+            },
+        ],
+        ..Config::default()
+    };
+    let mut mux = Muxer::new(cfg)?;
+    let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
+    let timestamp = PrecisionTimeStampPack {
+        time_status: TimeStatus(0x1F),
+        timestamp_us: 1_700_000_000_000_000,
+    };
+    let wrapped = wrap_au_cell(&inner_klv, timestamp);
+    mux.push_klv(&wrapped, 0)?;
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/mux_h266_with_klv.rs](../crates/srt-core/examples/mux_h266_with_klv.rs).
+
+### 23. Streaming AV1 video with KLV metadata
+
+AV1 uses OBU framing — fundamentally different from the NAL-shaped codecs
+(H.264 / H.265 / H.266). Key differences when feeding `Muxer::push_video`:
+
+- **No Annex-B start codes.** OBUs are self-describing and length-prefixed
+  via LEB128. Concatenating OBUs with no separator produces a complete
+  access unit.
+- **AV1-in-MPEG-2-TS binding §3.1 requires `obu_has_size_field = 1`** on
+  every OBU so the demultiplexer can walk the OBU stream without a
+  separate framing layer.
+- **PMT `stream_type = 0x06`** plus an auto-emitted `AV01`
+  `registration_descriptor` (binding §2.1) tells receivers the bytes are
+  AV1 rather than KLV-async on the same stream_type byte.
+
+```rust,no_run
+use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, StreamSpec, VideoCodec};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cfg = Config {
+        streams: vec![
+            StreamSpec::Video { pid: 0x1011, codec: VideoCodec::Av1 },
+            StreamSpec::Klv {
+                pid: 0x1031,
+                stream_type: KlvStreamType::PrivateData,
+                carries_pts: false,
+            },
+        ],
+        ..Config::default()
+    };
+    let mut mux = Muxer::new(cfg)?;
+    // `au_obus` is a contiguous OBU sequence (each with obu_has_size_field=1).
+    // The example builds one synthetic Sequence Header + Temporal Delimiter +
+    // Frame access unit; real consumers feed the encoder's output verbatim.
+    let au_obus: Vec<u8> = vec![/* concatenated OBUs */];
+    mux.push_video(&au_obus, 0, /* key_frame = */ true)?;
+    Ok(())
+}
+```
+
+Runnable: [../crates/srt-core/examples/mux_av1_with_klv.rs](../crates/srt-core/examples/mux_av1_with_klv.rs).

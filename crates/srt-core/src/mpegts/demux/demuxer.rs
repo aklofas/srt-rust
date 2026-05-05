@@ -8,7 +8,7 @@ use crate::mpegts::demux::event::{
     ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, SubtitleCodec, VideoCodec,
     VideoPayload,
 };
-use crate::mpegts::demux::payload::{KlvShape, classify_klv, split_nals};
+use crate::mpegts::demux::payload::{KlvShape, classify_klv, split_nals, split_obus};
 use crate::mpegts::demux::pes::{Reassembler, ReassemblyOutcome};
 use crate::mpegts::demux::psi::{
     Pmt, PsiParseError, classify_audio_stream_type, extract_metadata_link, has_klva_registration,
@@ -791,11 +791,52 @@ impl Demuxer {
         let program_number = self.program_number_for_pid(stream.pid);
         match kind {
             StreamKind::Video(codec) => {
-                let nals = split_nals(&pes.payload, codec);
-                let payload_bytes = nal_payload_bytes(&nals);
-                let sample = SamplePayload::Video {
-                    codec,
-                    payload: VideoPayload::Nals(nals),
+                // Codec dispatches the payload-shape: H.26x splits Annex-B NAL
+                // units (split_nals); AV1 splits OBUs (split_obus). The two
+                // share the same Sample event surface but emit different
+                // VideoPayload variants — the invariant is documented on
+                // VideoPayload.
+                let (sample, payload_bytes) = match codec {
+                    VideoCodec::H264 | VideoCodec::H265 | VideoCodec::H266 => {
+                        let nals = split_nals(&pes.payload, codec);
+                        let bytes = nal_payload_bytes(&nals);
+                        (
+                            SamplePayload::Video {
+                                codec,
+                                payload: VideoPayload::Nals(nals),
+                            },
+                            bytes,
+                        )
+                    }
+                    VideoCodec::Av1 => {
+                        let (obus, mut issues) = split_obus(&pes.payload);
+                        // split_obus uses pid=0 as a sentinel on the issues it
+                        // raises (it doesn't know its own PID context). Patch
+                        // each issue with the real stream pid before forwarding
+                        // to the non-conformance pipeline.
+                        for issue in &mut issues {
+                            match issue {
+                                NonConformantIssue::Av1ObuMissingSizeField { pid, .. } => {
+                                    *pid = stream.pid
+                                }
+                                NonConformantIssue::Av1TileListNotAllowed { pid } => {
+                                    *pid = stream.pid
+                                }
+                                _ => {}
+                            }
+                        }
+                        for issue in issues {
+                            self.queue_nonconformant(stream, issue);
+                        }
+                        let bytes: usize = obus.iter().map(|o| o.payload.len()).sum();
+                        (
+                            SamplePayload::Video {
+                                codec,
+                                payload: VideoPayload::Obus(obus),
+                            },
+                            bytes,
+                        )
+                    }
                 };
                 self.stats_per_stream
                     .entry(stream.pid)

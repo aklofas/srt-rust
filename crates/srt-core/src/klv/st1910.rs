@@ -1,24 +1,36 @@
-//! MISB ST 1910 — AU cell wrapper for synchronous KLV streams.
+//! AU cell wrapper for synchronous KLV streams — **non-conformant format**.
 //!
-//! AU cell format per ST 1910 §7:
-//! - 16-byte AU Cell Universal Label
+//! **Caveat:** the format this module emits is fictional. It does not match
+//! either MISB ST 1910 (which is the CMAF/HLS-via-emsg-box spec, unrelated to
+//! MPEG-TS AU cells) or H.222.0 V9 §2.12.4.2 / ST 1402.2 §9.4.1 (which define
+//! the actual MPEG-TS Metadata_AU_cell as a 5-byte header). The 16-byte
+//! "AU_CELL_UL" constant emitted below is not registered in MISB ST 0807.
+//!
+//! Format currently emitted (each layer is exactly what `wrap_au_cell` writes):
+//! - 16-byte (un-registered) UL
 //! - BER-encoded value length
-//! - Value, which itself starts with:
-//!   - 16-byte ST 0605 Precision Time Stamp Pack UL
-//!   - BER length (= 9)
-//!   - 9-byte body (1-byte Time Status + 8-byte microseconds since 1970)
-//!   - Wrapped KLV LS payload
+//! - Embedded ST 0605 Precision Time Stamp Pack (16-byte UL + BER 9 + 9-byte body)
+//! - Wrapped KLV LS payload
 //!
-//! Wrap and unwrap are paired: wrap produces a fresh `Vec<u8>` ready for
-//! `Muxer::push_klv` (when `klv_carries_pts=true`); unwrap recovers the
-//! timestamp and inner KLV bytes for receivers / tests.
+//! A separate plan rewrites this module to emit the spec-conformant 5-byte
+//! Metadata_AU_cell header per H.222.0 V9 §2.12.4.2 Tables 2-155/2-156.
+//! Until then, callers should treat this as an internal-only convention.
+//!
+//! Wrap and unwrap are paired so existing consumers can round-trip values
+//! through the current (non-conformant) format unchanged while the rework
+//! is pending.
 
 use crate::error::KlvDecodeError;
 use crate::klv::length::{ber_len, read_ber, write_ber};
 use crate::klv::st0605::{self, PrecisionTimeStampPack};
 use crate::klv::universal_label::UniversalLabel;
 
-/// Universal Label for the ST 1910 AU cell (per MISB ST 1910 §7).
+/// 16-byte UL prefix emitted ahead of the AU cell payload. **Not
+/// registered** in MISB ST 0807 (1168 rows scanned 2026-05-05; zero
+/// matches for these bytes). Kept for round-trip with existing consumers
+/// of `wrap_au_cell`/`unwrap_au_cell`; the upcoming AU cell rework
+/// removes the UL and emits the spec-conformant 5-byte Metadata_AU_cell
+/// header per H.222.0 V9 §2.12.4.2 Tables 2-155/2-156 instead.
 /// 06 0E 2B 34 02 0B 01 01 0E 01 03 05 06 00 00 00
 pub const AU_CELL_UL: UniversalLabel = UniversalLabel([
     0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x05, 0x06, 0x00, 0x00, 0x00,

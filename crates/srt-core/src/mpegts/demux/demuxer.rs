@@ -1344,10 +1344,22 @@ mod tests {
     /// in StreamStats.
     #[test]
     fn stream_type_from_kind_per_audio_codec() {
-        assert_eq!(stream_type_from_kind(&StreamKind::Audio(AudioCodec::Mp2)), 0x03);
-        assert_eq!(stream_type_from_kind(&StreamKind::Audio(AudioCodec::Aac)), 0x0F);
-        assert_eq!(stream_type_from_kind(&StreamKind::Audio(AudioCodec::AacLatm)), 0x11);
-        assert_eq!(stream_type_from_kind(&StreamKind::Audio(AudioCodec::Ac3)), 0x81);
+        assert_eq!(
+            stream_type_from_kind(&StreamKind::Audio(AudioCodec::Mp2)),
+            0x03
+        );
+        assert_eq!(
+            stream_type_from_kind(&StreamKind::Audio(AudioCodec::Aac)),
+            0x0F
+        );
+        assert_eq!(
+            stream_type_from_kind(&StreamKind::Audio(AudioCodec::AacLatm)),
+            0x11
+        );
+        assert_eq!(
+            stream_type_from_kind(&StreamKind::Audio(AudioCodec::Ac3)),
+            0x81
+        );
     }
 
     #[test]

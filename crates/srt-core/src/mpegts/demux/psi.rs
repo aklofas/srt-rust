@@ -28,7 +28,7 @@ pub enum PsiParseError {
     TableIdMismatch { got: u8, expected: u8 },
     #[error("CRC32 mismatch (computed 0x{computed:08X}, declared 0x{declared:08X})")]
     CrcMismatch { computed: u32, declared: u32 },
-    #[error("section_length {0} declares more than fits in 1024 bytes")]
+    #[error("section_length {0} exceeds 1021 (the H.222.0 §2.4.4.6 cap)")]
     SectionTooLong(u16),
     #[error("malformed program loop entry at offset {offset}")]
     MalformedProgramEntry { offset: usize },
@@ -303,21 +303,22 @@ pub(crate) fn classify_audio_stream_type(
 }
 
 /// Returns the `linked_pid` from a `metadata_descriptor` if present, else
-/// `None`. The descriptor's structure is per H.222.0 §2.6.58; encoders
-/// vary on whether they include the linked PID at all.
+/// `None`. The descriptor's structure is per H.222.0 §2.6.60 Table 2-89;
+/// the trailing-PID readout below is **heuristic** and not normatively
+/// defined by either H.222.0 §2.6.60 (where trailing bytes are
+/// `private_data_byte[N]`) or by ST 1402.2 (which does not specify a
+/// linked-PID field at all).
 ///
-/// This implementation accepts the common ST 1402 shape: a
-/// `metadata_descriptor` (tag 0x26) whose body ends with a
-/// `metadata_locator_record` of length ≥ 2 carrying the linked
-/// `elementary_PID`. Other shapes return `None`; the caller treats that
-/// as "no declared link."
+/// Best-effort interpretation: if the descriptor body ends with at least
+/// 2 bytes whose value falls in the PID range, return that value. Other
+/// shapes return `None`; the caller treats that as "no declared link."
 ///
 /// Note: if the trailing 2 bytes coincidentally land in the valid PID
 /// range without being a real linked PID, the caller will receive a
-/// linkage that doesn't reflect actual encoder intent. Task 7 surfaces
-/// this as `LinkSource::Declared`; consumers should treat declared
-/// linkages as informational and validate (e.g., by confirming the
-/// linked PID appears as an `elementary_PID` in the same PMT) when
+/// linkage that doesn't reflect actual encoder intent. The demuxer
+/// surfaces this as `LinkSource::Declared`; consumers should treat
+/// declared linkages as informational and validate (e.g., by confirming
+/// the linked PID appears as an `elementary_PID` in the same PMT) when
 /// strict pairing matters.
 pub fn extract_metadata_link(descs: &[RawDescriptor]) -> Option<u16> {
     let d = descs.iter().find(|d| d.tag == 0x26)?;

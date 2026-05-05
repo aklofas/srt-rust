@@ -191,16 +191,21 @@ pub fn teletext_descriptor(
 }
 
 /// `registration_descriptor` (tag 0x05) carrying ASCII format_identifier
-/// `"VTTC"` — the marker for WebVTT-in-MPEG-TS per Apple's HLS
-/// authoring spec (matches ffmpeg's `mpegtsenc` emitter).
+/// `"VTTC"` — **informal industry convention** for WebVTT-in-MPEG-TS.
+/// Not defined by RFC 8216 / draft-pantos-hls-rfc8216bis nor any
+/// published normative spec. Originates in ffmpeg's `mpegtsenc.c`
+/// emitter and is recognized by hls.js v1.7+ and mediamtx.
 pub fn format_identifier_vttc() -> Vec<u8> {
     vec![0x05, 0x04, b'V', b'T', b'T', b'C']
 }
 
 /// `registration_descriptor` (tag 0x05) carrying ASCII format_identifier
-/// `"GA94"` — the ATSC A/53 marker, used here as the best-effort
-/// signal for CEA-708 caption data carried as a separate elementary
-/// stream (rather than embedded in H.264 / H.265 SEI).
+/// `"GA94"` — **informal industry convention** for CEA-708 caption data
+/// carried as a standalone elementary stream. ATSC A/53 Part 4 §6.2.3
+/// defines `"GA94"` as the `user_data_identifier` for caption data
+/// **embedded in MPEG-2 video user_data**, not as a stream-level
+/// marker. The auto-emitted descriptor here is best-effort interop with
+/// ATSC ecosystem tooling, not normatively defined.
 pub fn format_identifier_ga94() -> Vec<u8> {
     vec![0x05, 0x04, b'G', b'A', b'9', b'4']
 }

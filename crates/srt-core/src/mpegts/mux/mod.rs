@@ -113,14 +113,22 @@ pub enum SubtitleCodec {
         page_number: u8,
     },
     /// CEA-708 caption data carried as a separate elementary stream
-    /// (rather than embedded in H.264 / H.265 SEI). Best-effort against
-    /// the under-specified ATSC standalone-CC carry-out form;
-    /// auto-emits `registration_descriptor` with `format_identifier =
-    /// "GA94"`.
+    /// (rather than embedded in H.264 / H.265 SEI). **Informal industry
+    /// convention** — ATSC A/53 Part 4 §6.2.3 defines `"GA94"` as the
+    /// `user_data_identifier` for caption data **embedded in MPEG-2
+    /// video user_data**, not as a stream-level marker for a standalone
+    /// CEA-708 elementary stream. No published spec defines this carriage
+    /// form; the auto-emitted `registration_descriptor` with
+    /// `format_identifier = "GA94"` is interop-with-ATSC-ecosystem-tooling
+    /// best-effort.
     Cea708Standalone,
-    /// WebVTT cues carried inside MPEG-TS PES per Apple's HLS
-    /// authoring spec. Auto-emits `registration_descriptor` with
-    /// `format_identifier = "VTTC"`.
+    /// WebVTT cues carried inside MPEG-TS PES. **Informal industry
+    /// convention** — neither RFC 8216 nor draft-pantos-hls-rfc8216bis
+    /// nor any published spec defines WebVTT-in-MPEG-TS PES carriage.
+    /// The `"VTTC"` `format_identifier` is a ffmpeg `mpegtsenc.c`
+    /// convention recognized by hls.js v1.7+ and mediamtx, not a
+    /// normatively-defined codepoint. Auto-emits `registration_descriptor`
+    /// with `format_identifier = "VTTC"`.
     WebVttInTs,
 }
 
@@ -4066,7 +4074,8 @@ mod stats_tests {
 
         // Synthetic Annex-B H.264 IDR access unit.
         let nal: &[u8] = &[
-            0x00, 0x00, 0x00, 0x01, 0x65, 0x88, 0x84, 0x21, 0xff, // start_code + IDR header + filler
+            0x00, 0x00, 0x00, 0x01, 0x65, 0x88, 0x84, 0x21,
+            0xff, // start_code + IDR header + filler
         ];
 
         // First key-frame at PTS=0 — pcr_last is None, so PCR is due. This

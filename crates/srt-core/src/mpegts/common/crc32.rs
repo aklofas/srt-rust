@@ -32,7 +32,8 @@ const fn build_table() -> [u32; 256] {
 /// Compute CRC-32/MPEG-2 over `data`.
 ///
 /// Init = 0xFFFFFFFF, no input/output reflection, no final xor — the
-/// MPEG-2 PSI variant per ISO/IEC 13818-1 Annex B.
+/// MPEG-2 PSI variant per ITU-T H.222.0 V9 / ISO/IEC 13818-1 Annex A.1
+/// "CRC decoder model" (PDF p.240).
 pub fn crc32_mpeg2(data: &[u8]) -> u32 {
     let mut crc: u32 = 0xFFFF_FFFF;
     for &byte in data {

@@ -77,7 +77,7 @@ pub fn read_ber_strict(buf: &[u8]) -> Result<(usize, &[u8]), KlvDecodeError> {
         }
         // Reject if the long-form payload starts with a zero byte (overlong).
         let n = (first & 0x7F) as usize;
-        if n > 0 && buf.len() >= 1 + n && buf[1] == 0 {
+        if n > 0 && buf.len() > n && buf[1] == 0 {
             return Err(KlvDecodeError::NonCanonicalLength { offset: 1 });
         }
     }

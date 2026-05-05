@@ -1,17 +1,20 @@
-//! ST 1201 §8 IMAPB — bit-packed mapping between signed integers and a
+//! ST 1201.5 §7 IMAPB — bit-packed mapping between signed integers and a
 //! defined floating-point range.
 //!
 //! Given parameters `(min, max, length)`:
 //! - Value range is `[min, max]` (assumes `min < max`).
 //! - The integer occupies `length` bytes, big-endian.
-//! - Scale factor `sF = 2^(ceil(log2(max - min))) / 2^(8 * length - 1)`.
-//! - Encode: `i = round((value - min) / sF) - 2^(8 * length - 1)`.
-//! - Decode: `value = sF * (i + 2^(8 * length - 1)) + min`.
+//! - Scale factor `sF = 2^(dPow − bPow)` where `dPow = 8L − 1` (= 8 * length
+//!   − 1) and `bPow = ceil(log2(max − min))` — equivalently
+//!   `2^(8L−1) / 2^bPow` (per ST 1201.5 §7.1.2 PDF p.5; numerator/denominator
+//!   ordering matches the spec form).
+//! - Encode: `i = round((value − min) / sF) − 2^(8L−1)`.
+//! - Decode: `value = sF * (i + 2^(8L−1)) + min`.
 //!
-//! Special integer values per ST 1201 §8.1 are not modeled here — escape-hatch
-//! users handle them at the next layer if needed. ST 0601 fixed-range mappings
-//! (which use a slightly different convention with INT_MIN as INVALID) live
-//! in `klv::st0601::mapping`.
+//! Special integer values per ST 1201.5 §7.2.3 (PDF p.8) are not modeled
+//! here — escape-hatch users handle them at the next layer if needed. ST
+//! 0601 fixed-range mappings (which use a slightly different convention
+//! with INT_MIN as INVALID) live in `klv::st0601::mapping`.
 
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
 

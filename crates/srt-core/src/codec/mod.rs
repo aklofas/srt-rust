@@ -55,7 +55,7 @@ pub struct ColorInfo {
     pub sample_aspect_ratio: Option<Rational>,
 }
 
-/// ITU-T H.273 / ISO/IEC 23091-2 colour primaries.
+/// ITU-T H.273 V4 (07/2024) §8.1 Table 2 — colour primaries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColourPrimaries {
     Bt709,
@@ -95,7 +95,7 @@ impl ColourPrimaries {
     }
 }
 
-/// ITU-T H.273 / ISO/IEC 23091-2 transfer characteristics.
+/// ITU-T H.273 V4 (07/2024) §8.2 Table 3 — transfer characteristics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferCharacteristics {
     Bt709,

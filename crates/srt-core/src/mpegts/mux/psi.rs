@@ -135,8 +135,7 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig
     for (i, spec) in prog.streams.iter().enumerate() {
         let caller_descs = &prog.stream_descriptors[i];
         let caller_descs_len: usize = caller_descs.iter().map(|d| d.len()).sum();
-        let caller_has_registration =
-            caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x05);
+        let caller_has_registration = caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x05);
 
         let auto_emit_len = match spec {
             StreamSpec::Klv {
@@ -213,8 +212,7 @@ pub(crate) fn write_pmt_packet(
         // stream_type(1) + reserved+ES_PID(2) + reserved+ES_info_length(2) + descriptors
         es_loop_size += 5 + s.descriptors.len();
     }
-    let program_info_length_usize: usize =
-        prog.program_descriptors.iter().map(|d| d.len()).sum();
+    let program_info_length_usize: usize = prog.program_descriptors.iter().map(|d| d.len()).sum();
     // section_length covers everything after itself: 9 (program/ver/sect/PCR/info_len header)
     // + program_descs + es_loop_size + 4 (CRC).
     let section_length: u16 = 9 + program_info_length_usize as u16 + es_loop_size as u16 + 4;

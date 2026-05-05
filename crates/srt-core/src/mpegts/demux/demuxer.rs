@@ -140,6 +140,10 @@ pub struct Demuxer {
     /// repeat samples on the same PID don't double-count. Cleared on
     /// `reset_stats`.
     subtitle_pids_seen: HashSet<u16>,
+    /// PIDs that have already emitted `Av1RegistrationMalformed` for the
+    /// current PMT version. Cleared at the top of each PMT-version bump so
+    /// a fresh PMT re-fires if the malformed registration is still present.
+    av1_registration_malformed_emitted: HashSet<u16>,
 }
 
 impl Demuxer {
@@ -177,6 +181,7 @@ impl Demuxer {
             stats_per_stream: BTreeMap::new(),
             subtitle_missing_descriptor_emitted: HashSet::new(),
             subtitle_pids_seen: HashSet::new(),
+            av1_registration_malformed_emitted: HashSet::new(),
         }
     }
 
@@ -510,11 +515,14 @@ impl Demuxer {
         }
 
         // Fresh PMT version — clear the per-PID guard for SubtitleMissingDescriptor
-        // emission so that a new PMT version re-fires the warning if the
-        // descriptor is still absent. Only PIDs owned by *this* PMT are
-        // dropped to leave any other program's state intact.
+        // and Av1RegistrationMalformed emission so that a new PMT version
+        // re-fires the warning if the descriptor is still absent / still
+        // malformed. Only PIDs owned by *this* PMT are dropped to leave any
+        // other program's state intact.
         for s in &pmt.streams {
             self.subtitle_missing_descriptor_emitted
+                .remove(&s.elementary_pid);
+            self.av1_registration_malformed_emitted
                 .remove(&s.elementary_pid);
         }
 
@@ -524,6 +532,7 @@ impl Demuxer {
         let mut kind_inserts: Vec<(u16, StreamKind)> = Vec::new();
         let mut collision_issues: Vec<(StreamId, NonConformantIssue)> = Vec::new();
         let mut subtitle_missing: Vec<(u16, StreamKind)> = Vec::new();
+        let mut av1_malformed: Vec<(u16, StreamKind)> = Vec::new();
 
         for s in &pmt.streams {
             let (kind, _declared_link) = self.get_stream_kind(s.elementary_pid, s);
@@ -563,6 +572,20 @@ impl Demuxer {
                 subtitle_missing.push((s.elementary_pid, kind));
             }
 
+            // stream_type 0x06 entries that contain a Registration descriptor
+            // whose body looks like a truncated AV01 attempt (starts with
+            // "AV", < 4 bytes total) — fires only when classify_0x06 didn't
+            // already return Video(Av1), i.e. the malformed registration
+            // didn't match `b"AV01"` exactly. Outer length-vs-buffer overflow
+            // is already caught by walk_descriptors as DescriptorLoopOverflow;
+            // this is the in-bounds variant.
+            if s.stream_type == 0x06
+                && !matches!(kind, StreamKind::Video(VideoCodec::Av1))
+                && is_malformed_av1_registration(&s.descriptors)
+            {
+                av1_malformed.push((s.elementary_pid, kind));
+            }
+
             stream_infos.push(StreamInfo {
                 pid: s.elementary_pid,
                 stream_type: s.stream_type,
@@ -584,6 +607,16 @@ impl Demuxer {
                 self.queue_nonconformant(
                     StreamId { pid, kind },
                     NonConformantIssue::SubtitleMissingDescriptor { pid },
+                );
+            }
+        }
+
+        // Emit Av1RegistrationMalformed once per PID per fresh PMT version.
+        for (pid, kind) in av1_malformed {
+            if self.av1_registration_malformed_emitted.insert(pid) {
+                self.queue_nonconformant(
+                    StreamId { pid, kind },
+                    NonConformantIssue::Av1RegistrationMalformed { pid },
                 );
             }
         }
@@ -1189,6 +1222,27 @@ fn has_recognized_subtitle_descriptor(
         || find_format_identifier(descriptors, b"GA94")
 }
 
+/// True iff `descriptors` contains a Registration descriptor that
+/// LOOKS like an attempted AV1 (`AV01`) registration but is truncated.
+/// Specifically: a descriptor with `tag == 0x05`, body length < 4 bytes,
+/// and body starts with `b"AV"`. Outer length-vs-buffer overflow would
+/// already error via `PsiParseError::DescriptorLoopOverflow` at walk
+/// time; this catches the subtler case where the descriptor is
+/// well-formed but its body can't be a valid 4-byte format_identifier.
+///
+/// Used by the demuxer to surface `NonConformantIssue::Av1RegistrationMalformed`
+/// from the PMT processing path. Lenient mode silently still falls
+/// through to `StreamKind::Unknown(0x06)` from the standard cascade;
+/// strict mode (`StrictMode::Full`) converts the issue to a fatal
+/// `DemuxError::StrictRejection`.
+fn is_malformed_av1_registration(
+    descriptors: &[crate::mpegts::demux::psi::RawDescriptor],
+) -> bool {
+    descriptors
+        .iter()
+        .any(|d| d.tag == 0x05 && d.data.len() < 4 && d.data.starts_with(b"AV"))
+}
+
 impl Default for Demuxer {
     fn default() -> Self {
         Self::new()
@@ -1703,6 +1757,34 @@ mod tests {
             raw_desc(0x05, b"KLVA".to_vec()),
         ];
         assert_eq!(classify_0x06(&descs), StreamKind::Video(VideoCodec::Av1));
+    }
+
+    // -- is_malformed_av1_registration -----------------------------------------
+
+    #[test]
+    fn malformed_av01_registration_truncated_to_three_bytes() {
+        // Tag 0x05, length 3 (well-formed at walk time), contents "AV0".
+        // This is the "tried to be AV01 but truncated" case.
+        let descs = vec![raw_desc(0x05, b"AV0".to_vec())];
+        assert!(is_malformed_av1_registration(&descs));
+    }
+
+    #[test]
+    fn well_formed_av01_registration_not_flagged() {
+        let descs = vec![raw_desc(0x05, b"AV01".to_vec())];
+        assert!(!is_malformed_av1_registration(&descs));
+    }
+
+    #[test]
+    fn other_short_registration_not_flagged() {
+        // KLVA truncated — doesn't start with "AV" so not flagged.
+        let descs = vec![raw_desc(0x05, b"KL".to_vec())];
+        assert!(!is_malformed_av1_registration(&descs));
+    }
+
+    #[test]
+    fn empty_descriptors_not_flagged() {
+        assert!(!is_malformed_av1_registration(&[]));
     }
 
     #[test]

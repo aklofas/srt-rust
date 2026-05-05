@@ -2462,10 +2462,12 @@ fn validate_annex_b(nal: &[u8]) -> Result<(), MuxError> {
     }
 }
 
-/// ISO 639-2 language codes ride the wire as 3 lowercase ASCII bytes.
-/// Used by DVB subtitle / teletext descriptors.
+/// ISO 639-2 language codes per ETSI EN 300 468 §6.2.41/§6.2.43 ride the
+/// wire as 3 ISO/IEC 8859-1 bytes. Spec doesn't mandate lowercase; we
+/// accept uppercase or lowercase ASCII letters but reject non-alphabetic
+/// bytes (digits, symbols, control codes) to keep junk out.
 fn validate_language_code(code: [u8; 3]) -> Result<(), MuxError> {
-    if code.iter().all(|&b| b.is_ascii_lowercase()) {
+    if code.iter().all(|&b| b.is_ascii_alphabetic()) {
         Ok(())
     } else {
         Err(MuxError::InvalidLanguageCode { code })
@@ -4345,6 +4347,29 @@ mod tests {
             count_0x59, 1,
             "auto-emit must fire when caller-supplied descriptors don't include a subtitle codec marker"
         );
+    }
+
+    #[test]
+    fn validate_language_code_accepts_uppercase_per_en_300_468() {
+        // ISO/IEC 8859-1 character coding does not mandate lowercase. Real-world
+        // DVB encoders sometimes emit uppercase ISO 639-2 codes.
+        assert!(
+            validate_language_code(*b"ENG").is_ok(),
+            "uppercase ASCII alphabetic must validate"
+        );
+        assert!(
+            validate_language_code(*b"eng").is_ok(),
+            "lowercase still accepted"
+        );
+        assert!(
+            validate_language_code(*b"EnG").is_ok(),
+            "mixed case accepted"
+        );
+        // Non-letters still rejected — admitting digits/symbols would let
+        // junk through.
+        assert!(validate_language_code(*b"123").is_err());
+        assert!(validate_language_code(*b"e n").is_err());
+        assert!(validate_language_code([0x00, 0x01, 0x02]).is_err());
     }
 }
 

@@ -155,6 +155,64 @@ pub fn stream_identifier(component_tag: u8) -> Vec<u8> {
     vec![0x52, 0x01, component_tag]
 }
 
+/// DVB subtitling_descriptor (tag 0x59), single-entry form.
+/// ETSI EN 300 468 §6.2.41.
+///
+/// `language` is ISO 639-2 lowercase ASCII. `subtitling_type` per
+/// Table 26 (e.g. 0x10 = DVB sub, no AR signalling). `composition_page_id`
+/// and `ancillary_page_id` are 16-bit values per spec.
+pub fn subtitling_descriptor(
+    language: [u8; 3],
+    subtitling_type: u8,
+    composition_page_id: u16,
+    ancillary_page_id: u16,
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(10);
+    out.push(0x59); // tag
+    out.push(0x08); // length
+    out.extend_from_slice(&language);
+    out.push(subtitling_type);
+    out.extend_from_slice(&composition_page_id.to_be_bytes());
+    out.extend_from_slice(&ancillary_page_id.to_be_bytes());
+    out
+}
+
+/// DVB teletext_descriptor (tag 0x56), single-entry form.
+/// ETSI EN 300 468 §6.2.43.
+///
+/// `language` is ISO 639-2 lowercase ASCII. `teletext_type` is a 5-bit
+/// value (e.g. 0x02 = subtitle page). `magazine_number` is 0..=7
+/// (3 bits). `page_number` is BCD-encoded.
+pub fn teletext_descriptor(
+    language: [u8; 3],
+    teletext_type: u8,
+    magazine_number: u8,
+    page_number: u8,
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(7);
+    out.push(0x56); // tag
+    out.push(0x05); // length
+    out.extend_from_slice(&language);
+    out.push(((teletext_type & 0x1F) << 3) | (magazine_number & 0x07));
+    out.push(page_number);
+    out
+}
+
+/// `registration_descriptor` (tag 0x05) carrying ASCII format_identifier
+/// `"VTTC"` — the marker for WebVTT-in-MPEG-TS per Apple's HLS
+/// authoring spec (matches ffmpeg's `mpegtsenc` emitter).
+pub fn format_identifier_vttc() -> Vec<u8> {
+    vec![0x05, 0x04, b'V', b'T', b'T', b'C']
+}
+
+/// `registration_descriptor` (tag 0x05) carrying ASCII format_identifier
+/// `"GA94"` — the ATSC A/53 marker, used here as the best-effort
+/// signal for CEA-708 caption data carried as a separate elementary
+/// stream (rather than embedded in H.264 / H.265 SEI).
+pub fn format_identifier_ga94() -> Vec<u8> {
+    vec![0x05, 0x04, b'G', b'A', b'9', b'4']
+}
+
 /// ISO 639 Language descriptor (tag 0x0A) — H.222.0 §2.6.18.
 /// 3-byte language code + 1-byte audio_type. Conventional on audio PIDs;
 /// valid on any ES.
@@ -296,5 +354,53 @@ mod tests {
     fn iso_639_language_4_byte_body() {
         let bytes = iso_639_language(*b"eng", 0x00);
         assert_eq!(bytes, vec![0x0A, 0x04, b'e', b'n', b'g', 0x00]);
+    }
+
+    #[test]
+    fn subtitling_descriptor_single_entry_round_trip_bytes() {
+        // ETSI EN 300 468 §6.2.41 single-entry: tag(1) + length(1) +
+        //   ISO_639_lang(3) + subtitling_type(1) + composition_page_id(2) +
+        //   ancillary_page_id(2) = 8 payload bytes.
+        let bytes = subtitling_descriptor(*b"eng", 0x10, 0x0001, 0x0001);
+        assert_eq!(
+            bytes,
+            vec![
+                0x59, // tag
+                0x08, // length
+                b'e', b'n', b'g', 0x10, 0x00, 0x01, 0x00, 0x01,
+            ]
+        );
+    }
+
+    #[test]
+    fn teletext_descriptor_single_entry_round_trip_bytes() {
+        // ETSI EN 300 468 §6.2.43 single-entry: tag(1) + length(1) +
+        //   ISO_639_lang(3) + (teletext_type<<3 | magazine_number)(1) +
+        //   page_number(1) = 5 payload bytes.
+        let bytes = teletext_descriptor(*b"eng", 0x02, 1, 0x88);
+        assert_eq!(
+            bytes,
+            vec![
+                0x56, // tag
+                0x05, // length
+                b'e',
+                b'n',
+                b'g',
+                (0x02 << 3) | 1,
+                0x88,
+            ]
+        );
+    }
+
+    #[test]
+    fn format_identifier_vttc_descriptor_round_trip_bytes() {
+        let bytes = format_identifier_vttc();
+        assert_eq!(bytes, vec![0x05, 0x04, b'V', b'T', b'T', b'C']);
+    }
+
+    #[test]
+    fn format_identifier_ga94_descriptor_round_trip_bytes() {
+        let bytes = format_identifier_ga94();
+        assert_eq!(bytes, vec![0x05, 0x04, b'G', b'A', b'9', b'4']);
     }
 }

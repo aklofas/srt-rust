@@ -880,6 +880,19 @@ impl ProgramBuilder {
         self
     }
 
+    /// Add a subtitle elementary stream to this program.
+    ///
+    /// `pid` must be in `0x0010..=0x1FFE` and distinct from all other PIDs
+    /// in this program. All four `SubtitleCodec` variants emit PMT
+    /// `stream_type = 0x06` (PrivateData); the per-stream PMT descriptor
+    /// (Task 9) disambiguates the codec at the wire level.
+    pub fn add_subtitle(mut self, pid: u16, codec: SubtitleCodec) -> Self {
+        let prog = &mut self.parent.programs[self.idx];
+        prog.streams.push(StreamSpec::Subtitle { pid, codec });
+        prog.stream_descriptors.push(Vec::new());
+        self
+    }
+
     /// Pin this program's PCR to a specific PID. Default: first video stream's
     /// PID (or first KLV PID for KLV-only programs).
     pub fn pcr_pid(mut self, pid: u16) -> Self {
@@ -1021,7 +1034,7 @@ pub struct MuxerStats {
 
 use self::pes::{
     MAX_PES_HEADER_SIZE, PesPtsField, STREAM_ID_KLV, STREAM_ID_VIDEO, write_audio_pes,
-    write_pes_header,
+    write_pes_header, write_subtitle_pes,
 };
 use self::psi::{KLVA_REGISTRATION_DESCRIPTOR, PmtStreamEntry, write_pat_packet, write_pmt_packet};
 use self::ts::{AdaptationField, ContinuityCounters, write_packet};
@@ -1043,6 +1056,14 @@ struct KlvStreamState {
 struct AudioStreamState {
     pid: u16,
     codec: AudioCodec,
+}
+
+/// Per-subtitle-stream cached state. `codec` is `Clone` (not `Copy`) so we
+/// store it owned per-stream — same shape as `SubtitleCodec` itself.
+struct SubtitleStreamState {
+    pid: u16,
+    #[allow(dead_code)] // consulted in Task 9 (PMT auto-emit descriptor)
+    codec: SubtitleCodec,
 }
 
 /// Sender-side MPEG-TS muxer.
@@ -1074,6 +1095,10 @@ pub struct Muxer {
     /// Per-program audio stream state. Same indexing as `video_streams`.
     /// `AudioStreamHandle::unpack()` → `(prog_idx, within_idx)` indexes here.
     audio_streams: Vec<Vec<AudioStreamState>>,
+
+    /// Per-program subtitle stream state. Same indexing as `video_streams`.
+    /// `SubtitleStreamHandle::unpack()` → `(prog_idx, within_idx)` indexes here.
+    subtitle_streams: Vec<Vec<SubtitleStreamState>>,
 
     /// Per-program resolved PCR PID. Indexed parallel to `config.programs`.
     pcr_pids: Vec<u16>,
@@ -1115,6 +1140,7 @@ impl Muxer {
         let mut video_streams: Vec<Vec<VideoStreamState>> = Vec::with_capacity(n_programs);
         let mut klv_streams: Vec<Vec<KlvStreamState>> = Vec::with_capacity(n_programs);
         let mut audio_streams: Vec<Vec<AudioStreamState>> = Vec::with_capacity(n_programs);
+        let mut subtitle_streams: Vec<Vec<SubtitleStreamState>> = Vec::with_capacity(n_programs);
         let mut pcr_pids: Vec<u16> = Vec::with_capacity(n_programs);
         let mut pmt_descriptor_caches: Vec<Vec<Vec<u8>>> = Vec::with_capacity(n_programs);
         let mut per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats> = BTreeMap::new();
@@ -1155,6 +1181,17 @@ impl Muxer {
                     StreamSpec::Audio { pid, codec } => Some(AudioStreamState {
                         pid: *pid,
                         codec: *codec,
+                    }),
+                    _ => None,
+                })
+                .collect();
+            let prog_subtitle: Vec<SubtitleStreamState> = prog
+                .streams
+                .iter()
+                .filter_map(|s| match s {
+                    StreamSpec::Subtitle { pid, codec } => Some(SubtitleStreamState {
+                        pid: *pid,
+                        codec: codec.clone(),
                     }),
                     _ => None,
                 })
@@ -1258,10 +1295,26 @@ impl Muxer {
                     },
                 );
             }
+            for s in &prog_subtitle {
+                // All four subtitle codecs ride PMT stream_type 0x06
+                // (PrivateData); the per-stream PMT descriptor (added in
+                // Task 9) disambiguates between DVB-sub, teletext,
+                // CEA-708 standalone, and WebVTT-in-TS.
+                per_stream.insert(
+                    s.pid,
+                    crate::mpegts::stats::StreamStats {
+                        pid: s.pid,
+                        stream_type: StreamType::KlvPrivate.as_u8(),
+                        program_number: prog.program_number,
+                        ..Default::default()
+                    },
+                );
+            }
 
             video_streams.push(prog_video);
             klv_streams.push(prog_klv);
             audio_streams.push(prog_audio);
+            subtitle_streams.push(prog_subtitle);
             pcr_pids.push(pcr_pid);
             pmt_descriptor_caches.push(prog_cache);
         }
@@ -1272,6 +1325,7 @@ impl Muxer {
             video_streams,
             klv_streams,
             audio_streams,
+            subtitle_streams,
             pcr_pids,
             pcr_interval_27mhz,
             psi_interval_90khz,
@@ -1488,6 +1542,154 @@ impl Muxer {
         Ok((0..self.audio_streams[prog_idx].len())
             .map(|s_idx| AudioStreamHandle::pack(prog_idx, s_idx))
             .collect())
+    }
+
+    /// Push one subtitle PES unit, single-stream shorthand.
+    ///
+    /// `pts_90khz` is required and becomes the PES PTS — subtitles are
+    /// rendered at presentation time, never reordered. `payload` is one
+    /// complete logical subtitle unit (DVB-sub composition page,
+    /// teletext data field, CEA-708 service block, or WebVTT cue);
+    /// fragmentation across PES is not used.
+    ///
+    /// Resolves only when exactly one subtitle stream is configured
+    /// across all programs. Otherwise rejects with
+    /// [`MuxError::AmbiguousTarget`].
+    ///
+    /// Returns `Err(MuxError::SubtitleTooLarge)` if `payload.len()`
+    /// would overflow the PES packet length budget.
+    /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets
+    /// would exceed `Config::buffer_packets`.
+    pub fn push_subtitle(&mut self, pts_90khz: i64, payload: &[u8]) -> Result<(), MuxError> {
+        let total_subtitle: usize = self.subtitle_streams.iter().map(|s| s.len()).sum();
+        if total_subtitle != 1 {
+            return Err(MuxError::AmbiguousTarget {
+                kind: "subtitle",
+                count: total_subtitle,
+            });
+        }
+        // Locate the program with the lone subtitle stream — same iterate-to-find
+        // pattern as `push_audio` / `push_klv` (the lone stream may not be in
+        // program 0).
+        let (prog_idx, _within_idx) = self
+            .subtitle_streams
+            .iter()
+            .enumerate()
+            .find(|(_p, s)| !s.is_empty())
+            .map(|(p, _)| (p, 0))
+            .expect("total_subtitle == 1 guarantees one non-empty program");
+        let handle = SubtitleStreamHandle::pack(prog_idx, 0);
+        self.push_subtitle_to(handle, pts_90khz, payload)
+    }
+
+    /// Push one subtitle PES unit on a specific subtitle stream.
+    ///
+    /// Routes to the subtitle stream identified by `handle`. Use the
+    /// bare [`push_subtitle`][Self::push_subtitle] shorthand when
+    /// exactly one subtitle stream is configured. Handles are obtained
+    /// from [`subtitle_handles`][Self::subtitle_handles].
+    ///
+    /// Returns [`MuxError::InvalidStreamHandle`] if the handle's index
+    /// is out of range for this muxer's configured subtitle stream count.
+    /// Returns [`MuxError::SubtitleTooLarge`] if `payload.len()` would
+    /// overflow the PES packet length budget (max 65527 bytes).
+    /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets
+    /// would exceed `Config::buffer_packets`.
+    pub fn push_subtitle_to(
+        &mut self,
+        handle: SubtitleStreamHandle,
+        pts_90khz: i64,
+        payload: &[u8],
+    ) -> Result<(), MuxError> {
+        let (prog_idx, within_idx) = handle.unpack();
+        if prog_idx >= self.subtitle_streams.len()
+            || within_idx >= self.subtitle_streams[prog_idx].len()
+        {
+            return Err(MuxError::InvalidStreamHandle {
+                kind: "subtitle",
+                index: handle.0 as usize,
+            });
+        }
+
+        // Subtitle PES always carries a PTS (PTS-only header, no DTS), so PES
+        // overhead is 3 (covered by PES_packet_length: flags1 + flags2 +
+        // header_data_length) + 5 (PTS field) = 8 bytes. Bound payload so the
+        // PES_packet_length u16 doesn't overflow.
+        let pes_overhead = 3usize + 5;
+        let max_subtitle = (u16::MAX as usize) - pes_overhead;
+        if payload.len() > max_subtitle {
+            return Err(MuxError::SubtitleTooLarge {
+                size: payload.len(),
+                max: max_subtitle,
+            });
+        }
+
+        let subtitle_pid = self.subtitle_streams[prog_idx][within_idx].pid;
+
+        let mut pes_buf = Vec::with_capacity(MAX_PES_HEADER_SIZE + payload.len());
+        write_subtitle_pes(&mut pes_buf, pts_90khz, payload);
+
+        let subtitle_packets = ts_packets_for(pes_buf.len());
+        // Mirror push_audio_to: reserve 2 packets (PAT + 1 PMT) when a PSI
+        // tick is due. Multi-program muxers actually emit 1 PAT + N PMTs,
+        // but the muxer-wide buffer slop tolerates a small under-reservation
+        // here (matches the audio precedent at plan #21 push_audio_to).
+        let psi_packets = if self.psi_due(prog_idx, pts_90khz) {
+            2
+        } else {
+            0
+        };
+
+        if self.queue.len() + psi_packets + subtitle_packets > self.config.buffer_packets {
+            return Err(MuxError::BufferFull {
+                capacity_packets: self.config.buffer_packets,
+            });
+        }
+
+        self.maybe_emit_psi(prog_idx, pts_90khz);
+
+        // Subtitles do NOT extend the PCR fallback chain — they are sparse
+        // and event-driven, and the validate path rejects them as PCR PIDs
+        // outright (SubtitlePidUsedAsPcrPid). The first packet here will
+        // never carry PCR.
+        let mut cursor = 0;
+        let mut first = true;
+        while cursor < pes_buf.len() {
+            let adaptation = AdaptationField::default();
+            let mut pkt = [0u8; 188];
+            let result = write_packet(
+                &mut pkt,
+                subtitle_pid,
+                first,
+                adaptation,
+                &pes_buf[cursor..],
+                &mut self.counters,
+            );
+            cursor += result.payload_consumed;
+            self.queue.push_back(pkt);
+            first = false;
+        }
+
+        // Per-stream stats — Ok-path only.
+        if let Some(s) = self.per_stream.get_mut(&subtitle_pid) {
+            s.items += 1;
+            s.bytes += payload.len() as u64;
+        }
+
+        Ok(())
+    }
+
+    /// All `SubtitleStreamHandle`s for this muxer, in
+    /// `(program, within-program)` declaration order. One handle per
+    /// `StreamSpec::Subtitle` across all programs.
+    pub fn subtitle_handles(&self) -> Vec<SubtitleStreamHandle> {
+        self.subtitle_streams
+            .iter()
+            .enumerate()
+            .flat_map(|(p_idx, prog)| {
+                (0..prog.len()).map(move |s_idx| SubtitleStreamHandle::pack(p_idx, s_idx))
+            })
+            .collect()
     }
 
     /// Drain ready TS packets into `out`.
@@ -1902,9 +2104,11 @@ impl Muxer {
                         codec: AudioCodec::Ac3,
                         ..
                     } => StreamType::AudioAc3,
-                    StreamSpec::Subtitle { .. } => {
-                        panic!("subtitle streams not yet supported in PMT generation");
-                    }
+                    // All four subtitle codecs share PMT stream_type 0x06
+                    // (PrivateData); per-stream descriptor (Task 9) carries
+                    // the codec-specific disambiguator (subtitling_descriptor /
+                    // teletext_descriptor / Registration "GA94" / "VTTC").
+                    StreamSpec::Subtitle { .. } => StreamType::KlvPrivate,
                 };
                 entries.push(PmtStreamEntry {
                     stream_type,
@@ -3083,6 +3287,90 @@ mod tests {
             .position(|s| matches!(s, StreamSpec::Audio { .. }))
             .unwrap();
         assert_eq!(prog.stream_descriptors[audio_idx].len(), 1);
+    }
+
+    #[test]
+    fn push_subtitle_to_emits_pes_for_configured_handle() {
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+        let handles = mux.subtitle_handles();
+        assert_eq!(handles.len(), 1);
+
+        mux.push_subtitle_to(
+            handles[0],
+            90_000,
+            b"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n",
+        )
+        .unwrap();
+
+        let mut buf = vec![0u8; 188 * 64];
+        let n = mux.pull(&mut buf);
+        assert!(n > 0, "expected at least one TS packet");
+
+        // At least one TS packet was emitted on PID 0x200.
+        let saw_subtitle_pid = buf[..n]
+            .chunks_exact(188)
+            .any(|p| p[0] == 0x47 && (((p[1] as u16 & 0x1F) << 8) | (p[2] as u16)) == 0x200);
+        assert!(
+            saw_subtitle_pid,
+            "expected a TS packet on subtitle PID 0x200"
+        );
+    }
+
+    #[test]
+    fn push_subtitle_bare_rejects_when_multiple_subtitle_streams() {
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .add_subtitle(
+                0x201,
+                SubtitleCodec::DvbTeletext {
+                    language: *b"eng",
+                    teletext_type: 0x02,
+                    magazine_number: 1,
+                    page_number: 0x88,
+                },
+            )
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+        let err = mux.push_subtitle(90_000, b"x").unwrap_err();
+        assert!(
+            matches!(
+                err,
+                MuxError::AmbiguousTarget {
+                    kind: "subtitle",
+                    count: 2,
+                }
+            ),
+            "expected AmbiguousTarget {{ subtitle, 2 }}, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn push_subtitle_payload_too_large_rejected() {
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+        let too_big = vec![0u8; 70_000];
+        let err = mux.push_subtitle(90_000, &too_big).unwrap_err();
+        assert!(
+            matches!(err, MuxError::SubtitleTooLarge { .. }),
+            "expected SubtitleTooLarge, got {err:?}",
+        );
     }
 }
 

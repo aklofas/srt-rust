@@ -25,6 +25,14 @@ pub(crate) const STREAM_ID_KLV: u8 = 0xFC;
 /// consuming the `0xC0..=0xCF` range of ISO/IEC 13818-1's audio stream_id space
 /// (supports up to 16 audio streams per program).
 pub(crate) const STREAM_ID_AUDIO_BASE: u8 = 0xC0;
+/// PES `stream_id` for subtitle / caption elementary streams.
+///
+/// Per ISO/IEC 13818-1 Table 2-22 + ETSI TS 101 154, `private_stream_1`
+/// (0xBD) is the canonical choice for non-audio non-video private
+/// elementary streams. All four subtitle codecs (DVB subtitling, DVB
+/// teletext, CEA-708 standalone, WebVTT-in-TS) share this stream_id;
+/// MPEG-TS demuxer dispatch is by `elementary_PID`, not `stream_id`.
+pub(crate) const STREAM_ID_SUBTITLE: u8 = 0xBD;
 
 /// PES PTS/DTS field selector. Embeds the PTS so callers can't construct an
 /// inconsistent state (e.g. PtsOnly with no value).
@@ -61,6 +69,39 @@ pub(crate) fn write_audio_pes(
     let header_len = write_pes_header(&mut header, stream_id, pts, Some(frames.len() as u16));
     out.extend_from_slice(&header[..header_len]);
     out.extend_from_slice(frames);
+}
+
+/// Write a complete subtitle PES packet (header + caller's payload) into `out`.
+///
+/// Builds a `private_stream_1` (0xBD) PES with a PTS-only header and the
+/// `data_alignment_indicator` flag set — every PES carries one logical
+/// subtitle unit (DVB-sub composition page, teletext data field, CEA-708
+/// service block, or WebVTT cue), never a fragment.
+///
+/// `pts_90khz` is the PES PTS in 90 kHz ticks; values outside the 33-bit
+/// range are masked at the wire level by `write_pts`. Empty payloads are
+/// accepted (symmetric with audio / KLV / video).
+///
+/// Caller must ensure `payload.len() <= 65527` (PES_packet_length is u16
+/// and must cover flags + PTS field + payload). The caller-side check
+/// lives in `Muxer::push_subtitle_to`, which surfaces it as
+/// `MuxError::SubtitleTooLarge`.
+pub fn write_subtitle_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
+    let pts = PesPtsField::PtsOnly(Pts90khz(pts_90khz));
+    let mut header = [0u8; MAX_PES_HEADER_SIZE];
+    let header_len = write_pes_header(
+        &mut header,
+        STREAM_ID_SUBTITLE,
+        pts,
+        Some(payload.len() as u16),
+    );
+    // Set data_alignment_indicator (bit 2 of flags1, byte index 6).
+    // `write_pes_header` clears all flags1 bits except the '10' marker; we OR
+    // the alignment bit in afterwards so each subtitle PES advertises that it
+    // contains a complete logical unit.
+    header[6] |= 0b0000_0100;
+    out.extend_from_slice(&header[..header_len]);
+    out.extend_from_slice(payload);
 }
 
 /// Write a PES header to `out`. Returns bytes written.
@@ -247,5 +288,39 @@ mod tests {
             write_pts(&mut buf, Pts90khz(v as i64), 0b0010);
             assert_eq!(read_pts(&buf), v, "value {}", v);
         }
+    }
+
+    #[test]
+    fn write_subtitle_pes_pts_only_header_data_alignment_set() {
+        let mut out = Vec::new();
+        write_subtitle_pes(&mut out, 0x12345, &[0xAA, 0xBB, 0xCC]);
+        // packet_start_code_prefix
+        assert_eq!(&out[0..3], &[0x00, 0x00, 0x01]);
+        // stream_id is private_stream_1
+        assert_eq!(out[3], STREAM_ID_SUBTITLE);
+        assert_eq!(STREAM_ID_SUBTITLE, 0xBD);
+        // PES_packet_length covers flags1(1) + flags2(1) + header_data_length(1)
+        // + PES header data (5 PTS bytes) + ES payload (3) = 11.
+        assert_eq!(u16::from_be_bytes([out[4], out[5]]), 11);
+        // flags1 byte: bit 7-6 = '10' marker, bit 2 = data_alignment_indicator.
+        assert_eq!(out[6] & 0b1100_0000, 0b1000_0000);
+        assert_eq!((out[6] >> 2) & 0b1, 0b1, "data_alignment_indicator set");
+        // PTS_DTS_flags = 0b10 (PTS only) in flags2 byte high two bits.
+        assert_eq!((out[7] >> 6) & 0b11, 0b10);
+        // Trailing 3 bytes are the payload.
+        assert_eq!(&out[out.len() - 3..], &[0xAA, 0xBB, 0xCC]);
+    }
+
+    #[test]
+    fn write_subtitle_pes_empty_payload_accepted() {
+        let mut out = Vec::new();
+        write_subtitle_pes(&mut out, 0x100, &[]);
+        // 6 fixed bytes (start prefix + stream_id + length) +
+        // 3 mandatory PES header bytes + 5 PTS bytes = 14.
+        assert_eq!(out.len(), 14);
+        // PES_packet_length = 3 + 5 + 0 = 8.
+        assert_eq!(u16::from_be_bytes([out[4], out[5]]), 8);
+        // data_alignment_indicator still set on empty payloads.
+        assert_eq!((out[6] >> 2) & 0b1, 0b1);
     }
 }

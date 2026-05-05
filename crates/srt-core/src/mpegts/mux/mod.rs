@@ -1692,6 +1692,25 @@ impl Muxer {
             .collect()
     }
 
+    /// Subtitle stream handles for the named program, in declaration order.
+    ///
+    /// Returns `Err(MuxError::ProgramNotFound)` if no program with the given
+    /// number exists.
+    pub fn subtitle_handles_for_program(
+        &self,
+        program_number: u16,
+    ) -> Result<Vec<SubtitleStreamHandle>, MuxError> {
+        let prog_idx = self
+            .config
+            .programs
+            .iter()
+            .position(|p| p.program_number == program_number)
+            .ok_or(MuxError::ProgramNotFound { program_number })?;
+        Ok((0..self.subtitle_streams[prog_idx].len())
+            .map(|s_idx| SubtitleStreamHandle::pack(prog_idx, s_idx))
+            .collect())
+    }
+
     /// Drain ready TS packets into `out`.
     ///
     /// Returns the number of bytes written: 0 or a positive multiple of 188.
@@ -3371,6 +3390,57 @@ mod tests {
             matches!(err, MuxError::SubtitleTooLarge { .. }),
             "expected SubtitleTooLarge, got {err:?}",
         );
+    }
+
+    #[test]
+    fn subtitle_handles_returns_one_per_configured_stream_across_programs() {
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .end_program()
+            .add_program(2, 0x300)
+            .add_video(0x301, VideoCodec::H265)
+            .add_subtitle(
+                0x400,
+                SubtitleCodec::DvbSubtitling {
+                    language: *b"eng",
+                    subtitling_type: 0x10,
+                    composition_page_id: 1,
+                    ancillary_page_id: 1,
+                },
+            )
+            .add_subtitle(
+                0x401,
+                SubtitleCodec::DvbTeletext {
+                    language: *b"spa",
+                    teletext_type: 0x02,
+                    magazine_number: 1,
+                    page_number: 0x88,
+                },
+            )
+            .end_program()
+            .build()
+            .unwrap();
+        let mux = Muxer::new(cfg).unwrap();
+        assert_eq!(mux.subtitle_handles().len(), 3);
+
+        let p1 = mux.subtitle_handles_for_program(1).unwrap();
+        assert_eq!(p1.len(), 1);
+        let p2 = mux.subtitle_handles_for_program(2).unwrap();
+        assert_eq!(p2.len(), 2);
+    }
+
+    #[test]
+    fn subtitle_handles_for_unknown_program_returns_error() {
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .end_program()
+            .build()
+            .unwrap();
+        let mux = Muxer::new(cfg).unwrap();
+        assert!(mux.subtitle_handles_for_program(99).is_err());
     }
 }
 

@@ -115,7 +115,7 @@ aren't yet wrapped are reachable via `srt-sys`.
 
 | Spec / Feature | Status | Notes |
 | --- | --- | --- |
-| MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — multi-program (≤16 programs), multi-stream (≤16 video + ≤16 audio + ≤16 KLV PIDs per program), H.264/H.265 video + MP2/AAC/AC-3 audio + ST 0601 KLV (sync + async per ST 1402), VBR. |
+| MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — multi-program (≤16 programs), multi-stream (≤16 video + ≤16 audio + ≤16 KLV + ≤16 subtitle PIDs per program), H.264/H.265 video + MP2/AAC/AC-3 audio + DVB/teletext/CEA-708/WebVTT subtitles + ST 0601 KLV (sync + async per ST 1402), VBR. |
 | MPEG-TS demuxer | ✅ Full | `mpegts::demux::Demuxer` — multi-program, lenient by default, four-tier `StrictMode` ladder. See `mpegts::demux` block below. |
 | Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ✅ Full | Default in `mpegts::mux::Config` (`klv_stream_type = PrivateData`, `klv_carries_pts = false`). |
 | ST 1402.3 Synchronous metadata stream | ✅ Full | `KlvStreamType::SynchronousMetadata` + `klv_carries_pts = true` in `Config`. |
@@ -124,6 +124,29 @@ aren't yet wrapped are reachable via `srt-sys`.
 | KLVA registration descriptor (`stream_type 0x06` + `0x05 "KLVA"`) | ✅ Full | Detected/recognised on decode side; emitted by muxer on the KLV PID. |
 | Audio carriage (mux side) | ✅ Full | MP2 / AAC ADTS / AAC LATM / AC-3; `Muxer::push_audio` / `push_audio_to`; PTS-only PES headers. |
 | Audio carriage (demux side) | ✅ Full | Typed `AudioCodec`; raw PES bytes in `SamplePayload::Audio { frames }`. |
+
+---
+
+## Subtitle / caption carriage
+
+Four subtitle / caption codecs ride alongside video / KLV / audio.
+All four share PMT `stream_type = 0x06` and disambiguate via
+auto-emitted PMT descriptors (`subtitling_descriptor`,
+`teletext_descriptor`, or `registration_descriptor` with
+`format_identifier` `"VTTC"` / `"GA94"`).
+
+| Codec | Sender | Receiver | Verification |
+|---|---|---|---|
+| DVB subtitling | ✅ Full | ✅ Full | round-trip + ffprobe |
+| DVB teletext | ✅ Full | ✅ Full | round-trip + ffprobe |
+| CEA-708 standalone | ✅ Best-effort | ✅ Full | round-trip-only (ffmpeg's CEA-708 path is SEI-embedded) |
+| WebVTT-in-TS | ✅ Full | ✅ Full | round-trip + ffprobe |
+| CEA-608/708 in SEI | ❌ — | ❌ — | future SEI parsing plan |
+| ARIB STD-B24 | ❌ — | ❌ — | deferred (Japan-only) |
+
+Per-program cap: ≤16 subtitle streams (`MAX_SUBTITLE_STREAMS_PER_PROGRAM`).
+Subtitle PIDs cannot serve as the PCR PID (too sparse for PCR pacing).
+`push_subtitle` payload max: 65527 bytes (PES packet length budget).
 
 ---
 
@@ -245,7 +268,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `Demuxer` | ✅ Full | Stateful TS demuxer; `feed` bytes in, `next_event` typed events out, `flush` drains trailing PES on stream end. Bytes need not be 188-aligned. |
 | `DemuxerBuilder` / `DemuxerOptions` | ✅ Full | Fluent builder + plain-struct config form. |
 | `DemuxEvent::ProgramMap` | ✅ Full | Emitted on PAT/PMT discovery and version-bump; carries `program_number`, `pcr_pid`, `streams`, `klv_links`. |
-| `DemuxEvent::Sample` | ✅ Full | Generic ES sample; payload typed for video, reserved for audio + subtitle, `Unknown` for unrecognized stream_types. |
+| `DemuxEvent::Sample` | ✅ Full | Generic ES sample; payload typed for video / audio / subtitle, `Unknown` for unrecognized stream_types. |
 | `DemuxEvent::Metadata` | ✅ Full | Standalone metadata events; `MetadataKind::KlvSyncAuCell` (AU cell unwrapped), `KlvAsync` (bare LS), `Unknown(u8)`. |
 | `DemuxEvent::Discontinuity` | ✅ Full | `ContinuityJump`, `PesOversize`, `PesTotalOversize`, `AdaptationFieldFlag`. |
 | `DemuxEvent::NonConformant` | ✅ Full | Lenient-mode signal for spec violations; converts to fatal in strict modes. |
@@ -269,7 +292,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | PSI version-bump detection | ✅ Full | Re-emits `ProgramMap` only on PMT/PAT version change. |
 | `pts_to_duration` helper | ✅ Full | 90 kHz ticks → `std::time::Duration`. |
 | Multi-program TS | ✅ Full | Multi-PMT; one `ProgramMap` event per program + on PAT/PMT version bumps; `StreamInfo.program_number` on every `Sample`/`Metadata` event; PAT version diffing drops disappeared programs; `NonConformantIssue::PidReusedAcrossPrograms` on cross-program PID collision. |
-| Typed subtitle codec values on `SubtitleCodec` | ⏳ Planned | Reserved variant exists; additive when consumer asks. |
+| Subtitle classification on `stream_type 0x06` | ✅ Full | Cascade: subtitling/teletext/`VTTC`/`GA94` descriptors → `Subtitle` payload; KLV cases unchanged when no subtitle descriptor present. |
 | AV1 / H.266 codec variants on `VideoCodec` | ⏳ Planned | Surface as `SamplePayload::Unknown` today. |
 | Typed SPS/VPS/PPS payload parser | ⏳ Planned | SPS/VPS/PPS surface as `NalUnit` with raw RBSP; consumers use external codec lib. |
 | Sync-KLV ↔ video AU pairing helper | ❌ Out of scope | Pairing is a consumer-domain decision; cookbook recipes 12–14 are the canonical patterns. |

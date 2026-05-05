@@ -640,6 +640,62 @@ Codec-specific audio descriptors (AC-3 audio descriptor 0x6A, AAC
 audio descriptor 0x7C) are not pre-built — assemble via
 `user_private_with_tag(tag, payload)` if needed.
 
+## Subtitle output
+
+The muxer emits four subtitle / caption codecs as separate
+elementary streams. All four share PMT `stream_type = 0x06` (PES
+private data) and disambiguate via auto-emitted PMT descriptors:
+
+| Codec | Auto-emitted descriptor | Use case |
+|---|---|---|
+| `DvbSubtitling { language, subtitling_type, composition_page_id, ancillary_page_id }` | `subtitling_descriptor` (tag 0x59) | ETSI broadcast (Europe) |
+| `DvbTeletext { language, teletext_type, magazine_number, page_number }` | `teletext_descriptor` (tag 0x56) | ETSI broadcast (legacy) |
+| `Cea708Standalone` | `registration_descriptor` `format_identifier="GA94"` | ATSC standalone-CC carry-out (best-effort) |
+| `WebVttInTs` | `registration_descriptor` `format_identifier="VTTC"` | Apple HLS-compatible WebVTT-in-MPEG-TS |
+
+The descriptor is **structurally required** for receiver
+classification — without it, a `stream_type 0x06` PID is
+indistinguishable from KLV-PrivateData. Caller-supplied descriptors
+via `ConfigBuilder::stream_descriptors_for_subtitle` append after
+the auto-emitted one (do NOT suppress; contrast with KLV's
+`KLVA`-suppression rule).
+
+```rust
+use srt_core::mpegts::mux::{Config, Muxer, SubtitleCodec, VideoCodec};
+
+let cfg = Config::builder()
+    .add_program(1, 0x100)
+        .add_video(0x101, VideoCodec::H264)
+        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+    .end_program()
+    .build()?;
+let mut mux = Muxer::new(cfg)?;
+let h = mux.subtitle_handles()[0];
+mux.push_subtitle_to(
+    h,
+    90_000,
+    b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nhello\n",
+)?;
+// Drain TS bytes via `mux.pull(&mut buf)` in a loop until it
+// returns 0 (queue empty); see `examples/mux_with_webvtt_subtitles.rs`
+// for a `drain_all` helper.
+```
+
+### Limits and caps
+
+- ≤16 subtitle streams per program (`MAX_SUBTITLE_STREAMS_PER_PROGRAM`).
+- Subtitle PIDs cannot serve as the PCR PID — too sparse for PCR pacing.
+- `push_subtitle` payload max: 65527 bytes (PES packet length budget).
+- DVB-teletext `magazine_number` ∈ 0..=7; `teletext_type` ∈ 0..=0x1F; ISO 639-2 language codes must be 3 lowercase ASCII bytes.
+
+### Multi-stream and multi-program
+
+`push_subtitle_to(handle, pts, bytes)` dispatches by handle. Bare
+`push_subtitle(pts, bytes)` rejects with
+`MuxError::AmbiguousTarget` when total subtitle streams across all
+programs ≠ 1 (extends the rule established for video / KLV / audio
+in plans #14, #19, #21).
+
 ## Examples
 
 Three runnable examples cover the muxer's surface:
@@ -661,8 +717,4 @@ Each item below maps to an entry in
 
 - Audio carriage in `mpegts::mux` — gimbaled-platform streams are
   video + KLV today; no shipping consumer asks for audio. See
-  [deferred-features.md](deferred-features.md).
-- Subtitle, caption, and auxiliary-data channels — same situation as
-  audio, plus the abstraction varies enough across channel types
-  that a generic shape is the wrong call. See
   [deferred-features.md](deferred-features.md).

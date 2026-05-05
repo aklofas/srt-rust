@@ -487,6 +487,87 @@ The bitstream-vs-stream_type mismatch isn't validated at the
 carriage layer — caller's decoder handles whatever bytes come
 through.
 
+## Subtitle parsing
+
+Subtitle / caption PIDs carry one of four codecs identified by the
+demuxer's classification cascade on `stream_type = 0x06`:
+
+```
+Priority on stream_type 0x06 (first match wins):
+  1. subtitling_descriptor (tag 0x59) → Subtitle(DvbSubtitling)
+  2. teletext_descriptor (tag 0x56) or VBI_teletext (0x46) → Subtitle(DvbTeletext)
+  3. registration_descriptor format_identifier "VTTC" → Subtitle(WebVttInTs)
+  4. registration_descriptor format_identifier "GA94" → Subtitle(Cea708Standalone)
+  5. registration_descriptor format_identifier "KLVA" → KlvAsync (existing)
+  6. metadata_descriptor (tag 0x26) → KlvSync (existing)
+  7. fallback → existing behavior
+```
+
+Subtitle classification inserts above KLV cases. KLV
+classification is unchanged when no subtitle descriptor is
+present.
+
+The receiver-side `SubtitleCodec` enum is `Copy` and
+parameter-less. Per-stream descriptor params (language, page IDs,
+magazine/page) surface on `StreamInfo::raw_descriptors`; callers
+decode lazily via `mpegts::descriptors::parse_subtitling_descriptor`
+or `parse_teletext_descriptor`.
+
+```rust
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
+
+let mut demux = Demuxer::new();
+demux.feed(&bytes)?;
+demux.flush();
+while let Some(e) = demux.next_event() {
+    if let DemuxEvent::Sample {
+        stream,
+        pts,
+        payload: SamplePayload::Subtitle { codec, payload },
+        ..
+    } = e
+    {
+        // payload is the raw PES payload bytes — for WebVTT-in-TS
+        // this is UTF-8 cue text per Apple's HLS draft; for
+        // DVB-sub it's a subtitle_data_segment per ETSI EN 300 743;
+        // for DVB-teletext it's a teletext_data_unit per ETSI EN
+        // 300 706; for CEA-708 standalone it's cc_data_pkt
+        // structures per CEA-708-D.
+        println!(
+            "subtitle PID 0x{:04x} codec={:?} pts={} bytes={}",
+            stream.pid,
+            codec,
+            pts,
+            payload.len()
+        );
+    }
+}
+```
+
+### Treating non-conformant captures
+
+`DemuxerOptions::stream_kind_overrides: HashMap<u16, StreamKind>`
+lets you force a specific PID to a specific subtitle codec when an
+upstream encoder emits WebVTT-shaped (or other subtitle-shaped)
+bytes without the disambiguating descriptor:
+
+```rust
+use srt_core::mpegts::demux::{Demuxer, DemuxerOptions, StreamKind, SubtitleCodec};
+
+let mut opts = DemuxerOptions::default();
+opts.stream_kind_overrides
+    .insert(0x300, StreamKind::Subtitle(SubtitleCodec::WebVttInTs));
+let mut demux = Demuxer::with_options(opts);
+```
+
+Equivalently, `DemuxerBuilder::treat_as(pid, kind)` is a one-liner
+on the builder form.
+
+When the override routes a PID with no recognized subtitle
+descriptor in the PMT, the demuxer also emits
+`NonConformantIssue::SubtitleMissingDescriptor` so consumers can
+log the override.
+
 ## Examples
 
 Four runnable examples cover the demuxer's surface:
@@ -574,9 +655,6 @@ Each item below maps to an entry in
 - **AV1 / H.266 codec variants** — surface as `SamplePayload::Unknown`
   today. AV1 is OBU-shaped (not NAL-shaped), so adding it requires a
   cross-codec rework of `SamplePayload::Video`.
-- **Typed audio + subtitle codecs** — `AudioCodec` / `SubtitleCodec`
-  enums exist as reserved variants; adding e.g. `AudioCodec::Aac` is
-  additive, not breaking.
 
 See [compatibility.md](compatibility.md)'s `mpegts::demux` block for
 the full feature-by-feature status.

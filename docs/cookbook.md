@@ -689,3 +689,60 @@ for frame_idx in 0..30 {
 ```
 
 Full example: [`../crates/srt-core/examples/mux_audio_video_klv.rs`](../crates/srt-core/examples/mux_audio_video_klv.rs).
+
+### 20. Inject WebVTT POI cues into a live MPEG-TS uplink
+
+Use case: a sensor / orchestrator wants to mark Points of Interest
+in a live SRT/TS stream so the downstream HLS player (hls.js etc.)
+can render them as captions.
+
+```rust
+use srt_core::mpegts::mux::{Config, Muxer, SubtitleCodec, VideoCodec};
+
+let cfg = Config::builder()
+    .add_program(1, 0x100)
+        .add_video(0x101, VideoCodec::H264)
+        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+    .end_program()
+    .build()?;
+let mut mux = Muxer::new(cfg)?;
+let h = mux.subtitle_handles()[0];
+
+// Each POI: assemble a WebVTT cue and push at the wall-clock PTS.
+let cue = "WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nPOI: target acquired\n";
+mux.push_subtitle_to(h, 90_000, cue.as_bytes())?;
+// Drain TS bytes via `mux.pull(&mut buf)` in a loop until it returns
+// 0 (queue empty); see the runnable example for a `drain_all` helper.
+```
+
+Runnable: `cargo run --example mux_with_webvtt_subtitles -- output.ts`.
+
+### 21. Extract subtitle PES bytes from a captured `.ts` file
+
+Use case: receive-side inspection — what subtitle codecs are in a
+capture, and what's the cue text?
+
+```rust
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
+
+let mut demux = Demuxer::new();
+demux.feed(&bytes)?;
+demux.flush();
+while let Some(e) = demux.next_event() {
+    if let DemuxEvent::Sample {
+        stream,
+        payload: SamplePayload::Subtitle { codec, payload },
+        ..
+    } = e
+    {
+        println!(
+            "PID 0x{:04x} codec={:?} bytes={}",
+            stream.pid,
+            codec,
+            payload.len()
+        );
+    }
+}
+```
+
+Runnable: `cargo run --example demux_subtitle_file -- input.ts`.

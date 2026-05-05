@@ -1622,6 +1622,7 @@ impl Muxer {
             });
         }
         let audio_pid = self.audio_streams[prog_idx][within_idx].pid;
+        let audio_codec = self.audio_streams[prog_idx][within_idx].codec;
 
         // Audio always uses PTS, so PES overhead is 3 (start code) + 5 (PTS) = 8 bytes.
         // The remaining space in the u16 PES_packet_length field is for flags, header_data_length,
@@ -1637,7 +1638,7 @@ impl Muxer {
 
         let pts = PesPtsField::PtsOnly(Pts90khz(pts_90khz));
         let mut pes_buf = Vec::with_capacity(MAX_PES_HEADER_SIZE + frames.len());
-        write_audio_pes(&mut pes_buf, within_idx as u8, pts, frames);
+        write_audio_pes(&mut pes_buf, audio_codec, within_idx as u8, pts, frames);
 
         let total = pes_buf.len();
         let audio_packets = ts_packets_for(total);

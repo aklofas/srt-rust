@@ -16,14 +16,19 @@
 //!   [PTS(5)] [DTS(5)]
 
 use crate::mpegts::common::Pts90khz;
+use crate::mpegts::mux::AudioCodec;
 
 pub(crate) const STREAM_ID_VIDEO: u8 = 0xE0;
 pub(crate) const STREAM_ID_KLV: u8 = 0xFC;
-/// Base PES `stream_id` for audio elementary streams.
+/// Base PES `stream_id` for MP2 / AAC / LATM audio elementary streams.
 ///
-/// Audio streams within a program use `STREAM_ID_AUDIO_BASE + within_program_index`,
-/// consuming the `0xC0..=0xCF` range of ISO/IEC 13818-1's audio stream_id space
-/// (supports up to 16 audio streams per program).
+/// These codecs use `STREAM_ID_AUDIO_BASE + within_program_index`,
+/// consuming the `0xC0..=0xCF` slice of ISO/IEC 13818-1 Table 2-22's audio
+/// stream_id space (16 audio streams per program; H.222.0 allows up to 32
+/// at `0xC0..=0xDF` but `MAX_AUDIO_STREAMS_PER_PROGRAM` caps at 16).
+///
+/// AC-3 is the exception: per ATSC A/52 §A.2.2, AC-3 PES on PMT
+/// stream_type 0x81 MUST use `stream_id = 0xBD` (private_stream_1).
 pub(crate) const STREAM_ID_AUDIO_BASE: u8 = 0xC0;
 /// PES `stream_id` for subtitle / caption elementary streams.
 ///
@@ -50,8 +55,11 @@ pub(crate) const MAX_PES_HEADER_SIZE: usize = 14;
 
 /// Write a complete audio PES packet (header + caller's frame bytes) into `out`.
 ///
-/// `within_program_index` selects the PES `stream_id`:
-/// `STREAM_ID_AUDIO_BASE + within_program_index` (range `0xC0..=0xCF`).
+/// PES `stream_id` dispatched by codec:
+/// * `Ac3` — `0xBD` (private_stream_1) per ATSC A/52 §A.2.2 (PDF p.116,
+///   normative "shall"); `data_alignment_indicator` set to 1 per §A.2.4.1.
+/// * `Mp2` / `Aac` / `AacLatm` — `STREAM_ID_AUDIO_BASE + within_program_index`
+///   (range `0xC0..=0xCF`) per ISO/IEC 13818-1 Table 2-22.
 ///
 /// PES_packet_length is bounded (audio frames are bounded, unlike video's 0 =
 /// unbounded sentinel). Callers must ensure `frames.len()` fits in u16 after
@@ -59,14 +67,26 @@ pub(crate) const MAX_PES_HEADER_SIZE: usize = 14;
 /// per-stream payload cap checked in `push_audio_to`.
 pub(crate) fn write_audio_pes(
     out: &mut Vec<u8>,
+    codec: AudioCodec,
     within_program_index: u8,
     pts: PesPtsField,
     frames: &[u8],
 ) {
     debug_assert!(within_program_index < 16, "audio cap is 16 per program");
-    let stream_id = STREAM_ID_AUDIO_BASE + within_program_index;
+    let stream_id = match codec {
+        AudioCodec::Ac3 => STREAM_ID_SUBTITLE, // 0xBD = private_stream_1
+        AudioCodec::Mp2 | AudioCodec::Aac | AudioCodec::AacLatm => {
+            STREAM_ID_AUDIO_BASE + within_program_index
+        }
+    };
     let mut header = [0u8; MAX_PES_HEADER_SIZE];
     let header_len = write_pes_header(&mut header, stream_id, pts, Some(frames.len() as u16));
+    if matches!(codec, AudioCodec::Ac3) {
+        // Set data_alignment_indicator (bit 2 of flags1, byte 6) per ATSC
+        // A/52 §A.2.4.1. write_pes_header clears all flags1 bits except
+        // the '10' marker; OR the alignment bit in afterwards.
+        header[6] |= 0b0000_0100;
+    }
     out.extend_from_slice(&header[..header_len]);
     out.extend_from_slice(frames);
 }
@@ -288,6 +308,47 @@ mod tests {
             write_pts(&mut buf, Pts90khz(v as i64), 0b0010);
             assert_eq!(read_pts(&buf), v, "value {}", v);
         }
+    }
+
+    /// Per ATSC A/52:2018 §A.2.2 (PDF p.116, normative "shall"): for AC-3
+    /// (PMT stream_type 0x81), "the value of stream_id in the PES header
+    /// shall be 0xBD (indicating private_stream_1)." §A.2.4.1 mandates
+    /// data_alignment_indicator = 1.
+    #[test]
+    fn ac3_pes_uses_stream_id_0xbd_with_alignment() {
+        use crate::mpegts::mux::AudioCodec;
+
+        let mut out = Vec::new();
+        let frames = vec![0xAAu8; 10];
+        let pts = PesPtsField::PtsOnly(Pts90khz(45_000));
+        write_audio_pes(&mut out, AudioCodec::Ac3, 0, pts, &frames);
+
+        assert_eq!(&out[0..3], &[0x00, 0x00, 0x01], "PES start code");
+        assert_eq!(
+            out[3], 0xBD,
+            "AC-3 PES stream_id must be 0xBD (private_stream_1) per ATSC A/52 §A.2.2",
+        );
+        // data_alignment_indicator is bit 2 of flags1 (byte 6).
+        assert_eq!(
+            (out[6] >> 2) & 0b1,
+            1,
+            "AC-3 PES data_alignment_indicator must be set per ATSC A/52 §A.2.4.1",
+        );
+    }
+
+    #[test]
+    fn non_ac3_audio_pes_keeps_stream_id_in_audio_range() {
+        use crate::mpegts::mux::AudioCodec;
+
+        let mut out = Vec::new();
+        let frames = vec![0xAAu8; 10];
+        let pts = PesPtsField::PtsOnly(Pts90khz(0));
+        write_audio_pes(&mut out, AudioCodec::Mp2, 0, pts, &frames);
+
+        // MP2 / AAC / LATM should still use 0xC0..0xCF (= AUDIO_BASE + within_idx).
+        assert_eq!(out[3], 0xC0, "MP2 PES stream_id is 0xC0 (audio range)");
+        // No data_alignment_indicator for non-AC-3 audio.
+        assert_eq!((out[6] >> 2) & 0b1, 0, "MP2 PES has no alignment bit");
     }
 
     #[test]

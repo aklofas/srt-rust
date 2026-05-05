@@ -35,7 +35,7 @@ Opt into hard-fail behaviour per category via `StrictMode`.
 Read a `.ts` file, feed it to a `Demuxer`, drain events:
 
 ```rust,no_run
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("PMT: {} streams", m.streams.len());
             }
             DemuxEvent::Sample { stream, pts, payload, .. } => {
-                if let SamplePayload::Video { nals, .. } = payload {
+                if let SamplePayload::Video { payload: VideoPayload::Nals(nals), .. } = payload {
                     println!("video PID 0x{:04X} pts={pts} nals={}", stream.pid, nals.len());
                 }
             }
@@ -78,7 +78,7 @@ Runnable: [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/ex
 | `VideoCodec` | `H264`, `H265`. |
 | `AudioCodec` | `Mp2`, `Aac` (ADTS), `AacLatm`, `Ac3`. Codec tag for typed dispatch; bitstream bytes ride on `SamplePayload::Audio.frames`. |
 | `SubtitleCodec` | `DvbSubtitling`, `DvbTeletext`, `Cea708Standalone` (separate ES, "GA94"), `WebVttInTs` ("VTTC"). |
-| `SamplePayload` | `Video { codec, nals }`, `Audio { codec, frames }`, `Subtitle { codec, payload }`, `Unknown { stream_type, raw }`. |
+| `SamplePayload` | `Video { codec, payload: VideoPayload }`, `Audio { codec, frames }`, `Subtitle { codec, payload }`, `Unknown { stream_type, raw }`. `VideoPayload` is `Nals(Vec<NalUnit>)` for H.264 / H.265 / H.266 or `Obus(Vec<Obu>)` for AV1. |
 | `NalUnit` | `H264 { nal_type, ref_idc, payload }` / `H265 { nal_type, layer_id, temporal_id_plus1, payload }`. RBSP bytes; Annex-B start codes stripped. |
 | `MetadataKind` | `KlvSyncAuCell` (AU cell unwrapped), `KlvAsync` (bare LS), `Unknown(u8)`. |
 | `ProgramMap` | `{ program_number, pcr_pid, streams: Vec<StreamInfo>, klv_links: Vec<KlvLink> }`. |
@@ -278,7 +278,7 @@ demuxer strips Annex-B start codes (`0x000001` / `0x00000001`),
 preserves emulation-prevention bytes (the consumer's H.264 / H.265
 decoder removes them), and returns each NAL with codec-tagged headers
 on `NalUnit::H264` / `NalUnit::H265`. The full AU is one
-`SamplePayload::Video { codec, nals: Vec<NalUnit> }`. Callers re-emitting
+`SamplePayload::Video { codec, payload: VideoPayload::Nals(Vec<NalUnit>) }`. Callers re-emitting
 to a downstream Annex-B sink prepend `0x00 0x00 0x00 0x01` between
 NALs themselves — see [../crates/srt-core/examples/extract_video_au.rs](../crates/srt-core/examples/extract_video_au.rs).
 
@@ -410,7 +410,7 @@ reassembler. Call `flush()` once you know no more bytes are coming
 auto-flushes on `TransportError::Closed`. You only call `flush()`
 yourself when feeding the demuxer directly.
 
-**Assuming `SamplePayload::Video.nals` is Annex-B framed.** It isn't.
+**Assuming `SamplePayload::Video`'s `VideoPayload::Nals(_)` is Annex-B framed.** It isn't.
 Each `NalUnit::H264` / `NalUnit::H265` carries the RBSP bytes only —
 Annex-B start codes have been stripped. Re-emit start codes between
 NALs yourself if writing back to an Annex-B sink. Pattern shown in

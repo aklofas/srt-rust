@@ -6,7 +6,7 @@
 //! available, or if no video PID is found.
 
 use srt_core::codec::{h264, h265};
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 use std::path::Path;
 use std::process::Command;
 
@@ -81,7 +81,12 @@ fn local_corpus_parameter_sets_match_ffprobe() {
         let mut got_level: Option<u8> = None;
         while let Some(ev) = dx.next_event() {
             if let DemuxEvent::Sample {
-                payload: SamplePayload::Video { codec, nals, .. },
+                payload:
+                    SamplePayload::Video {
+                        codec,
+                        payload: VideoPayload::Nals(nals),
+                        ..
+                    },
                 ..
             } = ev
             {

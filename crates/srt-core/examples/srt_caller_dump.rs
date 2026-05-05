@@ -45,6 +45,7 @@
 use srt_core::klv::st0601;
 use srt_core::mpegts::demux::{
     DemuxEvent, MetadataKind, NalUnit, ProgramMap, SamplePayload, StreamId, StreamKind, VideoCodec,
+    VideoPayload,
 };
 use srt_core::pipeline::{Receiver, ReceiverError, SrtTransport, TransportError};
 use srt_core::srt::SocketBuilder;
@@ -244,7 +245,14 @@ fn describe_stream_kind(k: &StreamKind) -> String {
 
 fn payload_size(p: &SamplePayload) -> usize {
     match p {
-        SamplePayload::Video { nals, .. } => nals.iter().map(nal_payload_len).sum(),
+        SamplePayload::Video {
+            payload: VideoPayload::Nals(nals),
+            ..
+        } => nals.iter().map(nal_payload_len).sum(),
+        SamplePayload::Video {
+            payload: VideoPayload::Obus(_),
+            ..
+        } => 0,
         SamplePayload::Audio { frames, .. } => frames.len(),
         SamplePayload::Subtitle { payload, .. } => payload.len(),
         SamplePayload::Unknown { raw, .. } => raw.len(),
@@ -259,7 +267,10 @@ fn nal_payload_len(n: &NalUnit) -> usize {
 
 fn print_sample(stream: &StreamId, pts: i64, payload: &SamplePayload) {
     match payload {
-        SamplePayload::Video { codec, nals } => {
+        SamplePayload::Video {
+            codec,
+            payload: VideoPayload::Nals(nals),
+        } => {
             // NAL-unit type tally so you can see slice/IDR/SPS/PPS/SEI
             // distribution at a glance. Indexed by raw nal_type so the
             // line stays compact even when there's a long tail of types.
@@ -272,6 +283,13 @@ fn print_sample(stream: &StreamId, pts: i64, payload: &SamplePayload) {
                 nals.len(),
                 total,
             );
+        }
+        SamplePayload::Video {
+            codec: _,
+            payload: VideoPayload::Obus(_),
+        } => {
+            // OBU-shaped video (AV1) carriage lands in a later task; not
+            // emitted by the demuxer today.
         }
         SamplePayload::Audio { codec, frames } => {
             eprintln!(

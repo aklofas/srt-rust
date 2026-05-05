@@ -577,14 +577,14 @@ maps on P-frames.
 
 ```rust,no_run
 use srt_core::codec::h264;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut dx = Demuxer::new();
     // ... feed bytes to dx ...
     while let Some(ev) = dx.next_event() {
         if let DemuxEvent::Sample {
-            payload: SamplePayload::Video { codec: VideoCodec::H264, ref nals },
+            payload: SamplePayload::Video { codec: VideoCodec::H264, payload: VideoPayload::Nals(ref nals) },
             ..
         } = ev
         {
@@ -619,7 +619,7 @@ Prepend a 4-byte start code to get conformant Annex B framing:
 
 ```rust,no_run
 use srt_core::codec::h264;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 fn to_annex_b(rbsp: &[u8]) -> Vec<u8> {
     // Same for H.264 and H.265 — the demuxer includes the NAL header byte(s)
@@ -635,7 +635,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ... feed bytes ...
     while let Some(ev) = dx.next_event() {
         if let DemuxEvent::Sample {
-            payload: SamplePayload::Video { codec: VideoCodec::H264, ref nals },
+            payload: SamplePayload::Video { codec: VideoCodec::H264, payload: VideoPayload::Nals(ref nals) },
             ..
         } = ev
         {

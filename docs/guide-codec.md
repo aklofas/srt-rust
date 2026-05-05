@@ -19,7 +19,7 @@ coupling to the transport or container layers.
 
 ```
 mpegts::demux::Demuxer
-  ↓ DemuxEvent::Sample { payload: SamplePayload::Video { codec, nals }, .. }
+  ↓ DemuxEvent::Sample { payload: SamplePayload::Video { codec, payload: VideoPayload::Nals(nals) }, .. }
   ↓ nals: Vec<NalUnit>   — raw RBSP bytes; NAL type in the header
 
 srt_core::codec::h264
@@ -42,14 +42,14 @@ explicitly when they need typed fields.
 
 ```rust,no_run
 use srt_core::codec::h264;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 let mut dx = Demuxer::new();
 // ... feed bytes ...
 
 while let Some(ev) = dx.next_event() {
     if let DemuxEvent::Sample {
-        payload: SamplePayload::Video { codec: VideoCodec::H264, ref nals },
+        payload: SamplePayload::Video { codec: VideoCodec::H264, payload: VideoPayload::Nals(ref nals) },
         ..
     } = ev
     {
@@ -99,14 +99,14 @@ while let Some(ev) = dx.next_event() {
 
 ```rust,no_run
 use srt_core::codec::h265;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 let mut dx = Demuxer::new();
 // ... feed bytes ...
 
 while let Some(ev) = dx.next_event() {
     if let DemuxEvent::Sample {
-        payload: SamplePayload::Video { codec: VideoCodec::H265, ref nals },
+        payload: SamplePayload::Video { codec: VideoCodec::H265, payload: VideoPayload::Nals(ref nals) },
         ..
     } = ev
     {
@@ -170,7 +170,7 @@ configuration changes, maintain a per-PID snapshot and compare:
 ```rust,no_run
 use std::collections::HashMap;
 use srt_core::codec::h264;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 let mut last_summary: HashMap<u16, String> = HashMap::new();
 let mut dx = Demuxer::new();
@@ -181,7 +181,7 @@ fn drain_events(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
     while let Some(ev) = dx.next_event() {
         let DemuxEvent::Sample {
             stream,
-            payload: SamplePayload::Video { codec: VideoCodec::H264, ref nals },
+            payload: SamplePayload::Video { codec: VideoCodec::H264, payload: VideoPayload::Nals(ref nals) },
             ..
         } = ev
         else {

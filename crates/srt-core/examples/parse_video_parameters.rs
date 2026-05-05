@@ -30,7 +30,7 @@ use std::io::Read;
 use std::process::ExitCode;
 
 use srt_core::codec::{h264, h265};
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 fn main() -> ExitCode {
     let path = match env::args().nth(1) {
@@ -111,7 +111,11 @@ fn drain_and_print(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
         // skipped — run demux_to_events.rs for the full annotated event dump.
         let DemuxEvent::Sample {
             stream,
-            payload: SamplePayload::Video { codec, nals },
+            payload:
+                SamplePayload::Video {
+                    codec,
+                    payload: VideoPayload::Nals(nals),
+                },
             ..
         } = ev
         else {

@@ -7,7 +7,7 @@
 //! to individual NAL units, and the codec parser reads the SPS RBSP.
 
 use srt_core::codec::h264;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
 use srt_core::mpegts::mux::{Config, Muxer, VideoCodec};
 
 const SPS_RBSP: &[u8] = include_bytes!("fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin");
@@ -95,7 +95,11 @@ fn h264_idr_au_round_trips_through_mux_demux_parse() {
     let mut found_sps = false;
     while let Some(ev) = dx.next_event() {
         if let DemuxEvent::Sample {
-            payload: SamplePayload::Video { nals, .. },
+            payload:
+                SamplePayload::Video {
+                    payload: VideoPayload::Nals(nals),
+                    ..
+                },
             ..
         } = ev
         {

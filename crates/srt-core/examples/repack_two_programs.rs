@@ -61,7 +61,7 @@
 //! PIDs 0x1100, 0x1111, 0x1131 owned by program 2.
 
 use srt_core::mpegts::demux::event::NalUnit;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
 use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 use std::env;
 use std::fs;
@@ -223,7 +223,11 @@ fn repack_event(
         // ── Video sample ─────────────────────────────────────────────────────
         DemuxEvent::Sample {
             pts,
-            payload: SamplePayload::Video { codec, nals },
+            payload:
+                SamplePayload::Video {
+                    codec,
+                    payload: VideoPayload::Nals(nals),
+                },
             ..
         } => {
             // The demuxer strips Annex-B start codes when it extracts NAL

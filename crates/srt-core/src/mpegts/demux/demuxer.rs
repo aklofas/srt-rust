@@ -6,6 +6,7 @@ use crate::mpegts::common::{pcr_diff_27mhz, pts_diff_33bit};
 use crate::mpegts::demux::event::{
     DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit, NonConformantIssue,
     ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, SubtitleCodec, VideoCodec,
+    VideoPayload,
 };
 use crate::mpegts::demux::payload::{KlvShape, classify_klv, split_nals};
 use crate::mpegts::demux::pes::{Reassembler, ReassemblyOutcome};
@@ -791,7 +792,10 @@ impl Demuxer {
             StreamKind::Video(codec) => {
                 let nals = split_nals(&pes.payload, codec);
                 let payload_bytes = nal_payload_bytes(&nals);
-                let sample = SamplePayload::Video { codec, nals };
+                let sample = SamplePayload::Video {
+                    codec,
+                    payload: VideoPayload::Nals(nals),
+                };
                 self.stats_per_stream
                     .entry(stream.pid)
                     .or_insert_with(|| crate::mpegts::stats::StreamStats {

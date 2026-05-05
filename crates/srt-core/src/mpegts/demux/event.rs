@@ -109,7 +109,7 @@ pub enum SubtitleCodec {
 pub enum SamplePayload {
     Video {
         codec: VideoCodec,
-        nals: Vec<NalUnit>,
+        payload: VideoPayload,
     },
     Audio {
         codec: AudioCodec,
@@ -123,6 +123,35 @@ pub enum SamplePayload {
         stream_type: u8,
         raw: Vec<u8>,
     },
+}
+
+/// Codec-specific bitstream payload shape.
+///
+/// `Nals` covers Annex-B NAL-shaped codecs (H.264, H.265, H.266).
+/// `Obus` covers AV1's Open Bitstream Unit format. The variant is
+/// determined by [`VideoCodec`] on the parent [`SamplePayload::Video`]
+/// event:
+///
+/// * `codec ∈ {H264, H265, H266}` ⇒ `payload = Nals(_)`
+/// * `codec = Av1`                 ⇒ `payload = Obus(_)`
+///
+/// The demuxer enforces this invariant by construction; consumers
+/// can match on `payload` after dispatching on `codec`, or vice versa,
+/// and assume the mapping holds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VideoPayload {
+    /// H.264, H.265, H.266 — Annex-B NAL-shaped.
+    Nals(Vec<NalUnit>),
+    /// AV1 — OBU-shaped (Open Bitstream Unit).
+    Obus(Vec<Obu>),
+}
+
+/// AV1 Open Bitstream Unit. Placeholder shape — the typed fields land
+/// alongside AV1 carriage in a later task.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Obu {
+    #[allow(dead_code)]
+    pub _placeholder: (),
 }
 
 /// One H.264 or H.265 NAL unit. Codec-tagged so wrapped languages

@@ -34,7 +34,7 @@
 //! event shape, but reading from a connected SRT socket instead of a
 //! file.
 
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
 use std::env;
 use std::fs;
 
@@ -107,11 +107,24 @@ fn main() {
                 dts,
                 payload,
             } => match payload {
-                SamplePayload::Video { codec, nals } => {
+                SamplePayload::Video {
+                    codec,
+                    payload: VideoPayload::Nals(nals),
+                } => {
                     println!(
                         "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} nals={}",
                         stream.pid,
                         nals.len()
+                    );
+                }
+                SamplePayload::Video {
+                    codec,
+                    payload: VideoPayload::Obus(obus),
+                } => {
+                    println!(
+                        "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} obus={}",
+                        stream.pid,
+                        obus.len()
                     );
                 }
                 // Audio + Subtitle are reserved variants today (no

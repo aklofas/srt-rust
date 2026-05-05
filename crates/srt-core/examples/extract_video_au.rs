@@ -17,7 +17,7 @@
 //! so the resulting `.bin` files are directly playable by an Annex-B
 //! decoder (or `ffmpeg -f h264 -i au_0000_*.bin ...` / `-f hevc ...`).
 
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, NalUnit, SamplePayload};
+use srt_core::mpegts::demux::{DemuxEvent, Demuxer, NalUnit, SamplePayload, VideoPayload};
 use std::env;
 use std::fs::{self, File};
 use std::io::Write;
@@ -61,7 +61,11 @@ fn main() -> std::io::Result<()> {
         // unhandled here because this example is video-only.
         if let DemuxEvent::Sample {
             pts,
-            payload: SamplePayload::Video { codec, nals },
+            payload:
+                SamplePayload::Video {
+                    codec,
+                    payload: VideoPayload::Nals(nals),
+                },
             ..
         } = event
         {

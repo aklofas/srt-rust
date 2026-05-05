@@ -8,9 +8,13 @@
 //! Shipped this slice: H.264 ([`h264`]) and H.265 ([`h265`]).
 //! H.266 ([`h266`]) is scaffolded — per-set parsers are stubs that
 //! return `ParseError::EngineError` until Tasks 8–11 of the AV1/H.266
-//! plan land. Future slices in the same umbrella: AV1, audio framing,
-//! subtitle parsers — each will appear here as `codec::<name>`.
+//! plan land. AV1 ([`av1`]) is scaffolded — Sequence Header / Frame
+//! Header parsers stub out until Tasks 23–25 land; the [`av1::leb128`]
+//! primitive is live and used by `mpegts::demux` OBU framing today.
+//! Future slices in the same umbrella: audio framing, subtitle
+//! parsers — each will appear here as `codec::<name>`.
 
+pub mod av1;
 pub mod h264;
 pub mod h265;
 pub mod h266;
@@ -222,6 +226,11 @@ pub enum ParseError {
     /// our enum. The string is for diagnostics only — consumers should
     /// not pattern-match on it.
     EngineError(String),
+
+    /// LEB128-encoded value (AV1 OBU size, uvlc) walked past 8 bytes
+    /// or had the continuation bit set on the 8th byte (per AV1 spec
+    /// `Leb128()` algorithm).
+    InvalidLeb128 { offset_bytes: u32 },
 }
 
 impl std::fmt::Display for ParseError {
@@ -258,6 +267,9 @@ impl std::fmt::Display for ParseError {
                 )
             }
             Self::EngineError(msg) => write!(f, "parser engine: {msg}"),
+            Self::InvalidLeb128 { offset_bytes } => {
+                write!(f, "invalid LEB128 at byte {offset_bytes}")
+            }
         }
     }
 }

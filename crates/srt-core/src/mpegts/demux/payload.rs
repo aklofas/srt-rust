@@ -1,7 +1,8 @@
 // crates/srt-core/src/mpegts/demux/payload.rs
 //! ES payload parsers: H.264 / H.265 NAL split, KLV unwrap.
 
-use crate::mpegts::demux::event::{NalUnit, VideoCodec};
+use crate::codec::av1::leb128::read_leb128;
+use crate::mpegts::demux::event::{NalUnit, NonConformantIssue, Obu, ObuExtension, VideoCodec};
 
 /// Split an Annex-B-framed elementary stream payload into typed NAL units.
 ///
@@ -128,6 +129,92 @@ fn parse_one_nal(nal: &[u8], codec: VideoCodec) -> Option<NalUnit> {
             unimplemented!("AV1 uses OBU framing, not NAL — routed separately in Phase 4")
         }
     }
+}
+
+/// Split an AV1 PES payload into typed OBUs. Per AV1 spec §5.3
+/// "low overhead bitstream format" framing.
+///
+/// Returns `(obus, issues)`. `issues` contains any non-conformance
+/// issues raised during the walk (missing obu_size field, forbidden
+/// Tile List OBU); the caller forwards these to the demuxer's
+/// non-conformance pipeline. `pid` on each issue is left as a
+/// sentinel `0` — caller patches it with the real value.
+///
+/// On a malformed buffer (truncated header, truncated LEB128, length
+/// runs past buffer end) the splitter stops and returns what it has
+/// accumulated, mirroring `split_nals`'s lenient stance.
+pub fn split_obus(es_payload: &[u8]) -> (Vec<Obu>, Vec<NonConformantIssue>) {
+    let mut out = Vec::new();
+    let mut issues = Vec::new();
+    let mut i = 0usize;
+    while i < es_payload.len() {
+        // OBU header byte (AV1 §5.3.2):
+        //   obu_forbidden_bit f(1)  — must be 0
+        //   obu_type           f(4)
+        //   obu_extension_flag f(1)
+        //   obu_has_size_field f(1)
+        //   obu_reserved_1bit  f(1)
+        let header = es_payload[i];
+        let obu_type = (header >> 3) & 0x0F;
+        let extension_flag = (header >> 2) & 0x01 != 0;
+        let has_size_field = (header >> 1) & 0x01 != 0;
+        i += 1;
+
+        let extension = if extension_flag {
+            if i >= es_payload.len() {
+                break; // truncated extension — stop
+            }
+            let ext = es_payload[i];
+            i += 1;
+            // temporal_id(3) | spatial_id(2) | reserved(3)
+            Some(ObuExtension {
+                temporal_id: (ext >> 5) & 0x07,
+                spatial_id: (ext >> 3) & 0x03,
+            })
+        } else {
+            None
+        };
+
+        if !has_size_field {
+            issues.push(NonConformantIssue::Av1ObuMissingSizeField {
+                pid: 0, // caller patches with real pid; see Task 19
+                obu_type,
+            });
+            let payload = es_payload[i..].to_vec();
+            out.push(Obu {
+                obu_type,
+                extension,
+                payload,
+            });
+            break;
+        }
+
+        let (obu_size, consumed) = match read_leb128(es_payload, i) {
+            Ok(t) => t,
+            Err(_) => break, // truncated LEB128 — stop
+        };
+        i += consumed;
+
+        let body_end = i + obu_size as usize;
+        if body_end > es_payload.len() {
+            // Length runs past buffer end. Stop walking.
+            break;
+        }
+        let payload = es_payload[i..body_end].to_vec();
+        i = body_end;
+
+        // Tile List OBU non-conformance issue per binding §3.3.
+        if obu_type == 8 {
+            issues.push(NonConformantIssue::Av1TileListNotAllowed { pid: 0 });
+        }
+
+        out.push(Obu {
+            obu_type,
+            extension,
+            payload,
+        });
+    }
+    (out, issues)
 }
 
 /// KLV payload classification result.
@@ -359,5 +446,72 @@ mod tests {
         // not the leaf NAL splitter's.
         let buf = vec![0xAA, 0xBB, 0xCC, 0xDD, 0xEE];
         assert_eq!(split_nals(&buf, VideoCodec::H264), vec![]);
+    }
+
+    fn build_obu_with_size(obu_type: u8, payload: &[u8]) -> Vec<u8> {
+        // Header: obu_type(4) | ext_flag(1)=0 | has_size(1)=1 | reserved(1)=0
+        // → byte = (obu_type << 3) | 0b010 = (obu_type << 3) | 0x02
+        let header = (obu_type << 3) | 0x02;
+        let mut v = vec![header];
+        // LEB128 size — for sizes < 128, single byte equal to size.
+        let size = payload.len();
+        assert!(size < 128, "test helper supports only small payloads");
+        v.push(size as u8);
+        v.extend_from_slice(payload);
+        v
+    }
+
+    #[test]
+    fn split_obus_two_obus() {
+        let mut buf = Vec::new();
+        buf.extend(build_obu_with_size(2, &[])); // Temporal Delimiter (empty)
+        buf.extend(build_obu_with_size(1, &[0xAA, 0xBB])); // Sequence Header (placeholder)
+        let (obus, issues) = split_obus(&buf);
+        assert_eq!(obus.len(), 2);
+        assert_eq!(obus[0].obu_type, 2);
+        assert_eq!(obus[1].obu_type, 1);
+        assert_eq!(obus[1].payload, vec![0xAA, 0xBB]);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn split_obus_missing_size_field_reports_issue() {
+        // obu_type=1 (Seq Header), ext_flag=0, has_size=0
+        let header = 1 << 3;
+        let buf = vec![header, 0xAA, 0xBB, 0xCC];
+        let (obus, issues) = split_obus(&buf);
+        assert_eq!(obus.len(), 1);
+        assert_eq!(obus[0].payload, vec![0xAA, 0xBB, 0xCC]);
+        assert!(matches!(
+            issues.first(),
+            Some(NonConformantIssue::Av1ObuMissingSizeField { .. })
+        ));
+    }
+
+    #[test]
+    fn split_obus_tile_list_reports_issue() {
+        let buf = build_obu_with_size(8, &[0x00]); // Tile List (forbidden in TS)
+        let (obus, issues) = split_obus(&buf);
+        assert_eq!(obus.len(), 1);
+        assert!(matches!(
+            issues.first(),
+            Some(NonConformantIssue::Av1TileListNotAllowed { .. })
+        ));
+    }
+
+    #[test]
+    fn split_obus_truncated_leb128_stops_walking() {
+        // Header byte then a continuation byte with no terminator, and one
+        // more (header for a hypothetical second OBU we should never reach).
+        let buf = vec![0x12, 0x80]; // single OBU header + truncated LEB128
+        let (obus, _) = split_obus(&buf);
+        assert!(obus.is_empty(), "truncated LEB128 should abort the walk");
+    }
+
+    #[test]
+    fn split_obus_empty_input_returns_empty() {
+        let (obus, issues) = split_obus(&[]);
+        assert!(obus.is_empty());
+        assert!(issues.is_empty());
     }
 }

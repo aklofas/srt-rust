@@ -151,12 +151,32 @@ pub enum VideoPayload {
     Obus(Vec<Obu>),
 }
 
-/// AV1 Open Bitstream Unit. Placeholder shape — the typed fields land
-/// alongside AV1 carriage in a later task.
+/// One AV1 Open Bitstream Unit. Per AV1 Bitstream Spec §5.3.2.
+///
+/// The header byte (`obu_forbidden_bit | obu_type | obu_extension_flag |
+/// obu_has_size_field | obu_reserved_1bit`) and any extension byte are
+/// parsed during split; the LEB128 `obu_size` field is consumed and
+/// stripped. `payload` carries only the OBU body bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Obu {
-    #[allow(dead_code)]
-    pub _placeholder: (),
+    /// 4-bit `obu_type` (AV1 §5.3.2). 1=SequenceHeader, 2=TemporalDelimiter,
+    /// 3=FrameHeader, 4=TileGroup, 5=Metadata, 6=Frame,
+    /// 7=RedundantFrameHeader, 8=TileList, 15=Padding.
+    pub obu_type: u8,
+    /// Optional extension header bytes when `obu_extension_flag = 1`.
+    pub extension: Option<ObuExtension>,
+    /// OBU payload bytes — header + extension byte + LEB128 size field
+    /// stripped. Pass-through; parsed by `codec::av1::parse_*` if the
+    /// consumer wants typed fields.
+    pub payload: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ObuExtension {
+    /// 3-bit `temporal_id` (AV1 §5.3.3).
+    pub temporal_id: u8,
+    /// 2-bit `spatial_id` (AV1 §5.3.3).
+    pub spatial_id: u8,
 }
 
 /// One H.264 or H.265 NAL unit. Codec-tagged so wrapped languages
@@ -299,6 +319,22 @@ pub enum NonConformantIssue {
     /// deferred to the typed WebVTT cue / DVB-sub data-segment /
     /// teletext data-unit substrate session.
     SubtitleDescriptorMalformed { pid: u16, tag: u8 },
+
+    /// AV1 stream's PMT entry has a malformed `registration_descriptor`
+    /// for `format_identifier "AV01"` — length byte mismatches payload.
+    Av1RegistrationMalformed { pid: u16 },
+
+    /// AV1 OBU encountered with `obu_has_size_field = 0`. AV1 in MPEG-2 TS
+    /// binding §3.1 (linked through AV1 spec §5.2 "low overhead bitstream
+    /// format") requires `=1`. Streams violating this can't be split
+    /// reliably; the splitter places remaining bytes into one trailing
+    /// `Obu` and stops walking.
+    Av1ObuMissingSizeField { pid: u16, obu_type: u8 },
+
+    /// Tile List OBU (`obu_type = 8`) encountered. Forbidden by AV1 in
+    /// MPEG-2 TS binding §3.3. Lenient mode passes through; strict mode
+    /// rejects.
+    Av1TileListNotAllowed { pid: u16 },
 
     /// Other.
     Other(String),

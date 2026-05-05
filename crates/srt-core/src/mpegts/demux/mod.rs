@@ -24,7 +24,7 @@ pub mod ts;
 pub use demuxer::{Demuxer, DemuxerBuilder, DemuxerOptions, DemuxerStats};
 pub use event::{
     AudioCodec, DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit,
-    NonConformantIssue, Obu, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind,
-    SubtitleCodec, VideoCodec, VideoPayload, pts_to_duration,
+    NonConformantIssue, Obu, ObuExtension, ProgramMap, SamplePayload, StreamId, StreamInfo,
+    StreamKind, SubtitleCodec, VideoCodec, VideoPayload, pts_to_duration,
 };
 pub use strict::StrictMode;

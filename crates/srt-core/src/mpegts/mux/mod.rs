@@ -982,6 +982,41 @@ impl ProgramBuilder {
         self
     }
 
+    /// Set the descriptor list for the `subtitle_idx`-th subtitle stream in
+    /// this program (zero-indexed among `StreamSpec::Subtitle` entries in
+    /// add-order).
+    ///
+    /// Caller-supplied descriptors append to the auto-emitted codec-
+    /// disambiguating descriptor; they do not suppress it (contrast with
+    /// KLV's KLVA-suppression rule — for subtitles, the auto-emit IS the
+    /// codec marker for receiver classification).
+    ///
+    /// # Panics
+    /// Panics if `subtitle_idx` is out of range. Call after the corresponding
+    /// [`add_subtitle`][Self::add_subtitle].
+    pub fn stream_descriptors_for_subtitle(
+        mut self,
+        subtitle_idx: usize,
+        descs: Vec<Vec<u8>>,
+    ) -> Self {
+        let prog = &mut self.parent.programs[self.idx];
+        let abs_idx = prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Subtitle { .. }))
+            .nth(subtitle_idx)
+            .map(|(i, _)| i)
+            .unwrap_or_else(|| {
+                panic!(
+                    "subtitle_idx {subtitle_idx} out of range — call after add_subtitle (program {})",
+                    prog.program_number
+                )
+            });
+        prog.stream_descriptors[abs_idx] = descs;
+        self
+    }
+
     /// Set the descriptor list for a stream by absolute index within this
     /// program (across both video and KLV streams in add-order).
     ///
@@ -3306,6 +3341,42 @@ mod tests {
             .position(|s| matches!(s, StreamSpec::Audio { .. }))
             .unwrap();
         assert_eq!(prog.stream_descriptors[audio_idx].len(), 1);
+    }
+
+    #[test]
+    fn add_subtitle_records_the_stream_in_program_order() {
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .end_program()
+            .build()
+            .unwrap();
+        // The subtitle stream is the 2nd entry in this program's streams Vec
+        // (after the video at index 0).
+        assert!(matches!(
+            &cfg.programs[0].streams[1],
+            StreamSpec::Subtitle {
+                pid: 0x200,
+                codec: SubtitleCodec::WebVttInTs,
+            }
+        ));
+    }
+
+    #[test]
+    fn stream_descriptors_for_subtitle_attaches_at_build_time() {
+        // stream_identifier_descriptor: tag 0x52, len 0x01, component_tag 0x42.
+        let extra: Vec<Vec<u8>> = vec![vec![0x52u8, 0x01, 0x42]];
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .stream_descriptors_for_subtitle(0, extra.clone())
+            .end_program()
+            .build()
+            .unwrap();
+        // abs_idx 1 (after video at 0).
+        assert_eq!(cfg.programs[0].stream_descriptors[1], extra);
     }
 
     #[test]

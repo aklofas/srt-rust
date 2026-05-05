@@ -2158,16 +2158,16 @@ impl Muxer {
                 random_access_indicator: true, // ST 0601 records are self-contained.
             };
             let mut buf = Vec::with_capacity(5 + klv.len());
-            crate::mpegts::au_cell::write_metadata_au_cell(&mut buf, header, klv).map_err(
-                |e| match e {
+            crate::mpegts::au_cell::write_metadata_au_cell(&mut buf, header, klv).map_err(|e| {
+                match e {
                     crate::mpegts::au_cell::AuCellError::PayloadTooLarge { size, .. } => {
                         MuxError::KlvTooLarge {
                             size,
                             max: crate::mpegts::au_cell::MAX_AU_CELL_PAYLOAD,
                         }
                     }
-                },
-            )?;
+                }
+            })?;
             Some(buf)
         } else {
             None
@@ -4045,7 +4045,7 @@ mod tests {
 
     #[test]
     fn sync_klv_push_auto_wraps_with_5_byte_au_cell_header() {
-        use crate::mpegts::au_cell::{read_metadata_au_cell, CellFragmentIndication};
+        use crate::mpegts::au_cell::{CellFragmentIndication, read_metadata_au_cell};
 
         let cfg = Config::builder()
             .add_program(1, 0x1000)

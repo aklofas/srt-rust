@@ -67,7 +67,8 @@ new behaviour. The send shells delegate framing to `mpegts::mux::Muxer`
 and wire transport to a `Transport` implementation; the receive shells
 delegate framing recovery to `mpegts::demux::Demuxer` and bytes-in to a
 `RecvTransport` implementation. Metadata typing for both directions is
-`klv::st0601` / `klv::st0605` / `klv::st1910`. The canonical
+`klv::st0601` / `klv::st0605`. MPEG-TS sync-metadata AU cell carriage
+lives at `mpegts::au_cell` (per ITU-T H.222.0 V9 § 2.12.4.2). The canonical
 `Transport` + `RecvTransport` impl is `SrtTransport` over `srt::Socket`
 — the same wrapper handles both directions on a connected socket.
 

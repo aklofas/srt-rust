@@ -92,14 +92,13 @@ many drained-but-unsent chunks accumulate during prolonged transport
 unavailability. Wrap with `ManagedTransport` when you expect outages
 longer than a fraction of a second.
 
-**ST 1910 AU cell wrapping is caller-side, not sender-side.**
-`Sender::send_klv` mirrors `Muxer::push_klv` — it treats the KLV blob
-as opaque bytes regardless of how the muxer is configured. When the
-underlying `Config` is set for `KlvStreamType::SynchronousMetadata`
-plus `carries_pts: true`, wrap with `klv::st1910::wrap_au_cell` before
-calling `send_klv`. See [guide-mpegts-mux.md](guide-mpegts-mux.md)
-§"KLV-in-TS modes" and [guide-klv.md](guide-klv.md)'s "ST 1910 AU
-cell wrap/unwrap" section.
+**Sync KLV is muxer-side wrapped.** When the underlying `Config` is
+set for `KlvStreamType::SynchronousMetadata` plus `carries_pts: true`,
+the muxer auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T
+H.222.0 V9 § 2.12.4.2 before TS-framing. `Sender::send_klv` passes
+your raw KLV LS bytes through to the muxer; the muxer does the wrap.
+PTS lives in the PES header (per § 2.12.4.1). See
+[guide-mpegts-mux.md](guide-mpegts-mux.md) for the wire-format details.
 
 Mirroring [../crates/srt-core/examples/pipeline_send_to_socket.rs](../crates/srt-core/examples/pipeline_send_to_socket.rs):
 

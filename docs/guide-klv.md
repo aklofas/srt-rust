@@ -3,10 +3,12 @@
 ## Introduction
 
 This guide covers `srt_core::klv` — the KLV codec, bidirectional. Encoding
-and decoding for the MISB ST 0601 UAS Datalink Local Set, the ST 0605
-Precision Time Stamp Pack, and the ST 1910 AU cell wrap used to multiplex
-synchronous KLV into MPEG-TS, layered on a generic SMPTE KLV substrate
+and decoding for the MISB ST 0601 UAS Datalink Local Set and the ST 0605
+Precision Time Stamp Pack, layered on a generic SMPTE KLV substrate
 (Universal Labels, BER lengths, IMAPB, checksum, pack iteration).
+MPEG-TS sync-metadata AU cell carriage lives at `mpegts::au_cell` (per
+ITU-T H.222.0 V9 § 2.12.4.2) — the muxer auto-wraps for
+`KlvStreamType::SynchronousMetadata` streams.
 
 What this module is *not*: a TS demuxer. Pulling KLV out of a captured
 `.ts` file is done with FFmpeg / Bento4 / `cargo run --example extract_klv`
@@ -23,7 +25,6 @@ the published ST 0601 mandatory-field rules.
 ```
 typed:    klv::st0601 (UAS Datalink LS, 49 typed items)
           klv::st0605 (Precision Time Stamp Pack)
-          klv::st1910 (AU cell wrap/unwrap for sync KLV in TS)
 
 substrate: klv::pack            (Iter, RawField, OwnedRawField)
            klv::length          (BER short/long, BER-OID)
@@ -256,35 +257,20 @@ accessors:
 canonical UL; `klv::st0605::encode(&pack) -> [u8; 26]` produces the
 fixed-size bytes for transmission.
 
-## ST 1910 AU cell wrap/unwrap
+## Sync metadata AU cell carriage
 
-MISB ST 1910 specifies the AU cell — an outer KLV wrapper that pairs an
-ST 0605 Precision Time Stamp Pack with an inner KLV Local Set, used for
-synchronous KLV streams in MPEG-TS so the receiver can recover frame
-boundaries.
+Synchronous KLV in MPEG-TS uses a 5-byte `Metadata_AU_cell` header per
+ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) to wrap each KLV
+record. The wrapper is an MPEG-TS systems-layer construct, not a KLV
+substrate concern — see [guide-mpegts-mux.md](guide-mpegts-mux.md) for
+the carriage details. The muxer auto-wraps for
+`KlvStreamType::SynchronousMetadata` streams; the demuxer surfaces the
+parsed header fields on `MetadataKind::KlvSyncAuCell`.
 
-Wire layout per ST 1910 §7:
-
-```
-[AU cell UL:16][BER value-length][PTS pack:26][inner KLV LS]
-```
-
-The module exposes both halves of the round trip:
-
-- `klv::st1910::wrap_au_cell(payload, timestamp) -> Vec<u8>` — wraps an
-  inner KLV Local Set with the AU cell header and an embedded
-  `PrecisionTimeStampPack`. Result is ready to hand to the muxer.
-- `klv::st1910::unwrap_au_cell(buf) -> Result<(&[u8], PrecisionTimeStampPack), KlvDecodeError>` —
-  the receiver-side companion: returns a slice into the wrapped KLV
-  payload and the recovered timestamp.
-
-Wrapping is caller-side. When you configure `mpegts::mux` with
-`KlvStreamType::SynchronousMetadata + carries_pts: true`, the muxer
-expects each blob you pass to `Muxer::push_klv` to already be AU-cell-
-wrapped. The conventional pipeline is `encode_to_vec(&ls)` → Vec<u8>
-(inner KLV) → `wrap_au_cell(&inner, pts_pack)` → Vec<u8> (AU cell) →
-`Muxer::push_klv(&au_cell, pts_90khz)`. See
-[guide-mpegts-mux.md](guide-mpegts-mux.md) for the muxer side.
+The wrapper substrate lives at `mpegts::au_cell`
+(`AuCellHeader`, `CellFragmentIndication`, `write_metadata_au_cell`,
+`read_metadata_au_cell`) for callers that need to construct or parse
+AU cells outside the mux/demux machinery.
 
 ## Substrate walking
 

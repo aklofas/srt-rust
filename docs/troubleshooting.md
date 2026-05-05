@@ -124,11 +124,11 @@ After the run, check `TsSender::stats()` and inspect `bytes_skipped_for_sync` an
 
 Fix: if the receiver is still seeing garble despite zero stats, the corruption is happening downstream of the sender — check the network path and any intermediate transcoders.
 
-**Receiver expects sync KLV (ST 1402) but sees raw bytes**
+**Receiver sees double-wrapped KLV (legacy callers from older library versions)**
 
-The muxer does not auto-wrap KLV in ST 1910 AU cells. When you've configured the muxer for `KlvStreamType::SynchronousMetadata`, you must wrap the payload yourself before passing it to the muxer.
+If you previously passed pre-wrapped bytes to `Muxer::push_klv` for a `KlvStreamType::SynchronousMetadata` stream (older library versions where the caller had to wrap), the muxer now double-wraps. Strip the outer wrapper and let the muxer wrap once.
 
-Fix: call `klv::st1910::wrap_au_cell(payload, timestamp)` and pass the result to `Muxer::push_klv` or `Sender::send_klv`. Asynchronous KLV streams pass the raw 0601 LS bytes through unchanged. See [guide-mpegts-mux.md](guide-mpegts-mux.md) for the synchronous vs. asynchronous distinction.
+Fix: pass raw KLV LS bytes (16-byte SMPTE UL + BER length + body) to `Muxer::push_klv` / `Sender::send_klv`; the muxer auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156). PTS lives in the PES header (§ 2.12.4.1). Asynchronous KLV streams (`KlvStreamType::PrivateData`) pass the raw 0601 LS bytes through unchanged. See [guide-mpegts-mux.md](guide-mpegts-mux.md) for the synchronous vs. asynchronous distinction.
 
 **`MuxError::KlvTooLarge`**
 

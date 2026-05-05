@@ -4,7 +4,7 @@
 //! Replaces the obsolete tests/mpegts_mux_st1910.rs + tests/mpegts_demux_st1910.rs
 //! which exercised the fictional UL+BER+PTSP wrapper format.
 
-use srt_core::mpegts::au_cell::{read_metadata_au_cell, CellFragmentIndication};
+use srt_core::mpegts::au_cell::{CellFragmentIndication, read_metadata_au_cell};
 use srt_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind};
 use srt_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec};
 
@@ -40,7 +40,11 @@ fn sync_klv_mux_demux_round_trip() {
     let cfg = ConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
-        .add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true)
+        .add_klv(
+            0x1031,
+            KlvStreamType::SynchronousMetadata,
+            /*carries_pts=*/ true,
+        )
         .end_program()
         .build()
         .unwrap();
@@ -95,7 +99,11 @@ fn private_data_klv_does_not_auto_wrap() {
     let cfg = ConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
-        .add_klv(0x1031, KlvStreamType::PrivateData, /*carries_pts=*/ false)
+        .add_klv(
+            0x1031,
+            KlvStreamType::PrivateData,
+            /*carries_pts=*/ false,
+        )
         .end_program()
         .build()
         .unwrap();

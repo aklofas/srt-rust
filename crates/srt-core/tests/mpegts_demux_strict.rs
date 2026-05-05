@@ -32,7 +32,7 @@
 //! current `mpegts::mux::Config::validate` rejects (Path 3 lifts that).
 
 use srt_core::error::DemuxError;
-use srt_core::mpegts::au_cell::{write_metadata_au_cell, AuCellHeader, CellFragmentIndication};
+use srt_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
 use srt_core::mpegts::demux::{DemuxEvent, DemuxerBuilder, NonConformantIssue, StrictMode};
 use srt_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
 

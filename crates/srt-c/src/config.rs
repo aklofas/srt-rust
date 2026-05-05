@@ -200,9 +200,10 @@ pub unsafe extern "C" fn srtc_mux_config_add_video_stream(
 /// Add a KLV elementary stream to the specified program and return its handle.
 ///
 /// `stream_type`: `SRTC_KLV_STREAM_TYPE_PRIVATE_DATA` (0x06, async — no AU
-/// cell wrapping required) or `SRTC_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`
-/// (0x15 — callers MUST pre-wrap each blob via the ST 1910 AU cell wrapper
-/// before calling `push_klv_to`; the muxer does not auto-wrap).
+/// cell wrapping) or `SRTC_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA` (0x15 —
+/// the muxer auto-wraps each push in a 5-byte `Metadata_AU_cell` header
+/// per ITU-T H.222.0 V9 § 2.12.4.2 before TS-framing; pass raw KLV LS
+/// bytes to `push_klv_to`).
 ///
 /// `carries_pts`: set `true` for synchronous KLV (PTS carried in PES header),
 /// `false` for async KLV.

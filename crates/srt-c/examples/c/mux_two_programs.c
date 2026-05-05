@@ -107,10 +107,10 @@ static const uint8_t NAL_IDR[] = {
  *   the correct choice for any workflow that doesn't need sub-frame KLV timing.
  *
  *   If you need synchronous (PTS-stamped) KLV, use
- *   SRTC_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA — but you MUST pre-wrap each
- *   blob via the ST 1910 AU cell wrapper before calling srtc_muxer_push_klv_to.
- *   The muxer does NOT auto-wrap (see srt-rust docs/guide-mpegts-mux.md for
- *   details on the wrap_au_cell requirement).
+ *   SRTC_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA — the muxer auto-wraps each
+ *   push in a 5-byte Metadata_AU_cell header per ITU-T H.222.0 V9 § 2.12.4.2
+ *   before TS-framing. Pass raw KLV LS bytes to srtc_muxer_push_klv_to;
+ *   PTS lives in the PES header (per § 2.12.4.1).
  */
 static const uint8_t KLV_BLOB[] = {
     0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01,  /* UL bytes 1-8  */

@@ -144,9 +144,11 @@ pub unsafe extern "C" fn srtc_muxer_push_video_to(
 /// `handle` is obtained from `srtc_mux_config_add_klv_stream`. Same
 /// semantics as `srtc_muxer_push_video_to`.
 ///
-/// For `KlvStreamType::SynchronousMetadata` streams, callers must
-/// pre-wrap the KLV via `srt_core::klv::st1910::wrap_au_cell` (or the
-/// equivalent in their consumer language) — the muxer does NOT auto-wrap.
+/// For `KlvStreamType::SynchronousMetadata` streams, the muxer auto-wraps
+/// the caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0
+/// V9 § 2.12.4.2 (5 bytes prepended; PTS surfaced in the PES header).
+/// For `KlvStreamType::PrivateData` streams, the caller's bytes pass
+/// through unchanged.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_muxer_push_klv_to(
     p: *mut SrtcMuxer,

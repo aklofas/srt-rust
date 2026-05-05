@@ -150,21 +150,28 @@ the private data is KLV. `SynchronousMetadata` + `true` is the strict
 ST 1402 form for receivers that conform to it; the muxer emits the
 same `KLVA` registration descriptor on the PMT entry.
 
-**ST 1910 AU cell wrapping is caller-side, not muxer-side.**
-`Muxer::push_klv` does not call `klv::st1910::wrap_au_cell` for you —
-it treats the KLV payload as opaque bytes regardless of the
-`stream_type` / `carries_pts` configuration. When you configure the
-muxer for `SynchronousMetadata + carries_pts: true`, the conventional
-pipeline is:
+**AU cell wrapping is muxer-side.** When you configure a KLV stream as
+`KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a
+5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2
+(Tables 2-155+2-156). Pass raw KLV LS bytes; the muxer does the wrap.
+The conventional pipeline is:
 
 ```text
-encode_to_vec(&ls)          → inner KLV bytes
-wrap_au_cell(&inner, pts)   → AU-cell-wrapped bytes
-mux.push_klv(&au_cell, pts) → emits PES with the wrapped bytes
+encode_to_vec(&ls)              → inner KLV bytes
+mux.push_klv(&inner, pts)       → muxer prepends 5-byte AU cell header,
+                                  emits PES carrying the AU cell, with
+                                  PTS in the PES header (per § 2.12.4.1)
 ```
 
-See [guide-klv.md](guide-klv.md)'s "ST 1910 AU cell wrap/unwrap"
-section for the wrap function.
+PTS lives in the PES header — the AU cell carries no embedded
+timestamp. ST 1402.2 § 9.4.1 + Appendix B specializes this generic
+H.222.0 AU cell for KLV by mandating `metadata_format_identifier =
+"KLVA"` in the PMT metadata_descriptor; the wrapper itself is
+H.222.0's. The substrate lives at `mpegts::au_cell` if you ever need
+to construct or parse AU cells outside the mux/demux machinery.
+
+For `KlvStreamType::PrivateData` streams, the muxer carries payload
+through unchanged.
 
 ## PCR cadence
 

@@ -308,9 +308,10 @@ srtc_video_stream_handle_t srtc_mux_config_add_video_stream(struct srtc_mux_conf
  * Add a KLV elementary stream to the specified program and return its handle.
  *
  * `stream_type`: `SRTC_KLV_STREAM_TYPE_PRIVATE_DATA` (0x06, async — no AU
- * cell wrapping required) or `SRTC_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`
- * (0x15 — callers MUST pre-wrap each blob via the ST 1910 AU cell wrapper
- * before calling `push_klv_to`; the muxer does not auto-wrap).
+ * cell wrapping) or `SRTC_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA` (0x15 —
+ * the muxer auto-wraps each push in a 5-byte `Metadata_AU_cell` header
+ * per ITU-T H.222.0 V9 § 2.12.4.2 before TS-framing; pass raw KLV LS
+ * bytes to `push_klv_to`).
  *
  * `carries_pts`: set `true` for synchronous KLV (PTS carried in PES header),
  * `false` for async KLV.
@@ -516,9 +517,11 @@ int srtc_mux_sender_send_video_to(struct srtc_mux_sender_t *p,
 /**
  * Push one pre-built KLV blob targeting a specific KLV elementary stream.
  *
- * For `KlvStreamType::SynchronousMetadata` streams, callers must
- * pre-wrap the KLV via `srt_core::klv::st1910::wrap_au_cell` — the
- * muxer does not auto-wrap.
+ * For `KlvStreamType::SynchronousMetadata` streams, the muxer auto-wraps
+ * the caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0
+ * V9 § 2.12.4.2 (5 bytes prepended; PTS surfaced in the PES header).
+ * For `KlvStreamType::PrivateData` streams, the caller's bytes pass
+ * through unchanged.
  *
  * On a single-stream sender, prefer `srtc_mux_sender_send_klv` — same
  * effect, no handle required.
@@ -604,9 +607,11 @@ int srtc_managed_mux_sender_send_video_to(struct srtc_managed_mux_sender_t *p,
  * Push one pre-built KLV blob targeting a specific KLV elementary stream on
  * a managed (auto-reconnecting) sender.
  *
- * For `KlvStreamType::SynchronousMetadata` streams, callers must
- * pre-wrap the KLV via `srt_core::klv::st1910::wrap_au_cell` — the
- * muxer does not auto-wrap.
+ * For `KlvStreamType::SynchronousMetadata` streams, the muxer auto-wraps
+ * the caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0
+ * V9 § 2.12.4.2 (5 bytes prepended; PTS surfaced in the PES header).
+ * For `KlvStreamType::PrivateData` streams, the caller's bytes pass
+ * through unchanged.
  *
  * On a single-stream sender, prefer `srtc_managed_mux_sender_send_klv` —
  * same effect, no handle required.
@@ -686,9 +691,11 @@ int srtc_muxer_push_video_to(struct srtc_muxer_t *p,
  * `handle` is obtained from `srtc_mux_config_add_klv_stream`. Same
  * semantics as `srtc_muxer_push_video_to`.
  *
- * For `KlvStreamType::SynchronousMetadata` streams, callers must
- * pre-wrap the KLV via `srt_core::klv::st1910::wrap_au_cell` (or the
- * equivalent in their consumer language) — the muxer does NOT auto-wrap.
+ * For `KlvStreamType::SynchronousMetadata` streams, the muxer auto-wraps
+ * the caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0
+ * V9 § 2.12.4.2 (5 bytes prepended; PTS surfaced in the PES header).
+ * For `KlvStreamType::PrivateData` streams, the caller's bytes pass
+ * through unchanged.
  */
 
 int srtc_muxer_push_klv_to(struct srtc_muxer_t *p,

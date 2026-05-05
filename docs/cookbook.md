@@ -260,33 +260,22 @@ Runnable: [../crates/srt-core/examples/custom_transport.rs](../crates/srt-core/e
 
 Reach for this when the encoder produces HEVC, or when the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15) instead of the default async private-data shape. Three knobs flip on `Config`: codec → `H265`, KLV stream type → `SynchronousMetadata`, `carries_pts` → `true`.
 
-**Caller wraps for sync KLV.** `Muxer::push_klv` does NOT auto-wrap — it treats whatever bytes the caller hands it as the opaque PES payload. For sync KLV, wrap the inner blob in an ST 1910 AU cell carrying a Precision Time Stamp Pack via `klv::st1910::wrap_au_cell` BEFORE calling `push_klv`. Without this wrap, the PMT advertises stream_type 0x15 but the payload is bare KLV — non-conformant, and a strict receiver will reject it. See [guide-mpegts-mux.md](guide-mpegts-mux.md) §"KLV-in-TS modes".
+**Sync KLV auto-wraps in the muxer.** When you configure `KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) before TS-framing. Pass raw KLV LS bytes — do not pre-wrap. PTS lives in the PES header (per § 2.12.4.1). See [guide-mpegts-mux.md](guide-mpegts-mux.md) §"KLV-in-TS modes".
 
 ```rust,no_run
-use srt_core::klv::st0605::{PrecisionTimeStampPack, TimeStatus};
-use srt_core::klv::st1910::wrap_au_cell;
-use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, StreamSpec, VideoCodec};
+use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = Config {
-        streams: vec![
-            StreamSpec::Video { pid: 0x1011, codec: VideoCodec::H265 },
-            StreamSpec::Klv {
-                pid: 0x1031,
-                stream_type: KlvStreamType::SynchronousMetadata,
-                carries_pts: true,
-            },
-        ],
-        ..Config::default()
-    };
+    let cfg = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x1011, VideoCodec::H265)
+        .add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true)
+        .end_program()
+        .build()?;
     let mut mux = Muxer::new(cfg)?;
     let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
-    let timestamp = PrecisionTimeStampPack {
-        time_status: TimeStatus(0x1F),
-        timestamp_us: 1_700_000_000_000_000,
-    };
-    let wrapped = wrap_au_cell(&inner_klv, timestamp);
-    mux.push_klv(&wrapped, 0)?;
+    // Muxer auto-prepends the 5-byte AU cell header.
+    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0)?;
     Ok(())
 }
 ```
@@ -350,9 +339,9 @@ Runnable: [../crates/srt-core/examples/sender_from_url.rs](../crates/srt-core/ex
 
 ### 12. Pair sync-KLV with video AUs by nearest PTS
 
-Reach for this when an encoder emits KLV inside ST 1910 AU cells synchronized to video frames (one KLV per frame, KLV PTS = frame PTS) and you want to consume frame + telemetry as a paired record. By design, `mpegts::demux` does NOT pair sync-KLV with video AUs — it surfaces them as independent stream-tagged events with full timing info, and the pairing tolerance is consumer-domain knowledge. This recipe is the canonical nearest-PTS pattern.
+Reach for this when an encoder emits sync-KLV (PMT stream_type 0x15, H.222.0 § 2.12.4.2 `Metadata_AU_cell`) synchronized to video frames (one KLV per frame, KLV PES PTS = frame PTS) and you want to consume frame + telemetry as a paired record. By design, `mpegts::demux` does NOT pair sync-KLV with video AUs — it surfaces them as independent stream-tagged events with full timing info, and the pairing tolerance is consumer-domain knowledge. This recipe is the canonical nearest-PTS pattern.
 
-Match BOTH `MetadataKind::KlvSyncAuCell` AND `MetadataKind::KlvAsync`. The natural intuition is "sync KLV is the kind that needs pairing," but many production ISR encoders emit a `stream_type=0x15` PID whose AU cell wraps an async-shape inner UL — the demuxer peels the outer AU cell wrap and surfaces the bytes as `KlvAsync` with the AU cell's PTS preserved on the parent event. That `KlvAsync` is still PTS-aligned with video; matching only `KlvSyncAuCell` silently drops the most common shape we see in the field.
+Match BOTH `MetadataKind::KlvSyncAuCell` AND `MetadataKind::KlvAsync`. The natural intuition is "sync KLV is the kind that needs pairing," but many production ISR encoders declare a PID `stream_type=0x15` and ship bare KLV without the 5-byte AU cell header. The demuxer surfaces those bytes as `KlvAsync` with the PES PTS preserved on the parent event. That `KlvAsync` is still PTS-aligned with video; matching only `KlvSyncAuCell` silently drops the most common shape we see in the field.
 
 ```rust,no_run
 use srt_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
@@ -406,7 +395,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Tolerance is consumer-domain knowledge. Most ST 1910 encoders emit KLV PTS exactly equal to frame PTS; a window of a few hundred milliseconds covers minor encoder drift. See [examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs) for the full runnable form.
+Tolerance is consumer-domain knowledge. Most encoders emit KLV PES PTS exactly equal to frame PTS; a window of a few hundred milliseconds covers minor encoder drift. See [examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs) for the full runnable form.
 
 Runnable: [../crates/srt-core/examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs); see also [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs) for the file-feed shape.
 
@@ -760,30 +749,19 @@ The recipe below mirrors recipe 9 (H.265 + sync KLV) — flip the codec to
 VPS / SPS / PPS).
 
 ```rust,no_run
-use srt_core::klv::st0605::{PrecisionTimeStampPack, TimeStatus};
-use srt_core::klv::st1910::wrap_au_cell;
-use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, StreamSpec, VideoCodec};
+use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = Config {
-        streams: vec![
-            StreamSpec::Video { pid: 0x1011, codec: VideoCodec::H266 },
-            StreamSpec::Klv {
-                pid: 0x1031,
-                stream_type: KlvStreamType::SynchronousMetadata,
-                carries_pts: true,
-            },
-        ],
-        ..Config::default()
-    };
+    let cfg = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x1011, VideoCodec::H266)
+        .add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true)
+        .end_program()
+        .build()?;
     let mut mux = Muxer::new(cfg)?;
     let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
-    let timestamp = PrecisionTimeStampPack {
-        time_status: TimeStatus(0x1F),
-        timestamp_us: 1_700_000_000_000_000,
-    };
-    let wrapped = wrap_au_cell(&inner_klv, timestamp);
-    mux.push_klv(&wrapped, 0)?;
+    // Muxer auto-prepends the 5-byte H.222.0 § 2.12.4.2 AU cell header.
+    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0)?;
     Ok(())
 }
 ```

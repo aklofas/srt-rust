@@ -5,8 +5,8 @@
 This guide covers `srt_core::mpegts::demux` — the receiver-side MPEG-TS
 demuxer. `Demuxer` takes raw bytes off the wire (or out of a `.ts` file),
 recovers TS packet alignment, parses PSI (PAT / PMT), reassembles PES
-packets, splits H.264 / H.265 NAL units, peels ST 1910 AU cell wrappers
-off sync KLV, and emits a typed event stream — `DemuxEvent::ProgramMap`,
+packets, splits H.264 / H.265 NAL units, peels H.222.0 § 2.12.4.2
+`Metadata_AU_cell` headers off sync KLV, and emits a typed event stream — `DemuxEvent::ProgramMap`,
 `Sample`, `Metadata`, `Discontinuity`, `NonConformant`. Bytes need not
 be 188-aligned; the demuxer handles sync recovery internally.
 
@@ -81,7 +81,7 @@ Runnable: [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/ex
 | `SamplePayload` | `Video { codec, payload: VideoPayload }`, `Audio { codec, frames }`, `Subtitle { codec, payload }`, `Unknown { stream_type, raw }`. `VideoPayload` is `Nals(Vec<NalUnit>)` for H.264 / H.265 / H.266 or `Obus(Vec<Obu>)` for AV1. |
 | `NalUnit` | `H264 { nal_type, ref_idc, payload }` / `H265 { nal_type, layer_id, temporal_id_plus1, payload }` / `H266 { nal_type, layer_id, temporal_id_plus1, payload }`. RBSP bytes; Annex-B start codes stripped. |
 | `Obu` | AV1 OBU: `{ obu_type, extension: Option<ObuExtension>, payload }`. Header byte + optional extension byte + LEB128 `obu_size` consumed; `payload` is OBU body bytes. `obu_type` = 1 SequenceHeader / 2 TemporalDelimiter / 3 FrameHeader / 6 Frame / etc. (AV1 §5.3.2). |
-| `MetadataKind` | `KlvSyncAuCell` (AU cell unwrapped), `KlvAsync` (bare LS), `Unknown(u8)`. |
+| `MetadataKind` | `KlvSyncAuCell { metadata_service_id, sequence_number, cell_fragment_indication, decoder_config_flag, random_access_indicator }` (5 fields per H.222.0 § 2.12.4.2 Table 2-156, AU cell unwrapped), `KlvAsync` (bare LS), `Unknown(u8)`. |
 | `ProgramMap` | `{ program_number, pcr_pid, streams: Vec<StreamInfo>, klv_links: Vec<KlvLink> }`. |
 | `StreamInfo` | `{ pid, stream_type, kind }` — one row per declared stream in the PMT. |
 | `KlvLink` | `{ klv_pid, video_pid, source: LinkSource }`. |
@@ -223,10 +223,11 @@ zero or multiple video PIDs it cannot infer and emits
 `NonConformantIssue::MissingMetadataDescriptor` instead.
 
 **Wrong `stream_type` on the KLV PID.** A PID declared `0x06` (private
-data) that actually carries an ST 1910 AU cell, or a PID declared
-`0x15` that carries bare async KLV. The demuxer detects the actual
-shape via the leading bytes (AU cell UL prefix vs. bare ST 0601 UL
-prefix), classifies correctly, and emits
+data) that actually carries an H.222.0 § 2.12.4.2 `Metadata_AU_cell`,
+or a PID declared `0x15` that carries bare async KLV. The demuxer
+detects the actual shape via the leading bytes (5-byte AU cell header
++ inner SMPTE UL vs. bare ST 0601 UL at offset 0), classifies
+correctly, and emits
 `NonConformantIssue::StreamTypeMismatch{Sync,Async}On*Pid`. To avoid
 flooding the event stream when a stream emits the same mismatch on
 every record (often thousands), the issue is coalesced to one event
@@ -283,25 +284,27 @@ on `NalUnit::H264` / `NalUnit::H265`. The full AU is one
 to a downstream Annex-B sink prepend `0x00 0x00 0x00 0x01` between
 NALs themselves — see [../crates/srt-core/examples/extract_video_au.rs](../crates/srt-core/examples/extract_video_au.rs).
 
-**Sync KLV (`stream_type=0x15`).** The demuxer detects the ST 1910
-AU cell shape (UL prefix `06 0E 2B 34 02 0B 01 01 0E 01 03 01 01 00 00 00`),
-unwraps the AU cell, and emits `MetadataKind::KlvSyncAuCell`. The
-event's `pts` is the AU cell's metadata access-unit timestamp from
-the embedded `klv::st0605::PrecisionTimeStampPack`, not the PES PTS.
-The `payload` is the inner KLV LS bytes — feed directly to
+**Sync KLV (`stream_type=0x15`).** The demuxer detects the H.222.0
+§ 2.12.4.2 `Metadata_AU_cell` shape (5-byte header followed by an
+inner KLV LS at offset 5), peels the AU cell, and emits
+`MetadataKind::KlvSyncAuCell { metadata_service_id, sequence_number,
+cell_fragment_indication, decoder_config_flag,
+random_access_indicator }`. The event's `pts` is the PES PTS (per
+§ 2.12.4.1 — the AU cell carries no embedded timestamp). The
+`payload` is the inner KLV LS bytes — feed directly to
 `klv::st0601::decode`.
 
 **Async KLV (`stream_type=0x06` + `KLVA` registration descriptor).**
 The PES payload is bare KLV LS bytes. `MetadataKind::KlvAsync`. The
 `pts` is the raw PES PTS (or zero if the PES carried no PTS).
 
-**Real-world wrinkle: AU-cell wrap-peeling.** Some production ISR
-encoders emit `stream_type=0x15` whose AU cell wraps an inner UL that
-is *not* itself a sync record (no second AU cell wrap on the inner
-KLV). The demuxer peels the outer AU cell, sees the inner UL doesn't
-look like another sync record, and surfaces the bytes as
-`KlvAsync` with the AU cell's PTS preserved on the parent event. This
-is why pairing recipes (cookbook §12) match BOTH `KlvSyncAuCell` AND
+**Real-world wrinkle: stream_type vs. shape mismatch.** Some
+production ISR encoders emit `stream_type=0x15` (declared sync) but
+ship a bare KLV LS payload, with no AU cell wrap. The demuxer detects
+the actual shape (no 5-byte header), surfaces the bytes as
+`KlvAsync` with the PES PTS preserved on the parent event, and emits a
+`StreamTypeMismatchAsyncOnSyncPid` non-conformance event. This is why
+pairing recipes (cookbook § 12) match BOTH `KlvSyncAuCell` AND
 `KlvAsync` for sync-style consumers — many real captures present as
 the latter after wrap-peeling.
 
@@ -436,9 +439,10 @@ error variant; `Closed` is clean EOF. See `srt_recv_typed.rs`'s
 "stream-end contract" doc-comment for the full discussion.
 
 **Matching only `KlvSyncAuCell` for sync pairing.** Production ISR
-captures often surface sync KLV as `KlvAsync` after the demuxer's
-AU-cell wrap-peeling pass — the AU cell's PTS is preserved on the
-event, so the bytes are still PTS-aligned with video. Cookbook
+captures often surface sync KLV as `KlvAsync` (encoder declares the
+PID `stream_type=0x15` but emits bare KLV without the 5-byte AU cell
+header) — the PES PTS is still attached to the event, so the bytes
+remain PTS-aligned with video. Cookbook
 Recipe 12 matches both. Matching only `KlvSyncAuCell` silently drops
 the most common shape we see in the field.
 

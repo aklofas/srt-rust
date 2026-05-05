@@ -840,3 +840,54 @@ the trigger that would unblock it.
   legal / licensing overhead too.
 - **Trigger to revisit:** A consumer reports a real-world bug the
   synthetic suite missed.
+
+
+## Multi-cell fragmented metadata AU cells
+
+- **Status:** Deferred.
+- **Why deferred:** All current MISB sync KLV deployments emit one
+  KLV record per AU cell (`cell_fragment_indication = '11'`
+  Complete). Multi-cell support per H.222.0 V9 § 2.12.4.2
+  Table 2-157 ('00'/'01'/'10' fragments)
+  lets a single metadata Access Unit span multiple cells, but is
+  not used by any consumer we know of. The demuxer surfaces
+  `cell_fragment_indication` on `MetadataKind::KlvSyncAuCell`, so
+  consumers receiving fragmented input can detect non-Complete
+  cells; the muxer always emits Complete.
+- **Trigger to revisit:** A capture surfaces fragmented AU cells
+  (demuxer would today route them to `KlvShape::Other` because the
+  inner-payload sniff would fail on non-first cells), or a
+  consumer asks for fragmented-output emit on the mux side.
+
+## Caller override of `random_access_indicator` / `decoder_config_flag` on mux
+
+- **Status:** Deferred.
+- **Why deferred:** `Muxer::push_klv_to` hard-codes
+  `random_access_indicator=true` (every push is an entry point —
+  correct for self-contained ST 0601 LS records) and
+  `decoder_config_flag=false` (we do not carry decoder
+  configuration). For stateful KLV sets — ST 1206 SAR with delta
+  encoding, ST 0902 motion imagery with reference-frame-relative
+  VMTI — "entry point" semantics differ; only some pushes would be
+  RAI=1. The current ST 0601 typed surface is correctly served by
+  the hard-coded defaults.
+- **Trigger to revisit:** A typed surface for a stateful set
+  lands, OR a consumer emits non-ST-0601 sync KLV that needs
+  different semantics. Likely landing shape:
+  `Muxer::push_klv_to_with_options(handle, klv, pts,
+  SyncKlvOptions { random_access_indicator,
+  decoder_config_flag })`.
+
+## ST 1910.1 KLV-in-CMAF-emsg-box delivery
+
+- **Status:** Deferred.
+- **Why deferred:** ST 1910.1 (Adaptive Bitrate Content Encoding,
+  2020) defines KLV-in-CMAF emsg-box delivery for HLS/DASH
+  consumption — separate from MPEG-TS carriage. No CMAF/HLS
+  consumer asks for this in the current pipeline. Note: this is
+  unrelated to the MPEG-TS sync-metadata AU cell at
+  `mpegts::au_cell` (per H.222.0 § 2.12.4.2) — different specs,
+  different layers.
+- **Trigger to revisit:** An HLS/DASH-delivery consumer needs to
+  ingest sync KLV from a CMAF stream (e.g., a future HLS pipeline
+  that elects the emsg-box path instead of the MPEG-TS path).

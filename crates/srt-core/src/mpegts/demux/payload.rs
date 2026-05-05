@@ -515,7 +515,7 @@ mod tests {
         // header fields verbatim through KlvShape (per H.222.0 §2.12.4.2
         // Table 2-156).
         use crate::mpegts::au_cell::{
-            write_metadata_au_cell, AuCellHeader, CellFragmentIndication,
+            AuCellHeader, CellFragmentIndication, write_metadata_au_cell,
         };
         let mut inner_klv = Vec::new();
         inner_klv.extend_from_slice(&[

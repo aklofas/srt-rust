@@ -119,7 +119,7 @@ aren't yet wrapped are reachable via `srt-sys`.
 | MPEG-TS demuxer | ✅ Full | `mpegts::demux::Demuxer` — multi-program, lenient by default, four-tier `StrictMode` ladder. See `mpegts::demux` block below. |
 | Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ✅ Full | Default in `mpegts::mux::Config` (`klv_stream_type = PrivateData`, `klv_carries_pts = false`). |
 | ST 1402.3 Synchronous metadata stream | ✅ Full | `KlvStreamType::SynchronousMetadata` + `klv_carries_pts = true` in `Config`. |
-| ST 1910 AU cell wrapping (sync KLV with timestamp) | ✅ Full | `klv::st1910::wrap_au_cell` / `unwrap_au_cell`. Compose with `Muxer::push_klv` when `klv_carries_pts = true`. |
+| H.222.0 § 2.12.4.2 sync metadata AU cell wrapping | ✅ Full | `mpegts::au_cell::write_metadata_au_cell` / `read_metadata_au_cell`. Auto-wrapped inside `Muxer::push_klv` for `KlvStreamType::SynchronousMetadata` streams; PTS in PES header per § 2.12.4.1. |
 | Variable-length PES splitting | ⏳ Planned | Required for ≥ 65 000-byte KLV records (rare in practice). |
 | KLVA registration descriptor (`stream_type 0x06` + `0x05 "KLVA"`) | ✅ Full | Detected/recognised on decode side; emitted by muxer on the KLV PID. |
 | Audio carriage (mux side) | ✅ Full | MP2 / AAC ADTS / AAC LATM / AC-3; `Muxer::push_audio` / `push_audio_to`; PTS-only PES headers. |
@@ -176,7 +176,7 @@ plain `[UL][len][body]`:
 | --- | --- | --- |
 | Plain ST 0601 record | ✅ Full | `decode` / `decode_unchecked` / `decode_strict` / `decode_strict_compliance`. |
 | Wrapped Precision Time Stamp Pack + ST 0601 LS (TRM 0909.4 §7) | ✅ Full | Phase A of the spec-compliance plan; first record decoded via `klv::st0605::decode`, rest via record-iter. |
-| ST 1402.2 Synchronous Method 5-byte AU cell header | 🟡 Permissive | Recovery via SMPTE UL prefix (`06 0E 2B 34`) scan; principled AU cell parser is future work. |
+| ST 1402.2 Synchronous Method 5-byte AU cell header | ✅ Full | Spec-conformant 5-byte parser ships in `mpegts::au_cell::read_metadata_au_cell` per H.222.0 V9 § 2.12.4.2 Tables 2-155+2-156. |
 | Broken-checksum captures | ✅ Full | `decode_unchecked` accepts; `decode` rejects with `ChecksumMismatch`. |
 
 ---
@@ -269,7 +269,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `DemuxerBuilder` / `DemuxerOptions` | ✅ Full | Fluent builder + plain-struct config form. |
 | `DemuxEvent::ProgramMap` | ✅ Full | Emitted on PAT/PMT discovery and version-bump; carries `program_number`, `pcr_pid`, `streams`, `klv_links`. |
 | `DemuxEvent::Sample` | ✅ Full | Generic ES sample; payload typed for video / audio / subtitle, `Unknown` for unrecognized stream_types. |
-| `DemuxEvent::Metadata` | ✅ Full | Standalone metadata events; `MetadataKind::KlvSyncAuCell` (AU cell unwrapped), `KlvAsync` (bare LS), `Unknown(u8)`. |
+| `DemuxEvent::Metadata` | ✅ Full | Standalone metadata events; `MetadataKind::KlvSyncAuCell { metadata_service_id, sequence_number, cell_fragment_indication, decoder_config_flag, random_access_indicator }` (5 fields per H.222.0 § 2.12.4.2 Table 2-156), `KlvAsync` (bare LS), `Unknown(u8)`. |
 | `DemuxEvent::Discontinuity` | ✅ Full | `ContinuityJump`, `PesOversize`, `PesTotalOversize`, `AdaptationFieldFlag`. |
 | `DemuxEvent::NonConformant` | ✅ Full | Lenient-mode signal for spec violations; converts to fatal in strict modes. |
 | H.264 NAL split (stream_type 0x1B) | ✅ Full | Annex-B start codes stripped; `NalUnit::H264 { nal_type, ref_idc, payload }`. Emulation-prevention bytes preserved. |
@@ -277,8 +277,8 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | H.266 NAL split (stream_type 0x33) | ✅ Full | `NalUnit::H266 { nal_type, layer_id, temporal_id_plus1, payload }`. |
 | AV1 OBU split (stream_type 0x06 + AV01 registration) | ✅ Full | LEB128 `obu_size` consumed; `Obu { obu_type, extension, payload }`. Disambiguates from KLV-async via `format_identifier`. |
 | Async KLV (stream_type 0x06 + KLVA) | ✅ Full | Detected via registration descriptor `KLVA`; emitted as `KlvAsync`. |
-| Sync KLV (stream_type 0x15) | ✅ Full | ST 1910 AU cell unwrapped; AU cell PTS surfaced on the parent event. |
-| AU cell wrap-peeling (sync→async fallback) | ✅ Full | Sync-PID payloads with non-sync inner ULs surface as `KlvAsync` with AU cell PTS preserved. |
+| Sync KLV (stream_type 0x15) | ✅ Full | H.222.0 § 2.12.4.2 5-byte `Metadata_AU_cell` header parsed; PES PTS surfaced on the parent event (per § 2.12.4.1). |
+| Stream type / shape mismatch (sync↔async fallback) | ✅ Full | When PMT and wire shape disagree (e.g. 0x15 PID with bare KLV), demuxer classifies on actual shape and emits `StreamTypeMismatch{Sync,Async}On*Pid` non-conformance. PES PTS preserved. |
 | `metadata_descriptor` parser | ✅ Full | KLV→video link emitted in `ProgramMap.klv_links` as `LinkSource::Declared`. |
 | KLV link inference (single video + single KLV) | ✅ Full | `LinkSource::Inferred` when no descriptor but topology is unambiguous. |
 | `DemuxerBuilder::link_klv` override | ✅ Full | Caller-supplied klv→video PID link (`LinkSource::Override`). |
@@ -451,7 +451,7 @@ covers.
 | **MISB ST 1303.2** | Multi-Dimensional Array Pack (MDAP) | ❌ Out of scope (no ST 0903 consumer) |
 | **MISB ST 1402.2** | KLV in MPEG-2 Transport Streams | ✅ Async (0x06) + sync (0x15) modes in both `mpegts::mux` (encode) and `mpegts::demux` (decode) |
 | **MISB ST 1607.2** | Constructs to Amend / Segment KLV | ❌ Out of scope (no multi-PES KLV in corpus) |
-| **MISB ST 1910.1** | Inserting KLV in MPEG-TS for ISR | ✅ AU cell wrap/unwrap in `klv::st1910`; compose with `mpegts::mux` for full pipeline |
+| **MISB ST 1910.1** | KLV in CMAF emsg boxes (HLS/DASH delivery) | ❌ Deferred — unrelated to MPEG-TS carriage; trigger on first CMAF/HLS consumer ask |
 | **MISB TRM 0909.4** | Motion Imagery Quality Metadata | ⚙️ §7 multi-record PES pattern handled |
 | **MISB RP 0802.2** | UAS Streaming Pipeline Recommendation | 📖 Reference reading |
 | **MISB RP 1011.1** | Local Set Inheritance Recommendation | 📖 Reference reading |

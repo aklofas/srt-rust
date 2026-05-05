@@ -13,7 +13,9 @@
 //! is the right wrapper.
 
 use crate::error::MuxError;
-use crate::mpegts::mux::{Config, KlvStreamHandle, Muxer, VideoStreamHandle};
+use crate::mpegts::mux::{
+    AudioStreamHandle, Config, KlvStreamHandle, Muxer, SubtitleStreamHandle, VideoStreamHandle,
+};
 use crate::pipeline::transport::{Transport, TransportError};
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
@@ -126,6 +128,62 @@ impl<T: Transport> Sender<T> {
         inner.send_klv_to(handle, klv, pts_90khz)
     }
 
+    /// Send one audio frame buffer. `pts_90khz` is in 90 kHz ticks (the
+    /// TS clock); audio always carries PTS (no DTS). `frames` is one or
+    /// more pre-framed audio frames concatenated by the caller.
+    ///
+    /// Resolves only when exactly one audio stream is configured; with
+    /// zero or multiple audio streams the muxer surfaces
+    /// [`MuxError::AmbiguousTarget`] inside [`SenderError::Mux`] — use
+    /// [`Self::send_audio_to`] in that case.
+    pub fn send_audio(&self, frames: &[u8], pts_90khz: i64) -> Result<(), SenderError> {
+        let mut inner = self.inner.lock().unwrap();
+        inner.send_audio(frames, pts_90khz)
+    }
+
+    /// Send one audio frame buffer to a specific configured audio stream.
+    /// `handle` is obtained from [`Self::audio_handles`]; passing a handle
+    /// from a different sender / muxer surfaces as
+    /// [`MuxError::InvalidStreamHandle`] inside [`SenderError::Mux`].
+    pub fn send_audio_to(
+        &self,
+        handle: AudioStreamHandle,
+        frames: &[u8],
+        pts_90khz: i64,
+    ) -> Result<(), SenderError> {
+        let mut inner = self.inner.lock().unwrap();
+        inner.send_audio_to(handle, frames, pts_90khz)
+    }
+
+    /// Send one subtitle PES unit. `pts_90khz` is in 90 kHz ticks (the
+    /// TS clock); subtitles carry PTS only. `payload` is one complete
+    /// logical subtitle unit (DVB-sub composition page, teletext data
+    /// field, CEA-708 service block, or WebVTT cue) — fragmentation
+    /// across PES is not used.
+    ///
+    /// Resolves only when exactly one subtitle stream is configured;
+    /// with zero or multiple subtitle streams the muxer surfaces
+    /// [`MuxError::AmbiguousTarget`] inside [`SenderError::Mux`] — use
+    /// [`Self::send_subtitle_to`] in that case.
+    pub fn send_subtitle(&self, payload: &[u8], pts_90khz: i64) -> Result<(), SenderError> {
+        let mut inner = self.inner.lock().unwrap();
+        inner.send_subtitle(payload, pts_90khz)
+    }
+
+    /// Send one subtitle PES unit to a specific configured subtitle stream.
+    /// `handle` is obtained from [`Self::subtitle_handles`]; passing a
+    /// handle from a different sender / muxer surfaces as
+    /// [`MuxError::InvalidStreamHandle`] inside [`SenderError::Mux`].
+    pub fn send_subtitle_to(
+        &self,
+        handle: SubtitleStreamHandle,
+        payload: &[u8],
+        pts_90khz: i64,
+    ) -> Result<(), SenderError> {
+        let mut inner = self.inner.lock().unwrap();
+        inner.send_subtitle_to(handle, payload, pts_90khz)
+    }
+
     /// Snapshot all video stream handles for this sender's muxer, in
     /// declaration order. Allocates an owned Vec so callers don't need
     /// to hold the lock.
@@ -136,6 +194,46 @@ impl<T: Transport> Sender<T> {
     /// Snapshot all KLV stream handles for this sender's muxer.
     pub fn klv_handles(&self) -> Vec<KlvStreamHandle> {
         self.inner.lock().unwrap().muxer.klv_handles()
+    }
+
+    /// Snapshot all audio stream handles for this sender's muxer, in
+    /// declaration order.
+    pub fn audio_handles(&self) -> Vec<AudioStreamHandle> {
+        self.inner.lock().unwrap().muxer.audio_handles()
+    }
+
+    /// Audio stream handles for the named program, in declaration order.
+    /// Returns `Err(MuxError::ProgramNotFound)` if no program with the
+    /// given number exists in this sender's muxer configuration.
+    pub fn audio_handles_for_program(
+        &self,
+        program_number: u16,
+    ) -> Result<Vec<AudioStreamHandle>, MuxError> {
+        self.inner
+            .lock()
+            .unwrap()
+            .muxer
+            .audio_handles_for_program(program_number)
+    }
+
+    /// Snapshot all subtitle stream handles for this sender's muxer.
+    pub fn subtitle_handles(&self) -> Vec<SubtitleStreamHandle> {
+        self.inner.lock().unwrap().muxer.subtitle_handles()
+    }
+
+    /// Subtitle stream handles for the named program, in declaration
+    /// order. Returns `Err(MuxError::ProgramNotFound)` if no program
+    /// with the given number exists in this sender's muxer
+    /// configuration.
+    pub fn subtitle_handles_for_program(
+        &self,
+        program_number: u16,
+    ) -> Result<Vec<SubtitleStreamHandle>, MuxError> {
+        self.inner
+            .lock()
+            .unwrap()
+            .muxer
+            .subtitle_handles_for_program(program_number)
     }
 
     /// Return a point-in-time stats snapshot. `per_stream` is delegated from
@@ -267,6 +365,56 @@ impl<T: Transport> Inner<T> {
         self.drain_muxer()
     }
 
+    fn send_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), SenderError> {
+        if self.closed {
+            return Err(SenderError::Transport(TransportError::Closed));
+        }
+        self.drain_pending()?;
+        self.muxer.push_audio(frames, pts_90khz)?;
+        self.drain_muxer()
+    }
+
+    fn send_audio_to(
+        &mut self,
+        handle: AudioStreamHandle,
+        frames: &[u8],
+        pts_90khz: i64,
+    ) -> Result<(), SenderError> {
+        if self.closed {
+            return Err(SenderError::Transport(TransportError::Closed));
+        }
+        self.drain_pending()?;
+        // Muxer parameter order is `(handle, pts, frames)`; the public
+        // pipeline API mirrors `send_video` / `send_klv` (data first).
+        self.muxer.push_audio_to(handle, pts_90khz, frames)?;
+        self.drain_muxer()
+    }
+
+    fn send_subtitle(&mut self, payload: &[u8], pts_90khz: i64) -> Result<(), SenderError> {
+        if self.closed {
+            return Err(SenderError::Transport(TransportError::Closed));
+        }
+        self.drain_pending()?;
+        // Muxer parameter order is `(pts, payload)`; we present
+        // `(payload, pts)` for symmetry with `send_video` / `send_klv`.
+        self.muxer.push_subtitle(pts_90khz, payload)?;
+        self.drain_muxer()
+    }
+
+    fn send_subtitle_to(
+        &mut self,
+        handle: SubtitleStreamHandle,
+        payload: &[u8],
+        pts_90khz: i64,
+    ) -> Result<(), SenderError> {
+        if self.closed {
+            return Err(SenderError::Transport(TransportError::Closed));
+        }
+        self.drain_pending()?;
+        self.muxer.push_subtitle_to(handle, pts_90khz, payload)?;
+        self.drain_muxer()
+    }
+
     /// Drain the muxer's internal buffer and forward each chunk to the
     /// transport. On transport error, captures any unsent chunks into
     /// `pending_bytes` and returns the error.
@@ -330,7 +478,7 @@ pub enum SenderError {
 #[cfg(test)]
 mod multi_stream_tests {
     use super::*;
-    use crate::mpegts::mux::{KlvStreamType, VideoCodec};
+    use crate::mpegts::mux::{AudioCodec, KlvStreamType, SubtitleCodec, VideoCodec};
     use crate::pipeline::transport::{Transport, TransportError};
 
     /// In-memory transport that records every byte sent.
@@ -457,6 +605,94 @@ mod multi_stream_tests {
         assert_eq!(st.packets_sent, 0);
         assert_eq!(st.per_stream.len(), 2);
         assert_eq!(st.per_stream[&0x100].items, 0);
+    }
+
+    #[test]
+    fn send_audio_pushes_through_pipeline() {
+        // Single program, video + one audio stream. The bare send_audio
+        // shorthand resolves because total_audio == 1 across the muxer.
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
+            .add_audio(0x200, AudioCodec::Aac)
+            .end_program()
+            .build()
+            .unwrap();
+        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        // Synthetic audio frame bytes — the muxer doesn't validate the
+        // codec payload here, so any non-empty buffer suffices.
+        let frames = vec![0xFFu8; 64];
+        s.send_audio(&frames, 90_000).unwrap();
+        let st = s.stats();
+        assert_eq!(st.per_stream[&0x200].items, 1);
+        assert_eq!(st.per_stream[&0x200].bytes, frames.len() as u64);
+        assert!(st.bytes_sent > 0);
+        assert!(st.packets_sent > 0);
+    }
+
+    #[test]
+    fn send_audio_to_routes_by_handle() {
+        // Two audio streams — bare send_audio would reject with
+        // AmbiguousTarget; send_audio_to disambiguates via handle.
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
+            .add_audio(0x200, AudioCodec::Aac)
+            .add_audio(0x201, AudioCodec::Mp2)
+            .end_program()
+            .build()
+            .unwrap();
+        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let handles = s.audio_handles();
+        assert_eq!(handles.len(), 2);
+        let frames = vec![0xAAu8; 32];
+        s.send_audio_to(handles[1], &frames, 90_000).unwrap();
+        let st = s.stats();
+        assert_eq!(st.per_stream[&0x201].items, 1);
+        assert_eq!(st.per_stream[&0x200].items, 0);
+        assert!(s.is_alive());
+    }
+
+    #[test]
+    fn send_subtitle_pushes_through_pipeline() {
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
+            .add_subtitle(0x300, SubtitleCodec::WebVttInTs)
+            .end_program()
+            .build()
+            .unwrap();
+        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        // A minimal WebVTT-in-TS cue body (the muxer doesn't validate
+        // contents — it just frames the bytes into a PES).
+        let cue = b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhello\n";
+        s.send_subtitle(cue, 90_000).unwrap();
+        let st = s.stats();
+        assert_eq!(st.per_stream[&0x300].items, 1);
+        assert_eq!(st.per_stream[&0x300].bytes, cue.len() as u64);
+        assert!(st.bytes_sent > 0);
+        assert!(st.packets_sent > 0);
+    }
+
+    #[test]
+    fn send_subtitle_to_routes_by_handle() {
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
+            .add_subtitle(0x300, SubtitleCodec::WebVttInTs)
+            .add_subtitle(0x301, SubtitleCodec::WebVttInTs)
+            .end_program()
+            .build()
+            .unwrap();
+        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let handles = s.subtitle_handles();
+        assert_eq!(handles.len(), 2);
+        let cue = b"WEBVTT\n\n00:00:03.000 --> 00:00:04.000\nrouted\n";
+        s.send_subtitle_to(handles[1], cue, 90_000).unwrap();
+        let st = s.stats();
+        assert_eq!(st.per_stream[&0x301].items, 1);
+        assert_eq!(st.per_stream[&0x300].items, 0);
+        assert!(s.is_alive());
     }
 
     #[test]

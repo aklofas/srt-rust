@@ -4,13 +4,10 @@
 //! POI fires, with PTS aligned to the live-stream wall-clock.
 //!
 //! This example exercises [`Muxer::push_subtitle_to`] directly. A
-//! consumer driving the SRT pipeline today would build a `Sender`
-//! over the muxer's output bytes (the pipeline `Sender<T: Transport>`
-//! currently exposes `send_video{,_to}` and `send_klv{,_to}`; native
-//! `send_subtitle{,_to}` siblings are deferred — see
-//! `docs/deferred-features.md`). Until those land, the muxer's
-//! `push_subtitle_to` plus the transport's bytes-write path is the
-//! direct route.
+//! consumer driving the SRT pipeline would build a `Sender<T>` over
+//! the muxer config and call `Sender::send_subtitle_to` with the
+//! same handle — the sender wraps the muxer's TS output in SRT and
+//! drives the same `push_subtitle_to` path internally.
 //!
 //! Usage:
 //!     cargo run --example mux_with_webvtt_subtitles -- output.ts

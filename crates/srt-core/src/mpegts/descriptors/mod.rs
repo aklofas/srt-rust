@@ -159,13 +159,32 @@ pub fn subtitling_descriptor(
     composition_page_id: u16,
     ancillary_page_id: u16,
 ) -> Vec<u8> {
-    let mut out = Vec::with_capacity(10);
+    subtitling_descriptor_multi(&[(
+        language,
+        subtitling_type,
+        composition_page_id,
+        ancillary_page_id,
+    )])
+}
+
+/// DVB subtitling_descriptor (tag 0x59), multi-entry form per
+/// ETSI EN 300 468 §6.2.41. Each entry is `(language, subtitling_type,
+/// composition_page_id, ancillary_page_id)`.
+///
+/// Use this for multi-language single-PID DVB subtitling services. The
+/// single-entry helper [`subtitling_descriptor`] is a `len=1` shorthand.
+pub fn subtitling_descriptor_multi(entries: &[([u8; 3], u8, u16, u16)]) -> Vec<u8> {
+    let body_len = entries.len() * 8;
+    debug_assert!(body_len <= u8::MAX as usize, "descriptor length is u8");
+    let mut out = Vec::with_capacity(2 + body_len);
     out.push(0x59); // tag
-    out.push(0x08); // length
-    out.extend_from_slice(&language);
-    out.push(subtitling_type);
-    out.extend_from_slice(&composition_page_id.to_be_bytes());
-    out.extend_from_slice(&ancillary_page_id.to_be_bytes());
+    out.push(body_len as u8); // length
+    for (language, subtitling_type, comp_page_id, anc_page_id) in entries {
+        out.extend_from_slice(language);
+        out.push(*subtitling_type);
+        out.extend_from_slice(&comp_page_id.to_be_bytes());
+        out.extend_from_slice(&anc_page_id.to_be_bytes());
+    }
     out
 }
 
@@ -181,12 +200,26 @@ pub fn teletext_descriptor(
     magazine_number: u8,
     page_number: u8,
 ) -> Vec<u8> {
-    let mut out = Vec::with_capacity(7);
+    teletext_descriptor_multi(&[(language, teletext_type, magazine_number, page_number)])
+}
+
+/// DVB teletext_descriptor (tag 0x56), multi-entry form per
+/// ETSI EN 300 468 §6.2.43. Each entry is `(language, teletext_type,
+/// magazine_number, page_number)`.
+///
+/// Use this for multi-language single-PID DVB teletext services. The
+/// single-entry helper [`teletext_descriptor`] is a `len=1` shorthand.
+pub fn teletext_descriptor_multi(entries: &[([u8; 3], u8, u8, u8)]) -> Vec<u8> {
+    let body_len = entries.len() * 5;
+    debug_assert!(body_len <= u8::MAX as usize, "descriptor length is u8");
+    let mut out = Vec::with_capacity(2 + body_len);
     out.push(0x56); // tag
-    out.push(0x05); // length
-    out.extend_from_slice(&language);
-    out.push(((teletext_type & 0x1F) << 3) | (magazine_number & 0x07));
-    out.push(page_number);
+    out.push(body_len as u8); // length
+    for (language, teletext_type, magazine_number, page_number) in entries {
+        out.extend_from_slice(language);
+        out.push(((teletext_type & 0x1F) << 3) | (magazine_number & 0x07));
+        out.push(*page_number);
+    }
     out
 }
 
@@ -413,5 +446,57 @@ mod tests {
     fn format_identifier_av01_descriptor_round_trip_bytes() {
         let bytes = format_identifier_av01();
         assert_eq!(bytes, vec![0x05, 0x04, b'A', b'V', b'0', b'1']);
+    }
+
+    #[test]
+    fn subtitling_descriptor_multi_emits_two_entries() {
+        let descriptor =
+            subtitling_descriptor_multi(&[(*b"eng", 0x10, 1, 1), (*b"spa", 0x10, 2, 2)]);
+        // tag(1) + length(1) + 2 × 8 bytes per entry = 18 bytes total.
+        assert_eq!(descriptor[0], 0x59, "tag");
+        assert_eq!(descriptor[1], 0x10, "length = 16 (2 × 8 byte entries)");
+        // First entry: lang(3) + subtitling_type(1) + comp_page_id(2) + anc_page_id(2).
+        assert_eq!(&descriptor[2..5], b"eng");
+        assert_eq!(descriptor[5], 0x10);
+        assert_eq!(&descriptor[6..8], &[0x00, 0x01]);
+        assert_eq!(&descriptor[8..10], &[0x00, 0x01]);
+        // Second entry.
+        assert_eq!(&descriptor[10..13], b"spa");
+        assert_eq!(descriptor[13], 0x10);
+        assert_eq!(&descriptor[14..16], &[0x00, 0x02]);
+        assert_eq!(&descriptor[16..18], &[0x00, 0x02]);
+        assert_eq!(descriptor.len(), 18);
+    }
+
+    #[test]
+    #[allow(clippy::identity_op)] // spec form (teletext_type << 3) | magazine_number is illustrative
+    fn teletext_descriptor_multi_emits_two_entries() {
+        let descriptor =
+            teletext_descriptor_multi(&[(*b"eng", 0x02, 0, 0x88), (*b"spa", 0x02, 0, 0x77)]);
+        // tag(1) + length(1) + 2 × 5 bytes per entry = 12 bytes total.
+        assert_eq!(descriptor[0], 0x56, "tag");
+        assert_eq!(descriptor[1], 0x0A, "length = 10 (2 × 5 byte entries)");
+        assert_eq!(&descriptor[2..5], b"eng");
+        assert_eq!(descriptor[5], (0x02 << 3) | 0x00); // teletext_type | magazine_number
+        assert_eq!(descriptor[6], 0x88);
+        assert_eq!(&descriptor[7..10], b"spa");
+        assert_eq!(descriptor[10], (0x02 << 3) | 0x00);
+        assert_eq!(descriptor[11], 0x77);
+        assert_eq!(descriptor.len(), 12);
+    }
+
+    #[test]
+    fn subtitling_descriptor_single_via_multi_matches_single_helper() {
+        // The single-entry helper's output should match a 1-element multi call.
+        let single = subtitling_descriptor(*b"eng", 0x10, 1, 1);
+        let multi = subtitling_descriptor_multi(&[(*b"eng", 0x10, 1, 1)]);
+        assert_eq!(single, multi);
+    }
+
+    #[test]
+    fn teletext_descriptor_single_via_multi_matches_single_helper() {
+        let single = teletext_descriptor(*b"eng", 0x02, 0, 0x88);
+        let multi = teletext_descriptor_multi(&[(*b"eng", 0x02, 0, 0x88)]);
+        assert_eq!(single, multi);
     }
 }

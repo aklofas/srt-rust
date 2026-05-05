@@ -107,24 +107,30 @@ pub(crate) fn parse_into(
 fn parse_general_constraints_info(br: &mut BitReader<'_>) -> Result<(), ParseError> {
     let gci_present_flag = br.read_bool()?;
     if gci_present_flag {
-        // Fixed-shape body — count by section per H.266 V4 §7.3.3.2.
-        // - general:        3 bits (intra_only, all_layers_independent, one_au_only)
+        // Fixed-shape body — count by section per H.266 V4 §7.3.3.2 (PDF p.72-73).
+        // - general:        3 bits (gci_intra_only / all_layers_independent / one_au_only)
         // - picture format: 6 bits (sixteen_minus_max_bitdepth u(4) + three_minus_max_chroma_format u(2))
-        // - NAL related:    11 bits
-        // - tile/slice:     6 bits
+        // - NAL related:    10 bits (no_mixed_nalu_types / no_trail / no_stsa / no_rasl / no_radl /
+        //                            no_idr / no_cra / no_gdr / no_aps / no_idr_rpl)
+        // - tile/slice:     6 bits (one_tile_per_pic / pic_header_in_slice_header /
+        //                           one_slice_per_pic / no_rectangular_slice /
+        //                           one_slice_per_subpic / no_subpic_info)
         // - CTU/block:      5 bits (three_minus_max_log2_ctu u(2) + three flags)
-        // - intra:          6 bits
-        // - inter:          14 bits
+        // - intra:          6 bits (no_palette / no_ibc / no_isp / no_mrl / no_mip / no_cclm)
+        // - inter:          16 bits (no_ref_pic_resampling / no_res_change_in_clvs /
+        //                            no_weighted_prediction / no_ref_wraparound / no_temporal_mvp /
+        //                            no_sbtmvp / no_amvr / no_bdof / no_smvd / no_dmvr / no_mmvd /
+        //                            no_affine_motion / no_prof / no_bcw / no_ciip / no_gpm)
         // - transform/qp:   13 bits
         // - loop filter:    6 bits
-        // = 70 fixed bits, then gci_num_additional_bits u(8) = 78 bits.
+        // = 71 fixed bits, then gci_num_additional_bits u(8) = 79 bits.
         br.skip(3)?;
         br.skip(4 + 2)?;
-        br.skip(11)?;
+        br.skip(10)?;
         br.skip(6)?;
         br.skip(2 + 3)?;
         br.skip(6)?;
-        br.skip(14)?;
+        br.skip(16)?;
         br.skip(13)?;
         br.skip(6)?;
         let gci_num_additional_bits = br.read_u(8)?;
@@ -158,5 +164,48 @@ mod tests {
         assert_eq!(ptl.general_profile_idc, 1);
         assert!(!ptl.general_tier_flag);
         assert_eq!(ptl.general_level_idc, 63);
+    }
+
+    /// Regression test for the GCI fixed-body bit count.
+    ///
+    /// Per H.266 V4 §7.3.3.2 (PDF p.72-73), the GCI fixed body is 71 bits:
+    ///   general 3 + picture-format 6 + NAL-related 10 + tile/slice 6 +
+    ///   CTU/block 5 + intra 6 + inter 16 + transform/qp 13 + loop filter 6 = 71.
+    /// Prior code read 70 (NAL group 11 instead of 10; inter group 14 instead
+    /// of 16). Net cumulative cursor 1 bit too early — masked by all current
+    /// tests because every test sets gci_present_flag = 0.
+    ///
+    /// This test sets gci_present_flag = 1 with a body crafted so that the
+    /// spec-correct cursor lands on `ptl_num_sub_profiles = 0` (byte 14, no
+    /// loop) while the buggy cursor lands on `ptl_num_sub_profiles = 255`
+    /// (byte 13) and overflows the buffer reading 255 × u(32) sub_profile_idc.
+    #[test]
+    fn parse_ptl_with_gci_present_lands_at_byte_alignment() {
+        // Bytes constructed so:
+        //   byte 0:   profile_idc=1, tier=0
+        //   byte 1:   level_idc=64
+        //   byte 2:   frame_only=0 | multilayer=0 | gci_present=1 | 5 zero GCI bits
+        //   bytes 3-10: 64 zero GCI body bits
+        //   byte 11:  bit 6 = 1 → spec num_additional_bits read at bits 90-97 = 0x08;
+        //             buggy num_additional_bits read at bits 89-96 = 0x04
+        //   byte 12:  zero (skipped: 8 spec-additional or 4 buggy-additional)
+        //   byte 13:  0xFF — buggy reads ptl_num_sub_profiles=255 here; spec doesn't
+        //   byte 14:  0x00 — spec reads ptl_num_sub_profiles=0 here
+        // Expected: spec returns Ok with num_sub_profiles=0; buggy returns Err
+        // (buffer truncation reading sub_profile_idc loop).
+        let rbsp = [
+            0x02, 0x40, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0xFF,
+            0x00,
+        ];
+        let result = parse_profile_tier_level(&rbsp, true, 0);
+        assert!(
+            result.is_ok(),
+            "GCI-present PTL must parse: cursor must land at byte 14 \
+             (spec) not byte 13 (buggy). Got {result:?}",
+        );
+        let ptl = result.unwrap();
+        assert_eq!(ptl.general_profile_idc, 1);
+        assert!(!ptl.general_tier_flag);
+        assert_eq!(ptl.general_level_idc, 64);
     }
 }

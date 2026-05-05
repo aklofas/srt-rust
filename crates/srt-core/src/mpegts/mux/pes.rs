@@ -91,7 +91,16 @@ pub(crate) fn write_audio_pes(
     out.extend_from_slice(frames);
 }
 
-/// Write a complete subtitle PES packet (header + caller's payload) into `out`.
+/// Codec-dispatching subtitle PES writer.
+///
+/// Routes to the correct PES_data_field envelope per codec:
+/// - `DvbSub` — wraps payload in `0x20 + 0x00 + payload + 0xFF` per
+///   ETSI EN 300 743 §6.2 (`wrap_dvb_sub_pes_data_field`).
+/// - `DvbTeletext` — currently passes through; the EN 300 472 §4.2-conformant
+///   45-byte stuffed PES header plus N×184 padding writer is not yet
+///   implemented.
+/// - `Passthrough` — `Cea708Standalone` / `WebVttInTs` — no codec-specific
+///   envelope; payload passes through verbatim (informal industry conventions).
 ///
 /// Builds a `private_stream_1` (0xBD) PES with a PTS-only header and the
 /// `data_alignment_indicator` flag set — every PES carries one logical
@@ -102,11 +111,46 @@ pub(crate) fn write_audio_pes(
 /// range are masked at the wire level by `write_pts`. Empty payloads are
 /// accepted (symmetric with audio / KLV / video).
 ///
-/// Caller must ensure `payload.len() <= 65527` (PES_packet_length is u16
-/// and must cover flags + PTS field + payload). The caller-side check
+/// Caller must ensure the on-wire size fits in u16 (PES_packet_length must
+/// cover flags + PTS field + envelope + payload). The caller-side check
 /// lives in `Muxer::push_subtitle_to`, which surfaces it as
-/// `MuxError::SubtitleTooLarge`.
-pub fn write_subtitle_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
+/// `MuxError::SubtitleTooLarge` against the codec-specific envelope budget.
+pub(crate) fn write_subtitle_pes(
+    out: &mut Vec<u8>,
+    pts_90khz: i64,
+    codec: SubtitlePesShape,
+    payload: &[u8],
+) {
+    match codec {
+        SubtitlePesShape::DvbSub => {
+            let wrapped = wrap_dvb_sub_pes_data_field(payload);
+            write_subtitle_pes_passthrough(out, pts_90khz, &wrapped);
+        }
+        SubtitlePesShape::DvbTeletext => {
+            write_subtitle_pes_passthrough(out, pts_90khz, payload);
+        }
+        SubtitlePesShape::Passthrough => {
+            write_subtitle_pes_passthrough(out, pts_90khz, payload);
+        }
+    }
+}
+
+/// Wrap caller-supplied DVB subtitling segment bytes in the EN 300 743
+/// §6.2 PES_data_field envelope:
+/// `data_identifier(0x20) + subtitle_stream_id(0x00) + segments +
+/// end_of_PES_data_field_marker(0xFF)`.
+pub(crate) fn wrap_dvb_sub_pes_data_field(segments: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(2 + segments.len() + 1);
+    out.push(0x20); // data_identifier (DVB subtitling)
+    out.push(0x00); // subtitle_stream_id
+    out.extend_from_slice(segments);
+    out.push(0xFF); // end_of_PES_data_field_marker
+    out
+}
+
+/// Internal helper that writes the actual PES packet (header + payload) for
+/// codecs that don't add a codec-specific envelope.
+fn write_subtitle_pes_passthrough(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
     let pts = PesPtsField::PtsOnly(Pts90khz(pts_90khz));
     let mut header = [0u8; MAX_PES_HEADER_SIZE];
     let header_len = write_pes_header(
@@ -122,6 +166,13 @@ pub fn write_subtitle_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
     header[6] |= 0b0000_0100;
     out.extend_from_slice(&header[..header_len]);
     out.extend_from_slice(payload);
+}
+
+/// Per-codec PES envelope shape selector. Internal to the muxer.
+pub(crate) enum SubtitlePesShape {
+    DvbSub,
+    DvbTeletext,
+    Passthrough,
 }
 
 /// Write a PES header to `out`. Returns bytes written.
@@ -353,8 +404,16 @@ mod tests {
 
     #[test]
     fn write_subtitle_pes_pts_only_header_data_alignment_set() {
+        // Passthrough shape — exercises the non-DVB-sub codec branches
+        // (CEA-708 / WebVTT). No codec-specific envelope; payload passes
+        // through verbatim into the PES.
         let mut out = Vec::new();
-        write_subtitle_pes(&mut out, 0x12345, &[0xAA, 0xBB, 0xCC]);
+        write_subtitle_pes(
+            &mut out,
+            0x12345,
+            SubtitlePesShape::Passthrough,
+            &[0xAA, 0xBB, 0xCC],
+        );
         // packet_start_code_prefix
         assert_eq!(&out[0..3], &[0x00, 0x00, 0x01]);
         // stream_id is private_stream_1
@@ -375,7 +434,7 @@ mod tests {
     #[test]
     fn write_subtitle_pes_empty_payload_accepted() {
         let mut out = Vec::new();
-        write_subtitle_pes(&mut out, 0x100, &[]);
+        write_subtitle_pes(&mut out, 0x100, SubtitlePesShape::Passthrough, &[]);
         // 6 fixed bytes (start prefix + stream_id + length) +
         // 3 mandatory PES header bytes + 5 PTS bytes = 14.
         assert_eq!(out.len(), 14);
@@ -383,5 +442,40 @@ mod tests {
         assert_eq!(u16::from_be_bytes([out[4], out[5]]), 8);
         // data_alignment_indicator still set on empty payloads.
         assert_eq!((out[6] >> 2) & 0b1, 0b1);
+    }
+
+    #[test]
+    fn write_subtitle_pes_dvb_sub_wraps_payload_in_envelope() {
+        // EN 300 743 §6.2 envelope: data_identifier=0x20 + subtitle_stream_id=0x00
+        // + raw segment bytes + end_of_PES_data_field_marker=0xFF.
+        let mut out = Vec::new();
+        let segment = [0x0F, 0x10, 0x00, 0x01, 0x00, 0x02, 0x00, 0x10];
+        write_subtitle_pes(&mut out, 0x100, SubtitlePesShape::DvbSub, &segment);
+        // Skip 14-byte PES header (3 start + 1 stream_id + 2 length + 3 flags
+        // + 5 PTS) — the next byte should be the envelope's data_identifier.
+        assert_eq!(out[14], 0x20, "data_identifier");
+        assert_eq!(out[15], 0x00, "subtitle_stream_id");
+        assert_eq!(&out[16..16 + segment.len()], &segment[..]);
+        assert_eq!(out[16 + segment.len()], 0xFF, "marker");
+        // Total ES payload = 2 + 8 + 1 = 11 bytes; PES_packet_length covers
+        // flags(3) + PTS(5) + 11 = 19.
+        assert_eq!(u16::from_be_bytes([out[4], out[5]]), 19);
+    }
+
+    #[test]
+    fn wrap_dvb_sub_pes_data_field_round_trip() {
+        // Empty segment list still emits the 3-byte envelope.
+        let wrapped_empty = wrap_dvb_sub_pes_data_field(&[]);
+        assert_eq!(wrapped_empty, vec![0x20, 0x00, 0xFF]);
+
+        // Nontrivial segments are concatenated verbatim between prefix
+        // and marker; library does not interpret them.
+        let segs = [0x0F, 0x10, 0x00, 0x01, 0x00, 0x02, 0xAA, 0xBB];
+        let wrapped = wrap_dvb_sub_pes_data_field(&segs);
+        assert_eq!(wrapped[0], 0x20);
+        assert_eq!(wrapped[1], 0x00);
+        assert_eq!(&wrapped[2..2 + segs.len()], &segs[..]);
+        assert_eq!(wrapped[2 + segs.len()], 0xFF);
+        assert_eq!(wrapped.len(), 2 + segs.len() + 1);
     }
 }

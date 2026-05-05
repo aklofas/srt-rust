@@ -60,10 +60,20 @@ fn roundtrip_webvtt_payload_byte_identical() {
 
 #[test]
 fn roundtrip_dvb_subtitling_payload_byte_identical() {
-    let input = vec![
-        0x20, 0x00, 0x10, 0x01, 0x00, 0x14, 0x00, 0x10, 0x01, 0x02, 0x00, 0x00, 0x00, 0x10, 0x00,
-        0x10,
-    ];
+    // Caller supplies raw subtitling_segment bytes (per EN 300 743 §7.2.2,
+    // each starting with sync_byte 0x0F); the muxer auto-prepends the
+    // §6.2 PES_data_field envelope (data_identifier=0x20 +
+    // subtitle_stream_id=0x00 + segments + end_of_PES_data_field_marker=0xFF).
+    // Future demuxer work may strip the envelope before surfacing it; until
+    // then the demuxer surfaces the full PES_data_field, so the round-tripped
+    // payload matches the wrapped form (asserted on below).
+    let segments = vec![0x0F, 0x10, 0x00, 0x01, 0x00, 0x02, 0x00, 0x10];
+    let mut wrapped = Vec::new();
+    wrapped.push(0x20);
+    wrapped.push(0x00);
+    wrapped.extend_from_slice(&segments);
+    wrapped.push(0xFF);
+
     let output = round_trip(
         MuxSub::DvbSubtitling {
             language: *b"eng",
@@ -71,9 +81,9 @@ fn roundtrip_dvb_subtitling_payload_byte_identical() {
             composition_page_id: 1,
             ancillary_page_id: 1,
         },
-        &input,
+        &segments,
     );
-    assert_eq!(input, output);
+    assert_eq!(wrapped, output);
 }
 
 #[test]

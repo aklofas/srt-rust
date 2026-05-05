@@ -109,22 +109,17 @@ fn build_dvb_sub_eng_only() -> Vec<u8> {
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
-    // Synthetic page-composition-segment shape: sync_byte=0x0F,
-    // segment_type=0x10 (page composition), page_id, segment_length,
-    // page_time_out, page_version, page_state, then a region entry.
-    // Per ETSI EN 300 743 §7.2.2 — bytes won't decode to a real page,
-    // but the framing matches so the demuxer's descriptor classification
-    // + boundary detection have valid input.
+    // Synthetic page-composition-segment per ETSI EN 300 743 §7.2.2
+    // Table 9: sync_byte=0x0F + segment_type=0x10 (page composition) +
+    // page_id BE u16 + segment_length BE u16 + body. segment_length=2
+    // means zero regions (page_time_out byte + packed page_version /
+    // page_state byte only). The muxer auto-prepends the §6.2
+    // PES_data_field envelope (0x20 + 0x00 + segments + 0xFF), so the
+    // caller passes raw segment bytes.
     for i in 0..3 {
         let pts = 90_000 * (i as i64 + 1);
-        mux.push_subtitle_to(
-            h,
-            pts,
-            &[
-                0x0F, 0x10, 0x00, 0x01, 0x00, 0x06, 0x00, 0x00, 0x00, 0x10, 0x00, 0x10,
-            ],
-        )
-        .unwrap();
+        mux.push_subtitle_to(h, pts, &[0x0F, 0x10, 0x00, 0x01, 0x00, 0x02, 0x00, 0x10])
+            .unwrap();
     }
     drain_all(&mut mux)
 }
@@ -164,7 +159,9 @@ fn build_dvb_sub_multi_lang() -> Vec<u8> {
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
     for h in mux.subtitle_handles() {
-        mux.push_subtitle_to(h, 90_000, &[0x0F, 0x10, 0x00, 0x01, 0x00, 0x06])
+        // segment_length=2: zero regions per EN 300 743 §7.2.2 Table 9.
+        // Muxer auto-wraps the §6.2 PES_data_field envelope around this.
+        mux.push_subtitle_to(h, 90_000, &[0x0F, 0x10, 0x00, 0x01, 0x00, 0x02, 0x00, 0x10])
             .unwrap();
     }
     drain_all(&mut mux)

@@ -1132,8 +1132,8 @@ pub struct MuxerStats {
 }
 
 use self::pes::{
-    MAX_PES_HEADER_SIZE, PesPtsField, STREAM_ID_KLV, STREAM_ID_VIDEO, write_audio_pes,
-    write_pes_header, write_subtitle_pes,
+    MAX_PES_HEADER_SIZE, PesPtsField, STREAM_ID_KLV, STREAM_ID_VIDEO, SubtitlePesShape,
+    write_audio_pes, write_pes_header, write_subtitle_pes,
 };
 use self::psi::{KLVA_REGISTRATION_DESCRIPTOR, PmtStreamEntry, write_pat_packet, write_pmt_packet};
 use self::ts::{AdaptationField, ContinuityCounters, write_packet};
@@ -1799,11 +1799,32 @@ impl Muxer {
             });
         }
 
+        // Resolve codec-specific PES envelope shape. DVB-sub auto-wraps the
+        // caller's segments in EN 300 743 §6.2's PES_data_field envelope
+        // (data_identifier=0x20 + subtitle_stream_id=0x00 + segments + 0xFF
+        // marker), adding 3 bytes of overhead. Other codecs pass through.
+        let pes_shape = match &self.subtitle_streams[prog_idx][within_idx].codec {
+            SubtitleCodec::DvbSubtitling { .. } => SubtitlePesShape::DvbSub,
+            SubtitleCodec::DvbTeletext { .. } => SubtitlePesShape::DvbTeletext,
+            SubtitleCodec::Cea708Standalone | SubtitleCodec::WebVttInTs => {
+                SubtitlePesShape::Passthrough
+            }
+        };
+        let envelope_overhead = match pes_shape {
+            SubtitlePesShape::DvbSub => 3, // 0x20 + 0x00 + 0xFF
+            // DVB-teletext header overhead is not yet accounted for here; the
+            // teletext writer (45-byte stuffed header + N×184 padding) will
+            // land separately. For now teletext is passthrough, so 0 envelope
+            // bytes.
+            SubtitlePesShape::DvbTeletext => 0,
+            SubtitlePesShape::Passthrough => 0,
+        };
+
         // Subtitle PES always carries a PTS (PTS-only header, no DTS), so PES
         // overhead is 3 (covered by PES_packet_length: flags1 + flags2 +
-        // header_data_length) + 5 (PTS field) = 8 bytes. Bound payload so the
-        // PES_packet_length u16 doesn't overflow.
-        let pes_overhead = 3usize + 5;
+        // header_data_length) + 5 (PTS field) = 8 bytes, plus any codec
+        // envelope. Bound payload so PES_packet_length u16 doesn't overflow.
+        let pes_overhead = 3usize + 5 + envelope_overhead;
         let max_subtitle = (u16::MAX as usize) - pes_overhead;
         if payload.len() > max_subtitle {
             return Err(MuxError::SubtitleTooLarge {
@@ -1814,8 +1835,9 @@ impl Muxer {
 
         let subtitle_pid = self.subtitle_streams[prog_idx][within_idx].pid;
 
-        let mut pes_buf = Vec::with_capacity(MAX_PES_HEADER_SIZE + payload.len());
-        write_subtitle_pes(&mut pes_buf, pts_90khz, payload);
+        let mut pes_buf =
+            Vec::with_capacity(MAX_PES_HEADER_SIZE + envelope_overhead + payload.len());
+        write_subtitle_pes(&mut pes_buf, pts_90khz, pes_shape, payload);
 
         let subtitle_packets = ts_packets_for(pes_buf.len());
         // Mirror push_audio_to: reserve 2 packets (PAT + 1 PMT) when a PSI

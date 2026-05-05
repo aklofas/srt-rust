@@ -1381,43 +1381,47 @@ impl Muxer {
                 // Subtitle auto-emit: codec-disambiguating per-stream descriptor.
                 // All four SubtitleCodec variants ride PMT stream_type 0x06; the
                 // descriptor here is what tells receivers which codec rides on
-                // this PID. Unlike KLV's KLVA Registration auto-emit (suppressed
-                // when the caller supplies their own Registration), the subtitle
-                // auto-emit ALWAYS fires — caller-supplied descriptors append
-                // afterwards. The auto-emit IS the codec marker; suppressing
-                // would silently break receiver classification.
+                // this PID. Mirrors the KLV/AV1 caller-supplied-Registration
+                // suppression rule: when the caller has already supplied any
+                // descriptor that the receiver-side classifier recognizes as a
+                // subtitle codec marker (subtitling 0x59 / teletext 0x56 /
+                // VBI teletext 0x46 / Registration with VTTC or GA94
+                // format_identifier), the auto-emit is suppressed — caller's
+                // takes precedence and we don't double-emit.
                 if let StreamSpec::Subtitle { codec, .. } = spec {
-                    let auto = match codec {
-                        SubtitleCodec::DvbSubtitling {
-                            language,
-                            subtitling_type,
-                            composition_page_id,
-                            ancillary_page_id,
-                        } => crate::mpegts::descriptors::subtitling_descriptor(
-                            *language,
-                            *subtitling_type,
-                            *composition_page_id,
-                            *ancillary_page_id,
-                        ),
-                        SubtitleCodec::DvbTeletext {
-                            language,
-                            teletext_type,
-                            magazine_number,
-                            page_number,
-                        } => crate::mpegts::descriptors::teletext_descriptor(
-                            *language,
-                            *teletext_type,
-                            *magazine_number,
-                            *page_number,
-                        ),
-                        SubtitleCodec::Cea708Standalone => {
-                            crate::mpegts::descriptors::format_identifier_ga94()
-                        }
-                        SubtitleCodec::WebVttInTs => {
-                            crate::mpegts::descriptors::format_identifier_vttc()
-                        }
-                    };
-                    bytes.extend_from_slice(&auto);
+                    if !caller_has_recognized_subtitle_descriptor(caller_descs) {
+                        let auto = match codec {
+                            SubtitleCodec::DvbSubtitling {
+                                language,
+                                subtitling_type,
+                                composition_page_id,
+                                ancillary_page_id,
+                            } => crate::mpegts::descriptors::subtitling_descriptor(
+                                *language,
+                                *subtitling_type,
+                                *composition_page_id,
+                                *ancillary_page_id,
+                            ),
+                            SubtitleCodec::DvbTeletext {
+                                language,
+                                teletext_type,
+                                magazine_number,
+                                page_number,
+                            } => crate::mpegts::descriptors::teletext_descriptor(
+                                *language,
+                                *teletext_type,
+                                *magazine_number,
+                                *page_number,
+                            ),
+                            SubtitleCodec::Cea708Standalone => {
+                                crate::mpegts::descriptors::format_identifier_ga94()
+                            }
+                            SubtitleCodec::WebVttInTs => {
+                                crate::mpegts::descriptors::format_identifier_vttc()
+                            }
+                        };
+                        bytes.extend_from_slice(&auto);
+                    }
                 }
                 for tlv in caller_descs {
                     bytes.extend_from_slice(tlv);
@@ -2466,6 +2470,43 @@ fn validate_language_code(code: [u8; 3]) -> Result<(), MuxError> {
     } else {
         Err(MuxError::InvalidLanguageCode { code })
     }
+}
+
+/// True iff `caller_descs` contains any descriptor that the receiver-side
+/// subtitle classifier recognizes as a codec marker. Mirrors the demux-side
+/// `mpegts::demux::demuxer::has_recognized_subtitle_descriptor` predicate
+/// but operates on raw TLV bytes (the form held in `prog.stream_descriptors`)
+/// rather than on parsed `RawDescriptor`.
+///
+/// Used to suppress the subtitle auto-emit when the caller has already
+/// supplied one of:
+///   * `subtitling_descriptor`   (tag 0x59)
+///   * `teletext_descriptor`     (tag 0x56)
+///   * `VBI_teletext_descriptor` (tag 0x46)
+///   * `registration_descriptor` (tag 0x05) with format_identifier
+///     `"VTTC"` or `"GA94"`
+///
+/// Mirrors the KLV/AV1 caller-supplied-Registration suppression rule so
+/// receivers don't see two competing codec markers on the same PID.
+fn caller_has_recognized_subtitle_descriptor(caller_descs: &[Vec<u8>]) -> bool {
+    for tlv in caller_descs {
+        if tlv.is_empty() {
+            continue;
+        }
+        let tag = tlv[0];
+        if tag == 0x59 || tag == 0x56 || tag == 0x46 {
+            return true;
+        }
+        // registration_descriptor TLV layout: tag(1) + length(1) + body(length).
+        // format_identifier is the first 4 body bytes.
+        if tag == 0x05 && tlv.len() >= 6 {
+            let fid = &tlv[2..6];
+            if fid == b"VTTC" || fid == b"GA94" {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Number of 188-byte TS packets needed to carry `payload_size` bytes of
@@ -3566,8 +3607,11 @@ mod tests {
     fn pmt_appends_caller_supplied_descriptors_after_auto_emit() {
         // Caller-supplied stream_identifier_descriptor (tag 0x52, len 0x01,
         // component_tag 0x42 — 3 bytes) appends AFTER the VTTC auto-emit.
-        // Contrast with KLV's KLVA-suppression rule: for subtitles the
-        // auto-emit IS the codec marker, so caller bytes never suppress it.
+        // The stream_identifier_descriptor is not a recognized subtitle codec
+        // marker, so it does not suppress the auto-emit; the auto-emit fires
+        // and the caller's bytes append afterwards. (Caller-supplied codec
+        // markers — subtitling/teletext/VBI-teletext/VTTC/GA94 — do suppress
+        // the auto-emit; see the `subtitle_auto_emit_suppressed_*` tests.)
         let extra: Vec<Vec<u8>> = vec![vec![0x52u8, 0x01, 0x42]];
         let cfg = Config::builder()
             .add_program(1, 0x1000)
@@ -4163,6 +4207,143 @@ mod tests {
             &pes_payload[..inner_klv.len()],
             &inner_klv[..],
             "PrivateData payload must pass through unchanged"
+        );
+    }
+
+    // ── Subtitle auto-emit suppression on caller-supplied descriptors ────
+
+    #[test]
+    fn subtitle_auto_emit_suppressed_on_caller_supplied_subtitling() {
+        // Caller supplies a 2-entry subtitling_descriptor; the muxer must
+        // NOT also auto-emit the single-entry one for this PID — caller's
+        // takes precedence. Mirrors the KLV/AV1 caller-supplied-Registration
+        // suppression rule.
+        let caller_desc = crate::mpegts::descriptors::subtitling_descriptor_multi(&[
+            (*b"eng", 0x10, 1, 1),
+            (*b"spa", 0x10, 2, 2),
+        ]);
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(
+                0x200,
+                SubtitleCodec::DvbSubtitling {
+                    language: *b"eng",
+                    subtitling_type: 0x10,
+                    composition_page_id: 1,
+                    ancillary_page_id: 1,
+                },
+            )
+            .stream_descriptors_for_subtitle(0, vec![caller_desc.clone()])
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+
+        // Inspect the per-stream descriptor cache for the subtitle stream's
+        // PMT entry. Stream index 1 = subtitle (after video at index 0).
+        // There must be exactly one 0x59 descriptor — the caller's
+        // multi-entry one — and no auto-emitted single-entry one.
+        let cache = &muxer.pmt_descriptor_caches[0][1];
+        let mut count_0x59 = 0;
+        let mut idx = 0;
+        while idx + 1 < cache.len() {
+            let tag = cache[idx];
+            let len = cache[idx + 1] as usize;
+            if tag == 0x59 {
+                count_0x59 += 1;
+                assert_eq!(&cache[idx..idx + 2 + len], &caller_desc[..]);
+            }
+            idx += 2 + len;
+        }
+        assert_eq!(
+            count_0x59, 1,
+            "auto-emit must suppress when caller supplies subtitling_descriptor"
+        );
+    }
+
+    #[test]
+    fn subtitle_auto_emit_suppressed_on_caller_supplied_teletext() {
+        // Caller supplies a teletext_descriptor (tag 0x56); auto-emit must
+        // suppress.
+        let caller_desc = crate::mpegts::descriptors::teletext_descriptor(*b"eng", 0x02, 1, 0x88);
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(
+                0x200,
+                SubtitleCodec::DvbTeletext {
+                    language: *b"fra",
+                    teletext_type: 0x02,
+                    magazine_number: 2,
+                    page_number: 0x77,
+                },
+            )
+            .stream_descriptors_for_subtitle(0, vec![caller_desc.clone()])
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+        let cache = &muxer.pmt_descriptor_caches[0][1];
+        // Exactly the caller's bytes — no auto-emit prepended.
+        assert_eq!(cache, &caller_desc);
+    }
+
+    #[test]
+    fn subtitle_auto_emit_suppressed_on_caller_supplied_vttc_registration() {
+        // Caller supplies a VTTC registration_descriptor; suppress auto-emit.
+        let caller_desc = vec![0x05u8, 0x04, b'V', b'T', b'T', b'C'];
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .stream_descriptors_for_subtitle(0, vec![caller_desc.clone()])
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+        let cache = &muxer.pmt_descriptor_caches[0][1];
+        // Exactly the caller's bytes — no double VTTC.
+        assert_eq!(cache, &caller_desc);
+    }
+
+    #[test]
+    fn subtitle_auto_emit_fires_when_caller_supplies_unrelated_descriptors() {
+        // Caller supplies stream_identifier_descriptor (tag 0x52) — not a
+        // subtitle codec marker — so auto-emit must still fire.
+        let unrelated = vec![0x52u8, 0x01, 0x42];
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(
+                0x200,
+                SubtitleCodec::DvbSubtitling {
+                    language: *b"eng",
+                    subtitling_type: 0x10,
+                    composition_page_id: 1,
+                    ancillary_page_id: 1,
+                },
+            )
+            .stream_descriptors_for_subtitle(0, vec![unrelated])
+            .end_program()
+            .build()
+            .unwrap();
+        let muxer = Muxer::new(cfg).unwrap();
+        let cache = &muxer.pmt_descriptor_caches[0][1];
+        // Walk descriptors; expect exactly one 0x59 (the auto-emit).
+        let mut count_0x59 = 0;
+        let mut idx = 0;
+        while idx + 1 < cache.len() {
+            let tag = cache[idx];
+            let len = cache[idx + 1] as usize;
+            if tag == 0x59 {
+                count_0x59 += 1;
+            }
+            idx += 2 + len;
+        }
+        assert_eq!(
+            count_0x59, 1,
+            "auto-emit must fire when caller-supplied descriptors don't include a subtitle codec marker"
         );
     }
 }

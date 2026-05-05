@@ -182,6 +182,16 @@ pub(crate) fn record_mux_error(e: &MuxError) {
                  subtitles are too sparse for PCR pacing"
             ),
         ),
+        MuxError::InvalidLanguageCode { code } => (
+            SrtcError::InvalidConfig,
+            format!(
+                "invalid ISO 639-2 language code: {code:02x?} (must be 3 lowercase ASCII bytes)"
+            ),
+        ),
+        MuxError::InvalidTeletextField { field, value, max } => (
+            SrtcError::InvalidConfig,
+            format!("invalid DVB teletext {field}: {value} (max {max})"),
+        ),
     };
     set_last_error(code, &msg);
 }

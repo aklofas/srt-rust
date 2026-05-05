@@ -402,6 +402,20 @@ pub enum MuxError {
     )]
     SubtitlePidUsedAsPcrPid { pid: u16 },
 
+    /// `Config::validate` rejects ISO 639-2 language codes that aren't
+    /// 3 lowercase ASCII bytes.
+    #[error("invalid ISO 639-2 language code: {code:02x?} (must be 3 lowercase ASCII bytes)")]
+    InvalidLanguageCode { code: [u8; 3] },
+
+    /// `Config::validate` rejects DVB teletext field values that exceed
+    /// their bit-width budget.
+    #[error("invalid DVB teletext {field}: {value} (max {max})")]
+    InvalidTeletextField {
+        field: &'static str,
+        value: u8,
+        max: u8,
+    },
+
     /// `Config::validate` rejected a configuration whose total PMT
     /// section length wouldn't fit in a single TS packet. `used_bytes`
     /// is the sum of (5 ES-header bytes + descriptor-loop bytes) across

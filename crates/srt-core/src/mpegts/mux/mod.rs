@@ -556,17 +556,17 @@ impl Config {
             const VIDEO_CAP: usize = 16;
             const KLV_CAP: usize = 16;
             const AUDIO_CAP: usize = 16;
+            const SUBTITLE_CAP: usize = MAX_SUBTITLE_STREAMS_PER_PROGRAM;
             let mut video_count = 0;
             let mut klv_count = 0;
             let mut audio_count = 0;
+            let mut subtitle_count = 0;
             for s in &prog.streams {
                 match s {
                     StreamSpec::Video { .. } => video_count += 1,
                     StreamSpec::Klv { .. } => klv_count += 1,
                     StreamSpec::Audio { .. } => audio_count += 1,
-                    StreamSpec::Subtitle { .. } => {
-                        // Subtitle stream count validation will be added in a later task.
-                    }
+                    StreamSpec::Subtitle { .. } => subtitle_count += 1,
                 }
             }
             if video_count > VIDEO_CAP {
@@ -585,6 +585,12 @@ impl Config {
                 return Err(MuxError::TooManyAudioStreams {
                     count: audio_count,
                     cap: AUDIO_CAP,
+                });
+            }
+            if subtitle_count > SUBTITLE_CAP {
+                return Err(MuxError::TooManySubtitleStreams {
+                    count: subtitle_count,
+                    cap: SUBTITLE_CAP,
                 });
             }
 
@@ -656,6 +662,46 @@ impl Config {
                     return Err(MuxError::InvalidConfig(
                         "pcr_pid must equal a configured stream PID in the same program",
                     ));
+                }
+            }
+
+            // Subtitle-specific validation: reject PCR-PID pinning to a
+            // subtitle PID (subtitles are too sparse for PCR pacing) and
+            // validate per-codec parameter ranges (language code shape,
+            // teletext field bit-widths).
+            for s in &prog.streams {
+                if let StreamSpec::Subtitle { pid, codec } = s {
+                    if prog.pcr_pid == Some(*pid) {
+                        return Err(MuxError::SubtitlePidUsedAsPcrPid { pid: *pid });
+                    }
+                    match codec {
+                        SubtitleCodec::DvbSubtitling { language, .. } => {
+                            validate_language_code(*language)?;
+                        }
+                        SubtitleCodec::DvbTeletext {
+                            language,
+                            magazine_number,
+                            teletext_type,
+                            ..
+                        } => {
+                            validate_language_code(*language)?;
+                            if *magazine_number > 7 {
+                                return Err(MuxError::InvalidTeletextField {
+                                    field: "magazine_number",
+                                    value: *magazine_number,
+                                    max: 7,
+                                });
+                            }
+                            if *teletext_type > 0x1F {
+                                return Err(MuxError::InvalidTeletextField {
+                                    field: "teletext_type",
+                                    value: *teletext_type,
+                                    max: 0x1F,
+                                });
+                            }
+                        }
+                        SubtitleCodec::Cea708Standalone | SubtitleCodec::WebVttInTs => {}
+                    }
                 }
             }
 
@@ -2195,6 +2241,16 @@ fn validate_annex_b(nal: &[u8]) -> Result<(), MuxError> {
     }
 }
 
+/// ISO 639-2 language codes ride the wire as 3 lowercase ASCII bytes.
+/// Used by DVB subtitle / teletext descriptors.
+fn validate_language_code(code: [u8; 3]) -> Result<(), MuxError> {
+    if code.iter().all(|&b| b.is_ascii_lowercase()) {
+        Ok(())
+    } else {
+        Err(MuxError::InvalidLanguageCode { code })
+    }
+}
+
 /// Number of 188-byte TS packets needed to carry `payload_size` bytes of
 /// PES (header + ES). 184 = 188 - 4 byte TS header. Adaptation field eats
 /// further capacity but for sizing purposes the worst case is no AF (gives
@@ -3512,6 +3568,92 @@ mod tests {
             .unwrap();
         let mux = Muxer::new(cfg).unwrap();
         assert!(mux.subtitle_handles_for_program(99).is_err());
+    }
+
+    // ── Task 8: subtitle Config::validate tests ──────────────────────────
+
+    #[test]
+    fn config_validate_too_many_subtitle_streams() {
+        let mut prog_builder = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264);
+        for i in 0..17 {
+            prog_builder = prog_builder.add_subtitle(0x200 + i, SubtitleCodec::WebVttInTs);
+        }
+        let err = prog_builder.end_program().build().unwrap_err();
+        assert!(matches!(
+            err,
+            MuxError::TooManySubtitleStreams { count: 17, cap: 16 }
+        ));
+    }
+
+    #[test]
+    fn config_validate_subtitle_pid_conflicts_with_video_pid() {
+        let err = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x101, SubtitleCodec::WebVttInTs)
+            .end_program()
+            .build()
+            .unwrap_err();
+        // Existing within-program PID uniqueness check.
+        assert!(matches!(err, MuxError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn config_validate_rejects_subtitle_pid_as_pcr() {
+        let err = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .pcr_pid(0x200) // pin PCR to the subtitle PID
+            .end_program()
+            .build()
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            MuxError::SubtitlePidUsedAsPcrPid { pid: 0x200 }
+        ));
+    }
+
+    #[test]
+    fn config_validate_rejects_non_ascii_language_code() {
+        let err = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(
+                0x200,
+                SubtitleCodec::DvbSubtitling {
+                    language: [0xFF, 0xFE, 0xFD],
+                    subtitling_type: 0x10,
+                    composition_page_id: 1,
+                    ancillary_page_id: 1,
+                },
+            )
+            .end_program()
+            .build()
+            .unwrap_err();
+        assert!(matches!(err, MuxError::InvalidLanguageCode { .. }));
+    }
+
+    #[test]
+    fn config_validate_rejects_magazine_out_of_range() {
+        let err = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(
+                0x200,
+                SubtitleCodec::DvbTeletext {
+                    language: *b"eng",
+                    teletext_type: 0x02,
+                    magazine_number: 8, // out of range (3-bit; max 7)
+                    page_number: 0x88,
+                },
+            )
+            .end_program()
+            .build()
+            .unwrap_err();
+        assert!(matches!(err, MuxError::InvalidTeletextField { .. }));
     }
 }
 

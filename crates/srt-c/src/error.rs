@@ -192,6 +192,13 @@ pub(crate) fn record_mux_error(e: &MuxError) {
             SrtcError::InvalidConfig,
             format!("invalid DVB teletext {field}: {value} (max {max})"),
         ),
+        MuxError::SubtitleOnlyProgram { program_number } => (
+            SrtcError::InvalidConfig,
+            format!(
+                "program {program_number} contains only subtitle streams; \
+                 PCR cannot be resolved (subtitles must not carry PCR per EN 300 472 §4.0)"
+            ),
+        ),
     };
     set_last_error(code, &msg);
 }

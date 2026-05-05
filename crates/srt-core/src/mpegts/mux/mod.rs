@@ -608,6 +608,17 @@ impl Config {
                 });
             }
 
+            // Subtitle-only programs cannot resolve a PCR PID. Subtitles
+            // must NOT carry PCR per ETSI EN 300 472 §4.0 + EN 300 743 §6.1,
+            // and the PCR fallback chain in `Muxer::new` (caller-pinned >
+            // video > KLV > audio) excludes subtitles deliberately. Reject
+            // at validate-time rather than panicking at runtime.
+            if video_count == 0 && klv_count == 0 && audio_count == 0 {
+                return Err(MuxError::SubtitleOnlyProgram {
+                    program_number: prog.program_number,
+                });
+            }
+
             // Per-stream validation (PID range, KLV invariant).
             for s in &prog.streams {
                 match s {
@@ -4370,6 +4381,36 @@ mod tests {
         assert!(validate_language_code(*b"123").is_err());
         assert!(validate_language_code(*b"e n").is_err());
         assert!(validate_language_code([0x00, 0x01, 0x02]).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_subtitle_only_program() {
+        // Subtitles must not carry PCR per ETSI EN 300 472 §4.0 +
+        // EN 300 743 §6.1. The PCR fallback chain (caller-pinned > video >
+        // KLV > audio) excludes subtitles, so a subtitle-only program has
+        // no resolvable PCR PID.
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .end_program()
+            .build();
+        match cfg {
+            Err(MuxError::SubtitleOnlyProgram { program_number }) => {
+                assert_eq!(program_number, 1);
+            }
+            other => panic!("expected SubtitleOnlyProgram, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_accepts_video_plus_subtitle_program() {
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+            .end_program()
+            .build();
+        assert!(cfg.is_ok(), "video + subtitle program must validate");
     }
 }
 

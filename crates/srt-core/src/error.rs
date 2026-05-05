@@ -483,6 +483,15 @@ pub enum MuxError {
     /// stream PIDs.
     #[error("pmt_pid 0x{pmt_pid:04X} of program {program_number} conflicts with a stream PID")]
     PmtPidConflictsWithStream { pmt_pid: u16, program_number: u16 },
+
+    /// `Config::validate` rejected a program that contains only subtitle
+    /// streams. Subtitles must NOT carry PCR per ETSI EN 300 472 §4.0 +
+    /// EN 300 743 §6.1; programs need ≥1 video / KLV / audio stream for
+    /// PCR fallback resolution.
+    #[error(
+        "program {program_number} contains only subtitle streams; PCR cannot be resolved (subtitles must not carry PCR per EN 300 472 §4.0)"
+    )]
+    SubtitleOnlyProgram { program_number: u16 },
 }
 
 // ============================================================================

@@ -95,5 +95,12 @@ test              = false
 doc               = false
 bench             = false
 
+[[bin]]
+name              = "parse_av1_sequence_header"
+path              = "fuzz_targets/parse_av1_sequence_header.rs"
+test              = false
+doc               = false
+bench             = false
+
 [workspace]
 members = []

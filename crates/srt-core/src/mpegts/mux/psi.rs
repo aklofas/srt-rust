@@ -119,12 +119,8 @@ pub(crate) const MAX_PMT_SECTION_BYTES: usize = 183;
 ///
 /// Used by `Config::validate()` to reject configurations that would produce
 /// a PMT section too large for one TS packet. Accounts for the pre-composed
-/// descriptor cache bytes (KLVA auto-emit + caller-supplied).
-///
-/// The estimate is exact for the expected common case (no program-level
-/// descriptors — `program_info_length = 0`), which matches our current
-/// output. If Task 4 adds program-level descriptors, this estimate must
-/// also account for `prog.program_descriptors`.
+/// descriptor cache bytes (KLVA auto-emit + caller-supplied) and program-
+/// level descriptors.
 pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig) -> usize {
     let mut es_loop_size: usize = 0;
     for (i, _spec) in prog.streams.iter().enumerate() {
@@ -150,10 +146,11 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig
         };
         es_loop_size += 5 + caller_descs_len + auto_klva_len;
     }
+    let program_info_len: usize = prog.program_descriptors.iter().map(|d| d.len()).sum();
     // table_id(1) + section_syntax+length(2) + program_number(2) +
     // ver+curr(1) + section_number(1) + last_section_number(1) +
-    // reserved+PCR_PID(2) + reserved+program_info_length(2) + es_loop + CRC(4)
-    3 + 9 + es_loop_size + 4
+    // reserved+PCR_PID(2) + reserved+program_info_length(2) + program_descs + es_loop + CRC(4)
+    3 + 9 + program_info_len + es_loop_size + 4
 }
 
 /// Build the full 188-byte PMT packet for one program.
@@ -183,10 +180,21 @@ pub(crate) fn write_pmt_packet(
         // stream_type(1) + reserved+ES_PID(2) + reserved+ES_info_length(2) + descriptors
         es_loop_size += 5 + s.descriptors.len();
     }
+    let program_info_length_usize: usize =
+        prog.program_descriptors.iter().map(|d| d.len()).sum();
     // section_length covers everything after itself: 9 (program/ver/sect/PCR/info_len header)
-    // + es_loop_size + 4 (CRC).
-    let section_length: u16 = 9 + es_loop_size as u16 + 4;
+    // + program_descs + es_loop_size + 4 (CRC).
+    let section_length: u16 = 9 + program_info_length_usize as u16 + es_loop_size as u16 + 4;
     let total_body_size: usize = 3 + section_length as usize; // table_id + length_bytes + section_length
+
+    // program_info_length is a 12-bit field (top 4 reserved). Reject configs whose
+    // program-level descriptors overflow it.
+    if program_info_length_usize >= 0x400 {
+        return Err(crate::error::MuxError::PmtTooLarge {
+            used_bytes: total_body_size,
+            max_bytes: 183,
+        });
+    }
 
     // PMT must fit in one TS packet. 188 - 4 (TS header) - 1 (pointer) = 183.
     if total_body_size > 183 {
@@ -221,10 +229,17 @@ pub(crate) fn write_pmt_packet(
     payload[idx] = 0xE0 | ((pcr_pid >> 8) as u8 & 0x1F);
     payload[idx + 1] = (pcr_pid & 0xFF) as u8;
     idx += 2;
-    // reserved(4) + program_info_length(12) — always 0 (no program-level descriptors)
-    payload[idx] = 0xF0;
-    payload[idx + 1] = 0x00;
+    // reserved(4) + program_info_length(12) — caller-supplied descriptor bytes count.
+    let program_info_length: u16 = program_info_length_usize as u16;
+    payload[idx] = 0xF0 | (((program_info_length >> 8) as u8) & 0x0F);
+    payload[idx + 1] = (program_info_length & 0xFF) as u8;
     idx += 2;
+    // Program-level descriptors. H.222.0 V9 §2.4.4.9 Table 2-33 mandates the
+    // descriptor()_loop sits between program_info_length and the per-stream loop.
+    for desc in &prog.program_descriptors {
+        payload[idx..idx + desc.len()].copy_from_slice(desc);
+        idx += desc.len();
+    }
 
     // ES loop
     for s in streams {
@@ -337,6 +352,76 @@ mod tests {
         // Padding after CRC should be 0xFF (sanity check).
         assert_eq!(buf[21], 0xFF);
         assert_eq!(buf[187], 0xFF);
+    }
+
+    /// Regression for audit 2026-05-05 §2 Critical #1: caller-supplied
+    /// program-level descriptors were silently dropped by the PMT writer.
+    /// Per H.222.0 V9 §2.4.4.9 Table 2-33 (PDF p.79), the descriptor()_loop
+    /// between program_info_length and the per-stream loop carries program-
+    /// level descriptors. Public builder method
+    /// `ProgramBuilder::program_descriptors(...)` accepted them, but the
+    /// writer hardcoded `program_info_length=0` and never wrote the bytes.
+    #[test]
+    fn pmt_serializes_program_level_descriptors() {
+        use crate::mpegts::descriptors::iso_639_language;
+
+        let mut buf = [0u8; 188];
+        let mut cc = ContinuityCounters::new();
+        let mut prog = prog_config_h264_klv();
+        // ISO 639 language descriptor: tag(1) + length=4(1) + lang(3) + audio_type(1) = 6 bytes.
+        let lang_desc = iso_639_language(*b"eng", 0);
+        assert_eq!(lang_desc.len(), 6, "iso_639_language returns 6 bytes");
+        prog.program_descriptors = vec![lang_desc.clone()];
+
+        let streams = [
+            PmtStreamEntry {
+                stream_type: StreamType::H264,
+                elementary_pid: 0x1011,
+                descriptors: &[],
+            },
+            PmtStreamEntry {
+                stream_type: StreamType::KlvPrivate,
+                elementary_pid: 0x1031,
+                descriptors: KLVA_REGISTRATION_DESCRIPTOR,
+            },
+        ];
+        write_pmt_packet(&mut buf, &prog, 0x1011, &streams, &mut cc).expect("PMT fits");
+
+        // Section starts at TS header(4) + pointer(1) = byte 5. Layout:
+        //   [5] table_id=0x02
+        //   [6..8] section_syntax+length
+        //   [8..10] program_number
+        //   [10] version+current
+        //   [11] section_number
+        //   [12] last_section_number
+        //   [13..15] reserved+PCR_PID
+        //   [15..17] reserved+program_info_length
+        //   [17..17+pil] program-level descriptors  ← our 6 bytes land here
+        //   then ES loop, then CRC.
+        let program_info_length = (((buf[15] as u16) & 0x0F) << 8) | (buf[16] as u16);
+        assert_eq!(
+            program_info_length as usize,
+            lang_desc.len(),
+            "program_info_length must reflect the program_descriptors byte count"
+        );
+        assert_eq!(
+            &buf[17..17 + lang_desc.len()],
+            &lang_desc[..],
+            "program-level descriptor bytes must appear after program_info_length"
+        );
+
+        // Sanity: CRC still validates over the body.
+        let section_length = (((buf[6] as u16) & 0x0F) << 8) | (buf[7] as u16);
+        let body_end = 5 + 3 + section_length as usize - 4;
+        let crc_in_packet = ((buf[body_end] as u32) << 24)
+            | ((buf[body_end + 1] as u32) << 16)
+            | ((buf[body_end + 2] as u32) << 8)
+            | (buf[body_end + 3] as u32);
+        let crc_computed = crc32_mpeg2(&buf[5..body_end]);
+        assert_eq!(
+            crc_in_packet, crc_computed,
+            "CRC must validate after program_descriptors are serialized"
+        );
     }
 
     #[test]

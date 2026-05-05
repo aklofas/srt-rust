@@ -67,9 +67,12 @@ pub enum AudioCodec {
 /// generation time. See `mpegts::descriptors` for the descriptor
 /// encoders this enum drives.
 ///
-/// `Clone` but not `Copy` — DVB-sub and DVB-teletext variants carry a
-/// 3-byte language code plus integer parameters that are structurally
-/// part of the codec for emission.
+/// `Clone` but not `Copy` — a deliberate asymmetry vs. `VideoCodec` /
+/// `AudioCodec` (which are both `Copy`). Subtitle codec parameters are
+/// structurally part of the codec value here (vs. siblings, where the
+/// enum is purely a tag), so forward-compatible variants that may carry
+/// non-`Copy` payloads (e.g. variable-length DVB ancillary blobs) won't
+/// require a breaking change to drop `Copy` later.
 ///
 /// CEA-608/708 in SEI (the typical "captions in H.264/H.265") is NOT
 /// in scope for this enum — that's the deferred SEI parsing plan.
@@ -351,22 +354,41 @@ impl std::fmt::Debug for SubtitleStreamHandle {
 }
 
 impl SubtitleStreamHandle {
+    /// Pack `(program_index, within_program_index)` into the opaque u32.
+    ///
+    /// Bit layout: bits 0..=3 = within_program_index
+    /// (0..=`MAX_SUBTITLE_STREAMS_PER_PROGRAM`-1), bits 4..=7 =
+    /// program_index (0..=`MAX_PROGRAMS`-1), upper bits zero.
+    ///
+    /// Public so `srt-c` can construct handles at the FFI boundary.
+    /// Single-program callers pass `program_index = 0`.
     pub fn pack(program_index: usize, within_index: usize) -> Self {
         debug_assert!(program_index < MAX_PROGRAMS);
         debug_assert!(within_index < MAX_SUBTITLE_STREAMS_PER_PROGRAM);
         Self(((program_index as u32) << 4) | (within_index as u32 & 0x0F))
     }
 
+    /// Unpack the opaque u32 into `(program_index, within_program_index)`.
     pub fn unpack(self) -> (usize, usize) {
         let prog = ((self.0 >> 4) & 0x0F) as usize;
         let within = (self.0 & 0x0F) as usize;
         (prog, within)
     }
 
-    pub fn as_raw(self) -> u32 {
+    /// Return the packed `u32` representation. Used at the FFI boundary when
+    /// `srt-c` needs to return a handle to a C caller as a bare integer.
+    pub fn raw(self) -> u32 {
         self.0
     }
 
+    /// Wrap a raw packed `u32` handle that was previously produced by
+    /// [`pack`](Self::pack) and returned to a C caller. Use this at FFI
+    /// push-time entry points where the handle is already packed — calling
+    /// `pack(0, raw)` would be wrong because it re-encodes `raw` as a
+    /// `within_index`, which trips the `within_index <
+    /// MAX_SUBTITLE_STREAMS_PER_PROGRAM` debug-assert for any out-of-range
+    /// value the C caller passes (e.g. an invalid-handle test fixture with
+    /// value 99).
     pub fn from_raw(raw: u32) -> Self {
         Self(raw)
     }
@@ -2007,7 +2029,7 @@ mod tests {
     #[test]
     fn subtitle_stream_handle_from_raw() {
         let h = SubtitleStreamHandle::pack(3, 7);
-        let raw: u32 = h.as_raw();
+        let raw: u32 = h.raw();
         let h2 = SubtitleStreamHandle::from_raw(raw);
         assert_eq!(h, h2);
     }

@@ -2004,8 +2004,6 @@ impl Muxer {
         pts_90khz: i64,
         key_frame: bool,
     ) -> Result<(), MuxError> {
-        validate_annex_b(nal)?;
-
         let (prog_idx, within_idx) = handle.unpack();
         if prog_idx >= self.video_streams.len() || within_idx >= self.video_streams[prog_idx].len()
         {
@@ -2017,6 +2015,15 @@ impl Muxer {
             });
         }
         let video_pid = self.video_streams[prog_idx][within_idx].pid;
+        // AV1 carries OBUs (AV1 spec §5), not Annex-B NAL units — its push
+        // payload is the OBU bitstream and must skip the Annex-B start-code
+        // check that H.264 / H.265 / H.266 require.
+        if !matches!(
+            self.video_streams[prog_idx][within_idx].codec,
+            VideoCodec::Av1
+        ) {
+            validate_annex_b(nal)?;
+        }
 
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
         let header_len = write_pes_header(

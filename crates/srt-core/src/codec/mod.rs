@@ -145,7 +145,7 @@ impl TransferCharacteristics {
     }
 }
 
-/// ITU-T H.273 / ISO/IEC 23091-2 matrix coefficients.
+/// ITU-T H.273 V4 (07/2024) §8.3 Table 4 — matrix coefficients.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatrixCoefficients {
     Identity,
@@ -162,6 +162,13 @@ pub enum MatrixCoefficients {
     ChromaDerivedNonConstant,
     ChromaDerivedConstant,
     IctCp,
+    /// `15`: IPT-C2 (SMPTE IPT-PQ-C2). Added in H.273 V4.
+    IptC2,
+    /// `16`: YCgCo-Re — YCgCo-R with even bit-depth offset. Added in H.273 V4.
+    YCgCoRe,
+    /// `17`: YCgCo-Ro — YCgCo-R with odd bit-depth offset. Added in H.273 V4.
+    YCgCoRo,
+    /// Codepoints 18..255 reserved per H.273 V4 Table 4. Preserved verbatim.
     Reserved(u8),
 }
 
@@ -182,6 +189,9 @@ impl MatrixCoefficients {
             12 => Self::ChromaDerivedNonConstant,
             13 => Self::ChromaDerivedConstant,
             14 => Self::IctCp,
+            15 => Self::IptC2,
+            16 => Self::YCgCoRe,
+            17 => Self::YCgCoRo,
             other => Self::Reserved(other),
         }
     }
@@ -333,6 +343,30 @@ mod tests {
         assert_eq!(
             MatrixCoefficients::from_h273(10),
             MatrixCoefficients::Bt2020Constant
+        );
+    }
+
+    /// Per ITU-T H.273 V4 (07/2024) §8.3 Table 4 (PDF p.13), three matrix
+    /// codepoints were added beyond what V3 covered:
+    ///   15 — IPT-C2 (SMPTE IPT-PQ-C2)
+    ///   16 — YCgCo-Re (YCgCo-R with even bit-depth offset)
+    ///   17 — YCgCo-Ro (YCgCo-R with odd bit-depth offset)
+    /// Codepoints 18-255 remain Reserved.
+    #[test]
+    fn matrix_coefficients_h273_v4_codepoints_15_16_17() {
+        assert_eq!(MatrixCoefficients::from_h273(15), MatrixCoefficients::IptC2);
+        assert_eq!(
+            MatrixCoefficients::from_h273(16),
+            MatrixCoefficients::YCgCoRe
+        );
+        assert_eq!(
+            MatrixCoefficients::from_h273(17),
+            MatrixCoefficients::YCgCoRo
+        );
+        // Boundary: 18 remains Reserved per V4 Table 4.
+        assert_eq!(
+            MatrixCoefficients::from_h273(18),
+            MatrixCoefficients::Reserved(18)
         );
     }
 

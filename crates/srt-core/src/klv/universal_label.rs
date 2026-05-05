@@ -1,13 +1,18 @@
 //! 16-byte SMPTE/MISB Universal Label. Non-validating constructor; introspection
-//! helpers for the SMPTE structural fields (oid, category, registry, version
-//! byte). Well-known constants for canonical labels.
+//! helpers for the SMPTE structural fields (oid, category, registry, structure
+//! designator). Well-known constants for canonical labels.
 //!
 //! Per SMPTE 336M / MISB ST 0107, a Universal Label is a 16-byte key. Bytes
 //! 0-3 are the SMPTE OID prefix, byte 4 is the category, byte 5 is the
-//! registry, byte 6 is the structure designator. For ST 0601, byte 13 carries
-//! the document version (e.g. `0x13` for ST 0601.19); byte 14 is reserved/
-//! unchecked by the family gate; byte 15 must be `0x00` for the ST 0601
-//! family.
+//! registry, byte 6 is the structure designator. For ST 0601 the canonical UL
+//! per ST 0601.19 §6.2 (PDF p.4) has bytes 13/14/15 all `0x00`:
+//! `06.0E.2B.34.02.0B.01.01.0E.01.03.01.01.00.00.00`. ST 0601.8-19 forbids
+//! historical 16-byte UL keys in future developments.
+//!
+//! Some legacy captures still ship a non-zero byte 13 (the "document version"
+//! convention from older MISB conventions). The `is_st0601_family` gate is
+//! tolerant of bytes 13/14 to allow round-tripping such captures; encoder
+//! output uses the spec-canonical `0x00` bytes.
 //!
 //! Real-world records contain malformed or non-standard labels. This type is
 //! deliberately permissive: `UniversalLabel::new` accepts any 16 bytes;
@@ -44,18 +49,23 @@ impl UniversalLabel {
         self.0[6]
     }
 
-    /// Document version byte at offset 13.
-    /// For ST 0601: e.g. 0x0E = .14, 0x13 = .19.
+    /// Byte 13 readout — the spec-canonical value is `0x00` per ST 0601.19
+    /// §6.2 (PDF p.4). Some legacy captures ship a non-zero byte 13 for
+    /// historical "document version" reasons (e.g. `0x13` = ST 0601.19
+    /// pre-canonical convention); `is_st0601_family()` is tolerant to allow
+    /// decode interop. ST 0601.8-19 forbids non-zero values in new
+    /// developments.
     pub const fn version_byte(&self) -> u8 {
         self.0[13]
     }
 
     // --- Well-known constants ---
 
-    /// Canonical ST 0601 UAS Datalink Local Set UL with version byte 0x13 (= ST 0601.19).
-    /// Bytes per MISB ST 0601.19 §6.1: 06 0E 2B 34 02 0B 01 01 0E 01 03 01 01 13 00 00.
+    /// Canonical ST 0601 UAS Datalink Local Set UL.
+    /// Per MISB ST 0601.19 §6.2 (PDF p.4) — bytes 13/14/15 all `0x00`:
+    /// `06.0E.2B.34.02.0B.01.01.0E.01.03.01.01.00.00.00` (CRC 56773).
     pub const ST_0601_LS: UniversalLabel = UniversalLabel([
-        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x13, 0x00,
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00,
         0x00,
     ]);
 
@@ -100,7 +110,7 @@ impl Default for UniversalLabel {
 }
 
 impl fmt::Display for UniversalLabel {
-    /// Dotted-hex form: `06.0E.2B.34.02.0B.01.01.0E.01.03.01.01.13.00.00`.
+    /// Dotted-hex form: `06.0E.2B.34.02.0B.01.01.0E.01.03.01.01.00.00.00`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, b) in self.0.iter().enumerate() {
             if i > 0 {
@@ -123,8 +133,23 @@ mod tests {
         assert_eq!(ul.category(), 0x02);
         assert_eq!(ul.registry(), 0x0B);
         assert_eq!(ul.structure(), 0x01);
-        assert_eq!(ul.version_byte(), 0x13);
         assert!(ul.is_st0601_family());
+    }
+
+    /// Per MISB ST 0601.19 §6.2 (PDF p.4): the registered UL is
+    ///   06.0E.2B.34.02.0B.01.01.0E.01.03.01.01.00.00.00 (CRC 56773).
+    /// Bytes 13/14/15 are all 0x00. Corpus check 2026-05-05 confirms byte
+    /// 13 = 0x00 in 210,886/210,886 ST 0601 ULs across 30 sampled real
+    /// captures. The historical "byte 13 carries document version"
+    /// convention is forbidden going forward per ST 0601.8-19
+    /// ("Historical 16-byte Universal Label Keys shall be forbidden in
+    /// future developments").
+    #[test]
+    fn st0601_canonical_ul_bytes_13_14_15_are_zero() {
+        let ul = UniversalLabel::ST_0601_LS;
+        assert_eq!(ul.0[13], 0x00, "byte 13 must be 0x00 per ST 0601.19 §6.2");
+        assert_eq!(ul.0[14], 0x00, "byte 14 must be 0x00 per ST 0601.19 §6.2");
+        assert_eq!(ul.0[15], 0x00, "byte 15 must be 0x00 per ST 0601.19 §6.2");
     }
 
     #[test]
@@ -132,7 +157,7 @@ mod tests {
         let ul = UniversalLabel::ST_0601_LS;
         assert_eq!(
             ul.to_string(),
-            "06.0E.2B.34.02.0B.01.01.0E.01.03.01.01.13.00.00"
+            "06.0E.2B.34.02.0B.01.01.0E.01.03.01.01.00.00.00"
         );
     }
 
@@ -185,6 +210,6 @@ mod tests {
         // Verifies the helpers are usable in const contexts.
         const UL: UniversalLabel = UniversalLabel::ST_0601_LS;
         const VB: u8 = UL.version_byte();
-        assert_eq!(VB, 0x13);
+        assert_eq!(VB, 0x00);
     }
 }

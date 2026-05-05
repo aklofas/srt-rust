@@ -62,17 +62,20 @@ referenced as MISB ST 0107). Each byte has a documented role:
 - byte 4: category designator (`category`).
 - byte 5: registry designator (`registry`).
 - byte 6: structure designator (`structure`).
-- byte 13: document version byte (`version_byte`) — for ST 0601, e.g.
-  `0x13` for ST 0601.19.
+- byte 13: `0x00` per ST 0601.19 §6.2 canonical registration. Some
+  legacy captures ship a non-zero byte 13 reflecting the older
+  "document version" convention (e.g. `0x13` = ST 0601.19); the
+  accessor `version_byte()` returns the raw byte for legacy interop.
+  ST 0601.8-19 forbids non-zero values in new developments.
 
 The `klv::universal_label` module exposes well-known constants —
 `ST_0601_LS`, `SMPTE_336M_LS_KEY`, `PRECISION_TIMESTAMP_PACK_UL` — and a
 family check: `is_st0601_family()` returns true when the label belongs
 to the ST 0601 family. The check validates bytes 0-12 against the
 canonical prefix (universal designator + ST 0601 set kind) and requires
-byte 15 to be `0x00`. Bytes 13 (the document version byte; accessor
-`version_byte()`) and 14 (reserved) are not validated by the family
-gate. The constructor is non-validating —
+byte 15 to be `0x00`. Bytes 13 and 14 are tolerated at any value by
+the family gate so legacy captures still round-trip. The constructor
+is non-validating —
 `UniversalLabel::new([..])` accepts any 16 bytes — because real-world
 records do contain malformed or non-standard labels, and the typed
 layer's `decode_strict` is the opt-in validation point.
@@ -84,10 +87,11 @@ fn inspect(buf: &[u8; 16]) {
     let ul = UniversalLabel::new(*buf);
     println!("oid={:02X?} category={:02X} registry={:02X}",
              ul.oid(), ul.category(), ul.registry());
-    println!("structure={:02X} version_byte={:02X}",
+    println!("structure={:02X} byte_13={:02X}",
              ul.structure(), ul.version_byte());
     if ul.is_st0601_family() {
-        println!("ST 0601 family, version={}", ul.version_byte());
+        println!("ST 0601 family — byte_13={:02X} (canonical 0x00)",
+                 ul.version_byte());
     } else {
         println!("not ST 0601 family — got {ul}");
     }

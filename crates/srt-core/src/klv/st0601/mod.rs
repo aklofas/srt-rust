@@ -171,7 +171,12 @@ impl Default for EncodeOptions {
     fn default() -> Self {
         Self {
             universal_label: UniversalLabel::ST_0601_LS,
-            version: UniversalLabel::ST_0601_LS.version_byte(),
+            // Tag 65 ("UAS Datalink LS Version Number") encodes the
+            // document revision the codebase conforms to: ST 0601.19 = 19.
+            // Decoupled from `UL.version_byte()` because the canonical UL
+            // per ST 0601.19 §6.2 has byte 13 = 0x00, which is not the
+            // ST 0601 version number.
+            version: 19,
         }
     }
 }
@@ -880,7 +885,10 @@ mod tests {
     fn default_uses_st0601_ul() {
         let r = UasDatalinkLs::default();
         assert_eq!(r.universal_label, UniversalLabel::ST_0601_LS);
-        assert_eq!(r.declared_version, 0x13);
+        // declared_version mirrors UL byte 13. Per ST 0601.19 §6.2 the
+        // canonical UL has byte 13 = 0x00; the field encodes a legacy
+        // "document version" readout for non-conformant captures.
+        assert_eq!(r.declared_version, 0x00);
     }
 
     #[test]
@@ -1077,8 +1085,11 @@ mod tests {
         assert!((parsed.platform_heading_deg.unwrap() - 123.45).abs() < 0.01);
         assert!((parsed.sensor_lat_deg.unwrap() - 45.123).abs() < 1e-6);
         assert_eq!(parsed.universal_label, UniversalLabel::ST_0601_LS);
-        assert_eq!(parsed.declared_version, 0x13);
-        assert_eq!(parsed.uas_ls_version, Some(0x13));
+        // declared_version mirrors UL byte 13 (= 0x00 per ST 0601.19 §6.2
+        // canonical registration); uas_ls_version is Tag 65 (= 19 = 0x13
+        // per the document revision we conform to).
+        assert_eq!(parsed.declared_version, 0x00);
+        assert_eq!(parsed.uas_ls_version, Some(19));
         assert!(parsed.field_errors.is_empty());
     }
 

@@ -100,7 +100,26 @@ fn parse_one_nal(nal: &[u8], codec: VideoCodec) -> Option<NalUnit> {
             })
         }
         VideoCodec::H266 => {
-            unimplemented!("H266 NAL parsing lands in Phase 2 (Tasks 3-6)")
+            if nal.len() < 2 {
+                return None;
+            }
+            // Per H.266 V4 §7.3.1.2:
+            //   byte 0: forbidden_zero_bit(1) | nuh_reserved_zero_bit(1) | nuh_layer_id(6)
+            //   byte 1: nal_unit_type(5)      | nuh_temporal_id_plus1(3)
+            //
+            // Note nal_type lives in byte 1 (top 5 bits); H.265 has it in
+            // byte 0 — different layout, not just renamed fields.
+            let h0 = nal[0];
+            let h1 = nal[1];
+            let layer_id = h0 & 0x3F;
+            let nal_type = (h1 >> 3) & 0x1F;
+            let temporal_id_plus1 = h1 & 0x07;
+            Some(NalUnit::H266 {
+                nal_type,
+                layer_id,
+                temporal_id_plus1,
+                payload: nal[2..].to_vec(),
+            })
         }
         VideoCodec::Av1 => {
             // AV1 is OBU-shaped, not NAL-shaped — it should never reach
@@ -291,6 +310,45 @@ mod tests {
         // both the inner-window loop and the trailing-NAL branch no-op.
         assert_eq!(split_nals(&[], VideoCodec::H264), vec![]);
         assert_eq!(split_nals(&[], VideoCodec::H265), vec![]);
+    }
+
+    #[test]
+    fn h266_two_nals() {
+        // VPS_NUT (14) + IDR_W_RADL (7) with layer_id=0, temporal_id_plus1=1.
+        // H.266 NAL header (per H.266 V4 §7.3.1.2):
+        //   byte 0: forbidden(1) | reserved(1) | nuh_layer_id(6)
+        //   byte 1: nal_unit_type(5) | nuh_temporal_id_plus1(3)
+        //
+        // VPS: layer_id=0, nal_type=14(0b01110), temporal_id_plus1=1 →
+        //   byte0 = 0x00 (forbidden=0, reserved=0, layer_id=0)
+        //   byte1 = (14 << 3) | 1 = 0x71
+        //
+        // IDR_W_RADL: layer_id=0, nal_type=7(0b00111), temporal_id_plus1=1 →
+        //   byte0 = 0x00
+        //   byte1 = (7 << 3) | 1 = 0x39
+        let buf = vec![
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x71, 0xAA, 0x00, 0x00, 0x01, 0x00, 0x39, 0xBB,
+        ];
+        let nals = split_nals(&buf, VideoCodec::H266);
+        assert_eq!(nals.len(), 2);
+        match &nals[0] {
+            NalUnit::H266 {
+                nal_type,
+                layer_id,
+                temporal_id_plus1,
+                payload,
+            } => {
+                assert_eq!(*nal_type, 14);
+                assert_eq!(*layer_id, 0);
+                assert_eq!(*temporal_id_plus1, 1);
+                assert_eq!(payload, &vec![0xAA]);
+            }
+            _ => panic!("wrong codec variant"),
+        }
+        match &nals[1] {
+            NalUnit::H266 { nal_type, .. } => assert_eq!(*nal_type, 7),
+            _ => panic!("wrong codec variant"),
+        }
     }
 
     #[test]

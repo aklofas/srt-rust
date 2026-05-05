@@ -1063,7 +1063,9 @@ fn extract_metadata_link_for_pid(pmt: &Pmt, pid: u16) -> Option<u16> {
 fn nal_payload_bytes(nals: &[NalUnit]) -> usize {
     nals.iter()
         .map(|n| match n {
-            NalUnit::H264 { payload, .. } | NalUnit::H265 { payload, .. } => payload.len(),
+            NalUnit::H264 { payload, .. }
+            | NalUnit::H265 { payload, .. }
+            | NalUnit::H266 { payload, .. } => payload.len(),
         })
         .sum()
 }

@@ -131,6 +131,30 @@ fn main() -> std::io::Result<()> {
                         buf.push(h1);
                         buf.extend_from_slice(payload);
                     }
+                    NalUnit::H266 {
+                        nal_type,
+                        layer_id,
+                        temporal_id_plus1,
+                        payload,
+                    } => {
+                        // H.266 NAL header is 2 bytes (V4 §7.3.1.2) but
+                        // the field layout differs from H.265:
+                        //   byte 0:
+                        //     forbidden_zero_bit(1) = 0
+                        //     nuh_reserved_zero_bit(1) = 0
+                        //     nuh_layer_id(6)
+                        //   byte 1:
+                        //     nal_unit_type(5)
+                        //     nuh_temporal_id_plus1(3)
+                        //
+                        // Note `nal_type` is in byte 1 (top 5 bits), not
+                        // byte 0 — easy mistake when adapting from H.265.
+                        let h0 = layer_id & 0x3F;
+                        let h1 = ((nal_type & 0x1F) << 3) | (temporal_id_plus1 & 0x07);
+                        buf.push(h0);
+                        buf.push(h1);
+                        buf.extend_from_slice(payload);
+                    }
                 }
             }
 

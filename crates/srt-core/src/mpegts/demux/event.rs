@@ -182,6 +182,23 @@ pub enum NalUnit {
         /// RBSP bytes; same stripping/preservation rules as `H264`.
         payload: Vec<u8>,
     },
+    /// One H.266 / VVC NAL unit. Header parsed per H.266 V4 §7.3.1.2.
+    ///
+    /// Common `nal_type` values: VPS_NUT=14, SPS_NUT=15, PPS_NUT=16,
+    /// PREFIX_APS_NUT=17, SUFFIX_APS_NUT=18, PH_NUT=19, AUD_NUT=20,
+    /// IDR_W_RADL=7, IDR_N_LP=8, CRA_NUT=9, GDR_NUT=10. Full table at
+    /// H.266 V4 Table 5.
+    H266 {
+        /// 5-bit `nal_unit_type` (H.266 V4 §7.3.1.2).
+        nal_type: u8,
+        /// 6-bit `nuh_layer_id` (H.266 V4 §7.3.1.2).
+        layer_id: u8,
+        /// 3-bit `nuh_temporal_id_plus1` (H.266 V4 §7.3.1.2).
+        temporal_id_plus1: u8,
+        /// RBSP bytes; Annex-B start codes stripped, emulation
+        /// prevention preserved (consumer's decoder removes 0x03 escapes).
+        payload: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

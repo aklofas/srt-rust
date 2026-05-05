@@ -263,7 +263,9 @@ fn payload_size(p: &SamplePayload) -> usize {
 
 fn nal_payload_len(n: &NalUnit) -> usize {
     match n {
-        NalUnit::H264 { payload, .. } | NalUnit::H265 { payload, .. } => payload.len(),
+        NalUnit::H264 { payload, .. }
+        | NalUnit::H265 { payload, .. }
+        | NalUnit::H266 { payload, .. } => payload.len(),
     }
 }
 
@@ -343,6 +345,24 @@ fn nal_kind_summary(nals: &[NalUnit]) -> String {
                 35 => "AUD".to_string(),
                 39 | 40 => "SEI".to_string(),
                 t => format!("h265:{t}"),
+            },
+            // H.266 / VVC labels per H.266 V4 Table 5. Common picture-data
+            // types share numeric values with H.265 (IDR_W_RADL=7,
+            // IDR_N_LP=8 — both key-frame-shaped); parameter-set types
+            // (VPS_NUT=14, SPS_NUT=15, PPS_NUT=16) and AUD_NUT=20 are
+            // distinct from H.265.
+            NalUnit::H266 { nal_type, .. } => match *nal_type {
+                0..=6 => "P/B".to_string(), // trail / stsa / rasl / radl
+                7 | 8 => "IDR".to_string(),
+                9 => "CRA".to_string(),
+                14 => "VPS".to_string(),
+                15 => "SPS".to_string(),
+                16 => "PPS".to_string(),
+                17 | 18 => "APS".to_string(),
+                19 => "PH".to_string(),
+                20 => "AUD".to_string(),
+                23 => "SEI".to_string(),
+                t => format!("h266:{t}"),
             },
         };
         *counts.entry(label).or_insert(0) += 1;

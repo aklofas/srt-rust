@@ -23,9 +23,10 @@
 //!   - We use KlvStreamType::PrivateData with `carries_pts: false` (async KLV).
 //!     The muxer emits one KLV AU per tick, not anchored to video frame times.
 //!   - For sync KLV (locked to video keyframes), use
-//!     KlvStreamType::SynchronousMetadata with `carries_pts: true`, and
-//!     remember to pre-wrap KLV blobs via `klv::st1910::wrap_au_cell` —
-//!     the muxer does NOT auto-wrap. See mux_h265_with_klv.rs for that case.
+//!     KlvStreamType::SynchronousMetadata with `carries_pts: true`. The
+//!     muxer auto-wraps each push in an H.222.0 § 2.12.4.2 5-byte
+//!     Metadata_AU_cell header — pass raw KLV LS bytes. See
+//!     mux_h265_with_klv.rs for that case.
 //!
 //! The synthetic encoder placeholders (build_h264_keyframe_au,
 //! build_mp2_silent_frame) are not real decodable frames — they are shape

@@ -1,4 +1,4 @@
-//! H.265 + sync-KLV (ST 1910) flavor of `mux_to_file`.
+//! H.265 + sync-KLV flavor of `mux_to_file`.
 //!
 //! Diffs against `mux_to_file.rs` to show which Config knobs flip when
 //! switching codec and KLV mode:
@@ -9,8 +9,6 @@
 //!
 //!   cargo run --example mux_h265_with_klv -- /tmp/h265.ts
 
-use srt_core::klv::st0605::{PrecisionTimeStampPack, TimeStatus};
-use srt_core::klv::st1910::wrap_au_cell;
 use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 use std::env;
 use std::fs::File;
@@ -42,14 +40,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_program(1, 0x1000)
         .add_video(VIDEO_PID, VideoCodec::H265)
         // SynchronousMetadata (PMT stream_type 0x15) is strict
-        // ST 1402 sync KLV. Conformant output requires each
-        // KLV blob to be wrapped in an ST 1910 AU cell header
-        // carrying a Precision Time Stamp Pack — the muxer
-        // does NOT auto-wrap. The caller (this example, see
-        // the `wrap_au_cell` call below) is responsible for
-        // building the AU cell and handing the wrapped bytes
-        // to `push_klv`. See `docs/guide-mpegts-mux.md` §5
-        // ("KLV-in-TS modes") for the full contract.
+        // sync KLV per MISB ST 1402.2 § 9.4.1 / ITU-T H.222.0
+        // V9 § 2.12.4.2. The muxer auto-prepends a 5-byte
+        // Metadata_AU_cell header (Tables 2-155+2-156:
+        // metadata_service_id + sequence_number + flags +
+        // AU_cell_data_length) before each push; pass raw KLV
+        // LS bytes, not pre-wrapped bytes. PTS lives in the
+        // PES header (per § 2.12.4.1). See
+        // `docs/guide-mpegts-mux.md` for the full contract.
         //
         // SynchronousMetadata requires `carries_pts: true` —
         // the PTS is what lets a receiver align each metadata
@@ -119,35 +117,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // `klv_encode_minimal` example); for the muxer demo any
         // bytes will do.
         let inner_klv: Vec<u8> = (0..50).map(|j| (i as u8).wrapping_add(j as u8)).collect();
-        // ST 1910 AU cell wrap. Sync KLV in MPEG-TS (PMT stream_type
-        // 0x15) requires the KLV blob to be wrapped in an AU cell
-        // header carrying a Precision Time Stamp Pack (ST 0605) —
-        // typically aligned with the corresponding video frame.
-        // Without this wrap, the PMT advertises stream_type 0x15
-        // but the actual PES payload is bare KLV — non-conformant
-        // ST 1402, and a strict receiver will reject it.
-        //
-        // `Muxer::push_klv` does NOT auto-wrap — it treats whatever
-        // bytes the caller hands it as the opaque PES payload. So
-        // we build the AU cell here and push the wrapped bytes.
-        // See `docs/guide-mpegts-mux.md` §5 for the full contract.
-        //
-        // Synthetic timestamp: microseconds since Unix epoch,
-        // walking forward at 1/30 s per frame. `TimeStatus(0x1F)` =
-        // locked, normal increment, reserved bits per ST 0603 §7.4.
-        let timestamp = PrecisionTimeStampPack {
-            time_status: TimeStatus(0x1F),
-            timestamp_us: 1_700_000_000_000_000 + (i as u64) * 33_333,
-        };
-        let wrapped = wrap_au_cell(&inner_klv, timestamp);
-        // Same PTS as the video frame. With sync KLV
-        // (`SynchronousMetadata` + `carries_pts: true`) the receiver
-        // can align each metadata record back to the right video
-        // frame. With async KLV (the default `PrivateData` +
-        // `carries_pts: false`) the receiver gets a stream of KLV
-        // records but can't directly correlate each to a specific
-        // video AU.
-        mux.push_klv(&wrapped, pts)?;
+        // Sync KLV (`SynchronousMetadata` + `carries_pts: true`):
+        // the muxer auto-wraps in a 5-byte H.222.0 § 2.12.4.2
+        // Metadata_AU_cell header, then puts the AU cell bytes in
+        // a PES whose header carries the PTS we pass below. The
+        // PTS is what lets the receiver align each metadata record
+        // back to the right video frame. With async KLV (the default
+        // `PrivateData` + `carries_pts: false`) the receiver gets a
+        // stream of KLV records but can't directly correlate each
+        // to a specific video AU.
+        mux.push_klv(&inner_klv, pts)?;
 
         // Standard pull pattern: drain after every push so muxer
         // memory stays bounded. `pull` returns 0 when there's nothing

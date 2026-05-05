@@ -95,16 +95,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // Why KlvStreamType::PrivateData with carries_pts=false:
     // - PrivateData (stream_type 0x06) is the async KLV shape — no PTS in
-    //   the KLV PES. The muxer does NOT auto-wrap in ST 1910 AU cells for
-    //   this shape; the raw KLV bytes are carried directly. This is the
-    //   correct shape for most async KLV sources.
+    //   the KLV PES. The muxer carries the raw KLV bytes through unchanged.
+    //   This is the correct shape for most async KLV sources.
     // - If the input was SynchronousMetadata (stream_type 0x15), the input
-    //   demuxer would have peeled the AU cell wrap and surfaced the inner
-    //   KLV bytes as `MetadataKind::KlvSyncAuCell`. For re-muxing as sync
-    //   you'd use KlvStreamType::SynchronousMetadata + carries_pts=true AND
-    //   call `klv::st1910::wrap_au_cell` before pushing. That path is shown
-    //   in the `mux_h265_with_klv.rs` example. Here we use PrivateData to
-    //   keep the example simple and work for both input KLV flavors.
+    //   demuxer peeled the H.222.0 § 2.12.4.2 5-byte Metadata_AU_cell
+    //   header and surfaced the inner KLV bytes as
+    //   `MetadataKind::KlvSyncAuCell`. For re-muxing as sync you'd use
+    //   KlvStreamType::SynchronousMetadata + carries_pts=true; the muxer
+    //   auto-wraps each push in a fresh AU cell header. Here we use
+    //   PrivateData to keep the example simple and work for both input
+    //   KLV flavors.
     let config = Config::builder()
         // Program 1: original PIDs from input 1, unchanged.
         .add_program(1, 0x1000)
@@ -290,14 +290,15 @@ fn repack_event(
             pts, kind, payload, ..
         } => {
             // Forward both KlvAsync and KlvSyncAuCell into the output's
-            // PrivateData (async) KLV stream. The demuxer already peeled the
-            // ST 1910 AU cell wrap for KlvSyncAuCell events — `payload` is
-            // the inner bare KLV LS bytes in both cases. We do NOT re-wrap
-            // in an AU cell here because the output config uses PrivateData
-            // (async), not SynchronousMetadata. If you wanted to preserve
-            // the sync shape, you'd configure the output with
-            // KlvStreamType::SynchronousMetadata + carries_pts=true and call
-            // `klv::st1910::wrap_au_cell(&payload, pts)` before pushing.
+            // PrivateData (async) KLV stream. The demuxer already peeled
+            // the H.222.0 § 2.12.4.2 5-byte Metadata_AU_cell header for
+            // KlvSyncAuCell events — `payload` is the inner bare KLV LS
+            // bytes in both cases. The output config uses PrivateData
+            // (async), so the muxer carries `payload` through unchanged.
+            // If you wanted to preserve the sync shape, you'd configure
+            // the output with KlvStreamType::SynchronousMetadata +
+            // carries_pts=true; the output muxer would auto-wrap each
+            // push in a fresh AU cell header.
             //
             // Unknown metadata stream types are passed through as-is.
             // They may not decode correctly at the receiver if the stream_type

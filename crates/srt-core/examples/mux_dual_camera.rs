@@ -39,9 +39,9 @@ fn main() -> std::io::Result<()> {
     //   easier to spot in a Wireshark capture and avoids accidentally
     //   ending up adjacent to the PMT PID (0x1000 by default).
     // - KLV is async (`carries_pts: false`). For sync KLV (PTS aligned
-    //   with video), use `KlvStreamType::SynchronousMetadata` + true,
-    //   and remember to pre-wrap blobs via `klv::st1910::wrap_au_cell`
-    //   — the muxer does NOT auto-wrap.
+    //   with video), use `KlvStreamType::SynchronousMetadata` + true;
+    //   the muxer auto-wraps each push in an H.222.0 § 2.12.4.2 5-byte
+    //   Metadata_AU_cell header — pass raw KLV LS bytes.
     // - PCR is pinned to the EO video PID (0x1011). With multi-stream
     //   the auto-default is also "first video stream's PID," so this
     //   `.pcr_pid(0x1011)` is redundant — included here so consumers

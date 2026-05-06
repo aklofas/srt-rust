@@ -398,6 +398,16 @@ pub enum NonConformantIssue {
     /// `mpegts.c:3091-3097`.
     TransportErrorPacket { pid: u16 },
 
+    /// PSI section reassembly observed a continuity-counter jump on a
+    /// continuation packet. Per ISO/IEC 13818-1 §2.4.3.3 PSI continuation
+    /// packets must increment the CC; a jump means an upstream packet drop.
+    /// Plan #29 strict mode (`DemuxerOptions::lenient_psi_reassembly = false`,
+    /// the default) drops the partial section and emits this issue,
+    /// matching ffmpeg's `mpegts.c:3118-3142` behavior. Lenient mode keeps
+    /// today's behavior of feeding the bytes through; the section then
+    /// either passes by luck or surfaces as `PsiChecksumMismatch`.
+    PsiCcDiscontinuity { pid: u16, expected: u8, observed: u8 },
+
     /// Other.
     Other(String),
 }
@@ -419,6 +429,81 @@ pub enum DiscontinuityKind {
 /// just compare `i64` PTS values directly.
 pub fn pts_to_duration(pts_90khz: i64) -> Duration {
     Duration::from_micros((pts_90khz as i128 * 1_000_000 / 90_000) as u64)
+}
+
+impl std::fmt::Display for NonConformantIssue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid => {
+                write!(f, "stream_type=0x06 carries sync KLV on async PID")
+            }
+            NonConformantIssue::StreamTypeMismatchAsyncOnSyncPid => {
+                write!(f, "stream_type=0x15 carries async KLV on sync PID")
+            }
+            NonConformantIssue::MissingMetadataDescriptor => {
+                write!(f, "metadata_descriptor missing on sync-KLV PID")
+            }
+            NonConformantIssue::PcrAnomaly { delta } => {
+                write!(f, "PCR anomaly: delta={}", delta)
+            }
+            NonConformantIssue::PsiChecksumMismatch { pid } => {
+                write!(f, "PSI checksum mismatch on PID 0x{pid:04X}")
+            }
+            NonConformantIssue::PusiMidPes => {
+                write!(f, "PUSI packet arrived mid-PES")
+            }
+            NonConformantIssue::PidReusedAcrossPrograms { pid, programs } => {
+                write!(
+                    f,
+                    "PID 0x{pid:04X} reused across programs {} and {}",
+                    programs[0], programs[1]
+                )
+            }
+            NonConformantIssue::SubtitleMissingDescriptor { pid } => {
+                write!(f, "subtitle stream on PID 0x{pid:04X} missing descriptor")
+            }
+            NonConformantIssue::SubtitleDescriptorAmbiguous { pid, tags } => {
+                write!(f, "subtitle PID 0x{pid:04X} has ambiguous descriptors: {tags:?}")
+            }
+            NonConformantIssue::SubtitleDescriptorMalformed { pid, tag } => {
+                write!(
+                    f,
+                    "subtitle descriptor 0x{tag:02X} malformed on PID 0x{pid:04X}"
+                )
+            }
+            NonConformantIssue::Av1RegistrationMalformed { pid } => {
+                write!(f, "AV1 registration descriptor malformed on PID 0x{pid:04X}")
+            }
+            NonConformantIssue::Av1ObuMissingSizeField { pid, obu_type } => {
+                write!(
+                    f,
+                    "AV1 OBU type 0x{obu_type:02X} missing size field on PID 0x{pid:04X}"
+                )
+            }
+            NonConformantIssue::Av1TileListNotAllowed { pid } => {
+                write!(f, "AV1 Tile List OBU forbidden on PID 0x{pid:04X}")
+            }
+            NonConformantIssue::PsiOverlongSection { pid, observed_len } => {
+                write!(
+                    f,
+                    "PSI section overlong on PID 0x{pid:04X}: {} bytes",
+                    observed_len
+                )
+            }
+            NonConformantIssue::TransportErrorPacket { pid } => {
+                write!(f, "transport_error_indicator set on PID 0x{pid:04X}")
+            }
+            NonConformantIssue::PsiCcDiscontinuity { pid, expected, observed } => {
+                write!(
+                    f,
+                    "PSI continuity-counter jump on PID 0x{pid:04X}: expected 0x{expected:X}, observed 0x{observed:X}"
+                )
+            }
+            NonConformantIssue::Other(msg) => {
+                write!(f, "{msg}")
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -468,5 +553,18 @@ mod tests {
         ];
         assert_ne!(codecs[0], codecs[1]);
         assert_ne!(codecs[2], codecs[3]);
+    }
+
+    #[test]
+    fn psi_cc_discontinuity_displays_pid_and_counter_pair() {
+        let issue = NonConformantIssue::PsiCcDiscontinuity {
+            pid: 0x100,
+            expected: 0x9,
+            observed: 0xC,
+        };
+        let s = format!("{issue}");
+        assert!(s.contains("PID 0x0100"), "Display includes PID: {s}");
+        assert!(s.contains("expected 0x9"), "Display includes expected: {s}");
+        assert!(s.contains("observed 0xC"), "Display includes observed: {s}");
     }
 }

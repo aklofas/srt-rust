@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This guide covers `srt_core::klv` — the KLV codec, bidirectional. Encoding
+This guide covers `tst_srt::klv` — the KLV codec, bidirectional. Encoding
 and decoding for the MISB ST 0601 UAS Datalink Local Set and the ST 0605
 Precision Time Stamp Pack, layered on a generic SMPTE KLV substrate
 (Universal Labels, BER lengths, IMAPB, checksum, pack iteration).
@@ -82,7 +82,7 @@ records do contain malformed or non-standard labels, and the typed
 layer's `decode_strict` is the opt-in validation point.
 
 ```rust,no_run
-use srt_core::klv::UniversalLabel;
+use tst_core::klv::UniversalLabel;
 
 fn inspect(buf: &[u8; 16]) {
     let ul = UniversalLabel::new(*buf);
@@ -125,7 +125,7 @@ permissive interpretation of the bytes, and the rejection error from the
 previous rung tells you why the stricter rung said no:
 
 ```rust,no_run
-use srt_core::klv::st0601::{
+use tst_core::klv::st0601::{
     decode, decode_strict, decode_strict_compliance, decode_unchecked, UasDatalinkLs,
 };
 
@@ -145,7 +145,7 @@ fn try_all(buf: &[u8]) -> Result<UasDatalinkLs, Box<dyn std::error::Error>> {
 ```
 
 For the worked example with per-rung error reporting, see
-[../crates/srt-core/examples/klv_decode_file.rs](../crates/srt-core/examples/klv_decode_file.rs).
+[../crates/tst-srt/examples/klv_decode_file.rs](../crates/tst-srt/examples/klv_decode_file.rs).
 
 ## Typed ST 0601 — `UasDatalinkLs`
 
@@ -207,7 +207,7 @@ byte of the default UL, `0x13` = ST 0601.19). Pre-size the output buffer
 with `encoded_len(&record)` if you want to allocate exactly.
 
 ```rust,no_run
-use srt_core::klv::st0601::{encode_to_vec, UasDatalinkLs};
+use tst_core::klv::st0601::{encode_to_vec, UasDatalinkLs};
 
 fn build_minimal() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut rec = UasDatalinkLs::default();
@@ -223,7 +223,7 @@ fn build_minimal() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 
 For a worked example with attitude + sensor pose + frame center, plus
 explicit `LinearRange` step-size calculations for each ranged tag, see
-[../crates/srt-core/examples/klv_encode_minimal.rs](../crates/srt-core/examples/klv_encode_minimal.rs).
+[../crates/tst-srt/examples/klv_encode_minimal.rs](../crates/tst-srt/examples/klv_encode_minimal.rs).
 
 ## ST 0605 Precision Time Stamp Pack
 
@@ -281,8 +281,8 @@ sets, and for gateway translation that just shuffles tags between
 producers.
 
 ```rust,no_run
-use srt_core::klv::Iter;
-use srt_core::klv::length::read_ber;
+use tst_core::klv::Iter;
+use tst_core::klv::length::read_ber;
 
 fn dump_fields(buf: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     // Skip the 16-byte UL, then read the outer BER length to find the body.
@@ -311,7 +311,7 @@ based on the spec — callers don't normally call either directly.
   `S16Range` / `S32Range`). Uniform linear mapping with step
   `(max - min) / 2^bits`. This is what every ranged tag in the typed
   ST 0601 table currently uses (see
-  [../crates/srt-core/src/klv/st0601/tags.rs](../crates/srt-core/src/klv/st0601/tags.rs)).
+  [../crates/tst-core/src/klv/st0601/tags.rs](../crates/tst-core/src/klv/st0601/tags.rs)).
 - `klv::imapb` (ST 1201.5 IMAPB). Power-of-two-aligned scale factor
   with INT_MIN reserved as INVALID — a different scheme; not
   interchangeable with `LinearRange`. Exposed as substrate so callers
@@ -326,8 +326,8 @@ mapping of `0..360°` into 2 bytes unsigned. The step size is
 `360 / 65535 ≈ 5.49e-3 °/step` — a heading of 217.456° quantizes to
 one of two adjacent codepoints around that resolution and recovers
 within `~5e-3°` on decode. Per-tag precision is documented in
-[../crates/srt-core/src/klv/st0601/tags.rs](../crates/srt-core/src/klv/st0601/tags.rs);
-[../crates/srt-core/examples/klv_encode_minimal.rs](../crates/srt-core/examples/klv_encode_minimal.rs)
+[../crates/tst-core/src/klv/st0601/tags.rs](../crates/tst-core/src/klv/st0601/tags.rs);
+[../crates/tst-srt/examples/klv_encode_minimal.rs](../crates/tst-srt/examples/klv_encode_minimal.rs)
 walks four representative `LinearRange` tags with their step
 calculations spelled out in comments.
 

@@ -1,6 +1,6 @@
 # Compatibility matrix
 
-What `srt-rust` actually implements today, mapped to the upstream specs and
+What `tstrans` actually implements today, mapped to the upstream specs and
 deployed protocol surfaces. Statuses are deliberate and conservative — items
 not listed below are intentionally **not yet implemented**.
 
@@ -15,10 +15,10 @@ not listed below are intentionally **not yet implemented**.
 | ⏳ Planned | On the roadmap, not yet implemented. |
 | ❌ Out of scope | Deferred indefinitely. |
 
-The `srt-rust` workspace deliberately scopes to **MPEG-TS + MISB ST 0601 KLV
+The `tstrans` workspace deliberately scopes to **MPEG-TS + MISB ST 0601 KLV
 over SRT**. Containers (MP4/CMAF/RIST/WebRTC), ST 0903 VMTI, raw elementary
 streams, and so on are out of scope until a consumer asks. See
-`crates/srt-core/tests/TEST_CORPUS.md` for the parsing-side compliance ledger
+`crates/tst-core/tests/TEST_CORPUS.md` for the parsing-side compliance ledger
 that this document summarises.
 
 ---
@@ -41,7 +41,7 @@ on (default).
 
 ---
 
-## SRT transport (`srt-core::srt`)
+## SRT transport (`tst-srt`)
 
 ### Wire protocol
 
@@ -163,7 +163,7 @@ Subtitle PIDs cannot serve as the PCR PID (too sparse for PCR pacing).
 
 ---
 
-## KLV substrate (`srt-core::klv`)
+## KLV substrate (`tst-core::klv`)
 
 The generic SMPTE/MISB substrate underneath the typed layers.
 
@@ -194,7 +194,7 @@ plain `[UL][len][body]`:
 
 ---
 
-## KLV — typed MISB ST 0601 (`srt-core::klv::st0601`)
+## KLV — typed MISB ST 0601 (`tst-core::klv::st0601`)
 
 | Spec | Status | Notes |
 | --- | --- | --- |
@@ -262,7 +262,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 
 ---
 
-## KLV — typed MISB ST 0605 (`srt-core::klv::st0605`)
+## KLV — typed MISB ST 0605 (`tst-core::klv::st0605`)
 
 | Spec / Feature | Status | Notes |
 | --- | --- | --- |
@@ -274,7 +274,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 
 ---
 
-## MPEG-TS demuxer (`srt-core::mpegts::demux`)
+## MPEG-TS demuxer (`tst-core::mpegts::demux`)
 
 | Feature / Type | Status | Notes |
 | --- | --- | --- |
@@ -312,36 +312,36 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | Typed SPS/VPS/PPS payload parser | ✅ Full | `codec::h264` / `codec::h265` / `codec::h266` for NAL-shaped codecs; `codec::av1` for OBU-shaped. See `codec` block below. |
 | Sync-KLV ↔ video AU pairing helper | ❌ Out of scope | Pairing is a consumer-domain decision; cookbook recipes 12–14 are the canonical patterns. |
 
-## Pipeline composition (`srt-core::pipeline`)
+## Pipeline composition (`tst-pipeline`)
 
 ### Send side
 
 | Feature / Type | Status | Notes |
 | --- | --- | --- |
-| `Sender<T>` | ✅ Full | Composes `Muxer` + `Transport` for the canonical NAL+KLV → TS → SRT path. Internally synchronized; lossless across transient transport failures via in-flight buffer. |
-| `TsSender<T>` | ✅ Full | Pre-muxed TS bytes → SRT with sync framing/recovery. 3-byte sync verify, 7-packet bundling, RECOVER + STRICT modes. |
+| `MuxSender<T>` | ✅ Full | Composes `Muxer` + `Transport` for the canonical NAL+KLV → TS → SRT path. Internally synchronized; lossless across transient transport failures via in-flight buffer. |
+| `Sender<T>` | ✅ Full | Pre-muxed TS bytes → SRT with sync framing/recovery. 3-byte sync verify, 7-packet bundling, RECOVER + STRICT modes. |
 | `RawSender<T>` | ✅ Full | Byte-blind one-shot sender. One `send` call = one SRT message; size-cap validation at construction. |
 | `ManagedTransport<T>` | ✅ Full | Reconnect + gap-buffer decorator over any `Transport`. Synchronous reconnect on caller's thread; drop-oldest-message overflow policy; single-thread receiver. |
-| Multi-stream / multi-program `Config` | ✅ Full | ≤16 programs, ≤16 video + ≤16 KLV streams per program; nested `add_program(N, pmt_pid).add_video(...).end_program()` builder; opaque handles from `video_handles_for_program(N)` / `klv_handles_for_program(N)`; `push_video_to(handle, …)` / `push_klv_to(handle, …)` on `Muxer` and `Sender`. Single-program single-stream callers keep the old flat API unchanged. |
+| Multi-stream / multi-program `Config` | ✅ Full | ≤16 programs, ≤16 video + ≤16 KLV streams per program; nested `add_program(N, pmt_pid).add_video(...).end_program()` builder; opaque handles from `video_handles_for_program(N)` / `klv_handles_for_program(N)`; `push_video_to(handle, …)` / `push_klv_to(handle, …)` on `Muxer` and `MuxSender`. Single-program single-stream callers keep the old flat API unchanged. |
 
 ### Receive side
 
 | Feature / Type | Status | Notes |
 | --- | --- | --- |
-| `Receiver<R>` | ✅ Full | `RecvTransport → TsReceiver → Demuxer` shell. `recv_event` → `DemuxEvent`; auto-flushes demuxer on `Closed`. Implements `Iterator<Item = Result<DemuxEvent, ReceiverError>>`. |
-| `TsReceiver<R>` | ✅ Full | Pull bytes from a `RecvTransport`, run TS sync recovery, emit 188-byte aligned packets via `next_packet`. |
+| `DemuxReceiver<R>` | ✅ Full | `RecvTransport → Receiver → Demuxer` shell. `recv_event` → `DemuxEvent`; auto-flushes demuxer on `Closed`. Implements `Iterator<Item = Result<DemuxEvent, DemuxReceiverError>>`. |
+| `Receiver<R>` | ✅ Full | Pull bytes from a `RecvTransport`, run TS sync recovery, emit 188-byte aligned packets via `next_packet`. |
 | `RawReceiver<R>` | ✅ Full | One `recv_one` call returns one owned byte vec — no TS framing or demux. |
 | `ManagedReceiveTransport<R>` | ✅ Full | Reconnect decorator for the receive direction. No gap buffer (recv-side bytes that never arrived can't be replayed); restarts on `Closed` / `Broken` per `ReconnectPolicy`. |
 | `RecvTransport` trait | ✅ Full | Receive-side counterpart to `Transport`: `recv_bytes`, `max_payload`, `is_alive`, `close`. Implemented by `SrtTransport` and any consumer-side mock. |
 | `SrtTransport` impl `RecvTransport` | ✅ Full | Same `SrtTransport` wrapper handles both send and receive directions on a connected SRT `Socket`. |
-| `Receiver::add_byte_sink` fan-out | ✅ Full | Register `Box<dyn FnMut(&[u8]) + Send>` callbacks; each sink sees every 188-byte TS packet in registration order before the demuxer parses it. |
-| `Receiver::with_demux_options` | ✅ Full | Construct a receiver around a custom `DemuxerOptions` (e.g. strict mode, PES caps, link overrides). |
-| Stream-end contract | ✅ Full | `TransportError::Closed` → iterator termination after `Demuxer::flush`. `Broken` → `ReceiverError::Transport(Broken(_))`. `Demux` → strict-mode rejection or malformed PES. |
+| `DemuxReceiver::add_byte_sink` fan-out | ✅ Full | Register `Box<dyn FnMut(&[u8]) + Send>` callbacks; each sink sees every 188-byte TS packet in registration order before the demuxer parses it. |
+| `DemuxReceiver::with_demux_options` | ✅ Full | Construct a receiver around a custom `DemuxerOptions` (e.g. strict mode, PES caps, link overrides). |
+| Stream-end contract | ✅ Full | `TransportError::Closed` → iterator termination after `Demuxer::flush`. `Broken` → `DemuxReceiverError::Transport(Broken(_))`. `Demux` → strict-mode rejection or malformed PES. |
 | Receive-side gap buffer | ❌ Out of scope | Receive-side bytes that never arrived can't be replayed; no symmetric counterpart to `ManagedTransport`'s gap buffer. |
 
 ---
 
-## Codec parameter set parsing (`srt-core::codec`)
+## Codec parameter set parsing (`tst-core::codec`)
 
 Stateless typed parsers for codec parameter sets. The demuxer event surface
 is unchanged — NAL bytes surface as `NalUnit` with raw RBSP. Consumers call
@@ -393,12 +393,12 @@ as `Obu { obu_type, payload, .. }` without further parsing.
 | `srtc_ts_sender_t` / `srtc_managed_ts_sender_t` | ✅ Full | pre-muxed TS bytes in; sync framing/recovery (RECOVER auto-resync + STRICT fail-fast); `_get_stats` accessor. |
 | `srtc_raw_sender_t` / `srtc_managed_raw_sender_t` | ✅ Full | one `_send` call = one outbound SRT message. `SRTC_E_TOO_LARGE` on `len > SRTO_PAYLOADSIZE`. |
 | Opaque builder configs | ✅ Full | `srtc_mux_config_t`, `srtc_ts_sender_config_t`, `srtc_raw_sender_config_t`, `srtc_reconnect_policy_t`. Internally cloned by `_open`; caller frees independently. |
-| Thread-local last-error idiom | ✅ Full | `srtc_get_last_error()` + `srtc_get_last_error_str()`; ten `SRTC_E_*` codes covering all `srt_core` failure shapes. |
+| Thread-local last-error idiom | ✅ Full | `srtc_get_last_error()` + `srtc_get_last_error_str()`; ten `SRTC_E_*` codes covering all `tst_core` failure shapes. |
 | `SRTC_VERSION_MAJOR` / `MINOR` / `PATCH` macros | ✅ Full | Compile-time `#define`s in `srtc.h`. |
 | Lifecycle (`_open` / `_close`) | ✅ Full | `_open` returns NULL on failure with last-error set; `_close` is idempotent and NULL-safe; close-from-any-thread serializes through `Mutex<Option<...>>`. |
 | URL parsing | ✅ Full | `srt://host:port?key=value&...` — IPv4 / DNS / bracketed IPv6 hosts plus the libsrt-URL Group 1 vocabulary (`streamid` / `passphrase` / `latency` / `payloadsize` / `congestion` / `conntimeo` / `linger` / `udprcvbuf` / `udpsndbuf` / etc.) plus a handful of ffmpeg-style aliases (`pkt_size`, `payload_size`, `srt_streamid`, `tsbpddelay`, `smoother`, `ffs`, `connect_timeout`, `recv_buffer_size`, `send_buffer_size`). See "FFmpeg URL interop quirks" below for unit divergence. |
 | Stats accessors | ✅ Full | `srtc_muxer_get_stats` / `_reset_stats`; `srtc_mux_sender_*` and `srtc_managed_mux_sender_*` (get + reset); `srtc_ts_sender_*` and `srtc_managed_ts_sender_*` (get + reset); `srtc_raw_sender_*` and `srtc_managed_raw_sender_*` (get + reset). `SrtcSenderStats` + `SrtcMuxerStats` + `SrtcRawSenderStats` `repr(C)` types; receiver-side C stats deferred. |
-| Multi-stream `mpegts::mux` fan-out | ✅ Full | `srtc_video_stream_handle_t` / `srtc_klv_stream_handle_t` typedefs (transparent `uint32_t`); `srtc_mux_config_add_video_stream` / `_add_klv_stream` return handles at config time; `_video_to(handle, ...)` / `_klv_to(handle, ...)` siblings on `srtc_muxer_t`, `srtc_mux_sender_t`, and `srtc_managed_mux_sender_t` (≤16 video + ≤16 KLV streams per program — same caps as the Rust core). Single-target entry points (`srtc_*_send_video` / `_send_klv`) keep their signatures and surface `MuxError::AmbiguousTarget` as `SRTC_E_INVALID_USAGE` on multi-stream muxers. The TsSender / RawSender variants don't carry a `Muxer`, so multi-stream is N/A there. |
+| Multi-stream `mpegts::mux` fan-out | ✅ Full | `srtc_video_stream_handle_t` / `srtc_klv_stream_handle_t` typedefs (transparent `uint32_t`); `srtc_mux_config_add_video_stream` / `_add_klv_stream` return handles at config time; `_video_to(handle, ...)` / `_klv_to(handle, ...)` siblings on `srtc_muxer_t`, `srtc_mux_sender_t`, and `srtc_managed_mux_sender_t` (≤16 video + ≤16 KLV streams per program — same caps as the Rust core). Single-target entry points (`srtc_*_send_video` / `_send_klv`) keep their signatures and surface `MuxError::AmbiguousTarget` as `SRTC_E_INVALID_USAGE` on multi-stream muxers. The `Sender` / `RawSender` variants don't carry a `Muxer`, so multi-stream is N/A there. |
 | Multi-program `mpegts::mux` config | ✅ Full | `srtc_program_handle_t` (transparent `uint32_t`); `srtc_mux_config_add_program` returns a handle; `srtc_mux_config_add_video_stream_to_program` / `_add_klv_stream_to_program` scope streams to a program; ≤16 programs per muxer config. |
 | Multi-program demux at the C ABI | ❌ Deferred | Rust demuxer fully supports multi-program; C ABI receiver surface doesn't yet exist. Rides with the future receiver-side `srt-c` plan. |
 | cbindgen-generated `srtc.h` | ✅ Full | Committed at `crates/srt-c/include/srtc.h`; CI verifies no drift via `tests/header_drift.rs`. |
@@ -416,22 +416,22 @@ as `Obu { obu_type, payload, .. }` without further parsing.
 
 ## FFmpeg URL interop quirks
 
-`srt-rust` follows the libsrt-URL canonical conventions
+`tstrans` follows the libsrt-URL canonical conventions
 (`srt-live-transmit`, OBS, mediamtx, gstreamer's `srtsink`/`srtsrc`,
 Haivision Connect). FFmpeg's `srt://` protocol diverges in a few unit
 conventions; users copying URLs between tools should be aware.
 
-| URL key | FFmpeg unit | srt-rust unit | Notes |
+| URL key | FFmpeg unit | tstrans unit | Notes |
 | --- | --- | --- | --- |
-| `latency` | µs | ms | srt-rust warns when value ≥ 10 s (likely paste from ffmpeg URL). |
+| `latency` | µs | ms | tstrans warns when value ≥ 10 s (likely paste from ffmpeg URL). |
 | `rcvlatency` | µs | ms | Same warning. |
 | `peerlatency` | µs | ms | Same warning. |
 | `snddropdelay` | µs | (deferred) | Currently rejected as unsupported. |
 
-When migrating an ffmpeg pipeline URL to srt-rust, divide the latency
+When migrating an ffmpeg pipeline URL to tstrans, divide the latency
 values by 1000.
 
-ffmpeg-style key aliases honored by srt-rust (zero new functionality —
+ffmpeg-style key aliases honored by tstrans (zero new functionality —
 just alternate spellings of existing keys): `pkt_size` / `payload_size`
 (→ `payloadsize`), `srt_streamid` (→ `streamid`), `tsbpddelay` (→
 `latency`), `smoother` (→ `congestion`), `ffs` (→ `fc`),
@@ -442,8 +442,8 @@ just alternate spellings of existing keys): `pkt_size` / `payload_size`
 
 ## Standards reference — what we cite vs. what we implement
 
-The MISB / SMPTE / IETF documents that bear on `srt-rust`. The
-"Implemented?" column reflects what `srt-rust` does, not what the spec
+The MISB / SMPTE / IETF documents that bear on `tstrans`. The
+"Implemented?" column reflects what `tstrans` does, not what the spec
 covers.
 
 | Spec | Title | Implemented? |
@@ -483,7 +483,7 @@ covers.
 | Crate | Status | Target |
 | --- | --- | --- |
 | `srt-sys` | ✅ Full | Bindgen-generated FFI to libsrt 1.5.5; encryption via mbedTLS. |
-| `srt-core` | ✅ Full (sync) | Safe Rust API — `Socket`, `Listener`, builders, KLV. |
+| `tst-core` | ✅ Full (sync) | Safe Rust API — `Socket`, `Listener`, builders, KLV. |
 | `srt-c` | ✅ Full | cdylib + staticlib + cbindgen header + pkg-config; Linux x86_64. |
 | `srt-jni` | ⏳ Planned | JVM JAR for JDK 17+ consumers. |
 | `srt-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |

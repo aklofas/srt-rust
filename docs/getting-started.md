@@ -2,7 +2,7 @@
 
 ## Audience and time budget
 
-If you're new to `srt-rust` and want to send and receive bytes in
+If you're new to `tstrans` and want to send and receive bytes in
 10 minutes, start here. For deeper context, see
 [architecture.md](architecture.md).
 
@@ -16,7 +16,7 @@ finished `.ts` file on disk.
 - Rust 1.85+ via rustup. Check: `rustc --version`. The repo's
   `rust-toolchain.toml` pins to 1.85 for local development.
 - C/C++ toolchain (`cmake`, `pkg-config`, `python3`, `build-essential`).
-  Required because `srt-sys` and `srt-core` build vendored libsrt and
+  Required because `srt-sys` and `tst-core` build vendored libsrt and
   mbedTLS from source.
 - Debian/Ubuntu:
   `sudo apt-get install -y build-essential cmake pkg-config python3`.
@@ -25,8 +25,8 @@ finished `.ts` file on disk.
 ## Get the code
 
 ```bash
-git clone --recurse-submodules https://github.com/aklofas/srt-rust.git
-cd srt-rust
+git clone --recurse-submodules https://github.com/aklofas/tstrans.git
+cd tstrans
 ```
 
 If you cloned without `--recurse-submodules`:
@@ -40,22 +40,22 @@ The submodules are `vendor/srt` (libsrt 1.5.5) and `vendor/mbedtls`
 
 ## Add it to your project
 
-Until `srt-rust` is published to crates.io, depend on it via git:
+Until `tstrans` is published to crates.io, depend on it via git:
 
 ```toml
 [dependencies]
-srt-core = { git = "https://github.com/aklofas/srt-rust" }
+tst-core = { git = "https://github.com/aklofas/tstrans" }
 ```
 
 Note on cold builds: the first build compiles libsrt + mbedTLS from
 source and takes ~3-5 minutes. Pass `--no-default-features` on
-`srt-core` to skip mbedTLS for faster builds (this also disables
+`tst-core` to skip mbedTLS for faster builds (this also disables
 encryption — only do this for testing).
 
 ## Send your first packet
 
 ```rust
-use srt_core::srt::SocketBuilder;
+use tst_srt::SocketBuilder;
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -76,7 +76,7 @@ queued for the wire.
 ## Receive your first packet
 
 ```rust
-use srt_core::srt::ListenerBuilder;
+use tst_srt::ListenerBuilder;
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         match socket.recv(&mut buf) {
             Ok(n) => println!("recv {n} bytes: {:?}", &buf[..n.min(20)]),
-            Err(srt_core::error::RecvError::ConnectionBroken) => break,
+            Err(tst_srt::error::RecvError::ConnectionBroken) => break,
             Err(e) => return Err(Box::new(e)),
         }
     }
@@ -109,9 +109,9 @@ message.
 Switch from raw bytes to a typed video sender:
 
 ```rust
-use srt_core::mpegts::mux::Config;
-use srt_core::pipeline::{Sender, SrtTransport};
-use srt_core::srt::SocketBuilder;
+use tst_core::mpegts::mux::Config;
+use tst_pipeline::MuxSender;
+use tst_srt::{SocketBuilder, SrtTransport};
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -119,7 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .latency(Duration::from_millis(120))
         .connect("127.0.0.1:9000")?;
     let transport = SrtTransport::new(socket);
-    let sender = Sender::new(Config::default(), transport)?;
+    let sender = MuxSender::new(Config::default(), transport)?;
 
     // Synthetic Annex-B IDR access unit + KLV blob.
     let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, /* ... payload bytes ... */];
@@ -132,14 +132,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`Sender` wraps an `mpegts::mux::Muxer` and an `SrtTransport`. It
+`MuxSender` wraps an `mpegts::mux::Muxer` and an `SrtTransport`. It
 auto-mux's NAL units and KLV blobs into a single MPEG-TS stream and
 sends each TS chunk over SRT. `pts_90khz` is in 90 kHz ticks (the TS
 clock); `key_frame` should be true for IDR frames.
 
 In production, replace the synthetic generator with your encoder's
 output. See
-[../crates/srt-core/examples/pipeline_send_to_socket.rs](../crates/srt-core/examples/pipeline_send_to_socket.rs)
+[../crates/tst-srt/examples/pipeline_send_to_socket.rs](../crates/tst-srt/examples/pipeline_send_to_socket.rs)
 for a runnable version with five frames and pacing.
 
 ## Run the example pair
@@ -167,8 +167,8 @@ is broken and exits cleanly.
   latency, stats.
 - [guide-klv.md](guide-klv.md) — encoding and decoding ST 0601 KLV.
 - [guide-mpegts-mux.md](guide-mpegts-mux.md) — the TS muxer's knobs.
-- [guide-pipeline.md](guide-pipeline.md) — picking among `Sender`,
-  `TsSender`, and `RawSender`.
+- [guide-pipeline.md](guide-pipeline.md) — picking among `MuxSender`,
+  `Sender`, and `RawSender`.
 - [cookbook.md](cookbook.md) — recipes for common multi-step tasks.
 - [troubleshooting.md](troubleshooting.md) — common failure modes.
 - [compatibility.md](compatibility.md) — feature-by-feature support

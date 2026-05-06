@@ -1,6 +1,6 @@
 # Cookbook
 
-Common multi-step recipes. Each recipe is a short narrative + a code block + a link to the corresponding runnable example. Run any example with `cargo run --example <name>`. The full set of examples lives at `crates/srt-core/examples/`.
+Common multi-step recipes. Each recipe is a short narrative + a code block + a link to the corresponding runnable example. Run any example with `cargo run --example <name>`. The full set of examples lives at `crates/tst-srt/examples/`.
 
 ## Recipes
 
@@ -11,7 +11,7 @@ Reach for this when you need a secure uplink. SRT's encryption is AES-CTR with a
 The diff against an unencrypted setup is small: `passphrase(...)` plus `key_length(...)` on both the `SocketBuilder` and the `ListenerBuilder`. `Passphrase::new` validates length (10–79 ASCII-printable bytes, libsrt's own constraint).
 
 ```rust,no_run
-use srt_core::srt::{KeyLength, Passphrase, SocketBuilder};
+use tst_srt::{KeyLength, Passphrase, SocketBuilder};
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/encrypted_send_recv.rs](../crates/srt-core/examples/encrypted_send_recv.rs).
+Runnable: [../crates/tst-srt/examples/encrypted_send_recv.rs](../crates/tst-srt/examples/encrypted_send_recv.rs).
 
 ### 2. Survive a flaky transport with reconnect + gap buffer
 
@@ -36,12 +36,11 @@ Reach for this when the wire is lossy — radio links, NAT timeouts, listener re
 The factory closure rebuilds the inner transport on demand. `ReconnectPolicy` controls retries, backoff, and gap-buffer overflow behaviour.
 
 ```rust,no_run
-use srt_core::mpegts::mux::Config;
-use srt_core::pipeline::{
-    BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy,
-    Sender, SrtTransport, TransportError,
+use tst_core::mpegts::mux::Config;
+use tst_pipeline::{
+    BackoffStrategy, ManagedTransport, MuxSender, OverflowPolicy, ReconnectPolicy, TransportError,
 };
-use srt_core::srt::SocketBuilder;
+use tst_srt::{SocketBuilder, SrtTransport};
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -63,12 +62,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         overflow_policy: OverflowPolicy::DropOldest,
     };
     let managed = ManagedTransport::new(initial, factory, policy);
-    let _sender = Sender::new(Config::default(), managed)?;
+    let _sender = MuxSender::new(Config::default(), managed)?;
     Ok(())
 }
 ```
 
-Runnable: [../crates/srt-core/examples/managed_reconnect.rs](../crates/srt-core/examples/managed_reconnect.rs).
+Runnable: [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs).
 
 ### 3. Mux to a file (no SRT, no transport)
 
@@ -77,7 +76,7 @@ Reach for this when you want the muxer's output without any networking — build
 The drain loop is the standard pattern: push input, then pull until `pull` returns 0. Drain after every push so muxer memory stays bounded.
 
 ```rust,no_run
-use srt_core::mpegts::mux::{Config, Muxer};
+use tst_core::mpegts::mux::{Config, Muxer};
 use std::fs::File;
 use std::io::Write;
 
@@ -101,17 +100,17 @@ fn main() -> std::io::Result<()> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/mux_to_file.rs](../crates/srt-core/examples/mux_to_file.rs).
+Runnable: [../crates/tst-srt/examples/mux_to_file.rs](../crates/tst-srt/examples/mux_to_file.rs).
 
 ### 4. Relay a captured `.ts` file over SRT
 
-Reach for this when you have a `.ts` capture you want to replay over SRT — regression-testing receivers, rebroadcasting an archive, exercising a downstream pipeline. `TsSender` accepts arbitrary byte chunks, verifies TS sync, and emits 7-packet (1316-byte) bundles to the wrapped transport.
+Reach for this when you have a `.ts` capture you want to replay over SRT — regression-testing receivers, rebroadcasting an archive, exercising a downstream pipeline. `Sender` accepts arbitrary byte chunks, verifies TS sync, and emits 7-packet (1316-byte) bundles to the wrapped transport.
 
 The sender is byte-stream oriented — file reads of any size are fine, the sender handles 188-alignment and bundling internally. `flush()` emits any buffered partial bundle so the tail of a finite input reaches the wire.
 
 ```rust,no_run
-use srt_core::pipeline::{SrtTransport, TsSender, TsSenderConfig};
-use srt_core::srt::SocketBuilder;
+use tst_pipeline::{Sender, SenderConfig};
+use tst_srt::{SocketBuilder, SrtTransport};
 use std::fs::File;
 use std::io::Read;
 use std::time::Duration;
@@ -120,7 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket = SocketBuilder::new()
         .latency(Duration::from_millis(120))
         .connect("127.0.0.1:9000")?;
-    let mut sender = TsSender::new(SrtTransport::new(socket), TsSenderConfig::default());
+    let mut sender = Sender::new(SrtTransport::new(socket), SenderConfig::default());
     let mut file = File::open("input.ts")?;
     let mut buf = vec![0u8; 4096];
     loop {
@@ -134,7 +133,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/ts_relay_from_file.rs](../crates/srt-core/examples/ts_relay_from_file.rs).
+Runnable: [../crates/tst-srt/examples/ts_relay_from_file.rs](../crates/tst-srt/examples/ts_relay_from_file.rs).
 
 ### 5. Receive into a file
 
@@ -143,7 +142,7 @@ Reach for this when archiving a stream or building a test fixture from a live pr
 A 1500-byte buffer comfortably fits SRT's default 1316-byte payload, so each `recv` returns one whole message. The three-arm match handles data, clean close, and defensive timeout.
 
 ```rust,no_run
-use srt_core::srt::ListenerBuilder;
+use tst_srt::ListenerBuilder;
 use std::fs::File;
 use std::io::Write;
 use std::time::Duration;
@@ -158,8 +157,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         match socket.recv(&mut buf) {
             Ok(n) => out.write_all(&buf[..n])?,
-            Err(srt_core::error::RecvError::ConnectionBroken) => break,
-            Err(srt_core::error::RecvError::TimedOut) => continue,
+            Err(tst_srt::error::RecvError::ConnectionBroken) => break,
+            Err(tst_srt::error::RecvError::TimedOut) => continue,
             Err(e) => return Err(Box::new(e)),
         }
     }
@@ -167,7 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/srt_listener_to_file.rs](../crates/srt-core/examples/srt_listener_to_file.rs).
+Runnable: [../crates/tst-srt/examples/srt_listener_to_file.rs](../crates/tst-srt/examples/srt_listener_to_file.rs).
 
 ### 6. Decode ST 0601 from a captured `.klv` blob
 
@@ -176,7 +175,7 @@ Reach for this when validating producer output, building dashboards on top of ca
 `extract_klv` parses PAT and PMT to find the KLV PID (registration descriptor `KLVA`), demuxes PES packets on that PID, and writes each PES payload as `<prefix>_NNNN.klv` (0-indexed via `enumerate()`). Each `.klv` blob then feeds `klv_decode_file`, which walks the ladder `decode_strict_compliance` → `decode_strict` → `decode` → `decode_unchecked`, reporting which level accepted.
 
 ```rust,no_run
-use srt_core::klv::st0601::{decode, decode_strict, decode_strict_compliance};
+use tst_core::klv::st0601::{decode, decode_strict, decode_strict_compliance};
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -194,7 +193,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/extract_klv.rs](../crates/srt-core/examples/extract_klv.rs) and [../crates/srt-core/examples/klv_decode_file.rs](../crates/srt-core/examples/klv_decode_file.rs).
+Runnable: [../crates/tst-srt/examples/extract_klv.rs](../crates/tst-srt/examples/extract_klv.rs) and [../crates/tst-srt/examples/klv_decode_file.rs](../crates/tst-srt/examples/klv_decode_file.rs).
 
 ### 7. Encode ST 0601 from typed values
 
@@ -203,7 +202,7 @@ Reach for this when synthesizing KLV for tests, generating fixtures, or translat
 `encode_to_vec` auto-emits Tag 1 (16-bit BCC checksum, mandated last) and Tag 65 (UAS LS Version Number, mandated present) when the caller didn't set them. So a default-constructed record with a few typed fields produces wire bytes that satisfy strict-compliance validation out of the box.
 
 ```rust,no_run
-use srt_core::klv::st0601::{UasDatalinkLs, encode_to_vec};
+use tst_core::klv::st0601::{UasDatalinkLs, encode_to_vec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rec = UasDatalinkLs::default();
@@ -221,16 +220,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/klv_encode_minimal.rs](../crates/srt-core/examples/klv_encode_minimal.rs).
+Runnable: [../crates/tst-srt/examples/klv_encode_minimal.rs](../crates/tst-srt/examples/klv_encode_minimal.rs).
 
 ### 8. Use a custom (non-SRT) transport
 
-Reach for this when the sender shells fit but the wire isn't SRT — UDP, file, in-memory test harness, your own protocol. `Sender`, `TsSender`, and `RawSender` are all generic over `T: Transport`; implement the trait once and they all compose.
+Reach for this when the sender shells fit but the wire isn't SRT — UDP, file, in-memory test harness, your own protocol. `MuxSender`, `Sender`, and `RawSender` are all generic over `T: Transport`; implement the trait once and they all compose.
 
 The trait is four methods: `send_bytes`, `max_payload`, `is_alive`, `close`. Your impl needs to be `Send`, not `Sync` — the shells handle internal synchronization where required.
 
 ```rust,no_run
-use srt_core::pipeline::{Transport, TransportError};
+use tst_pipeline::{Transport, TransportError};
 use std::sync::{Arc, Mutex};
 
 struct MemTransport {
@@ -254,7 +253,7 @@ impl Transport for MemTransport {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/custom_transport.rs](../crates/srt-core/examples/custom_transport.rs).
+Runnable: [../crates/tst-srt/examples/custom_transport.rs](../crates/tst-srt/examples/custom_transport.rs).
 
 ### 9. Mux H.265 + sync KLV
 
@@ -263,7 +262,7 @@ Reach for this when the encoder produces HEVC, or when the receiver requires str
 **Sync KLV auto-wraps in the muxer.** When you configure `KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) before TS-framing. Pass raw KLV LS bytes — do not pre-wrap. PTS lives in the PES header (per § 2.12.4.1). See [guide-mpegts-mux.md](guide-mpegts-mux.md) §"KLV-in-TS modes".
 
 ```rust,no_run
-use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = Config::builder()
@@ -280,16 +279,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/mux_h265_with_klv.rs](../crates/srt-core/examples/mux_h265_with_klv.rs).
+Runnable: [../crates/tst-srt/examples/mux_h265_with_klv.rs](../crates/tst-srt/examples/mux_h265_with_klv.rs).
 
 ### 10. Print live `Stats` from a sender
 
 Reach for this when building an operational dashboard, instrumenting a sender for production telemetry, or debugging packet loss in the field. `Socket::stats()` returns a snapshot of libsrt's per-socket counters — call it periodically and surface the deltas.
 
-The most operationally interesting fields on a sender: `bytes_sent`, `packets_lost_send_side`, `packets_retransmitted`, `rtt`, and `mbps_estimated_bandwidth`. (Loss/drop counters are split by which side observed them — read `*_send_side` on a sender, `*_recv_side` on a receiver.) There's no standalone example for this; see [guide-srt.md](guide-srt.md) §`Stats` for the full field list and [../crates/srt-core/examples/managed_reconnect.rs](../crates/srt-core/examples/managed_reconnect.rs) for similar peer-thread observation patterns.
+The most operationally interesting fields on a sender: `bytes_sent`, `packets_lost_send_side`, `packets_retransmitted`, `rtt`, and `mbps_estimated_bandwidth`. (Loss/drop counters are split by which side observed them — read `*_send_side` on a sender, `*_recv_side` on a receiver.) There's no standalone example for this; see [guide-srt.md](guide-srt.md) §`Stats` for the full field list and [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs) for similar peer-thread observation patterns.
 
 ```rust,no_run
-use srt_core::srt::SocketBuilder;
+use tst_srt::SocketBuilder;
 use std::thread;
 use std::time::Duration;
 
@@ -310,7 +309,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-No standalone example; see [../crates/srt-core/examples/managed_reconnect.rs](../crates/srt-core/examples/managed_reconnect.rs) and [guide-srt.md](guide-srt.md) §`Stats`.
+No standalone example; see [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs) and [guide-srt.md](guide-srt.md) §`Stats`.
 
 ### 11. Open a sender from an `srt://...?...` URL
 
@@ -319,7 +318,7 @@ files (or are passed in by an orchestrator). Build a `SocketConfig`
 from the parsed URL's overlay, then connect.
 
 ```rust,no_run
-use srt_core::{SocketBuilder, SrtUrl};
+use tst_srt::{SocketBuilder, SrtUrl};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let parsed = SrtUrl::parse(
@@ -327,7 +326,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let mut config = SocketBuilder::new().config();
     parsed.overlay.apply_to_socket(&mut config);
-    let _socket = srt_core::srt::Socket::connect_with(
+    let _socket = tst_srt::Socket::connect_with(
         &config,
         format!("{}:{}", parsed.host, parsed.port).as_str(),
     )?;
@@ -335,7 +334,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/sender_from_url.rs](../crates/srt-core/examples/sender_from_url.rs).
+Runnable: [../crates/tst-srt/examples/sender_from_url.rs](../crates/tst-srt/examples/sender_from_url.rs).
 
 ### 12. Pair sync-KLV with video AUs by nearest PTS
 
@@ -344,7 +343,7 @@ Reach for this when an encoder emits sync-KLV (PMT stream_type 0x15, H.222.0 § 
 Match BOTH `MetadataKind::KlvSyncAuCell` AND `MetadataKind::KlvAsync`. The natural intuition is "sync KLV is the kind that needs pairing," but many production ISR encoders declare a PID `stream_type=0x15` and ship bare KLV without the 5-byte AU cell header. The demuxer surfaces those bytes as `KlvAsync` with the PES PTS preserved on the parent event. That `KlvAsync` is still PTS-aligned with video; matching only `KlvSyncAuCell` silently drops the most common shape we see in the field.
 
 ```rust,no_run
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
 use std::collections::VecDeque;
 use std::fs;
 
@@ -395,16 +394,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Tolerance is consumer-domain knowledge. Most encoders emit KLV PES PTS exactly equal to frame PTS; a window of a few hundred milliseconds covers minor encoder drift. See [examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs) for the full runnable form.
+Tolerance is consumer-domain knowledge. Most encoders emit KLV PES PTS exactly equal to frame PTS; a window of a few hundred milliseconds covers minor encoder drift. See [examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs) for the full runnable form.
 
-Runnable: [../crates/srt-core/examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs); see also [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs) for the file-feed shape.
+Runnable: [../crates/tst-srt/examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs); see also [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs) for the file-feed shape.
 
 ### 13. Sample-and-hold async-KLV against video frames
 
 Reach for this when KLV is emitted independently of video — typically 1–10 Hz async metadata against 25–60 fps video. The canonical pairing is "the most recent KLV record where `klv.pts <= frame.pts`." There is no ambiguity about which KLV pairs with which frame; the only knob is whether to drop a frame when the most recent KLV is too stale.
 
 ```rust,no_run
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut d = Demuxer::new();
@@ -427,14 +426,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: see [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs) for the file-feed shape; [../crates/srt-core/examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs) is the related nearest-PTS sibling for sync KLV.
+Runnable: see [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs) for the file-feed shape; [../crates/tst-srt/examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs) is the related nearest-PTS sibling for sync KLV.
 
 ### 14. EO + IR sensor pair with shared async-KLV
 
 Reach for this when the platform carries two sensors (visible + thermal) and one async metadata stream serves both. Both video streams attach the same KLV state; there is no per-stream pairing logic. The demuxer surfaces the topology as a `ProgramMap` with two `StreamInfo` rows of `StreamKind::Video(_)` and one `StreamKind::KlvAsync`; the `klv_links` table reports the encoder-declared (or inferred / overridden) linkage.
 
 ```rust,no_run
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
 
 fn process_eo(_pts: i64, _klv: Option<&[u8]>) {}
 fn process_ir(_pts: i64, _klv: Option<&[u8]>) {}
@@ -463,7 +462,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 If the encoder declares the linkage via `metadata_descriptor`, the demuxer surfaces it as `KlvLink { source: LinkSource::Declared, .. }` in `ProgramMap.klv_links`. Use it as a hint when assigning routes; trust your `treat_as` overrides if you know the encoder lies.
 
-Runnable: see [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs) for the file-feed shape; [../crates/srt-core/examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs) is the related sync-KLV sibling.
+Runnable: see [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs) for the file-feed shape; [../crates/tst-srt/examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs) is the related sync-KLV sibling.
 
 ### 15. Label EO + IR + KLV streams in a multi-stream program
 
@@ -472,8 +471,8 @@ program. Per-stream PMT descriptors let receivers (TSDuck, ffprobe, our
 own `Demuxer`) render which PID is which without external configuration.
 
 ```rust,no_run
-use srt_core::mpegts::descriptors as desc;
-use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::descriptors as desc;
+use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 
 const EO_PID: u16 = 0x0100;
 const IR_PID: u16 = 0x0101;
@@ -520,7 +519,7 @@ When you have two independent (EO + IR + KLV) feeds and need to ship them
 through one SRT socket without forcing each to its own UDP port:
 
 ```rust,no_run
-use srt_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::builder()
@@ -553,7 +552,7 @@ receiver picks one program of interest with ffmpeg `-map p:N` or TSDuck
 renumber program 2's input PIDs into a non-conflicting range during the
 demux→remux step.
 
-Runnable: [../crates/srt-core/examples/repack_two_programs.rs](../crates/srt-core/examples/repack_two_programs.rs).
+Runnable: [../crates/tst-srt/examples/repack_two_programs.rs](../crates/tst-srt/examples/repack_two_programs.rs).
 
 ### 17. Extract video resolution and profile from a demuxed stream
 
@@ -565,8 +564,8 @@ sample — it skips non-SPS/PPS NALs silently and returns `Ok` with empty
 maps on P-frames.
 
 ```rust,no_run
-use srt_core::codec::h264;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::codec::h264;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut dx = Demuxer::new();
@@ -596,7 +595,7 @@ For H.265 substitute `h265::parse_parameter_sets` and use
 4.0 is stored as 120). The pattern is identical; only the import and field
 names differ.
 
-Runnable: [../crates/srt-core/examples/parse_video_parameters.rs](../crates/srt-core/examples/parse_video_parameters.rs) — shows change-driven logging per PID across H.264 and H.265 in one pass.
+Runnable: [../crates/tst-srt/examples/parse_video_parameters.rs](../crates/tst-srt/examples/parse_video_parameters.rs) — shows change-driven logging per PID across H.264 and H.265 in one pass.
 
 ### 18. Reconstitute Annex B parameter sets for decoder replay
 
@@ -607,8 +606,8 @@ The `raw_rbsp` field on each parsed struct preserves the input bytes verbatim
 Prepend a 4-byte start code to get conformant Annex B framing:
 
 ```rust,no_run
-use srt_core::codec::h264;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::codec::h264;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 fn to_annex_b(rbsp: &[u8]) -> Vec<u8> {
     // Same for H.264 and H.265 — the demuxer includes the NAL header byte(s)
@@ -644,7 +643,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/parse_video_parameters.rs](../crates/srt-core/examples/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guide-codec.md` for the decoder-replay section.
+Runnable: [../crates/tst-srt/examples/parse_video_parameters.rs](../crates/tst-srt/examples/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guide-codec.md` for the decoder-replay section.
 
 ### 19. Mux audio + video + KLV in a single program
 
@@ -652,7 +651,7 @@ Build a three-stream program where audio PTS-aligns with video for
 synchronized playback, and KLV records emit on the same PCR clock.
 
 ```rust
-use srt_core::mpegts::mux::{
+use tst_core::mpegts::mux::{
     AudioCodec, ConfigBuilder, KlvStreamType, Muxer, VideoCodec,
 };
 
@@ -677,7 +676,7 @@ for frame_idx in 0..30 {
 }
 ```
 
-Full example: [`../crates/srt-core/examples/mux_audio_video_klv.rs`](../crates/srt-core/examples/mux_audio_video_klv.rs).
+Full example: [`../crates/tst-srt/examples/mux_audio_video_klv.rs`](../crates/tst-srt/examples/mux_audio_video_klv.rs).
 
 ### 20. Inject WebVTT POI cues into a live MPEG-TS uplink
 
@@ -686,7 +685,7 @@ in a live SRT/TS stream so the downstream HLS player (hls.js etc.)
 can render them as captions.
 
 ```rust
-use srt_core::mpegts::mux::{Config, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{Config, Muxer, SubtitleCodec, VideoCodec};
 
 let cfg = Config::builder()
     .add_program(1, 0x100)
@@ -712,7 +711,7 @@ Use case: receive-side inspection — what subtitle codecs are in a
 capture, and what's the cue text?
 
 ```rust
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
 
 let mut demux = Demuxer::new();
 demux.feed(&bytes)?;
@@ -749,7 +748,7 @@ The recipe below mirrors recipe 9 (H.265 + sync KLV) — flip the codec to
 VPS / SPS / PPS).
 
 ```rust,no_run
-use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = Config::builder()
@@ -766,7 +765,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/mux_h266_with_klv.rs](../crates/srt-core/examples/mux_h266_with_klv.rs).
+Runnable: [../crates/tst-srt/examples/mux_h266_with_klv.rs](../crates/tst-srt/examples/mux_h266_with_klv.rs).
 
 ### 23. Streaming AV1 video with KLV metadata
 
@@ -784,7 +783,7 @@ AV1 uses OBU framing — fundamentally different from the NAL-shaped codecs
   AV1 rather than KLV-async on the same stream_type byte.
 
 ```rust,no_run
-use srt_core::mpegts::mux::{Config, KlvStreamType, Muxer, StreamSpec, VideoCodec};
+use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, StreamSpec, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = Config {
@@ -808,4 +807,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/mux_av1_with_klv.rs](../crates/srt-core/examples/mux_av1_with_klv.rs).
+Runnable: [../crates/tst-srt/examples/mux_av1_with_klv.rs](../crates/tst-srt/examples/mux_av1_with_klv.rs).

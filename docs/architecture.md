@@ -2,8 +2,8 @@
 
 ## Introduction
 
-This document covers how `srt-rust` is laid out: the crate graph, the
-internal structure of `srt-core`, and the pipeline composition model that
+This document covers how `tstrans` is laid out: the crate graph, the
+internal structure of `tst-core`, and the pipeline composition model that
 ties the muxer, transport, and reconnect behaviour together. It targets
 evaluators sizing up the project and contributors finding their way around;
 integrators may want it as background but should start at
@@ -21,31 +21,33 @@ read more than one of those.
 ## Crate graph
 
 ```
-srt-sys (raw FFI)  ──→  srt-core  ──→  srt-c (cdylib + staticlib + cbindgen)
+srt-sys (raw FFI)  ──→  tst-core  ──→  tst-c (cdylib + staticlib + cbindgen)
                               │
-                              ├──→  srt-jni    (planned)
-                              └──→  srt-uniffi (planned)
+                              ├──→  tst-pipeline (pipeline shells)
+                              ├──→  tst-srt      (SRT transports)
+                              ├──→  tst-jni      (planned)
+                              └──→  tst-uniffi   (planned)
 
 vendored: vendor/srt (libsrt 1.5.5), vendor/mbedtls (3.6.6 LTS)
 ```
 
 The layering rule is one-directional: lower layers do not depend on upper
-layers. Binding crates (`srt-c`, `srt-jni`, `srt-uniffi`) depend on
-`srt-core` only — never on `srt-sys` directly. This keeps every binding's
+layers. Binding crates (`tst-c`, `tst-jni`, `tst-uniffi`) depend on
+`tst-core` only — never on `srt-sys` directly. This keeps every binding's
 surface area defined by the same safe Rust API and means a fix in
-`srt-core` reaches every binding without per-binding patches.
+`tst-core` reaches every binding without per-binding patches.
 
 `srt-sys` is the raw FFI layer — bindgen-generated against libsrt 1.5.5,
 exposing roughly 72 `srt_*` functions and the full `SRT_*` constant
 surface, with `mbedtls` wired in as the encryption backend by default.
-`srt-core` is the safe Rust API; nothing above it should ever pull
+`tst-core` is the safe Rust API; nothing above it should ever pull
 `srt-sys` into its dependency graph. The vendored libsrt and mbedTLS
 submodules are pinned by tag (`v1.5.5`, `v3.6.6` LTS); submodule advances
 are deliberate, separate commits. Both vendored builds link statically,
-so `srt-c`'s shared library has no runtime dependency on a system libsrt
+so `tst-c`'s shared library has no runtime dependency on a system libsrt
 or libmbedtls.
 
-## Inside `srt-core`: four modules, four jobs
+## Inside `tst-core`: four modules, four jobs
 
 - `srt::*` — safe wrapper for libsrt sockets and listeners.
 - `klv::*` — KLV codec, generic substrate plus typed ST 0601 / ST 0605 / ST 1910 layers.
@@ -54,30 +56,31 @@ or libmbedtls.
 - `pipeline::*` — composition of the above into ergonomic sender + receiver shells.
 
 Each module is independently usable. A consumer who only needs KLV decode
-can pull in `srt-core` and use `klv::st0601::decode` without touching the
+can pull in `tst-core` and use `klv::st0601::decode` without touching the
 muxer or transport. A consumer who already has their own TS muxer can
-skip `mpegts::mux` and feed bytes through `pipeline::TsSender`. A
+skip `mpegts::mux` and feed bytes through `tst_pipeline::Sender`. A
 consumer who only wants the SRT socket — for an entirely different
 streaming protocol on top — can use `srt::Socket` and `srt::Listener`
 directly.
 
-`pipeline::*` is the only module that depends on the other four. It is
-deliberately the thinnest layer in the crate: its job is composition, not
-new behaviour. The send shells delegate framing to `mpegts::mux::Muxer`
-and wire transport to a `Transport` implementation; the receive shells
-delegate framing recovery to `mpegts::demux::Demuxer` and bytes-in to a
-`RecvTransport` implementation. Metadata typing for both directions is
-`klv::st0601` / `klv::st0605`. MPEG-TS sync-metadata AU cell carriage
-lives at `mpegts::au_cell` (per ITU-T H.222.0 V9 § 2.12.4.2). The canonical
-`Transport` + `RecvTransport` impl is `SrtTransport` over `srt::Socket`
-— the same wrapper handles both directions on a connected socket.
+`tst-pipeline` is the composition layer that depends on the other crates.
+It is deliberately thin: its job is composition, not new behaviour. The
+send shells delegate framing to `mpegts::mux::Muxer` and wire transport to
+a `Transport` implementation; the receive shells delegate framing recovery
+to `mpegts::demux::Demuxer` and bytes-in to a `RecvTransport`
+implementation. Metadata typing for both directions is `klv::st0601` /
+`klv::st0605`. MPEG-TS sync-metadata AU cell carriage lives at
+`mpegts::au_cell` (per ITU-T H.222.0 V9 § 2.12.4.2). The canonical
+`Transport` + `RecvTransport` impl is `SrtTransport` in `tst-srt` over
+`srt::Socket` — the same wrapper handles both directions on a connected
+socket.
 
 ## The pipeline composition model
 
 ```
                    ┌────────────────────────────────┐
-                   │  Sender / TsSender / RawSender │  (3 sender shells)
-                   │  generic over T: Transport     │
+                   │  MuxSender / Sender / RawSender │  (3 sender shells)
+                   │  generic over T: Transport      │
                    └──────────────┬─────────────────┘
                                   │ T: Transport
               ┌───────────────────┴───────────────────┐
@@ -93,7 +96,7 @@ lives at `mpegts::au_cell` (per ITU-T H.222.0 V9 § 2.12.4.2). The canonical
 
 Any sender shell composes with any `Transport` implementation. The shells
 differ by what they accept on the input side — NAL units plus KLV blobs
-(`Sender`), pre-muxed TS bytes (`TsSender`), or arbitrary byte-blind
+(`MuxSender`), pre-muxed TS bytes (`Sender`), or arbitrary byte-blind
 messages (`RawSender`). The transport differs by what it talks to on the
 output side — SRT (`SrtTransport`), a custom UDP socket, a file, an
 in-memory buffer for tests. The two axes are orthogonal: you pick a shell
@@ -109,32 +112,32 @@ reconnect at all. The shell sees a `Transport`; whether that `Transport`
 is plain `SrtTransport` or `ManagedTransport<SrtTransport>` is a
 construction-time choice.
 
-For worked examples, see [examples/managed_reconnect.rs](../crates/srt-core/examples/managed_reconnect.rs)
+For worked examples, see [examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs)
 (reconnect + gap buffer in action) and
-[examples/custom_transport.rs](../crates/srt-core/examples/custom_transport.rs)
+[examples/custom_transport.rs](../crates/tst-srt/examples/custom_transport.rs)
 (implementing the `Transport` trait against something other than SRT).
 
 ## Why three sender shells
 
 Decision tree:
 
-- You have NAL units plus KLV blobs → `Sender` (auto-muxes through `Muxer`, internally synchronized).
-- You have pre-muxed TS bytes → `TsSender` (3-byte sync verify, 7-packet bundling, RECOVER or STRICT framing mode).
+- You have NAL units plus KLV blobs → `MuxSender` (auto-muxes through `Muxer`, internally synchronized).
+- You have pre-muxed TS bytes → `Sender` (3-byte sync verify, 7-packet bundling, RECOVER or STRICT framing mode).
 - You have arbitrary byte-blind messages → `RawSender` (one `send` call = one outbound SRT message).
 
 There are three shells rather than one because the contracts differ.
-`Sender` enforces NAL unit boundaries and KLV record boundaries — it
+`MuxSender` enforces NAL unit boundaries and KLV record boundaries — it
 needs to know where one ends and the next begins to mux them into a TS
-stream correctly. `TsSender` enforces TS sync alignment — it needs to
+stream correctly. `Sender` enforces TS sync alignment — it needs to
 know where each 188-byte packet starts so it can bundle them into SRT
 messages of the right shape. `RawSender` enforces nothing beyond the
 `SRTO_PAYLOADSIZE` size cap — the caller has already framed the bytes.
 Fusing the three into one API would force a least-common-denominator
 contract that satisfies none of the use cases well. The shells also
-differ in what they do on transient failure. `Sender` carries an
+differ in what they do on transient failure. `MuxSender` carries an
 in-flight buffer and replays buffered bytes on reconnect, so a brief
 outage is invisible to the receiver above the transport gap-buffer
-window. `TsSender` re-establishes sync alignment on the byte stream
+window. `Sender` re-establishes sync alignment on the byte stream
 after a transport failure — RECOVER mode auto-resyncs to the next sync
 byte, STRICT mode fails fast. `RawSender` has no recovery contract by
 construction; one `send` either lands as one SRT message or returns an
@@ -145,8 +148,8 @@ error. The full mechanics of each shell are covered in
 
 ```
               ┌───────────────────────────────────────┐
-              │  RawReceiver  /  TsReceiver           │
-              │  Receiver  (full demux)               │
+              │  RawReceiver  /  Receiver             │
+              │  DemuxReceiver  (full demux)          │
               │  generic over R: RecvTransport        │
               └──────────────┬────────────────────────┘
                              │ R: RecvTransport
@@ -163,27 +166,27 @@ error. The full mechanics of each shell are covered in
 
 The receive side mirrors the send side. Three shells differ by what
 they emit: `RawReceiver::recv_one` returns one byte vec per call (no
-TS framing), `TsReceiver::next_packet` emits one 188-byte aligned TS
-packet per call (sync recovery internal), `Receiver::recv_event` emits
-one typed `DemuxEvent` per call (full TS sync + PSI parse + PES
+TS framing), `Receiver::next_packet` emits one 188-byte aligned TS
+packet per call (sync recovery internal), `DemuxReceiver::recv_event`
+emits one typed `DemuxEvent` per call (full TS sync + PSI parse + PES
 reassembly + NAL split + KLV unwrap). All three are generic over the
 `RecvTransport` trait — the receive-side counterpart to `Transport`,
 exposing `recv_bytes`, `max_payload`, `is_alive`, and `close`.
 `SrtTransport` implements both `Transport` and `RecvTransport`, so the
 same wrapper handles both directions on a connected `srt::Socket`.
 
-`Receiver` is the canonical full-demux shell. It composes
-`TsReceiver → Demuxer` internally and exposes a single `recv_event`
+`DemuxReceiver` is the canonical full-demux shell. It composes
+`Receiver → Demuxer` internally and exposes a single `recv_event`
 draining loop. It also implements `Iterator<Item = Result<DemuxEvent,
-ReceiverError>>` so the idiomatic drain pattern is `for result in &mut rx`.
+DemuxReceiverError>>` so the idiomatic drain pattern is `for result in &mut rx`.
 Iterator termination is the clean-EOF signal: when the underlying
-`RecvTransport` returns `TransportError::Closed`, `Receiver` calls
+`RecvTransport` returns `TransportError::Closed`, `DemuxReceiver` calls
 `Demuxer::flush` (recovering any trailing PES) and returns `Ok(None)`,
 which the iterator turns into `None`. Peer-disconnect or unrecoverable
-link errors surface as `Err(ReceiverError::Transport(Broken(_)))`;
-strict-mode rejections surface as `Err(ReceiverError::Demux(_))`.
+link errors surface as `Err(DemuxReceiverError::Transport(Broken(_)))`;
+strict-mode rejections surface as `Err(DemuxReceiverError::Demux(_))`.
 
-`Receiver::add_byte_sink` is the fan-out hook: register a callback
+`DemuxReceiver::add_byte_sink` is the fan-out hook: register a callback
 (`Box<dyn FnMut(&[u8]) + Send>`), and the callback receives every
 188-byte TS packet pulled from the transport — in registration order,
 before the demuxer parses them. The canonical use case is a
@@ -212,9 +215,9 @@ recipes (12, 13, 14) with runnable example companions
 ## Sync vs. async
 
 The public API is sync blocking. `Socket::send` and `Socket::recv` block
-the calling thread; `Sender::send_video` blocks until the underlying SRT
-socket has accepted the bytes; reconnect inside `ManagedTransport` runs
-on the caller's thread.
+the calling thread; `MuxSender::send_video` blocks until the underlying
+SRT socket has accepted the bytes; reconnect inside `ManagedTransport`
+runs on the caller's thread.
 
 Sync was chosen for three reasons. First, the target deployment shape
 is small — a process talks to ≤10 SRT peers, so the thread-per-
@@ -227,7 +230,7 @@ caller already knows the shape from the standard library.
 Async is on the deferred-features list, not ruled out. Two viable paths
 exist when a consumer asks. The lightweight path is a Tokio integration
 that wraps each blocking call in `spawn_blocking` — minimal extra surface,
-acceptable for low connection counts, no changes to `srt-core`'s
+acceptable for low connection counts, no changes to `tst-core`'s
 internals. The heavier path is a full async reactor backed by libsrt's
 `srt_epoll_*` family with `tokio::io::unix::AsyncFd` or equivalent
 registration — better scalability, much bigger surface to design and
@@ -235,9 +238,9 @@ test. The choice is consumer-driven; until then the sync API stays. See
 [`docs/deferred-features.md`](deferred-features.md) for the current note.
 
 Note that "sync" applies to the public API surface — internally, the
-`Sender` family uses an internal mutex so the data path is safe to call
-from multiple threads if a consumer wants to fan in NAL and KLV inputs
-on separate producers. The synchronization is invisible to single-
+`MuxSender` family uses an internal mutex so the data path is safe to
+call from multiple threads if a consumer wants to fan in NAL and KLV
+inputs on separate producers. The synchronization is invisible to single-
 threaded callers and adds no contention when only one thread is
 producing.
 

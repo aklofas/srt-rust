@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This guide covers `srt_core::mpegts::mux` — the sender-side MPEG-TS
+This guide covers `tst_core::mpegts::mux` — the sender-side MPEG-TS
 muxer. `Muxer` takes encoded H.264 / H.265 access units in Annex-B
 framing plus KLV metadata blobs, builds PES packets, fragments them
 into 188-byte TS packets, and emits PAT, PMT (carrying the KLVA
@@ -48,7 +48,7 @@ H.264 video at PID `0x1011`, KLV `PrivateData` (async, no PTS) at PID
 to construct from defaults plus selected overrides:
 
 ```rust,no_run
-use srt_core::mpegts::mux::{Config, KlvStreamType, StreamSpec, VideoCodec};
+use tst_core::mpegts::mux::{Config, KlvStreamType, StreamSpec, VideoCodec};
 
 // Pure default — H.264 + async KLV.
 let cfg_default = Config::default();
@@ -74,7 +74,7 @@ let cfg_h265_sync = Config {
 
 When constructing from scratch rather than tweaking the default,
 `ConfigBuilder` lets you chain stream additions and cadence overrides.
-Methods (all in `srt_core::mpegts::mux`):
+Methods (all in `tst_core::mpegts::mux`):
 
 - `add_video(pid: u16, codec: VideoCodec) -> Self`
 - `add_klv(pid: u16, stream_type: KlvStreamType, carries_pts: bool) -> Self`
@@ -87,9 +87,9 @@ Methods (all in `srt_core::mpegts::mux`):
 - `build() -> Result<Config, MuxError>` — runs `Config::validate`.
 
 ```rust,no_run
-use srt_core::mpegts::mux::{Config, ConfigBuilder, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{Config, ConfigBuilder, KlvStreamType, VideoCodec};
 
-fn build() -> Result<Config, srt_core::error::MuxError> {
+fn build() -> Result<Config, tst_core::error::MuxError> {
     Config::builder()
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -115,9 +115,9 @@ All four are first-class. Mid-stream codec change is out of scope — destroy
 the muxer and create a new one if you need to switch codecs in a single
 output file.
 
-The diff between [../crates/srt-core/examples/mux_to_file.rs](../crates/srt-core/examples/mux_to_file.rs)
+The diff between [../crates/tst-srt/examples/mux_to_file.rs](../crates/tst-srt/examples/mux_to_file.rs)
 (H.264 + async KLV via `Config::default()`) and
-[../crates/srt-core/examples/mux_h265_with_klv.rs](../crates/srt-core/examples/mux_h265_with_klv.rs)
+[../crates/tst-srt/examples/mux_h265_with_klv.rs](../crates/tst-srt/examples/mux_h265_with_klv.rs)
 (H.265 + sync KLV via the field-update form) is exactly the codec and
 KLV-mode knobs:
 
@@ -258,7 +258,7 @@ Required:
   failure.
 
 `MuxError` variants (full list in
-[../crates/srt-core/src/error.rs](../crates/srt-core/src/error.rs)):
+[../crates/tst-core/src/error.rs](../crates/tst-core/src/error.rs)):
 
 - `InvalidConfig(&'static str)` — `Config::validate` rejected the
   configuration; the message names the failed rule.
@@ -286,7 +286,7 @@ The standard pattern is push-then-drain after every push so the
 muxer's internal queue stays bounded:
 
 ```rust,no_run
-use srt_core::mpegts::mux::{Config, Muxer};
+use tst_core::mpegts::mux::{Config, Muxer};
 
 fn drain_pattern() -> Result<(), Box<dyn std::error::Error>> {
     let mut mux = Muxer::new(Config::default())?;
@@ -326,7 +326,7 @@ Build with the existing `ConfigBuilder::add_video` / `add_klv` calls —
 just call them more than once:
 
 ```rust
-use srt_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
 
 let cfg = Config::builder()
     .add_video(0x1011, VideoCodec::H264) // EO
@@ -404,7 +404,7 @@ in one PAT) with per-program PCR is out of scope for this version.
 
 ### Runnable example
 
-`crates/srt-core/examples/mux_dual_camera.rs` builds a 30-frame EO + IR
+`crates/tst-srt/examples/mux_dual_camera.rs` builds a 30-frame EO + IR
 + KLV TS file. Run it with `cargo run --example mux_dual_camera`; the
 resulting `dual_camera.ts` should report two video streams and one
 data (KLV) stream under `ffprobe -show_streams`.
@@ -484,8 +484,8 @@ Each helper returns a `Vec<u8>` containing the complete descriptor
 ### Setting descriptors on the builder
 
 ```rust
-use srt_core::mpegts::descriptors as desc;
-use srt_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+use tst_core::mpegts::descriptors as desc;
+use tst_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
 
 let cfg = Config::builder()
     .add_video(0x100, VideoCodec::H264)
@@ -638,7 +638,7 @@ stream_type byte. Attach descriptors via `stream_descriptors_for_audio`,
 typically for ISO 639 language tagging:
 
 ```rust
-use srt_core::mpegts::descriptors::iso_639_language;
+use tst_core::mpegts::descriptors::iso_639_language;
 
 let cfg = ConfigBuilder::new()
     .add_program(1, 0x1000)
@@ -674,7 +674,7 @@ the auto-emitted one (do NOT suppress; contrast with KLV's
 `KLVA`-suppression rule).
 
 ```rust
-use srt_core::mpegts::mux::{Config, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{Config, Muxer, SubtitleCodec, VideoCodec};
 
 let cfg = Config::builder()
     .add_program(1, 0x100)
@@ -733,12 +733,12 @@ shape used for video / KLV / audio.
 
 Three runnable examples cover the muxer's surface:
 
-- [../crates/srt-core/examples/mux_to_file.rs](../crates/srt-core/examples/mux_to_file.rs)
+- [../crates/tst-srt/examples/mux_to_file.rs](../crates/tst-srt/examples/mux_to_file.rs)
   — H.264 + async KLV via `Config::default()`, writes a `.ts` file.
-- [../crates/srt-core/examples/mux_h265_with_klv.rs](../crates/srt-core/examples/mux_h265_with_klv.rs)
+- [../crates/tst-srt/examples/mux_h265_with_klv.rs](../crates/tst-srt/examples/mux_h265_with_klv.rs)
   — H.265 + sync KLV via the field-update form, illustrating the
   diff against the H.264 default.
-- [../crates/srt-core/examples/pipeline_send_to_socket.rs](../crates/srt-core/examples/pipeline_send_to_socket.rs)
+- [../crates/tst-srt/examples/pipeline_send_to_socket.rs](../crates/tst-srt/examples/pipeline_send_to_socket.rs)
   — the muxer composed inside `pipeline::Sender` and connected to an
   SRT socket. See [guide-pipeline.md](guide-pipeline.md) for the
   sender-shell layer.

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This guide covers `srt_core::mpegts::demux` — the receiver-side MPEG-TS
+This guide covers `tst_core::mpegts::demux` — the receiver-side MPEG-TS
 demuxer. `Demuxer` takes raw bytes off the wire (or out of a `.ts` file),
 recovers TS packet alignment, parses PSI (PAT / PMT), reassembles PES
 packets, splits H.264 / H.265 NAL units, peels H.222.0 § 2.12.4.2
@@ -35,7 +35,7 @@ Opt into hard-fail behaviour per category via `StrictMode`.
 Read a `.ts` file, feed it to a `Demuxer`, drain events:
 
 ```rust,no_run
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs).
+Runnable: [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs).
 
 ## Public surface
 
@@ -92,7 +92,7 @@ Runnable: [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/ex
 | `pts_to_duration(pts_90khz: i64) -> Duration` | Convenience: 90 kHz ticks to `std::time::Duration`. Diagnostic / test use. |
 
 The complete enum / struct definitions live in
-[../crates/srt-core/src/mpegts/demux/event.rs](../crates/srt-core/src/mpegts/demux/event.rs).
+[../crates/tst-core/src/mpegts/demux/event.rs](../crates/tst-core/src/mpegts/demux/event.rs).
 
 ### `Demuxer` methods
 
@@ -126,7 +126,7 @@ auto-flushes on `Closed` — you only call `flush` directly when feeding
 finite inputs (file replay, test fixtures).
 
 ```rust,no_run
-use srt_core::mpegts::demux::Demuxer;
+use tst_core::mpegts::demux::Demuxer;
 use std::fs;
 
 fn drain_file(path: &str) -> Result<usize, Box<dyn std::error::Error>> {
@@ -164,7 +164,7 @@ caller draining events alongside the error gets the full narrative —
 `next_event()` returns the structured `NonConformant { issue, .. }`.
 
 ```rust,no_run
-use srt_core::mpegts::demux::{DemuxerBuilder, StrictMode};
+use tst_core::mpegts::demux::{DemuxerBuilder, StrictMode};
 
 let _d = DemuxerBuilder::new()
     .strict(StrictMode::DescriptorsOnly)
@@ -185,7 +185,7 @@ ambiguous.
 | `pes_cap_total(bytes)` | Aggregate cap across all PIDs. Default 64 MiB. Exceeding this emits `Discontinuity::PesTotalOversize` and drops. | Same as above but at the workspace level. |
 
 ```rust,no_run
-use srt_core::mpegts::demux::{DemuxerBuilder, StreamKind, VideoCodec};
+use tst_core::mpegts::demux::{DemuxerBuilder, StreamKind, VideoCodec};
 
 let _d = DemuxerBuilder::new()
     .link_klv(0x1031, 0x1011)                                // klv -> video override
@@ -199,7 +199,7 @@ let _d = DemuxerBuilder::new()
 once and pass it around:
 
 ```rust,no_run
-use srt_core::mpegts::demux::{Demuxer, DemuxerOptions, StreamKind, VideoCodec};
+use tst_core::mpegts::demux::{Demuxer, DemuxerOptions, StreamKind, VideoCodec};
 use std::collections::HashMap;
 
 let mut overrides = HashMap::new();
@@ -282,7 +282,7 @@ decoder removes them), and returns each NAL with codec-tagged headers
 on `NalUnit::H264` / `NalUnit::H265`. The full AU is one
 `SamplePayload::Video { codec, payload: VideoPayload::Nals(Vec<NalUnit>) }`. Callers re-emitting
 to a downstream Annex-B sink prepend `0x00 0x00 0x00 0x01` between
-NALs themselves — see [../crates/srt-core/examples/extract_video_au.rs](../crates/srt-core/examples/extract_video_au.rs).
+NALs themselves — see [../crates/tst-srt/examples/extract_video_au.rs](../crates/tst-srt/examples/extract_video_au.rs).
 
 **Sync KLV (`stream_type=0x15`).** The demuxer detects the H.222.0
 § 2.12.4.2 `Metadata_AU_cell` shape (5-byte header followed by an
@@ -337,8 +337,8 @@ decode vendor-specific or stack-shape descriptors that the standard
 label decoder can't generalize over.
 
 ```rust,no_run
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer};
-use srt_core::mpegts::demux::psi::extract_user_label;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
+use tst_core::mpegts::demux::psi::extract_user_label;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut d = Demuxer::new();
@@ -430,7 +430,7 @@ yourself when feeding the demuxer directly.
 Each `NalUnit::H264` / `NalUnit::H265` carries the RBSP bytes only —
 Annex-B start codes have been stripped. Re-emit start codes between
 NALs yourself if writing back to an Annex-B sink. Pattern shown in
-[../crates/srt-core/examples/extract_video_au.rs](../crates/srt-core/examples/extract_video_au.rs).
+[../crates/tst-srt/examples/extract_video_au.rs](../crates/tst-srt/examples/extract_video_au.rs).
 
 **Treating `Closed` as an error.** It isn't. `pipeline::Receiver` turns
 `TransportError::Closed` into iterator termination — the `for` loop
@@ -531,7 +531,7 @@ decode lazily via `mpegts::descriptors::parse_subtitling_descriptor`
 or `parse_teletext_descriptor`.
 
 ```rust
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
 
 let mut demux = Demuxer::new();
 demux.feed(&bytes)?;
@@ -569,7 +569,7 @@ upstream encoder emits WebVTT-shaped (or other subtitle-shaped)
 bytes without the disambiguating descriptor:
 
 ```rust
-use srt_core::mpegts::demux::{Demuxer, DemuxerOptions, StreamKind, SubtitleCodec};
+use tst_core::mpegts::demux::{Demuxer, DemuxerOptions, StreamKind, SubtitleCodec};
 
 let mut opts = DemuxerOptions::default();
 opts.stream_kind_overrides
@@ -589,22 +589,22 @@ log the override.
 
 Four runnable examples cover the demuxer's surface:
 
-- [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs)
+- [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs)
   — file in, full event stream out. Triage-grade diagnostic.
-- [../crates/srt-core/examples/srt_recv_typed.rs](../crates/srt-core/examples/srt_recv_typed.rs)
+- [../crates/tst-srt/examples/srt_recv_typed.rs](../crates/tst-srt/examples/srt_recv_typed.rs)
   — bind a listener, wrap with `pipeline::Receiver`, drain typed events
   from a live SRT peer.
-- [../crates/srt-core/examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs)
+- [../crates/tst-srt/examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs)
   — nearest-PTS pairing of KLV records with video AUs (Cookbook §12).
-- [../crates/srt-core/examples/tee_disk_and_demux.rs](../crates/srt-core/examples/tee_disk_and_demux.rs)
+- [../crates/tst-srt/examples/tee_disk_and_demux.rs](../crates/tst-srt/examples/tee_disk_and_demux.rs)
   — `add_byte_sink` fan-out: write `.ts` to disk while consuming typed
   events, all in one pass.
 
 Two existing examples were also retrofitted to use `Demuxer` internally:
 
-- [../crates/srt-core/examples/extract_klv.rs](../crates/srt-core/examples/extract_klv.rs)
+- [../crates/tst-srt/examples/extract_klv.rs](../crates/tst-srt/examples/extract_klv.rs)
   — extract KLV records from a `.ts` capture (now `Demuxer`-driven).
-- [../crates/srt-core/examples/extract_video_au.rs](../crates/srt-core/examples/extract_video_au.rs)
+- [../crates/tst-srt/examples/extract_video_au.rs](../crates/tst-srt/examples/extract_video_au.rs)
   — extract video access units, re-emit Annex-B framing.
 
 ## Multi-program parsing
@@ -614,7 +614,7 @@ its PAT and emits one `ProgramMap` event per program (plus on PMT version
 bumps and PAT version bumps that add programs).
 
 ```rust,no_run
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
 
 fn main() {
     let mut d = Demuxer::new();

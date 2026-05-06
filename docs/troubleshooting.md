@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common failure modes you'll hit when building or running this library, with diagnoses and fixes. If you're not finding your symptom here, check the per-module guide for the relevant area, or open an issue at https://github.com/aklofas/srt-rust/issues.
+Common failure modes you'll hit when building or running this library, with diagnoses and fixes. If you're not finding your symptom here, check the per-module guide for the relevant area, or open an issue at https://github.com/aklofas/tstrans/issues.
 
 ## Build failures
 
@@ -90,7 +90,7 @@ Fix: set `SocketConfig::linger = Some(Duration::ZERO)` for live streaming where 
 
 The record violates one of ST 0601.8-09 / -11 / -12's mandatory rules: Tag 2 (timestamp) must be the first element, Tag 1 (checksum) must be the last element, Tag 65 (UAS LS Version) must be present. The corresponding `KlvDecodeError` variants are `Tag2NotFirst`, `Tag1NotLast`, and `MissingTag65`.
 
-Fix: walk the strictness ladder — fall back to `decode_strict` (validates UL family + checksum but not ordering) or plain `decode` (validates checksum only) to inspect the record despite non-compliance. If the producer is yours, fix the producer to emit the mandatory tags in the correct order. Worked example: [../crates/srt-core/examples/klv_decode_file.rs](../crates/srt-core/examples/klv_decode_file.rs).
+Fix: walk the strictness ladder — fall back to `decode_strict` (validates UL family + checksum but not ordering) or plain `decode` (validates checksum only) to inspect the record despite non-compliance. If the producer is yours, fix the producer to emit the mandatory tags in the correct order. Worked example: [../crates/tst-srt/examples/klv_decode_file.rs](../crates/tst-srt/examples/klv_decode_file.rs).
 
 **`decode` rejects with `KlvDecodeError::ChecksumMismatch`**
 
@@ -112,7 +112,7 @@ Fix: this is almost always a producer bug; fix the producer.
 
 ## TS framing issues
 
-**`TsSender` in `TsFramingMode::Strict` errors on the first push**
+**`Sender` in `TsFramingMode::Strict` errors on the first push**
 
 Strict mode requires the input bytes to start with a TS sync byte (`0x47`) at offset 0 with the standard 188-byte cadence. If your upstream producer emits a partial packet at the boundary or has any byte-level offset, strict mode rejects rather than realigning.
 
@@ -120,7 +120,7 @@ Fix: switch to `TsFramingMode::Recover` to auto-resync, or fix the producer to e
 
 **Receiver gets garbled TS**
 
-After the run, check `TsSender::stats()` and inspect `bytes_skipped_for_sync` and `resync_events`. If either is nonzero in production, the producer is emitting non-aligned bytes intermittently. In `Recover` mode the sender still emits a clean stream (it realigns silently), so the receiver should be fine; in `Strict` mode you'd have already errored.
+After the run, check `Sender::stats()` and inspect `bytes_skipped_for_sync` and `resync_events`. If either is nonzero in production, the producer is emitting non-aligned bytes intermittently. In `Recover` mode the sender still emits a clean stream (it realigns silently), so the receiver should be fine; in `Strict` mode you'd have already errored.
 
 Fix: if the receiver is still seeing garble despite zero stats, the corruption is happening downstream of the sender — check the network path and any intermediate transcoders.
 
@@ -128,7 +128,7 @@ Fix: if the receiver is still seeing garble despite zero stats, the corruption i
 
 If you previously passed pre-wrapped bytes to `Muxer::push_klv` for a `KlvStreamType::SynchronousMetadata` stream (older library versions where the caller had to wrap), the muxer now double-wraps. Strip the outer wrapper and let the muxer wrap once.
 
-Fix: pass raw KLV LS bytes (16-byte SMPTE UL + BER length + body) to `Muxer::push_klv` / `Sender::send_klv`; the muxer auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156). PTS lives in the PES header (§ 2.12.4.1). Asynchronous KLV streams (`KlvStreamType::PrivateData`) pass the raw 0601 LS bytes through unchanged. See [guide-mpegts-mux.md](guide-mpegts-mux.md) for the synchronous vs. asynchronous distinction.
+Fix: pass raw KLV LS bytes (16-byte SMPTE UL + BER length + body) to `Muxer::push_klv` / `MuxSender::send_klv`; the muxer auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156). PTS lives in the PES header (§ 2.12.4.1). Asynchronous KLV streams (`KlvStreamType::PrivateData`) pass the raw 0601 LS bytes through unchanged. See [guide-mpegts-mux.md](guide-mpegts-mux.md) for the synchronous vs. asynchronous distinction.
 
 **`MuxError::KlvTooLarge`**
 

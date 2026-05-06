@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This guide covers `srt_core::pipeline` — the composition layer that
+This guide covers `tst_pipeline` — the composition layer that
 wires `mpegts::mux::Muxer`, the KLV codecs, and `srt::Socket` into
 ergonomic sender shells. The shells are thin: their job is to glue
 framing, metadata typing, and wire transport together with a stable
@@ -22,7 +22,7 @@ For the higher-level composition story, see
 
 ```
                    ┌────────────────────────────────┐
-                   │  Sender / TsSender / RawSender │  (3 sender shells)
+                   │  MuxSender / Sender / RawSender │  (3 sender shells)
                    │  generic over T: Transport     │
                    └──────────────┬─────────────────┘
                                   │ T: Transport
@@ -46,13 +46,13 @@ going, and they plug together.
 
 Decision tree:
 
-- **NAL units plus KLV blobs → `Sender`.** Auto-muxes through an
+- **NAL units plus KLV blobs → `MuxSender`.** Auto-muxes through an
   internal `mpegts::mux::Muxer`; internally synchronized so
   `send_video` and `send_klv` are safe to call concurrently from
   different threads. Lossless across transient transport failures —
   drained-but-not-yet-sent bytes are retained in `pending_bytes` and
   drained first on the next call.
-- **Pre-muxed TS bytes → `TsSender`.** 3-byte TS sync verification,
+- **Pre-muxed TS bytes → `Sender`.** 3-byte TS sync verification,
   7-packet bundling for the canonical 1316-byte SRT payload size.
   RECOVER mode auto-resyncs to the next sync byte after loss; STRICT
   mode fails fast on any non-aligned input.
@@ -63,21 +63,21 @@ Decision tree:
 See [architecture.md](architecture.md)'s "Why three sender shells" for
 the rationale against fusing them.
 
-## `Sender` walkthrough
+## `MuxSender` walkthrough
 
 ```rust,ignore
-impl<T: Transport> Sender<T> {
+impl<T: Transport> MuxSender<T> {
     pub fn new(config: Config, transport: T) -> Result<Self, MuxError>;
     pub fn send_video(&self, nal: &[u8], pts_90khz: i64, key_frame: bool)
-        -> Result<(), SenderError>;
+        -> Result<(), MuxSenderError>;
     pub fn send_klv(&self, klv: &[u8], pts_90khz: i64)
-        -> Result<(), SenderError>;
+        -> Result<(), MuxSenderError>;
     pub fn close(&self);
     pub fn is_alive(&self) -> bool;
 }
 ```
 
-`SenderError` is two-variant: `Mux(MuxError)` for muxer-side failures
+`MuxSenderError` is two-variant: `Mux(MuxError)` for muxer-side failures
 (`BufferFull`, `KlvTooLarge`, `InvalidNal`) and
 `Transport(TransportError)` for transport-side failures. Both convert
 in via `#[from]`.
@@ -87,7 +87,7 @@ Concurrent `send_video` / `send_klv` calls are correct but serialize.
 The lock is held across push → mux drain → transport send so
 back-pressure is honoured end-to-end.
 
-`pending_bytes` is unbounded — the bare `Sender` has no cap on how
+`pending_bytes` is unbounded — the bare `MuxSender` has no cap on how
 many drained-but-unsent chunks accumulate during prolonged transport
 unavailability. Wrap with `ManagedTransport` when you expect outages
 longer than a fraction of a second.
@@ -95,24 +95,24 @@ longer than a fraction of a second.
 **Sync KLV is muxer-side wrapped.** When the underlying `Config` is
 set for `KlvStreamType::SynchronousMetadata` plus `carries_pts: true`,
 the muxer auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T
-H.222.0 V9 § 2.12.4.2 before TS-framing. `Sender::send_klv` passes
+H.222.0 V9 § 2.12.4.2 before TS-framing. `MuxSender::send_klv` passes
 your raw KLV LS bytes through to the muxer; the muxer does the wrap.
 PTS lives in the PES header (per § 2.12.4.1). See
 [guide-mpegts-mux.md](guide-mpegts-mux.md) for the wire-format details.
 
-Mirroring [../crates/srt-core/examples/pipeline_send_to_socket.rs](../crates/srt-core/examples/pipeline_send_to_socket.rs):
+Mirroring [../crates/tst-srt/examples/pipeline_send_to_socket.rs](../crates/tst-srt/examples/pipeline_send_to_socket.rs):
 
 ```rust,no_run
-use srt_core::mpegts::mux::Config;
-use srt_core::pipeline::{Sender, SrtTransport};
-use srt_core::srt::SocketBuilder;
+use tst_core::mpegts::mux::Config;
+use tst_pipeline::MuxSender;
+use tst_srt::{SocketBuilder, SrtTransport};
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket = SocketBuilder::new()
         .latency(Duration::from_millis(120))
         .connect("127.0.0.1:9000")?;
-    let sender = Sender::new(Config::default(), SrtTransport::new(socket))?;
+    let sender = MuxSender::new(Config::default(), SrtTransport::new(socket))?;
     for i in 0..5i64 {
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0xAA];
         let klv = vec![/* ... pre-built ST 0601 ... */];
@@ -124,14 +124,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## `TsSender` walkthrough
+## `Sender` walkthrough
 
 ```rust,ignore
-impl<T: Transport> TsSender<T> {
-    pub fn new(transport: T, config: TsSenderConfig) -> Self;
-    pub fn send_ts(&mut self, bytes: &[u8]) -> Result<(), TsSenderError>;
-    pub fn flush(&mut self) -> Result<(), TsSenderError>;
-    pub fn stats(&self) -> &TsSenderStats;
+impl<T: Transport> Sender<T> {
+    pub fn new(transport: T, config: SenderConfig) -> Self;
+    pub fn send_ts(&mut self, bytes: &[u8]) -> Result<(), SenderError>;
+    pub fn flush(&mut self) -> Result<(), SenderError>;
+    pub fn stats(&self) -> &SenderStats;
     pub fn close(&mut self);
     pub fn is_alive(&self) -> bool;
 }
@@ -142,7 +142,7 @@ and 7-packet bundling internally. `flush` emits any buffered partial
 bundle so the tail of a finite input reaches the wire. Drop also
 best-effort flushes.
 
-`TsSenderConfig` has two knobs:
+`SenderConfig` has two knobs:
 
 - `framing_mode: TsFramingMode::Recover` (default) silently skips
   misaligned bytes until it finds a TS sync byte (counts them in
@@ -152,18 +152,18 @@ best-effort flushes.
 - `max_unsynced_bytes: usize` — bytes consumed while UNSYNCED before
   terminal `TsFramingError::NoSyncAfterLimit`. Default 18,800.
 
-`TsSenderError` is two-variant: `Framing(TsFramingError)` and
+`SenderError` is two-variant: `Framing(TsFramingError)` and
 `Transport(TransportError)`.
 
-`TsSenderStats` fields: `bytes_pushed`, `bytes_skipped_for_sync`
+`SenderStats` fields: `bytes_pushed`, `bytes_skipped_for_sync`
 (bytes discarded while acquiring or re-acquiring sync, RECOVER mode
 only), `resync_events`, `packets_sent` — all `u64`.
 
-Mirroring [../crates/srt-core/examples/ts_relay_from_file.rs](../crates/srt-core/examples/ts_relay_from_file.rs):
+Mirroring [../crates/tst-srt/examples/ts_relay_from_file.rs](../crates/tst-srt/examples/ts_relay_from_file.rs):
 
 ```rust,no_run
-use srt_core::pipeline::{SrtTransport, TsSender, TsSenderConfig};
-use srt_core::srt::SocketBuilder;
+use tst_pipeline::{Sender, SenderConfig};
+use tst_srt::{SocketBuilder, SrtTransport};
 use std::fs::File;
 use std::io::Read;
 use std::time::Duration;
@@ -172,7 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket = SocketBuilder::new()
         .latency(Duration::from_millis(120))
         .connect("127.0.0.1:9000")?;
-    let mut sender = TsSender::new(SrtTransport::new(socket), TsSenderConfig::default());
+    let mut sender = Sender::new(SrtTransport::new(socket), SenderConfig::default());
     let mut file = File::open("input.ts")?;
     let mut buf = vec![0u8; 4096];
     loop {
@@ -237,10 +237,10 @@ Implement `Transport` for any byte sink that isn't an SRT socket: UDP,
 file, in-memory test harness, named pipe, TCP, your own protocol. The
 shells don't care which.
 
-Mirroring [../crates/srt-core/examples/custom_transport.rs](../crates/srt-core/examples/custom_transport.rs):
+Mirroring [../crates/tst-srt/examples/custom_transport.rs](../crates/tst-srt/examples/custom_transport.rs):
 
 ```rust,no_run
-use srt_core::pipeline::{Transport, TransportError};
+use tst_pipeline::{Transport, TransportError};
 use std::sync::{Arc, Mutex};
 
 struct MemTransport {
@@ -419,14 +419,14 @@ freshness-over-completeness choice.
 
 Where errors come from:
 
-- `SenderError::Mux` — the encoder produced something the muxer
+- `MuxSenderError::Mux` — the encoder produced something the muxer
   rejects (`BufferFull`, `KlvTooLarge`, `InvalidNal`). Rare in
   practice with reasonable buffer sizing.
-- `SenderError::Transport(TransportError)` — the transport layer
-  reported an error.
-- `TsSenderError::Framing(TsFramingError)` — STRICT mode rejected
+- `MuxSenderError::Transport(TransportError)` — the transport layer
+  reported an error (`MuxSender`).
+- `SenderError::Framing(TsFramingError)` — STRICT mode rejected
   unaligned input, or RECOVER mode burned through `max_unsynced_bytes`.
-- `TsSenderError::Transport(TransportError)` — same as above.
+- `SenderError::Transport(TransportError)` — transport error (`Sender`).
 - `RawSender::send` returns `TransportError` directly.
 
 With `ManagedTransport` wrapping the inner transport, transient
@@ -438,9 +438,9 @@ re-creating the sender.
 
 ## Threading
 
-- `Sender` is internally synchronized. `send_video` and `send_klv` are
+- `MuxSender` is internally synchronized. `send_video` and `send_klv` are
   safe to call concurrently; calls serialize on the internal mutex.
-- `TsSender` and `RawSender` are not internally synchronized. Wrap in
+- `Sender` and `RawSender` are not internally synchronized. Wrap in
   an external `Mutex` if shared across threads, or — simpler — use
   thread-per-connection.
 - `ManagedTransport` itself is internally synchronized.
@@ -456,11 +456,11 @@ counterpart to `Transport`).
 
 ### Picking a receiver
 
-- **Typed events out → `Receiver`.** Composes `TsReceiver → Demuxer`;
+- **Typed events out → `DemuxReceiver`.** Composes `Receiver → Demuxer`;
   emits `DemuxEvent` per call. Auto-flushes the demuxer's reassembly
   state on `TransportError::Closed`. The default for "I want a stream
   of NALs and KLV records out of an SRT socket."
-- **TS-aligned packets out → `TsReceiver`.** One 188-byte aligned TS
+- **TS-aligned packets out → `Receiver`.** One 188-byte aligned TS
   packet per `next_packet` call. Internal sync recovery via the
   HUNT/VERIFY/LOCKED state machine. Use when you want to feed bytes
   into your own demuxer (FFmpeg, JavaCV, Bento4).
@@ -469,33 +469,33 @@ counterpart to `Transport`).
   Use as the receive counterpart to `RawSender`, or as a building
   block for tests.
 
-### `Receiver` walkthrough
+### `DemuxReceiver` walkthrough
 
 ```rust,ignore
-impl<R: RecvTransport> Receiver<R> {
+impl<R: RecvTransport> DemuxReceiver<R> {
     pub fn new(transport: R) -> Self;
     pub fn with_demux_options(transport: R, options: DemuxerOptions) -> Self;
     pub fn add_byte_sink(&mut self, sink: ByteSink);
-    pub fn recv_event(&mut self) -> Result<Option<DemuxEvent>, ReceiverError>;
+    pub fn recv_event(&mut self) -> Result<Option<DemuxEvent>, DemuxReceiverError>;
     pub fn is_alive(&self) -> bool;
     pub fn close(&mut self);
 }
 ```
 
-`Receiver` also implements `Iterator<Item = Result<DemuxEvent,
-ReceiverError>>`, so `for result in &mut rx` is the idiomatic drain
+`DemuxReceiver` also implements `Iterator<Item = Result<DemuxEvent,
+DemuxReceiverError>>`, so `for result in &mut rx` is the idiomatic drain
 pattern. Iterator termination (`for` loop simply ends) is the
 clean-EOF signal — `recv_event` returned `Ok(None)` after auto-flushing
 the demuxer.
 
-`ReceiverError` is two-variant: `Transport(TransportError)` for
+`DemuxReceiverError` is two-variant: `Transport(TransportError)` for
 transport failures, `Demux(DemuxError)` for strict-mode rejections,
 unrecoverable sync loss, or malformed PES.
 
 ```rust,no_run
-use srt_core::mpegts::demux::DemuxEvent;
-use srt_core::pipeline::{Receiver, SrtTransport};
-use srt_core::srt::ListenerBuilder;
+use tst_core::mpegts::demux::DemuxEvent;
+use tst_pipeline::DemuxReceiver;
+use tst_srt::{ListenerBuilder, SrtTransport};
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -503,7 +503,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .latency(Duration::from_millis(120))
         .bind("0.0.0.0:9000")?;
     let (socket, _peer) = listener.accept()?;
-    let mut rx = Receiver::new(SrtTransport::new(socket));
+    let mut rx = DemuxReceiver::new(SrtTransport::new(socket));
     for item in &mut rx {
         match item? {
             DemuxEvent::ProgramMap(m) => println!("PMT streams={}", m.streams.len()),
@@ -517,14 +517,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Mirroring [../crates/srt-core/examples/srt_recv_typed.rs](../crates/srt-core/examples/srt_recv_typed.rs).
+Mirroring [../crates/tst-srt/examples/srt_recv_typed.rs](../crates/tst-srt/examples/srt_recv_typed.rs).
 
 ### `add_byte_sink` fan-out
 
 ```rust,ignore
 pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
 
-impl<R: RecvTransport> Receiver<R> {
+impl<R: RecvTransport> DemuxReceiver<R> {
     pub fn add_byte_sink(&mut self, sink: ByteSink);
 }
 ```
@@ -547,12 +547,12 @@ Contract:
   workflows or expensive work, push to a channel and let a worker
   thread do the slow work.
 
-Mirroring [../crates/srt-core/examples/tee_disk_and_demux.rs](../crates/srt-core/examples/tee_disk_and_demux.rs).
+Mirroring [../crates/tst-srt/examples/tee_disk_and_demux.rs](../crates/tst-srt/examples/tee_disk_and_demux.rs).
 
-### `TsReceiver` and `RawReceiver`
+### `Receiver` and `RawReceiver`
 
 ```rust,ignore
-impl<R: RecvTransport> TsReceiver<R> {
+impl<R: RecvTransport> Receiver<R> {
     pub fn new(transport: R) -> Self;
     pub fn next_packet(&mut self) -> Result<[u8; 188], TransportError>;
     pub fn is_alive(&self) -> bool;
@@ -567,7 +567,7 @@ impl<R: RecvTransport> RawReceiver<R> {
 }
 ```
 
-Both are simple drain loops. `TsReceiver` runs the syncer state machine
+Both are simple drain loops. `Receiver` runs the syncer state machine
 internally — feed bytes from any source, get out 188-byte aligned TS
 packets. `RawReceiver` is the simplest possible shell; one transport
 message per call.
@@ -625,24 +625,24 @@ The receive surface distinguishes three end-of-stream signals:
 
 - **Iterator termination (`for` loop ends naturally).** The clean-EOF
   signal. Fires when the underlying `RecvTransport` returns
-  `TransportError::Closed`, which `Receiver::recv_event` translates
+  `TransportError::Closed`, which `DemuxReceiver::recv_event` translates
   into `Ok(None)` after first calling `Demuxer::flush()` to recover
   any trailing PES. Loop callers do not see `Closed` as an `Err`.
-- **`Err(ReceiverError::Transport(TransportError::Broken(_)))`.** Peer-
+- **`Err(DemuxReceiverError::Transport(TransportError::Broken(_)))`.** Peer-
   initiated cleanup or unrecoverable link. `SrtTransport` collapses
   these into one `Broken` surface by design — it lets a managed-receive
   decorator distinguish a self-initiated close (`Closed`) from a peer-
   initiated break (`Broken`). On `Broken` the demuxer is NOT auto-
   flushed (the receive thread can't tell mid-stream hiccup from a
   clean end).
-- **`Err(ReceiverError::Demux(_))`.** Strict-mode rejection or
+- **`Err(DemuxReceiverError::Demux(_))`.** Strict-mode rejection or
   malformed PES. Re-entry into `recv_event` after a `MalformedPes` is
   discouraged — the demuxer's reassembly state is undefined past a bad
   PES header. Treat as stream-fatal until lenient PES recovery lands.
 
 ## Out-of-band cancellation
 
-By default `Sender` (and `Receiver`, `TsReceiver`, etc.) hold their
+By default `MuxSender` (and `DemuxReceiver`, `Receiver`, etc.) hold their
 underlying transport behind an internal lock. A naive `close()` would
 have to wait for any in-flight `send_*`/`recv_*` call to return before
 it could acquire that lock — which means a thread parked inside
@@ -655,14 +655,14 @@ atomically closes the underlying SRT handle, which causes any thread
 parked inside libsrt to return promptly (typically as
 `TransportError::Broken`).
 
-`Sender::close()` already does this internally — a `close()` call from
+`MuxSender::close()` already does this internally — a `close()` call from
 a watchdog thread wakes any sender thread parked inside `send_video`
 within milliseconds, then completes. You only need to grab a
 `cancel_handle()` directly when you want to keep the shell alive but
 still wake a worker:
 
 ```rust,ignore
-let s = Arc::new(Sender::new(config, transport)?);
+let s = Arc::new(MuxSender::new(config, transport)?);
 let cancel = s.cancel_handle().expect("real SRT transport supports cancel");
 
 // Worker thread parks in s.send_video(...) when peer back-pressures.
@@ -682,29 +682,29 @@ Eight runnable examples cover the pipeline surface — four send, four receive.
 
 Send side:
 
-- [../crates/srt-core/examples/pipeline_send_to_socket.rs](../crates/srt-core/examples/pipeline_send_to_socket.rs)
-  — `Sender` → `SrtTransport` → connected SRT socket. The canonical
+- [../crates/tst-srt/examples/pipeline_send_to_socket.rs](../crates/tst-srt/examples/pipeline_send_to_socket.rs)
+  — `MuxSender` → `SrtTransport` → connected SRT socket. The canonical
   setup.
-- [../crates/srt-core/examples/ts_relay_from_file.rs](../crates/srt-core/examples/ts_relay_from_file.rs)
-  — `TsSender` reading a `.ts` file and relaying to an SRT peer.
-- [../crates/srt-core/examples/managed_reconnect.rs](../crates/srt-core/examples/managed_reconnect.rs)
+- [../crates/tst-srt/examples/ts_relay_from_file.rs](../crates/tst-srt/examples/ts_relay_from_file.rs)
+  — `Sender` reading a `.ts` file and relaying to an SRT peer.
+- [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs)
   — `ManagedTransport<SrtTransport>` plus a deliberately flaky peer
   thread; demonstrates the reconnect + gap-buffer + drain cycle
   end-to-end.
-- [../crates/srt-core/examples/custom_transport.rs](../crates/srt-core/examples/custom_transport.rs)
+- [../crates/tst-srt/examples/custom_transport.rs](../crates/tst-srt/examples/custom_transport.rs)
   — implementing the `Transport` trait against an in-memory byte
   collector. Template for any non-SRT sink.
 
 Receive side:
 
-- [../crates/srt-core/examples/srt_recv_typed.rs](../crates/srt-core/examples/srt_recv_typed.rs)
-  — `Receiver` → `SrtTransport` → typed `DemuxEvent` stream from a
+- [../crates/tst-srt/examples/srt_recv_typed.rs](../crates/tst-srt/examples/srt_recv_typed.rs)
+  — `DemuxReceiver` → `SrtTransport` → typed `DemuxEvent` stream from a
   live SRT peer. Mirror of `pipeline_send_to_socket.rs`.
-- [../crates/srt-core/examples/demux_to_events.rs](../crates/srt-core/examples/demux_to_events.rs)
+- [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs)
   — `Demuxer` driven by a file (no transport). Triage-grade
   diagnostic for any `.ts` capture.
-- [../crates/srt-core/examples/pair_sync_klv.rs](../crates/srt-core/examples/pair_sync_klv.rs)
+- [../crates/tst-srt/examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs)
   — nearest-PTS pairing of KLV records with video AUs (Cookbook §12).
-- [../crates/srt-core/examples/tee_disk_and_demux.rs](../crates/srt-core/examples/tee_disk_and_demux.rs)
+- [../crates/tst-srt/examples/tee_disk_and_demux.rs](../crates/tst-srt/examples/tee_disk_and_demux.rs)
   — `add_byte_sink` fan-out: write `.ts` to disk while consuming
   typed events, in a single pass.

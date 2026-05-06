@@ -160,10 +160,10 @@ the trigger that would unblock it.
   their v0 signatures and surface `MuxError::AmbiguousTarget` as
   `SRTC_E_INVALID_USAGE` on multi-stream muxers. The same handle-aware
   shape has NOT yet landed in `srt-jni` or `srt-uniffi`.
-- **Note on TsSender / RawSender:** the original deferred-features entry
+- **Note on Sender / RawSender:** the original deferred-features entry
   said `srtc_ts_sender_*` / `srtc_managed_ts_sender_*` would also gain
-  `_video_to` / `_klv_to` siblings. That was wrong: `pipeline::TsSender`
-  exposes only `send_ts(bytes)` (pre-muxed TS bytes) and `pipeline::RawSender`
+  `_video_to` / `_klv_to` siblings. That was wrong: `tst_pipeline::Sender`
+  exposes only `send_ts(bytes)` (pre-muxed TS bytes) and `tst_pipeline::RawSender`
   exposes only `send(bytes)`. Neither carries a `Muxer`, so handle-aware
   fan-out is meaningless on those variants. Only the three muxer-owning
   C variants (`srtc_muxer_t`, `srtc_mux_sender_t`, `srtc_managed_mux_sender_t`)
@@ -175,8 +175,8 @@ the trigger that would unblock it.
 
 ## Codec parameter set parsing at the C ABI
 
-- **Status:** Deferred. The Rust core ships `srt_core::codec::h264` and
-  `srt_core::codec::h265` with typed parsers for SPS / PPS (H.264) and
+- **Status:** Deferred. The Rust core ships `tst_core::codec::h264` and
+  `tst_core::codec::h265` with typed parsers for SPS / PPS (H.264) and
   VPS / SPS / PPS (H.265). The C ABI exposure is deferred.
 - **Why deferred:** The receiver-surface C ABI plan is the natural carrier
   for all FFI parser exposure — consistent ownership and error semantics
@@ -488,7 +488,7 @@ the trigger that would unblock it.
   (`SRTO_SNDDROPDELAY`), `transtype` (`SRTO_TRANSTYPE`), `tsbpdmode`
   (`SRTO_TSBPDMODE`).
 - **Why deferred:** Each requires a new `SocketBuilder` setter on
-  `srt-core` plus its typed wrapper / validation. Single-developer
+  `tst-srt` plus its typed wrapper / validation. Single-developer
   scope discipline — none of these has a current consumer ask.
 - **Trigger to revisit:** A consumer asks for any specific key. Adding
   one is mechanical: add the builder setter + URL parser arm + remove
@@ -581,7 +581,7 @@ the trigger that would unblock it.
   surface. Both are larger than this audit's scope.
 - **Trigger to revisit:** A consumer needs a bounded accept (e.g. for
   graceful shutdown without a sentinel-thread workaround) AND has the
-  context to motivate exposing `srt_epoll_*` from `srt-core`. Until
+  context to motivate exposing `srt_epoll_*` from `tst-srt`. Until
   then, the documented workaround is "run accept on a dedicated thread,
   call `Listener::close` from your shutdown path — that wakes the call
   with `AcceptError::ListenerClosed`."
@@ -824,7 +824,7 @@ the trigger that would unblock it.
   out-of-band as separate `*.vtt` segment files referenced from a
   `#EXT-X-MEDIA:TYPE=SUBTITLES` entry in the playlist — no MPEG-TS
   involvement.
-- **Why deferred:** Not a `srt-rust` concern. Out-of-band WebVTT
+- **Why deferred:** Not a `tstrans` concern. Out-of-band WebVTT
   delivery is an HLS-packager / orchestrator concern outside this
   library.
 - **Trigger to revisit:** Never (different layer).

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This guide covers `srt_core::srt` — the safe `Socket` and `Listener`
+This guide covers `tst_srt` — the safe `Socket` and `Listener`
 layer over libsrt 1.5.5. It targets Rust developers sending or receiving
 raw SRT messages directly: handshake, encryption, latency tuning, stream
 identification, statistics, and the per-call error model.
@@ -11,8 +11,8 @@ Read this guide if your data path is byte-oriented and you handle the
 framing yourself. If instead you have NAL units plus KLV blobs, pre-muxed
 TS bytes, or arbitrary application messages and want reconnect plus
 optional gap-buffering on top of an SRT socket, read
-[guide-pipeline.md](guide-pipeline.md) — `pipeline::*` composes
-`srt_core::srt` into ready-made sender shells.
+[guide-pipeline.md](guide-pipeline.md) — `tst_pipeline::*` composes
+`tst_srt` into ready-made sender shells.
 
 For wire-protocol details, see the IETF draft `draft-sharabayko-srt`,
 the canonical normative reference for SRT 1.5.
@@ -33,7 +33,7 @@ The connection model mirrors `std::net::TcpStream` / `TcpListener`:
 Caller, sending five messages then closing:
 
 ```rust,no_run
-use srt_core::srt::SocketBuilder;
+use tst_srt::SocketBuilder;
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,11 +50,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 Listener, accepting one peer and draining to EOF (compare
-[examples/srt_listener_to_file.rs](../crates/srt-core/examples/srt_listener_to_file.rs)):
+[examples/srt_listener_to_file.rs](../crates/tst-srt/examples/srt_listener_to_file.rs)):
 
 ```rust,no_run
-use srt_core::error::RecvError;
-use srt_core::srt::ListenerBuilder;
+use tst_srt::error::RecvError;
+use tst_srt::ListenerBuilder;
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -94,7 +94,7 @@ builder's `.config()` method exposes the underlying struct for
 inspection or copying.
 
 ```rust,no_run
-use srt_core::srt::{Socket, SocketBuilder, SocketConfig};
+use tst_srt::{Socket, SocketBuilder, SocketConfig};
 use std::time::Duration;
 
 fn build_via_builder() -> Result<Socket, Box<dyn std::error::Error>> {
@@ -132,10 +132,10 @@ fn build_via_config() -> Result<Socket, Box<dyn std::error::Error>> {
   on the caller and `AcceptError::PeerRejected` on the listener.
 
 Paired listener and caller, mirroring
-[examples/encrypted_send_recv.rs](../crates/srt-core/examples/encrypted_send_recv.rs):
+[examples/encrypted_send_recv.rs](../crates/tst-srt/examples/encrypted_send_recv.rs):
 
 ```rust,no_run
-use srt_core::srt::{KeyLength, ListenerBuilder, Passphrase, SocketBuilder};
+use tst_srt::{KeyLength, ListenerBuilder, Passphrase, SocketBuilder};
 use std::time::Duration;
 
 fn listen() -> Result<(), Box<dyn std::error::Error>> {
@@ -211,7 +211,7 @@ the builder before `connect`; the listener reads it post-`accept` via
 `socket.stream_id() -> Option<&str>`.
 
 ```rust,no_run
-use srt_core::srt::{ListenerBuilder, SocketBuilder, StreamId};
+use tst_srt::{ListenerBuilder, SocketBuilder, StreamId};
 use std::time::Duration;
 
 fn caller() -> Result<(), Box<dyn std::error::Error>> {
@@ -252,7 +252,7 @@ after validating charset and a 512-byte length cap. Returns
 only; the spec semantics are libsrt's.
 
 ```rust,no_run
-use srt_core::srt::{PacketFilter, SocketBuilder};
+use tst_srt::{PacketFilter, SocketBuilder};
 use std::time::Duration;
 
 fn fec_caller() -> Result<(), Box<dyn std::error::Error>> {
@@ -299,7 +299,7 @@ operational dashboards:
 `stats()` is cheap — call on whatever cadence your dashboard needs.
 
 ```rust,no_run
-use srt_core::srt::Socket;
+use tst_srt::Socket;
 use std::thread;
 use std::time::Duration;
 
@@ -320,7 +320,7 @@ fn dashboard(socket: &Socket) -> Result<(), Box<dyn std::error::Error>> {
 
 ## Error model
 
-`srt-core` uses per-call-category enums so `match` is meaningful at
+`tst-srt` uses per-call-category enums so `match` is meaningful at
 every call site. Each enum carries an `Other { kind: SrtErrno, message:
 String }` catch-all for libsrt errors outside the specific variants.
 
@@ -423,7 +423,7 @@ when both name the same option.
 | `udprcvbuf` | `SRTO_UDP_RCVBUF` | INT (bytes) | kernel UDP recv buffer; ffmpeg-style alias `recv_buffer_size`; Linux clamps to `net.core.rmem_max` |
 | `udpsndbuf` | `SRTO_UDP_SNDBUF` | INT (bytes) | kernel UDP send buffer; ffmpeg-style alias `send_buffer_size`; Linux clamps to `net.core.wmem_max` |
 
-### `srt-rust` extension keys (Group 2)
+### `tstrans` extension keys (Group 2)
 
 These two keys have no libsrt-URL precedent and are specific to this
 library. The `x-` prefix marks them as extensions and reserves the

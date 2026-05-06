@@ -2,7 +2,7 @@
 
 ## What this module is
 
-`srt_core::codec` provides typed payload parsers for codec parameter sets —
+`tst_srt::codec` provides typed payload parsers for codec parameter sets —
 stateless functions that operate on raw NAL unit bytes from the demuxer.
 
 When `mpegts::demux` surfaces a `DemuxEvent::Sample`, the NAL units within
@@ -22,12 +22,12 @@ mpegts::demux::Demuxer
   ↓ DemuxEvent::Sample { payload: SamplePayload::Video { codec, payload: VideoPayload::Nals(nals) }, .. }
   ↓ nals: Vec<NalUnit>   — raw RBSP bytes; NAL type in the header
 
-srt_core::codec::h264
+tst_core::codec::h264
   parse_sps(rbsp)         → Result<H264Sps, ParseError>
   parse_pps(rbsp)         → Result<H264Pps, ParseError>
   parse_parameter_sets(nals) → Result<H264ParameterSets, ParseError>
 
-srt_core::codec::h265
+tst_core::codec::h265
   parse_vps(rbsp)         → Result<H265Vps, ParseError>
   parse_sps(rbsp)         → Result<H265Sps, ParseError>
   parse_pps(rbsp)         → Result<H265Pps, ParseError>
@@ -41,8 +41,8 @@ explicitly when they need typed fields.
 ## H.264 quick start
 
 ```rust,no_run
-use srt_core::codec::h264;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::codec::h264;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 let mut dx = Demuxer::new();
 // ... feed bytes ...
@@ -98,8 +98,8 @@ while let Some(ev) = dx.next_event() {
 ## H.265 quick start
 
 ```rust,no_run
-use srt_core::codec::h265;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::codec::h265;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 let mut dx = Demuxer::new();
 // ... feed bytes ...
@@ -143,8 +143,8 @@ H.266 (Versatile Video Coding) parses identically in shape to H.265 — VPS, SPS
 PPS — with a different bitstream syntax. PMT `stream_type = 0x33`.
 
 ```rust,no_run
-use srt_core::codec::h266;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::codec::h266;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 let mut dx = Demuxer::new();
 // ... feed bytes ...
@@ -204,8 +204,8 @@ binding §2.1. The demuxer surfaces AV1 access units as
 `VideoPayload::Obus(Vec<Obu>)` rather than `Nals(_)`.
 
 ```rust,no_run
-use srt_core::codec::av1;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::codec::av1;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 let mut dx = Demuxer::new();
 // ... feed bytes ...
@@ -290,8 +290,8 @@ configuration changes, maintain a per-PID snapshot and compare:
 
 ```rust,no_run
 use std::collections::HashMap;
-use srt_core::codec::h264;
-use srt_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+use tst_core::codec::h264;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 let mut last_summary: HashMap<u16, String> = HashMap::new();
 let mut dx = Demuxer::new();
@@ -326,7 +326,7 @@ fn drain_events(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
 ```
 
 See the full runnable form at
-[`crates/srt-core/examples/parse_video_parameters.rs`](../crates/srt-core/examples/parse_video_parameters.rs).
+[`crates/tst-srt/examples/parse_video_parameters.rs`](../crates/tst-srt/examples/parse_video_parameters.rs).
 
 ## Decoder replay — reconstituting Annex B bytes
 
@@ -367,7 +367,7 @@ the payload, while H.264 has a 1-byte header.
 
 ## Shared types
 
-`srt_core::codec` re-exports several types used by both the H.264 and H.265
+`tst_srt::codec` re-exports several types used by both the H.264 and H.265
 modules:
 
 | Type | Description |
@@ -386,7 +386,7 @@ Table 4 assignments.
 
 ## Roadmap
 
-`srt_core::codec` is an umbrella for typed payload parsing across codec and
+`tst_srt::codec` is an umbrella for typed payload parsing across codec and
 stream types. H.264, H.265, H.266, and AV1 parameter-set parsers ship today.
 Future slices in the same umbrella (each landing additively when a consumer
 asks):

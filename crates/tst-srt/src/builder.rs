@@ -46,8 +46,11 @@ impl SocketBuilder {
         self
     }
     /// Set `SRTO_LINGER` — drop/close grace period for unsent data.
-    /// `Duration::ZERO` closes immediately; libsrt default is 180s.
-    /// For live streaming, prefer 0 or a few seconds.
+    /// `None` preserves libsrt's default — which is `l_onoff=0, l_linger=0`
+    /// (linger off; close returns immediately and libsrt's internal queue
+    /// drains in the background). Note: this differs from the kernel
+    /// SO_LINGER default; libsrt initializes its own `struct linger`. See
+    /// `srtcore/socketconfig.h:333-336`.
     pub fn linger(mut self, d: Duration) -> Self {
         self.config.linger = Some(d);
         self

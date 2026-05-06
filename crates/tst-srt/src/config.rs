@@ -27,11 +27,11 @@ pub struct SocketConfig {
     /// (LOS interruptions, antenna repointing) the `pipeline::MuxSender`
     /// defaults this to 15s.
     pub connect_timeout: Option<Duration>,
-    /// Time to wait inside `Drop`/`close` for unsent data to flush.
-    /// `None` preserves libsrt's 180-second default. Explicit
-    /// `Some(Duration::ZERO)` closes immediately (recommended for live
-    /// streaming, where late frames are useless). The default sender
-    /// connect path in `srt-c` defaults this to 5s.
+    /// SRT linger timeout. `None` preserves libsrt's default — which is
+    /// `l_onoff=0, l_linger=0` (linger off; close returns immediately and
+    /// libsrt's internal queue drains in the background). Note: this differs
+    /// from the kernel SO_LINGER default; libsrt initializes its own
+    /// `struct linger`. See `srtcore/socketconfig.h:333-336`.
     pub linger: Option<Duration>,
 
     // Latency / buffering

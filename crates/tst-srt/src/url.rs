@@ -29,7 +29,7 @@ fn warn_if_suspicious_latency(key: &str, ms: i32) {
             url_key = key,
             value_ms = ms,
             "SRT URL '{}={}' parses to {}ms ({}s) of buffer - \
-             unusually high. Note: ffmpeg uses microseconds while srt-rust \
+             unusually high. Note: ffmpeg uses microseconds while ts-transformer \
              (libsrt-URL canonical) uses milliseconds. If you copied this \
              from an ffmpeg URL, divide by 1000.",
             key,
@@ -623,7 +623,7 @@ mod tests {
         // 120000 ms = 120s; ffmpeg URLs use µs, so this is a likely paste-from-ffmpeg.
         let _ = SrtUrl::parse("srt://h:9000?latency=120000").unwrap();
         assert!(
-            logs_contain("ffmpeg uses microseconds while srt-rust"),
+            logs_contain("ffmpeg uses microseconds while ts-transformer"),
             "expected µs/ms warning to fire for latency=120000",
         );
     }
@@ -744,7 +744,7 @@ mod tests {
     fn url_alias_tsbpddelay_high_value_warns() {
         let _ = SrtUrl::parse("srt://h:9000?tsbpddelay=120000").unwrap();
         assert!(
-            logs_contain("ffmpeg uses microseconds while srt-rust"),
+            logs_contain("ffmpeg uses microseconds while ts-transformer"),
             "the µs/ms warning should fire through the tsbpddelay alias too",
         );
     }

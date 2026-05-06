@@ -17,7 +17,27 @@ pub struct H266Sps {
     pub bit_depth_chroma: u8,
     pub color_info: Option<ColorInfo>,
     pub frame_rate: Option<Rational>,
+    /// Luma-sample conformance-window crop offsets per H.266 §7.4.3.4.
+    /// `coded_width = width + crop_left + crop_right` (and similarly for
+    /// height). Useful for sizing GPU buffers.
+    pub crop_left: u32,
+    pub crop_right: u32,
+    pub crop_top: u32,
+    pub crop_bottom: u32,
     pub raw_rbsp: Vec<u8>,
+}
+
+impl H266Sps {
+    /// Pre-crop luma width — the value of `pic_width_max_in_luma_samples`
+    /// before conformance-window cropping was applied.
+    pub fn coded_width(&self) -> u32 {
+        self.width + self.crop_left + self.crop_right
+    }
+    /// Pre-crop luma height — the value of `pic_height_max_in_luma_samples`
+    /// before conformance-window cropping was applied.
+    pub fn coded_height(&self) -> u32 {
+        self.height + self.crop_top + self.crop_bottom
+    }
 }
 
 /// Parse an H.266 SPS RBSP (Annex-B start codes already stripped,
@@ -150,6 +170,10 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H266Sps, ParseError> {
         bit_depth_chroma,
         color_info,
         frame_rate,
+        crop_left: crop_x_left,
+        crop_right: crop_x_right,
+        crop_top: crop_y_top,
+        crop_bottom: crop_y_bottom,
         raw_rbsp: rbsp.to_vec(),
     })
 }
@@ -215,6 +239,23 @@ mod tests {
     /// Same as [`minimal_sps_rbsp`] but lets callers inject an arbitrary
     /// `sps_bitdepth_minus8` value to exercise the bounds check.
     fn minimal_sps_rbsp_with_bitdepth_minus8(bitdepth_minus8: u32) -> Vec<u8> {
+        minimal_sps_rbsp_full(bitdepth_minus8, None)
+    }
+
+    /// Same minimal SPS but with `sps_conformance_window_flag = 1` and
+    /// caller-supplied `(left, right, top, bottom)` offsets in
+    /// SubWidthC/SubHeightC units. 4:2:0 chroma → SubWidthC=SubHeightC=2,
+    /// so the surfaced `crop_*` luma-sample values are 2× the offsets.
+    fn minimal_sps_rbsp_with_conformance_window(
+        offsets: (u32, u32, u32, u32),
+    ) -> Vec<u8> {
+        minimal_sps_rbsp_full(0, Some(offsets))
+    }
+
+    fn minimal_sps_rbsp_full(
+        bitdepth_minus8: u32,
+        conf_window: Option<(u32, u32, u32, u32)>,
+    ) -> Vec<u8> {
         let mut bw = BitWriter::new();
 
         // §7.3.2.4 SPS header.
@@ -253,7 +294,15 @@ mod tests {
         bw.write_ue(320); // sps_pic_width_max_in_luma_samples
         bw.write_ue(240); // sps_pic_height_max_in_luma_samples
 
-        bw.write(0, 1); // sps_conformance_window_flag = 0
+        if let Some((left, right, top, bottom)) = conf_window {
+            bw.write(1, 1); // sps_conformance_window_flag = 1
+            bw.write_ue(left); // sps_conf_win_left_offset
+            bw.write_ue(right); // sps_conf_win_right_offset
+            bw.write_ue(top); // sps_conf_win_top_offset
+            bw.write_ue(bottom); // sps_conf_win_bottom_offset
+        } else {
+            bw.write(0, 1); // sps_conformance_window_flag = 0
+        }
         bw.write(0, 1); // sps_subpic_info_present_flag = 0
         bw.write_ue(bitdepth_minus8); // sps_bitdepth_minus8
 
@@ -297,6 +346,41 @@ mod tests {
     /// would have silently wrapped to `bit_depth_luma=0` via
     /// `8u8.saturating_add(248 as u8)` — caught now via
     /// [`validate_bit_depth_minus8`].
+    /// Per H.266 V4 §7.4.3.4, conformance-window crop offsets are
+    /// expressed in SubWidthC / SubHeightC units. For 4:2:0 chroma both
+    /// are 2, so a (1, 2, 3, 4) offset tuple → luma crops (2, 4, 6, 8)
+    /// and width/height shrink by (left+right) / (top+bottom).
+    #[test]
+    fn h266_sps_surfaces_conformance_window_offsets_invariant() {
+        let rbsp = minimal_sps_rbsp_with_conformance_window((1, 2, 3, 4));
+        let sps = parse_sps(&rbsp).expect("SPS with conformance window should parse");
+        assert_eq!(sps.crop_left, 2);
+        assert_eq!(sps.crop_right, 4);
+        assert_eq!(sps.crop_top, 6);
+        assert_eq!(sps.crop_bottom, 8);
+        // pic_width_max=320, pic_height_max=240. After cropping:
+        // width = 320 - (2+4) = 314, height = 240 - (6+8) = 226.
+        assert_eq!(sps.width, 314);
+        assert_eq!(sps.height, 226);
+        assert_eq!(sps.coded_width(), 320);
+        assert_eq!(sps.coded_height(), 240);
+        assert_eq!(sps.coded_width(), sps.width + sps.crop_left + sps.crop_right);
+        assert_eq!(sps.coded_height(), sps.height + sps.crop_top + sps.crop_bottom);
+    }
+
+    /// When `sps_conformance_window_flag=0`, all four crop offsets are
+    /// zero and `coded_*` matches the cropped dimensions.
+    #[test]
+    fn h266_sps_no_conformance_window_zero_crops() {
+        let sps = parse_sps(&minimal_sps_rbsp()).expect("minimal SPS should parse");
+        assert_eq!(sps.crop_left, 0);
+        assert_eq!(sps.crop_right, 0);
+        assert_eq!(sps.crop_top, 0);
+        assert_eq!(sps.crop_bottom, 0);
+        assert_eq!(sps.coded_width(), sps.width);
+        assert_eq!(sps.coded_height(), sps.height);
+    }
+
     #[test]
     fn h266_sps_rejects_bit_depth_overflow() {
         let rbsp = minimal_sps_rbsp_with_bitdepth_minus8(248);

@@ -1,16 +1,24 @@
 //! PES (Packetized Elementary Stream) header packing.
 //!
-//! Four call shapes on the muxer hot path:
+//! Five call shapes on the muxer hot path:
 //! - Video: stream_id 0xE0, PTS only, PES_packet_length = 0 (unbounded).
-//! - KLV asynchronous: stream_id 0xFC, no PTS, bounded length.
-//! - KLV synchronous: stream_id 0xFC, PTS only, bounded length.
-//! - Audio: stream_id 0xC0..=0xCF (base + within-program index), PTS only, bounded length.
+//!   AV1 sets data_alignment_indicator=1 per binding §3.4; other video codecs
+//!   leave it 0 (H.222.0 §2.4.3.7 codec-defined).
+//! - KLV synchronous: stream_id 0xFC, PTS only, bounded, data_alignment=1
+//!   per H.222.0 V9 §2.12.4.1.
+//! - KLV asynchronous: stream_id 0xFC, no PTS, bounded.
+//! - Audio: stream_id 0xC0..=0xCF (base + within-program index) for MP2/AAC/
+//!   LATM, 0xBD (private_stream_1) for AC-3 with data_alignment=1 per ATSC
+//!   A/52 §A.2.4.1.
+//! - Subtitle: stream_id 0xBD, PTS only, bounded, data_alignment=1.
+//!   DVB-sub adds a 3-byte EN 300 743 §6.2 envelope; DVB-teletext uses a
+//!   45-byte stuffed PES per EN 300 472 §4.2.
 //!
 //! PES header layout (per ISO/IEC 13818-1 §2.4.3.6):
 //!   start_code(3): 0x00 0x00 0x01
 //!   stream_id(1)
 //!   PES_packet_length(2): 0 = unbounded (video only)
-//!   flags1(1): '10' marker | scrambling=0 | priority=0 | data_alignment=0 | copyright=0 | original=0
+//!   flags1(1): '10' marker | scrambling=0 | priority=0 | data_alignment | copyright=0 | original=0
 //!   flags2(1): PTS_DTS_flags(2 high) | other flags (all 0 for our case)
 //!   PES_header_data_length(1)
 //!   [PTS(5)] [DTS(5)]
@@ -30,14 +38,12 @@ pub(crate) const STREAM_ID_KLV: u8 = 0xFC;
 /// AC-3 is the exception: per ATSC A/52 §A.2.2, AC-3 PES on PMT
 /// stream_type 0x81 MUST use `stream_id = 0xBD` (private_stream_1).
 pub(crate) const STREAM_ID_AUDIO_BASE: u8 = 0xC0;
-/// PES `stream_id` for subtitle / caption elementary streams.
+/// PES `stream_id` for `private_stream_1` (ISO/IEC 13818-1 Table 2-22, 0xBD).
 ///
-/// Per ISO/IEC 13818-1 Table 2-22 + ETSI TS 101 154, `private_stream_1`
-/// (0xBD) is the canonical choice for non-audio non-video private
-/// elementary streams. All four subtitle codecs (DVB subtitling, DVB
-/// teletext, CEA-708 standalone, WebVTT-in-TS) share this stream_id;
+/// Used by AC-3 audio (ATSC A/52 §A.2.2 mandate), DVB subtitling (EN 300 743
+/// §6.2), DVB teletext (EN 300 472 §4.2), CEA-708 standalone, and WebVTT-in-TS.
 /// MPEG-TS demuxer dispatch is by `elementary_PID`, not `stream_id`.
-pub(crate) const STREAM_ID_SUBTITLE: u8 = 0xBD;
+pub(crate) const STREAM_ID_PRIVATE_STREAM_1: u8 = 0xBD;
 
 /// PES PTS/DTS field selector. Embeds the PTS so callers can't construct an
 /// inconsistent state (e.g. PtsOnly with no value).
@@ -91,7 +97,7 @@ pub(crate) fn write_audio_pes(
 ) {
     debug_assert!(within_program_index < 16, "audio cap is 16 per program");
     let stream_id = match codec {
-        AudioCodec::Ac3 => STREAM_ID_SUBTITLE, // 0xBD = private_stream_1
+        AudioCodec::Ac3 => STREAM_ID_PRIVATE_STREAM_1, // 0xBD = private_stream_1
         AudioCodec::Mp2 | AudioCodec::Aac | AudioCodec::AacLatm => {
             STREAM_ID_AUDIO_BASE + within_program_index
         }
@@ -189,7 +195,7 @@ fn write_dvb_teletext_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
 
     // Fixed prefix: start_code(3) + stream_id(1).
     out.extend_from_slice(&[0x00, 0x00, 0x01]);
-    out.push(STREAM_ID_SUBTITLE);
+    out.push(STREAM_ID_PRIVATE_STREAM_1);
     // PES_packet_length (BE u16).
     out.extend_from_slice(&(pes_packet_length as u16).to_be_bytes());
     // flags1: '10' marker (bits 7..6) | data_alignment_indicator (bit 2).
@@ -246,7 +252,7 @@ fn write_subtitle_pes_passthrough(out: &mut Vec<u8>, pts_90khz: i64, payload: &[
     // data_alignment_indicator=1.
     let header_len = write_pes_header(
         &mut header,
-        STREAM_ID_SUBTITLE,
+        STREAM_ID_PRIVATE_STREAM_1,
         pts,
         Some(payload.len() as u16),
         PesFlags {
@@ -524,8 +530,8 @@ mod tests {
         // packet_start_code_prefix
         assert_eq!(&out[0..3], &[0x00, 0x00, 0x01]);
         // stream_id is private_stream_1
-        assert_eq!(out[3], STREAM_ID_SUBTITLE);
-        assert_eq!(STREAM_ID_SUBTITLE, 0xBD);
+        assert_eq!(out[3], STREAM_ID_PRIVATE_STREAM_1);
+        assert_eq!(STREAM_ID_PRIVATE_STREAM_1, 0xBD);
         // PES_packet_length covers flags1(1) + flags2(1) + header_data_length(1)
         // + PES header data (5 PTS bytes) + ES payload (3) = 11.
         assert_eq!(u16::from_be_bytes([out[4], out[5]]), 11);

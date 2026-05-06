@@ -891,3 +891,64 @@ the trigger that would unblock it.
 - **Trigger to revisit:** An HLS/DASH-delivery consumer needs to
   ingest sync KLV from a CMAF stream (e.g., a future HLS pipeline
   that elects the emsg-box path instead of the MPEG-TS path).
+
+## DVB-shaped AC-3 (`stream_type 0x06` + AC3_descriptor `0x6A`)
+
+- **Status:** Deferred. AC-3 carriage is ATSC-shaped only —
+  `stream_type 0x81` with `format_identifier="AC-3"` registration
+  descriptor (the shape ffmpeg's mpegts muxer emits by default).
+  The DVB shape uses `stream_type 0x06` with `AC3_descriptor`
+  (tag `0x6A`) per ETSI TS 101 154 §5.6.
+- **Why deferred:** No consumer in the current target deployment
+  uses DVB-shaped AC-3. Adding the path means either a new
+  `AudioCodec::Ac3Dvb` enum variant (parallel to existing `Ac3`)
+  or a `Config::ac3_mode: Ac3Mode { Atsc, Dvb }` switch — both
+  expand the public API without a use case. ATSC-only mode covers
+  every known consumer.
+- **Workaround:** A receiver consuming DVB-shaped AC-3 today
+  classifies as `Unknown(0x06)` unless the caller passes
+  `DemuxerOptions::treat_as` mapping the PID to `AudioCodec::Ac3`;
+  the library hands back raw PES bytes regardless of the
+  registration descriptor shape.
+- **Trigger to revisit:** A DVB-only receiver appears in the
+  target deployment, or a corpus capture shows DVB-shaped AC-3.
+
+## Auto-prepend of access-unit delimiter (AUD) on H.264 / H.265 / H.266
+
+- **Status:** Deferred. Caller is responsible for prepending the
+  codec-specific AUD NAL when required. `Muxer::push_video_to`
+  passes the caller's NAL stream through verbatim (post-Annex-B
+  framing validation).
+- **Why deferred:** ffmpeg's `mpegtsenc.c:1907-2069` auto-inserts
+  AUD on H.264/H.265 if missing, but the AUD NAL type and content
+  differ across codecs (H.264 type 9, H.265 type 35, H.266 type
+  20) and the encoder side already emits AUD on most modern
+  toolchains (x264 with `--aud`, x265 with `--aud`, libavcodec
+  with `flags +aud`). Adding auto-insert means a bit-stream-aware
+  filter on every video push and a codec-dispatch table — non-
+  trivial without a consumer-driven need.
+- **Trigger to revisit:** A consumer reports decoder breakage on
+  AUD-required hardware decoder (some HW decoders, libde265 in
+  certain configurations, broadcast-grade STBs) when streams
+  arrive without AUD. Likely landing shape:
+  `Config::auto_aud: bool` gate on the muxer, defaulting off,
+  with per-codec NAL emission.
+
+## SRT URL `mode=listener` / `mode=rendezvous` dispatch
+
+- **Status:** Deferred. The URL parser at `tst-srt/src/url.rs`
+  rejects `mode=listener` and `mode=rendezvous` with a
+  ts-transformer-specific error; only `mode=caller` is accepted.
+  The URL surface is sender-only today.
+- **Why deferred:** The receiver-side C ABI surface is the
+  current P0 work item (see project ROADMAP). Listener-side URL
+  dispatch is naturally part of that plan: the receiver C entry
+  points are what need `mode=listener` URLs to bind a passive
+  socket and accept incoming connections. Landing parser-only
+  support today (accepting the keyword without dispatching it)
+  creates a half-implemented feature that crashes or silently
+  misroutes when a caller actually uses it.
+- **Trigger to revisit:** Receiver C ABI surface plan begins.
+  That plan's URL dispatch will reuse the existing `parse`
+  function and route on `mode` to either the existing caller
+  path or new listener / rendezvous paths.

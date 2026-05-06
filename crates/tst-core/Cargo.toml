@@ -21,3 +21,4 @@ tracing      = { version = "0.1", default-features = false, features = ["std"] }
 [dev-dependencies]
 proptest     = { workspace = true }
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
+tempfile     = "3"

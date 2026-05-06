@@ -14,6 +14,8 @@
 
 pub mod codec;
 pub mod error;
+#[cfg(feature = "file")]
+pub mod io_file;
 pub mod klv;
 pub mod mpegts;
 pub mod transport;

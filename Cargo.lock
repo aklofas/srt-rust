@@ -1443,6 +1443,7 @@ dependencies = [
  "h264-reader",
  "log",
  "proptest",
+ "tempfile",
  "thiserror",
  "tracing",
  "tracing-test",

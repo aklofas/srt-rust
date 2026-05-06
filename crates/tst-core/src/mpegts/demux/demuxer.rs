@@ -342,7 +342,13 @@ impl Demuxer {
         }
         if let Some(prev_cc) = self.cc_by_pid.get(&pkt.pid).copied() {
             let expected = (prev_cc + 1) & 0x0F;
-            if expected != pkt.continuity_counter {
+            // Per ISO/IEC 13818-1 §2.4.3.5, when discontinuity_indicator=1
+            // the CC is explicitly permitted to be discontinuous on this
+            // packet. Suppress the ContinuityJump (matches ffmpeg
+            // mpegts.c:3075-3078); the separate `AdaptationFieldFlag`
+            // event below already surfaces the discontinuity hint to
+            // consumers, so emitting both would double-count.
+            if expected != pkt.continuity_counter && !pkt.discontinuity_indicator {
                 if let Some(stream) = self.lookup_stream(pkt.pid) {
                     self.discontinuities_count += 1;
                     let program_number = self.program_number_for_pid(stream.pid);
@@ -2300,5 +2306,100 @@ mod tests {
         }
         assert!(saw_tei, "expected TransportErrorPacket on PID 0x100");
         assert!(!saw_psi, "TEI packet should be dropped before PSI parsing");
+    }
+
+    /// Per ISO/IEC 13818-1 §2.4.3.5, when adaptation_field.discontinuity_indicator=1
+    /// the CC is *allowed* to be discontinuous on that packet. ffmpeg
+    /// suppresses the CC error in that case (mpegts.c:3075-3078). We must
+    /// too — emitting both `DiscontinuityKind::AdaptationFieldFlag` AND
+    /// `DiscontinuityKind::ContinuityJump` double-counts the same event in
+    /// stats and confuses strict-mode consumers.
+    #[test]
+    fn discontinuity_indicator_suppresses_continuity_jump_event() {
+        use crate::mpegts::mux::{ConfigBuilder, VideoCodec as MuxVideoCodec};
+        // Build a real PAT+PMT+video PES through the muxer so the demuxer's
+        // PSI tables get populated for PID 0x100 and `cc_by_pid` is primed.
+        // This is the same pattern already used by other unit tests in this
+        // module (e.g. `demuxer_emits_audio_sample_for_aac_pes`) — we need
+        // PSI parsed for `lookup_stream(0x100)` to resolve and for the CC
+        // tracker to have a baseline against which to detect a jump.
+        let cfg = ConfigBuilder::default()
+            .add_program(1, 0x1000)
+            .add_video(0x100, MuxVideoCodec::H264)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = crate::mpegts::mux::Muxer::new(cfg).unwrap();
+        let mut au = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
+        au.extend(std::iter::repeat(0xAB).take(64));
+        mux.push_video(&au, 9_000, true).unwrap();
+        let mut buf = vec![0u8; 188 * 64];
+        let n = mux.pull(&mut buf);
+
+        let mut demux = Demuxer::new();
+        demux.feed(&buf[..n]).expect("seed feed");
+
+        // Find the last CC value emitted by the muxer for PID 0x100 so we
+        // can construct a guaranteed-jumping CC on our synthetic packet.
+        // Walk the seeded bytes packet-by-packet; CC is the low nibble of
+        // byte 3.
+        let mut last_cc = 0u8;
+        for i in (0..n).step_by(188) {
+            if buf[i] != 0x47 {
+                continue;
+            }
+            let pid = ((u16::from(buf[i + 1] & 0x1F)) << 8) | u16::from(buf[i + 2]);
+            if pid == 0x100 {
+                last_cc = buf[i + 3] & 0x0F;
+            }
+        }
+        // Pick a CC that is NOT (last_cc + 1) & 0x0F — bump by 5.
+        let bad_cc = (last_cc.wrapping_add(5)) & 0x0F;
+
+        // Drain events queued from the seed feed so we only observe events
+        // produced by our synthetic packet.
+        while demux.next_event().is_some() {}
+
+        // Build a TS packet on PID 0x100 with adaptation_field present,
+        // discontinuity_indicator=1, and a CC that has jumped relative to
+        // the last muxer-emitted CC for this PID.
+        let mut pkt = [0xFFu8; 188];
+        pkt[0] = 0x47;
+        // PUSI=0, PID high bits = 1 (PID 0x100).
+        pkt[1] = 0x01;
+        pkt[2] = 0x00;
+        // adaptation_field_control = '11' (both AF + payload).
+        pkt[3] = 0x30 | (bad_cc & 0x0F);
+        // adaptation_field_length = 1 (just the flags byte).
+        pkt[4] = 1;
+        // Flags byte: bit 7 = discontinuity_indicator.
+        pkt[5] = 0x80;
+        // Bytes 6..188 are payload — left as 0xFF (the buffer init).
+
+        demux.feed(&pkt).expect("DI packet feed");
+
+        let mut cc_jumps = 0usize;
+        let mut di_events = 0usize;
+        while let Some(ev) = demux.next_event() {
+            if let DemuxEvent::Discontinuity {
+                stream: StreamId { pid: 0x100, .. },
+                kind,
+            } = ev
+            {
+                match kind {
+                    DiscontinuityKind::ContinuityJump { .. } => cc_jumps += 1,
+                    DiscontinuityKind::AdaptationFieldFlag => di_events += 1,
+                    _ => {}
+                }
+            }
+        }
+        assert_eq!(
+            cc_jumps, 0,
+            "ContinuityJump must be suppressed when discontinuity_indicator=1"
+        );
+        assert!(
+            di_events >= 1,
+            "AdaptationFieldFlag event should still fire (got {di_events})"
+        );
     }
 }

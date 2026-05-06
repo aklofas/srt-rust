@@ -1,4 +1,4 @@
-// crates/srt-core/src/pipeline/ts_receiver/sync.rs
+// crates/srt-core/src/pipeline/receiver/sync.rs
 //! TS sync state machine. Locks on the 0x47 sync byte spaced 188 bytes apart.
 //!
 //! ## States
@@ -78,14 +78,14 @@ impl Syncer {
     /// alignment search. Higher-level shells (a future `ManagedReceiver`)
     /// call this after a transport rebuild before feeding fresh bytes.
     ///
-    /// Does NOT reset stat counters — those are owned by [`TsReceiver`] and
-    /// reset via [`TsReceiver::reset_stats`].
+    /// Does NOT reset stat counters — those are owned by [`Receiver`] and
+    /// reset via [`Receiver::reset_stats`].
     pub fn reset(&mut self) {
         self.buf.clear();
         self.state = SyncState::Hunt;
     }
 
-    /// Zero the sync-recovery counters. Called by `TsReceiver::reset_stats`.
+    /// Zero the sync-recovery counters. Called by `Receiver::reset_stats`.
     pub(crate) fn reset_stats(&mut self) {
         self.bytes_skipped_for_sync = 0;
         self.resync_events = 0;
@@ -102,7 +102,7 @@ impl Syncer {
     /// available for LOCKED to emit as real packets.
     ///
     /// Allocates one `Vec<u8>` per emitted packet (heap alloc on the hot
-    /// path). The caller (`TsReceiver`) immediately copies the result into a
+    /// path). The caller (`Receiver`) immediately copies the result into a
     /// `[u8; 188]`. Both costs disappear if/when this struct is reshaped to a
     /// ring buffer; deferred to a follow-up so Task 12 stays scoped to the
     /// state machine.

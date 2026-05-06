@@ -31,8 +31,8 @@ pub use mpegts::demux::{DemuxEvent, Demuxer, StrictMode};
 pub use mpegts::mux::{KlvStreamType, Muxer, VideoCodec};
 pub use pipeline::{
     BackoffStrategy, ManagedTransport, OverflowPolicy, RawSender, RawSenderConfig, ReconnectPolicy,
-    Sender, SenderError, SrtTransport, Transport, TransportError, TsFramingMode, TsSender,
-    TsSenderConfig, TsSenderError, TsSenderStats,
+    MuxSender, MuxSenderError, SrtTransport, Transport, TransportError, TsFramingMode, Sender,
+    SenderConfig, SenderError, SenderStats,
 };
 pub use srt::url::{SrtUrl, UrlError, UrlOverlay};
 pub use srt::{

@@ -1,13 +1,13 @@
-// crates/srt-core/src/pipeline/ts_receiver/mod.rs
-//! `TsReceiver<R>` — pull bytes from a `RecvTransport`, run TS sync recovery,
+// crates/srt-core/src/pipeline/receiver/mod.rs
+//! `Receiver<R>` — pull bytes from a `RecvTransport`, run TS sync recovery,
 //! and emit 188-byte aligned packets.
 //!
-//! `TsReceiver` is the receive-side counterpart to `TsSender`: where
-//! `TsSender` wraps raw bytes into TS packets, `TsReceiver` receives a byte
+//! `Receiver` is the receive-side counterpart to `Sender`: where
+//! `Sender` wraps raw bytes into TS packets, `Receiver` receives a byte
 //! stream and recovers packet alignment via the [`sync::Syncer`] state machine.
 //!
 //! Feed the muxed TS stream to the underlying `RecvTransport`; call
-//! [`TsReceiver::next_packet`] repeatedly to drain one 188-byte packet at a
+//! [`Receiver::next_packet`] repeatedly to drain one 188-byte packet at a
 //! time. On a network gap or resync, the syncer silently re-hunts and
 //! returns the next aligned packet.
 
@@ -17,15 +17,15 @@ use crate::pipeline::recv_transport::RecvTransport;
 use crate::pipeline::transport::TransportError;
 use sync::Syncer;
 
-/// Application-level stats for [`TsReceiver`].
+/// Application-level stats for [`Receiver`].
 ///
-/// Mirrors the shape of [`crate::pipeline::TsSenderStats`] on the receive
+/// Mirrors the shape of [`crate::pipeline::SenderStats`] on the receive
 /// side. The sync-recovery counters (`bytes_skipped_for_sync`,
 /// `resync_events`) reflect the [`sync::Syncer`] state machine: bytes
 /// drained while hunting for alignment, and successful lock acquisitions
 /// (initial lock-on and re-locks after losing sync mid-stream).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct TsReceiverStats {
+pub struct ReceiverStats {
     /// Total bytes returned to callers as valid 188-byte TS packets.
     pub bytes_received: u64,
     /// Bytes discarded while scanning for the 0x47 sync byte (HUNT and
@@ -44,9 +44,9 @@ pub struct TsReceiverStats {
 /// `R` is any [`RecvTransport`] — typically `SrtTransport` for live
 /// connections, or a test mock. The underlying transport framing (SRT live
 /// mode) guarantees that each `recv_bytes` call returns one complete SRT
-/// message; `TsReceiver` then feeds those bytes through the TS syncer to
+/// message; `Receiver` then feeds those bytes through the TS syncer to
 /// extract correctly-aligned 188-byte packets.
-pub struct TsReceiver<R: RecvTransport> {
+pub struct Receiver<R: RecvTransport> {
     transport: R,
     syncer: Syncer,
     /// Reusable scratch buffer sized to `transport.max_payload()` on
@@ -59,7 +59,7 @@ pub struct TsReceiver<R: RecvTransport> {
     packets_received: u64,
 }
 
-impl<R: RecvTransport> TsReceiver<R> {
+impl<R: RecvTransport> Receiver<R> {
     /// Wrap a transport. Allocates an internal receive buffer sized to
     /// `transport.max_payload()`.
     pub fn new(transport: R) -> Self {
@@ -120,7 +120,7 @@ impl<R: RecvTransport> TsReceiver<R> {
     /// the underlying transport has been re-established, bytes left over
     /// from the dead connection must not seed the new alignment search.
     /// Note that `ManagedReceiveTransport` itself does **not** own the
-    /// `TsReceiver` (it lives one layer up, inside `Receiver`); this method
+    /// `Receiver` (it lives one layer up, inside `DemuxReceiver`); this method
     /// exists for a future `ManagedReceiver` shell to call.
     pub fn reset_sync(&mut self) {
         self.syncer.reset();
@@ -130,8 +130,8 @@ impl<R: RecvTransport> TsReceiver<R> {
     ///
     /// The sync-recovery counters are read from the [`sync::Syncer`] (where
     /// the recovery logic lives); transport counters are owned by this struct.
-    pub fn stats(&self) -> TsReceiverStats {
-        TsReceiverStats {
+    pub fn stats(&self) -> ReceiverStats {
+        ReceiverStats {
             bytes_received: self.bytes_received,
             packets_received: self.packets_received,
             bytes_skipped_for_sync: self.syncer.bytes_skipped_for_sync,
@@ -203,7 +203,7 @@ mod stats_tests {
 
     #[test]
     fn stats_starts_zero() {
-        let r = TsReceiver::new(MemRecv {
+        let r = Receiver::new(MemRecv {
             queue: VecDeque::new(),
             alive: true,
         });
@@ -224,7 +224,7 @@ mod stats_tests {
             stream.extend_from_slice(&one_packet());
         }
         queue.push_back(stream);
-        let mut r = TsReceiver::new(MemRecv { queue, alive: true });
+        let mut r = Receiver::new(MemRecv { queue, alive: true });
         let _ = r.next_packet();
         let st = r.stats();
         assert_eq!(st.bytes_received, 188);
@@ -239,7 +239,7 @@ mod stats_tests {
             stream.extend_from_slice(&one_packet());
         }
         queue.push_back(stream);
-        let mut r = TsReceiver::new(MemRecv { queue, alive: true });
+        let mut r = Receiver::new(MemRecv { queue, alive: true });
         let _ = r.next_packet();
         r.reset_stats();
         let st = r.stats();
@@ -307,14 +307,14 @@ mod tests {
     }
 
     /// Happy path: a well-formed TS stream arrives as a single large message.
-    /// TsReceiver locks, emits all packets, then returns Closed.
+    /// Receiver locks, emits all packets, then returns Closed.
     #[test]
     fn emits_packets_from_single_message() {
         let mut stream = Vec::new();
         for i in 0..6u16 {
             stream.extend_from_slice(&ts_packet(i));
         }
-        let mut rx = TsReceiver::new(MockRecv::new(vec![stream]));
+        let mut rx = Receiver::new(MockRecv::new(vec![stream]));
 
         let mut got = 0;
         loop {
@@ -332,7 +332,7 @@ mod tests {
     fn emits_packets_across_transport_messages() {
         // Each transport message is exactly one TS packet.
         let messages: Vec<Vec<u8>> = (0..5u16).map(|i| ts_packet(i).to_vec()).collect();
-        let mut rx = TsReceiver::new(MockRecv::new(messages));
+        let mut rx = Receiver::new(MockRecv::new(messages));
 
         let mut got = 0;
         loop {
@@ -348,7 +348,7 @@ mod tests {
     /// Closed transport with no prior data returns Closed immediately.
     #[test]
     fn closed_transport_returns_closed() {
-        let mut rx = TsReceiver::new(MockRecv::new(vec![]));
+        let mut rx = Receiver::new(MockRecv::new(vec![]));
         assert_eq!(rx.next_packet().unwrap_err(), TransportError::Closed,);
     }
 }

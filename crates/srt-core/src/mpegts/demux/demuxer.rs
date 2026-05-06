@@ -19,7 +19,7 @@ use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 /// Stats snapshot for [`Demuxer`]. Used by
-/// [`crate::pipeline::receiver::Receiver`] to compose its own `ReceiverStats`;
+/// [`crate::pipeline::DemuxReceiver`] to compose its own `DemuxReceiverStats`;
 /// also exposed publicly for callers using `Demuxer` directly.
 ///
 /// Per-stream entries are created lazily as events are emitted — the

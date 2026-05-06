@@ -1,4 +1,4 @@
-//! Sender-from-URL example.
+//! MuxSender-from-URL example.
 //!
 //! Demonstrates the full `srt://host:port?key=value` flow: parse the URL,
 //! apply its overlay to a fresh `SocketConfig`, connect. Then opens an

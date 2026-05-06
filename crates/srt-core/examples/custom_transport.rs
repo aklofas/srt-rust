@@ -1,15 +1,15 @@
 //! Implementing the `Transport` trait for a non-SRT sink.
 //!
 //! Defines `MemTransport` — collects every TS packet into a `Vec<Vec<u8>>` —
-//! and runs `Sender` against it. At the end, dumps the collected bytes to a
+//! and runs `MuxSender` against it. At the end, dumps the collected bytes to a
 //! file. Validates the muxer's output without any networking.
 //!
 //!   cargo run --example custom_transport -- /tmp/custom_transport_out.ts
 //!
-//! Demonstrates: `Transport` trait, `Sender` is generic over T: Transport.
+//! Demonstrates: `Transport` trait, `MuxSender` is generic over T: Transport.
 
 use srt_core::mpegts::mux::Config;
-use srt_core::pipeline::{Sender, Transport, TransportError};
+use srt_core::pipeline::{MuxSender, Transport, TransportError};
 use std::env;
 use std::fs::File;
 use std::io::Write;
@@ -21,10 +21,10 @@ use std::sync::{Arc, Mutex};
 // Why `Arc<Mutex<...>>` for *both* fields, not just one:
 //
 // We hand out a clone of the transport via `transport.clone()` so the main
-// thread can hold a `collector` view while the `Sender` consumes the
+// thread can hold a `collector` view while the `MuxSender` consumes the
 // original. Both views must read and write the *same* underlying packet
 // vec — `Arc` is what gives them shared ownership, and the `Mutex` is
-// what makes that ownership thread-safe across the `Sender` boundary
+// what makes that ownership thread-safe across the `MuxSender` boundary
 // (the `Transport` trait requires `Send`, and a future async or
 // threaded sender shell could legitimately call `send_bytes` from
 // another thread). For `alive` the same reasoning applies: `close()`
@@ -74,7 +74,7 @@ impl MemTransport {
 }
 
 // ---------------------------------------------------------------------------
-// `Transport` trait impl — the contract `Sender`/`TsSender`/`RawSender` (and
+// `Transport` trait impl — the contract `MuxSender`/`Sender`/`RawSender` (and
 // `ManagedTransport`) expect. Four methods, each one a small, well-defined
 // hook into the byte-sink lifecycle:
 //
@@ -142,7 +142,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .unwrap_or_else(|| "/tmp/custom_transport_out.ts".into());
 
-    // `transport` is the original we'll hand into `Sender`; `collector` is
+    // `transport` is the original we'll hand into `MuxSender`; `collector` is
     // the `transport.clone()` clone the main thread keeps to read out the
     // collected bytes after the sender has finished. Both views point at
     // the *same* `Arc<Mutex<Vec<Vec<u8>>>>` packet store — that's the
@@ -150,10 +150,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let transport = MemTransport::new();
     let collector = transport.clone();
 
-    // The canonical sender shell. `Sender` composes the muxer
+    // The canonical sender shell. `MuxSender` composes the muxer
     // (`Config::default`) with the transport. End-to-end the path is
     // NAL+KLV → mux → 188-byte TS packets → MemTransport's packet vec.
-    let sender = Sender::new(Config::default(), transport)?;
+    let sender = MuxSender::new(Config::default(), transport)?;
 
     // 10 frames is shorter than `managed_reconnect`'s 30 — there's no
     // reconnect machinery to exercise, so we can keep the run small and
@@ -178,7 +178,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     sender.close();
 
     // Drain the collector. After `into_bytes` the `MemTransport` clone is
-    // consumed; the original (now owned by the closed `Sender`) is fine
+    // consumed; the original (now owned by the closed `MuxSender`) is fine
     // to drop.
     let bytes = collector.into_bytes();
     // 188 is the canonical TS packet size — printing the count helps

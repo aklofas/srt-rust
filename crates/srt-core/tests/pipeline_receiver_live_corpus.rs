@@ -1,6 +1,6 @@
 //! Live-socket corpus replay — every `tests/fixtures/local/*.ts` is
-//! streamed through `pipeline::TsSender` over an SRT loopback pair into
-//! `pipeline::Receiver` and the receiver's demux events are compared
+//! streamed through `pipeline::Sender` over an SRT loopback pair into
+//! `pipeline::DemuxReceiver` and the receiver's demux events are compared
 //! against a ground-truth count produced by feeding the same bytes
 //! through a stand-alone `Demuxer` directly.
 //!
@@ -25,8 +25,8 @@
 //!      capture" — skip with a warning, matching `mpegts_demux_local`.
 //!   3. Loopback pass: bind a 127.0.0.1 listener, accept on the main
 //!      thread, sender thread connects and pushes the same buffer
-//!      via `TsSender::send_ts` in 64 KB chunks, then `flush` + close.
-//!      The recv side drives a `Receiver` to drain demux events.
+//!      via `Sender::send_ts` in 64 KB chunks, then `flush` + close.
+//!      The recv side drives a `DemuxReceiver` to drain demux events.
 //!   4. Compare: assert ≥ 1 ProgramMap, and that recv-side video /
 //!      KLV counts hit `≥ TOLERANCE * reference`. The slack absorbs
 //!      benign edge cases (a trailing AU that reference flush
@@ -41,7 +41,7 @@
 use srt_core::error::DemuxError;
 use srt_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
 use srt_core::pipeline::{
-    Receiver, ReceiverError, SrtTransport, TransportError, TsSender, TsSenderConfig,
+    DemuxReceiver, DemuxReceiverError, SrtTransport, TransportError, Sender, SenderConfig,
 };
 use srt_core::srt::{ListenerBuilder, SocketBuilder};
 use std::fs;
@@ -56,7 +56,7 @@ use std::time::Duration;
 /// a second on loopback.
 const MAX_BYTES: usize = 16 * 1024 * 1024;
 
-/// Send-side chunk granularity. Doesn't affect correctness — `TsSender`
+/// Send-side chunk granularity. Doesn't affect correctness — `Sender`
 /// re-bundles internally to 7-packet UDP payloads regardless. Picked
 /// large enough that we don't pay 100k+ syscalls per file.
 const CHUNK: usize = 64 * 1024;
@@ -226,7 +226,7 @@ fn run_one(path: &Path) -> RunOutcome {
 
     let recv_thread = thread::spawn(move || {
         let (server_socket, _peer) = listener.accept().expect("accept");
-        let mut receiver = Receiver::new(SrtTransport::new(server_socket));
+        let mut receiver = DemuxReceiver::new(SrtTransport::new(server_socket));
         let mut c = Counts::default();
         for item in &mut receiver {
             let event = match item {
@@ -234,7 +234,7 @@ fn run_one(path: &Path) -> RunOutcome {
                 // `Broken` = peer hangup. libsrt commonly surfaces a
                 // sender close as Broken on the recv side; treat as
                 // a clean stream end. Any other error is a real bug.
-                Err(ReceiverError::Transport(TransportError::Broken(_))) => break,
+                Err(DemuxReceiverError::Transport(TransportError::Broken(_))) => break,
                 Err(other) => panic!("unexpected receiver error: {other:?}"),
             };
             match event {
@@ -265,7 +265,7 @@ fn run_one(path: &Path) -> RunOutcome {
         .latency(LATENCY)
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
-    let mut sender = TsSender::new(SrtTransport::new(socket), TsSenderConfig::default());
+    let mut sender = Sender::new(SrtTransport::new(socket), SenderConfig::default());
 
     for chunk in payload.chunks(CHUNK) {
         sender.send_ts(chunk).expect("send_ts");

@@ -1,4 +1,4 @@
-//! Verifies SRTO_SENDER=1 is set when role=Sender. Audit Issue 2.
+//! Verifies SRTO_SENDER=1 is set when role=MuxSender. Audit Issue 2.
 
 use srt_core::{ListenerBuilder, Role, SocketBuilder};
 use std::ffi::c_int;
@@ -38,7 +38,7 @@ fn role_sender_sets_srto_sender_on_caller() {
     thread::sleep(Duration::from_millis(50));
 
     let socket = SocketBuilder::new()
-        .role(Role::Sender)
+        .role(Role::MuxSender)
         .send_timeout(Duration::from_secs(5))
         .connect(("127.0.0.1", port))
         .expect("connect");
@@ -48,7 +48,7 @@ fn role_sender_sets_srto_sender_on_caller() {
     assert_eq!(
         read_srto_sender(socket.raw_handle()),
         1,
-        "expected SRTO_SENDER=1 on caller with role=Sender",
+        "expected SRTO_SENDER=1 on caller with role=MuxSender",
     );
 }
 

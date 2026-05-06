@@ -10,14 +10,14 @@
 //! ## Composition shape
 //!
 //! `ManagedReceiveTransport` implements [`RecvTransport`], so it slots into
-//! any of the receive shells (`RawReceiver`, `TsReceiver`, `Receiver`)
+//! any of the receive shells (`RawReceiver`, `Receiver`, `DemuxReceiver`)
 //! transparently:
 //!
 //! ```ignore
 //! let factory = || SrtTransport::connect(addr, &cfg);
 //! let inner = factory()?;
 //! let managed = ManagedReceiveTransport::new(inner, Box::new(factory), ReconnectPolicy::default());
-//! let rx = Receiver::new(managed);
+//! let rx = DemuxReceiver::new(managed);
 //! ```
 //!
 //! ## Asymmetry vs. `ManagedTransport`
@@ -45,22 +45,22 @@
 //! ## Limitations worth knowing about
 //!
 //! - **Demuxer / sync state outlives reconnect.** This decorator only
-//!   replaces the byte source. If the consumer wraps it in `TsReceiver`,
+//!   replaces the byte source. If the consumer wraps it in `Receiver`,
 //!   the syncer's internal buffer carries over from the dead connection.
 //!   In practice that costs at most one re-VERIFY pass (a stale packet of
 //!   bytes is skipped during HUNT). For a clean restart, callers can use
-//!   the `TsReceiver::reset_sync` helper from a higher-level shell. A
+//!   the `Receiver::reset_sync` helper from a higher-level shell. A
 //!   future `ManagedReceiver` may wire this in automatically.
 //! - **`max_payload` is assumed stable across reconnects.** The
 //!   `RecvTransport` value reported here is the live inner's current
 //!   value, but consumers that cache it at construction time (e.g.
-//!   `TsReceiver`'s `recv_buf`) won't re-size if a reconnected peer
+//!   `Receiver`'s `recv_buf`) won't re-size if a reconnected peer
 //!   advertises a different `SRTO_PAYLOADSIZE`. In practice every libsrt
 //!   peer uses the 1316-byte default; a remote changing it across
 //!   reconnects is exotic.
 //! - **Demuxer flush is not invoked.** Terminal `TransportError::Closed`
 //!   from this decorator means the reconnect budget is exhausted; the
-//!   higher-level shell (`Receiver`) is responsible for calling
+//!   higher-level shell (`DemuxReceiver`) is responsible for calling
 //!   `Demuxer::flush()` to drain any partial PES at end-of-stream.
 
 use crate::pipeline::reconnect::ReconnectPolicy;

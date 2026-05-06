@@ -1,4 +1,4 @@
-// crates/srt-core/src/pipeline/ts_sender/framing.rs
+// crates/srt-core/src/pipeline/sender/framing.rs
 //! TS sync-acquisition and loss-of-sync recovery state machine.
 //!
 //! Standalone — no transport dependency. Caller pushes arbitrary-aligned
@@ -44,7 +44,7 @@ pub enum TsFramingError {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct TsSenderStats {
+pub struct SenderStats {
     pub bytes_pushed: u64,
     pub bytes_skipped_for_sync: u64,
     pub resync_events: u64,
@@ -66,7 +66,7 @@ pub struct TsFraming {
     buffer: VecDeque<u8>,
     /// In UNSYNCED: count of bytes consumed scanning for sync.
     unsynced_consumed: usize,
-    stats: TsSenderStats,
+    stats: SenderStats,
 }
 
 impl TsFraming {
@@ -76,7 +76,7 @@ impl TsFraming {
             state: State::Unsynced,
             buffer: VecDeque::new(),
             unsynced_consumed: 0,
-            stats: TsSenderStats::default(),
+            stats: SenderStats::default(),
         }
     }
 
@@ -84,7 +84,7 @@ impl TsFraming {
         self.state == State::Synced
     }
 
-    pub fn stats(&self) -> &TsSenderStats {
+    pub fn stats(&self) -> &SenderStats {
         &self.stats
     }
 
@@ -92,13 +92,13 @@ impl TsFraming {
     /// recovery state, partial-bundle buffer) is NOT reset — only the
     /// counters on top of it.
     pub fn reset_stats(&mut self) {
-        self.stats = TsSenderStats::default();
+        self.stats = SenderStats::default();
     }
 
     /// Push bytes (RECOVER mode): returns any complete 7-packet bundles
     /// emitted. Sync is acquired silently; loss-of-sync is silently
     /// recovered. Stats reflect events.
-    pub fn push(&mut self, bytes: &[u8]) -> (Vec<Vec<u8>>, &TsSenderStats) {
+    pub fn push(&mut self, bytes: &[u8]) -> (Vec<Vec<u8>>, &SenderStats) {
         self.stats.bytes_pushed += bytes.len() as u64;
         for &b in bytes {
             self.buffer.push_back(b);

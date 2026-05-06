@@ -1,10 +1,10 @@
-//! End-to-end integration test: pipeline::Sender over a real Socket pair.
+//! End-to-end integration test: pipeline::MuxSender over a real Socket pair.
 
 mod common;
 
 use common::synthetic_nal;
 use srt_core::mpegts::mux::Config;
-use srt_core::pipeline::{Sender, SrtTransport};
+use srt_core::pipeline::{MuxSender, SrtTransport};
 use srt_core::srt::{ListenerBuilder, SocketBuilder};
 use std::thread;
 use std::time::Duration;
@@ -32,13 +32,13 @@ fn sender_round_trip_one_frame() {
         total
     });
 
-    // Sender thread: connect + send one frame.
+    // MuxSender thread: connect + send one frame.
     let socket = SocketBuilder::new()
         .latency(Duration::from_millis(120))
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
     let transport = SrtTransport::new(socket);
-    let sender = Sender::new(Config::default(), transport).expect("sender");
+    let sender = MuxSender::new(Config::default(), transport).expect("sender");
 
     let nal = synthetic_nal::h264_au(500, true);
     let klv = synthetic_nal::klv_blob(64);

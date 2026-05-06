@@ -1,7 +1,7 @@
-// crates/srt-core/src/pipeline/receiver.rs
-//! `Receiver<R>` — full receive: RecvTransport → TsReceiver → Demuxer.
+// crates/srt-core/src/pipeline/demux_receiver.rs
+//! `DemuxReceiver<R>` — full receive: RecvTransport → Receiver → Demuxer.
 //!
-//! Mirrors the `Sender` shape on the receive side. Includes
+//! Mirrors the `MuxSender` shape on the receive side. Includes
 //! `add_byte_sink` for fan-out: callbacks see every 188-byte TS packet
 //! pulled from the transport, in registration order, before the demuxer
 //! parses them. Useful for "write to disk + forward via RTP + demux for
@@ -10,14 +10,14 @@
 //! # Byte-sink contract
 //!
 //! - Sinks are called once per TS packet (188 bytes), in the order they were
-//!   registered via [`Receiver::add_byte_sink`].
+//!   registered via [`DemuxReceiver::add_byte_sink`].
 //! - The slice passed to the sink is valid only for the duration of the call.
 //!   Copy bytes into an owned buffer if they need to outlive the callback.
 //! - Sinks must not panic. A panicking sink will unwind through `recv_event`.
 //!
 //! # Stream-end flush
 //!
-//! When the transport closes (`TransportError::Closed`), `Receiver` calls
+//! When the transport closes (`TransportError::Closed`), `DemuxReceiver` calls
 //! `Demuxer::flush` before returning `Ok(None)`. This surfaces any partial
 //! PES sitting in reassembly state (typically the final video AU, whose PES
 //! packet length is 0 — length-unknown — and is only flushed when the next
@@ -28,14 +28,14 @@ use crate::error::DemuxError;
 use crate::mpegts::demux::{DemuxEvent, Demuxer, DemuxerOptions};
 use crate::pipeline::recv_transport::RecvTransport;
 use crate::pipeline::transport::TransportError;
-use crate::pipeline::ts_receiver::TsReceiver;
+use crate::pipeline::receiver::Receiver;
 
 /// Type alias for a boxed byte-fanout callback registered via
-/// [`Receiver::add_byte_sink`]. The callback receives one TS packet (188
+/// [`DemuxReceiver::add_byte_sink`]. The callback receives one TS packet (188
 /// bytes) per call.
 pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
 
-/// Full receive shell: `RecvTransport → TsReceiver → Demuxer`, with optional
+/// Full receive shell: `RecvTransport → Receiver → Demuxer`, with optional
 /// byte-sink fan-out.
 ///
 /// `R` is any [`RecvTransport`] — typically [`SrtTransport`] for live
@@ -45,7 +45,7 @@ pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
 /// # Usage
 ///
 /// ```ignore
-/// let mut rx = Receiver::new(transport);
+/// let mut rx = DemuxReceiver::new(transport);
 /// rx.add_byte_sink(Box::new(|pkt| { /* write pkt to disk, etc. */ }));
 /// for result in &mut rx {
 ///     match result.unwrap() {
@@ -57,17 +57,17 @@ pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
 /// ```
 ///
 /// [`SrtTransport`]: crate::pipeline::SrtTransport
-pub struct Receiver<R: RecvTransport> {
-    ts: TsReceiver<R>,
+pub struct DemuxReceiver<R: RecvTransport> {
+    ts: Receiver<R>,
     demux: Demuxer,
     byte_sinks: Vec<ByteSink>,
 }
 
-impl<R: RecvTransport> Receiver<R> {
+impl<R: RecvTransport> DemuxReceiver<R> {
     /// Wrap a transport with default demuxer options (lenient mode).
     pub fn new(transport: R) -> Self {
         Self {
-            ts: TsReceiver::new(transport),
+            ts: Receiver::new(transport),
             demux: Demuxer::new(),
             byte_sinks: Vec::new(),
         }
@@ -76,7 +76,7 @@ impl<R: RecvTransport> Receiver<R> {
     /// Wrap a transport with custom demuxer options (e.g. strict mode).
     pub fn with_demux_options(transport: R, options: DemuxerOptions) -> Self {
         Self {
-            ts: TsReceiver::new(transport),
+            ts: Receiver::new(transport),
             demux: Demuxer::with_options(options),
             byte_sinks: Vec::new(),
         }
@@ -97,19 +97,19 @@ impl<R: RecvTransport> Receiver<R> {
     /// - An event is available in the demuxer's internal queue → `Ok(Some(e))`.
     /// - The transport closes cleanly → flushes the demuxer and returns
     ///   `Ok(None)` once the queue is drained.
-    /// - The transport fails → `Err(ReceiverError::Transport(e))`.
-    /// - The demuxer rejects a packet in strict mode → `Err(ReceiverError::Demux(e))`.
+    /// - The transport fails → `Err(DemuxReceiverError::Transport(e))`.
+    /// - The demuxer rejects a packet in strict mode → `Err(DemuxReceiverError::Demux(e))`.
     ///
     /// # MalformedPes note
     ///
-    /// `DemuxError::MalformedPes` propagates as `ReceiverError::Demux` and
+    /// `DemuxError::MalformedPes` propagates as `DemuxReceiverError::Demux` and
     /// terminates the receive loop. This matches the plan default (fatal
     /// propagation). If a production caller wants to skip bad PES and continue,
-    /// it can match on `ReceiverError::Demux(DemuxError::MalformedPes { .. })`
+    /// it can match on `DemuxReceiverError::Demux(DemuxError::MalformedPes { .. })`
     /// and call `recv_event` again; but the demuxer state after a malformed PES
     /// is undefined, so re-entry is discouraged without a design change. Tracked
     /// in the deferred-features list.
-    pub fn recv_event(&mut self) -> Result<Option<DemuxEvent>, ReceiverError> {
+    pub fn recv_event(&mut self) -> Result<Option<DemuxEvent>, DemuxReceiverError> {
         loop {
             // Fast path: demuxer already has a queued event.
             if let Some(e) = self.demux.next_event() {
@@ -128,7 +128,7 @@ impl<R: RecvTransport> Receiver<R> {
                     }
                     return Ok(None);
                 }
-                Err(other) => return Err(ReceiverError::Transport(other)),
+                Err(other) => return Err(DemuxReceiverError::Transport(other)),
             };
             // Fan-out to byte sinks in registration order before demuxing.
             for sink in &mut self.byte_sinks {
@@ -137,7 +137,7 @@ impl<R: RecvTransport> Receiver<R> {
             // Feed to demuxer. In lenient mode this only errors on
             // Unrecoverable (bad packet length) or MalformedPes. In strict
             // mode it can also return StrictRejection.
-            self.demux.feed(&pkt).map_err(ReceiverError::Demux)?;
+            self.demux.feed(&pkt).map_err(DemuxReceiverError::Demux)?;
         }
     }
 
@@ -161,12 +161,12 @@ impl<R: RecvTransport> Receiver<R> {
     }
 }
 
-/// `Receiver` implements `Iterator` so callers can use `for result in &mut rx`
+/// `DemuxReceiver` implements `Iterator` so callers can use `for result in &mut rx`
 /// or `.collect()` patterns. EOF (`Ok(None)`) terminates the iterator.
 /// Errors are surfaced as `Some(Err(e))` so the caller can distinguish a
 /// transport error from a clean end of stream.
-impl<R: RecvTransport> Iterator for Receiver<R> {
-    type Item = Result<DemuxEvent, ReceiverError>;
+impl<R: RecvTransport> Iterator for DemuxReceiver<R> {
+    type Item = Result<DemuxEvent, DemuxReceiverError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.recv_event() {
@@ -177,16 +177,16 @@ impl<R: RecvTransport> Iterator for Receiver<R> {
     }
 }
 
-/// Errors that can be returned by [`Receiver::recv_event`].
+/// Errors that can be returned by [`DemuxReceiver::recv_event`].
 #[derive(Debug, thiserror::Error)]
-pub enum ReceiverError {
+pub enum DemuxReceiverError {
     /// The underlying transport closed unexpectedly or returned a fatal error.
     #[error(transparent)]
     Transport(#[from] TransportError),
     /// The demuxer rejected a packet (strict-mode violation, unrecoverable
     /// packet malformation, or malformed PES header).
     ///
-    /// Re-entry into [`Receiver::recv_event`] after this variant is
+    /// Re-entry into [`DemuxReceiver::recv_event`] after this variant is
     /// discouraged for `DemuxError::MalformedPes`: the demuxer's reassembly
     /// state is undefined past a bad PES header, so subsequent events may
     /// be inconsistent. Treat it as a stream-fatal signal until the demuxer
@@ -195,14 +195,14 @@ pub enum ReceiverError {
     Demux(#[from] DemuxError),
 }
 
-/// Stats snapshot for [`Receiver`]. Composes the underlying
-/// [`crate::pipeline::TsReceiverStats`] (bytes/packets received, sync-recovery
+/// Stats snapshot for [`DemuxReceiver`]. Composes the underlying
+/// [`crate::pipeline::ReceiverStats`] (bytes/packets received, sync-recovery
 /// counters) with the [`crate::mpegts::demux::DemuxerStats`] (events emitted,
 /// per-PID counters). Sync-recovery counters (`bytes_skipped_for_sync`,
-/// `resync_events`) live only on `TsReceiverStats` — call
-/// `TsReceiver::stats()` directly to read them.
+/// `resync_events`) live only on `ReceiverStats` — call
+/// `Receiver::stats()` directly to read them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ReceiverStats {
+pub struct DemuxReceiverStats {
     pub bytes_received: u64,
     pub packets_received: u64,
     pub program_maps_seen: u64,
@@ -212,14 +212,14 @@ pub struct ReceiverStats {
     pub per_stream: std::collections::BTreeMap<u16, crate::mpegts::stats::StreamStats>,
 }
 
-impl<R: RecvTransport> Receiver<R> {
+impl<R: RecvTransport> DemuxReceiver<R> {
     /// Snapshot the current counters. Composes transport-layer byte/packet
-    /// counts from the inner `TsReceiver` with demux-layer event counts from
+    /// counts from the inner `Receiver` with demux-layer event counts from
     /// the inner `Demuxer`.
-    pub fn stats(&self) -> ReceiverStats {
+    pub fn stats(&self) -> DemuxReceiverStats {
         let ts = self.ts.stats();
         let dx = self.demux.stats();
-        ReceiverStats {
+        DemuxReceiverStats {
             bytes_received: ts.bytes_received,
             packets_received: ts.packets_received,
             program_maps_seen: dx.program_maps_seen,
@@ -230,7 +230,7 @@ impl<R: RecvTransport> Receiver<R> {
         }
     }
 
-    /// Reset all counters to zero. Delegates to both the inner `TsReceiver`
+    /// Reset all counters to zero. Delegates to both the inner `Receiver`
     /// and the inner `Demuxer`.
     pub fn reset_stats(&mut self) {
         self.ts.reset_stats();
@@ -277,7 +277,7 @@ mod stats_tests {
 
     #[test]
     fn stats_starts_zero_with_empty_per_stream() {
-        let r = Receiver::new(CannedRecv {
+        let r = DemuxReceiver::new(CannedRecv {
             chunks: VecDeque::new(),
             alive: true,
         });
@@ -290,7 +290,7 @@ mod stats_tests {
 
     #[test]
     fn reset_stats_clears_per_stream() {
-        let mut r = Receiver::new(CannedRecv {
+        let mut r = DemuxReceiver::new(CannedRecv {
             chunks: VecDeque::new(),
             alive: true,
         });

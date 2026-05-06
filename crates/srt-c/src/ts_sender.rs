@@ -9,9 +9,9 @@ use crate::error::{
 };
 use crate::handle::Handle;
 use crate::mux_sender::parse_c_srt_url;
-use srt_core::pipeline::{ManagedTransport, SrtTransport, TsSender, TsSenderStats};
+use srt_core::pipeline::{ManagedTransport, SrtTransport, Sender, SenderStats};
 
-/// Public-ABI mirror of `srt_core::pipeline::TsSenderStats`. Same fields,
+/// Public-ABI mirror of `srt_core::pipeline::SenderStats`. Same fields,
 /// same units. Caller passes a pointer to a stack-allocated struct;
 /// `srtc_ts_sender_get_stats` fills it in.
 #[repr(C)]
@@ -23,8 +23,8 @@ pub struct SrtcTsSenderStats {
     pub packets_sent: u64,
 }
 
-impl From<&TsSenderStats> for SrtcTsSenderStats {
-    fn from(s: &TsSenderStats) -> Self {
+impl From<&SenderStats> for SrtcTsSenderStats {
+    fn from(s: &SenderStats) -> Self {
         Self {
             bytes_pushed: s.bytes_pushed,
             bytes_skipped_for_sync: s.bytes_skipped_for_sync,
@@ -39,7 +39,7 @@ impl From<&TsSenderStats> for SrtcTsSenderStats {
 // ------------------------------------------------------------------
 
 pub struct SrtcTsSender {
-    inner: Handle<TsSender<SrtTransport>>,
+    inner: Handle<Sender<SrtTransport>>,
 }
 
 /// Open a `srtc_ts_sender_t` connected via SRT.
@@ -61,7 +61,7 @@ pub unsafe extern "C" fn srtc_ts_sender_open(
 ) -> *mut SrtcTsSender {
     let cfg = match unsafe { cfg.as_ref() } {
         Some(c) => c.inner.clone(),
-        None => srt_core::pipeline::TsSenderConfig::default(),
+        None => srt_core::pipeline::SenderConfig::default(),
     };
     let url = match unsafe { parse_c_srt_url(srt_url) } {
         Ok(u) => u,
@@ -77,7 +77,7 @@ pub unsafe extern "C" fn srtc_ts_sender_open(
         }
     };
     Box::into_raw(Box::new(SrtcTsSender {
-        inner: Handle::new(TsSender::new(transport, cfg)),
+        inner: Handle::new(Sender::new(transport, cfg)),
     }))
 }
 
@@ -167,7 +167,7 @@ pub unsafe extern "C" fn srtc_ts_sender_close(p: *mut SrtcTsSender) {
 // ------------------------------------------------------------------
 
 pub struct SrtcManagedTsSender {
-    inner: Handle<TsSender<ManagedTransport<SrtTransport>>>,
+    inner: Handle<Sender<ManagedTransport<SrtTransport>>>,
 }
 
 /// Open a `srtc_managed_ts_sender_t` connected via SRT.
@@ -190,7 +190,7 @@ pub unsafe extern "C" fn srtc_managed_ts_sender_open(
 ) -> *mut SrtcManagedTsSender {
     let cfg = match unsafe { cfg.as_ref() } {
         Some(c) => c.inner.clone(),
-        None => srt_core::pipeline::TsSenderConfig::default(),
+        None => srt_core::pipeline::SenderConfig::default(),
     };
     let policy = match unsafe { policy.as_ref() } {
         Some(p) => p.inner.clone(),
@@ -216,7 +216,7 @@ pub unsafe extern "C" fn srtc_managed_ts_sender_open(
     let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
     let managed = ManagedTransport::new(initial, factory, policy);
     Box::into_raw(Box::new(SrtcManagedTsSender {
-        inner: Handle::new(TsSender::new(managed, cfg)),
+        inner: Handle::new(Sender::new(managed, cfg)),
     }))
 }
 

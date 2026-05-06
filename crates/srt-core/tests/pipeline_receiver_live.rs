@@ -1,5 +1,5 @@
-//! Live-socket end-to-end roundtrip — `pipeline::Sender` → real SRT loopback
-//! → `pipeline::Receiver` in one process.
+//! Live-socket end-to-end roundtrip — `pipeline::MuxSender` → real SRT loopback
+//! → `pipeline::DemuxReceiver` in one process.
 //!
 //! Why a separate test from `pipeline_receiver.rs` (canned-transport) and
 //! `pipeline_sender.rs` (live socket, raw byte counter)?
@@ -25,7 +25,7 @@ mod common;
 use common::synthetic_nal;
 use srt_core::mpegts::demux::DemuxEvent;
 use srt_core::mpegts::mux::{ConfigBuilder, KlvStreamType, VideoCodec as MuxVideoCodec};
-use srt_core::pipeline::{Receiver, ReceiverError, Sender, SrtTransport, TransportError};
+use srt_core::pipeline::{DemuxReceiver, DemuxReceiverError, MuxSender, SrtTransport, TransportError};
 use srt_core::srt::{ListenerBuilder, SocketBuilder};
 use std::thread;
 use std::time::Duration;
@@ -55,7 +55,7 @@ fn minimal_klv() -> Vec<u8> {
 /// frames so the early-break condition trips well before the close.
 ///
 /// Why the buffer? When libsrt signals peer close as `Broken` (not the
-/// graceful `Closed`), `Receiver` propagates the error before calling
+/// graceful `Closed`), `DemuxReceiver` propagates the error before calling
 /// `Demuxer::flush()`. The last in-flight video AU only completes when
 /// the *next* PUSI arrives (H.264 PES with length=0 sentinel), so without
 /// flush the final AU is lost. Sending `SEND - EXPECT = 5` extra frames
@@ -75,7 +75,7 @@ fn end_to_end_sender_to_receiver() {
         .expect("bind listener");
     let port = listener.local_addr().unwrap().port();
 
-    // Sender thread: connect, build the pipeline, push N video + N KLV
+    // MuxSender thread: connect, build the pipeline, push N video + N KLV
     // frames at 30 fps PTS spacing (3000 ticks ≈ 33 ms at 90 kHz), then
     // brief sleep + close to let bytes drain on the wire.
     let send_handle = thread::spawn(move || {
@@ -95,7 +95,7 @@ fn end_to_end_sender_to_receiver() {
             .end_program()
             .build()
             .expect("build mux config");
-        let sender = Sender::new(cfg, SrtTransport::new(socket)).expect("sender");
+        let sender = MuxSender::new(cfg, SrtTransport::new(socket)).expect("sender");
 
         let klv = minimal_klv();
         for i in 0..SEND as i64 {
@@ -118,10 +118,10 @@ fn end_to_end_sender_to_receiver() {
         sender.close();
     });
 
-    // Receiver side: accept, wrap in SrtTransport, drive the Receiver.
+    // DemuxReceiver side: accept, wrap in SrtTransport, drive the DemuxReceiver.
     // `accept` blocks until the sender's connect completes the handshake.
     let (server_socket, _peer) = listener.accept().expect("accept");
-    let mut rx = Receiver::new(SrtTransport::new(server_socket));
+    let mut rx = DemuxReceiver::new(SrtTransport::new(server_socket));
 
     let mut samples = 0usize;
     let mut metas = 0usize;
@@ -141,7 +141,7 @@ fn end_to_end_sender_to_receiver() {
     for item in &mut rx {
         let event = match item {
             Ok(e) => e,
-            Err(ReceiverError::Transport(TransportError::Broken(_))) => break,
+            Err(DemuxReceiverError::Transport(TransportError::Broken(_))) => break,
             Err(other) => panic!("unexpected receiver error: {other:?}"),
         };
         match event {

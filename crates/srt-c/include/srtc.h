@@ -192,7 +192,7 @@ typedef struct srtc_stream_stats_t {
 } srtc_stream_stats_t;
 
 /**
- * `repr(C)` mirror of `srt_core::pipeline::SenderStats`. Size 6188 B.
+ * `repr(C)` mirror of `srt_core::pipeline::MuxSenderStats`. Size 6188 B.
  */
 typedef struct srtc_sender_stats_t {
   uint64_t bytes_sent;
@@ -232,7 +232,7 @@ typedef struct srtc_raw_sender_stats_t {
 } srtc_raw_sender_stats_t;
 
 /**
- * Public-ABI mirror of `srt_core::pipeline::TsSenderStats`. Same fields,
+ * Public-ABI mirror of `srt_core::pipeline::SenderStats`. Same fields,
  * same units. Caller passes a pointer to a stack-allocated struct;
  * `srtc_ts_sender_get_stats` fills it in.
  */

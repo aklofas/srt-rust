@@ -1,5 +1,5 @@
-// crates/srt-core/src/pipeline/sender.rs
-//! `Sender<T: Transport>` — composes `mpegts::mux::Muxer` with a
+// crates/srt-core/src/pipeline/mux_sender.rs
+//! `MuxSender<T: Transport>` — composes `mpegts::mux::Muxer` with a
 //! `Transport` for the canonical NAL+KLV → TS → SRT send path.
 //!
 //! Internally synchronized: `send_video` and `send_klv` may be called
@@ -20,9 +20,9 @@ use crate::pipeline::transport::{Transport, TransportError};
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
 
-/// Stats snapshot for [`Sender`].
+/// Stats snapshot for [`MuxSender`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct SenderStats {
+pub struct MuxSenderStats {
     /// Cumulative bytes successfully handed off to the transport.
     pub bytes_sent: u64,
     /// Cumulative chunk count successfully handed off to the transport.
@@ -41,7 +41,7 @@ pub struct SenderStats {
     pub per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
 }
 
-pub struct Sender<T: Transport> {
+pub struct MuxSender<T: Transport> {
     inner: Mutex<Inner<T>>,
     /// Cancel handle snapshot, taken from the transport at construction
     /// time. Held outside the inner Mutex so `close()` can fire it
@@ -55,7 +55,7 @@ struct Inner<T: Transport> {
     /// Drained-but-not-yet-sent TS chunks, oldest first. Drained on each
     /// send_* call before any new push.
     ///
-    /// Unbounded across repeated transport failures — the bare `Sender`
+    /// Unbounded across repeated transport failures — the bare `MuxSender`
     /// has no cap. Callers expecting prolonged transport unavailability
     /// should wrap with `ManagedTransport` (Task 9), which adds a
     /// gap-buffer with overflow policy.
@@ -65,7 +65,7 @@ struct Inner<T: Transport> {
     packets_sent: u64,
 }
 
-impl<T: Transport> Sender<T> {
+impl<T: Transport> MuxSender<T> {
     pub fn new(config: Config, transport: T) -> Result<Self, MuxError> {
         let muxer = Muxer::new(config)?;
         let cancel = transport.cancel_handle();
@@ -90,14 +90,14 @@ impl<T: Transport> Sender<T> {
         nal: &[u8],
         pts_90khz: i64,
         key_frame: bool,
-    ) -> Result<(), SenderError> {
+    ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
         inner.send_video(nal, pts_90khz, key_frame)
     }
 
     /// Send one pre-built KLV blob. `pts_90khz` is in 90 kHz units (the
     /// TS clock); ignored unless the configured KLV stream carries PTS.
-    pub fn send_klv(&self, klv: &[u8], pts_90khz: i64) -> Result<(), SenderError> {
+    pub fn send_klv(&self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
         inner.send_klv(klv, pts_90khz)
     }
@@ -105,14 +105,14 @@ impl<T: Transport> Sender<T> {
     /// Send one video access unit to a specific configured video stream.
     /// `handle` is obtained from [`Self::video_handles`]; passing a handle
     /// from a different sender / muxer surfaces as
-    /// [`MuxError::InvalidStreamHandle`] inside [`SenderError::Mux`].
+    /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
     pub fn send_video_to(
         &self,
         handle: VideoStreamHandle,
         nal: &[u8],
         pts_90khz: i64,
         key_frame: bool,
-    ) -> Result<(), SenderError> {
+    ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
         inner.send_video_to(handle, nal, pts_90khz, key_frame)
     }
@@ -123,7 +123,7 @@ impl<T: Transport> Sender<T> {
         handle: KlvStreamHandle,
         klv: &[u8],
         pts_90khz: i64,
-    ) -> Result<(), SenderError> {
+    ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
         inner.send_klv_to(handle, klv, pts_90khz)
     }
@@ -134,9 +134,9 @@ impl<T: Transport> Sender<T> {
     ///
     /// Resolves only when exactly one audio stream is configured; with
     /// zero or multiple audio streams the muxer surfaces
-    /// [`MuxError::AmbiguousTarget`] inside [`SenderError::Mux`] — use
+    /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderError::Mux`] — use
     /// [`Self::send_audio_to`] in that case.
-    pub fn send_audio(&self, frames: &[u8], pts_90khz: i64) -> Result<(), SenderError> {
+    pub fn send_audio(&self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
         inner.send_audio(frames, pts_90khz)
     }
@@ -144,13 +144,13 @@ impl<T: Transport> Sender<T> {
     /// Send one audio frame buffer to a specific configured audio stream.
     /// `handle` is obtained from [`Self::audio_handles`]; passing a handle
     /// from a different sender / muxer surfaces as
-    /// [`MuxError::InvalidStreamHandle`] inside [`SenderError::Mux`].
+    /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
     pub fn send_audio_to(
         &self,
         handle: AudioStreamHandle,
         frames: &[u8],
         pts_90khz: i64,
-    ) -> Result<(), SenderError> {
+    ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
         inner.send_audio_to(handle, frames, pts_90khz)
     }
@@ -163,9 +163,9 @@ impl<T: Transport> Sender<T> {
     ///
     /// Resolves only when exactly one subtitle stream is configured;
     /// with zero or multiple subtitle streams the muxer surfaces
-    /// [`MuxError::AmbiguousTarget`] inside [`SenderError::Mux`] — use
+    /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderError::Mux`] — use
     /// [`Self::send_subtitle_to`] in that case.
-    pub fn send_subtitle(&self, payload: &[u8], pts_90khz: i64) -> Result<(), SenderError> {
+    pub fn send_subtitle(&self, payload: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
         inner.send_subtitle(payload, pts_90khz)
     }
@@ -173,13 +173,13 @@ impl<T: Transport> Sender<T> {
     /// Send one subtitle PES unit to a specific configured subtitle stream.
     /// `handle` is obtained from [`Self::subtitle_handles`]; passing a
     /// handle from a different sender / muxer surfaces as
-    /// [`MuxError::InvalidStreamHandle`] inside [`SenderError::Mux`].
+    /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
     pub fn send_subtitle_to(
         &self,
         handle: SubtitleStreamHandle,
         payload: &[u8],
         pts_90khz: i64,
-    ) -> Result<(), SenderError> {
+    ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
         inner.send_subtitle_to(handle, payload, pts_90khz)
     }
@@ -238,12 +238,12 @@ impl<T: Transport> Sender<T> {
 
     /// Return a point-in-time stats snapshot. `per_stream` is delegated from
     /// the inner `Muxer`; `pending_*` fields are live gauges.
-    pub fn stats(&self) -> SenderStats {
+    pub fn stats(&self) -> MuxSenderStats {
         let inner = self.inner.lock().unwrap();
         let mux_stats = inner.muxer.stats();
         let pending_bytes_queued: u64 = inner.pending_bytes.iter().map(|c| c.len() as u64).sum();
         let pending_chunks_queued = inner.pending_bytes.len() as u64;
-        SenderStats {
+        MuxSenderStats {
             bytes_sent: inner.bytes_sent,
             packets_sent: inner.packets_sent,
             pending_bytes_queued,
@@ -286,7 +286,7 @@ impl<T: Transport> Sender<T> {
 
     /// Snapshot of the underlying transport's cancel handle, if it
     /// supports cancellation. Equivalent to what `close()` calls
-    /// internally; exposed for callers who want to keep the Sender
+    /// internally; exposed for callers who want to keep the MuxSender
     /// alive but still have an out-of-band wake-up mechanism.
     pub fn cancel_handle(&self) -> Option<&dyn crate::pipeline::transport::TransportCancel> {
         self.cancel.as_deref()
@@ -298,7 +298,7 @@ impl<T: Transport> Sender<T> {
     }
 }
 
-impl<T: Transport> Drop for Sender<T> {
+impl<T: Transport> Drop for MuxSender<T> {
     fn drop(&mut self) {
         // Best-effort drain of pending_bytes on drop; if transport rejects,
         // they're discarded.
@@ -315,9 +315,9 @@ impl<T: Transport> Inner<T> {
         nal: &[u8],
         pts_90khz: i64,
         key_frame: bool,
-    ) -> Result<(), SenderError> {
+    ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(SenderError::Transport(TransportError::Closed));
+            return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         // Drain any leftover from a previous failed call first.
         self.drain_pending()?;
@@ -326,9 +326,9 @@ impl<T: Transport> Inner<T> {
         self.drain_muxer()
     }
 
-    fn send_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), SenderError> {
+    fn send_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(SenderError::Transport(TransportError::Closed));
+            return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
         self.muxer.push_klv(klv, pts_90khz)?;
@@ -341,9 +341,9 @@ impl<T: Transport> Inner<T> {
         nal: &[u8],
         pts_90khz: i64,
         key_frame: bool,
-    ) -> Result<(), SenderError> {
+    ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(SenderError::Transport(TransportError::Closed));
+            return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
         self.muxer
@@ -356,18 +356,18 @@ impl<T: Transport> Inner<T> {
         handle: KlvStreamHandle,
         klv: &[u8],
         pts_90khz: i64,
-    ) -> Result<(), SenderError> {
+    ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(SenderError::Transport(TransportError::Closed));
+            return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
         self.muxer.push_klv_to(handle, klv, pts_90khz)?;
         self.drain_muxer()
     }
 
-    fn send_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), SenderError> {
+    fn send_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(SenderError::Transport(TransportError::Closed));
+            return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
         self.muxer.push_audio(frames, pts_90khz)?;
@@ -379,9 +379,9 @@ impl<T: Transport> Inner<T> {
         handle: AudioStreamHandle,
         frames: &[u8],
         pts_90khz: i64,
-    ) -> Result<(), SenderError> {
+    ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(SenderError::Transport(TransportError::Closed));
+            return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
         // Muxer parameter order is `(handle, pts, frames)`; the public
@@ -390,9 +390,9 @@ impl<T: Transport> Inner<T> {
         self.drain_muxer()
     }
 
-    fn send_subtitle(&mut self, payload: &[u8], pts_90khz: i64) -> Result<(), SenderError> {
+    fn send_subtitle(&mut self, payload: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(SenderError::Transport(TransportError::Closed));
+            return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
         // Muxer parameter order is `(pts, payload)`; we present
@@ -406,9 +406,9 @@ impl<T: Transport> Inner<T> {
         handle: SubtitleStreamHandle,
         payload: &[u8],
         pts_90khz: i64,
-    ) -> Result<(), SenderError> {
+    ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(SenderError::Transport(TransportError::Closed));
+            return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
         self.muxer.push_subtitle_to(handle, pts_90khz, payload)?;
@@ -418,7 +418,7 @@ impl<T: Transport> Inner<T> {
     /// Drain the muxer's internal buffer and forward each chunk to the
     /// transport. On transport error, captures any unsent chunks into
     /// `pending_bytes` and returns the error.
-    fn drain_muxer(&mut self) -> Result<(), SenderError> {
+    fn drain_muxer(&mut self) -> Result<(), MuxSenderError> {
         let max = self.transport.max_payload();
         let mut buf = vec![0u8; max];
         loop {
@@ -445,18 +445,18 @@ impl<T: Transport> Inner<T> {
                         }
                         self.pending_bytes.push_back(buf[..n2].to_vec());
                     }
-                    return Err(SenderError::Transport(e));
+                    return Err(MuxSenderError::Transport(e));
                 }
             }
         }
     }
 
-    fn drain_pending(&mut self) -> Result<(), SenderError> {
+    fn drain_pending(&mut self) -> Result<(), MuxSenderError> {
         while let Some(chunk) = self.pending_bytes.front() {
             let len = chunk.len() as u64;
             self.transport
                 .send_bytes(chunk)
-                .map_err(SenderError::Transport)?;
+                .map_err(MuxSenderError::Transport)?;
             // Only count after successful send.
             self.bytes_sent += len;
             self.packets_sent += 1;
@@ -466,9 +466,9 @@ impl<T: Transport> Inner<T> {
     }
 }
 
-/// Errors from `Sender::send_video` / `send_klv`.
+/// Errors from `MuxSender::send_video` / `send_klv`.
 #[derive(Debug, thiserror::Error)]
-pub enum SenderError {
+pub enum MuxSenderError {
     #[error(transparent)]
     Mux(#[from] MuxError),
     #[error(transparent)]
@@ -524,7 +524,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
         assert_eq!(s.video_handles().len(), 2);
         assert_eq!(s.klv_handles().len(), 1);
     }
@@ -540,7 +540,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
         let ir = s.video_handles()[1];
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
         s.send_video_to(ir, &nal, 0, true).unwrap();
@@ -558,7 +558,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
         let st = s.stats();
         assert_eq!(st.bytes_sent, 0);
         assert_eq!(st.packets_sent, 0);
@@ -577,7 +577,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
         let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
         s.send_video(nal, 0, true).unwrap();
         let st = s.stats();
@@ -596,7 +596,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
         let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
         s.send_video(nal, 0, true).unwrap();
         s.reset_stats();
@@ -618,7 +618,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
         // Synthetic audio frame bytes — the muxer doesn't validate the
         // codec payload here, so any non-empty buffer suffices.
         let frames = vec![0xFFu8; 64];
@@ -642,7 +642,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
         let handles = s.audio_handles();
         assert_eq!(handles.len(), 2);
         let frames = vec![0xAAu8; 32];
@@ -662,7 +662,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
         // A minimal WebVTT-in-TS cue body (the muxer doesn't validate
         // contents — it just frames the bytes into a PES).
         let cue = b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhello\n";
@@ -684,7 +684,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
         let handles = s.subtitle_handles();
         assert_eq!(handles.len(), 2);
         let cue = b"WEBVTT\n\n00:00:03.000 --> 00:00:04.000\nrouted\n";
@@ -705,11 +705,11 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = Sender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
         let err = s.send_video(&nal, 0, true).unwrap_err();
         match err {
-            SenderError::Mux(MuxError::AmbiguousTarget {
+            MuxSenderError::Mux(MuxError::AmbiguousTarget {
                 kind: "video",
                 count: 2,
             }) => {}
@@ -782,7 +782,7 @@ mod cancel_tests {
             .build()
             .unwrap();
         let s = Arc::new(
-            Sender::new(
+            MuxSender::new(
                 cfg,
                 ParkableTransport {
                     cancelled: cancelled.clone(),
@@ -814,7 +814,7 @@ mod cancel_tests {
         let result = send_thread.join().unwrap();
         assert!(matches!(
             result,
-            Err(SenderError::Transport(TransportError::Broken(_)))
+            Err(MuxSenderError::Transport(TransportError::Broken(_)))
         ));
     }
 }

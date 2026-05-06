@@ -1,9 +1,9 @@
-//! Example: read a `.ts` file → `pipeline::TsSender` → connected SRT socket.
+//! Example: read a `.ts` file → `pipeline::Sender` → connected SRT socket.
 //!
 //! Run with:
 //!   cargo run --example ts_relay_from_file -- input.ts 127.0.0.1:9000
 
-use srt_core::pipeline::{SrtTransport, TsSender, TsSenderConfig};
+use srt_core::pipeline::{SrtTransport, Sender, SenderConfig};
 use srt_core::srt::SocketBuilder;
 use std::env;
 use std::fs::File;
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .latency(Duration::from_millis(120))
         .connect(addr.as_str())?;
     let transport = SrtTransport::new(socket);
-    let mut sender = TsSender::new(transport, TsSenderConfig::default());
+    let mut sender = Sender::new(transport, SenderConfig::default());
 
     let mut file = File::open(&path)?;
     let mut buf = vec![0u8; 4096];

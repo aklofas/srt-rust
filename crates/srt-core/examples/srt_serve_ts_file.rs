@@ -50,15 +50,15 @@
 //!   to-`srt-live-transmit`-style relay where the receiver is another
 //!   SRT-aware tool that buffers correctly. Not for VLC.
 //!
-//! ## TS-only (`TsSender`)
+//! ## TS-only (`Sender`)
 //!
-//! `TsSender` is the right shape here, not `Sender` (which expects
+//! `Sender` is the right shape here, not `MuxSender` (which expects
 //! pre-elementary-stream NAL+KLV inputs and does its own muxing).
 //! The corpus file is *already* a muxed TS, so we shovel its bytes
-//! through `TsSender::send_ts` and let its 7-packet bundling +
+//! through `Sender::send_ts` and let its 7-packet bundling +
 //! sync-byte verification pass them through unchanged.
 
-use srt_core::pipeline::{SrtTransport, TsSender, TsSenderConfig, TsSenderError};
+use srt_core::pipeline::{SrtTransport, Sender, SenderConfig, SenderError};
 use srt_core::srt::ListenerBuilder;
 use std::env;
 use std::fs::File;
@@ -66,7 +66,7 @@ use std::io::{self, Read};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-/// Read granularity. Must be a multiple of 188 so we hand `TsSender`
+/// Read granularity. Must be a multiple of 188 so we hand `Sender`
 /// already-aligned packets and our PCR walker doesn't have to buffer
 /// partial packets across reads. 188 * 350 ≈ 65 KB.
 const READ_CHUNK: usize = 188 * 350;
@@ -178,7 +178,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("caller connected from {peer}");
 
         let transport = SrtTransport::new(socket);
-        let mut sender = TsSender::new(transport, TsSenderConfig::default());
+        let mut sender = Sender::new(transport, SenderConfig::default());
 
         match stream_file(&mut sender, &args.path, args.pace) {
             Ok(bytes) => eprintln!("session done: streamed {bytes} bytes"),
@@ -205,7 +205,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Pump the file through the sender at the chosen pacing.
 fn stream_file(
-    sender: &mut TsSender<SrtTransport>,
+    sender: &mut Sender<SrtTransport>,
     path: &str,
     pace: PaceMode,
 ) -> Result<u64, Box<dyn std::error::Error>> {
@@ -263,9 +263,9 @@ impl Pacer {
 
     fn send(
         &mut self,
-        sender: &mut TsSender<SrtTransport>,
+        sender: &mut Sender<SrtTransport>,
         bytes: &[u8],
-    ) -> Result<(), TsSenderError> {
+    ) -> Result<(), SenderError> {
         match self {
             Pacer::Pcr(p) => p.send(sender, bytes),
             Pacer::Fixed(p) => p.send(sender, bytes),
@@ -299,9 +299,9 @@ impl PcrPacer {
 
     fn send(
         &mut self,
-        sender: &mut TsSender<SrtTransport>,
+        sender: &mut Sender<SrtTransport>,
         bytes: &[u8],
-    ) -> Result<(), TsSenderError> {
+    ) -> Result<(), SenderError> {
         // Walk packets; emit accumulated runs at each PCR boundary, then sleep.
         let mut emit_from = 0usize;
         let mut i = 0usize;
@@ -373,9 +373,9 @@ impl FixedRatePacer {
 
     fn send(
         &mut self,
-        sender: &mut TsSender<SrtTransport>,
+        sender: &mut Sender<SrtTransport>,
         bytes: &[u8],
-    ) -> Result<(), TsSenderError> {
+    ) -> Result<(), SenderError> {
         sender.send_ts(bytes)?;
         self.total += bytes.len() as u64;
         let want_secs = (self.total as f64 * 8.0) / self.bps as f64;

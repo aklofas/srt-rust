@@ -103,14 +103,14 @@ use std::thread;
 /// buffer is drained before resuming new sends.
 ///
 /// `ManagedTransport` itself implements `Transport`, so all three sender
-/// shells (`Sender`, `TsSender`, `RawSender`) compose with it
+/// shells (`MuxSender`, `Sender`, `RawSender`) compose with it
 /// transparently:
 ///
 /// ```ignore
 /// let factory = || SrtTransport::connect(...);
 /// let inner = factory()?;
 /// let managed = ManagedTransport::new(inner, factory, ReconnectPolicy::default());
-/// let sender = Sender::new(config, managed)?;
+/// let sender = MuxSender::new(config, managed)?;
 /// // sender now silently reconnects on transport breakage
 /// ```
 pub struct ManagedTransport<T: Transport> {

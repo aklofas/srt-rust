@@ -1,7 +1,7 @@
 // crates/srt-core/src/pipeline/transport.rs
 //! `Transport` — the seam between sender shells and the wire.
 //!
-//! Each sender shell (`Sender`, `TsSender`, `RawSender`) is generic over a
+//! Each sender shell (`MuxSender`, `Sender`, `RawSender`) is generic over a
 //! `Transport`. The bare implementation (`SrtTransport`) calls `srt::Socket`
 //! directly; the `ManagedTransport` decorator (in `pipeline::reconnect`)
 //! wraps any inner `Transport` with reconnect + gap buffering. This is the

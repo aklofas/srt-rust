@@ -1,5 +1,5 @@
 // crates/srt-core/src/mpegts/demux/mod.rs
-//! Receiver-side MPEG-TS demuxer.
+//! DemuxReceiver-side MPEG-TS demuxer.
 //!
 //! Drive a [`Demuxer`] with 188-byte TS packets (or arbitrary bytes that
 //! contain TS packets — the demuxer handles sync recovery). Pull events

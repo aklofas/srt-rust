@@ -1,6 +1,6 @@
 //! `srtc_mux_sender_t` (plain) and `srtc_managed_mux_sender_t` (managed).
 //!
-//! Both wrap `srt_core::pipeline::Sender<T>`, with T parameterized on the
+//! Both wrap `srt_core::pipeline::MuxSender<T>`, with T parameterized on the
 //! underlying transport. Plain uses `SrtTransport`; managed uses
 //! `ManagedTransport<SrtTransport>` with a factory that reconnects via the
 //! original URL on transport breakage.
@@ -11,7 +11,7 @@ use crate::error::{
 };
 use crate::handle::{Handle, SrtcKlvStreamHandle, SrtcVideoStreamHandle};
 use srt_core::mpegts::mux::{KlvStreamHandle, VideoStreamHandle};
-use srt_core::pipeline::{ManagedTransport, Sender, SrtTransport};
+use srt_core::pipeline::{ManagedTransport, MuxSender, SrtTransport};
 use srt_core::srt::config::SocketConfig;
 
 // ------------------------------------------------------------------
@@ -19,7 +19,7 @@ use srt_core::srt::config::SocketConfig;
 // ------------------------------------------------------------------
 
 pub struct SrtcMuxSender {
-    inner: Handle<Sender<SrtTransport>>,
+    inner: Handle<MuxSender<SrtTransport>>,
 }
 
 /// Open a `srtc_mux_sender_t` connected via SRT.
@@ -63,7 +63,7 @@ pub unsafe extern "C" fn srtc_mux_sender_open(
             return std::ptr::null_mut();
         }
     };
-    let sender = match Sender::new(built, transport) {
+    let sender = match MuxSender::new(built, transport) {
         Ok(s) => s,
         Err(e) => {
             record_mux_error(&e);
@@ -298,7 +298,7 @@ pub(crate) unsafe fn parse_c_srt_url(srt_url: *const libc::c_char) -> Result<srt
 // ------------------------------------------------------------------
 
 pub struct SrtcManagedMuxSender {
-    inner: Handle<Sender<ManagedTransport<SrtTransport>>>,
+    inner: Handle<MuxSender<ManagedTransport<SrtTransport>>>,
 }
 
 /// Open a `srtc_managed_mux_sender_t` connected via SRT.
@@ -359,7 +359,7 @@ pub unsafe extern "C" fn srtc_managed_mux_sender_open(
     let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
 
     let managed = ManagedTransport::new(initial, factory, policy);
-    let sender = match Sender::new(built, managed) {
+    let sender = match MuxSender::new(built, managed) {
         Ok(s) => s,
         Err(e) => {
             record_mux_error(&e);

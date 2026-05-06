@@ -1,11 +1,11 @@
-//! Unit-level integration tests for `pipeline::Sender` using a mock
+//! Unit-level integration tests for `pipeline::MuxSender` using a mock
 //! `Transport`. End-to-end tests over a real Socket pair are in Task 10.
 
 mod common;
 
 use common::mock_transport::MockTransport;
 use srt_core::mpegts::mux::Config;
-use srt_core::pipeline::Sender;
+use srt_core::pipeline::MuxSender;
 
 fn synthetic_h264_au() -> Vec<u8> {
     // 4-byte start code + IDR NAL header + 64 bytes of payload.
@@ -19,7 +19,7 @@ fn synthetic_h264_au() -> Vec<u8> {
 fn sender_drives_video_through_transport() {
     let transport = MockTransport::new(1316);
     let log = transport.log();
-    let sender = Sender::new(Config::default(), transport).unwrap();
+    let sender = MuxSender::new(Config::default(), transport).unwrap();
 
     sender.send_video(&synthetic_h264_au(), 0, true).unwrap();
 
@@ -49,7 +49,7 @@ fn sender_drives_video_through_transport() {
 fn sender_drives_klv_through_transport() {
     let transport = MockTransport::new(1316);
     let log = transport.log();
-    let sender = Sender::new(Config::default(), transport).unwrap();
+    let sender = MuxSender::new(Config::default(), transport).unwrap();
 
     let klv = vec![0xAB; 64];
     sender.send_klv(&klv, 0).unwrap();
@@ -61,7 +61,7 @@ fn sender_drives_klv_through_transport() {
 #[test]
 fn sender_close_marks_dead() {
     let transport = MockTransport::new(1316);
-    let sender = Sender::new(Config::default(), transport).unwrap();
+    let sender = MuxSender::new(Config::default(), transport).unwrap();
     sender.close();
     assert!(!sender.is_alive());
 }

@@ -1,5 +1,5 @@
 // crates/srt-core/tests/pipeline_receiver.rs
-//! Pipeline integration: drive `Receiver` with an in-memory `CannedTransport`.
+//! Pipeline integration: drive `DemuxReceiver` with an in-memory `CannedTransport`.
 //!
 //! These tests verify the composition layer rather than the mux or demux
 //! internals in isolation. `CannedTransport` replays pre-muxed TS bytes
@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 
 use srt_core::mpegts::demux::DemuxEvent;
 use srt_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
-use srt_core::pipeline::Receiver;
+use srt_core::pipeline::DemuxReceiver;
 use srt_core::pipeline::recv_transport::RecvTransport;
 use srt_core::pipeline::transport::TransportError;
 
@@ -91,10 +91,10 @@ fn drain_to_chunks(mux: &mut Muxer, chunk_size: usize) -> (VecDeque<Vec<u8>>, us
     (chunks, total)
 }
 
-/// Build a muxer preloaded with enough frames to guarantee the TsReceiver sync
+/// Build a muxer preloaded with enough frames to guarantee the Receiver sync
 /// state machine can lock.
 ///
-/// The TsReceiver `Syncer` requires 4 back-to-back 0x47 sync bytes spaced
+/// The Receiver `Syncer` requires 4 back-to-back 0x47 sync bytes spaced
 /// 188 bytes apart before it will emit packets — that means it needs at least
 /// 5 * 188 + 1 = 941 bytes of contiguous TS data in its internal buffer before
 /// transitioning from VERIFY to LOCKED.
@@ -129,14 +129,14 @@ fn build_and_preload_muxer() -> Muxer {
 }
 
 // ---------------------------------------------------------------------------
-// Test 1: Receiver emits at least a ProgramMap event for a well-formed stream.
+// Test 1: DemuxReceiver emits at least a ProgramMap event for a well-formed stream.
 // ---------------------------------------------------------------------------
 
 /// Mux several H.264 frames, replay them through `CannedTransport`, and confirm
-/// the `Receiver` emits a `ProgramMap` event. This exercises the full
-/// composition path: transport → TsReceiver sync → Demuxer → event queue.
+/// the `DemuxReceiver` emits a `ProgramMap` event. This exercises the full
+/// composition path: transport → Receiver sync → Demuxer → event queue.
 ///
-/// Multiple frames are required because the `TsReceiver` sync state machine
+/// Multiple frames are required because the `Receiver` sync state machine
 /// needs at least 941 bytes of contiguous TS data before it will lock and emit
 /// packets. See `build_and_preload_muxer` for the exact strategy.
 #[test]
@@ -145,7 +145,7 @@ fn receiver_emits_events_through_canned_transport() {
 
     let (chunks, _) = drain_to_chunks(&mut m, 1316);
 
-    let mut rx = Receiver::new(CannedTransport { chunks });
+    let mut rx = DemuxReceiver::new(CannedTransport { chunks });
     let mut saw_pmap = false;
     for item in &mut rx {
         let e = item.unwrap();
@@ -163,10 +163,10 @@ fn receiver_emits_events_through_canned_transport() {
 /// Confirms that `add_byte_sink` receives every TS packet byte before the
 /// demuxer processes it. The total bytes seen by the sink must equal the total
 /// bytes produced by the muxer (within ±188 bytes to account for the
-/// TsReceiver syncer's internal packet alignment buffer, which may withhold
+/// Receiver syncer's internal packet alignment buffer, which may withhold
 /// up to one packet until sync is confirmed).
 ///
-/// The ±188 window is intentionally loose: `TsReceiver` may buffer one packet
+/// The ±188 window is intentionally loose: `Receiver` may buffer one packet
 /// internally during VERIFY-phase sync before emitting it, so the sink can
 /// see up to one packet fewer than `total`. The upper bound guards against
 /// double-delivery bugs.
@@ -178,7 +178,7 @@ fn byte_sinks_see_every_chunk() {
 
     let (chunks, total) = drain_to_chunks(&mut m, 1316);
 
-    let mut rx = Receiver::new(CannedTransport { chunks });
+    let mut rx = DemuxReceiver::new(CannedTransport { chunks });
 
     // Shared counter: the sink accumulates bytes across all packets.
     let captured = Arc::new(Mutex::new(0usize));

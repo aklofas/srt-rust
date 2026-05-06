@@ -221,10 +221,10 @@ pub enum Role {
     Unspecified,
     /// Set `SRTO_SENDER=1`. Required for HSv4 peers (older Teradek/Makito
     /// gear, cable-industry hardware); harmless under HSv5.
-    Sender,
+    MuxSender,
     /// Reserved for the receiver pipeline (planned). For now, equivalent
     /// to `Unspecified` — does not set `SRTO_SENDER`.
-    Receiver,
+    DemuxReceiver,
 }
 
 // ============================================================================

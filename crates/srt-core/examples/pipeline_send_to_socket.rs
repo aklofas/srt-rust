@@ -1,4 +1,4 @@
-//! Example: synthetic frames → `pipeline::Sender` → connected SRT socket.
+//! Example: synthetic frames → `pipeline::MuxSender` → connected SRT socket.
 //!
 //! Run with:
 //!   cargo run --example pipeline_send_to_socket -- 127.0.0.1:9000
@@ -7,7 +7,7 @@
 //!   srt-live-transmit srt://:9000 file:///tmp/out.ts
 
 use srt_core::mpegts::mux::Config;
-use srt_core::pipeline::{Sender, SrtTransport};
+use srt_core::pipeline::{MuxSender, SrtTransport};
 use srt_core::srt::SocketBuilder;
 use std::env;
 use std::time::Duration;
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .latency(Duration::from_millis(120))
         .connect(addr.as_str())?;
     let transport = SrtTransport::new(socket);
-    let sender = Sender::new(Config::default(), transport)?;
+    let sender = MuxSender::new(Config::default(), transport)?;
 
     eprintln!("sending 5 synthetic frames + KLV to {addr}");
     for i in 0..5 {

@@ -11,7 +11,7 @@
 
 use srt_core::mpegts::mux::Config;
 use srt_core::pipeline::{
-    BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy, Sender, SrtTransport,
+    BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy, MuxSender, SrtTransport,
     TransportError,
 };
 use srt_core::srt::{ListenerBuilder, SocketBuilder};
@@ -225,13 +225,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let managed = ManagedTransport::new(initial, factory, policy);
 
-    // The canonical sender shell: `Sender` composes the muxer
+    // The canonical sender shell: `MuxSender` composes the muxer
     // (`Config::default`) with the transport. End-to-end the path is
     // NAL+KLV → mux → 188-byte TS packets → ManagedTransport → SrtTransport
     // → libsrt → wire. The `ManagedTransport` decorator is invisible to
-    // `Sender` — it just sees a `Transport` impl that occasionally pauses
+    // `MuxSender` — it just sees a `Transport` impl that occasionally pauses
     // (during reconnects) and never fails for transient breakage.
-    let sender = Sender::new(Config::default(), managed)?;
+    let sender = MuxSender::new(Config::default(), managed)?;
 
     eprintln!("sender: sending {NUM_FRAMES} frames; peer drops after {FRAMES_BEFORE_DROP}");
     let mut sent_ok = 0usize;

@@ -371,7 +371,7 @@ pub enum MuxError {
     },
 
     /// Caller invoked the no-suffix `push_video` / `push_klv` (or the
-    /// `Sender::send_video` / `send_klv` wrappers) on a muxer that has more
+    /// `MuxSender::send_video` / `send_klv` wrappers) on a muxer that has more
     /// than one stream of that kind. The single-target API can only resolve
     /// to a single handle when exactly one stream of that kind is configured.
     #[error(

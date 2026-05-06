@@ -12,7 +12,7 @@ use srt_core::mpegts::mux::{
 };
 use srt_core::pipeline::{
     BackoffStrategy, OverflowPolicy, RawSenderConfig, ReconnectPolicy, TsFramingMode,
-    TsSenderConfig,
+    SenderConfig,
 };
 use std::time::Duration;
 
@@ -552,13 +552,13 @@ pub enum SrtcKlvStreamType {
 // ------------------------------------------------------------------
 
 pub struct SrtcTsSenderConfig {
-    pub(crate) inner: TsSenderConfig,
+    pub(crate) inner: SenderConfig,
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn srtc_ts_sender_config_new() -> *mut SrtcTsSenderConfig {
     Box::into_raw(Box::new(SrtcTsSenderConfig {
-        inner: TsSenderConfig::default(),
+        inner: SenderConfig::default(),
     }))
 }
 

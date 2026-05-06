@@ -9,7 +9,7 @@ use crate::pipeline::transport::TransportError;
 
 /// Receive-side counterpart to [`Transport`][crate::pipeline::transport::Transport].
 ///
-/// Each receive shell (`RawReceiver`, `TsReceiver`, `Receiver`) is generic
+/// Each receive shell (`RawReceiver`, `Receiver`, `DemuxReceiver`) is generic
 /// over a `RecvTransport`. `SrtTransport` implements both `Transport` and
 /// `RecvTransport`. Test mocks and file-replay sources implement this trait
 /// without needing a real socket.

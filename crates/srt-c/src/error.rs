@@ -67,7 +67,7 @@ pub unsafe extern "C" fn srtc_get_last_error_str() -> *const libc::c_char {
 }
 
 use srt_core::error::MuxError;
-use srt_core::pipeline::{SenderError, TransportError, TsSenderError};
+use srt_core::pipeline::{MuxSenderError, TransportError, SenderError};
 
 /// Map a `MuxError` to a code + message.
 #[allow(dead_code)]
@@ -232,18 +232,18 @@ pub(crate) fn record_transport_error(e: &TransportError) {
 }
 
 #[allow(dead_code)]
-pub(crate) fn record_sender_error(e: &SenderError) {
+pub(crate) fn record_sender_error(e: &MuxSenderError) {
     match e {
-        SenderError::Mux(m) => record_mux_error(m),
-        SenderError::Transport(t) => record_transport_error(t),
+        MuxSenderError::Mux(m) => record_mux_error(m),
+        MuxSenderError::Transport(t) => record_transport_error(t),
     }
 }
 
 #[allow(dead_code)]
-pub(crate) fn record_ts_sender_error(e: &TsSenderError) {
+pub(crate) fn record_ts_sender_error(e: &SenderError) {
     match e {
-        TsSenderError::Transport(t) => record_transport_error(t),
-        TsSenderError::Framing(f) => set_last_error(SrtcError::InvalidTs, &f.to_string()),
+        SenderError::Transport(t) => record_transport_error(t),
+        SenderError::Framing(f) => set_last_error(SrtcError::InvalidTs, &f.to_string()),
     }
 }
 

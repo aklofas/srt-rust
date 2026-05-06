@@ -10,12 +10,12 @@ use srt_core::srt::options::Role;
 use srt_core::srt::{Socket, SocketConfig};
 use std::time::Duration;
 
-/// Sender-pipeline default for `SRTO_CONNTIMEO`. libsrt's default is 3s,
+/// MuxSender-pipeline default for `SRTO_CONNTIMEO`. libsrt's default is 3s,
 /// which is too short for the radio-link domain this library targets
 /// (LOS-over-terrain interruptions, antenna repointing, radio warm-up).
 const SENDER_DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Sender-pipeline default for `SRTO_LINGER`. libsrt's default is 180s
+/// MuxSender-pipeline default for `SRTO_LINGER`. libsrt's default is 180s
 /// (3 minutes), which lets `Socket::Drop` block for that long when the
 /// peer doesn't ACK pending sends — particularly painful inside a
 /// `ManagedTransport` reconnect cycle. 5s is long enough to drain a
@@ -31,7 +31,7 @@ const SENDER_DEFAULT_LINGER: Duration = Duration::from_secs(5);
 /// Applies sender-pipeline defaults to the config in place when the
 /// caller hasn't set them (currently: `connect_timeout = 15s`,
 /// `linger = 5s`). User-set values are preserved. Always sets
-/// `role = Role::Sender` (drives `SRTO_SENDER=1` for HSv4-peer
+/// `role = Role::MuxSender` (drives `SRTO_SENDER=1` for HSv4-peer
 /// latency-negotiation compatibility — the canonical "default sender
 /// connect path"; harmless under HSv5).
 pub(crate) fn connect_srt(
@@ -46,7 +46,7 @@ pub(crate) fn connect_srt(
     if cfg.linger.is_none() {
         cfg.linger = Some(SENDER_DEFAULT_LINGER);
     }
-    cfg.role = Role::Sender;
+    cfg.role = Role::MuxSender;
     let socket = Socket::connect_with(&cfg, format!("{host}:{port}").as_str())
         .map_err(|e| TransportError::Broken(format!("connect: {e}")))?;
     Ok(SrtTransport::new(socket))

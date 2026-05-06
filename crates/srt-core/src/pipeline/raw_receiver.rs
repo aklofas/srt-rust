@@ -3,7 +3,7 @@
 //!
 //! This is the simplest receive shell: one `recv_one` call blocks until a
 //! single SRT message arrives, then returns the bytes verbatim. There is no
-//! MPEG-TS sync recovery or stream demuxing — that's `TsReceiver`'s job.
+//! MPEG-TS sync recovery or stream demuxing — that's `Receiver`'s job.
 //!
 //! Use `RawReceiver` when:
 //! - The sender uses `RawSender` (raw byte blobs, no TS wrapping).

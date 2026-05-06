@@ -1,4 +1,4 @@
-//! Live-socket validation that `Sender::close()` (and the underlying
+//! Live-socket validation that `MuxSender::close()` (and the underlying
 //! `CancelHandle`) wakes a peer thread parked inside libsrt's
 //! `srt_sendmsg2`.
 //!
@@ -14,7 +14,7 @@
 //!    return within a generous timeout.
 
 use srt_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
-use srt_core::pipeline::{Sender, SenderError, SrtTransport, TransportError};
+use srt_core::pipeline::{MuxSender, MuxSenderError, SrtTransport, TransportError};
 use srt_core::srt::{ListenerBuilder, SocketBuilder};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -78,13 +78,13 @@ fn close_unblocks_libsrt_parked_send() {
         .end_program()
         .build()
         .unwrap();
-    let s = Arc::new(Sender::new(cfg, transport).unwrap());
+    let s = Arc::new(MuxSender::new(cfg, transport).unwrap());
     let s_send = s.clone();
 
-    // Sender thread: pump 64-byte NAL payloads until the call returns
+    // MuxSender thread: pump 64-byte NAL payloads until the call returns
     // (with Ok, or with our Broken-via-cancel error). 1000 NALs is
     // ~64 KB, far more than the 8-packet SNDBUF can absorb.
-    let send_thread = std::thread::spawn(move || -> Result<u32, SenderError> {
+    let send_thread = std::thread::spawn(move || -> Result<u32, MuxSenderError> {
         // 4-byte Annex B start code (0x00000001) + 60 bytes payload.
         // The muxer rejects NALs without a start code as InvalidNal.
         let mut nal = vec![0u8; 64];
@@ -124,8 +124,8 @@ fn close_unblocks_libsrt_parked_send() {
         // every payload before close (unlikely with SNDBUF=8). Both
         // outcomes prove cancel works; we only fail on stuck.
         Ok(_) => {}
-        Err(SenderError::Transport(TransportError::Broken(_)))
-        | Err(SenderError::Transport(TransportError::Closed)) => {}
+        Err(MuxSenderError::Transport(TransportError::Broken(_)))
+        | Err(MuxSenderError::Transport(TransportError::Closed)) => {}
         Err(other) => panic!("unexpected sender error after cancel: {other:?}"),
     }
 

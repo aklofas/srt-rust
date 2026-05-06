@@ -1,4 +1,4 @@
-//! Sender-side MPEG-TS muxer.
+//! MuxSender-side MPEG-TS muxer.
 //!
 //! See `docs/specs/2026-05-01-srt-core-mpegts-mux-design.md` for the full
 //! design. The public surface is `Muxer`, `Config`, `VideoCodec`,
@@ -1179,7 +1179,7 @@ struct SubtitleStreamState {
     codec: SubtitleCodec,
 }
 
-/// Sender-side MPEG-TS muxer.
+/// MuxSender-side MPEG-TS muxer.
 ///
 /// Construct with `Muxer::new(config)`, push encoded frames via `push_video`
 /// and `push_klv`, then drain TS packets with `pull`. The muxer is

@@ -1,10 +1,10 @@
 //! Bind an SRT listener, accept one peer, dump the typed `DemuxEvent`
-//! stream from `pipeline::Receiver`.
+//! stream from `pipeline::DemuxReceiver`.
 //!
 //! Why this exists: the smallest end-to-end demonstration that
-//! `pipeline::Receiver` turns "bytes in via SRT" into "typed events
+//! `pipeline::DemuxReceiver` turns "bytes in via SRT" into "typed events
 //! out" with no intermediate demuxer plumbing visible to the caller.
-//! `Sender` on the publishing side and `Receiver` on the consuming
+//! `MuxSender` on the publishing side and `DemuxReceiver` on the consuming
 //! side are deliberately mirror-image shapes — see
 //! `pipeline_send_to_socket.rs` for the producer counterpart, and run
 //! the two together for an end-to-end smoke.
@@ -27,7 +27,7 @@
 //!   "peer closed cleanly".
 
 use srt_core::mpegts::demux::DemuxEvent;
-use srt_core::pipeline::{Receiver, SrtTransport};
+use srt_core::pipeline::{DemuxReceiver, SrtTransport};
 use srt_core::srt::ListenerBuilder;
 use std::env;
 use std::time::Duration;
@@ -61,12 +61,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("peer connected: {peer}");
 
     // `SrtTransport::new` wraps the connected `Socket` so it satisfies
-    // the `RecvTransport` trait that `Receiver` is generic over. The
+    // the `RecvTransport` trait that `DemuxReceiver` is generic over. The
     // same wrapper also satisfies `Transport` for the send side; one
     // socket, one wrapper, both directions.
-    let mut rx = Receiver::new(SrtTransport::new(socket));
+    let mut rx = DemuxReceiver::new(SrtTransport::new(socket));
 
-    // `Receiver` implements `Iterator<Item = Result<DemuxEvent, ReceiverError>>`,
+    // `DemuxReceiver` implements `Iterator<Item = Result<DemuxEvent, DemuxReceiverError>>`,
     // so `for result in &mut rx` is the idiomatic drain pattern.
     //
     // Stream-end contract:
@@ -74,11 +74,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //   - **Iterator termination** (the `for` loop simply ends) is the
     //     canonical clean-exit signal. It fires when the underlying
     //     `RecvTransport` returns `TransportError::Closed`, which
-    //     `Receiver::recv_event` translates into `Ok(None)` after first
+    //     `DemuxReceiver::recv_event` translates into `Ok(None)` after first
     //     calling `Demuxer::flush()` to recover any trailing PES. Loop
     //     callers do not see `Closed` as an error variant.
     //
-    //   - **`Err(ReceiverError::Transport(TransportError::Broken(_)))`**
+    //   - **`Err(DemuxReceiverError::Transport(TransportError::Broken(_)))`**
     //     fires for both peer-initiated cleanup and unrecoverable
     //     links. `SrtTransport` collapses these into one `Broken`
     //     surface by design — it lets a managed-receive decorator
@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     (the receive thread can't tell mid-stream hiccup from a
     //     clean end).
     //
-    //   - **`Err(ReceiverError::Demux(_))`** is a strict-mode rejection
+    //   - **`Err(DemuxReceiverError::Demux(_))`** is a strict-mode rejection
     //     or malformed PES — fatal for this example.
     for item in &mut rx {
         match item {

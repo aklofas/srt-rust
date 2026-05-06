@@ -47,7 +47,7 @@ use srt_core::mpegts::demux::{
     DemuxEvent, MetadataKind, NalUnit, ProgramMap, SamplePayload, StreamId, StreamKind, VideoCodec,
     VideoPayload,
 };
-use srt_core::pipeline::{Receiver, ReceiverError, SrtTransport, TransportError};
+use srt_core::pipeline::{DemuxReceiver, DemuxReceiverError, SrtTransport, TransportError};
 use srt_core::srt::SocketBuilder;
 use std::env;
 use std::time::{Duration, Instant};
@@ -131,18 +131,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .latency(args.latency)
         .connect(args.addr.as_str())?;
     eprintln!("connected; reading events");
-    let mut rx = Receiver::new(SrtTransport::new(socket));
+    let mut rx = DemuxReceiver::new(SrtTransport::new(socket));
 
     let mut stats = Stats::new(args.summary);
 
     for item in &mut rx {
         match item {
             Ok(event) => handle_event(&event, &args, &mut stats),
-            // `Closed` doesn't surface as an Err arm — Receiver maps
+            // `Closed` doesn't surface as an Err arm — DemuxReceiver maps
             // peer-graceful-close to iterator termination after a final
             // demuxer flush. `Broken` is what the user sees on a hard
             // hangup; treat both the same here, just print a note.
-            Err(ReceiverError::Transport(TransportError::Broken(_))) => {
+            Err(DemuxReceiverError::Transport(TransportError::Broken(_))) => {
                 eprintln!("peer hung up");
                 break;
             }

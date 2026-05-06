@@ -127,7 +127,7 @@ impl Default for SrtcMuxerStats {
     }
 }
 
-/// `repr(C)` mirror of `srt_core::pipeline::SenderStats`. Size 6188 B.
+/// `repr(C)` mirror of `srt_core::pipeline::MuxSenderStats`. Size 6188 B.
 #[repr(C)]
 pub struct SrtcSenderStats {
     pub bytes_sent: u64,

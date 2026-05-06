@@ -4,7 +4,7 @@
 //! capture AND parse for KLV/video metadata in one pass." Doing those
 //! as two separate passes wastes I/O; doing them in two threads with
 //! the demuxer reading bytes off a channel is more code than the
-//! problem warrants. `Receiver::add_byte_sink` is the canonical answer:
+//! problem warrants. `DemuxReceiver::add_byte_sink` is the canonical answer:
 //! register a fan-out callback that sees every 188-byte TS packet
 //! before the demuxer parses it, and the typed event stream still
 //! comes out the iterator unchanged. One byte stream, two consumers,
@@ -20,13 +20,13 @@
 //! What to look for in the output: the output `.ts` file is byte-for-
 //! byte the input file (rounded to 188-byte TS packet boundaries; the
 //! demuxer pulls packet-aligned chunks from the transport via
-//! `TsReceiver`). The `samples=N` count tells you the demux side ran
+//! `Receiver`). The `samples=N` count tells you the demux side ran
 //! to completion in lock-step with the disk write — both observed the
 //! same byte stream.
 
 use srt_core::mpegts::demux::DemuxEvent;
 use srt_core::pipeline::transport::TransportError;
-use srt_core::pipeline::{Receiver, RecvTransport};
+use srt_core::pipeline::{DemuxReceiver, RecvTransport};
 use std::collections::VecDeque;
 use std::env;
 use std::fs::{self, File};
@@ -35,7 +35,7 @@ use std::sync::{Arc, Mutex};
 
 /// Minimal `RecvTransport` that hands out pre-chunked byte slices and
 /// returns `Closed` once the queue is empty. Useful for offline replay
-/// of `.ts` captures through the same `Receiver` plumbing that
+/// of `.ts` captures through the same `DemuxReceiver` plumbing that
 /// `SrtTransport` uses live.
 ///
 /// In a real consumer you'd typically use `SrtTransport::new(socket)`
@@ -50,7 +50,7 @@ impl RecvTransport for FileTransport {
         match self.chunks.pop_front() {
             Some(c) => {
                 // Cap the copy at `buf.len()` even though our chunks
-                // are sized to fit. `Receiver` always passes a buffer
+                // are sized to fit. `DemuxReceiver` always passes a buffer
                 // sized at least `max_payload()`, but defensive
                 // bookkeeping is cheap and keeps the impl honest.
                 let n = c.len().min(buf.len());
@@ -58,7 +58,7 @@ impl RecvTransport for FileTransport {
                 Ok(n)
             }
             // Empty queue is the canonical end-of-stream signal.
-            // `Receiver` reacts to `Closed` by flushing the demuxer's
+            // `DemuxReceiver` reacts to `Closed` by flushing the demuxer's
             // partial PES (catches the trailing AU) and then returning
             // `Ok(None)` from the iterator. This is the contract the
             // example relies on.
@@ -99,12 +99,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for c in bytes.chunks(1316) {
         chunks.push_back(c.to_vec());
     }
-    let mut rx = Receiver::new(FileTransport { chunks });
+    let mut rx = DemuxReceiver::new(FileTransport { chunks });
 
     // The output writer is shared via `Arc<Mutex<...>>` so the closure
     // can capture-by-clone and live longer than the call stack
     // (`add_byte_sink` takes `Box<dyn FnMut(&[u8]) + Send>` — it
-    // demands `Send` so the same `Receiver` could be moved to a
+    // demands `Send` so the same `DemuxReceiver` could be moved to a
     // worker thread later). For this single-threaded example the
     // lock contention is zero.
     let writer = Arc::new(Mutex::new(File::create(output)?));
@@ -115,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // - Called once per TS packet (188 bytes, NOT 1316). The receiver
     //   pulls 1316-byte SRT messages from the transport and breaks
-    //   them down to TS-packet alignment via `TsReceiver` before the
+    //   them down to TS-packet alignment via `Receiver` before the
     //   sink fires.
     // - Multiple sinks fire in registration order, all before the
     //   demuxer parses the packet. So a sink that wants "the bytes
@@ -144,7 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut samples = 0usize;
     let mut metadata = 0usize;
-    // Clean EOF is iterator termination — `Receiver::recv_event`
+    // Clean EOF is iterator termination — `DemuxReceiver::recv_event`
     // translates `TransportError::Closed` into `Ok(None)` after
     // auto-flushing the demuxer, and the `Iterator` impl turns that
     // into `None`. Any `Err` here is a real error (a `Demux` strict

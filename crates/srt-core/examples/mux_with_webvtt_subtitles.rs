@@ -4,8 +4,8 @@
 //! POI fires, with PTS aligned to the live-stream wall-clock.
 //!
 //! This example exercises [`Muxer::push_subtitle_to`] directly. A
-//! consumer driving the SRT pipeline would build a `Sender<T>` over
-//! the muxer config and call `Sender::send_subtitle_to` with the
+//! consumer driving the SRT pipeline would build a `MuxSender<T>` over
+//! the muxer config and call `MuxSender::send_subtitle_to` with the
 //! same handle — the sender wraps the muxer's TS output in SRT and
 //! drives the same `push_subtitle_to` path internally.
 //!

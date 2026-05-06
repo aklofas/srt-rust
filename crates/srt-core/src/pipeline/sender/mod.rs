@@ -1,25 +1,25 @@
-// crates/srt-core/src/pipeline/ts_sender/mod.rs
-//! `TsSender<T: Transport>` — pre-muxed TS bytes → SRT, with framing.
+// crates/srt-core/src/pipeline/sender/mod.rs
+//! `Sender<T: Transport>` — pre-muxed TS bytes → SRT, with framing.
 //!
 //! See `framing.rs` for the sync-acquisition / loss-detection state
-//! machine. `TsSender` composes `TsFraming` with a `Transport`.
+//! machine. `Sender` composes `TsFraming` with a `Transport`.
 
 mod framing;
 
-pub use framing::{TsFraming, TsFramingError, TsFramingMode, TsSenderStats};
+pub use framing::{TsFraming, TsFramingError, TsFramingMode, SenderStats};
 
 use crate::pipeline::transport::Transport;
 
-/// Construction-time knobs for [`TsSender`].
+/// Construction-time knobs for [`Sender`].
 #[derive(Debug, Clone)]
-pub struct TsSenderConfig {
+pub struct SenderConfig {
     pub framing_mode: TsFramingMode,
     /// Bytes consumed while UNSYNCED before sender enters terminal failed
     /// state. Default 18,800 = 100 packets' worth.
     pub max_unsynced_bytes: usize,
 }
 
-impl Default for TsSenderConfig {
+impl Default for SenderConfig {
     fn default() -> Self {
         Self {
             framing_mode: TsFramingMode::Recover,
@@ -29,7 +29,7 @@ impl Default for TsSenderConfig {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum TsSenderError {
+pub enum SenderError {
     #[error(transparent)]
     Framing(#[from] TsFramingError),
     #[error(transparent)]
@@ -37,15 +37,15 @@ pub enum TsSenderError {
 }
 
 /// Pre-muxed TS bytes → SRT transport with sync framing/recovery.
-pub struct TsSender<T: Transport> {
+pub struct Sender<T: Transport> {
     framing: TsFraming,
     transport: T,
     closed: bool,
     mode: TsFramingMode,
 }
 
-impl<T: Transport> TsSender<T> {
-    pub fn new(transport: T, config: TsSenderConfig) -> Self {
+impl<T: Transport> Sender<T> {
+    pub fn new(transport: T, config: SenderConfig) -> Self {
         Self {
             framing: TsFraming::new(config.max_unsynced_bytes),
             transport,
@@ -56,9 +56,9 @@ impl<T: Transport> TsSender<T> {
 
     /// Push pre-muxed TS bytes. RECOVER mode silently skips/recovers; in
     /// STRICT mode returns an error on misalignment.
-    pub fn send_ts(&mut self, bytes: &[u8]) -> Result<(), TsSenderError> {
+    pub fn send_ts(&mut self, bytes: &[u8]) -> Result<(), SenderError> {
         if self.closed {
-            return Err(TsSenderError::Transport(
+            return Err(SenderError::Transport(
                 crate::pipeline::TransportError::Closed,
             ));
         }
@@ -71,15 +71,15 @@ impl<T: Transport> TsSender<T> {
         for bundle in bundles {
             self.transport
                 .send_bytes(&bundle)
-                .map_err(TsSenderError::Transport)?;
+                .map_err(SenderError::Transport)?;
         }
         Ok(())
     }
 
     /// Emit any buffered partial bundle.
-    pub fn flush(&mut self) -> Result<(), TsSenderError> {
+    pub fn flush(&mut self) -> Result<(), SenderError> {
         if self.closed {
-            return Err(TsSenderError::Transport(
+            return Err(SenderError::Transport(
                 crate::pipeline::TransportError::Closed,
             ));
         }
@@ -87,12 +87,12 @@ impl<T: Transport> TsSender<T> {
         for bundle in bundles {
             self.transport
                 .send_bytes(&bundle)
-                .map_err(TsSenderError::Transport)?;
+                .map_err(SenderError::Transport)?;
         }
         Ok(())
     }
 
-    pub fn stats(&self) -> &TsSenderStats {
+    pub fn stats(&self) -> &SenderStats {
         self.framing.stats()
     }
 
@@ -112,13 +112,13 @@ impl<T: Transport> TsSender<T> {
     }
 
     /// Snapshot of the underlying transport's cancel handle. See
-    /// [`crate::pipeline::Sender::cancel_handle`] for the rationale.
+    /// [`crate::pipeline::MuxSender::cancel_handle`] for the rationale.
     pub fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
         self.transport.cancel_handle()
     }
 }
 
-impl<T: Transport> Drop for TsSender<T> {
+impl<T: Transport> Drop for Sender<T> {
     fn drop(&mut self) {
         if !self.closed {
             // Best-effort flush; ignore errors.
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn reset_stats_zeros_counters_in_ts_sender() {
-        let mut s = TsSender::new(Mem, TsSenderConfig::default());
+        let mut s = Sender::new(Mem, SenderConfig::default());
         // One 188-byte TS packet starting with the sync byte.
         let mut pkt = vec![0x47u8];
         pkt.extend(vec![0u8; 187]);

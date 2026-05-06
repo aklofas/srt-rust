@@ -132,7 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ready_rx.recv()?;
     thread::sleep(Duration::from_millis(50));
 
-    // Sender thread (could be inline; threaded to mirror real deployments).
+    // MuxSender thread (could be inline; threaded to mirror real deployments).
     let sender_handle = thread::spawn(
         move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let passphrase = Passphrase::new(PASSPHRASE)?;

@@ -353,7 +353,23 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
         "payloadsize" | "pkt_size" | "payload_size" => {
             // libsrt-URL canonical key is `payloadsize`; `pkt_size` and
             // `payload_size` are ffmpeg-style aliases.
-            overlay.payload_size = Some(parse_int_nonneg::<u16>("payloadsize", value)?);
+            //
+            // Cap at libsrt's live-mode maximum SRT_LIVE_MAX_PLSIZE = 1456
+            // (srt.h:297). ffmpeg clamps this via AVOption.max in
+            // libsrt.c:107-108. Without a parse-time cap, accepting any u16
+            // (up to 65535) defers the failure to apply_socket_config's
+            // PRE setsockopt, which surfaces a generic libsrt error — much
+            // less helpful than a clear "1456 cap" message at parse time.
+            let n: u16 = parse_int_nonneg::<u16>("payloadsize", value)?;
+            if n > 1456 {
+                return Err(UrlError::InvalidValue {
+                    key: "payloadsize".into(),
+                    detail: format!(
+                        "must be <= 1456 (libsrt SRT_LIVE_MAX_PLSIZE, live-mode cap), got {n}"
+                    ),
+                });
+            }
+            overlay.payload_size = Some(n);
         }
         "pbkeylen" => {
             let n = parse_i32_nonneg("pbkeylen", value)?;
@@ -713,5 +729,31 @@ mod tests {
             canonical.overlay.flow_window_packets,
             alias.overlay.flow_window_packets
         );
+    }
+
+    #[test]
+    fn payloadsize_above_live_max_is_rejected_at_parse_time() {
+        // libsrt SRT_LIVE_MAX_PLSIZE = 1456 (srt.h:297). ffmpeg clamps via
+        // AVOption.max in libsrt.c:107-108. Without a parse-time cap, libsrt's
+        // PRE setsockopt fails inside apply_socket_config with a generic error;
+        // catching it here gives the user a clear message.
+        let result = SrtUrl::parse("srt://1.2.3.4:9000?payloadsize=2000");
+        assert!(result.is_err(), "expected error, got {result:?}");
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(
+            err_msg.contains("1456") || err_msg.to_lowercase().contains("live"),
+            "error should mention 1456 cap; got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn payloadsize_at_or_below_live_max_is_accepted() {
+        // Spot-check the boundary: 1456 OK, 1316 OK (common ffmpeg default,
+        // a multiple of 188), 1 OK, 0 OK (libsrt default sentinel).
+        for v in [0u16, 1, 1316, 1456] {
+            let url = format!("srt://1.2.3.4:9000?payloadsize={v}");
+            let result = SrtUrl::parse(&url);
+            assert!(result.is_ok(), "expected Ok for {v}; got {result:?}");
+        }
     }
 }

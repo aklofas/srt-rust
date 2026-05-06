@@ -8,12 +8,12 @@
 //!
 //! Demonstrates: `Transport` trait, `MuxSender` is generic over T: Transport.
 
-use tst_core::mpegts::mux::Config;
-use tst_pipeline::{MuxSender, Transport, TransportError};
 use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use tst_core::mpegts::mux::Config;
+use tst_pipeline::{MuxSender, Transport, TransportError};
 
 // ---------------------------------------------------------------------------
 // In-memory transport: every `send_bytes` call appends to `packets`.

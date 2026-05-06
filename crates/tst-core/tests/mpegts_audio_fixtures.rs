@@ -2,12 +2,12 @@
 //! `tests/fixtures/audio/`, demux each, assert the audio stream
 //! is correctly classified and produces non-empty frames.
 
+use std::fs;
+use std::path::Path;
 use tst_core::mpegts::demux::{
     Demuxer,
     event::{AudioCodec, DemuxEvent, SamplePayload, StreamKind},
 };
-use std::fs;
-use std::path::Path;
 
 fn fixture_path(name: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

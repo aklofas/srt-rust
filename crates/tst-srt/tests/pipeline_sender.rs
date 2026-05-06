@@ -3,12 +3,12 @@
 mod common;
 
 use common::synthetic_nal;
-use tst_core::mpegts::mux::Config;
-use tst_pipeline::{MuxSender};
-use tst_srt::SrtTransport;
-use tst_srt::{ListenerBuilder, SocketBuilder};
 use std::thread;
 use std::time::Duration;
+use tst_core::mpegts::mux::Config;
+use tst_pipeline::MuxSender;
+use tst_srt::SrtTransport;
+use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn sender_round_trip_one_frame() {

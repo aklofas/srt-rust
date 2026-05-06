@@ -279,13 +279,7 @@ mod tests {
             let cfg = tst_mux_config_new();
             let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
             tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
-            tst_mux_config_add_klv_stream(
-                cfg,
-                prog,
-                0x1031,
-                TstKlvStreamType::PrivateData,
-                false,
-            );
+            tst_mux_config_add_klv_stream(cfg, prog, 0x1031, TstKlvStreamType::PrivateData, false);
             let m = tst_muxer_open(cfg);
             assert!(!m.is_null());
             tst_muxer_close(m);
@@ -300,13 +294,7 @@ mod tests {
             let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
             // Single-stream muxer: push_video (no handle) is unambiguous.
             let hv = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
-            tst_mux_config_add_klv_stream(
-                cfg,
-                prog,
-                0x1031,
-                TstKlvStreamType::PrivateData,
-                false,
-            );
+            tst_mux_config_add_klv_stream(cfg, prog, 0x1031, TstKlvStreamType::PrivateData, false);
             let m = tst_muxer_open(cfg);
             tst_mux_config_free(cfg);
 
@@ -330,13 +318,7 @@ mod tests {
             let cfg = tst_mux_config_new();
             let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
             tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
-            tst_mux_config_add_klv_stream(
-                cfg,
-                prog,
-                0x1031,
-                TstKlvStreamType::PrivateData,
-                false,
-            );
+            tst_mux_config_add_klv_stream(cfg, prog, 0x1031, TstKlvStreamType::PrivateData, false);
             let m = tst_muxer_open(cfg);
             tst_mux_config_free(cfg);
 

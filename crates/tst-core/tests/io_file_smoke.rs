@@ -59,5 +59,9 @@ fn write_mux_creates_nonempty_file() {
     let metadata = std::fs::metadata(tmp.path()).expect("metadata");
     assert!(metadata.len() > 0, "output file must not be empty");
     // TS files are multiples of 188 bytes.
-    assert_eq!(metadata.len() % 188, 0, "TS file length must be a multiple of 188");
+    assert_eq!(
+        metadata.len() % 188,
+        0,
+        "TS file length must be a multiple of 188"
+    );
 }

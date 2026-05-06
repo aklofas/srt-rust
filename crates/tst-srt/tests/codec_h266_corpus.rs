@@ -18,10 +18,10 @@
 //! present (e.g. fresh checkout where vvenc-equipped ffmpeg wasn't
 //! available to run `regen.sh`).
 
-use tst_core::codec::h266;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 use std::path::Path;
 use std::process::Command;
+use tst_core::codec::h266;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 fn ffprobe_available() -> bool {
     Command::new("ffprobe").arg("-version").output().is_ok()

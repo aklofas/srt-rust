@@ -5,9 +5,9 @@
 //! `Transport`-trait shape. Used as the inner of `ManagedTransport` in
 //! the canonical reconnecting setup.
 
+use crate::Socket;
 use crate::error::{SendError, SrtErrno};
 use tst_core::transport::{Transport, TransportCancel, TransportError};
-use crate::Socket;
 
 pub struct SrtTransport {
     socket: Option<Socket>,

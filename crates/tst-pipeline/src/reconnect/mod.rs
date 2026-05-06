@@ -87,10 +87,10 @@ impl ReconnectPolicy {
     }
 }
 
-use tst_core::transport::{Transport, TransportCancel, TransportError};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
+use tst_core::transport::{Transport, TransportCancel, TransportError};
 
 /// Decorator that wraps an inner `Transport` with reconnect + gap-buffer
 /// behavior.
@@ -324,8 +324,8 @@ impl<T: Transport + 'static> TransportCancel for ManagedCancel<T> {
 #[cfg(test)]
 mod cancel_tests {
     use super::*;
-    use tst_core::transport::{Transport, TransportCancel, TransportError};
     use std::sync::atomic::{AtomicU32, Ordering};
+    use tst_core::transport::{Transport, TransportCancel, TransportError};
 
     /// Stub Transport whose cancel_handle records cancel() calls and
     /// makes is_alive() return false after cancel.

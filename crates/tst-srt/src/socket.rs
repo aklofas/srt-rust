@@ -1,11 +1,11 @@
 //! Connected SRT data socket.
 
+use crate::addr::{from_sockaddr, to_sockaddr};
+use crate::config::SocketConfig;
 use crate::error::{
     ConnectError, IoError, OptionError, RecvError, SendError, SrtErrno, last_error,
 };
 use crate::init::ensure_initialized;
-use crate::addr::{from_sockaddr, to_sockaddr};
-use crate::config::SocketConfig;
 use crate::options::{MaxBandwidth, Passphrase};
 use std::ffi::{c_char, c_int};
 use std::mem;

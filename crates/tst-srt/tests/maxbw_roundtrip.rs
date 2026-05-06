@@ -7,9 +7,9 @@
 //! `Unlimited` variant, which maps to libsrt's sentinel `0` — through a real
 //! handshake against a local listener.
 
-use tst_srt::{ListenerBuilder, MaxBandwidth, SocketBuilder};
 use std::thread;
 use std::time::Duration;
+use tst_srt::{ListenerBuilder, MaxBandwidth, SocketBuilder};
 
 #[test]
 fn unlimited_max_bandwidth_reaches_libsrt_as_zero() {

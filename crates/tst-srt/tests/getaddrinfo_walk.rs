@@ -1,10 +1,10 @@
 //! Verifies connect/bind walk past failing resolved addresses.
 //! Audit Issues 3 + 10.
 
-use tst_srt::{ListenerBuilder, SocketBuilder};
 use std::net::ToSocketAddrs;
 use std::thread;
 use std::time::Duration;
+use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn connect_walks_to_v4_when_v6_first_and_unbindable() {

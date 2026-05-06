@@ -24,14 +24,14 @@
 //! to completion in lock-step with the disk write — both observed the
 //! same byte stream.
 
-use tst_core::mpegts::demux::DemuxEvent;
-use tst_pipeline::TransportError;
-use tst_pipeline::{DemuxReceiver, RecvTransport};
 use std::collections::VecDeque;
 use std::env;
 use std::fs::{self, File};
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use tst_core::mpegts::demux::DemuxEvent;
+use tst_pipeline::TransportError;
+use tst_pipeline::{DemuxReceiver, RecvTransport};
 
 /// Minimal `RecvTransport` that hands out pre-chunked byte slices and
 /// returns `Closed` once the queue is empty. Useful for offline replay

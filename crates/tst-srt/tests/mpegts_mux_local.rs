@@ -10,9 +10,9 @@
 mod common;
 
 use common::ts_parser;
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 use std::fs;
 use std::path::Path;
+use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 
 const FIXTURES: &str = "tests/fixtures/local";
 

@@ -3,13 +3,13 @@
 //! Run with:
 //!   cargo run --example ts_relay_from_file -- input.ts 127.0.0.1:9000
 
-use tst_pipeline::{ Sender, SenderConfig};
-use tst_srt::SrtTransport;
-use tst_srt::SocketBuilder;
 use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::time::Duration;
+use tst_pipeline::{Sender, SenderConfig};
+use tst_srt::SocketBuilder;
+use tst_srt::SrtTransport;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args().skip(1);

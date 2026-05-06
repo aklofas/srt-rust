@@ -21,10 +21,10 @@
 //! on (final PES with length=0 only completes on next PUSI, which
 //! never arrives at end-of-file).
 
-use tst_core::error::DemuxError;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
 use std::fs;
 use std::path::PathBuf;
+use tst_core::error::DemuxError;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
 
 fn fixtures_dir() -> Option<PathBuf> {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

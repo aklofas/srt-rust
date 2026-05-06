@@ -12,8 +12,8 @@ fn raw_sender_stats_layout_is_repr_c() {
     assert_eq!(s.packets_sent, 0);
 }
 
-use tstrans::stats::{TST_STATS_MAX_STREAMS, TstMuxerStats};
 use std::ptr;
+use tstrans::stats::{TST_STATS_MAX_STREAMS, TstMuxerStats};
 
 #[test]
 fn muxer_stats_layout() {
@@ -27,8 +27,8 @@ fn muxer_stats_layout() {
 fn muxer_get_stats_after_push() {
     use tstrans::config::{TstKlvStreamType, TstVideoCodec};
     use tstrans::config::{
-        tst_mux_config_add_klv_stream, tst_mux_config_add_program,
-        tst_mux_config_add_video_stream, tst_mux_config_free, tst_mux_config_new,
+        tst_mux_config_add_klv_stream, tst_mux_config_add_program, tst_mux_config_add_video_stream,
+        tst_mux_config_free, tst_mux_config_new,
     };
     use tstrans::muxer::{
         tst_muxer_close, tst_muxer_get_stats, tst_muxer_open, tst_muxer_reset_stats,
@@ -67,20 +67,19 @@ fn muxer_get_stats_null_pointer_returns_invalid_config() {
 #[test]
 #[cfg(target_os = "linux")]
 fn mux_sender_stats_round_trip() {
+    use std::ffi::CString;
+    use std::sync::mpsc;
+    use std::time::Duration;
     use tst_srt::ListenerBuilder;
     use tstrans::config::{
-        TstKlvStreamType, TstVideoCodec, tst_mux_config_add_klv_stream,
-        tst_mux_config_add_program, tst_mux_config_add_video_stream, tst_mux_config_free,
-        tst_mux_config_new,
+        TstKlvStreamType, TstVideoCodec, tst_mux_config_add_klv_stream, tst_mux_config_add_program,
+        tst_mux_config_add_video_stream, tst_mux_config_free, tst_mux_config_new,
     };
     use tstrans::mux_sender::{
         tst_mux_sender_close, tst_mux_sender_get_stats, tst_mux_sender_open,
         tst_mux_sender_reset_stats, tst_mux_sender_send_video,
     };
     use tstrans::stats::TstMuxSenderStats;
-    use std::ffi::CString;
-    use std::sync::mpsc;
-    use std::time::Duration;
 
     let (port_tx, port_rx) = mpsc::channel::<u16>();
 

@@ -3,9 +3,9 @@
 
 mod common;
 
-use tst_srt::{Congestion, ListenerBuilder, MaxBandwidth, SocketBuilder};
 use std::thread;
 use std::time::Duration;
+use tst_srt::{Congestion, ListenerBuilder, MaxBandwidth, SocketBuilder};
 
 #[test]
 fn latency_configures_without_error() {

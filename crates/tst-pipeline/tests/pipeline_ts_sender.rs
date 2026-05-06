@@ -3,7 +3,7 @@
 mod common;
 
 use common::mock_transport::MockTransport;
-use tst_pipeline::{TsFramingMode, Sender, SenderConfig};
+use tst_pipeline::{Sender, SenderConfig, TsFramingMode};
 
 fn synthetic_ts_packets(n: usize) -> Vec<u8> {
     let mut buf = Vec::with_capacity(n * 188);

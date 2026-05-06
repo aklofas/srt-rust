@@ -12,6 +12,10 @@
 
 #![allow(unused_unsafe)]
 
+use std::ffi::CString;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 use tst_srt::ListenerBuilder;
 use tstrans::config::{
     TstKlvStreamType, TstVideoCodec, tst_mux_config_add_klv_stream, tst_mux_config_add_program,
@@ -32,10 +36,6 @@ use tstrans::ts_sender::{
     tst_managed_sender_close, tst_managed_sender_open, tst_managed_sender_send_ts,
     tst_sender_close, tst_sender_open,
 };
-use std::ffi::CString;
-use std::sync::mpsc;
-use std::thread;
-use std::time::Duration;
 
 fn last_error_msg() -> String {
     unsafe {

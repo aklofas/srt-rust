@@ -281,9 +281,7 @@ pub unsafe extern "C" fn tst_managed_sender_get_stats(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_managed_sender_reset_stats(
-    p: *mut TstManagedSender,
-) -> libc::c_int {
+pub unsafe extern "C" fn tst_managed_sender_reset_stats(p: *mut TstManagedSender) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;

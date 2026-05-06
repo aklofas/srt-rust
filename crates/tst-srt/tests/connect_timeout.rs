@@ -1,7 +1,7 @@
 //! Verifies SRTO_CONNTIMEO is honored. Audit Issue 15.
 
-use tst_srt::SocketBuilder;
 use std::time::{Duration, Instant};
+use tst_srt::SocketBuilder;
 
 #[test]
 fn connect_timeout_fires_after_configured_duration() {

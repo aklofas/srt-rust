@@ -42,16 +42,16 @@
 //! a caller. We dial in like VLC would, but instead of decoding
 //! pixels, we dump structured events.
 
+use std::env;
+use std::time::{Duration, Instant};
 use tst_core::klv::st0601;
 use tst_core::mpegts::demux::{
     DemuxEvent, MetadataKind, NalUnit, ProgramMap, SamplePayload, StreamId, StreamKind, VideoCodec,
     VideoPayload,
 };
 use tst_pipeline::{DemuxReceiver, DemuxReceiverError, TransportError};
-use tst_srt::SrtTransport;
 use tst_srt::SocketBuilder;
-use std::env;
-use std::time::{Duration, Instant};
+use tst_srt::SrtTransport;
 
 struct Args {
     addr: String,

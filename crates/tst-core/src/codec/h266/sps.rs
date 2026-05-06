@@ -246,9 +246,7 @@ mod tests {
     /// caller-supplied `(left, right, top, bottom)` offsets in
     /// SubWidthC/SubHeightC units. 4:2:0 chroma → SubWidthC=SubHeightC=2,
     /// so the surfaced `crop_*` luma-sample values are 2× the offsets.
-    fn minimal_sps_rbsp_with_conformance_window(
-        offsets: (u32, u32, u32, u32),
-    ) -> Vec<u8> {
+    fn minimal_sps_rbsp_with_conformance_window(offsets: (u32, u32, u32, u32)) -> Vec<u8> {
         minimal_sps_rbsp_full(0, Some(offsets))
     }
 
@@ -364,8 +362,14 @@ mod tests {
         assert_eq!(sps.height, 226);
         assert_eq!(sps.coded_width(), 320);
         assert_eq!(sps.coded_height(), 240);
-        assert_eq!(sps.coded_width(), sps.width + sps.crop_left + sps.crop_right);
-        assert_eq!(sps.coded_height(), sps.height + sps.crop_top + sps.crop_bottom);
+        assert_eq!(
+            sps.coded_width(),
+            sps.width + sps.crop_left + sps.crop_right
+        );
+        assert_eq!(
+            sps.coded_height(),
+            sps.height + sps.crop_top + sps.crop_bottom
+        );
     }
 
     /// When `sps_conformance_window_flag=0`, all four crop offsets are

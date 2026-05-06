@@ -2,8 +2,8 @@
 
 mod common;
 
-use tst_srt::error::BindError;
 use tst_srt::ListenerBuilder;
+use tst_srt::error::BindError;
 
 #[test]
 fn bind_address_in_use() {

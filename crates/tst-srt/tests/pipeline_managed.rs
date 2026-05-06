@@ -4,10 +4,8 @@
 mod common;
 
 use common::mock_transport::{FailMode, MockTransport};
-use tst_pipeline::{
-    BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy, Transport,
-};
 use std::time::Duration;
+use tst_pipeline::{BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy, Transport};
 
 #[test]
 fn managed_recovers_from_brief_outage() {
@@ -59,10 +57,7 @@ fn managed_rejects_oversize_through_inner() {
 
     let big = vec![0u8; 1317];
     let err = managed.send_bytes(&big).unwrap_err();
-    assert!(matches!(
-        err,
-        tst_pipeline::TransportError::TooLarge { .. }
-    ));
+    assert!(matches!(err, tst_pipeline::TransportError::TooLarge { .. }));
 }
 
 #[test]

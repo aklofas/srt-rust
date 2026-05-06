@@ -1,12 +1,12 @@
 //! Tests `DemuxerOptions::stream_kind_overrides` against the non-conformant
 //! audio fixtures (MP3 on user-private 0xF1, MP3 mislabeled as Layer II 0x03).
 
+use std::fs;
+use std::path::Path;
 use tst_core::mpegts::demux::{
     Demuxer, DemuxerOptions,
     event::{AudioCodec, DemuxEvent, SamplePayload, StreamKind},
 };
-use std::fs;
-use std::path::Path;
 
 fn fixture_path(name: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

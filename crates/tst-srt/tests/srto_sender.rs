@@ -1,9 +1,9 @@
 //! Verifies SRTO_SENDER=1 is set when role=MuxSender. Audit Issue 2.
 
-use tst_srt::{ListenerBuilder, Role, SocketBuilder};
 use std::ffi::c_int;
 use std::thread;
 use std::time::Duration;
+use tst_srt::{ListenerBuilder, Role, SocketBuilder};
 
 fn read_srto_sender(handle: srt_sys::SRTSOCKET) -> i32 {
     // Initialize to 0 — libsrt's getsockflag for SRTO_SENDER writes a single

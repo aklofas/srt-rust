@@ -9,11 +9,9 @@
 //!
 //! Spec: `docs/specs/2026-05-02-srt-c-url-query-params-design.md`.
 
-use crate::error::OptionError;
 use crate::config::{ListenerConfig, SocketConfig};
-use crate::options::{
-    Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId,
-};
+use crate::error::OptionError;
+use crate::options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId};
 use std::time::Duration;
 
 /// `?latency=N` is parsed as N milliseconds (libsrt-URL canonical), but
@@ -150,9 +148,7 @@ pub enum UrlError {
     )]
     UnsupportedKey { key: String, srto: &'static str },
 
-    #[error(
-        "ffmpeg URL alias '{key}' ({canonical}) is not exposed by this library; {suggestion}"
-    )]
+    #[error("ffmpeg URL alias '{key}' ({canonical}) is not exposed by this library; {suggestion}")]
     FfmpegAliasNotExposed {
         key: String,
         canonical: &'static str,
@@ -776,7 +772,10 @@ mod tests {
                 "srt://h:9000?timeout=5000000",
                 &["rw_timeout", "x-recvtimeout"][..],
             ),
-            ("srt://h:9000?listen_timeout=5000000", &["listen_timeout"][..]),
+            (
+                "srt://h:9000?listen_timeout=5000000",
+                &["listen_timeout"][..],
+            ),
             ("srt://h:9000?tsbpd=1", &["tsbpdmode"][..]),
             ("srt://h:9000?snddropdelay=100", &["snddropdelay"][..]),
         ] {

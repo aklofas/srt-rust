@@ -11,11 +11,11 @@
 //! (the second arg is an output *prefix*, producing `/tmp/klv_out_0000.klv`...
 //! 0-indexed via `enumerate()`)
 
+use std::env;
+use std::fs;
 use tst_core::klv::st0601::{
     UasDatalinkLs, decode, decode_strict, decode_strict_compliance, decode_unchecked,
 };
-use std::env;
-use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = env::args()

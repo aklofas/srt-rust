@@ -1,9 +1,9 @@
 //! Verifies SRTO_LINGER setter reaches libsrt and short-linger lets Drop
 //! return promptly. Audit Issue 4.
 
-use tst_srt::{ListenerBuilder, SocketBuilder};
 use std::thread;
 use std::time::{Duration, Instant};
+use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn drop_with_zero_linger_does_not_block() {

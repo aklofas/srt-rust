@@ -17,11 +17,11 @@
 //! so the resulting `.bin` files are directly playable by an Annex-B
 //! decoder (or `ffmpeg -f h264 -i au_0000_*.bin ...` / `-f hevc ...`).
 
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, NalUnit, SamplePayload, VideoPayload};
 use std::env;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, NalUnit, SamplePayload, VideoPayload};
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();

@@ -5,16 +5,15 @@
 
 use crate::error::{TstError, set_last_error};
 use crate::handle::{TST_INVALID_STREAM_HANDLE, TstKlvStreamHandle, TstVideoStreamHandle};
+use std::time::Duration;
 use tst_core::error::MuxError;
 use tst_core::mpegts::mux::{
     Config, KlvStreamHandle, KlvStreamType, ProgramConfig, StreamSpec, VideoCodec,
     VideoStreamHandle,
 };
 use tst_pipeline::{
-    BackoffStrategy, OverflowPolicy, RawSenderConfig, ReconnectPolicy, TsFramingMode,
-    SenderConfig,
+    BackoffStrategy, OverflowPolicy, RawSenderConfig, ReconnectPolicy, SenderConfig, TsFramingMode,
 };
-use std::time::Duration;
 
 // ------------------------------------------------------------------
 // tst_program_handle_t

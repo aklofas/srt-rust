@@ -5,10 +5,10 @@
 //! output. Skips silently if no fixtures are present, no ffprobe is
 //! available, or if no video PID is found.
 
-use tst_core::codec::{h264, h265};
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 use std::path::Path;
 use std::process::Command;
+use tst_core::codec::{h264, h265};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
 fn ffprobe_video_stream(path: &Path) -> Option<(u32, u32, String, String)> {
     let out = Command::new("ffprobe")

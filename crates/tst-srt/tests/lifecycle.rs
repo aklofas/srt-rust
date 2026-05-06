@@ -2,9 +2,9 @@
 
 mod common;
 
-use tst_srt::{ListenerBuilder, SocketBuilder};
 use std::thread;
 use std::time::Duration;
+use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn drop_closes_cleanly() {

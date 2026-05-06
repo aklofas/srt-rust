@@ -2,8 +2,8 @@
 //! programmed to fail in deterministic patterns. Used across pipeline_*
 //! integration tests.
 
-use tst_pipeline::{Transport, TransportError};
 use std::sync::{Arc, Mutex};
+use tst_pipeline::{Transport, TransportError};
 
 #[derive(Debug, Clone)]
 pub enum FailMode {

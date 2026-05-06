@@ -12,13 +12,13 @@
 //! propagated to the caller; those are the cases where `ManagedTransport`
 //! is the right wrapper.
 
+use std::collections::{BTreeMap, VecDeque};
+use std::sync::Mutex;
 use tst_core::error::MuxError;
 use tst_core::mpegts::mux::{
     AudioStreamHandle, Config, KlvStreamHandle, Muxer, SubtitleStreamHandle, VideoStreamHandle,
 };
 use tst_core::transport::{Transport, TransportError};
-use std::collections::{BTreeMap, VecDeque};
-use std::sync::Mutex;
 
 /// Stats snapshot for [`MuxSender`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -721,10 +721,10 @@ mod multi_stream_tests {
 #[cfg(test)]
 mod cancel_tests {
     use super::*;
-    use tst_core::mpegts::mux::{KlvStreamType, VideoCodec};
-    use tst_core::transport::{Transport, TransportCancel, TransportError};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use tst_core::mpegts::mux::{KlvStreamType, VideoCodec};
+    use tst_core::transport::{Transport, TransportCancel, TransportError};
 
     /// Mock transport whose send_bytes blocks (parks) until cancel is
     /// triggered, simulating libsrt's send buffer being full.

@@ -67,7 +67,7 @@ pub unsafe extern "C" fn tst_get_last_error_str() -> *const libc::c_char {
 }
 
 use tst_core::error::MuxError;
-use tst_pipeline::{MuxSenderError, TransportError, SenderError};
+use tst_pipeline::{MuxSenderError, SenderError, TransportError};
 
 /// Map a `MuxError` to a code + message.
 #[allow(dead_code)]

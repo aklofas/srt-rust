@@ -11,11 +11,11 @@
 //!
 //! Stops after the first sender disconnects.
 
-use tst_srt::ListenerBuilder;
 use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::time::Duration;
+use tst_srt::ListenerBuilder;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args().skip(1);

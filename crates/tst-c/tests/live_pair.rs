@@ -8,23 +8,22 @@
 //! integration test can call the crate's Rust API directly — the same
 //! `unsafe extern "C"` functions exported to C consumers.
 
-use tst_srt::ListenerBuilder;
-use tstrans::config::{TstKlvStreamType, TstMuxConfig, TstVideoCodec};
-use tstrans::config::{
-    tst_mux_config_add_klv_stream, tst_mux_config_add_program, tst_mux_config_add_video_stream,
-    tst_mux_config_free, tst_mux_config_new, tst_reconnect_policy_free,
-    tst_reconnect_policy_new,
-};
-use tstrans::error::tst_get_last_error_str;
-use tstrans::mux_sender::{
-    tst_managed_mux_sender_close, tst_managed_mux_sender_open,
-    tst_managed_mux_sender_send_klv_to, tst_managed_mux_sender_send_video_to,
-    tst_mux_sender_close, tst_mux_sender_open, tst_mux_sender_send_video,
-};
 use std::ffi::CString;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use tst_srt::ListenerBuilder;
+use tstrans::config::{TstKlvStreamType, TstMuxConfig, TstVideoCodec};
+use tstrans::config::{
+    tst_mux_config_add_klv_stream, tst_mux_config_add_program, tst_mux_config_add_video_stream,
+    tst_mux_config_free, tst_mux_config_new, tst_reconnect_policy_free, tst_reconnect_policy_new,
+};
+use tstrans::error::tst_get_last_error_str;
+use tstrans::mux_sender::{
+    tst_managed_mux_sender_close, tst_managed_mux_sender_open, tst_managed_mux_sender_send_klv_to,
+    tst_managed_mux_sender_send_video_to, tst_mux_sender_close, tst_mux_sender_open,
+    tst_mux_sender_send_video,
+};
 
 fn last_error_msg() -> String {
     unsafe {
@@ -145,13 +144,8 @@ fn managed_mux_sender_multi_stream_loopback() {
         let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
         let h_eo = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
         let h_ir = tst_mux_config_add_video_stream(cfg, prog, 0x1012, TstVideoCodec::H264);
-        let h_klv = tst_mux_config_add_klv_stream(
-            cfg,
-            prog,
-            0x1031,
-            TstKlvStreamType::PrivateData,
-            false,
-        );
+        let h_klv =
+            tst_mux_config_add_klv_stream(cfg, prog, 0x1031, TstKlvStreamType::PrivateData, false);
 
         // Use a default reconnect policy (no forced backoff — connect immediately).
         let policy = tst_reconnect_policy_new();
@@ -209,13 +203,8 @@ fn managed_mux_sender_multi_stream_loopback() {
                 last_error_msg()
             );
 
-            let rc_klv = tst_managed_mux_sender_send_klv_to(
-                s,
-                h_klv,
-                klv.as_ptr(),
-                klv.len(),
-                base_pts + 2,
-            );
+            let rc_klv =
+                tst_managed_mux_sender_send_klv_to(s, h_klv, klv.as_ptr(), klv.len(), base_pts + 2);
             assert_eq!(
                 rc_klv,
                 0,

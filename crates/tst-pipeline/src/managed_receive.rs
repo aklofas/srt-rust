@@ -64,9 +64,9 @@
 //!   `Demuxer::flush()` to drain any partial PES at end-of-stream.
 
 use crate::reconnect::ReconnectPolicy;
+use std::sync::{Arc, Mutex};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
-use std::sync::{Arc, Mutex};
 
 /// Receive-side reconnect decorator.
 ///

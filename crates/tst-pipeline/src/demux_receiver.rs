@@ -24,11 +24,11 @@
 //! PES starts or the stream ends). In normal live streams the flush emits
 //! nothing; for finite test data it recovers the last sample.
 
+use crate::receiver::Receiver;
 use tst_core::error::DemuxError;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerOptions};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
-use crate::receiver::Receiver;
 
 /// Type alias for a boxed byte-fanout callback registered via
 /// [`DemuxReceiver::add_byte_sink`]. The callback receives one TS packet (188
@@ -239,9 +239,9 @@ impl<R: RecvTransport> DemuxReceiver<R> {
 #[cfg(test)]
 mod stats_tests {
     use super::*;
+    use std::collections::VecDeque;
     use tst_core::transport::RecvTransport;
     use tst_core::transport::TransportError;
-    use std::collections::VecDeque;
 
     struct CannedRecv {
         chunks: VecDeque<Vec<u8>>,

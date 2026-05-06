@@ -5,11 +5,11 @@
 //! an `SrtTransport`. The plain senders use the result directly; the
 //! managed senders capture (host, port, cfg) in the reconnect closure.
 
+use std::time::Duration;
 use tst_pipeline::TransportError;
 use tst_srt::SrtTransport;
 use tst_srt::options::Role;
 use tst_srt::{Socket, SocketConfig};
-use std::time::Duration;
 
 /// MuxSender-pipeline default for `SRTO_CONNTIMEO`. libsrt's default is 3s,
 /// which is too short for the radio-link domain this library targets

@@ -12,8 +12,7 @@ use tstrans::config::{
 };
 use tstrans::handle::TST_INVALID_STREAM_HANDLE;
 use tstrans::muxer::{
-    tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_klv_to,
-    tst_muxer_push_video_to,
+    tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_klv_to, tst_muxer_push_video_to,
 };
 
 // Annex-B IDR NAL: 4-byte start code + nal_unit_type 0x65 (IDR slice).

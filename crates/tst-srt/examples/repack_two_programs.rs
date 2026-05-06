@@ -60,12 +60,12 @@
 //! You should see PIDs 0x1000, 0x1011, 0x1031 owned by program 1 and
 //! PIDs 0x1100, 0x1111, 0x1131 owned by program 2.
 
-use tst_core::mpegts::demux::event::NalUnit;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 use std::env;
 use std::fs;
 use std::io::Write;
+use tst_core::mpegts::demux::event::NalUnit;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
+use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── Argument parsing ─────────────────────────────────────────────────────

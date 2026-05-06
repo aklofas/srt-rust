@@ -14,7 +14,10 @@ fn smoke_c_compiles_links_runs() {
     let header = PathBuf::from(manifest_dir).join("include/tstrans.h");
     let smoke_c = PathBuf::from(manifest_dir).join("tests/smoke.c");
 
-    assert!(cdylib_dir.join("libtstrans.so").exists(), "build tst-c first");
+    assert!(
+        cdylib_dir.join("libtstrans.so").exists(),
+        "build tst-c first"
+    );
     assert!(header.exists(), "header missing at {}", header.display());
 
     let bin_path = std::env::temp_dir().join("tst_smoke");

@@ -13,13 +13,13 @@
 //! 5. Calling `s.close()` from the main thread; the parked thread must
 //!    return within a generous timeout.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 use tst_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
 use tst_pipeline::{MuxSender, MuxSenderError, TransportError};
 use tst_srt::SrtTransport;
 use tst_srt::{ListenerBuilder, SocketBuilder};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
 
 #[test]
 fn close_unblocks_libsrt_parked_send() {

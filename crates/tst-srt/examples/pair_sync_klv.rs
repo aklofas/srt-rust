@@ -40,10 +40,10 @@
 //! KLV history hasn't filled yet); systematic `unpaired > 0` mid-stream
 //! suggests a clock drift or the tolerance is set too tight.
 
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
 use std::collections::VecDeque;
 use std::env;
 use std::fs;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
 
 // 0.3 seconds at the 90 kHz MPEG-TS clock. This is wide enough to absorb
 // typical encoder timestamp drift between the video and metadata clocks

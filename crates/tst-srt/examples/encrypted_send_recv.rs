@@ -10,11 +10,11 @@
 //! StreamId. The same shape applies across-network — only the bind/connect
 //! addresses change.
 
-use tst_srt::{KeyLength, ListenerBuilder, Passphrase, SocketBuilder, StreamId};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use tst_srt::{KeyLength, ListenerBuilder, Passphrase, SocketBuilder, StreamId};
 
 // PASSPHRASE is the shared secret both peers must agree on for AES-CTR
 // encryption. Named `shared-secret-not-for-production` so anyone reading the

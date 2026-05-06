@@ -2,10 +2,10 @@
 
 mod common;
 
-use tst_srt::{ListenerBuilder, SocketBuilder};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn stats_after_round_trip_show_nonzero_bytes() {

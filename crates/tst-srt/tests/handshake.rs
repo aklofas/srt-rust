@@ -9,11 +9,11 @@
 
 mod common;
 
+use std::thread;
+use std::time::Duration;
 use tst_srt::error::ConnectError;
 use tst_srt::error::RejectReason;
 use tst_srt::{ListenerBuilder, Passphrase, SocketBuilder};
-use std::thread;
-use std::time::Duration;
 
 // Note on negative tests: srt_accept does NOT honor SRTO_RCVTIMEO. A spawned
 // listener thread that calls accept() will block forever if no successful

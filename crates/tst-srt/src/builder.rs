@@ -3,8 +3,8 @@
 //! The builder is sugar; the canonical type is the config struct.
 //! Bindings consume the config struct directly. Rust callers can use either.
 
-use crate::error::{BindError, ConnectError, OptionError, StreamIdError};
 use crate::config::{ListenerConfig, SocketConfig};
+use crate::error::{BindError, ConnectError, OptionError, StreamIdError};
 use crate::listener::Listener;
 use crate::options::{
     Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, Role, StreamId,

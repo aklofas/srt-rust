@@ -6,7 +6,7 @@
 
 mod framing;
 
-pub use framing::{TsFraming, TsFramingError, TsFramingMode, SenderStats};
+pub use framing::{SenderStats, TsFraming, TsFramingError, TsFramingMode};
 
 use tst_core::transport::Transport;
 

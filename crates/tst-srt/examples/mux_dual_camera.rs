@@ -26,10 +26,10 @@
 //! Invocation:
 //!   cargo run --example mux_dual_camera
 
-use tst_core::mpegts::descriptors;
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 use std::fs::File;
 use std::io::Write;
+use tst_core::mpegts::descriptors;
+use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 
 fn main() -> std::io::Result<()> {
     // Build a multi-stream Config:

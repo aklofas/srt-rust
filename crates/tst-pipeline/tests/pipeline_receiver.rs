@@ -9,9 +9,9 @@ use std::collections::VecDeque;
 
 use tst_core::mpegts::demux::DemuxEvent;
 use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
-use tst_pipeline::DemuxReceiver;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
+use tst_pipeline::DemuxReceiver;
 
 // ---------------------------------------------------------------------------
 // CannedTransport — replay a queue of byte chunks, then signal Closed.
@@ -211,10 +211,10 @@ fn byte_sinks_see_every_chunk() {
 /// transport with one well-formed chunk that the next `recv_bytes` returns.
 #[test]
 fn managed_receive_reconnects_through_factory() {
-    use tst_pipeline::ManagedReceiveTransport;
-    use tst_pipeline::reconnect::{BackoffStrategy, ReconnectPolicy};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
+    use tst_pipeline::ManagedReceiveTransport;
+    use tst_pipeline::reconnect::{BackoffStrategy, ReconnectPolicy};
 
     let attempts = Arc::new(Mutex::new(0u32));
     let attempts_cl = attempts.clone();

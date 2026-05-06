@@ -2,9 +2,9 @@
 
 mod common;
 
-use tst_srt::{ListenerBuilder, SocketBuilder, StreamId};
 use std::thread;
 use std::time::Duration;
+use tst_srt::{ListenerBuilder, SocketBuilder, StreamId};
 
 #[test]
 fn stream_id_round_trips() {

@@ -23,10 +23,10 @@
 //! the parent event (see the `Sample` arm of the match below — same
 //! `pts` field shape).
 
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind};
 use std::env;
 use std::fs;
 use std::path::Path;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind};
 
 fn main() {
     let args: Vec<String> = env::args().collect();

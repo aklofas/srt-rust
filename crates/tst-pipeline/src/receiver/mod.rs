@@ -13,9 +13,9 @@
 
 pub mod sync;
 
+use sync::Syncer;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
-use sync::Syncer;
 
 /// Application-level stats for [`Receiver`].
 ///
@@ -162,8 +162,8 @@ impl<R: RecvTransport> Receiver<R> {
 #[cfg(test)]
 mod stats_tests {
     use super::*;
-    use tst_core::transport::TransportError;
     use std::collections::VecDeque;
+    use tst_core::transport::TransportError;
 
     struct MemRecv {
         queue: VecDeque<Vec<u8>>,

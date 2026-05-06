@@ -34,9 +34,9 @@
 //! event shape, but reading from a connected SRT socket instead of a
 //! file.
 
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
 use std::env;
 use std::fs;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
 
 fn main() {
     let args: Vec<String> = env::args().collect();

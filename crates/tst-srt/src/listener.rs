@@ -1,9 +1,9 @@
 //! Passive (listening) SRT socket.
 
-use crate::error::{AcceptError, BindError, IoError, OptionError, last_error};
-use crate::init::ensure_initialized;
 use crate::addr::{from_sockaddr, to_sockaddr};
 use crate::config::ListenerConfig;
+use crate::error::{AcceptError, BindError, IoError, OptionError, last_error};
+use crate::init::ensure_initialized;
 use crate::socket::{Socket, apply_listener_config, duration_to_ms, set_int};
 use std::ffi::c_int;
 use std::mem;

@@ -8,7 +8,7 @@ use std::io::{self, Read, Write};
 use std::path::Path;
 
 use crate::error::DemuxError;
-use crate::mpegts::demux::{Demuxer, DemuxEvent, DemuxerOptions};
+use crate::mpegts::demux::{DemuxEvent, Demuxer, DemuxerOptions};
 use crate::mpegts::mux::Muxer;
 
 /// Drain all pending events from a demuxer into `out`.

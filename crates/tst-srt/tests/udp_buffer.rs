@@ -1,10 +1,10 @@
 //! Verifies SRTO_UDP_RCVBUF / SRTO_UDP_SNDBUF setters reach libsrt.
 //! Audit Issue 9.
 
-use tst_srt::{ListenerBuilder, SocketBuilder};
 use std::ffi::c_int;
 use std::thread;
 use std::time::Duration;
+use tst_srt::{ListenerBuilder, SocketBuilder};
 
 fn read_u32(handle: srt_sys::SRTSOCKET, opt: srt_sys::SRT_SOCKOPT) -> Option<u32> {
     let mut value: c_int = 0;

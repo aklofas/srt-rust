@@ -599,10 +599,7 @@ mod tests {
     fn strip_dvb_sub_envelope_accepts_hd_data_identifier_range() {
         // 0x70..=0x7F is HD subtitle per EN 300 743 §7.1.
         let wrapped = [0x70, 0x00, 0x0F, 0x10, 0xFF];
-        assert_eq!(
-            strip_dvb_sub_envelope(&wrapped),
-            Some(&[0x0F, 0x10][..])
-        );
+        assert_eq!(strip_dvb_sub_envelope(&wrapped), Some(&[0x0F, 0x10][..]));
     }
 
     #[test]

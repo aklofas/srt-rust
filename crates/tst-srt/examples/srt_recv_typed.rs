@@ -26,12 +26,12 @@
 //! - Clean exit when the publisher closes — no error message, just
 //!   "peer closed cleanly".
 
-use tst_core::mpegts::demux::DemuxEvent;
-use tst_pipeline::{DemuxReceiver};
-use tst_srt::SrtTransport;
-use tst_srt::ListenerBuilder;
 use std::env;
 use std::time::Duration;
+use tst_core::mpegts::demux::DemuxEvent;
+use tst_pipeline::DemuxReceiver;
+use tst_srt::ListenerBuilder;
+use tst_srt::SrtTransport;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let port: u16 = env::args()

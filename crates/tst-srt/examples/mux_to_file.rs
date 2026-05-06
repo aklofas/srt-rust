@@ -7,10 +7,10 @@
 //! Usage:
 //!   cargo run --example mux_to_file -- <output.ts> [duration_seconds]
 
-use tst_core::mpegts::mux::{Config, Muxer};
 use std::env;
 use std::fs::File;
 use std::io::Write;
+use tst_core::mpegts::mux::{Config, Muxer};
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();

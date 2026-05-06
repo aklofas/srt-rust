@@ -9,19 +9,18 @@
 //!
 //! Watch stderr for reconnect events.
 
-use tst_core::mpegts::mux::Config;
-use tst_pipeline::{
-    BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy, MuxSender,
-    TransportError,
-};
-use tst_srt::SrtTransport;
-use tst_srt::{ListenerBuilder, SocketBuilder};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use tst_core::mpegts::mux::Config;
+use tst_pipeline::{
+    BackoffStrategy, ManagedTransport, MuxSender, OverflowPolicy, ReconnectPolicy, TransportError,
+};
+use tst_srt::SrtTransport;
+use tst_srt::{ListenerBuilder, SocketBuilder};
 
 // NUM_FRAMES is the total number of synthetic video frames the sender pushes.
 // Sized so we span at least two peer-induced disconnects with comfortable

@@ -58,14 +58,14 @@
 //! through `Sender::send_ts` and let its 7-packet bundling +
 //! sync-byte verification pass them through unchanged.
 
-use tst_pipeline::{ Sender, SenderConfig, SenderError};
-use tst_srt::SrtTransport;
-use tst_srt::ListenerBuilder;
 use std::env;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
 use std::time::{Duration, Instant};
+use tst_pipeline::{Sender, SenderConfig, SenderError};
+use tst_srt::ListenerBuilder;
+use tst_srt::SrtTransport;
 
 /// Read granularity. Must be a multiple of 188 so we hand `Sender`
 /// already-aligned packets and our PCR walker doesn't have to buffer
@@ -262,11 +262,7 @@ impl Pacer {
         }
     }
 
-    fn send(
-        &mut self,
-        sender: &mut Sender<SrtTransport>,
-        bytes: &[u8],
-    ) -> Result<(), SenderError> {
+    fn send(&mut self, sender: &mut Sender<SrtTransport>, bytes: &[u8]) -> Result<(), SenderError> {
         match self {
             Pacer::Pcr(p) => p.send(sender, bytes),
             Pacer::Fixed(p) => p.send(sender, bytes),
@@ -298,11 +294,7 @@ impl PcrPacer {
         }
     }
 
-    fn send(
-        &mut self,
-        sender: &mut Sender<SrtTransport>,
-        bytes: &[u8],
-    ) -> Result<(), SenderError> {
+    fn send(&mut self, sender: &mut Sender<SrtTransport>, bytes: &[u8]) -> Result<(), SenderError> {
         // Walk packets; emit accumulated runs at each PCR boundary, then sleep.
         let mut emit_from = 0usize;
         let mut i = 0usize;
@@ -372,11 +364,7 @@ impl FixedRatePacer {
         }
     }
 
-    fn send(
-        &mut self,
-        sender: &mut Sender<SrtTransport>,
-        bytes: &[u8],
-    ) -> Result<(), SenderError> {
+    fn send(&mut self, sender: &mut Sender<SrtTransport>, bytes: &[u8]) -> Result<(), SenderError> {
         sender.send_ts(bytes)?;
         self.total += bytes.len() as u64;
         let want_secs = (self.total as f64 * 8.0) / self.bps as f64;

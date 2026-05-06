@@ -2,10 +2,10 @@
 
 mod common;
 
-use tst_srt::error::RecvError;
-use tst_srt::{ListenerBuilder, SocketBuilder};
 use std::thread;
 use std::time::Duration;
+use tst_srt::error::RecvError;
+use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn small_payload_round_trips() {

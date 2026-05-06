@@ -38,18 +38,16 @@
 
 #![cfg(target_os = "linux")]
 
-use tst_core::error::DemuxError;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
-use tst_pipeline::{
-    DemuxReceiver, DemuxReceiverError, TransportError, Sender, SenderConfig,
-};
-use tst_srt::SrtTransport;
-use tst_srt::{ListenerBuilder, SocketBuilder};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use tst_core::error::DemuxError;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
+use tst_pipeline::{DemuxReceiver, DemuxReceiverError, Sender, SenderConfig, TransportError};
+use tst_srt::SrtTransport;
+use tst_srt::{ListenerBuilder, SocketBuilder};
 
 /// Per-file byte cap. 16 MiB on a typical 8 Mbps capture is roughly 16
 /// seconds of content — enough for a comfortably large PMT + many AUs +

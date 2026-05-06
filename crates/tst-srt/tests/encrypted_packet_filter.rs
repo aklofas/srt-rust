@@ -2,9 +2,9 @@
 
 mod common;
 
-use tst_srt::{ListenerBuilder, PacketFilter, SocketBuilder};
 use std::thread;
 use std::time::Duration;
+use tst_srt::{ListenerBuilder, PacketFilter, SocketBuilder};
 
 #[test]
 fn fec_config_applies() {

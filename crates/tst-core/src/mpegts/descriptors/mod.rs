@@ -14,6 +14,33 @@ pub use parse::{
     find_format_identifier, parse_subtitling_descriptor, parse_teletext_descriptor,
 };
 
+/// Errors returned by descriptor builder helpers in this module.
+///
+/// Empty `entries` arguments produce a degenerate `tag 0x00` descriptor
+/// that the demux parser rejects with [`ParseError::EmptyInput`]. The
+/// encoder rejects the same shape symmetrically rather than emitting
+/// invalid PSI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DescriptorError {
+    /// `entries` slice was empty for a multi-entry descriptor builder
+    /// (subtitling 0x59 or teletext 0x56). Caller must supply at least
+    /// one entry.
+    EmptyEntries { tag: u8 },
+}
+
+impl core::fmt::Display for DescriptorError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            DescriptorError::EmptyEntries { tag } => write!(
+                f,
+                "descriptor tag 0x{tag:02X}: entries slice is empty (must be non-empty)"
+            ),
+        }
+    }
+}
+
+impl core::error::Error for DescriptorError {}
+
 /// Registration descriptor (tag 0x05) — H.222.0 §2.6.8.
 ///
 /// `format_identifier` is a 4-byte ASCII tag. `additional` is the
@@ -159,12 +186,15 @@ pub fn subtitling_descriptor(
     composition_page_id: u16,
     ancillary_page_id: u16,
 ) -> Vec<u8> {
+    // Single-entry input is statically non-empty, so the multi helper's
+    // EmptyEntries branch is unreachable here.
     subtitling_descriptor_multi(&[(
         language,
         subtitling_type,
         composition_page_id,
         ancillary_page_id,
     )])
+    .expect("single-entry slice is statically non-empty")
 }
 
 /// DVB subtitling_descriptor (tag 0x59), multi-entry form per
@@ -173,7 +203,16 @@ pub fn subtitling_descriptor(
 ///
 /// Use this for multi-language single-PID DVB subtitling services. The
 /// single-entry helper [`subtitling_descriptor`] is a `len=1` shorthand.
-pub fn subtitling_descriptor_multi(entries: &[([u8; 3], u8, u16, u16)]) -> Vec<u8> {
+///
+/// Returns [`DescriptorError::EmptyEntries`] if `entries` is empty —
+/// the demux parser rejects an empty subtitling_descriptor with
+/// [`ParseError::EmptyInput`], so the encoder rejects symmetrically.
+pub fn subtitling_descriptor_multi(
+    entries: &[([u8; 3], u8, u16, u16)],
+) -> Result<Vec<u8>, DescriptorError> {
+    if entries.is_empty() {
+        return Err(DescriptorError::EmptyEntries { tag: 0x59 });
+    }
     let body_len = entries.len() * 8;
     debug_assert!(body_len <= u8::MAX as usize, "descriptor length is u8");
     let mut out = Vec::with_capacity(2 + body_len);
@@ -185,7 +224,7 @@ pub fn subtitling_descriptor_multi(entries: &[([u8; 3], u8, u16, u16)]) -> Vec<u
         out.extend_from_slice(&comp_page_id.to_be_bytes());
         out.extend_from_slice(&anc_page_id.to_be_bytes());
     }
-    out
+    Ok(out)
 }
 
 /// DVB teletext_descriptor (tag 0x56), single-entry form.
@@ -200,7 +239,10 @@ pub fn teletext_descriptor(
     magazine_number: u8,
     page_number: u8,
 ) -> Vec<u8> {
+    // Single-entry input is statically non-empty, so the multi helper's
+    // EmptyEntries branch is unreachable here.
     teletext_descriptor_multi(&[(language, teletext_type, magazine_number, page_number)])
+        .expect("single-entry slice is statically non-empty")
 }
 
 /// DVB teletext_descriptor (tag 0x56), multi-entry form per
@@ -209,7 +251,16 @@ pub fn teletext_descriptor(
 ///
 /// Use this for multi-language single-PID DVB teletext services. The
 /// single-entry helper [`teletext_descriptor`] is a `len=1` shorthand.
-pub fn teletext_descriptor_multi(entries: &[([u8; 3], u8, u8, u8)]) -> Vec<u8> {
+///
+/// Returns [`DescriptorError::EmptyEntries`] if `entries` is empty —
+/// the demux parser rejects an empty teletext_descriptor with
+/// [`ParseError::EmptyInput`], so the encoder rejects symmetrically.
+pub fn teletext_descriptor_multi(
+    entries: &[([u8; 3], u8, u8, u8)],
+) -> Result<Vec<u8>, DescriptorError> {
+    if entries.is_empty() {
+        return Err(DescriptorError::EmptyEntries { tag: 0x56 });
+    }
     let body_len = entries.len() * 5;
     debug_assert!(body_len <= u8::MAX as usize, "descriptor length is u8");
     let mut out = Vec::with_capacity(2 + body_len);
@@ -220,7 +271,7 @@ pub fn teletext_descriptor_multi(entries: &[([u8; 3], u8, u8, u8)]) -> Vec<u8> {
         out.push(((teletext_type & 0x1F) << 3) | (magazine_number & 0x07));
         out.push(*page_number);
     }
-    out
+    Ok(out)
 }
 
 /// `registration_descriptor` (tag 0x05) carrying ASCII format_identifier
@@ -451,7 +502,8 @@ mod tests {
     #[test]
     fn subtitling_descriptor_multi_emits_two_entries() {
         let descriptor =
-            subtitling_descriptor_multi(&[(*b"eng", 0x10, 1, 1), (*b"spa", 0x10, 2, 2)]);
+            subtitling_descriptor_multi(&[(*b"eng", 0x10, 1, 1), (*b"spa", 0x10, 2, 2)])
+                .expect("non-empty entries");
         // tag(1) + length(1) + 2 × 8 bytes per entry = 18 bytes total.
         assert_eq!(descriptor[0], 0x59, "tag");
         assert_eq!(descriptor[1], 0x10, "length = 16 (2 × 8 byte entries)");
@@ -472,7 +524,8 @@ mod tests {
     #[allow(clippy::identity_op)] // spec form (teletext_type << 3) | magazine_number is illustrative
     fn teletext_descriptor_multi_emits_two_entries() {
         let descriptor =
-            teletext_descriptor_multi(&[(*b"eng", 0x02, 0, 0x88), (*b"spa", 0x02, 0, 0x77)]);
+            teletext_descriptor_multi(&[(*b"eng", 0x02, 0, 0x88), (*b"spa", 0x02, 0, 0x77)])
+                .expect("non-empty entries");
         // tag(1) + length(1) + 2 × 5 bytes per entry = 12 bytes total.
         assert_eq!(descriptor[0], 0x56, "tag");
         assert_eq!(descriptor[1], 0x0A, "length = 10 (2 × 5 byte entries)");
@@ -489,14 +542,49 @@ mod tests {
     fn subtitling_descriptor_single_via_multi_matches_single_helper() {
         // The single-entry helper's output should match a 1-element multi call.
         let single = subtitling_descriptor(*b"eng", 0x10, 1, 1);
-        let multi = subtitling_descriptor_multi(&[(*b"eng", 0x10, 1, 1)]);
+        let multi =
+            subtitling_descriptor_multi(&[(*b"eng", 0x10, 1, 1)]).expect("non-empty entries");
         assert_eq!(single, multi);
     }
 
     #[test]
     fn teletext_descriptor_single_via_multi_matches_single_helper() {
         let single = teletext_descriptor(*b"eng", 0x02, 0, 0x88);
-        let multi = teletext_descriptor_multi(&[(*b"eng", 0x02, 0, 0x88)]);
+        let multi =
+            teletext_descriptor_multi(&[(*b"eng", 0x02, 0, 0x88)]).expect("non-empty entries");
         assert_eq!(single, multi);
+    }
+
+    // ── Empty-entries rejection (audit Subt-A symmetry fix) ──────────────
+
+    #[test]
+    fn subtitling_descriptor_multi_rejects_empty_entries() {
+        // Empty entries would produce a degenerate `0x59 0x00` descriptor
+        // that the demux parser rejects with ParseError::EmptyInput.
+        // Encoder rejects symmetrically.
+        let result = subtitling_descriptor_multi(&[]);
+        assert_eq!(result, Err(DescriptorError::EmptyEntries { tag: 0x59 }));
+    }
+
+    #[test]
+    fn teletext_descriptor_multi_rejects_empty_entries() {
+        let result = teletext_descriptor_multi(&[]);
+        assert_eq!(result, Err(DescriptorError::EmptyEntries { tag: 0x56 }));
+    }
+
+    #[test]
+    fn subtitling_descriptor_multi_accepts_one_entry() {
+        let bytes = subtitling_descriptor_multi(&[(*b"eng", 0x10, 0x0001, 0x0002)])
+            .expect("one entry should succeed");
+        assert_eq!(bytes[0], 0x59); // descriptor_tag
+        assert_eq!(bytes[1], 8); // length = 1 entry × 8 bytes
+    }
+
+    #[test]
+    fn teletext_descriptor_multi_accepts_one_entry() {
+        let bytes = teletext_descriptor_multi(&[(*b"eng", 0x02, 0, 0x88)])
+            .expect("one entry should succeed");
+        assert_eq!(bytes[0], 0x56); // descriptor_tag
+        assert_eq!(bytes[1], 5); // length = 1 entry × 5 bytes
     }
 }

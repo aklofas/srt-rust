@@ -4448,7 +4448,8 @@ mod tests {
         let caller_desc = crate::mpegts::descriptors::subtitling_descriptor_multi(&[
             (*b"eng", 0x10, 1, 1),
             (*b"spa", 0x10, 2, 2),
-        ]);
+        ])
+        .expect("non-empty entries");
         let cfg = Config::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H264)

@@ -1143,7 +1143,7 @@ pub struct MuxerStats {
 }
 
 use self::pes::{
-    MAX_PES_HEADER_SIZE, PesPtsField, STREAM_ID_KLV, STREAM_ID_VIDEO, SubtitlePesShape,
+    MAX_PES_HEADER_SIZE, PesFlags, PesPtsField, STREAM_ID_KLV, STREAM_ID_VIDEO, SubtitlePesShape,
     write_audio_pes, write_pes_header, write_subtitle_pes,
 };
 use self::psi::{KLVA_REGISTRATION_DESCRIPTOR, PmtStreamEntry, write_pat_packet, write_pmt_packet};
@@ -2101,11 +2101,14 @@ impl Muxer {
         }
 
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
+        // No data_alignment_indicator on video PES today; subsequent commit
+        // will add the bit for AV1 per AV1-in-MPEG2-TS binding §3.4.
         let header_len = write_pes_header(
             &mut header,
             STREAM_ID_VIDEO,
             PesPtsField::PtsOnly(Pts90khz(pts_90khz)),
             None,
+            PesFlags::default(),
         );
 
         let total = header_len + nal.len();
@@ -2256,11 +2259,14 @@ impl Muxer {
         }
 
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
+        // No data_alignment_indicator on KLV PES today; subsequent commit
+        // will add the bit for metadata streams per H.222.0 V9 §2.12.4.1.
         let header_len = write_pes_header(
             &mut header,
             STREAM_ID_KLV,
             pts_field,
             Some(effective_klv.len() as u16),
+            PesFlags::default(),
         );
 
         let total = header_len + effective_klv.len();

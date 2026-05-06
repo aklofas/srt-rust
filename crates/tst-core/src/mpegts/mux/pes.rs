@@ -49,6 +49,23 @@ pub(crate) enum PesPtsField {
     PtsOnly(Pts90khz),
 }
 
+/// PES header flag bits the writer can set up-front. Matches ffmpeg's pattern
+/// of passing all flags into the writer rather than post-ORing bits at the
+/// call site (`libavformat/mpegtsenc.c::mpegts_write_pes`).
+///
+/// Only `data_alignment_indicator` is exposed today — that's the only flag any
+/// of our codec paths set. `PES_priority`, `copyright`, `original_or_copy`,
+/// `PES_scrambling_control` are all zero in our output.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct PesFlags {
+    /// Bit 2 of flags1 (byte 6 of the PES header). Set when the PES carries
+    /// one logical access unit (a complete subtitle composition page, KLV
+    /// access unit, AAC ADTS frame, etc.). Required for AC-3 (ATSC A/52
+    /// §A.2.4.1), DVB-sub (EN 300 743 §6.2), DVB-teletext (EN 300 472 §4.2),
+    /// metadata streams (H.222.0 V9 §2.12.4.1), AV1 (binding §3.4).
+    pub data_alignment_indicator: bool,
+}
+
 /// Maximum size of a PES header for the cases this muxer emits.
 /// = 3(start) + 1(stream_id) + 2(length) + 1(flags1) + 1(flags2) + 1(header_data_length) + 5(PTS) = 14
 pub(crate) const MAX_PES_HEADER_SIZE: usize = 14;
@@ -80,13 +97,18 @@ pub(crate) fn write_audio_pes(
         }
     };
     let mut header = [0u8; MAX_PES_HEADER_SIZE];
-    let header_len = write_pes_header(&mut header, stream_id, pts, Some(frames.len() as u16));
-    if matches!(codec, AudioCodec::Ac3) {
-        // Set data_alignment_indicator (bit 2 of flags1, byte 6) per ATSC
-        // A/52 §A.2.4.1. write_pes_header clears all flags1 bits except
-        // the '10' marker; OR the alignment bit in afterwards.
-        header[6] |= 0b0000_0100;
-    }
+    // AC-3 PES requires data_alignment_indicator=1 per ATSC A/52 §A.2.4.1.
+    // Other audio codecs (MP2 / AAC ADTS / AAC LATM) leave the bit clear.
+    let flags = PesFlags {
+        data_alignment_indicator: matches!(codec, AudioCodec::Ac3),
+    };
+    let header_len = write_pes_header(
+        &mut header,
+        stream_id,
+        pts,
+        Some(frames.len() as u16),
+        flags,
+    );
     out.extend_from_slice(&header[..header_len]);
     out.extend_from_slice(frames);
 }
@@ -177,6 +199,9 @@ fn write_dvb_teletext_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
     //   bit 2    = data_alignment_indicator = 1
     //   bit 1    = copyright = 0
     //   bit 0    = original_or_copy = 0
+    // Hardcoded inline (vs routed through write_pes_header) because the
+    // teletext path doesn't share the standard 14-byte header — it has 36
+    // bytes of stuffing after the PTS to reach a 45-byte header total.
     out.push(0b1000_0100);
     // flags2: PTS_DTS_flags = '10' (PTS only) in bits 7..6, all other flags 0.
     out.push(0b1000_0000);
@@ -216,17 +241,18 @@ pub(crate) fn wrap_dvb_sub_pes_data_field(segments: &[u8]) -> Vec<u8> {
 fn write_subtitle_pes_passthrough(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
     let pts = PesPtsField::PtsOnly(Pts90khz(pts_90khz));
     let mut header = [0u8; MAX_PES_HEADER_SIZE];
+    // Each subtitle PES advertises that it contains a complete logical unit
+    // (DVB-sub composition page, CEA-708 service block, or WebVTT cue) via
+    // data_alignment_indicator=1.
     let header_len = write_pes_header(
         &mut header,
         STREAM_ID_SUBTITLE,
         pts,
         Some(payload.len() as u16),
+        PesFlags {
+            data_alignment_indicator: true,
+        },
     );
-    // Set data_alignment_indicator (bit 2 of flags1, byte index 6).
-    // `write_pes_header` clears all flags1 bits except the '10' marker; we OR
-    // the alignment bit in afterwards so each subtitle PES advertises that it
-    // contains a complete logical unit.
-    header[6] |= 0b0000_0100;
     out.extend_from_slice(&header[..header_len]);
     out.extend_from_slice(payload);
 }
@@ -250,6 +276,7 @@ pub(crate) fn write_pes_header(
     stream_id: u8,
     pts_field: PesPtsField,
     payload_length: Option<u16>,
+    flags: PesFlags,
 ) -> usize {
     debug_assert!(out.len() >= MAX_PES_HEADER_SIZE);
 
@@ -279,8 +306,17 @@ pub(crate) fn write_pes_header(
     // PES_packet_length
     out[4] = (pes_packet_length >> 8) as u8;
     out[5] = (pes_packet_length & 0xFF) as u8;
-    // flags1: 0b10 marker (10000000) | rest 0
-    out[6] = 0x80;
+    // flags1: '10' marker (bits 7..6)
+    //         | 00 PES_scrambling_control
+    //         | 0  PES_priority
+    //         | <data_alignment_indicator>
+    //         | 0  copyright
+    //         | 0  original_or_copy
+    let mut flags1: u8 = 0x80;
+    if flags.data_alignment_indicator {
+        flags1 |= 0b0000_0100;
+    }
+    out[6] = flags1;
     // flags2: PTS_DTS_flags << 6 | rest 0
     out[7] = pts_dts_flags << 6;
     // PES_header_data_length
@@ -345,6 +381,7 @@ mod tests {
             STREAM_ID_VIDEO,
             PesPtsField::PtsOnly(Pts90khz(90_000)),
             None,
+            PesFlags::default(),
         );
         assert_eq!(n, 14);
         assert_eq!(&buf[..3], &[0x00, 0x00, 0x01]);
@@ -364,7 +401,13 @@ mod tests {
     #[test]
     fn klv_async_pes_header_no_pts() {
         let mut buf = [0u8; MAX_PES_HEADER_SIZE];
-        let n = write_pes_header(&mut buf, STREAM_ID_KLV, PesPtsField::None, Some(20));
+        let n = write_pes_header(
+            &mut buf,
+            STREAM_ID_KLV,
+            PesPtsField::None,
+            Some(20),
+            PesFlags::default(),
+        );
         assert_eq!(n, 9);
         assert_eq!(buf[3], STREAM_ID_KLV);
         // PES_packet_length = 3 + 0 + 20 = 23
@@ -384,6 +427,7 @@ mod tests {
             STREAM_ID_KLV,
             PesPtsField::PtsOnly(Pts90khz(45_000)),
             Some(100),
+            PesFlags::default(),
         );
         assert_eq!(n, 14);
         // PES_packet_length = 3 + 5 + 100 = 108
@@ -523,6 +567,26 @@ mod tests {
         // Total ES payload = 2 + 8 + 1 = 11 bytes; PES_packet_length covers
         // flags(3) + PTS(5) + 11 = 19.
         assert_eq!(u16::from_be_bytes([out[4], out[5]]), 19);
+    }
+
+    #[test]
+    fn write_pes_header_accepts_alignment_flag_directly() {
+        let mut buf = [0u8; MAX_PES_HEADER_SIZE];
+        let flags = PesFlags {
+            data_alignment_indicator: true,
+        };
+        let n = write_pes_header(
+            &mut buf,
+            STREAM_ID_VIDEO,
+            PesPtsField::PtsOnly(Pts90khz(0)),
+            None,
+            flags,
+        );
+        assert_eq!(n, 14);
+        // bit 2 of flags1 (byte 6) is data_alignment_indicator
+        assert_eq!((buf[6] >> 2) & 0b1, 0b1);
+        // marker is still '10' in bits 7..6
+        assert_eq!(buf[6] & 0b1100_0000, 0b1000_0000);
     }
 
     #[test]

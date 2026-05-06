@@ -18,8 +18,9 @@ log     = ["dep:log"]
 mbedtls = ["srt-sys/mbedtls"]
 
 [dependencies]
-srt-sys   = { path = "../srt-sys", default-features = false }
-tst-core  = { path = "../tst-core" }
+srt-sys       = { path = "../srt-sys", default-features = false }
+tst-core      = { path = "../tst-core" }
+tst-pipeline  = { path = "../tst-pipeline" }
 libc      = { workspace = true }
 thiserror = { workspace = true }
 secrecy   = { workspace = true }

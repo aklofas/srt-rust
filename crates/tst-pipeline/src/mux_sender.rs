@@ -12,7 +12,7 @@
 //! propagated to the caller; those are the cases where `ManagedTransport`
 //! is the right wrapper.
 
-use crate::error::MuxError;
+use tst_core::error::MuxError;
 use tst_core::mpegts::mux::{
     AudioStreamHandle, Config, KlvStreamHandle, Muxer, SubtitleStreamHandle, VideoStreamHandle,
 };
@@ -38,7 +38,7 @@ pub struct MuxSenderStats {
     pub programs_configured: u32,
     /// Per-stream push counters, keyed by PID. Delegated from the wrapped
     /// `Muxer`; not double-booked here.
-    pub per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
+    pub per_stream: BTreeMap<u16, tst_core::mpegts::stats::StreamStats>,
 }
 
 pub struct MuxSender<T: Transport> {

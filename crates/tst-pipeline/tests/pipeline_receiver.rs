@@ -7,9 +7,9 @@
 
 use std::collections::VecDeque;
 
-use srt_core::mpegts::demux::DemuxEvent;
-use srt_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
-use srt_core::pipeline::DemuxReceiver;
+use tst_core::mpegts::demux::DemuxEvent;
+use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use tst_pipeline::DemuxReceiver;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
@@ -211,8 +211,8 @@ fn byte_sinks_see_every_chunk() {
 /// transport with one well-formed chunk that the next `recv_bytes` returns.
 #[test]
 fn managed_receive_reconnects_through_factory() {
-    use srt_core::pipeline::ManagedReceiveTransport;
-    use srt_core::pipeline::reconnect::{BackoffStrategy, ReconnectPolicy};
+    use tst_pipeline::ManagedReceiveTransport;
+    use tst_pipeline::reconnect::{BackoffStrategy, ReconnectPolicy};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 

@@ -19,7 +19,7 @@ use sync::Syncer;
 
 /// Application-level stats for [`Receiver`].
 ///
-/// Mirrors the shape of [`crate::pipeline::SenderStats`] on the receive
+/// Mirrors the shape of [`crate::SenderStats`] on the receive
 /// side. The sync-recovery counters (`bytes_skipped_for_sync`,
 /// `resync_events`) reflect the [`sync::Syncer`] state machine: bytes
 /// drained while hunting for alignment, and successful lock acquisitions

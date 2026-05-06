@@ -6,7 +6,7 @@
 //! responsible for sizing each message to the transport's
 //! `max_payload()` (typically 1316 bytes for SRT live mode).
 //!
-//! Wrap with [`crate::pipeline::ManagedTransport`] for reconnection.
+//! Wrap with [`crate::ManagedTransport`] for reconnection.
 
 use tst_core::transport::{Transport, TransportError};
 

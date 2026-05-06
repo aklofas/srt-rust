@@ -112,7 +112,7 @@ impl<T: Transport> Sender<T> {
     }
 
     /// Snapshot of the underlying transport's cancel handle. See
-    /// [`crate::pipeline::MuxSender::cancel_handle`] for the rationale.
+    /// [`crate::MuxSender::cancel_handle`] for the rationale.
     pub fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
         self.transport.cancel_handle()
     }
@@ -131,7 +131,7 @@ impl<T: Transport> Drop for Sender<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::{Transport, TransportError};
+    use tst_core::transport::{Transport, TransportError};
 
     struct Mem;
     impl Transport for Mem {

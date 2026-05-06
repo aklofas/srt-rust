@@ -1222,6 +1222,7 @@ dependencies = [
  "tracing",
  "tracing-test",
  "tst-core",
+ "tst-pipeline",
  "url",
 ]
 
@@ -1450,6 +1451,7 @@ dependencies = [
  "srt-core",
  "thiserror",
  "tst-core",
+ "tst-pipeline",
 ]
 
 [[package]]
@@ -1462,6 +1464,16 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-test",
+]
+
+[[package]]
+name = "tst-pipeline"
+version = "0.0.0"
+dependencies = [
+ "log",
+ "proptest",
+ "thiserror",
+ "tst-core",
 ]
 
 [[package]]

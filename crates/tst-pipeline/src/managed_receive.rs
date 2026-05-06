@@ -1,7 +1,7 @@
 // crates/srt-core/src/pipeline/managed_receive.rs
 //! `ManagedReceiveTransport<R>` — reconnect on receive break.
 //!
-//! Sibling to [`ManagedTransport`][crate::pipeline::reconnect::ManagedTransport]:
+//! Sibling to [`ManagedTransport`][crate::reconnect::ManagedTransport]:
 //! same factory-closure + [`ReconnectPolicy`] cadence pattern, applied to the
 //! receive direction. There is **no gap buffer** — receive-side bytes that
 //! never arrived can't be replayed, so reconnect simply restarts the recv
@@ -63,7 +63,7 @@
 //!   higher-level shell (`DemuxReceiver`) is responsible for calling
 //!   `Demuxer::flush()` to drain any partial PES at end-of-stream.
 
-use crate::pipeline::reconnect::ReconnectPolicy;
+use crate::reconnect::ReconnectPolicy;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 use std::sync::{Arc, Mutex};
@@ -212,7 +212,7 @@ impl tst_core::transport::TransportCancel for ManagedRecvCancel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::reconnect::{BackoffStrategy, ReconnectPolicy};
+    use crate::reconnect::{BackoffStrategy, ReconnectPolicy};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 

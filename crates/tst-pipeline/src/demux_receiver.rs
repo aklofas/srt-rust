@@ -24,11 +24,11 @@
 //! PES starts or the stream ends). In normal live streams the flush emits
 //! nothing; for finite test data it recovers the last sample.
 
-use crate::error::DemuxError;
+use tst_core::error::DemuxError;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerOptions};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
-use crate::pipeline::receiver::Receiver;
+use crate::receiver::Receiver;
 
 /// Type alias for a boxed byte-fanout callback registered via
 /// [`DemuxReceiver::add_byte_sink`]. The callback receives one TS packet (188
@@ -38,7 +38,7 @@ pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
 /// Full receive shell: `RecvTransport → Receiver → Demuxer`, with optional
 /// byte-sink fan-out.
 ///
-/// `R` is any [`RecvTransport`] — typically [`SrtTransport`] for live
+/// `R` is any [`RecvTransport`] — typically an SRT-specific transport for live
 /// connections, or a test mock (e.g. `CannedTransport` in the integration
 /// tests).
 ///
@@ -55,8 +55,6 @@ pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
 ///     }
 /// }
 /// ```
-///
-/// [`SrtTransport`]: crate::pipeline::SrtTransport
 pub struct DemuxReceiver<R: RecvTransport> {
     ts: Receiver<R>,
     demux: Demuxer,
@@ -196,8 +194,8 @@ pub enum DemuxReceiverError {
 }
 
 /// Stats snapshot for [`DemuxReceiver`]. Composes the underlying
-/// [`crate::pipeline::ReceiverStats`] (bytes/packets received, sync-recovery
-/// counters) with the [`crate::mpegts::demux::DemuxerStats`] (events emitted,
+/// [`crate::receiver::ReceiverStats`] (bytes/packets received, sync-recovery
+/// counters) with the [`tst_core::mpegts::demux::DemuxerStats`] (events emitted,
 /// per-PID counters). Sync-recovery counters (`bytes_skipped_for_sync`,
 /// `resync_events`) live only on `ReceiverStats` — call
 /// `Receiver::stats()` directly to read them.
@@ -209,7 +207,7 @@ pub struct DemuxReceiverStats {
     pub pmt_versions_seen: u64,
     pub discontinuities: u64,
     pub nonconformant: u64,
-    pub per_stream: std::collections::BTreeMap<u16, crate::mpegts::stats::StreamStats>,
+    pub per_stream: std::collections::BTreeMap<u16, tst_core::mpegts::stats::StreamStats>,
 }
 
 impl<R: RecvTransport> DemuxReceiver<R> {

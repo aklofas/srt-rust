@@ -4,6 +4,7 @@ members = [
     "crates/srt-sys",
     "crates/srt-core",
     "crates/tst-core",
+    "crates/tst-pipeline",
     "crates/tst-c",
 ]
 

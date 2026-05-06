@@ -1,0 +1,17 @@
+[package]
+name         = "tst-pipeline"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+authors      = { workspace = true }
+repository   = { workspace = true }
+description  = "TS Transformer pipeline shells: Sender, MuxSender, RawSender, Receiver, DemuxReceiver, RawReceiver, ManagedTransport, reconnect strategies."
+
+[dependencies]
+tst-core  = { path = "../tst-core" }
+log       = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

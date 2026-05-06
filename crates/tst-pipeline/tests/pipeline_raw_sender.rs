@@ -3,7 +3,7 @@
 mod common;
 
 use common::mock_transport::MockTransport;
-use srt_core::pipeline::{RawSender, RawSenderConfig, TransportError};
+use tst_pipeline::{RawSender, RawSenderConfig, TransportError};
 
 #[test]
 fn raw_sender_passes_bytes_through() {

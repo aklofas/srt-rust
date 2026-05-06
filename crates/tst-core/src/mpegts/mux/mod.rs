@@ -2259,14 +2259,18 @@ impl Muxer {
         }
 
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
-        // No data_alignment_indicator on KLV PES today; subsequent commit
-        // will add the bit for metadata streams per H.222.0 V9 §2.12.4.1.
+        // H.222.0 V9 §2.12.4.1 mandates data_alignment_indicator=1 on every
+        // metadata PES (sync KLV, stream_type 0x15). For PrivateData KLV
+        // (stream_type 0x06) the bit is also conventional (DVB-style sync
+        // metadata) — set it for both.
         let header_len = write_pes_header(
             &mut header,
             STREAM_ID_KLV,
             pts_field,
             Some(effective_klv.len() as u16),
-            PesFlags::default(),
+            PesFlags {
+                data_alignment_indicator: true,
+            },
         );
 
         let total = header_len + effective_klv.len();
@@ -3157,6 +3161,54 @@ mod tests {
             }
         }
         assert!(found, "expected at least one packet on KLV PID 0x1031");
+    }
+
+    #[test]
+    fn klv_pes_sets_data_alignment_indicator_per_h2220_v9_2_12_4_1() {
+        // SynchronousMetadata KLV stream (stream_type 0x15) — H.222.0 V9
+        // §2.12.4.1 mandates data_alignment_indicator=1 on every metadata PES.
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_klv(0x101, KlvStreamType::SynchronousMetadata, true)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+
+        // Minimal raw KLV LS — 16-byte ST 0601 UL + 1-byte BER length=0.
+        // Muxer auto-prepends the 5-byte H.222.0 §2.12.4.2 AU cell header for
+        // SynchronousMetadata streams (Plan #25); irrelevant to the PES flag bit.
+        let raw_klv: Vec<u8> = vec![
+            0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00, 0x00,
+        ];
+        let h = mux.klv_stream_handle(0).unwrap();
+        mux.push_klv_to(h, &raw_klv, 45_000).unwrap();
+
+        let mut buf = vec![0u8; 188 * 64];
+        let n = mux.pull(&mut buf);
+        assert!(n > 0);
+
+        // Find the first TS packet on KLV PID 0x101 with PUSI=1.
+        let pes_flags1 = buf[..n]
+            .chunks_exact(188)
+            .find_map(|p| {
+                let pkt = crate::mpegts::demux::ts::parse_ts_packet(p).ok()?;
+                if pkt.pid == 0x101 && pkt.payload_unit_start {
+                    // Skip 6-byte fixed PES prefix (start_code(3) + stream_id(1)
+                    // + length(2)); byte 6 is flags1.
+                    Some(pkt.payload[6])
+                } else {
+                    None
+                }
+            })
+            .expect("KLV PES start packet present");
+
+        assert_eq!(
+            (pes_flags1 >> 2) & 0b1,
+            0b1,
+            "KLV PES MUST set data_alignment_indicator=1 per H.222.0 V9 §2.12.4.1; got flags1={pes_flags1:#04x}",
+        );
     }
 
     #[test]

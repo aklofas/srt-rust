@@ -166,6 +166,101 @@ mod sps_tests {
     fn parse_sps_returns_err_on_garbage() {
         assert!(parse_sps(&[0xff; 16]).is_err());
     }
+
+    /// Inline bit-builder. Mirrors the parser's expected reads exactly,
+    /// keeping the test bytes debuggable by reading the field-write
+    /// sequence top-to-bottom.
+    struct BitWriter {
+        bytes: Vec<u8>,
+        pos: u32,
+    }
+
+    impl BitWriter {
+        fn new() -> Self {
+            Self {
+                bytes: Vec::new(),
+                pos: 0,
+            }
+        }
+        fn write(&mut self, value: u32, n: u32) {
+            for i in (0..n).rev() {
+                let bit = ((value >> i) & 1) as u8;
+                let byte_idx = (self.pos / 8) as usize;
+                let bit_in_byte = 7 - (self.pos % 8);
+                if byte_idx == self.bytes.len() {
+                    self.bytes.push(0);
+                }
+                self.bytes[byte_idx] |= bit << bit_in_byte;
+                self.pos += 1;
+            }
+        }
+        /// Exp-Golomb ue(v) per H.265 §9.2.2.
+        fn write_ue(&mut self, value: u32) {
+            let v = value + 1;
+            let leading_zeros = 31 - v.leading_zeros();
+            for _ in 0..leading_zeros {
+                self.write(0, 1);
+            }
+            self.write(v, leading_zeros + 1);
+        }
+    }
+
+    /// Construct a synthetic H.265 SPS prefix that walks correctly up
+    /// through `bit_depth_luma_minus8`, then writes the caller-supplied
+    /// value at that field. `parse_sps` validates eagerly right after
+    /// the read, so the bytes after that field don't need to be valid.
+    ///
+    /// Per H.265 §7.3.2.2 SPS syntax + §7.3.3 PTL syntax with
+    /// `max_sub_layers_minus1 = 0` (no sublayer fields).
+    fn h265_sps_with_bit_depth_luma_minus8(bit_depth_luma_minus8: u32) -> Vec<u8> {
+        let mut bw = BitWriter::new();
+
+        // §7.3.2.2 SPS header.
+        bw.write(0, 4); // sps_video_parameter_set_id
+        bw.write(0, 3); // sps_max_sub_layers_minus1 = 0
+        bw.write(0, 1); // sps_temporal_id_nesting_flag
+
+        // §7.3.3 profile_tier_level(max_sub_layers_minus1 = 0): 96 bits.
+        bw.write(0, 2); // general_profile_space
+        bw.write(0, 1); // general_tier_flag
+        bw.write(1, 5); // general_profile_idc = 1 (Main)
+        bw.write(0, 32); // general_profile_compatibility_flags
+        bw.write(0, 32); // 32 of the 48 constraint/reserved bits
+        bw.write(0, 16); // remaining 16 of the 48 constraint/reserved bits
+        bw.write(120, 8); // general_level_idc = 120 (Level 4.0)
+
+        // §7.3.2.2 continues.
+        bw.write_ue(0); // sps_seq_parameter_set_id
+        bw.write_ue(1); // chroma_format_idc = 1 (4:2:0)
+        // separate_colour_plane_flag not coded (chroma_format_idc != 3).
+        bw.write_ue(320); // pic_width_in_luma_samples
+        bw.write_ue(240); // pic_height_in_luma_samples
+        bw.write(0, 1); // conformance_window_flag = 0
+        bw.write_ue(bit_depth_luma_minus8); // bit_depth_luma_minus8
+
+        bw.bytes
+    }
+
+    /// Per H.265 §7.4.3.2.1, `bit_depth_luma_minus8 ∈ 0..=8` (bit_depth
+    /// ∈ 8..=16). ffmpeg's `libavcodec/hevc/ps.c:366-369` clamps at 14
+    /// (minus8 ≤ 6); we adopt the same threshold. A fuzzed value of 248
+    /// would have silently wrapped to `bit_depth_luma = 8` via
+    /// `8 + (248 as u8)` — caught now via `validate_bit_depth_minus8`.
+    #[test]
+    fn h265_sps_rejects_bit_depth_overflow() {
+        let rbsp = h265_sps_with_bit_depth_luma_minus8(248);
+        let result = parse_sps(&rbsp);
+        assert!(
+            matches!(
+                result,
+                Err(ParseError::ReservedValue {
+                    field: "bit_depth_luma_minus8",
+                    value: 248
+                })
+            ),
+            "expected ReservedValue, got {result:?}"
+        );
+    }
 }
 
 #[cfg(test)]

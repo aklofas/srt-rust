@@ -286,6 +286,21 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// Validate `bit_depth_*_minus8` per H.264 / H.265 / H.266: spec range
+/// `0..=8` (bit_depth ∈ 8..=16). ffmpeg clamps at `bit_depth ≤ 14` (i.e.
+/// `minus8 ≤ 6`) per `libavcodec/hevc/ps.c:366-369`; we adopt the same
+/// threshold. A value greater than 6 indicates a malformed or fuzzed
+/// parameter set, not a real codec.
+///
+/// Returns `8 + value as u8` on success, [`ParseError::ReservedValue`]
+/// otherwise. The H.264 path uses `h264-reader` which validates internally.
+pub(crate) fn validate_bit_depth_minus8(field: &'static str, value: u32) -> Result<u8, ParseError> {
+    if value > 6 {
+        return Err(ParseError::ReservedValue { field, value });
+    }
+    Ok(8 + value as u8)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

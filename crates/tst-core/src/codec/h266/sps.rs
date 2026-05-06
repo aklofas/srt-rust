@@ -3,7 +3,7 @@
 use crate::codec::h265::bitreader::BitReader;
 use crate::codec::h266::profile_tier_level::{H266ProfileTierLevel, parse_into};
 use crate::codec::h266::vui::parse_h266_vui;
-use crate::codec::{ChromaFormat, ColorInfo, ParseError, Rational};
+use crate::codec::{ChromaFormat, ColorInfo, ParseError, Rational, validate_bit_depth_minus8};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H266Sps {
@@ -101,10 +101,9 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H266Sps, ParseError> {
     }
 
     let bit_depth_minus8 = br.read_ue()?;
-    let bit_depth_luma = 8u8.saturating_add(bit_depth_minus8 as u8);
-    // v0 simplification: H.266 has a single sps_bitdepth_minus8 covering
-    // both luma and chroma (unlike H.264/H.265 which have separate
-    // fields). We mirror that by surfacing the same value for both.
+    let bit_depth_luma = validate_bit_depth_minus8("sps_bitdepth_minus8", bit_depth_minus8)?;
+    // H.266 §7.4.3.4 has a single `sps_bitdepth_minus8` covering both
+    // luma and chroma — spec invariant, not a parser simplification.
     let bit_depth_chroma = bit_depth_luma;
 
     // The chroma format derives directly from sps_chroma_format_idc.
@@ -210,6 +209,12 @@ mod tests {
     ///
     /// Per H.266 V4 §7.3.2.4 SPS syntax + §7.3.3.1 PTL syntax.
     fn minimal_sps_rbsp() -> Vec<u8> {
+        minimal_sps_rbsp_with_bitdepth_minus8(0)
+    }
+
+    /// Same as [`minimal_sps_rbsp`] but lets callers inject an arbitrary
+    /// `sps_bitdepth_minus8` value to exercise the bounds check.
+    fn minimal_sps_rbsp_with_bitdepth_minus8(bitdepth_minus8: u32) -> Vec<u8> {
         let mut bw = BitWriter::new();
 
         // §7.3.2.4 SPS header.
@@ -250,7 +255,7 @@ mod tests {
 
         bw.write(0, 1); // sps_conformance_window_flag = 0
         bw.write(0, 1); // sps_subpic_info_present_flag = 0
-        bw.write_ue(0); // sps_bitdepth_minus8 = 0 → bit_depth = 8
+        bw.write_ue(bitdepth_minus8); // sps_bitdepth_minus8
 
         bw.end_rbsp();
         bw.bytes
@@ -284,5 +289,27 @@ mod tests {
         // Parser reads sps_id(4) + vps_id(4) = 8 bits, then max_sublayers(3)
         // beyond a single byte should bail with TruncatedRbsp.
         assert!(parse_sps(&[0x00]).is_err());
+    }
+
+    /// Per H.266 V4 §7.4.3.4, `sps_bitdepth_minus8 ∈ 0..=8` (bit_depth ∈
+    /// 8..=16). ffmpeg's `libavcodec/hevc/ps.c:366-369` clamps at 14
+    /// (minus8 ≤ 6); we adopt the same threshold. A fuzzed value of 248
+    /// would have silently wrapped to `bit_depth_luma=0` via
+    /// `8u8.saturating_add(248 as u8)` — caught now via
+    /// [`validate_bit_depth_minus8`].
+    #[test]
+    fn h266_sps_rejects_bit_depth_overflow() {
+        let rbsp = minimal_sps_rbsp_with_bitdepth_minus8(248);
+        let result = parse_sps(&rbsp);
+        assert!(
+            matches!(
+                result,
+                Err(ParseError::ReservedValue {
+                    field: "sps_bitdepth_minus8",
+                    value: 248
+                })
+            ),
+            "expected ReservedValue, got {result:?}"
+        );
     }
 }

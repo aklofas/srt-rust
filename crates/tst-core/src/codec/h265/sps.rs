@@ -2,7 +2,7 @@
 
 use super::bitreader::BitReader;
 use super::{profile_tier_level, vui};
-use crate::codec::{ChromaFormat, ColorInfo, ParseError, Rational};
+use crate::codec::{ChromaFormat, ColorInfo, ParseError, Rational, validate_bit_depth_minus8};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H265Sps {
@@ -67,7 +67,10 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
     }
 
     let bit_depth_luma_minus8 = br.read_ue()?;
+    let bit_depth_luma = validate_bit_depth_minus8("bit_depth_luma_minus8", bit_depth_luma_minus8)?;
     let bit_depth_chroma_minus8 = br.read_ue()?;
+    let bit_depth_chroma =
+        validate_bit_depth_minus8("bit_depth_chroma_minus8", bit_depth_chroma_minus8)?;
 
     let log2_max_pic_order_cnt_lsb_minus4 = br.read_ue()?;
 
@@ -167,8 +170,8 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
         general_profile_idc: ptl.general_profile_idc,
         general_tier_flag: ptl.general_tier_flag,
         general_level_idc: ptl.general_level_idc,
-        bit_depth_luma: 8 + bit_depth_luma_minus8 as u8,
-        bit_depth_chroma: 8 + bit_depth_chroma_minus8 as u8,
+        bit_depth_luma,
+        bit_depth_chroma,
         chroma_format,
         max_sub_layers_minus1,
         frame_rate: vui_out.frame_rate,

@@ -34,6 +34,13 @@ pub enum PsiParseError {
     MalformedProgramEntry { offset: usize },
     #[error("descriptor loop length {declared} exceeds remaining {remaining}")]
     DescriptorLoopOverflow { declared: usize, remaining: usize },
+    /// Per ISO/IEC 13818-1 §2.4.4.4, a section with `current_next_indicator=0`
+    /// describes a future-staged table not yet in effect. Callers should drop
+    /// these silently — processing them would bump version state and dedupe
+    /// the real current section that follows. ffmpeg drops them too
+    /// (mpegts.c:1759, 2610-2611, 2832, 2969-2970, 2974).
+    #[error("section is future-staged (current_next_indicator=0); not yet in effect")]
+    FuturePsiSection,
 }
 
 /// Parse a fully-assembled PAT section (ISO/IEC 13818-1 §2.4.4.3).
@@ -79,6 +86,13 @@ pub fn parse_pat(section: &[u8]) -> Result<Pat, PsiParseError> {
     let transport_stream_id = u16::from_be_bytes([section[3], section[4]]);
     let version = (section[5] >> 1) & 0x1F;
     let current_next_indicator = (section[5] & 0x01) != 0;
+    // Per ISO/IEC 13818-1 §2.4.4.4, sections with current_next=0 are
+    // future-staged tables not yet in effect. ffmpeg drops these
+    // (mpegts.c:1759). Silently dropping prevents version_number from being
+    // bumped and de-duping the real current section that follows.
+    if !current_next_indicator {
+        return Err(PsiParseError::FuturePsiSection);
+    }
     // Program loop runs from byte 8 to byte total_len - 4 (exclusive — that's the CRC).
     let mut programs = Vec::new();
     let mut off = 8;
@@ -413,6 +427,13 @@ pub fn parse_pmt(section: &[u8]) -> Result<Pmt, PsiParseError> {
     let program_number = u16::from_be_bytes([section[3], section[4]]);
     let version = (section[5] >> 1) & 0x1F;
     let current_next_indicator = (section[5] & 0x01) != 0;
+    // Per ISO/IEC 13818-1 §2.4.4.4, sections with current_next=0 are
+    // future-staged tables not yet in effect. ffmpeg drops these
+    // (mpegts.c:1759). Silently dropping prevents version_number from being
+    // bumped and de-duping the real current section that follows.
+    if !current_next_indicator {
+        return Err(PsiParseError::FuturePsiSection);
+    }
     let pcr_pid = u16::from_be_bytes([section[8] & 0x1F, section[9]]);
     let program_info_length = (((section[10] & 0x0F) as usize) << 8) | section[11] as usize;
     let pi_start = 12;

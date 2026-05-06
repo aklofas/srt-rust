@@ -2402,4 +2402,167 @@ mod tests {
             "AdaptationFieldFlag event should still fire (got {di_events})"
         );
     }
+
+    /// Per ISO/IEC 13818-1 §2.4.4.4, PSI sections with `current_next_indicator=0`
+    /// describe a future-staged table not yet in effect. ffmpeg drops these
+    /// (mpegts.c:1759, 2610-2611, 2832, 2969-2970, 2974). If we instead process
+    /// them and bump `pat_version`, the *real* current section that follows is
+    /// then deduplicated as "same version, skip", silently dropping streams
+    /// that are still active.
+    ///
+    /// We verify the staged PAT is not processed by feeding only the staged
+    /// PAT (cn=0) followed by a PMT on the PID it announces. With the bug,
+    /// the staged PAT installs PID 0x100 in `programs` and the PMT then fires
+    /// a ProgramMap. With the fix, the PAT is dropped, PID 0x100 is unknown,
+    /// and the PMT is silently ignored — no ProgramMap.
+    #[test]
+    fn pat_with_current_next_indicator_zero_is_dropped() {
+        let mut demux = Demuxer::new();
+
+        // Build a PAT with current_next_indicator=0 announcing program 1 → 0x100.
+        // Byte 5 = 0xC0 → reserved(2)=11, version(5)=0, current_next(1)=0.
+        let mut pat = vec![
+            0x00, // table_id = PAT
+            0xB0, 0x0D, // syntax=1, section_length=0x00D
+            0x00, 0x01, // transport_stream_id=1
+            0xC0, // reserved=11, version=0, current_next=0
+            0x00, 0x00, // section_number, last_section_number
+            0x00, 0x01, // program_number=1
+            0xE1, 0x00, // reserved=111, pmt_pid=0x100
+        ];
+        let pat_crc = crate::mpegts::common::crc32::crc32_mpeg2(&pat);
+        pat.extend_from_slice(&pat_crc.to_be_bytes());
+
+        let mut ts_pat = [0xFFu8; 188];
+        ts_pat[0] = 0x47;
+        ts_pat[1] = 0x40; // PUSI=1, pid_high=0
+        ts_pat[2] = 0x00; // pid_low=0 → PID 0x0000
+        ts_pat[3] = 0x10; // adaptation=01, CC=0
+        ts_pat[4] = 0x00; // pointer_field
+        ts_pat[5..5 + pat.len()].copy_from_slice(&pat);
+        demux.feed(&ts_pat).expect("staged PAT feed");
+
+        // Build a valid current PMT (cn=1) for program 1 announcing one
+        // H.264 stream on PID 0x101. Body is 18 bytes (0x12) past byte 3.
+        let mut pmt = vec![
+            0x02, // table_id = PMT
+            0xB0, 0x12, // syntax=1, section_length=0x012
+            0x00, 0x01, // program_number=1
+            0xC1, // reserved=11, version=0, current_next=1
+            0x00, 0x00, // section_number, last_section_number
+            0xE1, 0x01, // reserved=111, pcr_pid=0x101
+            0xF0, 0x00, // reserved=1111, program_info_length=0
+            0x1B, // stream_type = H.264
+            0xE1, 0x01, // reserved=111, elementary_pid=0x101
+            0xF0, 0x00, // reserved=1111, es_info_length=0
+        ];
+        let pmt_crc = crate::mpegts::common::crc32::crc32_mpeg2(&pmt);
+        pmt.extend_from_slice(&pmt_crc.to_be_bytes());
+
+        let mut ts_pmt = [0xFFu8; 188];
+        ts_pmt[0] = 0x47;
+        ts_pmt[1] = 0x41; // PUSI=1, pid_high=1
+        ts_pmt[2] = 0x00; // pid_low=0 → PID 0x100
+        ts_pmt[3] = 0x10; // adaptation=01, CC=0
+        ts_pmt[4] = 0x00; // pointer_field
+        ts_pmt[5..5 + pmt.len()].copy_from_slice(&pmt);
+        demux.feed(&ts_pmt).expect("PMT feed");
+
+        // With the fix, the staged PAT is dropped → PID 0x100 was never
+        // installed as a PMT PID → the PMT packet on 0x100 is ignored → no
+        // ProgramMap fires. With the bug, the staged PAT installed the
+        // program and a ProgramMap fires from the PMT.
+        let mut saw_program_map = false;
+        while let Some(ev) = demux.next_event() {
+            if matches!(ev, DemuxEvent::ProgramMap(_)) {
+                saw_program_map = true;
+            }
+        }
+        assert!(
+            !saw_program_map,
+            "PAT with current_next=0 must be dropped — its PID 0x100 must not \
+             be registered, so a subsequent PMT on 0x100 is ignored and no \
+             ProgramMap fires"
+        );
+    }
+
+    /// Per ISO/IEC 13818-1 §2.4.4.4, the PMT case mirrors the PAT case: a PMT
+    /// with `current_next_indicator=0` is the next staged table, not the
+    /// current one. Processing it bumps `pmt_version`, which then dedupes the
+    /// real current PMT — silently dropping streams.
+    #[test]
+    fn pmt_with_current_next_indicator_zero_is_dropped() {
+        let mut demux = Demuxer::new();
+
+        // Seed a normal PAT mapping program 1 → PMT PID 0x100, so the
+        // demuxer routes packets on PID 0x100 to handle_pmt_section.
+        let mut pat = vec![
+            0x00, // table_id
+            0xB0, 0x0D, // syntax=1, section_length=0x00D
+            0x00, 0x01, // transport_stream_id=1
+            0xC1, // reserved=11, version=0, current_next=1
+            0x00, 0x00, // section_number, last_section_number
+            0x00, 0x01, // program_number=1
+            0xE1, 0x00, // reserved=111, pmt_pid=0x100
+        ];
+        let pat_crc = crate::mpegts::common::crc32::crc32_mpeg2(&pat);
+        pat.extend_from_slice(&pat_crc.to_be_bytes());
+
+        let mut ts_pat = [0xFFu8; 188];
+        ts_pat[0] = 0x47;
+        ts_pat[1] = 0x40;
+        ts_pat[2] = 0x00;
+        ts_pat[3] = 0x10;
+        ts_pat[4] = 0x00;
+        ts_pat[5..5 + pat.len()].copy_from_slice(&pat);
+        demux.feed(&ts_pat).expect("PAT feed");
+
+        // Drain PAT-induced events (no ProgramMap yet — needs PMT).
+        while demux.next_event().is_some() {}
+
+        // Build a PMT with current_next_indicator=0 announcing one H.264
+        // video stream on PID 0x101. Byte 5 = 0xC0.
+        //   table_id=0x02, syntax=1, section_length, program_number=1,
+        //   byte5=0xC0 (current_next=0), section_number=0, last=0,
+        //   reserved+pcr_pid=0xE101, reserved+program_info_length=0xF000,
+        //   stream_type=0x1B (H.264), reserved+elementary_pid=0xE101,
+        //   reserved+es_info_length=0xF000, CRC32.
+        // Body length from byte 3: 5 (header tail) + 4 (program_info hdr)
+        //   + 5 (stream entry) + 4 (CRC) = 18 = 0x12.
+        let mut pmt = vec![
+            0x02, // table_id = PMT
+            0xB0, 0x12, // syntax=1, section_length=0x012
+            0x00, 0x01, // program_number=1
+            0xC0, // reserved=11, version=0, current_next=0
+            0x00, 0x00, // section_number, last_section_number
+            0xE1, 0x01, // reserved=111, pcr_pid=0x101
+            0xF0, 0x00, // reserved=1111, program_info_length=0
+            0x1B, // stream_type = H.264
+            0xE1, 0x01, // reserved=111, elementary_pid=0x101
+            0xF0, 0x00, // reserved=1111, es_info_length=0
+        ];
+        let pmt_crc = crate::mpegts::common::crc32::crc32_mpeg2(&pmt);
+        pmt.extend_from_slice(&pmt_crc.to_be_bytes());
+
+        let mut ts_pmt = [0xFFu8; 188];
+        ts_pmt[0] = 0x47;
+        ts_pmt[1] = 0x41; // PUSI=1, pid_high=1
+        ts_pmt[2] = 0x00; // pid_low=0 → PID = 0x100
+        ts_pmt[3] = 0x10;
+        ts_pmt[4] = 0x00; // pointer_field
+        ts_pmt[5..5 + pmt.len()].copy_from_slice(&pmt);
+        demux.feed(&ts_pmt).expect("staged PMT feed");
+
+        // The staged PMT must NOT produce a ProgramMap event.
+        let mut saw_program_map = false;
+        while let Some(ev) = demux.next_event() {
+            if matches!(ev, DemuxEvent::ProgramMap(_)) {
+                saw_program_map = true;
+            }
+        }
+        assert!(
+            !saw_program_map,
+            "PMT with current_next=0 must not produce ProgramMap events"
+        );
+    }
 }

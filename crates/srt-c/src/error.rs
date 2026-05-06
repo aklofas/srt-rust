@@ -97,6 +97,20 @@ pub(crate) fn record_mux_error(e: &MuxError) {
                  — use srtc_*_{kind}_to(handle, ...) to disambiguate"
             ),
         ),
+        MuxError::NoKlvStreamsConfigured => (
+            SrtcError::InvalidUsage,
+            "no KLV streams configured; use srtc_*_klv_to with a handle from klv_handles".into(),
+        ),
+        MuxError::NoAudioStreamsConfigured => (
+            SrtcError::InvalidUsage,
+            "no audio streams configured; use srtc_*_audio_to with a handle from audio_handles"
+                .into(),
+        ),
+        MuxError::NoSubtitleStreamsConfigured => (
+            SrtcError::InvalidUsage,
+            "no subtitle streams configured; use srtc_*_subtitle_to with a handle from subtitle_handles"
+                .into(),
+        ),
         MuxError::TooManyVideoStreams { count, cap } => (
             SrtcError::InvalidConfig,
             format!("too many video streams: {count} configured, cap is {cap}"),

@@ -382,6 +382,26 @@ pub enum MuxError {
         count: usize,
     },
 
+    /// `Muxer::push_klv` shorthand called when no KLV streams configured.
+    /// Use `push_klv_to(handle, ...)` with a KLV handle from `klv_handles()`,
+    /// or add a KLV stream to the config.
+    #[error("no KLV streams configured; use push_klv_to with a handle from klv_handles()")]
+    NoKlvStreamsConfigured,
+
+    /// `Muxer::push_audio` shorthand called when no audio streams configured.
+    /// Use `push_audio_to(handle, ...)` with an audio handle from `audio_handles()`,
+    /// or add an audio stream to the config.
+    #[error("no audio streams configured; use push_audio_to with a handle from audio_handles()")]
+    NoAudioStreamsConfigured,
+
+    /// `Muxer::push_subtitle` shorthand called when no subtitle streams configured.
+    /// Use `push_subtitle_to(handle, ...)` with a subtitle handle from `subtitle_handles()`,
+    /// or add a subtitle stream to the config.
+    #[error(
+        "no subtitle streams configured; use push_subtitle_to with a handle from subtitle_handles()"
+    )]
+    NoSubtitleStreamsConfigured,
+
     /// `Config::validate` rejects more than 16 video streams.
     /// Trivially lifted if a consumer asks; 16 is well above realistic
     /// gimbaled-platform topologies (EO + IR + maybe IR-narrow + a depth

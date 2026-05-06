@@ -1577,7 +1577,10 @@ impl Muxer {
     /// Returns `Err(MuxError::BufferFull)` like `push_video`.
     pub fn push_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
         let total_klv: usize = self.klv_streams.iter().map(|k| k.len()).sum();
-        if total_klv != 1 {
+        if total_klv == 0 {
+            return Err(MuxError::NoKlvStreamsConfigured);
+        }
+        if total_klv > 1 {
             return Err(MuxError::AmbiguousTarget {
                 kind: "klv",
                 count: total_klv,
@@ -1600,7 +1603,10 @@ impl Muxer {
     /// exceed `Config::buffer_packets`.
     pub fn push_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
         let total_audio: usize = self.audio_streams.iter().map(|a| a.len()).sum();
-        if total_audio != 1 {
+        if total_audio == 0 {
+            return Err(MuxError::NoAudioStreamsConfigured);
+        }
+        if total_audio > 1 {
             return Err(MuxError::AmbiguousTarget {
                 kind: "audio",
                 count: total_audio,
@@ -1765,7 +1771,10 @@ impl Muxer {
     /// would exceed `Config::buffer_packets`.
     pub fn push_subtitle(&mut self, pts_90khz: i64, payload: &[u8]) -> Result<(), MuxError> {
         let total_subtitle: usize = self.subtitle_streams.iter().map(|s| s.len()).sum();
-        if total_subtitle != 1 {
+        if total_subtitle == 0 {
+            return Err(MuxError::NoSubtitleStreamsConfigured);
+        }
+        if total_subtitle > 1 {
             return Err(MuxError::AmbiguousTarget {
                 kind: "subtitle",
                 count: total_subtitle,
@@ -3337,14 +3346,58 @@ mod tests {
         let mut mux = Muxer::new(cfg).unwrap();
         let err = mux.push_klv(&[0; 16], 0).unwrap_err();
         assert!(
-            matches!(
-                err,
-                MuxError::AmbiguousTarget {
-                    kind: "klv",
-                    count: 0
-                }
-            ),
-            "expected AmbiguousTarget {{ klv, 0 }}, got {err:?}",
+            matches!(err, MuxError::NoKlvStreamsConfigured),
+            "expected NoKlvStreamsConfigured, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn push_subtitle_without_streams_returns_no_streams_configured() {
+        // Single video, no subtitles configured; push_subtitle shorthand must
+        // surface NoSubtitleStreamsConfigured (was misleading AmbiguousTarget{count:0}).
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+        let err = mux.push_subtitle(0, &[]).unwrap_err();
+        assert!(
+            matches!(err, MuxError::NoSubtitleStreamsConfigured),
+            "expected NoSubtitleStreamsConfigured, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn push_audio_without_streams_returns_no_streams_configured() {
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+        let err = mux.push_audio(&[], 0).unwrap_err();
+        assert!(
+            matches!(err, MuxError::NoAudioStreamsConfigured),
+            "expected NoAudioStreamsConfigured, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn push_klv_without_streams_returns_no_streams_configured() {
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x101, VideoCodec::H264)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+        let err = mux.push_klv(&[], 0).unwrap_err();
+        assert!(
+            matches!(err, MuxError::NoKlvStreamsConfigured),
+            "expected NoKlvStreamsConfigured, got {err:?}",
         );
     }
 

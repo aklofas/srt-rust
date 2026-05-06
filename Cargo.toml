@@ -12,7 +12,7 @@ edition      = "2024"
 rust-version = "1.85"
 license      = "MIT OR Apache-2.0"
 authors      = ["Andrew Klofas <aklofas@gmail.com>"]
-repository   = "https://github.com/aklofas/srt-rust"
+repository   = "https://github.com/aklofas/tstrans"
 
 [workspace.dependencies]
 libc       = "0.2"

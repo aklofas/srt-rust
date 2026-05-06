@@ -1,0 +1,59 @@
+//! IPv6 loopback round-trip test for plan #29 Task 5.2 (audit Critical #11).
+//!
+//! Spawns a Listener bound on `[::1]:0`, connects a Socket to the
+//! discovered ephemeral port, sends a payload, recv'd. Confirms the new
+//! v4+v6 dispatch in tst_srt::addr (Task 5.1, commit 5c577d8) works
+//! against a real libsrt socket.
+
+mod common;
+
+use std::net::IpAddr;
+use std::thread;
+use std::time::Duration;
+use tst_srt::{ListenerBuilder, SocketBuilder};
+
+#[test]
+fn ipv6_loopback_round_trip() {
+    if !ipv6_loopback_available() {
+        eprintln!("skipping: IPv6 loopback unavailable on this host");
+        return;
+    }
+
+    let mut listener = ListenerBuilder::new()
+        .recv_timeout(Duration::from_secs(5))
+        .bind("[::1]:0")
+        .expect("bind v6 listener");
+
+    let local = listener.local_addr().expect("local_addr");
+    assert!(
+        matches!(local.ip(), IpAddr::V6(_)),
+        "listener bound on v6, got {local:?}"
+    );
+    let port = local.port();
+
+    let listener_thread = thread::spawn(move || {
+        let (mut socket, _peer) = listener.accept().expect("accept");
+        let mut buf = [0u8; 1316];
+        let n = socket.recv(&mut buf).expect("recv");
+        buf[..n].to_vec()
+    });
+
+    common::settle();
+
+    let mut sender = SocketBuilder::new()
+        .recv_timeout(Duration::from_secs(5))
+        .send_timeout(Duration::from_secs(5))
+        .connect(format!("[::1]:{port}"))
+        .expect("v6 caller connect");
+    sender.send(b"hello over v6").expect("send");
+
+    let received = listener_thread.join().expect("listener thread join");
+    assert_eq!(received, b"hello over v6");
+}
+
+fn ipv6_loopback_available() -> bool {
+    // Some CI environments disable IPv6 loopback (`ip6_disabled`,
+    // unprivileged containers without v6 stack). Probe by trying to
+    // bind a UDP socket; if that fails, skip the test.
+    std::net::UdpSocket::bind("[::1]:0").is_ok()
+}

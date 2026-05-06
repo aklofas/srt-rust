@@ -212,8 +212,10 @@ pub fn parse_sequence_header(payload: &[u8]) -> Result<Av1SequenceHeader, ParseE
         full_range = br.f(1)? != 0;
         subsampling_x = true;
         subsampling_y = true;
-        // chroma_sample_position not coded; separate_uv_delta_q not coded.
-        // Per spec the function returns here.
+        // For monochrome streams, chroma_sample_position and
+        // separate_uv_delta_q are not coded in the bitstream — they're
+        // inferred (CSP_UNKNOWN and 0 respectively) per AV1 §5.5.2. The
+        // `if !monochrome` guards below skip those reads on this path.
     } else if cp_byte == 1 /* CP_BT_709 */
         && tc_byte == 13 /* TC_SRGB */
         && mc_byte == 0

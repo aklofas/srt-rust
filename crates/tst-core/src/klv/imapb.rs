@@ -4,9 +4,9 @@
 //! Given parameters `(min, max, length)`:
 //! - Value range is `[min, max]` (assumes `min < max`).
 //! - The integer occupies `length` bytes, big-endian.
-//! - Scale factor `sF = 2^(dPow − bPow)` where `dPow = 8L − 1` (= 8 * length
-//!   − 1) and `bPow = ceil(log2(max − min))` — equivalently
-//!   `2^(8L−1) / 2^bPow` (per ST 1201.5 §7.1.2 PDF p.5; numerator/denominator
+//! - Scale factor `sF = 2^(bPow − dPow)` where `bPow = ceil(log2(max − min))`
+//!   and `dPow = 8L − 1` (= 8 * length − 1) — equivalently
+//!   `2^bPow / 2^(8L−1)` (per ST 1201.5 §7.1.2 PDF p.5; numerator/denominator
 //!   ordering matches the spec form).
 //! - Encode: `i = round((value − min) / sF) − 2^(8L−1)`.
 //! - Decode: `value = sF * (i + 2^(8L−1)) + min`.

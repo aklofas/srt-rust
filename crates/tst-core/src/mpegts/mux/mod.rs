@@ -956,7 +956,7 @@ impl ProgramBuilder {
     /// `pid` must be in `0x0010..=0x1FFE` and distinct from all other PIDs
     /// in this program. All four `SubtitleCodec` variants emit PMT
     /// `stream_type = 0x06` (PrivateData); the per-stream PMT descriptor
-    /// (Task 9) disambiguates the codec at the wire level.
+    /// disambiguates the codec at the wire level.
     pub fn add_subtitle(mut self, pid: u16, codec: SubtitleCodec) -> Self {
         let prog = &mut self.parent.programs[self.idx];
         prog.streams.push(StreamSpec::Subtitle { pid, codec });
@@ -2433,7 +2433,9 @@ impl Muxer {
                         ..
                     } => StreamType::H266,
                     // AV1 rides PMT stream_type 0x06; the AV01
-                    // registration_descriptor disambiguator lands in Task 18.
+                    // registration_descriptor (auto-emitted at the top of the
+                    // PMT descriptor loop, suppressed when caller supplies
+                    // their own) disambiguates the codec at the wire level.
                     StreamSpec::Video {
                         codec: VideoCodec::Av1,
                         ..
@@ -2463,7 +2465,7 @@ impl Muxer {
                         ..
                     } => StreamType::AudioAc3,
                     // All four subtitle codecs share PMT stream_type 0x06
-                    // (PrivateData); per-stream descriptor (Task 9) carries
+                    // (PrivateData); the per-stream descriptor cache carries
                     // the codec-specific disambiguator (subtitling_descriptor /
                     // teletext_descriptor / Registration "GA94" / "VTTC").
                     StreamSpec::Subtitle { .. } => StreamType::KlvPrivate,

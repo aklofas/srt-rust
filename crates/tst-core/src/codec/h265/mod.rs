@@ -9,6 +9,7 @@
 pub(crate) mod bitreader;
 mod pps;
 mod profile_tier_level;
+mod short_term_rps;
 mod sps;
 mod vps;
 mod vui;
@@ -336,14 +337,22 @@ mod sps_tests {
         );
     }
 
-    /// Synthetic SPS that walks correctly all the way through
-    /// `num_short_term_ref_pic_sets` and writes a non-zero value there.
-    /// All flag bits between `bit_depth_chroma_minus8` and
-    /// `num_short_term_ref_pic_sets` are written as zero so the parser
-    /// reaches that field cleanly.
+    /// Build a complete synthetic H.265 SPS RBSP with a configurable RPS
+    /// section and an optional VUI body. The SPS header fields are fixed
+    /// (1920×1088, 10-bit, 4:2:0, Level 5.0 High). The caller supplies a
+    /// closure `write_rps` that writes the `num_short_term_ref_pic_sets` ue(v)
+    /// value plus the actual RPS body bits. After the RPS section, a VUI is
+    /// always emitted so tests can verify that the bit cursor lands correctly.
     ///
-    /// Per H.265 §7.3.2.2 SPS syntax with `max_sub_layers_minus1 = 0`.
-    fn h265_sps_with_num_st_rps(num_short_term_ref_pic_sets: u32) -> Vec<u8> {
+    /// VUI emitted: `vui_parameters_present_flag=1`, `aspect_ratio_info_present_flag=0`,
+    /// `overscan_info_present_flag=0`, `video_signal_type_present_flag=1` (format=0,
+    /// `video_full_range_flag=0`, `colour_description_present_flag=1`, primaries=1
+    /// BT.709, transfer=1 BT.709, matrix=1 BT.709), `chroma_loc_info_present_flag=0`,
+    /// `neutral_chroma_indication_flag=0`, `field_seq_flag=0`,
+    /// `frame_field_info_present_flag=0`, `default_display_window_flag=0`,
+    /// `vui_timing_info_present_flag=1`, `num_units_in_tick=1001`,
+    /// `time_scale=30000` → frame_rate ≈ 29.97 fps.
+    fn build_synthetic_sps(write_rps: impl Fn(&mut BitWriter)) -> Vec<u8> {
         let mut bw = BitWriter::new();
 
         // §7.3.2.2 SPS header.
@@ -355,11 +364,11 @@ mod sps_tests {
         bw.write(0, 2); // general_profile_space
         bw.write(1, 1); // general_tier_flag = 1 (High tier — unique signal for the test)
         bw.write(2, 5); // general_profile_idc = 2 (Main10)
-        // profile_compatibility_flags: bit 2 set (Main10 compatible) per §7.3.3
-        // bit-MSB-first encoding (spec-bit j lives at 1 << (31 - j)).
+        // profile_compatibility_flags: spec-bit 2 set (Main10 compatible) per §7.3.3
+        // MSB-first encoding: spec-bit j lives at 1 << (31 - j), so bit 2 → 1<<29.
         bw.write(0x2000_0000, 32);
         // 48 constraint/reserved bits; set general_progressive_source_flag (the
-        // first bit of those 48) so we can verify it round-trips.
+        // first bit) so we can verify it round-trips.
         bw.write(1, 1); // general_progressive_source_flag = 1
         bw.write(0, 31); // remaining 31 bits of first u32
         bw.write(0, 16); // remaining 16 bits
@@ -368,6 +377,7 @@ mod sps_tests {
         // §7.3.2.2 continues.
         bw.write_ue(0); // sps_seq_parameter_set_id
         bw.write_ue(1); // chroma_format_idc = 1 (4:2:0)
+        // separate_colour_plane_flag not coded (chroma_format_idc != 3).
         bw.write_ue(1920); // pic_width_in_luma_samples
         bw.write_ue(1088); // pic_height_in_luma_samples
         bw.write(1, 1); // conformance_window_flag = 1
@@ -383,7 +393,7 @@ mod sps_tests {
         bw.write_ue(0); // max_dec_pic_buffering_minus1[0]
         bw.write_ue(0); // max_num_reorder_pics[0]
         bw.write_ue(0); // max_latency_increase_plus1[0]
-        // Six more ue(v) values up to scaling_list_enabled_flag.
+        // Six ue(v) coding-tool parameters.
         bw.write_ue(0); // log2_min_luma_coding_block_size_minus3
         bw.write_ue(0); // log2_diff_max_min_luma_coding_block_size
         bw.write_ue(0); // log2_min_luma_transform_block_size_minus2
@@ -394,23 +404,161 @@ mod sps_tests {
         bw.write(0, 1); // amp_enabled_flag = 0
         bw.write(0, 1); // sample_adaptive_offset_enabled_flag = 0
         bw.write(0, 1); // pcm_enabled_flag = 0
-        bw.write_ue(num_short_term_ref_pic_sets); // <-- value under test
+
+        // Caller writes num_short_term_ref_pic_sets (ue) + RPS body.
+        write_rps(&mut bw);
+
+        // Post-RPS SPS fields.
+        bw.write(0, 1); // long_term_ref_pics_present_flag = 0
+        bw.write(0, 1); // sps_temporal_mvp_enabled_flag = 0
+        bw.write(0, 1); // strong_intra_smoothing_enabled_flag = 0
+
+        // VUI: vui_parameters_present_flag = 1.
+        bw.write(1, 1);
+        // §E.2.1 vui_parameters():
+        bw.write(0, 1); // aspect_ratio_info_present_flag = 0
+        bw.write(0, 1); // overscan_info_present_flag = 0
+        // video_signal_type_present_flag = 1 so color info is emitted.
+        bw.write(1, 1);
+        bw.write(0, 3); // video_format = 0 (Component)
+        bw.write(0, 1); // video_full_range_flag = 0
+        bw.write(1, 1); // colour_description_present_flag = 1
+        bw.write(1, 8); // colour_primaries = 1 (BT.709)
+        bw.write(1, 8); // transfer_characteristics = 1 (BT.709)
+        bw.write(1, 8); // matrix_coeffs = 1 (BT.709)
+        bw.write(0, 1); // chroma_loc_info_present_flag = 0
+        bw.write(0, 1); // neutral_chroma_indication_flag = 0
+        bw.write(0, 1); // field_seq_flag = 0
+        bw.write(0, 1); // frame_field_info_present_flag = 0
+        bw.write(0, 1); // default_display_window_flag = 0
+        // vui_timing_info_present_flag = 1 so frame_rate is emitted.
+        bw.write(1, 1);
+        bw.write(1001, 32); // num_units_in_tick = 1001
+        bw.write(30000, 32); // time_scale = 30000 → ~29.97 fps
 
         bw.bytes
     }
 
-    /// Audit Critical #8 partial fix: instead of bailing
-    /// `Err(UnsupportedProfile)` on `num_short_term_ref_pic_sets > 0` (the
-    /// common case for x265 / svt-hevc / nvenc output), the parser now
-    /// returns `Ok(H265Sps { ..., frame_rate: None, color: None })` so
-    /// structural fields survive. The full RPS state-machine walk
-    /// (~100 LOC mirroring `ff_hevc_decode_short_term_rps`) is deferred —
-    /// when it lands, this test should be tightened to assert the VUI
-    /// fields are populated.
+    /// Synthetic SPS RBSP with `num_short_term_ref_pic_sets=0` and VUI.
+    /// Kept for the existing partial-parse structural-field assertions.
+    fn h265_sps_with_num_st_rps(num_short_term_ref_pic_sets: u32) -> Vec<u8> {
+        // For the pre-existing structural-field test we only need the fields
+        // up through num_short_term_ref_pic_sets; the walker calls back to the
+        // caller to let it write the actual RPS body.
+        build_synthetic_sps(|bw| {
+            bw.write_ue(num_short_term_ref_pic_sets);
+            // For num_short_term_ref_pic_sets=0 there is nothing more to write.
+            // For num_short_term_ref_pic_sets=1, write one explicit RPS:
+            //   num_negative_pics=1, num_positive_pics=0
+            //   delta_poc_s0_minus1=ue(0)=0, used_by_curr_pic_s0_flag=1
+            if num_short_term_ref_pic_sets == 1 {
+                // rps_idx=0 → inter_ref_pic_set_prediction_flag not coded.
+                bw.write_ue(1); // num_negative_pics = 1
+                bw.write_ue(0); // num_positive_pics = 0
+                bw.write_ue(0); // delta_poc_s0_minus1[0] = 0
+                bw.write(1, 1); // used_by_curr_pic_s0_flag[0] = 1
+            }
+        })
+    }
+
+    /// Synthetic SPS RBSP with one explicit RPS (num_negative=2, num_positive=0)
+    /// and VUI. Used by `parse_sps_walks_past_short_term_rps_in_explicit_form`.
+    fn build_synthetic_sps_with_one_rps_and_vui() -> Vec<u8> {
+        build_synthetic_sps(|bw| {
+            bw.write_ue(1); // num_short_term_ref_pic_sets = 1
+            // rps_idx=0 → inter_ref_pic_set_prediction_flag not coded (§7.3.7).
+            bw.write_ue(2); // num_negative_pics = 2
+            bw.write_ue(0); // num_positive_pics = 0
+            // Two negative delta-POC entries:
+            bw.write_ue(0); // delta_poc_s0_minus1[0] = 0
+            bw.write(1, 1); // used_by_curr_pic_s0_flag[0] = 1
+            bw.write_ue(0); // delta_poc_s0_minus1[1] = 0
+            bw.write(1, 1); // used_by_curr_pic_s0_flag[1] = 1
+        })
+    }
+
+    /// Synthetic SPS RBSP with two RPSes where the second uses
+    /// `inter_ref_pic_set_prediction_flag=1`.
+    ///
+    /// rps_idx=0: explicit, num_negative=2, num_positive=0 → NumDeltaPocs[0]=2.
+    /// rps_idx=1: inter, delta_idx_minus1=0 (references rps 0), delta_rps_sign=0,
+    ///   abs_delta_rps_minus1=ue(0)=0. Then 3 iterations (0..=NumDeltaPocs[0]=2):
+    ///   - j=0: used=1 (copy), use_delta implicit true → count 1.
+    ///   - j=1: used=1 → count 2.
+    ///   - j=2: used=0, use_delta=1 → count 3.
+    ///
+    /// NumDeltaPocs[1] = 3.
+    fn build_synthetic_sps_with_inter_predicted_rps() -> Vec<u8> {
+        build_synthetic_sps(|bw| {
+            bw.write_ue(2); // num_short_term_ref_pic_sets = 2
+
+            // RPS 0: explicit, num_negative=2, num_positive=0.
+            // inter_ref_pic_set_prediction_flag not coded for rps_idx=0.
+            bw.write_ue(2); // num_negative_pics = 2
+            bw.write_ue(0); // num_positive_pics = 0
+            bw.write_ue(0); // delta_poc_s0_minus1[0]
+            bw.write(1, 1); // used_by_curr_pic_s0_flag[0]
+            bw.write_ue(0); // delta_poc_s0_minus1[1]
+            bw.write(1, 1); // used_by_curr_pic_s0_flag[1]
+
+            // RPS 1: inter_ref_pic_set_prediction_flag=1.
+            bw.write(1, 1); // inter_ref_pic_set_prediction_flag = 1
+            bw.write_ue(0); // delta_idx_minus1 = 0 (reference is rps_idx=0)
+            bw.write(0, 1); // delta_rps_sign = 0
+            bw.write_ue(0); // abs_delta_rps_minus1 = 0
+            // Iterate j in 0..=NumDeltaPocs[0]=2 (3 iterations):
+            // j=0: used_by_curr_pic_flag=1 → use_delta implicit true.
+            bw.write(1, 1); // used_by_curr_pic_flag[0] = 1
+            // j=1: used_by_curr_pic_flag=1.
+            bw.write(1, 1); // used_by_curr_pic_flag[1] = 1
+            // j=2: used_by_curr_pic_flag=0, use_delta_flag=1.
+            bw.write(0, 1); // used_by_curr_pic_flag[2] = 0
+            bw.write(1, 1); // use_delta_flag[2] = 1
+        })
+    }
+
+    /// Full RPS walk: after plan #29 Task 4.1, the parser walks past
+    /// `num_short_term_ref_pic_sets > 0` and populates VUI fields.
+    /// Structural fields verified alongside VUI fields to confirm the
+    /// bit cursor is correctly positioned end-to-end.
     #[test]
-    fn parse_sps_returns_partial_when_num_short_term_ref_pic_sets_gt_zero() {
+    fn parse_sps_walks_past_short_term_rps_in_explicit_form() {
+        let rbsp = build_synthetic_sps_with_one_rps_and_vui();
+        let sps = parse_sps(&rbsp).expect("parse SPS with explicit RPS");
+        // Structural fields round-trip correctly.
+        assert_eq!(sps.width, 1920);
+        assert_eq!(sps.height, 1080);
+        assert_eq!(sps.bit_depth_luma, 10);
+        assert_eq!(sps.general_profile_idc, 2);
+        assert!(sps.general_tier_flag);
+        assert_eq!(sps.general_level_idc, 150);
+        assert!(sps.general_progressive_source_flag);
+        // VUI fields: the walker must advance past the RPS region so the bit
+        // cursor reaches the VUI. frame_rate and color must be populated.
+        assert!(sps.frame_rate.is_some(), "VUI walked through after RPS");
+        let fr = sps.frame_rate.unwrap();
+        assert_eq!(fr.num, 30000);
+        assert_eq!(fr.den, 1001);
+        assert!(sps.color.is_some(), "VUI color walked through after RPS");
+    }
+
+    #[test]
+    fn parse_sps_walks_past_short_term_rps_with_inter_prediction() {
+        let rbsp = build_synthetic_sps_with_inter_predicted_rps();
+        let sps = parse_sps(&rbsp).expect("parse SPS with inter-predicted RPS");
+        assert!(sps.frame_rate.is_some(), "VUI walked past two-RPS region");
+        let fr = sps.frame_rate.unwrap();
+        assert_eq!(fr.num, 30000);
+        assert_eq!(fr.den, 1001);
+    }
+
+    /// Full-walk structural-field check: same assertions as the old partial-parse
+    /// test, but the SPS is now fully parseable (includes RPS body and VUI).
+    /// VUI fields are asserted to be populated — the bit cursor reaches VUI.
+    #[test]
+    fn parse_sps_walks_past_num_st_rps_and_populates_vui() {
         let rbsp = h265_sps_with_num_st_rps(1);
-        let sps = parse_sps(&rbsp).expect("partial parse should succeed");
+        let sps = parse_sps(&rbsp).expect("parse should succeed with full RPS walk");
 
         // Structural fields populated correctly.
         assert_eq!(sps.width, 1920);
@@ -431,10 +579,12 @@ mod sps_tests {
         );
         assert!(sps.general_progressive_source_flag);
 
-        // VUI-derived fields are None — the bit cursor stops at
-        // `num_short_term_ref_pic_sets > 0` and never reaches VUI.
-        assert_eq!(sps.frame_rate, None);
-        assert_eq!(sps.color, None);
+        // VUI fields populated — full walk reaches past the RPS region.
+        assert!(
+            sps.frame_rate.is_some(),
+            "VUI timing populated after RPS walk"
+        );
+        assert!(sps.color.is_some(), "VUI color populated after RPS walk");
     }
 }
 

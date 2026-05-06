@@ -324,9 +324,21 @@ impl Demuxer {
         self.check_pcr(&pkt);
         let cc_jumped = self.check_continuity(&pkt);
         if pkt.pid == 0x0000 {
-            self.handle_psi(pkt.pid, pkt.payload, pkt.payload_unit_start, true, cc_jumped)?;
+            self.handle_psi(
+                pkt.pid,
+                pkt.payload,
+                pkt.payload_unit_start,
+                true,
+                cc_jumped,
+            )?;
         } else if self.programs.contains_key(&pkt.pid) {
-            self.handle_psi(pkt.pid, pkt.payload, pkt.payload_unit_start, false, cc_jumped)?;
+            self.handle_psi(
+                pkt.pid,
+                pkt.payload,
+                pkt.payload_unit_start,
+                false,
+                cc_jumped,
+            )?;
         } else if pkt.has_payload && self.stream_kind_by_pid.contains_key(&pkt.pid) {
             self.handle_pes_packet(&pkt)?;
         }

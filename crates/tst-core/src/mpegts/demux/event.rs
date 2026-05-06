@@ -406,7 +406,11 @@ pub enum NonConformantIssue {
     /// matching ffmpeg's `mpegts.c:3118-3142` behavior. Lenient mode keeps
     /// today's behavior of feeding the bytes through; the section then
     /// either passes by luck or surfaces as `PsiChecksumMismatch`.
-    PsiCcDiscontinuity { pid: u16, expected: u8, observed: u8 },
+    PsiCcDiscontinuity {
+        pid: u16,
+        expected: u8,
+        observed: u8,
+    },
 
     /// Other.
     Other(String),
@@ -463,7 +467,10 @@ impl std::fmt::Display for NonConformantIssue {
                 write!(f, "subtitle stream on PID 0x{pid:04X} missing descriptor")
             }
             NonConformantIssue::SubtitleDescriptorAmbiguous { pid, tags } => {
-                write!(f, "subtitle PID 0x{pid:04X} has ambiguous descriptors: {tags:?}")
+                write!(
+                    f,
+                    "subtitle PID 0x{pid:04X} has ambiguous descriptors: {tags:?}"
+                )
             }
             NonConformantIssue::SubtitleDescriptorMalformed { pid, tag } => {
                 write!(
@@ -472,7 +479,10 @@ impl std::fmt::Display for NonConformantIssue {
                 )
             }
             NonConformantIssue::Av1RegistrationMalformed { pid } => {
-                write!(f, "AV1 registration descriptor malformed on PID 0x{pid:04X}")
+                write!(
+                    f,
+                    "AV1 registration descriptor malformed on PID 0x{pid:04X}"
+                )
             }
             NonConformantIssue::Av1ObuMissingSizeField { pid, obu_type } => {
                 write!(
@@ -493,7 +503,11 @@ impl std::fmt::Display for NonConformantIssue {
             NonConformantIssue::TransportErrorPacket { pid } => {
                 write!(f, "transport_error_indicator set on PID 0x{pid:04X}")
             }
-            NonConformantIssue::PsiCcDiscontinuity { pid, expected, observed } => {
+            NonConformantIssue::PsiCcDiscontinuity {
+                pid,
+                expected,
+                observed,
+            } => {
                 write!(
                     f,
                     "PSI continuity-counter jump on PID 0x{pid:04X}: expected 0x{expected:X}, observed 0x{observed:X}"

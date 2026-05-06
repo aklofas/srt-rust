@@ -318,10 +318,7 @@ fn build_pat_packet(pmt_pid: u16) -> [u8; 188] {
 }
 
 /// Feed a synthetic PAT packet into the demuxer so it seeds the PMT PID.
-fn install_synthetic_pat_pointing_to(
-    demux: &mut tst_core::mpegts::demux::Demuxer,
-    pmt_pid: u16,
-) {
+fn install_synthetic_pat_pointing_to(demux: &mut tst_core::mpegts::demux::Demuxer, pmt_pid: u16) {
     let pat = build_pat_packet(pmt_pid);
     demux.feed(&pat).unwrap();
     // Drain any queued events (ProgramMap is not emitted yet — that waits for PMT).
@@ -412,7 +409,9 @@ fn split_pmt_with_dropped_continuation_keeps_section_in_lenient_mode() {
 
     let issues = drain_non_conformant_issues(&mut demux);
     assert!(
-        !issues.iter().any(|i| matches!(i, NonConformantIssue::PsiCcDiscontinuity { .. })),
+        !issues
+            .iter()
+            .any(|i| matches!(i, NonConformantIssue::PsiCcDiscontinuity { .. })),
         "lenient mode must not emit PsiCcDiscontinuity, got {issues:?}"
     );
     // No assertion about PMT parse outcome — lenient mode either passes by luck

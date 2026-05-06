@@ -8,7 +8,7 @@ mod framing;
 
 pub use framing::{TsFraming, TsFramingError, TsFramingMode, SenderStats};
 
-use crate::pipeline::transport::Transport;
+use tst_core::transport::Transport;
 
 /// Construction-time knobs for [`Sender`].
 #[derive(Debug, Clone)]
@@ -33,7 +33,7 @@ pub enum SenderError {
     #[error(transparent)]
     Framing(#[from] TsFramingError),
     #[error(transparent)]
-    Transport(#[from] crate::pipeline::TransportError),
+    Transport(#[from] tst_core::transport::TransportError),
 }
 
 /// Pre-muxed TS bytes → SRT transport with sync framing/recovery.
@@ -59,7 +59,7 @@ impl<T: Transport> Sender<T> {
     pub fn send_ts(&mut self, bytes: &[u8]) -> Result<(), SenderError> {
         if self.closed {
             return Err(SenderError::Transport(
-                crate::pipeline::TransportError::Closed,
+                tst_core::transport::TransportError::Closed,
             ));
         }
         let bundles = if self.mode == TsFramingMode::Recover {
@@ -80,7 +80,7 @@ impl<T: Transport> Sender<T> {
     pub fn flush(&mut self) -> Result<(), SenderError> {
         if self.closed {
             return Err(SenderError::Transport(
-                crate::pipeline::TransportError::Closed,
+                tst_core::transport::TransportError::Closed,
             ));
         }
         let bundles = self.framing.flush();
@@ -113,7 +113,7 @@ impl<T: Transport> Sender<T> {
 
     /// Snapshot of the underlying transport's cancel handle. See
     /// [`crate::pipeline::MuxSender::cancel_handle`] for the rationale.
-    pub fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+    pub fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
         self.transport.cancel_handle()
     }
 }

@@ -10,8 +10,8 @@ use std::collections::VecDeque;
 use srt_core::mpegts::demux::DemuxEvent;
 use srt_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
 use srt_core::pipeline::DemuxReceiver;
-use srt_core::pipeline::recv_transport::RecvTransport;
-use srt_core::pipeline::transport::TransportError;
+use tst_core::transport::RecvTransport;
+use tst_core::transport::TransportError;
 
 // ---------------------------------------------------------------------------
 // CannedTransport — replay a queue of byte chunks, then signal Closed.

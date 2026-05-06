@@ -6,7 +6,7 @@
 //! the canonical reconnecting setup.
 
 use crate::error::{SendError, SrtErrno};
-use crate::pipeline::transport::{Transport, TransportCancel, TransportError};
+use tst_core::transport::{Transport, TransportCancel, TransportError};
 use crate::srt::Socket;
 
 pub struct SrtTransport {
@@ -108,7 +108,7 @@ impl Transport for SrtTransport {
     }
 }
 
-impl crate::pipeline::recv_transport::RecvTransport for SrtTransport {
+impl tst_core::transport::RecvTransport for SrtTransport {
     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
         use crate::error::RecvError;
         let socket = self.socket.as_mut().ok_or(TransportError::Closed)?;
@@ -152,7 +152,7 @@ impl crate::pipeline::recv_transport::RecvTransport for SrtTransport {
     }
 
     fn close(&mut self) {
-        <Self as crate::pipeline::transport::Transport>::close(self);
+        <Self as tst_core::transport::Transport>::close(self);
     }
 
     fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {

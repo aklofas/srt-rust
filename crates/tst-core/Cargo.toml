@@ -1,0 +1,23 @@
+[package]
+name         = "tst-core"
+version      = { workspace = true }
+edition      = { workspace = true }
+rust-version = { workspace = true }
+license      = { workspace = true }
+authors      = { workspace = true }
+repository   = { workspace = true }
+description  = "TS Transformer core: pure MPEG-TS mux/demux, KLV (MISB ST 0601), codec parameter-set parsers, and transport trait definitions."
+
+[features]
+default = ["file"]
+file    = []  # gates std::fs-using helpers (added in Task 7)
+
+[dependencies]
+log          = { workspace = true }
+thiserror    = { workspace = true }
+h264-reader  = "0.8"
+tracing      = { version = "0.1", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+proptest     = { workspace = true }
+tracing-test = { version = "0.2", features = ["no-env-filter"] }

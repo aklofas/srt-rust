@@ -19,6 +19,7 @@ mbedtls = ["srt-core/mbedtls"]
 
 [dependencies]
 srt-core  = { path = "../srt-core", default-features = false }
+tst-core  = { path = "../tst-core" }
 libc      = { workspace = true }
 thiserror = { workspace = true }
 

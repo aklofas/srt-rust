@@ -64,8 +64,8 @@
 //!   `Demuxer::flush()` to drain any partial PES at end-of-stream.
 
 use crate::pipeline::reconnect::ReconnectPolicy;
-use crate::pipeline::recv_transport::RecvTransport;
-use crate::pipeline::transport::TransportError;
+use tst_core::transport::RecvTransport;
+use tst_core::transport::TransportError;
 use std::sync::{Arc, Mutex};
 
 /// Receive-side reconnect decorator.
@@ -91,7 +91,7 @@ pub struct ManagedReceiveTransport<R: RecvTransport> {
     /// Most-recently-built inner's cancel handle, snapshotted on each
     /// successful build. Held in an Arc<Mutex<>> so the cancel handle
     /// (separate object) can read without owning &mut self.
-    inner_cancel: Arc<Mutex<Option<Box<dyn crate::pipeline::transport::TransportCancel>>>>,
+    inner_cancel: Arc<Mutex<Option<Box<dyn tst_core::transport::TransportCancel>>>>,
 }
 
 impl<R: RecvTransport> ManagedReceiveTransport<R> {
@@ -105,7 +105,7 @@ impl<R: RecvTransport> ManagedReceiveTransport<R> {
         factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,
         policy: ReconnectPolicy,
     ) -> Self {
-        let inner_cancel: Arc<Mutex<Option<Box<dyn crate::pipeline::transport::TransportCancel>>>> =
+        let inner_cancel: Arc<Mutex<Option<Box<dyn tst_core::transport::TransportCancel>>>> =
             Arc::new(Mutex::new(inner.cancel_handle()));
         Self {
             inner: Some(inner),
@@ -185,7 +185,7 @@ impl<R: RecvTransport> RecvTransport for ManagedReceiveTransport<R> {
         }
     }
 
-    fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+    fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
         Some(Box::new(ManagedRecvCancel {
             cancelled: self.cancelled.clone(),
             inner_cancel: self.inner_cancel.clone(),
@@ -195,10 +195,10 @@ impl<R: RecvTransport> RecvTransport for ManagedReceiveTransport<R> {
 
 struct ManagedRecvCancel {
     cancelled: Arc<std::sync::atomic::AtomicBool>,
-    inner_cancel: Arc<Mutex<Option<Box<dyn crate::pipeline::transport::TransportCancel>>>>,
+    inner_cancel: Arc<Mutex<Option<Box<dyn tst_core::transport::TransportCancel>>>>,
 }
 
-impl crate::pipeline::transport::TransportCancel for ManagedRecvCancel {
+impl tst_core::transport::TransportCancel for ManagedRecvCancel {
     fn cancel(&self) {
         self.cancelled
             .store(true, std::sync::atomic::Ordering::Release);
@@ -381,7 +381,7 @@ mod tests {
     struct CancellableRecvCancel {
         cancelled: Arc<std::sync::atomic::AtomicBool>,
     }
-    impl crate::pipeline::transport::TransportCancel for CancellableRecvCancel {
+    impl tst_core::transport::TransportCancel for CancellableRecvCancel {
         fn cancel(&self) {
             self.cancelled
                 .store(true, std::sync::atomic::Ordering::SeqCst);
@@ -401,7 +401,7 @@ mod tests {
         fn is_alive(&self) -> bool {
             !self.cancelled.load(std::sync::atomic::Ordering::SeqCst)
         }
-        fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+        fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
             Some(Box::new(CancellableRecvCancel {
                 cancelled: self.cancelled.clone(),
             }))

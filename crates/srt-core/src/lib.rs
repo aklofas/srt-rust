@@ -16,13 +16,15 @@
 //! socket.send(b"hello").expect("send");
 //! ```
 
-pub mod codec;
 pub mod error;
 mod init;
-pub mod klv;
-pub mod mpegts;
 pub mod pipeline;
 pub mod srt;
+
+// Re-export tst-core modules so existing users of `srt_core::mpegts`, etc. keep working.
+pub use tst_core::codec;
+pub use tst_core::klv;
+pub use tst_core::mpegts;
 
 // Top-level re-exports for the most common types.
 pub use error::{Error, Result};

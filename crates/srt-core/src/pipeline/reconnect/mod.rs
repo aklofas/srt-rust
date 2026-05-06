@@ -87,7 +87,7 @@ impl ReconnectPolicy {
     }
 }
 
-use crate::pipeline::transport::{Transport, TransportCancel, TransportError};
+use tst_core::transport::{Transport, TransportCancel, TransportError};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
@@ -324,7 +324,7 @@ impl<T: Transport + 'static> TransportCancel for ManagedCancel<T> {
 #[cfg(test)]
 mod cancel_tests {
     use super::*;
-    use crate::pipeline::transport::{Transport, TransportCancel, TransportError};
+    use tst_core::transport::{Transport, TransportCancel, TransportError};
     use std::sync::atomic::{AtomicU32, Ordering};
 
     /// Stub Transport whose cancel_handle records cancel() calls and

@@ -1,0 +1,157 @@
+//! Round-trip integration: Muxer -> bytes -> Demuxer.
+//!
+//! Drives the existing `mpegts::mux::Muxer` to produce TS bytes, feeds them
+//! into `Demuxer`, asserts the events recovered match the inputs.
+
+use tst_core::mpegts::demux::{
+    DemuxEvent, Demuxer, MetadataKind, SamplePayload, StreamKind, VideoCodec,
+};
+use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+
+fn build_minimal_h264_au() -> Vec<u8> {
+    // Annex-B: AUD (nal_type=9) + IDR (nal_type=5).
+    vec![
+        0x00, 0x00, 0x00, 0x01, 0x09, 0x10, 0x00, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xBB, 0xCC,
+    ]
+}
+
+fn build_minimal_h265_au() -> Vec<u8> {
+    // Annex-B: AUD (nal_type=35) + IDR_W_RADL (nal_type=19, layer=0, temp=1).
+    vec![
+        0x00, 0x00, 0x00, 0x01, 0x46, 0x01, 0x10, 0x00, 0x00, 0x00, 0x01, 0x26, 0x01, 0xCC, 0xDD,
+    ]
+}
+
+fn collect_events(d: &mut Demuxer) -> Vec<DemuxEvent> {
+    let mut out = Vec::new();
+    while let Some(e) = d.next_event() {
+        out.push(e);
+    }
+    out
+}
+
+fn build_dummy_klv() -> Vec<u8> {
+    // Hand-roll a minimal ST 0601 LS: 16-byte UL + BER-short length +
+    // body. Body has one tag (2) of length 8 carrying 8 zero bytes.
+    // The exact bytes are not load-bearing for round-trip — what matters
+    // is that the demuxer's `classify_klv` recognizes the SMPTE UL prefix
+    // (`06 0E 2B 34`) and routes it to MetadataKind::KlvAsync.
+    let body = [2u8, 8, 0, 0, 0, 0, 0, 0, 0, 0];
+    let mut out = Vec::with_capacity(17 + body.len());
+    out.extend_from_slice(&[
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00,
+        0x00,
+    ]);
+    out.push(body.len() as u8); // BER short-form length
+    out.extend_from_slice(&body);
+    out
+}
+
+fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; 1316];
+    loop {
+        let n = mux.pull(&mut buf);
+        if n == 0 {
+            break;
+        }
+        out.extend_from_slice(&buf[..n]);
+    }
+    out
+}
+
+#[test]
+fn h264_async_klv_roundtrip() {
+    // Async KLV per ST 1402: PrivateData stream_type with no PTS in PES.
+    let cfg = ConfigBuilder::default()
+        .add_program(1, 0x1000)
+        .add_video(0x100, MuxVideoCodec::H264)
+        .add_klv(0x101, KlvStreamType::PrivateData, false)
+        .end_program()
+        .build()
+        .unwrap();
+    let mut mux = Muxer::new(cfg).unwrap();
+    let au = build_minimal_h264_au();
+    mux.push_video(&au, 90_000, true).unwrap();
+    let klv = build_dummy_klv();
+    mux.push_klv(&klv, 90_000).unwrap();
+    let bytes = drain_mux(&mut mux);
+
+    let mut d = Demuxer::new();
+    d.feed(&bytes).unwrap();
+    // Drain partial-PES buffered by unbounded video PES (PES_packet_length=0).
+    // In live receive loops this happens at TransportError::Closed; here we
+    // call it explicitly because the test produces a finite byte stream.
+    d.flush();
+    let evs = collect_events(&mut d);
+
+    assert!(
+        evs.iter().any(|e| matches!(e, DemuxEvent::ProgramMap(_))),
+        "expected ProgramMap event, got: {evs:?}"
+    );
+    assert!(
+        evs.iter().any(|e| matches!(
+            e,
+            DemuxEvent::Sample {
+                payload: SamplePayload::Video {
+                    codec: VideoCodec::H264,
+                    ..
+                },
+                ..
+            }
+        )),
+        "expected H.264 video Sample, got: {evs:?}"
+    );
+    assert!(
+        evs.iter().any(|e| matches!(
+            e,
+            DemuxEvent::Metadata {
+                kind: MetadataKind::KlvAsync,
+                stream: tst_core::mpegts::demux::StreamId {
+                    kind: StreamKind::KlvAsync,
+                    ..
+                },
+                ..
+            }
+        )),
+        "expected async-KLV Metadata, got: {evs:?}"
+    );
+}
+
+#[test]
+fn h265_async_klv_roundtrip() {
+    let cfg = ConfigBuilder::default()
+        .add_program(1, 0x1000)
+        .add_video(0x100, MuxVideoCodec::H265)
+        .add_klv(0x101, KlvStreamType::PrivateData, false)
+        .end_program()
+        .build()
+        .unwrap();
+    let mut mux = Muxer::new(cfg).unwrap();
+    let au = build_minimal_h265_au();
+    mux.push_video(&au, 90_000, true).unwrap();
+    mux.push_klv(&build_dummy_klv(), 90_000).unwrap();
+    let bytes = drain_mux(&mut mux);
+
+    let mut d = Demuxer::new();
+    d.feed(&bytes).unwrap();
+    // Drain partial-PES buffered by unbounded video PES (PES_packet_length=0).
+    // In live receive loops this happens at TransportError::Closed; here we
+    // call it explicitly because the test produces a finite byte stream.
+    d.flush();
+    let evs = collect_events(&mut d);
+
+    assert!(
+        evs.iter().any(|e| matches!(
+            e,
+            DemuxEvent::Sample {
+                payload: SamplePayload::Video {
+                    codec: VideoCodec::H265,
+                    ..
+                },
+                ..
+            }
+        )),
+        "expected H.265 video Sample, got: {evs:?}"
+    );
+}

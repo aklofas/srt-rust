@@ -1213,7 +1213,6 @@ name = "srt-core"
 version = "0.0.0"
 dependencies = [
  "criterion",
- "h264-reader",
  "libc",
  "log",
  "proptest",
@@ -1222,6 +1221,7 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-test",
+ "tst-core",
  "url",
 ]
 
@@ -1449,6 +1449,19 @@ dependencies = [
  "libc",
  "srt-core",
  "thiserror",
+ "tst-core",
+]
+
+[[package]]
+name = "tst-core"
+version = "0.0.0"
+dependencies = [
+ "h264-reader",
+ "log",
+ "proptest",
+ "thiserror",
+ "tracing",
+ "tracing-test",
 ]
 
 [[package]]

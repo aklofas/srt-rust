@@ -10,8 +10,8 @@
 //! - You want to handle framing yourself.
 //! - You're writing a test that needs a bare receive loop.
 
-use crate::pipeline::recv_transport::RecvTransport;
-use crate::pipeline::transport::TransportError;
+use tst_core::transport::RecvTransport;
+use tst_core::transport::TransportError;
 
 /// Aggregate receive stats for [`RawReceiver`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -81,7 +81,7 @@ impl<R: RecvTransport> RawReceiver<R> {
     }
 
     /// Snapshot of the underlying recv-transport's cancel handle.
-    pub fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+    pub fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
         self.transport.cancel_handle()
     }
 }
@@ -89,8 +89,8 @@ impl<R: RecvTransport> RawReceiver<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::recv_transport::RecvTransport;
-    use crate::pipeline::transport::TransportError;
+    use tst_core::transport::RecvTransport;
+    use tst_core::transport::TransportError;
 
     struct MemRecv {
         queue: std::collections::VecDeque<Vec<u8>>,

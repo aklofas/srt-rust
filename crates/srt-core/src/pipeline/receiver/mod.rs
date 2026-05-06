@@ -13,8 +13,8 @@
 
 pub mod sync;
 
-use crate::pipeline::recv_transport::RecvTransport;
-use crate::pipeline::transport::TransportError;
+use tst_core::transport::RecvTransport;
+use tst_core::transport::TransportError;
 use sync::Syncer;
 
 /// Application-level stats for [`Receiver`].
@@ -154,7 +154,7 @@ impl<R: RecvTransport> Receiver<R> {
     }
 
     /// Snapshot of the underlying recv-transport's cancel handle.
-    pub fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+    pub fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
         self.transport.cancel_handle()
     }
 }
@@ -162,7 +162,7 @@ impl<R: RecvTransport> Receiver<R> {
 #[cfg(test)]
 mod stats_tests {
     use super::*;
-    use crate::pipeline::transport::TransportError;
+    use tst_core::transport::TransportError;
     use std::collections::VecDeque;
 
     struct MemRecv {
@@ -253,7 +253,7 @@ mod stats_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::transport::TransportError;
+    use tst_core::transport::TransportError;
 
     /// Minimal `RecvTransport` mock that plays back a fixed sequence of byte
     /// messages then signals closed. Each `recv_bytes` call returns one message

@@ -25,7 +25,7 @@
 //! same byte stream.
 
 use srt_core::mpegts::demux::DemuxEvent;
-use srt_core::pipeline::transport::TransportError;
+use srt_core::pipeline::TransportError;
 use srt_core::pipeline::{DemuxReceiver, RecvTransport};
 use std::collections::VecDeque;
 use std::env;

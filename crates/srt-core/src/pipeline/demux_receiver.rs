@@ -25,9 +25,9 @@
 //! nothing; for finite test data it recovers the last sample.
 
 use crate::error::DemuxError;
-use crate::mpegts::demux::{DemuxEvent, Demuxer, DemuxerOptions};
-use crate::pipeline::recv_transport::RecvTransport;
-use crate::pipeline::transport::TransportError;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerOptions};
+use tst_core::transport::RecvTransport;
+use tst_core::transport::TransportError;
 use crate::pipeline::receiver::Receiver;
 
 /// Type alias for a boxed byte-fanout callback registered via
@@ -156,7 +156,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
 
     /// Snapshot of the underlying recv-transport's cancel handle. Wakes
     /// a thread parked in `recv_event()`'s `next_packet()` call.
-    pub fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+    pub fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
         self.ts.cancel_handle()
     }
 }
@@ -241,8 +241,8 @@ impl<R: RecvTransport> DemuxReceiver<R> {
 #[cfg(test)]
 mod stats_tests {
     use super::*;
-    use crate::pipeline::recv_transport::RecvTransport;
-    use crate::pipeline::transport::TransportError;
+    use tst_core::transport::RecvTransport;
+    use tst_core::transport::TransportError;
     use std::collections::VecDeque;
 
     struct CannedRecv {

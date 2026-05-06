@@ -13,10 +13,10 @@
 //! is the right wrapper.
 
 use crate::error::MuxError;
-use crate::mpegts::mux::{
+use tst_core::mpegts::mux::{
     AudioStreamHandle, Config, KlvStreamHandle, Muxer, SubtitleStreamHandle, VideoStreamHandle,
 };
-use crate::pipeline::transport::{Transport, TransportError};
+use tst_core::transport::{Transport, TransportError};
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
 
@@ -46,7 +46,7 @@ pub struct MuxSender<T: Transport> {
     /// Cancel handle snapshot, taken from the transport at construction
     /// time. Held outside the inner Mutex so `close()` can fire it
     /// without competing with a concurrent `send_*` for the lock.
-    cancel: Option<Box<dyn crate::pipeline::transport::TransportCancel>>,
+    cancel: Option<Box<dyn tst_core::transport::TransportCancel>>,
 }
 
 struct Inner<T: Transport> {
@@ -288,7 +288,7 @@ impl<T: Transport> MuxSender<T> {
     /// supports cancellation. Equivalent to what `close()` calls
     /// internally; exposed for callers who want to keep the MuxSender
     /// alive but still have an out-of-band wake-up mechanism.
-    pub fn cancel_handle(&self) -> Option<&dyn crate::pipeline::transport::TransportCancel> {
+    pub fn cancel_handle(&self) -> Option<&dyn tst_core::transport::TransportCancel> {
         self.cancel.as_deref()
     }
 
@@ -478,8 +478,8 @@ pub enum MuxSenderError {
 #[cfg(test)]
 mod multi_stream_tests {
     use super::*;
-    use crate::mpegts::mux::{AudioCodec, KlvStreamType, SubtitleCodec, VideoCodec};
-    use crate::pipeline::transport::{Transport, TransportError};
+    use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, SubtitleCodec, VideoCodec};
+    use tst_core::transport::{Transport, TransportError};
 
     /// In-memory transport that records every byte sent.
     struct MemTransport {
@@ -721,8 +721,8 @@ mod multi_stream_tests {
 #[cfg(test)]
 mod cancel_tests {
     use super::*;
-    use crate::mpegts::mux::{KlvStreamType, VideoCodec};
-    use crate::pipeline::transport::{Transport, TransportCancel, TransportError};
+    use tst_core::mpegts::mux::{KlvStreamType, VideoCodec};
+    use tst_core::transport::{Transport, TransportCancel, TransportError};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/srt-sys",
     "crates/srt-core",
+    "crates/tst-core",
     "crates/tst-c",
 ]
 

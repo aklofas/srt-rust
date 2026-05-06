@@ -8,7 +8,7 @@
 //!
 //! Wrap with [`crate::pipeline::ManagedTransport`] for reconnection.
 
-use crate::pipeline::transport::{Transport, TransportError};
+use tst_core::transport::{Transport, TransportError};
 
 /// Construction-time knobs for [`RawSender`].
 ///
@@ -76,7 +76,7 @@ impl<T: Transport> RawSender<T> {
     }
 
     /// Snapshot of the underlying transport's cancel handle.
-    pub fn cancel_handle(&self) -> Option<Box<dyn crate::pipeline::transport::TransportCancel>> {
+    pub fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
         self.transport.cancel_handle()
     }
 
@@ -95,7 +95,7 @@ impl<T: Transport> RawSender<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::transport::{Transport, TransportError};
+    use tst_core::transport::{Transport, TransportError};
 
     struct MemTransport {
         max: usize,

@@ -163,6 +163,51 @@ mod sps_tests {
     }
 
     #[test]
+    fn parse_sps_surfaces_conformance_window_offsets_invariant() {
+        // Invariant: post-crop dims + crop offsets reconstruct the coded
+        // dimensions exactly. Holds whether or not the fixture has
+        // `conformance_window_flag` set (uncropped → all four offsets are
+        // zero). Coded dims are also CTB-aligned (the encoder pads pic
+        // width/height up to a multiple of MinCbSizeY = 8, so the crop
+        // adjusts at most 7 luma samples in each direction — the 1080p
+        // Main fixture is coded as 1920×1088 and crops 8 off the bottom).
+        for bytes in [SPS_1080P_MAIN40, SPS_1080P_MAIN10_50] {
+            let sps = parse_sps(bytes).expect("parse");
+            assert_eq!(
+                sps.coded_width(),
+                sps.width + sps.crop_left + sps.crop_right,
+                "coded_width helper must agree with field arithmetic"
+            );
+            assert_eq!(
+                sps.coded_height(),
+                sps.height + sps.crop_top + sps.crop_bottom,
+                "coded_height helper must agree with field arithmetic"
+            );
+            // MinCbSizeY = 8 for Main / Main10 — coded dims are 8-aligned.
+            assert_eq!(sps.coded_width() % 8, 0, "coded_width must be CB-aligned");
+            assert_eq!(sps.coded_height() % 8, 0, "coded_height must be CB-aligned");
+        }
+    }
+
+    #[test]
+    fn parse_sps_1080p_has_bottom_crop() {
+        // The 1080p HEVC Main fixture is coded as 1920×1088 and signals
+        // `conformance_window_flag` with `conf_win_bottom_offset = 2`
+        // chroma units. 4:2:0 → SubHeightC = 2 → crop_bottom = 4 luma
+        // samples (the parser computes `sub_h * conf_win_bottom_offset`).
+        // After crop: 1080. Other three offsets are zero.
+        let sps = parse_sps(SPS_1080P_MAIN40).expect("parse");
+        assert_eq!(sps.width, 1920);
+        assert_eq!(sps.height, 1080);
+        assert_eq!(sps.coded_width(), 1920);
+        assert_eq!(sps.coded_height(), 1088);
+        assert_eq!(sps.crop_left, 0);
+        assert_eq!(sps.crop_right, 0);
+        assert_eq!(sps.crop_top, 0);
+        assert_eq!(sps.crop_bottom, 8);
+    }
+
+    #[test]
     fn parse_sps_returns_err_on_garbage() {
         assert!(parse_sps(&[0xff; 16]).is_err());
     }

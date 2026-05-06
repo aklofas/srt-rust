@@ -19,7 +19,33 @@ pub struct H265Sps {
     pub max_sub_layers_minus1: u8,
     pub frame_rate: Option<Rational>,
     pub color: Option<ColorInfo>,
+    /// Luma-sample crop offsets applied to the coded picture dimensions to
+    /// produce `width`/`height`. Computed from `conformance_window_flag` +
+    /// `conf_win_*_offset` per H.265 §7.4.3.2.1, already multiplied by
+    /// `SubWidthC` / `SubHeightC` (the chroma-array unit conversion). So
+    /// `coded_width = width + crop_left + crop_right` (and similarly for
+    /// height). Useful for sizing GPU buffers and for matching crops
+    /// against container-level conformance-window descriptors. All four
+    /// fields are zero when the SPS has no `conformance_window_flag` set.
+    pub crop_left: u32,
+    pub crop_right: u32,
+    pub crop_top: u32,
+    pub crop_bottom: u32,
     pub raw_rbsp: Vec<u8>,
+}
+
+impl H265Sps {
+    /// Coded picture width before conformance-window crop is applied
+    /// (luma samples). Equal to `width + crop_left + crop_right`.
+    pub fn coded_width(&self) -> u32 {
+        self.width + self.crop_left + self.crop_right
+    }
+
+    /// Coded picture height before conformance-window crop is applied
+    /// (luma samples). Equal to `height + crop_top + crop_bottom`.
+    pub fn coded_height(&self) -> u32 {
+        self.height + self.crop_top + self.crop_bottom
+    }
 }
 
 pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
@@ -176,6 +202,10 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
         max_sub_layers_minus1,
         frame_rate: vui_out.frame_rate,
         color: vui_out.color,
+        crop_left: crop_x_left,
+        crop_right: crop_x_right,
+        crop_top: crop_y_top,
+        crop_bottom: crop_y_bottom,
         raw_rbsp: rbsp.to_vec(),
     })
 }

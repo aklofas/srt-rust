@@ -204,9 +204,8 @@ pub fn parse_sequence_header(payload: &[u8]) -> Result<Av1SequenceHeader, ParseE
         (2u8, 2u8, 2u8)
     };
 
-    // From here we MUST walk the remaining color_config fields exactly,
-    // even though for v0 we only stash the ColorInfo when color_description
-    // was explicit.
+    // Stash ColorInfo only when color_description_present_flag=1 — implicit
+    // (BT.709-derived) color values are noise without an explicit signal.
     let (full_range, subsampling_x, subsampling_y);
     if monochrome {
         full_range = br.f(1)? != 0;

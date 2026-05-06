@@ -2101,14 +2101,21 @@ impl Muxer {
         }
 
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
-        // No data_alignment_indicator on video PES today; subsequent commit
-        // will add the bit for AV1 per AV1-in-MPEG2-TS binding §3.4.
+        // Per AV1-MPEG-2-TS binding §3.4, AV1 PES MUST set
+        // data_alignment_indicator=1. H.222.0 §2.4.3.7 leaves the bit
+        // codec-defined for H.264 / H.265 / H.266 — keep them unset.
+        let pes_flags = PesFlags {
+            data_alignment_indicator: matches!(
+                self.video_streams[prog_idx][within_idx].codec,
+                VideoCodec::Av1
+            ),
+        };
         let header_len = write_pes_header(
             &mut header,
             STREAM_ID_VIDEO,
             PesPtsField::PtsOnly(Pts90khz(pts_90khz)),
             None,
-            PesFlags::default(),
+            pes_flags,
         );
 
         let total = header_len + nal.len();
@@ -3208,6 +3215,102 @@ mod tests {
             (pes_flags1 >> 2) & 0b1,
             0b1,
             "KLV PES MUST set data_alignment_indicator=1 per H.222.0 V9 §2.12.4.1; got flags1={pes_flags1:#04x}",
+        );
+    }
+
+    #[test]
+    fn av1_pes_sets_data_alignment_indicator_per_av1_binding_3_4() {
+        // AV1-MPEG-2-TS binding §3.4 mandates data_alignment_indicator=1
+        // on every AV1 PES. ffmpeg has no AV1-in-MPEG-TS muxer, so this
+        // can't be cross-validated against ffmpeg output — but the
+        // binding normative is explicit and tsduck-tsp expects the bit.
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::Av1)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+
+        // Minimal AV1 OBU payload — Temporal Delimiter (obu_type=2, empty
+        // body) + Sequence Header (obu_type=1, placeholder body). Each
+        // OBU has obu_has_size_field=1 per AV1-in-MPEG-2-TS §3.1. Header
+        // byte = (obu_type << 3) | 0b010. The exact bytes don't matter
+        // for this test — we're checking the PES flags1 byte, not the
+        // payload.
+        let obu: Vec<u8> = vec![
+            // Temporal Delimiter: header=0x12, size=0
+            0x12, 0x00, // Sequence Header: header=0x0A, size=2, body=0x00 0x00
+            0x0A, 0x02, 0x00, 0x00,
+        ];
+        let h = mux.video_stream_handle(0).unwrap();
+        mux.push_video_to(h, &obu, 45_000, true)
+            .expect("push_video_to");
+
+        let mut buf = vec![0u8; 188 * 64];
+        let n = mux.pull(&mut buf);
+        assert!(n > 0);
+
+        let pes_flags1 = buf[..n]
+            .chunks_exact(188)
+            .find_map(|p| {
+                let pkt = crate::mpegts::demux::ts::parse_ts_packet(p).ok()?;
+                if pkt.pid == 0x101 && pkt.payload_unit_start {
+                    Some(pkt.payload[6])
+                } else {
+                    None
+                }
+            })
+            .expect("AV1 PES start packet present");
+
+        assert_eq!(
+            (pes_flags1 >> 2) & 0b1,
+            0b1,
+            "AV1 PES MUST set data_alignment_indicator=1 per AV1-MPEG-2-TS binding §3.4; got flags1={pes_flags1:#04x}",
+        );
+    }
+
+    #[test]
+    fn h264_pes_does_not_set_data_alignment_indicator() {
+        // H.222.0 §2.4.3.7 leaves data_alignment_indicator codec-defined
+        // for H.264 / H.265 / H.266 video — we conservatively keep it
+        // unset.
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, VideoCodec::H264)
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+
+        // Minimal H.264 access unit — Annex-B start code + IDR slice NAL
+        // header. Body bytes are placeholder; only the PES flags1 byte
+        // is under test.
+        let nalu: Vec<u8> = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x88];
+        let h = mux.video_stream_handle(0).unwrap();
+        mux.push_video_to(h, &nalu, 45_000, true)
+            .expect("push_video_to");
+
+        let mut buf = vec![0u8; 188 * 64];
+        let n = mux.pull(&mut buf);
+        assert!(n > 0);
+
+        let pes_flags1 = buf[..n]
+            .chunks_exact(188)
+            .find_map(|p| {
+                let pkt = crate::mpegts::demux::ts::parse_ts_packet(p).ok()?;
+                if pkt.pid == 0x101 && pkt.payload_unit_start {
+                    Some(pkt.payload[6])
+                } else {
+                    None
+                }
+            })
+            .expect("H.264 PES start packet present");
+
+        assert_eq!(
+            (pes_flags1 >> 2) & 0b1,
+            0,
+            "H.264 PES should NOT set data_alignment_indicator; got flags1={pes_flags1:#04x}",
         );
     }
 

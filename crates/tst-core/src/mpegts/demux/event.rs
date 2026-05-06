@@ -372,6 +372,23 @@ pub enum NonConformantIssue {
     /// rejects.
     Av1TileListNotAllowed { pid: u16 },
 
+    /// Per ISO/IEC 13818-1 §2.4.4.6 short-form sections cap at 1021 bytes;
+    /// long-form private sections at 4093. ffmpeg caps the assembler at
+    /// 4096 (`MAX_SECTION_SIZE`). A section that grows past this cap (either
+    /// declared overlong, or accumulated past it without a closing length)
+    /// triggers this issue. The partial section is discarded.
+    ///
+    /// `observed_len` is the byte count at the point of the cap fire — useful
+    /// for telemetry, distinguishing "sender declared too long" from "CC-driven
+    /// corruption with no closing length".
+    ///
+    /// Note: this variant deliberately consolidates two underlying error
+    /// shapes (declared `section_length` exceeds cap, vs. accumulated bytes
+    /// exceed cap before any length is seen). `observed_len` reflects the
+    /// full overshoot in either case. Split the variant if telemetry
+    /// consumers ever need to distinguish them.
+    PsiOverlongSection { pid: u16, observed_len: usize },
+
     /// Other.
     Other(String),
 }

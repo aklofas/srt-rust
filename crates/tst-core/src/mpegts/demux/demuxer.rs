@@ -14,6 +14,7 @@ use crate::mpegts::demux::psi::{
     Pmt, PsiParseError, classify_audio_stream_type, extract_metadata_link, has_klva_registration,
     parse_pat, parse_pmt,
 };
+use crate::mpegts::demux::psi_assembler::{AssemblerError, PsiSectionAssembler};
 use crate::mpegts::demux::strict::StrictMode;
 use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -100,9 +101,11 @@ pub struct Demuxer {
     /// Cursor into `sync_buf`; bytes before this index are consumed and
     /// will be reclaimed on the next compaction.
     sync_consumed: usize,
-    /// Per-PID PSI assembly buffers (PAT + any active PMT PIDs). Drained
-    /// when `section_length + 3` bytes have been accumulated for that PID.
-    psi_buffers: HashMap<u16, Vec<u8>>,
+    /// Per-PID PSI assembly state (PAT + any active PMT PIDs). Each
+    /// assembler enforces the 4 KiB `MAX_SECTION_SIZE` cap and yields a
+    /// complete section once `section_length + 3` bytes have been
+    /// accumulated for that PID. See `psi_assembler.rs`.
+    psi_assemblers: HashMap<u16, PsiSectionAssembler>,
     /// Programs found in the current PAT, keyed by `pmt_pid`.
     /// O(1) lookup when routing PMT-bound packets.
     programs: HashMap<u16, ProgramTracker>,
@@ -158,15 +161,15 @@ impl Demuxer {
     pub fn with_options(options: DemuxerOptions) -> Self {
         let cap_per_pid = options.pes_cap_per_pid.unwrap_or(DEFAULT_PES_CAP_PER_PID);
         let cap_total = options.pes_cap_total.unwrap_or(DEFAULT_PES_CAP_TOTAL);
-        // Seed the PAT PID (0x0000) in psi_buffers so the PSI assembler
-        // is ready without a separate "first packet" initialisation step.
-        let mut psi_buffers: HashMap<u16, Vec<u8>> = HashMap::new();
-        psi_buffers.insert(0x0000, Vec::new());
+        // Seed the PAT PID (0x0000) so the PSI assembler is ready without a
+        // separate "first packet" initialisation step.
+        let mut psi_assemblers: HashMap<u16, PsiSectionAssembler> = HashMap::new();
+        psi_assemblers.insert(0x0000, PsiSectionAssembler::new());
         Self {
             options,
             sync_buf: Vec::new(),
             sync_consumed: 0,
-            psi_buffers,
+            psi_assemblers,
             programs: HashMap::new(),
             pat_version: None,
             stream_kind_by_pid: HashMap::new(),
@@ -374,7 +377,9 @@ impl Demuxer {
         pusi: bool,
         is_pat: bool,
     ) -> Result<(), DemuxError> {
-        if pusi {
+        let assembler = self.psi_assemblers.entry(pid).or_default();
+
+        let result = if pusi {
             // First byte after pointer_field marks where the section starts.
             if payload.is_empty() {
                 return Ok(());
@@ -383,40 +388,38 @@ impl Demuxer {
             if 1 + pointer_field > payload.len() {
                 return Ok(());
             }
-            self.psi_buffers
-                .insert(pid, payload[1 + pointer_field..].to_vec());
+            assembler.start_new_section(&payload[1 + pointer_field..])
         } else {
-            // Continuation: append.
-            self.psi_buffers
-                .entry(pid)
-                .or_default()
-                .extend_from_slice(payload);
-        }
-        // Try to drain a complete section if section_length is satisfied.
-        // Rewritten from a let-chain (`if let A && cond`) to nested
-        // if-let / if for MSRV 1.85 compatibility.
-        let drained: Option<Vec<u8>> = if let Some(buf) = self.psi_buffers.get(&pid) {
-            if buf.len() >= 3 {
-                let section_length = (((buf[1] & 0x0F) as u16) << 8) | buf[2] as u16;
-                let total_len = 3 + section_length as usize;
-                if buf.len() >= total_len {
-                    Some(buf[..total_len].to_vec())
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
+            assembler.append_continuation(payload)
         };
-        if let Some(section) = drained {
-            self.psi_buffers.remove(&pid);
-            if is_pat {
-                self.handle_pat_section(&section);
-            } else {
-                self.handle_pmt_section(pid, &section);
+
+        let section = match result {
+            Ok(Some(section)) => section,
+            Ok(None) => return Ok(()),
+            Err(AssemblerError::Overflow { observed_len })
+            | Err(AssemblerError::DeclaredTooLong {
+                declared_len: observed_len,
+            }) => {
+                // Cap fired — partial section discarded by the assembler. Surface
+                // the overflow as a NonConformant event keyed to this PSI PID so
+                // the caller can detect the DoS attempt without losing the
+                // receive loop.
+                let stream = self.lookup_stream(pid).unwrap_or(StreamId {
+                    pid,
+                    kind: StreamKind::Unknown(0),
+                });
+                self.queue_nonconformant(
+                    stream,
+                    NonConformantIssue::PsiOverlongSection { pid, observed_len },
+                );
+                return Ok(());
             }
+        };
+
+        if is_pat {
+            self.handle_pat_section(&section);
+        } else {
+            self.handle_pmt_section(pid, &section);
         }
         Ok(())
     }
@@ -464,7 +467,7 @@ impl Demuxer {
                     self.stream_kind_by_pid.remove(&stream.pid);
                 }
                 // Free the PSI assembly buffer for this PMT PID.
-                self.psi_buffers.remove(&pmt_pid);
+                self.psi_assemblers.remove(&pmt_pid);
             }
         }
 
@@ -484,9 +487,9 @@ impl Demuxer {
                     streams: Vec::new(),
                     klv_mismatch_coalesce: HashSet::new(),
                 });
-            // Seed the PSI buffer for this PMT PID so handle_psi can accumulate
-            // bytes without a separate "first packet" init step.
-            self.psi_buffers.entry(entry.pid).or_default();
+            // Seed the PSI assembler for this PMT PID so handle_psi can
+            // accumulate bytes without a separate "first packet" init step.
+            self.psi_assemblers.entry(entry.pid).or_default();
         }
     }
 
@@ -2115,5 +2118,92 @@ mod tests {
         demux.reset_stats();
         let s = demux.stats();
         assert_eq!(s.subtitle_streams_seen, 0);
+    }
+
+    /// A malicious PMT PUSI claiming `section_length=0xFFF` (4095 bytes,
+    /// total = 4098 > 4096 cap) and never closing must NOT cause unbounded
+    /// buffer growth — ffmpeg caps at 4096 (`MAX_SECTION_SIZE` in
+    /// `mpegts.h:34`). On overflow we discard the partial section and emit
+    /// `NonConformantIssue::PsiOverlongSection`.
+    ///
+    /// We pre-seed the demuxer with a PAT that maps program 1 → PMT PID
+    /// 0x100 so that `process_packet` routes the malicious packet to the
+    /// PMT-PID branch of `handle_psi`. Without this, packets on PID 0x100
+    /// would be silently ignored (PID not in PAT, not in stream_kind_by_pid).
+    #[test]
+    fn psi_buffer_caps_at_4kib_and_emits_psi_overlong_section() {
+        let mut demux = Demuxer::new();
+
+        // ── Step 1: feed a PAT that announces program 1 on PMT PID 0x100. ──
+        // PAT section bytes (per ISO 13818-1 §2.4.4.3):
+        //   table_id=0x00,
+        //   syntax=1, '0', reserved=11, section_length (12 bits),
+        //   transport_stream_id (16 bits),
+        //   reserved=11, version=0, current_next=1,
+        //   section_number=0, last_section_number=0,
+        //   { program_number=1, reserved=111, pid=0x100 } * 1,
+        //   CRC32 (4 bytes).
+        // section_length spans from after section_length itself through CRC,
+        // so = 5 (header tail) + 4 (program loop) + 4 (CRC) = 13 (0x0D).
+        let mut pat = vec![
+            0x00, // table_id
+            0xB0, 0x0D, // syntax=1, section_length=0x00D
+            0x00, 0x01, // transport_stream_id=1
+            0xC1, // reserved=11, version=0, current_next=1
+            0x00, 0x00, // section_number, last_section_number
+            0x00, 0x01, // program_number=1
+            0xE1, 0x00, // reserved=111, pid=0x100
+        ];
+        let crc = crate::mpegts::common::crc32::crc32_mpeg2(&pat);
+        pat.extend_from_slice(&crc.to_be_bytes());
+
+        // Wrap PAT into a single TS packet on PID 0x0000.
+        let mut ts_pat = [0xFFu8; 188];
+        ts_pat[0] = 0x47;
+        ts_pat[1] = 0x40; // PUSI=1, pid_high=0
+        ts_pat[2] = 0x00; // pid_low=0
+        ts_pat[3] = 0x10; // adaptation=01, cc=0
+        ts_pat[4] = 0x00; // pointer_field=0
+        ts_pat[5..5 + pat.len()].copy_from_slice(&pat);
+        demux.feed(&ts_pat).expect("PAT feed");
+
+        // Drain any events emitted by the PAT (no PMT yet → no ProgramMap).
+        while demux.next_event().is_some() {}
+
+        // ── Step 2: feed N packets on PMT PID 0x100 — first PUSI claims a
+        // section_length=0xFFF (4095 bytes), total declared length 4098 >
+        // 4096 cap. The assembler should reject this on the FIRST packet
+        // (declared_too_long path).
+        let mut ts_pmt = [0xFFu8; 188];
+        ts_pmt[0] = 0x47;
+        ts_pmt[1] = 0x41; // PUSI=1, pid_high=1
+        ts_pmt[2] = 0x00; // pid_low=0 → PID = 0x100
+        ts_pmt[3] = 0x10; // adaptation=01, cc=0
+        ts_pmt[4] = 0x00; // pointer_field=0
+        // table_id=0x02 (PMT), syntax=1 + section_length=0xFFF (4095).
+        ts_pmt[5] = 0x02;
+        ts_pmt[6] = 0xBF; // 1011 1111 → syntax=1, '0'=0, reserved=11, sl_hi=0xF
+        ts_pmt[7] = 0xFF; // sl_lo=0xFF → section_length=0xFFF=4095
+        // Remaining 181 bytes are arbitrary attacker payload.
+
+        demux.feed(&ts_pmt).expect("malicious PMT feed");
+
+        // ── Step 3: assert PsiOverlongSection emitted. ──
+        let mut saw_overlong = false;
+        while let Some(ev) = demux.next_event() {
+            if let DemuxEvent::NonConformant {
+                issue: NonConformantIssue::PsiOverlongSection { pid, observed_len },
+                ..
+            } = ev
+            {
+                assert_eq!(pid, 0x100);
+                assert_eq!(observed_len, 4098); // 3 + 0xFFF
+                saw_overlong = true;
+            }
+        }
+        assert!(
+            saw_overlong,
+            "expected PsiOverlongSection on PID 0x100 from malicious PMT"
+        );
     }
 }

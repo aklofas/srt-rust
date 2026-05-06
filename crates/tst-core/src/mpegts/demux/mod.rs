@@ -18,6 +18,7 @@ pub mod event;
 pub mod payload;
 pub mod pes;
 pub mod psi;
+pub(crate) mod psi_assembler;
 pub mod strict;
 pub mod ts;
 

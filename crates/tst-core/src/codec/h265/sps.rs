@@ -13,6 +13,20 @@ pub struct H265Sps {
     pub general_profile_idc: u8,
     pub general_tier_flag: bool,
     pub general_level_idc: u8,
+    /// 32-bit `general_profile_compatibility_flags` per H.265 §7.3.3 — bit
+    /// `i` set means the stream conforms to profile `i`. Real Main10 streams
+    /// often have `general_profile_idc=1` (Main) but bit 2 set; ffmpeg
+    /// `hevc/ps.c:267-270` uses this to disambiguate Main vs Main10 vs
+    /// Main10-Intra. Surfaced here so consumers can do the same.
+    pub general_profile_compatibility_flags: u32,
+    /// `general_progressive_source_flag` (§7.4.4).
+    pub general_progressive_source_flag: bool,
+    /// `general_interlaced_source_flag` (§7.4.4).
+    pub general_interlaced_source_flag: bool,
+    /// `general_non_packed_constraint_flag` (§7.4.4).
+    pub general_non_packed_constraint_flag: bool,
+    /// `general_frame_only_constraint_flag` (§7.4.4).
+    pub general_frame_only_constraint_flag: bool,
     pub bit_depth_luma: u8,
     pub bit_depth_chroma: u8,
     pub chroma_format: ChromaFormat,
@@ -196,6 +210,11 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
         general_profile_idc: ptl.general_profile_idc,
         general_tier_flag: ptl.general_tier_flag,
         general_level_idc: ptl.general_level_idc,
+        general_profile_compatibility_flags: ptl.general_profile_compatibility_flags,
+        general_progressive_source_flag: ptl.general_progressive_source_flag,
+        general_interlaced_source_flag: ptl.general_interlaced_source_flag,
+        general_non_packed_constraint_flag: ptl.general_non_packed_constraint_flag,
+        general_frame_only_constraint_flag: ptl.general_frame_only_constraint_flag,
         bit_depth_luma,
         bit_depth_chroma,
         chroma_format,

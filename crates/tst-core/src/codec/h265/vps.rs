@@ -15,6 +15,20 @@ pub struct H265Vps {
     pub general_profile_idc: u8,
     pub general_tier_flag: bool,
     pub general_level_idc: u8,
+    /// 32-bit `general_profile_compatibility_flags` per H.265 §7.3.3 — bit
+    /// `i` set means the stream conforms to profile `i`. See [`H265Sps`]
+    /// for the disambiguation rationale (Main vs Main10 vs Main10-Intra).
+    ///
+    /// [`H265Sps`]: crate::codec::h265::H265Sps
+    pub general_profile_compatibility_flags: u32,
+    /// `general_progressive_source_flag` (§7.4.4).
+    pub general_progressive_source_flag: bool,
+    /// `general_interlaced_source_flag` (§7.4.4).
+    pub general_interlaced_source_flag: bool,
+    /// `general_non_packed_constraint_flag` (§7.4.4).
+    pub general_non_packed_constraint_flag: bool,
+    /// `general_frame_only_constraint_flag` (§7.4.4).
+    pub general_frame_only_constraint_flag: bool,
     pub raw_rbsp: Vec<u8>,
 }
 
@@ -46,6 +60,11 @@ pub fn parse_vps(rbsp: &[u8]) -> Result<H265Vps, ParseError> {
         general_profile_idc: ptl.general_profile_idc,
         general_tier_flag: ptl.general_tier_flag,
         general_level_idc: ptl.general_level_idc,
+        general_profile_compatibility_flags: ptl.general_profile_compatibility_flags,
+        general_progressive_source_flag: ptl.general_progressive_source_flag,
+        general_interlaced_source_flag: ptl.general_interlaced_source_flag,
+        general_non_packed_constraint_flag: ptl.general_non_packed_constraint_flag,
+        general_frame_only_constraint_flag: ptl.general_frame_only_constraint_flag,
         raw_rbsp: rbsp.to_vec(),
     })
 }

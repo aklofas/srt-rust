@@ -8,7 +8,9 @@ use crate::mpegts::demux::event::{
     NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, SubtitleCodec,
     VideoCodec, VideoPayload,
 };
-use crate::mpegts::demux::payload::{KlvShape, classify_klv, split_nals, split_obus};
+use crate::mpegts::demux::payload::{
+    KlvShape, classify_klv, split_nals, split_obus, strip_dvb_sub_envelope,
+};
 use crate::mpegts::demux::pes::{Reassembler, ReassemblyOutcome};
 use crate::mpegts::demux::psi::{
     Pmt, PsiParseError, classify_audio_stream_type, extract_metadata_link, has_klva_registration,
@@ -1088,13 +1090,27 @@ impl Demuxer {
                 });
                 entry.items += 1;
                 entry.bytes += payload_len as u64;
+                // For DVB subtitling, strip the EN 300 743 §6.2 PES_data_field
+                // envelope (data_identifier + subtitle_stream_id + segments +
+                // 0xFF end_marker) so callers see just the segment bytes —
+                // matching what libavcodec's dvbsubdec expects (it rejects
+                // anything that doesn't begin with a segment sync_byte 0x0F).
+                // Other subtitle codecs (teletext, CEA-708 standalone, WebVTT)
+                // do not have this wrapper; pass through verbatim.
+                let raw = &pes.payload;
+                let surfaced_payload = match codec {
+                    SubtitleCodec::DvbSubtitling => strip_dvb_sub_envelope(raw)
+                        .map(|s| s.to_vec())
+                        .unwrap_or_else(|| raw.to_vec()),
+                    _ => raw.to_vec(),
+                };
                 self.queue.push_back(DemuxEvent::Sample {
                     stream,
                     pts,
                     dts: None,
                     payload: SamplePayload::Subtitle {
                         codec,
-                        payload: pes.payload.to_vec(),
+                        payload: surfaced_payload,
                     },
                 });
             }
@@ -2563,6 +2579,88 @@ mod tests {
         assert!(
             !saw_program_map,
             "PMT with current_next=0 must not produce ProgramMap events"
+        );
+    }
+
+    /// Audit finding (Demux-C): the muxer wraps DVB-sub PES payloads in the
+    /// EN 300 743 §6.2 envelope (`0x20 + 0x00 + segments + 0xFF`), so the
+    /// demuxer must strip that envelope before surfacing to callers. Without
+    /// the strip, libavcodec's `dvbsubdec` rejects the buffer at
+    /// `buf_size <= 6 || *buf != 0x0f`.
+    #[test]
+    fn dvb_sub_demux_strips_pes_data_field_envelope() {
+        use crate::mpegts::demux::event::SamplePayload;
+        use crate::mpegts::mux::{
+            Config, Muxer, SubtitleCodec as MuxSubtitleCodec, VideoCodec as MuxVideoCodec,
+        };
+
+        // Configure: one program with one H.264 video stream (PCR carrier)
+        // plus one DVB-sub stream. Subtitles can't be the PCR PID, so the
+        // video stream is required for a valid program.
+        let cfg = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x101, MuxVideoCodec::H264)
+            .add_subtitle(
+                0x200,
+                MuxSubtitleCodec::DvbSubtitling {
+                    language: *b"eng",
+                    subtitling_type: 0x10,
+                    composition_page_id: 0x0001,
+                    ancillary_page_id: 0x0002,
+                },
+            )
+            .end_program()
+            .build()
+            .unwrap();
+        let mut mux = Muxer::new(cfg).unwrap();
+
+        // Push a video AU first so PCR fires and PSI emits.
+        let mut au = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
+        au.extend(std::iter::repeat_n(0xAB, 64));
+        mux.push_video(&au, 9_000, true).unwrap();
+
+        // Push raw DVB-sub segment bytes; muxer auto-prepends §6.2 envelope.
+        let segment_bytes = [0x0Fu8, 0x10, 0x00, 0x01, 0x00, 0x02, 0x00, 0x10];
+        mux.push_subtitle(9_000, &segment_bytes).unwrap();
+
+        // Drain all queued packets.
+        let mut all = Vec::new();
+        let mut buf = vec![0u8; 188 * 256];
+        loop {
+            let n = mux.pull(&mut buf);
+            if n == 0 {
+                break;
+            }
+            all.extend_from_slice(&buf[..n]);
+        }
+
+        let mut demux = Demuxer::new();
+        demux.feed(&all).expect("feed");
+        demux.flush();
+
+        let mut subtitle_payload: Option<Vec<u8>> = None;
+        while let Some(ev) = demux.next_event() {
+            if let DemuxEvent::Sample {
+                payload:
+                    SamplePayload::Subtitle {
+                        codec: SubtitleCodec::DvbSubtitling,
+                        payload,
+                    },
+                ..
+            } = ev
+            {
+                subtitle_payload = Some(payload);
+                break;
+            }
+        }
+        let payload = subtitle_payload.expect("DVB-sub Sample event not found");
+
+        // Surfaced payload is exactly the segment bytes — no leading
+        // 0x20 + 0x00 envelope, no trailing 0xFF marker.
+        assert_eq!(
+            payload,
+            segment_bytes.to_vec(),
+            "EN 300 743 §6.2 envelope should be stripped"
         );
     }
 }

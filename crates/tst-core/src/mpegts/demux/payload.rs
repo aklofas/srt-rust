@@ -271,6 +271,31 @@ pub fn classify_klv(payload: &[u8]) -> KlvShape {
     KlvShape::Other
 }
 
+/// Strip the EN 300 743 §6.2 PES_data_field envelope from a DVB-subtitle PES
+/// payload. The wire format is:
+///
+/// ```text
+///   data_identifier(1) + subtitle_stream_id(1) + segments(N) + end_marker(0xFF)
+/// ```
+///
+/// Returns the segments slice if the envelope is well-formed, `None`
+/// otherwise — caller falls through to passthrough on malformed input so
+/// strict-mode consumers can still observe the unexpected payload shape.
+///
+/// `data_identifier` valid range per ETSI EN 300 743 §7.1: `0x20..=0x3F`
+/// (DVB subtitle) or `0x70..=0x7F` (DVB subtitle for HD). The
+/// `subtitle_stream_id` is fixed at `0x00` per §6.2.
+pub(crate) fn strip_dvb_sub_envelope(bytes: &[u8]) -> Option<&[u8]> {
+    if bytes.len() < 3 {
+        return None;
+    }
+    let valid_id = matches!(bytes[0], 0x20..=0x3F | 0x70..=0x7F);
+    if !valid_id || bytes[1] != 0x00 || *bytes.last().unwrap() != 0xFF {
+        return None;
+    }
+    Some(&bytes[2..bytes.len() - 1])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -561,5 +586,45 @@ mod tests {
             KlvShape::Async { klv } => assert_eq!(klv, &bare_klv[..]),
             other => panic!("expected Async, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn strip_dvb_sub_envelope_round_trip() {
+        let segs = [0x0F, 0x10, 0xAB, 0xCD];
+        let wrapped = [&[0x20u8, 0x00][..], &segs[..], &[0xFF][..]].concat();
+        assert_eq!(strip_dvb_sub_envelope(&wrapped), Some(&segs[..]));
+    }
+
+    #[test]
+    fn strip_dvb_sub_envelope_accepts_hd_data_identifier_range() {
+        // 0x70..=0x7F is HD subtitle per EN 300 743 §7.1.
+        let wrapped = [0x70, 0x00, 0x0F, 0x10, 0xFF];
+        assert_eq!(
+            strip_dvb_sub_envelope(&wrapped),
+            Some(&[0x0F, 0x10][..])
+        );
+    }
+
+    #[test]
+    fn strip_dvb_sub_envelope_rejects_missing_marker() {
+        assert!(strip_dvb_sub_envelope(&[0x20, 0x00, 0xAB, 0xCD]).is_none());
+    }
+
+    #[test]
+    fn strip_dvb_sub_envelope_rejects_bad_data_identifier() {
+        // 0x40 is outside both 0x20..=0x3F and 0x70..=0x7F.
+        assert!(strip_dvb_sub_envelope(&[0x40, 0x00, 0xAB, 0xFF]).is_none());
+    }
+
+    #[test]
+    fn strip_dvb_sub_envelope_rejects_bad_stream_id() {
+        // subtitle_stream_id must be 0x00 per §6.2.
+        assert!(strip_dvb_sub_envelope(&[0x20, 0x01, 0xAB, 0xFF]).is_none());
+    }
+
+    #[test]
+    fn strip_dvb_sub_envelope_too_short() {
+        assert!(strip_dvb_sub_envelope(&[0x20]).is_none());
+        assert!(strip_dvb_sub_envelope(&[]).is_none());
     }
 }

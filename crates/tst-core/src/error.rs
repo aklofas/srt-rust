@@ -226,6 +226,18 @@ pub enum MuxError {
     )]
     SubtitlePidUsedAsPcrPid { pid: u16 },
 
+    /// PCR-PID resolved (caller-pinned or via fallback chain) to a KLV stream
+    /// PID. KLV pushes are typically sparse (1-10 Hz from sensors) and would
+    /// produce PCR at the same cadence, failing ETSI TR 101 290 §5.6.1's
+    /// 100 ms ceiling. The right fix is to add a video stream to the program
+    /// (PCR follows video naturally) or to caller-pin `pcr_pid` to a stream
+    /// that pushes at ≥10 Hz. Today's deterministic-output muxer cannot emit
+    /// standalone PCR-only TS packets between push events.
+    #[error(
+        "PCR PID 0x{pid:04X} resolves to a KLV stream — KLV push cadence is too sparse for PCR (ETSI TR 101 290 §5.6.1 requires ≤100 ms between PCRs); add a video stream or pin pcr_pid to a faster-cadence stream"
+    )]
+    KlvPidUsedAsPcrPid { pid: u16 },
+
     /// `Config::validate` rejects ISO 639-2 language codes that aren't
     /// 3 lowercase ASCII bytes.
     #[error("invalid ISO 639-2 language code: {code:02x?} (must be 3 lowercase ASCII bytes)")]

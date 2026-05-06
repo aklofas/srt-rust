@@ -320,13 +320,14 @@ fn has_pcr_on_pid(data: &[u8], pid: u16) -> bool {
 
 #[test]
 fn per_program_pcr_pids_resolved_independently() {
-    // Program 1 pins PCR to its KLV PID (0x1031).  Program 2 leaves
-    // pcr_pid = None, so it auto-falls back to its first video PID (0x1111).
-    // We verify the actual byte output: PCR-bearing packets must appear on
-    // 0x1031 for program 1 and on 0x1111 for program 2, and NOT on each
-    // program's other streams.
+    // Program 1 pins PCR to its video PID (0x1011) explicitly. Program 2
+    // leaves pcr_pid = None, so it auto-falls back to its first video PID
+    // (0x1111). We verify the actual byte output: PCR-bearing packets must
+    // appear on 0x1011 for program 1 and on 0x1111 for program 2, and NOT
+    // on each program's KLV streams. KLV-as-PCR is rejected at validate
+    // time (ETSI TR 101 290 §5.6.1 requires ≤100 ms between PCRs).
     let mut config = two_program_config();
-    config.programs[0].pcr_pid = Some(0x1031); // program 1 PCR → KLV PID
+    config.programs[0].pcr_pid = Some(0x1011); // program 1 PCR → video PID (explicit)
 
     let mut muxer = Muxer::new(config).unwrap();
     let p1_video = muxer.video_handles_for_program(1).unwrap()[0];
@@ -354,14 +355,14 @@ fn per_program_pcr_pids_resolved_independently() {
         }
     }
 
-    // Program 1: PCR must appear on the pinned KLV PID, not the video PID.
+    // Program 1: PCR must appear on the pinned video PID, not the KLV PID.
     assert!(
-        has_pcr_on_pid(&out, 0x1031),
-        "program 1 PCR PID 0x1031 (KLV, pinned) must carry PCR-bearing packets"
+        has_pcr_on_pid(&out, 0x1011),
+        "program 1 PCR PID 0x1011 (video, pinned) must carry PCR-bearing packets"
     );
     assert!(
-        !has_pcr_on_pid(&out, 0x1011),
-        "program 1 video PID 0x1011 must NOT carry PCR when PCR is pinned to KLV"
+        !has_pcr_on_pid(&out, 0x1031),
+        "program 1 KLV PID 0x1031 must NOT carry PCR when PCR is pinned to video"
     );
 
     // Program 2: PCR must appear on the auto-fallback video PID.

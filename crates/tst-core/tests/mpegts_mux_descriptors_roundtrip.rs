@@ -159,6 +159,7 @@ fn family_a_hdmv_video_registration_round_trips() {
 fn non_klva_registration_on_klv_pid_logs_warning() {
     let cfg = Config::builder()
         .add_program(1, 0x1000)
+        .add_video(0x100, VideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
         .stream_descriptors_for_klv(0, vec![descriptors::registration(*b"VEND", &[])])
         .end_program()

@@ -125,24 +125,27 @@ fn video_only_emits_video_pid_only() {
 }
 
 #[test]
-fn klv_only_emits_klv_pid_only() {
+fn video_and_klv_emits_both_pids() {
+    // KLV-only programs are rejected (KLV cadence too sparse for PCR).
+    // The minimum viable program shape is video + KLV; test that both PIDs
+    // appear in the output and no spurious PIDs are emitted.
     let cfg = Config::builder()
         .add_program(1, 0x1000)
-        .add_klv(0x1031, KlvStreamType::PrivateData, true)
-        .pcr_pid(0x1031)
+        .add_video(0x1011, VideoCodec::H264)
+        .add_klv(0x1031, KlvStreamType::PrivateData, false)
         .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
     let k = mux.klv_stream_handle(0).unwrap();
+    let v = mux.video_stream_handle(0).unwrap();
+    let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
+    mux.push_video_to(v, &nal, 0, true).unwrap();
     mux.push_klv_to(k, &klv_blob(), 0).unwrap();
 
     let pids = pids_present(&drain_all(&mut mux));
-    assert!(pids.contains(&0x1031));
-    assert!(
-        !pids.contains(&0x1011),
-        "no video stream configured — must not emit on default video PID"
-    );
+    assert!(pids.contains(&0x1011), "video PID must appear");
+    assert!(pids.contains(&0x1031), "KLV PID must appear");
 }
 
 #[test]

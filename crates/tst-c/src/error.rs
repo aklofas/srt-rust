@@ -196,6 +196,13 @@ pub(crate) fn record_mux_error(e: &MuxError) {
                  subtitles are too sparse for PCR pacing"
             ),
         ),
+        MuxError::KlvPidUsedAsPcrPid { pid } => (
+            TstError::InvalidConfig,
+            format!(
+                "PCR PID 0x{pid:04X} resolves to a KLV stream — KLV cadence is too sparse for PCR \
+                 (ETSI TR 101 290 §5.6.1); add a video stream or pin pcr_pid to a faster-cadence stream"
+            ),
+        ),
         MuxError::InvalidLanguageCode { code } => (
             TstError::InvalidConfig,
             format!(

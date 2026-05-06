@@ -690,6 +690,26 @@ impl Config {
                 }
             }
 
+            // Resolve effective PCR PID (caller-pinned or fallback) and
+            // reject when it lands on a KLV stream — KLV cadence is too
+            // sparse for ETSI TR 101 290 §5.6.1's 100 ms ceiling and
+            // today's deterministic muxer can't emit standalone PCR-only
+            // TS packets between push events.
+            let effective_pcr_pid = prog.pcr_pid.or_else(|| {
+                prog.first_video_pid()
+                    .or_else(|| prog.first_klv_pid())
+                    .or_else(|| prog.first_audio_pid())
+            });
+            if let Some(pcr) = effective_pcr_pid {
+                let lands_on_klv = prog
+                    .streams
+                    .iter()
+                    .any(|s| matches!(s, StreamSpec::Klv { pid, .. } if *pid == pcr));
+                if lands_on_klv {
+                    return Err(MuxError::KlvPidUsedAsPcrPid { pid: pcr });
+                }
+            }
+
             // Subtitle-specific validation: reject PCR-PID pinning to a
             // subtitle PID (subtitles are too sparse for PCR pacing) and
             // validate per-codec parameter ranges (language code shape,
@@ -2717,15 +2737,21 @@ mod tests {
     }
 
     #[test]
-    fn accepts_pcr_pid_on_klv() {
-        let cfg = Config::builder()
+    fn rejects_pcr_pid_pinned_to_klv() {
+        // KLV cadence (1-10 Hz) violates ETSI TR 101 290 §5.6.1's 100 ms
+        // ceiling. Validate now rejects this combination.
+        let err = Config::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
             .pcr_pid(0x1031)
             .end_program()
-            .build();
-        cfg.expect("pcr_pid on klv is allowed");
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, MuxError::KlvPidUsedAsPcrPid { pid: 0x1031 }),
+            "expected KlvPidUsedAsPcrPid {{ pid: 0x1031 }}, got {err:?}"
+        );
     }
 
     #[test]
@@ -2808,16 +2834,17 @@ mod tests {
 
     #[test]
     fn resolved_pcr_pid_explicit() {
+        // Explicit pcr_pid on video PID — muxer's pcr_pids[] must reflect it.
         let cfg = Config::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
-            .pcr_pid(0x1031)
+            .pcr_pid(0x1011)
             .end_program()
             .build()
             .unwrap();
         let mux = Muxer::new(cfg).unwrap();
-        assert_eq!(mux.pcr_pids[0], 0x1031);
+        assert_eq!(mux.pcr_pids[0], 0x1011);
     }
 
     #[test]
@@ -3176,8 +3203,10 @@ mod tests {
     fn klv_pes_sets_data_alignment_indicator_per_h2220_v9_2_12_4_1() {
         // SynchronousMetadata KLV stream (stream_type 0x15) — H.222.0 V9
         // §2.12.4.1 mandates data_alignment_indicator=1 on every metadata PES.
+        // Video stream provides PCR; KLV-only programs are rejected at validate.
         let cfg = Config::builder()
             .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::SynchronousMetadata, true)
             .end_program()
             .build()
@@ -3411,17 +3440,18 @@ mod tests {
     }
 
     #[test]
-    fn muxer_new_accepts_klv_only() {
-        // KLV-only requires PCR pinned to KLV PID (it carries PCR).
+    fn muxer_new_accepts_video_plus_klv() {
+        // KLV-only configs are rejected (KLV cadence too sparse for PCR).
+        // Video + KLV with PCR auto-resolved to video is the correct shape.
         let cfg = Config::builder()
             .add_program(1, 0x1000)
-            .add_klv(0x1031, KlvStreamType::PrivateData, true)
-            .pcr_pid(0x1031)
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
             .end_program()
             .build()
             .unwrap();
         let mux = Muxer::new(cfg);
-        assert!(mux.is_ok(), "klv-only muxer must construct");
+        assert!(mux.is_ok(), "video + klv muxer must construct");
     }
 
     #[test]
@@ -3475,11 +3505,11 @@ mod tests {
 
     #[test]
     fn push_video_rejects_when_no_video_streams_configured() {
-        // KLV-only muxer — push_video has no possible target.
+        // Audio-only muxer (valid config; PCR resolves to audio) — push_video
+        // has no possible target and must return AmbiguousTarget { count: 0 }.
         let cfg = Config::builder()
             .add_program(1, 0x1000)
-            .add_klv(0x1031, KlvStreamType::PrivateData, true)
-            .pcr_pid(0x1031)
+            .add_audio(0x1041, AudioCodec::Aac)
             .end_program()
             .build()
             .unwrap();
@@ -3690,6 +3720,7 @@ mod tests {
     fn cache_suppresses_klva_auto_emit_when_caller_supplies_registration() {
         let cfg = Config::builder()
             .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
             .stream_descriptors_for_klv(
                 0,
@@ -3700,14 +3731,16 @@ mod tests {
             .unwrap();
         let muxer = Muxer::new(cfg).unwrap();
 
+        // Cache index 0 = video (empty), index 1 = KLV.
         // Caller's Registration only — auto-emit suppressed. Total = 6 bytes.
-        assert_eq!(muxer.pmt_descriptor_caches[0][0].len(), 6);
+        assert_eq!(muxer.pmt_descriptor_caches[0][1].len(), 6);
     }
 
     #[test]
     fn cache_no_auto_emit_on_sync_klv() {
         let cfg = Config::builder()
             .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::SynchronousMetadata, true)
             .stream_descriptors_for_klv(
                 0,
@@ -3720,10 +3753,11 @@ mod tests {
             .build()
             .unwrap();
         let muxer = Muxer::new(cfg).unwrap();
+        // Cache index 0 = video (empty), index 1 = KLV.
         // No KLVA auto-emit on SynchronousMetadata. 11 + 11 = 22 bytes.
-        assert_eq!(muxer.pmt_descriptor_caches[0][0].len(), 22);
-        assert_eq!(muxer.pmt_descriptor_caches[0][0][0], 0x26);
-        assert_eq!(muxer.pmt_descriptor_caches[0][0][11], 0x27);
+        assert_eq!(muxer.pmt_descriptor_caches[0][1].len(), 22);
+        assert_eq!(muxer.pmt_descriptor_caches[0][1][0], 0x26);
+        assert_eq!(muxer.pmt_descriptor_caches[0][1][11], 0x27);
     }
 
     // ── Task 9: subtitle PMT descriptor auto-emit ────────────────────────
@@ -4282,6 +4316,63 @@ mod tests {
             err,
             MuxError::SubtitlePidUsedAsPcrPid { pid: 0x200 }
         ));
+    }
+
+    #[test]
+    fn validate_rejects_caller_pinned_pcr_on_klv_pid() {
+        // Caller pins pcr_pid=0x101 explicitly to a KLV stream.
+        let err = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x200, VideoCodec::H264)
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .pcr_pid(0x101)
+            .end_program()
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, MuxError::KlvPidUsedAsPcrPid { pid: 0x101 }),
+            "expected KlvPidUsedAsPcrPid {{ pid: 0x101 }}, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_klv_only_program_via_pcr_fallback() {
+        // No video, no audio — only KLV. The fallback chain
+        // `video > KLV > audio` would resolve PCR to the first KLV PID.
+        let err = Config::builder()
+            .add_program(1, 0x100)
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .end_program()
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, MuxError::KlvPidUsedAsPcrPid { pid: 0x101 }),
+            "expected KlvPidUsedAsPcrPid for fallback-resolved KLV PID, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_pcr_pinned_to_video_with_klv_present() {
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_video(0x200, VideoCodec::H264)
+            .add_klv(0x101, KlvStreamType::PrivateData, false)
+            .pcr_pid(0x200)
+            .end_program()
+            .build();
+        cfg.expect("video-as-PCR is fine");
+    }
+
+    #[test]
+    fn validate_accepts_audio_as_pcr() {
+        // AAC frames push at ~21 ms intervals — within the 100 ms ETSI TR
+        // 101 290 ceiling. Audio-as-PCR remains permitted.
+        let cfg = Config::builder()
+            .add_program(1, 0x100)
+            .add_audio(0x201, AudioCodec::Aac)
+            .end_program()
+            .build();
+        cfg.expect("audio-as-PCR fallback is fine");
     }
 
     #[test]

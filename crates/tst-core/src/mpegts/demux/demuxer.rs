@@ -124,6 +124,12 @@ pub struct Demuxer {
     /// (PIDs must be unique cross-program per ISO 13818-1).
     stream_kind_by_pid: HashMap<u16, StreamKind>,
     cc_by_pid: HashMap<u16, u8>,
+    /// Captured (expected, observed) CC pair when `check_continuity`
+    /// flagged a real jump on the packet currently being routed. Drained
+    /// by `handle_psi` when it consumes the strict-mode drop arm; cleared
+    /// at the top of every `check_continuity` call so PSI packets without
+    /// a jump don't carry stale state.
+    last_psi_cc_jump: Option<(u8, u8)>,
     last_pcr_27mhz: Option<u64>,
     last_pts_by_pid: HashMap<u16, i64>,
     pes: Reassembler,
@@ -183,6 +189,7 @@ impl Demuxer {
             pat_version: None,
             stream_kind_by_pid: HashMap::new(),
             cc_by_pid: HashMap::new(),
+            last_psi_cc_jump: None,
             last_pcr_27mhz: None,
             last_pts_by_pid: HashMap::new(),
             pes: Reassembler::new(cap_per_pid, cap_total),
@@ -315,11 +322,11 @@ impl Demuxer {
             return Ok(());
         }
         self.check_pcr(&pkt);
-        self.check_continuity(&pkt);
+        let cc_jumped = self.check_continuity(&pkt);
         if pkt.pid == 0x0000 {
-            self.handle_psi(pkt.pid, pkt.payload, pkt.payload_unit_start, true)?;
+            self.handle_psi(pkt.pid, pkt.payload, pkt.payload_unit_start, true, cc_jumped)?;
         } else if self.programs.contains_key(&pkt.pid) {
-            self.handle_psi(pkt.pid, pkt.payload, pkt.payload_unit_start, false)?;
+            self.handle_psi(pkt.pid, pkt.payload, pkt.payload_unit_start, false, cc_jumped)?;
         } else if pkt.has_payload && self.stream_kind_by_pid.contains_key(&pkt.pid) {
             self.handle_pes_packet(&pkt)?;
         }
@@ -345,10 +352,19 @@ impl Demuxer {
         }
     }
 
-    fn check_continuity(&mut self, pkt: &crate::mpegts::demux::ts::TsPacket<'_>) {
+    /// Returns `true` if a CC jump was observed AND not suppressed by
+    /// `discontinuity_indicator`. The caller (`process_packet`) uses this
+    /// signal to gate strict-mode PSI reassembly drops in `handle_psi`.
+    ///
+    /// Side effect: clears `self.last_psi_cc_jump` at entry, sets it to
+    /// `Some((expected, observed))` when a real jump fires. `handle_psi`
+    /// drains it via `.take()` when emitting `PsiCcDiscontinuity`.
+    fn check_continuity(&mut self, pkt: &crate::mpegts::demux::ts::TsPacket<'_>) -> bool {
+        self.last_psi_cc_jump = None;
         if !pkt.has_payload {
-            return;
+            return false;
         }
+        let mut real_jump = false;
         if let Some(prev_cc) = self.cc_by_pid.get(&pkt.pid).copied() {
             let expected = (prev_cc + 1) & 0x0F;
             // Per ISO/IEC 13818-1 §2.4.3.5, when discontinuity_indicator=1
@@ -358,6 +374,8 @@ impl Demuxer {
             // event below already surfaces the discontinuity hint to
             // consumers, so emitting both would double-count.
             if expected != pkt.continuity_counter && !pkt.discontinuity_indicator {
+                real_jump = true;
+                self.last_psi_cc_jump = Some((expected, pkt.continuity_counter));
                 if let Some(stream) = self.lookup_stream(pkt.pid) {
                     self.discontinuities_count += 1;
                     let program_number = self.program_number_for_pid(stream.pid);
@@ -400,6 +418,7 @@ impl Demuxer {
             }
         }
         self.cc_by_pid.insert(pkt.pid, pkt.continuity_counter);
+        real_jump
     }
 
     fn handle_psi(
@@ -408,7 +427,37 @@ impl Demuxer {
         payload: &[u8],
         pusi: bool,
         is_pat: bool,
+        cc_jumped: bool,
     ) -> Result<(), DemuxError> {
+        // Strict mode: drop the partial section if a continuation packet
+        // arrives with a CC jump (matches ffmpeg `mpegts.c:3118-3142`).
+        // Lenient mode (opt-in via DemuxerOptions::lenient_psi_reassembly)
+        // preserves today's permissive behavior — bytes are accumulated
+        // regardless, either passing CRC by luck or surfacing as
+        // PsiChecksumMismatch.
+        if !pusi && cc_jumped && !self.options.lenient_psi_reassembly {
+            if let Some(assembler) = self.psi_assemblers.get_mut(&pid) {
+                assembler.reset();
+            }
+            let (expected, observed) = self
+                .last_psi_cc_jump
+                .take()
+                .expect("check_continuity populated last_psi_cc_jump on real jump");
+            let stream = self.lookup_stream(pid).unwrap_or(StreamId {
+                pid,
+                kind: StreamKind::Unknown(0),
+            });
+            self.queue_nonconformant(
+                stream,
+                NonConformantIssue::PsiCcDiscontinuity {
+                    pid,
+                    expected,
+                    observed,
+                },
+            );
+            return Ok(());
+        }
+
         let assembler = self.psi_assemblers.entry(pid).or_default();
 
         let result = if pusi {

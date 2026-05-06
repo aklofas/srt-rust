@@ -5,12 +5,12 @@
 
 use crate::error::{TstError, set_last_error};
 use crate::handle::{TST_INVALID_STREAM_HANDLE, TstKlvStreamHandle, TstVideoStreamHandle};
-use srt_core::error::MuxError;
-use srt_core::mpegts::mux::{
+use tst_core::error::MuxError;
+use tst_core::mpegts::mux::{
     Config, KlvStreamHandle, KlvStreamType, ProgramConfig, StreamSpec, VideoCodec,
     VideoStreamHandle,
 };
-use srt_core::pipeline::{
+use tst_pipeline::{
     BackoffStrategy, OverflowPolicy, RawSenderConfig, ReconnectPolicy, TsFramingMode,
     SenderConfig,
 };

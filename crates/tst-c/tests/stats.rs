@@ -67,7 +67,7 @@ fn muxer_get_stats_null_pointer_returns_invalid_config() {
 #[test]
 #[cfg(target_os = "linux")]
 fn mux_sender_stats_round_trip() {
-    use srt_core::srt::ListenerBuilder;
+    use tst_srt::ListenerBuilder;
     use tstrans::config::{
         TstKlvStreamType, TstVideoCodec, tst_mux_config_add_klv_stream,
         tst_mux_config_add_program, tst_mux_config_add_video_stream, tst_mux_config_free,

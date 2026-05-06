@@ -1,6 +1,6 @@
 //! `tst_mux_sender_t` (plain) and `tst_managed_mux_sender_t` (managed).
 //!
-//! Both wrap `srt_core::pipeline::MuxSender<T>`, with T parameterized on the
+//! Both wrap `tst_pipeline::MuxSender<T>`, with T parameterized on the
 //! underlying transport. Plain uses `SrtTransport`; managed uses
 //! `ManagedTransport<SrtTransport>` with a factory that reconnects via the
 //! original URL on transport breakage.
@@ -10,9 +10,10 @@ use crate::error::{
     TstError, record_mux_error, record_sender_error, set_last_error, tst_get_last_error,
 };
 use crate::handle::{Handle, TstKlvStreamHandle, TstVideoStreamHandle};
-use srt_core::mpegts::mux::{KlvStreamHandle, VideoStreamHandle};
-use srt_core::pipeline::{ManagedTransport, MuxSender, SrtTransport};
-use srt_core::srt::config::SocketConfig;
+use tst_core::mpegts::mux::{KlvStreamHandle, VideoStreamHandle};
+use tst_pipeline::{ManagedTransport, MuxSender};
+use tst_srt::SrtTransport;
+use tst_srt::config::SocketConfig;
 
 // ------------------------------------------------------------------
 // tst_mux_sender_t (plain L1)
@@ -275,7 +276,7 @@ pub unsafe extern "C" fn tst_mux_sender_close(p: *mut TstMuxSender) {
 /// Borrow `srt_url` as a Rust string and run it through `srt_core`'s
 /// rich URL parser. Sets last-error and returns `Err(())` on any failure
 /// path; caller treats `Err(())` as "return NULL".
-pub(crate) unsafe fn parse_c_srt_url(srt_url: *const libc::c_char) -> Result<srt_core::SrtUrl, ()> {
+pub(crate) unsafe fn parse_c_srt_url(srt_url: *const libc::c_char) -> Result<tst_srt::SrtUrl, ()> {
     if srt_url.is_null() {
         set_last_error(TstError::InvalidConfig, "null srt_url");
         return Err(());
@@ -288,7 +289,7 @@ pub(crate) unsafe fn parse_c_srt_url(srt_url: *const libc::c_char) -> Result<srt
             return Err(());
         }
     };
-    srt_core::SrtUrl::parse(s).map_err(|e| {
+    tst_srt::SrtUrl::parse(s).map_err(|e| {
         set_last_error(TstError::InvalidConfig, &format!("invalid srt url: {e}"));
     })
 }
@@ -325,7 +326,7 @@ pub unsafe extern "C" fn tst_managed_mux_sender_open(
     };
     let policy = match unsafe { policy.as_ref() } {
         Some(p) => p.inner.clone(),
-        None => srt_core::pipeline::ReconnectPolicy::default(),
+        None => tst_pipeline::ReconnectPolicy::default(),
     };
     let url = match unsafe { parse_c_srt_url(srt_url) } {
         Ok(u) => u,

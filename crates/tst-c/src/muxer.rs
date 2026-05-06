@@ -1,13 +1,13 @@
 //! `tst_muxer_t` — standalone MPEG-TS muxer utility.
 //!
-//! Wraps `srt_core::mpegts::mux::Muxer`. No transport — push NALs and KLV,
+//! Wraps `tst_core::mpegts::mux::Muxer`. No transport — push NALs and KLV,
 //! pull TS bytes. The handle is internally synchronized; push_video,
 //! push_klv, and pull may be called from different threads.
 
 use crate::config::TstMuxConfig;
 use crate::error::{TstError, record_mux_error, set_last_error};
 use crate::handle::{Handle, TstKlvStreamHandle, TstVideoStreamHandle};
-use srt_core::mpegts::mux::{KlvStreamHandle, Muxer, VideoStreamHandle};
+use tst_core::mpegts::mux::{KlvStreamHandle, Muxer, VideoStreamHandle};
 
 pub struct TstMuxer {
     inner: Handle<Muxer>,

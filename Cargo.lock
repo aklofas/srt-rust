@@ -1209,24 +1209,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
-name = "srt-core"
-version = "0.0.0"
-dependencies = [
- "criterion",
- "libc",
- "log",
- "proptest",
- "secrecy",
- "srt-sys",
- "thiserror",
- "tracing",
- "tracing-test",
- "tst-core",
- "tst-pipeline",
- "url",
-]
-
-[[package]]
 name = "srt-sys"
 version = "0.0.0"
 dependencies = [
@@ -1448,10 +1430,10 @@ dependencies = [
  "cbindgen",
  "cc",
  "libc",
- "srt-core",
  "thiserror",
  "tst-core",
  "tst-pipeline",
+ "tst-srt",
 ]
 
 [[package]]
@@ -1474,6 +1456,24 @@ dependencies = [
  "proptest",
  "thiserror",
  "tst-core",
+]
+
+[[package]]
+name = "tst-srt"
+version = "0.0.0"
+dependencies = [
+ "criterion",
+ "libc",
+ "log",
+ "proptest",
+ "secrecy",
+ "srt-sys",
+ "thiserror",
+ "tracing",
+ "tracing-test",
+ "tst-core",
+ "tst-pipeline",
+ "url",
 ]
 
 [[package]]

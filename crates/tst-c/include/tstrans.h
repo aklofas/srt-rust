@@ -157,7 +157,7 @@ typedef uint32_t tst_video_stream_handle_t;
 typedef uint32_t tst_klv_stream_handle_t;
 
 /**
- * `repr(C)` mirror of `srt_core::mpegts::StreamStats`. Size 96 B.
+ * `repr(C)` mirror of `tst_core::mpegts::StreamStats`. Size 96 B.
  *
  * Layout (offsets):
  *   0: items (u64, 8 B)
@@ -192,7 +192,7 @@ typedef struct tst_stream_stats_t {
 } tst_stream_stats_t;
 
 /**
- * `repr(C)` mirror of `srt_core::pipeline::MuxSenderStats`. Size 6188 B.
+ * `repr(C)` mirror of `tst_pipeline::MuxSenderStats`. Size 6188 B.
  */
 typedef struct tst_mux_sender_stats_t {
   uint64_t bytes_sent;
@@ -209,7 +209,7 @@ typedef struct tst_mux_sender_stats_t {
 } tst_mux_sender_stats_t;
 
 /**
- * `repr(C)` mirror of `srt_core::mpegts::mux::MuxerStats`. Size 6172 B.
+ * `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6172 B.
  */
 typedef struct tst_muxer_stats_t {
   uint64_t ts_packets_emitted;
@@ -224,7 +224,7 @@ typedef struct tst_muxer_stats_t {
 } tst_muxer_stats_t;
 
 /**
- * `repr(C)` mirror of `srt_core::pipeline::RawSenderStats`. Size 16 B.
+ * `repr(C)` mirror of `tst_pipeline::RawSenderStats`. Size 16 B.
  */
 typedef struct tst_raw_sender_stats_t {
   uint64_t bytes_sent;
@@ -232,7 +232,7 @@ typedef struct tst_raw_sender_stats_t {
 } tst_raw_sender_stats_t;
 
 /**
- * Public-ABI mirror of `srt_core::pipeline::SenderStats`. Same fields,
+ * Public-ABI mirror of `tst_pipeline::SenderStats`. Same fields,
  * same units. Caller passes a pointer to a stack-allocated struct;
  * `tst_sender_get_stats` fills it in.
  */

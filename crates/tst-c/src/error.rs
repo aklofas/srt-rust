@@ -66,8 +66,8 @@ pub unsafe extern "C" fn tst_get_last_error_str() -> *const libc::c_char {
     LAST_ERROR.with(|cell| cell.borrow().1.as_ptr())
 }
 
-use srt_core::error::MuxError;
-use srt_core::pipeline::{MuxSenderError, TransportError, SenderError};
+use tst_core::error::MuxError;
+use tst_pipeline::{MuxSenderError, TransportError, SenderError};
 
 /// Map a `MuxError` to a code + message.
 #[allow(dead_code)]

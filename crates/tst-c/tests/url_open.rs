@@ -12,7 +12,7 @@
 
 #![allow(unused_unsafe)]
 
-use srt_core::srt::ListenerBuilder;
+use tst_srt::ListenerBuilder;
 use tstrans::config::{
     TstKlvStreamType, TstVideoCodec, tst_mux_config_add_klv_stream, tst_mux_config_add_program,
     tst_mux_config_add_video_stream, tst_mux_config_free, tst_mux_config_new,
@@ -324,10 +324,10 @@ fn ts_sender_passphrase_handshake_ok() {
     let (ok_tx, ok_rx) = mpsc::channel::<bool>();
 
     let listener_thread = thread::spawn(move || {
-        use srt_core::srt::Passphrase;
+        use tst_srt::Passphrase;
         let mut listener = ListenerBuilder::new()
             .passphrase(Passphrase::new("hunter-too-long-thanks").unwrap())
-            .key_length(srt_core::KeyLength::Aes128)
+            .key_length(tst_srt::KeyLength::Aes128)
             .recv_timeout(Duration::from_secs(5))
             .bind("127.0.0.1:0")
             .expect("bind");
@@ -621,7 +621,7 @@ fn ts_sender_packetfilter_url_open_succeeds() {
     let (ok_tx, ok_rx) = mpsc::channel::<bool>();
 
     let listener_thread = thread::spawn(move || {
-        use srt_core::srt::PacketFilter;
+        use tst_srt::PacketFilter;
         let mut listener = ListenerBuilder::new()
             .packet_filter(PacketFilter::new("fec,cols:10,rows:5,arq:onreq").unwrap())
             .recv_timeout(Duration::from_secs(5))

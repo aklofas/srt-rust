@@ -1,0 +1,49 @@
+[package]
+name        = "tst-srt"
+description = "TS Transformer SRT transport: safe libsrt wrapper, Socket / Listener / Builder, URL parsing, Transport + RecvTransport impls."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[lib]
+crate-type = ["rlib"]
+doctest    = false
+
+[features]
+default = ["log", "mbedtls"]
+log     = ["dep:log"]
+mbedtls = ["srt-sys/mbedtls"]
+
+[dependencies]
+srt-sys       = { path = "../srt-sys", default-features = false }
+tst-core      = { path = "../tst-core" }
+libc      = { workspace = true }
+thiserror = { workspace = true }
+secrecy   = { workspace = true }
+url          = "2"
+log          = { workspace = true, optional = true }
+# Used for non-fatal warnings (e.g. ms-vs-µs URL pitfall in srt::url).
+# Default features include `attributes`/`std`. We only need `std`;
+# consumers attach their own subscriber.
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+libc          = { workspace = true }
+proptest      = { workspace = true }
+criterion     = { workspace = true }
+tst-pipeline  = { path = "../tst-pipeline" }
+# Used by integration tests that read raw libsrt socket flags
+# (e.g. SRTO_SENDER) via Socket::raw_handle().
+srt-sys   = { path = "../srt-sys", default-features = false }
+# Captures `tracing` events in tests for assertion.
+# `no-env-filter` makes the subscriber accept events from any crate (not just
+# the test binary), which is needed for integration tests that assert on warns
+# emitted by srt-core library code.
+tracing-test = { version = "0.2", features = ["no-env-filter"] }
+
+[[bench]]
+name    = "mux_throughput"
+harness = false

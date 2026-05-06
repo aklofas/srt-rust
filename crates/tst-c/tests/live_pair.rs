@@ -8,7 +8,7 @@
 //! integration test can call the crate's Rust API directly — the same
 //! `unsafe extern "C"` functions exported to C consumers.
 
-use srt_core::srt::ListenerBuilder;
+use tst_srt::ListenerBuilder;
 use tstrans::config::{TstKlvStreamType, TstMuxConfig, TstVideoCodec};
 use tstrans::config::{
     tst_mux_config_add_klv_stream, tst_mux_config_add_program, tst_mux_config_add_video_stream,

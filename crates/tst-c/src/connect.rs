@@ -5,9 +5,10 @@
 //! an `SrtTransport`. The plain senders use the result directly; the
 //! managed senders capture (host, port, cfg) in the reconnect closure.
 
-use srt_core::pipeline::{SrtTransport, TransportError};
-use srt_core::srt::options::Role;
-use srt_core::srt::{Socket, SocketConfig};
+use tst_pipeline::TransportError;
+use tst_srt::SrtTransport;
+use tst_srt::options::Role;
+use tst_srt::{Socket, SocketConfig};
 use std::time::Duration;
 
 /// MuxSender-pipeline default for `SRTO_CONNTIMEO`. libsrt's default is 3s,

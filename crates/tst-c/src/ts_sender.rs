@@ -9,9 +9,10 @@ use crate::error::{
 };
 use crate::handle::Handle;
 use crate::mux_sender::parse_c_srt_url;
-use srt_core::pipeline::{ManagedTransport, SrtTransport, Sender, SenderStats};
+use tst_pipeline::{ManagedTransport, Sender, SenderStats};
+use tst_srt::SrtTransport;
 
-/// Public-ABI mirror of `srt_core::pipeline::SenderStats`. Same fields,
+/// Public-ABI mirror of `tst_pipeline::SenderStats`. Same fields,
 /// same units. Caller passes a pointer to a stack-allocated struct;
 /// `tst_sender_get_stats` fills it in.
 #[repr(C)]
@@ -61,13 +62,13 @@ pub unsafe extern "C" fn tst_sender_open(
 ) -> *mut TstSender {
     let cfg = match unsafe { cfg.as_ref() } {
         Some(c) => c.inner.clone(),
-        None => srt_core::pipeline::SenderConfig::default(),
+        None => tst_pipeline::SenderConfig::default(),
     };
     let url = match unsafe { parse_c_srt_url(srt_url) } {
         Ok(u) => u,
         Err(()) => return std::ptr::null_mut(),
     };
-    let mut socket_cfg = srt_core::srt::config::SocketConfig::default();
+    let mut socket_cfg = tst_srt::config::SocketConfig::default();
     url.overlay.apply_to_socket(&mut socket_cfg);
     let transport = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
         Ok(t) => t,
@@ -190,17 +191,17 @@ pub unsafe extern "C" fn tst_managed_sender_open(
 ) -> *mut TstManagedSender {
     let cfg = match unsafe { cfg.as_ref() } {
         Some(c) => c.inner.clone(),
-        None => srt_core::pipeline::SenderConfig::default(),
+        None => tst_pipeline::SenderConfig::default(),
     };
     let policy = match unsafe { policy.as_ref() } {
         Some(p) => p.inner.clone(),
-        None => srt_core::pipeline::ReconnectPolicy::default(),
+        None => tst_pipeline::ReconnectPolicy::default(),
     };
     let url = match unsafe { parse_c_srt_url(srt_url) } {
         Ok(u) => u,
         Err(()) => return std::ptr::null_mut(),
     };
-    let mut socket_cfg = srt_core::srt::config::SocketConfig::default();
+    let mut socket_cfg = tst_srt::config::SocketConfig::default();
     url.overlay.apply_to_socket(&mut socket_cfg);
 
     let initial = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {

@@ -1,6 +1,6 @@
 [package]
 name        = "tst-c"
-description = "Stable C ABI binding to the srt-core sender pipeline"
+description = "Stable C ABI binding to the tst-srt sender pipeline"
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -15,10 +15,10 @@ doctest    = false
 
 [features]
 default = ["mbedtls"]
-mbedtls = ["srt-core/mbedtls"]
+mbedtls = ["tst-srt/mbedtls"]
 
 [dependencies]
-srt-core      = { path = "../srt-core", default-features = false }
+tst-srt       = { path = "../tst-srt", default-features = false }
 tst-core      = { path = "../tst-core" }
 tst-pipeline  = { path = "../tst-pipeline" }
 libc      = { workspace = true }

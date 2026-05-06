@@ -16,7 +16,7 @@ use libc::c_char;
 /// PSI + observed streams.
 pub const TST_STATS_MAX_STREAMS: usize = 64;
 
-/// `repr(C)` mirror of `srt_core::mpegts::StreamStats`. Size 96 B.
+/// `repr(C)` mirror of `tst_core::mpegts::StreamStats`. Size 96 B.
 ///
 /// Layout (offsets):
 ///   0: items (u64, 8 B)
@@ -66,7 +66,7 @@ impl Default for TstStreamStats {
 }
 
 /// Copy `src` into the C struct, truncating label to 63 bytes + NUL.
-pub fn fill_stream_stats(dst: &mut TstStreamStats, src: &srt_core::mpegts::StreamStats) {
+pub fn fill_stream_stats(dst: &mut TstStreamStats, src: &tst_core::mpegts::StreamStats) {
     dst.items = src.items;
     dst.bytes = src.bytes;
     dst.discontinuities = src.discontinuities;
@@ -85,7 +85,7 @@ pub fn fill_stream_stats(dst: &mut TstStreamStats, src: &srt_core::mpegts::Strea
     }
 }
 
-/// `repr(C)` mirror of `srt_core::pipeline::RawSenderStats`. Size 16 B.
+/// `repr(C)` mirror of `tst_pipeline::RawSenderStats`. Size 16 B.
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
 pub struct TstRawSenderStats {
@@ -93,8 +93,8 @@ pub struct TstRawSenderStats {
     pub packets_sent: u64,
 }
 
-impl From<&srt_core::pipeline::RawSenderStats> for TstRawSenderStats {
-    fn from(s: &srt_core::pipeline::RawSenderStats) -> Self {
+impl From<&tst_pipeline::RawSenderStats> for TstRawSenderStats {
+    fn from(s: &tst_pipeline::RawSenderStats) -> Self {
         Self {
             bytes_sent: s.bytes_sent,
             packets_sent: s.packets_sent,
@@ -102,7 +102,7 @@ impl From<&srt_core::pipeline::RawSenderStats> for TstRawSenderStats {
     }
 }
 
-/// `repr(C)` mirror of `srt_core::mpegts::mux::MuxerStats`. Size 6172 B.
+/// `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6172 B.
 #[repr(C)]
 pub struct TstMuxerStats {
     pub ts_packets_emitted: u64,
@@ -127,7 +127,7 @@ impl Default for TstMuxerStats {
     }
 }
 
-/// `repr(C)` mirror of `srt_core::pipeline::MuxSenderStats`. Size 6188 B.
+/// `repr(C)` mirror of `tst_pipeline::MuxSenderStats`. Size 6188 B.
 #[repr(C)]
 pub struct TstMuxSenderStats {
     pub bytes_sent: u64,
@@ -160,7 +160,7 @@ impl Default for TstMuxSenderStats {
 /// Returns `(count, truncated)`. Sorted by PID (BTreeMap iteration order).
 pub fn fill_per_stream(
     dst: &mut [TstStreamStats; TST_STATS_MAX_STREAMS],
-    src: &std::collections::BTreeMap<u16, srt_core::mpegts::StreamStats>,
+    src: &std::collections::BTreeMap<u16, tst_core::mpegts::StreamStats>,
 ) -> (u32, bool) {
     let total = src.len();
     let n = total.min(TST_STATS_MAX_STREAMS);

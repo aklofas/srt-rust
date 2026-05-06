@@ -72,6 +72,13 @@ pub struct DemuxerOptions {
     pub pes_cap_total: Option<usize>,
     pub klv_link_overrides: Vec<(u16, u16)>,
     pub stream_kind_overrides: HashMap<u16, StreamKind>,
+    /// When `true`, PSI section reassembly accepts continuation packets
+    /// across continuity-counter jumps (today's permissive behavior —
+    /// section either passes by luck or fails CRC). Default `false` is
+    /// strict-correctness: drop the partial section on jump and emit
+    /// `NonConformantIssue::PsiCcDiscontinuity`. Matches ffmpeg
+    /// `mpegts.c:3118-3142`.
+    pub lenient_psi_reassembly: bool,
 }
 
 /// Per-program state tracked after a PAT entry is discovered and a PMT
@@ -1438,6 +1445,15 @@ mod tests {
         let d = DemuxerBuilder::new().build();
         assert_eq!(d.options.strict, StrictMode::Off);
         assert_eq!(d.options.pes_cap_per_pid, None);
+    }
+
+    #[test]
+    fn demuxer_options_default_strict_psi_reassembly() {
+        let opts = DemuxerOptions::default();
+        assert!(
+            !opts.lenient_psi_reassembly,
+            "default is strict (per ffmpeg parity); opt-in lenient via lenient_psi_reassembly=true"
+        );
     }
 
     #[test]

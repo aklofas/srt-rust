@@ -161,24 +161,21 @@ mod sps_tests {
     fn parse_sps_surfaces_profile_compatibility_flags() {
         // Real x265-emitted Main10 fixture: x265 sets
         // `general_profile_idc = 2` (Main10) AND `profile_compatibility_flags`
-        // with at least bit 2 (Main10) set so consumers can detect Main10
-        // compatibility. ffmpeg's `hevc/ps.c:267-270` keys off this bit
-        // pattern to disambiguate Main vs Main10 vs Main10-Intra.
+        // with bit 2 set so consumers can detect Main10 compatibility.
+        // ffmpeg's `hevc/ps.c:267-270` keys off this bit pattern to
+        // disambiguate Main vs Main10 vs Main10-Intra.
         //
         // Bit positions are MSB-first per H.265 §7.3.3: spec-bit `j` lives
-        // at `flags & (1 << (31 - j))`. So bit 2 = `1 << 29` = `0x20000000`.
-        // Observed values from this real x265-emitted Main10/PQ/Range-Ext
-        // capture: `general_profile_idc = 4` (Format Range Extensions) and
-        // `profile_compatibility_flags = 0x08000000` — that's bit `j=4` set
-        // (MSB-first per §7.3.3, so spec-bit `j=4` lives at `1 << 27`).
+        // at `flags & (1 << (31 - j))`. Bit j=2 (Main10) → `1 << 29` =
+        // `0x20000000`. This is what x265 emits for `profile=main10`.
         // ffmpeg's `hevc/ps.c:267-270` reads the same flag word.
         let sps = parse_sps(SPS_1080P_MAIN10_50).expect("parse SPS");
-        assert_eq!(sps.general_profile_idc, 4);
-        assert_eq!(sps.general_profile_compatibility_flags, 0x0800_0000);
+        assert_eq!(sps.general_profile_idc, 2);
+        assert_eq!(sps.general_profile_compatibility_flags, 0x2000_0000);
         assert_ne!(
-            sps.general_profile_compatibility_flags & (1u32 << 27),
+            sps.general_profile_compatibility_flags & (1u32 << 29),
             0,
-            "spec-bit 4 (Range Extensions) must be set"
+            "spec-bit 2 (Main10) must be set"
         );
         assert!(sps.general_progressive_source_flag);
         assert!(!sps.general_interlaced_source_flag);

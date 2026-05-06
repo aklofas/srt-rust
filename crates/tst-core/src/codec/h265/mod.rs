@@ -335,6 +335,107 @@ mod sps_tests {
             "expected ReservedValue, got {result:?}"
         );
     }
+
+    /// Synthetic SPS that walks correctly all the way through
+    /// `num_short_term_ref_pic_sets` and writes a non-zero value there.
+    /// All flag bits between `bit_depth_chroma_minus8` and
+    /// `num_short_term_ref_pic_sets` are written as zero so the parser
+    /// reaches that field cleanly.
+    ///
+    /// Per H.265 §7.3.2.2 SPS syntax with `max_sub_layers_minus1 = 0`.
+    fn h265_sps_with_num_st_rps(num_short_term_ref_pic_sets: u32) -> Vec<u8> {
+        let mut bw = BitWriter::new();
+
+        // §7.3.2.2 SPS header.
+        bw.write(0, 4); // sps_video_parameter_set_id
+        bw.write(0, 3); // sps_max_sub_layers_minus1 = 0
+        bw.write(0, 1); // sps_temporal_id_nesting_flag
+
+        // §7.3.3 profile_tier_level(max_sub_layers_minus1 = 0): 96 bits.
+        bw.write(0, 2); // general_profile_space
+        bw.write(1, 1); // general_tier_flag = 1 (High tier — unique signal for the test)
+        bw.write(2, 5); // general_profile_idc = 2 (Main10)
+        // profile_compatibility_flags: bit 2 set (Main10 compatible) per §7.3.3
+        // bit-MSB-first encoding (spec-bit j lives at 1 << (31 - j)).
+        bw.write(0x2000_0000, 32);
+        // 48 constraint/reserved bits; set general_progressive_source_flag (the
+        // first bit of those 48) so we can verify it round-trips.
+        bw.write(1, 1); // general_progressive_source_flag = 1
+        bw.write(0, 31); // remaining 31 bits of first u32
+        bw.write(0, 16); // remaining 16 bits
+        bw.write(150, 8); // general_level_idc = 150 (Level 5.0)
+
+        // §7.3.2.2 continues.
+        bw.write_ue(0); // sps_seq_parameter_set_id
+        bw.write_ue(1); // chroma_format_idc = 1 (4:2:0)
+        bw.write_ue(1920); // pic_width_in_luma_samples
+        bw.write_ue(1088); // pic_height_in_luma_samples
+        bw.write(1, 1); // conformance_window_flag = 1
+        bw.write_ue(0); // conf_win_left_offset
+        bw.write_ue(0); // conf_win_right_offset
+        bw.write_ue(0); // conf_win_top_offset
+        bw.write_ue(4); // conf_win_bottom_offset = 4 chroma units → 8 luma (1088→1080)
+        bw.write_ue(2); // bit_depth_luma_minus8 = 2 (10-bit)
+        bw.write_ue(2); // bit_depth_chroma_minus8 = 2 (10-bit)
+        bw.write_ue(4); // log2_max_pic_order_cnt_lsb_minus4
+        bw.write(0, 1); // sps_sub_layer_ordering_info_present_flag = 0
+        // Single sub_layer_ordering_info loop (1 iteration when flag = 0).
+        bw.write_ue(0); // max_dec_pic_buffering_minus1[0]
+        bw.write_ue(0); // max_num_reorder_pics[0]
+        bw.write_ue(0); // max_latency_increase_plus1[0]
+        // Six more ue(v) values up to scaling_list_enabled_flag.
+        bw.write_ue(0); // log2_min_luma_coding_block_size_minus3
+        bw.write_ue(0); // log2_diff_max_min_luma_coding_block_size
+        bw.write_ue(0); // log2_min_luma_transform_block_size_minus2
+        bw.write_ue(0); // log2_diff_max_min_luma_transform_block_size
+        bw.write_ue(0); // max_transform_hierarchy_depth_inter
+        bw.write_ue(0); // max_transform_hierarchy_depth_intra
+        bw.write(0, 1); // scaling_list_enabled_flag = 0
+        bw.write(0, 1); // amp_enabled_flag = 0
+        bw.write(0, 1); // sample_adaptive_offset_enabled_flag = 0
+        bw.write(0, 1); // pcm_enabled_flag = 0
+        bw.write_ue(num_short_term_ref_pic_sets); // <-- value under test
+
+        bw.bytes
+    }
+
+    /// Audit Critical #8 partial fix: instead of bailing
+    /// `Err(UnsupportedProfile)` on `num_short_term_ref_pic_sets > 0` (the
+    /// common case for x265 / svt-hevc / nvenc output), the parser now
+    /// returns `Ok(H265Sps { ..., frame_rate: None, color: None })` so
+    /// structural fields survive. The full RPS state-machine walk
+    /// (~100 LOC mirroring `ff_hevc_decode_short_term_rps`) is deferred —
+    /// when it lands, this test should be tightened to assert the VUI
+    /// fields are populated.
+    #[test]
+    fn parse_sps_returns_partial_when_num_short_term_ref_pic_sets_gt_zero() {
+        let rbsp = h265_sps_with_num_st_rps(1);
+        let sps = parse_sps(&rbsp).expect("partial parse should succeed");
+
+        // Structural fields populated correctly.
+        assert_eq!(sps.width, 1920);
+        assert_eq!(sps.height, 1080);
+        assert_eq!(sps.coded_width(), 1920);
+        assert_eq!(sps.coded_height(), 1088);
+        assert_eq!(sps.crop_bottom, 8);
+        assert_eq!(sps.bit_depth_luma, 10);
+        assert_eq!(sps.bit_depth_chroma, 10);
+        assert_eq!(sps.chroma_format, ChromaFormat::Yuv420);
+        assert_eq!(sps.general_profile_idc, 2);
+        assert!(sps.general_tier_flag);
+        assert_eq!(sps.general_level_idc, 150);
+        assert_ne!(
+            sps.general_profile_compatibility_flags & (1u32 << 29),
+            0,
+            "Main10 compatibility bit (spec-bit 2 → 1<<29 MSB-first) must round-trip"
+        );
+        assert!(sps.general_progressive_source_flag);
+
+        // VUI-derived fields are None — the bit cursor stops at
+        // `num_short_term_ref_pic_sets > 0` and never reaches VUI.
+        assert_eq!(sps.frame_rate, None);
+        assert_eq!(sps.color, None);
+    }
 }
 
 #[cfg(test)]

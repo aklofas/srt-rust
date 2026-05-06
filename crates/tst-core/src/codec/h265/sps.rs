@@ -4,6 +4,21 @@ use super::bitreader::BitReader;
 use super::{profile_tier_level, vui};
 use crate::codec::{ChromaFormat, ColorInfo, ParseError, Rational, validate_bit_depth_minus8};
 
+/// Parsed H.265 SPS fields. Populated by [`parse_sps`].
+///
+/// **VUI-derived fields (`frame_rate`, `color`) are `None` when the SPS has
+/// `num_short_term_ref_pic_sets > 0`** — the common case for real
+/// x265 / svt-hevc / nvenc output, which always emits at least one short-term
+/// reference picture set. The parser walks the PTL, conformance window, and
+/// bit-depth fields successfully but does not yet decode the short-term
+/// reference-pic-set state machine (audit Critical #8 partial fix; the full
+/// ~100-LOC RPS walk that mirrors `ff_hevc_decode_short_term_rps` is pending —
+/// see `docs/deferred-features.md`).
+///
+/// Consumers that need VUI fields for streams with RPS will have to wait for
+/// the full walk; structural fields (`width` / `height` / `crop_*` /
+/// `general_*` PTL flags / `bit_depth_*` / `chroma_format`) are populated
+/// correctly in either path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H265Sps {
     pub sps_seq_parameter_set_id: u8,
@@ -59,6 +74,25 @@ impl H265Sps {
     /// (luma samples). Equal to `height + crop_top + crop_bottom`.
     pub fn coded_height(&self) -> u32 {
         self.height + self.crop_top + self.crop_bottom
+    }
+}
+
+/// Map `chroma_format_idc` (+ `separate_colour_plane_flag` for 4:4:4) to
+/// the typed [`ChromaFormat`]. Per H.265 §7.4.2.1.1, valid values are
+/// 0..=3; any other value is reserved.
+fn chroma_format_from(
+    chroma_format_idc: u32,
+    _separate_colour_plane_flag: bool,
+) -> Result<ChromaFormat, ParseError> {
+    match chroma_format_idc {
+        0 => Ok(ChromaFormat::Monochrome),
+        1 => Ok(ChromaFormat::Yuv420),
+        2 => Ok(ChromaFormat::Yuv422),
+        3 => Ok(ChromaFormat::Yuv444),
+        other => Err(ParseError::ReservedValue {
+            field: "chroma_format_idc",
+            value: other,
+        }),
     }
 }
 
@@ -156,8 +190,40 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
 
     let num_short_term_ref_pic_sets = br.read_ue()?;
     if num_short_term_ref_pic_sets > 0 {
-        return Err(ParseError::UnsupportedProfile {
-            profile_idc: ptl.general_profile_idc,
+        // Audit Critical #8 partial fix: real x265 / svt-hevc / nvenc output
+        // always has at least one short-term RPS. Decoding the RPS state
+        // machine is deferred (~100 LOC mirroring
+        // `ff_hevc_decode_short_term_rps`); for now, return a partial Sps
+        // with all structural fields populated and VUI-derived fields
+        // (`frame_rate`, `color`) as `None` because the bit cursor is no
+        // longer aligned for the post-RPS walk.
+        let chroma_format = chroma_format_from(chroma_format_idc, separate_colour_plane_flag)?;
+        let width = pic_width_in_luma_samples.saturating_sub(crop_x_left + crop_x_right);
+        let height = pic_height_in_luma_samples.saturating_sub(crop_y_top + crop_y_bottom);
+        return Ok(H265Sps {
+            sps_seq_parameter_set_id,
+            sps_video_parameter_set_id,
+            width,
+            height,
+            general_profile_idc: ptl.general_profile_idc,
+            general_tier_flag: ptl.general_tier_flag,
+            general_level_idc: ptl.general_level_idc,
+            general_profile_compatibility_flags: ptl.general_profile_compatibility_flags,
+            general_progressive_source_flag: ptl.general_progressive_source_flag,
+            general_interlaced_source_flag: ptl.general_interlaced_source_flag,
+            general_non_packed_constraint_flag: ptl.general_non_packed_constraint_flag,
+            general_frame_only_constraint_flag: ptl.general_frame_only_constraint_flag,
+            bit_depth_luma,
+            bit_depth_chroma,
+            chroma_format,
+            max_sub_layers_minus1,
+            frame_rate: None,
+            color: None,
+            crop_left: crop_x_left,
+            crop_right: crop_x_right,
+            crop_top: crop_y_top,
+            crop_bottom: crop_y_bottom,
+            raw_rbsp: rbsp.to_vec(),
         });
     }
 
@@ -183,19 +249,7 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
         }
     };
 
-    let chroma_format = match chroma_format_idc {
-        0 => ChromaFormat::Monochrome,
-        1 => ChromaFormat::Yuv420,
-        2 => ChromaFormat::Yuv422,
-        3 if !separate_colour_plane_flag => ChromaFormat::Yuv444,
-        3 => ChromaFormat::Yuv444,
-        other => {
-            return Err(ParseError::ReservedValue {
-                field: "chroma_format_idc",
-                value: other,
-            });
-        }
-    };
+    let chroma_format = chroma_format_from(chroma_format_idc, separate_colour_plane_flag)?;
 
     let raw_w = pic_width_in_luma_samples;
     let raw_h = pic_height_in_luma_samples;

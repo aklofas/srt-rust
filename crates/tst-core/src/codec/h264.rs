@@ -30,8 +30,34 @@ pub struct H264Sps {
     pub fixed_frame_rate: bool,
     pub has_b_frames: bool,
     pub color: Option<ColorInfo>,
+    /// Luma-sample crop offsets applied to the coded dimensions to produce
+    /// `width`/`height`. Per H.264 §6.4: stored crop offsets are in chroma
+    /// units; we surface them post-multiplication by `SubWidthC` /
+    /// `SubHeightC * (2 - frame_mbs_only_flag)`, so
+    /// `coded_width = width + crop_left + crop_right` (and similarly for
+    /// height). Useful for sizing GPU buffers and for matching crops
+    /// against container-level conformance-window descriptors. All four
+    /// fields are zero when the SPS has no `frame_cropping_flag` set.
+    pub crop_left: u32,
+    pub crop_right: u32,
+    pub crop_top: u32,
+    pub crop_bottom: u32,
     /// The original RBSP bytes as supplied by the caller.
     pub raw_rbsp: Vec<u8>,
+}
+
+impl H264Sps {
+    /// Coded picture width before `frame_crop` is applied (luma samples).
+    /// Equal to `width + crop_left + crop_right`.
+    pub fn coded_width(&self) -> u32 {
+        self.width + self.crop_left + self.crop_right
+    }
+
+    /// Coded picture height before `frame_crop` is applied (luma samples).
+    /// Equal to `height + crop_top + crop_bottom`.
+    pub fn coded_height(&self) -> u32 {
+        self.height + self.crop_top + self.crop_bottom
+    }
 }
 
 /// Parsed H.264 Picture Parameter Set.
@@ -208,6 +234,39 @@ fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> Result<H264Sps, ParseError> 
         h264_reader::nal::sps::FrameMbsFlags::Frames
     );
 
+    // Convert h264-reader's chroma-unit crop offsets into luma samples per
+    // H.264 §6.4. step_x = SubWidthC, step_y = SubHeightC * (2 -
+    // frame_mbs_only_flag) — matches the math in
+    // `SeqParameterSet::pixel_dimensions` so our (coded - cropped) reverses
+    // exactly what the post-crop dimensions discarded.
+    let mul: u32 = match p.frame_mbs_flags {
+        h264_reader::nal::sps::FrameMbsFlags::Fields { .. } => 2,
+        h264_reader::nal::sps::FrameMbsFlags::Frames => 1,
+    };
+    let vsub: u32 = if p.chroma_info.chroma_format == h264_reader::nal::sps::ChromaFormat::YUV420 {
+        1
+    } else {
+        0
+    };
+    let hsub: u32 = if p.chroma_info.chroma_format == h264_reader::nal::sps::ChromaFormat::YUV420
+        || p.chroma_info.chroma_format == h264_reader::nal::sps::ChromaFormat::YUV422
+    {
+        1
+    } else {
+        0
+    };
+    let step_x: u32 = 1 << hsub;
+    let step_y: u32 = mul << vsub;
+    let (crop_left, crop_right, crop_top, crop_bottom) = match p.frame_cropping.as_ref() {
+        Some(c) => (
+            c.left_offset.saturating_mul(step_x),
+            c.right_offset.saturating_mul(step_x),
+            c.top_offset.saturating_mul(step_y),
+            c.bottom_offset.saturating_mul(step_y),
+        ),
+        None => (0, 0, 0, 0),
+    };
+
     Ok(H264Sps {
         seq_parameter_set_id: p.seq_parameter_set_id.id(),
         width,
@@ -224,6 +283,10 @@ fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> Result<H264Sps, ParseError> 
         fixed_frame_rate: extract_fixed_frame_rate(p),
         has_b_frames: extract_has_b_frames(p),
         color: extract_color(p),
+        crop_left,
+        crop_right,
+        crop_top,
+        crop_bottom,
         raw_rbsp: rbsp.to_vec(),
     })
 }
@@ -369,6 +432,65 @@ mod tests {
     fn parse_sps_preserves_raw_rbsp() {
         let sps = parse_sps(SPS_1080P_HIGH40).expect("parse");
         assert_eq!(sps.raw_rbsp, SPS_1080P_HIGH40);
+    }
+
+    #[test]
+    fn parse_sps_surfaces_frame_crop_offsets_invariant() {
+        // Invariant: post-crop dims + crop offsets reconstruct the coded
+        // dimensions exactly. Holds whether or not the fixture has
+        // frame_cropping_flag set (uncropped → all four offsets are zero).
+        for bytes in [SPS_1080P_HIGH40, SPS_720P_MAIN31] {
+            let sps = parse_sps(bytes).expect("parse");
+            assert_eq!(
+                sps.coded_width(),
+                sps.width + sps.crop_left + sps.crop_right,
+                "coded_width helper must agree with field arithmetic"
+            );
+            assert_eq!(
+                sps.coded_height(),
+                sps.height + sps.crop_top + sps.crop_bottom,
+                "coded_height helper must agree with field arithmetic"
+            );
+            // Coded dims are always macroblock-aligned (16x16) — H.264
+            // pic_width_in_mbs × pic_height_in_map_units.
+            assert_eq!(sps.coded_width() % 16, 0, "coded_width must be MB-aligned");
+            assert_eq!(
+                sps.coded_height() % 16,
+                0,
+                "coded_height must be MB-aligned"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_sps_1080p_has_bottom_crop() {
+        // The 1080p x264 fixture is coded as 1920×1088 (68 MB rows) and
+        // signals frame_cropping_flag with bottom_offset that lops off the
+        // 8 extra luma samples. crop_bottom is in chroma units; 4:2:0
+        // SubHeightC=2 with frame_mbs_only=1 gives step_y=2 → 4×2=8 luma.
+        let sps = parse_sps(SPS_1080P_HIGH40).expect("parse");
+        assert_eq!(sps.width, 1920);
+        assert_eq!(sps.height, 1080);
+        assert_eq!(sps.coded_width(), 1920);
+        assert_eq!(sps.coded_height(), 1088);
+        assert_eq!(sps.crop_left, 0);
+        assert_eq!(sps.crop_right, 0);
+        assert_eq!(sps.crop_top, 0);
+        assert_eq!(sps.crop_bottom, 8);
+    }
+
+    #[test]
+    fn parse_sps_720p_has_no_crop() {
+        // 1280×720 = 80×45 macroblocks — no crop needed; SPS likely omits
+        // frame_cropping_flag entirely. Confirm all four offsets are zero
+        // and coded == post-crop.
+        let sps = parse_sps(SPS_720P_MAIN31).expect("parse");
+        assert_eq!(sps.crop_left, 0);
+        assert_eq!(sps.crop_right, 0);
+        assert_eq!(sps.crop_top, 0);
+        assert_eq!(sps.crop_bottom, 0);
+        assert_eq!(sps.coded_width(), sps.width);
+        assert_eq!(sps.coded_height(), sps.height);
     }
 
     #[test]

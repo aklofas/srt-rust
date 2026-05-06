@@ -163,19 +163,6 @@ pub(crate) fn write_subtitle_pes(
     }
 }
 
-/// Write a complete DVB teletext PES packet per ETSI EN 300 472 §4.2.
-///
-/// - 45-byte PES header total: `start_code(3) + stream_id(1) + length(2) +
-///   flags1(1) + flags2(1) + PES_header_data_length(1) + PTS(5) +
-///   stuffing(31×0xFF)`.
-/// - `PES_header_data_length = 0x24` (36 — covers 5 PTS bytes + 31 stuffing
-///   bytes).
-/// - `PES_packet_length = (N × 184) − 6`, where
-///   `N = ceil((45 + payload.len()) / 184)`. The PES packet is exactly
-///   `N × 184` bytes (filling exactly N TS packets' worth of PES payload
-///   area), with `0xFF` stuffing in the tail past `payload`.
-/// - `data_alignment_indicator = 1` (every PES carries one logical teletext
-///   data unit).
 /// Write a complete DVB teletext PES packet per ETSI EN 300 472 §4.2 + §4.4.
 ///
 /// - 45-byte PES header total: `start_code(3) + stream_id(1) + length(2) +

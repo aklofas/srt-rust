@@ -81,18 +81,35 @@ fn dvb_teletext_pes_uses_45_byte_header_with_stuffing() {
             i + 14
         );
     }
-    // Caller payload starts at byte 45.
+    // Caller payload starts at byte 45. No auto-prepend: payload[0]=0x10 is in
+    // 0x10..=0x1F so no extra data_identifier byte is inserted.
     assert_eq!(&pes_full[45..45 + payload.len()], &payload[..]);
-    // Bytes after caller payload, up to total_pes_len, must be 0xFF stuffing
-    // (PES_data_field tail per EN 300 472 §4.2).
-    for (i, &b) in pes_full[45 + payload.len()..total_pes_len]
-        .iter()
-        .enumerate()
-    {
+    // Bytes after caller payload, up to total_pes_len, must be spec-conformant
+    // stuffing_data_units per EN 300 472 §4.4: each unit is 46 bytes —
+    // [data_unit_id=0xFF, data_unit_length=0x2C, 0x00 × 44].
+    // Input: 47 bytes; header: 45; total useful: 92; N×184 = 184; tail: 92 bytes.
+    // 92 / 46 = 2 exactly → two whole stuffing_data_units.
+    let tail = &pes_full[45 + payload.len()..total_pes_len];
+    assert_eq!(
+        tail.len(),
+        92,
+        "tail must be 92 bytes (2 × 46-byte stuffing units)"
+    );
+    for (unit_idx, unit) in tail.chunks_exact(46).enumerate() {
         assert_eq!(
-            b, 0xFF,
-            "PES tail stuffing byte at offset {} must be 0xFF",
-            i
+            unit[0], 0xFF,
+            "stuffing_data_unit[{}] data_unit_id must be 0xFF",
+            unit_idx
+        );
+        assert_eq!(
+            unit[1], 0x2C,
+            "stuffing_data_unit[{}] data_unit_length must be 44 (0x2C)",
+            unit_idx
+        );
+        assert!(
+            unit[2..].iter().all(|&b| b == 0x00),
+            "stuffing_data_unit[{}] padding bytes must be 0x00",
+            unit_idx
         );
     }
 }

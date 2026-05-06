@@ -83,10 +83,16 @@ fn roundtrip_dvb_subtitling_payload_byte_identical() {
 #[test]
 fn roundtrip_dvb_teletext_payload_prefixes_pes_with_tail_stuffing() {
     // EN 300 472 §4.2 mandates a 45-byte stuffed PES header and a PES that
-    // is exactly N×184 bytes long — the muxer pads the tail with 0xFF
-    // stuffing to reach that boundary. The demuxer surfaces everything
-    // after the 45-byte header (PES payload + 0xFF stuffing), so the
-    // round-tripped bytes start with the input and the rest is 0xFF.
+    // is exactly N×184 bytes long. Per EN 300 472 §4.4, the muxer pads the
+    // tail with spec-conformant stuffing_data_units ([0xFF, 0x2C, 0x00×44]
+    // = 46 bytes each), not raw 0xFF bytes.
+    //
+    // The demuxer surfaces everything after the 45-byte header verbatim
+    // (no envelope stripping for teletext), so output = input + stuffing tail.
+    //
+    // Input starts with 0x10 (in 0x10..=0x1F range) so no auto-prepend fires.
+    // total useful = 45 + 7 = 52; N = ceil(52/184) = 1; total PES = 184 bytes;
+    // tail = 184 − 52 = 132 bytes = 2×46-byte units + 1×40-byte partial unit.
     let input = vec![0x10, 0x02, 0x10, 0xFC, 0x40, 0x40, 0x80];
     let output = round_trip(
         MuxSub::DvbTeletext {
@@ -97,11 +103,8 @@ fn roundtrip_dvb_teletext_payload_prefixes_pes_with_tail_stuffing() {
         },
         &input,
     );
+    // Prefix must be exactly the caller's payload.
     assert_eq!(&output[..input.len()], &input[..]);
-    assert!(
-        output[input.len()..].iter().all(|&b| b == 0xFF),
-        "EN 300 472 §4.2 PES tail past caller payload must be 0xFF stuffing",
-    );
     // PES is exactly N×184 bytes; demuxer surfaces (N×184 − 45) bytes of body.
     let body_len = output.len();
     let total = body_len + 45;
@@ -109,6 +112,36 @@ fn roundtrip_dvb_teletext_payload_prefixes_pes_with_tail_stuffing() {
         total % 184,
         0,
         "demuxed body length implies non-conformant PES total length"
+    );
+    // Tail must be spec-conformant stuffing_data_units per EN 300 472 §4.4.
+    // Two whole units (46 bytes each) followed by one partial unit (40 bytes):
+    // [0xFF, length=38=0x26, 0x00×38].
+    let tail = &output[input.len()..];
+    assert_eq!(tail.len(), 132, "tail must be 132 bytes");
+    // First two whole stuffing_data_units.
+    for unit_idx in 0..2usize {
+        let base = unit_idx * 46;
+        assert_eq!(tail[base], 0xFF, "unit[{}] data_unit_id", unit_idx);
+        assert_eq!(
+            tail[base + 1],
+            0x2C,
+            "unit[{}] data_unit_length=44",
+            unit_idx
+        );
+        assert!(
+            tail[base + 2..base + 46].iter().all(|&b| b == 0x00),
+            "unit[{}] padding",
+            unit_idx
+        );
+    }
+    // Partial stuffing_data_unit at the end: 40 bytes [0xFF, 0x26, 0x00×38].
+    let partial = &tail[92..];
+    assert_eq!(partial.len(), 40);
+    assert_eq!(partial[0], 0xFF, "partial unit data_unit_id");
+    assert_eq!(partial[1], 0x26, "partial unit data_unit_length=38");
+    assert!(
+        partial[2..].iter().all(|&b| b == 0x00),
+        "partial unit padding"
     );
 }
 

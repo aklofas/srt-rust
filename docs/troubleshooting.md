@@ -36,9 +36,9 @@ Fix: wait it out. Run `cargo build -v` if you want to see what's actually execut
 
 **Linker error: undefined reference to libstdc++ symbols**
 
-The cdylib needs C++ runtime linkage because libsrt is C++. For `cargo build -p srt-c` this is handled automatically.
+The cdylib needs C++ runtime linkage because libsrt is C++. For `cargo build -p tst-c` this is handled automatically.
 
-Fix: if you're consuming `srtc.h` from another build system, add `-lstdc++` (Linux) or `-lc++` (macOS) to your link line. The shipped `srtc.pc` declares the correct `Libs.private`; using `pkg-config --static --libs srtc` is the safest way to get the right flags.
+Fix: if you're consuming `tstrans.h` from another build system, add `-lstdc++` (Linux) or `-lc++` (macOS) to your link line. The shipped `tstrans.pc` declares the correct `Libs.private`; using `pkg-config --static --libs tstrans` is the safest way to get the right flags.
 
 ## Connection failures
 
@@ -82,7 +82,7 @@ Fix: build both sides with the same feature configuration. If you need encryptio
 
 `Socket::Drop` blocks the calling thread for up to 180 seconds. Cause: libsrt's default `SRTO_LINGER` is 180 seconds. With no peer ACK on pending sends, `srt_close` (called from `Drop`) blocks until the linger timer expires.
 
-Fix: set `SocketConfig::linger = Some(Duration::ZERO)` for live streaming where late frames are useless, or use the `SocketBuilder::linger(Duration)` setter. The `srt-c` connect path (`crates/srt-c/src/connect.rs::connect_srt`) defaults to 5 seconds — long enough to drain a small backlog, short enough to never block reconnect noticeably.
+Fix: set `SocketConfig::linger = Some(Duration::ZERO)` for live streaming where late frames are useless, or use the `SocketBuilder::linger(Duration)` setter. The `tst-c` connect path (`crates/tst-c/src/connect.rs::connect_srt`) defaults to 5 seconds — long enough to drain a small backlog, short enough to never block reconnect noticeably.
 
 ## KLV decode rejection
 

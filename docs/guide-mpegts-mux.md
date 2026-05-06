@@ -384,7 +384,7 @@ driven by whichever push call fired most recently.
 ### Single-target convenience APIs in the multi-stream world
 
 The no-suffix `Muxer::push_video` and `Muxer::push_klv` (and the
-`Sender::send_video` / `send_klv` wrappers) only work when **exactly
+`MuxSender::send_video` / `send_klv` wrappers) only work when **exactly
 one** stream of that kind is configured. Otherwise they return
 `MuxError::AmbiguousTarget`. This keeps single-stream callers
 unchanged while making it impossible to accidentally route bytes to
@@ -411,40 +411,40 @@ data (KLV) stream under `ffprobe -show_streams`.
 
 ### From the C ABI
 
-The same fan-out is exposed in `srt-c`. Two transparent `uint32_t`
-typedefs (`srtc_video_stream_handle_t` / `srtc_klv_stream_handle_t`)
-plus a `SRTC_INVALID_STREAM_HANDLE` sentinel back the C surface:
+The same fan-out is exposed in `tst-c`. Two transparent `uint32_t`
+typedefs (`tst_video_stream_handle_t` / `tst_klv_stream_handle_t`)
+plus a `TST_INVALID_STREAM_HANDLE` sentinel back the C surface:
 
 ```c
-srtc_mux_config_t* cfg = srtc_mux_config_new();
-srtc_video_stream_handle_t h_eo =
-    srtc_mux_config_add_video_stream(cfg, 0x1011, SRTC_VIDEO_CODEC_H264);
-srtc_video_stream_handle_t h_ir =
-    srtc_mux_config_add_video_stream(cfg, 0x1021, SRTC_VIDEO_CODEC_H264);
-srtc_klv_stream_handle_t h_klv =
-    srtc_mux_config_add_klv_stream(cfg, 0x1031, SRTC_KLV_STREAM_TYPE_PRIVATE_DATA, false);
+tst_mux_config_t* cfg = tst_mux_config_new();
+tst_video_stream_handle_t h_eo =
+    tst_mux_config_add_video_stream(cfg, 0x1011, TST_VIDEO_CODEC_H264);
+tst_video_stream_handle_t h_ir =
+    tst_mux_config_add_video_stream(cfg, 0x1021, TST_VIDEO_CODEC_H264);
+tst_klv_stream_handle_t h_klv =
+    tst_mux_config_add_klv_stream(cfg, 0x1031, TST_KLV_STREAM_TYPE_PRIVATE_DATA, false);
 
-srtc_muxer_t* mux = srtc_muxer_open(cfg);
-srtc_mux_config_free(cfg);
+tst_muxer_t* mux = tst_muxer_open(cfg);
+tst_mux_config_free(cfg);
 
-srtc_muxer_push_video_to(mux, h_eo, nal, sizeof(nal), pts, true);
-srtc_muxer_push_video_to(mux, h_ir, nal, sizeof(nal), pts, true);
-srtc_muxer_push_klv_to(mux, h_klv, klv, sizeof(klv), pts);
+tst_muxer_push_video_to(mux, h_eo, nal, sizeof(nal), pts, true);
+tst_muxer_push_video_to(mux, h_ir, nal, sizeof(nal), pts, true);
+tst_muxer_push_klv_to(mux, h_klv, klv, sizeof(klv), pts);
 ```
 
-Same shape on the network senders: `srtc_mux_sender_send_video_to` /
-`_send_klv_to` and `srtc_managed_mux_sender_send_video_to` /
-`_send_klv_to`. The single-target entry points (`srtc_*_send_video`,
-`srtc_*_send_klv`) keep their v0 signatures and start returning
-`SRTC_E_INVALID_USAGE` (`MuxError::AmbiguousTarget`) on multi-stream
+Same shape on the network senders: `tst_mux_sender_send_video_to` /
+`_send_klv_to` and `tst_managed_mux_sender_send_video_to` /
+`_send_klv_to`. The single-target entry points (`tst_*_send_video`,
+`tst_*_send_klv`) keep their original signatures and start returning
+`TST_E_INVALID_USAGE` (`MuxError::AmbiguousTarget`) on multi-stream
 muxers — single-stream callers see no behaviour change.
 
-The `srtc_ts_sender_t` and `srtc_raw_sender_t` variants do **not**
+The `tst_ts_sender_t` and `tst_raw_sender_t` variants do **not**
 have handle-aware siblings — they take pre-muxed TS bytes
 (`send_ts(bytes)`) or opaque payload bytes (`send(bytes)`), so
 multi-stream fan-out doesn't apply.
 
-See `crates/srt-c/examples/c/mux_dual_camera.c` for a worked end-to-end
+See `crates/tst-c/examples/c/mux_dual_camera.c` for a worked end-to-end
 example mirroring the Rust analogue.
 
 ## Per-stream PMT descriptors
@@ -739,7 +739,7 @@ Three runnable examples cover the muxer's surface:
   — H.265 + sync KLV via the field-update form, illustrating the
   diff against the H.264 default.
 - [../crates/tst-srt/examples/pipeline_send_to_socket.rs](../crates/tst-srt/examples/pipeline_send_to_socket.rs)
-  — the muxer composed inside `pipeline::Sender` and connected to an
+  — the muxer composed inside `pipeline::MuxSender` and connected to an
   SRT socket. See [guide-pipeline.md](guide-pipeline.md) for the
   sender-shell layer.
 

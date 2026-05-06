@@ -152,21 +152,21 @@ the trigger that would unblock it.
 
 ## Multi-stream `mpegts::mux` — `srt-jni` / `srt-uniffi` binding surface
 
-- **Status:** The `srt-c` C ABI fan-out shipped — `srtc_video_stream_handle_t` /
-  `srtc_klv_stream_handle_t` typedefs, `srtc_mux_config_add_video_stream` /
+- **Status:** The `tst-c` C ABI fan-out shipped — `tst_video_stream_handle_t` /
+  `tst_klv_stream_handle_t` typedefs, `tst_mux_config_add_video_stream` /
   `_add_klv_stream` returning handles, and `_video_to(handle, ...)` /
-  `_klv_to(handle, ...)` siblings on `srtc_muxer_t`, `srtc_mux_sender_t`,
-  and `srtc_managed_mux_sender_t`. The single-target entry points keep
-  their v0 signatures and surface `MuxError::AmbiguousTarget` as
-  `SRTC_E_INVALID_USAGE` on multi-stream muxers. The same handle-aware
+  `_klv_to(handle, ...)` siblings on `tst_muxer_t`, `tst_mux_sender_t`,
+  and `tst_managed_mux_sender_t`. The single-target entry points keep
+  their original signatures and surface `MuxError::AmbiguousTarget` as
+  `TST_E_INVALID_USAGE` on multi-stream muxers. The same handle-aware
   shape has NOT yet landed in `srt-jni` or `srt-uniffi`.
 - **Note on Sender / RawSender:** the original deferred-features entry
-  said `srtc_ts_sender_*` / `srtc_managed_ts_sender_*` would also gain
+  said `tst_ts_sender_*` / `tst_managed_ts_sender_*` would also gain
   `_video_to` / `_klv_to` siblings. That was wrong: `tst_pipeline::Sender`
   exposes only `send_ts(bytes)` (pre-muxed TS bytes) and `tst_pipeline::RawSender`
   exposes only `send(bytes)`. Neither carries a `Muxer`, so handle-aware
   fan-out is meaningless on those variants. Only the three muxer-owning
-  C variants (`srtc_muxer_t`, `srtc_mux_sender_t`, `srtc_managed_mux_sender_t`)
+  C variants (`tst_muxer_t`, `tst_mux_sender_t`, `tst_managed_mux_sender_t`)
   have the new `_to` surface.
 - **Trigger to revisit:** First JNI or UniFFI consumer that actually wants
   multi-stream output. The pattern is mechanical — mirror the same
@@ -351,21 +351,21 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A consumer asks for audio frame-header
   metadata. See ROADMAP P5 for the planned parser layer.
 
-## Audio carriage at the `srt-c` C ABI
+## Audio carriage at the `tst-c` C ABI
 
 - **Status:** Deferred. Audio carriage in `mpegts::mux` and `mpegts::demux`
   ships in Rust (codec scope: MP2 + AAC ADTS + AAC LATM + AC-3, plus
   `DemuxerOptions::treat_as` for non-conformant stream_type cases). The
-  `srt-c` C ABI exposure is held back to land jointly with the receiver-surface
-  plan, so the muxer-side audio entry points (e.g. `srtc_mux_config_add_audio_stream`,
-  `srtc_*_send_audio_to`, `srtc_audio_stream_handle_t`) and the receive-side
-  audio classification surface (`SrtcAudioCodec` mirror, `SrtcDemuxEvent`
+  `tst-c` C ABI exposure is held back to land jointly with the receiver-surface
+  plan, so the muxer-side audio entry points (e.g. `tst_mux_config_add_audio_stream`,
+  `tst_*_send_audio_to`, `tst_audio_stream_handle_t`) and the receive-side
+  audio classification surface (`TstAudioCodec` mirror, `TstDemuxEvent`
   audio arm) are designed in one coherent shape rather than piecemeal.
 - **Why deferred:** Same rationale as the per-stream PMT descriptors,
   pre-emptive cancel, multi-program demux, and codec parsers at the C ABI —
   the receiver-surface plan is the natural carrier for FFI exposure across
-  all post-v0 Rust features.
-- **Trigger to revisit:** The receiver-surface `srt-c` plan starts
+  all post-initial-release Rust features.
+- **Trigger to revisit:** The receiver-surface `tst-c` plan starts
   execution. At that point the C ABI gets audio entry points alongside the
   receiver event surface, sharing the same handle types and error semantics.
 
@@ -447,17 +447,17 @@ the trigger that would unblock it.
 
 - **Status:** Deferred.
 - **Why deferred:** `mpegts::demux` gained multi-program support in 2026-05-03,
-  but the C ABI receiver surface itself doesn't yet exist — `srt-c` exposes
+  but the C ABI receiver surface itself doesn't yet exist — `tst-c` exposes
   only sender-side handles today. Multi-program demux exposure rides with the
   future receiver C ABI plan so receiver-side surface is designed coherently in
   one pass rather than piecemeal.
-- **Trigger to revisit:** When the receiver-side `srt-c` plan is written and
+- **Trigger to revisit:** When the receiver-side `tst-c` plan is written and
   the receiver-surface design is settled, multi-program demux event emission
   to C callers gets folded into that plan.
-- **Scope when added:** `SrtcDemuxEvent` discriminator with `ProgramMap` arm
-  carrying `program_number`; `SrtcStreamInfo` C-side analogue with
+- **Scope when added:** `TstDemuxEvent` discriminator with `ProgramMap` arm
+  carrying `program_number`; `TstStreamInfo` C-side analogue with
   `program_number` field; per-program tracker query API if useful
-  (`srtc_demuxer_program_count`, `srtc_demuxer_get_program_info(idx)`).
+  (`tst_demuxer_program_count`, `tst_demuxer_get_program_info(idx)`).
 
 ## Rustdoc lift to docs.rs via `#![doc = include_str!(...)]`
 
@@ -520,7 +520,7 @@ the trigger that would unblock it.
   channel to surface "FYI, your builder said X but the URL changed
   it to Y."
 - **Why deferred:** No warning channel exists in the C ABI today —
-  `srtc_get_last_error_str()` is for failures, not warnings. Adding a
+  `tst_get_last_error_str()` is for failures, not warnings. Adding a
   warning surface is its own design (separate buffer? log callback?
   per-thread storage like the error?). Out of scope for the URL
   parser ship.
@@ -633,8 +633,8 @@ the trigger that would unblock it.
 - **Status:** The 15 s `connect_timeout`, 5 s `linger`, and
   `Role::Sender` defaults applied for the audit's "live-streaming
   sensible defaults" set live in
-  `crates/srt-c/src/connect.rs::connect_srt` (the canonical "default
-  sender connect path" used by all six `srtc_*_open` calls).
+  `crates/tst-c/src/connect.rs::connect_srt` (the canonical "default
+  sender connect path" used by all six `tst_*_open` calls).
   Pure-Rust users who construct a `SrtTransport` via `SocketBuilder`
   directly do NOT get these defaults — they get libsrt's defaults
   (3 s, 180 s, `Unspecified`).
@@ -696,7 +696,7 @@ the trigger that would unblock it.
   otherwise plain integer counters cascades into the C ABI: the
   layout has to encode either epoch nanos in a `uint64_t` (overflows
   in 2554 — fine, but explicit) or a `(seconds, nanos)` split
-  (extra two fields per `srtc_stream_stats_t`). Either way it's a
+  (extra two fields per `tst_stream_stats_t`). Either way it's a
   bigger surface than the rest of the stats struct, and consumers
   who care can derive staleness from `items` deltas + their own
   wall-clock sampling cadence.
@@ -713,14 +713,14 @@ the trigger that would unblock it.
 - **Why deferred:** The descriptor-construction surface and the future
   receiver C ABI's per-stream descriptor surface should land together —
   exposing a send-only C ABI shape now would need reshaping when the
-  receiver C ABI lands (which will also need `SrtcRawDescriptor` and
+  receiver C ABI lands (which will also need `TstRawDescriptor` and
   read access to `StreamInfo::raw_descriptors`).
 - **Trigger to revisit:** The receiver-surface design lands and pulls
   the descriptor surface into scope. At that point the C ABI gets
   descriptor builders mirroring `mpegts::descriptors` plus
-  `srtc_mux_config_set_video_stream_descriptors` /
+  `tst_mux_config_set_video_stream_descriptors` /
   `_set_klv_stream_descriptors` with bounded array params + a
-  `SrtcRawDescriptor` `repr(C)` shape for the receive side's
+  `TstRawDescriptor` `repr(C)` shape for the receive side's
   `StreamInfo::raw_descriptors`.
 
 ## `Socket::close` Result-type cleanup
@@ -745,16 +745,16 @@ the trigger that would unblock it.
   `Transport::cancel_handle()` / `RecvTransport::cancel_handle()` and
   threads them through every sender + receiver shell.
   `Sender::close()` cancels-first to unblock a peer thread parked in
-  libsrt's `srt_sendmsg`. The `srt-c` ABI surface is deferred.
+  libsrt's `srt_sendmsg`. The `tst-c` ABI surface is deferred.
 - **Why deferred:** The C ABI's `Handle<T>` (= `Mutex<Option<T>>`) has
   the same blocking issue at the C layer that the Rust shells had —
-  `srtc_*_close` waits on the handle's mutex, so it competes with a
+  `tst_*_close` waits on the handle's mutex, so it competes with a
   parked C-side data-path call. Fixing it cleanly means giving every
   C handle type a separate cancel-token field outside the mutex, plus
-  a `srtc_*_cancel(handle)` entry point per variant. That work is
+  a `tst_*_cancel(handle)` entry point per variant. That work is
   scoped to land alongside the receiver-side C ABI plan so both
   designs reach the C surface in one coherent shape (e.g. cancel
-  semantics for the future `srtc_receiver_t` recv loop are designed
+  semantics for the future `tst_receiver_t` recv loop are designed
   jointly with the existing sender variants, rather than retrofitting
   later).
 - **Trigger to revisit:** The receiver-side C ABI design lands and
@@ -796,13 +796,13 @@ the trigger that would unblock it.
   tag-presence-based via `find_descriptor_tag`, so malformed
   descriptor bodies pass through today).
 
-## Subtitle carriage at the `srt-c` C ABI
+## Subtitle carriage at the `tst-c` C ABI
 
 - **Status:** Deferred. Plan #22 ships sender-side and receiver-side
-  Rust APIs. `srt-c` exposure (`srtc_subtitle_stream_handle_t`,
-  `srtc_*_send_subtitle_to`, `srtc_mux_config_add_subtitle_stream`,
-  receive-side `SrtcSubtitleCodec`) is held back to land jointly
-  with the receiver-surface `srt-c` plan, mirroring the same
+  Rust APIs. `tst-c` exposure (`tst_subtitle_stream_handle_t`,
+  `tst_*_send_subtitle_to`, `tst_mux_config_add_subtitle_stream`,
+  receive-side `TstSubtitleCodec`) is held back to land jointly
+  with the receiver-surface `tst-c` plan, mirroring the same
   rationale for audio / codec parsers / multi-program demux at
   the C ABI.
 - **Trigger to revisit:** The receiver-surface C ABI plan starts

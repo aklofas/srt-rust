@@ -295,10 +295,10 @@ When a transport is marked broken, the wrapped `Socket` is dropped
 internally — subsequent `send_bytes` calls return `Closed` until a
 new `SrtTransport` is built.
 
-### Default sender SocketConfig overrides (srt-c connect path)
+### Default sender SocketConfig overrides (tst-c connect path)
 
-When you use the C ABI's `srtc_*_open` family or call
-`srt_c::connect::connect_srt` directly, the underlying `SocketConfig`
+When you use the C ABI's `tst_*_open` family or call
+`tst_c::connect::connect_srt` directly, the underlying `SocketConfig`
 gets these overrides applied (only if the user hasn't set them):
 
 | Field | Default | libsrt default | Why |
@@ -309,7 +309,7 @@ gets these overrides applied (only if the user hasn't set them):
 
 Pure-Rust users who build a `SrtTransport` via `SocketBuilder` directly
 do **not** get these defaults — set them explicitly via the builder if
-needed. The defaults live in the `srt-c` connect path because that's
+needed. The defaults live in the `tst-c` connect path because that's
 where the canonical "default sender Socket" is constructed.
 
 ## `ManagedTransport<T>` — reconnect + gap buffer

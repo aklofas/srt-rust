@@ -31,8 +31,8 @@ that this document summarises.
 | `libsrt` (Haivision) | **v1.5.5** (`vendor/srt`, git submodule) |
 | `mbedTLS` | **v3.6.6** LTS (`vendor/mbedtls`, git submodule) |
 | `bindgen` | 0.72 (FFI; `srt-sys` build) |
-| `cbindgen` | 0.29 (C header generation; `srt-c` build) |
-| `cc` | 1.0 (compiles + links the C smoke test in `srt-c` integration tests) |
+| `cbindgen` | 0.29 (C header generation; `tst-c` build) |
+| `cc` | 1.0 (compiles + links the C smoke test in `tst-c` integration tests) |
 | `cmake` | upstream-compatible; `pkg-config` discovery first, vendored fallback |
 
 The vendored builds disable libsrt's `ENABLE_HEAVY_LOGGING` (Debug+static
@@ -383,31 +383,31 @@ as `Obu { obu_type, payload, .. }` without further parsing.
 
 ---
 
-## C ABI (`srt-c`)
+## C ABI (`tst-c`)
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| `srtc_muxer_t` standalone utility | ✅ Full | open/push_video/push_klv/pull/close. Internally synchronized; data-path callable from multiple threads. |
-| `srtc_mux_sender_t` (plain L1) | ✅ Full | NAL+KLV in, TS+SRT out via `SrtTransport`. Internally synchronized. |
-| `srtc_managed_mux_sender_t` (managed L2) | ✅ Full | reconnect + gap buffer over `ManagedTransport<SrtTransport>`; synchronous retries on caller's thread. |
-| `srtc_ts_sender_t` / `srtc_managed_ts_sender_t` | ✅ Full | pre-muxed TS bytes in; sync framing/recovery (RECOVER auto-resync + STRICT fail-fast); `_get_stats` accessor. |
-| `srtc_raw_sender_t` / `srtc_managed_raw_sender_t` | ✅ Full | one `_send` call = one outbound SRT message. `SRTC_E_TOO_LARGE` on `len > SRTO_PAYLOADSIZE`. |
-| Opaque builder configs | ✅ Full | `srtc_mux_config_t`, `srtc_ts_sender_config_t`, `srtc_raw_sender_config_t`, `srtc_reconnect_policy_t`. Internally cloned by `_open`; caller frees independently. |
-| Thread-local last-error idiom | ✅ Full | `srtc_get_last_error()` + `srtc_get_last_error_str()`; ten `SRTC_E_*` codes covering all `tst_core` failure shapes. |
-| `SRTC_VERSION_MAJOR` / `MINOR` / `PATCH` macros | ✅ Full | Compile-time `#define`s in `srtc.h`. |
+| `tst_muxer_t` standalone utility | ✅ Full | open/push_video/push_klv/pull/close. Internally synchronized; data-path callable from multiple threads. |
+| `tst_mux_sender_t` (plain L1) | ✅ Full | NAL+KLV in, TS+SRT out via `SrtTransport`. Internally synchronized. |
+| `tst_managed_mux_sender_t` (managed L2) | ✅ Full | reconnect + gap buffer over `ManagedTransport<SrtTransport>`; synchronous retries on caller's thread. |
+| `tst_ts_sender_t` / `tst_managed_ts_sender_t` | ✅ Full | pre-muxed TS bytes in; sync framing/recovery (RECOVER auto-resync + STRICT fail-fast); `_get_stats` accessor. |
+| `tst_raw_sender_t` / `tst_managed_raw_sender_t` | ✅ Full | one `_send` call = one outbound SRT message. `TST_E_TOO_LARGE` on `len > SRTO_PAYLOADSIZE`. |
+| Opaque builder configs | ✅ Full | `tst_mux_config_t`, `tst_ts_sender_config_t`, `tst_raw_sender_config_t`, `tst_reconnect_policy_t`. Internally cloned by `_open`; caller frees independently. |
+| Thread-local last-error idiom | ✅ Full | `tst_get_last_error()` + `tst_get_last_error_str()`; ten `TST_E_*` codes covering all `tst_core` failure shapes. |
+| `TST_VERSION_MAJOR` / `MINOR` / `PATCH` macros | ✅ Full | Compile-time `#define`s in `tstrans.h`. |
 | Lifecycle (`_open` / `_close`) | ✅ Full | `_open` returns NULL on failure with last-error set; `_close` is idempotent and NULL-safe; close-from-any-thread serializes through `Mutex<Option<...>>`. |
 | URL parsing | ✅ Full | `srt://host:port?key=value&...` — IPv4 / DNS / bracketed IPv6 hosts plus the libsrt-URL Group 1 vocabulary (`streamid` / `passphrase` / `latency` / `payloadsize` / `congestion` / `conntimeo` / `linger` / `udprcvbuf` / `udpsndbuf` / etc.) plus a handful of ffmpeg-style aliases (`pkt_size`, `payload_size`, `srt_streamid`, `tsbpddelay`, `smoother`, `ffs`, `connect_timeout`, `recv_buffer_size`, `send_buffer_size`). See "FFmpeg URL interop quirks" below for unit divergence. |
-| Stats accessors | ✅ Full | `srtc_muxer_get_stats` / `_reset_stats`; `srtc_mux_sender_*` and `srtc_managed_mux_sender_*` (get + reset); `srtc_ts_sender_*` and `srtc_managed_ts_sender_*` (get + reset); `srtc_raw_sender_*` and `srtc_managed_raw_sender_*` (get + reset). `SrtcSenderStats` + `SrtcMuxerStats` + `SrtcRawSenderStats` `repr(C)` types; receiver-side C stats deferred. |
-| Multi-stream `mpegts::mux` fan-out | ✅ Full | `srtc_video_stream_handle_t` / `srtc_klv_stream_handle_t` typedefs (transparent `uint32_t`); `srtc_mux_config_add_video_stream` / `_add_klv_stream` return handles at config time; `_video_to(handle, ...)` / `_klv_to(handle, ...)` siblings on `srtc_muxer_t`, `srtc_mux_sender_t`, and `srtc_managed_mux_sender_t` (≤16 video + ≤16 KLV streams per program — same caps as the Rust core). Single-target entry points (`srtc_*_send_video` / `_send_klv`) keep their signatures and surface `MuxError::AmbiguousTarget` as `SRTC_E_INVALID_USAGE` on multi-stream muxers. The `Sender` / `RawSender` variants don't carry a `Muxer`, so multi-stream is N/A there. |
-| Multi-program `mpegts::mux` config | ✅ Full | `srtc_program_handle_t` (transparent `uint32_t`); `srtc_mux_config_add_program` returns a handle; `srtc_mux_config_add_video_stream_to_program` / `_add_klv_stream_to_program` scope streams to a program; ≤16 programs per muxer config. |
-| Multi-program demux at the C ABI | ❌ Deferred | Rust demuxer fully supports multi-program; C ABI receiver surface doesn't yet exist. Rides with the future receiver-side `srt-c` plan. |
-| cbindgen-generated `srtc.h` | ✅ Full | Committed at `crates/srt-c/include/srtc.h`; CI verifies no drift via `tests/header_drift.rs`. |
-| Symbol-prefix audit | ✅ Full | `tests/symbol_audit.rs` runs `nm -D` and asserts every exported symbol matches `^(srtc_|SRTC_|srt_)` (`srt_*` allowlisted because libsrt is statically linked). |
-| `pkg-config` metadata | ✅ Full | `srtc.pc` generated by `build.rs` from `srtc.pc.in`; substitutes `@VERSION@` and `@PREFIX@`. |
-| Static-link discipline | ✅ Full | libsrt + mbedTLS + libstdc++ statically embedded into `libsrtc.so` and `libsrtc.a`; `ldd` shows only libc / libpthread / libstdc++ / libdl / libm. |
-| Distribution artifacts | ✅ Full | `libsrtc.so` + `libsrtc.a` + `srtc.h` + `srtc.pc`. Tarball staged manually; GitHub Releases publishing not automated today. |
+| Stats accessors | ✅ Full | `tst_muxer_get_stats` / `_reset_stats`; `tst_mux_sender_*` and `tst_managed_mux_sender_*` (get + reset); `tst_ts_sender_*` and `tst_managed_ts_sender_*` (get + reset); `tst_raw_sender_*` and `tst_managed_raw_sender_*` (get + reset). `TstSenderStats` + `TstMuxerStats` + `TstRawSenderStats` `repr(C)` types; receiver-side C stats deferred. |
+| Multi-stream `mpegts::mux` fan-out | ✅ Full | `tst_video_stream_handle_t` / `tst_klv_stream_handle_t` typedefs (transparent `uint32_t`); `tst_mux_config_add_video_stream` / `_add_klv_stream` return handles at config time; `_video_to(handle, ...)` / `_klv_to(handle, ...)` siblings on `tst_muxer_t`, `tst_mux_sender_t`, and `tst_managed_mux_sender_t` (≤16 video + ≤16 KLV streams per program — same caps as the Rust core). Single-target entry points (`tst_*_send_video` / `_send_klv`) keep their signatures and surface `MuxError::AmbiguousTarget` as `TST_E_INVALID_USAGE` on multi-stream muxers. The `Sender` / `RawSender` variants don't carry a `Muxer`, so multi-stream is N/A there. |
+| Multi-program `mpegts::mux` config | ✅ Full | `tst_program_handle_t` (transparent `uint32_t`); `tst_mux_config_add_program` returns a handle; `tst_mux_config_add_video_stream_to_program` / `_add_klv_stream_to_program` scope streams to a program; ≤16 programs per muxer config. |
+| Multi-program demux at the C ABI | ❌ Deferred | Rust demuxer fully supports multi-program; C ABI receiver surface doesn't yet exist. Rides with the future receiver-side `tst-c` plan. |
+| cbindgen-generated `tstrans.h` | ✅ Full | Committed at `crates/tst-c/include/tstrans.h`; CI verifies no drift via `tests/header_drift.rs`. |
+| Symbol-prefix audit | ✅ Full | `tests/symbol_audit.rs` runs `nm -D` and asserts every exported symbol matches `^(tst_|TST_|srt_)` (`srt_*` allowlisted because libsrt is statically linked). |
+| `pkg-config` metadata | ✅ Full | `tstrans.pc` generated by `build.rs` from `tstrans.pc.in`; substitutes `@VERSION@` and `@PREFIX@`. |
+| Static-link discipline | ✅ Full | libsrt + mbedTLS + libstdc++ statically embedded into `libtstrans.so` and `libtstrans.a`; `ldd` shows only libc / libpthread / libstdc++ / libdl / libm. |
+| Distribution artifacts | ✅ Full | `libtstrans.so` + `libtstrans.a` + `tstrans.h` + `tstrans.pc`. Tarball staged manually; GitHub Releases publishing not automated today. |
 | End-to-end C smoke test | ✅ Full | `tests/smoke.c` compiled by `cc` and linked against the cdylib at test time; exercises muxer push/pull + every NULL-close path + invalid-URL last-error. |
-| Live-socket roundtrip test | ✅ Full | `tests/live_pair.rs` binds a real `Listener` on 127.0.0.1, connects `srtc_mux_sender_t`, sends a NAL, asserts the listener receives a TS sync byte. |
+| Live-socket roundtrip test | ✅ Full | `tests/live_pair.rs` binds a real `Listener` on 127.0.0.1, connects `tst_mux_sender_t`, sends a NAL, asserts the listener receives a TS sync byte. |
 | Linux x86_64 build | ✅ Full | cdylib + staticlib + cbindgen header + pkg-config. |
 | macOS / Windows / Linux aarch64 | ⏳ Planned | Cross-compilation follows demonstrated demand. |
 | Pre-emptive close cancellation while parked in libsrt | ✅ Full | `Sender::close()` (and the underlying `Socket::cancel_handle()`) atomically closes the SRT handle from any thread, unblocking a peer thread parked in `srt_sendmsg`/`srt_recvmsg`. See `guide-pipeline.md`. |
@@ -484,7 +484,7 @@ covers.
 | --- | --- | --- |
 | `srt-sys` | ✅ Full | Bindgen-generated FFI to libsrt 1.5.5; encryption via mbedTLS. |
 | `tst-core` | ✅ Full (sync) | Safe Rust API — `Socket`, `Listener`, builders, KLV. |
-| `srt-c` | ✅ Full | cdylib + staticlib + cbindgen header + pkg-config; Linux x86_64. |
+| `tst-c` | ✅ Full | cdylib + staticlib + cbindgen header + pkg-config; Linux x86_64. |
 | `srt-jni` | ⏳ Planned | JVM JAR for JDK 17+ consumers. |
 | `srt-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |
 

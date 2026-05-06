@@ -4,7 +4,7 @@
 //! Usage: `cargo run --example extract_klv -- <input.ts> [output_prefix]`
 //!
 //! This is a teaching demo for the demuxer — every non-obvious choice has
-//! a `// why+how` comment, per the `srt-rust/CLAUDE.md` examples
+//! a `// why+how` comment, per the `ts-transformer/CLAUDE.md` examples
 //! convention. The companion `extract_video_au` example shows the same
 //! pattern for the video side.
 //!

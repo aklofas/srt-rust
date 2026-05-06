@@ -330,6 +330,19 @@ pub enum NonConformantIssue {
     /// mode converts to `DemuxError::StrictRejection`.
     SubtitleMissingDescriptor { pid: u16 },
 
+    /// PMT entry on `stream_type=0x06` carries more than one recognized
+    /// subtitle codec marker — e.g. both `subtitling_descriptor` (0x59) and
+    /// `registration_descriptor` with `format_identifier="VTTC"`. The
+    /// classification cascade keeps its first-match priority order
+    /// (subtitling > teletext > VTTC > GA94 > KLVA), but downstream
+    /// consumers may want to know about the ambiguity for diagnostics.
+    ///
+    /// `tags` lists the recognized markers found on the PID, using
+    /// descriptor tag bytes for tag-presence matches (`0x59`, `0x56`,
+    /// `0x46`) and synthetic codepoints for `format_identifier` matches
+    /// (`0xF0` = VTTC, `0xF1` = GA94, `0xF2` = KLVA).
+    SubtitleDescriptorAmbiguous { pid: u16, tags: Vec<u8> },
+
     /// Subtitle descriptor tag was recognized but the inner length /
     /// payload bytes did not satisfy spec invariants. Per-stream params
     /// fall back to defaults (language `*b"und"`, page ids 0).

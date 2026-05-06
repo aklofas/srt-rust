@@ -44,6 +44,7 @@ impl StrictMode {
                     | NonConformantIssue::StreamTypeMismatchAsyncOnSyncPid
                     | NonConformantIssue::MissingMetadataDescriptor
                     | NonConformantIssue::SubtitleMissingDescriptor { .. }
+                    | NonConformantIssue::SubtitleDescriptorAmbiguous { .. }
             ),
             StrictMode::Full => true,
         }
@@ -83,6 +84,17 @@ mod tests {
         // concerns and DescriptorsOnly should escalate both.
         let m = StrictMode::DescriptorsOnly;
         assert!(m.rejects(&NonConformantIssue::SubtitleMissingDescriptor { pid: 0x100 }));
+    }
+
+    #[test]
+    fn descriptors_only_rejects_subtitle_descriptor_ambiguous() {
+        // Multi-marker ambiguity on a 0x06 PID is also a descriptor-shape
+        // concern — DescriptorsOnly should escalate.
+        let m = StrictMode::DescriptorsOnly;
+        assert!(m.rejects(&NonConformantIssue::SubtitleDescriptorAmbiguous {
+            pid: 0x100,
+            tags: vec![0x59, 0xF0],
+        }));
     }
 
     #[test]

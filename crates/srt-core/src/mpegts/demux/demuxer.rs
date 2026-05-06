@@ -144,6 +144,10 @@ pub struct Demuxer {
     /// current PMT version. Cleared at the top of each PMT-version bump so
     /// a fresh PMT re-fires if the malformed registration is still present.
     av1_registration_malformed_emitted: HashSet<u16>,
+    /// PIDs that have already emitted `SubtitleDescriptorAmbiguous` for the
+    /// current PMT version. Cleared at the top of each PMT-version bump so
+    /// a fresh PMT re-fires if the ambiguity is still present.
+    subtitle_descriptor_ambiguous_emitted: HashSet<u16>,
 }
 
 impl Demuxer {
@@ -182,6 +186,7 @@ impl Demuxer {
             subtitle_missing_descriptor_emitted: HashSet::new(),
             subtitle_pids_seen: HashSet::new(),
             av1_registration_malformed_emitted: HashSet::new(),
+            subtitle_descriptor_ambiguous_emitted: HashSet::new(),
         }
     }
 
@@ -524,6 +529,8 @@ impl Demuxer {
                 .remove(&s.elementary_pid);
             self.av1_registration_malformed_emitted
                 .remove(&s.elementary_pid);
+            self.subtitle_descriptor_ambiguous_emitted
+                .remove(&s.elementary_pid);
         }
 
         // Build StreamInfo list + check cross-program PID collisions.
@@ -533,6 +540,7 @@ impl Demuxer {
         let mut collision_issues: Vec<(StreamId, NonConformantIssue)> = Vec::new();
         let mut subtitle_missing: Vec<(u16, StreamKind)> = Vec::new();
         let mut av1_malformed: Vec<(u16, StreamKind)> = Vec::new();
+        let mut subtitle_ambiguous: Vec<(u16, StreamKind, Vec<u8>)> = Vec::new();
 
         for s in &pmt.streams {
             let (kind, _declared_link) = self.get_stream_kind(s.elementary_pid, s);
@@ -586,6 +594,21 @@ impl Demuxer {
                 av1_malformed.push((s.elementary_pid, kind));
             }
 
+            // stream_type 0x06 entries with more than one recognized
+            // subtitle/KLV codec marker — classification cascade still
+            // picks the highest-priority match (subtitling > teletext >
+            // VTTC > GA94 > KLVA), but the ambiguity is surfaced for
+            // diagnostics. Only checked on 0x06 since the other stream
+            // types disambiguate by stream_type alone. AV1 wins
+            // exclusively (binding §2.1) so AV01 alongside other markers
+            // is not flagged here — classify_0x06 returned Video(Av1).
+            if s.stream_type == 0x06 && !matches!(kind, StreamKind::Video(VideoCodec::Av1)) {
+                let (_, ambiguous_tags) = classify_0x06_with_ambiguity(&s.descriptors);
+                if !ambiguous_tags.is_empty() {
+                    subtitle_ambiguous.push((s.elementary_pid, kind, ambiguous_tags));
+                }
+            }
+
             stream_infos.push(StreamInfo {
                 pid: s.elementary_pid,
                 stream_type: s.stream_type,
@@ -617,6 +640,16 @@ impl Demuxer {
                 self.queue_nonconformant(
                     StreamId { pid, kind },
                     NonConformantIssue::Av1RegistrationMalformed { pid },
+                );
+            }
+        }
+
+        // Emit SubtitleDescriptorAmbiguous once per PID per fresh PMT version.
+        for (pid, kind, tags) in subtitle_ambiguous {
+            if self.subtitle_descriptor_ambiguous_emitted.insert(pid) {
+                self.queue_nonconformant(
+                    StreamId { pid, kind },
+                    NonConformantIssue::SubtitleDescriptorAmbiguous { pid, tags },
                 );
             }
         }
@@ -1216,6 +1249,48 @@ fn classify_0x06(descriptors: &[crate::mpegts::demux::psi::RawDescriptor]) -> St
     }
 }
 
+/// Same as [`classify_0x06`] but also returns the list of recognized
+/// subtitle/KLV codec markers found on the PID — empty if there's no
+/// ambiguity (zero or one marker), populated if more than one was found.
+///
+/// Tag list encoding mirrors [`NonConformantIssue::SubtitleDescriptorAmbiguous`]:
+/// descriptor tag bytes for tag-presence matches (0x59 / 0x56 / 0x46),
+/// synthetic codepoints for `format_identifier` matches (0xF0=VTTC,
+/// 0xF1=GA94, 0xF2=KLVA). The classification result follows the existing
+/// first-match priority — only the diagnostic tag list changes.
+fn classify_0x06_with_ambiguity(
+    descriptors: &[crate::mpegts::demux::psi::RawDescriptor],
+) -> (StreamKind, Vec<u8>) {
+    use crate::mpegts::descriptors::{find_descriptor_tag, find_format_identifier};
+    let mut markers: Vec<u8> = Vec::new();
+    if find_descriptor_tag(descriptors, 0x59) {
+        markers.push(0x59);
+    }
+    // 0x56 and 0x46 are sibling teletext tags — count as one marker so
+    // a stream carrying both doesn't trip ambiguity on the teletext side.
+    if find_descriptor_tag(descriptors, 0x56) {
+        markers.push(0x56);
+    } else if find_descriptor_tag(descriptors, 0x46) {
+        markers.push(0x46);
+    }
+    if find_format_identifier(descriptors, b"VTTC") {
+        markers.push(0xF0);
+    }
+    if find_format_identifier(descriptors, b"GA94") {
+        markers.push(0xF1);
+    }
+    if find_format_identifier(descriptors, b"KLVA") {
+        markers.push(0xF2);
+    }
+    let kind = classify_0x06(descriptors);
+    let ambiguous = if markers.len() <= 1 {
+        Vec::new()
+    } else {
+        markers
+    };
+    (kind, ambiguous)
+}
+
 /// True iff `descriptors` contains any descriptor that lets the demuxer
 /// recognize this stream as a subtitle/caption track:
 ///   * `subtitling_descriptor`  (tag 0x59)
@@ -1709,6 +1784,67 @@ mod tests {
         assert_eq!(count, 1, "deduped: one event per PID per PMT version");
     }
 
+    #[test]
+    fn multi_descriptor_0x06_emits_subtitle_ambiguous() {
+        use crate::mpegts::mux::{
+            ConfigBuilder, SubtitleCodec as MuxSubtitleCodec, VideoCodec as MuxVideoCodec,
+        };
+
+        // Caller supplies BOTH a subtitling_descriptor (0x59) and a
+        // VTTC registration_descriptor on the same WebVTT subtitle PID.
+        // The mux auto-emit suppresses on either marker, so caller has
+        // to bypass that path by stuffing both into the descriptor list
+        // directly. Two recognized subtitle codec markers on the same
+        // 0x06 PID — the classifier still picks subtitling per first-match
+        // priority, and the demuxer surfaces the ambiguity for diagnostics.
+        // subtitling_descriptor body: ISO 639 lang (3) + subtitling_type
+        // (1) + composition_page_id (2) + ancillary_page_id (2).
+        let subtitling_tlv = vec![0x59u8, 0x08, b'e', b'n', b'g', 0x10, 0x00, 0x01, 0x00, 0x01];
+        // registration_descriptor body: 4-byte format_identifier "VTTC".
+        let vttc_tlv = vec![0x05u8, 0x04, b'V', b'T', b'T', b'C'];
+        let cfg = ConfigBuilder::default()
+            .add_program(1, 0x1000)
+            .add_video(0x101, MuxVideoCodec::H264)
+            .add_subtitle(0x200, MuxSubtitleCodec::WebVttInTs)
+            .stream_descriptors_for_subtitle(0, vec![subtitling_tlv, vttc_tlv])
+            .end_program()
+            .build()
+            .unwrap();
+        let mut muxer = crate::mpegts::mux::Muxer::new(cfg).unwrap();
+        // Push something to force PSI emission.
+        let h = muxer.subtitle_handles()[0];
+        muxer.push_subtitle_to(h, 90_000, b"WEBVTT\n\nx\n").unwrap();
+        let mut buf = vec![0u8; 188 * 64];
+        let n = muxer.pull(&mut buf);
+        buf.truncate(n);
+
+        let mut demuxer = Demuxer::new();
+        demuxer.feed(&buf).unwrap();
+        demuxer.flush();
+
+        let mut got_ambiguous = false;
+        let mut count = 0;
+        while let Some(ev) = demuxer.next_event() {
+            if let DemuxEvent::NonConformant {
+                issue: NonConformantIssue::SubtitleDescriptorAmbiguous { pid, tags },
+                ..
+            } = ev
+            {
+                if pid == 0x200 {
+                    got_ambiguous = true;
+                    count += 1;
+                    // 0x59 (subtitling) priority before 0xF0 (synthetic VTTC).
+                    assert_eq!(tags, vec![0x59, 0xF0]);
+                }
+            }
+        }
+        assert!(
+            got_ambiguous,
+            "expected SubtitleDescriptorAmbiguous for PID 0x200"
+        );
+        assert_eq!(count, 1, "deduped: one event per PID per PMT version");
+    }
+
     // -- classify_0x06: PSI cascade for stream_type 0x06 ----------------------
 
     fn raw_desc(tag: u8, data: Vec<u8>) -> crate::mpegts::demux::psi::RawDescriptor {
@@ -1793,6 +1929,56 @@ mod tests {
             raw_desc(0x05, b"KLVA".to_vec()),
         ];
         assert_eq!(classify_0x06(&descs), StreamKind::Video(VideoCodec::Av1));
+    }
+
+    #[test]
+    fn classify_0x06_emits_ambiguous_on_subtitling_plus_vttc() {
+        // PMT entry with both subtitling_descriptor (0x59) AND VTTC
+        // registration — ambiguous which subtitle codec actually rides on
+        // the PID. Classifier still picks subtitling per first-match
+        // priority; ambiguity helper surfaces both markers.
+        let descs = vec![
+            raw_desc(0x59, vec![b'e', b'n', b'g', 0x10, 0x00, 0x01, 0x00, 0x01]),
+            raw_desc(0x05, b"VTTC".to_vec()),
+        ];
+        let (kind, ambiguous_tags) = classify_0x06_with_ambiguity(&descs);
+        assert_eq!(kind, StreamKind::Subtitle(SubtitleCodec::DvbSubtitling));
+        assert_eq!(
+            ambiguous_tags,
+            vec![0x59, 0xF0],
+            "ambiguity reports both 0x59 and synthetic 0xF0 (VTTC)"
+        );
+    }
+
+    #[test]
+    fn classify_0x06_no_ambiguity_when_single_marker() {
+        let descs = vec![raw_desc(0x05, b"VTTC".to_vec())];
+        let (kind, ambiguous_tags) = classify_0x06_with_ambiguity(&descs);
+        assert_eq!(kind, StreamKind::Subtitle(SubtitleCodec::WebVttInTs));
+        assert!(ambiguous_tags.is_empty());
+    }
+
+    #[test]
+    fn classify_0x06_no_ambiguity_when_no_markers() {
+        // No recognized markers — empty tag list, falls through to Unknown.
+        let descs: Vec<crate::mpegts::demux::psi::RawDescriptor> = vec![];
+        let (kind, ambiguous_tags) = classify_0x06_with_ambiguity(&descs);
+        assert_eq!(kind, StreamKind::Unknown(0x06));
+        assert!(ambiguous_tags.is_empty());
+    }
+
+    #[test]
+    fn classify_0x06_ambiguous_teletext_synonyms_count_once() {
+        // 0x56 and 0x46 are teletext synonyms — one marker total even when
+        // both are present. Combined with VTTC, that's two markers.
+        let descs = vec![
+            raw_desc(0x56, vec![b'e', b'n', b'g', (0x02 << 3) | 1, 0x88]),
+            raw_desc(0x46, vec![]),
+            raw_desc(0x05, b"VTTC".to_vec()),
+        ];
+        let (kind, ambiguous_tags) = classify_0x06_with_ambiguity(&descs);
+        assert_eq!(kind, StreamKind::Subtitle(SubtitleCodec::DvbTeletext));
+        assert_eq!(ambiguous_tags, vec![0x56, 0xF0]);
     }
 
     // -- is_malformed_av1_registration -----------------------------------------

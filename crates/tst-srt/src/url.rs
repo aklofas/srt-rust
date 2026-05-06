@@ -150,6 +150,15 @@ pub enum UrlError {
     )]
     UnsupportedKey { key: String, srto: &'static str },
 
+    #[error(
+        "ffmpeg URL alias '{key}' ({canonical}) is not exposed by this library; {suggestion}"
+    )]
+    FfmpegAliasNotExposed {
+        key: String,
+        canonical: &'static str,
+        suggestion: &'static str,
+    },
+
     #[error("unknown URL key '{key}'")]
     UnknownKey { key: String },
 
@@ -427,6 +436,32 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
                 });
             }
         },
+        // ffmpeg-canonical option short-aliases that don't share a libsrt
+        // URL name. Without these arms, users porting ffmpeg URLs hit the
+        // generic "unknown URL key" fallthrough — surface what they're
+        // trying to set + what to use instead (or that we don't expose it).
+        // ffmpeg names: libsrt.c:103/104/118/149.
+        "timeout" => {
+            return Err(UrlError::FfmpegAliasNotExposed {
+                key: key.to_string(),
+                canonical: "ffmpeg's read/write timeout, libsrt rw_timeout, microseconds",
+                suggestion: "use x-recvtimeout / x-sendtimeout (milliseconds) for the closest equivalent",
+            });
+        }
+        "listen_timeout" => {
+            return Err(UrlError::FfmpegAliasNotExposed {
+                key: key.to_string(),
+                canonical: "ffmpeg's listen_timeout (connection-awaiting timeout, microseconds)",
+                suggestion: "not exposed by this library; see deferred-features.md",
+            });
+        }
+        "tsbpd" => {
+            return Err(UrlError::FfmpegAliasNotExposed {
+                key: key.to_string(),
+                canonical: "ffmpeg short alias for SRTO_TSBPDMODE (also reachable via the longer 'tsbpdmode' libsrt URL key)",
+                suggestion: "not exposed by this library; see deferred-features.md",
+            });
+        }
         other => {
             if let Some(srto) = group3_lookup(other) {
                 return Err(UrlError::UnsupportedKey {
@@ -729,6 +764,31 @@ mod tests {
             canonical.overlay.flow_window_packets,
             alias.overlay.flow_window_packets
         );
+    }
+
+    #[test]
+    fn ffmpeg_url_aliases_emit_friendly_errors_not_unknown_key() {
+        // Users porting ffmpeg URLs paste these all the time. Today they see
+        // "unknown URL key 'timeout'" — not helpful. Surface what they're trying
+        // to set + what to use instead (or that we don't support it).
+        for (url, expected_in_msg) in [
+            (
+                "srt://h:9000?timeout=5000000",
+                &["rw_timeout", "x-recvtimeout"][..],
+            ),
+            ("srt://h:9000?listen_timeout=5000000", &["listen_timeout"][..]),
+            ("srt://h:9000?tsbpd=1", &["tsbpdmode"][..]),
+            ("srt://h:9000?snddropdelay=100", &["snddropdelay"][..]),
+        ] {
+            let err = SrtUrl::parse(url).expect_err("should reject");
+            let s = format!("{err}");
+            for needle in expected_in_msg {
+                assert!(
+                    s.contains(needle),
+                    "URL {url} produced unhelpful error {s:?} (expected to contain {needle})"
+                );
+            }
+        }
     }
 
     #[test]

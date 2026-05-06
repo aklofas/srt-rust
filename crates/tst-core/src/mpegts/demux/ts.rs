@@ -6,6 +6,11 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TsPacket<'a> {
     pub pid: u16,
+    /// `transport_error_indicator` per ISO/IEC 13818-1 §2.4.3.2 (bit 0x80 of
+    /// byte 1). Set when an upstream link-layer (e.g. ATSC FEC, satellite
+    /// demod, CMTS) flagged the packet as known-corrupt. The demuxer drops
+    /// these packets per ffmpeg `mpegts.c:3091-3097`.
+    pub transport_error_indicator: bool,
     pub payload_unit_start: bool,
     pub continuity_counter: u8,
     pub has_adaptation_field: bool,
@@ -34,6 +39,7 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
     if buf[0] != 0x47 {
         return Err(TsParseError::NoSyncByte);
     }
+    let transport_error_indicator = (buf[1] & 0x80) != 0;
     let payload_unit_start = (buf[1] & 0x40) != 0;
     let pid = u16::from_be_bytes([buf[1] & 0x1F, buf[2]]);
     let adaptation_control = (buf[3] >> 4) & 0x03;
@@ -73,6 +79,7 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
     };
     Ok(TsPacket {
         pid,
+        transport_error_indicator,
         payload_unit_start,
         continuity_counter,
         has_adaptation_field,
@@ -101,6 +108,7 @@ mod tests {
         let buf = build_simple_packet(0x100, true, 0xA);
         let pkt = parse_ts_packet(&buf).unwrap();
         assert_eq!(pkt.pid, 0x100);
+        assert!(!pkt.transport_error_indicator);
         assert!(pkt.payload_unit_start);
         assert_eq!(pkt.continuity_counter, 0xA);
         assert!(pkt.has_payload);

@@ -288,6 +288,23 @@ impl Demuxer {
             | Err(TsParseError::Truncated)
             | Err(TsParseError::BadAdaptationLength) => return Ok(()),
         };
+        // ISO/IEC 13818-1 §2.4.3.2: `transport_error_indicator=1` means an
+        // upstream link-layer flagged the packet as known-corrupt. ffmpeg
+        // drops these and flags AV_PKT_FLAG_CORRUPT (mpegts.c:3091-3097);
+        // feeding the payload to PES/PSI reassembly would corrupt downstream
+        // parse state. Drop entirely and surface the drop as non-conformant
+        // so consumers can correlate with downstream parse failures.
+        if pkt.transport_error_indicator {
+            let stream = self.lookup_stream(pkt.pid).unwrap_or(StreamId {
+                pid: pkt.pid,
+                kind: StreamKind::Unknown(0),
+            });
+            self.queue_nonconformant(
+                stream,
+                NonConformantIssue::TransportErrorPacket { pid: pkt.pid },
+            );
+            return Ok(());
+        }
         self.check_pcr(&pkt);
         self.check_continuity(&pkt);
         if pkt.pid == 0x0000 {
@@ -2205,5 +2222,83 @@ mod tests {
             saw_overlong,
             "expected PsiOverlongSection on PID 0x100 from malicious PMT"
         );
+    }
+
+    /// Per ISO/IEC 13818-1 §2.4.3.2, bit 0x80 of byte 1 (transport_error_indicator)
+    /// marks a packet as link-layer-corrupt. ffmpeg drops these
+    /// (mpegts.c:3091-3097); we must too — silently feeding the payload to
+    /// PES/PSI reassembly produces garbage parse output downstream.
+    ///
+    /// We pre-seed the demuxer with a PAT that maps program 1 → PMT PID 0x100
+    /// so that without the TEI drop, the packet would route to the PMT-PID
+    /// branch of `handle_psi` and PSI parsing would be observable.
+    #[test]
+    fn tei_packets_are_dropped_with_non_conformant_event() {
+        let mut demux = Demuxer::new();
+
+        // Seed a PAT that announces program 1 on PMT PID 0x100. (Same
+        // construction as in `psi_buffer_caps_at_4kib_and_emits_psi_overlong_section`.)
+        let mut pat = vec![
+            0x00, // table_id
+            0xB0, 0x0D, // syntax=1, section_length=0x00D
+            0x00, 0x01, // transport_stream_id=1
+            0xC1, // reserved=11, version=0, current_next=1
+            0x00, 0x00, // section_number, last_section_number
+            0x00, 0x01, // program_number=1
+            0xE1, 0x00, // reserved=111, pid=0x100
+        ];
+        let crc = crate::mpegts::common::crc32::crc32_mpeg2(&pat);
+        pat.extend_from_slice(&crc.to_be_bytes());
+
+        let mut ts_pat = [0xFFu8; 188];
+        ts_pat[0] = 0x47;
+        ts_pat[1] = 0x40; // PUSI=1, pid_high=0
+        ts_pat[2] = 0x00; // pid_low=0
+        ts_pat[3] = 0x10; // adaptation=01, cc=0
+        ts_pat[4] = 0x00; // pointer_field=0
+        ts_pat[5..5 + pat.len()].copy_from_slice(&pat);
+        demux.feed(&ts_pat).expect("PAT feed");
+
+        // Drain PAT-induced events.
+        while demux.next_event().is_some() {}
+
+        // Build a TS packet with PUSI=1, CC=0, PID=0x100, AND TEI=1.
+        let mut pkt = [0xFFu8; 188];
+        pkt[0] = 0x47;
+        pkt[1] = 0xC1; // TEI=1, PUSI=1, transport_priority=0, pid_high=1
+        pkt[2] = 0x00; // pid_low=0 → PID=0x100
+        pkt[3] = 0x10; // adaptation=01, cc=0
+        pkt[4] = 0x00; // pointer_field=0
+        // Put a valid-looking PMT prefix in the payload so we'd ASSUME PSI
+        // parsing would happen if the packet weren't dropped.
+        pkt[5] = 0x02; // table_id (PMT)
+        pkt[6] = 0xB0; // section_syntax_indicator=1, reserved=11, sl_hi=0
+        pkt[7] = 0x05; // sl_lo=5
+
+        demux.feed(&pkt).expect("TEI feed");
+
+        // Expect TransportErrorPacket on PID 0x100, NO PSI parse.
+        let mut saw_tei = false;
+        let mut saw_psi = false;
+        while let Some(ev) = demux.next_event() {
+            match ev {
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::TransportErrorPacket { pid: 0x100 },
+                    ..
+                } => {
+                    saw_tei = true;
+                }
+                DemuxEvent::NonConformant {
+                    issue: NonConformantIssue::PsiOverlongSection { .. },
+                    ..
+                }
+                | DemuxEvent::ProgramMap(_) => {
+                    saw_psi = true;
+                }
+                _ => {}
+            }
+        }
+        assert!(saw_tei, "expected TransportErrorPacket on PID 0x100");
+        assert!(!saw_psi, "TEI packet should be dropped before PSI parsing");
     }
 }

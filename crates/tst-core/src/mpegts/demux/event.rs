@@ -389,6 +389,15 @@ pub enum NonConformantIssue {
     /// consumers ever need to distinguish them.
     PsiOverlongSection { pid: u16, observed_len: usize },
 
+    /// Per ISO/IEC 13818-1 §2.4.3.2, bit 0x80 of TS byte 1
+    /// (`transport_error_indicator`) marks a packet as link-layer-corrupt
+    /// (ATSC FEC, satellite demod, CMTS, etc.). The demuxer drops the packet
+    /// (does not feed payload to PES/PSI reassembly) and emits this issue so
+    /// consumers can correlate with downstream parse failures or surface to
+    /// telemetry. Matches ffmpeg's `AV_PKT_FLAG_CORRUPT` in
+    /// `mpegts.c:3091-3097`.
+    TransportErrorPacket { pid: u16 },
+
     /// Other.
     Other(String),
 }

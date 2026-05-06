@@ -694,20 +694,40 @@ mux.push_subtitle_to(
 // for a `drain_all` helper.
 ```
 
+### Codec-specific PES envelope behavior
+
+`Muxer::push_subtitle_to` applies the spec-conformant wire envelope
+based on the configured `SubtitleCodec`. Pass raw payload bytes; the
+muxer prepends/appends the envelope.
+
+- **`DvbSubtitling`** — wraps caller-supplied subtitling segment bytes
+  in `data_identifier(0x20) + subtitle_stream_id(0x00) + segments +
+  end_of_PES_data_field_marker(0xFF)` per ETSI EN 300 743 §6.2. Pass
+  raw segment bytes (each starting with sync_byte `0x0F`).
+- **`DvbTeletext`** — emits the 45-byte stuffed PES header
+  (`PES_header_data_length=0x24`) and pads the PES tail with `0xFF`
+  stuffing to reach `(N × 184) − 6` total `PES_packet_length` per ETSI
+  EN 300 472 §4.2. Pass raw teletext data unit bytes (each starting
+  with `data_identifier`).
+- **`Cea708Standalone`** and **`WebVttInTs`** — informal industry
+  conventions with no spec-defined envelope; the muxer passes payload
+  through unchanged.
+
 ### Limits and caps
 
 - ≤16 subtitle streams per program (`MAX_SUBTITLE_STREAMS_PER_PROGRAM`).
 - Subtitle PIDs cannot serve as the PCR PID — too sparse for PCR pacing.
 - `push_subtitle` payload max: 65527 bytes (PES packet length budget).
-- DVB-teletext `magazine_number` ∈ 0..=7; `teletext_type` ∈ 0..=0x1F; ISO 639-2 language codes must be 3 lowercase ASCII bytes.
+- DVB-teletext `magazine_number` ∈ 0..=7; `teletext_type` ∈ 0..=0x1F; ISO 639-2 language codes are 3 ASCII alphabetic bytes (per EN 300 468 §6.2.41/§6.2.43; both lowercase and uppercase accepted).
 
 ### Multi-stream and multi-program
 
 `push_subtitle_to(handle, pts, bytes)` dispatches by handle. Bare
 `push_subtitle(pts, bytes)` rejects with
-`MuxError::AmbiguousTarget` when total subtitle streams across all
-programs ≠ 1 (extends the rule established for video / KLV / audio
-in plans #14, #19, #21).
+`MuxError::NoSubtitleStreamsConfigured` when no subtitle streams exist
+across any program, or `MuxError::AmbiguousTarget` when ≥2 subtitle
+streams exist (caller must pick one via the `_to` form). Mirrors the
+shape used for video / KLV / audio.
 
 ## Examples
 

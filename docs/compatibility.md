@@ -148,6 +148,19 @@ Per-program cap: ≤16 subtitle streams (`MAX_SUBTITLE_STREAMS_PER_PROGRAM`).
 Subtitle PIDs cannot serve as the PCR PID (too sparse for PCR pacing).
 `push_subtitle` payload max: 65527 bytes (PES packet length budget).
 
+### Wire-envelope and descriptor conformance
+
+| Spec / Feature | Status | Notes |
+| --- | --- | --- |
+| DVB-sub PES envelope (ETSI EN 300 743 §6.2) | ✅ Full | Auto-wrapped inside `Muxer::push_subtitle_to` for `DvbSubtitling` (`data_identifier=0x20` + `subtitle_stream_id=0x00` + segments + `end_of_PES_data_field_marker=0xFF`). Caller passes raw segment bytes. |
+| DVB-teletext stuffed PES header (ETSI EN 300 472 §4.2) | ✅ Full | Auto-emitted inside `Muxer::push_subtitle_to` for `DvbTeletext` (45-byte header, `PES_header_data_length=0x24`); PES tail padded with `0xFF` stuffing to `(N × 184) − 6` `PES_packet_length`. |
+| Multi-language single-PID `subtitling_descriptor` (ETSI EN 300 468 §6.2.41) | ✅ Full | `mpegts::descriptors::subtitling_descriptor_multi`. |
+| Multi-language single-PID `teletext_descriptor` (ETSI EN 300 468 §6.2.43) | ✅ Full | `mpegts::descriptors::teletext_descriptor_multi`. |
+| Subtitle auto-emit suppression on caller-supplied descriptor | ✅ Full | When `ConfigBuilder::stream_descriptors_for_subtitle` supplies a recognized codec marker (`subtitling_descriptor` 0x59 / `teletext_descriptor` 0x56 / VBI teletext 0x46 / `registration_descriptor` with `VTTC` or `GA94` format_identifier), the muxer suppresses its codec-driven auto-emit (mirrors KLVA / AV01 suppression). |
+| ISO 639 language code casing (EN 300 468) | ✅ Full | `validate_language_code` accepts both lowercase and uppercase 3-letter ASCII alphabetic codes. |
+| Subtitle-only program rejection | ✅ Full | `Config::validate` rejects programs with subtitle streams but no video/audio/KLV (`MuxError::SubtitleOnlyProgram`); subtitle PIDs are too sparse to anchor PCR. |
+| Multi-descriptor `stream_type 0x06` ambiguity (demux) | ✅ Full | `NonConformantIssue::SubtitleDescriptorAmbiguous` surfaced when ≥2 distinguishing descriptors co-exist (subtitling / teletext / `VTTC` / `GA94`); cascade picks first match. |
+
 ---
 
 ## KLV substrate (`srt-core::klv`)

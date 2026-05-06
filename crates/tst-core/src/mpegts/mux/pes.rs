@@ -176,17 +176,51 @@ pub(crate) fn write_subtitle_pes(
 ///   area), with `0xFF` stuffing in the tail past `payload`.
 /// - `data_alignment_indicator = 1` (every PES carries one logical teletext
 ///   data unit).
+/// Write a complete DVB teletext PES packet per ETSI EN 300 472 §4.2 + §4.4.
+///
+/// - 45-byte PES header total: `start_code(3) + stream_id(1) + length(2) +
+///   flags1(1) + flags2(1) + PES_header_data_length(1) + PTS(5) +
+///   stuffing(31×0xFF)`.
+/// - `PES_header_data_length = 0x24` (36 — covers 5 PTS bytes + 31 stuffing
+///   bytes).
+/// - PES payload begins with a `data_identifier` byte ∈ `0x10..=0x1F`
+///   (EN 300 472 §4.4.1). If `payload[0]` is not in that range, `0x10`
+///   (EBU teletext) is auto-prepended to mirror gst-tsmux
+///   (`gstbasetsmuxttxt.c:100-103`). Without this byte ffmpeg's
+///   `ff_data_identifier_is_teletext()` probe rejects the stream.
+/// - Tail stuffing past the caller's data_units is itself a sequence of
+///   `data_unit_id=0xFF` stuffing_data_units per EN 300 472 §4.4 — each
+///   is 46 bytes: `[0xFF, 0x2C (=44), 0x00 × 44]`. ffmpeg's `dvbtxt.c:40-44`
+///   probe rejects raw-0xFF stuffing.
+/// - `PES_packet_length = (N × 184) − 6`, where
+///   `N = ceil((45 + auto_id_byte + payload.len()) / 184)`. The PES
+///   packet is exactly `N × 184` bytes, with stuffing data_units padding
+///   the tail.
+/// - `data_alignment_indicator = 1` (every PES carries one logical teletext
+///   data unit).
 fn write_dvb_teletext_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
     /// Total PES header size for EBU teletext (EN 300 472 §4.2).
     const HEADER_TOTAL: usize = 45;
     /// `PES_header_data_length` for EBU teletext: 36 = 5 PTS + 31 stuffing.
     const PES_HEADER_DATA_LENGTH: u8 = 0x24;
-    /// Stuffing byte per EN 300 472 §4.2.
-    const STUFFING_BYTE: u8 = 0xFF;
+    /// Stuffing byte for the 31-byte PES-header stuffing region.
+    const PES_HEADER_STUFFING: u8 = 0xFF;
     /// TS packet payload area when no adaptation field is present.
     const TS_PAYLOAD_PER_PKT: usize = 184;
+    /// Default `data_identifier` per EN 300 472 §4.4.1 Table 1 (EBU teletext).
+    const DEFAULT_DATA_IDENTIFIER: u8 = 0x10;
+    /// Stuffing data_unit per EN 300 472 §4.4: 46 bytes total.
+    const STUFFING_DATA_UNIT: [u8; 46] = {
+        let mut arr = [0x00u8; 46];
+        arr[0] = 0xFF; // data_unit_id (stuffing per Table 2)
+        arr[1] = 0x2C; // data_unit_length = 44
+        arr
+    };
 
-    let useful = HEADER_TOTAL + payload.len();
+    let auto_prepend = !matches!(payload.first(), Some(0x10..=0x1F));
+    let auto_id_byte = if auto_prepend { 1 } else { 0 };
+
+    let useful = HEADER_TOTAL + auto_id_byte + payload.len();
     let n = useful.div_ceil(TS_PAYLOAD_PER_PKT).max(1);
     let total_pes_bytes = n * TS_PAYLOAD_PER_PKT;
     // PES_packet_length excludes the 6 fixed bytes (start_code + stream_id +
@@ -198,18 +232,12 @@ fn write_dvb_teletext_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
     out.push(STREAM_ID_PRIVATE_STREAM_1);
     // PES_packet_length (BE u16).
     out.extend_from_slice(&(pes_packet_length as u16).to_be_bytes());
-    // flags1: '10' marker (bits 7..6) | data_alignment_indicator (bit 2).
-    //   bit 7..6 = '10' (marker)
-    //   bit 5..4 = PES_scrambling_control = 0
-    //   bit 3    = PES_priority = 0
-    //   bit 2    = data_alignment_indicator = 1
-    //   bit 1    = copyright = 0
-    //   bit 0    = original_or_copy = 0
-    // Hardcoded inline (vs routed through write_pes_header) because the
-    // teletext path doesn't share the standard 14-byte header — it has 36
-    // bytes of stuffing after the PTS to reach a 45-byte header total.
+    // flags1: '10' marker | data_alignment_indicator (bit 2). Hardcoded
+    // inline (vs routed through write_pes_header) because the teletext
+    // path doesn't share the standard 14-byte header — it has 36 bytes
+    // of stuffing after the PTS to reach a 45-byte header total.
     out.push(0b1000_0100);
-    // flags2: PTS_DTS_flags = '10' (PTS only) in bits 7..6, all other flags 0.
+    // flags2: PTS_DTS_flags = '10' (PTS only) in bits 7..6.
     out.push(0b1000_0000);
     // PES_header_data_length.
     out.push(PES_HEADER_DATA_LENGTH);
@@ -217,15 +245,44 @@ fn write_dvb_teletext_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
     let mut pts_buf = [0u8; 5];
     write_pts(&mut pts_buf, Pts90khz(pts_90khz), 0b0010);
     out.extend_from_slice(&pts_buf);
-    // Stuffing to reach 45-byte header total. After the PTS we are at byte 14
-    // (3 + 1 + 2 + 1 + 1 + 1 + 5).
+    // Stuffing to reach the 45-byte header total. After PTS we are at
+    // byte 14 (3 + 1 + 2 + 1 + 1 + 1 + 5).
     debug_assert_eq!(out.len(), 14);
-    out.resize(HEADER_TOTAL, STUFFING_BYTE);
+    out.resize(HEADER_TOTAL, PES_HEADER_STUFFING);
     debug_assert_eq!(out.len(), HEADER_TOTAL);
-    // Caller payload.
+    // Auto-prepended data_identifier (EN 300 472 §4.4.1).
+    if auto_prepend {
+        out.push(DEFAULT_DATA_IDENTIFIER);
+    }
+    // Caller's data_units (or first byte = caller's data_identifier
+    // followed by data_units).
     out.extend_from_slice(payload);
-    // Tail stuffing per EN 300 472 §4.2: pad to N × 184 bytes total.
-    out.resize(total_pes_bytes, STUFFING_BYTE);
+    // Tail stuffing per EN 300 472 §4.4 — emit whole stuffing_data_units
+    // until we reach `total_pes_bytes`. The PES byte total is always a
+    // multiple of 184 by construction; each stuffing unit is 46 bytes.
+    // 184 / 46 = 4 exactly, so whole units always fit. If a partial unit
+    // is needed at the end (auto_id_byte+payload misaligns), emit
+    // [0xFF, length=remaining-2, 0x00 × (remaining-2)] as a single
+    // shorter stuffing_data_unit (EN 300 472 §4.4 permits any length
+    // 0..=44 in the data_unit_length field).
+    while out.len() + STUFFING_DATA_UNIT.len() <= total_pes_bytes {
+        out.extend_from_slice(&STUFFING_DATA_UNIT);
+    }
+    let remaining = total_pes_bytes - out.len();
+    if remaining > 0 {
+        // Partial stuffing data_unit: at minimum 2 bytes (id + length),
+        // up to 46.
+        if remaining >= 2 {
+            out.push(0xFF); // data_unit_id
+            out.push((remaining - 2) as u8); // data_unit_length
+            out.resize(out.len() + (remaining - 2), 0x00);
+        } else {
+            // remaining == 1 — pad with a single 0xFF byte. Belt-and-
+            // suspenders; never fires in practice since total_pes_bytes
+            // is always N × 184.
+            out.push(0xFF);
+        }
+    }
     debug_assert_eq!(out.len(), total_pes_bytes);
 }
 
@@ -610,5 +667,68 @@ mod tests {
         assert_eq!(&wrapped[2..2 + segs.len()], &segs[..]);
         assert_eq!(wrapped[2 + segs.len()], 0xFF);
         assert_eq!(wrapped.len(), 2 + segs.len() + 1);
+    }
+
+    #[test]
+    fn dvb_teletext_pes_auto_prepends_data_identifier() {
+        // Caller passes a raw teletext data_unit body (no leading 0x10).
+        // The writer must prepend 0x10 (gst-tsmux behavior) so ffmpeg's
+        // ff_data_identifier_is_teletext probe accepts the stream.
+        let mut out = Vec::new();
+        let body = [0x02u8, 0x2C, 0xAA, 0xBB]; // arbitrary 4-byte payload
+        write_dvb_teletext_pes(&mut out, /*pts_90khz=*/ 0, &body);
+
+        // After 45-byte header, byte 45 must be 0x10 (auto-prepended ID).
+        assert_eq!(
+            out[45], 0x10,
+            "auto-prepended data_identifier=0x10 expected, got {:#04x}",
+            out[45]
+        );
+        // The caller's bytes follow at byte 46.
+        assert_eq!(
+            &out[46..50],
+            &body,
+            "caller body intact after the prepended ID"
+        );
+    }
+
+    #[test]
+    fn dvb_teletext_pes_passes_through_caller_data_identifier() {
+        // Caller's first byte is already in the EN 300 472 0x10..=0x1F
+        // range — pass through unchanged, no double-prepend.
+        let mut out = Vec::new();
+        let body = [0x12u8, 0x2C, 0xAA]; // first byte 0x12 = subtitle teletext per EN 300 472 Table 1
+        write_dvb_teletext_pes(&mut out, 0, &body);
+        assert_eq!(out[45], 0x12, "caller's data_identifier preserved");
+        assert_eq!(out[46], 0x2C);
+        assert_eq!(out[47], 0xAA);
+    }
+
+    #[test]
+    fn dvb_teletext_pes_tail_stuffs_with_spec_data_units() {
+        // Per EN 300 472 §4.4, tail stuffing must be sequences of stuffing
+        // data_units: [0xFF, 0x2C, 0x00 × 44] = 46 bytes each. Raw 0xFF
+        // bytes (today's behavior) are rejected by ffmpeg's dvbtxt.c:40-44
+        // probe.
+        let mut out = Vec::new();
+        let body = [0x02u8, 0x2C, 0xAA]; // tiny payload — most of N×184 is stuffing
+        write_dvb_teletext_pes(&mut out, 0, &body);
+
+        // Total = 184 (single TS packet's worth of PES payload area).
+        assert_eq!(out.len(), 184);
+        // Layout:
+        //   bytes 0..45    : PES header (45 bytes)
+        //   byte 45        : auto-prepended 0x10
+        //   bytes 46..49   : caller body (3 bytes)
+        //   byte 49        : start of tail stuffing
+        //
+        // First stuffing data_unit must be [0xFF, 0x2C, 0x00 × 44].
+        assert_eq!(out[49], 0xFF, "stuffing data_unit_id=0xFF");
+        assert_eq!(out[50], 0x2C, "stuffing data_unit_length=44");
+        assert!(
+            out[51..51 + 44].iter().all(|b| *b == 0x00),
+            "stuffing payload is 44 zero bytes, got {:?}",
+            &out[51..51 + 44]
+        );
     }
 }

@@ -824,7 +824,7 @@ the trigger that would unblock it.
   out-of-band as separate `*.vtt` segment files referenced from a
   `#EXT-X-MEDIA:TYPE=SUBTITLES` entry in the playlist — no MPEG-TS
   involvement.
-- **Why deferred:** Not a `tstrans` concern. Out-of-band WebVTT
+- **Why deferred:** Not a `ts-transformer` concern. Out-of-band WebVTT
   delivery is an HLS-packager / orchestrator concern outside this
   library.
 - **Trigger to revisit:** Never (different layer).

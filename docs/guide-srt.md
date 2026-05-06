@@ -423,7 +423,7 @@ when both name the same option.
 | `udprcvbuf` | `SRTO_UDP_RCVBUF` | INT (bytes) | kernel UDP recv buffer; ffmpeg-style alias `recv_buffer_size`; Linux clamps to `net.core.rmem_max` |
 | `udpsndbuf` | `SRTO_UDP_SNDBUF` | INT (bytes) | kernel UDP send buffer; ffmpeg-style alias `send_buffer_size`; Linux clamps to `net.core.wmem_max` |
 
-### `tstrans` extension keys (Group 2)
+### `ts-transformer` extension keys (Group 2)
 
 These two keys have no libsrt-URL precedent and are specific to this
 library. The `x-` prefix marks them as extensions and reserves the

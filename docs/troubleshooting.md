@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common failure modes you'll hit when building or running this library, with diagnoses and fixes. If you're not finding your symptom here, check the per-module guide for the relevant area, or open an issue at https://github.com/aklofas/tstrans/issues.
+Common failure modes you'll hit when building or running this library, with diagnoses and fixes. If you're not finding your symptom here, check the per-module guide for the relevant area, or open an issue at https://github.com/aklofas/ts-transformer/issues.
 
 ## Build failures
 

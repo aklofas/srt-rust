@@ -2,7 +2,7 @@
 
 ## Audience and time budget
 
-If you're new to `tstrans` and want to send and receive bytes in
+If you're new to `ts-transformer` and want to send and receive bytes in
 10 minutes, start here. For deeper context, see
 [architecture.md](architecture.md).
 
@@ -25,8 +25,8 @@ finished `.ts` file on disk.
 ## Get the code
 
 ```bash
-git clone --recurse-submodules https://github.com/aklofas/tstrans.git
-cd tstrans
+git clone --recurse-submodules https://github.com/aklofas/ts-transformer.git
+cd ts-transformer
 ```
 
 If you cloned without `--recurse-submodules`:
@@ -40,11 +40,11 @@ The submodules are `vendor/srt` (libsrt 1.5.5) and `vendor/mbedtls`
 
 ## Add it to your project
 
-Until `tstrans` is published to crates.io, depend on it via git:
+Until `ts-transformer` is published to crates.io, depend on it via git:
 
 ```toml
 [dependencies]
-tst-core = { git = "https://github.com/aklofas/tstrans" }
+tst-core = { git = "https://github.com/aklofas/ts-transformer" }
 ```
 
 Note on cold builds: the first build compiles libsrt + mbedTLS from

@@ -1,6 +1,6 @@
 # Compatibility matrix
 
-What `tstrans` actually implements today, mapped to the upstream specs and
+What `ts-transformer` actually implements today, mapped to the upstream specs and
 deployed protocol surfaces. Statuses are deliberate and conservative — items
 not listed below are intentionally **not yet implemented**.
 
@@ -15,7 +15,7 @@ not listed below are intentionally **not yet implemented**.
 | ⏳ Planned | On the roadmap, not yet implemented. |
 | ❌ Out of scope | Deferred indefinitely. |
 
-The `tstrans` workspace deliberately scopes to **MPEG-TS + MISB ST 0601 KLV
+The `ts-transformer` workspace deliberately scopes to **MPEG-TS + MISB ST 0601 KLV
 over SRT**. Containers (MP4/CMAF/RIST/WebRTC), ST 0903 VMTI, raw elementary
 streams, and so on are out of scope until a consumer asks. See
 `crates/tst-core/tests/TEST_CORPUS.md` for the parsing-side compliance ledger
@@ -416,22 +416,22 @@ as `Obu { obu_type, payload, .. }` without further parsing.
 
 ## FFmpeg URL interop quirks
 
-`tstrans` follows the libsrt-URL canonical conventions
+`ts-transformer` follows the libsrt-URL canonical conventions
 (`srt-live-transmit`, OBS, mediamtx, gstreamer's `srtsink`/`srtsrc`,
 Haivision Connect). FFmpeg's `srt://` protocol diverges in a few unit
 conventions; users copying URLs between tools should be aware.
 
-| URL key | FFmpeg unit | tstrans unit | Notes |
+| URL key | FFmpeg unit | ts-transformer unit | Notes |
 | --- | --- | --- | --- |
-| `latency` | µs | ms | tstrans warns when value ≥ 10 s (likely paste from ffmpeg URL). |
+| `latency` | µs | ms | ts-transformer warns when value ≥ 10 s (likely paste from ffmpeg URL). |
 | `rcvlatency` | µs | ms | Same warning. |
 | `peerlatency` | µs | ms | Same warning. |
 | `snddropdelay` | µs | (deferred) | Currently rejected as unsupported. |
 
-When migrating an ffmpeg pipeline URL to tstrans, divide the latency
+When migrating an ffmpeg pipeline URL to ts-transformer, divide the latency
 values by 1000.
 
-ffmpeg-style key aliases honored by tstrans (zero new functionality —
+ffmpeg-style key aliases honored by ts-transformer (zero new functionality —
 just alternate spellings of existing keys): `pkt_size` / `payload_size`
 (→ `payloadsize`), `srt_streamid` (→ `streamid`), `tsbpddelay` (→
 `latency`), `smoother` (→ `congestion`), `ffs` (→ `fc`),
@@ -442,8 +442,8 @@ just alternate spellings of existing keys): `pkt_size` / `payload_size`
 
 ## Standards reference — what we cite vs. what we implement
 
-The MISB / SMPTE / IETF documents that bear on `tstrans`. The
-"Implemented?" column reflects what `tstrans` does, not what the spec
+The MISB / SMPTE / IETF documents that bear on `ts-transformer`. The
+"Implemented?" column reflects what `ts-transformer` does, not what the spec
 covers.
 
 | Spec | Title | Implemented? |

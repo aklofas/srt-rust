@@ -1,4 +1,4 @@
-# TS Transformer (`tstrans`)
+# TS Transformer (`ts-transformer`)
 
 Cross-platform SRT-based libraries for live video streaming from **gimbaled platforms** — drones (rotary and fixed-wing UAVs), manned fixed-wing aircraft with sensor pods, helicopters with EO/IR turrets, and other manned/unmanned platforms carrying stabilized imaging payloads.
 
@@ -68,10 +68,10 @@ Bindgen-generated against libsrt 1.5.5, edition 2024, MSRV 1.85. Exposes ~72 `sr
 
 ```toml
 [dependencies]
-srt-sys = { git = "https://github.com/aklofas/tstrans" }
+srt-sys = { git = "https://github.com/aklofas/ts-transformer" }
 
 # Or, to skip the mbedTLS build and disable encryption:
-srt-sys = { git = "https://github.com/aklofas/tstrans", default-features = false }
+srt-sys = { git = "https://github.com/aklofas/ts-transformer", default-features = false }
 ```
 
 `srt-sys` is intended as a foundation for higher-level crates in this workspace. Most callers should use `tst-core` / `tst-srt`'s safe API rather than write `unsafe` against the raw bindings directly.
@@ -96,7 +96,7 @@ Three crates built on `srt-sys`. `tst-core` holds parsing and codec logic; `tst-
 
 ```toml
 [dependencies]
-tst-srt = { git = "https://github.com/aklofas/tstrans" }
+tst-srt = { git = "https://github.com/aklofas/ts-transformer" }
 ```
 
 ```rust
@@ -197,8 +197,8 @@ sudo apt-get install -y build-essential cmake pkg-config python3
 ### Clone with submodules
 
 ```bash
-git clone --recurse-submodules https://github.com/aklofas/tstrans.git
-cd tstrans
+git clone --recurse-submodules https://github.com/aklofas/ts-transformer.git
+cd ts-transformer
 # Or, if already cloned without submodules:
 git submodule update --init --recursive
 ```

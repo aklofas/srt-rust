@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document covers how `tstrans` is laid out: the crate graph, the
+This document covers how `ts-transformer` is laid out: the crate graph, the
 internal structure of `tst-core`, and the pipeline composition model that
 ties the muxer, transport, and reconnect behaviour together. It targets
 evaluators sizing up the project and contributors finding their way around;

@@ -13,10 +13,8 @@
 //!   bounded by a freshness ceiling.
 //!
 //! The pairer is **opt-in** — callers construct it explicitly;
-//! [`crate::DemuxReceiver`] does not reach for it even by default. This
-//! preserves the demux design's decoupled-pairing posture (see
-//! `docs/specs/2026-05-02-srt-jni-and-demux-design.md` §4 in the parent
-//! workspace).
+//! [`crate::DemuxReceiver`] does not reach for it by default, preserving
+//! the demux module's decoupled-pairing posture.
 //!
 //! # PTS handling
 //!

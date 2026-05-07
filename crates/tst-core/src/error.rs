@@ -7,6 +7,7 @@ use thiserror::Error;
 // ============================================================================
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum KlvDecodeError {
     #[error("buffer truncated at offset {offset}: needed {needed} bytes, have {have}")]
     Truncated {
@@ -88,6 +89,7 @@ pub enum KlvDecodeError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum KlvEncodeError {
     #[error("output buffer too small: needed {needed} bytes, got {got}")]
     BufferTooSmall { needed: usize, got: usize },
@@ -108,6 +110,7 @@ pub enum KlvEncodeError {
 }
 
 #[derive(Debug, Clone, Error, PartialEq)]
+#[non_exhaustive]
 pub enum KlvFieldError {
     #[error("tag {tag}: value {value} out of declared range [{min}, {max}]")]
     OutOfRange {

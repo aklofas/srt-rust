@@ -115,7 +115,7 @@ fn decode_inner(buf: &[u8], strict: bool) -> Result<SecurityLs, KlvDecodeError> 
 
     for r in Iter::local_set(buf) {
         let f = r?;
-        if !seen.insert(f.tag) {
+        if !seen.insert(f.tag) && strict {
             return Err(KlvDecodeError::DuplicateTag {
                 tag: f.tag,
                 offset: 0, // Iter doesn't surface offset; non-fatal best-effort
@@ -449,10 +449,16 @@ mod tests {
     }
 
     #[test]
-    fn decode_duplicate_tag_rejected() {
+    fn decode_duplicate_tag_lenient_last_wins() {
+        // Sibling-pattern parity with klv::st0601 lenient mode:
+        // duplicate tags overwrite silently, later occurrence wins.
+        // Strict mode (Task 6) rejects the same input as DuplicateTag.
         let buf = build_record(&[(1, &[0x01]), (1, &[0x02])]);
-        let err = decode(&buf).expect_err("duplicate tag rejected");
-        assert!(matches!(err, KlvDecodeError::DuplicateTag { tag: 1, .. }));
+        let r = decode(&buf).expect("lenient tolerates duplicate, last wins");
+        assert_eq!(
+            r.security_classification,
+            Some(SecurityClassification::Restricted) // 0x02, the second occurrence
+        );
     }
 
     #[test]

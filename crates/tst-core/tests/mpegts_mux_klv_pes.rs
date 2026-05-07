@@ -1,0 +1,118 @@
+//! Verifies KLV PES stream_id selection per stream_type.
+//!
+//! Per H.222.0 V9 Table 2-22:
+//! - Async KLV (stream_type 0x06 PrivateData)  → PES stream_id 0xBD (private_stream_1)
+//! - Sync  KLV (stream_type 0x15 SynchronousMetadata) → PES stream_id 0xFC (metadata)
+
+use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec};
+
+/// Minimal 17-byte KLV LS packet (16-byte ST 0601 UL + 1-byte BER length=0).
+fn synthetic_klv() -> Vec<u8> {
+    vec![
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00,
+        0x00, 0x00,
+    ]
+}
+
+/// Extract the PES `stream_id` byte from the first PUSI packet on `pid`.
+///
+/// Returns `None` if no such packet is found in the buffer. Skips the
+/// adaptation field (if present) to locate the PES start, then reads byte 3
+/// of the PES packet (start_code[3] + stream_id).
+fn pes_stream_id_on_pid(ts_buf: &[u8], pid: u16) -> Option<u8> {
+    for pkt in ts_buf.chunks_exact(188) {
+        let pkt_pid = ((pkt[1] as u16 & 0x1F) << 8) | pkt[2] as u16;
+        if pkt_pid != pid {
+            continue;
+        }
+        let pusi = (pkt[1] & 0x40) != 0;
+        if !pusi {
+            continue;
+        }
+        let af_present = (pkt[3] & 0x20) != 0;
+        let mut idx = 4usize;
+        if af_present {
+            let af_len = pkt[idx] as usize;
+            idx += 1 + af_len;
+        }
+        // PES layout: 00 00 01 <stream_id> ...
+        if idx + 4 <= 188 {
+            debug_assert_eq!(pkt[idx], 0x00);
+            debug_assert_eq!(pkt[idx + 1], 0x00);
+            debug_assert_eq!(pkt[idx + 2], 0x01);
+            return Some(pkt[idx + 3]);
+        }
+    }
+    None
+}
+
+fn drain(mux: &mut Muxer) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; 1316];
+    loop {
+        let n = mux.pull(&mut buf);
+        if n == 0 {
+            break;
+        }
+        out.extend_from_slice(&buf[..n]);
+    }
+    out
+}
+
+#[test]
+fn async_klv_pes_uses_stream_id_0xbd() {
+    // stream_type 0x06 PrivateData — async KLV must use PES stream_id 0xBD
+    // (private_stream_1) per ffmpeg + GStreamer convention.
+    // H.222.0 V9 Table 2-22 reserves 0xFC for metadata streams
+    // (stream_type 0x15) only.
+    let cfg = ConfigBuilder::default()
+        .add_program(1, 0x1000)
+        .add_video(0x1011, VideoCodec::H264)
+        .add_klv(
+            0x1031,
+            KlvStreamType::PrivateData,
+            /*carries_pts=*/ false,
+        )
+        .end_program()
+        .build()
+        .unwrap();
+    let mut mux = Muxer::new(cfg).unwrap();
+
+    mux.push_klv(&synthetic_klv(), 0).unwrap();
+    let ts_buf = drain(&mut mux);
+
+    let stream_id =
+        pes_stream_id_on_pid(&ts_buf, 0x1031).expect("must find a PUSI packet on KLV PID 0x1031");
+    assert_eq!(
+        stream_id, 0xBD,
+        "async KLV (stream_type 0x06) must use PES stream_id 0xBD (private_stream_1)"
+    );
+}
+
+#[test]
+fn sync_klv_pes_keeps_stream_id_0xfc() {
+    // stream_type 0x15 SynchronousMetadata — sync KLV must use PES stream_id
+    // 0xFC per H.222.0 V9 Table 2-22 (reserved for metadata streams).
+    let cfg = ConfigBuilder::default()
+        .add_program(1, 0x1000)
+        .add_video(0x1011, VideoCodec::H264)
+        .add_klv(
+            0x1031,
+            KlvStreamType::SynchronousMetadata,
+            /*carries_pts=*/ true,
+        )
+        .end_program()
+        .build()
+        .unwrap();
+    let mut mux = Muxer::new(cfg).unwrap();
+
+    mux.push_klv(&synthetic_klv(), 90_000).unwrap();
+    let ts_buf = drain(&mut mux);
+
+    let stream_id =
+        pes_stream_id_on_pid(&ts_buf, 0x1031).expect("must find a PUSI packet on KLV PID 0x1031");
+    assert_eq!(
+        stream_id, 0xFC,
+        "sync KLV (stream_type 0x15) must use PES stream_id 0xFC (metadata)"
+    );
+}

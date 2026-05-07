@@ -1203,8 +1203,8 @@ pub struct MuxerStats {
 }
 
 use self::pes::{
-    MAX_PES_HEADER_SIZE, PesFlags, PesPtsField, STREAM_ID_KLV, STREAM_ID_VIDEO, SubtitlePesShape,
-    write_audio_pes, write_pes_header, write_subtitle_pes,
+    MAX_PES_HEADER_SIZE, PesFlags, PesPtsField, STREAM_ID_KLV, STREAM_ID_PRIVATE_STREAM_1,
+    STREAM_ID_VIDEO, SubtitlePesShape, write_audio_pes, write_pes_header, write_subtitle_pes,
 };
 use self::psi::{KLVA_REGISTRATION_DESCRIPTOR, PmtStreamEntry, write_pat_packet, write_pmt_packet};
 use self::ts::{AdaptationField, ContinuityCounters, write_packet};
@@ -2381,13 +2381,21 @@ impl Muxer {
         }
 
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
-        // H.222.0 V9 §2.12.4.1 mandates data_alignment_indicator=1 on every
-        // metadata PES (sync KLV, stream_type 0x15). For PrivateData KLV
-        // (stream_type 0x06) the bit is also conventional (DVB-style sync
-        // metadata) — set it for both.
+        // Sync KLV (stream_type 0x15 SynchronousMetadata): stream_id 0xFC per
+        // H.222.0 V9 Table 2-22 (reserved for metadata streams).
+        // Async KLV (stream_type 0x06 PrivateData): stream_id 0xBD per ffmpeg +
+        // GStreamer convention — H.222.0 Table 2-22 reserves 0xFC for metadata
+        // streams (stream_type 0x15) only.
+        // data_alignment_indicator=1 on both paths: H.222.0 V9 §2.12.4.1
+        // mandates it for sync KLV; also conventional for async KLV AU delivery.
+        let pes_stream_id = if is_sync {
+            STREAM_ID_KLV // 0xFC — H.222.0 metadata stream_id, sync KLV (stream_type 0x15).
+        } else {
+            STREAM_ID_PRIVATE_STREAM_1 // 0xBD — async KLV (stream_type 0x06).
+        };
         let header_len = write_pes_header(
             &mut header,
-            STREAM_ID_KLV,
+            pes_stream_id,
             pts_field,
             Some(effective_klv.len() as u16),
             PesFlags {

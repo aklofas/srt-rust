@@ -4,9 +4,12 @@
 //! - Video: stream_id 0xE0, PTS only, PES_packet_length = 0 (unbounded).
 //!   AV1 sets data_alignment_indicator=1 per binding §3.4; other video codecs
 //!   leave it 0 (H.222.0 §2.4.3.7 codec-defined).
-//! - KLV synchronous: stream_id 0xFC, PTS only, bounded, data_alignment=1
-//!   per H.222.0 V9 §2.12.4.1.
-//! - KLV asynchronous: stream_id 0xFC, no PTS, bounded.
+//! - KLV synchronous (stream_type 0x15): stream_id 0xFC, PTS only, bounded,
+//!   data_alignment=1 per H.222.0 V9 §2.12.4.1. 0xFC is reserved for
+//!   *metadata streams* (Table 2-22) and must only be used with stream_type 0x15.
+//! - KLV asynchronous (stream_type 0x06): stream_id 0xBD (private_stream_1),
+//!   no PTS, bounded. Uses 0xBD per ffmpeg + GStreamer convention; H.222.0
+//!   Table 2-22 reserves 0xFC for metadata streams (stream_type 0x15) only.
 //! - Audio: stream_id 0xC0..=0xCF (base + within-program index) for MP2/AAC/
 //!   LATM, 0xBD (private_stream_1) for AC-3 with data_alignment=1 per ATSC
 //!   A/52 §A.2.4.1.
@@ -27,6 +30,12 @@ use crate::mpegts::common::Pts90khz;
 use crate::mpegts::mux::AudioCodec;
 
 pub(crate) const STREAM_ID_VIDEO: u8 = 0xE0;
+/// PES `stream_id` for synchronous KLV metadata streams (stream_type 0x15).
+///
+/// Per H.222.0 V9 Table 2-22, `0xFC` is reserved for *metadata streams*
+/// (stream_type 0x15 `SynchronousMetadata`). Do NOT use this for async KLV
+/// (stream_type 0x06 `PrivateData`) — those streams use
+/// [`STREAM_ID_PRIVATE_STREAM_1`] (`0xBD`) per ffmpeg + GStreamer convention.
 pub(crate) const STREAM_ID_KLV: u8 = 0xFC;
 /// Base PES `stream_id` for MP2 / AAC / LATM audio elementary streams.
 ///

@@ -304,8 +304,8 @@ fn decode_inner(buf: &[u8], strict: bool) -> Result<SecurityLs, KlvDecodeError> 
 /// tags, unknown enum codepoints, non-canonical BER, malformed UTF-16,
 /// duplicate tags). Unknown tags are still preserved in `unknown` per
 /// ST 0107.5 §6.
-pub fn decode_strict(_buf: &[u8]) -> Result<SecurityLs, KlvDecodeError> {
-    todo!("Task 6")
+pub fn decode_strict(buf: &[u8]) -> Result<SecurityLs, KlvDecodeError> {
+    decode_inner(buf, /* strict = */ true)
 }
 
 /// Encode into a caller-provided buffer. Returns the number of bytes
@@ -778,6 +778,253 @@ mod tests {
         // is the primary correctness check.
         let redecoded = decode(&bytes).unwrap();
         assert_eq!(redecoded, decoded);
+    }
+
+    /// Helper: build a minimum-required record per ST 0102.12 §6.7
+    /// (tags 1, 2, 3, 12, 13, 22).
+    fn build_minimal_required_record() -> SecurityLs {
+        SecurityLs {
+            security_classification: Some(SecurityClassification::Unclassified),
+            classifying_country_coding_method: Some(
+                ClassifyingCountryCodingMethod::Iso3166TwoLetter,
+            ),
+            classifying_country: Some("//US".to_string()),
+            object_country_coding_method: Some(ObjectCountryCodingMethod::Iso3166TwoLetter),
+            object_country_codes: Some("US".to_string()),
+            version: Some(12),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn strict_accepts_minimal_required_record() {
+        let r = build_minimal_required_record();
+        let bytes = encode_to_vec(&r).unwrap();
+        let decoded = decode_strict(&bytes).expect("strict accepts minimal record");
+        assert_eq!(decoded, r);
+    }
+
+    #[test]
+    fn strict_rejects_missing_tag_1() {
+        let mut r = build_minimal_required_record();
+        r.security_classification = None;
+        let bytes = encode_to_vec(&r).unwrap();
+        let err = decode_strict(&bytes).unwrap_err();
+        assert!(matches!(
+            err,
+            KlvDecodeError::St0102MissingRequiredTag { tag: 1 }
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_missing_tag_2() {
+        let mut r = build_minimal_required_record();
+        r.classifying_country_coding_method = None;
+        let bytes = encode_to_vec(&r).unwrap();
+        assert!(matches!(
+            decode_strict(&bytes).unwrap_err(),
+            KlvDecodeError::St0102MissingRequiredTag { tag: 2 }
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_missing_tag_3() {
+        let mut r = build_minimal_required_record();
+        r.classifying_country = None;
+        let bytes = encode_to_vec(&r).unwrap();
+        assert!(matches!(
+            decode_strict(&bytes).unwrap_err(),
+            KlvDecodeError::St0102MissingRequiredTag { tag: 3 }
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_missing_tag_12() {
+        let mut r = build_minimal_required_record();
+        r.object_country_coding_method = None;
+        let bytes = encode_to_vec(&r).unwrap();
+        assert!(matches!(
+            decode_strict(&bytes).unwrap_err(),
+            KlvDecodeError::St0102MissingRequiredTag { tag: 12 }
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_missing_tag_13() {
+        let mut r = build_minimal_required_record();
+        r.object_country_codes = None;
+        let bytes = encode_to_vec(&r).unwrap();
+        assert!(matches!(
+            decode_strict(&bytes).unwrap_err(),
+            KlvDecodeError::St0102MissingRequiredTag { tag: 13 }
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_missing_tag_22() {
+        let mut r = build_minimal_required_record();
+        r.version = None;
+        let bytes = encode_to_vec(&r).unwrap();
+        assert!(matches!(
+            decode_strict(&bytes).unwrap_err(),
+            KlvDecodeError::St0102MissingRequiredTag { tag: 22 }
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_unknown_tag1_codepoint() {
+        // Encode raw bytes — encode_to_vec wouldn't fail on
+        // SecurityClassification::Unknown(0xFA), but strict decode
+        // must reject.
+        let mut r = build_minimal_required_record();
+        r.security_classification = Some(SecurityClassification::Unknown(0xFA));
+        let bytes = encode_to_vec(&r).unwrap();
+        let err = decode_strict(&bytes).unwrap_err();
+        match err {
+            KlvDecodeError::FieldError(crate::error::KlvFieldError::InvalidCodepoint {
+                tag: 1,
+                value: 0xFA,
+            }) => {}
+            other => panic!("expected InvalidCodepoint, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn strict_rejects_unknown_tag2_codepoint() {
+        let mut r = build_minimal_required_record();
+        r.classifying_country_coding_method = Some(ClassifyingCountryCodingMethod::Unknown(0x7F));
+        let bytes = encode_to_vec(&r).unwrap();
+        assert!(matches!(
+            decode_strict(&bytes).unwrap_err(),
+            KlvDecodeError::FieldError(crate::error::KlvFieldError::InvalidCodepoint {
+                tag: 2,
+                value: 0x7F,
+            })
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_unknown_tag12_codepoint() {
+        let mut r = build_minimal_required_record();
+        r.object_country_coding_method = Some(ObjectCountryCodingMethod::Unknown(0x20));
+        let bytes = encode_to_vec(&r).unwrap();
+        assert!(matches!(
+            decode_strict(&bytes).unwrap_err(),
+            KlvDecodeError::FieldError(crate::error::KlvFieldError::InvalidCodepoint {
+                tag: 12,
+                value: 0x20,
+            })
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_omitted_value_codepoint_tag2() {
+        let mut r = build_minimal_required_record();
+        r.classifying_country_coding_method = Some(ClassifyingCountryCodingMethod::OmittedValue08);
+        let bytes = encode_to_vec(&r).unwrap();
+        assert!(matches!(
+            decode_strict(&bytes).unwrap_err(),
+            KlvDecodeError::FieldError(crate::error::KlvFieldError::InvalidCodepoint {
+                tag: 2,
+                value: 0x08,
+            })
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_omitted_value_codepoint_tag12() {
+        let mut r = build_minimal_required_record();
+        r.object_country_coding_method = Some(ObjectCountryCodingMethod::OmittedValue0A);
+        let bytes = encode_to_vec(&r).unwrap();
+        assert!(matches!(
+            decode_strict(&bytes).unwrap_err(),
+            KlvDecodeError::FieldError(crate::error::KlvFieldError::InvalidCodepoint {
+                tag: 12,
+                value: 0x0A,
+            })
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_invalid_utf16_tag13() {
+        // Required tags 1, 2, 3, 12, 22 present + Tag 13 with
+        // odd-length payload (UTF-16 needs even bytes).
+        // (Building the bytes manually is easier than mutating
+        // encode_to_vec output to splice in the bad UTF-16.)
+        let bad_utf16 = [0x00, b'U', 0x00];
+        let manual = build_record(&[
+            (1, &[0x01]),
+            (2, &[0x01]),
+            (3, b"//US"),
+            (12, &[0x01]),
+            (13, &bad_utf16),
+            (22, &[0x00, 0x0C]),
+        ]);
+        assert!(matches!(
+            decode_strict(&manual).unwrap_err(),
+            KlvDecodeError::FieldError(crate::error::KlvFieldError::InvalidUtf16 { tag: 13 })
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_duplicate_tag() {
+        // Duplicate tag 1.
+        let manual = build_record(&[
+            (1, &[0x01]),
+            (1, &[0x02]),
+            (2, &[0x01]),
+            (3, b"//US"),
+            (12, &[0x01]),
+            (13, &[0xFE, 0xFF, 0x00, b'U', 0x00, b'S']),
+            (22, &[0x00, 0x0C]),
+        ]);
+        assert!(matches!(
+            decode_strict(&manual).unwrap_err(),
+            KlvDecodeError::DuplicateTag { tag: 1, .. }
+        ));
+    }
+
+    #[test]
+    fn strict_preserves_unknown_tag() {
+        // Required tags + a forward-compat unknown tag — strict
+        // mode preserves the unknown tag rather than rejecting per
+        // spec §3.7 / ST 0107.5 §6.
+        let mut r = build_minimal_required_record();
+        r.unknown.push(OwnedRawField {
+            tag: 99,
+            value: b"future-tag".to_vec(),
+        });
+        let bytes = encode_to_vec(&r).unwrap();
+        let decoded = decode_strict(&bytes).unwrap();
+        assert_eq!(decoded.unknown.len(), 1);
+        assert_eq!(decoded.unknown[0].tag, 99);
+        assert_eq!(decoded.unknown[0].value, b"future-tag");
+    }
+
+    #[test]
+    fn strict_rejects_truncated_value() {
+        // Tag 22 (Version) declares 2-byte length but only 1 byte
+        // present in the buffer.
+        let mut buf = build_record(&[
+            (1, &[0x01]),
+            (2, &[0x01]),
+            (3, b"//US"),
+            (12, &[0x01]),
+            (13, &[0xFE, 0xFF, 0x00, b'U', 0x00, b'S']),
+        ]);
+        // Truncated tag 22: tag byte + length-1 + only 1 byte
+        buf.extend_from_slice(&[22, 0x01, 0x0C]); // len=1 but spec wants 2
+        // The decoder doesn't bail on length-mismatch within Iter
+        // (Iter respects the BER length verbatim). Instead the
+        // U16Be branch raises InvalidLength.
+        assert!(matches!(
+            decode_strict(&buf).unwrap_err(),
+            KlvDecodeError::FieldError(crate::error::KlvFieldError::InvalidLength {
+                tag: 22,
+                expected: 2,
+                got: 1,
+            })
+        ));
     }
 
     #[test]

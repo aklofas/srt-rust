@@ -302,6 +302,20 @@ pub fn format_identifier_av01() -> Vec<u8> {
     vec![0x05, 0x04, b'A', b'V', b'0', b'1']
 }
 
+/// `registration_descriptor` (tag 0x05) carrying ASCII format_identifier
+/// `"AC-3"` — the ATSC AC-3 marker per ATSC A/53 Part 3 §5.1. Strict
+/// ATSC consumers (ffmpeg, GStreamer, TSDuck) gate AC-3 classification
+/// on stream_type 0x81 + this registration; without it they may
+/// fall back to probing or misclassify as MP3-on-user-private.
+///
+/// 6 bytes total: tag(1) + length(1) + format_identifier(4).
+///
+/// Note: DVB-shaped AC-3 (stream_type 0x06 + DVB AC-3 descriptor 0x6A)
+/// is a distinct path and remains deferred — see `deferred-features.md`.
+pub fn format_identifier_ac3() -> Vec<u8> {
+    vec![0x05, 0x04, b'A', b'C', b'-', b'3']
+}
+
 /// ISO 639 Language descriptor (tag 0x0A) — H.222.0 §2.6.18.
 /// 3-byte language code + 1-byte audio_type. Conventional on audio PIDs;
 /// valid on any ES.
@@ -324,6 +338,22 @@ mod tests {
     fn registration_klva_no_additional() {
         let bytes = registration(*b"KLVA", &[]);
         assert_eq!(bytes, vec![0x05, 0x04, b'K', b'L', b'V', b'A']);
+    }
+
+    #[test]
+    fn format_identifier_ac3_canonical_bytes() {
+        let bytes = format_identifier_ac3();
+        assert_eq!(bytes, vec![0x05, 0x04, b'A', b'C', b'-', b'3']);
+        assert_eq!(bytes.len(), 6);
+        assert_eq!(bytes[0], 0x05); // registration_descriptor tag
+        assert_eq!(bytes[1], 0x04); // length
+        assert_eq!(&bytes[2..6], b"AC-3");
+    }
+
+    #[test]
+    fn format_identifier_av01_canonical_bytes() {
+        let bytes = format_identifier_av01();
+        assert_eq!(bytes, vec![0x05, 0x04, b'A', b'V', b'0', b'1']);
     }
 
     #[test]

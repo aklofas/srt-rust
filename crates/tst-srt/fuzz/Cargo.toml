@@ -27,6 +27,13 @@ doc               = false
 bench             = false
 
 [[bin]]
+name              = "klv_st0102_decode"
+path              = "fuzz_targets/klv_st0102_decode.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
 name              = "mux_push_video"
 path              = "fuzz_targets/mux_push_video.rs"
 test              = false

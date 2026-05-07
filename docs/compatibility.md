@@ -242,7 +242,7 @@ plain `[UL][len][body]`:
 | 25 | Frame Center Elevation | ✅ Full |
 | 26–33 | Offset Corner Lat/Lon Points 1–4 | ✅ Full |
 | 47 | Generic Flag Data | ✅ Full |
-| 48 | Security Local Set | 🔁 Pass-through (raw bytes; not parsed — see ST 0102 row) |
+| 48 | Security Local Set | ✅ Bytes pass-through; typed via `klv::st0102::decode` (sibling-layer parser) |
 | 50 | Platform Call Sign | ✅ Full |
 | 65 | UAS LS Version Number | ✅ Full (auto-emitted on encode if unset) |
 | 75 | Sensor Ellipsoid Height | ✅ Full |
@@ -462,7 +462,7 @@ covers.
 | Spec | Title | Implemented? |
 | --- | --- | --- |
 | **SMPTE ST 336** | Data Encoding Protocol Using Key-Length-Value | ✅ KLV substrate in `klv::pack` / `klv::length` / `klv::universal_label` |
-| **MISB ST 0102.12** | Security Metadata Universal & Local Sets | 🔁 Pass-through (Tag 48 raw bytes); not typed |
+| **MISB ST 0102.12** | Security Metadata Universal & Local Sets | ✅ LS form — typed decode + encode (`klv::st0102`); Universal Set form deferred |
 | **MISB ST 0107.5** | KLV Metadata in Motion Imagery | ✅ Future-proof skip rule, UL family helpers |
 | **MISB ST 0601.19** | UAS Datalink Local Set | ⚙️ 49 of 143 items typed (see table above) |
 | **MISB ST 0603.5** | Time Stamping Motion Imagery | ✅ For ST 0605 Time Status byte |

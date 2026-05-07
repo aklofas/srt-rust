@@ -257,6 +257,55 @@ accessors:
 canonical UL; `klv::st0605::encode(&pack) -> [u8; 26]` produces the
 fixed-size bytes for transmission.
 
+## Typed Security Local Set (`klv::st0102`)
+
+ST 0601 Tag 48 (`security_local_set`) carries an MISB ST 0102.12 Security
+Metadata Local Set — classification level, country codes, declassification
+date, and related fields. The parent `UasDatalinkLs` surfaces it as
+`Option<Vec<u8>>` (pass-through bytes, not coupled to the parent decoder).
+The typed parser at `tst_core::klv::st0102` is a sibling-layer module:
+consumers who decoded an ST 0601 record and want typed access to the
+security metadata call `klv::st0102::decode` on the inner bytes.
+
+```rust
+use tst_core::klv::{st0102, st0601};
+
+let parent = st0601::decode(&record_bytes)?;
+if let Some(bytes) = parent.security_local_set.as_deref() {
+    let security = st0102::decode(bytes)?;
+    println!("classification: {:?}", security.security_classification);
+}
+```
+
+Two decode entry points:
+
+- `decode(bytes)` — **lenient.** Tolerates missing tags, unknown enum
+  codepoints (decoded as `Unknown(u8)`), unknown LS tags (preserved in
+  `unknown: Vec<OwnedRawField>`), malformed UTF-16 on Tag 13 (signaled
+  via `field_errors: Vec<KlvFieldError>`).
+- `decode_strict(bytes)` — **strict.** Rejects records missing any of
+  the spec-mandatory tags (1, 2, 3, 12, 13, 22), rejects unknown enum
+  codepoints and `OmittedValueXX` reserved slots on Tags 1/2/12,
+  rejects malformed UTF-16 on Tag 13, rejects duplicate tags. Unknown
+  LS tags are still preserved per ST 0107.5 §6 future-proof skip rule
+  (matches `klv::st0601::decode_strict_compliance` posture).
+
+Encode is symmetric (`encode`, `encode_to_vec`, `encoded_len`). Tag 13
+(Object Country Codes) is RFC 2781 UTF-16 — encode emits BE BOM +
+UTF-16 BE; decode accepts either endianness via BOM or defaults to BE
+per RFC 2781 §4.3.
+
+**What's not modeled:**
+- Universal Set form of ST 0102 (LS-only on MPEG-TS+KLV streams).
+- Country-code validation against ISO 3166 / GENC / FIPS 10-4 /
+  STANAG 1059 / CAPCO tables — codes pass through as `String`
+  verbatim.
+- Calendar parsing of date fields (Tag 10 "YYYYMMDD", Tags 23/24
+  "YYYY-MM-DD") — pass through as `String`.
+
+See `examples/decode_security_metadata.rs` for a runnable file walker
+that demonstrates the sibling-layer composition pattern end-to-end.
+
 ## Sync metadata AU cell carriage
 
 Synchronous KLV in MPEG-TS uses a 5-byte `Metadata_AU_cell` header per
@@ -427,9 +476,12 @@ Three steps to take a captured `.ts`, pull the KLV out, and decode it.
 Each item below maps to an entry in
 [deferred-features.md](deferred-features.md).
 
-- `klv::st0102` typed Security Local Set — Tag 48 currently passes
-  through as `Option<Vec<u8>>`; no consumer reads the typed shape
-  today. See [deferred-features.md](deferred-features.md).
+- ST 0102 universal-set form — the LS form ships in `klv::st0102`;
+  the parallel Universal Set encoding (16-byte UL per item) is not
+  implemented. See [deferred-features.md](deferred-features.md).
+- ST 0102 country-code validation — codes pass through as `String`;
+  no validation against ISO 3166 / GENC / FIPS 10-4 / STANAG 1059 /
+  CAPCO tables. See [deferred-features.md](deferred-features.md).
 - Other typed sets (ST 0903 VMTI, ST 0806 RVT, ...) — the substrate
   supports them; per-tag tables are missing without a driving consumer.
   See [deferred-features.md](deferred-features.md).

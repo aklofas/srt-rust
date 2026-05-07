@@ -85,17 +85,32 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A research collaboration produces a
   controller that empirically beats `Live` for our workload.
 
-## `klv::st0102` typed Security Local Set decoder
+## ST 0102 universal-set form
 
-- **Status:** Pass-through only — ST 0601 Tag 48 surfaces as
-  `Option<Vec<u8>>`.
-- **Why deferred:** Adding the typed layer means duplicating the
-  per-tag table for ST 0102 specifically. No current consumer reads
-  ST 0102 in typed form; the substrate already supports the work when
-  it lands.
-- **Trigger to revisit:** A consumer needing typed access to specific
-  ST 0102 fields (classification, releasable-to indicator, and so
-  on).
+- **Status:** Deferred. The Local Set form ships in `klv::st0102`
+  (decode + decode_strict + encode); the parallel Universal Set form
+  (16-byte UL per item, separate from the LS encoding) is not
+  implemented.
+- **Why deferred:** LS form is the only form on MPEG-TS+KLV streams.
+  The Universal Set is for archival / file-based use cases the library
+  does not target.
+- **Trigger to revisit:** A consumer ingesting archival / file-based
+  ST 0102-bearing streams that use the Universal Set encoding.
+
+## ST 0102 country-code validation
+
+- **Status:** Deferred. `klv::st0102` decodes the country coding
+  method (Tags 2 / 12) as a typed enum but the country codes
+  themselves (Tags 3 / 6 / 13) pass through as `String` verbatim. No
+  validation against ISO 3166 / GENC / FIPS 10-4 / STANAG 1059 /
+  CAPCO tables.
+- **Why deferred:** Tables are large (GENC alone has 250+ codes plus
+  admin subdivisions plus version dates plus deprecations),
+  version-dependent, and a moving target across spec revisions.
+  Pass-through strings sidestep the maintenance burden.
+- **Trigger to revisit:** A compliance pipeline that requires
+  validating codes against authoritative tables, AND a clear answer
+  for which spec revision's table to bake in.
 
 ## Other typed MISB sets (`klv::st0903` VMTI, `klv::st0806` RVT, ...)
 

@@ -69,12 +69,15 @@ fn family_b_klv_descriptor_stack_round_trips() {
         Some("EO 1080p")
     );
 
-    // KLV PID — three descriptors in caller order: 0x26, 0x27, 0xFF.
+    // KLV PID — four descriptors: auto-emitted KLVA Registration first,
+    // then caller order: 0x26, 0x27, 0xFF.
     let klv = pm.streams.iter().find(|s| s.pid == 0x102).unwrap();
-    assert_eq!(klv.raw_descriptors.len(), 3);
-    assert_eq!(klv.raw_descriptors[0].tag, 0x26);
-    assert_eq!(klv.raw_descriptors[1].tag, 0x27);
-    assert_eq!(klv.raw_descriptors[2].tag, 0xFF);
+    assert_eq!(klv.raw_descriptors.len(), 4);
+    assert_eq!(klv.raw_descriptors[0].tag, 0x05); // auto-emitted KLVA
+    assert_eq!(&klv.raw_descriptors[0].data[..4], b"KLVA");
+    assert_eq!(klv.raw_descriptors[1].tag, 0x26);
+    assert_eq!(klv.raw_descriptors[2].tag, 0x27);
+    assert_eq!(klv.raw_descriptors[3].tag, 0xFF);
     // Metadata descriptor wins over user_private per priority order.
     assert_eq!(
         extract_user_label(&klv.raw_descriptors).as_deref(),
@@ -323,6 +326,44 @@ fn audio_language_descriptor_absent_when_unset() {
         0,
         "no ISO 639 descriptor expected on audio PID without language, found {}",
         lang_descs.len()
+    );
+}
+
+#[test]
+fn klva_auto_emits_on_sync_metadata_too() {
+    // stream_type 0x15 SynchronousMetadata — should also auto-emit KLVA
+    // Registration descriptor. ffmpeg mpegtsenc.c:817-818 emits KLVA on
+    // the metadata stream_type path too — receivers gate KLV classification
+    // on the descriptor regardless of stream_type.
+    let cfg = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x100, VideoCodec::H264)
+        .add_klv(0x102, KlvStreamType::SynchronousMetadata, true)
+        .end_program()
+        .build()
+        .unwrap();
+
+    let bytes = drive_psi(cfg);
+    let events = drain_events(&bytes);
+    let pm = events
+        .iter()
+        .find_map(|e| match e {
+            DemuxEvent::ProgramMap(pm) => Some(pm),
+            _ => None,
+        })
+        .expect("ProgramMap emitted");
+
+    let klv = pm.streams.iter().find(|s| s.pid == 0x102).unwrap();
+    let klva_regs: Vec<_> = klv
+        .raw_descriptors
+        .iter()
+        .filter(|d| d.tag == 0x05 && d.data.starts_with(b"KLVA"))
+        .collect();
+    assert_eq!(
+        klva_regs.len(),
+        1,
+        "expected one KLVA Registration descriptor on SynchronousMetadata KLV PID, found {}",
+        klva_regs.len()
     );
 }
 

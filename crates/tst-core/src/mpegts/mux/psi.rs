@@ -142,10 +142,12 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig
 
         let auto_emit_len = match spec {
             StreamSpec::Klv {
-                stream_type: KlvStreamType::PrivateData,
+                stream_type: KlvStreamType::PrivateData | KlvStreamType::SynchronousMetadata,
                 ..
             } => {
-                // KLVA Registration suppressed when caller supplies any Registration.
+                // KLVA Registration auto-emits on both PrivateData (0x06)
+                // and SynchronousMetadata (0x15) per ffmpeg mpegtsenc.c.
+                // Suppressed when caller supplies any Registration descriptor.
                 if caller_has_registration { 0 } else { 6 }
             }
             StreamSpec::Video {

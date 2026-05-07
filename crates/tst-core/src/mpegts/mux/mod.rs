@@ -1406,14 +1406,24 @@ impl Muxer {
                 }
 
                 let mut bytes = Vec::new();
-                if let StreamSpec::Klv {
-                    stream_type: KlvStreamType::PrivateData,
-                    ..
-                } = spec
-                {
-                    if !caller_has_registration {
-                        bytes.extend_from_slice(KLVA_REGISTRATION_DESCRIPTOR);
+                // KLVA Registration auto-emit on KLV streams (both
+                // PrivateData=0x06 and SynchronousMetadata=0x15). ffmpeg
+                // mpegtsenc.c:817-818 emits KLVA on the metadata
+                // stream_type path too — receivers gate KLV
+                // classification on the descriptor regardless of
+                // stream_type. Sync KLV with metadata_descriptor
+                // (tag 0x26) doesn't *replace* KLVA — TSDuck + ffmpeg
+                // consume both side-by-side.
+                if matches!(
+                    spec,
+                    StreamSpec::Klv {
+                        stream_type: KlvStreamType::PrivateData
+                            | KlvStreamType::SynchronousMetadata,
+                        ..
                     }
+                ) && !caller_has_registration
+                {
+                    bytes.extend_from_slice(KLVA_REGISTRATION_DESCRIPTOR);
                 }
                 // AV1 auto-emit: AV01 registration_descriptor (binding §2.1).
                 // MUST be the FIRST descriptor in the per-stream PMT loop —
@@ -3841,7 +3851,7 @@ mod tests {
     }
 
     #[test]
-    fn cache_no_auto_emit_on_sync_klv() {
+    fn cache_auto_emits_klva_on_sync_klv() {
         let cfg = Config::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
@@ -3858,10 +3868,13 @@ mod tests {
             .unwrap();
         let muxer = Muxer::new(cfg).unwrap();
         // Cache index 0 = video (empty), index 1 = KLV.
-        // No KLVA auto-emit on SynchronousMetadata. 11 + 11 = 22 bytes.
-        assert_eq!(muxer.pmt_descriptor_caches[0][1].len(), 22);
-        assert_eq!(muxer.pmt_descriptor_caches[0][1][0], 0x26);
-        assert_eq!(muxer.pmt_descriptor_caches[0][1][11], 0x27);
+        // KLVA auto-emit (6 bytes) prepended on SynchronousMetadata too.
+        // 6 (KLVA) + 11 (0x26) + 11 (0x27) = 28 bytes.
+        assert_eq!(muxer.pmt_descriptor_caches[0][1].len(), 28);
+        assert_eq!(muxer.pmt_descriptor_caches[0][1][0], 0x05); // KLVA Registration
+        assert_eq!(&muxer.pmt_descriptor_caches[0][1][2..6], b"KLVA");
+        assert_eq!(muxer.pmt_descriptor_caches[0][1][6], 0x26);
+        assert_eq!(muxer.pmt_descriptor_caches[0][1][17], 0x27);
     }
 
     // ── Task 9: subtitle PMT descriptor auto-emit ────────────────────────

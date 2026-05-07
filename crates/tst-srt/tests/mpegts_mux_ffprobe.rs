@@ -378,20 +378,32 @@ fn ffprobe_roundtrip_each_audio_codec() {
 
     use tst_core::mpegts::mux::{AudioCodec, VideoCodec};
 
-    // Test each audio codec variant, verifying that ffprobe reports the stream.
-    // Stream type values per ISO/IEC 13818-1:
+    // Test each audio codec variant, verifying that ffprobe reports the
+    // stream with the expected `codec_tag`. Stream types per ISO/IEC 13818-1:
     //   0x03 = ISO/IEC 11172-3 Audio (MP2)
     //   0x0F = ISO/IEC 13818-7 ADTS AAC
     //   0x11 = ISO/IEC 14496-3 LATM AAC
-    //   0x81 = User private (AC-3)
+    //   0x81 = User private (used for ATSC AC-3)
+    //
+    // Special case for AC-3 (post plan #30 Task 1.2): the muxer auto-emits
+    // a `registration_descriptor` with `format_identifier="AC-3"` per
+    // ATSC A/53 Part 3 §5.1. ffmpeg's MPEG-TS parser then reports
+    // `codec_tag` as the format_identifier ASCII bytes (little-endian
+    // packed: "AC-3" → 0x33 0x2D 0x43 0x41 → 0x332d4341) instead of
+    // the stream_type byte. This is the correct ffmpeg behavior and
+    // confirms our auto-emit lands in a way receivers honor.
+    //
+    // The expected codec_tag below is therefore the per-codec wire shape
+    // ffmpeg actually surfaces, not always the raw stream_type.
     let cases = vec![
-        (AudioCodec::Mp2, 0x03),
-        (AudioCodec::Aac, 0x0F),
-        (AudioCodec::AacLatm, 0x11),
-        (AudioCodec::Ac3, 0x81),
+        (AudioCodec::Mp2, "0x0003"),
+        (AudioCodec::Aac, "0x000f"),
+        (AudioCodec::AacLatm, "0x0011"),
+        // AC-3 with auto-emitted Registration → format_identifier as tag.
+        (AudioCodec::Ac3, "0x332d4341"),
     ];
 
-    for (codec, expected_stream_type) in cases {
+    for (codec, expected_codec_tag) in cases {
         let cfg = Config::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
@@ -408,7 +420,8 @@ fn ffprobe_roundtrip_each_audio_codec() {
             muxer.push_video(&nal, pts, i % 5 == 0).unwrap();
             // Minimal synthetic audio — without real bitstream data, ffprobe
             // cannot determine codec_type, but it does report the stream and
-            // its codec_tag (which reflects the stream_type from the PMT).
+            // its codec_tag (reflecting either stream_type or, for AC-3 with
+            // auto-emitted Registration, the format_identifier).
             muxer.push_audio(b"audio_data", pts).unwrap();
         }
 
@@ -429,10 +442,7 @@ fn ffprobe_roundtrip_each_audio_codec() {
         );
         let stdout = String::from_utf8_lossy(&out.stdout);
 
-        // Verify ffprobe reports a stream with PID 0x300 and the correct codec_tag.
-        // The codec_tag in ffprobe output reflects the stream_type from the PMT.
-        // Format: `codec_tag`: "0xHHHH" (hex), e.g. 0x03 for MP2, 0x0F for AAC, etc.
-        let expected_tag = format!("\"codec_tag\": \"0x{:04x}\"", expected_stream_type);
+        let expected_tag = format!("\"codec_tag\": \"{}\"", expected_codec_tag);
         assert!(
             stdout.contains(&expected_tag),
             "codec {:?}: expected codec_tag {}, ffprobe output: {}",

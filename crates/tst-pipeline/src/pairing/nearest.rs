@@ -15,7 +15,6 @@ pub(super) struct NearestState {
     max_klv_history: usize,
     mode: MatchMode,
     klv_history: VecDeque<KlvEntry>,
-    #[allow(dead_code)] // populated in Task 3 (Buffered mode)
     video_buffer: VecDeque<VideoSample>,
 }
 
@@ -79,9 +78,16 @@ impl NearestState {
     fn handle_video(&mut self, v: VideoSample) -> Vec<PairerOutput> {
         match self.mode {
             MatchMode::Realtime => self.match_video_against_history(v),
-            MatchMode::Buffered { .. } => {
-                // Filled in Task 3.
-                self.match_video_against_history(v)
+            MatchMode::Buffered { max_video_buffer } => {
+                self.video_buffer.push_back(v);
+                let mut out = self.drain_buffered(false);
+                // Buffer overflow: force-emit the oldest with a
+                // best-effort match.
+                while self.video_buffer.len() > max_video_buffer {
+                    let oldest = self.video_buffer.pop_front().unwrap();
+                    out.extend(self.match_video_against_history(oldest));
+                }
+                out
             }
         }
     }
@@ -96,6 +102,51 @@ impl NearestState {
                     out.push(PairerOutput::UnpairedKlv(evicted.sample));
                 }
             }
+        }
+        // In Buffered mode, the new KLV may complete a buffered video.
+        if matches!(self.mode, MatchMode::Buffered { .. }) {
+            out.extend(self.drain_buffered(false));
+        }
+        out
+    }
+
+    /// Drain the video buffer from oldest to newest. For each buffered
+    /// video, decide one of three outcomes:
+    ///   - Paired: best-match in history is within tolerance.
+    ///   - UnpairedVideo: no later KLV can possibly match
+    ///     (`last_klv_pts > video.pts + tolerance_ticks`), or
+    ///     `force_all` is set (flush path).
+    ///   - Stop draining: future KLV may still match.
+    ///
+    /// `force_all = true` means "no future KLV will arrive" (flush
+    /// path); every buffered video must be classified now.
+    fn drain_buffered(&mut self, force_all: bool) -> Vec<PairerOutput> {
+        let mut out = Vec::new();
+        let last_klv_pts = self.klv_history.back().map(|e| e.sample.pts);
+        while let Some(v) = self.video_buffer.front() {
+            // Best-match scan. Doesn't mutate; we only mutate via
+            // match_video_against_history below if we choose Paired.
+            let best = self
+                .klv_history
+                .iter()
+                .map(|e| (e.sample.pts - v.pts).abs())
+                .min();
+            let in_tolerance = matches!(best, Some(d) if d <= self.tolerance_ticks);
+            if in_tolerance {
+                let v = self.video_buffer.pop_front().unwrap();
+                out.extend(self.match_video_against_history(v));
+                continue;
+            }
+            let window_closed = match last_klv_pts {
+                Some(last) => last > v.pts + self.tolerance_ticks,
+                None => false,
+            };
+            if force_all || window_closed {
+                let v = self.video_buffer.pop_front().unwrap();
+                out.push(PairerOutput::UnpairedVideo(v));
+                continue;
+            }
+            break;
         }
         out
     }
@@ -249,5 +300,86 @@ mod tests {
             PairerOutput::Paired { klv, .. } => assert_eq!(klv.pts, 100),
             _ => panic!("expected Paired with klv.pts=100"),
         }
+    }
+
+    fn nearest_buffered(max_video_buffer: usize) -> NearestState {
+        NearestState::new(
+            VIDEO_PID,
+            KLV_PID,
+            100,
+            4,
+            MatchMode::Buffered { max_video_buffer },
+        )
+    }
+
+    #[test]
+    fn buffered_holds_video_until_klv_arrives() {
+        let mut s = nearest_buffered(8);
+        let out_video = s.feed(video_event(50));
+        assert!(out_video.is_empty(), "video should buffer, got {:?}", out_video);
+        let out_klv = s.feed(klv_event(40));
+        // KLV at 40 is within tolerance of buffered video at 50; emit Paired.
+        assert_eq!(out_klv.len(), 1);
+        assert!(matches!(&out_klv[0], PairerOutput::Paired { .. }));
+    }
+
+    #[test]
+    fn buffered_window_close_emits_unpaired_video() {
+        let mut s = nearest_buffered(8);
+        let _ = s.feed(video_event(50));
+        // KLV at 200 is past video.pts(50) + tolerance(100) = 150, so
+        // the window for video=50 has provably closed. The drain pass
+        // triggered by the new KLV emits UnpairedVideo for the buffered
+        // video.
+        let out = s.feed(klv_event(200));
+        // Expect exactly one UnpairedVideo (PTS=50). The KLV at 200
+        // remains in history (not unpaired yet — could match a future
+        // video at 150–250).
+        assert_eq!(
+            out.iter()
+                .filter(|o| matches!(o, PairerOutput::UnpairedVideo(_)))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn buffered_overflow_force_emits_oldest() {
+        let mut s = nearest_buffered(2);
+        let _ = s.feed(video_event(0));
+        let _ = s.feed(video_event(50));
+        // Third video pushes buffer to 3 > max=2; oldest force-emits
+        // (no KLV in history → UnpairedVideo for PTS=0).
+        let out = s.feed(video_event(100));
+        // Only the oldest force-emits; the others stay buffered.
+        let unpaired: Vec<_> = out
+            .iter()
+            .filter_map(|o| match o {
+                PairerOutput::UnpairedVideo(v) => Some(v.pts),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(unpaired, vec![0]);
+    }
+
+    #[test]
+    fn buffered_klv_completes_held_video() {
+        // Video at 100 arrives first, KLV at 99 arrives second.  When
+        // KLV arrives, drain_buffered sees |99-100|=1 ≤ tolerance(100)
+        // and emits Paired.  The subsequent video at 201 stays buffered
+        // (KLV@99 is outside its window, but the window isn't closed
+        // yet — no later KLV has arrived past 201+100=301).
+        let mut s = nearest_buffered(8);
+        let _ = s.feed(video_event(100));
+        // KLV arrival triggers drain; video@100 pairs immediately.
+        let out = s.feed(klv_event(99));
+        let paired_count = out
+            .iter()
+            .filter(|o| matches!(o, PairerOutput::Paired { .. }))
+            .count();
+        assert!(paired_count >= 1, "expected at least one Paired, got {:?}", out);
+        // Subsequent video stays buffered — no KLV within its window yet.
+        let out2 = s.feed(video_event(201));
+        assert!(out2.is_empty(), "video@201 should still be buffered, got {:?}", out2);
     }
 }

@@ -125,11 +125,12 @@ pub(crate) const MAX_PMT_SECTION_BYTES: usize = 183;
 /// * caller-supplied per-stream descriptor TLV bytes
 /// * per-stream auto-emit bytes — KLVA Registration (6 B) on PrivateData KLV
 ///   without a caller Registration; AV01 Registration (6 B) on AV1 video
-///   without a caller AV01; subtitling_descriptor (10 B), teletext_descriptor
-///   (7 B), VTTC Registration (6 B), or GA94 Registration (6 B) on subtitle
-///   streams (always — the auto-emit IS the codec marker).
+///   without a caller AV01; AC-3 Registration (6 B) on AC-3 audio without a
+///   caller AC-3 Registration; subtitling_descriptor (10 B),
+///   teletext_descriptor (7 B), VTTC Registration (6 B), or GA94 Registration
+///   (6 B) on subtitle streams (always — the auto-emit IS the codec marker).
 pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig) -> usize {
-    use crate::mpegts::mux::{KlvStreamType, StreamSpec, SubtitleCodec, VideoCodec};
+    use crate::mpegts::mux::{AudioCodec, KlvStreamType, StreamSpec, SubtitleCodec, VideoCodec};
 
     let mut es_loop_size: usize = 0;
     for (i, spec) in prog.streams.iter().enumerate() {
@@ -155,6 +156,17 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig
                     .iter()
                     .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] == b"AV01");
                 if caller_has_av01 { 0 } else { 6 }
+            }
+            StreamSpec::Audio {
+                codec: AudioCodec::Ac3,
+                ..
+            } => {
+                // AC-3 Registration suppressed when caller supplies an AC-3 Registration.
+                // Mirrors the precise suppression in the PMT writer (mux/mod.rs).
+                let caller_has_ac3 = caller_descs
+                    .iter()
+                    .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] == b"AC-3");
+                if caller_has_ac3 { 0 } else { 6 }
             }
             // Subtitle auto-emit always fires — codec marker for stream_type 0x06.
             StreamSpec::Subtitle {

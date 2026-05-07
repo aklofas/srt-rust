@@ -9,7 +9,7 @@
 use tst_core::mpegts::demux::psi::extract_user_label;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
 use tst_core::mpegts::descriptors;
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{AudioCodec, Config, KlvStreamType, Muxer, VideoCodec};
 
 fn drive_psi(cfg: Config) -> Vec<u8> {
     let mut mux = Muxer::new(cfg).unwrap();
@@ -167,4 +167,83 @@ fn non_klva_registration_on_klv_pid_logs_warning() {
         .unwrap();
     let _ = Muxer::new(cfg).unwrap();
     assert!(logs_contain("non-KLVA format_identifier"));
+}
+
+#[test]
+fn ac3_registration_descriptor_auto_emits_on_pmt() {
+    // Build a config with one video + one AC-3 audio stream, drive PSI,
+    // demux it, find the PMT entry for the audio PID, and assert the
+    // raw_descriptors carry tag 0x05 with format_identifier "AC-3".
+    let cfg = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x100, VideoCodec::H264)
+        .add_audio(0x101, AudioCodec::Ac3)
+        .end_program()
+        .build()
+        .unwrap();
+
+    let bytes = drive_psi(cfg);
+    let events = drain_events(&bytes);
+    let pm = events
+        .iter()
+        .find_map(|e| match e {
+            DemuxEvent::ProgramMap(pm) => Some(pm),
+            _ => None,
+        })
+        .expect("ProgramMap emitted");
+
+    let audio = pm.streams.iter().find(|s| s.pid == 0x101).unwrap();
+    let ac3_regs: Vec<_> = audio
+        .raw_descriptors
+        .iter()
+        .filter(|d| d.tag == 0x05 && d.data.starts_with(b"AC-3"))
+        .collect();
+    assert_eq!(
+        ac3_regs.len(),
+        1,
+        "expected one AC-3 Registration descriptor on audio PID, found {}",
+        ac3_regs.len()
+    );
+}
+
+#[test]
+fn ac3_auto_emit_suppressed_when_caller_supplies_registration() {
+    // Caller pre-supplies their own AC-3 registration. Assert exactly one
+    // tag-0x05 descriptor with format_identifier "AC-3" — no duplication.
+    let cfg = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x100, VideoCodec::H264)
+        .add_audio(0x101, AudioCodec::Ac3)
+        .stream_descriptors_for_audio(0, vec![descriptors::registration(*b"AC-3", &[])])
+        .end_program()
+        .build()
+        .unwrap();
+
+    let bytes = drive_psi(cfg);
+    let events = drain_events(&bytes);
+    let pm = events
+        .iter()
+        .find_map(|e| match e {
+            DemuxEvent::ProgramMap(pm) => Some(pm),
+            _ => None,
+        })
+        .expect("ProgramMap emitted");
+
+    let audio = pm.streams.iter().find(|s| s.pid == 0x101).unwrap();
+    let regs: Vec<_> = audio
+        .raw_descriptors
+        .iter()
+        .filter(|d| d.tag == 0x05)
+        .collect();
+    assert_eq!(
+        regs.len(),
+        1,
+        "auto-emit was not suppressed (found {} Registration descriptors)",
+        regs.len()
+    );
+    assert_eq!(
+        &regs[0].data[..4],
+        b"AC-3",
+        "Registration descriptor should have AC-3 format_identifier"
+    );
 }

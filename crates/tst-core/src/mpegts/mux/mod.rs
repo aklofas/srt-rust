@@ -1409,6 +1409,39 @@ impl Muxer {
                         );
                     }
                 }
+                // AC-3 auto-emit: Registration descriptor with format_identifier
+                // "AC-3" per ATSC A/52 §A.2.3. Receivers use this to distinguish
+                // AC-3 from other private-stream-1 (PES stream_id 0xBD) audio.
+                // Suppression mirrors the KLVA / AV01 rules: suppress when the
+                // caller has already supplied an AC-3 Registration (tag 0x05 with
+                // format_identifier == b"AC-3"). If the caller supplied a
+                // Registration with a different format_identifier, log warn but
+                // do NOT auto-emit — caller intent takes precedence and we don't
+                // silently override it.
+                if let StreamSpec::Audio {
+                    codec: AudioCodec::Ac3,
+                    ..
+                } = spec
+                {
+                    let caller_has_ac3 = caller_descs
+                        .iter()
+                        .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] == b"AC-3");
+                    let caller_has_other_registration = caller_descs
+                        .iter()
+                        .any(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] != b"AC-3");
+                    if caller_has_other_registration && !caller_has_ac3 {
+                        tracing::warn!(
+                            "caller-supplied Registration descriptor on AC-3 PID has \
+                             non-AC-3 format_identifier; receivers may not recognize \
+                             the stream as AC-3"
+                        );
+                    }
+                    if !caller_has_ac3 {
+                        bytes.extend_from_slice(
+                            &crate::mpegts::descriptors::format_identifier_ac3(),
+                        );
+                    }
+                }
                 // Subtitle auto-emit: codec-disambiguating per-stream descriptor.
                 // All four SubtitleCodec variants ride PMT stream_type 0x06; the
                 // descriptor here is what tells receivers which codec rides on

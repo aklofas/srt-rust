@@ -75,6 +75,16 @@ pub enum KlvDecodeError {
     /// §6.7 Table 2.
     #[error("ST 0102 record missing required tag {tag} per ST 0102.12 §6.7")]
     St0102MissingRequiredTag { tag: u8 },
+
+    /// A field-level validation error promoted to a fatal decode error.
+    /// `klv::st0102::decode` raises this for InvalidLength on tag 1/2/12/22
+    /// and InvalidUtf8 on ASCII string tags even in lenient mode (the
+    /// graceful-fallback path is reserved for Tag 13 UTF-16 only —
+    /// see the module-level rationale). `decode_strict` raises it for
+    /// all field validation failures including unknown enum codepoints
+    /// and Tag 13 UTF-16 decode failures.
+    #[error("field validation failed: {0}")]
+    FieldError(#[from] KlvFieldError),
 }
 
 #[derive(Debug, Error)]

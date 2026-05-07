@@ -3,10 +3,11 @@
 //!
 //! Pinned against MISB ST 0102.12 §6.7 Table 2.
 
-// Items below are wired into the decoder/encoder in subsequent tasks
-// of the ST 0102 plan; until then `cargo clippy --all-targets` flags
-// them as dead in the non-test lib build (the `tests` mod only
-// compiles under `cfg(test)`). Drop this allow when Task 4 lands.
+// `TagSpec::required` is the lone dead-in-lib field after Task 4
+// wires up the decoder against `lookup`/`Encoding`/`REQUIRED_TAGS` —
+// it's only read by the in-module cross-check test
+// `required_tags_match_spec`. Encode (Task 5) won't need it either
+// since `REQUIRED_TAGS` is the canonical source for "must-emit".
 #![allow(dead_code)]
 
 #[derive(Debug, Clone, Copy, PartialEq)]

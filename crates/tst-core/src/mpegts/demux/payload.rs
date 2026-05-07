@@ -254,20 +254,21 @@ pub fn classify_klv(payload: &[u8]) -> KlvShape {
     // PMT stream_type 0x15, mandated by STANAG 4609 / MISB ST 1402.2
     // §9.4.1 + Appendix B Table 2). Recognized by a valid 5-byte header
     // whose declared AU_cell_data_length doesn't overrun the payload.
-    if payload.len() >= 5 + 16 {
+    //
+    // The AU cell wrapper IS the structural primitive we recognize — the
+    // inner payload's shape (KLV-LS or otherwise opaque metadata) is
+    // the consumer's concern, not the demuxer's. `read_metadata_au_cell`
+    // validates the 5-byte header (reserved-bit checks, declared
+    // AU_cell_data_length consistency); a successful parse + Complete
+    // CFI is enough to surface SyncAuCell.
+    if payload.len() >= 5 {
         if let Ok((header, inner)) = read_metadata_au_cell(payload) {
             match header.cell_fragment_indication {
                 CellFragmentIndication::Complete => {
-                    // Inner KLV-LS sniff gates the SyncAuCell path.
-                    // (Task 3.5 will drop this gate — see plan #30.)
-                    if inner.len() >= 16 && inner[0..4] == [0x06, 0x0E, 0x2B, 0x34] {
-                        return KlvShape::SyncAuCell {
-                            klv: inner.to_vec(),
-                            header,
-                        };
-                    }
-                    // Fall through to async detection if AU cell parsed
-                    // cleanly but inner isn't KLV-LS shaped.
+                    return KlvShape::SyncAuCell {
+                        klv: inner.to_vec(),
+                        header,
+                    };
                 }
                 _ => {
                     // Partial cell (First / Middle / Last): surface the

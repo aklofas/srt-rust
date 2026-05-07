@@ -271,6 +271,49 @@ fn classify_klv_complete_cfi_still_returns_sync_au_cell() {
     }
 }
 
+/// Opaque-inner AU cells now surface as SyncAuCell (Task 3.5: B4-E broadening).
+///
+/// Pre-Task-3.5 the demuxer required `inner[0..4] == [0x06, 0x0E, 0x2B, 0x34]`
+/// (the SMPTE UL header) before returning SyncAuCell. Legitimate non-LS sync
+/// metadata (proprietary metadata payloads wrapped in an H.222.0 AU cell per
+/// §2.12.4.2 — receiver classification of the inner is the consumer's
+/// concern, not the demuxer's) was misclassified as Other and the wrapper
+/// info (sequence_number, service_id, RAI) was lost.
+#[test]
+fn classify_klv_opaque_inner_complete_cfi_returns_sync_au_cell() {
+    use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
+    use tst_core::mpegts::demux::payload::{KlvShape, classify_klv};
+
+    // Inner that does NOT start with the SMPTE UL header — opaque metadata.
+    let opaque_inner = vec![0x55u8; 80];
+    let mut bytes = Vec::new();
+    write_metadata_au_cell(
+        &mut bytes,
+        AuCellHeader {
+            metadata_service_id: 0x42,
+            sequence_number: 7,
+            cell_fragment_indication: CellFragmentIndication::Complete,
+            decoder_config_flag: false,
+            random_access_indicator: true,
+        },
+        &opaque_inner,
+    )
+    .unwrap();
+
+    match classify_klv(&bytes) {
+        KlvShape::SyncAuCell { klv, header } => {
+            // Inner is surfaced verbatim — the demuxer doesn't validate
+            // KLV-LS shape on it.
+            assert_eq!(klv, opaque_inner);
+            // Wrapper fields preserved.
+            assert_eq!(header.metadata_service_id, 0x42);
+            assert_eq!(header.sequence_number, 7);
+            assert!(header.random_access_indicator);
+        }
+        other => panic!("expected SyncAuCell for opaque-inner Complete CFI; got {other:?}"),
+    }
+}
+
 /// Integration test: MultiCellAu NonConformantIssue surfaces through the
 /// demuxer when a sync KLV PES carries a partial AU cell.
 ///

@@ -28,10 +28,10 @@ pub use enums::{
     ClassifyingCountryCodingMethod, ObjectCountryCodingMethod, SecurityClassification,
 };
 
-use crate::error::{KlvDecodeError, KlvEncodeError};
+use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
 use crate::klv::pack::OwnedRawField;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct SecurityLs {
     // Required per spec (still Option<T> at decode time so lenient
     // mode tolerates broken input; decode_strict rejects a record
@@ -61,6 +61,13 @@ pub struct SecurityLs {
     /// Forward-compat: tags outside the LS table preserved verbatim.
     /// Both `decode` and `decode_strict` populate this per ST 0107.5 §6.
     pub unknown: Vec<OwnedRawField>,
+
+    /// Lenient-mode diagnosis: known tags whose value validation
+    /// failed (e.g. Tag 13 UTF-16 decode failure, Tag 22 wrong
+    /// length). Mirrors `klv::st0601::UasDatalinkLs.field_errors`.
+    /// Strict-mode raises these as `Err` instead of populating
+    /// this field. Encode does not consume this field.
+    pub field_errors: Vec<KlvFieldError>,
 }
 
 /// Lenient decode — tolerates malformed input where possible.

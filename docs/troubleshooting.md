@@ -201,3 +201,34 @@ SRT reports loss / retransmits on a network you know is healthy. Cause: kernel U
 Diagnosis: `cat /proc/net/udp` (or `ss -unp`) — non-zero `drops` column on the SRT port confirms.
 
 Fix: set `SocketConfig::udp_recv_buffer_bytes = Some(12_500_000)` (or higher) for the receiver. For 100 ms RTT @ 25 Mbps, ~12.5 MB is the recommended floor. Linux clamps to `net.core.rmem_max` — raise with `sysctl -w net.core.rmem_max=33554432` if needed.
+
+## All `UnpairedVideo`, zero `Paired`
+
+**Symptom:** Using `tst_pipeline::Pairer::nearest_pts` with `MatchMode::Realtime`,
+the stats report `paired = 0` and `unpaired_video` matches your video event count.
+KLV events are present (PMT shows the stream, demux events arrive).
+
+**Most likely cause:** the encoder interleaves the KLV PES *after* its
+matching video PES on the wire. Realtime mode's past-only history search
+sees no KLV when the video event arrives, so every video pairs as
+`UnpairedVideo`. The KLV then arrives, ingests into history, and never
+finds a video that needs it (Realtime doesn't look back at past videos).
+
+**Fix:** switch to `MatchMode::Buffered { max_video_buffer: 60 }`. Buffered
+mode holds video briefly to look ahead for KLV; the trade-off is up to
+`max_video_buffer` × frame-period of pairing-induced latency.
+
+```rust,ignore
+let pairer = Pairer::nearest_pts(
+    video_pid,
+    klv_pid,
+    tolerance_ticks,
+    max_klv_history,
+    MatchMode::Buffered { max_video_buffer: 60 },  // ≈2 s @ 30 fps
+);
+```
+
+If `paired` is still zero after switching, the cause is not interleave
+order — check the PIDs, tolerance, and `MetadataKind` distribution
+(`KlvSyncAuCell` vs `KlvAsync` are both treated as KLV candidates, so
+filtering by kind is not the issue).

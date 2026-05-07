@@ -426,22 +426,33 @@ the trigger that would unblock it.
 
 ## `pipeline::pairing` — opt-in convenience pairing utility
 
-- **Status:** Not implemented; consumers pair sync-KLV ↔ video AUs and
-  sample-and-hold async-KLV themselves, and likewise pair audio ↔ video
-  for PTS-locked playback (lip-sync) themselves. Three cookbook recipes
-  (`docs/cookbook.md` 12–14) cover the canonical KLV patterns in ~20
-  lines each. Audio↔video pairing follows the same shape — caller
-  matches `SamplePayload::Audio` and `SamplePayload::Video` events on
-  PTS without library involvement.
-- **Why deferred:** Per the demux spec §4 (decoupled-pairing decision),
-  pairing is a consumer-domain decision. A library-side helper would
-  abstract over choices the library can't make correctly (tolerance
-  windows, sample-and-hold semantics, multi-stream routing). The
-  cookbook recipes are the recommended path until consumers ask for
-  more.
-- **Trigger to revisit:** Multiple consumers reimplement the same
-  nearest-PTS pairing; converging strategies become a candidate for
-  shared substrate.
+- **Status:** Shipped (Rust API). `tst_pipeline::pairing::Pairer` with
+  `nearest_pts` (Realtime + Buffered) and `last_before_pts` strategies.
+  Cookbook recipes 24–27 cover the canonical patterns; recipes 12–14
+  remain as the inline-pattern reference. C ABI / JNI / UniFFI
+  exposure deferred — see the next entry.
+
+## `pipeline::pairing` C ABI / JNI / UniFFI exposure
+
+- **Status:** Rust API only. `tst-c`, `srt-jni`, `srt-uniffi` do not
+  yet expose `Pairer`.
+- **Why deferred:** Receiver-side cross-language surfaces are deferred
+  to the future receiver-surface plan, so all receiver-side exposure
+  (multi-program demux at C ABI, receiver-side stats at C ABI, typed
+  codec parsers at C ABI, audio / subtitle / AV1 / H.266 carriage at
+  C ABI, and now `Pairer`) lands coherently in one pass instead of
+  piecemeal. The Rust API was designed with FFI in mind: flat
+  projection structs (`VideoSample`, `KlvSample`), a tagged-enum
+  output (`PairerOutput`) that maps to C discriminator + union, and
+  no lifetimes.
+- **Trigger to revisit:** When the receiver-surface C ABI plan is
+  written, `Pairer` joins as one more handle type
+  (`tst_pairer_t`, `tst_pairer_nearest_pts_open`,
+  `tst_pairer_last_before_pts_open`, `tst_pairer_feed`,
+  `tst_pairer_flush`, `tst_pairer_stats`, `tst_pairer_close`).
+- **Scope when added:** ~7 C entry points + 1 handle type + tagged
+  output discriminator. Sketch parallel to the existing
+  `tst_demux_receiver_t` shape.
 
 ## Multi-program demux at the C ABI
 

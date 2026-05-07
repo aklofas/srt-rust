@@ -343,6 +343,15 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | Stream-end contract | ✅ Full | `TransportError::Closed` → iterator termination after `Demuxer::flush`. `Broken` → `DemuxReceiverError::Transport(Broken(_))`. `Demux` → strict-mode rejection or malformed PES. |
 | Receive-side gap buffer | ❌ Out of scope | Receive-side bytes that never arrived can't be replayed; no symmetric counterpart to `ManagedTransport`'s gap buffer. |
 
+### Pairing (`tst_pipeline::pairing`)
+
+| Surface | Status |
+|---|---|
+| Rust API (`Pairer::nearest_pts`, `Pairer::last_before_pts`, `feed`/`flush`/`stats`) | Shipped 2026-05-07 |
+| C ABI exposure | Deferred to future receiver-surface plan |
+| JNI exposure | Deferred to future `srt-jni` plan |
+| UniFFI exposure | Deferred to future `srt-uniffi` plan |
+
 ---
 
 ## Codec parameter set parsing (`tst-core::codec`)

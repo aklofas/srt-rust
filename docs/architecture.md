@@ -73,7 +73,9 @@ implementation. Metadata typing for both directions is `klv::st0601` /
 `mpegts::au_cell` (per ITU-T H.222.0 V9 § 2.12.4.2). The canonical
 `Transport` + `RecvTransport` impl is `SrtTransport` in `tst-srt` over
 `srt::Socket` — the same wrapper handles both directions on a connected
-socket.
+socket. The opt-in `pipeline::pairing` module ships a stateful `Pairer` for
+KLV ↔ video pairing — see `docs/guide-pipeline.md` for the
+nearest-PTS / sample-and-hold strategy chooser.
 
 ## The pipeline composition model
 

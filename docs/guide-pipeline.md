@@ -640,6 +640,59 @@ The receive surface distinguishes three end-of-stream signals:
   discouraged — the demuxer's reassembly state is undefined past a bad
   PES header. Treat as stream-fatal until lenient PES recovery lands.
 
+## KLV ↔ video pairing (`pipeline::pairing`)
+
+The demuxer emits independent stream-tagged events; it does not pair
+sync-KLV with video AUs. This is a deliberate design choice: pairing
+tolerance, sample-and-hold semantics, and multi-stream routing are
+domain decisions the library cannot make correctly without consumer
+context.
+
+For consumers who would otherwise reimplement the same nearest-PTS or
+sample-and-hold pattern, `tst_pipeline::pairing::Pairer` is an opt-in
+convenience.
+
+### When to reach for `Pairer`
+
+Use it when:
+
+- You're pairing sync-KLV at video frame rate (one KLV per frame).
+- You're sample-and-holding async-KLV (1–10 Hz) against video frames.
+- You want telemetry counters for pairing rate.
+- You want a typed `(VideoSample, KlvSample)` boundary instead of
+  re-matching `DemuxEvent` arms after the pair.
+
+Stay with the inline `DemuxEvent` match (cookbook recipes 12–14) when:
+
+- You have non-canonical pairing semantics (e.g., custom multi-stream
+  routing, KLV-driven indexing into a separate timeline, etc.).
+- You want full visibility over every event with no library state in
+  between.
+
+### Strategy chooser
+
+| Pattern | Constructor | Mode |
+|---|---|---|
+| Sync-KLV at frame rate, low-latency consumer | `Pairer::nearest_pts(...)` | `MatchMode::Realtime` |
+| Sync-KLV at frame rate, batch / archival ingest | `Pairer::nearest_pts(...)` | `MatchMode::Buffered { max_video_buffer: 60 }` |
+| Async-KLV (1–10 Hz) against video frames | `Pairer::last_before_pts(...)` | n/a (past-only) |
+| EO + IR sharing one async-KLV stream | Two `Pairer::last_before_pts` instances side-by-side | n/a |
+
+See `docs/cookbook.md` recipes 24–27 for runnable patterns.
+
+### What you give up
+
+The pairer is video-driven and consumes events on the configured
+`video_pid` and `klv_pid`. Off-route events (other PIDs,
+`ProgramMap`, `NonConformant`, `Discontinuity`, audio, subtitles) flow
+through unchanged via `PairerOutput::PassThrough`, so topology
+discovery and diagnostics are preserved. But a single `Pairer` is
+single-pair: multi-video shapes (EO+IR) compose at the call site with
+two instances, not via a single multi-pair builder.
+
+The pairer's C ABI / JNI / UniFFI exposure is deferred to the future
+receiver-surface plan — Rust API only for now.
+
 ## Out-of-band cancellation
 
 By default `MuxSender` (and `DemuxReceiver`, `Receiver`, etc.) hold their

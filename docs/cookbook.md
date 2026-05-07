@@ -816,3 +816,150 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 Runnable: [../crates/tst-srt/examples/mux_av1_with_klv.rs](../crates/tst-srt/examples/mux_av1_with_klv.rs).
+
+### 24. Pair sync-KLV with video AUs via `Pairer::nearest_pts` (Realtime)
+
+The cookbook recipe 12 inline pattern in ~20 lines, expressed through
+the opt-in `tst_pipeline::pairing::Pairer`. Same semantics, with
+bounded KLV history, telemetry counters, and typed projection structs
+on the output.
+
+```rust,no_run
+use std::fs;
+use tst_core::mpegts::demux::Demuxer;
+use tst_pipeline::{MatchMode, Pairer, PairerOutput};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = fs::read("input.ts")?;
+    let mut demux = Demuxer::new();
+    demux.feed(&bytes)?;
+    demux.flush();
+
+    let mut pairer = Pairer::nearest_pts(
+        0x100,        // video PID (discover from ProgramMap)
+        0x102,        // KLV PID
+        27_000,       // 0.3 s @ 90 kHz tolerance
+        32,           // ~1 s history at 30 Hz cadence
+        MatchMode::Realtime,
+    );
+    while let Some(e) = demux.next_event() {
+        for o in pairer.feed(e) {
+            if let PairerOutput::Paired { video, klv } = o {
+                // video.payload → decoder (Annex-B reconstitute, recipe 18)
+                // klv.payload   → tst_core::klv::st0601::decode
+                let _ = (video, klv);
+            }
+        }
+    }
+    let _ = pairer.flush();
+    println!("{:?}", pairer.stats());
+    Ok(())
+}
+```
+
+Runnable: `cargo run --example pair_klv_pipeline -- input.ts`.
+
+### 25. Pair sync-KLV in batch mode (`MatchMode::Buffered`)
+
+When KLV PES is interleaved *after* its matching video PES (some
+encoders), Realtime mode misses the pairing. Buffered mode holds video
+briefly to look ahead.
+
+```rust,no_run
+use tst_pipeline::{MatchMode, Pairer};
+
+let mut pairer = Pairer::nearest_pts(
+    0x100,
+    0x102,
+    27_000,
+    32,
+    MatchMode::Buffered { max_video_buffer: 60 },  // ≈2 s @ 30 fps
+);
+// feed loop unchanged from recipe 24.
+```
+
+Trade-off: up to ~2 s pairing-induced latency in exchange for picking
+up otherwise-lost matches. Pick `Realtime` if you can't tolerate the
+delay.
+
+### 26. Sample-and-hold async KLV via `Pairer::last_before_pts`
+
+Replaces the cookbook recipe 13 inline pattern. Each video frame
+attaches the most recent KLV at `klv.pts <= video.pts`.
+
+```rust,no_run
+use tst_pipeline::{Pairer, PairerOutput};
+# fn demux_events() -> impl Iterator<Item = tst_core::mpegts::demux::DemuxEvent> { std::iter::empty() }
+
+let mut pairer = Pairer::last_before_pts(
+    0x100, // video PID
+    0x102, // async-KLV PID
+    Some(180_000), // 2 s freshness ceiling — drop pair if KLV is staler
+);
+for e in demux_events() {
+    for o in pairer.feed(e) {
+        match o {
+            PairerOutput::Paired { video, klv } => { let _ = (video, klv); }
+            PairerOutput::UnpairedVideo(_) => { /* KLV too stale or never seen */ }
+            _ => {}
+        }
+    }
+}
+let _ = pairer.flush();
+```
+
+Pass `freshness_ticks = None` to attach regardless of staleness
+(matches cookbook recipe 13 default behavior).
+
+### 27. EO + IR composition with shared async-KLV
+
+Two video PIDs sharing one async-KLV PID. Recipe 14's inline
+`Option<Vec<u8>>` pattern remains valid; this recipe shows the same
+shape via two `Pairer` instances (one per video PID).
+
+```rust,no_run
+use tst_pipeline::{Pairer, PairerOutput};
+# fn demux_events() -> impl Iterator<Item = tst_core::mpegts::demux::DemuxEvent> { std::iter::empty() }
+
+const EO_PID: u16 = 0x100;
+const IR_PID: u16 = 0x101;
+const KLV_PID: u16 = 0x102;
+
+let mut eo_pairer = Pairer::last_before_pts(EO_PID, KLV_PID, None);
+let mut ir_pairer = Pairer::last_before_pts(IR_PID, KLV_PID, None);
+
+for e in demux_events() {
+    // KLV events go to BOTH pairers (each maintains its own slot
+    // mark-used state); video events only to the matching pairer.
+    let outputs = match &e {
+        tst_core::mpegts::demux::DemuxEvent::Metadata { stream, .. }
+            if stream.pid == KLV_PID => {
+            let mut o = eo_pairer.feed(e.clone());
+            o.extend(ir_pairer.feed(e));
+            o
+        }
+        tst_core::mpegts::demux::DemuxEvent::Sample { stream, .. }
+            if stream.pid == EO_PID => eo_pairer.feed(e),
+        tst_core::mpegts::demux::DemuxEvent::Sample { stream, .. }
+            if stream.pid == IR_PID => ir_pairer.feed(e),
+        _ => Vec::new(),
+    };
+    for o in outputs {
+        match o {
+            PairerOutput::Paired { video, klv } => {
+                match video.stream.pid {
+                    EO_PID => { /* EO-paired */ let _ = (video, klv); }
+                    IR_PID => { /* IR-paired */ let _ = (video, klv); }
+                    _ => unreachable!(),
+                }
+            }
+            _ => {}
+        }
+    }
+}
+```
+
+Compared to recipe 14's inline pattern, the Pairer-based composition
+adds telemetry counters per branch and the typed output projections,
+at the cost of one extra clone per KLV event (acceptable for typical
+1–10 KB ST 0601 records).

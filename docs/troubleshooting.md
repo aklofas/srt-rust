@@ -110,6 +110,12 @@ The record contains the same tag twice in its top-level list. ST 0601 disallows 
 
 Fix: this is almost always a producer bug; fix the producer.
 
+**`NonConformantIssue::MultiCellAu` events on a sync KLV PID**
+
+The upstream sender is fragmenting AU cells across multiple PES packets (`cell_fragment_indication != Complete`). The demuxer detects this but does not reassemble — the partial payload is dropped. `dropped_bytes` is the declared inner length for telemetry.
+
+Fix: configure the upstream sender to keep AU cells single-cell (the typical case for ST 0601 records, which fit well below the H.222.0 64 KB AU cell ceiling). If the sender is `ts-transformer`'s muxer, this is automatic — `Muxer::push_klv*` always emits `Complete` cells. Multi-cell reassembly is in `deferred-features.md`.
+
 ## TS framing issues
 
 **`Sender` in `TsFramingMode::Strict` errors on the first push**

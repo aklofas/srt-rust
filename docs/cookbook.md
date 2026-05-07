@@ -89,7 +89,9 @@ fn main() -> std::io::Result<()> {
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0xAA];
         let klv = vec![0x06, 0x0E, 0x2B, 0x34, /* ... */];
         mux.push_video(&nal, pts, i == 0).expect("push_video");
-        mux.push_klv(&klv, pts).expect("push_klv");
+        // metadata_service_id=0x00 is the ST 1402.2 App. B Table 2 default;
+        // override to mirror a non-default metadata_klva(svc) PMT descriptor.
+        mux.push_klv(&klv, pts, /*metadata_service_id=*/ 0x00).expect("push_klv");
         loop {
             let n = mux.pull(&mut buf);
             if n == 0 { break; }
@@ -273,8 +275,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
     let mut mux = Muxer::new(cfg)?;
     let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
-    // Muxer auto-prepends the 5-byte AU cell header.
-    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0)?;
+    // Muxer auto-prepends the 5-byte AU cell header. metadata_service_id
+    // defaults to 0x00 per ST 1402.2 App. B Table 2.
+    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0x00)?;
     Ok(())
 }
 ```
@@ -674,7 +677,7 @@ for frame_idx in 0..30 {
     muxer.push_video(&video_au_bytes, pts, /*key_frame=*/ frame_idx % 30 == 0)?;
     muxer.push_audio(&aac_frame_bytes, pts)?;
     if frame_idx % 30 == 0 {
-        muxer.push_klv(&klv_record, pts)?;
+        muxer.push_klv(&klv_record, pts, /*metadata_service_id=*/ 0x00)?;
     }
     // Drain to your transport.
 }
@@ -764,7 +767,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut mux = Muxer::new(cfg)?;
     let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
     // Muxer auto-prepends the 5-byte H.222.0 § 2.12.4.2 AU cell header.
-    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0)?;
+    // metadata_service_id defaults to 0x00 per ST 1402.2 App. B Table 2.
+    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0x00)?;
     Ok(())
 }
 ```

@@ -272,6 +272,62 @@ The wrapper substrate lives at `mpegts::au_cell`
 `read_metadata_au_cell`) for callers that need to construct or parse
 AU cells outside the mux/demux machinery.
 
+### Caller-supplied `metadata_service_id`
+
+`Muxer::push_klv*` and `MuxSender::send_klv*` take a
+`metadata_service_id: u8` parameter that lands in the AU cell header
+(per H.222.0 § 2.12.4.2 + ST 1402.2 App. B Table 2). The spec default
+is `0x00` — pass that unless you have a specific reason to use a
+non-zero service_id (typically: mirroring a `metadata_klva(service_id)`
+PMT descriptor's `service_id` byte so receivers see consistent values
+across the PMT advertisement and the wire AU cell).
+
+The parameter is silently ignored on `KlvStreamType::PrivateData`
+streams — those pass payload through verbatim with no AU cell wrap.
+Sync streams (`SynchronousMetadata`) consume it.
+
+### Multi-cell (fragmented) AUs
+
+The demuxer detects fragmented AUs (CFI != Complete) and emits
+`NonConformantIssue::MultiCellAu { pid, dropped_bytes }` as a
+detect-only event. **Reassembly is not implemented** — the partial
+payload is dropped. ST 0601 records fit well below the fragmentation
+threshold; consumers don't see this in the wild yet, but the
+observability hook lands so upstream senders that fragment surface
+in telemetry.
+
+## Wire-format details: PES `stream_id`
+
+Per H.222.0 § 2.4.3.7 Table 2-22, the PES `stream_id` byte distinguishes
+metadata stream class from private-data class:
+
+| Stream class | `stream_type` | PES `stream_id` |
+|---|---|---|
+| Async / asynchronous KLV | `0x06` (PrivateData) | `0xBD` (private_stream_1) |
+| Sync metadata KLV | `0x15` (SynchronousMetadata) | `0xFC` (metadata) |
+
+`0xFC` is reserved for stream_type `0x15` only; async KLV rides
+`private_stream_1` (matching ffmpeg + GStreamer convention). The
+muxer selects the correct `stream_id` based on the configured
+`KlvStreamType` automatically — callers don't supply it.
+
+## KLVA registration descriptor auto-emit
+
+The muxer emits a `registration_descriptor` (tag `0x05`,
+`format_identifier = "KLVA"`) on every KLV stream's PMT entry,
+regardless of `stream_type`. Both `PrivateData` (`0x06`) and
+`SynchronousMetadata` (`0x15`) streams get the descriptor — receivers
+gate KLV classification on the descriptor regardless of stream_type
+(matching ffmpeg `mpegtsenc.c`). Sync KLV with `metadata_descriptor`
+(tag `0x26`) doesn't *replace* KLVA; both descriptors coexist on the
+PMT entry.
+
+Suppression rule: caller-supplied `registration_descriptor` (any
+`format_identifier`) on the KLV PID via `stream_descriptors_for_klv`
+suppresses the auto-emit. A non-`KLVA` caller-supplied Registration
+logs a `tracing::warn!` since receivers may not classify the stream
+as KLV.
+
 ## Substrate walking
 
 The lowest-level decode entry point is `klv::pack::Iter::local_set(body)`,

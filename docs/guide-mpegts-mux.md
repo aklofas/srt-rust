@@ -157,10 +157,14 @@ same `KLVA` registration descriptor on the PMT entry.
 The conventional pipeline is:
 
 ```text
-encode_to_vec(&ls)              → inner KLV bytes
-mux.push_klv(&inner, pts)       → muxer prepends 5-byte AU cell header,
-                                  emits PES carrying the AU cell, with
-                                  PTS in the PES header (per § 2.12.4.1)
+encode_to_vec(&ls)                       → inner KLV bytes
+mux.push_klv(&inner, pts, service_id)    → muxer prepends 5-byte AU cell
+                                           header (with metadata_service_id
+                                           = service_id, sequence_number
+                                           per-stream-counter, CFI=Complete,
+                                           RAI=true), emits PES carrying the
+                                           AU cell, PTS in the PES header
+                                           (per § 2.12.4.1).
 ```
 
 PTS lives in the PES header — the AU cell carries no embedded
@@ -233,8 +237,8 @@ For a 4 Mbps encoded video plus low-rate KLV that lands around
 ## `push_video` / `push_klv` contract
 
 ```text
-push_video(nal: &[u8], pts_90khz: i64, key_frame: bool) -> Result<(), MuxError>
-push_klv(klv: &[u8], pts_90khz: i64)                    -> Result<(), MuxError>
+push_video(nal: &[u8], pts_90khz: i64, key_frame: bool)         -> Result<(), MuxError>
+push_klv(klv: &[u8], pts_90khz: i64, metadata_service_id: u8)   -> Result<(), MuxError>
 ```
 
 Required:
@@ -252,6 +256,14 @@ Required:
   packet of the resulting PES.
 - `push_klv`'s `pts_90khz` is honoured only when the KLV stream was
   configured with `carries_pts: true`; otherwise it is ignored.
+- `push_klv`'s `metadata_service_id` lands in the AU cell header per
+  H.222.0 § 2.12.4.2 / ST 1402.2 App. B Table 2 ONLY when the
+  configured `KlvStreamType` is `SynchronousMetadata` (stream_type
+  0x15). `PrivateData` (stream_type 0x06) streams pass payload through
+  verbatim with no AU cell wrap, so the parameter is silently ignored
+  on that path. Spec default is `0x00`. Mirror a non-default
+  `metadata_klva(svc)` PMT descriptor's `service_id` if you need
+  consistency between the PMT advertisement and the wire AU cell.
 - KLV blobs are bounded by `PES_packet_length` (`u16`) — `65532`
   bytes without PTS, `65527` bytes with. Real ST 0601 packs are
   typically under 2 KB so this is a sanity check, not a regular

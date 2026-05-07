@@ -367,8 +367,9 @@ The public API is sync blocking. Calls that block:
 
 - `SocketBuilder::connect` / `Socket::connect_with` — until the SRT
   handshake completes or an error fires.
-- `Listener::accept` — until the next peer's handshake completes (or
-  the listener's `recv_timeout` expires, see below).
+- `Listener::accept` — blocks indefinitely until the next peer's
+  handshake completes. Use `Listener::accept_timeout` to impose a
+  deadline (see below).
 - `Socket::recv` — until a message is available, the connection
   breaks, or the configured `recv_timeout` expires.
 - `Socket::send` — until the bytes are accepted by libsrt's send
@@ -382,11 +383,29 @@ Calls that don't block: builder / config setters, `Socket::stats`,
 Timeouts are configured pre-`connect` / pre-`bind` via the builder's
 `recv_timeout(Duration)` and `send_timeout(Duration)` (or
 `SocketConfig::recv_timeout` / `send_timeout`); retune post-connect
-via `Socket::set_recv_timeout` / `Socket::set_send_timeout`. On a
-`Listener`, `recv_timeout` bounds how long `accept` blocks — when it
-expires, `accept` returns `AcceptError::TimedOut`. There is no separate
-`accept_timeout` setter; it shares the listener's underlying recv
-timeout.
+via `Socket::set_recv_timeout` / `Socket::set_send_timeout`.
+
+**Bounding `accept`:** libsrt's `srt_accept` does not honor
+`SRTO_RCVTIMEO` — `ListenerBuilder::recv_timeout` and
+`Listener::set_recv_timeout` apply to *accepted sockets*, not to the
+`accept` call itself. To impose a deadline on the accept call, use
+[`Listener::accept_timeout(duration)`](../crates/tst-srt/src/listener.rs)
+instead of `listener.accept()`. It registers the listener fd with a
+one-shot `srt_epoll_wait` and returns `AcceptError::TimedOut` when
+`duration` elapses with no incoming connection.
+
+```rust
+use std::time::Duration;
+use tst_srt::ListenerBuilder;
+
+let mut listener = ListenerBuilder::new().bind("127.0.0.1:9000")?;
+// accept_timeout returns Err(AcceptError::TimedOut) after 500 ms.
+match listener.accept_timeout(Duration::from_millis(500)) {
+    Ok((socket, peer)) => { /* handle connection */ }
+    Err(tst_srt::AcceptError::TimedOut) => { /* no peer yet */ }
+    Err(e) => return Err(e.into()),
+}
+```
 
 There is no `set_nonblocking`. Async support is deferred — see the
 sync-vs-async section in [architecture.md](architecture.md).

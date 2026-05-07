@@ -1096,6 +1096,9 @@ mod tests {
         assert!((ratio - 30.0).abs() < 0.5, "frame_rate≈30; got {fr:?}");
         // This fixture has no VUI (vui_parameters_present_flag=0 in VVenC output
         // at this encoding profile), so color_info is None.
-        assert!(sps.color_info.is_none(), "VVenC fixture has no VUI in this profile");
+        assert!(
+            sps.color_info.is_none(),
+            "VVenC fixture has no VUI in this profile"
+        );
     }
 }

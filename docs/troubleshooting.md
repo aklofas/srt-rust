@@ -50,9 +50,25 @@ Fix: confirm the listener is up with `ss -ulpn | grep <port>`; verify both sides
 
 **`Listener::accept` blocks forever**
 
-`accept()` is blocking. There is no separate `accept_timeout` setter, but `recv_timeout` on `ListenerBuilder` doubles as the accept bound — when set, `accept` returns `AcceptError::TimedOut` once the duration elapses. Note that the same value is also inherited by accepted `Socket`s as their `recv_timeout` default; retune per-socket post-`accept` with `Socket::set_recv_timeout` if you want a different read timeout than accept timeout.
+`accept()` is blocking by design and has no built-in deadline. Contrary to what you might expect, `ListenerBuilder::recv_timeout` / `Listener::set_recv_timeout` does *not* gate the accept call — libsrt's `srt_accept` ignores `SRTO_RCVTIMEO`. The recv timeout only applies to accepted sockets (it is inherited as their per-socket read deadline).
 
-Fix: set `ListenerBuilder::recv_timeout(Duration::from_secs(N))` (or call `Listener::set_recv_timeout` post-bind) to bound the wait. If you'd rather not put a timer on `accept` at all, run it on a dedicated thread and `Listener::close` from your shutdown path — that wakes the call with `AcceptError::ListenerClosed`.
+Fix: use `Listener::accept_timeout(Duration)` instead of `accept()`. It returns `Err(AcceptError::TimedOut)` when the duration elapses with no incoming connection, and `Ok((socket, peer))` on success:
+
+```rust
+use std::time::Duration;
+use tst_srt::AcceptError;
+
+loop {
+    match listener.accept_timeout(Duration::from_secs(1)) {
+        Ok((socket, peer)) => { /* handle */ }
+        Err(AcceptError::TimedOut) => { /* check shutdown flag, retry */ }
+        Err(AcceptError::ListenerClosed) => break,
+        Err(e) => return Err(e.into()),
+    }
+}
+```
+
+Alternatively, run `accept()` on a dedicated thread and call `Listener::close` from your shutdown path — that wakes the blocked call with `AcceptError::ListenerClosed`.
 
 **Connection establishes but no data arrives**
 

@@ -35,7 +35,7 @@ pub mod url;
 pub use builder::{ListenerBuilder, SocketBuilder};
 pub use cancel::CancelHandle;
 pub use config::{ListenerConfig, SocketConfig};
-pub use error::{Error, Result};
+pub use error::{AcceptError, Error, Result};
 pub use listener::Listener;
 pub use options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, Role, StreamId};
 pub use socket::{Socket, Stats};

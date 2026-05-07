@@ -12,6 +12,11 @@ use std::time::Duration;
 
 const SRT_INVALID_SOCK: srt_sys::SRTSOCKET = -1;
 
+// SRT_EPOLL_IN = 1 per srt.h. Signals a listener fd has an incoming
+// connection ready for srt_accept. The generated constant is typed as
+// SRT_EPOLL_OPT (c_uint) but srt_epoll_add_usock expects *const c_int.
+const SRT_EPOLL_IN: c_int = 0x1;
+
 /// Passive socket. Created by [`ListenerBuilder`](crate::ListenerBuilder)
 /// or [`Listener::bind_with`].
 pub struct Listener {
@@ -126,6 +131,77 @@ impl Listener {
         Ok((socket, peer))
     }
 
+    /// Accept the next incoming connection, returning
+    /// [`AcceptError::TimedOut`] if no peer connects within `timeout`.
+    ///
+    /// **Why this exists:** libsrt's `srt_accept` does not honor the
+    /// `SRTO_RCVTIMEO` socket option — [`set_recv_timeout`](Self::set_recv_timeout)
+    /// on the listener inherits to accepted sockets but does *not* gate
+    /// the accept call itself. This method works around that via
+    /// `srt_epoll_wait`.
+    ///
+    /// Implementation: registers the listener fd with a one-shot epoll
+    /// set on `SRT_EPOLL_IN`, waits up to `timeout`, then either calls
+    /// `srt_accept` (connection ready) or returns `TimedOut`. The epoll
+    /// set is always released before this method returns.
+    pub fn accept_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<(Socket, SocketAddr), AcceptError> {
+        // Create an epoll set for this call only.
+        let eid = unsafe { srt_sys::srt_epoll_create() };
+        if eid < 0 {
+            return Err(AcceptError::Other {
+                kind: crate::error::SrtErrno::Unknown(eid),
+                message: format!("srt_epoll_create returned {eid}"),
+            });
+        }
+
+        // Register the listener fd for IN (= accept-ready) events.
+        // Bind to a local binding so &raw const has a place expression.
+        let events: c_int = SRT_EPOLL_IN;
+        let rc = unsafe { srt_sys::srt_epoll_add_usock(eid, self.handle, &raw const events) };
+        if rc < 0 {
+            let raw = last_error();
+            unsafe { srt_sys::srt_epoll_release(eid) };
+            return Err(raw.into());
+        }
+
+        // msTimeOut is i64; clamp Duration to the representable range.
+        let timeout_ms: i64 = timeout.as_millis().min(i64::MAX as u128) as i64;
+        let mut readfds: [srt_sys::SRTSOCKET; 1] = [SRT_INVALID_SOCK];
+        let mut rnum: c_int = 1;
+
+        let n = unsafe {
+            srt_sys::srt_epoll_wait(
+                eid,
+                readfds.as_mut_ptr(),
+                &raw mut rnum,
+                std::ptr::null_mut(), // writefds
+                std::ptr::null_mut(), // wnum
+                timeout_ms,
+                std::ptr::null_mut(), // lrfds (system sockets)
+                std::ptr::null_mut(), // lrnum
+                std::ptr::null_mut(), // lwfds
+                std::ptr::null_mut(), // lwnum
+            )
+        };
+
+        unsafe { srt_sys::srt_epoll_release(eid) };
+
+        if n == 0 {
+            // epoll_wait returns 0 when msTimeOut elapses with no event.
+            return Err(AcceptError::TimedOut);
+        }
+        if n < 0 {
+            return Err(last_error().into());
+        }
+
+        // n > 0: listener fd is accept-ready; delegate to the blocking path.
+        // srt_accept will return immediately because epoll confirmed readiness.
+        self.accept()
+    }
+
     pub fn local_addr(&self) -> Result<SocketAddr, IoError> {
         let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
         let mut len = mem::size_of::<libc::sockaddr_storage>() as c_int;
@@ -138,6 +214,12 @@ impl Listener {
         from_sockaddr(&storage).map_err(|e| IoError::System(std::io::Error::other(e.to_string())))
     }
 
+    /// Set the receive timeout that will be inherited by accepted [`Socket`]s.
+    ///
+    /// **Important:** this does *not* gate the [`accept`](Self::accept) call
+    /// itself — libsrt's `srt_accept` does not honor `SRTO_RCVTIMEO`. To
+    /// time-bound the accept call, use [`accept_timeout`](Self::accept_timeout)
+    /// instead.
     pub fn set_recv_timeout(&mut self, timeout: Option<Duration>) -> Result<(), OptionError> {
         let ms = timeout.map(duration_to_ms).unwrap_or(-1);
         set_int(self.handle, srt_sys::SRT_SOCKOPT_SRTO_RCVTIMEO, ms)?;

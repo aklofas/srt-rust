@@ -6,8 +6,8 @@
 //!     general_timing_hrd_parameters(), NOT in VUI. So this function
 //!     returns only `Option<ColorInfo>`.
 
-use crate::codec::h265::bitreader::BitReader;
 use crate::codec::ParseError;
+use crate::codec::h265::bitreader::BitReader;
 use crate::codec::{
     ColorInfo, ColourPrimaries, MatrixCoefficients, Rational, TransferCharacteristics,
 };

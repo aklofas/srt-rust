@@ -659,7 +659,11 @@ let cfg = ConfigBuilder::new()
     .add_program(1, 0x1000)
     .add_video(0x100, VideoCodec::H264)
     .add_klv(0x200, KlvStreamType::PrivateData, /*carries_pts=*/ false)
-    .add_audio(0x300, AudioCodec::Aac)
+    // add_audio_with_language auto-emits an iso_639_language_descriptor
+    // (tag 0x0A) on the PMT entry — receivers (browsers, transcoders,
+    // players) get a language hint without manually wiring descriptors.
+    // Use plain add_audio(pid, codec) when language is unknown / unset.
+    .add_audio_with_language(0x300, AudioCodec::Aac, *b"eng")
     .end_program()
     .build()?;
 

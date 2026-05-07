@@ -395,9 +395,9 @@ the trigger that would unblock it.
 
 - **Status:** Deferred. Per-stream PMT descriptors are caller-supplied via
   `ConfigBuilder::stream_descriptors_for_audio` (parallel to `_for_video` /
-  `_for_klv` from plan #17), and the `mpegts::descriptors` module already
-  ships an `iso_639_language` helper for language tagging — by far the
-  most common audio descriptor. Codec-specific helpers (`ac3_audio()` —
+  `_for_klv` from plan #17). Two auto-emit helpers ship: `add_audio_with_language(pid, codec, lang)` emits an `iso_639_language_descriptor`
+  (tag 0x0A); `AudioCodec::Ac3` streams auto-emit a `registration_descriptor`
+  with `format_identifier="AC-3"`. Codec-specific helpers (`ac3_audio()` —
   descriptor tag 0x6A in DVB / 0x81 in ATSC; `aac_audio()` — tag 0x7C;
   `mpeg2_audio()`) are not added.
 - **Why deferred:** No consumer has asked for typed audio descriptors,

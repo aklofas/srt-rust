@@ -633,25 +633,50 @@ stream gets the call is the caller's job.
 
 ### Audio descriptors
 
-Audio PMT entries are bare by default — the library writes only the
-stream_type byte. Attach descriptors via `stream_descriptors_for_audio`,
-typically for ISO 639 language tagging:
+Audio PMT entries default to bare (just the stream_type byte). Two
+auto-emit shortcuts are available, plus the manual route via
+`stream_descriptors_for_audio` for richer cases.
+
+#### ISO 639 language: `add_audio_with_language`
+
+Set the language at builder time and the muxer emits an
+`iso_639_language_descriptor` (tag `0x0A`, ISO/IEC 13818-1 §2.6.18-19)
+with `audio_type = 0x00` (undefined / clean main):
+
+```rust
+let cfg = ConfigBuilder::new()
+    .add_program(1, 0x1000)
+        .add_video(0x101, VideoCodec::H264)
+        .add_audio_with_language(0x300, AudioCodec::Aac, *b"eng")
+        .add_audio_with_language(0x301, AudioCodec::Aac, *b"spa")
+    .end_program()
+    .build()?;
+```
+
+The plain `add_audio(pid, codec)` form keeps `language: None` and
+emits no descriptor — pre-Task-2.1 behavior. Suppression: caller-supplied
+tag-`0x0A` via `stream_descriptors_for_audio` wins (their language code
+overrides; no double-emit).
+
+For multi-language tracks or richer `audio_type` values
+(visually-impaired commentary, hearing-impaired, dialogue, etc. per
+§2.6.19 Table 2-83), supply the descriptor manually:
 
 ```rust
 use tst_core::mpegts::descriptors::iso_639_language;
 
 let cfg = ConfigBuilder::new()
     .add_program(1, 0x1000)
-    .add_audio(0x300, AudioCodec::Aac)
+        .add_video(0x101, VideoCodec::H264)
+        .add_audio(0x300, AudioCodec::Aac)
     .end_program()
-    .stream_descriptors_for_audio(0, vec![iso_639_language(b"eng", 0)])
+    .stream_descriptors_for_audio(0, vec![iso_639_language(*b"eng", 0x03)])
     .build()?;
 ```
 
-The `mpegts::descriptors` module ships an `iso_639_language` helper.
-Codec-specific audio descriptors (AC-3 audio descriptor 0x6A, AAC
-audio descriptor 0x7C) are not pre-built — assemble via
-`user_private_with_tag(tag, payload)` if needed.
+(Codec-specific audio descriptors — AC-3 audio descriptor `0x6A`, AAC
+audio descriptor `0x7C` — are not pre-built; assemble via
+`user_private_with_tag(tag, payload)` if needed.)
 
 ### AC-3 registration descriptor
 

@@ -301,9 +301,24 @@ fn decode_inner(buf: &[u8], strict: bool) -> Result<SecurityLs, KlvDecodeError> 
 }
 
 /// Strict decode — rejects spec-violating input (missing required
-/// tags, unknown enum codepoints, non-canonical BER, malformed UTF-16,
-/// duplicate tags). Unknown tags are still preserved in `unknown` per
-/// ST 0107.5 §6.
+/// tags, unknown enum codepoints, [`OmittedValueXX`] reserved
+/// codepoints, malformed UTF-16, duplicate tags, wrong fixed-length
+/// values). Unknown tags are still preserved in `unknown` per ST
+/// 0107.5 §6 future-proof skip rule (matches
+/// `klv::st0601::decode_strict_compliance` posture).
+///
+/// Per-tag BER length encoding canonicity (ST 0107.5 §6.3.2) is NOT
+/// currently checked — body iteration via [`pack::Iter::local_set`]
+/// uses the permissive [`length::read_ber`]. A future tightening
+/// could route through [`length::read_ber_strict`] but this is
+/// deferred to keep parity with `klv::st0601`'s permissive iter
+/// shape; consumers who need canonical-BER enforcement can call
+/// [`length::read_ber_strict`] on the buffer themselves.
+///
+/// [`OmittedValueXX`]: ClassifyingCountryCodingMethod::OmittedValue08
+/// [`pack::Iter::local_set`]: crate::klv::pack::Iter::local_set
+/// [`length::read_ber`]: crate::klv::length::read_ber
+/// [`length::read_ber_strict`]: crate::klv::length::read_ber_strict
 pub fn decode_strict(buf: &[u8]) -> Result<SecurityLs, KlvDecodeError> {
     decode_inner(buf, /* strict = */ true)
 }
@@ -879,14 +894,13 @@ mod tests {
         let mut r = build_minimal_required_record();
         r.security_classification = Some(SecurityClassification::Unknown(0xFA));
         let bytes = encode_to_vec(&r).unwrap();
-        let err = decode_strict(&bytes).unwrap_err();
-        match err {
+        assert!(matches!(
+            decode_strict(&bytes).unwrap_err(),
             KlvDecodeError::FieldError(crate::error::KlvFieldError::InvalidCodepoint {
                 tag: 1,
                 value: 0xFA,
-            }) => {}
-            other => panic!("expected InvalidCodepoint, got {other:?}"),
-        }
+            })
+        ));
     }
 
     #[test]

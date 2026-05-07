@@ -394,15 +394,16 @@ pub fn encode(record: &SecurityLs, out: &mut [u8]) -> Result<usize, KlvEncodeErr
         emit(out, &mut pos, 24, s.as_bytes())?;
     }
 
-    // Emit unknown tags last to preserve forward-compat.
+    // Emit unknown tags last to preserve forward-compat. ST 0102 LS
+    // uses single-byte BER-OID tags only; multi-byte tags (>127)
+    // are silently dropped — `encoded_len` matches this behavior so
+    // the buffer-size precheck stays consistent. The decoder still
+    // accepts tag > 127 as forward-compat (ST 0107.5 §6), but
+    // encoding round-trip drops them.
     for u in record.unknown.iter() {
         let tag_u8 = match u8::try_from(u.tag) {
-            Ok(t) => t,
-            Err(_) => {
-                // Defensive: skip unknown tags > 255 (ST 0102 LS
-                // shouldn't produce these).
-                continue;
-            }
+            Ok(t) if t <= 127 => t,
+            _ => continue, // tag > 127: drop (matches encoded_len)
         };
         emit(out, &mut pos, tag_u8, &u.value)?;
     }
@@ -485,22 +486,15 @@ pub fn encoded_len(record: &SecurityLs) -> usize {
     }
 
     for u in record.unknown.iter() {
-        // Re-emit unknown tags verbatim; tag must fit in one byte
-        // for the BER-OID short form (ST 0102 LS doesn't use long-
-        // form BER-OID tags).
+        // Re-emit unknown tags verbatim. ST 0102 LS uses single-byte
+        // BER-OID tags (≤ 127); tags above that range are silently
+        // dropped on encode (see the `encode` function's u8::try_from
+        // branch), so we don't size for them here either. Asymmetric
+        // round-trip is acceptable because the spec doesn't define
+        // tags above 127 for ST 0102 LS — preserving them on lenient
+        // decode is a forward-compat courtesy, not a contract.
         if u.tag <= 127 {
             total += 1 + ber_len(u.value.len()) + u.value.len();
-        } else {
-            // Multi-byte BER-OID — defensive; ST 0102 LS shouldn't
-            // produce these but the lenient decoder might preserve
-            // them if a future spec extension uses them.
-            let mut tag = u.tag;
-            let mut tag_bytes = 1;
-            while tag > 0x7F {
-                tag >>= 7;
-                tag_bytes += 1;
-            }
-            total += tag_bytes + ber_len(u.value.len()) + u.value.len();
         }
     }
 
@@ -746,7 +740,11 @@ mod tests {
         };
         let mut buf = [0u8; 1]; // need ≥ 3 bytes for tag 1
         let err = encode(&r, &mut buf).unwrap_err();
-        assert!(matches!(err, KlvEncodeError::BufferTooSmall { .. }));
+        // Tag 1 needs: 1 byte tag + 1 byte BER len + 1 byte value = 3 bytes; got 1.
+        assert!(matches!(
+            err,
+            KlvEncodeError::BufferTooSmall { needed: 3, got: 1 }
+        ));
     }
 
     #[test]
@@ -780,5 +778,47 @@ mod tests {
         // is the primary correctness check.
         let redecoded = decode(&bytes).unwrap();
         assert_eq!(redecoded, decoded);
+    }
+
+    #[test]
+    fn unknown_tags_above_127_dropped_on_encode() {
+        // ST 0102 LS uses single-byte BER-OID tags only. The lenient
+        // decoder accepts tag > 127 as forward-compat (ST 0107.5 §6)
+        // but encode silently drops them; encoded_len agrees. This
+        // test pins that contract — change of behavior here means
+        // either making encode emit multi-byte BER-OID, or making
+        // decode reject tag > 127.
+        let r = SecurityLs {
+            security_classification: Some(SecurityClassification::Unclassified),
+            unknown: vec![
+                OwnedRawField {
+                    tag: 128,
+                    value: b"forward-compat".to_vec(),
+                },
+                OwnedRawField {
+                    tag: 200,
+                    value: b"other".to_vec(),
+                },
+            ],
+            ..Default::default()
+        };
+
+        let n = encoded_len(&r);
+        let bytes = encode_to_vec(&r).unwrap();
+
+        // encoded_len + encode agree on size (both skip the > 127 tags).
+        assert_eq!(n, bytes.len());
+
+        // Re-decode: typed field round-trips; unknown vec is empty
+        // (the > 127 tags were dropped on encode).
+        let decoded = decode(&bytes).unwrap();
+        assert_eq!(
+            decoded.security_classification,
+            Some(SecurityClassification::Unclassified)
+        );
+        assert!(
+            decoded.unknown.is_empty(),
+            "tags > 127 should be silently dropped on encode"
+        );
     }
 }

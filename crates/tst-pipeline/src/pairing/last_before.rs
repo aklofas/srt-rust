@@ -59,8 +59,10 @@ impl LastBeforeState {
     }
 
     pub(super) fn flush(&mut self) -> Vec<PairerOutput> {
-        // Filled in Task 6.
-        Vec::new()
+        match self.current.take() {
+            Some(slot) if !slot.used => vec![PairerOutput::UnpairedKlv(slot.sample)],
+            _ => Vec::new(),
+        }
     }
 
     fn handle_video(&mut self, v: VideoSample) -> Vec<PairerOutput> {
@@ -196,5 +198,32 @@ mod tests {
         let p2 = s.feed(video_event(20));
         assert!(matches!(&p1[0], PairerOutput::Paired { .. }));
         assert!(matches!(&p2[0], PairerOutput::Paired { .. }));
+    }
+
+    #[test]
+    fn flush_emits_unused_current_klv() {
+        let mut s = LastBeforeState::new(VIDEO_PID, KLV_PID, None);
+        let _ = s.feed(klv_event(0));
+        let out = s.flush();
+        assert_eq!(out.len(), 1);
+        assert!(matches!(&out[0], PairerOutput::UnpairedKlv(_)));
+    }
+
+    #[test]
+    fn flush_silent_when_current_used() {
+        let mut s = LastBeforeState::new(VIDEO_PID, KLV_PID, None);
+        let _ = s.feed(klv_event(0));
+        let _ = s.feed(video_event(10));
+        let out = s.flush();
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn flush_idempotent() {
+        let mut s = LastBeforeState::new(VIDEO_PID, KLV_PID, None);
+        let _ = s.feed(klv_event(0));
+        let _ = s.flush();
+        let out2 = s.flush();
+        assert!(out2.is_empty());
     }
 }

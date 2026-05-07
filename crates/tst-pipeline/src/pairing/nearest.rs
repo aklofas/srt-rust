@@ -71,8 +71,14 @@ impl NearestState {
     }
 
     pub(super) fn flush(&mut self) -> Vec<PairerOutput> {
-        // Filled in Task 6.
-        Vec::new()
+        let mut out = self.drain_buffered(true);
+        // Drain remaining KLV history; emit UnpairedKlv for any !used.
+        while let Some(entry) = self.klv_history.pop_front() {
+            if !entry.used {
+                out.push(PairerOutput::UnpairedKlv(entry.sample));
+            }
+        }
+        out
     }
 
     fn handle_video(&mut self, v: VideoSample) -> Vec<PairerOutput> {
@@ -381,5 +387,52 @@ mod tests {
         // Subsequent video stays buffered — no KLV within its window yet.
         let out2 = s.feed(video_event(201));
         assert!(out2.is_empty(), "video@201 should still be buffered, got {:?}", out2);
+    }
+
+    #[test]
+    fn flush_realtime_drains_unused_klv_history() {
+        let mut s = nearest_realtime();
+        let _ = s.feed(klv_event(0));
+        let _ = s.feed(klv_event(50));
+        let out = s.flush();
+        let unpaired_pts: Vec<i64> = out
+            .iter()
+            .filter_map(|o| match o {
+                PairerOutput::UnpairedKlv(k) => Some(k.pts),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(unpaired_pts, vec![0, 50]);
+    }
+
+    #[test]
+    fn flush_buffered_drains_video_buffer_with_best_effort_match() {
+        let mut s = nearest_buffered(8);
+        let _ = s.feed(video_event(1000)); // no KLV → buffered
+        let out = s.flush();
+        let upv = out
+            .iter()
+            .filter(|o| matches!(o, PairerOutput::UnpairedVideo(_)))
+            .count();
+        assert_eq!(upv, 1, "expected 1 UnpairedVideo on flush, got {:?}", out);
+    }
+
+    #[test]
+    fn flush_idempotent() {
+        let mut s = nearest_realtime();
+        let _ = s.feed(klv_event(0));
+        let _ = s.flush();
+        let out2 = s.flush();
+        assert!(out2.is_empty());
+    }
+
+    #[test]
+    fn feed_after_flush_works() {
+        let mut s = nearest_realtime();
+        let _ = s.feed(klv_event(0));
+        let _ = s.flush();
+        let _ = s.feed(klv_event(100));
+        let out = s.feed(video_event(100));
+        assert!(matches!(&out[0], PairerOutput::Paired { .. }));
     }
 }

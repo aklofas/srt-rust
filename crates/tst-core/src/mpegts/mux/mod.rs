@@ -162,6 +162,18 @@ pub enum StreamSpec {
         pid: u16,
         /// Audio codec — drives PMT stream_type (0x03 MP2, 0x0F AAC, 0x11 LATM, 0x81 AC-3).
         codec: AudioCodec,
+        /// Optional ISO 639-2 language code (3 lowercase ASCII bytes, e.g. `*b"eng"`).
+        ///
+        /// When `Some`, the muxer auto-emits an `iso_639_language_descriptor`
+        /// (tag `0x0A`, ISO/IEC 13818-1 §2.6.18-19) with `audio_type=0x00`
+        /// (undefined / clean main). When `None`, no descriptor is emitted.
+        ///
+        /// Suppressed when the caller has already supplied a tag-`0x0A`
+        /// descriptor via `stream_descriptors_for_audio` — same posture
+        /// as KLVA / AV01 / AC-3 registration auto-emit. The auto-emit
+        /// itself is wired in the PMT descriptor writer; this field exists,
+        /// defaults to `None`, and is plumbed through from the builder helpers.
+        language: Option<[u8; 3]>,
     },
     Subtitle {
         /// PID for the subtitle PES stream. Must be in `0x0010..=0x1FFE`.
@@ -966,7 +978,35 @@ impl ProgramBuilder {
     /// this program. `codec` drives the PMT `stream_type` byte.
     pub fn add_audio(mut self, pid: u16, codec: AudioCodec) -> Self {
         let prog = &mut self.parent.programs[self.idx];
-        prog.streams.push(StreamSpec::Audio { pid, codec });
+        prog.streams.push(StreamSpec::Audio {
+            pid,
+            codec,
+            language: None,
+        });
+        prog.stream_descriptors.push(Vec::new());
+        self
+    }
+
+    /// Like [`add_audio`] but emits an `iso_639_language_descriptor`
+    /// (ISO/IEC 13818-1 §2.6.18) on the PMT entry. Three-byte ISO 639-2
+    /// language code, lowercase ASCII (e.g. `*b"eng"`, `*b"deu"`,
+    /// `*b"jpn"`). `audio_type` is set to `0x00` (undefined / clean main)
+    /// per §2.6.19 Table 2-83.
+    ///
+    /// For richer audio_type semantics or multi-language tracks, supply
+    /// the descriptor manually via [`stream_descriptors_for_audio`].
+    pub fn add_audio_with_language(
+        mut self,
+        pid: u16,
+        codec: AudioCodec,
+        language: [u8; 3],
+    ) -> Self {
+        let prog = &mut self.parent.programs[self.idx];
+        prog.streams.push(StreamSpec::Audio {
+            pid,
+            codec,
+            language: Some(language),
+        });
         prog.stream_descriptors.push(Vec::new());
         self
     }
@@ -1312,7 +1352,7 @@ impl Muxer {
                 .streams
                 .iter()
                 .filter_map(|s| match s {
-                    StreamSpec::Audio { pid, codec } => Some(AudioStreamState {
+                    StreamSpec::Audio { pid, codec, .. } => Some(AudioStreamState {
                         pid: *pid,
                         codec: *codec,
                     }),
@@ -2639,6 +2679,7 @@ mod tests {
         let spec = StreamSpec::Audio {
             pid: 0x300,
             codec: AudioCodec::Aac,
+            language: None,
         };
         assert_eq!(spec.pid(), 0x300);
     }

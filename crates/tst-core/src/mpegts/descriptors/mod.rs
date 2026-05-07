@@ -103,7 +103,7 @@ pub fn metadata_std(input_leak_rate: u32, buffer_size: u32, output_leak_rate: u3
 /// per-stream label slot (e.g. `"VIDEO-ARS"`, `"KLV_SYNC"`,
 /// `"JSONCMD"`).
 ///
-/// `srt-rust`'s demuxer surfaces it both via
+/// `tst-core`'s demuxer surfaces it both via
 /// [`crate::mpegts::demux::event::StreamInfo::raw_descriptors`] and (when
 /// payload is valid UTF-8) via the demuxer-side stats label.
 ///

@@ -32,7 +32,7 @@
  *
  * ── BUILD ─────────────────────────────────────────────────────────────────────
  *
- *   From the srt-rust workspace root:
+ *   From the ts-transformer workspace root:
  *
  *   SRT_FORCE_VENDORED=1 cargo build -p srt-c --release
  *   gcc crates/tst-c/examples/c/mux_two_programs.c \

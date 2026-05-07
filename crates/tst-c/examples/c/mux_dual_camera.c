@@ -9,7 +9,7 @@
  * e.g. two aircraft each with their own program), see
  * `examples/c/mux_two_programs.c`.
  *
- * Build (from the srt-rust workspace root):
+ * Build (from the ts-transformer workspace root):
  *   SRT_FORCE_VENDORED=1 cargo build -p srt-c
  *   cc -I crates/tst-c/include \
  *      -L target/debug \

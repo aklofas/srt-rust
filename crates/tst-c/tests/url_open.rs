@@ -988,7 +988,7 @@ fn ts_sender_congestion_live_url_open_succeeds() {
 // ============================================================================
 // Group 2 extension keys (x-recvtimeout / x-sendtimeout).
 //
-// These are srt-rust extensions — not standard SRT URL keys. They set
+// These are ts-transformer extensions — not standard SRT URL keys. They set
 // SRTO_RCVTIMEO / SRTO_SNDTIMEO (in milliseconds) before connect. Because
 // they control local I/O timeouts rather than SRT protocol behaviour, no
 // special listener configuration is needed.

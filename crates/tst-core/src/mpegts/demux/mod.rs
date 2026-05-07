@@ -5,8 +5,7 @@
 //! contain TS packets — the demuxer handles sync recovery). Pull events
 //! out via `next_event`. The event stream is decoupled-pairing: the
 //! demuxer extracts and timestamps streams independently and never pairs
-//! sync-KLV with video AUs. See `srt-rust/docs/cookbook.md` for canonical
-//! pairing recipes.
+//! sync-KLV with video AUs. See the cookbook for canonical pairing recipes.
 //!
 //! Lenient by default — non-conformance surfaces as
 //! `DemuxEvent::NonConformant` events so the receive loop keeps running.

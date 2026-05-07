@@ -90,6 +90,10 @@ impl BitWriter {
 /// Construct a minimal valid H.266 SPS bitstream:
 /// sps_id=0, vps_id=0, 320x240, 8-bit 4:2:0, Main 10 profile @ Level 4.0.
 /// Mirror of `codec::h266::sps::tests::minimal_sps_rbsp`.
+///
+/// Extended in Task 4.2 to write all body-walk fields through
+/// sps_vui_parameters_present_flag=0, matching the updated
+/// minimal_sps_rbsp_full() in sps.rs.
 fn minimal_sps_rbsp() -> Vec<u8> {
     let mut bw = BitWriter::new();
 
@@ -120,6 +124,77 @@ fn minimal_sps_rbsp() -> Vec<u8> {
     bw.write(0, 1); // sps_conformance_window_flag = 0
     bw.write(0, 1); // sps_subpic_info_present_flag = 0
     bw.write_ue(0); // sps_bitdepth_minus8 = 0 -> bit_depth = 8
+
+    // §7.3.2.4 body walk fields (all flags off, ue values = 0).
+    bw.write(0, 1); // sps_entropy_coding_sync_enabled_flag
+    bw.write(0, 1); // sps_entry_point_offsets_present_flag
+    bw.write(0, 4); // sps_log2_max_pic_order_cnt_lsb_minus4 u(4)
+    bw.write(0, 1); // sps_poc_msb_cycle_flag
+    bw.write(0, 2); // sps_num_extra_ph_bytes u(2)
+    bw.write(0, 2); // sps_num_extra_sh_bytes u(2)
+    // ptl_dpb_hrd_present=1, max_sublayers=0 → no sublayer_dpb_params_flag
+    bw.write_ue(1); // dpb_max_dec_pic_buffering_minus1[0]
+    bw.write_ue(0); // dpb_max_num_reorder_pics[0]
+    bw.write_ue(0); // dpb_max_latency_increase_plus1[0]
+    bw.write_ue(0); // sps_log2_min_luma_coding_block_size_minus2
+    bw.write(0, 1); // sps_partition_constraints_override_enabled_flag
+    bw.write_ue(0); // sps_log2_diff_min_qt_min_cb_intra_slice_luma
+    bw.write_ue(0); // sps_max_mtt_hierarchy_depth_intra_slice_luma
+    bw.write(0, 1); // sps_qtbtt_dual_tree_intra_flag (chroma_format!=0)
+    bw.write_ue(0); // sps_log2_diff_min_qt_min_cb_inter_slice
+    bw.write_ue(0); // sps_max_mtt_hierarchy_depth_inter_slice
+    // CTBsize=32 → no max_luma_transform_size_64_flag
+    bw.write(0, 1); // sps_transform_skip_enabled_flag
+    bw.write(0, 1); // sps_mts_enabled_flag
+    bw.write(0, 1); // sps_lfnst_enabled_flag
+    bw.write(0, 1); // sps_joint_cbcr_enabled_flag
+    bw.write(1, 1); // sps_same_qp_table_for_chroma_flag = 1 → 1 QP table
+    bw.write_ue(0); // qp_table_start_minus26[0] = se(0) → ue(0)
+    bw.write_ue(0); // num_points_in_qp_table_minus1[0]
+    bw.write_ue(0); // delta_qp_in_val_minus1[0][0]
+    bw.write_ue(0); // delta_qp_diff_val[0][0]
+    bw.write(0, 1); // sps_sao_enabled_flag
+    bw.write(0, 1); // sps_alf_enabled_flag
+    bw.write(0, 1); // sps_lmcs_enabled_flag
+    bw.write(0, 1); // sps_weighted_pred_flag
+    bw.write(0, 1); // sps_weighted_bipred_flag
+    bw.write(0, 1); // sps_long_term_ref_pics_flag
+    // vps_id=0 → no inter_layer_pred_enabled_flag
+    bw.write(0, 1); // sps_idr_rpl_present_flag
+    bw.write(0, 1); // sps_rpl1_same_as_rpl0_flag
+    bw.write_ue(0); // sps_num_ref_pic_lists[0]
+    bw.write_ue(0); // sps_num_ref_pic_lists[1]
+    bw.write(0, 1); // sps_ref_wraparound_enabled_flag
+    bw.write(0, 1); // sps_temporal_mvp_enabled_flag
+    bw.write(0, 1); // sps_amvr_enabled_flag
+    bw.write(0, 1); // sps_bdof_enabled_flag
+    bw.write(0, 1); // sps_smvd_enabled_flag
+    bw.write(0, 1); // sps_dmvr_enabled_flag
+    bw.write(0, 1); // sps_mmvd_enabled_flag
+    bw.write_ue(0); // sps_six_minus_max_num_merge_cand
+    bw.write(0, 1); // sps_sbt_enabled_flag
+    bw.write(0, 1); // sps_affine_enabled_flag
+    bw.write(0, 1); // sps_bcw_enabled_flag
+    bw.write(0, 1); // sps_ciip_enabled_flag
+    bw.write(0, 1); // sps_gpm_enabled_flag (MaxNumMergeCand=6 >= 2)
+    bw.write_ue(0); // sps_log2_parallel_merge_level_minus2
+    bw.write(0, 1); // sps_isp_enabled_flag
+    bw.write(0, 1); // sps_mrl_enabled_flag
+    bw.write(0, 1); // sps_mip_enabled_flag
+    bw.write(0, 1); // sps_cclm_enabled_flag (chroma_format!=0)
+    bw.write(0, 1); // sps_chroma_horizontal_collocated_flag (chroma==1)
+    bw.write(0, 1); // sps_chroma_vertical_collocated_flag
+    bw.write(0, 1); // sps_palette_enabled_flag
+    bw.write(0, 1); // sps_ibc_enabled_flag
+    bw.write(0, 1); // sps_ladf_enabled_flag
+    bw.write(0, 1); // sps_explicit_scaling_list_enabled_flag
+    bw.write(0, 1); // sps_dep_quant_enabled_flag
+    bw.write(0, 1); // sps_sign_data_hiding_enabled_flag
+    bw.write(0, 1); // sps_virtual_boundaries_enabled_flag
+    bw.write(0, 1); // sps_timing_hrd_params_present_flag (ptl_dpb_hrd=1)
+    bw.write(0, 1); // sps_field_seq_flag
+    bw.write(0, 1); // sps_vui_parameters_present_flag
+    bw.write(0, 1); // sps_extension_flag
 
     bw.end_rbsp();
     bw.bytes

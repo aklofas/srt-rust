@@ -9,6 +9,22 @@ use crate::options::{
 };
 use std::time::Duration;
 
+/// Sender-pipeline default for `SRTO_CONNTIMEO`. libsrt's default is 3s,
+/// which is too short for the radio-link domain this library targets
+/// (LOS-over-terrain interruptions, antenna repointing, radio warm-up).
+const SENDER_DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Sender-pipeline default for `SRTO_LINGER`. libsrt's default is off
+/// (`l_onoff=0` — drains in the background). 5s is long enough to drain a
+/// small backlog under healthy conditions, short enough to never stall a
+/// `ManagedTransport` reconnect cycle noticeably.
+const SENDER_DEFAULT_LINGER: Duration = Duration::from_secs(5);
+
+/// Receiver-pipeline default for `SRTO_CONNTIMEO`. Caller-mode receivers
+/// face the same radio-link rendezvous reality as senders.
+#[allow(dead_code)] // consumed by the upcoming `merge_receiver_defaults`.
+const RECEIVER_DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// Configuration for a caller-side data socket.
 ///
 /// All `Option<T>` fields default to `None`, meaning "leave the libsrt default."
@@ -71,6 +87,58 @@ pub struct SocketConfig {
     pub flow_window_packets: Option<u32>,
     pub packet_filter: Option<PacketFilter>,
     pub congestion: Option<Congestion>,
+}
+
+impl SocketConfig {
+    /// Returns a `SocketConfig` pre-populated with the live-streaming sender
+    /// preset suitable for radio-link MPEG-TS+SRT delivery from gimbaled
+    /// platforms:
+    ///
+    /// - `connect_timeout = 15s` — accommodates LOS interruptions, antenna
+    ///   repointing, and radio warm-up (libsrt default 3s is too short).
+    /// - `linger = 5s` — drains a small backlog on graceful close without
+    ///   stalling a reconnect cycle (libsrt default is off — drops queued
+    ///   data on close).
+    /// - `role = Role::MuxSender` — sets `SRTO_SENDER=1` for HSv4-peer
+    ///   compatibility (older Teradek/Makito gear, cable-industry hardware).
+    ///
+    /// All other fields take their `Default` value. Use struct-update syntax
+    /// to layer caller-specific fields:
+    ///
+    /// ```
+    /// # use tst_srt::SocketConfig;
+    /// # use tst_srt::options::Passphrase;
+    /// # let passphrase = Passphrase::new("secretsecretsecret").unwrap();
+    /// let cfg = SocketConfig {
+    ///     passphrase: Some(passphrase),
+    ///     ..SocketConfig::sender_defaults()
+    /// };
+    /// ```
+    pub fn sender_defaults() -> Self {
+        let mut cfg = Self::default();
+        cfg.merge_sender_defaults();
+        cfg
+    }
+
+    /// Apply sender defaults to fields the caller has not explicitly set.
+    /// Preserves caller intent: only fills in `connect_timeout` if `None`,
+    /// `linger` if `None`, and `role` if `Role::Unspecified`. Idempotent.
+    ///
+    /// Useful when a caller has parsed configuration from another source
+    /// (e.g. URL query parameters via `tst_srt::url::parse`) and wants to
+    /// fill in the sender-pipeline defaults for any fields the source
+    /// did not specify.
+    pub fn merge_sender_defaults(&mut self) {
+        if self.connect_timeout.is_none() {
+            self.connect_timeout = Some(SENDER_DEFAULT_CONNECT_TIMEOUT);
+        }
+        if self.linger.is_none() {
+            self.linger = Some(SENDER_DEFAULT_LINGER);
+        }
+        if self.role == Role::Unspecified {
+            self.role = Role::MuxSender;
+        }
+    }
 }
 
 /// Configuration for a listener (passive) socket.
@@ -167,5 +235,93 @@ mod tests {
         let cfg = ListenerConfig::default();
         assert_eq!(cfg.backlog, 5);
         assert!(cfg.reuse_addr);
+    }
+
+    #[test]
+    fn sender_defaults_sets_three_fields() {
+        let cfg = SocketConfig::sender_defaults();
+        assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
+        assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
+        assert_eq!(cfg.role, Role::MuxSender);
+    }
+
+    #[test]
+    fn sender_defaults_leaves_other_fields_at_default() {
+        let cfg = SocketConfig::sender_defaults();
+        assert!(cfg.passphrase.is_none());
+        assert_eq!(cfg.key_length, KeyLength::Aes128);
+        assert!(cfg.send_timeout.is_none());
+        assert!(cfg.recv_timeout.is_none());
+        assert!(cfg.latency.is_none());
+        assert!(cfg.peer_latency.is_none());
+        assert!(cfg.recv_latency.is_none());
+        assert!(cfg.recv_buf_packets.is_none());
+        assert!(cfg.send_buf_packets.is_none());
+        assert!(cfg.max_bandwidth.is_none());
+        assert!(cfg.input_bandwidth.is_none());
+        assert!(cfg.overhead_bandwidth_pct.is_none());
+        assert!(cfg.mss.is_none());
+        assert!(cfg.payload_size.is_none());
+        assert!(cfg.udp_recv_buffer_bytes.is_none());
+        assert!(cfg.udp_send_buffer_bytes.is_none());
+        assert!(cfg.stream_id.is_none());
+        assert!(cfg.loss_max_ttl.is_none());
+        assert!(cfg.too_late_packet_drop.is_none());
+        assert!(cfg.flow_window_packets.is_none());
+        assert!(cfg.packet_filter.is_none());
+        assert!(cfg.congestion.is_none());
+    }
+
+    #[test]
+    fn merge_sender_defaults_fills_unset_fields() {
+        let mut cfg = SocketConfig::default();
+        cfg.merge_sender_defaults();
+        assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
+        assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
+        assert_eq!(cfg.role, Role::MuxSender);
+    }
+
+    #[test]
+    fn merge_sender_defaults_is_idempotent() {
+        let mut cfg = SocketConfig::default();
+        cfg.merge_sender_defaults();
+        let after_first = cfg.clone();
+        cfg.merge_sender_defaults();
+        assert_eq!(cfg.connect_timeout, after_first.connect_timeout);
+        assert_eq!(cfg.linger, after_first.linger);
+        assert_eq!(cfg.role, after_first.role);
+    }
+
+    #[test]
+    #[allow(clippy::field_reassign_with_default)]
+    fn merge_sender_defaults_preserves_explicit_connect_timeout() {
+        let mut cfg = SocketConfig::default();
+        cfg.connect_timeout = Some(Duration::from_secs(7));
+        cfg.merge_sender_defaults();
+        assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(7)));
+        assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
+        assert_eq!(cfg.role, Role::MuxSender);
+    }
+
+    #[test]
+    #[allow(clippy::field_reassign_with_default)]
+    fn merge_sender_defaults_preserves_explicit_linger() {
+        let mut cfg = SocketConfig::default();
+        cfg.linger = Some(Duration::from_secs(30));
+        cfg.merge_sender_defaults();
+        assert_eq!(cfg.linger, Some(Duration::from_secs(30)));
+        assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
+        assert_eq!(cfg.role, Role::MuxSender);
+    }
+
+    #[test]
+    #[allow(clippy::field_reassign_with_default)]
+    fn merge_sender_defaults_preserves_explicit_role() {
+        let mut cfg = SocketConfig::default();
+        cfg.role = Role::DemuxReceiver;
+        cfg.merge_sender_defaults();
+        assert_eq!(cfg.role, Role::DemuxReceiver);
+        assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
+        assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
     }
 }

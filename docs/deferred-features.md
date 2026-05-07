@@ -717,11 +717,11 @@ the trigger that would unblock it.
 
 ## `Socket::close` Result-type cleanup
 
-- **Status:** `srt::Socket::close(self) -> Result<(), IoError>` always
+- **Status:** `tst_srt::Socket::close(self) -> Result<(), IoError>` always
   returns `Ok` after the 2026-05-03 cancellation refactor. The
   underlying `srt_close` return code is consumed inside the
   `CancelHandle` closer (which has a `Fn` signature, no return path).
-  Same applies to `srt::Listener::close`.
+  Same applies to `tst_srt::Listener::close`.
 - **Why deferred:** The signature is preserved for API stability —
   changing it now would be a breaking change for consumers who pattern
   on `if let Err(e) = sock.close()`. A future breaking-change cycle
@@ -733,10 +733,10 @@ the trigger that would unblock it.
 
 ## Pre-emptive close cancellation at the C ABI
 
-- **Status:** The Rust core ships `srt::CancelHandle` plus
+- **Status:** The Rust core ships `tst_srt::CancelHandle` plus
   `Transport::cancel_handle()` / `RecvTransport::cancel_handle()` and
   threads them through every sender + receiver shell.
-  `Sender::close()` cancels-first to unblock a peer thread parked in
+  `MuxSender::close()` cancels-first to unblock a peer thread parked in
   libsrt's `srt_sendmsg`. The `tst-c` ABI surface is deferred.
 - **Why deferred:** The C ABI's `Handle<T>` (= `Mutex<Option<T>>`) has
   the same blocking issue at the C layer that the Rust shells had —

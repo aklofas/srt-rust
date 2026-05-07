@@ -98,6 +98,10 @@ aren't yet wrapped are reachable via `srt-sys`.
 | `SRTO_SNDTIMEO` / `SRTO_RCVTIMEO` | `send_timeout` / `recv_timeout` | ✅ Full |
 | `SRTO_REUSEADDR` (listener) | `reuse_addr: bool` | ✅ Full |
 | Backlog (`srt_listen` arg) | `backlog: u32` | ✅ Full |
+| `SRTO_CONNTIMEO` | `connect_timeout: Option<Duration>` | ✅ Full |
+| `SRTO_LINGER` | `linger: Option<Duration>` | ✅ Full |
+| `SRTO_SENDER` | `role: Role` (`Unspecified` / `MuxSender` / `DemuxReceiver`) | ✅ Full — `MuxSender` sets `SRTO_SENDER=1` for HSv4-peer compatibility. |
+| Sender / receiver socket presets | `SocketConfig::sender_defaults()` / `::receiver_defaults()` + `merge_sender_defaults()` / `merge_receiver_defaults()` + `SocketBuilder::sender_defaults()` / `::receiver_defaults()` chain methods | ✅ Full — domain-tuned bundle (`connect_timeout=15s`, `linger=5s` sender / off receiver, `role=MuxSender` / `DemuxReceiver`). Merge-if-default semantics preserve explicit caller values. |
 | Per-socket statistics (`srt_bistats`) | `Socket::stats() -> Stats` | ⚙️ Partial — flat counter snapshot; finer windowing TBD. |
 | All other `SRTO_*` options | — | 🔁 Pass-through via `srt-sys` (raw FFI). |
 

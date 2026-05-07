@@ -620,23 +620,14 @@ the trigger that would unblock it.
 
 ## Rust-API-only sender pipeline defaults
 
-- **Status:** The 15 s `connect_timeout`, 5 s `linger`, and
-  `Role::Sender` defaults applied for the audit's "live-streaming
-  sensible defaults" set live in
-  `crates/tst-c/src/connect.rs::connect_srt` (the canonical "default
-  sender connect path" used by all six `tst_*_open` calls).
-  Pure-Rust users who construct a `SrtTransport` via `SocketBuilder`
-  directly do NOT get these defaults — they get libsrt's defaults
-  (3 s, 180 s, `Unspecified`).
-- **Why deferred:** `pipeline::Sender` takes a pre-built `Transport`,
-  so there's no SocketConfig construction point in the Rust pipeline
-  layer to inject the defaults. Adding a
-  `SocketConfig::sender_defaults()` helper or a
-  `SocketBuilder::sender_preset()` shortcut is mechanical but adds API
-  surface; the audit deferred this design choice to on-demand.
-- **Trigger to revisit:** A pure-Rust consumer builds a sender pipeline
-  and reports surprise at one of these libsrt defaults (e.g. their drop
-  hangs 180 s, or their connect fails after 3 s on a radio link).
+- **Status:** Shipped 2026-05-07. `SocketConfig::sender_defaults()` /
+  `::receiver_defaults()` constructors, `merge_sender_defaults()` /
+  `merge_receiver_defaults()` in-place merge methods, and matching
+  `SocketBuilder::sender_defaults()` / `::receiver_defaults()` chain
+  methods all live in `tst-srt`. The `tst-c::connect_srt` helper now
+  calls `SocketConfig::merge_sender_defaults` instead of inlining the
+  merge logic. See the "Sender / receiver presets" section in
+  `docs/guide-srt.md`.
 
 ## URL parameter coverage — bigger Group 3 keys (audit Issue 6 Cat B/C)
 

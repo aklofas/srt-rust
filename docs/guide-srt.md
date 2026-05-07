@@ -116,6 +116,92 @@ fn build_via_config() -> Result<Socket, Box<dyn std::error::Error>> {
 
 `ListenerBuilder` and `ListenerConfig` mirror the same pattern.
 
+## Sender / receiver presets
+
+The library targets live-streaming over radio links from gimbaled
+platforms (drones, manned ISR aircraft, helicopters with EO/IR turrets).
+Three socket options have domain-tuned values that differ from libsrt's
+defaults:
+
+| Field             | libsrt default              | Sender preset | Receiver preset |
+|-------------------|-----------------------------|---------------|-----------------|
+| `connect_timeout` | 3 s                         | 15 s          | 15 s            |
+| `linger`          | off (drains in background)  | 5 s           | off             |
+| `role`            | `Role::Unspecified`         | `MuxSender`   | `DemuxReceiver` |
+
+The 15 s `connect_timeout` accommodates LOS interruptions, antenna
+repointing, and radio warm-up. The 5 s sender-side `linger` lets a small
+backlog flush on graceful close without stalling a `ManagedTransport`
+reconnect cycle. The `role` flag drives `SRTO_SENDER` for HSv4-peer
+compatibility (older Teradek/Makito gear, cable-industry hardware);
+harmless under HSv5.
+
+Receivers don't have an outbound queue to drain, so the receiver preset
+leaves `linger` at libsrt's default. `Role::DemuxReceiver` currently
+aliases to `Unspecified` (does not set `SRTO_SENDER`) — reserved for the
+receiver pipeline.
+
+### Applying the presets
+
+Two consumer paths, both supported in `tst_srt`:
+
+```rust,no_run
+use tst_srt::{Socket, SocketBuilder, SocketConfig};
+use tst_srt::options::Passphrase;
+use std::time::Duration;
+
+fn via_builder(passphrase: Passphrase) -> Result<Socket, Box<dyn std::error::Error>> {
+    // Builder chain — pure-Rust idiomatic
+    let socket = Socket::builder()
+        .sender_defaults()
+        .passphrase(passphrase)
+        .latency(Duration::from_millis(200))
+        .connect("host:9000")?;
+    Ok(socket)
+}
+
+fn via_struct(passphrase: Passphrase) -> Result<Socket, Box<dyn std::error::Error>> {
+    // Struct construction — FFI / UniFFI / JNI dictionary mirror
+    let cfg = SocketConfig {
+        passphrase: Some(passphrase),
+        latency: Some(Duration::from_millis(200)),
+        ..SocketConfig::sender_defaults()
+    };
+    let socket = Socket::connect_with(&cfg, "host:9000")?;
+    Ok(socket)
+}
+```
+
+The receiver side mirrors exactly: `Socket::builder().receiver_defaults()`
+or `SocketConfig::receiver_defaults()`.
+
+### Filling in defaults on an existing config
+
+If a config came from elsewhere (URL parse, deserialized from a file)
+and you want the preset to fill in only the fields the caller didn't
+set, use the in-place merge:
+
+```rust,no_run
+# use tst_srt::SocketConfig;
+fn apply(mut cfg: SocketConfig) -> SocketConfig {
+    cfg.merge_sender_defaults();
+    // connect_timeout / linger / role get the preset values only if
+    // the URL or other source didn't already set them.
+    cfg
+}
+```
+
+Merge-if-default semantics: `connect_timeout` and `linger` only fill if
+`None`; `role` only fills if `Role::Unspecified`. Calling the merge
+twice is idempotent.
+
+### Opting out
+
+Don't call the preset — `SocketConfig::default()` gives all-`None` /
+`Role::Unspecified`, which preserves libsrt's raw defaults across the
+board. The `tst-c` C ABI's six `tst_*_open` entry points apply the
+sender preset internally.
+
 ## Encryption
 
 - `Passphrase::new(s)` accepts 10 to 79 ASCII-printable bytes. Returns

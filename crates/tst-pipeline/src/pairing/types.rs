@@ -5,9 +5,7 @@
 //! translate cleanly to future C ABI / JNI / UniFFI surfaces (deferred
 //! to the receiver-surface plan).
 
-use tst_core::mpegts::demux::{
-    DemuxEvent, MetadataKind, StreamId, VideoCodec, VideoPayload,
-};
+use tst_core::mpegts::demux::{DemuxEvent, MetadataKind, StreamId, VideoCodec, VideoPayload};
 
 /// Matching mode for [`Pairer::nearest_pts`](super::Pairer::nearest_pts).
 /// `last_before_pts` is past-only by definition and ignores this knob.
@@ -38,10 +36,7 @@ pub enum MatchMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PairerOutput {
     /// Video paired with KLV per the configured strategy.
-    Paired {
-        video: VideoSample,
-        klv: KlvSample,
-    },
+    Paired { video: VideoSample, klv: KlvSample },
     /// Video for which no within-window KLV match could be found.
     UnpairedVideo(VideoSample),
     /// KLV that the pairer ingested but never used in a `Paired` output.

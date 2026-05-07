@@ -54,7 +54,13 @@ impl NearestState {
                 dts,
                 payload: SamplePayload::Video { codec, payload },
             } if stream.pid == self.video_pid => {
-                let v = VideoSample { stream, pts, dts, codec, payload };
+                let v = VideoSample {
+                    stream,
+                    pts,
+                    dts,
+                    codec,
+                    payload,
+                };
                 self.handle_video(v)
             }
             DemuxEvent::Metadata {
@@ -63,7 +69,12 @@ impl NearestState {
                 kind,
                 payload,
             } if stream.pid == self.klv_pid => {
-                let k = KlvSample { stream, pts, kind, payload };
+                let k = KlvSample {
+                    stream,
+                    pts,
+                    kind,
+                    payload,
+                };
                 self.handle_klv(k)
             }
             other => vec![PairerOutput::PassThrough(other)],
@@ -100,8 +111,10 @@ impl NearestState {
 
     fn handle_klv(&mut self, k: KlvSample) -> Vec<PairerOutput> {
         let mut out = Vec::new();
-        self.klv_history
-            .push_back(KlvEntry { sample: k, used: false });
+        self.klv_history.push_back(KlvEntry {
+            sample: k,
+            used: false,
+        });
         if self.klv_history.len() > self.max_klv_history {
             if let Some(evicted) = self.klv_history.pop_front() {
                 if !evicted.used {
@@ -192,9 +205,7 @@ impl NearestState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tst_core::mpegts::demux::{
-        MetadataKind, StreamId, StreamKind, VideoCodec, VideoPayload,
-    };
+    use tst_core::mpegts::demux::{MetadataKind, StreamId, StreamKind, VideoCodec, VideoPayload};
 
     const VIDEO_PID: u16 = 0x100;
     const KLV_PID: u16 = 0x102;
@@ -283,7 +294,11 @@ mod tests {
         let _ = s.feed(klv_event(3));
         // 5th KLV evicts the oldest (PTS=0) which IS used → silent.
         let out = s.feed(klv_event(4));
-        assert!(out.is_empty(), "expected no eviction emission, got {:?}", out);
+        assert!(
+            out.is_empty(),
+            "expected no eviction emission, got {:?}",
+            out
+        );
     }
 
     #[test]
@@ -322,7 +337,11 @@ mod tests {
     fn buffered_holds_video_until_klv_arrives() {
         let mut s = nearest_buffered(8);
         let out_video = s.feed(video_event(50));
-        assert!(out_video.is_empty(), "video should buffer, got {:?}", out_video);
+        assert!(
+            out_video.is_empty(),
+            "video should buffer, got {:?}",
+            out_video
+        );
         let out_klv = s.feed(klv_event(40));
         // KLV at 40 is within tolerance of buffered video at 50; emit Paired.
         assert_eq!(out_klv.len(), 1);
@@ -383,10 +402,18 @@ mod tests {
             .iter()
             .filter(|o| matches!(o, PairerOutput::Paired { .. }))
             .count();
-        assert!(paired_count >= 1, "expected at least one Paired, got {:?}", out);
+        assert!(
+            paired_count >= 1,
+            "expected at least one Paired, got {:?}",
+            out
+        );
         // Subsequent video stays buffered — no KLV within its window yet.
         let out2 = s.feed(video_event(201));
-        assert!(out2.is_empty(), "video@201 should still be buffered, got {:?}", out2);
+        assert!(
+            out2.is_empty(),
+            "video@201 should still be buffered, got {:?}",
+            out2
+        );
     }
 
     #[test]

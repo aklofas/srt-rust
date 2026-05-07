@@ -21,11 +21,7 @@ struct KlvSlot {
 }
 
 impl LastBeforeState {
-    pub(super) fn new(
-        video_pid: u16,
-        klv_pid: u16,
-        freshness_ticks: Option<i64>,
-    ) -> Self {
+    pub(super) fn new(video_pid: u16, klv_pid: u16, freshness_ticks: Option<i64>) -> Self {
         Self {
             video_pid,
             klv_pid,
@@ -42,7 +38,13 @@ impl LastBeforeState {
                 dts,
                 payload: SamplePayload::Video { codec, payload },
             } if stream.pid == self.video_pid => {
-                let v = VideoSample { stream, pts, dts, codec, payload };
+                let v = VideoSample {
+                    stream,
+                    pts,
+                    dts,
+                    codec,
+                    payload,
+                };
                 self.handle_video(v)
             }
             DemuxEvent::Metadata {
@@ -51,7 +53,12 @@ impl LastBeforeState {
                 kind,
                 payload,
             } if stream.pid == self.klv_pid => {
-                let k = KlvSample { stream, pts, kind, payload };
+                let k = KlvSample {
+                    stream,
+                    pts,
+                    kind,
+                    payload,
+                };
                 self.handle_klv(k)
             }
             other => vec![PairerOutput::PassThrough(other)],
@@ -89,7 +96,10 @@ impl LastBeforeState {
     }
 
     fn handle_klv(&mut self, k: KlvSample) -> Vec<PairerOutput> {
-        let prev = self.current.replace(KlvSlot { sample: k, used: false });
+        let prev = self.current.replace(KlvSlot {
+            sample: k,
+            used: false,
+        });
         match prev {
             Some(slot) if !slot.used => vec![PairerOutput::UnpairedKlv(slot.sample)],
             _ => Vec::new(),
@@ -100,9 +110,7 @@ impl LastBeforeState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tst_core::mpegts::demux::{
-        MetadataKind, StreamId, StreamKind, VideoCodec, VideoPayload,
-    };
+    use tst_core::mpegts::demux::{MetadataKind, StreamId, StreamKind, VideoCodec, VideoPayload};
 
     const VIDEO_PID: u16 = 0x100;
     const KLV_PID: u16 = 0x102;
@@ -187,7 +195,11 @@ mod tests {
         let _ = s.feed(klv_event(0));
         let _ = s.feed(video_event(10)); // marks slot used
         let out = s.feed(klv_event(50));
-        assert!(out.is_empty(), "expected silent displacement, got {:?}", out);
+        assert!(
+            out.is_empty(),
+            "expected silent displacement, got {:?}",
+            out
+        );
     }
 
     #[test]

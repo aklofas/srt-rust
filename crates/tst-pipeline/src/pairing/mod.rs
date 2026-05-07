@@ -106,11 +106,7 @@ impl Pairer {
     /// emit `UnpairedVideo` when the held KLV is older than `n` ticks
     /// behind the video; if `None`, attach regardless of staleness.
     /// Past-only by definition; no `MatchMode` knob applies.
-    pub fn last_before_pts(
-        video_pid: u16,
-        klv_pid: u16,
-        freshness_ticks: Option<i64>,
-    ) -> Self {
+    pub fn last_before_pts(video_pid: u16, klv_pid: u16, freshness_ticks: Option<i64>) -> Self {
         Self {
             state: PairerState::LastBefore(last_before::LastBeforeState::new(
                 video_pid,
@@ -171,9 +167,8 @@ impl Pairer {
 mod tests {
     use super::*;
     use tst_core::mpegts::demux::{
-        AudioCodec, DiscontinuityKind, MetadataKind, NonConformantIssue,
-        ProgramMap, SamplePayload, StreamId, StreamKind, VideoCodec,
-        VideoPayload,
+        AudioCodec, DiscontinuityKind, MetadataKind, NonConformantIssue, ProgramMap, SamplePayload,
+        StreamId, StreamKind, VideoCodec, VideoPayload,
     };
 
     const VIDEO_PID: u16 = 0x100;
@@ -313,7 +308,9 @@ mod tests {
         let sync_klv = DemuxEvent::Metadata {
             stream: StreamId {
                 pid: KLV_PID,
-                kind: StreamKind::KlvSync { declared_link: None },
+                kind: StreamKind::KlvSync {
+                    declared_link: None,
+                },
             },
             pts: 50,
             kind: MetadataKind::KlvSyncAuCell {
@@ -368,7 +365,10 @@ mod tests {
 
     fn klv_async_event(pid: u16, pts: i64) -> DemuxEvent {
         DemuxEvent::Metadata {
-            stream: StreamId { pid, kind: StreamKind::KlvAsync },
+            stream: StreamId {
+                pid,
+                kind: StreamKind::KlvAsync,
+            },
             pts,
             kind: MetadataKind::KlvAsync,
             payload: vec![0xAA],
@@ -401,7 +401,7 @@ mod tests {
     fn stats_increments_paired_and_unpaired_video() {
         let mut p = make_pairer_stats();
         let _ = p.feed(klv_async_event(KLV_PID, 0));
-        let _ = p.feed(video_event_for_stats(0));     // Paired
+        let _ = p.feed(video_event_for_stats(0)); // Paired
         let _ = p.feed(video_event_for_stats(10_000)); // UnpairedVideo (no KLV in window)
         let s = p.stats();
         assert_eq!(s.paired, 1);

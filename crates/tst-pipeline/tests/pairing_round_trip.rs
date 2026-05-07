@@ -26,8 +26,8 @@ fn dummy_klv() -> Vec<u8> {
     // Tiny ST 0601 LS payload: UL + length + checksum tag stub.
     // Doesn't have to decode — the pairer doesn't parse it.
     let mut v = vec![
-        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01,
-        0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00, 0x00,
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00, 0x00,
+        0x00,
     ];
     v.push(4); // BER length
     v.extend_from_slice(&[0x01, 0x02, 0x03, 0x04]);
@@ -51,9 +51,9 @@ fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
 fn nearest_pts_pairs_sync_klv_with_video() {
     let cfg = Config::builder()
         .add_program(1, 0x1000)
-            .add_video(VIDEO_PID, MuxVideoCodec::H264)
-            .add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true)
-            .end_program()
+        .add_video(VIDEO_PID, MuxVideoCodec::H264)
+        .add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true)
+        .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
@@ -98,7 +98,10 @@ fn nearest_pts_pairs_sync_klv_with_video() {
             PairerOutput::PassThrough(_) => {}
         }
     }
-    assert_eq!(paired, 5, "expected 5 Paired, got paired={paired} uv={unpaired_video} uk={unpaired_klv}");
+    assert_eq!(
+        paired, 5,
+        "expected 5 Paired, got paired={paired} uv={unpaired_video} uk={unpaired_klv}"
+    );
     assert_eq!(unpaired_video, 0);
     assert_eq!(unpaired_klv, 0);
 }
@@ -108,9 +111,9 @@ fn last_before_pts_pairs_async_klv_at_lower_cadence() {
     // 1:5 cadence — 1 KLV record per 5 video frames.
     let cfg = Config::builder()
         .add_program(1, 0x1000)
-            .add_video(VIDEO_PID, MuxVideoCodec::H264)
-            .add_klv(KLV_PID, KlvStreamType::PrivateData, true)
-            .end_program()
+        .add_video(VIDEO_PID, MuxVideoCodec::H264)
+        .add_klv(KLV_PID, KlvStreamType::PrivateData, true)
+        .end_program()
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
@@ -169,5 +172,8 @@ fn last_before_pts_pairs_async_klv_at_lower_cadence() {
     let _ = pairer.flush();
     // Some early frames may arrive before the first KLV (depending on
     // PES interleave); the check is loose: most should pair.
-    assert!(paired >= 10, "expected ≥10 Paired, got paired={paired} uv={unpaired_video}");
+    assert!(
+        paired >= 10,
+        "expected ≥10 Paired, got paired={paired} uv={unpaired_video}"
+    );
 }

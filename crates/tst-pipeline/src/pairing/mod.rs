@@ -166,3 +166,199 @@ impl Pairer {
         self.stats = PairerStats::default();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tst_core::mpegts::demux::{
+        AudioCodec, DiscontinuityKind, MetadataKind, NonConformantIssue,
+        ProgramMap, SamplePayload, StreamId, StreamKind, VideoCodec,
+        VideoPayload,
+    };
+
+    const VIDEO_PID: u16 = 0x100;
+    const KLV_PID: u16 = 0x102;
+    const OTHER_VIDEO_PID: u16 = 0x101;
+    const AUDIO_PID: u16 = 0x110;
+
+    fn make_pairer() -> Pairer {
+        Pairer::nearest_pts(VIDEO_PID, KLV_PID, 100, 4, MatchMode::Realtime)
+    }
+
+    #[test]
+    fn program_map_passes_through() {
+        let mut p = make_pairer();
+        let pmt = DemuxEvent::ProgramMap(ProgramMap {
+            program_number: 1,
+            pcr_pid: VIDEO_PID,
+            streams: Vec::new(),
+            klv_links: Vec::new(),
+        });
+        let out = p.feed(pmt.clone());
+        assert_eq!(out.len(), 1);
+        assert!(matches!(&out[0], PairerOutput::PassThrough(e) if e == &pmt));
+    }
+
+    #[test]
+    fn nonconformant_passes_through() {
+        let mut p = make_pairer();
+        let nc = DemuxEvent::NonConformant {
+            stream: StreamId {
+                pid: VIDEO_PID,
+                kind: StreamKind::Video(VideoCodec::H264),
+            },
+            issue: NonConformantIssue::PusiMidPes,
+        };
+        let out = p.feed(nc.clone());
+        assert!(matches!(&out[0], PairerOutput::PassThrough(_)));
+    }
+
+    #[test]
+    fn discontinuity_passes_through() {
+        let mut p = make_pairer();
+        let d = DemuxEvent::Discontinuity {
+            stream: StreamId {
+                pid: VIDEO_PID,
+                kind: StreamKind::Video(VideoCodec::H264),
+            },
+            kind: DiscontinuityKind::ContinuityJump {
+                expected: 0x5,
+                observed: 0x9,
+            },
+        };
+        let out = p.feed(d);
+        assert!(matches!(&out[0], PairerOutput::PassThrough(_)));
+    }
+
+    #[test]
+    fn audio_sample_on_video_pid_passes_through() {
+        let mut p = make_pairer();
+        // Caller misconfigured: video_pid actually carries audio. Don't
+        // fabricate a VideoSample; pass through.
+        let audio = DemuxEvent::Sample {
+            stream: StreamId {
+                pid: VIDEO_PID,
+                kind: StreamKind::Audio(AudioCodec::Aac),
+            },
+            pts: 0,
+            dts: None,
+            payload: SamplePayload::Audio {
+                codec: AudioCodec::Aac,
+                frames: vec![0xFF, 0xF1],
+            },
+        };
+        let out = p.feed(audio);
+        assert!(matches!(&out[0], PairerOutput::PassThrough(_)));
+    }
+
+    #[test]
+    fn sample_on_klv_pid_passes_through() {
+        let mut p = make_pairer();
+        let v = DemuxEvent::Sample {
+            stream: StreamId {
+                pid: KLV_PID,
+                kind: StreamKind::Video(VideoCodec::H264),
+            },
+            pts: 0,
+            dts: None,
+            payload: SamplePayload::Video {
+                codec: VideoCodec::H264,
+                payload: VideoPayload::Nals(Vec::new()),
+            },
+        };
+        let out = p.feed(v);
+        assert!(matches!(&out[0], PairerOutput::PassThrough(_)));
+    }
+
+    #[test]
+    fn metadata_on_video_pid_passes_through() {
+        let mut p = make_pairer();
+        let m = DemuxEvent::Metadata {
+            stream: StreamId {
+                pid: VIDEO_PID,
+                kind: StreamKind::KlvAsync,
+            },
+            pts: 0,
+            kind: MetadataKind::KlvAsync,
+            payload: Vec::new(),
+        };
+        let out = p.feed(m);
+        assert!(matches!(&out[0], PairerOutput::PassThrough(_)));
+    }
+
+    #[test]
+    fn video_on_other_pid_passes_through() {
+        let mut p = make_pairer();
+        let v = DemuxEvent::Sample {
+            stream: StreamId {
+                pid: OTHER_VIDEO_PID,
+                kind: StreamKind::Video(VideoCodec::H265),
+            },
+            pts: 0,
+            dts: None,
+            payload: SamplePayload::Video {
+                codec: VideoCodec::H265,
+                payload: VideoPayload::Nals(Vec::new()),
+            },
+        };
+        let out = p.feed(v);
+        assert!(matches!(&out[0], PairerOutput::PassThrough(_)));
+    }
+
+    #[test]
+    fn metadata_kind_klv_sync_au_cell_pairs_same_as_klv_async() {
+        let mut p = make_pairer();
+        // Spec §3.6 / cookbook recipe 12: nearest_pts treats both
+        // KlvSyncAuCell and KlvAsync as KLV candidates.
+        let sync_klv = DemuxEvent::Metadata {
+            stream: StreamId {
+                pid: KLV_PID,
+                kind: StreamKind::KlvSync { declared_link: None },
+            },
+            pts: 50,
+            kind: MetadataKind::KlvSyncAuCell {
+                metadata_service_id: 0,
+                sequence_number: 0,
+                cell_fragment_indication:
+                    tst_core::mpegts::au_cell::CellFragmentIndication::Complete,
+                decoder_config_flag: false,
+                random_access_indicator: true,
+            },
+            payload: vec![0xAA],
+        };
+        let video = DemuxEvent::Sample {
+            stream: StreamId {
+                pid: VIDEO_PID,
+                kind: StreamKind::Video(VideoCodec::H264),
+            },
+            pts: 50,
+            dts: None,
+            payload: SamplePayload::Video {
+                codec: VideoCodec::H264,
+                payload: VideoPayload::Nals(Vec::new()),
+            },
+        };
+        let _ = p.feed(sync_klv);
+        let out = p.feed(video);
+        assert!(matches!(&out[0], PairerOutput::Paired { .. }));
+    }
+
+    #[test]
+    fn audio_pid_event_passes_through() {
+        let mut p = make_pairer();
+        let a = DemuxEvent::Sample {
+            stream: StreamId {
+                pid: AUDIO_PID,
+                kind: StreamKind::Audio(AudioCodec::Aac),
+            },
+            pts: 0,
+            dts: None,
+            payload: SamplePayload::Audio {
+                codec: AudioCodec::Aac,
+                frames: Vec::new(),
+            },
+        };
+        let out = p.feed(a);
+        assert!(matches!(&out[0], PairerOutput::PassThrough(_)));
+    }
+}

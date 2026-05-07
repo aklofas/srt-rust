@@ -231,6 +231,13 @@ pub enum KlvShape {
     /// Async-shape KLV (bare SMPTE UL at offset 0). `klv` is the unwrapped
     /// LS bytes ready to feed to `klv::st0601::decode`.
     Async { klv: Vec<u8> },
+    /// AU cell header parsed cleanly but `cell_fragment_indication != Complete`
+    /// (i.e. First / Middle / Last). Multi-cell reassembly is not implemented;
+    /// the demuxer drops the partial payload and surfaces a
+    /// `NonConformantIssue::MultiCellAu` event for observability.
+    ///
+    /// `dropped_bytes` is the declared inner AU cell payload length.
+    PartialAuCell { dropped_bytes: usize },
     /// Payload is something else; pass-through as `Unknown`.
     Other,
 }
@@ -241,22 +248,34 @@ pub enum KlvShape {
 /// pairs the sniff result with the declared `stream_type` and emits a
 /// `NonConformantIssue::StreamTypeMismatch*` if they disagree.
 pub fn classify_klv(payload: &[u8]) -> KlvShape {
-    use crate::mpegts::au_cell::read_metadata_au_cell;
+    use crate::mpegts::au_cell::{CellFragmentIndication, read_metadata_au_cell};
 
     // First try: H.222.0 V9 §2.12.4.2 Metadata_AU_cell (sync metadata,
     // PMT stream_type 0x15, mandated by STANAG 4609 / MISB ST 1402.2
     // §9.4.1 + Appendix B Table 2). Recognized by a valid 5-byte header
-    // whose declared AU_cell_data_length doesn't overrun the payload, AND
-    // whose inner payload starts with the canonical SMPTE UL header
-    // `06 0E 2B 34` (i.e. the AU cell's payload IS a KLV LS — this is
-    // what ST 1402.2 §9.4.1 specializes the H.222.0 generic AU cell for).
+    // whose declared AU_cell_data_length doesn't overrun the payload.
     if payload.len() >= 5 + 16 {
         if let Ok((header, inner)) = read_metadata_au_cell(payload) {
-            if inner.len() >= 16 && inner[0..4] == [0x06, 0x0E, 0x2B, 0x34] {
-                return KlvShape::SyncAuCell {
-                    klv: inner.to_vec(),
-                    header,
-                };
+            match header.cell_fragment_indication {
+                CellFragmentIndication::Complete => {
+                    // Inner KLV-LS sniff gates the SyncAuCell path.
+                    // (Task 3.5 will drop this gate — see plan #30.)
+                    if inner.len() >= 16 && inner[0..4] == [0x06, 0x0E, 0x2B, 0x34] {
+                        return KlvShape::SyncAuCell {
+                            klv: inner.to_vec(),
+                            header,
+                        };
+                    }
+                    // Fall through to async detection if AU cell parsed
+                    // cleanly but inner isn't KLV-LS shaped.
+                }
+                _ => {
+                    // Partial cell (First / Middle / Last): surface the
+                    // dropped byte count. Reassembly is deferred.
+                    return KlvShape::PartialAuCell {
+                        dropped_bytes: inner.len(),
+                    };
+                }
             }
         }
     }
@@ -369,9 +388,11 @@ mod tests {
             .chain(std::iter::repeat_n(0xAA, 12))
             .chain(std::iter::repeat_n(0x55, 10))
             .collect();
-        // flags byte 0x0F: cfi=00 (middle), dcf=0, rai=0, reserved=1111.
-        // (Synthetic; muxer auto-wrap defaults to cfi=11 reserved=1111 = 0xDF.)
-        let mut buf = vec![0x00, 0xB7, 0x0F, 0x00, 0x1A];
+        // flags byte 0xCF: cfi=11 (Complete), dcf=0, rai=0, reserved=1111.
+        // Complete = 0b11 in bits [7:6]; 0b11_0_0_1111 = 0xCF.
+        // (Muxer auto-wrap defaults cfi=11 rai=1 reserved=1111 = 0xDF;
+        // this test uses rai=0 to keep the fixture value distinct.)
+        let mut buf = vec![0x00, 0xB7, 0xCF, 0x00, 0x1A];
         buf.extend_from_slice(&inner);
         match classify_klv(&buf) {
             KlvShape::SyncAuCell { klv, header } => {

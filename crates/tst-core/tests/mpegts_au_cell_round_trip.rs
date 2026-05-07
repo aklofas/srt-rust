@@ -190,6 +190,184 @@ fn sync_klv_sequence_number_increments_across_pushes() {
     assert_eq!(next_seq_num(&mut mux), 2);
 }
 
+// ── Task 3.4 — MultiCellAu detect-only tests ─────────────────────────────────
+
+/// Unit test: classify_klv returns PartialAuCell when CFI != Complete.
+///
+/// This exercises the classify_klv path directly without going through the
+/// mux/demux machinery. Validates that First / Middle / Last CFI values all
+/// route to PartialAuCell and that dropped_bytes equals the declared inner
+/// payload length.
+#[test]
+fn classify_klv_returns_partial_au_cell_on_non_complete_cfi() {
+    use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
+    use tst_core::mpegts::demux::payload::{KlvShape, classify_klv};
+
+    for cfi in [
+        CellFragmentIndication::First,
+        CellFragmentIndication::Middle,
+        CellFragmentIndication::Last,
+    ] {
+        let mut bytes = Vec::new();
+        write_metadata_au_cell(
+            &mut bytes,
+            AuCellHeader {
+                metadata_service_id: 0x00,
+                sequence_number: 0,
+                cell_fragment_indication: cfi,
+                decoder_config_flag: false,
+                random_access_indicator: false,
+            },
+            &[0xAA; 100],
+        )
+        .unwrap();
+
+        match classify_klv(&bytes) {
+            KlvShape::PartialAuCell { dropped_bytes } => {
+                assert_eq!(
+                    dropped_bytes, 100,
+                    "dropped_bytes must equal declared inner payload length for CFI {cfi:?}"
+                );
+            }
+            other => panic!("expected PartialAuCell for CFI {cfi:?}; got {other:?}"),
+        }
+    }
+}
+
+/// Complete CFI still returns SyncAuCell — the existing path is unchanged.
+#[test]
+fn classify_klv_complete_cfi_still_returns_sync_au_cell() {
+    use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
+    use tst_core::mpegts::demux::payload::{KlvShape, classify_klv};
+
+    // Build a Complete AU cell whose inner payload starts with the SMPTE UL.
+    let inner_klv: Vec<u8> = {
+        let mut v = Vec::new();
+        v.extend_from_slice(&[
+            0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00,
+        ]);
+        v.push(0x01);
+        v.push(0xAB);
+        v
+    };
+    let mut bytes = Vec::new();
+    write_metadata_au_cell(
+        &mut bytes,
+        AuCellHeader {
+            metadata_service_id: 0x00,
+            sequence_number: 0,
+            cell_fragment_indication: CellFragmentIndication::Complete,
+            decoder_config_flag: false,
+            random_access_indicator: false,
+        },
+        &inner_klv,
+    )
+    .unwrap();
+
+    match classify_klv(&bytes) {
+        KlvShape::SyncAuCell { klv, .. } => assert_eq!(klv, inner_klv),
+        other => panic!("expected SyncAuCell for Complete CFI; got {other:?}"),
+    }
+}
+
+/// Integration test: MultiCellAu NonConformantIssue surfaces through the
+/// demuxer when a sync KLV PES carries a partial AU cell.
+///
+/// Approach: mux a normal sync KLV stream so we get a valid PAT + PMT +
+/// PES on PID 0x1031. Then locate the AU cell flags byte in the emitted TS
+/// bytes and patch the CFI bits to "First" (0b10 in the two MSBs of the
+/// flags byte). Feed the patched bytes to the demuxer and assert that a
+/// MultiCellAu issue surfaces instead of a Metadata event.
+///
+/// AU cell flags byte layout (H.222.0 V9 §2.12.4.2 Table 2-156):
+///   [7:6] cell_fragment_indication  (Complete = 0b11)
+///   [5]   decoder_config_flag
+///   [4]   random_access_indicator
+///   [3:0] reserved (all 1s in auto-wrap output)
+///
+/// The muxer writes CFI=Complete (0b11) with dcf=0 and rai=1 and reserved=0b1111
+/// → flags byte = 0b11_0_1_1111 = 0xDF.
+/// Patching to CFI=First (0b10): 0b10_0_1_1111 = 0x9F.
+#[test]
+fn multi_cell_au_emits_non_conformant_issue_through_demuxer() {
+    use tst_core::mpegts::demux::{DemuxEvent, Demuxer, NonConformantIssue};
+    use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec};
+
+    let cfg = ConfigBuilder::default()
+        .add_program(1, 0x1000)
+        .add_video(0x1011, VideoCodec::H264)
+        .add_klv(0x1031, KlvStreamType::SynchronousMetadata, true)
+        .end_program()
+        .build()
+        .unwrap();
+    let mut mux = Muxer::new(cfg).unwrap();
+
+    let inner = synthetic_klv_ls();
+    mux.push_klv(&inner, 90_000, 0x00).unwrap();
+    let mut ts_bytes = drain(&mut mux);
+
+    // Find the AU cell flags byte in the emitted TS stream. The muxer
+    // emits Complete (0xDF) at a fixed offset inside the PES payload.
+    // Walk TS packets on PID 0x1031, find the PUSI packet, skip the PES
+    // header, then patch byte 2 of the AU cell (the flags byte).
+    let klv_pid: u16 = 0x1031;
+    let mut patched = false;
+    'outer: for pkt in ts_bytes.chunks_mut(188) {
+        let pkt_pid = ((pkt[1] as u16 & 0x1F) << 8) | pkt[2] as u16;
+        if pkt_pid != klv_pid {
+            continue;
+        }
+        let pusi = (pkt[1] & 0x40) != 0;
+        if !pusi {
+            continue;
+        }
+        let af_present = (pkt[3] & 0x20) != 0;
+        let mut idx = 4usize;
+        if af_present {
+            let af_len = pkt[idx] as usize;
+            idx += 1 + af_len;
+        }
+        // PES header: start_code(3) + stream_id(1) + length(2) + flags1(1) +
+        //             flags2(1) + header_data_length(1) + optional fields
+        if idx + 9 > 188 {
+            continue;
+        }
+        let pes_header_data_length = pkt[idx + 8] as usize;
+        idx += 9 + pes_header_data_length;
+        // AU cell layout: [0] metadata_service_id, [1] sequence_number,
+        //                 [2] flags byte, [3..4] AU_cell_data_length
+        let flags_offset = idx + 2;
+        if flags_offset < 188 {
+            // CFI Complete (0b11) lives in bits [7:6]. Patch to First (0b10).
+            pkt[flags_offset] = (pkt[flags_offset] & 0x3F) | 0x80;
+            patched = true;
+            break 'outer;
+        }
+    }
+    assert!(patched, "AU cell flags byte not found in emitted TS");
+
+    let mut dem = Demuxer::new();
+    dem.feed(&ts_bytes).unwrap();
+
+    let mut multi_cell_seen = false;
+    while let Some(evt) = dem.next_event() {
+        if let DemuxEvent::NonConformant {
+            issue: NonConformantIssue::MultiCellAu { pid, dropped_bytes },
+            ..
+        } = evt
+        {
+            assert_eq!(pid, klv_pid, "pid must match KLV PID");
+            assert!(dropped_bytes > 0, "dropped_bytes must be > 0");
+            multi_cell_seen = true;
+        }
+    }
+    assert!(
+        multi_cell_seen,
+        "MultiCellAu NonConformantIssue must surface when CFI is non-Complete"
+    );
+}
+
 // ── extract_pes_payload helper ────────────────────────────────────────────────
 //
 // Walk the TS byte stream, find the PUSI (payload_unit_start_indicator) packet

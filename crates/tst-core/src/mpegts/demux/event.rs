@@ -412,6 +412,19 @@ pub enum NonConformantIssue {
         observed: u8,
     },
 
+    /// Per H.222.0 §2.12.4.2 the `cell_fragment_indication` field can
+    /// indicate a fragmented AU split across multiple cells (First /
+    /// Middle / Last). Plan #30 exposes this as a detect-only event for
+    /// observability — the demuxer drops the partial payload (does not
+    /// reassemble) and emits this issue. Real reassembly is deferred
+    /// (deferred-features.md from plan #25); today's consumers don't
+    /// see fragmented AUs in the wild (ST 0601 records fit in <64 KB
+    /// which never hits the fragmentation threshold).
+    ///
+    /// `dropped_bytes` is the AU cell payload length the partial cell
+    /// declared (useful for telemetry — quantifies what was lost).
+    MultiCellAu { pid: u16, dropped_bytes: usize },
+
     /// Other.
     Other(String),
 }
@@ -511,6 +524,12 @@ impl std::fmt::Display for NonConformantIssue {
                 write!(
                     f,
                     "PSI continuity-counter jump on PID 0x{pid:04X}: expected 0x{expected:X}, observed 0x{observed:X}"
+                )
+            }
+            NonConformantIssue::MultiCellAu { pid, dropped_bytes } => {
+                write!(
+                    f,
+                    "fragmented AU cell on PID 0x{pid:04X}: {dropped_bytes} bytes dropped (multi-cell reassembly not implemented)"
                 )
             }
             NonConformantIssue::Other(msg) => {

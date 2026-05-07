@@ -1053,6 +1053,20 @@ impl Demuxer {
                         (MetadataKind::KlvAsync, klv, pts)
                     }
                     (KlvShape::Async { klv }, _) => (MetadataKind::KlvAsync, klv, pts),
+                    (KlvShape::PartialAuCell { dropped_bytes }, _) => {
+                        // AU cell header parsed but CFI != Complete (First /
+                        // Middle / Last). Reassembly is not implemented; drop
+                        // the payload and emit a detect-only NonConformant event
+                        // so consumers can observe the loss in telemetry.
+                        self.queue_nonconformant(
+                            stream,
+                            NonConformantIssue::MultiCellAu {
+                                pid: pes.pid,
+                                dropped_bytes,
+                            },
+                        );
+                        return;
+                    }
                     (KlvShape::Other, _) => {
                         let payload_len = pes.payload.len();
                         let raw = pes.payload;

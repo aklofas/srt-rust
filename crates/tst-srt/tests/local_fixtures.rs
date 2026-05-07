@@ -76,6 +76,29 @@ fn local_fixtures_decode() {
         if let Err(msg) = result {
             failures.push(format!("{}: {msg}", path.display()));
         }
+
+        // Task 8: ST 0102 sibling-layer probe (panic-freedom contract).
+        // Probe runs after the per-shape assertions so a shape failure
+        // doesn't block ST 0102 coverage on the same file.
+        if let Some(probe_result) = probe_st0102(&bytes) {
+            match probe_result {
+                Ok(security) => {
+                    eprintln!(
+                        "  {} carries ST 0102: classification={:?}, version={:?}",
+                        path.display(),
+                        security.security_classification,
+                        security.version,
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "  {} ST 0102 decode error (acceptable for probe): {}",
+                        path.display(),
+                        e,
+                    );
+                }
+            }
+        }
     }
 
     if count == 0 {
@@ -205,4 +228,26 @@ fn assert_framed_pes_prefix(bytes: &[u8]) -> Result<(), String> {
         .or_else(|_| decode_unchecked(&bytes[offset..]))
         .map(|_| ())
         .map_err(|e| format!("decode at offset {offset} failed: {e}"))
+}
+
+/// If the fixture decodes as an ST 0601 record AND carries a non-empty
+/// Tag 48 (security_local_set), attempt `klv::st0102::decode` on the
+/// inner bytes. Returns:
+/// - `None` — fixture didn't decode as ST 0601, or Tag 48 absent/empty.
+/// - `Some(Ok(security_ls))` — typed Security LS successfully decoded.
+/// - `Some(Err(e))` — Security LS bytes present but decode failed.
+///
+/// Either outcome is acceptable — the corpus probe's contract is
+/// panic-freedom on `klv::st0102::decode` for arbitrary real-world
+/// inputs. ST 0102 is conditionally emitted (only on classified
+/// content), so most fixtures will return None.
+fn probe_st0102(
+    bytes: &[u8],
+) -> Option<Result<tst_core::klv::st0102::SecurityLs, tst_core::error::KlvDecodeError>> {
+    let record = decode_unchecked(bytes).ok()?;
+    let security_bytes = record.security_local_set.as_deref()?;
+    if security_bytes.is_empty() {
+        return None;
+    }
+    Some(tst_core::klv::st0102::decode(security_bytes))
 }

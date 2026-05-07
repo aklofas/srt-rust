@@ -20,7 +20,7 @@ pub struct Av1ObuStream {
 /// State limited to "current sequence header" for frame-header parsing.
 /// Other OBU types (TemporalDelimiter, TileGroup, Metadata, RedundantFrameHeader,
 /// TileList, Padding) pass through unparsed and are not recorded — they're
-/// payload-only or not load-bearing for v0 metadata extraction.
+/// payload-only or not load-bearing for metadata extraction.
 pub fn parse_obu_stream(obus: &[Obu]) -> Av1ObuStream {
     let mut sequence_headers = Vec::new();
     let mut frame_headers = Vec::new();
@@ -37,9 +37,9 @@ pub fn parse_obu_stream(obus: &[Obu]) -> Av1ObuStream {
                 Err(e) => unparseable.push((1, e)),
             },
             // OBU_FRAME_HEADER (3) and OBU_FRAME (6) both carry an
-            // uncompressed_header. For v0 we route both through the
-            // light frame_header parser; OBU_FRAME's tile group bytes
-            // beyond the header are not consumed (light-scope by design).
+            // uncompressed_header. We route both through the light
+            // frame_header parser; OBU_FRAME's tile group bytes beyond
+            // the header are not consumed (light-scope by design).
             3 | 6 => {
                 if let Some(seq) = &current_seq {
                     match parse_frame_header_light(&obu.payload, seq) {

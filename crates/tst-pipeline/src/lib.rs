@@ -8,6 +8,7 @@
 pub mod demux_receiver;
 pub mod managed_receive;
 pub mod mux_sender;
+pub mod pairing;
 pub mod raw_receiver;
 pub mod raw_sender;
 pub mod receiver;
@@ -18,6 +19,7 @@ pub mod sender;
 pub use demux_receiver::{ByteSink, DemuxReceiver, DemuxReceiverError, DemuxReceiverStats};
 pub use managed_receive::ManagedReceiveTransport;
 pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderStats};
+pub use pairing::{KlvSample, MatchMode, Pairer, PairerOutput, PairerStats, VideoSample};
 pub use raw_receiver::{RawReceiver, RawReceiverStats};
 pub use raw_sender::{RawSender, RawSenderConfig, RawSenderStats};
 pub use receiver::{Receiver, ReceiverStats};

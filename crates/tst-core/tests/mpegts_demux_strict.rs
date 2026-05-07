@@ -88,7 +88,7 @@ fn build_mismatched_stream() -> Vec<u8> {
         random_access_indicator: true,
     };
     write_metadata_au_cell(&mut wrapped, header, &BARE_KLV_LS).unwrap();
-    m.push_klv(&wrapped, 0).unwrap();
+    m.push_klv(&wrapped, 0, 0x00).unwrap();
     drain(&mut m)
 }
 

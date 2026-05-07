@@ -1700,7 +1700,22 @@ impl Muxer {
     /// `pts_90khz` becomes the PES PTS when the KLV stream was configured with
     /// `carries_pts: true` in [`StreamSpec::Klv`]; ignored otherwise.
     /// Returns `Err(MuxError::BufferFull)` like `push_video`.
-    pub fn push_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
+    ///
+    /// `metadata_service_id` is written into the AU cell header per
+    /// ITU-T H.222.0 V9 §2.12.4.2 / ST 1402.2 App. B Table 2 **only** when
+    /// the stream is configured as [`KlvStreamType::SynchronousMetadata`]
+    /// (stream_type 0x15). For [`KlvStreamType::PrivateData`] (0x06) streams
+    /// the payload passes through verbatim and this parameter is ignored.
+    ///
+    /// The spec default is `0x00`. Pass `0x00` unless you have a specific
+    /// reason to use a non-zero service_id (e.g. to mirror the `service_id`
+    /// byte of a `metadata_klva` PMT descriptor you supplied at config time).
+    pub fn push_klv(
+        &mut self,
+        klv: &[u8],
+        pts_90khz: i64,
+        metadata_service_id: u8,
+    ) -> Result<(), MuxError> {
         let total_klv: usize = self.klv_streams.iter().map(|k| k.len()).sum();
         if total_klv == 0 {
             return Err(MuxError::NoKlvStreamsConfigured);
@@ -1712,7 +1727,7 @@ impl Muxer {
             });
         }
         let handle = KlvStreamHandle::pack(0, 0);
-        self.push_klv_to(handle, klv, pts_90khz)
+        self.push_klv_to(handle, klv, pts_90khz, metadata_service_id)
     }
 
     /// Push one audio frame buffer, single-stream shorthand.
@@ -2320,7 +2335,15 @@ impl Muxer {
     /// [`crate::mpegts::au_cell`]). Pass raw KLV LS bytes; do not
     /// pre-wrap. PTS lives in the PES header (per §2.12.4.1).
     /// [`KlvStreamType::PrivateData`] streams pass payload through
-    /// unchanged.
+    /// unchanged, and `metadata_service_id` is silently ignored on
+    /// that path.
+    ///
+    /// `metadata_service_id` lands in the AU cell header per
+    /// ITU-T H.222.0 V9 §2.12.4.2 / ST 1402.2 App. B Table 2.
+    /// The spec default is `0x00`. Pass `0x00` unless you have a
+    /// specific reason to use a non-zero service_id (e.g. to mirror
+    /// the `service_id` byte of a `metadata_klva` PMT descriptor you
+    /// supplied at config time).
     ///
     /// Returns [`MuxError::InvalidStreamHandle`] if the handle's index
     /// is out of range.
@@ -2329,6 +2352,7 @@ impl Muxer {
         handle: KlvStreamHandle,
         klv: &[u8],
         pts_90khz: i64,
+        metadata_service_id: u8,
     ) -> Result<(), MuxError> {
         let (prog_idx, within_idx) = handle.unpack();
         if prog_idx >= self.klv_streams.len() || within_idx >= self.klv_streams[prog_idx].len() {
@@ -2347,7 +2371,7 @@ impl Muxer {
         // PrivateData streams pass payload through as-is (caller controls shape).
         let wrapped_storage: Option<Vec<u8>> = if is_sync {
             let header = crate::mpegts::au_cell::AuCellHeader {
-                metadata_service_id: 0x00, // ST 1402.2 App. B Table 2 default.
+                metadata_service_id, // caller-supplied; see push_klv_to doc comment.
                 sequence_number: seq_num,
                 cell_fragment_indication: crate::mpegts::au_cell::CellFragmentIndication::Complete,
                 decoder_config_flag: false,
@@ -3143,7 +3167,7 @@ mod tests {
         let mut mux = Muxer::new(Config::default()).unwrap();
         // PES_packet_length is u16; with PTS off, max KLV payload = 65535 - 3 = 65532.
         let too_big = vec![0u8; 65_533];
-        let err = mux.push_klv(&too_big, 0).unwrap_err();
+        let err = mux.push_klv(&too_big, 0, 0x00).unwrap_err();
         match err {
             MuxError::KlvTooLarge { size, max } => {
                 assert_eq!(size, 65_533);
@@ -3158,7 +3182,7 @@ mod tests {
         let mut mux = Muxer::new(Config::default()).unwrap();
         // 65532 with no PTS is the spec-imposed ceiling.
         let max_klv = vec![0xAB; 65_532];
-        mux.push_klv(&max_klv, 0)
+        mux.push_klv(&max_klv, 0, 0x00)
             .expect("max-size KLV must succeed");
     }
 
@@ -3177,7 +3201,7 @@ mod tests {
         )
         .unwrap();
         let too_big = vec![0u8; 65_528];
-        let err = mux.push_klv(&too_big, 90_000).unwrap_err();
+        let err = mux.push_klv(&too_big, 90_000, 0x00).unwrap_err();
         match err {
             MuxError::KlvTooLarge { size, max } => {
                 assert_eq!(size, 65_528);
@@ -3298,7 +3322,7 @@ mod tests {
             0x00, 0x00,
         ];
         klv.push(0x00);
-        mux.push_klv_to(h, &klv, 0).unwrap();
+        mux.push_klv_to(h, &klv, 0, 0x00).unwrap();
         let mut buf = vec![0u8; 188 * 16];
         let n = mux.pull(&mut buf);
         assert!(n > 0);
@@ -3335,7 +3359,7 @@ mod tests {
             0x00, 0x00, 0x00,
         ];
         let h = mux.klv_stream_handle(0).unwrap();
-        mux.push_klv_to(h, &raw_klv, 45_000).unwrap();
+        mux.push_klv_to(h, &raw_klv, 45_000, 0x00).unwrap();
 
         let mut buf = vec![0u8; 188 * 64];
         let n = mux.pull(&mut buf);
@@ -3478,7 +3502,7 @@ mod tests {
     fn push_klv_to_invalid_handle_rejects() {
         let mut mux = Muxer::new(Config::default()).unwrap();
         let bogus = KlvStreamHandle::for_test(99);
-        let err = mux.push_klv_to(bogus, &[0; 16], 0).unwrap_err();
+        let err = mux.push_klv_to(bogus, &[0; 16], 0, 0x00).unwrap_err();
         match err {
             MuxError::InvalidStreamHandle { kind, index } => {
                 assert_eq!(kind, "klv");
@@ -3604,7 +3628,7 @@ mod tests {
             .build()
             .unwrap();
         let mut mux = Muxer::new(cfg).unwrap();
-        let err = mux.push_klv(&[0; 16], 0).unwrap_err();
+        let err = mux.push_klv(&[0; 16], 0, 0x00).unwrap_err();
         assert!(
             matches!(
                 err,
@@ -3651,7 +3675,7 @@ mod tests {
             .build()
             .unwrap();
         let mut mux = Muxer::new(cfg).unwrap();
-        let err = mux.push_klv(&[0; 16], 0).unwrap_err();
+        let err = mux.push_klv(&[0; 16], 0, 0x00).unwrap_err();
         assert!(
             matches!(err, MuxError::NoKlvStreamsConfigured),
             "expected NoKlvStreamsConfigured, got {err:?}",
@@ -3701,7 +3725,7 @@ mod tests {
             .build()
             .unwrap();
         let mut mux = Muxer::new(cfg).unwrap();
-        let err = mux.push_klv(&[], 0).unwrap_err();
+        let err = mux.push_klv(&[], 0, 0x00).unwrap_err();
         assert!(
             matches!(err, MuxError::NoKlvStreamsConfigured),
             "expected NoKlvStreamsConfigured, got {err:?}",
@@ -4582,7 +4606,7 @@ mod tests {
         ]);
         inner_klv.push(0x04);
         inner_klv.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
-        mux.push_klv(&inner_klv, 90_000).unwrap();
+        mux.push_klv(&inner_klv, 90_000, 0x00).unwrap();
 
         let mut buf = vec![0u8; 188 * 32];
         let n = mux.pull(&mut buf);
@@ -4606,7 +4630,7 @@ mod tests {
         assert_eq!(body, &inner_klv[..]);
 
         // Push second blob; sequence_number must increment.
-        mux.push_klv(&inner_klv, 90_000 * 2).unwrap();
+        mux.push_klv(&inner_klv, 90_000 * 2, 0x00).unwrap();
         let n2 = mux.pull(&mut buf);
         let pes2 = reassemble_pes_payload_for_pid(&buf, n2, 0x1031);
         let (hdr2, _) = read_metadata_au_cell(&pes2).expect("valid AU cell header");
@@ -4635,7 +4659,7 @@ mod tests {
             0x00, 0x00,
         ]);
         inner_klv.push(0x00);
-        mux.push_klv(&inner_klv, 0).unwrap();
+        mux.push_klv(&inner_klv, 0, 0x00).unwrap();
 
         let mut buf = vec![0u8; 188 * 32];
         let n = mux.pull(&mut buf);
@@ -4880,7 +4904,7 @@ mod stats_tests {
             0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
             0x00, 0x00, 0x00,
         ];
-        m.push_klv(klv, 0).unwrap();
+        m.push_klv(klv, 0, 0x00).unwrap();
         let mut buf = vec![0u8; 64 * 188];
         let n = m.pull(&mut buf);
         let st = m.stats();

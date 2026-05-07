@@ -28,7 +28,7 @@ fn h264_async_klv_roundtrip() {
     let video = synthetic_nal::h264_au(800, true);
     let klv = synthetic_nal::klv_blob(64);
     mux.push_video(&video, 0, true).unwrap();
-    mux.push_klv(&klv, 0).unwrap();
+    mux.push_klv(&klv, 0, 0x00).unwrap();
     let bytes = drain_all(&mut mux);
     assert!(!bytes.is_empty());
 
@@ -69,7 +69,7 @@ fn h265_async_klv_roundtrip() {
     let video = synthetic_nal::h265_au(1200, true);
     let klv = synthetic_nal::klv_blob(50);
     mux.push_video(&video, 0, true).unwrap();
-    mux.push_klv(&klv, 0).unwrap();
+    mux.push_klv(&klv, 0, 0x00).unwrap();
     let bytes = drain_all(&mut mux);
 
     let parsed = ts_parser::parse(&bytes);
@@ -98,7 +98,7 @@ fn h264_klv_with_pts_keeps_pts() {
     let video = synthetic_nal::h264_au(800, true);
     let klv = synthetic_nal::klv_blob(64);
     mux.push_video(&video, 90_000, true).unwrap();
-    mux.push_klv(&klv, 90_000).unwrap();
+    mux.push_klv(&klv, 90_000, 0x00).unwrap();
     let bytes = drain_all(&mut mux);
 
     let parsed = ts_parser::parse(&bytes);
@@ -131,7 +131,7 @@ fn h264_sync_metadata_stream_type() {
     let mut mux = Muxer::new(cfg).unwrap();
     mux.push_video(&synthetic_nal::h264_au(500, true), 0, true)
         .unwrap();
-    mux.push_klv(&synthetic_nal::klv_blob(40), 0).unwrap();
+    mux.push_klv(&synthetic_nal::klv_blob(40), 0, 0x00).unwrap();
     let bytes = drain_all(&mut mux);
 
     let parsed = ts_parser::parse(&bytes);
@@ -215,7 +215,7 @@ fn pcr_pid_pinned_to_video_is_declared_in_pmt() {
     let mut mux = Muxer::new(cfg).unwrap();
     mux.push_video(&synthetic_nal::h264_au(500, true), 0, true)
         .unwrap();
-    mux.push_klv(&synthetic_nal::klv_blob(64), 0).unwrap();
+    mux.push_klv(&synthetic_nal::klv_blob(64), 0, 0x00).unwrap();
     let bytes = drain_all(&mut mux);
 
     let parsed = ts_parser::parse(&bytes);
@@ -253,7 +253,7 @@ fn pcr_is_carried_on_video_pid_packets_by_default() {
     for i in 0..3 {
         mux.push_video(&synthetic_nal::h264_au(500, true), i * 3_600_000, true)
             .unwrap();
-        mux.push_klv(&synthetic_nal::klv_blob(64), i * 3_600_000)
+        mux.push_klv(&synthetic_nal::klv_blob(64), i * 3_600_000, 0x00)
             .unwrap();
     }
     let bytes = drain_all(&mut mux);

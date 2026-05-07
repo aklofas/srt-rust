@@ -118,7 +118,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Encode to KLV wire format (BER length, TL tags, checksum).
             let klv = encode_to_vec(&rec)?;
 
-            muxer.push_klv(&klv, pts)?;
+            // `metadata_service_id` goes into the AU cell header per H.222.0
+            // §2.12.4.2 / ST 1402.2 App. B Table 2 for SynchronousMetadata
+            // streams (stream_type 0x15); silently ignored for PrivateData
+            // streams (0x06) like the one configured here. The spec default
+            // is 0x00.
+            muxer.push_klv(&klv, pts, 0x00)?;
         }
 
         // Drain TS bytes to disk. pull() returns byte count written;

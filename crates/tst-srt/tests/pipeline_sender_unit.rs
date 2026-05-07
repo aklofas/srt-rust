@@ -52,7 +52,7 @@ fn sender_drives_klv_through_transport() {
     let sender = MuxSender::new(Config::default(), transport).unwrap();
 
     let klv = vec![0xAB; 64];
-    sender.send_klv(&klv, 0).unwrap();
+    sender.send_klv(&klv, 0, 0x00).unwrap();
 
     let captured = log.lock().unwrap();
     assert!(!captured.is_empty());

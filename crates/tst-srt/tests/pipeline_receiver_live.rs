@@ -108,7 +108,7 @@ fn end_to_end_sender_to_receiver() {
             let nal = synthetic_nal::h264_au(500, key);
             let pts = i * 3_000;
             sender.send_video(&nal, pts, key).expect("send_video");
-            sender.send_klv(&klv, pts).expect("send_klv");
+            sender.send_klv(&klv, pts, 0x00).expect("send_klv");
         }
 
         // Brief drain pause: SRT's send queue is async w.r.t. close, so

@@ -78,7 +78,7 @@ fn async_klv_pes_uses_stream_id_0xbd() {
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
 
-    mux.push_klv(&synthetic_klv(), 0).unwrap();
+    mux.push_klv(&synthetic_klv(), 0, 0x00).unwrap();
     let ts_buf = drain(&mut mux);
 
     let stream_id =
@@ -106,7 +106,7 @@ fn sync_klv_pes_keeps_stream_id_0xfc() {
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
 
-    mux.push_klv(&synthetic_klv(), 90_000).unwrap();
+    mux.push_klv(&synthetic_klv(), 90_000, 0x00).unwrap();
     let ts_buf = drain(&mut mux);
 
     let stream_id =

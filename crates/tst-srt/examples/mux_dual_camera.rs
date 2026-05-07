@@ -109,7 +109,14 @@ fn main() -> std::io::Result<()> {
         let key = i == 0;
         mux.push_video_to(eo, &nal_eo, pts, key).expect("EO push");
         mux.push_video_to(ir, &nal_ir, pts, key).expect("IR push");
-        mux.push_klv_to(klv, &klv_blob, pts).expect("KLV push");
+        // `metadata_service_id` goes into the AU cell header per H.222.0
+        // §2.12.4.2 / ST 1402.2 App. B Table 2 for SynchronousMetadata
+        // streams (stream_type 0x15); silently ignored for PrivateData
+        // streams (0x06) like the one used here. The spec default is 0x00
+        // — use a non-zero value only when mirroring a metadata_klva()
+        // PMT descriptor `service_id` you supplied at config time.
+        mux.push_klv_to(klv, &klv_blob, pts, 0x00)
+            .expect("KLV push");
 
         // Drain after every frame so the muxer's internal buffer doesn't
         // fill — the default `buffer_packets: 10000` is generous (~600 ms

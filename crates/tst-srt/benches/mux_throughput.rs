@@ -46,7 +46,7 @@ fn bench_push_klv(c: &mut Criterion) {
             let mut mux = Muxer::new(Config::default()).unwrap();
             // Need video first to anchor PSI emission.
             mux.push_video(&synthetic_au(500, true), 0, true).unwrap();
-            mux.push_klv(black_box(&klv), 0).unwrap();
+            mux.push_klv(black_box(&klv), 0, 0x00).unwrap();
         });
     });
 }
@@ -65,7 +65,7 @@ fn bench_mux_end_to_end(c: &mut Criterion) {
             let mut mux = Muxer::new(cfg).unwrap();
             for (i, f) in frames.iter().enumerate() {
                 mux.push_video(f, (i as i64) * 3000, i == 0).unwrap();
-                mux.push_klv(&klv, (i as i64) * 3000).unwrap();
+                mux.push_klv(&klv, (i as i64) * 3000, 0x00).unwrap();
             }
             let mut buf = vec![0u8; 1316];
             loop {

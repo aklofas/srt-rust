@@ -67,7 +67,7 @@ fn dual_video_plus_klv_routes_to_three_pids() {
     // Push three frames — one per stream.
     mux.push_video_to(eo, &h264_au(0xAA), 0, true).unwrap();
     mux.push_video_to(ir, &h264_au(0xBB), 0, true).unwrap();
-    mux.push_klv_to(klv_h, &klv_blob(), 0).unwrap();
+    mux.push_klv_to(klv_h, &klv_blob(), 0, 0x00).unwrap();
 
     let ts = drain_all(&mut mux);
     let pids = pids_present(&ts);
@@ -95,8 +95,8 @@ fn video_plus_dual_klv_routes_to_three_pids() {
     let k_sync = mux.klv_stream_handle(1).unwrap();
 
     mux.push_video_to(v, &h264_au(0xAA), 0, true).unwrap();
-    mux.push_klv_to(k_async, &klv_blob(), 0).unwrap();
-    mux.push_klv_to(k_sync, &klv_blob(), 0).unwrap();
+    mux.push_klv_to(k_async, &klv_blob(), 0, 0x00).unwrap();
+    mux.push_klv_to(k_sync, &klv_blob(), 0, 0x00).unwrap();
 
     let pids = pids_present(&drain_all(&mut mux));
     for required in [0x0000u16, 0x1000, 0x1011, 0x1031, 0x1041] {
@@ -141,7 +141,7 @@ fn video_and_klv_emits_both_pids() {
     let v = mux.video_stream_handle(0).unwrap();
     let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
     mux.push_video_to(v, &nal, 0, true).unwrap();
-    mux.push_klv_to(k, &klv_blob(), 0).unwrap();
+    mux.push_klv_to(k, &klv_blob(), 0, 0x00).unwrap();
 
     let pids = pids_present(&drain_all(&mut mux));
     assert!(pids.contains(&0x1011), "video PID must appear");

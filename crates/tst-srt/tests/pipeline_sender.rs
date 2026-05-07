@@ -44,7 +44,7 @@ fn sender_round_trip_one_frame() {
     let nal = synthetic_nal::h264_au(500, true);
     let klv = synthetic_nal::klv_blob(64);
     sender.send_video(&nal, 0, true).expect("send_video");
-    sender.send_klv(&klv, 0).expect("send_klv");
+    sender.send_klv(&klv, 0, 0x00).expect("send_klv");
 
     // Brief pause to let bytes drain on the wire before close.
     thread::sleep(Duration::from_millis(200));

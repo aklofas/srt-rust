@@ -38,7 +38,12 @@ fn main() -> std::io::Result<()> {
 
         // 1 KLV blob per frame, async (no PTS).
         let klv: Vec<u8> = (0..50).map(|j| (i as u8).wrapping_add(j as u8)).collect();
-        mux.push_klv(&klv, pts).expect("push_klv");
+        // `metadata_service_id` goes into the AU cell header per H.222.0
+        // §2.12.4.2 / ST 1402.2 App. B Table 2 for SynchronousMetadata
+        // streams (stream_type 0x15); silently ignored for PrivateData
+        // streams (0x06) like the one configured here. The spec default
+        // is 0x00.
+        mux.push_klv(&klv, pts, 0x00).expect("push_klv");
 
         // Drain into the file.
         loop {

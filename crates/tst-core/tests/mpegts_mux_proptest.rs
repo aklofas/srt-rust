@@ -60,7 +60,7 @@ proptest! {
                 mux.push_video(&nal, pts, s.key_frame).unwrap();
             } else {
                 let klv = synthetic_nal::klv_blob(s.body_size);
-                mux.push_klv(&klv, pts).unwrap();
+                mux.push_klv(&klv, pts, 0x00).unwrap();
             }
         }
         let bytes = drain_all(&mut mux);
@@ -116,7 +116,7 @@ proptest! {
         for (i, sz) in blobs.iter().enumerate() {
             let blob = synthetic_nal::klv_blob(*sz);
             originals.push(blob.clone());
-            mux.push_klv(&blob, (i as i64 + 1) * 3000).unwrap();
+            mux.push_klv(&blob, (i as i64 + 1) * 3000, 0x00).unwrap();
         }
         let bytes = drain_all(&mut mux);
         let parsed = ts_parser::parse(&bytes);

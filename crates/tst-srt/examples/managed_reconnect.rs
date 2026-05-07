@@ -259,7 +259,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 sent_err += 1;
             }
         }
-        match sender.send_klv(&klv, pts) {
+        // `metadata_service_id` goes into the AU cell header per H.222.0
+        // §2.12.4.2 / ST 1402.2 App. B Table 2 for SynchronousMetadata
+        // streams (stream_type 0x15); silently ignored for PrivateData
+        // streams (0x06) like the one used here. The spec default is 0x00.
+        match sender.send_klv(&klv, pts, 0x00) {
             Ok(()) => {}
             Err(e) => {
                 eprintln!("sender: send_klv {i} -> {e:?}");

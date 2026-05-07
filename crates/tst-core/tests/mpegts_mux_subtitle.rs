@@ -111,7 +111,8 @@ fn mux_subtitle_with_klv_same_program_no_classification_collision() {
         .build()
         .unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
-    mux.push_klv(b"\x06\x0E\x2B\x34short", 90_000).unwrap();
+    mux.push_klv(b"\x06\x0E\x2B\x34short", 90_000, 0x00)
+        .unwrap();
     let h = mux.subtitle_handles()[0];
     mux.push_subtitle_to(h, 90_000, b"WEBVTT\n").unwrap();
     let out = drain_all(&mut mux);

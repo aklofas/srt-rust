@@ -62,7 +62,7 @@ fn three_stream_program_audio_video_klv_routing() {
         .push_audio_to(audio_handle, 90_000, b"audio_payload_bytes")
         .unwrap();
     muxer
-        .push_klv_to(klv_handle, b"klv_record_bytes", 90_000)
+        .push_klv_to(klv_handle, b"klv_record_bytes", 90_000, 0x00)
         .unwrap();
 
     let mut buf = vec![0u8; 188 * 256];

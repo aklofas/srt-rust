@@ -51,7 +51,7 @@ fn sync_klv_mux_demux_round_trip() {
     let mut mux = Muxer::new(cfg).unwrap();
 
     let inner = synthetic_klv_ls();
-    mux.push_klv(&inner, 90_000).unwrap();
+    mux.push_klv(&inner, 90_000, 0x00).unwrap();
     let ts_buf = drain(&mut mux);
 
     let mut dem = Demuxer::new();
@@ -110,7 +110,7 @@ fn private_data_klv_does_not_auto_wrap() {
     let mut mux = Muxer::new(cfg).unwrap();
 
     let inner = synthetic_klv_ls();
-    mux.push_klv(&inner, 0).unwrap();
+    mux.push_klv(&inner, 0, 0x00).unwrap();
     let ts_buf = drain(&mut mux);
 
     let mut dem = Demuxer::new();
@@ -180,12 +180,142 @@ fn sync_klv_sequence_number_increments_across_pushes() {
         hdr.sequence_number
     };
 
-    mux.push_klv(&inner, 90_000).unwrap();
+    mux.push_klv(&inner, 90_000, 0x00).unwrap();
     assert_eq!(next_seq_num(&mut mux), 0);
 
-    mux.push_klv(&inner, 90_000 * 2).unwrap();
+    mux.push_klv(&inner, 90_000 * 2, 0x00).unwrap();
     assert_eq!(next_seq_num(&mut mux), 1);
 
-    mux.push_klv(&inner, 90_000 * 3).unwrap();
+    mux.push_klv(&inner, 90_000 * 3, 0x00).unwrap();
     assert_eq!(next_seq_num(&mut mux), 2);
+}
+
+// ── extract_pes_payload helper ────────────────────────────────────────────────
+//
+// Walk the TS byte stream, find the PUSI (payload_unit_start_indicator) packet
+// on `pid`, skip the TS header + adaptation field + PES header, and return the
+// raw PES payload bytes.
+//
+// PES header layout for a KLV sync stream (PTS-only carry):
+//   start_code(3) + stream_id(1) + packet_length(2) = 6 bytes fixed prefix
+//   flags1(1) + flags2(1) + header_data_length(1) = 3 bytes
+//   PTS field(5 bytes) when flags2 bit 7 is set
+//   → 14-byte total PES header when PTS is present (no DTS)
+//
+// For the no-PTS case (flags2 bit 7 clear), header_data_length = 0, so
+// the header is only 9 bytes.
+fn extract_pes_payload(ts_bytes: &[u8], pid: u16) -> Vec<u8> {
+    let mut payload = Vec::new();
+    let mut found_pusi = false;
+
+    for pkt in ts_bytes.chunks_exact(188) {
+        let pkt_pid = ((pkt[1] as u16 & 0x1F) << 8) | pkt[2] as u16;
+        if pkt_pid != pid {
+            continue;
+        }
+        let pusi = (pkt[1] & 0x40) != 0;
+        let af_present = (pkt[3] & 0x20) != 0;
+        let payload_present = (pkt[3] & 0x10) != 0;
+        if !payload_present {
+            continue;
+        }
+
+        let mut idx = 4usize;
+        if af_present {
+            let af_len = pkt[idx] as usize;
+            idx += 1 + af_len;
+        }
+
+        if pusi {
+            // PES header: 3-byte start_code + 1-byte stream_id + 2-byte length
+            // + 1-byte flags1 + 1-byte flags2 + 1-byte header_data_length
+            // + header_data_length bytes of optional fields (PTS etc.)
+            if idx + 9 > 188 {
+                continue;
+            }
+            let pes_header_data_length = pkt[idx + 8] as usize;
+            idx += 9 + pes_header_data_length;
+            found_pusi = true;
+        }
+
+        if found_pusi && idx < 188 {
+            payload.extend_from_slice(&pkt[idx..188]);
+        }
+    }
+    payload
+}
+
+#[test]
+fn metadata_service_id_propagates_from_push_klv_to_au_cell() {
+    // Verifies that the `metadata_service_id` parameter passed to
+    // `Muxer::push_klv` flows all the way through to the 5-byte AU cell
+    // header in the emitted PES payload, rather than being silently
+    // overwritten with the former hardcoded 0x00 default.
+    use tst_core::mpegts::au_cell::read_metadata_au_cell;
+    use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+
+    let cfg = Config::builder()
+        .add_program(1, 0x100)
+        .add_video(0x101, VideoCodec::H264)
+        // SynchronousMetadata (stream_type 0x15) triggers the AU cell wrap;
+        // carries_pts=true so the PES header has a 5-byte PTS field.
+        .add_klv(
+            0x102,
+            KlvStreamType::SynchronousMetadata,
+            /*carries_pts=*/ true,
+        )
+        .end_program()
+        .build()
+        .unwrap();
+    let mut mux = Muxer::new(cfg).unwrap();
+
+    // Minimal H.222.0-shaped raw KLV LS bytes (16-byte ST 0601 UL + BER
+    // short-form length=1 + 1 payload byte). The AU cell wrap in push_klv_to
+    // doesn't validate the inner bytes; any non-empty slice works.
+    let raw_klv: Vec<u8> = {
+        let mut v = Vec::new();
+        v.extend_from_slice(&[
+            0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00,
+        ]);
+        v.push(0x01); // BER length = 1
+        v.push(0xAB); // one payload byte
+        v
+    };
+
+    // Push enough video frames to advance PTS beyond the PSI threshold
+    // (~100 ms = 9000 ticks), so packets make it into the TS output.
+    for i in 0..5i64 {
+        let pts = 90_000 + i * 3_000;
+        let nal = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10]; // AUD NAL
+        mux.push_video(&nal, pts, false).unwrap();
+    }
+
+    // Use a non-zero service_id (0x42) so the test can distinguish between
+    // "value was plumbed" and "value was coincidentally 0x00 from the old
+    // hardcoded default".
+    let service_id: u8 = 0x42;
+    mux.push_klv(&raw_klv, 9000, service_id).unwrap();
+
+    // Drain TS bytes.
+    let ts_buf = drain(&mut mux);
+
+    // Extract PES payload from the KLV PID 0x102.
+    let pes_payload = extract_pes_payload(&ts_buf, 0x102);
+    assert!(
+        !pes_payload.is_empty(),
+        "expected at least one TS packet on KLV PID 0x102"
+    );
+
+    // The first 5 bytes of the PES payload are the AU cell header.
+    let (header, inner) = read_metadata_au_cell(&pes_payload).expect("AU cell must parse");
+
+    // Primary assertion: service_id round-trips.
+    assert_eq!(
+        header.metadata_service_id, service_id,
+        "caller-supplied service_id 0x{service_id:02X} must propagate to the AU cell header"
+    );
+
+    // Sanity check: the inner bytes are our raw KLV.
+    assert_eq!(inner, &raw_klv[..], "inner KLV must pass through verbatim");
 }

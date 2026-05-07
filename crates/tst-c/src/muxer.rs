@@ -89,15 +89,20 @@ pub unsafe extern "C" fn tst_muxer_push_klv(
         return TstError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(klv, len) };
-    handle
-        .inner
-        .with_inner_mut(|m| match m.push_klv(slice, pts_90khz) {
+    handle.inner.with_inner_mut(|m| {
+        match m.push_klv(
+            slice, pts_90khz,
+            // C ABI receiver-surface plan will expose metadata_service_id;
+            // today defaults to 0x00 per ST 1402.2 App. B Table 2.
+            0x00,
+        ) {
             Ok(()) => 0,
             Err(e) => {
                 record_mux_error(&e);
                 unsafe { crate::error::tst_get_last_error() }
             }
-        })
+        }
+    })
 }
 
 /// Push one Annex-B NAL targeting a specific video elementary stream.
@@ -167,14 +172,20 @@ pub unsafe extern "C" fn tst_muxer_push_klv_to(
     }
     let slice = unsafe { std::slice::from_raw_parts(klv, len) };
     let stream = KlvStreamHandle::from_raw(handle);
-    h.inner
-        .with_inner_mut(|m| match m.push_klv_to(stream, slice, pts_90khz) {
+    h.inner.with_inner_mut(|m| {
+        match m.push_klv_to(
+            stream, slice, pts_90khz,
+            // C ABI receiver-surface plan will expose metadata_service_id;
+            // today defaults to 0x00 per ST 1402.2 App. B Table 2.
+            0x00,
+        ) {
             Ok(()) => 0,
             Err(e) => {
                 record_mux_error(&e);
                 unsafe { crate::error::tst_get_last_error() }
             }
-        })
+        }
+    })
 }
 
 /// Drain TS bytes into `out_buf` (capacity `out_cap`). Returns the number

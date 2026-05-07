@@ -343,9 +343,9 @@ fn per_program_pcr_pids_resolved_independently() {
     for tick in 0..30i64 {
         let pts = tick * 3_003;
         muxer.push_video_to(p1_video, &nal, pts, tick == 0).unwrap();
-        muxer.push_klv_to(p1_klv, &klv, pts).unwrap();
+        muxer.push_klv_to(p1_klv, &klv, pts, 0x00).unwrap();
         muxer.push_video_to(p2_video, &nal, pts, tick == 0).unwrap();
-        muxer.push_klv_to(p2_klv, &klv, pts).unwrap();
+        muxer.push_klv_to(p2_klv, &klv, pts, 0x00).unwrap();
         loop {
             let n = muxer.pull(&mut buf);
             if n == 0 {

@@ -123,7 +123,7 @@ fn build_and_preload_muxer() -> Muxer {
     for i in 0i64..3 {
         let pts = i * 9001;
         m.push_video(&au, pts, true).unwrap();
-        m.push_klv(&klv, pts).unwrap();
+        m.push_klv(&klv, pts, 0x00).unwrap();
     }
     m
 }

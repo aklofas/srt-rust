@@ -169,7 +169,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // frames are non-IDR. The synthetic NAL is tagged accordingly
         // (see `synthetic_nal_au`).
         sender.send_video(&nal, pts, i == 0)?;
-        sender.send_klv(&klv, pts)?;
+        // `metadata_service_id` goes into the AU cell header per H.222.0
+        // §2.12.4.2 / ST 1402.2 App. B Table 2 for SynchronousMetadata
+        // streams (stream_type 0x15); silently ignored for PrivateData
+        // streams (0x06) like the one configured above. The spec default is
+        // 0x00 — use a non-zero value only when mirroring a metadata_klva()
+        // PMT descriptor `service_id` you supplied at config time.
+        sender.send_klv(&klv, pts, 0x00)?;
     }
     // `close` flushes any pending TS bytes to the transport before we
     // collect — without this, the tail of the muxer's output would be

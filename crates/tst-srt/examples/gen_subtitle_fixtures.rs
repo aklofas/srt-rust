@@ -306,6 +306,7 @@ fn build_subtitle_with_klv() -> Vec<u8> {
     mux.push_klv(
         b"\x06\x0E\x2B\x34\x02\x0B\x01\x01\x0E\x01\x03\x01\x01\x00\x00\x00\x02\xAB\xCD",
         90_000,
+        0x00, // spec default; ST 1402.2 App. B Table 2
     )
     .unwrap();
     let h = mux.subtitle_handles()[0];

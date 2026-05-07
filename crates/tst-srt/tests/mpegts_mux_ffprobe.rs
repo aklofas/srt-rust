@@ -45,7 +45,7 @@ fn ffprobe_recognizes_our_pmt() {
         let nal = synthetic_nal::h264_au(800, i % 5 == 0);
         mux.push_video(&nal, (i as i64) * 3000, i % 5 == 0).unwrap();
         let klv = synthetic_nal::klv_blob(48);
-        mux.push_klv(&klv, (i as i64) * 3000).unwrap();
+        mux.push_klv(&klv, (i as i64) * 3000, 0x00).unwrap();
     }
     let bytes = drain_all(&mut mux);
 
@@ -119,7 +119,7 @@ fn ffprobe_recognizes_dual_camera_plus_klv() {
         let pts = i * 3000; // 33 ms @ 90 kHz
         mux.push_video_to(eo, &nal, pts, i == 0).unwrap();
         mux.push_video_to(ir, &nal, pts, i == 0).unwrap();
-        mux.push_klv_to(klv_h, &klv, pts).unwrap();
+        mux.push_klv_to(klv_h, &klv, pts, 0x00).unwrap();
         loop {
             let n = mux.pull(&mut buf);
             if n == 0 {
@@ -236,8 +236,8 @@ fn ffprobe_recognizes_two_programs_with_distinct_streams() {
         let pts = i * 3_003;
         mux.push_video_to(p1_video, &nal_h264, pts, i == 0).unwrap();
         mux.push_video_to(p2_video, &nal_h265, pts, i == 0).unwrap();
-        mux.push_klv_to(p1_klv, &klv, pts).unwrap();
-        mux.push_klv_to(p2_klv, &klv, pts).unwrap();
+        mux.push_klv_to(p1_klv, &klv, pts, 0x00).unwrap();
+        mux.push_klv_to(p2_klv, &klv, pts, 0x00).unwrap();
         loop {
             let n = mux.pull(&mut buf);
             if n == 0 {
@@ -317,7 +317,7 @@ fn ffprobe_roundtrip_audio_video_klv_three_streams() {
         // stream_type 0x0F (AAC) in the PMT, not from bitstream analysis.
         muxer.push_audio(b"aac_frame_data", pts).unwrap();
         let klv = synthetic_nal::klv_blob(32);
-        muxer.push_klv(&klv, pts).unwrap();
+        muxer.push_klv(&klv, pts, 0x00).unwrap();
     }
 
     let ts = drain_all(&mut muxer);

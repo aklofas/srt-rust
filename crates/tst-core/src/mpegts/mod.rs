@@ -14,7 +14,7 @@
 //!
 //! // Push KLV metadata at any cadence:
 //! # let klv_bytes = vec![0u8; 0];
-//! mux.push_klv(&klv_bytes, pts).unwrap();
+//! mux.push_klv(&klv_bytes, pts, 0x00).unwrap();
 //!
 //! // Drain TS packets into your transport:
 //! let mut buf = [0u8; 1316]; // SRT live-mode payload size = 7 × 188

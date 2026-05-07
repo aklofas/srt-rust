@@ -114,7 +114,7 @@ fn process_one(path: &Path) {
             }
             (None, Some(_)) => {
                 let (pts, body) = klv_iter.next().unwrap();
-                mux.push_klv(body, pts.unwrap_or(0) as i64)
+                mux.push_klv(body, pts.unwrap_or(0) as i64, 0x00)
                     .expect("push_klv");
             }
             (Some(vp), Some(kp)) => {
@@ -131,7 +131,7 @@ fn process_one(path: &Path) {
                         .expect("push_video");
                 } else {
                     let (pts, body) = klv_iter.next().unwrap();
-                    mux.push_klv(body, pts.unwrap_or(0) as i64)
+                    mux.push_klv(body, pts.unwrap_or(0) as i64, 0x00)
                         .expect("push_klv");
                 }
             }

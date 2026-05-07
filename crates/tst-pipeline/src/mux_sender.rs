@@ -97,9 +97,19 @@ impl<T: Transport> MuxSender<T> {
 
     /// Send one pre-built KLV blob. `pts_90khz` is in 90 kHz units (the
     /// TS clock); ignored unless the configured KLV stream carries PTS.
-    pub fn send_klv(&self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
+    ///
+    /// `metadata_service_id` is written into the AU cell header per
+    /// ITU-T H.222.0 V9 §2.12.4.2 / ST 1402.2 App. B Table 2 only for
+    /// [`KlvStreamType::SynchronousMetadata`] streams; ignored on
+    /// [`KlvStreamType::PrivateData`] streams. The spec default is `0x00`.
+    pub fn send_klv(
+        &self,
+        klv: &[u8],
+        pts_90khz: i64,
+        metadata_service_id: u8,
+    ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
-        inner.send_klv(klv, pts_90khz)
+        inner.send_klv(klv, pts_90khz, metadata_service_id)
     }
 
     /// Send one video access unit to a specific configured video stream.
@@ -118,14 +128,20 @@ impl<T: Transport> MuxSender<T> {
     }
 
     /// Send one KLV blob to a specific configured KLV stream.
+    ///
+    /// `metadata_service_id` is written into the AU cell header per
+    /// ITU-T H.222.0 V9 §2.12.4.2 / ST 1402.2 App. B Table 2 only for
+    /// [`KlvStreamType::SynchronousMetadata`] streams; ignored on
+    /// [`KlvStreamType::PrivateData`] streams. The spec default is `0x00`.
     pub fn send_klv_to(
         &self,
         handle: KlvStreamHandle,
         klv: &[u8],
         pts_90khz: i64,
+        metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
-        inner.send_klv_to(handle, klv, pts_90khz)
+        inner.send_klv_to(handle, klv, pts_90khz, metadata_service_id)
     }
 
     /// Send one audio frame buffer. `pts_90khz` is in 90 kHz ticks (the
@@ -326,12 +342,17 @@ impl<T: Transport> Inner<T> {
         self.drain_muxer()
     }
 
-    fn send_klv(&mut self, klv: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
+    fn send_klv(
+        &mut self,
+        klv: &[u8],
+        pts_90khz: i64,
+        metadata_service_id: u8,
+    ) -> Result<(), MuxSenderError> {
         if self.closed {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        self.muxer.push_klv(klv, pts_90khz)?;
+        self.muxer.push_klv(klv, pts_90khz, metadata_service_id)?;
         self.drain_muxer()
     }
 
@@ -356,12 +377,14 @@ impl<T: Transport> Inner<T> {
         handle: KlvStreamHandle,
         klv: &[u8],
         pts_90khz: i64,
+        metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
         if self.closed {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        self.muxer.push_klv_to(handle, klv, pts_90khz)?;
+        self.muxer
+            .push_klv_to(handle, klv, pts_90khz, metadata_service_id)?;
         self.drain_muxer()
     }
 

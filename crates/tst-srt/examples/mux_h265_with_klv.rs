@@ -126,7 +126,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // `PrivateData` + `carries_pts: false`) the receiver gets a
         // stream of KLV records but can't directly correlate each
         // to a specific video AU.
-        mux.push_klv(&inner_klv, pts)?;
+        // `metadata_service_id` goes into the AU cell header per H.222.0
+        // §2.12.4.2 / ST 1402.2 App. B Table 2 for SynchronousMetadata
+        // streams (stream_type 0x15); it is silently ignored for PrivateData
+        // streams (0x06) like the one configured above. The spec default is
+        // 0x00 — use a non-zero value only when you have multiple independent
+        // metadata services on the same PID (e.g. to mirror a `service_id`
+        // byte in a metadata_klva() PMT descriptor supplied at config time).
+        mux.push_klv(&inner_klv, pts, 0x00)?;
 
         // Standard pull pattern: drain after every push so muxer
         // memory stays bounded. `pull` returns 0 when there's nothing

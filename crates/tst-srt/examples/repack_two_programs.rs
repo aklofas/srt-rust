@@ -305,7 +305,13 @@ fn repack_event(
             // in the output PMT doesn't match, but including them avoids
             // silently dropping vendor-specific metadata.
             let _ = kind; // provenance noted above; not used for routing
-            muxer.push_klv_to(klv_handle, &payload, pts)?;
+            // `metadata_service_id` goes into the AU cell header per H.222.0
+            // §2.12.4.2 / ST 1402.2 App. B Table 2 for SynchronousMetadata
+            // streams (stream_type 0x15); silently ignored for PrivateData
+            // streams (0x06) and for the transparent repack case here.
+            // Spec default is 0x00; use non-zero only when mirroring a
+            // metadata_klva() PMT descriptor `service_id` from the source.
+            muxer.push_klv_to(klv_handle, &payload, pts, 0x00)?;
         }
 
         // ── Everything else is ignored ────────────────────────────────────────

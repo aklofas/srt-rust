@@ -161,8 +161,13 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig
                 codec: AudioCodec::Ac3,
                 ..
             } => {
-                // AC-3 Registration suppressed when caller supplies an AC-3 Registration.
-                // Mirrors the precise suppression in the PMT writer (mux/mod.rs).
+                // AC-3 Registration suppressed only when caller supplies an
+                // AC-3-flavored Registration. Caller-supplied non-AC-3
+                // Registrations on an AC-3 PID get a warn from the PMT
+                // writer but do NOT suppress auto-emit there either —
+                // caller intent on a different format_identifier wins
+                // (see mux/mod.rs AC-3 arm). Hence the sizing predicate
+                // is `caller_has_ac3`, not `caller_has_other_registration`.
                 let caller_has_ac3 = caller_descs
                     .iter()
                     .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] == b"AC-3");

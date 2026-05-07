@@ -11,6 +11,12 @@
 //!   ST 0601 tags as a flat `UasDatalinkLs` struct with eager `decode` /
 //!   free-function `encode`. Anything not typed-modeled passes through as
 //!   `OwnedRawField` in `record.unknown`.
+//! - **Typed ST 0102 layer** (`st0102`) — the Security Metadata Local Set
+//!   as a flat `SecurityLs` struct with lenient/strict `decode` /
+//!   free-function `encode`. Sibling typed parser to `st0601`; consumers
+//!   typically reach this from `UasDatalinkLs::security_local_set`.
+//!   Anything not typed-modeled passes through as `OwnedRawField` in
+//!   `record.unknown`.
 //!
 //! MPEG-TS sync-metadata AU cell carriage lives at
 //! [`crate::mpegts::au_cell`] (per ITU-T H.222.0 V9 §2.12.4.2 — that's
@@ -24,10 +30,14 @@ pub mod checksum;
 pub mod imapb;
 pub mod length;
 pub mod pack;
+pub mod st0102;
 pub mod st0601;
 pub mod st0605;
 pub mod universal_label;
 
 pub use pack::{Iter, OwnedRawField, RawField};
+pub use st0102::{
+    ClassifyingCountryCodingMethod, ObjectCountryCodingMethod, SecurityClassification, SecurityLs,
+};
 pub use st0605::{PrecisionTimeStampPack, TimeStatus};
 pub use universal_label::UniversalLabel;

@@ -69,6 +69,12 @@ pub enum KlvDecodeError {
 
     #[error("Tag 65 (UAS LS Version) is required per ST 0601.8-12")]
     MissingTag65,
+
+    /// Strict-mode `klv::st0102::decode_strict` only: spec-mandatory tag
+    /// (1, 2, 3, 12, 13, or 22) absent from the record per ST 0102.12
+    /// §6.7 Table 2.
+    #[error("ST 0102 record missing required tag {tag} per ST 0102.12 §6.7")]
+    St0102MissingRequiredTag { tag: u8 },
 }
 
 #[derive(Debug, Error)]
@@ -113,6 +119,18 @@ pub enum KlvFieldError {
 
     #[error("tag {tag}: value reserved as INVALID by spec")]
     InvalidSentinel { tag: u32 },
+
+    /// Tag value declared as RFC 2781 UTF-16 contains malformed code
+    /// units (lone surrogate, odd-length buffer). Reusable for any
+    /// future UTF-16 / UCS-2 fields beyond ST 0102 Tag 13.
+    #[error("tag {tag}: invalid UTF-16 in string field")]
+    InvalidUtf16 { tag: u32 },
+
+    /// Tag value's first byte is a typed-enum codepoint outside the
+    /// spec's enumerated range. Strict-mode only; lenient decode
+    /// surfaces an `Unknown(u8)` enum arm instead.
+    #[error("tag {tag}: codepoint {value:#04x} not in spec-defined range")]
+    InvalidCodepoint { tag: u32, value: u8 },
 }
 
 // ============================================================================

@@ -247,3 +247,125 @@ fn ac3_auto_emit_suppressed_when_caller_supplies_registration() {
         "Registration descriptor should have AC-3 format_identifier"
     );
 }
+
+#[test]
+fn audio_language_descriptor_auto_emits_when_set() {
+    // Build a config with one video + one audio with language=Some(*b"eng"),
+    // drive PSI, demux it, find the PMT entry for the audio PID, and assert
+    // raw_descriptors carries tag 0x0A with body [b'e', b'n', b'g', 0x00].
+    let cfg = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x100, VideoCodec::H264)
+        .add_audio_with_language(0x101, AudioCodec::Aac, *b"eng")
+        .end_program()
+        .build()
+        .unwrap();
+
+    let bytes = drive_psi(cfg);
+    let events = drain_events(&bytes);
+    let pm = events
+        .iter()
+        .find_map(|e| match e {
+            DemuxEvent::ProgramMap(pm) => Some(pm),
+            _ => None,
+        })
+        .expect("ProgramMap emitted");
+
+    let audio = pm.streams.iter().find(|s| s.pid == 0x101).unwrap();
+    let lang_descs: Vec<_> = audio
+        .raw_descriptors
+        .iter()
+        .filter(|d| d.tag == 0x0A)
+        .collect();
+    assert_eq!(
+        lang_descs.len(),
+        1,
+        "expected one ISO 639 language descriptor on audio PID, found {}",
+        lang_descs.len()
+    );
+    // Body: 3-byte lang code + 1-byte audio_type=0x00.
+    assert_eq!(
+        lang_descs[0].data.as_slice(),
+        &[b'e', b'n', b'g', 0x00],
+        "ISO 639 descriptor body should be eng + 0x00 audio_type"
+    );
+}
+
+#[test]
+fn audio_language_descriptor_absent_when_unset() {
+    // add_audio (without language) — no tag-0x0A descriptor should appear.
+    let cfg = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x100, VideoCodec::H264)
+        .add_audio(0x101, AudioCodec::Aac)
+        .end_program()
+        .build()
+        .unwrap();
+
+    let bytes = drive_psi(cfg);
+    let events = drain_events(&bytes);
+    let pm = events
+        .iter()
+        .find_map(|e| match e {
+            DemuxEvent::ProgramMap(pm) => Some(pm),
+            _ => None,
+        })
+        .expect("ProgramMap emitted");
+
+    let audio = pm.streams.iter().find(|s| s.pid == 0x101).unwrap();
+    let lang_descs: Vec<_> = audio
+        .raw_descriptors
+        .iter()
+        .filter(|d| d.tag == 0x0A)
+        .collect();
+    assert_eq!(
+        lang_descs.len(),
+        0,
+        "no ISO 639 descriptor expected on audio PID without language, found {}",
+        lang_descs.len()
+    );
+}
+
+#[test]
+fn audio_language_auto_emit_suppressed_when_caller_supplies() {
+    // Caller pre-supplies their own ISO 639 language descriptor via
+    // stream_descriptors_for_audio with a different language ("fra"). Assert
+    // exactly one tag-0x0A descriptor with caller's language code (not "eng").
+    let cfg = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x100, VideoCodec::H264)
+        .add_audio_with_language(0x101, AudioCodec::Aac, *b"eng")
+        .stream_descriptors_for_audio(0, vec![descriptors::iso_639_language(*b"fra", 0x00)])
+        .end_program()
+        .build()
+        .unwrap();
+
+    let bytes = drive_psi(cfg);
+    let events = drain_events(&bytes);
+    let pm = events
+        .iter()
+        .find_map(|e| match e {
+            DemuxEvent::ProgramMap(pm) => Some(pm),
+            _ => None,
+        })
+        .expect("ProgramMap emitted");
+
+    let audio = pm.streams.iter().find(|s| s.pid == 0x101).unwrap();
+    let lang_descs: Vec<_> = audio
+        .raw_descriptors
+        .iter()
+        .filter(|d| d.tag == 0x0A)
+        .collect();
+    assert_eq!(
+        lang_descs.len(),
+        1,
+        "auto-emit was not suppressed (found {} language descriptors)",
+        lang_descs.len()
+    );
+    // Caller's "fra" wins over auto-emit "eng".
+    assert_eq!(
+        lang_descs[0].data.as_slice(),
+        &[b'f', b'r', b'a', 0x00],
+        "caller's language code (fra) should win over auto-emit (eng)"
+    );
+}

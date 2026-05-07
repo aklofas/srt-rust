@@ -126,9 +126,11 @@ pub(crate) const MAX_PMT_SECTION_BYTES: usize = 183;
 /// * per-stream auto-emit bytes — KLVA Registration (6 B) on PrivateData KLV
 ///   without a caller Registration; AV01 Registration (6 B) on AV1 video
 ///   without a caller AV01; AC-3 Registration (6 B) on AC-3 audio without a
-///   caller AC-3 Registration; subtitling_descriptor (10 B),
-///   teletext_descriptor (7 B), VTTC Registration (6 B), or GA94 Registration
-///   (6 B) on subtitle streams (always — the auto-emit IS the codec marker).
+///   caller AC-3 Registration; ISO 639 language descriptor (6 B) on audio with
+///   `language: Some(_)` without a caller tag-0x0A; subtitling_descriptor
+///   (10 B), teletext_descriptor (7 B), VTTC Registration (6 B), or GA94
+///   Registration (6 B) on subtitle streams (always — the auto-emit IS the
+///   codec marker).
 pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig) -> usize {
     use crate::mpegts::mux::{AudioCodec, KlvStreamType, StreamSpec, SubtitleCodec, VideoCodec};
 
@@ -158,20 +160,32 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig
                 if caller_has_av01 { 0 } else { 6 }
             }
             StreamSpec::Audio {
-                codec: AudioCodec::Ac3,
-                ..
+                codec, language, ..
             } => {
-                // AC-3 Registration suppressed only when caller supplies an
-                // AC-3-flavored Registration. Caller-supplied non-AC-3
-                // Registrations on an AC-3 PID get a warn from the PMT
-                // writer but do NOT suppress auto-emit there either —
-                // caller intent on a different format_identifier wins
-                // (see mux/mod.rs AC-3 arm). Hence the sizing predicate
-                // is `caller_has_ac3`, not `caller_has_other_registration`.
-                let caller_has_ac3 = caller_descs
-                    .iter()
-                    .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] == b"AC-3");
-                if caller_has_ac3 { 0 } else { 6 }
+                // AC-3 Registration (6 B): suppressed only when caller supplies
+                // an AC-3-flavored Registration. Non-AC-3 Registrations on an
+                // AC-3 PID trigger a warn in the PMT writer but do NOT suppress
+                // auto-emit — caller intent on a different format_identifier
+                // wins (see mux/mod.rs AC-3 arm). Hence the predicate is
+                // `caller_has_ac3`, not `caller_has_other_registration`.
+                let ac3_bytes = if *codec == AudioCodec::Ac3 {
+                    let caller_has_ac3 = caller_descs
+                        .iter()
+                        .any(|d| d.len() >= 6 && d[0] == 0x05 && &d[2..6] == b"AC-3");
+                    if caller_has_ac3 { 0 } else { 6 }
+                } else {
+                    0
+                };
+                // ISO 639 language descriptor (6 B): emitted when language is
+                // Some and caller hasn't pre-supplied a tag-0x0A descriptor.
+                let lang_bytes = if language.is_some() {
+                    let caller_has_lang =
+                        caller_descs.iter().any(|d| !d.is_empty() && d[0] == 0x0A);
+                    if caller_has_lang { 0 } else { 6 }
+                } else {
+                    0
+                };
+                ac3_bytes + lang_bytes
             }
             // Subtitle auto-emit always fires — codec marker for stream_type 0x06.
             StreamSpec::Subtitle {

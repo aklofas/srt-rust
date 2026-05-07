@@ -1482,6 +1482,28 @@ impl Muxer {
                         );
                     }
                 }
+                // ISO 639 language descriptor auto-emit on Audio when
+                // StreamSpec::Audio.language is Some. Per ISO/IEC 13818-1
+                // §2.6.18-19 (tag 0x0A, length 4: 3 lang bytes + 1
+                // audio_type byte). audio_type=0x00 (undefined / clean
+                // main) is the spec default; richer values come from
+                // caller-supplied stream_descriptors_for_audio. Suppress
+                // when caller already supplied any tag-0x0A descriptor —
+                // caller intent wins (their language code may differ).
+                if let StreamSpec::Audio {
+                    language: Some(lang),
+                    ..
+                } = spec
+                {
+                    let caller_has_lang = caller_descs
+                        .iter()
+                        .any(|tlv| !tlv.is_empty() && tlv[0] == 0x0A);
+                    if !caller_has_lang {
+                        bytes.extend_from_slice(&crate::mpegts::descriptors::iso_639_language(
+                            *lang, 0x00,
+                        ));
+                    }
+                }
                 // Subtitle auto-emit: codec-disambiguating per-stream descriptor.
                 // All four SubtitleCodec variants ride PMT stream_type 0x06; the
                 // descriptor here is what tells receivers which codec rides on

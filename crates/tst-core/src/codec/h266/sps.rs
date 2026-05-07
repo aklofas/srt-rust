@@ -470,21 +470,30 @@ fn walk_sps_body(
     }
 
     // §7.3.2.4 — timing/HRD parameters (conditional on PTL/DPB/HRD flag).
-    // Per §7.3.5.1, general_timing_hrd_parameters() contains num_units_in_tick
-    // + time_scale. Task 4.3 will capture these for frame_rate; here we read
-    // and discard them to keep the cursor positioned correctly for VUI.
+    // Per §7.3.5.1, general_timing_hrd_parameters() carries num_units_in_tick
+    // + time_scale. H.266 moved timing out of VUI (contrast with H.265 §E.2.1),
+    // so frame_rate is recovered here rather than from the VUI walk.
+    let mut frame_rate: Option<Rational> = None;
     if ptl_dpb_hrd_present {
         let timing_hrd_params_present_flag = br.read_bool()?;
         if timing_hrd_params_present_flag {
-            walk_timing_hrd_parameters(br, max_sublayers_minus1)?;
+            if let Some((num_units, time_scale)) =
+                walk_timing_hrd_parameters(br, max_sublayers_minus1)?
+            {
+                frame_rate = Some(Rational {
+                    num: time_scale,
+                    den: num_units,
+                });
+            }
         }
     }
 
     let _sps_field_seq_flag = br.read_bool()?;
-
-    // §7.3.2.4 — VUI parameters.
     let sps_vui_parameters_present_flag = br.read_bool()?;
-    let (color_info, frame_rate) = if sps_vui_parameters_present_flag {
+
+    // §7.3.2.4 — VUI parameters. VUI carries color_info in H.266; timing
+    // lives in general_timing_hrd_parameters() above (§7.3.5.1).
+    let color_info = if sps_vui_parameters_present_flag {
         let vui_payload_size_minus1 = br.read_ue()? as usize;
         // §7.3.2.4: "while( !byte_aligned() ) sps_vui_alignment_zero_bit f(1)"
         // Consume zero-padding bits to reach the next byte boundary before VUI.
@@ -493,7 +502,7 @@ fn walk_sps_body(
         }
         parse_h266_vui(br, vui_payload_size_minus1 + 1)?
     } else {
-        (None, None)
+        None
     };
 
     // §7.3.2.4 — extension flag (consume; don't model range extensions).
@@ -527,15 +536,15 @@ fn walk_dpb_parameters(
 /// `ols_timing_hrd_parameters(firstSubLayer, sps_max_sublayers_minus1)`
 /// (§7.3.5.2). Called only when `sps_timing_hrd_params_present_flag = 1`.
 ///
-/// Reads and discards `num_units_in_tick` / `time_scale` — Task 4.3 will
-/// retrofit capture of those fields for `frame_rate` extraction.
+/// Returns `Some((num_units_in_tick, time_scale))` for frame_rate recovery
+/// when the values are non-zero; `None` otherwise.
 fn walk_timing_hrd_parameters(
     br: &mut BitReader<'_>,
     max_sublayers_minus1: u8,
-) -> Result<(), ParseError> {
+) -> Result<Option<(u32, u32)>, ParseError> {
     // §7.3.5.1 general_timing_hrd_parameters().
-    let _num_units_in_tick = br.read_u(32)?;
-    let _time_scale = br.read_u(32)?;
+    let num_units_in_tick = br.read_u(32)?;
+    let time_scale = br.read_u(32)?;
     let general_nal_hrd_params_present_flag = br.read_bool()?;
     let general_vcl_hrd_params_present_flag = br.read_bool()?;
     let (general_du_hrd_params_present_flag, hrd_cpb_cnt_minus1) =
@@ -598,7 +607,13 @@ fn walk_timing_hrd_parameters(
             )?;
         }
     }
-    Ok(())
+    // Both values must be non-zero for a valid frame_rate ratio.
+    let timing = if num_units_in_tick > 0 && time_scale > 0 {
+        Some((num_units_in_tick, time_scale))
+    } else {
+        None
+    };
+    Ok(timing)
 }
 
 /// Walk `sublayer_hrd_parameters(subLayerId)` per §7.3.5.3.
@@ -647,12 +662,18 @@ fn walk_ref_pic_list_struct(
             true // implied when not signalled
         };
 
-    for _ in 0..num_ref_entries {
+    // useRefPicList[i]: True when entry i is NOT an inter-layer reference.
+    // Used to compute AbsDeltaPocSt per §7.4.9:
+    //   i == 0 OR useRefPicList[i-1] == 0  →  AbsDeltaPocSt = abs_delta_poc_st + 1
+    //   otherwise                            →  AbsDeltaPocSt = abs_delta_poc_st
+    let mut prev_use_ref_pic_list = false; // seeds the "i == 0" case below
+    for i in 0..num_ref_entries {
         let inter_layer_ref_pic_flag = if inter_layer_pred_enabled_flag {
             br.read_bool()?
         } else {
             false
         };
+        let use_ref_pic_list = !inter_layer_ref_pic_flag;
         if !inter_layer_ref_pic_flag {
             let st_ref_pic_flag = if long_term_ref_pics_flag {
                 br.read_bool()? // st_ref_pic_flag[listIdx][rplsIdx][i]
@@ -661,9 +682,20 @@ fn walk_ref_pic_list_struct(
             };
             if st_ref_pic_flag {
                 // Short-term entry: abs_delta_poc_st ue(v) +
-                // optional sign bit when abs_delta_poc_st > 0.
+                // sign bit when AbsDeltaPocSt > 0 per §7.4.9.
+                //
+                // AbsDeltaPocSt = abs_delta_poc_st + 1 when i==0 or the
+                // previous entry was an inter-layer ref (UseRefPicList[i-1]==0).
+                // The +1 means AbsDeltaPocSt is always ≥ 1 for i==0, so the
+                // sign bit is always present for the first entry even when
+                // abs_delta_poc_st == 0.
                 let abs_delta_poc_st = br.read_ue()?;
-                if abs_delta_poc_st > 0 {
+                let abs_delta_poc_st_semantics = if i == 0 || !prev_use_ref_pic_list {
+                    abs_delta_poc_st + 1
+                } else {
+                    abs_delta_poc_st
+                };
+                if abs_delta_poc_st_semantics > 0 {
                     let _strp_entry_sign_flag = br.read_bool()?;
                 }
             } else if ltrp_in_header_flag {
@@ -678,6 +710,7 @@ fn walk_ref_pic_list_struct(
             // Inter-layer ref-pic: ilrp_idx ue(v).
             let _ilrp_idx = br.read_ue()?;
         }
+        prev_use_ref_pic_list = use_ref_pic_list;
     }
     Ok(())
 }
@@ -1038,25 +1071,31 @@ mod tests {
         );
     }
 
+    /// Parse a real VVenC-encoded 320×240 @ 30fps SPS and verify the parser
+    /// walks the full body correctly (AbsDeltaPocSt fix, timing_hrd walk) so
+    /// that frame_rate is recovered from general_timing_hrd_parameters().
+    ///
+    /// This fixture has `sps_vui_parameters_present_flag = 0` (VVenC does not
+    /// emit VUI for this encoding profile), so `color_info` is `None`. The
+    /// primary goal is confirming the body walk lands at the correct bit
+    /// offset and `num_units_in_tick = 1, time_scale = 30`.
     #[test]
-    fn real_vvenc_sps_currently_returns_no_frame_rate_no_color() {
-        // Pre-Phase-4 baseline: the parser reads sps_id/vps_id, PTL,
-        // dimensions, conformance window, and bit-depth, then stops
-        // (the body between bit-depth and VUI is not yet walked). Real
-        // VVenC output therefore parses cleanly but surfaces
-        // frame_rate=None and color_info=None today. This test pins that
-        // baseline; the Phase 4 body-walk + VUI task will flip the
-        // frame_rate assertion to expect Some.
+    fn real_vvenc_sps_recovers_frame_rate_via_timing_hrd() {
         let rbsp =
             include_bytes!("../../../tests/fixtures/codec/h266/h266_320x240_main10_real_sps.bin");
-        let sps = parse_sps(rbsp).expect("real VVenC SPS should parse cleanly");
+        let sps = parse_sps(rbsp).expect("real VVenC SPS parses");
         assert_eq!(sps.width, 320);
         assert_eq!(sps.height, 240);
-        // Baseline: frame_rate is None today. Phase 4 task 4.4 will
-        // change this assertion to expect Some.
-        assert!(
-            sps.frame_rate.is_none(),
-            "Phase 4 baseline; rewrite when body walk lands"
+        assert_eq!(sps.chroma_format, ChromaFormat::Yuv420);
+        assert_eq!(sps.bit_depth_luma, 10);
+        let fr = sps.frame_rate.expect(
+            "general_timing_hrd_parameters should recover frame_rate from num_units=1 time_scale=30",
         );
+        // VVenC encodes num_units_in_tick=1, time_scale=30 → 30 fps.
+        let ratio = fr.num as f64 / fr.den as f64;
+        assert!((ratio - 30.0).abs() < 0.5, "frame_rate≈30; got {fr:?}");
+        // This fixture has no VUI (vui_parameters_present_flag=0 in VVenC output
+        // at this encoding profile), so color_info is None.
+        assert!(sps.color_info.is_none(), "VVenC fixture has no VUI in this profile");
     }
 }

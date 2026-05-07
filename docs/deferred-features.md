@@ -569,22 +569,12 @@ the trigger that would unblock it.
 
 ## `Listener::accept_timeout` — bounded blocking accept
 
-- **Status:** Not implemented. `Listener::set_recv_timeout` writes
-  `SRTO_RCVTIMEO` on the listener handle, but verification against
-  libsrt 1.5.5 (`srtcore/api.cpp::CUDTUnited::accept` ~line 1299) shows
-  the blocking accept calls `accept_sync.wait()` unconditionally —
-  `SRTO_RCVTIMEO` does NOT drive `srt_accept` blocking in this libsrt
-  version.
-- **Why deferred:** Implementing accept-with-timeout requires either
-  switching the listener to non-blocking (`SRTO_RCVSYN=0`) and using
-  `srt_epoll_wait`, or otherwise integrating the existing async-deferred
-  surface. Both are larger than this audit's scope.
-- **Trigger to revisit:** A consumer needs a bounded accept (e.g. for
-  graceful shutdown without a sentinel-thread workaround) AND has the
-  context to motivate exposing `srt_epoll_*` from `tst-srt`. Until
-  then, the documented workaround is "run accept on a dedicated thread,
-  call `Listener::close` from your shutdown path — that wakes the call
-  with `AcceptError::ListenerClosed`."
+- **Status:** Shipped in plan #30 (commit cf3233b).
+  `Listener::accept_timeout(Duration)` uses a one-shot `srt_epoll_wait`
+  to gate readiness, then calls `srt_accept` once a connection arrives or
+  returns `AcceptError::TimedOut` on expiry. `Listener::set_recv_timeout`
+  continues to apply only to *accepted* sockets, not to the accept call
+  itself — see `guide-srt.md` §Blocking semantics for the distinction.
 
 ## Errno-based error classification (`SrtErrno` minor codes)
 

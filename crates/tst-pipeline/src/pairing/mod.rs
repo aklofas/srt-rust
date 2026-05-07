@@ -446,3 +446,181 @@ mod tests {
         assert_eq!(p.stats(), PairerStats::default());
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+    use tst_core::mpegts::demux::{
+        MetadataKind, SamplePayload, StreamId, StreamKind, VideoCodec, VideoPayload,
+    };
+
+    const VIDEO_PID: u16 = 0x100;
+    const KLV_PID: u16 = 0x102;
+
+    #[derive(Debug, Clone)]
+    enum SyntheticEvent {
+        Video(i64),
+        Klv(i64),
+    }
+
+    fn to_demux_event(e: &SyntheticEvent) -> DemuxEvent {
+        match e {
+            SyntheticEvent::Video(pts) => DemuxEvent::Sample {
+                stream: StreamId {
+                    pid: VIDEO_PID,
+                    kind: StreamKind::Video(VideoCodec::H264),
+                },
+                pts: *pts,
+                dts: None,
+                payload: SamplePayload::Video {
+                    codec: VideoCodec::H264,
+                    payload: VideoPayload::Nals(Vec::new()),
+                },
+            },
+            SyntheticEvent::Klv(pts) => DemuxEvent::Metadata {
+                stream: StreamId {
+                    pid: KLV_PID,
+                    kind: StreamKind::KlvAsync,
+                },
+                pts: *pts,
+                kind: MetadataKind::KlvAsync,
+                payload: vec![0xAA],
+            },
+        }
+    }
+
+    fn arb_event() -> impl Strategy<Value = SyntheticEvent> {
+        prop_oneof![
+            (-1_000_000i64..1_000_000).prop_map(SyntheticEvent::Video),
+            (-1_000_000i64..1_000_000).prop_map(SyntheticEvent::Klv),
+        ]
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn nearest_realtime_conservation(events in proptest::collection::vec(arb_event(), 0..200)) {
+            let mut p = Pairer::nearest_pts(VIDEO_PID, KLV_PID, 1000, 16, MatchMode::Realtime);
+            let mut video_count = 0u64;
+            let mut klv_count = 0u64;
+            let mut paired = 0u64;
+            let mut unpaired_video = 0u64;
+            let mut unpaired_klv = 0u64;
+            for e in &events {
+                match e {
+                    SyntheticEvent::Video(_) => video_count += 1,
+                    SyntheticEvent::Klv(_) => klv_count += 1,
+                }
+                for o in p.feed(to_demux_event(e)) {
+                    match o {
+                        PairerOutput::Paired { .. } => paired += 1,
+                        PairerOutput::UnpairedVideo(_) => unpaired_video += 1,
+                        PairerOutput::UnpairedKlv(_) => unpaired_klv += 1,
+                        PairerOutput::PassThrough(_) => prop_assert!(false, "no pass-through expected"),
+                    }
+                }
+            }
+            for o in p.flush() {
+                match o {
+                    PairerOutput::Paired { .. } => paired += 1,
+                    PairerOutput::UnpairedVideo(_) => unpaired_video += 1,
+                    PairerOutput::UnpairedKlv(_) => unpaired_klv += 1,
+                    PairerOutput::PassThrough(_) => prop_assert!(false, "no pass-through expected"),
+                }
+            }
+            // Every video is accounted for: either paired or unpaired.
+            prop_assert_eq!(paired + unpaired_video, video_count);
+            // A single KLV entry can pair with multiple videos (marked
+            // used=true but kept in history). So paired > klv_count is
+            // possible; the tighter bound is unpaired_klv <= klv_count.
+            prop_assert!(unpaired_klv <= klv_count);
+        }
+
+        #[test]
+        fn nearest_buffered_conservation(events in proptest::collection::vec(arb_event(), 0..200)) {
+            let mut p = Pairer::nearest_pts(
+                VIDEO_PID,
+                KLV_PID,
+                1000,
+                16,
+                MatchMode::Buffered { max_video_buffer: 8 },
+            );
+            let mut video_count = 0u64;
+            let mut klv_count = 0u64;
+            let mut paired = 0u64;
+            let mut unpaired_video = 0u64;
+            let mut unpaired_klv = 0u64;
+            for e in &events {
+                match e {
+                    SyntheticEvent::Video(_) => video_count += 1,
+                    SyntheticEvent::Klv(_) => klv_count += 1,
+                }
+                for o in p.feed(to_demux_event(e)) {
+                    match o {
+                        PairerOutput::Paired { .. } => paired += 1,
+                        PairerOutput::UnpairedVideo(_) => unpaired_video += 1,
+                        PairerOutput::UnpairedKlv(_) => unpaired_klv += 1,
+                        PairerOutput::PassThrough(_) => prop_assert!(false, "no pass-through expected"),
+                    }
+                }
+            }
+            for o in p.flush() {
+                match o {
+                    PairerOutput::Paired { .. } => paired += 1,
+                    PairerOutput::UnpairedVideo(_) => unpaired_video += 1,
+                    PairerOutput::UnpairedKlv(_) => unpaired_klv += 1,
+                    PairerOutput::PassThrough(_) => prop_assert!(false, "no pass-through expected"),
+                }
+            }
+            // Every video is accounted for: either paired or unpaired.
+            prop_assert_eq!(paired + unpaired_video, video_count);
+            // A single KLV entry can pair with multiple videos (marked
+            // used=true but kept in history). So paired > klv_count is
+            // possible; the tighter bound is unpaired_klv <= klv_count.
+            prop_assert!(unpaired_klv <= klv_count);
+        }
+
+        #[test]
+        fn last_before_conservation(events in proptest::collection::vec(arb_event(), 0..200)) {
+            let mut p = Pairer::last_before_pts(VIDEO_PID, KLV_PID, None);
+            let mut video_count = 0u64;
+            let mut klv_count = 0u64;
+            let mut paired = 0u64;
+            let mut unpaired_video = 0u64;
+            let mut unpaired_klv = 0u64;
+            for e in &events {
+                match e {
+                    SyntheticEvent::Video(_) => video_count += 1,
+                    SyntheticEvent::Klv(_) => klv_count += 1,
+                }
+                for o in p.feed(to_demux_event(e)) {
+                    match o {
+                        PairerOutput::Paired { .. } => paired += 1,
+                        PairerOutput::UnpairedVideo(_) => unpaired_video += 1,
+                        PairerOutput::UnpairedKlv(_) => unpaired_klv += 1,
+                        PairerOutput::PassThrough(_) => prop_assert!(false, "no pass-through expected"),
+                    }
+                }
+            }
+            for o in p.flush() {
+                match o {
+                    PairerOutput::Paired { .. } => paired += 1,
+                    PairerOutput::UnpairedVideo(_) => unpaired_video += 1,
+                    PairerOutput::UnpairedKlv(_) => unpaired_klv += 1,
+                    PairerOutput::PassThrough(_) => prop_assert!(false, "no pass-through expected"),
+                }
+            }
+            // last_before paired_count == video_count requires every
+            // video to find a usable slot — which depends on KLV
+            // ordering. The conservation invariant still holds:
+            prop_assert_eq!(paired + unpaired_video, video_count);
+            // Note: a single KLV can be marked used by many video
+            // pairings before being displaced, so paired + unpaired_klv
+            // != klv_count in general (paired counts video events, not
+            // KLV events). The KLV-side invariant is tighter:
+            prop_assert!(unpaired_klv <= klv_count);
+        }
+    }
+}

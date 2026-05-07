@@ -959,3 +959,36 @@ the trigger that would unblock it.
   That plan's URL dispatch will reuse the existing `parse`
   function and route on `mode` to either the existing caller
   path or new listener / rendezvous paths.
+
+## Media over QUIC (MoQ) transport target
+
+- **Status:** Deferred. The only transport implementation is
+  `tst-srt::SrtTransport` over libsrt. The IETF MoQ Transport
+  draft (`draft-ietf-moq-transport`) and its MSFTS payload-
+  format extension (`draft-gregoire-moq-msfts`, which carries
+  MPEG-TS packets over MoQ) are not implemented and have no
+  scaffolding in the workspace.
+- **Why deferred:** Project scope is SRT-only by design. MoQ
+  Transport itself is still a working-group draft; MSFTS is
+  `draft-00`, Informational, individual submission, May 2026.
+  Both specs are too early to commit binding code to. No
+  consumer has asked for browser-reachable delivery, which is
+  the natural pull-through for a MoQ binding. The `Transport`
+  trait in `tst-pipeline` already cleanly decouples the SRT
+  crate from `tst-core`, so this remains an additive future
+  move rather than a refactor.
+- **Trigger to revisit:** Any of: (1) a consumer asks for
+  browser-side delivery that MoQ would enable; (2) MoQ
+  Transport reaches WGLC; (3) MSFTS publishes a `-01` revision
+  with metadata-stream / sidecar-data signaling (e.g. a
+  KLV-aware mapping) or picks up an ISR-aware co-author;
+  (4) ffmpeg or gstreamer ship a stable MoQ output that
+  becomes a de facto receiver target.
+- **Scope when added:** A new `tst-moq` crate parallel to
+  `tst-srt`, exposing `MoqTransport` / `MoqRecvTransport`
+  implementing the existing traits. Because MSFTS preserves
+  TS packets verbatim, the existing `tst-core` mux/demux
+  passes through unchanged — KLV-in-TS rides over MoQ
+  without codec or framing changes. A QUIC stack dependency
+  (likely `quinn`) is the main new build axis. URL surface
+  gets a `moq://` family alongside `srt://`.

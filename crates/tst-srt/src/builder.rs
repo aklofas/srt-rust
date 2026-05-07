@@ -150,6 +150,32 @@ impl SocketBuilder {
         self
     }
 
+    /// Apply live-streaming sender defaults — `connect_timeout=15s`,
+    /// `linger=5s`, `role=MuxSender`. Preserves any fields the caller has
+    /// already set explicitly (merge-if-default semantics — order-independent).
+    ///
+    /// ```
+    /// # use tst_srt::{Socket, SocketBuilder};
+    /// # use tst_srt::options::Passphrase;
+    /// # let passphrase = Passphrase::new("secretsecretsecret").unwrap();
+    /// let builder = SocketBuilder::new()
+    ///     .sender_defaults()
+    ///     .passphrase(passphrase);
+    /// // builder.connect("host:port")?
+    /// ```
+    pub fn sender_defaults(mut self) -> Self {
+        self.config.merge_sender_defaults();
+        self
+    }
+
+    /// Apply live-streaming receiver defaults — `connect_timeout=15s`,
+    /// `role=DemuxReceiver`. Preserves any fields the caller has already
+    /// set explicitly (merge-if-default semantics — order-independent).
+    pub fn receiver_defaults(mut self) -> Self {
+        self.config.merge_receiver_defaults();
+        self
+    }
+
     /// Reach the underlying config (for inspection, copying, FFI marshaling).
     pub fn config(self) -> SocketConfig {
         self.config
@@ -305,5 +331,67 @@ mod tests {
         let too_long = "a".repeat(513);
         let result = SocketBuilder::new().try_stream_id(too_long.as_str());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn builder_sender_defaults_matches_config_sender_defaults() {
+        let from_builder = SocketBuilder::new().sender_defaults().config();
+        let from_struct = SocketConfig::sender_defaults();
+        assert_eq!(from_builder.connect_timeout, from_struct.connect_timeout);
+        assert_eq!(from_builder.linger, from_struct.linger);
+        assert_eq!(from_builder.role, from_struct.role);
+    }
+
+    #[test]
+    fn builder_sender_defaults_then_override() {
+        // Preset applied first, explicit setter wins (last-write).
+        let cfg = SocketBuilder::new()
+            .sender_defaults()
+            .connect_timeout(Duration::from_secs(7))
+            .config();
+        assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(7)));
+        assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
+        assert_eq!(cfg.role, Role::MuxSender);
+    }
+
+    #[test]
+    fn builder_explicit_then_sender_defaults_preserves_explicit() {
+        // Explicit setter first, preset doesn't clobber (merge-if-default).
+        let cfg = SocketBuilder::new()
+            .connect_timeout(Duration::from_secs(7))
+            .sender_defaults()
+            .config();
+        assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(7)));
+        assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
+        assert_eq!(cfg.role, Role::MuxSender);
+    }
+
+    #[test]
+    fn builder_receiver_defaults_matches_config_receiver_defaults() {
+        let from_builder = SocketBuilder::new().receiver_defaults().config();
+        let from_struct = SocketConfig::receiver_defaults();
+        assert_eq!(from_builder.connect_timeout, from_struct.connect_timeout);
+        assert_eq!(from_builder.linger, from_struct.linger);
+        assert_eq!(from_builder.role, from_struct.role);
+    }
+
+    #[test]
+    fn builder_receiver_defaults_then_override() {
+        let cfg = SocketBuilder::new()
+            .receiver_defaults()
+            .connect_timeout(Duration::from_secs(7))
+            .config();
+        assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(7)));
+        assert_eq!(cfg.role, Role::DemuxReceiver);
+    }
+
+    #[test]
+    fn builder_explicit_then_receiver_defaults_preserves_explicit() {
+        let cfg = SocketBuilder::new()
+            .role(Role::MuxSender)
+            .receiver_defaults()
+            .config();
+        assert_eq!(cfg.role, Role::MuxSender);
+        assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
     }
 }

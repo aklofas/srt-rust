@@ -361,4 +361,88 @@ mod tests {
         let out = p.feed(a);
         assert!(matches!(&out[0], PairerOutput::PassThrough(_)));
     }
+
+    fn make_pairer_stats() -> Pairer {
+        Pairer::nearest_pts(VIDEO_PID, KLV_PID, 100, 4, MatchMode::Realtime)
+    }
+
+    fn klv_async_event(pid: u16, pts: i64) -> DemuxEvent {
+        DemuxEvent::Metadata {
+            stream: StreamId { pid, kind: StreamKind::KlvAsync },
+            pts,
+            kind: MetadataKind::KlvAsync,
+            payload: vec![0xAA],
+        }
+    }
+
+    fn video_event_for_stats(pts: i64) -> DemuxEvent {
+        DemuxEvent::Sample {
+            stream: StreamId {
+                pid: VIDEO_PID,
+                kind: StreamKind::Video(VideoCodec::H264),
+            },
+            pts,
+            dts: None,
+            payload: SamplePayload::Video {
+                codec: VideoCodec::H264,
+                payload: VideoPayload::Nals(Vec::new()),
+            },
+        }
+    }
+
+    #[test]
+    fn stats_starts_zero() {
+        let p = make_pairer_stats();
+        let s = p.stats();
+        assert_eq!(s, PairerStats::default());
+    }
+
+    #[test]
+    fn stats_increments_paired_and_unpaired_video() {
+        let mut p = make_pairer_stats();
+        let _ = p.feed(klv_async_event(KLV_PID, 0));
+        let _ = p.feed(video_event_for_stats(0));     // Paired
+        let _ = p.feed(video_event_for_stats(10_000)); // UnpairedVideo (no KLV in window)
+        let s = p.stats();
+        assert_eq!(s.paired, 1);
+        assert_eq!(s.unpaired_video, 1);
+    }
+
+    #[test]
+    fn stats_increments_unpaired_klv_on_eviction_and_flush() {
+        let mut p = make_pairer_stats();
+        // Fill history with 5 unused KLVs; max=4 so 1 evicts.
+        for pts in [0, 10, 20, 30, 40] {
+            let _ = p.feed(klv_async_event(KLV_PID, pts));
+        }
+        let s_after_evict = p.stats();
+        assert_eq!(s_after_evict.unpaired_klv, 1);
+        // Flush emits the remaining 4 unused.
+        let _ = p.flush();
+        let s_after_flush = p.stats();
+        assert_eq!(s_after_flush.unpaired_klv, 5);
+    }
+
+    #[test]
+    fn stats_increments_pass_through() {
+        let mut p = make_pairer_stats();
+        let pmt = DemuxEvent::ProgramMap(ProgramMap {
+            program_number: 1,
+            pcr_pid: VIDEO_PID,
+            streams: Vec::new(),
+            klv_links: Vec::new(),
+        });
+        let _ = p.feed(pmt);
+        let s = p.stats();
+        assert_eq!(s.pass_through, 1);
+    }
+
+    #[test]
+    fn reset_stats_zeros_all_counters() {
+        let mut p = make_pairer_stats();
+        let _ = p.feed(klv_async_event(KLV_PID, 0));
+        let _ = p.feed(video_event_for_stats(0));
+        p.reset_stats();
+        assert_eq!(p.stats(), PairerStats::default());
+    }
 }

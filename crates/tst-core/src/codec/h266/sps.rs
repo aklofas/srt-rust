@@ -400,4 +400,26 @@ mod tests {
             "expected ReservedValue, got {result:?}"
         );
     }
+
+    #[test]
+    fn real_vvenc_sps_currently_returns_no_frame_rate_no_color() {
+        // Pre-Phase-4 baseline: the parser reads sps_id/vps_id, PTL,
+        // dimensions, conformance window, and bit-depth, then stops
+        // (the body between bit-depth and VUI is not yet walked). Real
+        // VVenC output therefore parses cleanly but surfaces
+        // frame_rate=None and color_info=None today. This test pins that
+        // baseline; the Phase 4 body-walk + VUI task will flip the
+        // frame_rate assertion to expect Some.
+        let rbsp =
+            include_bytes!("../../../tests/fixtures/codec/h266/h266_320x240_main10_real_sps.bin");
+        let sps = parse_sps(rbsp).expect("real VVenC SPS should parse cleanly");
+        assert_eq!(sps.width, 320);
+        assert_eq!(sps.height, 240);
+        // Baseline: frame_rate is None today. Phase 4 task 4.4 will
+        // change this assertion to expect Some.
+        assert!(
+            sps.frame_rate.is_none(),
+            "Phase 4 baseline; rewrite when body walk lands"
+        );
+    }
 }

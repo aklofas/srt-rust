@@ -653,6 +653,27 @@ Codec-specific audio descriptors (AC-3 audio descriptor 0x6A, AAC
 audio descriptor 0x7C) are not pre-built — assemble via
 `user_private_with_tag(tag, payload)` if needed.
 
+### AC-3 registration descriptor
+
+`AudioCodec::Ac3` streams auto-emit a `registration_descriptor` with
+`format_identifier = "AC-3"` per ATSC A/53 Part 3 §5.1 — without it,
+strict ATSC consumers (ffmpeg, GStreamer, TSDuck) may fall back to
+probing or misclassify the stream. The auto-emit mirrors the KLVA /
+AV01 precedent:
+
+- Suppressed when the caller has already supplied a tag-0x05
+  Registration with `format_identifier = "AC-3"` via
+  `stream_descriptors_for_audio` (no duplicate emit).
+- Caller-supplied non-AC-3 Registration on an AC-3 PID logs a
+  `tracing::warn!` and is left as-is — the caller's intent
+  (e.g. routing to a custom DVB-shaped AC-3 path) wins. This
+  differs from AV01, where the AV1-in-MPEG-2-TS binding §2.1
+  hard-requires the AV01 marker for receiver classification; AC-3
+  on `stream_type 0x81` can be classified without the descriptor.
+
+DVB-shaped AC-3 (`stream_type 0x06` + DVB AC-3 descriptor `0x6A`)
+remains a separate path; see `deferred-features.md`.
+
 ## Subtitle output
 
 The muxer emits four subtitle / caption codecs as separate

@@ -3,6 +3,8 @@
 //!
 //! Pinned against MISB ST 0102.12 §6.7 Table 2.
 
+#![allow(dead_code)]
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Encoding {
     /// Raw 1-byte typed enum codepoint (Tags 1, 2, 12).

@@ -399,6 +399,12 @@ pub(crate) const TAGS: &[TagSpec] = &[
         range: None,
     },
     TagSpec {
+        id: 74,
+        name: "VMTI Local Set",
+        encoding: Encoding::RawBytes,
+        range: None,
+    },
+    TagSpec {
         id: 75,
         name: "Sensor Ellipsoid Height",
         encoding: Encoding::U16Range,

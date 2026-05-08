@@ -97,6 +97,12 @@ pub struct UasDatalinkLs {
     // Misc
     pub generic_flag_data: Option<u8>,
     pub security_local_set: Option<Vec<u8>>,
+    /// Tag 74 — VMTI Local Set (MISB ST 0903). Pass-through bytes;
+    /// consumers needing typed access call `klv::st0903::decode` on
+    /// `vmti.as_deref()?`. See `klv::st0903` for the typed layer.
+    /// Sibling-layer pattern matches `security_local_set` (Tag 48 →
+    /// `klv::st0102`).
+    pub vmti: Option<Vec<u8>>,
 
     // Pass-through
     pub unknown: Vec<OwnedRawField>,
@@ -156,6 +162,7 @@ impl Default for UasDatalinkLs {
             corner_lon_p4_deg: None,
             generic_flag_data: None,
             security_local_set: None,
+            vmti: None,
             unknown: Vec::new(),
             field_errors: Vec::new(),
         }
@@ -430,6 +437,7 @@ fn each_typed_field<F: FnMut(u8, usize)>(
                 .uas_ls_version
                 .map(|_| 1)
                 .or(if auto_version { Some(1) } else { None }),
+            74 => record.vmti.as_ref().map(|v| v.len()),
             82 => record.corner_lat_p1_deg.map(|_| 4),
             83 => record.corner_lon_p1_deg.map(|_| 4),
             84 => record.corner_lat_p2_deg.map(|_| 4),
@@ -532,6 +540,7 @@ fn write_typed_fields(
                     None
                 }
             }
+            74 => record.vmti.clone(),
             82 => encode_ranged(record.corner_lat_p1_deg, spec, &mut scratch)?,
             83 => encode_ranged(record.corner_lon_p1_deg, spec, &mut scratch)?,
             84 => encode_ranged(record.corner_lat_p2_deg, spec, &mut scratch)?,
@@ -823,6 +832,7 @@ fn apply_typed_tag(
         }
         Encoding::RawBytes => match tag {
             48 => record.security_local_set = Some(f.value.to_vec()),
+            74 => record.vmti = Some(f.value.to_vec()),
             _ => unreachable!(),
         },
         Encoding::U8Range
@@ -1359,6 +1369,28 @@ mod tests {
     }
 
     #[test]
+    fn vmti_tag_74_round_trips_verbatim() {
+        // Tag 74 (VMTI Local Set per MISB ST 0903) is carried as
+        // pass-through bytes on the typed `vmti` field. The parent
+        // ST 0601 decoder does not recurse into the VMTI inner schema;
+        // consumers compose `klv::st0903::decode` themselves. Sibling-
+        // layer pattern matches `security_local_set` (Tag 48 → ST 0102).
+        let payload = vec![0xDE, 0xAD, 0xBE, 0xEF];
+        let record = UasDatalinkLs {
+            timestamp_us: Some(1_700_000_000_000_000),
+            vmti: Some(payload.clone()),
+            ..Default::default()
+        };
+        let buf = encode_to_vec(&record).unwrap();
+        let back = decode(&buf).unwrap();
+        assert_eq!(
+            back.vmti.as_deref(),
+            Some(payload.as_slice()),
+            "Tag 74 should round-trip on the typed vmti field byte-for-byte"
+        );
+    }
+
+    #[test]
     fn every_typed_tag_round_trips() {
         // For every TagSpec in TAGS, set its corresponding field in
         // UasDatalinkLs to a sentinel value, encode the record, decode
@@ -1390,6 +1422,7 @@ mod tests {
                 48 => record.security_local_set = Some(vec![0x01, 0x02]),
                 50 => record.platform_call_sign = Some("CS".to_string()),
                 65 => record.uas_ls_version = Some(0x13),
+                74 => record.vmti = Some(vec![0xDE, 0xAD, 0xBE, 0xEF]),
                 _ => {
                     // Ranged numeric: pick a value at the midpoint of the spec range.
                     let r = spec.range.expect("ranged tag has range");
@@ -1426,6 +1459,7 @@ mod tests {
                 48 => back.security_local_set.is_some(),
                 50 => back.platform_call_sign.is_some(),
                 65 => back.uas_ls_version.is_some(),
+                74 => back.vmti.is_some(),
                 2 => back.timestamp_us.is_some(),
                 _ => {
                     // For ranged numeric, presence == any of our ranged fields is set.

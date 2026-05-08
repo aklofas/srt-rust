@@ -405,4 +405,16 @@ pub enum DemuxError {
     /// reassembler from making any forward progress.
     #[error("malformed PES header at PID 0x{pid:04X}: {reason}")]
     MalformedPes { pid: u16, reason: &'static str },
+
+    /// The demuxer's pre-sync buffer (`Demuxer::sync_buf`) exceeded its
+    /// hard ceiling. Fired when a peer feeds bytes with no 0x47 sync byte
+    /// faster than the sync-search window can scan them — `feed` runs
+    /// `extend_from_slice` up front, so a single oversized call would
+    /// otherwise allocate the whole input before the per-loop window
+    /// check could bail. The cap matches ffmpeg's `MpegTSSectionFilter`
+    /// (4 MiB). On this error the demuxer drops `sync_buf` to release the
+    /// adversarial bytes; the caller's only sane response is to teardown
+    /// the demuxer or accept that subsequent reads will not align.
+    #[error("demuxer sync buffer exhausted: {observed} bytes exceeds {max} byte ceiling")]
+    SyncBufExhausted { observed: usize, max: usize },
 }

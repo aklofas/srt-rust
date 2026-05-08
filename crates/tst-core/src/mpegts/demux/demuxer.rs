@@ -61,6 +61,15 @@ const DEFAULT_PES_CAP_TOTAL: usize = 64 * 1024 * 1024;
 /// the stream unrecoverable.
 const SYNC_SEARCH_WINDOW: usize = 188 * 32;
 
+/// Hard ceiling on `Demuxer::sync_buf`. `feed` always runs
+/// `extend_from_slice` before the inner sync-search-window check fires,
+/// so an oversized single-call feed (multi-GB of garbage) would otherwise
+/// allocate the whole input before the loop got to bail. The 4 MiB cap
+/// matches ffmpeg's `MpegTSSectionFilter` ceiling and is comfortably
+/// larger than `SYNC_SEARCH_WINDOW` (~6 KiB), so well-formed streams are
+/// unaffected.
+const MAX_SYNC_BUF_BYTES: usize = 4 << 20;
+
 /// PCR jump threshold beyond which we emit `PcrAnomaly`. 1 second @ 27 MHz.
 const PCR_ANOMALY_THRESHOLD: i64 = 27_000_000;
 
@@ -218,6 +227,24 @@ impl Demuxer {
     /// structured issue alongside the human-readable error string.
     pub fn feed(&mut self, bytes: &[u8]) -> Result<(), DemuxError> {
         self.sync_buf.extend_from_slice(bytes);
+        // Enforce the hard ceiling immediately — the inner sync-search-window
+        // check below only fires per loop iteration, but the `extend_from_slice`
+        // above has already allocated the entire input. A single oversized
+        // adversarial feed must be rejected before we walk the buffer.
+        if self.sync_buf.len() > MAX_SYNC_BUF_BYTES {
+            let observed = self.sync_buf.len();
+            // Defensive: once the cap is exceeded, the parser is in a known-bad
+            // state and we should release the adversarial bytes. Subsequent
+            // feed calls will start from an empty buffer; if the peer is still
+            // hostile, they'll trip the cap again. The caller's only sane
+            // response is to teardown the demuxer.
+            self.sync_buf.clear();
+            self.sync_consumed = 0;
+            return Err(DemuxError::SyncBufExhausted {
+                observed,
+                max: MAX_SYNC_BUF_BYTES,
+            });
+        }
         loop {
             let live = &self.sync_buf[self.sync_consumed..];
             if live.len() < 188 {

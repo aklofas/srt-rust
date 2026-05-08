@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/srt_transport.rs
 //! `SrtTransport` — the canonical `Transport` impl backed by a `srt::Socket`.
 //!
 //! Wraps the safe-Rust `Socket` and translates `SendError` to the

@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/demux_receiver.rs
 //! `DemuxReceiver<R>` — full receive: RecvTransport → Receiver → Demuxer.
 //!
 //! Mirrors the `MuxSender` shape on the receive side. Includes

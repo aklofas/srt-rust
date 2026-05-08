@@ -1,4 +1,3 @@
-// crates/srt-core/src/mpegts/demux/demuxer.rs
 //! Top-level `Demuxer` state machine.
 
 use crate::error::DemuxError;

@@ -1,4 +1,3 @@
-// crates/srt-core/tests/pipeline_receiver.rs
 //! Pipeline integration: drive `DemuxReceiver` with an in-memory `CannedTransport`.
 //!
 //! These tests verify the composition layer rather than the mux or demux

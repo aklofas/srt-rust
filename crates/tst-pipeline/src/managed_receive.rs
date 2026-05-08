@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/managed_receive.rs
 //! `ManagedReceiveTransport<R>` — reconnect on receive break.
 //!
 //! Sibling to [`ManagedTransport`][crate::reconnect::ManagedTransport]:

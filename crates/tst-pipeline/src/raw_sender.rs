@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/raw_sender.rs
 //! `RawSender<T: Transport>` — one-shot byte-blind sender.
 //!
 //! Each `send` call sends exactly one outbound message of the given

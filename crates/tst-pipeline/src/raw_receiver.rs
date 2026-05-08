@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/raw_receiver.rs
 //! `RawReceiver<R>` — return one owned byte vec per recv, no TS framing.
 //!
 //! This is the simplest receive shell: one `recv_one` call blocks until a

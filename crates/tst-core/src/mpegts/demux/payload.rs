@@ -1,4 +1,3 @@
-// crates/srt-core/src/mpegts/demux/payload.rs
 //! ES payload parsers: H.264 / H.265 NAL split, KLV unwrap.
 
 use crate::codec::av1::leb128::read_leb128;

@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/sender/mod.rs
 //! `Sender<T: Transport>` — pre-muxed TS bytes → SRT, with framing.
 //!
 //! See `framing.rs` for the sync-acquisition / loss-detection state

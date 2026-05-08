@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/reconnect/mod.rs
 //! `ManagedTransport<T>` — Transport decorator with reconnect + gap buffer.
 //!
 //! Wraps any inner Transport (most commonly `SrtTransport`); on send

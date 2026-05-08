@@ -1,4 +1,3 @@
-// crates/srt-core/src/mpegts/demux/pes.rs
 //! Per-PID PES reassembly.
 //!
 //! Drive with `Reassembler::push(pid, payload, pusi)` for each TS packet.

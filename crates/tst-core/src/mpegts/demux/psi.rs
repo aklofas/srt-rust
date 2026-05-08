@@ -1,4 +1,3 @@
-// crates/srt-core/src/mpegts/demux/psi.rs
 //! Program-specific information (PAT, PMT, descriptors).
 
 use crate::mpegts::common::crc32::crc32_mpeg2;

@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/mux_sender.rs
 //! `MuxSender<T: Transport>` — composes `mpegts::mux::Muxer` with a
 //! `Transport` for the canonical NAL+KLV → TS → SRT send path.
 //!

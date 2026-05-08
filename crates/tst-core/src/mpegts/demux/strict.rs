@@ -1,4 +1,3 @@
-// crates/srt-core/src/mpegts/demux/strict.rs
 //! `StrictMode` — turns `NonConformant` events into hard errors per category.
 
 use crate::mpegts::demux::event::NonConformantIssue;

@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/sender/framing.rs
 //! TS sync-acquisition and loss-of-sync recovery state machine.
 //!
 //! Standalone — no transport dependency. Caller pushes arbitrary-aligned

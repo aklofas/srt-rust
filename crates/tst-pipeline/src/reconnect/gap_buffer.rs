@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/reconnect/gap_buffer.rs
 //! Fixed-capacity ring buffer of outbound messages, used by
 //! `ManagedTransport` to hold messages that couldn't be sent during a
 //! transport outage.

@@ -1,4 +1,3 @@
-// crates/srt-core/src/mpegts/demux/mod.rs
 //! DemuxReceiver-side MPEG-TS demuxer.
 //!
 //! Drive a [`Demuxer`] with 188-byte TS packets (or arbitrary bytes that

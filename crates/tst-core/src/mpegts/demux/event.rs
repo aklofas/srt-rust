@@ -1,4 +1,3 @@
-// crates/srt-core/src/mpegts/demux/event.rs
 //! Public event types emitted by `Demuxer`.
 //!
 //! Independent of the demuxer's internal state — these are the types

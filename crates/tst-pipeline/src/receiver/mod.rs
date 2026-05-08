@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/receiver/mod.rs
 //! `Receiver<R>` — pull bytes from a `RecvTransport`, run TS sync recovery,
 //! and emit 188-byte aligned packets.
 //!

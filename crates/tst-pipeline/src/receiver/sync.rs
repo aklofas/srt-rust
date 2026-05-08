@@ -1,4 +1,3 @@
-// crates/srt-core/src/pipeline/receiver/sync.rs
 //! TS sync state machine. Locks on the 0x47 sync byte spaced 188 bytes apart.
 //!
 //! ## States

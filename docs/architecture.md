@@ -47,21 +47,34 @@ are deliberate, separate commits. Both vendored builds link statically,
 so `tst-c`'s shared library has no runtime dependency on a system libsrt
 or libmbedtls.
 
-## Inside `tst-core`: four modules, four jobs
+## Inside `tst-core`: four modules
 
-- `srt::*` — safe wrapper for libsrt sockets and listeners.
-- `klv::*` — KLV codec, generic substrate plus typed ST 0601 / ST 0605 / ST 0102 (sibling-layer Security LS) / ST 0903 (sibling-layer VMTI LS — top-level + per-target `VTargetPack`; nested LSes pass-through) / ST 1910 layers.
-- `mpegts::mux::*` — sender-side MPEG-TS muxer for H.264 / H.265 + KLV.
+- `klv::*` — KLV codec, generic substrate plus typed ST 0601 / ST 0605 / ST 0102 (sibling-layer Security LS) / ST 0903 (sibling-layer VMTI LS — top-level + per-target `VTargetPack`; nested LSes pass-through) layers.
+- `mpegts::mux::*` — sender-side MPEG-TS muxer for H.264 / H.265 / H.266 / AV1 video + audio (MP2 / AAC ADTS / AAC LATM / AC-3) + subtitles (DVB-sub / DVB-teletext / CEA-708 / WebVTT-in-TS) + KLV.
 - `mpegts::demux::*` — receiver-side MPEG-TS demuxer; bytes in, typed `DemuxEvent` out.
-- `pipeline::*` — composition of the above into ergonomic sender + receiver shells.
+- `codec::*` — typed parameter-set parsers for H.264 / H.265 / H.266 / AV1 plus audio frame iterators for `mpegaudio` / `aac::adts`.
 
 Each module is independently usable. A consumer who only needs KLV decode
 can pull in `tst-core` and use `klv::st0601::decode` without touching the
 muxer or transport. A consumer who already has their own TS muxer can
 skip `mpegts::mux` and feed bytes through `tst_pipeline::Sender`. A
 consumer who only wants the SRT socket — for an entirely different
-streaming protocol on top — can use `srt::Socket` and `srt::Listener`
+streaming protocol on top — can use `tst_srt::Socket` and `tst_srt::Listener`
 directly.
+
+## Inside `tst-srt`
+
+The SRT-specific surface lives in its own crate so `tst-core` stays
+free of any libsrt dependency. `tst-srt` re-exports the safe wrappers
+at the crate root: `Socket` / `Listener` (connected and listening
+sockets), `SocketBuilder` / `ListenerBuilder` (fluent construction over
+`SocketConfig` / `ListenerConfig`), `SrtTransport` (the canonical
+`Transport` + `RecvTransport` impl), `CancelHandle` (one-shot
+pre-emptive close), and `Stats` (live snapshot of libsrt's internal
+counters). The `url::SrtUrl` type parses `srt://host:port?key=value&…`
+into a builder overlay using libsrt's documented option vocabulary,
+and `addr::*` handles IPv4 / IPv6 sockaddr marshalling. See
+[guide-srt.md](guide-srt.md) for the full surface.
 
 `tst-pipeline` is the composition layer that depends on the other crates.
 It is deliberately thin: its job is composition, not new behaviour. The
@@ -72,7 +85,7 @@ implementation. Metadata typing for both directions is `klv::st0601` /
 `klv::st0605`. MPEG-TS sync-metadata AU cell carriage lives at
 `mpegts::au_cell` (per ITU-T H.222.0 V9 § 2.12.4.2). The canonical
 `Transport` + `RecvTransport` impl is `SrtTransport` in `tst-srt` over
-`srt::Socket` — the same wrapper handles both directions on a connected
+`tst_srt::Socket` — the same wrapper handles both directions on a connected
 socket. The opt-in `pipeline::pairing` module ships a stateful `Pairer` for
 KLV ↔ video pairing — see `docs/guide-pipeline.md` for the
 nearest-PTS / sample-and-hold strategy chooser.
@@ -175,7 +188,7 @@ reassembly + NAL split + KLV unwrap). All three are generic over the
 `RecvTransport` trait — the receive-side counterpart to `Transport`,
 exposing `recv_bytes`, `max_payload`, `is_alive`, and `close`.
 `SrtTransport` implements both `Transport` and `RecvTransport`, so the
-same wrapper handles both directions on a connected `srt::Socket`.
+same wrapper handles both directions on a connected `tst_srt::Socket`.
 
 `DemuxReceiver` is the canonical full-demux shell. It composes
 `Receiver → Demuxer` internally and exposes a single `recv_event`
@@ -251,15 +264,14 @@ producing.
 The summary below points at the canonical list once; each item maps to
 an entry in [`docs/deferred-features.md`](deferred-features.md).
 
-- Audio carriage in `mpegts::mux` and typed audio in `mpegts::demux` — video + KLV only today; `SamplePayload::Audio` reserved for additive lift.
-- Subtitle, caption, and auxiliary-data channels — same shape as audio; `SamplePayload::Subtitle` reserved.
 - AV1 / H.266 carriage ships; explicit non-goals remain — full AV1 Frame Header (decoder-scope), AV1 multi-OP, `AV1_video_descriptor`, AVIF helper, H.266 APS / Picture Header NAL parsing, multi-layer H.266, `stream_type 0x32`, AV1 on `0x80`.
-- Multi-program TS in `mpegts::demux` — single PMT only today; `ProgramMap.program_number` carries the number for additive lift.
-- `pipeline::pairing` — opt-in convenience pairing utility; cookbook recipes 12–14 are the canonical patterns until consumers ask for shared substrate.
+- Audio frame parsers — `codec::mpegaudio` (Layer I/II/III) and `codec::aac::adts` ship; LATM (`codec::aac::latm`) and AC-3 (`codec::ac3`) are still deferred.
 - Reactor / async / `srt_epoll_*` — see the sync-vs-async section above.
 - Bonding / connection groups (`SRTO_GROUP*`) — no consumer demand.
-- Other typed MISB sets — ST 0903 VMTI, ST 0806, ST 0102 typed view; pass-through today.
+- Other typed MISB sets — ST 0102 (Security LS) and ST 0903 (top-level VMTI + per-target `VTargetPack`) ship as sibling-layer typed views over the substrate; nested VMTI sets (VMask / VTracker / VChip / Algorithm Series / Ontology Series) and ST 0806 RVT remain pass-through.
+- Owned-projection variants on borrowed iterator types — `VTargetSeriesIter`, `KlvIterator`, and the indexed NAL iterator are borrow-coupled today; cross-language wrappability needs owned-by-value variants.
 - `serde` / `no_std` for `klv` — pure additive; behind feature flags when added.
+- Receiver-side C ABI in `tst-c` — sender pipeline ships today; receiver surface (demux events, byte sinks, multi-program demux) is the next binding deliverable.
 - Rustdoc lift to docs.rs — these markdown files are written CommonMark-clean so the lift is mechanical when scheduled.
 
 See [`docs/deferred-features.md`](deferred-features.md) for the

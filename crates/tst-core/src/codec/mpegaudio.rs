@@ -141,6 +141,31 @@ pub(crate) fn decode_bitrate(version: Version, layer: Layer, bitrate_index: u8) 
     Ok(BITRATE_TABLE[col][bitrate_index as usize])
 }
 
+// Sample rate table per ISO 11172-3 §2.4.2.3 Table 9 + ISO 13818-3 Table 6.
+// Indexed by [version][sample_rate_index]. Index 3 = reserved.
+#[allow(dead_code)]
+const SAMPLE_RATE_TABLE: [[u32; 4]; 3] = [
+    [44100, 48000, 32000, 0], // MPEG-1
+    [22050, 24000, 16000, 0], // MPEG-2
+    [11025, 12000, 8000,  0], // MPEG-2.5
+];
+
+/// Decode sample rate (Hz) from `(version, sample_rate_index)`.
+///
+/// Errors: `ReservedValue { field: "sample_rate_index", value: 3 }`.
+#[allow(dead_code)]
+pub(crate) fn decode_sample_rate(version: Version, sample_rate_index: u8) -> Result<u32, ParseError> {
+    if sample_rate_index == 3 {
+        return Err(ParseError::ReservedValue { field: "sample_rate_index", value: 3 });
+    }
+    let row = match version {
+        Version::Mpeg1 => 0,
+        Version::Mpeg2 => 1,
+        Version::Mpeg2_5 => 2,
+    };
+    Ok(SAMPLE_RATE_TABLE[row][sample_rate_index as usize])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,5 +192,22 @@ mod tests {
     fn bitrate_index15_is_forbidden() {
         let err = decode_bitrate(Version::Mpeg1, Layer::I, 15).unwrap_err();
         assert!(matches!(err, ParseError::Forbidden { field } if field == "bitrate_index"));
+    }
+    #[test]
+    fn sample_rate_v1_index0_is_44100() {
+        assert_eq!(decode_sample_rate(Version::Mpeg1, 0).unwrap(), 44100);
+    }
+    #[test]
+    fn sample_rate_v2_index0_is_22050() {
+        assert_eq!(decode_sample_rate(Version::Mpeg2, 0).unwrap(), 22050);
+    }
+    #[test]
+    fn sample_rate_v25_index0_is_11025() {
+        assert_eq!(decode_sample_rate(Version::Mpeg2_5, 0).unwrap(), 11025);
+    }
+    #[test]
+    fn sample_rate_index3_is_reserved() {
+        let err = decode_sample_rate(Version::Mpeg1, 3).unwrap_err();
+        assert!(matches!(err, ParseError::ReservedValue { field, value: 3 } if field == "sample_rate_index"));
     }
 }

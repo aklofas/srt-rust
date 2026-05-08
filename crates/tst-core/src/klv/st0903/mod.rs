@@ -238,22 +238,34 @@ pub fn decode(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
                 }
             }
             Encoding::ImapbF64 { min, max } => {
+                // Top-level Tags 11 + 12 (Horizontal/Vertical FOV) are
+                // IMAPB(0, 180, 2) per ST 0903.6 §10.1.11 + §10.1.12 —
+                // both fixed length 2. Hardcode length=2 to (a) prevent
+                // the imapb substrate's length-0 panic on malformed
+                // wire input (`read_signed_be(&[])` underflows
+                // `n*8-1` when `n==0`) and (b) match the spec's wire
+                // shape. Mirrors the per-tag hardcoded-length pattern
+                // in `vtarget_pack::decode_field`.
+                let expected_len = 2;
+                if value.len() != expected_len {
+                    ls.field_errors.push(KlvFieldError::InvalidLength {
+                        tag: tag as u32,
+                        expected: expected_len,
+                        got: value.len(),
+                    });
+                    continue;
+                }
                 let params = ImapbParams {
                     min,
                     max,
-                    length: value.len(),
+                    length: expected_len,
                 };
-                // `decode_imapb` only fails on a length mismatch
-                // between `params.length` and `bytes.len()`; we set
-                // them equal here, so this is defensive (covers any
-                // future tightening of the IMAPB substrate). Surface
-                // a generic per-tag length error if it ever fires.
                 let v = match decode_imapb(&params, value) {
                     Ok(v) => v,
                     Err(_) => {
                         ls.field_errors.push(KlvFieldError::InvalidLength {
                             tag: tag as u32,
-                            expected: value.len(),
+                            expected: expected_len,
                             got: value.len(),
                         });
                         continue;
@@ -481,5 +493,40 @@ mod tests {
         assert_eq!(ls.algorithm_series.as_deref(), Some(&[0xDEu8, 0xAD][..]));
         assert_eq!(ls.ontology_series.as_deref(), Some(&[0xBEu8, 0xEF][..]));
         assert_eq!(ls.miis_id.as_deref(), Some(&[0xCAu8, 0xFE, 0x00][..]));
+    }
+
+    #[test]
+    fn decode_zero_length_imapb_does_not_panic() {
+        // Regression: Tag 11 with BER length 0 must surface
+        // InvalidLength in field_errors, not panic. Without the
+        // hardcoded `length=2` guard, `decode_imapb` calls
+        // `read_signed_be(&[])` which underflows `n*8-1` at n==0.
+        let mut bytes = minimal_ls_bytes();
+        bytes.extend_from_slice(&[11, 0]); // tag 11, length 0
+        let ls = decode(&bytes).unwrap();
+        assert!(ls.horizontal_fov.is_none());
+        assert!(ls.field_errors.iter().any(|e| matches!(
+            e,
+            KlvFieldError::InvalidLength {
+                tag: 11,
+                expected: 2,
+                got: 0
+            }
+        )));
+    }
+
+    #[test]
+    fn decode_imapb_happy_path() {
+        // FOV = 90.0° encoded as IMAPB(0, 180, 2) per
+        // ST 0903.6 §10.1.11. With span=180, sF = 2^8 / 2^15 =
+        // 1/128 = 0.0078125. Encode: signed = round(90/sF) - 2^15
+        // = 11520 - 32768 = -21248. Two-byte two's complement of
+        // -21248 is 0xAD00.
+        let mut bytes = minimal_ls_bytes();
+        bytes.extend_from_slice(&[11, 2, 0xAD, 0x00]);
+        let ls = decode(&bytes).unwrap();
+        let fov = ls.horizontal_fov.expect("horizontal_fov decoded");
+        assert!((fov - 90.0).abs() < 0.01, "got fov={fov}, expected ~90.0");
+        assert!(ls.field_errors.is_empty());
     }
 }

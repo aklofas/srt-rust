@@ -352,19 +352,24 @@ the trigger that would unblock it.
 - **Scope when added:** Case-by-case; each SEI type is a separate parser
   function in the same `codec::h264` / `codec::h265` module namespace.
 
-## Audio framing parsers (`codec::aac`, `codec::ac3`)
+## Audio frame parsers — AAC LATM and AC-3
 
-- **Status:** Deferred. Audio carriage in `mpegts::mux` and `mpegts::demux`
-  ships; `SamplePayload::Audio { codec, frames: Vec<u8> }` carries raw
-  PES payload bytes. Per-frame parsers (`codec::aac` for ADTS / LATM
-  framing, `codec::ac3` for AC-3 framing, `codec::mp2` for MPEG-1
-  Layer II) that split `frames` into typed per-frame structs do not
-  yet exist.
-- **Why deferred:** No current consumer asks for typed audio frame
-  metadata (sample rate, channel count, profile, bit depth). The
-  parsers are mechanical to write once a use case appears.
-- **Trigger to revisit:** A consumer asks for audio frame-header
-  metadata. See ROADMAP P5 for the planned parser layer.
+- **Status:** Deferred. The MP2 (Layer I/II/III) and AAC ADTS frame
+  iterators ship in 2026-05-07 (`codec::mpegaudio` + `codec::aac`).
+  AAC LATM (ISO/IEC 14496-3 §1.7 LOAS/LATM framing) and AC-3 (ATSC
+  A/52) frame parsers are not in scope.
+- **Why deferred:** Neither codec appears in the local capture corpus
+  (zero LATM events, zero AC-3 events across 250 files / 33 GB at plan
+  #21 ship). Synthetic-only fixtures would be the validation path; we
+  defer until a consumer or capture surfaces them so the work is
+  driven by real-world bytes.
+- **Trigger to revisit:** A consumer ships a stream needing LATM or
+  AC-3 typed frame access, or a corpus capture surfaces either codec.
+- **Scope when added:** AAC LATM lands as `codec::aac::latm` sibling
+  module under the existing `aac/` directory (the directory layout was
+  set up at the 2026-05-07 ship for exactly this future). AC-3 lands
+  as a new top-level `codec::ac3` module. Both follow the same
+  iterator-of-`Result<Frame, ParseError>` shape as the existing slice.
 
 ## Audio carriage at the `tst-c` C ABI
 

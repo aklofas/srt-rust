@@ -79,7 +79,8 @@ pub struct VmtiLs {
     pub version_number: Option<u16>,
     pub total_targets_in_frame: Option<u32>,
     pub num_targets_reported: Option<u32>,
-    pub frame_number: Option<u32>,
+    // Tag 7 (motionImageryFrameNumber) is deprecated in ST 0903.6 — no
+    // typed field. Wire occurrences land in `unknown` per ST 0107.5 §6.
     pub frame_width: Option<u32>,
     pub frame_height: Option<u32>,
     pub source_sensor: Option<String>,
@@ -545,9 +546,123 @@ fn decode_vtarget_series_strict(
     Ok(targets)
 }
 
-#[allow(unused_variables, clippy::ptr_arg)] // Task 7 wires the body
+/// Symmetric encode of a VMTI Local Set per ST 0903.6 §10.1.
+///
+/// Fields are emitted in ascending tag order (1, 2, 3, 4, 5, 6, 8, 9,
+/// 10, 11, 12, 13, 101, 102, 103); Tag 7 (`motionImageryFrameNumber`)
+/// is deprecated in v6 and never emitted. Preserved `unknown` tags are
+/// appended last per ST 0107.5 §6 (single-byte tag IDs only — the
+/// VMTI LS spec keeps tags ≤107).
+///
+/// Round-trip property: `decode(encode_to_vec(&ls)?)?` reproduces all
+/// typed fields and preserved unknowns of `ls` (modulo IMAPB
+/// quantization on `horizontal_fov` / `vertical_fov`). `field_errors`
+/// is a decode-time diagnostic and is not emitted on encode.
 pub fn encode(ls: &VmtiLs, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
-    todo!("Task 7")
+    use crate::klv::imapb::{ImapbParams, encode_imapb};
+    use crate::klv::length::write_ber;
+
+    fn emit_tlv(out: &mut Vec<u8>, tag: u8, value: &[u8]) -> Result<(), KlvEncodeError> {
+        out.push(tag);
+        let mut len_buf = [0u8; 9];
+        let len_n = write_ber(value.len(), &mut len_buf)?;
+        out.extend_from_slice(&len_buf[..len_n]);
+        out.extend_from_slice(value);
+        Ok(())
+    }
+
+    fn emit_var(out: &mut Vec<u8>, tag: u8, value: u32) -> Result<(), KlvEncodeError> {
+        let mut tmp = Vec::with_capacity(4);
+        var_uint::write_var_u32(value, &mut tmp);
+        emit_tlv(out, tag, &tmp)
+    }
+
+    fn emit_imapb_n(
+        out: &mut Vec<u8>,
+        tag: u8,
+        value: f64,
+        min: f64,
+        max: f64,
+        length: usize,
+    ) -> Result<(), KlvEncodeError> {
+        let params = ImapbParams { min, max, length };
+        let mut buf = vec![0u8; length];
+        encode_imapb(&params, value, &mut buf)?;
+        emit_tlv(out, tag, &buf)
+    }
+
+    // Ascending tag order. Tag 7 (deprecated) is intentionally skipped
+    // — there is no struct field to source it from.
+    if let Some(v) = ls.checksum {
+        emit_tlv(out, 1, &v.to_be_bytes())?;
+    }
+    if let Some(v) = ls.precision_time_stamp {
+        emit_tlv(out, 2, &v.to_be_bytes())?;
+    }
+    if let Some(ref s) = ls.vmti_system_name {
+        emit_tlv(out, 3, s.as_bytes())?;
+    }
+    if let Some(v) = ls.version_number {
+        emit_var(out, 4, v as u32)?;
+    }
+    if let Some(v) = ls.total_targets_in_frame {
+        emit_var(out, 5, v)?;
+    }
+    if let Some(v) = ls.num_targets_reported {
+        emit_var(out, 6, v)?;
+    }
+    if let Some(v) = ls.frame_width {
+        emit_var(out, 8, v)?;
+    }
+    if let Some(v) = ls.frame_height {
+        emit_var(out, 9, v)?;
+    }
+    if let Some(ref s) = ls.source_sensor {
+        emit_tlv(out, 10, s.as_bytes())?;
+    }
+    // Top-level FOV tags use IMAPB(0, 180, 2) per §10.1.11 + §10.1.12.
+    if let Some(v) = ls.horizontal_fov {
+        emit_imapb_n(out, 11, v, 0.0, 180.0, 2)?;
+    }
+    if let Some(v) = ls.vertical_fov {
+        emit_imapb_n(out, 12, v, 0.0, 180.0, 2)?;
+    }
+    if let Some(ref bytes) = ls.miis_id {
+        emit_tlv(out, 13, bytes)?;
+    }
+
+    // VTargetSeries (Tag 101). Each pack is BER-length-prefixed inside
+    // the series payload (matches `decode_vtarget_series` framing).
+    if !ls.targets.is_empty() {
+        let mut series = Vec::new();
+        for pack in &ls.targets {
+            let mut pack_bytes = Vec::new();
+            vtarget_pack::write_pack(pack, &mut pack_bytes)?;
+            let mut len_buf = [0u8; 9];
+            let len_n = write_ber(pack_bytes.len(), &mut len_buf)?;
+            series.extend_from_slice(&len_buf[..len_n]);
+            series.extend_from_slice(&pack_bytes);
+        }
+        emit_tlv(out, 101, &series)?;
+    }
+
+    if let Some(ref bytes) = ls.algorithm_series {
+        emit_tlv(out, 102, bytes)?;
+    }
+    if let Some(ref bytes) = ls.ontology_series {
+        emit_tlv(out, 103, bytes)?;
+    }
+
+    // Unknown tags last (preserves them per ST 0107.5 §6). Tag IDs >0xFF
+    // are silently dropped — VMTI LS tag IDs are single-byte by spec
+    // (highest is 103) so a >0xFF tag here would be a corrupted parse.
+    for field in &ls.unknown {
+        if field.tag <= 0xFF {
+            emit_tlv(out, field.tag as u8, &field.value)?;
+        }
+    }
+
+    Ok(())
 }
 
 pub fn encode_to_vec(ls: &VmtiLs) -> Result<Vec<u8>, KlvEncodeError> {
@@ -556,9 +671,73 @@ pub fn encode_to_vec(ls: &VmtiLs) -> Result<Vec<u8>, KlvEncodeError> {
     Ok(out)
 }
 
-#[allow(unused_variables)] // Task 7 wires the body
+/// Number of wire bytes that [`encode`] would produce for `ls`. Mirrors
+/// `encode`'s field-by-field structure so the two cannot drift.
 pub fn encoded_len(ls: &VmtiLs) -> Result<usize, KlvEncodeError> {
-    todo!("Task 7")
+    use crate::klv::length::ber_len;
+    use var_uint::var_u32_len;
+
+    fn tlv_len(value_len: usize) -> usize {
+        1 /* tag */ + ber_len(value_len) + value_len
+    }
+
+    let mut total = 0usize;
+    if ls.checksum.is_some() {
+        total += tlv_len(2);
+    }
+    if ls.precision_time_stamp.is_some() {
+        total += tlv_len(8);
+    }
+    if let Some(ref s) = ls.vmti_system_name {
+        total += tlv_len(s.len());
+    }
+    if let Some(v) = ls.version_number {
+        total += tlv_len(var_u32_len(v as u32));
+    }
+    if let Some(v) = ls.total_targets_in_frame {
+        total += tlv_len(var_u32_len(v));
+    }
+    if let Some(v) = ls.num_targets_reported {
+        total += tlv_len(var_u32_len(v));
+    }
+    if let Some(v) = ls.frame_width {
+        total += tlv_len(var_u32_len(v));
+    }
+    if let Some(v) = ls.frame_height {
+        total += tlv_len(var_u32_len(v));
+    }
+    if let Some(ref s) = ls.source_sensor {
+        total += tlv_len(s.len());
+    }
+    if ls.horizontal_fov.is_some() {
+        total += tlv_len(2);
+    }
+    if ls.vertical_fov.is_some() {
+        total += tlv_len(2);
+    }
+    if let Some(ref bytes) = ls.miis_id {
+        total += tlv_len(bytes.len());
+    }
+    if !ls.targets.is_empty() {
+        let mut series_len = 0usize;
+        for pack in &ls.targets {
+            let pack_len = vtarget_pack::encoded_len(pack);
+            series_len += ber_len(pack_len) + pack_len;
+        }
+        total += tlv_len(series_len);
+    }
+    if let Some(ref bytes) = ls.algorithm_series {
+        total += tlv_len(bytes.len());
+    }
+    if let Some(ref bytes) = ls.ontology_series {
+        total += tlv_len(bytes.len());
+    }
+    for field in &ls.unknown {
+        if field.tag <= 0xFF {
+            total += tlv_len(field.value.len());
+        }
+    }
+    Ok(total)
 }
 
 #[cfg(test)]
@@ -862,5 +1041,153 @@ mod tests {
             err,
             KlvDecodeError::St0903InvalidVTargetPack { .. }
         ));
+    }
+
+    // ------------------------------------------------------------------
+    // Task 7 — `encode` + `encoded_len` round-trip + canonical-bytes.
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn encode_round_trips_minimal() {
+        let ls = VmtiLs {
+            checksum: Some(0),
+            precision_time_stamp: Some(1_700_000_000_000_000),
+            version_number: Some(6),
+            num_targets_reported: Some(0),
+            ..Default::default()
+        };
+
+        let bytes = encode_to_vec(&ls).unwrap();
+        assert_eq!(bytes.len(), encoded_len(&ls).unwrap());
+
+        let decoded = decode(&bytes).unwrap();
+        assert_eq!(decoded.checksum, Some(0));
+        assert_eq!(decoded.precision_time_stamp, Some(1_700_000_000_000_000));
+        assert_eq!(decoded.version_number, Some(6));
+        assert_eq!(decoded.num_targets_reported, Some(0));
+    }
+
+    #[test]
+    fn encode_round_trips_with_targets() {
+        let ls = VmtiLs {
+            checksum: Some(0xABCD),
+            precision_time_stamp: Some(1_700_000_000_000_000),
+            version_number: Some(6),
+            num_targets_reported: Some(2),
+            frame_width: Some(3840),
+            frame_height: Some(2160),
+            horizontal_fov: Some(45.0),
+            vertical_fov: Some(30.0),
+            source_sensor: Some("EO/IR Camera 1".to_string()),
+            targets: vec![
+                VTargetPack {
+                    target_id: 1,
+                    centroid_pixel: Some(8_294_400),
+                    priority: Some(0),
+                    confidence_level: Some(95),
+                    target_color: Some([0xFF, 0x00, 0x00]),
+                    ..Default::default()
+                },
+                VTargetPack {
+                    target_id: 2,
+                    centroid_pixel: Some(4_147_200),
+                    priority: Some(1),
+                    confidence_level: Some(80),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        let bytes = encode_to_vec(&ls).unwrap();
+        let decoded = decode(&bytes).unwrap();
+
+        assert_eq!(decoded.frame_width, Some(3840));
+        assert_eq!(decoded.frame_height, Some(2160));
+        assert_eq!(decoded.source_sensor.as_deref(), Some("EO/IR Camera 1"));
+        // FOV uses IMAPB(0, 180, 2) — precision is (180-0)/(2^16-1) ≈ 0.00275°
+        assert!((decoded.horizontal_fov.unwrap() - 45.0).abs() < 0.01);
+        assert!((decoded.vertical_fov.unwrap() - 30.0).abs() < 0.01);
+        assert_eq!(decoded.targets.len(), 2);
+        assert_eq!(decoded.targets[0].target_id, 1);
+        assert_eq!(decoded.targets[0].confidence_level, Some(95));
+        assert_eq!(decoded.targets[1].target_id, 2);
+    }
+
+    #[test]
+    fn encode_preserves_unknown_tags() {
+        let ls = VmtiLs {
+            checksum: Some(0),
+            precision_time_stamp: Some(1_700_000_000_000_000),
+            version_number: Some(6),
+            num_targets_reported: Some(0),
+            unknown: vec![OwnedRawField {
+                tag: 100,
+                value: vec![0xDE, 0xAD, 0xBE, 0xEF],
+            }],
+            ..Default::default()
+        };
+
+        let bytes = encode_to_vec(&ls).unwrap();
+        let decoded = decode(&bytes).unwrap();
+        assert_eq!(decoded.unknown.len(), 1);
+        assert_eq!(decoded.unknown[0].tag, 100);
+        assert_eq!(decoded.unknown[0].value, vec![0xDE, 0xAD, 0xBE, 0xEF]);
+    }
+
+    #[test]
+    fn encoded_len_matches_encode() {
+        let ls = VmtiLs {
+            checksum: Some(0xCAFE),
+            precision_time_stamp: Some(1_700_000_000_000_000),
+            version_number: Some(6),
+            num_targets_reported: Some(1),
+            frame_width: Some(1920),
+            frame_height: Some(1080),
+            targets: vec![VTargetPack {
+                target_id: 1,
+                centroid_pixel: Some(123),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let bytes = encode_to_vec(&ls).unwrap();
+        assert_eq!(bytes.len(), encoded_len(&ls).unwrap());
+    }
+
+    #[test]
+    fn encode_canonical_byte_layout() {
+        // Locks in the wire format for a known LS shape. Catches
+        // accidental field-order changes in `encode` (which round-trip
+        // tests miss because `decode` is order-agnostic) and catches
+        // `encoded_len` drift relative to `encode`.
+        let ls = VmtiLs {
+            version_number: Some(6),       // Tag 4, V2 → 1 byte [0x06]
+            num_targets_reported: Some(0), // Tag 6, V3 → 1 byte [0x00]
+            frame_width: Some(1920),       // Tag 8, V3 → 2 bytes [0x07, 0x80]
+            ..Default::default()
+        };
+
+        let bytes = encode_to_vec(&ls).unwrap();
+
+        // Expected wire form (ascending tag order):
+        let expected: Vec<u8> = vec![
+            // Tag 4, len 1, value [0x06]
+            0x04, 0x01, 0x06, // Tag 6, len 1, value [0x00]
+            0x06, 0x01, 0x00, // Tag 8, len 2, value [0x07, 0x80]
+            0x08, 0x02, 0x07, 0x80,
+        ];
+        assert_eq!(
+            bytes, expected,
+            "encode produced unexpected byte layout — \
+             field order changed or TLV bytes are wrong"
+        );
+
+        assert_eq!(
+            bytes.len(),
+            encoded_len(&ls).unwrap(),
+            "encoded_len disagrees with encode_to_vec output length"
+        );
     }
 }

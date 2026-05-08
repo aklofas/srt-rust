@@ -13,12 +13,6 @@
 //! - `IMAPB` is decoded via `klv::imapb` over the linear range stated
 //!   in the per-item description (§10.1.11/§10.1.12 fix [0, 180]°).
 
-// Placeholder skeleton — `Encoding`, `TagSpec`, `TAGS`, and `lookup`
-// are populated in Task 2 and consumed by the decode/encode loops in
-// Tasks 5–7. Mirrors the `klv::st0102::tags` precedent (where
-// `TagSpec::required` is the sole dead-in-lib field after wiring).
-#![allow(dead_code)]
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Encoding {
     /// Raw 2-byte big-endian unsigned (Tag 1 Checksum, fixed length 2

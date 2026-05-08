@@ -9,7 +9,6 @@
 //! serialized inside a VTargetSeries (Tag 101) — that outer length
 //! is consumed by the series walker, not by `read_pack` /
 //! `write_pack`.
-#![allow(dead_code)]
 
 use thiserror::Error;
 

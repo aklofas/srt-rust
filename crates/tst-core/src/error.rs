@@ -77,6 +77,20 @@ pub enum KlvDecodeError {
     #[error("ST 0102 record missing required tag {tag} per ST 0102.12 §6.7")]
     St0102MissingRequiredTag { tag: u8 },
 
+    /// Strict-mode `klv::st0903::decode_strict` only: spec-mandatory tag
+    /// absent from the record per ST 0903.6 §6 Table 1.
+    #[error("ST 0903 record missing required tag {tag} per ST 0903.6 §6")]
+    St0903MissingRequiredTag { tag: u8 },
+
+    /// Pack-internal malformation surfaced from VTargetSeries (Tag 101)
+    /// decode. `offset` is the byte offset within the VTargetSeries
+    /// payload (not the outer LS).
+    #[error("ST 0903 VTargetPack at offset {offset}: {reason}")]
+    St0903InvalidVTargetPack {
+        offset: usize,
+        reason: crate::klv::st0903::vtarget_pack::VTargetPackError,
+    },
+
     /// A field-level validation error promoted to a fatal decode error.
     /// `klv::st0102::decode` raises this for InvalidLength on tag 1/2/12/22
     /// and InvalidUtf8 on ASCII string tags even in lenient mode (the

@@ -58,7 +58,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H266ParameterSets, Parse
                             vpses.insert(v.vps_id, v);
                             all_failed = false;
                         }
-                        Err(e) => tracing::warn!(target: "srt_core::codec::h266",
+                        Err(e) => tracing::warn!(target: "tst_core::codec::h266",
                             error = ?e, "skipping malformed VPS"),
                     }
                 }
@@ -69,7 +69,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H266ParameterSets, Parse
                             spses.insert(s.sps_id, s);
                             all_failed = false;
                         }
-                        Err(e) => tracing::warn!(target: "srt_core::codec::h266",
+                        Err(e) => tracing::warn!(target: "tst_core::codec::h266",
                             error = ?e, "skipping malformed SPS"),
                     }
                 }
@@ -80,7 +80,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H266ParameterSets, Parse
                             ppses.insert(p.pps_id, p);
                             all_failed = false;
                         }
-                        Err(e) => tracing::warn!(target: "srt_core::codec::h266",
+                        Err(e) => tracing::warn!(target: "tst_core::codec::h266",
                             error = ?e, "skipping malformed PPS"),
                     }
                 }

@@ -114,7 +114,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H264ParameterSets, Parse
                         all_failed = false;
                     }
                     Err(e) => {
-                        tracing::warn!(target: "srt_core::codec::h264",
+                        tracing::warn!(target: "tst_core::codec::h264",
                             error = ?e, "skipping malformed SPS");
                     }
                 }
@@ -127,7 +127,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H264ParameterSets, Parse
                         all_failed = false;
                     }
                     Err(e) => {
-                        tracing::warn!(target: "srt_core::codec::h264",
+                        tracing::warn!(target: "tst_core::codec::h264",
                             error = ?e, "skipping malformed PPS");
                     }
                 }

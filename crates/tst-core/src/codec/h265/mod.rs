@@ -52,7 +52,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H265ParameterSets, Parse
                         out.vps_by_id.insert(vps.vps_video_parameter_set_id, vps);
                         all_failed = false;
                     }
-                    Err(e) => tracing::warn!(target: "srt_core::codec::h265",
+                    Err(e) => tracing::warn!(target: "tst_core::codec::h265",
                         error = ?e, "skipping malformed VPS"),
                 }
             }
@@ -63,7 +63,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H265ParameterSets, Parse
                         out.sps_by_id.insert(sps.sps_seq_parameter_set_id, sps);
                         all_failed = false;
                     }
-                    Err(e) => tracing::warn!(target: "srt_core::codec::h265",
+                    Err(e) => tracing::warn!(target: "tst_core::codec::h265",
                         error = ?e, "skipping malformed SPS"),
                 }
             }
@@ -74,7 +74,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H265ParameterSets, Parse
                         out.pps_by_id.insert(pps.pps_pic_parameter_set_id, pps);
                         all_failed = false;
                     }
-                    Err(e) => tracing::warn!(target: "srt_core::codec::h265",
+                    Err(e) => tracing::warn!(target: "tst_core::codec::h265",
                         error = ?e, "skipping malformed PPS"),
                 }
             }

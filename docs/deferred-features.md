@@ -112,15 +112,76 @@ the trigger that would unblock it.
   validating codes against authoritative tables, AND a clear answer
   for which spec revision's table to bake in.
 
-## Other typed MISB sets (`klv::st0903` VMTI, `klv::st0806` RVT, ...)
+## Typed nested VMTI Local Sets (`VMask`, `VObject`, `VFeature`, `VTracker`, `VChip`)
 
-- **Status:** Pass-through only. The substrate supports them; the
-  typed layer is missing.
-- **Why deferred:** No current consumer uses these sets. Adding any
-  one set means writing and maintaining its per-tag table without a
-  driving use case.
-- **Trigger to revisit:** A consumer needing the typed layer for one
-  of these sets specifically.
+- **Status:** Pass-through. The five LSes inside each `VTargetPack` —
+  `vmask`, `vtracker`, `vchip`, `vchip_series`, `vobject_series` — are
+  `Option<Vec<u8>>` raw bytes today.
+- **Why deferred:** The structural per-target slice (target ID,
+  centroid, bbox, lat/lon, dimensions, color, intensity, detection
+  status, algorithm ID, etc.) covers the load-bearing analyst use
+  case. Each nested LS is its own per-tag table to write and maintain
+  — without a consumer asking for typed access, the table is carrying
+  weight without paying for itself.
+- **Trigger to revisit:** A consumer asks for typed access to per-
+  target classification (VObjectSeries), feature vectors (deferred —
+  ST 0903.6 deprecated the VFeature LS at Tag 103), track state
+  (VTracker), pixel masks (VMask), or image cutouts (VChip /
+  VChipSeries).
+
+## Typed VMTI Algorithm + Ontology Series
+
+- **Status:** Pass-through. `VmtiLs.algorithm_series` and
+  `VmtiLs.ontology_series` are `Option<Vec<u8>>` raw bytes today.
+- **Why deferred:** Same reasoning as the nested-LS entry above —
+  per-tag tables without a driving consumer ask. Algorithm describes
+  detector/tracker provenance; Ontology describes class label
+  hierarchy.
+- **Trigger to revisit:** A consumer asks for typed algorithm
+  provenance or class-label hierarchy.
+
+## VMTI standalone-PID demuxer dispatch (`MetadataKind::VmtiLs`)
+
+- **Status:** Consumer-side dispatch. Consumers carrying VMTI on its
+  own KLV PID match `data.starts_with(&klv::st0903::VMTI_LS_UL)`
+  themselves and call `klv::st0903::decode` on the inner bytes (after
+  stripping the 16-byte UL prefix and reading the BER outer length).
+  The demuxer's `MetadataKind` enum has no VMTI-aware variant.
+- **Why deferred:** Adding `MetadataKind::VmtiLs` to the demuxer event
+  surface makes the demuxer typed-set-aware — and that's a slippery
+  slope (do we then add `MetadataKind::SecurityLs`,
+  `MetadataKind::Ais`, ...?). Today's pattern keeps the demuxer UL-
+  agnostic and pushes dispatch to consumer code, which is where the
+  typed-set decision naturally lives.
+- **Trigger to revisit:** A consumer with VMTI on its own KLV PID
+  asks for ergonomic dispatch, AND we're prepared to commit to a
+  `MetadataKind::*` policy across all typed sets.
+
+## VMTI Universal Set form
+
+- **Status:** Local Set form ships in `klv::st0903` (decode +
+  decode_strict + encode); the parallel Universal Set form (16-byte UL
+  per item, separate from the LS encoding) is not implemented.
+- **Why deferred:** LS form is the only form on MPEG-TS+KLV streams.
+  The Universal Set is for archival / file-based use cases the library
+  does not target.
+- **Trigger to revisit:** A consumer ingesting archival / file-based
+  VMTI-bearing streams that use the Universal Set encoding.
+
+## `klv::st0806` RVT typed layer
+
+- **Status:** Pass-through. Carried as ST 0601 Tag 73; consumers see
+  raw bytes in the `unknown` field of `UasDatalinkLs` (no typed
+  pass-through field today — could be added if a consumer asks,
+  mirroring how Tag 48 → `security_local_set` and Tag 74 → `vmti`
+  fields work).
+- **Why deferred:** No consumer ask. ST 0806 PDF is not on hand —
+  acquiring it (it's a public NGA spec) is a prerequisite. ST 0806 is
+  metadata-emitting from receiver terminals (POI / AOI annotations,
+  user-typed text) — narrower scope than VMTI but still its own per-
+  tag table.
+- **Trigger to revisit:** A consumer asks AND the ST 0806 PDF is
+  acquired into `~/Projects/srt/reference/`.
 
 ## KLV conformance cross-check vs. Python `klvdata`
 

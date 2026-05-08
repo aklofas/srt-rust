@@ -243,14 +243,18 @@ pub fn decode(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
                     max,
                     length: value.len(),
                 };
+                // `decode_imapb` only fails on a length mismatch
+                // between `params.length` and `bytes.len()`; we set
+                // them equal here, so this is defensive (covers any
+                // future tightening of the IMAPB substrate). Surface
+                // a generic per-tag length error if it ever fires.
                 let v = match decode_imapb(&params, value) {
                     Ok(v) => v,
                     Err(_) => {
-                        ls.field_errors.push(KlvFieldError::OutOfRange {
+                        ls.field_errors.push(KlvFieldError::InvalidLength {
                             tag: tag as u32,
-                            value: 0.0,
-                            min,
-                            max,
+                            expected: value.len(),
+                            got: value.len(),
                         });
                         continue;
                     }

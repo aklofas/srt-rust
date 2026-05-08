@@ -496,10 +496,22 @@ impl Demuxer {
             if let Some(assembler) = self.psi_assemblers.get_mut(&pid) {
                 assembler.reset();
             }
-            let (expected, observed) = self
-                .last_psi_cc_jump
-                .take()
-                .expect("check_continuity populated last_psi_cc_jump on real jump");
+            let (expected, observed) = match self.last_psi_cc_jump.take() {
+                Some(pair) => pair,
+                None => {
+                    // Invariant violation: `check_continuity` must populate
+                    // `last_psi_cc_jump` before reaching this arm. Defense-in-depth:
+                    // drop the event silently rather than panicking, so a future
+                    // refactor that decouples `check_continuity` from `handle_psi`
+                    // can't crash the demuxer in production. `debug_assert!` still
+                    // catches regressions in test runs.
+                    debug_assert!(
+                        false,
+                        "check_continuity invariant: last_psi_cc_jump should be populated"
+                    );
+                    return Ok(());
+                }
+            };
             let stream = self.lookup_stream(pid).unwrap_or(StreamId {
                 pid,
                 kind: StreamKind::Unknown(0),

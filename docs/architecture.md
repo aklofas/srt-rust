@@ -50,7 +50,7 @@ or libmbedtls.
 ## Inside `tst-core`: four modules, four jobs
 
 - `srt::*` — safe wrapper for libsrt sockets and listeners.
-- `klv::*` — KLV codec, generic substrate plus typed ST 0601 / ST 0605 / ST 0102 (sibling-layer Security LS) / ST 1910 layers.
+- `klv::*` — KLV codec, generic substrate plus typed ST 0601 / ST 0605 / ST 0102 (sibling-layer Security LS) / ST 0903 (sibling-layer VMTI LS — top-level + per-target `VTargetPack`; nested LSes pass-through) / ST 1910 layers.
 - `mpegts::mux::*` — sender-side MPEG-TS muxer for H.264 / H.265 + KLV.
 - `mpegts::demux::*` — receiver-side MPEG-TS demuxer; bytes in, typed `DemuxEvent` out.
 - `pipeline::*` — composition of the above into ergonomic sender + receiver shells.

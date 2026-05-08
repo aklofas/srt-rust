@@ -278,6 +278,18 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 
 ---
 
+## KLV — typed MISB ST 0903 VMTI (`tst-core::klv::st0903`)
+
+| Spec / Feature | Status | Notes |
+| --- | --- | --- |
+| VMTI Local Set decode/encode (ST 0903.6) | ✅ Full | Typed top-level `VmtiLs` + per-target `VTargetPack`; 7 nested/sibling LSes (`VMask`, `VTracker`, `VChip`, `VChipSeries`, `VObjectSeries`, Algorithm Series, Ontology Series) pass-through. Universal Set form deferred. |
+| Sibling-layer composition with `klv::st0601` | ✅ Full | ST 0601 Tag 74 stays `Option<Vec<u8>>`; consumers call `klv::st0903::decode` on inner bytes (no coupling between parent and inner decoders). |
+| Standalone-PID dispatch | ✅ Full | `VMTI_LS_UL` 16-byte UL constant exposed for VMTI on its own KLV PID (separate from any ST 0601 stream). |
+| `decode` (lenient) | ✅ Full | Tolerates missing tags, malformed sub-records (in `field_errors`), unknown tags (in `unknown` per ST 0107.5 §6). |
+| `decode_strict` | ✅ Full | Rejects missing required tags (Tag 4 / Tag 6), duplicates, malformed UTF-8, malformed packs (`KlvDecodeError::St0903InvalidVTargetPack`). Conditional-required tags (1, 2, 11, 12, 13) NOT enforced — carriage-aware validation is consumer-side. |
+
+---
+
 ## MPEG-TS demuxer (`tst-core::mpegts::demux`)
 
 | Feature / Type | Status | Notes |
@@ -486,7 +498,7 @@ covers.
 | **MISB ST 0805.1** | KLV Metadata over RTP | ❌ Out of scope (we transport over SRT/MPEG-TS) |
 | **MISB ST 0807.27** | KLV Metadata Registry | ⚙️ Used as canonical source for UL constants |
 | **MISB ST 0902.8** | Motion Imagery Sensor Minimum Metadata Set | ❌ Out of scope (subset of ST 0601 we already cover) |
-| **MISB ST 0903.6** | Video Moving Target Indicator (VMTI) | ❌ Out of scope; add when a consumer needs VMTI |
+| **MISB ST 0903.6** | Video Moving Target Indicator (VMTI) | ✅ LS form — typed top-level (`VmtiLs`) + per-target (`VTargetPack`) decode + encode (`klv::st0903`); 7 nested/sibling LSes pass-through (typed layers deferred); Universal Set form deferred |
 | **MISB ST 1201.5** | IMAPB / IMAPA Floating-Point Mapping | ⚙️ §7.1.2 / §7.2 implemented; §7.1.3 special values not |
 | **MISB ST 1303.2** | Multi-Dimensional Array Pack (MDAP) | ❌ Out of scope (no ST 0903 consumer) |
 | **MISB ST 1402.2** | KLV in MPEG-2 Transport Streams | ✅ Async (0x06) + sync (0x15) modes in both `mpegts::mux` (encode) and `mpegts::demux` (decode) |

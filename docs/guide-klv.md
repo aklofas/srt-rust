@@ -306,6 +306,112 @@ per RFC 2781 §4.3.
 See `examples/decode_security_metadata.rs` for a runnable file walker
 that demonstrates the sibling-layer composition pattern end-to-end.
 
+## Typed VMTI Local Set (`klv::st0903`)
+
+VMTI (Video Moving Target Indicator) per MISB ST 0903.6 carries
+detected/tracked moving objects in a video frame: per-target
+centroids, bounding boxes, lat/lon, classifications, track IDs,
+confidence levels. Carried as ST 0601 Tag 74 in most real ISR
+captures, or standalone on its own KLV PID.
+
+`klv::st0903` ships:
+
+- `VmtiLs` typed struct — top-level frame-level fields (timestamp,
+  frame dims, sensor FOV, target counts) + `targets: Vec<VTargetPack>`.
+- `VTargetPack` typed struct — per-target structural data: target ID,
+  centroid pixel, bbox pixels, priority, confidence, dimensions
+  (in meters via IMAPB), centroid lat/lon offsets + HAE, bounding
+  box geo offsets, color, intensity, detection status, algorithm ID,
+  pixel row/col, target location DLP, geospatial contour series.
+- `decode` (lenient) + `decode_strict` (rejects missing required tags
+  per ST 0903.6 §10.1.4 + §10.1.6 + duplicates + malformed values).
+- Symmetric `encode` / `encode_to_vec` / `encoded_len` for synthetic
+  fixture generation and round-trip testing.
+- `VMTI_LS_UL` constant for standalone-PID consumers.
+
+Seven nested/sibling Local Sets — `VMask`, `VTracker`, `VChip`,
+`VChipSeries`, `VObjectSeries` (per-target) plus `Algorithm Series`
+and `Ontology Series` (top-level) — stay as `Option<Vec<u8>>`
+pass-through bytes. Typed layers for those are deferred (see
+[`deferred-features.md`](deferred-features.md)).
+
+### Sibling-layer pattern
+
+`klv::st0601` doesn't recurse into Tag 74. The parent's `vmti` field
+is `Option<Vec<u8>>` pass-through bytes — consumers dispatch
+themselves:
+
+```rust
+use tst_core::klv::{st0601, st0903};
+
+# fn process(parent_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+let uas = st0601::decode(parent_bytes)?;
+if let Some(vmti_bytes) = uas.vmti.as_deref() {
+    let vmti = st0903::decode(vmti_bytes)?;
+    println!("targets={}", vmti.targets.len());
+    for t in &vmti.targets {
+        println!("  id={} conf={:?}", t.target_id, t.confidence_level);
+    }
+}
+# Ok(())
+# }
+```
+
+This decoupling keeps each typed layer independent: an ST 0601
+consumer doesn't pull VMTI parsing into its build, and ST 0903 spec
+revisions don't ripple into ST 0601 parsing.
+
+### Standalone-PID pattern
+
+For VMTI on its own KLV PID (separate from any ST 0601 stream),
+match the AU-cell payload bytes against `VMTI_LS_UL`:
+
+```rust,no_run
+use tst_core::klv::{length, st0903};
+
+# fn handle(data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+if data.starts_with(&st0903::VMTI_LS_UL) {
+    let after_ul = &data[16..];
+    let (declared_len, after_len) = length::read_ber(after_ul)?;
+    let inner = &after_len[..declared_len];
+    let vmti = st0903::decode(inner)?;
+    // ...
+}
+# Ok(())
+# }
+```
+
+The demuxer remains UL-agnostic; consumer-side dispatch keeps new
+typed-set additions from creating coupling load on the demuxer.
+
+### Lenient vs strict decode
+
+- `decode` (lenient) — production ingest. Tolerates missing tags,
+  malformed sub-records (preserved in `field_errors`), and unknown
+  tags (preserved in `unknown` per ST 0107.5 §6 future-proof skip
+  rule). Always returns `Ok` for parseable BER framing.
+- `decode_strict` — compliance-grade ingest. Rejects missing required
+  tags (Tag 4 `vmtiLsVersionNum` per ST 0903.5-99; Tag 6
+  `numTargetsReported` per ST 0903.4-19), duplicate tags, malformed
+  UTF-8, pack-level malformations (typed via
+  `KlvDecodeError::St0903InvalidVTargetPack`). Still preserves
+  unknown tags per ST 0107.5 §6.
+
+`decode_strict` does NOT enforce conditional-required tags (Tags 1,
+2, 11, 12, 13 are required only for specific carriage paths per
+ST 0903.6-117/-119/-120). Consumers needing carriage-aware validation
+post-validate after a successful decode.
+
+### Encoding
+
+`encode_to_vec(&ls)` produces wire-format bytes; `encoded_len(&ls)`
+predicts the length without serializing. Round-trip is bit-identical
+for all spec-conformant input (modulo IMAPB quantization).
+
+### Universal Set form
+
+Out of scope — see [`deferred-features.md`](deferred-features.md).
+
 ## Sync metadata AU cell carriage
 
 Synchronous KLV in MPEG-TS uses a 5-byte `Metadata_AU_cell` header per

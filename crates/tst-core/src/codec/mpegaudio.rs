@@ -90,3 +90,82 @@ pub fn frames(bytes: &[u8]) -> Frames<'_> {
         done: false,
     }
 }
+
+// Bitrate table per ISO 11172-3 §2.4.2.3 Table 8 + ISO 13818-3 Table 5.
+// Indexed by [column][bitrate_index]. Column selection is by
+// (version, layer); see `bitrate_column` below. Index 0 = free format
+// (rejected); index 15 = forbidden.
+//
+// Columns:
+//   0 = MPEG-1 Layer I
+//   1 = MPEG-1 Layer II
+//   2 = MPEG-1 Layer III
+//   3 = MPEG-2/2.5 Layer I
+//   4 = MPEG-2/2.5 Layer II/III (shared column per ISO 13818-3 Table 5)
+#[allow(dead_code)]
+const BITRATE_TABLE: [[u32; 16]; 5] = [
+    // index: 0   1   2   3   4    5    6    7    8    9    10   11   12   13   14   15
+    [        0,  32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 0], // V1L1
+    [        0,  32, 48, 56, 64,  80,  96,  112, 128, 160, 192, 224, 256, 320, 384, 0], // V1L2
+    [        0,  32, 40, 48, 56,  64,  80,  96,  112, 128, 160, 192, 224, 256, 320, 0], // V1L3
+    [        0,  32, 48, 56, 64,  80,  96,  112, 128, 144, 160, 176, 192, 224, 256, 0], // V2L1
+    [        0,  8,  16, 24, 32,  40,  48,  56,  64,  80,  96,  112, 128, 144, 160, 0], // V2L2/L3
+];
+
+#[allow(dead_code)]
+fn bitrate_column(version: Version, layer: Layer) -> usize {
+    match (version, layer) {
+        (Version::Mpeg1, Layer::I) => 0,
+        (Version::Mpeg1, Layer::II) => 1,
+        (Version::Mpeg1, Layer::III) => 2,
+        (_, Layer::I) => 3,
+        (_, _) => 4, // V2/V2.5 Layer II + Layer III share column 4
+    }
+}
+
+/// Decode bitrate (kbps) from `(version, layer, bitrate_index)` per
+/// ISO 11172-3 §2.4.2.3 Table 8 + ISO 13818-3 Table 5.
+///
+/// Errors:
+/// - `ReservedValue { field: "bitrate_index", value: 0 }` for free-format
+/// - `Forbidden { field: "bitrate_index" }` for index 15
+#[allow(dead_code)]
+pub(crate) fn decode_bitrate(version: Version, layer: Layer, bitrate_index: u8) -> Result<u32, ParseError> {
+    if bitrate_index == 0 {
+        return Err(ParseError::ReservedValue { field: "bitrate_index", value: 0 });
+    }
+    if bitrate_index == 15 {
+        return Err(ParseError::Forbidden { field: "bitrate_index" });
+    }
+    let col = bitrate_column(version, layer);
+    Ok(BITRATE_TABLE[col][bitrate_index as usize])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bitrate_v1l1_index1_is_32() {
+        assert_eq!(decode_bitrate(Version::Mpeg1, Layer::I, 1).unwrap(), 32);
+    }
+    #[test]
+    fn bitrate_v1l3_index9_is_128() {
+        assert_eq!(decode_bitrate(Version::Mpeg1, Layer::III, 9).unwrap(), 128);
+    }
+    #[test]
+    fn bitrate_v2l3_index12_is_128() {
+        // V2/V2.5 Layer II/III shares a column.
+        assert_eq!(decode_bitrate(Version::Mpeg2, Layer::III, 12).unwrap(), 128);
+    }
+    #[test]
+    fn bitrate_index0_is_free_format_rejected() {
+        let err = decode_bitrate(Version::Mpeg1, Layer::I, 0).unwrap_err();
+        assert!(matches!(err, ParseError::ReservedValue { field, value: 0 } if field == "bitrate_index"));
+    }
+    #[test]
+    fn bitrate_index15_is_forbidden() {
+        let err = decode_bitrate(Version::Mpeg1, Layer::I, 15).unwrap_err();
+        assert!(matches!(err, ParseError::Forbidden { field } if field == "bitrate_index"));
+    }
+}

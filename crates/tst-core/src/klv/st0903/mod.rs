@@ -182,9 +182,22 @@ pub fn decode(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
                     });
                     continue;
                 }
-                let v = u64::from_be_bytes(value.try_into().unwrap());
+                // Defense-in-depth: the upstream length check above
+                // makes this `try_into` infallible today, but a future
+                // tag-table refactor that decouples encoding from
+                // length could reach this with a wrong-sized slice.
+                // Surface as TruncatedField via field_errors rather
+                // than panic.
+                let arr: [u8; 8] = match value.try_into() {
+                    Ok(a) => a,
+                    Err(_) => {
+                        ls.field_errors
+                            .push(KlvFieldError::TruncatedField { tag: tag as u32 });
+                        continue;
+                    }
+                };
                 debug_assert_eq!(tag, 2, "U64Be reserved for tag 2 (Precision Time Stamp)");
-                ls.precision_time_stamp = Some(v);
+                ls.precision_time_stamp = Some(u64::from_be_bytes(arr));
             }
             Encoding::VarUint { max_bytes } => {
                 if value.is_empty() || value.len() > max_bytes as usize {
@@ -428,7 +441,15 @@ pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
                     }));
                 }
                 debug_assert_eq!(tag, 2, "U64Be reserved for tag 2 (Precision Time Stamp)");
-                ls.precision_time_stamp = Some(u64::from_be_bytes(value.try_into().unwrap()));
+                // Defense-in-depth: the upstream length check above
+                // makes this `try_into` infallible today, but a future
+                // tag-table refactor that decouples encoding from
+                // length could reach this with a wrong-sized slice.
+                // Surface as TruncatedField rather than panic.
+                let arr: [u8; 8] = value.try_into().map_err(|_| {
+                    KlvDecodeError::FieldError(KlvFieldError::TruncatedField { tag: tag as u32 })
+                })?;
+                ls.precision_time_stamp = Some(u64::from_be_bytes(arr));
             }
             Encoding::VarUint { max_bytes } => {
                 if value.is_empty() || value.len() > max_bytes as usize {
@@ -766,6 +787,60 @@ mod tests {
         let bytes = [4u8, 5, 0x01];
         let ls = decode(&bytes).unwrap();
         assert!(!ls.field_errors.is_empty());
+    }
+
+    /// Regression for Phase 0 Task 1.5: hostile bytes targeting the
+    /// U64Be (Tag 2 PTS) decode path must never panic. The upstream
+    /// `value.len() != 8` length check intercepts wrong-sized slices
+    /// before the `try_into` runs, so the fallible-conversion safety
+    /// net added in Task 1.5 is defense-in-depth — both the well-formed
+    /// and malformed cases below exercise the contract that decode
+    /// returns a value (lenient: with field_errors / strict: Err)
+    /// instead of panicking.
+    #[test]
+    fn decode_tag2_pts_wrong_length_no_panic() {
+        // 7-byte PTS instead of 8 — caught by the length check, surfaced
+        // as InvalidLength on lenient.
+        let bytes = vec![2u8, 7, 0, 0, 0, 0, 0, 0, 1];
+        let ls = decode(&bytes).unwrap();
+        assert!(ls.precision_time_stamp.is_none());
+        assert!(matches!(
+            ls.field_errors.as_slice(),
+            [
+                KlvFieldError::InvalidLength {
+                    tag: 2,
+                    expected: 8,
+                    got: 7,
+                },
+                ..
+            ] | [KlvFieldError::TruncatedField { tag: 2 }, ..]
+        ));
+    }
+
+    #[test]
+    fn strict_decode_tag2_pts_wrong_length_rejected() {
+        // 7-byte PTS — strict mode must Err, never panic.
+        let bytes = vec![2u8, 7, 0, 0, 0, 0, 0, 0, 1];
+        let err = decode_strict(&bytes).unwrap_err();
+        assert!(matches!(
+            err,
+            KlvDecodeError::FieldError(KlvFieldError::InvalidLength {
+                tag: 2,
+                expected: 8,
+                got: 7,
+            }) | KlvDecodeError::FieldError(KlvFieldError::TruncatedField { tag: 2 })
+        ));
+    }
+
+    #[test]
+    fn decode_tag2_pts_well_formed_still_works() {
+        // Sanity check that the Task 1.5 fix didn't regress the happy
+        // path. 8-byte PTS decodes to the expected u64.
+        let mut bytes = vec![2u8, 8];
+        bytes.extend_from_slice(&1_700_000_000_000_000u64.to_be_bytes());
+        let ls = decode(&bytes).unwrap();
+        assert_eq!(ls.precision_time_stamp, Some(1_700_000_000_000_000));
+        assert!(ls.field_errors.is_empty());
     }
 
     #[test]

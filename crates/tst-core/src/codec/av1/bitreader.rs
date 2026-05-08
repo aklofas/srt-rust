@@ -31,10 +31,12 @@ impl<'a> Av1BitReader<'a> {
                 "f(n>64) not supported (n={n})"
             )));
         }
-        if self.bit_pos + n > self.buf.len() * 8 {
+        let cap = self.buf.len().saturating_mul(8);
+        let need = self.bit_pos.checked_add(n);
+        if !matches!(need, Some(need) if need <= cap) {
             return Err(ParseError::TruncatedRbsp {
-                offset_bits: self.bit_pos as u32,
-                needed_bits: n as u32,
+                offset_bits: u32::try_from(self.bit_pos).unwrap_or(u32::MAX),
+                needed_bits: u32::try_from(n).unwrap_or(u32::MAX),
             });
         }
         let mut v: u64 = 0;
@@ -85,6 +87,13 @@ impl<'a> Av1BitReader<'a> {
     }
     pub fn buf_len_bits(&self) -> usize {
         self.buf.len() * 8
+    }
+
+    /// Test-only: force `bit_pos` to an arbitrary value so the
+    /// overflow-guard path on `f()` can be exercised without looping.
+    #[cfg(test)]
+    pub(super) fn set_bit_pos_for_test(&mut self, pos: usize) {
+        self.bit_pos = pos;
     }
 }
 
@@ -141,5 +150,20 @@ mod tests {
         let mut br = Av1BitReader::new(&[0xFF]);
         br.byte_align();
         assert_eq!(br.bit_pos(), 0);
+    }
+
+    #[test]
+    fn av1_bitreader_overflow_safe_at_max_pos() {
+        // With `bit_pos` near `usize::MAX`, the previous `bit_pos + n` add
+        // wrapped around and the bounds check mis-fired, allowing a
+        // panicking out-of-bounds slice access in the read loop. The
+        // checked-add path must surface this as `TruncatedRbsp`.
+        //
+        // `n` must be ≤ 64 to skip the early `n > 64` guard and reach the
+        // bounds check that we're testing.
+        let mut br = Av1BitReader::new(&[0xFF; 1]);
+        br.set_bit_pos_for_test(usize::MAX - 4);
+        let result = br.f(64);
+        assert!(matches!(result, Err(ParseError::TruncatedRbsp { .. })));
     }
 }

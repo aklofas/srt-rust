@@ -62,6 +62,7 @@ impl<'a> Frame<'a> {
 }
 
 /// Iterator over MPEG audio frames in `bytes`. Use [`frames`] to construct.
+#[allow(dead_code)] // buf + cursor read once Frames::next is implemented (Task 8)
 pub struct Frames<'a> {
     buf: &'a [u8],
     cursor: usize,

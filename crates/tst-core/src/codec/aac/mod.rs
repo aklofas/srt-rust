@@ -54,6 +54,7 @@ impl<'a> AdtsFrame<'a> {
 }
 
 /// Iterator over ADTS frames in `bytes`. Use [`frames`] to construct.
+#[allow(dead_code)] // buf + cursor read once AdtsFrames::next is implemented (Task 11)
 pub struct AdtsFrames<'a> {
     buf: &'a [u8],
     cursor: usize,

@@ -50,9 +50,9 @@
 //!    new typed-set additions from creating a coupling load on the
 //!    demuxer.
 
-pub mod enums;
-pub mod tags;
-pub mod vtarget_pack;
+pub(crate) mod enums;
+pub(crate) mod tags;
+pub(crate) mod vtarget_pack;
 
 pub use vtarget_pack::{VTargetPack, VTargetPackError};
 

@@ -394,6 +394,20 @@ frame management beyond this parser's scope). Operating points beyond 0
 walked but not surfaced. Tile Group / Metadata / Padding OBUs pass through
 as `Obu { obu_type, payload, .. }` without further parsing.
 
+### Audio frame parsing
+
+| Codec | Status | Module |
+|---|---|---|
+| MPEG-1/2/2.5 Layer I/II/III | ✅ Full (Rust core) | `codec::mpegaudio` |
+| AAC ADTS | ✅ Full (Rust core) | `codec::aac` |
+| AAC LATM | ⏳ Deferred | (planned `codec::aac::latm`) |
+| AC-3 | ⏳ Deferred | (planned `codec::ac3`) |
+
+The frame parsers surface header-level metadata (sample rate, channel
+count, layer/profile, frame length, samples per frame, has-CRC). They
+do not decode audio content or verify CRCs. C ABI exposure is deferred
+to ride with the future receiver-surface plan.
+
 ---
 
 ## C ABI (`tst-c`)

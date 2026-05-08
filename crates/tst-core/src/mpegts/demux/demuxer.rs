@@ -54,7 +54,17 @@ pub struct DemuxerStats {
     pub per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
 }
 
+/// Default per-PID PES reassembly cap. 4 MiB accommodates 4K H.265 IDR
+/// keyframes (typically 1–2 MB) with headroom, and matches the order of
+/// magnitude of typical per-PID PES sizes in well-formed streams. Breach
+/// surfaces as a `Discontinuity { kind: PesOversize }` event and the
+/// partial PES on that PID is dropped.
 const DEFAULT_PES_CAP_PER_PID: usize = 4 * 1024 * 1024;
+/// Default aggregate PES reassembly cap across all PIDs. 64 MiB defends
+/// against a multi-PID flood scenario where each PID stays under its own
+/// per-PID cap but the aggregate explodes. Breach surfaces as a
+/// `Discontinuity { kind: PesTotalOversize }` event and all in-flight
+/// partial PES on every PID are dropped.
 const DEFAULT_PES_CAP_TOTAL: usize = 64 * 1024 * 1024;
 
 /// Maximum bytes the demuxer scans during sync recovery before declaring
@@ -77,7 +87,15 @@ const PCR_ANOMALY_THRESHOLD: i64 = 27_000_000;
 #[derive(Debug, Clone, Default)]
 pub struct DemuxerOptions {
     pub strict: StrictMode,
+    /// Per-PID PES reassembly cap. `None` uses `DEFAULT_PES_CAP_PER_PID`
+    /// (4 MiB). Tune up for ultra-high-bitrate streams whose IDR keyframes
+    /// exceed the default; tune down for adversarial-input scenarios where
+    /// faster failure (and a tighter memory bound) is preferable.
     pub pes_cap_per_pid: Option<usize>,
+    /// Aggregate PES reassembly cap across all PIDs. `None` uses
+    /// `DEFAULT_PES_CAP_TOTAL` (64 MiB). Tune up for streams with many
+    /// concurrent high-bitrate PIDs; tune down to bound multi-PID flood
+    /// memory growth in adversarial-input scenarios.
     pub pes_cap_total: Option<usize>,
     pub klv_link_overrides: Vec<(u16, u16)>,
     pub stream_kind_overrides: HashMap<u16, StreamKind>,

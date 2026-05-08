@@ -555,7 +555,7 @@ mod sps_tests {
     /// with a minimal RPS (`num_short_term_ref_pic_sets = 0`) + VUI so the
     /// parser walks the full SPS and reaches the crop arithmetic at the
     /// end of `parse_sps`.
-    fn build_h265_sps_with_conf_window_offsets(
+    fn build_sps_with_conf_window_offsets(
         conf_left: u32,
         conf_right: u32,
         conf_top: u32,
@@ -611,44 +611,38 @@ mod sps_tests {
         bw.bytes
     }
 
-    /// Regression test for the H.265 SPS conformance-window crop addition
-    /// overflow. Pre-fix, `crop_x_left + crop_x_right` was a regular u32 add
-    /// at the end of `parse_sps`. Hostile bytes from a remote peer can drive
-    /// both operands to near `u32::MAX/2`, panicking the debug build and
-    /// silently wrapping in release.
-    ///
-    /// With `chroma_format_idc = 1` (4:2:0 → sub_w = 2), setting
-    /// `conf_win_left_offset = conf_win_right_offset = 1 << 30` yields
-    /// `crop_x_left = crop_x_right = 1 << 31`. Their sum is `1 << 32`,
-    /// which overflows u32. The fix is `saturating_add`; the outer
-    /// `pic_width.saturating_sub(...)` already handles the > pic_width case
-    /// once the inner sum is bounded.
-    ///
-    /// `read_ue` accepts values up to `2^32 - 2`; `1 << 30` is well below
-    /// that. Multiplications stay within u32 (each is exactly `1 << 31`).
+    /// Regression for unchecked u32 arithmetic in the conformance-window crop
+    /// at the end of `parse_sps`: both `sub_w * conf_win_*_offset` and
+    /// `crop_x_left + crop_x_right` could overflow on hostile input. With
+    /// `chroma_format_idc = 1` (sub_w = 2), the case `(1 << 30, 1 << 30)`
+    /// triggers the addition path (`(1<<31) + (1<<31) = 1<<32`); the case
+    /// `(1 << 31, 0)` triggers the multiplication path (`2 * (1<<31) = 1<<32`).
+    /// Bug closed = parse returns `Ok(sps)` with bounded dims or a typed
+    /// `ParseError`; no panic in either build mode.
     #[test]
-    fn h265_sps_crop_saturates_on_adversarial_offsets() {
-        let rbsp = build_h265_sps_with_conf_window_offsets(1 << 30, 1 << 30, 0, 0);
-        let result = parse_sps(&rbsp);
-        match result {
-            Ok(sps) => {
-                // Saturating arithmetic landed: width must not exceed
-                // pic_width_in_luma_samples (1920). Pre-fix release builds
-                // wrapped to a small value or silently produced nonsense.
-                assert!(
-                    sps.width <= 1920,
-                    "post-crop width must not exceed coded pic_width; got {}",
-                    sps.width
-                );
+    fn parse_sps_saturates_crop_on_adversarial_offsets() {
+        for (conf_left, conf_right) in [(1u32 << 30, 1u32 << 30), (1u32 << 31, 0u32)] {
+            let rbsp = build_sps_with_conf_window_offsets(conf_left, conf_right, 0, 0);
+            let result = parse_sps(&rbsp);
+            match result {
+                Ok(sps) => {
+                    assert!(
+                        sps.width <= 1920,
+                        "post-crop width must not exceed coded pic_width; got {} for ({}, {})",
+                        sps.width,
+                        conf_left,
+                        conf_right
+                    );
+                }
+                Err(
+                    ParseError::ReservedValue { .. }
+                    | ParseError::TruncatedRbsp { .. }
+                    | ParseError::InvalidGolomb { .. },
+                ) => {
+                    // Typed error is also acceptable per the plan.
+                }
+                Err(e) => panic!("unexpected error variant for ({conf_left}, {conf_right}): {e:?}"),
             }
-            Err(
-                ParseError::ReservedValue { .. }
-                | ParseError::TruncatedRbsp { .. }
-                | ParseError::InvalidGolomb { .. },
-            ) => {
-                // Typed error is also acceptable per the plan.
-            }
-            Err(e) => panic!("unexpected error variant: {e:?}"),
         }
     }
 

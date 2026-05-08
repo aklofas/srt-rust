@@ -120,10 +120,10 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
             3 => (1, 1),
             _ => (1, 1),
         };
-        crop_x_left = sub_w * conf_win_left_offset;
-        crop_x_right = sub_w * conf_win_right_offset;
-        crop_y_top = sub_h * conf_win_top_offset;
-        crop_y_bottom = sub_h * conf_win_bottom_offset;
+        crop_x_left = sub_w.saturating_mul(conf_win_left_offset);
+        crop_x_right = sub_w.saturating_mul(conf_win_right_offset);
+        crop_y_top = sub_h.saturating_mul(conf_win_top_offset);
+        crop_y_bottom = sub_h.saturating_mul(conf_win_bottom_offset);
     }
 
     let bit_depth_luma_minus8 = br.read_ue()?;

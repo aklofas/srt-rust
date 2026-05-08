@@ -964,4 +964,51 @@ mod tests {
         assert_eq!(decoded.unknown[0].tag, 21);
         assert_eq!(decoded.unknown[0].value, vec![0xDE, 0xAD]);
     }
+
+    /// Locks in the canonical wire format of a known VTargetPack.
+    /// Catches accidental field-order changes in `write_pack` (which
+    /// round-trip tests miss because `read_pack` is order-agnostic) and
+    /// catches `encoded_len` drift relative to `write_pack`.
+    #[test]
+    fn write_pack_canonical_byte_layout() {
+        let pack = VTargetPack {
+            target_id: 7,
+            centroid_pixel: Some(0x1234), // Tag 1, V6 → 2 bytes [0x12, 0x34]
+            priority: Some(2),            // Tag 4, U8
+            confidence_level: Some(95),   // Tag 5, U8
+            target_color: Some([0xAA, 0xBB, 0xCC]), // Tag 8, 3-byte RGB
+            detection_status: Some(1),    // Tag 23, U8
+            vmask: Some(vec![0xDE, 0xAD]), // Tag 101
+            ..Default::default()
+        };
+
+        let mut bytes = Vec::new();
+        let written = write_pack(&pack, &mut bytes).unwrap();
+
+        // Expected wire form (BER-OID Target ID + ascending-tag TLVs):
+        let expected: Vec<u8> = vec![
+            0x07, // BER-OID Target ID = 7
+            // Tag 1, len 2, value [0x12, 0x34] (centroid_pixel)
+            0x01, 0x02, 0x12, 0x34, // Tag 4, len 1, value [0x02] (priority)
+            0x04, 0x01, 0x02,
+            // Tag 5, len 1, value [0x5F] (confidence_level = 95 = 0x5F)
+            0x05, 0x01, 0x5F, // Tag 8, len 3, value [0xAA, 0xBB, 0xCC] (target_color)
+            0x08, 0x03, 0xAA, 0xBB, 0xCC,
+            // Tag 23, len 1, value [0x01] (detection_status)
+            0x17, 0x01, 0x01, // Tag 101, len 2, value [0xDE, 0xAD] (vmask)
+            0x65, 0x02, 0xDE, 0xAD,
+        ];
+        assert_eq!(
+            bytes, expected,
+            "write_pack produced unexpected byte layout — \
+            either field-order changed or a TLV got bogus bytes"
+        );
+
+        assert_eq!(written, bytes.len());
+        assert_eq!(
+            written,
+            encoded_len(&pack),
+            "write_pack length disagrees with encoded_len — drift between the two functions"
+        );
+    }
 }

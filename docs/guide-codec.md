@@ -399,10 +399,75 @@ asks):
   decoder-scope expansion.
 - **SEI parsing** for H.264 and H.265 — HDR mastering display info, content
   light level, picture timing, etc.
-- **Audio framing parsers** (`codec::aac`, `codec::ac3`) — frame-header
-  extraction from `SamplePayload::Audio` (the audio payload variant is
-  `__Reserved` in the demuxer today; it lands when audio carriage is added).
+- **Audio framing parsers** (`codec::aac::latm`, `codec::ac3`) — AAC LATM
+  and AC-3 frame parsing; MP2 and AAC ADTS ship today (see "Audio frame
+  parsing" section below).
 - **Heuristic payload-kind detection** (`codec::detect`) — looks-like-ADTS /
   looks-like-UL+BER / looks-like-H.264 helpers for `Unknown` / private streams.
+
+## Audio frame parsing
+
+The MPEG-TS demuxer surfaces `SamplePayload::Audio { codec, frames: Vec<u8> }`
+events carrying raw PES payload bytes. The `codec::mpegaudio` and `codec::aac`
+modules parse those bytes into typed per-frame metadata (sample rate, channel
+count, layer/profile, frame size) without decoding audio content.
+
+Both modules expose the same shape: `fn frames(bytes) -> impl Iterator<Item =
+Result<Frame, ParseError>>`. The iterator advances by header-decoded
+`frame_length_bytes` and ends on first error or buffer end.
+
+### `codec::mpegaudio` — MPEG-1 / MPEG-2 / MPEG-2.5 Layer I/II/III
+
+```rust
+use tst_core::codec;
+use tst_core::mpegts::demux::{AudioCodec, SamplePayload};
+
+if let SamplePayload::Audio { codec: AudioCodec::Mp2, frames, .. } = payload {
+    for frame in codec::mpegaudio::frames(&frames) {
+        let f = frame?;
+        println!("layer={:?} version={:?} sample_rate={} channels={} bitrate_kbps={}",
+            f.layer, f.version, f.sample_rate_hz, f.channels, f.bitrate_kbps);
+    }
+}
+```
+
+`AudioCodec::Mp2` covers stream_type `0x03` and `0x04`, which spans Layer I,
+II, and III at all version × sample_rate combinations. The frame iterator
+recovers the actual layer and version from each header.
+
+### `codec::aac` — AAC ADTS
+
+```rust
+if let SamplePayload::Audio { codec: AudioCodec::Aac, frames, .. } = payload {
+    for frame in codec::aac::frames(&frames) {
+        let f = frame?;
+        println!("profile={:?} sample_rate={} channels={} blocks={} samples_per_frame={}",
+            f.profile, f.sample_rate_hz, f.channels,
+            f.num_raw_data_blocks, f.samples_per_frame);
+    }
+}
+```
+
+Note: the ADTS `profile` field is a legacy MPEG-2 AAC concept. Most real-world
+ADTS streams encode AAC-LC (`profile = Lc`) regardless of which MPEG-4 audio
+object type the encoder used. Streams using HE-AAC, HE-AACv2, or other MPEG-4
+AOTs are usually carried in LATM, not ADTS.
+
+### What the parsers don't do
+
+- **No CRC verification.** `has_crc` is surfaced; the CRC bytes are consumed
+  for offset accounting but not validated. Callers wanting verification can
+  use `frame.bytes()` to access the full frame slice and run their own CRC.
+- **No mid-stream sync-resync.** First parse error ends iteration. PES payload
+  bytes from the demuxer are sync-aligned by construction; mid-stream
+  corruption surfaces as `NonConformantIssue::*` upstream.
+- **No raw_data_block enumeration for multi-block AAC frames.** The frame is
+  surfaced as one `AdtsFrame` with `samples_per_frame = 1024 *
+  num_raw_data_blocks`. Splitting into individual blocks is decoder territory.
+
+### Deferred
+
+AAC LATM (LOAS/LATM framing per ISO 14496-3 §1.7) and AC-3 frame parsers are
+deferred to follow-up plans. See `docs/deferred-features.md`.
 
 See `docs/deferred-features.md` for the trigger conditions on each.

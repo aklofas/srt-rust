@@ -52,6 +52,7 @@
 
 pub(crate) mod enums;
 pub(crate) mod tags;
+pub(crate) mod var_uint;
 pub(crate) mod vtarget_pack;
 
 pub use vtarget_pack::{VTargetPack, VTargetPackError};

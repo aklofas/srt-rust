@@ -133,6 +133,17 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
         validate_bit_depth_minus8("bit_depth_chroma_minus8", bit_depth_chroma_minus8)?;
 
     let log2_max_pic_order_cnt_lsb_minus4 = br.read_ue()?;
+    // Per H.265 §7.4.3.2.1, log2_max_pic_order_cnt_lsb_minus4 is in the
+    // range 0..=12. The value is later used as a bit width via
+    // `read_u(log2_max_pic_order_cnt_lsb_minus4 + 4)` (~line 184); a
+    // hostile value near u32::MAX would overflow the `+ 4`. Reject
+    // out-of-range values eagerly.
+    if log2_max_pic_order_cnt_lsb_minus4 > 12 {
+        return Err(ParseError::ReservedValue {
+            field: "log2_max_pic_order_cnt_lsb_minus4",
+            value: log2_max_pic_order_cnt_lsb_minus4,
+        });
+    }
 
     let sub_layer_ordering_info_present_flag = br.read_bool()?;
     let layers_to_read = if sub_layer_ordering_info_present_flag {

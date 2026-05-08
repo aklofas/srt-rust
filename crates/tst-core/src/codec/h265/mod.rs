@@ -334,6 +334,69 @@ mod sps_tests {
         );
     }
 
+    /// Construct a synthetic H.265 SPS prefix that walks correctly up
+    /// through `log2_max_pic_order_cnt_lsb_minus4`, then writes the
+    /// caller-supplied value at that field. `parse_sps` validates eagerly
+    /// right after the read, so the bytes after that field don't need to
+    /// be valid.
+    ///
+    /// Per H.265 §7.3.2.2 SPS syntax + §7.3.3 PTL syntax with
+    /// `max_sub_layers_minus1 = 0` (no sublayer fields).
+    fn h265_sps_with_log2_max_pic_order_cnt_lsb_minus4(
+        log2_max_pic_order_cnt_lsb_minus4: u32,
+    ) -> Vec<u8> {
+        let mut bw = BitWriter::new();
+
+        // §7.3.2.2 SPS header.
+        bw.write(0, 4); // sps_video_parameter_set_id
+        bw.write(0, 3); // sps_max_sub_layers_minus1 = 0
+        bw.write(0, 1); // sps_temporal_id_nesting_flag
+
+        // §7.3.3 profile_tier_level(max_sub_layers_minus1 = 0): 96 bits.
+        bw.write(0, 2); // general_profile_space
+        bw.write(0, 1); // general_tier_flag
+        bw.write(1, 5); // general_profile_idc = 1 (Main)
+        bw.write(0, 32); // general_profile_compatibility_flags
+        bw.write(0, 32); // 32 of the 48 constraint/reserved bits
+        bw.write(0, 16); // remaining 16 of the 48 constraint/reserved bits
+        bw.write(120, 8); // general_level_idc = 120 (Level 4.0)
+
+        // §7.3.2.2 continues.
+        bw.write_ue(0); // sps_seq_parameter_set_id
+        bw.write_ue(1); // chroma_format_idc = 1 (4:2:0)
+        // separate_colour_plane_flag not coded (chroma_format_idc != 3).
+        bw.write_ue(320); // pic_width_in_luma_samples
+        bw.write_ue(240); // pic_height_in_luma_samples
+        bw.write(0, 1); // conformance_window_flag = 0
+        bw.write_ue(0); // bit_depth_luma_minus8 = 0 (8-bit)
+        bw.write_ue(0); // bit_depth_chroma_minus8 = 0 (8-bit)
+        bw.write_ue(log2_max_pic_order_cnt_lsb_minus4); // log2_max_pic_order_cnt_lsb_minus4
+
+        bw.bytes
+    }
+
+    /// Per H.265 §7.4.3.2.1, `log2_max_pic_order_cnt_lsb_minus4 ∈ 0..=12`
+    /// (valid bit widths 4..=16). Code at `sps.rs:184` used the field as
+    /// a bit width via `read_u(log2_max + 4)` without bounds-checking — a
+    /// hostile value of 248 (or anywhere near `u32::MAX`) overflowed the
+    /// `+ 4` addition. Caught now via the eager range check right after
+    /// the `read_ue`.
+    #[test]
+    fn h265_sps_rejects_log2_max_pic_order_cnt_lsb_minus4_overflow() {
+        let rbsp = h265_sps_with_log2_max_pic_order_cnt_lsb_minus4(248);
+        let result = parse_sps(&rbsp);
+        assert!(
+            matches!(
+                result,
+                Err(ParseError::ReservedValue {
+                    field: "log2_max_pic_order_cnt_lsb_minus4",
+                    value: 248
+                })
+            ),
+            "expected ReservedValue, got {result:?}"
+        );
+    }
+
     /// Build a complete synthetic H.265 SPS RBSP with a configurable RPS
     /// section and an optional VUI body. The SPS header fields are fixed
     /// (1920×1088, 10-bit, 4:2:0, Level 5.0 High). The caller supplies a

@@ -49,6 +49,20 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
+      - name: Scrub guard (no pre-rename names in tree)
+        # Fails the build if any pre-rename name (`srt-core`, `srt-rust`,
+        # `TsSender`, `TsReceiver`) or internal codeword (`v0`) leaks into
+        # the published tree. CLAUDE.md is the documented exception (per the
+        # repo-standalone guardrail); vendor/, target/, and Cargo.lock are
+        # excluded. Ubuntu's GHA image ships ripgrep preinstalled.
+        run: |
+          if rg 'srt[_-]core|srt[_-]rust|TsSender|TsReceiver|\bv0\b' \
+              --glob '!target' --glob '!CLAUDE.md' \
+              --glob '!**/Cargo.lock' --glob '!vendor'; then
+            echo "Pre-rename name regression detected" >&2
+            exit 1
+          fi
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

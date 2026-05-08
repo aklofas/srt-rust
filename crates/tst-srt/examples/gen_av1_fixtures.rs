@@ -1,14 +1,22 @@
 //! Generate hand-crafted AV1 OBU fixtures for unit tests.
-//! Run via `cargo run -p srt-core --example gen_av1_fixtures`.
+//! Run via `cargo run -p tst-srt --example gen_av1_fixtures`.
 //!
-//! Fixtures land at `tests/fixtures/codec/av1/`. Same hand-crafting
-//! rationale as gen_h266_fixtures.
+//! Fixtures land at `crates/tst-core/tests/fixtures/codec/av1/`. Same
+//! hand-crafting rationale as gen_h266_fixtures.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn fixtures_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/codec/av1")
+    // Resolve workspace-relative path: walks up from crates/tst-srt to the
+    // workspace root, then into the tst-core fixtures tree where codec
+    // tests look for them.
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir
+        .parent()
+        .and_then(Path::parent)
+        .expect("CARGO_MANIFEST_DIR is crates/tst-srt; walk up two levels");
+    workspace_root.join("crates/tst-core/tests/fixtures/codec/av1")
 }
 
 /// Minimal Sequence Header OBU body — Main, 320x240, 8-bit 4:2:0.

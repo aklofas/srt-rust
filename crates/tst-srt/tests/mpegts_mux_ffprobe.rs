@@ -32,6 +32,29 @@ fn have_ffprobe() -> bool {
         .unwrap_or(false)
 }
 
+fn run_ffprobe_field(path: &str, field: &str) -> String {
+    let out = Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "a:0",
+            "-show_entries",
+            &format!("stream={}", field),
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            path,
+        ])
+        .output()
+        .expect("ffprobe should run");
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
 #[test]
 fn ffprobe_recognizes_our_pmt() {
     if !have_ffprobe() {
@@ -685,4 +708,102 @@ fn ffprobe_validates_webvtt_in_ts_round_trip() {
     );
 
     let _ = std::fs::remove_file(&tmp);
+}
+
+#[test]
+fn ffprobe_agrees_on_mp2_sample_rate_and_channels() {
+    if !have_ffprobe() {
+        eprintln!("[skip] ffprobe not on PATH");
+        return;
+    }
+
+    let tst_core_manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("tst-core");
+    let path = tst_core_manifest.join("tests/fixtures/audio/mp2.ts");
+    let bytes = std::fs::read(&path).unwrap();
+    let path_str = path.to_str().unwrap();
+
+    let ffprobe_sr = run_ffprobe_field(path_str, "sample_rate")
+        .parse::<u32>()
+        .unwrap();
+    let ffprobe_ch = run_ffprobe_field(path_str, "channels")
+        .parse::<u8>()
+        .unwrap();
+
+    let mut demuxer = tst_core::mpegts::demux::Demuxer::new();
+    demuxer.feed(&bytes).unwrap();
+    demuxer.flush();
+    let mut parsed_sr = None;
+    let mut parsed_ch = None;
+    while let Some(ev) = demuxer.next_event() {
+        if let tst_core::mpegts::demux::DemuxEvent::Sample {
+            payload: tst_core::mpegts::demux::SamplePayload::Audio { frames, .. },
+            ..
+        } = ev
+        {
+            if let Some(f) = tst_core::codec::mpegaudio::frames(&frames)
+                .next()
+                .and_then(|r| r.ok())
+            {
+                parsed_sr = Some(f.sample_rate_hz);
+                parsed_ch = Some(f.channels);
+            }
+        }
+        if parsed_sr.is_some() {
+            break;
+        }
+    }
+    assert_eq!(parsed_sr, Some(ffprobe_sr));
+    assert_eq!(parsed_ch, Some(ffprobe_ch));
+}
+
+#[test]
+fn ffprobe_agrees_on_aac_adts_sample_rate_and_channels() {
+    if !have_ffprobe() {
+        eprintln!("[skip] ffprobe not on PATH");
+        return;
+    }
+
+    let tst_core_manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("tst-core");
+    let path = tst_core_manifest.join("tests/fixtures/audio/aac-adts.ts");
+    let bytes = std::fs::read(&path).unwrap();
+    let path_str = path.to_str().unwrap();
+
+    let ffprobe_sr = run_ffprobe_field(path_str, "sample_rate")
+        .parse::<u32>()
+        .unwrap();
+    let ffprobe_ch = run_ffprobe_field(path_str, "channels")
+        .parse::<u8>()
+        .unwrap();
+
+    let mut demuxer = tst_core::mpegts::demux::Demuxer::new();
+    demuxer.feed(&bytes).unwrap();
+    demuxer.flush();
+    let mut parsed_sr = None;
+    let mut parsed_ch = None;
+    while let Some(ev) = demuxer.next_event() {
+        if let tst_core::mpegts::demux::DemuxEvent::Sample {
+            payload: tst_core::mpegts::demux::SamplePayload::Audio { frames, .. },
+            ..
+        } = ev
+        {
+            if let Some(f) = tst_core::codec::aac::frames(&frames)
+                .next()
+                .and_then(|r| r.ok())
+            {
+                parsed_sr = Some(f.sample_rate_hz);
+                parsed_ch = Some(f.channels);
+            }
+        }
+        if parsed_sr.is_some() {
+            break;
+        }
+    }
+    assert_eq!(parsed_sr, Some(ffprobe_sr));
+    assert_eq!(parsed_ch, Some(ffprobe_ch));
 }

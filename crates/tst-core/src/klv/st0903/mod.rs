@@ -339,9 +339,210 @@ fn decode_vtarget_series(
     targets
 }
 
-#[allow(unused_variables)] // Task 6 wires the body
+/// Strict decode of a VMTI Local Set body per ST 0903.6 §10.1.
+///
+/// Rejects spec-violating input rather than recovering: missing
+/// unconditionally-required tags (Tags 4 and 6 per ST 0903.5-99 +
+/// ST 0903.4-19), duplicate tags, malformed UTF-8, IMAPB length
+/// mismatches, VarUint length-zero / overflow, U16Be / U64Be wrong
+/// width, BER framing failures, and pack-level malformations
+/// (routed via [`KlvDecodeError::St0903InvalidVTargetPack`]).
+///
+/// Unknown tags are still preserved in [`VmtiLs::unknown`] per
+/// ST 0107.5 §6 future-proof skip rule (strict mode is about
+/// codepoint legality, not future-spec rejection).
+///
+/// **Conditional requirements not enforced.** ST 0903.6 marks several
+/// tags as required only for specific carriage paths (Tag 1 Checksum
+/// required for standalone-VMTI per ST 0903.6-119, prohibited for
+/// embedded per -120; Tag 2 PTS required for standalone per -117;
+/// Tags 11/12/13 conditional). `decode_strict` does NOT enforce these
+/// rules — consumers needing carriage-aware validation can post-
+/// validate after a successful decode.
+///
+/// **UTF-8 char-cap.** Strict rejects strings exceeding the spec's
+/// `max_chars` (Tag 3 V32, Tag 10 V128). Lenient accepts but surfaces
+/// a `field_error`.
 pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
-    todo!("Task 6")
+    use crate::klv::imapb::{ImapbParams, decode_imapb};
+    use crate::klv::length::read_ber_strict;
+    use tags::{Encoding, TAGS, lookup};
+
+    let mut ls = VmtiLs::default();
+    let mut cursor = bytes;
+    let mut seen = [false; 256];
+
+    while !cursor.is_empty() {
+        let tag = cursor[0];
+        cursor = &cursor[1..];
+
+        if seen[tag as usize] {
+            return Err(KlvDecodeError::DuplicateTag {
+                tag: tag as u32,
+                offset: 0, // single-pass walk doesn't track buffer offset
+            });
+        }
+        seen[tag as usize] = true;
+
+        let (declared_len, after_len) = read_ber_strict(cursor)?;
+        cursor = after_len;
+        if cursor.len() < declared_len {
+            return Err(KlvDecodeError::Truncated {
+                offset: 0,
+                needed: declared_len,
+                have: cursor.len(),
+            });
+        }
+        let value = &cursor[..declared_len];
+        cursor = &cursor[declared_len..];
+
+        let Some(spec) = lookup(tag) else {
+            // ST 0107.5 §6 skip rule — preserve unknown tags.
+            ls.unknown.push(OwnedRawField {
+                tag: tag as u32,
+                value: value.to_vec(),
+            });
+            continue;
+        };
+
+        match spec.encoding {
+            Encoding::U16Be => {
+                if value.len() != 2 {
+                    return Err(KlvDecodeError::FieldError(KlvFieldError::InvalidLength {
+                        tag: tag as u32,
+                        expected: 2,
+                        got: value.len(),
+                    }));
+                }
+                debug_assert_eq!(tag, 1, "U16Be reserved for tag 1 (Checksum)");
+                ls.checksum = Some(u16::from_be_bytes([value[0], value[1]]));
+            }
+            Encoding::U64Be => {
+                if value.len() != 8 {
+                    return Err(KlvDecodeError::FieldError(KlvFieldError::InvalidLength {
+                        tag: tag as u32,
+                        expected: 8,
+                        got: value.len(),
+                    }));
+                }
+                debug_assert_eq!(tag, 2, "U64Be reserved for tag 2 (Precision Time Stamp)");
+                ls.precision_time_stamp = Some(u64::from_be_bytes(value.try_into().unwrap()));
+            }
+            Encoding::VarUint { max_bytes } => {
+                if value.is_empty() || value.len() > max_bytes as usize {
+                    return Err(KlvDecodeError::FieldError(KlvFieldError::InvalidLength {
+                        tag: tag as u32,
+                        expected: max_bytes as usize,
+                        got: value.len(),
+                    }));
+                }
+                let v = var_uint::read_var_u32(value).map_err(KlvDecodeError::FieldError)?;
+                match tag {
+                    4 => ls.version_number = Some(v as u16), // V2 caps at u16
+                    5 => ls.total_targets_in_frame = Some(v),
+                    6 => ls.num_targets_reported = Some(v),
+                    8 => ls.frame_width = Some(v),
+                    9 => ls.frame_height = Some(v),
+                    _ => unreachable!("VarUint dispatch missing tag {tag}"),
+                }
+            }
+            Encoding::Utf8 { max_chars } => {
+                let s = std::str::from_utf8(value).map_err(|_| {
+                    KlvDecodeError::FieldError(KlvFieldError::InvalidUtf8 { tag: tag as u32 })
+                })?;
+                if s.chars().count() > max_chars {
+                    return Err(KlvDecodeError::FieldError(KlvFieldError::InvalidLength {
+                        tag: tag as u32,
+                        expected: max_chars,
+                        got: s.chars().count(),
+                    }));
+                }
+                let owned = s.to_string();
+                match tag {
+                    3 => ls.vmti_system_name = Some(owned),
+                    10 => ls.source_sensor = Some(owned),
+                    _ => unreachable!("Utf8 dispatch missing tag {tag}"),
+                }
+            }
+            Encoding::ImapbF64 { min, max } => {
+                // Top-level Tags 11 + 12 are IMAPB(0, 180, 2) per
+                // ST 0903.6 §10.1.11 + §10.1.12 — both fixed length 2.
+                let expected_len = 2;
+                if value.len() != expected_len {
+                    return Err(KlvDecodeError::FieldError(KlvFieldError::InvalidLength {
+                        tag: tag as u32,
+                        expected: expected_len,
+                        got: value.len(),
+                    }));
+                }
+                let params = ImapbParams {
+                    min,
+                    max,
+                    length: expected_len,
+                };
+                let v = decode_imapb(&params, value).map_err(KlvDecodeError::FieldError)?;
+                match tag {
+                    11 => ls.horizontal_fov = Some(v),
+                    12 => ls.vertical_fov = Some(v),
+                    _ => unreachable!("ImapbF64 dispatch missing tag {tag}"),
+                }
+            }
+            Encoding::RawBytes => match tag {
+                13 => ls.miis_id = Some(value.to_vec()),
+                101 => {
+                    ls.targets = decode_vtarget_series_strict(value)?;
+                }
+                102 => ls.algorithm_series = Some(value.to_vec()),
+                103 => ls.ontology_series = Some(value.to_vec()),
+                _ => unreachable!("RawBytes dispatch missing tag {tag}"),
+            },
+        }
+    }
+
+    // Required-tag validation per Task 2's audit: required = {4, 6}.
+    for spec in TAGS {
+        if spec.required && !seen[spec.id as usize] {
+            return Err(KlvDecodeError::St0903MissingRequiredTag { tag: spec.id });
+        }
+    }
+
+    Ok(ls)
+}
+
+/// Strict variant of [`decode_vtarget_series`]: framing failures and
+/// pack-level malformations abort with an `Err`. The pack-level error
+/// is routed via the typed [`KlvDecodeError::St0903InvalidVTargetPack`]
+/// arm carrying the underlying [`VTargetPackError`].
+fn decode_vtarget_series_strict(
+    series_bytes: &[u8],
+) -> Result<Vec<vtarget_pack::VTargetPack>, KlvDecodeError> {
+    use crate::klv::length::read_ber_strict;
+
+    let mut targets = Vec::new();
+    let mut cursor = series_bytes;
+    let mut offset = 0usize;
+    while !cursor.is_empty() {
+        let before_len = cursor.len();
+        let (pack_len, after_len) = read_ber_strict(cursor)?;
+        let len_consumed = before_len - after_len.len();
+        cursor = after_len;
+        offset += len_consumed;
+        if cursor.len() < pack_len {
+            return Err(KlvDecodeError::Truncated {
+                offset,
+                needed: pack_len,
+                have: cursor.len(),
+            });
+        }
+        let pack_bytes = &cursor[..pack_len];
+        cursor = &cursor[pack_len..];
+
+        let (pack, _) = vtarget_pack::read_pack(pack_bytes)
+            .map_err(|reason| KlvDecodeError::St0903InvalidVTargetPack { offset, reason })?;
+        targets.push(pack);
+        offset += pack_len;
+    }
+    Ok(targets)
 }
 
 #[allow(unused_variables, clippy::ptr_arg)] // Task 7 wires the body
@@ -528,5 +729,138 @@ mod tests {
         let fov = ls.horizontal_fov.expect("horizontal_fov decoded");
         assert!((fov - 90.0).abs() < 0.01, "got fov={fov}, expected ~90.0");
         assert!(ls.field_errors.is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // Task 6 — `decode_strict` tests.
+    // ------------------------------------------------------------------
+
+    /// Build the minimum LS that satisfies `decode_strict`'s required-tag
+    /// gate per Task 2's audit: Tag 4 (Version) + Tag 6 (numTargetsReported).
+    /// Tags 1/2/11/12/13 are conditional and NOT enforced by `decode_strict`
+    /// (consumers needing carriage-aware validation post-validate).
+    fn minimal_strict_ls_bytes() -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(&[4, 1, 6]); // version = 6
+        out.extend_from_slice(&[6, 1, 0]); // num_targets_reported = 0
+        out
+    }
+
+    #[test]
+    fn strict_decode_minimal_passes() {
+        let bytes = minimal_strict_ls_bytes();
+        let ls = decode_strict(&bytes).unwrap();
+        assert_eq!(ls.version_number, Some(6));
+        assert_eq!(ls.num_targets_reported, Some(0));
+    }
+
+    #[test]
+    fn strict_decode_with_optional_tags_passes() {
+        // All required + several optional tags. Should pass strict.
+        let mut bytes = minimal_strict_ls_bytes();
+        bytes.extend_from_slice(&[1, 2, 0, 0]); // checksum
+        bytes.extend_from_slice(&[2, 8]);
+        bytes.extend_from_slice(&1_700_000_000_000_000u64.to_be_bytes());
+        bytes.extend_from_slice(&[8, 2, 0x07, 0x80]); // frame_width = 1920
+        bytes.extend_from_slice(&[9, 2, 0x04, 0x38]); // frame_height = 1080
+        let ls = decode_strict(&bytes).unwrap();
+        assert_eq!(ls.checksum, Some(0));
+        assert_eq!(ls.precision_time_stamp, Some(1_700_000_000_000_000));
+        assert_eq!(ls.frame_width, Some(1920));
+        assert_eq!(ls.frame_height, Some(1080));
+    }
+
+    #[test]
+    fn strict_decode_missing_required_version_rejected() {
+        // Tag 4 (Version) omitted, Tag 6 present. Strict should reject.
+        let bytes = vec![6, 1, 0];
+        let err = decode_strict(&bytes).unwrap_err();
+        assert!(matches!(
+            err,
+            KlvDecodeError::St0903MissingRequiredTag { tag: 4 }
+        ));
+    }
+
+    #[test]
+    fn strict_decode_missing_required_num_targets_rejected() {
+        // Tag 4 present, Tag 6 (numTargetsReported) omitted.
+        let bytes = vec![4, 1, 6];
+        let err = decode_strict(&bytes).unwrap_err();
+        assert!(matches!(
+            err,
+            KlvDecodeError::St0903MissingRequiredTag { tag: 6 }
+        ));
+    }
+
+    #[test]
+    fn strict_decode_duplicate_tag_rejected() {
+        let mut bytes = minimal_strict_ls_bytes();
+        // Append a second Tag 4 (Version).
+        bytes.extend_from_slice(&[4, 1, 7]);
+        let err = decode_strict(&bytes).unwrap_err();
+        assert!(matches!(err, KlvDecodeError::DuplicateTag { tag: 4, .. }));
+    }
+
+    #[test]
+    fn strict_decode_invalid_utf8_rejected() {
+        let mut bytes = minimal_strict_ls_bytes();
+        // Tag 3 (System Name) with bytes [0xFF, 0xFE] (invalid UTF-8).
+        bytes.extend_from_slice(&[3, 2, 0xFF, 0xFE]);
+        let err = decode_strict(&bytes).unwrap_err();
+        assert!(matches!(
+            err,
+            KlvDecodeError::FieldError(KlvFieldError::InvalidUtf8 { tag: 3 })
+        ));
+    }
+
+    #[test]
+    fn strict_decode_unknown_tag_preserved() {
+        let mut bytes = minimal_strict_ls_bytes();
+        bytes.extend_from_slice(&[100, 3, 0xAA, 0xBB, 0xCC]);
+        // ST 0107.5 §6 skip rule — unknown tags must round-trip through
+        // strict mode too.
+        let ls = decode_strict(&bytes).unwrap();
+        assert_eq!(ls.unknown.len(), 1);
+        assert_eq!(ls.unknown[0].tag, 100);
+    }
+
+    #[test]
+    fn strict_decode_zero_length_imapb_rejected() {
+        // Strict mode must surface IMAPB-length errors as Err, not
+        // accept them silently. Lenient surfaces in field_errors.
+        let mut bytes = minimal_strict_ls_bytes();
+        bytes.extend_from_slice(&[11, 0]); // tag 11, BER length 0
+        let err = decode_strict(&bytes).unwrap_err();
+        assert!(matches!(
+            err,
+            KlvDecodeError::FieldError(KlvFieldError::InvalidLength {
+                tag: 11,
+                expected: 2,
+                got: 0
+            })
+        ));
+    }
+
+    #[test]
+    fn strict_decode_truncated_input_rejected() {
+        // Required Tag 4 with declared length 5 but only 1 byte present.
+        let bytes = vec![4u8, 5, 0x01];
+        let err = decode_strict(&bytes).unwrap_err();
+        assert!(matches!(err, KlvDecodeError::Truncated { .. }));
+    }
+
+    #[test]
+    fn strict_decode_invalid_vtargetpack_rejected() {
+        // Tag 101 with malformed pack body. Should route via
+        // St0903InvalidVTargetPack typed variant. Pack body = [0x81]:
+        // BER-OID continuation byte without a terminator → truncated
+        // target_id.
+        let mut bytes = minimal_strict_ls_bytes();
+        bytes.extend_from_slice(&[101, 2, 1, 0x81]);
+        let err = decode_strict(&bytes).unwrap_err();
+        assert!(matches!(
+            err,
+            KlvDecodeError::St0903InvalidVTargetPack { .. }
+        ));
     }
 }

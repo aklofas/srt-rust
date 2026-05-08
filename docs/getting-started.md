@@ -125,7 +125,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, /* ... payload bytes ... */];
     let klv = vec![0x06, 0x0E, 0x2B, 0x34, /* ... ST 0601 record ... */];
     sender.send_video(&nal, /*pts_90khz=*/ 0, /*key_frame=*/ true)?;
-    sender.send_klv(&klv, 0)?;
+    // metadata_service_id = 0x00 is the default per ST 1402.2 App. B Table 2.
+    sender.send_klv(&klv, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0x00)?;
 
     sender.close();
     Ok(())

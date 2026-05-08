@@ -70,7 +70,7 @@ impl<T: Transport> MuxSender<T> {
     pub fn new(config: Config, transport: T) -> Result<Self, MuxError>;
     pub fn send_video(&self, nal: &[u8], pts_90khz: i64, key_frame: bool)
         -> Result<(), MuxSenderError>;
-    pub fn send_klv(&self, klv: &[u8], pts_90khz: i64)
+    pub fn send_klv(&self, klv: &[u8], pts_90khz: i64, metadata_service_id: u8)
         -> Result<(), MuxSenderError>;
     pub fn close(&self);
     pub fn is_alive(&self) -> bool;
@@ -117,7 +117,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0xAA];
         let klv = vec![/* ... pre-built ST 0601 ... */];
         sender.send_video(&nal, i * 3000, i == 0)?;
-        sender.send_klv(&klv, i * 3000)?;
+        // metadata_service_id = 0x00 is the default per ST 1402.2 App. B Table 2.
+        sender.send_klv(&klv, i * 3000, /*metadata_service_id=*/ 0x00)?;
     }
     sender.close();
     Ok(())

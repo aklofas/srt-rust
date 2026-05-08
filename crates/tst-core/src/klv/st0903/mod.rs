@@ -50,6 +50,7 @@
 //!    new typed-set additions from creating a coupling load on the
 //!    demuxer.
 
+pub(crate) mod emit;
 pub(crate) mod enums;
 pub(crate) mod tags;
 pub(crate) mod var_uint;
@@ -559,37 +560,8 @@ fn decode_vtarget_series_strict(
 /// quantization on `horizontal_fov` / `vertical_fov`). `field_errors`
 /// is a decode-time diagnostic and is not emitted on encode.
 pub fn encode(ls: &VmtiLs, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
-    use crate::klv::imapb::{ImapbParams, encode_imapb};
     use crate::klv::length::write_ber;
-
-    fn emit_tlv(out: &mut Vec<u8>, tag: u8, value: &[u8]) -> Result<(), KlvEncodeError> {
-        out.push(tag);
-        let mut len_buf = [0u8; 9];
-        let len_n = write_ber(value.len(), &mut len_buf)?;
-        out.extend_from_slice(&len_buf[..len_n]);
-        out.extend_from_slice(value);
-        Ok(())
-    }
-
-    fn emit_var(out: &mut Vec<u8>, tag: u8, value: u32) -> Result<(), KlvEncodeError> {
-        let mut tmp = Vec::with_capacity(4);
-        var_uint::write_var_u32(value, &mut tmp);
-        emit_tlv(out, tag, &tmp)
-    }
-
-    fn emit_imapb_n(
-        out: &mut Vec<u8>,
-        tag: u8,
-        value: f64,
-        min: f64,
-        max: f64,
-        length: usize,
-    ) -> Result<(), KlvEncodeError> {
-        let params = ImapbParams { min, max, length };
-        let mut buf = vec![0u8; length];
-        encode_imapb(&params, value, &mut buf)?;
-        emit_tlv(out, tag, &buf)
-    }
+    use emit::{emit_imapb_n, emit_tlv, emit_var};
 
     // Ascending tag order. Tag 7 (deprecated) is intentionally skipped
     // — there is no struct field to source it from.
@@ -673,7 +645,7 @@ pub fn encode_to_vec(ls: &VmtiLs) -> Result<Vec<u8>, KlvEncodeError> {
 
 /// Number of wire bytes that [`encode`] would produce for `ls`. Mirrors
 /// `encode`'s field-by-field structure so the two cannot drift.
-pub fn encoded_len(ls: &VmtiLs) -> Result<usize, KlvEncodeError> {
+pub fn encoded_len(ls: &VmtiLs) -> usize {
     use crate::klv::length::ber_len;
     use var_uint::var_u32_len;
 
@@ -737,7 +709,7 @@ pub fn encoded_len(ls: &VmtiLs) -> Result<usize, KlvEncodeError> {
             total += tlv_len(field.value.len());
         }
     }
-    Ok(total)
+    total
 }
 
 #[cfg(test)]
@@ -1058,7 +1030,7 @@ mod tests {
         };
 
         let bytes = encode_to_vec(&ls).unwrap();
-        assert_eq!(bytes.len(), encoded_len(&ls).unwrap());
+        assert_eq!(bytes.len(), encoded_len(&ls));
 
         let decoded = decode(&bytes).unwrap();
         assert_eq!(decoded.checksum, Some(0));
@@ -1153,7 +1125,7 @@ mod tests {
         };
 
         let bytes = encode_to_vec(&ls).unwrap();
-        assert_eq!(bytes.len(), encoded_len(&ls).unwrap());
+        assert_eq!(bytes.len(), encoded_len(&ls));
     }
 
     #[test]
@@ -1186,7 +1158,7 @@ mod tests {
 
         assert_eq!(
             bytes.len(),
-            encoded_len(&ls).unwrap(),
+            encoded_len(&ls),
             "encoded_len disagrees with encode_to_vec output length"
         );
     }

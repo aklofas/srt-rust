@@ -553,9 +553,8 @@ pub(crate) fn write_pack(
     pack: &VTargetPack,
     out: &mut Vec<u8>,
 ) -> Result<usize, crate::error::KlvEncodeError> {
-    use super::var_uint::write_var_u32;
-    use crate::klv::imapb::{ImapbParams, encode_imapb};
-    use crate::klv::length::{write_ber, write_ber_oid};
+    use super::emit::{emit_imapb_n, emit_tlv, emit_var};
+    use crate::klv::length::write_ber_oid;
 
     let start = out.len();
 
@@ -563,46 +562,6 @@ pub(crate) fn write_pack(
     let mut buf = [0u8; 5];
     let n = write_ber_oid(pack.target_id, &mut buf)?;
     out.extend_from_slice(&buf[..n]);
-
-    // 2. LS-encoded body. Helper that emits a single TLV.
-    fn emit_tlv(
-        out: &mut Vec<u8>,
-        tag: u8,
-        value: &[u8],
-    ) -> Result<(), crate::error::KlvEncodeError> {
-        out.push(tag);
-        let mut len_buf = [0u8; 9];
-        let len_n = write_ber(value.len(), &mut len_buf)?;
-        out.extend_from_slice(&len_buf[..len_n]);
-        out.extend_from_slice(value);
-        Ok(())
-    }
-
-    // VarUint helper: encode value, then wrap as TLV.
-    fn emit_var(
-        out: &mut Vec<u8>,
-        tag: u8,
-        value: u32,
-    ) -> Result<(), crate::error::KlvEncodeError> {
-        let mut tmp = Vec::with_capacity(4);
-        write_var_u32(value, &mut tmp);
-        emit_tlv(out, tag, &tmp)
-    }
-
-    // IMAPB helper: encode `length` bytes via klv::imapb, then TLV.
-    fn emit_imapb_n(
-        out: &mut Vec<u8>,
-        tag: u8,
-        value: f64,
-        min: f64,
-        max: f64,
-        length: usize,
-    ) -> Result<(), crate::error::KlvEncodeError> {
-        let params = ImapbParams { min, max, length };
-        let mut buf = vec![0u8; length];
-        encode_imapb(&params, value, &mut buf)?;
-        emit_tlv(out, tag, &buf)
-    }
 
     if let Some(v) = pack.centroid_pixel {
         emit_var(out, 1, v)?;

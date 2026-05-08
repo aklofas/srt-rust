@@ -549,6 +549,109 @@ mod sps_tests {
         assert_eq!(fr.den, 1001);
     }
 
+    /// Build an adversarial SPS whose conformance-window offsets sum past
+    /// `u32::MAX`. Mirrors `build_synthetic_sps` (1920×1088 / 10-bit / 4:2:0
+    /// / Level 5.0) but parameterizes the four ue(v) crop offsets and ends
+    /// with a minimal RPS (`num_short_term_ref_pic_sets = 0`) + VUI so the
+    /// parser walks the full SPS and reaches the crop arithmetic at the
+    /// end of `parse_sps`.
+    fn build_h265_sps_with_conf_window_offsets(
+        conf_left: u32,
+        conf_right: u32,
+        conf_top: u32,
+        conf_bottom: u32,
+    ) -> Vec<u8> {
+        let mut bw = BitWriter::new();
+
+        bw.write(0, 4); // sps_video_parameter_set_id
+        bw.write(0, 3); // sps_max_sub_layers_minus1 = 0
+        bw.write(0, 1); // sps_temporal_id_nesting_flag
+
+        bw.write(0, 2); // general_profile_space
+        bw.write(1, 1); // general_tier_flag
+        bw.write(2, 5); // general_profile_idc = 2 (Main10)
+        bw.write(0x2000_0000, 32); // profile_compatibility_flags (Main10 bit)
+        bw.write(1, 1); // general_progressive_source_flag
+        bw.write(0, 31);
+        bw.write(0, 16);
+        bw.write(150, 8); // general_level_idc
+
+        bw.write_ue(0); // sps_seq_parameter_set_id
+        bw.write_ue(1); // chroma_format_idc = 1 (4:2:0 → sub_w=sub_h=2)
+        bw.write_ue(1920); // pic_width_in_luma_samples
+        bw.write_ue(1088); // pic_height_in_luma_samples
+        bw.write(1, 1); // conformance_window_flag = 1
+        bw.write_ue(conf_left);
+        bw.write_ue(conf_right);
+        bw.write_ue(conf_top);
+        bw.write_ue(conf_bottom);
+        bw.write_ue(2); // bit_depth_luma_minus8 = 2 (10-bit)
+        bw.write_ue(2); // bit_depth_chroma_minus8 = 2
+        bw.write_ue(4); // log2_max_pic_order_cnt_lsb_minus4
+        bw.write(0, 1); // sps_sub_layer_ordering_info_present_flag = 0
+        bw.write_ue(0); // max_dec_pic_buffering_minus1[0]
+        bw.write_ue(0); // max_num_reorder_pics[0]
+        bw.write_ue(0); // max_latency_increase_plus1[0]
+        bw.write_ue(0); // log2_min_luma_coding_block_size_minus3
+        bw.write_ue(0); // log2_diff_max_min_luma_coding_block_size
+        bw.write_ue(0); // log2_min_luma_transform_block_size_minus2
+        bw.write_ue(0); // log2_diff_max_min_luma_transform_block_size
+        bw.write_ue(0); // max_transform_hierarchy_depth_inter
+        bw.write_ue(0); // max_transform_hierarchy_depth_intra
+        bw.write(0, 1); // scaling_list_enabled_flag
+        bw.write(0, 1); // amp_enabled_flag
+        bw.write(0, 1); // sample_adaptive_offset_enabled_flag
+        bw.write(0, 1); // pcm_enabled_flag
+        bw.write_ue(0); // num_short_term_ref_pic_sets = 0
+        bw.write(0, 1); // long_term_ref_pics_present_flag
+        bw.write(0, 1); // sps_temporal_mvp_enabled_flag
+        bw.write(0, 1); // strong_intra_smoothing_enabled_flag
+        bw.write(0, 1); // vui_parameters_present_flag = 0
+
+        bw.bytes
+    }
+
+    /// Regression test for the H.265 SPS conformance-window crop addition
+    /// overflow. Pre-fix, `crop_x_left + crop_x_right` was a regular u32 add
+    /// at the end of `parse_sps`. Hostile bytes from a remote peer can drive
+    /// both operands to near `u32::MAX/2`, panicking the debug build and
+    /// silently wrapping in release.
+    ///
+    /// With `chroma_format_idc = 1` (4:2:0 → sub_w = 2), setting
+    /// `conf_win_left_offset = conf_win_right_offset = 1 << 30` yields
+    /// `crop_x_left = crop_x_right = 1 << 31`. Their sum is `1 << 32`,
+    /// which overflows u32. The fix is `saturating_add`; the outer
+    /// `pic_width.saturating_sub(...)` already handles the > pic_width case
+    /// once the inner sum is bounded.
+    ///
+    /// `read_ue` accepts values up to `2^32 - 2`; `1 << 30` is well below
+    /// that. Multiplications stay within u32 (each is exactly `1 << 31`).
+    #[test]
+    fn h265_sps_crop_saturates_on_adversarial_offsets() {
+        let rbsp = build_h265_sps_with_conf_window_offsets(1 << 30, 1 << 30, 0, 0);
+        let result = parse_sps(&rbsp);
+        match result {
+            Ok(sps) => {
+                // Saturating arithmetic landed: width must not exceed
+                // pic_width_in_luma_samples (1920). Pre-fix release builds
+                // wrapped to a small value or silently produced nonsense.
+                assert!(
+                    sps.width <= 1920,
+                    "post-crop width must not exceed coded pic_width; got {}",
+                    sps.width
+                );
+            }
+            Err(
+                ParseError::ReservedValue { .. }
+                | ParseError::TruncatedRbsp { .. }
+                | ParseError::InvalidGolomb { .. },
+            ) => {
+                // Typed error is also acceptable per the plan.
+            }
+            Err(e) => panic!("unexpected error variant: {e:?}"),
+        }
+    }
+
     /// Full-walk structural-field check: same assertions as the old partial-parse
     /// test, but the SPS is now fully parseable (includes RPS body and VUI).
     /// VUI fields are asserted to be populated — the bit cursor reaches VUI.

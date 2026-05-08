@@ -203,8 +203,8 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
 
     let raw_w = pic_width_in_luma_samples;
     let raw_h = pic_height_in_luma_samples;
-    let width = raw_w.saturating_sub(crop_x_left + crop_x_right);
-    let height = raw_h.saturating_sub(crop_y_top + crop_y_bottom);
+    let width = raw_w.saturating_sub(crop_x_left.saturating_add(crop_x_right));
+    let height = raw_h.saturating_sub(crop_y_top.saturating_add(crop_y_bottom));
 
     Ok(H265Sps {
         sps_seq_parameter_set_id,

@@ -62,7 +62,6 @@ impl<'a> Frame<'a> {
 }
 
 /// Iterator over MPEG audio frames in `bytes`. Use [`frames`] to construct.
-#[allow(dead_code)] // buf + cursor read once Frames::next is implemented (Task 8)
 pub struct Frames<'a> {
     buf: &'a [u8],
     cursor: usize,
@@ -76,8 +75,42 @@ impl<'a> Iterator for Frames<'a> {
         if self.done {
             return None;
         }
-        // Implementation lands in Task 8.
-        todo!("mpegaudio::Frames::next not yet implemented")
+        if self.cursor >= self.buf.len() {
+            self.done = true;
+            return None;
+        }
+        let remaining = &self.buf[self.cursor..];
+        let header = match parse_header(remaining) {
+            Ok(h) => h,
+            Err(e) => {
+                self.done = true;
+                return Some(Err(e));
+            }
+        };
+        let len = header.frame_length_bytes as usize;
+        if remaining.len() < len {
+            self.done = true;
+            return Some(Err(ParseError::Truncated {
+                needed: header.frame_length_bytes,
+                had: remaining.len() as u32,
+            }));
+        }
+        let body = &remaining[..len];
+        let frame = Frame {
+            layer: header.layer,
+            version: header.version,
+            bitrate_kbps: header.bitrate_kbps,
+            sample_rate_hz: header.sample_rate_hz,
+            channel_mode: header.channel_mode,
+            channels: header.channels,
+            frame_length_bytes: header.frame_length_bytes,
+            samples_per_frame: header.samples_per_frame,
+            has_crc: header.has_crc,
+            raw_header: header.raw,
+            body,
+        };
+        self.cursor += len;
+        Some(Ok(frame))
     }
 }
 
@@ -102,7 +135,6 @@ pub fn frames(bytes: &[u8]) -> Frames<'_> {
 //   2 = MPEG-1 Layer III
 //   3 = MPEG-2/2.5 Layer I
 //   4 = MPEG-2/2.5 Layer II/III (shared column per ISO 13818-3 Table 5)
-#[allow(dead_code)]
 const BITRATE_TABLE: [[u32; 16]; 5] = [
     // index: 0   1   2   3   4    5    6    7    8    9    10   11   12   13   14   15
     [        0,  32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 0], // V1L1
@@ -112,7 +144,6 @@ const BITRATE_TABLE: [[u32; 16]; 5] = [
     [        0,  8,  16, 24, 32,  40,  48,  56,  64,  80,  96,  112, 128, 144, 160, 0], // V2L2/L3
 ];
 
-#[allow(dead_code)]
 fn bitrate_column(version: Version, layer: Layer) -> usize {
     match (version, layer) {
         (Version::Mpeg1, Layer::I) => 0,
@@ -129,7 +160,6 @@ fn bitrate_column(version: Version, layer: Layer) -> usize {
 /// Errors:
 /// - `ReservedValue { field: "bitrate_index", value: 0 }` for free-format
 /// - `Forbidden { field: "bitrate_index" }` for index 15
-#[allow(dead_code)]
 pub(crate) fn decode_bitrate(version: Version, layer: Layer, bitrate_index: u8) -> Result<u32, ParseError> {
     if bitrate_index == 0 {
         return Err(ParseError::ReservedValue { field: "bitrate_index", value: 0 });
@@ -143,7 +173,6 @@ pub(crate) fn decode_bitrate(version: Version, layer: Layer, bitrate_index: u8) 
 
 // Sample rate table per ISO 11172-3 §2.4.2.3 Table 9 + ISO 13818-3 Table 6.
 // Indexed by [version][sample_rate_index]. Index 3 = reserved.
-#[allow(dead_code)]
 const SAMPLE_RATE_TABLE: [[u32; 4]; 3] = [
     [44100, 48000, 32000, 0], // MPEG-1
     [22050, 24000, 16000, 0], // MPEG-2
@@ -153,7 +182,6 @@ const SAMPLE_RATE_TABLE: [[u32; 4]; 3] = [
 /// Decode sample rate (Hz) from `(version, sample_rate_index)`.
 ///
 /// Errors: `ReservedValue { field: "sample_rate_index", value: 3 }`.
-#[allow(dead_code)]
 pub(crate) fn decode_sample_rate(version: Version, sample_rate_index: u8) -> Result<u32, ParseError> {
     if sample_rate_index == 3 {
         return Err(ParseError::ReservedValue { field: "sample_rate_index", value: 3 });
@@ -167,7 +195,6 @@ pub(crate) fn decode_sample_rate(version: Version, sample_rate_index: u8) -> Res
 }
 
 /// Decode channel mode from the 2-bit header field (bits 25-26).
-#[allow(dead_code)]
 fn decode_channel_mode(bits: u8) -> ChannelMode {
     match bits & 0b11 {
         0b00 => ChannelMode::Stereo,
@@ -179,7 +206,6 @@ fn decode_channel_mode(bits: u8) -> ChannelMode {
 }
 
 /// Return the number of channels for a given channel mode.
-#[allow(dead_code)]
 fn channels_for_mode(mode: ChannelMode) -> u8 {
     match mode {
         ChannelMode::Mono => 1,
@@ -189,7 +215,6 @@ fn channels_for_mode(mode: ChannelMode) -> u8 {
 
 /// Return the number of samples per frame for a given (version, layer) pair.
 /// Per ISO 11172-3 (MPEG-1) + ISO 13818-3 (MPEG-2/2.5).
-#[allow(dead_code)]
 fn samples_per_frame(version: Version, layer: Layer) -> u16 {
     match (version, layer) {
         (_, Layer::I) => 384,
@@ -208,7 +233,6 @@ fn samples_per_frame(version: Version, layer: Layer) -> u16 {
 /// - Layer III, MPEG-2/2.5: `72 * bitrate * 1000 / sample_rate + padding`
 ///
 /// `bitrate` is in kbps; `sample_rate` is in Hz.
-#[allow(dead_code)]
 fn frame_length(
     layer: Layer,
     version: Version,
@@ -230,7 +254,6 @@ fn frame_length(
 
 /// Decoded view of the 4-byte header (no body slice yet).
 #[derive(Debug)]
-#[allow(dead_code)] // fields consumed by Task 8's Frames::next body
 struct Header {
     version: Version,
     layer: Layer,
@@ -259,7 +282,6 @@ struct Header {
 ///   padding_bit:        bit  22 (1 bit)
 ///   private_bit:        bit  23 (1 bit)
 ///   channel_mode:       bits 24..26 (2 bits)
-#[allow(dead_code)] // called by Frames::next in Task 8
 fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
     if bytes.len() < 4 {
         return Err(ParseError::Truncated { needed: 4, had: bytes.len() as u32 });
@@ -469,5 +491,53 @@ mod tests {
     fn parse_header_bad_sync_yields_bad_sync_word() {
         let err = parse_header(&[0xAB, 0xCD, 0x00, 0x00]).unwrap_err();
         assert!(matches!(err, ParseError::BadSyncWord { .. }));
+    }
+
+    #[test]
+    fn frames_empty_yields_none() {
+        let mut it = frames(&[]);
+        assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn frames_short_yields_truncated_then_none() {
+        let mut it = frames(&[0xFF]);
+        match it.next() {
+            Some(Err(ParseError::Truncated { .. })) => {}
+            other => panic!("expected Err(Truncated), got {:?}", other),
+        }
+        assert!(it.next().is_none(), "iterator should end after first error");
+    }
+
+    #[test]
+    fn frames_two_back_to_back() {
+        // Build two V1L3 128k 44.1k frames (417 bytes each, no padding).
+        let header: [u8; 4] = [0xFF, 0xFB, 0x90, 0x40];
+        let mut buf = Vec::with_capacity(2 * 417);
+        for _ in 0..2 {
+            buf.extend_from_slice(&header);
+            buf.extend(std::iter::repeat(0u8).take(417 - 4));
+        }
+        let mut it = frames(&buf);
+        let f1 = it.next().unwrap().unwrap();
+        assert_eq!(f1.frame_length_bytes, 417);
+        assert_eq!(f1.bytes().len(), 417);
+        let f2 = it.next().unwrap().unwrap();
+        assert_eq!(f2.frame_length_bytes, 417);
+        assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn frames_truncated_body_yields_truncated() {
+        // 4-byte header says 417 but we only give 100 bytes total.
+        let header: [u8; 4] = [0xFF, 0xFB, 0x90, 0x40];
+        let mut buf = Vec::from(header);
+        buf.extend(std::iter::repeat(0u8).take(96));
+        let mut it = frames(&buf);
+        match it.next() {
+            Some(Err(ParseError::Truncated { .. })) => {}
+            other => panic!("expected Err(Truncated), got {:?}", other),
+        }
+        assert!(it.next().is_none());
     }
 }

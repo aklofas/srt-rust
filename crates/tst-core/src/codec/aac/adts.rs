@@ -7,7 +7,6 @@ use super::{AacProfile, MpegVersion};
 use crate::codec::ParseError;
 
 /// Decoded view of the 7- or 9-byte ADTS header (no body slice yet).
-#[allow(dead_code)]
 #[derive(Debug)]
 pub(super) struct Header {
     pub profile: AacProfile,
@@ -40,7 +39,6 @@ pub(super) struct Header {
 ///   aac_frame_length:         13 bits (header + body bytes total)
 ///   adts_buffer_fullness:     11 bits
 ///   number_of_raw_data_blocks_in_frame: 2 bits (wire 0..=3 → logical 1..=4)
-#[allow(dead_code)]
 pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
     if bytes.len() < 7 {
         return Err(ParseError::Truncated {
@@ -142,7 +140,7 @@ mod tests {
         h[0] = 0xFF;
         // bytes[1]: 1111 (sync low) | 1 (ID=MPEG-2) | 00 (layer) | protection_absent
         let pa = if protection_absent { 1 } else { 0 };
-        h[1] = 0b1111_0000 | (1 << 3) | (0 << 1) | pa;
+        h[1] = 0b1111_0000 | (1 << 3) | pa;
         // bytes[2]: profile(2) | sample_rate_idx(4) | private(0) | chan_cfg MSB
         h[2] = (profile << 6) | ((sample_rate_index & 0xF) << 2) | ((channel_configuration >> 2) & 1);
         // bytes[3]: chan_cfg low 2 | original(0) | home(0) | copyright(0,0) | frame_length high 2

@@ -7,7 +7,6 @@ use crate::codec::ParseError;
 
 /// Sampling frequency table per ISO 14496-3 Table 1.16.
 /// Index 13/14 are reserved; index 15 is "explicit" (not meaningful in ADTS).
-#[allow(dead_code)]
 const SAMPLING_FREQUENCY: [u32; 13] = [
     96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050,
     16000, 12000, 11025, 8000, 7350,
@@ -15,7 +14,6 @@ const SAMPLING_FREQUENCY: [u32; 13] = [
 
 /// Decode `sampling_frequency_index` (4 bits) to sample rate (Hz).
 /// Errors `ReservedValue` for indices 13/14/15.
-#[allow(dead_code)]
 pub(crate) fn decode_sample_rate(idx: u8) -> Result<u32, ParseError> {
     if idx >= 13 {
         return Err(ParseError::ReservedValue {
@@ -28,7 +26,6 @@ pub(crate) fn decode_sample_rate(idx: u8) -> Result<u32, ParseError> {
 
 /// Decode `channel_configuration` (3 bits) to canonical channel count
 /// per ISO 14496-3 Table 1.19. Index 0 = PCE-defined (we don't walk PCE).
-#[allow(dead_code)]
 pub(crate) fn decode_channels(channel_config: u8) -> Result<u8, ParseError> {
     match channel_config {
         0 => Err(ParseError::ReservedValue {
@@ -50,7 +47,6 @@ pub(crate) fn decode_channels(channel_config: u8) -> Result<u8, ParseError> {
 }
 
 /// Decode `profile` (2 bits, ADTS Annex 1.A) to typed profile.
-#[allow(dead_code)]
 pub(crate) fn decode_profile(profile: u8) -> super::AacProfile {
     match profile & 0b11 {
         0 => super::AacProfile::Main,

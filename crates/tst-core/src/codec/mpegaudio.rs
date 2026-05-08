@@ -137,11 +137,21 @@ pub fn frames(bytes: &[u8]) -> Frames<'_> {
 //   4 = MPEG-2/2.5 Layer II/III (shared column per ISO 13818-3 Table 5)
 const BITRATE_TABLE: [[u32; 16]; 5] = [
     // index: 0   1   2   3   4    5    6    7    8    9    10   11   12   13   14   15
-    [        0,  32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 0], // V1L1
-    [        0,  32, 48, 56, 64,  80,  96,  112, 128, 160, 192, 224, 256, 320, 384, 0], // V1L2
-    [        0,  32, 40, 48, 56,  64,  80,  96,  112, 128, 160, 192, 224, 256, 320, 0], // V1L3
-    [        0,  32, 48, 56, 64,  80,  96,  112, 128, 144, 160, 176, 192, 224, 256, 0], // V2L1
-    [        0,  8,  16, 24, 32,  40,  48,  56,  64,  80,  96,  112, 128, 144, 160, 0], // V2L2/L3
+    [
+        0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 0,
+    ], // V1L1
+    [
+        0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 0,
+    ], // V1L2
+    [
+        0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0,
+    ], // V1L3
+    [
+        0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256, 0,
+    ], // V2L1
+    [
+        0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0,
+    ], // V2L2/L3
 ];
 
 fn bitrate_column(version: Version, layer: Layer) -> usize {
@@ -160,12 +170,21 @@ fn bitrate_column(version: Version, layer: Layer) -> usize {
 /// Errors:
 /// - `ReservedValue { field: "bitrate_index", value: 0 }` for free-format
 /// - `Forbidden { field: "bitrate_index" }` for index 15
-pub(crate) fn decode_bitrate(version: Version, layer: Layer, bitrate_index: u8) -> Result<u32, ParseError> {
+pub(crate) fn decode_bitrate(
+    version: Version,
+    layer: Layer,
+    bitrate_index: u8,
+) -> Result<u32, ParseError> {
     if bitrate_index == 0 {
-        return Err(ParseError::ReservedValue { field: "bitrate_index", value: 0 });
+        return Err(ParseError::ReservedValue {
+            field: "bitrate_index",
+            value: 0,
+        });
     }
     if bitrate_index == 15 {
-        return Err(ParseError::Forbidden { field: "bitrate_index" });
+        return Err(ParseError::Forbidden {
+            field: "bitrate_index",
+        });
     }
     let col = bitrate_column(version, layer);
     Ok(BITRATE_TABLE[col][bitrate_index as usize])
@@ -176,15 +195,21 @@ pub(crate) fn decode_bitrate(version: Version, layer: Layer, bitrate_index: u8) 
 const SAMPLE_RATE_TABLE: [[u32; 4]; 3] = [
     [44100, 48000, 32000, 0], // MPEG-1
     [22050, 24000, 16000, 0], // MPEG-2
-    [11025, 12000, 8000,  0], // MPEG-2.5
+    [11025, 12000, 8000, 0],  // MPEG-2.5
 ];
 
 /// Decode sample rate (Hz) from `(version, sample_rate_index)`.
 ///
 /// Errors: `ReservedValue { field: "sample_rate_index", value: 3 }`.
-pub(crate) fn decode_sample_rate(version: Version, sample_rate_index: u8) -> Result<u32, ParseError> {
+pub(crate) fn decode_sample_rate(
+    version: Version,
+    sample_rate_index: u8,
+) -> Result<u32, ParseError> {
     if sample_rate_index == 3 {
-        return Err(ParseError::ReservedValue { field: "sample_rate_index", value: 3 });
+        return Err(ParseError::ReservedValue {
+            field: "sample_rate_index",
+            value: 3,
+        });
     }
     let row = match version {
         Version::Mpeg1 => 0,
@@ -284,23 +309,37 @@ struct Header {
 ///   channel_mode:       bits 24..26 (2 bits)
 fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
     if bytes.len() < 4 {
-        return Err(ParseError::Truncated { needed: 4, had: bytes.len() as u32 });
+        return Err(ParseError::Truncated {
+            needed: 4,
+            had: bytes.len() as u32,
+        });
     }
     let raw = [bytes[0], bytes[1], bytes[2], bytes[3]];
-    let h: u32 = ((raw[0] as u32) << 24) | ((raw[1] as u32) << 16) | ((raw[2] as u32) << 8) | (raw[3] as u32);
+    let h: u32 = ((raw[0] as u32) << 24)
+        | ((raw[1] as u32) << 16)
+        | ((raw[2] as u32) << 8)
+        | (raw[3] as u32);
 
     // Sync word: top 11 bits must be 0x7FF (frame sync). We validate the
     // 12-bit form here; the 12th bit (next: version_id MSB) is allowed to
     // be 0 (MPEG-2.5) or 1.
     let sync = (h >> 21) & 0x7FF;
     if sync != 0x7FF {
-        return Err(ParseError::BadSyncWord { expected: 0x7FF, found: sync as u16 });
+        return Err(ParseError::BadSyncWord {
+            expected: 0x7FF,
+            found: sync as u16,
+        });
     }
 
     let version_id = ((h >> 19) & 0b11) as u8;
     let version = match version_id {
         0b00 => Version::Mpeg2_5,
-        0b01 => return Err(ParseError::ReservedValue { field: "version_id", value: 0b01 }),
+        0b01 => {
+            return Err(ParseError::ReservedValue {
+                field: "version_id",
+                value: 0b01,
+            });
+        }
         0b10 => Version::Mpeg2,
         0b11 => Version::Mpeg1,
         _ => unreachable!(),
@@ -308,7 +347,12 @@ fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
 
     let layer_id = ((h >> 17) & 0b11) as u8;
     let layer = match layer_id {
-        0b00 => return Err(ParseError::ReservedValue { field: "layer", value: 0 }),
+        0b00 => {
+            return Err(ParseError::ReservedValue {
+                field: "layer",
+                value: 0,
+            });
+        }
         0b01 => Layer::III,
         0b10 => Layer::II,
         0b11 => Layer::I,
@@ -367,7 +411,9 @@ mod tests {
     #[test]
     fn bitrate_index0_is_free_format_rejected() {
         let err = decode_bitrate(Version::Mpeg1, Layer::I, 0).unwrap_err();
-        assert!(matches!(err, ParseError::ReservedValue { field, value: 0 } if field == "bitrate_index"));
+        assert!(
+            matches!(err, ParseError::ReservedValue { field, value: 0 } if field == "bitrate_index")
+        );
     }
     #[test]
     fn bitrate_index15_is_forbidden() {
@@ -389,7 +435,9 @@ mod tests {
     #[test]
     fn sample_rate_index3_is_reserved() {
         let err = decode_sample_rate(Version::Mpeg1, 3).unwrap_err();
-        assert!(matches!(err, ParseError::ReservedValue { field, value: 3 } if field == "sample_rate_index"));
+        assert!(
+            matches!(err, ParseError::ReservedValue { field, value: 3 } if field == "sample_rate_index")
+        );
     }
     #[test]
     fn channel_mode_decoded() {
@@ -426,26 +474,41 @@ mod tests {
     fn frame_length_v1l1_128kbps_44100_no_padding_is_136() {
         // Layer I frame length: (12 * bitrate / sample_rate + padding) * 4
         // (12 * 128000 / 44100 + 0) * 4 = 34*4 = 136 bytes.
-        assert_eq!(frame_length(Layer::I, Version::Mpeg1, 128, 44100, false), 136);
+        assert_eq!(
+            frame_length(Layer::I, Version::Mpeg1, 128, 44100, false),
+            136
+        );
     }
     #[test]
     fn frame_length_v1l1_padding_adds_4_bytes() {
-        assert_eq!(frame_length(Layer::I, Version::Mpeg1, 128, 44100, true), 140);
+        assert_eq!(
+            frame_length(Layer::I, Version::Mpeg1, 128, 44100, true),
+            140
+        );
     }
     #[test]
     fn frame_length_v1l3_128kbps_44100_no_padding_is_417() {
         // Layer III frame length: 144 * bitrate / sample_rate + padding
         // 144 * 128000 / 44100 = 417 (truncated)
-        assert_eq!(frame_length(Layer::III, Version::Mpeg1, 128, 44100, false), 417);
+        assert_eq!(
+            frame_length(Layer::III, Version::Mpeg1, 128, 44100, false),
+            417
+        );
     }
     #[test]
     fn frame_length_v1l3_padding_adds_1_byte() {
-        assert_eq!(frame_length(Layer::III, Version::Mpeg1, 128, 44100, true), 418);
+        assert_eq!(
+            frame_length(Layer::III, Version::Mpeg1, 128, 44100, true),
+            418
+        );
     }
     #[test]
     fn frame_length_v2l3_64kbps_22050_is_208() {
         // V2 Layer III: 72 * 64000 / 22050 = 208 (truncated)
-        assert_eq!(frame_length(Layer::III, Version::Mpeg2, 64, 22050, false), 208);
+        assert_eq!(
+            frame_length(Layer::III, Version::Mpeg2, 64, 22050, false),
+            208
+        );
     }
 
     /// V1 Layer III, 128 kbps, 44.1 kHz, joint stereo, no padding, no CRC.

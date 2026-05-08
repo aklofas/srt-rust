@@ -58,11 +58,17 @@ pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
 
     // bytes[1] low nibble: ID(1) layer(2) protection_absent(1)
     let id_bit = (bytes[1] >> 3) & 1;
-    let mpeg_version = if id_bit == 0 { MpegVersion::Mpeg4 } else { MpegVersion::Mpeg2 };
+    let mpeg_version = if id_bit == 0 {
+        MpegVersion::Mpeg4
+    } else {
+        MpegVersion::Mpeg2
+    };
 
     let layer = (bytes[1] >> 1) & 0b11;
     if layer != 0 {
-        return Err(ParseError::Forbidden { field: "adts_layer" });
+        return Err(ParseError::Forbidden {
+            field: "adts_layer",
+        });
     }
 
     let protection_absent = bytes[1] & 1;
@@ -142,7 +148,8 @@ mod tests {
         let pa = if protection_absent { 1 } else { 0 };
         h[1] = 0b1111_0000 | (1 << 3) | pa;
         // bytes[2]: profile(2) | sample_rate_idx(4) | private(0) | chan_cfg MSB
-        h[2] = (profile << 6) | ((sample_rate_index & 0xF) << 2) | ((channel_configuration >> 2) & 1);
+        h[2] =
+            (profile << 6) | ((sample_rate_index & 0xF) << 2) | ((channel_configuration >> 2) & 1);
         // bytes[3]: chan_cfg low 2 | original(0) | home(0) | copyright(0,0) | frame_length high 2
         h[3] = ((channel_configuration & 0b11) << 6) | (((aac_frame_length >> 11) & 0b11) as u8);
         // bytes[4]: frame_length middle 8
@@ -175,7 +182,9 @@ mod tests {
         bytes[1] |= 0b0000_0010; // set layer bit
         assert!(matches!(
             parse_header(&bytes).unwrap_err(),
-            ParseError::Forbidden { field: "adts_layer" }
+            ParseError::Forbidden {
+                field: "adts_layer"
+            }
         ));
     }
 

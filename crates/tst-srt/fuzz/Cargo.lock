@@ -531,28 +531,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
-name = "srt-core"
-version = "0.0.0"
-dependencies = [
- "h264-reader",
- "libc",
- "log",
- "secrecy",
- "srt-sys",
- "thiserror",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "srt-core-fuzz"
-version = "0.0.0"
-dependencies = [
- "libfuzzer-sys",
- "srt-core",
-]
-
-[[package]]
 name = "srt-sys"
 version = "0.0.0"
 dependencies = [
@@ -637,6 +615,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "tst-core"
+version = "0.0.0"
+dependencies = [
+ "h264-reader",
+ "log",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "tst-srt"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "log",
+ "secrecy",
+ "srt-sys",
+ "thiserror",
+ "tracing",
+ "tst-core",
+ "url",
+]
+
+[[package]]
+name = "tst-srt-fuzz"
+version = "0.0.0"
+dependencies = [
+ "libfuzzer-sys",
+ "tst-core",
+ "tst-srt",
 ]
 
 [[package]]

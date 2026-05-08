@@ -442,7 +442,10 @@ mod tests {
 
     #[test]
     fn parse_error_audio_variants_format() {
-        let bad_sync = ParseError::BadSyncWord { expected: 0xFFF, found: 0xABC };
+        let bad_sync = ParseError::BadSyncWord {
+            expected: 0xFFF,
+            found: 0xABC,
+        };
         assert!(format!("{:?}", bad_sync).contains("BadSyncWord"));
 
         let trunc = ParseError::Truncated { needed: 7, had: 4 };

@@ -8,8 +8,7 @@ use crate::codec::ParseError;
 /// Sampling frequency table per ISO 14496-3 Table 1.16.
 /// Index 13/14 are reserved; index 15 is "explicit" (not meaningful in ADTS).
 const SAMPLING_FREQUENCY: [u32; 13] = [
-    96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050,
-    16000, 12000, 11025, 8000, 7350,
+    96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350,
 ];
 
 /// Decode `sampling_frequency_index` (4 bits) to sample rate (Hz).
@@ -70,7 +69,10 @@ mod tests {
     fn sample_rate_index_13_reserved() {
         assert!(matches!(
             decode_sample_rate(13).unwrap_err(),
-            ParseError::ReservedValue { field: "sampling_frequency_index", value: 13 }
+            ParseError::ReservedValue {
+                field: "sampling_frequency_index",
+                value: 13
+            }
         ));
     }
     #[test]
@@ -85,7 +87,10 @@ mod tests {
     fn channels_pce_defined_is_reserved() {
         assert!(matches!(
             decode_channels(0).unwrap_err(),
-            ParseError::ReservedValue { field: "channel_configuration", value: 0 }
+            ParseError::ReservedValue {
+                field: "channel_configuration",
+                value: 0
+            }
         ));
     }
     #[test]

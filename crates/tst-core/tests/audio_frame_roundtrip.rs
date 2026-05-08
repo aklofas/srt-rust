@@ -11,7 +11,7 @@
 
 use std::path::Path;
 use tst_core::codec;
-use tst_core::mpegts::demux::{AudioCodec, Demuxer, DemuxEvent, SamplePayload};
+use tst_core::mpegts::demux::{AudioCodec, DemuxEvent, Demuxer, SamplePayload};
 
 fn fixture_path(name: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -25,8 +25,8 @@ fn fixture_path(name: &str) -> std::path::PathBuf {
 /// tuples from Audio sample events.
 fn collect_audio_pes(name: &str) -> Vec<(u16, AudioCodec, Vec<u8>)> {
     let path = fixture_path(name);
-    let bytes = std::fs::read(&path)
-        .unwrap_or_else(|e| panic!("fixture {:?} should exist: {e}", path));
+    let bytes =
+        std::fs::read(&path).unwrap_or_else(|e| panic!("fixture {:?} should exist: {e}", path));
     let mut demuxer = Demuxer::new();
     demuxer.feed(&bytes).expect("fixture should feed cleanly");
     demuxer.flush();

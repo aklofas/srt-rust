@@ -20,7 +20,7 @@
 use std::fs;
 use std::path::Path;
 use tst_core::codec;
-use tst_core::mpegts::demux::{AudioCodec, Demuxer, DemuxEvent, SamplePayload};
+use tst_core::mpegts::demux::{AudioCodec, DemuxEvent, Demuxer, SamplePayload};
 
 #[derive(Default, Debug)]
 struct Tally {

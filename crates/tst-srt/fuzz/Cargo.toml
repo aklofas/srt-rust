@@ -110,5 +110,12 @@ test              = false
 doc               = false
 bench             = false
 
+[[bin]]
+name              = "audio_frame_iter"
+path              = "fuzz_targets/audio_frame_iter.rs"
+test              = false
+doc               = false
+bench             = false
+
 [workspace]
 members = []

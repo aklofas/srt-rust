@@ -283,7 +283,7 @@ pub unsafe extern "C" fn tst_mux_sender_close(p: *mut TstMuxSender) {
     drop(boxed);
 }
 
-/// Borrow `srt_url` as a Rust string and run it through `srt_core`'s
+/// Borrow `srt_url` as a Rust string and run it through `tst_srt::url`'s
 /// rich URL parser. Sets last-error and returns `Err(())` on any failure
 /// path; caller treats `Err(())` as "return NULL".
 pub(crate) unsafe fn parse_c_srt_url(srt_url: *const libc::c_char) -> Result<tst_srt::SrtUrl, ()> {

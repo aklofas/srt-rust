@@ -1,8 +1,11 @@
-//! `tst-c` — stable C ABI for the `srt-core` sender pipeline.
+//! `tst-c` — stable C ABI for the ts-transformer pipeline.
 //!
-//! This crate is binding-only. Rust callers should consume `srt-core`
-//! directly. The C ABI is documented in `include/tstrans.h` (cbindgen-generated,
-//! committed to the source tree).
+//! This crate is binding-only. Rust callers should consume `tst-pipeline`
+//! and `tst-srt` directly. The C ABI is documented in `include/tstrans.h`
+//! (cbindgen-generated, committed to the source tree).
+//!
+//! Sender side is complete; receiver side is feature-complete in Rust
+//! and pending C ABI exposure.
 
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
 

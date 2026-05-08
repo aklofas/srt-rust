@@ -199,6 +199,35 @@ fn samples_per_frame(version: Version, layer: Layer) -> u16 {
     }
 }
 
+/// Compute frame length in bytes per spec.
+///
+/// Formulas:
+/// - Layer I: `(12 * bitrate * 1000 / sample_rate + padding) * 4`
+/// - Layer II: `144 * bitrate * 1000 / sample_rate + padding`
+/// - Layer III, MPEG-1: `144 * bitrate * 1000 / sample_rate + padding`
+/// - Layer III, MPEG-2/2.5: `72 * bitrate * 1000 / sample_rate + padding`
+///
+/// `bitrate` is in kbps; `sample_rate` is in Hz.
+#[allow(dead_code)]
+fn frame_length(
+    layer: Layer,
+    version: Version,
+    bitrate_kbps: u32,
+    sample_rate_hz: u32,
+    padding: bool,
+) -> u32 {
+    let pad = if padding { 1 } else { 0 };
+    let bitrate_bps = bitrate_kbps * 1000;
+    match layer {
+        Layer::I => (12 * bitrate_bps / sample_rate_hz + pad) * 4,
+        Layer::II => 144 * bitrate_bps / sample_rate_hz + pad,
+        Layer::III => match version {
+            Version::Mpeg1 => 144 * bitrate_bps / sample_rate_hz + pad,
+            Version::Mpeg2 | Version::Mpeg2_5 => 72 * bitrate_bps / sample_rate_hz + pad,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -272,5 +301,31 @@ mod tests {
         assert_eq!(samples_per_frame(Version::Mpeg1, Layer::III), 1152);
         assert_eq!(samples_per_frame(Version::Mpeg2, Layer::III), 576);
         assert_eq!(samples_per_frame(Version::Mpeg2_5, Layer::III), 576);
+    }
+
+    #[test]
+    fn frame_length_v1l1_128kbps_44100_no_padding_is_136() {
+        // Layer I frame length: (12 * bitrate / sample_rate + padding) * 4
+        // (12 * 128000 / 44100 + 0) * 4 = 34*4 = 136 bytes.
+        assert_eq!(frame_length(Layer::I, Version::Mpeg1, 128, 44100, false), 136);
+    }
+    #[test]
+    fn frame_length_v1l1_padding_adds_4_bytes() {
+        assert_eq!(frame_length(Layer::I, Version::Mpeg1, 128, 44100, true), 140);
+    }
+    #[test]
+    fn frame_length_v1l3_128kbps_44100_no_padding_is_417() {
+        // Layer III frame length: 144 * bitrate / sample_rate + padding
+        // 144 * 128000 / 44100 = 417 (truncated)
+        assert_eq!(frame_length(Layer::III, Version::Mpeg1, 128, 44100, false), 417);
+    }
+    #[test]
+    fn frame_length_v1l3_padding_adds_1_byte() {
+        assert_eq!(frame_length(Layer::III, Version::Mpeg1, 128, 44100, true), 418);
+    }
+    #[test]
+    fn frame_length_v2l3_64kbps_22050_is_208() {
+        // V2 Layer III: 72 * 64000 / 22050 = 208 (truncated)
+        assert_eq!(frame_length(Layer::III, Version::Mpeg2, 64, 22050, false), 208);
     }
 }

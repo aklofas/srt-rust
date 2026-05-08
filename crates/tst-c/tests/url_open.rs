@@ -102,7 +102,7 @@ fn ts_sender_streamid_observed_on_listener() {
 // ============================================================================
 // Group 1 latency roundtrip — verify connect succeeds with latency=200.
 //
-// Socket::latency() does not exist in the current srt-core public API; the
+// Socket::latency() does not exist in the current tst-srt public API; the
 // negotiated value is only observable by calling srt_getsockflag directly on
 // the accepted socket handle, which is not exposed. We verify end-to-end that
 // the URL parameter is accepted by the parser + libsrt and the handshake
@@ -312,7 +312,7 @@ fn ts_sender_fc_url_open_succeeds() {
 // full AES-128 key exchange rather than just option forwarding.
 // ============================================================================
 
-// Encryption-gated: with --no-default-features, srt-core/srt-sys build libsrt
+// Encryption-gated: with --no-default-features, tst-srt/srt-sys build libsrt
 // with ENABLE_ENCRYPTION=OFF, and SRTO_PBKEYLEN / SRTO_PASSPHRASE on the
 // listener fail at bind time with "encryption not enabled at compile time".
 // The URL parser still accepts these keys; they just can't actually negotiate

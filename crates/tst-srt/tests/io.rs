@@ -16,7 +16,7 @@ fn small_payload_round_trips() {
         .expect("bind");
 
     let port = listener.local_addr().unwrap().port();
-    let payload: &[u8] = b"hello, srt-core";
+    let payload: &[u8] = b"hello, ts-transformer";
     let expected = payload.to_vec();
 
     let lh = thread::spawn(move || {

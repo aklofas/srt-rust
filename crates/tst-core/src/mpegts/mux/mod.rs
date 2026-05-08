@@ -1,11 +1,10 @@
 //! MuxSender-side MPEG-TS muxer.
 //!
-//! See `docs/specs/2026-05-01-srt-core-mpegts-mux-design.md` for the full
-//! design. The public surface is `Muxer`, `Config`, `VideoCodec`,
+//! The public surface is `Muxer`, `Config`, `VideoCodec`,
 //! `KlvStreamType`. Internal helpers live in `ts`, `psi`, `pes` submodules.
 //!
 //! Re-export note: `Muxer`, `VideoCodec`, and `KlvStreamType` are re-exported
-//! at the crate root (`srt_core::Muxer` etc.). `Config` deliberately is not —
+//! at the crate root (`tst_core::Muxer` etc.). `Config` deliberately is not —
 //! callers reach it via `mpegts::mux::Config` so the construction site is
 //! visually distinct from the SRT `SocketConfig` / `ListenerConfig` already
 //! at the crate root. Don't "symmetry-fix" this.
@@ -1244,9 +1243,6 @@ struct SubtitleStreamState {
 /// Construct with `Muxer::new(config)`, push encoded frames via `push_video`
 /// and `push_klv`, then drain TS packets with `pull`. The muxer is
 /// deterministic — output is a function of inputs only, not wall-clock time.
-///
-/// See the design doc for full semantics:
-/// `docs/specs/2026-05-01-srt-core-mpegts-mux-design.md`.
 pub struct Muxer {
     config: Config,
 

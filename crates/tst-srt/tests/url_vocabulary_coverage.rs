@@ -133,7 +133,7 @@ fn group3_keys_all_reject_with_srto() {
 
 #[test]
 fn guide_srt_md_keytable_count_matches() {
-    // Cargo test CWD is the crate root (crates/srt-core/), so guide-srt.md
+    // Cargo test CWD is the crate root (crates/tst-srt/), so guide-srt.md
     // is two directories up at docs/guide-srt.md.
     let path = "../../docs/guide-srt.md";
     let body = std::fs::read_to_string(path).unwrap_or_else(|e| {

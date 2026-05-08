@@ -18,6 +18,6 @@ Each fixture's expected parsed values come from the encoder parameters:
 Note H.265 `general_level_idc` is in units of 30 × level (so level 4.0
 is `level_idc=120`, level 5.0 is `level_idc=150`).
 
-To regenerate any of these fixtures, see
-`crates/srt-core/examples/gen_codec_fixtures.rs` (Task 14 in the codec
-parser plan).
+To regenerate any of these fixtures, run `./_regen.sh` in this
+directory. The script extracts SPS/PPS (and VPS for H.265) RBSP
+bytes from FFmpeg-produced encoded streams.

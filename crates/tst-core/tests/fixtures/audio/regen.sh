@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate synthetic audio-in-MPEG-TS fixtures for srt-core audio
+# Regenerate synthetic audio-in-MPEG-TS fixtures for tst-core audio
 # carriage tests. Each fixture is ~3 seconds of 440 Hz sine + a
 # 320x240 H.264 baseline test pattern.
 #

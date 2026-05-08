@@ -12,7 +12,7 @@ pub struct H266Pps {
 
 /// Parse an H.266 PPS RBSP. Per H.266 V4 §7.3.2.5.
 ///
-/// v0 scope extracts only `pps_id` and `sps_id`. All other fields
+/// Current scope extracts only `pps_id` and `sps_id`. All other fields
 /// stay in `raw_rbsp` for consumers needing deeper info later.
 pub fn parse_pps(rbsp: &[u8]) -> Result<H266Pps, ParseError> {
     let mut br = BitReader::new(rbsp);
@@ -60,7 +60,7 @@ mod tests {
         // pps_id=63 (max u6), sps_id=15 (max u4); 10 bits all-ones.
         //   byte 0: pps_id(6)=111111 | sps_id[upper 2]=11 → 0xFF
         //   byte 1: sps_id[lower 2]=11 | pad=000000 → 0xC0
-        // Trailing bits are unread by the v0 parser, so no rbsp_trailing_bits
+        // Trailing bits are unread by the current parser, so no rbsp_trailing_bits
         // pattern is required.
         let pps = parse_pps(&[0xFF, 0xC0]).expect("max-id PPS should parse");
         assert_eq!(pps.pps_id, 63);

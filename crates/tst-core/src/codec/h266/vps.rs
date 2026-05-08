@@ -14,7 +14,7 @@ pub struct H266Vps {
 /// Parse an H.266 VPS RBSP (Annex-B start codes already stripped,
 /// emulation-prevention bytes preserved). Per H.266 V4 §7.3.2.3.
 ///
-/// v0 scope extracts only `vps_id`, `max_layers`, `max_sub_layers`.
+/// Current scope extracts only `vps_id`, `max_layers`, `max_sub_layers`.
 /// Profile/Tier/Level loops, OLS info, DPB/HRD parameters are not
 /// surfaced — `raw_rbsp` carries the full input so consumers needing
 /// more can call deeper parsers later.
@@ -36,7 +36,7 @@ mod tests {
     use super::*;
 
     /// Minimal VPS RBSP — vps_id=0, max_layers_minus1=0, max_sublayers_minus1=0,
-    /// rest zeros. 4+6+3+... = enough bits to exit the v0 parse early.
+    /// rest zeros. 4+6+3+... = enough bits to exit the current parse early.
     /// Constructed by hand: nibbles 0000 (vps_id=0) | 000000 (max_layers=0) |
     /// 000 (max_sublayers=0) | 0 (default_ptl flag=0) | 0 (all_indep=0) |
     /// trailing rbsp_trailing_bits(): 1 bit set + zero pad to byte align.

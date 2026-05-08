@@ -166,8 +166,8 @@ fn dual_video_plus_dual_klv_pmt_lists_all_four() {
     let mut mux = Muxer::new(cfg).unwrap();
 
     // Push to one stream to trigger first PSI emission.
-    let v0 = mux.video_stream_handle(0).unwrap();
-    mux.push_video_to(v0, &h264_au(0xAA), 0, true).unwrap();
+    let vid0 = mux.video_stream_handle(0).unwrap();
+    mux.push_video_to(vid0, &h264_au(0xAA), 0, true).unwrap();
 
     let ts = drain_all(&mut mux);
     let pids = pids_present(&ts);

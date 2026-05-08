@@ -111,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let writer_cl = writer.clone();
 
     // Byte-sink contract (full version in
-    // `crates/srt-core/src/pipeline/receiver.rs` rustdoc):
+    // `crates/tst-pipeline/src/receiver/mod.rs` rustdoc):
     //
     // - Called once per TS packet (188 bytes, NOT 1316). The receiver
     //   pulls 1316-byte SRT messages from the transport and breaks

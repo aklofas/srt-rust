@@ -41,7 +41,7 @@ srt-sys   = { path = "../srt-sys", default-features = false }
 # Captures `tracing` events in tests for assertion.
 # `no-env-filter` makes the subscriber accept events from any crate (not just
 # the test binary), which is needed for integration tests that assert on warns
-# emitted by srt-core library code.
+# emitted by tst-core library code.
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 
 [[bench]]

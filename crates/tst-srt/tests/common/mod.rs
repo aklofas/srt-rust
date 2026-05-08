@@ -1,4 +1,4 @@
-//! Shared scaffolding for srt-core integration tests.
+//! Shared scaffolding for tst-srt integration tests.
 //! Loopback only; no external network.
 
 #![allow(dead_code)]

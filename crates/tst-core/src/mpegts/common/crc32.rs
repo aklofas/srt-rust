@@ -2,7 +2,7 @@
 //!
 //! Polynomial: 0x04C11DB7, init: 0xFFFFFFFF, refin/refout: false, xorout: 0.
 //!
-//! Hand-rolled to keep `srt-core` dep-free; matches the no-deps style of the
+//! Hand-rolled to keep `tst-core` dep-free; matches the no-deps style of the
 //! `klv` module's checksum/imapb/length helpers.
 
 /// Pre-computed CRC-32/MPEG-2 table. Table is generated at compile time via a

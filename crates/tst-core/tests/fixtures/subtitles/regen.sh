@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate synthetic subtitle / caption MPEG-TS fixtures for
-# srt-core subtitle carriage tests.
+# tst-core subtitle carriage tests.
 #
 # Unlike the audio fixtures, these are NOT produced by ffmpeg —
 # they're emitted by our own Muxer through the

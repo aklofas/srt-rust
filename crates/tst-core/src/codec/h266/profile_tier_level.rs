@@ -20,7 +20,7 @@ pub struct H266ProfileTierLevel {
 /// `false` we skip the headline fields and return a default-zeroed PTL.
 ///
 /// `max_num_sub_layers_minus1` controls how many sub-layer PTL records
-/// follow; v0 reads but ignores them — only the headline fields matter
+/// follow; the current scope reads but ignores them — only the headline fields matter
 /// for metadata extraction.
 ///
 /// This standalone variant is for callers that only have the PTL bytes

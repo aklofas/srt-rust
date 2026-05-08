@@ -82,7 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Version Number, mandated present) when the caller didn't set
     // them — so a default-constructed record with a few typed fields
     // produces wire bytes that satisfy strict-compliance validation
-    // out of the box. See `crates/srt-core/src/klv/st0601/mod.rs` for
+    // out of the box. See `crates/tst-core/src/klv/st0601/mod.rs` for
     // the auto-emit logic.
     let encoded = encode_to_vec(&rec)?;
     println!("encoded {} bytes", encoded.len());
@@ -110,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Both schemes fix a bit-width and a value range, which together
     // quantize to a finite step. The eps values here all sit well above
     // the actual per-tag resolution (verified against
-    // crates/srt-core/src/klv/st0601/{tags,mapping}.rs):
+    // crates/tst-core/src/klv/st0601/{tags,mapping}.rs):
     //   - heading 0..360 unsigned in 2 bytes → 360/65535 ≈ 5.49e-3°/step
     //     → eps 0.01 leaves ~2x headroom.
     //   - sensor lat ±90 signed in 4 bytes  → 180/(2·(2³¹−1)) ≈ 4.19e-8°/step.

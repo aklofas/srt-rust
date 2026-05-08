@@ -12,7 +12,7 @@
  * Receiver side (separate terminal):
  *   srt-live-transmit srt://:9000 file:///tmp/out.ts
  *
- * Mirrors crates/srt-core/examples/pipeline_send_to_socket.rs.
+ * Mirrors crates/tst-srt/examples/pipeline_send_to_socket.rs.
  */
 
 #include "tstrans.h"

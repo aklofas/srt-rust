@@ -3,8 +3,11 @@
 //! This crate exposes the C ABI of [libsrt] verbatim. Every symbol is
 //! `unsafe`; calling them incorrectly will exhibit C-level UB.
 //!
-//! The safe wrapper lives in the `srt-core` crate. Application code
-//! should depend on `srt-core`, not this crate.
+//! The safe wrappers live in the `tst-srt` crate (`Socket` / `Listener`
+//! / `SocketBuilder` / `ListenerBuilder`) and the `tst-pipeline` crate
+//! (`MuxSender` / `Sender` / `RawSender` and their receive-side
+//! counterparts). Application code should depend on those, not this
+//! crate.
 //!
 //! # Build
 //!

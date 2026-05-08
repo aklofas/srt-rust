@@ -15,7 +15,7 @@ structural signature, not by who recorded it.
 
 `tests/local_fixtures.rs` walks `tests/fixtures/local/` at test time:
 
-- `*.klv` files are decoded directly through `srt_core::klv::st0601::decode`
+- `*.klv` files are decoded directly through `tst_core::klv::st0601::decode`
   (with `decode_unchecked` as a checksum-relaxed fallback).
 - `*.ts` files exercise the streaming demux path (planned: `mpegts::demux`).
 

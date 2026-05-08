@@ -1,5 +1,5 @@
 //! `repr(C)` mirrors of the application-level stats types in
-//! `srt-core`. Layouts match the public C ABI declared in
+//! `tst-core` / `tst-pipeline`. Layouts match the public C ABI declared in
 //! `crates/tst-c/include/tstrans.h` and exercised by `tests/smoke.c`.
 //!
 //! All wrapping structs use a fixed-size

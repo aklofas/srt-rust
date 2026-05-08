@@ -108,7 +108,7 @@ fn managed_mux_sender_multi_stream_loopback() {
 
         // Read until we've seen all three stream PIDs or the deadline expires.
         // Each srt_recv call delivers one SRT message (7 TS packets = 1316
-        // bytes for the v0 bundle size). We need enough messages to see PAT,
+        // bytes for the default bundle size). We need enough messages to see PAT,
         // PMT, and at least one packet from each of the three elementary
         // streams (EO video at 0x1011, IR video at 0x1012, KLV at 0x1031).
         let deadline = std::time::Instant::now() + Duration::from_secs(10);

@@ -11,7 +11,7 @@ pub struct Av1FrameHeaderLight {
     pub frame_type: u8,
     pub show_frame: bool,
     pub show_existing_frame: bool,
-    /// Per-frame size override. v0 always returns `None` — the bit
+    /// Per-frame size override. Current scope always returns `None` — the bit
     /// position of the override field depends on frame_type and
     /// frame_id_numbers_present_flag in ways we don't fully decode here.
     /// Consumers needing per-frame size should drive a full decoder.
@@ -57,7 +57,7 @@ pub fn parse_frame_header_light(
     }
     let frame_type = br.f(2)? as u8;
     let show_frame = br.f(1)? != 0;
-    // (Further fields exist beyond this point; v0 doesn't surface them.)
+    // (Further fields exist beyond this point; current scope doesn't surface them.)
 
     Ok(Av1FrameHeaderLight {
         frame_type,

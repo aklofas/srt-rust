@@ -43,7 +43,7 @@ impl H266Sps {
 /// Parse an H.266 SPS RBSP (Annex-B start codes already stripped,
 /// emulation-prevention bytes preserved). Per H.266 V4 §7.3.2.4.
 ///
-/// v0 scope surfaces: `sps_id`, `vps_id`, headline `profile_tier_level`
+/// Current scope surfaces: `sps_id`, `vps_id`, headline `profile_tier_level`
 /// fields, dimensions, chroma format, bit depth, and (optionally)
 /// `color_info` + `frame_rate` from VUI. Conformance-window cropping is
 /// applied to width/height before they are returned.

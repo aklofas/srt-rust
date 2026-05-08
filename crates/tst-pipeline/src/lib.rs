@@ -2,7 +2,7 @@
 //!
 //! Provides the standard sender and receiver shells over the
 //! transport traits defined in [`tst_core`]. Concrete transport
-//! impls live in dedicated crates (`srt-core`, future `tst-srt`,
+//! impls live in dedicated crates (`tst-srt` today; future
 //! `tst-udp`, `tst-rtp`, `tst-tcp`, `tst-rtsp`).
 
 pub mod demux_receiver;

@@ -23,7 +23,7 @@ use crate::error::KlvFieldError;
 
 /// Decode `bytes` as a truncated big-endian uint up to 4 bytes wide.
 /// `bytes.len()` must be 1..=4.
-pub(super) fn read_var_u32(bytes: &[u8]) -> Result<u32, KlvFieldError> {
+pub(crate) fn read_var_u32(bytes: &[u8]) -> Result<u32, KlvFieldError> {
     if bytes.is_empty() || bytes.len() > 4 {
         return Err(KlvFieldError::InvalidLength {
             tag: 0, // caller knows the tag; this is a generic helper
@@ -37,7 +37,7 @@ pub(super) fn read_var_u32(bytes: &[u8]) -> Result<u32, KlvFieldError> {
 }
 
 /// Number of wire bytes that `value` will encode to (1..=4).
-pub(super) fn var_u32_len(value: u32) -> usize {
+pub(crate) fn var_u32_len(value: u32) -> usize {
     if value == 0 {
         1
     } else {
@@ -48,7 +48,7 @@ pub(super) fn var_u32_len(value: u32) -> usize {
 
 /// Write `value` as a truncated big-endian uint into `out`. Returns
 /// bytes written (1..=4).
-pub(super) fn write_var_u32(value: u32, out: &mut Vec<u8>) -> usize {
+pub(crate) fn write_var_u32(value: u32, out: &mut Vec<u8>) -> usize {
     let n = var_u32_len(value);
     let bytes = value.to_be_bytes();
     out.extend_from_slice(&bytes[4 - n..]);

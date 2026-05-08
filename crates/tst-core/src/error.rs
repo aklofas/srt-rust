@@ -158,6 +158,14 @@ pub enum KlvFieldError {
     /// surfaces an `Unknown(u8)` enum arm instead.
     #[error("tag {tag}: codepoint {value:#04x} not in spec-defined range")]
     InvalidCodepoint { tag: u32, value: u8 },
+
+    /// Tag value's BER-declared length exceeded the available buffer,
+    /// or its inner codec ran out of bytes. Surfaced by the lenient
+    /// `klv::st0903::decode` walker when an LS body is truncated
+    /// mid-field — the walker stops at the boundary, records this
+    /// error, and returns the partially-populated record.
+    #[error("tag {tag}: truncated value bytes")]
+    TruncatedField { tag: u32 },
 }
 
 // ============================================================================

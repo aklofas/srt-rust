@@ -26,6 +26,10 @@ pub enum TstError {
     Transport = -8,
     InvalidUsage = -9,
     Internal = -10,
+    /// Internal panic caught at the FFI boundary; the handle is now in
+    /// an indeterminate state. Subsequent calls on the same handle will
+    /// also fail (returning `Closed`). The caller should free the handle.
+    PanicCaught = -11,
 }
 
 thread_local! {
@@ -258,6 +262,17 @@ pub(crate) fn record_ts_sender_error(e: &SenderError) {
 #[allow(dead_code)]
 pub(crate) fn record_internal(detail: &str) {
     set_last_error(TstError::Internal, &format!("internal error: {detail}"));
+}
+
+/// Helper for the `catch_unwind` arm of `Handle::with_inner_*`. Records
+/// a `PanicCaught` last-error with a useful detail message extracted
+/// from the panic payload.
+#[allow(dead_code)]
+pub(crate) fn record_panic_caught(detail: &str) {
+    set_last_error(
+        TstError::PanicCaught,
+        &format!("panic caught at FFI boundary: {detail}"),
+    );
 }
 
 #[cfg(test)]

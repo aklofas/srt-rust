@@ -5,8 +5,24 @@
 //! call `Handle::with_inner_mut`; `_close` calls `Handle::close`. Drop of
 //! the inner runs Drop, which closes the underlying transport / muxer.
 
-use crate::error::{TstError, record_internal, set_last_error};
+use crate::error::{TstError, record_internal, record_panic_caught, set_last_error};
+use std::any::Any;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Mutex;
+
+/// Extract a best-effort detail string from a `catch_unwind` payload.
+/// Handles the two common panic-payload types — `&'static str` (from
+/// `panic!("foo")`) and `String` (from `panic!("{}", x)`); falls back
+/// to a placeholder for anything else.
+fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&'static str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "non-string panic payload".to_string()
+    }
+}
 
 #[allow(dead_code)]
 pub(crate) struct Handle<T> {
@@ -38,6 +54,13 @@ impl<T> Handle<T> {
 
     /// Run `f` against `&mut T` if the handle is live. If the handle is
     /// closed, sets `TST_E_CLOSED` and returns its code.
+    ///
+    /// The closure is run inside `std::panic::catch_unwind`. A panic
+    /// transitively reachable from any tst-c data-path call is caught
+    /// at the FFI boundary, recorded as `TST_E_PANIC_CAUGHT`, and the
+    /// inner state is dropped (subsequent calls on the same handle
+    /// return `TST_E_CLOSED`). `AssertUnwindSafe` is sound here because
+    /// we catch and clear; no further use of `T` happens after a panic.
     #[allow(dead_code)]
     pub(crate) fn with_inner_mut<F>(&self, f: F) -> i32
     where
@@ -51,7 +74,18 @@ impl<T> Handle<T> {
             }
         };
         match guard.as_mut() {
-            Some(t) => f(t),
+            Some(t) => match catch_unwind(AssertUnwindSafe(|| f(t))) {
+                Ok(rc) => rc,
+                Err(payload) => {
+                    let detail = panic_payload_message(&*payload);
+                    record_panic_caught(&detail);
+                    // After a panic the inner state is indeterminate.
+                    // Drop it so subsequent calls return Closed rather
+                    // than reusing potentially-corrupted state.
+                    *guard = None;
+                    TstError::PanicCaught as i32
+                }
+            },
             None => {
                 set_last_error(TstError::Closed, "handle is closed");
                 TstError::Closed as i32
@@ -60,12 +94,19 @@ impl<T> Handle<T> {
     }
 
     /// Run `f` against `&T` if the handle is live (same close semantics).
+    ///
+    /// Mirrors the panic-isolation behavior of `with_inner_mut`: a
+    /// panic in `f` is caught at the FFI boundary and the inner state
+    /// is dropped. Even though `&T` did not mutate the inner directly,
+    /// the panic could have left external state (global mutexes, file
+    /// descriptors, etc.) in an indeterminate state — defense-in-depth
+    /// drops the inner anyway.
     #[allow(dead_code)]
     pub(crate) fn with_inner_ref<F>(&self, f: F) -> i32
     where
         F: FnOnce(&T) -> i32,
     {
-        let guard = match self.inner.lock() {
+        let mut guard = match self.inner.lock() {
             Ok(g) => g,
             Err(_) => {
                 record_internal("mutex poisoned");
@@ -73,7 +114,15 @@ impl<T> Handle<T> {
             }
         };
         match guard.as_ref() {
-            Some(t) => f(t),
+            Some(t) => match catch_unwind(AssertUnwindSafe(|| f(t))) {
+                Ok(rc) => rc,
+                Err(payload) => {
+                    let detail = panic_payload_message(&*payload);
+                    record_panic_caught(&detail);
+                    *guard = None;
+                    TstError::PanicCaught as i32
+                }
+            },
             None => {
                 set_last_error(TstError::Closed, "handle is closed");
                 TstError::Closed as i32
@@ -143,5 +192,32 @@ mod tests {
         let h = Handle::new(7i32);
         h.close();
         h.close();
+    }
+
+    #[test]
+    fn panic_in_inner_closure_is_caught() {
+        use crate::error::clear_last_error_for_test;
+        clear_last_error_for_test();
+        let h = Handle::new(7i32);
+        let rc = h.with_inner_mut(|_| panic!("test panic"));
+        assert_eq!(rc, TstError::PanicCaught as i32);
+        // After a caught panic, the inner is dropped: subsequent calls
+        // see a closed handle.
+        let rc2 = h.with_inner_mut(|_| 0);
+        assert_eq!(rc2, TstError::Closed as i32);
+    }
+
+    #[test]
+    fn panic_in_inner_ref_closure_is_caught() {
+        use crate::error::clear_last_error_for_test;
+        clear_last_error_for_test();
+        let h = Handle::new(7i32);
+        let rc = h.with_inner_ref(|_| panic!("test panic ref"));
+        assert_eq!(rc, TstError::PanicCaught as i32);
+        // Defense-in-depth: even though &T didn't mutate, external state
+        // could be in an indeterminate post-panic state, so we drop the
+        // inner. Subsequent calls return Closed.
+        let rc2 = h.with_inner_ref(|_| 0);
+        assert_eq!(rc2, TstError::Closed as i32);
     }
 }

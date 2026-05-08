@@ -90,6 +90,12 @@ enum tst_e
   TST_E_TRANSPORT = -8,
   TST_E_INVALID_USAGE = -9,
   TST_E_INTERNAL = -10,
+  /**
+   * Internal panic caught at the FFI boundary; the handle is now in
+   * an indeterminate state. Subsequent calls on the same handle will
+   * also fail (returning `Closed`). The caller should free the handle.
+   */
+  TST_E_PANIC_CAUGHT = -11,
 };
 #ifndef __cplusplus
 typedef int32_t tst_e;

@@ -44,6 +44,8 @@ fn local_fixtures_decode() {
     };
     let mut count = 0usize;
     let mut failures: Vec<String> = Vec::new();
+    let mut vmti_records = 0usize;
+    let mut vmti_targets = 0usize;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -99,6 +101,24 @@ fn local_fixtures_decode() {
                 }
             }
         }
+
+        // VMTI (ST 0903) sibling-layer probe — added 2026-05-08.
+        //
+        // On each non-empty Tag 74, attempt `klv::st0903::decode` and
+        // assert the result is panic-free. Lenient mode always returns
+        // `Ok` for parseable BER framing — the load-bearing assertion
+        // is *no panic*, not "Ok return". Counts decoded VMTI records
+        // and total targets — reports under `eprintln` so
+        // `cargo test -- --nocapture` shows the corpus shape.
+        if let Some(vmti) = probe_st0903(&bytes) {
+            vmti_records += 1;
+            vmti_targets += vmti.targets.len();
+            eprintln!(
+                "  {} carries ST 0903: {} target(s)",
+                path.display(),
+                vmti.targets.len(),
+            );
+        }
     }
 
     if count == 0 {
@@ -111,6 +131,7 @@ fn local_fixtures_decode() {
         failures.join("\n  - ")
     );
     eprintln!("local_fixtures: {count} fixture(s) parsed");
+    eprintln!("ST 0903 corpus probe: {vmti_records} record(s), {vmti_targets} target(s) total");
 }
 
 /// Single ST 0601 record at offset 0. `decode` must succeed; if its
@@ -250,4 +271,29 @@ fn probe_st0102(
         return None;
     }
     Some(tst_core::klv::st0102::decode(security_bytes))
+}
+
+/// If the fixture decodes as an ST 0601 record AND carries a non-empty
+/// Tag 74 (`vmti`), attempt `klv::st0903::decode` on the inner bytes.
+/// Returns:
+/// - `None` — fixture didn't decode as ST 0601, or Tag 74 absent/empty.
+/// - `Some(VmtiLs)` — typed VMTI LS successfully decoded.
+///
+/// The corpus probe's contract is panic-freedom on
+/// `klv::st0903::decode` for arbitrary real-world inputs. Lenient
+/// `decode` always returns `Ok` for parseable BER framing
+/// (malformed-BER framing returns Err but does not panic — `expect`
+/// here is the hard assertion). VMTI is conditionally emitted (only
+/// from platforms running on-board VMTI), so most corpus fixtures
+/// will return None.
+fn probe_st0903(bytes: &[u8]) -> Option<tst_core::klv::st0903::VmtiLs> {
+    let record = decode_unchecked(bytes).ok()?;
+    let vmti_bytes = record.vmti.as_deref()?;
+    if vmti_bytes.is_empty() {
+        return None;
+    }
+    Some(
+        tst_core::klv::st0903::decode(vmti_bytes)
+            .expect("klv::st0903::decode lenient panic-freedom"),
+    )
 }

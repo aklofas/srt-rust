@@ -241,6 +241,22 @@ pub enum ParseError {
     /// or had the continuation bit set on the 8th byte (per AV1 spec
     /// `Leb128()` algorithm).
     InvalidLeb128 { offset_bytes: u32 },
+
+    /// Audio frame parser found a buffer that does not start with the
+    /// codec's expected sync word. `expected` and `found` are the actual
+    /// sync-word values (12-bit values for MPEG audio / AAC ADTS).
+    BadSyncWord { expected: u16, found: u16 },
+
+    /// Byte-oriented truncation. Frame parser ran short of bytes while
+    /// reading a header or frame body. Distinct from `TruncatedRbsp`,
+    /// which is bit-oriented for video RBSP walks.
+    Truncated { needed: u32, had: u32 },
+
+    /// Field carries an explicitly forbidden bit pattern per spec.
+    /// Distinct from `ReservedValue` — `Forbidden` means the spec marks
+    /// the value as never-valid; `ReservedValue` means the spec leaves
+    /// it for future use.
+    Forbidden { field: &'static str },
 }
 
 impl std::fmt::Display for ParseError {
@@ -279,6 +295,18 @@ impl std::fmt::Display for ParseError {
             Self::EngineError(msg) => write!(f, "parser engine: {msg}"),
             Self::InvalidLeb128 { offset_bytes } => {
                 write!(f, "invalid LEB128 at byte {offset_bytes}")
+            }
+            Self::BadSyncWord { expected, found } => {
+                write!(
+                    f,
+                    "bad sync word: expected 0x{expected:03X}, found 0x{found:03X}"
+                )
+            }
+            Self::Truncated { needed, had } => {
+                write!(f, "truncated: needed {needed} bytes, had {had}")
+            }
+            Self::Forbidden { field } => {
+                write!(f, "forbidden value in field '{field}'")
             }
         }
     }
@@ -411,5 +439,17 @@ mod tests {
         };
         let s = format!("{e}");
         assert!(s.contains("chroma_format_idc"));
+    }
+
+    #[test]
+    fn parse_error_audio_variants_format() {
+        let bad_sync = ParseError::BadSyncWord { expected: 0xFFF, found: 0xABC };
+        assert!(format!("{:?}", bad_sync).contains("BadSyncWord"));
+
+        let trunc = ParseError::Truncated { needed: 7, had: 4 };
+        assert!(format!("{:?}", trunc).contains("Truncated"));
+
+        let forbidden = ParseError::Forbidden { field: "layer" };
+        assert!(format!("{:?}", forbidden).contains("Forbidden"));
     }
 }

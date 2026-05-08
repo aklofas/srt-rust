@@ -123,10 +123,20 @@ fn parse_one_nal(nal: &[u8], codec: VideoCodec) -> Option<NalUnit> {
             })
         }
         VideoCodec::Av1 => {
-            // AV1 is OBU-shaped, not NAL-shaped — it should never reach
-            // this NAL splitter. Phase 4 (Tasks 15-21) routes AV1 to a
-            // separate OBU parser before this function is called.
-            unimplemented!("AV1 uses OBU framing, not NAL — routed separately in Phase 4")
+            // AV1 is OBU-shaped, not NAL-shaped. The demuxer dispatches AV1
+            // to `split_obus` before this function is ever called; reaching
+            // this arm means demuxer state is inconsistent. Defense-in-depth:
+            // don't panic — return None and emit a debug_assert so test runs
+            // catch any regression that routes AV1 here.
+            //
+            // Typed-error promotion (`parse_one_nal -> Result<Option<_>, _>`)
+            // is deferred to Phase 1's SemVer ratchet — would cascade through
+            // `split_nals`, the demuxer call site, and existing tests.
+            debug_assert!(
+                false,
+                "internal: AV1 reached NAL splitter; demuxer state is inconsistent"
+            );
+            None
         }
     }
 }
@@ -645,5 +655,35 @@ mod tests {
     fn strip_dvb_sub_envelope_too_short() {
         assert!(strip_dvb_sub_envelope(&[0x20]).is_none());
         assert!(strip_dvb_sub_envelope(&[]).is_none());
+    }
+
+    // The AV1 arm of `parse_one_nal` is unreachable in normal demuxer flow
+    // (AV1 routes to `split_obus`). Pre-Phase-0 it called `unimplemented!`,
+    // which abort-panicked the host on hostile or buggy upstream. The fix:
+    // `debug_assert!` + `None` — debug builds still detect regressions via
+    // assert; release builds gracefully yield no NALs. The two tests below
+    // pin both behaviors.
+    //
+    // Typed-error promotion (`parse_one_nal -> Result<Option<NalUnit>, _>`)
+    // is deferred to Phase 1 where signature SemVer ratchets are in scope.
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "AV1 reached NAL splitter")]
+    fn split_nals_av1_debug_asserts_no_unimplemented_panic() {
+        // Pre-fix: panicked with `unimplemented!("AV1 uses OBU framing...")`.
+        // Post-fix in debug: panics with the debug_assert message instead,
+        // which is the regression detector.
+        let _ = split_nals(&[0x00, 0x00, 0x01, 0xAA, 0xBB], VideoCodec::Av1);
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn split_nals_av1_no_panic_release() {
+        // Release builds (no debug_assertions): the defense-in-depth arm
+        // returns None from parse_one_nal, so split_nals yields an empty
+        // Vec without panicking.
+        let nals = split_nals(&[0x00, 0x00, 0x01, 0xAA, 0xBB], VideoCodec::Av1);
+        assert!(nals.is_empty(), "AV1 must yield no NALs from NAL splitter");
     }
 }

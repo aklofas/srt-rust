@@ -166,6 +166,39 @@ pub(crate) fn decode_sample_rate(version: Version, sample_rate_index: u8) -> Res
     Ok(SAMPLE_RATE_TABLE[row][sample_rate_index as usize])
 }
 
+/// Decode channel mode from the 2-bit header field (bits 25-26).
+#[allow(dead_code)]
+fn decode_channel_mode(bits: u8) -> ChannelMode {
+    match bits & 0b11 {
+        0b00 => ChannelMode::Stereo,
+        0b01 => ChannelMode::JointStereo,
+        0b10 => ChannelMode::DualChannel,
+        0b11 => ChannelMode::Mono,
+        _ => unreachable!(),
+    }
+}
+
+/// Return the number of channels for a given channel mode.
+#[allow(dead_code)]
+fn channels_for_mode(mode: ChannelMode) -> u8 {
+    match mode {
+        ChannelMode::Mono => 1,
+        ChannelMode::Stereo | ChannelMode::JointStereo | ChannelMode::DualChannel => 2,
+    }
+}
+
+/// Return the number of samples per frame for a given (version, layer) pair.
+/// Per ISO 11172-3 (MPEG-1) + ISO 13818-3 (MPEG-2/2.5).
+#[allow(dead_code)]
+fn samples_per_frame(version: Version, layer: Layer) -> u16 {
+    match (version, layer) {
+        (_, Layer::I) => 384,
+        (_, Layer::II) => 1152,
+        (Version::Mpeg1, Layer::III) => 1152,
+        (Version::Mpeg2, Layer::III) | (Version::Mpeg2_5, Layer::III) => 576,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -209,5 +242,35 @@ mod tests {
     fn sample_rate_index3_is_reserved() {
         let err = decode_sample_rate(Version::Mpeg1, 3).unwrap_err();
         assert!(matches!(err, ParseError::ReservedValue { field, value: 3 } if field == "sample_rate_index"));
+    }
+    #[test]
+    fn channel_mode_decoded() {
+        assert_eq!(decode_channel_mode(0b00), ChannelMode::Stereo);
+        assert_eq!(decode_channel_mode(0b01), ChannelMode::JointStereo);
+        assert_eq!(decode_channel_mode(0b10), ChannelMode::DualChannel);
+        assert_eq!(decode_channel_mode(0b11), ChannelMode::Mono);
+    }
+    #[test]
+    fn channels_count_per_mode() {
+        assert_eq!(channels_for_mode(ChannelMode::Stereo), 2);
+        assert_eq!(channels_for_mode(ChannelMode::JointStereo), 2);
+        assert_eq!(channels_for_mode(ChannelMode::DualChannel), 2);
+        assert_eq!(channels_for_mode(ChannelMode::Mono), 1);
+    }
+    #[test]
+    fn samples_per_frame_layer1() {
+        assert_eq!(samples_per_frame(Version::Mpeg1, Layer::I), 384);
+        assert_eq!(samples_per_frame(Version::Mpeg2, Layer::I), 384);
+    }
+    #[test]
+    fn samples_per_frame_layer2() {
+        assert_eq!(samples_per_frame(Version::Mpeg1, Layer::II), 1152);
+        assert_eq!(samples_per_frame(Version::Mpeg2, Layer::II), 1152);
+    }
+    #[test]
+    fn samples_per_frame_layer3_v1_is_1152_v2_is_576() {
+        assert_eq!(samples_per_frame(Version::Mpeg1, Layer::III), 1152);
+        assert_eq!(samples_per_frame(Version::Mpeg2, Layer::III), 576);
+        assert_eq!(samples_per_frame(Version::Mpeg2_5, Layer::III), 576);
     }
 }

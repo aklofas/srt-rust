@@ -1,23 +1,22 @@
-//! Typed codec parameter-set parsers.
+//! Typed codec parameter-set parsers and audio frame iterators.
 //!
-//! Stateless parsers for video codec parameter sets (SPS / VPS / PPS).
-//! Each codec lives in its own submodule with consistent function shape.
-//! Consumers receive raw NAL units from [`crate::mpegts::demux`] and call
-//! the parser explicitly when typed fields are needed.
+//! Stateless parsers for video codec parameter sets (SPS / VPS / PPS)
+//! and audio frame iteration. Each codec lives in its own submodule
+//! with consistent function shape. Consumers receive raw NAL units or
+//! audio PES bytes from [`crate::mpegts::demux`] and call the parser
+//! explicitly when typed fields are needed.
 //!
-//! Shipped this slice: H.264 ([`h264`]) and H.265 ([`h265`]).
-//! H.266 ([`h266`]) is scaffolded — per-set parsers are stubs that
-//! return `ParseError::EngineError` until Tasks 8–11 of the AV1/H.266
-//! plan land. AV1 ([`av1`]) is scaffolded — Sequence Header / Frame
-//! Header parsers stub out until Tasks 23–25 land; the [`av1::leb128`]
-//! primitive is live and used by `mpegts::demux` OBU framing today.
-//! Future slices in the same umbrella: audio framing, subtitle
-//! parsers — each will appear here as `codec::<name>`.
+//! Shipped: H.264 ([`h264`]), H.265 ([`h265`]), H.266 ([`h266`]),
+//! AV1 ([`av1`]), MPEG audio Layer I/II/III ([`mpegaudio`]), AAC ADTS
+//! ([`aac`]). AAC LATM and AC-3 frame iterators are deferred to
+//! follow-up plans.
 
+pub mod aac;
 pub mod av1;
 pub mod h264;
 pub mod h265;
 pub mod h266;
+pub mod mpegaudio;
 
 /// Chroma subsampling format. From H.264 / H.265 `chroma_format_idc`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

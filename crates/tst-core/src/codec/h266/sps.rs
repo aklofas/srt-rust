@@ -103,10 +103,10 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H266Sps, ParseError> {
             3 => (1, 1),
             _ => (1, 1),
         };
-        crop_x_left = sub_w * conf_win_left_offset;
-        crop_x_right = sub_w * conf_win_right_offset;
-        crop_y_top = sub_h * conf_win_top_offset;
-        crop_y_bottom = sub_h * conf_win_bottom_offset;
+        crop_x_left = sub_w.saturating_mul(conf_win_left_offset);
+        crop_x_right = sub_w.saturating_mul(conf_win_right_offset);
+        crop_y_top = sub_h.saturating_mul(conf_win_top_offset);
+        crop_y_bottom = sub_h.saturating_mul(conf_win_bottom_offset);
     }
 
     let subpic_info_present_flag = br.read_bool()?;
@@ -141,8 +141,10 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H266Sps, ParseError> {
     };
 
     // Width/height after conformance-window cropping.
-    let width = pic_width_max_in_luma_samples.saturating_sub(crop_x_left + crop_x_right);
-    let height = pic_height_max_in_luma_samples.saturating_sub(crop_y_top + crop_y_bottom);
+    let width =
+        pic_width_max_in_luma_samples.saturating_sub(crop_x_left.saturating_add(crop_x_right));
+    let height =
+        pic_height_max_in_luma_samples.saturating_sub(crop_y_top.saturating_add(crop_y_bottom));
 
     // SPS body walk per H.266 V4 §7.3.2.4 — entropy_coding_sync,
     // log2_max_pic_order_cnt, partition constraints, ... up to the VUI
@@ -1040,6 +1042,45 @@ mod tests {
             sps.coded_height(),
             sps.height + sps.crop_top + sps.crop_bottom
         );
+    }
+
+    /// Adversarial-input regression: the conformance-window crop arithmetic
+    /// at the end of `parse_sps` could overflow on hostile input. With
+    /// `chroma_format_idc = 1` (sub_w = 2), the case `(1<<30, 1<<30, 0, 0)`
+    /// triggers the addition path (`(1<<31) + (1<<31) = 1<<32`); the case
+    /// `(1<<31, 0, 0, 0)` triggers the multiplication path (`2 * (1<<31) = 1<<32`).
+    /// Bug closed = parse returns `Ok(sps)` with bounded dims or a typed
+    /// `ParseError`; no panic in either build mode.
+    #[test]
+    fn parse_sps_saturates_crop_on_adversarial_offsets() {
+        for offsets in [
+            (1u32 << 30, 1u32 << 30, 0u32, 0u32),
+            (1u32 << 31, 0u32, 0u32, 0u32),
+        ] {
+            let rbsp = minimal_sps_rbsp_with_conformance_window(offsets);
+            let result = parse_sps(&rbsp);
+            match result {
+                Ok(sps) => {
+                    assert!(
+                        sps.width <= 320,
+                        "post-crop width must not exceed coded pic_width; got {} for {:?}",
+                        sps.width,
+                        offsets
+                    );
+                }
+                Err(
+                    ParseError::ReservedValue { .. }
+                    | ParseError::Truncated { .. }
+                    | ParseError::TruncatedRbsp { .. }
+                    | ParseError::InvalidGolomb { .. }
+                    | ParseError::UnsupportedProfile { .. },
+                ) => {
+                    // Typed error is also acceptable per the plan — body
+                    // walk may bail past the crop for various reasons.
+                }
+                Err(e) => panic!("unexpected error variant for {offsets:?}: {e:?}"),
+            }
+        }
     }
 
     /// When `sps_conformance_window_flag=0`, all four crop offsets are

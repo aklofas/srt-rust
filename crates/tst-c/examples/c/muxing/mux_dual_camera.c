@@ -29,7 +29,7 @@
  *   tsp -I file /tmp/dual_camera.ts -P analyze
  *     # TSDuck's PSI/SI walker — confirms PMT enumerates all 3 PIDs.
  *
- * Mirrors crates/tst-srt/examples/mux_dual_camera.rs (Rust).
+ * Mirrors examples/muxing/mux_dual_camera.rs (Rust).
  * The C version is more verbose because there's no RAII, and because
  * C readers may have less context about what the safe Rust wrappers
  * underneath are doing on their behalf.

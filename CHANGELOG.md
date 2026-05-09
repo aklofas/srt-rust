@@ -11,6 +11,55 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Phase 1 (SemVer ratchet) and Phase 2 (DX + observability) of the Rust
 quality + DX + FFI refactor. Both ship together in the next release.
+Plan #39 (examples reorganization) also rides this release.
+
+---
+
+### Examples reorganization (2026-05-09)
+
+#### Changed (examples)
+
+- **Examples now live in a workspace-level `tst-examples` crate** at
+  `examples/`, organized into 8 task-oriented subfolders
+  (`getting-started/`, `sending/`, `muxing/`, `receiving/`,
+  `klv-metadata/`, `pairing/`, `codec-parsing/`, `operations/`). The
+  per-crate `examples/` directories under `crates/tst-srt/`,
+  `crates/tst-pipeline/`, and `crates/tst-core/` are gone.
+
+- **Invocation lines change.** Run any example with
+  `cargo run -p tst-examples --example <name>`. The previous forms —
+  `cargo run -p tst-srt --example <name>`,
+  `cargo run -p tst-pipeline --example <name>`,
+  `cargo run -p tst-core --example <name>`, and bare
+  `cargo run --example <name>` — no longer resolve. README, cookbook,
+  guide-*.md, getting-started.md, architecture.md, and troubleshooting.md
+  are all updated; downstream consumers with their own scripts need to
+  update theirs.
+
+- **Fixture generators are now `[[bin]]` targets in `tst-core`, not
+  examples.** `gen_synthetic_fixtures`, `gen_subtitle_fixtures`,
+  `gen_h266_fixtures`, and `gen_av1_fixtures` moved from
+  `crates/tst-srt/examples/` to `crates/tst-core/tests/tools/`.
+  Invocation: `cargo run -p tst-core --bin <name>`. They're maintainer
+  tooling, not learner code; relocating them clarifies the boundary.
+
+- **C examples mirror the same taxonomy** under
+  `crates/tst-c/examples/c/{getting-started,muxing}/`. Build commands
+  in each file's header updated to the new paths.
+
+#### Added (examples)
+
+- **`getting-started/hello_world.rs`** (Rust) and
+  `crates/tst-c/examples/c/getting-started/hello_world.c` (C) — the
+  smallest possible mux + KLV round-trip showing what this library
+  does. Both produce byte-identical output (752 bytes / 4 packets).
+  Designed as the first example a new contributor runs.
+
+- **9 READMEs** — top-level `examples/README.md`, 8 per-category
+  READMEs, and `crates/tst-c/examples/c/README.md`. Numbered curriculum
+  per category with cookbook backlinks; "diffs from previous"
+  call-outs on the cumulative h264 → h265 → h266 → av1 muxing
+  progression.
 
 ---
 

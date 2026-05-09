@@ -18,7 +18,7 @@
  *     single-program sources (e.g., two separate SRT feeds), you demux each
  *     source with a Demuxer instance, then route the ES payloads into programs
  *     1 and 2 of a single Muxer. The Rust analogue of that workflow is at
- *     crates/tst-srt/examples/repack_two_programs.rs — this C example
+ *     examples/muxing/repack_two_programs.rs — this C example
  *     demonstrates the STRUCTURAL API only (stub NALs/KLV).
  *
  * ── PID UNIQUENESS RULE ───────────────────────────────────────────────────────
@@ -55,7 +55,7 @@
  *
  * ── MIRRORS ──────────────────────────────────────────────────────────────────
  *
- *   crates/tst-srt/examples/repack_two_programs.rs — full Rust example
+ *   examples/muxing/repack_two_programs.rs — full Rust example
  *   feeding real ES data from demuxed sources.
  *   crates/tst-c/examples/c/muxing/mux_dual_camera.c — single-program multi-stream
  *   example (EO + IR + KLV in one program).

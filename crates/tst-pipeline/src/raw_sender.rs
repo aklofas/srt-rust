@@ -149,6 +149,22 @@ impl<T: Transport> RawSender<T> {
     }
 }
 
+/// Type alias for [`RawSender`] with a boxed [`Transport`] trait object.
+///
+/// See [`BoxedMuxSender`](crate::mux_sender::BoxedMuxSender) for rationale.
+///
+/// # Example
+/// ```no_run
+/// use tst_pipeline::raw_sender::BoxedRawSender;
+/// use tst_pipeline::RawSender;
+/// use tst_core::Transport;
+///
+/// fn open(transport: Box<dyn Transport>) -> BoxedRawSender {
+///     RawSender::new(transport, Default::default())
+/// }
+/// ```
+pub type BoxedRawSender = RawSender<Box<dyn crate::Transport>>;
+
 impl<T: Transport> Drop for RawSender<T> {
     fn drop(&mut self) {
         let _enter = self._span.0.enter();

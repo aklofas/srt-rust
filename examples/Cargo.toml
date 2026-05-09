@@ -116,3 +116,27 @@ path = "pairing/pair_sync_klv.rs"
 [[example]]
 name = "pair_klv_pipeline"
 path = "pairing/pair_klv_pipeline.rs"
+
+[[example]]
+name = "parse_video_parameters"
+path = "codec-parsing/parse_video_parameters.rs"
+
+[[example]]
+name = "extract_video_au"
+path = "codec-parsing/extract_video_au.rs"
+
+[[example]]
+name = "demux_subtitle_file"
+path = "codec-parsing/demux_subtitle_file.rs"
+
+[[example]]
+name = "parse_audio_frames"
+path = "codec-parsing/parse_audio_frames.rs"
+
+[[example]]
+name = "extract_h265_sps_to_rbsp"
+path = "codec-parsing/extract_h265_sps_to_rbsp.rs"
+
+[[example]]
+name = "extract_h266_sps_to_rbsp"
+path = "codec-parsing/extract_h266_sps_to_rbsp.rs"

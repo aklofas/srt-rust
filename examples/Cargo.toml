@@ -108,3 +108,11 @@ path = "klv-metadata/decode_security_metadata.rs"
 [[example]]
 name = "decode_vmti_metadata"
 path = "klv-metadata/decode_vmti_metadata.rs"
+
+[[example]]
+name = "pair_sync_klv"
+path = "pairing/pair_sync_klv.rs"
+
+[[example]]
+name = "pair_klv_pipeline"
+path = "pairing/pair_klv_pipeline.rs"

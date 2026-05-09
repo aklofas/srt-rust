@@ -14,6 +14,7 @@
 
 use crate::codec::ParseError;
 
+#[doc(hidden)]
 pub struct BitReader<'a> {
     bytes: &'a [u8],
     /// Bit position within the input, counting bits skipped over EP bytes

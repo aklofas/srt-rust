@@ -14,6 +14,7 @@
 
 use crate::codec::ParseError;
 
+#[doc(hidden)]
 pub struct Av1BitReader<'a> {
     buf: &'a [u8],
     bit_pos: usize, // total bits consumed (MSB-first per byte)

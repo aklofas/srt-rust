@@ -43,7 +43,6 @@ pub(crate) struct TagSpec {
     pub range: Option<LinearRange>,
 }
 
-#[allow(dead_code)]
 pub(crate) const TAGS: &[TagSpec] = &[
     TagSpec {
         id: 1,
@@ -540,7 +539,6 @@ pub(crate) const TAGS: &[TagSpec] = &[
 ];
 
 /// Lookup a tag by ID. Returns None for tags we don't typed-model.
-#[allow(dead_code)]
 pub(crate) fn lookup(id: u8) -> Option<&'static TagSpec> {
     TAGS.iter().find(|t| t.id == id)
 }

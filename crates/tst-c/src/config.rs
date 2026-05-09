@@ -609,7 +609,6 @@ pub unsafe extern "C" fn tst_sender_config_set_max_unsynced_bytes(
 // ------------------------------------------------------------------
 
 pub struct TstRawSenderConfig {
-    #[allow(dead_code)] // used in Task 9 (tst_raw_sender_t)
     pub(crate) inner: RawSenderConfig,
 }
 

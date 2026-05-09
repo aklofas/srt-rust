@@ -76,7 +76,6 @@ use tst_core::mpegts::mux::StreamKind;
 use tst_pipeline::{MuxSenderError, SenderError, TransportError};
 
 /// Map a `MuxError` to a code + message.
-#[allow(dead_code)]
 pub(crate) fn record_mux_error(e: &MuxError) {
     let (code, msg) = match e {
         MuxError::InvalidConfig(s) => (TstError::InvalidConfig, (*s).to_string()),
@@ -255,7 +254,6 @@ pub(crate) fn record_mux_error(e: &MuxError) {
     set_last_error(code, &msg);
 }
 
-#[allow(dead_code)]
 pub(crate) fn record_transport_error(e: &TransportError) {
     let (code, msg) = match e {
         TransportError::Backpressure(s) => (TstError::Transport, format!("backpressure: {s}")),
@@ -273,7 +271,6 @@ pub(crate) fn record_transport_error(e: &TransportError) {
     set_last_error(code, &msg);
 }
 
-#[allow(dead_code)]
 pub(crate) fn record_sender_error(e: &MuxSenderError) {
     match e {
         MuxSenderError::Mux(m) => record_mux_error(m),
@@ -282,7 +279,6 @@ pub(crate) fn record_sender_error(e: &MuxSenderError) {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn record_ts_sender_error(e: &SenderError) {
     match e {
         SenderError::Transport(t) => record_transport_error(t),
@@ -292,7 +288,6 @@ pub(crate) fn record_ts_sender_error(e: &SenderError) {
 }
 
 /// Helper for entry points that catch panics or Mutex poison.
-#[allow(dead_code)]
 pub(crate) fn record_internal(detail: &str) {
     set_last_error(TstError::Internal, &format!("internal error: {detail}"));
 }
@@ -300,7 +295,6 @@ pub(crate) fn record_internal(detail: &str) {
 /// Helper for the `catch_unwind` arm of `Handle::with_inner_*`. Records
 /// a `PanicCaught` last-error with a useful detail message extracted
 /// from the panic payload.
-#[allow(dead_code)]
 pub(crate) fn record_panic_caught(detail: &str) {
     set_last_error(
         TstError::PanicCaught,

@@ -516,10 +516,6 @@ mod multi_stream_tests {
                 alive: std::sync::atomic::AtomicBool::new(true),
             }
         }
-        #[allow(dead_code)]
-        fn taken(&self) -> Vec<u8> {
-            self.bytes.lock().unwrap().clone()
-        }
     }
     impl Transport for MemTransport {
         fn send_bytes(&mut self, bytes: &[u8]) -> Result<(), TransportError> {

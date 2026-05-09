@@ -152,7 +152,6 @@ impl Socket {
     }
 
     /// Internal: wrap an already-accepted handle (called from `Listener::accept`).
-    #[allow(dead_code)]
     pub(crate) fn from_accepted(
         handle: srt_sys::SRTSOCKET,
         send_timeout: Option<Duration>,
@@ -689,7 +688,6 @@ pub(crate) fn perf_to_stats(p: &srt_sys::CBytePerfMon) -> Stats {
     }
 }
 
-#[allow(dead_code)]
 fn io_from_option_error(e: OptionError) -> IoError {
     match e {
         OptionError::Other { kind, message } => IoError::Other { kind, message },

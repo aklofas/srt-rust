@@ -271,7 +271,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 // ============================================================================
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(crate) struct RawError {
     pub kind: SrtErrno,
     pub message: String,
@@ -279,7 +278,6 @@ pub(crate) struct RawError {
 
 /// Read libsrt's last-error state. Call immediately after a libsrt FFI call
 /// returned an error indicator.
-#[allow(dead_code)]
 pub(crate) fn last_error() -> RawError {
     let kind = unsafe { srt_sys::srt_getlasterror(std::ptr::null_mut()) };
     let msg_ptr = unsafe { srt_sys::srt_getlasterror_str() };
@@ -297,7 +295,6 @@ pub(crate) fn last_error() -> RawError {
 }
 
 /// Read the typed reject code (only meaningful after a connection-rejected error).
-#[allow(dead_code)]
 pub(crate) fn last_reject() -> RejectReason {
     let raw = unsafe { srt_sys::srt_getrejectreason(0) };
     RejectReason::from_raw(raw)
@@ -348,7 +345,6 @@ impl RejectReason {
 }
 
 /// Decide whether a `RawError` indicates a timeout.
-#[allow(dead_code)]
 pub(crate) fn is_timeout(raw: &RawError) -> bool {
     matches!(raw.kind, SrtErrno::Async)
         && (raw.message.contains("Timeout")
@@ -357,7 +353,6 @@ pub(crate) fn is_timeout(raw: &RawError) -> bool {
 }
 
 /// Decide whether a `RawError` indicates the connection has been broken.
-#[allow(dead_code)]
 pub(crate) fn is_broken(raw: &RawError) -> bool {
     matches!(raw.kind, SrtErrno::Connection)
         && (raw.message.contains("broken") || raw.message.contains("Broken"))

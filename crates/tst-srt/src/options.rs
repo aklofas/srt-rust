@@ -14,7 +14,6 @@ use std::path::Path;
 
 /// SRT passphrase. Backed by `secrecy::SecretString` — zeroes on drop, redacts in Debug.
 #[derive(Clone)]
-#[allow(dead_code)]
 pub struct Passphrase(SecretString);
 
 impl Passphrase {
@@ -47,7 +46,6 @@ impl Passphrase {
     }
 
     /// Internal: hand the secret to libsrt's `srt_setsockflag`.
-    #[allow(dead_code)]
     pub(crate) fn as_bytes(&self) -> &[u8] {
         self.0.expose_secret().as_bytes()
     }
@@ -84,7 +82,6 @@ pub enum KeyLength {
 }
 
 impl KeyLength {
-    #[allow(dead_code)]
     pub(crate) fn as_bytes(self) -> i32 {
         match self {
             KeyLength::Aes128 => 16,
@@ -147,7 +144,6 @@ pub enum Congestion {
 }
 
 impl Congestion {
-    #[allow(dead_code)]
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Congestion::Live => "live",

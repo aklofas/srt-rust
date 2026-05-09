@@ -9,7 +9,6 @@ use crate::klv::st0601::tags::LinearRange;
 
 /// Encode a float value into `out` according to `range`.
 /// `tag` is for error reporting only.
-#[allow(dead_code)]
 pub(crate) fn encode_fixed_range(
     range: &LinearRange,
     tag: u32,
@@ -62,7 +61,6 @@ pub(crate) fn encode_fixed_range(
 
 /// Decode bytes into a float value according to `range`.
 /// `tag` is for error reporting only.
-#[allow(dead_code)]
 pub(crate) fn decode_fixed_range(
     range: &LinearRange,
     tag: u32,
@@ -96,7 +94,6 @@ pub(crate) fn decode_fixed_range(
     }
 }
 
-#[allow(dead_code)]
 fn signed_max(n: usize) -> i64 {
     match n {
         1 => i8::MAX as i64,
@@ -106,7 +103,6 @@ fn signed_max(n: usize) -> i64 {
     }
 }
 
-#[allow(dead_code)]
 fn unsigned_max(n: usize) -> i64 {
     match n {
         1 => u8::MAX as i64,
@@ -116,7 +112,6 @@ fn unsigned_max(n: usize) -> i64 {
     }
 }
 
-#[allow(dead_code)]
 fn write_signed_be(value: i64, out: &mut [u8]) {
     let n = out.len();
     let mask = if n == 8 {
@@ -130,7 +125,6 @@ fn write_signed_be(value: i64, out: &mut [u8]) {
     }
 }
 
-#[allow(dead_code)]
 fn write_unsigned_be(value: u64, out: &mut [u8]) {
     let n = out.len();
     for (i, slot) in out.iter_mut().enumerate().take(n) {
@@ -138,7 +132,6 @@ fn write_unsigned_be(value: u64, out: &mut [u8]) {
     }
 }
 
-#[allow(dead_code)]
 fn read_signed_be(bytes: &[u8]) -> i64 {
     let n = bytes.len();
     let mut bits: u64 = 0;
@@ -154,7 +147,6 @@ fn read_signed_be(bytes: &[u8]) -> i64 {
     }
 }
 
-#[allow(dead_code)]
 fn read_unsigned_be(bytes: &[u8]) -> u64 {
     let mut bits: u64 = 0;
     for &b in bytes {

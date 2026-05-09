@@ -24,32 +24,15 @@ fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
     }
 }
 
-#[allow(dead_code)]
 pub(crate) struct Handle<T> {
     inner: Mutex<Option<T>>,
 }
 
 impl<T> Handle<T> {
-    #[allow(dead_code)]
     pub(crate) fn new(value: T) -> Self {
         Self {
             inner: Mutex::new(Some(value)),
         }
-    }
-
-    /// Convert to a raw `*mut Self` pointer suitable for returning across
-    /// the FFI boundary.
-    #[allow(dead_code)]
-    pub(crate) fn into_raw(self) -> *mut Self {
-        Box::into_raw(Box::new(self))
-    }
-
-    /// Take ownership back from a raw pointer. Caller must guarantee the
-    /// pointer was originally produced by `into_raw` and has not already
-    /// been freed.
-    #[allow(dead_code)]
-    pub(crate) unsafe fn from_raw(ptr: *mut Self) -> Box<Self> {
-        unsafe { Box::from_raw(ptr) }
     }
 
     /// Run `f` against `&mut T` if the handle is live. If the handle is
@@ -61,7 +44,6 @@ impl<T> Handle<T> {
     /// inner state is dropped (subsequent calls on the same handle
     /// return `TST_E_CLOSED`). `AssertUnwindSafe` is sound here because
     /// we catch and clear; no further use of `T` happens after a panic.
-    #[allow(dead_code)]
     pub(crate) fn with_inner_mut<F>(&self, f: F) -> i32
     where
         F: FnOnce(&mut T) -> i32,
@@ -101,7 +83,6 @@ impl<T> Handle<T> {
     /// the panic could have left external state (global mutexes, file
     /// descriptors, etc.) in an indeterminate state — defense-in-depth
     /// drops the inner anyway.
-    #[allow(dead_code)]
     pub(crate) fn with_inner_ref<F>(&self, f: F) -> i32
     where
         F: FnOnce(&T) -> i32,
@@ -132,7 +113,6 @@ impl<T> Handle<T> {
 
     /// Take the inner value (idempotent — second call is a no-op).
     /// Triggers Drop of the inner, which closes the underlying resource.
-    #[allow(dead_code)]
     pub(crate) fn close(&self) {
         if let Ok(mut guard) = self.inner.lock() {
             *guard = None;

@@ -27,7 +27,6 @@ pub enum StrictMode {
 
 impl StrictMode {
     /// Should this issue convert to a fatal `DemuxError::StrictRejection`?
-    #[allow(dead_code)] // wired up by Task 9.
     pub(crate) fn rejects(self, issue: &NonConformantIssue) -> bool {
         match self {
             StrictMode::Off => false,

@@ -7,7 +7,7 @@
 
 use crate::error::{KlvDecodeError, KlvEncodeError};
 use crate::klv::length::{
-    LengthEncoding, ber_len, ber_oid_len, read_ber, read_ber_oid, write_ber, write_ber_oid,
+    LengthEncoding, ber_len, read_ber, read_ber_oid, write_ber, write_ber_oid,
 };
 use crate::klv::universal_label::UniversalLabel;
 
@@ -243,12 +243,6 @@ pub fn encode_pack<'a>(
     Ok(16 + written + total_inner)
 }
 
-// Keep the unused-import clearer for refactors; LengthEncoding is part of the
-// public API surface that future callers will use.
-#[allow(dead_code)]
-fn _unused(_: LengthEncoding, _: KlvDecodeError) {
-    let _ = ber_oid_len;
-}
 
 #[cfg(test)]
 mod tests {

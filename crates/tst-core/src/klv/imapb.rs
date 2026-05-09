@@ -16,7 +16,7 @@
 //! 0601 fixed-range mappings (which use a slightly different convention
 //! with INT_MIN as INVALID) live in `klv::st0601::mapping`.
 
-use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
+use crate::error::{KlvEncodeError, KlvFieldError};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ImapbParams {
@@ -106,10 +106,6 @@ fn read_signed_be(bytes: &[u8]) -> i64 {
     }
 }
 
-// Avoid unused warnings on KlvDecodeError import — placeholder for future use
-// at the call sites that use this codec.
-#[allow(dead_code)]
-fn _unused(_: KlvDecodeError) {}
 
 #[cfg(test)]
 mod tests {

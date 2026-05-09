@@ -1557,12 +1557,12 @@ impl DemuxerBuilder {
     }
 }
 
-#[allow(dead_code)] // exposed for tests + future plan tasks.
+#[cfg(test)]
 pub(crate) const fn default_pes_cap_per_pid() -> usize {
     DEFAULT_PES_CAP_PER_PID
 }
 
-#[allow(dead_code)] // exposed for tests + future plan tasks.
+#[cfg(test)]
 pub(crate) const fn default_pes_cap_total() -> usize {
     DEFAULT_PES_CAP_TOTAL
 }

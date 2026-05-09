@@ -14,7 +14,6 @@ use std::mem;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 
 /// Convert a Rust `SocketAddr` to a `libc::sockaddr_storage` plus its used length.
-#[allow(dead_code)]
 pub(crate) fn to_sockaddr(addr: SocketAddr) -> Result<(libc::sockaddr_storage, usize), AddrError> {
     let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
     match addr {
@@ -63,7 +62,6 @@ pub(crate) fn to_sockaddr(addr: SocketAddr) -> Result<(libc::sockaddr_storage, u
 }
 
 /// Convert a `libc::sockaddr_storage` back to `std::net::SocketAddr`.
-#[allow(dead_code)]
 pub(crate) fn from_sockaddr(storage: &libc::sockaddr_storage) -> Result<SocketAddr, AddrError> {
     match storage.ss_family as i32 {
         libc::AF_INET => {

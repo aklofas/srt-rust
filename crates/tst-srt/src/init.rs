@@ -14,7 +14,6 @@ static SRT_INITIALIZED: OnceLock<()> = OnceLock::new();
 /// Idempotent libsrt initialization.
 ///
 /// Panics if `srt_startup` returns < 0 — that's a process-fatal condition.
-#[allow(dead_code)]
 pub(crate) fn ensure_initialized() {
     SRT_INITIALIZED.get_or_init(|| {
         let rc = unsafe { srt_sys::srt_startup() };

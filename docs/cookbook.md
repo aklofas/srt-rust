@@ -2,7 +2,19 @@
 
 Common multi-step recipes. Each recipe is a short narrative + a code block + a link to the corresponding runnable example. Run any example with `cargo run --example <name>`. The full set of examples lives at `crates/tst-srt/examples/`.
 
-## Recipes
+## Contents
+
+- [Sending](#sending) — recipes 1, 8, 11
+- [Muxing](#muxing) — recipes 3, 9, 15, 16, 19, 22, 23
+- [Receiving](#receiving) — recipes 4, 5, 21
+- [KLV metadata](#klv-metadata) — recipes 6, 7, 28, 30
+- [Pairing video + KLV](#pairing-video--klv) — recipes 12, 13, 14, 24, 25, 26, 27
+- [Codec parsing](#codec-parsing) — recipes 17, 18, 29
+- [Operations](#operations) — recipes 2, 10, 20
+
+Recipe numbers are stable across edits (existing inbound links stay valid); within each section recipes are listed in numeric order, not narrative order.
+
+## Sending
 
 ### 1. Send video + KLV with passphrase encryption
 
@@ -29,45 +41,65 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Runnable: [../crates/tst-srt/examples/encrypted_send_recv.rs](../crates/tst-srt/examples/encrypted_send_recv.rs).
 
-### 2. Survive a flaky transport with reconnect + gap buffer
+### 8. Use a custom (non-SRT) transport
 
-Reach for this when the wire is lossy — radio links, NAT timeouts, listener restarts. `ManagedTransport<T>` decorates any `Transport` impl with a reconnect loop and a bounded gap buffer; the wrapped sender shell sees a `Transport` that occasionally pauses but never fails on transient breakage.
+Reach for this when the sender shells fit but the wire isn't SRT — UDP, file, in-memory test harness, your own protocol. `MuxSender`, `Sender`, and `RawSender` are all generic over `T: Transport`; implement the trait once and they all compose.
 
-The factory closure rebuilds the inner transport on demand. `ReconnectPolicy` controls retries, backoff, and gap-buffer overflow behaviour.
+The trait is four methods: `send_bytes`, `max_payload`, `is_alive`, `close`. Your impl needs to be `Send`, not `Sync` — the shells handle internal synchronization where required.
 
 ```rust,no_run
-use tst_core::mpegts::mux::MuxerConfig;
-use tst_pipeline::{
-    BackoffStrategy, ManagedTransport, MuxSender, OverflowPolicy, ReconnectPolicy, TransportError,
-};
-use tst_srt::{SocketBuilder, SrtTransport};
-use std::time::Duration;
+use tst_pipeline::{Transport, TransportError};
+use std::sync::{Arc, Mutex};
+
+struct MemTransport {
+    packets: Arc<Mutex<Vec<Vec<u8>>>>,
+    alive: bool,
+    max_payload: usize,
+}
+
+impl Transport for MemTransport {
+    fn send_bytes(&mut self, msg: &[u8]) -> Result<(), TransportError> {
+        if msg.len() > self.max_payload {
+            return Err(TransportError::TooLarge { len: msg.len(), max: self.max_payload });
+        }
+        if !self.alive { return Err(TransportError::Closed); }
+        self.packets.lock().unwrap().push(msg.to_vec());
+        Ok(())
+    }
+    fn max_payload(&self) -> usize { self.max_payload }
+    fn is_alive(&self) -> bool { self.alive }
+    fn close(&mut self) { self.alive = false; }
+}
+```
+
+Runnable: [../crates/tst-srt/examples/custom_transport.rs](../crates/tst-srt/examples/custom_transport.rs).
+
+### 11. Open a sender from an `srt://...?...` URL
+
+Useful when the connection target and tuning live in deployment config
+files (or are passed in by an orchestrator). Build a `SocketConfig`
+from the parsed URL's overlay, then connect.
+
+```rust,no_run
+use tst_srt::{SocketBuilder, SrtUrl};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let factory = || -> Result<SrtTransport, TransportError> {
-        let socket = SocketBuilder::new()
-            .latency(Duration::from_millis(120))
-            .connect("127.0.0.1:9000")
-            .map_err(|e| TransportError::Broken(format!("connect failed: {e}")))?;
-        Ok(SrtTransport::new(socket))
-    };
-    let initial = factory()?;
-    let policy = ReconnectPolicy {
-        max_attempts: Some(20),
-        backoff: BackoffStrategy::Exponential {
-            base: Duration::from_millis(100),
-            max: Duration::from_secs(10),
-        },
-        gap_buffer_capacity: 256,
-        overflow_policy: OverflowPolicy::DropOldest,
-    };
-    let managed = ManagedTransport::new(initial, factory, policy);
-    let _sender = MuxSender::new(MuxerConfig::default(), managed)?;
+    let parsed = SrtUrl::parse(
+        "srt://camera.local:9000?streamid=front&latency=200&passphrase=hunter-too-long",
+    )?;
+    let mut config = SocketBuilder::new().config();
+    parsed.overlay.apply_to_socket(&mut config);
+    let _socket = tst_srt::Socket::connect_with(
+        &config,
+        format!("{}:{}", parsed.host, parsed.port).as_str(),
+    )?;
     Ok(())
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs).
+Runnable: [../crates/tst-srt/examples/sender_from_url.rs](../crates/tst-srt/examples/sender_from_url.rs).
+
+## Muxing
 
 ### 3. Mux to a file (no SRT, no transport)
 
@@ -103,6 +135,237 @@ fn main() -> std::io::Result<()> {
 ```
 
 Runnable: [../crates/tst-srt/examples/mux_to_file.rs](../crates/tst-srt/examples/mux_to_file.rs).
+
+### 9. Mux H.265 + sync KLV
+
+Reach for this when the encoder produces HEVC, or when the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15) instead of the default async private-data shape. Three knobs flip on `MuxerConfig`: codec → `H265`, KLV stream type → `SynchronousMetadata`, `carries_pts` → `true`.
+
+**Sync KLV auto-wraps in the muxer.** When you configure `KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) before TS-framing. Pass raw KLV LS bytes — do not pre-wrap. PTS lives in the PES header (per § 2.12.4.1). See [guide-mpegts-mux.md](guide-mpegts-mux.md) §"KLV-in-TS modes".
+
+```rust,no_run
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cfg = MuxerConfig::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x1011, VideoCodec::H265)
+        .add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true)
+        .end_program()
+        .build()?;
+    let mut mux = Muxer::new(cfg)?;
+    let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
+    // Muxer auto-prepends the 5-byte AU cell header. metadata_service_id
+    // defaults to 0x00 per ST 1402.2 App. B Table 2.
+    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0x00)?;
+    Ok(())
+}
+```
+
+Runnable: [../crates/tst-srt/examples/mux_h265_with_klv.rs](../crates/tst-srt/examples/mux_h265_with_klv.rs).
+
+### 15. Label EO + IR + KLV streams in a multi-stream program
+
+Multi-stream programs (`mpegts::mux` Path 3) carry several PIDs in one
+program. Per-stream PMT descriptors let receivers (TSDuck, ffprobe, our
+own `Demuxer`) render which PID is which without external configuration.
+
+```rust,no_run
+use tst_core::mpegts::descriptors as desc;
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+
+const EO_PID: u16 = 0x0100;
+const IR_PID: u16 = 0x0101;
+const KLV_PID: u16 = 0x0102;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cfg = MuxerConfig::builder()
+        .add_video(EO_PID, VideoCodec::H264)
+        .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
+        .add_video(IR_PID, VideoCodec::H264)
+        .stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640x480")])
+        .add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true)
+        .stream_descriptors_for_klv(0, vec![
+            // 0x26 + 0x27 are the canonical pair for stream_type=0x15 KLV
+            // (the muxer's auto-emitted KLVA Registration only fires for
+            // PrivateData KLV, not SynchronousMetadata).
+            desc::metadata_klva(0x00),
+            desc::metadata_std(0, 0, 0),
+            // Plus a human label.
+            desc::user_private(b"KLV_SYNC"),
+        ])
+        .build()?;
+
+    let mut _mux = Muxer::new(cfg)?;
+    // ...push frames as usual...
+    Ok(())
+}
+```
+
+Validate the labels show up on the receiving end:
+
+```bash
+tstables --pid <pmt-pid> output.ts | grep -A1 "Forbidden Descriptor"
+```
+
+Or in Rust on the receive side, decode `StreamInfo::raw_descriptors`
+directly (see `guide-mpegts-demux.md` "Reading per-stream descriptors").
+
+Runnable example: `cargo run --example mux_dual_camera`.
+
+### 16. Repack two single-program inputs into one multi-program TS
+
+When you have two independent (EO + IR + KLV) feeds and need to ship them
+through one SRT socket without forcing each to its own UDP port:
+
+```rust,no_run
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, VideoCodec};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = MuxerConfig::builder()
+        .add_program(1, 0x1000)
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .end_program()
+        .add_program(2, 0x1100)
+            .add_video(0x1111, VideoCodec::H264)
+            .add_klv(0x1131, KlvStreamType::PrivateData, false)
+            .end_program()
+        .build()?;
+
+    // Resolve handles per-program; push_video_to/push_klv_to route to
+    // the correct elementary stream even when two programs carry the same
+    // codec.  The bare push_video / push_klv reject with AmbiguousTarget
+    // when more than one stream of that kind exists across all programs.
+    // let mux = Muxer::new(config)?;
+    // let [v1] = mux.video_handles_for_program(1)[..] else { ... };
+    // let [v2] = mux.video_handles_for_program(2)[..] else { ... };
+    // mux.push_video_to(v1, pts, dts, is_keyframe, &nal_bytes)?;
+    Ok(())
+}
+```
+
+On the receive side, the consumer sees two independent `ProgramMap` events
+and can route `Sample`/`Metadata` events by `stream.program_number`. The
+receiver picks one program of interest with ffmpeg `-map p:N` or TSDuck
+`--pid-only`. PID uniqueness across programs is required by the muxer;
+renumber program 2's input PIDs into a non-conflicting range during the
+demux→remux step.
+
+Runnable: [../crates/tst-srt/examples/repack_two_programs.rs](../crates/tst-srt/examples/repack_two_programs.rs).
+
+### 19. Mux audio + video + KLV in a single program
+
+Build a three-stream program where audio PTS-aligns with video for
+synchronized playback, and KLV records emit on the same PCR clock.
+
+```rust
+use tst_core::mpegts::mux::{
+    AudioCodec, MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec,
+};
+
+let cfg = MuxerConfigBuilder::new()
+    .add_program(1, 0x1000)
+    .add_video(0x100, VideoCodec::H264)
+    .add_klv(0x200, KlvStreamType::PrivateData, /*carries_pts=*/ false)
+    // add_audio_with_language auto-emits an iso_639_language_descriptor
+    // (tag 0x0A) on the PMT entry — receivers (browsers, transcoders,
+    // players) get a language hint without manually wiring descriptors.
+    // Use plain add_audio(pid, codec) when language is unknown / unset.
+    .add_audio_with_language(0x300, AudioCodec::Aac, *b"eng")
+    .end_program()
+    .build()?;
+
+let mut muxer = Muxer::new(cfg)?;
+
+for frame_idx in 0..30 {
+    let pts = 90_000 + frame_idx * 3000;
+    muxer.push_video(&video_au_bytes, pts, /*key_frame=*/ frame_idx % 30 == 0)?;
+    muxer.push_audio(&aac_frame_bytes, pts)?;
+    if frame_idx % 30 == 0 {
+        muxer.push_klv(&klv_record, pts, /*metadata_service_id=*/ 0x00)?;
+    }
+    // Drain to your transport.
+}
+```
+
+Full example: [`../crates/tst-srt/examples/mux_audio_video_klv.rs`](../crates/tst-srt/examples/mux_audio_video_klv.rs).
+
+### 22. Streaming H.266 / VVC video with synchronous KLV metadata
+
+H.266 (VVC) carries in MPEG-TS under PMT `stream_type = 0x33` per the
+ITU-T H.222.0 amendment for VVC; the muxer emits that byte automatically
+when `VideoCodec::H266` is configured. The push contract is identical to
+H.264 / H.265 — Annex-B framing on `push_video`, one PES per call. Only
+the codec flag and the SPS / PPS / VPS bytes change.
+
+The recipe below mirrors recipe 9 (H.265 + sync KLV) — flip the codec to
+`VideoCodec::H266` and feed H.266 NAL bytes (NAL types 14 / 15 / 16 for
+VPS / SPS / PPS).
+
+```rust,no_run
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cfg = MuxerConfig::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x1011, VideoCodec::H266)
+        .add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true)
+        .end_program()
+        .build()?;
+    let mut mux = Muxer::new(cfg)?;
+    let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
+    // Muxer auto-prepends the 5-byte H.222.0 § 2.12.4.2 AU cell header.
+    // metadata_service_id defaults to 0x00 per ST 1402.2 App. B Table 2.
+    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0x00)?;
+    Ok(())
+}
+```
+
+Runnable: [../crates/tst-srt/examples/mux_h266_with_klv.rs](../crates/tst-srt/examples/mux_h266_with_klv.rs).
+
+### 23. Streaming AV1 video with KLV metadata
+
+AV1 uses OBU framing — fundamentally different from the NAL-shaped codecs
+(H.264 / H.265 / H.266). Key differences when feeding `Muxer::push_video`:
+
+- **No Annex-B start codes.** OBUs are self-describing and length-prefixed
+  via LEB128. Concatenating OBUs with no separator produces a complete
+  access unit.
+- **AV1-in-MPEG-2-TS binding §3.1 requires `obu_has_size_field = 1`** on
+  every OBU so the demultiplexer can walk the OBU stream without a
+  separate framing layer.
+- **PMT `stream_type = 0x06`** plus an auto-emitted `AV01`
+  `registration_descriptor` (binding §2.1) tells receivers the bytes are
+  AV1 rather than KLV-async on the same stream_type byte.
+
+```rust,no_run
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, StreamSpec, VideoCodec};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let cfg = MuxerConfig {
+        streams: vec![
+            StreamSpec::Video { pid: 0x1011, codec: VideoCodec::Av1 },
+            StreamSpec::Klv {
+                pid: 0x1031,
+                stream_type: KlvStreamType::PrivateData,
+                carries_pts: false,
+            },
+        ],
+        ..MuxerConfig::default()
+    };
+    let mut mux = Muxer::new(cfg)?;
+    // `au_obus` is a contiguous OBU sequence (each with obu_has_size_field=1).
+    // The example builds one synthetic Sequence Header + Temporal Delimiter +
+    // Frame access unit; real consumers feed the encoder's output verbatim.
+    let au_obus: Vec<u8> = vec![/* concatenated OBUs */];
+    mux.push_video(&au_obus, 0, /* key_frame = */ true)?;
+    Ok(())
+}
+```
+
+Runnable: [../crates/tst-srt/examples/mux_av1_with_klv.rs](../crates/tst-srt/examples/mux_av1_with_klv.rs).
+
+## Receiving
 
 ### 4. Relay a captured `.ts` file over SRT
 
@@ -170,6 +433,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Runnable: [../crates/tst-srt/examples/srt_listener_to_file.rs](../crates/tst-srt/examples/srt_listener_to_file.rs).
 
+### 21. Extract subtitle PES bytes from a captured `.ts` file
+
+Use case: receive-side inspection — what subtitle codecs are in a
+capture, and what's the cue text?
+
+```rust
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
+
+let mut demux = Demuxer::new();
+demux.feed(&bytes)?;
+demux.flush();
+while let Some(e) = demux.next_event() {
+    if let DemuxEvent::Sample {
+        stream,
+        payload: SamplePayload::Subtitle { codec, payload },
+        ..
+    } = e
+    {
+        println!(
+            "PID 0x{:04x} codec={:?} bytes={}",
+            stream.pid,
+            codec,
+            payload.len()
+        );
+    }
+}
+```
+
+Runnable: `cargo run --example demux_subtitle_file -- input.ts`.
+
+## KLV metadata
+
 ### 6. Decode ST 0601 from a captured `.klv` blob
 
 Reach for this when validating producer output, building dashboards on top of captured data, or debugging a receiver. The two-step pipeline is: extract KLV blobs from the `.ts` first, then decode each blob through the strictness ladder.
@@ -224,120 +519,121 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Runnable: [../crates/tst-srt/examples/klv_encode_minimal.rs](../crates/tst-srt/examples/klv_encode_minimal.rs).
 
-### 8. Use a custom (non-SRT) transport
+### 28. Decode security metadata from an ST 0601 record
 
-Reach for this when the sender shells fit but the wire isn't SRT — UDP, file, in-memory test harness, your own protocol. `MuxSender`, `Sender`, and `RawSender` are all generic over `T: Transport`; implement the trait once and they all compose.
+Sibling-layer composition: decode the parent ST 0601 LS, then if
+Tag 48 is non-empty, run `klv::st0102::decode` on the inner bytes.
 
-The trait is four methods: `send_bytes`, `max_payload`, `is_alive`, `close`. Your impl needs to be `Send`, not `Sync` — the shells handle internal synchronization where required.
+```rust
+use tst_core::klv::{st0102, st0601};
+
+# fn process(record_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+let parent = st0601::decode(record_bytes)?;
+
+if let Some(security_bytes) = parent.security_local_set.as_deref() {
+    let security = st0102::decode(security_bytes)?;
+    println!(
+        "classification={:?} country={:?} version={:?}",
+        security.security_classification,
+        security.classifying_country,
+        security.version,
+    );
+}
+# Ok(())
+# }
+```
+
+Use `st0102::decode_strict` instead when the consumer wants the spec's
+required-tag set enforced (e.g. compliance pipelines for classified
+delivery).
+
+Construct + encode the symmetric path:
+
+```rust
+use tst_core::klv::st0102::{
+    self, ClassifyingCountryCodingMethod, ObjectCountryCodingMethod,
+    SecurityClassification, SecurityLs,
+};
+
+let security = SecurityLs {
+    security_classification: Some(SecurityClassification::Confidential),
+    classifying_country_coding_method: Some(
+        ClassifyingCountryCodingMethod::Iso3166ThreeLetter,
+    ),
+    classifying_country: Some("//USA".to_string()),
+    object_country_coding_method: Some(
+        ObjectCountryCodingMethod::Iso3166ThreeLetter,
+    ),
+    object_country_codes: Some("USA".to_string()),
+    version: Some(12),
+    ..Default::default()
+};
+let bytes = st0102::encode_to_vec(&security)?;
+// Stuff `bytes` into a UasDatalinkLs.security_local_set field, then
+// st0601::encode_to_vec the parent record.
+```
+
+See `examples/decode_security_metadata.rs` for the full file-walking
+example.
+
+### 30. Decode VMTI per-target detections from an ST 0601 stream
+
+When you're working with an ISR capture and want to surface the
+detected/tracked targets per frame, sibling-layer composition again:
+decode the parent ST 0601 LS, then if Tag 74 is non-empty run
+`klv::st0903::decode` on the inner bytes. Sync (`KlvSyncAuCell`) and
+async (`KlvAsync`) carriage paths both surface KLV LS bytes — accept
+either so VMTI from a KLVA-async producer also flows through.
 
 ```rust,no_run
-use tst_pipeline::{Transport, TransportError};
-use std::sync::{Arc, Mutex};
+use tst_core::klv::{st0601, st0903};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind};
 
-struct MemTransport {
-    packets: Arc<Mutex<Vec<Vec<u8>>>>,
-    alive: bool,
-    max_payload: usize,
-}
+# fn process_capture(bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+let mut demuxer = Demuxer::new();
+demuxer.feed(bytes)?;
+demuxer.flush();
 
-impl Transport for MemTransport {
-    fn send_bytes(&mut self, msg: &[u8]) -> Result<(), TransportError> {
-        if msg.len() > self.max_payload {
-            return Err(TransportError::TooLarge { len: msg.len(), max: self.max_payload });
-        }
-        if !self.alive { return Err(TransportError::Closed); }
-        self.packets.lock().unwrap().push(msg.to_vec());
-        Ok(())
+while let Some(event) = demuxer.next_event() {
+    let DemuxEvent::Metadata { kind, payload, .. } = event else {
+        continue;
+    };
+    match kind {
+        MetadataKind::KlvSyncAuCell { .. } | MetadataKind::KlvAsync => {}
+        MetadataKind::Unknown(_) => continue,
     }
-    fn max_payload(&self) -> usize { self.max_payload }
-    fn is_alive(&self) -> bool { self.alive }
-    fn close(&mut self) { self.alive = false; }
-}
-```
 
-Runnable: [../crates/tst-srt/examples/custom_transport.rs](../crates/tst-srt/examples/custom_transport.rs).
+    let uas = st0601::decode(&payload)?;
+    let Some(vmti_bytes) = uas.vmti.as_deref() else {
+        continue;
+    };
+    let vmti = st0903::decode(vmti_bytes)?;
 
-### 9. Mux H.265 + sync KLV
-
-Reach for this when the encoder produces HEVC, or when the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15) instead of the default async private-data shape. Three knobs flip on `MuxerConfig`: codec → `H265`, KLV stream type → `SynchronousMetadata`, `carries_pts` → `true`.
-
-**Sync KLV auto-wraps in the muxer.** When you configure `KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) before TS-framing. Pass raw KLV LS bytes — do not pre-wrap. PTS lives in the PES header (per § 2.12.4.1). See [guide-mpegts-mux.md](guide-mpegts-mux.md) §"KLV-in-TS modes".
-
-```rust,no_run
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x1011, VideoCodec::H265)
-        .add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true)
-        .end_program()
-        .build()?;
-    let mut mux = Muxer::new(cfg)?;
-    let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
-    // Muxer auto-prepends the 5-byte AU cell header. metadata_service_id
-    // defaults to 0x00 per ST 1402.2 App. B Table 2.
-    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0x00)?;
-    Ok(())
-}
-```
-
-Runnable: [../crates/tst-srt/examples/mux_h265_with_klv.rs](../crates/tst-srt/examples/mux_h265_with_klv.rs).
-
-### 10. Print live `Stats` from a sender
-
-Reach for this when building an operational dashboard, instrumenting a sender for production telemetry, or debugging packet loss in the field. `Socket::stats()` returns a snapshot of libsrt's per-socket counters — call it periodically and surface the deltas.
-
-The most operationally interesting fields on a sender: `bytes_sent`, `packets_lost_send_side`, `packets_retransmitted`, `rtt`, and `mbps_estimated_bandwidth`. (Loss/drop counters are split by which side observed them — read `*_send_side` on a sender, `*_recv_side` on a receiver.) There's no standalone example for this; see [guide-srt.md](guide-srt.md) §`Stats` for the full field list and [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs) for similar peer-thread observation patterns.
-
-```rust,no_run
-use tst_srt::SocketBuilder;
-use std::thread;
-use std::time::Duration;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let socket = SocketBuilder::new()
-        .latency(Duration::from_millis(120))
-        .connect("127.0.0.1:9000")?;
-    for _ in 0..10 {
-        thread::sleep(Duration::from_secs(1));
-        let s = socket.stats()?;
+    for target in &vmti.targets {
+        // Analyst-actionable subset — pair with VObjectSeries
+        // (Tag 107, deferred typed layer) for classification.
         println!(
-            "bytes_sent={} packets_lost_send_side={} retrans={} rtt={:?} bw_mbps={:.2}",
-            s.bytes_sent, s.packets_lost_send_side, s.packets_retransmitted,
-            s.rtt, s.mbps_estimated_bandwidth,
+            "target {}: centroid_px={:?} bbox=({:?}..{:?}) confidence={:?}",
+            target.target_id,
+            target.centroid_pixel,
+            target.bbox_top_left_pixel,
+            target.bbox_bottom_right_pixel,
+            target.confidence_level,
         );
     }
-    Ok(())
 }
+# Ok(())
+# }
 ```
 
-No standalone example; see [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs) and [guide-srt.md](guide-srt.md) §`Stats`.
+Runnable form: `cargo run --example decode_vmti_metadata -- capture.ts`.
 
-### 11. Open a sender from an `srt://...?...` URL
+For per-target classification labels (VObjectSeries), per-target
+track state (VTracker), pixel masks (VMask), or image cutouts (VChip
+/ VChipSeries), see the deferred-features note on typed nested VMTI
+Local Sets.
 
-Useful when the connection target and tuning live in deployment config
-files (or are passed in by an orchestrator). Build a `SocketConfig`
-from the parsed URL's overlay, then connect.
-
-```rust,no_run
-use tst_srt::{SocketBuilder, SrtUrl};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let parsed = SrtUrl::parse(
-        "srt://camera.local:9000?streamid=front&latency=200&passphrase=hunter-too-long",
-    )?;
-    let mut config = SocketBuilder::new().config();
-    parsed.overlay.apply_to_socket(&mut config);
-    let _socket = tst_srt::Socket::connect_with(
-        &config,
-        format!("{}:{}", parsed.host, parsed.port).as_str(),
-    )?;
-    Ok(())
-}
-```
-
-Runnable: [../crates/tst-srt/examples/sender_from_url.rs](../crates/tst-srt/examples/sender_from_url.rs).
+## Pairing video + KLV
 
 ### 12. Pair sync-KLV with video AUs by nearest PTS
 
@@ -466,356 +762,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 If the encoder declares the linkage via `metadata_descriptor`, the demuxer surfaces it as `KlvLink { source: LinkSource::Declared, .. }` in `ProgramMap.klv_links`. Use it as a hint when assigning routes; trust your `treat_as` overrides if you know the encoder lies.
 
 Runnable: see [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs) for the file-feed shape; [../crates/tst-srt/examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs) is the related sync-KLV sibling.
-
-### 15. Label EO + IR + KLV streams in a multi-stream program
-
-Multi-stream programs (`mpegts::mux` Path 3) carry several PIDs in one
-program. Per-stream PMT descriptors let receivers (TSDuck, ffprobe, our
-own `Demuxer`) render which PID is which without external configuration.
-
-```rust,no_run
-use tst_core::mpegts::descriptors as desc;
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
-
-const EO_PID: u16 = 0x0100;
-const IR_PID: u16 = 0x0101;
-const KLV_PID: u16 = 0x0102;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = MuxerConfig::builder()
-        .add_video(EO_PID, VideoCodec::H264)
-        .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
-        .add_video(IR_PID, VideoCodec::H264)
-        .stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640x480")])
-        .add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true)
-        .stream_descriptors_for_klv(0, vec![
-            // 0x26 + 0x27 are the canonical pair for stream_type=0x15 KLV
-            // (the muxer's auto-emitted KLVA Registration only fires for
-            // PrivateData KLV, not SynchronousMetadata).
-            desc::metadata_klva(0x00),
-            desc::metadata_std(0, 0, 0),
-            // Plus a human label.
-            desc::user_private(b"KLV_SYNC"),
-        ])
-        .build()?;
-
-    let mut _mux = Muxer::new(cfg)?;
-    // ...push frames as usual...
-    Ok(())
-}
-```
-
-Validate the labels show up on the receiving end:
-
-```bash
-tstables --pid <pmt-pid> output.ts | grep -A1 "Forbidden Descriptor"
-```
-
-Or in Rust on the receive side, decode `StreamInfo::raw_descriptors`
-directly (see `guide-mpegts-demux.md` "Reading per-stream descriptors").
-
-Runnable example: `cargo run --example mux_dual_camera`.
-
-### 16. Repack two single-program inputs into one multi-program TS
-
-When you have two independent (EO + IR + KLV) feeds and need to ship them
-through one SRT socket without forcing each to its own UDP port:
-
-```rust,no_run
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, VideoCodec};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-            .add_video(0x1011, VideoCodec::H264)
-            .add_klv(0x1031, KlvStreamType::PrivateData, false)
-            .end_program()
-        .add_program(2, 0x1100)
-            .add_video(0x1111, VideoCodec::H264)
-            .add_klv(0x1131, KlvStreamType::PrivateData, false)
-            .end_program()
-        .build()?;
-
-    // Resolve handles per-program; push_video_to/push_klv_to route to
-    // the correct elementary stream even when two programs carry the same
-    // codec.  The bare push_video / push_klv reject with AmbiguousTarget
-    // when more than one stream of that kind exists across all programs.
-    // let mux = Muxer::new(config)?;
-    // let [v1] = mux.video_handles_for_program(1)[..] else { ... };
-    // let [v2] = mux.video_handles_for_program(2)[..] else { ... };
-    // mux.push_video_to(v1, pts, dts, is_keyframe, &nal_bytes)?;
-    Ok(())
-}
-```
-
-On the receive side, the consumer sees two independent `ProgramMap` events
-and can route `Sample`/`Metadata` events by `stream.program_number`. The
-receiver picks one program of interest with ffmpeg `-map p:N` or TSDuck
-`--pid-only`. PID uniqueness across programs is required by the muxer;
-renumber program 2's input PIDs into a non-conflicting range during the
-demux→remux step.
-
-Runnable: [../crates/tst-srt/examples/repack_two_programs.rs](../crates/tst-srt/examples/repack_two_programs.rs).
-
-### 17. Extract video resolution and profile from a demuxed stream
-
-Reach for this when you need typed codec information (width, height, profile,
-level, frame rate, color) and are already demuxing the stream. The demuxer
-surfaces raw NAL bytes; you call the matching `codec::*` parser explicitly
-on each `Sample` event. `parse_parameter_sets` is safe to call on every
-sample — it skips non-SPS/PPS NALs silently and returns `Ok` with empty
-maps on P-frames.
-
-```rust,no_run
-use tst_core::codec::h264;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut dx = Demuxer::new();
-    // ... feed bytes to dx ...
-    while let Some(ev) = dx.next_event() {
-        if let DemuxEvent::Sample {
-            payload: SamplePayload::Video { codec: VideoCodec::H264, payload: VideoPayload::Nals(ref nals) },
-            ..
-        } = ev
-        {
-            if let Ok(ps) = h264::parse_parameter_sets(nals) {
-                if let Some(sps) = ps.sps_by_id.values().next() {
-                    println!(
-                        "{}x{} profile={} level={}",
-                        sps.width, sps.height, sps.profile_idc, sps.level_idc
-                    );
-                }
-            }
-        }
-    }
-    Ok(())
-}
-```
-
-For H.265 substitute `h265::parse_parameter_sets` and use
-`sps.general_profile_idc` / `sps.general_level_idc` (level is `× 30` — level
-4.0 is stored as 120). The pattern is identical; only the import and field
-names differ.
-
-Runnable: [../crates/tst-srt/examples/parse_video_parameters.rs](../crates/tst-srt/examples/parse_video_parameters.rs) — shows change-driven logging per PID across H.264 and H.265 in one pass.
-
-### 18. Reconstitute Annex B parameter sets for decoder replay
-
-Reach for this when you need to hand SPS / PPS bytes to a hardware decoder,
-encoder re-init, or a library that expects Annex-B-framed codec configuration.
-The `raw_rbsp` field on each parsed struct preserves the input bytes verbatim
-(including emulation-prevention bytes) exactly as received from the demuxer.
-Prepend a 4-byte start code to get conformant Annex B framing:
-
-```rust,no_run
-use tst_core::codec::h264;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
-
-fn to_annex_b(rbsp: &[u8]) -> Vec<u8> {
-    // Same for H.264 and H.265 — the demuxer includes the NAL header byte(s)
-    // in the payload field, so raw_rbsp already contains the full NAL unit
-    // minus its Annex-B start code. Just prepend the start code.
-    let mut out = vec![0x00, 0x00, 0x00, 0x01];
-    out.extend_from_slice(rbsp);
-    out
-}
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut dx = Demuxer::new();
-    // ... feed bytes ...
-    while let Some(ev) = dx.next_event() {
-        if let DemuxEvent::Sample {
-            payload: SamplePayload::Video { codec: VideoCodec::H264, payload: VideoPayload::Nals(ref nals) },
-            ..
-        } = ev
-        {
-            if let Ok(ps) = h264::parse_parameter_sets(nals) {
-                let mut decoder_config: Vec<u8> = Vec::new();
-                for sps in ps.sps_by_id.values() {
-                    decoder_config.extend(to_annex_b(&sps.raw_rbsp));
-                }
-                for pps in ps.pps_by_id.values() {
-                    decoder_config.extend(to_annex_b(&pps.raw_rbsp));
-                }
-                // Pass decoder_config to your hardware decoder or codec library.
-            }
-        }
-    }
-    Ok(())
-}
-```
-
-Runnable: [../crates/tst-srt/examples/parse_video_parameters.rs](../crates/tst-srt/examples/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guide-codec.md` for the decoder-replay section.
-
-### 19. Mux audio + video + KLV in a single program
-
-Build a three-stream program where audio PTS-aligns with video for
-synchronized playback, and KLV records emit on the same PCR clock.
-
-```rust
-use tst_core::mpegts::mux::{
-    AudioCodec, MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec,
-};
-
-let cfg = MuxerConfigBuilder::new()
-    .add_program(1, 0x1000)
-    .add_video(0x100, VideoCodec::H264)
-    .add_klv(0x200, KlvStreamType::PrivateData, /*carries_pts=*/ false)
-    // add_audio_with_language auto-emits an iso_639_language_descriptor
-    // (tag 0x0A) on the PMT entry — receivers (browsers, transcoders,
-    // players) get a language hint without manually wiring descriptors.
-    // Use plain add_audio(pid, codec) when language is unknown / unset.
-    .add_audio_with_language(0x300, AudioCodec::Aac, *b"eng")
-    .end_program()
-    .build()?;
-
-let mut muxer = Muxer::new(cfg)?;
-
-for frame_idx in 0..30 {
-    let pts = 90_000 + frame_idx * 3000;
-    muxer.push_video(&video_au_bytes, pts, /*key_frame=*/ frame_idx % 30 == 0)?;
-    muxer.push_audio(&aac_frame_bytes, pts)?;
-    if frame_idx % 30 == 0 {
-        muxer.push_klv(&klv_record, pts, /*metadata_service_id=*/ 0x00)?;
-    }
-    // Drain to your transport.
-}
-```
-
-Full example: [`../crates/tst-srt/examples/mux_audio_video_klv.rs`](../crates/tst-srt/examples/mux_audio_video_klv.rs).
-
-### 20. Inject WebVTT POI cues into a live MPEG-TS uplink
-
-Use case: a sensor / orchestrator wants to mark Points of Interest
-in a live SRT/TS stream so the downstream HLS player (hls.js etc.)
-can render them as captions.
-
-```rust
-use tst_core::mpegts::mux::{MuxerConfig, Muxer, SubtitleCodec, VideoCodec};
-
-let cfg = MuxerConfig::builder()
-    .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
-    .end_program()
-    .build()?;
-let mut mux = Muxer::new(cfg)?;
-let h = mux.subtitle_handles()[0];
-
-// Each POI: assemble a WebVTT cue and push at the wall-clock PTS.
-let cue = "WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nPOI: target acquired\n";
-mux.push_subtitle_to(h, 90_000, cue.as_bytes())?;
-// Drain TS bytes via `mux.pull(&mut buf)` in a loop until it returns
-// 0 (queue empty); see the runnable example for a `drain_all` helper.
-```
-
-Runnable: `cargo run --example mux_with_webvtt_subtitles -- output.ts`.
-
-### 21. Extract subtitle PES bytes from a captured `.ts` file
-
-Use case: receive-side inspection — what subtitle codecs are in a
-capture, and what's the cue text?
-
-```rust
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
-
-let mut demux = Demuxer::new();
-demux.feed(&bytes)?;
-demux.flush();
-while let Some(e) = demux.next_event() {
-    if let DemuxEvent::Sample {
-        stream,
-        payload: SamplePayload::Subtitle { codec, payload },
-        ..
-    } = e
-    {
-        println!(
-            "PID 0x{:04x} codec={:?} bytes={}",
-            stream.pid,
-            codec,
-            payload.len()
-        );
-    }
-}
-```
-
-Runnable: `cargo run --example demux_subtitle_file -- input.ts`.
-
-### 22. Streaming H.266 / VVC video with synchronous KLV metadata
-
-H.266 (VVC) carries in MPEG-TS under PMT `stream_type = 0x33` per the
-ITU-T H.222.0 amendment for VVC; the muxer emits that byte automatically
-when `VideoCodec::H266` is configured. The push contract is identical to
-H.264 / H.265 — Annex-B framing on `push_video`, one PES per call. Only
-the codec flag and the SPS / PPS / VPS bytes change.
-
-The recipe below mirrors recipe 9 (H.265 + sync KLV) — flip the codec to
-`VideoCodec::H266` and feed H.266 NAL bytes (NAL types 14 / 15 / 16 for
-VPS / SPS / PPS).
-
-```rust,no_run
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x1011, VideoCodec::H266)
-        .add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true)
-        .end_program()
-        .build()?;
-    let mut mux = Muxer::new(cfg)?;
-    let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
-    // Muxer auto-prepends the 5-byte H.222.0 § 2.12.4.2 AU cell header.
-    // metadata_service_id defaults to 0x00 per ST 1402.2 App. B Table 2.
-    mux.push_klv(&inner_klv, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0x00)?;
-    Ok(())
-}
-```
-
-Runnable: [../crates/tst-srt/examples/mux_h266_with_klv.rs](../crates/tst-srt/examples/mux_h266_with_klv.rs).
-
-### 23. Streaming AV1 video with KLV metadata
-
-AV1 uses OBU framing — fundamentally different from the NAL-shaped codecs
-(H.264 / H.265 / H.266). Key differences when feeding `Muxer::push_video`:
-
-- **No Annex-B start codes.** OBUs are self-describing and length-prefixed
-  via LEB128. Concatenating OBUs with no separator produces a complete
-  access unit.
-- **AV1-in-MPEG-2-TS binding §3.1 requires `obu_has_size_field = 1`** on
-  every OBU so the demultiplexer can walk the OBU stream without a
-  separate framing layer.
-- **PMT `stream_type = 0x06`** plus an auto-emitted `AV01`
-  `registration_descriptor` (binding §2.1) tells receivers the bytes are
-  AV1 rather than KLV-async on the same stream_type byte.
-
-```rust,no_run
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, StreamSpec, VideoCodec};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = MuxerConfig {
-        streams: vec![
-            StreamSpec::Video { pid: 0x1011, codec: VideoCodec::Av1 },
-            StreamSpec::Klv {
-                pid: 0x1031,
-                stream_type: KlvStreamType::PrivateData,
-                carries_pts: false,
-            },
-        ],
-        ..MuxerConfig::default()
-    };
-    let mut mux = Muxer::new(cfg)?;
-    // `au_obus` is a contiguous OBU sequence (each with obu_has_size_field=1).
-    // The example builds one synthetic Sequence Header + Temporal Delimiter +
-    // Frame access unit; real consumers feed the encoder's output verbatim.
-    let au_obus: Vec<u8> = vec![/* concatenated OBUs */];
-    mux.push_video(&au_obus, 0, /* key_frame = */ true)?;
-    Ok(())
-}
-```
-
-Runnable: [../crates/tst-srt/examples/mux_av1_with_klv.rs](../crates/tst-srt/examples/mux_av1_with_klv.rs).
 
 ### 24. Pair sync-KLV with video AUs via `Pairer::nearest_pts` (Realtime)
 
@@ -964,62 +910,98 @@ adds telemetry counters per branch and the typed output projections,
 at the cost of one extra clone per KLV event (acceptable for typical
 1–10 KB ST 0601 records).
 
-### 28. Decode security metadata from an ST 0601 record
+## Codec parsing
 
-Sibling-layer composition: decode the parent ST 0601 LS, then if
-Tag 48 is non-empty, run `klv::st0102::decode` on the inner bytes.
+### 17. Extract video resolution and profile from a demuxed stream
 
-```rust
-use tst_core::klv::{st0102, st0601};
+Reach for this when you need typed codec information (width, height, profile,
+level, frame rate, color) and are already demuxing the stream. The demuxer
+surfaces raw NAL bytes; you call the matching `codec::*` parser explicitly
+on each `Sample` event. `parse_parameter_sets` is safe to call on every
+sample — it skips non-SPS/PPS NALs silently and returns `Ok` with empty
+maps on P-frames.
 
-# fn process(record_bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-let parent = st0601::decode(record_bytes)?;
+```rust,no_run
+use tst_core::codec::h264;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
 
-if let Some(security_bytes) = parent.security_local_set.as_deref() {
-    let security = st0102::decode(security_bytes)?;
-    println!(
-        "classification={:?} country={:?} version={:?}",
-        security.security_classification,
-        security.classifying_country,
-        security.version,
-    );
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut dx = Demuxer::new();
+    // ... feed bytes to dx ...
+    while let Some(ev) = dx.next_event() {
+        if let DemuxEvent::Sample {
+            payload: SamplePayload::Video { codec: VideoCodec::H264, payload: VideoPayload::Nals(ref nals) },
+            ..
+        } = ev
+        {
+            if let Ok(ps) = h264::parse_parameter_sets(nals) {
+                if let Some(sps) = ps.sps_by_id.values().next() {
+                    println!(
+                        "{}x{} profile={} level={}",
+                        sps.width, sps.height, sps.profile_idc, sps.level_idc
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
 }
-# Ok(())
-# }
 ```
 
-Use `st0102::decode_strict` instead when the consumer wants the spec's
-required-tag set enforced (e.g. compliance pipelines for classified
-delivery).
+For H.265 substitute `h265::parse_parameter_sets` and use
+`sps.general_profile_idc` / `sps.general_level_idc` (level is `× 30` — level
+4.0 is stored as 120). The pattern is identical; only the import and field
+names differ.
 
-Construct + encode the symmetric path:
+Runnable: [../crates/tst-srt/examples/parse_video_parameters.rs](../crates/tst-srt/examples/parse_video_parameters.rs) — shows change-driven logging per PID across H.264 and H.265 in one pass.
 
-```rust
-use tst_core::klv::st0102::{
-    self, ClassifyingCountryCodingMethod, ObjectCountryCodingMethod,
-    SecurityClassification, SecurityLs,
-};
+### 18. Reconstitute Annex B parameter sets for decoder replay
 
-let security = SecurityLs {
-    security_classification: Some(SecurityClassification::Confidential),
-    classifying_country_coding_method: Some(
-        ClassifyingCountryCodingMethod::Iso3166ThreeLetter,
-    ),
-    classifying_country: Some("//USA".to_string()),
-    object_country_coding_method: Some(
-        ObjectCountryCodingMethod::Iso3166ThreeLetter,
-    ),
-    object_country_codes: Some("USA".to_string()),
-    version: Some(12),
-    ..Default::default()
-};
-let bytes = st0102::encode_to_vec(&security)?;
-// Stuff `bytes` into a UasDatalinkLs.security_local_set field, then
-// st0601::encode_to_vec the parent record.
+Reach for this when you need to hand SPS / PPS bytes to a hardware decoder,
+encoder re-init, or a library that expects Annex-B-framed codec configuration.
+The `raw_rbsp` field on each parsed struct preserves the input bytes verbatim
+(including emulation-prevention bytes) exactly as received from the demuxer.
+Prepend a 4-byte start code to get conformant Annex B framing:
+
+```rust,no_run
+use tst_core::codec::h264;
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoCodec, VideoPayload};
+
+fn to_annex_b(rbsp: &[u8]) -> Vec<u8> {
+    // Same for H.264 and H.265 — the demuxer includes the NAL header byte(s)
+    // in the payload field, so raw_rbsp already contains the full NAL unit
+    // minus its Annex-B start code. Just prepend the start code.
+    let mut out = vec![0x00, 0x00, 0x00, 0x01];
+    out.extend_from_slice(rbsp);
+    out
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut dx = Demuxer::new();
+    // ... feed bytes ...
+    while let Some(ev) = dx.next_event() {
+        if let DemuxEvent::Sample {
+            payload: SamplePayload::Video { codec: VideoCodec::H264, payload: VideoPayload::Nals(ref nals) },
+            ..
+        } = ev
+        {
+            if let Ok(ps) = h264::parse_parameter_sets(nals) {
+                let mut decoder_config: Vec<u8> = Vec::new();
+                for sps in ps.sps_by_id.values() {
+                    decoder_config.extend(to_annex_b(&sps.raw_rbsp));
+                }
+                for pps in ps.pps_by_id.values() {
+                    decoder_config.extend(to_annex_b(&pps.raw_rbsp));
+                }
+                // Pass decoder_config to your hardware decoder or codec library.
+            }
+        }
+    }
+    Ok(())
+}
 ```
 
-See `examples/decode_security_metadata.rs` for the full file-walking
-example.
+Runnable: [../crates/tst-srt/examples/parse_video_parameters.rs](../crates/tst-srt/examples/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guide-codec.md` for the decoder-replay section.
 
 ### 29. Pull sample rate and channel count out of an audio stream
 
@@ -1075,59 +1057,101 @@ deduplicates output to first-change-only per PID.
 - Silent audio still produces header-valid frames; iterator output ≠ "is
   this audio actually audible."
 
-### 30. Decode VMTI per-target detections from an ST 0601 stream
+## Operations
 
-When you're working with an ISR capture and want to surface the
-detected/tracked targets per frame, sibling-layer composition again:
-decode the parent ST 0601 LS, then if Tag 74 is non-empty run
-`klv::st0903::decode` on the inner bytes. Sync (`KlvSyncAuCell`) and
-async (`KlvAsync`) carriage paths both surface KLV LS bytes — accept
-either so VMTI from a KLVA-async producer also flows through.
+### 2. Survive a flaky transport with reconnect + gap buffer
+
+Reach for this when the wire is lossy — radio links, NAT timeouts, listener restarts. `ManagedTransport<T>` decorates any `Transport` impl with a reconnect loop and a bounded gap buffer; the wrapped sender shell sees a `Transport` that occasionally pauses but never fails on transient breakage.
+
+The factory closure rebuilds the inner transport on demand. `ReconnectPolicy` controls retries, backoff, and gap-buffer overflow behaviour.
 
 ```rust,no_run
-use tst_core::klv::{st0601, st0903};
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind};
+use tst_core::mpegts::mux::MuxerConfig;
+use tst_pipeline::{
+    BackoffStrategy, ManagedTransport, MuxSender, OverflowPolicy, ReconnectPolicy, TransportError,
+};
+use tst_srt::{SocketBuilder, SrtTransport};
+use std::time::Duration;
 
-# fn process_capture(bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-let mut demuxer = Demuxer::new();
-demuxer.feed(bytes)?;
-demuxer.flush();
-
-while let Some(event) = demuxer.next_event() {
-    let DemuxEvent::Metadata { kind, payload, .. } = event else {
-        continue;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let factory = || -> Result<SrtTransport, TransportError> {
+        let socket = SocketBuilder::new()
+            .latency(Duration::from_millis(120))
+            .connect("127.0.0.1:9000")
+            .map_err(|e| TransportError::Broken(format!("connect failed: {e}")))?;
+        Ok(SrtTransport::new(socket))
     };
-    match kind {
-        MetadataKind::KlvSyncAuCell { .. } | MetadataKind::KlvAsync => {}
-        MetadataKind::Unknown(_) => continue,
-    }
-
-    let uas = st0601::decode(&payload)?;
-    let Some(vmti_bytes) = uas.vmti.as_deref() else {
-        continue;
+    let initial = factory()?;
+    let policy = ReconnectPolicy {
+        max_attempts: Some(20),
+        backoff: BackoffStrategy::Exponential {
+            base: Duration::from_millis(100),
+            max: Duration::from_secs(10),
+        },
+        gap_buffer_capacity: 256,
+        overflow_policy: OverflowPolicy::DropOldest,
     };
-    let vmti = st0903::decode(vmti_bytes)?;
-
-    for target in &vmti.targets {
-        // Analyst-actionable subset — pair with VObjectSeries
-        // (Tag 107, deferred typed layer) for classification.
-        println!(
-            "target {}: centroid_px={:?} bbox=({:?}..{:?}) confidence={:?}",
-            target.target_id,
-            target.centroid_pixel,
-            target.bbox_top_left_pixel,
-            target.bbox_bottom_right_pixel,
-            target.confidence_level,
-        );
-    }
+    let managed = ManagedTransport::new(initial, factory, policy);
+    let _sender = MuxSender::new(MuxerConfig::default(), managed)?;
+    Ok(())
 }
-# Ok(())
-# }
 ```
 
-Runnable form: `cargo run --example decode_vmti_metadata -- capture.ts`.
+Runnable: [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs).
 
-For per-target classification labels (VObjectSeries), per-target
-track state (VTracker), pixel masks (VMask), or image cutouts (VChip
-/ VChipSeries), see the deferred-features note on typed nested VMTI
-Local Sets.
+### 10. Print live `Stats` from a sender
+
+Reach for this when building an operational dashboard, instrumenting a sender for production telemetry, or debugging packet loss in the field. `Socket::stats()` returns a snapshot of libsrt's per-socket counters — call it periodically and surface the deltas.
+
+The most operationally interesting fields on a sender: `bytes_sent`, `packets_lost_send_side`, `packets_retransmitted`, `rtt`, and `mbps_estimated_bandwidth`. (Loss/drop counters are split by which side observed them — read `*_send_side` on a sender, `*_recv_side` on a receiver.) There's no standalone example for this; see [guide-srt.md](guide-srt.md) §`Stats` for the full field list and [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs) for similar peer-thread observation patterns.
+
+```rust,no_run
+use tst_srt::SocketBuilder;
+use std::thread;
+use std::time::Duration;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let socket = SocketBuilder::new()
+        .latency(Duration::from_millis(120))
+        .connect("127.0.0.1:9000")?;
+    for _ in 0..10 {
+        thread::sleep(Duration::from_secs(1));
+        let s = socket.stats()?;
+        println!(
+            "bytes_sent={} packets_lost_send_side={} retrans={} rtt={:?} bw_mbps={:.2}",
+            s.bytes_sent, s.packets_lost_send_side, s.packets_retransmitted,
+            s.rtt, s.mbps_estimated_bandwidth,
+        );
+    }
+    Ok(())
+}
+```
+
+No standalone example; see [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs) and [guide-srt.md](guide-srt.md) §`Stats`.
+
+### 20. Inject WebVTT POI cues into a live MPEG-TS uplink
+
+Use case: a sensor / orchestrator wants to mark Points of Interest
+in a live SRT/TS stream so the downstream HLS player (hls.js etc.)
+can render them as captions.
+
+```rust
+use tst_core::mpegts::mux::{MuxerConfig, Muxer, SubtitleCodec, VideoCodec};
+
+let cfg = MuxerConfig::builder()
+    .add_program(1, 0x100)
+        .add_video(0x101, VideoCodec::H264)
+        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
+    .end_program()
+    .build()?;
+let mut mux = Muxer::new(cfg)?;
+let h = mux.subtitle_handles()[0];
+
+// Each POI: assemble a WebVTT cue and push at the wall-clock PTS.
+let cue = "WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nPOI: target acquired\n";
+mux.push_subtitle_to(h, 90_000, cue.as_bytes())?;
+// Drain TS bytes via `mux.pull(&mut buf)` in a loop until it returns
+// 0 (queue empty); see the runnable example for a `drain_all` helper.
+```
+
+Runnable: `cargo run --example mux_with_webvtt_subtitles -- output.ts`.

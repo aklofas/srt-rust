@@ -191,6 +191,10 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                 Err(TransportError::Broken(_)) | Err(TransportError::Closed) => {
                     // Fall through to reconnect path.
                 }
+                Err(_) => {
+                    // Phase 1: Unknown future variant — treat as broken and reconnect.
+                    // Fall through to reconnect path.
+                }
             }
         }
 

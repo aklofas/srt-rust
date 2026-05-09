@@ -104,6 +104,7 @@ pub fn write_metadata_au_cell(
 
 /// Errors raised by `write_metadata_au_cell`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AuCellError {
     /// Payload exceeds the 16-bit `AU_cell_data_length` field cap.
     PayloadTooLarge { size: usize, max: usize },

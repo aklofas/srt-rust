@@ -175,6 +175,7 @@ pub enum KlvFieldError {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
 pub enum MuxError {
     #[error("muxer configuration is invalid: {0}")]
     InvalidConfig(&'static str),
@@ -430,6 +431,7 @@ mod tests {
 /// fatal (the byte stream is unrecoverable, or strict mode converts a
 /// `NonConformantIssue` into a hard failure).
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
 pub enum DemuxError {
     /// Byte stream is unrecoverable: too few bytes after a long sync-search
     /// window to make progress, or repeated PSI checksum failures.

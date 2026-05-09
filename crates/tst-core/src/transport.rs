@@ -21,6 +21,7 @@ use thiserror::Error;
 ///   senders surface this to the caller; `ManagedTransport` triggers
 ///   reconnect.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
 pub enum TransportError {
     /// Transport was alive but couldn't accept the bytes right now (full
     /// send buffer, transient backpressure). Retrying the same bytes later

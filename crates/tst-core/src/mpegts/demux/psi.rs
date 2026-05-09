@@ -20,6 +20,7 @@ pub struct PatEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
 pub enum PsiParseError {
     #[error("section too short ({have} bytes, need {need})")]
     Truncated { have: usize, need: usize },

@@ -21,6 +21,7 @@ pub use parse::{
 /// encoder rejects the same shape symmetrically rather than emitting
 /// invalid PSI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum DescriptorError {
     /// `entries` slice was empty for a multi-entry descriptor builder
     /// (subtitling 0x59 or teletext 0x56). Caller must supply at least

@@ -247,6 +247,10 @@ pub(crate) fn record_mux_error(e: &MuxError) {
                 "abs_idx {abs_idx} out of range for program {program_number} (has {len} streams)"
             ),
         ),
+        _ => {
+            // Phase 1: Unknown future MuxError variant — treat as invalid config.
+            (TstError::InvalidConfig, "unknown mux error".into())
+        }
     };
     set_last_error(code, &msg);
 }
@@ -261,6 +265,10 @@ pub(crate) fn record_transport_error(e: &TransportError) {
             TstError::TooLarge,
             format!("message {len} bytes exceeds payload cap {max}"),
         ),
+        _ => {
+            // Phase 1: Unknown future TransportError variant — treat as generic transport error.
+            (TstError::Transport, "unknown transport error".into())
+        }
     };
     set_last_error(code, &msg);
 }

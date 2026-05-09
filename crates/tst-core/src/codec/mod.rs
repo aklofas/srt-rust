@@ -203,6 +203,7 @@ impl MatrixCoefficients {
 /// `Err → ReservedValue`. See [crate root](crate::codec) for partial-success
 /// behavioral rules.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum ParseError {
     /// Bitstream cursor walked past end of input. `needed_bits` is the
     /// shortfall in bits at the position where parsing failed.

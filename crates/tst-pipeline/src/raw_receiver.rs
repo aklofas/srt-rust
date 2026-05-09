@@ -49,9 +49,49 @@ impl<R: RecvTransport> RawReceiver<R> {
 
     /// Block until one message arrives. Returns a copy of the received bytes.
     ///
-    /// Returns `Err(TransportError::Closed)` when the connection has ended.
-    /// Returns `Err(TransportError::Backpressure)` on a recv timeout — the
-    /// transport is still alive; the caller may call `recv_one` again.
+    /// Use this when the peer uses [`crate::RawSender`] (raw byte blobs,
+    /// no TS wrapping); for pre-muxed TS recovery use [`crate::Receiver`]
+    /// or [`crate::DemuxReceiver`].
+    ///
+    /// # Errors
+    /// - [`TransportError::Closed`] when the connection has ended.
+    /// - [`TransportError::Backpressure`] on a recv timeout — the
+    ///   transport is still alive; the caller may call `recv_one` again.
+    /// - Any other [`TransportError`] from the underlying transport.
+    ///
+    /// # Example
+    /// ```
+    /// use std::collections::VecDeque;
+    /// use tst_pipeline::RawReceiver;
+    /// use tst_core::transport::{RecvTransport, TransportError};
+    ///
+    /// // In-memory source; real callers plug in `tst_srt::SrtTransport`.
+    /// struct Source(VecDeque<Vec<u8>>);
+    /// impl RecvTransport for Source {
+    ///     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+    ///         match self.0.pop_front() {
+    ///             Some(v) => {
+    ///                 let n = v.len().min(buf.len());
+    ///                 buf[..n].copy_from_slice(&v[..n]);
+    ///                 Ok(n)
+    ///             }
+    ///             None => Err(TransportError::Closed),
+    ///         }
+    ///     }
+    ///     fn max_payload(&self) -> usize { 1316 }
+    ///     fn is_alive(&self) -> bool { !self.0.is_empty() }
+    /// }
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let q = VecDeque::from(vec![b"hello".to_vec(), b"world".to_vec()]);
+    /// let mut rx = RawReceiver::new(Source(q));
+    /// assert_eq!(rx.recv_one()?, b"hello");
+    /// assert_eq!(rx.recv_one()?, b"world");
+    /// // Drained — next recv signals end-of-stream.
+    /// assert_eq!(rx.recv_one().unwrap_err(), TransportError::Closed);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn recv_one(&mut self) -> Result<Vec<u8>, TransportError> {
         let n = self.transport.recv_bytes(&mut self.buf)?;
         self.stats.bytes_received += n as u64;

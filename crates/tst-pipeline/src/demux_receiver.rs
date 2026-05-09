@@ -107,6 +107,49 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     /// and call `recv_event` again; but the demuxer state after a malformed PES
     /// is undefined, so re-entry is discouraged without a design change. Tracked
     /// in the deferred-features list.
+    ///
+    /// # Errors
+    /// - [`DemuxReceiverError::Transport`] wraps any
+    ///   [`TransportError`] other than `Closed` (which is the clean-EOF
+    ///   signal converted to `Ok(None)`).
+    /// - [`DemuxReceiverError::Demux`] wraps a [`DemuxError`] from the
+    ///   inner demuxer: strict-mode violation, unrecoverable packet
+    ///   malformation, or malformed PES header.
+    ///
+    /// # Example
+    /// ```
+    /// use std::collections::VecDeque;
+    /// use tst_pipeline::DemuxReceiver;
+    /// use tst_core::transport::{RecvTransport, TransportError};
+    ///
+    /// // In-memory source; real callers plug in `tst_srt::SrtTransport`.
+    /// // Returns Closed once the queue is drained — that's the EOF signal
+    /// // DemuxReceiver converts to `Ok(None)` after flushing the demuxer.
+    /// struct Source(VecDeque<Vec<u8>>);
+    /// impl RecvTransport for Source {
+    ///     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+    ///         match self.0.pop_front() {
+    ///             Some(v) => {
+    ///                 let n = v.len().min(buf.len());
+    ///                 buf[..n].copy_from_slice(&v[..n]);
+    ///                 Ok(n)
+    ///             }
+    ///             None => Err(TransportError::Closed),
+    ///         }
+    ///     }
+    ///     fn max_payload(&self) -> usize { 1316 }
+    ///     fn is_alive(&self) -> bool { !self.0.is_empty() }
+    /// }
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// // Empty source → first `recv_event` flushes (no partial PES) and
+    /// // returns `Ok(None)`. The Iterator impl makes this idiomatic:
+    /// // `for ev in &mut rx { match ev? { ... } }` exits on EOF.
+    /// let mut rx = DemuxReceiver::new(Source(VecDeque::new()));
+    /// assert!(rx.recv_event()?.is_none());
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn recv_event(&mut self) -> Result<Option<DemuxEvent>, DemuxReceiverError> {
         loop {
             // Fast path: demuxer already has a queued event.

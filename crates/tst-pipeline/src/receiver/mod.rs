@@ -82,10 +82,53 @@ impl<R: RecvTransport> Receiver<R> {
     ///    feed the bytes to the syncer, then retry.
     /// 3. Repeat until a packet is available or the transport closes.
     ///
-    /// Returns `Err(TransportError::Closed)` when the transport has closed and
-    /// the syncer's buffer is exhausted.
-    /// Returns `Err(TransportError::Backpressure)` on a recv timeout — the
-    /// transport is still alive; the caller may call `next_packet` again.
+    /// # Errors
+    /// - [`TransportError::Closed`] when the transport has closed and the
+    ///   syncer's buffer is exhausted.
+    /// - [`TransportError::Backpressure`] on a recv timeout — the transport
+    ///   is still alive; the caller may call `next_packet` again.
+    /// - Any other [`TransportError`] from the underlying transport.
+    ///
+    /// # Example
+    /// ```
+    /// use std::collections::VecDeque;
+    /// use tst_pipeline::Receiver;
+    /// use tst_core::transport::{RecvTransport, TransportError};
+    ///
+    /// // In-memory source; real callers plug in `tst_srt::SrtTransport`.
+    /// struct Source(VecDeque<Vec<u8>>);
+    /// impl RecvTransport for Source {
+    ///     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+    ///         match self.0.pop_front() {
+    ///             Some(v) => {
+    ///                 let n = v.len().min(buf.len());
+    ///                 buf[..n].copy_from_slice(&v[..n]);
+    ///                 Ok(n)
+    ///             }
+    ///             None => Err(TransportError::Closed),
+    ///         }
+    ///     }
+    ///     fn max_payload(&self) -> usize { 1316 }
+    ///     fn is_alive(&self) -> bool { !self.0.is_empty() }
+    /// }
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// // The TS syncer needs four consecutive 0x47 bytes at 188-byte
+    /// // intervals to declare lock and emit the first packet — feed five
+    /// // aligned packets in one transport message to satisfy that.
+    /// let mut stream = Vec::new();
+    /// for _ in 0..5 {
+    ///     stream.push(0x47);
+    ///     stream.extend(vec![0u8; 187]);
+    /// }
+    /// let mut rx = Receiver::new(Source(VecDeque::from(vec![stream])));
+    ///
+    /// let pkt = rx.next_packet()?;
+    /// assert_eq!(pkt[0], 0x47);
+    /// assert_eq!(pkt.len(), 188);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn next_packet(&mut self) -> Result<[u8; 188], TransportError> {
         loop {
             if let Some(pkt) = self.syncer.next_packet() {

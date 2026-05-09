@@ -4,7 +4,7 @@
  * Build:
  *   cc -I target/debug/include -L target/debug \
  *      -Wall -Werror -o /tmp/send_synthetic \
- *      crates/tst-c/examples/c/send_synthetic.c -ltstrans
+ *      crates/tst-c/examples/c/muxing/send_synthetic.c -ltstrans
  *
  * Run:
  *   LD_LIBRARY_PATH=target/debug ./send_synthetic 127.0.0.1:9000

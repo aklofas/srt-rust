@@ -35,7 +35,7 @@
  *   From the ts-transformer workspace root:
  *
  *   SRT_FORCE_VENDORED=1 cargo build -p srt-c --release
- *   gcc crates/tst-c/examples/c/mux_two_programs.c \
+ *   gcc crates/tst-c/examples/c/muxing/mux_two_programs.c \
  *       -I crates/tst-c/include \
  *       -L target/release \
  *       -ltstrans \
@@ -57,7 +57,7 @@
  *
  *   crates/tst-srt/examples/repack_two_programs.rs — full Rust example
  *   feeding real ES data from demuxed sources.
- *   crates/tst-c/examples/c/mux_dual_camera.c — single-program multi-stream
+ *   crates/tst-c/examples/c/muxing/mux_dual_camera.c — single-program multi-stream
  *   example (EO + IR + KLV in one program).
  */
 

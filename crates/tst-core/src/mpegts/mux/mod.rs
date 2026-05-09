@@ -904,16 +904,25 @@ impl MuxerConfig {
 /// [`MuxerProgramBuilder::end_program`] (returns back to the
 /// `MuxerConfigBuilder`). Finish with [`MuxerConfigBuilder::build`].
 ///
+/// # Example — single program with H.265 video + sync KLV
 /// ```
-/// use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, VideoCodec};
+/// use tst_core::mpegts::mux::{KlvStreamType, MuxerConfig, VideoCodec};
 ///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = MuxerConfig::builder()
 ///     .add_program(1, 0x1000)
-///         .add_video(0x1011, VideoCodec::H264)
-///         .add_klv(0x1031, KlvStreamType::PrivateData, false)
+///         .add_video(0x1011, VideoCodec::H265)
+///         // SynchronousMetadata (PMT stream_type 0x15) requires
+///         // `carries_pts: true` so the PTS in the PES header can align each
+///         // KLV record with the corresponding video frame. The muxer
+///         // auto-prepends the 5-byte H.222.0 §2.12.4.2 Metadata_AU_cell
+///         // header on every push.
+///         .add_klv(0x1031, KlvStreamType::SynchronousMetadata, true)
 ///         .end_program()
-///     .build()
-///     .unwrap();
+///     .build()?;
+/// assert_eq!(config.programs.len(), 1);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Default, Debug)]
 pub struct MuxerConfigBuilder {
@@ -991,6 +1000,25 @@ impl MuxerConfigBuilder {
 /// `.build()`.
 ///
 /// Every method consumes `self` and returns `Self` so calls can be chained.
+///
+/// # Example — gimbaled-platform program with EO + IR + sync KLV
+/// ```
+/// use tst_core::mpegts::mux::{KlvStreamType, MuxerConfig, VideoCodec};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Two video streams (EO + IR sensors on the same gimbal) plus one sync
+/// // KLV metadata stream sharing the platform's pose / FOV / pointing data.
+/// let config = MuxerConfig::builder()
+///     .add_program(1, 0x1000)
+///         .add_video(0x1011, VideoCodec::H265) // EO (visible)
+///         .add_video(0x1012, VideoCodec::H265) // IR (thermal)
+///         .add_klv(0x1031, KlvStreamType::SynchronousMetadata, true)
+///         .end_program()
+///     .build()?;
+/// assert_eq!(config.programs[0].streams.len(), 3);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct MuxerProgramBuilder {
     parent: MuxerConfigBuilder,

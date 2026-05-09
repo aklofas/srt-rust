@@ -13,6 +13,33 @@ use crate::socket::Socket;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
 
+/// Fluent builder for [`Socket`] with chained option setters.
+///
+/// `SocketBuilder::new()` starts from libsrt defaults; each setter mutates the
+/// underlying [`SocketConfig`] and returns `Self` so calls can be chained. The
+/// terminal call is [`SocketBuilder::connect`], which opens the socket and
+/// performs the SRT handshake.
+///
+/// See [`SocketBuilder::sender_defaults`] / [`SocketBuilder::receiver_defaults`]
+/// for live-streaming preset bundles.
+///
+/// # Example — sender with non-default latency, bandwidth cap, and passphrase
+/// ```no_run
+/// use tst_srt::{MaxBandwidth, Passphrase, SocketBuilder};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let passphrase = Passphrase::new("hunter2hunter2")?;
+///
+/// let socket = SocketBuilder::new()
+///     .sender_defaults()
+///     .latency_ms(120)
+///     .max_bandwidth(MaxBandwidth::Limited(1_250_000)) // 10 Mbps cap
+///     .passphrase(passphrase)
+///     .connect("127.0.0.1:9000")?;
+/// # let _ = socket;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Default)]
 pub struct SocketBuilder {
     config: SocketConfig,

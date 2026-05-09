@@ -932,6 +932,11 @@ pub struct ConfigBuilder {
     pcr_interval_ms: Option<u32>,
     psi_interval_ms: Option<u32>,
     buffer_packets: Option<usize>,
+    /// First out-of-range descriptor-index error recorded during builder
+    /// chaining. `build()` surfaces it before calling `Config::validate()`.
+    /// First-error-wins: subsequent out-of-range calls on the same builder
+    /// chain do not overwrite the stored error.
+    deferred_error: Option<MuxError>,
 }
 
 impl ConfigBuilder {
@@ -968,7 +973,15 @@ impl ConfigBuilder {
 
     /// Finalize. Returns a validated [`Config`] or an error describing the
     /// failed rule.
+    ///
+    /// # Errors
+    /// Returns the first deferred out-of-range descriptor-index error recorded
+    /// during the builder chain (from `stream_descriptors_for_{video,klv,audio,
+    /// subtitle,stream}`), or the first error from [`Config::validate`].
     pub fn build(self) -> Result<Config, MuxError> {
+        if let Some(err) = self.deferred_error {
+            return Err(err);
+        }
         let cfg = Config {
             programs: self.programs,
             pcr_interval_ms: self.pcr_interval_ms.unwrap_or(40),
@@ -1083,9 +1096,11 @@ impl ProgramBuilder {
     /// Set the descriptor list for the `video_idx`-th video stream in this
     /// program (zero-indexed among `StreamSpec::Video` entries in add-order).
     ///
-    /// # Panics
-    /// Panics if `video_idx` is out of range relative to the number of video
-    /// streams added so far. Call after the corresponding [`add_video`][Self::add_video].
+    /// # Errors
+    /// Out-of-range `video_idx` is recorded as a deferred
+    /// [`MuxError::DescriptorIndexOutOfRange`] surfaced by
+    /// [`ConfigBuilder::build`]. Call after the corresponding
+    /// [`add_video`][Self::add_video].
     pub fn stream_descriptors_for_video(mut self, video_idx: usize, descs: Vec<Vec<u8>>) -> Self {
         let prog = &mut self.parent.programs[self.idx];
         let abs_idx = prog
@@ -1094,22 +1109,31 @@ impl ProgramBuilder {
             .enumerate()
             .filter(|(_, s)| matches!(s, StreamSpec::Video { .. }))
             .nth(video_idx)
-            .map(|(i, _)| i)
-            .unwrap_or_else(|| {
-                panic!(
-                    "video_idx {video_idx} out of range — call after add_video (program {})",
-                    prog.program_number
-                )
-            });
-        prog.stream_descriptors[abs_idx] = descs;
+            .map(|(i, _)| i);
+        match abs_idx {
+            Some(i) => {
+                prog.stream_descriptors[i] = descs;
+            }
+            None => {
+                if self.parent.deferred_error.is_none() {
+                    self.parent.deferred_error = Some(MuxError::DescriptorIndexOutOfRange {
+                        kind: StreamKind::Video,
+                        index: video_idx as u32,
+                        program_number: prog.program_number,
+                    });
+                }
+            }
+        }
         self
     }
 
     /// Set the descriptor list for the `klv_idx`-th KLV stream in this
     /// program (zero-indexed among `StreamSpec::Klv` entries in add-order).
     ///
-    /// # Panics
-    /// Panics if `klv_idx` is out of range. Call after the corresponding
+    /// # Errors
+    /// Out-of-range `klv_idx` is recorded as a deferred
+    /// [`MuxError::DescriptorIndexOutOfRange`] surfaced by
+    /// [`ConfigBuilder::build`]. Call after the corresponding
     /// [`add_klv`][Self::add_klv].
     pub fn stream_descriptors_for_klv(mut self, klv_idx: usize, descs: Vec<Vec<u8>>) -> Self {
         let prog = &mut self.parent.programs[self.idx];
@@ -1119,22 +1143,31 @@ impl ProgramBuilder {
             .enumerate()
             .filter(|(_, s)| matches!(s, StreamSpec::Klv { .. }))
             .nth(klv_idx)
-            .map(|(i, _)| i)
-            .unwrap_or_else(|| {
-                panic!(
-                    "klv_idx {klv_idx} out of range — call after add_klv (program {})",
-                    prog.program_number
-                )
-            });
-        prog.stream_descriptors[abs_idx] = descs;
+            .map(|(i, _)| i);
+        match abs_idx {
+            Some(i) => {
+                prog.stream_descriptors[i] = descs;
+            }
+            None => {
+                if self.parent.deferred_error.is_none() {
+                    self.parent.deferred_error = Some(MuxError::DescriptorIndexOutOfRange {
+                        kind: StreamKind::Klv,
+                        index: klv_idx as u32,
+                        program_number: prog.program_number,
+                    });
+                }
+            }
+        }
         self
     }
 
     /// Set the descriptor list for the `audio_idx`-th audio stream in this
     /// program (zero-indexed among `StreamSpec::Audio` entries in add-order).
     ///
-    /// # Panics
-    /// Panics if `audio_idx` is out of range. Call after the corresponding
+    /// # Errors
+    /// Out-of-range `audio_idx` is recorded as a deferred
+    /// [`MuxError::DescriptorIndexOutOfRange`] surfaced by
+    /// [`ConfigBuilder::build`]. Call after the corresponding
     /// [`add_audio`][Self::add_audio].
     pub fn stream_descriptors_for_audio(mut self, audio_idx: usize, descs: Vec<Vec<u8>>) -> Self {
         let prog = &mut self.parent.programs[self.idx];
@@ -1144,14 +1177,21 @@ impl ProgramBuilder {
             .enumerate()
             .filter(|(_, s)| matches!(s, StreamSpec::Audio { .. }))
             .nth(audio_idx)
-            .map(|(i, _)| i)
-            .unwrap_or_else(|| {
-                panic!(
-                    "audio_idx {audio_idx} out of range — call after add_audio (program {})",
-                    prog.program_number
-                )
-            });
-        prog.stream_descriptors[abs_idx] = descs;
+            .map(|(i, _)| i);
+        match abs_idx {
+            Some(i) => {
+                prog.stream_descriptors[i] = descs;
+            }
+            None => {
+                if self.parent.deferred_error.is_none() {
+                    self.parent.deferred_error = Some(MuxError::DescriptorIndexOutOfRange {
+                        kind: StreamKind::Audio,
+                        index: audio_idx as u32,
+                        program_number: prog.program_number,
+                    });
+                }
+            }
+        }
         self
     }
 
@@ -1164,8 +1204,10 @@ impl ProgramBuilder {
     /// KLV's KLVA-suppression rule — for subtitles, the auto-emit IS the
     /// codec marker for receiver classification).
     ///
-    /// # Panics
-    /// Panics if `subtitle_idx` is out of range. Call after the corresponding
+    /// # Errors
+    /// Out-of-range `subtitle_idx` is recorded as a deferred
+    /// [`MuxError::DescriptorIndexOutOfRange`] surfaced by
+    /// [`ConfigBuilder::build`]. Call after the corresponding
     /// [`add_subtitle`][Self::add_subtitle].
     pub fn stream_descriptors_for_subtitle(
         mut self,
@@ -1179,31 +1221,41 @@ impl ProgramBuilder {
             .enumerate()
             .filter(|(_, s)| matches!(s, StreamSpec::Subtitle { .. }))
             .nth(subtitle_idx)
-            .map(|(i, _)| i)
-            .unwrap_or_else(|| {
-                panic!(
-                    "subtitle_idx {subtitle_idx} out of range — call after add_subtitle (program {})",
-                    prog.program_number
-                )
-            });
-        prog.stream_descriptors[abs_idx] = descs;
+            .map(|(i, _)| i);
+        match abs_idx {
+            Some(i) => {
+                prog.stream_descriptors[i] = descs;
+            }
+            None => {
+                if self.parent.deferred_error.is_none() {
+                    self.parent.deferred_error = Some(MuxError::DescriptorIndexOutOfRange {
+                        kind: StreamKind::Subtitle,
+                        index: subtitle_idx as u32,
+                        program_number: prog.program_number,
+                    });
+                }
+            }
+        }
         self
     }
 
     /// Set the descriptor list for a stream by absolute index within this
-    /// program (across both video and KLV streams in add-order).
+    /// program (across all streams in add-order).
     ///
-    /// # Panics
-    /// Panics if `abs_idx` is out of range.
+    /// # Errors
+    /// Out-of-range `abs_idx` is recorded as a deferred
+    /// [`MuxError::AbsIndexOutOfRange`] surfaced by [`ConfigBuilder::build`].
     pub fn stream_descriptors_for_stream(mut self, abs_idx: usize, descs: Vec<Vec<u8>>) -> Self {
         let prog = &mut self.parent.programs[self.idx];
-        assert!(
-            abs_idx < prog.streams.len(),
-            "abs_idx {abs_idx} out of range (program {} has {} streams)",
-            prog.program_number,
-            prog.streams.len()
-        );
-        prog.stream_descriptors[abs_idx] = descs;
+        if abs_idx < prog.streams.len() {
+            prog.stream_descriptors[abs_idx] = descs;
+        } else if self.parent.deferred_error.is_none() {
+            self.parent.deferred_error = Some(MuxError::AbsIndexOutOfRange {
+                abs_idx: abs_idx as u32,
+                len: prog.streams.len() as u32,
+                program_number: prog.program_number,
+            });
+        }
         self
     }
 
@@ -3848,21 +3900,28 @@ mod tests {
 
     #[test]
     fn builder_rejects_out_of_range_video_index() {
-        // With the new ProgramBuilder, out-of-range video_idx panics (not Err).
-        // Use std::panic::catch_unwind to assert the panic fires.
-        let result = std::panic::catch_unwind(|| {
-            Config::builder()
-                .add_program(1, 0x1000)
-                .add_video(0x100, VideoCodec::H264)
-                .stream_descriptors_for_video(
-                    7,
-                    vec![crate::mpegts::descriptors::user_private(b"X")],
-                )
-                .end_program()
-                .build()
-                .unwrap()
-        });
-        assert!(result.is_err(), "expected panic for out-of-range video_idx");
+        // Out-of-range video_idx is now a deferred typed error, not a panic.
+        let result = Config::builder()
+            .add_program(1, 0x1000)
+            .add_video(0x100, VideoCodec::H264)
+            .stream_descriptors_for_video(
+                7,
+                vec![crate::mpegts::descriptors::user_private(b"X")],
+            )
+            .end_program()
+            .build();
+        assert!(
+            matches!(
+                result,
+                Err(MuxError::DescriptorIndexOutOfRange {
+                    kind: StreamKind::Video,
+                    index: 7,
+                    program_number: 1,
+                })
+            ),
+            "expected DescriptorIndexOutOfRange, got {:?}",
+            result
+        );
     }
 
     #[test]

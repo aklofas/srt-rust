@@ -59,6 +59,65 @@ impl<'a> Frame<'a> {
     pub fn bytes(&self) -> &'a [u8] {
         self.body
     }
+
+    /// Promote this borrowed frame to a [`FrameOwned`] by copying the body.
+    pub fn to_owned(&self) -> FrameOwned {
+        FrameOwned {
+            layer: self.layer,
+            version: self.version,
+            bitrate_kbps: self.bitrate_kbps,
+            sample_rate_hz: self.sample_rate_hz,
+            channel_mode: self.channel_mode,
+            channels: self.channels,
+            frame_length_bytes: self.frame_length_bytes,
+            samples_per_frame: self.samples_per_frame,
+            has_crc: self.has_crc,
+            raw_header: self.raw_header,
+            body: self.body.to_vec(),
+        }
+    }
+}
+
+/// Owned variant of [`Frame`].
+///
+/// `body: Vec<u8>` instead of `&'a [u8]` — usable across FFI / thread /
+/// async boundaries where the borrowed source slice doesn't outlive the
+/// consumer.
+///
+/// Round-trip with [`Frame::to_owned`] / [`Self::as_ref`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct FrameOwned {
+    pub layer: Layer,
+    pub version: Version,
+    pub bitrate_kbps: u32,
+    pub sample_rate_hz: u32,
+    pub channel_mode: ChannelMode,
+    pub channels: u8,
+    pub frame_length_bytes: u32,
+    pub samples_per_frame: u16,
+    pub has_crc: bool,
+    pub raw_header: [u8; 4],
+    pub body: Vec<u8>,
+}
+
+impl FrameOwned {
+    /// Borrow this owned frame as a [`Frame`] — zero-copy.
+    pub fn as_ref(&self) -> Frame<'_> {
+        Frame {
+            layer: self.layer,
+            version: self.version,
+            bitrate_kbps: self.bitrate_kbps,
+            sample_rate_hz: self.sample_rate_hz,
+            channel_mode: self.channel_mode,
+            channels: self.channels,
+            frame_length_bytes: self.frame_length_bytes,
+            samples_per_frame: self.samples_per_frame,
+            has_crc: self.has_crc,
+            raw_header: self.raw_header,
+            body: &self.body,
+        }
+    }
 }
 
 /// Iterator over MPEG audio frames in `bytes`. Use [`frames`] to construct.
@@ -605,5 +664,27 @@ mod tests {
             other => panic!("expected Err(Truncated), got {:?}", other),
         }
         assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn mpegaudio_frame_owned_roundtrip() {
+        let payload = vec![0xFF, 0xFB, 0x90, 0x40, 0x01, 0x02, 0x03];
+        let borrowed = Frame {
+            layer: Layer::III,
+            version: Version::Mpeg1,
+            bitrate_kbps: 128,
+            sample_rate_hz: 44100,
+            channel_mode: ChannelMode::JointStereo,
+            channels: 2,
+            frame_length_bytes: 417,
+            samples_per_frame: 1152,
+            has_crc: false,
+            raw_header: [0xFF, 0xFB, 0x90, 0x40],
+            body: &payload,
+        };
+        let owned = borrowed.to_owned();
+        assert_eq!(borrowed, owned.as_ref());
+        // Verify the body was actually copied into owned storage.
+        assert_eq!(owned.body, payload);
     }
 }

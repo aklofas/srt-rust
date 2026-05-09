@@ -28,3 +28,7 @@ Thumbs.db
 
 # Local Claude Code guidance — not part of the publishable repo
 /CLAUDE.md
+
+# Example output files dropped at the repo root. Root-only — does not
+# affect tests/fixtures/**/*.ts.
+/*.ts

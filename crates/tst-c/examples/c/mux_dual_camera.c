@@ -21,12 +21,12 @@
  *   LD_LIBRARY_PATH=target/debug /tmp/mux_dual_camera
  *
  * Output:
- *   dual_camera.ts in the current directory.
+ *   /tmp/dual_camera.ts
  *
  * Verify:
- *   ffprobe -show_streams dual_camera.ts
+ *   ffprobe -show_streams /tmp/dual_camera.ts
  *     # Should report 2 video streams (h264) + 1 data stream.
- *   tsp -I file dual_camera.ts -P analyze
+ *   tsp -I file /tmp/dual_camera.ts -P analyze
  *     # TSDuck's PSI/SI walker — confirms PMT enumerates all 3 PIDs.
  *
  * Mirrors crates/tst-srt/examples/mux_dual_camera.rs (Rust).
@@ -216,9 +216,9 @@ int main(void) {
     /*
      * ── Step 3: Open the output file ─────────────────────────────────────
      */
-    FILE *out = fopen("dual_camera.ts", "wb");
+    FILE *out = fopen("/tmp/dual_camera.ts", "wb");
     if (!out) {
-        perror("fopen dual_camera.ts");
+        perror("fopen /tmp/dual_camera.ts");
         tst_muxer_close(mux);
         return 4;
     }
@@ -301,8 +301,8 @@ int main(void) {
     fclose(out);
     tst_muxer_close(mux);
 
-    printf("Wrote dual_camera.ts\n");
-    printf("Try: ffprobe -show_streams dual_camera.ts\n");
+    printf("Wrote /tmp/dual_camera.ts\n");
+    printf("Try: ffprobe -show_streams /tmp/dual_camera.ts\n");
     return 0;
 
 fail:

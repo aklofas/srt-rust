@@ -418,8 +418,9 @@ in one PAT) with per-program PCR is out of scope for this version.
 
 `crates/tst-srt/examples/mux_dual_camera.rs` builds a 30-frame EO + IR
 + KLV TS file. Run it with `cargo run --example mux_dual_camera`; the
-resulting `dual_camera.ts` should report two video streams and one
-data (KLV) stream under `ffprobe -show_streams`.
+example prints the output path it wrote (under your system temp dir),
+which `ffprobe -show_streams` should report as two video streams and
+one data (KLV) stream.
 
 ### From the C ABI
 

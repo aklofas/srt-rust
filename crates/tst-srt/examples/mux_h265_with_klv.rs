@@ -28,7 +28,13 @@ const VIDEO_PID: u16 = 0x1011;
 const KLV_PID: u16 = 0x1031;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out_path = env::args().nth(1).unwrap_or_else(|| "h265.ts".into());
+    // Default to a cross-platform temp path when no argv path is supplied.
+    let out_path = env::args().nth(1).unwrap_or_else(|| {
+        env::temp_dir()
+            .join("h265.ts")
+            .to_string_lossy()
+            .into_owned()
+    });
 
     // -----------------------------------------------------------------
     // Canonical "build a MuxerConfig from scratch" pattern using the builder.

@@ -138,9 +138,13 @@ impl Transport for MemTransport {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out_path = env::args()
-        .nth(1)
-        .unwrap_or_else(|| "/tmp/custom_transport_out.ts".into());
+    // Default to a cross-platform temp path when no argv path is supplied.
+    let out_path = env::args().nth(1).unwrap_or_else(|| {
+        env::temp_dir()
+            .join("custom_transport_out.ts")
+            .to_string_lossy()
+            .into_owned()
+    });
 
     // `transport` is the original we'll hand into `MuxSender`; `collector` is
     // the `transport.clone()` clone the main thread keeps to read out the

@@ -20,7 +20,7 @@
 //! This example doesn't push real H.264 data — it pushes minimal
 //! Annex-B NAL units + a minimal KLV blob, just enough that the
 //! resulting `.ts` is structurally valid (PAT/PMT/PCR/PES all present
-//! on the right PIDs). Run `ffprobe -show_streams dual_camera.ts` to
+//! on the right PIDs). Run `ffprobe -show_streams /tmp/dual_camera.ts` to
 //! see the muxer reports two video streams + one data stream.
 //!
 //! Invocation:
@@ -95,7 +95,9 @@ fn main() -> std::io::Result<()> {
         0x00, 0x00,
     ];
 
-    let mut out = File::create("dual_camera.ts")?;
+    // Cross-platform temp path: `/tmp/...` on Linux/macOS, `%TEMP%\...` on Windows.
+    let out_path = std::env::temp_dir().join("dual_camera.ts");
+    let mut out = File::create(&out_path)?;
     let mut buf = vec![0u8; 188 * 64];
 
     // Push 30 frames at 30 fps (3000 90 kHz ticks per frame).
@@ -131,7 +133,7 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    println!("Wrote dual_camera.ts");
-    println!("Try: ffprobe -show_streams dual_camera.ts");
+    println!("Wrote {}", out_path.display());
+    println!("Try: ffprobe -show_streams {}", out_path.display());
     Ok(())
 }

@@ -48,9 +48,13 @@ use tst_core::mpegts::mux::{AudioCodec, MuxerConfig, KlvStreamType, Muxer, Video
 // klv_encode_minimal.rs does).
 #[allow(clippy::field_reassign_with_default)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out_path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "/tmp/audio_video_klv.ts".into());
+    // Default to a cross-platform temp path when no argv path is supplied.
+    let out_path = std::env::args().nth(1).unwrap_or_else(|| {
+        std::env::temp_dir()
+            .join("audio_video_klv.ts")
+            .to_string_lossy()
+            .into_owned()
+    });
 
     // Build a single-program config: video + audio + KLV.
     //

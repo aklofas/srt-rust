@@ -155,6 +155,22 @@ impl<R: RecvTransport> Drop for RawReceiver<R> {
     }
 }
 
+/// Type alias for [`RawReceiver`] with a boxed [`RecvTransport`] trait object.
+///
+/// See [`BoxedMuxSender`](crate::mux_sender::BoxedMuxSender) for rationale.
+///
+/// # Example
+/// ```no_run
+/// use tst_pipeline::raw_receiver::BoxedRawReceiver;
+/// use tst_pipeline::RawReceiver;
+/// use tst_core::RecvTransport;
+///
+/// fn open(transport: Box<dyn RecvTransport>) -> BoxedRawReceiver {
+///     RawReceiver::new(transport)
+/// }
+/// ```
+pub type BoxedRawReceiver = RawReceiver<Box<dyn crate::RecvTransport>>;
+
 #[cfg(test)]
 mod tests {
     use super::*;

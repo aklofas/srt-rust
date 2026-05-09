@@ -278,6 +278,7 @@ pub(crate) fn record_sender_error(e: &MuxSenderError) {
     match e {
         MuxSenderError::Mux(m) => record_mux_error(m),
         MuxSenderError::Transport(t) => record_transport_error(t),
+        _ => record_internal("phase-1: future MuxSenderError variant"),
     }
 }
 
@@ -286,6 +287,7 @@ pub(crate) fn record_ts_sender_error(e: &SenderError) {
     match e {
         SenderError::Transport(t) => record_transport_error(t),
         SenderError::Framing(f) => set_last_error(TstError::InvalidTs, &f.to_string()),
+        _ => record_internal("phase-1: future SenderError variant"),
     }
 }
 

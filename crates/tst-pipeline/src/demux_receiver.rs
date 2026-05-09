@@ -176,6 +176,7 @@ impl<R: RecvTransport> Iterator for DemuxReceiver<R> {
 
 /// Errors that can be returned by [`DemuxReceiver::recv_event`].
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum DemuxReceiverError {
     /// The underlying transport closed unexpectedly or returned a fatal error.
     #[error(transparent)]

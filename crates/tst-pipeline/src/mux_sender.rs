@@ -490,6 +490,7 @@ impl<T: Transport> Inner<T> {
 
 /// Errors from `MuxSender::send_video` / `send_klv`.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum MuxSenderError {
     #[error(transparent)]
     Mux(#[from] MuxError),

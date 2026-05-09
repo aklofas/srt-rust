@@ -28,6 +28,7 @@ impl Default for SenderConfig {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum SenderError {
     #[error(transparent)]
     Framing(#[from] TsFramingError),

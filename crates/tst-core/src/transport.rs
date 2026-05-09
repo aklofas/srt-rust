@@ -154,3 +154,72 @@ pub trait RecvTransport: Send {
         None
     }
 }
+
+// ============================================================
+// Blanket impls for Box<T: ?Sized>
+// ============================================================
+//
+// These let `Box<dyn Transport>` and `Box<dyn RecvTransport>` satisfy the
+// `T: Transport` / `T: RecvTransport` trait bounds on the pipeline shells.
+// Required for the dyn-erased aliases (`BoxedMuxSender`, `BoxedDemuxReceiver`,
+// etc.) used by the FFI binding crates (`srt-jni`, `srt-uniffi`, `tst-pyo3`).
+//
+// Plain forwarding — no behavior change. Both source traits are object-safe;
+// these impls let consumers wrap any `Box<dyn TraitObj>` exactly the same way
+// they'd wrap a concrete `T: Trait + Sized` value.
+
+impl<T: Transport + ?Sized> Transport for Box<T> {
+    fn send_bytes(&mut self, msg: &[u8]) -> Result<(), TransportError> {
+        (**self).send_bytes(msg)
+    }
+    fn max_payload(&self) -> usize {
+        (**self).max_payload()
+    }
+    fn is_alive(&self) -> bool {
+        (**self).is_alive()
+    }
+    fn close(&mut self) {
+        (**self).close()
+    }
+    fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
+        (**self).cancel_handle()
+    }
+}
+
+impl<T: RecvTransport + ?Sized> RecvTransport for Box<T> {
+    fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+        (**self).recv_bytes(buf)
+    }
+    fn max_payload(&self) -> usize {
+        (**self).max_payload()
+    }
+    fn is_alive(&self) -> bool {
+        (**self).is_alive()
+    }
+    fn close(&mut self) {
+        (**self).close()
+    }
+    fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
+        (**self).cancel_handle()
+    }
+}
+
+#[cfg(test)]
+mod blanket_impl_tests {
+    use super::*;
+
+    /// Smoke test: `Box<dyn Transport>` must satisfy `T: Transport` for the
+    /// dyn-erased pipeline shell aliases (`BoxedMuxSender`, etc.) to compile.
+    #[test]
+    fn box_dyn_transport_satisfies_transport_bound() {
+        fn assert_transport<T: Transport>() {}
+        assert_transport::<Box<dyn Transport>>();
+    }
+
+    /// Smoke test: same for `Box<dyn RecvTransport>`.
+    #[test]
+    fn box_dyn_recv_transport_satisfies_recv_transport_bound() {
+        fn assert_recv<T: RecvTransport>() {}
+        assert_recv::<Box<dyn RecvTransport>>();
+    }
+}

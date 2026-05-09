@@ -25,6 +25,7 @@
 
 use crate::receiver::Receiver;
 use std::sync::Arc;
+use tracing::{info_span, Span};
 use tst_core::error::DemuxError;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerOptions};
 use tst_core::transport::RecvTransport;
@@ -59,24 +60,47 @@ pub struct DemuxReceiver<R: RecvTransport> {
     ts: Receiver<R>,
     demux: Demuxer,
     byte_sinks: Vec<ByteSink>,
+    /// Lifetime [`tracing::Span`] opened in [`Self::new`] /
+    /// [`Self::with_demux_options`] and entered from [`Drop`] to
+    /// bracket open/close events. Private — must NOT be exposed
+    /// publicly (see CI public-API ratchet).
+    _span: Span,
 }
 
 impl<R: RecvTransport> DemuxReceiver<R> {
     /// Wrap a transport with default demuxer options (lenient mode).
     pub fn new(transport: R) -> Self {
+        let span = info_span!(
+            target: "tst_pipeline::demux_receiver",
+            "demux_receiver",
+            transport_kind = std::any::type_name::<R>(),
+        );
+        let _enter = span.enter();
+        tracing::info!("DemuxReceiver opened");
+        drop(_enter);
         Self {
             ts: Receiver::new(transport),
             demux: Demuxer::new(),
             byte_sinks: Vec::new(),
+            _span: span,
         }
     }
 
     /// Wrap a transport with custom demuxer options (e.g. strict mode).
     pub fn with_demux_options(transport: R, options: DemuxerOptions) -> Self {
+        let span = info_span!(
+            target: "tst_pipeline::demux_receiver",
+            "demux_receiver",
+            transport_kind = std::any::type_name::<R>(),
+        );
+        let _enter = span.enter();
+        tracing::info!("DemuxReceiver opened");
+        drop(_enter);
         Self {
             ts: Receiver::new(transport),
             demux: Demuxer::with_options(options),
             byte_sinks: Vec::new(),
+            _span: span,
         }
     }
 
@@ -215,6 +239,13 @@ impl<R: RecvTransport> Iterator for DemuxReceiver<R> {
             Ok(None) => None,
             Err(e) => Some(Err(e)),
         }
+    }
+}
+
+impl<R: RecvTransport> Drop for DemuxReceiver<R> {
+    fn drop(&mut self) {
+        let _enter = self._span.enter();
+        tracing::info!("DemuxReceiver closed");
     }
 }
 

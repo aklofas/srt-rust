@@ -8,6 +8,7 @@
 //! Wrap with [`crate::ManagedTransport`] for reconnection.
 
 use std::sync::Arc;
+use tracing::{info_span, Span};
 use tst_core::transport::{Transport, TransportError};
 
 /// Construction-time knobs for [`RawSender`].
@@ -34,14 +35,27 @@ pub struct RawSender<T: Transport> {
     transport: T,
     _config: RawSenderConfig,
     stats: RawSenderStats,
+    /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
+    /// from [`Drop`] to bracket open/close events. Private — must NOT
+    /// be exposed publicly (see CI public-API ratchet).
+    _span: Span,
 }
 
 impl<T: Transport> RawSender<T> {
     pub fn new(transport: T, config: RawSenderConfig) -> Self {
+        let span = info_span!(
+            target: "tst_pipeline::raw_sender",
+            "raw_sender",
+            transport_kind = std::any::type_name::<T>(),
+        );
+        let _enter = span.enter();
+        tracing::info!("RawSender opened");
+        drop(_enter);
         Self {
             transport,
             _config: config,
             stats: RawSenderStats::default(),
+            _span: span,
         }
     }
 
@@ -124,6 +138,13 @@ impl<T: Transport> RawSender<T> {
     /// pending data, or any other state.
     pub fn reset_stats(&mut self) {
         self.stats = RawSenderStats::default();
+    }
+}
+
+impl<T: Transport> Drop for RawSender<T> {
+    fn drop(&mut self) {
+        let _enter = self._span.enter();
+        tracing::info!("RawSender closed");
     }
 }
 

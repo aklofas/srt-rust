@@ -8,6 +8,7 @@ mod framing;
 pub use framing::{SenderStats, TsFraming, TsFramingError, TsFramingMode};
 
 use std::sync::Arc;
+use tracing::{info_span, Span};
 use tst_core::transport::Transport;
 
 /// Construction-time knobs for [`Sender`].
@@ -43,15 +44,28 @@ pub struct Sender<T: Transport> {
     transport: T,
     closed: bool,
     mode: TsFramingMode,
+    /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
+    /// from [`Drop`] to bracket open/close events. Private — must NOT
+    /// be exposed publicly (see CI public-API ratchet).
+    _span: Span,
 }
 
 impl<T: Transport> Sender<T> {
     pub fn new(transport: T, config: SenderConfig) -> Self {
+        let span = info_span!(
+            target: "tst_pipeline::sender",
+            "sender",
+            transport_kind = std::any::type_name::<T>(),
+        );
+        let _enter = span.enter();
+        tracing::info!("Sender opened");
+        drop(_enter);
         Self {
             framing: TsFraming::new(config.max_unsynced_bytes),
             transport,
             closed: false,
             mode: config.framing_mode,
+            _span: span,
         }
     }
 
@@ -185,6 +199,8 @@ impl<T: Transport> Drop for Sender<T> {
             let _ = self.flush();
             self.transport.close();
         }
+        let _enter = self._span.enter();
+        tracing::info!("Sender closed");
     }
 }
 

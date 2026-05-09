@@ -13,6 +13,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
+use tracing::{info_span, Span};
 use tst_core::error::MuxError;
 use tst_core::mpegts::mux::{
     AudioStreamHandle, KlvStreamHandle, Muxer, MuxerConfig, SubtitleStreamHandle, VideoStreamHandle,
@@ -58,6 +59,10 @@ pub struct MuxSender<T: Transport> {
     /// time. Held outside the inner Mutex so `close()` can fire it
     /// without competing with a concurrent `send_*` for the lock.
     cancel: Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>,
+    /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
+    /// from [`Drop`] to bracket open/close events. Private — must NOT
+    /// be exposed publicly (see CI public-API ratchet).
+    _span: Span,
 }
 
 struct Inner<T: Transport> {
@@ -98,8 +103,17 @@ enum BackpressureState {
 
 impl<T: Transport> MuxSender<T> {
     pub fn new(transport: T, config: MuxerConfig) -> Result<Self, MuxError> {
+        let span = info_span!(
+            target: "tst_pipeline::mux_sender",
+            "mux_sender",
+            program_count = config.programs.len(),
+            transport_kind = std::any::type_name::<T>(),
+        );
+        let _enter = span.enter();
         let muxer = Muxer::new(config)?;
         let cancel = transport.cancel_handle();
+        tracing::info!("MuxSender opened");
+        drop(_enter);
         Ok(Self {
             inner: Mutex::new(Inner {
                 muxer,
@@ -111,6 +125,7 @@ impl<T: Transport> MuxSender<T> {
                 last_backpressure_state: BackpressureState::Ok,
             }),
             cancel,
+            _span: span,
         })
     }
 
@@ -478,12 +493,14 @@ impl<T: Transport> MuxSender<T> {
 
 impl<T: Transport> Drop for MuxSender<T> {
     fn drop(&mut self) {
+        let _enter = self._span.enter();
         // Best-effort drain of pending_bytes on drop; if transport rejects,
         // they're discarded.
         if let Ok(mut inner) = self.inner.lock() {
             let _ = inner.drain_pending();
             inner.transport.close();
         }
+        tracing::info!("MuxSender closed");
     }
 }
 

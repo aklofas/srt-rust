@@ -10,6 +10,7 @@
 //! - You're writing a test that needs a bare receive loop.
 
 use std::sync::Arc;
+use tracing::{info_span, Span};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
@@ -33,17 +34,30 @@ pub struct RawReceiver<R: RecvTransport> {
     /// `recv_one` still allocates a `Vec` for the returned slice.
     buf: Vec<u8>,
     stats: RawReceiverStats,
+    /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
+    /// from [`Drop`] to bracket open/close events. Private — must NOT
+    /// be exposed publicly (see CI public-API ratchet).
+    _span: Span,
 }
 
 impl<R: RecvTransport> RawReceiver<R> {
     /// Wrap a transport. Allocates an internal buffer sized to
     /// `transport.max_payload()`.
     pub fn new(transport: R) -> Self {
+        let span = info_span!(
+            target: "tst_pipeline::raw_receiver",
+            "raw_receiver",
+            transport_kind = std::any::type_name::<R>(),
+        );
+        let _enter = span.enter();
+        tracing::info!("RawReceiver opened");
+        drop(_enter);
         let cap = transport.max_payload();
         Self {
             transport,
             buf: vec![0u8; cap],
             stats: RawReceiverStats::default(),
+            _span: span,
         }
     }
 
@@ -123,6 +137,13 @@ impl<R: RecvTransport> RawReceiver<R> {
     /// Snapshot of the underlying recv-transport's cancel handle.
     pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.transport.cancel_handle()
+    }
+}
+
+impl<R: RecvTransport> Drop for RawReceiver<R> {
+    fn drop(&mut self) {
+        let _enter = self._span.enter();
+        tracing::info!("RawReceiver closed");
     }
 }
 

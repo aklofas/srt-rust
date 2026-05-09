@@ -14,6 +14,7 @@ pub mod sync;
 
 use std::sync::Arc;
 use sync::Syncer;
+use tracing::{info_span, Span};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
@@ -57,12 +58,24 @@ pub struct Receiver<R: RecvTransport> {
     /// each `stats()` call.
     bytes_received: u64,
     packets_received: u64,
+    /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
+    /// from [`Drop`] to bracket open/close events. Private — must NOT
+    /// be exposed publicly (see CI public-API ratchet).
+    _span: Span,
 }
 
 impl<R: RecvTransport> Receiver<R> {
     /// Wrap a transport. Allocates an internal receive buffer sized to
     /// `transport.max_payload()`.
     pub fn new(transport: R) -> Self {
+        let span = info_span!(
+            target: "tst_pipeline::receiver",
+            "receiver",
+            transport_kind = std::any::type_name::<R>(),
+        );
+        let _enter = span.enter();
+        tracing::info!("Receiver opened");
+        drop(_enter);
         let cap = transport.max_payload();
         Self {
             transport,
@@ -70,6 +83,7 @@ impl<R: RecvTransport> Receiver<R> {
             recv_buf: vec![0u8; cap],
             bytes_received: 0,
             packets_received: 0,
+            _span: span,
         }
     }
 
@@ -199,6 +213,13 @@ impl<R: RecvTransport> Receiver<R> {
     /// Snapshot of the underlying recv-transport's cancel handle.
     pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.transport.cancel_handle()
+    }
+}
+
+impl<R: RecvTransport> Drop for Receiver<R> {
+    fn drop(&mut self) {
+        let _enter = self._span.enter();
+        tracing::info!("Receiver closed");
     }
 }
 

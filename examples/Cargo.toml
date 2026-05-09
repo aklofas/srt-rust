@@ -88,3 +88,23 @@ path = "receiving/ts_relay_from_file.rs"
 [[example]]
 name = "demux_to_events"
 path = "receiving/demux_to_events.rs"
+
+[[example]]
+name = "klv_encode_minimal"
+path = "klv-metadata/klv_encode_minimal.rs"
+
+[[example]]
+name = "extract_klv"
+path = "klv-metadata/extract_klv.rs"
+
+[[example]]
+name = "klv_decode_file"
+path = "klv-metadata/klv_decode_file.rs"
+
+[[example]]
+name = "decode_security_metadata"
+path = "klv-metadata/decode_security_metadata.rs"
+
+[[example]]
+name = "decode_vmti_metadata"
+path = "klv-metadata/decode_vmti_metadata.rs"

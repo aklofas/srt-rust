@@ -1,5 +1,5 @@
 //! Generate hand-crafted H.266 parameter-set fixtures for unit tests.
-//! Run via `cargo run -p tst-srt --example gen_h266_fixtures`.
+//! Run via `cargo run -p tst-core --bin gen_h266_fixtures`.
 //!
 //! Fixtures land at `crates/tst-core/tests/fixtures/codec/h266/`. Tests
 //! load them and assert the parsed fields. Hand-crafting is preferred
@@ -11,10 +11,9 @@ use std::fs;
 use std::path::PathBuf;
 
 fn fixtures_dir() -> PathBuf {
-    // The fixtures live in the sibling tst-core crate's tests dir.
-    // CARGO_MANIFEST_DIR resolves to this crate (tst-srt) at compile
-    // time; traverse up one level to the workspace root, then down.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tst-core/tests/fixtures/codec/h266")
+    // CARGO_MANIFEST_DIR is now crates/tst-core (this is a [[bin]] in tst-core).
+    // The fixtures live in this same crate's tests/ tree.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/codec/h266")
 }
 
 /// Minimal VPS RBSP — vps_id=0, max_layers=1, max_sub_layers=1.

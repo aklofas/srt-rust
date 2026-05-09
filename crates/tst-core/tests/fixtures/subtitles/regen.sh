@@ -19,7 +19,7 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 # crates/ -> repo root (4 levels).
 cd "$DIR/../../../.."
 
-SRT_FORCE_VENDORED=1 cargo run --example gen_subtitle_fixtures --release -- "$DIR"
+SRT_FORCE_VENDORED=1 cargo run -p tst-core --bin gen_subtitle_fixtures --release -- "$DIR"
 
 echo
 echo "Regenerated fixtures:"

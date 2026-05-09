@@ -1,5 +1,5 @@
 //! Generate synthetic ST 0601 fixture files into tests/fixtures/st0601/.
-//! Run via: `cargo run --example gen_synthetic_fixtures`.
+//! Run via: `cargo run -p tst-core --bin gen_synthetic_fixtures`.
 //! Idempotent — running it again produces byte-identical output.
 
 #![allow(clippy::field_reassign_with_default)]
@@ -14,16 +14,9 @@ use tst_core::klv::st0601::{
 };
 
 fn main() {
-    // Resolve workspace-relative output path from CARGO_MANIFEST_DIR so this
-    // example works regardless of where `cargo run` is invoked from. Walks
-    // up from `crates/tst-srt` to the workspace root, then down into
-    // `crates/tst-core/tests/fixtures/st0601`.
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir
-        .parent()
-        .and_then(Path::parent)
-        .expect("CARGO_MANIFEST_DIR is crates/tst-srt; walk up two levels");
-    let out_dir = workspace_root.join("crates/tst-core/tests/fixtures/st0601");
+    // CARGO_MANIFEST_DIR is now crates/tst-core (this is a [[bin]] in tst-core).
+    // The fixtures live in this same crate's tests/ tree.
+    let out_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/st0601");
     fs::create_dir_all(&out_dir).unwrap();
 
     write(&out_dir.join("synthetic_minimal.klv"), &minimal());

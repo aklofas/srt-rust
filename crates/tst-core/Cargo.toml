@@ -22,3 +22,34 @@ tracing      = { version = "0.1", default-features = false, features = ["std"] }
 proptest     = { workspace = true }
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 tempfile     = "3"
+
+# Maintainer fixture-generators. Build with `cargo run -p tst-core --bin <name>`.
+# Not part of the published library surface — they live under tests/tools/ and
+# regenerate the fixtures consumed by integration tests.
+[[bin]]
+name  = "gen_synthetic_fixtures"
+path  = "tests/tools/gen_synthetic_fixtures.rs"
+test  = false
+bench = false
+doc   = false
+
+[[bin]]
+name  = "gen_subtitle_fixtures"
+path  = "tests/tools/gen_subtitle_fixtures.rs"
+test  = false
+bench = false
+doc   = false
+
+[[bin]]
+name  = "gen_h266_fixtures"
+path  = "tests/tools/gen_h266_fixtures.rs"
+test  = false
+bench = false
+doc   = false
+
+[[bin]]
+name  = "gen_av1_fixtures"
+path  = "tests/tools/gen_av1_fixtures.rs"
+test  = false
+bench = false
+doc   = false

@@ -8,7 +8,7 @@
 //! Wrap with [`crate::ManagedTransport`] for reconnection.
 
 use std::sync::Arc;
-use tracing::{info_span, Span};
+use tracing::{Span, info_span};
 use tst_core::transport::{Transport, TransportError};
 
 /// Construction-time knobs for [`RawSender`].

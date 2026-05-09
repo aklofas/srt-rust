@@ -8,7 +8,7 @@ mod framing;
 pub use framing::{SenderStats, TsFraming, TsFramingError, TsFramingMode};
 
 use std::sync::Arc;
-use tracing::{info_span, Span};
+use tracing::{Span, info_span};
 use tst_core::transport::Transport;
 
 /// Construction-time knobs for [`Sender`].

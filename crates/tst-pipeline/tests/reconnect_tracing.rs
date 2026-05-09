@@ -9,9 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use tracing_test::traced_test;
-use tst_pipeline::{
-    BackoffStrategy, ManagedTransport, ReconnectPolicy, Transport, TransportError,
-};
+use tst_pipeline::{BackoffStrategy, ManagedTransport, ReconnectPolicy, Transport, TransportError};
 
 /// Mock `Transport` whose every `send_bytes` returns `Broken` so the
 /// `ManagedTransport` decorator is forced into the reconnect path.

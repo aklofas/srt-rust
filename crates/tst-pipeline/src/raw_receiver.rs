@@ -10,7 +10,7 @@
 //! - You're writing a test that needs a bare receive loop.
 
 use std::sync::Arc;
-use tracing::{info_span, Span};
+use tracing::{Span, info_span};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 

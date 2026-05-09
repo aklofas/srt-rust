@@ -14,7 +14,7 @@ pub mod sync;
 
 use std::sync::Arc;
 use sync::Syncer;
-use tracing::{info_span, Span};
+use tracing::{Span, info_span};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 

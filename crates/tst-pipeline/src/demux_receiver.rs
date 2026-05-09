@@ -25,7 +25,7 @@
 
 use crate::receiver::Receiver;
 use std::sync::Arc;
-use tracing::{info_span, Span};
+use tracing::{Span, info_span};
 use tst_core::error::DemuxError;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerOptions};
 use tst_core::transport::RecvTransport;

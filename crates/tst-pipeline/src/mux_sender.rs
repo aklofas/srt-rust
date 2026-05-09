@@ -13,7 +13,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
-use tracing::{info_span, Span};
+use tracing::{Span, info_span};
 use tst_core::error::MuxError;
 use tst_core::mpegts::mux::{
     AudioStreamHandle, KlvStreamHandle, Muxer, MuxerConfig, SubtitleStreamHandle, VideoStreamHandle,
@@ -989,8 +989,8 @@ mod multi_stream_tests {
 #[cfg(test)]
 mod cancel_tests {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tst_core::mpegts::mux::{KlvStreamType, VideoCodec};
     use tst_core::transport::{Transport, TransportCancel, TransportError};
 

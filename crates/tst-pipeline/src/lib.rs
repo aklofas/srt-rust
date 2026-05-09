@@ -5,6 +5,8 @@
 //! impls live in dedicated crates (`tst-srt` today; future
 //! `tst-udp`, `tst-rtp`, `tst-tcp`, `tst-rtsp`).
 
+#![warn(rustdoc::broken_intra_doc_links)]
+
 pub mod demux_receiver;
 pub mod managed_receive;
 pub mod mux_sender;

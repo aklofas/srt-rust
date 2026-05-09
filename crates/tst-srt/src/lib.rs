@@ -19,6 +19,8 @@
 //! socket.send(b"hello").expect("send");
 //! ```
 
+#![warn(rustdoc::broken_intra_doc_links)]
+
 pub mod addr;
 pub mod builder;
 pub mod cancel;

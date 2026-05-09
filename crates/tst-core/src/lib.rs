@@ -12,6 +12,8 @@
 //!   Embedded users without a filesystem disable via
 //!   `tst-core = { default-features = false }`.
 
+#![warn(rustdoc::broken_intra_doc_links)]
+
 pub mod codec;
 pub mod error;
 #[cfg(feature = "file")]

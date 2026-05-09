@@ -786,14 +786,14 @@ impl Config {
                             validate_language_code(*language)?;
                             if *magazine_number > 7 {
                                 return Err(MuxError::InvalidTeletextField {
-                                    field: "magazine_number",
+                                    field: TeletextField::MagazineNumber,
                                     value: *magazine_number,
                                     max: 7,
                                 });
                             }
                             if *teletext_type > 0x1F {
                                 return Err(MuxError::InvalidTeletextField {
-                                    field: "teletext_type",
+                                    field: TeletextField::TeletextType,
                                     value: *teletext_type,
                                     max: 0x1F,
                                 });
@@ -1726,7 +1726,7 @@ impl Muxer {
         let total_video: usize = self.video_streams.iter().map(|v| v.len()).sum();
         if total_video != 1 {
             return Err(MuxError::AmbiguousTarget {
-                kind: "video",
+                kind: StreamKind::Video,
                 count: total_video,
             });
         }
@@ -1761,7 +1761,7 @@ impl Muxer {
         }
         if total_klv > 1 {
             return Err(MuxError::AmbiguousTarget {
-                kind: "klv",
+                kind: StreamKind::Klv,
                 count: total_klv,
             });
         }
@@ -1787,7 +1787,7 @@ impl Muxer {
         }
         if total_audio > 1 {
             return Err(MuxError::AmbiguousTarget {
-                kind: "audio",
+                kind: StreamKind::Audio,
                 count: total_audio,
             });
         }
@@ -1830,7 +1830,7 @@ impl Muxer {
         if prog_idx >= self.audio_streams.len() || within_idx >= self.audio_streams[prog_idx].len()
         {
             return Err(MuxError::InvalidStreamHandle {
-                kind: "audio",
+                kind: StreamKind::Audio,
                 index: handle.0 as usize,
             });
         }
@@ -1955,7 +1955,7 @@ impl Muxer {
         }
         if total_subtitle > 1 {
             return Err(MuxError::AmbiguousTarget {
-                kind: "subtitle",
+                kind: StreamKind::Subtitle,
                 count: total_subtitle,
             });
         }
@@ -1997,7 +1997,7 @@ impl Muxer {
             || within_idx >= self.subtitle_streams[prog_idx].len()
         {
             return Err(MuxError::InvalidStreamHandle {
-                kind: "subtitle",
+                kind: StreamKind::Subtitle,
                 index: handle.0 as usize,
             });
         }
@@ -2264,7 +2264,7 @@ impl Muxer {
             // Report the raw packed value as an opaque index so the error message
             // carries the full handle encoding without confusing prog vs within.
             return Err(MuxError::InvalidStreamHandle {
-                kind: "video",
+                kind: StreamKind::Video,
                 index: handle.0 as usize,
             });
         }
@@ -2396,7 +2396,7 @@ impl Muxer {
         let (prog_idx, within_idx) = handle.unpack();
         if prog_idx >= self.klv_streams.len() || within_idx >= self.klv_streams[prog_idx].len() {
             return Err(MuxError::InvalidStreamHandle {
-                kind: "klv",
+                kind: StreamKind::Klv,
                 index: handle.0 as usize,
             });
         }
@@ -3530,7 +3530,7 @@ mod tests {
         let err = mux.push_video_to(bogus, &nal, 0, true).unwrap_err();
         match err {
             MuxError::InvalidStreamHandle { kind, index } => {
-                assert_eq!(kind, "video");
+                assert_eq!(kind, StreamKind::Video);
                 assert_eq!(index, 99);
             }
             other => panic!("expected InvalidStreamHandle, got {other:?}"),
@@ -3544,7 +3544,7 @@ mod tests {
         let err = mux.push_klv_to(bogus, &[0; 16], 0, 0x00).unwrap_err();
         match err {
             MuxError::InvalidStreamHandle { kind, index } => {
-                assert_eq!(kind, "klv");
+                assert_eq!(kind, StreamKind::Klv);
                 assert_eq!(index, 99);
             }
             other => panic!("expected InvalidStreamHandle, got {other:?}"),
@@ -3648,7 +3648,7 @@ mod tests {
             matches!(
                 err,
                 MuxError::AmbiguousTarget {
-                    kind: "video",
+                    kind: StreamKind::Video,
                     count: 2
                 }
             ),
@@ -3672,7 +3672,7 @@ mod tests {
             matches!(
                 err,
                 MuxError::AmbiguousTarget {
-                    kind: "klv",
+                    kind: StreamKind::Klv,
                     count: 2
                 }
             ),
@@ -3697,7 +3697,7 @@ mod tests {
             matches!(
                 err,
                 MuxError::AmbiguousTarget {
-                    kind: "video",
+                    kind: StreamKind::Video,
                     count: 0
                 }
             ),
@@ -4216,7 +4216,7 @@ mod tests {
             matches!(
                 err,
                 MuxError::AmbiguousTarget {
-                    kind: "audio",
+                    kind: StreamKind::Audio,
                     count: 2
                 }
             ),
@@ -4375,7 +4375,7 @@ mod tests {
             matches!(
                 err,
                 MuxError::AmbiguousTarget {
-                    kind: "subtitle",
+                    kind: StreamKind::Subtitle,
                     count: 2,
                 }
             ),

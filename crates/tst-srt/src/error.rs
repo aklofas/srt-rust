@@ -9,6 +9,8 @@ use std::io;
 use thiserror::Error;
 
 use tst_core::error::{DemuxError, KlvDecodeError, KlvEncodeError, KlvFieldError, MuxError};
+#[cfg(test)]
+use tst_core::mpegts::mux::StreamKind;
 
 // ============================================================================
 // Validation errors (newtype constructors)
@@ -614,7 +616,7 @@ mod tests {
     #[test]
     fn mux_error_invalid_stream_handle_displays_kind_and_index() {
         let e = MuxError::InvalidStreamHandle {
-            kind: "video",
+            kind: StreamKind::Video,
             index: 7,
         };
         assert_eq!(
@@ -626,7 +628,7 @@ mod tests {
     #[test]
     fn mux_error_ambiguous_target_displays_kind_and_count() {
         let e = MuxError::AmbiguousTarget {
-            kind: "klv",
+            kind: StreamKind::Klv,
             count: 3,
         };
         assert_eq!(

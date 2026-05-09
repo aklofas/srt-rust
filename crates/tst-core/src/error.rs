@@ -2,6 +2,8 @@
 
 use thiserror::Error;
 
+use crate::mpegts::mux::{StreamKind, TeletextField};
+
 // ============================================================================
 // KLV errors
 // ============================================================================
@@ -209,10 +211,7 @@ pub enum MuxError {
     /// muxer that produced them — passing one from a different muxer is
     /// also rejected here.
     #[error("invalid {kind} stream handle (index {index}) — not a configured stream")]
-    InvalidStreamHandle {
-        kind: &'static str, // "video" or "klv"
-        index: usize,
-    },
+    InvalidStreamHandle { kind: StreamKind, index: usize },
 
     /// Caller invoked the no-suffix `push_video` / `push_klv` (or the
     /// `MuxSender::send_video` / `send_klv` wrappers) on a muxer that has more
@@ -221,10 +220,7 @@ pub enum MuxError {
     #[error(
         "ambiguous push: {count} {kind} streams configured — call push_{kind}_to(handle, ...) instead"
     )]
-    AmbiguousTarget {
-        kind: &'static str, // "video" or "klv"
-        count: usize,
-    },
+    AmbiguousTarget { kind: StreamKind, count: usize },
 
     /// `Muxer::push_klv` shorthand called when no KLV streams configured.
     /// Use `push_klv_to(handle, ...)` with a KLV handle from `klv_handles()`,
@@ -299,11 +295,7 @@ pub enum MuxError {
     /// `Config::validate` rejects DVB teletext field values that exceed
     /// their bit-width budget.
     #[error("invalid DVB teletext {field}: {value} (max {max})")]
-    InvalidTeletextField {
-        field: &'static str,
-        value: u8,
-        max: u8,
-    },
+    InvalidTeletextField { field: TeletextField, value: u8, max: u8 },
 
     /// `Config::validate` rejected a configuration whose total PMT
     /// section length wouldn't fit in a single TS packet. `used_bytes`

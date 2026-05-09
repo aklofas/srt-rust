@@ -500,7 +500,7 @@ pub enum MuxSenderError {
 #[cfg(test)]
 mod multi_stream_tests {
     use super::*;
-    use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, SubtitleCodec, VideoCodec};
+    use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, StreamKind, SubtitleCodec, VideoCodec};
     use tst_core::transport::{Transport, TransportError};
 
     /// In-memory transport that records every byte sent.
@@ -732,7 +732,7 @@ mod multi_stream_tests {
         let err = s.send_video(&nal, 0, true).unwrap_err();
         match err {
             MuxSenderError::Mux(MuxError::AmbiguousTarget {
-                kind: "video",
+                kind: StreamKind::Video,
                 count: 2,
             }) => {}
             other => panic!("expected AmbiguousTarget, got {other:?}"),

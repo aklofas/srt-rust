@@ -71,6 +71,8 @@ pub unsafe extern "C" fn tst_get_last_error_str() -> *const libc::c_char {
 }
 
 use tst_core::error::MuxError;
+#[cfg(test)]
+use tst_core::mpegts::mux::StreamKind;
 use tst_pipeline::{MuxSenderError, SenderError, TransportError};
 
 /// Map a `MuxError` to a code + message.
@@ -303,7 +305,7 @@ mod tests {
     #[test]
     fn ambiguous_target_message_points_to_to_siblings() {
         let e = MuxError::AmbiguousTarget {
-            kind: "video",
+            kind: StreamKind::Video,
             count: 2,
         };
         record_mux_error(&e);

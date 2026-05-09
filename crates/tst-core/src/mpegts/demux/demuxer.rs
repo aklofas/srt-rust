@@ -110,7 +110,7 @@ pub struct DemuxerOptions {
 /// Per-program state tracked after a PAT entry is discovered and a PMT
 /// arrives. One entry per `pmt_pid` in `Demuxer::programs`.
 ///
-/// Exposed `pub` so that `programs_for_test` can name it in its return type.
+/// Exposed `pub` for field access in crate-internal tests.
 /// Not part of the stable API — treat as opaque outside this crate.
 #[derive(Debug)]
 pub struct ProgramTracker {
@@ -1303,12 +1303,12 @@ impl Demuxer {
             .push_back(DemuxEvent::NonConformant { stream, issue });
     }
 
-    /// Return a reference to the programs map for integration tests.
+    /// Return a reference to the programs map for white-box unit tests.
     ///
-    /// Keyed by `pmt_pid`. Exposed for white-box testing of PAT/PMT diffing
-    /// logic; not part of the stable API.
-    #[doc(hidden)]
-    pub fn programs_for_test(&self) -> &HashMap<u16, ProgramTracker> {
+    /// Keyed by `pmt_pid`. Crate-internal test accessor for PAT/PMT diffing
+    /// logic. Not part of the stable API.
+    #[cfg(test)]
+    pub(crate) fn programs_for_test(&self) -> &HashMap<u16, ProgramTracker> {
         &self.programs
     }
 
@@ -2808,6 +2808,368 @@ mod tests {
             payload,
             segment_bytes.to_vec(),
             "EN 300 743 §6.2 envelope should be stripped"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // White-box PAT/PMT diffing tests — use programs_for_test()
+    // -------------------------------------------------------------------------
+    //
+    // Moved here from crates/tst-core/tests/mpegts_demux_multi_program.rs so
+    // that programs_for_test can be pub(crate) + #[cfg(test)] rather than pub.
+
+    /// Synthesise a well-formed PAT TS packet for tests.
+    fn pat_packet_with_programs(programs: &[(u16, u16)], version: u8) -> Vec<u8> {
+        let section_length = 5 + 4 * programs.len() + 4;
+        let mut sec: Vec<u8> = Vec::with_capacity(3 + section_length);
+        sec.push(0x00); // table_id = PAT
+        sec.push(0xB0 | ((section_length >> 8) as u8 & 0x0F));
+        sec.push((section_length & 0xFF) as u8);
+        sec.push(0x00); // transport_stream_id hi
+        sec.push(0x01); // transport_stream_id lo
+        sec.push(0xC1 | ((version & 0x1F) << 1)); // reserved | version | current_next
+        sec.push(0x00); // section_number
+        sec.push(0x00); // last_section_number
+        for &(pn, pmt_pid) in programs {
+            sec.push((pn >> 8) as u8);
+            sec.push((pn & 0xFF) as u8);
+            sec.push(0xE0 | ((pmt_pid >> 8) as u8 & 0x1F));
+            sec.push((pmt_pid & 0xFF) as u8);
+        }
+        let crc = crc32_mpeg2_test(&sec);
+        sec.push((crc >> 24) as u8);
+        sec.push((crc >> 16) as u8);
+        sec.push((crc >> 8) as u8);
+        sec.push(crc as u8);
+        let mut pkt = vec![0xFFu8; 188];
+        pkt[0] = 0x47;
+        pkt[1] = 0x40; // PUSI | PAT PID hi = 0
+        pkt[2] = 0x00; // PAT PID lo
+        pkt[3] = 0x10; // payload-only, CC=0
+        pkt[4] = 0x00; // pointer_field
+        let sec_end = 5 + sec.len();
+        assert!(sec_end <= 188);
+        pkt[5..sec_end].copy_from_slice(&sec);
+        pkt
+    }
+
+    /// CRC-32/MPEG-2 helper for test packet builders.
+    fn crc32_mpeg2_test(data: &[u8]) -> u32 {
+        let mut crc: u32 = 0xFFFF_FFFF;
+        for &b in data {
+            crc ^= (b as u32) << 24;
+            for _ in 0..8 {
+                if crc & 0x8000_0000 != 0 {
+                    crc = (crc << 1) ^ 0x04C1_1DB7;
+                } else {
+                    crc <<= 1;
+                }
+            }
+        }
+        crc
+    }
+
+    /// Synthesise a well-formed PMT TS packet for tests.
+    fn pmt_packet_for_test(
+        pmt_pid: u16,
+        program_number: u16,
+        pcr_pid: u16,
+        streams: &[(u8, u16)],
+        version: u8,
+    ) -> Vec<u8> {
+        let stream_loop_len = 5 * streams.len();
+        let section_length = 9 + stream_loop_len + 4;
+        let mut sec: Vec<u8> = Vec::with_capacity(3 + section_length);
+        sec.push(0x02); // table_id = PMT
+        sec.push(0xB0 | ((section_length >> 8) as u8 & 0x0F));
+        sec.push((section_length & 0xFF) as u8);
+        sec.push((program_number >> 8) as u8);
+        sec.push((program_number & 0xFF) as u8);
+        sec.push(0xC0 | ((version & 0x1F) << 1) | 1); // reserved | version | cni
+        sec.push(0x00); // section_number
+        sec.push(0x00); // last_section_number
+        sec.push(0xE0 | ((pcr_pid >> 8) as u8 & 0x1F));
+        sec.push((pcr_pid & 0xFF) as u8);
+        sec.push(0xF0); // program_info_length hi
+        sec.push(0x00); // program_info_length lo (no descriptors)
+        for &(stream_type, pid) in streams {
+            sec.push(stream_type);
+            sec.push(0xE0 | ((pid >> 8) as u8 & 0x1F));
+            sec.push((pid & 0xFF) as u8);
+            sec.push(0xF0); // es_info_length hi
+            sec.push(0x00); // es_info_length lo
+        }
+        let crc = crc32_mpeg2_test(&sec);
+        sec.push((crc >> 24) as u8);
+        sec.push((crc >> 16) as u8);
+        sec.push((crc >> 8) as u8);
+        sec.push(crc as u8);
+        let mut pkt = vec![0xFFu8; 188];
+        pkt[0] = 0x47;
+        pkt[1] = 0x40 | ((pmt_pid >> 8) as u8 & 0x1F); // PUSI + PID hi
+        pkt[2] = (pmt_pid & 0xFF) as u8;
+        pkt[3] = 0x10; // payload-only, CC=0
+        pkt[4] = 0x00; // pointer_field
+        let sec_end = 5 + sec.len();
+        assert!(sec_end <= 188);
+        pkt[5..sec_end].copy_from_slice(&sec);
+        pkt
+    }
+
+    #[test]
+    fn first_pat_creates_program_trackers_for_all_entries() {
+        let mut demuxer = Demuxer::new();
+        let pat = pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0);
+        demuxer.feed(&pat).unwrap();
+
+        let progs = demuxer.programs_for_test();
+        assert_eq!(
+            progs.len(),
+            2,
+            "expected 2 program trackers, got {}",
+            progs.len()
+        );
+        assert!(
+            progs.contains_key(&0x1000),
+            "missing tracker for pmt_pid=0x1000"
+        );
+        assert!(
+            progs.contains_key(&0x1100),
+            "missing tracker for pmt_pid=0x1100"
+        );
+    }
+
+    #[test]
+    fn pat_version_bump_adds_new_program() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 0))
+            .unwrap();
+        assert_eq!(demuxer.programs_for_test().len(), 1);
+
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 1))
+            .unwrap();
+        let progs = demuxer.programs_for_test();
+        assert_eq!(
+            progs.len(),
+            2,
+            "expected 2 trackers after version bump, got {}",
+            progs.len()
+        );
+        assert!(progs.contains_key(&0x1000));
+        assert!(progs.contains_key(&0x1100));
+    }
+
+    #[test]
+    fn pat_version_bump_removes_dropped_program() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .unwrap();
+
+        let progs = demuxer.programs_for_test();
+        assert_eq!(
+            progs.len(),
+            1,
+            "expected 1 tracker after program removal, got {}",
+            progs.len()
+        );
+        assert!(
+            progs.contains_key(&0x1000),
+            "surviving program 1 tracker missing"
+        );
+        assert!(
+            !progs.contains_key(&0x1100),
+            "dropped program 2 tracker still present"
+        );
+    }
+
+    #[test]
+    fn each_program_has_independent_pmt_version() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011), (0x06, 0x1031)],
+                3,
+            ))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1100,
+                2,
+                0x1111,
+                &[(0x24, 0x1111), (0x06, 0x1131)],
+                5,
+            ))
+            .unwrap();
+
+        let progs = demuxer.programs_for_test();
+        assert_eq!(progs[&0x1000].pmt_version, Some(3));
+        assert_eq!(progs[&0x1100].pmt_version, Some(5));
+        assert_eq!(progs[&0x1000].streams.len(), 2);
+        assert_eq!(progs[&0x1100].streams.len(), 2);
+    }
+
+    #[test]
+    fn pid_collision_across_programs_emits_nonconformant() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1100,
+                2,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+
+        let mut nonconformant_seen = false;
+        while let Some(ev) = demuxer.next_event() {
+            if let DemuxEvent::NonConformant {
+                issue: NonConformantIssue::PidReusedAcrossPrograms { pid: 0x1011, .. },
+                ..
+            } = ev
+            {
+                nonconformant_seen = true;
+            }
+        }
+        assert!(
+            nonconformant_seen,
+            "expected PidReusedAcrossPrograms event for PID 0x1011"
+        );
+
+        let progs = demuxer.programs_for_test();
+        assert!(
+            progs[&0x1000].streams.iter().any(|s| s.pid == 0x1011),
+            "program 1 should retain ownership of PID 0x1011"
+        );
+        assert!(
+            !progs[&0x1100].streams.iter().any(|s| s.pid == 0x1011),
+            "program 2 must not own PID 0x1011 after collision"
+        );
+    }
+
+    #[test]
+    fn stream_kind_by_pid_tracks_across_pat_changes() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+
+        let progs = demuxer.programs_for_test();
+        assert!(progs.contains_key(&0x1000), "program 1 tracker missing");
+        assert_eq!(progs[&0x1000].streams.len(), 1);
+        assert_eq!(progs[&0x1000].streams[0].pid, 0x1011);
+
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 1))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1100,
+                2,
+                0x1111,
+                &[(0x1B, 0x1111)],
+                0,
+            ))
+            .unwrap();
+
+        let progs = demuxer.programs_for_test();
+        assert_eq!(progs.len(), 2, "expected 2 program trackers after add");
+        assert!(
+            progs.contains_key(&0x1000),
+            "program 1 tracker must survive"
+        );
+        assert!(progs.contains_key(&0x1100), "program 2 tracker must appear");
+        assert!(
+            progs[&0x1000].streams.iter().any(|s| s.pid == 0x1011),
+            "program 1 stream 0x1011 must survive after PAT bump"
+        );
+        assert!(
+            progs[&0x1100].streams.iter().any(|s| s.pid == 0x1111),
+            "program 2 stream 0x1111 must be tracked"
+        );
+    }
+
+    #[test]
+    fn program_removed_drops_streams_from_tracker() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1100,
+                2,
+                0x1111,
+                &[(0x1B, 0x1111)],
+                0,
+            ))
+            .unwrap();
+
+        assert_eq!(
+            demuxer.programs_for_test().len(),
+            2,
+            "expected 2 trackers before removal"
+        );
+
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .unwrap();
+
+        let progs = demuxer.programs_for_test();
+        assert_eq!(progs.len(), 1, "expected 1 tracker after removal");
+        assert!(
+            progs.contains_key(&0x1000),
+            "surviving program 1 tracker missing"
+        );
+        assert!(
+            !progs.contains_key(&0x1100),
+            "dropped program 2 tracker still present"
+        );
+        assert!(
+            progs[&0x1000].streams.iter().any(|s| s.pid == 0x1011),
+            "program 1 stream 0x1011 must survive program 2 removal"
         );
     }
 }

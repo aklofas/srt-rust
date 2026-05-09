@@ -20,5 +20,5 @@ pub mod klv;
 pub mod mpegts;
 pub mod transport;
 
-pub use error::*;
-pub use transport::*;
+pub use error::{KlvDecodeError, KlvEncodeError, KlvFieldError, MuxError, DemuxError};
+pub use transport::{RecvTransport, Transport, TransportCancel, TransportError};

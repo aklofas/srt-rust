@@ -12,7 +12,7 @@
 //! is the right wrapper.
 
 use std::collections::{BTreeMap, VecDeque};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tst_core::error::MuxError;
 use tst_core::mpegts::mux::{
     AudioStreamHandle, KlvStreamHandle, Muxer, MuxerConfig, SubtitleStreamHandle,
@@ -46,7 +46,7 @@ pub struct MuxSender<T: Transport> {
     /// Cancel handle snapshot, taken from the transport at construction
     /// time. Held outside the inner Mutex so `close()` can fire it
     /// without competing with a concurrent `send_*` for the lock.
-    cancel: Option<Box<dyn tst_core::transport::TransportCancel>>,
+    cancel: Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>,
 }
 
 struct Inner<T: Transport> {
@@ -304,8 +304,8 @@ impl<T: Transport> MuxSender<T> {
     /// supports cancellation. Equivalent to what `close()` calls
     /// internally; exposed for callers who want to keep the MuxSender
     /// alive but still have an out-of-band wake-up mechanism.
-    pub fn cancel_handle(&self) -> Option<&dyn tst_core::transport::TransportCancel> {
-        self.cancel.as_deref()
+    pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
+        self.cancel.clone()
     }
 
     pub fn is_alive(&self) -> bool {
@@ -781,8 +781,8 @@ mod cancel_tests {
         fn is_alive(&self) -> bool {
             !self.cancelled.load(Ordering::SeqCst)
         }
-        fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
-            Some(Box::new(ParkableCancel {
+        fn cancel_handle(&self) -> Option<std::sync::Arc<dyn TransportCancel + Send + Sync>> {
+            Some(std::sync::Arc::new(ParkableCancel {
                 cancelled: self.cancelled.clone(),
             }))
         }

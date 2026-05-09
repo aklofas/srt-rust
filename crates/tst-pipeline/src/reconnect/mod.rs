@@ -292,10 +292,10 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
         }
     }
 
-    fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
+    fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
         let inner = self.inner.clone();
         let closed = self.closed.clone();
-        Some(Box::new(ManagedCancel { inner, closed }))
+        Some(Arc::new(ManagedCancel { inner, closed }))
     }
 }
 
@@ -363,8 +363,8 @@ mod cancel_tests {
         fn close(&mut self) {
             self.cancelled.store(true, Ordering::SeqCst);
         }
-        fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
-            Some(Box::new(CancellableMockCancel {
+        fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
+            Some(Arc::new(CancellableMockCancel {
                 cancelled: self.cancelled.clone(),
                 calls: self.cancel_calls.clone(),
             }))

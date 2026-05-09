@@ -24,6 +24,7 @@
 //! nothing; for finite test data it recovers the last sample.
 
 use crate::receiver::Receiver;
+use std::sync::Arc;
 use tst_core::error::DemuxError;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerOptions};
 use tst_core::transport::RecvTransport;
@@ -153,7 +154,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
 
     /// Snapshot of the underlying recv-transport's cancel handle. Wakes
     /// a thread parked in `recv_event()`'s `next_packet()` call.
-    pub fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
+    pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.ts.cancel_handle()
     }
 }

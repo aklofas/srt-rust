@@ -9,6 +9,7 @@
 //! - You want to handle framing yourself.
 //! - You're writing a test that needs a bare receive loop.
 
+use std::sync::Arc;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
@@ -80,7 +81,7 @@ impl<R: RecvTransport> RawReceiver<R> {
     }
 
     /// Snapshot of the underlying recv-transport's cancel handle.
-    pub fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
+    pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.transport.cancel_handle()
     }
 }

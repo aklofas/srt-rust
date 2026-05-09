@@ -6,6 +6,7 @@
 
 use crate::Socket;
 use crate::error::{SendError, SrtErrno};
+use std::sync::Arc;
 use tst_core::transport::{Transport, TransportCancel, TransportError};
 
 pub struct SrtTransport {
@@ -100,10 +101,10 @@ impl Transport for SrtTransport {
         }
     }
 
-    fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
+    fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
         self.socket
             .as_ref()
-            .map(|s| Box::new(SrtCancel(s.cancel_handle())) as Box<dyn TransportCancel>)
+            .map(|s| Arc::new(SrtCancel(s.cancel_handle())) as Arc<dyn TransportCancel + Send + Sync>)
     }
 }
 
@@ -154,10 +155,10 @@ impl tst_core::transport::RecvTransport for SrtTransport {
         <Self as tst_core::transport::Transport>::close(self);
     }
 
-    fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
+    fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
         self.socket
             .as_ref()
-            .map(|s| Box::new(SrtCancel(s.cancel_handle())) as Box<dyn TransportCancel>)
+            .map(|s| Arc::new(SrtCancel(s.cancel_handle())) as Arc<dyn TransportCancel + Send + Sync>)
     }
 }
 

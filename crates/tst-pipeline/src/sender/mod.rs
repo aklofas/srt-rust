@@ -7,6 +7,7 @@ mod framing;
 
 pub use framing::{SenderStats, TsFraming, TsFramingError, TsFramingMode};
 
+use std::sync::Arc;
 use tst_core::transport::Transport;
 
 /// Construction-time knobs for [`Sender`].
@@ -113,7 +114,7 @@ impl<T: Transport> Sender<T> {
 
     /// Snapshot of the underlying transport's cancel handle. See
     /// [`crate::MuxSender::cancel_handle`] for the rationale.
-    pub fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
+    pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.transport.cancel_handle()
     }
 }

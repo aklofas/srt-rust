@@ -7,6 +7,7 @@
 //!
 //! Wrap with [`crate::ManagedTransport`] for reconnection.
 
+use std::sync::Arc;
 use tst_core::transport::{Transport, TransportError};
 
 /// Construction-time knobs for [`RawSender`].
@@ -75,7 +76,7 @@ impl<T: Transport> RawSender<T> {
     }
 
     /// Snapshot of the underlying transport's cancel handle.
-    pub fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
+    pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.transport.cancel_handle()
     }
 

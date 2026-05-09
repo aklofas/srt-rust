@@ -12,6 +12,7 @@
 
 pub mod sync;
 
+use std::sync::Arc;
 use sync::Syncer;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
@@ -153,7 +154,7 @@ impl<R: RecvTransport> Receiver<R> {
     }
 
     /// Snapshot of the underlying recv-transport's cancel handle.
-    pub fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
+    pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.transport.cancel_handle()
     }
 }

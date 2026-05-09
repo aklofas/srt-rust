@@ -4,6 +4,7 @@
 //! Concrete implementations (SRT, file-replay, in-memory channels) live
 //! in their own crates; only the abstract contract lives here.
 
+use std::sync::Arc;
 use thiserror::Error;
 
 // ============================================================
@@ -90,11 +91,11 @@ pub trait Transport: Send {
     /// blocking primitive (a real socket, an MPSC channel sender, etc.)
     /// return `Some(handle)`; pure in-memory test mocks return `None`.
     ///
-    /// The returned handle is `Send + Sync` and can be moved/cloned to
+    /// The returned `Arc` is `Send + Sync` and can be moved or cloned to
     /// any thread; calling `cancel()` while another thread is parked in
     /// [`Self::send_bytes`] makes that parked call return
     /// `TransportError::Broken`.
-    fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
+    fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
         None
     }
 }
@@ -149,7 +150,7 @@ pub trait RecvTransport: Send {
 
     /// Optional cancellation accessor. Wakes a thread parked in `recv_bytes`.
     /// See [`Transport::cancel_handle`] for the general shape.
-    fn cancel_handle(&self) -> Option<Box<dyn TransportCancel>> {
+    fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
         None
     }
 }

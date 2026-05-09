@@ -90,7 +90,7 @@ pub struct ManagedReceiveTransport<R: RecvTransport> {
     /// Most-recently-built inner's cancel handle, snapshotted on each
     /// successful build. Held in an Arc<Mutex<>> so the cancel handle
     /// (separate object) can read without owning &mut self.
-    inner_cancel: Arc<Mutex<Option<Box<dyn tst_core::transport::TransportCancel>>>>,
+    inner_cancel: Arc<Mutex<Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>>>,
 }
 
 impl<R: RecvTransport> ManagedReceiveTransport<R> {
@@ -104,7 +104,7 @@ impl<R: RecvTransport> ManagedReceiveTransport<R> {
         factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,
         policy: ReconnectPolicy,
     ) -> Self {
-        let inner_cancel: Arc<Mutex<Option<Box<dyn tst_core::transport::TransportCancel>>>> =
+        let inner_cancel: Arc<Mutex<Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>>> =
             Arc::new(Mutex::new(inner.cancel_handle()));
         Self {
             inner: Some(inner),
@@ -184,8 +184,8 @@ impl<R: RecvTransport> RecvTransport for ManagedReceiveTransport<R> {
         }
     }
 
-    fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
-        Some(Box::new(ManagedRecvCancel {
+    fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
+        Some(Arc::new(ManagedRecvCancel {
             cancelled: self.cancelled.clone(),
             inner_cancel: self.inner_cancel.clone(),
         }))
@@ -194,7 +194,7 @@ impl<R: RecvTransport> RecvTransport for ManagedReceiveTransport<R> {
 
 struct ManagedRecvCancel {
     cancelled: Arc<std::sync::atomic::AtomicBool>,
-    inner_cancel: Arc<Mutex<Option<Box<dyn tst_core::transport::TransportCancel>>>>,
+    inner_cancel: Arc<Mutex<Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>>>,
 }
 
 impl tst_core::transport::TransportCancel for ManagedRecvCancel {
@@ -400,8 +400,8 @@ mod tests {
         fn is_alive(&self) -> bool {
             !self.cancelled.load(std::sync::atomic::Ordering::SeqCst)
         }
-        fn cancel_handle(&self) -> Option<Box<dyn tst_core::transport::TransportCancel>> {
-            Some(Box::new(CancellableRecvCancel {
+        fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
+            Some(Arc::new(CancellableRecvCancel {
                 cancelled: self.cancelled.clone(),
             }))
         }

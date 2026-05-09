@@ -40,7 +40,7 @@ pub struct TstStreamStats {
     pub _pad: [u8; 3],
     /// Program number from the PAT that owns this stream. 0 for PSI PIDs.
     pub program_number: u16,
-    /// NUL-terminated UTF-8. label[0]==0 means None. Truncated at 63
+    /// NUL-terminated UTF-8. `label[0]==0` means None. Truncated at 63
     /// bytes (first 63 + NUL).
     pub label: [c_char; 64],
 }

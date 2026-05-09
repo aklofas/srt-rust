@@ -20,9 +20,9 @@ use crate::mpegts::demux::strict::StrictMode;
 use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
-/// Stats snapshot for [`Demuxer`]. Used by
-/// [`crate::pipeline::DemuxReceiver`] to compose its own `DemuxReceiverStats`;
-/// also exposed publicly for callers using `Demuxer` directly.
+/// Stats snapshot for [`Demuxer`]. Used by `tst_pipeline::DemuxReceiver` to
+/// compose its own `DemuxReceiverStats`; also exposed publicly for callers
+/// using `Demuxer` directly.
 ///
 /// Per-stream entries are created lazily as events are emitted — the
 /// receiver discovers topology rather than configuring it up front. PSI

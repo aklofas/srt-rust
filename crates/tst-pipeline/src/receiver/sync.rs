@@ -22,7 +22,7 @@
 pub enum SyncState {
     /// Looking for the first 0x47 sync byte.
     Hunt,
-    /// Found a candidate 0x47 at buf[0]. `count` is the number of confirmations
+    /// Found a candidate 0x47 at `buf[0]`. `count` is the number of confirmations
     /// seen so far — starts at 1 (the initial 0x47 in HUNT transitions here).
     /// After 4 total confirmations (`new_count >= 4`) we transition to LOCKED.
     Verify { count: u8 },
@@ -32,9 +32,10 @@ pub enum SyncState {
 
 /// Stateful TS sync recoverer.
 ///
-/// Feed bytes via [`push`] and drain aligned 188-byte packets via
-/// [`next_packet`]. Bytes not yet consumed by a packet stay in the internal
-/// buffer; push more data when `next_packet` returns `None`.
+/// Feed bytes via [`push`][Self::push] and drain aligned 188-byte packets via
+/// [`next_packet`][Self::next_packet]. Bytes not yet consumed by a packet
+/// stay in the internal buffer; push more data when `next_packet` returns
+/// `None`.
 ///
 /// The internal buffer is a `Vec<u8>` with `drain`-based consumption.
 /// For receiver pipelines the packet rate (~7 Mbit/s of 1316-byte SRT
@@ -77,8 +78,9 @@ impl Syncer {
     /// alignment search. Higher-level shells (a future `ManagedReceiver`)
     /// call this after a transport rebuild before feeding fresh bytes.
     ///
-    /// Does NOT reset stat counters — those are owned by [`Receiver`] and
-    /// reset via [`Receiver::reset_stats`].
+    /// Does NOT reset stat counters — those are owned by
+    /// [`Receiver`][crate::Receiver] and reset via
+    /// [`Receiver::reset_stats`][crate::Receiver::reset_stats].
     pub fn reset(&mut self) {
         self.buf.clear();
         self.state = SyncState::Hunt;
@@ -92,9 +94,9 @@ impl Syncer {
 
     /// Pull the next 188-byte aligned packet from the buffer, if one is ready.
     ///
-    /// Returns `None` when more bytes must be [`push`]ed before the next
-    /// packet can be emitted. The caller should feed more data and call
-    /// `next_packet` again.
+    /// Returns `None` when more bytes must be [`push`][Self::push]ed before
+    /// the next packet can be emitted. The caller should feed more data and
+    /// call `next_packet` again.
     ///
     /// VERIFY state is peek-only: bytes are not consumed while confirming
     /// alignment, so all bytes pushed during the verification window remain

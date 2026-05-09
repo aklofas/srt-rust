@@ -1,6 +1,6 @@
 //! Opaque builder handles for muxer / sender / reconnect configuration.
 //!
-//! Each builder is a Box<T>. `_open` clones the inner before consuming it,
+//! Each builder is a `Box<T>`. `_open` clones the inner before consuming it,
 //! so the caller may free immediately after a successful open.
 
 use crate::error::{TstError, set_last_error};

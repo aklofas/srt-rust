@@ -3,7 +3,7 @@
 //!
 //! This crate provides the SRT-specific concrete types. The transport
 //! traits themselves live in [`tst_core`]; the transport-agnostic
-//! Sender/Receiver shells live in [`tst_pipeline`].
+//! Sender/Receiver shells live in `tst_pipeline`.
 //!
 //! Quick start:
 //!

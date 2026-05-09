@@ -25,7 +25,7 @@ pub struct H266ProfileTierLevel {
 ///
 /// This standalone variant is for callers that only have the PTL bytes
 /// (e.g., tests, future external parameter-set walkers). Sub-parsers
-/// embedded in SPS/VPS use [`parse_into`] instead, which shares the
+/// embedded in SPS/VPS use `parse_into` instead, which shares the
 /// caller's bit cursor so subsequent fields stay aligned.
 pub fn parse_profile_tier_level(
     rbsp: &[u8],

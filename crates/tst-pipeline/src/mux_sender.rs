@@ -100,8 +100,9 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// `metadata_service_id` is written into the AU cell header per
     /// ITU-T H.222.0 V9 §2.12.4.2 / ST 1402.2 App. B Table 2 only for
-    /// [`KlvStreamType::SynchronousMetadata`] streams; ignored on
-    /// [`KlvStreamType::PrivateData`] streams. The spec default is `0x00`.
+    /// [`tst_core::mpegts::mux::KlvStreamType::SynchronousMetadata`] streams;
+    /// ignored on [`tst_core::mpegts::mux::KlvStreamType::PrivateData`]
+    /// streams. The spec default is `0x00`.
     pub fn send_klv(
         &self,
         klv: &[u8],
@@ -131,8 +132,9 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// `metadata_service_id` is written into the AU cell header per
     /// ITU-T H.222.0 V9 §2.12.4.2 / ST 1402.2 App. B Table 2 only for
-    /// [`KlvStreamType::SynchronousMetadata`] streams; ignored on
-    /// [`KlvStreamType::PrivateData`] streams. The spec default is `0x00`.
+    /// [`tst_core::mpegts::mux::KlvStreamType::SynchronousMetadata`] streams;
+    /// ignored on [`tst_core::mpegts::mux::KlvStreamType::PrivateData`]
+    /// streams. The spec default is `0x00`.
     pub fn send_klv_to(
         &self,
         handle: KlvStreamHandle,

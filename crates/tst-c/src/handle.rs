@@ -125,7 +125,7 @@ impl<T> Handle<T> {
 // ---------------------------------------------------------------------------
 
 /// Opaque per-program ordinal for a video elementary stream. Obtained from
-/// [`tst_mux_config_add_video_stream`] at config time and reused with the
+/// `tst_mux_config_add_video_stream` at config time and reused with the
 /// `_video_to` push siblings on every muxer-owning C variant.
 ///
 /// Handles are stable across the config→open boundary and across managed

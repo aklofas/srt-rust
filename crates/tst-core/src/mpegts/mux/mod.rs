@@ -1034,14 +1034,15 @@ impl MuxerProgramBuilder {
         self
     }
 
-    /// Like [`add_audio`] but emits an `iso_639_language_descriptor`
-    /// (ISO/IEC 13818-1 §2.6.18) on the PMT entry. Three-byte ISO 639-2
-    /// language code, lowercase ASCII (e.g. `*b"eng"`, `*b"deu"`,
-    /// `*b"jpn"`). `audio_type` is set to `0x00` (undefined / clean main)
-    /// per §2.6.19 Table 2-83.
+    /// Like [`add_audio`][Self::add_audio] but emits an
+    /// `iso_639_language_descriptor` (ISO/IEC 13818-1 §2.6.18) on the PMT
+    /// entry. Three-byte ISO 639-2 language code, lowercase ASCII
+    /// (e.g. `*b"eng"`, `*b"deu"`, `*b"jpn"`). `audio_type` is set to
+    /// `0x00` (undefined / clean main) per §2.6.19 Table 2-83.
     ///
     /// For richer audio_type semantics or multi-language tracks, supply
-    /// the descriptor manually via [`stream_descriptors_for_audio`].
+    /// the descriptor manually via
+    /// [`stream_descriptors_for_audio`][Self::stream_descriptors_for_audio].
     pub fn add_audio_with_language(
         mut self,
         pid: u16,
@@ -2229,7 +2230,7 @@ impl Muxer {
             .collect()
     }
 
-    /// Handle for the i-th video stream in programs[0], or `None` if out of
+    /// Handle for the i-th video stream in `programs[0]`, or `None` if out of
     /// range. Convenience for single-program callers.
     pub fn video_stream_handle(&self, index: usize) -> Option<VideoStreamHandle> {
         if !self.video_streams.is_empty() && index < self.video_streams[0].len() {
@@ -2239,7 +2240,7 @@ impl Muxer {
         }
     }
 
-    /// Handle for the i-th KLV stream in programs[0], or `None` if out of
+    /// Handle for the i-th KLV stream in `programs[0]`, or `None` if out of
     /// range. Convenience for single-program callers.
     pub fn klv_stream_handle(&self, index: usize) -> Option<KlvStreamHandle> {
         if !self.klv_streams.is_empty() && index < self.klv_streams[0].len() {

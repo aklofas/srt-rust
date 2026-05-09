@@ -105,10 +105,10 @@ pub struct VmtiLs {
 /// rule.
 ///
 /// VTargetSeries (Tag 101) inner packs are dispatched to
-/// [`vtarget_pack::read_pack`]; pack-level errors land in `field_errors`
+/// `vtarget_pack::read_pack`; pack-level errors land in `field_errors`
 /// as [`KlvDecodeError::St0903InvalidVTargetPack`] reasons too — but
 /// surfaced via the parent-level [`KlvFieldError`] channel (see
-/// [`decode_vtarget_series`]).
+/// `decode_vtarget_series`).
 ///
 /// Use [`decode_strict`] (Task 6) for spec-validation use cases that
 /// reject any of the above.

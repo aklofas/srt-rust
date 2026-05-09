@@ -2,8 +2,8 @@
 //!
 //! Each builder returns a `Vec<u8>` containing one complete descriptor
 //! (`descriptor_tag` + `descriptor_length` + body). Hand the result to
-//! [`crate::mpegts::mux::MuxerConfigBuilder::stream_descriptors_for_video`]
-//! / `_for_klv` / `_for_stream` to splice it into the per-stream
+//! [`crate::mpegts::mux::MuxerProgramBuilder::stream_descriptors_for_video`]
+//! / `_for_klv` / `_for_audio` to splice it into the per-stream
 //! descriptor loop emitted in PMT.
 //!
 //! Reference: ISO/IEC 13818-1 §2.6 and ETSI EN 300 468 §6.2.

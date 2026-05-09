@@ -1,7 +1,7 @@
 //! Descriptor parsers for `mpegts::demux` consumers and PSI cascade.
 //!
 //! Stateless. Each parser takes the descriptor payload (length-field
-//! stripped) and returns typed entries or a `ParseError`.
+//! stripped) and returns typed entries or a [`DescriptorParseError`].
 
 use crate::mpegts::demux::psi::RawDescriptor;
 
@@ -23,7 +23,7 @@ pub struct TeletextDescriptorEntry {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum ParseError {
+pub enum DescriptorParseError {
     Truncated,
     EmptyInput,
 }
@@ -33,12 +33,12 @@ const TELETEXT_ENTRY_BYTES: usize = 5;
 
 pub fn parse_subtitling_descriptor(
     payload: &[u8],
-) -> Result<Vec<SubtitlingDescriptorEntry>, ParseError> {
+) -> Result<Vec<SubtitlingDescriptorEntry>, DescriptorParseError> {
     if payload.is_empty() {
-        return Err(ParseError::EmptyInput);
+        return Err(DescriptorParseError::EmptyInput);
     }
     if payload.len() % SUBTITLING_ENTRY_BYTES != 0 {
-        return Err(ParseError::Truncated);
+        return Err(DescriptorParseError::Truncated);
     }
     let mut out = Vec::with_capacity(payload.len() / SUBTITLING_ENTRY_BYTES);
     for chunk in payload.chunks_exact(SUBTITLING_ENTRY_BYTES) {
@@ -54,12 +54,12 @@ pub fn parse_subtitling_descriptor(
 
 pub fn parse_teletext_descriptor(
     payload: &[u8],
-) -> Result<Vec<TeletextDescriptorEntry>, ParseError> {
+) -> Result<Vec<TeletextDescriptorEntry>, DescriptorParseError> {
     if payload.is_empty() {
-        return Err(ParseError::EmptyInput);
+        return Err(DescriptorParseError::EmptyInput);
     }
     if payload.len() % TELETEXT_ENTRY_BYTES != 0 {
-        return Err(ParseError::Truncated);
+        return Err(DescriptorParseError::Truncated);
     }
     let mut out = Vec::with_capacity(payload.len() / TELETEXT_ENTRY_BYTES);
     for chunk in payload.chunks_exact(TELETEXT_ENTRY_BYTES) {
@@ -114,7 +114,7 @@ mod tests {
         let payload = [b'e', b'n', b'g', 0x10, 0x00, 0x01];
         assert!(matches!(
             parse_subtitling_descriptor(&payload),
-            Err(ParseError::Truncated)
+            Err(DescriptorParseError::Truncated)
         ));
     }
 

@@ -4,7 +4,7 @@
 
 use super::bitreader::BitReader;
 use super::profile_tier_level;
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H265Vps {
@@ -34,9 +34,9 @@ pub struct H265Vps {
 
 /// Parse a single VPS RBSP. Input contract: RBSP body only (no NAL
 /// header bytes, no Annex B start code, emulation prevention preserved).
-pub fn parse_vps(rbsp: &[u8]) -> Result<H265Vps, ParseError> {
+pub fn parse_vps(rbsp: &[u8]) -> Result<H265Vps, CodecParseError> {
     if rbsp.is_empty() {
-        return Err(ParseError::TruncatedRbsp {
+        return Err(CodecParseError::TruncatedRbsp {
             offset_bits: 0,
             needed_bits: 8,
         });

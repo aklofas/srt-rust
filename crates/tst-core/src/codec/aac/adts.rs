@@ -4,7 +4,7 @@
 
 use super::tables::{decode_channels, decode_profile, decode_sample_rate};
 use super::{AacProfile, MpegVersion};
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 
 /// Decoded view of the 7- or 9-byte ADTS header (no body slice yet).
 #[derive(Debug)]
@@ -39,9 +39,9 @@ pub(super) struct Header {
 ///   aac_frame_length:         13 bits (header + body bytes total)
 ///   adts_buffer_fullness:     11 bits
 ///   number_of_raw_data_blocks_in_frame: 2 bits (wire 0..=3 → logical 1..=4)
-pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
+pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, CodecParseError> {
     if bytes.len() < 7 {
-        return Err(ParseError::Truncated {
+        return Err(CodecParseError::Truncated {
             needed: 7,
             had: bytes.len() as u32,
         });
@@ -50,7 +50,7 @@ pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
     // Sync word: 12 bits = 0xFFF
     let sync = ((bytes[0] as u16) << 4) | (((bytes[1] as u16) >> 4) & 0x0F);
     if sync != 0xFFF {
-        return Err(ParseError::BadSyncWord {
+        return Err(CodecParseError::BadSyncWord {
             expected: 0xFFF,
             found: sync,
         });
@@ -66,7 +66,7 @@ pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
 
     let layer = (bytes[1] >> 1) & 0b11;
     if layer != 0 {
-        return Err(ParseError::Forbidden {
+        return Err(CodecParseError::Forbidden {
             field: "adts_layer",
         });
     }
@@ -100,14 +100,14 @@ pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
     let raw_header_len: usize = if has_crc { 9 } else { 7 };
 
     if has_crc && bytes.len() < 9 {
-        return Err(ParseError::Truncated {
+        return Err(CodecParseError::Truncated {
             needed: 9,
             had: bytes.len() as u32,
         });
     }
 
     if aac_frame_length < raw_header_len as u32 {
-        return Err(ParseError::Truncated {
+        return Err(CodecParseError::Truncated {
             needed: raw_header_len as u32,
             had: aac_frame_length,
         });
@@ -182,7 +182,7 @@ mod tests {
         bytes[1] |= 0b0000_0010; // set layer bit
         assert!(matches!(
             parse_header(&bytes).unwrap_err(),
-            ParseError::Forbidden {
+            CodecParseError::Forbidden {
                 field: "adts_layer"
             }
         ));
@@ -192,7 +192,7 @@ mod tests {
     fn parse_header_short_buffer_truncated() {
         assert!(matches!(
             parse_header(&[0xFF; 4]).unwrap_err(),
-            ParseError::Truncated { needed: 7, had: 4 }
+            CodecParseError::Truncated { needed: 7, had: 4 }
         ));
     }
 
@@ -200,7 +200,7 @@ mod tests {
     fn parse_header_bad_sync() {
         assert!(matches!(
             parse_header(&[0xAB, 0xCD, 0, 0, 0, 0, 0]).unwrap_err(),
-            ParseError::BadSyncWord { .. }
+            CodecParseError::BadSyncWord { .. }
         ));
     }
 
@@ -210,7 +210,7 @@ mod tests {
         bytes.truncate(7); // protection_absent=false but only 7 bytes
         assert!(matches!(
             parse_header(&bytes).unwrap_err(),
-            ParseError::Truncated { needed: 9, had: 7 }
+            CodecParseError::Truncated { needed: 9, had: 7 }
         ));
     }
 
@@ -219,7 +219,7 @@ mod tests {
         let bytes = build_header(1, 4, 2, 5, 0, true); // length 5 < 7
         assert!(matches!(
             parse_header(&bytes).unwrap_err(),
-            ParseError::Truncated { needed: 7, had: 5 }
+            CodecParseError::Truncated { needed: 7, had: 5 }
         ));
     }
 

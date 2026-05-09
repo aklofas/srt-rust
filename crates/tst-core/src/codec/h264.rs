@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use crate::codec::{
-    ChromaFormat, ColorInfo, ColourPrimaries, MatrixCoefficients, ParseError, Rational,
+    ChromaFormat, ColorInfo, ColourPrimaries, MatrixCoefficients, CodecParseError, Rational,
     TransferCharacteristics,
 };
 use crate::mpegts::demux::event::NalUnit;
@@ -93,7 +93,7 @@ pub struct H264ParameterSets {
 /// input failed, the function returns `Err`. Inputs that contain no
 /// parameter set NALs (e.g., non-IDR access units, H.265-only slices)
 /// return `Ok(H264ParameterSets::default())`.
-pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H264ParameterSets, ParseError> {
+pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H264ParameterSets, CodecParseError> {
     let mut out = H264ParameterSets::default();
     let mut had_param_set = false;
     let mut all_failed = true;
@@ -137,7 +137,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H264ParameterSets, Parse
     }
 
     if had_param_set && all_failed {
-        return Err(ParseError::EngineError(
+        return Err(CodecParseError::EngineError(
             "every parameter set NAL in the input failed to parse".into(),
         ));
     }
@@ -148,9 +148,9 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H264ParameterSets, Parse
 /// (returns Err on first failure). Note: this standalone variant cannot
 /// validate that `seq_parameter_set_id` references a real SPS — that
 /// check happens in [`parse_parameter_sets`] which has the SPS context.
-pub fn parse_pps(rbsp: &[u8]) -> Result<H264Pps, ParseError> {
+pub fn parse_pps(rbsp: &[u8]) -> Result<H264Pps, CodecParseError> {
     if rbsp.is_empty() {
-        return Err(ParseError::TruncatedRbsp {
+        return Err(CodecParseError::TruncatedRbsp {
             offset_bits: 0,
             needed_bits: 8,
         });
@@ -164,19 +164,19 @@ pub fn parse_pps(rbsp: &[u8]) -> Result<H264Pps, ParseError> {
     let mut bit_reader = BitReader::new(byte_reader);
     let pps_id = bit_reader
         .read_ue("pic_parameter_set_id")
-        .map_err(|e| ParseError::EngineError(format!("{e:?}")))?;
+        .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
     let sps_id = bit_reader
         .read_ue("seq_parameter_set_id")
-        .map_err(|e| ParseError::EngineError(format!("{e:?}")))?;
+        .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
     let cabac = bit_reader
         .read_bool("entropy_coding_mode_flag")
-        .map_err(|e| ParseError::EngineError(format!("{e:?}")))?;
+        .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
     // Both IDs are constrained to [0, 255] by the H.264 spec (Table 7-1).
-    let pic_parameter_set_id = u8::try_from(pps_id).map_err(|_| ParseError::ReservedValue {
+    let pic_parameter_set_id = u8::try_from(pps_id).map_err(|_| CodecParseError::ReservedValue {
         field: "pic_parameter_set_id",
         value: pps_id,
     })?;
-    let seq_parameter_set_id = u8::try_from(sps_id).map_err(|_| ParseError::ReservedValue {
+    let seq_parameter_set_id = u8::try_from(sps_id).map_err(|_| CodecParseError::ReservedValue {
         field: "seq_parameter_set_id",
         value: sps_id,
     })?;
@@ -195,9 +195,9 @@ pub fn parse_pps(rbsp: &[u8]) -> Result<H264Pps, ParseError> {
 /// Parse a single SPS RBSP. Input contract: RBSP body only — Annex B
 /// start code stripped, NAL header byte stripped, emulation prevention
 /// bytes preserved (matches `NalUnit::H264 { payload }`).
-pub fn parse_sps(rbsp: &[u8]) -> Result<H264Sps, ParseError> {
+pub fn parse_sps(rbsp: &[u8]) -> Result<H264Sps, CodecParseError> {
     if rbsp.is_empty() {
-        return Err(ParseError::TruncatedRbsp {
+        return Err(CodecParseError::TruncatedRbsp {
             offset_bits: 0,
             needed_bits: 8,
         });
@@ -209,17 +209,17 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H264Sps, ParseError> {
     let byte_reader = ByteReader::without_skip(std::io::Cursor::new(rbsp));
     let bit_reader = BitReader::new(byte_reader);
     let parsed = SeqParameterSet::from_bits(bit_reader)
-        .map_err(|e| ParseError::EngineError(format!("{e:?}")))?;
+        .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
     convert_sps(&parsed, rbsp)
 }
 
-fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> Result<H264Sps, ParseError> {
+fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> Result<H264Sps, CodecParseError> {
     // pixel_dimensions() implements the spec crop math correctly.
     // Propagate errors (FieldValueTooLarge, CroppingError) rather than
     // silently returning (0, 0) on malformed streams.
     let (width, height) = p
         .pixel_dimensions()
-        .map_err(|e| ParseError::EngineError(format!("{e:?}")))?;
+        .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
 
     let chroma_format = match p.chroma_info.chroma_format {
         h264_reader::nal::sps::ChromaFormat::Monochrome => ChromaFormat::Monochrome,

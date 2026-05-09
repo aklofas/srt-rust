@@ -1,6 +1,6 @@
 //! H.266 VPS parser. Per H.266 V4 §7.3.2.3.
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 use crate::codec::h265::bitreader::BitReader; // shared with codec::h266 — codec-agnostic Annex-B bitreader
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,7 +18,7 @@ pub struct H266Vps {
 /// Profile/Tier/Level loops, OLS info, DPB/HRD parameters are not
 /// surfaced — `raw_rbsp` carries the full input so consumers needing
 /// more can call deeper parsers later.
-pub fn parse_vps(rbsp: &[u8]) -> Result<H266Vps, ParseError> {
+pub fn parse_vps(rbsp: &[u8]) -> Result<H266Vps, CodecParseError> {
     let mut br = BitReader::new(rbsp);
     let vps_id = br.read_u(4)? as u8;
     let max_layers_minus1 = br.read_u(6)? as u8;

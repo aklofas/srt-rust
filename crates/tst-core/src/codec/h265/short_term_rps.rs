@@ -13,7 +13,7 @@
 //! read for that RPS's reference set.
 
 use super::bitreader::BitReader;
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 
 /// Reasonable upper bound on `num_negative_pics` / `num_positive_pics`
 /// per RPS. H.265 §A.4.2 levels cap the total reference picture count;
@@ -25,7 +25,7 @@ const MAX_PICS_PER_SET: u32 = 32;
 pub(crate) fn walk_short_term_ref_pic_sets(
     br: &mut BitReader,
     num_short_term_ref_pic_sets: u32,
-) -> Result<(), ParseError> {
+) -> Result<(), CodecParseError> {
     let mut num_delta_pocs: Vec<u32> = Vec::with_capacity(num_short_term_ref_pic_sets as usize);
     for rps_idx in 0..num_short_term_ref_pic_sets {
         walk_one_short_term_rps(br, rps_idx, &mut num_delta_pocs)?;
@@ -37,7 +37,7 @@ fn walk_one_short_term_rps(
     br: &mut BitReader,
     rps_idx: u32,
     num_delta_pocs: &mut Vec<u32>,
-) -> Result<(), ParseError> {
+) -> Result<(), CodecParseError> {
     // Per H.265 §7.3.7: inter_ref_pic_set_prediction_flag is present
     // only when stRpsIdx != 0 (in SPS context — the slice-header context
     // also distinguishes stRpsIdx == num_short_term_ref_pic_sets, but
@@ -49,7 +49,7 @@ fn walk_one_short_term_rps(
         // delta_idx_minus1 + 1 must be ≤ rps_idx (§7.4.8).
         let delta_idx_minus1 = br.read_ue()?;
         if delta_idx_minus1 + 1 > rps_idx {
-            return Err(ParseError::ReservedValue {
+            return Err(CodecParseError::ReservedValue {
                 field: "delta_idx_minus1",
                 value: delta_idx_minus1,
             });
@@ -84,7 +84,7 @@ fn walk_one_short_term_rps(
         let num_negative = br.read_ue()?;
         let num_positive = br.read_ue()?;
         if num_negative > MAX_PICS_PER_SET || num_positive > MAX_PICS_PER_SET {
-            return Err(ParseError::ReservedValue {
+            return Err(CodecParseError::ReservedValue {
                 field: "num_negative_pics_or_num_positive_pics",
                 value: num_negative.max(num_positive),
             });
@@ -125,7 +125,7 @@ mod tests {
         full.push(0x80);
         let mut br = BitReader::new(&full);
         let err = walk_short_term_ref_pic_sets(&mut br, 1).unwrap_err();
-        assert!(matches!(err, ParseError::ReservedValue { .. }));
+        assert!(matches!(err, CodecParseError::ReservedValue { .. }));
     }
 
     fn encode_ue_to_bytes(v: u32) -> Vec<u8> {

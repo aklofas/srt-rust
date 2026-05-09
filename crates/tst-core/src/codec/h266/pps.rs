@@ -1,6 +1,6 @@
 //! H.266 PPS parser. Per H.266 V4 §7.3.2.5.
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 use crate::codec::h265::bitreader::BitReader;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,7 +14,7 @@ pub struct H266Pps {
 ///
 /// Current scope extracts only `pps_id` and `sps_id`. All other fields
 /// stay in `raw_rbsp` for consumers needing deeper info later.
-pub fn parse_pps(rbsp: &[u8]) -> Result<H266Pps, ParseError> {
+pub fn parse_pps(rbsp: &[u8]) -> Result<H266Pps, CodecParseError> {
     let mut br = BitReader::new(rbsp);
     let pps_id = br.read_u(6)? as u8;
     let sps_id = br.read_u(4)? as u8;

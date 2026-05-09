@@ -1,6 +1,6 @@
 //! H.266 Profile/Tier/Level parser. Per H.266 V4 §7.3.3.
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 use crate::codec::h265::bitreader::BitReader;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -31,7 +31,7 @@ pub fn parse_profile_tier_level(
     rbsp: &[u8],
     profile_tier_present_flag: bool,
     max_num_sub_layers_minus1: u8,
-) -> Result<H266ProfileTierLevel, ParseError> {
+) -> Result<H266ProfileTierLevel, CodecParseError> {
     let mut br = BitReader::new(rbsp);
     let mut out = H266ProfileTierLevel::default();
     parse_into(
@@ -58,7 +58,7 @@ pub(crate) fn parse_into(
     profile_tier_present_flag: bool,
     max_num_sub_layers_minus1: u8,
     out: &mut H266ProfileTierLevel,
-) -> Result<(), ParseError> {
+) -> Result<(), CodecParseError> {
     if profile_tier_present_flag {
         out.general_profile_idc = br.read_u(7)? as u8;
         out.general_tier_flag = br.read_bool()?;
@@ -104,7 +104,7 @@ pub(crate) fn parse_into(
 }
 
 /// §7.3.3.2 general_constraints_info(). Walk-and-discard.
-fn parse_general_constraints_info(br: &mut BitReader<'_>) -> Result<(), ParseError> {
+fn parse_general_constraints_info(br: &mut BitReader<'_>) -> Result<(), CodecParseError> {
     let gci_present_flag = br.read_bool()?;
     if gci_present_flag {
         // Fixed-shape body — count by section per H.266 V4 §7.3.3.2 (PDF p.72-73).

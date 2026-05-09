@@ -12,7 +12,7 @@
 // arrive in subsequent tasks (VPS/SPS/PPS parsers).
 #![allow(dead_code)]
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 
 #[doc(hidden)]
 pub struct BitReader<'a> {
@@ -44,9 +44,9 @@ impl<'a> BitReader<'a> {
 
     /// Read `n` bits (n ≤ 32). RBSP reading: if the previous two bytes
     /// were `00 00`, skip a single `03` byte before reading further.
-    pub fn read_u(&mut self, n: u32) -> Result<u32, ParseError> {
+    pub fn read_u(&mut self, n: u32) -> Result<u32, CodecParseError> {
         if n > 32 {
-            return Err(ParseError::EngineError(format!("read_u({n}) > 32")));
+            return Err(CodecParseError::EngineError(format!("read_u({n}) > 32")));
         }
         let mut acc = 0u32;
         for _ in 0..n {
@@ -55,11 +55,11 @@ impl<'a> BitReader<'a> {
         Ok(acc)
     }
 
-    pub fn read_bool(&mut self) -> Result<bool, ParseError> {
+    pub fn read_bool(&mut self) -> Result<bool, CodecParseError> {
         Ok(self.read_one_bit()? != 0)
     }
 
-    fn read_one_bit(&mut self) -> Result<u8, ParseError> {
+    fn read_one_bit(&mut self) -> Result<u8, CodecParseError> {
         loop {
             let byte_idx = (self.bit_pos / 8) as usize;
             let bit_in_byte = self.bit_pos % 8;
@@ -74,7 +74,7 @@ impl<'a> BitReader<'a> {
                 self.bit_pos += 8;
                 continue;
             }
-            let b = self.byte_at(byte_idx).ok_or(ParseError::TruncatedRbsp {
+            let b = self.byte_at(byte_idx).ok_or(CodecParseError::TruncatedRbsp {
                 offset_bits: self.bit_pos,
                 needed_bits: 1,
             })?;
@@ -85,7 +85,7 @@ impl<'a> BitReader<'a> {
     }
 
     /// Unsigned Exp-Golomb (ue(v)) per H.265 §9.2.2.
-    pub fn read_ue(&mut self) -> Result<u32, ParseError> {
+    pub fn read_ue(&mut self) -> Result<u32, CodecParseError> {
         let start = self.bit_pos;
         let mut zeros = 0u32;
         loop {
@@ -94,7 +94,7 @@ impl<'a> BitReader<'a> {
             // zeros = 31, suffix = 2^31 − 1). zeros = 32 makes `1u32 << 32`
             // undefined behavior (panics in debug, wraps in release).
             if zeros >= 32 {
-                return Err(ParseError::InvalidGolomb { offset_bits: start });
+                return Err(CodecParseError::InvalidGolomb { offset_bits: start });
             }
             let b = self.read_one_bit()?;
             if b == 1 {
@@ -107,7 +107,7 @@ impl<'a> BitReader<'a> {
     }
 
     /// Signed Exp-Golomb (se(v)) per H.265 §9.2.3.
-    pub fn read_se(&mut self) -> Result<i32, ParseError> {
+    pub fn read_se(&mut self) -> Result<i32, CodecParseError> {
         let v = self.read_ue()?;
         Ok(if v & 1 == 1 {
             ((v >> 1) as i32) + 1
@@ -116,7 +116,7 @@ impl<'a> BitReader<'a> {
         })
     }
 
-    pub fn skip(&mut self, n: u32) -> Result<(), ParseError> {
+    pub fn skip(&mut self, n: u32) -> Result<(), CodecParseError> {
         for _ in 0..n {
             self.read_one_bit()?;
         }
@@ -191,7 +191,7 @@ mod tests {
         let mut br = BitReader::new(&[0; 8]);
         assert!(matches!(
             br.read_ue(),
-            Err(ParseError::InvalidGolomb { .. })
+            Err(CodecParseError::InvalidGolomb { .. })
         ));
     }
 
@@ -210,7 +210,7 @@ mod tests {
         let mut br = BitReader::new(&bytes);
         let result = br.read_ue();
         assert!(
-            matches!(result, Err(ParseError::InvalidGolomb { .. })),
+            matches!(result, Err(CodecParseError::InvalidGolomb { .. })),
             "expected InvalidGolomb on 32-zero codeword, got {result:?}",
         );
     }

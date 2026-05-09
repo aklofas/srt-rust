@@ -7,7 +7,7 @@
 //!
 //! See [`frames`] for the iterator entry point.
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 
 /// MPEG audio layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +69,7 @@ pub struct Frames<'a> {
 }
 
 impl<'a> Iterator for Frames<'a> {
-    type Item = Result<Frame<'a>, ParseError>;
+    type Item = Result<Frame<'a>, CodecParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -90,7 +90,7 @@ impl<'a> Iterator for Frames<'a> {
         let len = header.frame_length_bytes as usize;
         if remaining.len() < len {
             self.done = true;
-            return Some(Err(ParseError::Truncated {
+            return Some(Err(CodecParseError::Truncated {
                 needed: header.frame_length_bytes,
                 had: remaining.len() as u32,
             }));
@@ -174,15 +174,15 @@ pub(crate) fn decode_bitrate(
     version: Version,
     layer: Layer,
     bitrate_index: u8,
-) -> Result<u32, ParseError> {
+) -> Result<u32, CodecParseError> {
     if bitrate_index == 0 {
-        return Err(ParseError::ReservedValue {
+        return Err(CodecParseError::ReservedValue {
             field: "bitrate_index",
             value: 0,
         });
     }
     if bitrate_index == 15 {
-        return Err(ParseError::Forbidden {
+        return Err(CodecParseError::Forbidden {
             field: "bitrate_index",
         });
     }
@@ -204,9 +204,9 @@ const SAMPLE_RATE_TABLE: [[u32; 4]; 3] = [
 pub(crate) fn decode_sample_rate(
     version: Version,
     sample_rate_index: u8,
-) -> Result<u32, ParseError> {
+) -> Result<u32, CodecParseError> {
     if sample_rate_index == 3 {
-        return Err(ParseError::ReservedValue {
+        return Err(CodecParseError::ReservedValue {
             field: "sample_rate_index",
             value: 3,
         });
@@ -307,9 +307,9 @@ struct Header {
 ///   padding_bit:        bit  22 (1 bit)
 ///   private_bit:        bit  23 (1 bit)
 ///   channel_mode:       bits 24..26 (2 bits)
-fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
+fn parse_header(bytes: &[u8]) -> Result<Header, CodecParseError> {
     if bytes.len() < 4 {
-        return Err(ParseError::Truncated {
+        return Err(CodecParseError::Truncated {
             needed: 4,
             had: bytes.len() as u32,
         });
@@ -325,7 +325,7 @@ fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
     // be 0 (MPEG-2.5) or 1.
     let sync = (h >> 21) & 0x7FF;
     if sync != 0x7FF {
-        return Err(ParseError::BadSyncWord {
+        return Err(CodecParseError::BadSyncWord {
             expected: 0x7FF,
             found: sync as u16,
         });
@@ -335,7 +335,7 @@ fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
     let version = match version_id {
         0b00 => Version::Mpeg2_5,
         0b01 => {
-            return Err(ParseError::ReservedValue {
+            return Err(CodecParseError::ReservedValue {
                 field: "version_id",
                 value: 0b01,
             });
@@ -348,7 +348,7 @@ fn parse_header(bytes: &[u8]) -> Result<Header, ParseError> {
     let layer_id = ((h >> 17) & 0b11) as u8;
     let layer = match layer_id {
         0b00 => {
-            return Err(ParseError::ReservedValue {
+            return Err(CodecParseError::ReservedValue {
                 field: "layer",
                 value: 0,
             });
@@ -412,13 +412,13 @@ mod tests {
     fn bitrate_index0_is_free_format_rejected() {
         let err = decode_bitrate(Version::Mpeg1, Layer::I, 0).unwrap_err();
         assert!(
-            matches!(err, ParseError::ReservedValue { field, value: 0 } if field == "bitrate_index")
+            matches!(err, CodecParseError::ReservedValue { field, value: 0 } if field == "bitrate_index")
         );
     }
     #[test]
     fn bitrate_index15_is_forbidden() {
         let err = decode_bitrate(Version::Mpeg1, Layer::I, 15).unwrap_err();
-        assert!(matches!(err, ParseError::Forbidden { field } if field == "bitrate_index"));
+        assert!(matches!(err, CodecParseError::Forbidden { field } if field == "bitrate_index"));
     }
     #[test]
     fn sample_rate_v1_index0_is_44100() {
@@ -436,7 +436,7 @@ mod tests {
     fn sample_rate_index3_is_reserved() {
         let err = decode_sample_rate(Version::Mpeg1, 3).unwrap_err();
         assert!(
-            matches!(err, ParseError::ReservedValue { field, value: 3 } if field == "sample_rate_index")
+            matches!(err, CodecParseError::ReservedValue { field, value: 3 } if field == "sample_rate_index")
         );
     }
     #[test]
@@ -547,13 +547,13 @@ mod tests {
     #[test]
     fn parse_header_too_short_yields_truncated() {
         let err = parse_header(&[0xFF, 0xFB]).unwrap_err();
-        assert!(matches!(err, ParseError::Truncated { needed: 4, had: 2 }));
+        assert!(matches!(err, CodecParseError::Truncated { needed: 4, had: 2 }));
     }
 
     #[test]
     fn parse_header_bad_sync_yields_bad_sync_word() {
         let err = parse_header(&[0xAB, 0xCD, 0x00, 0x00]).unwrap_err();
-        assert!(matches!(err, ParseError::BadSyncWord { .. }));
+        assert!(matches!(err, CodecParseError::BadSyncWord { .. }));
     }
 
     #[test]
@@ -566,7 +566,7 @@ mod tests {
     fn frames_short_yields_truncated_then_none() {
         let mut it = frames(&[0xFF]);
         match it.next() {
-            Some(Err(ParseError::Truncated { .. })) => {}
+            Some(Err(CodecParseError::Truncated { .. })) => {}
             other => panic!("expected Err(Truncated), got {:?}", other),
         }
         assert!(it.next().is_none(), "iterator should end after first error");
@@ -598,7 +598,7 @@ mod tests {
         buf.extend(std::iter::repeat(0u8).take(96));
         let mut it = frames(&buf);
         match it.next() {
-            Some(Err(ParseError::Truncated { .. })) => {}
+            Some(Err(CodecParseError::Truncated { .. })) => {}
             other => panic!("expected Err(Truncated), got {:?}", other),
         }
         assert!(it.next().is_none());

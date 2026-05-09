@@ -2,7 +2,7 @@
 
 use super::bitreader::BitReader;
 use super::{profile_tier_level, vui};
-use crate::codec::{ChromaFormat, ColorInfo, ParseError, Rational, validate_bit_depth_minus8};
+use crate::codec::{ChromaFormat, ColorInfo, CodecParseError, Rational, validate_bit_depth_minus8};
 
 /// Parsed H.265 SPS fields. Populated by [`parse_sps`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,22 +69,22 @@ impl H265Sps {
 fn chroma_format_from(
     chroma_format_idc: u32,
     _separate_colour_plane_flag: bool,
-) -> Result<ChromaFormat, ParseError> {
+) -> Result<ChromaFormat, CodecParseError> {
     match chroma_format_idc {
         0 => Ok(ChromaFormat::Monochrome),
         1 => Ok(ChromaFormat::Yuv420),
         2 => Ok(ChromaFormat::Yuv422),
         3 => Ok(ChromaFormat::Yuv444),
-        other => Err(ParseError::ReservedValue {
+        other => Err(CodecParseError::ReservedValue {
             field: "chroma_format_idc",
             value: other,
         }),
     }
 }
 
-pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
+pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, CodecParseError> {
     if rbsp.is_empty() {
-        return Err(ParseError::TruncatedRbsp {
+        return Err(CodecParseError::TruncatedRbsp {
             offset_bits: 0,
             needed_bits: 8,
         });
@@ -139,7 +139,7 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
     // hostile value near u32::MAX would overflow the `+ 4`. Reject
     // out-of-range values eagerly.
     if log2_max_pic_order_cnt_lsb_minus4 > 12 {
-        return Err(ParseError::ReservedValue {
+        return Err(CodecParseError::ReservedValue {
             field: "log2_max_pic_order_cnt_lsb_minus4",
             value: log2_max_pic_order_cnt_lsb_minus4,
         });
@@ -168,7 +168,7 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, ParseError> {
     if scaling_list_enabled_flag {
         let sps_scaling_list_data_present_flag = br.read_bool()?;
         if sps_scaling_list_data_present_flag {
-            return Err(ParseError::UnsupportedProfile {
+            return Err(CodecParseError::UnsupportedProfile {
                 profile_idc: ptl.general_profile_idc,
             });
         }

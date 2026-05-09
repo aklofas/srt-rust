@@ -3,7 +3,7 @@
 //! Spec: ISO/IEC 13818-7 Annex 1.A (ADTS framing) + ISO/IEC 14496-3
 //! Tables 1.16 (sampling frequency) and 1.19 (channel configuration).
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 
 /// Sampling frequency table per ISO 14496-3 Table 1.16.
 /// Index 13/14 are reserved; index 15 is "explicit" (not meaningful in ADTS).
@@ -13,9 +13,9 @@ const SAMPLING_FREQUENCY: [u32; 13] = [
 
 /// Decode `sampling_frequency_index` (4 bits) to sample rate (Hz).
 /// Errors `ReservedValue` for indices 13/14/15.
-pub(crate) fn decode_sample_rate(idx: u8) -> Result<u32, ParseError> {
+pub(crate) fn decode_sample_rate(idx: u8) -> Result<u32, CodecParseError> {
     if idx >= 13 {
-        return Err(ParseError::ReservedValue {
+        return Err(CodecParseError::ReservedValue {
             field: "sampling_frequency_index",
             value: idx as u32,
         });
@@ -25,9 +25,9 @@ pub(crate) fn decode_sample_rate(idx: u8) -> Result<u32, ParseError> {
 
 /// Decode `channel_configuration` (3 bits) to canonical channel count
 /// per ISO 14496-3 Table 1.19. Index 0 = PCE-defined (we don't walk PCE).
-pub(crate) fn decode_channels(channel_config: u8) -> Result<u8, ParseError> {
+pub(crate) fn decode_channels(channel_config: u8) -> Result<u8, CodecParseError> {
     match channel_config {
-        0 => Err(ParseError::ReservedValue {
+        0 => Err(CodecParseError::ReservedValue {
             field: "channel_configuration",
             value: 0,
         }),
@@ -38,7 +38,7 @@ pub(crate) fn decode_channels(channel_config: u8) -> Result<u8, ParseError> {
         5 => Ok(5),
         6 => Ok(6),
         7 => Ok(8),
-        _ => Err(ParseError::ReservedValue {
+        _ => Err(CodecParseError::ReservedValue {
             field: "channel_configuration",
             value: channel_config as u32,
         }),
@@ -69,7 +69,7 @@ mod tests {
     fn sample_rate_index_13_reserved() {
         assert!(matches!(
             decode_sample_rate(13).unwrap_err(),
-            ParseError::ReservedValue {
+            CodecParseError::ReservedValue {
                 field: "sampling_frequency_index",
                 value: 13
             }
@@ -87,7 +87,7 @@ mod tests {
     fn channels_pce_defined_is_reserved() {
         assert!(matches!(
             decode_channels(0).unwrap_err(),
-            ParseError::ReservedValue {
+            CodecParseError::ReservedValue {
                 field: "channel_configuration",
                 value: 0
             }

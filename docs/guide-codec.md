@@ -23,15 +23,15 @@ mpegts::demux::Demuxer
   ↓ nals: Vec<NalUnit>   — raw RBSP bytes; NAL type in the header
 
 tst_core::codec::h264
-  parse_sps(rbsp)         → Result<H264Sps, ParseError>
-  parse_pps(rbsp)         → Result<H264Pps, ParseError>
-  parse_parameter_sets(nals) → Result<H264ParameterSets, ParseError>
+  parse_sps(rbsp)         → Result<H264Sps, CodecParseError>
+  parse_pps(rbsp)         → Result<H264Pps, CodecParseError>
+  parse_parameter_sets(nals) → Result<H264ParameterSets, CodecParseError>
 
 tst_core::codec::h265
-  parse_vps(rbsp)         → Result<H265Vps, ParseError>
-  parse_sps(rbsp)         → Result<H265Sps, ParseError>
-  parse_pps(rbsp)         → Result<H265Pps, ParseError>
-  parse_parameter_sets(nals) → Result<H265ParameterSets, ParseError>
+  parse_vps(rbsp)         → Result<H265Vps, CodecParseError>
+  parse_sps(rbsp)         → Result<H265Sps, CodecParseError>
+  parse_pps(rbsp)         → Result<H265Pps, CodecParseError>
+  parse_parameter_sets(nals) → Result<H265ParameterSets, CodecParseError>
 ```
 
 The demuxer event surface is unchanged — `DemuxEvent` is the same regardless
@@ -188,7 +188,7 @@ fields (carried on the VPS for the operating point set).
 - VPS + SPS + PPS only; APS NALs (types 17 / 18), Picture Header NALs
   (type 19), and multi-layer streams (`nuh_layer_id != 0`) pass through
   unparsed.
-- Bails `ParseError::UnsupportedProfile` on `sps_subpic_info_present_flag = 1`
+- Bails `CodecParseError::UnsupportedProfile` on `sps_subpic_info_present_flag = 1`
   and `sps_scaling_list_data_present_flag = 1` (rare; not in reference
   encoder defaults).
 - `color_info` and `frame_rate` are surfaced as `None` today — VUI walking
@@ -260,7 +260,7 @@ rather than walking individual OBUs.
 
 ## Error handling
 
-All parse functions return `Result<T, ParseError>`. The two tiers:
+All parse functions return `Result<T, CodecParseError>`. The two tiers:
 
 - **`parse_parameter_sets`** is partial-success-tolerant. If some NALs parse
   correctly and some don't, the correctly-parsed ones fill the output maps and
@@ -269,7 +269,7 @@ All parse functions return `Result<T, ParseError>`. The two tiers:
 - **`parse_sps` / `parse_pps` / `parse_vps`** are strict: they return `Err` on
   the first parsing failure.
 
-`ParseError` carries a human-readable description. The most common variant
+`CodecParseError` carries a human-readable description. The most common variant
 encountered in production is `UnsupportedProfile` (the H.265 SPS parser
 does not yet walk `scaling_list_data` or more than a trivial number of
 short-term reference picture sets — not exercised by x265 default configuration
@@ -378,7 +378,7 @@ modules:
 | `ColourPrimaries` | BT.709, BT.2020, DCI-P3, Unspecified, … (full ITU-T H.273 table) |
 | `TransferCharacteristics` | BT.709, SMPTE ST 2084 (PQ), HLG, IEC 61966-2-1 (sRGB), … |
 | `MatrixCoefficients` | BT.601, BT.709, BT.2020 NCL/CL, Identity, … |
-| `ParseError` | Shared error type for all codec parsers |
+| `CodecParseError` | Shared error type for all codec parsers |
 
 The color enum decoders are verified against BT.2020 + PQ HDR fixtures to
 ensure the numeric code points match the ITU-T H.273 Table 2 / Table 3 /
@@ -413,7 +413,7 @@ modules parse those bytes into typed per-frame metadata (sample rate, channel
 count, layer/profile, frame size) without decoding audio content.
 
 Both modules expose the same shape: `fn frames(bytes) -> impl Iterator<Item =
-Result<Frame, ParseError>>`. The iterator advances by header-decoded
+Result<Frame, CodecParseError>>`. The iterator advances by header-decoded
 `frame_length_bytes` and ends on first error or buffer end.
 
 ### `codec::mpegaudio` — MPEG-1 / MPEG-2 / MPEG-2.5 Layer I/II/III

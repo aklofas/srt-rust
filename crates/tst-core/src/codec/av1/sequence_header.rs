@@ -13,7 +13,7 @@
 
 use crate::codec::av1::bitreader::Av1BitReader;
 use crate::codec::{
-    ChromaFormat, ColorInfo, ColourPrimaries, MatrixCoefficients, ParseError, Rational,
+    ChromaFormat, ColorInfo, ColourPrimaries, MatrixCoefficients, CodecParseError, Rational,
     TransferCharacteristics,
 };
 
@@ -42,7 +42,7 @@ pub struct Av1SequenceHeader {
     pub raw: Vec<u8>,
 }
 
-pub fn parse_sequence_header(payload: &[u8]) -> Result<Av1SequenceHeader, ParseError> {
+pub fn parse_sequence_header(payload: &[u8]) -> Result<Av1SequenceHeader, CodecParseError> {
     let mut br = Av1BitReader::new(payload);
 
     let profile = br.f(3)? as u8;
@@ -263,7 +263,7 @@ pub fn parse_sequence_header(payload: &[u8]) -> Result<Av1SequenceHeader, ParseE
             (false, true) => {
                 // AV1 forbids 4:4:0 — spec doesn't define this combination;
                 // surface as ReservedValue rather than a misleading enum.
-                return Err(ParseError::ReservedValue {
+                return Err(CodecParseError::ReservedValue {
                     field: "av1_subsampling",
                     value: 0b01,
                 });

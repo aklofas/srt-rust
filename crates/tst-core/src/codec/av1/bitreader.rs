@@ -12,7 +12,7 @@
 
 #![allow(dead_code)] // primitives surface in Tasks 23-25
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 
 #[doc(hidden)]
 pub struct Av1BitReader<'a> {
@@ -26,16 +26,16 @@ impl<'a> Av1BitReader<'a> {
     }
 
     /// `f(n)` per AV1 §4.7.2 — read n bits as unsigned.
-    pub fn f(&mut self, n: usize) -> Result<u64, ParseError> {
+    pub fn f(&mut self, n: usize) -> Result<u64, CodecParseError> {
         if n > 64 {
-            return Err(ParseError::EngineError(format!(
+            return Err(CodecParseError::EngineError(format!(
                 "f(n>64) not supported (n={n})"
             )));
         }
         let cap = self.buf.len().saturating_mul(8);
         let need = self.bit_pos.checked_add(n);
         if !matches!(need, Some(need) if need <= cap) {
-            return Err(ParseError::TruncatedRbsp {
+            return Err(CodecParseError::TruncatedRbsp {
                 offset_bits: u32::try_from(self.bit_pos).unwrap_or(u32::MAX),
                 needed_bits: u32::try_from(n).unwrap_or(u32::MAX),
             });
@@ -57,7 +57,7 @@ impl<'a> Av1BitReader<'a> {
     /// read `n` more bits as unsigned `extra`. Result is
     /// `(1 << n) - 1 + extra`. If leading zeros >= 32, return the
     /// spec sentinel `2^32 - 1`.
-    pub fn uvlc(&mut self) -> Result<u64, ParseError> {
+    pub fn uvlc(&mut self) -> Result<u64, CodecParseError> {
         let mut leading_zeros = 0usize;
         while leading_zeros < 32 {
             let bit = self.f(1)?;
@@ -165,6 +165,6 @@ mod tests {
         let mut br = Av1BitReader::new(&[0xFF; 1]);
         br.set_bit_pos_for_test(usize::MAX - 4);
         let result = br.f(64);
-        assert!(matches!(result, Err(ParseError::TruncatedRbsp { .. })));
+        assert!(matches!(result, Err(CodecParseError::TruncatedRbsp { .. })));
     }
 }

@@ -18,7 +18,7 @@
 //! Per-sub-layer fields (when `maxNumSubLayersMinus1 > 0`) are skipped.
 
 use super::bitreader::BitReader;
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct ProfileTierLevel {
@@ -47,7 +47,7 @@ pub(crate) struct ProfileTierLevel {
 pub(crate) fn parse(
     br: &mut BitReader<'_>,
     max_num_sub_layers_minus1: u8,
-) -> Result<ProfileTierLevel, ParseError> {
+) -> Result<ProfileTierLevel, CodecParseError> {
     let general_profile_space = br.read_u(2)? as u8;
     let general_tier_flag = br.read_bool()?;
     let general_profile_idc = br.read_u(5)? as u8;

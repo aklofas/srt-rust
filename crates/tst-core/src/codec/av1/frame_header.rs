@@ -1,6 +1,6 @@
 //! AV1 Frame Header parser (light scope). Per AV1 spec §5.9.
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 use crate::codec::av1::bitreader::Av1BitReader;
 use crate::codec::av1::sequence_header::Av1SequenceHeader;
 
@@ -28,7 +28,7 @@ pub struct Av1FrameHeaderLight {
 pub fn parse_frame_header_light(
     payload: &[u8],
     seq: &Av1SequenceHeader,
-) -> Result<Av1FrameHeaderLight, ParseError> {
+) -> Result<Av1FrameHeaderLight, CodecParseError> {
     if seq.reduced_still_picture_header {
         // Per AV1 §5.9.1: with reduced_still_picture_header set, the
         // frame is implicitly a KEY_FRAME with show_frame=1; no fields

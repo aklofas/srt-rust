@@ -3,18 +3,18 @@
 //! Per AV1 spec §4.10.5 (`leb128()`). Up to 8 bytes; each byte's
 //! 0x80 bit signals continuation; the low 7 bits accumulate.
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 
 /// Decode one LEB128 value from `buf` starting at `offset`. Returns
 /// `(value, bytes_consumed)`. Errors per AV1 spec: continuation past
 /// 8 bytes, or buffer exhausted before terminator.
-pub fn read_leb128(buf: &[u8], offset: usize) -> Result<(u64, usize), ParseError> {
+pub fn read_leb128(buf: &[u8], offset: usize) -> Result<(u64, usize), CodecParseError> {
     let mut value: u64 = 0;
     let mut consumed = 0usize;
     for i in 0..8 {
         let pos = offset + i;
         if pos >= buf.len() {
-            return Err(ParseError::InvalidLeb128 {
+            return Err(CodecParseError::InvalidLeb128 {
                 offset_bytes: offset as u32,
             });
         }
@@ -27,7 +27,7 @@ pub fn read_leb128(buf: &[u8], offset: usize) -> Result<(u64, usize), ParseError
     }
     // 8 bytes consumed and last byte still had continuation bit set —
     // malformed per spec.
-    Err(ParseError::InvalidLeb128 {
+    Err(CodecParseError::InvalidLeb128 {
         offset_bytes: offset as u32,
     })
 }
@@ -62,13 +62,13 @@ mod tests {
     #[test]
     fn leb128_truncated_returns_err() {
         let r = read_leb128(&[0x80], 0);
-        assert!(matches!(r, Err(ParseError::InvalidLeb128 { .. })));
+        assert!(matches!(r, Err(CodecParseError::InvalidLeb128 { .. })));
     }
 
     #[test]
     fn leb128_overlong_returns_err() {
         let buf = [0x80; 9];
         let r = read_leb128(&buf, 0);
-        assert!(matches!(r, Err(ParseError::InvalidLeb128 { .. })));
+        assert!(matches!(r, Err(CodecParseError::InvalidLeb128 { .. })));
     }
 }

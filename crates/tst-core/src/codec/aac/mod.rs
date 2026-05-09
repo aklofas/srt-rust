@@ -8,7 +8,7 @@
 mod adts;
 mod tables;
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 
 /// AAC profile per ADTS §1.A (legacy MPEG-2 AAC profile names; most
 /// real-world ADTS encodes AAC-LC regardless of which MPEG-4 audio
@@ -61,7 +61,7 @@ pub struct AdtsFrames<'a> {
 }
 
 impl<'a> Iterator for AdtsFrames<'a> {
-    type Item = Result<AdtsFrame<'a>, ParseError>;
+    type Item = Result<AdtsFrame<'a>, CodecParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -82,7 +82,7 @@ impl<'a> Iterator for AdtsFrames<'a> {
         let len = header.frame_length_bytes as usize;
         if remaining.len() < len {
             self.done = true;
-            return Some(Err(ParseError::Truncated {
+            return Some(Err(CodecParseError::Truncated {
                 needed: header.frame_length_bytes,
                 had: remaining.len() as u32,
             }));
@@ -164,7 +164,7 @@ mod tests {
         buf.truncate(50); // header decodes but body too short
         let mut it = frames(&buf);
         match it.next() {
-            Some(Err(ParseError::Truncated { .. })) => {}
+            Some(Err(CodecParseError::Truncated { .. })) => {}
             other => panic!("expected Err(Truncated), got {:?}", other),
         }
         assert!(it.next().is_none());
@@ -174,7 +174,7 @@ mod tests {
     fn frames_short_header_yields_truncated() {
         let mut it = frames(&[0xFF, 0xFF]);
         match it.next() {
-            Some(Err(ParseError::Truncated { needed: 7, had: 2 })) => {}
+            Some(Err(CodecParseError::Truncated { needed: 7, had: 2 })) => {}
             other => panic!("expected Truncated 7,2, got {:?}", other),
         }
         assert!(it.next().is_none());
@@ -185,7 +185,7 @@ mod tests {
         let bad = [0xAB; 7];
         let mut it = frames(&bad);
         match it.next() {
-            Some(Err(ParseError::BadSyncWord { .. })) => {}
+            Some(Err(CodecParseError::BadSyncWord { .. })) => {}
             other => panic!("expected BadSyncWord, got {:?}", other),
         }
         assert!(it.next().is_none());

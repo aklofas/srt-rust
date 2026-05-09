@@ -3,7 +3,7 @@
 use crate::codec::h265::bitreader::BitReader;
 use crate::codec::h266::profile_tier_level::{H266ProfileTierLevel, parse_into};
 use crate::codec::h266::vui::parse_h266_vui;
-use crate::codec::{ChromaFormat, ColorInfo, ParseError, Rational, validate_bit_depth_minus8};
+use crate::codec::{ChromaFormat, ColorInfo, CodecParseError, Rational, validate_bit_depth_minus8};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H266Sps {
@@ -48,14 +48,14 @@ impl H266Sps {
 /// `color_info` + `frame_rate` from VUI. Conformance-window cropping is
 /// applied to width/height before they are returned.
 ///
-/// Bails `ParseError::UnsupportedProfile` on `sps_subpic_info_present_flag`
+/// Bails `CodecParseError::UnsupportedProfile` on `sps_subpic_info_present_flag`
 /// and `sps_scaling_list_data_present_flag` paths — these are rare in
 /// reference-encoder defaults and would require walking large per-tile
 /// or per-coefficient blocks not modeled here. Same conservative stance
 /// as `codec::h265::parse_sps`.
-pub fn parse_sps(rbsp: &[u8]) -> Result<H266Sps, ParseError> {
+pub fn parse_sps(rbsp: &[u8]) -> Result<H266Sps, CodecParseError> {
     if rbsp.is_empty() {
-        return Err(ParseError::TruncatedRbsp {
+        return Err(CodecParseError::TruncatedRbsp {
             offset_bits: 0,
             needed_bits: 8,
         });
@@ -115,7 +115,7 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H266Sps, ParseError> {
         // bit-widths depend on CTU size and picture dimensions.
         // Modeling that path adds significant complexity for streams
         // that almost never occur in non-multi-picture encoders.
-        return Err(ParseError::UnsupportedProfile {
+        return Err(CodecParseError::UnsupportedProfile {
             profile_idc: profile_tier_level.general_profile_idc,
         });
     }
@@ -133,7 +133,7 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H266Sps, ParseError> {
         2 => ChromaFormat::Yuv422,
         3 => ChromaFormat::Yuv444,
         other => {
-            return Err(ParseError::ReservedValue {
+            return Err(CodecParseError::ReservedValue {
                 field: "sps_chroma_format_idc",
                 value: other,
             });
@@ -193,7 +193,7 @@ fn walk_sps_body(
     vps_id: u8,
     chroma_format_idc: u32,
     log2_ctu_size_minus5: u32,
-) -> Result<(Option<ColorInfo>, Option<Rational>), ParseError> {
+) -> Result<(Option<ColorInfo>, Option<Rational>), CodecParseError> {
     // §7.3.2.4 — entropy coding / entry-point config.
     let _entropy_coding_sync_enabled_flag = br.read_bool()?;
     let _entry_point_offsets_present_flag = br.read_bool()?;
@@ -435,7 +435,7 @@ fn walk_sps_body(
     // scaling_list_data() is complex and rarely enabled in reference encoders.
     let sps_explicit_scaling_list_enabled_flag = br.read_bool()?;
     if sps_explicit_scaling_list_enabled_flag {
-        return Err(ParseError::UnsupportedProfile {
+        return Err(CodecParseError::UnsupportedProfile {
             profile_idc: 0, // profile_idc not relevant here; bail is structural
         });
     }
@@ -520,7 +520,7 @@ fn walk_dpb_parameters(
     br: &mut BitReader<'_>,
     max_sublayers_minus1: u8,
     sublayer_info_flag: bool,
-) -> Result<(), ParseError> {
+) -> Result<(), CodecParseError> {
     let start = if sublayer_info_flag {
         0u8
     } else {
@@ -543,7 +543,7 @@ fn walk_dpb_parameters(
 fn walk_timing_hrd_parameters(
     br: &mut BitReader<'_>,
     max_sublayers_minus1: u8,
-) -> Result<Option<(u32, u32)>, ParseError> {
+) -> Result<Option<(u32, u32)>, CodecParseError> {
     // §7.3.5.1 general_timing_hrd_parameters().
     let num_units_in_tick = br.read_u(32)?;
     let time_scale = br.read_u(32)?;
@@ -625,7 +625,7 @@ fn walk_sublayer_hrd_parameters(
     br: &mut BitReader<'_>,
     hrd_cpb_cnt_minus1: u32,
     du_hrd_params_present: bool,
-) -> Result<(), ParseError> {
+) -> Result<(), CodecParseError> {
     for _ in 0..=hrd_cpb_cnt_minus1 {
         let _bit_rate_value_minus1 = br.read_ue()?;
         let _cpb_size_value_minus1 = br.read_ue()?;
@@ -653,7 +653,7 @@ fn walk_ref_pic_list_struct(
     num_ref_pic_lists: u32,
     long_term_ref_pics_flag: bool,
     inter_layer_pred_enabled_flag: bool,
-) -> Result<(), ParseError> {
+) -> Result<(), CodecParseError> {
     let num_ref_entries = br.read_ue()?;
     // ltrp_in_header_flag: present when long_term_ref_pics_flag is true,
     // rplsIdx < num_ref_pic_lists[listIdx], and num_ref_entries > 0.
@@ -706,7 +706,7 @@ fn walk_ref_pic_list_struct(
                 // Long-term entry signalled in RPLS — requires poc_lsb_lt of
                 // width `log2_max_pic_order_cnt_lsb_minus4 + 4` bits. We don't
                 // thread that width through the call stack, so bail here.
-                return Err(ParseError::UnsupportedProfile { profile_idc: 0 });
+                return Err(CodecParseError::UnsupportedProfile { profile_idc: 0 });
             }
         } else {
             // Inter-layer ref-pic: ilrp_idx ue(v).
@@ -1050,7 +1050,7 @@ mod tests {
     /// triggers the addition path (`(1<<31) + (1<<31) = 1<<32`); the case
     /// `(1<<31, 0, 0, 0)` triggers the multiplication path (`2 * (1<<31) = 1<<32`).
     /// Bug closed = parse returns `Ok(sps)` with bounded dims or a typed
-    /// `ParseError`; no panic in either build mode.
+    /// `CodecParseError`; no panic in either build mode.
     #[test]
     fn parse_sps_saturates_crop_on_adversarial_offsets() {
         for offsets in [
@@ -1069,11 +1069,11 @@ mod tests {
                     );
                 }
                 Err(
-                    ParseError::ReservedValue { .. }
-                    | ParseError::Truncated { .. }
-                    | ParseError::TruncatedRbsp { .. }
-                    | ParseError::InvalidGolomb { .. }
-                    | ParseError::UnsupportedProfile { .. },
+                    CodecParseError::ReservedValue { .. }
+                    | CodecParseError::Truncated { .. }
+                    | CodecParseError::TruncatedRbsp { .. }
+                    | CodecParseError::InvalidGolomb { .. }
+                    | CodecParseError::UnsupportedProfile { .. },
                 ) => {
                     // Typed error is also acceptable per the plan — body
                     // walk may bail past the crop for various reasons.
@@ -1103,7 +1103,7 @@ mod tests {
         assert!(
             matches!(
                 result,
-                Err(ParseError::ReservedValue {
+                Err(CodecParseError::ReservedValue {
                     field: "sps_bitdepth_minus8",
                     value: 248
                 })

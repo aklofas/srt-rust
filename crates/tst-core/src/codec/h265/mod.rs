@@ -18,7 +18,7 @@ pub use pps::{H265Pps, parse_pps};
 pub use sps::{H265Sps, parse_sps};
 pub use vps::{H265Vps, parse_vps};
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 use crate::mpegts::demux::event::NalUnit;
 use std::collections::BTreeMap;
 
@@ -32,7 +32,7 @@ pub struct H265ParameterSets {
 /// Parse all VPS/SPS/PPS NAL units from a slice. See [`crate::codec`]
 /// crate root for the partial-success-tolerant behavior. Returns Ok with
 /// empty maps when no parameter set NALs are present.
-pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H265ParameterSets, ParseError> {
+pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H265ParameterSets, CodecParseError> {
     let mut out = H265ParameterSets::default();
     let mut had_param_set = false;
     let mut all_failed = true;
@@ -83,7 +83,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H265ParameterSets, Parse
     }
 
     if had_param_set && all_failed {
-        return Err(ParseError::EngineError(
+        return Err(CodecParseError::EngineError(
             "every parameter set NAL in the input failed to parse".into(),
         ));
     }
@@ -325,7 +325,7 @@ mod sps_tests {
         assert!(
             matches!(
                 result,
-                Err(ParseError::ReservedValue {
+                Err(CodecParseError::ReservedValue {
                     field: "bit_depth_luma_minus8",
                     value: 248
                 })
@@ -388,7 +388,7 @@ mod sps_tests {
         assert!(
             matches!(
                 result,
-                Err(ParseError::ReservedValue {
+                Err(CodecParseError::ReservedValue {
                     field: "log2_max_pic_order_cnt_lsb_minus4",
                     value: 248
                 })
@@ -681,7 +681,7 @@ mod sps_tests {
     /// triggers the addition path (`(1<<31) + (1<<31) = 1<<32`); the case
     /// `(1 << 31, 0)` triggers the multiplication path (`2 * (1<<31) = 1<<32`).
     /// Bug closed = parse returns `Ok(sps)` with bounded dims or a typed
-    /// `ParseError`; no panic in either build mode.
+    /// `CodecParseError`; no panic in either build mode.
     #[test]
     fn parse_sps_saturates_crop_on_adversarial_offsets() {
         for (conf_left, conf_right) in [(1u32 << 30, 1u32 << 30), (1u32 << 31, 0u32)] {
@@ -698,9 +698,9 @@ mod sps_tests {
                     );
                 }
                 Err(
-                    ParseError::ReservedValue { .. }
-                    | ParseError::TruncatedRbsp { .. }
-                    | ParseError::InvalidGolomb { .. },
+                    CodecParseError::ReservedValue { .. }
+                    | CodecParseError::TruncatedRbsp { .. }
+                    | CodecParseError::InvalidGolomb { .. },
                 ) => {
                     // Typed error is also acceptable per the plan.
                 }

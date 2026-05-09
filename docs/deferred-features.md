@@ -430,7 +430,7 @@ the trigger that would unblock it.
   module under the existing `aac/` directory (the directory layout was
   set up at the 2026-05-07 ship for exactly this future). AC-3 lands
   as a new top-level `codec::ac3` module. Both follow the same
-  iterator-of-`Result<Frame, ParseError>` shape as the existing slice.
+  iterator-of-`Result<Frame, CodecParseError>` shape as the existing slice.
 
 ## Audio carriage at the `tst-c` C ABI
 

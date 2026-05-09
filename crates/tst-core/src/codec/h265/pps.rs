@@ -3,7 +3,7 @@
 //! decoder-internal.
 
 use super::bitreader::BitReader;
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H265Pps {
@@ -12,9 +12,9 @@ pub struct H265Pps {
     pub raw_rbsp: Vec<u8>,
 }
 
-pub fn parse_pps(rbsp: &[u8]) -> Result<H265Pps, ParseError> {
+pub fn parse_pps(rbsp: &[u8]) -> Result<H265Pps, CodecParseError> {
     if rbsp.is_empty() {
-        return Err(ParseError::TruncatedRbsp {
+        return Err(CodecParseError::TruncatedRbsp {
             offset_bits: 0,
             needed_bits: 8,
         });

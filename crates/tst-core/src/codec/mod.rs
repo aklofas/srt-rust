@@ -204,7 +204,7 @@ impl MatrixCoefficients {
 /// behavioral rules.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum ParseError {
+pub enum CodecParseError {
     /// Bitstream cursor walked past end of input. `needed_bits` is the
     /// shortfall in bits at the position where parsing failed.
     TruncatedRbsp { offset_bits: u32, needed_bits: u32 },
@@ -259,7 +259,7 @@ pub enum ParseError {
     Forbidden { field: &'static str },
 }
 
-impl std::fmt::Display for ParseError {
+impl std::fmt::Display for CodecParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::TruncatedRbsp {
@@ -312,7 +312,7 @@ impl std::fmt::Display for ParseError {
     }
 }
 
-impl std::error::Error for ParseError {}
+impl std::error::Error for CodecParseError {}
 
 /// Validate `bit_depth_*_minus8` per H.264 / H.265 / H.266: spec range
 /// `0..=8` (bit_depth ∈ 8..=16). ffmpeg clamps at `bit_depth ≤ 14` (i.e.
@@ -320,11 +320,11 @@ impl std::error::Error for ParseError {}
 /// threshold. A value greater than 6 indicates a malformed or fuzzed
 /// parameter set, not a real codec.
 ///
-/// Returns `8 + value as u8` on success, [`ParseError::ReservedValue`]
+/// Returns `8 + value as u8` on success, [`CodecParseError::ReservedValue`]
 /// otherwise. The H.264 path uses `h264-reader` which validates internally.
-pub(crate) fn validate_bit_depth_minus8(field: &'static str, value: u32) -> Result<u8, ParseError> {
+pub(crate) fn validate_bit_depth_minus8(field: &'static str, value: u32) -> Result<u8, CodecParseError> {
     if value > 6 {
-        return Err(ParseError::ReservedValue { field, value });
+        return Err(CodecParseError::ReservedValue { field, value });
     }
     Ok(8 + value as u8)
 }
@@ -415,7 +415,7 @@ mod tests {
 
     #[test]
     fn parse_error_displays_helpfully() {
-        let e = ParseError::TruncatedRbsp {
+        let e = CodecParseError::TruncatedRbsp {
             offset_bits: 80,
             needed_bits: 5,
         };
@@ -427,13 +427,13 @@ mod tests {
     #[test]
     fn parse_error_is_std_error() {
         fn assert_error<E: std::error::Error>(_: &E) {}
-        let e = ParseError::EngineError("test".into());
+        let e = CodecParseError::EngineError("test".into());
         assert_error(&e);
     }
 
     #[test]
     fn parse_error_reserved_value_carries_field_name() {
-        let e = ParseError::ReservedValue {
+        let e = CodecParseError::ReservedValue {
             field: "chroma_format_idc",
             value: 4,
         };
@@ -443,16 +443,16 @@ mod tests {
 
     #[test]
     fn parse_error_audio_variants_format() {
-        let bad_sync = ParseError::BadSyncWord {
+        let bad_sync = CodecParseError::BadSyncWord {
             expected: 0xFFF,
             found: 0xABC,
         };
         assert!(format!("{:?}", bad_sync).contains("BadSyncWord"));
 
-        let trunc = ParseError::Truncated { needed: 7, had: 4 };
+        let trunc = CodecParseError::Truncated { needed: 7, had: 4 };
         assert!(format!("{:?}", trunc).contains("Truncated"));
 
-        let forbidden = ParseError::Forbidden { field: "layer" };
+        let forbidden = CodecParseError::Forbidden { field: "layer" };
         assert!(format!("{:?}", forbidden).contains("Forbidden"));
     }
 }

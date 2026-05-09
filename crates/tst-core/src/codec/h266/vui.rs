@@ -6,7 +6,7 @@
 //!     general_timing_hrd_parameters(), NOT in VUI. So this function
 //!     returns only `Option<ColorInfo>`.
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 use crate::codec::h265::bitreader::BitReader;
 use crate::codec::{
     ColorInfo, ColourPrimaries, MatrixCoefficients, Rational, TransferCharacteristics,
@@ -20,7 +20,7 @@ use crate::codec::{
 pub(super) fn parse_h266_vui(
     br: &mut BitReader<'_>,
     _payload_size_bytes: usize,
-) -> Result<Option<ColorInfo>, ParseError> {
+) -> Result<Option<ColorInfo>, CodecParseError> {
     // §7.3.2.5 — four source flags (H.266-specific; precede aspect_ratio).
     let vui_progressive_source_flag = br.read_bool()?; // u(1)
     let vui_interlaced_source_flag = br.read_bool()?; // u(1)

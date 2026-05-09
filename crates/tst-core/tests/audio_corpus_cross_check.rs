@@ -33,12 +33,12 @@ struct Tally {
 }
 
 impl Tally {
-    fn record(&mut self, err: &codec::ParseError) {
+    fn record(&mut self, err: &codec::CodecParseError) {
         match err {
-            codec::ParseError::BadSyncWord { .. } => self.errors_bad_sync += 1,
-            codec::ParseError::Truncated { .. } => self.errors_truncated += 1,
-            codec::ParseError::ReservedValue { .. } => self.errors_reserved += 1,
-            codec::ParseError::Forbidden { .. } => self.errors_forbidden += 1,
+            codec::CodecParseError::BadSyncWord { .. } => self.errors_bad_sync += 1,
+            codec::CodecParseError::Truncated { .. } => self.errors_truncated += 1,
+            codec::CodecParseError::ReservedValue { .. } => self.errors_reserved += 1,
+            codec::CodecParseError::Forbidden { .. } => self.errors_forbidden += 1,
             _ => self.errors_other += 1,
         }
     }

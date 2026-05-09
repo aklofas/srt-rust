@@ -3,7 +3,7 @@
 //! are skipped.
 
 use super::bitreader::BitReader;
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 use crate::codec::{
     ColorInfo, ColourPrimaries, MatrixCoefficients, Rational, TransferCharacteristics,
 };
@@ -16,7 +16,7 @@ pub(crate) struct VuiOut {
 pub(crate) fn parse(
     br: &mut BitReader<'_>,
     _max_sub_layers_minus1: u8,
-) -> Result<VuiOut, ParseError> {
+) -> Result<VuiOut, CodecParseError> {
     let aspect_ratio_info_present_flag = br.read_bool()?;
     let mut sample_aspect_ratio = None;
     if aspect_ratio_info_present_flag {

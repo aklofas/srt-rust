@@ -1,6 +1,6 @@
 //! AV1 OBU stream collector. Per AV1 spec §5.2.
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 use crate::codec::av1::frame_header::{Av1FrameHeaderLight, parse_frame_header_light};
 use crate::codec::av1::sequence_header::{Av1SequenceHeader, parse_sequence_header};
 use crate::mpegts::demux::event::Obu;
@@ -13,7 +13,7 @@ pub struct Av1ObuStream {
     /// Frame-header OBUs that arrive before a Sequence Header land
     /// here too with a synthesized "frame header before sequence header"
     /// engine error.
-    pub unparseable: Vec<(u8, ParseError)>,
+    pub unparseable: Vec<(u8, CodecParseError)>,
 }
 
 /// Walk a `Vec<Obu>` and collect typed structs. Partial-success-tolerant.
@@ -49,7 +49,7 @@ pub fn parse_obu_stream(obus: &[Obu]) -> Av1ObuStream {
                 } else {
                     unparseable.push((
                         obu.obu_type,
-                        ParseError::EngineError("frame header before sequence header".into()),
+                        CodecParseError::EngineError("frame header before sequence header".into()),
                     ));
                 }
             }

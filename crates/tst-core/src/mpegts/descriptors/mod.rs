@@ -10,14 +10,14 @@
 
 pub mod parse;
 pub use parse::{
-    ParseError, SubtitlingDescriptorEntry, TeletextDescriptorEntry, find_descriptor_tag,
+    DescriptorParseError, SubtitlingDescriptorEntry, TeletextDescriptorEntry, find_descriptor_tag,
     find_format_identifier, parse_subtitling_descriptor, parse_teletext_descriptor,
 };
 
 /// Errors returned by descriptor builder helpers in this module.
 ///
 /// Empty `entries` arguments produce a degenerate `tag 0x00` descriptor
-/// that the demux parser rejects with [`ParseError::EmptyInput`]. The
+/// that the demux parser rejects with [`DescriptorParseError::EmptyInput`]. The
 /// encoder rejects the same shape symmetrically rather than emitting
 /// invalid PSI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -207,7 +207,7 @@ pub fn subtitling_descriptor(
 ///
 /// Returns [`DescriptorError::EmptyEntries`] if `entries` is empty —
 /// the demux parser rejects an empty subtitling_descriptor with
-/// [`ParseError::EmptyInput`], so the encoder rejects symmetrically.
+/// [`DescriptorParseError::EmptyInput`], so the encoder rejects symmetrically.
 pub fn subtitling_descriptor_multi(
     entries: &[([u8; 3], u8, u16, u16)],
 ) -> Result<Vec<u8>, DescriptorError> {
@@ -255,7 +255,7 @@ pub fn teletext_descriptor(
 ///
 /// Returns [`DescriptorError::EmptyEntries`] if `entries` is empty —
 /// the demux parser rejects an empty teletext_descriptor with
-/// [`ParseError::EmptyInput`], so the encoder rejects symmetrically.
+/// [`DescriptorParseError::EmptyInput`], so the encoder rejects symmetrically.
 pub fn teletext_descriptor_multi(
     entries: &[([u8; 3], u8, u8, u8)],
 ) -> Result<Vec<u8>, DescriptorError> {
@@ -591,7 +591,7 @@ mod tests {
     #[test]
     fn subtitling_descriptor_multi_rejects_empty_entries() {
         // Empty entries would produce a degenerate `0x59 0x00` descriptor
-        // that the demux parser rejects with ParseError::EmptyInput.
+        // that the demux parser rejects with DescriptorParseError::EmptyInput.
         // Encoder rejects symmetrically.
         let result = subtitling_descriptor_multi(&[]);
         assert_eq!(result, Err(DescriptorError::EmptyEntries { tag: 0x59 }));

@@ -13,7 +13,7 @@
 //!   (type 19), multi-layer streams (`nuh_layer_id != 0`), and
 //!   general_constraint_info parsing are deferred — see
 //!   `docs/deferred-features.md`.
-//! - The parser bails with `ParseError::UnsupportedProfile` on rare
+//! - The parser bails with `CodecParseError::UnsupportedProfile` on rare
 //!   SPS paths (`scaling_list_data_present_flag = 1`,
 //!   `num_short_term_ref_pic_sets > 0`) that aren't exercised by
 //!   reference encoder defaults. Same conservative stance as H.265.
@@ -29,7 +29,7 @@ pub use profile_tier_level::H266ProfileTierLevel;
 pub use sps::{H266Sps, parse_sps};
 pub use vps::{H266Vps, parse_vps};
 
-use crate::codec::ParseError;
+use crate::codec::CodecParseError;
 use crate::mpegts::demux::event::NalUnit;
 use std::collections::BTreeMap;
 
@@ -37,7 +37,7 @@ use std::collections::BTreeMap;
 /// VPS / SPS / PPS by id. Partial-success-tolerant: bad NALs emit
 /// `tracing::warn!` and are skipped; `Err` only when every parameter-set
 /// NAL fails.
-pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H266ParameterSets, ParseError> {
+pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H266ParameterSets, CodecParseError> {
     let mut vpses: BTreeMap<u8, H266Vps> = BTreeMap::new();
     let mut spses: BTreeMap<u8, H266Sps> = BTreeMap::new();
     let mut ppses: BTreeMap<u8, H266Pps> = BTreeMap::new();
@@ -89,7 +89,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H266ParameterSets, Parse
         }
     }
     if any_seen && all_failed {
-        return Err(ParseError::EngineError(
+        return Err(CodecParseError::EngineError(
             "all H.266 parameter-set NALs failed to parse".into(),
         ));
     }

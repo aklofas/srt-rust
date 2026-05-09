@@ -1,6 +1,6 @@
 # Cookbook
 
-Common multi-step recipes. Each recipe is a short narrative + a code block + a link to the corresponding runnable example. Run any example with `cargo run --example <name>`. The full set of examples lives at `crates/tst-srt/examples/`.
+Common multi-step recipes. Each recipe is a short narrative + a code block + a link to the corresponding runnable example. Run any example with `cargo run -p <crate> --example <name>` (the recipe Runnable lines below name the right crate). Examples live across `crates/tst-srt/examples/`, `crates/tst-pipeline/examples/`, and `crates/tst-core/examples/`.
 
 ## Contents
 
@@ -240,7 +240,7 @@ tstables --pid <pmt-pid> output.ts | grep -A1 "Forbidden Descriptor"
 Or in Rust on the receive side, decode `StreamInfo::raw_descriptors`
 directly (see `guide-mpegts-demux.md` "Reading per-stream descriptors").
 
-Runnable example: `cargo run --example mux_dual_camera`.
+Runnable example: `cargo run -p tst-srt --example mux_dual_camera`.
 
 ### 16. Repack two single-program inputs into one multi-program TS
 
@@ -491,7 +491,7 @@ while let Some(e) = demux.next_event() {
 }
 ```
 
-Runnable: `cargo run --example demux_subtitle_file -- input.ts`.
+Runnable: `cargo run -p tst-srt --example demux_subtitle_file -- input.ts`.
 
 ## KLV metadata
 
@@ -656,7 +656,7 @@ while let Some(event) = demuxer.next_event() {
 # }
 ```
 
-Runnable form: `cargo run --example decode_vmti_metadata -- capture.ts`.
+Runnable form: `cargo run -p tst-core --example decode_vmti_metadata -- capture.ts`.
 
 For per-target classification labels (VObjectSeries), per-target
 track state (VTracker), pixel masks (VMask), or image cutouts (VChip
@@ -833,7 +833,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: `cargo run --example pair_klv_pipeline -- input.ts`.
+Runnable: `cargo run -p tst-pipeline --example pair_klv_pipeline -- input.ts`.
 
 ### 25. Pair sync-KLV in batch mode (`MatchMode::Buffered`)
 
@@ -1076,7 +1076,7 @@ while let Some(ev) = demuxer.next_event() {
 }
 ```
 
-**Runnable variant:** `cargo run --example parse_audio_frames -- input.ts`
+**Runnable variant:** `cargo run -p tst-core --example parse_audio_frames -- input.ts`
 deduplicates output to first-change-only per PID.
 
 **Caveats:**
@@ -1184,4 +1184,4 @@ mux.push_subtitle_to(h, 90_000, cue.as_bytes())?;
 // 0 (queue empty); see the runnable example for a `drain_all` helper.
 ```
 
-Runnable: `cargo run --example mux_with_webvtt_subtitles -- output.ts`.
+Runnable: `cargo run -p tst-srt --example mux_with_webvtt_subtitles -- output.ts`.

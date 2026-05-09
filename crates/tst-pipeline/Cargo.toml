@@ -10,8 +10,11 @@ description  = "TS Transformer pipeline shells: Sender, MuxSender, RawSender, Re
 
 [dependencies]
 tst-core  = { path = "../tst-core" }
-log       = { workspace = true }
 thiserror = { workspace = true }
+# Single facade for diagnostics workspace-wide. Consumers wire one
+# `tracing-subscriber`. We only need `std`; default `attributes` brings
+# in proc-macro deps we don't use.
+tracing   = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 proptest = { workspace = true }

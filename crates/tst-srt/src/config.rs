@@ -128,6 +128,17 @@ impl SocketConfig {
     /// (e.g. URL query parameters via `tst_srt::url::parse`) and wants to
     /// fill in the sender-pipeline defaults for any fields the source
     /// did not specify.
+    ///
+    /// # Note on Role ambiguity
+    ///
+    /// Because [`Role::Receiver`] is simultaneously the default value and
+    /// the sentinel this method checks ("role unset → fill with Sender"),
+    /// there is no way to distinguish "I want this socket to be a Receiver"
+    /// from "I haven't set role yet." This method always promotes a
+    /// Receiver-roled config to Sender. Callers who need an explicit
+    /// Receiver role should not call `merge_sender_defaults` (use
+    /// [`merge_receiver_defaults`](Self::merge_receiver_defaults) or set
+    /// the role explicitly via other means after this method instead).
     pub fn merge_sender_defaults(&mut self) {
         if self.connect_timeout.is_none() {
             self.connect_timeout = Some(SENDER_DEFAULT_CONNECT_TIMEOUT);

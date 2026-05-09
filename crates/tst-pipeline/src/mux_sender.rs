@@ -510,6 +510,24 @@ impl<T: Transport> Drop for MuxSender<T> {
     }
 }
 
+/// Type alias for [`MuxSender`] with a boxed [`Transport`] trait object.
+///
+/// Bindings code (`srt-jni`, `srt-uniffi`, `tst-pyo3`) targets this single
+/// concrete type instead of cubing per-`T` instantiation. Rust callers with a
+/// custom transport keep the generic `MuxSender<MyTransport>` shape.
+///
+/// # Example — opaque sender from a runtime-chosen transport
+/// ```no_run
+/// use tst_pipeline::mux_sender::BoxedMuxSender;
+/// use tst_pipeline::MuxSender;
+/// use tst_core::Transport;
+///
+/// fn open(transport: Box<dyn Transport>) -> Result<BoxedMuxSender, Box<dyn std::error::Error>> {
+///     Ok(MuxSender::new(transport, Default::default())?)
+/// }
+/// ```
+pub type BoxedMuxSender = MuxSender<Box<dyn crate::Transport>>;
+
 impl<T: Transport> Inner<T> {
     fn send_video(
         &mut self,

@@ -64,6 +64,7 @@
 
 use crate::reconnect::ReconnectPolicy;
 use std::sync::{Arc, Mutex};
+use tracing::{debug, info, warn};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
@@ -143,9 +144,33 @@ impl<R: RecvTransport> RecvTransport for ManagedReceiveTransport<R> {
             if self.inner.is_none() {
                 attempt = attempt.saturating_add(1);
                 let Some(delay) = self.policy.next_delay(attempt) else {
+                    let max = self.policy.max_attempts.unwrap_or(0);
+                    // attempts_made = attempt - 1 because this iteration
+                    // never got past the budget check (no factory call
+                    // happened on this turn).
+                    warn!(
+                        target: "tst_pipeline::managed_receive",
+                        attempts_made = attempt - 1,
+                        max_attempts = max,
+                        "reconnect gave up — propagating final error to caller",
+                    );
                     self.closed = true;
                     return Err(TransportError::Closed);
                 };
+                info!(
+                    target: "tst_pipeline::managed_receive",
+                    attempt,
+                    max_attempts = self.policy.max_attempts.unwrap_or(0),
+                    backoff_ms = delay.as_millis() as u64,
+                    "reconnect attempt",
+                );
+                if !delay.is_zero() {
+                    debug!(
+                        target: "tst_pipeline::managed_receive",
+                        backoff_ms = delay.as_millis() as u64,
+                        "backoff before next attempt",
+                    );
+                }
                 std::thread::sleep(delay);
                 match (self.factory)() {
                     Ok(t) => {

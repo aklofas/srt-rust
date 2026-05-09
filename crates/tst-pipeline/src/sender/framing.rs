@@ -32,6 +32,7 @@ pub enum TsFramingMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
 pub enum TsFramingError {
     #[error("TS sync byte not found at expected boundary (offset {offset})")]
     SyncLost { offset: usize },

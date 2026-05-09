@@ -140,3 +140,11 @@ path = "codec-parsing/extract_h265_sps_to_rbsp.rs"
 [[example]]
 name = "extract_h266_sps_to_rbsp"
 path = "codec-parsing/extract_h266_sps_to_rbsp.rs"
+
+[[example]]
+name = "managed_reconnect"
+path = "operations/managed_reconnect.rs"
+
+[[example]]
+name = "tee_disk_and_demux"
+path = "operations/tee_disk_and_demux.rs"

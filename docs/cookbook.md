@@ -4,7 +4,7 @@ Common multi-step recipes. Each recipe is a short narrative + a code block + a l
 
 ## Contents
 
-- [Sending](#sending) — recipes 1, 8, 11
+- [Sending](#sending) — recipes 0, 1, 8, 11
 - [Muxing](#muxing) — recipes 3, 9, 15, 16, 19, 22, 23
 - [Receiving](#receiving) — recipes 4, 5, 21
 - [KLV metadata](#klv-metadata) — recipes 6, 7, 28, 30
@@ -15,6 +15,36 @@ Common multi-step recipes. Each recipe is a short narrative + a code block + a l
 Recipe numbers are stable across edits (existing inbound links stay valid); within each section recipes are listed in numeric order, not narrative order.
 
 ## Sending
+
+### 0. Send a single TS packet to any `Transport`
+
+The simplest possible sender: open a transport, push 188 bytes, drop.
+
+```rust
+use tst_pipeline::{RawSender, RawSenderConfig};
+use tst_core::transport::{Transport, TransportError};
+
+// In-memory sink; real callers plug in a `tst_srt::SrtTransport` (recipe 11)
+// or any custom Transport (recipe 8).
+struct Sink(Vec<u8>);
+impl Transport for Sink {
+    fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+        self.0.extend_from_slice(b);
+        Ok(())
+    }
+    fn max_payload(&self) -> usize { 1316 }
+    fn close(&mut self) {}
+    fn is_alive(&self) -> bool { true }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut sender = RawSender::new(Sink(Vec::new()), RawSenderConfig::default());
+    let mut packet = [0u8; 188];
+    packet[0] = 0x47;  // TS sync byte
+    sender.send(&packet)?;
+    Ok(())
+}
+```
 
 ### 1. Send video + KLV with passphrase encryption
 

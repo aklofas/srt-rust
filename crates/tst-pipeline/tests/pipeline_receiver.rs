@@ -7,7 +7,7 @@
 use std::collections::VecDeque;
 
 use tst_core::mpegts::demux::DemuxEvent;
-use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 use tst_pipeline::DemuxReceiver;
@@ -106,7 +106,7 @@ fn drain_to_chunks(mux: &mut Muxer, chunk_size: usize) -> (VecDeque<Vec<u8>>, us
 /// contains ≥ 7 packets (or two pulls totalling ≥ 9 packets), letting the
 /// syncer lock and emit events.
 fn build_and_preload_muxer() -> Muxer {
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .psi_interval_ms(10)
         .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H264)

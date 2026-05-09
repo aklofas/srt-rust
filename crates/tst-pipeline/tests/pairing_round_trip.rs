@@ -9,7 +9,7 @@
 //! arm exposes).
 
 use tst_core::mpegts::demux::Demuxer;
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
 use tst_pipeline::{MatchMode, Pairer, PairerOutput};
 
 const VIDEO_PID: u16 = 0x100;
@@ -49,7 +49,7 @@ fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
 
 #[test]
 fn nearest_pts_pairs_sync_klv_with_video() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(VIDEO_PID, MuxVideoCodec::H264)
         .add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true)
@@ -109,7 +109,7 @@ fn nearest_pts_pairs_sync_klv_with_video() {
 #[test]
 fn last_before_pts_pairs_async_klv_at_lower_cadence() {
     // 1:5 cadence — 1 KLV record per 5 video frames.
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(VIDEO_PID, MuxVideoCodec::H264)
         .add_klv(KLV_PID, KlvStreamType::PrivateData, true)

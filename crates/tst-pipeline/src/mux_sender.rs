@@ -15,7 +15,8 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::Mutex;
 use tst_core::error::MuxError;
 use tst_core::mpegts::mux::{
-    AudioStreamHandle, Config, KlvStreamHandle, Muxer, SubtitleStreamHandle, VideoStreamHandle,
+    AudioStreamHandle, KlvStreamHandle, Muxer, MuxerConfig, SubtitleStreamHandle,
+    VideoStreamHandle,
 };
 use tst_core::transport::{Transport, TransportError};
 
@@ -65,7 +66,7 @@ struct Inner<T: Transport> {
 }
 
 impl<T: Transport> MuxSender<T> {
-    pub fn new(config: Config, transport: T) -> Result<Self, MuxError> {
+    pub fn new(config: MuxerConfig, transport: T) -> Result<Self, MuxError> {
         let muxer = Muxer::new(config)?;
         let cancel = transport.cancel_handle();
         Ok(Self {
@@ -535,7 +536,7 @@ mod multi_stream_tests {
 
     #[test]
     fn sender_video_handles_returns_one_per_configured_video_stream() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_video(0x1021, VideoCodec::H264)
@@ -550,7 +551,7 @@ mod multi_stream_tests {
 
     #[test]
     fn sender_send_video_to_routes_through() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_video(0x1021, VideoCodec::H264)
@@ -570,7 +571,7 @@ mod multi_stream_tests {
 
     #[test]
     fn stats_starts_with_per_stream_entries_for_configured_streams() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -589,7 +590,7 @@ mod multi_stream_tests {
 
     #[test]
     fn stats_count_video_pushes() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -608,7 +609,7 @@ mod multi_stream_tests {
 
     #[test]
     fn reset_stats_zeros_counters_keeps_per_stream() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -630,7 +631,7 @@ mod multi_stream_tests {
     fn send_audio_pushes_through_pipeline() {
         // Single program, video + one audio stream. The bare send_audio
         // shorthand resolves because total_audio == 1 across the muxer.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_audio(0x200, AudioCodec::Aac)
@@ -653,7 +654,7 @@ mod multi_stream_tests {
     fn send_audio_to_routes_by_handle() {
         // Two audio streams — bare send_audio would reject with
         // AmbiguousTarget; send_audio_to disambiguates via handle.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_audio(0x200, AudioCodec::Aac)
@@ -674,7 +675,7 @@ mod multi_stream_tests {
 
     #[test]
     fn send_subtitle_pushes_through_pipeline() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_subtitle(0x300, SubtitleCodec::WebVttInTs)
@@ -695,7 +696,7 @@ mod multi_stream_tests {
 
     #[test]
     fn send_subtitle_to_routes_by_handle() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_subtitle(0x300, SubtitleCodec::WebVttInTs)
@@ -716,7 +717,7 @@ mod multi_stream_tests {
 
     #[test]
     fn sender_send_video_rejects_when_multiple_video_streams_configured() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_video(0x1021, VideoCodec::H264)
@@ -793,7 +794,7 @@ mod cancel_tests {
     #[test]
     fn close_unblocks_parked_sender_thread() {
         let cancelled = Arc::new(AtomicBool::new(false));
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)

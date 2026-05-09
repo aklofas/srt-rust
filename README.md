@@ -13,6 +13,36 @@ Cross-platform SRT-based libraries for live video streaming from **gimbaled plat
 
 For a feature-by-feature support matrix — SRT options, MISB specs, typed ST 0601 items, and what's planned vs. out of scope — see [`docs/compatibility.md`](docs/compatibility.md).
 
+## Hello, MPEG-TS
+
+Mux one H.264 access unit + one KLV blob into 188-byte TS packets — no SRT, no peer:
+
+```rust
+use tst_core::mpegts::mux::{Muxer, MuxerConfig};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Default config: one program, H.264 video on PID 0x1011, async KLV on 0x1031.
+    let mut muxer = Muxer::new(MuxerConfig::default())?;
+
+    // Minimal Annex-B H.264 IDR NAL: start code + nal_header + filler.
+    let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0xA5, 0xA5, 0xA5];
+    muxer.push_video(&nal, /* pts_90khz */ 0, /* key_frame */ true)?;
+    muxer.push_klv(&[0x06, 0x0E, 0x2B, 0x34, 0xDE, 0xAD, 0xBE, 0xEF], 0, 0x00)?;
+
+    let mut buf = [0u8; 1316];
+    let mut packets = Vec::new();
+    loop {
+        let n = muxer.pull(&mut buf);
+        if n == 0 { break; }
+        packets.extend_from_slice(&buf[..n]);
+    }
+    println!("muxed {} bytes ({} TS packets)", packets.len(), packets.len() / 188);
+    Ok(())
+}
+```
+
+`cargo run --example mux_to_file -- out.ts 5` runs the longer 5-second version. To send those bytes over SRT, see [`docs/getting-started.md`](docs/getting-started.md).
+
 ## Architecture
 
 A Rust core wrapping libsrt via FFI, with bindings for JVM (JNI, JDK 17+), iOS/Android (UniFFI), and embedded Linux (cdylib + cbindgen). Both directions are first-class: `mpegts::mux` muxes encoded NALs + KLV into a TS stream; `mpegts::demux` reverses it (bytes in, typed `DemuxEvent` stream out — with sync recovery, AU cell unwrap, NAL split, and lenient handling of real-world non-conformance). Consumers can still feed extracted bytes to FFmpeg / JavaCV / Bento4 if they prefer, but Rust-native demux is now the default.

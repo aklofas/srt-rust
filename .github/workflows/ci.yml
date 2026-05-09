@@ -112,3 +112,16 @@ jobs:
               exit 1
             fi
           done
+
+      - name: non_exhaustive sweep guard
+        # Phase 1.2 added #[non_exhaustive] to all public error enums. CI step
+        # asserts the count never decreases (additions OK; removals fail the
+        # build). On adding a new error enum, bump the BASELINE constant.
+        run: |
+          BASELINE=37
+          OBSERVED=$(rg -c '#\[non_exhaustive\]' crates/ --type rust | awk -F: '{sum += $2} END {print sum}')
+          if [ "$OBSERVED" -lt "$BASELINE" ]; then
+            echo "non_exhaustive count regressed: expected >= $BASELINE, observed $OBSERVED" >&2
+            exit 1
+          fi
+          echo "non_exhaustive count: $OBSERVED (baseline $BASELINE)"

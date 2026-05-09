@@ -135,7 +135,7 @@ pub unsafe extern "C" fn tst_sender_get_stats(
         return TstError::InvalidConfig as i32;
     }
     handle.inner.with_inner_ref(|s| {
-        let stats = TstSenderStats::from(s.stats());
+        let stats = TstSenderStats::from(&s.stats());
         unsafe { *out = stats };
         0
     })
@@ -274,7 +274,7 @@ pub unsafe extern "C" fn tst_managed_sender_get_stats(
         return TstError::InvalidConfig as i32;
     }
     handle.inner.with_inner_ref(|s| {
-        let stats = TstSenderStats::from(s.stats());
+        let stats = TstSenderStats::from(&s.stats());
         unsafe { *out = stats };
         0
     })

@@ -93,7 +93,7 @@ impl<T: Transport> Sender<T> {
         Ok(())
     }
 
-    pub fn stats(&self) -> &SenderStats {
+    pub fn stats(&self) -> SenderStats {
         self.framing.stats()
     }
 

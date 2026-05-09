@@ -84,8 +84,8 @@ impl TsFraming {
         self.state == State::Synced
     }
 
-    pub fn stats(&self) -> &SenderStats {
-        &self.stats
+    pub fn stats(&self) -> SenderStats {
+        self.stats.clone()
     }
 
     /// Zero all stats counters. The framing-state machine (sync-byte

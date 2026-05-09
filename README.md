@@ -63,6 +63,7 @@ The repo's documentation lives under [`docs/`](docs/):
 - **[`troubleshooting.md`](docs/troubleshooting.md)** — diagnose build failures, connection failures, KLV rejection, TS framing issues, reconnect loops.
 - **[`deferred-features.md`](docs/deferred-features.md)** — what's not yet supported and the trigger conditions to revisit.
 - **[`compatibility.md`](docs/compatibility.md)** — feature-by-feature support matrix.
+- **[`binding-authors.md`](docs/binding-authors.md)** — entry point for `srt-jni`, `srt-uniffi`, `tst-pyo3` authors.
 
 Runnable Rust examples live at [`examples/`](examples/) — a workspace-level `tst-examples` crate organized into 8 task-oriented subfolders. Run any with `cargo run -p tst-examples --example <name>`. See `cookbook.md` for which example illustrates which recipe.
 

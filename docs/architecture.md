@@ -276,3 +276,7 @@ an entry in [`docs/deferred-features.md`](deferred-features.md).
 
 See [`docs/deferred-features.md`](deferred-features.md) for the
 canonical list and the rationale for each entry.
+
+## See also
+
+- [Binding-author starter](./binding-authors.md) — entry point for `srt-jni`, `srt-uniffi`, `tst-pyo3` authors.

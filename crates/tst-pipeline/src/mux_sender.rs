@@ -85,6 +85,52 @@ impl<T: Transport> MuxSender<T> {
     /// Send one video access unit. Annex-B framing is required.
     /// `pts_90khz` is in 90 kHz ticks (the TS clock); `key_frame` should
     /// be true for IDR.
+    ///
+    /// Resolves only when exactly one video stream is configured; with
+    /// multiple video streams the muxer surfaces
+    /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderError::Mux`] —
+    /// use [`Self::send_video_to`] in that case.
+    ///
+    /// # Errors
+    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the underlying
+    ///   muxer (e.g. `AmbiguousTarget` when more than one video stream
+    ///   is configured, `InvalidStreamHandle` from `send_video_to`).
+    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
+    ///
+    /// # Example
+    /// ```
+    /// use tst_pipeline::MuxSender;
+    /// use tst_core::mpegts::mux::{MuxerConfig, VideoCodec};
+    /// use tst_core::transport::{Transport, TransportError};
+    ///
+    /// // In-memory sink; real callers plug in `tst_srt::SrtTransport`.
+    /// struct Sink(Vec<u8>);
+    /// impl Transport for Sink {
+    ///     fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+    ///         self.0.extend_from_slice(b);
+    ///         Ok(())
+    ///     }
+    ///     fn max_payload(&self) -> usize { 1316 }
+    ///     fn close(&mut self) {}
+    ///     fn is_alive(&self) -> bool { true }
+    /// }
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let cfg = MuxerConfig::builder()
+    ///     .add_program(1, 0x1000)
+    ///     .add_video(0x1011, VideoCodec::H264)
+    ///     .end_program()
+    ///     .build()?;
+    /// let sender = MuxSender::new(Sink(Vec::new()), cfg)?;
+    ///
+    /// // Minimal Annex-B H.264 IDR NAL (start code + nal_unit_type=5).
+    /// let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0xBB];
+    /// sender.send_video(&nal, 0, true)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn send_video(
         &self,
         nal: &[u8],

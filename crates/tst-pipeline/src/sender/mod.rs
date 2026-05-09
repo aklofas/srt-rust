@@ -57,6 +57,60 @@ impl<T: Transport> Sender<T> {
 
     /// Push pre-muxed TS bytes. RECOVER mode silently skips/recovers; in
     /// STRICT mode returns an error on misalignment.
+    ///
+    /// `bytes` need not be a whole number of 188-byte packets — partial
+    /// packets are buffered until the next call (or [`Self::flush`]).
+    /// Each emitted bundle to the underlying transport is sized to fit
+    /// `transport.max_payload()`.
+    ///
+    /// # Errors
+    /// - [`SenderError::Framing`] in STRICT mode when the input fails
+    ///   to align on a TS sync byte (`0x47`).
+    /// - [`SenderError::Transport`] when the underlying [`Transport`]
+    ///   returns an error (e.g. `Closed`, `Broken`).
+    ///
+    /// # Example
+    /// ```
+    /// use tst_pipeline::{Sender, SenderConfig, TsFramingMode};
+    /// use tst_core::transport::{Transport, TransportError};
+    ///
+    /// // In-memory sink; real callers plug in `tst_srt::SrtTransport`.
+    /// struct Sink(Vec<u8>);
+    /// impl Transport for Sink {
+    ///     fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+    ///         self.0.extend_from_slice(b);
+    ///         Ok(())
+    ///     }
+    ///     fn max_payload(&self) -> usize { 1316 }
+    ///     fn close(&mut self) {}
+    ///     fn is_alive(&self) -> bool { true }
+    /// }
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// // STRICT mode rejects any input that doesn't start with sync 0x47;
+    /// // RECOVER (the default) silently resyncs.
+    /// let cfg = SenderConfig {
+    ///     framing_mode: TsFramingMode::Strict,
+    ///     ..SenderConfig::default()
+    /// };
+    /// let mut sender = Sender::new(Sink(Vec::new()), cfg);
+    ///
+    /// // Three whole TS packets — STRICT-mode sync-verify needs 0x47 at
+    /// // offsets 0, 188, and 376 before declaring the stream synced, so
+    /// // a 2-packet input would buffer without entering SYNCED.
+    /// let mut bytes = Vec::new();
+    /// for _ in 0..3 {
+    ///     bytes.push(0x47);
+    ///     bytes.extend(vec![0u8; 187]);
+    /// }
+    /// sender.send_ts(&bytes)?;
+    /// // 3 < 7 (one bundle), so no transport send yet — flush emits the
+    /// // partial bundle of 3 packets.
+    /// sender.flush()?;
+    /// assert_eq!(sender.stats().packets_sent, 3);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn send_ts(&mut self, bytes: &[u8]) -> Result<(), SenderError> {
         if self.closed {
             return Err(SenderError::Transport(

@@ -47,6 +47,41 @@ impl<T: Transport> RawSender<T> {
 
     /// Send one outbound message. Validates `bytes.len() ≤ transport.max_payload()`
     /// before delegating; the transport may add its own validation on top.
+    ///
+    /// Use this when the caller has its own muxer; for muxer integration
+    /// use [`crate::Sender`] (pre-muxed TS bytes) or [`crate::MuxSender`]
+    /// (encoded video / KLV / audio / subtitle in, TS out).
+    ///
+    /// # Errors
+    /// - [`TransportError::TooLarge`] when `bytes.len()` exceeds
+    ///   `transport.max_payload()`.
+    /// - Bubbles up any other [`TransportError`] from the underlying
+    ///   transport (e.g. `Closed`, `Broken`).
+    ///
+    /// # Example
+    /// ```
+    /// use tst_pipeline::{RawSender, RawSenderConfig};
+    /// use tst_core::transport::{Transport, TransportError};
+    ///
+    /// // In-memory sink; real callers plug in `tst_srt::SrtTransport`.
+    /// struct Sink(Vec<u8>);
+    /// impl Transport for Sink {
+    ///     fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+    ///         self.0.extend_from_slice(b);
+    ///         Ok(())
+    ///     }
+    ///     fn max_payload(&self) -> usize { 1316 }
+    ///     fn close(&mut self) {}
+    ///     fn is_alive(&self) -> bool { true }
+    /// }
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut sender = RawSender::new(Sink(Vec::new()), RawSenderConfig::default());
+    /// sender.send(&[0u8; 1316])?;
+    /// assert_eq!(sender.stats().packets_sent, 1);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn send(&mut self, bytes: &[u8]) -> Result<(), TransportError> {
         let max = self.transport.max_payload();
         if bytes.len() > max {

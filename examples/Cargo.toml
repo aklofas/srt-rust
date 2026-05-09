@@ -12,3 +12,7 @@ tst-pipeline = { path = "../crates/tst-pipeline" }
 tst-srt = { path = "../crates/tst-srt" }
 
 # [[example]] blocks added in subsequent tasks as files arrive in subfolders.
+
+[[example]]
+name = "hello_world"
+path = "getting-started/hello_world.rs"

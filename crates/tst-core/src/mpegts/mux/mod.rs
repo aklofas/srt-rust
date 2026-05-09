@@ -270,6 +270,13 @@ impl std::fmt::Debug for KlvStreamHandle {
 }
 
 impl VideoStreamHandle {
+    // These methods are `#[doc(hidden)]` because they are load-bearing for the
+    // `tst-c` C ABI, which converts handles to/from `uint32_t` at the FFI
+    // boundary across crate lines. Full `pub(crate)` demotion requires reshaping
+    // `tst-c` to use opaque handles internally — deferred to a future plan.
+    // Direct Rust callers should obtain handles via `Muxer::add_video_stream` /
+    // `Muxer::video_handles` — those are the public API entry points.
+
     /// Pack `(program_index, within_program_index)` into the opaque u32.
     ///
     /// Bit layout: bits 0..=3 = within_program_index (0..=15),
@@ -288,6 +295,7 @@ impl VideoStreamHandle {
     /// handle that was already packed by the muxer (e.g. round-tripped
     /// through C ABI) — calling `pack(0, raw)` would re-encode `raw` as a
     /// `within_index` and trip the assert.
+    #[doc(hidden)]
     pub fn pack(program_index: usize, within_index: usize) -> Self {
         debug_assert!(program_index < MAX_PROGRAMS);
         debug_assert!(within_index < 16);
@@ -295,6 +303,7 @@ impl VideoStreamHandle {
     }
 
     /// Unpack the opaque u32 into `(program_index, within_program_index)`.
+    #[doc(hidden)]
     pub fn unpack(self) -> (usize, usize) {
         let prog = ((self.0 >> 4) & 0x0F) as usize;
         let within = (self.0 & 0x0F) as usize;
@@ -303,6 +312,7 @@ impl VideoStreamHandle {
 
     /// Return the packed `u32` representation. Used at the FFI boundary when
     /// `srt-c` needs to return a handle to a C caller as a bare integer.
+    #[doc(hidden)]
     pub fn raw(self) -> u32 {
         self.0
     }
@@ -314,12 +324,16 @@ impl VideoStreamHandle {
     /// `within_index`, which trips the `within_index < 16` debug-assert for
     /// any out-of-range value the C caller passes (e.g. an invalid-handle
     /// test fixture with value 99).
+    #[doc(hidden)]
     pub fn from_raw(raw: u32) -> Self {
         Self(raw)
     }
 }
 
 impl KlvStreamHandle {
+    // These methods are `#[doc(hidden)]` — same rationale as `VideoStreamHandle`.
+    // See the comment on that impl block for the full explanation.
+
     /// Pack `(program_index, within_program_index)` into the opaque u32.
     ///
     /// Same bit layout as [`VideoStreamHandle::pack`]. Public so `srt-c`
@@ -333,6 +347,7 @@ impl KlvStreamHandle {
     /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`]
     /// at `push_klv_to` time. Use [`Self::from_raw`] for already-packed
     /// handles round-tripped through C ABI.
+    #[doc(hidden)]
     pub fn pack(program_index: usize, within_index: usize) -> Self {
         debug_assert!(program_index < MAX_PROGRAMS);
         debug_assert!(within_index < 16);
@@ -340,6 +355,7 @@ impl KlvStreamHandle {
     }
 
     /// Unpack the opaque u32 into `(program_index, within_program_index)`.
+    #[doc(hidden)]
     pub fn unpack(self) -> (usize, usize) {
         let prog = ((self.0 >> 4) & 0x0F) as usize;
         let within = (self.0 & 0x0F) as usize;
@@ -348,6 +364,7 @@ impl KlvStreamHandle {
 
     /// Return the packed `u32` representation. Used at the FFI boundary when
     /// `srt-c` needs to return a handle to a C caller as a bare integer.
+    #[doc(hidden)]
     pub fn raw(self) -> u32 {
         self.0
     }
@@ -355,6 +372,7 @@ impl KlvStreamHandle {
     /// Wrap a raw packed `u32` handle that was previously produced by
     /// [`pack`](Self::pack) and returned to a C caller. Same semantics as
     /// [`VideoStreamHandle::from_raw`].
+    #[doc(hidden)]
     pub fn from_raw(raw: u32) -> Self {
         Self(raw)
     }
@@ -388,24 +406,24 @@ impl AudioStreamHandle {
     /// if `within_index >= 16` (the per-program audio cap). Release builds
     /// silently mask the inputs into the 4-bit fields, which produces a
     /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`]
-    /// at `push_audio_to` time. Use [`Self::from_raw`] for already-packed
-    /// handles round-tripped through C ABI.
-    pub fn pack(program_index: usize, within_index: usize) -> Self {
+    /// at `push_audio_to` time.
+    pub(crate) fn pack(program_index: usize, within_index: usize) -> Self {
         debug_assert!(program_index < MAX_PROGRAMS);
         debug_assert!(within_index < 16);
         Self(((program_index as u32) << 4) | (within_index as u32 & 0x0F))
     }
 
     /// Inverse of `pack`. Returns `(program_index, within_index)`.
-    pub fn unpack(self) -> (usize, usize) {
+    pub(crate) fn unpack(self) -> (usize, usize) {
         let prog = ((self.0 >> 4) & 0x0F) as usize;
         let within = (self.0 & 0x0F) as usize;
         (prog, within)
     }
 
-    /// Wrap an already-packed `u32` (used at the C ABI boundary in `srt-c`
-    /// when handles arrive from the C caller).
-    pub fn from_raw(raw: u32) -> Self {
+    /// Wrap an already-packed `u32`. Test-only — production code has no
+    /// external consumer for Audio handles at the C ABI boundary yet.
+    #[cfg(test)]
+    pub(crate) fn from_raw(raw: u32) -> Self {
         Self(raw)
     }
 }
@@ -442,46 +460,36 @@ impl SubtitleStreamHandle {
     /// (0..=`MAX_SUBTITLE_STREAMS_PER_PROGRAM`-1), bits 4..=7 =
     /// program_index (0..=`MAX_PROGRAMS`-1), upper bits zero.
     ///
-    /// Public so `srt-c` can construct handles at the FFI boundary.
-    /// Single-program callers pass `program_index = 0`.
-    ///
     /// # Panics
     ///
     /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
     /// if `within_index >= MAX_SUBTITLE_STREAMS_PER_PROGRAM` (16). Release
     /// builds silently mask the inputs into the 4-bit fields, which
     /// produces a handle that the muxer will reject with
-    /// [`MuxError::InvalidStreamHandle`] at `push_subtitle_to` time. Use
-    /// [`Self::from_raw`] for already-packed handles round-tripped through
-    /// C ABI.
-    pub fn pack(program_index: usize, within_index: usize) -> Self {
+    /// [`MuxError::InvalidStreamHandle`] at `push_subtitle_to` time.
+    pub(crate) fn pack(program_index: usize, within_index: usize) -> Self {
         debug_assert!(program_index < MAX_PROGRAMS);
         debug_assert!(within_index < MAX_SUBTITLE_STREAMS_PER_PROGRAM);
         Self(((program_index as u32) << 4) | (within_index as u32 & 0x0F))
     }
 
     /// Unpack the opaque u32 into `(program_index, within_program_index)`.
-    pub fn unpack(self) -> (usize, usize) {
+    pub(crate) fn unpack(self) -> (usize, usize) {
         let prog = ((self.0 >> 4) & 0x0F) as usize;
         let within = (self.0 & 0x0F) as usize;
         (prog, within)
     }
 
-    /// Return the packed `u32` representation. Used at the FFI boundary when
-    /// `srt-c` needs to return a handle to a C caller as a bare integer.
-    pub fn raw(self) -> u32 {
+    /// Return the packed `u32` representation. Test-only — production code
+    /// has no external consumer for Subtitle handles at the C ABI boundary yet.
+    #[cfg(test)]
+    pub(crate) fn raw(self) -> u32 {
         self.0
     }
 
-    /// Wrap a raw packed `u32` handle that was previously produced by
-    /// [`pack`](Self::pack) and returned to a C caller. Use this at FFI
-    /// push-time entry points where the handle is already packed — calling
-    /// `pack(0, raw)` would be wrong because it re-encodes `raw` as a
-    /// `within_index`, which trips the `within_index <
-    /// MAX_SUBTITLE_STREAMS_PER_PROGRAM` debug-assert for any out-of-range
-    /// value the C caller passes (e.g. an invalid-handle test fixture with
-    /// value 99).
-    pub fn from_raw(raw: u32) -> Self {
+    /// Wrap an already-packed `u32`. Test-only.
+    #[cfg(test)]
+    pub(crate) fn from_raw(raw: u32) -> Self {
         Self(raw)
     }
 }

@@ -15,6 +15,31 @@ Plan #39 (examples reorganization) also rides this release.
 
 ---
 
+### Phase 3 — FFI-readiness: stream handle opacity (sub-phase 3.3, 2026-05-09)
+
+#### Changed (Phase 3 / handle opacity)
+
+- **`VideoStreamHandle::{pack, unpack, raw, from_raw}` and
+  `KlvStreamHandle::{pack, unpack, raw, from_raw}` are now
+  `#[doc(hidden)]`.** They remain `pub` (load-bearing for the `tst-c` C
+  ABI, which converts handles to/from `uint32_t` across crate lines), but
+  they no longer appear in rustdoc. Binding generators (UniFFI / JNI /
+  PyO3) that scan the public surface won't surface them; the Java `int` /
+  Swift `UInt32` paths to construct invalid handles are eliminated.
+  Full `pub(crate)` demotion of these two handle types is deferred to a
+  future plan that reshapes `tst-c` to use opaque handles internally.
+  Direct Rust callers should obtain handles via `Muxer::add_video_stream`,
+  `Muxer::video_handles`, `Muxer::add_klv_stream`, or
+  `Muxer::klv_handles` — those are the stable API entry points.
+
+- **`AudioStreamHandle::{pack, unpack}` and
+  `SubtitleStreamHandle::{pack, unpack}` are now `pub(crate)`.** No
+  external consumers exist (tst-c does not bind audio or subtitle handles
+  at the C ABI boundary yet). The `from_raw` / `raw` helpers on these
+  types were test-only; they are now `#[cfg(test)] pub(crate)`.
+
+---
+
 ### Examples reorganization (2026-05-09)
 
 #### Changed (examples)

@@ -68,3 +68,23 @@ path = "muxing/mux_dual_camera.rs"
 [[example]]
 name = "repack_two_programs"
 path = "muxing/repack_two_programs.rs"
+
+[[example]]
+name = "srt_caller_dump"
+path = "receiving/srt_caller_dump.rs"
+
+[[example]]
+name = "srt_listener_to_file"
+path = "receiving/srt_listener_to_file.rs"
+
+[[example]]
+name = "srt_recv_typed"
+path = "receiving/srt_recv_typed.rs"
+
+[[example]]
+name = "ts_relay_from_file"
+path = "receiving/ts_relay_from_file.rs"
+
+[[example]]
+name = "demux_to_events"
+path = "receiving/demux_to_events.rs"

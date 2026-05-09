@@ -16,3 +16,23 @@ tst-srt = { path = "../crates/tst-srt" }
 [[example]]
 name = "hello_world"
 path = "getting-started/hello_world.rs"
+
+[[example]]
+name = "pipeline_send_to_socket"
+path = "sending/pipeline_send_to_socket.rs"
+
+[[example]]
+name = "encrypted_send_recv"
+path = "sending/encrypted_send_recv.rs"
+
+[[example]]
+name = "sender_from_url"
+path = "sending/sender_from_url.rs"
+
+[[example]]
+name = "srt_serve_ts_file"
+path = "sending/srt_serve_ts_file.rs"
+
+[[example]]
+name = "custom_transport"
+path = "sending/custom_transport.rs"

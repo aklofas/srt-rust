@@ -4,6 +4,38 @@
 //! transport traits defined in [`tst_core`]. Concrete transport
 //! impls live in dedicated crates (`tst-srt` today; future
 //! `tst-udp`, `tst-rtp`, `tst-tcp`, `tst-rtsp`).
+//!
+//! ## Quick start — push pre-muxed TS bytes through any [`Transport`]
+//!
+//! ```
+//! use tst_pipeline::{Sender, SenderConfig};
+//! use tst_core::transport::{Transport, TransportError};
+//!
+//! // Trivial in-memory sink so the example needs no network. Real
+//! // consumers plug in `tst_srt::SrtTransport` (or any other
+//! // `Transport` impl) here.
+//! struct Sink(Vec<u8>);
+//! impl Transport for Sink {
+//!     fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+//!         self.0.extend_from_slice(b);
+//!         Ok(())
+//!     }
+//!     fn max_payload(&self) -> usize { 1316 }
+//!     fn close(&mut self) {}
+//!     fn is_alive(&self) -> bool { true }
+//! }
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let mut sender = Sender::new(Sink(Vec::new()), SenderConfig::default());
+//!
+//! // One pre-muxed TS packet (188 bytes, sync byte 0x47 first).
+//! let mut pkt = vec![0x47u8];
+//! pkt.extend(vec![0u8; 187]);
+//! sender.send_ts(&pkt)?;
+//! sender.flush()?;
+//! # Ok(())
+//! # }
+//! ```
 
 #![warn(rustdoc::broken_intra_doc_links)]
 

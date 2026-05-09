@@ -132,6 +132,11 @@ impl<T: Transport> Sender<T> {
     }
 
     /// Emit any buffered partial bundle.
+    ///
+    /// # Errors
+    /// Returns [`SenderError::Transport`] when the underlying [`Transport`]
+    /// rejects the flushed bundle (typically `Closed` after a prior
+    /// [`Self::close`], or `Broken` on transport flap).
     pub fn flush(&mut self) -> Result<(), SenderError> {
         if self.closed {
             return Err(SenderError::Transport(

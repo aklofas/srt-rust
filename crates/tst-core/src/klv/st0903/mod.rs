@@ -112,6 +112,14 @@ pub struct VmtiLs {
 ///
 /// Use [`decode_strict`] (Task 6) for spec-validation use cases that
 /// reject any of the above.
+///
+/// # Errors
+/// Returns `Err(KlvDecodeError)` only for unrecoverable framing
+/// failures inside [`VTargetSeries`][VmtiLs::targets] (Tag 101) — a
+/// VTargetPack header that cannot be parsed surfaces as
+/// [`KlvDecodeError::St0903InvalidVTargetPack`]. Tag-level
+/// malformations on the parent LS are non-fatal in lenient mode and
+/// are captured in [`VmtiLs::field_errors`] instead.
 pub fn decode(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
     use crate::klv::imapb::{ImapbParams, decode_imapb};
     use crate::klv::length::read_ber;
@@ -378,6 +386,21 @@ fn decode_vtarget_series(
 /// **UTF-8 char-cap.** Strict rejects strings exceeding the spec's
 /// `max_chars` (Tag 3 V32, Tag 10 V128). Lenient accepts but surfaces
 /// a `field_error`.
+///
+/// # Errors
+/// - [`KlvDecodeError::DuplicateTag`] if any tag appears more than
+///   once.
+/// - [`KlvDecodeError::Truncated`] if a TLV's declared length runs
+///   past the end of the buffer.
+/// - [`KlvDecodeError::St0903MissingRequiredTag`] if a spec-required
+///   tag (4 or 6 per ST 0903.6) is absent.
+/// - [`KlvDecodeError::St0903InvalidVTargetPack`] for unrecoverable
+///   pack-internal malformations under VTargetSeries (Tag 101).
+/// - [`KlvDecodeError::FieldError`] wrapping a [`KlvFieldError`] for
+///   any per-tag value validation failure (length / range / UTF-8 /
+///   IMAPB / codepoint).
+/// - [`KlvDecodeError::NonCanonicalLength`] if a TLV uses a non-
+///   canonical BER length encoding.
 pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
     use crate::klv::imapb::{ImapbParams, decode_imapb};
     use crate::klv::length::read_ber_strict;
@@ -580,6 +603,13 @@ fn decode_vtarget_series_strict(
 /// typed fields and preserved unknowns of `ls` (modulo IMAPB
 /// quantization on `horizontal_fov` / `vertical_fov`). `field_errors`
 /// is a decode-time diagnostic and is not emitted on encode.
+///
+/// # Errors
+/// - [`KlvEncodeError::OutOfRange`] if `horizontal_fov` /
+///   `vertical_fov` (or any per-target IMAPB float field) falls
+///   outside its declared range.
+/// - [`KlvEncodeError::RecordTooLarge`] if a TLV's declared length
+///   would overflow BER encoding.
 pub fn encode(ls: &VmtiLs, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
     use crate::klv::length::write_ber;
     use emit::{emit_imapb_n, emit_tlv, emit_var};
@@ -658,6 +688,11 @@ pub fn encode(ls: &VmtiLs, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
     Ok(())
 }
 
+/// Encode a VMTI Local Set into a fresh `Vec<u8>`. Convenience over
+/// [`encode`] when the caller has no pre-sized buffer.
+///
+/// # Errors
+/// Returns the same [`KlvEncodeError`] variants as [`encode`].
 pub fn encode_to_vec(ls: &VmtiLs) -> Result<Vec<u8>, KlvEncodeError> {
     let mut out = Vec::new();
     encode(ls, &mut out)?;

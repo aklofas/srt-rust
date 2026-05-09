@@ -1784,11 +1784,18 @@ impl Muxer {
     /// `key_frame=true` causes the first TS packet of the resulting PES to
     /// carry an adaptation field with `random_access_indicator` set.
     ///
-    /// Returns `Err(MuxError::InvalidNal)` if `nal` doesn't begin with an
-    /// Annex-B start code.
-    /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets would
-    /// exceed `MuxerConfig::buffer_packets`. State is unchanged in either error
-    /// case.
+    /// State is unchanged on any error (push is atomic — either the AU lands
+    /// in the muxer queue or none of its TS packets do).
+    ///
+    /// # Errors
+    /// - [`MuxError::AmbiguousTarget`] when zero or more than one video
+    ///   stream is configured across all programs — call [`Self::push_video_to`]
+    ///   with an explicit handle in that case.
+    /// - [`MuxError::InvalidNal`] if `nal` does not begin with an Annex-B
+    ///   start code (H.264 / H.265 / H.266 only — AV1 OBU payloads route
+    ///   through `push_video_to` and skip this check).
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
     pub fn push_video(
         &mut self,
         nal: &[u8],
@@ -1812,7 +1819,6 @@ impl Muxer {
     ///
     /// `pts_90khz` becomes the PES PTS when the KLV stream was configured with
     /// `carries_pts: true` in [`StreamSpec::Klv`]; ignored otherwise.
-    /// Returns `Err(MuxError::BufferFull)` like `push_video`.
     ///
     /// `metadata_service_id` is written into the AU cell header per
     /// ITU-T H.222.0 V9 §2.12.4.2 / ST 1402.2 App. B Table 2 **only** when
@@ -1823,6 +1829,17 @@ impl Muxer {
     /// The spec default is `0x00`. Pass `0x00` unless you have a specific
     /// reason to use a non-zero service_id (e.g. to mirror the `service_id`
     /// byte of a `metadata_klva` PMT descriptor you supplied at config time).
+    ///
+    /// # Errors
+    /// - [`MuxError::NoKlvStreamsConfigured`] if no KLV streams are
+    ///   configured on this muxer.
+    /// - [`MuxError::AmbiguousTarget`] when more than one KLV stream is
+    ///   configured — call [`Self::push_klv_to`] with an explicit handle.
+    /// - [`MuxError::KlvTooLarge`] if `klv.len()` would overflow
+    ///   `PES_packet_length` (with a 5-byte AU cell header reservation
+    ///   for `SynchronousMetadata` streams).
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
     pub fn push_klv(
         &mut self,
         klv: &[u8],
@@ -1852,8 +1869,15 @@ impl Muxer {
     /// Resolves only when exactly one audio stream is configured across all
     /// programs. Otherwise rejects with [`MuxError::AmbiguousTarget`].
     ///
-    /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets would
-    /// exceed `MuxerConfig::buffer_packets`.
+    /// # Errors
+    /// - [`MuxError::NoAudioStreamsConfigured`] if no audio streams are
+    ///   configured on this muxer.
+    /// - [`MuxError::AmbiguousTarget`] when more than one audio stream is
+    ///   configured — call [`Self::push_audio_to`] with an explicit handle.
+    /// - [`MuxError::AudioTooLarge`] if `frames.len()` would overflow
+    ///   `PES_packet_length`.
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
     pub fn push_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
         let total_audio: usize = self.audio_streams.iter().map(|a| a.len()).sum();
         if total_audio == 0 {
@@ -1890,10 +1914,14 @@ impl Muxer {
     /// [`audio_handles`][Self::audio_handles] /
     /// [`audio_handles_for_program`][Self::audio_handles_for_program].
     ///
-    /// Returns [`MuxError::InvalidStreamHandle`] if the handle's index is out
-    /// of range for this muxer's configured audio stream count.
-    /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets would
-    /// exceed `MuxerConfig::buffer_packets`.
+    /// # Errors
+    /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
+    ///   range for this muxer's configured audio stream count (across all
+    ///   programs).
+    /// - [`MuxError::AudioTooLarge`] if `frames.len()` would overflow
+    ///   `PES_packet_length` (max ~65527 bytes after PES overhead).
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
     pub fn push_audio_to(
         &mut self,
         handle: AudioStreamHandle,
@@ -2018,10 +2046,16 @@ impl Muxer {
     /// across all programs. Otherwise rejects with
     /// [`MuxError::AmbiguousTarget`].
     ///
-    /// Returns `Err(MuxError::SubtitleTooLarge)` if `payload.len()`
-    /// would overflow the PES packet length budget.
-    /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets
-    /// would exceed `MuxerConfig::buffer_packets`.
+    /// # Errors
+    /// - [`MuxError::NoSubtitleStreamsConfigured`] if no subtitle streams
+    ///   are configured on this muxer.
+    /// - [`MuxError::AmbiguousTarget`] when more than one subtitle stream
+    ///   is configured — call [`Self::push_subtitle_to`] with an explicit
+    ///   handle.
+    /// - [`MuxError::SubtitleTooLarge`] if `payload.len()` would overflow
+    ///   `PES_packet_length`.
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
     pub fn push_subtitle(&mut self, pts_90khz: i64, payload: &[u8]) -> Result<(), MuxError> {
         let total_subtitle: usize = self.subtitle_streams.iter().map(|s| s.len()).sum();
         if total_subtitle == 0 {
@@ -2054,12 +2088,13 @@ impl Muxer {
     /// exactly one subtitle stream is configured. Handles are obtained
     /// from [`subtitle_handles`][Self::subtitle_handles].
     ///
-    /// Returns [`MuxError::InvalidStreamHandle`] if the handle's index
-    /// is out of range for this muxer's configured subtitle stream count.
-    /// Returns [`MuxError::SubtitleTooLarge`] if `payload.len()` would
-    /// overflow the PES packet length budget (max 65527 bytes).
-    /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets
-    /// would exceed `MuxerConfig::buffer_packets`.
+    /// # Errors
+    /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
+    ///   range for this muxer's configured subtitle stream count.
+    /// - [`MuxError::SubtitleTooLarge`] if `payload.len()` would overflow
+    ///   `PES_packet_length` (max 65527 bytes).
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
     pub fn push_subtitle_to(
         &mut self,
         handle: SubtitleStreamHandle,
@@ -2316,15 +2351,26 @@ impl Muxer {
             .collect())
     }
 
-    /// Push one H.264 / H.265 access unit on a specific video stream.
+    /// Push one H.264 / H.265 / H.266 / AV1 access unit on a specific
+    /// video stream.
     ///
     /// `pts_90khz` and `key_frame` carry the same semantics as
     /// [`Self::push_video`]. The caller selects the destination stream
     /// via the [`VideoStreamHandle`] obtained from
     /// [`Self::video_handles`] / [`Self::video_stream_handle`].
     ///
-    /// Returns [`MuxError::InvalidStreamHandle`] if the handle's index
-    /// is out of range for this muxer's configured video stream count.
+    /// AV1 streams expect OBU bitstream input (AV1 spec §5) and skip
+    /// the Annex-B start-code check; H.264 / H.265 / H.266 require
+    /// Annex-B framing.
+    ///
+    /// # Errors
+    /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
+    ///   range for this muxer's configured video stream count.
+    /// - [`MuxError::InvalidNal`] if `nal` does not begin with an Annex-B
+    ///   start code (only checked for H.264 / H.265 / H.266; AV1 OBU
+    ///   payloads pass through this check).
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
     pub fn push_video_to(
         &mut self,
         handle: VideoStreamHandle,
@@ -2458,8 +2504,14 @@ impl Muxer {
     /// the `service_id` byte of a `metadata_klva` PMT descriptor you
     /// supplied at config time).
     ///
-    /// Returns [`MuxError::InvalidStreamHandle`] if the handle's index
-    /// is out of range.
+    /// # Errors
+    /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
+    ///   range for this muxer's configured KLV stream count.
+    /// - [`MuxError::KlvTooLarge`] if `klv.len()` would overflow
+    ///   `PES_packet_length` (with a 5-byte AU cell header reservation
+    ///   for `SynchronousMetadata` streams).
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
     pub fn push_klv_to(
         &mut self,
         handle: KlvStreamHandle,

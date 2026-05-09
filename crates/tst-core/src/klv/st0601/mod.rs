@@ -314,6 +314,22 @@ impl UasDatalinkLs {
 // Encode / decode — stubs filled in Tasks 12 and 13
 // ============================================================================
 
+/// Encode a UAS Datalink Local Set into the caller-provided buffer per
+/// MISB ST 0601. Returns the number of bytes written.
+///
+/// Use [`encode_to_vec`] to allocate a fresh `Vec<u8>` instead;
+/// [`encoded_len`] sizes a buffer in advance.
+///
+/// # Errors
+/// - [`KlvEncodeError::BufferTooSmall`] if `out.len()` is less than the
+///   required encoded length (call [`encoded_len`] first).
+/// - [`KlvEncodeError::OutOfRange`] if any IMAPB-encoded float field
+///   value falls outside its declared range (e.g. `platform_heading_deg`
+///   outside `0.0..=360.0`).
+/// - [`KlvEncodeError::StringTooLong`] if a UTF-8 string field exceeds
+///   the spec-declared byte cap.
+/// - [`KlvEncodeError::RecordTooLarge`] if the encoded body would
+///   overflow the BER-encodable length limit.
 pub fn encode(record: &UasDatalinkLs, out: &mut [u8]) -> Result<usize, KlvEncodeError> {
     encode_with(record, &EncodeOptions::default(), out)
 }
@@ -359,6 +375,16 @@ pub fn encode_with(
     Ok(total)
 }
 
+/// Encode a UAS Datalink Local Set into a fresh `Vec<u8>`. Convenience
+/// over [`encode`] when the caller has no pre-sized buffer.
+///
+/// # Errors
+/// Returns the same [`KlvEncodeError`] variants as [`encode`] —
+/// [`KlvEncodeError::OutOfRange`] for IMAPB ranges,
+/// [`KlvEncodeError::StringTooLong`] for over-cap UTF-8 fields, and
+/// [`KlvEncodeError::RecordTooLarge`] for BER-overflow records.
+/// (`KlvEncodeError::BufferTooSmall` cannot fire on this path — the
+/// buffer is pre-sized via [`encoded_len`].)
 pub fn encode_to_vec(record: &UasDatalinkLs) -> Result<Vec<u8>, KlvEncodeError> {
     let n = encoded_len(record);
     let mut buf = vec![0u8; n];
@@ -653,10 +679,31 @@ pub fn decode(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
     )
 }
 
+/// Decode without verifying the running-sum 16 checksum (Tag 1) and
+/// without ST 0601-family UL gating. Use only when ingesting bytes that
+/// are known to be intra-sender consistent (e.g. fixture round-trips
+/// in tests).
+///
+/// # Errors
+/// Returns the same structural [`KlvDecodeError`] variants as
+/// [`decode`] — [`KlvDecodeError::Truncated`],
+/// [`KlvDecodeError::MalformedLength`], [`KlvDecodeError::MalformedTag`],
+/// [`KlvDecodeError::LengthOverflow`] — but never
+/// [`KlvDecodeError::ChecksumMismatch`] or
+/// [`KlvDecodeError::UnexpectedUniversalLabel`].
 pub fn decode_unchecked(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
     decode_inner(buf, false, false)
 }
 
+/// Strict decode: verify the running-sum 16 checksum (Tag 1) AND require
+/// the buffer's 16-byte UL to fall within the ST 0601-family UL pattern.
+///
+/// # Errors
+/// In addition to the structural variants from [`decode`]:
+/// - [`KlvDecodeError::ChecksumMismatch`] when the declared Tag 1 value
+///   does not match the recomputed running-sum.
+/// - [`KlvDecodeError::UnexpectedUniversalLabel`] when the leading
+///   16-byte UL is not in the ST 0601 family.
 pub fn decode_strict(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
     decode_inner(buf, true, true)
 }
@@ -678,6 +725,17 @@ pub fn decode_strict(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
 /// captures or reference test vectors. Real-world captures from the
 /// corpus often violate -09/-11/-12 in benign ways; prefer `decode`
 /// for production parsing.
+///
+/// # Errors
+/// In addition to all variants from [`decode_strict`]:
+/// - [`KlvDecodeError::Tag2NotFirst`] if Tag 2 is missing or not the
+///   first body element.
+/// - [`KlvDecodeError::Tag1NotLast`] if Tag 1 is missing or not the
+///   final body element.
+/// - [`KlvDecodeError::MissingTag65`] if the UAS LS Version tag is
+///   absent.
+/// - [`KlvDecodeError::NonCanonicalLength`] if the outer BER length is
+///   not encoded with the fewest bytes per ST 0107.5 §6.3.2.
 pub fn decode_strict_compliance(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
     // Step 1: walk the LS body and record tag order WITHOUT ST 0601
     // typed-decode. We need raw tag positions to enforce ordering.

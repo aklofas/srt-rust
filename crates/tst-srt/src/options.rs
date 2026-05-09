@@ -18,6 +18,12 @@ pub struct Passphrase(SecretString);
 
 impl Passphrase {
     /// Construct from any string. Validates length (10–79) and ASCII-printable charset.
+    ///
+    /// # Errors
+    /// - [`PassphraseError::InvalidLength`] if the character count is
+    ///   outside the SRT-mandated 10..=79 range.
+    /// - [`PassphraseError::InvalidCharset`] if any byte is outside
+    ///   printable ASCII (`0x20..=0x7E`).
     pub fn new(s: impl Into<String>) -> Result<Self, PassphraseError> {
         let s = s.into();
         Self::validate(&s)?;
@@ -25,6 +31,12 @@ impl Passphrase {
     }
 
     /// Read from environment variable. Errors if unset or empty.
+    ///
+    /// # Errors
+    /// - [`PassphraseError::EnvUnset`] if the named variable is unset
+    ///   or empty.
+    /// - Length / charset errors from [`Self::new`] propagate as
+    ///   [`PassphraseError::InvalidLength`] / [`PassphraseError::InvalidCharset`].
     pub fn from_env(var: &str) -> Result<Self, PassphraseError> {
         let val = std::env::var(var).map_err(|_| PassphraseError::EnvUnset(var.to_string()))?;
         if val.is_empty() {
@@ -34,6 +46,11 @@ impl Passphrase {
     }
 
     /// Read from a file (one line; trailing newline stripped).
+    ///
+    /// # Errors
+    /// - [`PassphraseError::Io`] if the file cannot be read.
+    /// - Length / charset errors from [`Self::new`] propagate as
+    ///   [`PassphraseError::InvalidLength`] / [`PassphraseError::InvalidCharset`].
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, PassphraseError> {
         let s = std::fs::read_to_string(path.as_ref())?;
         let s = s.trim_end_matches(['\n', '\r']).to_string();

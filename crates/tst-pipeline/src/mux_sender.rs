@@ -149,6 +149,18 @@ impl<T: Transport> MuxSender<T> {
     /// [`tst_core::mpegts::mux::KlvStreamType::SynchronousMetadata`] streams;
     /// ignored on [`tst_core::mpegts::mux::KlvStreamType::PrivateData`]
     /// streams. The spec default is `0x00`.
+    ///
+    /// # Errors
+    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    ///   [`MuxError::NoKlvStreamsConfigured`] if no KLV streams exist;
+    ///   [`MuxError::AmbiguousTarget`] when more than one is configured
+    ///   (use [`Self::send_klv_to`]); [`MuxError::KlvTooLarge`] if the
+    ///   blob would overflow `PES_packet_length`;
+    ///   [`MuxError::BufferFull`] if the muxer's outbound queue is at
+    ///   `MuxerConfig::buffer_packets`.
+    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
     pub fn send_klv(
         &self,
         klv: &[u8],
@@ -163,6 +175,18 @@ impl<T: Transport> MuxSender<T> {
     /// `handle` is obtained from [`Self::video_handles`]; passing a handle
     /// from a different sender / muxer surfaces as
     /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
+    ///
+    /// # Errors
+    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    ///   [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
+    ///   range for this muxer's video streams; [`MuxError::InvalidNal`]
+    ///   if `nal` does not begin with an Annex-B start code (H.264 /
+    ///   H.265 / H.266 only — AV1 OBU payloads skip this check);
+    ///   [`MuxError::BufferFull`] if the muxer's outbound queue is at
+    ///   `MuxerConfig::buffer_packets`.
+    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
     pub fn send_video_to(
         &self,
         handle: VideoStreamHandle,
@@ -181,6 +205,18 @@ impl<T: Transport> MuxSender<T> {
     /// [`tst_core::mpegts::mux::KlvStreamType::SynchronousMetadata`] streams;
     /// ignored on [`tst_core::mpegts::mux::KlvStreamType::PrivateData`]
     /// streams. The spec default is `0x00`.
+    ///
+    /// # Errors
+    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    ///   [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
+    ///   range for this muxer's KLV streams; [`MuxError::KlvTooLarge`]
+    ///   if the blob would overflow `PES_packet_length` (with a 5-byte
+    ///   AU cell header reservation for `SynchronousMetadata` streams);
+    ///   [`MuxError::BufferFull`] if the muxer's outbound queue is at
+    ///   `MuxerConfig::buffer_packets`.
+    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
     pub fn send_klv_to(
         &self,
         handle: KlvStreamHandle,
@@ -200,6 +236,17 @@ impl<T: Transport> MuxSender<T> {
     /// zero or multiple audio streams the muxer surfaces
     /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderError::Mux`] — use
     /// [`Self::send_audio_to`] in that case.
+    ///
+    /// # Errors
+    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    ///   [`MuxError::NoAudioStreamsConfigured`] if no audio streams exist;
+    ///   [`MuxError::AmbiguousTarget`] when more than one is configured;
+    ///   [`MuxError::AudioTooLarge`] if `frames.len()` would overflow
+    ///   `PES_packet_length`; [`MuxError::BufferFull`] if the muxer's
+    ///   outbound queue is at `MuxerConfig::buffer_packets`.
+    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
     pub fn send_audio(&self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
         inner.send_audio(frames, pts_90khz)
@@ -209,6 +256,17 @@ impl<T: Transport> MuxSender<T> {
     /// `handle` is obtained from [`Self::audio_handles`]; passing a handle
     /// from a different sender / muxer surfaces as
     /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
+    ///
+    /// # Errors
+    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    ///   [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
+    ///   range for this muxer's audio streams;
+    ///   [`MuxError::AudioTooLarge`] if `frames.len()` would overflow
+    ///   `PES_packet_length`; [`MuxError::BufferFull`] if the muxer's
+    ///   outbound queue is at `MuxerConfig::buffer_packets`.
+    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
     pub fn send_audio_to(
         &self,
         handle: AudioStreamHandle,
@@ -229,6 +287,17 @@ impl<T: Transport> MuxSender<T> {
     /// with zero or multiple subtitle streams the muxer surfaces
     /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderError::Mux`] — use
     /// [`Self::send_subtitle_to`] in that case.
+    ///
+    /// # Errors
+    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    ///   [`MuxError::NoSubtitleStreamsConfigured`] if no subtitle streams
+    ///   exist; [`MuxError::AmbiguousTarget`] when more than one is
+    ///   configured; [`MuxError::SubtitleTooLarge`] if `payload.len()`
+    ///   would overflow `PES_packet_length`; [`MuxError::BufferFull`] if
+    ///   the muxer's outbound queue is at `MuxerConfig::buffer_packets`.
+    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
     pub fn send_subtitle(&self, payload: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
         inner.send_subtitle(payload, pts_90khz)
@@ -238,6 +307,17 @@ impl<T: Transport> MuxSender<T> {
     /// `handle` is obtained from [`Self::subtitle_handles`]; passing a
     /// handle from a different sender / muxer surfaces as
     /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
+    ///
+    /// # Errors
+    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    ///   [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
+    ///   range for this muxer's subtitle streams;
+    ///   [`MuxError::SubtitleTooLarge`] if `payload.len()` would overflow
+    ///   `PES_packet_length`; [`MuxError::BufferFull`] if the muxer's
+    ///   outbound queue is at `MuxerConfig::buffer_packets`.
+    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    ///   transport flap the unsent TS chunks are retained for a later
+    ///   `send_*` call to drain.
     pub fn send_subtitle_to(
         &self,
         handle: SubtitleStreamHandle,

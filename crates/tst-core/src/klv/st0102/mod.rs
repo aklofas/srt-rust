@@ -387,6 +387,13 @@ pub fn decode_strict(buf: &[u8]) -> Result<SecurityLs, KlvDecodeError> {
 
 /// Encode into a caller-provided buffer. Returns the number of bytes
 /// written.
+///
+/// # Errors
+/// - [`KlvEncodeError::BufferTooSmall`] if `out.len()` is less than
+///   the required encoded length (call [`encoded_len`] first).
+/// - [`KlvEncodeError::RecordTooLarge`] if any individual TLV's
+///   declared length would overflow BER encoding (in practice,
+///   a value > 2^64 bytes — guards against pathological input).
 pub fn encode(record: &SecurityLs, out: &mut [u8]) -> Result<usize, KlvEncodeError> {
     use crate::klv::length::write_ber;
 
@@ -488,7 +495,14 @@ pub fn encode(record: &SecurityLs, out: &mut [u8]) -> Result<usize, KlvEncodeErr
     Ok(pos)
 }
 
-/// Encode into a fresh `Vec<u8>`.
+/// Encode into a fresh `Vec<u8>`. Convenience over [`encode`] when
+/// the caller has no pre-sized buffer.
+///
+/// # Errors
+/// Returns the same [`KlvEncodeError`] variants as [`encode`] minus
+/// [`KlvEncodeError::BufferTooSmall`] (the buffer is pre-sized via
+/// [`encoded_len`]). [`KlvEncodeError::RecordTooLarge`] can still
+/// fire for pathological per-TLV lengths.
 pub fn encode_to_vec(record: &SecurityLs) -> Result<Vec<u8>, KlvEncodeError> {
     let mut buf = vec![0u8; encoded_len(record)];
     let n = encode(record, &mut buf)?;

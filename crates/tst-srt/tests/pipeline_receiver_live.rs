@@ -96,7 +96,7 @@ fn end_to_end_sender_to_receiver() {
             .end_program()
             .build()
             .expect("build mux config");
-        let sender = MuxSender::new(cfg, SrtTransport::new(socket)).expect("sender");
+        let sender = MuxSender::new(SrtTransport::new(socket), cfg).expect("sender");
 
         let klv = minimal_klv();
         for i in 0..SEND as i64 {

@@ -79,7 +79,7 @@ fn close_unblocks_libsrt_parked_send() {
         .end_program()
         .build()
         .unwrap();
-    let s = Arc::new(MuxSender::new(cfg, transport).unwrap());
+    let s = Arc::new(MuxSender::new(transport, cfg).unwrap());
     let s_send = s.clone();
 
     // MuxSender thread: pump 64-byte NAL payloads until the call returns

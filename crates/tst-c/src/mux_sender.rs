@@ -64,7 +64,7 @@ pub unsafe extern "C" fn tst_mux_sender_open(
             return std::ptr::null_mut();
         }
     };
-    let sender = match MuxSender::new(built, transport) {
+    let sender = match MuxSender::new(transport, built) {
         Ok(s) => s,
         Err(e) => {
             record_mux_error(&e);
@@ -370,7 +370,7 @@ pub unsafe extern "C" fn tst_managed_mux_sender_open(
     let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
 
     let managed = ManagedTransport::new(initial, factory, policy);
-    let sender = match MuxSender::new(built, managed) {
+    let sender = match MuxSender::new(managed, built) {
         Ok(s) => s,
         Err(e) => {
             record_mux_error(&e);

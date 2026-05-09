@@ -39,7 +39,7 @@ fn sender_round_trip_one_frame() {
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
     let transport = SrtTransport::new(socket);
-    let sender = MuxSender::new(MuxerConfig::default(), transport).expect("sender");
+    let sender = MuxSender::new(transport, MuxerConfig::default()).expect("sender");
 
     let nal = synthetic_nal::h264_au(500, true);
     let klv = synthetic_nal::klv_blob(64);

@@ -231,7 +231,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // → libsrt → wire. The `ManagedTransport` decorator is invisible to
     // `MuxSender` — it just sees a `Transport` impl that occasionally pauses
     // (during reconnects) and never fails for transient breakage.
-    let sender = MuxSender::new(MuxerConfig::default(), managed)?;
+    let sender = MuxSender::new(managed, MuxerConfig::default())?;
 
     eprintln!("sender: sending {NUM_FRAMES} frames; peer drops after {FRAMES_BEFORE_DROP}");
     let mut sent_ok = 0usize;

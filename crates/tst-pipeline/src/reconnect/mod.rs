@@ -109,7 +109,7 @@ use tst_core::transport::{Transport, TransportCancel, TransportError};
 /// let factory = || SrtTransport::connect(...);
 /// let inner = factory()?;
 /// let managed = ManagedTransport::new(inner, factory, ReconnectPolicy::default());
-/// let sender = MuxSender::new(config, managed)?;
+/// let sender = MuxSender::new(managed, config)?;
 /// // sender now silently reconnects on transport breakage
 /// ```
 pub struct ManagedTransport<T: Transport> {

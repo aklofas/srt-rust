@@ -153,7 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The canonical sender shell. `MuxSender` composes the muxer
     // (`MuxerConfig::default`) with the transport. End-to-end the path is
     // NAL+KLV → mux → 188-byte TS packets → MemTransport's packet vec.
-    let sender = MuxSender::new(MuxerConfig::default(), transport)?;
+    let sender = MuxSender::new(transport, MuxerConfig::default())?;
 
     // 10 frames is shorter than `managed_reconnect`'s 30 — there's no
     // reconnect machinery to exercise, so we can keep the run small and

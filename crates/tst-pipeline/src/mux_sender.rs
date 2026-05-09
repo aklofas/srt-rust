@@ -66,7 +66,7 @@ struct Inner<T: Transport> {
 }
 
 impl<T: Transport> MuxSender<T> {
-    pub fn new(config: MuxerConfig, transport: T) -> Result<Self, MuxError> {
+    pub fn new(transport: T, config: MuxerConfig) -> Result<Self, MuxError> {
         let muxer = Muxer::new(config)?;
         let cancel = transport.cancel_handle();
         Ok(Self {
@@ -544,7 +544,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         assert_eq!(s.video_handles().len(), 2);
         assert_eq!(s.klv_handles().len(), 1);
     }
@@ -560,7 +560,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let ir = s.video_handles()[1];
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
         s.send_video_to(ir, &nal, 0, true).unwrap();
@@ -578,7 +578,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let st = s.stats();
         assert_eq!(st.bytes_sent, 0);
         assert_eq!(st.packets_sent, 0);
@@ -597,7 +597,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
         s.send_video(nal, 0, true).unwrap();
         let st = s.stats();
@@ -616,7 +616,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
         s.send_video(nal, 0, true).unwrap();
         s.reset_stats();
@@ -638,7 +638,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         // Synthetic audio frame bytes — the muxer doesn't validate the
         // codec payload here, so any non-empty buffer suffices.
         let frames = vec![0xFFu8; 64];
@@ -662,7 +662,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let handles = s.audio_handles();
         assert_eq!(handles.len(), 2);
         let frames = vec![0xAAu8; 32];
@@ -682,7 +682,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         // A minimal WebVTT-in-TS cue body (the muxer doesn't validate
         // contents — it just frames the bytes into a PES).
         let cue = b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhello\n";
@@ -704,7 +704,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let handles = s.subtitle_handles();
         assert_eq!(handles.len(), 2);
         let cue = b"WEBVTT\n\n00:00:03.000 --> 00:00:04.000\nrouted\n";
@@ -725,7 +725,7 @@ mod multi_stream_tests {
             .end_program()
             .build()
             .unwrap();
-        let s = MuxSender::new(cfg, MemTransport::new()).unwrap();
+        let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
         let err = s.send_video(&nal, 0, true).unwrap_err();
         match err {
@@ -803,10 +803,10 @@ mod cancel_tests {
             .unwrap();
         let s = Arc::new(
             MuxSender::new(
-                cfg,
                 ParkableTransport {
                     cancelled: cancelled.clone(),
                 },
+                cfg,
             )
             .unwrap(),
         );

@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .latency(Duration::from_millis(120))
         .connect(addr.as_str())?;
     let transport = SrtTransport::new(socket);
-    let sender = MuxSender::new(MuxerConfig::default(), transport)?;
+    let sender = MuxSender::new(transport, MuxerConfig::default())?;
 
     eprintln!("sending 5 synthetic frames + KLV to {addr}");
     for i in 0..5 {

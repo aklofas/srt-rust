@@ -17,6 +17,7 @@ use tst_core::mpegts::mux::StreamKind;
 // ============================================================================
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PassphraseError {
     #[error("passphrase length must be 10-79 chars (got {0})")]
     InvalidLength(usize),
@@ -29,6 +30,7 @@ pub enum PassphraseError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum StreamIdError {
     #[error("stream ID exceeds 512 chars (got {0})")]
     TooLong(usize),
@@ -37,6 +39,7 @@ pub enum StreamIdError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PacketFilterError {
     #[error("filter spec exceeds 512 chars")]
     TooLong,
@@ -45,6 +48,7 @@ pub enum PacketFilterError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum AddrError {
     #[error("could not resolve address: {0}")]
     Resolve(String),
@@ -101,6 +105,7 @@ pub enum RejectReason {
 // ============================================================================
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum OptionError {
     #[error("option not settable in current socket state")]
     InvalidState,
@@ -117,6 +122,7 @@ pub enum OptionError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum IoError {
     #[error("socket has been closed")]
     SocketClosed,
@@ -131,6 +137,7 @@ pub enum IoError {
 // ============================================================================
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ConnectError {
     #[error("invalid address: {0}")]
     InvalidAddress(#[from] AddrError),
@@ -154,6 +161,7 @@ pub enum ConnectError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum BindError {
     #[error("invalid address: {0}")]
     InvalidAddress(#[from] AddrError),
@@ -170,6 +178,7 @@ pub enum BindError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum AcceptError {
     #[error("accept timed out")]
     TimedOut,
@@ -187,6 +196,7 @@ pub enum AcceptError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum SendError {
     #[error("send timed out")]
     TimedOut,
@@ -203,6 +213,7 @@ pub enum SendError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum RecvError {
     #[error("recv timed out")]
     TimedOut,
@@ -223,6 +234,7 @@ pub enum RecvError {
 // ============================================================================
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error(transparent)]
     Connect(#[from] ConnectError),

@@ -135,7 +135,7 @@ pub enum SubtitleCodec {
 /// program. Used by [`MuxError`] variants whose semantics are
 /// stream-kind-specific (e.g., [`MuxError::AmbiguousTarget`],
 /// [`MuxError::InvalidStreamHandle`], [`MuxError::DescriptorIndexOutOfRange`]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum StreamKind {
     Video,
@@ -158,7 +158,7 @@ impl core::fmt::Display for StreamKind {
 /// Field-name discriminator inside a teletext-stream configuration block;
 /// used by [`MuxError::InvalidTeletextField`] in place of `&'static str`
 /// tagging.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum TeletextField {
     MagazineNumber,

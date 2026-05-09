@@ -71,6 +71,12 @@ jobs:
           SRT_FORCE_VENDORED: "1"
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: cargo doc (no broken intra-doc links)
+        env:
+          SRT_FORCE_VENDORED: "1"
+          RUSTDOCFLAGS: "-D warnings"
+        run: cargo doc --workspace --no-deps --all-features
+
       # `cargo test` only builds the rlib of crates with multiple crate-types.
       # srt-c's smoke test asserts on target/debug/libsrtc.so, so we need an
       # explicit `cargo build` to produce the cdylib + staticlib first.

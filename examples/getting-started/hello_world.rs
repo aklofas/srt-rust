@@ -41,8 +41,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     mux.push_video(aud_nal, /*pts_90khz=*/ 0, /*key_frame=*/ true)?;
 
     // 3. Push one ST 0601 KLV record (just a UTC timestamp tag — Tag 2).
-    let mut ls = UasDatalinkLs::default();
-    ls.timestamp_us = Some(0);
+    let ls = UasDatalinkLs {
+        timestamp_us: Some(0),
+        ..UasDatalinkLs::default()
+    };
     let klv_bytes = encode_to_vec(&ls)?;
     mux.push_klv(&klv_bytes, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0)?;
 

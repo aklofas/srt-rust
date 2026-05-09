@@ -3,8 +3,8 @@
 //! can connect as the *caller* and pull the stream.
 //!
 //! Run with:
-//!   cargo run --release --example srt_serve_ts_file -- input.ts 0.0.0.0:9000
-//!   cargo run --release --example srt_serve_ts_file -- input.ts 0.0.0.0:9000 --loop
+//!   cargo run --release -p tst-examples --example srt_serve_ts_file -- input.ts 0.0.0.0:9000
+//!   cargo run --release -p tst-examples --example srt_serve_ts_file -- input.ts 0.0.0.0:9000 --loop
 //!
 //! Then in VLC:
 //!   Media → Open Network Stream → `srt://<host>:9000`

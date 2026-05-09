@@ -200,6 +200,22 @@ impl<T: Transport> Sender<T> {
     }
 }
 
+/// Type alias for [`Sender`] with a boxed [`Transport`] trait object.
+///
+/// See [`BoxedMuxSender`](crate::mux_sender::BoxedMuxSender) for rationale and the per-binding pattern.
+///
+/// # Example — opaque sender from a runtime-chosen transport
+/// ```no_run
+/// use tst_pipeline::sender::BoxedSender;
+/// use tst_pipeline::Sender;
+/// use tst_core::Transport;
+///
+/// fn open(transport: Box<dyn Transport>) -> BoxedSender {
+///     Sender::new(transport, Default::default())
+/// }
+/// ```
+pub type BoxedSender = Sender<Box<dyn crate::Transport>>;
+
 impl<T: Transport> Drop for Sender<T> {
     fn drop(&mut self) {
         if !self.closed {

@@ -4265,10 +4265,12 @@ pub struct tst_core::mpegts::mux::Muxer
 impl tst_core::mpegts::mux::Muxer
 pub fn tst_core::mpegts::mux::Muxer::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::audio_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>, tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::capacity_packets(&self) -> usize
 pub fn tst_core::mpegts::mux::Muxer::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::klv_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::klv_stream_handle(&self, index: usize) -> core::option::Option<tst_core::mpegts::mux::KlvStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::new(config: tst_core::mpegts::mux::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::pending_packets(&self) -> usize
 pub fn tst_core::mpegts::mux::Muxer::pull(&mut self, out: &mut [u8]) -> usize
 pub fn tst_core::mpegts::mux::Muxer::push_audio(&mut self, frames: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_audio_to(&mut self, handle: tst_core::mpegts::mux::AudioStreamHandle, pts_90khz: i64, frames: &[u8]) -> core::result::Result<(), tst_core::error::MuxError>

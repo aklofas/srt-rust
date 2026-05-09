@@ -2697,6 +2697,23 @@ impl Muxer {
         Ok(())
     }
 
+    /// Number of 188-byte TS packets currently queued in the muxer's
+    /// internal output buffer awaiting [`Muxer::pull`]. This is a live
+    /// gauge — non-zero between a `push_*` call and the subsequent
+    /// drain. Compared against [`Muxer::capacity_packets`] this gives
+    /// the back-pressure ratio used by `tst_pipeline::MuxSender`'s
+    /// observability hooks.
+    pub fn pending_packets(&self) -> usize {
+        self.queue.len()
+    }
+
+    /// The configured queue capacity in 188-byte TS packets — a snapshot
+    /// of `MuxerConfig::buffer_packets`. A `push_*` that would push the
+    /// queue past this cap returns [`crate::error::MuxError::BufferFull`].
+    pub fn capacity_packets(&self) -> usize {
+        self.config.buffer_packets
+    }
+
     /// Return a snapshot of the current stats counters.
     ///
     /// All per-stream entries are present regardless of whether any data has

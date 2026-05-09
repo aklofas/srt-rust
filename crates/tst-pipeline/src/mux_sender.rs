@@ -15,8 +15,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use tst_core::error::MuxError;
 use tst_core::mpegts::mux::{
-    AudioStreamHandle, KlvStreamHandle, Muxer, MuxerConfig, SubtitleStreamHandle,
-    VideoStreamHandle,
+    AudioStreamHandle, KlvStreamHandle, Muxer, MuxerConfig, SubtitleStreamHandle, VideoStreamHandle,
 };
 use tst_core::transport::{Transport, TransportError};
 
@@ -75,6 +74,26 @@ struct Inner<T: Transport> {
     closed: bool,
     bytes_sent: u64,
     packets_sent: u64,
+    /// Last back-pressure state sampled by `maybe_warn_backpressure`.
+    /// Used to fire `tracing::warn!` only on threshold-crossing
+    /// (Ok→Warn or Warn→Overflow), not on every `send_*` call. Recovery
+    /// transitions (Warn→Ok / Overflow→Warn) are silent.
+    last_backpressure_state: BackpressureState,
+}
+
+/// Back-pressure tier on the muxer's internal packet queue. Ordering
+/// matters: `Ok < Warn < Overflow`, so a strictly-greater comparison
+/// (`new > last`) gives the threshold-crossing semantics that suppress
+/// log spam at high pps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum BackpressureState {
+    /// `pending / cap < 0.8`.
+    Ok,
+    /// `0.8 <= pending / cap < 1.0` — one warn fires on entry.
+    Warn,
+    /// `pending / cap >= 1.0` — one warn fires on entry; the next
+    /// `push_*` will return `MuxError::BufferFull`.
+    Overflow,
 }
 
 impl<T: Transport> MuxSender<T> {
@@ -89,6 +108,7 @@ impl<T: Transport> MuxSender<T> {
                 closed: false,
                 bytes_sent: 0,
                 packets_sent: 0,
+                last_backpressure_state: BackpressureState::Ok,
             }),
             cancel,
         })
@@ -444,7 +464,9 @@ impl<T: Transport> MuxSender<T> {
     /// supports cancellation. Equivalent to what `close()` calls
     /// internally; exposed for callers who want to keep the MuxSender
     /// alive but still have an out-of-band wake-up mechanism.
-    pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
+    pub fn cancel_handle(
+        &self,
+    ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.cancel.clone()
     }
 
@@ -477,8 +499,11 @@ impl<T: Transport> Inner<T> {
         }
         // Drain any leftover from a previous failed call first.
         self.drain_pending()?;
-        // Push and drain new content.
-        self.muxer.push_video(nal, pts_90khz, key_frame)?;
+        // Push and drain new content. Sample back-pressure between the
+        // push (queue at peak) and the drain (queue back to zero).
+        let push_result = self.muxer.push_video(nal, pts_90khz, key_frame);
+        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
+        push_result?;
         self.drain_muxer()
     }
 
@@ -492,7 +517,9 @@ impl<T: Transport> Inner<T> {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        self.muxer.push_klv(klv, pts_90khz, metadata_service_id)?;
+        let push_result = self.muxer.push_klv(klv, pts_90khz, metadata_service_id);
+        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
+        push_result?;
         self.drain_muxer()
     }
 
@@ -507,8 +534,9 @@ impl<T: Transport> Inner<T> {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        self.muxer
-            .push_video_to(handle, nal, pts_90khz, key_frame)?;
+        let push_result = self.muxer.push_video_to(handle, nal, pts_90khz, key_frame);
+        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
+        push_result?;
         self.drain_muxer()
     }
 
@@ -523,8 +551,11 @@ impl<T: Transport> Inner<T> {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        self.muxer
-            .push_klv_to(handle, klv, pts_90khz, metadata_service_id)?;
+        let push_result = self
+            .muxer
+            .push_klv_to(handle, klv, pts_90khz, metadata_service_id);
+        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
+        push_result?;
         self.drain_muxer()
     }
 
@@ -533,7 +564,9 @@ impl<T: Transport> Inner<T> {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        self.muxer.push_audio(frames, pts_90khz)?;
+        let push_result = self.muxer.push_audio(frames, pts_90khz);
+        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
+        push_result?;
         self.drain_muxer()
     }
 
@@ -549,7 +582,9 @@ impl<T: Transport> Inner<T> {
         self.drain_pending()?;
         // Muxer parameter order is `(handle, pts, frames)`; the public
         // pipeline API mirrors `send_video` / `send_klv` (data first).
-        self.muxer.push_audio_to(handle, pts_90khz, frames)?;
+        let push_result = self.muxer.push_audio_to(handle, pts_90khz, frames);
+        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
+        push_result?;
         self.drain_muxer()
     }
 
@@ -560,7 +595,9 @@ impl<T: Transport> Inner<T> {
         self.drain_pending()?;
         // Muxer parameter order is `(pts, payload)`; we present
         // `(payload, pts)` for symmetry with `send_video` / `send_klv`.
-        self.muxer.push_subtitle(pts_90khz, payload)?;
+        let push_result = self.muxer.push_subtitle(pts_90khz, payload);
+        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
+        push_result?;
         self.drain_muxer()
     }
 
@@ -574,8 +611,56 @@ impl<T: Transport> Inner<T> {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        self.muxer.push_subtitle_to(handle, pts_90khz, payload)?;
+        let push_result = self.muxer.push_subtitle_to(handle, pts_90khz, payload);
+        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
+        push_result?;
         self.drain_muxer()
+    }
+
+    /// Sample muxer queue depth and emit `tracing::warn!` once when the
+    /// back-pressure tier transitions UP (`Ok→Warn` at >=80% of cap, or
+    /// `Warn→Overflow` at >=100% of cap). Recovery transitions are
+    /// silent. Called between `push_*` and `drain_muxer`, when the
+    /// queue is at its peak depth for this `send_*` cycle.
+    ///
+    /// `push_was_buffer_full` flags the case where the just-attempted
+    /// `push_*` returned [`MuxError::BufferFull`]: the queue depth is
+    /// unchanged from before the failed push (so it may read below the
+    /// cap), but the user-observable signal — a push that didn't fit —
+    /// is the overflow transition.
+    fn maybe_warn_backpressure(&mut self, push_was_buffer_full: bool) {
+        let cap = self.muxer.capacity_packets();
+        if cap == 0 {
+            return;
+        }
+        let pending = self.muxer.pending_packets();
+        // Integer arithmetic: `pending * 5 >= cap * 4` is exactly
+        // `pending / cap >= 0.8`, no f64 dependency, no boundary rounding.
+        let new_state = if push_was_buffer_full || pending >= cap {
+            BackpressureState::Overflow
+        } else if pending.saturating_mul(5) >= cap.saturating_mul(4) {
+            BackpressureState::Warn
+        } else {
+            BackpressureState::Ok
+        };
+        if new_state > self.last_backpressure_state {
+            match new_state {
+                BackpressureState::Warn => tracing::warn!(
+                    target: "tst_pipeline::mux_sender",
+                    pending,
+                    cap,
+                    "back-pressure approaching cap (>=80%)",
+                ),
+                BackpressureState::Overflow => tracing::warn!(
+                    target: "tst_pipeline::mux_sender",
+                    pending,
+                    cap,
+                    "back-pressure at cap — sends will block or fail",
+                ),
+                BackpressureState::Ok => {}
+            }
+        }
+        self.last_backpressure_state = new_state;
     }
 
     /// Drain the muxer's internal buffer and forward each chunk to the
@@ -881,8 +966,8 @@ mod multi_stream_tests {
 #[cfg(test)]
 mod cancel_tests {
     use super::*;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
     use tst_core::mpegts::mux::{KlvStreamType, VideoCodec};
     use tst_core::transport::{Transport, TransportCancel, TransportError};
 

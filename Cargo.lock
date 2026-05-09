@@ -1465,7 +1465,6 @@ version = "0.0.0"
 dependencies = [
  "criterion",
  "libc",
- "log",
  "proptest",
  "secrecy",
  "srt-sys",

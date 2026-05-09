@@ -12,8 +12,7 @@ repository.workspace   = true
 crate-type = ["rlib"]
 
 [features]
-default = ["log", "mbedtls"]
-log     = ["dep:log"]
+default = ["mbedtls"]
 mbedtls = ["srt-sys/mbedtls"]
 
 [dependencies]
@@ -23,8 +22,9 @@ libc      = { workspace = true }
 thiserror = { workspace = true }
 secrecy   = { workspace = true }
 url          = "2"
-log          = { workspace = true, optional = true }
-# Used for non-fatal warnings (e.g. ms-vs-µs URL pitfall in srt::url).
+# Single facade for diagnostics workspace-wide. The libsrt log handler
+# installed in `init.rs` forwards libsrt syslog levels into tracing
+# events with target="srt"; consumers wire one `tracing-subscriber`.
 # Default features include `attributes`/`std`. We only need `std`;
 # consumers attach their own subscriber.
 tracing = { version = "0.1", default-features = false, features = ["std"] }

@@ -6,7 +6,7 @@
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, MetadataKind, SamplePayload, StreamKind, VideoCodec,
 };
-use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
 
 fn build_minimal_h264_au() -> Vec<u8> {
     // Annex-B: AUD (nal_type=9) + IDR (nal_type=5).
@@ -63,7 +63,7 @@ fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
 #[test]
 fn h264_async_klv_roundtrip() {
     // Async KLV per ST 1402: PrivateData stream_type with no PTS in PES.
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -120,7 +120,7 @@ fn h264_async_klv_roundtrip() {
 
 #[test]
 fn h265_async_klv_roundtrip() {
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H265)
         .add_klv(0x101, KlvStreamType::PrivateData, false)

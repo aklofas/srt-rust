@@ -9,9 +9,9 @@
 use tst_core::mpegts::demux::psi::extract_user_label;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
 use tst_core::mpegts::descriptors;
-use tst_core::mpegts::mux::{AudioCodec, Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{AudioCodec, MuxerConfig, KlvStreamType, Muxer, VideoCodec};
 
-fn drive_psi(cfg: Config) -> Vec<u8> {
+fn drive_psi(cfg: MuxerConfig) -> Vec<u8> {
     let mut mux = Muxer::new(cfg).unwrap();
     // Push one tiny video NAL to advance PTS past the PSI threshold.
     mux.push_video(&[0, 0, 0, 1, 0x09, 0x10], 9000, true).ok();
@@ -33,7 +33,7 @@ fn drain_events(bytes: &[u8]) -> Vec<DemuxEvent> {
 
 #[test]
 fn family_b_klv_descriptor_stack_round_trips() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
@@ -87,7 +87,7 @@ fn family_b_klv_descriptor_stack_round_trips() {
 
 #[test]
 fn klva_auto_emit_suppressed_when_caller_supplies_registration() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -126,7 +126,7 @@ fn klva_auto_emit_suppressed_when_caller_supplies_registration() {
 fn family_a_hdmv_video_registration_round_trips() {
     // Replicate the bench-11 / N4717V / N77HS shape: video PID with
     // Registration "HDMV" + 4 trailing bytes.
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .stream_descriptors_for_video(
@@ -160,7 +160,7 @@ fn family_a_hdmv_video_registration_round_trips() {
 #[tracing_test::traced_test]
 #[test]
 fn non_klva_registration_on_klv_pid_logs_warning() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -177,7 +177,7 @@ fn ac3_registration_descriptor_auto_emits_on_pmt() {
     // Build a config with one video + one AC-3 audio stream, drive PSI,
     // demux it, find the PMT entry for the audio PID, and assert the
     // raw_descriptors carry tag 0x05 with format_identifier "AC-3".
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_audio(0x101, AudioCodec::Ac3)
@@ -213,7 +213,7 @@ fn ac3_registration_descriptor_auto_emits_on_pmt() {
 fn ac3_auto_emit_suppressed_when_caller_supplies_registration() {
     // Caller pre-supplies their own AC-3 registration. Assert exactly one
     // tag-0x05 descriptor with format_identifier "AC-3" — no duplication.
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_audio(0x101, AudioCodec::Ac3)
@@ -256,7 +256,7 @@ fn audio_language_descriptor_auto_emits_when_set() {
     // Build a config with one video + one audio with language=Some(*b"eng"),
     // drive PSI, demux it, find the PMT entry for the audio PID, and assert
     // raw_descriptors carries tag 0x0A with body [b'e', b'n', b'g', 0x00].
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_audio_with_language(0x101, AudioCodec::Aac, *b"eng")
@@ -297,7 +297,7 @@ fn audio_language_descriptor_auto_emits_when_set() {
 #[test]
 fn audio_language_descriptor_absent_when_unset() {
     // add_audio (without language) — no tag-0x0A descriptor should appear.
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_audio(0x101, AudioCodec::Aac)
@@ -335,7 +335,7 @@ fn klva_auto_emits_on_sync_metadata_too() {
     // Registration descriptor. ffmpeg mpegtsenc.c:817-818 emits KLVA on
     // the metadata stream_type path too — receivers gate KLV classification
     // on the descriptor regardless of stream_type.
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_klv(0x102, KlvStreamType::SynchronousMetadata, true)
@@ -372,7 +372,7 @@ fn audio_language_auto_emit_suppressed_when_caller_supplies() {
     // Caller pre-supplies their own ISO 639 language descriptor via
     // stream_descriptors_for_audio with a different language ("fra"). Assert
     // exactly one tag-0x0A descriptor with caller's language code (not "eng").
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_audio_with_language(0x101, AudioCodec::Aac, *b"eng")

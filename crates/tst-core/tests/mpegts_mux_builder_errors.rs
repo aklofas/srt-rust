@@ -1,17 +1,17 @@
 //! Regression tests for sub-phase 1.1.4: descriptor-index builder methods
 //! must never panic; out-of-range indices surface as
-//! [`MuxError::DescriptorIndexOutOfRange`] from `ConfigBuilder::build()` (and
+//! [`MuxError::DescriptorIndexOutOfRange`] from `MuxerConfigBuilder::build()` (and
 //! transitively from `MuxSender::new`).
 
 use tst_core::MuxError;
 use tst_core::mpegts::mux::{
-    AudioCodec, Config, KlvStreamType, StreamKind, SubtitleCodec, VideoCodec,
+    AudioCodec, MuxerConfig, KlvStreamType, StreamKind, SubtitleCodec, VideoCodec,
 };
 
 #[test]
 fn stream_descriptors_for_video_out_of_range_does_not_panic() {
     // Only one video stream (index 0); index 5 is out of range.
-    let result = Config::builder()
+    let result = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .stream_descriptors_for_video(5, vec![vec![0x05, 0x04, 0x4B, 0x4C, 0x56, 0x41]])
@@ -35,7 +35,7 @@ fn stream_descriptors_for_video_out_of_range_does_not_panic() {
 #[test]
 fn stream_descriptors_for_klv_out_of_range_does_not_panic() {
     // Only one KLV stream (index 0); index 5 is out of range.
-    let result = Config::builder()
+    let result = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -60,7 +60,7 @@ fn stream_descriptors_for_klv_out_of_range_does_not_panic() {
 #[test]
 fn stream_descriptors_for_audio_out_of_range_does_not_panic() {
     // Only one audio stream (index 0); index 5 is out of range.
-    let result = Config::builder()
+    let result = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_audio(0x1021, AudioCodec::Aac)
@@ -85,7 +85,7 @@ fn stream_descriptors_for_audio_out_of_range_does_not_panic() {
 #[test]
 fn stream_descriptors_for_subtitle_out_of_range_does_not_panic() {
     // Only one subtitle stream (index 0); index 5 is out of range.
-    let result = Config::builder()
+    let result = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_subtitle(
@@ -118,7 +118,7 @@ fn stream_descriptors_for_subtitle_out_of_range_does_not_panic() {
 #[test]
 fn stream_descriptors_for_stream_out_of_range_does_not_panic() {
     // One stream total (abs index 0); abs_idx 99 is out of range.
-    let result = Config::builder()
+    let result = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .stream_descriptors_for_stream(99, vec![vec![]])
@@ -145,7 +145,7 @@ fn first_descriptor_index_error_wins() {
     // from build(). The deferred_error field is first-error-wins: the
     // is_none() guard on each setter means a second bad index can never
     // overwrite the first.
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .stream_descriptors_for_video(7, vec![vec![]])  // first error: index 7

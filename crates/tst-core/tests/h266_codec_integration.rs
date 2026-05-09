@@ -18,7 +18,7 @@ use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{
     DemuxEvent, NalUnit, SamplePayload, VideoCodec, VideoPayload,
 };
-use tst_core::mpegts::mux::{Config, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer, VideoCodec as MuxVideoCodec};
 
 /// Wrap a NAL body in an Annex-B start code + 2-byte H.266 NAL header.
 /// Per H.266 V4 §7.3.1.2:
@@ -223,7 +223,7 @@ fn collect_events(d: &mut Demuxer) -> Vec<DemuxEvent> {
 
 #[test]
 fn h266_end_to_end_parses_minimal_vps_sps_pps() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, MuxVideoCodec::H266)
         .end_program()

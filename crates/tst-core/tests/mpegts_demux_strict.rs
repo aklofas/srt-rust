@@ -29,7 +29,7 @@
 //! demuxer's linkage builder falls into the "infer from topology" arm
 //! (`LinkSource::Inferred`) instead of the "no entry" arm. Triggering
 //! `MissingMetadataDescriptor` requires a multi-video PMT, which the
-//! current `mpegts::mux::Config::validate` rejects (Path 3 lifts that).
+//! current `mpegts::mux::MuxerConfig::validate` rejects (Path 3 lifts that).
 
 use tst_core::error::DemuxError;
 use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
@@ -37,7 +37,7 @@ use tst_core::mpegts::common::crc32::crc32_mpeg2;
 use tst_core::mpegts::demux::{
     DemuxEvent, DemuxerBuilder, DemuxerOptions, NonConformantIssue, StrictMode,
 };
-use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
 
 /// A minimally well-formed bare ST 0601 LS used as the inner payload of a
 /// synthetic AU cell: 16-byte UAS Datalink LS UL + short-form BER length 0.
@@ -65,7 +65,7 @@ fn drain(m: &mut Muxer) -> Vec<u8> {
 /// bytes. PrivateData streams pass payload through unchanged, so the caller
 /// can directly emit a sync-shaped wire form.
 fn build_mismatched_stream() -> Vec<u8> {
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, true)

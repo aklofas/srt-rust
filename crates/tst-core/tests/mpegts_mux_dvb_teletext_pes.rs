@@ -1,6 +1,6 @@
 //! Verifies DVB-teletext PES per ETSI EN 300 472 §4.2.
 
-use tst_core::mpegts::mux::{ConfigBuilder, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfigBuilder, Muxer, SubtitleCodec, VideoCodec};
 
 /// Drain the muxer once and reassemble the full PES bytes (header included)
 /// from every TS packet on `pid`. We need the header to inspect
@@ -29,7 +29,7 @@ fn reassemble_pes_full(mux: &mut Muxer, pid: u16) -> Vec<u8> {
 
 #[test]
 fn dvb_teletext_pes_uses_45_byte_header_with_stuffing() {
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(
@@ -119,7 +119,7 @@ fn dvb_teletext_pes_grows_to_next_ts_packet_boundary_for_large_payload() {
     // Two-line payload = 1 + 2*(2+44) = 93 bytes; header 45 + payload 93 = 138 bytes total.
     // ceil(138 / 184) = 1 TS packet → total PES = 184 bytes; stuffing tail
     // = 184 − 138 = 46 bytes of 0xFF.
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(

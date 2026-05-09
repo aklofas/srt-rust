@@ -5,10 +5,10 @@ use tst_core::mpegts::demux::{
     Demuxer,
     event::{DemuxEvent, SamplePayload},
 };
-use tst_core::mpegts::mux::{AudioCodec as MuxAudioCodec, Config, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{AudioCodec as MuxAudioCodec, MuxerConfig, Muxer, VideoCodec};
 
 fn roundtrip_one_codec(codec: MuxAudioCodec) {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_audio(0x300, codec)

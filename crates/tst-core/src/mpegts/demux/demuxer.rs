@@ -1693,9 +1693,9 @@ mod tests {
     fn pmt_program_map_event_carries_raw_descriptors() {
         use crate::mpegts::demux::event::DemuxEvent;
         use crate::mpegts::descriptors;
-        use crate::mpegts::mux::{ConfigBuilder, VideoCodec as MuxVideoCodec};
+        use crate::mpegts::mux::{MuxerConfigBuilder, VideoCodec as MuxVideoCodec};
 
-        let cfg = ConfigBuilder::default()
+        let cfg = MuxerConfigBuilder::default()
             .add_program(1, 0x1000)
             .add_video(0x100, MuxVideoCodec::H264)
             .stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
@@ -1737,10 +1737,10 @@ mod tests {
     #[test]
     fn demuxer_emits_audio_sample_for_aac_pes() {
         use crate::mpegts::demux::event::AudioCodec;
-        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, ConfigBuilder};
+        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, MuxerConfigBuilder};
 
         // Mux: single-program with one AAC audio stream.
-        let cfg = ConfigBuilder::default()
+        let cfg = MuxerConfigBuilder::default()
             .add_program(1, 0x1000)
             .add_audio(0x300, MuxAudioCodec::Aac)
             .end_program()
@@ -1803,11 +1803,11 @@ mod tests {
     #[test]
     fn treat_as_overrides_pmt_classification_to_typed_audio() {
         use crate::mpegts::demux::event::AudioCodec;
-        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, ConfigBuilder};
+        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, MuxerConfigBuilder};
 
         // Mux an AAC audio stream (PMT stream_type = 0x0F, default classifies
         // as Aac).
-        let cfg = ConfigBuilder::default()
+        let cfg = MuxerConfigBuilder::default()
             .add_program(1, 0x1000)
             .add_audio(0x300, MuxAudioCodec::Aac)
             .end_program()
@@ -1874,7 +1874,7 @@ mod tests {
     #[test]
     fn treat_as_routes_arbitrary_pid_to_subtitle_codec() {
         use crate::mpegts::demux::event::SubtitleCodec as DemuxSubtitleCodec;
-        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, ConfigBuilder};
+        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, MuxerConfigBuilder};
 
         // Mux an audio stream on PID 0x200 (PMT stream_type = 0x04 for MP2).
         // The PMT entry will have no subtitle descriptor — but the
@@ -1882,7 +1882,7 @@ mod tests {
         // `StreamKind::Subtitle(WebVttInTs)`. The demuxer should dispatch
         // through the subtitle arm of `handle_complete_pes` and produce a
         // `SamplePayload::Subtitle` event.
-        let cfg = ConfigBuilder::default()
+        let cfg = MuxerConfigBuilder::default()
             .add_program(1, 0x1000)
             .add_audio(0x200, MuxAudioCodec::Mp2)
             .end_program()
@@ -1927,12 +1927,12 @@ mod tests {
     #[test]
     fn treat_as_routes_subtitle_without_descriptor_emits_non_conformant() {
         use crate::mpegts::demux::event::SubtitleCodec as DemuxSubtitleCodec;
-        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, ConfigBuilder};
+        use crate::mpegts::mux::{AudioCodec as MuxAudioCodec, MuxerConfigBuilder};
 
         // PMT entry for 0x200 carries no subtitle descriptor. `treat_as`
         // remaps it to a subtitle codec — classifier should surface
         // `NonConformantIssue::SubtitleMissingDescriptor` once for that PID.
-        let cfg = ConfigBuilder::default()
+        let cfg = MuxerConfigBuilder::default()
             .add_program(1, 0x1000)
             .add_audio(0x200, MuxAudioCodec::Mp2)
             .end_program()
@@ -1976,7 +1976,7 @@ mod tests {
     #[test]
     fn multi_descriptor_0x06_emits_subtitle_ambiguous() {
         use crate::mpegts::mux::{
-            ConfigBuilder, SubtitleCodec as MuxSubtitleCodec, VideoCodec as MuxVideoCodec,
+            MuxerConfigBuilder, SubtitleCodec as MuxSubtitleCodec, VideoCodec as MuxVideoCodec,
         };
 
         // Caller supplies BOTH a subtitling_descriptor (0x59) and a
@@ -1991,7 +1991,7 @@ mod tests {
         let subtitling_tlv = vec![0x59u8, 0x08, b'e', b'n', b'g', 0x10, 0x00, 0x01, 0x00, 0x01];
         // registration_descriptor body: 4-byte format_identifier "VTTC".
         let vttc_tlv = vec![0x05u8, 0x04, b'V', b'T', b'T', b'C'];
-        let cfg = ConfigBuilder::default()
+        let cfg = MuxerConfigBuilder::default()
             .add_program(1, 0x1000)
             .add_video(0x101, MuxVideoCodec::H264)
             .add_subtitle(0x200, MuxSubtitleCodec::WebVttInTs)
@@ -2201,13 +2201,13 @@ mod tests {
     #[test]
     fn demuxer_emits_subtitle_sample_for_webvtt_pes() {
         use crate::mpegts::demux::event::SubtitleCodec as DemuxSubtitleCodec;
-        use crate::mpegts::mux::{ConfigBuilder, SubtitleCodec as MuxSubtitleCodec, VideoCodec};
+        use crate::mpegts::mux::{MuxerConfigBuilder, SubtitleCodec as MuxSubtitleCodec, VideoCodec};
 
         // Mux: single-program with one video stream and one WebVTT subtitle
-        // stream. Video is required because Config::validate enforces at least
+        // stream. Video is required because MuxerConfig::validate enforces at least
         // one video or KLV per program; subtitle alone wouldn't be a valid
         // program shape.
-        let cfg = ConfigBuilder::default()
+        let cfg = MuxerConfigBuilder::default()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_subtitle(0x200, MuxSubtitleCodec::WebVttInTs)
@@ -2270,9 +2270,9 @@ mod tests {
 
     #[test]
     fn demuxer_stats_increments_subtitle_streams_seen() {
-        use crate::mpegts::mux::{ConfigBuilder, SubtitleCodec, VideoCodec as MuxVideoCodec};
+        use crate::mpegts::mux::{MuxerConfigBuilder, SubtitleCodec, VideoCodec as MuxVideoCodec};
 
-        let cfg = ConfigBuilder::default()
+        let cfg = MuxerConfigBuilder::default()
             .add_program(1, 0x100)
             .add_video(0x101, MuxVideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -2479,14 +2479,14 @@ mod tests {
     /// stats and confuses strict-mode consumers.
     #[test]
     fn discontinuity_indicator_suppresses_continuity_jump_event() {
-        use crate::mpegts::mux::{ConfigBuilder, VideoCodec as MuxVideoCodec};
+        use crate::mpegts::mux::{MuxerConfigBuilder, VideoCodec as MuxVideoCodec};
         // Build a real PAT+PMT+video PES through the muxer so the demuxer's
         // PSI tables get populated for PID 0x100 and `cc_by_pid` is primed.
         // This is the same pattern already used by other unit tests in this
         // module (e.g. `demuxer_emits_audio_sample_for_aac_pes`) — we need
         // PSI parsed for `lookup_stream(0x100)` to resolve and for the CC
         // tracker to have a baseline against which to detect a jump.
-        let cfg = ConfigBuilder::default()
+        let cfg = MuxerConfigBuilder::default()
             .add_program(1, 0x1000)
             .add_video(0x100, MuxVideoCodec::H264)
             .end_program()
@@ -2738,13 +2738,13 @@ mod tests {
     fn dvb_sub_demux_strips_pes_data_field_envelope() {
         use crate::mpegts::demux::event::SamplePayload;
         use crate::mpegts::mux::{
-            Config, Muxer, SubtitleCodec as MuxSubtitleCodec, VideoCodec as MuxVideoCodec,
+            MuxerConfig, Muxer, SubtitleCodec as MuxSubtitleCodec, VideoCodec as MuxVideoCodec,
         };
 
         // Configure: one program with one H.264 video stream (PCR carrier)
         // plus one DVB-sub stream. Subtitles can't be the PCR PID, so the
         // video stream is required for a valid program.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, MuxVideoCodec::H264)
             .add_subtitle(

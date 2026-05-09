@@ -10,7 +10,7 @@ use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{
     DemuxEvent, Obu, SamplePayload, StreamId, StreamKind, VideoCodec, VideoPayload,
 };
-use tst_core::mpegts::mux::{Config, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer, VideoCodec as MuxVideoCodec};
 
 /// Build a minimal AV1 access unit: Temporal Delimiter + Sequence Header +
 /// Frame Header + Tile Group. Each OBU has `obu_has_size_field = 1`. Bodies
@@ -55,7 +55,7 @@ fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
 
 #[test]
 fn av1_mux_demux_roundtrip_emits_obus() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, MuxVideoCodec::Av1)
         .end_program()

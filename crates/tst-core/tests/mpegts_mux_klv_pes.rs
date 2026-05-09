@@ -4,7 +4,7 @@
 //! - Async KLV (stream_type 0x06 PrivateData)  → PES stream_id 0xBD (private_stream_1)
 //! - Sync  KLV (stream_type 0x15 SynchronousMetadata) → PES stream_id 0xFC (metadata)
 
-use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec};
 
 /// Minimal 17-byte KLV LS packet (16-byte ST 0601 UL + 1-byte BER length=0).
 fn synthetic_klv() -> Vec<u8> {
@@ -65,7 +65,7 @@ fn async_klv_pes_uses_stream_id_0xbd() {
     // (private_stream_1) per ffmpeg + GStreamer convention.
     // H.222.0 V9 Table 2-22 reserves 0xFC for metadata streams
     // (stream_type 0x15) only.
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(
@@ -93,7 +93,7 @@ fn async_klv_pes_uses_stream_id_0xbd() {
 fn sync_klv_pes_keeps_stream_id_0xfc() {
     // stream_type 0x15 SynchronousMetadata — sync KLV must use PES stream_id
     // 0xFC per H.222.0 V9 Table 2-22 (reserved for metadata streams).
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(

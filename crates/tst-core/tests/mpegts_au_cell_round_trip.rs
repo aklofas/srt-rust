@@ -6,7 +6,7 @@
 
 use tst_core::mpegts::au_cell::{CellFragmentIndication, read_metadata_au_cell};
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind};
-use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec};
 
 fn synthetic_klv_ls() -> Vec<u8> {
     let mut v = Vec::new();
@@ -37,7 +37,7 @@ fn drain(mux: &mut Muxer) -> Vec<u8> {
 
 #[test]
 fn sync_klv_mux_demux_round_trip() {
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(
@@ -96,7 +96,7 @@ fn private_data_klv_does_not_auto_wrap() {
     // PrivateData streams are caller-controlled; the muxer must NOT prepend
     // an AU cell header. Push raw bytes; demuxer must surface them as-is
     // via MetadataKind::KlvAsync (the bare SMPTE UL signal).
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(
@@ -136,7 +136,7 @@ fn sync_klv_sequence_number_increments_across_pushes() {
     // Verifies the muxer's per-stream sequence_number counter increments
     // mod 256 across push_klv calls. Validates by reading the AU cell
     // header out of the emitted PES payload directly.
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(0x1031, KlvStreamType::SynchronousMetadata, true)
@@ -335,9 +335,9 @@ fn classify_klv_opaque_inner_complete_cfi_returns_sync_au_cell() {
 #[test]
 fn multi_cell_au_emits_non_conformant_issue_through_demuxer() {
     use tst_core::mpegts::demux::{DemuxEvent, Demuxer, NonConformantIssue};
-    use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec};
+    use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec};
 
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(0x1031, KlvStreamType::SynchronousMetadata, true)
@@ -473,9 +473,9 @@ fn metadata_service_id_propagates_from_push_klv_to_au_cell() {
     // header in the emitted PES payload, rather than being silently
     // overwritten with the former hardcoded 0x00 default.
     use tst_core::mpegts::au_cell::read_metadata_au_cell;
-    use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+    use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
 
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         // SynchronousMetadata (stream_type 0x15) triggers the AU cell wrap;

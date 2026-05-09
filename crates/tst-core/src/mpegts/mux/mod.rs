@@ -1,13 +1,13 @@
 //! MuxSender-side MPEG-TS muxer.
 //!
-//! The public surface is `Muxer`, `Config`, `VideoCodec`,
+//! The public surface is `Muxer`, `MuxerConfig`, `VideoCodec`,
 //! `KlvStreamType`. Internal helpers live in `ts`, `psi`, `pes` submodules.
 //!
 //! Re-export note: `Muxer`, `VideoCodec`, and `KlvStreamType` are re-exported
-//! at the crate root (`tst_core::Muxer` etc.). `Config` deliberately is not —
-//! callers reach it via `mpegts::mux::Config` so the construction site is
-//! visually distinct from the SRT `SocketConfig` / `ListenerConfig` already
-//! at the crate root. Don't "symmetry-fix" this.
+//! at the crate root (`tst_core::Muxer` etc.). `MuxerConfig` deliberately is
+//! not — callers reach it via `mpegts::mux::MuxerConfig` so the construction
+//! site is visually distinct from the SRT `SocketConfig` / `ListenerConfig`
+//! already at the crate root. Don't "symmetry-fix" this.
 
 pub(crate) mod pes;
 pub(crate) mod psi;
@@ -176,7 +176,7 @@ impl core::fmt::Display for TeletextField {
 
 /// One elementary stream in the muxer's output TS.
 ///
-/// [`Config::validate`] caps at 16 video + 16 KLV streams, with at least
+/// [`MuxerConfig::validate`] caps at 16 video + 16 KLV streams, with at least
 /// one of either kind required.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamSpec {
@@ -458,14 +458,15 @@ pub const MAX_PROGRAMS: usize = 16;
 /// auto-falling-back to the first video stream's PID), and its own
 /// elementary stream set.
 #[derive(Debug, Clone)]
-pub struct ProgramConfig {
+pub struct MuxerProgramConfig {
     /// Program number (PAT entry). Must be > 0 (program 0 is reserved for
-    /// network information). Must be unique across all programs in the Config.
+    /// network information). Must be unique across all programs in the
+    /// MuxerConfig.
     pub program_number: u16,
 
     /// PID carrying this program's PMT. PAT lists `(program_number, pmt_pid)`
     /// tuples. Must not collide with any stream PID in any program, and must
-    /// be unique across all programs in the Config.
+    /// be unique across all programs in the MuxerConfig.
     pub pmt_pid: u16,
 
     /// Elementary streams in this program. ≤16 video, ≤16 KLV, ≥1 of either.
@@ -481,13 +482,14 @@ pub struct ProgramConfig {
     pub program_descriptors: Vec<Vec<u8>>,
 
     /// Per-stream descriptors. Outer Vec indexed parallel to `streams`;
-    /// inner is the descriptor list for that stream. Hand-built `ProgramConfig`
-    /// callers must keep `stream_descriptors.len() == streams.len()`;
-    /// `ConfigBuilder::build()` enforces this.
+    /// inner is the descriptor list for that stream. Hand-built
+    /// `MuxerProgramConfig` callers must keep
+    /// `stream_descriptors.len() == streams.len()`;
+    /// `MuxerConfigBuilder::build()` enforces this.
     pub stream_descriptors: Vec<Vec<Vec<u8>>>,
 }
 
-impl ProgramConfig {
+impl MuxerProgramConfig {
     /// Returns the PID of the first video stream in this program, if any.
     pub(crate) fn first_video_pid(&self) -> Option<u16> {
         self.streams.iter().find_map(|s| match s {
@@ -515,16 +517,16 @@ impl ProgramConfig {
 
 /// Muxer construction parameters.
 ///
-/// Contains one or more [`ProgramConfig`]s. Multi-program transport streams
-/// carry a PAT that lists all programs; each program has its own PMT.
+/// Contains one or more [`MuxerProgramConfig`]s. Multi-program transport
+/// streams carry a PAT that lists all programs; each program has its own PMT.
 ///
-/// Construct with [`Config::builder()`] for ergonomic chaining, or directly
-/// with field updates over [`Config::default()`] for the canonical
-/// single-program single-video-plus-single-KLV case.
+/// Construct with [`MuxerConfig::builder()`] for ergonomic chaining, or
+/// directly with field updates over [`MuxerConfig::default()`] for the
+/// canonical single-program single-video-plus-single-KLV case.
 #[derive(Debug, Clone)]
-pub struct Config {
+pub struct MuxerConfig {
     /// Programs in this multiplex. ≤ `MAX_PROGRAMS`, ≥ 1.
-    pub programs: Vec<ProgramConfig>,
+    pub programs: Vec<MuxerProgramConfig>,
 
     /// PCR re-emission interval, in milliseconds. Default 40. Validation 1..=100.
     /// Applied per-program (each program's PCR PID re-emits independently).
@@ -539,12 +541,12 @@ pub struct Config {
     pub buffer_packets: usize,
 }
 
-impl Default for Config {
+impl Default for MuxerConfig {
     fn default() -> Self {
         // Single program: H.264 video at 0x1011, KLV PrivateData at 0x1031,
         // async KLV (no PTS), PCR auto-resolved to first video stream.
         Self {
-            programs: vec![ProgramConfig {
+            programs: vec![MuxerProgramConfig {
                 program_number: 1,
                 pmt_pid: 0x1000,
                 streams: vec![
@@ -569,10 +571,10 @@ impl Default for Config {
     }
 }
 
-impl Config {
-    /// Start a new builder. Equivalent to `ConfigBuilder::default()`.
-    pub fn builder() -> ConfigBuilder {
-        ConfigBuilder::default()
+impl MuxerConfig {
+    /// Start a new builder. Equivalent to `MuxerConfigBuilder::default()`.
+    pub fn builder() -> MuxerConfigBuilder {
+        MuxerConfigBuilder::default()
     }
 
     /// Validate the configuration. Returns a `MuxError` describing the first
@@ -893,18 +895,19 @@ impl Config {
     }
 }
 
-/// Ergonomic construction of [`Config`] with nested `add_program` blocks.
+/// Ergonomic construction of [`MuxerConfig`] with nested `add_program` blocks.
 ///
-/// Use [`Config::builder()`] to obtain a `ConfigBuilder`, then open each
-/// program with [`ConfigBuilder::add_program`] (returns a [`ProgramBuilder`]),
-/// add streams and descriptors on the `ProgramBuilder`, then close the block
-/// with [`ProgramBuilder::end_program`] (returns back to the `ConfigBuilder`).
-/// Finish with [`ConfigBuilder::build`].
+/// Use [`MuxerConfig::builder()`] to obtain a `MuxerConfigBuilder`, then open
+/// each program with [`MuxerConfigBuilder::add_program`] (returns a
+/// [`MuxerProgramBuilder`]), add streams and descriptors on the
+/// `MuxerProgramBuilder`, then close the block with
+/// [`MuxerProgramBuilder::end_program`] (returns back to the
+/// `MuxerConfigBuilder`). Finish with [`MuxerConfigBuilder::build`].
 ///
 /// ```
-/// use tst_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+/// use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, VideoCodec};
 ///
-/// let config = Config::builder()
+/// let config = MuxerConfig::builder()
 ///     .add_program(1, 0x1000)
 ///         .add_video(0x1011, VideoCodec::H264)
 ///         .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -913,24 +916,25 @@ impl Config {
 ///     .unwrap();
 /// ```
 #[derive(Default, Debug)]
-pub struct ConfigBuilder {
-    programs: Vec<ProgramConfig>,
+pub struct MuxerConfigBuilder {
+    programs: Vec<MuxerProgramConfig>,
     pcr_interval_ms: Option<u32>,
     psi_interval_ms: Option<u32>,
     buffer_packets: Option<usize>,
     /// First out-of-range descriptor-index error recorded during builder
-    /// chaining. `build()` surfaces it before calling `Config::validate()`.
-    /// First-error-wins: subsequent out-of-range calls on the same builder
-    /// chain do not overwrite the stored error.
+    /// chaining. `build()` surfaces it before calling
+    /// `MuxerConfig::validate()`. First-error-wins: subsequent out-of-range
+    /// calls on the same builder chain do not overwrite the stored error.
     deferred_error: Option<MuxError>,
 }
 
-impl ConfigBuilder {
-    /// Begin a new program block. Returns a [`ProgramBuilder`] that owns
+impl MuxerConfigBuilder {
+    /// Begin a new program block. Returns a [`MuxerProgramBuilder`] that owns
     /// `self` (consume-by-value); close the block with
-    /// [`ProgramBuilder::end_program`] to recover the `ConfigBuilder`.
-    pub fn add_program(mut self, program_number: u16, pmt_pid: u16) -> ProgramBuilder {
-        self.programs.push(ProgramConfig {
+    /// [`MuxerProgramBuilder::end_program`] to recover the
+    /// `MuxerConfigBuilder`.
+    pub fn add_program(mut self, program_number: u16, pmt_pid: u16) -> MuxerProgramBuilder {
+        self.programs.push(MuxerProgramConfig {
             program_number,
             pmt_pid,
             streams: Vec::new(),
@@ -939,7 +943,7 @@ impl ConfigBuilder {
             stream_descriptors: Vec::new(),
         });
         let idx = self.programs.len() - 1;
-        ProgramBuilder { parent: self, idx }
+        MuxerProgramBuilder { parent: self, idx }
     }
 
     pub fn pcr_interval_ms(mut self, ms: u32) -> Self {
@@ -957,18 +961,19 @@ impl ConfigBuilder {
         self
     }
 
-    /// Finalize. Returns a validated [`Config`] or an error describing the
-    /// failed rule.
+    /// Finalize. Returns a validated [`MuxerConfig`] or an error describing
+    /// the failed rule.
     ///
     /// # Errors
     /// Returns the first deferred out-of-range descriptor-index error recorded
     /// during the builder chain (from `stream_descriptors_for_{video,klv,audio,
-    /// subtitle,stream}`), or the first error from [`Config::validate`].
-    pub fn build(self) -> Result<Config, MuxError> {
+    /// subtitle,stream}`), or the first error from
+    /// [`MuxerConfig::validate`].
+    pub fn build(self) -> Result<MuxerConfig, MuxError> {
         if let Some(err) = self.deferred_error {
             return Err(err);
         }
-        let cfg = Config {
+        let cfg = MuxerConfig {
             programs: self.programs,
             pcr_interval_ms: self.pcr_interval_ms.unwrap_or(40),
             psi_interval_ms: self.psi_interval_ms.unwrap_or(100),
@@ -979,20 +984,21 @@ impl ConfigBuilder {
     }
 }
 
-/// Sub-builder for one [`ProgramConfig`]. Returned by
-/// [`ConfigBuilder::add_program`]; close with [`ProgramBuilder::end_program`]
-/// to return to the outer [`ConfigBuilder`] for additional `.add_program(...)`
-/// calls or `.build()`.
+/// Sub-builder for one [`MuxerProgramConfig`]. Returned by
+/// [`MuxerConfigBuilder::add_program`]; close with
+/// [`MuxerProgramBuilder::end_program`] to return to the outer
+/// [`MuxerConfigBuilder`] for additional `.add_program(...)` calls or
+/// `.build()`.
 ///
 /// Every method consumes `self` and returns `Self` so calls can be chained.
 #[derive(Debug)]
-pub struct ProgramBuilder {
-    parent: ConfigBuilder,
+pub struct MuxerProgramBuilder {
+    parent: MuxerConfigBuilder,
     /// Index into `parent.programs` for the program under construction.
     idx: usize,
 }
 
-impl ProgramBuilder {
+impl MuxerProgramBuilder {
     /// Add a video elementary stream to this program.
     pub fn add_video(mut self, pid: u16, codec: VideoCodec) -> Self {
         let prog = &mut self.parent.programs[self.idx];
@@ -1085,7 +1091,7 @@ impl ProgramBuilder {
     /// # Errors
     /// Out-of-range `video_idx` is recorded as a deferred
     /// [`MuxError::DescriptorIndexOutOfRange`] surfaced by
-    /// [`ConfigBuilder::build`]. Call after the corresponding
+    /// [`MuxerConfigBuilder::build`]. Call after the corresponding
     /// [`add_video`][Self::add_video].
     pub fn stream_descriptors_for_video(mut self, video_idx: usize, descs: Vec<Vec<u8>>) -> Self {
         let prog = &mut self.parent.programs[self.idx];
@@ -1119,7 +1125,7 @@ impl ProgramBuilder {
     /// # Errors
     /// Out-of-range `klv_idx` is recorded as a deferred
     /// [`MuxError::DescriptorIndexOutOfRange`] surfaced by
-    /// [`ConfigBuilder::build`]. Call after the corresponding
+    /// [`MuxerConfigBuilder::build`]. Call after the corresponding
     /// [`add_klv`][Self::add_klv].
     pub fn stream_descriptors_for_klv(mut self, klv_idx: usize, descs: Vec<Vec<u8>>) -> Self {
         let prog = &mut self.parent.programs[self.idx];
@@ -1153,7 +1159,7 @@ impl ProgramBuilder {
     /// # Errors
     /// Out-of-range `audio_idx` is recorded as a deferred
     /// [`MuxError::DescriptorIndexOutOfRange`] surfaced by
-    /// [`ConfigBuilder::build`]. Call after the corresponding
+    /// [`MuxerConfigBuilder::build`]. Call after the corresponding
     /// [`add_audio`][Self::add_audio].
     pub fn stream_descriptors_for_audio(mut self, audio_idx: usize, descs: Vec<Vec<u8>>) -> Self {
         let prog = &mut self.parent.programs[self.idx];
@@ -1193,7 +1199,7 @@ impl ProgramBuilder {
     /// # Errors
     /// Out-of-range `subtitle_idx` is recorded as a deferred
     /// [`MuxError::DescriptorIndexOutOfRange`] surfaced by
-    /// [`ConfigBuilder::build`]. Call after the corresponding
+    /// [`MuxerConfigBuilder::build`]. Call after the corresponding
     /// [`add_subtitle`][Self::add_subtitle].
     pub fn stream_descriptors_for_subtitle(
         mut self,
@@ -1230,7 +1236,8 @@ impl ProgramBuilder {
     ///
     /// # Errors
     /// Out-of-range `abs_idx` is recorded as a deferred
-    /// [`MuxError::AbsIndexOutOfRange`] surfaced by [`ConfigBuilder::build`].
+    /// [`MuxError::AbsIndexOutOfRange`] surfaced by
+    /// [`MuxerConfigBuilder::build`].
     pub fn stream_descriptors_for_stream(mut self, abs_idx: usize, descs: Vec<Vec<u8>>) -> Self {
         let prog = &mut self.parent.programs[self.idx];
         if abs_idx < prog.streams.len() {
@@ -1245,8 +1252,8 @@ impl ProgramBuilder {
         self
     }
 
-    /// Close this program block and return to the outer [`ConfigBuilder`].
-    pub fn end_program(self) -> ConfigBuilder {
+    /// Close this program block and return to the outer [`MuxerConfigBuilder`].
+    pub fn end_program(self) -> MuxerConfigBuilder {
         self.parent
     }
 }
@@ -1273,7 +1280,7 @@ pub struct MuxerStats {
     pub programs_configured: u32,
     /// Number of subtitle streams configured across all programs in this
     /// muxer. Counts the `StreamSpec::Subtitle` entries from
-    /// `Config::programs`.
+    /// `MuxerConfig::programs`.
     pub subtitle_streams_configured: u32,
     /// Per-stream counters, keyed by PID. One entry per configured
     /// video or KLV stream. `StreamStats::items` = push_video_to /
@@ -1325,7 +1332,7 @@ struct SubtitleStreamState {
 /// and `push_klv`, then drain TS packets with `pull`. The muxer is
 /// deterministic — output is a function of inputs only, not wall-clock time.
 pub struct Muxer {
-    config: Config,
+    config: MuxerConfig,
 
     /// Per-program pre-composed PMT descriptor bytes.
     /// `pmt_descriptor_caches[prog_idx][stream_idx]` = concatenated TLVs for
@@ -1379,7 +1386,7 @@ pub struct Muxer {
 
 impl Muxer {
     /// Construct and validate.
-    pub fn new(config: Config) -> Result<Self, MuxError> {
+    pub fn new(config: MuxerConfig) -> Result<Self, MuxError> {
         config.validate()?;
 
         let n_programs = config.programs.len();
@@ -1751,7 +1758,7 @@ impl Muxer {
     /// Returns `Err(MuxError::InvalidNal)` if `nal` doesn't begin with an
     /// Annex-B start code.
     /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets would
-    /// exceed `Config::buffer_packets`. State is unchanged in either error
+    /// exceed `MuxerConfig::buffer_packets`. State is unchanged in either error
     /// case.
     pub fn push_video(
         &mut self,
@@ -1817,7 +1824,7 @@ impl Muxer {
     /// programs. Otherwise rejects with [`MuxError::AmbiguousTarget`].
     ///
     /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets would
-    /// exceed `Config::buffer_packets`.
+    /// exceed `MuxerConfig::buffer_packets`.
     pub fn push_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
         let total_audio: usize = self.audio_streams.iter().map(|a| a.len()).sum();
         if total_audio == 0 {
@@ -1857,7 +1864,7 @@ impl Muxer {
     /// Returns [`MuxError::InvalidStreamHandle`] if the handle's index is out
     /// of range for this muxer's configured audio stream count.
     /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets would
-    /// exceed `Config::buffer_packets`.
+    /// exceed `MuxerConfig::buffer_packets`.
     pub fn push_audio_to(
         &mut self,
         handle: AudioStreamHandle,
@@ -1985,7 +1992,7 @@ impl Muxer {
     /// Returns `Err(MuxError::SubtitleTooLarge)` if `payload.len()`
     /// would overflow the PES packet length budget.
     /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets
-    /// would exceed `Config::buffer_packets`.
+    /// would exceed `MuxerConfig::buffer_packets`.
     pub fn push_subtitle(&mut self, pts_90khz: i64, payload: &[u8]) -> Result<(), MuxError> {
         let total_subtitle: usize = self.subtitle_streams.iter().map(|s| s.len()).sum();
         if total_subtitle == 0 {
@@ -2023,7 +2030,7 @@ impl Muxer {
     /// Returns [`MuxError::SubtitleTooLarge`] if `payload.len()` would
     /// overflow the PES packet length budget (max 65527 bytes).
     /// Returns `Err(MuxError::BufferFull)` if the resulting TS packets
-    /// would exceed `Config::buffer_packets`.
+    /// would exceed `MuxerConfig::buffer_packets`.
     pub fn push_subtitle_to(
         &mut self,
         handle: SubtitleStreamHandle,
@@ -2719,7 +2726,7 @@ impl Muxer {
                 &entries,
                 &mut self.counters,
             )
-            .expect("validated Config must produce single-section PMT");
+            .expect("validated MuxerConfig must produce single-section PMT");
             self.queue.push_back(pmt);
         }
 
@@ -2800,7 +2807,7 @@ mod tests {
 
     #[test]
     fn default_config_validates() {
-        Config::default().validate().expect("default is valid");
+        MuxerConfig::default().validate().expect("default is valid");
     }
 
     #[test]
@@ -2884,7 +2891,7 @@ mod tests {
 
     #[test]
     fn rejects_video_pid_zero() {
-        let mut cfg = Config::default();
+        let mut cfg = MuxerConfig::default();
         if let Some(StreamSpec::Video { pid, .. }) = cfg.programs[0]
             .streams
             .iter_mut()
@@ -2902,7 +2909,7 @@ mod tests {
 
     #[test]
     fn rejects_klv_pid_null() {
-        let mut cfg = Config::default();
+        let mut cfg = MuxerConfig::default();
         if let Some(StreamSpec::Klv { pid, .. }) = cfg.programs[0]
             .streams
             .iter_mut()
@@ -2920,7 +2927,7 @@ mod tests {
 
     #[test]
     fn rejects_pid_collision() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1234, VideoCodec::H264)
             .add_klv(0x1234, KlvStreamType::PrivateData, false)
@@ -2936,7 +2943,7 @@ mod tests {
 
     #[test]
     fn rejects_unrelated_pcr_pid() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -2955,7 +2962,7 @@ mod tests {
     fn rejects_pcr_pid_pinned_to_klv() {
         // KLV cadence (1-10 Hz) violates ETSI TR 101 290 §5.6.1's 100 ms
         // ceiling. Validate now rejects this combination.
-        let err = Config::builder()
+        let err = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -2971,18 +2978,18 @@ mod tests {
 
     #[test]
     fn rejects_pcr_interval_zero() {
-        let cfg = Config {
+        let cfg = MuxerConfig {
             pcr_interval_ms: 0,
-            ..Config::default()
+            ..MuxerConfig::default()
         };
         assert!(cfg.validate().is_err());
     }
 
     #[test]
     fn rejects_pcr_interval_over_100() {
-        let cfg = Config {
+        let cfg = MuxerConfig {
             pcr_interval_ms: 150,
-            ..Config::default()
+            ..MuxerConfig::default()
         };
         assert!(matches!(
             cfg.validate(),
@@ -2994,9 +3001,9 @@ mod tests {
 
     #[test]
     fn rejects_psi_interval_too_small() {
-        let cfg = Config {
+        let cfg = MuxerConfig {
             psi_interval_ms: 5,
-            ..Config::default()
+            ..MuxerConfig::default()
         };
         assert!(matches!(
             cfg.validate(),
@@ -3006,9 +3013,9 @@ mod tests {
 
     #[test]
     fn rejects_buffer_too_small() {
-        let cfg = Config {
+        let cfg = MuxerConfig {
             buffer_packets: 5,
-            ..Config::default()
+            ..MuxerConfig::default()
         };
         assert!(matches!(
             cfg.validate(),
@@ -3018,7 +3025,7 @@ mod tests {
 
     #[test]
     fn rejects_sync_without_pts() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::SynchronousMetadata, false)
@@ -3030,7 +3037,7 @@ mod tests {
     #[test]
     fn accepts_async_with_pts_combo() {
         // 0x06 + PTS — the common-practice "sync KLV everyone recognizes"
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, true)
@@ -3043,14 +3050,14 @@ mod tests {
     fn resolved_pcr_pid_default() {
         // Muxer auto-resolves PCR to the first video stream (0x1011) when
         // pcr_pid is None. Verify via the constructed Muxer's state.
-        let mux = Muxer::new(Config::default()).unwrap();
+        let mux = Muxer::new(MuxerConfig::default()).unwrap();
         assert_eq!(mux.pcr_pids[0], 0x1011);
     }
 
     #[test]
     fn resolved_pcr_pid_explicit() {
         // Explicit pcr_pid on video PID — muxer's pcr_pids[] must reflect it.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -3064,13 +3071,13 @@ mod tests {
 
     #[test]
     fn muxer_constructs_with_valid_config() {
-        let mux = Muxer::new(Config::default());
+        let mux = Muxer::new(MuxerConfig::default());
         assert!(mux.is_ok());
     }
 
     #[test]
     fn muxer_rejects_invalid_config() {
-        let mut cfg = Config::default();
+        let mut cfg = MuxerConfig::default();
         if let Some(StreamSpec::Video { pid, .. }) = cfg.programs[0]
             .streams
             .iter_mut()
@@ -3084,14 +3091,14 @@ mod tests {
 
     #[test]
     fn pull_returns_zero_on_empty_queue() {
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let mut buf = [0u8; 1316];
         assert_eq!(mux.pull(&mut buf), 0);
     }
 
     #[test]
     fn pull_returns_zero_on_short_buffer() {
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
         mux.push_video(&nal, 0, true).unwrap();
         let mut buf = [0u8; 100];
@@ -3100,7 +3107,7 @@ mod tests {
 
     #[test]
     fn push_video_rejects_non_annex_b() {
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let bad = [0x12, 0x34, 0x56];
         assert!(matches!(
             mux.push_video(&bad, 0, false),
@@ -3110,14 +3117,14 @@ mod tests {
 
     #[test]
     fn push_video_accepts_3byte_start_code() {
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let nal = [0x00, 0x00, 0x01, 0x09, 0x10];
         assert!(mux.push_video(&nal, 0, true).is_ok());
     }
 
     #[test]
     fn first_pull_includes_pat_pmt() {
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0x88, 0x99];
         mux.push_video(&nal, 0, true).unwrap();
         let mut buf = [0u8; 4096];
@@ -3133,9 +3140,9 @@ mod tests {
 
     #[test]
     fn buffer_full_returned_when_overcommitted() {
-        let cfg = Config {
+        let cfg = MuxerConfig {
             buffer_packets: 10,
-            ..Config::default()
+            ..MuxerConfig::default()
         };
         let mut mux = Muxer::new(cfg).unwrap();
         // A 50KB IDR is much larger than 10 packets can hold.
@@ -3159,9 +3166,9 @@ mod tests {
 
     #[test]
     fn buffer_full_does_not_modify_state() {
-        let cfg = Config {
+        let cfg = MuxerConfig {
             buffer_packets: 10,
-            ..Config::default()
+            ..MuxerConfig::default()
         };
         let mut mux = Muxer::new(cfg).unwrap();
         let nal = vec![0u8; 50_000];
@@ -3182,7 +3189,7 @@ mod tests {
         // True modular delta is +9590 ticks (~106ms), greater than psi_interval
         // default of 9000 ticks (100ms), so PSI MUST re-emit. Buggy raw i64
         // subtraction yields a huge negative and wrongly suppresses PSI.
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
         let just_before_wrap = (1i64 << 33) - 90;
         let well_past_wrap = 9_500;
@@ -3205,7 +3212,7 @@ mod tests {
     fn psi_not_due_on_backward_pts() {
         // B-frame display-order: PTS may zigzag backward by a few frames. PSI
         // cadence must NOT trigger on a backward step (it would wrongly emit).
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
         mux.push_video(&nal, 100_000, true).unwrap();
         let mut buf = vec![0u8; 188 * 64];
@@ -3225,7 +3232,7 @@ mod tests {
     #[test]
     fn psi_due_after_threshold_forward() {
         // Sanity: forward by exactly psi_interval triggers PSI.
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
         mux.push_video(&nal, 0, true).unwrap();
         let mut buf = vec![0u8; 188 * 64];
@@ -3241,7 +3248,7 @@ mod tests {
 
     #[test]
     fn push_klv_rejects_oversized_blob() {
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         // PES_packet_length is u16; with PTS off, max KLV payload = 65535 - 3 = 65532.
         let too_big = vec![0u8; 65_533];
         let err = mux.push_klv(&too_big, 0, 0x00).unwrap_err();
@@ -3256,7 +3263,7 @@ mod tests {
 
     #[test]
     fn push_klv_accepts_largest_legal_blob() {
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         // 65532 with no PTS is the spec-imposed ceiling.
         let max_klv = vec![0xAB; 65_532];
         mux.push_klv(&max_klv, 0, 0x00)
@@ -3268,7 +3275,7 @@ mod tests {
         // With klv_carries_pts=true, header_data_length=5, so max payload =
         // 65535 - 3 - 5 = 65527.
         let mut mux = Muxer::new(
-            Config::builder()
+            MuxerConfig::builder()
                 .add_program(1, 0x1000)
                 .add_video(0x1011, VideoCodec::H264)
                 .add_klv(0x1031, KlvStreamType::PrivateData, true)
@@ -3290,7 +3297,7 @@ mod tests {
 
     #[test]
     fn config_rejects_empty_streams() {
-        let mut cfg = Config::default();
+        let mut cfg = MuxerConfig::default();
         cfg.programs[0].streams.clear();
         let err = cfg.validate().unwrap_err();
         assert!(
@@ -3301,7 +3308,7 @@ mod tests {
 
     #[test]
     fn config_rejects_duplicate_pids() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1011, KlvStreamType::PrivateData, false)
@@ -3313,7 +3320,7 @@ mod tests {
 
     #[test]
     fn config_pcr_pid_must_match_stream() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -3350,7 +3357,7 @@ mod tests {
 
     #[test]
     fn handles_single_stream_returns_one_each() {
-        let cfg = Config::default();
+        let cfg = MuxerConfig::default();
         let mux = Muxer::new(cfg).unwrap();
         let vs = mux.video_handles();
         let ks = mux.klv_handles();
@@ -3362,14 +3369,14 @@ mod tests {
 
     #[test]
     fn handles_out_of_range_returns_none() {
-        let mux = Muxer::new(Config::default()).unwrap();
+        let mux = Muxer::new(MuxerConfig::default()).unwrap();
         assert_eq!(mux.video_stream_handle(1), None);
         assert_eq!(mux.klv_stream_handle(1), None);
     }
 
     #[test]
     fn push_video_to_routes_to_correct_pid() {
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let h = mux.video_stream_handle(0).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0x42];
         mux.push_video_to(h, &nal, 0, true).unwrap();
@@ -3391,7 +3398,7 @@ mod tests {
 
     #[test]
     fn push_klv_to_routes_to_correct_pid() {
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let h = mux.klv_stream_handle(0).unwrap();
         // Minimal KLV blob — UL + length=0 (16 bytes UL + 1 byte length).
         let mut klv = vec![
@@ -3419,7 +3426,7 @@ mod tests {
         // SynchronousMetadata KLV stream (stream_type 0x15) — H.222.0 V9
         // §2.12.4.1 mandates data_alignment_indicator=1 on every metadata PES.
         // Video stream provides PCR; KLV-only programs are rejected at validate.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::SynchronousMetadata, true)
@@ -3470,7 +3477,7 @@ mod tests {
         // on every AV1 PES. ffmpeg has no AV1-in-MPEG-TS muxer, so this
         // can't be cross-validated against ffmpeg output — but the
         // binding normative is explicit and tsduck-tsp expects the bit.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::Av1)
             .end_program()
@@ -3521,7 +3528,7 @@ mod tests {
         // H.222.0 §2.4.3.7 leaves data_alignment_indicator codec-defined
         // for H.264 / H.265 / H.266 video — we conservatively keep it
         // unset.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H264)
             .end_program()
@@ -3562,7 +3569,7 @@ mod tests {
 
     #[test]
     fn push_video_to_invalid_handle_rejects() {
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let bogus = VideoStreamHandle::from_raw(99);
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
         let err = mux.push_video_to(bogus, &nal, 0, true).unwrap_err();
@@ -3577,7 +3584,7 @@ mod tests {
 
     #[test]
     fn push_klv_to_invalid_handle_rejects() {
-        let mut mux = Muxer::new(Config::default()).unwrap();
+        let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let bogus = KlvStreamHandle::from_raw(99);
         let err = mux.push_klv_to(bogus, &[0; 16], 0, 0x00).unwrap_err();
         match err {
@@ -3591,7 +3598,7 @@ mod tests {
 
     #[test]
     fn config_validate_accepts_dual_video_plus_klv() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264) // EO
             .add_video(0x1021, VideoCodec::H264) // IR
@@ -3603,7 +3610,7 @@ mod tests {
 
     #[test]
     fn config_validate_accepts_dual_klv_plus_video() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -3615,7 +3622,7 @@ mod tests {
 
     #[test]
     fn config_validate_rejects_seventeen_video_streams() {
-        let mut pb = Config::builder().add_program(1, 0x1000);
+        let mut pb = MuxerConfig::builder().add_program(1, 0x1000);
         for i in 0..17u16 {
             pb = pb.add_video(0x1010 + i, VideoCodec::H264);
         }
@@ -3629,7 +3636,7 @@ mod tests {
 
     #[test]
     fn config_validate_rejects_seventeen_klv_streams() {
-        let mut pb = Config::builder()
+        let mut pb = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264);
         for i in 0..17u16 {
@@ -3644,7 +3651,7 @@ mod tests {
 
     #[test]
     fn muxer_new_accepts_video_only() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .end_program()
@@ -3658,7 +3665,7 @@ mod tests {
     fn muxer_new_accepts_video_plus_klv() {
         // KLV-only configs are rejected (KLV cadence too sparse for PCR).
         // Video + KLV with PCR auto-resolved to video is the correct shape.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -3671,7 +3678,7 @@ mod tests {
 
     #[test]
     fn push_video_rejects_when_multiple_video_streams_configured() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_video(0x1021, VideoCodec::H264)
@@ -3696,7 +3703,7 @@ mod tests {
 
     #[test]
     fn push_klv_rejects_when_multiple_klv_streams_configured() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -3722,7 +3729,7 @@ mod tests {
     fn push_video_rejects_when_no_video_streams_configured() {
         // Audio-only muxer (valid config; PCR resolves to audio) — push_video
         // has no possible target and must return AmbiguousTarget { count: 0 }.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_audio(0x1041, AudioCodec::Aac)
             .end_program()
@@ -3745,7 +3752,7 @@ mod tests {
 
     #[test]
     fn push_klv_rejects_when_no_klv_streams_configured() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .end_program()
@@ -3763,7 +3770,7 @@ mod tests {
     fn push_subtitle_without_streams_returns_no_streams_configured() {
         // Single video, no subtitles configured; push_subtitle shorthand must
         // surface NoSubtitleStreamsConfigured (was misleading AmbiguousTarget{count:0}).
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .end_program()
@@ -3779,7 +3786,7 @@ mod tests {
 
     #[test]
     fn push_audio_without_streams_returns_no_streams_configured() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .end_program()
@@ -3795,7 +3802,7 @@ mod tests {
 
     #[test]
     fn push_klv_without_streams_returns_no_streams_configured() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .end_program()
@@ -3811,7 +3818,7 @@ mod tests {
 
     #[test]
     fn default_config_has_empty_per_stream_descriptors() {
-        let cfg = Config::default();
+        let cfg = MuxerConfig::default();
         let prog = &cfg.programs[0];
         assert_eq!(prog.stream_descriptors.len(), prog.streams.len());
         for descs in &prog.stream_descriptors {
@@ -3821,7 +3828,7 @@ mod tests {
 
     #[test]
     fn validate_rejects_descriptor_count_mismatch() {
-        let mut cfg = Config::default();
+        let mut cfg = MuxerConfig::default();
         // streams has 2, overwrite with 1-entry descriptor vec
         cfg.programs[0].stream_descriptors = vec![Vec::new()];
         let err = cfg.validate().unwrap_err();
@@ -3832,7 +3839,7 @@ mod tests {
     fn validate_rejects_malformed_descriptor() {
         // Length byte claims 5 bytes of body but only 1 follows.
         let bad = vec![0xFF, 0x05, 0x00];
-        let mut cfg = Config::default();
+        let mut cfg = MuxerConfig::default();
         cfg.programs[0].stream_descriptors = vec![vec![bad], Vec::new()];
         let err = cfg.validate().unwrap_err();
         assert!(matches!(
@@ -3849,7 +3856,7 @@ mod tests {
     fn validate_rejects_oversized_pmt() {
         // 4 streams × 100-byte descriptor = ~400 bytes > 166 max.
         let big = crate::mpegts::descriptors::user_private(&[0u8; 100]);
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_video(0x101, VideoCodec::H264)
@@ -3868,7 +3875,7 @@ mod tests {
     fn builder_routes_video_descriptors_by_video_index() {
         // 2 video, 1 KLV. Setting video_index=1 should land on absolute index 2
         // (streams: [video0, klv, video1]).
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x102, KlvStreamType::PrivateData, false)
@@ -3887,7 +3894,7 @@ mod tests {
     #[test]
     fn builder_rejects_out_of_range_video_index() {
         // Out-of-range video_idx is now a deferred typed error, not a panic.
-        let result = Config::builder()
+        let result = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .stream_descriptors_for_video(
@@ -3912,7 +3919,7 @@ mod tests {
 
     #[test]
     fn cache_composes_auto_emit_then_caller_bytes_on_klv_private() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -3940,7 +3947,7 @@ mod tests {
 
     #[test]
     fn cache_suppresses_klva_auto_emit_when_caller_supplies_registration() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -3960,7 +3967,7 @@ mod tests {
 
     #[test]
     fn cache_auto_emits_klva_on_sync_klv() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::SynchronousMetadata, true)
@@ -3989,7 +3996,7 @@ mod tests {
 
     #[test]
     fn pmt_emits_subtitle_entry_with_subtitling_descriptor() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(
@@ -4024,7 +4031,7 @@ mod tests {
 
     #[test]
     fn pmt_emits_subtitle_entry_with_vttc_registration_for_webvtt() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -4044,7 +4051,7 @@ mod tests {
 
     #[test]
     fn pmt_emits_subtitle_entry_with_ga94_registration_for_cea708_standalone() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::Cea708Standalone)
@@ -4063,7 +4070,7 @@ mod tests {
 
     #[test]
     fn pmt_emits_subtitle_entry_with_teletext_descriptor() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(
@@ -4101,7 +4108,7 @@ mod tests {
         // markers — subtitling/teletext/VBI-teletext/VTTC/GA94 — do suppress
         // the auto-emit; see the `subtitle_auto_emit_suppressed_*` tests.)
         let extra: Vec<Vec<u8>> = vec![vec![0x52u8, 0x01, 0x42]];
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -4126,7 +4133,7 @@ mod tests {
     fn pmt_emits_av1_with_av01_registration_first() {
         // VideoCodec::Av1 must auto-emit the AV01 registration_descriptor as
         // the FIRST descriptor in the per-stream PMT loop (binding §2.1).
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::Av1)
             .end_program()
@@ -4149,7 +4156,7 @@ mod tests {
         // auto-emit — mirrors KLVA suppression. Result is exactly the caller's
         // bytes.
         let custom_av01 = vec![0x05, 0x04, b'A', b'V', b'0', b'1'];
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::Av1)
             .stream_descriptors_for_video(0, vec![custom_av01.clone()])
@@ -4170,7 +4177,7 @@ mod tests {
 
     #[test]
     fn config_validate_rejects_too_many_audio_streams() {
-        let mut builder = Config::builder().add_program(1, 0x1000);
+        let mut builder = MuxerConfig::builder().add_program(1, 0x1000);
         for i in 0..17 {
             builder = builder.add_audio(0x300 + i as u16, AudioCodec::Aac);
         }
@@ -4183,7 +4190,7 @@ mod tests {
 
     #[test]
     fn pcr_falls_back_to_first_audio_pid_for_audio_only_program() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_audio(0x300, AudioCodec::Aac)
             .add_audio(0x301, AudioCodec::Mp2)
@@ -4197,7 +4204,7 @@ mod tests {
 
     #[test]
     fn push_audio_to_writes_pes_with_pts_only_header() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_audio(0x300, AudioCodec::Aac)
@@ -4247,7 +4254,7 @@ mod tests {
 
     #[test]
     fn bare_push_audio_rejects_when_two_audio_streams_configured() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_audio(0x300, AudioCodec::Aac)
@@ -4271,7 +4278,7 @@ mod tests {
 
     #[test]
     fn audio_handles_lists_in_declaration_order() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_audio(0x300, AudioCodec::Aac)
             .add_audio(0x301, AudioCodec::Mp2)
@@ -4291,7 +4298,7 @@ mod tests {
 
     #[test]
     fn audio_handles_for_program_filters_correctly() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(7, 0x1000)
             .add_audio(0x300, AudioCodec::Aac)
             .end_program()
@@ -4309,7 +4316,7 @@ mod tests {
     #[test]
     fn stream_descriptors_for_audio_attaches_at_build_time() {
         use crate::mpegts::descriptors::iso_639_language;
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_audio(0x300, AudioCodec::Aac)
             .stream_descriptors_for_audio(0, vec![iso_639_language(*b"eng", 0)])
@@ -4328,7 +4335,7 @@ mod tests {
 
     #[test]
     fn add_subtitle_records_the_stream_in_program_order() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -4350,7 +4357,7 @@ mod tests {
     fn stream_descriptors_for_subtitle_attaches_at_build_time() {
         // stream_identifier_descriptor: tag 0x52, len 0x01, component_tag 0x42.
         let extra: Vec<Vec<u8>> = vec![vec![0x52u8, 0x01, 0x42]];
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -4364,7 +4371,7 @@ mod tests {
 
     #[test]
     fn push_subtitle_to_emits_pes_for_configured_handle() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -4398,7 +4405,7 @@ mod tests {
 
     #[test]
     fn push_subtitle_bare_rejects_when_multiple_subtitle_streams() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -4430,7 +4437,7 @@ mod tests {
 
     #[test]
     fn push_subtitle_payload_too_large_rejected() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -4448,7 +4455,7 @@ mod tests {
 
     #[test]
     fn subtitle_handles_returns_one_per_configured_stream_across_programs() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -4487,7 +4494,7 @@ mod tests {
 
     #[test]
     fn subtitle_handles_for_unknown_program_returns_error() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .end_program()
@@ -4497,11 +4504,11 @@ mod tests {
         assert!(mux.subtitle_handles_for_program(99).is_err());
     }
 
-    // ── Task 8: subtitle Config::validate tests ──────────────────────────
+    // ── Task 8: subtitle MuxerConfig::validate tests ──────────────────────────
 
     #[test]
     fn config_validate_too_many_subtitle_streams() {
-        let mut prog_builder = Config::builder()
+        let mut prog_builder = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264);
         for i in 0..17 {
@@ -4516,7 +4523,7 @@ mod tests {
 
     #[test]
     fn config_validate_subtitle_pid_conflicts_with_video_pid() {
-        let err = Config::builder()
+        let err = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x101, SubtitleCodec::WebVttInTs)
@@ -4529,7 +4536,7 @@ mod tests {
 
     #[test]
     fn config_validate_rejects_subtitle_pid_as_pcr() {
-        let err = Config::builder()
+        let err = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -4546,7 +4553,7 @@ mod tests {
     #[test]
     fn validate_rejects_caller_pinned_pcr_on_klv_pid() {
         // Caller pins pcr_pid=0x101 explicitly to a KLV stream.
-        let err = Config::builder()
+        let err = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x200, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -4564,7 +4571,7 @@ mod tests {
     fn validate_rejects_klv_only_program_via_pcr_fallback() {
         // No video, no audio — only KLV. The fallback chain
         // `video > KLV > audio` would resolve PCR to the first KLV PID.
-        let err = Config::builder()
+        let err = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
             .end_program()
@@ -4578,7 +4585,7 @@ mod tests {
 
     #[test]
     fn validate_accepts_pcr_pinned_to_video_with_klv_present() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x200, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -4592,7 +4599,7 @@ mod tests {
     fn validate_accepts_audio_as_pcr() {
         // AAC frames push at ~21 ms intervals — within the 100 ms ETSI TR
         // 101 290 ceiling. Audio-as-PCR remains permitted.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_audio(0x201, AudioCodec::Aac)
             .end_program()
@@ -4602,7 +4609,7 @@ mod tests {
 
     #[test]
     fn config_validate_rejects_non_ascii_language_code() {
-        let err = Config::builder()
+        let err = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(
@@ -4622,7 +4629,7 @@ mod tests {
 
     #[test]
     fn config_validate_rejects_magazine_out_of_range() {
-        let err = Config::builder()
+        let err = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(
@@ -4673,7 +4680,7 @@ mod tests {
     fn sync_klv_push_auto_wraps_with_5_byte_au_cell_header() {
         use crate::mpegts::au_cell::{CellFragmentIndication, read_metadata_au_cell};
 
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::SynchronousMetadata, true)
@@ -4728,7 +4735,7 @@ mod tests {
     fn private_data_klv_does_not_auto_wrap() {
         // PrivateData streams must pass payload through as-is; the muxer
         // must NOT prepend an AU cell header.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -4768,7 +4775,7 @@ mod tests {
             (*b"spa", 0x10, 2, 2),
         ])
         .expect("non-empty entries");
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(
@@ -4813,7 +4820,7 @@ mod tests {
         // Caller supplies a teletext_descriptor (tag 0x56); auto-emit must
         // suppress.
         let caller_desc = crate::mpegts::descriptors::teletext_descriptor(*b"eng", 0x02, 1, 0x88);
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(
@@ -4839,7 +4846,7 @@ mod tests {
     fn subtitle_auto_emit_suppressed_on_caller_supplied_vttc_registration() {
         // Caller supplies a VTTC registration_descriptor; suppress auto-emit.
         let caller_desc = vec![0x05u8, 0x04, b'V', b'T', b'T', b'C'];
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -4858,7 +4865,7 @@ mod tests {
         // Caller supplies stream_identifier_descriptor (tag 0x52) — not a
         // subtitle codec marker — so auto-emit must still fire.
         let unrelated = vec![0x52u8, 0x01, 0x42];
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(
@@ -4922,7 +4929,7 @@ mod tests {
         // EN 300 743 §6.1. The PCR fallback chain (caller-pinned > video >
         // KLV > audio) excludes subtitles, so a subtitle-only program has
         // no resolvable PCR PID.
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
             .end_program()
@@ -4937,7 +4944,7 @@ mod tests {
 
     #[test]
     fn validate_accepts_video_plus_subtitle_program() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -4967,7 +4974,7 @@ mod stats_tests {
 
     #[test]
     fn stats_starts_with_per_stream_entries_for_configured_streams() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -4988,7 +4995,7 @@ mod stats_tests {
 
     #[test]
     fn stats_count_pushed_items_and_pulled_packets() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -5016,7 +5023,7 @@ mod stats_tests {
 
     #[test]
     fn reset_stats_zeros_counters_keeps_entries() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
             .add_klv(0x101, KlvStreamType::PrivateData, false)
@@ -5039,7 +5046,7 @@ mod stats_tests {
         // Exercises the VideoCodec::H266 -> StreamType::H266 mapping arm in
         // Muxer::new's per_stream stats setup (the second of two H266 sites
         // in mux/mod.rs that previously panicked with unimplemented!()).
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x101, VideoCodec::H266)
             .end_program()
@@ -5061,7 +5068,7 @@ mod stats_tests {
     /// a PCR (forced emission) or has RA=0.
     #[test]
     fn random_access_indicator_only_on_packets_with_pcr() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             // Default pcr_interval_ms = 40, plenty of room for a "not due" gap.
             .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
@@ -5141,7 +5148,7 @@ mod stats_tests {
 
     #[test]
     fn muxer_stats_reports_subtitle_streams_configured() {
-        let cfg = Config::builder()
+        let cfg = MuxerConfig::builder()
             .add_program(1, 0x100)
             .add_video(0x101, VideoCodec::H264)
             .add_subtitle(0x200, SubtitleCodec::WebVttInTs)

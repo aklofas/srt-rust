@@ -14,7 +14,7 @@
 //! `mpegts_demux_strict.rs`; here we only assert the lenient-mode contract.
 
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DiscontinuityKind};
-use tst_core::mpegts::mux::{ConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
 
 fn drain(m: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();
@@ -37,7 +37,7 @@ fn drain(m: &mut Muxer) -> Vec<u8> {
 /// is configured so the PMT carries a KLVA registration descriptor, but
 /// no KLV payload is pushed — the goal is just a valid stream to corrupt.
 fn build_clean_stream() -> Vec<u8> {
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)

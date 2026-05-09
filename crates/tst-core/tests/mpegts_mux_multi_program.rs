@@ -6,17 +6,17 @@
 mod common;
 
 use common::synthetic_nal;
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, ProgramConfig, StreamSpec, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, MuxerProgramConfig, StreamSpec, VideoCodec};
 
 /// Two-program config:
 ///   prog 1 (H.264 + KLV) at PMT=0x1000, video=0x1011, klv=0x1031
 ///   prog 2 (H.265 + KLV) at PMT=0x1100, video=0x1111, klv=0x1131
 ///
 /// All PIDs are in the valid user range 0x0010..=0x1FFE.
-fn two_program_config() -> Config {
-    Config {
+fn two_program_config() -> MuxerConfig {
+    MuxerConfig {
         programs: vec![
-            ProgramConfig {
+            MuxerProgramConfig {
                 program_number: 1,
                 pmt_pid: 0x1000,
                 streams: vec![
@@ -34,7 +34,7 @@ fn two_program_config() -> Config {
                 program_descriptors: Vec::new(),
                 stream_descriptors: vec![Vec::new(), Vec::new()],
             },
-            ProgramConfig {
+            MuxerProgramConfig {
                 program_number: 2,
                 pmt_pid: 0x1100,
                 streams: vec![
@@ -53,7 +53,7 @@ fn two_program_config() -> Config {
                 stream_descriptors: vec![Vec::new(), Vec::new()],
             },
         ],
-        ..Config::default()
+        ..MuxerConfig::default()
     }
 }
 
@@ -177,7 +177,7 @@ fn pmt2_carries_correct_program_number() {
 fn single_program_pat_unchanged() {
     // Single-program config must produce the same PAT byte layout as before:
     // one program entry at bytes 13..16 of the PAT packet.
-    let mut muxer = Muxer::new(Config::default()).unwrap();
+    let mut muxer = Muxer::new(MuxerConfig::default()).unwrap();
     let nal = synthetic_nal::h264_au(200, true);
     muxer.push_video(&nal, 0, true).unwrap();
     let out = drain_all(&mut muxer);
@@ -207,7 +207,7 @@ fn single_program_pat_unchanged() {
 
 #[test]
 fn config_builder_emits_multi_program_config() {
-    let config = Config::builder()
+    let config = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -282,7 +282,7 @@ fn bare_push_video_returns_ambiguous_target_with_two_programs() {
 #[test]
 fn config_builder_descriptors_for_video_attaches_to_correct_program() {
     use tst_core::mpegts::descriptors as desc;
-    let config = Config::builder()
+    let config = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
@@ -457,7 +457,7 @@ fn muxer_stats_per_stream_carries_program_number() {
 
 #[test]
 fn single_program_muxer_stats_programs_configured_is_one() {
-    let muxer = Muxer::new(tst_core::mpegts::mux::Config::default()).unwrap();
+    let muxer = Muxer::new(tst_core::mpegts::mux::MuxerConfig::default()).unwrap();
     let stats = muxer.stats();
     assert_eq!(
         stats.programs_configured, 1,

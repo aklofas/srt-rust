@@ -8,7 +8,7 @@
 //! `mpegts_mux_ffprobe.rs` and `mpegts_mux.rs` files; these tests focus
 //! on routing — the right bytes go to the right PIDs.
 
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
 
 /// Drain every queued packet from the muxer into a single Vec.
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
@@ -49,7 +49,7 @@ fn klv_blob() -> Vec<u8> {
 
 #[test]
 fn dual_video_plus_klv_routes_to_three_pids() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264) // EO
         .add_video(0x1021, VideoCodec::H264) // IR
@@ -80,7 +80,7 @@ fn dual_video_plus_klv_routes_to_three_pids() {
 
 #[test]
 fn video_plus_dual_klv_routes_to_three_pids() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(0x1031, KlvStreamType::PrivateData, false) // vehicle telemetry
@@ -106,7 +106,7 @@ fn video_plus_dual_klv_routes_to_three_pids() {
 
 #[test]
 fn video_only_emits_video_pid_only() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .end_program()
@@ -129,7 +129,7 @@ fn video_and_klv_emits_both_pids() {
     // KLV-only programs are rejected (KLV cadence too sparse for PCR).
     // The minimum viable program shape is video + KLV; test that both PIDs
     // appear in the output and no spurious PIDs are emitted.
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -153,7 +153,7 @@ fn dual_video_plus_dual_klv_pmt_lists_all_four() {
     // PAT PID is 0x0000 by ISO 13818-1 spec.
     const PAT_PID: u16 = 0x0000;
 
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_video(0x1021, VideoCodec::H265)

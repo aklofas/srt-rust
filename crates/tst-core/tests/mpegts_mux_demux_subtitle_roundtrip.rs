@@ -2,7 +2,7 @@
 //! back identical.
 
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
-use tst_core::mpegts::mux::{Config, Muxer, SubtitleCodec as MuxSub, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer, SubtitleCodec as MuxSub, VideoCodec};
 
 /// Drain every queued packet from the muxer into a single Vec.
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
@@ -22,7 +22,7 @@ fn drain_all(mux: &mut Muxer) -> Vec<u8> {
 /// payload bytes from the first `SamplePayload::Subtitle` event. Returns
 /// an empty Vec if no Sample event surfaces (e.g. empty PES dropped).
 fn round_trip(codec: MuxSub, payload: &[u8]) -> Vec<u8> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(0x200, codec)

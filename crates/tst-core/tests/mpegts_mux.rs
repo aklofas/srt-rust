@@ -8,7 +8,7 @@ mod common;
 
 use common::synthetic_nal;
 use common::ts_parser;
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, StreamSpec, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, StreamSpec, VideoCodec};
 
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();
@@ -24,7 +24,7 @@ fn drain_all(mux: &mut Muxer) -> Vec<u8> {
 
 #[test]
 fn h264_async_klv_roundtrip() {
-    let mut mux = Muxer::new(Config::default()).unwrap();
+    let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
     let video = synthetic_nal::h264_au(800, true);
     let klv = synthetic_nal::klv_blob(64);
     mux.push_video(&video, 0, true).unwrap();
@@ -58,7 +58,7 @@ fn h264_async_klv_roundtrip() {
 
 #[test]
 fn h265_async_klv_roundtrip() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H265)
         .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -86,7 +86,7 @@ fn h265_async_klv_roundtrip() {
 
 #[test]
 fn h264_klv_with_pts_keeps_pts() {
-    let mut cfg = Config::default();
+    let mut cfg = MuxerConfig::default();
     if let Some(StreamSpec::Klv { carries_pts, .. }) = cfg.programs[0]
         .streams
         .iter_mut()
@@ -114,7 +114,7 @@ fn h264_klv_with_pts_keeps_pts() {
 
 #[test]
 fn h264_sync_metadata_stream_type() {
-    let mut cfg = Config::default();
+    let mut cfg = MuxerConfig::default();
     if let Some(StreamSpec::Klv {
         stream_type,
         carries_pts,
@@ -149,7 +149,7 @@ fn h264_sync_metadata_stream_type() {
 
 #[test]
 fn multiple_video_aus_recovered_in_order() {
-    let mut mux = Muxer::new(Config::default()).unwrap();
+    let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
     let frames: Vec<Vec<u8>> = (0..5)
         .map(|i| synthetic_nal::h264_au(400 + i * 100, i == 0))
         .collect();
@@ -172,9 +172,9 @@ fn multiple_video_aus_recovered_in_order() {
 
 #[test]
 fn psi_re_emitted_after_interval() {
-    let cfg = Config {
+    let cfg = MuxerConfig {
         psi_interval_ms: 100,
-        ..Config::default()
+        ..MuxerConfig::default()
     };
     let mut mux = Muxer::new(cfg).unwrap();
     // Three video frames, 200 ms apart in PTS — should trigger 3 PSI emissions.
@@ -201,7 +201,7 @@ fn psi_re_emitted_after_interval() {
 fn pcr_pid_pinned_to_video_is_declared_in_pmt() {
     // Caller pins PCR to the video PID explicitly; muxer must reflect this
     // in the PMT's PCR_PID field so receivers know where to look.
-    let mut cfg = Config::default();
+    let mut cfg = MuxerConfig::default();
     let video_pid = cfg.programs[0]
         .streams
         .iter()
@@ -231,7 +231,7 @@ fn pcr_is_carried_on_video_pid_packets_by_default() {
     // PCR follows the video PID when no explicit pcr_pid is configured
     // (fallback chain: video > KLV > audio). Real TS packets on the video
     // PID must carry the PCR adaptation field; KLV packets must not.
-    let cfg = Config::default();
+    let cfg = MuxerConfig::default();
     let video_pid = cfg.programs[0]
         .streams
         .iter()

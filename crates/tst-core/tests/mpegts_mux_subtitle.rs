@@ -2,7 +2,7 @@
 //! (`mpegts::mux`).
 
 use tst_core::error::MuxError;
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, SubtitleCodec, VideoCodec};
 
 /// Drain every queued packet from the muxer into a single Vec.
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
@@ -36,7 +36,7 @@ fn webvtt_cue(pts: i64, text: &str) -> Vec<u8> {
 
 #[test]
 fn mux_webvtt_in_single_program() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -61,7 +61,7 @@ fn mux_webvtt_in_single_program() {
 
 #[test]
 fn mux_dvb_subtitling_multiple_languages() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(
@@ -98,7 +98,7 @@ fn mux_dvb_subtitling_multiple_languages() {
 
 #[test]
 fn mux_subtitle_with_klv_same_program_no_classification_collision() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_klv(
@@ -127,7 +127,7 @@ fn mux_subtitle_with_klv_same_program_no_classification_collision() {
 
 #[test]
 fn mux_multi_program_webvtt_and_klv() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -147,7 +147,7 @@ fn mux_multi_program_webvtt_and_klv() {
 
 #[test]
 fn mux_push_subtitle_too_large_rejected() {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(0x200, SubtitleCodec::WebVttInTs)

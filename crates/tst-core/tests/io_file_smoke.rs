@@ -3,11 +3,11 @@
 #![cfg(feature = "file")]
 
 use tst_core::io_file::{DemuxFromFile, demux_file, write_mux_to_file};
-use tst_core::mpegts::mux::{Config, Muxer};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer};
 
 /// Build a minimal single-program Muxer with one H.264 video stream.
 fn minimal_muxer() -> Muxer {
-    Muxer::new(Config::default()).expect("Muxer::new")
+    Muxer::new(MuxerConfig::default()).expect("Muxer::new")
 }
 
 /// Push one IDR frame and one KLV blob so the muxer has output to drain.

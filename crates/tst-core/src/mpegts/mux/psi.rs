@@ -22,7 +22,7 @@ use crate::mpegts::common::{StreamType, crc32::crc32_mpeg2, descriptor, pid};
 /// increments correctly across successive PSI ticks.
 pub(crate) fn write_pat_packet(
     out: &mut [u8; 188],
-    config: &crate::mpegts::mux::Config,
+    config: &crate::mpegts::mux::MuxerConfig,
     counters: &mut ContinuityCounters,
 ) {
     let n_programs = config.programs.len();
@@ -115,10 +115,10 @@ pub(crate) const KLVA_REGISTRATION_DESCRIPTOR: &[u8] = &[
 /// 188 - 4 (TS header) - 1 (pointer field) = 183 bytes.
 pub(crate) const MAX_PMT_SECTION_BYTES: usize = 183;
 
-/// Estimate the PMT section body size (bytes) for a `ProgramConfig`.
+/// Estimate the PMT section body size (bytes) for a `MuxerProgramConfig`.
 ///
-/// Used by `Config::validate()` to reject configurations that would produce
-/// a PMT section too large for one TS packet. Counts:
+/// Used by `MuxerConfig::validate()` to reject configurations that would
+/// produce a PMT section too large for one TS packet. Counts:
 /// * fixed header bytes (16 = 3 + 9 + CRC4)
 /// * program-level descriptor bytes (caller-supplied)
 /// * per-stream entry overhead (5 bytes each)
@@ -131,7 +131,7 @@ pub(crate) const MAX_PMT_SECTION_BYTES: usize = 183;
 ///   (10 B), teletext_descriptor (7 B), VTTC Registration (6 B), or GA94
 ///   Registration (6 B) on subtitle streams (always — the auto-emit IS the
 ///   codec marker).
-pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig) -> usize {
+pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::MuxerProgramConfig) -> usize {
     use crate::mpegts::mux::{AudioCodec, KlvStreamType, StreamSpec, SubtitleCodec, VideoCodec};
 
     let mut es_loop_size: usize = 0;
@@ -227,7 +227,7 @@ pub(crate) fn estimate_pmt_section_size(prog: &crate::mpegts::mux::ProgramConfig
 /// `streams` is the list of ES entries — order is preserved in the PMT.
 pub(crate) fn write_pmt_packet(
     out: &mut [u8; 188],
-    prog: &crate::mpegts::mux::ProgramConfig,
+    prog: &crate::mpegts::mux::MuxerProgramConfig,
     pcr_pid: u16,
     streams: &[PmtStreamEntry<'_>],
     counters: &mut ContinuityCounters,
@@ -344,16 +344,18 @@ pub(crate) fn write_pmt_packet(
 mod tests {
     use super::*;
     use crate::mpegts::common::pid;
-    use crate::mpegts::mux::{Config, KlvStreamType, ProgramConfig, StreamSpec, VideoCodec};
+    use crate::mpegts::mux::{
+        KlvStreamType, MuxerConfig, MuxerProgramConfig, StreamSpec, VideoCodec,
+    };
 
     /// Build a minimal single-program config for unit tests.
-    fn single_prog_config() -> Config {
-        Config::default()
+    fn single_prog_config() -> MuxerConfig {
+        MuxerConfig::default()
     }
 
-    /// Build a minimal ProgramConfig for tests that call write_pmt_packet directly.
-    fn prog_config_h264_klv() -> ProgramConfig {
-        ProgramConfig {
+    /// Build a minimal MuxerProgramConfig for tests that call write_pmt_packet directly.
+    fn prog_config_h264_klv() -> MuxerProgramConfig {
+        MuxerProgramConfig {
             program_number: 1,
             pmt_pid: 0x1000,
             streams: vec![
@@ -433,7 +435,7 @@ mod tests {
     fn estimate_pmt_size_includes_subtitle_auto_emit() {
         use crate::mpegts::mux::SubtitleCodec;
 
-        let mut builder = Config::builder()
+        let mut builder = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264);
         for i in 0..15u16 {
@@ -468,7 +470,7 @@ mod tests {
     /// Per H.222.0 V9 §2.4.4.9 Table 2-33 (PDF p.79), the descriptor()_loop
     /// between program_info_length and the per-stream loop carries program-
     /// level descriptors. Public builder method
-    /// `ProgramBuilder::program_descriptors(...)` accepted them, but the
+    /// `MuxerProgramBuilder::program_descriptors(...)` accepted them, but the
     /// writer hardcoded `program_info_length=0` and never wrote the bytes.
     #[test]
     fn pmt_serializes_program_level_descriptors() {
@@ -589,7 +591,7 @@ mod tests {
     fn pmt_with_sync_klv_stream_type() {
         let mut buf = [0u8; 188];
         let mut cc = ContinuityCounters::new();
-        let prog = ProgramConfig {
+        let prog = MuxerProgramConfig {
             program_number: 1,
             pmt_pid: 0x1000,
             streams: vec![
@@ -630,7 +632,7 @@ mod tests {
     fn pmt_emits_h266_stream_type_0x33() {
         let mut buf = [0u8; 188];
         let mut cc = ContinuityCounters::new();
-        let prog = ProgramConfig {
+        let prog = MuxerProgramConfig {
             program_number: 1,
             pmt_pid: 0x1000,
             streams: vec![StreamSpec::Video {
@@ -688,7 +690,7 @@ mod tests {
                 descriptors: &big_desc,
             },
         ];
-        let prog = ProgramConfig {
+        let prog = MuxerProgramConfig {
             program_number: 1,
             pmt_pid: 0x1000,
             streams: Vec::new(), // streams field unused by write_pmt_packet directly

@@ -243,22 +243,22 @@ pub enum MuxError {
     )]
     NoSubtitleStreamsConfigured,
 
-    /// `Config::validate` rejects more than 16 video streams.
+    /// `MuxerConfig::validate` rejects more than 16 video streams.
     /// Trivially lifted if a consumer asks; 16 is well above realistic
     /// gimbaled-platform topologies (EO + IR + maybe IR-narrow + a depth
     /// channel = 4 in the wild today).
     #[error("too many video streams: {count} configured, cap is {cap}")]
     TooManyVideoStreams { count: usize, cap: usize },
 
-    /// `Config::validate` rejects more than 16 KLV streams.
+    /// `MuxerConfig::validate` rejects more than 16 KLV streams.
     #[error("too many klv streams: {count} configured, cap is {cap}")]
     TooManyKlvStreams { count: usize, cap: usize },
 
-    /// `Config::validate` rejects more than 16 audio streams in any program.
+    /// `MuxerConfig::validate` rejects more than 16 audio streams in any program.
     #[error("too many audio streams: {count} configured, cap is {cap}")]
     TooManyAudioStreams { count: usize, cap: usize },
 
-    /// `Config::validate` rejects more than 16 subtitle streams in any program.
+    /// `MuxerConfig::validate` rejects more than 16 subtitle streams in any program.
     #[error("too many subtitle streams: {count} configured, cap is {cap}")]
     TooManySubtitleStreams { count: usize, cap: usize },
 
@@ -288,17 +288,17 @@ pub enum MuxError {
     )]
     KlvPidUsedAsPcrPid { pid: u16 },
 
-    /// `Config::validate` rejects ISO 639-2 language codes that aren't
+    /// `MuxerConfig::validate` rejects ISO 639-2 language codes that aren't
     /// 3 lowercase ASCII bytes.
     #[error("invalid ISO 639-2 language code: {code:02x?} (must be 3 lowercase ASCII bytes)")]
     InvalidLanguageCode { code: [u8; 3] },
 
-    /// `Config::validate` rejects DVB teletext field values that exceed
+    /// `MuxerConfig::validate` rejects DVB teletext field values that exceed
     /// their bit-width budget.
     #[error("invalid DVB teletext {field}: {value} (max {max})")]
     InvalidTeletextField { field: TeletextField, value: u8, max: u8 },
 
-    /// `Config::validate` rejected a configuration whose total PMT
+    /// `MuxerConfig::validate` rejected a configuration whose total PMT
     /// section length wouldn't fit in a single TS packet. `used_bytes`
     /// is the estimated full PMT section size (header + program-level
     /// descriptors + per-stream entries with their auto-emit + caller-
@@ -326,16 +326,16 @@ pub enum MuxError {
     #[error("too many programs: {count} configured, cap is {cap}")]
     TooManyPrograms { count: usize, cap: usize },
 
-    /// A program in `Config::programs` had zero streams. Programs must
+    /// A program in `MuxerConfig::programs` had zero streams. Programs must
     /// carry at least one elementary stream.
     #[error("program {program_number} has no streams configured")]
     EmptyProgram { program_number: u16 },
 
-    /// Two programs in `Config::programs` share the same `program_number`.
+    /// Two programs in `MuxerConfig::programs` share the same `program_number`.
     #[error("duplicate program_number {program_number} across programs")]
     DuplicateProgramNumber { program_number: u16 },
 
-    /// Two programs in `Config::programs` share the same `pmt_pid`.
+    /// Two programs in `MuxerConfig::programs` share the same `pmt_pid`.
     #[error("pmt_pid 0x{pid:04X} reused by programs {programs:?}")]
     DuplicatePmtPid { pid: u16, programs: [u16; 2] },
 
@@ -344,7 +344,7 @@ pub enum MuxError {
     #[error("stream PID 0x{pid:04X} used by programs {programs:?}")]
     DuplicatePidAcrossPrograms { pid: u16, programs: [u16; 2] },
 
-    /// Caller referenced a program_number that doesn't exist in `Config::programs`.
+    /// Caller referenced a program_number that doesn't exist in `MuxerConfig::programs`.
     #[error("program {program_number} not found")]
     ProgramNotFound { program_number: u16 },
 
@@ -353,7 +353,7 @@ pub enum MuxError {
     #[error("pmt_pid 0x{pmt_pid:04X} of program {program_number} conflicts with a stream PID")]
     PmtPidConflictsWithStream { pmt_pid: u16, program_number: u16 },
 
-    /// `Config::validate` rejected a program that contains only subtitle
+    /// `MuxerConfig::validate` rejected a program that contains only subtitle
     /// streams. Subtitles must NOT carry PCR per ETSI EN 300 472 §4.0 +
     /// EN 300 743 §6.1; programs need ≥1 video / KLV / audio stream for
     /// PCR fallback resolution.

@@ -1,6 +1,6 @@
 //! Verifies DVB-sub PES_data_field auto-wrap per ETSI EN 300 743 §6.2.
 
-use tst_core::mpegts::mux::{ConfigBuilder, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfigBuilder, Muxer, SubtitleCodec, VideoCodec};
 
 /// Drain the muxer once and reassemble the PES payload (post-PES-header)
 /// from every TS packet on `pid`. Skips adaptation field and the PES header
@@ -34,7 +34,7 @@ fn reassemble_pes_payload(mux: &mut Muxer, pid: u16) -> Vec<u8> {
 
 #[test]
 fn dvb_sub_push_emits_data_identifier_stream_id_segments_marker() {
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(
@@ -85,7 +85,7 @@ fn dvb_sub_multi_segment_push_chains_segments_between_envelope() {
     // Two synthetic segments back-to-back. Library must concatenate them
     // verbatim between the data_id/stream_id prefix and the 0xFF marker —
     // not interpret the bytes (e.g. wouldn't insert a second 0x20 between).
-    let cfg = ConfigBuilder::default()
+    let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(

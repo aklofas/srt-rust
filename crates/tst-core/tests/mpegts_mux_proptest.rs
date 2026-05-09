@@ -5,7 +5,7 @@ mod common;
 use common::synthetic_nal;
 use common::ts_parser;
 use proptest::prelude::*;
-use tst_core::mpegts::mux::{Config, Muxer};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer};
 
 #[derive(Debug, Clone)]
 struct PushSpec {
@@ -47,7 +47,7 @@ proptest! {
     /// byte 0x47 — a basic structural invariant.
     #[test]
     fn all_packets_are_well_formed(specs in proptest::collection::vec(push_spec_strategy(), 1..16)) {
-        let cfg = Config { buffer_packets: 50_000, ..Config::default() };
+        let cfg = MuxerConfig { buffer_packets: 50_000, ..MuxerConfig::default() };
         let mut mux = Muxer::new(cfg).unwrap();
         let mut last_pts = 0i64;
         let mut sorted = specs;
@@ -74,7 +74,7 @@ proptest! {
     /// across all payload-bearing packets.
     #[test]
     fn continuity_counter_monotonic_per_pid(spec_count in 5usize..30) {
-        let cfg = Config { buffer_packets: 50_000, ..Config::default() };
+        let cfg = MuxerConfig { buffer_packets: 50_000, ..MuxerConfig::default() };
         let mut mux = Muxer::new(cfg).unwrap();
         for i in 0..spec_count {
             let nal = synthetic_nal::h264_au(500, i == 0);
@@ -105,7 +105,7 @@ proptest! {
     /// must be recovered in the same order with the same bytes.
     #[test]
     fn klv_roundtrip_preserves_bytes(blobs in proptest::collection::vec(16usize..500, 1..8)) {
-        let cfg = Config { buffer_packets: 50_000, ..Config::default() };
+        let cfg = MuxerConfig { buffer_packets: 50_000, ..MuxerConfig::default() };
         let mut mux = Muxer::new(cfg).unwrap();
         // Need at least one video frame so PSI emits and the KLV PID
         // becomes known to the parser.

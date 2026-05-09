@@ -360,6 +360,62 @@ pub enum MuxError {
         "program {program_number} contains only subtitle streams; PCR cannot be resolved (subtitles must not carry PCR per EN 300 472 §4.0)"
     )]
     SubtitleOnlyProgram { program_number: u16 },
+
+    /// A kind-relative descriptor index (as passed to
+    /// `stream_descriptors_for_video` / `_for_klv` / `_for_audio` /
+    /// `_for_subtitle`) is out of range for the corresponding stream list
+    /// in the given program. Ensure the stream was added via `add_{kind}`
+    /// before calling `stream_descriptors_for_{kind}`.
+    #[error(
+        "descriptor index {index} out of range for {kind} streams in program {program_number} \
+         (call after the corresponding add_{kind})"
+    )]
+    DescriptorIndexOutOfRange {
+        kind: StreamKind,
+        index: u32,
+        program_number: u16,
+    },
+
+    /// An absolute stream index (as passed to `stream_descriptors_for_stream`)
+    /// is out of range for the given program's total stream count. `len` is
+    /// the number of streams currently configured on the program.
+    #[error("abs_idx {abs_idx} out of range for program {program_number} (has {len} streams)")]
+    AbsIndexOutOfRange {
+        abs_idx: u32,
+        len: u32,
+        program_number: u16,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn descriptor_index_out_of_range_displays() {
+        let err = MuxError::DescriptorIndexOutOfRange {
+            kind: StreamKind::Video,
+            index: 5,
+            program_number: 1,
+        };
+        let s = err.to_string();
+        assert!(s.contains("video"));
+        assert!(s.contains("5"));
+        assert!(s.contains("program 1"));
+    }
+
+    #[test]
+    fn abs_index_out_of_range_displays() {
+        let err = MuxError::AbsIndexOutOfRange {
+            abs_idx: 99,
+            len: 3,
+            program_number: 1,
+        };
+        let s = err.to_string();
+        assert!(s.contains("99"));
+        assert!(s.contains("3 streams"));
+        assert!(s.contains("program 1"));
+    }
 }
 
 // ============================================================================

@@ -226,6 +226,27 @@ pub(crate) fn record_mux_error(e: &MuxError) {
                  PCR cannot be resolved (subtitles must not carry PCR per EN 300 472 §4.0)"
             ),
         ),
+        MuxError::DescriptorIndexOutOfRange {
+            kind,
+            index,
+            program_number,
+        } => (
+            TstError::InvalidUsage,
+            format!(
+                "descriptor index {index} out of range for {kind} streams in program \
+                 {program_number} (call after the corresponding add_{kind})"
+            ),
+        ),
+        MuxError::AbsIndexOutOfRange {
+            abs_idx,
+            len,
+            program_number,
+        } => (
+            TstError::InvalidUsage,
+            format!(
+                "abs_idx {abs_idx} out of range for program {program_number} (has {len} streams)"
+            ),
+        ),
     };
     set_last_error(code, &msg);
 }

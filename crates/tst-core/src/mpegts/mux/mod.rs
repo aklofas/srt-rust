@@ -131,6 +131,49 @@ pub enum SubtitleCodec {
     WebVttInTs,
 }
 
+/// Classifier for the four supported stream classes carried in an MPEG-TS
+/// program. Used by [`MuxError`] variants whose semantics are
+/// stream-kind-specific (e.g., [`MuxError::AmbiguousTarget`],
+/// [`MuxError::InvalidStreamHandle`], [`MuxError::DescriptorIndexOutOfRange`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum StreamKind {
+    Video,
+    Audio,
+    Klv,
+    Subtitle,
+}
+
+impl core::fmt::Display for StreamKind {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            StreamKind::Video => "video",
+            StreamKind::Audio => "audio",
+            StreamKind::Klv => "klv",
+            StreamKind::Subtitle => "subtitle",
+        })
+    }
+}
+
+/// Field-name discriminator inside a teletext-stream configuration block;
+/// used by [`MuxError::InvalidTeletextField`] in place of `&'static str`
+/// tagging.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum TeletextField {
+    MagazineNumber,
+    TeletextType,
+}
+
+impl core::fmt::Display for TeletextField {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            TeletextField::MagazineNumber => "magazine_number",
+            TeletextField::TeletextType => "teletext_type",
+        })
+    }
+}
+
 /// One elementary stream in the muxer's output TS.
 ///
 /// [`Config::validate`] caps at 16 video + 16 KLV streams, with at least
@@ -4856,6 +4899,20 @@ mod tests {
             .end_program()
             .build();
         assert!(cfg.is_ok(), "video + subtitle program must validate");
+    }
+
+    #[test]
+    fn stream_kind_display() {
+        assert_eq!(StreamKind::Video.to_string(), "video");
+        assert_eq!(StreamKind::Audio.to_string(), "audio");
+        assert_eq!(StreamKind::Klv.to_string(), "klv");
+        assert_eq!(StreamKind::Subtitle.to_string(), "subtitle");
+    }
+
+    #[test]
+    fn teletext_field_display() {
+        assert_eq!(TeletextField::MagazineNumber.to_string(), "magazine_number");
+        assert_eq!(TeletextField::TeletextType.to_string(), "teletext_type");
     }
 }
 

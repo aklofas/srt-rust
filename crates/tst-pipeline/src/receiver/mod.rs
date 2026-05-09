@@ -224,6 +224,24 @@ impl<R: RecvTransport> Receiver<R> {
     }
 }
 
+/// Type alias for [`Receiver`] with a boxed [`RecvTransport`] trait object.
+///
+/// Bindings code (`srt-jni`, `srt-uniffi`, `tst-pyo3`) targets this single
+/// concrete type instead of cubing per-`R` instantiation. Rust callers with a
+/// custom transport keep the generic `Receiver<MyTransport>` shape.
+///
+/// # Example — opaque receiver from a runtime-chosen transport
+/// ```no_run
+/// use tst_pipeline::receiver::BoxedReceiver;
+/// use tst_pipeline::Receiver;
+/// use tst_core::RecvTransport;
+///
+/// fn open(transport: Box<dyn RecvTransport>) -> BoxedReceiver {
+///     Receiver::new(transport)
+/// }
+/// ```
+pub type BoxedReceiver = Receiver<Box<dyn crate::RecvTransport>>;
+
 impl<R: RecvTransport> Drop for Receiver<R> {
     fn drop(&mut self) {
         let _enter = self._span.0.enter();

@@ -138,3 +138,35 @@ fn stream_descriptors_for_stream_out_of_range_does_not_panic() {
         result
     );
 }
+
+#[test]
+fn first_descriptor_index_error_wins() {
+    // Two consecutive out-of-range calls — only the FIRST should surface
+    // from build(). The deferred_error field is first-error-wins: the
+    // is_none() guard on each setter means a second bad index can never
+    // overwrite the first.
+    let cfg = Config::builder()
+        .add_program(1, 0x1000)
+        .add_video(0x1011, VideoCodec::H264)
+        .stream_descriptors_for_video(7, vec![vec![]])  // first error: index 7
+        .stream_descriptors_for_video(99, vec![vec![]]) // must NOT overwrite
+        .end_program()
+        .build();
+
+    match cfg {
+        Err(MuxError::DescriptorIndexOutOfRange {
+            kind,
+            index,
+            program_number,
+        }) => {
+            assert_eq!(kind, StreamKind::Video);
+            assert_eq!(
+                index, 7,
+                "first-error-wins: expected the first bad index (7), got {}",
+                index
+            );
+            assert_eq!(program_number, 1);
+        }
+        other => panic!("expected DescriptorIndexOutOfRange, got {:?}", other),
+    }
+}

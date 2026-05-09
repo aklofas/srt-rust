@@ -6,7 +6,9 @@
 mod common;
 
 use common::synthetic_nal;
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, MuxerProgramConfig, StreamSpec, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfig, StreamSpec, VideoCodec,
+};
 
 /// Two-program config:
 ///   prog 1 (H.264 + KLV) at PMT=0x1000, video=0x1011, klv=0x1031

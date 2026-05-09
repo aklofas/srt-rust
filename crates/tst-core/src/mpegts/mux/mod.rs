@@ -4033,10 +4033,7 @@ mod tests {
         let result = MuxerConfig::builder()
             .add_program(1, 0x1000)
             .add_video(0x100, VideoCodec::H264)
-            .stream_descriptors_for_video(
-                7,
-                vec![crate::mpegts::descriptors::user_private(b"X")],
-            )
+            .stream_descriptors_for_video(7, vec![crate::mpegts::descriptors::user_private(b"X")])
             .end_program()
             .build();
         assert!(

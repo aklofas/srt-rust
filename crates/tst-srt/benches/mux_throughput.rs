@@ -9,7 +9,7 @@
 //! runs report regressions.
 
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
-use tst_core::mpegts::mux::{MuxerConfig, Muxer};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 
 fn synthetic_au(size: usize, key: bool) -> Vec<u8> {
     let mut v = Vec::with_capacity(4 + size);

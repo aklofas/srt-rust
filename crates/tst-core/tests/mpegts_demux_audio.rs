@@ -4,7 +4,7 @@ use tst_core::mpegts::demux::{
     Demuxer,
     event::{AudioCodec, DemuxEvent, SamplePayload},
 };
-use tst_core::mpegts::mux::{AudioCodec as MuxAudioCodec, MuxerConfig, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{AudioCodec as MuxAudioCodec, Muxer, MuxerConfig, VideoCodec};
 
 /// Helper: mux audio + video, drain bytes, return them.
 fn mux_audio_video(codec: MuxAudioCodec, audio_pid: u16) -> Vec<u8> {

@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use crate::codec::{
-    ChromaFormat, ColorInfo, ColourPrimaries, MatrixCoefficients, CodecParseError, Rational,
+    ChromaFormat, CodecParseError, ColorInfo, ColourPrimaries, MatrixCoefficients, Rational,
     TransferCharacteristics,
 };
 use crate::mpegts::demux::event::NalUnit;
@@ -172,14 +172,16 @@ pub fn parse_pps(rbsp: &[u8]) -> Result<H264Pps, CodecParseError> {
         .read_bool("entropy_coding_mode_flag")
         .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
     // Both IDs are constrained to [0, 255] by the H.264 spec (Table 7-1).
-    let pic_parameter_set_id = u8::try_from(pps_id).map_err(|_| CodecParseError::ReservedValue {
-        field: "pic_parameter_set_id",
-        value: pps_id,
-    })?;
-    let seq_parameter_set_id = u8::try_from(sps_id).map_err(|_| CodecParseError::ReservedValue {
-        field: "seq_parameter_set_id",
-        value: sps_id,
-    })?;
+    let pic_parameter_set_id =
+        u8::try_from(pps_id).map_err(|_| CodecParseError::ReservedValue {
+            field: "pic_parameter_set_id",
+            value: pps_id,
+        })?;
+    let seq_parameter_set_id =
+        u8::try_from(sps_id).map_err(|_| CodecParseError::ReservedValue {
+            field: "seq_parameter_set_id",
+            value: sps_id,
+        })?;
     Ok(H264Pps {
         pic_parameter_set_id,
         seq_parameter_set_id,

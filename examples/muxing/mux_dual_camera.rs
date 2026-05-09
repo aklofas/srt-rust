@@ -29,7 +29,7 @@
 use std::fs::File;
 use std::io::Write;
 use tst_core::mpegts::descriptors;
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec};
 
 fn main() -> std::io::Result<()> {
     // Build a multi-stream MuxerConfig:

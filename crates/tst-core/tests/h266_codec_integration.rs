@@ -18,7 +18,7 @@ use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{
     DemuxEvent, NalUnit, SamplePayload, VideoCodec, VideoPayload,
 };
-use tst_core::mpegts::mux::{MuxerConfig, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig, VideoCodec as MuxVideoCodec};
 
 /// Wrap a NAL body in an Annex-B start code + 2-byte H.266 NAL header.
 /// Per H.266 V4 §7.3.1.2:

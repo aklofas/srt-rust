@@ -8,7 +8,7 @@
 
 use tst_core::codec::h264;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
-use tst_core::mpegts::mux::{MuxerConfig, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig, VideoCodec};
 
 const SPS_RBSP: &[u8] = include_bytes!("fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin");
 const PPS_RBSP: &[u8] = include_bytes!("fixtures/codec/h264/h264_1080p_high40_bt709_pps.bin");

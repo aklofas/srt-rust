@@ -6,7 +6,9 @@
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, MetadataKind, SamplePayload, StreamKind, VideoCodec,
 };
-use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfigBuilder, VideoCodec as MuxVideoCodec,
+};
 
 fn build_minimal_h264_au() -> Vec<u8> {
     // Annex-B: AUD (nal_type=9) + IDR (nal_type=5).

@@ -296,7 +296,11 @@ pub enum MuxError {
     /// `MuxerConfig::validate` rejects DVB teletext field values that exceed
     /// their bit-width budget.
     #[error("invalid DVB teletext {field}: {value} (max {max})")]
-    InvalidTeletextField { field: TeletextField, value: u8, max: u8 },
+    InvalidTeletextField {
+        field: TeletextField,
+        value: u8,
+        max: u8,
+    },
 
     /// `MuxerConfig::validate` rejected a configuration whose total PMT
     /// section length wouldn't fit in a single TS packet. `used_bytes`

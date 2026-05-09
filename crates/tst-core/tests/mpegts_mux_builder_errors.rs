@@ -5,7 +5,7 @@
 
 use tst_core::MuxError;
 use tst_core::mpegts::mux::{
-    AudioCodec, MuxerConfig, KlvStreamType, StreamKind, SubtitleCodec, VideoCodec,
+    AudioCodec, KlvStreamType, MuxerConfig, StreamKind, SubtitleCodec, VideoCodec,
 };
 
 #[test]
@@ -148,7 +148,7 @@ fn first_descriptor_index_error_wins() {
     let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
-        .stream_descriptors_for_video(7, vec![vec![]])  // first error: index 7
+        .stream_descriptors_for_video(7, vec![vec![]]) // first error: index 7
         .stream_descriptors_for_video(99, vec![vec![]]) // must NOT overwrite
         .end_program()
         .build();

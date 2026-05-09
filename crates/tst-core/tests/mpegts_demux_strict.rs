@@ -37,7 +37,9 @@ use tst_core::mpegts::common::crc32::crc32_mpeg2;
 use tst_core::mpegts::demux::{
     DemuxEvent, DemuxerBuilder, DemuxerOptions, NonConformantIssue, StrictMode,
 };
-use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfigBuilder, VideoCodec as MuxVideoCodec,
+};
 
 /// A minimally well-formed bare ST 0601 LS used as the inner payload of a
 /// synthetic AU cell: 16-byte UAS Datalink LS UL + short-form BER length 0.

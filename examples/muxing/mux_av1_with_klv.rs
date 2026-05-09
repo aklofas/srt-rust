@@ -40,7 +40,7 @@
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec};
 
 // PIDs are 13-bit identifiers in the TS header. The reserved well-known
 // values are 0x0000 (PAT) and 0x1FFF (null padding); elementary streams

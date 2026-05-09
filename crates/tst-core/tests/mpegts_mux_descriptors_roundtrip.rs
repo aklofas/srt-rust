@@ -9,7 +9,7 @@
 use tst_core::mpegts::demux::psi::extract_user_label;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
 use tst_core::mpegts::descriptors;
-use tst_core::mpegts::mux::{AudioCodec, MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, Muxer, MuxerConfig, VideoCodec};
 
 fn drive_psi(cfg: MuxerConfig) -> Vec<u8> {
     let mut mux = Muxer::new(cfg).unwrap();

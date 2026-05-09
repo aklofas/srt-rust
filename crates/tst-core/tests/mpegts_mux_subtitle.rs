@@ -2,7 +2,7 @@
 //! (`mpegts::mux`).
 
 use tst_core::error::MuxError;
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, SubtitleCodec, VideoCodec};
 
 /// Drain every queued packet from the muxer into a single Vec.
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {

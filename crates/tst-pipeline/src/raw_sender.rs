@@ -131,7 +131,9 @@ impl<T: Transport> RawSender<T> {
     }
 
     /// Snapshot of the underlying transport's cancel handle.
-    pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
+    pub fn cancel_handle(
+        &self,
+    ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.transport.cancel_handle()
     }
 

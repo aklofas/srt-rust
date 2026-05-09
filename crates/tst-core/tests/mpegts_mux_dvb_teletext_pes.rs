@@ -1,6 +1,6 @@
 //! Verifies DVB-teletext PES per ETSI EN 300 472 §4.2.
 
-use tst_core::mpegts::mux::{MuxerConfigBuilder, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{Muxer, MuxerConfigBuilder, SubtitleCodec, VideoCodec};
 
 /// Drain the muxer once and reassemble the full PES bytes (header included)
 /// from every TS packet on `pid`. We need the header to inspect

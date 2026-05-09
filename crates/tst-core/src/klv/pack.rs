@@ -243,7 +243,6 @@ pub fn encode_pack<'a>(
     Ok(16 + written + total_inner)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

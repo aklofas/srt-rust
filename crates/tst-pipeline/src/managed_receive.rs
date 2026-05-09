@@ -114,8 +114,9 @@ impl<R: RecvTransport> ManagedReceiveTransport<R> {
         factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,
         policy: ReconnectPolicy,
     ) -> Self {
-        let inner_cancel: Arc<Mutex<Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>>> =
-            Arc::new(Mutex::new(inner.cancel_handle()));
+        let inner_cancel: Arc<
+            Mutex<Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>>,
+        > = Arc::new(Mutex::new(inner.cancel_handle()));
         Self {
             inner: Some(inner),
             factory,
@@ -434,7 +435,9 @@ mod tests {
         fn is_alive(&self) -> bool {
             !self.cancelled.load(std::sync::atomic::Ordering::SeqCst)
         }
-        fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
+        fn cancel_handle(
+            &self,
+        ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
             Some(Arc::new(CancellableRecvCancel {
                 cancelled: self.cancelled.clone(),
             }))

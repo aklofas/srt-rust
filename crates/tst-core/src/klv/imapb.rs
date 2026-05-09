@@ -106,7 +106,6 @@ fn read_signed_be(bytes: &[u8]) -> i64 {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

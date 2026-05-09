@@ -16,7 +16,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, MuxerConfig, VideoCodec};
 use tst_pipeline::{MuxSender, MuxSenderError, TransportError};
 use tst_srt::SrtTransport;
 use tst_srt::{ListenerBuilder, SocketBuilder};

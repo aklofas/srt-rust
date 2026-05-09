@@ -5,7 +5,7 @@ mod common;
 use common::synthetic_nal;
 use common::ts_parser;
 use proptest::prelude::*;
-use tst_core::mpegts::mux::{MuxerConfig, Muxer};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 
 #[derive(Debug, Clone)]
 struct PushSpec {

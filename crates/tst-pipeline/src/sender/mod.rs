@@ -193,7 +193,9 @@ impl<T: Transport> Sender<T> {
 
     /// Snapshot of the underlying transport's cancel handle. See
     /// [`crate::MuxSender::cancel_handle`] for the rationale.
-    pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
+    pub fn cancel_handle(
+        &self,
+    ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.transport.cancel_handle()
     }
 }

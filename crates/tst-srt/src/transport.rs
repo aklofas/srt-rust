@@ -102,9 +102,9 @@ impl Transport for SrtTransport {
     }
 
     fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
-        self.socket
-            .as_ref()
-            .map(|s| Arc::new(SrtCancel(s.cancel_handle())) as Arc<dyn TransportCancel + Send + Sync>)
+        self.socket.as_ref().map(|s| {
+            Arc::new(SrtCancel(s.cancel_handle())) as Arc<dyn TransportCancel + Send + Sync>
+        })
     }
 }
 
@@ -156,9 +156,9 @@ impl tst_core::transport::RecvTransport for SrtTransport {
     }
 
     fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
-        self.socket
-            .as_ref()
-            .map(|s| Arc::new(SrtCancel(s.cancel_handle())) as Arc<dyn TransportCancel + Send + Sync>)
+        self.socket.as_ref().map(|s| {
+            Arc::new(SrtCancel(s.cancel_handle())) as Arc<dyn TransportCancel + Send + Sync>
+        })
     }
 }
 

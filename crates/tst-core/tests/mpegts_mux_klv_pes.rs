@@ -4,7 +4,7 @@
 //! - Async KLV (stream_type 0x06 PrivateData)  → PES stream_id 0xBD (private_stream_1)
 //! - Sync  KLV (stream_type 0x15 SynchronousMetadata) → PES stream_id 0xFC (metadata)
 
-use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfigBuilder, VideoCodec};
 
 /// Minimal 17-byte KLV LS packet (16-byte ST 0601 UL + 1-byte BER length=0).
 fn synthetic_klv() -> Vec<u8> {

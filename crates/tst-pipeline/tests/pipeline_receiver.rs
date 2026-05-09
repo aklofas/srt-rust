@@ -7,7 +7,9 @@
 use std::collections::VecDeque;
 
 use tst_core::mpegts::demux::DemuxEvent;
-use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfigBuilder, VideoCodec as MuxVideoCodec,
+};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 use tst_pipeline::DemuxReceiver;

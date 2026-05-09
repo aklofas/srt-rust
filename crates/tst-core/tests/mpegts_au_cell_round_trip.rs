@@ -6,7 +6,7 @@
 
 use tst_core::mpegts::au_cell::{CellFragmentIndication, read_metadata_au_cell};
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind};
-use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfigBuilder, VideoCodec};
 
 fn synthetic_klv_ls() -> Vec<u8> {
     let mut v = Vec::new();
@@ -335,7 +335,7 @@ fn classify_klv_opaque_inner_complete_cfi_returns_sync_au_cell() {
 #[test]
 fn multi_cell_au_emits_non_conformant_issue_through_demuxer() {
     use tst_core::mpegts::demux::{DemuxEvent, Demuxer, NonConformantIssue};
-    use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec};
+    use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfigBuilder, VideoCodec};
 
     let cfg = MuxerConfigBuilder::default()
         .add_program(1, 0x1000)
@@ -473,7 +473,7 @@ fn metadata_service_id_propagates_from_push_klv_to_au_cell() {
     // header in the emitted PES payload, rather than being silently
     // overwritten with the former hardcoded 0x00 default.
     use tst_core::mpegts::au_cell::read_metadata_au_cell;
-    use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+    use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec};
 
     let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)

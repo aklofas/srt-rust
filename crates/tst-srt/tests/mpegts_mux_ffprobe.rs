@@ -10,7 +10,7 @@ mod common;
 
 use common::synthetic_nal;
 use std::process::Command;
-use tst_core::mpegts::mux::{MuxerConfig, Muxer};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();

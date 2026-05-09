@@ -2,7 +2,7 @@
 
 use super::bitreader::BitReader;
 use super::{profile_tier_level, vui};
-use crate::codec::{ChromaFormat, ColorInfo, CodecParseError, Rational, validate_bit_depth_minus8};
+use crate::codec::{ChromaFormat, CodecParseError, ColorInfo, Rational, validate_bit_depth_minus8};
 
 /// Parsed H.265 SPS fields. Populated by [`parse_sps`].
 #[derive(Debug, Clone, PartialEq, Eq)]

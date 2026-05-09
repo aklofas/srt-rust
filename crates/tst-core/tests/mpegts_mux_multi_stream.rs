@@ -8,7 +8,7 @@
 //! `mpegts_mux_ffprobe.rs` and `mpegts_mux.rs` files; these tests focus
 //! on routing — the right bytes go to the right PIDs.
 
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec};
 
 /// Drain every queued packet from the muxer into a single Vec.
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {

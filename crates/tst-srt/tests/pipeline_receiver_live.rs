@@ -26,7 +26,7 @@ use common::synthetic_nal;
 use std::thread;
 use std::time::Duration;
 use tst_core::mpegts::demux::DemuxEvent;
-use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, MuxerConfigBuilder, VideoCodec as MuxVideoCodec};
 use tst_pipeline::{DemuxReceiver, DemuxReceiverError, MuxSender, TransportError};
 use tst_srt::SrtTransport;
 use tst_srt::{ListenerBuilder, SocketBuilder};

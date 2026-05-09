@@ -65,7 +65,7 @@ use std::fs;
 use std::io::Write;
 use tst_core::mpegts::demux::event::NalUnit;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── Argument parsing ─────────────────────────────────────────────────────

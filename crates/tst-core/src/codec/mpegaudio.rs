@@ -547,7 +547,10 @@ mod tests {
     #[test]
     fn parse_header_too_short_yields_truncated() {
         let err = parse_header(&[0xFF, 0xFB]).unwrap_err();
-        assert!(matches!(err, CodecParseError::Truncated { needed: 4, had: 2 }));
+        assert!(matches!(
+            err,
+            CodecParseError::Truncated { needed: 4, had: 2 }
+        ));
     }
 
     #[test]

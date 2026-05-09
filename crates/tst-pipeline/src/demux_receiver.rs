@@ -227,7 +227,9 @@ impl<R: RecvTransport> DemuxReceiver<R> {
 
     /// Snapshot of the underlying recv-transport's cancel handle. Wakes
     /// a thread parked in `recv_event()`'s `next_packet()` call.
-    pub fn cancel_handle(&self) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
+    pub fn cancel_handle(
+        &self,
+    ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.ts.cancel_handle()
     }
 }

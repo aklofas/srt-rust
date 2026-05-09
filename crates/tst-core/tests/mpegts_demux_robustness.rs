@@ -14,7 +14,9 @@
 //! `mpegts_demux_strict.rs`; here we only assert the lenient-mode contract.
 
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DiscontinuityKind};
-use tst_core::mpegts::mux::{MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfigBuilder, VideoCodec as MuxVideoCodec,
+};
 
 fn drain(m: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();

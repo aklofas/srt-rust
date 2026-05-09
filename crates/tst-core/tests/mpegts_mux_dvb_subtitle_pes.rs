@@ -1,6 +1,6 @@
 //! Verifies DVB-sub PES_data_field auto-wrap per ETSI EN 300 743 §6.2.
 
-use tst_core::mpegts::mux::{MuxerConfigBuilder, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{Muxer, MuxerConfigBuilder, SubtitleCodec, VideoCodec};
 
 /// Drain the muxer once and reassemble the PES payload (post-PES-header)
 /// from every TS packet on `pid`. Skips adaptation field and the PES header

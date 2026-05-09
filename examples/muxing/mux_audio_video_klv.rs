@@ -40,7 +40,7 @@ use std::fs::File;
 use std::io::Write;
 
 use tst_core::klv::st0601::{UasDatalinkLs, encode_to_vec};
-use tst_core::mpegts::mux::{AudioCodec, MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, Muxer, MuxerConfig, VideoCodec};
 
 // Clippy's `field_reassign_with_default` would prefer struct-update syntax,
 // but we use field-by-field reassignment on purpose to group related ST 0601

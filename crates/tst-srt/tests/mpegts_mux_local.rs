@@ -12,7 +12,7 @@ mod common;
 use common::ts_parser;
 use std::fs;
 use std::path::Path;
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec};
 
 const FIXTURES: &str = "tests/fixtures/local";
 

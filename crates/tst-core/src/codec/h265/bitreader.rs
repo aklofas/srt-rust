@@ -74,10 +74,12 @@ impl<'a> BitReader<'a> {
                 self.bit_pos += 8;
                 continue;
             }
-            let b = self.byte_at(byte_idx).ok_or(CodecParseError::TruncatedRbsp {
-                offset_bits: self.bit_pos,
-                needed_bits: 1,
-            })?;
+            let b = self
+                .byte_at(byte_idx)
+                .ok_or(CodecParseError::TruncatedRbsp {
+                    offset_bits: self.bit_pos,
+                    needed_bits: 1,
+                })?;
             let bit = (b >> (7 - bit_in_byte)) & 1;
             self.bit_pos += 1;
             return Ok(bit);

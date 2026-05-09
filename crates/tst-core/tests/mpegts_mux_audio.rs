@@ -1,6 +1,6 @@
 //! Integration tests for sender-side audio carriage in `mpegts::mux`.
 
-use tst_core::mpegts::mux::{AudioCodec, MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, Muxer, MuxerConfig, VideoCodec};
 
 #[test]
 fn audio_only_program_mux_produces_pat_pmt_audio_pes() {

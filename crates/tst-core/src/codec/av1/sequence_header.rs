@@ -13,7 +13,7 @@
 
 use crate::codec::av1::bitreader::Av1BitReader;
 use crate::codec::{
-    ChromaFormat, ColorInfo, ColourPrimaries, MatrixCoefficients, CodecParseError, Rational,
+    ChromaFormat, CodecParseError, ColorInfo, ColourPrimaries, MatrixCoefficients, Rational,
     TransferCharacteristics,
 };
 

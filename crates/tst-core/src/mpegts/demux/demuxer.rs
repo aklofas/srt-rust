@@ -2201,7 +2201,9 @@ mod tests {
     #[test]
     fn demuxer_emits_subtitle_sample_for_webvtt_pes() {
         use crate::mpegts::demux::event::SubtitleCodec as DemuxSubtitleCodec;
-        use crate::mpegts::mux::{MuxerConfigBuilder, SubtitleCodec as MuxSubtitleCodec, VideoCodec};
+        use crate::mpegts::mux::{
+            MuxerConfigBuilder, SubtitleCodec as MuxSubtitleCodec, VideoCodec,
+        };
 
         // Mux: single-program with one video stream and one WebVTT subtitle
         // stream. Video is required because MuxerConfig::validate enforces at least
@@ -2738,7 +2740,7 @@ mod tests {
     fn dvb_sub_demux_strips_pes_data_field_envelope() {
         use crate::mpegts::demux::event::SamplePayload;
         use crate::mpegts::mux::{
-            MuxerConfig, Muxer, SubtitleCodec as MuxSubtitleCodec, VideoCodec as MuxVideoCodec,
+            Muxer, MuxerConfig, SubtitleCodec as MuxSubtitleCodec, VideoCodec as MuxVideoCodec,
         };
 
         // Configure: one program with one H.264 video stream (PCR carrier)

@@ -8,7 +8,7 @@ use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{
     DemuxEvent, NalUnit, SamplePayload, StreamKind, VideoCodec, VideoPayload,
 };
-use tst_core::mpegts::mux::{MuxerConfig, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig, VideoCodec as MuxVideoCodec};
 
 /// Build a minimal valid Annex-B H.266 access unit: AUD + VPS + SPS + PPS + IDR.
 /// Bytes after each NAL header are placeholders — what matters for this test

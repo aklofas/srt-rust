@@ -42,6 +42,6 @@ pub mod klv;
 pub mod mpegts;
 pub mod transport;
 
-pub use error::{KlvDecodeError, KlvEncodeError, KlvFieldError, MuxError, DemuxError};
+pub use error::{DemuxError, KlvDecodeError, KlvEncodeError, KlvFieldError, MuxError};
 pub use klv::st0601::UasDatalinkLs;
 pub use transport::{RecvTransport, Transport, TransportCancel, TransportError};

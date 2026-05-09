@@ -278,7 +278,10 @@ pub enum CodecParseError {
 ///
 /// Returns `8 + value as u8` on success, [`CodecParseError::ReservedValue`]
 /// otherwise. The H.264 path uses `h264-reader` which validates internally.
-pub(crate) fn validate_bit_depth_minus8(field: &'static str, value: u32) -> Result<u8, CodecParseError> {
+pub(crate) fn validate_bit_depth_minus8(
+    field: &'static str,
+    value: u32,
+) -> Result<u8, CodecParseError> {
     if value > 6 {
         return Err(CodecParseError::ReservedValue { field, value });
     }

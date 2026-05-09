@@ -3,7 +3,7 @@
 use tst_core::codec::av1::parse_obu_stream;
 use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{DemuxEvent, Obu, SamplePayload, VideoCodec, VideoPayload};
-use tst_core::mpegts::mux::{MuxerConfig, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig, VideoCodec as MuxVideoCodec};
 
 fn obu_with_size(obu_type: u8, payload: &[u8]) -> Vec<u8> {
     let header = (obu_type << 3) | 0x02; // ext=0, has_size=1

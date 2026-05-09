@@ -3,7 +3,7 @@
 #![cfg(feature = "file")]
 
 use tst_core::io_file::{DemuxFromFile, demux_file, write_mux_to_file};
-use tst_core::mpegts::mux::{MuxerConfig, Muxer};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 
 /// Build a minimal single-program Muxer with one H.264 video stream.
 fn minimal_muxer() -> Muxer {

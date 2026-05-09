@@ -8,7 +8,7 @@ mod common;
 
 use common::synthetic_nal;
 use common::ts_parser;
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, StreamSpec, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, StreamSpec, VideoCodec};
 
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();

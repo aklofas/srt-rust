@@ -9,7 +9,7 @@
 //! arm exposes).
 
 use tst_core::mpegts::demux::Demuxer;
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec as MuxVideoCodec};
 use tst_pipeline::{MatchMode, Pairer, PairerOutput};
 
 const VIDEO_PID: u16 = 0x100;

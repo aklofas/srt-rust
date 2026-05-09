@@ -4,7 +4,7 @@
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, SamplePayload, StreamKind, SubtitleCodec as DemuxSub,
 };
-use tst_core::mpegts::mux::{MuxerConfig, Muxer, SubtitleCodec as MuxSub, VideoCodec};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig, SubtitleCodec as MuxSub, VideoCodec};
 
 /// Drain every queued packet from the muxer into a single Vec.
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {

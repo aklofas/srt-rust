@@ -326,7 +326,7 @@ fn drain_events(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
 ```
 
 See the full runnable form at
-[`crates/tst-srt/examples/parse_video_parameters.rs`](../crates/tst-srt/examples/parse_video_parameters.rs).
+[`examples/codec-parsing/parse_video_parameters.rs`](../examples/codec-parsing/parse_video_parameters.rs).
 
 ## Decoder replay — reconstituting Annex B bytes
 

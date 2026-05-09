@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs).
+Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux_to_events.rs).
 
 ## Public surface
 
@@ -282,7 +282,7 @@ decoder removes them), and returns each NAL with codec-tagged headers
 on `NalUnit::H264` / `NalUnit::H265`. The full AU is one
 `SamplePayload::Video { codec, payload: VideoPayload::Nals(Vec<NalUnit>) }`. Callers re-emitting
 to a downstream Annex-B sink prepend `0x00 0x00 0x00 0x01` between
-NALs themselves — see [../crates/tst-srt/examples/extract_video_au.rs](../crates/tst-srt/examples/extract_video_au.rs).
+NALs themselves — see [../examples/codec-parsing/extract_video_au.rs](../examples/codec-parsing/extract_video_au.rs).
 
 **Sync KLV (`stream_type=0x15`).** The demuxer detects the H.222.0
 § 2.12.4.2 `Metadata_AU_cell` shape (5-byte header followed by an
@@ -430,7 +430,7 @@ yourself when feeding the demuxer directly.
 Each `NalUnit::H264` / `NalUnit::H265` carries the RBSP bytes only —
 Annex-B start codes have been stripped. Re-emit start codes between
 NALs yourself if writing back to an Annex-B sink. Pattern shown in
-[../crates/tst-srt/examples/extract_video_au.rs](../crates/tst-srt/examples/extract_video_au.rs).
+[../examples/codec-parsing/extract_video_au.rs](../examples/codec-parsing/extract_video_au.rs).
 
 **Treating `Closed` as an error.** It isn't. `pipeline::Receiver` turns
 `TransportError::Closed` into iterator termination — the `for` loop
@@ -589,22 +589,22 @@ log the override.
 
 Four runnable examples cover the demuxer's surface:
 
-- [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs)
+- [../examples/receiving/demux_to_events.rs](../examples/receiving/demux_to_events.rs)
   — file in, full event stream out. Triage-grade diagnostic.
-- [../crates/tst-srt/examples/srt_recv_typed.rs](../crates/tst-srt/examples/srt_recv_typed.rs)
+- [../examples/receiving/srt_recv_typed.rs](../examples/receiving/srt_recv_typed.rs)
   — bind a listener, wrap with `pipeline::Receiver`, drain typed events
   from a live SRT peer.
-- [../crates/tst-srt/examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs)
+- [../examples/pairing/pair_sync_klv.rs](../examples/pairing/pair_sync_klv.rs)
   — nearest-PTS pairing of KLV records with video AUs (Cookbook §12).
-- [../crates/tst-srt/examples/tee_disk_and_demux.rs](../crates/tst-srt/examples/tee_disk_and_demux.rs)
+- [../examples/operations/tee_disk_and_demux.rs](../examples/operations/tee_disk_and_demux.rs)
   — `add_byte_sink` fan-out: write `.ts` to disk while consuming typed
   events, all in one pass.
 
 Two existing examples were also retrofitted to use `Demuxer` internally:
 
-- [../crates/tst-srt/examples/extract_klv.rs](../crates/tst-srt/examples/extract_klv.rs)
+- [../examples/klv-metadata/extract_klv.rs](../examples/klv-metadata/extract_klv.rs)
   — extract KLV records from a `.ts` capture (now `Demuxer`-driven).
-- [../crates/tst-srt/examples/extract_video_au.rs](../crates/tst-srt/examples/extract_video_au.rs)
+- [../examples/codec-parsing/extract_video_au.rs](../examples/codec-parsing/extract_video_au.rs)
   — extract video access units, re-emit Annex-B framing.
 
 ## Multi-program parsing

@@ -50,7 +50,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 Listener, accepting one peer and draining to EOF (compare
-[examples/srt_listener_to_file.rs](../crates/tst-srt/examples/srt_listener_to_file.rs)):
+[examples/srt_listener_to_file.rs](../examples/receiving/srt_listener_to_file.rs)):
 
 ```rust,no_run
 use tst_srt::error::RecvError;
@@ -217,7 +217,7 @@ sender preset internally.
   on the caller and `AcceptError::PeerRejected` on the listener.
 
 Paired listener and caller, mirroring
-[examples/encrypted_send_recv.rs](../crates/tst-srt/examples/encrypted_send_recv.rs):
+[examples/encrypted_send_recv.rs](../examples/sending/encrypted_send_recv.rs):
 
 ```rust,no_run
 use tst_srt::{KeyLength, ListenerBuilder, Passphrase, SocketBuilder};

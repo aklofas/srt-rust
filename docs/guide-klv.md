@@ -11,7 +11,7 @@ ITU-T H.222.0 V9 § 2.12.4.2) — the muxer auto-wraps for
 `KlvStreamType::SynchronousMetadata` streams.
 
 What this module is *not*: a TS demuxer. Pulling KLV out of a captured
-`.ts` file is done with FFmpeg / Bento4 / `cargo run --example extract_klv`
+`.ts` file is done with FFmpeg / Bento4 / `cargo run -p tst-examples --example extract_klv`
 (see Section 11). TS demux in the Rust core is on the deferred list — see
 [`mpegts::demux`](deferred-features.md) in `deferred-features.md`.
 
@@ -145,7 +145,7 @@ fn try_all(buf: &[u8]) -> Result<UasDatalinkLs, Box<dyn std::error::Error>> {
 ```
 
 For the worked example with per-rung error reporting, see
-[../crates/tst-srt/examples/klv_decode_file.rs](../crates/tst-srt/examples/klv_decode_file.rs).
+[../examples/klv-metadata/klv_decode_file.rs](../examples/klv-metadata/klv_decode_file.rs).
 
 ## Typed ST 0601 — `UasDatalinkLs`
 
@@ -223,7 +223,7 @@ fn build_minimal() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 
 For a worked example with attitude + sensor pose + frame center, plus
 explicit `LinearRange` step-size calculations for each ranged tag, see
-[../crates/tst-srt/examples/klv_encode_minimal.rs](../crates/tst-srt/examples/klv_encode_minimal.rs).
+[../examples/klv-metadata/klv_encode_minimal.rs](../examples/klv-metadata/klv_encode_minimal.rs).
 
 ## ST 0605 Precision Time Stamp Pack
 
@@ -538,7 +538,7 @@ mapping of `0..360°` into 2 bytes unsigned. The step size is
 one of two adjacent codepoints around that resolution and recovers
 within `~5e-3°` on decode. Per-tag precision is documented in
 [../crates/tst-core/src/klv/st0601/tags.rs](../crates/tst-core/src/klv/st0601/tags.rs);
-[../crates/tst-srt/examples/klv_encode_minimal.rs](../crates/tst-srt/examples/klv_encode_minimal.rs)
+[../examples/klv-metadata/klv_encode_minimal.rs](../examples/klv-metadata/klv_encode_minimal.rs)
 walks four representative `LinearRange` tags with their step
 calculations spelled out in comments.
 
@@ -549,7 +549,7 @@ Three steps to take a captured `.ts`, pull the KLV out, and decode it.
 1. Extract KLV blobs from a `.ts` file:
 
    ```bash
-   cargo run --example extract_klv -- capture.ts /tmp/klv_out
+   cargo run -p tst-examples --example extract_klv -- capture.ts /tmp/klv_out
    ```
 
    The second argument is a filename prefix; the example writes files
@@ -563,7 +563,7 @@ Three steps to take a captured `.ts`, pull the KLV out, and decode it.
 2. Decode one blob through the strictness ladder:
 
    ```bash
-   cargo run --example klv_decode_file -- /tmp/klv_out_0000.klv
+   cargo run -p tst-examples --example klv_decode_file -- /tmp/klv_out_0000.klv
    ```
 
    The example tries `decode_strict_compliance` first and walks down to

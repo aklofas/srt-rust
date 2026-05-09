@@ -140,7 +140,7 @@ clock); `key_frame` should be true for IDR frames.
 
 In production, replace the synthetic generator with your encoder's
 output. See
-[../crates/tst-srt/examples/pipeline_send_to_socket.rs](../crates/tst-srt/examples/pipeline_send_to_socket.rs)
+[../examples/sending/pipeline_send_to_socket.rs](../examples/sending/pipeline_send_to_socket.rs)
 for a runnable version with five frames and pacing.
 
 ## Run the example pair
@@ -150,9 +150,9 @@ pair:
 
 ```bash
 # terminal A
-cargo run --example srt_listener_to_file -- 127.0.0.1:9000 /tmp/out.ts
+cargo run -p tst-examples --example srt_listener_to_file -- 127.0.0.1:9000 /tmp/out.ts
 # terminal B
-cargo run --example pipeline_send_to_socket -- 127.0.0.1:9000
+cargo run -p tst-examples --example pipeline_send_to_socket -- 127.0.0.1:9000
 ```
 
 The receiver writes incoming bytes to `/tmp/out.ts`. After the sender
@@ -188,7 +188,7 @@ fn main() {
 Then run with a `RUST_LOG` filter that picks the targets you want:
 
 ```bash
-RUST_LOG=tst_pipeline=info,srt=warn cargo run --example mux_h265_with_klv
+RUST_LOG=tst_pipeline=info,srt=warn cargo run -p tst-examples --example mux_h265_with_klv
 ```
 
 Useful filter targets:

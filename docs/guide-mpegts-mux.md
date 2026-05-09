@@ -115,9 +115,9 @@ All four are first-class. Mid-stream codec change is out of scope — destroy
 the muxer and create a new one if you need to switch codecs in a single
 output file.
 
-The diff between [../crates/tst-srt/examples/mux_to_file.rs](../crates/tst-srt/examples/mux_to_file.rs)
+The diff between [../examples/muxing/mux_to_file.rs](../examples/muxing/mux_to_file.rs)
 (H.264 + async KLV via `MuxerConfig::default()`) and
-[../crates/tst-srt/examples/mux_h265_with_klv.rs](../crates/tst-srt/examples/mux_h265_with_klv.rs)
+[../examples/muxing/mux_h265_with_klv.rs](../examples/muxing/mux_h265_with_klv.rs)
 (H.265 + sync KLV via the field-update form) is exactly the codec and
 KLV-mode knobs:
 
@@ -416,8 +416,8 @@ in one PAT) with per-program PCR is out of scope for this version.
 
 ### Runnable example
 
-`crates/tst-srt/examples/mux_dual_camera.rs` builds a 30-frame EO + IR
-+ KLV TS file. Run it with `cargo run --example mux_dual_camera`; the
+`examples/muxing/mux_dual_camera.rs` builds a 30-frame EO + IR
++ KLV TS file. Run it with `cargo run -p tst-examples --example mux_dual_camera`; the
 example prints the output path it wrote (under your system temp dir),
 which `ffprobe -show_streams` should report as two video streams and
 one data (KLV) stream.
@@ -792,12 +792,12 @@ shape used for video / KLV / audio.
 
 Three runnable examples cover the muxer's surface:
 
-- [../crates/tst-srt/examples/mux_to_file.rs](../crates/tst-srt/examples/mux_to_file.rs)
+- [../examples/muxing/mux_to_file.rs](../examples/muxing/mux_to_file.rs)
   — H.264 + async KLV via `MuxerConfig::default()`, writes a `.ts` file.
-- [../crates/tst-srt/examples/mux_h265_with_klv.rs](../crates/tst-srt/examples/mux_h265_with_klv.rs)
+- [../examples/muxing/mux_h265_with_klv.rs](../examples/muxing/mux_h265_with_klv.rs)
   — H.265 + sync KLV via the field-update form, illustrating the
   diff against the H.264 default.
-- [../crates/tst-srt/examples/pipeline_send_to_socket.rs](../crates/tst-srt/examples/pipeline_send_to_socket.rs)
+- [../examples/sending/pipeline_send_to_socket.rs](../examples/sending/pipeline_send_to_socket.rs)
   — the muxer composed inside `pipeline::MuxSender` and connected to an
   SRT socket. See [guide-pipeline.md](guide-pipeline.md) for the
   sender-shell layer.

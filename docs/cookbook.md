@@ -1,6 +1,6 @@
 # Cookbook
 
-Common multi-step recipes. Each recipe is a short narrative + a code block + a link to the corresponding runnable example. Run any example with `cargo run -p <crate> --example <name>` (the recipe Runnable lines below name the right crate). Examples live across `crates/tst-srt/examples/`, `crates/tst-pipeline/examples/`, and `crates/tst-core/examples/`.
+Common multi-step recipes. Each recipe is a short narrative + a code block + a link to the corresponding runnable example. Run any example with `cargo run -p tst-examples --example <name>`. Examples live in the workspace-level [`examples/`](../examples/) crate, organized by task into 8 category subfolders.
 
 ## Contents
 
@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/encrypted_send_recv.rs](../crates/tst-srt/examples/encrypted_send_recv.rs).
+Runnable: [../examples/sending/encrypted_send_recv.rs](../examples/sending/encrypted_send_recv.rs).
 
 ### 8. Use a custom (non-SRT) transport
 
@@ -102,7 +102,7 @@ impl Transport for MemTransport {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/custom_transport.rs](../crates/tst-srt/examples/custom_transport.rs).
+Runnable: [../examples/sending/custom_transport.rs](../examples/sending/custom_transport.rs).
 
 ### 11. Open a sender from an `srt://...?...` URL
 
@@ -127,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/sender_from_url.rs](../crates/tst-srt/examples/sender_from_url.rs).
+Runnable: [../examples/sending/sender_from_url.rs](../examples/sending/sender_from_url.rs).
 
 ## Muxing
 
@@ -164,7 +164,7 @@ fn main() -> std::io::Result<()> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/mux_to_file.rs](../crates/tst-srt/examples/mux_to_file.rs).
+Runnable: [../examples/muxing/mux_to_file.rs](../examples/muxing/mux_to_file.rs).
 
 ### 9. Mux H.265 + sync KLV
 
@@ -191,7 +191,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/mux_h265_with_klv.rs](../crates/tst-srt/examples/mux_h265_with_klv.rs).
+Runnable: [../examples/muxing/mux_h265_with_klv.rs](../examples/muxing/mux_h265_with_klv.rs).
 
 ### 15. Label EO + IR + KLV streams in a multi-stream program
 
@@ -240,7 +240,7 @@ tstables --pid <pmt-pid> output.ts | grep -A1 "Forbidden Descriptor"
 Or in Rust on the receive side, decode `StreamInfo::raw_descriptors`
 directly (see `guide-mpegts-demux.md` "Reading per-stream descriptors").
 
-Runnable example: `cargo run -p tst-srt --example mux_dual_camera`.
+Runnable example: `cargo run -p tst-examples --example mux_dual_camera`.
 
 ### 16. Repack two single-program inputs into one multi-program TS
 
@@ -281,7 +281,7 @@ receiver picks one program of interest with ffmpeg `-map p:N` or TSDuck
 renumber program 2's input PIDs into a non-conflicting range during the
 demux→remux step.
 
-Runnable: [../crates/tst-srt/examples/repack_two_programs.rs](../crates/tst-srt/examples/repack_two_programs.rs).
+Runnable: [../examples/muxing/repack_two_programs.rs](../examples/muxing/repack_two_programs.rs).
 
 ### 19. Mux audio + video + KLV in a single program
 
@@ -318,7 +318,7 @@ for frame_idx in 0..30 {
 }
 ```
 
-Full example: [`../crates/tst-srt/examples/mux_audio_video_klv.rs`](../crates/tst-srt/examples/mux_audio_video_klv.rs).
+Full example: [`../examples/muxing/mux_audio_video_klv.rs`](../examples/muxing/mux_audio_video_klv.rs).
 
 ### 22. Streaming H.266 / VVC video with synchronous KLV metadata
 
@@ -351,7 +351,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/mux_h266_with_klv.rs](../crates/tst-srt/examples/mux_h266_with_klv.rs).
+Runnable: [../examples/muxing/mux_h266_with_klv.rs](../examples/muxing/mux_h266_with_klv.rs).
 
 ### 23. Streaming AV1 video with KLV metadata
 
@@ -393,7 +393,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/mux_av1_with_klv.rs](../crates/tst-srt/examples/mux_av1_with_klv.rs).
+Runnable: [../examples/muxing/mux_av1_with_klv.rs](../examples/muxing/mux_av1_with_klv.rs).
 
 ## Receiving
 
@@ -428,7 +428,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/ts_relay_from_file.rs](../crates/tst-srt/examples/ts_relay_from_file.rs).
+Runnable: [../examples/receiving/ts_relay_from_file.rs](../examples/receiving/ts_relay_from_file.rs).
 
 ### 5. Receive into a file
 
@@ -461,7 +461,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/srt_listener_to_file.rs](../crates/tst-srt/examples/srt_listener_to_file.rs).
+Runnable: [../examples/receiving/srt_listener_to_file.rs](../examples/receiving/srt_listener_to_file.rs).
 
 ### 21. Extract subtitle PES bytes from a captured `.ts` file
 
@@ -491,7 +491,7 @@ while let Some(e) = demux.next_event() {
 }
 ```
 
-Runnable: `cargo run -p tst-srt --example demux_subtitle_file -- input.ts`.
+Runnable: `cargo run -p tst-examples --example demux_subtitle_file -- input.ts`.
 
 ## KLV metadata
 
@@ -520,7 +520,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/extract_klv.rs](../crates/tst-srt/examples/extract_klv.rs) and [../crates/tst-srt/examples/klv_decode_file.rs](../crates/tst-srt/examples/klv_decode_file.rs).
+Runnable: [../examples/klv-metadata/extract_klv.rs](../examples/klv-metadata/extract_klv.rs) and [../examples/klv-metadata/klv_decode_file.rs](../examples/klv-metadata/klv_decode_file.rs).
 
 ### 7. Encode ST 0601 from typed values
 
@@ -547,7 +547,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/klv_encode_minimal.rs](../crates/tst-srt/examples/klv_encode_minimal.rs).
+Runnable: [../examples/klv-metadata/klv_encode_minimal.rs](../examples/klv-metadata/klv_encode_minimal.rs).
 
 ### 28. Decode security metadata from an ST 0601 record
 
@@ -656,7 +656,7 @@ while let Some(event) = demuxer.next_event() {
 # }
 ```
 
-Runnable form: `cargo run -p tst-core --example decode_vmti_metadata -- capture.ts`.
+Runnable form: `cargo run -p tst-examples --example decode_vmti_metadata -- capture.ts`.
 
 For per-target classification labels (VObjectSeries), per-target
 track state (VTracker), pixel masks (VMask), or image cutouts (VChip
@@ -723,9 +723,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Tolerance is consumer-domain knowledge. Most encoders emit KLV PES PTS exactly equal to frame PTS; a window of a few hundred milliseconds covers minor encoder drift. See [examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs) for the full runnable form.
+Tolerance is consumer-domain knowledge. Most encoders emit KLV PES PTS exactly equal to frame PTS; a window of a few hundred milliseconds covers minor encoder drift. See [examples/pair_sync_klv.rs](../examples/pairing/pair_sync_klv.rs) for the full runnable form.
 
-Runnable: [../crates/tst-srt/examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs); see also [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs) for the file-feed shape.
+Runnable: [../examples/pairing/pair_sync_klv.rs](../examples/pairing/pair_sync_klv.rs); see also [../examples/receiving/demux_to_events.rs](../examples/receiving/demux_to_events.rs) for the file-feed shape.
 
 ### 13. Sample-and-hold async-KLV against video frames
 
@@ -755,7 +755,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: see [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs) for the file-feed shape; [../crates/tst-srt/examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs) is the related nearest-PTS sibling for sync KLV.
+Runnable: see [../examples/receiving/demux_to_events.rs](../examples/receiving/demux_to_events.rs) for the file-feed shape; [../examples/pairing/pair_sync_klv.rs](../examples/pairing/pair_sync_klv.rs) is the related nearest-PTS sibling for sync KLV.
 
 ### 14. EO + IR sensor pair with shared async-KLV
 
@@ -791,7 +791,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 If the encoder declares the linkage via `metadata_descriptor`, the demuxer surfaces it as `KlvLink { source: LinkSource::Declared, .. }` in `ProgramMap.klv_links`. Use it as a hint when assigning routes; trust your `treat_as` overrides if you know the encoder lies.
 
-Runnable: see [../crates/tst-srt/examples/demux_to_events.rs](../crates/tst-srt/examples/demux_to_events.rs) for the file-feed shape; [../crates/tst-srt/examples/pair_sync_klv.rs](../crates/tst-srt/examples/pair_sync_klv.rs) is the related sync-KLV sibling.
+Runnable: see [../examples/receiving/demux_to_events.rs](../examples/receiving/demux_to_events.rs) for the file-feed shape; [../examples/pairing/pair_sync_klv.rs](../examples/pairing/pair_sync_klv.rs) is the related sync-KLV sibling.
 
 ### 24. Pair sync-KLV with video AUs via `Pairer::nearest_pts` (Realtime)
 
@@ -833,7 +833,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: `cargo run -p tst-pipeline --example pair_klv_pipeline -- input.ts`.
+Runnable: `cargo run -p tst-examples --example pair_klv_pipeline -- input.ts`.
 
 ### 25. Pair sync-KLV in batch mode (`MatchMode::Buffered`)
 
@@ -983,7 +983,7 @@ For H.265 substitute `h265::parse_parameter_sets` and use
 4.0 is stored as 120). The pattern is identical; only the import and field
 names differ.
 
-Runnable: [../crates/tst-srt/examples/parse_video_parameters.rs](../crates/tst-srt/examples/parse_video_parameters.rs) — shows change-driven logging per PID across H.264 and H.265 in one pass.
+Runnable: [../examples/codec-parsing/parse_video_parameters.rs](../examples/codec-parsing/parse_video_parameters.rs) — shows change-driven logging per PID across H.264 and H.265 in one pass.
 
 ### 18. Reconstitute Annex B parameter sets for decoder replay
 
@@ -1031,7 +1031,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/parse_video_parameters.rs](../crates/tst-srt/examples/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guide-codec.md` for the decoder-replay section.
+Runnable: [../examples/codec-parsing/parse_video_parameters.rs](../examples/codec-parsing/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guide-codec.md` for the decoder-replay section.
 
 ### 29. Pull sample rate and channel count out of an audio stream
 
@@ -1076,7 +1076,7 @@ while let Some(ev) = demuxer.next_event() {
 }
 ```
 
-**Runnable variant:** `cargo run -p tst-core --example parse_audio_frames -- input.ts`
+**Runnable variant:** `cargo run -p tst-examples --example parse_audio_frames -- input.ts`
 deduplicates output to first-change-only per PID.
 
 **Caveats:**
@@ -1127,13 +1127,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs).
+Runnable: [../examples/operations/managed_reconnect.rs](../examples/operations/managed_reconnect.rs).
 
 ### 10. Print live `Stats` from a sender
 
 Reach for this when building an operational dashboard, instrumenting a sender for production telemetry, or debugging packet loss in the field. `Socket::stats()` returns a snapshot of libsrt's per-socket counters — call it periodically and surface the deltas.
 
-The most operationally interesting fields on a sender: `bytes_sent`, `packets_lost_send_side`, `packets_retransmitted`, `rtt`, and `mbps_estimated_bandwidth`. (Loss/drop counters are split by which side observed them — read `*_send_side` on a sender, `*_recv_side` on a receiver.) There's no standalone example for this; see [guide-srt.md](guide-srt.md) §`Stats` for the full field list and [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs) for similar peer-thread observation patterns.
+The most operationally interesting fields on a sender: `bytes_sent`, `packets_lost_send_side`, `packets_retransmitted`, `rtt`, and `mbps_estimated_bandwidth`. (Loss/drop counters are split by which side observed them — read `*_send_side` on a sender, `*_recv_side` on a receiver.) There's no standalone example for this; see [guide-srt.md](guide-srt.md) §`Stats` for the full field list and [../examples/operations/managed_reconnect.rs](../examples/operations/managed_reconnect.rs) for similar peer-thread observation patterns.
 
 ```rust,no_run
 use tst_srt::SocketBuilder;
@@ -1157,7 +1157,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-No standalone example; see [../crates/tst-srt/examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs) and [guide-srt.md](guide-srt.md) §`Stats`.
+No standalone example; see [../examples/operations/managed_reconnect.rs](../examples/operations/managed_reconnect.rs) and [guide-srt.md](guide-srt.md) §`Stats`.
 
 ### 20. Inject WebVTT POI cues into a live MPEG-TS uplink
 
@@ -1184,4 +1184,4 @@ mux.push_subtitle_to(h, 90_000, cue.as_bytes())?;
 // 0 (queue empty); see the runnable example for a `drain_all` helper.
 ```
 
-Runnable: `cargo run -p tst-srt --example mux_with_webvtt_subtitles -- output.ts`.
+Runnable: `cargo run -p tst-examples --example mux_with_webvtt_subtitles -- output.ts`.

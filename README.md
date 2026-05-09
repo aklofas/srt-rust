@@ -64,7 +64,7 @@ The repo's documentation lives under [`docs/`](docs/):
 - **[`deferred-features.md`](docs/deferred-features.md)** — what's not yet supported and the trigger conditions to revisit.
 - **[`compatibility.md`](docs/compatibility.md)** — feature-by-feature support matrix.
 
-Runnable Rust examples live at [`crates/tst-srt/examples/`](crates/tst-srt/examples/) — see `cookbook.md` for which example illustrates which recipe.
+Runnable Rust examples live at [`examples/`](examples/) — a workspace-level `tst-examples` crate organized into 8 task-oriented subfolders. Run any with `cargo run -p tst-examples --example <name>`. See `cookbook.md` for which example illustrates which recipe.
 
 ## Workspace layout
 

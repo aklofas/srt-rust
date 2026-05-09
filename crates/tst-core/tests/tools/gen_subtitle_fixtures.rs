@@ -19,7 +19,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use tst_core::mpegts::mux::{AudioCodec, MuxerConfig, KlvStreamType, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{
+    AudioCodec, KlvStreamType, Muxer, MuxerConfig, SubtitleCodec, VideoCodec,
+};
 
 /// Drain every queued packet from the muxer into a single `Vec<u8>`.
 ///

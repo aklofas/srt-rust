@@ -106,7 +106,7 @@ Fix: set `SocketConfig::linger = Some(Duration::ZERO)` for live streaming where 
 
 The record violates one of ST 0601.8-09 / -11 / -12's mandatory rules: Tag 2 (timestamp) must be the first element, Tag 1 (checksum) must be the last element, Tag 65 (UAS LS Version) must be present. The corresponding `KlvDecodeError` variants are `Tag2NotFirst`, `Tag1NotLast`, and `MissingTag65`.
 
-Fix: walk the strictness ladder — fall back to `decode_strict` (validates UL family + checksum but not ordering) or plain `decode` (validates checksum only) to inspect the record despite non-compliance. If the producer is yours, fix the producer to emit the mandatory tags in the correct order. Worked example: [../crates/tst-srt/examples/klv_decode_file.rs](../crates/tst-srt/examples/klv_decode_file.rs).
+Fix: walk the strictness ladder — fall back to `decode_strict` (validates UL family + checksum but not ordering) or plain `decode` (validates checksum only) to inspect the record despite non-compliance. If the producer is yours, fix the producer to emit the mandatory tags in the correct order. Worked example: [../examples/klv-metadata/klv_decode_file.rs](../examples/klv-metadata/klv_decode_file.rs).
 
 **`decode` rejects with `KlvDecodeError::ChecksumMismatch`**
 

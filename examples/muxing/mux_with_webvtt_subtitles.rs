@@ -20,7 +20,7 @@ use std::fs::File;
 use std::io::Write;
 use std::time::Duration;
 
-use tst_core::mpegts::mux::{MuxerConfig, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig, SubtitleCodec, VideoCodec};
 
 // PIDs are 13-bit identifiers in the TS header. The reserved
 // well-known values are 0x0000 (PAT) and 0x1FFF (null padding);

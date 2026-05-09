@@ -127,9 +127,9 @@ reconnect at all. The shell sees a `Transport`; whether that `Transport`
 is plain `SrtTransport` or `ManagedTransport<SrtTransport>` is a
 construction-time choice.
 
-For worked examples, see [examples/managed_reconnect.rs](../crates/tst-srt/examples/managed_reconnect.rs)
+For worked examples, see [examples/operations/managed_reconnect.rs](../examples/operations/managed_reconnect.rs)
 (reconnect + gap buffer in action) and
-[examples/custom_transport.rs](../crates/tst-srt/examples/custom_transport.rs)
+[examples/sending/custom_transport.rs](../examples/sending/custom_transport.rs)
 (implementing the `Transport` trait against something other than SRT).
 
 ## Why three sender shells

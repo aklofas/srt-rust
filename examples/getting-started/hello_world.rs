@@ -46,7 +46,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..UasDatalinkLs::default()
     };
     let klv_bytes = encode_to_vec(&ls)?;
-    mux.push_klv(&klv_bytes, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0)?;
+    mux.push_klv(
+        &klv_bytes, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0,
+    )?;
 
     // 4. Drain TS packets out of the muxer. Muxer::pull writes 188 bytes
     //    at a time into a caller-provided buffer; returns 0 when empty.

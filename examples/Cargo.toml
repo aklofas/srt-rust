@@ -36,3 +36,35 @@ path = "sending/srt_serve_ts_file.rs"
 [[example]]
 name = "custom_transport"
 path = "sending/custom_transport.rs"
+
+[[example]]
+name = "mux_to_file"
+path = "muxing/mux_to_file.rs"
+
+[[example]]
+name = "mux_h265_with_klv"
+path = "muxing/mux_h265_with_klv.rs"
+
+[[example]]
+name = "mux_h266_with_klv"
+path = "muxing/mux_h266_with_klv.rs"
+
+[[example]]
+name = "mux_av1_with_klv"
+path = "muxing/mux_av1_with_klv.rs"
+
+[[example]]
+name = "mux_audio_video_klv"
+path = "muxing/mux_audio_video_klv.rs"
+
+[[example]]
+name = "mux_with_webvtt_subtitles"
+path = "muxing/mux_with_webvtt_subtitles.rs"
+
+[[example]]
+name = "mux_dual_camera"
+path = "muxing/mux_dual_camera.rs"
+
+[[example]]
+name = "repack_two_programs"
+path = "muxing/repack_two_programs.rs"

@@ -1450,6 +1450,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tst-examples"
+version = "0.0.0"
+dependencies = [
+ "tst-core",
+ "tst-pipeline",
+ "tst-srt",
+]
+
+[[package]]
 name = "tst-pipeline"
 version = "0.0.0"
 dependencies = [

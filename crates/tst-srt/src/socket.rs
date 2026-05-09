@@ -88,6 +88,15 @@ impl Socket {
     /// instead of failing fast on `[::1]`. Mirrors ffmpeg's
     /// `getaddrinfo(AF_UNSPEC)` + `ai_next` walk in
     /// `libavformat/libsrt.c`. Sequential, no Happy Eyeballs.
+    ///
+    /// # Panics
+    ///
+    /// On the very first libsrt-touching call in the process, this
+    /// triggers `srt_startup()` and panics if libsrt fails to initialize
+    /// (returns `< 0`). That is a process-fatal condition — libsrt cannot
+    /// be used at all from this process — so a panic is the correct
+    /// signal. Subsequent calls reuse the once-initialized state and do
+    /// not re-trigger the startup path.
     pub fn connect_with(
         config: &SocketConfig,
         addr: impl ToSocketAddrs,

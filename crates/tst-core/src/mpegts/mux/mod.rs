@@ -277,6 +277,17 @@ impl VideoStreamHandle {
     ///
     /// Public so `srt-c` can construct handles at the FFI boundary. Single-
     /// program callers pass `program_index = 0`.
+    ///
+    /// # Panics
+    ///
+    /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
+    /// if `within_index >= 16` (the per-program video cap). Release builds
+    /// silently mask the inputs into the 4-bit fields, which produces a
+    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`]
+    /// at `push_video_to` time. Use [`Self::from_raw`] when re-wrapping a
+    /// handle that was already packed by the muxer (e.g. round-tripped
+    /// through C ABI) — calling `pack(0, raw)` would re-encode `raw` as a
+    /// `within_index` and trip the assert.
     pub fn pack(program_index: usize, within_index: usize) -> Self {
         debug_assert!(program_index < MAX_PROGRAMS);
         debug_assert!(within_index < 16);
@@ -313,6 +324,15 @@ impl KlvStreamHandle {
     ///
     /// Same bit layout as [`VideoStreamHandle::pack`]. Public so `srt-c`
     /// can construct handles at the FFI boundary.
+    ///
+    /// # Panics
+    ///
+    /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
+    /// if `within_index >= 16` (the per-program KLV cap). Release builds
+    /// silently mask the inputs into the 4-bit fields, which produces a
+    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`]
+    /// at `push_klv_to` time. Use [`Self::from_raw`] for already-packed
+    /// handles round-tripped through C ABI.
     pub fn pack(program_index: usize, within_index: usize) -> Self {
         debug_assert!(program_index < MAX_PROGRAMS);
         debug_assert!(within_index < 16);
@@ -360,8 +380,16 @@ impl std::fmt::Debug for AudioStreamHandle {
 
 impl AudioStreamHandle {
     /// Pack `(program_index, within_program_index)` into the opaque u32.
-    /// Both inputs are bounded by `MAX_PROGRAMS` and 16 respectively;
-    /// out-of-range arguments trip a `debug_assert!`.
+    /// Both inputs are bounded by `MAX_PROGRAMS` and 16 respectively.
+    ///
+    /// # Panics
+    ///
+    /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
+    /// if `within_index >= 16` (the per-program audio cap). Release builds
+    /// silently mask the inputs into the 4-bit fields, which produces a
+    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`]
+    /// at `push_audio_to` time. Use [`Self::from_raw`] for already-packed
+    /// handles round-tripped through C ABI.
     pub fn pack(program_index: usize, within_index: usize) -> Self {
         debug_assert!(program_index < MAX_PROGRAMS);
         debug_assert!(within_index < 16);
@@ -416,6 +444,16 @@ impl SubtitleStreamHandle {
     ///
     /// Public so `srt-c` can construct handles at the FFI boundary.
     /// Single-program callers pass `program_index = 0`.
+    ///
+    /// # Panics
+    ///
+    /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
+    /// if `within_index >= MAX_SUBTITLE_STREAMS_PER_PROGRAM` (16). Release
+    /// builds silently mask the inputs into the 4-bit fields, which
+    /// produces a handle that the muxer will reject with
+    /// [`MuxError::InvalidStreamHandle`] at `push_subtitle_to` time. Use
+    /// [`Self::from_raw`] for already-packed handles round-tripped through
+    /// C ABI.
     pub fn pack(program_index: usize, within_index: usize) -> Self {
         debug_assert!(program_index < MAX_PROGRAMS);
         debug_assert!(within_index < MAX_SUBTITLE_STREAMS_PER_PROGRAM);

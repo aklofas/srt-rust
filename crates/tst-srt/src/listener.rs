@@ -42,6 +42,15 @@ impl Listener {
     /// return AAAA before A and the v6 entry may be unbindable (e.g. v6
     /// disabled on the interface), so we fall through to v4. Mirrors
     /// ffmpeg's `ai_next` walk.
+    ///
+    /// # Panics
+    ///
+    /// On the very first libsrt-touching call in the process, this
+    /// triggers `srt_startup()` and panics if libsrt fails to initialize
+    /// (returns `< 0`). That is a process-fatal condition — libsrt cannot
+    /// be used at all from this process — so a panic is the correct
+    /// signal. Subsequent calls reuse the once-initialized state and do
+    /// not re-trigger the startup path.
     pub fn bind_with(config: &ListenerConfig, addr: impl ToSocketAddrs) -> Result<Self, BindError> {
         ensure_initialized();
 

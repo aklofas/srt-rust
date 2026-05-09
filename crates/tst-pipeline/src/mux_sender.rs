@@ -41,6 +41,18 @@ pub struct MuxSenderStats {
     pub per_stream: BTreeMap<u16, tst_core::mpegts::stats::StreamStats>,
 }
 
+/// Composes [`Muxer`] with a [`Transport`] for the canonical NAL+KLV → TS →
+/// transport send path. See the module docs for shape and back-pressure
+/// behavior.
+///
+/// # Panics
+///
+/// All `&self` methods (`send_*`, `*_handles`, `stats`, `reset_stats`,
+/// `close`, `is_alive`) acquire an internal [`Mutex`] and panic if the
+/// lock has been poisoned by a previous panic in another thread inside
+/// the same `MuxSender`. This is the standard Rust `Mutex` behavior;
+/// a poisoned lock signals that the muxer state may be inconsistent and
+/// the `MuxSender` should be discarded.
 pub struct MuxSender<T: Transport> {
     inner: Mutex<Inner<T>>,
     /// Cancel handle snapshot, taken from the transport at construction

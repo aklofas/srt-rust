@@ -72,6 +72,15 @@ use tst_core::transport::TransportError;
 /// Wraps any [`RecvTransport`] with a factory closure for rebuilding it
 /// on `Closed` / `Broken` failure, gated by a [`ReconnectPolicy`]. See
 /// the module docs for the full semantics.
+///
+/// # Panics
+///
+/// `recv_bytes` and `cancel_handle` snapshot the most-recently-built
+/// inner's cancel handle through an internal [`Mutex`] and panic if
+/// that lock has been poisoned by a previous panic in another thread
+/// inside the same `ManagedReceiveTransport`. This is the standard
+/// Rust `Mutex` behavior; a poisoned lock signals that the cancel
+/// snapshot may be inconsistent and the wrapper should be discarded.
 pub struct ManagedReceiveTransport<R: RecvTransport> {
     /// Currently-live inner transport. `None` between a tear-down and a
     /// successful factory rebuild.

@@ -112,6 +112,16 @@ use tst_core::transport::{Transport, TransportCancel, TransportError};
 /// let sender = MuxSender::new(managed, config)?;
 /// // sender now silently reconnects on transport breakage
 /// ```
+///
+/// # Panics
+///
+/// All [`Transport`] methods (`send_bytes`, `max_payload`, `is_alive`,
+/// `close`) and [`Self::cancel_handle`] acquire internal [`Mutex`]es and
+/// panic if a lock has been poisoned by a previous panic in another
+/// thread inside the same `ManagedTransport`. This is the standard Rust
+/// `Mutex` behavior; a poisoned lock signals that the inner-transport
+/// or gap-buffer state may be inconsistent and the wrapper should be
+/// discarded.
 pub struct ManagedTransport<T: Transport> {
     inner: Arc<Mutex<Option<T>>>,
     factory: Arc<dyn Fn() -> Result<T, TransportError> + Send + Sync>,

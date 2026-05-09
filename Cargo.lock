@@ -1453,9 +1453,10 @@ dependencies = [
 name = "tst-pipeline"
 version = "0.0.0"
 dependencies = [
- "log",
  "proptest",
  "thiserror",
+ "tracing",
+ "tracing-test",
  "tst-core",
 ]
 

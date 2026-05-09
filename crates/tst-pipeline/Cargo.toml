@@ -18,3 +18,8 @@ tracing   = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 proptest = { workspace = true }
+# Captures `tracing` events in tests for assertion.
+# `no-env-filter` makes the subscriber accept events from any crate (not just
+# the test binary), which is needed for integration tests that assert on
+# events emitted by tst-pipeline library code.
+tracing-test = { version = "0.2", features = ["no-env-filter"] }

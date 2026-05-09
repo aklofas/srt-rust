@@ -89,6 +89,7 @@ impl ReconnectPolicy {
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
+use tracing::{debug, info, warn};
 use tst_core::transport::{Transport, TransportCancel, TransportError};
 
 /// Decorator that wraps an inner `Transport` with reconnect + gap-buffer
@@ -252,10 +253,33 @@ impl<T: Transport + 'static> ManagedTransport<T> {
             attempt += 1;
             let Some(wait) = self.policy.next_delay(attempt) else {
                 let max = self.policy.max_attempts.unwrap_or(0);
+                // attempts_made = attempt - 1 because this iteration never
+                // got past the budget check (no factory call happened on
+                // this turn).
+                warn!(
+                    target: "tst_pipeline::reconnect",
+                    attempts_made = attempt - 1,
+                    max_attempts = max,
+                    "reconnect gave up — propagating final error to caller",
+                );
                 return Err(TransportError::Broken(format!(
                     "reconnect gave up after {max} attempts"
                 )));
             };
+            info!(
+                target: "tst_pipeline::reconnect",
+                attempt,
+                max_attempts = self.policy.max_attempts.unwrap_or(0),
+                backoff_ms = wait.as_millis() as u64,
+                "reconnect attempt",
+            );
+            if !wait.is_zero() {
+                debug!(
+                    target: "tst_pipeline::reconnect",
+                    backoff_ms = wait.as_millis() as u64,
+                    "backoff before next attempt",
+                );
+            }
             thread::sleep(wait);
             match (self.factory)() {
                 Ok(new_inner) => {

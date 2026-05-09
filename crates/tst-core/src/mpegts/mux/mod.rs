@@ -306,13 +306,6 @@ impl VideoStreamHandle {
     pub fn from_raw(raw: u32) -> Self {
         Self(raw)
     }
-
-    #[cfg(test)]
-    pub(crate) fn for_test(raw: usize) -> Self {
-        // Bypass packing — store raw as opaque u32 so out-of-range test values
-        // (e.g. 99) survive the debug_assert in pack() without triggering it.
-        Self(raw as u32)
-    }
 }
 
 impl KlvStreamHandle {
@@ -344,13 +337,6 @@ impl KlvStreamHandle {
     /// [`VideoStreamHandle::from_raw`].
     pub fn from_raw(raw: u32) -> Self {
         Self(raw)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn for_test(raw: usize) -> Self {
-        // Bypass packing — store raw as opaque u32 so out-of-range test values
-        // survive the debug_assert in pack() without triggering it.
-        Self(raw as u32)
     }
 }
 
@@ -3353,8 +3339,8 @@ mod tests {
 
     #[test]
     fn handle_debug_includes_kind_and_index() {
-        let v = VideoStreamHandle::for_test(2);
-        let k = KlvStreamHandle::for_test(0);
+        let v = VideoStreamHandle::pack(0, 2);
+        let k = KlvStreamHandle::pack(0, 0);
         // Don't lock the exact format, just sanity-check it carries both bits.
         assert!(format!("{v:?}").contains("Video"));
         assert!(format!("{v:?}").contains('2'));
@@ -3577,7 +3563,7 @@ mod tests {
     #[test]
     fn push_video_to_invalid_handle_rejects() {
         let mut mux = Muxer::new(Config::default()).unwrap();
-        let bogus = VideoStreamHandle::for_test(99);
+        let bogus = VideoStreamHandle::from_raw(99);
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
         let err = mux.push_video_to(bogus, &nal, 0, true).unwrap_err();
         match err {
@@ -3592,7 +3578,7 @@ mod tests {
     #[test]
     fn push_klv_to_invalid_handle_rejects() {
         let mut mux = Muxer::new(Config::default()).unwrap();
-        let bogus = KlvStreamHandle::for_test(99);
+        let bogus = KlvStreamHandle::from_raw(99);
         let err = mux.push_klv_to(bogus, &[0; 16], 0, 0x00).unwrap_err();
         match err {
             MuxError::InvalidStreamHandle { kind, index } => {

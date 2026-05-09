@@ -18,7 +18,7 @@ use tst_srt::{Socket, SocketConfig};
 /// place. User-set values are preserved (merge-if-default) — a future
 /// URL `?role=...` key or a future C ABI role setter would survive
 /// the merge unchanged. The defaults themselves
-/// (`connect_timeout=15s`, `linger=5s`, `role=MuxSender`) live in
+/// (`connect_timeout=15s`, `linger=5s`, `role=Sender`) live in
 /// `tst-srt::config`; see `SocketConfig::sender_defaults` for rustdoc
 /// on each field's rationale.
 pub(crate) fn connect_srt(

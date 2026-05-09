@@ -144,14 +144,14 @@ impl SocketBuilder {
         self
     }
     /// Set the role (drives `SRTO_SENDER` for HSv4-peer compatibility).
-    /// Defaults to `Role::Unspecified` (libsrt default).
+    /// Defaults to `Role::Receiver` (libsrt default — `SRTO_SENDER=0`).
     pub fn role(mut self, role: Role) -> Self {
         self.config.role = role;
         self
     }
 
     /// Apply live-streaming sender defaults — `connect_timeout=15s`,
-    /// `linger=5s`, `role=MuxSender`. Preserves any fields the caller has
+    /// `linger=5s`, `role=Sender`. Preserves any fields the caller has
     /// already set explicitly (merge-if-default semantics — order-independent).
     ///
     /// ```
@@ -168,9 +168,10 @@ impl SocketBuilder {
         self
     }
 
-    /// Apply live-streaming receiver defaults — `connect_timeout=15s`,
-    /// `role=DemuxReceiver`. Preserves any fields the caller has already
-    /// set explicitly (merge-if-default semantics — order-independent).
+    /// Apply live-streaming receiver defaults — `connect_timeout=15s`.
+    /// Preserves any fields the caller has already set explicitly
+    /// (merge-if-default semantics — order-independent). `role` defaults to
+    /// `Role::Receiver` and is not altered.
     pub fn receiver_defaults(mut self) -> Self {
         self.config.merge_receiver_defaults();
         self
@@ -351,7 +352,7 @@ mod tests {
             .config();
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(7)));
         assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
-        assert_eq!(cfg.role, Role::MuxSender);
+        assert_eq!(cfg.role, Role::Sender);
     }
 
     #[test]
@@ -363,7 +364,7 @@ mod tests {
             .config();
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(7)));
         assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
-        assert_eq!(cfg.role, Role::MuxSender);
+        assert_eq!(cfg.role, Role::Sender);
     }
 
     #[test]
@@ -382,16 +383,17 @@ mod tests {
             .connect_timeout(Duration::from_secs(7))
             .config();
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(7)));
-        assert_eq!(cfg.role, Role::DemuxReceiver);
+        assert_eq!(cfg.role, Role::Receiver);
     }
 
     #[test]
-    fn builder_explicit_then_receiver_defaults_preserves_explicit() {
+    fn builder_explicit_sender_then_receiver_defaults_preserves_explicit() {
+        // Explicit Role::Sender is not overridden by receiver_defaults.
         let cfg = SocketBuilder::new()
-            .role(Role::MuxSender)
+            .role(Role::Sender)
             .receiver_defaults()
             .config();
-        assert_eq!(cfg.role, Role::MuxSender);
+        assert_eq!(cfg.role, Role::Sender);
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
     }
 }

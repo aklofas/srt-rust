@@ -306,7 +306,7 @@ gets these overrides applied (only if the user hasn't set them):
 | --- | --- | --- | --- |
 | `connect_timeout` | 15 s | 3 s | Radio links: LOS-over-terrain, antenna repointing, radio warm-up |
 | `linger` | 5 s | 180 s | Live frames are useless once late; avoid 3-minute Drop hangs |
-| `role` | `Role::Sender` | `Role::Unspecified` | Sets `SRTO_SENDER=1` for HSv4-peer compatibility |
+| `role` | `Role::Sender` | `Role::Receiver` (default) | Sets `SRTO_SENDER=1` for HSv4-peer compatibility |
 
 Pure-Rust users who build a `SrtTransport` via `SocketBuilder` directly
 do **not** get these defaults — set them explicitly via the builder if

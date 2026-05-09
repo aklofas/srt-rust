@@ -127,7 +127,7 @@ defaults:
 |-------------------|-----------------------------|---------------|-----------------|
 | `connect_timeout` | 3 s                         | 15 s          | 15 s            |
 | `linger`          | off (drains in background)  | 5 s           | off             |
-| `role`            | `Role::Unspecified`         | `MuxSender`   | `DemuxReceiver` |
+| `role`            | `Role::Receiver` (default)  | `Sender`      | `Receiver`      |
 
 The 15 s `connect_timeout` accommodates LOS interruptions, antenna
 repointing, and radio warm-up. The 5 s sender-side `linger` lets a small
@@ -137,9 +137,8 @@ compatibility (older Teradek/Makito gear, cable-industry hardware);
 harmless under HSv5.
 
 Receivers don't have an outbound queue to drain, so the receiver preset
-leaves `linger` at libsrt's default. `Role::DemuxReceiver` currently
-aliases to `Unspecified` (does not set `SRTO_SENDER`) — reserved for the
-receiver pipeline.
+leaves `linger` at libsrt's default. `Role::Receiver` (the default) does
+not set `SRTO_SENDER`.
 
 ### Applying the presets
 
@@ -192,13 +191,13 @@ fn apply(mut cfg: SocketConfig) -> SocketConfig {
 ```
 
 Merge-if-default semantics: `connect_timeout` and `linger` only fill if
-`None`; `role` only fills if `Role::Unspecified`. Calling the merge
-twice is idempotent.
+`None`; `role` only fills if it is at the default (`Role::Receiver`).
+Calling the merge twice is idempotent.
 
 ### Opting out
 
 Don't call the preset — `SocketConfig::default()` gives all-`None` /
-`Role::Unspecified`, which preserves libsrt's raw defaults across the
+`Role::Receiver`, which preserves libsrt's raw defaults across the
 board. The `tst-c` C ABI's six `tst_*_open` entry points apply the
 sender preset internally.
 

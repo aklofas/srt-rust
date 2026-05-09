@@ -75,7 +75,7 @@ pub struct SocketConfig {
     pub stream_id: Option<StreamId>,
     /// Direction this socket is opened for. Drives `SRTO_SENDER` for
     /// HSv4-peer latency-negotiation compatibility. Defaults to
-    /// `Role::Unspecified` (libsrt default).
+    /// `Role::Receiver` (libsrt default — `SRTO_SENDER=0`).
     pub role: Role,
 
     // Reliability / loss
@@ -98,7 +98,7 @@ impl SocketConfig {
     /// - `linger = 5s` — drains a small backlog on graceful close without
     ///   stalling a reconnect cycle (libsrt default is off — drops queued
     ///   data on close).
-    /// - `role = Role::MuxSender` — sets `SRTO_SENDER=1` for HSv4-peer
+    /// - `role = Role::Sender` — sets `SRTO_SENDER=1` for HSv4-peer
     ///   compatibility (older Teradek/Makito gear, cable-industry hardware).
     ///
     /// All other fields take their `Default` value. Use struct-update syntax
@@ -121,7 +121,8 @@ impl SocketConfig {
 
     /// Apply sender defaults to fields the caller has not explicitly set.
     /// Preserves caller intent: only fills in `connect_timeout` if `None`,
-    /// `linger` if `None`, and `role` if `Role::Unspecified`. Idempotent.
+    /// `linger` if `None`, and `role` if `Role::Receiver` (the default).
+    /// Idempotent when called repeatedly on a sender-configured `SocketConfig`.
     ///
     /// Useful when a caller has parsed configuration from another source
     /// (e.g. URL query parameters via `tst_srt::url::parse`) and wants to
@@ -134,8 +135,8 @@ impl SocketConfig {
         if self.linger.is_none() {
             self.linger = Some(SENDER_DEFAULT_LINGER);
         }
-        if self.role == Role::Unspecified {
-            self.role = Role::MuxSender;
+        if self.role == Role::Receiver {
+            self.role = Role::Sender;
         }
     }
 
@@ -144,9 +145,7 @@ impl SocketConfig {
     ///
     /// - `connect_timeout = 15s` — caller-mode receivers face the same
     ///   radio-link rendezvous reality as senders.
-    /// - `role = Role::DemuxReceiver` — reserved for the receiver pipeline;
-    ///   currently aliases to `Unspecified` (does not set `SRTO_SENDER`),
-    ///   forward-compat for when receiver-role wiring lands.
+    /// - `role = Role::Receiver` — does not set `SRTO_SENDER` (libsrt default).
     ///
     /// `linger` is left at `None` (libsrt default — off) because receivers
     /// have no outbound queue to drain.
@@ -158,12 +157,11 @@ impl SocketConfig {
 
     /// Apply receiver defaults to fields the caller has not explicitly set.
     /// Mirrors `merge_sender_defaults` for the receiver pipeline. Idempotent.
+    /// The role field is left untouched: `Role::Receiver` is already the
+    /// default, so no fill-in is needed.
     pub fn merge_receiver_defaults(&mut self) {
         if self.connect_timeout.is_none() {
             self.connect_timeout = Some(RECEIVER_DEFAULT_CONNECT_TIMEOUT);
-        }
-        if self.role == Role::Unspecified {
-            self.role = Role::DemuxReceiver;
         }
     }
 }
@@ -269,7 +267,7 @@ mod tests {
         let cfg = SocketConfig::sender_defaults();
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
         assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
-        assert_eq!(cfg.role, Role::MuxSender);
+        assert_eq!(cfg.role, Role::Sender);
     }
 
     #[test]
@@ -305,7 +303,7 @@ mod tests {
         cfg.merge_sender_defaults();
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
         assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
-        assert_eq!(cfg.role, Role::MuxSender);
+        assert_eq!(cfg.role, Role::Sender);
     }
 
     #[test]
@@ -327,7 +325,7 @@ mod tests {
         cfg.merge_sender_defaults();
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(7)));
         assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
-        assert_eq!(cfg.role, Role::MuxSender);
+        assert_eq!(cfg.role, Role::Sender);
     }
 
     #[test]
@@ -338,25 +336,15 @@ mod tests {
         cfg.merge_sender_defaults();
         assert_eq!(cfg.linger, Some(Duration::from_secs(30)));
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
-        assert_eq!(cfg.role, Role::MuxSender);
+        assert_eq!(cfg.role, Role::Sender);
     }
 
     #[test]
-    #[allow(clippy::field_reassign_with_default)]
-    fn merge_sender_defaults_preserves_explicit_role() {
-        let mut cfg = SocketConfig::default();
-        cfg.role = Role::DemuxReceiver;
-        cfg.merge_sender_defaults();
-        assert_eq!(cfg.role, Role::DemuxReceiver);
-        assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
-        assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
-    }
-
-    #[test]
-    fn receiver_defaults_sets_two_fields() {
+    fn receiver_defaults_sets_one_field() {
         let cfg = SocketConfig::receiver_defaults();
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
-        assert_eq!(cfg.role, Role::DemuxReceiver);
+        // Role::Receiver is the default; receiver_defaults leaves it at default.
+        assert_eq!(cfg.role, Role::Receiver);
         // Linger stays at libsrt default (None) — receivers have no outbound
         // queue to drain.
         assert!(cfg.linger.is_none());
@@ -367,7 +355,7 @@ mod tests {
         let mut cfg = SocketConfig::default();
         cfg.merge_receiver_defaults();
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
-        assert_eq!(cfg.role, Role::DemuxReceiver);
+        assert_eq!(cfg.role, Role::Receiver);
         assert!(cfg.linger.is_none());
     }
 
@@ -378,16 +366,17 @@ mod tests {
         cfg.connect_timeout = Some(Duration::from_secs(7));
         cfg.merge_receiver_defaults();
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(7)));
-        assert_eq!(cfg.role, Role::DemuxReceiver);
+        assert_eq!(cfg.role, Role::Receiver);
     }
 
     #[test]
     #[allow(clippy::field_reassign_with_default)]
-    fn merge_receiver_defaults_preserves_explicit_role() {
+    fn merge_receiver_defaults_preserves_explicit_sender_role() {
+        // Explicit Role::Sender is not overridden by merge_receiver_defaults.
         let mut cfg = SocketConfig::default();
-        cfg.role = Role::MuxSender;
+        cfg.role = Role::Sender;
         cfg.merge_receiver_defaults();
-        assert_eq!(cfg.role, Role::MuxSender);
+        assert_eq!(cfg.role, Role::Sender);
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
     }
 }

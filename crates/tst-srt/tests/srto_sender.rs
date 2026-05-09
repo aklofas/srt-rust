@@ -1,4 +1,4 @@
-//! Verifies SRTO_SENDER=1 is set when role=MuxSender. Audit Issue 2.
+//! Verifies SRTO_SENDER=1 is set when role=Sender. Audit Issue 2.
 
 use std::ffi::c_int;
 use std::thread;
@@ -38,7 +38,7 @@ fn role_sender_sets_srto_sender_on_caller() {
     thread::sleep(Duration::from_millis(50));
 
     let socket = SocketBuilder::new()
-        .role(Role::MuxSender)
+        .role(Role::Sender)
         .send_timeout(Duration::from_secs(5))
         .connect(("127.0.0.1", port))
         .expect("connect");
@@ -48,12 +48,12 @@ fn role_sender_sets_srto_sender_on_caller() {
     assert_eq!(
         read_srto_sender(socket.raw_handle()),
         1,
-        "expected SRTO_SENDER=1 on caller with role=MuxSender",
+        "expected SRTO_SENDER=1 on caller with role=Sender",
     );
 }
 
 #[test]
-fn role_unspecified_leaves_srto_sender_at_default() {
+fn role_receiver_leaves_srto_sender_at_default() {
     let listener = ListenerBuilder::new()
         .recv_timeout(Duration::from_secs(5))
         .bind("127.0.0.1:0")
@@ -76,6 +76,6 @@ fn role_unspecified_leaves_srto_sender_at_default() {
     assert_eq!(
         read_srto_sender(socket.raw_handle()),
         0,
-        "expected SRTO_SENDER=0 (libsrt default) when role unspecified",
+        "expected SRTO_SENDER=0 (libsrt default) when role=Receiver",
     );
 }

@@ -543,7 +543,7 @@ pub(crate) fn apply_socket_config(
     if let Some(c) = cfg.congestion {
         set_string(handle, srt_sys::SRT_SOCKOPT_SRTO_CONGESTION, c.as_str())?;
     }
-    if matches!(cfg.role, crate::options::Role::MuxSender) {
+    if matches!(cfg.role, crate::options::Role::Sender) {
         set_bool(handle, srt_sys::SRT_SOCKOPT_SRTO_SENDER, true)?;
     }
     Ok(())

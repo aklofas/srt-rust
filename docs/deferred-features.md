@@ -181,7 +181,7 @@ the trigger that would unblock it.
   user-typed text) — narrower scope than VMTI but still its own per-
   tag table.
 - **Trigger to revisit:** A consumer asks AND the ST 0806 PDF is
-  acquired into `~/Projects/srt/reference/`.
+  obtained.
 
 ## KLV conformance cross-check vs. Python `klvdata`
 

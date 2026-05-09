@@ -7,9 +7,157 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## Unreleased — Phase 1 SemVer ratchet (2026-05-08)
+## Unreleased
 
-### Breaking
+Phase 1 (SemVer ratchet) and Phase 2 (DX + observability) of the Rust
+quality + DX + FFI refactor. Both ship together in the next release.
+
+---
+
+### Phase 2 — DX + observability (2026-05-09)
+
+#### Added (Phase 2)
+
+- **CI rail: broken intra-doc links block PRs.** New
+  `cargo doc --workspace --no-deps --all-features` step with
+  `RUSTDOCFLAGS="-D warnings"`. Warnings of all four classes
+  (`broken_intra_doc_links`, `private_intra_doc_links`,
+  `invalid_html_tags`, `redundant_explicit_links`) fail the build.
+
+- **CI rail: `cargo test --doc --workspace`.** Doctests now run on
+  every PR alongside unit/integration tests.
+
+- **Doctests on 15 top-level public APIs.** `lib.rs` quick-starts on
+  `tst-core` + `tst-pipeline` + `tst-srt` (3); sender shells
+  `MuxSender` / `Sender` / `RawSender` (3); receiver shells
+  `DemuxReceiver` / `Receiver` / `RawReceiver` (3); top-level builders
+  `SocketBuilder` / `MuxerConfigBuilder` / `MuxerProgramBuilder` (3);
+  KLV typed decoders `klv::st0601::decode` / `klv::st0102::decode` and
+  `Pairer::nearest_pts` (3).
+
+- **`# Errors` rustdoc sections on 30 fallible public APIs.** Each
+  block names concrete typed error variants and links them via
+  intra-doc syntax. Coverage spans 7 `MuxSender::send_*` siblings,
+  `Sender::flush`, 8 `Muxer::push_*` methods, 3 `Passphrase`
+  constructors, 5 `klv::st0601` entry points, 2 `klv::st0102`
+  encoders, and 4 `klv::st0903` entry points.
+
+- **`# Panics` rustdoc sections on 9 caller-observable panic
+  surfaces.** Three categories: stream-handle `pack()` debug-asserts
+  on out-of-range indices (Video / Klv / Audio / Subtitle, 4 sites);
+  internal Mutex poison on `MuxSender` / `ManagedTransport` /
+  `ManagedReceiveTransport` (documented at the struct level, 3 sites);
+  libsrt startup failure on `Socket::connect_with` /
+  `Listener::bind_with` (2 sites). Internal `.unwrap()` /
+  `debug_assert!` sites that are unreachable invariants are
+  intentionally not documented.
+
+- **`tracing` instrumentation on `tst-pipeline` runtime events.**
+  Sender-side reconnect attempts (target `tst_pipeline::reconnect`):
+  INFO per attempt with `attempt#` / `max_attempts` / `backoff_ms`;
+  DEBUG on non-zero backoff sleep; WARN on terminal give-up.
+  Receiver-side reconnect (target
+  `tst_pipeline::managed_receive`): mirrors the sender shape.
+  `MuxSender` back-pressure threshold crossings: WARN on first
+  crossing of 80% (approaching cap) and 100% (cap reached, push will
+  return `BufferFull`); recovery transitions are silent.
+  Per-shell lifetime spans: `info_span!` opened in `new()`, entered
+  on `Drop`, target `tst_pipeline::*`. Per-call `trace_span!`
+  deferred to Phase 4 perf-measurement work.
+
+- **`Muxer::pending_packets()` and `::capacity_packets()` accessors**
+  on `tst_core::mpegts::mux::Muxer`. Needed by the back-pressure
+  threshold-crossing instrumentation above to compute the
+  pending-vs-capacity ratio without wiring an extra field through
+  `MuxerStats`.
+
+- **README "Hello, MPEG-TS" snippet above the fold.** ~20-line
+  copy-paste-runnable that exercises the muxer shape without needing
+  an SRT peer or a 2-terminal setup. Cross-references
+  `docs/getting-started.md` for the SRT-side walkthrough.
+
+- **Cookbook section grouping (30 recipes → 7 sections + ToC).** The
+  flat list of recipes is grouped under Sending / Muxing / Receiving
+  / KLV metadata / Pairing video + KLV / Codec parsing / Operations
+  with anchor-linked table of contents. Recipe numbers stay stable
+  (every existing inbound link is preserved). New recipe 0:
+  minimal-shape "Send a single TS packet to any Transport" using
+  `RawSender` + an in-memory `Sink`.
+
+- **Tracing quick-start in `getting-started.md`.** Copy-paste
+  subscriber wiring + `RUST_LOG` filter target reference table
+  documenting all the targets introduced in sub-phase 2.4.
+
+#### Changed (Phase 2)
+
+- **`tst-srt::init` migrated from `log` to `tracing`.** Single
+  facade workspace-wide. libsrt-internal syslog levels now flow into
+  `tracing` macros with `target="srt"` matching the existing
+  `tst_core::*` targets — consumers wire one tracing-subscriber.
+
+- **`tst-srt`: dropped `doctest = false`.** The lib.rs
+  `SocketBuilder` quick-start is now compile-checked via `cargo test
+  --doc`. Snippet rewritten with `no_run` + hidden `main` wrapper so
+  CI doesn't need an SRT peer.
+
+- **`tst-pipeline`: dropped unused `log` dep, added `tracing` dep.**
+
+- **3 thin examples retrofitted to the rich-comment convention.**
+  `mux_to_file.rs` / `pipeline_send_to_socket.rs` /
+  `ts_relay_from_file.rs` — each now opens with a header banner and
+  comments the why behind every non-obvious choice (PID assignments,
+  PCR cadence, latency knob, NAL header byte layout, key-frame
+  semantics, drain-loop pattern, `metadata_service_id` no-op for
+  PrivateData, cancel-first close). Density matches
+  `mux_h265_with_klv.rs`. The CLAUDE.md self-flag is now resolved.
+
+- **Cookbook recipes 24 / 29 / 30** (`pair_klv_pipeline`,
+  `parse_audio_frames`, `decode_vmti_metadata`) and **15 / 20 / 21**
+  swept for consistency: `cargo run --example` invocations now
+  include `-p <crate>` qualifiers (brittle to future workspace
+  layout changes without). Top-of-file "Run any example with" line
+  rewritten to point readers at per-recipe Runnable lines.
+
+- **23 broken intra-doc links fixed workspace-wide** to clear the
+  `cargo doc -D warnings` rail. Categories: 4 wrong-scope
+  qualifications (use `[..][Self::..]` / `[..][crate::..]` form),
+  1 renamed/moved item, 4 cross-crate references converted to
+  inline code (cannot link upward across the crate graph), 5
+  square-bracket text mistaken for links escaped with backticks
+  (`buf[0]`, `programs[0]`, `Box<T>`), 4 `KlvStreamType` wrong-scope
+  qualifications in `tst-pipeline`, 3 self-method backtick forms.
+  `tstrans.h` regenerated to match the rustdoc edits cbindgen
+  propagates into the C header.
+
+#### Breaking (Phase 2)
+
+- **`tst-srt`: optional `log` Cargo feature removed.** Replaced by
+  unconditional `tracing` facade. Consumers wiring `log` should
+  switch to `tracing-log` for compatibility.
+
+- **4 pipeline shells gained explicit `Drop` impls.** `RawSender`,
+  `DemuxReceiver`, `Receiver`, and `RawReceiver` previously had no
+  `Drop` impl. The new lifetime-span instrumentation requires one
+  to enter the span on shutdown. `Sender` and `MuxSender` already
+  had `Drop` and are unaffected.
+
+- **Auto-trait propagation preserved via `AssertUnwindSafe<Span>`
+  wrapper.** The new private `_span: Span` field on the four shells
+  above contains a `Mutex` internally, which would have flipped
+  them from `RefUnwindSafe` / `UnwindSafe` to `!RefUnwindSafe` /
+  `!UnwindSafe`. The wrapper preserves consumer auto-traits at zero
+  runtime cost (Span is only entered in `new()` and `Drop`, never
+  hot-path). `MuxSender` stays `!RefUnwindSafe` from its existing
+  `Mutex<Inner<T>>`; `DemuxReceiver` stays `!RefUnwindSafe` from
+  its inner `Demuxer`.
+
+---
+
+---
+
+### Phase 1 — SemVer ratchet (2026-05-08)
+
+#### Breaking (Phase 1)
 
 - **`MuxError` field-tag retypes:** `AmbiguousTarget.kind` and
   `InvalidStreamHandle.kind` changed from `&'static str` to `StreamKind`;
@@ -100,7 +248,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   use the higher-level typed-set decoders (`klv::st0601`, `klv::st0102`,
   `klv::st0903`).
 
-### Internal
+#### Internal (Phase 1)
 
 - 44 `#[allow(dead_code)]` annotations swept across 15 files. 40 were
   cascade-pattern artifacts (helpers landed before consumers in earlier plans;
@@ -120,7 +268,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Externally-observable `Display` strings are unchanged (verified by
   regression tests).
 
-### CI
+#### CI (Phase 1)
 
 - **`cargo public-api` baselines committed** for `tst-core`, `tst-pipeline`,
   and `tst-srt` (`crates/<name>/public-api.txt`). A new CI step diffs the

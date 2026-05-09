@@ -10,7 +10,6 @@ repository.workspace   = true
 
 [lib]
 crate-type = ["rlib"]
-doctest    = false
 
 [features]
 default = ["log", "mbedtls"]

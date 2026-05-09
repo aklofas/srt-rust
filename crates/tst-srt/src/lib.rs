@@ -9,14 +9,15 @@
 //!
 //! ```no_run
 //! use tst_srt::SocketBuilder;
-//! use std::time::Duration;
 //!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let mut socket = SocketBuilder::new()
-//!     .latency(Duration::from_millis(120))
-//!     .connect("127.0.0.1:1234")
-//!     .expect("connect");
+//!     .latency_ms(120)
+//!     .connect("127.0.0.1:1234")?;
 //!
-//! socket.send(b"hello").expect("send");
+//! socket.send(b"hello")?;
+//! # Ok(())
+//! # }
 //! ```
 
 #![warn(rustdoc::broken_intra_doc_links)]

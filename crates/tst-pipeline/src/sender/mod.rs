@@ -47,7 +47,13 @@ pub struct Sender<T: Transport> {
     /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
     /// from [`Drop`] to bracket open/close events. Private — must NOT
     /// be exposed publicly (see CI public-API ratchet).
-    _span: Span,
+    ///
+    /// Wrapped in [`std::panic::AssertUnwindSafe`] because `Span`
+    /// internally holds a `Mutex` which would otherwise flip this shell
+    /// from `UnwindSafe`/`RefUnwindSafe` to `!UnwindSafe`/`!RefUnwindSafe`.
+    /// `Span` is only entered in `new()` and `Drop`, never on hot paths,
+    /// so asserting unwind safety is correct here.
+    _span: std::panic::AssertUnwindSafe<Span>,
 }
 
 impl<T: Transport> Sender<T> {
@@ -65,7 +71,7 @@ impl<T: Transport> Sender<T> {
             transport,
             closed: false,
             mode: config.framing_mode,
-            _span: span,
+            _span: std::panic::AssertUnwindSafe(span),
         }
     }
 
@@ -199,7 +205,7 @@ impl<T: Transport> Drop for Sender<T> {
             let _ = self.flush();
             self.transport.close();
         }
-        let _enter = self._span.enter();
+        let _enter = self._span.0.enter();
         tracing::info!("Sender closed");
     }
 }

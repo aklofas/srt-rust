@@ -61,7 +61,13 @@ pub struct Receiver<R: RecvTransport> {
     /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
     /// from [`Drop`] to bracket open/close events. Private — must NOT
     /// be exposed publicly (see CI public-API ratchet).
-    _span: Span,
+    ///
+    /// Wrapped in [`std::panic::AssertUnwindSafe`] because `Span`
+    /// internally holds a `Mutex` which would otherwise flip this shell
+    /// from `UnwindSafe`/`RefUnwindSafe` to `!UnwindSafe`/`!RefUnwindSafe`.
+    /// `Span` is only entered in `new()` and `Drop`, never on hot paths,
+    /// so asserting unwind safety is correct here.
+    _span: std::panic::AssertUnwindSafe<Span>,
 }
 
 impl<R: RecvTransport> Receiver<R> {
@@ -83,7 +89,7 @@ impl<R: RecvTransport> Receiver<R> {
             recv_buf: vec![0u8; cap],
             bytes_received: 0,
             packets_received: 0,
-            _span: span,
+            _span: std::panic::AssertUnwindSafe(span),
         }
     }
 
@@ -218,7 +224,7 @@ impl<R: RecvTransport> Receiver<R> {
 
 impl<R: RecvTransport> Drop for Receiver<R> {
     fn drop(&mut self) {
-        let _enter = self._span.enter();
+        let _enter = self._span.0.enter();
         tracing::info!("Receiver closed");
     }
 }

@@ -64,7 +64,13 @@ pub struct DemuxReceiver<R: RecvTransport> {
     /// [`Self::with_demux_options`] and entered from [`Drop`] to
     /// bracket open/close events. Private — must NOT be exposed
     /// publicly (see CI public-API ratchet).
-    _span: Span,
+    ///
+    /// Wrapped in [`std::panic::AssertUnwindSafe`] because `Span`
+    /// internally holds a `Mutex` which would otherwise flip this shell
+    /// from `UnwindSafe`/`RefUnwindSafe` to `!UnwindSafe`/`!RefUnwindSafe`.
+    /// `Span` is only entered in `new()` and `Drop`, never on hot paths,
+    /// so asserting unwind safety is correct here.
+    _span: std::panic::AssertUnwindSafe<Span>,
 }
 
 impl<R: RecvTransport> DemuxReceiver<R> {
@@ -82,7 +88,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
             ts: Receiver::new(transport),
             demux: Demuxer::new(),
             byte_sinks: Vec::new(),
-            _span: span,
+            _span: std::panic::AssertUnwindSafe(span),
         }
     }
 
@@ -100,7 +106,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
             ts: Receiver::new(transport),
             demux: Demuxer::with_options(options),
             byte_sinks: Vec::new(),
-            _span: span,
+            _span: std::panic::AssertUnwindSafe(span),
         }
     }
 
@@ -244,7 +250,7 @@ impl<R: RecvTransport> Iterator for DemuxReceiver<R> {
 
 impl<R: RecvTransport> Drop for DemuxReceiver<R> {
     fn drop(&mut self) {
-        let _enter = self._span.enter();
+        let _enter = self._span.0.enter();
         tracing::info!("DemuxReceiver closed");
     }
 }

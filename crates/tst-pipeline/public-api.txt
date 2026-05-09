@@ -305,8 +305,8 @@ impl<R> core::marker::Send for tst_pipeline::raw_receiver::RawReceiver<R>
 impl<R> core::marker::Sync for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::marker::Sync
 impl<R> core::marker::Unpin for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::marker::Unpin
 impl<R> core::marker::UnsafeUnpin for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::marker::UnsafeUnpin
-impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_receiver::RawReceiver<R>
-impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawReceiver<R>
+impl<R> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::panic::unwind_safe::RefUnwindSafe
+impl<R> core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::panic::unwind_safe::UnwindSafe
 pub struct tst_pipeline::raw_receiver::RawReceiverStats
 pub tst_pipeline::raw_receiver::RawReceiverStats::bytes_received: u64
 pub tst_pipeline::raw_receiver::RawReceiverStats::packets_received: u64
@@ -346,8 +346,8 @@ impl<T> core::marker::Send for tst_pipeline::raw_sender::RawSender<T>
 impl<T> core::marker::Sync for tst_pipeline::raw_sender::RawSender<T> where T: core::marker::Sync
 impl<T> core::marker::Unpin for tst_pipeline::raw_sender::RawSender<T> where T: core::marker::Unpin
 impl<T> core::marker::UnsafeUnpin for tst_pipeline::raw_sender::RawSender<T> where T: core::marker::UnsafeUnpin
-impl<T> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_sender::RawSender<T>
-impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSender<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_sender::RawSender<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSender<T> where T: core::panic::unwind_safe::UnwindSafe
 pub struct tst_pipeline::raw_sender::RawSenderConfig
 impl core::clone::Clone for tst_pipeline::raw_sender::RawSenderConfig
 pub fn tst_pipeline::raw_sender::RawSenderConfig::clone(&self) -> tst_pipeline::raw_sender::RawSenderConfig
@@ -440,8 +440,8 @@ impl<R> core::marker::Send for tst_pipeline::receiver::Receiver<R>
 impl<R> core::marker::Sync for tst_pipeline::receiver::Receiver<R> where R: core::marker::Sync
 impl<R> core::marker::Unpin for tst_pipeline::receiver::Receiver<R> where R: core::marker::Unpin
 impl<R> core::marker::UnsafeUnpin for tst_pipeline::receiver::Receiver<R> where R: core::marker::UnsafeUnpin
-impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::receiver::Receiver<R>
-impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::receiver::Receiver<R>
+impl<R> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::receiver::Receiver<R> where R: core::panic::unwind_safe::RefUnwindSafe
+impl<R> core::panic::unwind_safe::UnwindSafe for tst_pipeline::receiver::Receiver<R> where R: core::panic::unwind_safe::UnwindSafe
 pub struct tst_pipeline::receiver::ReceiverStats
 pub tst_pipeline::receiver::ReceiverStats::bytes_received: u64
 pub tst_pipeline::receiver::ReceiverStats::bytes_skipped_for_sync: u64
@@ -646,8 +646,8 @@ impl<T> core::marker::Send for tst_pipeline::sender::Sender<T>
 impl<T> core::marker::Sync for tst_pipeline::sender::Sender<T> where T: core::marker::Sync
 impl<T> core::marker::Unpin for tst_pipeline::sender::Sender<T> where T: core::marker::Unpin
 impl<T> core::marker::UnsafeUnpin for tst_pipeline::sender::Sender<T> where T: core::marker::UnsafeUnpin
-impl<T> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::sender::Sender<T>
-impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::sender::Sender<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::sender::Sender<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for tst_pipeline::sender::Sender<T> where T: core::panic::unwind_safe::UnwindSafe
 pub struct tst_pipeline::sender::SenderConfig
 pub tst_pipeline::sender::SenderConfig::framing_mode: tst_pipeline::TsFramingMode
 pub tst_pipeline::sender::SenderConfig::max_unsynced_bytes: usize
@@ -1094,8 +1094,8 @@ impl<R> core::marker::Send for tst_pipeline::raw_receiver::RawReceiver<R>
 impl<R> core::marker::Sync for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::marker::Sync
 impl<R> core::marker::Unpin for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::marker::Unpin
 impl<R> core::marker::UnsafeUnpin for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::marker::UnsafeUnpin
-impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_receiver::RawReceiver<R>
-impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawReceiver<R>
+impl<R> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::panic::unwind_safe::RefUnwindSafe
+impl<R> core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::panic::unwind_safe::UnwindSafe
 pub struct tst_pipeline::RawReceiverStats
 pub tst_pipeline::RawReceiverStats::bytes_received: u64
 pub tst_pipeline::RawReceiverStats::packets_received: u64
@@ -1134,8 +1134,8 @@ impl<T> core::marker::Send for tst_pipeline::raw_sender::RawSender<T>
 impl<T> core::marker::Sync for tst_pipeline::raw_sender::RawSender<T> where T: core::marker::Sync
 impl<T> core::marker::Unpin for tst_pipeline::raw_sender::RawSender<T> where T: core::marker::Unpin
 impl<T> core::marker::UnsafeUnpin for tst_pipeline::raw_sender::RawSender<T> where T: core::marker::UnsafeUnpin
-impl<T> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_sender::RawSender<T>
-impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSender<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_sender::RawSender<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSender<T> where T: core::panic::unwind_safe::UnwindSafe
 pub struct tst_pipeline::RawSenderConfig
 impl core::clone::Clone for tst_pipeline::raw_sender::RawSenderConfig
 pub fn tst_pipeline::raw_sender::RawSenderConfig::clone(&self) -> tst_pipeline::raw_sender::RawSenderConfig
@@ -1188,8 +1188,8 @@ impl<R> core::marker::Send for tst_pipeline::receiver::Receiver<R>
 impl<R> core::marker::Sync for tst_pipeline::receiver::Receiver<R> where R: core::marker::Sync
 impl<R> core::marker::Unpin for tst_pipeline::receiver::Receiver<R> where R: core::marker::Unpin
 impl<R> core::marker::UnsafeUnpin for tst_pipeline::receiver::Receiver<R> where R: core::marker::UnsafeUnpin
-impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::receiver::Receiver<R>
-impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::receiver::Receiver<R>
+impl<R> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::receiver::Receiver<R> where R: core::panic::unwind_safe::RefUnwindSafe
+impl<R> core::panic::unwind_safe::UnwindSafe for tst_pipeline::receiver::Receiver<R> where R: core::panic::unwind_safe::UnwindSafe
 pub struct tst_pipeline::ReceiverStats
 pub tst_pipeline::ReceiverStats::bytes_received: u64
 pub tst_pipeline::ReceiverStats::bytes_skipped_for_sync: u64
@@ -1250,8 +1250,8 @@ impl<T> core::marker::Send for tst_pipeline::sender::Sender<T>
 impl<T> core::marker::Sync for tst_pipeline::sender::Sender<T> where T: core::marker::Sync
 impl<T> core::marker::Unpin for tst_pipeline::sender::Sender<T> where T: core::marker::Unpin
 impl<T> core::marker::UnsafeUnpin for tst_pipeline::sender::Sender<T> where T: core::marker::UnsafeUnpin
-impl<T> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::sender::Sender<T>
-impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::sender::Sender<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::sender::Sender<T> where T: core::panic::unwind_safe::RefUnwindSafe
+impl<T> core::panic::unwind_safe::UnwindSafe for tst_pipeline::sender::Sender<T> where T: core::panic::unwind_safe::UnwindSafe
 pub struct tst_pipeline::SenderConfig
 pub tst_pipeline::SenderConfig::framing_mode: tst_pipeline::TsFramingMode
 pub tst_pipeline::SenderConfig::max_unsynced_bytes: usize

@@ -51,6 +51,64 @@ impl<'a> AdtsFrame<'a> {
     pub fn bytes(&self) -> &'a [u8] {
         self.body
     }
+
+    /// Promote this borrowed frame to an [`AdtsFrameOwned`] by copying `body`.
+    pub fn to_owned(&self) -> AdtsFrameOwned {
+        AdtsFrameOwned {
+            profile: self.profile,
+            sample_rate_hz: self.sample_rate_hz,
+            channel_configuration: self.channel_configuration,
+            channels: self.channels,
+            frame_length_bytes: self.frame_length_bytes,
+            samples_per_frame: self.samples_per_frame,
+            num_raw_data_blocks: self.num_raw_data_blocks,
+            has_crc: self.has_crc,
+            mpeg_version: self.mpeg_version,
+            raw_header: self.raw_header.clone(),
+            body: self.body.to_vec(),
+        }
+    }
+}
+
+/// Owned variant of [`AdtsFrame`].
+///
+/// `body: Vec<u8>` instead of `&'a [u8]` — usable across FFI / thread / async
+/// boundaries where the borrowed source slice doesn't outlive the consumer.
+///
+/// Round-trip with [`AdtsFrame::to_owned`] / [`Self::as_ref`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct AdtsFrameOwned {
+    pub profile: AacProfile,
+    pub sample_rate_hz: u32,
+    pub channel_configuration: u8,
+    pub channels: u8,
+    pub frame_length_bytes: u32,
+    pub samples_per_frame: u16,
+    pub num_raw_data_blocks: u8,
+    pub has_crc: bool,
+    pub mpeg_version: MpegVersion,
+    pub raw_header: Vec<u8>,
+    pub body: Vec<u8>,
+}
+
+impl AdtsFrameOwned {
+    /// Borrow this owned frame as an [`AdtsFrame`] — zero-copy.
+    pub fn as_ref(&self) -> AdtsFrame<'_> {
+        AdtsFrame {
+            profile: self.profile,
+            sample_rate_hz: self.sample_rate_hz,
+            channel_configuration: self.channel_configuration,
+            channels: self.channels,
+            frame_length_bytes: self.frame_length_bytes,
+            samples_per_frame: self.samples_per_frame,
+            num_raw_data_blocks: self.num_raw_data_blocks,
+            has_crc: self.has_crc,
+            mpeg_version: self.mpeg_version,
+            raw_header: self.raw_header.clone(),
+            body: &self.body,
+        }
+    }
 }
 
 /// Iterator over ADTS frames in `bytes`. Use [`frames`] to construct.
@@ -189,5 +247,28 @@ mod tests {
             other => panic!("expected BadSyncWord, got {:?}", other),
         }
         assert!(it.next().is_none());
+    }
+
+    #[test]
+    fn adts_frame_owned_roundtrip() {
+        let body = vec![0xAA, 0xBB, 0xCC];
+        let raw_header = vec![0x01, 0x02];
+        let borrowed = AdtsFrame {
+            profile: AacProfile::Lc,
+            sample_rate_hz: 44100,
+            channel_configuration: 2,
+            channels: 2,
+            frame_length_bytes: 3,
+            samples_per_frame: 1024,
+            num_raw_data_blocks: 1,
+            has_crc: false,
+            mpeg_version: MpegVersion::Mpeg4,
+            raw_header: raw_header.clone(),
+            body: &body,
+        };
+        let owned = borrowed.to_owned();
+        let reborrowed = owned.as_ref();
+        assert_eq!(borrowed, reborrowed);
+        assert_eq!(owned.body, vec![0xAA, 0xBB, 0xCC]);
     }
 }

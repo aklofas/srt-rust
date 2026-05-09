@@ -40,6 +40,7 @@
 #![warn(rustdoc::broken_intra_doc_links)]
 
 pub mod demux_receiver;
+pub mod dyn_aliases;
 pub mod managed_receive;
 pub mod mux_sender;
 pub mod pairing;
@@ -51,6 +52,10 @@ pub mod sender;
 
 // Top-level re-exports of the most common types.
 pub use demux_receiver::{ByteSink, DemuxReceiver, DemuxReceiverError, DemuxReceiverStats};
+pub use dyn_aliases::{
+    BoxedDemuxReceiver, BoxedMuxSender, BoxedRawReceiver, BoxedRawSender, BoxedReceiver,
+    BoxedSender,
+};
 pub use managed_receive::ManagedReceiveTransport;
 pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderStats};
 pub use pairing::{KlvSample, MatchMode, Pairer, PairerOutput, PairerStats, VideoSample};

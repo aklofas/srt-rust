@@ -607,6 +607,46 @@ fn check_string(tag: u32, s: &str, enc: &Encoding) -> Result<(), KlvEncodeError>
     Ok(())
 }
 
+/// Decode a UAS Datalink Local Set per MISB ST 0601.
+///
+/// Lenient: any 16-byte UL is accepted, the running-sum 16-bit checksum
+/// (Tag 1) is verified, unknown tags are preserved verbatim in
+/// [`UasDatalinkLs::unknown`], and per-tag value-validation failures are
+/// collected in [`UasDatalinkLs::field_errors`] rather than failing the
+/// whole record. Use [`decode_strict`] to additionally require the
+/// ST 0601 family UL pattern, or [`decode_strict_compliance`] to enforce
+/// the spec's mandatory tag-ordering rules.
+///
+/// # Example — decode a fixture and inspect typed fields
+///
+/// ```
+/// use tst_core::klv::st0601;
+/// use tst_core::UasDatalinkLs;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // Build a known-good fixture by round-tripping through the encoder.
+/// let mut original = UasDatalinkLs::default();
+/// original.timestamp_us = Some(1_700_000_000_000_000);
+/// original.platform_heading_deg = Some(125.5);
+/// original.sensor_lat_deg = Some(34.05);
+/// original.sensor_lon_deg = Some(-118.25);
+///
+/// let bytes = st0601::encode_to_vec(&original)?;
+/// let decoded = st0601::decode(&bytes)?;
+///
+/// // Integer tags round-trip exactly; IMAPB-encoded floats round-trip
+/// // within the ST 0601 spec's bit-width quantization (~0.0055° at
+/// // 16-bit heading resolution).
+/// assert_eq!(decoded.timestamp_us, Some(1_700_000_000_000_000));
+/// assert!((decoded.platform_heading_deg.unwrap() - 125.5).abs() < 0.01);
+///
+/// // No per-field decode failures on a well-formed record.
+/// assert!(decoded.field_errors.is_empty());
+/// // No unknown tags either — every emitted tag is in the typed table.
+/// assert!(decoded.unknown.is_empty());
+/// # Ok(())
+/// # }
+/// ```
 pub fn decode(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
     decode_inner(
         buf, /* verify_checksum */ true, /* strict_ul */ false,

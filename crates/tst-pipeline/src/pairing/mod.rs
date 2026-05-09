@@ -78,6 +78,28 @@ impl Pairer {
     /// useless; the constructor refuses rather than emit `UnpairedVideo`
     /// for every input silently. Same goes for
     /// `MatchMode::Buffered { max_video_buffer: 0 }`.
+    ///
+    /// # Example — realtime nearest-PTS pairer with a 300 ms tolerance
+    ///
+    /// ```
+    /// use tst_pipeline::pairing::{MatchMode, Pairer};
+    ///
+    /// // 27_000 ticks @ 90 kHz = 300 ms. KLV history of 32 entries
+    /// // covers ~1 s of metadata at 30 fps with 1:1 video↔KLV cadence.
+    /// let mut pairer = Pairer::nearest_pts(
+    ///     0x0100, // video PID
+    ///     0x0102, // KLV PID
+    ///     27_000, // tolerance_ticks (300 ms @ 90 kHz)
+    ///     32,     // max_klv_history
+    ///     MatchMode::Realtime,
+    /// );
+    ///
+    /// // Feed each `DemuxEvent` from a `DemuxReceiver` into `pairer.feed(...)`
+    /// // and consume the resulting `PairerOutput`s. Call `pairer.flush()`
+    /// // at end-of-stream to drain remaining buffered video AUs (a no-op
+    /// // in `Realtime` mode but kept for symmetry with `Buffered`).
+    /// let _stats = pairer.stats();
+    /// ```
     pub fn nearest_pts(
         video_pid: u16,
         klv_pid: u16,

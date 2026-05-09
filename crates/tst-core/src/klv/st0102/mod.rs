@@ -114,7 +114,69 @@ fn encode_utf16_bom(s: &str) -> Vec<u8> {
     out
 }
 
-/// Lenient decode — tolerates malformed input where possible.
+/// Decode a Security Metadata Local Set per MISB ST 0102.12.
+///
+/// Lenient: missing tags are tolerated (the typed surface is
+/// `Option<T>`-shaped throughout), unknown tags are preserved verbatim
+/// in [`SecurityLs::unknown`], unknown enum codepoints surface as
+/// `Unknown(u8)`, and Tag 13 UTF-16 decode failures are demoted to
+/// [`SecurityLs::field_errors`] rather than failing the whole record.
+/// Use [`decode_strict`] for spec-conformance validation.
+///
+/// # Example — sibling-layer decode from a parent ST 0601 record
+///
+/// The Security LS is typically carried as the value of ST 0601 Tag 48
+/// inside a UAS Datalink LS. The parent typed parser leaves Tag 48 as
+/// pass-through bytes ([`crate::klv::st0601::UasDatalinkLs::security_local_set`]);
+/// consumers who want typed access call this function on those bytes.
+///
+/// ```
+/// use tst_core::klv::{st0102, st0601};
+/// use tst_core::klv::st0102::{
+///     ClassifyingCountryCodingMethod, ObjectCountryCodingMethod,
+///     SecurityClassification, SecurityLs,
+/// };
+/// use tst_core::UasDatalinkLs;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // 1. Build a typed Security LS and serialize to bytes.
+/// let security = SecurityLs {
+///     security_classification: Some(SecurityClassification::Unclassified),
+///     classifying_country_coding_method:
+///         Some(ClassifyingCountryCodingMethod::Iso3166ThreeLetter),
+///     classifying_country: Some("//USA".to_string()),
+///     object_country_coding_method:
+///         Some(ObjectCountryCodingMethod::Iso3166ThreeLetter),
+///     object_country_codes: Some("USA".to_string()),
+///     version: Some(12),
+///     ..Default::default()
+/// };
+/// let security_bytes = st0102::encode_to_vec(&security)?;
+///
+/// // 2. Embed those bytes in a parent ST 0601 record's Tag 48.
+/// let mut parent = UasDatalinkLs::default();
+/// parent.timestamp_us = Some(1_700_000_000_000_000);
+/// parent.security_local_set = Some(security_bytes);
+/// let parent_bytes = st0601::encode_to_vec(&parent)?;
+///
+/// // 3. On the receive side, decode the parent, then sibling-decode
+/// //    the inner Security LS.
+/// let decoded_parent = st0601::decode(&parent_bytes)?;
+/// let inner = decoded_parent
+///     .security_local_set
+///     .as_deref()
+///     .expect("Tag 48 round-trips through ST 0601");
+/// let decoded_security = st0102::decode(inner)?;
+///
+/// assert_eq!(
+///     decoded_security.security_classification,
+///     Some(SecurityClassification::Unclassified),
+/// );
+/// assert_eq!(decoded_security.version, Some(12));
+/// assert!(decoded_security.field_errors.is_empty());
+/// # Ok(())
+/// # }
+/// ```
 pub fn decode(buf: &[u8]) -> Result<SecurityLs, KlvDecodeError> {
     decode_inner(buf, /* strict = */ false)
 }

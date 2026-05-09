@@ -85,6 +85,23 @@ impl<'a> Frame<'a> {
 /// consumer.
 ///
 /// Round-trip with [`Frame::to_owned`] / [`Self::as_ref`].
+///
+/// # Example — collect owned frames for a Java consumer
+/// ```
+/// use tst_core::codec::mpegaudio::{frames, FrameOwned};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let payload: &[u8] = &[/* MPEG-Audio bytes */];
+/// # let payload: &[u8] = &[];
+/// let owned: Vec<FrameOwned> = frames(payload)
+///     .filter_map(Result::ok)
+///     .map(|f| f.to_owned())
+///     .collect();
+/// // `owned` outlives `payload` — safe to wrap as a Java List<MpegAudioFrame>.
+/// let _ = owned;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct FrameOwned {

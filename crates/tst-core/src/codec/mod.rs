@@ -202,117 +202,73 @@ impl MatrixCoefficients {
 /// decoders are capped at 32 leading zeros, enum casts use try-from with
 /// `Err → ReservedValue`. See [crate root](crate::codec) for partial-success
 /// behavioral rules.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum CodecParseError {
     /// Bitstream cursor walked past end of input. `needed_bits` is the
     /// shortfall in bits at the position where parsing failed.
+    #[error("truncated RBSP at bit {offset_bits} (needed {needed_bits} more bits)")]
     TruncatedRbsp { offset_bits: u32, needed_bits: u32 },
 
     /// Malformed Exp-Golomb code (leading zeros run > 32, or missing
     /// terminator bit).
+    #[error("invalid Exp-Golomb code at bit {offset_bits}")]
     InvalidGolomb { offset_bits: u32 },
 
     /// Field carries a spec-reserved value that affects framing or
     /// downstream parsing semantics. `field` is a `&'static str` for
     /// cheap formatting; consumers should not pattern-match on it.
+    #[error("reserved value {value} in field '{field}'")]
     ReservedValue { field: &'static str, value: u32 },
 
     /// Profile we cannot VUI-extract for. Fires only for profiles whose
     /// downstream framing semantics differ enough to produce wrong
     /// fields. Most uncommon profiles are supported as opaque integers.
+    #[error("unsupported profile_idc {profile_idc}")]
     UnsupportedProfile { profile_idc: u8 },
 
     /// `parse_pps` standalone references an SPS id that wasn't seen.
     /// Does not fire from `parse_parameter_sets` (which collects SPSes
     /// before resolving PPSes).
+    #[error("PPS references SPS id {sps_id} which was not in the input")]
     DanglingSpsReference { sps_id: u8 },
 
     /// H.265 only: `parse_sps` standalone references a VPS id that
     /// wasn't seen. Does not fire from `parse_parameter_sets`.
+    #[error("SPS references VPS id {vps_id} which was not in the input")]
     DanglingVpsReference { vps_id: u8 },
 
     /// Underlying engine returned an error that doesn't map cleanly to
     /// our enum. The string is for diagnostics only — consumers should
     /// not pattern-match on it.
+    #[error("parser engine: {0}")]
     EngineError(String),
 
     /// LEB128-encoded value (AV1 OBU size, uvlc) walked past 8 bytes
     /// or had the continuation bit set on the 8th byte (per AV1 spec
     /// `Leb128()` algorithm).
+    #[error("invalid LEB128 at byte {offset_bytes}")]
     InvalidLeb128 { offset_bytes: u32 },
 
     /// Audio frame parser found a buffer that does not start with the
     /// codec's expected sync word. `expected` and `found` are the actual
     /// sync-word values (12-bit values for MPEG audio / AAC ADTS).
+    #[error("bad sync word: expected 0x{expected:03X}, found 0x{found:03X}")]
     BadSyncWord { expected: u16, found: u16 },
 
     /// Byte-oriented truncation. Frame parser ran short of bytes while
     /// reading a header or frame body. Distinct from `TruncatedRbsp`,
     /// which is bit-oriented for video RBSP walks.
+    #[error("truncated: needed {needed} bytes, had {had}")]
     Truncated { needed: u32, had: u32 },
 
     /// Field carries an explicitly forbidden bit pattern per spec.
     /// Distinct from `ReservedValue` — `Forbidden` means the spec marks
     /// the value as never-valid; `ReservedValue` means the spec leaves
     /// it for future use.
+    #[error("forbidden value in field '{field}'")]
     Forbidden { field: &'static str },
 }
-
-impl std::fmt::Display for CodecParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::TruncatedRbsp {
-                offset_bits,
-                needed_bits,
-            } => {
-                write!(
-                    f,
-                    "truncated RBSP at bit {offset_bits} (needed {needed_bits} more bits)"
-                )
-            }
-            Self::InvalidGolomb { offset_bits } => {
-                write!(f, "invalid Exp-Golomb code at bit {offset_bits}")
-            }
-            Self::ReservedValue { field, value } => {
-                write!(f, "reserved value {value} in field '{field}'")
-            }
-            Self::UnsupportedProfile { profile_idc } => {
-                write!(f, "unsupported profile_idc {profile_idc}")
-            }
-            Self::DanglingSpsReference { sps_id } => {
-                write!(
-                    f,
-                    "PPS references SPS id {sps_id} which was not in the input"
-                )
-            }
-            Self::DanglingVpsReference { vps_id } => {
-                write!(
-                    f,
-                    "SPS references VPS id {vps_id} which was not in the input"
-                )
-            }
-            Self::EngineError(msg) => write!(f, "parser engine: {msg}"),
-            Self::InvalidLeb128 { offset_bytes } => {
-                write!(f, "invalid LEB128 at byte {offset_bytes}")
-            }
-            Self::BadSyncWord { expected, found } => {
-                write!(
-                    f,
-                    "bad sync word: expected 0x{expected:03X}, found 0x{found:03X}"
-                )
-            }
-            Self::Truncated { needed, had } => {
-                write!(f, "truncated: needed {needed} bytes, had {had}")
-            }
-            Self::Forbidden { field } => {
-                write!(f, "forbidden value in field '{field}'")
-            }
-        }
-    }
-}
-
-impl std::error::Error for CodecParseError {}
 
 /// Validate `bit_depth_*_minus8` per H.264 / H.265 / H.266: spec range
 /// `0..=8` (bit_depth ∈ 8..=16). ffmpeg clamps at `bit_depth ≤ 14` (i.e.
@@ -454,5 +410,65 @@ mod tests {
 
         let forbidden = CodecParseError::Forbidden { field: "layer" };
         assert!(format!("{:?}", forbidden).contains("Forbidden"));
+    }
+
+    #[test]
+    fn codec_parse_error_display_unchanged() {
+        assert_eq!(
+            CodecParseError::TruncatedRbsp {
+                offset_bits: 80,
+                needed_bits: 5,
+            }
+            .to_string(),
+            "truncated RBSP at bit 80 (needed 5 more bits)"
+        );
+        assert_eq!(
+            CodecParseError::InvalidGolomb { offset_bits: 32 }.to_string(),
+            "invalid Exp-Golomb code at bit 32"
+        );
+        assert_eq!(
+            CodecParseError::ReservedValue {
+                field: "chroma_format_idc",
+                value: 4,
+            }
+            .to_string(),
+            "reserved value 4 in field 'chroma_format_idc'"
+        );
+        assert_eq!(
+            CodecParseError::UnsupportedProfile { profile_idc: 200 }.to_string(),
+            "unsupported profile_idc 200"
+        );
+        assert_eq!(
+            CodecParseError::DanglingSpsReference { sps_id: 3 }.to_string(),
+            "PPS references SPS id 3 which was not in the input"
+        );
+        assert_eq!(
+            CodecParseError::DanglingVpsReference { vps_id: 1 }.to_string(),
+            "SPS references VPS id 1 which was not in the input"
+        );
+        assert_eq!(
+            CodecParseError::EngineError("test error".into()).to_string(),
+            "parser engine: test error"
+        );
+        assert_eq!(
+            CodecParseError::InvalidLeb128 { offset_bytes: 7 }.to_string(),
+            "invalid LEB128 at byte 7"
+        );
+        assert_eq!(
+            CodecParseError::BadSyncWord {
+                expected: 0xFFF,
+                found: 0xABC,
+            }
+            .to_string(),
+            "bad sync word: expected 0xFFF, found 0xABC"
+        );
+        assert_eq!(
+            CodecParseError::Truncated { needed: 7, had: 4 }.to_string(),
+            "truncated: needed 7 bytes, had 4"
+        );
+        assert_eq!(
+            CodecParseError::Forbidden { field: "layer" }.to_string(),
+            "forbidden value in field 'layer'"
+        );
     }
 }

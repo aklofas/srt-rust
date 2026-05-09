@@ -103,27 +103,13 @@ pub fn write_metadata_au_cell(
 }
 
 /// Errors raised by `write_metadata_au_cell`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum AuCellError {
     /// Payload exceeds the 16-bit `AU_cell_data_length` field cap.
+    #[error("AU cell payload {size} B exceeds 16-bit length field cap {max} B")]
     PayloadTooLarge { size: usize, max: usize },
 }
-
-impl core::fmt::Display for AuCellError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::PayloadTooLarge { size, max } => {
-                write!(
-                    f,
-                    "AU cell payload {size} B exceeds 16-bit length field cap {max} B"
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for AuCellError {}
 
 /// Read a `Metadata_AU_cell` from the start of `buf`. Returns the parsed
 /// header and a slice into the payload region of `buf` (zero-copy).
@@ -262,6 +248,18 @@ mod tests {
             let (parsed, _) = read_metadata_au_cell(&out).unwrap();
             assert_eq!(parsed.cell_fragment_indication, cfi);
         }
+    }
+
+    #[test]
+    fn au_cell_error_display_unchanged() {
+        assert_eq!(
+            AuCellError::PayloadTooLarge {
+                size: 65536,
+                max: 65535,
+            }
+            .to_string(),
+            "AU cell payload 65536 B exceeds 16-bit length field cap 65535 B"
+        );
     }
 
     #[test]

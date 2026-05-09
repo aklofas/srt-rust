@@ -20,27 +20,15 @@ pub use parse::{
 /// that the demux parser rejects with [`DescriptorParseError::EmptyInput`]. The
 /// encoder rejects the same shape symmetrically rather than emitting
 /// invalid PSI.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum DescriptorError {
     /// `entries` slice was empty for a multi-entry descriptor builder
     /// (subtitling 0x59 or teletext 0x56). Caller must supply at least
     /// one entry.
+    #[error("descriptor tag 0x{tag:02X}: entries slice is empty (must be non-empty)")]
     EmptyEntries { tag: u8 },
 }
-
-impl core::fmt::Display for DescriptorError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            DescriptorError::EmptyEntries { tag } => write!(
-                f,
-                "descriptor tag 0x{tag:02X}: entries slice is empty (must be non-empty)"
-            ),
-        }
-    }
-}
-
-impl core::error::Error for DescriptorError {}
 
 /// Registration descriptor (tag 0x05) — H.222.0 §2.6.8.
 ///
@@ -617,5 +605,17 @@ mod tests {
             .expect("one entry should succeed");
         assert_eq!(bytes[0], 0x56); // descriptor_tag
         assert_eq!(bytes[1], 5); // length = 1 entry × 5 bytes
+    }
+
+    #[test]
+    fn descriptor_error_display_unchanged() {
+        assert_eq!(
+            DescriptorError::EmptyEntries { tag: 0x59 }.to_string(),
+            "descriptor tag 0x59: entries slice is empty (must be non-empty)"
+        );
+        assert_eq!(
+            DescriptorError::EmptyEntries { tag: 0x56 }.to_string(),
+            "descriptor tag 0x56: entries slice is empty (must be non-empty)"
+        );
     }
 }

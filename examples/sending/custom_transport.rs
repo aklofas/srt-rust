@@ -4,7 +4,7 @@
 //! and runs `MuxSender` against it. At the end, dumps the collected bytes to a
 //! file. Validates the muxer's output without any networking.
 //!
-//!   cargo run --example custom_transport -- /tmp/custom_transport_out.ts
+//!   cargo run -p tst-examples --example custom_transport -- /tmp/custom_transport_out.ts
 //!
 //! Demonstrates: `Transport` trait, `MuxSender` is generic over T: Transport.
 

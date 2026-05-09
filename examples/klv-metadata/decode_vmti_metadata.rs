@@ -40,7 +40,7 @@
 //! printed below is the most analyst-actionable slice and the part
 //! consumers ask for first.
 //!
-//! Run: `cargo run --example decode_vmti_metadata -- path/to/capture.ts`
+//! Run: `cargo run -p tst-examples --example decode_vmti_metadata -- path/to/capture.ts`
 
 use std::env;
 use std::fs;

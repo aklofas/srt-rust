@@ -10,7 +10,7 @@
 //! drives the same `push_subtitle_to` path internally.
 //!
 //! Usage:
-//!     cargo run --example mux_with_webvtt_subtitles -- output.ts
+//!     cargo run -p tst-examples --example mux_with_webvtt_subtitles -- output.ts
 //!
 //! Open the resulting file with `ffprobe` to verify:
 //!     ffprobe -show_streams output.ts
@@ -33,7 +33,7 @@ const SUBTITLE_PID: u16 = 0x200;
 
 /// Drain every queued packet from the muxer into a single `Vec<u8>`.
 ///
-/// Mirrors the helper in `gen_subtitle_fixtures.rs` — there's no
+/// Mirrors the helper in `crates/tst-core/tests/tools/gen_subtitle_fixtures.rs` — there's no
 /// public `drain_output` on `Muxer`, so we pull in chunks until
 /// `pull` returns 0 (queue empty). Sized at 188 * 256 to amortize the
 /// per-call cost; the muxer doesn't care about chunk size as long as

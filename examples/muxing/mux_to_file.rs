@@ -7,7 +7,7 @@
 //! See `mux_h265_with_klv.rs` for a richer multi-stream example, and
 //! `pipeline_send_to_socket.rs` for the same data flowing over SRT.
 //!
-//! Usage: `cargo run -p tst-srt --example mux_to_file -- <out.ts> <duration_secs>`
+//! Usage: `cargo run -p tst-examples --example mux_to_file -- <out.ts> <duration_secs>`
 
 use std::env;
 use std::fs::File;

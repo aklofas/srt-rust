@@ -9,7 +9,7 @@
 //! consumer-side recipe for the most common policy: nearest PTS within
 //! a tolerance window.
 //!
-//! Usage: `cargo run --example pair_sync_klv -- <input.ts>`
+//! Usage: `cargo run -p tst-examples --example pair_sync_klv -- <input.ts>`
 //!
 //! Two important real-world wrinkles that this example handles:
 //!

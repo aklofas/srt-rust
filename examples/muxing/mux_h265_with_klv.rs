@@ -7,7 +7,7 @@
 //!   - KlvStreamType::PrivateData (default) -> KlvStreamType::SynchronousMetadata
 //!   - carries_pts: false (default)         -> carries_pts: true
 //!
-//!   cargo run --example mux_h265_with_klv -- /tmp/h265.ts
+//!   cargo run -p tst-examples --example mux_h265_with_klv -- /tmp/h265.ts
 
 use std::env;
 use std::fs::File;

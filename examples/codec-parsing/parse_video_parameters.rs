@@ -9,7 +9,7 @@
 //! appropriate codec module.
 //!
 //! Usage:
-//!     cargo run --example parse_video_parameters -- <file.ts>
+//!     cargo run -p tst-examples --example parse_video_parameters -- <file.ts>
 //!
 //! The example reads in 64 KiB chunks, matching typical SRT payload sizing.
 //! The demuxer doesn't care about chunk boundaries — it re-syncs on TS

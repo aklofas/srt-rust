@@ -2,7 +2,7 @@
 //! `tst_core::mpegts::demux::Demuxer` API.
 //!
 //! Usage:
-//!   cargo run --example extract_video_au -- <input.ts> [out_dir]
+//!   cargo run -p tst-examples --example extract_video_au -- <input.ts> [out_dir]
 //!
 //! Output:
 //!   <out_dir>/au_NNNN_<pts>.bin — one Annex-B access unit per file.

@@ -13,7 +13,7 @@
 //! builder while still honoring per-deployment tuning.
 //!
 //! Run with:
-//!   cargo run --example sender_from_url
+//!   cargo run -p tst-examples --example sender_from_url
 //!
 //! There's no listener side here; the connect call will fail with
 //! `connection refused` or similar — the point is the URL parse + apply.

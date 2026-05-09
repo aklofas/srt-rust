@@ -10,7 +10,7 @@
 //! comes out the iterator unchanged. One byte stream, two consumers,
 //! one thread.
 //!
-//! Usage: `cargo run --example tee_disk_and_demux -- <input.ts> <output.ts>`
+//! Usage: `cargo run -p tst-examples --example tee_disk_and_demux -- <input.ts> <output.ts>`
 //!
 //! This example uses a hand-rolled `RecvTransport` over a `.ts` file so
 //! it's runnable without a live SRT publisher. In production you would

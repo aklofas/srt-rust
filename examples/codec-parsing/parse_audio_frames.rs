@@ -17,7 +17,7 @@
 //!   re-emission.
 //!
 //! Run:
-//!   cargo run --example parse_audio_frames -- path/to/some.ts
+//!   cargo run -p tst-examples --example parse_audio_frames -- path/to/some.ts
 
 use std::collections::HashMap;
 use std::env;

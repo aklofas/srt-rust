@@ -11,7 +11,7 @@
 //! the ITU-T H.222.0 amendment for VVC; the muxer sets that
 //! stream_type automatically when `VideoCodec::H266` is configured.
 //!
-//!   cargo run --example mux_h266_with_klv -- /tmp/h266.ts
+//!   cargo run -p tst-examples --example mux_h266_with_klv -- /tmp/h266.ts
 
 use std::env;
 use std::fs::File;

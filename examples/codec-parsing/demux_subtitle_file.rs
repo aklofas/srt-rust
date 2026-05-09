@@ -3,11 +3,11 @@
 //! cascade and how to handle each subtitle codec.
 //!
 //! Usage:
-//!     cargo run --example demux_subtitle_file -- input.ts
+//!     cargo run -p tst-examples --example demux_subtitle_file -- input.ts
 //!
 //! Pair with `mux_with_webvtt_subtitles.rs`:
-//!     cargo run --example mux_with_webvtt_subtitles -- /tmp/test.ts
-//!     cargo run --example demux_subtitle_file        -- /tmp/test.ts
+//!     cargo run -p tst-examples --example mux_with_webvtt_subtitles -- /tmp/test.ts
+//!     cargo run -p tst-examples --example demux_subtitle_file        -- /tmp/test.ts
 //!
 //! What you'll see: one line per subtitle Sample event, tagged with
 //! the classified codec, PID, PTS, and byte count. WebVTT cues also

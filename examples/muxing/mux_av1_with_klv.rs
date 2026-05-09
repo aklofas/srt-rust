@@ -35,7 +35,7 @@
 //! `obu_has_size_field = 1` so that demultiplexers can walk the OBU
 //! stream without a separate framing layer.
 //!
-//!   cargo run --example mux_av1_with_klv -- /tmp/av1.ts
+//!   cargo run -p tst-examples --example mux_av1_with_klv -- /tmp/av1.ts
 
 use std::env;
 use std::fs::File;

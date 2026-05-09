@@ -4,7 +4,7 @@
 //! with the matching passphrase. Sends 16 messages, receives them all,
 //! verifies bytes match. Exits cleanly.
 //!
-//!   cargo run --example encrypted_send_recv
+//!   cargo run -p tst-examples --example encrypted_send_recv
 //!
 //! Demonstrates: SocketBuilder/ListenerBuilder + Passphrase + KeyLength +
 //! StreamId. The same shape applies across-network — only the bind/connect

@@ -4,10 +4,10 @@
 //! falls back through `decode_strict`, `decode`, and `decode_unchecked`,
 //! reporting which level succeeded and what failed at the previous level.
 //!
-//!   cargo run --example klv_decode_file -- path/to/record.klv
+//!   cargo run -p tst-examples --example klv_decode_file -- path/to/record.klv
 //!
 //! To produce `.klv` blobs from a captured `.ts`:
-//!   cargo run --example extract_klv -- path/to/capture.ts /tmp/klv_out
+//!   cargo run -p tst-examples --example extract_klv -- path/to/capture.ts /tmp/klv_out
 //! (the second arg is an output *prefix*, producing `/tmp/klv_out_0000.klv`...
 //! 0-indexed via `enumerate()`)
 

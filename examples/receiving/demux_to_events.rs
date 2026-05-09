@@ -7,7 +7,7 @@
 //! triaging a capture that won't play in some downstream tool this is
 //! usually the first thing to run.
 //!
-//! Usage: `cargo run --example demux_to_events -- <input.ts>`
+//! Usage: `cargo run -p tst-examples --example demux_to_events -- <input.ts>`
 //!
 //! What to look for in the output:
 //! - One `ProgramMap` line per PSI version (typically just one for a

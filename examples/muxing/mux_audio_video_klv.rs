@@ -33,7 +33,7 @@
 //! placeholders so the example compiles without codec dependencies. Real
 //! consumers swap in their own encoder output.
 //!
-//! Run:  `cargo run --example mux_audio_video_klv -- /tmp/output.ts`
+//! Run:  `cargo run -p tst-examples --example mux_audio_video_klv -- /tmp/output.ts`
 //! Then: `ffprobe /tmp/output.ts | grep codec_type` to confirm three streams.
 
 use std::fs::File;

@@ -2,7 +2,7 @@
 //! Used to regenerate the H.266 SPS test fixtures from real-encoder output.
 //!
 //! Usage:
-//!   `cargo run --example extract_h266_sps_to_rbsp -- input.266 output.bin`
+//!   `cargo run -p tst-examples --example extract_h266_sps_to_rbsp -- input.266 output.bin`
 //!
 //! # Why a dedicated extractor
 //!
@@ -56,7 +56,7 @@
 //!          -o /tmp/test_h266.266 -f 16
 //!
 //! # 3. Extract the SPS EBSP payload
-//! cargo run --example extract_h266_sps_to_rbsp -- \
+//! cargo run -p tst-examples --example extract_h266_sps_to_rbsp -- \
 //!       /tmp/test_h266.266 \
 //!       crates/tst-core/tests/fixtures/codec/h266/h266_320x240_main10_real_sps.bin
 //! ```

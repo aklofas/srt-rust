@@ -31,7 +31,7 @@
 //! ## How to run
 //!
 //! ```text
-//! cargo run --example repack_two_programs -- input1.ts input2.ts output.ts
+//! cargo run -p tst-examples --example repack_two_programs -- input1.ts input2.ts output.ts
 //! ```
 //!
 //! If you have a single test capture and want to see the multi-program

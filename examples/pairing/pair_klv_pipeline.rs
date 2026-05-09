@@ -15,7 +15,7 @@
 //! Usage:
 //!
 //! ```text
-//! cargo run --example pair_klv_pipeline -- path/to/capture.ts
+//! cargo run -p tst-examples --example pair_klv_pipeline -- path/to/capture.ts
 //! ```
 //!
 //! For a live SRT feed, the same pattern works — replace the file

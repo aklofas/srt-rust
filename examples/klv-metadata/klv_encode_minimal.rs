@@ -1,6 +1,6 @@
 //! Build a UasDatalinkLs from typed values, encode, round-trip.
 //!
-//!   cargo run --example klv_encode_minimal
+//!   cargo run -p tst-examples --example klv_encode_minimal
 //!
 //! Sets a representative subset of ST 0601 fields (timestamp, sensor
 //! position + attitude, frame center, platform attitude), encodes, decodes

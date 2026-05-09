@@ -24,7 +24,7 @@
 //! see the muxer reports two video streams + one data stream.
 //!
 //! Invocation:
-//!   cargo run --example mux_dual_camera
+//!   cargo run -p tst-examples --example mux_dual_camera
 
 use std::fs::File;
 use std::io::Write;

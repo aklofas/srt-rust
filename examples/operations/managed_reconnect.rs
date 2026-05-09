@@ -5,7 +5,7 @@
 //! wrapping SrtTransport; on each break, it queues outbound bytes in the
 //! gap buffer, reconnects with exponential backoff, and drains.
 //!
-//!   cargo run --example managed_reconnect
+//!   cargo run -p tst-examples --example managed_reconnect
 //!
 //! Watch stderr for reconnect events.
 

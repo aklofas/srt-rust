@@ -11,7 +11,7 @@
 //! On the receiver side, run something like:
 //!   srt-live-transmit srt://:9000 file:///tmp/out.ts
 //!
-//! Usage: `cargo run -p tst-srt --example ts_relay_from_file -- input.ts 127.0.0.1:9000`
+//! Usage: `cargo run -p tst-examples --example ts_relay_from_file -- input.ts 127.0.0.1:9000`
 
 use std::env;
 use std::fs::File;

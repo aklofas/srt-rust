@@ -4,10 +4,10 @@
 //! examples — run this in one terminal, run the sender in another:
 //!
 //!   # terminal A (this example)
-//!   cargo run --example srt_listener_to_file -- 127.0.0.1:9000 out.ts
+//!   cargo run -p tst-examples --example srt_listener_to_file -- 127.0.0.1:9000 out.ts
 //!
 //!   # terminal B (the sender)
-//!   cargo run --example pipeline_send_to_socket -- 127.0.0.1:9000
+//!   cargo run -p tst-examples --example pipeline_send_to_socket -- 127.0.0.1:9000
 //!
 //! Stops after the first sender disconnects.
 

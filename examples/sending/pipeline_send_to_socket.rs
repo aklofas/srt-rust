@@ -8,7 +8,7 @@
 //! On the receiver side, run something like:
 //!   srt-live-transmit srt://:9000 file:///tmp/out.ts
 //!
-//! Usage: `cargo run -p tst-srt --example pipeline_send_to_socket -- 127.0.0.1:9000`
+//! Usage: `cargo run -p tst-examples --example pipeline_send_to_socket -- 127.0.0.1:9000`
 
 use std::env;
 use std::time::Duration;

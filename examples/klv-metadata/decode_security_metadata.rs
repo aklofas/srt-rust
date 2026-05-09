@@ -18,7 +18,7 @@
 //! when content is classified.
 //!
 //! Usage:
-//!   cargo run --example decode_security_metadata -- path/to/file.ts
+//!   cargo run -p tst-examples --example decode_security_metadata -- path/to/file.ts
 
 use std::env;
 use std::fs;

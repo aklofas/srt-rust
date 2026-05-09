@@ -1,7 +1,7 @@
 //! Extract `.klv` payload blobs from an MPEG-TS file using the public
 //! `tst_core::mpegts::demux::Demuxer` API.
 //!
-//! Usage: `cargo run --example extract_klv -- <input.ts> [output_prefix]`
+//! Usage: `cargo run -p tst-examples --example extract_klv -- <input.ts> [output_prefix]`
 //!
 //! This is a teaching demo for the demuxer — every non-obvious choice has
 //! a `// why+how` comment, per the `ts-transformer/CLAUDE.md` examples

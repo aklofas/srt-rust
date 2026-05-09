@@ -76,6 +76,23 @@ impl<'a> AdtsFrame<'a> {
 /// boundaries where the borrowed source slice doesn't outlive the consumer.
 ///
 /// Round-trip with [`AdtsFrame::to_owned`] / [`Self::as_ref`].
+///
+/// # Example — collect owned frames from a borrowed iterator
+/// ```
+/// use tst_core::codec::aac::{frames, AdtsFrameOwned};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let payload: &[u8] = &[/* ADTS-framed AAC bytes */];
+/// # let payload: &[u8] = &[];
+/// let owned: Vec<AdtsFrameOwned> = frames(payload)
+///     .filter_map(Result::ok)
+///     .map(|f| f.to_owned())
+///     .collect();
+/// // `owned` outlives `payload` — safe to ship over FFI.
+/// let _ = owned;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct AdtsFrameOwned {

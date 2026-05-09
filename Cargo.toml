@@ -6,6 +6,7 @@ members = [
     "crates/tst-pipeline",
     "crates/tst-srt",
     "crates/tst-c",
+    "examples",
 ]
 
 [workspace.package]

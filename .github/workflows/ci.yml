@@ -77,6 +77,11 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
         run: cargo doc --workspace --no-deps --all-features
 
+      - name: cargo test --doc
+        env:
+          SRT_FORCE_VENDORED: "1"
+        run: cargo test --doc --workspace
+
       # `cargo test` only builds the rlib of crates with multiple crate-types.
       # srt-c's smoke test asserts on target/debug/libsrtc.so, so we need an
       # explicit `cargo build` to produce the cdylib + staticlib first.

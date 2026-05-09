@@ -73,9 +73,19 @@ pub mod pid {
 /// `i64` to match what encoders produce; values are masked at encoding time
 /// (PES PTS) and at PCR derivation (`Pcr27mhz::from_pts`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Pts90khz(pub i64);
+pub struct Pts90khz(i64);
 
 impl Pts90khz {
+    /// Construct from raw 90 kHz ticks.
+    pub const fn new(ticks: i64) -> Self {
+        Self(ticks)
+    }
+
+    /// Return the raw 90 kHz tick count.
+    pub const fn as_ticks(self) -> i64 {
+        self.0
+    }
+
     /// Convert milliseconds to 90 kHz ticks.
     pub fn from_millis(ms: i64) -> Self {
         Self(ms * 90)
@@ -92,9 +102,19 @@ impl Pts90khz {
 /// Stored as the full 27 MHz value; encoding splits it into the 33-bit base
 /// and 9-bit extension at write time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Pcr27mhz(pub u64);
+pub struct Pcr27mhz(u64);
 
 impl Pcr27mhz {
+    /// Construct from raw 27 MHz ticks.
+    pub const fn new(ticks: u64) -> Self {
+        Self(ticks)
+    }
+
+    /// Return the raw 27 MHz tick count.
+    pub const fn as_ticks(self) -> u64 {
+        self.0
+    }
+
     /// Build from milliseconds.
     pub fn from_millis(ms: u64) -> Self {
         Self(ms * 27_000)
@@ -190,33 +210,33 @@ mod tests {
 
     #[test]
     fn pts_from_millis() {
-        assert_eq!(Pts90khz::from_millis(0).0, 0);
-        assert_eq!(Pts90khz::from_millis(1000).0, 90_000);
+        assert_eq!(Pts90khz::from_millis(0).as_ticks(), 0);
+        assert_eq!(Pts90khz::from_millis(1000).as_ticks(), 90_000);
     }
 
     #[test]
     fn pts_masking() {
         // 33-bit max = 0x1_FFFF_FFFF
-        assert_eq!(Pts90khz(0x1_FFFF_FFFF).masked_33bit(), 0x1_FFFF_FFFF);
+        assert_eq!(Pts90khz::new(0x1_FFFF_FFFF).masked_33bit(), 0x1_FFFF_FFFF);
         // Higher bits get masked off.
-        assert_eq!(Pts90khz(0x3_FFFF_FFFF).masked_33bit(), 0x1_FFFF_FFFF);
+        assert_eq!(Pts90khz::new(0x3_FFFF_FFFF).masked_33bit(), 0x1_FFFF_FFFF);
     }
 
     #[test]
     fn pcr_from_millis() {
-        assert_eq!(Pcr27mhz::from_millis(0).0, 0);
-        assert_eq!(Pcr27mhz::from_millis(40).0, 40 * 27_000);
+        assert_eq!(Pcr27mhz::from_millis(0).as_ticks(), 0);
+        assert_eq!(Pcr27mhz::from_millis(40).as_ticks(), 40 * 27_000);
     }
 
     #[test]
     fn pcr_base_extension_split() {
         // 90 kHz tick * 300 = exactly one base unit, zero extension.
-        let pcr = Pcr27mhz::from_pts(Pts90khz(1));
+        let pcr = Pcr27mhz::from_pts(Pts90khz::new(1));
         assert_eq!(pcr.base(), 1);
         assert_eq!(pcr.extension(), 0);
 
         // Mid-base value: 1 base + 150 extension.
-        let pcr = Pcr27mhz(300 + 150);
+        let pcr = Pcr27mhz::new(300 + 150);
         assert_eq!(pcr.base(), 1);
         assert_eq!(pcr.extension(), 150);
     }
@@ -225,15 +245,15 @@ mod tests {
     fn pcr_base_masks_to_33bit() {
         // Exactly at the 33-bit boundary: bit 33 set, low bits clear.
         // Pre-mask base = 1u64 << 33; post-mask should be 0.
-        let pcr = Pcr27mhz((1u64 << 33) * 300);
+        let pcr = Pcr27mhz::new((1u64 << 33) * 300);
         assert_eq!(pcr.base(), 0);
 
         // Bit 33 set plus a low-bit value: the high bit gets stripped, low bits preserved.
-        let pcr = Pcr27mhz(((1u64 << 33) + 1) * 300);
+        let pcr = Pcr27mhz::new(((1u64 << 33) + 1) * 300);
         assert_eq!(pcr.base(), 1);
 
         // Far-above-mask value: only the low 33 bits should survive.
-        let pcr = Pcr27mhz(((1u64 << 50) | 0x1234_5678) * 300);
+        let pcr = Pcr27mhz::new(((1u64 << 50) | 0x1234_5678) * 300);
         assert_eq!(pcr.base(), 0x1234_5678);
     }
 
@@ -309,5 +329,14 @@ mod tests {
         let last = 50;
         let now = wrap - 100;
         assert_eq!(pcr_diff_27mhz(now, last), -150);
+    }
+
+    #[test]
+    fn pts_pcr_accessors_round_trip() {
+        let pts = Pts90khz::new(90_000);
+        assert_eq!(pts.as_ticks(), 90_000);
+
+        let pcr = Pcr27mhz::new(27_000_000);
+        assert_eq!(pcr.as_ticks(), 27_000_000);
     }
 }

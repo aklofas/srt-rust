@@ -239,7 +239,7 @@ fn write_dvb_teletext_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
     out.push(PES_HEADER_DATA_LENGTH);
     // PTS (5 bytes) per ISO/IEC 13818-1 §2.4.3.6.
     let mut pts_buf = [0u8; 5];
-    write_pts(&mut pts_buf, Pts90khz(pts_90khz), 0b0010);
+    write_pts(&mut pts_buf, Pts90khz::new(pts_90khz), 0b0010);
     out.extend_from_slice(&pts_buf);
     // Stuffing to reach the 45-byte header total. After PTS we are at
     // byte 14 (3 + 1 + 2 + 1 + 1 + 1 + 5).
@@ -298,7 +298,7 @@ pub(crate) fn wrap_dvb_sub_pes_data_field(segments: &[u8]) -> Vec<u8> {
 /// Internal helper that writes the actual PES packet (header + payload) for
 /// codecs that don't add a codec-specific envelope.
 fn write_subtitle_pes_passthrough(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
-    let pts = PesPtsField::PtsOnly(Pts90khz(pts_90khz));
+    let pts = PesPtsField::PtsOnly(Pts90khz::new(pts_90khz));
     let mut header = [0u8; MAX_PES_HEADER_SIZE];
     // Each subtitle PES advertises that it contains a complete logical unit
     // (DVB-sub composition page, CEA-708 service block, or WebVTT cue) via
@@ -438,7 +438,7 @@ mod tests {
         let n = write_pes_header(
             &mut buf,
             STREAM_ID_VIDEO,
-            PesPtsField::PtsOnly(Pts90khz(90_000)),
+            PesPtsField::PtsOnly(Pts90khz::new(90_000)),
             None,
             PesFlags::default(),
         );
@@ -484,7 +484,7 @@ mod tests {
         let n = write_pes_header(
             &mut buf,
             STREAM_ID_KLV,
-            PesPtsField::PtsOnly(Pts90khz(45_000)),
+            PesPtsField::PtsOnly(Pts90khz::new(45_000)),
             Some(100),
             PesFlags::default(),
         );
@@ -500,7 +500,7 @@ mod tests {
     #[test]
     fn pts_marker_bits_set() {
         let mut buf = [0u8; 5];
-        write_pts(&mut buf, Pts90khz(0), 0b0010);
+        write_pts(&mut buf, Pts90khz::new(0), 0b0010);
         // Marker bits (low bit of bytes 0/2/4) must be 1.
         assert_eq!(buf[0] & 0x01, 0x01);
         assert_eq!(buf[2] & 0x01, 0x01);
@@ -513,7 +513,7 @@ mod tests {
     fn pts_round_trip_max_value() {
         let mut buf = [0u8; 5];
         let max_33bit = (1u64 << 33) - 1;
-        write_pts(&mut buf, Pts90khz(max_33bit as i64), 0b0010);
+        write_pts(&mut buf, Pts90khz::new(max_33bit as i64), 0b0010);
         assert_eq!(read_pts(&buf), max_33bit);
     }
 
@@ -522,7 +522,7 @@ mod tests {
         let values: [u64; 6] = [0, 1, 90_000, 1 << 16, 1 << 30, (1u64 << 33) - 1];
         let mut buf = [0u8; 5];
         for v in values {
-            write_pts(&mut buf, Pts90khz(v as i64), 0b0010);
+            write_pts(&mut buf, Pts90khz::new(v as i64), 0b0010);
             assert_eq!(read_pts(&buf), v, "value {}", v);
         }
     }
@@ -537,7 +537,7 @@ mod tests {
 
         let mut out = Vec::new();
         let frames = vec![0xAAu8; 10];
-        let pts = PesPtsField::PtsOnly(Pts90khz(45_000));
+        let pts = PesPtsField::PtsOnly(Pts90khz::new(45_000));
         write_audio_pes(&mut out, AudioCodec::Ac3, 0, pts, &frames);
 
         assert_eq!(&out[0..3], &[0x00, 0x00, 0x01], "PES start code");
@@ -559,7 +559,7 @@ mod tests {
 
         let mut out = Vec::new();
         let frames = vec![0xAAu8; 10];
-        let pts = PesPtsField::PtsOnly(Pts90khz(0));
+        let pts = PesPtsField::PtsOnly(Pts90khz::new(0));
         write_audio_pes(&mut out, AudioCodec::Mp2, 0, pts, &frames);
 
         // MP2 / AAC / LATM should still use 0xC0..0xCF (= AUDIO_BASE + within_idx).
@@ -637,7 +637,7 @@ mod tests {
         let n = write_pes_header(
             &mut buf,
             STREAM_ID_VIDEO,
-            PesPtsField::PtsOnly(Pts90khz(0)),
+            PesPtsField::PtsOnly(Pts90khz::new(0)),
             None,
             flags,
         );

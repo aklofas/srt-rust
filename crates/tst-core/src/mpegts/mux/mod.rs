@@ -1887,7 +1887,7 @@ impl Muxer {
             });
         }
 
-        let pts = PesPtsField::PtsOnly(Pts90khz(pts_90khz));
+        let pts = PesPtsField::PtsOnly(Pts90khz::new(pts_90khz));
         let mut pes_buf = Vec::with_capacity(MAX_PES_HEADER_SIZE + frames.len());
         write_audio_pes(&mut pes_buf, audio_codec, within_idx as u8, pts, frames);
 
@@ -1912,9 +1912,9 @@ impl Muxer {
         while cursor < pes_buf.len() {
             let mut adaptation = AdaptationField::default();
             if first && self.pcr_pids[prog_idx] == audio_pid && self.pcr_due(prog_idx, pts_90khz) {
-                let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
+                let pcr = Pcr27mhz::from_pts(Pts90khz::new(pts_90khz));
                 adaptation.pcr = Some(pcr);
-                self.pcr_last[prog_idx] = Some(pcr.0);
+                self.pcr_last[prog_idx] = Some(pcr.as_ticks());
             }
             let mut pkt = [0u8; 188];
             let result = write_packet(
@@ -2330,7 +2330,7 @@ impl Muxer {
         let header_len = write_pes_header(
             &mut header,
             STREAM_ID_VIDEO,
-            PesPtsField::PtsOnly(Pts90khz(pts_90khz)),
+            PesPtsField::PtsOnly(Pts90khz::new(pts_90khz)),
             None,
             pes_flags,
         );
@@ -2371,9 +2371,9 @@ impl Muxer {
                     // false — matches TSDuck / ffmpeg behavior. Random-access
                     // point + PCR coincide; downstream seekers benefit.
                     if self.pcr_due(prog_idx, pts_90khz) || key_frame {
-                        let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
+                        let pcr = Pcr27mhz::from_pts(Pts90khz::new(pts_90khz));
                         adaptation.pcr = Some(pcr);
-                        self.pcr_last[prog_idx] = Some(pcr.0);
+                        self.pcr_last[prog_idx] = Some(pcr.as_ticks());
                     }
                 }
             }
@@ -2472,7 +2472,7 @@ impl Muxer {
         let effective_klv: &[u8] = wrapped_storage.as_deref().unwrap_or(klv);
 
         let pts_field = if klv_carries_pts {
-            PesPtsField::PtsOnly(Pts90khz(pts_90khz))
+            PesPtsField::PtsOnly(Pts90khz::new(pts_90khz))
         } else {
             PesPtsField::None
         };
@@ -2539,9 +2539,9 @@ impl Muxer {
         while cursor < pes_buf.len() {
             let mut adaptation = AdaptationField::default();
             if first && self.pcr_pids[prog_idx] == klv_pid && self.pcr_due(prog_idx, pts_90khz) {
-                let pcr = Pcr27mhz::from_pts(Pts90khz(pts_90khz));
+                let pcr = Pcr27mhz::from_pts(Pts90khz::new(pts_90khz));
                 adaptation.pcr = Some(pcr);
-                self.pcr_last[prog_idx] = Some(pcr.0);
+                self.pcr_last[prog_idx] = Some(pcr.as_ticks());
             }
             let mut pkt = [0u8; 188];
             let result = write_packet(
@@ -2611,7 +2611,7 @@ impl Muxer {
         match self.psi_last[prog_idx] {
             None => true,
             Some(last_masked) => {
-                let now_masked = Pts90khz(pts_90khz).masked_33bit();
+                let now_masked = Pts90khz::new(pts_90khz).masked_33bit();
                 let delta = crate::mpegts::common::pts_diff_33bit(now_masked, last_masked);
                 delta >= self.psi_interval_90khz
             }
@@ -2625,7 +2625,7 @@ impl Muxer {
                 // PCR is at 27 MHz; the 33-bit base wraps at 2^33 base ticks.
                 // Convert both to 33-bit base and use the same modular helper,
                 // then compare in 90 kHz units.
-                let now_base_masked = Pts90khz(pts_90khz).masked_33bit();
+                let now_base_masked = Pts90khz::new(pts_90khz).masked_33bit();
                 let last_base_masked = (last / 300) & ((1u64 << 33) - 1);
                 let delta_90khz =
                     crate::mpegts::common::pts_diff_33bit(now_base_masked, last_base_masked);
@@ -2723,7 +2723,7 @@ impl Muxer {
             self.queue.push_back(pmt);
         }
 
-        self.psi_last[prog_idx] = Some(Pts90khz(pts_90khz).masked_33bit());
+        self.psi_last[prog_idx] = Some(Pts90khz::new(pts_90khz).masked_33bit());
     }
 }
 

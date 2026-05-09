@@ -306,7 +306,7 @@ mod tests {
         let mut cc = ContinuityCounters::new();
         let payload = vec![0u8; 200];
         let mut buf = [0u8; 188];
-        let pcr = Pcr27mhz(0); // base=0, ext=0
+        let pcr = Pcr27mhz::new(0); // base=0, ext=0
         let af = AdaptationField {
             random_access: false,
             pcr: Some(pcr),
@@ -334,7 +334,7 @@ mod tests {
         // verify match.
         let base: u64 = 0x1_2345_6789;
         let ext: u32 = 250;
-        let pcr = Pcr27mhz(base * 300 + ext as u64);
+        let pcr = Pcr27mhz::new(base * 300 + ext as u64);
         let mut buf = [0u8; 6];
         write_pcr(&mut buf, pcr);
         let dec_base = ((buf[0] as u64) << 25)

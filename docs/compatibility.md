@@ -121,12 +121,12 @@ aren't yet wrapped are reachable via `srt-sys`.
 | --- | --- | --- |
 | MPEG-TS muxer | ✅ Full | `mpegts::mux::Muxer` — multi-program (≤16 programs), multi-stream (≤16 video + ≤16 audio + ≤16 KLV + ≤16 subtitle PIDs per program), H.264/H.265/H.266/AV1 video + MP2/AAC/AC-3 audio + DVB/teletext/CEA-708/WebVTT subtitles + ST 0601 KLV (sync + async per ST 1402), VBR. |
 | MPEG-TS demuxer | ✅ Full | `mpegts::demux::Demuxer` — multi-program, lenient by default, four-tier `StrictMode` ladder. See `mpegts::demux` block below. |
-| Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ✅ Full | Default in `mpegts::mux::Config` (`klv_stream_type = PrivateData`, `klv_carries_pts = false`). |
-| ST 1402.3 Synchronous metadata stream | ✅ Full | `KlvStreamType::SynchronousMetadata` + `klv_carries_pts = true` in `Config`. |
+| Single PES/packet KLV embedding (ST 1402.2 Asynchronous) | ✅ Full | Default in `mpegts::mux::MuxerConfig` (`klv_stream_type = PrivateData`, `klv_carries_pts = false`). |
+| ST 1402.3 Synchronous metadata stream | ✅ Full | `KlvStreamType::SynchronousMetadata` + `klv_carries_pts = true` in `MuxerConfig`. |
 | H.222.0 § 2.12.4.2 sync metadata AU cell wrapping | ✅ Full | `mpegts::au_cell::write_metadata_au_cell` / `read_metadata_au_cell`. Auto-wrapped inside `Muxer::push_klv` for `KlvStreamType::SynchronousMetadata` streams; PTS in PES header per § 2.12.4.1. |
 | Variable-length PES splitting | ⏳ Planned | Required for ≥ 65 000-byte KLV records (rare in practice). |
 | KLVA registration descriptor (`stream_type 0x06` + `0x05 "KLVA"`) | ✅ Full | Detected/recognised on decode side; emitted by muxer on the KLV PID. |
-| Audio carriage (mux side) | ✅ Full | MP2 / AAC ADTS / AAC LATM / AC-3; `Muxer::push_audio` / `push_audio_to`; PTS-only PES headers. AC-3 streams auto-emit `registration_descriptor` `format_identifier="AC-3"` per ATSC A/53 Part 3 §5.1 (caller-Registration suppression). Optional `iso_639_language_descriptor` auto-emit via `ConfigBuilder::add_audio_with_language(pid, codec, lang)` per ISO/IEC 13818-1 §2.6.18 (caller-tag-0x0A suppression). |
+| Audio carriage (mux side) | ✅ Full | MP2 / AAC ADTS / AAC LATM / AC-3; `Muxer::push_audio` / `push_audio_to`; PTS-only PES headers. AC-3 streams auto-emit `registration_descriptor` `format_identifier="AC-3"` per ATSC A/53 Part 3 §5.1 (caller-Registration suppression). Optional `iso_639_language_descriptor` auto-emit via `MuxerConfigBuilder::add_audio_with_language(pid, codec, lang)` per ISO/IEC 13818-1 §2.6.18 (caller-tag-0x0A suppression). |
 | Audio carriage (demux side) | ✅ Full | Typed `AudioCodec`; raw PES bytes in `SamplePayload::Audio { frames }`. |
 
 ---
@@ -160,9 +160,9 @@ Subtitle PIDs cannot serve as the PCR PID (too sparse for PCR pacing).
 | DVB-teletext stuffed PES header (ETSI EN 300 472 §4.2) | ✅ Full | Auto-emitted inside `Muxer::push_subtitle_to` for `DvbTeletext` (45-byte header, `PES_header_data_length=0x24`); PES tail padded with `0xFF` stuffing to `(N × 184) − 6` `PES_packet_length`. |
 | Multi-language single-PID `subtitling_descriptor` (ETSI EN 300 468 §6.2.41) | ✅ Full | `mpegts::descriptors::subtitling_descriptor_multi`. |
 | Multi-language single-PID `teletext_descriptor` (ETSI EN 300 468 §6.2.43) | ✅ Full | `mpegts::descriptors::teletext_descriptor_multi`. |
-| Subtitle auto-emit suppression on caller-supplied descriptor | ✅ Full | When `ConfigBuilder::stream_descriptors_for_subtitle` supplies a recognized codec marker (`subtitling_descriptor` 0x59 / `teletext_descriptor` 0x56 / VBI teletext 0x46 / `registration_descriptor` with `VTTC` or `GA94` format_identifier), the muxer suppresses its codec-driven auto-emit (mirrors KLVA / AV01 suppression). |
+| Subtitle auto-emit suppression on caller-supplied descriptor | ✅ Full | When `MuxerConfigBuilder::stream_descriptors_for_subtitle` supplies a recognized codec marker (`subtitling_descriptor` 0x59 / `teletext_descriptor` 0x56 / VBI teletext 0x46 / `registration_descriptor` with `VTTC` or `GA94` format_identifier), the muxer suppresses its codec-driven auto-emit (mirrors KLVA / AV01 suppression). |
 | ISO 639 language code casing (EN 300 468) | ✅ Full | `validate_language_code` accepts both lowercase and uppercase 3-letter ASCII alphabetic codes. |
-| Subtitle-only program rejection | ✅ Full | `Config::validate` rejects programs with subtitle streams but no video/audio/KLV (`MuxError::SubtitleOnlyProgram`); subtitle PIDs are too sparse to anchor PCR. |
+| Subtitle-only program rejection | ✅ Full | `MuxerConfig::validate` rejects programs with subtitle streams but no video/audio/KLV (`MuxError::SubtitleOnlyProgram`); subtitle PIDs are too sparse to anchor PCR. |
 | Multi-descriptor `stream_type 0x06` ambiguity (demux) | ✅ Full | `NonConformantIssue::SubtitleDescriptorAmbiguous` surfaced when ≥2 distinguishing descriptors co-exist (subtitling / teletext / `VTTC` / `GA94`); cascade picks first match. |
 
 ---
@@ -338,7 +338,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `Sender<T>` | ✅ Full | Pre-muxed TS bytes → SRT with sync framing/recovery. 3-byte sync verify, 7-packet bundling, RECOVER + STRICT modes. |
 | `RawSender<T>` | ✅ Full | Byte-blind one-shot sender. One `send` call = one SRT message; size-cap validation at construction. |
 | `ManagedTransport<T>` | ✅ Full | Reconnect + gap-buffer decorator over any `Transport`. Synchronous reconnect on caller's thread; drop-oldest-message overflow policy; single-thread receiver. |
-| Multi-stream / multi-program `Config` | ✅ Full | ≤16 programs, ≤16 video + ≤16 KLV streams per program; nested `add_program(N, pmt_pid).add_video(...).end_program()` builder; opaque handles from `video_handles_for_program(N)` / `klv_handles_for_program(N)`; `push_video_to(handle, …)` / `push_klv_to(handle, …)` on `Muxer` and `MuxSender`. Single-program single-stream callers keep the old flat API unchanged. |
+| Multi-stream / multi-program `MuxerConfig` | ✅ Full | ≤16 programs, ≤16 video + ≤16 KLV streams per program; nested `add_program(N, pmt_pid).add_video(...).end_program()` builder; opaque handles from `video_handles_for_program(N)` / `klv_handles_for_program(N)`; `push_video_to(handle, …)` / `push_klv_to(handle, …)` on `Muxer` and `MuxSender`. Single-program single-stream callers keep the old flat API unchanged. |
 
 ### Receive side
 

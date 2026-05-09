@@ -1,6 +1,6 @@
 //! H.265 + sync-KLV flavor of `mux_to_file`.
 //!
-//! Diffs against `mux_to_file.rs` to show which Config knobs flip when
+//! Diffs against `mux_to_file.rs` to show which MuxerConfig knobs flip when
 //! switching codec and KLV mode:
 //!
 //!   - VideoCodec::H264                     -> VideoCodec::H265
@@ -12,7 +12,7 @@
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
 
 // PIDs are 13-bit identifiers in the TS header. The reserved well-known
 // values are 0x0000 (PAT) and 0x1FFF (null padding); elementary streams
@@ -21,7 +21,7 @@ use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
 // receiver discovers them from the PMT.
 //
 // The specific values 0x1011 (video) and 0x1031 (KLV) are the same as
-// `Config::default()`'s defaults. We set them explicitly here so the
+// `MuxerConfig::default()`'s defaults. We set them explicitly here so the
 // diff against `mux_to_file.rs` highlights only the codec/KLV-mode
 // knobs and not unrelated PID rearrangement.
 const VIDEO_PID: u16 = 0x1011;
@@ -31,12 +31,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_path = env::args().nth(1).unwrap_or_else(|| "h265.ts".into());
 
     // -----------------------------------------------------------------
-    // Canonical "build a Config from scratch" pattern using the builder.
+    // Canonical "build a MuxerConfig from scratch" pattern using the builder.
     // `add_program(1, 0x1000)` opens the single-program block; all
     // stream specs nest inside it and `end_program()` closes the block.
     // Calling `.build()` applies defaults for PCR/PSI/buffer intervals.
     // -----------------------------------------------------------------
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(VIDEO_PID, VideoCodec::H265)
         // SynchronousMetadata (PMT stream_type 0x15) is strict
@@ -53,12 +53,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // the PTS is what lets a receiver align each metadata
         // record with the corresponding video frame. The
         // combo `SynchronousMetadata + carries_pts: false` is
-        // rejected by `Config::validate`.
+        // rejected by `MuxerConfig::validate`.
         .add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true)
         .end_program()
         .build()?;
 
-    // `Muxer::new` runs `Config::validate` and returns
+    // `Muxer::new` runs `MuxerConfig::validate` and returns
     // `MuxError::InvalidConfig` if anything is wrong (duplicate PIDs,
     // PSI interval below 10 ms, `SynchronousMetadata` with
     // `carries_pts: false`, etc.). The `?` propagates the error to

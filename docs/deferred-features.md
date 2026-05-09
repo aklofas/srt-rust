@@ -475,7 +475,7 @@ the trigger that would unblock it.
 ## Typed audio descriptor helpers in `mpegts::descriptors`
 
 - **Status:** Deferred. Per-stream PMT descriptors are caller-supplied via
-  `ConfigBuilder::stream_descriptors_for_audio` (parallel to `_for_video` /
+  `MuxerConfigBuilder::stream_descriptors_for_audio` (parallel to `_for_video` /
   `_for_klv` from plan #17). Two auto-emit helpers ship: `add_audio_with_language(pid, codec, lang)` emits an `iso_639_language_descriptor`
   (tag 0x0A); `AudioCodec::Ac3` streams auto-emit a `registration_descriptor`
   with `format_identifier="AC-3"`. Codec-specific helpers (`ac3_audio()` —
@@ -780,7 +780,7 @@ the trigger that would unblock it.
 ## Per-stream PMT descriptor surface at the C ABI
 
 - **Status:** The Rust core ships per-stream PMT descriptors via the
-  `mpegts::descriptors` module and `ConfigBuilder::stream_descriptors_for_video` /
+  `mpegts::descriptors` module and `MuxerConfigBuilder::stream_descriptors_for_video` /
   `stream_descriptors_for_klv` / `stream_descriptors_for_stream` methods.
   The C ABI exposure is deferred.
 - **Why deferred:** The descriptor-construction surface and the future
@@ -975,7 +975,7 @@ the trigger that would unblock it.
 - **Why deferred:** No consumer in the current target deployment
   uses DVB-shaped AC-3. Adding the path means either a new
   `AudioCodec::Ac3Dvb` enum variant (parallel to existing `Ac3`)
-  or a `Config::ac3_mode: Ac3Mode { Atsc, Dvb }` switch — both
+  or a `MuxerConfig::ac3_mode: Ac3Mode { Atsc, Dvb }` switch — both
   expand the public API without a use case. ATSC-only mode covers
   every known consumer.
 - **Workaround:** A receiver consuming DVB-shaped AC-3 today
@@ -1004,7 +1004,7 @@ the trigger that would unblock it.
   AUD-required hardware decoder (some HW decoders, libde265 in
   certain configurations, broadcast-grade STBs) when streams
   arrive without AUD. Likely landing shape:
-  `Config::auto_aud: bool` gate on the muxer, defaulting off,
+  `MuxerConfig::auto_aud: bool` gate on the muxer, defaulting off,
   with per-codec NAL emission.
 
 ## SRT URL `mode=listener` / `mode=rendezvous` dispatch

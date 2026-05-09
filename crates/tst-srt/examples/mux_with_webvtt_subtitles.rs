@@ -20,7 +20,7 @@ use std::fs::File;
 use std::io::Write;
 use std::time::Duration;
 
-use tst_core::mpegts::mux::{Config, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer, SubtitleCodec, VideoCodec};
 
 // PIDs are 13-bit identifiers in the TS header. The reserved
 // well-known values are 0x0000 (PAT) and 0x1FFF (null padding);
@@ -68,14 +68,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // with no struct fields — unlike `DvbSubtitling` /
     // `DvbTeletext`, which carry language + page-id metadata that
     // surfaces in the PMT's subtitling/teletext descriptor.
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(/*program_number=*/ 1, /*pcr_pid=*/ PCR_PID)
         .add_video(VIDEO_PID, VideoCodec::H264)
         .add_subtitle(SUBTITLE_PID, SubtitleCodec::WebVttInTs)
         .end_program()
         .build()?;
 
-    // `Muxer::new` runs `Config::validate` and returns
+    // `Muxer::new` runs `MuxerConfig::validate` and returns
     // `MuxError::InvalidConfig` if anything is wrong (duplicate PIDs,
     // PSI interval below 10 ms, etc.). The `?` propagates that to
     // `main`'s `Box<dyn Error>` return.

@@ -19,12 +19,12 @@ a Rust-native TS demuxer covering the same wire shape. Consumers can
 also feed extracted bytes to FFmpeg / Bento4 / JavaCV / platform
 demuxers if they prefer.
 
-## `Config` shape
+## `MuxerConfig` shape
 
-`Config` is multi-stream-shaped from day one:
+`MuxerConfig` is multi-stream-shaped from day one:
 
 ```rust
-pub struct Config {
+pub struct MuxerConfig {
     pub streams: Vec<StreamSpec>,
     pub pcr_pid: Option<u16>,
     pub pcr_interval_ms: u32,
@@ -33,7 +33,7 @@ pub struct Config {
 }
 ```
 
-Today `Config::validate` caps the configuration at "at most one Video
+Today `MuxerConfig::validate` caps the configuration at "at most one Video
 stream and at most one Klv stream; at least one of either" — i.e.
 single-program TS with up to one video PID and one KLV PID. The
 `Vec<StreamSpec>` shape is already what a multi-stream lift needs, so
@@ -41,20 +41,20 @@ the cap can lift additively without breaking ABI for existing
 callers. See "Multi-stream `mpegts::mux`" in
 [deferred-features.md](deferred-features.md).
 
-`Config::default()` returns the canonical single-program shape:
+`MuxerConfig::default()` returns the canonical single-program shape:
 H.264 video at PID `0x1011`, KLV `PrivateData` (async, no PTS) at PID
 `0x1031`, PCR pinned to the video PID, `pcr_interval_ms: 40`,
 `psi_interval_ms: 100`, `buffer_packets: 10_000`. Two equivalent ways
 to construct from defaults plus selected overrides:
 
 ```rust,no_run
-use tst_core::mpegts::mux::{Config, KlvStreamType, StreamSpec, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, StreamSpec, VideoCodec};
 
 // Pure default — H.264 + async KLV.
-let cfg_default = Config::default();
+let cfg_default = MuxerConfig::default();
 
 // Field-update form: change just the streams, keep cadence defaults.
-let cfg_h265_sync = Config {
+let cfg_h265_sync = MuxerConfig {
     streams: vec![
         StreamSpec::Video {
             pid: 0x1011,
@@ -66,14 +66,14 @@ let cfg_h265_sync = Config {
             carries_pts: true,
         },
     ],
-    ..Config::default()
+    ..MuxerConfig::default()
 };
 ```
 
-## `ConfigBuilder`
+## `MuxerConfigBuilder`
 
 When constructing from scratch rather than tweaking the default,
-`ConfigBuilder` lets you chain stream additions and cadence overrides.
+`MuxerConfigBuilder` lets you chain stream additions and cadence overrides.
 Methods (all in `tst_core::mpegts::mux`):
 
 - `add_video(pid: u16, codec: VideoCodec) -> Self`
@@ -84,13 +84,13 @@ Methods (all in `tst_core::mpegts::mux`):
 - `pcr_interval_ms(ms: u32) -> Self`
 - `psi_interval_ms(ms: u32) -> Self`
 - `buffer_packets(n: usize) -> Self`
-- `build() -> Result<Config, MuxError>` — runs `Config::validate`.
+- `build() -> Result<Config, MuxError>` — runs `MuxerConfig::validate`.
 
 ```rust,no_run
-use tst_core::mpegts::mux::{Config, ConfigBuilder, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, MuxerConfigBuilder, KlvStreamType, VideoCodec};
 
-fn build() -> Result<Config, tst_core::error::MuxError> {
-    Config::builder()
+fn build() -> Result<MuxerConfig, tst_core::error::MuxError> {
+    MuxerConfig::builder()
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(0x1031, KlvStreamType::PrivateData, false)
         .pcr_interval_ms(40)
@@ -100,7 +100,7 @@ fn build() -> Result<Config, tst_core::error::MuxError> {
 }
 ```
 
-`Config::builder()` is a convenience for `ConfigBuilder::default()`.
+`MuxerConfig::builder()` is a convenience for `MuxerConfigBuilder::default()`.
 
 ## Codec selection
 
@@ -116,7 +116,7 @@ the muxer and create a new one if you need to switch codecs in a single
 output file.
 
 The diff between [../crates/tst-srt/examples/mux_to_file.rs](../crates/tst-srt/examples/mux_to_file.rs)
-(H.264 + async KLV via `Config::default()`) and
+(H.264 + async KLV via `MuxerConfig::default()`) and
 [../crates/tst-srt/examples/mux_h265_with_klv.rs](../crates/tst-srt/examples/mux_h265_with_klv.rs)
 (H.265 + sync KLV via the field-update form) is exactly the codec and
 KLV-mode knobs:
@@ -141,7 +141,7 @@ four combinations, three of them valid:
 | `PrivateData` | `false` | `0x06` | Async KLV — no PTS, broadly recognized |
 | `PrivateData` | `true`  | `0x06` | Async-shaped but with PTS (uncommon, advanced) |
 | `SynchronousMetadata` | `true`  | `0x15` | Sync KLV per ST 1402 — PTS required |
-| `SynchronousMetadata` | `false` | (invalid) | `Config::validate` rejects |
+| `SynchronousMetadata` | `false` | (invalid) | `MuxerConfig::validate` rejects |
 
 `PrivateData` + `false` is the default and matches what most
 receivers (FFmpeg, mediamtx, hls.js v1.7+) recognize out of the box —
@@ -180,9 +180,9 @@ through unchanged.
 ## PCR cadence
 
 `pcr_interval_ms` defaults to `40` (validated `1..=100`). PCR is
-pinned to the first video PID by default; set `Config::pcr_pid:
+pinned to the first video PID by default; set `MuxerConfig::pcr_pid:
 Option<u16>` to override (the chosen PID must equal a configured
-stream's PID — `Config::validate` enforces this). A 40 ms interval
+stream's PID — `MuxerConfig::validate` enforces this). A 40 ms interval
 gives 25 PCR samples per second, well inside the typical receiver
 expectation of "one PCR every 100 ms or better".
 
@@ -272,12 +272,12 @@ Required:
 `MuxError` variants (full list in
 [../crates/tst-core/src/error.rs](../crates/tst-core/src/error.rs)):
 
-- `InvalidConfig(&'static str)` — `Config::validate` rejected the
+- `InvalidConfig(&'static str)` — `MuxerConfig::validate` rejected the
   configuration; the message names the failed rule.
 - `InvalidNal` — `push_video` was handed a buffer without an
   Annex-B start code.
 - `BufferFull { capacity_packets: usize }` — the resulting TS
-  packets would exceed `Config::buffer_packets`. Drain via `pull`
+  packets would exceed `MuxerConfig::buffer_packets`. Drain via `pull`
   and retry. State is unchanged when this variant fires.
 - `KlvTooLarge { size: usize, max: usize }` — `push_klv` blob
   exceeds the `PES_packet_length` ceiling.
@@ -298,10 +298,10 @@ The standard pattern is push-then-drain after every push so the
 muxer's internal queue stays bounded:
 
 ```rust,no_run
-use tst_core::mpegts::mux::{Config, Muxer};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer};
 
 fn drain_pattern() -> Result<(), Box<dyn std::error::Error>> {
-    let mut mux = Muxer::new(Config::default())?;
+    let mut mux = Muxer::new(MuxerConfig::default())?;
     let mut buf = [0u8; 1316]; // 7 TS packets — typical SRT payload size
     let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
     mux.push_video(&nal, 0, true)?;
@@ -332,15 +332,15 @@ a single program (one PMT, one PAT). Use this shape when you need:
 - **Combinations of the above.** N video + M KLV in any ratio (N+M ≥ 1,
   N ≤ 16, M ≤ 16).
 
-### Building a multi-stream Config
+### Building a multi-stream MuxerConfig
 
-Build with the existing `ConfigBuilder::add_video` / `add_klv` calls —
+Build with the existing `MuxerConfigBuilder::add_video` / `add_klv` calls —
 just call them more than once:
 
 ```rust
-use tst_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, VideoCodec};
 
-let cfg = Config::builder()
+let cfg = MuxerConfig::builder()
     .add_video(0x1011, VideoCodec::H264) // EO
     .add_video(0x1021, VideoCodec::H264) // IR
     .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -355,7 +355,7 @@ Validation:
 - Duplicate PIDs across any pair of streams → `MuxError::InvalidConfig`.
 - `pcr_pid` (if set) must equal a configured stream's PID, or
   validation rejects.
-- A `Config` with at least one video OR at least one KLV stream is
+- A `MuxerConfig` with at least one video OR at least one KLV stream is
   valid. Video-only and KLV-only outputs are both supported.
 
 ### Stream handles
@@ -404,7 +404,7 @@ the wrong stream when N > 1.
 
 ### PCR rule
 
-`Config::pcr_pid` controls which PID carries the PCR:
+`MuxerConfig::pcr_pid` controls which PID carries the PCR:
 
 - If unset, the muxer pins PCR to the first video stream's PID
   (or the first KLV stream's PID if the muxer is KLV-only).
@@ -491,15 +491,15 @@ descriptor types real-world senders actually emit:
 
 Each helper returns a `Vec<u8>` containing the complete descriptor
 (tag + length byte + body). Hand the result list to one of the
-`ConfigBuilder` methods.
+`MuxerConfigBuilder` methods.
 
 ### Setting descriptors on the builder
 
 ```rust
 use tst_core::mpegts::descriptors as desc;
-use tst_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, VideoCodec};
 
-let cfg = Config::builder()
+let cfg = MuxerConfig::builder()
     .add_video(0x100, VideoCodec::H264)
     .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
     .add_video(0x101, VideoCodec::H264)
@@ -540,7 +540,7 @@ KLV. The PMT bytes still go out as the caller specified.
 The muxer emits single-section PMT — the entire PMT must fit in one
 188-byte TS packet. After the 17-byte PMT header overhead, the
 per-stream ES loop has 166 bytes total to spend (across all streams)
-on `5 + descriptor-loop-bytes` per stream. `Config::validate`
+on `5 + descriptor-loop-bytes` per stream. `MuxerConfig::validate`
 rejects oversized configurations with `MuxError::PmtTooLarge`.
 
 For typical configurations (3–4 streams with ~30 bytes of
@@ -557,7 +557,7 @@ ship multiple logically separate "channels" through one transport (e.g. two
 aircraft each emitting an EO+IR+KLV bundle, aggregated through one SRT socket).
 
 ```rust
-let config = Config::builder()
+let config = MuxerConfig::builder()
     .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
         .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -616,7 +616,7 @@ For a runnable end-to-end repacking example, see `examples/repack_two_programs.r
 Add an audio stream to a program via the nested builder chain:
 
 ```rust
-let cfg = ConfigBuilder::new()
+let cfg = MuxerConfigBuilder::new()
     .add_program(1, 0x1000)
     .add_video(0x100, VideoCodec::H264)
     .add_audio(0x300, AudioCodec::Aac)   // ← NEW
@@ -656,7 +656,7 @@ Set the language at builder time and the muxer emits an
 with `audio_type = 0x00` (undefined / clean main):
 
 ```rust
-let cfg = ConfigBuilder::new()
+let cfg = MuxerConfigBuilder::new()
     .add_program(1, 0x1000)
         .add_video(0x101, VideoCodec::H264)
         .add_audio_with_language(0x300, AudioCodec::Aac, *b"eng")
@@ -677,7 +677,7 @@ For multi-language tracks or richer `audio_type` values
 ```rust
 use tst_core::mpegts::descriptors::iso_639_language;
 
-let cfg = ConfigBuilder::new()
+let cfg = MuxerConfigBuilder::new()
     .add_program(1, 0x1000)
         .add_video(0x101, VideoCodec::H264)
         .add_audio(0x300, AudioCodec::Aac)
@@ -727,14 +727,14 @@ private data) and disambiguate via auto-emitted PMT descriptors:
 The descriptor is **structurally required** for receiver
 classification — without it, a `stream_type 0x06` PID is
 indistinguishable from KLV-PrivateData. Caller-supplied descriptors
-via `ConfigBuilder::stream_descriptors_for_subtitle` append after
+via `MuxerConfigBuilder::stream_descriptors_for_subtitle` append after
 the auto-emitted one (do NOT suppress; contrast with KLV's
 `KLVA`-suppression rule).
 
 ```rust
-use tst_core::mpegts::mux::{Config, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer, SubtitleCodec, VideoCodec};
 
-let cfg = Config::builder()
+let cfg = MuxerConfig::builder()
     .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -792,7 +792,7 @@ shape used for video / KLV / audio.
 Three runnable examples cover the muxer's surface:
 
 - [../crates/tst-srt/examples/mux_to_file.rs](../crates/tst-srt/examples/mux_to_file.rs)
-  — H.264 + async KLV via `Config::default()`, writes a `.ts` file.
+  — H.264 + async KLV via `MuxerConfig::default()`, writes a `.ts` file.
 - [../crates/tst-srt/examples/mux_h265_with_klv.rs](../crates/tst-srt/examples/mux_h265_with_klv.rs)
   — H.265 + sync KLV via the field-update form, illustrating the
   diff against the H.264 default.

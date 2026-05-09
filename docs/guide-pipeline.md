@@ -67,7 +67,7 @@ the rationale against fusing them.
 
 ```rust,ignore
 impl<T: Transport> MuxSender<T> {
-    pub fn new(config: Config, transport: T) -> Result<Self, MuxError>;
+    pub fn new(config: MuxerConfig, transport: T) -> Result<Self, MuxError>;
     pub fn send_video(&self, nal: &[u8], pts_90khz: i64, key_frame: bool)
         -> Result<(), MuxSenderError>;
     pub fn send_klv(&self, klv: &[u8], pts_90khz: i64, metadata_service_id: u8)
@@ -92,7 +92,7 @@ many drained-but-unsent chunks accumulate during prolonged transport
 unavailability. Wrap with `ManagedTransport` when you expect outages
 longer than a fraction of a second.
 
-**Sync KLV is muxer-side wrapped.** When the underlying `Config` is
+**Sync KLV is muxer-side wrapped.** When the underlying `MuxerConfig` is
 set for `KlvStreamType::SynchronousMetadata` plus `carries_pts: true`,
 the muxer auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T
 H.222.0 V9 § 2.12.4.2 before TS-framing. `MuxSender::send_klv` passes
@@ -103,7 +103,7 @@ PTS lives in the PES header (per § 2.12.4.1). See
 Mirroring [../crates/tst-srt/examples/pipeline_send_to_socket.rs](../crates/tst-srt/examples/pipeline_send_to_socket.rs):
 
 ```rust,no_run
-use tst_core::mpegts::mux::Config;
+use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::MuxSender;
 use tst_srt::{SocketBuilder, SrtTransport};
 use std::time::Duration;
@@ -112,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket = SocketBuilder::new()
         .latency(Duration::from_millis(120))
         .connect("127.0.0.1:9000")?;
-    let sender = MuxSender::new(Config::default(), SrtTransport::new(socket))?;
+    let sender = MuxSender::new(MuxerConfig::default(), SrtTransport::new(socket))?;
     for i in 0..5i64 {
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0xAA];
         let klv = vec![/* ... pre-built ST 0601 ... */];

@@ -12,7 +12,7 @@ mod common;
 use common::ts_parser;
 use std::fs;
 use std::path::Path;
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
 
 const FIXTURES: &str = "tests/fixtures/local";
 
@@ -65,7 +65,7 @@ fn process_one(path: &Path) {
     };
 
     // Re-mux with our Muxer.
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .buffer_packets(200_000)
         .add_program(1, 0x1000)
         .add_video(0x1011, codec)

@@ -36,7 +36,7 @@ Reach for this when the wire is lossy — radio links, NAT timeouts, listener re
 The factory closure rebuilds the inner transport on demand. `ReconnectPolicy` controls retries, backoff, and gap-buffer overflow behaviour.
 
 ```rust,no_run
-use tst_core::mpegts::mux::Config;
+use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::{
     BackoffStrategy, ManagedTransport, MuxSender, OverflowPolicy, ReconnectPolicy, TransportError,
 };
@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         overflow_policy: OverflowPolicy::DropOldest,
     };
     let managed = ManagedTransport::new(initial, factory, policy);
-    let _sender = MuxSender::new(Config::default(), managed)?;
+    let _sender = MuxSender::new(MuxerConfig::default(), managed)?;
     Ok(())
 }
 ```
@@ -76,12 +76,12 @@ Reach for this when you want the muxer's output without any networking — build
 The drain loop is the standard pattern: push input, then pull until `pull` returns 0. Drain after every push so muxer memory stays bounded.
 
 ```rust,no_run
-use tst_core::mpegts::mux::{Config, Muxer};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer};
 use std::fs::File;
 use std::io::Write;
 
 fn main() -> std::io::Result<()> {
-    let mut mux = Muxer::new(Config::default()).expect("valid config");
+    let mut mux = Muxer::new(MuxerConfig::default()).expect("valid config");
     let mut out = File::create("out.ts")?;
     let mut buf = [0u8; 1316];
     for i in 0..150i64 {
@@ -259,15 +259,15 @@ Runnable: [../crates/tst-srt/examples/custom_transport.rs](../crates/tst-srt/exa
 
 ### 9. Mux H.265 + sync KLV
 
-Reach for this when the encoder produces HEVC, or when the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15) instead of the default async private-data shape. Three knobs flip on `Config`: codec → `H265`, KLV stream type → `SynchronousMetadata`, `carries_pts` → `true`.
+Reach for this when the encoder produces HEVC, or when the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15) instead of the default async private-data shape. Three knobs flip on `MuxerConfig`: codec → `H265`, KLV stream type → `SynchronousMetadata`, `carries_pts` → `true`.
 
 **Sync KLV auto-wraps in the muxer.** When you configure `KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) before TS-framing. Pass raw KLV LS bytes — do not pre-wrap. PTS lives in the PES header (per § 2.12.4.1). See [guide-mpegts-mux.md](guide-mpegts-mux.md) §"KLV-in-TS modes".
 
 ```rust,no_run
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H265)
         .add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true)
@@ -475,14 +475,14 @@ own `Demuxer`) render which PID is which without external configuration.
 
 ```rust,no_run
 use tst_core::mpegts::descriptors as desc;
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
 
 const EO_PID: u16 = 0x0100;
 const IR_PID: u16 = 0x0101;
 const KLV_PID: u16 = 0x0102;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_video(EO_PID, VideoCodec::H264)
         .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
         .add_video(IR_PID, VideoCodec::H264)
@@ -522,10 +522,10 @@ When you have two independent (EO + IR + KLV) feeds and need to ship them
 through one SRT socket without forcing each to its own UDP port:
 
 ```rust,no_run
-use tst_core::mpegts::mux::{Config, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = Config::builder()
+    let config = MuxerConfig::builder()
         .add_program(1, 0x1000)
             .add_video(0x1011, VideoCodec::H264)
             .add_klv(0x1031, KlvStreamType::PrivateData, false)
@@ -655,10 +655,10 @@ synchronized playback, and KLV records emit on the same PCR clock.
 
 ```rust
 use tst_core::mpegts::mux::{
-    AudioCodec, ConfigBuilder, KlvStreamType, Muxer, VideoCodec,
+    AudioCodec, MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec,
 };
 
-let cfg = ConfigBuilder::new()
+let cfg = MuxerConfigBuilder::new()
     .add_program(1, 0x1000)
     .add_video(0x100, VideoCodec::H264)
     .add_klv(0x200, KlvStreamType::PrivateData, /*carries_pts=*/ false)
@@ -692,9 +692,9 @@ in a live SRT/TS stream so the downstream HLS player (hls.js etc.)
 can render them as captions.
 
 ```rust
-use tst_core::mpegts::mux::{Config, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer, SubtitleCodec, VideoCodec};
 
-let cfg = Config::builder()
+let cfg = MuxerConfig::builder()
     .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -755,10 +755,10 @@ The recipe below mirrors recipe 9 (H.265 + sync KLV) — flip the codec to
 VPS / SPS / PPS).
 
 ```rust,no_run
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H266)
         .add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true)
@@ -791,10 +791,10 @@ AV1 uses OBU framing — fundamentally different from the NAL-shaped codecs
   AV1 rather than KLV-async on the same stream_type byte.
 
 ```rust,no_run
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, StreamSpec, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, StreamSpec, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = Config {
+    let cfg = MuxerConfig {
         streams: vec![
             StreamSpec::Video { pid: 0x1011, codec: VideoCodec::Av1 },
             StreamSpec::Klv {
@@ -803,7 +803,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 carries_pts: false,
             },
         ],
-        ..Config::default()
+        ..MuxerConfig::default()
     };
     let mut mux = Muxer::new(cfg)?;
     // `au_obus` is a contiguous OBU sequence (each with obu_has_size_field=1).

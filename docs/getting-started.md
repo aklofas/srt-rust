@@ -109,7 +109,7 @@ message.
 Switch from raw bytes to a typed video sender:
 
 ```rust
-use tst_core::mpegts::mux::Config;
+use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::MuxSender;
 use tst_srt::{SocketBuilder, SrtTransport};
 use std::time::Duration;
@@ -119,7 +119,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .latency(Duration::from_millis(120))
         .connect("127.0.0.1:9000")?;
     let transport = SrtTransport::new(socket);
-    let sender = MuxSender::new(Config::default(), transport)?;
+    let sender = MuxSender::new(MuxerConfig::default(), transport)?;
 
     // Synthetic Annex-B IDR access unit + KLV blob.
     let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, /* ... payload bytes ... */];

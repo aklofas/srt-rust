@@ -40,7 +40,7 @@ use std::fs::File;
 use std::io::Write;
 
 use tst_core::klv::st0601::{UasDatalinkLs, encode_to_vec};
-use tst_core::mpegts::mux::{AudioCodec, Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{AudioCodec, MuxerConfig, KlvStreamType, Muxer, VideoCodec};
 
 // Clippy's `field_reassign_with_default` would prefer struct-update syntax,
 // but we use field-by-field reassignment on purpose to group related ST 0601
@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // All streams clock from the same 90 kHz reference. PCR
     // (Program Clock Reference) pace defaults to the first video
     // stream's PID when not pinned explicitly.
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000) // program_number=1, PMT at PID 0x1000
         .add_video(0x100, VideoCodec::H264)
         // KLV at PMT stream_type 0x06 (PrivateData) + KLVA registration

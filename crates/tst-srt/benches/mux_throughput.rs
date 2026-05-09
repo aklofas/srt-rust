@@ -9,7 +9,7 @@
 //! runs report regressions.
 
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
-use tst_core::mpegts::mux::{Config, Muxer};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer};
 
 fn synthetic_au(size: usize, key: bool) -> Vec<u8> {
     let mut v = Vec::with_capacity(4 + size);
@@ -27,9 +27,9 @@ fn bench_push_video(c: &mut Criterion) {
         let nal = synthetic_au(size, true);
         group.bench_with_input(BenchmarkId::from_parameter(size), &nal, |b, nal| {
             b.iter(|| {
-                let cfg = Config {
+                let cfg = MuxerConfig {
                     buffer_packets: 100_000,
-                    ..Config::default()
+                    ..MuxerConfig::default()
                 };
                 let mut mux = Muxer::new(cfg).unwrap();
                 mux.push_video(black_box(nal), 0, true).unwrap();
@@ -43,7 +43,7 @@ fn bench_push_klv(c: &mut Criterion) {
     let klv = vec![0xC3u8; 1024];
     c.bench_function("push_klv_1kb", |b| {
         b.iter(|| {
-            let mut mux = Muxer::new(Config::default()).unwrap();
+            let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
             // Need video first to anchor PSI emission.
             mux.push_video(&synthetic_au(500, true), 0, true).unwrap();
             mux.push_klv(black_box(&klv), 0, 0x00).unwrap();
@@ -58,9 +58,9 @@ fn bench_mux_end_to_end(c: &mut Criterion) {
             .collect();
         let klv = vec![0xC3u8; 64];
         b.iter(|| {
-            let cfg = Config {
+            let cfg = MuxerConfig {
                 buffer_packets: 200_000,
-                ..Config::default()
+                ..MuxerConfig::default()
             };
             let mut mux = Muxer::new(cfg).unwrap();
             for (i, f) in frames.iter().enumerate() {

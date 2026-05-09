@@ -12,7 +12,7 @@ use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use tst_core::mpegts::mux::Config;
+use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::{MuxSender, Transport, TransportError};
 
 // ---------------------------------------------------------------------------
@@ -151,9 +151,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let collector = transport.clone();
 
     // The canonical sender shell. `MuxSender` composes the muxer
-    // (`Config::default`) with the transport. End-to-end the path is
+    // (`MuxerConfig::default`) with the transport. End-to-end the path is
     // NAL+KLV → mux → 188-byte TS packets → MemTransport's packet vec.
-    let sender = MuxSender::new(Config::default(), transport)?;
+    let sender = MuxSender::new(MuxerConfig::default(), transport)?;
 
     // 10 frames is shorter than `managed_reconnect`'s 30 — there's no
     // reconnect machinery to exercise, so we can keep the run small and

@@ -10,14 +10,14 @@
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use tst_core::mpegts::mux::{Config, Muxer};
+use tst_core::mpegts::mux::{MuxerConfig, Muxer};
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
     let out_path = args.get(1).cloned().unwrap_or_else(|| "out.ts".into());
     let duration_s: u32 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(5);
 
-    let mut mux = Muxer::new(Config::default()).expect("valid config");
+    let mut mux = Muxer::new(MuxerConfig::default()).expect("valid config");
     let mut out = File::create(&out_path)?;
 
     let frame_rate = 30;

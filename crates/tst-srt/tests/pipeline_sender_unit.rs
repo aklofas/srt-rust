@@ -4,7 +4,7 @@
 mod common;
 
 use common::mock_transport::MockTransport;
-use tst_core::mpegts::mux::Config;
+use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::MuxSender;
 
 fn synthetic_h264_au() -> Vec<u8> {
@@ -19,7 +19,7 @@ fn synthetic_h264_au() -> Vec<u8> {
 fn sender_drives_video_through_transport() {
     let transport = MockTransport::new(1316);
     let log = transport.log();
-    let sender = MuxSender::new(Config::default(), transport).unwrap();
+    let sender = MuxSender::new(MuxerConfig::default(), transport).unwrap();
 
     sender.send_video(&synthetic_h264_au(), 0, true).unwrap();
 
@@ -49,7 +49,7 @@ fn sender_drives_video_through_transport() {
 fn sender_drives_klv_through_transport() {
     let transport = MockTransport::new(1316);
     let log = transport.log();
-    let sender = MuxSender::new(Config::default(), transport).unwrap();
+    let sender = MuxSender::new(MuxerConfig::default(), transport).unwrap();
 
     let klv = vec![0xAB; 64];
     sender.send_klv(&klv, 0, 0x00).unwrap();
@@ -61,7 +61,7 @@ fn sender_drives_klv_through_transport() {
 #[test]
 fn sender_close_marks_dead() {
     let transport = MockTransport::new(1316);
-    let sender = MuxSender::new(Config::default(), transport).unwrap();
+    let sender = MuxSender::new(MuxerConfig::default(), transport).unwrap();
     sender.close();
     assert!(!sender.is_alive());
 }

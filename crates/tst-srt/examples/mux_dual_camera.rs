@@ -29,10 +29,10 @@
 use std::fs::File;
 use std::io::Write;
 use tst_core::mpegts::descriptors;
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
 
 fn main() -> std::io::Result<()> {
-    // Build a multi-stream Config:
+    // Build a multi-stream MuxerConfig:
     //
     // - Video PIDs are deliberately 16 apart (0x1011 + 0x10 = 0x1021).
     //   No spec requires this, but spreading PIDs by ≥16 makes them
@@ -46,7 +46,7 @@ fn main() -> std::io::Result<()> {
     //   the auto-default is also "first video stream's PID," so this
     //   `.pcr_pid(0x1011)` is redundant — included here so consumers
     //   reading the example see the explicit form.
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264) // EO (visible-light)
         // Tag 0xFF (user_private) is the de-facto label slot used in the

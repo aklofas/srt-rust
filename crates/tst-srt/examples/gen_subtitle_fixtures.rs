@@ -19,7 +19,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use tst_core::mpegts::mux::{AudioCodec, Config, KlvStreamType, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{AudioCodec, MuxerConfig, KlvStreamType, Muxer, SubtitleCodec, VideoCodec};
 
 /// Drain every queued packet from the muxer into a single `Vec<u8>`.
 ///
@@ -92,7 +92,7 @@ fn write(dir: &std::path::Path, name: &str, bytes: Vec<u8>) {
 /// `subtitling_descriptor` emission path with one entry, and the
 /// `extract_user_label` "DVB sub eng" arm in the demuxer.
 fn build_dvb_sub_eng_only() -> Vec<u8> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(
@@ -133,7 +133,7 @@ fn build_dvb_sub_eng_only() -> Vec<u8> {
 /// shape; some encoders pack both in one descriptor — we emit
 /// per-PID and the demuxer should accept both forms).
 fn build_dvb_sub_multi_lang() -> Vec<u8> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(
@@ -176,7 +176,7 @@ fn build_dvb_sub_multi_lang() -> Vec<u8> {
 /// is "EBU teletext non-subtitle data" — the exact value isn't
 /// meaningful for our test (we just need a valid framing shape).
 fn build_dvb_teletext_eng() -> Vec<u8> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(
@@ -217,7 +217,7 @@ fn build_dvb_teletext_eng() -> Vec<u8> {
 /// frame is the standard 60-Hz cadence; we just need a recognizable
 /// shape, not real caption content.
 fn build_cea708_standalone() -> Vec<u8> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(0x200, SubtitleCodec::Cea708Standalone)
@@ -241,7 +241,7 @@ fn build_cea708_standalone() -> Vec<u8> {
 /// HLS WebVTT-in-TS draft — header line, blank line, timing line,
 /// payload, trailing newline.
 fn build_webvtt_simple() -> Vec<u8> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -260,7 +260,7 @@ fn build_webvtt_simple() -> Vec<u8> {
 /// authoring spec carries one cue per PES, not the WebVTT-file shape
 /// of one header + many cues.
 fn build_webvtt_multi_cue() -> Vec<u8> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -289,7 +289,7 @@ fn build_webvtt_multi_cue() -> Vec<u8> {
 /// with DVB subtitle's stream_type byte; the demuxer disambiguates
 /// via the registration / VTTC / subtitling descriptors.
 fn build_subtitle_with_klv() -> Vec<u8> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_klv(0x300, KlvStreamType::PrivateData, false)
@@ -322,7 +322,7 @@ fn build_subtitle_with_klv() -> Vec<u8> {
 /// program owns the WebVTT stream — the demuxer must route program-2
 /// PIDs without spuriously emitting a subtitle event for them.
 fn build_webvtt_multi_program() -> Vec<u8> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
@@ -359,7 +359,7 @@ fn build_webvtt_multi_program() -> Vec<u8> {
 /// emission). The Task 20 `treat_as` test uses exactly this fixture
 /// to verify both halves.
 fn build_non_conformant_missing_descriptor() -> Vec<u8> {
-    let cfg = Config::builder()
+    let cfg = MuxerConfig::builder()
         .add_program(1, 0x100)
         .add_video(0x101, VideoCodec::H264)
         .add_audio(0x200, AudioCodec::Mp2)

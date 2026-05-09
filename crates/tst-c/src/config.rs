@@ -8,7 +8,7 @@ use crate::handle::{TST_INVALID_STREAM_HANDLE, TstKlvStreamHandle, TstVideoStrea
 use std::time::Duration;
 use tst_core::error::MuxError;
 use tst_core::mpegts::mux::{
-    Config, KlvStreamHandle, KlvStreamType, ProgramConfig, StreamSpec, VideoCodec,
+    KlvStreamHandle, KlvStreamType, MuxerConfig, MuxerProgramConfig, StreamSpec, VideoCodec,
     VideoStreamHandle,
 };
 use tst_pipeline::{
@@ -50,22 +50,22 @@ pub struct TstMuxConfig {
     /// Programs accumulated so far. Each `tst_mux_config_add_program` call
     /// pushes one entry; subsequent stream-add / descriptor-set calls index
     /// into this vec by the returned `TstProgramHandle` ordinal.
-    pub(crate) programs: Vec<ProgramConfig>,
-    /// Per-call interval overrides forwarded to `Config` at build time.
+    pub(crate) programs: Vec<MuxerProgramConfig>,
+    /// Per-call interval overrides forwarded to `MuxerConfig` at build time.
     pub(crate) pcr_interval_ms: Option<u32>,
     pub(crate) psi_interval_ms: Option<u32>,
     pub(crate) buffer_packets: Option<usize>,
 }
 
 impl TstMuxConfig {
-    /// Finish building and return a validated `Config`.
+    /// Finish building and return a validated `MuxerConfig`.
     ///
-    /// Assembles a `Config` from the accumulated programs and any interval /
-    /// buffer overrides. The `programs` vec is cloned so the config may be
-    /// opened multiple times (the C API allows `_free` after `_open`, but
-    /// tests call `_open` more than once in practice).
-    pub(crate) fn build_config(&self) -> Result<Config, MuxError> {
-        let mut cfg = Config {
+    /// Assembles a `MuxerConfig` from the accumulated programs and any
+    /// interval / buffer overrides. The `programs` vec is cloned so the
+    /// config may be opened multiple times (the C API allows `_free` after
+    /// `_open`, but tests call `_open` more than once in practice).
+    pub(crate) fn build_config(&self) -> Result<MuxerConfig, MuxError> {
+        let mut cfg = MuxerConfig {
             programs: self.programs.clone(),
             pcr_interval_ms: 40,
             psi_interval_ms: 100,
@@ -129,7 +129,7 @@ pub unsafe extern "C" fn tst_mux_config_add_program(
         set_last_error(TstError::InvalidConfig, "null config pointer");
         return TST_INVALID_PROGRAM_HANDLE;
     };
-    cfg.programs.push(ProgramConfig {
+    cfg.programs.push(MuxerProgramConfig {
         program_number,
         pmt_pid,
         streams: Vec::new(),

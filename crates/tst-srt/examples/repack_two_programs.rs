@@ -65,7 +65,7 @@ use std::fs;
 use std::io::Write;
 use tst_core::mpegts::demux::event::NalUnit;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
-use tst_core::mpegts::mux::{Config, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── Argument parsing ─────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //   auto-wraps each push in a fresh AU cell header. Here we use
     //   PrivateData to keep the example simple and work for both input
     //   KLV flavors.
-    let config = Config::builder()
+    let config = MuxerConfig::builder()
         // Program 1: original PIDs from input 1, unchanged.
         .add_program(1, 0x1000)
         .add_video(0x1011, VideoCodec::H264)
@@ -126,7 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Resolve per-program stream handles. The `_for_program(N)` accessors
     // look up streams by program_number (not by index), so program order
-    // in the Config doesn't matter.
+    // in the MuxerConfig doesn't matter.
     let p1_video = muxer.video_handles_for_program(1)?[0];
     let p1_klv = muxer.klv_handles_for_program(1)?[0];
     let p2_video = muxer.video_handles_for_program(2)?[0];
@@ -279,10 +279,10 @@ fn repack_event(
                 }
             }
             // Non-H.264 codecs (H.265 etc.) are silently skipped here.
-            // The output Config is H.264-only; pushing H.265 NALs onto an
+            // The output MuxerConfig is H.264-only; pushing H.265 NALs onto an
             // H.264 stream would be a mux error. A production repacker
             // would detect the codec at ProgramMap time and build the
-            // output Config accordingly.
+            // output MuxerConfig accordingly.
         }
 
         // ── KLV metadata ─────────────────────────────────────────────────────
@@ -318,7 +318,7 @@ fn repack_event(
         //
         // ProgramMap events carry PSI topology from the *input* mux — not
         // relevant to the output mux, which generates its own PAT/PMT from
-        // the Config we built above.
+        // the MuxerConfig we built above.
         //
         // Discontinuity and NonConformant events are diagnostic; a production
         // repacker would log them for observability (e.g. correlating a

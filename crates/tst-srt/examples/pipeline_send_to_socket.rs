@@ -8,7 +8,7 @@
 
 use std::env;
 use std::time::Duration;
-use tst_core::mpegts::mux::Config;
+use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::MuxSender;
 use tst_srt::SocketBuilder;
 use tst_srt::SrtTransport;
@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .latency(Duration::from_millis(120))
         .connect(addr.as_str())?;
     let transport = SrtTransport::new(socket);
-    let sender = MuxSender::new(Config::default(), transport)?;
+    let sender = MuxSender::new(MuxerConfig::default(), transport)?;
 
     eprintln!("sending 5 synthetic frames + KLV to {addr}");
     for i in 0..5 {

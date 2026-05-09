@@ -161,6 +161,51 @@ sender produces five synthetic frames plus matching KLV records at
 roughly 30 fps, then closes; the receiver drains until the connection
 is broken and exits cleanly.
 
+## Seeing what's happening — wiring `tracing-subscriber`
+
+`ts-transformer` emits `tracing` events on every pipeline shell
+open/close, on each reconnect attempt, on back-pressure threshold
+crossings, and on forwarded libsrt log lines. To see them, add
+`tracing-subscriber` and wire it once at startup:
+
+```toml
+[dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+```
+
+```rust
+use tracing_subscriber::{fmt, EnvFilter};
+
+fn main() {
+    fmt()
+        .with_env_filter(EnvFilter::from_default_env())  // honors RUST_LOG
+        .init();
+
+    // ... rest of your program ...
+}
+```
+
+Then run with a `RUST_LOG` filter that picks the targets you want:
+
+```bash
+RUST_LOG=tst_pipeline=info,srt=warn cargo run --example mux_h265_with_klv
+```
+
+Useful filter targets:
+
+| Target                          | What it covers                                              |
+|---------------------------------|-------------------------------------------------------------|
+| `tst_pipeline::mux_sender`      | MuxSender lifecycle + back-pressure threshold warns         |
+| `tst_pipeline::sender`          | Sender lifecycle                                            |
+| `tst_pipeline::raw_sender`      | RawSender lifecycle                                         |
+| `tst_pipeline::demux_receiver`  | DemuxReceiver lifecycle                                     |
+| `tst_pipeline::receiver`        | Receiver lifecycle                                          |
+| `tst_pipeline::raw_receiver`    | RawReceiver lifecycle                                       |
+| `tst_pipeline::reconnect`       | Sender-side managed-transport reconnect attempts + give-up  |
+| `tst_pipeline::managed_receive` | Receiver-side managed-transport reconnect attempts          |
+| `srt`                           | libsrt-internal logs (forwarded from the C library)         |
+| `tst_core::codec`               | Codec parser warnings (e.g., H.265 SPS parse failures)      |
+
 ## Where to go next
 
 - [architecture.md](architecture.md) — how the pieces fit together.

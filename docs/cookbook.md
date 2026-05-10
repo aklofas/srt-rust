@@ -913,13 +913,14 @@ Replaces the cookbook recipe 13 inline pattern. Each video frame
 attaches the most recent KLV at `klv.pts <= video.pts`.
 
 ```rust,no_run
+use std::time::Duration;
 use tst_pipeline::{Pairer, PairerOutput};
 # fn demux_events() -> impl Iterator<Item = tst_core::mpegts::demux::DemuxEvent> { std::iter::empty() }
 
 let mut pairer = Pairer::last_before_pts(
     0x100, // video PID
     0x102, // async-KLV PID
-    Some(180_000), // 2 s freshness ceiling — drop pair if KLV is staler
+    Some(Duration::from_secs(2)), // freshness ceiling — drop pair if KLV is staler
 );
 for e in demux_events() {
     for o in pairer.feed(e) {
@@ -933,8 +934,8 @@ for e in demux_events() {
 let _ = pairer.flush();
 ```
 
-Pass `freshness_ticks = None` to attach regardless of staleness
-(matches cookbook recipe 13 default behavior).
+Pass `freshness = None` to attach regardless of staleness (matches
+cookbook recipe 13 default behavior).
 
 ### 27. EO + IR composition with shared async-KLV
 

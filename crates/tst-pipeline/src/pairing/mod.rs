@@ -172,11 +172,27 @@ impl Pairer {
     }
 
     /// Sample-and-hold: each video AU pairs with the most recent KLV
-    /// where `klv.pts <= video.pts`. If `freshness_ticks` is `Some(n)`,
-    /// emit `UnpairedVideo` when the held KLV is older than `n` ticks
-    /// behind the video; if `None`, attach regardless of staleness.
-    /// Past-only by definition; no [`PairerMode`] knob applies.
-    pub fn last_before_pts(video_pid: u16, klv_pid: u16, freshness_ticks: Option<i64>) -> Self {
+    /// where `klv.pts <= video.pts`. If `freshness` is `Some(d)`, emit
+    /// `UnpairedVideo` when the held KLV is older than `d` behind the
+    /// video; if `None`, attach regardless of staleness. Past-only by
+    /// definition; no [`PairerMode`] knob applies.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use tst_pipeline::pairing::Pairer;
+    ///
+    /// // 2 s freshness ceiling: drop pairing if held KLV is staler.
+    /// let pairer = Pairer::last_before_pts(
+    ///     0x0100,
+    ///     0x0102,
+    ///     Some(Duration::from_secs(2)),
+    /// );
+    /// let _ = pairer;
+    /// ```
+    pub fn last_before_pts(video_pid: u16, klv_pid: u16, freshness: Option<Duration>) -> Self {
+        let freshness_ticks = freshness.map(duration_to_pts_ticks);
         Self {
             state: PairerState::LastBefore(last_before::LastBeforeState::new(
                 video_pid,

@@ -8,5 +8,5 @@ fuzz_target!(|data: &[u8]| {
     // Need a video PUSI before KLV makes sense — push a tiny synthetic
     // AU first to get the muxer past first-frame state.
     let _ = mux.push_video(&[0x00, 0x00, 0x00, 0x01, 0x09, 0x10], 0, true);
-    let _ = mux.push_klv(data, 0);
+    let _ = mux.push_klv(data, 0, 0);
 });

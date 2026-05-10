@@ -10,109 +10,10 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 tst-srt  = { path = ".." }
-tst-core = { path = "../../tst-core" }
-
-[[bin]]
-name              = "klv_st0601_decode"
-path              = "fuzz_targets/klv_st0601_decode.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "klv_st0102_decode"
-path              = "fuzz_targets/klv_st0102_decode.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "klv_st0903_decode"
-path              = "fuzz_targets/klv_st0903_decode.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "mux_push_video"
-path              = "fuzz_targets/mux_push_video.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "mux_push_klv"
-path              = "fuzz_targets/mux_push_klv.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "mux_pull"
-path              = "fuzz_targets/mux_pull.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "ts_parser"
-path              = "fuzz_targets/ts_parser.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "mpegts_au_cell_read"
-path              = "fuzz_targets/mpegts_au_cell_read.rs"
-test              = false
-doc               = false
-bench             = false
 
 [[bin]]
 name              = "url_parse"
 path              = "fuzz_targets/url_parse.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "demux_feed"
-path              = "fuzz_targets/demux_feed.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "demux_psi"
-path              = "fuzz_targets/demux_psi.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "demux_pes_reassembly"
-path              = "fuzz_targets/demux_pes_reassembly.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "parse_parameter_sets"
-path              = "fuzz_targets/parse_parameter_sets.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "parse_av1_sequence_header"
-path              = "fuzz_targets/parse_av1_sequence_header.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
-name              = "audio_frame_iter"
-path              = "fuzz_targets/audio_frame_iter.rs"
 test              = false
 doc               = false
 bench             = false

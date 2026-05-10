@@ -645,7 +645,6 @@ name = "tst-srt-fuzz"
 version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
- "tst-core",
  "tst-srt",
 ]
 

@@ -1420,6 +1420,25 @@ struct SubtitleStreamState {
 /// Construct with `Muxer::new(config)`, push encoded frames via `push_video`
 /// and `push_klv`, then drain TS packets with `pull`. The muxer is
 /// deterministic — output is a function of inputs only, not wall-clock time.
+///
+/// # Closing
+///
+/// `Muxer` is a passive aggregator — it owns no transport and no OS
+/// handles. Drop is the only shutdown and is trivially synchronous.
+/// Call [`Self::pull`] in a loop until it returns `0` before drop to
+/// drain any TS packets sitting in the internal queue; bytes left in
+/// the queue at drop are discarded.
+///
+/// ## Per-language idiom
+///
+/// | Language | Idiom |
+/// |----------|-------|
+/// | Rust | `while muxer.pull(&mut buf) > 0 { /* ... */ } drop(muxer);` (or just let it fall out of scope) |
+/// | Java | Drain via `pull()`, then let GC reclaim — no `AutoCloseable` needed |
+/// | Kotlin | Drain via `pull()`, then let GC reclaim |
+/// | Swift | `deinit` calls drop; explicit drain via `pull()` before exit |
+/// | Python | Drain via `pull()` at end-of-stream; let GC reclaim |
+/// | C | `tst_muxer_close(muxer)` — releases the muxer; caller is responsible for prior drain |
 pub struct Muxer {
     config: MuxerConfig,
 

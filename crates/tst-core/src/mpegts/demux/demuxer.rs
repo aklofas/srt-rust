@@ -124,6 +124,32 @@ pub struct ProgramTracker {
     pub(crate) klv_mismatch_coalesce: HashSet<u16>,
 }
 
+/// MPEG-TS demuxer.
+///
+/// Caller-driven: call [`Self::feed`] with bytes (any size; sync recovery
+/// is internal), then drain [`DemuxEvent`]s with [`Self::next_event`].
+/// Holds bounded reassembly state per PID with caps from
+/// [`DemuxerOptions`].
+///
+/// # Closing
+///
+/// `Demuxer` is a passive parser — it owns no transport and no OS
+/// handles. Drop is the only shutdown and is trivially synchronous.
+/// Call [`Self::flush`] at end-of-stream to surface any partial PES
+/// still buffered (e.g. the final video AU whose PES length is 0 and
+/// is only finalised on the next PUSI), then drain remaining events
+/// via [`Self::next_event`] before drop.
+///
+/// ## Per-language idiom
+///
+/// | Language | Idiom |
+/// |----------|-------|
+/// | Rust | `demuxer.flush(); while let Some(e) = demuxer.next_event() { /* ... */ } drop(demuxer);` |
+/// | Java | Drain via `flush()` + `nextEvent()`, then let GC reclaim |
+/// | Kotlin | Drain via `flush()` + `nextEvent()`, then let GC reclaim |
+/// | Swift | `deinit` calls drop; explicit `flush()` + drain before exit |
+/// | Python | `demuxer.flush()` + drain at end-of-stream; let GC reclaim |
+/// | C | (deferred to per-binding plan — receiver-surface C ABI is P0) |
 #[derive(Debug)]
 pub struct Demuxer {
     options: DemuxerOptions,

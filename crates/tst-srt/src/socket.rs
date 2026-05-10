@@ -18,6 +18,39 @@ const SRT_INVALID_SOCK: srt_sys::SRTSOCKET = -1;
 ///
 /// Constructed via [`SocketBuilder`](crate::SocketBuilder), via
 /// [`Socket::connect_with`], or returned from [`Listener::accept`](crate::Listener::accept).
+///
+/// # Closing
+///
+/// `Socket` is `Send` (libsrt is internally per-handle thread-safe; the
+/// `SRTSOCKET` integer can move across threads). It supports three
+/// shutdown patterns:
+///
+/// 1. **Drop** — the [`Drop`] impl calls `cancel.cancel()`, which fires
+///    `srt_close(fd)` exactly once (idempotent with `close()`). Bounded
+///    by `SRTO_LINGER` (libsrt default 30 s, configurable via
+///    `SocketBuilder::linger` before construction).
+/// 2. **Explicit close** — call [`Self::close`] (consuming `self`).
+///    Equivalent to drop's cancel; always returns `Ok(())` (the inner
+///    `srt_close` rc is currently swallowed; see method doc).
+/// 3. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
+///    [`tst_core::CancelHandle`] (clone-able, `Send + Sync`), then
+///    `cancel()` from any thread. Closes the libsrt socket; a peer
+///    parked in `send` / `recv` returns
+///    [`SendError::ConnectionBroken`] / [`RecvError::ConnectionBroken`]
+///    within one libsrt I/O cycle (~3-10 ms).
+///
+/// ## Per-language idiom
+///
+/// | Language | Idiom |
+/// |----------|-------|
+/// | Rust | `let _ = socket;` (Drop) or `socket.cancel_handle().cancel();` (cross-thread) |
+/// | Java | Wrap as `AutoCloseable`; `try-with-resources` calls drop on exit |
+/// | Kotlin | Wrap as `AutoCloseable`; `.use { }` calls drop on exit |
+/// | Swift | `deinit` calls drop; `defer { handle.cancel() }` for explicit cross-thread |
+/// | Python | Wrap as `__enter__`/`__exit__`; `with ... as sock:` calls drop on exit |
+/// | C | (deferred — `Socket` is not directly exposed at the C ABI; senders/receivers wrap it) |
+///
+/// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
 pub struct Socket {
     handle: srt_sys::SRTSOCKET,
     /// Shared close-once primitive. Cloned out via `cancel_handle()` so a

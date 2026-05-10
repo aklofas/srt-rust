@@ -19,6 +19,38 @@ const SRT_EPOLL_IN: c_int = 0x1;
 
 /// Passive socket. Created by [`ListenerBuilder`](crate::ListenerBuilder)
 /// or [`Listener::bind_with`].
+///
+/// # Closing
+///
+/// `Listener` is `Send` (libsrt is internally per-handle thread-safe).
+/// It supports three shutdown patterns:
+///
+/// 1. **Drop** — the [`Drop`] impl calls `cancel.cancel()`, which fires
+///    `srt_close(fd)` exactly once (idempotent with `close()`). Quick
+///    on a listening socket — no `SRTO_LINGER` payload to drain.
+/// 2. **Explicit close** — call [`Self::close`] (consuming `self`).
+///    Equivalent to drop's cancel; always returns `Ok(())` (the inner
+///    `srt_close` rc is currently swallowed; see method doc).
+/// 3. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
+///    [`tst_core::CancelHandle`] (clone-able, `Send + Sync`), then
+///    `cancel()` from any thread. Closes the listening socket; a peer
+///    parked in [`Self::accept`] returns
+///    [`AcceptError::ListenerClosed`] within one libsrt I/O cycle
+///    (~3-10 ms). Use [`Self::accept_timeout`] instead of `accept()`
+///    when you need a bounded wait without out-of-band cancel.
+///
+/// ## Per-language idiom
+///
+/// | Language | Idiom |
+/// |----------|-------|
+/// | Rust | `let _ = listener;` (Drop) or `listener.cancel_handle().cancel();` (cross-thread) |
+/// | Java | Wrap as `AutoCloseable`; `try-with-resources` calls drop on exit |
+/// | Kotlin | Wrap as `AutoCloseable`; `.use { }` calls drop on exit |
+/// | Swift | `deinit` calls drop; `defer { handle.cancel() }` for explicit cross-thread |
+/// | Python | Wrap as `__enter__`/`__exit__`; `with ... as listener:` calls drop on exit |
+/// | C | (deferred — `Listener` is not directly exposed at the C ABI today) |
+///
+/// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
 pub struct Listener {
     handle: srt_sys::SRTSOCKET,
     /// Shared close-once primitive. Cloned out via `cancel_handle()` so a

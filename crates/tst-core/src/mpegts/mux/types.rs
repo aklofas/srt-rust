@@ -121,9 +121,9 @@ pub enum SubtitleCodec {
 }
 
 /// Classifier for the four supported stream classes carried in an MPEG-TS
-/// program. Used by [`MuxError`] variants whose semantics are
-/// stream-kind-specific (e.g., [`MuxError::AmbiguousTarget`],
-/// [`MuxError::InvalidStreamHandle`], [`MuxError::DescriptorIndexOutOfRange`]).
+/// program. Used by [`MuxError`](crate::error::MuxError) variants whose semantics are
+/// stream-kind-specific (e.g., [`MuxError::AmbiguousTarget`](crate::error::MuxError::AmbiguousTarget),
+/// [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle), [`MuxError::DescriptorIndexOutOfRange`](crate::error::MuxError::DescriptorIndexOutOfRange)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum StreamKind {
@@ -145,7 +145,7 @@ impl core::fmt::Display for StreamKind {
 }
 
 /// Field-name discriminator inside a teletext-stream configuration block;
-/// used by [`MuxError::InvalidTeletextField`] in place of `&'static str`
+/// used by [`MuxError::InvalidTeletextField`](crate::error::MuxError::InvalidTeletextField) in place of `&'static str`
 /// tagging.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -165,7 +165,7 @@ impl core::fmt::Display for TeletextField {
 
 /// One elementary stream in the muxer's output TS.
 ///
-/// [`MuxerConfig::validate`] caps at 16 video + 16 KLV streams, with at least
+/// [`MuxerConfig::validate`](crate::mpegts::mux::MuxerConfig::validate) caps at 16 video + 16 KLV streams, with at least
 /// one of either kind required.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamSpec {
@@ -228,10 +228,10 @@ impl StreamSpec {
 
 /// Opaque handle to a configured video stream on a `Muxer`.
 ///
-/// Obtained from [`Muxer::video_handles`] / [`Muxer::video_stream_handle`] /
-/// [`Muxer::video_handles_for_program`].
+/// Obtained from [`Muxer::video_handles`](crate::mpegts::mux::Muxer::video_handles) / [`Muxer::video_stream_handle`](crate::mpegts::mux::Muxer::video_stream_handle) /
+/// [`Muxer::video_handles_for_program`](crate::mpegts::mux::Muxer::video_handles_for_program).
 /// Handles are valid only on the muxer that produced them; passing a handle
-/// to a different muxer is rejected with [`MuxError::InvalidStreamHandle`].
+/// to a different muxer is rejected with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle).
 ///
 /// The internal representation encodes `(program_index, within_program_index)`
 /// in a packed `u32`. Callers treat this as an opaque token.
@@ -279,7 +279,7 @@ impl VideoStreamHandle {
     /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
     /// if `within_index >= 16` (the per-program video cap). Release builds
     /// silently mask the inputs into the 4-bit fields, which produces a
-    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`]
+    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
     /// at `push_video_to` time. Use [`Self::from_raw`] when re-wrapping a
     /// handle that was already packed by the muxer (e.g. round-tripped
     /// through C ABI) — calling `pack(0, raw)` would re-encode `raw` as a
@@ -333,7 +333,7 @@ impl KlvStreamHandle {
     /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
     /// if `within_index >= 16` (the per-program KLV cap). Release builds
     /// silently mask the inputs into the 4-bit fields, which produces a
-    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`]
+    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
     /// at `push_klv_to` time. Use [`Self::from_raw`] for already-packed
     /// handles round-tripped through C ABI.
     #[doc(hidden)]
@@ -369,9 +369,9 @@ impl KlvStreamHandle {
 
 /// Opaque handle to a configured audio stream on a `Muxer`.
 ///
-/// Obtained from [`Muxer::audio_handles`] / [`Muxer::audio_handles_for_program`].
+/// Obtained from [`Muxer::audio_handles`](crate::mpegts::mux::Muxer::audio_handles) / [`Muxer::audio_handles_for_program`](crate::mpegts::mux::Muxer::audio_handles_for_program).
 /// Handles are valid only on the muxer that produced them; passing a handle
-/// to a different muxer is rejected with [`MuxError::InvalidStreamHandle`].
+/// to a different muxer is rejected with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle).
 ///
 /// The internal representation encodes `(program_index, within_program_index)`
 /// in a packed `u32`. Callers treat this as an opaque token.
@@ -394,7 +394,7 @@ impl AudioStreamHandle {
     /// In debug builds, panics if `program_index >= MAX_PROGRAMS` (16) or
     /// if `within_index >= 16` (the per-program audio cap). Release builds
     /// silently mask the inputs into the 4-bit fields, which produces a
-    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`]
+    /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
     /// at `push_audio_to` time.
     pub(crate) fn pack(program_index: usize, within_index: usize) -> Self {
         debug_assert!(program_index < MAX_PROGRAMS);
@@ -424,10 +424,10 @@ pub const MAX_SUBTITLE_STREAMS_PER_PROGRAM: usize = 16;
 
 /// Opaque handle to a configured subtitle stream on a `Muxer`.
 ///
-/// Obtained from [`Muxer::subtitle_handles`] /
-/// [`Muxer::subtitle_handles_for_program`]. Handles are valid only on
+/// Obtained from [`Muxer::subtitle_handles`](crate::mpegts::mux::Muxer::subtitle_handles) /
+/// [`Muxer::subtitle_handles_for_program`](crate::mpegts::mux::Muxer::subtitle_handles_for_program). Handles are valid only on
 /// the muxer that produced them; passing a handle to a different
-/// muxer is rejected with [`MuxError::InvalidStreamHandle`].
+/// muxer is rejected with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle).
 ///
 /// The internal representation encodes `(program_index,
 /// within_program_index)` in a packed `u32`. Callers treat this as an
@@ -455,7 +455,7 @@ impl SubtitleStreamHandle {
     /// if `within_index >= MAX_SUBTITLE_STREAMS_PER_PROGRAM` (16). Release
     /// builds silently mask the inputs into the 4-bit fields, which
     /// produces a handle that the muxer will reject with
-    /// [`MuxError::InvalidStreamHandle`] at `push_subtitle_to` time.
+    /// [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle) at `push_subtitle_to` time.
     pub(crate) fn pack(program_index: usize, within_index: usize) -> Self {
         debug_assert!(program_index < MAX_PROGRAMS);
         debug_assert!(within_index < MAX_SUBTITLE_STREAMS_PER_PROGRAM);

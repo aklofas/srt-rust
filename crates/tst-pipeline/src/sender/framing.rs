@@ -167,9 +167,7 @@ impl TsFraming {
                     for i in 0..SRT_BUNDLE_PACKETS {
                         let off = i * TS_PACKET_SIZE;
                         if self.buffer[off] != SYNC_BYTE {
-                            return Err(TsFramingError::SyncLost {
-                                offset: off as u64,
-                            });
+                            return Err(TsFramingError::SyncLost { offset: off as u64 });
                         }
                     }
                     let bundle: Vec<u8> = self.buffer.drain(..SRT_BUNDLE_BYTES).collect();

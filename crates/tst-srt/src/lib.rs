@@ -24,7 +24,6 @@
 
 pub mod addr;
 pub mod builder;
-pub mod cancel;
 pub mod config;
 pub mod error;
 pub mod init;
@@ -36,11 +35,14 @@ pub mod url;
 
 // Top-level re-exports for the most common types.
 pub use builder::{ListenerBuilder, SocketBuilder};
-pub use cancel::CancelHandle;
 pub use config::{ListenerConfig, SocketConfig};
 pub use error::{AcceptError, BindError, ConnectError, Error, RecvError, Result, SendError};
 pub use listener::Listener;
 pub use options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, Role, StreamId};
 pub use socket::{Socket, Stats};
 pub use transport::SrtTransport;
+// `CancelHandle` is a transport-agnostic primitive defined in `tst-core`;
+// re-exported here for backwards compatibility so `tst_srt::CancelHandle`
+// keeps working at existing call sites.
+pub use tst_core::CancelHandle;
 pub use url::{SrtUrl, UrlError, UrlOverlay};

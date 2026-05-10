@@ -16,8 +16,8 @@ behaviour. Pick the one whose layer you're on:
 
 | Layer | Type | Where it lives |
 |-------|------|----------------|
-| Pipeline (transport-agnostic) | [`TransportCancel`](../crates/tst-core/src/transport.rs) (trait) | `tst_pipeline::TransportCancel` (re-export of `tst_core::transport::TransportCancel`) |
-| Transport (libsrt-concrete) | [`CancelHandle`](../crates/tst-srt/src/cancel.rs) (struct) | `tst_pipeline::CancelHandle` (re-export of `tst_srt::CancelHandle`) |
+| Pipeline (trait, dynamic dispatch) | [`TransportCancel`](../crates/tst-core/src/transport.rs) (trait) | `tst_pipeline::TransportCancel` (re-export of `tst_core::transport::TransportCancel`) |
+| Concrete primitive (transport-agnostic) | [`CancelHandle`](../crates/tst-core/src/cancel.rs) (struct) | `tst_pipeline::CancelHandle` (re-export of `tst_core::CancelHandle`); also re-exported as `tst_srt::CancelHandle` |
 
 Pipeline shells return the trait shape:
 
@@ -50,7 +50,7 @@ let cancel = cancel.expect("real transports always return Some");
 From `tst-srt` directly (Socket / Listener):
 
 ```rust,ignore
-use tst_pipeline::CancelHandle;  // re-exported from tst_srt::CancelHandle
+use tst_pipeline::CancelHandle;  // re-exported from tst_core::CancelHandle
 
 let socket: tst_srt::Socket = /* ... */;
 let cancel: CancelHandle = socket.cancel_handle();
@@ -129,7 +129,7 @@ primitive. The shape maps cleanly:
 | C (`tst-c`) | `tst_cancel_handle_t *` opaque; `tst_cancel_handle_cancel(h)` (deferred to receiver-surface plan) |
 
 The Rust API is the source of truth — every binding crate forwards
-`cancel()` to the same idempotent atomic-swap inside `tst-srt`.
+`cancel()` to the same idempotent atomic-swap inside `tst-core`.
 
 ## Threading guarantees
 

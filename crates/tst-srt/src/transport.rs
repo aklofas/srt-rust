@@ -168,8 +168,8 @@ impl Drop for SrtTransport {
     }
 }
 
-/// Adapter: wraps `srt::CancelHandle` as a `TransportCancel`.
-struct SrtCancel(crate::CancelHandle);
+/// Adapter: wraps `tst_core::CancelHandle` as a `TransportCancel`.
+struct SrtCancel(tst_core::CancelHandle);
 
 impl TransportCancel for SrtCancel {
     fn cancel(&self) {

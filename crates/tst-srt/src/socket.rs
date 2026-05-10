@@ -24,7 +24,7 @@ pub struct Socket {
     /// thread parked in `send`/`recv` can be woken from another thread.
     /// Drop calls `cancel.cancel()` so explicit `close()` and Drop never
     /// double-close.
-    cancel: crate::CancelHandle,
+    cancel: tst_core::CancelHandle,
     /// Cached at construction; libsrt allows reading via getsockflag, but
     /// reading once is cheaper.
     cached_stream_id: Option<String>,
@@ -318,7 +318,7 @@ impl Socket {
     /// Clone-able close handle. Calling `cancel()` from any thread
     /// closes the underlying SRT socket — wakes a peer thread parked in
     /// `send` or `recv` with a Broken-class error. Idempotent.
-    pub fn cancel_handle(&self) -> crate::CancelHandle {
+    pub fn cancel_handle(&self) -> tst_core::CancelHandle {
         self.cancel.clone()
     }
 }
@@ -747,8 +747,8 @@ fn classify_recv_error(raw: crate::error::RawError, buf_len: usize) -> RecvError
 }
 
 /// Build a CancelHandle that closes the SRTSOCKET on first cancel.
-fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> crate::CancelHandle {
-    crate::CancelHandle::new(handle as i64, |h| {
+fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> tst_core::CancelHandle {
+    tst_core::CancelHandle::new(handle as i64, |h| {
         // SAFETY: h was the same SRTSOCKET we stored; libsrt accepts
         // srt_close from any thread; the atomic-swap in CancelHandle
         // guarantees this runs at most once.
@@ -781,8 +781,8 @@ mod tests {
     fn double_close_via_cancel_then_drop_is_safe() {
         // We construct a CancelHandle by hand around a fake handle with a
         // closer that records the call count, mirroring what Socket holds.
-        use crate::CancelHandle;
         use std::sync::atomic::{AtomicU32, Ordering};
+        use tst_core::CancelHandle;
         let calls = std::sync::Arc::new(AtomicU32::new(0));
         let calls_cl = calls.clone();
         let cancel = CancelHandle::new(99, move |_| {

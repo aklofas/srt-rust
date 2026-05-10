@@ -10,15 +10,6 @@ description  = "TS Transformer pipeline shells: Sender, MuxSender, RawSender, Re
 
 [dependencies]
 tst-core  = { path = "../tst-core" }
-# Pulled in only to re-export `tst_srt::CancelHandle` at the tst_pipeline
-# crate root (single import path for FFI binding authors per Phase 3
-# spec item 3.5j). The pipeline-layer cancel abstraction is
-# `tst_core::transport::TransportCancel` (returned by every shell's
-# `cancel_handle()` accessor); `CancelHandle` is the concrete
-# tst-srt-side primitive that implements it. `default-features = false`
-# avoids dragging mbedTLS into tst-pipeline builds for downstream
-# consumers that only want cleartext SRT or aren't using SRT at all.
-tst-srt   = { path = "../tst-srt", default-features = false }
 thiserror = { workspace = true }
 # Single facade for diagnostics workspace-wide. Consumers wire one
 # `tracing-subscriber`. We only need `std`; default `attributes` brings

@@ -34,6 +34,7 @@
 
 #![warn(rustdoc::broken_intra_doc_links)]
 
+pub mod cancel;
 pub mod codec;
 pub mod error;
 #[cfg(feature = "file")]
@@ -42,6 +43,7 @@ pub mod klv;
 pub mod mpegts;
 pub mod transport;
 
+pub use cancel::CancelHandle;
 pub use error::{DemuxError, KlvDecodeError, KlvEncodeError, KlvFieldError, MuxError};
 pub use klv::st0601::UasDatalinkLs;
 pub use transport::{RecvTransport, Transport, TransportCancel, TransportError};

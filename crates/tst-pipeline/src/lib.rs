@@ -76,11 +76,10 @@ pub use tst_core::transport::{RecvTransport, Transport, TransportCancel, Transpo
 // root so FFI binding authors (`srt-jni`, `srt-uniffi`, `tst-pyo3`,
 // `tst-c`) have a single import path: `tst_pipeline::CancelHandle`.
 //
-// `CancelHandle` itself is defined in `tst-srt` (it wraps a libsrt
-// `SRTSOCKET` plus a closer closure); the pipeline-layer abstraction is
-// `TransportCancel` above. Shells accept `Option<Arc<dyn TransportCancel
-// + Send + Sync>>` via `cancel_handle()` — this re-export lets binding
-// authors name the concrete type when they need to construct one or
-// type-erase to it. See [`crate`]'s `cancel-handle.md` doc for the full
-// pattern.
-pub use tst_srt::CancelHandle;
+// `CancelHandle` is a transport-agnostic primitive defined in
+// `tst-core`. The pipeline-layer abstraction is `TransportCancel`
+// above; shells accept `Option<Arc<dyn TransportCancel + Send + Sync>>`
+// via `cancel_handle()`. This re-export lets binding authors name the
+// concrete type when they need to construct one or type-erase to it.
+// See [`crate`]'s `cancel-handle.md` doc for the full pattern.
+pub use tst_core::CancelHandle;

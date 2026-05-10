@@ -242,13 +242,15 @@ Swift `Task.cancel()` analog, Python `threading.Event` analog, C
 This is the supported shape for breaking a sync-blocking shell from
 another thread. Shells return the trait-object form
 `Option<Arc<dyn TransportCancel + Send + Sync>>` — pipeline-layer,
-transport-agnostic. The concrete struct lives in `tst-srt`
-(`CancelHandle` wraps an `SRTSOCKET` plus a closer closure) and is
-re-exported as `tst_pipeline::CancelHandle` so binding authors have a
-single import path. The Rust API stays synchronous-blocking; the cancel
-handle is the supported escape hatch for "wake the parked syscall now"
-without time-sliced polling. (When async lands later as a separate
-crate, `CancelHandle` remains the sync-blocking primitive — see
+transport-agnostic. The concrete struct lives in `tst-core`
+(`CancelHandle` wraps an integer handle plus a closer closure — for
+SRT, the handle is the `SRTSOCKET` and the closer is `srt_close`) and
+is re-exported as `tst_pipeline::CancelHandle` (and as
+`tst_srt::CancelHandle`) so binding authors have a single import path.
+The Rust API stays synchronous-blocking; the cancel handle is the
+supported escape hatch for "wake the parked syscall now" without
+time-sliced polling. (When async lands later as a separate crate,
+`CancelHandle` remains the sync-blocking primitive — see
 **Sync vs. async** below.)
 
 See [`cancel-handle.md`](./cancel-handle.md) for the full pattern,

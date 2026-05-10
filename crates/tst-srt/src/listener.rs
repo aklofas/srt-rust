@@ -25,7 +25,7 @@ pub struct Listener {
     /// thread parked in `accept` can be woken from another thread. Drop
     /// calls `cancel.cancel()` so explicit `close()` and Drop never
     /// double-close.
-    cancel: crate::CancelHandle,
+    cancel: tst_core::CancelHandle,
     /// Stored for inheritance into accepted Sockets.
     accepted_send_timeout: Option<Duration>,
     accepted_recv_timeout: Option<Duration>,
@@ -250,7 +250,7 @@ impl Listener {
 
     /// Clone-able close handle. Calling `cancel()` from any thread
     /// closes the underlying SRT listener socket. Idempotent.
-    pub fn cancel_handle(&self) -> crate::CancelHandle {
+    pub fn cancel_handle(&self) -> tst_core::CancelHandle {
         self.cancel.clone()
     }
 }
@@ -263,8 +263,8 @@ impl Drop for Listener {
 }
 
 /// Build a CancelHandle that closes the SRTSOCKET on first cancel.
-fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> crate::CancelHandle {
-    crate::CancelHandle::new(handle as i64, |h| {
+fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> tst_core::CancelHandle {
+    tst_core::CancelHandle::new(handle as i64, |h| {
         // SAFETY: h was the same SRTSOCKET we stored; libsrt accepts
         // srt_close from any thread; the atomic-swap in CancelHandle
         // guarantees this runs at most once.

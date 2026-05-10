@@ -1,11 +1,9 @@
 //! Integration tests for `pipeline::ManagedTransport` using a mock
 //! transport with programmable failure pattern.
 
-mod common;
-
-use common::mock_transport::{FailMode, MockTransport};
 use std::time::Duration;
 use tst_pipeline::{BackoffStrategy, ManagedTransport, OverflowPolicy, ReconnectPolicy, Transport};
+use tst_test_helpers::mock_transport::{FailMode, MockTransport};
 
 #[test]
 fn managed_recovers_from_brief_outage() {

@@ -8,5 +8,4 @@ description = "Internal test helpers shared across tst-core, tst-pipeline, tst-s
 license     = "MIT OR Apache-2.0"
 
 [dependencies]
-# Filled in by Tasks 8/9/10 as each helper module lands. Likely:
-#   tst-core = { path = "../tst-core" }   (mock_transport implements Transport)
+tst-core = { path = "../tst-core" }

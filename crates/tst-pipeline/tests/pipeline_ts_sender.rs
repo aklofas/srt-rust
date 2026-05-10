@@ -1,9 +1,7 @@
 //! Integration tests for `pipeline::Sender` over a mock transport.
 
-mod common;
-
-use common::mock_transport::MockTransport;
 use tst_pipeline::{Sender, SenderConfig, TsFramingMode};
+use tst_test_helpers::mock_transport::MockTransport;
 
 fn synthetic_ts_packets(n: usize) -> Vec<u8> {
     let mut buf = Vec::with_capacity(n * 188);

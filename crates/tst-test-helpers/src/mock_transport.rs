@@ -3,7 +3,7 @@
 //! integration tests.
 
 use std::sync::{Arc, Mutex};
-use tst_pipeline::{Transport, TransportError};
+use tst_core::{Transport, TransportError};
 
 #[derive(Debug, Clone)]
 pub enum FailMode {

@@ -1,9 +1,7 @@
 //! Integration tests for `pipeline::RawSender` using a mock `Transport`.
 
-mod common;
-
-use common::mock_transport::MockTransport;
 use tst_pipeline::{RawSender, RawSenderConfig, TransportError};
+use tst_test_helpers::mock_transport::MockTransport;
 
 #[test]
 fn raw_sender_passes_bytes_through() {

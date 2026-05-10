@@ -1,11 +1,9 @@
 //! Unit-level integration tests for `pipeline::MuxSender` using a mock
 //! `Transport`. End-to-end tests over a real Socket pair are in Task 10.
 
-mod common;
-
-use common::mock_transport::MockTransport;
 use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::MuxSender;
+use tst_test_helpers::mock_transport::MockTransport;
 
 fn synthetic_h264_au() -> Vec<u8> {
     // 4-byte start code + IDR NAL header + 64 bytes of payload.

@@ -17,13 +17,14 @@ thiserror = { workspace = true }
 tracing   = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-criterion    = { workspace = true }
-proptest     = { workspace = true }
+criterion       = { workspace = true }
+proptest        = { workspace = true }
+tst-test-helpers = { path = "../tst-test-helpers" }
 # Captures `tracing` events in tests for assertion.
 # `no-env-filter` makes the subscriber accept events from any crate (not just
 # the test binary), which is needed for integration tests that assert on
 # events emitted by tst-pipeline library code.
-tracing-test = { version = "0.2", features = ["no-env-filter"] }
+tracing-test    = { version = "0.2", features = ["no-env-filter"] }
 
 [[bench]]
 name    = "syncer"

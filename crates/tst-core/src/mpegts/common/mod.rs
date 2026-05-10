@@ -5,6 +5,7 @@
 //! doc for the full deferral rationale.
 
 pub mod crc32;
+pub(crate) mod handle_pack;
 
 /// MPEG-TS PMT `stream_type` values used by this library.
 ///

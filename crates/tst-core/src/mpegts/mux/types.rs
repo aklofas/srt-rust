@@ -286,17 +286,16 @@ impl VideoStreamHandle {
     /// `within_index` and trip the assert.
     #[doc(hidden)]
     pub fn pack(program_index: usize, within_index: usize) -> Self {
-        debug_assert!(program_index < MAX_PROGRAMS);
-        debug_assert!(within_index < 16);
-        Self(((program_index as u32) << 4) | (within_index as u32))
+        Self(crate::mpegts::common::handle_pack::pack(
+            program_index,
+            within_index,
+        ))
     }
 
     /// Unpack the opaque u32 into `(program_index, within_program_index)`.
     #[doc(hidden)]
     pub fn unpack(self) -> (usize, usize) {
-        let prog = ((self.0 >> 4) & 0x0F) as usize;
-        let within = (self.0 & 0x0F) as usize;
-        (prog, within)
+        crate::mpegts::common::handle_pack::unpack(self.0)
     }
 
     /// Return the packed `u32` representation. Used at the FFI boundary when
@@ -338,17 +337,16 @@ impl KlvStreamHandle {
     /// handles round-tripped through C ABI.
     #[doc(hidden)]
     pub fn pack(program_index: usize, within_index: usize) -> Self {
-        debug_assert!(program_index < MAX_PROGRAMS);
-        debug_assert!(within_index < 16);
-        Self(((program_index as u32) << 4) | (within_index as u32))
+        Self(crate::mpegts::common::handle_pack::pack(
+            program_index,
+            within_index,
+        ))
     }
 
     /// Unpack the opaque u32 into `(program_index, within_program_index)`.
     #[doc(hidden)]
     pub fn unpack(self) -> (usize, usize) {
-        let prog = ((self.0 >> 4) & 0x0F) as usize;
-        let within = (self.0 & 0x0F) as usize;
-        (prog, within)
+        crate::mpegts::common::handle_pack::unpack(self.0)
     }
 
     /// Return the packed `u32` representation. Used at the FFI boundary when
@@ -397,16 +395,15 @@ impl AudioStreamHandle {
     /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
     /// at `push_audio_to` time.
     pub(crate) fn pack(program_index: usize, within_index: usize) -> Self {
-        debug_assert!(program_index < MAX_PROGRAMS);
-        debug_assert!(within_index < 16);
-        Self(((program_index as u32) << 4) | (within_index as u32 & 0x0F))
+        Self(crate::mpegts::common::handle_pack::pack(
+            program_index,
+            within_index,
+        ))
     }
 
     /// Inverse of `pack`. Returns `(program_index, within_index)`.
     pub(crate) fn unpack(self) -> (usize, usize) {
-        let prog = ((self.0 >> 4) & 0x0F) as usize;
-        let within = (self.0 & 0x0F) as usize;
-        (prog, within)
+        crate::mpegts::common::handle_pack::unpack(self.0)
     }
 
     /// Wrap an already-packed `u32`. Test-only — production code has no
@@ -457,16 +454,15 @@ impl SubtitleStreamHandle {
     /// produces a handle that the muxer will reject with
     /// [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle) at `push_subtitle_to` time.
     pub(crate) fn pack(program_index: usize, within_index: usize) -> Self {
-        debug_assert!(program_index < MAX_PROGRAMS);
-        debug_assert!(within_index < MAX_SUBTITLE_STREAMS_PER_PROGRAM);
-        Self(((program_index as u32) << 4) | (within_index as u32 & 0x0F))
+        Self(crate::mpegts::common::handle_pack::pack(
+            program_index,
+            within_index,
+        ))
     }
 
     /// Unpack the opaque u32 into `(program_index, within_program_index)`.
     pub(crate) fn unpack(self) -> (usize, usize) {
-        let prog = ((self.0 >> 4) & 0x0F) as usize;
-        let within = (self.0 & 0x0F) as usize;
-        (prog, within)
+        crate::mpegts::common::handle_pack::unpack(self.0)
     }
 
     /// Return the packed `u32` representation. Test-only — production code

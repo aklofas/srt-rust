@@ -58,11 +58,14 @@ use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let passphrase = Passphrase::new("shared-secret-not-for-production")?;
-    let mut socket = SocketBuilder::new()
-        .passphrase(passphrase)
-        .key_length(KeyLength::Aes256)
-        .latency(Duration::from_millis(120))
-        .connect("127.0.0.1:9000")?;
+    // Bind the builder before chaining: mutators return `&mut Self` and
+    // `connect` takes `&self`, so a single fluent chain off the
+    // temporary `SocketBuilder::new()` would dangle. Bind, then step.
+    let mut sb = SocketBuilder::new();
+    sb.passphrase(passphrase);
+    sb.key_length(KeyLength::Aes256);
+    sb.latency(Duration::from_millis(120));
+    let mut socket = sb.connect("127.0.0.1:9000")?;
     socket.send(b"encrypted hello")?;
     socket.close()?;
     Ok(())
@@ -173,15 +176,22 @@ Reach for this when the encoder produces HEVC, or when the receiver requires str
 **Sync KLV auto-wraps in the muxer.** When you configure `KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) before TS-framing. Pass raw KLV LS bytes — do not pre-wrap. PTS lives in the PES header (per § 2.12.4.1). See [guide-mpegts-mux.md](guide-mpegts-mux.md) §"KLV-in-TS modes".
 
 ```rust,no_run
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, Muxer, VideoCodec,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x1011, VideoCodec::H265)
-        .add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true)
-        .end_program()
-        .build()?;
+    // Build the program independently, then plug it into the top-level
+    // MuxerConfig::builder. Mutators take `&mut self` and return
+    // `&mut Self`, so each step is its own statement on a bound builder.
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H265);
+        prog.add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build()?
+    };
     let mut mux = Muxer::new(cfg)?;
     let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
     // Muxer auto-prepends the 5-byte AU cell header. metadata_service_id
@@ -201,29 +211,43 @@ own `Demuxer`) render which PID is which without external configuration.
 
 ```rust,no_run
 use tst_core::mpegts::descriptors as desc;
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, Muxer, VideoCodec,
+};
 
 const EO_PID: u16 = 0x0100;
 const IR_PID: u16 = 0x0101;
 const KLV_PID: u16 = 0x0102;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = MuxerConfig::builder()
-        .add_video(EO_PID, VideoCodec::H264)
-        .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
-        .add_video(IR_PID, VideoCodec::H264)
-        .stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640x480")])
-        .add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true)
-        .stream_descriptors_for_klv(0, vec![
-            // 0x26 + 0x27 are the canonical pair for stream_type=0x15 KLV
-            // (the muxer's auto-emitted KLVA Registration only fires for
-            // PrivateData KLV, not SynchronousMetadata).
-            desc::metadata_klva(0x00),
-            desc::metadata_std(0, 0, 0),
-            // Plus a human label.
-            desc::user_private(b"KLV_SYNC"),
-        ])
-        .build()?;
+    // Per-stream descriptors live on the program builder; bind it,
+    // call add_video / add_klv in order, then attach descriptors to
+    // each by index. `stream_descriptors_for_*` are fallible
+    // (DescriptorIndexOutOfRange when the index is past add-order),
+    // so propagate with `?`.
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(EO_PID, VideoCodec::H264);
+        prog.stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])?;
+        prog.add_video(IR_PID, VideoCodec::H264);
+        prog.stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640x480")])?;
+        prog.add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true);
+        prog.stream_descriptors_for_klv(
+            0,
+            vec![
+                // 0x26 + 0x27 are the canonical pair for stream_type=0x15 KLV
+                // (the muxer's auto-emitted KLVA Registration only fires for
+                // PrivateData KLV, not SynchronousMetadata).
+                desc::metadata_klva(0x00),
+                desc::metadata_std(0, 0, 0),
+                // Plus a human label.
+                desc::user_private(b"KLV_SYNC"),
+            ],
+        )?;
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build()?
+    };
 
     let mut _mux = Muxer::new(cfg)?;
     // ...push frames as usual...
@@ -248,19 +272,27 @@ When you have two independent (EO + IR + KLV) feeds and need to ship them
 through one SRT socket without forcing each to its own UDP port:
 
 ```rust,no_run
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-            .add_video(0x1011, VideoCodec::H264)
-            .add_klv(0x1031, KlvStreamType::PrivateData, false)
-            .end_program()
-        .add_program(2, 0x1100)
-            .add_video(0x1111, VideoCodec::H264)
-            .add_klv(0x1131, KlvStreamType::PrivateData, false)
-            .end_program()
-        .build()?;
+    // Build each program independently, then add both to the parent
+    // builder. PIDs must be unique across all programs in one config.
+    let config = {
+        let mut p1 = MuxerProgramConfigBuilder::new(1, 0x1000);
+        p1.add_video(0x1011, VideoCodec::H264);
+        p1.add_klv(0x1031, KlvStreamType::PrivateData, false);
+
+        let mut p2 = MuxerProgramConfigBuilder::new(2, 0x1100);
+        p2.add_video(0x1111, VideoCodec::H264);
+        p2.add_klv(0x1131, KlvStreamType::PrivateData, false);
+
+        let mut b = MuxerConfig::builder();
+        b.add_program(p1.build());
+        b.add_program(p2.build());
+        b.build()?
+    };
 
     // Resolve handles per-program; push_video_to/push_klv_to route to
     // the correct elementary stream even when two programs carry the same
@@ -290,20 +322,23 @@ synchronized playback, and KLV records emit on the same PCR clock.
 
 ```rust
 use tst_core::mpegts::mux::{
-    AudioCodec, MuxerConfigBuilder, KlvStreamType, Muxer, VideoCodec,
+    AudioCodec, KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, Muxer,
+    VideoCodec,
 };
 
-let cfg = MuxerConfigBuilder::new()
-    .add_program(1, 0x1000)
-    .add_video(0x100, VideoCodec::H264)
-    .add_klv(0x200, KlvStreamType::PrivateData, /*carries_pts=*/ false)
-    // add_audio_with_language auto-emits an iso_639_language_descriptor
-    // (tag 0x0A) on the PMT entry — receivers (browsers, transcoders,
-    // players) get a language hint without manually wiring descriptors.
-    // Use plain add_audio(pid, codec) when language is unknown / unset.
-    .add_audio_with_language(0x300, AudioCodec::Aac, *b"eng")
-    .end_program()
-    .build()?;
+// add_audio_with_language auto-emits an iso_639_language_descriptor
+// (tag 0x0A) on the PMT entry — receivers (browsers, transcoders,
+// players) get a language hint without manually wiring descriptors.
+// Use plain add_audio(pid, codec) when language is unknown / unset.
+let cfg = {
+    let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+    prog.add_video(0x100, VideoCodec::H264);
+    prog.add_klv(0x200, KlvStreamType::PrivateData, /*carries_pts=*/ false);
+    prog.add_audio_with_language(0x300, AudioCodec::Aac, *b"eng");
+    let mut b = MuxerConfig::builder();
+    b.add_program(prog.build());
+    b.build()?
+};
 
 let mut muxer = Muxer::new(cfg)?;
 
@@ -333,15 +368,19 @@ The recipe below mirrors recipe 9 (H.265 + sync KLV) — flip the codec to
 VPS / SPS / PPS).
 
 ```rust,no_run
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, Muxer, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, Muxer, VideoCodec,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x1011, VideoCodec::H266)
-        .add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true)
-        .end_program()
-        .build()?;
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H266);
+        prog.add_klv(0x1031, KlvStreamType::SynchronousMetadata, /*carries_pts=*/ true);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build()?
+    };
     let mut mux = Muxer::new(cfg)?;
     let inner_klv: Vec<u8> = vec![/* ST 0601 bytes */];
     // Muxer auto-prepends the 5-byte H.222.0 § 2.12.4.2 AU cell header.
@@ -411,9 +450,12 @@ use std::io::Read;
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let socket = SocketBuilder::new()
-        .latency(Duration::from_millis(120))
-        .connect("127.0.0.1:9000")?;
+    // Bind the builder before the terminal `connect` — mutators take
+    // `&mut self` and `connect` takes `&self`, so a fluent chain off
+    // the temporary `SocketBuilder::new()` doesn't compose.
+    let mut sb = SocketBuilder::new();
+    sb.latency(Duration::from_millis(120));
+    let socket = sb.connect("127.0.0.1:9000")?;
     let mut sender = Sender::new(SrtTransport::new(socket), SenderConfig::default());
     let mut file = File::open("input.ts")?;
     let mut buf = vec![0u8; 4096];
@@ -443,9 +485,11 @@ use std::io::Write;
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut listener = ListenerBuilder::new()
-        .latency(Duration::from_millis(120))
-        .bind("0.0.0.0:9000")?;
+    // Same bind-then-step pattern as SocketBuilder: mutators return
+    // `&mut Self`, terminal `bind` takes `&self`.
+    let mut lb = ListenerBuilder::new();
+    lb.latency(Duration::from_millis(120));
+    let mut listener = lb.bind("0.0.0.0:9000")?;
     let (mut socket, _peer) = listener.accept()?;
     let mut out = File::create("out.ts")?;
     let mut buf = [0u8; 1500];
@@ -1105,8 +1149,10 @@ use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let factory = || -> Result<SrtTransport, TransportError> {
-        let socket = SocketBuilder::new()
-            .latency(Duration::from_millis(120))
+        // Bind-then-chain: mutators borrow, terminal `connect` borrows.
+        let mut sb = SocketBuilder::new();
+        sb.latency(Duration::from_millis(120));
+        let socket = sb
             .connect("127.0.0.1:9000")
             .map_err(|e| TransportError::Broken(format!("connect failed: {e}")))?;
         Ok(SrtTransport::new(socket))
@@ -1141,9 +1187,9 @@ use std::thread;
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let socket = SocketBuilder::new()
-        .latency(Duration::from_millis(120))
-        .connect("127.0.0.1:9000")?;
+    let mut sb = SocketBuilder::new();
+    sb.latency(Duration::from_millis(120));
+    let socket = sb.connect("127.0.0.1:9000")?;
     for _ in 0..10 {
         thread::sleep(Duration::from_secs(1));
         let s = socket.stats()?;
@@ -1166,14 +1212,18 @@ in a live SRT/TS stream so the downstream HLS player (hls.js etc.)
 can render them as captions.
 
 ```rust
-use tst_core::mpegts::mux::{MuxerConfig, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{
+    MuxerConfig, MuxerProgramConfigBuilder, Muxer, SubtitleCodec, VideoCodec,
+};
 
-let cfg = MuxerConfig::builder()
-    .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
-    .end_program()
-    .build()?;
+let cfg = {
+    let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+    prog.add_video(0x101, VideoCodec::H264);
+    prog.add_subtitle(0x200, SubtitleCodec::WebVttInTs);
+    let mut b = MuxerConfig::builder();
+    b.add_program(prog.build());
+    b.build()?
+};
 let mut mux = Muxer::new(cfg)?;
 let h = mux.subtitle_handles()[0];
 

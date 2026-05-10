@@ -218,6 +218,11 @@ pub struct Demuxer {
     /// current PMT version. Cleared at the top of each PMT-version bump so
     /// a fresh PMT re-fires if the ambiguity is still present.
     subtitle_descriptor_ambiguous_emitted: HashSet<u16>,
+    /// PID → program_number lookup. Populated when a PMT is parsed;
+    /// entries are removed when the PAT drops a program. Replaces the
+    /// O(programs × streams) linear scan in `program_number_for_pid` that
+    /// ran at every event-emitting callsite.
+    pid_to_program: HashMap<u16, u16>,
 }
 
 impl Demuxer {
@@ -258,6 +263,7 @@ impl Demuxer {
             subtitle_pids_seen: HashSet::new(),
             av1_registration_malformed_emitted: HashSet::new(),
             subtitle_descriptor_ambiguous_emitted: HashSet::new(),
+            pid_to_program: HashMap::new(),
         }
     }
 
@@ -688,6 +694,7 @@ impl Demuxer {
                 // Remove the PES stream-kind entries owned by this program.
                 for stream in &tracker.streams {
                     self.stream_kind_by_pid.remove(&stream.pid);
+                    self.pid_to_program.remove(&stream.pid);
                 }
                 // Free the PSI assembly buffer for this PMT PID.
                 self.psi_assemblers.remove(&pmt_pid);
@@ -892,7 +899,16 @@ impl Demuxer {
         let tracker = self.programs.get_mut(&pmt_pid).expect("checked above");
         tracker.pmt_version = Some(pmt.version);
         tracker.pcr_pid = Some(pmt.pcr_pid);
+        // Remove stale pid_to_program entries for PIDs previously owned by
+        // this program (version bump may have removed or reassigned streams).
+        for s in &tracker.streams {
+            self.pid_to_program.remove(&s.pid);
+        }
         tracker.streams = stream_infos;
+        // Populate pid_to_program for the newly accepted streams.
+        for s in &tracker.streams {
+            self.pid_to_program.insert(s.pid, program_number);
+        }
         tracker.klv_mismatch_coalesce.clear();
 
         // Emit ProgramMap event.
@@ -1336,15 +1352,10 @@ impl Demuxer {
             .map(|kind| StreamId { pid, kind })
     }
 
-    /// Look up the program_number for a PID by searching active ProgramTrackers.
+    /// Look up the program_number for a PID via the `pid_to_program` map.
     /// Returns 0 if the PID is not owned by any known program (e.g. PSI PIDs).
     fn program_number_for_pid(&self, pid: u16) -> u16 {
-        for tracker in self.programs.values() {
-            if tracker.streams.iter().any(|s| s.pid == pid) {
-                return tracker.program_number;
-            }
-        }
-        0
+        self.pid_to_program.get(&pid).copied().unwrap_or(0)
     }
 
     /// Insert `pid` into the KLV mismatch coalesce set for whichever program

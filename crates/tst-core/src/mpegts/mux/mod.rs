@@ -2025,7 +2025,7 @@ impl Muxer {
 
         if self.queue.len() + psi_packets + audio_packets > self.config.buffer_packets {
             return Err(MuxError::BufferFull {
-                capacity_packets: self.config.buffer_packets,
+                capacity_packets: self.config.buffer_packets as u64,
             });
         }
 
@@ -2239,7 +2239,7 @@ impl Muxer {
 
         if self.queue.len() + psi_packets + subtitle_packets > self.config.buffer_packets {
             return Err(MuxError::BufferFull {
-                capacity_packets: self.config.buffer_packets,
+                capacity_packets: self.config.buffer_packets as u64,
             });
         }
 
@@ -2487,7 +2487,7 @@ impl Muxer {
 
         if self.queue.len() + psi_packets + video_packets > self.config.buffer_packets {
             return Err(MuxError::BufferFull {
-                capacity_packets: self.config.buffer_packets,
+                capacity_packets: self.config.buffer_packets as u64,
             });
         }
 
@@ -2672,7 +2672,7 @@ impl Muxer {
 
         if self.queue.len() + psi_packets + klv_packets > self.config.buffer_packets {
             return Err(MuxError::BufferFull {
-                capacity_packets: self.config.buffer_packets,
+                capacity_packets: self.config.buffer_packets as u64,
             });
         }
 
@@ -2725,15 +2725,15 @@ impl Muxer {
     /// drain. Compared against [`Muxer::capacity_packets`] this gives
     /// the back-pressure ratio used by `tst_pipeline::MuxSender`'s
     /// observability hooks.
-    pub fn pending_packets(&self) -> usize {
-        self.queue.len()
+    pub fn pending_packets(&self) -> u64 {
+        self.queue.len() as u64
     }
 
     /// The configured queue capacity in 188-byte TS packets — a snapshot
     /// of `MuxerConfig::buffer_packets`. A `push_*` that would push the
     /// queue past this cap returns [`crate::error::MuxError::BufferFull`].
-    pub fn capacity_packets(&self) -> usize {
-        self.config.buffer_packets
+    pub fn capacity_packets(&self) -> u64 {
+        self.config.buffer_packets as u64
     }
 
     /// Return a snapshot of the current stats counters.

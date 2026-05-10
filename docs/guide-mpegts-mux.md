@@ -298,7 +298,7 @@ Required:
   configuration; the message names the failed rule.
 - `InvalidNal` — `push_video` was handed a buffer without an
   Annex-B start code.
-- `BufferFull { capacity_packets: usize }` — the resulting TS
+- `BufferFull { capacity_packets: u64 }` — the resulting TS
   packets would exceed `MuxerConfig::buffer_packets`. Drain via `pull`
   and retry. State is unchanged when this variant fires.
 - `KlvTooLarge { size: usize, max: usize }` — `push_klv` blob

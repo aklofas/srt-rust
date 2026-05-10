@@ -184,7 +184,7 @@ pub enum MuxError {
     InvalidNal,
 
     #[error("muxer packet buffer is full ({capacity_packets} packets); drain via pull and retry")]
-    BufferFull { capacity_packets: usize },
+    BufferFull { capacity_packets: u64 },
 
     /// KLV blob exceeds the 16-bit `PES_packet_length` ceiling.
     ///

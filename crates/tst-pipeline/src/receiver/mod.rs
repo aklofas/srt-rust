@@ -185,13 +185,9 @@ impl<R: RecvTransport> Receiver<R> {
     pub fn next_packet(&mut self) -> Result<[u8; 188], TransportError> {
         loop {
             if let Some(pkt) = self.syncer.next_packet() {
-                // The syncer always emits exactly 188 bytes when locked, so
-                // the conversion is infallible. A Vec-to-array conversion via
-                // try_into panics only if len != 188, which cannot happen here.
-                let arr: [u8; 188] = pkt.try_into().unwrap();
                 self.bytes_received += 188;
                 self.packets_received += 1;
-                return Ok(arr);
+                return Ok(pkt);
             }
             let n = self.transport.recv_bytes(&mut self.recv_buf)?;
             // The RecvTransport contract says closed/broken transports return

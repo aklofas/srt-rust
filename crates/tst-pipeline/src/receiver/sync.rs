@@ -37,14 +37,22 @@ pub enum SyncState {
 /// stay in the internal buffer; push more data when `next_packet` returns
 /// `None`.
 ///
-/// The internal buffer is a `Vec<u8>` with `drain`-based consumption.
-/// For receiver pipelines the packet rate (~7 Mbit/s of 1316-byte SRT
-/// messages) means the drain overhead is not a bottleneck in practice;
-/// a ring-buffer optimisation is deferred.
+/// Internally uses a ring buffer with a `head` cursor: consuming a packet
+/// advances `head` by 188 without moving any memory. A compaction pass
+/// (one memmove of the live bytes only) runs inside [`push`] when the dead
+/// prefix exceeds a threshold, amortising the cost across many emitted
+/// packets rather than paying a per-packet memmove as `drain` does.
 #[derive(Debug)]
 pub struct Syncer {
     state: SyncState,
+    /// Raw storage. Invariant: `buf.len() == head + len` at all times.
+    /// The live (unconsumed) window is `buf[head .. head + len]`.
+    /// The dead prefix `buf[0 .. head]` is reclaimed lazily by `compact`.
     buf: Vec<u8>,
+    /// Index of the first unconsumed byte in `buf`.
+    head: usize,
+    /// Number of unconsumed bytes.
+    len: usize,
     /// Bytes drained while scanning for alignment (HUNT skips + VERIFY
     /// single-byte drops on failed confirmation).
     pub(crate) bytes_skipped_for_sync: u64,
@@ -60,14 +68,43 @@ impl Syncer {
         Self {
             state: SyncState::Hunt,
             buf: Vec::new(),
+            head: 0,
+            len: 0,
             bytes_skipped_for_sync: 0,
             resync_events: 0,
         }
     }
 
+    /// Move live bytes to the front of `buf` to reclaim the dead prefix.
+    ///
+    /// After this call: `head == 0`, `buf[0..len]` is the live window,
+    /// and `buf.len() == len` (tail trimmed).
+    #[inline]
+    fn compact(&mut self) {
+        self.buf.copy_within(self.head..self.head + self.len, 0);
+        self.buf.truncate(self.len);
+        self.head = 0;
+    }
+
     /// Append incoming bytes to the internal buffer.
+    ///
+    /// Compacts (memmoves the live region to offset 0) when the dead prefix
+    /// exceeds one SRT-datagram worth of bytes (~1316). In the steady-state
+    /// receive loop — where each `push` delivers one SRT datagram and
+    /// `next_packet` drains ~7 packets before the next push — this means
+    /// one memmove per ~7 packet emits rather than one memmove per packet.
     pub fn push(&mut self, bytes: &[u8]) {
+        // Compact when the dead prefix is getting large. The threshold of 1316
+        // (one SRT datagram) keeps the Vec from growing without bound while
+        // limiting compaction frequency to approximately once per push.
+        if self.head >= 1316 {
+            self.compact();
+        }
+        // Invariant: buf.len() == head + len. extend_from_slice appends at
+        // buf.len() = head + len, making the new live window
+        // buf[head .. head + len + bytes.len()]. Correct.
         self.buf.extend_from_slice(bytes);
+        self.len += bytes.len();
     }
 
     /// Reset to HUNT and discard any buffered bytes.
@@ -82,6 +119,8 @@ impl Syncer {
     /// [`Receiver`][crate::Receiver] and reset via
     /// [`Receiver::reset_stats`][crate::Receiver::reset_stats].
     pub fn reset(&mut self) {
+        self.head = 0;
+        self.len = 0;
         self.buf.clear();
         self.state = SyncState::Hunt;
     }
@@ -102,28 +141,25 @@ impl Syncer {
     /// alignment, so all bytes pushed during the verification window remain
     /// available for LOCKED to emit as real packets.
     ///
-    /// Allocates one `Vec<u8>` per emitted packet (heap alloc on the hot
-    /// path). The caller (`Receiver`) immediately copies the result into a
-    /// `[u8; 188]`. Both costs disappear if/when this struct is reshaped to a
-    /// ring buffer; deferred to a follow-up so Task 12 stays scoped to the
-    /// state machine.
-    pub fn next_packet(&mut self) -> Option<Vec<u8>> {
+    /// Returns `[u8; 188]` by value — no heap allocation on the hot path.
+    pub fn next_packet(&mut self) -> Option<[u8; 188]> {
         loop {
             match self.state {
                 SyncState::Hunt => {
-                    // Scan forward for the first 0x47 sync byte. Drain
-                    // everything before it — those bytes can never be the
-                    // start of a valid packet.
-                    let pos = self.buf.iter().position(|&b| b == 0x47)?;
+                    // Scan the live region for the first 0x47 sync byte.
+                    let live = &self.buf[self.head..self.head + self.len];
+                    let pos = live.iter().position(|&b| b == 0x47)?;
                     self.bytes_skipped_for_sync += pos as u64;
-                    self.buf.drain(..pos);
-                    // buf[0] is now 0x47. One confirmation seen.
+                    // Advance head past skipped bytes — no memmove needed.
+                    self.head += pos;
+                    self.len -= pos;
+                    // buf[head] is now 0x47. One confirmation seen.
                     self.state = SyncState::Verify { count: 1 };
                     // Fall through to VERIFY on the next loop iteration.
                 }
                 SyncState::Verify { count } => {
-                    // We have a candidate 0x47 at buf[0]. Check whether
-                    // buf[188 * count] is also 0x47.
+                    // We have a candidate 0x47 at buf[head]. Check whether
+                    // buf[head + 188 * count] is also 0x47.
                     //
                     // `need` ensures the index we're about to peek at actually
                     // exists in the buffer before we read it. The +1 means:
@@ -132,10 +168,10 @@ impl Syncer {
                     // the buffer, so the LOCKED arm won't immediately return
                     // None on the following iteration.
                     let need = 188 * (count as usize + 1) + 1;
-                    if self.buf.len() < need {
+                    if self.len < need {
                         return None;
                     }
-                    if self.buf[188 * count as usize] == 0x47 {
+                    if self.buf[self.head + 188 * count as usize] == 0x47 {
                         let new_count = count + 1;
                         if new_count >= 4 {
                             // Four confirmations — alignment is solid.
@@ -150,18 +186,19 @@ impl Syncer {
                         // Loop: either emit from LOCKED or check next confirmation.
                     } else {
                         // Candidate failed. Drop one byte and re-hunt.
-                        // We can't just advance 188 bytes because buf[1..188]
+                        // We can't just advance 188 bytes because buf[head+1..head+188]
                         // may contain a real sync byte for a different alignment.
                         self.bytes_skipped_for_sync += 1;
-                        self.buf.drain(..1);
+                        self.head += 1;
+                        self.len -= 1;
                         self.state = SyncState::Hunt;
                     }
                 }
                 SyncState::Locked => {
-                    if self.buf.len() < 188 {
+                    if self.len < 188 {
                         return None;
                     }
-                    if self.buf[0] != 0x47 {
+                    if self.buf[self.head] != 0x47 {
                         // Lost sync — corrupted stream or a gap in the source.
                         // Fall back to HUNT; the loop will scan for the next
                         // 0x47 without consuming the non-sync byte here
@@ -169,11 +206,12 @@ impl Syncer {
                         self.state = SyncState::Hunt;
                         continue;
                     }
-                    // Emit one packet. The syncer always emits exactly 188 bytes
-                    // when in LOCKED state; the `.unwrap()` in the caller is
-                    // sound because `pkt` is always a 188-element Vec here.
-                    let pkt = self.buf[..188].to_vec();
-                    self.buf.drain(..188);
+                    // Copy 188 bytes into a stack-allocated array — no heap alloc.
+                    let mut pkt = [0u8; 188];
+                    pkt.copy_from_slice(&self.buf[self.head..self.head + 188]);
+                    // Advance the head cursor — no memmove needed.
+                    self.head += 188;
+                    self.len -= 188;
                     return Some(pkt);
                 }
             }
@@ -298,5 +336,33 @@ mod tests {
         // 5 leading packets + 6 trailing packets (bad packet's 188 bytes are
         // consumed by HUNT as it scans for the next 0x47).
         assert_eq!(got, 11);
+    }
+
+    /// Verify that the ring-buffer head-cursor invariant holds across multiple
+    /// interleaved push/drain cycles. Specifically: push must append correctly
+    /// even when head > 0 (dead prefix has accumulated from previous drains).
+    #[test]
+    fn incremental_push_drain() {
+        let mut s = Syncer::new();
+        // Push 5 packets at once to lock the syncer.
+        let mut init = Vec::new();
+        for i in 0..5u16 {
+            init.extend_from_slice(&ts_packet(i));
+        }
+        s.push(&init);
+        // Drain all 5.
+        let mut got = 0;
+        while s.next_packet().is_some() {
+            got += 1;
+        }
+        assert_eq!(got, 5);
+        // head is now 5 * 188 = 940 (below the 1316 compaction threshold).
+        // Push 3 more one at a time and drain each — exercises push with head > 0.
+        for i in 5u16..8 {
+            s.push(&ts_packet(i));
+            let pkt = s.next_packet();
+            assert!(pkt.is_some(), "packet {i} should be emitted");
+            assert_eq!(pkt.unwrap()[0], 0x47);
+        }
     }
 }

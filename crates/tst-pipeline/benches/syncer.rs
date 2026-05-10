@@ -74,8 +74,8 @@ fn synthetic_packet(pid: u16, cc: u8, seq: usize) -> [u8; 188] {
     // Payload-only adaptation_field_control (0x10) | cc
     p[3] = 0x10 | (cc & 0x0F);
     // Fill payload with a XOR pattern so adjacent packets differ
-    for j in 4..188 {
-        p[j] = (seq.wrapping_add(j) as u8) ^ 0x5A;
+    for (j, byte) in p[4..].iter_mut().enumerate() {
+        *byte = (seq.wrapping_add(j + 4) as u8) ^ 0x5A;
     }
     p
 }

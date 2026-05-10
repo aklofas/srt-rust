@@ -66,6 +66,9 @@ jobs:
       - name: check-c-abi-rustdoc-coverage
         run: bash scripts/check-c-abi-rustdoc-coverage.sh
 
+      - name: check-close-contract-presence
+        run: bash scripts/check-close-contract-presence.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

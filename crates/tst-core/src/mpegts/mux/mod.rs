@@ -1490,6 +1490,12 @@ pub struct Muxer {
     /// at runtime. `pid` and `stream_type` are set at construction and
     /// never modified.
     per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
+
+    /// Scratch buffer reused across push_video / push_klv / push_audio /
+    /// push_subtitle calls. Cleared and refilled each AU; avoids one
+    /// per-AU heap allocation on the hot path. Grows to the largest AU seen
+    /// and stays there — typical size is MAX_PES_HEADER_SIZE + payload.
+    pes_scratch: Vec<u8>,
 }
 
 impl Muxer {
@@ -1855,6 +1861,9 @@ impl Muxer {
             ts_packets_emitted: 0,
             ts_bytes_emitted: 0,
             per_stream,
+            // 8 KiB heuristic: covers a typical small AU without reallocation;
+            // grows automatically on first oversized frame and stays there.
+            pes_scratch: Vec::with_capacity(MAX_PES_HEADER_SIZE + 8192),
         })
     }
 
@@ -2039,10 +2048,16 @@ impl Muxer {
         }
 
         let pts = PesPtsField::PtsOnly(Pts90khz::new(pts_90khz));
-        let mut pes_buf = Vec::with_capacity(MAX_PES_HEADER_SIZE + frames.len());
-        write_audio_pes(&mut pes_buf, audio_codec, within_idx as u8, pts, frames);
+        self.pes_scratch.clear();
+        write_audio_pes(
+            &mut self.pes_scratch,
+            audio_codec,
+            within_idx as u8,
+            pts,
+            frames,
+        );
 
-        let total = pes_buf.len();
+        let total = self.pes_scratch.len();
         let audio_packets = ts_packets_for(total);
         let psi_packets = if self.psi_due(prog_idx, pts_90khz) {
             2
@@ -2060,7 +2075,7 @@ impl Muxer {
 
         let mut cursor = 0;
         let mut first = true;
-        while cursor < pes_buf.len() {
+        while cursor < self.pes_scratch.len() {
             let mut adaptation = AdaptationField::default();
             if first && self.pcr_pids[prog_idx] == audio_pid && self.pcr_due(prog_idx, pts_90khz) {
                 let pcr = Pcr27mhz::from_pts(Pts90khz::new(pts_90khz));
@@ -2068,12 +2083,13 @@ impl Muxer {
                 self.pcr_last[prog_idx] = Some(pcr.as_ticks());
             }
             let mut pkt = [0u8; 188];
+            let payload_start = cursor;
             let result = write_packet(
                 &mut pkt,
                 audio_pid,
                 first,
                 adaptation,
-                &pes_buf[cursor..],
+                &self.pes_scratch[payload_start..],
                 &mut self.counters,
             );
             cursor += result.payload_consumed;
@@ -2242,18 +2258,14 @@ impl Muxer {
 
         let subtitle_pid = self.subtitle_streams[prog_idx][within_idx].pid;
 
-        // Capacity hint: DVB-teletext rounds up to N×184 bytes total, so the
-        // tail stuffing can add up to one TS packet's payload area (184 bytes)
-        // beyond header + payload. Other codecs only need MAX_PES_HEADER_SIZE
-        // + envelope + payload.
-        let buf_capacity = match pes_shape {
-            SubtitlePesShape::DvbTeletext => 45 + payload.len() + 184,
-            _ => MAX_PES_HEADER_SIZE + envelope_overhead + payload.len(),
-        };
-        let mut pes_buf = Vec::with_capacity(buf_capacity);
-        write_subtitle_pes(&mut pes_buf, pts_90khz, pes_shape, payload);
+        // The pes_scratch capacity hint is a comment only — the scratch buf
+        // reuses whatever allocation it already holds and grows if needed.
+        // DVB-teletext tail-stuffing can add up to one TS payload (184 B)
+        // beyond header + payload; that growth is handled transparently by Vec.
+        self.pes_scratch.clear();
+        write_subtitle_pes(&mut self.pes_scratch, pts_90khz, pes_shape, payload);
 
-        let subtitle_packets = ts_packets_for(pes_buf.len());
+        let subtitle_packets = ts_packets_for(self.pes_scratch.len());
         // Mirror push_audio_to: reserve 2 packets (PAT + 1 PMT) when a PSI
         // tick is due. Multi-program muxers actually emit 1 PAT + N PMTs,
         // but the muxer-wide buffer slop tolerates a small under-reservation
@@ -2278,15 +2290,16 @@ impl Muxer {
         // never carry PCR.
         let mut cursor = 0;
         let mut first = true;
-        while cursor < pes_buf.len() {
+        while cursor < self.pes_scratch.len() {
             let adaptation = AdaptationField::default();
             let mut pkt = [0u8; 188];
+            let payload_start = cursor;
             let result = write_packet(
                 &mut pkt,
                 subtitle_pid,
                 first,
                 adaptation,
-                &pes_buf[cursor..],
+                &self.pes_scratch[payload_start..],
                 &mut self.counters,
             );
             cursor += result.payload_consumed;
@@ -2528,13 +2541,13 @@ impl Muxer {
 
         self.maybe_emit_psi(prog_idx, pts_90khz);
 
-        let mut pes_buf = Vec::with_capacity(total);
-        pes_buf.extend_from_slice(&header[..header_len]);
-        pes_buf.extend_from_slice(nal);
+        self.pes_scratch.clear();
+        self.pes_scratch.extend_from_slice(&header[..header_len]);
+        self.pes_scratch.extend_from_slice(nal);
 
         let mut cursor = 0;
         let mut first = true;
-        while cursor < pes_buf.len() {
+        while cursor < self.pes_scratch.len() {
             let mut adaptation = AdaptationField::default();
             if first {
                 if key_frame {
@@ -2555,12 +2568,13 @@ impl Muxer {
                 }
             }
             let mut pkt = [0u8; 188];
+            let payload_start = cursor;
             let result = write_packet(
                 &mut pkt,
                 video_pid,
                 first,
                 adaptation,
-                &pes_buf[cursor..],
+                &self.pes_scratch[payload_start..],
                 &mut self.counters,
             );
             cursor += result.payload_consumed;
@@ -2717,13 +2731,13 @@ impl Muxer {
 
         self.maybe_emit_psi(prog_idx, pts_90khz);
 
-        let mut pes_buf = Vec::with_capacity(total);
-        pes_buf.extend_from_slice(&header[..header_len]);
-        pes_buf.extend_from_slice(effective_klv);
+        self.pes_scratch.clear();
+        self.pes_scratch.extend_from_slice(&header[..header_len]);
+        self.pes_scratch.extend_from_slice(effective_klv);
 
         let mut cursor = 0;
         let mut first = true;
-        while cursor < pes_buf.len() {
+        while cursor < self.pes_scratch.len() {
             let mut adaptation = AdaptationField::default();
             if first && self.pcr_pids[prog_idx] == klv_pid && self.pcr_due(prog_idx, pts_90khz) {
                 let pcr = Pcr27mhz::from_pts(Pts90khz::new(pts_90khz));
@@ -2731,12 +2745,13 @@ impl Muxer {
                 self.pcr_last[prog_idx] = Some(pcr.as_ticks());
             }
             let mut pkt = [0u8; 188];
+            let payload_start = cursor;
             let result = write_packet(
                 &mut pkt,
                 klv_pid,
                 first,
                 adaptation,
-                &pes_buf[cursor..],
+                &self.pes_scratch[payload_start..],
                 &mut self.counters,
             );
             cursor += result.payload_consumed;

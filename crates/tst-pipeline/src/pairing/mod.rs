@@ -40,7 +40,9 @@ mod last_before;
 mod nearest;
 mod types;
 
-pub use types::{KlvSample, MatchMode, PairerOutput, PairerStats, VideoSample};
+pub use types::{
+    KlvSample, MatchMode, PairerMode, PairerOptions, PairerOutput, PairerStats, VideoSample,
+};
 
 use tst_core::mpegts::demux::DemuxEvent;
 

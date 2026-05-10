@@ -5,6 +5,7 @@
 //! translate cleanly to future C ABI / JNI / UniFFI surfaces (deferred
 //! to the receiver-surface plan).
 
+use std::time::Duration;
 use tst_core::mpegts::demux::{DemuxEvent, MetadataKind, StreamId, VideoCodec, VideoPayload};
 
 /// Matching mode for [`Pairer::nearest_pts`](super::Pairer::nearest_pts).
@@ -29,6 +30,68 @@ pub enum MatchMode {
     ///
     /// Recommended `max_video_buffer`: 60–120 (≈2–4 s @ 30 fps).
     Buffered { max_video_buffer: usize },
+}
+
+/// Pairer matching mode. Audit-direction successor to [`MatchMode`].
+///
+/// Currently introduced additively alongside `MatchMode`; the
+/// follow-up task in this phase swaps `Pairer::nearest_pts` for
+/// [`Pairer::with_options`](super::Pairer) which consumes a
+/// [`PairerOptions`] containing this enum, at which point `MatchMode`
+/// goes away. Field-style `Buffered { max_lag }` is unit-explicit
+/// (`Duration` instead of bare ticks) and FFI-friendly.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PairerMode {
+    /// Pair on each `feed()` call; emit immediately. KLV that arrives
+    /// after its matching video frame is dropped from pairing
+    /// (surfaces as `UnpairedKlv` on eviction).
+    Realtime,
+    /// Buffer up to `max_lag` of arrival skew before forced emit.
+    /// Higher latency, more complete pairing.
+    Buffered {
+        /// Maximum arrival-skew window to buffer before forced emit.
+        max_lag: Duration,
+    },
+}
+
+/// Options for [`Pairer::with_options`](super::Pairer).
+///
+/// Replaces the pre-Phase-3 5-positional-arg `Pairer::nearest_pts`
+/// constructor. Field-style construction is unit-explicit
+/// (`Duration` instead of bare ticks) and FFI-friendly (the 5-arg
+/// shape didn't translate cleanly to UniFFI). Currently introduced
+/// additively alongside `nearest_pts`; the follow-up task in this
+/// phase swaps `nearest_pts` for `with_options`.
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct PairerOptions {
+    /// Matching mode: realtime (eager) or buffered (lookahead).
+    pub mode: PairerMode,
+    /// Maximum |video_pts - klv_pts| considered a match.
+    /// `Duration::ZERO` means exact-PTS.
+    pub tolerance: Duration,
+    /// Cap on KLV records buffered awaiting a video match.
+    /// `0` = unbounded.
+    pub max_buffered_klv: u64,
+    /// Cap on video AUs buffered awaiting a KLV match.
+    /// `0` = unbounded.
+    pub max_buffered_video: u64,
+    /// If `true`, treat KLV-without-matching-video as unmatched (default).
+    /// If `false`, emit KLV-only events for downstream consumers.
+    pub link_klv_to_video: bool,
+}
+
+impl Default for PairerOptions {
+    fn default() -> Self {
+        Self {
+            mode: PairerMode::Realtime,
+            tolerance: Duration::from_millis(300),
+            max_buffered_klv: 32,
+            max_buffered_video: 32,
+            link_klv_to_video: true,
+        }
+    }
 }
 
 /// One emission from [`Pairer::feed`](super::Pairer::feed) or

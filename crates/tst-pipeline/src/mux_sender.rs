@@ -177,6 +177,10 @@ impl<T: Transport> MuxSender<T> {
     /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderError::Mux`] —
     /// use [`Self::send_video_to`] in that case.
     ///
+    /// # C ABI
+    ///
+    /// `tst_mux_sender_send_video` — see `crates/tst-c/include/tstrans.h`.
+    ///
     /// # Errors
     /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the underlying
     ///   muxer (e.g. `AmbiguousTarget` when more than one video stream
@@ -236,6 +240,10 @@ impl<T: Transport> MuxSender<T> {
     /// ignored on [`tst_core::mpegts::mux::KlvStreamType::PrivateData`]
     /// streams. The spec default is `0x00`.
     ///
+    /// # C ABI
+    ///
+    /// `tst_mux_sender_send_klv` — see `crates/tst-c/include/tstrans.h`.
+    ///
     /// # Errors
     /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
     ///   [`MuxError::NoKlvStreamsConfigured`] if no KLV streams exist;
@@ -261,6 +269,10 @@ impl<T: Transport> MuxSender<T> {
     /// `handle` is obtained from [`Self::video_handles`]; passing a handle
     /// from a different sender / muxer surfaces as
     /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
+    ///
+    /// # C ABI
+    ///
+    /// `tst_mux_sender_send_video_to` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -291,6 +303,10 @@ impl<T: Transport> MuxSender<T> {
     /// [`tst_core::mpegts::mux::KlvStreamType::SynchronousMetadata`] streams;
     /// ignored on [`tst_core::mpegts::mux::KlvStreamType::PrivateData`]
     /// streams. The spec default is `0x00`.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_mux_sender_send_klv_to` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -323,6 +339,11 @@ impl<T: Transport> MuxSender<T> {
     /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderError::Mux`] — use
     /// [`Self::send_audio_to`] in that case.
     ///
+    /// # C ABI
+    ///
+    /// No C counterpart yet (deferred to receiver-surface plan along with
+    /// the audio stream-handle C surface).
+    ///
     /// # Errors
     /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
     ///   [`MuxError::NoAudioStreamsConfigured`] if no audio streams exist;
@@ -342,6 +363,11 @@ impl<T: Transport> MuxSender<T> {
     /// `handle` is obtained from [`Self::audio_handles`]; passing a handle
     /// from a different sender / muxer surfaces as
     /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
+    ///
+    /// # C ABI
+    ///
+    /// No C counterpart yet (deferred to receiver-surface plan along with
+    /// the audio stream-handle C surface).
     ///
     /// # Errors
     /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -374,6 +400,11 @@ impl<T: Transport> MuxSender<T> {
     /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderError::Mux`] — use
     /// [`Self::send_subtitle_to`] in that case.
     ///
+    /// # C ABI
+    ///
+    /// No C counterpart yet (deferred to receiver-surface plan along with
+    /// the subtitle stream-handle C surface).
+    ///
     /// # Errors
     /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
     ///   [`MuxError::NoSubtitleStreamsConfigured`] if no subtitle streams
@@ -393,6 +424,11 @@ impl<T: Transport> MuxSender<T> {
     /// `handle` is obtained from [`Self::subtitle_handles`]; passing a
     /// handle from a different sender / muxer surfaces as
     /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
+    ///
+    /// # C ABI
+    ///
+    /// No C counterpart yet (deferred to receiver-surface plan along with
+    /// the subtitle stream-handle C surface).
     ///
     /// # Errors
     /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:

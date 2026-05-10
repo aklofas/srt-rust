@@ -103,6 +103,10 @@ impl<T: Transport> RawSender<T> {
     /// use [`crate::Sender`] (pre-muxed TS bytes) or [`crate::MuxSender`]
     /// (encoded video / KLV / audio / subtitle in, TS out).
     ///
+    /// # C ABI
+    ///
+    /// `tst_raw_sender_send` — see `crates/tst-c/include/tstrans.h`.
+    ///
     /// # Errors
     /// - [`TransportError::TooLarge`] when `bytes.len()` exceeds
     ///   `transport.max_payload()`.

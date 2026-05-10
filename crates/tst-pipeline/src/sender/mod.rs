@@ -113,6 +113,10 @@ impl<T: Transport> Sender<T> {
     /// Each emitted bundle to the underlying transport is sized to fit
     /// `transport.max_payload()`.
     ///
+    /// # C ABI
+    ///
+    /// `tst_sender_send_ts` — see `crates/tst-c/include/tstrans.h`.
+    ///
     /// # Errors
     /// - [`SenderError::Framing`] in STRICT mode when the input fails
     ///   to align on a TS sync byte (`0x47`).
@@ -182,6 +186,10 @@ impl<T: Transport> Sender<T> {
     }
 
     /// Emit any buffered partial bundle.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_sender_flush` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// Returns [`SenderError::Transport`] when the underlying [`Transport`]

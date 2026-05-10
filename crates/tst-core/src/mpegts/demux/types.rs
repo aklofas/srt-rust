@@ -103,7 +103,7 @@ pub struct ProgramTracker {
 /// [`Demuxer`](crate::mpegts::demux::Demuxer).
 #[derive(Debug, Default)]
 pub struct DemuxerBuilder {
-    pub(super) options: DemuxerOptions,
+    options: DemuxerOptions,
 }
 
 impl DemuxerBuilder {

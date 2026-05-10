@@ -33,7 +33,7 @@ pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::close(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::new(transport: R) -> Self
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::demuxer::DemuxerOptions) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::types::DemuxerOptions) -> Self
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
@@ -123,26 +123,26 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::mux_sender::MuxSe
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_sender::MuxSenderError
 pub struct tst_pipeline::mux_sender::MuxSender<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport> tst_pipeline::mux_sender::MuxSender<T>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::close(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::is_alive(&self) -> bool
-pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::new(transport: T, config: tst_core::mpegts::mux::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::new(transport: T, config: tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::reset_stats(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio(&self, frames: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio_to(&self, handle: tst_core::mpegts::mux::AudioStreamHandle, frames: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio_to(&self, handle: tst_core::mpegts::mux::types::AudioStreamHandle, frames: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv(&self, klv: &[u8], pts_90khz: i64, metadata_service_id: u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv_to(&self, handle: tst_core::mpegts::mux::KlvStreamHandle, klv: &[u8], pts_90khz: i64, metadata_service_id: u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv_to(&self, handle: tst_core::mpegts::mux::types::KlvStreamHandle, klv: &[u8], pts_90khz: i64, metadata_service_id: u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle(&self, payload: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle_to(&self, handle: tst_core::mpegts::mux::SubtitleStreamHandle, payload: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle_to(&self, handle: tst_core::mpegts::mux::types::SubtitleStreamHandle, payload: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video(&self, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, handle: tst_core::mpegts::mux::VideoStreamHandle, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, handle: tst_core::mpegts::mux::types::VideoStreamHandle, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::stats(&self) -> tst_pipeline::mux_sender::MuxSenderStats
-pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::SubtitleStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::SubtitleStreamHandle>, tst_core::error::MuxError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::VideoStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::mux_sender::MuxSender<T>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::drop(&mut self)
 impl<T> !core::marker::Freeze for tst_pipeline::mux_sender::MuxSender<T>
@@ -440,7 +440,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::receiver::sync::Sync
 pub struct tst_pipeline::receiver::sync::Syncer
 impl tst_pipeline::receiver::sync::Syncer
 pub fn tst_pipeline::receiver::sync::Syncer::new() -> Self
-pub fn tst_pipeline::receiver::sync::Syncer::next_packet(&mut self) -> core::option::Option<alloc::vec::Vec<u8>>
+pub fn tst_pipeline::receiver::sync::Syncer::next_packet(&mut self) -> core::option::Option<[u8; 188]>
 pub fn tst_pipeline::receiver::sync::Syncer::push(&mut self, bytes: &[u8])
 pub fn tst_pipeline::receiver::sync::Syncer::reset(&mut self)
 impl core::default::Default for tst_pipeline::receiver::sync::Syncer
@@ -909,7 +909,7 @@ pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::close(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::new(transport: R) -> Self
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::demuxer::DemuxerOptions) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::types::DemuxerOptions) -> Self
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
@@ -1021,26 +1021,26 @@ impl<T> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::reconnect::Ma
 impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::ManagedTransport<T>
 pub struct tst_pipeline::MuxSender<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport> tst_pipeline::mux_sender::MuxSender<T>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::close(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::is_alive(&self) -> bool
-pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::new(transport: T, config: tst_core::mpegts::mux::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::new(transport: T, config: tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::reset_stats(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio(&self, frames: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio_to(&self, handle: tst_core::mpegts::mux::AudioStreamHandle, frames: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio_to(&self, handle: tst_core::mpegts::mux::types::AudioStreamHandle, frames: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv(&self, klv: &[u8], pts_90khz: i64, metadata_service_id: u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv_to(&self, handle: tst_core::mpegts::mux::KlvStreamHandle, klv: &[u8], pts_90khz: i64, metadata_service_id: u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv_to(&self, handle: tst_core::mpegts::mux::types::KlvStreamHandle, klv: &[u8], pts_90khz: i64, metadata_service_id: u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle(&self, payload: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle_to(&self, handle: tst_core::mpegts::mux::SubtitleStreamHandle, payload: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle_to(&self, handle: tst_core::mpegts::mux::types::SubtitleStreamHandle, payload: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video(&self, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, handle: tst_core::mpegts::mux::VideoStreamHandle, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, handle: tst_core::mpegts::mux::types::VideoStreamHandle, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::stats(&self) -> tst_pipeline::mux_sender::MuxSenderStats
-pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::SubtitleStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::SubtitleStreamHandle>, tst_core::error::MuxError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::VideoStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::mux_sender::MuxSender<T>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::drop(&mut self)
 impl<T> !core::marker::Freeze for tst_pipeline::mux_sender::MuxSender<T>

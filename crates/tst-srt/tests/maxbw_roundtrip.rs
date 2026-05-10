@@ -7,12 +7,15 @@
 //! `Unlimited` variant, which maps to libsrt's sentinel `0` — through a real
 //! handshake against a local listener.
 
+mod common;
+
 use std::thread;
 use std::time::Duration;
 use tst_srt::{ListenerBuilder, MaxBandwidth, SocketBuilder};
 
 #[test]
 fn unlimited_max_bandwidth_reaches_libsrt_as_zero() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .recv_timeout(Duration::from_secs(5))
         .bind("127.0.0.1:0")

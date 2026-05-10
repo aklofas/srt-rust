@@ -1,6 +1,8 @@
 //! Verifies `PayloadTooLarge` reports the actual configured limit, not 1316.
 //! Regression for audit Issue 5.
 
+mod common;
+
 use std::thread;
 use std::time::Duration;
 use tst_srt::error::SendError;
@@ -8,6 +10,7 @@ use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn payload_too_large_reports_configured_limit() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .payload_size(1456)
         .recv_timeout(Duration::from_secs(5))

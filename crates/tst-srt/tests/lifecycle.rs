@@ -8,6 +8,7 @@ use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn drop_closes_cleanly() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .recv_timeout(Duration::from_secs(5))
         .bind("127.0.0.1:0")
@@ -32,6 +33,7 @@ fn drop_closes_cleanly() {
 
 #[test]
 fn explicit_close_succeeds() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .recv_timeout(Duration::from_secs(5))
         .bind("127.0.0.1:0")

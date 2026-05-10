@@ -1,5 +1,7 @@
 //! Verifies SRTO_SENDER=1 is set when role=Sender. Audit Issue 2.
 
+mod common;
+
 use std::ffi::c_int;
 use std::thread;
 use std::time::Duration;
@@ -25,6 +27,7 @@ fn read_srto_sender(handle: srt_sys::SRTSOCKET) -> i32 {
 
 #[test]
 fn role_sender_sets_srto_sender_on_caller() {
+    require_loopback!();
     let listener = ListenerBuilder::new()
         .recv_timeout(Duration::from_secs(5))
         .bind("127.0.0.1:0")
@@ -54,6 +57,7 @@ fn role_sender_sets_srto_sender_on_caller() {
 
 #[test]
 fn role_receiver_leaves_srto_sender_at_default() {
+    require_loopback!();
     let listener = ListenerBuilder::new()
         .recv_timeout(Duration::from_secs(5))
         .bind("127.0.0.1:0")

@@ -8,6 +8,7 @@ use tst_srt::{ListenerBuilder, SocketBuilder, StreamId};
 
 #[test]
 fn stream_id_round_trips() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .recv_timeout(Duration::from_secs(5))
         .bind("127.0.0.1:0")

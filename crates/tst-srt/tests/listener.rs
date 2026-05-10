@@ -7,6 +7,7 @@ use tst_srt::error::BindError;
 
 #[test]
 fn bind_address_in_use() {
+    require_loopback!();
     let _l1 = ListenerBuilder::new()
         .reuse_addr(false)
         .bind("127.0.0.1:0")

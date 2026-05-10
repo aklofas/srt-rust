@@ -1,5 +1,7 @@
 //! End-to-end integration test: pipeline::MuxSender over a real Socket pair.
 
+mod common;
+
 use std::thread;
 use std::time::Duration;
 use tst_core::mpegts::mux::MuxerConfig;
@@ -10,6 +12,7 @@ use tst_test_helpers::synthetic_nal;
 
 #[test]
 fn sender_round_trip_one_frame() {
+    require_loopback!();
     // Listener side: bind to ephemeral port.
     let mut listener = ListenerBuilder::new()
         .bind("127.0.0.1:0")

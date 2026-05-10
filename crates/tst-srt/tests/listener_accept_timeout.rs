@@ -1,10 +1,13 @@
 //! Tests for `Listener::accept_timeout`. Requires libsrt loopback.
 
+mod common;
+
 use std::time::Duration;
 use tst_srt::{AcceptError, ListenerBuilder};
 
 #[test]
 fn accept_timeout_returns_timed_out_when_no_connection() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new().bind("127.0.0.1:0").expect("bind");
 
     let start = std::time::Instant::now();
@@ -24,6 +27,7 @@ fn accept_timeout_returns_timed_out_when_no_connection() {
 
 #[test]
 fn accept_timeout_succeeds_when_peer_connects() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new().bind("127.0.0.1:0").expect("bind");
     let port = listener.local_addr().unwrap().port();
 
@@ -67,6 +71,7 @@ fn accept_timeout_succeeds_when_peer_connects() {
 // thread before invoking accept_timeout.
 #[test]
 fn accept_timeout_drains_connection_queued_before_subscribe() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new().bind("127.0.0.1:0").expect("bind");
     let port = listener.local_addr().unwrap().port();
 

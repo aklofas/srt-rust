@@ -1,6 +1,8 @@
 //! Verifies SRTO_UDP_RCVBUF / SRTO_UDP_SNDBUF setters reach libsrt.
 //! Audit Issue 9.
 
+mod common;
+
 use std::ffi::c_int;
 use std::thread;
 use std::time::Duration;
@@ -19,6 +21,7 @@ fn read_u32(handle: srt_sys::SRTSOCKET, opt: srt_sys::SRT_SOCKOPT) -> Option<u32
 
 #[test]
 fn udp_buffer_sizes_round_trip() {
+    require_loopback!();
     let listener = ListenerBuilder::new()
         .udp_recv_buffer_bytes(2_000_000)
         .recv_timeout(Duration::from_secs(5))

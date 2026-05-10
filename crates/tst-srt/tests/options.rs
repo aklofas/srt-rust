@@ -9,6 +9,7 @@ use tst_srt::{Congestion, ListenerBuilder, MaxBandwidth, SocketBuilder};
 
 #[test]
 fn latency_configures_without_error() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .latency(Duration::from_millis(200))
         .recv_timeout(Duration::from_secs(5))
@@ -32,6 +33,7 @@ fn latency_configures_without_error() {
 
 #[test]
 fn payload_size_and_mss_apply() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .mss(1316)
         .payload_size(1316)
@@ -57,6 +59,7 @@ fn payload_size_and_mss_apply() {
 
 #[test]
 fn max_bandwidth_and_congestion_apply() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .max_bandwidth(MaxBandwidth::Limited(10_000_000))
         .congestion(Congestion::Live)

@@ -9,6 +9,7 @@ use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn stats_after_round_trip_show_nonzero_bytes() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .recv_timeout(Duration::from_secs(5))
         .bind("127.0.0.1:0")

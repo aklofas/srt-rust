@@ -13,6 +13,8 @@
 //! 5. Calling `s.close()` from the main thread; the parked thread must
 //!    return within a generous timeout.
 
+mod common;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -23,6 +25,7 @@ use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn close_unblocks_libsrt_parked_send() {
+    require_loopback!();
     // Bind a listener with very small recv buffer and DON'T consume.
     let listener = ListenerBuilder::new()
         .recv_buf_packets(8) // tiny — back-pressure kicks in fast

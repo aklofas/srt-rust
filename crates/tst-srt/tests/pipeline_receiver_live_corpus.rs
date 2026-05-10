@@ -38,6 +38,8 @@
 
 #![cfg(target_os = "linux")]
 
+mod common;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -130,6 +132,7 @@ fn reference_counts(bytes: &[u8]) -> Result<Counts, DemuxError> {
 
 #[test]
 fn corpus_replay_over_srt_loopback() {
+    require_loopback!();
     let dir = match fixtures_dir() {
         Some(d) => d,
         None => {

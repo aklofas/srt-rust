@@ -1,6 +1,8 @@
 //! Verifies connect/bind walk past failing resolved addresses.
 //! Audit Issues 3 + 10.
 
+mod common;
+
 use std::net::ToSocketAddrs;
 use std::thread;
 use std::time::Duration;
@@ -8,6 +10,7 @@ use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn connect_walks_to_v4_when_v6_first_and_unbindable() {
+    require_loopback!();
     // Bind a listener on 127.0.0.1 only. If we walk the addr iterator,
     // we should reach the v4 address even if ::1 comes first when
     // resolving "localhost".

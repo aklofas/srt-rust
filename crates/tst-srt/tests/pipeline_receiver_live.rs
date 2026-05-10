@@ -20,6 +20,8 @@
 
 #![cfg(target_os = "linux")]
 
+mod common;
+
 use std::thread;
 use std::time::Duration;
 use tst_core::mpegts::demux::DemuxEvent;
@@ -67,6 +69,7 @@ const EXPECT: usize = 10;
 
 #[test]
 fn end_to_end_sender_to_receiver() {
+    require_loopback!();
     // Listener side: bind to ephemeral port. `recv_latency` budget gives
     // libsrt's TSBPD path time to reorder + emit packets even on a busy CI
     // box; matches the sender side's `latency` for symmetry.

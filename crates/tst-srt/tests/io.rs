@@ -9,6 +9,7 @@ use tst_srt::{ListenerBuilder, SocketBuilder};
 
 #[test]
 fn small_payload_round_trips() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .recv_timeout(Duration::from_secs(5))
         .send_timeout(Duration::from_secs(5))
@@ -41,6 +42,7 @@ fn small_payload_round_trips() {
 
 #[test]
 fn recv_timeout_trips_typed_error() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .recv_timeout(Duration::from_secs(5))
         .bind("127.0.0.1:0")

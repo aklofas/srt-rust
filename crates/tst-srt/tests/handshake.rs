@@ -27,6 +27,7 @@ const PASS: &str = "0123456789abcdef0123456789abcdef";
 
 #[test]
 fn unencrypted_handshake_succeeds() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .recv_timeout(Duration::from_secs(5))
         .bind("127.0.0.1:0")
@@ -51,6 +52,7 @@ fn unencrypted_handshake_succeeds() {
 
 #[test]
 fn matching_passphrase_succeeds() {
+    require_loopback!();
     let mut listener = ListenerBuilder::new()
         .passphrase(Passphrase::new(PASS).unwrap())
         .recv_timeout(Duration::from_secs(5))
@@ -76,6 +78,7 @@ fn matching_passphrase_succeeds() {
 
 #[test]
 fn mismatched_passphrase_rejects_connect() {
+    require_loopback!();
     let listener = ListenerBuilder::new()
         .passphrase(Passphrase::new("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap())
         .bind("127.0.0.1:0")

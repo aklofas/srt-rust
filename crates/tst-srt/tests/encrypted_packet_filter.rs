@@ -8,6 +8,7 @@ use tst_srt::{ListenerBuilder, PacketFilter, SocketBuilder};
 
 #[test]
 fn fec_config_applies() {
+    require_loopback!();
     let pf_listener = PacketFilter::new("fec,cols:10,rows:5,arq:onreq").unwrap();
     let pf_caller = PacketFilter::new("fec,cols:10,rows:5,arq:onreq").unwrap();
 

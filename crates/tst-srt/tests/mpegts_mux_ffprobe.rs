@@ -6,11 +6,9 @@
 //!
 //! Skipped if `ffprobe` is not on PATH (returns early with a printed note).
 
-mod common;
-
-use common::synthetic_nal;
 use std::process::Command;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder};
+use tst_test_helpers::synthetic_nal;
 
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();

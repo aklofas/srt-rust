@@ -6,11 +6,11 @@
 
 mod common;
 
-use common::synthetic_nal;
 use common::ts_parser;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, StreamSpec, VideoCodec,
 };
+use tst_test_helpers::synthetic_nal;
 
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();

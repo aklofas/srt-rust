@@ -3,5 +3,4 @@
 
 #![allow(dead_code)]
 
-pub mod synthetic_nal;
 pub mod ts_parser;

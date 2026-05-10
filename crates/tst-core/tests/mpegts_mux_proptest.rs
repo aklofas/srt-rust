@@ -2,10 +2,10 @@
 
 mod common;
 
-use common::synthetic_nal;
 use common::ts_parser;
 use proptest::prelude::*;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig};
+use tst_test_helpers::synthetic_nal;
 
 #[derive(Debug, Clone)]
 struct PushSpec {

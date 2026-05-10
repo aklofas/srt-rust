@@ -3,13 +3,11 @@
 //! Verifies that PAT carries N program entries and that one PMT is emitted per
 //! program per PSI tick.
 
-mod common;
-
-use common::synthetic_nal;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfig, MuxerProgramConfigBuilder, StreamSpec,
     VideoCodec,
 };
+use tst_test_helpers::synthetic_nal;
 
 /// Two-program config:
 ///   prog 1 (H.264 + KLV) at PMT=0x1000, video=0x1011, klv=0x1031

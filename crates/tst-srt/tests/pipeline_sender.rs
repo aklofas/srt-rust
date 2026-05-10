@@ -1,14 +1,12 @@
 //! End-to-end integration test: pipeline::MuxSender over a real Socket pair.
 
-mod common;
-
-use common::synthetic_nal;
 use std::thread;
 use std::time::Duration;
 use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::MuxSender;
 use tst_srt::SrtTransport;
 use tst_srt::{ListenerBuilder, SocketBuilder};
+use tst_test_helpers::synthetic_nal;
 
 #[test]
 fn sender_round_trip_one_frame() {

@@ -30,9 +30,10 @@ url          = "2"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-libc          = { workspace = true }
-proptest      = { workspace = true }
-tst-pipeline  = { path = "../tst-pipeline" }
+libc             = { workspace = true }
+proptest         = { workspace = true }
+tst-pipeline     = { path = "../tst-pipeline" }
+tst-test-helpers = { path = "../tst-test-helpers" }
 # Used by integration tests that read raw libsrt socket flags
 # (e.g. SRTO_SENDER) via Socket::raw_handle().
 srt-sys   = { path = "../srt-sys", default-features = false }

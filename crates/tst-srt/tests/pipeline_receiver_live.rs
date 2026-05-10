@@ -20,9 +20,6 @@
 
 #![cfg(target_os = "linux")]
 
-mod common;
-
-use common::synthetic_nal;
 use std::thread;
 use std::time::Duration;
 use tst_core::mpegts::demux::DemuxEvent;
@@ -32,6 +29,7 @@ use tst_core::mpegts::mux::{
 use tst_pipeline::{DemuxReceiver, DemuxReceiverError, MuxSender, TransportError};
 use tst_srt::SrtTransport;
 use tst_srt::{ListenerBuilder, SocketBuilder};
+use tst_test_helpers::synthetic_nal;
 
 /// Minimal KLV blob with a valid SMPTE UL prefix so the demuxer classifies
 /// it as `MetadataKind::KlvAsync`. Mirrors `minimal_klv()` in

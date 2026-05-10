@@ -19,10 +19,11 @@ h264-reader  = "0.8"
 tracing      = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-proptest     = { workspace = true }
-tracing-test = { version = "0.2", features = ["no-env-filter"] }
-tempfile     = "3"
-criterion    = { workspace = true }
+proptest         = { workspace = true }
+tracing-test     = { version = "0.2", features = ["no-env-filter"] }
+tempfile         = "3"
+criterion        = { workspace = true }
+tst-test-helpers = { path = "../tst-test-helpers" }
 
 [[bench]]
 name    = "mux_throughput"

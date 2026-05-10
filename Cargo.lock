@@ -1448,6 +1448,7 @@ dependencies = [
  "thiserror",
  "tracing",
  "tracing-test",
+ "tst-test-helpers",
 ]
 
 [[package]]
@@ -1484,8 +1485,13 @@ dependencies = [
  "tracing-test",
  "tst-core",
  "tst-pipeline",
+ "tst-test-helpers",
  "url",
 ]
+
+[[package]]
+name = "tst-test-helpers"
+version = "0.0.0"
 
 [[package]]
 name = "unarray"

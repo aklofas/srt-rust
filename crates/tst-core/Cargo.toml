@@ -36,6 +36,10 @@ harness = false
 name    = "demuxer_ingest"
 harness = false
 
+[[bench]]
+name    = "codec_parsers"
+harness = false
+
 # Maintainer fixture-generators. Build with `cargo run -p tst-core --bin <name>`.
 # Not part of the published library surface — they live under tests/tools/ and
 # regenerate the fixtures consumed by integration tests.

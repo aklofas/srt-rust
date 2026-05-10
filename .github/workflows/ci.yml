@@ -63,6 +63,9 @@ jobs:
             exit 1
           fi
 
+      - name: check-c-abi-rustdoc-coverage
+        run: bash scripts/check-c-abi-rustdoc-coverage.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

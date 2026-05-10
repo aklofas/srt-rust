@@ -10,9 +10,116 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## Unreleased
 
 Phase 1 (SemVer ratchet), Phase 2 (DX + observability), Phase 3
-(FFI-readiness), and Phase 4 (performance hot paths) of the Rust quality
-+ DX + FFI refactor. Plan #39 (examples reorganization) also rides this
-release.
+(FFI-readiness), Phase 4 (performance hot paths), and Phase 5
+(internal hygiene) of the Rust quality + DX + FFI refactor. Plan #39
+(examples reorganization) also rides this release.
+
+---
+
+### Phase 5 — Internal hygiene (2026-05-10)
+
+God-module splits, test-helper de-duplication, fuzz-target relocation,
+focused dead-code sweep. 15 commits `7ab2ffb..2709572`.
+
+#### Public API
+
+The four moved-types' canonical paths shifted (user-facing re-exports
+preserved):
+
+- `tst_core::mpegts::mux::*` types: `VideoCodec`, `KlvStreamType`,
+  `AudioCodec`, `SubtitleCodec`, `StreamKind`, `TeletextField`,
+  `StreamSpec`, `VideoStreamHandle`, `KlvStreamHandle`,
+  `AudioStreamHandle`, `SubtitleStreamHandle` now resolve via
+  `mpegts::mux::types::*` (cargo-public-api visible canonical path).
+  User-facing `tst_core::mpegts::mux::*` re-exports unchanged.
+- `tst_core::mpegts::mux::*` configuration types: `MuxerConfig`,
+  `MuxerConfigBuilder`, `MuxerProgramConfig`, `MuxerProgramConfigBuilder`
+  now resolve via `mpegts::mux::config::*`. User-facing paths unchanged.
+- `tst_core::mpegts::demux::*`: `DemuxerStats`, `DemuxerOptions`,
+  `DemuxerBuilder`, `ProgramTracker` now resolve via
+  `mpegts::demux::types::*`. User-facing paths unchanged.
+- `tst_core::codec::h265::bitreader` → `tst_core::codec::bitreader`
+  (codec-agnostic; Annex-B reader is consumed by both H.265 and H.266
+  parsers). `BitReader` is `#[doc(hidden)]` since Phase 3.6.1; not
+  user-facing.
+
+`klv::pack::Iter` retained as `#[doc(hidden)] pub` (the audit's claim
+that fuzz-target relocation enables a `pub → pub(crate)` tightening was
+structurally incorrect — `cargo-fuzz` creates a separate crate; tightening
+remains gated on either a `#[cfg(fuzzing)] iter_for_fuzz` entry point or
+deletion of the `klv_iter` fuzz target).
+
+#### Internal restructure (Phase 5)
+
+- **`mpegts::mux::types`** (NEW, ~485 LoC): codec/stream-class enums,
+  `StreamSpec`, four opaque stream-handle types extracted from
+  `mpegts/mux/mod.rs`. Re-exported via `pub use types::*;`.
+- **`mpegts::mux::config`** (NEW, ~873 LoC): `MuxerProgramConfig`,
+  `MuxerConfig`, `MuxerConfigBuilder`, `MuxerProgramConfigBuilder`
+  extracted; private `validate_language_code` helper migrated alongside.
+- **`mpegts::common::handle_pack`** (NEW): four byte-near-identical
+  `pack` / `unpack` impls on `Video`/`Klv`/`Audio`/`SubtitleStreamHandle`
+  collapse to one shared substrate. Defensive `& WITHIN_MASK` form
+  applied uniformly (was already present in Audio/Subtitle; behavior
+  identical on valid inputs, slightly safer in release on out-of-range).
+- **`mpegts::demux::types`** (NEW, ~152 LoC): `DemuxerStats`,
+  `DemuxerOptions`, `ProgramTracker`, `DemuxerBuilder` extracted from
+  `mpegts/demux/demuxer.rs`. Private `DEFAULT_PES_CAP_*` constants
+  consolidated into the existing `pub(crate) const fn` accessors.
+- **`codec::bitreader`** (PROMOTED from `codec::h265::bitreader`):
+  Annex-B Exp-Golomb reader is consumed by both `codec::h265::*` and
+  `codec::h266::*`. File-level `#[allow(dead_code)]` removed.
+  `BitReader::bit_cap` field and `BitReader::at_end()` method deleted
+  (no consumers).
+- **`tst-test-helpers`** (NEW workspace member, `publish = false`):
+  consolidates `synthetic_nal` (47 LoC) + `ts_parser` (218 LoC) +
+  `mock_transport` (82 LoC) — three modules previously byte-identical
+  across `tst-core/tests/common/`, `tst-pipeline/tests/common/`, and
+  `tst-srt/tests/common/`. ~10 consumer test files swap their import
+  paths to `tst_test_helpers::*`. `tst-core` and `tst-pipeline` gain
+  the dev-dep; `tst-srt` already had it from Task 8.
+- **`crates/tst-core/fuzz/`** (NEW cargo-fuzz crate): hosts 15 of 16
+  fuzz targets. `tst-srt/fuzz/` retains only `url_parse` (URL parsing
+  lives in `tst-srt`); the `tst-core` dep dropped from
+  `tst-srt/fuzz/Cargo.toml`. Six corpus subdirectories moved alongside.
+  `mux_push_klv` arity fix landed during the relocation
+  (`push_klv(data, 0)` → `push_klv(data, 0, 0)` — pre-existing
+  breakage from plan #30's `metadata_service_id` addition).
+- **Dead-code annotations**: 8 module-level `#![allow(dead_code)]`
+  before; 4 after. 3 file-level annotations removed; 1 confirmed-dead
+  item deleted (`Av1BitReader::buf_len_bits`); 2 narrow per-item
+  allows added (`Av1BitReader::byte_align`, `bit_pos` — used only by
+  inline `#[cfg(test)]` blocks; clippy can't see test consumers). The
+  `tst-srt/tests/common/mod.rs` and bindgen-generated `srt-sys/src/lib.rs`
+  annotations left in place. (Audit estimated 43 annotations; reality
+  was 8 — most already swept by prior phases incidentally.)
+- **Orphan dirs deleted**: `crates/tst-core/tests/fixtures/{h266,av1}/`
+  (each contained only a stale `regen.sh` producing files no test
+  reads; canonical fixtures at `tests/fixtures/codec/{h266,av1}/`),
+  and `crates/tst-srt/fuzz/corpus/klv_st1910_unwrap/` (target deleted
+  in plan #25's AU cell rework; corpus subdir was missed).
+
+#### File size deltas
+
+- `mpegts/mux/mod.rs`: 5489 → 4151 LoC (-1338, -24%).
+- `mpegts/demux/demuxer.rs`: 3290 → 3158 LoC (-132).
+- `codec/h265/bitreader.rs` (219 LoC) → `codec/bitreader.rs` (211 LoC,
+  -8 from dead-item deletions).
+
+#### Tests
+
+- 1320 passing on default features (matches pre-Phase-5 baseline).
+- 1319 passing on `--no-default-features` (matches prior Phase 3-Phase 4
+  numbers).
+- All 3 Phase 3 CI ratchets clean
+  (`check-c-abi-rustdoc-coverage`, `check-close-contract-presence`,
+  `check-no-public-usize`).
+- Public-API baselines refreshed for `tst-core` and `tst-pipeline` to
+  reflect the moved-types canonical-path renames; `tst-srt` baseline
+  unchanged.
+- `cargo public-api` surface is unchanged at user-facing-paths level
+  (re-exports via `mpegts::mux::*` / `mpegts::demux::*` preserve every
+  caller-visible import).
 
 ---
 

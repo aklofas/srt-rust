@@ -53,6 +53,39 @@ pub struct MuxSenderStats {
 /// the same `MuxSender`. This is the standard Rust `Mutex` behavior;
 /// a poisoned lock signals that the muxer state may be inconsistent and
 /// the `MuxSender` should be discarded.
+///
+/// # Closing
+///
+/// `MuxSender` is `Send + Sync` (when `T: Transport + Send + Sync`) and
+/// supports three shutdown patterns:
+///
+/// 1. **Drop** — the [`Drop`] impl best-effort drains `pending_bytes` and
+///    closes the underlying transport. Synchronous; bounded by
+///    `SRTO_LINGER` (libsrt default 30 s, configurable via
+///    `SocketBuilder::linger`).
+/// 2. **Explicit close** — call [`Self::close`]. Cancels the transport
+///    *before* taking the inner lock, so a peer thread parked in
+///    `send_video` / `send_klv` returns
+///    [`MuxSenderError::Transport`]`(`[`TransportError::Broken`]`)` within
+///    one libsrt I/O cycle (~3-10 ms). Idempotent.
+/// 3. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
+///    `Send + Sync` [`tst_core::transport::TransportCancel`] handle,
+///    then `cancel()` from any thread. Wakes a parked send without
+///    closing the `MuxSender` itself; equivalent to what `close()`
+///    fires internally.
+///
+/// ## Per-language idiom
+///
+/// | Language | Idiom |
+/// |----------|-------|
+/// | Rust | `let _ = sender;` (Drop) or `sender.cancel_handle().map(\|c\| c.cancel());` (cross-thread) |
+/// | Java | Wrap as `AutoCloseable`; `try-with-resources` calls `close()` on exit |
+/// | Kotlin | Wrap as `AutoCloseable`; `.use { }` calls `close()` on exit |
+/// | Swift | `deinit` calls drop; `defer { handle.cancel() }` for explicit cross-thread |
+/// | Python | Wrap as `__enter__`/`__exit__`; `with ... as sender:` calls `close()` on exit |
+/// | C | `tst_mux_sender_close(sender)` (explicit; mirrors `Drop`) |
+///
+/// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
 pub struct MuxSender<T: Transport> {
     inner: Mutex<Inner<T>>,
     /// Cancel handle snapshot, taken from the transport at construction

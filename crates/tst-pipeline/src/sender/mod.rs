@@ -39,6 +39,36 @@ pub enum SenderError {
 }
 
 /// Pre-muxed TS bytes → SRT transport with sync framing/recovery.
+///
+/// # Closing
+///
+/// `Sender` supports three shutdown patterns:
+///
+/// 1. **Drop** — the [`Drop`] impl best-effort flushes any buffered
+///    partial bundle and closes the underlying transport. Synchronous;
+///    bounded by `SRTO_LINGER` (libsrt default 30 s, configurable via
+///    `SocketBuilder::linger`).
+/// 2. **Explicit close** — call [`Self::close`]. Marks the sender closed
+///    so subsequent `send_ts` / `flush` calls return
+///    [`SenderError::Transport`]`(`[`tst_core::transport::TransportError::Closed`]`)`,
+///    then closes the transport. Idempotent.
+/// 3. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
+///    `Send + Sync` [`tst_core::transport::TransportCancel`] handle,
+///    then `cancel()` from any thread. Wakes a peer thread parked in
+///    `send_ts` within one libsrt I/O cycle (~3-10 ms).
+///
+/// ## Per-language idiom
+///
+/// | Language | Idiom |
+/// |----------|-------|
+/// | Rust | `let _ = sender;` (Drop) or `sender.cancel_handle().map(\|c\| c.cancel());` (cross-thread) |
+/// | Java | Wrap as `AutoCloseable`; `try-with-resources` calls `close()` on exit |
+/// | Kotlin | Wrap as `AutoCloseable`; `.use { }` calls `close()` on exit |
+/// | Swift | `deinit` calls drop; `defer { handle.cancel() }` for explicit cross-thread |
+/// | Python | Wrap as `__enter__`/`__exit__`; `with ... as sender:` calls `close()` on exit |
+/// | C | `tst_sender_close(sender)` (explicit; mirrors `Drop`) |
+///
+/// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
 pub struct Sender<T: Transport> {
     framing: TsFraming,
     transport: T,

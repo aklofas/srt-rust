@@ -47,6 +47,39 @@ pub struct ReceiverStats {
 /// mode) guarantees that each `recv_bytes` call returns one complete SRT
 /// message; `Receiver` then feeds those bytes through the TS syncer to
 /// extract correctly-aligned 188-byte packets.
+///
+/// # Closing
+///
+/// `Receiver` supports three shutdown patterns:
+///
+/// 1. **Drop** — the [`Drop`] impl emits a tracing event and lets the
+///    underlying transport's `Drop` close the libsrt socket. Synchronous;
+///    bounded by `SRTO_LINGER` (libsrt default 30 s, configurable via
+///    `SocketBuilder::linger`).
+/// 2. **Explicit close** — call [`Self::close`]. Closes the underlying
+///    transport; subsequent `next_packet` calls return
+///    [`TransportError::Closed`] once the syncer's internal buffer is
+///    exhausted. Idempotent.
+/// 3. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
+///    `Send + Sync` [`tst_core::transport::TransportCancel`] handle,
+///    then `cancel()` from any thread. Wakes a peer thread parked in
+///    `next_packet` within one libsrt I/O cycle (~3-10 ms).
+///
+/// C ABI for the receiver surface (including `tst_receiver_close`) is on
+/// the P0 backlog and not yet shipped.
+///
+/// ## Per-language idiom
+///
+/// | Language | Idiom |
+/// |----------|-------|
+/// | Rust | `let _ = rx;` (Drop) or `rx.cancel_handle().map(\|c\| c.cancel());` (cross-thread) |
+/// | Java | Wrap as `AutoCloseable`; `try-with-resources` calls `close()` on exit |
+/// | Kotlin | Wrap as `AutoCloseable`; `.use { }` calls `close()` on exit |
+/// | Swift | `deinit` calls drop; `defer { handle.cancel() }` for explicit cross-thread |
+/// | Python | Wrap as `__enter__`/`__exit__`; `with ... as rx:` calls `close()` on exit |
+/// | C | (deferred to per-binding plan — receiver-surface C ABI is P0) |
+///
+/// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
 pub struct Receiver<R: RecvTransport> {
     transport: R,
     syncer: Syncer,

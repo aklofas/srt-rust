@@ -31,6 +31,37 @@ pub struct RawSenderStats {
     pub packets_sent: u64,
 }
 
+/// One-shot byte-blind sender. See module docs for the no-buffering /
+/// no-framing contract.
+///
+/// # Closing
+///
+/// `RawSender` supports three shutdown patterns:
+///
+/// 1. **Drop** — the [`Drop`] impl is currently a no-op for the transport
+///    (the explicit `close()` is the canonical close path). The
+///    underlying transport's own `Drop` runs after this struct's `Drop`,
+///    which closes the libsrt socket; bounded by `SRTO_LINGER` (libsrt
+///    default 30 s, configurable via `SocketBuilder::linger`).
+/// 2. **Explicit close** — call [`Self::close`]. Closes the underlying
+///    transport. Idempotent.
+/// 3. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
+///    `Send + Sync` [`tst_core::transport::TransportCancel`] handle,
+///    then `cancel()` from any thread. Wakes a peer thread parked in
+///    `send` within one libsrt I/O cycle (~3-10 ms).
+///
+/// ## Per-language idiom
+///
+/// | Language | Idiom |
+/// |----------|-------|
+/// | Rust | `let _ = sender;` (Drop) or `sender.cancel_handle().map(\|c\| c.cancel());` (cross-thread) |
+/// | Java | Wrap as `AutoCloseable`; `try-with-resources` calls `close()` on exit |
+/// | Kotlin | Wrap as `AutoCloseable`; `.use { }` calls `close()` on exit |
+/// | Swift | `deinit` calls drop; `defer { handle.cancel() }` for explicit cross-thread |
+/// | Python | Wrap as `__enter__`/`__exit__`; `with ... as sender:` calls `close()` on exit |
+/// | C | `tst_raw_sender_close(sender)` (explicit; mirrors `Drop`) |
+///
+/// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
 pub struct RawSender<T: Transport> {
     transport: T,
     _config: RawSenderConfig,

@@ -19,11 +19,13 @@ pub mod psi;
 pub(crate) mod psi_assembler;
 pub mod strict;
 pub mod ts;
+pub mod types;
 
-pub use demuxer::{Demuxer, DemuxerBuilder, DemuxerOptions, DemuxerStats};
+pub use demuxer::Demuxer;
 pub use event::{
     AudioCodec, DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit,
     NonConformantIssue, Obu, ObuExtension, ProgramMap, SamplePayload, StreamId, StreamInfo,
     StreamKind, SubtitleCodec, VideoCodec, VideoPayload, pts_to_duration,
 };
 pub use strict::StrictMode;
+pub use types::{DemuxerBuilder, DemuxerOptions, DemuxerStats};

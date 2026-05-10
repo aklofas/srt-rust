@@ -35,12 +35,12 @@ pub enum TsFramingMode {
 #[non_exhaustive]
 pub enum TsFramingError {
     #[error("TS sync byte not found at expected boundary (offset {offset})")]
-    SyncLost { offset: usize },
+    SyncLost { offset: u64 },
     #[error(
         "exceeded max_unsynced_bytes ({max}) without acquiring sync; \
          input does not look like a TS stream"
     )]
-    NoSyncAfterLimit { max: usize },
+    NoSyncAfterLimit { max: u64 },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -138,7 +138,7 @@ impl TsFraming {
                         break;
                     }
                     if self.buffer[0] != SYNC_BYTE {
-                        return Err(TsFramingError::SyncLost { offset: 0 });
+                        return Err(TsFramingError::SyncLost { offset: 0u64 });
                     }
                     // STRICT: still need 3-byte verify, but no skipping.
                     if self.buffer.len() < 2 * TS_PACKET_SIZE + 1 {
@@ -149,12 +149,12 @@ impl TsFraming {
                     }
                     if self.buffer[TS_PACKET_SIZE] != SYNC_BYTE {
                         return Err(TsFramingError::SyncLost {
-                            offset: TS_PACKET_SIZE,
+                            offset: TS_PACKET_SIZE as u64,
                         });
                     }
                     if self.buffer[2 * TS_PACKET_SIZE] != SYNC_BYTE {
                         return Err(TsFramingError::SyncLost {
-                            offset: 2 * TS_PACKET_SIZE,
+                            offset: (2 * TS_PACKET_SIZE) as u64,
                         });
                     }
                     self.state = State::Synced;
@@ -167,7 +167,9 @@ impl TsFraming {
                     for i in 0..SRT_BUNDLE_PACKETS {
                         let off = i * TS_PACKET_SIZE;
                         if self.buffer[off] != SYNC_BYTE {
-                            return Err(TsFramingError::SyncLost { offset: off });
+                            return Err(TsFramingError::SyncLost {
+                                offset: off as u64,
+                            });
                         }
                     }
                     let bundle: Vec<u8> = self.buffer.drain(..SRT_BUNDLE_BYTES).collect();

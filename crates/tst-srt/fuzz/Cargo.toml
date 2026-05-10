@@ -13,13 +13,6 @@ tst-srt  = { path = ".." }
 tst-core = { path = "../../tst-core" }
 
 [[bin]]
-name              = "klv_iter"
-path              = "fuzz_targets/klv_iter.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
 name              = "klv_st0601_decode"
 path              = "fuzz_targets/klv_st0601_decode.rs"
 test              = false

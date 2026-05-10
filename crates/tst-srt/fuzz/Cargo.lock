@@ -632,7 +632,6 @@ name = "tst-srt"
 version = "0.0.0"
 dependencies = [
  "libc",
- "log",
  "secrecy",
  "srt-sys",
  "thiserror",

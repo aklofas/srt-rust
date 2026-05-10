@@ -50,9 +50,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // `bind` is the terminal call on `ListenerBuilder` — no separate
     // `.build()` step. It returns a ready-to-accept `Listener`.
-    let mut listener = ListenerBuilder::new()
-        .latency(Duration::from_millis(120))
-        .bind(format!("0.0.0.0:{port}").as_str())?;
+    //
+    // Bind-then-step shape (`ListenerBuilder` is `&mut self -> &mut Self`):
+    // construct, mutate, then call the terminal `bind`.
+    let mut lb = ListenerBuilder::new();
+    lb.latency(Duration::from_millis(120));
+    let mut listener = lb.bind(format!("0.0.0.0:{port}").as_str())?;
     eprintln!("listening on 0.0.0.0:{port}");
 
     // Blocking until the first handshake completes. For a long-running

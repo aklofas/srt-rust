@@ -30,9 +30,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // adding so much wall-clock delay that interactive use suffers. Both
     // peers must agree on the latency budget — see `pipeline_send_to_socket`,
     // which uses the same value.
-    let mut listener = ListenerBuilder::new()
-        .latency(Duration::from_millis(120))
-        .bind(bind_addr.as_str())?;
+    //
+    // Bind-then-step shape (`ListenerBuilder` is `&mut self -> &mut Self`):
+    // construct, mutate, then call the terminal `bind`.
+    let mut lb = ListenerBuilder::new();
+    lb.latency(Duration::from_millis(120));
+    let mut listener = lb.bind(bind_addr.as_str())?;
 
     eprintln!("listening on {bind_addr}, writing to {out_path}");
     // Blocking call. Returns once the first peer's handshake completes (or, if

@@ -128,9 +128,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Caller-side SRT socket. `connect` blocks through the handshake.
     // Match latency to the listener — libsrt negotiates the max of the
     // two sides at handshake, but matching avoids surprise.
-    let socket = SocketBuilder::new()
-        .latency(args.latency)
-        .connect(args.addr.as_str())?;
+    //
+    // Bind-then-step shape (`SocketBuilder` is `&mut self -> &mut Self`):
+    // construct, mutate, then call the terminal `connect`.
+    let mut sb = SocketBuilder::new();
+    sb.latency(args.latency);
+    let socket = sb.connect(args.addr.as_str())?;
     eprintln!("connected; reading events");
     let mut rx = DemuxReceiver::new(SrtTransport::new(socket));
 

@@ -38,9 +38,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     shared links so SRT plays fair with other traffic.
     //   - `passphrase` — enables AES encryption (10..=79 chars). Must match
     //     on both ends. See `encrypted_send_recv.rs` for the full pattern.
-    let socket = SocketBuilder::new()
-        .latency(Duration::from_millis(120))
-        .connect(addr.as_str())?;
+    //
+    // Bind-then-step shape (`SocketBuilder` is `&mut self -> &mut Self`):
+    // construct, mutate, then call the terminal `connect`. Same shape every
+    // example uses — see `docs/binding-authors.md` for how Kotlin/Swift/
+    // Python bindings spell the same idiom.
+    let mut sb = SocketBuilder::new();
+    sb.latency(Duration::from_millis(120));
+    let socket = sb.connect(addr.as_str())?;
 
     // `SrtTransport` adapts `Socket` to the `Transport` trait MuxSender wants.
     // The trait split keeps `tst-core` libsrt-free; only `tst-srt` pulls in

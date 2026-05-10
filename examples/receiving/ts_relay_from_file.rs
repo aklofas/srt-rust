@@ -31,9 +31,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 120 ms latency — reasonable LAN/regional WAN default. See
     // `pipeline_send_to_socket.rs` header for the full SocketBuilder knob
     // discussion.
-    let socket = SocketBuilder::new()
-        .latency(Duration::from_millis(120))
-        .connect(addr.as_str())?;
+    //
+    // Bind-then-step shape (`SocketBuilder` is `&mut self -> &mut Self`):
+    // construct, mutate, then call the terminal `connect`.
+    let mut sb = SocketBuilder::new();
+    sb.latency(Duration::from_millis(120));
+    let socket = sb.connect(addr.as_str())?;
     let transport = SrtTransport::new(socket);
 
     // `Sender` (vs `MuxSender`) accepts already-muxed TS bytes via `send_ts`.

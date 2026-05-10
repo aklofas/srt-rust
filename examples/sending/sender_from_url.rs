@@ -39,11 +39,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    defaults you want layered "underneath" the URL are easy to set
     //    (the URL will overwrite them, which is exactly the intended
     //    semantic for deployment overrides).
-    let mut config = SocketBuilder::new()
-        // Hypothetical baked-in default: 100ms latency. URL says 200ms,
-        // so this gets overwritten — that's the intended behavior.
-        .latency_ms(100)
-        .config();
+    //
+    // Bind-then-step shape (`SocketBuilder` is `&mut self -> &mut Self`):
+    // construct, mutate, then call the terminal `config()`. This shape
+    // mirrors how Kotlin/Swift/Python bindings will spell the same idiom
+    // — see `docs/binding-authors.md`.
+    let mut sb = SocketBuilder::new();
+    // Hypothetical baked-in default: 100ms latency. URL says 200ms,
+    // so this gets overwritten — that's the intended behavior.
+    sb.latency_ms(100);
+    let mut config = sb.config();
     parsed.overlay.apply_to_socket(&mut config);
     println!(
         "applied overlay; config has latency = {:?}, streamid = {:?}",

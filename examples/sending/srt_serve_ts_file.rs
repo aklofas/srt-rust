@@ -150,9 +150,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    ends negotiate the max of caller's and listener's value.
     //  - We don't crank `recv_buf_packets` here — listener-as-sender
     //    doesn't really receive payloads, just SRT control packets.
-    let mut listener = ListenerBuilder::new()
-        .latency(args.latency)
-        .bind(args.bind.as_str())?;
+    //
+    // Bind-then-step shape (`ListenerBuilder` is `&mut self -> &mut Self`):
+    // construct, mutate, then call the terminal `bind`. Same pattern as
+    // `SocketBuilder` — translates uniformly across language bindings.
+    let mut lb = ListenerBuilder::new();
+    lb.latency(args.latency);
+    let mut listener = lb.bind(args.bind.as_str())?;
     let local = listener.local_addr()?;
     eprintln!("listening on srt://{local}  (latency = {:?})", args.latency);
     eprintln!("    in VLC:  srt://{local}");

@@ -89,9 +89,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Latency must match the sender's (120 ms) — SRT negotiates the max
             // of the two peers' values, and a mismatch is a common config
             // smell to flag.
-            let mut listener = ListenerBuilder::new()
-                .latency(Duration::from_millis(120))
-                .bind(bind_addr.as_str())?;
+            //
+            // Bind-then-step shape (`ListenerBuilder` is `&mut self -> &mut Self`).
+            let mut lb = ListenerBuilder::new();
+            lb.latency(Duration::from_millis(120));
+            let mut listener = lb.bind(bind_addr.as_str())?;
             ready_tx.send(()).ok();
 
             for round in 0..3 {
@@ -171,8 +173,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ---------------------------------------------------------------------
     let connect_addr_for_factory = connect_addr.clone();
     let factory = move || -> Result<SrtTransport, TransportError> {
-        let socket = SocketBuilder::new()
-            .latency(Duration::from_millis(120))
+        // Bind-then-step shape (`SocketBuilder` is `&mut self -> &mut Self`).
+        // `connect` is a `&self` terminal so chaining `.map_err()` after it on
+        // the same expression is fine — the named binding only matters for the
+        // mutating steps.
+        let mut sb = SocketBuilder::new();
+        sb.latency(Duration::from_millis(120));
+        let socket = sb
             .connect(connect_addr_for_factory.as_str())
             .map_err(|e| TransportError::Broken(format!("connect failed: {e}")))?;
         Ok(SrtTransport::new(socket))

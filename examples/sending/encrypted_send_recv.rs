@@ -69,14 +69,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // `Passphrase::new` validates: 10–79 ASCII-printable bytes (libsrt's
             // own constraint). The constant above sits comfortably inside that.
             let passphrase = Passphrase::new(PASSPHRASE)?;
-            let mut listener = ListenerBuilder::new()
-                .passphrase(passphrase)
-                // AES-256 is overkill for 16 short messages but mirrors what a
-                // production deployment would pick; switching the constant to
-                // `Aes128` or `Aes192` is a one-line change.
-                .key_length(KeyLength::Aes256)
-                .latency(Duration::from_millis(120))
-                .bind(bind_addr.as_str())?;
+            // Bind-then-step shape (`ListenerBuilder` is `&mut self -> &mut Self`).
+            let mut lb = ListenerBuilder::new();
+            lb.passphrase(passphrase);
+            // AES-256 is overkill for 16 short messages but mirrors what a
+            // production deployment would pick; switching the constant to
+            // `Aes128` or `Aes192` is a one-line change.
+            lb.key_length(KeyLength::Aes256);
+            lb.latency(Duration::from_millis(120));
+            let mut listener = lb.bind(bind_addr.as_str())?;
 
             // Bind succeeded — wake the main thread so it can launch the sender.
             // `.ok()` because if the receiver was dropped we don't care: we'll
@@ -137,12 +138,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             let passphrase = Passphrase::new(PASSPHRASE)?;
             let stream_id = StreamId::new(STREAM_ID)?;
-            let mut socket = SocketBuilder::new()
-                .passphrase(passphrase)
-                .key_length(KeyLength::Aes256)
-                .stream_id(stream_id)
-                .latency(Duration::from_millis(120))
-                .connect(connect_addr.as_str())?;
+            // Bind-then-step shape (`SocketBuilder` is `&mut self -> &mut Self`).
+            let mut sb = SocketBuilder::new();
+            sb.passphrase(passphrase);
+            sb.key_length(KeyLength::Aes256);
+            sb.stream_id(stream_id);
+            sb.latency(Duration::from_millis(120));
+            let mut socket = sb.connect(connect_addr.as_str())?;
 
             // 20 ms cadence is deliberately slow so the listener's per-message
             // log line is human-readable as the example runs. A real publisher

@@ -32,6 +32,10 @@ harness = false
 name    = "klv_decode"
 harness = false
 
+[[bench]]
+name    = "demuxer_ingest"
+harness = false
+
 # Maintainer fixture-generators. Build with `cargo run -p tst-core --bin <name>`.
 # Not part of the published library surface — they live under tests/tools/ and
 # regenerate the fixtures consumed by integration tests.

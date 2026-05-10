@@ -69,6 +69,9 @@ jobs:
       - name: check-close-contract-presence
         run: bash scripts/check-close-contract-presence.sh
 
+      - name: check-no-public-usize
+        run: bash scripts/check-no-public-usize.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

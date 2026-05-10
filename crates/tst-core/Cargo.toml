@@ -28,6 +28,10 @@ criterion    = { workspace = true }
 name    = "mux_throughput"
 harness = false
 
+[[bench]]
+name    = "klv_decode"
+harness = false
+
 # Maintainer fixture-generators. Build with `cargo run -p tst-core --bin <name>`.
 # Not part of the published library surface — they live under tests/tools/ and
 # regenerate the fixtures consumed by integration tests.

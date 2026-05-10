@@ -3,13 +3,6 @@
 //!
 //! Pinned against MISB ST 0102.12 §6.7 Table 2.
 
-// `TagSpec::required` is the lone dead-in-lib field after Task 4
-// wires up the decoder against `lookup`/`Encoding`/`REQUIRED_TAGS` —
-// it's only read by the in-module cross-check test
-// `required_tags_match_spec`. Encode (Task 5) won't need it either
-// since `REQUIRED_TAGS` is the canonical source for "must-emit".
-#![allow(dead_code)]
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Encoding {
     /// Raw 1-byte typed enum codepoint (Tags 1, 2, 12).

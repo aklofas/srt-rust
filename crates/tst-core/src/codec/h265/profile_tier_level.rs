@@ -1,7 +1,3 @@
-// Dead-code lint suppressed: this is a private substrate module; callers
-// arrive in subsequent tasks (VPS/SPS parsers).
-#![allow(dead_code)]
-
 //! `profile_tier_level()` parser per H.265 §7.3.3.
 //!
 //! Decoded fields used by VPS/SPS callers:

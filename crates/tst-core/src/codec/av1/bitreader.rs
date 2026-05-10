@@ -10,8 +10,6 @@
 //! AV1 OBU bodies do NOT use emulation-prevention bytes, so this
 //! reader is byte-clean — no `00 00 03` skip logic like H.26x.
 
-#![allow(dead_code)] // primitives surface in Tasks 23-25
-
 use crate::codec::CodecParseError;
 
 #[doc(hidden)]
@@ -79,15 +77,14 @@ impl<'a> Av1BitReader<'a> {
     }
 
     /// Skip until next byte boundary (`byte_alignment()` per §5.3.1).
+    #[allow(dead_code)] // used by #[cfg(test)] byte_align_* tests in this file
     pub fn byte_align(&mut self) {
         self.bit_pos = (self.bit_pos + 7) & !7;
     }
 
+    #[allow(dead_code)] // used by #[cfg(test)] byte_align_* tests in this file
     pub fn bit_pos(&self) -> usize {
         self.bit_pos
-    }
-    pub fn buf_len_bits(&self) -> usize {
-        self.buf.len() * 8
     }
 
     /// Test-only: force `bit_pos` to an arbitrary value so the

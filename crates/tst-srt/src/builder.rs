@@ -227,6 +227,15 @@ impl SocketBuilder {
     /// allocations (the optional `Passphrase`, `StreamId`, and
     /// `PacketFilter`, all `String`-backed).
     ///
+    /// # C ABI
+    ///
+    /// No direct counterpart — the C surface composes builder + transport +
+    /// shell in a single call: `tst_mux_sender_open`, `tst_sender_open`,
+    /// `tst_raw_sender_open`, `tst_managed_mux_sender_open`,
+    /// `tst_managed_sender_open`, `tst_managed_raw_sender_open`. URL query
+    /// parameters take the place of builder setters; see
+    /// `crates/tst-c/include/tstrans.h` and `docs/binding-authors.md`.
+    ///
     /// # Errors
     /// Returns [`ConnectError`] on hostname-resolution failure, libsrt
     /// option-set failure, or SRT-handshake failure (handshake timeout,
@@ -360,6 +369,12 @@ impl ListenerBuilder {
     /// config is a flat `ListenerConfig` with at most two short heap
     /// allocations (the optional `Passphrase` and `PacketFilter`, both
     /// `String`-backed).
+    ///
+    /// # C ABI
+    ///
+    /// No direct counterpart — `Listener` itself is not exposed at the C
+    /// ABI today. The receiver-side C surface (deferred) will lift the
+    /// listen/accept pair into a single `tst_*_open_listener`-shaped call.
     ///
     /// # Errors
     /// Returns [`BindError`] on hostname-resolution failure, libsrt

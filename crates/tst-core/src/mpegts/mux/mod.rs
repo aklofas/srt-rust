@@ -1866,6 +1866,10 @@ impl Muxer {
     /// State is unchanged on any error (push is atomic — either the AU lands
     /// in the muxer queue or none of its TS packets do).
     ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_video` — see `crates/tst-c/include/tstrans.h`.
+    ///
     /// # Errors
     /// - [`MuxError::AmbiguousTarget`] when zero or more than one video
     ///   stream is configured across all programs — call [`Self::push_video_to`]
@@ -1908,6 +1912,10 @@ impl Muxer {
     /// The spec default is `0x00`. Pass `0x00` unless you have a specific
     /// reason to use a non-zero service_id (e.g. to mirror the `service_id`
     /// byte of a `metadata_klva` PMT descriptor you supplied at config time).
+    ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_klv` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::NoKlvStreamsConfigured`] if no KLV streams are
@@ -2333,6 +2341,10 @@ impl Muxer {
     /// `0` indicates either an empty queue or `out.len() < 188`. Pull is
     /// infallible — there are no failure modes that don't already surface
     /// at `push_video` / `push_klv` time (buffer-full, validation).
+    ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_pull` — see `crates/tst-c/include/tstrans.h`.
     pub fn pull(&mut self, out: &mut [u8]) -> usize {
         if out.len() < 188 {
             return 0;
@@ -2441,6 +2453,10 @@ impl Muxer {
     /// AV1 streams expect OBU bitstream input (AV1 spec §5) and skip
     /// the Annex-B start-code check; H.264 / H.265 / H.266 require
     /// Annex-B framing.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_video_to` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
@@ -2582,6 +2598,10 @@ impl Muxer {
     /// specific reason to use a non-zero service_id (e.g. to mirror
     /// the `service_id` byte of a `metadata_klva` PMT descriptor you
     /// supplied at config time).
+    ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_klv_to` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of

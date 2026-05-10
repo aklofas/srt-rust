@@ -333,6 +333,54 @@ impl Demuxer {
         }
     }
 
+    /// Fast-path ingress for callers that already hold a single 188-byte
+    /// aligned TS packet (e.g. `pipeline::Receiver`, which produces `[u8; 188]`
+    /// packets directly from the transport layer).
+    ///
+    /// Unlike [`feed`](Self::feed), this method skips the internal sync buffer
+    /// and the 0x47 hunt entirely: the packet is dispatched inline with no
+    /// heap allocation and no memmove. This eliminates the
+    /// `extend_from_slice` + `compact_sync_buf` double-copy that `feed`
+    /// performs on the already-aligned `Receiver` hot path.
+    ///
+    /// **The first byte of `pkt` MUST be `0x47`** (the MPEG-TS sync byte).
+    /// Callers that cannot guarantee 188-byte alignment must use [`feed`](Self::feed).
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(DemuxError::Unrecoverable { after_bytes: 0 })` if
+    /// `pkt[0] != 0x47` — the caller violated the alignment contract.
+    /// All other errors mirror those of [`feed`](Self::feed): `MalformedPsi`,
+    /// `MalformedPes`, and (in strict mode) `StrictRejection`. The
+    /// `SyncBufExhausted` and `Unrecoverable { after_bytes > 0 }` variants
+    /// cannot be returned by this method (no sync buffer is involved).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use tst_core::mpegts::demux::Demuxer;
+    /// # let pkt: [u8; 188] = {
+    /// #     let mut p = [0u8; 188];
+    /// #     p[0] = 0x47;
+    /// #     p
+    /// # };
+    /// let mut d = Demuxer::new();
+    /// // pkt must start with 0x47; obtained e.g. from pipeline::Receiver.
+    /// d.feed_aligned(&pkt).expect("packet was aligned");
+    /// while let Some(_event) = d.next_event() { /* handle */ }
+    /// ```
+    pub fn feed_aligned(&mut self, pkt: &[u8; 188]) -> Result<(), DemuxError> {
+        if pkt[0] != 0x47 {
+            return Err(DemuxError::Unrecoverable { after_bytes: 0 });
+        }
+        self.bytes_since_sync = 0;
+        self.process_packet(pkt)?;
+        if let Some(fatal) = self.fatal.take() {
+            return Err(DemuxError::StrictRejection(format!("{fatal:?}")));
+        }
+        Ok(())
+    }
+
     /// Pull the next available event. Returns `None` if no event is
     /// currently queued — feed more bytes and try again.
     pub fn next_event(&mut self) -> Option<DemuxEvent> {

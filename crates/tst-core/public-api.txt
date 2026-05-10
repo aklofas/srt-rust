@@ -2514,6 +2514,7 @@ pub mod tst_core::mpegts::demux::demuxer
 pub struct tst_core::mpegts::demux::demuxer::Demuxer
 impl tst_core::mpegts::demux::demuxer::Demuxer
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::feed(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_core::error::DemuxError>
+pub fn tst_core::mpegts::demux::demuxer::Demuxer::feed_aligned(&mut self, pkt: &[u8; 188]) -> core::result::Result<(), tst_core::error::DemuxError>
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::flush(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::new() -> Self
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::next_event(&mut self) -> core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>
@@ -3716,6 +3717,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Vi
 pub struct tst_core::mpegts::demux::Demuxer
 impl tst_core::mpegts::demux::demuxer::Demuxer
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::feed(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_core::error::DemuxError>
+pub fn tst_core::mpegts::demux::demuxer::Demuxer::feed_aligned(&mut self, pkt: &[u8; 188]) -> core::result::Result<(), tst_core::error::DemuxError>
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::flush(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::new() -> Self
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::next_event(&mut self) -> core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>

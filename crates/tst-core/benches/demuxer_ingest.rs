@@ -85,8 +85,12 @@ fn bench_feed_per_packet(c: &mut Criterion) {
             let mut d = Demuxer::new();
             for i in 0..n_packets {
                 let start = i * 188;
-                // feed() is infallible for well-formed TS; unwrap is safe here.
-                d.feed(black_box(&stream[start..start + 188])).unwrap();
+                // Use feed_aligned — the Task-9 fast path for callers that
+                // already hold a single aligned 188-byte TS packet, which is
+                // exactly the shape produced by pipeline::Receiver.
+                // The stream is well-formed so pkt[0] == 0x47; unwrap is safe.
+                let pkt: &[u8; 188] = stream[start..start + 188].try_into().unwrap();
+                d.feed_aligned(black_box(pkt)).unwrap();
                 // Drain events so the demuxer's internal queue does not grow
                 // unboundedly across packets; mimics a real consumer.
                 while let Some(e) = d.next_event() {

@@ -238,10 +238,15 @@ impl<R: RecvTransport> DemuxReceiver<R> {
             for sink in &mut self.byte_sinks {
                 sink(&pkt);
             }
-            // Feed to demuxer. In lenient mode this only errors on
-            // Unrecoverable (bad packet length) or MalformedPes. In strict
-            // mode it can also return StrictRejection.
-            self.demux.feed(&pkt).map_err(DemuxReceiverError::Demux)?;
+            // Feed to demuxer via the aligned fast path — the Receiver
+            // transport layer already produces [u8; 188] packets so no sync
+            // buffering or 0x47 hunt is needed.  In lenient mode this only
+            // errors on Unrecoverable (caller violated alignment contract) or
+            // MalformedPes/MalformedPsi. In strict mode it can also return
+            // StrictRejection.
+            self.demux
+                .feed_aligned(&pkt)
+                .map_err(DemuxReceiverError::Demux)?;
         }
     }
 

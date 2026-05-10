@@ -59,9 +59,12 @@ use tst_srt::SocketBuilder;
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut socket = SocketBuilder::new()
-        .latency(Duration::from_millis(120))
-        .connect("127.0.0.1:9000")?;
+    // Bind the builder before chaining: mutators take `&mut self` and
+    // return `&mut Self`, while `connect` takes `&self`, so a single
+    // fluent chain off the temporary `SocketBuilder::new()` would dangle.
+    let mut sb = SocketBuilder::new();
+    sb.latency(Duration::from_millis(120));
+    let mut socket = sb.connect("127.0.0.1:9000")?;
     socket.send(b"hello, srt")?;
     socket.close()?;
     Ok(())
@@ -80,9 +83,11 @@ use tst_srt::ListenerBuilder;
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut listener = ListenerBuilder::new()
-        .latency(Duration::from_millis(120))
-        .bind("0.0.0.0:9000")?;
+    // Same bind-then-step pattern as `SocketBuilder`: mutators return
+    // `&mut Self`, terminal `bind` takes `&self`.
+    let mut lb = ListenerBuilder::new();
+    lb.latency(Duration::from_millis(120));
+    let mut listener = lb.bind("0.0.0.0:9000")?;
     let (mut socket, peer) = listener.accept()?;
     println!("accepted from {peer}");
     let mut buf = [0u8; 1500];
@@ -115,9 +120,12 @@ use tst_srt::{SocketBuilder, SrtTransport};
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let socket = SocketBuilder::new()
-        .latency(Duration::from_millis(120))
-        .connect("127.0.0.1:9000")?;
+    // Bind-then-step: builder mutators return `&mut Self`, `connect`
+    // takes `&self`, so split the chain across statements on a bound
+    // builder.
+    let mut sb = SocketBuilder::new();
+    sb.latency(Duration::from_millis(120));
+    let socket = sb.connect("127.0.0.1:9000")?;
     let transport = SrtTransport::new(socket);
     let sender = MuxSender::new(MuxerConfig::default(), transport)?;
 

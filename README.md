@@ -134,19 +134,21 @@ tst-srt = { git = "https://github.com/aklofas/ts-transformer" }
 use tst_srt::{ListenerBuilder, SocketBuilder, Passphrase};
 use std::time::Duration;
 
-// Listener side
-let mut listener = ListenerBuilder::new()
-    .passphrase(Passphrase::new("my-shared-secret-1234")?)
-    .latency_ms(120)
-    .bind("0.0.0.0:1234")?;
+// Listener side. Mutators return `&mut Self`, terminal `bind` takes
+// `&self` — bind the builder, then step.
+let mut lb = ListenerBuilder::new();
+lb.passphrase(Passphrase::new("my-shared-secret-1234")?);
+lb.latency_ms(120);
+let mut listener = lb.bind("0.0.0.0:1234")?;
 let (socket, peer) = listener.accept()?;
 
-// Caller side
-let mut socket = SocketBuilder::new()
-    .passphrase(Passphrase::new("my-shared-secret-1234")?)
-    .latency_ms(120)
-    .recv_timeout(Duration::from_secs(5))
-    .connect("aircraft:1234")?;
+// Caller side. Same bind-then-step pattern: terminal `connect` takes
+// `&self`, so a single fluent chain off the temporary builder dangles.
+let mut sb = SocketBuilder::new();
+sb.passphrase(Passphrase::new("my-shared-secret-1234")?);
+sb.latency_ms(120);
+sb.recv_timeout(Duration::from_secs(5));
+let mut socket = sb.connect("aircraft:1234")?;
 socket.send(b"hello")?;
 ```
 

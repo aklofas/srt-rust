@@ -22,6 +22,11 @@ tracing      = { version = "0.1", default-features = false, features = ["std"] }
 proptest     = { workspace = true }
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 tempfile     = "3"
+criterion    = { workspace = true }
+
+[[bench]]
+name    = "mux_throughput"
+harness = false
 
 # Maintainer fixture-generators. Build with `cargo run -p tst-core --bin <name>`.
 # Not part of the published library surface — they live under tests/tools/ and

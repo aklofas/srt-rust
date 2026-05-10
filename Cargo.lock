@@ -1440,6 +1440,7 @@ dependencies = [
 name = "tst-core"
 version = "0.0.0"
 dependencies = [
+ "criterion",
  "h264-reader",
  "log",
  "proptest",
@@ -1473,7 +1474,6 @@ dependencies = [
 name = "tst-srt"
 version = "0.0.0"
 dependencies = [
- "criterion",
  "libc",
  "proptest",
  "secrecy",

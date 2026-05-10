@@ -5,7 +5,7 @@
 //! - push_klv at typical 1KB blob
 //! - end-to-end: push 30 mixed frames + drain via 1316-byte buffer
 //!
-//! Run: `cargo bench -p tst-srt`. Locks current numbers as baseline; later
+//! Run: `cargo bench -p tst-core`. Locks current numbers as baseline; later
 //! runs report regressions.
 
 use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};

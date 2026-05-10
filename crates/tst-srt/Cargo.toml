@@ -32,7 +32,6 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 [dev-dependencies]
 libc          = { workspace = true }
 proptest      = { workspace = true }
-criterion     = { workspace = true }
 tst-pipeline  = { path = "../tst-pipeline" }
 # Used by integration tests that read raw libsrt socket flags
 # (e.g. SRTO_SENDER) via Socket::raw_handle().
@@ -42,7 +41,3 @@ srt-sys   = { path = "../srt-sys", default-features = false }
 # the test binary), which is needed for integration tests that assert on warns
 # emitted by tst-core library code.
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
-
-[[bench]]
-name    = "mux_throughput"
-harness = false

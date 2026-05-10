@@ -1386,21 +1386,6 @@ pub fn tst_core::klv::length::read_ber_strict(buf: &[u8]) -> core::result::Resul
 pub fn tst_core::klv::length::write_ber(value: usize, out: &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::length::write_ber_oid(value: u32, out: &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
 pub mod tst_core::klv::pack
-pub struct tst_core::klv::pack::Iter<'a>
-impl<'a> tst_core::klv::pack::Iter<'a>
-pub fn tst_core::klv::pack::Iter<'a>::local_set(buf: &'a [u8]) -> Self
-pub fn tst_core::klv::pack::Iter<'a>::remaining(&self) -> &'a [u8]
-pub fn tst_core::klv::pack::Iter<'a>::universal_set(buf: &'a [u8]) -> Self
-impl<'a> core::iter::traits::iterator::Iterator for tst_core::klv::pack::Iter<'a>
-pub type tst_core::klv::pack::Iter<'a>::Item = core::result::Result<tst_core::klv::pack::RawField<'a>, tst_core::error::KlvDecodeError>
-pub fn tst_core::klv::pack::Iter<'a>::next(&mut self) -> core::option::Option<Self::Item>
-impl<'a> core::marker::Freeze for tst_core::klv::pack::Iter<'a>
-impl<'a> core::marker::Send for tst_core::klv::pack::Iter<'a>
-impl<'a> core::marker::Sync for tst_core::klv::pack::Iter<'a>
-impl<'a> core::marker::Unpin for tst_core::klv::pack::Iter<'a>
-impl<'a> core::marker::UnsafeUnpin for tst_core::klv::pack::Iter<'a>
-impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::pack::Iter<'a>
-impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::klv::pack::Iter<'a>
 pub struct tst_core::klv::pack::OwnedRawField
 pub tst_core::klv::pack::OwnedRawField::tag: u32
 pub tst_core::klv::pack::OwnedRawField::value: alloc::vec::Vec<u8>
@@ -2118,21 +2103,6 @@ impl core::marker::Unpin for tst_core::klv::VTargetPackError
 impl core::marker::UnsafeUnpin for tst_core::klv::VTargetPackError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::VTargetPackError
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::VTargetPackError
-pub struct tst_core::klv::Iter<'a>
-impl<'a> tst_core::klv::pack::Iter<'a>
-pub fn tst_core::klv::pack::Iter<'a>::local_set(buf: &'a [u8]) -> Self
-pub fn tst_core::klv::pack::Iter<'a>::remaining(&self) -> &'a [u8]
-pub fn tst_core::klv::pack::Iter<'a>::universal_set(buf: &'a [u8]) -> Self
-impl<'a> core::iter::traits::iterator::Iterator for tst_core::klv::pack::Iter<'a>
-pub type tst_core::klv::pack::Iter<'a>::Item = core::result::Result<tst_core::klv::pack::RawField<'a>, tst_core::error::KlvDecodeError>
-pub fn tst_core::klv::pack::Iter<'a>::next(&mut self) -> core::option::Option<Self::Item>
-impl<'a> core::marker::Freeze for tst_core::klv::pack::Iter<'a>
-impl<'a> core::marker::Send for tst_core::klv::pack::Iter<'a>
-impl<'a> core::marker::Sync for tst_core::klv::pack::Iter<'a>
-impl<'a> core::marker::Unpin for tst_core::klv::pack::Iter<'a>
-impl<'a> core::marker::UnsafeUnpin for tst_core::klv::pack::Iter<'a>
-impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::pack::Iter<'a>
-impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::klv::pack::Iter<'a>
 pub struct tst_core::klv::OwnedRawField
 pub tst_core::klv::OwnedRawField::tag: u32
 pub tst_core::klv::OwnedRawField::value: alloc::vec::Vec<u8>

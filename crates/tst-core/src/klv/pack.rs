@@ -60,6 +60,9 @@ pub(crate) enum IterMode {
 }
 
 /// Iterator over a KLV body (post-UL, post-outer-length).
+#[doc(hidden)] // Phase 3: hidden from rustdoc; full pub(crate) blocked by external
+// fuzz consumer (crates/tst-srt/fuzz/fuzz_targets/klv_iter.rs).
+// Phase 5 will lift the consumer + demote to pub(crate).
 pub struct Iter<'a> {
     buf: &'a [u8],
     offset: usize,

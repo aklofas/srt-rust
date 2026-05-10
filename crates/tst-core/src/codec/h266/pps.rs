@@ -1,7 +1,7 @@
 //! H.266 PPS parser. Per H.266 V4 §7.3.2.5.
 
 use crate::codec::CodecParseError;
-use crate::codec::h265::bitreader::BitReader;
+use crate::codec::bitreader::BitReader;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H266Pps {

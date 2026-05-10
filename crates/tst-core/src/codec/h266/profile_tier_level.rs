@@ -1,7 +1,7 @@
 //! H.266 Profile/Tier/Level parser. Per H.266 V4 §7.3.3.
 
 use crate::codec::CodecParseError;
-use crate::codec::h265::bitreader::BitReader;
+use crate::codec::bitreader::BitReader;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct H266ProfileTierLevel {

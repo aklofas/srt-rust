@@ -2,9 +2,9 @@
 //! [`H265Vps`] are decoded; everything past `general_level_idc` is
 //! skipped.
 
-use super::bitreader::BitReader;
 use super::profile_tier_level;
 use crate::codec::CodecParseError;
+use crate::codec::bitreader::BitReader;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H265Vps {

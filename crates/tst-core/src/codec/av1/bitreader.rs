@@ -1,7 +1,7 @@
 //! AV1-specific bit reader. Per AV1 Bitstream Spec §4.7 / §4.10.
 //!
 //! Distinct from H.26x's Annex-B Exp-Golomb reader (which lives in
-//! `crate::codec::h265::bitreader`). AV1 has its own primitive set:
+//! `crate::codec::bitreader`). AV1 has its own primitive set:
 //!   * `f(n)` — fixed-width unsigned read (§4.7.2)
 //!   * `uvlc()` — variable-length code (§4.10.3)
 //!   * `byte_align()` — skip to next byte boundary (§5.3.1)

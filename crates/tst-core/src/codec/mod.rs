@@ -13,6 +13,7 @@
 
 pub mod aac;
 pub mod av1;
+pub(crate) mod bitreader;
 pub mod h264;
 pub mod h265;
 pub mod h266;

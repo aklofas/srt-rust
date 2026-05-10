@@ -2,8 +2,8 @@
 //! on [`crate::codec::ColorInfo`] and frame_rate are decoded; the rest
 //! are skipped.
 
-use super::bitreader::BitReader;
 use crate::codec::CodecParseError;
+use crate::codec::bitreader::BitReader;
 use crate::codec::{
     ColorInfo, ColourPrimaries, MatrixCoefficients, Rational, TransferCharacteristics,
 };

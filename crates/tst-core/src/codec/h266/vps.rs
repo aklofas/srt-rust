@@ -1,7 +1,7 @@
 //! H.266 VPS parser. Per H.266 V4 §7.3.2.3.
 
 use crate::codec::CodecParseError;
-use crate::codec::h265::bitreader::BitReader; // shared with codec::h266 — codec-agnostic Annex-B bitreader
+use crate::codec::bitreader::BitReader;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H266Vps {

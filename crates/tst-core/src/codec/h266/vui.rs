@@ -7,7 +7,7 @@
 //!     returns only `Option<ColorInfo>`.
 
 use crate::codec::CodecParseError;
-use crate::codec::h265::bitreader::BitReader;
+use crate::codec::bitreader::BitReader;
 use crate::codec::{
     ColorInfo, ColourPrimaries, MatrixCoefficients, Rational, TransferCharacteristics,
 };

@@ -17,8 +17,8 @@
 //!
 //! Per-sub-layer fields (when `maxNumSubLayersMinus1 > 0`) are skipped.
 
-use super::bitreader::BitReader;
 use crate::codec::CodecParseError;
+use crate::codec::bitreader::BitReader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) struct ProfileTierLevel {

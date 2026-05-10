@@ -2,8 +2,8 @@
 //! `pps_seq_parameter_set_id` are exposed; everything else is
 //! decoder-internal.
 
-use super::bitreader::BitReader;
 use crate::codec::CodecParseError;
+use crate::codec::bitreader::BitReader;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H265Pps {

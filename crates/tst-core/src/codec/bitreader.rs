@@ -1,16 +1,19 @@
-//! Minimal RBSP bit reader for hand-rolled H.265 parameter set parsing.
+//! Minimal RBSP bit reader for hand-rolled H.265 / H.266 parameter set parsing.
 //!
-//! Operates on RBSP bytes with emulation prevention bytes (`00 00 03`)
-//! preserved on input — `read_*` functions transparently skip the `03`
-//! every time the previous two bytes were `00 00`. This matches the
-//! input contract our public parsers expose (raw NAL payload from the
-//! demuxer, no additional preprocessing).
+//! Codec-agnostic Annex-B reader operating on RBSP bytes with emulation
+//! prevention bytes (`00 00 03`) preserved on input — `read_*` functions
+//! transparently skip the `03` every time the previous two bytes were
+//! `00 00`. This matches the input contract our public parsers expose
+//! (raw NAL payload from the demuxer, no additional preprocessing).
 //!
-//! Reference: H.265 §7.2 (raw byte sequence payload), §9.2 (parsing process).
-
-// Dead-code lint suppressed: this is a private substrate module; callers
-// arrive in subsequent tasks (VPS/SPS/PPS parsers).
-#![allow(dead_code)]
+//! Used by `codec::h265::{vps,sps,pps,vui,short_term_rps,profile_tier_level}`
+//! and `codec::h266::{vps,sps,pps,vui,profile_tier_level}`. AV1 has its own
+//! separate bit-reading primitives in `codec::av1::bitreader` — different
+//! semantics (no emulation prevention bytes; AV1's `f(n)` / `uvlc()` /
+//! `byte_align()` per spec §4.7 + §4.10).
+//!
+//! Reference: H.265 §7.2 (raw byte sequence payload), §9.2 (parsing process);
+//! H.266 reuses the same bit-reading semantics.
 
 use crate::codec::CodecParseError;
 
@@ -20,18 +23,11 @@ pub struct BitReader<'a> {
     /// Bit position within the input, counting bits skipped over EP bytes
     /// as if they were not there.
     bit_pos: u32,
-    /// Total bits available after EP-stripping (lazy: capped at byte_pos*8
-    /// at any point but never recomputed).
-    bit_cap: u32,
 }
 
 impl<'a> BitReader<'a> {
     pub fn new(bytes: &'a [u8]) -> Self {
-        Self {
-            bytes,
-            bit_pos: 0,
-            bit_cap: (bytes.len() as u32).saturating_mul(8),
-        }
+        Self { bytes, bit_pos: 0 }
     }
 
     pub fn position(&self) -> u32 {
@@ -123,10 +119,6 @@ impl<'a> BitReader<'a> {
             self.read_one_bit()?;
         }
         Ok(())
-    }
-
-    pub fn at_end(&self) -> bool {
-        self.bit_pos >= self.bit_cap
     }
 }
 

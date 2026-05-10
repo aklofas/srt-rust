@@ -12,8 +12,8 @@
 //! `inter_ref_pic_set_prediction_flag` arm to know how many flag bits to
 //! read for that RPS's reference set.
 
-use super::bitreader::BitReader;
 use crate::codec::CodecParseError;
+use crate::codec::bitreader::BitReader;
 
 /// Reasonable upper bound on `num_negative_pics` / `num_positive_pics`
 /// per RPS. H.265 §A.4.2 levels cap the total reference picture count;
@@ -105,7 +105,7 @@ fn walk_one_short_term_rps(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codec::h265::bitreader::BitReader;
+    use crate::codec::bitreader::BitReader;
 
     #[test]
     fn walk_zero_rps_is_noop() {

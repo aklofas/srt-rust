@@ -1463,6 +1463,7 @@ dependencies = [
 name = "tst-pipeline"
 version = "0.0.0"
 dependencies = [
+ "criterion",
  "proptest",
  "thiserror",
  "tracing",

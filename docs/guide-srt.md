@@ -83,11 +83,12 @@ Two equivalent forms construct the same `Socket`:
   (`Passphrase`, `KeyLength`, `StreamId`, ...), mutates the builder in
   place, and returns `&mut Self` so calls can be chained on a temporary
   or a `let mut b = SocketBuilder::new();` binding. Terminal call is
-  `connect(addr)` (`SocketBuilder`) or `bind(addr)` (`ListenerBuilder`)
-  — both take `&self` and clone the inner config, so the builder can be
-  reused. The shape translates directly to Kotlin's `apply { }`, Swift's
-  mutable local, Java's chain, and Python's step-wise — see
-  `docs/binding-authors.md`.
+  `connect(addr)`, which takes `&self` and clones the inner config so
+  the builder can be reused. The shape translates directly to Kotlin's
+  `apply { }`, Swift's mutable local, Java's chain, and Python's
+  step-wise — see `docs/binding-authors.md`. (`ListenerBuilder` follows
+  the same shape; its consuming-`self` setters and `bind(addr)`
+  terminal will be reshaped to match in a follow-up.)
 - The config struct — `SocketConfig` — is the canonical type. Every
   field is `pub`, so bindings (UniFFI dictionaries, JNI POJOs,
   cbindgen C structs) consume it directly. Construct with struct-update

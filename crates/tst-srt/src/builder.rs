@@ -212,7 +212,9 @@ impl SocketBuilder {
     }
 
     /// Reach the underlying config (for inspection, copying, FFI marshaling).
-    /// Clones the inner config so the builder can be reused.
+    /// Clones the inner config so the builder can be reused. Cloning is
+    /// cheap — at most three short heap allocations (optional
+    /// `Passphrase`, `StreamId`, and `PacketFilter`, all `String`-backed).
     pub fn config(&self) -> SocketConfig {
         self.config.clone()
     }
@@ -221,8 +223,9 @@ impl SocketBuilder {
     ///
     /// Takes `&self` (not `self`) so the builder can be reused; clones the
     /// inner config into [`Socket::connect_with`]. Cloning is cheap — the
-    /// config is a flat `SocketConfig` with at most one heap allocation
-    /// (the optional `Passphrase` / `StreamId`).
+    /// config is a flat `SocketConfig` with at most three short heap
+    /// allocations (the optional `Passphrase`, `StreamId`, and
+    /// `PacketFilter`, all `String`-backed).
     ///
     /// # Errors
     /// Returns [`ConnectError`] on hostname-resolution failure, libsrt

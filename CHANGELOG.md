@@ -9,15 +9,59 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
-Phase 1 (SemVer ratchet) and Phase 2 (DX + observability) of the Rust
-quality + DX + FFI refactor. Both ship together in the next release.
-Plan #39 (examples reorganization) also rides this release.
+Phase 1 (SemVer ratchet), Phase 2 (DX + observability), and Phase 3
+(FFI-readiness) of the Rust quality + DX + FFI refactor. All three ship
+together in the next release. Plan #39 (examples reorganization) also
+rides this release.
 
 ---
 
-### Phase 3 — FFI-readiness: stream handle opacity (sub-phase 3.3, 2026-05-09)
+### Phase 3 — FFI-readiness (2026-05-09)
 
-#### Changed (Phase 3 / handle opacity)
+Final phase of the quality + DX + FFI refactor. Six sub-phases:
+3.1 (pipeline shell aliases + `Box<dyn>` blanket impls + binding-author
+starter doc), 3.2 (audio frame `Owned` siblings + AV1 panic
+inventory), 3.3 (stream handle opacity), 3.4 (builder reshape to
+`&mut self -> &mut Self`), 3.5 (targeted API reshape: `PairerOptions`,
+`usize → u64`, `CancelHandle` relocation), 3.6 (visibility + close
+contracts + Rust↔C ABI cross-references + three CI ratchets).
+
+#### Added (Phase 3 / sub-phase 3.1 — pipeline shell aliases)
+
+- **Six `BoxedXxx` dyn-erased aliases** in `tst-pipeline` for binding
+  generators (UniFFI / JNI / PyO3) that need a single concrete type
+  per shell shape regardless of the underlying transport:
+  `BoxedMuxSender`, `BoxedSender`, `BoxedRawSender`,
+  `BoxedDemuxReceiver`, `BoxedReceiver`, `BoxedRawReceiver`. Collected
+  into the new `tst_pipeline::dyn_aliases` module with crate-root
+  re-exports.
+- **Blanket `Transport` and `RecvTransport` impls for `Box<T: ?Sized>`**
+  in `tst-core/src/transport.rs`. Without these, `Box<dyn Transport>`
+  doesn't satisfy `T: Transport`, making the dyn-erased aliases
+  type-level landmines. Added mid-execution after the Phase 3 plan was
+  found to miss this prerequisite.
+- [`docs/binding-authors.md`](./docs/binding-authors.md) — ~150-line
+  starter guide for `srt-jni` / `srt-uniffi` / `tst-pyo3` authors.
+  Worked Kotlin/Swift/Python/C examples plus builder + cancel-handle +
+  threading + versioning sections.
+
+#### Added (Phase 3 / sub-phase 3.2 — audio frame `Owned` siblings)
+
+- **`codec::aac::AdtsFrameOwned`** — 11-field owned mirror of
+  `AdtsFrame<'a>` with symmetric `to_owned()` / `as_ref()` round-trip.
+  FFI-shaped collect-pattern doctest verifies the borrow→own→reborrow
+  cycle works for binding consumers that need to retain frames
+  across calls.
+- **`codec::mpegaudio::FrameOwned`** — 10-field owned mirror of
+  `mpegaudio::Frame<'a>` with the same symmetric round-trip and
+  doctest pattern.
+- **AV1 panic inventory was clean** — Phase 0 had already done the
+  hardening (35 panic-shaped sites, all in `#[cfg(test)]` blocks).
+  Closed Phase 0 deferral 3.2f with 10 regression tests at
+  `tests/av1_no_panic.rs` exercising the production paths under
+  truncation / oversized-leb128 / bit-overflow inputs.
+
+#### Changed (Phase 3 / sub-phase 3.3 — stream handle opacity)
 
 - **`VideoStreamHandle::{pack, unpack, raw, from_raw}` and
   `KlvStreamHandle::{pack, unpack, raw, from_raw}` are now
@@ -38,7 +82,7 @@ Plan #39 (examples reorganization) also rides this release.
   at the C ABI boundary yet). The `from_raw` / `raw` helpers on these
   types were test-only; they are now `#[cfg(test)] pub(crate)`.
 
-#### Changed (Phase 3 / builder reshape, sub-phase 3.4)
+#### Changed (Phase 3 / sub-phase 3.4 — builder reshape)
 
 - **Breaking:** Every public builder converted to `&mut self -> &mut Self`
   chainable shape:
@@ -112,6 +156,44 @@ Plan #39 (examples reorganization) also rides this release.
 - Cookbook recipe (Operations section): graceful shutdown from another
   thread via `CancelHandle`.
 - Architecture doc section: cross-thread shutdown via `CancelHandle`.
+
+#### Changed (Phase 3 / sub-phase 3.6 — visibility + close contracts)
+
+- **`klv::pack::Iter` is now `#[doc(hidden)]`.** The iterator is still
+  `pub` (a downstream fuzz target depends on it — see Phase 1 Task
+  1.3.4 deferral), but it no longer appears in rustdoc. Public iteration
+  over KLV packs goes through `klv::pack::iter()` and the typed
+  `klv::st0601` / `klv::st0102` / `klv::st0903` decoders.
+
+#### Added (Phase 3 / sub-phase 3.6)
+
+- **Close-contract rustdoc on 11 long-lived public types.** Each type
+  now carries a `# Closing` section spelling out the resource-cleanup
+  contract for binding authors, plus a per-language idiom table
+  covering Rust `Drop`, Kotlin `use { }` / `AutoCloseable`, Swift
+  `defer`, Python `__exit__` / `with`, and C explicit-free pairing.
+  Coverage: `MuxSender`, `Sender`, `RawSender`, `DemuxReceiver`,
+  `Receiver`, `RawReceiver`, `Pairer`, `Socket`, `Listener`, `Muxer`,
+  `Demuxer`. (Tasks 3.6.2 + 3.6.3.)
+- **Rust ↔ C ABI cross-references on public methods.** Sender shells'
+  10 most-used methods (Tasks 3.6.4) plus tst-srt and tst-core public
+  methods (Task 3.6.5) now carry `# C ABI` rustdoc sections naming the
+  matching `tst_*` C entry point, and the C header carries reverse
+  references to the Rust path. Binding authors no longer need to
+  hand-trace the mapping.
+- **Three new CI ratchets** under `scripts/`:
+  - `check-c-abi-rustdoc-coverage.sh` (Task 3.6.6) — verifies every
+    `tst_*` C ABI export has a matching `# C ABI` rustdoc reference
+    and vice-versa. Bidirectional: catches both Rust→C drift (new C
+    entry point not surfaced in Rust docs) and C→Rust drift (new Rust
+    method not annotated). Currently locks in 74 C ABI exports.
+  - `check-close-contract-presence.sh` (Task 3.6.7) — verifies all
+    11 long-lived public types still carry a `# Closing` rustdoc
+    section. Catches accidental removals during refactors.
+  - `check-no-public-usize.sh` (Task 3.6.8) — guards against `usize`
+    sneaking back into the public API surface. Sub-phase 3.5
+    eliminated all public `usize` (replaced with `u64` for FFI
+    portability); this keeps the surface clean.
 
 ---
 

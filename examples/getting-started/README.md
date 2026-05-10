@@ -15,7 +15,9 @@ cargo run -p tst-examples --example hello_world
 What you'll see:
 
 - The `Muxer` + `MuxerConfigBuilder` API in their simplest form
-  (`add_program` → `add_video` → `add_klv` → `end_program` → `build`).
+  (`MuxerProgramConfigBuilder::new(program_number, pmt_pid)` →
+  `add_video` / `add_klv` → `build` → bind onto
+  `MuxerConfigBuilder::add_program` → `build`).
 - ST 0601 KLV LS encoding via `UasDatalinkLs::default()` +
   `encode_to_vec`.
 - The packet-pull loop that drains the muxer (`Muxer::pull` writing

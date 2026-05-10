@@ -338,7 +338,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `Sender<T>` | ✅ Full | Pre-muxed TS bytes → SRT with sync framing/recovery. 3-byte sync verify, 7-packet bundling, RECOVER + STRICT modes. |
 | `RawSender<T>` | ✅ Full | Byte-blind one-shot sender. One `send` call = one SRT message; size-cap validation at construction. |
 | `ManagedTransport<T>` | ✅ Full | Reconnect + gap-buffer decorator over any `Transport`. Synchronous reconnect on caller's thread; drop-oldest-message overflow policy; single-thread receiver. |
-| Multi-stream / multi-program `MuxerConfig` | ✅ Full | ≤16 programs, ≤16 video + ≤16 KLV streams per program; nested `add_program(N, pmt_pid).add_video(...).end_program()` builder; opaque handles from `video_handles_for_program(N)` / `klv_handles_for_program(N)`; `push_video_to(handle, …)` / `push_klv_to(handle, …)` on `Muxer` and `MuxSender`. Single-program single-stream callers keep the old flat API unchanged. |
+| Multi-stream / multi-program `MuxerConfig` | ✅ Full | ≤16 programs, ≤16 video + ≤16 KLV streams per program; standalone-sub-builder shape — `MuxerProgramConfigBuilder::new(N, pmt_pid)` + `add_video(...)` / `add_klv(...)` + `build()`, then bound onto `MuxerConfigBuilder::add_program(...)`; opaque handles from `video_handles_for_program(N)` / `klv_handles_for_program(N)`; `push_video_to(handle, …)` / `push_klv_to(handle, …)` on `Muxer` and `MuxSender`. Single-program single-stream callers keep the old flat API unchanged. |
 
 ### Receive side
 

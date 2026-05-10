@@ -86,10 +86,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let out_path = env::args().nth(1).unwrap_or_else(|| "av1.ts".into());
 
     // -----------------------------------------------------------------
-    // Canonical "build a MuxerConfig from scratch" pattern using the builder.
-    // `add_program(1, 0x1000)` opens the single-program block; all
-    // stream specs nest inside it and `end_program()` closes the block.
-    // Calling `.build()` applies defaults for PCR/PSI/buffer intervals.
+    // Canonical "build a MuxerConfig from scratch" pattern using the
+    // standalone sub-builder shape.
+    //
+    //   1. `MuxerProgramConfigBuilder::new(program_number, pmt_pid)`
+    //      constructs a stream-attaching builder for one program.
+    //   2. `add_video` / `add_klv` register elementary streams inside
+    //      that program; here we configure AV1 (stream_type 0x06
+    //      with the AOM-defined `AV01` registration descriptor, both
+    //      auto-emitted from `VideoCodec::Av1`) plus a sync-KLV
+    //      stream sharing the program's PCR.
+    //   3. `prog.build()` finalizes the program config (a plain owned
+    //      value) and is then bound onto the top-level
+    //      `MuxerConfig::builder()` via `add_program`.
+    //   4. The top-level `b.build()?` runs `MuxerConfig::validate` and
+    //      applies defaults for PCR/PSI/buffer intervals.
+    //
+    // The bind-then-build separation keeps each program description
+    // self-contained — useful when you want to construct multiple
+    // programs procedurally before assembling the final config.
     // -----------------------------------------------------------------
     let cfg = {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);

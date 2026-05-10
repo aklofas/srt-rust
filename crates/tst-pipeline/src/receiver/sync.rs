@@ -39,7 +39,7 @@ pub enum SyncState {
 ///
 /// Internally uses a ring buffer with a `head` cursor: consuming a packet
 /// advances `head` by 188 without moving any memory. A compaction pass
-/// (one memmove of the live bytes only) runs inside [`push`] when the dead
+/// (one memmove of the live bytes only) runs inside [`Self::push`] when the dead
 /// prefix exceeds a threshold, amortising the cost across many emitted
 /// packets rather than paying a per-packet memmove as `drain` does.
 #[derive(Debug)]

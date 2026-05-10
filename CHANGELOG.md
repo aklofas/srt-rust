@@ -9,10 +9,68 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
-Phase 1 (SemVer ratchet), Phase 2 (DX + observability), and Phase 3
-(FFI-readiness) of the Rust quality + DX + FFI refactor. All three ship
-together in the next release. Plan #39 (examples reorganization) also
-rides this release.
+Phase 1 (SemVer ratchet), Phase 2 (DX + observability), Phase 3
+(FFI-readiness), and Phase 4 (performance hot paths) of the Rust quality
++ DX + FFI refactor. Plan #39 (examples reorganization) also rides this
+release.
+
+---
+
+### Phase 4 — Performance hot paths (2026-05-10)
+
+Bench-driven receiver + sender optimizations. 6 bench targets / 21
+sub-benches established (Tasks 1–7); 5 optimization candidates committed
+(Tasks 8–10, 12–13); 3 dropped per decision rule (Tasks 11, 14, 15).
+
+#### Added (Phase 4)
+
+- **`Demuxer::feed_aligned(&[u8; 188]) -> Result<...>`** — fast path
+  that skips the sync-search buffer entirely when the caller guarantees
+  the input is already a valid 188-byte packet aligned on the 0x47 sync
+  byte. `DemuxReceiver` is wired to use this path internally.
+  Eliminates the slice-copy-into-sync-buf round-trip on the common
+  in-sync case. **-12 to -13%** on the `demux_feed_per_188` bench.
+
+#### Performance (Phase 4)
+
+- **Syncer ring buffer** (`tst-pipeline::pipeline::syncer`): replaced
+  `buf: Vec<u8>` + `to_vec() + drain()` per-packet pattern with a
+  hand-rolled ring (`head: usize` cursor, compaction at the 1316-byte
+  SRT-datagram threshold). `Receiver::next_packet` now returns
+  `[u8; 188]` by value (drops the `try_into().unwrap()` at call sites).
+  **-60%** on `syncer_aligned_steady_1000`. (Audited estimate was 2–4%;
+  the measured gain reflects that the original path paid both a heap
+  allocation and a full memmove of the trailing buffer on every emit.)
+
+- **`pid_to_program` HashMap** (`tst-core::mpegts::demux`): replaces
+  the O(programs × streams) linear scan in `program_number_for_pid`
+  with a `HashMap<u16, u16>` populated at PMT-handle time and cleared
+  on PAT version bumps. **-9 to -10%** on `demux_feed_per_188`.
+
+- **Muxer `pes_scratch` field**: single `Vec<u8>` reused across the 4
+  PES build sites (audio / subtitle / video / KLV) instead of separate
+  `Vec::with_capacity` per call. Drops 4 heap allocations per AU.
+  **-5 to -8%** on `mux_end_to_end_30frames`, **-5 to -10%** on
+  `push_klv_1kb`.
+
+- **Continuity counters flat array**: `BTreeMap<u16, u8>` continuity
+  counter table replaced with `Box<[u8; 8192]>` indexed by the 13-bit
+  PID field; 4-bit CC masking retained. Drops the now-stale "≤4 PIDs"
+  comment that rationalized the original map. **-6 to -11%** on
+  `mux_end_to_end_30frames`.
+
+- **Dropped: PMT cache + CC patch** (Task 11): -1.3% / -4.5% across
+  two passes — both below the 5% host-noise-adjusted threshold;
+  invalidation surface area not justified by gain.
+
+- **Dropped: adaptation-field stuffing `fill(0xFF)`** (Task 14):
+  codegen inspection showed LLVM already lowers the existing
+  `for byte in &mut out[..] { *byte = 0xFF }` loop to `memset@plt`.
+  No change needed.
+
+- **Dropped: profile-guided `#[inline]` sweep** (Task 15): `perf` not
+  installed on the build host; profiling was blocked. Zero `#[inline]`
+  additions — valid outcome per plan.
 
 ---
 

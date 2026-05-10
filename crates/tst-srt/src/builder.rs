@@ -16,9 +16,13 @@ use std::time::Duration;
 /// Fluent builder for [`Socket`] with chained option setters.
 ///
 /// `SocketBuilder::new()` starts from libsrt defaults; each setter mutates the
-/// underlying [`SocketConfig`] and returns `Self` so calls can be chained. The
-/// terminal call is [`SocketBuilder::connect`], which opens the socket and
-/// performs the SRT handshake.
+/// underlying [`SocketConfig`] in place and returns `&mut Self` so calls can be
+/// chained. The terminal call is [`SocketBuilder::connect`], which takes
+/// `&self` (clones the inner config) and opens the socket.
+///
+/// The `&mut self -> &mut Self` shape translates directly to Kotlin's `apply`
+/// scope, Swift's `var b = …; b.x(); b.y();`, Java's chain on a fresh local,
+/// and Python's step-wise assignment — see `docs/binding-authors.md`.
 ///
 /// See [`SocketBuilder::sender_defaults`] / [`SocketBuilder::receiver_defaults`]
 /// for live-streaming preset bundles.
@@ -30,12 +34,12 @@ use std::time::Duration;
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let passphrase = Passphrase::new("hunter2hunter2")?;
 ///
-/// let socket = SocketBuilder::new()
-///     .sender_defaults()
-///     .latency_ms(120)
-///     .max_bandwidth(MaxBandwidth::Limited(1_250_000)) // 10 Mbps cap
-///     .passphrase(passphrase)
-///     .connect("127.0.0.1:9000")?;
+/// let mut b = SocketBuilder::new();
+/// b.sender_defaults();
+/// b.latency_ms(120);
+/// b.max_bandwidth(MaxBandwidth::Limited(1_250_000)); // 10 Mbps cap
+/// b.passphrase(passphrase);
+/// let socket = b.connect("127.0.0.1:9000")?;
 /// # let _ = socket;
 /// # Ok(())
 /// # }
@@ -50,25 +54,25 @@ impl SocketBuilder {
         Self::default()
     }
 
-    pub fn passphrase(mut self, p: Passphrase) -> Self {
+    pub fn passphrase(&mut self, p: Passphrase) -> &mut Self {
         self.config.passphrase = Some(p);
         self
     }
-    pub fn key_length(mut self, kl: KeyLength) -> Self {
+    pub fn key_length(&mut self, kl: KeyLength) -> &mut Self {
         self.config.key_length = kl;
         self
     }
-    pub fn send_timeout(mut self, t: Duration) -> Self {
+    pub fn send_timeout(&mut self, t: Duration) -> &mut Self {
         self.config.send_timeout = Some(t);
         self
     }
-    pub fn recv_timeout(mut self, t: Duration) -> Self {
+    pub fn recv_timeout(&mut self, t: Duration) -> &mut Self {
         self.config.recv_timeout = Some(t);
         self
     }
     /// Set `SRTO_CONNTIMEO` — maximum handshake-wait duration on `connect`.
     /// libsrt default 3s; recommend 10–15s for radio links.
-    pub fn connect_timeout(mut self, t: Duration) -> Self {
+    pub fn connect_timeout(&mut self, t: Duration) -> &mut Self {
         self.config.connect_timeout = Some(t);
         self
     }
@@ -78,101 +82,104 @@ impl SocketBuilder {
     /// drains in the background). Note: this differs from the kernel
     /// SO_LINGER default; libsrt initializes its own `struct linger`. See
     /// `srtcore/socketconfig.h:333-336`.
-    pub fn linger(mut self, d: Duration) -> Self {
+    pub fn linger(&mut self, d: Duration) -> &mut Self {
         self.config.linger = Some(d);
         self
     }
-    pub fn latency(mut self, d: Duration) -> Self {
+    pub fn latency(&mut self, d: Duration) -> &mut Self {
         self.config.latency = Some(d);
         self
     }
-    pub fn latency_ms(self, ms: u64) -> Self {
+    pub fn latency_ms(&mut self, ms: u64) -> &mut Self {
         self.latency(Duration::from_millis(ms))
     }
-    pub fn peer_latency(mut self, d: Duration) -> Self {
+    pub fn peer_latency(&mut self, d: Duration) -> &mut Self {
         self.config.peer_latency = Some(d);
         self
     }
-    pub fn recv_latency(mut self, d: Duration) -> Self {
+    pub fn recv_latency(&mut self, d: Duration) -> &mut Self {
         self.config.recv_latency = Some(d);
         self
     }
-    pub fn mss(mut self, mss: u16) -> Self {
+    pub fn mss(&mut self, mss: u16) -> &mut Self {
         self.config.mss = Some(mss);
         self
     }
-    pub fn payload_size(mut self, n: u16) -> Self {
+    pub fn payload_size(&mut self, n: u16) -> &mut Self {
         self.config.payload_size = Some(n);
         self
     }
     /// Set `SRTO_UDP_RCVBUF` (kernel UDP socket recv buffer in bytes).
     /// For >25 Mbps streams; default is OS-dependent (~208 KB on Linux).
     /// Linux clamps to `net.core.rmem_max`.
-    pub fn udp_recv_buffer_bytes(mut self, n: u32) -> Self {
+    pub fn udp_recv_buffer_bytes(&mut self, n: u32) -> &mut Self {
         self.config.udp_recv_buffer_bytes = Some(n);
         self
     }
     /// Set `SRTO_UDP_SNDBUF` (kernel UDP socket send buffer in bytes).
     /// For >25 Mbps streams. Linux clamps to `net.core.wmem_max`.
-    pub fn udp_send_buffer_bytes(mut self, n: u32) -> Self {
+    pub fn udp_send_buffer_bytes(&mut self, n: u32) -> &mut Self {
         self.config.udp_send_buffer_bytes = Some(n);
         self
     }
-    pub fn max_bandwidth(mut self, bw: MaxBandwidth) -> Self {
+    pub fn max_bandwidth(&mut self, bw: MaxBandwidth) -> &mut Self {
         self.config.max_bandwidth = Some(bw);
         self
     }
-    pub fn input_bandwidth(mut self, bw: u64) -> Self {
+    pub fn input_bandwidth(&mut self, bw: u64) -> &mut Self {
         self.config.input_bandwidth = Some(bw);
         self
     }
-    pub fn overhead_bandwidth_pct(mut self, pct: u8) -> Self {
+    pub fn overhead_bandwidth_pct(&mut self, pct: u8) -> &mut Self {
         self.config.overhead_bandwidth_pct = Some(pct);
         self
     }
-    pub fn recv_buf_packets(mut self, n: u32) -> Self {
+    pub fn recv_buf_packets(&mut self, n: u32) -> &mut Self {
         self.config.recv_buf_packets = Some(n);
         self
     }
-    pub fn send_buf_packets(mut self, n: u32) -> Self {
+    pub fn send_buf_packets(&mut self, n: u32) -> &mut Self {
         self.config.send_buf_packets = Some(n);
         self
     }
-    pub fn stream_id(mut self, id: StreamId) -> Self {
+    pub fn stream_id(&mut self, id: StreamId) -> &mut Self {
         self.config.stream_id = Some(id);
         self
     }
     /// Convenience: validate-and-set from `&str` / `String`. Returns error if invalid.
+    ///
+    /// # Errors
+    /// Returns [`OptionError`] if the input fails [`StreamId`] validation.
     pub fn try_stream_id(
-        mut self,
+        &mut self,
         id: impl TryInto<StreamId, Error = StreamIdError>,
-    ) -> Result<Self, OptionError> {
+    ) -> Result<&mut Self, OptionError> {
         self.config.stream_id = Some(id.try_into()?);
         Ok(self)
     }
-    pub fn loss_max_ttl(mut self, n: u32) -> Self {
+    pub fn loss_max_ttl(&mut self, n: u32) -> &mut Self {
         self.config.loss_max_ttl = Some(n);
         self
     }
-    pub fn too_late_packet_drop(mut self, on: bool) -> Self {
+    pub fn too_late_packet_drop(&mut self, on: bool) -> &mut Self {
         self.config.too_late_packet_drop = Some(on);
         self
     }
-    pub fn flow_window_packets(mut self, n: u32) -> Self {
+    pub fn flow_window_packets(&mut self, n: u32) -> &mut Self {
         self.config.flow_window_packets = Some(n);
         self
     }
-    pub fn packet_filter(mut self, pf: PacketFilter) -> Self {
+    pub fn packet_filter(&mut self, pf: PacketFilter) -> &mut Self {
         self.config.packet_filter = Some(pf);
         self
     }
-    pub fn congestion(mut self, c: Congestion) -> Self {
+    pub fn congestion(&mut self, c: Congestion) -> &mut Self {
         self.config.congestion = Some(c);
         self
     }
     /// Set the role (drives `SRTO_SENDER` for HSv4-peer compatibility).
     /// Defaults to `Role::Receiver` (libsrt default — `SRTO_SENDER=0`).
-    pub fn role(mut self, role: Role) -> Self {
+    pub fn role(&mut self, role: Role) -> &mut Self {
         self.config.role = role;
         self
     }
@@ -185,12 +192,12 @@ impl SocketBuilder {
     /// # use tst_srt::{Socket, SocketBuilder};
     /// # use tst_srt::options::Passphrase;
     /// # let passphrase = Passphrase::new("secretsecretsecret").unwrap();
-    /// let builder = SocketBuilder::new()
-    ///     .sender_defaults()
-    ///     .passphrase(passphrase);
-    /// // builder.connect("host:port")?
+    /// let mut b = SocketBuilder::new();
+    /// b.sender_defaults();
+    /// b.passphrase(passphrase);
+    /// // b.connect("host:port")?
     /// ```
-    pub fn sender_defaults(mut self) -> Self {
+    pub fn sender_defaults(&mut self) -> &mut Self {
         self.config.merge_sender_defaults();
         self
     }
@@ -199,18 +206,29 @@ impl SocketBuilder {
     /// Preserves any fields the caller has already set explicitly
     /// (merge-if-default semantics — order-independent). `role` defaults to
     /// `Role::Receiver` and is not altered.
-    pub fn receiver_defaults(mut self) -> Self {
+    pub fn receiver_defaults(&mut self) -> &mut Self {
         self.config.merge_receiver_defaults();
         self
     }
 
     /// Reach the underlying config (for inspection, copying, FFI marshaling).
-    pub fn config(self) -> SocketConfig {
-        self.config
+    /// Clones the inner config so the builder can be reused.
+    pub fn config(&self) -> SocketConfig {
+        self.config.clone()
     }
 
     /// Terminal call: open and connect the socket.
-    pub fn connect(self, addr: impl ToSocketAddrs) -> Result<Socket, ConnectError> {
+    ///
+    /// Takes `&self` (not `self`) so the builder can be reused; clones the
+    /// inner config into [`Socket::connect_with`]. Cloning is cheap — the
+    /// config is a flat `SocketConfig` with at most one heap allocation
+    /// (the optional `Passphrase` / `StreamId`).
+    ///
+    /// # Errors
+    /// Returns [`ConnectError`] on hostname-resolution failure, libsrt
+    /// option-set failure, or SRT-handshake failure (handshake timeout,
+    /// auth mismatch, peer reject, etc.).
+    pub fn connect(&self, addr: impl ToSocketAddrs) -> Result<Socket, ConnectError> {
         Socket::connect_with(&self.config, addr)
     }
 }
@@ -353,12 +371,12 @@ mod tests {
 
     #[test]
     fn try_stream_id_validates() {
-        let result = SocketBuilder::new().try_stream_id("publish:cam1");
-        assert!(result.is_ok());
+        let mut b = SocketBuilder::new();
+        assert!(b.try_stream_id("publish:cam1").is_ok());
 
         let too_long = "a".repeat(513);
-        let result = SocketBuilder::new().try_stream_id(too_long.as_str());
-        assert!(result.is_err());
+        let mut b = SocketBuilder::new();
+        assert!(b.try_stream_id(too_long.as_str()).is_err());
     }
 
     #[test]

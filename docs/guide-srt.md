@@ -80,9 +80,14 @@ Two equivalent forms construct the same `Socket`:
 
 - The builder — `SocketBuilder::new().latency(...).passphrase(...).connect(addr)` —
   is a fluent wrapper. Each setter takes the typed wrapper
-  (`Passphrase`, `KeyLength`, `StreamId`, ...) and returns `Self`.
-  Terminal call is `connect(addr)` (`SocketBuilder`) or `bind(addr)`
-  (`ListenerBuilder`).
+  (`Passphrase`, `KeyLength`, `StreamId`, ...), mutates the builder in
+  place, and returns `&mut Self` so calls can be chained on a temporary
+  or a `let mut b = SocketBuilder::new();` binding. Terminal call is
+  `connect(addr)` (`SocketBuilder`) or `bind(addr)` (`ListenerBuilder`)
+  — both take `&self` and clone the inner config, so the builder can be
+  reused. The shape translates directly to Kotlin's `apply { }`, Swift's
+  mutable local, Java's chain, and Python's step-wise — see
+  `docs/binding-authors.md`.
 - The config struct — `SocketConfig` — is the canonical type. Every
   field is `pub`, so bindings (UniFFI dictionaries, JNI POJOs,
   cbindgen C structs) consume it directly. Construct with struct-update

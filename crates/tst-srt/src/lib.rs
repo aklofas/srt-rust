@@ -11,9 +11,9 @@
 //! use tst_srt::SocketBuilder;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let mut socket = SocketBuilder::new()
-//!     .latency_ms(120)
-//!     .connect("127.0.0.1:1234")?;
+//! let mut b = SocketBuilder::new();
+//! b.latency_ms(120);
+//! let mut socket = b.connect("127.0.0.1:1234")?;
 //!
 //! socket.send(b"hello")?;
 //! # Ok(())

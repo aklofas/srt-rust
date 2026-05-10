@@ -15,30 +15,38 @@
 //! mechanical packet assembly.
 
 use crate::mpegts::common::Pcr27mhz;
-use std::collections::BTreeMap;
 
 /// Per-PID 4-bit continuity counters.
 ///
-/// `BTreeMap` rather than `HashMap` to avoid pulling in a hasher dep and
-/// keep the data path zero-allocation after warm-up (≤ 4 PIDs in the
-/// single-stream configuration the muxer enforces today).
-#[derive(Debug, Default)]
+/// Flat `[u8; 8192]` indexed by PID (PIDs are 13-bit; 8192 entries cover
+/// the full range). Only the low 4 bits of each byte are used. Boxed so
+/// the 8 KB lives on the heap rather than on the stack of containing
+/// structs.
+#[derive(Debug)]
 pub(crate) struct ContinuityCounters {
-    counters: BTreeMap<u16, u8>,
+    counters: Box<[u8; 8192]>,
 }
 
 impl ContinuityCounters {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            counters: Box::new([0u8; 8192]),
+        }
     }
 
     /// Get the next continuity counter value for `pid`, incrementing it.
     /// Per spec, this is called only when the packet has a payload.
     fn next(&mut self, pid: u16) -> u8 {
-        let entry = self.counters.entry(pid).or_insert(0);
-        let cc = *entry & 0x0F;
-        *entry = (*entry + 1) & 0x0F;
+        let idx = (pid & 0x1FFF) as usize;
+        let cc = self.counters[idx] & 0x0F;
+        self.counters[idx] = (cc + 1) & 0x0F;
         cc
+    }
+}
+
+impl Default for ContinuityCounters {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

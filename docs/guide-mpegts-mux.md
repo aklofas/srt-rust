@@ -81,22 +81,29 @@ Methods (all in `tst_core::mpegts::mux`):
 - `add_stream(spec: StreamSpec) -> Self` — escape hatch when you have
   a `StreamSpec` already.
 - `pcr_pid(pid: u16) -> Self`
-- `pcr_interval_ms(ms: u32) -> Self`
-- `psi_interval_ms(ms: u32) -> Self`
-- `buffer_packets(n: usize) -> Self`
-- `build() -> Result<Config, MuxError>` — runs `MuxerConfig::validate`.
+- `pcr_interval_ms(&mut self, ms: u32) -> &mut Self`
+- `psi_interval_ms(&mut self, ms: u32) -> &mut Self`
+- `buffer_packets(&mut self, n: usize) -> &mut Self`
+- `build(&self) -> Result<MuxerConfig, MuxError>` — runs
+  `MuxerConfig::validate`. Takes `&self` so the builder can be
+  reused; clones inner state into the returned `MuxerConfig`.
 
-```rust,no_run
+```rust,ignore
 use tst_core::mpegts::mux::{MuxerConfig, MuxerConfigBuilder, KlvStreamType, VideoCodec};
 
 fn build() -> Result<MuxerConfig, tst_core::error::MuxError> {
-    MuxerConfig::builder()
-        .add_video(0x1011, VideoCodec::H264)
-        .add_klv(0x1031, KlvStreamType::PrivateData, false)
-        .pcr_interval_ms(40)
-        .psi_interval_ms(100)
-        .buffer_packets(10_000)
-        .build()
+    // Stream additions live on `MuxerProgramBuilder` (consume-by-value);
+    // cadence overrides live on `MuxerConfigBuilder` (`&mut self`). The
+    // mutators bind-then-call; `build()` takes `&self` and can be reused.
+    let mut b = MuxerConfig::builder()
+        .add_program(1, 0x1000)
+            .add_video(0x1011, VideoCodec::H264)
+            .add_klv(0x1031, KlvStreamType::PrivateData, false)
+            .end_program();
+    b.pcr_interval_ms(40);
+    b.psi_interval_ms(100);
+    b.buffer_packets(10_000);
+    b.build()
 }
 ```
 

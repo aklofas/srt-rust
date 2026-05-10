@@ -136,24 +136,29 @@ impl Pairer {
             opts.max_buffered_klv > 0,
             "PairerOptions::max_buffered_klv must be > 0"
         );
+        let tolerance_ticks = duration_to_pts_ticks(opts.tolerance);
         let internal_mode = match opts.mode {
             PairerMode::Realtime => nearest::InternalMode::Realtime,
-            PairerMode::Buffered { max_lag: _ } => {
-                // The new public knob is `max_lag: Duration` (an arrival-
-                // skew window). The internal pairer still uses a bounded
-                // count of buffered video AUs. Map by clamping to the
-                // configured `max_buffered_video` cap — this preserves the
-                // pre-Phase-3 behavior where the cap was the lone knob.
+            PairerMode::Buffered { max_lag } => {
                 assert!(
                     opts.max_buffered_video > 0,
                     "PairerOptions::max_buffered_video must be > 0 for Buffered mode"
                 );
+                // `max_lag` is the PTS-skew "wait window": how long a
+                // buffered video can sit in the buffer (measured against
+                // the newest observed KLV PTS) before forced emit. It is
+                // independent of `tolerance` (the match window) but must
+                // be at least as large — a max_lag smaller than tolerance
+                // is nonsensical (you'd give up before tolerance is even
+                // tested). Clamp up to preserve a sane minimum.
+                let raw_max_lag_ticks = duration_to_pts_ticks(max_lag);
+                let max_lag_ticks = raw_max_lag_ticks.max(tolerance_ticks);
                 nearest::InternalMode::Buffered {
                     max_video_buffer: opts.max_buffered_video as usize,
+                    max_lag_ticks,
                 }
             }
         };
-        let tolerance_ticks = duration_to_pts_ticks(opts.tolerance);
         let max_klv_history = opts.max_buffered_klv as usize;
         // `link_klv_to_video` is reserved on PairerOptions; not yet
         // wired through to the internal NearestState. Tracking for

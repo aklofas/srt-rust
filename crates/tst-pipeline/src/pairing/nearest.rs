@@ -10,13 +10,23 @@ use tst_core::mpegts::demux::{DemuxEvent, SamplePayload};
 
 /// Internal mode shape. The public [`super::PairerMode`]'s `Buffered`
 /// variant carries a `Duration` (max arrival skew); we still pair
-/// against a bounded video AU buffer internally — the Duration is
-/// translated by the constructor into a `max_video_buffer` count
-/// (bounded above by the absolute history cap).
+/// against a bounded video AU buffer internally. Two knobs are wired
+/// onto the Buffered variant:
+///   - `max_video_buffer`: count cap (memory-safety bound; mirrors
+///     `PairerOptions::max_buffered_video`).
+///   - `max_lag_ticks`: PTS-skew cap. A buffered video is force-released
+///     once the newest observed KLV PTS is past `video.pts +
+///     max_lag_ticks`. The pre-Phase-3 implementation used
+///     `tolerance_ticks` for this check, which gave only a single knob;
+///     the new public `Buffered { max_lag: Duration }` decouples the
+///     "match window" (tolerance) from the "wait window" (max_lag).
 #[derive(Clone, Copy)]
 pub(super) enum InternalMode {
     Realtime,
-    Buffered { max_video_buffer: usize },
+    Buffered {
+        max_video_buffer: usize,
+        max_lag_ticks: i64,
+    },
 }
 
 pub(super) struct NearestState {
@@ -106,7 +116,10 @@ impl NearestState {
     fn handle_video(&mut self, v: VideoSample) -> Vec<PairerOutput> {
         match self.mode {
             InternalMode::Realtime => self.match_video_against_history(v),
-            InternalMode::Buffered { max_video_buffer } => {
+            InternalMode::Buffered {
+                max_video_buffer,
+                max_lag_ticks: _,
+            } => {
                 self.video_buffer.push_back(v);
                 let mut out = self.drain_buffered(false);
                 // Buffer overflow: force-emit the oldest with a
@@ -143,14 +156,30 @@ impl NearestState {
     /// Drain the video buffer from oldest to newest. For each buffered
     /// video, decide one of three outcomes:
     ///   - Paired: best-match in history is within tolerance.
-    ///   - UnpairedVideo: no later KLV can possibly match
-    ///     (`last_klv_pts > video.pts + tolerance_ticks`), or
-    ///     `force_all` is set (flush path).
+    ///   - UnpairedVideo: the wait window has closed
+    ///     (`last_klv_pts > video.pts + max_lag_ticks`), or `force_all`
+    ///     is set (flush path).
     ///   - Stop draining: future KLV may still match.
+    ///
+    /// The "wait window" uses `max_lag_ticks`, not `tolerance_ticks` —
+    /// these are decoupled knobs: tolerance is the match window
+    /// (|video_pts - klv_pts| considered a match), max_lag is the wait
+    /// window (how long we hold a video looking for a match before
+    /// giving up). The constructor clamps `max_lag_ticks >=
+    /// tolerance_ticks`, so this is at least as permissive as the
+    /// pre-Phase-3 `tolerance_ticks`-only check.
     ///
     /// `force_all = true` means "no future KLV will arrive" (flush
     /// path); every buffered video must be classified now.
     fn drain_buffered(&mut self, force_all: bool) -> Vec<PairerOutput> {
+        let max_lag_ticks = match self.mode {
+            // Realtime never enters this path with a populated buffer
+            // (videos pair eagerly), but flush() may call drain_buffered
+            // for symmetry. Using tolerance_ticks here is a safe no-op
+            // since the buffer is empty.
+            InternalMode::Realtime => self.tolerance_ticks,
+            InternalMode::Buffered { max_lag_ticks, .. } => max_lag_ticks,
+        };
         let mut out = Vec::new();
         let last_klv_pts = self.klv_history.back().map(|e| e.sample.pts);
         while let Some(v) = self.video_buffer.front() {
@@ -168,7 +197,7 @@ impl NearestState {
                 continue;
             }
             let window_closed = match last_klv_pts {
-                Some(last) => last > v.pts + self.tolerance_ticks,
+                Some(last) => last > v.pts + max_lag_ticks,
                 None => false,
             };
             if force_all || window_closed {
@@ -335,12 +364,32 @@ mod tests {
     }
 
     fn nearest_buffered(max_video_buffer: usize) -> NearestState {
+        // Default test helper: max_lag_ticks = tolerance_ticks (100).
+        // Mirrors pre-Phase-3 single-knob semantics so the existing
+        // Buffered-mode tests remain calibrated against the same
+        // window-close threshold.
         NearestState::new(
             VIDEO_PID,
             KLV_PID,
             100,
             4,
-            InternalMode::Buffered { max_video_buffer },
+            InternalMode::Buffered {
+                max_video_buffer,
+                max_lag_ticks: 100,
+            },
+        )
+    }
+
+    fn nearest_buffered_with_lag(max_video_buffer: usize, max_lag_ticks: i64) -> NearestState {
+        NearestState::new(
+            VIDEO_PID,
+            KLV_PID,
+            100,
+            4,
+            InternalMode::Buffered {
+                max_video_buffer,
+                max_lag_ticks,
+            },
         )
     }
 
@@ -424,6 +473,60 @@ mod tests {
             out2.is_empty(),
             "video@201 should still be buffered, got {:?}",
             out2
+        );
+    }
+
+    #[test]
+    fn buffered_max_lag_holds_video_within_window() {
+        // tolerance=100, max_lag=500. Video@0 buffered. KLV@300 arrives:
+        // |300-0|=300 > tolerance(100), so no match; window-close check
+        // is `300 > 0+500` = false, so video stays buffered.
+        let mut s = nearest_buffered_with_lag(8, 500);
+        let _ = s.feed(video_event(0));
+        let out = s.feed(klv_event(300));
+        assert!(
+            out.is_empty(),
+            "video@0 should still be held under max_lag=500 (KLV@300 not yet past 500), got {:?}",
+            out
+        );
+        // Also confirm the video is still in the buffer (didn't silently
+        // emit) by checking no UnpairedVideo surfaced.
+        assert!(
+            !out.iter()
+                .any(|o| matches!(o, PairerOutput::UnpairedVideo(_))),
+        );
+    }
+
+    #[test]
+    fn buffered_max_lag_force_emits_past_window() {
+        // tolerance=100, max_lag=500. Video@0 buffered. Advance: KLV@600
+        // arrives — |600-0|=600 > tolerance(100), and window-close
+        // check is `600 > 0+500` = true. Force-emit UnpairedVideo.
+        //
+        // Calibration: the pre-Phase-3 single-knob check would have
+        // fired at KLV@101 (`101 > 0 + 100`), so this test specifically
+        // verifies that max_lag=500 WIDENS the wait window beyond
+        // tolerance. To prove max_lag is the binding threshold (not
+        // tolerance), we feed an intermediate KLV@250 first and assert
+        // the video stays buffered (`250 > 0+500` = false), then
+        // advance to KLV@600 and assert it force-emits.
+        let mut s = nearest_buffered_with_lag(8, 500);
+        let _ = s.feed(video_event(0));
+        let out_mid = s.feed(klv_event(250));
+        assert!(
+            out_mid.is_empty(),
+            "video@0 should still be held at KLV@250 (250 < max_lag=500), got {:?}",
+            out_mid
+        );
+        let out_past = s.feed(klv_event(600));
+        let unpaired_video_count = out_past
+            .iter()
+            .filter(|o| matches!(o, PairerOutput::UnpairedVideo(_)))
+            .count();
+        assert_eq!(
+            unpaired_video_count, 1,
+            "video@0 should force-emit once KLV@600 advances past max_lag=500, got {:?}",
+            out_past
         );
     }
 

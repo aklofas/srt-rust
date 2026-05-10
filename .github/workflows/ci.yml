@@ -138,7 +138,7 @@ jobs:
         # asserts the count never decreases (additions OK; removals fail the
         # build). On adding a new error enum, bump the BASELINE constant.
         run: |
-          BASELINE=37
+          BASELINE=42
           OBSERVED=$(rg -c '#\[non_exhaustive\]' crates/ --type rust | awk -F: '{sum += $2} END {print sum}')
           if [ "$OBSERVED" -lt "$BASELINE" ]; then
             echo "non_exhaustive count regressed: expected >= $BASELINE, observed $OBSERVED" >&2

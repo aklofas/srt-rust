@@ -28,3 +28,7 @@ tracing-test = { version = "0.2", features = ["no-env-filter"] }
 [[bench]]
 name    = "syncer"
 harness = false
+
+[[bench]]
+name    = "pairer"
+harness = false

@@ -3,30 +3,30 @@ pub mod tst_srt::addr
 pub mod tst_srt::builder
 pub struct tst_srt::builder::ListenerBuilder
 impl tst_srt::builder::ListenerBuilder
-pub fn tst_srt::builder::ListenerBuilder::backlog(self, n: u32) -> Self
-pub fn tst_srt::builder::ListenerBuilder::bind(self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::listener::Listener, tst_srt::error::BindError>
-pub fn tst_srt::builder::ListenerBuilder::config(self) -> tst_srt::config::ListenerConfig
-pub fn tst_srt::builder::ListenerBuilder::congestion(self, c: tst_srt::options::Congestion) -> Self
-pub fn tst_srt::builder::ListenerBuilder::flow_window_packets(self, n: u32) -> Self
-pub fn tst_srt::builder::ListenerBuilder::key_length(self, kl: tst_srt::options::KeyLength) -> Self
-pub fn tst_srt::builder::ListenerBuilder::latency(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::ListenerBuilder::latency_ms(self, ms: u64) -> Self
-pub fn tst_srt::builder::ListenerBuilder::linger(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::ListenerBuilder::loss_max_ttl(self, n: u32) -> Self
-pub fn tst_srt::builder::ListenerBuilder::max_bandwidth(self, bw: tst_srt::options::MaxBandwidth) -> Self
-pub fn tst_srt::builder::ListenerBuilder::mss(self, mss: u16) -> Self
+pub fn tst_srt::builder::ListenerBuilder::backlog(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::bind(&self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::listener::Listener, tst_srt::error::BindError>
+pub fn tst_srt::builder::ListenerBuilder::config(&self) -> tst_srt::config::ListenerConfig
+pub fn tst_srt::builder::ListenerBuilder::congestion(&mut self, c: tst_srt::options::Congestion) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::flow_window_packets(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::key_length(&mut self, kl: tst_srt::options::KeyLength) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::latency_ms(&mut self, ms: u64) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::linger(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::loss_max_ttl(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::max_bandwidth(&mut self, bw: tst_srt::options::MaxBandwidth) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::mss(&mut self, mss: u16) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::new() -> Self
-pub fn tst_srt::builder::ListenerBuilder::overhead_bandwidth_pct(self, pct: u8) -> Self
-pub fn tst_srt::builder::ListenerBuilder::packet_filter(self, pf: tst_srt::options::PacketFilter) -> Self
-pub fn tst_srt::builder::ListenerBuilder::passphrase(self, p: tst_srt::options::Passphrase) -> Self
-pub fn tst_srt::builder::ListenerBuilder::payload_size(self, n: u16) -> Self
-pub fn tst_srt::builder::ListenerBuilder::recv_buf_packets(self, n: u32) -> Self
-pub fn tst_srt::builder::ListenerBuilder::recv_latency(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::ListenerBuilder::recv_timeout(self, t: core::time::Duration) -> Self
-pub fn tst_srt::builder::ListenerBuilder::reuse_addr(self, on: bool) -> Self
-pub fn tst_srt::builder::ListenerBuilder::send_timeout(self, t: core::time::Duration) -> Self
-pub fn tst_srt::builder::ListenerBuilder::too_late_packet_drop(self, on: bool) -> Self
-pub fn tst_srt::builder::ListenerBuilder::udp_recv_buffer_bytes(self, n: u32) -> Self
+pub fn tst_srt::builder::ListenerBuilder::overhead_bandwidth_pct(&mut self, pct: u8) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::packet_filter(&mut self, pf: tst_srt::options::PacketFilter) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::passphrase(&mut self, p: tst_srt::options::Passphrase) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::payload_size(&mut self, n: u16) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_buf_packets(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::reuse_addr(&mut self, on: bool) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::send_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::too_late_packet_drop(&mut self, on: bool) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::udp_recv_buffer_bytes(&mut self, n: u32) -> &mut Self
 impl core::default::Default for tst_srt::builder::ListenerBuilder
 pub fn tst_srt::builder::ListenerBuilder::default() -> tst_srt::builder::ListenerBuilder
 impl core::marker::Freeze for tst_srt::builder::ListenerBuilder
@@ -38,38 +38,38 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_srt::builder::ListenerBuild
 impl core::panic::unwind_safe::UnwindSafe for tst_srt::builder::ListenerBuilder
 pub struct tst_srt::builder::SocketBuilder
 impl tst_srt::builder::SocketBuilder
-pub fn tst_srt::builder::SocketBuilder::config(self) -> tst_srt::config::SocketConfig
-pub fn tst_srt::builder::SocketBuilder::congestion(self, c: tst_srt::options::Congestion) -> Self
-pub fn tst_srt::builder::SocketBuilder::connect(self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::socket::Socket, tst_srt::error::ConnectError>
-pub fn tst_srt::builder::SocketBuilder::connect_timeout(self, t: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::flow_window_packets(self, n: u32) -> Self
-pub fn tst_srt::builder::SocketBuilder::input_bandwidth(self, bw: u64) -> Self
-pub fn tst_srt::builder::SocketBuilder::key_length(self, kl: tst_srt::options::KeyLength) -> Self
-pub fn tst_srt::builder::SocketBuilder::latency(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::latency_ms(self, ms: u64) -> Self
-pub fn tst_srt::builder::SocketBuilder::linger(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::loss_max_ttl(self, n: u32) -> Self
-pub fn tst_srt::builder::SocketBuilder::max_bandwidth(self, bw: tst_srt::options::MaxBandwidth) -> Self
-pub fn tst_srt::builder::SocketBuilder::mss(self, mss: u16) -> Self
+pub fn tst_srt::builder::SocketBuilder::config(&self) -> tst_srt::config::SocketConfig
+pub fn tst_srt::builder::SocketBuilder::congestion(&mut self, c: tst_srt::options::Congestion) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::connect(&self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::socket::Socket, tst_srt::error::ConnectError>
+pub fn tst_srt::builder::SocketBuilder::connect_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::flow_window_packets(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::input_bandwidth(&mut self, bw: u64) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::key_length(&mut self, kl: tst_srt::options::KeyLength) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::latency_ms(&mut self, ms: u64) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::linger(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::loss_max_ttl(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::max_bandwidth(&mut self, bw: tst_srt::options::MaxBandwidth) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::mss(&mut self, mss: u16) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::new() -> Self
-pub fn tst_srt::builder::SocketBuilder::overhead_bandwidth_pct(self, pct: u8) -> Self
-pub fn tst_srt::builder::SocketBuilder::packet_filter(self, pf: tst_srt::options::PacketFilter) -> Self
-pub fn tst_srt::builder::SocketBuilder::passphrase(self, p: tst_srt::options::Passphrase) -> Self
-pub fn tst_srt::builder::SocketBuilder::payload_size(self, n: u16) -> Self
-pub fn tst_srt::builder::SocketBuilder::peer_latency(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::receiver_defaults(self) -> Self
-pub fn tst_srt::builder::SocketBuilder::recv_buf_packets(self, n: u32) -> Self
-pub fn tst_srt::builder::SocketBuilder::recv_latency(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::recv_timeout(self, t: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::role(self, role: tst_srt::options::Role) -> Self
-pub fn tst_srt::builder::SocketBuilder::send_buf_packets(self, n: u32) -> Self
-pub fn tst_srt::builder::SocketBuilder::send_timeout(self, t: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::sender_defaults(self) -> Self
-pub fn tst_srt::builder::SocketBuilder::stream_id(self, id: tst_srt::options::StreamId) -> Self
-pub fn tst_srt::builder::SocketBuilder::too_late_packet_drop(self, on: bool) -> Self
-pub fn tst_srt::builder::SocketBuilder::try_stream_id(self, id: impl core::convert::TryInto<tst_srt::options::StreamId, Error = tst_srt::error::StreamIdError>) -> core::result::Result<Self, tst_srt::error::OptionError>
-pub fn tst_srt::builder::SocketBuilder::udp_recv_buffer_bytes(self, n: u32) -> Self
-pub fn tst_srt::builder::SocketBuilder::udp_send_buffer_bytes(self, n: u32) -> Self
+pub fn tst_srt::builder::SocketBuilder::overhead_bandwidth_pct(&mut self, pct: u8) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::packet_filter(&mut self, pf: tst_srt::options::PacketFilter) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::passphrase(&mut self, p: tst_srt::options::Passphrase) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::payload_size(&mut self, n: u16) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::peer_latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::receiver_defaults(&mut self) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_buf_packets(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::role(&mut self, role: tst_srt::options::Role) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::send_buf_packets(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::send_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::sender_defaults(&mut self) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::stream_id(&mut self, id: tst_srt::options::StreamId) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::too_late_packet_drop(&mut self, on: bool) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::try_stream_id(&mut self, id: impl core::convert::TryInto<tst_srt::options::StreamId, Error = tst_srt::error::StreamIdError>) -> core::result::Result<&mut Self, tst_srt::error::OptionError>
+pub fn tst_srt::builder::SocketBuilder::udp_recv_buffer_bytes(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::udp_send_buffer_bytes(&mut self, n: u32) -> &mut Self
 impl core::default::Default for tst_srt::builder::SocketBuilder
 pub fn tst_srt::builder::SocketBuilder::default() -> tst_srt::builder::SocketBuilder
 impl core::marker::Freeze for tst_srt::builder::SocketBuilder
@@ -1274,30 +1274,30 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::listener::Listener
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::listener::Listener
 pub struct tst_srt::ListenerBuilder
 impl tst_srt::builder::ListenerBuilder
-pub fn tst_srt::builder::ListenerBuilder::backlog(self, n: u32) -> Self
-pub fn tst_srt::builder::ListenerBuilder::bind(self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::listener::Listener, tst_srt::error::BindError>
-pub fn tst_srt::builder::ListenerBuilder::config(self) -> tst_srt::config::ListenerConfig
-pub fn tst_srt::builder::ListenerBuilder::congestion(self, c: tst_srt::options::Congestion) -> Self
-pub fn tst_srt::builder::ListenerBuilder::flow_window_packets(self, n: u32) -> Self
-pub fn tst_srt::builder::ListenerBuilder::key_length(self, kl: tst_srt::options::KeyLength) -> Self
-pub fn tst_srt::builder::ListenerBuilder::latency(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::ListenerBuilder::latency_ms(self, ms: u64) -> Self
-pub fn tst_srt::builder::ListenerBuilder::linger(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::ListenerBuilder::loss_max_ttl(self, n: u32) -> Self
-pub fn tst_srt::builder::ListenerBuilder::max_bandwidth(self, bw: tst_srt::options::MaxBandwidth) -> Self
-pub fn tst_srt::builder::ListenerBuilder::mss(self, mss: u16) -> Self
+pub fn tst_srt::builder::ListenerBuilder::backlog(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::bind(&self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::listener::Listener, tst_srt::error::BindError>
+pub fn tst_srt::builder::ListenerBuilder::config(&self) -> tst_srt::config::ListenerConfig
+pub fn tst_srt::builder::ListenerBuilder::congestion(&mut self, c: tst_srt::options::Congestion) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::flow_window_packets(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::key_length(&mut self, kl: tst_srt::options::KeyLength) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::latency_ms(&mut self, ms: u64) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::linger(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::loss_max_ttl(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::max_bandwidth(&mut self, bw: tst_srt::options::MaxBandwidth) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::mss(&mut self, mss: u16) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::new() -> Self
-pub fn tst_srt::builder::ListenerBuilder::overhead_bandwidth_pct(self, pct: u8) -> Self
-pub fn tst_srt::builder::ListenerBuilder::packet_filter(self, pf: tst_srt::options::PacketFilter) -> Self
-pub fn tst_srt::builder::ListenerBuilder::passphrase(self, p: tst_srt::options::Passphrase) -> Self
-pub fn tst_srt::builder::ListenerBuilder::payload_size(self, n: u16) -> Self
-pub fn tst_srt::builder::ListenerBuilder::recv_buf_packets(self, n: u32) -> Self
-pub fn tst_srt::builder::ListenerBuilder::recv_latency(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::ListenerBuilder::recv_timeout(self, t: core::time::Duration) -> Self
-pub fn tst_srt::builder::ListenerBuilder::reuse_addr(self, on: bool) -> Self
-pub fn tst_srt::builder::ListenerBuilder::send_timeout(self, t: core::time::Duration) -> Self
-pub fn tst_srt::builder::ListenerBuilder::too_late_packet_drop(self, on: bool) -> Self
-pub fn tst_srt::builder::ListenerBuilder::udp_recv_buffer_bytes(self, n: u32) -> Self
+pub fn tst_srt::builder::ListenerBuilder::overhead_bandwidth_pct(&mut self, pct: u8) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::packet_filter(&mut self, pf: tst_srt::options::PacketFilter) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::passphrase(&mut self, p: tst_srt::options::Passphrase) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::payload_size(&mut self, n: u16) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_buf_packets(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::reuse_addr(&mut self, on: bool) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::send_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::too_late_packet_drop(&mut self, on: bool) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::udp_recv_buffer_bytes(&mut self, n: u32) -> &mut Self
 impl core::default::Default for tst_srt::builder::ListenerBuilder
 pub fn tst_srt::builder::ListenerBuilder::default() -> tst_srt::builder::ListenerBuilder
 impl core::marker::Freeze for tst_srt::builder::ListenerBuilder
@@ -1400,38 +1400,38 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::socket::Socket
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::socket::Socket
 pub struct tst_srt::SocketBuilder
 impl tst_srt::builder::SocketBuilder
-pub fn tst_srt::builder::SocketBuilder::config(self) -> tst_srt::config::SocketConfig
-pub fn tst_srt::builder::SocketBuilder::congestion(self, c: tst_srt::options::Congestion) -> Self
-pub fn tst_srt::builder::SocketBuilder::connect(self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::socket::Socket, tst_srt::error::ConnectError>
-pub fn tst_srt::builder::SocketBuilder::connect_timeout(self, t: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::flow_window_packets(self, n: u32) -> Self
-pub fn tst_srt::builder::SocketBuilder::input_bandwidth(self, bw: u64) -> Self
-pub fn tst_srt::builder::SocketBuilder::key_length(self, kl: tst_srt::options::KeyLength) -> Self
-pub fn tst_srt::builder::SocketBuilder::latency(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::latency_ms(self, ms: u64) -> Self
-pub fn tst_srt::builder::SocketBuilder::linger(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::loss_max_ttl(self, n: u32) -> Self
-pub fn tst_srt::builder::SocketBuilder::max_bandwidth(self, bw: tst_srt::options::MaxBandwidth) -> Self
-pub fn tst_srt::builder::SocketBuilder::mss(self, mss: u16) -> Self
+pub fn tst_srt::builder::SocketBuilder::config(&self) -> tst_srt::config::SocketConfig
+pub fn tst_srt::builder::SocketBuilder::congestion(&mut self, c: tst_srt::options::Congestion) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::connect(&self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::socket::Socket, tst_srt::error::ConnectError>
+pub fn tst_srt::builder::SocketBuilder::connect_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::flow_window_packets(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::input_bandwidth(&mut self, bw: u64) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::key_length(&mut self, kl: tst_srt::options::KeyLength) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::latency_ms(&mut self, ms: u64) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::linger(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::loss_max_ttl(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::max_bandwidth(&mut self, bw: tst_srt::options::MaxBandwidth) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::mss(&mut self, mss: u16) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::new() -> Self
-pub fn tst_srt::builder::SocketBuilder::overhead_bandwidth_pct(self, pct: u8) -> Self
-pub fn tst_srt::builder::SocketBuilder::packet_filter(self, pf: tst_srt::options::PacketFilter) -> Self
-pub fn tst_srt::builder::SocketBuilder::passphrase(self, p: tst_srt::options::Passphrase) -> Self
-pub fn tst_srt::builder::SocketBuilder::payload_size(self, n: u16) -> Self
-pub fn tst_srt::builder::SocketBuilder::peer_latency(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::receiver_defaults(self) -> Self
-pub fn tst_srt::builder::SocketBuilder::recv_buf_packets(self, n: u32) -> Self
-pub fn tst_srt::builder::SocketBuilder::recv_latency(self, d: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::recv_timeout(self, t: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::role(self, role: tst_srt::options::Role) -> Self
-pub fn tst_srt::builder::SocketBuilder::send_buf_packets(self, n: u32) -> Self
-pub fn tst_srt::builder::SocketBuilder::send_timeout(self, t: core::time::Duration) -> Self
-pub fn tst_srt::builder::SocketBuilder::sender_defaults(self) -> Self
-pub fn tst_srt::builder::SocketBuilder::stream_id(self, id: tst_srt::options::StreamId) -> Self
-pub fn tst_srt::builder::SocketBuilder::too_late_packet_drop(self, on: bool) -> Self
-pub fn tst_srt::builder::SocketBuilder::try_stream_id(self, id: impl core::convert::TryInto<tst_srt::options::StreamId, Error = tst_srt::error::StreamIdError>) -> core::result::Result<Self, tst_srt::error::OptionError>
-pub fn tst_srt::builder::SocketBuilder::udp_recv_buffer_bytes(self, n: u32) -> Self
-pub fn tst_srt::builder::SocketBuilder::udp_send_buffer_bytes(self, n: u32) -> Self
+pub fn tst_srt::builder::SocketBuilder::overhead_bandwidth_pct(&mut self, pct: u8) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::packet_filter(&mut self, pf: tst_srt::options::PacketFilter) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::passphrase(&mut self, p: tst_srt::options::Passphrase) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::payload_size(&mut self, n: u16) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::peer_latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::receiver_defaults(&mut self) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_buf_packets(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::role(&mut self, role: tst_srt::options::Role) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::send_buf_packets(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::send_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::sender_defaults(&mut self) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::stream_id(&mut self, id: tst_srt::options::StreamId) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::too_late_packet_drop(&mut self, on: bool) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::try_stream_id(&mut self, id: impl core::convert::TryInto<tst_srt::options::StreamId, Error = tst_srt::error::StreamIdError>) -> core::result::Result<&mut Self, tst_srt::error::OptionError>
+pub fn tst_srt::builder::SocketBuilder::udp_recv_buffer_bytes(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::udp_send_buffer_bytes(&mut self, n: u32) -> &mut Self
 impl core::default::Default for tst_srt::builder::SocketBuilder
 pub fn tst_srt::builder::SocketBuilder::default() -> tst_srt::builder::SocketBuilder
 impl core::marker::Freeze for tst_srt::builder::SocketBuilder

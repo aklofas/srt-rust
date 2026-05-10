@@ -73,7 +73,15 @@ impl core::marker::Unpin for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::marker::UnsafeUnpin for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::demux_receiver::DemuxReceiverStats
+pub type tst_pipeline::demux_receiver::BoxedDemuxReceiver = tst_pipeline::demux_receiver::DemuxReceiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
 pub type tst_pipeline::demux_receiver::ByteSink = alloc::boxed::Box<(dyn core::ops::function::FnMut(&[u8]) + core::marker::Send)>
+pub mod tst_pipeline::dyn_aliases
+pub type tst_pipeline::dyn_aliases::BoxedDemuxReceiver = tst_pipeline::demux_receiver::DemuxReceiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
+pub type tst_pipeline::dyn_aliases::BoxedMuxSender = tst_pipeline::mux_sender::MuxSender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
+pub type tst_pipeline::dyn_aliases::BoxedRawReceiver = tst_pipeline::raw_receiver::RawReceiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
+pub type tst_pipeline::dyn_aliases::BoxedRawSender = tst_pipeline::raw_sender::RawSender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
+pub type tst_pipeline::dyn_aliases::BoxedReceiver = tst_pipeline::receiver::Receiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
+pub type tst_pipeline::dyn_aliases::BoxedSender = tst_pipeline::sender::Sender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
 pub mod tst_pipeline::managed_receive
 pub struct tst_pipeline::managed_receive::ManagedReceiveTransport<R: tst_core::transport::RecvTransport>
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_receive::ManagedReceiveTransport<R>
@@ -167,6 +175,7 @@ impl core::marker::Unpin for tst_pipeline::mux_sender::MuxSenderStats
 impl core::marker::UnsafeUnpin for tst_pipeline::mux_sender::MuxSenderStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::mux_sender::MuxSenderStats
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_sender::MuxSenderStats
+pub type tst_pipeline::mux_sender::BoxedMuxSender = tst_pipeline::mux_sender::MuxSender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
 pub mod tst_pipeline::pairing
 pub enum tst_pipeline::pairing::MatchMode
 pub tst_pipeline::pairing::MatchMode::Buffered
@@ -328,6 +337,7 @@ impl core::marker::Unpin for tst_pipeline::raw_receiver::RawReceiverStats
 impl core::marker::UnsafeUnpin for tst_pipeline::raw_receiver::RawReceiverStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_receiver::RawReceiverStats
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawReceiverStats
+pub type tst_pipeline::raw_receiver::BoxedRawReceiver = tst_pipeline::raw_receiver::RawReceiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
 pub mod tst_pipeline::raw_sender
 pub struct tst_pipeline::raw_sender::RawSender<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport> tst_pipeline::raw_sender::RawSender<T>
@@ -383,6 +393,7 @@ impl core::marker::Unpin for tst_pipeline::raw_sender::RawSenderStats
 impl core::marker::UnsafeUnpin for tst_pipeline::raw_sender::RawSenderStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_sender::RawSenderStats
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSenderStats
+pub type tst_pipeline::raw_sender::BoxedRawSender = tst_pipeline::raw_sender::RawSender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
 pub mod tst_pipeline::receiver
 pub mod tst_pipeline::receiver::sync
 pub enum tst_pipeline::receiver::sync::SyncState
@@ -465,6 +476,7 @@ impl core::marker::Unpin for tst_pipeline::receiver::ReceiverStats
 impl core::marker::UnsafeUnpin for tst_pipeline::receiver::ReceiverStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::receiver::ReceiverStats
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::receiver::ReceiverStats
+pub type tst_pipeline::receiver::BoxedReceiver = tst_pipeline::receiver::Receiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
 pub mod tst_pipeline::reconnect
 pub enum tst_pipeline::reconnect::BackoffStrategy
 pub tst_pipeline::reconnect::BackoffStrategy::Constant(core::time::Duration)
@@ -702,6 +714,7 @@ impl core::marker::Unpin for tst_pipeline::sender::TsFraming
 impl core::marker::UnsafeUnpin for tst_pipeline::sender::TsFraming
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::sender::TsFraming
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::sender::TsFraming
+pub type tst_pipeline::sender::BoxedSender = tst_pipeline::sender::Sender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
 pub enum tst_pipeline::BackoffStrategy
 pub tst_pipeline::BackoffStrategy::Constant(core::time::Duration)
 pub tst_pipeline::BackoffStrategy::Exponential
@@ -1311,4 +1324,10 @@ impl core::marker::Unpin for tst_pipeline::VideoSample
 impl core::marker::UnsafeUnpin for tst_pipeline::VideoSample
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::VideoSample
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::VideoSample
+pub type tst_pipeline::BoxedDemuxReceiver = tst_pipeline::demux_receiver::DemuxReceiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
+pub type tst_pipeline::BoxedMuxSender = tst_pipeline::mux_sender::MuxSender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
+pub type tst_pipeline::BoxedRawReceiver = tst_pipeline::raw_receiver::RawReceiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
+pub type tst_pipeline::BoxedRawSender = tst_pipeline::raw_sender::RawSender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
+pub type tst_pipeline::BoxedReceiver = tst_pipeline::receiver::Receiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
+pub type tst_pipeline::BoxedSender = tst_pipeline::sender::Sender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
 pub type tst_pipeline::ByteSink = alloc::boxed::Box<(dyn core::ops::function::FnMut(&[u8]) + core::marker::Send)>

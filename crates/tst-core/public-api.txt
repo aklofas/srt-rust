@@ -54,6 +54,7 @@ pub tst_core::codec::aac::AdtsFrame::sample_rate_hz: u32
 pub tst_core::codec::aac::AdtsFrame::samples_per_frame: u16
 impl<'a> tst_core::codec::aac::AdtsFrame<'a>
 pub fn tst_core::codec::aac::AdtsFrame<'a>::bytes(&self) -> &'a [u8]
+pub fn tst_core::codec::aac::AdtsFrame<'a>::to_owned(&self) -> tst_core::codec::aac::AdtsFrameOwned
 impl<'a> core::clone::Clone for tst_core::codec::aac::AdtsFrame<'a>
 pub fn tst_core::codec::aac::AdtsFrame<'a>::clone(&self) -> tst_core::codec::aac::AdtsFrame<'a>
 impl<'a> core::cmp::Eq for tst_core::codec::aac::AdtsFrame<'a>
@@ -69,6 +70,35 @@ impl<'a> core::marker::Unpin for tst_core::codec::aac::AdtsFrame<'a>
 impl<'a> core::marker::UnsafeUnpin for tst_core::codec::aac::AdtsFrame<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::aac::AdtsFrame<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::codec::aac::AdtsFrame<'a>
+#[non_exhaustive] pub struct tst_core::codec::aac::AdtsFrameOwned
+pub tst_core::codec::aac::AdtsFrameOwned::body: alloc::vec::Vec<u8>
+pub tst_core::codec::aac::AdtsFrameOwned::channel_configuration: u8
+pub tst_core::codec::aac::AdtsFrameOwned::channels: u8
+pub tst_core::codec::aac::AdtsFrameOwned::frame_length_bytes: u32
+pub tst_core::codec::aac::AdtsFrameOwned::has_crc: bool
+pub tst_core::codec::aac::AdtsFrameOwned::mpeg_version: tst_core::codec::aac::MpegVersion
+pub tst_core::codec::aac::AdtsFrameOwned::num_raw_data_blocks: u8
+pub tst_core::codec::aac::AdtsFrameOwned::profile: tst_core::codec::aac::AacProfile
+pub tst_core::codec::aac::AdtsFrameOwned::raw_header: alloc::vec::Vec<u8>
+pub tst_core::codec::aac::AdtsFrameOwned::sample_rate_hz: u32
+pub tst_core::codec::aac::AdtsFrameOwned::samples_per_frame: u16
+impl tst_core::codec::aac::AdtsFrameOwned
+pub fn tst_core::codec::aac::AdtsFrameOwned::as_ref(&self) -> tst_core::codec::aac::AdtsFrame<'_>
+impl core::clone::Clone for tst_core::codec::aac::AdtsFrameOwned
+pub fn tst_core::codec::aac::AdtsFrameOwned::clone(&self) -> tst_core::codec::aac::AdtsFrameOwned
+impl core::cmp::Eq for tst_core::codec::aac::AdtsFrameOwned
+impl core::cmp::PartialEq for tst_core::codec::aac::AdtsFrameOwned
+pub fn tst_core::codec::aac::AdtsFrameOwned::eq(&self, other: &tst_core::codec::aac::AdtsFrameOwned) -> bool
+impl core::fmt::Debug for tst_core::codec::aac::AdtsFrameOwned
+pub fn tst_core::codec::aac::AdtsFrameOwned::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::codec::aac::AdtsFrameOwned
+impl core::marker::Freeze for tst_core::codec::aac::AdtsFrameOwned
+impl core::marker::Send for tst_core::codec::aac::AdtsFrameOwned
+impl core::marker::Sync for tst_core::codec::aac::AdtsFrameOwned
+impl core::marker::Unpin for tst_core::codec::aac::AdtsFrameOwned
+impl core::marker::UnsafeUnpin for tst_core::codec::aac::AdtsFrameOwned
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::aac::AdtsFrameOwned
+impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::aac::AdtsFrameOwned
 pub struct tst_core::codec::aac::AdtsFrames<'a>
 impl<'a> core::iter::traits::iterator::Iterator for tst_core::codec::aac::AdtsFrames<'a>
 pub type tst_core::codec::aac::AdtsFrames<'a>::Item = core::result::Result<tst_core::codec::aac::AdtsFrame<'a>, tst_core::codec::CodecParseError>
@@ -744,6 +774,7 @@ pub tst_core::codec::mpegaudio::Frame::samples_per_frame: u16
 pub tst_core::codec::mpegaudio::Frame::version: tst_core::codec::mpegaudio::Version
 impl<'a> tst_core::codec::mpegaudio::Frame<'a>
 pub fn tst_core::codec::mpegaudio::Frame<'a>::bytes(&self) -> &'a [u8]
+pub fn tst_core::codec::mpegaudio::Frame<'a>::to_owned(&self) -> tst_core::codec::mpegaudio::FrameOwned
 impl<'a> core::clone::Clone for tst_core::codec::mpegaudio::Frame<'a>
 pub fn tst_core::codec::mpegaudio::Frame<'a>::clone(&self) -> tst_core::codec::mpegaudio::Frame<'a>
 impl<'a> core::cmp::Eq for tst_core::codec::mpegaudio::Frame<'a>
@@ -759,6 +790,35 @@ impl<'a> core::marker::Unpin for tst_core::codec::mpegaudio::Frame<'a>
 impl<'a> core::marker::UnsafeUnpin for tst_core::codec::mpegaudio::Frame<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::mpegaudio::Frame<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::codec::mpegaudio::Frame<'a>
+#[non_exhaustive] pub struct tst_core::codec::mpegaudio::FrameOwned
+pub tst_core::codec::mpegaudio::FrameOwned::bitrate_kbps: u32
+pub tst_core::codec::mpegaudio::FrameOwned::body: alloc::vec::Vec<u8>
+pub tst_core::codec::mpegaudio::FrameOwned::channel_mode: tst_core::codec::mpegaudio::ChannelMode
+pub tst_core::codec::mpegaudio::FrameOwned::channels: u8
+pub tst_core::codec::mpegaudio::FrameOwned::frame_length_bytes: u32
+pub tst_core::codec::mpegaudio::FrameOwned::has_crc: bool
+pub tst_core::codec::mpegaudio::FrameOwned::layer: tst_core::codec::mpegaudio::Layer
+pub tst_core::codec::mpegaudio::FrameOwned::raw_header: [u8; 4]
+pub tst_core::codec::mpegaudio::FrameOwned::sample_rate_hz: u32
+pub tst_core::codec::mpegaudio::FrameOwned::samples_per_frame: u16
+pub tst_core::codec::mpegaudio::FrameOwned::version: tst_core::codec::mpegaudio::Version
+impl tst_core::codec::mpegaudio::FrameOwned
+pub fn tst_core::codec::mpegaudio::FrameOwned::as_ref(&self) -> tst_core::codec::mpegaudio::Frame<'_>
+impl core::clone::Clone for tst_core::codec::mpegaudio::FrameOwned
+pub fn tst_core::codec::mpegaudio::FrameOwned::clone(&self) -> tst_core::codec::mpegaudio::FrameOwned
+impl core::cmp::Eq for tst_core::codec::mpegaudio::FrameOwned
+impl core::cmp::PartialEq for tst_core::codec::mpegaudio::FrameOwned
+pub fn tst_core::codec::mpegaudio::FrameOwned::eq(&self, other: &tst_core::codec::mpegaudio::FrameOwned) -> bool
+impl core::fmt::Debug for tst_core::codec::mpegaudio::FrameOwned
+pub fn tst_core::codec::mpegaudio::FrameOwned::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::codec::mpegaudio::FrameOwned
+impl core::marker::Freeze for tst_core::codec::mpegaudio::FrameOwned
+impl core::marker::Send for tst_core::codec::mpegaudio::FrameOwned
+impl core::marker::Sync for tst_core::codec::mpegaudio::FrameOwned
+impl core::marker::Unpin for tst_core::codec::mpegaudio::FrameOwned
+impl core::marker::UnsafeUnpin for tst_core::codec::mpegaudio::FrameOwned
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::mpegaudio::FrameOwned
+impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::mpegaudio::FrameOwned
 pub struct tst_core::codec::mpegaudio::Frames<'a>
 impl<'a> core::iter::traits::iterator::Iterator for tst_core::codec::mpegaudio::Frames<'a>
 pub type tst_core::codec::mpegaudio::Frames<'a>::Item = core::result::Result<tst_core::codec::mpegaudio::Frame<'a>, tst_core::codec::CodecParseError>
@@ -4215,10 +4275,6 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::VideoCodec
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::VideoCodec
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::VideoCodec
 pub struct tst_core::mpegts::mux::AudioStreamHandle(_)
-impl tst_core::mpegts::mux::AudioStreamHandle
-pub fn tst_core::mpegts::mux::AudioStreamHandle::from_raw(raw: u32) -> Self
-pub fn tst_core::mpegts::mux::AudioStreamHandle::pack(program_index: usize, within_index: usize) -> Self
-pub fn tst_core::mpegts::mux::AudioStreamHandle::unpack(self) -> (usize, usize)
 impl core::clone::Clone for tst_core::mpegts::mux::AudioStreamHandle
 pub fn tst_core::mpegts::mux::AudioStreamHandle::clone(&self) -> tst_core::mpegts::mux::AudioStreamHandle
 impl core::cmp::Eq for tst_core::mpegts::mux::AudioStreamHandle
@@ -4238,11 +4294,6 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::AudioStreamHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::AudioStreamHandle
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::AudioStreamHandle
 pub struct tst_core::mpegts::mux::KlvStreamHandle(_)
-impl tst_core::mpegts::mux::KlvStreamHandle
-pub fn tst_core::mpegts::mux::KlvStreamHandle::from_raw(raw: u32) -> Self
-pub fn tst_core::mpegts::mux::KlvStreamHandle::pack(program_index: usize, within_index: usize) -> Self
-pub fn tst_core::mpegts::mux::KlvStreamHandle::raw(self) -> u32
-pub fn tst_core::mpegts::mux::KlvStreamHandle::unpack(self) -> (usize, usize)
 impl core::clone::Clone for tst_core::mpegts::mux::KlvStreamHandle
 pub fn tst_core::mpegts::mux::KlvStreamHandle::clone(&self) -> tst_core::mpegts::mux::KlvStreamHandle
 impl core::cmp::Eq for tst_core::mpegts::mux::KlvStreamHandle
@@ -4317,11 +4368,11 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::MuxerCon
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::MuxerConfig
 pub struct tst_core::mpegts::mux::MuxerConfigBuilder
 impl tst_core::mpegts::mux::MuxerConfigBuilder
-pub fn tst_core::mpegts::mux::MuxerConfigBuilder::add_program(self, program_number: u16, pmt_pid: u16) -> tst_core::mpegts::mux::MuxerProgramBuilder
-pub fn tst_core::mpegts::mux::MuxerConfigBuilder::buffer_packets(self, n: usize) -> Self
-pub fn tst_core::mpegts::mux::MuxerConfigBuilder::build(self) -> core::result::Result<tst_core::mpegts::mux::MuxerConfig, tst_core::error::MuxError>
-pub fn tst_core::mpegts::mux::MuxerConfigBuilder::pcr_interval_ms(self, ms: u32) -> Self
-pub fn tst_core::mpegts::mux::MuxerConfigBuilder::psi_interval_ms(self, ms: u32) -> Self
+pub fn tst_core::mpegts::mux::MuxerConfigBuilder::add_program(&mut self, program: tst_core::mpegts::mux::MuxerProgramConfig) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerConfigBuilder::buffer_packets(&mut self, n: usize) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerConfigBuilder::build(&self) -> core::result::Result<tst_core::mpegts::mux::MuxerConfig, tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::MuxerConfigBuilder::pcr_interval_ms(&mut self, ms: u32) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerConfigBuilder::psi_interval_ms(&mut self, ms: u32) -> &mut Self
 impl core::default::Default for tst_core::mpegts::mux::MuxerConfigBuilder
 pub fn tst_core::mpegts::mux::MuxerConfigBuilder::default() -> tst_core::mpegts::mux::MuxerConfigBuilder
 impl core::fmt::Debug for tst_core::mpegts::mux::MuxerConfigBuilder
@@ -4333,30 +4384,6 @@ impl core::marker::Unpin for tst_core::mpegts::mux::MuxerConfigBuilder
 impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::MuxerConfigBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::MuxerConfigBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::MuxerConfigBuilder
-pub struct tst_core::mpegts::mux::MuxerProgramBuilder
-impl tst_core::mpegts::mux::MuxerProgramBuilder
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::add_audio(self, pid: u16, codec: tst_core::mpegts::mux::AudioCodec) -> Self
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::add_audio_with_language(self, pid: u16, codec: tst_core::mpegts::mux::AudioCodec, language: [u8; 3]) -> Self
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::add_klv(self, pid: u16, stream_type: tst_core::mpegts::mux::KlvStreamType, carries_pts: bool) -> Self
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::add_subtitle(self, pid: u16, codec: tst_core::mpegts::mux::SubtitleCodec) -> Self
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::add_video(self, pid: u16, codec: tst_core::mpegts::mux::VideoCodec) -> Self
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::end_program(self) -> tst_core::mpegts::mux::MuxerConfigBuilder
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::pcr_pid(self, pid: u16) -> Self
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::program_descriptors(self, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> Self
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::stream_descriptors_for_audio(self, audio_idx: usize, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> Self
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::stream_descriptors_for_klv(self, klv_idx: usize, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> Self
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::stream_descriptors_for_stream(self, abs_idx: usize, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> Self
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::stream_descriptors_for_subtitle(self, subtitle_idx: usize, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> Self
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::stream_descriptors_for_video(self, video_idx: usize, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> Self
-impl core::fmt::Debug for tst_core::mpegts::mux::MuxerProgramBuilder
-pub fn tst_core::mpegts::mux::MuxerProgramBuilder::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_core::mpegts::mux::MuxerProgramBuilder
-impl core::marker::Send for tst_core::mpegts::mux::MuxerProgramBuilder
-impl core::marker::Sync for tst_core::mpegts::mux::MuxerProgramBuilder
-impl core::marker::Unpin for tst_core::mpegts::mux::MuxerProgramBuilder
-impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::MuxerProgramBuilder
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::MuxerProgramBuilder
-impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::MuxerProgramBuilder
 pub struct tst_core::mpegts::mux::MuxerProgramConfig
 pub tst_core::mpegts::mux::MuxerProgramConfig::pcr_pid: core::option::Option<u16>
 pub tst_core::mpegts::mux::MuxerProgramConfig::pmt_pid: u16
@@ -4375,6 +4402,31 @@ impl core::marker::Unpin for tst_core::mpegts::mux::MuxerProgramConfig
 impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::MuxerProgramConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::MuxerProgramConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::MuxerProgramConfig
+pub struct tst_core::mpegts::mux::MuxerProgramConfigBuilder
+impl tst_core::mpegts::mux::MuxerProgramConfigBuilder
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_audio(&mut self, pid: u16, codec: tst_core::mpegts::mux::AudioCodec) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_audio_with_language(&mut self, pid: u16, codec: tst_core::mpegts::mux::AudioCodec, language: [u8; 3]) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_klv(&mut self, pid: u16, stream_type: tst_core::mpegts::mux::KlvStreamType, carries_pts: bool) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_subtitle(&mut self, pid: u16, codec: tst_core::mpegts::mux::SubtitleCodec) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::add_video(&mut self, pid: u16, codec: tst_core::mpegts::mux::VideoCodec) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::build(&self) -> tst_core::mpegts::mux::MuxerProgramConfig
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::new(program_number: u16, pmt_pid: u16) -> Self
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::pcr_pid(&mut self, pid: u16) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::program_descriptors(&mut self, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_audio(&mut self, audio_idx: usize, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> core::result::Result<&mut Self, tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_klv(&mut self, klv_idx: usize, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> core::result::Result<&mut Self, tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_stream(&mut self, abs_idx: usize, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> core::result::Result<&mut Self, tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_subtitle(&mut self, subtitle_idx: usize, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> core::result::Result<&mut Self, tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_video(&mut self, video_idx: usize, descs: alloc::vec::Vec<alloc::vec::Vec<u8>>) -> core::result::Result<&mut Self, tst_core::error::MuxError>
+impl core::fmt::Debug for tst_core::mpegts::mux::MuxerProgramConfigBuilder
+pub fn tst_core::mpegts::mux::MuxerProgramConfigBuilder::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_core::mpegts::mux::MuxerProgramConfigBuilder
+impl core::marker::Send for tst_core::mpegts::mux::MuxerProgramConfigBuilder
+impl core::marker::Sync for tst_core::mpegts::mux::MuxerProgramConfigBuilder
+impl core::marker::Unpin for tst_core::mpegts::mux::MuxerProgramConfigBuilder
+impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::MuxerProgramConfigBuilder
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::MuxerProgramConfigBuilder
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::MuxerProgramConfigBuilder
 pub struct tst_core::mpegts::mux::MuxerStats
 pub tst_core::mpegts::mux::MuxerStats::per_stream: alloc::collections::btree::map::BTreeMap<u16, tst_core::mpegts::stats::StreamStats>
 pub tst_core::mpegts::mux::MuxerStats::programs_configured: u32
@@ -4399,11 +4451,6 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::MuxerStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::MuxerStats
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::MuxerStats
 pub struct tst_core::mpegts::mux::SubtitleStreamHandle(_)
-impl tst_core::mpegts::mux::SubtitleStreamHandle
-pub fn tst_core::mpegts::mux::SubtitleStreamHandle::from_raw(raw: u32) -> Self
-pub fn tst_core::mpegts::mux::SubtitleStreamHandle::pack(program_index: usize, within_index: usize) -> Self
-pub fn tst_core::mpegts::mux::SubtitleStreamHandle::raw(self) -> u32
-pub fn tst_core::mpegts::mux::SubtitleStreamHandle::unpack(self) -> (usize, usize)
 impl core::clone::Clone for tst_core::mpegts::mux::SubtitleStreamHandle
 pub fn tst_core::mpegts::mux::SubtitleStreamHandle::clone(&self) -> tst_core::mpegts::mux::SubtitleStreamHandle
 impl core::cmp::Eq for tst_core::mpegts::mux::SubtitleStreamHandle
@@ -4423,11 +4470,6 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::SubtitleStreamHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::SubtitleStreamHandle
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::SubtitleStreamHandle
 pub struct tst_core::mpegts::mux::VideoStreamHandle(_)
-impl tst_core::mpegts::mux::VideoStreamHandle
-pub fn tst_core::mpegts::mux::VideoStreamHandle::from_raw(raw: u32) -> Self
-pub fn tst_core::mpegts::mux::VideoStreamHandle::pack(program_index: usize, within_index: usize) -> Self
-pub fn tst_core::mpegts::mux::VideoStreamHandle::raw(self) -> u32
-pub fn tst_core::mpegts::mux::VideoStreamHandle::unpack(self) -> (usize, usize)
 impl core::clone::Clone for tst_core::mpegts::mux::VideoStreamHandle
 pub fn tst_core::mpegts::mux::VideoStreamHandle::clone(&self) -> tst_core::mpegts::mux::VideoStreamHandle
 impl core::cmp::Eq for tst_core::mpegts::mux::VideoStreamHandle
@@ -4533,12 +4575,24 @@ pub fn tst_core::transport::RecvTransport::close(&mut self)
 pub fn tst_core::transport::RecvTransport::is_alive(&self) -> bool
 pub fn tst_core::transport::RecvTransport::max_payload(&self) -> usize
 pub fn tst_core::transport::RecvTransport::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+impl<T: tst_core::transport::RecvTransport + ?core::marker::Sized> tst_core::transport::RecvTransport for alloc::boxed::Box<T>
+pub fn alloc::boxed::Box<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn alloc::boxed::Box<T>::close(&mut self)
+pub fn alloc::boxed::Box<T>::is_alive(&self) -> bool
+pub fn alloc::boxed::Box<T>::max_payload(&self) -> usize
+pub fn alloc::boxed::Box<T>::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
 pub trait tst_core::transport::Transport: core::marker::Send
 pub fn tst_core::transport::Transport::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_core::transport::Transport::close(&mut self)
 pub fn tst_core::transport::Transport::is_alive(&self) -> bool
 pub fn tst_core::transport::Transport::max_payload(&self) -> usize
 pub fn tst_core::transport::Transport::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+impl<T: tst_core::transport::Transport + ?core::marker::Sized> tst_core::transport::Transport for alloc::boxed::Box<T>
+pub fn alloc::boxed::Box<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn alloc::boxed::Box<T>::close(&mut self)
+pub fn alloc::boxed::Box<T>::is_alive(&self) -> bool
+pub fn alloc::boxed::Box<T>::max_payload(&self) -> usize
+pub fn alloc::boxed::Box<T>::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
 pub trait tst_core::transport::TransportCancel: core::marker::Send + core::marker::Sync
 pub fn tst_core::transport::TransportCancel::cancel(&self)
 #[non_exhaustive] pub enum tst_core::DemuxError
@@ -4899,11 +4953,23 @@ pub fn tst_core::RecvTransport::close(&mut self)
 pub fn tst_core::RecvTransport::is_alive(&self) -> bool
 pub fn tst_core::RecvTransport::max_payload(&self) -> usize
 pub fn tst_core::RecvTransport::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+impl<T: tst_core::transport::RecvTransport + ?core::marker::Sized> tst_core::transport::RecvTransport for alloc::boxed::Box<T>
+pub fn alloc::boxed::Box<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn alloc::boxed::Box<T>::close(&mut self)
+pub fn alloc::boxed::Box<T>::is_alive(&self) -> bool
+pub fn alloc::boxed::Box<T>::max_payload(&self) -> usize
+pub fn alloc::boxed::Box<T>::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
 pub trait tst_core::Transport: core::marker::Send
 pub fn tst_core::Transport::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_core::Transport::close(&mut self)
 pub fn tst_core::Transport::is_alive(&self) -> bool
 pub fn tst_core::Transport::max_payload(&self) -> usize
 pub fn tst_core::Transport::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+impl<T: tst_core::transport::Transport + ?core::marker::Sized> tst_core::transport::Transport for alloc::boxed::Box<T>
+pub fn alloc::boxed::Box<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn alloc::boxed::Box<T>::close(&mut self)
+pub fn alloc::boxed::Box<T>::is_alive(&self) -> bool
+pub fn alloc::boxed::Box<T>::max_payload(&self) -> usize
+pub fn alloc::boxed::Box<T>::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
 pub trait tst_core::TransportCancel: core::marker::Send + core::marker::Sync
 pub fn tst_core::TransportCancel::cancel(&self)

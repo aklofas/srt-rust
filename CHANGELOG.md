@@ -38,6 +38,34 @@ Plan #39 (examples reorganization) also rides this release.
   at the C ABI boundary yet). The `from_raw` / `raw` helpers on these
   types were test-only; they are now `#[cfg(test)] pub(crate)`.
 
+#### Changed (Phase 3 / builder reshape, sub-phase 3.4)
+
+- **Breaking:** Every public builder converted to `&mut self -> &mut Self`
+  chainable shape:
+  - `MuxerConfigBuilder` (all methods + `build()` → `&self`)
+  - `MuxerProgramConfigBuilder` (all methods + `build()` → `&self`); also
+    restructured to be standalone (no longer owns parent),
+    `MuxerConfigBuilder::add_program` now takes a `MuxerProgramConfig`
+    value, `end_program()` removed
+  - `SocketBuilder` (all methods + `connect()` / `config()` → `&self`);
+    `try_stream_id` now `Result<&mut Self, _>`
+  - `ListenerBuilder` (all methods + `bind()` / `config()` → `&self`)
+  - Descriptor-setter methods (`stream_descriptors_for_video`/`klv`/
+    `audio`/`subtitle`/`stream`) on `MuxerProgramConfigBuilder` switched
+    from deferred-error semantics to immediate-error
+    `Result<&mut Self, MuxError>`.
+
+  Migration: replace `Builder::new().method(x).method(y).build()` with
+  `let mut b = Builder::new(); b.method(x); b.method(y); b.build()`.
+  For `MuxerProgramConfigBuilder`: build the program standalone, then
+  pass the value:
+  `let prog = { let mut p = MuxerProgramConfigBuilder::new(num, pid); p.add_video(...); p.build() }; b.add_program(prog);`.
+
+  Rationale: closes audit theme H5; required for clean Kotlin
+  `.apply { }`, Swift `var b`, Java chaining, Python step-wise, and C
+  opaque-handle binding patterns. See
+  [`docs/binding-authors.md`](./docs/binding-authors.md).
+
 ---
 
 ### Examples reorganization (2026-05-09)

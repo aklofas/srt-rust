@@ -1,4 +1,21 @@
 pub mod tst_core
+pub mod tst_core::cancel
+pub struct tst_core::cancel::CancelHandle
+impl tst_core::cancel::CancelHandle
+pub fn tst_core::cancel::CancelHandle::cancel(&self)
+pub fn tst_core::cancel::CancelHandle::is_cancelled(&self) -> bool
+pub fn tst_core::cancel::CancelHandle::new<F>(handle: i64, closer: F) -> Self where F: core::ops::function::Fn(i64) + core::marker::Send + core::marker::Sync + 'static
+impl core::clone::Clone for tst_core::cancel::CancelHandle
+pub fn tst_core::cancel::CancelHandle::clone(&self) -> tst_core::cancel::CancelHandle
+impl core::fmt::Debug for tst_core::cancel::CancelHandle
+pub fn tst_core::cancel::CancelHandle::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_core::cancel::CancelHandle
+impl core::marker::Send for tst_core::cancel::CancelHandle
+impl core::marker::Sync for tst_core::cancel::CancelHandle
+impl core::marker::Unpin for tst_core::cancel::CancelHandle
+impl core::marker::UnsafeUnpin for tst_core::cancel::CancelHandle
+impl !core::panic::unwind_safe::RefUnwindSafe for tst_core::cancel::CancelHandle
+impl !core::panic::unwind_safe::UnwindSafe for tst_core::cancel::CancelHandle
 pub mod tst_core::codec
 pub mod tst_core::codec::aac
 pub enum tst_core::codec::aac::AacProfile
@@ -1208,7 +1225,7 @@ pub tst_core::error::MuxError::AudioTooLarge
 pub tst_core::error::MuxError::AudioTooLarge::max: usize
 pub tst_core::error::MuxError::AudioTooLarge::size: usize
 pub tst_core::error::MuxError::BufferFull
-pub tst_core::error::MuxError::BufferFull::capacity_packets: usize
+pub tst_core::error::MuxError::BufferFull::capacity_packets: u64
 pub tst_core::error::MuxError::DescriptorIndexOutOfRange
 pub tst_core::error::MuxError::DescriptorIndexOutOfRange::index: u32
 pub tst_core::error::MuxError::DescriptorIndexOutOfRange::kind: tst_core::mpegts::mux::StreamKind
@@ -4316,12 +4333,12 @@ pub struct tst_core::mpegts::mux::Muxer
 impl tst_core::mpegts::mux::Muxer
 pub fn tst_core::mpegts::mux::Muxer::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::audio_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>, tst_core::error::MuxError>
-pub fn tst_core::mpegts::mux::Muxer::capacity_packets(&self) -> usize
+pub fn tst_core::mpegts::mux::Muxer::capacity_packets(&self) -> u64
 pub fn tst_core::mpegts::mux::Muxer::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::klv_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::klv_stream_handle(&self, index: usize) -> core::option::Option<tst_core::mpegts::mux::KlvStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::new(config: tst_core::mpegts::mux::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
-pub fn tst_core::mpegts::mux::Muxer::pending_packets(&self) -> usize
+pub fn tst_core::mpegts::mux::Muxer::pending_packets(&self) -> u64
 pub fn tst_core::mpegts::mux::Muxer::pull(&mut self, out: &mut [u8]) -> usize
 pub fn tst_core::mpegts::mux::Muxer::push_audio(&mut self, frames: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_audio_to(&mut self, handle: tst_core::mpegts::mux::AudioStreamHandle, pts_90khz: i64, frames: &[u8]) -> core::result::Result<(), tst_core::error::MuxError>
@@ -4759,7 +4776,7 @@ pub tst_core::MuxError::AudioTooLarge
 pub tst_core::MuxError::AudioTooLarge::max: usize
 pub tst_core::MuxError::AudioTooLarge::size: usize
 pub tst_core::MuxError::BufferFull
-pub tst_core::MuxError::BufferFull::capacity_packets: usize
+pub tst_core::MuxError::BufferFull::capacity_packets: u64
 pub tst_core::MuxError::DescriptorIndexOutOfRange
 pub tst_core::MuxError::DescriptorIndexOutOfRange::index: u32
 pub tst_core::MuxError::DescriptorIndexOutOfRange::kind: tst_core::mpegts::mux::StreamKind
@@ -4870,6 +4887,22 @@ impl core::marker::Unpin for tst_core::transport::TransportError
 impl core::marker::UnsafeUnpin for tst_core::transport::TransportError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::transport::TransportError
 impl core::panic::unwind_safe::UnwindSafe for tst_core::transport::TransportError
+pub struct tst_core::CancelHandle
+impl tst_core::cancel::CancelHandle
+pub fn tst_core::cancel::CancelHandle::cancel(&self)
+pub fn tst_core::cancel::CancelHandle::is_cancelled(&self) -> bool
+pub fn tst_core::cancel::CancelHandle::new<F>(handle: i64, closer: F) -> Self where F: core::ops::function::Fn(i64) + core::marker::Send + core::marker::Sync + 'static
+impl core::clone::Clone for tst_core::cancel::CancelHandle
+pub fn tst_core::cancel::CancelHandle::clone(&self) -> tst_core::cancel::CancelHandle
+impl core::fmt::Debug for tst_core::cancel::CancelHandle
+pub fn tst_core::cancel::CancelHandle::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_core::cancel::CancelHandle
+impl core::marker::Send for tst_core::cancel::CancelHandle
+impl core::marker::Sync for tst_core::cancel::CancelHandle
+impl core::marker::Unpin for tst_core::cancel::CancelHandle
+impl core::marker::UnsafeUnpin for tst_core::cancel::CancelHandle
+impl !core::panic::unwind_safe::RefUnwindSafe for tst_core::cancel::CancelHandle
+impl !core::panic::unwind_safe::UnwindSafe for tst_core::cancel::CancelHandle
 pub struct tst_core::UasDatalinkLs
 pub tst_core::UasDatalinkLs::corner_lat_offset_p1_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::corner_lat_offset_p2_deg: core::option::Option<f64>

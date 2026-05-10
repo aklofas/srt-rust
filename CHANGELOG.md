@@ -66,6 +66,53 @@ Plan #39 (examples reorganization) also rides this release.
   opaque-handle binding patterns. See
   [`docs/binding-authors.md`](./docs/binding-authors.md).
 
+#### Changed (Phase 3 / sub-phase 3.5 — targeted API reshape)
+
+- **Breaking:** `Pairer::nearest_pts(video_pid, klv_pid, tolerance_ticks,
+  max_klv_history, mode)` removed. Use
+  `Pairer::with_options(video_pid, klv_pid, PairerOptions { ... })`
+  instead — field-style construction with explicit `Duration` units
+  composes cleanly across binding languages.
+- **Breaking:** `Pairer::last_before_pts`: the third argument changed
+  from `Option<i64>` (90 kHz ticks) to `Option<Duration>`. Same upgrade
+  rationale: explicit units, idiomatic across language boundaries.
+- **Breaking:** `MatchMode` enum removed. `PairerMode` is the path
+  forward (`Realtime` and `Buffered { max_lag: Duration }`); marked
+  `#[non_exhaustive]` so future variants don't break the SemVer ratchet.
+- **Breaking:** `MuxError::BufferFull::capacity_packets`: `usize` →
+  `u64`. JNI / UniFFI / cbindgen don't have a stable mapping for `usize`
+  (32-bit on 32-bit targets, 64-bit on 64-bit targets); `u64` is
+  unambiguous across architectures.
+- **Breaking:** `Muxer::pending_packets()` and
+  `Muxer::capacity_packets()` return `u64` (were `usize`).
+- **Breaking:** `TsFramingError::SyncLost::offset` and
+  `TsFramingError::NoSyncAfterLimit::max`: `usize` → `u64`.
+- **Breaking:** `CancelHandle` type relocated from `tst-srt` to
+  `tst-core`. The pipeline-layer cancel mechanism now lives in
+  `tst_core::cancel`; `tst-pipeline` and `tst-srt` re-export it as
+  `tst_pipeline::CancelHandle` and `tst_srt::CancelHandle` so binding
+  authors have a single import path. Removes the libsrt-drag concern
+  from the no-SRT `tst-pipeline` crate while preserving the established
+  import sites.
+
+#### Added (Phase 3 / sub-phase 3.5)
+
+- `PairerOptions` struct (`#[non_exhaustive]`) — field-style
+  construction with explicit `Duration` units; `Default` impl exposes
+  the previous defaults from `Pairer::nearest_pts`.
+- `Pairer::with_options(video_pid, klv_pid, PairerOptions)` — the
+  replacement constructor for the removed `nearest_pts`.
+- `tst_pipeline::CancelHandle` and `tst_srt::CancelHandle` re-exports —
+  single import path for binding authors regardless of which crate they
+  pull in.
+- [`docs/cancel-handle.md`](./docs/cancel-handle.md) — universal
+  cross-thread shutdown pattern with per-language idiom table
+  (Kotlin `Job.cancel()`, Swift `Task.cancel()`, Python
+  `threading.Event`, C `tst_cancel_handle_cancel`).
+- Cookbook recipe (Operations section): graceful shutdown from another
+  thread via `CancelHandle`.
+- Architecture doc section: cross-thread shutdown via `CancelHandle`.
+
 ---
 
 ### Examples reorganization (2026-05-09)

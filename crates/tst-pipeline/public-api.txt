@@ -1,4 +1,5 @@
 pub mod tst_pipeline
+pub use tst_pipeline::CancelHandle
 pub use tst_pipeline::RecvTransport
 pub use tst_pipeline::Transport
 pub use tst_pipeline::TransportCancel
@@ -177,26 +178,26 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::mux_sender::MuxSe
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_sender::MuxSenderStats
 pub type tst_pipeline::mux_sender::BoxedMuxSender = tst_pipeline::mux_sender::MuxSender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
 pub mod tst_pipeline::pairing
-pub enum tst_pipeline::pairing::MatchMode
-pub tst_pipeline::pairing::MatchMode::Buffered
-pub tst_pipeline::pairing::MatchMode::Buffered::max_video_buffer: usize
-pub tst_pipeline::pairing::MatchMode::Realtime
-impl core::clone::Clone for tst_pipeline::MatchMode
-pub fn tst_pipeline::MatchMode::clone(&self) -> tst_pipeline::MatchMode
-impl core::cmp::Eq for tst_pipeline::MatchMode
-impl core::cmp::PartialEq for tst_pipeline::MatchMode
-pub fn tst_pipeline::MatchMode::eq(&self, other: &tst_pipeline::MatchMode) -> bool
-impl core::fmt::Debug for tst_pipeline::MatchMode
-pub fn tst_pipeline::MatchMode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tst_pipeline::MatchMode
-impl core::marker::StructuralPartialEq for tst_pipeline::MatchMode
-impl core::marker::Freeze for tst_pipeline::MatchMode
-impl core::marker::Send for tst_pipeline::MatchMode
-impl core::marker::Sync for tst_pipeline::MatchMode
-impl core::marker::Unpin for tst_pipeline::MatchMode
-impl core::marker::UnsafeUnpin for tst_pipeline::MatchMode
-impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::MatchMode
-impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::MatchMode
+#[non_exhaustive] pub enum tst_pipeline::pairing::PairerMode
+pub tst_pipeline::pairing::PairerMode::Buffered
+pub tst_pipeline::pairing::PairerMode::Buffered::max_lag: core::time::Duration
+pub tst_pipeline::pairing::PairerMode::Realtime
+impl core::clone::Clone for tst_pipeline::PairerMode
+pub fn tst_pipeline::PairerMode::clone(&self) -> tst_pipeline::PairerMode
+impl core::cmp::Eq for tst_pipeline::PairerMode
+impl core::cmp::PartialEq for tst_pipeline::PairerMode
+pub fn tst_pipeline::PairerMode::eq(&self, other: &tst_pipeline::PairerMode) -> bool
+impl core::fmt::Debug for tst_pipeline::PairerMode
+pub fn tst_pipeline::PairerMode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_pipeline::PairerMode
+impl core::marker::StructuralPartialEq for tst_pipeline::PairerMode
+impl core::marker::Freeze for tst_pipeline::PairerMode
+impl core::marker::Send for tst_pipeline::PairerMode
+impl core::marker::Sync for tst_pipeline::PairerMode
+impl core::marker::Unpin for tst_pipeline::PairerMode
+impl core::marker::UnsafeUnpin for tst_pipeline::PairerMode
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::PairerMode
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::PairerMode
 pub enum tst_pipeline::pairing::PairerOutput
 pub tst_pipeline::pairing::PairerOutput::Paired
 pub tst_pipeline::pairing::PairerOutput::Paired::klv: tst_pipeline::KlvSample
@@ -243,10 +244,10 @@ pub struct tst_pipeline::pairing::Pairer
 impl tst_pipeline::pairing::Pairer
 pub fn tst_pipeline::pairing::Pairer::feed(&mut self, event: tst_core::mpegts::demux::event::DemuxEvent) -> alloc::vec::Vec<tst_pipeline::PairerOutput>
 pub fn tst_pipeline::pairing::Pairer::flush(&mut self) -> alloc::vec::Vec<tst_pipeline::PairerOutput>
-pub fn tst_pipeline::pairing::Pairer::last_before_pts(video_pid: u16, klv_pid: u16, freshness_ticks: core::option::Option<i64>) -> Self
-pub fn tst_pipeline::pairing::Pairer::nearest_pts(video_pid: u16, klv_pid: u16, tolerance_ticks: i64, max_klv_history: usize, mode: tst_pipeline::MatchMode) -> Self
+pub fn tst_pipeline::pairing::Pairer::last_before_pts(video_pid: u16, klv_pid: u16, freshness: core::option::Option<core::time::Duration>) -> Self
 pub fn tst_pipeline::pairing::Pairer::reset_stats(&mut self)
 pub fn tst_pipeline::pairing::Pairer::stats(&self) -> tst_pipeline::PairerStats
+pub fn tst_pipeline::pairing::Pairer::with_options(video_pid: u16, klv_pid: u16, opts: tst_pipeline::PairerOptions) -> Self
 impl core::marker::Freeze for tst_pipeline::pairing::Pairer
 impl core::marker::Send for tst_pipeline::pairing::Pairer
 impl core::marker::Sync for tst_pipeline::pairing::Pairer
@@ -254,6 +255,25 @@ impl core::marker::Unpin for tst_pipeline::pairing::Pairer
 impl core::marker::UnsafeUnpin for tst_pipeline::pairing::Pairer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::pairing::Pairer
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::pairing::Pairer
+#[non_exhaustive] pub struct tst_pipeline::pairing::PairerOptions
+pub tst_pipeline::pairing::PairerOptions::link_klv_to_video: bool
+pub tst_pipeline::pairing::PairerOptions::max_buffered_klv: u64
+pub tst_pipeline::pairing::PairerOptions::max_buffered_video: u64
+pub tst_pipeline::pairing::PairerOptions::mode: tst_pipeline::PairerMode
+pub tst_pipeline::pairing::PairerOptions::tolerance: core::time::Duration
+impl core::clone::Clone for tst_pipeline::PairerOptions
+pub fn tst_pipeline::PairerOptions::clone(&self) -> tst_pipeline::PairerOptions
+impl core::default::Default for tst_pipeline::PairerOptions
+pub fn tst_pipeline::PairerOptions::default() -> Self
+impl core::fmt::Debug for tst_pipeline::PairerOptions
+pub fn tst_pipeline::PairerOptions::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_pipeline::PairerOptions
+impl core::marker::Send for tst_pipeline::PairerOptions
+impl core::marker::Sync for tst_pipeline::PairerOptions
+impl core::marker::Unpin for tst_pipeline::PairerOptions
+impl core::marker::UnsafeUnpin for tst_pipeline::PairerOptions
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::PairerOptions
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::PairerOptions
 pub struct tst_pipeline::pairing::PairerStats
 pub tst_pipeline::pairing::PairerStats::paired: u64
 pub tst_pipeline::pairing::PairerStats::pass_through: u64
@@ -597,9 +617,9 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::sender::SenderErr
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::sender::SenderError
 #[non_exhaustive] pub enum tst_pipeline::sender::TsFramingError
 pub tst_pipeline::sender::TsFramingError::NoSyncAfterLimit
-pub tst_pipeline::sender::TsFramingError::NoSyncAfterLimit::max: usize
+pub tst_pipeline::sender::TsFramingError::NoSyncAfterLimit::max: u64
 pub tst_pipeline::sender::TsFramingError::SyncLost
-pub tst_pipeline::sender::TsFramingError::SyncLost::offset: usize
+pub tst_pipeline::sender::TsFramingError::SyncLost::offset: u64
 impl core::clone::Clone for tst_pipeline::sender::TsFramingError
 pub fn tst_pipeline::sender::TsFramingError::clone(&self) -> tst_pipeline::sender::TsFramingError
 impl core::cmp::Eq for tst_pipeline::sender::TsFramingError
@@ -757,26 +777,6 @@ impl core::marker::Unpin for tst_pipeline::demux_receiver::DemuxReceiverError
 impl core::marker::UnsafeUnpin for tst_pipeline::demux_receiver::DemuxReceiverError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::demux_receiver::DemuxReceiverError
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::demux_receiver::DemuxReceiverError
-pub enum tst_pipeline::MatchMode
-pub tst_pipeline::MatchMode::Buffered
-pub tst_pipeline::MatchMode::Buffered::max_video_buffer: usize
-pub tst_pipeline::MatchMode::Realtime
-impl core::clone::Clone for tst_pipeline::MatchMode
-pub fn tst_pipeline::MatchMode::clone(&self) -> tst_pipeline::MatchMode
-impl core::cmp::Eq for tst_pipeline::MatchMode
-impl core::cmp::PartialEq for tst_pipeline::MatchMode
-pub fn tst_pipeline::MatchMode::eq(&self, other: &tst_pipeline::MatchMode) -> bool
-impl core::fmt::Debug for tst_pipeline::MatchMode
-pub fn tst_pipeline::MatchMode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tst_pipeline::MatchMode
-impl core::marker::StructuralPartialEq for tst_pipeline::MatchMode
-impl core::marker::Freeze for tst_pipeline::MatchMode
-impl core::marker::Send for tst_pipeline::MatchMode
-impl core::marker::Sync for tst_pipeline::MatchMode
-impl core::marker::Unpin for tst_pipeline::MatchMode
-impl core::marker::UnsafeUnpin for tst_pipeline::MatchMode
-impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::MatchMode
-impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::MatchMode
 #[non_exhaustive] pub enum tst_pipeline::MuxSenderError
 pub tst_pipeline::MuxSenderError::Mux(tst_core::error::MuxError)
 pub tst_pipeline::MuxSenderError::Transport(tst_core::transport::TransportError)
@@ -818,6 +818,26 @@ impl core::marker::Unpin for tst_pipeline::OverflowPolicy
 impl core::marker::UnsafeUnpin for tst_pipeline::OverflowPolicy
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::OverflowPolicy
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::OverflowPolicy
+#[non_exhaustive] pub enum tst_pipeline::PairerMode
+pub tst_pipeline::PairerMode::Buffered
+pub tst_pipeline::PairerMode::Buffered::max_lag: core::time::Duration
+pub tst_pipeline::PairerMode::Realtime
+impl core::clone::Clone for tst_pipeline::PairerMode
+pub fn tst_pipeline::PairerMode::clone(&self) -> tst_pipeline::PairerMode
+impl core::cmp::Eq for tst_pipeline::PairerMode
+impl core::cmp::PartialEq for tst_pipeline::PairerMode
+pub fn tst_pipeline::PairerMode::eq(&self, other: &tst_pipeline::PairerMode) -> bool
+impl core::fmt::Debug for tst_pipeline::PairerMode
+pub fn tst_pipeline::PairerMode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_pipeline::PairerMode
+impl core::marker::StructuralPartialEq for tst_pipeline::PairerMode
+impl core::marker::Freeze for tst_pipeline::PairerMode
+impl core::marker::Send for tst_pipeline::PairerMode
+impl core::marker::Sync for tst_pipeline::PairerMode
+impl core::marker::Unpin for tst_pipeline::PairerMode
+impl core::marker::UnsafeUnpin for tst_pipeline::PairerMode
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::PairerMode
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::PairerMode
 pub enum tst_pipeline::PairerOutput
 pub tst_pipeline::PairerOutput::Paired
 pub tst_pipeline::PairerOutput::Paired::klv: tst_pipeline::KlvSample
@@ -1058,10 +1078,10 @@ pub struct tst_pipeline::Pairer
 impl tst_pipeline::pairing::Pairer
 pub fn tst_pipeline::pairing::Pairer::feed(&mut self, event: tst_core::mpegts::demux::event::DemuxEvent) -> alloc::vec::Vec<tst_pipeline::PairerOutput>
 pub fn tst_pipeline::pairing::Pairer::flush(&mut self) -> alloc::vec::Vec<tst_pipeline::PairerOutput>
-pub fn tst_pipeline::pairing::Pairer::last_before_pts(video_pid: u16, klv_pid: u16, freshness_ticks: core::option::Option<i64>) -> Self
-pub fn tst_pipeline::pairing::Pairer::nearest_pts(video_pid: u16, klv_pid: u16, tolerance_ticks: i64, max_klv_history: usize, mode: tst_pipeline::MatchMode) -> Self
+pub fn tst_pipeline::pairing::Pairer::last_before_pts(video_pid: u16, klv_pid: u16, freshness: core::option::Option<core::time::Duration>) -> Self
 pub fn tst_pipeline::pairing::Pairer::reset_stats(&mut self)
 pub fn tst_pipeline::pairing::Pairer::stats(&self) -> tst_pipeline::PairerStats
+pub fn tst_pipeline::pairing::Pairer::with_options(video_pid: u16, klv_pid: u16, opts: tst_pipeline::PairerOptions) -> Self
 impl core::marker::Freeze for tst_pipeline::pairing::Pairer
 impl core::marker::Send for tst_pipeline::pairing::Pairer
 impl core::marker::Sync for tst_pipeline::pairing::Pairer
@@ -1069,6 +1089,25 @@ impl core::marker::Unpin for tst_pipeline::pairing::Pairer
 impl core::marker::UnsafeUnpin for tst_pipeline::pairing::Pairer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::pairing::Pairer
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::pairing::Pairer
+#[non_exhaustive] pub struct tst_pipeline::PairerOptions
+pub tst_pipeline::PairerOptions::link_klv_to_video: bool
+pub tst_pipeline::PairerOptions::max_buffered_klv: u64
+pub tst_pipeline::PairerOptions::max_buffered_video: u64
+pub tst_pipeline::PairerOptions::mode: tst_pipeline::PairerMode
+pub tst_pipeline::PairerOptions::tolerance: core::time::Duration
+impl core::clone::Clone for tst_pipeline::PairerOptions
+pub fn tst_pipeline::PairerOptions::clone(&self) -> tst_pipeline::PairerOptions
+impl core::default::Default for tst_pipeline::PairerOptions
+pub fn tst_pipeline::PairerOptions::default() -> Self
+impl core::fmt::Debug for tst_pipeline::PairerOptions
+pub fn tst_pipeline::PairerOptions::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_pipeline::PairerOptions
+impl core::marker::Send for tst_pipeline::PairerOptions
+impl core::marker::Sync for tst_pipeline::PairerOptions
+impl core::marker::Unpin for tst_pipeline::PairerOptions
+impl core::marker::UnsafeUnpin for tst_pipeline::PairerOptions
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::PairerOptions
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::PairerOptions
 pub struct tst_pipeline::PairerStats
 pub tst_pipeline::PairerStats::paired: u64
 pub tst_pipeline::PairerStats::pass_through: u64

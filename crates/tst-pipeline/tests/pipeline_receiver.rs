@@ -108,8 +108,9 @@ fn drain_to_chunks(mux: &mut Muxer, chunk_size: usize) -> (VecDeque<Vec<u8>>, us
 /// contains ≥ 7 packets (or two pulls totalling ≥ 9 packets), letting the
 /// syncer lock and emit events.
 fn build_and_preload_muxer() -> Muxer {
-    let cfg = MuxerConfigBuilder::default()
-        .psi_interval_ms(10)
+    let mut b = MuxerConfigBuilder::default();
+    b.psi_interval_ms(10);
+    let cfg = b
         .add_program(1, 0x1000)
         .add_video(0x100, MuxVideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)

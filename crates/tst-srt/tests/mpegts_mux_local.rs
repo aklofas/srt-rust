@@ -65,8 +65,9 @@ fn process_one(path: &Path) {
     };
 
     // Re-mux with our Muxer.
-    let cfg = MuxerConfig::builder()
-        .buffer_packets(200_000)
+    let mut b = MuxerConfig::builder();
+    b.buffer_packets(200_000);
+    let cfg = b
         .add_program(1, 0x1000)
         .add_video(0x1011, codec)
         .add_klv(0x1031, KlvStreamType::PrivateData, false)

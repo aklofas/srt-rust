@@ -1001,17 +1001,17 @@ impl MuxerConfigBuilder {
         MuxerProgramBuilder { parent: self, idx }
     }
 
-    pub fn pcr_interval_ms(mut self, ms: u32) -> Self {
+    pub fn pcr_interval_ms(&mut self, ms: u32) -> &mut Self {
         self.pcr_interval_ms = Some(ms);
         self
     }
 
-    pub fn psi_interval_ms(mut self, ms: u32) -> Self {
+    pub fn psi_interval_ms(&mut self, ms: u32) -> &mut Self {
         self.psi_interval_ms = Some(ms);
         self
     }
 
-    pub fn buffer_packets(mut self, n: usize) -> Self {
+    pub fn buffer_packets(&mut self, n: usize) -> &mut Self {
         self.buffer_packets = Some(n);
         self
     }
@@ -1019,17 +1019,21 @@ impl MuxerConfigBuilder {
     /// Finalize. Returns a validated [`MuxerConfig`] or an error describing
     /// the failed rule.
     ///
+    /// Takes `&self` (not `self`) so the builder can be reused; clones inner
+    /// state into the returned `MuxerConfig`. Cloning is cheap for typical
+    /// configs (≤16 programs × ≤16 streams each).
+    ///
     /// # Errors
     /// Returns the first deferred out-of-range descriptor-index error recorded
     /// during the builder chain (from `stream_descriptors_for_{video,klv,audio,
     /// subtitle,stream}`), or the first error from
     /// [`MuxerConfig::validate`].
-    pub fn build(self) -> Result<MuxerConfig, MuxError> {
-        if let Some(err) = self.deferred_error {
-            return Err(err);
+    pub fn build(&self) -> Result<MuxerConfig, MuxError> {
+        if let Some(err) = &self.deferred_error {
+            return Err(err.clone());
         }
         let cfg = MuxerConfig {
-            programs: self.programs,
+            programs: self.programs.clone(),
             pcr_interval_ms: self.pcr_interval_ms.unwrap_or(40),
             psi_interval_ms: self.psi_interval_ms.unwrap_or(100),
             buffer_packets: self.buffer_packets.unwrap_or(10_000),

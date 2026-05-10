@@ -69,15 +69,14 @@ fn idr_nal(body_bytes: usize) -> Vec<u8> {
 #[traced_test]
 #[test]
 fn warn_fires_exactly_twice_on_back_pressure_escalation() {
-    let cfg = MuxerConfig::builder()
+    let mut b = MuxerConfig::builder()
         .add_program(1, 0x1000)
         .add_video(0x100, VideoCodec::H264)
         .add_klv(0x101, KlvStreamType::PrivateData, false)
         .pcr_pid(0x100)
-        .end_program()
-        .buffer_packets(10) // minimum cap; smallest cap to engineer threshold crossings
-        .build()
-        .expect("config builds");
+        .end_program();
+    b.buffer_packets(10); // minimum cap; smallest cap to engineer threshold crossings
+    let cfg = b.build().expect("config builds");
     let s = MuxSender::new(OkSink, cfg).expect("sender builds");
 
     // Push 1: small. Empirical queue depth = 3 (PSI(2) + video(1)). Ok.

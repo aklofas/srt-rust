@@ -1,11 +1,9 @@
 //! Property-based tests for `mpegts::mux::Muxer` invariants.
 
-mod common;
-
-use common::ts_parser;
 use proptest::prelude::*;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 use tst_test_helpers::synthetic_nal;
+use tst_test_helpers::ts_parser;
 
 #[derive(Debug, Clone)]
 struct PushSpec {

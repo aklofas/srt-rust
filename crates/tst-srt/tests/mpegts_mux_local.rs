@@ -7,14 +7,12 @@
 //! Skipped silently when `local/` is absent or empty — matches the existing
 //! `klv` local-fixtures pattern.
 
-mod common;
-
-use common::ts_parser;
 use std::fs;
 use std::path::Path;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
 };
+use tst_test_helpers::ts_parser;
 
 const FIXTURES: &str = "tests/fixtures/local";
 

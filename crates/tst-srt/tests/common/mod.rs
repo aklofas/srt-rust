@@ -6,7 +6,6 @@
 use std::time::Duration;
 
 pub mod mock_transport;
-pub mod ts_parser;
 
 /// Small wall-clock pause to give a listener thread time to enter accept().
 pub fn settle() {

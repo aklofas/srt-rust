@@ -4,13 +4,11 @@
 //! recovered video AU + KLV blob → byte-equality assertions. Covers the
 //! H.264/H.265 axis × the four KLV stream_type/PTS axes.
 
-mod common;
-
-use common::ts_parser;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, StreamSpec, VideoCodec,
 };
 use tst_test_helpers::synthetic_nal;
+use tst_test_helpers::ts_parser;
 
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();

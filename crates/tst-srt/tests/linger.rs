@@ -3,6 +3,8 @@
 
 mod common;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, Instant};
 use tst_srt::{ListenerBuilder, SocketBuilder};
@@ -15,12 +17,15 @@ fn drop_with_zero_linger_does_not_block() {
         .bind("127.0.0.1:0")
         .expect("bind");
     let port = listener.local_addr().unwrap().port();
+    let ready = Arc::new(AtomicBool::new(false));
+    let r = ready.clone();
     let accept_thread = thread::spawn(move || {
         let mut l = listener;
+        r.store(true, Ordering::SeqCst);
         let _ = l.accept();
     });
 
-    thread::sleep(Duration::from_millis(50));
+    common::wait_for_ready(&ready);
 
     let socket = SocketBuilder::new()
         .linger(Duration::from_secs(0))

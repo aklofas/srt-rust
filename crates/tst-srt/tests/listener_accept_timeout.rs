@@ -2,6 +2,8 @@
 
 mod common;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tst_srt::{AcceptError, ListenerBuilder};
 
@@ -42,8 +44,10 @@ fn accept_timeout_succeeds_when_peer_connects() {
     // (release_tx, release_rx) channel pins the connector socket
     // until the main thread has finished accepting.
     let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let ready = Arc::new(AtomicBool::new(false));
+    let r = ready.clone();
     let connector = std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(50));
+        common::wait_for_ready(&r);
         let socket = tst_srt::SocketBuilder::new()
             .connect(format!("127.0.0.1:{port}"))
             .expect("connect");
@@ -51,6 +55,7 @@ fn accept_timeout_succeeds_when_peer_connects() {
         drop(socket);
     });
 
+    ready.store(true, Ordering::SeqCst);
     let result = listener.accept_timeout(Duration::from_secs(2));
     let _ = release_tx.send(());
     let _ = connector.join();

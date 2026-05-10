@@ -4,6 +4,8 @@
 mod common;
 
 use std::ffi::c_int;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 use tst_srt::{ListenerBuilder, SocketBuilder};
@@ -29,12 +31,15 @@ fn udp_buffer_sizes_round_trip() {
         .expect("bind");
     let port = listener.local_addr().unwrap().port();
 
+    let ready = Arc::new(AtomicBool::new(false));
+    let r = ready.clone();
     let accept_thread = thread::spawn(move || {
         let mut l = listener;
+        r.store(true, Ordering::SeqCst);
         l.accept().expect("accept")
     });
 
-    thread::sleep(Duration::from_millis(50));
+    common::wait_for_ready(&ready);
 
     let socket = SocketBuilder::new()
         .udp_recv_buffer_bytes(2_000_000)

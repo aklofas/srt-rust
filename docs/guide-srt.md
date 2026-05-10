@@ -86,9 +86,9 @@ Two equivalent forms construct the same `Socket`:
   `connect(addr)`, which takes `&self` and clones the inner config so
   the builder can be reused. The shape translates directly to Kotlin's
   `apply { }`, Swift's mutable local, Java's chain, and Python's
-  step-wise — see `docs/binding-authors.md`. (`ListenerBuilder` follows
-  the same shape; its consuming-`self` setters and `bind(addr)`
-  terminal will be reshaped to match in a follow-up.)
+  step-wise — see `docs/binding-authors.md`. `ListenerBuilder` follows
+  the identical shape: `&mut self -> &mut Self` mutators, terminal
+  `bind(addr)` taking `&self` and cloning the inner `ListenerConfig`.
 - The config struct — `SocketConfig` — is the canonical type. Every
   field is `pub`, so bindings (UniFFI dictionaries, JNI POJOs,
   cbindgen C structs) consume it directly. Construct with struct-update

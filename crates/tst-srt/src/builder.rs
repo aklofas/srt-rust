@@ -236,6 +236,17 @@ impl SocketBuilder {
     }
 }
 
+/// Fluent builder for [`Listener`] with chained option setters.
+///
+/// `ListenerBuilder::new()` starts from libsrt defaults; each setter mutates
+/// the underlying [`ListenerConfig`] in place and returns `&mut Self` so calls
+/// can be chained. The terminal call is [`ListenerBuilder::bind`], which takes
+/// `&self` (clones the inner config) and binds the listener.
+///
+/// The `&mut self -> &mut Self` shape mirrors [`SocketBuilder`] and translates
+/// directly to Kotlin's `apply` scope, Swift's `var b = …; b.x(); b.y();`,
+/// Java's chain on a fresh local, and Python's step-wise assignment — see
+/// `docs/binding-authors.md`.
 #[derive(Default)]
 pub struct ListenerBuilder {
     config: ListenerConfig,
@@ -246,100 +257,114 @@ impl ListenerBuilder {
         Self::default()
     }
 
-    pub fn passphrase(mut self, p: Passphrase) -> Self {
+    pub fn passphrase(&mut self, p: Passphrase) -> &mut Self {
         self.config.passphrase = Some(p);
         self
     }
-    pub fn key_length(mut self, kl: KeyLength) -> Self {
+    pub fn key_length(&mut self, kl: KeyLength) -> &mut Self {
         self.config.key_length = kl;
         self
     }
-    pub fn latency(mut self, d: Duration) -> Self {
+    pub fn latency(&mut self, d: Duration) -> &mut Self {
         self.config.latency = Some(d);
         self
     }
-    pub fn latency_ms(self, ms: u64) -> Self {
+    pub fn latency_ms(&mut self, ms: u64) -> &mut Self {
         self.latency(Duration::from_millis(ms))
     }
-    pub fn recv_latency(mut self, d: Duration) -> Self {
+    pub fn recv_latency(&mut self, d: Duration) -> &mut Self {
         self.config.recv_latency = Some(d);
         self
     }
-    pub fn mss(mut self, mss: u16) -> Self {
+    pub fn mss(&mut self, mss: u16) -> &mut Self {
         self.config.mss = Some(mss);
         self
     }
-    pub fn payload_size(mut self, n: u16) -> Self {
+    pub fn payload_size(&mut self, n: u16) -> &mut Self {
         self.config.payload_size = Some(n);
         self
     }
     /// See `SocketBuilder::udp_recv_buffer_bytes`.
-    pub fn udp_recv_buffer_bytes(mut self, n: u32) -> Self {
+    pub fn udp_recv_buffer_bytes(&mut self, n: u32) -> &mut Self {
         self.config.udp_recv_buffer_bytes = Some(n);
         self
     }
-    pub fn max_bandwidth(mut self, bw: MaxBandwidth) -> Self {
+    pub fn max_bandwidth(&mut self, bw: MaxBandwidth) -> &mut Self {
         self.config.max_bandwidth = Some(bw);
         self
     }
-    pub fn overhead_bandwidth_pct(mut self, pct: u8) -> Self {
+    pub fn overhead_bandwidth_pct(&mut self, pct: u8) -> &mut Self {
         self.config.overhead_bandwidth_pct = Some(pct);
         self
     }
-    pub fn recv_buf_packets(mut self, n: u32) -> Self {
+    pub fn recv_buf_packets(&mut self, n: u32) -> &mut Self {
         self.config.recv_buf_packets = Some(n);
         self
     }
-    pub fn loss_max_ttl(mut self, n: u32) -> Self {
+    pub fn loss_max_ttl(&mut self, n: u32) -> &mut Self {
         self.config.loss_max_ttl = Some(n);
         self
     }
-    pub fn too_late_packet_drop(mut self, on: bool) -> Self {
+    pub fn too_late_packet_drop(&mut self, on: bool) -> &mut Self {
         self.config.too_late_packet_drop = Some(on);
         self
     }
-    pub fn flow_window_packets(mut self, n: u32) -> Self {
+    pub fn flow_window_packets(&mut self, n: u32) -> &mut Self {
         self.config.flow_window_packets = Some(n);
         self
     }
-    pub fn packet_filter(mut self, pf: PacketFilter) -> Self {
+    pub fn packet_filter(&mut self, pf: PacketFilter) -> &mut Self {
         self.config.packet_filter = Some(pf);
         self
     }
-    pub fn congestion(mut self, c: Congestion) -> Self {
+    pub fn congestion(&mut self, c: Congestion) -> &mut Self {
         self.config.congestion = Some(c);
         self
     }
-    pub fn backlog(mut self, n: u32) -> Self {
+    pub fn backlog(&mut self, n: u32) -> &mut Self {
         self.config.backlog = n;
         self
     }
-    pub fn reuse_addr(mut self, on: bool) -> Self {
+    pub fn reuse_addr(&mut self, on: bool) -> &mut Self {
         self.config.reuse_addr = on;
         self
     }
-    pub fn recv_timeout(mut self, t: Duration) -> Self {
+    pub fn recv_timeout(&mut self, t: Duration) -> &mut Self {
         self.config.recv_timeout = Some(t);
         self
     }
-    pub fn send_timeout(mut self, t: Duration) -> Self {
+    pub fn send_timeout(&mut self, t: Duration) -> &mut Self {
         self.config.send_timeout = Some(t);
         self
     }
     /// Set `SRTO_LINGER` — drop/close grace period for unsent data.
     /// `Duration::ZERO` closes immediately; libsrt default is 180s.
     /// Inherited by accepted sockets.
-    pub fn linger(mut self, d: Duration) -> Self {
+    pub fn linger(&mut self, d: Duration) -> &mut Self {
         self.config.linger = Some(d);
         self
     }
 
-    pub fn config(self) -> ListenerConfig {
-        self.config
+    /// Reach the underlying config (for inspection, copying, FFI marshaling).
+    /// Clones the inner config so the builder can be reused. Cloning is
+    /// cheap — at most two short heap allocations (optional `Passphrase` and
+    /// `PacketFilter`, both `String`-backed).
+    pub fn config(&self) -> ListenerConfig {
+        self.config.clone()
     }
 
     /// Terminal call: bind, listen, return the Listener.
-    pub fn bind(self, addr: impl ToSocketAddrs) -> Result<Listener, BindError> {
+    ///
+    /// Takes `&self` (not `self`) so the builder can be reused; clones the
+    /// inner config into [`Listener::bind_with`]. Cloning is cheap — the
+    /// config is a flat `ListenerConfig` with at most two short heap
+    /// allocations (the optional `Passphrase` and `PacketFilter`, both
+    /// `String`-backed).
+    ///
+    /// # Errors
+    /// Returns [`BindError`] on hostname-resolution failure, libsrt
+    /// option-set failure, or bind/listen failure.
+    pub fn bind(&self, addr: impl ToSocketAddrs) -> Result<Listener, BindError> {
         Listener::bind_with(&self.config, addr)
     }
 }

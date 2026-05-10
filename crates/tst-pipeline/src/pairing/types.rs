@@ -8,38 +8,11 @@
 use std::time::Duration;
 use tst_core::mpegts::demux::{DemuxEvent, MetadataKind, StreamId, VideoCodec, VideoPayload};
 
-/// Matching mode for [`Pairer::nearest_pts`](super::Pairer::nearest_pts).
+/// Pairer matching mode for [`Pairer::with_options`](super::Pairer::with_options).
 /// `last_before_pts` is past-only by definition and ignores this knob.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MatchMode {
-    /// Emit video on arrival; pair against KLV history only. Lowest
-    /// latency. KLV that arrives after its matching video frame is
-    /// dropped from pairing (surfaces as `UnpairedKlv` on eviction).
-    /// Suitable when the consumer cannot tolerate any pairing-induced
-    /// delay (live decoder, on-screen geo overlay, etc.).
-    Realtime,
-    /// Buffer up to `max_video_buffer` video AUs while looking ahead for
-    /// a within-tolerance KLV match. Higher latency, more complete
-    /// pairing. Buffered video is force-emitted as `UnpairedVideo` when
-    /// (a) a later event proves the tolerance window closed, (b) the
-    /// buffer fills (FIFO emission of the oldest entry, with best-effort
-    /// match against available history first), or (c) `flush()` is
-    /// called. Suitable when the consumer values pairing completeness
-    /// over latency (post-flight analysis, archival ingest, log-and-
-    /// review pipelines that still feed live data).
-    ///
-    /// Recommended `max_video_buffer`: 60–120 (≈2–4 s @ 30 fps).
-    Buffered { max_video_buffer: usize },
-}
-
-/// Pairer matching mode. Audit-direction successor to [`MatchMode`].
 ///
-/// Currently introduced additively alongside `MatchMode`; the
-/// follow-up task in this phase swaps `Pairer::nearest_pts` for
-/// [`Pairer::with_options`](super::Pairer) which consumes a
-/// [`PairerOptions`] containing this enum, at which point `MatchMode`
-/// goes away. Field-style `Buffered { max_lag }` is unit-explicit
-/// (`Duration` instead of bare ticks) and FFI-friendly.
+/// Field-style `Buffered { max_lag }` is unit-explicit (`Duration`
+/// instead of bare ticks) and FFI-friendly.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PairerMode {
@@ -55,14 +28,12 @@ pub enum PairerMode {
     },
 }
 
-/// Options for [`Pairer::with_options`](super::Pairer).
+/// Options for [`Pairer::with_options`](super::Pairer::with_options).
 ///
 /// Replaces the pre-Phase-3 5-positional-arg `Pairer::nearest_pts`
 /// constructor. Field-style construction is unit-explicit
 /// (`Duration` instead of bare ticks) and FFI-friendly (the 5-arg
-/// shape didn't translate cleanly to UniFFI). Currently introduced
-/// additively alongside `nearest_pts`; the follow-up task in this
-/// phase swaps `nearest_pts` for `with_options`.
+/// shape didn't translate cleanly to UniFFI).
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct PairerOptions {

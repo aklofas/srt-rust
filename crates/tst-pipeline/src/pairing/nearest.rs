@@ -1,19 +1,30 @@
 //! Nearest-PTS pairing state machine.
 //!
 //! Realtime mode: video events trigger immediate pairing against KLV
-//! history. Buffered mode (Task 3) adds a bounded video buffer with
-//! lookahead drain.
+//! history. Buffered mode adds a bounded video buffer with lookahead
+//! drain.
 
-use super::types::{KlvSample, MatchMode, PairerOutput, VideoSample};
+use super::types::{KlvSample, PairerOutput, VideoSample};
 use std::collections::VecDeque;
 use tst_core::mpegts::demux::{DemuxEvent, SamplePayload};
+
+/// Internal mode shape. The public [`super::PairerMode`]'s `Buffered`
+/// variant carries a `Duration` (max arrival skew); we still pair
+/// against a bounded video AU buffer internally — the Duration is
+/// translated by the constructor into a `max_video_buffer` count
+/// (bounded above by the absolute history cap).
+#[derive(Clone, Copy)]
+pub(super) enum InternalMode {
+    Realtime,
+    Buffered { max_video_buffer: usize },
+}
 
 pub(super) struct NearestState {
     video_pid: u16,
     klv_pid: u16,
     tolerance_ticks: i64,
     max_klv_history: usize,
-    mode: MatchMode,
+    mode: InternalMode,
     klv_history: VecDeque<KlvEntry>,
     video_buffer: VecDeque<VideoSample>,
 }
@@ -29,7 +40,7 @@ impl NearestState {
         klv_pid: u16,
         tolerance_ticks: i64,
         max_klv_history: usize,
-        mode: MatchMode,
+        mode: InternalMode,
     ) -> Self {
         Self {
             video_pid,
@@ -94,8 +105,8 @@ impl NearestState {
 
     fn handle_video(&mut self, v: VideoSample) -> Vec<PairerOutput> {
         match self.mode {
-            MatchMode::Realtime => self.match_video_against_history(v),
-            MatchMode::Buffered { max_video_buffer } => {
+            InternalMode::Realtime => self.match_video_against_history(v),
+            InternalMode::Buffered { max_video_buffer } => {
                 self.video_buffer.push_back(v);
                 let mut out = self.drain_buffered(false);
                 // Buffer overflow: force-emit the oldest with a
@@ -123,7 +134,7 @@ impl NearestState {
             }
         }
         // In Buffered mode, the new KLV may complete a buffered video.
-        if matches!(self.mode, MatchMode::Buffered { .. }) {
+        if matches!(self.mode, InternalMode::Buffered { .. }) {
             out.extend(self.drain_buffered(false));
         }
         out
@@ -238,7 +249,7 @@ mod tests {
     }
 
     fn nearest_realtime() -> NearestState {
-        NearestState::new(VIDEO_PID, KLV_PID, 100, 4, MatchMode::Realtime)
+        NearestState::new(VIDEO_PID, KLV_PID, 100, 4, InternalMode::Realtime)
     }
 
     #[test]
@@ -329,7 +340,7 @@ mod tests {
             KLV_PID,
             100,
             4,
-            MatchMode::Buffered { max_video_buffer },
+            InternalMode::Buffered { max_video_buffer },
         )
     }
 

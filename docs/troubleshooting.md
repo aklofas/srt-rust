@@ -204,7 +204,7 @@ Fix: set `SocketConfig::udp_recv_buffer_bytes = Some(12_500_000)` (or higher) fo
 
 ## All `UnpairedVideo`, zero `Paired`
 
-**Symptom:** Using `tst_pipeline::Pairer::nearest_pts` with `MatchMode::Realtime`,
+**Symptom:** Using `tst_pipeline::Pairer::with_options` with `PairerMode::Realtime`,
 the stats report `paired = 0` and `unpaired_video` matches your video event count.
 KLV events are present (PMT shows the stream, demux events arrive).
 
@@ -214,18 +214,19 @@ sees no KLV when the video event arrives, so every video pairs as
 `UnpairedVideo`. The KLV then arrives, ingests into history, and never
 finds a video that needs it (Realtime doesn't look back at past videos).
 
-**Fix:** switch to `MatchMode::Buffered { max_video_buffer: 60 }`. Buffered
-mode holds video briefly to look ahead for KLV; the trade-off is up to
-`max_video_buffer` × frame-period of pairing-induced latency.
+**Fix:** switch to `PairerMode::Buffered { max_lag: Duration::from_secs(2) }`
+and bump `max_buffered_video` to ≈60 (≈2 s @ 30 fps). Buffered mode holds
+video briefly to look ahead for KLV; the trade-off is up to
+`max_buffered_video` × frame-period of pairing-induced latency.
 
 ```rust,ignore
-let pairer = Pairer::nearest_pts(
-    video_pid,
-    klv_pid,
-    tolerance_ticks,
-    max_klv_history,
-    MatchMode::Buffered { max_video_buffer: 60 },  // ≈2 s @ 30 fps
-);
+use std::time::Duration;
+let mut opts = PairerOptions::default();
+opts.mode = PairerMode::Buffered { max_lag: Duration::from_secs(2) };
+opts.tolerance = Duration::from_millis(300);
+opts.max_buffered_klv = 32;
+opts.max_buffered_video = 60; // ≈2 s @ 30 fps
+let pairer = Pairer::with_options(video_pid, klv_pid, opts);
 ```
 
 If `paired` is still zero after switching, the cause is not interleave

@@ -536,7 +536,7 @@ the trigger that would unblock it.
 ## `pipeline::pairing` — opt-in convenience pairing utility
 
 - **Status:** Shipped (Rust API). `tst_pipeline::pairing::Pairer` with
-  `nearest_pts` (Realtime + Buffered) and `last_before_pts` strategies.
+  `with_options` (Realtime + Buffered) and `last_before_pts` strategies.
   Cookbook recipes 24–27 cover the canonical patterns; recipes 12–14
   remain as the inline-pattern reference. C ABI / JNI / UniFFI
   exposure deferred — see the next entry.
@@ -556,7 +556,7 @@ the trigger that would unblock it.
   no lifetimes.
 - **Trigger to revisit:** When the receiver-surface C ABI plan is
   written, `Pairer` joins as one more handle type
-  (`tst_pairer_t`, `tst_pairer_nearest_pts_open`,
+  (`tst_pairer_t`, `tst_pairer_open_with_options`,
   `tst_pairer_last_before_pts_open`, `tst_pairer_feed`,
   `tst_pairer_flush`, `tst_pairer_stats`, `tst_pairer_close`).
 - **Scope when added:** ~7 C entry points + 1 handle type + tagged

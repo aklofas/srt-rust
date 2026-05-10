@@ -674,8 +674,8 @@ Stay with the inline `DemuxEvent` match (cookbook recipes 12–14) when:
 
 | Pattern | Constructor | Mode |
 |---|---|---|
-| Sync-KLV at frame rate, low-latency consumer | `Pairer::nearest_pts(...)` | `MatchMode::Realtime` |
-| Sync-KLV at frame rate, batch / archival ingest | `Pairer::nearest_pts(...)` | `MatchMode::Buffered { max_video_buffer: 60 }` |
+| Sync-KLV at frame rate, low-latency consumer | `Pairer::with_options(...)` | `PairerMode::Realtime` |
+| Sync-KLV at frame rate, batch / archival ingest | `Pairer::with_options(...)` | `PairerMode::Buffered { max_lag: Duration::from_secs(2) }` |
 | Async-KLV (1–10 Hz) against video frames | `Pairer::last_before_pts(...)` | n/a (past-only) |
 | EO + IR sharing one async-KLV stream | Two `Pairer::last_before_pts` instances side-by-side | n/a |
 

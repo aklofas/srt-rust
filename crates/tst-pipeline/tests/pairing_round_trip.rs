@@ -8,11 +8,12 @@
 //! sync-KLV, which is what the `KlvSample.kind = KlvSyncAuCell` event
 //! arm exposes).
 
+use std::time::Duration;
 use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
-use tst_pipeline::{MatchMode, Pairer, PairerOutput};
+use tst_pipeline::{Pairer, PairerMode, PairerOptions, PairerOutput};
 
 const VIDEO_PID: u16 = 0x100;
 const KLV_PID: u16 = 0x102;
@@ -50,7 +51,7 @@ fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
 }
 
 #[test]
-fn nearest_pts_pairs_sync_klv_with_video() {
+fn with_options_pairs_sync_klv_with_video() {
     let cfg = {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
         prog.add_video(VIDEO_PID, MuxVideoCodec::H264);
@@ -73,13 +74,12 @@ fn nearest_pts_pairs_sync_klv_with_video() {
     demux.feed(&bytes).unwrap();
     demux.flush();
 
-    let mut pairer = Pairer::nearest_pts(
-        VIDEO_PID,
-        KLV_PID,
-        9_000, // 0.1 s tolerance
-        16,
-        MatchMode::Realtime,
-    );
+    let mut opts = PairerOptions::default();
+    opts.mode = PairerMode::Realtime;
+    opts.tolerance = Duration::from_millis(100); // 0.1 s tolerance
+    opts.max_buffered_klv = 16;
+    opts.max_buffered_video = 16;
+    let mut pairer = Pairer::with_options(VIDEO_PID, KLV_PID, opts);
     let mut paired = 0;
     let mut unpaired_video = 0;
     let mut unpaired_klv = 0;

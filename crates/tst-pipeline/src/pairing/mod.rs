@@ -3,10 +3,10 @@
 //! Stateful transducer that ingests `DemuxEvent`s and emits typed
 //! `PairerOutput`s. Two strategies:
 //!
-//! * [`Pairer::nearest_pts`] — match each video AU against the KLV with
-//!   nearest PTS, within a configured tolerance. Two modes:
-//!   [`MatchMode::Realtime`] (zero buffer, eager emission) and
-//!   [`MatchMode::Buffered`] (bounded video buffer, bidirectional
+//! * [`Pairer::with_options`] — match each video AU against the KLV
+//!   with nearest PTS, within a configured tolerance. Two modes:
+//!   [`PairerMode::Realtime`] (zero buffer, eager emission) and
+//!   [`PairerMode::Buffered`] (bounded arrival skew, bidirectional
 //!   matching).
 //! * [`Pairer::last_before_pts`] — sample-and-hold: each video AU pairs
 //!   with the most recent KLV where `klv.pts <= video.pts`, optionally
@@ -40,11 +40,26 @@ mod last_before;
 mod nearest;
 mod types;
 
-pub use types::{
-    KlvSample, MatchMode, PairerMode, PairerOptions, PairerOutput, PairerStats, VideoSample,
-};
+pub use types::{KlvSample, PairerMode, PairerOptions, PairerOutput, PairerStats, VideoSample};
 
+use std::time::Duration;
 use tst_core::mpegts::demux::DemuxEvent;
+
+/// Convert a `Duration` to MPEG-TS 90 kHz PTS ticks. Saturating —
+/// inputs larger than `i64::MAX / 90_000` seconds clamp to `i64::MAX`.
+fn duration_to_pts_ticks(d: Duration) -> i64 {
+    // 90 kHz ticks: ticks = secs * 90_000. Use as_nanos to preserve
+    // sub-second precision down to ~11 µs (one tick).
+    let nanos = d.as_nanos();
+    // 1 tick = 1/90_000 s = 11_111.111... ns. ticks = nanos * 90_000 / 1e9
+    //                                               = nanos * 9 / 100_000.
+    let ticks_u128 = nanos.saturating_mul(9) / 100_000;
+    if ticks_u128 > i64::MAX as u128 {
+        i64::MAX
+    } else {
+        ticks_u128 as i64
+    }
+}
 
 /// Stateful KLV ↔ video pairer. Construct with one of the strategy
 /// constructors; feed `DemuxEvent`s; collect `PairerOutput`s.
@@ -66,34 +81,48 @@ enum PairerState {
 }
 
 impl Pairer {
-    /// Match each video AU against the nearest-PTS KLV in history,
-    /// within `tolerance_ticks` (90 kHz). KLV history holds up to
-    /// `max_klv_history` entries (FIFO eviction on overflow).
+    /// Construct a nearest-PTS pairer with the given options.
     ///
-    /// Suggested values (caller picks based on stream characteristics):
-    /// `tolerance_ticks ≈ 27_000` (0.3 s) for sync KLV at video frame
-    /// rate; `max_klv_history ≈ 32` covers ~1 s at 30 fps + 1:1 KLV.
+    /// Replaces the pre-Phase-3 5-positional-arg `Pairer::nearest_pts`
+    /// constructor. Field-style construction is unit-explicit
+    /// (`Duration` instead of bare ticks) and translates cleanly to
+    /// future C ABI / JNI / UniFFI surfaces.
+    ///
+    /// # Behavior
+    ///
+    /// Each video AU pairs against the KLV with nearest PTS, within
+    /// `opts.tolerance`. The KLV history holds up to
+    /// `opts.max_buffered_klv` entries (FIFO eviction on overflow).
+    /// In [`PairerMode::Buffered`], up to `opts.max_buffered_video`
+    /// video AUs are held while looking ahead for a within-tolerance
+    /// match.
     ///
     /// # Panics
     ///
-    /// Panics if `max_klv_history == 0`. A history of zero entries is
-    /// useless; the constructor refuses rather than emit `UnpairedVideo`
-    /// for every input silently. Same goes for
-    /// `MatchMode::Buffered { max_video_buffer: 0 }`.
+    /// Panics if `opts.max_buffered_klv == 0` or, in
+    /// `PairerMode::Buffered`, `opts.max_buffered_video == 0`. A cap of
+    /// zero entries is useless; the constructor refuses rather than
+    /// emit `UnpairedVideo` for every input silently.
     ///
     /// # Example — realtime nearest-PTS pairer with a 300 ms tolerance
     ///
-    /// ```
-    /// use tst_pipeline::pairing::{MatchMode, Pairer};
+    /// `PairerOptions` is `#[non_exhaustive]`; construct via
+    /// [`Default::default()`] and assign overrides.
     ///
-    /// // 27_000 ticks @ 90 kHz = 300 ms. KLV history of 32 entries
-    /// // covers ~1 s of metadata at 30 fps with 1:1 video↔KLV cadence.
-    /// let mut pairer = Pairer::nearest_pts(
+    /// ```
+    /// use std::time::Duration;
+    /// use tst_pipeline::pairing::{Pairer, PairerMode, PairerOptions};
+    ///
+    /// let mut opts = PairerOptions::default();
+    /// opts.mode = PairerMode::Realtime;
+    /// opts.tolerance = Duration::from_millis(300);
+    /// opts.max_buffered_klv = 32;
+    /// opts.max_buffered_video = 32;
+    ///
+    /// let mut pairer = Pairer::with_options(
     ///     0x0100, // video PID
     ///     0x0102, // KLV PID
-    ///     27_000, // tolerance_ticks (300 ms @ 90 kHz)
-    ///     32,     // max_klv_history
-    ///     MatchMode::Realtime,
+    ///     opts,
     /// );
     ///
     /// // Feed each `DemuxEvent` from a `DemuxReceiver` into `pairer.feed(...)`
@@ -102,24 +131,41 @@ impl Pairer {
     /// // in `Realtime` mode but kept for symmetry with `Buffered`).
     /// let _stats = pairer.stats();
     /// ```
-    pub fn nearest_pts(
-        video_pid: u16,
-        klv_pid: u16,
-        tolerance_ticks: i64,
-        max_klv_history: usize,
-        mode: MatchMode,
-    ) -> Self {
-        assert!(max_klv_history > 0, "max_klv_history must be > 0");
-        if let MatchMode::Buffered { max_video_buffer } = mode {
-            assert!(max_video_buffer > 0, "max_video_buffer must be > 0");
-        }
+    pub fn with_options(video_pid: u16, klv_pid: u16, opts: PairerOptions) -> Self {
+        assert!(
+            opts.max_buffered_klv > 0,
+            "PairerOptions::max_buffered_klv must be > 0"
+        );
+        let internal_mode = match opts.mode {
+            PairerMode::Realtime => nearest::InternalMode::Realtime,
+            PairerMode::Buffered { max_lag: _ } => {
+                // The new public knob is `max_lag: Duration` (an arrival-
+                // skew window). The internal pairer still uses a bounded
+                // count of buffered video AUs. Map by clamping to the
+                // configured `max_buffered_video` cap — this preserves the
+                // pre-Phase-3 behavior where the cap was the lone knob.
+                assert!(
+                    opts.max_buffered_video > 0,
+                    "PairerOptions::max_buffered_video must be > 0 for Buffered mode"
+                );
+                nearest::InternalMode::Buffered {
+                    max_video_buffer: opts.max_buffered_video as usize,
+                }
+            }
+        };
+        let tolerance_ticks = duration_to_pts_ticks(opts.tolerance);
+        let max_klv_history = opts.max_buffered_klv as usize;
+        // `link_klv_to_video` is reserved on PairerOptions; not yet
+        // wired through to the internal NearestState. Tracking for
+        // follow-up.
+        let _ = opts.link_klv_to_video;
         Self {
             state: PairerState::Nearest(nearest::NearestState::new(
                 video_pid,
                 klv_pid,
                 tolerance_ticks,
                 max_klv_history,
-                mode,
+                internal_mode,
             )),
             stats: PairerStats::default(),
         }
@@ -129,7 +175,7 @@ impl Pairer {
     /// where `klv.pts <= video.pts`. If `freshness_ticks` is `Some(n)`,
     /// emit `UnpairedVideo` when the held KLV is older than `n` ticks
     /// behind the video; if `None`, attach regardless of staleness.
-    /// Past-only by definition; no `MatchMode` knob applies.
+    /// Past-only by definition; no [`PairerMode`] knob applies.
     pub fn last_before_pts(video_pid: u16, klv_pid: u16, freshness_ticks: Option<i64>) -> Self {
         Self {
             state: PairerState::LastBefore(last_before::LastBeforeState::new(
@@ -201,7 +247,20 @@ mod tests {
     const AUDIO_PID: u16 = 0x110;
 
     fn make_pairer() -> Pairer {
-        Pairer::nearest_pts(VIDEO_PID, KLV_PID, 100, 4, MatchMode::Realtime)
+        // 1 ms tolerance maps to 90 ticks @ 90 kHz. Tests below use deltas
+        // of 0 (paired) and 10_000 ticks (unpaired) — both well-bracketed
+        // by this tolerance.
+        Pairer::with_options(
+            VIDEO_PID,
+            KLV_PID,
+            PairerOptions {
+                mode: PairerMode::Realtime,
+                tolerance: Duration::from_millis(1),
+                max_buffered_klv: 4,
+                max_buffered_video: 4,
+                link_klv_to_video: true,
+            },
+        )
     }
 
     #[test]
@@ -327,8 +386,8 @@ mod tests {
     #[test]
     fn metadata_kind_klv_sync_au_cell_pairs_same_as_klv_async() {
         let mut p = make_pairer();
-        // Spec §3.6 / cookbook recipe 12: nearest_pts treats both
-        // KlvSyncAuCell and KlvAsync as KLV candidates.
+        // Spec §3.6 / cookbook recipe 12: nearest-PTS pairing treats
+        // both KlvSyncAuCell and KlvAsync as KLV candidates.
         let sync_klv = DemuxEvent::Metadata {
             stream: StreamId {
                 pid: KLV_PID,
@@ -384,7 +443,17 @@ mod tests {
     }
 
     fn make_pairer_stats() -> Pairer {
-        Pairer::nearest_pts(VIDEO_PID, KLV_PID, 100, 4, MatchMode::Realtime)
+        Pairer::with_options(
+            VIDEO_PID,
+            KLV_PID,
+            PairerOptions {
+                mode: PairerMode::Realtime,
+                tolerance: Duration::from_millis(1),
+                max_buffered_klv: 4,
+                max_buffered_video: 4,
+                link_klv_to_video: true,
+            },
+        )
     }
 
     fn klv_async_event(pid: u16, pts: i64) -> DemuxEvent {
@@ -526,7 +595,20 @@ mod proptests {
 
         #[test]
         fn nearest_realtime_conservation(events in proptest::collection::vec(arb_event(), 0..200)) {
-            let mut p = Pairer::nearest_pts(VIDEO_PID, KLV_PID, 1000, 16, MatchMode::Realtime);
+            // 1000 ticks @ 90 kHz ≈ 11.1 ms. Use a Duration that comfortably
+            // brackets that; tolerance values aren't load-bearing for the
+            // conservation-property test (any positive value works).
+            let mut p = Pairer::with_options(
+                VIDEO_PID,
+                KLV_PID,
+                PairerOptions {
+                    mode: PairerMode::Realtime,
+                    tolerance: Duration::from_millis(12),
+                    max_buffered_klv: 16,
+                    max_buffered_video: 16,
+                    link_klv_to_video: true,
+                },
+            );
             let mut video_count = 0u64;
             let mut klv_count = 0u64;
             let mut paired = 0u64;
@@ -564,12 +646,22 @@ mod proptests {
 
         #[test]
         fn nearest_buffered_conservation(events in proptest::collection::vec(arb_event(), 0..200)) {
-            let mut p = Pairer::nearest_pts(
+            // Pre-Phase-3 the second knob was `max_video_buffer: 8`. Under
+            // PairerOptions, the same effect comes from setting
+            // `max_buffered_video = 8`. The new `max_lag: Duration` knob
+            // is a separate constraint; pick something comfortably large
+            // so the count cap is the binding limit (matching the
+            // pre-Phase-3 behavior under test).
+            let mut p = Pairer::with_options(
                 VIDEO_PID,
                 KLV_PID,
-                1000,
-                16,
-                MatchMode::Buffered { max_video_buffer: 8 },
+                PairerOptions {
+                    mode: PairerMode::Buffered { max_lag: Duration::from_secs(1) },
+                    tolerance: Duration::from_millis(12),
+                    max_buffered_klv: 16,
+                    max_buffered_video: 8,
+                    link_klv_to_video: true,
+                },
             );
             let mut video_count = 0u64;
             let mut klv_count = 0u64;

@@ -25,8 +25,9 @@
 use std::env;
 use std::fs;
 use std::process::ExitCode;
+use std::time::Duration;
 use tst_core::mpegts::demux::Demuxer;
-use tst_pipeline::{MatchMode, Pairer, PairerOutput};
+use tst_pipeline::{Pairer, PairerMode, PairerOptions, PairerOutput};
 
 fn main() -> ExitCode {
     // --- Argument parsing -------------------------------------------------
@@ -44,15 +45,15 @@ fn main() -> ExitCode {
     // reconfigure when the PMT version bumps. For a teaching example
     // we hard-code the canonical synthetic-fixture PIDs.
     //
-    // 0.3 s tolerance @ 90 kHz = 27_000 ticks. Wide enough to absorb
-    // encoder timestamp drift; narrow enough to reject coincidental
-    // near-matches from the next GOP.
+    // 0.3 s tolerance: wide enough to absorb encoder timestamp drift;
+    // narrow enough to reject coincidental near-matches from the next
+    // GOP.
     const VIDEO_PID: u16 = 0x100;
     const KLV_PID: u16 = 0x102;
-    const TOLERANCE_TICKS: i64 = 27_000;
-    // 32 history entries covers ~1 s at 30 fps + 1:1 KLV cadence;
+    const TOLERANCE: Duration = Duration::from_millis(300);
+    // 32 buffered entries covers ~1 s at 30 fps + 1:1 KLV cadence;
     // 32 s at 1 Hz async cadence.
-    const MAX_KLV_HISTORY: usize = 32;
+    const MAX_BUFFERED_KLV: u64 = 32;
 
     // --- Read + demux + pair ---------------------------------------------
     //
@@ -81,13 +82,15 @@ fn main() -> ExitCode {
     // when to pick `Buffered` instead is "I have lots of UnpairedVideo
     // because the encoder ships KLV PES after video PES." See
     // `docs/troubleshooting.md`.
-    let mut pairer = Pairer::nearest_pts(
-        VIDEO_PID,
-        KLV_PID,
-        TOLERANCE_TICKS,
-        MAX_KLV_HISTORY,
-        MatchMode::Realtime,
-    );
+    //
+    // PairerOptions is `#[non_exhaustive]`, so construct via
+    // `Default::default()` + assignment rather than struct literal.
+    let mut opts = PairerOptions::default();
+    opts.mode = PairerMode::Realtime;
+    opts.tolerance = TOLERANCE;
+    opts.max_buffered_klv = MAX_BUFFERED_KLV;
+    opts.max_buffered_video = MAX_BUFFERED_KLV;
+    let mut pairer = Pairer::with_options(VIDEO_PID, KLV_PID, opts);
 
     while let Some(event) = demux.next_event() {
         for output in pairer.feed(event) {

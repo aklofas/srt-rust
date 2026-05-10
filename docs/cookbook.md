@@ -837,7 +837,7 @@ If the encoder declares the linkage via `metadata_descriptor`, the demuxer surfa
 
 Runnable: see [../examples/receiving/demux_to_events.rs](../examples/receiving/demux_to_events.rs) for the file-feed shape; [../examples/pairing/pair_sync_klv.rs](../examples/pairing/pair_sync_klv.rs) is the related sync-KLV sibling.
 
-### 24. Pair sync-KLV with video AUs via `Pairer::nearest_pts` (Realtime)
+### 24. Pair sync-KLV with video AUs via `Pairer::with_options` (Realtime)
 
 The cookbook recipe 12 inline pattern in ~20 lines, expressed through
 the opt-in `tst_pipeline::pairing::Pairer`. Same semantics, with
@@ -846,8 +846,9 @@ on the output.
 
 ```rust,no_run
 use std::fs;
+use std::time::Duration;
 use tst_core::mpegts::demux::Demuxer;
-use tst_pipeline::{MatchMode, Pairer, PairerOutput};
+use tst_pipeline::{Pairer, PairerMode, PairerOptions, PairerOutput};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bytes = fs::read("input.ts")?;
@@ -855,12 +856,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     demux.feed(&bytes)?;
     demux.flush();
 
-    let mut pairer = Pairer::nearest_pts(
-        0x100,        // video PID (discover from ProgramMap)
-        0x102,        // KLV PID
-        27_000,       // 0.3 s @ 90 kHz tolerance
-        32,           // ~1 s history at 30 Hz cadence
-        MatchMode::Realtime,
+    // PairerOptions is `#[non_exhaustive]`; construct via Default + assign.
+    let mut opts = PairerOptions::default();
+    opts.mode = PairerMode::Realtime;
+    opts.tolerance = Duration::from_millis(300);
+    opts.max_buffered_klv = 32; // ~1 s history at 30 Hz cadence
+    opts.max_buffered_video = 32;
+    let mut pairer = Pairer::with_options(
+        0x100, // video PID (discover from ProgramMap)
+        0x102, // KLV PID
+        opts,
     );
     while let Some(e) = demux.next_event() {
         for o in pairer.feed(e) {
@@ -879,22 +884,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Runnable: `cargo run -p tst-examples --example pair_klv_pipeline -- input.ts`.
 
-### 25. Pair sync-KLV in batch mode (`MatchMode::Buffered`)
+### 25. Pair sync-KLV in batch mode (`PairerMode::Buffered`)
 
 When KLV PES is interleaved *after* its matching video PES (some
 encoders), Realtime mode misses the pairing. Buffered mode holds video
 briefly to look ahead.
 
 ```rust,no_run
-use tst_pipeline::{MatchMode, Pairer};
+use std::time::Duration;
+use tst_pipeline::{Pairer, PairerMode, PairerOptions};
 
-let mut pairer = Pairer::nearest_pts(
-    0x100,
-    0x102,
-    27_000,
-    32,
-    MatchMode::Buffered { max_video_buffer: 60 },  // ≈2 s @ 30 fps
-);
+let mut opts = PairerOptions::default();
+opts.mode = PairerMode::Buffered { max_lag: Duration::from_secs(2) };
+opts.tolerance = Duration::from_millis(300);
+opts.max_buffered_klv = 32;
+opts.max_buffered_video = 60; // ≈2 s @ 30 fps
+let mut pairer = Pairer::with_options(0x100, 0x102, opts);
 // feed loop unchanged from recipe 24.
 ```
 

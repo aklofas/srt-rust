@@ -12,7 +12,9 @@ mod common;
 use common::ts_parser;
 use std::fs;
 use std::path::Path;
-use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 const FIXTURES: &str = "tests/fixtures/local";
 
@@ -65,15 +67,15 @@ fn process_one(path: &Path) {
     };
 
     // Re-mux with our Muxer.
-    let mut b = MuxerConfig::builder();
-    b.buffer_packets(200_000);
-    let cfg = b
-        .add_program(1, 0x1000)
-        .add_video(0x1011, codec)
-        .add_klv(0x1031, KlvStreamType::PrivateData, false)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, codec);
+        prog.add_klv(0x1031, KlvStreamType::PrivateData, false);
+        let mut b = MuxerConfig::builder();
+        b.buffer_packets(200_000);
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
 
     // Interleave video + KLV pushes by PTS, draining incrementally to keep

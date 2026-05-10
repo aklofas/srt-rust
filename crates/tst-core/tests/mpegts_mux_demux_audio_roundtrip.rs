@@ -5,16 +5,19 @@ use tst_core::mpegts::demux::{
     Demuxer,
     event::{DemuxEvent, SamplePayload},
 };
-use tst_core::mpegts::mux::{AudioCodec as MuxAudioCodec, Muxer, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{
+    AudioCodec as MuxAudioCodec, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 fn roundtrip_one_codec(codec: MuxAudioCodec) {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_audio(0x300, codec)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_audio(0x300, codec);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut muxer = Muxer::new(cfg).unwrap();
 
     // Synthesize 5 audio frames with distinct content + 5 video AUs.

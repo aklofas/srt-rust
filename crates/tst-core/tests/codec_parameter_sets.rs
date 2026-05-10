@@ -8,7 +8,7 @@
 
 use tst_core::codec::h264;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
-use tst_core::mpegts::mux::{Muxer, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 
 const SPS_RBSP: &[u8] = include_bytes!("fixtures/codec/h264/h264_1080p_high40_bt709_sps.bin");
 const PPS_RBSP: &[u8] = include_bytes!("fixtures/codec/h264/h264_1080p_high40_bt709_pps.bin");
@@ -48,12 +48,13 @@ fn build_annexb_au(sps_rbsp: &[u8], pps_rbsp: &[u8]) -> Vec<u8> {
 #[test]
 fn h264_idr_au_round_trips_through_mux_demux_parse() {
     // --- Mux side ---
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x0100, VideoCodec::H264)
-        .end_program()
-        .build()
-        .expect("config builds");
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x0100, VideoCodec::H264);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().expect("config builds")
+    };
 
     let mut muxer = Muxer::new(cfg).expect("muxer construction");
     let video_h = muxer.video_stream_handle(0).expect("video handle");

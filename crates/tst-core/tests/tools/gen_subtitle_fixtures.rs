@@ -20,7 +20,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use tst_core::mpegts::mux::{
-    AudioCodec, KlvStreamType, Muxer, MuxerConfig, SubtitleCodec, VideoCodec,
+    AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec,
+    VideoCodec,
 };
 
 /// Drain every queued packet from the muxer into a single `Vec<u8>`.
@@ -94,10 +95,10 @@ fn write(dir: &std::path::Path, name: &str, bytes: Vec<u8>) {
 /// `subtitling_descriptor` emission path with one entry, and the
 /// `extract_user_label` "DVB sub eng" arm in the demuxer.
 fn build_dvb_sub_eng_only() -> Vec<u8> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(
             0x200,
             SubtitleCodec::DvbSubtitling {
                 language: *b"eng",
@@ -105,10 +106,11 @@ fn build_dvb_sub_eng_only() -> Vec<u8> {
                 composition_page_id: 1,
                 ancillary_page_id: 1,
             },
-        )
-        .end_program()
-        .build()
-        .unwrap();
+        );
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
     // Synthetic page-composition-segment per ETSI EN 300 743 §7.2.2
@@ -135,10 +137,10 @@ fn build_dvb_sub_eng_only() -> Vec<u8> {
 /// shape; some encoders pack both in one descriptor — we emit
 /// per-PID and the demuxer should accept both forms).
 fn build_dvb_sub_multi_lang() -> Vec<u8> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(
             0x200,
             SubtitleCodec::DvbSubtitling {
                 language: *b"eng",
@@ -146,8 +148,8 @@ fn build_dvb_sub_multi_lang() -> Vec<u8> {
                 composition_page_id: 1,
                 ancillary_page_id: 1,
             },
-        )
-        .add_subtitle(
+        );
+        prog.add_subtitle(
             0x201,
             SubtitleCodec::DvbSubtitling {
                 language: *b"spa",
@@ -155,10 +157,11 @@ fn build_dvb_sub_multi_lang() -> Vec<u8> {
                 composition_page_id: 2,
                 ancillary_page_id: 2,
             },
-        )
-        .end_program()
-        .build()
-        .unwrap();
+        );
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     for h in mux.subtitle_handles() {
         // segment_length=2: zero regions per EN 300 743 §7.2.2 Table 9.
@@ -178,10 +181,10 @@ fn build_dvb_sub_multi_lang() -> Vec<u8> {
 /// is "EBU teletext non-subtitle data" — the exact value isn't
 /// meaningful for our test (we just need a valid framing shape).
 fn build_dvb_teletext_eng() -> Vec<u8> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(
             0x200,
             SubtitleCodec::DvbTeletext {
                 language: *b"eng",
@@ -191,10 +194,11 @@ fn build_dvb_teletext_eng() -> Vec<u8> {
                 magazine_number: 0,
                 page_number: 0x88,
             },
-        )
-        .end_program()
-        .build()
-        .unwrap();
+        );
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
     // Teletext PES payload: data_identifier(0x10) +
@@ -219,13 +223,14 @@ fn build_dvb_teletext_eng() -> Vec<u8> {
 /// frame is the standard 60-Hz cadence; we just need a recognizable
 /// shape, not real caption content.
 fn build_cea708_standalone() -> Vec<u8> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, SubtitleCodec::Cea708Standalone)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(0x200, SubtitleCodec::Cea708Standalone);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
     for i in 0..3 {
@@ -243,13 +248,14 @@ fn build_cea708_standalone() -> Vec<u8> {
 /// HLS WebVTT-in-TS draft — header line, blank line, timing line,
 /// payload, trailing newline.
 fn build_webvtt_simple() -> Vec<u8> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(0x200, SubtitleCodec::WebVttInTs);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
     let cue = b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nhello world\n";
@@ -262,13 +268,14 @@ fn build_webvtt_simple() -> Vec<u8> {
 /// authoring spec carries one cue per PES, not the WebVTT-file shape
 /// of one header + many cues.
 fn build_webvtt_multi_cue() -> Vec<u8> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(0x200, SubtitleCodec::WebVttInTs);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
     for i in 0..5 {
@@ -291,14 +298,15 @@ fn build_webvtt_multi_cue() -> Vec<u8> {
 /// with DVB subtitle's stream_type byte; the demuxer disambiguates
 /// via the registration / VTTC / subtitling descriptors.
 fn build_subtitle_with_klv() -> Vec<u8> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_klv(0x300, KlvStreamType::PrivateData, false)
-        .add_subtitle(0x400, SubtitleCodec::WebVttInTs)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_klv(0x300, KlvStreamType::PrivateData, false);
+        prog.add_subtitle(0x400, SubtitleCodec::WebVttInTs);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     // Dummy KLV payload: the full 16-byte SMPTE 336M UL header (which
     // `classify_klv` requires for the bare-LS path) plus a trailing
@@ -324,17 +332,18 @@ fn build_subtitle_with_klv() -> Vec<u8> {
 /// program owns the WebVTT stream — the demuxer must route program-2
 /// PIDs without spuriously emitting a subtitle event for them.
 fn build_webvtt_multi_program() -> Vec<u8> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
-        .end_program()
-        .add_program(2, 0x300)
-        .add_video(0x301, VideoCodec::H265)
-        .add_klv(0x400, KlvStreamType::PrivateData, false)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog0 = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog0.add_video(0x101, VideoCodec::H264);
+        prog0.add_subtitle(0x200, SubtitleCodec::WebVttInTs);
+        let mut prog1 = MuxerProgramConfigBuilder::new(2, 0x300);
+        prog1.add_video(0x301, VideoCodec::H265);
+        prog1.add_klv(0x400, KlvStreamType::PrivateData, false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog0.build());
+        b.add_program(prog1.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles_for_program(1).unwrap()[0];
     mux.push_subtitle_to(h, 90_000, b"WEBVTT\n").unwrap();
@@ -361,13 +370,14 @@ fn build_webvtt_multi_program() -> Vec<u8> {
 /// emission). The Task 20 `treat_as` test uses exactly this fixture
 /// to verify both halves.
 fn build_non_conformant_missing_descriptor() -> Vec<u8> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_audio(0x200, AudioCodec::Mp2)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_audio(0x200, AudioCodec::Mp2);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.audio_handles()[0];
     // WebVTT-shaped bytes (intentionally codec-mismatched against the

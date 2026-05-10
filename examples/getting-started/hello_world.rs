@@ -14,7 +14,9 @@
 //!   - To decode the KLV blob back:      klv-metadata/klv_decode_file.rs
 
 use tst_core::klv::st0601::{UasDatalinkLs, encode_to_vec};
-use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. Build a muxer: one video + one async-KLV stream on one program.
@@ -22,16 +24,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    arbitrary unused values. async-KLV stream_type 0x06 (private data)
     //    is the simplest KLV mode — payload passes through verbatim, no
     //    AU cell wrap and no per-record PTS (`carries_pts: false`).
-    let config = MuxerConfig::builder()
-        .add_program(/*program_number=*/ 1, /*pmt_pid=*/ 0x1000)
-        .add_video(/*pid=*/ 0x100, VideoCodec::H264)
-        .add_klv(
+    let config = {
+        let mut prog =
+            MuxerProgramConfigBuilder::new(/*program_number=*/ 1, /*pmt_pid=*/ 0x1000);
+        prog.add_video(/*pid=*/ 0x100, VideoCodec::H264);
+        prog.add_klv(
             /*pid=*/ 0x101,
             KlvStreamType::PrivateData,
             /*carries_pts=*/ false,
-        )
-        .end_program()
-        .build()?;
+        );
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build()?
+    };
     let mut mux = Muxer::new(config)?;
 
     // 2. Push one synthetic AUD (Access Unit Delimiter) NAL with Annex-B

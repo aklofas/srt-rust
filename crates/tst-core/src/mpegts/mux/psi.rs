@@ -345,7 +345,8 @@ mod tests {
     use super::*;
     use crate::mpegts::common::pid;
     use crate::mpegts::mux::{
-        KlvStreamType, MuxerConfig, MuxerProgramConfig, StreamSpec, VideoCodec,
+        KlvStreamType, MuxerConfig, MuxerProgramConfig, MuxerProgramConfigBuilder, StreamSpec,
+        VideoCodec,
     };
 
     /// Build a minimal single-program config for unit tests.
@@ -435,11 +436,10 @@ mod tests {
     fn estimate_pmt_size_includes_subtitle_auto_emit() {
         use crate::mpegts::mux::SubtitleCodec;
 
-        let mut builder = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x100, VideoCodec::H264);
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
         for i in 0..15u16 {
-            builder = builder.add_subtitle(
+            prog.add_subtitle(
                 0x200 + i,
                 SubtitleCodec::DvbSubtitling {
                     language: *b"eng",
@@ -449,7 +449,9 @@ mod tests {
                 },
             );
         }
-        let result = builder.end_program().build();
+        let mut builder = MuxerConfig::builder();
+        builder.add_program(prog.build());
+        let result = builder.build();
         match result {
             Err(crate::error::MuxError::PmtTooLarge { used_bytes, .. }) => {
                 assert!(
@@ -470,7 +472,7 @@ mod tests {
     /// Per H.222.0 V9 §2.4.4.9 Table 2-33 (PDF p.79), the descriptor()_loop
     /// between program_info_length and the per-stream loop carries program-
     /// level descriptors. Public builder method
-    /// `MuxerProgramBuilder::program_descriptors(...)` accepted them, but the
+    /// `MuxerProgramConfigBuilder::program_descriptors(...)` accepted them, but the
     /// writer hardcoded `program_info_length=0` and never wrote the bytes.
     #[test]
     fn pmt_serializes_program_level_descriptors() {

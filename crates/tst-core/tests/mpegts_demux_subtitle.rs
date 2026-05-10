@@ -4,7 +4,9 @@
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, SamplePayload, StreamKind, SubtitleCodec as DemuxSub,
 };
-use tst_core::mpegts::mux::{Muxer, MuxerConfig, SubtitleCodec as MuxSub, VideoCodec};
+use tst_core::mpegts::mux::{
+    Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec as MuxSub, VideoCodec,
+};
 
 /// Drain every queued packet from the muxer into a single Vec.
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
@@ -23,13 +25,14 @@ fn drain_all(mux: &mut Muxer) -> Vec<u8> {
 /// Build a TS byte stream containing a single subtitle PES on PID 0x200,
 /// alongside a placeholder H.264 video PID required by the muxer config.
 fn build_ts_with_one_subtitle_pes(codec: MuxSub, payload: &[u8]) -> Vec<u8> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, codec)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(0x200, codec);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
     mux.push_subtitle_to(h, 90_000, payload).unwrap();

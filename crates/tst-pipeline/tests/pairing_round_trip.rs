@@ -9,7 +9,9 @@
 //! arm exposes).
 
 use tst_core::mpegts::demux::Demuxer;
-use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
+};
 use tst_pipeline::{MatchMode, Pairer, PairerOutput};
 
 const VIDEO_PID: u16 = 0x100;
@@ -49,13 +51,14 @@ fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
 
 #[test]
 fn nearest_pts_pairs_sync_klv_with_video() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(VIDEO_PID, MuxVideoCodec::H264)
-        .add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(VIDEO_PID, MuxVideoCodec::H264);
+        prog.add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
 
     // Push 5 frames + 5 KLV records at matching PTS.
@@ -109,13 +112,14 @@ fn nearest_pts_pairs_sync_klv_with_video() {
 #[test]
 fn last_before_pts_pairs_async_klv_at_lower_cadence() {
     // 1:5 cadence — 1 KLV record per 5 video frames.
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(VIDEO_PID, MuxVideoCodec::H264)
-        .add_klv(KLV_PID, KlvStreamType::PrivateData, true)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(VIDEO_PID, MuxVideoCodec::H264);
+        prog.add_klv(KLV_PID, KlvStreamType::PrivateData, true);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
 
     // Interleave video and KLV in PTS order so the mux emits them with

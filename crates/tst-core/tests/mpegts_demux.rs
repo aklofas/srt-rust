@@ -7,7 +7,7 @@ use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, MetadataKind, SamplePayload, StreamKind, VideoCodec,
 };
 use tst_core::mpegts::mux::{
-    KlvStreamType, Muxer, MuxerConfigBuilder, VideoCodec as MuxVideoCodec,
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
 
 fn build_minimal_h264_au() -> Vec<u8> {
@@ -65,13 +65,14 @@ fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
 #[test]
 fn h264_async_klv_roundtrip() {
     // Async KLV per ST 1402: PrivateData stream_type with no PTS in PES.
-    let cfg = MuxerConfigBuilder::default()
-        .add_program(1, 0x1000)
-        .add_video(0x100, MuxVideoCodec::H264)
-        .add_klv(0x101, KlvStreamType::PrivateData, false)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, MuxVideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let au = build_minimal_h264_au();
     mux.push_video(&au, 90_000, true).unwrap();
@@ -122,13 +123,14 @@ fn h264_async_klv_roundtrip() {
 
 #[test]
 fn h265_async_klv_roundtrip() {
-    let cfg = MuxerConfigBuilder::default()
-        .add_program(1, 0x1000)
-        .add_video(0x100, MuxVideoCodec::H265)
-        .add_klv(0x101, KlvStreamType::PrivateData, false)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, MuxVideoCodec::H265);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let au = build_minimal_h265_au();
     mux.push_video(&au, 90_000, true).unwrap();

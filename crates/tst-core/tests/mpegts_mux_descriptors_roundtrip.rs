@@ -9,7 +9,9 @@
 use tst_core::mpegts::demux::psi::extract_user_label;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
 use tst_core::mpegts::descriptors;
-use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, Muxer, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{
+    AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 fn drive_psi(cfg: MuxerConfig) -> Vec<u8> {
     let mut mux = Muxer::new(cfg).unwrap();
@@ -33,12 +35,13 @@ fn drain_events(bytes: &[u8]) -> Vec<DemuxEvent> {
 
 #[test]
 fn family_b_klv_descriptor_stack_round_trips() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
-        .add_klv(0x102, KlvStreamType::SynchronousMetadata, true)
-        .stream_descriptors_for_klv(
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
+            .unwrap();
+        prog.add_klv(0x102, KlvStreamType::SynchronousMetadata, true);
+        prog.stream_descriptors_for_klv(
             0,
             vec![
                 descriptors::metadata_klva(0x00),
@@ -46,9 +49,11 @@ fn family_b_klv_descriptor_stack_round_trips() {
                 descriptors::user_private(b"KLV_SYNC"),
             ],
         )
-        .end_program()
-        .build()
         .unwrap();
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
 
     let bytes = drive_psi(cfg);
     let events = drain_events(&bytes);
@@ -87,14 +92,16 @@ fn family_b_klv_descriptor_stack_round_trips() {
 
 #[test]
 fn klva_auto_emit_suppressed_when_caller_supplies_registration() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_klv(0x101, KlvStreamType::PrivateData, false)
-        .stream_descriptors_for_klv(0, vec![descriptors::registration(*b"KLVA", &[])])
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+        prog.stream_descriptors_for_klv(0, vec![descriptors::registration(*b"KLVA", &[])])
+            .unwrap();
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
 
     let bytes = drive_psi(cfg);
     let events = drain_events(&bytes);
@@ -126,19 +133,21 @@ fn klva_auto_emit_suppressed_when_caller_supplies_registration() {
 fn family_a_hdmv_video_registration_round_trips() {
     // Replicate the bench-11 / N4717V / N77HS shape: video PID with
     // Registration "HDMV" + 4 trailing bytes.
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .stream_descriptors_for_video(
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.stream_descriptors_for_video(
             0,
             vec![descriptors::registration(
                 *b"HDMV",
                 &[0xFF, 0x1B, 0x44, 0x3F],
             )],
         )
-        .end_program()
-        .build()
         .unwrap();
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
 
     let bytes = drive_psi(cfg);
     let events = drain_events(&bytes);
@@ -160,14 +169,16 @@ fn family_a_hdmv_video_registration_round_trips() {
 #[tracing_test::traced_test]
 #[test]
 fn non_klva_registration_on_klv_pid_logs_warning() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_klv(0x101, KlvStreamType::PrivateData, false)
-        .stream_descriptors_for_klv(0, vec![descriptors::registration(*b"VEND", &[])])
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+        prog.stream_descriptors_for_klv(0, vec![descriptors::registration(*b"VEND", &[])])
+            .unwrap();
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let _ = Muxer::new(cfg).unwrap();
     assert!(logs_contain("non-KLVA format_identifier"));
 }
@@ -177,13 +188,14 @@ fn ac3_registration_descriptor_auto_emits_on_pmt() {
     // Build a config with one video + one AC-3 audio stream, drive PSI,
     // demux it, find the PMT entry for the audio PID, and assert the
     // raw_descriptors carry tag 0x05 with format_identifier "AC-3".
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_audio(0x101, AudioCodec::Ac3)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_audio(0x101, AudioCodec::Ac3);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
 
     let bytes = drive_psi(cfg);
     let events = drain_events(&bytes);
@@ -213,14 +225,16 @@ fn ac3_registration_descriptor_auto_emits_on_pmt() {
 fn ac3_auto_emit_suppressed_when_caller_supplies_registration() {
     // Caller pre-supplies their own AC-3 registration. Assert exactly one
     // tag-0x05 descriptor with format_identifier "AC-3" — no duplication.
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_audio(0x101, AudioCodec::Ac3)
-        .stream_descriptors_for_audio(0, vec![descriptors::registration(*b"AC-3", &[])])
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_audio(0x101, AudioCodec::Ac3);
+        prog.stream_descriptors_for_audio(0, vec![descriptors::registration(*b"AC-3", &[])])
+            .unwrap();
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
 
     let bytes = drive_psi(cfg);
     let events = drain_events(&bytes);
@@ -256,13 +270,14 @@ fn audio_language_descriptor_auto_emits_when_set() {
     // Build a config with one video + one audio with language=Some(*b"eng"),
     // drive PSI, demux it, find the PMT entry for the audio PID, and assert
     // raw_descriptors carries tag 0x0A with body [b'e', b'n', b'g', 0x00].
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_audio_with_language(0x101, AudioCodec::Aac, *b"eng")
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_audio_with_language(0x101, AudioCodec::Aac, *b"eng");
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
 
     let bytes = drive_psi(cfg);
     let events = drain_events(&bytes);
@@ -297,13 +312,14 @@ fn audio_language_descriptor_auto_emits_when_set() {
 #[test]
 fn audio_language_descriptor_absent_when_unset() {
     // add_audio (without language) — no tag-0x0A descriptor should appear.
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_audio(0x101, AudioCodec::Aac)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_audio(0x101, AudioCodec::Aac);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
 
     let bytes = drive_psi(cfg);
     let events = drain_events(&bytes);
@@ -335,13 +351,14 @@ fn klva_auto_emits_on_sync_metadata_too() {
     // Registration descriptor. ffmpeg mpegtsenc.c:817-818 emits KLVA on
     // the metadata stream_type path too — receivers gate KLV classification
     // on the descriptor regardless of stream_type.
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_klv(0x102, KlvStreamType::SynchronousMetadata, true)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_klv(0x102, KlvStreamType::SynchronousMetadata, true);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
 
     let bytes = drive_psi(cfg);
     let events = drain_events(&bytes);
@@ -372,14 +389,16 @@ fn audio_language_auto_emit_suppressed_when_caller_supplies() {
     // Caller pre-supplies their own ISO 639 language descriptor via
     // stream_descriptors_for_audio with a different language ("fra"). Assert
     // exactly one tag-0x0A descriptor with caller's language code (not "eng").
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_audio_with_language(0x101, AudioCodec::Aac, *b"eng")
-        .stream_descriptors_for_audio(0, vec![descriptors::iso_639_language(*b"fra", 0x00)])
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_audio_with_language(0x101, AudioCodec::Aac, *b"eng");
+        prog.stream_descriptors_for_audio(0, vec![descriptors::iso_639_language(*b"fra", 0x00)])
+            .unwrap();
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
 
     let bytes = drive_psi(cfg);
     let events = drain_events(&bytes);

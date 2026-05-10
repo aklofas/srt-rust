@@ -38,7 +38,7 @@ use tst_core::mpegts::demux::{
     DemuxEvent, DemuxerBuilder, DemuxerOptions, NonConformantIssue, StrictMode,
 };
 use tst_core::mpegts::mux::{
-    KlvStreamType, Muxer, MuxerConfigBuilder, VideoCodec as MuxVideoCodec,
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
 
 /// A minimally well-formed bare ST 0601 LS used as the inner payload of a
@@ -67,13 +67,14 @@ fn drain(m: &mut Muxer) -> Vec<u8> {
 /// bytes. PrivateData streams pass payload through unchanged, so the caller
 /// can directly emit a sync-shaped wire form.
 fn build_mismatched_stream() -> Vec<u8> {
-    let cfg = MuxerConfigBuilder::default()
-        .add_program(1, 0x1000)
-        .add_video(0x100, MuxVideoCodec::H264)
-        .add_klv(0x101, KlvStreamType::PrivateData, true)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, MuxVideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, true);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut m = Muxer::new(cfg).unwrap();
     m.push_video(&[0x00, 0x00, 0x00, 0x01, 0x09, 0x10], 0, true)
         .unwrap();

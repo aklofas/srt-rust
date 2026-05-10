@@ -1,15 +1,18 @@
 //! Integration tests for sender-side audio carriage in `mpegts::mux`.
 
-use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, Muxer, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{
+    AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 #[test]
 fn audio_only_program_mux_produces_pat_pmt_audio_pes() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_audio(0x300, AudioCodec::Mp2)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_audio(0x300, AudioCodec::Mp2);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut muxer = Muxer::new(cfg).unwrap();
     let frames = vec![
         0xFF, 0xFD, 0x00, 0x10, /* MP2 frame header */ 0xDE, 0xAD, 0xBE, 0xEF,
@@ -40,14 +43,15 @@ fn audio_only_program_mux_produces_pat_pmt_audio_pes() {
 
 #[test]
 fn three_stream_program_audio_video_klv_routing() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_audio(0x300, AudioCodec::Aac)
-        .add_klv(0x200, KlvStreamType::PrivateData, true)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_audio(0x300, AudioCodec::Aac);
+        prog.add_klv(0x200, KlvStreamType::PrivateData, true);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut muxer = Muxer::new(cfg).unwrap();
 
     let video_handle = muxer.video_handles()[0];
@@ -88,12 +92,13 @@ fn each_audio_codec_has_correct_pmt_stream_type() {
         (AudioCodec::Ac3, 0x81),
     ];
     for (codec, expected_st) in codecs {
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_audio(0x300, codec)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_audio(0x300, codec);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let mut muxer = Muxer::new(cfg).unwrap();
         muxer.push_audio(b"x", 90_000).unwrap();
 

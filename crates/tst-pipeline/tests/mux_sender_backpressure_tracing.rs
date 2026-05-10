@@ -32,7 +32,7 @@
 //!     not a transition. **No warn fires.**
 
 use tracing_test::traced_test;
-use tst_core::mpegts::mux::{KlvStreamType, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_core::transport::{Transport, TransportError};
 use tst_pipeline::MuxSender;
 
@@ -69,14 +69,16 @@ fn idr_nal(body_bytes: usize) -> Vec<u8> {
 #[traced_test]
 #[test]
 fn warn_fires_exactly_twice_on_back_pressure_escalation() {
-    let mut b = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_klv(0x101, KlvStreamType::PrivateData, false)
-        .pcr_pid(0x100)
-        .end_program();
-    b.buffer_packets(10); // minimum cap; smallest cap to engineer threshold crossings
-    let cfg = b.build().expect("config builds");
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+        prog.pcr_pid(0x100);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.buffer_packets(10); // minimum cap; smallest cap to engineer threshold crossings
+        b.build().expect("config builds")
+    };
     let s = MuxSender::new(OkSink, cfg).expect("sender builds");
 
     // Push 1: small. Empirical queue depth = 3 (PSI(2) + video(1)). Ok.

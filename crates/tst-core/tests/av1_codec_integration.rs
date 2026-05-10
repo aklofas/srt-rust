@@ -3,7 +3,9 @@
 use tst_core::codec::av1::parse_obu_stream;
 use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{DemuxEvent, Obu, SamplePayload, VideoCodec, VideoPayload};
-use tst_core::mpegts::mux::{Muxer, MuxerConfig, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{
+    Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
+};
 
 fn obu_with_size(obu_type: u8, payload: &[u8]) -> Vec<u8> {
     let header = (obu_type << 3) | 0x02; // ext=0, has_size=1
@@ -20,12 +22,13 @@ fn av1_end_to_end_parses_seq_header_via_obu_stream() {
     // Keyframe header from Task 24's keyframe_header_body().
     let frame_payload: Vec<u8> = vec![0x10];
 
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, MuxVideoCodec::Av1)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, MuxVideoCodec::Av1);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.video_handles()[0];
 

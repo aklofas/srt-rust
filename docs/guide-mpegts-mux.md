@@ -73,33 +73,48 @@ let cfg_h265_sync = MuxerConfig {
 ## `MuxerConfigBuilder`
 
 When constructing from scratch rather than tweaking the default,
-`MuxerConfigBuilder` lets you chain stream additions and cadence overrides.
-Methods (all in `tst_core::mpegts::mux`):
+`MuxerProgramConfigBuilder` builds each program block, and
+`MuxerConfigBuilder` ties one or more programs together with cadence
+overrides. Both expose `&mut self -> &mut Self` mutators for clean
+FFI-binding semantics. Methods (all in `tst_core::mpegts::mux`):
 
-- `add_video(pid: u16, codec: VideoCodec) -> Self`
-- `add_klv(pid: u16, stream_type: KlvStreamType, carries_pts: bool) -> Self`
-- `add_stream(spec: StreamSpec) -> Self` — escape hatch when you have
-  a `StreamSpec` already.
-- `pcr_pid(pid: u16) -> Self`
+`MuxerProgramConfigBuilder`:
+
+- `new(program_number: u16, pmt_pid: u16) -> Self`
+- `add_video(&mut self, pid: u16, codec: VideoCodec) -> &mut Self`
+- `add_klv(&mut self, pid: u16, stream_type: KlvStreamType, carries_pts: bool) -> &mut Self`
+- `add_audio(&mut self, pid: u16, codec: AudioCodec) -> &mut Self`
+- `add_audio_with_language(&mut self, pid: u16, codec: AudioCodec, language: [u8; 3]) -> &mut Self`
+- `add_subtitle(&mut self, pid: u16, codec: SubtitleCodec) -> &mut Self`
+- `pcr_pid(&mut self, pid: u16) -> &mut Self`
+- `program_descriptors(&mut self, descs: Vec<Vec<u8>>) -> &mut Self`
+- `stream_descriptors_for_{video,klv,audio,subtitle,stream}(&mut self, idx: usize, descs: Vec<Vec<u8>>) -> Result<&mut Self, MuxError>`
+- `build(&self) -> MuxerProgramConfig`
+
+`MuxerConfigBuilder`:
+
+- `add_program(&mut self, program: MuxerProgramConfig) -> &mut Self`
 - `pcr_interval_ms(&mut self, ms: u32) -> &mut Self`
 - `psi_interval_ms(&mut self, ms: u32) -> &mut Self`
 - `buffer_packets(&mut self, n: usize) -> &mut Self`
 - `build(&self) -> Result<MuxerConfig, MuxError>` — runs
-  `MuxerConfig::validate`. Takes `&self` so the builder can be
-  reused; clones inner state into the returned `MuxerConfig`.
+  `MuxerConfig::validate`.
 
 ```rust,ignore
-use tst_core::mpegts::mux::{MuxerConfig, MuxerConfigBuilder, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 fn build() -> Result<MuxerConfig, tst_core::error::MuxError> {
-    // Stream additions live on `MuxerProgramBuilder` (consume-by-value);
-    // cadence overrides live on `MuxerConfigBuilder` (`&mut self`). The
-    // mutators bind-then-call; `build()` takes `&self` and can be reused.
-    let mut b = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-            .add_video(0x1011, VideoCodec::H264)
-            .add_klv(0x1031, KlvStreamType::PrivateData, false)
-            .end_program();
+    // Bind-then-step is the canonical shape: it translates cleanly to
+    // every supported FFI binding (Kotlin .apply { }, Swift var b, Java
+    // step-wise, Python attribute assignment, C opaque-handle).
+    let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+    prog.add_video(0x1011, VideoCodec::H264);
+    prog.add_klv(0x1031, KlvStreamType::PrivateData, false);
+
+    let mut b = MuxerConfig::builder();
+    b.add_program(prog.build());
     b.pcr_interval_ms(40);
     b.psi_interval_ms(100);
     b.buffer_packets(10_000);
@@ -341,18 +356,23 @@ a single program (one PMT, one PAT). Use this shape when you need:
 
 ### Building a multi-stream MuxerConfig
 
-Build with the existing `MuxerConfigBuilder::add_video` / `add_klv` calls —
-just call them more than once:
+Build the program with multiple `add_video` / `add_klv` calls on the
+program builder, then hand it to the outer `MuxerConfigBuilder`:
 
 ```rust
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
-let cfg = MuxerConfig::builder()
-    .add_video(0x1011, VideoCodec::H264) // EO
-    .add_video(0x1021, VideoCodec::H264) // IR
-    .add_klv(0x1031, KlvStreamType::PrivateData, false)
-    .pcr_pid(0x1011) // pin PCR to the EO stream — see "PCR rule" below
-    .build()?;
+let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+prog.add_video(0x1011, VideoCodec::H264); // EO
+prog.add_video(0x1021, VideoCodec::H264); // IR
+prog.add_klv(0x1031, KlvStreamType::PrivateData, false);
+prog.pcr_pid(0x1011); // pin PCR to the EO stream — see "PCR rule" below
+
+let mut b = MuxerConfig::builder();
+b.add_program(prog.build());
+let cfg = b.build()?;
 ```
 
 Validation:
@@ -505,23 +525,28 @@ Each helper returns a `Vec<u8>` containing the complete descriptor
 
 ```rust
 use tst_core::mpegts::descriptors as desc;
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
-let cfg = MuxerConfig::builder()
-    .add_video(0x100, VideoCodec::H264)
-    .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
-    .add_video(0x101, VideoCodec::H264)
-    .stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640")])
-    .add_klv(0x102, KlvStreamType::SynchronousMetadata, true)
-    .stream_descriptors_for_klv(
-        0,
-        vec![
-            desc::metadata_klva(0x00),
-            desc::metadata_std(0, 0, 0),
-            desc::user_private(b"KLV_SYNC"),
-        ],
-    )
-    .build()?;
+let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+prog.add_video(0x100, VideoCodec::H264);
+prog.stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])?;
+prog.add_video(0x101, VideoCodec::H264);
+prog.stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640")])?;
+prog.add_klv(0x102, KlvStreamType::SynchronousMetadata, true);
+prog.stream_descriptors_for_klv(
+    0,
+    vec![
+        desc::metadata_klva(0x00),
+        desc::metadata_std(0, 0, 0),
+        desc::user_private(b"KLV_SYNC"),
+    ],
+)?;
+
+let mut b = MuxerConfig::builder();
+b.add_program(prog.build());
+let cfg = b.build()?;
 ```
 
 The video / KLV index passed to `stream_descriptors_for_video` /
@@ -565,16 +590,18 @@ ship multiple logically separate "channels" through one transport (e.g. two
 aircraft each emitting an EO+IR+KLV bundle, aggregated through one SRT socket).
 
 ```rust
-let config = MuxerConfig::builder()
-    .add_program(1, 0x1000)
-        .add_video(0x1011, VideoCodec::H264)
-        .add_klv(0x1031, KlvStreamType::PrivateData, false)
-        .end_program()
-    .add_program(2, 0x1100)
-        .add_video(0x1111, VideoCodec::H265)
-        .add_klv(0x1131, KlvStreamType::PrivateData, false)
-        .end_program()
-    .build()?;
+let mut prog1 = MuxerProgramConfigBuilder::new(1, 0x1000);
+prog1.add_video(0x1011, VideoCodec::H264);
+prog1.add_klv(0x1031, KlvStreamType::PrivateData, false);
+
+let mut prog2 = MuxerProgramConfigBuilder::new(2, 0x1100);
+prog2.add_video(0x1111, VideoCodec::H265);
+prog2.add_klv(0x1131, KlvStreamType::PrivateData, false);
+
+let mut b = MuxerConfig::builder();
+b.add_program(prog1.build());
+b.add_program(prog2.build());
+let config = b.build()?;
 ```
 
 ### PID uniqueness
@@ -621,15 +648,16 @@ For a runnable end-to-end repacking example, see `examples/repack_two_programs.r
 | `AudioCodec::AacLatm` | `0x11` | AAC LATM (ETSI / ATSC mandated for HD pipelines) |
 | `AudioCodec::Ac3` | `0x81` | ATSC AC-3 |
 
-Add an audio stream to a program via the nested builder chain:
+Add an audio stream to a program via the program builder:
 
 ```rust
-let cfg = MuxerConfigBuilder::new()
-    .add_program(1, 0x1000)
-    .add_video(0x100, VideoCodec::H264)
-    .add_audio(0x300, AudioCodec::Aac)   // ← NEW
-    .end_program()
-    .build()?;
+let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+prog.add_video(0x100, VideoCodec::H264);
+prog.add_audio(0x300, AudioCodec::Aac);   // ← NEW
+
+let mut b = MuxerConfig::builder();
+b.add_program(prog.build());
+let cfg = b.build()?;
 ```
 
 Push pre-framed audio frames with PTS:
@@ -664,13 +692,14 @@ Set the language at builder time and the muxer emits an
 with `audio_type = 0x00` (undefined / clean main):
 
 ```rust
-let cfg = MuxerConfigBuilder::new()
-    .add_program(1, 0x1000)
-        .add_video(0x101, VideoCodec::H264)
-        .add_audio_with_language(0x300, AudioCodec::Aac, *b"eng")
-        .add_audio_with_language(0x301, AudioCodec::Aac, *b"spa")
-    .end_program()
-    .build()?;
+let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+prog.add_video(0x101, VideoCodec::H264);
+prog.add_audio_with_language(0x300, AudioCodec::Aac, *b"eng");
+prog.add_audio_with_language(0x301, AudioCodec::Aac, *b"spa");
+
+let mut b = MuxerConfig::builder();
+b.add_program(prog.build());
+let cfg = b.build()?;
 ```
 
 The plain `add_audio(pid, codec)` form keeps `language: None` and
@@ -685,13 +714,14 @@ For multi-language tracks or richer `audio_type` values
 ```rust
 use tst_core::mpegts::descriptors::iso_639_language;
 
-let cfg = MuxerConfigBuilder::new()
-    .add_program(1, 0x1000)
-        .add_video(0x101, VideoCodec::H264)
-        .add_audio(0x300, AudioCodec::Aac)
-    .end_program()
-    .stream_descriptors_for_audio(0, vec![iso_639_language(*b"eng", 0x03)])
-    .build()?;
+let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+prog.add_video(0x101, VideoCodec::H264);
+prog.add_audio(0x300, AudioCodec::Aac);
+prog.stream_descriptors_for_audio(0, vec![iso_639_language(*b"eng", 0x03)])?;
+
+let mut b = MuxerConfig::builder();
+b.add_program(prog.build());
+let cfg = b.build()?;
 ```
 
 (Codec-specific audio descriptors — AC-3 audio descriptor `0x6A`, AAC
@@ -735,19 +765,22 @@ private data) and disambiguate via auto-emitted PMT descriptors:
 The descriptor is **structurally required** for receiver
 classification — without it, a `stream_type 0x06` PID is
 indistinguishable from KLV-PrivateData. Caller-supplied descriptors
-via `MuxerConfigBuilder::stream_descriptors_for_subtitle` append after
+via `MuxerProgramConfigBuilder::stream_descriptors_for_subtitle` append after
 the auto-emitted one (do NOT suppress; contrast with KLV's
 `KLVA`-suppression rule).
 
 ```rust
-use tst_core::mpegts::mux::{MuxerConfig, Muxer, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{
+    Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec, VideoCodec,
+};
 
-let cfg = MuxerConfig::builder()
-    .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
-    .end_program()
-    .build()?;
+let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+prog.add_video(0x101, VideoCodec::H264);
+prog.add_subtitle(0x200, SubtitleCodec::WebVttInTs);
+
+let mut b = MuxerConfig::builder();
+b.add_program(prog.build());
+let cfg = b.build()?;
 let mut mux = Muxer::new(cfg)?;
 let h = mux.subtitle_handles()[0];
 mux.push_subtitle_to(

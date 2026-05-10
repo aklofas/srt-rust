@@ -12,7 +12,9 @@
 use std::env;
 use std::fs::File;
 use std::io::Write;
-use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 // PIDs are 13-bit identifiers in the TS header. The reserved well-known
 // values are 0x0000 (PAT) and 0x1FFF (null padding); elementary streams
@@ -42,9 +44,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // stream specs nest inside it and `end_program()` closes the block.
     // Calling `.build()` applies defaults for PCR/PSI/buffer intervals.
     // -----------------------------------------------------------------
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(VIDEO_PID, VideoCodec::H265)
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(VIDEO_PID, VideoCodec::H265);
         // SynchronousMetadata (PMT stream_type 0x15) is strict
         // sync KLV per MISB ST 1402.2 § 9.4.1 / ITU-T H.222.0
         // V9 § 2.12.4.2. The muxer auto-prepends a 5-byte
@@ -60,9 +62,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // record with the corresponding video frame. The
         // combo `SynchronousMetadata + carries_pts: false` is
         // rejected by `MuxerConfig::validate`.
-        .add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true)
-        .end_program()
-        .build()?;
+        prog.add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build()?
+    };
 
     // `Muxer::new` runs `MuxerConfig::validate` and returns
     // `MuxError::InvalidConfig` if anything is wrong (duplicate PIDs,

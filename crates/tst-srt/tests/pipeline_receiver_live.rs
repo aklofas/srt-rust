@@ -26,7 +26,9 @@ use common::synthetic_nal;
 use std::thread;
 use std::time::Duration;
 use tst_core::mpegts::demux::DemuxEvent;
-use tst_core::mpegts::mux::{KlvStreamType, MuxerConfigBuilder, VideoCodec as MuxVideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
+};
 use tst_pipeline::{DemuxReceiver, DemuxReceiverError, MuxSender, TransportError};
 use tst_srt::SrtTransport;
 use tst_srt::{ListenerBuilder, SocketBuilder};
@@ -89,13 +91,14 @@ fn end_to_end_sender_to_receiver() {
         // `add_klv(.., PrivateData, false)` matches the demuxer's async-KLV
         // recognition path — `false` means the muxer doesn't emit a PTS on
         // the KLV PES (typical for low-rate metadata).
-        let cfg = MuxerConfigBuilder::default()
-            .add_program(1, 0x1000)
-            .add_video(0x100, MuxVideoCodec::H264)
-            .add_klv(0x101, KlvStreamType::PrivateData, false)
-            .end_program()
-            .build()
-            .expect("build mux config");
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, MuxVideoCodec::H264);
+            prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().expect("build mux config")
+        };
         let sender = MuxSender::new(SrtTransport::new(socket), cfg).expect("sender");
 
         let klv = minimal_klv();

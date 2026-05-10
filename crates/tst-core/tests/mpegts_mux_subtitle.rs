@@ -2,7 +2,9 @@
 //! (`mpegts::mux`).
 
 use tst_core::error::MuxError;
-use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec, VideoCodec,
+};
 
 /// Drain every queued packet from the muxer into a single Vec.
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
@@ -36,13 +38,14 @@ fn webvtt_cue(pts: i64, text: &str) -> Vec<u8> {
 
 #[test]
 fn mux_webvtt_in_single_program() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(0x200, SubtitleCodec::WebVttInTs);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
     mux.push_subtitle_to(h, 90_000, &webvtt_cue(90_000, "POI #1"))
@@ -61,10 +64,10 @@ fn mux_webvtt_in_single_program() {
 
 #[test]
 fn mux_dvb_subtitling_multiple_languages() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(
             0x200,
             SubtitleCodec::DvbSubtitling {
                 language: *b"eng",
@@ -72,8 +75,8 @@ fn mux_dvb_subtitling_multiple_languages() {
                 composition_page_id: 1,
                 ancillary_page_id: 1,
             },
-        )
-        .add_subtitle(
+        );
+        prog.add_subtitle(
             0x201,
             SubtitleCodec::DvbSubtitling {
                 language: *b"spa",
@@ -81,10 +84,11 @@ fn mux_dvb_subtitling_multiple_languages() {
                 composition_page_id: 2,
                 ancillary_page_id: 2,
             },
-        )
-        .end_program()
-        .build()
-        .unwrap();
+        );
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     assert_eq!(mux.subtitle_handles().len(), 2);
     let handles = mux.subtitle_handles();
@@ -98,18 +102,19 @@ fn mux_dvb_subtitling_multiple_languages() {
 
 #[test]
 fn mux_subtitle_with_klv_same_program_no_classification_collision() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_klv(
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_klv(
             0x300,
             KlvStreamType::PrivateData,
             /* carries_pts = */ false,
-        )
-        .add_subtitle(0x400, SubtitleCodec::WebVttInTs)
-        .end_program()
-        .build()
-        .unwrap();
+        );
+        prog.add_subtitle(0x400, SubtitleCodec::WebVttInTs);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     mux.push_klv(b"\x06\x0E\x2B\x34short", 90_000, 0x00)
         .unwrap();
@@ -127,17 +132,18 @@ fn mux_subtitle_with_klv_same_program_no_classification_collision() {
 
 #[test]
 fn mux_multi_program_webvtt_and_klv() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
-        .end_program()
-        .add_program(2, 0x300)
-        .add_video(0x301, VideoCodec::H265)
-        .add_klv(0x400, KlvStreamType::PrivateData, false)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog0 = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog0.add_video(0x101, VideoCodec::H264);
+        prog0.add_subtitle(0x200, SubtitleCodec::WebVttInTs);
+        let mut prog1 = MuxerProgramConfigBuilder::new(2, 0x300);
+        prog1.add_video(0x301, VideoCodec::H265);
+        prog1.add_klv(0x400, KlvStreamType::PrivateData, false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog0.build());
+        b.add_program(prog1.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
     mux.push_subtitle_to(h, 90_000, b"WEBVTT\n").unwrap();
@@ -147,13 +153,14 @@ fn mux_multi_program_webvtt_and_klv() {
 
 #[test]
 fn mux_push_subtitle_too_large_rejected() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(0x200, SubtitleCodec::WebVttInTs);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let too_big = vec![0u8; 70_000];
     let err = mux.push_subtitle(0, &too_big).unwrap_err();

@@ -10,7 +10,7 @@
 use std::collections::VecDeque;
 use tracing_test::traced_test;
 
-use tst_core::mpegts::mux::{MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_core::transport::{RecvTransport, Transport, TransportError};
 
 use tst_pipeline::{
@@ -65,12 +65,13 @@ impl RecvTransport for Source {
 #[traced_test]
 #[test]
 fn mux_sender_emits_open_and_close_events() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x1011, VideoCodec::H264)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     {
         let _sender = MuxSender::new(Sink(Vec::new()), cfg).unwrap();
         // Drops at end of block.

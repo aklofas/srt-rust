@@ -4,17 +4,20 @@ use tst_core::mpegts::demux::{
     Demuxer,
     event::{AudioCodec, DemuxEvent, SamplePayload},
 };
-use tst_core::mpegts::mux::{AudioCodec as MuxAudioCodec, Muxer, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{
+    AudioCodec as MuxAudioCodec, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 /// Helper: mux audio + video, drain bytes, return them.
 fn mux_audio_video(codec: MuxAudioCodec, audio_pid: u16) -> Vec<u8> {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_audio(audio_pid, codec)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_audio(audio_pid, codec);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut muxer = Muxer::new(cfg).unwrap();
     let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1F];
     muxer.push_video(&nal, 90_000, true).unwrap();

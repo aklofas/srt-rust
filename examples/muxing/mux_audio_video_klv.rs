@@ -40,7 +40,9 @@ use std::fs::File;
 use std::io::Write;
 
 use tst_core::klv::st0601::{UasDatalinkLs, encode_to_vec};
-use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, Muxer, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{
+    AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 // Clippy's `field_reassign_with_default` would prefer struct-update syntax,
 // but we use field-by-field reassignment on purpose to group related ST 0601
@@ -67,18 +69,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // All streams clock from the same 90 kHz reference. PCR
     // (Program Clock Reference) pace defaults to the first video
     // stream's PID when not pinned explicitly.
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000) // program_number=1, PMT at PID 0x1000
-        .add_video(0x100, VideoCodec::H264)
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
         // KLV at PMT stream_type 0x06 (PrivateData) + KLVA registration
         // descriptor. This is the broadly-recognized async-KLV carriage form.
         // Real streams: PrivateData (async) or SynchronousMetadata (sync, keyframe-locked).
-        .add_klv(0x200, KlvStreamType::PrivateData, false) // carries_pts: false (async)
+        prog.add_klv(0x200, KlvStreamType::PrivateData, false); // carries_pts: false (async)
         // MP2 audio at PMT stream_type 0x03. To swap to AAC ADTS
         // (0x0F) or AAC LATM (0x11), change AudioCodec variant.
-        .add_audio(0x300, AudioCodec::Mp2)
-        .end_program()
-        .build()?;
+        prog.add_audio(0x300, AudioCodec::Mp2);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build()?
+    };
 
     let mut muxer = Muxer::new(cfg)?;
     let mut out = File::create(&out_path)?;

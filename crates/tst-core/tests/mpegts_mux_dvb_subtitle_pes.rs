@@ -1,6 +1,8 @@
 //! Verifies DVB-sub PES_data_field auto-wrap per ETSI EN 300 743 §6.2.
 
-use tst_core::mpegts::mux::{Muxer, MuxerConfigBuilder, SubtitleCodec, VideoCodec};
+use tst_core::mpegts::mux::{
+    Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec, VideoCodec,
+};
 
 /// Drain the muxer once and reassemble the PES payload (post-PES-header)
 /// from every TS packet on `pid`. Skips adaptation field and the PES header
@@ -34,10 +36,10 @@ fn reassemble_pes_payload(mux: &mut Muxer, pid: u16) -> Vec<u8> {
 
 #[test]
 fn dvb_sub_push_emits_data_identifier_stream_id_segments_marker() {
-    let cfg = MuxerConfigBuilder::default()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(
             0x200,
             SubtitleCodec::DvbSubtitling {
                 language: *b"eng",
@@ -45,10 +47,11 @@ fn dvb_sub_push_emits_data_identifier_stream_id_segments_marker() {
                 composition_page_id: 1,
                 ancillary_page_id: 1,
             },
-        )
-        .end_program()
-        .build()
-        .unwrap();
+        );
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
 
     // Synthetic page_composition_segment per EN 300 743 §7.2.2 Table 9:
@@ -85,10 +88,10 @@ fn dvb_sub_multi_segment_push_chains_segments_between_envelope() {
     // Two synthetic segments back-to-back. Library must concatenate them
     // verbatim between the data_id/stream_id prefix and the 0xFF marker —
     // not interpret the bytes (e.g. wouldn't insert a second 0x20 between).
-    let cfg = MuxerConfigBuilder::default()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(
             0x200,
             SubtitleCodec::DvbSubtitling {
                 language: *b"eng",
@@ -96,10 +99,11 @@ fn dvb_sub_multi_segment_push_chains_segments_between_envelope() {
                 composition_page_id: 1,
                 ancillary_page_id: 1,
             },
-        )
-        .end_program()
-        .build()
-        .unwrap();
+        );
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
 
     let mut payload = Vec::new();

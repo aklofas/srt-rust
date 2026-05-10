@@ -8,7 +8,9 @@ mod common;
 
 use common::synthetic_nal;
 use common::ts_parser;
-use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, StreamSpec, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, StreamSpec, VideoCodec,
+};
 
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();
@@ -58,13 +60,14 @@ fn h264_async_klv_roundtrip() {
 
 #[test]
 fn h265_async_klv_roundtrip() {
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x1011, VideoCodec::H265)
-        .add_klv(0x1031, KlvStreamType::PrivateData, false)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H265);
+        prog.add_klv(0x1031, KlvStreamType::PrivateData, false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
     let video = synthetic_nal::h265_au(1200, true);
     let klv = synthetic_nal::klv_blob(50);

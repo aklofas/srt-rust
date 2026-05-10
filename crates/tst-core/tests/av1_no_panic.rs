@@ -12,10 +12,10 @@
 //! Inputs are chosen to exercise every truncation / malformed-header
 //! variant that the parsers must handle gracefully.
 
-use tst_core::codec::CodecParseError;
-use tst_core::codec::av1::{parse_frame_header_light, parse_obu_stream, parse_sequence_header};
-use tst_core::codec::av1::sequence_header::Av1SequenceHeader;
 use tst_core::codec::ChromaFormat;
+use tst_core::codec::CodecParseError;
+use tst_core::codec::av1::sequence_header::Av1SequenceHeader;
+use tst_core::codec::av1::{parse_frame_header_light, parse_obu_stream, parse_sequence_header};
 use tst_core::mpegts::demux::event::Obu;
 
 // ---------------------------------------------------------------------------
@@ -149,17 +149,17 @@ fn empty_frame_header_reduced_path_succeeds() {
 fn obu_stream_with_all_malformed_payloads_does_not_panic() {
     let obus = vec![
         Obu {
-            obu_type: 1,       // Sequence Header
+            obu_type: 1, // Sequence Header
             extension: None,
-            payload: vec![],   // empty — will fail to parse
+            payload: vec![], // empty — will fail to parse
         },
         Obu {
-            obu_type: 3,       // Frame Header
+            obu_type: 3, // Frame Header
             extension: None,
             payload: vec![0xFF, 0xFF], // no preceding SH → engine error
         },
         Obu {
-            obu_type: 1,       // Another malformed SH
+            obu_type: 1, // Another malformed SH
             extension: None,
             payload: vec![0xAA, 0xBB],
         },
@@ -202,5 +202,8 @@ fn obu_stream_truncated_frame_header_in_unparseable() {
         1,
         "truncated FH should be in unparseable"
     );
-    assert_eq!(stream.unparseable[0].0, 3, "obu_type in unparseable should be 3");
+    assert_eq!(
+        stream.unparseable[0].0, 3,
+        "obu_type in unparseable should be 3"
+    );
 }

@@ -15,7 +15,7 @@
 
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DiscontinuityKind};
 use tst_core::mpegts::mux::{
-    KlvStreamType, Muxer, MuxerConfigBuilder, VideoCodec as MuxVideoCodec,
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
 
 fn drain(m: &mut Muxer) -> Vec<u8> {
@@ -39,13 +39,14 @@ fn drain(m: &mut Muxer) -> Vec<u8> {
 /// is configured so the PMT carries a KLVA registration descriptor, but
 /// no KLV payload is pushed — the goal is just a valid stream to corrupt.
 fn build_clean_stream() -> Vec<u8> {
-    let cfg = MuxerConfigBuilder::default()
-        .add_program(1, 0x1000)
-        .add_video(0x100, MuxVideoCodec::H264)
-        .add_klv(0x101, KlvStreamType::PrivateData, false)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, MuxVideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut m = Muxer::new(cfg).unwrap();
     // ~400-byte AU with AUD prefix + filler — produces 3 video TS packets.
     let mut au1 = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10];

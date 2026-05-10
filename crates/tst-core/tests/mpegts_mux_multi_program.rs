@@ -7,7 +7,8 @@ mod common;
 
 use common::synthetic_nal;
 use tst_core::mpegts::mux::{
-    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfig, StreamSpec, VideoCodec,
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfig, MuxerProgramConfigBuilder, StreamSpec,
+    VideoCodec,
 };
 
 /// Two-program config:
@@ -209,17 +210,18 @@ fn single_program_pat_unchanged() {
 
 #[test]
 fn config_builder_emits_multi_program_config() {
-    let config = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x1011, VideoCodec::H264)
-        .add_klv(0x1031, KlvStreamType::PrivateData, false)
-        .end_program()
-        .add_program(2, 0x1100)
-        .add_video(0x1111, VideoCodec::H265)
-        .add_klv(0x1131, KlvStreamType::PrivateData, false)
-        .end_program()
-        .build()
-        .unwrap();
+    let config = {
+        let mut prog0 = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog0.add_video(0x1011, VideoCodec::H264);
+        prog0.add_klv(0x1031, KlvStreamType::PrivateData, false);
+        let mut prog1 = MuxerProgramConfigBuilder::new(2, 0x1100);
+        prog1.add_video(0x1111, VideoCodec::H265);
+        prog1.add_klv(0x1131, KlvStreamType::PrivateData, false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog0.build());
+        b.add_program(prog1.build());
+        b.build().unwrap()
+    };
 
     assert_eq!(config.programs.len(), 2);
     assert_eq!(config.programs[0].program_number, 1);
@@ -284,17 +286,22 @@ fn bare_push_video_returns_ambiguous_target_with_two_programs() {
 #[test]
 fn config_builder_descriptors_for_video_attaches_to_correct_program() {
     use tst_core::mpegts::descriptors as desc;
-    let config = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x1011, VideoCodec::H264)
-        .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
-        .end_program()
-        .add_program(2, 0x1100)
-        .add_video(0x1111, VideoCodec::H265)
-        .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 4K")])
-        .end_program()
-        .build()
-        .unwrap();
+    let config = {
+        let mut prog0 = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog0.add_video(0x1011, VideoCodec::H264);
+        prog0
+            .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
+            .unwrap();
+        let mut prog1 = MuxerProgramConfigBuilder::new(2, 0x1100);
+        prog1.add_video(0x1111, VideoCodec::H265);
+        prog1
+            .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 4K")])
+            .unwrap();
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog0.build());
+        b.add_program(prog1.build());
+        b.build().unwrap()
+    };
 
     assert_eq!(
         config.programs[0].stream_descriptors[0][0],

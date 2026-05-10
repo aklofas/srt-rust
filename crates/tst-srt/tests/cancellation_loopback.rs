@@ -16,7 +16,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-use tst_core::mpegts::mux::{KlvStreamType, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_pipeline::{MuxSender, MuxSenderError, TransportError};
 use tst_srt::SrtTransport;
 use tst_srt::{ListenerBuilder, SocketBuilder};
@@ -72,13 +72,14 @@ fn close_unblocks_libsrt_parked_send() {
     );
 
     let transport = SrtTransport::new(socket);
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_klv(0x101, KlvStreamType::PrivateData, false)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let s = Arc::new(MuxSender::new(transport, cfg).unwrap());
     let s_send = s.clone();
 

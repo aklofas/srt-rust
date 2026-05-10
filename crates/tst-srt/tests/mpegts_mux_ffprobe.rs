@@ -10,7 +10,7 @@ mod common;
 
 use common::synthetic_nal;
 use std::process::Command;
-use tst_core::mpegts::mux::{Muxer, MuxerConfig};
+use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder};
 
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {
     let mut out = Vec::new();
@@ -110,15 +110,16 @@ fn ffprobe_recognizes_dual_camera_plus_klv() {
     }
 
     use tst_core::mpegts::mux::{KlvStreamType, VideoCodec};
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x1011, VideoCodec::H264) // EO
-        .add_video(0x1021, VideoCodec::H264) // IR
-        .add_klv(0x1031, KlvStreamType::PrivateData, false)
-        .pcr_pid(0x1011)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264); // EO
+        prog.add_video(0x1021, VideoCodec::H264); // IR
+        prog.add_klv(0x1031, KlvStreamType::PrivateData, false);
+        prog.pcr_pid(0x1011);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
 
     let eo = mux.video_stream_handle(0).unwrap();
@@ -319,14 +320,15 @@ fn ffprobe_roundtrip_audio_video_klv_three_streams() {
 
     use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, VideoCodec};
 
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x1000)
-        .add_video(0x100, VideoCodec::H264)
-        .add_audio(0x300, AudioCodec::Aac)
-        .add_klv(0x200, KlvStreamType::PrivateData, true)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_audio(0x300, AudioCodec::Aac);
+        prog.add_klv(0x200, KlvStreamType::PrivateData, true);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut muxer = Muxer::new(cfg).unwrap();
 
     // Drive enough content for ffprobe to recognize all three streams.
@@ -427,13 +429,14 @@ fn ffprobe_roundtrip_each_audio_codec() {
     ];
 
     for (codec, expected_codec_tag) in cases {
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x100, VideoCodec::H264)
-            .add_audio(0x300, codec)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_audio(0x300, codec);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let mut muxer = Muxer::new(cfg).unwrap();
 
         // Drive a few frames of synthetic audio/video.
@@ -508,10 +511,10 @@ fn ffprobe_validates_dvb_subtitling_round_trip() {
 
     use tst_core::mpegts::mux::{SubtitleCodec, VideoCodec};
 
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(
             0x200,
             SubtitleCodec::DvbSubtitling {
                 language: *b"eng",
@@ -519,10 +522,11 @@ fn ffprobe_validates_dvb_subtitling_round_trip() {
                 composition_page_id: 1,
                 ancillary_page_id: 1,
             },
-        )
-        .end_program()
-        .build()
-        .unwrap();
+        );
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
 
     // Drive a few video frames so the program has structure, plus a handful
@@ -584,10 +588,10 @@ fn ffprobe_validates_dvb_teletext_round_trip() {
 
     use tst_core::mpegts::mux::{SubtitleCodec, VideoCodec};
 
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(
             0x200,
             SubtitleCodec::DvbTeletext {
                 language: *b"eng",
@@ -595,10 +599,11 @@ fn ffprobe_validates_dvb_teletext_round_trip() {
                 magazine_number: 1,
                 page_number: 0x88,
             },
-        )
-        .end_program()
-        .build()
-        .unwrap();
+        );
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
 
     // Same shape as the DVB-sub case: a few video frames plus a handful of
@@ -656,13 +661,14 @@ fn ffprobe_validates_webvtt_in_ts_round_trip() {
 
     use tst_core::mpegts::mux::{SubtitleCodec, VideoCodec};
 
-    let cfg = MuxerConfig::builder()
-        .add_program(1, 0x100)
-        .add_video(0x101, VideoCodec::H264)
-        .add_subtitle(0x200, SubtitleCodec::WebVttInTs)
-        .end_program()
-        .build()
-        .unwrap();
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(0x200, SubtitleCodec::WebVttInTs);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
     let mut mux = Muxer::new(cfg).unwrap();
 
     // Push a handful of video frames so the program is well-formed, then a

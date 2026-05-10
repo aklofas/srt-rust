@@ -65,7 +65,9 @@ use std::fs;
 use std::io::Write;
 use tst_core::mpegts::demux::event::NalUnit;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
-use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ── Argument parsing ─────────────────────────────────────────────────────
@@ -105,22 +107,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //   auto-wraps each push in a fresh AU cell header. Here we use
     //   PrivateData to keep the example simple and work for both input
     //   KLV flavors.
-    let config = MuxerConfig::builder()
-        // Program 1: original PIDs from input 1, unchanged.
-        .add_program(1, 0x1000)
-        .add_video(0x1011, VideoCodec::H264)
-        .add_klv(0x1031, KlvStreamType::PrivateData, false)
-        .pcr_pid(0x1011)
-        // PCR pinned to the video PID — this is also the auto-default
-        // for single-video programs, included here for clarity.
-        .end_program()
-        // Program 2: renumbered PIDs from input 2.
-        .add_program(2, 0x1100)
-        .add_video(0x1111, VideoCodec::H264)
-        .add_klv(0x1131, KlvStreamType::PrivateData, false)
-        .pcr_pid(0x1111)
-        .end_program()
-        .build()?;
+    let config = {
+        let mut prog0 = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog0.add_video(0x1011, VideoCodec::H264);
+        prog0.add_klv(0x1031, KlvStreamType::PrivateData, false);
+        prog0.pcr_pid(0x1011);
+        let mut prog1 = MuxerProgramConfigBuilder::new(2, 0x1100);
+        prog1.add_video(0x1111, VideoCodec::H264);
+        prog1.add_klv(0x1131, KlvStreamType::PrivateData, false);
+        prog1.pcr_pid(0x1111);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog0.build());
+        b.add_program(prog1.build());
+        b.build()?
+    };
 
     let mut muxer = Muxer::new(config)?;
 

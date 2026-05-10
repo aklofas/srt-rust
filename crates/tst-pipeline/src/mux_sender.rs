@@ -155,7 +155,7 @@ impl<T: Transport> MuxSender<T> {
     /// # Example
     /// ```
     /// use tst_pipeline::MuxSender;
-    /// use tst_core::mpegts::mux::{MuxerConfig, VideoCodec};
+    /// use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
     /// use tst_core::transport::{Transport, TransportError};
     ///
     /// // In-memory sink; real callers plug in `tst_srt::SrtTransport`.
@@ -171,11 +171,11 @@ impl<T: Transport> MuxSender<T> {
     /// }
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let cfg = MuxerConfig::builder()
-    ///     .add_program(1, 0x1000)
-    ///     .add_video(0x1011, VideoCodec::H264)
-    ///     .end_program()
-    ///     .build()?;
+    /// let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+    /// prog.add_video(0x1011, VideoCodec::H264);
+    /// let mut b = MuxerConfig::builder();
+    /// b.add_program(prog.build());
+    /// let cfg = b.build()?;
     /// let sender = MuxSender::new(Sink(Vec::new()), cfg)?;
     ///
     /// // Minimal Annex-B H.264 IDR NAL (start code + nal_unit_type=5).
@@ -768,7 +768,9 @@ pub enum MuxSenderError {
 #[cfg(test)]
 mod multi_stream_tests {
     use super::*;
-    use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, StreamKind, SubtitleCodec, VideoCodec};
+    use tst_core::mpegts::mux::{
+        AudioCodec, KlvStreamType, MuxerProgramConfigBuilder, StreamKind, SubtitleCodec, VideoCodec,
+    };
     use tst_core::transport::{Transport, TransportError};
 
     /// In-memory transport that records every byte sent.
@@ -802,14 +804,15 @@ mod multi_stream_tests {
 
     #[test]
     fn sender_video_handles_returns_one_per_configured_video_stream() {
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x1011, VideoCodec::H264)
-            .add_video(0x1021, VideoCodec::H264)
-            .add_klv(0x1031, KlvStreamType::PrivateData, false)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H264);
+            prog.add_video(0x1021, VideoCodec::H264);
+            prog.add_klv(0x1031, KlvStreamType::PrivateData, false);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         assert_eq!(s.video_handles().len(), 2);
         assert_eq!(s.klv_handles().len(), 1);
@@ -817,15 +820,16 @@ mod multi_stream_tests {
 
     #[test]
     fn sender_send_video_to_routes_through() {
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x1011, VideoCodec::H264)
-            .add_video(0x1021, VideoCodec::H264)
-            .add_klv(0x1031, KlvStreamType::PrivateData, false)
-            .pcr_pid(0x1011)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H264);
+            prog.add_video(0x1021, VideoCodec::H264);
+            prog.add_klv(0x1031, KlvStreamType::PrivateData, false);
+            prog.pcr_pid(0x1011);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let ir = s.video_handles()[1];
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
@@ -837,13 +841,14 @@ mod multi_stream_tests {
 
     #[test]
     fn stats_starts_with_per_stream_entries_for_configured_streams() {
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x100, VideoCodec::H264)
-            .add_klv(0x101, KlvStreamType::PrivateData, false)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let st = s.stats();
         assert_eq!(st.bytes_sent, 0);
@@ -856,13 +861,14 @@ mod multi_stream_tests {
 
     #[test]
     fn stats_count_video_pushes() {
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x100, VideoCodec::H264)
-            .add_klv(0x101, KlvStreamType::PrivateData, false)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
         s.send_video(nal, 0, true).unwrap();
@@ -875,13 +881,14 @@ mod multi_stream_tests {
 
     #[test]
     fn reset_stats_zeros_counters_keeps_per_stream() {
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x100, VideoCodec::H264)
-            .add_klv(0x101, KlvStreamType::PrivateData, false)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
         s.send_video(nal, 0, true).unwrap();
@@ -897,13 +904,14 @@ mod multi_stream_tests {
     fn send_audio_pushes_through_pipeline() {
         // Single program, video + one audio stream. The bare send_audio
         // shorthand resolves because total_audio == 1 across the muxer.
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x100, VideoCodec::H264)
-            .add_audio(0x200, AudioCodec::Aac)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_audio(0x200, AudioCodec::Aac);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         // Synthetic audio frame bytes — the muxer doesn't validate the
         // codec payload here, so any non-empty buffer suffices.
@@ -920,14 +928,15 @@ mod multi_stream_tests {
     fn send_audio_to_routes_by_handle() {
         // Two audio streams — bare send_audio would reject with
         // AmbiguousTarget; send_audio_to disambiguates via handle.
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x100, VideoCodec::H264)
-            .add_audio(0x200, AudioCodec::Aac)
-            .add_audio(0x201, AudioCodec::Mp2)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_audio(0x200, AudioCodec::Aac);
+            prog.add_audio(0x201, AudioCodec::Mp2);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let handles = s.audio_handles();
         assert_eq!(handles.len(), 2);
@@ -941,13 +950,14 @@ mod multi_stream_tests {
 
     #[test]
     fn send_subtitle_pushes_through_pipeline() {
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x100, VideoCodec::H264)
-            .add_subtitle(0x300, SubtitleCodec::WebVttInTs)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_subtitle(0x300, SubtitleCodec::WebVttInTs);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         // A minimal WebVTT-in-TS cue body (the muxer doesn't validate
         // contents — it just frames the bytes into a PES).
@@ -962,14 +972,15 @@ mod multi_stream_tests {
 
     #[test]
     fn send_subtitle_to_routes_by_handle() {
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x100, VideoCodec::H264)
-            .add_subtitle(0x300, SubtitleCodec::WebVttInTs)
-            .add_subtitle(0x301, SubtitleCodec::WebVttInTs)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_subtitle(0x300, SubtitleCodec::WebVttInTs);
+            prog.add_subtitle(0x301, SubtitleCodec::WebVttInTs);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let handles = s.subtitle_handles();
         assert_eq!(handles.len(), 2);
@@ -983,14 +994,15 @@ mod multi_stream_tests {
 
     #[test]
     fn sender_send_video_rejects_when_multiple_video_streams_configured() {
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x1011, VideoCodec::H264)
-            .add_video(0x1021, VideoCodec::H264)
-            .add_klv(0x1031, KlvStreamType::PrivateData, false)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x1011, VideoCodec::H264);
+            prog.add_video(0x1021, VideoCodec::H264);
+            prog.add_klv(0x1031, KlvStreamType::PrivateData, false);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
         let err = s.send_video(&nal, 0, true).unwrap_err();
@@ -1009,7 +1021,7 @@ mod cancel_tests {
     use super::*;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use tst_core::mpegts::mux::{KlvStreamType, VideoCodec};
+    use tst_core::mpegts::mux::{KlvStreamType, MuxerProgramConfigBuilder, VideoCodec};
     use tst_core::transport::{Transport, TransportCancel, TransportError};
 
     /// Mock transport whose send_bytes blocks (parks) until cancel is
@@ -1060,13 +1072,14 @@ mod cancel_tests {
     #[test]
     fn close_unblocks_parked_sender_thread() {
         let cancelled = Arc::new(AtomicBool::new(false));
-        let cfg = MuxerConfig::builder()
-            .add_program(1, 0x1000)
-            .add_video(0x100, VideoCodec::H264)
-            .add_klv(0x101, KlvStreamType::PrivateData, false)
-            .end_program()
-            .build()
-            .unwrap();
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
         let s = Arc::new(
             MuxSender::new(
                 ParkableTransport {

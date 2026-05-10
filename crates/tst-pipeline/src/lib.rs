@@ -71,3 +71,16 @@ pub use sender::{Sender, SenderConfig, SenderError, SenderStats, TsFramingMode};
 
 // Re-export the core trait types for caller convenience.
 pub use tst_core::transport::{RecvTransport, Transport, TransportCancel, TransportError};
+
+// Re-export the concrete cross-thread shutdown primitive at the crate
+// root so FFI binding authors (`srt-jni`, `srt-uniffi`, `tst-pyo3`,
+// `tst-c`) have a single import path: `tst_pipeline::CancelHandle`.
+//
+// `CancelHandle` itself is defined in `tst-srt` (it wraps a libsrt
+// `SRTSOCKET` plus a closer closure); the pipeline-layer abstraction is
+// `TransportCancel` above. Shells accept `Option<Arc<dyn TransportCancel
+// + Send + Sync>>` via `cancel_handle()` — this re-export lets binding
+// authors name the concrete type when they need to construct one or
+// type-erase to it. See [`crate`]'s `cancel-handle.md` doc for the full
+// pattern.
+pub use tst_srt::CancelHandle;

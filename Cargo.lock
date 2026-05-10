@@ -1467,6 +1467,7 @@ dependencies = [
  "tracing",
  "tracing-test",
  "tst-core",
+ "tst-srt",
 ]
 
 [[package]]

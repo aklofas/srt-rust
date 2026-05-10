@@ -227,6 +227,34 @@ everyone. The three canonical pairing patterns live as cookbook
 recipes (12, 13, 14) with runnable example companions
 (`pair_sync_klv.rs`, `tee_disk_and_demux.rs`).
 
+## Cross-thread shutdown — `CancelHandle`
+
+Every long-lived pipeline shell exposes a
+[`CancelHandle`](./cancel-handle.md) for cross-thread cancellation. The
+handle is `Send + Sync`, one-shot, idempotent, and `Clone` — fire it
+from any thread (a signal handler, a lifecycle observer, a parent-process
+watchdog) and the parked `send_*` / `recv_*` on the calling thread
+returns within one libsrt I/O cycle (3–10 ms). Bindings expose this as
+a language-native shutdown primitive (Kotlin `Job.cancel()` analog,
+Swift `Task.cancel()` analog, Python `threading.Event` analog, C
+`tst_cancel_handle_cancel()` once the receiver-side C ABI ships).
+
+This is the supported shape for breaking a sync-blocking shell from
+another thread. Shells return the trait-object form
+`Option<Arc<dyn TransportCancel + Send + Sync>>` — pipeline-layer,
+transport-agnostic. The concrete struct lives in `tst-srt`
+(`CancelHandle` wraps an `SRTSOCKET` plus a closer closure) and is
+re-exported as `tst_pipeline::CancelHandle` so binding authors have a
+single import path. The Rust API stays synchronous-blocking; the cancel
+handle is the supported escape hatch for "wake the parked syscall now"
+without time-sliced polling. (When async lands later as a separate
+crate, `CancelHandle` remains the sync-blocking primitive — see
+**Sync vs. async** below.)
+
+See [`cancel-handle.md`](./cancel-handle.md) for the full pattern,
+threading guarantees, and per-language idiom table; cookbook recipe 31
+is the runnable companion.
+
 ## Sync vs. async
 
 The public API is sync blocking. `Socket::send` and `Socket::recv` block

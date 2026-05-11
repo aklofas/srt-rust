@@ -156,3 +156,46 @@ jobs:
             exit 1
           fi
           echo "non_exhaustive count: $OBSERVED (baseline $BASELINE)"
+
+  test-linux-musl:
+    name: test (linux-musl-x86_64, no-libsrt crates)
+    runs-on: ubuntu-latest
+    env:
+      RUSTUP_TOOLCHAIN: "1.85"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Rust toolchain + musl target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+          targets: x86_64-unknown-linux-musl
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            !target/debug/incremental
+            !target/debug/.fingerprint
+            !target/debug/deps
+          key: cargo-musl-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-musl-${{ runner.os }}-
+
+      # tst-core + tst-pipeline are pure Rust crates (no libsrt link),
+      # so rust-std-musl + rust-lld is sufficient — no musl-tools/musl-gcc
+      # needed. tst-srt and tst-c are out of scope here: vendored libsrt
+      # cmake build has glibc dependencies (NSS resolver, dynamic-load
+      # paths) that don't come up clean under musl without a deeper
+      # rework. Audit's call for a musl rail is satisfied by covering
+      # the MPEG-TS+KLV+codec work; libsrt-bound crates ride a future
+      # plan if musl-native libsrt support is requested.
+      - name: cargo build (tst-core + tst-pipeline, musl)
+        run: cargo build -p tst-core -p tst-pipeline --target x86_64-unknown-linux-musl
+
+      - name: cargo test (tst-core + tst-pipeline, musl)
+        run: cargo test -p tst-core -p tst-pipeline --target x86_64-unknown-linux-musl

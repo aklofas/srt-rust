@@ -529,7 +529,9 @@ impl<T: Transport> MuxSender<T> {
         inner.muxer.reset_stats();
     }
 
-    /// Close the sender. Idempotent.
+    /// Close the sender. Idempotent. Best-effort drains any pending
+    /// bytes buffered during a prior back-pressure event, then marks
+    /// the sender closed and closes the underlying transport.
     ///
     /// Wakes any thread parked inside `send_video` / `send_klv` / `send_*_to`
     /// by cancelling the underlying transport BEFORE acquiring the inner
@@ -537,17 +539,34 @@ impl<T: Transport> MuxSender<T> {
     /// promptly with `TransportError::Broken`. Without this cancel-first
     /// step the close would deadlock against the parked send for the
     /// duration of `SRTO_SNDTIMEO` (or forever, on the libsrt default).
+    ///
+    /// Pending-bytes drain is best-effort; if the transport rejects on
+    /// drain (typically because it's already broken), the bytes are
+    /// silently abandoned. This matches Drop semantics.
+    ///
+    /// Poisoned-lock handling: if a prior panic poisoned the inner mutex,
+    /// `close` silently returns rather than panic — parity with Drop.
     pub fn close(&self) {
         // Cancel-first: wake any peer thread parked inside
         // transport.send_bytes so they return TransportError::Broken and
         // release the inner Mutex. Otherwise we'd deadlock here waiting
-        // for the lock.
+        // for the lock. Must happen BEFORE the lock acquisition.
         if let Some(c) = &self.cancel {
             c.cancel();
         }
-        let mut inner = self.inner.lock().unwrap();
-        inner.closed = true;
-        inner.transport.close();
+        // Graceful poisoned-lock handling — mirrors Drop's `if let Ok`.
+        // If the lock is poisoned, the underlying transport may already
+        // have closed itself via the cancel above; abandon pending.
+        if let Ok(mut inner) = self.inner.lock() {
+            // Best-effort drain BEFORE marking closed; otherwise drain_pending
+            // bails on the `self.closed` guard inside its helpers (the
+            // Inner::send_* methods short-circuit on closed; drain_pending
+            // does not currently check `closed`, but matching the order
+            // keeps the future-proof contract obvious).
+            let _ = inner.drain_pending();
+            inner.closed = true;
+            inner.transport.close();
+        }
     }
 
     /// Snapshot of the underlying transport's cancel handle, if it

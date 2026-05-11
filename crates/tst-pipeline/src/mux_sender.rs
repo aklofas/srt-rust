@@ -1083,6 +1083,82 @@ mod multi_stream_tests {
             other => panic!("expected AmbiguousTarget, got {other:?}"),
         }
     }
+
+    /// Transport that errors the first N send_bytes calls (back-pressure
+    /// simulation), then accepts. Captured bytes are exposed via an external
+    /// Arc<Mutex<Vec<u8>>> snoop slot since MuxSender takes the transport by
+    /// value (MemTransport above isn't observable post-construction).
+    struct BackpressureOnce {
+        fail_remaining: std::sync::atomic::AtomicUsize,
+        bytes: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    }
+    impl BackpressureOnce {
+        fn new(fail_first: usize, snoop: std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> Self {
+            Self {
+                fail_remaining: std::sync::atomic::AtomicUsize::new(fail_first),
+                bytes: snoop,
+            }
+        }
+    }
+    impl Transport for BackpressureOnce {
+        fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+            let prev = self
+                .fail_remaining
+                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            if prev > 0 {
+                return Err(TransportError::Backpressure(
+                    "backpressure-once".to_string(),
+                ));
+            }
+            self.bytes.lock().unwrap().extend_from_slice(b);
+            Ok(())
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn close(&mut self) {}
+        fn is_alive(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn close_drains_pending_bytes() {
+        // Reproduces PIPE-02: MuxSender::close must drain pending_bytes
+        // before marking closed; otherwise queued back-pressure-buffered
+        // chunks are silently abandoned on explicit close.
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+        // Snoop slot exposes BackpressureOnce's captured bytes externally.
+        let snoop = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        // Fail first send_bytes: forces the muxer's emitted bundle to land in
+        // pending_bytes (Inner::drain_muxer reacts to TransportError::Backpressure).
+        let transport = BackpressureOnce::new(1, snoop.clone());
+        let sender = MuxSender::new(transport, cfg).unwrap();
+
+        // Minimal Annex-B H.264 IDR NAL.
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0xBB];
+        // First send: muxer emits a bundle, transport rejects, bundle lands
+        // in pending_bytes. send_video returns Err(Backpressure) — ignore;
+        // the relevant assertion is about close's post-condition.
+        let _ = sender.send_video(&nal, 0, true);
+
+        sender.close();
+
+        // Pre-fix: 0 bytes captured (pending abandoned by close).
+        // Post-fix: > 0 bytes captured (close drained pending; transport's
+        // 2nd send_bytes call succeeded with prev=0).
+        let captured = snoop.lock().unwrap().len();
+        assert!(
+            captured > 0,
+            "MuxSender::close must drain pending_bytes (parity with Drop); captured = {captured}"
+        );
+    }
 }
 
 #[cfg(test)]

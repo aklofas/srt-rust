@@ -1007,13 +1007,18 @@ mod tests {
 
     #[test]
     fn decode_imapb_happy_path() {
-        // FOV = 90.0° encoded as IMAPB(0, 180, 2) per
-        // ST 0903.6 §10.1.11. With span=180, sF = 2^8 / 2^15 =
-        // 1/128 = 0.0078125. Encode: signed = round(90/sF) - 2^15
-        // = 11520 - 32768 = -21248. Two-byte two's complement of
-        // -21248 is 0xAD00.
+        // FOV = 90.0° encoded as IMAPB(0, 180, 2) per ST 0903.6
+        // §10.1.11 worked example. The spec-correct encoding for
+        // 90.0° in this range is the byte pair 0x2D 0x00.
+        //
+        // Historical note: the pre-fix substrate used a signed-
+        // midpoint formula that produced 0xAD 0x00 for the same
+        // input (and this test was transcribed from that wrong
+        // output). Tasks 1–5 of plan
+        // 2026-05-10-klv-wire-format-critical-fixes corrected the
+        // substrate; this test now codifies the spec result.
         let mut bytes = minimal_ls_bytes();
-        bytes.extend_from_slice(&[11, 2, 0xAD, 0x00]);
+        bytes.extend_from_slice(&[11, 2, 0x2D, 0x00]);
         let ls = decode(&bytes).unwrap();
         let fov = ls.horizontal_fov.expect("horizontal_fov decoded");
         assert!((fov - 90.0).abs() < 0.01, "got fov={fov}, expected ~90.0");

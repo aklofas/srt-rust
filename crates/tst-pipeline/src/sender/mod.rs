@@ -48,10 +48,13 @@ pub enum SenderError {
 ///    partial bundle and closes the underlying transport. Synchronous;
 ///    bounded by `SRTO_LINGER` (libsrt default 30 s, configurable via
 ///    `SocketBuilder::linger`).
-/// 2. **Explicit close** — call [`Self::close`]. Marks the sender closed
-///    so subsequent `send_ts` / `flush` calls return
+/// 2. **Explicit close** — call [`Self::close`]. Best-effort flushes
+///    any buffered partial bundle (same as Drop), marks the sender
+///    closed so subsequent `send_ts` / `flush` calls return
 ///    [`SenderError::Transport`]`(`[`tst_core::transport::TransportError::Closed`]`)`,
-///    then closes the transport. Idempotent.
+///    then closes the transport. Idempotent. Equivalent to Drop —
+///    `AutoCloseable`/`__exit__`/`.use { }` bindings that call
+///    `close()` in their cleanup path do not lose any buffered bytes.
 /// 3. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
 ///    `Send + Sync` [`tst_core::transport::TransportCancel`] handle,
 ///    then `cancel()` from any thread. Wakes a peer thread parked in
@@ -260,6 +263,9 @@ impl<T: Transport> Sender<T> {
 /// ```
 pub type BoxedSender = Sender<Box<dyn crate::Transport>>;
 
+/// Drop flushes any buffered partial bundle (best-effort), then closes
+/// the transport. Equivalent to calling [`Sender::close`] explicitly —
+/// FFI bindings may use either idiom.
 impl<T: Transport> Drop for Sender<T> {
     fn drop(&mut self) {
         if !self.closed {

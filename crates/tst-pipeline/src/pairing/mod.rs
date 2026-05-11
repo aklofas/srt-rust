@@ -19,11 +19,31 @@
 //! # PTS handling
 //!
 //! All time values are in 90 kHz ticks per ISO/IEC 13818-1. The demuxer
-//! absorbs 33-bit PTS rollover into stream-monotonic `i64` (see
-//! `mpegts::common::pts_diff_33bit`), so the pairer subtracts directly
-//! without rollover handling. Use
-//! [`tst_core::mpegts::demux::pts_to_duration`] for diagnostic
-//! conversion.
+//! emits per-event PTS values bounded `0..(2^33 − 1)` per H.222.0 V9
+//! §2.4.3.7 — the field's 33-bit unsigned range. Two consequences for
+//! the pairer:
+//!
+//! - **Within a non-rollover window** (≤ 26.5 h continuous, the field's
+//!   wrap period at 90 kHz), PTS values are monotone-non-decreasing
+//!   stream-internally, and the pairer's direct subtraction is correct.
+//!   This is the documented and tested operating envelope.
+//! - **Across the 33-bit rollover boundary**, the demuxer's emitted PTS
+//!   wraps back to 0 (it does not accumulate stream-monotonic deltas).
+//!   The pairer treats the post-wrap value as a fresh stream prefix —
+//!   videos buffered pre-wrap will force-emit as `UnpairedVideo` once
+//!   the wait window closes. Long-session callers who care about
+//!   continuity-across-wrap should either restart the pairer at the
+//!   wrap boundary or use a higher-level monotone PTS source.
+//!
+//! Internal arithmetic uses `saturating_add` / `saturating_sub` against
+//! `i64::MAX` so non-conformant sources feeding raw 33-bit PTS values
+//! (or values past the spec range) cannot trigger overflow.
+//! `tst_core::mpegts::common::pts_diff_33bit` is available as a
+//! defensive primitive if downstream pairer extensions need wrap-aware
+//! delta math.
+//!
+//! Use [`tst_core::mpegts::demux::pts_to_duration`] for diagnostic
+//! conversion to `Duration`.
 //!
 //! # Cross-language wrappers
 //!

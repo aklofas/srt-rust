@@ -12,8 +12,56 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Phase 1 (SemVer ratchet), Phase 2 (DX + observability), Phase 3
 (FFI-readiness), Phase 4 (performance hot paths), Phase 5
 (internal hygiene), and Phase 6 (test infrastructure) of the Rust
-quality + DX + FFI refactor. Plan #39 (examples reorganization) also
-rides this release.
+quality + DX + FFI refactor. Plan #39 (examples reorganization) and
+plan #44 (KLV wire-format critical fixes from the 2026-05-10
+spec-validation audit) also ride this release.
+
+---
+
+### KLV wire-format critical fixes (2026-05-10) — plan #44
+
+Two wire-format-incompatible KLV defects from the 2026-05-10 spec-validation
+audit. Both defects predate any external consumer; pre-1.0 break per the
+break-freely policy.
+
+#### Fixed (wire-format breaking)
+
+- **`klv::imapb`** — encoder now writes unsigned big-endian per ST 1201.5
+  §7.2.3 Table 1; previously emitted signed two's-complement, MSB-flipping
+  every value. Also: truncate (not round) per §7.2.1 step 4a; proper
+  `Zoffset = sF·a − floor(sF·a)` per §7.1.2 step 6 when the range straddles
+  zero. Length cap widened from `1..=7` to `1..=8`. Affects every ST 0903
+  VMTI emit and the VTargetPack IMAPB-encoded tags 10-16. Internal
+  round-trips were previously consistent (encode + decode agreed on the
+  wrong algorithm), masking the wire-format break. Supersedes the
+  `length: 1..=7` claim from the Phase 6 entry below — Phase 6 introduced
+  the typed error variants; plan #44 widens the cap to spec.
+
+- **`klv::st0601::UasDatalinkLs`** — Tag 50 is now correctly typed as
+  Platform Angle of Attack (int16 mapped to ±20°, sentinel `0x8000`) per
+  ST 0601.19 §8.50; the previous "Platform Call Sign" typing was a
+  misidentification. Platform Call Sign moves to Tag 59 (utf8 ≤ 127 B)
+  per §8.59. New struct field: `platform_angle_of_attack_deg: Option<f64>`.
+  Existing `platform_call_sign: Option<String>` field is preserved by
+  name but now serializes to Tag 59. The `KlvEncodeError::StringTooLong`
+  emitted for an over-length call sign now reports `tag: 59`.
+
+#### Tests
+
+- New ST 1201.5 spec-vector tests in `klv::imapb`: Appendix A Tests 2 + 3,
+  ST 0903.6 §10.1.11 worked example (FOV 12.5° / 10.0° / 90.0°), and an
+  L=8 round-trip.
+- New ST 0601 wire-pin tests: `tag_50_is_platform_angle_of_attack_int16_per_spec`
+  and `tag_59_is_platform_call_sign_utf8_per_spec`.
+- Synthetic fixture `synthetic_full.klv` regenerated to exercise both
+  Tag 50 and Tag 59 in the integration-test fixture-decode path.
+
+#### Substrate cleanup
+
+- `klv::imapb::ImapbParams` lost private `scale()` + `signed_offset()`
+  methods; gained `sf()` + `z_offset()` per ST 1201.5 §8.9 Summary.
+- Dead `write_signed_be` + `read_signed_be` helpers removed (audit
+  finding KLV-SUB-09 — `1u64 << 64` UB risk at n=8 obviated by deletion).
 
 ---
 

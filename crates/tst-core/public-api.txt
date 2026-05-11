@@ -1707,6 +1707,7 @@ pub tst_core::klv::st0601::UasDatalinkLs::generic_flag_data: core::option::Optio
 pub tst_core::klv::st0601::UasDatalinkLs::image_coordinate_system: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::image_source_sensor: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::mission_id: core::option::Option<alloc::string::String>
+pub tst_core::klv::st0601::UasDatalinkLs::platform_angle_of_attack_deg: core::option::Option<f64>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_call_sign: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_designation: core::option::Option<alloc::string::String>
 pub tst_core::klv::st0601::UasDatalinkLs::platform_heading_deg: core::option::Option<f64>
@@ -4905,6 +4906,7 @@ pub tst_core::UasDatalinkLs::generic_flag_data: core::option::Option<u8>
 pub tst_core::UasDatalinkLs::image_coordinate_system: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::image_source_sensor: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::mission_id: core::option::Option<alloc::string::String>
+pub tst_core::UasDatalinkLs::platform_angle_of_attack_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::platform_call_sign: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::platform_designation: core::option::Option<alloc::string::String>
 pub tst_core::UasDatalinkLs::platform_heading_deg: core::option::Option<f64>

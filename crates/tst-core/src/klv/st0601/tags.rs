@@ -387,6 +387,17 @@ pub(crate) const TAGS: &[TagSpec] = &[
     },
     TagSpec {
         id: 50,
+        name: "Platform Angle of Attack",
+        encoding: Encoding::I16Range,
+        range: Some(LinearRange {
+            signed: true,
+            byte_length: 2,
+            min: -20.0,
+            max: 20.0,
+        }),
+    },
+    TagSpec {
+        id: 59,
         name: "Platform Call Sign",
         encoding: Encoding::Utf8 { max_bytes: 127 },
         range: None,

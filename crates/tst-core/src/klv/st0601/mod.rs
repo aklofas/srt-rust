@@ -52,6 +52,8 @@ pub struct UasDatalinkLs {
     pub platform_pitch_full_deg: Option<f64>,
     /// Item 91: Platform Roll Angle (Full) — int32 mapped to ±90°.
     pub platform_roll_full_deg: Option<f64>,
+    /// Item 50: Platform Angle of Attack — int16 mapped to ±20°.
+    pub platform_angle_of_attack_deg: Option<f64>,
 
     // Sensor pose & position
     pub sensor_lat_deg: Option<f64>,
@@ -129,6 +131,7 @@ impl Default for UasDatalinkLs {
             platform_indicated_airspeed: None,
             platform_pitch_full_deg: None,
             platform_roll_full_deg: None,
+            platform_angle_of_attack_deg: None,
             sensor_lat_deg: None,
             sensor_lon_deg: None,
             sensor_alt_m: None,
@@ -458,7 +461,8 @@ fn each_typed_field<F: FnMut(u8, usize)>(
             33 => record.corner_lon_offset_p4_deg.map(|_| 2),
             47 => record.generic_flag_data.map(|_| 1),
             48 => record.security_local_set.as_ref().map(|v| v.len()),
-            50 => record.platform_call_sign.as_ref().map(|s| s.len()),
+            50 => record.platform_angle_of_attack_deg.map(|_| 2),
+            59 => record.platform_call_sign.as_ref().map(|s| s.len()),
             65 => record
                 .uas_ls_version
                 .map(|_| 1)
@@ -552,10 +556,11 @@ fn write_typed_fields(
             33 => encode_ranged(record.corner_lon_offset_p4_deg, spec, &mut scratch)?,
             47 => record.generic_flag_data.map(|b| vec![b]),
             48 => record.security_local_set.clone(),
-            50 => record
+            50 => encode_ranged(record.platform_angle_of_attack_deg, spec, &mut scratch)?,
+            59 => record
                 .platform_call_sign
                 .as_ref()
-                .map(|s| check_string(50, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
+                .map(|s| check_string(59, s, &spec.encoding).map(|_| s.as_bytes().to_vec()))
                 .transpose()?,
             65 => {
                 if let Some(v) = record.uas_ls_version {
@@ -924,7 +929,7 @@ fn apply_typed_tag(
                 10 => record.platform_designation = Some(s),
                 11 => record.image_source_sensor = Some(s),
                 12 => record.image_coordinate_system = Some(s),
-                50 => record.platform_call_sign = Some(s),
+                59 => record.platform_call_sign = Some(s),
                 _ => unreachable!(),
             }
         }
@@ -974,6 +979,7 @@ fn assign_ranged(record: &mut UasDatalinkLs, tag: u32, v: f64) {
         31 => record.corner_lon_offset_p3_deg = Some(v),
         32 => record.corner_lat_offset_p4_deg = Some(v),
         33 => record.corner_lon_offset_p4_deg = Some(v),
+        50 => record.platform_angle_of_attack_deg = Some(v),
         82 => record.corner_lat_p1_deg = Some(v),
         83 => record.corner_lon_p1_deg = Some(v),
         84 => record.corner_lat_p2_deg = Some(v),
@@ -1147,7 +1153,7 @@ mod tests {
         r.platform_call_sign = Some("x".repeat(200));
         let mut buf = vec![0u8; 512];
         let err = encode(&r, &mut buf).unwrap_err();
-        matches!(err, KlvEncodeError::StringTooLong { tag: 50, max: 127 });
+        matches!(err, KlvEncodeError::StringTooLong { tag: 59, max: 127 });
     }
 
     #[test]
@@ -1518,7 +1524,7 @@ mod tests {
                 12 => record.image_coordinate_system = Some("WGS84".to_string()),
                 47 => record.generic_flag_data = Some(0xAB),
                 48 => record.security_local_set = Some(vec![0x01, 0x02]),
-                50 => record.platform_call_sign = Some("CS".to_string()),
+                59 => record.platform_call_sign = Some("CS".to_string()),
                 65 => record.uas_ls_version = Some(0x13),
                 74 => record.vmti = Some(vec![0xDE, 0xAD, 0xBE, 0xEF]),
                 _ => {
@@ -1555,7 +1561,7 @@ mod tests {
                 12 => back.image_coordinate_system.is_some(),
                 47 => back.generic_flag_data.is_some(),
                 48 => back.security_local_set.is_some(),
-                50 => back.platform_call_sign.is_some(),
+                59 => back.platform_call_sign.is_some(),
                 65 => back.uas_ls_version.is_some(),
                 74 => back.vmti.is_some(),
                 2 => back.timestamp_us.is_some(),
@@ -1577,5 +1583,126 @@ mod tests {
                 spec.id, spec.name
             );
         }
+    }
+
+    /// Walk the body of an encoded ST 0601 record and locate a single-byte
+    /// BER-OID tag. Returns `(value_offset, value_len)` relative to the
+    /// whole `encoded` buffer, or `None` if the tag is not present.
+    ///
+    /// Only handles tags whose BER-OID encoding fits in one byte (id < 128)
+    /// — sufficient for Tags 50 and 59. The body starts after the 16-byte
+    /// UL plus its BER outer length; we parse the outer length to find
+    /// the body start, then walk tag-length-value triplets.
+    #[cfg(test)]
+    fn find_tag(encoded: &[u8], tag: u8) -> Option<(usize, usize)> {
+        assert!(tag < 128, "find_tag only handles single-byte BER-OID tags");
+        // Skip UL (16 bytes), read outer BER length; `rest` points at the
+        // body. The body ends 4 bytes before EOF (Tag 1 + len byte + 2-byte
+        // checksum value). Walk tag-length-value triplets inside.
+        let after_ul = 16;
+        let (_body_len, rest) =
+            crate::klv::length::read_ber(&encoded[after_ul..]).expect("outer BER length");
+        let body_start = encoded.len() - rest.len();
+        let body_end = encoded.len() - 4;
+        let mut i = body_start;
+        while i < body_end {
+            let cur_tag = encoded[i];
+            i += 1;
+            // Parse BER length: short form (< 128) or long form.
+            let len_byte = encoded[i];
+            i += 1;
+            let value_len = if len_byte & 0x80 == 0 {
+                len_byte as usize
+            } else {
+                let nbytes = (len_byte & 0x7F) as usize;
+                let mut v = 0usize;
+                for b in &encoded[i..i + nbytes] {
+                    v = (v << 8) | (*b as usize);
+                }
+                i += nbytes;
+                v
+            };
+            if cur_tag == tag {
+                return Some((i, value_len));
+            }
+            i += value_len;
+        }
+        None
+    }
+
+    /// Regression: per ST 0601.19 §8.50, Tag 50 carries Platform Angle of
+    /// Attack as a signed int16 mapped linearly to ±20°. Pre-fix the
+    /// library declared Tag 50 as a utf8 "Platform Call Sign" field —
+    /// wire-format incompatible with every other ST 0601 toolchain.
+    #[test]
+    fn tag_50_is_platform_angle_of_attack_int16_per_spec() {
+        let record = UasDatalinkLs {
+            timestamp_us: Some(1_700_000_000_000_000),
+            platform_angle_of_attack_deg: Some(12.5),
+            ..Default::default()
+        };
+        let bytes = encode_to_vec(&record).expect("encode");
+
+        let (value_off, value_len) =
+            find_tag(&bytes, 50).expect("Tag 50 should be present in encoded record");
+        assert_eq!(
+            value_len, 2,
+            "Tag 50 (Platform Angle of Attack) is int16 ⇒ 2-byte value per ST 0601.19 §8.50"
+        );
+        // Sanity: value bytes are not zero (we set a non-zero angle).
+        assert_ne!(
+            &bytes[value_off..value_off + value_len],
+            &[0u8, 0u8],
+            "encoded angle bytes should reflect 12.5°, not zero"
+        );
+
+        let decoded = decode(&bytes).expect("decode");
+        let aoa = decoded
+            .platform_angle_of_attack_deg
+            .expect("Platform Angle of Attack should round-trip");
+        assert!(
+            (aoa - 12.5).abs() < 0.01,
+            "Tag 50 round-trip drift exceeds 0.01°: got {aoa}"
+        );
+        assert!(
+            decoded.platform_call_sign.is_none(),
+            "Tag 50 must NOT populate Call Sign — that field belongs to Tag 59"
+        );
+    }
+
+    /// Regression: per ST 0601.19 §8.59, Tag 59 carries Platform Call Sign
+    /// as utf8 ≤ 127 bytes. Paired with the Tag 50 fix above.
+    #[test]
+    fn tag_59_is_platform_call_sign_utf8_per_spec() {
+        let record = UasDatalinkLs {
+            timestamp_us: Some(1_700_000_000_000_000),
+            platform_call_sign: Some("DRONE-7".to_string()),
+            ..Default::default()
+        };
+        let bytes = encode_to_vec(&record).expect("encode");
+
+        let (value_off, value_len) =
+            find_tag(&bytes, 59).expect("Tag 59 should be present in encoded record");
+        assert_eq!(
+            value_len,
+            "DRONE-7".len(),
+            "Tag 59 (Platform Call Sign) value length must equal utf8 byte length"
+        );
+        assert_eq!(
+            &bytes[value_off..value_off + value_len],
+            b"DRONE-7",
+            "Tag 59 value bytes must be the raw utf8 of the call sign"
+        );
+
+        let decoded = decode(&bytes).expect("decode");
+        assert_eq!(
+            decoded.platform_call_sign,
+            Some("DRONE-7".to_string()),
+            "Tag 59 must round-trip into platform_call_sign"
+        );
+        assert!(
+            decoded.platform_angle_of_attack_deg.is_none(),
+            "Tag 59 must NOT populate Angle of Attack — that field belongs to Tag 50"
+        );
     }
 }

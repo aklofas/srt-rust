@@ -31,7 +31,7 @@ pub use enums::{
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
 use crate::klv::pack::OwnedRawField;
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct SecurityLs {
     // Required per spec (still Option<T> at decode time so lenient
     // mode tolerates broken input; decode_strict rejects a record
@@ -68,6 +68,38 @@ pub struct SecurityLs {
     /// Strict-mode raises these as `Err` instead of populating
     /// this field. Encode does not consume this field.
     pub field_errors: Vec<KlvFieldError>,
+}
+
+/// Manual `PartialEq` excluding [`SecurityLs::field_errors`]. The
+/// `field_errors` vec is a decode-side diagnostic — two LSes that
+/// produced identical field values are semantically equal regardless
+/// of which fields failed strict-decode validation along the way.
+/// Used by round-trip fuzz (decode → encode → decode → assert_eq);
+/// `field_errors` is empty on the second decode since encode never
+/// emits malformed bytes (e.g. broken UTF-16 on Tag 13).
+impl PartialEq for SecurityLs {
+    fn eq(&self, other: &Self) -> bool {
+        self.security_classification == other.security_classification
+            && self.classifying_country_coding_method == other.classifying_country_coding_method
+            && self.classifying_country == other.classifying_country
+            && self.object_country_coding_method == other.object_country_coding_method
+            && self.object_country_codes == other.object_country_codes
+            && self.version == other.version
+            && self.sci_shi_info == other.sci_shi_info
+            && self.caveats == other.caveats
+            && self.releasing_instructions == other.releasing_instructions
+            && self.classified_by == other.classified_by
+            && self.derived_from == other.derived_from
+            && self.classification_reason == other.classification_reason
+            && self.declassification_date == other.declassification_date
+            && self.classification_marking_system == other.classification_marking_system
+            && self.classification_comments == other.classification_comments
+            && self.classifying_country_coding_method_version_date
+                == other.classifying_country_coding_method_version_date
+            && self.object_country_coding_method_version_date
+                == other.object_country_coding_method_version_date
+            && self.unknown == other.unknown
+    }
 }
 
 /// Decode RFC 2781 UTF-16 with optional BOM. Default endianness is BE

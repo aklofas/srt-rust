@@ -302,7 +302,7 @@ pub enum VTargetPackError {
 /// `geospatial_contour_series`, `vmask`, `vtracker`, `vchip`,
 /// `vchip_series`, `vobject_series`) stay as `Option<Vec<u8>>`
 /// pass-through bytes — typed inner layers deferred.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct VTargetPack {
     /// BER-OID `targetId` per §10.2.2.1. Capped at `u32::MAX` —
     /// see struct doc-comment for the spec-vs-substrate width
@@ -385,6 +385,45 @@ pub struct VTargetPack {
     /// during lenient decode. Mirrors the
     /// `klv::st0102::SecurityLs::field_errors` pattern.
     pub field_errors: Vec<crate::error::KlvFieldError>,
+}
+
+/// Manual `PartialEq` excluding [`VTargetPack::field_errors`]. Same
+/// rationale as [`super::VmtiLs`]'s manual impl — `field_errors` is a
+/// decode-side diagnostic, not part of the pack's semantic value.
+/// Required for the ST 0903 round-trip fuzz target since `VTargetPack`
+/// participates in `VmtiLs::targets`.
+impl PartialEq for VTargetPack {
+    fn eq(&self, other: &Self) -> bool {
+        self.target_id == other.target_id
+            && self.centroid_pixel == other.centroid_pixel
+            && self.bbox_top_left_pixel == other.bbox_top_left_pixel
+            && self.bbox_bottom_right_pixel == other.bbox_bottom_right_pixel
+            && self.priority == other.priority
+            && self.confidence_level == other.confidence_level
+            && self.history == other.history
+            && self.percentage_of_target_pixels == other.percentage_of_target_pixels
+            && self.target_color == other.target_color
+            && self.target_intensity == other.target_intensity
+            && self.centroid_lat_offset == other.centroid_lat_offset
+            && self.centroid_lon_offset == other.centroid_lon_offset
+            && self.centroid_hae == other.centroid_hae
+            && self.bbox_top_left_lat_offset == other.bbox_top_left_lat_offset
+            && self.bbox_top_left_lon_offset == other.bbox_top_left_lon_offset
+            && self.bbox_bottom_right_lat_offset == other.bbox_bottom_right_lat_offset
+            && self.bbox_bottom_right_lon_offset == other.bbox_bottom_right_lon_offset
+            && self.target_location == other.target_location
+            && self.geospatial_contour_series == other.geospatial_contour_series
+            && self.centroid_pix_row == other.centroid_pix_row
+            && self.centroid_pix_col == other.centroid_pix_col
+            && self.algorithm_id == other.algorithm_id
+            && self.detection_status == other.detection_status
+            && self.vmask == other.vmask
+            && self.vtracker == other.vtracker
+            && self.vchip == other.vchip
+            && self.vchip_series == other.vchip_series
+            && self.vobject_series == other.vobject_series
+            && self.unknown == other.unknown
+    }
 }
 
 /// Decode a single VTargetPack from `bytes`. Returns the decoded pack

@@ -1562,12 +1562,11 @@ pub tst_core::klv::st0102::SecurityLs::version: core::option::Option<u16>
 impl core::clone::Clone for tst_core::klv::st0102::SecurityLs
 pub fn tst_core::klv::st0102::SecurityLs::clone(&self) -> tst_core::klv::st0102::SecurityLs
 impl core::cmp::PartialEq for tst_core::klv::st0102::SecurityLs
-pub fn tst_core::klv::st0102::SecurityLs::eq(&self, other: &tst_core::klv::st0102::SecurityLs) -> bool
+pub fn tst_core::klv::st0102::SecurityLs::eq(&self, other: &Self) -> bool
 impl core::default::Default for tst_core::klv::st0102::SecurityLs
 pub fn tst_core::klv::st0102::SecurityLs::default() -> tst_core::klv::st0102::SecurityLs
 impl core::fmt::Debug for tst_core::klv::st0102::SecurityLs
 pub fn tst_core::klv::st0102::SecurityLs::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::klv::st0102::SecurityLs
 impl core::marker::Freeze for tst_core::klv::st0102::SecurityLs
 impl core::marker::Send for tst_core::klv::st0102::SecurityLs
 impl core::marker::Sync for tst_core::klv::st0102::SecurityLs
@@ -1877,12 +1876,11 @@ pub tst_core::klv::st0903::VTargetPack::vtracker: core::option::Option<alloc::ve
 impl core::clone::Clone for tst_core::klv::VTargetPack
 pub fn tst_core::klv::VTargetPack::clone(&self) -> tst_core::klv::VTargetPack
 impl core::cmp::PartialEq for tst_core::klv::VTargetPack
-pub fn tst_core::klv::VTargetPack::eq(&self, other: &tst_core::klv::VTargetPack) -> bool
+pub fn tst_core::klv::VTargetPack::eq(&self, other: &Self) -> bool
 impl core::default::Default for tst_core::klv::VTargetPack
 pub fn tst_core::klv::VTargetPack::default() -> tst_core::klv::VTargetPack
 impl core::fmt::Debug for tst_core::klv::VTargetPack
 pub fn tst_core::klv::VTargetPack::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::klv::VTargetPack
 impl core::marker::Freeze for tst_core::klv::VTargetPack
 impl core::marker::Send for tst_core::klv::VTargetPack
 impl core::marker::Sync for tst_core::klv::VTargetPack
@@ -1911,12 +1909,11 @@ pub tst_core::klv::st0903::VmtiLs::vmti_system_name: core::option::Option<alloc:
 impl core::clone::Clone for tst_core::klv::st0903::VmtiLs
 pub fn tst_core::klv::st0903::VmtiLs::clone(&self) -> tst_core::klv::st0903::VmtiLs
 impl core::cmp::PartialEq for tst_core::klv::st0903::VmtiLs
-pub fn tst_core::klv::st0903::VmtiLs::eq(&self, other: &tst_core::klv::st0903::VmtiLs) -> bool
+pub fn tst_core::klv::st0903::VmtiLs::eq(&self, other: &Self) -> bool
 impl core::default::Default for tst_core::klv::st0903::VmtiLs
 pub fn tst_core::klv::st0903::VmtiLs::default() -> tst_core::klv::st0903::VmtiLs
 impl core::fmt::Debug for tst_core::klv::st0903::VmtiLs
 pub fn tst_core::klv::st0903::VmtiLs::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::klv::st0903::VmtiLs
 impl core::marker::Freeze for tst_core::klv::st0903::VmtiLs
 impl core::marker::Send for tst_core::klv::st0903::VmtiLs
 impl core::marker::Sync for tst_core::klv::st0903::VmtiLs
@@ -2193,12 +2190,11 @@ pub tst_core::klv::SecurityLs::version: core::option::Option<u16>
 impl core::clone::Clone for tst_core::klv::st0102::SecurityLs
 pub fn tst_core::klv::st0102::SecurityLs::clone(&self) -> tst_core::klv::st0102::SecurityLs
 impl core::cmp::PartialEq for tst_core::klv::st0102::SecurityLs
-pub fn tst_core::klv::st0102::SecurityLs::eq(&self, other: &tst_core::klv::st0102::SecurityLs) -> bool
+pub fn tst_core::klv::st0102::SecurityLs::eq(&self, other: &Self) -> bool
 impl core::default::Default for tst_core::klv::st0102::SecurityLs
 pub fn tst_core::klv::st0102::SecurityLs::default() -> tst_core::klv::st0102::SecurityLs
 impl core::fmt::Debug for tst_core::klv::st0102::SecurityLs
 pub fn tst_core::klv::st0102::SecurityLs::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::klv::st0102::SecurityLs
 impl core::marker::Freeze for tst_core::klv::st0102::SecurityLs
 impl core::marker::Send for tst_core::klv::st0102::SecurityLs
 impl core::marker::Sync for tst_core::klv::st0102::SecurityLs
@@ -2296,12 +2292,11 @@ pub tst_core::klv::VTargetPack::vtracker: core::option::Option<alloc::vec::Vec<u
 impl core::clone::Clone for tst_core::klv::VTargetPack
 pub fn tst_core::klv::VTargetPack::clone(&self) -> tst_core::klv::VTargetPack
 impl core::cmp::PartialEq for tst_core::klv::VTargetPack
-pub fn tst_core::klv::VTargetPack::eq(&self, other: &tst_core::klv::VTargetPack) -> bool
+pub fn tst_core::klv::VTargetPack::eq(&self, other: &Self) -> bool
 impl core::default::Default for tst_core::klv::VTargetPack
 pub fn tst_core::klv::VTargetPack::default() -> tst_core::klv::VTargetPack
 impl core::fmt::Debug for tst_core::klv::VTargetPack
 pub fn tst_core::klv::VTargetPack::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::klv::VTargetPack
 impl core::marker::Freeze for tst_core::klv::VTargetPack
 impl core::marker::Send for tst_core::klv::VTargetPack
 impl core::marker::Sync for tst_core::klv::VTargetPack
@@ -2330,12 +2325,11 @@ pub tst_core::klv::VmtiLs::vmti_system_name: core::option::Option<alloc::string:
 impl core::clone::Clone for tst_core::klv::st0903::VmtiLs
 pub fn tst_core::klv::st0903::VmtiLs::clone(&self) -> tst_core::klv::st0903::VmtiLs
 impl core::cmp::PartialEq for tst_core::klv::st0903::VmtiLs
-pub fn tst_core::klv::st0903::VmtiLs::eq(&self, other: &tst_core::klv::st0903::VmtiLs) -> bool
+pub fn tst_core::klv::st0903::VmtiLs::eq(&self, other: &Self) -> bool
 impl core::default::Default for tst_core::klv::st0903::VmtiLs
 pub fn tst_core::klv::st0903::VmtiLs::default() -> tst_core::klv::st0903::VmtiLs
 impl core::fmt::Debug for tst_core::klv::st0903::VmtiLs
 pub fn tst_core::klv::st0903::VmtiLs::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::klv::st0903::VmtiLs
 impl core::marker::Freeze for tst_core::klv::st0903::VmtiLs
 impl core::marker::Send for tst_core::klv::st0903::VmtiLs
 impl core::marker::Sync for tst_core::klv::st0903::VmtiLs

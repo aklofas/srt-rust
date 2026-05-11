@@ -68,7 +68,7 @@ pub const VMTI_LS_UL: [u8; 16] = [
     0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x03, 0x06, 0x00, 0x00, 0x00,
 ];
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct VmtiLs {
     pub checksum: Option<u16>,
     pub precision_time_stamp: Option<u64>,
@@ -93,6 +93,34 @@ pub struct VmtiLs {
     pub ontology_series: Option<Vec<u8>>,
     pub unknown: Vec<OwnedRawField>,
     pub field_errors: Vec<KlvFieldError>,
+}
+
+/// Manual `PartialEq` excluding [`VmtiLs::field_errors`]. The
+/// `field_errors` vec is a decode-side diagnostic — two LSes that
+/// produced identical field values are semantically equal regardless
+/// of which fields failed strict-decode validation along the way.
+/// Used by round-trip fuzz (decode → encode → decode → assert_eq);
+/// `field_errors` is empty on the second decode since encode never
+/// emits malformed bytes.
+impl PartialEq for VmtiLs {
+    fn eq(&self, other: &Self) -> bool {
+        self.checksum == other.checksum
+            && self.precision_time_stamp == other.precision_time_stamp
+            && self.vmti_system_name == other.vmti_system_name
+            && self.version_number == other.version_number
+            && self.total_targets_in_frame == other.total_targets_in_frame
+            && self.num_targets_reported == other.num_targets_reported
+            && self.frame_width == other.frame_width
+            && self.frame_height == other.frame_height
+            && self.source_sensor == other.source_sensor
+            && self.horizontal_fov == other.horizontal_fov
+            && self.vertical_fov == other.vertical_fov
+            && self.miis_id == other.miis_id
+            && self.targets == other.targets
+            && self.algorithm_series == other.algorithm_series
+            && self.ontology_series == other.ontology_series
+            && self.unknown == other.unknown
+    }
 }
 
 /// Lenient decode of a VMTI Local Set body per ST 0903.6 §10.1.

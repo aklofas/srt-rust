@@ -119,6 +119,9 @@ pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<f64, KlvFieldError>
     Ok(value)
 }
 
+// Bridge: encode rewrite in Task 2 no longer needs this; Task 4 deletes both
+// `write_signed_be` and `read_signed_be` after Task 3 rewrites decode.
+#[allow(dead_code)]
 /// Write a signed integer to `out` in big-endian, two's complement.
 fn write_signed_be(value: i64, out: &mut [u8]) {
     let n = out.len();

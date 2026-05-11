@@ -216,7 +216,12 @@ jobs:
       - name: Install nightly + cargo-fuzz
         run: |
           rustup toolchain install nightly --profile minimal --no-self-update
-          cargo +nightly install cargo-fuzz --locked --quiet
+          # No --locked: cargo-fuzz 0.13.1's bundled Cargo.lock pins
+          # tempfile 3.3.0 → rustix 0.36.5, whose cfg_attr(rustc_attrs, ...)
+          # gates trip the nightly parser's reserved-attribute check (the
+          # `rustc_*` namespace is now rejected at parse time even when
+          # cfg-gated). Fresh resolution picks tempfile 3.27+ → rustix 1.x.
+          cargo +nightly install cargo-fuzz --quiet
 
       # `cargo +nightly fuzz check` (compile-only) catches fuzz-target
       # rot when a public API change breaks one. Compile-only because

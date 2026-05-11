@@ -48,6 +48,7 @@ fn encoded_len_predicts_actual_size() {
     let mut r = UasDatalinkLs::default();
     r.timestamp_us = Some(0xDEAD_BEEF);
     r.platform_call_sign = Some("ECHO-1".to_owned());
+    r.platform_angle_of_attack_deg = Some(12.5);
     r.sensor_lat_deg = Some(45.0);
     let predicted = encoded_len(&r);
     let mut buf = vec![0u8; predicted];
@@ -131,6 +132,7 @@ fn fixture_full_decodes() {
     let parsed = decode(&bytes).unwrap();
     assert!(parsed.timestamp_us.is_some());
     assert!(parsed.platform_call_sign.is_some());
+    assert!(parsed.platform_angle_of_attack_deg.is_some());
     assert!(parsed.sensor_position().is_some());
     assert!(parsed.frame_center().is_some());
     assert!(parsed.corners().is_some());

@@ -49,6 +49,7 @@ fn full() -> Vec<u8> {
     r.image_source_sensor = Some("EO-NOSE".to_owned());
     r.image_coordinate_system = Some("WGS-84".to_owned());
     r.platform_call_sign = Some("ECHO-1".to_owned());
+    r.platform_angle_of_attack_deg = Some(12.5);
     r.platform_heading_deg = Some(123.45);
     r.platform_pitch_deg = Some(-5.0);
     r.platform_roll_deg = Some(10.0);

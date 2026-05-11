@@ -199,3 +199,40 @@ jobs:
 
       - name: cargo test (tst-core + tst-pipeline, musl)
         run: cargo test -p tst-core -p tst-pipeline --target x86_64-unknown-linux-musl
+
+  fuzz-smoke:
+    name: fuzz smoke (nightly, compile only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config
+
+      - name: Install nightly + cargo-fuzz
+        run: |
+          rustup toolchain install nightly --profile minimal --no-self-update
+          cargo +nightly install cargo-fuzz --locked --quiet
+
+      # `cargo +nightly fuzz check` (compile-only) catches fuzz-target
+      # rot when a public API change breaks one. Compile-only because
+      # corpus replay on every PR would burn CI minutes for low
+      # marginal coverage. Theme O of the Rust quality refactor audit
+      # called out "no fuzz smoke" as a gap.
+      - name: Compile-check tst-core fuzz targets
+        env:
+          SRT_FORCE_VENDORED: "1"
+        run: |
+          cd crates/tst-core/fuzz
+          cargo +nightly fuzz check
+
+      - name: Compile-check tst-srt fuzz targets
+        env:
+          SRT_FORCE_VENDORED: "1"
+        run: |
+          cd crates/tst-srt/fuzz
+          cargo +nightly fuzz check

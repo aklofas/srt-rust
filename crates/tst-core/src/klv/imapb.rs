@@ -109,43 +109,6 @@ pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<f64, KlvFieldError>
     Ok(value)
 }
 
-// Bridge: encode rewrite in Task 2 no longer needs this; Task 4 deletes both
-// `write_signed_be` and `read_signed_be` after Task 3 rewrites decode.
-#[allow(dead_code)]
-/// Write a signed integer to `out` in big-endian, two's complement.
-fn write_signed_be(value: i64, out: &mut [u8]) {
-    let n = out.len();
-    let mask = if n == 8 {
-        u64::MAX
-    } else {
-        (1u64 << (n as u32 * 8)) - 1
-    };
-    let bits = (value as u64) & mask;
-    for (i, slot) in out.iter_mut().enumerate().take(n) {
-        *slot = ((bits >> (8 * (n - 1 - i))) & 0xFF) as u8;
-    }
-}
-
-// Bridge: decode rewrite in Task 3 no longer needs this; Task 4 deletes both
-// `write_signed_be` and `read_signed_be`.
-#[allow(dead_code)]
-/// Read a signed integer from `bytes` (big-endian, two's complement).
-fn read_signed_be(bytes: &[u8]) -> i64 {
-    let n = bytes.len();
-    let mut bits: u64 = 0;
-    for &b in bytes {
-        bits = (bits << 8) | b as u64;
-    }
-    let sign_bit = 1u64 << (n as u32 * 8 - 1);
-    if bits & sign_bit != 0 {
-        // Sign-extend
-        let extension = !((1u64 << (n as u32 * 8)) - 1);
-        (bits | extension) as i64
-    } else {
-        bits as i64
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

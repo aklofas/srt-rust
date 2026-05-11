@@ -1280,4 +1280,55 @@ mod cancel_tests {
             Err(MuxSenderError::Transport(TransportError::Broken(_)))
         ));
     }
+
+    /// Transport that panics on every `send_bytes` call. Used to poison
+    /// the inner `Mutex<Inner<T>>` by triggering a panic with the lock
+    /// held (the `MutexGuard` drops during unwinding, auto-poisoning).
+    struct PanicOnSend;
+    impl Transport for PanicOnSend {
+        fn send_bytes(&mut self, _b: &[u8]) -> Result<(), TransportError> {
+            panic!("intentional poison-the-lock panic for poisoned-lock test")
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn close(&mut self) {}
+        fn is_alive(&self) -> bool {
+            true
+        }
+    }
+
+    /// PIPE-02 secondary regression: explicit `close()` on a `MuxSender`
+    /// whose inner mutex was poisoned by a panic-during-send must NOT
+    /// itself panic — it returns silently via the `if let Ok` branch,
+    /// matching `Drop`'s graceful poisoned-lock catch.
+    #[test]
+    fn close_does_not_panic_on_poisoned_lock() {
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+        let sender = Arc::new(MuxSender::new(PanicOnSend, cfg).unwrap());
+
+        // Poison the inner mutex: spawn a thread whose `send_video` call
+        // dives into `transport.send_bytes`, which panics. The Mutex auto-
+        // poisons during stack unwinding because the MutexGuard is on the
+        // panicking frame.
+        let s_panic = sender.clone();
+        let handle = std::thread::spawn(move || {
+            // Minimal Annex-B IDR NAL — the muxer will emit a bundle into
+            // drain_muxer, which calls transport.send_bytes, which panics.
+            let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+            let _ = s_panic.send_video(&nal, 0, true);
+        });
+        let _ = handle.join(); // ignore the thread's panic payload
+
+        // Pre-Task-5: this panics via `.unwrap()` on the poisoned lock.
+        // Post-Task-5: returns silently via `if let Ok(mut inner)`.
+        // Surviving the call IS the assertion.
+        sender.close();
+    }
 }

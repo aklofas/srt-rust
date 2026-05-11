@@ -1161,6 +1161,8 @@ pub tst_core::error::KlvEncodeError::RecordTooLarge
 pub tst_core::error::KlvEncodeError::StringTooLong
 pub tst_core::error::KlvEncodeError::StringTooLong::max: usize
 pub tst_core::error::KlvEncodeError::StringTooLong::tag: u32
+pub tst_core::error::KlvEncodeError::UnsupportedImapbLength
+pub tst_core::error::KlvEncodeError::UnsupportedImapbLength::length: usize
 impl core::error::Error for tst_core::error::KlvEncodeError
 impl core::fmt::Debug for tst_core::error::KlvEncodeError
 pub fn tst_core::error::KlvEncodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -1194,6 +1196,8 @@ pub tst_core::error::KlvFieldError::OutOfRange::tag: u32
 pub tst_core::error::KlvFieldError::OutOfRange::value: f64
 pub tst_core::error::KlvFieldError::TruncatedField
 pub tst_core::error::KlvFieldError::TruncatedField::tag: u32
+pub tst_core::error::KlvFieldError::UnsupportedImapbLength
+pub tst_core::error::KlvFieldError::UnsupportedImapbLength::length: usize
 impl core::clone::Clone for tst_core::error::KlvFieldError
 pub fn tst_core::error::KlvFieldError::clone(&self) -> tst_core::error::KlvFieldError
 impl core::cmp::PartialEq for tst_core::error::KlvFieldError
@@ -4679,6 +4683,8 @@ pub tst_core::KlvEncodeError::RecordTooLarge
 pub tst_core::KlvEncodeError::StringTooLong
 pub tst_core::KlvEncodeError::StringTooLong::max: usize
 pub tst_core::KlvEncodeError::StringTooLong::tag: u32
+pub tst_core::KlvEncodeError::UnsupportedImapbLength
+pub tst_core::KlvEncodeError::UnsupportedImapbLength::length: usize
 impl core::error::Error for tst_core::error::KlvEncodeError
 impl core::fmt::Debug for tst_core::error::KlvEncodeError
 pub fn tst_core::error::KlvEncodeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -4712,6 +4718,8 @@ pub tst_core::KlvFieldError::OutOfRange::tag: u32
 pub tst_core::KlvFieldError::OutOfRange::value: f64
 pub tst_core::KlvFieldError::TruncatedField
 pub tst_core::KlvFieldError::TruncatedField::tag: u32
+pub tst_core::KlvFieldError::UnsupportedImapbLength
+pub tst_core::KlvFieldError::UnsupportedImapbLength::length: usize
 impl core::clone::Clone for tst_core::error::KlvFieldError
 pub fn tst_core::error::KlvFieldError::clone(&self) -> tst_core::error::KlvFieldError
 impl core::cmp::PartialEq for tst_core::error::KlvFieldError

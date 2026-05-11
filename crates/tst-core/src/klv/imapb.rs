@@ -22,6 +22,12 @@ use crate::error::{KlvEncodeError, KlvFieldError};
 pub struct ImapbParams {
     pub min: f64,
     pub max: f64,
+    /// Encoded width in bytes. Must be in `1..=7`. `length >= 8` is
+    /// permitted by ST 1201.5 but unsupported here (the implementation
+    /// uses i64 arithmetic which overflows at L=8 — `signed_offset`
+    /// would compute `2^63 > i64::MAX`). `length == 0` is degenerate.
+    /// `encode_imapb` and `decode_imapb` return `UnsupportedImapbLength`
+    /// for out-of-range values. In-tree consumers use L ∈ {1,2,3,4,5,6}.
     pub length: usize,
 }
 
@@ -41,6 +47,13 @@ impl ImapbParams {
 }
 
 pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), KlvEncodeError> {
+    // ST 1201.5 §7.1.2 defines IMAPB for any L-byte mapping, but this
+    // implementation uses i64 arithmetic internally, which overflows
+    // for length >= 8 (the signed_offset 2^(8L-1) would exceed i64::MAX).
+    // length == 0 is a degenerate case (no bytes to encode into).
+    if !(1..=7).contains(&p.length) {
+        return Err(KlvEncodeError::UnsupportedImapbLength { length: p.length });
+    }
     if out.len() < p.length {
         return Err(KlvEncodeError::BufferTooSmall {
             needed: p.length,
@@ -62,6 +75,10 @@ pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), K
 }
 
 pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<f64, KlvFieldError> {
+    // Same cap as encode_imapb — see UnsupportedImapbLength rationale.
+    if !(1..=7).contains(&p.length) {
+        return Err(KlvFieldError::UnsupportedImapbLength { length: p.length });
+    }
     if bytes.len() != p.length {
         return Err(KlvFieldError::InvalidLength {
             tag: 0,

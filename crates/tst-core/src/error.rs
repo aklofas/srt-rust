@@ -124,14 +124,13 @@ pub enum KlvEncodeError {
     #[error("string field for tag {tag} exceeds {max} bytes")]
     StringTooLong { tag: u32, max: usize },
 
-    /// `ImapbParams::length` outside the supported range `1..=7`.
-    /// ST 1201.5 defines IMAPB for any L-byte mapping, but this
-    /// implementation uses i64 arithmetic internally, which overflows
-    /// at L=8 (`signed_offset = 2^(8L-1)` would exceed `i64::MAX`);
-    /// L=0 is degenerate. In-tree consumers use L ∈ {1,2,3,4,5,6}; if
-    /// a future consumer needs L=8, swap the internal arithmetic to
-    /// i128 / u64 with sign handling.
-    #[error("IMAPB length {length} not supported (must be 1..=7)")]
+    /// `ImapbParams::length` outside the supported range `1..=8`.
+    /// ST 1201.5 §6 defines IMAPB for any L-byte mapping; this
+    /// implementation uses `u64` arithmetic internally, which holds up
+    /// to 8 bytes. L=0 is degenerate; L > 8 would need `u128`. In-tree
+    /// consumers use L ∈ {1,2,3,4,5,6}; if a future consumer needs
+    /// L > 8, swap the internal arithmetic to `u128`.
+    #[error("IMAPB length {length} not supported (must be 1..=8)")]
     UnsupportedImapbLength { length: usize },
 }
 
@@ -179,11 +178,11 @@ pub enum KlvFieldError {
     #[error("tag {tag}: truncated value bytes")]
     TruncatedField { tag: u32 },
 
-    /// `ImapbParams::length` outside the supported range `1..=7`.
+    /// `ImapbParams::length` outside the supported range `1..=8`.
     /// See `KlvEncodeError::UnsupportedImapbLength` for the rationale —
-    /// the substrate caps at L=7 to keep its i64 internal arithmetic
-    /// non-overflowing.
-    #[error("IMAPB length {length} not supported (must be 1..=7)")]
+    /// the substrate caps at L=8 because its `u64` internal arithmetic
+    /// holds at most 8 bytes.
+    #[error("IMAPB length {length} not supported (must be 1..=8)")]
     UnsupportedImapbLength { length: usize },
 }
 

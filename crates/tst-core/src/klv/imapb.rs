@@ -1,20 +1,21 @@
-//! ST 1201.5 §7 IMAPB — bit-packed mapping between signed integers and a
+//! ST 1201.5 §7 IMAPB — bit-packed mapping between unsigned integers and a
 //! defined floating-point range.
 //!
-//! Given parameters `(min, max, length)`:
-//! - Value range is `[min, max]` (assumes `min < max`).
-//! - The integer occupies `length` bytes, big-endian.
-//! - Scale factor `sF = 2^(bPow − dPow)` where `bPow = ceil(log2(max − min))`
-//!   and `dPow = 8L − 1` (= 8 * length − 1) — equivalently
-//!   `2^bPow / 2^(8L−1)` (per ST 1201.5 §7.1.2 PDF p.5; numerator/denominator
-//!   ordering matches the spec form).
-//! - Encode: `i = round((value − min) / sF) − 2^(8L−1)`.
-//! - Decode: `value = sF * (i + 2^(8L−1)) + min`.
+//! Given parameters `(min, max, length)` with `min < max` and `length ∈ 1..=8`:
+//! - The integer occupies `length` bytes, big-endian, **unsigned** (ST 1201.5
+//!   §7.2.3 Table 1 reserves MSB-set values for special-value indicators).
+//! - Per ST 1201.5 §8.9 Summary:
+//!   - `bPow = ceil(log2(max − min))`
+//!   - `dPow = 8L − 1`
+//!   - `sF = 2^(dPow − bPow)`  *(forward scale)*
+//!   - `Zoffset = sF·min − floor(sF·min)` when `min<0 and max>0`; else 0
+//! - Encode (§7.2.1): `y = truncate(sF·(value − min) + Zoffset)`, L-byte unsigned BE.
+//! - Decode: `value = (y − Zoffset)·sR + min`, where `sR = 1/sF`.
 //!
-//! Special integer values per ST 1201.5 §7.2.3 (PDF p.8) are not modeled
-//! here — escape-hatch users handle them at the next layer if needed. ST
-//! 0601 fixed-range mappings (which use a slightly different convention
-//! with INT_MIN as INVALID) live in `klv::st0601::mapping`.
+//! Special integer values per ST 1201.5 §7.2.3 (PDF p.8) are not modeled here —
+//! escape-hatch users handle them at the next layer if needed. ST 0601 fixed-range
+//! mappings (which use a different convention with INT_MIN as INVALID sentinel)
+//! live in `klv::st0601::mapping`.
 
 use crate::error::{KlvEncodeError, KlvFieldError};
 
@@ -22,20 +23,39 @@ use crate::error::{KlvEncodeError, KlvFieldError};
 pub struct ImapbParams {
     pub min: f64,
     pub max: f64,
-    /// Encoded width in bytes. Must be in `1..=7`. `length >= 8` is
-    /// permitted by ST 1201.5 but unsupported here (the implementation
-    /// uses i64 arithmetic which overflows at L=8 — `signed_offset`
-    /// would compute `2^63 > i64::MAX`). `length == 0` is degenerate.
-    /// `encode_imapb` and `decode_imapb` return `UnsupportedImapbLength`
-    /// for out-of-range values. In-tree consumers use L ∈ {1,2,3,4,5,6}.
+    /// Encoded width in bytes. Must be in `1..=8` (ST 1201.5 §6 allows any L;
+    /// internal math uses `u64` which holds 8 bytes). L > 8 needs `u128`
+    /// and is not currently supported.
     pub length: usize,
 }
 
 impl ImapbParams {
-    /// Scale factor `sF`.
+    /// Forward scale factor `sF = 2^(dPow − bPow)` per ST 1201.5 §8.9.
+    /// Returns `f64::INFINITY` for the degenerate `max == min` case (caller
+    /// pre-checks parameters; this function is internal).
+    fn sf(&self) -> f64 {
+        let span = self.max - self.min;
+        let b_pow = span.log2().ceil();
+        let d_pow = (8 * self.length as i32 - 1) as f64;
+        2f64.powf(d_pow - b_pow)
+    }
+
+    /// Zero-Point offset per ST 1201.5 §7.1.2 step 6.
+    /// Only nonzero when the range straddles zero (`min < 0 < max`).
+    fn z_offset(&self) -> f64 {
+        if self.min < 0.0 && self.max > 0.0 {
+            let scaled = self.sf() * self.min;
+            scaled - scaled.floor()
+        } else {
+            0.0
+        }
+    }
+
+    // TODO(Task 3): the two helpers below exist only so `decode_imapb` still
+    // compiles between Task 2 (encode rewrite) and Task 3 (decode rewrite).
+    // Task 3 removes both call sites and these helpers.
     fn scale(&self) -> f64 {
         let span = self.max - self.min;
-        // 2^(ceil(log2(span))) — smallest power of two ≥ span.
         let log2_ceil = span.log2().ceil();
         let pow2 = 2f64.powf(log2_ceil);
         pow2 / 2f64.powi(8 * self.length as i32 - 1)
@@ -47,11 +67,8 @@ impl ImapbParams {
 }
 
 pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), KlvEncodeError> {
-    // ST 1201.5 §7.1.2 defines IMAPB for any L-byte mapping, but this
-    // implementation uses i64 arithmetic internally, which overflows
-    // for length >= 8 (the signed_offset 2^(8L-1) would exceed i64::MAX).
-    // length == 0 is a degenerate case (no bytes to encode into).
-    if !(1..=7).contains(&p.length) {
+    // ST 1201.5 §6 allows any L; internal math uses u64 (max 8 bytes).
+    if !(1..=8).contains(&p.length) {
         return Err(KlvEncodeError::UnsupportedImapbLength { length: p.length });
     }
     if out.len() < p.length {
@@ -60,7 +77,7 @@ pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), K
             got: out.len(),
         });
     }
-    if !(value.is_finite()) || value < p.min || value > p.max {
+    if !value.is_finite() || value < p.min || value > p.max {
         return Err(KlvEncodeError::OutOfRange {
             tag: 0,
             value,
@@ -68,9 +85,19 @@ pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), K
             max: p.max,
         });
     }
-    let sf = p.scale();
-    let signed = ((value - p.min) / sf).round() as i64 - p.signed_offset();
-    write_signed_be(signed, &mut out[..p.length]);
+    // ST 1201.5 §7.2.1 step 4a: y = truncate(sF*(x - min) + Zoffset).
+    // `truncate` = `.floor()` for x >= min (which the bounds check above guarantees).
+    let y_f = p.sf() * (value - p.min) + p.z_offset();
+    let y = y_f.floor() as u64;
+    let mask = if p.length == 8 {
+        u64::MAX
+    } else {
+        (1u64 << (8 * p.length as u32)) - 1
+    };
+    let y_clamped = y & mask;
+    for (i, slot) in out.iter_mut().enumerate().take(p.length) {
+        *slot = ((y_clamped >> (8 * (p.length - 1 - i))) & 0xFF) as u8;
+    }
     Ok(())
 }
 

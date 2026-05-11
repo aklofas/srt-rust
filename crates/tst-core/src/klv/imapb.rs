@@ -213,10 +213,20 @@ mod tests {
     #[test]
     fn st_0903_section_10_1_11_fov_12_5_deg() {
         // ST 0903.6 §10.1.11 worked example: IMAPB(0, 180, 2) for 12.5° → 0x0640.
-        let p = ImapbParams { min: 0.0, max: 180.0, length: 2 };
+        let p = ImapbParams {
+            min: 0.0,
+            max: 180.0,
+            length: 2,
+        };
         let mut buf = [0u8; 2];
         encode_imapb(&p, 12.5, &mut buf).unwrap();
-        assert_eq!(buf, [0x06, 0x40], "spec says 0x0640, got {:#04X}{:02X}", buf[0], buf[1]);
+        assert_eq!(
+            buf,
+            [0x06, 0x40],
+            "spec says 0x0640, got {:#04X}{:02X}",
+            buf[0],
+            buf[1]
+        );
         let back = decode_imapb(&p, &buf).unwrap();
         assert!((back - 12.5).abs() < 1e-2, "decoded {back}, expected 12.5");
     }
@@ -224,7 +234,11 @@ mod tests {
     #[test]
     fn st_0903_section_10_1_12_fov_10_0_deg() {
         // ST 0903.6 §10.1.12 worked example: IMAPB(0, 180, 2) for 10.0° → 0x0500.
-        let p = ImapbParams { min: 0.0, max: 180.0, length: 2 };
+        let p = ImapbParams {
+            min: 0.0,
+            max: 180.0,
+            length: 2,
+        };
         let mut buf = [0u8; 2];
         encode_imapb(&p, 10.0, &mut buf).unwrap();
         assert_eq!(buf, [0x05, 0x00]);
@@ -234,7 +248,11 @@ mod tests {
     fn st_0903_section_10_1_11_fov_90_0_deg() {
         // Mid-range cross-check: IMAPB(0, 180, 2) for 90.0° → 0x2D00 (= 128 * 90 = 11520).
         // Pre-fix code emits 0xAD00 (MSB flipped by signed-midpoint shift).
-        let p = ImapbParams { min: 0.0, max: 180.0, length: 2 };
+        let p = ImapbParams {
+            min: 0.0,
+            max: 180.0,
+            length: 2,
+        };
         let mut buf = [0u8; 2];
         encode_imapb(&p, 90.0, &mut buf).unwrap();
         assert_eq!(buf, [0x2D, 0x00]);
@@ -243,31 +261,57 @@ mod tests {
     #[test]
     fn st_1201_5_appendix_a_test_2_unsigned_be() {
         // ST 1201.5 Appendix A Test 2: IMAPB(0.0, 100.0, 3) value 100 → 0x640000.
-        let p = ImapbParams { min: 0.0, max: 100.0, length: 3 };
+        let p = ImapbParams {
+            min: 0.0,
+            max: 100.0,
+            length: 3,
+        };
         let mut buf = [0u8; 3];
         encode_imapb(&p, 100.0, &mut buf).unwrap();
-        assert_eq!(buf, [0x64, 0x00, 0x00], "spec mandates unsigned BE; pre-fix code emits 0xE40000");
+        assert_eq!(
+            buf,
+            [0x64, 0x00, 0x00],
+            "spec mandates unsigned BE; pre-fix code emits 0xE40000"
+        );
     }
 
     #[test]
     fn st_1201_5_appendix_a_test_3_zero_mapping() {
         // ST 1201.5 Appendix A Test 3: IMAPB(-9.9, 110.0, 3) value 0.0 → 0x09E667
         // (the Zero mapping case — requires Zoffset = sF*a - floor(sF*a)).
-        let p = ImapbParams { min: -9.9, max: 110.0, length: 3 };
+        let p = ImapbParams {
+            min: -9.9,
+            max: 110.0,
+            length: 3,
+        };
         let mut buf = [0u8; 3];
         encode_imapb(&p, 0.0, &mut buf).unwrap();
-        assert_eq!(buf, [0x09, 0xE6, 0x67], "Zoffset rule unimplemented; pre-fix code emits 0x89E666");
+        assert_eq!(
+            buf,
+            [0x09, 0xE6, 0x67],
+            "Zoffset rule unimplemented; pre-fix code emits 0x89E666"
+        );
         let back = decode_imapb(&p, &buf).unwrap();
-        assert!(back.abs() < 1e-4, "Zero mapping must round-trip to 0.0, got {back}");
+        assert!(
+            back.abs() < 1e-4,
+            "Zero mapping must round-trip to 0.0, got {back}"
+        );
     }
 
     #[test]
     fn length_8_round_trip() {
         // ST 1201.5 allows any L; pre-fix code rejects L=8 due to i64 overflow.
-        let p = ImapbParams { min: -1000.0, max: 1000.0, length: 8 };
+        let p = ImapbParams {
+            min: -1000.0,
+            max: 1000.0,
+            length: 8,
+        };
         let mut buf = [0u8; 8];
         encode_imapb(&p, 123.456, &mut buf).unwrap();
         let back = decode_imapb(&p, &buf).unwrap();
-        assert!((back - 123.456).abs() < 1e-9, "L=8 round-trip failed: {back}");
+        assert!(
+            (back - 123.456).abs() < 1e-9,
+            "L=8 round-trip failed: {back}"
+        );
     }
 }

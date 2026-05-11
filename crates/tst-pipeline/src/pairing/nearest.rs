@@ -576,4 +576,48 @@ mod tests {
         let out = s.feed(video_event(100));
         assert!(matches!(&out[0], PairerOutput::Paired { .. }));
     }
+
+    // --- PIPE-03 PTS saturation regression tests ---
+
+    #[test]
+    fn near_i64_max_pts_does_not_overflow_buffered_drain() {
+        // Pre-fix: drain_buffered computes `v.pts + max_lag_ticks` raw at
+        // nearest.rs:200. For v.pts close to i64::MAX, the add overflows
+        // (panic in debug, silent wrap in release).
+        //
+        // Setup: video far from any KLV (delta > tolerance=100, so the
+        // pair branch is skipped and the window-close check at line 200
+        // is the path executed), AND v.pts near i64::MAX so the add
+        // (MAX-100) + 1000 overflows.
+        let mut s = nearest_buffered_with_lag(8, 1000);
+        // Buffered video at MAX-100; drain doesn't fire yet (no KLV).
+        let _ = s.feed(video_event(i64::MAX - 100));
+        // KLV far enough that |delta| = 4900 > tolerance=100 → skips
+        // in-tolerance branch → reaches line 200 window-close check.
+        // Pre-fix debug: PANIC at `v.pts + max_lag_ticks`.
+        // Post-fix: saturating_add caps at i64::MAX; last (MAX-5000) is
+        // NOT > MAX, so window stays open and video stays buffered.
+        let _ = s.feed(klv_event(i64::MAX - 5000));
+        // Surviving this call IS the assertion (no panic on the add).
+    }
+
+    #[test]
+    fn near_i64_max_pts_does_not_overflow_realtime_match() {
+        // Pre-fix: match_video_against_history computes
+        // `(entry.sample.pts - v.pts).abs()` raw at nearest.rs:221. For
+        // entry.pts and v.pts at opposite extremes of i64, the subtract
+        // wraps (panic in debug, silent wrap in release).
+        let mut s = nearest_realtime();
+        // KLV at i64::MIN+100 (far negative — defensive; the demuxer
+        // doesn't emit negative PTS in conformant streams, but a non-
+        // conformant source could).
+        let _ = s.feed(klv_event(i64::MIN + 100));
+        // Video at i64::MAX-100 triggers match_video_against_history,
+        // which subtracts (MIN+100) - (MAX-100) — overflows i64.
+        // Pre-fix debug: PANIC.
+        // Post-fix: saturating_sub.saturating_abs caps at i64::MAX; dist
+        // far exceeds tolerance=100, so UnpairedVideo is emitted.
+        let _ = s.feed(video_event(i64::MAX - 100));
+        // Surviving this call IS the assertion.
+    }
 }

@@ -221,6 +221,12 @@ impl<T: Transport> Sender<T> {
     }
 
     pub fn close(&mut self) {
+        // Best-effort flush of any buffered partial bundle BEFORE marking
+        // closed (otherwise the subsequent flush() would early-return on
+        // the `self.closed` guard). Mirrors Drop semantics so explicit
+        // close == drop for AutoCloseable / __exit__ / .use { } /
+        // tst_sender_close(...) idioms.
+        let _ = self.flush();
         self.closed = true;
         self.transport.close();
     }

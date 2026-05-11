@@ -50,20 +50,6 @@ impl ImapbParams {
             0.0
         }
     }
-
-    // TODO(Task 3): the two helpers below exist only so `decode_imapb` still
-    // compiles between Task 2 (encode rewrite) and Task 3 (decode rewrite).
-    // Task 3 removes both call sites and these helpers.
-    fn scale(&self) -> f64 {
-        let span = self.max - self.min;
-        let log2_ceil = span.log2().ceil();
-        let pow2 = 2f64.powf(log2_ceil);
-        pow2 / 2f64.powi(8 * self.length as i32 - 1)
-    }
-
-    fn signed_offset(&self) -> i64 {
-        2i64.pow(8 * self.length as u32 - 1)
-    }
 }
 
 pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), KlvEncodeError> {
@@ -102,8 +88,7 @@ pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), K
 }
 
 pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<f64, KlvFieldError> {
-    // Same cap as encode_imapb — see UnsupportedImapbLength rationale.
-    if !(1..=7).contains(&p.length) {
+    if !(1..=8).contains(&p.length) {
         return Err(KlvFieldError::UnsupportedImapbLength { length: p.length });
     }
     if bytes.len() != p.length {
@@ -113,9 +98,14 @@ pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<f64, KlvFieldError>
             got: bytes.len(),
         });
     }
-    let signed = read_signed_be(bytes);
-    let sf = p.scale();
-    let value = sf * (signed + p.signed_offset()) as f64 + p.min;
+    // Read L bytes as unsigned BE.
+    let mut y: u64 = 0;
+    for &b in bytes {
+        y = (y << 8) | b as u64;
+    }
+    // ST 1201.5 reverse map: x = sR * (y - Zoffset) + min.
+    let s_r = 1.0 / p.sf();
+    let value = s_r * (y as f64 - p.z_offset()) + p.min;
     Ok(value)
 }
 
@@ -136,6 +126,9 @@ fn write_signed_be(value: i64, out: &mut [u8]) {
     }
 }
 
+// Bridge: decode rewrite in Task 3 no longer needs this; Task 4 deletes both
+// `write_signed_be` and `read_signed_be`.
+#[allow(dead_code)]
 /// Read a signed integer from `bytes` (big-endian, two's complement).
 fn read_signed_be(bytes: &[u8]) -> i64 {
     let n = bytes.len();

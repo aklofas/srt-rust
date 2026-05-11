@@ -300,4 +300,54 @@ mod tests {
         assert_eq!(st.resync_events, 0);
         assert_eq!(st.packets_sent, 0);
     }
+
+    /// Recording transport that captures every byte sent. Used to assert
+    /// what was emitted across the lifecycle boundary.
+    struct Recorder(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+    impl Transport for Recorder {
+        fn send_bytes(&mut self, b: &[u8]) -> Result<(), TransportError> {
+            self.0.lock().unwrap().extend_from_slice(b);
+            Ok(())
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn close(&mut self) {}
+        fn is_alive(&self) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn close_flushes_buffered_partial_packets() {
+        // Reproduces PIPE-01: Sender::close must flush the framing buffer
+        // before marking the sender closed; otherwise 1-6 partial TS packets
+        // that fit inside TsFraming::buffer are silently dropped.
+        //
+        // Setup: push 3 whole TS packets (564 bytes) which is less than one
+        // bundle (7 packets = 1316 bytes), so they remain buffered inside
+        // TsFraming until flush or close.
+        let bytes_sink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorder = Recorder(bytes_sink.clone());
+        let mut sender = Sender::new(recorder, SenderConfig::default());
+
+        let mut input = Vec::new();
+        for _ in 0..3 {
+            input.push(0x47);
+            input.extend(vec![0u8; 187]);
+        }
+        sender.send_ts(&input).unwrap();
+        // Nothing flushed yet (3 < 7-packet bundle).
+        assert_eq!(bytes_sink.lock().unwrap().len(), 0);
+
+        sender.close();
+
+        // Pre-fix: 0 bytes captured (partial bundle dropped).
+        // Post-fix: 564 bytes captured (flush ran on close).
+        assert_eq!(
+            bytes_sink.lock().unwrap().len(),
+            3 * 188,
+            "Sender::close must flush buffered partial TS packets (parity with Drop)"
+        );
+    }
 }

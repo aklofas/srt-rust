@@ -114,6 +114,17 @@ jobs:
           SRT_FORCE_VENDORED: "1"
         run: cargo test --workspace --no-default-features
 
+      - name: cargo test (all features)
+        # Today's feature set (`mbedtls` on srt-sys / tst-srt / tst-c,
+        # `file` on tst-core) is identical to defaults, so this rail is
+        # currently equivalent to the default-features run above. Kept
+        # as a guard against silent breakage when a future feature gets
+        # added that isn't in the default set — the audit (Phase 6 Theme O)
+        # called out this rail as a coverage gap.
+        env:
+          SRT_FORCE_VENDORED: "1"
+        run: cargo test --workspace --all-features
+
       - name: Public-API ratchet (no unintended SemVer breaks)
         # Checks tst-core, tst-pipeline, and tst-srt against the committed
         # public-api.txt baselines. tst-c is excluded: its ABI surface is a

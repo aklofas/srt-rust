@@ -12,9 +12,58 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Phase 1 (SemVer ratchet), Phase 2 (DX + observability), Phase 3
 (FFI-readiness), Phase 4 (performance hot paths), Phase 5
 (internal hygiene), and Phase 6 (test infrastructure) of the Rust
-quality + DX + FFI refactor. Plan #39 (examples reorganization) and
+quality + DX + FFI refactor. Plan #39 (examples reorganization),
 plan #44 (KLV wire-format critical fixes from the 2026-05-10
-spec-validation audit) also ride this release.
+spec-validation audit), and plan #45 (pipeline close-flush and
+pairer PTS saturation fixes from the same audit) also ride this
+release.
+
+---
+
+### Pipeline close-flush and pairer PTS saturation fixes (2026-05-10) — plan #45
+
+Three High-severity correctness fixes in `tst-pipeline` from the 2026-05-10
+spec-validation audit (slice 13). No wire-format change — behavioral +
+arithmetic fixes only.
+
+#### Fixed (lifecycle / arithmetic)
+
+- **`tst_pipeline::Sender::close`** — now best-effort flushes the
+  buffered partial bundle before marking closed, matching `Drop`
+  semantics (PIPE-01). Pre-fix, callers using the AutoCloseable /
+  `__exit__` / `.use { }` / `tst_sender_close(...)` idioms could
+  silently drop 1–6 partial TS packets sitting in `TsFraming::buffer`.
+
+- **`tst_pipeline::MuxSender::close`** — now best-effort drains
+  `pending_bytes` before marking closed, matching `Drop` semantics
+  (PIPE-02). Pre-fix, queued back-pressure-buffered chunks were
+  silently abandoned on explicit close. Cancel-first ordering is
+  preserved (the `close_unblocks_parked_sender_thread` test continues
+  to pass). Also: `close()` now gracefully handles a poisoned inner
+  mutex via `if let Ok` instead of `.unwrap()`, parity with Drop.
+
+- **`tst_pipeline::pairing::Pairer`** — nearest-mode arithmetic now
+  uses `saturating_add` / `saturating_sub` at the three flagged sites
+  in `nearest.rs` (PIPE-03 item 1). Pre-fix, PTS values approaching
+  `i64::MAX` (theoretical, or from misconfigured sources) would
+  overflow — panic in debug, silent wrap in release. The
+  `pairing/mod.rs` module-doc has been rewritten (PIPE-03 item 2) to
+  accurately describe the demuxer's PTS shape: per-event values
+  bounded `0..(2^33 − 1)` per H.222.0 §2.4.3.7, with explicit
+  semantics across the 33-bit rollover boundary.
+
+#### Tests
+
+- `close_flushes_buffered_partial_packets` pins the PIPE-01 contract
+  via a Recorder transport.
+- `close_drains_pending_bytes` pins the PIPE-02 contract via a
+  `BackpressureOnce` transport with an external `Arc<Mutex<Vec<u8>>>`
+  snoop slot.
+- `close_does_not_panic_on_poisoned_lock` pins the poisoned-lock parity
+  ride-along via a `PanicOnSend` transport.
+- `near_i64_max_pts_does_not_overflow_buffered_drain` and
+  `near_i64_max_pts_does_not_overflow_realtime_match` pin the PIPE-03
+  arithmetic contract; both panic pre-fix in debug, both pass post-fix.
 
 ---
 

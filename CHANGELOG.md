@@ -77,8 +77,8 @@ fixed at the type level (pre-1.0 break per the break-freely policy):
   - Nightly fuzz compile smoke (`cargo +nightly fuzz check` for both
     fuzz crates).
 
-Test count: 1320 → 1329 default-features (+9: 3 KLV proptests + 3 PSI
-proptests + 3 incidental from test-helper additions).
+Test count: 1320 → 1326 default-features (+6: 3 KLV proptests + 3 PSI
+proptests).
 
 ---
 

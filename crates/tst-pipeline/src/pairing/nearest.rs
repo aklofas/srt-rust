@@ -188,7 +188,11 @@ impl NearestState {
             let best = self
                 .klv_history
                 .iter()
-                .map(|e| (e.sample.pts - v.pts).abs())
+                // saturating_sub + saturating_abs guard against i64 overflow when
+                // PTS values approach the limit (PIPE-03 item 1). H.222.0 §2.4.3.7
+                // bounds the demuxer's per-event PTS at 0..(2^33 − 1) ≈ 9.55e9, so
+                // saturation is defensive against non-conformant sources.
+                .map(|e| e.sample.pts.saturating_sub(v.pts).saturating_abs())
                 .min();
             let in_tolerance = matches!(best, Some(d) if d <= self.tolerance_ticks);
             if in_tolerance {
@@ -197,7 +201,10 @@ impl NearestState {
                 continue;
             }
             let window_closed = match last_klv_pts {
-                Some(last) => last > v.pts + max_lag_ticks,
+                // saturating_add caps at i64::MAX so the comparison becomes
+                // `last > i64::MAX` (always false) — keep the video buffered
+                // rather than force-emit under arithmetic overflow.
+                Some(last) => last > v.pts.saturating_add(max_lag_ticks),
                 None => false,
             };
             if force_all || window_closed {
@@ -218,7 +225,9 @@ impl NearestState {
     fn match_video_against_history(&mut self, v: VideoSample) -> Vec<PairerOutput> {
         let mut best: Option<(usize, i64)> = None;
         for (i, entry) in self.klv_history.iter().enumerate() {
-            let dist = (entry.sample.pts - v.pts).abs();
+            // saturating_sub + saturating_abs guards against i64 overflow
+            // (PIPE-03 item 1) — see drain_buffered for the rationale.
+            let dist = entry.sample.pts.saturating_sub(v.pts).saturating_abs();
             match best {
                 None => best = Some((i, dist)),
                 // Strict `<` so a later equidistant entry wins (newer

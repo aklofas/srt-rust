@@ -79,6 +79,9 @@ impl LastBeforeState {
             .map(|s| {
                 s.sample.pts <= v.pts
                     && match self.freshness_ticks {
+                        // PIPE-16 cross-ref: `v.pts - s.sample.pts` is safe
+                        // because the gate above proves `s.sample.pts <= v.pts`
+                        // (non-negative diff). No saturation needed.
                         Some(n) => v.pts - s.sample.pts <= n,
                         None => true,
                     }

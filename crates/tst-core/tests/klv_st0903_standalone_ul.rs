@@ -10,9 +10,13 @@ use tst_core::klv::{length, st0903};
 
 #[test]
 fn standalone_ul_dispatch_pattern() {
-    // Build a VMTI LS body.
+    // Build a VMTI LS via the self-checksumming standalone entry —
+    // emits [VMTI_LS_UL:16][outer BER length][body][Tag 1 TLV] per
+    // ST 0903.4-17 / ST 0903.6-119 with a running-sum-16 checksum.
     let vmti = st0903::VmtiLs {
-        checksum: Some(0xDEAD),
+        // `checksum` is ignored on the standalone encode path — the
+        // encoder computes the running 16-bit summation across
+        // [UL .. start of Tag 1 value] per ST 0903.6 §10.1.1.
         precision_time_stamp: Some(1_700_000_000_000_000),
         version_number: Some(6),
         num_targets_reported: Some(1),
@@ -23,15 +27,7 @@ fn standalone_ul_dispatch_pattern() {
         }],
         ..Default::default()
     };
-    let body = st0903::encode_to_vec(&vmti).unwrap();
-
-    // Wrap in UL + BER outer length.
-    let mut record = Vec::new();
-    record.extend_from_slice(&st0903::VMTI_LS_UL);
-    let mut len_buf = [0u8; 9];
-    let len_n = length::write_ber(body.len(), &mut len_buf).unwrap();
-    record.extend_from_slice(&len_buf[..len_n]);
-    record.extend_from_slice(&body);
+    let record = st0903::encode_to_vec_standalone(&vmti).unwrap();
 
     // Consumer-side dispatch (the documented pattern from
     // klv::st0903's module rustdoc).
@@ -45,7 +41,8 @@ fn standalone_ul_dispatch_pattern() {
 
     // Decode the inner LS body via klv::st0903::decode.
     let decoded = st0903::decode(inner).unwrap();
-    assert_eq!(decoded.checksum, Some(0xDEAD));
+    // The substrate-computed checksum is observable post-decode.
+    assert!(decoded.checksum.is_some());
     assert_eq!(decoded.precision_time_stamp, Some(1_700_000_000_000_000));
     assert_eq!(decoded.targets.len(), 1);
     assert_eq!(decoded.targets[0].target_id, 42);

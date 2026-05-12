@@ -11,9 +11,10 @@ use tst_core::klv::{st0601, st0903};
 
 #[test]
 fn vmti_round_trips_through_st0601_tag_74() {
-    // Build a synthetic VMTI LS.
+    // Build a synthetic VMTI LS. `checksum` intentionally not set —
+    // Tag 74 embeds the body and ST 0903.6-120 forbids Tag 1 in the
+    // embedded-VMTI form (it would be silently dropped anyway).
     let vmti = st0903::VmtiLs {
-        checksum: Some(0),
         precision_time_stamp: Some(1_700_000_000_000_000),
         version_number: Some(6),
         num_targets_reported: Some(2),

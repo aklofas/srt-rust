@@ -580,6 +580,23 @@ impl Demuxer {
                 );
                 return;
             }
+            Err(PsiParseError::MultiSectionUnsupported {
+                table_id,
+                last_section_number,
+            }) => {
+                self.queue_nonconformant(
+                    StreamId {
+                        pid: 0x0000,
+                        kind: StreamKind::Unknown(0),
+                    },
+                    NonConformantIssue::PsiMultiSectionUnsupported {
+                        pid: 0x0000,
+                        table_id,
+                        last_section_number,
+                    },
+                );
+                return;
+            }
             Err(_) => return,
         };
         // Same version — nothing changed, skip the diff.
@@ -647,6 +664,23 @@ impl Demuxer {
                         kind: StreamKind::Unknown(0),
                     },
                     NonConformantIssue::PsiChecksumMismatch { pid: pmt_pid },
+                );
+                return;
+            }
+            Err(PsiParseError::MultiSectionUnsupported {
+                table_id,
+                last_section_number,
+            }) => {
+                self.queue_nonconformant(
+                    StreamId {
+                        pid: pmt_pid,
+                        kind: StreamKind::Unknown(0),
+                    },
+                    NonConformantIssue::PsiMultiSectionUnsupported {
+                        pid: pmt_pid,
+                        table_id,
+                        last_section_number,
+                    },
                 );
                 return;
             }
@@ -3154,5 +3188,126 @@ mod tests {
             progs[&0x1000].streams.iter().any(|s| s.pid == 0x1011),
             "program 1 stream 0x1011 must survive program 2 removal"
         );
+    }
+
+    // --- DEMUX-01 regression tests (multi-section PSI rejection) ---
+
+    /// Helper: build a PAT TS packet whose section has `last_section_number=1`,
+    /// recomputing the CRC after the byte edit so the section is otherwise
+    /// well-formed.
+    fn pat_packet_with_multi_section(programs: &[(u16, u16)], version: u8) -> Vec<u8> {
+        let mut pkt = pat_packet_with_programs(programs, version);
+        // Section bytes start at offset 5 (sync + 3 TS header bytes +
+        // pointer_field). Byte [7] of the section is last_section_number.
+        pkt[5 + 7] = 0x01;
+        // Recompute CRC over the section sans its 4-byte trailer.
+        let section_len = 3 + (((pkt[5 + 1] as usize & 0x0F) << 8) | pkt[5 + 2] as usize);
+        let section_end = 5 + section_len;
+        let crc = crc32_mpeg2_test(&pkt[5..section_end - 4]);
+        pkt[section_end - 4..section_end].copy_from_slice(&crc.to_be_bytes());
+        pkt
+    }
+
+    /// Helper: build a PMT TS packet whose section has `last_section_number=1`.
+    fn pmt_packet_with_multi_section(
+        pmt_pid: u16,
+        program_number: u16,
+        pcr_pid: u16,
+        streams: &[(u8, u16)],
+        version: u8,
+    ) -> Vec<u8> {
+        let mut pkt = pmt_packet_for_test(pmt_pid, program_number, pcr_pid, streams, version);
+        pkt[5 + 7] = 0x01;
+        let section_len = 3 + (((pkt[5 + 1] as usize & 0x0F) << 8) | pkt[5 + 2] as usize);
+        let section_end = 5 + section_len;
+        let crc = crc32_mpeg2_test(&pkt[5..section_end - 4]);
+        pkt[section_end - 4..section_end].copy_from_slice(&crc.to_be_bytes());
+        pkt
+    }
+
+    fn drain_all_events(d: &mut Demuxer) -> Vec<DemuxEvent> {
+        let mut events = Vec::new();
+        while let Some(e) = d.next_event() {
+            events.push(e);
+        }
+        events
+    }
+
+    #[test]
+    fn demuxer_emits_non_conformance_on_multi_section_pat() {
+        // A TS packet carrying a PAT with last_section_number=1 must
+        // surface NonConformantIssue::PsiMultiSectionUnsupported and
+        // NOT emit a ProgramMap event for the partial section.
+        let pkt = pat_packet_with_multi_section(&[(1, 0x100)], 0);
+        let mut demuxer = Demuxer::new();
+        demuxer.feed(&pkt).unwrap();
+        let events = drain_all_events(&mut demuxer);
+
+        let nc = events.iter().find_map(|e| match e {
+            DemuxEvent::NonConformant { issue, .. } => Some(issue.clone()),
+            _ => None,
+        });
+        match nc {
+            Some(NonConformantIssue::PsiMultiSectionUnsupported {
+                pid,
+                table_id,
+                last_section_number,
+            }) => {
+                assert_eq!(pid, 0x0000);
+                assert_eq!(table_id, 0x00);
+                assert_eq!(last_section_number, 1);
+            }
+            other => panic!("expected PsiMultiSectionUnsupported, got {other:?}"),
+        }
+        // No ProgramMap should fire — the partial section was dropped.
+        assert!(
+            !events.iter().any(|e| matches!(e, DemuxEvent::ProgramMap(_))),
+            "ProgramMap must NOT fire for a rejected multi-section PAT"
+        );
+    }
+
+    #[test]
+    fn demuxer_emits_non_conformance_on_multi_section_pmt() {
+        // Drive a normal PAT first so the demuxer creates a tracker for
+        // the PMT PID; then feed a PMT with last_section_number=1. PAT
+        // lands; PMT triggers PsiMultiSectionUnsupported on its own PID.
+        let pat = pat_packet_with_programs(&[(1, 0x100)], 0);
+        let pmt =
+            pmt_packet_with_multi_section(0x100, 1, 0x101, &[(0x1B /* H.264 */, 0x101)], 0);
+
+        let mut demuxer = Demuxer::new();
+        demuxer.feed(&pat).unwrap();
+        demuxer.feed(&pmt).unwrap();
+        let events = drain_all_events(&mut demuxer);
+
+        let nc = events.iter().find_map(|e| match e {
+            DemuxEvent::NonConformant { issue, .. } => Some(issue.clone()),
+            _ => None,
+        });
+        match nc {
+            Some(NonConformantIssue::PsiMultiSectionUnsupported {
+                pid,
+                table_id,
+                last_section_number,
+            }) => {
+                assert_eq!(pid, 0x100);
+                assert_eq!(table_id, 0x02);
+                assert_eq!(last_section_number, 1);
+            }
+            other => panic!("expected PsiMultiSectionUnsupported, got {other:?}"),
+        }
+        // ProgramMap may fire from the PAT (announces the empty program),
+        // but the PMT-driven version (which would populate streams) must
+        // NOT have arrived — the rejection happens before stream emission.
+        // The empty ProgramMap from the PAT carries no streams; assert no
+        // ProgramMap event contains streams.
+        for e in &events {
+            if let DemuxEvent::ProgramMap(pm) = e {
+                assert!(
+                    pm.streams.is_empty(),
+                    "no PMT-driven ProgramMap should have streams after rejection: {pm:?}"
+                );
+            }
+        }
     }
 }

@@ -1578,6 +1578,7 @@ impl core::marker::Unpin for tst_core::klv::st0102::SecurityLs
 impl core::marker::UnsafeUnpin for tst_core::klv::st0102::SecurityLs
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0102::SecurityLs
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0102::SecurityLs
+pub const tst_core::klv::st0102::SECURITY_LS_UL: [u8; 16]
 pub fn tst_core::klv::st0102::decode(buf: &[u8]) -> core::result::Result<tst_core::klv::st0102::SecurityLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0102::decode_strict(buf: &[u8]) -> core::result::Result<tst_core::klv::st0102::SecurityLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0102::encode(record: &tst_core::klv::st0102::SecurityLs, out: &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
@@ -1930,12 +1931,16 @@ pub const tst_core::klv::st0903::VMTI_LS_UL: [u8; 16]
 pub fn tst_core::klv::st0903::decode(bytes: &[u8]) -> core::result::Result<tst_core::klv::st0903::VmtiLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0903::decode_strict(bytes: &[u8]) -> core::result::Result<tst_core::klv::st0903::VmtiLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0903::encode(ls: &tst_core::klv::st0903::VmtiLs, out: &mut alloc::vec::Vec<u8>) -> core::result::Result<(), tst_core::error::KlvEncodeError>
+pub fn tst_core::klv::st0903::encode_standalone(ls: &tst_core::klv::st0903::VmtiLs, out: &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0903::encode_to_vec(ls: &tst_core::klv::st0903::VmtiLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
+pub fn tst_core::klv::st0903::encode_to_vec_standalone(ls: &tst_core::klv::st0903::VmtiLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0903::encoded_len(ls: &tst_core::klv::st0903::VmtiLs) -> usize
+pub fn tst_core::klv::st0903::encoded_len_standalone(ls: &tst_core::klv::st0903::VmtiLs) -> usize
 pub mod tst_core::klv::universal_label
 pub struct tst_core::klv::universal_label::UniversalLabel(pub [u8; 16])
 impl tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::PRECISION_TIMESTAMP_PACK_UL: tst_core::klv::universal_label::UniversalLabel
+pub const tst_core::klv::universal_label::UniversalLabel::SECURITY_LS_UL: tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::SMPTE_336M_LS_KEY: tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::ST_0601_LS: tst_core::klv::universal_label::UniversalLabel
 pub const fn tst_core::klv::universal_label::UniversalLabel::category(&self) -> u8
@@ -2232,6 +2237,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0605::TimeStatus
 pub struct tst_core::klv::UniversalLabel(pub [u8; 16])
 impl tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::PRECISION_TIMESTAMP_PACK_UL: tst_core::klv::universal_label::UniversalLabel
+pub const tst_core::klv::universal_label::UniversalLabel::SECURITY_LS_UL: tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::SMPTE_336M_LS_KEY: tst_core::klv::universal_label::UniversalLabel
 pub const tst_core::klv::universal_label::UniversalLabel::ST_0601_LS: tst_core::klv::universal_label::UniversalLabel
 pub const fn tst_core::klv::universal_label::UniversalLabel::category(&self) -> u8
@@ -2342,6 +2348,7 @@ impl core::marker::Unpin for tst_core::klv::st0903::VmtiLs
 impl core::marker::UnsafeUnpin for tst_core::klv::st0903::VmtiLs
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0903::VmtiLs
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0903::VmtiLs
+pub const tst_core::klv::SECURITY_LS_UL: [u8; 16]
 pub const tst_core::klv::VMTI_LS_UL: [u8; 16]
 pub mod tst_core::mpegts
 pub mod tst_core::mpegts::au_cell

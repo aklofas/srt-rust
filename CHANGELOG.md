@@ -14,9 +14,49 @@ Phase 1 (SemVer ratchet), Phase 2 (DX + observability), Phase 3
 (internal hygiene), and Phase 6 (test infrastructure) of the Rust
 quality + DX + FFI refactor. Plan #39 (examples reorganization),
 plan #44 (KLV wire-format critical fixes from the 2026-05-10
-spec-validation audit), and plan #45 (pipeline close-flush and
-pairer PTS saturation fixes from the same audit) also ride this
-release.
+spec-validation audit), plan #45 (pipeline close-flush and pairer
+PTS saturation fixes from the same audit), and plan #46 (KLV
+follow-up: VMTI checksum ordering + Security LS UL constant) also
+ride this release.
+
+---
+
+### KLV follow-up — VMTI checksum + Security LS UL (2026-05-10) — plan #46
+
+Two High-severity audit findings from `docs/analysis/2026-05-10-audit-slices/03-klv-other-sets.md` closed in this slice.
+
+#### Public API
+
+- **`klv::universal_label::UniversalLabel::SECURITY_LS_UL`** — new
+  16-byte UL constant per MISB ST 0102.12 §6.7
+  (`06.0E.2B.34.02.03.01.01.0E.01.03.03.02.00.00.00`, CRC 40980).
+- **`klv::st0102::SECURITY_LS_UL`** — raw `[u8; 16]` re-export mirroring
+  the `klv::st0903::VMTI_LS_UL` precedent. Used by consumers detecting
+  the standalone (non-Tag-48-nested) Security LS carriage path.
+- **`klv::st0903::encode_standalone(&VmtiLs, &mut [u8]) -> Result<usize, _>`**
+  — new self-checksumming entry for standalone-VMTI carriage. Emits
+  `[VMTI_LS_UL:16][outer BER length][body][Tag 1 checkSum TLV]` per
+  ST 0903.4-17 / ST 0903.6-119. The Tag 1 value is the running 16-bit
+  unsigned summation per §10.1.1.
+- **`klv::st0903::encode_to_vec_standalone(&VmtiLs) -> Result<Vec<u8>, _>`**
+  — convenience over `encode_standalone` allocating a fresh buffer.
+- **`klv::st0903::encoded_len_standalone(&VmtiLs) -> usize`** — sizing
+  helper for the standalone path.
+
+#### Changed (wire-format)
+
+- **`klv::st0903::encode` / `encode_to_vec`** is now exclusively the
+  **embedded-VMTI body** entry — Tag 1 (checkSum) is silently dropped
+  per ST 0903.6-120 ("where the VMTI LS is embedded-VMTI, the VMTI LS
+  checkSum (Item 1) shall be omitted"). Any value the caller stored in
+  `VmtiLs::checksum` is ignored. Callers who want a self-checksummed
+  standalone-VMTI wire record use `encode_to_vec_standalone`. Decode is
+  unchanged: `VmtiLs::checksum` still captures the Tag 1 value when
+  present on the wire.
+
+#### Tests
+
+- Eight new regression tests pin the new contracts: `encode_omits_tag1_checksum_per_st0903_6_120`, `encode_drops_caller_supplied_checksum`, `encode_standalone_emits_tag1_last_per_st0903_4_17`, `encode_standalone_checksum_matches_running_sum_16`, `encode_standalone_round_trips_via_decode`, `encoded_len_standalone_matches_encode_standalone`, `security_ls_ul_canonical_bytes`, `security_ls_ul_reexport_matches_universal_label`.
 
 ---
 

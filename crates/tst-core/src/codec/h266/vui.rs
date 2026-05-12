@@ -12,14 +12,17 @@ use crate::codec::{
     ColorInfo, ColourPrimaries, MatrixCoefficients, Rational, TransferCharacteristics,
 };
 
-/// Parse H.266 VUI per §7.3.2.5, returning `ColorInfo` when at least one
-/// color/SAR field was present. Frame rate is NOT recovered here — it lives
-/// in `general_timing_hrd_parameters()` (§7.3.5.1).
+/// Parse H.274 V4 §7.2 `vui_parameters( payloadSize )`, returning `ColorInfo`
+/// when at least one color/SAR field was present. Frame rate is NOT recovered
+/// here — it lives in `general_timing_hrd_parameters()` (H.266 V4 §7.3.5.1).
 ///
-/// `payload_size_bytes` is `vui_payload_size_minus1 + 1` from the SPS.
+/// Despite the spec name's `payloadSize` argument, H.274 §7.2 has no
+/// payloadSize-dependent fields. The tail (`vui_reserved_payload_extension_data`,
+/// `vui_payload_bit_equal_to_one`, zero-pad-to-byte-align) belongs to the
+/// `vui_payload(payloadSize)` wrapper in H.266 §7.3.2.21 — that's a caller
+/// concern (handled in `sps.rs`), not a `vui_parameters()` concern.
 pub(super) fn parse_h266_vui(
     br: &mut BitReader<'_>,
-    _payload_size_bytes: usize,
 ) -> Result<Option<ColorInfo>, CodecParseError> {
     // §7.3.2.5 — four source flags (H.266-specific; precede aspect_ratio).
     let vui_progressive_source_flag = br.read_bool()?; // u(1)

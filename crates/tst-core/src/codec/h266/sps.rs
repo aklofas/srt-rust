@@ -497,12 +497,28 @@ fn walk_sps_body(
     // lives in general_timing_hrd_parameters() above (§7.3.5.1).
     let color_info = if sps_vui_parameters_present_flag {
         let vui_payload_size_minus1 = br.read_ue()? as usize;
+        let payload_size_bytes = vui_payload_size_minus1 + 1;
         // §7.3.2.4: "while( !byte_aligned() ) sps_vui_alignment_zero_bit f(1)"
         // Consume zero-padding bits to reach the next byte boundary before VUI.
         while br.position() % 8 != 0 {
             br.read_u(1)?;
         }
-        parse_h266_vui(br, vui_payload_size_minus1 + 1)?
+        // §7.3.2.21 vui_payload(payloadSize) reserves exactly 8 * payloadSize
+        // bits. `vui_parameters()` (H.274 §7.2) may not consume all of them —
+        // the wrapper allows `vui_reserved_payload_extension_data` + marker +
+        // zero-pad tail. Snapshot the start position so we can advance the
+        // cursor to the declared payload end before reading sps_extension_flag.
+        let vui_start_bits = br.position();
+        let color = parse_h266_vui(br)?;
+        let vui_end_bits = vui_start_bits + (8 * payload_size_bytes as u32);
+        while br.position() < vui_end_bits {
+            // Consume the optional extension+marker+pad tail. We do not
+            // interpret the bits — H.266 §7.3.2.21 reserves them for future
+            // use and §7.4.2.21's `more_data_in_payload()` test allows
+            // benign extension data here.
+            br.read_u(1)?;
+        }
+        color
     } else {
         None
     };

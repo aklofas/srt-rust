@@ -619,18 +619,33 @@ fn decode_vtarget_series_strict(
     Ok(targets)
 }
 
-/// Symmetric encode of a VMTI Local Set per ST 0903.6 §10.1.
+/// Encode a VMTI Local Set **body** (no UL prefix, no outer BER length,
+/// no Tag 1 checksum).
 ///
-/// Fields are emitted in ascending tag order (1, 2, 3, 4, 5, 6, 8, 9,
-/// 10, 11, 12, 13, 101, 102, 103); Tag 7 (`motionImageryFrameNumber`)
-/// is deprecated in v6 and never emitted. Preserved `unknown` tags are
+/// This is the **embedded-VMTI** entry point per ST 0903.6 §10 — used
+/// when the VMTI LS rides inside another KLV carrier (most commonly
+/// ST 0601 Tag 74). The Tag 1 checkSum is **always omitted** per
+/// ST 0903.6-120 ("where the VMTI LS is embedded-VMTI, the VMTI LS
+/// checkSum (Item 1) shall be omitted"). Any value the caller stored in
+/// [`VmtiLs::checksum`] is silently dropped — the field exists for
+/// decode-side fidelity only.
+///
+/// For **standalone-VMTI** carriage (separate KLV PID, wrapped as
+/// `[VMTI_LS_UL:16][outer BER length][body][Tag 1 checksum TLV]`), use
+/// [`encode_standalone`] / [`encode_to_vec_standalone`], which compute
+/// the running 16-bit checksum per §10.1.1 and append Tag 1 last.
+///
+/// Fields are emitted in ascending tag order (2, 3, 4, 5, 6, 8, 9, 10,
+/// 11, 12, 13, 101, 102, 103); Tag 7 (`motionImageryFrameNumber`) is
+/// deprecated in v6 and never emitted. Preserved `unknown` tags are
 /// appended last per ST 0107.5 §6 (single-byte tag IDs only — the
 /// VMTI LS spec keeps tags ≤107).
 ///
 /// Round-trip property: `decode(encode_to_vec(&ls)?)?` reproduces all
 /// typed fields and preserved unknowns of `ls` (modulo IMAPB
-/// quantization on `horizontal_fov` / `vertical_fov`). `field_errors`
-/// is a decode-time diagnostic and is not emitted on encode.
+/// quantization on `horizontal_fov` / `vertical_fov` and the dropped
+/// `checksum` field). `field_errors` is a decode-time diagnostic and
+/// is not emitted on encode.
 ///
 /// # Errors
 /// - [`KlvEncodeError::OutOfRange`] if `horizontal_fov` /
@@ -642,11 +657,10 @@ pub fn encode(ls: &VmtiLs, out: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
     use crate::klv::length::write_ber;
     use emit::{emit_imapb_n, emit_tlv, emit_var};
 
-    // Ascending tag order. Tag 7 (deprecated) is intentionally skipped
-    // — there is no struct field to source it from.
-    if let Some(v) = ls.checksum {
-        emit_tlv(out, 1, &v.to_be_bytes())?;
-    }
+    // Embedded-VMTI body: Tag 1 (checkSum) is omitted per ST 0903.6-120.
+    // Tag 2 (precisionTimeStamp) first per ST 0903.4-14 — since Tag 1
+    // is now absent, ascending-tag-order naturally places Tag 2 first.
+    // Tag 7 (deprecated) is intentionally skipped (no struct field).
     if let Some(v) = ls.precision_time_stamp {
         emit_tlv(out, 2, &v.to_be_bytes())?;
     }
@@ -738,9 +752,8 @@ pub fn encoded_len(ls: &VmtiLs) -> usize {
     }
 
     let mut total = 0usize;
-    if ls.checksum.is_some() {
-        total += tlv_len(2);
-    }
+    // Tag 1 (checkSum) is omitted by `encode` per ST 0903.6-120; no
+    // size contribution.
     if ls.precision_time_stamp.is_some() {
         total += tlv_len(8);
     }
@@ -1165,7 +1178,10 @@ mod tests {
     #[test]
     fn encode_round_trips_minimal() {
         let ls = VmtiLs {
-            checksum: Some(0),
+            // `checksum` intentionally NOT set: encode_to_vec is the
+            // embedded-VMTI entry which drops Tag 1 per ST 0903.6-120.
+            // Use encode_to_vec_standalone for a self-checksummed
+            // standalone-VMTI wire form.
             precision_time_stamp: Some(1_700_000_000_000_000),
             version_number: Some(6),
             num_targets_reported: Some(0),
@@ -1176,7 +1192,7 @@ mod tests {
         assert_eq!(bytes.len(), encoded_len(&ls));
 
         let decoded = decode(&bytes).unwrap();
-        assert_eq!(decoded.checksum, Some(0));
+        assert_eq!(decoded.checksum, None, "embedded-VMTI body has no checksum");
         assert_eq!(decoded.precision_time_stamp, Some(1_700_000_000_000_000));
         assert_eq!(decoded.version_number, Some(6));
         assert_eq!(decoded.num_targets_reported, Some(0));
@@ -1185,7 +1201,8 @@ mod tests {
     #[test]
     fn encode_round_trips_with_targets() {
         let ls = VmtiLs {
-            checksum: Some(0xABCD),
+            // `checksum` intentionally NOT set per ST 0903.6-120
+            // (embedded-VMTI omits Tag 1).
             precision_time_stamp: Some(1_700_000_000_000_000),
             version_number: Some(6),
             num_targets_reported: Some(2),
@@ -1232,7 +1249,8 @@ mod tests {
     #[test]
     fn encode_preserves_unknown_tags() {
         let ls = VmtiLs {
-            checksum: Some(0),
+            // `checksum` intentionally NOT set per ST 0903.6-120
+            // (embedded-VMTI omits Tag 1).
             precision_time_stamp: Some(1_700_000_000_000_000),
             version_number: Some(6),
             num_targets_reported: Some(0),
@@ -1253,7 +1271,8 @@ mod tests {
     #[test]
     fn encoded_len_matches_encode() {
         let ls = VmtiLs {
-            checksum: Some(0xCAFE),
+            // `checksum` intentionally NOT set per ST 0903.6-120
+            // (embedded-VMTI omits Tag 1).
             precision_time_stamp: Some(1_700_000_000_000_000),
             version_number: Some(6),
             num_targets_reported: Some(1),

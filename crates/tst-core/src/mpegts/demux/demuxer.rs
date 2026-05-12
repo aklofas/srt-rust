@@ -3261,7 +3261,9 @@ mod tests {
         }
         // No ProgramMap should fire — the partial section was dropped.
         assert!(
-            !events.iter().any(|e| matches!(e, DemuxEvent::ProgramMap(_))),
+            !events
+                .iter()
+                .any(|e| matches!(e, DemuxEvent::ProgramMap(_))),
             "ProgramMap must NOT fire for a rejected multi-section PAT"
         );
     }
@@ -3272,8 +3274,7 @@ mod tests {
         // the PMT PID; then feed a PMT with last_section_number=1. PAT
         // lands; PMT triggers PsiMultiSectionUnsupported on its own PID.
         let pat = pat_packet_with_programs(&[(1, 0x100)], 0);
-        let pmt =
-            pmt_packet_with_multi_section(0x100, 1, 0x101, &[(0x1B /* H.264 */, 0x101)], 0);
+        let pmt = pmt_packet_with_multi_section(0x100, 1, 0x101, &[(0x1B /* H.264 */, 0x101)], 0);
 
         let mut demuxer = Demuxer::new();
         demuxer.feed(&pat).unwrap();

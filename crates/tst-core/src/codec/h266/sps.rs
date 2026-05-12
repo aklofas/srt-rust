@@ -778,7 +778,7 @@ mod tests {
     /// Same as [`minimal_sps_rbsp`] but lets callers inject an arbitrary
     /// `sps_bitdepth_minus8` value to exercise the bounds check.
     fn minimal_sps_rbsp_with_bitdepth_minus8(bitdepth_minus8: u32) -> Vec<u8> {
-        minimal_sps_rbsp_full(bitdepth_minus8, None)
+        minimal_sps_rbsp_full(bitdepth_minus8, None, 0)
     }
 
     /// Same minimal SPS but with `sps_conformance_window_flag = 1` and
@@ -786,12 +786,28 @@ mod tests {
     /// SubWidthC/SubHeightC units. 4:2:0 chroma → SubWidthC=SubHeightC=2,
     /// so the surfaced `crop_*` luma-sample values are 2× the offsets.
     fn minimal_sps_rbsp_with_conformance_window(offsets: (u32, u32, u32, u32)) -> Vec<u8> {
-        minimal_sps_rbsp_full(0, Some(offsets))
+        minimal_sps_rbsp_full(0, Some(offsets), 0)
+    }
+
+    /// Same minimal SPS but with `sps_vui_parameters_present_flag = 1` and
+    /// the declared `vui_payload(payloadSize)` region sized 1 byte larger
+    /// than the actual `vui_parameters()` body (which is 8 bits for an
+    /// all-zero-flags VUI). The extra byte is `0xFF` to expose any
+    /// mis-framing: a parser that fails to advance past the declared payload
+    /// size will read the wrong `sps_extension_flag` bit and corrupt the
+    /// trailing-bits check.
+    ///
+    /// Mirrors H.266 V4 §7.3.2.21 — `vui_payload(payloadSize)` reserves the
+    /// entire `8 * payloadSize` bit region; encoders MAY emit
+    /// `vui_reserved_payload_extension_data` + marker + pad in the tail.
+    fn minimal_sps_rbsp_with_vui_tail_padding() -> Vec<u8> {
+        minimal_sps_rbsp_full(0, None, 1)
     }
 
     fn minimal_sps_rbsp_full(
         bitdepth_minus8: u32,
         conf_window: Option<(u32, u32, u32, u32)>,
+        vui_extra_padding_bytes: usize,
     ) -> Vec<u8> {
         let mut bw = BitWriter::new();
 
@@ -971,8 +987,29 @@ mod tests {
         // (timing_hrd=0 → no general_timing_hrd_parameters call)
 
         bw.write(0, 1); // sps_field_seq_flag = 0
-        bw.write(0, 1); // sps_vui_parameters_present_flag = 0
-        // (vui=0 → no vui_payload_size or vui_parameters call)
+        if vui_extra_padding_bytes > 0 {
+            bw.write(1, 1); // sps_vui_parameters_present_flag = 1
+            // §7.3.2.4: vui_payload_size_minus1 ue(v). 1 byte of VUI flags +
+            // `vui_extra_padding_bytes` of tail = total bytes - 1.
+            let total_bytes = 1 + vui_extra_padding_bytes;
+            bw.write_ue((total_bytes - 1) as u32);
+            // §7.3.2.4: while(!byte_aligned()) sps_vui_alignment_zero_bit f(1).
+            while bw.pos % 8 != 0 {
+                bw.write(0, 1);
+            }
+            // vui_parameters(): 8 flag bits (all zero) — see H.274 §7.2.
+            // 4 source flags + aspect_ratio_present + overscan_present +
+            // colour_description_present + chroma_loc_present.
+            bw.write(0, 8);
+            // Tail padding: fill with 0xFF so a mis-framed parser reads
+            // sps_extension_flag = 1 (which fails downstream rbsp_trailing_bits).
+            for _ in 0..vui_extra_padding_bytes {
+                bw.write(0xFF, 8);
+            }
+        } else {
+            bw.write(0, 1); // sps_vui_parameters_present_flag = 0
+            // (vui=0 → no vui_payload_size or vui_parameters call)
+        }
 
         bw.write(0, 1); // sps_extension_flag = 0
 
@@ -1141,5 +1178,36 @@ mod tests {
             sps.color_info.is_none(),
             "VVenC fixture has no VUI in this profile"
         );
+    }
+
+    /// Smoke test for H.266 V4 §7.3.2.21 — `vui_payload(payloadSize)`
+    /// reserves exactly `8 * payloadSize` bits; `vui_parameters()`
+    /// (H.274 §7.2) may not consume all of them, and the SPS caller
+    /// must advance the cursor to the declared payload end before
+    /// reading `sps_extension_flag`.
+    ///
+    /// This test builds an SPS with a 2-byte declared VUI region but a
+    /// 1-byte actual `vui_parameters()` body. The trailing byte is
+    /// `0xFF` to expose any mis-framing: post-fix, the parser skips
+    /// the padding and reads `sps_extension_flag = 0` correctly;
+    /// pre-fix, the parser reads bit 0 of `0xFF` as `sps_extension_flag = 1`.
+    ///
+    /// **Note:** The bug isn't directly observable as `Err` vs `Ok` —
+    /// `sps_extension_flag` isn't surfaced on `H266Sps`, and the parser
+    /// doesn't validate `rbsp_trailing_bits`. The test functions as
+    /// a structural smoke test ensuring the new VUI-with-padding
+    /// builder path produces a parseable stream end-to-end. Strict-mode
+    /// trailing-bit validation (a separate plan) would make pre-fix
+    /// fail; until then the test guards against builder-side regressions
+    /// and documents the §7.3.2.21 contract.
+    #[test]
+    fn vui_tail_padding_consumed_before_extension_flag() {
+        let rbsp = minimal_sps_rbsp_with_vui_tail_padding();
+        let sps = parse_sps(&rbsp).expect(
+            "SPS with VUI tail padding must parse — caller advances cursor to declared payload end",
+        );
+        // Ensure VUI itself parsed (all zero gates → no color_info, but the
+        // structural walk reached here).
+        assert_eq!(sps.color_info, None);
     }
 }

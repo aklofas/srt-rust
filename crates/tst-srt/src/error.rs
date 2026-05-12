@@ -79,24 +79,111 @@ pub enum SrtErrno {
     Unknown(i32),
 }
 
-/// Listener-side reject codes (SRT_REJ_*) sent during handshake.
+/// Reject codes carried in SRT's handshake or set by a remote service.
+///
+/// libsrt partitions the code space into three categories
+/// (`srt.h:565-571`):
+///
+/// | Range | Category | Source |
+/// |---|---|---|
+/// | `0..=999` | `SRT_REJC_INTERNAL` | libsrt-internal enum `SRT_REJECT_REASON` (`srt.h:535-558`); emitted by the SRT library itself during handshake. |
+/// | `1000..=1999` | `SRT_REJC_PREDEFINED` | Application-layer codes from `access_control.h`; set by a remote service via `srt_setrejectreason()`. Mostly HTTP-derived. |
+/// | `2000..` | `SRT_REJC_USERDEFINED` | Free-form; modeled as `Other(raw)`. |
+///
+/// Per-variant rustdoc records the category and ordinal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum RejectReason {
-    BadSecret,
-    Unsecure,
-    ValueLearn,
-    UnknownStreamId,
+    // -- Internal (SRT_REJC_INTERNAL, 0..=999) --
+    /// `SRT_REJ_UNKNOWN` (0) — initial state, set while a handshake is in progress.
+    Unknown,
+    /// `SRT_REJ_SYSTEM` (1) — broken due to system function error.
+    System,
+    /// `SRT_REJ_PEER` (2) — connection was rejected by peer.
+    Peer,
+    /// `SRT_REJ_RESOURCE` (3) — internal problem with resource allocation.
     Resource,
+    /// `SRT_REJ_ROGUE` (4) — incorrect data in handshake messages.
     Rogue,
+    /// `SRT_REJ_BACKLOG` (5) — listener's backlog exceeded.
     Backlog,
+    /// `SRT_REJ_IPE` (6) — internal program error.
     Ipe,
+    /// `SRT_REJ_CLOSE` (7) — socket is closing.
     Close,
+    /// `SRT_REJ_VERSION` (8) — peer is older version than agent's minimum set.
     Version,
+    /// `SRT_REJ_RDVCOOKIE` (9) — rendezvous cookie collision.
     RdvCookie,
+    /// `SRT_REJ_BADSECRET` (10) — wrong password.
+    BadSecret,
+    /// `SRT_REJ_UNSECURE` (11) — password required or unexpected.
+    Unsecure,
+    /// `SRT_REJ_MESSAGEAPI` (12) — streamapi/messageapi collision.
+    MessageApi,
+    /// `SRT_REJ_CONGESTION` (13) — incompatible congestion-controller type.
+    Congestion,
+    /// `SRT_REJ_FILTER` (14) — incompatible packet filter.
+    Filter,
+    /// `SRT_REJ_GROUP` (15) — incompatible group.
+    Group,
+    /// `SRT_REJ_TIMEOUT` (16) — connection timeout.
+    Timeout,
+    /// `SRT_REJ_CRYPTO` (17) — conflicting cryptographic configurations
+    /// (behind `ENABLE_AEAD_API_PREVIEW` upstream; included unconditionally
+    /// so downstream consumers can match it without feature-gating).
+    Crypto,
+
+    // -- Extension (SRT_REJC_PREDEFINED, 1000..=1999) --
+    /// `SRT_REJX_FALLBACK` (1000) — generic predefined fallback.
+    Fallback,
+    /// `SRT_REJX_KEY_NOTSUP` (1001) — StreamID key not supported by service.
+    KeyNotSupported,
+    /// `SRT_REJX_FILEPATH` (1002) — bad file path syntax / not found.
+    Filepath,
+    /// `SRT_REJX_HOSTNOTFOUND` (1003) — host specification not recognized.
+    HostNotFound,
+    /// `SRT_REJX_BAD_REQUEST` (1400) — general SocketID syntax error.
     BadRequest,
+    /// `SRT_REJX_UNAUTHORIZED` (1401) — authentication failed.
+    Unauthorized,
+    /// `SRT_REJX_OVERLOAD` (1402) — server overloaded or credits exceeded.
+    Overload,
+    /// `SRT_REJX_FORBIDDEN` (1403) — access denied.
     Forbidden,
+    /// `SRT_REJX_NOTFOUND` (1404) — resource not found.
     NotFound,
+    /// `SRT_REJX_BAD_MODE` (1405) — mode in `m` key not supported.
+    BadMode,
+    /// `SRT_REJX_UNACCEPTABLE` (1406) — requested parameters cannot be satisfied.
+    Unacceptable,
+    /// `SRT_REJX_CONFLICT` (1409) — resource locked for modification.
+    Conflict,
+    /// `SRT_REJX_NOTSUP_MEDIA` (1415) — media type not supported.
+    NotSupportedMedia,
+    /// `SRT_REJX_LOCKED` (1423) — resource locked for any access.
+    Locked,
+    /// `SRT_REJX_FAILED_DEPEND` (1424) — dependent session ID disconnected.
+    FailedDependency,
+    /// `SRT_REJX_ISE` (1500) — unexpected internal server error.
+    InternalServerError,
+    /// `SRT_REJX_UNIMPLEMENTED` (1501) — current service version doesn't support request.
+    Unimplemented,
+    /// `SRT_REJX_GW` (1502) — gateway target rejected the connection.
+    Gateway,
+    /// `SRT_REJX_DOWN` (1503) — service temporarily down.
+    Down,
+    /// `SRT_REJX_VERSION` (1505) — SRT version not supported by service.
+    VersionUnsupported,
+    /// `SRT_REJX_NOROOM` (1507) — out of storage to archive stream.
+    NoRoom,
+
+    // -- Catch-all (SRT_REJC_USERDEFINED, 2000+, plus unknown codes in any range) --
+    /// Raw code outside the typed set. Includes:
+    /// - `SRT_REJC_USERDEFINED` (2000+) — application free-form codes.
+    /// - Unknown codes within the `0..=999` or `1000..=1999` ranges
+    ///   (drift from a newer libsrt header).
+    /// - Negative values (defensive — libsrt should not emit these).
     Other(i32),
 }
 
@@ -295,6 +382,11 @@ pub(crate) fn last_error() -> RawError {
 }
 
 /// Read the typed reject code (only meaningful after a connection-rejected error).
+///
+/// Returns `RejectReason::Unknown` (raw 0 / `SRT_REJ_UNKNOWN`) when libsrt
+/// has not set a reject code (e.g. a connection error that wasn't a
+/// handshake reject). Callers that want to suppress this case should check
+/// `reason != RejectReason::Unknown`.
 pub(crate) fn last_reject() -> RejectReason {
     let raw = unsafe { srt_sys::srt_getrejectreason(0) };
     RejectReason::from_raw(raw)
@@ -321,24 +413,56 @@ impl SrtErrno {
 }
 
 impl RejectReason {
-    /// Map the raw reject reason code to a typed variant.
-    /// See vendor/srt/srtcore/access_control.h and srt.h SRT_REJECT_REASON.
+    /// Map a raw reject code (from `srt_getrejectreason`) to a typed variant.
+    ///
+    /// See [`RejectReason`] for the category split. Codes outside the typed
+    /// set land in `Other(raw)`.
     pub(crate) fn from_raw(raw: i32) -> Self {
         match raw {
-            1001 => RejectReason::BadSecret,
-            1002 => RejectReason::Unsecure,
-            1003 => RejectReason::ValueLearn,
-            1004 => RejectReason::UnknownStreamId,
-            1005 => RejectReason::Resource,
-            1006 => RejectReason::Rogue,
-            1007 => RejectReason::Backlog,
-            1008 => RejectReason::Ipe,
-            1009 => RejectReason::Close,
-            1010 => RejectReason::Version,
-            1011 => RejectReason::RdvCookie,
-            1012 => RejectReason::BadRequest,
-            1013 => RejectReason::Forbidden,
-            1014 => RejectReason::NotFound,
+            // SRT_REJC_INTERNAL — SRT_REJECT_REASON enum (srt.h:535-558).
+            0 => RejectReason::Unknown,
+            1 => RejectReason::System,
+            2 => RejectReason::Peer,
+            3 => RejectReason::Resource,
+            4 => RejectReason::Rogue,
+            5 => RejectReason::Backlog,
+            6 => RejectReason::Ipe,
+            7 => RejectReason::Close,
+            8 => RejectReason::Version,
+            9 => RejectReason::RdvCookie,
+            10 => RejectReason::BadSecret,
+            11 => RejectReason::Unsecure,
+            12 => RejectReason::MessageApi,
+            13 => RejectReason::Congestion,
+            14 => RejectReason::Filter,
+            15 => RejectReason::Group,
+            16 => RejectReason::Timeout,
+            17 => RejectReason::Crypto,
+
+            // SRT_REJC_PREDEFINED — access_control.h SRT_REJX_* macros.
+            1000 => RejectReason::Fallback,
+            1001 => RejectReason::KeyNotSupported,
+            1002 => RejectReason::Filepath,
+            1003 => RejectReason::HostNotFound,
+            1400 => RejectReason::BadRequest,
+            1401 => RejectReason::Unauthorized,
+            1402 => RejectReason::Overload,
+            1403 => RejectReason::Forbidden,
+            1404 => RejectReason::NotFound,
+            1405 => RejectReason::BadMode,
+            1406 => RejectReason::Unacceptable,
+            1409 => RejectReason::Conflict,
+            1415 => RejectReason::NotSupportedMedia,
+            1423 => RejectReason::Locked,
+            1424 => RejectReason::FailedDependency,
+            1500 => RejectReason::InternalServerError,
+            1501 => RejectReason::Unimplemented,
+            1502 => RejectReason::Gateway,
+            1503 => RejectReason::Down,
+            1505 => RejectReason::VersionUnsupported,
+            1507 => RejectReason::NoRoom,
+
+            // SRT_REJC_USERDEFINED (2000+), and unknown codes inside any range.
             other => RejectReason::Other(other),
         }
     }
@@ -370,8 +494,8 @@ impl From<RawError> for ConnectError {
         if matches!(raw.kind, SrtErrno::Connection) {
             // Could be a typed reject. Check.
             let reason = last_reject();
-            // RejectReason::Other(0) is the libsrt sentinel for "no reject info".
-            if reason != RejectReason::Other(0) {
+            // SRT_REJ_UNKNOWN (raw 0) is the libsrt sentinel for "no reject info".
+            if reason != RejectReason::Unknown {
                 return ConnectError::Rejected {
                     reason,
                     detail: raw.message,
@@ -514,12 +638,253 @@ mod tests {
     }
 
     #[test]
-    fn reject_reason_mapping() {
-        assert_eq!(RejectReason::from_raw(1001), RejectReason::BadSecret);
-        assert_eq!(RejectReason::from_raw(1002), RejectReason::Unsecure);
-        assert_eq!(RejectReason::from_raw(1010), RejectReason::Version);
-        assert_eq!(RejectReason::from_raw(1014), RejectReason::NotFound);
+    fn reject_reason_internal_ordinals_match_srt_h() {
+        // SRT_REJECT_REASON enum (srt.h:535-558). These constants are
+        // generated by bindgen as `SRT_REJECT_REASON_SRT_REJ_*` and are the
+        // source of truth — if libsrt's header changes ordinals the build
+        // fails here, not at runtime. SRT_REJ_CRYPTO (=17) is gated by
+        // ENABLE_AEAD_API_PREVIEW upstream and not in our bindings; the
+        // explicit-ordinal test below pins ordinal 17 → Crypto.
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_UNKNOWN as i32),
+            RejectReason::Unknown
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_SYSTEM as i32),
+            RejectReason::System
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_PEER as i32),
+            RejectReason::Peer
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_RESOURCE as i32),
+            RejectReason::Resource
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_ROGUE as i32),
+            RejectReason::Rogue
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_BACKLOG as i32),
+            RejectReason::Backlog
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_IPE as i32),
+            RejectReason::Ipe
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_CLOSE as i32),
+            RejectReason::Close
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_VERSION as i32),
+            RejectReason::Version
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_RDVCOOKIE as i32),
+            RejectReason::RdvCookie
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_BADSECRET as i32),
+            RejectReason::BadSecret
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_UNSECURE as i32),
+            RejectReason::Unsecure
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_MESSAGEAPI as i32),
+            RejectReason::MessageApi
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_CONGESTION as i32),
+            RejectReason::Congestion
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_FILTER as i32),
+            RejectReason::Filter
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_GROUP as i32),
+            RejectReason::Group
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJECT_REASON_SRT_REJ_TIMEOUT as i32),
+            RejectReason::Timeout
+        );
+    }
+
+    #[test]
+    fn reject_reason_internal_explicit_ordinals() {
+        // Belt-and-braces: pin the explicit ordinals so a libsrt header
+        // drift (e.g. SRT_REJ_CRYPTO moving from 17 → some other value) is
+        // caught. Mirrors the table in srt.h:535-558 verbatim.
+        assert_eq!(RejectReason::from_raw(0), RejectReason::Unknown);
+        assert_eq!(RejectReason::from_raw(1), RejectReason::System);
+        assert_eq!(RejectReason::from_raw(2), RejectReason::Peer);
+        assert_eq!(RejectReason::from_raw(3), RejectReason::Resource);
+        assert_eq!(RejectReason::from_raw(4), RejectReason::Rogue);
+        assert_eq!(RejectReason::from_raw(5), RejectReason::Backlog);
+        assert_eq!(RejectReason::from_raw(6), RejectReason::Ipe);
+        assert_eq!(RejectReason::from_raw(7), RejectReason::Close);
+        assert_eq!(RejectReason::from_raw(8), RejectReason::Version);
+        assert_eq!(RejectReason::from_raw(9), RejectReason::RdvCookie);
+        assert_eq!(RejectReason::from_raw(10), RejectReason::BadSecret);
+        assert_eq!(RejectReason::from_raw(11), RejectReason::Unsecure);
+        assert_eq!(RejectReason::from_raw(12), RejectReason::MessageApi);
+        assert_eq!(RejectReason::from_raw(13), RejectReason::Congestion);
+        assert_eq!(RejectReason::from_raw(14), RejectReason::Filter);
+        assert_eq!(RejectReason::from_raw(15), RejectReason::Group);
+        assert_eq!(RejectReason::from_raw(16), RejectReason::Timeout);
+        assert_eq!(RejectReason::from_raw(17), RejectReason::Crypto);
+    }
+
+    #[test]
+    fn reject_reason_extension_codes_match_access_control_h() {
+        // SRT_REJX_* extension codes from access_control.h (1000..=1999
+        // range). Set by remote services via srt_setrejectreason; carried
+        // verbatim on the wire.
+        assert_eq!(RejectReason::from_raw(1000), RejectReason::Fallback);
+        assert_eq!(RejectReason::from_raw(1001), RejectReason::KeyNotSupported);
+        assert_eq!(RejectReason::from_raw(1002), RejectReason::Filepath);
+        assert_eq!(RejectReason::from_raw(1003), RejectReason::HostNotFound);
+        assert_eq!(RejectReason::from_raw(1400), RejectReason::BadRequest);
+        assert_eq!(RejectReason::from_raw(1401), RejectReason::Unauthorized);
+        assert_eq!(RejectReason::from_raw(1402), RejectReason::Overload);
+        assert_eq!(RejectReason::from_raw(1403), RejectReason::Forbidden);
+        assert_eq!(RejectReason::from_raw(1404), RejectReason::NotFound);
+        assert_eq!(RejectReason::from_raw(1405), RejectReason::BadMode);
+        assert_eq!(RejectReason::from_raw(1406), RejectReason::Unacceptable);
+        assert_eq!(RejectReason::from_raw(1409), RejectReason::Conflict);
+        assert_eq!(
+            RejectReason::from_raw(1415),
+            RejectReason::NotSupportedMedia
+        );
+        assert_eq!(RejectReason::from_raw(1423), RejectReason::Locked);
+        assert_eq!(RejectReason::from_raw(1424), RejectReason::FailedDependency);
+        assert_eq!(
+            RejectReason::from_raw(1500),
+            RejectReason::InternalServerError
+        );
+        assert_eq!(RejectReason::from_raw(1501), RejectReason::Unimplemented);
+        assert_eq!(RejectReason::from_raw(1502), RejectReason::Gateway);
+        assert_eq!(RejectReason::from_raw(1503), RejectReason::Down);
+        assert_eq!(
+            RejectReason::from_raw(1505),
+            RejectReason::VersionUnsupported
+        );
+        assert_eq!(RejectReason::from_raw(1507), RejectReason::NoRoom);
+    }
+
+    #[test]
+    fn reject_reason_extension_named_constants() {
+        // access_control.h SRT_REJX_* constants are #define macros; bindgen
+        // exposes them as `pub const SRT_REJX_*: u32`. If upstream renumbers
+        // any of these, this test fails and we know to update from_raw.
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_FALLBACK as i32),
+            RejectReason::Fallback
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_KEY_NOTSUP as i32),
+            RejectReason::KeyNotSupported
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_FILEPATH as i32),
+            RejectReason::Filepath
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_HOSTNOTFOUND as i32),
+            RejectReason::HostNotFound
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_BAD_REQUEST as i32),
+            RejectReason::BadRequest
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_UNAUTHORIZED as i32),
+            RejectReason::Unauthorized
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_OVERLOAD as i32),
+            RejectReason::Overload
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_FORBIDDEN as i32),
+            RejectReason::Forbidden
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_NOTFOUND as i32),
+            RejectReason::NotFound
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_BAD_MODE as i32),
+            RejectReason::BadMode
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_UNACCEPTABLE as i32),
+            RejectReason::Unacceptable
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_CONFLICT as i32),
+            RejectReason::Conflict
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_NOTSUP_MEDIA as i32),
+            RejectReason::NotSupportedMedia
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_LOCKED as i32),
+            RejectReason::Locked
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_FAILED_DEPEND as i32),
+            RejectReason::FailedDependency
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_ISE as i32),
+            RejectReason::InternalServerError
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_UNIMPLEMENTED as i32),
+            RejectReason::Unimplemented
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_GW as i32),
+            RejectReason::Gateway
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_DOWN as i32),
+            RejectReason::Down
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_VERSION as i32),
+            RejectReason::VersionUnsupported
+        );
+        assert_eq!(
+            RejectReason::from_raw(srt_sys::SRT_REJX_NOROOM as i32),
+            RejectReason::NoRoom
+        );
+    }
+
+    #[test]
+    fn reject_reason_extension_unknown_in_predefined_range_falls_to_other() {
+        // Codes within SRT_REJC_PREDEFINED (1000..=1999) that aren't named
+        // in access_control.h MUST fall to Other(raw) rather than silently
+        // snap to a near neighbor.
+        assert_eq!(RejectReason::from_raw(1099), RejectReason::Other(1099));
+        // HTTP 408 is "not used" per access_control.h header comments.
+        assert_eq!(RejectReason::from_raw(1408), RejectReason::Other(1408));
+    }
+
+    #[test]
+    fn reject_reason_user_defined_falls_to_other() {
+        // SRT_REJC_USERDEFINED (2000+) is application-defined; we never type
+        // these. Negative is defensive — libsrt should not emit it.
+        assert_eq!(RejectReason::from_raw(2000), RejectReason::Other(2000));
         assert_eq!(RejectReason::from_raw(9999), RejectReason::Other(9999));
+        assert_eq!(RejectReason::from_raw(-1), RejectReason::Other(-1));
     }
 
     #[test]

@@ -16,9 +16,63 @@ quality + DX + FFI refactor. Plan #39 (examples reorganization),
 plan #44 (KLV wire-format critical fixes from the 2026-05-10
 spec-validation audit), plan #45 (pipeline close-flush and pairer
 PTS saturation fixes from the same audit), plan #46 (KLV
-follow-up: VMTI checksum ordering + Security LS UL constant), and
-plan #47 (MPEG-TS PSI multi-section reject + AV1 binding docs)
-also ride this release.
+follow-up: VMTI checksum ordering + Security LS UL constant),
+plan #47 (MPEG-TS PSI multi-section reject + AV1 binding docs),
+and plan #48 (video codec parser robustness fixes) also ride this
+release.
+
+---
+
+### Video codec parser robustness fixes (2026-05-11) — plan #48
+
+Three decoder-side robustness fixes from the 2026-05-10 audit
+(`docs/analysis/2026-05-10-audit-slices/07-codec-h264.md` H264-01,
+`.../16-codec-h266-vui-h274.md` H274-01 + H274-02). Library does not
+encode H.264 or H.266, so the only behavior change is decoder-side:
+malformed input that previously surfaced as `Ok(garbage)` now surfaces
+as a typed `CodecParseError`.
+
+#### Fixed (decoder behavior on malformed input)
+
+- **`codec::h264::parse_sps`** — When the underlying `h264-reader`
+  decoder surfaces `chroma_format_idc` outside the spec range (H.264
+  V15 §7.4.2.1.1: shall be in 0..=3), `parse_sps` now returns
+  `CodecParseError::ReservedValue { field: "chroma_format_idc", value }`
+  instead of silently coercing the value to `Yuv420` and continuing.
+  The previous behavior produced a `H264Sps` with crop offsets computed
+  against the (different) original `chroma_format` and a fabricated
+  chroma bit-depth.
+
+- **`codec::h266::parse_sps`** — Now correctly consumes the optional
+  `vui_payload(payloadSize)` tail per H.266 V4 §7.3.2.21 —
+  `vui_parameters()` (H.274 §7.2) may not consume all `8 * payloadSize`
+  bits, and the SPS caller must advance the cursor to the declared
+  payload end before reading `sps_extension_flag`. Previously the
+  parser mis-framed `sps_extension_flag` for any encoder that emitted
+  the optional `vui_reserved_payload_extension_data` + marker +
+  zero-pad tail. The `parse_h266_vui` `pub(super)` function signature
+  also drops the unused `_payload_size_bytes` argument —
+  tail-consumption is now correctly placed in the SPS caller.
+
+- **`codec::h266` VUI parser** — `vui_chroma_sample_loc_type_frame`,
+  `vui_chroma_sample_loc_type_top_field`, and
+  `vui_chroma_sample_loc_type_bottom_field` are now validated against
+  the H.274 V4 §7.3 (p. 20) range 0..=6 inclusive. Previously the
+  parser used `read_ue()? as u8`, which silently accepted out-of-range
+  values up to 255 and silently truncated values ≥ 256 to a valid
+  in-range value (e.g. 256 → 0). All three sites now return
+  `CodecParseError::ReservedValue` with the original `u32` value
+  preserved.
+
+#### Docs
+
+- **`ColorInfo::chroma_loc`** rustdoc — H.274 V4 §7.3 (p. 20)
+  inference rule documented: when `vui_chroma_loc_info_present_flag
+  = 0` AND `ChromaFormatIdc == 1`, the spec infers
+  `vui_chroma_sample_loc_type_frame = 6`. The parser leaves
+  `chroma_loc = None` to preserve the "absent" vs "absent and inferred"
+  distinction; callers needing the inferred value substitute 6
+  themselves.
 
 ---
 

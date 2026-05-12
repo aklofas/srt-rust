@@ -453,20 +453,45 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::RecvError
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::RecvError
 #[non_exhaustive] pub enum tst_srt::error::RejectReason
 pub tst_srt::error::RejectReason::Backlog
+pub tst_srt::error::RejectReason::BadMode
 pub tst_srt::error::RejectReason::BadRequest
 pub tst_srt::error::RejectReason::BadSecret
 pub tst_srt::error::RejectReason::Close
+pub tst_srt::error::RejectReason::Conflict
+pub tst_srt::error::RejectReason::Congestion
+pub tst_srt::error::RejectReason::Crypto
+pub tst_srt::error::RejectReason::Down
+pub tst_srt::error::RejectReason::FailedDependency
+pub tst_srt::error::RejectReason::Fallback
+pub tst_srt::error::RejectReason::Filepath
+pub tst_srt::error::RejectReason::Filter
 pub tst_srt::error::RejectReason::Forbidden
+pub tst_srt::error::RejectReason::Gateway
+pub tst_srt::error::RejectReason::Group
+pub tst_srt::error::RejectReason::HostNotFound
+pub tst_srt::error::RejectReason::InternalServerError
 pub tst_srt::error::RejectReason::Ipe
+pub tst_srt::error::RejectReason::KeyNotSupported
+pub tst_srt::error::RejectReason::Locked
+pub tst_srt::error::RejectReason::MessageApi
+pub tst_srt::error::RejectReason::NoRoom
 pub tst_srt::error::RejectReason::NotFound
+pub tst_srt::error::RejectReason::NotSupportedMedia
 pub tst_srt::error::RejectReason::Other(i32)
+pub tst_srt::error::RejectReason::Overload
+pub tst_srt::error::RejectReason::Peer
 pub tst_srt::error::RejectReason::RdvCookie
 pub tst_srt::error::RejectReason::Resource
 pub tst_srt::error::RejectReason::Rogue
-pub tst_srt::error::RejectReason::UnknownStreamId
+pub tst_srt::error::RejectReason::System
+pub tst_srt::error::RejectReason::Timeout
+pub tst_srt::error::RejectReason::Unacceptable
+pub tst_srt::error::RejectReason::Unauthorized
+pub tst_srt::error::RejectReason::Unimplemented
+pub tst_srt::error::RejectReason::Unknown
 pub tst_srt::error::RejectReason::Unsecure
-pub tst_srt::error::RejectReason::ValueLearn
 pub tst_srt::error::RejectReason::Version
+pub tst_srt::error::RejectReason::VersionUnsupported
 impl core::clone::Clone for tst_srt::error::RejectReason
 pub fn tst_srt::error::RejectReason::clone(&self) -> tst_srt::error::RejectReason
 impl core::cmp::Eq for tst_srt::error::RejectReason

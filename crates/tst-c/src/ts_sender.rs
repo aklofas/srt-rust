@@ -60,26 +60,28 @@ pub unsafe extern "C" fn tst_sender_open(
     srt_url: *const libc::c_char,
     cfg: *const TstSenderConfig,
 ) -> *mut TstSender {
-    let cfg = match unsafe { cfg.as_ref() } {
-        Some(c) => c.inner.clone(),
-        None => tst_pipeline::SenderConfig::default(),
-    };
-    let url = match unsafe { parse_c_srt_url(srt_url) } {
-        Ok(u) => u,
-        Err(()) => return std::ptr::null_mut(),
-    };
-    let mut socket_cfg = tst_srt::config::SocketConfig::default();
-    url.overlay.apply_to_socket(&mut socket_cfg);
-    let transport = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
-        Ok(t) => t,
-        Err(e) => {
-            record_transport_error(&e);
-            return std::ptr::null_mut();
-        }
-    };
-    Box::into_raw(Box::new(TstSender {
-        inner: Handle::new(Sender::new(transport, cfg)),
-    }))
+    crate::panic::ffi_catch(std::ptr::null_mut(), || {
+        let cfg = match unsafe { cfg.as_ref() } {
+            Some(c) => c.inner.clone(),
+            None => tst_pipeline::SenderConfig::default(),
+        };
+        let url = match unsafe { parse_c_srt_url(srt_url) } {
+            Ok(u) => u,
+            Err(()) => return std::ptr::null_mut(),
+        };
+        let mut socket_cfg = tst_srt::config::SocketConfig::default();
+        url.overlay.apply_to_socket(&mut socket_cfg);
+        let transport = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
+            Ok(t) => t,
+            Err(e) => {
+                record_transport_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        Box::into_raw(Box::new(TstSender {
+            inner: Handle::new(Sender::new(transport, cfg)),
+        }))
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -189,36 +191,38 @@ pub unsafe extern "C" fn tst_managed_sender_open(
     cfg: *const TstSenderConfig,
     policy: *const TstReconnectPolicy,
 ) -> *mut TstManagedSender {
-    let cfg = match unsafe { cfg.as_ref() } {
-        Some(c) => c.inner.clone(),
-        None => tst_pipeline::SenderConfig::default(),
-    };
-    let policy = match unsafe { policy.as_ref() } {
-        Some(p) => p.inner.clone(),
-        None => tst_pipeline::ReconnectPolicy::default(),
-    };
-    let url = match unsafe { parse_c_srt_url(srt_url) } {
-        Ok(u) => u,
-        Err(()) => return std::ptr::null_mut(),
-    };
-    let mut socket_cfg = tst_srt::config::SocketConfig::default();
-    url.overlay.apply_to_socket(&mut socket_cfg);
+    crate::panic::ffi_catch(std::ptr::null_mut(), || {
+        let cfg = match unsafe { cfg.as_ref() } {
+            Some(c) => c.inner.clone(),
+            None => tst_pipeline::SenderConfig::default(),
+        };
+        let policy = match unsafe { policy.as_ref() } {
+            Some(p) => p.inner.clone(),
+            None => tst_pipeline::ReconnectPolicy::default(),
+        };
+        let url = match unsafe { parse_c_srt_url(srt_url) } {
+            Ok(u) => u,
+            Err(()) => return std::ptr::null_mut(),
+        };
+        let mut socket_cfg = tst_srt::config::SocketConfig::default();
+        url.overlay.apply_to_socket(&mut socket_cfg);
 
-    let initial = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
-        Ok(t) => t,
-        Err(e) => {
-            record_transport_error(&e);
-            return std::ptr::null_mut();
-        }
-    };
-    let host = url.host.clone();
-    let port = url.port;
-    let cfg_for_reconnect = socket_cfg.clone();
-    let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
-    let managed = ManagedTransport::new(initial, factory, policy);
-    Box::into_raw(Box::new(TstManagedSender {
-        inner: Handle::new(Sender::new(managed, cfg)),
-    }))
+        let initial = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
+            Ok(t) => t,
+            Err(e) => {
+                record_transport_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        let host = url.host.clone();
+        let port = url.port;
+        let cfg_for_reconnect = socket_cfg.clone();
+        let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
+        let managed = ManagedTransport::new(initial, factory, policy);
+        Box::into_raw(Box::new(TstManagedSender {
+            inner: Handle::new(Sender::new(managed, cfg)),
+        }))
+    })
 }
 
 #[unsafe(no_mangle)]

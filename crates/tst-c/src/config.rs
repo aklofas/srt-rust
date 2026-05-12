@@ -5,6 +5,7 @@
 
 use crate::error::{TstError, set_last_error};
 use crate::handle::{TST_INVALID_STREAM_HANDLE, TstKlvStreamHandle, TstVideoStreamHandle};
+use crate::panic::ffi_catch;
 use std::time::Duration;
 use tst_core::error::MuxError;
 use tst_core::mpegts::mux::{
@@ -90,21 +91,25 @@ impl TstMuxConfig {
 /// or sender. Returns NULL only on allocation failure (OOM).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_mux_config_new() -> *mut TstMuxConfig {
-    Box::into_raw(Box::new(TstMuxConfig {
-        programs: Vec::new(),
-        pcr_interval_ms: None,
-        psi_interval_ms: None,
-        buffer_packets: None,
-    }))
+    ffi_catch(std::ptr::null_mut(), || {
+        Box::into_raw(Box::new(TstMuxConfig {
+            programs: Vec::new(),
+            pcr_interval_ms: None,
+            psi_interval_ms: None,
+            buffer_packets: None,
+        }))
+    })
 }
 
 /// Free a mux config previously returned by `tst_mux_config_new`. No-op on
 /// NULL. The config must not be used after this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_mux_config_free(p: *mut TstMuxConfig) {
-    if !p.is_null() {
-        unsafe { drop(Box::from_raw(p)) };
-    }
+    ffi_catch((), || {
+        if !p.is_null() {
+            unsafe { drop(Box::from_raw(p)) };
+        }
+    })
 }
 
 /// Begin a new program in this multiplex. Returns a handle used as the
@@ -125,19 +130,21 @@ pub unsafe extern "C" fn tst_mux_config_add_program(
     program_number: u16,
     pmt_pid: u16,
 ) -> TstProgramHandle {
-    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TST_INVALID_PROGRAM_HANDLE;
-    };
-    cfg.programs.push(MuxerProgramConfig {
-        program_number,
-        pmt_pid,
-        streams: Vec::new(),
-        pcr_pid: None,
-        program_descriptors: Vec::new(),
-        stream_descriptors: Vec::new(),
-    });
-    TstProgramHandle((cfg.programs.len() - 1) as u32)
+    ffi_catch(TST_INVALID_PROGRAM_HANDLE, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TST_INVALID_PROGRAM_HANDLE;
+        };
+        cfg.programs.push(MuxerProgramConfig {
+            program_number,
+            pmt_pid,
+            streams: Vec::new(),
+            pcr_pid: None,
+            program_descriptors: Vec::new(),
+            stream_descriptors: Vec::new(),
+        });
+        TstProgramHandle((cfg.programs.len() - 1) as u32)
+    })
 }
 
 /// Add a video elementary stream to the specified program and return its
@@ -158,42 +165,44 @@ pub unsafe extern "C" fn tst_mux_config_add_video_stream(
     pid: u16,
     codec: TstVideoCodec,
 ) -> TstVideoStreamHandle {
-    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TST_INVALID_STREAM_HANDLE;
-    };
-    let prog_idx = program.0 as usize;
-    if prog_idx >= cfg.programs.len() {
-        set_last_error(TstError::InvalidUsage, "invalid program handle");
-        return TST_INVALID_STREAM_HANDLE;
-    }
-    let prog = &mut cfg.programs[prog_idx];
-    // within_idx for video handles is the index among video streams only
-    // (Muxer builds video_streams[prog] as a filtered subset of streams).
-    let within_idx = prog
-        .streams
-        .iter()
-        .filter(|s| matches!(s, StreamSpec::Video { .. }))
-        .count();
-    if within_idx >= 16 {
-        // VideoStreamHandle::pack() debug_asserts within_index < 16; reject
-        // before that fires so the C caller gets a defined error.
-        set_last_error(
-            TstError::InvalidUsage,
-            "per-program video stream cap (16) exceeded",
-        );
-        return TST_INVALID_STREAM_HANDLE;
-    }
-    let rust_codec = match codec {
-        TstVideoCodec::H264 => VideoCodec::H264,
-        TstVideoCodec::H265 => VideoCodec::H265,
-    };
-    prog.streams.push(StreamSpec::Video {
-        pid,
-        codec: rust_codec,
-    });
-    prog.stream_descriptors.push(Vec::new());
-    VideoStreamHandle::pack(prog_idx, within_idx).raw()
+    ffi_catch(TST_INVALID_STREAM_HANDLE, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TST_INVALID_STREAM_HANDLE;
+        };
+        let prog_idx = program.0 as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(TstError::InvalidUsage, "invalid program handle");
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        let prog = &mut cfg.programs[prog_idx];
+        // within_idx for video handles is the index among video streams only
+        // (Muxer builds video_streams[prog] as a filtered subset of streams).
+        let within_idx = prog
+            .streams
+            .iter()
+            .filter(|s| matches!(s, StreamSpec::Video { .. }))
+            .count();
+        if within_idx >= 16 {
+            // VideoStreamHandle::pack() debug_asserts within_index < 16; reject
+            // before that fires so the C caller gets a defined error.
+            set_last_error(
+                TstError::InvalidUsage,
+                "per-program video stream cap (16) exceeded",
+            );
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        let rust_codec = match codec {
+            TstVideoCodec::H264 => VideoCodec::H264,
+            TstVideoCodec::H265 => VideoCodec::H265,
+        };
+        prog.streams.push(StreamSpec::Video {
+            pid,
+            codec: rust_codec,
+        });
+        prog.stream_descriptors.push(Vec::new());
+        VideoStreamHandle::pack(prog_idx, within_idx).raw()
+    })
 }
 
 /// Add a KLV elementary stream to the specified program and return its handle.
@@ -217,41 +226,43 @@ pub unsafe extern "C" fn tst_mux_config_add_klv_stream(
     stream_type: TstKlvStreamType,
     carries_pts: bool,
 ) -> TstKlvStreamHandle {
-    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TST_INVALID_STREAM_HANDLE;
-    };
-    let prog_idx = program.0 as usize;
-    if prog_idx >= cfg.programs.len() {
-        set_last_error(TstError::InvalidUsage, "invalid program handle");
-        return TST_INVALID_STREAM_HANDLE;
-    }
-    let prog = &mut cfg.programs[prog_idx];
-    // within_idx for klv handles is the index among klv streams only
-    // (Muxer builds klv_streams[prog] as a filtered subset of streams).
-    let within_idx = prog
-        .streams
-        .iter()
-        .filter(|s| matches!(s, StreamSpec::Klv { .. }))
-        .count();
-    if within_idx >= 16 {
-        set_last_error(
-            TstError::InvalidUsage,
-            "per-program klv stream cap (16) exceeded",
-        );
-        return TST_INVALID_STREAM_HANDLE;
-    }
-    let rust_stream_type = match stream_type {
-        TstKlvStreamType::PrivateData => KlvStreamType::PrivateData,
-        TstKlvStreamType::SynchronousMetadata => KlvStreamType::SynchronousMetadata,
-    };
-    prog.streams.push(StreamSpec::Klv {
-        pid,
-        stream_type: rust_stream_type,
-        carries_pts,
-    });
-    prog.stream_descriptors.push(Vec::new());
-    KlvStreamHandle::pack(prog_idx, within_idx).raw()
+    ffi_catch(TST_INVALID_STREAM_HANDLE, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TST_INVALID_STREAM_HANDLE;
+        };
+        let prog_idx = program.0 as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(TstError::InvalidUsage, "invalid program handle");
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        let prog = &mut cfg.programs[prog_idx];
+        // within_idx for klv handles is the index among klv streams only
+        // (Muxer builds klv_streams[prog] as a filtered subset of streams).
+        let within_idx = prog
+            .streams
+            .iter()
+            .filter(|s| matches!(s, StreamSpec::Klv { .. }))
+            .count();
+        if within_idx >= 16 {
+            set_last_error(
+                TstError::InvalidUsage,
+                "per-program klv stream cap (16) exceeded",
+            );
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        let rust_stream_type = match stream_type {
+            TstKlvStreamType::PrivateData => KlvStreamType::PrivateData,
+            TstKlvStreamType::SynchronousMetadata => KlvStreamType::SynchronousMetadata,
+        };
+        prog.streams.push(StreamSpec::Klv {
+            pid,
+            stream_type: rust_stream_type,
+            carries_pts,
+        });
+        prog.stream_descriptors.push(Vec::new());
+        KlvStreamHandle::pack(prog_idx, within_idx).raw()
+    })
 }
 
 /// Pin the PCR PID for the specified program. By default the muxer uses the
@@ -265,17 +276,19 @@ pub unsafe extern "C" fn tst_mux_config_set_pcr_pid(
     program: TstProgramHandle,
     pid: u16,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    let prog_idx = program.0 as usize;
-    if prog_idx >= cfg.programs.len() {
-        set_last_error(TstError::InvalidUsage, "invalid program handle");
-        return TstError::InvalidUsage as i32;
-    }
-    cfg.programs[prog_idx].pcr_pid = Some(pid);
-    0
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let prog_idx = program.0 as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(TstError::InvalidUsage, "invalid program handle");
+            return TstError::InvalidUsage as i32;
+        }
+        cfg.programs[prog_idx].pcr_pid = Some(pid);
+        0
+    })
 }
 
 /// Set the PCR re-emission interval for this mux config (applies to all
@@ -285,12 +298,14 @@ pub unsafe extern "C" fn tst_mux_config_set_pcr_interval_ms(
     p: *mut TstMuxConfig,
     ms: u32,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    cfg.pcr_interval_ms = Some(ms);
-    0
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.pcr_interval_ms = Some(ms);
+        0
+    })
 }
 
 /// Set the PAT/PMT re-emission interval for this mux config. Default 100 ms.
@@ -300,12 +315,14 @@ pub unsafe extern "C" fn tst_mux_config_set_psi_interval_ms(
     p: *mut TstMuxConfig,
     ms: u32,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    cfg.psi_interval_ms = Some(ms);
-    0
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.psi_interval_ms = Some(ms);
+        0
+    })
 }
 
 /// Set the TS-packet output buffer capacity. Default 10000 (~1.88 MB).
@@ -315,12 +332,14 @@ pub unsafe extern "C" fn tst_mux_config_set_buffer_packets(
     p: *mut TstMuxConfig,
     n: usize,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    cfg.buffer_packets = Some(n);
-    0
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.buffer_packets = Some(n);
+        0
+    })
 }
 
 /// Set program-level PMT descriptors for the specified program.
@@ -345,27 +364,29 @@ pub unsafe extern "C" fn tst_mux_config_set_program_descriptors(
     tlv_total_len: usize,
     tlv_count: usize,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    let prog_idx = program.0 as usize;
-    if prog_idx >= cfg.programs.len() {
-        set_last_error(TstError::InvalidUsage, "invalid program handle");
-        return TstError::InvalidUsage as i32;
-    }
-    if tlv_total_len == 0 || tlv_count == 0 {
-        cfg.programs[prog_idx].program_descriptors = Vec::new();
-        return 0;
-    }
-    let descs = unsafe {
-        match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
-            Ok(d) => d,
-            Err(rc) => return rc,
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let prog_idx = program.0 as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(TstError::InvalidUsage, "invalid program handle");
+            return TstError::InvalidUsage as i32;
         }
-    };
-    cfg.programs[prog_idx].program_descriptors = descs;
-    0
+        if tlv_total_len == 0 || tlv_count == 0 {
+            cfg.programs[prog_idx].program_descriptors = Vec::new();
+            return 0;
+        }
+        let descs = unsafe {
+            match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
+                Ok(d) => d,
+                Err(rc) => return rc,
+            }
+        };
+        cfg.programs[prog_idx].program_descriptors = descs;
+        0
+    })
 }
 
 /// Set per-stream PMT descriptors for the specified video stream.
@@ -386,46 +407,48 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_video(
     tlv_total_len: usize,
     tlv_count: usize,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    let (prog_idx, video_within_idx) = VideoStreamHandle::from_raw(video).unpack();
-    if prog_idx >= cfg.programs.len() {
-        set_last_error(
-            TstError::InvalidUsage,
-            "invalid video stream handle (program out of range)",
-        );
-        return TstError::InvalidUsage as i32;
-    }
-    let prog = &mut cfg.programs[prog_idx];
-    // video_within_idx is the index among video streams only; find the parallel
-    // position in prog.streams (which holds all stream kinds interleaved).
-    let stream_idx = match prog
-        .streams
-        .iter()
-        .enumerate()
-        .filter(|(_, s)| matches!(s, StreamSpec::Video { .. }))
-        .nth(video_within_idx)
-        .map(|(i, _)| i)
-    {
-        Some(i) => i,
-        None => {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let (prog_idx, video_within_idx) = VideoStreamHandle::from_raw(video).unpack();
+        if prog_idx >= cfg.programs.len() {
             set_last_error(
                 TstError::InvalidUsage,
-                "invalid video stream handle (stream out of range)",
+                "invalid video stream handle (program out of range)",
             );
             return TstError::InvalidUsage as i32;
         }
-    };
-    let descs = unsafe {
-        match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
-            Ok(d) => d,
-            Err(rc) => return rc,
-        }
-    };
-    prog.stream_descriptors[stream_idx] = descs;
-    0
+        let prog = &mut cfg.programs[prog_idx];
+        // video_within_idx is the index among video streams only; find the parallel
+        // position in prog.streams (which holds all stream kinds interleaved).
+        let stream_idx = match prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Video { .. }))
+            .nth(video_within_idx)
+            .map(|(i, _)| i)
+        {
+            Some(i) => i,
+            None => {
+                set_last_error(
+                    TstError::InvalidUsage,
+                    "invalid video stream handle (stream out of range)",
+                );
+                return TstError::InvalidUsage as i32;
+            }
+        };
+        let descs = unsafe {
+            match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
+                Ok(d) => d,
+                Err(rc) => return rc,
+            }
+        };
+        prog.stream_descriptors[stream_idx] = descs;
+        0
+    })
 }
 
 /// Set per-stream PMT descriptors for the specified KLV stream.
@@ -443,46 +466,48 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_klv(
     tlv_total_len: usize,
     tlv_count: usize,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    let (prog_idx, klv_within_idx) = KlvStreamHandle::from_raw(klv).unpack();
-    if prog_idx >= cfg.programs.len() {
-        set_last_error(
-            TstError::InvalidUsage,
-            "invalid klv stream handle (program out of range)",
-        );
-        return TstError::InvalidUsage as i32;
-    }
-    let prog = &mut cfg.programs[prog_idx];
-    // klv_within_idx is the index among KLV streams only; find the parallel
-    // position in prog.streams (which holds all stream kinds interleaved).
-    let stream_idx = match prog
-        .streams
-        .iter()
-        .enumerate()
-        .filter(|(_, s)| matches!(s, StreamSpec::Klv { .. }))
-        .nth(klv_within_idx)
-        .map(|(i, _)| i)
-    {
-        Some(i) => i,
-        None => {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let (prog_idx, klv_within_idx) = KlvStreamHandle::from_raw(klv).unpack();
+        if prog_idx >= cfg.programs.len() {
             set_last_error(
                 TstError::InvalidUsage,
-                "invalid klv stream handle (stream out of range)",
+                "invalid klv stream handle (program out of range)",
             );
             return TstError::InvalidUsage as i32;
         }
-    };
-    let descs = unsafe {
-        match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
-            Ok(d) => d,
-            Err(rc) => return rc,
-        }
-    };
-    prog.stream_descriptors[stream_idx] = descs;
-    0
+        let prog = &mut cfg.programs[prog_idx];
+        // klv_within_idx is the index among KLV streams only; find the parallel
+        // position in prog.streams (which holds all stream kinds interleaved).
+        let stream_idx = match prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Klv { .. }))
+            .nth(klv_within_idx)
+            .map(|(i, _)| i)
+        {
+            Some(i) => i,
+            None => {
+                set_last_error(
+                    TstError::InvalidUsage,
+                    "invalid klv stream handle (stream out of range)",
+                );
+                return TstError::InvalidUsage as i32;
+            }
+        };
+        let descs = unsafe {
+            match parse_tlv_list(tlv_bytes, tlv_total_len, tlv_count) {
+                Ok(d) => d,
+                Err(rc) => return rc,
+            }
+        };
+        prog.stream_descriptors[stream_idx] = descs;
+        0
+    })
 }
 
 // Internal helper: parse a concatenated TLV byte stream (tag + length + body
@@ -556,16 +581,20 @@ pub struct TstSenderConfig {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_sender_config_new() -> *mut TstSenderConfig {
-    Box::into_raw(Box::new(TstSenderConfig {
-        inner: SenderConfig::default(),
-    }))
+    ffi_catch(std::ptr::null_mut(), || {
+        Box::into_raw(Box::new(TstSenderConfig {
+            inner: SenderConfig::default(),
+        }))
+    })
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_sender_config_free(p: *mut TstSenderConfig) {
-    if !p.is_null() {
-        unsafe { drop(Box::from_raw(p)) };
-    }
+    ffi_catch((), || {
+        if !p.is_null() {
+            unsafe { drop(Box::from_raw(p)) };
+        }
+    })
 }
 
 #[repr(C)]
@@ -580,15 +609,17 @@ pub unsafe extern "C" fn tst_sender_config_set_framing_mode(
     p: *mut TstSenderConfig,
     mode: TstTsFramingMode,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    cfg.inner.framing_mode = match mode {
-        TstTsFramingMode::Recover => TsFramingMode::Recover,
-        TstTsFramingMode::Strict => TsFramingMode::Strict,
-    };
-    0
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.inner.framing_mode = match mode {
+            TstTsFramingMode::Recover => TsFramingMode::Recover,
+            TstTsFramingMode::Strict => TsFramingMode::Strict,
+        };
+        0
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -596,12 +627,14 @@ pub unsafe extern "C" fn tst_sender_config_set_max_unsynced_bytes(
     p: *mut TstSenderConfig,
     n: usize,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    cfg.inner.max_unsynced_bytes = n;
-    0
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.inner.max_unsynced_bytes = n;
+        0
+    })
 }
 
 // ------------------------------------------------------------------
@@ -614,16 +647,20 @@ pub struct TstRawSenderConfig {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_raw_sender_config_new() -> *mut TstRawSenderConfig {
-    Box::into_raw(Box::new(TstRawSenderConfig {
-        inner: RawSenderConfig::default(),
-    }))
+    ffi_catch(std::ptr::null_mut(), || {
+        Box::into_raw(Box::new(TstRawSenderConfig {
+            inner: RawSenderConfig::default(),
+        }))
+    })
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_raw_sender_config_free(p: *mut TstRawSenderConfig) {
-    if !p.is_null() {
-        unsafe { drop(Box::from_raw(p)) };
-    }
+    ffi_catch((), || {
+        if !p.is_null() {
+            unsafe { drop(Box::from_raw(p)) };
+        }
+    })
 }
 
 // ------------------------------------------------------------------
@@ -636,16 +673,20 @@ pub struct TstReconnectPolicy {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_reconnect_policy_new() -> *mut TstReconnectPolicy {
-    Box::into_raw(Box::new(TstReconnectPolicy {
-        inner: ReconnectPolicy::default(),
-    }))
+    ffi_catch(std::ptr::null_mut(), || {
+        Box::into_raw(Box::new(TstReconnectPolicy {
+            inner: ReconnectPolicy::default(),
+        }))
+    })
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_reconnect_policy_free(p: *mut TstReconnectPolicy) {
-    if !p.is_null() {
-        unsafe { drop(Box::from_raw(p)) };
-    }
+    ffi_catch((), || {
+        if !p.is_null() {
+            unsafe { drop(Box::from_raw(p)) };
+        }
+    })
 }
 
 /// Set max reconnect attempts. `n < 0` means retry forever.
@@ -654,12 +695,14 @@ pub unsafe extern "C" fn tst_reconnect_policy_set_max_attempts(
     p: *mut TstReconnectPolicy,
     n: i32,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    cfg.inner.max_attempts = if n < 0 { None } else { Some(n as u32) };
-    0
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.inner.max_attempts = if n < 0 { None } else { Some(n as u32) };
+        0
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -667,12 +710,14 @@ pub unsafe extern "C" fn tst_reconnect_policy_set_backoff_constant_ms(
     p: *mut TstReconnectPolicy,
     ms: u32,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    cfg.inner.backoff = BackoffStrategy::Constant(Duration::from_millis(ms as u64));
-    0
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.inner.backoff = BackoffStrategy::Constant(Duration::from_millis(ms as u64));
+        0
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -681,15 +726,17 @@ pub unsafe extern "C" fn tst_reconnect_policy_set_backoff_exponential_ms(
     base_ms: u32,
     max_ms: u32,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    cfg.inner.backoff = BackoffStrategy::Exponential {
-        base: Duration::from_millis(base_ms as u64),
-        max: Duration::from_millis(max_ms as u64),
-    };
-    0
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.inner.backoff = BackoffStrategy::Exponential {
+            base: Duration::from_millis(base_ms as u64),
+            max: Duration::from_millis(max_ms as u64),
+        };
+        0
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -697,12 +744,14 @@ pub unsafe extern "C" fn tst_reconnect_policy_set_gap_buffer_capacity(
     p: *mut TstReconnectPolicy,
     n: usize,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    cfg.inner.gap_buffer_capacity = n;
-    0
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.inner.gap_buffer_capacity = n;
+        0
+    })
 }
 
 #[repr(C)]
@@ -717,15 +766,17 @@ pub unsafe extern "C" fn tst_reconnect_policy_set_overflow_policy(
     p: *mut TstReconnectPolicy,
     policy: TstOverflowPolicy,
 ) -> libc::c_int {
-    let Some(cfg) = (unsafe { p.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    cfg.inner.overflow_policy = match policy {
-        TstOverflowPolicy::DropOldest => OverflowPolicy::DropOldest,
-        TstOverflowPolicy::Reject => OverflowPolicy::Reject,
-    };
-    0
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.inner.overflow_policy = match policy {
+            TstOverflowPolicy::DropOldest => OverflowPolicy::DropOldest,
+            TstOverflowPolicy::Reject => OverflowPolicy::Reject,
+        };
+        0
+    })
 }
 
 #[cfg(test)]

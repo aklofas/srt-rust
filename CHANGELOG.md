@@ -15,9 +15,51 @@ Phase 1 (SemVer ratchet), Phase 2 (DX + observability), Phase 3
 quality + DX + FFI refactor. Plan #39 (examples reorganization),
 plan #44 (KLV wire-format critical fixes from the 2026-05-10
 spec-validation audit), plan #45 (pipeline close-flush and pairer
-PTS saturation fixes from the same audit), and plan #46 (KLV
-follow-up: VMTI checksum ordering + Security LS UL constant) also
-ride this release.
+PTS saturation fixes from the same audit), plan #46 (KLV
+follow-up: VMTI checksum ordering + Security LS UL constant), and
+plan #47 (MPEG-TS PSI multi-section reject + AV1 binding docs)
+also ride this release.
+
+---
+
+### MPEG-TS PSI multi-section reject + AV1 binding docs (2026-05-11) — plan #47
+
+Two audit-driven fixes at the MPEG-TS layer from
+`docs/analysis/2026-05-10-audit-slices/05-mpegts-demux.md` (DEMUX-01)
+and `docs/analysis/2026-05-10-audit-slices/10-codec-av1.md` (AV1-05).
+
+#### Public API
+
+- **`klv::st0903`** unchanged. New variants additive on
+  `#[non_exhaustive]` enums:
+  - `mpegts::demux::event::NonConformantIssue::PsiMultiSectionUnsupported { pid, table_id, last_section_number }`
+  - `mpegts::demux::psi::PsiParseError::MultiSectionUnsupported { table_id, last_section_number }`
+
+#### Fixed
+
+- **`mpegts::demux::psi`** — multi-section PSI tables
+  (`last_section_number > 0` per H.222.0 §2.4.4.5) are now rejected
+  with a new `PsiParseError::MultiSectionUnsupported` and surfaced as
+  a typed `NonConformantIssue::PsiMultiSectionUnsupported` event.
+  Prior behavior silently overwrote sibling sections via the
+  version-dedup path, so a multi-section PMT delivered streams from
+  only the last-arriving section. Full §2.4.4.5 reassembly is
+  deferred until a consumer needs it (the corpus has zero
+  multi-section captures — MISB-shaped ISR streams pack everything
+  into a single section well under the 1021-byte short-form cap).
+  Audit slice 05 finding DEMUX-01.
+
+#### Docs
+
+- **AV1 binding deviations** — `docs/deferred-features.md` AV1
+  binding-§3.2/§3.4 carriage entry corrected: prior entry claimed
+  `data_alignment_indicator=1` was not set; the muxer in fact does
+  set it correctly for AV1 video PES. Entry reduced from three
+  deviations to two (§3.2 framing + §3.4 stream_id). Inline rustdoc
+  added at the AV1 PES writer site
+  (`crates/tst-core/src/mpegts/mux/mod.rs`) pointing back to the
+  deferred-features entry for the binding-deviation rationale.
+  Audit slice 10 finding AV1-05.
 
 ---
 

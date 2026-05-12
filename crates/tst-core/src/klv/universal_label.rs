@@ -84,6 +84,21 @@ impl UniversalLabel {
         0x00,
     ]);
 
+    /// MISB ST 0102.12 §6.7 Security Metadata Local Set UL.
+    /// Registered in MISB ST 0807 as CRC 40980; canonical bytes
+    /// `06.0E.2B.34.02.03.01.01.0E.01.03.03.02.00.00.00`.
+    ///
+    /// Consumers carrying the Security LS as a **standalone KLV stream**
+    /// (separate MPEG-TS PID, not nested under ST 0601 Tag 48) detect
+    /// the record by matching the leading 16 bytes against this
+    /// constant. The dominant carriage path is Tag 48 nesting (handled
+    /// by [`crate::klv::st0601`]); the standalone path is spec-allowed
+    /// and present in some ISR captures.
+    pub const SECURITY_LS_UL: UniversalLabel = UniversalLabel([
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x03, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x03, 0x02, 0x00, 0x00,
+        0x00,
+    ]);
+
     /// True if this UL belongs to the ST 0601 family — bytes 0-12 match
     /// the canonical prefix `06 0E 2B 34 02 0B 01 01 0E 01 03 01 01`,
     /// byte 15 must be `0x00`. Bytes 13 (the document version byte; see
@@ -167,6 +182,24 @@ mod tests {
         assert_eq!(
             ul.to_string(),
             "00.00.00.00.00.00.00.00.00.00.00.00.00.00.00.00"
+        );
+    }
+
+    /// Per MISB ST 0102.12 §6.7: Security LS UL is
+    ///   06.0E.2B.34.02.03.01.01.0E.01.03.03.02.00.00.00 (CRC 40980).
+    #[test]
+    fn security_ls_ul_canonical_bytes() {
+        let ul = UniversalLabel::SECURITY_LS_UL;
+        assert_eq!(ul.oid(), [0x06, 0x0E, 0x2B, 0x34]);
+        assert_eq!(ul.category(), 0x02);
+        assert_eq!(ul.registry(), 0x03);
+        assert_eq!(ul.structure(), 0x01);
+        assert_eq!(
+            ul.0,
+            [
+                0x06, 0x0E, 0x2B, 0x34, 0x02, 0x03, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x03, 0x02, 0x00,
+                0x00, 0x00,
+            ]
         );
     }
 

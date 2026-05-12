@@ -18,8 +18,74 @@ spec-validation audit), plan #45 (pipeline close-flush and pairer
 PTS saturation fixes from the same audit), plan #46 (KLV
 follow-up: VMTI checksum ordering + Security LS UL constant),
 plan #47 (MPEG-TS PSI multi-section reject + AV1 binding docs),
-and plan #48 (video codec parser robustness fixes) also ride this
-release.
+plan #48 (video codec parser robustness fixes), and plan #49
+(SRT RejectReason mapping fix) also ride this release.
+
+---
+
+### SRT RejectReason mapping fix (2026-05-11) — plan #49
+
+SRT-01 from the 2026-05-10 audit
+(`docs/analysis/2026-05-10-audit-slices/14-srt-bindings.md`).
+`tst_srt::error::RejectReason::from_raw` previously mapped raw codes
+`1001..=1014` as if they were the internal `SRT_REJECT_REASON` enum
+offset by 1000 — they're actually the `SRT_REJX_*` HTTP-style
+extension codes from `access_control.h`, which are set by remote
+services via `srt_setrejectreason` and live in a different code
+category entirely. Effects:
+
+- Every libsrt-emitted handshake reject (bad passphrase, version
+  mismatch, backlog, timeout, …) was reported as `Other(raw)`
+  instead of its typed variant. The `tests/handshake.rs` integration
+  test for passphrase mismatch was hitting its `eprintln!` "log it
+  but don't fail" fallback because raw 10 (`SRT_REJ_BADSECRET`) was
+  never matching the `BadSecret` arm.
+- Conversely, an extension code 1001 (`SRT_REJX_KEY_NOTSUP` —
+  StreamID key not supported) was being reported as `BadSecret`.
+
+#### Fixed (breaking — `tst-srt`)
+
+- **`tst_srt::error::RejectReason`** rewritten per `srt.h:535-558`
+  (internal `SRT_REJC_INTERNAL`, ordinals 0..=17) and
+  `access_control.h:21-71` (predefined `SRT_REJC_PREDEFINED`,
+  1000..=1999):
+  - **Removed** `ValueLearn` and `UnknownStreamId` — never existed
+    in libsrt; mid-design guesses.
+  - **Added** internal-category variants `Unknown` (0), `System` (1),
+    `Peer` (2), `MessageApi` (12), `Congestion` (13), `Filter` (14),
+    `Group` (15), `Timeout` (16), `Crypto` (17).
+  - **Added** extension-category variants `Fallback` (1000),
+    `KeyNotSupported` (1001), `Filepath` (1002), `HostNotFound`
+    (1003), `Unauthorized` (1401), `Overload` (1402), `BadMode`
+    (1405), `Unacceptable` (1406), `Conflict` (1409),
+    `NotSupportedMedia` (1415), `Locked` (1423), `FailedDependency`
+    (1424), `InternalServerError` (1500), `Unimplemented` (1501),
+    `Gateway` (1502), `Down` (1503), `VersionUnsupported` (1505),
+    `NoRoom` (1507).
+  - **Behavioral rename** of existing variants: `BadSecret`,
+    `Unsecure`, `Version`, `Resource`, `Rogue`, `Backlog`, `Ipe`,
+    `Close`, `RdvCookie`, `BadRequest`, `Forbidden`, `NotFound`
+    keep their identifiers but now map to the spec-correct raw
+    codes (mostly small ordinals, not 1000+). Match-arms in
+    downstream code still compile but the runtime category they
+    catch shifts.
+  - The enum remains `#[non_exhaustive]`; `Other(i32)` covers
+    `SRT_REJC_USERDEFINED` (2000+) and unknown codes within either
+    typed range.
+
+- **`tst_srt::error::ConnectError::Rejected` sentinel check**
+  shifted from `reason != RejectReason::Other(0)` to
+  `reason != RejectReason::Unknown`. libsrt's `SRT_REJ_UNKNOWN`
+  is raw 0, not 1000-and-something — the previous sentinel was
+  consistent with the (broken) enum mapping and stops being
+  meaningful after the fix.
+
+- **`crates/srt-sys/wrapper.h`** now `#include`s
+  `<srt/access_control.h>` so the 21 `SRT_REJX_*` constants are
+  exposed as `pub const SRT_REJX_*: u32` in the generated
+  bindings. `tst-srt` uses these to drift-detect upstream
+  renumbering via the new
+  `reject_reason_extension_named_constants` test.
 
 ---
 

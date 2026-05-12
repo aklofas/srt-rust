@@ -228,7 +228,17 @@ fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> Result<H264Sps, CodecParseEr
         h264_reader::nal::sps::ChromaFormat::YUV420 => ChromaFormat::Yuv420,
         h264_reader::nal::sps::ChromaFormat::YUV422 => ChromaFormat::Yuv422,
         h264_reader::nal::sps::ChromaFormat::YUV444 => ChromaFormat::Yuv444,
-        h264_reader::nal::sps::ChromaFormat::Invalid(_) => ChromaFormat::Yuv420,
+        // H.264 V15 §7.4.2.1.1: chroma_format_idc shall be in 0..=3.
+        // h264-reader surfaces 4..=255 as Invalid(u32). Match the posture
+        // of `validate_bit_depth_minus8` (mod.rs:282) and reject — the
+        // downstream cropping math (lines 248-259) and chroma bit-depth
+        // (line 281) both assume a spec-valid chroma_format_idc.
+        h264_reader::nal::sps::ChromaFormat::Invalid(v) => {
+            return Err(CodecParseError::ReservedValue {
+                field: "chroma_format_idc",
+                value: v,
+            });
+        }
     };
 
     let frame_mbs_only = matches!(

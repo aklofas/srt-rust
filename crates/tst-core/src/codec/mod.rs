@@ -49,7 +49,15 @@ pub struct ColorInfo {
     pub matrix: MatrixCoefficients,
     /// `false` = limited range (16-235 for 8-bit luma); `true` = full range (0-255).
     pub full_range: bool,
-    /// 0..=5 per H.264 §E.2.1 / H.265 §E.2.1; `None` if not signaled.
+    /// Chroma sample location type. `None` when the bitstream did not
+    /// signal `chroma_sample_loc_info`. Per spec the value is constrained:
+    /// 0..=5 for H.264 §E.2.1 / H.265 §E.2.1; 0..=6 for H.266 via H.274
+    /// §7.3 (p. 20). For H.266 streams with `vui_chroma_loc_info_present_flag
+    /// = 0` AND `ChromaFormatIdc == 1` (4:2:0), H.274 §7.3 (p. 20) infers
+    /// `vui_chroma_sample_loc_type_frame = 6` ("unknown or unspecified") —
+    /// callers needing the inferred value should substitute 6 when
+    /// `chroma_loc.is_none()` in that case. The parser does not pre-populate
+    /// the inference to keep "absent" and "absent and inferred" distinguishable.
     pub chroma_loc: Option<u8>,
     /// Pixel aspect ratio. `None` when `aspect_ratio_idc == 0` (unspecified).
     pub sample_aspect_ratio: Option<Rational>,

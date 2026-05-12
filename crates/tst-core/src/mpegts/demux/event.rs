@@ -424,6 +424,33 @@ pub enum NonConformantIssue {
     /// declared (useful for telemetry — quantifies what was lost).
     MultiCellAu { pid: u16, dropped_bytes: usize },
 
+    /// Per ISO/IEC 13818-1 §2.4.4.5, PSI tables may be split across
+    /// multiple sections (the table's `last_section_number > 0`).
+    /// Current demuxer scope reassembles single-section tables only;
+    /// multi-section PAT/PMT tables are rejected and the partial
+    /// section is dropped. Surfaced once per section (the assembler
+    /// finalizes per declared section_length, so each rejected
+    /// section emits one event).
+    ///
+    /// Real-world MISB-shaped ISR streams pack PAT/PMT into a single
+    /// section well under the 1021-byte short-form cap. This variant
+    /// fires only on high-program-count or descriptor-heavy streams
+    /// (e.g. > ~250 programs in a PAT, or a PMT with many typed
+    /// streams + descriptors). Full §2.4.4.5 reassembly is deferred
+    /// until a real consumer needs it.
+    ///
+    /// `pid` is the PID the rejected section arrived on (0x0000 for
+    /// PAT, the PMT PID for PMT). `table_id` is `0x00` (PAT) or
+    /// `0x02` (PMT). `last_section_number` is the spec's
+    /// `last_section_number` field — the count of additional
+    /// sections the demuxer would need to assemble to materialize
+    /// the full table.
+    PsiMultiSectionUnsupported {
+        pid: u16,
+        table_id: u8,
+        last_section_number: u8,
+    },
+
     /// Other.
     Other(String),
 }
@@ -529,6 +556,18 @@ impl std::fmt::Display for NonConformantIssue {
                 write!(
                     f,
                     "fragmented AU cell on PID 0x{pid:04X}: {dropped_bytes} bytes dropped (multi-cell reassembly not implemented)"
+                )
+            }
+            NonConformantIssue::PsiMultiSectionUnsupported {
+                pid,
+                table_id,
+                last_section_number,
+            } => {
+                write!(
+                    f,
+                    "PSI multi-section table unsupported on PID 0x{pid:04X}: \
+                     table_id=0x{table_id:02X}, last_section_number={last_section_number} \
+                     (full §2.4.4.5 reassembly deferred — partial section dropped)"
                 )
             }
             NonConformantIssue::Other(msg) => {

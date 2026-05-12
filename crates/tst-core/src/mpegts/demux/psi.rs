@@ -41,6 +41,20 @@ pub enum PsiParseError {
     /// (mpegts.c:1759, 2610-2611, 2832, 2969-2970, 2974).
     #[error("section is future-staged (current_next_indicator=0); not yet in effect")]
     FuturePsiSection,
+    /// Per ISO/IEC 13818-1 §2.4.4.5, sections with `last_section_number > 0`
+    /// belong to a multi-section table that requires reassembly. Current
+    /// demuxer scope handles single-section tables only; multi-section
+    /// tables are rejected with this error and the demuxer emits a
+    /// [`crate::mpegts::demux::event::NonConformantIssue::PsiMultiSectionUnsupported`]
+    /// event. Full §2.4.4.5 reassembly is deferred until a real consumer
+    /// needs it.
+    #[error(
+        "multi-section PSI table not supported (table_id=0x{table_id:02X}, last_section_number={last_section_number})"
+    )]
+    MultiSectionUnsupported {
+        table_id: u8,
+        last_section_number: u8,
+    },
 }
 
 /// Parse a fully-assembled PAT section (ISO/IEC 13818-1 §2.4.4.3).
@@ -92,6 +106,18 @@ pub fn parse_pat(section: &[u8]) -> Result<Pat, PsiParseError> {
     // bumped and de-duping the real current section that follows.
     if !current_next_indicator {
         return Err(PsiParseError::FuturePsiSection);
+    }
+    // Per ISO/IEC 13818-1 §2.4.4.5, last_section_number > 0 means the
+    // table is split across multiple sections that the caller must
+    // reassemble. Current demuxer scope handles single-section tables
+    // only; reject multi-section so the caller can surface a
+    // NonConformant event. Full §2.4.4.5 reassembly is deferred.
+    let last_section_number = section[7];
+    if last_section_number != 0 {
+        return Err(PsiParseError::MultiSectionUnsupported {
+            table_id: 0x00,
+            last_section_number,
+        });
     }
     // Program loop runs from byte 8 to byte total_len - 4 (exclusive — that's the CRC).
     let mut programs = Vec::new();
@@ -199,6 +225,32 @@ mod pat_tests {
         let bytes = build_pat_section(1, 0, &[(1, 0x100)]);
         let err = parse_pat(&bytes[..5]).unwrap_err();
         assert!(matches!(err, PsiParseError::Truncated { .. }));
+    }
+
+    #[test]
+    fn parse_pat_rejects_multi_section() {
+        // Build a single-program PAT with last_section_number=1 (declaring
+        // a 2-section table). Per H.222.0 §2.4.4.5 this requires
+        // reassembly; the current demuxer rejects it.
+        let mut s = build_pat_section(0x0001, 0, &[(1, 0x100)]);
+        // Bytes [6,7] are section_number / last_section_number — fix the
+        // last_section_number byte to 1 and recompute the CRC.
+        s[7] = 0x01;
+        let n = s.len();
+        let crc = crc32_mpeg2(&s[..n - 4]);
+        s[n - 4..].copy_from_slice(&crc.to_be_bytes());
+
+        let err = parse_pat(&s).unwrap_err();
+        match err {
+            PsiParseError::MultiSectionUnsupported {
+                table_id,
+                last_section_number,
+            } => {
+                assert_eq!(table_id, 0x00);
+                assert_eq!(last_section_number, 1);
+            }
+            other => panic!("expected MultiSectionUnsupported, got {other:?}"),
+        }
     }
 }
 
@@ -434,6 +486,14 @@ pub fn parse_pmt(section: &[u8]) -> Result<Pmt, PsiParseError> {
     if !current_next_indicator {
         return Err(PsiParseError::FuturePsiSection);
     }
+    // Per ISO/IEC 13818-1 §2.4.4.5 — see parse_pat for rationale.
+    let last_section_number = section[7];
+    if last_section_number != 0 {
+        return Err(PsiParseError::MultiSectionUnsupported {
+            table_id: 0x02,
+            last_section_number,
+        });
+    }
     let pcr_pid = u16::from_be_bytes([section[8] & 0x1F, section[9]]);
     let program_info_length = (((section[10] & 0x0F) as usize) << 8) | section[11] as usize;
     let pi_start = 12;
@@ -643,6 +703,29 @@ mod pmt_tests {
         // tag=5, len=10 declared but only 4 bytes follow.
         let buf = vec![0x05, 0x0A, b'K', b'L', b'V', b'A'];
         assert!(walk_descriptors(&buf).is_err());
+    }
+
+    #[test]
+    fn parse_pmt_rejects_multi_section() {
+        // Build a minimal PMT with last_section_number=1. Per H.222.0
+        // §2.4.4.5 this requires reassembly; the demuxer rejects it.
+        let mut s = build_pmt_section(1, 0, 0x100, &[], &[]);
+        s[7] = 0x01;
+        let n = s.len();
+        let crc = crc32_mpeg2(&s[..n - 4]);
+        s[n - 4..].copy_from_slice(&crc.to_be_bytes());
+
+        let err = parse_pmt(&s).unwrap_err();
+        match err {
+            PsiParseError::MultiSectionUnsupported {
+                table_id,
+                last_section_number,
+            } => {
+                assert_eq!(table_id, 0x02);
+                assert_eq!(last_section_number, 1);
+            }
+            other => panic!("expected MultiSectionUnsupported, got {other:?}"),
+        }
     }
 }
 

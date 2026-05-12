@@ -100,6 +100,108 @@ pub(super) fn parse_h266_vui(
     Ok(color)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::codec::bitreader::BitReader;
+
+    /// Builds the minimum VUI bit stream that exercises the chroma_loc
+    /// branch. Sequence per H.274 §7.2:
+    ///   - 4 source flags (progressive=1, interlaced=0, non_packed=0, non_projected=0)
+    ///   - aspect_ratio_info_present = 0
+    ///   - overscan_info_present = 0
+    ///   - colour_description_present = 0
+    ///   - chroma_loc_info_present = 1
+    ///   - chroma_sample_loc_type_frame ue(v) = `frame_loc`
+    ///
+    /// With progressive=1 && interlaced=0 the parser reads the single
+    /// `chroma_sample_loc_type_frame` ue(v) (not the top+bottom pair).
+    fn craft_vui_with_chroma_frame_loc(frame_loc_ue: u32) -> Vec<u8> {
+        struct Bw {
+            bytes: Vec<u8>,
+            pos: u32,
+        }
+        impl Bw {
+            fn new() -> Self {
+                Self {
+                    bytes: vec![],
+                    pos: 0,
+                }
+            }
+            fn u(&mut self, value: u32, n: u32) {
+                for i in (0..n).rev() {
+                    let bit = ((value >> i) & 1) as u8;
+                    let byte_idx = (self.pos / 8) as usize;
+                    let bit_in_byte = 7 - (self.pos % 8);
+                    if byte_idx == self.bytes.len() {
+                        self.bytes.push(0);
+                    }
+                    self.bytes[byte_idx] |= bit << bit_in_byte;
+                    self.pos += 1;
+                }
+            }
+            fn ue(&mut self, value: u32) {
+                let v = value + 1;
+                let leading_zeros = 31 - v.leading_zeros();
+                for _ in 0..leading_zeros {
+                    self.u(0, 1);
+                }
+                self.u(v, leading_zeros + 1);
+            }
+        }
+        let mut bw = Bw::new();
+        bw.u(1, 1); // vui_progressive_source_flag
+        bw.u(0, 1); // vui_interlaced_source_flag
+        bw.u(0, 1); // vui_non_packed_constraint_flag
+        bw.u(0, 1); // vui_non_projected_constraint_flag
+        bw.u(0, 1); // vui_aspect_ratio_info_present_flag
+        bw.u(0, 1); // vui_overscan_info_present_flag
+        bw.u(0, 1); // vui_colour_description_present_flag
+        bw.u(1, 1); // vui_chroma_loc_info_present_flag
+        bw.ue(frame_loc_ue);
+        bw.bytes
+    }
+
+    /// H.274 §7.3 (p. 20): `vui_chroma_sample_loc_type_frame` shall be in
+    /// 0..=6. Value 7 must be rejected.
+    #[test]
+    fn chroma_sample_loc_type_7_rejected() {
+        let bytes = craft_vui_with_chroma_frame_loc(7);
+        let mut br = BitReader::new(&bytes);
+        match parse_h266_vui(&mut br) {
+            Err(CodecParseError::ReservedValue { field, value }) => {
+                assert!(
+                    field.starts_with("vui_chroma_sample_loc_type"),
+                    "field = {field:?}"
+                );
+                assert_eq!(value, 7);
+            }
+            other => panic!("expected ReservedValue, got {other:?}"),
+        }
+    }
+
+    /// Adversarial: ue(v) = 256 currently silent-truncates to 0 via `as u8`
+    /// (a valid value!), masking a malformed bitstream. Post-fix, the range
+    /// check fires BEFORE the u8 cast, so 256 is rejected.
+    #[test]
+    fn chroma_sample_loc_type_256_rejected_via_ue_truncate_guard() {
+        let bytes = craft_vui_with_chroma_frame_loc(256);
+        let mut br = BitReader::new(&bytes);
+        match parse_h266_vui(&mut br) {
+            Err(CodecParseError::ReservedValue { field, value }) => {
+                assert!(
+                    field.starts_with("vui_chroma_sample_loc_type"),
+                    "field = {field:?}"
+                );
+                assert_eq!(value, 256);
+            }
+            other => panic!(
+                "expected ReservedValue (256 must NOT silent-truncate to valid 0), got {other:?}"
+            ),
+        }
+    }
+}
+
 /// Map H.265/H.266 `aspect_ratio_idc` (Table E-1) to a `Rational` SAR.
 /// Returns `None` for unspecified (0) and extended-SAR (255, handled by caller).
 fn aspect_ratio_idc_to_sar(idc: u8) -> Option<Rational> {

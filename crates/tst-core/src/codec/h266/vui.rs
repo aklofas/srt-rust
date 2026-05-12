@@ -65,18 +65,43 @@ pub(super) fn parse_h266_vui(
         full_range = br.read_bool()?; // u(1) vui_full_range_flag
     }
 
-    // §7.3.2.5 — chroma sample location.
+    // §H.274 7.3 (p. 20) — chroma sample location.
     let vui_chroma_loc_info_present_flag = br.read_bool()?; // u(1)
     let mut chroma_loc = None;
     if vui_chroma_loc_info_present_flag {
         if vui_progressive_source_flag && !vui_interlaced_source_flag {
             // Progressive: single chroma_sample_loc_type_frame ue(v).
-            chroma_loc = Some(br.read_ue()? as u8); // ue(v)
+            // H.274 §7.3 (p. 20): shall be in range 0..=6 inclusive.
+            let v = br.read_ue()?; // ue(v)
+            if v > 6 {
+                return Err(CodecParseError::ReservedValue {
+                    field: "vui_chroma_sample_loc_type_frame",
+                    value: v,
+                });
+            }
+            chroma_loc = Some(v as u8);
         } else {
             // Interlaced (or unspecified): top_field + bottom_field.
-            let top = br.read_ue()? as u8; // ue(v)
-            let _bottom = br.read_ue()?; // ue(v)
-            chroma_loc = Some(top);
+            // H.274 §7.3 (p. 20): both shall be in range 0..=6 inclusive.
+            let top = br.read_ue()?; // ue(v)
+            if top > 6 {
+                return Err(CodecParseError::ReservedValue {
+                    field: "vui_chroma_sample_loc_type_top_field",
+                    value: top,
+                });
+            }
+            let bottom = br.read_ue()?; // ue(v)
+            if bottom > 6 {
+                return Err(CodecParseError::ReservedValue {
+                    field: "vui_chroma_sample_loc_type_bottom_field",
+                    value: bottom,
+                });
+            }
+            // ColorInfo::chroma_loc surfaces the top-field value (per the
+            // type's single-byte design); bottom_field is consumed for
+            // bit-stream correctness but currently not surfaced. See
+            // H264-04 / H274-04 for the data-model gap.
+            chroma_loc = Some(top as u8);
         }
     }
 
@@ -98,6 +123,30 @@ pub(super) fn parse_h266_vui(
     };
 
     Ok(color)
+}
+
+/// Map H.265/H.266 `aspect_ratio_idc` (Table E-1) to a `Rational` SAR.
+/// Returns `None` for unspecified (0) and extended-SAR (255, handled by caller).
+fn aspect_ratio_idc_to_sar(idc: u8) -> Option<Rational> {
+    Some(match idc {
+        1 => Rational { num: 1, den: 1 },
+        2 => Rational { num: 12, den: 11 },
+        3 => Rational { num: 10, den: 11 },
+        4 => Rational { num: 16, den: 11 },
+        5 => Rational { num: 40, den: 33 },
+        6 => Rational { num: 24, den: 11 },
+        7 => Rational { num: 20, den: 11 },
+        8 => Rational { num: 32, den: 11 },
+        9 => Rational { num: 80, den: 33 },
+        10 => Rational { num: 18, den: 11 },
+        11 => Rational { num: 15, den: 11 },
+        12 => Rational { num: 64, den: 33 },
+        13 => Rational { num: 160, den: 99 },
+        14 => Rational { num: 4, den: 3 },
+        15 => Rational { num: 3, den: 2 },
+        16 => Rational { num: 2, den: 1 },
+        _ => return None,
+    })
 }
 
 #[cfg(test)]
@@ -200,28 +249,4 @@ mod tests {
             ),
         }
     }
-}
-
-/// Map H.265/H.266 `aspect_ratio_idc` (Table E-1) to a `Rational` SAR.
-/// Returns `None` for unspecified (0) and extended-SAR (255, handled by caller).
-fn aspect_ratio_idc_to_sar(idc: u8) -> Option<Rational> {
-    Some(match idc {
-        1 => Rational { num: 1, den: 1 },
-        2 => Rational { num: 12, den: 11 },
-        3 => Rational { num: 10, den: 11 },
-        4 => Rational { num: 16, den: 11 },
-        5 => Rational { num: 40, den: 33 },
-        6 => Rational { num: 24, den: 11 },
-        7 => Rational { num: 20, den: 11 },
-        8 => Rational { num: 32, den: 11 },
-        9 => Rational { num: 80, den: 33 },
-        10 => Rational { num: 18, den: 11 },
-        11 => Rational { num: 15, den: 11 },
-        12 => Rational { num: 64, den: 33 },
-        13 => Rational { num: 160, den: 99 },
-        14 => Rational { num: 4, den: 3 },
-        15 => Rational { num: 3, den: 2 },
-        16 => Rational { num: 2, den: 1 },
-        _ => return None,
-    })
 }

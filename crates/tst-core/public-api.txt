@@ -2717,6 +2717,10 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::PsiCcDiscontinuity::obse
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiCcDiscontinuity::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiChecksumMismatch
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiChecksumMismatch::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::PsiMultiSectionUnsupported
+pub tst_core::mpegts::demux::event::NonConformantIssue::PsiMultiSectionUnsupported::last_section_number: u8
+pub tst_core::mpegts::demux::event::NonConformantIssue::PsiMultiSectionUnsupported::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::PsiMultiSectionUnsupported::table_id: u8
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiOverlongSection
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiOverlongSection::observed_len: usize
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiOverlongSection::pid: u16
@@ -3087,6 +3091,9 @@ pub tst_core::mpegts::demux::psi::PsiParseError::DescriptorLoopOverflow::remaini
 pub tst_core::mpegts::demux::psi::PsiParseError::FuturePsiSection
 pub tst_core::mpegts::demux::psi::PsiParseError::MalformedProgramEntry
 pub tst_core::mpegts::demux::psi::PsiParseError::MalformedProgramEntry::offset: usize
+pub tst_core::mpegts::demux::psi::PsiParseError::MultiSectionUnsupported
+pub tst_core::mpegts::demux::psi::PsiParseError::MultiSectionUnsupported::last_section_number: u8
+pub tst_core::mpegts::demux::psi::PsiParseError::MultiSectionUnsupported::table_id: u8
 pub tst_core::mpegts::demux::psi::PsiParseError::SectionTooLong(u16)
 pub tst_core::mpegts::demux::psi::PsiParseError::TableIdMismatch
 pub tst_core::mpegts::demux::psi::PsiParseError::TableIdMismatch::expected: u8
@@ -3547,6 +3554,10 @@ pub tst_core::mpegts::demux::NonConformantIssue::PsiCcDiscontinuity::observed: u
 pub tst_core::mpegts::demux::NonConformantIssue::PsiCcDiscontinuity::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::PsiChecksumMismatch
 pub tst_core::mpegts::demux::NonConformantIssue::PsiChecksumMismatch::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::PsiMultiSectionUnsupported
+pub tst_core::mpegts::demux::NonConformantIssue::PsiMultiSectionUnsupported::last_section_number: u8
+pub tst_core::mpegts::demux::NonConformantIssue::PsiMultiSectionUnsupported::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::PsiMultiSectionUnsupported::table_id: u8
 pub tst_core::mpegts::demux::NonConformantIssue::PsiOverlongSection
 pub tst_core::mpegts::demux::NonConformantIssue::PsiOverlongSection::observed_len: usize
 pub tst_core::mpegts::demux::NonConformantIssue::PsiOverlongSection::pid: u16

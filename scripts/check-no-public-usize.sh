@@ -34,7 +34,7 @@ ALLOWLIST_PATTERNS=(
     'pub fn bit_pos\(&self\) -> usize'                      # Av1BitReader (#[doc(hidden)])
     'pub fn buf_len_bits\(&self\) -> usize'                 # Av1BitReader (#[doc(hidden)])
     'pub type \w+ = usize'                                  # type aliases (rare; documented)
-    'pub fn encoded_len(_with)?\b'                          # encode-helper sizing (Rust-only)
+    'pub fn encoded_len(_with|_standalone)?\b'              # encode-helper sizing (Rust-only)
     'pub fn ber_(oid_)?len\b'                               # BER length helpers (Rust-only)
     'pub fn pull\(&mut self, out: &mut \[u8\]\) -> usize'   # Muxer::pull (bytes-written, Read::read-shaped)
 

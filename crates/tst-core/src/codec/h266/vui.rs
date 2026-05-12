@@ -21,9 +21,7 @@ use crate::codec::{
 /// `vui_payload_bit_equal_to_one`, zero-pad-to-byte-align) belongs to the
 /// `vui_payload(payloadSize)` wrapper in H.266 §7.3.2.21 — that's a caller
 /// concern (handled in `sps.rs`), not a `vui_parameters()` concern.
-pub(super) fn parse_h266_vui(
-    br: &mut BitReader<'_>,
-) -> Result<Option<ColorInfo>, CodecParseError> {
+pub(super) fn parse_h266_vui(br: &mut BitReader<'_>) -> Result<Option<ColorInfo>, CodecParseError> {
     // §7.3.2.5 — four source flags (H.266-specific; precede aspect_ratio).
     let vui_progressive_source_flag = br.read_bool()?; // u(1)
     let vui_interlaced_source_flag = br.read_bool()?; // u(1)

@@ -1182,9 +1182,21 @@ impl Muxer {
         }
 
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
-        // Per AV1-MPEG-2-TS binding §3.4, AV1 PES MUST set
-        // data_alignment_indicator=1. H.222.0 §2.4.3.7 leaves the bit
-        // codec-defined for H.264 / H.265 / H.266 — keep them unset.
+        // AV1-in-MPEG-2-TS binding (`av1-mpeg2-ts-binding.html`) carriage notes:
+        // - §3.4 `data_alignment_indicator=1` — REQUIRED, set below per binding.
+        // - §3.4 `stream_id=0xBD` (private_stream_1) — DEVIATION: library uses
+        //   `STREAM_ID_VIDEO` (0xE0) for ffmpeg + libaom interop. See
+        //   `docs/deferred-features.md` §"AV1-in-MPEG-2-TS binding §3.2 / §3.4
+        //   carriage conformance" for rationale + trigger-to-revisit.
+        // - §3.2 `ts_open_bitstream_unit()` framing (start codes + emulation
+        //   prevention bytes) — DEVIATION: library carries raw OBUs in the
+        //   PES payload (low-overhead bitstream format directly). Same
+        //   deferred-features.md entry covers this; strict-mode receivers
+        //   would surface `NonConformantIssue::Av1MissingTsObuFraming` /
+        //   `Av1WrongStreamId` (planned additions — not yet in
+        //   `mpegts::demux::event`).
+        // H.222.0 §2.4.3.7 leaves the alignment bit codec-defined for
+        // H.264 / H.265 / H.266 — keep them unset.
         let pes_flags = PesFlags {
             data_alignment_indicator: matches!(
                 self.video_streams[prog_idx][within_idx].codec,

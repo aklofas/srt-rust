@@ -1305,4 +1305,52 @@ mod tests {
             "encoded_len disagrees with encode_to_vec output length"
         );
     }
+
+    // --- Phase 1 (KLV-OTHER-02) regression tests added 2026-05-10 ---
+
+    #[test]
+    fn encode_omits_tag1_checksum_per_st0903_6_120() {
+        // ST 0903.6-120: embedded-VMTI MUST omit Tag 1 (checkSum).
+        // `encode_to_vec` is the body-only (embedded carriage) entry —
+        // it must not emit Tag 1 even when the caller populates the field.
+        let ls = VmtiLs {
+            checksum: Some(0xDEAD), // caller-supplied; encoder must drop
+            precision_time_stamp: Some(1_700_000_000_000_000),
+            version_number: Some(6),
+            num_targets_reported: Some(0),
+            ..Default::default()
+        };
+        let bytes = encode_to_vec(&ls).unwrap();
+        // Walk the TLVs and assert none has tag == 1.
+        let mut cursor = bytes.as_slice();
+        while !cursor.is_empty() {
+            let tag = cursor[0];
+            assert_ne!(tag, 1, "encode_to_vec must omit Tag 1 per ST 0903.6-120");
+            let (len, rest) = crate::klv::length::read_ber(&cursor[1..]).unwrap();
+            cursor = &rest[len..];
+        }
+    }
+
+    #[test]
+    fn encode_drops_caller_supplied_checksum() {
+        // The two encode entry points have asymmetric contracts:
+        // `encode_to_vec` (embedded) drops `ls.checksum`; the new
+        // `encode_to_vec_standalone` (Task 4) computes its own.
+        // Pin the embedded-side drop contract.
+        let ls_with = VmtiLs {
+            checksum: Some(0xABCD),
+            num_targets_reported: Some(0),
+            ..Default::default()
+        };
+        let ls_without = VmtiLs {
+            checksum: None,
+            num_targets_reported: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(
+            encode_to_vec(&ls_with).unwrap(),
+            encode_to_vec(&ls_without).unwrap(),
+            "encode_to_vec must produce identical bytes regardless of ls.checksum"
+        );
+    }
 }

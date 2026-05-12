@@ -18,8 +18,73 @@ spec-validation audit), plan #45 (pipeline close-flush and pairer
 PTS saturation fixes from the same audit), plan #46 (KLV
 follow-up: VMTI checksum ordering + Security LS UL constant),
 plan #47 (MPEG-TS PSI multi-section reject + AV1 binding docs),
-plan #48 (video codec parser robustness fixes), and plan #49
-(SRT RejectReason mapping fix) also ride this release.
+plan #48 (video codec parser robustness fixes), plan #49
+(SRT RejectReason mapping fix), and plan #50 (tst-c FFI panic
+isolation) also ride this release.
+
+---
+
+### tst-c FFI panic isolation (2026-05-11) — plan #50
+
+CABI-04 from the 2026-05-10 audit
+(`docs/analysis/2026-05-10-audit-slices/15-tst-c-abi.md`). Phase 0
+(plan #36, 2026-05-08) wrapped the data path via
+`Handle::with_inner_{mut,ref}`; this plan completes the coverage
+for the open path, the config-builder setters, and the last-error
+accessors. Rust's `extern "C"` panic behavior is implementation-defined
+under `panic="unwind"` and aborts under `panic="abort"`; either is
+unacceptable for a stable C ABI. After this fix, every panic
+inside `tst-c`'s extern "C" boundaries is caught, recorded as
+`TstError::PanicCaught` (-11) in the thread-local last-error, and
+translated to a sentinel return for the entry point's return type.
+
+#### Fixed (panic-safety hardening)
+
+- **New `crates/tst-c/src/panic.rs` module** with `pub(crate) fn
+  ffi_catch<R, F>(default: R, f: F) -> R` helper. Wraps
+  `catch_unwind(AssertUnwindSafe(f))`; on `Err` records `PanicCaught`
+  via the existing `record_panic_caught` in `error.rs` (extracts a
+  best-effort detail string from the panic payload) and returns the
+  caller-supplied default sentinel.
+
+- **All 7 `_open` entry points wrapped**: `tst_muxer_open`,
+  `tst_mux_sender_open`, `tst_managed_mux_sender_open`,
+  `tst_sender_open`, `tst_managed_sender_open`, `tst_raw_sender_open`,
+  `tst_managed_raw_sender_open`. Previously bare against panics in
+  `Socket::connect_with` / `MuxerConfig::validate` / `MuxSender::new` /
+  URL parsing / `Box::new` allocation. Reconnect-time panics on
+  managed senders are already covered by `Handle::with_inner_*`
+  wrapping (the factory runs from the data path).
+
+- **All 25 config-builder entry points in `config.rs` wrapped**:
+  4 `_new` constructors (default `null_mut`), 4 `_free` destructors
+  (default `()`), `tst_mux_config_add_program` (default
+  `TST_INVALID_PROGRAM_HANDLE`), `tst_mux_config_add_video_stream` /
+  `_add_klv_stream` (default `TST_INVALID_STREAM_HANDLE`), and 14
+  `c_int` setters covering PCR/PSI/buffer + 3 descriptor setters +
+  2 sender setters + 5 reconnect setters (default `TstError::Internal
+  as i32`). Vec::push, Vec::with_capacity, parse_tlv_list slice
+  arithmetic, and Box::new are all panic surfaces; previously a panic
+  in any of them would unwind through extern "C".
+
+- **Both last-error accessors wrapped**: `tst_get_last_error`
+  (default `TstError::Internal as i32`) and `tst_get_last_error_str`
+  (default: pointer to a static `b"\0"` byte slice). The static
+  fallback on `_str` preserves the never-NULL contract documented
+  in the rustdoc — a reentrant Drop double-borrow of the
+  thread-local `RefCell` previously could panic out of `borrow()`.
+
+- **6 inline unit tests** in `panic::tests` pin the contract:
+  closure value passes through on success; panic returns the
+  default and records `PanicCaught`; payload detail captured for
+  both `&'static str` and formatted `String` payloads; null-ptr
+  default works; void default works; open-path simulated panic
+  (regression test for the architectural property).
+
+No API change; no symbol changes. The `cargo public-api` baseline
+stays byte-identical (the new `panic` module is private and the
+`ffi_catch` helper is `pub(crate)`). The fix is binary-compatible
+with existing linked C consumers.
 
 ---
 

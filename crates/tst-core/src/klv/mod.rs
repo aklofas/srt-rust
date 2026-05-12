@@ -38,7 +38,8 @@ pub mod universal_label;
 
 pub use pack::{Iter, OwnedRawField, RawField};
 pub use st0102::{
-    ClassifyingCountryCodingMethod, ObjectCountryCodingMethod, SecurityClassification, SecurityLs,
+    ClassifyingCountryCodingMethod, ObjectCountryCodingMethod, SECURITY_LS_UL,
+    SecurityClassification, SecurityLs,
 };
 pub use st0605::{PrecisionTimeStampPack, TimeStatus};
 pub use st0903::{VMTI_LS_UL, VTargetPack, VTargetPackError, VmtiLs};

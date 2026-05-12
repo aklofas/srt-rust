@@ -20,6 +20,34 @@
 //!
 //! Universal Set form of ST 0102 is out of scope (LS-only on
 //! MPEG-TS+KLV streams).
+//!
+//! # Carriage paths
+//!
+//! ST 0102 Security LS rides two ways in the wild:
+//!
+//! 1. **Nested inside ST 0601 as Tag 48** — most common; the security
+//!    metadata travels alongside platform telemetry in a single ST 0601
+//!    record. Consumer pattern:
+//!    ```ignore
+//!    let uas = klv::st0601::decode(bytes)?;
+//!    if let Some(sec_bytes) = uas.security_local_set.as_deref() {
+//!        let sec = klv::st0102::decode(sec_bytes)?;
+//!        // ...
+//!    }
+//!    ```
+//! 2. **Standalone on its own KLV PID** — the AU-cell payload is a
+//!    Security LS with [`SECURITY_LS_UL`] as the 16-byte UL prefix.
+//!    Consumer pattern:
+//!    ```ignore
+//!    if data.starts_with(&klv::st0102::SECURITY_LS_UL) {
+//!        let (_outer_len, body) = klv::length::read_ber(&data[16..])?;
+//!        let sec = klv::st0102::decode(body)?;
+//!        // ...
+//!    }
+//!    ```
+//!    The demuxer remains UL-agnostic; consumer-side dispatch keeps
+//!    new typed-set additions from creating a coupling load on the
+//!    demuxer.
 
 pub(crate) mod enums;
 pub(crate) mod tags;
@@ -27,6 +55,15 @@ pub(crate) mod tags;
 pub use enums::{
     ClassifyingCountryCodingMethod, ObjectCountryCodingMethod, SecurityClassification,
 };
+
+/// MISB ST 0102.12 §6.7 — Security Metadata Local Set Universal Label.
+/// Used by consumers carrying the Security LS as its own KLV stream
+/// (separate MPEG-TS PID, not nested in an ST 0601 Tag 48). The
+/// `UniversalLabel`-typed companion lives at
+/// [`crate::klv::UniversalLabel::SECURITY_LS_UL`].
+pub const SECURITY_LS_UL: [u8; 16] = [
+    0x06, 0x0E, 0x2B, 0x34, 0x02, 0x03, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x03, 0x02, 0x00, 0x00, 0x00,
+];
 
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
 use crate::klv::pack::OwnedRawField;
@@ -1188,6 +1225,17 @@ mod tests {
         assert!(
             decoded.unknown.is_empty(),
             "tags > 127 should be silently dropped on encode"
+        );
+    }
+
+    /// `klv::st0102::SECURITY_LS_UL` is a re-export of the
+    /// `UniversalLabel`-typed constant — the bytes match the
+    /// universal_label.rs canonical form.
+    #[test]
+    fn security_ls_ul_reexport_matches_universal_label() {
+        assert_eq!(
+            super::SECURITY_LS_UL,
+            crate::klv::universal_label::UniversalLabel::SECURITY_LS_UL.0,
         );
     }
 }

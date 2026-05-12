@@ -40,40 +40,42 @@ pub unsafe extern "C" fn tst_mux_sender_open(
     srt_url: *const libc::c_char,
     cfg: *mut TstMuxConfig,
 ) -> *mut TstMuxSender {
-    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return std::ptr::null_mut();
-    };
-    let url = match unsafe { parse_c_srt_url(srt_url) } {
-        Ok(u) => u,
-        Err(()) => return std::ptr::null_mut(),
-    };
-    let built = match cfg.build_config() {
-        Ok(c) => c,
-        Err(e) => {
-            record_mux_error(&e);
+    crate::panic::ffi_catch(std::ptr::null_mut(), || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
             return std::ptr::null_mut();
-        }
-    };
-    let mut socket_cfg = SocketConfig::default();
-    url.overlay.apply_to_socket(&mut socket_cfg);
-    let transport = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
-        Ok(t) => t,
-        Err(e) => {
-            crate::error::record_transport_error(&e);
-            return std::ptr::null_mut();
-        }
-    };
-    let sender = match MuxSender::new(transport, built) {
-        Ok(s) => s,
-        Err(e) => {
-            record_mux_error(&e);
-            return std::ptr::null_mut();
-        }
-    };
-    Box::into_raw(Box::new(TstMuxSender {
-        inner: Handle::new(sender),
-    }))
+        };
+        let url = match unsafe { parse_c_srt_url(srt_url) } {
+            Ok(u) => u,
+            Err(()) => return std::ptr::null_mut(),
+        };
+        let built = match cfg.build_config() {
+            Ok(c) => c,
+            Err(e) => {
+                record_mux_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        let mut socket_cfg = SocketConfig::default();
+        url.overlay.apply_to_socket(&mut socket_cfg);
+        let transport = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
+            Ok(t) => t,
+            Err(e) => {
+                crate::error::record_transport_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        let sender = match MuxSender::new(transport, built) {
+            Ok(s) => s,
+            Err(e) => {
+                record_mux_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        Box::into_raw(Box::new(TstMuxSender {
+            inner: Handle::new(sender),
+        }))
+    })
 }
 
 #[unsafe(no_mangle)]
@@ -330,56 +332,58 @@ pub unsafe extern "C" fn tst_managed_mux_sender_open(
     cfg: *mut TstMuxConfig,
     policy: *const TstReconnectPolicy,
 ) -> *mut TstManagedMuxSender {
-    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return std::ptr::null_mut();
-    };
-    let policy = match unsafe { policy.as_ref() } {
-        Some(p) => p.inner.clone(),
-        None => tst_pipeline::ReconnectPolicy::default(),
-    };
-    let url = match unsafe { parse_c_srt_url(srt_url) } {
-        Ok(u) => u,
-        Err(()) => return std::ptr::null_mut(),
-    };
-    let built = match cfg.build_config() {
-        Ok(c) => c,
-        Err(e) => {
-            record_mux_error(&e);
+    crate::panic::ffi_catch(std::ptr::null_mut(), || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
             return std::ptr::null_mut();
-        }
-    };
-    let mut socket_cfg = SocketConfig::default();
-    url.overlay.apply_to_socket(&mut socket_cfg);
+        };
+        let policy = match unsafe { policy.as_ref() } {
+            Some(p) => p.inner.clone(),
+            None => tst_pipeline::ReconnectPolicy::default(),
+        };
+        let url = match unsafe { parse_c_srt_url(srt_url) } {
+            Ok(u) => u,
+            Err(()) => return std::ptr::null_mut(),
+        };
+        let built = match cfg.build_config() {
+            Ok(c) => c,
+            Err(e) => {
+                record_mux_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        let mut socket_cfg = SocketConfig::default();
+        url.overlay.apply_to_socket(&mut socket_cfg);
 
-    // Initial connect.
-    let initial = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
-        Ok(t) => t,
-        Err(e) => {
-            crate::error::record_transport_error(&e);
-            return std::ptr::null_mut();
-        }
-    };
+        // Initial connect.
+        let initial = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
+            Ok(t) => t,
+            Err(e) => {
+                crate::error::record_transport_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
 
-    // Reconnect closure: same host/port AND same socket config so URL
-    // overlay options (passphrase/latency/etc.) survive reconnects.
-    // URL is parsed once at construction and never re-parsed.
-    let host = url.host.clone();
-    let port = url.port;
-    let cfg_for_reconnect = socket_cfg.clone();
-    let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
+        // Reconnect closure: same host/port AND same socket config so URL
+        // overlay options (passphrase/latency/etc.) survive reconnects.
+        // URL is parsed once at construction and never re-parsed.
+        let host = url.host.clone();
+        let port = url.port;
+        let cfg_for_reconnect = socket_cfg.clone();
+        let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
 
-    let managed = ManagedTransport::new(initial, factory, policy);
-    let sender = match MuxSender::new(managed, built) {
-        Ok(s) => s,
-        Err(e) => {
-            record_mux_error(&e);
-            return std::ptr::null_mut();
-        }
-    };
-    Box::into_raw(Box::new(TstManagedMuxSender {
-        inner: Handle::new(sender),
-    }))
+        let managed = ManagedTransport::new(initial, factory, policy);
+        let sender = match MuxSender::new(managed, built) {
+            Ok(s) => s,
+            Err(e) => {
+                record_mux_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        Box::into_raw(Box::new(TstManagedMuxSender {
+            inner: Handle::new(sender),
+        }))
+    })
 }
 
 #[unsafe(no_mangle)]

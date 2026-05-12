@@ -18,27 +18,29 @@ pub struct TstMuxer {
 /// last-error set.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_muxer_open(cfg: *mut TstMuxConfig) -> *mut TstMuxer {
-    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
-        set_last_error(TstError::InvalidConfig, "null config pointer");
-        return std::ptr::null_mut();
-    };
-    let built = match cfg.build_config() {
-        Ok(c) => c,
-        Err(e) => {
-            record_mux_error(&e);
+    crate::panic::ffi_catch(std::ptr::null_mut(), || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
             return std::ptr::null_mut();
-        }
-    };
-    let muxer = match Muxer::new(built) {
-        Ok(m) => m,
-        Err(e) => {
-            record_mux_error(&e);
-            return std::ptr::null_mut();
-        }
-    };
-    Box::into_raw(Box::new(TstMuxer {
-        inner: Handle::new(muxer),
-    }))
+        };
+        let built = match cfg.build_config() {
+            Ok(c) => c,
+            Err(e) => {
+                record_mux_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        let muxer = match Muxer::new(built) {
+            Ok(m) => m,
+            Err(e) => {
+                record_mux_error(&e);
+                return std::ptr::null_mut();
+            }
+        };
+        Box::into_raw(Box::new(TstMuxer {
+            inner: Handle::new(muxer),
+        }))
+    })
 }
 
 /// Push one Annex-B-framed video access unit. Returns 0 on success or a

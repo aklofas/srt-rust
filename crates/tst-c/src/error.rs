@@ -59,7 +59,9 @@ pub(crate) fn clear_last_error_for_test() {
 /// none since thread start).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_get_last_error() -> libc::c_int {
-    LAST_ERROR.with(|cell| cell.borrow().0)
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        LAST_ERROR.with(|cell| cell.borrow().0)
+    })
 }
 
 /// Pointer to the most recent error message on this thread. Valid until
@@ -67,7 +69,15 @@ pub unsafe extern "C" fn tst_get_last_error() -> libc::c_int {
 /// no error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_get_last_error_str() -> *const libc::c_char {
-    LAST_ERROR.with(|cell| cell.borrow().1.as_ptr())
+    // The thread-local CString stays alive for the thread's lifetime, but
+    // if `borrow()` panicked (reentrant Drop double-borrow), the happy-path
+    // pointer is unreachable. Fall back to a static empty C string so the
+    // never-NULL contract above is preserved.
+    static EMPTY: &[u8] = b"\0";
+    let fallback = EMPTY.as_ptr() as *const libc::c_char;
+    crate::panic::ffi_catch(fallback, || {
+        LAST_ERROR.with(|cell| cell.borrow().1.as_ptr())
+    })
 }
 
 use tst_core::error::MuxError;

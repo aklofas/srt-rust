@@ -137,4 +137,25 @@ mod tests {
             TstError::PanicCaught as i32
         );
     }
+
+    /// Pin the architectural property at the unit-test level: a panic
+    /// inside `ffi_catch` (simulating `Socket::connect_with` deep panic
+    /// inside libsrt, or `Vec::push` OOM in a config builder) is caught,
+    /// recorded as `PanicCaught`, and the default sentinel is returned.
+    /// Integration-test-level coverage was considered but would require
+    /// an exposed panic-injection hook; the unit test captures the same
+    /// property without leaking internals.
+    #[test]
+    fn open_path_simulated_panic_is_caught() {
+        clear_last_error_for_test();
+        let p: *mut u8 = ffi_catch(std::ptr::null_mut(), || panic!("simulated connect panic"));
+        assert!(p.is_null());
+        assert_eq!(
+            unsafe { tst_get_last_error() },
+            TstError::PanicCaught as i32
+        );
+        let ptr = unsafe { crate::error::tst_get_last_error_str() };
+        let msg = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_str().unwrap();
+        assert!(msg.contains("simulated connect"), "got: {msg}");
+    }
 }

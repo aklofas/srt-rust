@@ -70,6 +70,20 @@ pub const VMTI_LS_UL: [u8; 16] = [
 
 #[derive(Debug, Clone, Default)]
 pub struct VmtiLs {
+    /// Tag 1 (checkSum) per ST 0903.6 §10.1.1. Populated by [`decode`]
+    /// for observability on standalone-VMTI captures.
+    ///
+    /// **Encode-side semantics are asymmetric and load-bearing:**
+    /// - [`encode`] / [`encode_to_vec`] (embedded-VMTI body) — this
+    ///   field is **always dropped** per ST 0903.6-120.
+    /// - [`encode_standalone`] / [`encode_to_vec_standalone`]
+    ///   (standalone-VMTI) — this field is **ignored**; the encoder
+    ///   computes the running 16-bit checksum from the UL + body
+    ///   framing and emits Tag 1 last per ST 0903.4-17 / ST 0903.6-119.
+    ///
+    /// Callers who decode + re-encode a captured standalone-VMTI get
+    /// a fresh substrate-computed checksum, not a passthrough of the
+    /// original.
     pub checksum: Option<u16>,
     pub precision_time_stamp: Option<u64>,
     pub vmti_system_name: Option<String>,
@@ -741,6 +755,94 @@ pub fn encode_to_vec(ls: &VmtiLs) -> Result<Vec<u8>, KlvEncodeError> {
     Ok(out)
 }
 
+/// Encode a VMTI Local Set as a **standalone-VMTI** wire record:
+/// `[VMTI_LS_UL:16][outer BER length][body][Tag 1 checkSum TLV]`.
+///
+/// Per ST 0903.4-17 / ST 0903.6-119, standalone-VMTI MUST place
+/// Tag 1 last. Per ST 0903.6 §10.1.1, the Tag 1 value is the running
+/// 16-bit unsigned summation of all bytes from the first byte of the
+/// VMTI LS's UL through the last byte of the Tag 1 length (i.e. up to
+/// but not including the 2-byte Tag 1 value itself). This function
+/// computes the checksum from the assembled framing; any value the
+/// caller stored in [`VmtiLs::checksum`] is ignored.
+///
+/// The function writes directly into `out`, returning the number of
+/// bytes written. Use [`encode_to_vec_standalone`] when the caller
+/// has no pre-sized buffer.
+///
+/// # Errors
+/// - [`KlvEncodeError::BufferTooSmall`] if `out` is shorter than
+///   [`encoded_len_standalone`].
+/// - [`KlvEncodeError::OutOfRange`] / [`KlvEncodeError::RecordTooLarge`]
+///   per [`encode`].
+pub fn encode_standalone(ls: &VmtiLs, out: &mut [u8]) -> Result<usize, KlvEncodeError> {
+    use crate::klv::checksum::checksum_running_sum_16;
+    use crate::klv::length::{ber_len, write_ber};
+
+    // Build the body (no Tag 1, no UL) into a temporary Vec — exactly
+    // what `encode` produces today.
+    let mut body: Vec<u8> = Vec::with_capacity(256);
+    encode(ls, &mut body)?;
+
+    // Tag 1 TLV is 4 bytes: tag (0x01) + length (0x02) + 2-byte value.
+    const TAG1_TLV_LEN: usize = 4;
+    let body_len_with_checksum = body.len() + TAG1_TLV_LEN;
+    let outer_len_bytes = ber_len(body_len_with_checksum);
+    let total = 16 + outer_len_bytes + body_len_with_checksum;
+
+    if out.len() < total {
+        return Err(KlvEncodeError::BufferTooSmall {
+            needed: total,
+            got: out.len(),
+        });
+    }
+
+    // 1) UL
+    out[..16].copy_from_slice(&VMTI_LS_UL);
+    // 2) Outer BER length (covers body + Tag 1 TLV)
+    let written = write_ber(body_len_with_checksum, &mut out[16..])?;
+    let body_offset = 16 + written;
+    // 3) Body bytes (Tag 2 onward in ascending order)
+    out[body_offset..body_offset + body.len()].copy_from_slice(&body);
+    // 4) Tag 1 (checksum) tag + length
+    let cksum_tag_offset = body_offset + body.len();
+    out[cksum_tag_offset] = 0x01; // tag 1
+    out[cksum_tag_offset + 1] = 0x02; // length 2
+    // 5) Compute checksum across [UL .. start of checksum value] per
+    //    ST 0903.6 §10.1.1. Same running-sum algorithm as ST 0601 §6.3.
+    let cksum_value_offset = cksum_tag_offset + 2;
+    let cksum = checksum_running_sum_16(&out[..cksum_value_offset]);
+    out[cksum_value_offset] = (cksum >> 8) as u8;
+    out[cksum_value_offset + 1] = cksum as u8;
+    Ok(total)
+}
+
+/// Encode a VMTI Local Set as a standalone-VMTI wire record into a
+/// fresh `Vec<u8>`. Convenience over [`encode_standalone`] when the
+/// caller has no pre-sized buffer.
+///
+/// # Errors
+/// Returns the same [`KlvEncodeError`] variants as [`encode_standalone`].
+/// (`KlvEncodeError::BufferTooSmall` cannot fire on this path — the
+/// buffer is pre-sized via [`encoded_len_standalone`].)
+pub fn encode_to_vec_standalone(ls: &VmtiLs) -> Result<Vec<u8>, KlvEncodeError> {
+    let n = encoded_len_standalone(ls);
+    let mut buf = vec![0u8; n];
+    let written = encode_standalone(ls, &mut buf)?;
+    buf.truncate(written);
+    Ok(buf)
+}
+
+/// Number of wire bytes that [`encode_standalone`] would produce for
+/// `ls` — body + 16 (UL) + outer BER length + 4 (Tag 1 TLV).
+pub fn encoded_len_standalone(ls: &VmtiLs) -> usize {
+    use crate::klv::length::ber_len;
+    let body_len = encoded_len(ls);
+    // Tag 1 TLV is always exactly 4 bytes (tag + len + 2-byte value).
+    let body_len_with_checksum = body_len + 4;
+    16 + ber_len(body_len_with_checksum) + body_len_with_checksum
+}
+
 /// Number of wire bytes that [`encode`] would produce for `ls`. Mirrors
 /// `encode`'s field-by-field structure so the two cannot drift.
 pub fn encoded_len(ls: &VmtiLs) -> usize {
@@ -1371,5 +1473,99 @@ mod tests {
             encode_to_vec(&ls_without).unwrap(),
             "encode_to_vec must produce identical bytes regardless of ls.checksum"
         );
+    }
+
+    #[test]
+    fn encode_standalone_emits_tag1_last_per_st0903_4_17() {
+        // ST 0903.4-17 / ST 0903.6-119: standalone-VMTI Tag 1 last.
+        let ls = VmtiLs {
+            precision_time_stamp: Some(1_700_000_000_000_000),
+            version_number: Some(6),
+            num_targets_reported: Some(0),
+            ..Default::default()
+        };
+        let bytes = encode_to_vec_standalone(&ls).unwrap();
+
+        // Skip the 16-byte UL + outer BER length to find the body.
+        assert_eq!(&bytes[..16], &VMTI_LS_UL);
+        let (_outer_len, body) = crate::klv::length::read_ber(&bytes[16..]).unwrap();
+
+        // Walk TLVs and collect tag IDs in emission order.
+        let mut cursor = body;
+        let mut tags = Vec::new();
+        while !cursor.is_empty() {
+            let tag = cursor[0];
+            tags.push(tag);
+            let (len, rest) = crate::klv::length::read_ber(&cursor[1..]).unwrap();
+            cursor = &rest[len..];
+        }
+        // Tag 2 first, Tag 1 last.
+        assert_eq!(tags.first(), Some(&2u8), "Tag 2 (PTS) must be first");
+        assert_eq!(tags.last(), Some(&1u8), "Tag 1 (checkSum) must be last");
+    }
+
+    #[test]
+    fn encode_standalone_checksum_matches_running_sum_16() {
+        // Computed checksum must equal running_sum_16 over [UL .. start of value].
+        let ls = VmtiLs {
+            precision_time_stamp: Some(1_700_000_000_000_000),
+            version_number: Some(6),
+            num_targets_reported: Some(0),
+            ..Default::default()
+        };
+        let bytes = encode_to_vec_standalone(&ls).unwrap();
+        // Last 2 bytes of the wire record are the Tag 1 value.
+        let cksum_value_offset = bytes.len() - 2;
+        let expected = crate::klv::checksum::checksum_running_sum_16(&bytes[..cksum_value_offset]);
+        let got = u16::from_be_bytes([bytes[cksum_value_offset], bytes[cksum_value_offset + 1]]);
+        assert_eq!(got, expected, "checksum value must match running_sum_16");
+    }
+
+    #[test]
+    fn encode_standalone_round_trips_via_decode() {
+        // Wrap, then unwrap (peel UL + outer BER length), decode the
+        // body, and check the typed fields round-trip. `decode` does
+        // not verify the checksum (the field is captured as-is for
+        // observability) — the round-trip is asserted at the typed
+        // layer only.
+        let ls = VmtiLs {
+            precision_time_stamp: Some(1_700_000_000_000_000),
+            version_number: Some(6),
+            num_targets_reported: Some(1),
+            frame_width: Some(1920),
+            frame_height: Some(1080),
+            ..Default::default()
+        };
+        let bytes = encode_to_vec_standalone(&ls).unwrap();
+
+        assert_eq!(&bytes[..16], &VMTI_LS_UL);
+        let (outer_len, body) = crate::klv::length::read_ber(&bytes[16..]).unwrap();
+        assert_eq!(outer_len, body.len(), "outer BER length covers full body");
+
+        let decoded = decode(body).unwrap();
+        assert_eq!(decoded.precision_time_stamp, Some(1_700_000_000_000_000));
+        assert_eq!(decoded.version_number, Some(6));
+        assert_eq!(decoded.num_targets_reported, Some(1));
+        assert_eq!(decoded.frame_width, Some(1920));
+        assert_eq!(decoded.frame_height, Some(1080));
+        // The decoded checksum captures the Tag 1 value that was emitted
+        // by encode_standalone — verifying it's the running-sum-16.
+        let cksum_value_offset = bytes.len() - 2;
+        let expected = crate::klv::checksum::checksum_running_sum_16(&bytes[..cksum_value_offset]);
+        assert_eq!(decoded.checksum, Some(expected));
+    }
+
+    #[test]
+    fn encoded_len_standalone_matches_encode_standalone() {
+        let ls = VmtiLs {
+            precision_time_stamp: Some(1_700_000_000_000_000),
+            version_number: Some(6),
+            num_targets_reported: Some(2),
+            frame_width: Some(3840),
+            frame_height: Some(2160),
+            ..Default::default()
+        };
+        let bytes = encode_to_vec_standalone(&ls).unwrap();
+        assert_eq!(bytes.len(), encoded_len_standalone(&ls));
     }
 }

@@ -22,12 +22,11 @@
 //!                          no-panic smoke test (optional)
 //!   -h, --help             print this help
 
+use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-// Used in Task 2 (extraction logic); declared here so the constant is visible
-// to run() once that stub is filled in.
-#[allow(dead_code)]
+// Used in run() for 188-byte alignment validation and packet slicing.
 const TS_PACKET_SIZE: usize = 188;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -133,8 +132,71 @@ fn print_help() {
     eprintln!("{}", include_str!("corpus_to_fixture_help.txt"));
 }
 
-fn run(_args: &Args) -> Result<(), String> {
-    Err("not yet implemented".to_string())
+fn run(args: &Args) -> Result<(), String> {
+    let bytes = fs::read(&args.input).map_err(|e| format!("read {}: {e}", args.input.display()))?;
+    if bytes.is_empty() {
+        return Err(format!("{} is empty", args.input.display()));
+    }
+    if bytes.len() % TS_PACKET_SIZE != 0 {
+        return Err(format!(
+            "{} is not a multiple of 188 bytes (got {})",
+            args.input.display(),
+            bytes.len()
+        ));
+    }
+    let total_packets = bytes.len() / TS_PACKET_SIZE;
+    let (range_start, range_end) = args.packets.unwrap_or((0, total_packets));
+    if range_end > total_packets {
+        return Err(format!(
+            "--packets end {range_end} exceeds total packet count {total_packets}"
+        ));
+    }
+
+    let mut out_buf: Vec<u8> = Vec::new();
+    let mut copied = 0usize;
+    for (i, chunk) in bytes.chunks(TS_PACKET_SIZE).enumerate() {
+        if i < range_start || i >= range_end {
+            continue;
+        }
+        if let Some(filter_pid) = args.pid {
+            if extract_pid(chunk) != filter_pid {
+                continue;
+            }
+        }
+        out_buf.extend_from_slice(chunk);
+        copied += 1;
+    }
+
+    if let Some(parent) = args.out.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
+    }
+    fs::write(&args.out, &out_buf).map_err(|e| format!("write {}: {e}", args.out.display()))?;
+
+    eprintln!(
+        "wrote {} ({} packets, {} bytes) from {} ({} packets total)",
+        args.out.display(),
+        copied,
+        out_buf.len(),
+        args.input.display(),
+        total_packets
+    );
+
+    if args.emit_shim {
+        emit_shim(args)?;
+    }
+    Ok(())
+}
+
+fn extract_pid(packet: &[u8]) -> u16 {
+    // H.222.0 §2.4.3.2: sync (1) + flags+pid_hi (1, low 5 bits) + pid_lo (1)
+    debug_assert_eq!(packet.len(), TS_PACKET_SIZE);
+    (((packet[1] as u16) & 0x1F) << 8) | (packet[2] as u16)
+}
+
+fn emit_shim(args: &Args) -> Result<(), String> {
+    // Implemented in Task 4.
+    let _ = args;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -199,5 +261,41 @@ mod tests {
     fn missing_required_input() {
         let argv = vec!["--out".into(), "/tmp/o.bin".into()];
         assert!(parse_args(&argv).is_err());
+    }
+
+    fn write_synthetic_ts(packets: usize) -> PathBuf {
+        // Synthesize `packets` distinguishable TS packets: each starts with 0x47
+        // sync byte; remaining 187 bytes encode the packet index in the first 4
+        // bytes (big-endian) and 0xFF padding. Real PIDs aren't set — this is
+        // for byte-level extraction tests only.
+        let mut buf = Vec::with_capacity(packets * TS_PACKET_SIZE);
+        for i in 0..packets {
+            buf.push(0x47); // sync
+            buf.extend_from_slice(&(i as u32).to_be_bytes());
+            buf.extend(std::iter::repeat(0xFF).take(TS_PACKET_SIZE - 5));
+        }
+        let path =
+            std::env::temp_dir().join(format!("corpus_to_fixture_test_{}.ts", std::process::id()));
+        fs::write(&path, &buf).unwrap();
+        path
+    }
+
+    #[test]
+    fn extract_full_copy() {
+        let input = write_synthetic_ts(10);
+        let output = std::env::temp_dir().join(format!("c2f_test_full_{}.bin", std::process::id()));
+        let args = Args {
+            input: input.clone(),
+            out: output.clone(),
+            pid: None,
+            packets: None,
+            emit_shim: false,
+        };
+        run(&args).unwrap();
+        let in_bytes = fs::read(&input).unwrap();
+        let out_bytes = fs::read(&output).unwrap();
+        assert_eq!(in_bytes, out_bytes, "no filter, should be byte-identical");
+        let _ = fs::remove_file(&input);
+        let _ = fs::remove_file(&output);
     }
 }

@@ -18,7 +18,7 @@
 //!   --pid HEXDEC           filter to packets with this PID (optional)
 //!   --packets START..END   packet-index range, 0-indexed, half-open (optional)
 //!   --out PATH             output .bin file (must be under tests/fixtures/regression/)
-//!   --emit-shim            also emit tests/regression_<slug>.rs with a
+//!   --emit-shim            also emit `tests/regression_<slug>.rs` with a
 //!                          no-panic smoke test (optional)
 //!   -h, --help             print this help
 

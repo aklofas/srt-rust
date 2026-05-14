@@ -263,7 +263,7 @@ mod tests {
         assert!(parse_args(&argv).is_err());
     }
 
-    fn write_synthetic_ts(packets: usize) -> PathBuf {
+    fn write_synthetic_ts(packets: usize, tag: &str) -> PathBuf {
         // Synthesize `packets` distinguishable TS packets: each starts with 0x47
         // sync byte; remaining 187 bytes encode the packet index in the first 4
         // bytes (big-endian) and 0xFF padding. Real PIDs aren't set — this is
@@ -274,15 +274,18 @@ mod tests {
             buf.extend_from_slice(&(i as u32).to_be_bytes());
             buf.extend(std::iter::repeat(0xFF).take(TS_PACKET_SIZE - 5));
         }
-        let path =
-            std::env::temp_dir().join(format!("corpus_to_fixture_test_{}.ts", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "corpus_to_fixture_test_{}_{}.ts",
+            std::process::id(),
+            tag
+        ));
         fs::write(&path, &buf).unwrap();
         path
     }
 
     #[test]
     fn extract_full_copy() {
-        let input = write_synthetic_ts(10);
+        let input = write_synthetic_ts(10, "full");
         let output = std::env::temp_dir().join(format!("c2f_test_full_{}.bin", std::process::id()));
         let args = Args {
             input: input.clone(),
@@ -297,5 +300,125 @@ mod tests {
         assert_eq!(in_bytes, out_bytes, "no filter, should be byte-identical");
         let _ = fs::remove_file(&input);
         let _ = fs::remove_file(&output);
+    }
+
+    fn write_pid_tagged_ts(packets: &[u16], tag: &str) -> PathBuf {
+        // Synthesize packets with deliberately-set PIDs in the H.222.0 field.
+        let mut buf = Vec::with_capacity(packets.len() * TS_PACKET_SIZE);
+        for &pid in packets {
+            buf.push(0x47); // sync
+            // byte 1: transport_error=0, payload_unit_start_indicator=0,
+            //   transport_priority=0, PID[12:8] (low 5 bits)
+            buf.push(((pid >> 8) & 0x1F) as u8);
+            // byte 2: PID[7:0]
+            buf.push((pid & 0xFF) as u8);
+            // byte 3: scrambling=0, adaptation=01 (payload only), cc=0
+            buf.push(0x10);
+            buf.extend(std::iter::repeat(0xFF).take(TS_PACKET_SIZE - 4));
+        }
+        let path =
+            std::env::temp_dir().join(format!("c2f_pid_test_{}_{}.ts", std::process::id(), tag));
+        fs::write(&path, &buf).unwrap();
+        path
+    }
+
+    #[test]
+    fn filter_by_pid_keeps_only_matches() {
+        let input = write_pid_tagged_ts(&[0x0000, 0x1011, 0x1031, 0x1011, 0x0000], "filter");
+        let output = std::env::temp_dir().join(format!("c2f_pid_{}.bin", std::process::id()));
+        let args = Args {
+            input: input.clone(),
+            out: output.clone(),
+            pid: Some(0x1011),
+            packets: None,
+            emit_shim: false,
+        };
+        run(&args).unwrap();
+        let out = fs::read(&output).unwrap();
+        assert_eq!(out.len(), 2 * TS_PACKET_SIZE, "two 0x1011 packets expected");
+        // Both retained packets must show PID 0x1011 in bytes [1..=2].
+        for chunk in out.chunks(TS_PACKET_SIZE) {
+            assert_eq!(extract_pid(chunk), 0x1011);
+        }
+        let _ = fs::remove_file(&input);
+        let _ = fs::remove_file(&output);
+    }
+
+    #[test]
+    fn filter_by_packet_range_half_open() {
+        let input = write_synthetic_ts(10, "range");
+        let output = std::env::temp_dir().join(format!("c2f_range_{}.bin", std::process::id()));
+        let args = Args {
+            input: input.clone(),
+            out: output.clone(),
+            pid: None,
+            packets: Some((3, 7)),
+            emit_shim: false,
+        };
+        run(&args).unwrap();
+        let out = fs::read(&output).unwrap();
+        assert_eq!(out.len(), 4 * TS_PACKET_SIZE);
+        // First retained packet's index field (bytes 1..=4) should be 3.
+        assert_eq!(&out[1..5], &3u32.to_be_bytes());
+        // Last retained packet's index field should be 6.
+        let last_start = (4 - 1) * TS_PACKET_SIZE;
+        assert_eq!(&out[last_start + 1..last_start + 5], &6u32.to_be_bytes());
+        let _ = fs::remove_file(&input);
+        let _ = fs::remove_file(&output);
+    }
+
+    #[test]
+    fn filter_pid_and_range_composed() {
+        let input = write_pid_tagged_ts(&[0x100, 0x200, 0x100, 0x200, 0x100, 0x200], "compose");
+        // Range 1..5 covers indices 1,2,3,4 → PIDs 0x200, 0x100, 0x200, 0x100.
+        // PID filter 0x100 retains indices 2 and 4. Result: 2 packets.
+        let output = std::env::temp_dir().join(format!("c2f_compose_{}.bin", std::process::id()));
+        let args = Args {
+            input: input.clone(),
+            out: output.clone(),
+            pid: Some(0x100),
+            packets: Some((1, 5)),
+            emit_shim: false,
+        };
+        run(&args).unwrap();
+        let out = fs::read(&output).unwrap();
+        assert_eq!(out.len(), 2 * TS_PACKET_SIZE);
+        let _ = fs::remove_file(&input);
+        let _ = fs::remove_file(&output);
+    }
+
+    #[test]
+    fn range_out_of_bounds_rejected() {
+        let input = write_synthetic_ts(5, "oob");
+        let output = std::env::temp_dir().join(format!("c2f_oob_{}.bin", std::process::id()));
+        let args = Args {
+            input: input.clone(),
+            out: output.clone(),
+            pid: None,
+            packets: Some((0, 10)),
+            emit_shim: false,
+        };
+        let err = run(&args).unwrap_err();
+        assert!(
+            err.contains("exceeds"),
+            "expected out-of-bounds message, got: {err}"
+        );
+        let _ = fs::remove_file(&input);
+    }
+
+    #[test]
+    fn non_188_aligned_input_rejected() {
+        let path = std::env::temp_dir().join(format!("c2f_unaligned_{}.ts", std::process::id()));
+        fs::write(&path, b"not aligned to 188 bytes").unwrap();
+        let args = Args {
+            input: path.clone(),
+            out: std::env::temp_dir().join("never.bin"),
+            pid: None,
+            packets: None,
+            emit_shim: false,
+        };
+        let err = run(&args).unwrap_err();
+        assert!(err.contains("not a multiple of 188"), "got: {err}");
+        let _ = fs::remove_file(&path);
     }
 }

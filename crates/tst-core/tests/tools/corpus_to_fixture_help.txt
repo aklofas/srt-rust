@@ -1,0 +1,24 @@
+corpus_to_fixture — extract a minimal TS-packet sub-sequence as a regression fixture.
+
+Usage:
+  cargo run -p tst-core --bin corpus_to_fixture -- \
+    --input PATH --out PATH [--pid HEXDEC] [--packets START..END] [--emit-shim]
+
+Required:
+  --input PATH           input .ts file (size must be a multiple of 188)
+  --out PATH             output .bin file path; the stem becomes the regression slug
+
+Optional:
+  --pid HEXDEC           filter to packets carrying this PID (e.g. 0x1011 or 4113)
+  --packets START..END   filter to packets at zero-indexed positions [START, END)
+  --emit-shim            also write tests/regression_<slug>.rs with a no-panic
+                         smoke test that include_bytes!'s the output
+
+Examples:
+  # All packets, no filter, just copy:
+  --input sample.ts --out out.bin
+
+  # Packets 1000..2000 with PID 0x1011, plus a shim:
+  --input sample.ts --pid 0x1011 --packets 1000..2000 \
+    --out crates/tst-core/tests/fixtures/regression/bug_pat_overflow.bin \
+    --emit-shim

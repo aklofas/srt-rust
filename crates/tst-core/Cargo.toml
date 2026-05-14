@@ -71,3 +71,7 @@ path  = "tests/tools/gen_av1_fixtures.rs"
 test  = false
 bench = false
 doc   = false
+
+[[bin]]
+name  = "corpus_to_fixture"
+path  = "tests/tools/corpus_to_fixture.rs"

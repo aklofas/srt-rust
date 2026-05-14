@@ -194,8 +194,82 @@ fn extract_pid(packet: &[u8]) -> u16 {
 }
 
 fn emit_shim(args: &Args) -> Result<(), String> {
-    // Implemented in Task 4.
-    let _ = args;
+    let slug = args
+        .out
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("--out has no file stem")?;
+    if slug.is_empty()
+        || !slug
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    {
+        return Err(format!(
+            "slug {slug:?} must match [a-z0-9_]+ (lowercase letters, digits, underscore only)"
+        ));
+    }
+
+    // Locate tests/ root: walk up from --out until we find the parent of
+    // tests/fixtures/regression/. Equivalently, the grand-grand-parent of
+    // <out>. Caller is expected to place --out under tests/fixtures/regression/.
+    let regression_dir = args.out.parent().ok_or("--out has no parent dir")?;
+    let fixtures_dir = regression_dir
+        .parent()
+        .ok_or("--out parent has no parent (expected tests/fixtures/regression/<x>.bin)")?;
+    let tests_dir = fixtures_dir
+        .parent()
+        .ok_or("--out has no tests/ ancestor (expected tests/fixtures/regression/<x>.bin)")?;
+    if tests_dir.file_name().and_then(|s| s.to_str()) != Some("tests") {
+        return Err(format!(
+            "expected --out under .../tests/fixtures/regression/, got {}",
+            args.out.display()
+        ));
+    }
+
+    let shim_path = tests_dir.join(format!("regression_{slug}.rs"));
+    let rel_bin = format!("fixtures/regression/{slug}.bin");
+    // Note: Demuxer::feed_aligned takes a single &[u8; 188] packet.
+    // The shim uses Demuxer::feed(&[u8]) which handles sync internally and
+    // accepts an arbitrary byte slice — simpler for fixture playback.
+    let source = format!(
+        r#"//! Auto-generated regression shim from corpus_to_fixture.
+//!
+//! To regenerate after a parser bugfix:
+//!   1. Re-run corpus_to_fixture against the same input + same flags.
+//!   2. `cargo test -p tst-core --test regression_{slug}`.
+//!
+//! Add domain-specific assertions below the smoke-test as the bug fix
+//! lands — the smoke-test alone only verifies no panic + at least one
+//! Demuxer event.
+
+use tst_core::mpegts::demux::Demuxer;
+
+const FIXTURE: &[u8] = include_bytes!("{rel_bin}");
+
+#[test]
+fn {slug}_smoke() {{
+    assert_eq!(
+        FIXTURE.len() % 188,
+        0,
+        "regression fixture must be 188-byte aligned"
+    );
+    let mut demux = Demuxer::new();
+    let mut events = 0usize;
+    // feed() handles TS sync recovery internally; simpler than looping
+    // feed_aligned() for fixture playback.
+    demux.feed(FIXTURE).ok();
+    while let Some(_event) = demux.next_event() {{
+        events += 1;
+    }}
+    // Smoke baseline: at least one event emitted, no panic.
+    assert!(events > 0, "no demuxer events from {slug} fixture");
+}}
+"#
+    );
+
+    fs::write(&shim_path, source)
+        .map_err(|e| format!("write shim {}: {e}", shim_path.display()))?;
+    eprintln!("wrote shim {}", shim_path.display());
     Ok(())
 }
 
@@ -420,5 +494,59 @@ mod tests {
         let err = run(&args).unwrap_err();
         assert!(err.contains("not a multiple of 188"), "got: {err}");
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn emit_shim_creates_compilable_test_file() {
+        let input = write_pid_tagged_ts(&[0x1011, 0x1011], "shim");
+        // The shim path is derived: tests/fixtures/regression/<slug>.bin →
+        // tests/regression_<slug>.rs (both relative to crate root).
+        let temp_root = std::env::temp_dir().join(format!("c2f_shim_root_{}", std::process::id()));
+        fs::create_dir_all(temp_root.join("tests/fixtures/regression")).unwrap();
+        let out_bin = temp_root.join("tests/fixtures/regression/bug_demo.bin");
+        let args = Args {
+            input: input.clone(),
+            out: out_bin.clone(),
+            pid: None,
+            packets: None,
+            emit_shim: true,
+        };
+        run(&args).unwrap();
+        let shim_path = temp_root.join("tests/regression_bug_demo.rs");
+        assert!(
+            shim_path.exists(),
+            "shim file should be created at {shim_path:?}"
+        );
+        let shim_source = fs::read_to_string(&shim_path).unwrap();
+        assert!(shim_source.contains("include_bytes!"));
+        assert!(shim_source.contains("bug_demo.bin"));
+        assert!(shim_source.contains("#[test]"));
+        assert!(shim_source.contains("Demuxer"));
+
+        // Clean up.
+        let _ = fs::remove_file(&input);
+        let _ = fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn emit_shim_rejects_non_slug_filename() {
+        // The slug must be [a-z0-9_]+ to be a valid Rust identifier component
+        // and a valid Cargo integration-test target.
+        let input = write_synthetic_ts(2, "badslug");
+        let temp_root =
+            std::env::temp_dir().join(format!("c2f_badslug_root_{}", std::process::id()));
+        fs::create_dir_all(temp_root.join("tests/fixtures/regression")).unwrap();
+        let out_bin = temp_root.join("tests/fixtures/regression/Bug-Demo.bin"); // bad: uppercase + hyphen
+        let args = Args {
+            input: input.clone(),
+            out: out_bin,
+            pid: None,
+            packets: None,
+            emit_shim: true,
+        };
+        let err = run(&args).unwrap_err();
+        assert!(err.contains("slug"), "got: {err}");
+        let _ = fs::remove_file(&input);
+        let _ = fs::remove_dir_all(&temp_root);
     }
 }

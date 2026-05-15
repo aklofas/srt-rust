@@ -41,6 +41,19 @@ pub enum PsiParseError {
     /// (mpegts.c:1759, 2610-2611, 2832, 2969-2970, 2974).
     #[error("section is future-staged (current_next_indicator=0); not yet in effect")]
     FuturePsiSection,
+    /// `section_length` is below the structural minimum for the table's
+    /// fixed fields + 4-byte CRC trailer. Surfaced via OSS-Fuzz on
+    /// inputs with `section_length` 0..=3 (which underflow the CRC slice
+    /// at byte index `total_len - 4`). For PAT the minimum is 9, for
+    /// PMT the minimum is 13.
+    #[error(
+        "section_length {section_length} below minimum {min_required} for table_id 0x{table_id:02X}"
+    )]
+    SectionTooShort {
+        table_id: u8,
+        section_length: u16,
+        min_required: u16,
+    },
     /// Per ISO/IEC 13818-1 §2.4.4.5, sections with `last_section_number > 0`
     /// belong to a multi-section table that requires reassembly. Current
     /// demuxer scope handles single-section tables only; multi-section
@@ -78,6 +91,18 @@ pub fn parse_pat(section: &[u8]) -> Result<Pat, PsiParseError> {
     let section_length = (((section[1] & 0x0F) as u16) << 8) | section[2] as u16;
     if section_length as usize > 1021 {
         return Err(PsiParseError::SectionTooLong(section_length));
+    }
+    // PAT minimum: 5 fixed bytes (transport_stream_id 2 + flags 1 +
+    // section_number 1 + last_section_number 1) + 4 CRC = 9. Without
+    // this guard, section_length < 4 underflows `total_len - 4` on
+    // the CRC slice below (OSS-Fuzz: plan #54 / VERIFICATION.md).
+    const PAT_MIN_SECTION_LENGTH: u16 = 9;
+    if section_length < PAT_MIN_SECTION_LENGTH {
+        return Err(PsiParseError::SectionTooShort {
+            table_id: 0x00,
+            section_length,
+            min_required: PAT_MIN_SECTION_LENGTH,
+        });
     }
     let total_len = 3 + section_length as usize;
     if section.len() < total_len {
@@ -251,6 +276,53 @@ mod pat_tests {
             }
             other => panic!("expected MultiSectionUnsupported, got {other:?}"),
         }
+    }
+
+    /// Bug surfaced by OSS-Fuzz local smoke (plan #53 → plan #54).
+    /// section_length = 0 makes total_len = 3, so total_len - 4 underflows
+    /// in usize when computing the CRC slice. The fuzz harness panicked
+    /// at psi.rs:90 on `&section[..total_len - 4]`. Guard should catch
+    /// section_length below the structural minimum (5 fixed bytes + 4 CRC = 9).
+    #[test]
+    fn parse_pat_rejects_section_length_below_minimum() {
+        // Build a 12-byte section with section_length = 0 (the buggy input).
+        // section[0] = 0x00 (PAT table_id), section[1..3] encodes section_length=0.
+        // section[1] bits: section_syntax_indicator=1, '0', reserved=11, section_length_hi=0000 → 0xB0
+        // section[2] = section_length_lo = 0x00
+        let mut section = vec![0u8; 12];
+        section[0] = 0x00;
+        section[1] = 0xB0;
+        section[2] = 0x00;
+        let err = parse_pat(&section).expect_err("must reject section_length=0");
+        assert!(
+            matches!(
+                err,
+                PsiParseError::SectionTooShort {
+                    table_id: 0x00,
+                    section_length: 0,
+                    min_required: 9
+                }
+            ),
+            "expected SectionTooShort, got {err:?}"
+        );
+    }
+
+    /// Adjacent boundary: section_length = 8 is still below the minimum (9).
+    #[test]
+    fn parse_pat_rejects_section_length_8() {
+        let mut section = vec![0u8; 12];
+        section[0] = 0x00;
+        section[1] = 0xB0;
+        section[2] = 0x08;
+        let err = parse_pat(&section).expect_err("must reject section_length=8");
+        assert!(matches!(
+            err,
+            PsiParseError::SectionTooShort {
+                table_id: 0x00,
+                section_length: 8,
+                min_required: 9
+            }
+        ));
     }
 }
 

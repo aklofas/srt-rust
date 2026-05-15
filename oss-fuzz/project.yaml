@@ -1,0 +1,13 @@
+homepage: "https://github.com/aklofas/ts-transformer"
+language: rust
+primary_contact: "andrew.klofas@gmail.com"
+auto_ccs: []
+main_repo: "https://github.com/aklofas/ts-transformer.git"
+fuzzing_engines:
+  - libfuzzer
+sanitizers:
+  - address
+  - undefined
+architectures:
+  - x86_64
+file_github_issue: false

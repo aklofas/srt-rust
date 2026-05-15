@@ -100,6 +100,11 @@ zip_seeds klv_iter               oss-fuzz/targets/klv_iter_seed_corpus
 zip_seeds mpegts_au_cell_read    oss-fuzz/targets/mpegts_au_cell_read_seed_corpus
 zip_seeds audio_frame_iter       oss-fuzz/targets/audio_frame_iter_seed_corpus
 zip_seeds url_parse              oss-fuzz/targets/url_parse_seed_corpus
+zip_seeds mux_pull                oss-fuzz/targets/mux_pull_seed_corpus
+zip_seeds mux_push_klv            oss-fuzz/targets/mux_push_klv_seed_corpus
+zip_seeds mux_push_video          oss-fuzz/targets/mux_push_video_seed_corpus
+zip_seeds parse_parameter_sets    oss-fuzz/targets/parse_parameter_sets_seed_corpus
+zip_seeds parse_av1_sequence_header  oss-fuzz/targets/parse_av1_sequence_header_seed_corpus
 
 # Confirm the expected count made it to $OUT/.
 shipped=$(ls "$OUT/" | wc -l)

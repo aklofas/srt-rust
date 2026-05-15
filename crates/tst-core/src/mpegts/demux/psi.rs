@@ -531,6 +531,19 @@ pub fn parse_pmt(section: &[u8]) -> Result<Pmt, PsiParseError> {
     if section_length as usize > 1021 {
         return Err(PsiParseError::SectionTooLong(section_length));
     }
+    // PMT minimum: 9 fixed bytes (program_number 2 + flags 1 +
+    // section_number 1 + last_section_number 1 + pcr_pid 2 +
+    // program_info_length 2) + 4 CRC = 13. Without this guard,
+    // section_length < 4 underflows `total_len - 4` on the CRC slice
+    // below (parallel to parse_pat fix in Task 1).
+    const PMT_MIN_SECTION_LENGTH: u16 = 13;
+    if section_length < PMT_MIN_SECTION_LENGTH {
+        return Err(PsiParseError::SectionTooShort {
+            table_id: 0x02,
+            section_length,
+            min_required: PMT_MIN_SECTION_LENGTH,
+        });
+    }
     let total_len = 3 + section_length as usize;
     if section.len() < total_len {
         return Err(PsiParseError::Truncated {
@@ -798,6 +811,51 @@ mod pmt_tests {
             }
             other => panic!("expected MultiSectionUnsupported, got {other:?}"),
         }
+    }
+
+    /// Mirror of Task 1's PAT test but for parse_pmt. section_length = 0
+    /// makes total_len = 3, which underflows the CRC slice at psi.rs's
+    /// parse_pmt CRC slice. PMT minimum section_length: 9 fixed bytes
+    /// (program_number 2 + flags 1 + section_number 1 + last_section_number 1 +
+    /// pcr_pid 2 + program_info_length 2) + 4 CRC = 13.
+    #[test]
+    fn parse_pmt_rejects_section_length_below_minimum() {
+        // 16-byte section (PMT requires section.len() >= 16 to start).
+        // section[0] = 0x02 (PMT table_id), section[1..3] encodes section_length=0.
+        let mut section = vec![0u8; 16];
+        section[0] = 0x02;
+        section[1] = 0xB0;
+        section[2] = 0x00;
+        let err = parse_pmt(&section).expect_err("must reject section_length=0");
+        assert!(
+            matches!(
+                err,
+                PsiParseError::SectionTooShort {
+                    table_id: 0x02,
+                    section_length: 0,
+                    min_required: 13
+                }
+            ),
+            "expected SectionTooShort, got {err:?}"
+        );
+    }
+
+    /// Adjacent boundary: section_length = 12 is still below the minimum (13).
+    #[test]
+    fn parse_pmt_rejects_section_length_12() {
+        let mut section = vec![0u8; 16];
+        section[0] = 0x02;
+        section[1] = 0xB0;
+        section[2] = 0x0C;
+        let err = parse_pmt(&section).expect_err("must reject section_length=12");
+        assert!(matches!(
+            err,
+            PsiParseError::SectionTooShort {
+                table_id: 0x02,
+                section_length: 12,
+                min_required: 13
+            }
+        ));
     }
 }
 

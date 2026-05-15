@@ -42,14 +42,10 @@ All 16 targets check_build = PASS.
 
 ## run_fuzzer smoke (1k iters each)
 
-14 of 16 targets ran 1000 libFuzzer iterations without crash. 2 targets found real panics:
+14 of 16 targets ran 1000 libFuzzer iterations without crash. 2 targets surfaced issues:
 
-- **demux_psi**: out-of-bounds slice index in `psi.rs:90` (`parse_pat`). ASAN ABRT.
-- **klv_st0903_decode**: panic in VMTI decode path. ASAN ABRT.
-
-Both panics are Rust `index-out-of-bounds` panics (not memory corruption). These are real
-bugs for the bug-triage path. They are NOT blocking OSS-Fuzz submission — OSS-Fuzz would
-surface them on day 1 via its continuous fuzzing. See DONE_WITH_CONCERNS note below.
+- **demux_psi**: OOB slice at `psi.rs:90` — real library bug. See "Known issues" below.
+- **klv_st0903_decode**: round-trip assertion failure — harness logic mismatch with plan #46 encode semantics, NOT a library bug. See "Known issues" below.
 
 `demux_feed` ran 10,000 iterations without crash — satisfies spec acceptance criterion #4:
 
@@ -74,13 +70,21 @@ Built with local source. Counts confirmed by Docker container inspection:
 
 Total: 39 files in $OUT.
 
-## Known bugs found during verification
+## Known issues — to fix before opening the OSS-Fuzz submission PR
 
-These should be fixed before or shortly after OSS-Fuzz submission:
+The 1k-iteration smoke pass surfaced two issues. Neither is a Task 11 blocker for shipping the OSS-Fuzz infrastructure, but both should be resolved in a follow-up plan before opening the PR to `google/oss-fuzz` (otherwise the OSS-Fuzz fleet will surface them on day 1 as its first bug reports).
 
-1. **demux_psi panic** — `parse_pat` at `crates/tst-core/src/mpegts/demux/psi.rs:90`:
-   slice index out of bounds. Crash input: `crash-c98fce95d337b61d86b54682b09fe9d92b231614`.
+### 1. `demux_psi`: out-of-bounds slice in `parse_pat` (REAL library bug)
 
-2. **klv_st0903_decode panic** — VMTI decode path. Crash input:
-   `crash-3ca500c27e18065531c84e9f9e26329ac04c337d`.
-   Minimal reproducer: `\x01\x02\x00\x11` (4 bytes, Base64: `AQIAEQ==`).
+- **Location:** `crates/tst-core/src/mpegts/demux/psi.rs:90`
+- **Cause:** `section[..total_len - 4]` is evaluated without first checking `total_len >= 4`. When `section_length` is small (0/1/2 → `total_len` 3/4/5), the subtraction underflows or yields a degenerate slice.
+- **Fix shape:** add a guard `if total_len < 4 { return Err(PsiParseError::TruncatedSection); }` before the CRC slice extraction. Verify behavior aligns with the existing `PsiParseError` variants.
+
+### 2. `klv_st0903_decode`: harness round-trip assertion failure (NOT a library bug)
+
+- **Location:** `crates/tst-core/fuzz/fuzz_targets/klv_st0903_decode.rs:28`
+- **Cause:** The harness does an encode→decode→encode→decode round-trip and asserts `decoded_a == decoded_b`. Per plan #46, `klv::st0903::encode` deliberately drops Tag 1 (checksum) and lets the muxer handle it externally. When the original input contains a checksum byte, decode populates `checksum: Some(N)`; the next encode strips it; the second decode sees no checksum. The two `decoded` values therefore differ in their `checksum` field.
+- **Fix shape:** EITHER (a) exclude `checksum` from the round-trip equality check in the harness, OR (b) use `encode_standalone` (which DOES include Tag 1, per plan #46's added entry point) for the re-encode step. Option (b) is more semantically faithful to "round-trip parity."
+- **Minimal reproducer:** 4 bytes `\x01\x02\x00\x11`.
+
+Both fixes are tiny (a single guard for #1, a 1-2-line harness adjustment for #2). They are out of scope for plan #53 (OSS-Fuzz infrastructure onboarding) and will be addressed as a tiny follow-up plan #54 before the user opens the actual PR to google/oss-fuzz.

@@ -28,8 +28,9 @@ git clone --depth 1 https://github.com/<your-fork>/oss-fuzz.git ~/oss-fuzz
 cd ~/oss-fuzz
 
 # Copy these artifacts into projects/ts-transformer/.
+# Run the cp from your ts-transformer workspace root (the dir containing this oss-fuzz/ subdir).
 mkdir -p projects/ts-transformer
-cp -r ~/Projects/ts-transformer/ts-transformer/oss-fuzz/* projects/ts-transformer/
+cp -r /path/to/ts-transformer/oss-fuzz/* projects/ts-transformer/
 
 # Verify the build locally before opening the PR.
 python3 infra/helper.py build_image ts-transformer
@@ -53,7 +54,7 @@ Once the OSS-Fuzz fork is set up, re-running the build is one command:
 
 ```bash
 cd ~/oss-fuzz
-cp -r ~/Projects/ts-transformer/ts-transformer/oss-fuzz/* projects/ts-transformer/
+cp -r /path/to/ts-transformer/oss-fuzz/* projects/ts-transformer/
 python3 infra/helper.py build_fuzzers --sanitizer address ts-transformer
 python3 infra/helper.py check_build ts-transformer
 ```
@@ -69,7 +70,8 @@ When the OSS-Fuzz fleet finds a crash, you'll get an email with a reproducer att
 cp ~/Downloads/crash-<hash> /tmp/repro
 
 # Reproduce locally with cargo-fuzz directly (much faster than going through the OSS-Fuzz container).
-cd ~/Projects/ts-transformer/ts-transformer/crates/tst-core
+# Run from the ts-transformer workspace root.
+cd crates/tst-core
 cargo +nightly fuzz run <target_name> /tmp/repro
 ```
 
@@ -92,11 +94,7 @@ Estimated long-term burden: ~1 PR/year to `google/oss-fuzz` absent base-image dr
 
 ## What is NOT here
 
-- **CIFuzz GHA integration**. Deferred — see spec `~/Projects/ts-transformer/docs/specs/2026-05-15-oss-fuzz-onboarding-design.md` for the trigger to revisit.
-- **MemorySanitizer (MSan) builds**. Deferred — see spec.
-- **Coverage builds for public dashboard**. Deferred — see spec.
+- **CIFuzz GHA integration**. Deferred until the first OSS-Fuzz bug is triaged and we want regression prevention on PRs.
+- **MemorySanitizer (MSan) builds**. Deferred until `srt-jni`/`srt-uniffi` introduce material new `unsafe`.
+- **Coverage builds for public dashboard**. Deferred until we want to communicate fuzz reach publicly.
 - **Crash-triage SLA / bug-response policy**. Runtime concern; surfaces once bugs start arriving.
-
-## Spec / design reference
-
-`~/Projects/ts-transformer/docs/specs/2026-05-15-oss-fuzz-onboarding-design.md`.

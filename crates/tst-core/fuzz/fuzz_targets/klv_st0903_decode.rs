@@ -3,9 +3,9 @@
 //!
 //! `decode` may return `Err` on any input, but must not panic. For
 //! inputs that decode successfully, `encode_to_vec` followed by a
-//! second `decode` must yield an equal `VmtiLs`. Catches encode/decode
-//! asymmetry in typed fields — the failure mode that pure panic-only
-//! fuzz misses.
+//! second `decode` must yield an equal `VmtiLs` (modulo Tag 1
+//! checksum, which `encode_to_vec` intentionally drops per
+//! plan #46 — the muxer handles it externally).
 
 #![no_main]
 use libfuzzer_sys::fuzz_target;
@@ -15,15 +15,23 @@ fuzz_target!(|data: &[u8]| {
     // Lenient + strict decoders: panic-freedom probe (preserves
     // pre-Phase-6 coverage on decode_strict).
     let _ = decode_strict(data);
-    let Ok(ls1) = decode(data) else { return; };
+    let Ok(mut ls1) = decode(data) else { return; };
 
     // Round-trip: decode → encode → decode must yield an equal VmtiLs.
     // `field_errors` is excluded from PartialEq (manual impl) since
     // it's a decoder-side diagnostic, not part of the LS value.
+    //
+    // Tag 1 (checksum) is intentionally dropped by `encode_to_vec`
+    // per plan #46 (the muxer handles it externally). Normalize
+    // before comparing to avoid spurious round-trip failures on
+    // inputs that happen to contain Tag 1. Minimal reproducer of
+    // the un-normalized failure mode: `\x01\x02\x00\x11`.
     let bytes = match encode_to_vec(&ls1) {
         Ok(b) => b,
         Err(_) => return,
     };
-    let ls2 = decode(&bytes).expect("decode-after-encode must succeed");
+    let mut ls2 = decode(&bytes).expect("decode-after-encode must succeed");
+    ls1.checksum = None;
+    ls2.checksum = None;
     assert_eq!(ls1, ls2, "ST 0903 round-trip mismatch");
 });

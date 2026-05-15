@@ -8,6 +8,7 @@ FROM gcr.io/oss-fuzz-base/base-builder-rust
 RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     pkg-config \
+    libclang-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 --recurse-submodules \

@@ -71,6 +71,29 @@ if [ -f oss-fuzz/targets/klv.dict ]; then
   done
 fi
 
+# Seed corpus — derived from existing committed fixtures.
+#
+# Convention: $OUT/<target>_seed_corpus.zip contains seed inputs.
+# libFuzzer auto-loads this zip when started by OSS-Fuzz's wrapper.
+
+# klv_st0601_decode: 4 hand-crafted synthetic ST 0601 fixtures.
+if [ -d crates/tst-core/tests/fixtures/st0601 ]; then
+  (cd crates/tst-core/tests/fixtures/st0601 && zip -j "$OUT/klv_st0601_decode_seed_corpus.zip" *.klv) || \
+    echo "WARN: klv_st0601_decode seed corpus zip failed"
+fi
+
+# demux_feed, demux_psi, demux_pes_reassembly, ts_parser:
+# plan #52's regression fixtures. All four parse the same TS-packet
+# bytestream, so share the corpus.
+if [ -d crates/tst-core/tests/fixtures/regression ]; then
+  for tgt in demux_feed demux_psi demux_pes_reassembly ts_parser; do
+    (cd crates/tst-core/tests/fixtures/regression && \
+     ls *.bin >/dev/null 2>&1 && \
+     zip -j "$OUT/${tgt}_seed_corpus.zip" *.bin) || \
+      echo "INFO: no regression fixtures yet for $tgt (corpus_to_fixture not used yet)"
+  done
+fi
+
 # Confirm the expected count made it to $OUT/.
 shipped=$(ls "$OUT/" | wc -l)
 echo "INFO: shipped $shipped fuzz drivers to \$OUT"

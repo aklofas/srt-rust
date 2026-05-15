@@ -33,6 +33,14 @@ isolation) also ride this release.
   `google/oss-fuzz` is a separate manual step documented in
   `oss-fuzz/README.md`.
 
+### Fixed
+
+- **`parse_pat` / `parse_pmt` OOB on short section_length** — surfaced by
+  OSS-Fuzz local smoke (plan #53). Both parsers now reject `section_length`
+  below the structural minimum (9 for PAT, 13 for PMT) with the new
+  `PsiParseError::SectionTooShort` variant, instead of underflowing the
+  CRC slice extraction.
+
 ### Testing
 
 - `scripts/release-validation.sh` steps 3-5 (`tsanalyze` / `tspsi` / `ffprobe`)

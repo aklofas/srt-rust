@@ -70,21 +70,27 @@ Built with local source. Counts confirmed by Docker container inspection:
 
 Total: 39 files in $OUT.
 
-## Known issues — to fix before opening the OSS-Fuzz submission PR
+## Resolved issues — fixed in plan #54
 
-The 1k-iteration smoke pass surfaced two issues. Neither is a Task 11 blocker for shipping the OSS-Fuzz infrastructure, but both should be resolved in a follow-up plan before opening the PR to `google/oss-fuzz` (otherwise the OSS-Fuzz fleet will surface them on day 1 as its first bug reports).
+Both bugs surfaced by plan #53's local 1k smoke pass have been fixed.
+The next local OSS-Fuzz fleet rebuild produces no crashes across the
+16 targets' 1k smoke runs.
 
-### 1. `demux_psi`: out-of-bounds slice in `parse_pat` (REAL library bug)
+### 1. `demux_psi`: `parse_pat` / `parse_pmt` OOB on `section_length < 4`
 
-- **Location:** `crates/tst-core/src/mpegts/demux/psi.rs:90`
-- **Cause:** `section[..total_len - 4]` is evaluated without first checking `total_len >= 4`. When `section_length` is small (0/1/2 → `total_len` 3/4/5), the subtraction underflows or yields a degenerate slice.
-- **Fix shape:** add a guard `if total_len < 4 { return Err(PsiParseError::TruncatedSection); }` before the CRC slice extraction. Verify behavior aligns with the existing `PsiParseError` variants.
+- **Was:** `&section[..total_len - 4]` underflowed `usize` subtraction when
+  `section_length < 4` (because `total_len = 3 + section_length` was then 3,
+  4, 5, or 6, with `total_len - 4` underflowing for `section_length = 0`).
+- **Fix:** New `PsiParseError::SectionTooShort` variant + early guards in
+  both `parse_pat` (min section_length = 9) and `parse_pmt` (min = 13).
+- **Tests:** Four new unit tests in `crates/tst-core/src/mpegts/demux/psi.rs`
+  pin the new behavior at the boundary (section_length = 0 and at min - 1).
 
-### 2. `klv_st0903_decode`: harness round-trip assertion failure (NOT a library bug)
+### 2. `klv_st0903_decode` harness: round-trip vs. plan-#46 Tag-1 drop
 
-- **Location:** `crates/tst-core/fuzz/fuzz_targets/klv_st0903_decode.rs:28`
-- **Cause:** The harness does an encode→decode→encode→decode round-trip and asserts `decoded_a == decoded_b`. Per plan #46, `klv::st0903::encode` deliberately drops Tag 1 (checksum) and lets the muxer handle it externally. When the original input contains a checksum byte, decode populates `checksum: Some(N)`; the next encode strips it; the second decode sees no checksum. The two `decoded` values therefore differ in their `checksum` field.
-- **Fix shape:** EITHER (a) exclude `checksum` from the round-trip equality check in the harness, OR (b) use `encode_standalone` (which DOES include Tag 1, per plan #46's added entry point) for the re-encode step. Option (b) is more semantically faithful to "round-trip parity."
-- **Minimal reproducer:** 4 bytes `\x01\x02\x00\x11`.
-
-Both fixes are tiny (a single guard for #1, a 1-2-line harness adjustment for #2). They are out of scope for plan #53 (OSS-Fuzz infrastructure onboarding) and will be addressed as a tiny follow-up plan #54 before the user opens the actual PR to google/oss-fuzz.
+- **Was:** Harness asserted `decoded_a == decoded_b` after `decode → encode → decode`,
+  but `klv::st0903::encode` deliberately drops Tag 1 (checksum) per plan #46,
+  so a Tag-1-containing input would always trip the assert.
+- **Fix:** Normalize `.checksum = None` on both sides before the equality
+  comparison.
+- **Not a library bug.** Production decode/encode semantics are unchanged.

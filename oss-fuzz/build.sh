@@ -71,28 +71,35 @@ if [ -f oss-fuzz/targets/klv.dict ]; then
   done
 fi
 
-# Seed corpus — derived from existing committed fixtures.
+# Seed corpus packaging — unified loop.
 #
-# Convention: $OUT/<target>_seed_corpus.zip contains seed inputs.
-# libFuzzer auto-loads this zip when started by OSS-Fuzz's wrapper.
+# Per-target precedence (zip merges all sources for a target):
+#   1. crates/tst-core/tests/fixtures/<source>/  (existing fixtures)
+#   2. oss-fuzz/targets/<target>_seed_corpus/    (committed synthetic seeds)
 
-# klv_st0601_decode: 4 hand-crafted synthetic ST 0601 fixtures.
-if [ -d crates/tst-core/tests/fixtures/st0601 ]; then
-  (cd crates/tst-core/tests/fixtures/st0601 && zip -j "$OUT/klv_st0601_decode_seed_corpus.zip" *.klv) || \
-    echo "WARN: klv_st0601_decode seed corpus zip failed"
-fi
-
-# demux_feed, demux_psi, demux_pes_reassembly, ts_parser:
-# plan #52's regression fixtures. All four parse the same TS-packet
-# bytestream, so share the corpus.
-if [ -d crates/tst-core/tests/fixtures/regression ]; then
-  for tgt in demux_feed demux_psi demux_pes_reassembly ts_parser; do
-    (cd crates/tst-core/tests/fixtures/regression && \
-     ls *.bin >/dev/null 2>&1 && \
-     zip -j "$OUT/${tgt}_seed_corpus.zip" *.bin) || \
-      echo "INFO: no regression fixtures yet for $tgt (corpus_to_fixture not used yet)"
+# Helper: zip-or-append for a single target.
+zip_seeds() {
+  local target="$1"; shift
+  local out_zip="$OUT/${target}_seed_corpus.zip"
+  for src_dir in "$@"; do
+    if [ -d "$src_dir" ] && ls "$src_dir"/* >/dev/null 2>&1; then
+      (cd "$src_dir" && zip -j -q "$out_zip" *)
+    fi
   done
-fi
+}
+
+# Fixture-derived seeds.
+zip_seeds klv_st0601_decode      crates/tst-core/tests/fixtures/st0601
+zip_seeds demux_feed             crates/tst-core/tests/fixtures/regression
+zip_seeds demux_psi              crates/tst-core/tests/fixtures/regression
+zip_seeds demux_pes_reassembly   crates/tst-core/tests/fixtures/regression
+zip_seeds ts_parser              crates/tst-core/tests/fixtures/regression
+
+# Committed synthetic seeds.
+zip_seeds klv_iter               oss-fuzz/targets/klv_iter_seed_corpus
+zip_seeds mpegts_au_cell_read    oss-fuzz/targets/mpegts_au_cell_read_seed_corpus
+zip_seeds audio_frame_iter       oss-fuzz/targets/audio_frame_iter_seed_corpus
+zip_seeds url_parse              oss-fuzz/targets/url_parse_seed_corpus
 
 # Confirm the expected count made it to $OUT/.
 shipped=$(ls "$OUT/" | wc -l)

@@ -140,8 +140,12 @@ impl Pcr27mhz {
 /// Signed difference `now - last` interpreted across the 33-bit PTS
 /// rollover boundary. Returns the smaller-magnitude wrap-aware delta.
 ///
-/// Used by both the muxer (to detect backward-PTS bugs) and the demuxer
-/// (to maintain stream-monotonic timing across PTS rollover).
+/// Used by both the muxer and the demuxer as a wrap-aware backward-PTS
+/// anomaly detector — large negative deltas indicate a non-conformant
+/// backward jump rather than a benign 33-bit wrap. The demuxer does NOT
+/// use this to accumulate stream-monotonic ticks; `DemuxEvent::Sample.pts`
+/// and `DemuxEvent::Metadata.pts` remain raw 33-bit values that wrap to 0
+/// at the H.222.0 §2.4.3.7 rollover (≈ every 26.5 h of 90 kHz).
 pub fn pts_diff_33bit(now: u64, last: u64) -> i64 {
     const RANGE: u64 = 1u64 << 33;
     const HALF: u64 = 1u64 << 32;

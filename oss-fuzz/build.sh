@@ -52,6 +52,13 @@ for target_src in crates/tst-srt/fuzz/fuzz_targets/*.rs; do
   fi
 done
 
+# Copy per-target .options files where present.
+for options_file in oss-fuzz/targets/*.options; do
+  [ -f "$options_file" ] || continue
+  options_name=$(basename "$options_file")
+  cp "$options_file" "$OUT/$options_name"
+done
+
 # Confirm the expected count made it to $OUT/.
 shipped=$(ls "$OUT/" | wc -l)
 echo "INFO: shipped $shipped fuzz drivers to \$OUT"

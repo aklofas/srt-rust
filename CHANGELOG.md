@@ -22,6 +22,17 @@ plan #48 (video codec parser robustness fixes), plan #49
 (SRT RejectReason mapping fix), and plan #50 (tst-c FFI panic
 isolation) also ride this release.
 
+### Added
+
+- **OSS-Fuzz onboarding artifacts** (`oss-fuzz/`): `project.yaml`, `Dockerfile`,
+  `build.sh`, and `README.md` configure continuous Google-compute fuzzing for
+  the 16 cargo-fuzz harnesses (15 in `tst-core`, 1 in `tst-srt`). Includes
+  a shared `klv.dict` libFuzzer dictionary, per-target `.options` files for
+  the 4 demux/parser targets, and seed corpora for 14 of 16 targets sourced
+  from existing fixtures + committed synthetic seeds. The PR to
+  `google/oss-fuzz` is a separate manual step documented in
+  `oss-fuzz/README.md`.
+
 ### Testing
 
 - `scripts/release-validation.sh` steps 3-5 (`tsanalyze` / `tspsi` / `ffprobe`)

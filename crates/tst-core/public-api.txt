@@ -3095,6 +3095,10 @@ pub tst_core::mpegts::demux::psi::PsiParseError::MultiSectionUnsupported
 pub tst_core::mpegts::demux::psi::PsiParseError::MultiSectionUnsupported::last_section_number: u8
 pub tst_core::mpegts::demux::psi::PsiParseError::MultiSectionUnsupported::table_id: u8
 pub tst_core::mpegts::demux::psi::PsiParseError::SectionTooLong(u16)
+pub tst_core::mpegts::demux::psi::PsiParseError::SectionTooShort
+pub tst_core::mpegts::demux::psi::PsiParseError::SectionTooShort::min_required: u16
+pub tst_core::mpegts::demux::psi::PsiParseError::SectionTooShort::section_length: u16
+pub tst_core::mpegts::demux::psi::PsiParseError::SectionTooShort::table_id: u8
 pub tst_core::mpegts::demux::psi::PsiParseError::TableIdMismatch
 pub tst_core::mpegts::demux::psi::PsiParseError::TableIdMismatch::expected: u8
 pub tst_core::mpegts::demux::psi::PsiParseError::TableIdMismatch::got: u8

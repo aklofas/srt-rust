@@ -59,6 +59,18 @@ for options_file in oss-fuzz/targets/*.options; do
   cp "$options_file" "$OUT/$options_name"
 done
 
+
+# Copy the shared KLV dictionary if present.
+if [ -f oss-fuzz/targets/klv.dict ]; then
+  # libFuzzer's -dict flag takes a single file. Each KLV target gets the
+  # dict via its corresponding .options file's `dict = ` line — but since
+  # we ship one dict and want it picked up automatically, naming it
+  # <target>.dict makes libFuzzer find it without an explicit option.
+  for tgt in klv_iter klv_st0601_decode klv_st0102_decode klv_st0903_decode; do
+    cp oss-fuzz/targets/klv.dict "$OUT/${tgt}.dict"
+  done
+fi
+
 # Confirm the expected count made it to $OUT/.
 shipped=$(ls "$OUT/" | wc -l)
 echo "INFO: shipped $shipped fuzz drivers to \$OUT"

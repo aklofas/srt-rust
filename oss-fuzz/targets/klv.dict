@@ -1,0 +1,41 @@
+# libFuzzer dictionary for KLV decoders.
+# Format: name="bytes" (name is optional but improves error messages).
+# Each entry seeds a substring libFuzzer may splice into mutated inputs.
+# See https://llvm.org/docs/LibFuzzer.html#dictionaries.
+
+# MISB ST 0601 UAS Datalink Local Set 16-byte Universal Label.
+st0601_ul="\x06\x0e\x2b\x34\x02\x0b\x01\x01\x0e\x01\x03\x01\x01\x00\x00\x00"
+
+# MISB ST 0102 Security Local Set 16-byte Universal Label.
+st0102_ul="\x06\x0e\x2b\x34\x02\x03\x01\x01\x0e\x01\x03\x03\x02\x00\x00\x00"
+
+# MISB ST 0903 VMTI Local Set 16-byte Universal Label.
+st0903_ul="\x06\x0e\x2b\x34\x02\x0b\x01\x01\x0e\x01\x03\x03\x06\x00\x00\x00"
+
+# Common ST 0601 single-byte tag IDs.
+tag_1="\x01"
+tag_2="\x02"
+tag_3="\x03"
+tag_5="\x05"
+tag_13="\x0d"
+tag_50="\x32"
+tag_59="\x3b"
+tag_65="\x41"
+tag_74="\x4a"
+
+# BER-OID multi-byte tag prefixes (high bit set indicates continuation).
+ber_oid_2byte="\x81\x00"
+ber_oid_3byte="\x82\x00\x00"
+
+# Short BER lengths.
+ber_len_short="\x00"
+ber_len_one="\x01"
+ber_len_short_form="\x7f"
+
+# BER long-form length indicators.
+ber_len_long_1byte="\x81"
+ber_len_long_2byte="\x82"
+ber_len_long_4byte="\x84"
+
+# Typical sub-LS first byte (length-of-nested-LS).
+nested_short_len="\x10"

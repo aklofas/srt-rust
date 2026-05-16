@@ -335,6 +335,9 @@ fn validate_result_h266(
 
 #[test]
 fn av1_conformance_vectors() {
+    // The .bin fixture is the SequenceHeader OBU *payload* with the OBU
+    // header already stripped — matching what parse_sequence_header expects.
+    // The strip tool skips the 32-byte IVF container header before scanning.
     let pairs = load_pairs("av1");
     assert!(!pairs.is_empty(), "no AV1 fixtures found");
     for (name, bin, sidecar) in pairs {

@@ -65,8 +65,9 @@ pub struct ReceiverStats {
 ///    then `cancel()` from any thread. Wakes a peer thread parked in
 ///    `next_packet` within one libsrt I/O cycle (~3-10 ms).
 ///
-/// C ABI for the receiver surface (including `tst_receiver_close`) is on
-/// the P0 backlog and not yet shipped.
+/// # C ABI
+///
+/// `tst_receiver_close` (plain) — see `crates/tst-c/include/tstrans.h`.
 ///
 /// ## Per-language idiom
 ///
@@ -127,6 +128,12 @@ impl<R: RecvTransport> Receiver<R> {
     }
 
     /// Block until at least one 188-byte TS packet is ready and return it.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_receiver_recv_packet` — see `crates/tst-c/include/tstrans.h`.
+    ///
+    /// # Details
     ///
     /// Internally:
     /// 1. Check whether the syncer already has a packet buffered (fast path,
@@ -222,6 +229,10 @@ impl<R: RecvTransport> Receiver<R> {
     ///
     /// The sync-recovery counters are read from the [`sync::Syncer`] (where
     /// the recovery logic lives); transport counters are owned by this struct.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_receiver_get_stats` — see `crates/tst-c/include/tstrans.h`.
     pub fn stats(&self) -> ReceiverStats {
         ReceiverStats {
             bytes_received: self.bytes_received,
@@ -232,6 +243,10 @@ impl<R: RecvTransport> Receiver<R> {
     }
 
     /// Zero all stats counters. Does not affect transport state or sync state.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_receiver_reset_stats` — see `crates/tst-c/include/tstrans.h`.
     pub fn reset_stats(&mut self) {
         self.bytes_received = 0;
         self.packets_received = 0;
@@ -241,11 +256,19 @@ impl<R: RecvTransport> Receiver<R> {
     /// Close the underlying transport. Idempotent. After close, `next_packet`
     /// will return `TransportError::Closed` once the syncer's internal buffer
     /// is exhausted. Mirrors `RawReceiver::close`.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_receiver_close` — see `crates/tst-c/include/tstrans.h`.
     pub fn close(&mut self) {
         self.transport.close();
     }
 
     /// Snapshot of the underlying recv-transport's cancel handle.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_receiver_cancel` — see `crates/tst-c/include/tstrans.h`.
     pub fn cancel_handle(
         &self,
     ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {

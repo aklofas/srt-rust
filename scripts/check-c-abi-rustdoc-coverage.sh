@@ -115,6 +115,24 @@ ALLOWLIST=(
     "tst_managed_raw_sender_cancel"
     "tst_managed_sender_cancel"
     "tst_managed_mux_sender_cancel"
+
+    # --- Phase 2 receiver surface open helpers (no direct Rust counterpart:
+    #     URL parsing + Box construction happen entirely in the C layer;
+    #     there is no single Rust method that maps 1:1 to these entry points) ---
+    "tst_receiver_open"
+    "tst_receiver_open_listener"
+    "tst_managed_receiver_open"
+    "tst_managed_receiver_open_listener"
+
+    # --- Phase 2 managed-wrapper entry points (ride the plain-side # C ABI
+    #     rustdoc cross-reference on Receiver<R>::{next_packet, stats,
+    #     reset_stats, close, cancel_handle}; adding duplicate cross-refs on
+    #     the managed wrappers would not add useful information) ---
+    "tst_managed_receiver_recv_packet"
+    "tst_managed_receiver_cancel"
+    "tst_managed_receiver_close"
+    "tst_managed_receiver_get_stats"
+    "tst_managed_receiver_reset_stats"
 )
 
 # Step 1: enumerate C exports

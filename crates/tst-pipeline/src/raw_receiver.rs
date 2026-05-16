@@ -44,8 +44,9 @@ pub struct RawReceiverStats {
 ///    then `cancel()` from any thread. Wakes a peer thread parked in
 ///    `recv_one` within one libsrt I/O cycle (~3-10 ms).
 ///
-/// C ABI for the receiver surface (including `tst_raw_receiver_close`) is
-/// on the P0 backlog and not yet shipped.
+/// # C ABI
+///
+/// `tst_raw_receiver_close` (plain) — see `crates/tst-c/include/tstrans.h`.
 ///
 /// ## Per-language idiom
 ///

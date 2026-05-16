@@ -61,6 +61,20 @@ streams. Shows the `tst_program_handle_t` flow and the
 recipe lives in the cookbook ([§16](../../../../docs/cookbook.md#16-repack-two-single-program-inputs-into-one-multi-program-ts))
 under a different shape (demux + re-mux instead of synthetic frames).
 
+### 5. `operations/socket_stats_poll.c` — live libsrt wire-stats polling
+
+Push 5 seconds of synthetic video through a `tst_mux_sender_t` and
+print RTT + bandwidth + loss + retransmits every 500 ms using
+`tst_mux_sender_get_socket_stats`. Shows the operational-telemetry
+counterpart to the app-level `tst_mux_sender_get_stats` — wire-level
+visibility into what the network actually did (vs what you asked
+libsrt to do). The C-side analogue of the
+[`operations/`](../../../../examples/operations/) Rust examples.
+
+```sh
+LD_LIBRARY_PATH=../../target/debug /tmp/socket_stats_poll srt://127.0.0.1:9000
+```
+
 ## Why no receiver-side examples?
 
 The C ABI is sender-only today (per the project's P0 backlog item).

@@ -18,6 +18,11 @@ use tst_srt::SrtTransport;
 pub struct TstRawSender {
     inner: Handle<RawSender<SrtTransport>>,
     cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
+    /// Informational only on the sender side — set by `_cancel` and `_close`
+    /// but never read by `_send` paths. Kept for shape uniformity with the
+    /// receiver structs (where it gates peer-FIN vs caller-close discrimination
+    /// in `_recv`); future JNI/UniFFI bindings reflecting on field types see
+    /// the same shape across all 8 handle families.
     was_cancelled: Arc<AtomicBool>,
 }
 
@@ -136,6 +141,11 @@ pub unsafe extern "C" fn tst_raw_sender_cancel(p: *mut TstRawSender) -> libc::c_
 pub struct TstManagedRawSender {
     inner: Handle<RawSender<ManagedTransport<SrtTransport>>>,
     cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
+    /// Informational only on the sender side — set by `_cancel` and `_close`
+    /// but never read by `_send` paths. Kept for shape uniformity with the
+    /// receiver structs (where it gates peer-FIN vs caller-close discrimination
+    /// in `_recv`); future JNI/UniFFI bindings reflecting on field types see
+    /// the same shape across all 8 handle families.
     was_cancelled: Arc<AtomicBool>,
 }
 

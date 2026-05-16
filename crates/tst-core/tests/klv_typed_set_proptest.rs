@@ -37,6 +37,9 @@
 //! recording the bug — silent suppression defeats the point of the
 //! property test.
 
+mod common;
+
+use common::imapb_tol;
 use proptest::prelude::*;
 
 // ----------------------------------------------------------------------------
@@ -644,30 +647,87 @@ proptest! {
     /// VTargetPack inner-codec round-trip: exercises
     /// `vtarget_pack::{write_pack, read_pack}` indirectly via the
     /// `VmtiLs.targets` Vec round-trip through the top-level
-    /// `encode_to_vec` / `decode`. Strategy generates 1..=4 targets with
-    /// minimal fields (`target_id` u32 + optional `centroid_pixel`
-    /// u32) so the round-trip is exact (no IMAPB).
+    /// `encode_to_vec` / `decode`.
     ///
-    /// `target_id` uses the BER-OID substrate (5 bytes covers u32::MAX);
-    /// `centroid_pixel` is V6 truncated big-endian per ST 0903.6
-    /// §10.2.2.2. Both round-trip exactly across the u32 domain.
+    /// Covers all non-IMAPB VTargetPack fields per ST 0903.6 §10.2.2.
+    /// Range constraints follow the spec valid-value ranges (priority
+    /// 1..=255 per §10.2.2.5, confidence_level 0..=100 per §10.2.2.6,
+    /// percentage_of_target_pixels 1..=100 per §10.2.2.8) and the V3
+    /// VarUint cap (0..=0xFFFFFF for target_intensity per §10.2.2.10
+    /// and algorithm_id per §10.2.2.23). u32 fields without spec caps
+    /// use the full domain (Tags 1/2/3 are V6 max_bytes=6 and Tags 19/
+    /// 20 are V4 max_bytes=4 per vtarget_pack.rs:60-197; minimal-encoded
+    /// u32 fits in ≤4 bytes so all u32 values are within max_bytes).
+    ///
+    /// IMAPB f64 fields (centroid_lat_offset, centroid_lon_offset,
+    /// centroid_hae, bbox_*_lat/lon_offset) are excluded — covered by
+    /// the IMAPB-tolerance proptests in the VmtiLs section; including
+    /// them here would force tolerance-based comparison and lose the
+    /// exact-equality assertion that catches packing bugs.
     ///
     /// The existing in-module `populated_pack_round_trips` test
     /// (vtarget_pack.rs:854) covers fixed-value full-pack records;
-    /// this proptest covers value-space across `target_id`.
+    /// this proptest covers value-space across the exact-encoded fields.
     #[test]
     fn st0903_vtarget_pack_roundtrip(
+        // proptest's Strategy is implemented for tuples up to size 12,
+        // so the 14 fields are split into two nested tuples:
+        //   pixels   = (target_id, centroid_pixel, bbox_tl_pixel,
+        //               bbox_br_pixel, centroid_pix_row, centroid_pix_col)
+        //   scalars  = (priority, confidence_level, history,
+        //               pct_target_pixels, target_color,
+        //               target_intensity, algorithm_id, detection_status)
         targets in proptest::collection::vec(
-            (any::<u32>(), proptest::option::of(any::<u32>())),
-            1..=4
+            (
+                (
+                    any::<u32>(),
+                    proptest::option::of(any::<u32>()),
+                    proptest::option::of(any::<u32>()),
+                    proptest::option::of(any::<u32>()),
+                    proptest::option::of(any::<u32>()),
+                    proptest::option::of(any::<u32>()),
+                ),
+                (
+                    proptest::option::of(1u8..=255),
+                    proptest::option::of(0u8..=100),
+                    proptest::option::of(any::<u16>()),
+                    proptest::option::of(1u8..=100),
+                    proptest::option::of(any::<[u8; 3]>()),
+                    proptest::option::of(0u32..=0x00FF_FFFF),
+                    proptest::option::of(0u32..=0x00FF_FFFF),
+                    proptest::option::of(any::<u8>()),
+                ),
+            ),
+            1..=4,
         ),
     ) {
         let targets: Vec<VTargetPack> = targets
             .into_iter()
-            .map(|(target_id, centroid)| VTargetPack {
-                target_id,
-                centroid_pixel: centroid,
-                ..Default::default()
+            .map(|(pixels, scalars)| {
+                let (target_id, centroid_pixel, bbox_top_left_pixel,
+                     bbox_bottom_right_pixel, centroid_pix_row,
+                     centroid_pix_col) = pixels;
+                let (priority, confidence_level, history,
+                     percentage_of_target_pixels, target_color,
+                     target_intensity, algorithm_id, detection_status) =
+                    scalars;
+                VTargetPack {
+                    target_id,
+                    centroid_pixel,
+                    bbox_top_left_pixel,
+                    bbox_bottom_right_pixel,
+                    priority,
+                    confidence_level,
+                    history,
+                    percentage_of_target_pixels,
+                    target_color,
+                    target_intensity,
+                    centroid_pix_row,
+                    centroid_pix_col,
+                    algorithm_id,
+                    detection_status,
+                    ..Default::default()
+                }
             })
             .collect();
         let record = VmtiLs { targets: targets.clone(), ..Default::default() };
@@ -675,19 +735,4 @@ proptest! {
         let decoded = st0903::decode(&bytes).expect("decode");
         prop_assert_eq!(decoded.targets, targets);
     }
-}
-
-/// IMAPB tolerance helper: combines quantization-step ceiling and an
-/// f64-ULP floor scaled by field magnitude. Derived from
-/// `klv_proptest.rs::imapb_roundtrip` lines 73-94 — see that file for
-/// the full rationale. Kept inline (not a shared module) because the
-/// existing site is the load-bearing precedent and copying lets each
-/// test's failure messages show the derivation locally.
-fn imapb_tol(min: f64, max: f64, length: usize) -> f64 {
-    let span = max - min;
-    let log2_ceil = span.log2().ceil();
-    let scale = 2f64.powf(log2_ceil) / 2f64.powi(8 * length as i32 - 1);
-    let magnitude = span.max(min.abs()).max(max.abs()).max(1.0);
-    let fp_eps = f64::EPSILON * magnitude * 4.0;
-    scale.max(fp_eps)
 }

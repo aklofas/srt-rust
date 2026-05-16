@@ -208,6 +208,21 @@ proptest! {
         prop_assert_eq!(&parsed[0].data[6..], text.as_bytes());
     }
 
+    /// Stream identifier descriptor (tag 0x52) round-trip on walker.
+    /// Single-byte body carrying `component_tag` per ETSI EN 300 468
+    /// §6.2.39 — pairs with a Component descriptor's `component_tag`
+    /// field. Trivial wire format, included for completeness so the
+    /// descriptor-proptest set covers every parameterized builder.
+    #[test]
+    fn stream_identifier_roundtrip(component_tag in any::<u8>()) {
+        let bytes = descriptors::stream_identifier(component_tag);
+        let parsed = walk_descriptors(&bytes).expect("walk");
+        prop_assert_eq!(parsed.len(), 1);
+        prop_assert_eq!(parsed[0].tag, 0x52);
+        prop_assert_eq!(parsed[0].data.len(), 1);
+        prop_assert_eq!(parsed[0].data[0], component_tag);
+    }
+
     /// DVB subtitling_descriptor multi-entry (tag 0x59) typed round-trip.
     /// Build via `subtitling_descriptor_multi`, parse via the typed
     /// parser `parse_subtitling_descriptor`, assert structural equality

@@ -6,6 +6,9 @@
 //! fuzz targets' job) — they catch encode/decode asymmetries on the
 //! happy path.
 
+mod common;
+
+use common::imapb_tol;
 use proptest::prelude::*;
 use tst_core::klv::imapb::{ImapbParams, decode_imapb, encode_imapb};
 use tst_core::klv::length::{
@@ -86,16 +89,14 @@ proptest! {
         //     spuriously fails at L=7 (caught: `decoded - value` ~1.1e-14
         //     versus a `scale` of ~7.1e-15 when value is small but span
         //     is degree-scale).
-        let span = max - min;
-        let log2_ceil = span.log2().ceil();
-        let scale = 2f64.powf(log2_ceil) / 2f64.powi(8 * length as i32 - 1);
-        let magnitude = span.max(min.abs()).max(max.abs()).max(1.0);
-        let fp_eps = f64::EPSILON * magnitude * 4.0;
-        let tol = scale.max(fp_eps);
+        //
+        // Formula extracted to `tests/common::imapb_tol` so the typed-
+        // set proptests share the same derivation.
+        let tol = imapb_tol(min, max, length);
         prop_assert!(
             (decoded - value).abs() <= tol,
-            "IMAPB round-trip: decoded {} too far from input {} (tol={}, scale={}, fp_eps={}, length={}, min={}, max={})",
-            decoded, value, tol, scale, fp_eps, length, min, max
+            "IMAPB round-trip: decoded {} too far from input {} (tol={}, length={}, min={}, max={})",
+            decoded, value, tol, length, min, max
         );
     }
 }

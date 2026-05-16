@@ -594,6 +594,15 @@ impl From<RawError> for IoError {
 }
 
 #[cfg(test)]
+// bindgen emits `SRT_REJECT_REASON_*` and `SRT_REJX_*` constants as
+// `u32` on most targets (since they're #defined as positive ordinals
+// in srt.h / access_control.h) but as `i32` on `*-pc-windows-msvc`
+// where the platform's int width-rule lands them differently. The
+// `as i32` casts in the reject-reason tests are necessary on Linux
+// (where they convert u32→i32) but redundant on Windows (where the
+// source is already i32). Allow `unnecessary_cast` here rather than
+// add per-platform cfg gates around 25+ test assertions.
+#[allow(clippy::unnecessary_cast)]
 mod tests {
     use super::*;
 

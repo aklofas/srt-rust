@@ -210,7 +210,7 @@ tst_mux_sender_send_klv(s, klv_bytes, klv_len, /* pts_90khz */ 0);
 tst_mux_sender_close(s);
 ```
 
-A complete C example lives at [`crates/tst-c/examples/c/send_synthetic.c`](crates/tst-c/examples/c/send_synthetic.c). Multi-platform builds (macOS, Windows, Linux aarch64) and the JVM (`srt-jni`) / iOS-Android (`srt-uniffi`) sibling crates are next on the roadmap.
+A complete C example lives at [`crates/tst-c/examples/c/send_synthetic.c`](crates/tst-c/examples/c/send_synthetic.c). The C ABI builds natively on Linux x86_64, Linux aarch64, macOS arm64 (Apple Silicon), and Windows x86_64 (MSVC) — see [Platform support](#platform-support) below. JVM (`srt-jni`) and iOS-Android (`srt-uniffi`) sibling crates are next on the roadmap.
 
 ## Building
 
@@ -248,6 +248,14 @@ cargo fmt --all -- --check
 ```
 
 A clean rebuild compiles libsrt and mbedTLS from source — expect 3–5 minutes the first time, seconds on warm builds. The `--no-default-features` test path skips the mbedTLS build entirely (~1–2 min faster on cold cache).
+
+### Platform support
+
+**Tier 1 platforms:** Linux x86_64, Linux aarch64, macOS arm64 (Apple Silicon), Windows x86_64 (MSVC). The `cargo build` command works on all four with no platform-specific flags — vendored libsrt 1.5.5 + mbedTLS 3.6.6 build natively from the included submodules.
+
+For the full platform support matrix (including Tier 2 and deferred platforms), see [`docs/compatibility.md`](docs/compatibility.md). For what isn't supported yet and what would trigger support, see [`docs/deferred-features.md`](docs/deferred-features.md).
+
+### Build the C ABI artifacts
 
 To build just the C ABI artifacts (cdylib, staticlib, header, pc-file):
 

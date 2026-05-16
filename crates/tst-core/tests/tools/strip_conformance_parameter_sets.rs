@@ -5,8 +5,9 @@
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
 struct Manifest {
@@ -244,9 +245,6 @@ fn read_leb128(bytes: &[u8]) -> Option<(usize, usize)> {
     None
 }
 
-use sha2::{Digest, Sha256};
-use std::path::Path;
-
 fn fixtures_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/conformance")
 }
@@ -275,17 +273,21 @@ fn fetch_with_sha(url: &str, dest: &Path, expected_sha: &str) -> Result<(), Stri
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
     }
-    let status = std::process::Command::new("curl")
+    let out = std::process::Command::new("curl")
         .args([
             "-fsSL",
             "-o",
             dest.to_str().ok_or("non-utf8 path")?,
             url,
         ])
-        .status()
+        .output()
         .map_err(|e| format!("spawn curl: {e}"))?;
-    if !status.success() {
-        return Err(format!("curl failed: {}", status));
+    if !out.status.success() {
+        return Err(format!(
+            "curl failed ({}): {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     let observed = sha256_hex(dest)?;
     if observed != expected_sha {

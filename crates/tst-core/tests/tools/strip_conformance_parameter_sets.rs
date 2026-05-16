@@ -119,6 +119,27 @@ fn extract_h264_parameter_set(stream: &[u8], nal_type: u8, n: u32) -> Option<Vec
     None
 }
 
+/// Extract the RBSP body of the `n`th NAL of the given `nal_unit_type`
+/// from an Annex B H.265 bytestream. H.265 NAL header is 2 bytes; the
+/// first byte's bits 1-6 carry nal_unit_type.
+fn extract_h265_parameter_set(stream: &[u8], nal_type: u8, n: u32) -> Option<Vec<u8>> {
+    let mut matched = 0u32;
+    for nal in iter_annex_b(stream) {
+        if nal.len() < 2 {
+            continue;
+        }
+        // H.265: first byte bit 0 = forbidden_zero_bit, bits 1-6 = nal_unit_type.
+        let this_type = (nal[0] >> 1) & 0x3F;
+        if this_type == nal_type {
+            if matched == n {
+                return Some(nal[2..].to_vec());
+            }
+            matched += 1;
+        }
+    }
+    None
+}
+
 fn main() {
     eprintln!("not yet implemented");
     std::process::exit(2);
@@ -183,5 +204,40 @@ mod tests {
         let extracted = extract_h264_parameter_set(FAKE_H264_STREAM, 8, 0)
             .expect("PPS should be found");
         assert_eq!(extracted, vec![0xEE, 0xFF]);
+    }
+
+    const FAKE_H265_STREAM: &[u8] = &[
+        // 4-byte start code + VPS NAL (type 32) + 3 bytes RBSP
+        // 2-byte NAL header: 0100 0000 1<temporal_id+1>
+        // type=32 -> first byte (0 << 7) | (32 << 1) | 0 = 0x40
+        // second byte: layer_id=0, temporal_id_plus_1=1 -> 0x01
+        0x00, 0x00, 0x00, 0x01, 0x40, 0x01, 0x11, 0x22, 0x33,
+        // 3-byte start + SPS (type 33) + 4 bytes RBSP
+        // first byte: (33 << 1) = 0x42
+        0x00, 0x00, 0x01, 0x42, 0x01, 0x44, 0x55, 0x66, 0x77,
+        // 3-byte start + PPS (type 34) + 2 bytes RBSP
+        // first byte: (34 << 1) = 0x44
+        0x00, 0x00, 0x01, 0x44, 0x01, 0x88, 0x99,
+    ];
+
+    #[test]
+    fn scan_h265_sps_extracts_rbsp_body() {
+        let extracted = extract_h265_parameter_set(FAKE_H265_STREAM, 33, 0)
+            .expect("SPS should be found");
+        assert_eq!(extracted, vec![0x44, 0x55, 0x66, 0x77]);
+    }
+
+    #[test]
+    fn scan_h265_vps_extracts_rbsp_body() {
+        let extracted = extract_h265_parameter_set(FAKE_H265_STREAM, 32, 0)
+            .expect("VPS should be found");
+        assert_eq!(extracted, vec![0x11, 0x22, 0x33]);
+    }
+
+    #[test]
+    fn scan_h265_pps_extracts_rbsp_body() {
+        let extracted = extract_h265_parameter_set(FAKE_H265_STREAM, 34, 0)
+            .expect("PPS should be found");
+        assert_eq!(extracted, vec![0x88, 0x99]);
     }
 }

@@ -18,6 +18,27 @@ documentation = true
 documentation_style = "doxy"
 usize_is_size_t = true
 
+trailer = """
+/* Phase 3 ABI layout guards — trip the C compiler at consumer-build
+ * time if the Rust-side struct sizes drift from their Phase 3 baseline.
+ * Layouts are pinned in `crates/tst-c/src/event.rs` via const-assertion
+ * blocks on the Rust side; this duplicates the guard on the C side so
+ * consumers building against an upgraded libtstrans see the mismatch
+ * immediately.
+ */
+#if !defined(TST_SKIP_ABI_ASSERTS) && !defined(_TST_ABI_ASSERTS_DONE)
+#define _TST_ABI_ASSERTS_DONE
+#define _TST_ABI_ASSERT(c, msg) _Static_assert((c), msg)
+_TST_ABI_ASSERT(sizeof(tst_nal_t)                  == 24, "tst_nal_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_obu_t)                  == 24, "tst_obu_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_descriptor_t)           == 24, "tst_descriptor_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_stream_info_t)          == 40, "tst_stream_info_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_klv_link_t)             ==  8, "tst_klv_link_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_demux_receiver_stats_t) == 48, "tst_demux_receiver_stats_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_event_t)               <= 256, "tst_event_t exceeds 256 B");
+#endif
+"""
+
 [export]
 include = [
     "TstError",
@@ -41,6 +62,32 @@ include = [
     "TstManagedReceiver",
     "TstReceiverStats",
     "TST_STATS_MAX_STREAMS",
+    # Phase 3: demux receiver surface
+    "TstDemuxConfig",
+    "TstDemuxReceiver",
+    "TstManagedDemuxReceiver",
+    "TstDemuxReceiverStats",
+    "TstEvent",
+    "TstEventKind",
+    "TstEventBody",
+    "TstEventProgramMap",
+    "TstEventSample",
+    "TstEventMetadata",
+    "TstEventDiscontinuity",
+    "TstEventNonConformant",
+    "TstNal",
+    "TstObu",
+    "TstDescriptor",
+    "TstStreamInfo",
+    "TstKlvLink",
+    "TstStreamKindTag",
+    "TstMetadataKindTag",
+    "TstDiscontinuityKindTag",
+    "TstNonConformantCode",
+    "TstLinkSource",
+    "TstStrictMode",
+    "TstAudioCodec",
+    "TstSubtitleCodec",
 ]
 
 [export.rename]
@@ -80,6 +127,28 @@ include = [
 "TstReceiver"          = "tst_receiver_t"
 "TstManagedReceiver"   = "tst_managed_receiver_t"
 "TstReceiverStats"     = "tst_receiver_stats_t"
+# Phase 3: demux receiver handles + stats
+"TstDemuxConfig"            = "tst_demux_config_t"
+"TstDemuxReceiver"          = "tst_demux_receiver_t"
+"TstManagedDemuxReceiver"   = "tst_managed_demux_receiver_t"
+"TstDemuxReceiverStats"     = "tst_demux_receiver_stats_t"
+# Phase 3: event tagged union + subordinate structs
+"TstEvent"                  = "tst_event_t"
+"TstNal"                    = "tst_nal_t"
+"TstObu"                    = "tst_obu_t"
+"TstDescriptor"             = "tst_descriptor_t"
+"TstStreamInfo"             = "tst_stream_info_t"
+"TstKlvLink"                = "tst_klv_link_t"
+# Phase 3: discriminator enums
+"TstEventKind"              = "tst_event_kind_t"
+"TstStreamKindTag"          = "tst_stream_kind_t"
+"TstMetadataKindTag"        = "tst_metadata_kind_t"
+"TstDiscontinuityKindTag"   = "tst_discontinuity_kind_t"
+"TstNonConformantCode"      = "tst_nonconformant_code_t"
+"TstLinkSource"             = "tst_link_source_t"
+"TstStrictMode"             = "tst_strict_mode_t"
+"TstAudioCodec"             = "tst_audio_codec_t"
+"TstSubtitleCodec"          = "tst_subtitle_codec_t"
 
 [enum]
 prefix_with_name = true

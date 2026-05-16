@@ -118,6 +118,197 @@ typedef int32_t tst_e;
 #endif // __cplusplus
 
 /**
+ * `repr(i32)` discriminator for `TstEvent::kind`. cbindgen emits
+ * `#define TST_EVENT_*` blocks.
+ */
+enum tst_event_kind_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_EVENT_KIND_T_PROGRAM_MAP = 1,
+  TST_EVENT_KIND_T_SAMPLE = 2,
+  TST_EVENT_KIND_T_METADATA = 3,
+  TST_EVENT_KIND_T_DISCONTINUITY = 4,
+  TST_EVENT_KIND_T_NON_CONFORMANT = 5,
+};
+#ifndef __cplusplus
+typedef int32_t tst_event_kind_t;
+#endif // __cplusplus
+
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::demux::StreamKind`'s
+ * discriminator. Variant payloads (codec, declared_link, unknown
+ * stream_type) live on the per-event union fields, not on this enum.
+ */
+enum tst_stream_kind_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_STREAM_KIND_T_VIDEO = 0,
+  TST_STREAM_KIND_T_AUDIO = 1,
+  TST_STREAM_KIND_T_SUBTITLE = 2,
+  TST_STREAM_KIND_T_KLV_SYNC = 3,
+  TST_STREAM_KIND_T_KLV_ASYNC = 4,
+  TST_STREAM_KIND_T_UNKNOWN = 5,
+};
+#ifndef __cplusplus
+typedef int32_t tst_stream_kind_t;
+#endif // __cplusplus
+
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::demux::MetadataKind`'s
+ * discriminator. Variant payload (the KlvSyncAuCell 5 fields) lives
+ * on `tst_event_t.u.metadata` fields, zero/false for other kinds.
+ */
+enum tst_metadata_kind_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_METADATA_KIND_T_KLV_SYNC_AU_CELL = 0,
+  TST_METADATA_KIND_T_KLV_ASYNC = 1,
+  TST_METADATA_KIND_T_UNKNOWN = 2,
+};
+#ifndef __cplusplus
+typedef int32_t tst_metadata_kind_t;
+#endif // __cplusplus
+
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::demux::DiscontinuityKind`'s
+ * discriminator. ContinuityJump's `expected`/`observed` and
+ * PesOversize's `pid` live on the union fields.
+ */
+enum tst_discontinuity_kind_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_DISCONTINUITY_KIND_T_CONTINUITY_JUMP = 0,
+  TST_DISCONTINUITY_KIND_T_PES_OVERSIZE = 1,
+  TST_DISCONTINUITY_KIND_T_PES_TOTAL_OVERSIZE = 2,
+  TST_DISCONTINUITY_KIND_T_ADAPTATION_FIELD_FLAG = 3,
+};
+#ifndef __cplusplus
+typedef int32_t tst_discontinuity_kind_t;
+#endif // __cplusplus
+
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::demux::NonConformantIssue`'s
+ * discriminator. Issue-specific fields live on `tst_event_t.u.nonconformant`
+ * (zero/null for variants that don't carry them).
+ */
+enum tst_nonconformant_code_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_NONCONFORMANT_CODE_T_STREAM_TYPE_MISMATCH_SYNC_ON_ASYNC_PID = 0,
+  TST_NONCONFORMANT_CODE_T_STREAM_TYPE_MISMATCH_ASYNC_ON_SYNC_PID = 1,
+  TST_NONCONFORMANT_CODE_T_MISSING_METADATA_DESCRIPTOR = 2,
+  TST_NONCONFORMANT_CODE_T_PCR_ANOMALY = 3,
+  TST_NONCONFORMANT_CODE_T_PSI_CHECKSUM_MISMATCH = 4,
+  TST_NONCONFORMANT_CODE_T_PUSI_MID_PES = 5,
+  TST_NONCONFORMANT_CODE_T_PID_REUSED_ACROSS_PROGRAMS = 6,
+  TST_NONCONFORMANT_CODE_T_SUBTITLE_MISSING_DESCRIPTOR = 7,
+  TST_NONCONFORMANT_CODE_T_SUBTITLE_DESCRIPTOR_AMBIGUOUS = 8,
+  TST_NONCONFORMANT_CODE_T_SUBTITLE_DESCRIPTOR_MALFORMED = 9,
+  TST_NONCONFORMANT_CODE_T_AV1_REGISTRATION_MALFORMED = 10,
+  TST_NONCONFORMANT_CODE_T_AV1_OBU_MISSING_SIZE_FIELD = 11,
+  TST_NONCONFORMANT_CODE_T_AV1_TILE_LIST_NOT_ALLOWED = 12,
+  TST_NONCONFORMANT_CODE_T_PSI_OVERLONG_SECTION = 13,
+  TST_NONCONFORMANT_CODE_T_TRANSPORT_ERROR_PACKET = 14,
+  TST_NONCONFORMANT_CODE_T_PSI_CC_DISCONTINUITY = 15,
+  TST_NONCONFORMANT_CODE_T_MULTI_CELL_AU = 16,
+  TST_NONCONFORMANT_CODE_T_PSI_MULTI_SECTION_UNSUPPORTED = 17,
+  TST_NONCONFORMANT_CODE_T_OTHER = 18,
+};
+#ifndef __cplusplus
+typedef int32_t tst_nonconformant_code_t;
+#endif // __cplusplus
+
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::demux::LinkSource`.
+ * On `tst_klv_link_t.source` and on synthetic KLV-link inference.
+ */
+enum tst_link_source_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_LINK_SOURCE_T_DECLARED = 0,
+  TST_LINK_SOURCE_T_INFERRED = 1,
+  TST_LINK_SOURCE_T_OVERRIDE = 2,
+};
+#ifndef __cplusplus
+typedef int32_t tst_link_source_t;
+#endif // __cplusplus
+
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::demux::StrictMode`.
+ *
+ * Four-valued enum: `Off=0` (default, lenient), `TimingOnly=1`,
+ * `DescriptorsOnly=2`, `Full=3`. cbindgen emits parallel `#define
+ * TST_STRICT_MODE_*` blocks for C callers.
+ *
+ * NOTE: this differs from the receiver-surface design doc §7.1, which
+ * originally specified `0=Off, 1=KlvOnly, 2=All`. The actual Rust enum
+ * is 4-valued; this mapping is the truth.
+ */
+enum tst_strict_mode_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_STRICT_MODE_T_OFF = 0,
+  TST_STRICT_MODE_T_TIMING_ONLY = 1,
+  TST_STRICT_MODE_T_DESCRIPTORS_ONLY = 2,
+  TST_STRICT_MODE_T_FULL = 3,
+};
+#ifndef __cplusplus
+typedef int32_t tst_strict_mode_t;
+#endif // __cplusplus
+
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::demux::AudioCodec`.
+ * On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_AUDIO`,
+ * and on `tst_stream_info_t.codec`.
+ */
+enum tst_audio_codec_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_AUDIO_CODEC_T_MP2 = 0,
+  TST_AUDIO_CODEC_T_AAC = 1,
+  TST_AUDIO_CODEC_T_AAC_LATM = 2,
+  TST_AUDIO_CODEC_T_AC3 = 3,
+};
+#ifndef __cplusplus
+typedef int32_t tst_audio_codec_t;
+#endif // __cplusplus
+
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::demux::SubtitleCodec`.
+ * On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_SUBTITLE`,
+ * and on `tst_stream_info_t.codec`.
+ */
+enum tst_subtitle_codec_t
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_SUBTITLE_CODEC_T_DVB_SUBTITLING = 0,
+  TST_SUBTITLE_CODEC_T_DVB_TELETEXT = 1,
+  TST_SUBTITLE_CODEC_T_CEA708_STANDALONE = 2,
+  TST_SUBTITLE_CODEC_T_WEB_VTT_IN_TS = 3,
+};
+#ifndef __cplusplus
+typedef int32_t tst_subtitle_codec_t;
+#endif // __cplusplus
+
+/**
  * Opaque demux-config builder. Heap-allocated via `_new`, mutated
  * in place via setters, released via `_free`. The receiver clones
  * what it needs at `_open_with_config` time; the caller still owns
@@ -125,7 +316,11 @@ typedef int32_t tst_e;
  *
  * Lifecycle mirrors `tst_mux_config_t` from plan #14 exactly.
  */
-typedef struct TstDemuxConfig TstDemuxConfig;
+typedef struct tst_demux_config_t tst_demux_config_t;
+
+typedef struct tst_demux_receiver_t tst_demux_receiver_t;
+
+typedef struct tst_managed_demux_receiver_t tst_managed_demux_receiver_t;
 
 typedef struct tst_managed_mux_sender_t tst_managed_mux_sender_t;
 
@@ -203,12 +398,12 @@ typedef uint32_t tst_klv_stream_handle_t;
  * until the next `_recv_event` / `_close` call on this handle. The
  * length byte from the wire is stripped — `data_len` is the body length.
  */
-typedef struct TstDescriptor {
+typedef struct tst_descriptor_t {
   uint8_t tag;
   uint8_t _reserved[7];
   const uint8_t *data;
   size_t data_len;
-} TstDescriptor;
+} tst_descriptor_t;
 
 /**
  * Opaque per-program ordinal for an audio elementary stream. Same packed
@@ -221,6 +416,211 @@ typedef uint32_t TstAudioStreamHandle;
  * encoding as [`TstVideoStreamHandle`].
  */
 typedef uint32_t TstSubtitleStreamHandle;
+
+/**
+ * `repr(C)` mirror of `tst_core::mpegts::demux::StreamInfo`.
+ *
+ * `stream_kind` is `TST_STREAM_KIND_*` (see `TstStreamKindTag`);
+ * `codec` is `TST_VIDEO_CODEC_*` / `TST_AUDIO_CODEC_*` /
+ * `TST_SUBTITLE_CODEC_*` keyed by `stream_kind`, or `-1` when
+ * `stream_kind` is KlvSync / KlvAsync / Unknown.
+ *
+ * `raw_descriptors` borrows from the demuxer's per-PMT descriptor
+ * list; valid until the next `_recv_event` / `_close` call.
+ */
+typedef struct tst_stream_info_t {
+  uint16_t pid;
+  uint8_t stream_type;
+  uint8_t _pad;
+  int stream_kind;
+  int codec;
+  uint16_t program_number;
+  uint8_t _pad2[6];
+  const struct tst_descriptor_t *raw_descriptors;
+  size_t descriptor_count;
+} tst_stream_info_t;
+
+/**
+ * `repr(C)` mirror of `tst_core::mpegts::demux::KlvLink`.
+ * `source` is `TST_LINK_SOURCE_*` (see `TstLinkSource`).
+ */
+typedef struct tst_klv_link_t {
+  uint16_t klv_pid;
+  uint16_t video_pid;
+  int source;
+} tst_klv_link_t;
+
+typedef struct TstEventProgramMap {
+  uint16_t program_number;
+  uint16_t pcr_pid;
+  uint8_t _pad[4];
+  const struct tst_stream_info_t *streams;
+  size_t stream_count;
+  const struct tst_klv_link_t *klv_links;
+  size_t klv_link_count;
+} TstEventProgramMap;
+
+/**
+ * `repr(C)` mirror of `tst_core::mpegts::demux::NalUnit`.
+ *
+ * Three Rust variants (H264 / H265 / H266) collapsed into one C
+ * struct; field semantics keyed by the parent `tst_event_t.u.sample.codec`.
+ * * H.264: `nal_type` 5-bit; `ref_idc_or_layer_id` is `ref_idc`;
+ *   `temporal_id_plus1` is `0` (H.264 has no temporal_id).
+ * * H.265 / H.266: `nal_type` 6-bit (H.265) or 5-bit (H.266);
+ *   `ref_idc_or_layer_id` is `nuh_layer_id`; `temporal_id_plus1`
+ *   is the temporal-id field +1 (per spec).
+ *
+ * `payload` borrows from the demuxer's NAL-unit Vec; valid until
+ * the next `_recv_event` / `_close` call on this handle.
+ */
+typedef struct tst_nal_t {
+  uint8_t nal_type;
+  uint8_t ref_idc_or_layer_id;
+  uint8_t temporal_id_plus1;
+  uint8_t _reserved;
+  const uint8_t *payload;
+  size_t payload_len;
+} tst_nal_t;
+
+/**
+ * `repr(C)` mirror of `tst_core::mpegts::demux::Obu`.
+ *
+ * `has_extension` is 0 or 1; `temporal_id` and `spatial_id` are
+ * valid only when `has_extension == 1`. `payload` is the OBU body
+ * (header byte + extension byte + LEB128 size already stripped).
+ */
+typedef struct tst_obu_t {
+  uint8_t obu_type;
+  uint8_t has_extension;
+  uint8_t temporal_id;
+  uint8_t spatial_id;
+  const uint8_t *payload;
+  size_t payload_len;
+} tst_obu_t;
+
+typedef struct TstEventSample {
+  uint16_t pid;
+  uint16_t program_number;
+  int stream_kind;
+  int64_t pts;
+  int64_t dts;
+  int codec;
+  uint8_t _pad[4];
+  const struct tst_nal_t *nals;
+  size_t nal_count;
+  const struct tst_obu_t *obus;
+  size_t obu_count;
+  const uint8_t *payload;
+  size_t payload_len;
+} TstEventSample;
+
+typedef struct TstEventMetadata {
+  uint16_t pid;
+  uint16_t program_number;
+  uint8_t _pad[4];
+  int64_t pts;
+  int metadata_kind;
+  uint8_t _pad2[4];
+  const uint8_t *payload;
+  size_t payload_len;
+  uint8_t metadata_service_id;
+  uint8_t sequence_number;
+  uint8_t cell_fragment_indication;
+  uint8_t decoder_config_flag;
+  uint8_t random_access_indicator;
+  uint8_t _pad3[3];
+} TstEventMetadata;
+
+typedef struct TstEventDiscontinuity {
+  uint16_t pid;
+  uint8_t _pad[2];
+  int discontinuity_kind;
+  uint8_t cc_expected;
+  uint8_t cc_observed;
+  uint8_t _pad2[6];
+} TstEventDiscontinuity;
+
+typedef struct TstEventNonConformant {
+  uint16_t pid;
+  uint8_t _pad[2];
+  int issue_code;
+  int64_t pcr_delta;
+  uint8_t table_id;
+  uint8_t last_section_number;
+  uint8_t cc_expected;
+  uint8_t cc_observed;
+  uint8_t _pad2[4];
+  size_t observed_len;
+  uint8_t obu_type;
+  uint8_t _pad3[7];
+  const uint16_t *programs;
+  const uint8_t *tags;
+  size_t tag_count;
+  const char *detail;
+} TstEventNonConformant;
+
+/**
+ * Per-event-kind union body for `TstEvent`. cbindgen emits this as
+ * `union { ... } u` on the C side; each kind's fields are a flat
+ * nested struct. Fields not relevant to the active `kind` are zero
+ * or null after `convert()`.
+ */
+typedef union TstEventBody {
+  struct TstEventProgramMap program_map;
+  struct TstEventSample sample;
+  struct TstEventMetadata metadata;
+  struct TstEventDiscontinuity discontinuity;
+  struct TstEventNonConformant nonconformant;
+} TstEventBody;
+
+/**
+ * Top-level event struct. Caller stack-allocates and passes
+ * `&mut TstEvent` to `tst_demux_receiver_recv_event`. After a
+ * success return, `kind` selects which `u.*` body is populated;
+ * pointer fields on the active body borrow from the receiver's
+ * `EventArena` until the next `_recv_event` / `_close` call.
+ */
+typedef struct tst_event_t {
+  int kind;
+  uint8_t _pad[4];
+  union TstEventBody u;
+} tst_event_t;
+
+/**
+ * `repr(C)` mirror of `tst_pipeline::DemuxReceiverStats`. Size 48 B.
+ *
+ * Application-level counters for the demux receive shell. Faithfully
+ * mirrors `tst_pipeline::DemuxReceiverStats` — six u64 fields:
+ * * `bytes_received` / `packets_received` — application-level totals
+ *   from the inner `Receiver` (one 188-byte packet per success).
+ * * `program_maps_seen` / `pmt_versions_seen` — PSI topology counters.
+ *   `program_maps_seen` increments on every PMT emission; `pmt_versions_seen`
+ *   only on a `version_number` bump (PMT churn detector).
+ * * `discontinuities` — sum across all PIDs of `DemuxEvent::Discontinuity`
+ *   emissions (continuity-counter jumps, PES oversize, etc).
+ * * `nonconformant` — sum across all PIDs of `DemuxEvent::NonConformant`
+ *   emissions (17 issue variants; see `tst_event_t.u.nonconformant.issue_code`).
+ *
+ * NOTE: sync-recovery counters (`bytes_skipped_for_sync`, `resync_events`)
+ * are deliberately absent — they live only on the inner `Receiver`'s
+ * `ReceiverStats` (surfaced via Phase 2's `TstReceiverStats`). Adding
+ * them here would mis-label the data source. Consumers needing them
+ * run a `tst_receiver_t` instead of a `tst_demux_receiver_t`.
+ *
+ * The per-PID `BTreeMap<u16, StreamStats>` from `DemuxReceiverStats`
+ * is NOT included on this struct; it ships separately via
+ * `tst_demux_receiver_get_stream_stats` returning a borrowed
+ * `(*const TstStreamStats, size_t)` pair per design §4.5.
+ */
+typedef struct tst_demux_receiver_stats_t {
+  uint64_t bytes_received;
+  uint64_t packets_received;
+  uint64_t program_maps_seen;
+  uint64_t pmt_versions_seen;
+  uint64_t discontinuities;
+  uint64_t nonconformant;
+} tst_demux_receiver_stats_t;
 
 /**
  * `repr(C)` mirror of `tst_core::mpegts::StreamStats`. Size 96 B.
@@ -523,7 +923,7 @@ int tst_mux_config_set_stream_descriptors_for_klv(struct tst_mux_config_t *cfg,
 
 int tst_mux_config_add_video_descriptor(struct tst_mux_config_t *cfg,
                                         tst_video_stream_handle_t stream,
-                                        const struct TstDescriptor *desc);
+                                        const struct tst_descriptor_t *desc);
 
 /**
  * Append one PMT descriptor to a KLV stream's per-PID descriptor list.
@@ -534,7 +934,7 @@ int tst_mux_config_add_video_descriptor(struct tst_mux_config_t *cfg,
 
 int tst_mux_config_add_klv_descriptor(struct tst_mux_config_t *cfg,
                                       tst_klv_stream_handle_t stream,
-                                      const struct TstDescriptor *desc);
+                                      const struct tst_descriptor_t *desc);
 
 /**
  * Append one PMT descriptor to an audio stream's per-PID descriptor list.
@@ -545,7 +945,7 @@ int tst_mux_config_add_klv_descriptor(struct tst_mux_config_t *cfg,
 
 int tst_mux_config_add_audio_descriptor(struct tst_mux_config_t *cfg,
                                         TstAudioStreamHandle stream,
-                                        const struct TstDescriptor *desc);
+                                        const struct tst_descriptor_t *desc);
 
 /**
  * Append one PMT descriptor to a subtitle stream's per-PID descriptor list.
@@ -556,7 +956,7 @@ int tst_mux_config_add_audio_descriptor(struct tst_mux_config_t *cfg,
 
 int tst_mux_config_add_subtitle_descriptor(struct tst_mux_config_t *cfg,
                                            TstSubtitleStreamHandle stream,
-                                           const struct TstDescriptor *desc);
+                                           const struct tst_descriptor_t *desc);
 
  struct tst_sender_config_t *tst_sender_config_new(void);
 
@@ -601,12 +1001,12 @@ int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
  * Returns `NULL` on allocation failure or internal panic.
  * Free with `tst_demux_config_free`.
  */
- struct TstDemuxConfig *tst_demux_config_new(void);
+ struct tst_demux_config_t *tst_demux_config_new(void);
 
 /**
  * Release a `tst_demux_config_t`. Safe to call with NULL.
  */
- void tst_demux_config_free(struct TstDemuxConfig *cfg);
+ void tst_demux_config_free(struct tst_demux_config_t *cfg);
 
 /**
  * Set the demuxer's strict mode. `mode` is one of
@@ -616,14 +1016,14 @@ int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
  * unrecognized `mode`.
  */
- int tst_demux_config_set_strict_mode(struct TstDemuxConfig *cfg, int mode);
+ int tst_demux_config_set_strict_mode(struct tst_demux_config_t *cfg, int mode);
 
 /**
  * Add a `klv_pid` → `video_pid` KLV-link override. Bypasses PMT-descriptor
  * inference. Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
  */
 
-int tst_demux_config_add_link_klv(struct TstDemuxConfig *cfg,
+int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
                                   uint16_t klv_pid,
                                   uint16_t video_pid);
 
@@ -639,14 +1039,198 @@ int tst_demux_config_add_link_klv(struct TstDemuxConfig *cfg,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
  * unrecognized `stream_kind`.
  */
- int tst_demux_config_add_treat_as(struct TstDemuxConfig *cfg, uint16_t pid, int stream_kind);
+ int tst_demux_config_add_treat_as(struct tst_demux_config_t *cfg, uint16_t pid, int stream_kind);
 
 /**
  * Set PES reassembly caps. `0` means use the Rust-side default.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
  */
- int tst_demux_config_set_pes_cap(struct TstDemuxConfig *cfg, size_t per_pid, size_t total);
+ int tst_demux_config_set_pes_cap(struct tst_demux_config_t *cfg, size_t per_pid, size_t total);
+
+/**
+ * Open a `tst_demux_receiver_t` with default demux options.
+ * Accepts `srt://host:port?...` URLs; `?mode=listener` routes through
+ * the listener path (equivalent to `_open_listener`).
+ */
+ struct tst_demux_receiver_t *tst_demux_receiver_open(const char *srt_url);
+
+/**
+ * Explicit listener-mode open with default demux options.
+ */
+ struct tst_demux_receiver_t *tst_demux_receiver_open_listener(const char *srt_url);
+
+/**
+ * Open a `tst_demux_receiver_t` with a caller-supplied
+ * `tst_demux_config_t`. The config is cloned-from at open time;
+ * the caller still owns it and must `_free` it.
+ */
+
+struct tst_demux_receiver_t *tst_demux_receiver_open_with_config(const char *srt_url,
+                                                                 const struct tst_demux_config_t *cfg);
+
+/**
+ * Explicit listener-mode open with a caller-supplied
+ * `tst_demux_config_t`.
+ */
+
+struct tst_demux_receiver_t *tst_demux_receiver_open_listener_with_config(const char *srt_url,
+                                                                          const struct tst_demux_config_t *cfg);
+
+ void tst_demux_receiver_close(struct tst_demux_receiver_t *p);
+
+/**
+ * Block until one typed `TstEvent` is ready, then populate
+ * `*out_event` with the converted event.
+ *
+ * **Borrowed buffer lifetime (design §4.5):** pointer fields on
+ * `*out_event` borrow from this handle's `EventArena`. They are
+ * valid until the next `_recv_event` / `_close` call on the same
+ * handle. Callers wanting longer lifetime memcpy out before the
+ * next call.
+ *
+ * Returns:
+ * - `0` on success (`*out_event` populated; pointer fields borrow)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close
+ * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on transport failure
+ * - `TST_E_INVALID_TS` (-3) on a demuxer error (strict-mode rejection
+ *   or unrecoverable packet malformation)
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+ *
+ * On any non-zero return the contents of `*out_event` are unspecified.
+ */
+ int tst_demux_receiver_recv_event(struct tst_demux_receiver_t *p, struct tst_event_t *out_event);
+
+/**
+ * Cancel a `tst_demux_receiver_t`. Unblocks a thread parked in
+ * `_recv_event` within one libsrt I/O cycle (~3-10 ms) by closing
+ * the underlying libsrt socket. Safe to call from any thread.
+ * Idempotent.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ *
+ * After cancel, `_recv_event` returns `TST_E_CLOSED` (not
+ * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
+ */
+ int tst_demux_receiver_cancel(struct tst_demux_receiver_t *p);
+
+/**
+ * Snapshot stats for a `tst_demux_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer
+ * is null, `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * NOTE: per-PID counters are NOT included on this struct — call
+ * `tst_demux_receiver_get_stream_stats` to retrieve them.
+ */
+
+int tst_demux_receiver_get_stats(struct tst_demux_receiver_t *p,
+                                 struct tst_demux_receiver_stats_t *out);
+
+/**
+ * Reset stats counters for a `tst_demux_receiver_t` to zero.
+ * Also invalidates the borrowed `_get_stream_stats` snapshot
+ * (design §4.5).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
+ * null, `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_demux_receiver_reset_stats(struct tst_demux_receiver_t *p);
+
+/**
+ * Snapshot per-PID stats for a `tst_demux_receiver_t` into the
+ * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
+ * pair borrowing that buffer.
+ *
+ * **Borrowed buffer lifetime (design §4.5):** `*out_array` is valid
+ * until the next `_get_stream_stats` / `_reset_stats` / `_close`
+ * call on the same handle. Callers wanting longer lifetime memcpy
+ * the array out.
+ *
+ * Capped at `TST_STATS_MAX_STREAMS = 64` entries (BTreeMap ordering
+ * preserved by ascending PID); excess streams are silently dropped.
+ * `program_number` field is `0` for now — populated once `StreamStats`
+ * surfaces it (currently absent from `tst_core::mpegts::stats::StreamStats`).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on any null pointer
+ * arg, or `TST_E_CLOSED` if the receiver has been closed.
+ */
+
+int tst_demux_receiver_get_stream_stats(struct tst_demux_receiver_t *p,
+                                        const struct tst_stream_stats_t **out_array,
+                                        size_t *out_count);
+
+/**
+ * Open a `tst_managed_demux_receiver_t` with default demux options.
+ * URL-driven mode dispatch matches `tst_demux_receiver_open`.
+ * `policy` is the reconnect policy; pass NULL for default.
+ */
+
+struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open(const char *srt_url,
+                                                                     const struct tst_reconnect_policy_t *policy);
+
+/**
+ * Explicit listener-mode open for the managed demux receiver.
+ */
+
+struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener(const char *srt_url,
+                                                                              const struct tst_reconnect_policy_t *policy);
+
+/**
+ * Open with a TstDemuxConfig override. URL-driven mode dispatch.
+ */
+
+struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_with_config(const char *srt_url,
+                                                                                 const struct tst_reconnect_policy_t *policy,
+                                                                                 const struct tst_demux_config_t *cfg);
+
+/**
+ * Explicit listener-mode open with a TstDemuxConfig override.
+ */
+
+struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener_with_config(const char *srt_url,
+                                                                                          const struct tst_reconnect_policy_t *policy,
+                                                                                          const struct tst_demux_config_t *cfg);
+
+/**
+ * Block until one typed `TstEvent` is ready.
+ *
+ * **Asymmetry with plain receiver:** plain `tst_demux_receiver_recv_event`
+ * maps `TransportError::Broken` on a non-cancelled handle to
+ * `TST_E_END_OF_STREAM`. The managed version does NOT apply that mapping —
+ * `ManagedReceiveTransport` retries internally on Broken, so a Broken
+ * reaching this function means reconnect attempts are exhausted: a hard
+ * transport failure (`TST_E_TRANSPORT`), not end-of-stream.
+ */
+
+int tst_managed_demux_receiver_recv_event(struct tst_managed_demux_receiver_t *p,
+                                          struct tst_event_t *out_event);
+
+/**
+ * Cancel a `tst_managed_demux_receiver_t`. Same shape as the plain
+ * sibling — side-channel cancel, no Mutex acquisition. Safe from
+ * any thread. Idempotent.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ *
+ * After cancel, `_recv_event` returns `TST_E_CLOSED` (not
+ * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
+ */
+ int tst_managed_demux_receiver_cancel(struct tst_managed_demux_receiver_t *p);
+
+ void tst_managed_demux_receiver_close(struct tst_managed_demux_receiver_t *p);
+
+
+int tst_managed_demux_receiver_get_stats(struct tst_managed_demux_receiver_t *p,
+                                         struct tst_demux_receiver_stats_t *out);
+
+ int tst_managed_demux_receiver_reset_stats(struct tst_managed_demux_receiver_t *p);
+
+
+int tst_managed_demux_receiver_get_stream_stats(struct tst_managed_demux_receiver_t *p,
+                                                const struct tst_stream_stats_t **out_array,
+                                                size_t *out_count);
 
 /**
  * Read the most recent error code on this thread. Returns `0`
@@ -1456,3 +2040,22 @@ struct tst_managed_sender_t *tst_managed_sender_open(const char *srt_url,
 #endif  // __cplusplus
 
 #endif  /* TSTRANS_H */
+
+/* Phase 3 ABI layout guards — trip the C compiler at consumer-build
+ * time if the Rust-side struct sizes drift from their Phase 3 baseline.
+ * Layouts are pinned in `crates/tst-c/src/event.rs` via const-assertion
+ * blocks on the Rust side; this duplicates the guard on the C side so
+ * consumers building against an upgraded libtstrans see the mismatch
+ * immediately.
+ */
+#if !defined(TST_SKIP_ABI_ASSERTS) && !defined(_TST_ABI_ASSERTS_DONE)
+#define _TST_ABI_ASSERTS_DONE
+#define _TST_ABI_ASSERT(c, msg) _Static_assert((c), msg)
+_TST_ABI_ASSERT(sizeof(tst_nal_t)                  == 24, "tst_nal_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_obu_t)                  == 24, "tst_obu_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_descriptor_t)           == 24, "tst_descriptor_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_stream_info_t)          == 40, "tst_stream_info_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_klv_link_t)             ==  8, "tst_klv_link_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_demux_receiver_stats_t) == 48, "tst_demux_receiver_stats_t size drift");
+_TST_ABI_ASSERT(sizeof(tst_event_t)               <= 256, "tst_event_t exceeds 256 B");
+#endif

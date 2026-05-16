@@ -24,7 +24,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `tst_pipeline::RawReceiverStats`.
 - New `tst_*_cancel` entry points for all six sender families
   (`tst_raw_sender_cancel`, `tst_managed_raw_sender_cancel`,
-  `tst_ts_sender_cancel`, `tst_managed_ts_sender_cancel`,
+  `tst_sender_cancel`, `tst_managed_sender_cancel`,
   `tst_mux_sender_cancel`, `tst_managed_mux_sender_cancel`) — closes
   the P1 sender-side cancellation deferral.
 - New `Mode { Caller, Listener }` enum + `SrtUrl::mode` field on

@@ -1071,7 +1071,7 @@ int tst_managed_raw_sender_get_stats(struct tst_managed_raw_sender_t *p,
  * After cancel, `_send` returns `TST_E_CLOSED`. The handle must still
  * be `_close`'d to free.
  */
- int tst_ts_sender_cancel(struct tst_sender_t *p);
+ int tst_sender_cancel(struct tst_sender_t *p);
 
 /**
  * Open a `tst_managed_sender_t` connected via SRT.
@@ -1104,13 +1104,13 @@ struct tst_managed_sender_t *tst_managed_sender_open(const char *srt_url,
 
 /**
  * Cancel a `tst_managed_sender_t`. Same semantics as
- * `tst_ts_sender_cancel`; reaches the currently-active inner
+ * `tst_sender_cancel`; reaches the currently-active inner
  * transport's cancel handle through `ManagedTransport`'s atomic
  * snapshot.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
  */
- int tst_managed_ts_sender_cancel(struct tst_managed_sender_t *p);
+ int tst_managed_sender_cancel(struct tst_managed_sender_t *p);
 
 #ifdef __cplusplus
 }  // extern "C"

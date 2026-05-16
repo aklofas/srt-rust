@@ -116,8 +116,8 @@ ALLOWLIST=(
     "tst_managed_raw_receiver_reset_stats"
     "tst_raw_sender_cancel"
     "tst_managed_raw_sender_cancel"
-    "tst_ts_sender_cancel"
-    "tst_managed_ts_sender_cancel"
+    "tst_sender_cancel"
+    "tst_managed_sender_cancel"
     "tst_mux_sender_cancel"
     "tst_managed_mux_sender_cancel"
 )

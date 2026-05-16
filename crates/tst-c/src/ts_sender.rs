@@ -192,7 +192,7 @@ pub unsafe extern "C" fn tst_sender_close(p: *mut TstSender) {
 /// After cancel, `_send` returns `TST_E_CLOSED`. The handle must still
 /// be `_close`'d to free.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_ts_sender_cancel(p: *mut TstSender) -> libc::c_int {
+pub unsafe extern "C" fn tst_sender_cancel(p: *mut TstSender) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
@@ -365,13 +365,13 @@ pub unsafe extern "C" fn tst_managed_sender_close(p: *mut TstManagedSender) {
 }
 
 /// Cancel a `tst_managed_sender_t`. Same semantics as
-/// `tst_ts_sender_cancel`; reaches the currently-active inner
+/// `tst_sender_cancel`; reaches the currently-active inner
 /// transport's cancel handle through `ManagedTransport`'s atomic
 /// snapshot.
 ///
 /// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_managed_ts_sender_cancel(p: *mut TstManagedSender) -> libc::c_int {
+pub unsafe extern "C" fn tst_managed_sender_cancel(p: *mut TstManagedSender) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
@@ -411,13 +411,13 @@ mod tests {
 
     #[test]
     fn null_cancel_returns_invalid_config() {
-        let rc = unsafe { tst_ts_sender_cancel(std::ptr::null_mut()) };
+        let rc = unsafe { tst_sender_cancel(std::ptr::null_mut()) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 
     #[test]
     fn managed_null_cancel_returns_invalid_config() {
-        let rc = unsafe { tst_managed_ts_sender_cancel(std::ptr::null_mut()) };
+        let rc = unsafe { tst_managed_sender_cancel(std::ptr::null_mut()) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 }

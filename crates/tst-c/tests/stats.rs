@@ -12,6 +12,19 @@ fn raw_sender_stats_layout_is_repr_c() {
     assert_eq!(s.packets_sent, 0);
 }
 
+#[test]
+fn socket_stats_layout() {
+    use tstrans::stats::TstSocketStats;
+    // 16 fields: 3 u32 + 1 u32 pad + 13 u64 = 16 + 104 = 120 B.
+    assert_eq!(std::mem::size_of::<TstSocketStats>(), 120);
+
+    let s = TstSocketStats::default();
+    assert_eq!(s.rtt_us, 0);
+    assert_eq!(s.send_bandwidth_bps, 0);
+    assert_eq!(s.bytes_sent, 0);
+    assert_eq!(s.send_buffer_packets, 0);
+}
+
 use std::ptr;
 use tstrans::stats::{TST_STATS_MAX_STREAMS, TstMuxerStats};
 

@@ -61,6 +61,7 @@ include = [
     "TstReceiver",
     "TstManagedReceiver",
     "TstReceiverStats",
+    "TstSocketStats",
     "TST_STATS_MAX_STREAMS",
     # Phase 3: demux receiver surface
     "TstDemuxConfig",
@@ -127,6 +128,7 @@ include = [
 "TstReceiver"          = "tst_receiver_t"
 "TstManagedReceiver"   = "tst_managed_receiver_t"
 "TstReceiverStats"     = "tst_receiver_stats_t"
+"TstSocketStats"       = "tst_socket_stats_t"
 # Phase 3: demux receiver handles + stats
 "TstDemuxConfig"            = "tst_demux_config_t"
 "TstDemuxReceiver"          = "tst_demux_receiver_t"

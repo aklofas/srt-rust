@@ -112,6 +112,17 @@ enum tst_e
    * subsequent calls return `Closed`.
    */
   TST_E_END_OF_STREAM = -12,
+  /**
+   * Requested data is not currently available — typically because a
+   * `tst_managed_*` handle has no live inner socket (mid-reconnect or
+   * after close). Distinct from `InvalidUsage` (which means the handle
+   * is in a fundamentally wrong state for the call) — `NotAvailable`
+   * is transient and may resolve on the next call.
+   *
+   * Returned today by the `tst_*_get_socket_stats` family when the
+   * inner transport's `socket_stats()` returns `None`.
+   */
+  TST_E_NOT_AVAILABLE = -13,
 };
 #ifndef __cplusplus
 typedef int32_t tst_e;
@@ -735,6 +746,58 @@ typedef struct tst_sender_stats_t {
   uint64_t resync_events;
   uint64_t packets_sent;
 } tst_sender_stats_t;
+
+/**
+ * `repr(C)` mirror of `tst_core::transport::SocketStats`. Size 120 B.
+ *
+ * Layout (offsets in bytes — verified by the `_TST_SOCKET_STATS_SIZE`
+ * const assertion below):
+ *   0: rtt_us              (u32, 4 B)
+ *   4: send_buffer_packets (u32, 4 B)
+ *   8: recv_buffer_packets (u32, 4 B)
+ *  12: _pad                (u32, 4 B, alignment bridge to u64 below)
+ *  16: send_bandwidth_bps  (u64, 8 B)
+ *  24: recv_bandwidth_bps  (u64, 8 B)
+ *  32: link_bandwidth_bps  (u64, 8 B)
+ *  40: bytes_sent          (u64, 8 B)
+ *  48: packets_sent        (u64, 8 B)
+ *  56: bytes_received      (u64, 8 B)
+ *  64: packets_received    (u64, 8 B)
+ *  72: bytes_lost_recv     (u64, 8 B)
+ *  80: packets_lost_recv   (u64, 8 B)
+ *  88: packets_lost_send   (u64, 8 B)
+ *  96: packets_retransmitted (u64, 8 B)
+ * 104: packets_dropped_send  (u64, 8 B)
+ * 112: packets_dropped_recv  (u64, 8 B)
+ * Total: 120 B.
+ *
+ * All bandwidth fields are bits per second; RTT is microseconds;
+ * buffer-depth fields are in packets. See
+ * `tst_core::transport::SocketStats` rustdoc for the libsrt source
+ * mappings.
+ */
+typedef struct tst_socket_stats_t {
+  uint32_t rtt_us;
+  uint32_t send_buffer_packets;
+  uint32_t recv_buffer_packets;
+  /**
+   * Alignment padding bridging the u32 prefix to the u64 tail.
+   */
+  uint32_t _pad;
+  uint64_t send_bandwidth_bps;
+  uint64_t recv_bandwidth_bps;
+  uint64_t link_bandwidth_bps;
+  uint64_t bytes_sent;
+  uint64_t packets_sent;
+  uint64_t bytes_received;
+  uint64_t packets_received;
+  uint64_t bytes_lost_recv;
+  uint64_t packets_lost_recv;
+  uint64_t packets_lost_send;
+  uint64_t packets_retransmitted;
+  uint64_t packets_dropped_send;
+  uint64_t packets_dropped_recv;
+} tst_socket_stats_t;
 
 /**
  * Sentinel returned by `tst_mux_config_add_program` on failure (null cfg

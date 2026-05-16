@@ -202,6 +202,85 @@ impl From<&tst_pipeline::DemuxReceiverStats> for TstDemuxReceiverStats {
     }
 }
 
+/// `repr(C)` mirror of `tst_core::transport::SocketStats`. Size 120 B.
+///
+/// Layout (offsets in bytes — verified by the `_TST_SOCKET_STATS_SIZE`
+/// const assertion below):
+///   0: rtt_us              (u32, 4 B)
+///   4: send_buffer_packets (u32, 4 B)
+///   8: recv_buffer_packets (u32, 4 B)
+///  12: _pad                (u32, 4 B, alignment bridge to u64 below)
+///  16: send_bandwidth_bps  (u64, 8 B)
+///  24: recv_bandwidth_bps  (u64, 8 B)
+///  32: link_bandwidth_bps  (u64, 8 B)
+///  40: bytes_sent          (u64, 8 B)
+///  48: packets_sent        (u64, 8 B)
+///  56: bytes_received      (u64, 8 B)
+///  64: packets_received    (u64, 8 B)
+///  72: bytes_lost_recv     (u64, 8 B)
+///  80: packets_lost_recv   (u64, 8 B)
+///  88: packets_lost_send   (u64, 8 B)
+///  96: packets_retransmitted (u64, 8 B)
+/// 104: packets_dropped_send  (u64, 8 B)
+/// 112: packets_dropped_recv  (u64, 8 B)
+/// Total: 120 B.
+///
+/// All bandwidth fields are bits per second; RTT is microseconds;
+/// buffer-depth fields are in packets. See
+/// `tst_core::transport::SocketStats` rustdoc for the libsrt source
+/// mappings.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct TstSocketStats {
+    pub rtt_us: u32,
+    pub send_buffer_packets: u32,
+    pub recv_buffer_packets: u32,
+    /// Alignment padding bridging the u32 prefix to the u64 tail.
+    pub _pad: u32,
+    pub send_bandwidth_bps: u64,
+    pub recv_bandwidth_bps: u64,
+    pub link_bandwidth_bps: u64,
+    pub bytes_sent: u64,
+    pub packets_sent: u64,
+    pub bytes_received: u64,
+    pub packets_received: u64,
+    pub bytes_lost_recv: u64,
+    pub packets_lost_recv: u64,
+    pub packets_lost_send: u64,
+    pub packets_retransmitted: u64,
+    pub packets_dropped_send: u64,
+    pub packets_dropped_recv: u64,
+}
+
+const _TST_SOCKET_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstSocketStats>() == 120,
+    "TstSocketStats must be 120 bytes (3×u32 + 1×u32 pad + 13×u64)"
+);
+
+impl From<&tst_core::transport::SocketStats> for TstSocketStats {
+    fn from(s: &tst_core::transport::SocketStats) -> Self {
+        Self {
+            rtt_us: s.rtt_us,
+            send_buffer_packets: s.send_buffer_packets,
+            recv_buffer_packets: s.recv_buffer_packets,
+            _pad: 0,
+            send_bandwidth_bps: s.send_bandwidth_bps,
+            recv_bandwidth_bps: s.recv_bandwidth_bps,
+            link_bandwidth_bps: s.link_bandwidth_bps,
+            bytes_sent: s.bytes_sent,
+            packets_sent: s.packets_sent,
+            bytes_received: s.bytes_received,
+            packets_received: s.packets_received,
+            bytes_lost_recv: s.bytes_lost_recv,
+            packets_lost_recv: s.packets_lost_recv,
+            packets_lost_send: s.packets_lost_send,
+            packets_retransmitted: s.packets_retransmitted,
+            packets_dropped_send: s.packets_dropped_send,
+            packets_dropped_recv: s.packets_dropped_recv,
+        }
+    }
+}
+
 /// `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6172 B.
 #[repr(C)]
 pub struct TstMuxerStats {

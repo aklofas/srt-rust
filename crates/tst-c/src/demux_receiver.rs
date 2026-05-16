@@ -367,6 +367,67 @@ pub unsafe extern "C" fn tst_demux_receiver_reset_stats(
     })
 }
 
+/// Snapshot per-PID stats for a `tst_demux_receiver_t` into the
+/// handle's internal buffer; return a `(*const TstStreamStats, size_t)`
+/// pair borrowing that buffer.
+///
+/// **Borrowed buffer lifetime (design §4.5):** `*out_array` is valid
+/// until the next `_get_stream_stats` / `_reset_stats` / `_close`
+/// call on the same handle. Callers wanting longer lifetime memcpy
+/// the array out.
+///
+/// Capped at `TST_STATS_MAX_STREAMS = 64` entries (BTreeMap ordering
+/// preserved by ascending PID); excess streams are silently dropped.
+/// `program_number` field is `0` for now — populated once `StreamStats`
+/// surfaces it (currently absent from `tst_core::mpegts::stats::StreamStats`).
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` on any null pointer
+/// arg, or `TST_E_CLOSED` if the receiver has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_receiver_get_stream_stats(
+    p: *mut TstDemuxReceiver,
+    out_array: *mut *const crate::stats::TstStreamStats,
+    out_count: *mut libc::size_t,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out_array.is_null() || out_count.is_null() {
+        set_last_error(
+            TstError::InvalidConfig,
+            "null out_array or out_count pointer",
+        );
+        return TstError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|rx| {
+        let stats = rx.stats();
+        let mut buf = handle
+            .stream_stats_buf
+            .lock()
+            .expect("stream_stats_buf Mutex poisoned");
+        buf.clear();
+        let cap = crate::stats::TST_STATS_MAX_STREAMS;
+        for (pid, ss) in stats.per_stream.iter().take(cap) {
+            let mut c_ss = crate::stats::TstStreamStats {
+                pid: *pid,
+                ..Default::default()
+            };
+            crate::stats::fill_stream_stats(&mut c_ss, ss);
+            buf.push(c_ss);
+        }
+        // SAFETY: out_array / out_count non-null per guard above.
+        // The returned pointer borrows from buf, which lives on the
+        // handle until the next _get_stream_stats / _reset_stats /
+        // _close call (caller contract per design §4.5).
+        unsafe {
+            *out_array = buf.as_ptr();
+            *out_count = buf.len();
+        }
+        0
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,6 +470,20 @@ mod tests {
     #[test]
     fn null_reset_stats_returns_invalid_config() {
         let rc = unsafe { tst_demux_receiver_reset_stats(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_get_stream_stats_returns_invalid_config() {
+        let mut arr: *const crate::stats::TstStreamStats = std::ptr::null();
+        let mut count: libc::size_t = 0;
+        let rc = unsafe {
+            tst_demux_receiver_get_stream_stats(
+                std::ptr::null_mut(),
+                &mut arr,
+                &mut count,
+            )
+        };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 }

@@ -7,6 +7,54 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Phase 1 of tst-c receiver surface
+
+### Added
+
+- New `TstError::EndOfStream = -12` error code distinguishing peer
+  graceful disconnect (FIN) from caller-side `Closed = -7` cancel/close.
+- New `tst_raw_receiver_t` opaque handle with the following C entry
+  points: `tst_raw_receiver_open(url)`,
+  `tst_raw_receiver_open_listener(url)`, `tst_raw_receiver_recv`,
+  `tst_raw_receiver_cancel`, `tst_raw_receiver_close`,
+  `tst_raw_receiver_get_stats`, `tst_raw_receiver_reset_stats`.
+- New `tst_managed_raw_receiver_t` opaque handle with the same 7 entry
+  points (managed sibling).
+- New `TstRawReceiverStats` `repr(C)` struct mirroring
+  `tst_pipeline::RawReceiverStats`.
+- New `tst_*_cancel` entry points for all six sender families
+  (`tst_raw_sender_cancel`, `tst_managed_raw_sender_cancel`,
+  `tst_ts_sender_cancel`, `tst_managed_ts_sender_cancel`,
+  `tst_mux_sender_cancel`, `tst_managed_mux_sender_cancel`) — closes
+  the P1 sender-side cancellation deferral.
+- New `Mode { Caller, Listener }` enum + `SrtUrl::mode` field on
+  `tst-srt`; URL parser now accepts `?mode=listener` and allows empty
+  host in listener mode. `tst_*_open_listener` C entry points also
+  accept `srt://:port` (empty host) without requiring the explicit
+  `?mode=listener` query parameter.
+- New C example `recv_raw_to_file.c` (`crates/tst-c/examples/c/receiving/`).
+
+### Fixed
+
+- `tst_raw_receiver_recv` now maps `TransportError::Broken` on a
+  non-cancelled handle to `TST_E_END_OF_STREAM` (was incorrectly
+  surfacing as `TST_E_TRANSPORT`). SRT peer disconnect surfaces as
+  `Broken` at the transport layer to support managed-reconnect; the
+  plain C ABI semantically translates this to "end of stream".
+
+### Internal
+
+- Sender handle structs (`TstRawSender`, `TstManagedRawSender`,
+  `TstSender`, `TstManagedSender`, `TstMuxSender`, `TstManagedMuxSender`)
+  gain a side-channel `Arc<dyn TransportCancel>` + `Arc<AtomicBool>`
+  field captured at `_open` time to support thread-safe `_cancel`
+  without acquiring the handle's `Mutex`.
+- C ABI rustdoc coverage allowlist extended for the 19 new entry
+  points; proper `# C ABI` rustdoc backfill on corresponding Rust
+  methods deferred to a P2 follow-up.
+
+---
+
 ## Unreleased
 
 Phase 1 (SemVer ratchet), Phase 2 (DX + observability), Phase 3

@@ -164,6 +164,10 @@ fn extract_h266_parameter_set(stream: &[u8], nal_type: u8, n: u32) -> Option<Vec
 /// Extract the `n`th SequenceHeader OBU payload from an AV1 bytestream.
 /// Handles both raw OBU streams and IVF-wrapped streams (autodetected
 /// via DKIF signature at offset 0). Returns None if not found.
+///
+/// For IVF inputs, only the first frame's OBU stream is scanned. AOM
+/// conformance vectors always place the SequenceHeader in frame 0, so
+/// this is sufficient for our purposes.
 fn extract_av1_sequence_header(stream: &[u8], n: u32) -> Option<Vec<u8>> {
     // IVF autodetect: DKIF + 32-byte header.
     let obu_stream: &[u8] = if stream.len() >= 32 && &stream[..4] == b"DKIF" {
@@ -207,7 +211,9 @@ fn extract_av1_sequence_header(stream: &[u8], n: u32) -> Option<Vec<u8>> {
             sz
         } else {
             // For raw streams without size, payload runs to EOF. Conformance
-            // vectors should always have has_size set; bail otherwise.
+            // vectors always set has_size; if not, treat remaining bytes as
+            // this OBU's payload (scanning stops after this OBU since the
+            // cursor advance exhausts the buffer).
             obu_stream.len() - cursor
         };
         if obu_type == 1 {

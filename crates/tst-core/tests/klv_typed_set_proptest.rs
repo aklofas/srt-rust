@@ -273,3 +273,193 @@ proptest! {
         prop_assert_eq!(decoded, record);
     }
 }
+
+// ----------------------------------------------------------------------------
+// ST 0601 UasDatalinkLs
+// ----------------------------------------------------------------------------
+
+use tst_core::klv::st0601::{self, UasDatalinkLs};
+
+// Three categories of tag for the per-tag strategy. Each round-trips
+// through `encode_to_vec` + `decode` but with a different comparison
+// shape, so we keep them as distinct proptests for readable failures.
+
+proptest! {
+    /// Exact-equality tags (strings, opaque bytes, integer types).
+    ///
+    /// Strategy: pick one tag uniformly at random, populate just that
+    /// field in an otherwise-default record, round-trip. All these
+    /// tags use byte-passthrough or integer encoding; the comparison
+    /// is `assert_eq!`.
+    ///
+    /// **Tag 65 quirk:** the ST 0601 encoder unconditionally emits Tag 65
+    /// ("UAS LS Version Number") — if `record.uas_ls_version` is None it
+    /// auto-emits the default `EncodeOptions::version` byte (19, per ST
+    /// 0601.19). The decoder reads that back into `uas_ls_version =
+    /// Some(19)`, breaking `assert_eq` if the input had None. We pre-set
+    /// `uas_ls_version = Some(19)` on the input so both sides match;
+    /// the `which == 6` arm overwrites this with the random `v_u8` to
+    /// actually exercise the tag's value space.
+    #[test]
+    fn st0601_exact_equality_per_tag_roundtrip(
+        // Discriminator selecting which tag to populate. Range covers
+        // the 10 exact-equality tag arms in the match below.
+        which in 0u8..10,
+        // Generic value space large enough to feed any single field.
+        // Bytes: any opaque payload. String: ASCII subset 0x20..=0x7E
+        // (printable ASCII; lenient UTF-8 decode is identity on this
+        // subset, so round-trip is exact). Range 1..=32 keeps things
+        // BER-short-form (length ≤ 127) and proptest case fast.
+        bytes in proptest::collection::vec(any::<u8>(), 1..=32),
+        s in "[ -~]{1,32}",
+        v_u8 in any::<u8>(),
+        v_u64 in any::<u64>(),
+    ) {
+        // Pre-populate the auto-emitted Tag 65 to match what the decoder
+        // will produce; see method-level docstring for the rationale.
+        let mut record = UasDatalinkLs {
+            uas_ls_version: Some(19),
+            ..Default::default()
+        };
+        match which {
+            0 => record.mission_id = Some(s),
+            1 => record.platform_tail_number = Some(s),
+            2 => record.platform_designation = Some(s),
+            3 => record.image_source_sensor = Some(s),
+            // Tag 12 image_coordinate_system: lenient decode accepts
+            // any string but spec values are short ("WGS84" etc).
+            // ASCII strategy is in-spec for the values encoders produce.
+            4 => record.image_coordinate_system = Some(s),
+            5 => record.platform_call_sign = Some(s),
+            // Overwrite the default-version pre-set with a random byte
+            // to actually exercise Tag 65's value space.
+            6 => record.uas_ls_version = Some(v_u8),
+            7 => record.timestamp_us = Some(v_u64),
+            8 => record.generic_flag_data = Some(v_u8),
+            // Tag 48 security_local_set: opaque pass-through to ST 0102
+            // sibling layer (per convention #1 in
+            // reference_klv_typed_set_conventions). Round-trip is
+            // byte-identical at the ST 0601 layer.
+            9 => record.security_local_set = Some(bytes.clone()),
+            _ => unreachable!(),
+        }
+        let buf = st0601::encode_to_vec(&record)
+            .expect("ST 0601 encode of valid record must succeed");
+        let decoded = st0601::decode(&buf)
+            .expect("ST 0601 decode of self-encoded bytes must succeed");
+        // Compare just the field we set — `field_errors` and `unknown`
+        // are decode-side diagnostics, empty on a clean self-encoded
+        // record; the default fields stay None on both sides.
+        prop_assert_eq!(decoded, record);
+    }
+
+    /// Tag 74 vmti opaque pass-through (separate so failure messages
+    /// localize when the ST 0903 sibling layering breaks the parent's
+    /// byte-passthrough contract). Plan #35 ratified this surface
+    /// (memory: project_klv_st0903_shipped).
+    #[test]
+    fn st0601_vmti_passthrough_roundtrip(
+        bytes in proptest::collection::vec(any::<u8>(), 1..=64),
+    ) {
+        let record = UasDatalinkLs { vmti: Some(bytes.clone()), ..Default::default() };
+        let buf = st0601::encode_to_vec(&record).expect("encode");
+        let decoded = st0601::decode(&buf).expect("decode");
+        prop_assert_eq!(decoded.vmti.as_deref(), Some(bytes.as_slice()));
+    }
+
+    /// IMAPB f64 tags: pick one ranged tag uniformly, encode value at
+    /// random `t ∈ [0,1]` lerped into the tag's [min, max] range,
+    /// decode, assert within IMAPB tolerance.
+    ///
+    /// Tolerance derivation mirrors `klv_proptest.rs::imapb_roundtrip`:
+    /// max of (quantization scale, f64 ULP × span/magnitude × safety
+    /// factor). See that file lines 73-94 for the rationale.
+    ///
+    /// `which` indexes into the ranged-tag table built below. The
+    /// table is a hand-curated subset covering both IMAPB encodings
+    /// commonly used (signed +/- ranges and unsigned 0..N ranges) and
+    /// the three integer widths in play (i8, i16, i32, u8, u16, u32).
+    /// Full coverage of every tag is the job of `every_typed_tag_round_trips`
+    /// (st0601/mod.rs:1498); this proptest's job is value-space.
+    #[test]
+    fn st0601_imapb_tag_value_space_roundtrip(
+        which in 0usize..8,
+        t in 0.0f64..=1.0,
+    ) {
+        // (tag_id, min, max, field-getter). Eight representative tags
+        // covering signed/unsigned and the integer-width spectrum.
+        struct ImapbTag {
+            #[allow(dead_code)] // ID retained for failure-message clarity
+            id: u8,
+            min: f64,
+            max: f64,
+            set: fn(&mut UasDatalinkLs, f64),
+            get: fn(&UasDatalinkLs) -> Option<f64>,
+        }
+        let tags: [ImapbTag; 8] = [
+            // Tag 5: platform_heading_angle 0..360 (u16 → 2 bytes, ST 0601 §item5)
+            ImapbTag { id: 5, min: 0.0, max: 360.0,
+                set: |r, v| r.platform_heading_deg = Some(v),
+                get: |r| r.platform_heading_deg },
+            // Tag 6: platform_pitch_angle ±20° (i16 → 2 bytes)
+            ImapbTag { id: 6, min: -20.0, max: 20.0,
+                set: |r, v| r.platform_pitch_deg = Some(v),
+                get: |r| r.platform_pitch_deg },
+            // Tag 13: sensor_latitude ±90° (i32 → 4 bytes)
+            ImapbTag { id: 13, min: -90.0, max: 90.0,
+                set: |r, v| r.sensor_lat_deg = Some(v),
+                get: |r| r.sensor_lat_deg },
+            // Tag 14: sensor_longitude ±180° (i32 → 4 bytes)
+            ImapbTag { id: 14, min: -180.0, max: 180.0,
+                set: |r, v| r.sensor_lon_deg = Some(v),
+                get: |r| r.sensor_lon_deg },
+            // Tag 15: sensor_altitude_m -900..19000 (u16 → 2 bytes, asymmetric range)
+            ImapbTag { id: 15, min: -900.0, max: 19000.0,
+                set: |r, v| r.sensor_alt_m = Some(v),
+                get: |r| r.sensor_alt_m },
+            // Tag 21: slant_range 0..5,000,000 m (u32 → 4 bytes, large unsigned range)
+            ImapbTag { id: 21, min: 0.0, max: 5_000_000.0,
+                set: |r, v| r.slant_range_m = Some(v),
+                get: |r| r.slant_range_m },
+            // Tag 90: platform_pitch_full ±90° (i32 → 4 bytes)
+            ImapbTag { id: 90, min: -90.0, max: 90.0,
+                set: |r, v| r.platform_pitch_full_deg = Some(v),
+                get: |r| r.platform_pitch_full_deg },
+            // Tag 50: platform_angle_of_attack ±20° (i16 → 2 bytes; renamed by plan #44)
+            ImapbTag { id: 50, min: -20.0, max: 20.0,
+                set: |r, v| r.platform_angle_of_attack_deg = Some(v),
+                get: |r| r.platform_angle_of_attack_deg },
+        ];
+        let tag = &tags[which];
+        let value = tag.min + t * (tag.max - tag.min);
+
+        let mut record = UasDatalinkLs::default();
+        (tag.set)(&mut record, value);
+
+        let buf = st0601::encode_to_vec(&record).expect("encode");
+        let decoded = st0601::decode(&buf).expect("decode");
+        let got = (tag.get)(&decoded).expect("field must be present after round-trip");
+
+        // Tolerance derivation (see klv_proptest.rs::imapb_roundtrip
+        // lines 73-94): max of IMAPB quantization step and f64-ULP
+        // floor scaled by field magnitude with a safety factor.
+        let span = tag.max - tag.min;
+        // Wire byte width for this tag — read from the encoded bytes is
+        // overkill; use the known per-tag widths above. The 4-byte tags
+        // (13, 14, 21, 90) give the tightest scale; widen the tolerance
+        // by computing for the smallest width we encode (2 bytes) so the
+        // bound is safe for all members of the array.
+        let length = 2usize;  // conservative — i32 tags get tighter actual scale
+        let log2_ceil = span.log2().ceil();
+        let scale = 2f64.powf(log2_ceil) / 2f64.powi(8 * length as i32 - 1);
+        let magnitude = span.max(tag.min.abs()).max(tag.max.abs()).max(1.0);
+        let fp_eps = f64::EPSILON * magnitude * 4.0;
+        let tol = scale.max(fp_eps);
+
+        prop_assert!(
+            (got - value).abs() <= tol,
+            "ST 0601 tag {} value {} round-tripped to {} (delta {}, tol {})",
+            tag.id, value, got, (got - value).abs(), tol
+        );
+    }
+}

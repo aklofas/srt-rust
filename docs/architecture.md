@@ -301,7 +301,7 @@ an entry in [`docs/deferred-features.md`](deferred-features.md).
 - Other typed MISB sets — ST 0102 (Security LS) and ST 0903 (top-level VMTI + per-target `VTargetPack`) ship as sibling-layer typed views over the substrate; nested VMTI sets (VMask / VTracker / VChip / Algorithm Series / Ontology Series) and ST 0806 RVT remain pass-through.
 - Owned-projection variants on borrowed iterator types — `VTargetSeriesIter`, `KlvIterator`, and the indexed NAL iterator are borrow-coupled today; cross-language wrappability needs owned-by-value variants.
 - `serde` / `no_std` for `klv` — pure additive; behind feature flags when added.
-- Receiver-side C ABI in `tst-c` — raw byte receiver (`tst_raw_receiver_t`, Phase 1) and TS-packet receiver (`tst_receiver_t`, Phase 2) ship; demux event surface (`tst_demux_receiver_t` + typed stream events, multi-program demux, byte sinks) is the remaining Phase 3 binding deliverable.
+- Receiver-side C ABI in `tst-c` — all three receiver phases shipped: raw byte receiver (`tst_raw_receiver_t`, Phase 1, plan #59), TS-packet receiver (`tst_receiver_t`, Phase 2, plan #60), and demux event surface (`tst_demux_receiver_t` + typed `tst_event_t` tagged union + multi-program demux, Phase 3, plan #62). The tst-c receiver surface is complete. Remaining: `add_byte_sink` fan-out and `tst_pairer_t` C ABI (both deferred; see `docs/deferred-features.md`).
 - Rustdoc lift to docs.rs — these markdown files are written CommonMark-clean so the lift is mechanical when scheduled.
 
 See [`docs/deferred-features.md`](deferred-features.md) for the

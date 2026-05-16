@@ -571,20 +571,11 @@ the trigger that would unblock it.
 
 ## Multi-program demux at the C ABI
 
-- **Status:** Deferred. Raw byte receiver (`tst_raw_receiver_t`) and
-  TS-packet receiver (`tst_receiver_t`) ship in Phases 1 + 2; the
-  demux event surface (`tst_demux_receiver_t`) is Phase 3.
-- **Why deferred:** Multi-program demux event emission requires the
-  typed demux event surface that Phase 3 will introduce. Folding it
-  into the Phase 3 plan keeps the receiver-side design coherent rather
-  than piecemeal.
-- **Trigger to revisit:** Phase 3 (`tst_demux_receiver_t` +
-  `TstDemuxEvent` C surface); multi-program demux event emission
-  folds into that plan.
-- **Scope when added:** `TstDemuxEvent` discriminator with `ProgramMap` arm
-  carrying `program_number`; `TstStreamInfo` C-side analogue with
-  `program_number` field; per-program tracker query API if useful
-  (`tst_demuxer_program_count`, `tst_demuxer_get_program_info(idx)`).
+- **Status:** Shipped in Phase 3 (plan #62, 2026-05-16). The
+  `tst_demux_receiver_t` typed-event surface includes `tst_event_t`
+  with a `PROGRAM_MAP` arm carrying `program_number`; `tst_stream_info_t`
+  carries `program_number`; multi-program streams are handled naturally
+  by the `DemuxReceiver` backend.
 
 ## Rustdoc lift to docs.rs via `#![doc = include_str!(...)]`
 
@@ -861,8 +852,9 @@ the trigger that would unblock it.
   it cleanly requires a side-channel `Arc<dyn TransportCancel>` +
   `Arc<AtomicBool>` captured at `_open` time, outside the mutex.
   That design was implemented in Phase 1 and carried forward.
-- **Trigger to revisit:** Phase 3 (`tst_demux_receiver_t`);
-  `tst_demux_receiver_cancel` folds into that plan.
+- **Status (updated 2026-05-16):** `tst_demux_receiver_cancel` shipped
+  in Phase 3 (plan #62). Pre-emptive close cancellation is now complete
+  across all six sender families and all three receiver handle types.
 
 ## Typed WebVTT cue substrate (`mpegts::webvtt::format_pes_payload` + `WebVttCue`)
 

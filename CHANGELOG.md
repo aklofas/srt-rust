@@ -7,6 +7,48 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Phase 3 of tst-c receiver surface (plan #62)
+
+### Added
+
+- **`tst-c` receiver surface Phase 3** — `tst_demux_receiver_t` and
+  `tst_managed_demux_receiver_t` opaque handles wrapping
+  `tst_pipeline::DemuxReceiver<SrtTransport>`. Surface the full typed-
+  event API to non-Rust consumers: `tst_event_t` tagged union over
+  PROGRAM_MAP / SAMPLE / METADATA / DISCONTINUITY / NONCONFORMANT,
+  with subordinate `tst_nal_t`, `tst_obu_t`, `tst_descriptor_t`,
+  `tst_stream_info_t`, `tst_klv_link_t` list elements. Pointer fields
+  borrow from a per-handle EventArena (zero-alloc steady state) —
+  valid until the next `_recv_event` / `_close` call.
+- **`tst_demux_config_t` opaque builder** — caller-side knobs:
+  strict mode (4 levels), KLV PID→video PID link overrides,
+  per-PID stream-kind overrides, PES reassembly caps.
+- **Bundled send-side descriptor API** — `tst_mux_config_add_video_descriptor`,
+  `_add_klv_descriptor`, `_add_audio_descriptor`,
+  `_add_subtitle_descriptor` close the previously-deferred
+  per-stream PMT descriptor construction at the C ABI. Shares the
+  receive-side `tst_descriptor_t` struct from day one.
+- **Per-PID stats** — `tst_demux_receiver_get_stream_stats` returns
+  a borrowed `(*const tst_stream_stats_t, size_t)` array per design §4.5
+  lifetime convention (valid until next get_stream_stats /
+  reset_stats / close call).
+- **Two new C examples** — `recv_demux_to_console.c` (flagship
+  Phase 3 example printing all 5 event kinds) and
+  `recv_klv_to_stdout.c` (KLV byte-flow tap, building block for
+  external typed-ST 0601 decoders).
+- **`_Static_assert` ABI size guards** on all public Phase 3 structs
+  (`tst_nal_t` 24 B, `tst_obu_t` 24 B, `tst_descriptor_t` 24 B,
+  `tst_stream_info_t` 40 B, `tst_klv_link_t` 8 B,
+  `tst_demux_receiver_stats_t` 48 B, `tst_event_t` ≤256 B) — trip
+  consumer-side builds on accidental layout drift.
+
+See the Phase 3 plan at `docs/plans/2026-05-16-tst-c-demux-receiver.md`
+and the design doc at `docs/specs/2026-05-15-tst-c-receiver-surface-design.md`.
+This ships the complete tst-c receiver surface (Phases 1, 2, 3 all
+shipped); next-up is `srt-jni` / `srt-uniffi` cross-language bindings.
+
+---
+
 ## [Unreleased] — Phase 2 of tst-c receiver surface
 
 ### Added

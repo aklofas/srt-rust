@@ -22,6 +22,7 @@ mod panic;
 pub mod raw_receiver;
 pub mod raw_sender;
 pub mod stats;
+pub mod ts_receiver;
 pub mod ts_sender;
 /// Major version (compile-time macro in the generated header).
 pub const TST_VERSION_MAJOR: libc::c_int = 0;

@@ -1720,6 +1720,20 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  int tst_raw_receiver_get_stats(struct tst_raw_receiver_t *p, struct tst_raw_receiver_stats_t *out);
 
 /**
+ * Read wire-level transport stats for the underlying libsrt socket.
+ * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * for full semantics — same shape, different handle type.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstRawReceiver` opened via
+ * `tst_raw_receiver_open` and `out` points to a writable `TstSocketStats`.
+ */
+
+int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
+                                      struct tst_socket_stats_t *out);
+
+/**
  * Reset stats counters for a `tst_raw_receiver_t` to zero.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
@@ -1826,7 +1840,20 @@ int tst_managed_raw_receiver_get_stats(struct tst_managed_raw_receiver_t *p,
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
  * or `TST_E_CLOSED` if the receiver has been closed.
+ * Managed sibling of [`tst_raw_receiver_get_socket_stats`]. Returns
+ * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
+ * inner socket.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstManagedRawReceiver` opened
+ * via `tst_managed_raw_receiver_open` and `out` points to a writable
+ * `TstSocketStats`.
  */
+
+int tst_managed_raw_receiver_get_socket_stats(struct tst_managed_raw_receiver_t *p,
+                                              struct tst_socket_stats_t *out);
+
  int tst_managed_raw_receiver_reset_stats(struct tst_managed_raw_receiver_t *p);
 
 /**

@@ -174,6 +174,20 @@ impl<R: RecvTransport> RawReceiver<R> {
         self.stats = RawReceiverStats::default();
     }
 
+    /// Wire-level transport stats (RTT, packet loss, bandwidth, queue
+    /// depths) sourced from the underlying
+    /// [`RecvTransport::socket_stats`] implementation. Returns `None`
+    /// when the transport doesn't expose comparable telemetry (test
+    /// mocks) or when a managed wrapper has no live inner socket.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_raw_receiver_get_socket_stats` — see
+    /// `crates/tst-c/include/tstrans.h`.
+    pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
+        self.transport.socket_stats()
+    }
+
     /// Advisory liveness check. Delegates to the underlying transport.
     pub fn is_alive(&self) -> bool {
         self.transport.is_alive()

@@ -4,8 +4,10 @@
 //! and `tst-srt` directly. The C ABI is documented in `include/tstrans.h`
 //! (cbindgen-generated, committed to the source tree).
 //!
-//! Sender side is complete; receiver side is feature-complete in Rust
-//! and pending C ABI exposure.
+//! Sender side complete; receiver side raw-layer complete (Phase 1
+//! shipped 2026-05-15). Receiver TS-aligned layer (Phase 2) and typed
+//! demux event surface (Phase 3) pending — see the receiver-surface
+//! design doc + ROADMAP.
 
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
 

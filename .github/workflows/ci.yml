@@ -13,9 +13,17 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test-linux:
-    name: test (linux-x86_64, vendored libsrt, MSRV)
-    runs-on: ubuntu-latest
+  build:
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.continue }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            runner: ubuntu-latest
+            continue: false
     # Pin to MSRV via env so rust-toolchain.toml ("stable" for local dev)
     # doesn't relax the verification done in CI.
     env:
@@ -25,7 +33,12 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install build prerequisites
+      - name: Install build prerequisites (Linux)
+        # apt-get is Linux-only; macOS / Windows runners come with cmake +
+        # perl pre-installed (macos-14, windows-latest) and pkg-config is
+        # absent on both but the build falls through to vendored via
+        # SRT_FORCE_VENDORED=1.
+        if: startsWith(matrix.name, 'linux-')
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake pkg-config
@@ -46,8 +59,8 @@ jobs:
             !target/debug/incremental
             !target/debug/.fingerprint
             !target/debug/deps
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          key: cargo-${{ matrix.name }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ matrix.name }}-
 
       - name: Scrub guard (no pre-rename names in tree)
         # Fails the build if any pre-rename name (`srt-core`, `srt-rust`,
@@ -55,6 +68,9 @@ jobs:
         # the published tree. CLAUDE.md is the documented exception (per the
         # repo-standalone guardrail); vendor/, target/, and Cargo.lock are
         # excluded. Ubuntu's GHA image ships ripgrep preinstalled.
+        # Linux-only — rg / bash invocation differs on Windows and this is
+        # a workspace-state check, so running it once is enough.
+        if: matrix.name == 'linux-x86_64'
         run: |
           if rg 'srt[_-]core|srt[_-]rust|TsSender|TsReceiver|\bv0\b' \
               --glob '!target' --glob '!CLAUDE.md' \
@@ -64,12 +80,15 @@ jobs:
           fi
 
       - name: check-c-abi-rustdoc-coverage
+        if: matrix.name == 'linux-x86_64'
         run: bash scripts/check-c-abi-rustdoc-coverage.sh
 
       - name: check-close-contract-presence
+        if: matrix.name == 'linux-x86_64'
         run: bash scripts/check-close-contract-presence.sh
 
       - name: check-no-public-usize
+        if: matrix.name == 'linux-x86_64'
         run: bash scripts/check-no-public-usize.sh
 
       - name: cargo fmt --check
@@ -81,6 +100,9 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: cargo doc (no broken intra-doc links)
+        # Linux-only — workspace-state check; running it 4× across the matrix
+        # burns CI for zero added signal.
+        if: matrix.name == 'linux-x86_64'
         env:
           SRT_FORCE_VENDORED: "1"
           RUSTDOCFLAGS: "-D warnings"
@@ -133,6 +155,9 @@ jobs:
         # package name "tst-c"). To land an intentional SemVer-breaking
         # change, update the relevant crates/<name>/public-api.txt together
         # with the code change so reviewers can audit the delta.
+        # Linux-only — cargo-public-api is platform-agnostic but workspace
+        # state is the same regardless of platform; one run is enough.
+        if: matrix.name == 'linux-x86_64'
         run: |
           rustup toolchain install nightly --profile minimal --no-self-update
           cargo +stable install cargo-public-api --locked --quiet
@@ -148,6 +173,7 @@ jobs:
         # Phase 1.2 added #[non_exhaustive] to all public error enums. CI step
         # asserts the count never decreases (additions OK; removals fail the
         # build). On adding a new error enum, bump the BASELINE constant.
+        if: matrix.name == 'linux-x86_64'
         run: |
           BASELINE=47
           OBSERVED=$(rg -c '#\[non_exhaustive\]' crates/ --type rust | awk -F: '{sum += $2} END {print sum}')

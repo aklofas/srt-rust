@@ -133,18 +133,18 @@ impl From<&tst_pipeline::RawReceiverStats> for TstRawReceiverStats {
 #[derive(Default, Clone, Copy)]
 pub struct TstReceiverStats {
     pub bytes_received: u64,
-    pub packets_received: u64,
     pub bytes_skipped_for_sync: u64,
     pub resync_events: u64,
+    pub packets_received: u64,
 }
 
 impl From<&tst_pipeline::ReceiverStats> for TstReceiverStats {
     fn from(s: &tst_pipeline::ReceiverStats) -> Self {
         Self {
             bytes_received: s.bytes_received,
-            packets_received: s.packets_received,
             bytes_skipped_for_sync: s.bytes_skipped_for_sync,
             resync_events: s.resync_events,
+            packets_received: s.packets_received,
         }
     }
 }

@@ -110,7 +110,7 @@ typedef int32_t tst_e;
 
 typedef struct tst_managed_mux_sender_t tst_managed_mux_sender_t;
 
-typedef struct TstManagedRawReceiver TstManagedRawReceiver;
+typedef struct tst_managed_raw_receiver_t tst_managed_raw_receiver_t;
 
 typedef struct tst_managed_raw_sender_t tst_managed_raw_sender_t;
 
@@ -132,7 +132,7 @@ typedef struct tst_mux_sender_t tst_mux_sender_t;
 
 typedef struct tst_muxer_t tst_muxer_t;
 
-typedef struct TstRawReceiver TstRawReceiver;
+typedef struct tst_raw_receiver_t tst_raw_receiver_t;
 
 typedef struct tst_raw_sender_t tst_raw_sender_t;
 
@@ -243,10 +243,10 @@ typedef struct tst_muxer_stats_t {
 /**
  * `repr(C)` mirror of `tst_pipeline::RawReceiverStats`. Size 16 B.
  */
-typedef struct TstRawReceiverStats {
+typedef struct tst_raw_receiver_stats_t {
   uint64_t bytes_received;
   uint64_t packets_received;
-} TstRawReceiverStats;
+} tst_raw_receiver_stats_t;
 
 /**
  * `repr(C)` mirror of `tst_pipeline::RawSenderStats`. Size 16 B.
@@ -770,7 +770,7 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * last-error for any malformed URL, unsupported key, unknown key, or
  * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
  */
- struct TstRawReceiver *tst_raw_receiver_open(const char *srt_url);
+ struct tst_raw_receiver_t *tst_raw_receiver_open(const char *srt_url);
 
 /**
  * Explicit listener-mode open. Forces listener mode regardless of any
@@ -783,9 +783,9 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * expect from a `_listener`-suffixed entry point. The stricter check
  * can land in a future phase if a consumer asks.)
  */
- struct TstRawReceiver *tst_raw_receiver_open_listener(const char *srt_url);
+ struct tst_raw_receiver_t *tst_raw_receiver_open_listener(const char *srt_url);
 
- void tst_raw_receiver_close(struct TstRawReceiver *p);
+ void tst_raw_receiver_close(struct tst_raw_receiver_t *p);
 
 /**
  * Cancel a `tst_raw_receiver_t`. Unblocks a thread parked in `_recv`
@@ -797,7 +797,7 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * After cancel, `_recv` returns `TST_E_CLOSED` (not `TST_E_END_OF_STREAM`).
  * The handle must still be `_close`'d to free.
  */
- int tst_raw_receiver_cancel(struct TstRawReceiver *p);
+ int tst_raw_receiver_cancel(struct tst_raw_receiver_t *p);
 
 /**
  * Snapshot stats for a `tst_raw_receiver_t` into `*out`.
@@ -805,7 +805,7 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
  * null, or `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_raw_receiver_get_stats(struct TstRawReceiver *p, struct TstRawReceiverStats *out);
+ int tst_raw_receiver_get_stats(struct tst_raw_receiver_t *p, struct tst_raw_receiver_stats_t *out);
 
 /**
  * Reset stats counters for a `tst_raw_receiver_t` to zero.
@@ -813,7 +813,7 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
  * or `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_raw_receiver_reset_stats(struct TstRawReceiver *p);
+ int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
 
 /**
  * Block until one message arrives. Copies up to `len` bytes into `buf`
@@ -828,7 +828,7 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  *   (`*out_len` is left unmodified)
  * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
  */
- int tst_raw_receiver_recv(struct TstRawReceiver *p, uint8_t *buf, size_t len, size_t *out_len);
+ int tst_raw_receiver_recv(struct tst_raw_receiver_t *p, uint8_t *buf, size_t len, size_t *out_len);
 
 /**
  * Open a `tst_managed_raw_receiver_t`. URL-driven mode dispatch
@@ -844,8 +844,8 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * initial connect/bind failure.
  */
 
-struct TstManagedRawReceiver *tst_managed_raw_receiver_open(const char *srt_url,
-                                                            const struct tst_reconnect_policy_t *policy);
+struct tst_managed_raw_receiver_t *tst_managed_raw_receiver_open(const char *srt_url,
+                                                                 const struct tst_reconnect_policy_t *policy);
 
 /**
  * Explicit listener-mode open for the managed receiver. Forces
@@ -859,8 +859,8 @@ struct TstManagedRawReceiver *tst_managed_raw_receiver_open(const char *srt_url,
  * or `TST_E_TRANSPORT` on the initial bind/accept failure.
  */
 
-struct TstManagedRawReceiver *tst_managed_raw_receiver_open_listener(const char *srt_url,
-                                                                     const struct tst_reconnect_policy_t *policy);
+struct tst_managed_raw_receiver_t *tst_managed_raw_receiver_open_listener(const char *srt_url,
+                                                                          const struct tst_reconnect_policy_t *policy);
 
 /**
  * Block until one message arrives. Semantics match `tst_raw_receiver_recv`;
@@ -868,7 +868,7 @@ struct TstManagedRawReceiver *tst_managed_raw_receiver_open_listener(const char 
  * returning an error only once the retry budget is exhausted.
  */
 
-int tst_managed_raw_receiver_recv(struct TstManagedRawReceiver *p,
+int tst_managed_raw_receiver_recv(struct tst_managed_raw_receiver_t *p,
                                   uint8_t *buf,
                                   size_t len,
                                   size_t *out_len);
@@ -879,9 +879,9 @@ int tst_managed_raw_receiver_recv(struct TstManagedRawReceiver *p,
  * Idempotent. After cancel, `_recv` returns `TST_E_CLOSED`. The handle
  * must still be `_close`'d to free memory.
  */
- int tst_managed_raw_receiver_cancel(struct TstManagedRawReceiver *p);
+ int tst_managed_raw_receiver_cancel(struct tst_managed_raw_receiver_t *p);
 
- void tst_managed_raw_receiver_close(struct TstManagedRawReceiver *p);
+ void tst_managed_raw_receiver_close(struct tst_managed_raw_receiver_t *p);
 
 /**
  * Snapshot stats for a `tst_managed_raw_receiver_t` into `*out`.
@@ -890,8 +890,8 @@ int tst_managed_raw_receiver_recv(struct TstManagedRawReceiver *p,
  * null, or `TST_E_CLOSED` if the receiver has been closed.
  */
 
-int tst_managed_raw_receiver_get_stats(struct TstManagedRawReceiver *p,
-                                       struct TstRawReceiverStats *out);
+int tst_managed_raw_receiver_get_stats(struct tst_managed_raw_receiver_t *p,
+                                       struct tst_raw_receiver_stats_t *out);
 
 /**
  * Reset stats counters for a `tst_managed_raw_receiver_t` to zero.
@@ -899,7 +899,7 @@ int tst_managed_raw_receiver_get_stats(struct TstManagedRawReceiver *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
  * or `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_managed_raw_receiver_reset_stats(struct TstManagedRawReceiver *p);
+ int tst_managed_raw_receiver_reset_stats(struct tst_managed_raw_receiver_t *p);
 
 /**
  * Open a `tst_raw_sender_t` connected via SRT.

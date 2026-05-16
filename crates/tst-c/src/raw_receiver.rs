@@ -470,6 +470,9 @@ pub unsafe extern "C" fn tst_managed_raw_receiver_cancel(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
+    // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+    // recv holds it). The was_cancelled flag + cancel-handle Arc are
+    // accessible without locking.
     handle.was_cancelled.store(true, Ordering::Release);
     if let Some(c) = &handle.cancel {
         c.cancel();

@@ -34,6 +34,9 @@ include = [
     "TstMuxSenderStats",
     "TstSenderStats",
     "TstRawSenderStats",
+    "TstRawReceiver",
+    "TstManagedRawReceiver",
+    "TstRawReceiverStats",
     "TST_STATS_MAX_STREAMS",
 ]
 
@@ -67,6 +70,10 @@ include = [
 "TstMuxerStats"        = "tst_muxer_stats_t"
 "TstMuxSenderStats"    = "tst_mux_sender_stats_t"
 "TstRawSenderStats"    = "tst_raw_sender_stats_t"
+# Receiver handles
+"TstRawReceiver"       = "tst_raw_receiver_t"
+"TstManagedRawReceiver" = "tst_managed_raw_receiver_t"
+"TstRawReceiverStats"  = "tst_raw_receiver_stats_t"
 
 [enum]
 prefix_with_name = true

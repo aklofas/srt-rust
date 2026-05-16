@@ -93,6 +93,33 @@ ALLOWLIST=(
     "tst_sender_reset_stats"
     "tst_raw_sender_get_stats"
     "tst_raw_sender_reset_stats"
+
+    # --- Phase 1 receiver surface + bundled sender cancel (added 2026-05-15;
+    #     C ABI rustdoc backfill on corresponding Rust methods is a P2
+    #     follow-up — RawReceiver::recv_one/stats/reset_stats/cancel_handle,
+    #     RawSender::cancel_handle, Sender::cancel_handle, MuxSender::cancel_handle,
+    #     ManagedReceiveTransport entry points all need `# C ABI` blocks added.
+    #     See ROADMAP.md P2 backlog.) ---
+    "tst_raw_receiver_open"
+    "tst_raw_receiver_open_listener"
+    "tst_raw_receiver_recv"
+    "tst_raw_receiver_cancel"
+    "tst_raw_receiver_close"
+    "tst_raw_receiver_get_stats"
+    "tst_raw_receiver_reset_stats"
+    "tst_managed_raw_receiver_open"
+    "tst_managed_raw_receiver_open_listener"
+    "tst_managed_raw_receiver_recv"
+    "tst_managed_raw_receiver_cancel"
+    "tst_managed_raw_receiver_close"
+    "tst_managed_raw_receiver_get_stats"
+    "tst_managed_raw_receiver_reset_stats"
+    "tst_raw_sender_cancel"
+    "tst_managed_raw_sender_cancel"
+    "tst_ts_sender_cancel"
+    "tst_managed_ts_sender_cancel"
+    "tst_mux_sender_cancel"
+    "tst_managed_mux_sender_cancel"
 )
 
 # Step 1: enumerate C exports

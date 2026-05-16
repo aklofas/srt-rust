@@ -7,6 +7,38 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-c Tier 1 multi-platform (plan #64)
+
+### Added
+
+- **CI: Tier 1 multi-platform matrix.** `.github/workflows/ci.yml`
+  refactored from a single `test-linux` job into a matrix-strategy
+  `build` job with 4 entries: Linux x86_64 (gating, unchanged),
+  Linux aarch64 (phase-in informational), macOS arm64 (phase-in
+  informational), Windows x86_64 MSVC (phase-in informational).
+  Native runners on all 4 — no cross-compilation. After ~14
+  consecutive green nightly days on the 3 new platforms a separate
+  follow-up plan (P2) flips `continue-on-error: true` to `false`,
+  converting them to gating.
+- **`docs/compatibility.md` build-targets table** documenting Tier 1
+  (Linux x86_64 / Linux aarch64 / macOS arm64 / Windows MSVC) +
+  Tier 2 (Linux musl) + Deferred (iOS, Android, MinGW, macOS Intel)
+  status per platform, with phase-in semantics explained inline.
+- **`docs/deferred-features.md` entries** for iOS (device + simulator),
+  Android (arm64 + x86_64 emulator + armv7), macOS x86_64 Intel, and
+  Windows MinGW — each with concrete consumer-driven triggers and a
+  scope-when-added note. iOS + Android gated on the future
+  `srt-uniffi` plan; macOS Intel + MinGW gated on specific consumer
+  asks.
+- **`README.md` Platform support subsection** under `## Building`
+  listing the 4 Tier 1 platforms and cross-linking
+  `docs/compatibility.md` + `docs/deferred-features.md`. Stale
+  "multi-platform builds … next on the roadmap" sentence near the
+  C example removed (multi-platform ships today; only `srt-jni` /
+  `srt-uniffi` remain on the roadmap).
+
+---
+
 ## [Unreleased] — libsrt wire-stats at the C ABI (plan #63)
 
 ### Added

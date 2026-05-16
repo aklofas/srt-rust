@@ -7,6 +7,25 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Phase 2 of tst-c receiver surface
+
+### Added
+
+- **`tst-c` receiver surface Phase 2** — `tst_receiver_t` and
+  `tst_managed_receiver_t` opaque handles wrapping
+  `tst_pipeline::Receiver<SrtTransport>`. 14 new C entry points
+  (open / open_listener / recv_packet / cancel / close / get_stats /
+  reset_stats × plain + managed). `tst_receiver_recv_packet`
+  delivers one 188-byte aligned MPEG-TS packet per call with sync
+  recovery already done; the syncer counters
+  (`bytes_skipped_for_sync`, `resync_events`) reach the C consumer
+  via the new `tst_receiver_stats_t` struct.
+  See `examples/c/receiving/recv_ts_to_file.c` for the teaching
+  example. Phase 3 (`tst_demux_receiver_t` + typed events) remains
+  on the P0 backlog.
+
+---
+
 ## [Unreleased] — Phase 1 of tst-c receiver surface
 
 ### Added

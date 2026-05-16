@@ -571,15 +571,16 @@ the trigger that would unblock it.
 
 ## Multi-program demux at the C ABI
 
-- **Status:** Deferred.
-- **Why deferred:** `mpegts::demux` gained multi-program support in 2026-05-03,
-  but the C ABI receiver surface itself doesn't yet exist — `tst-c` exposes
-  only sender-side handles today. Multi-program demux exposure rides with the
-  future receiver C ABI plan so receiver-side surface is designed coherently in
-  one pass rather than piecemeal.
-- **Trigger to revisit:** When the receiver-side `tst-c` plan is written and
-  the receiver-surface design is settled, multi-program demux event emission
-  to C callers gets folded into that plan.
+- **Status:** Deferred. Raw byte receiver (`tst_raw_receiver_t`) and
+  TS-packet receiver (`tst_receiver_t`) ship in Phases 1 + 2; the
+  demux event surface (`tst_demux_receiver_t`) is Phase 3.
+- **Why deferred:** Multi-program demux event emission requires the
+  typed demux event surface that Phase 3 will introduce. Folding it
+  into the Phase 3 plan keeps the receiver-side design coherent rather
+  than piecemeal.
+- **Trigger to revisit:** Phase 3 (`tst_demux_receiver_t` +
+  `TstDemuxEvent` C surface); multi-program demux event emission
+  folds into that plan.
 - **Scope when added:** `TstDemuxEvent` discriminator with `ProgramMap` arm
   carrying `program_number`; `TstStreamInfo` C-side analogue with
   `program_number` field; per-program tracker query API if useful
@@ -848,27 +849,20 @@ the trigger that would unblock it.
 
 ## Pre-emptive close cancellation at the C ABI
 
-- **Status:** The Rust core ships `tst_srt::CancelHandle` plus
-  `Transport::cancel_handle()` / `RecvTransport::cancel_handle()` and
-  threads them through every sender + receiver shell.
-  `MuxSender::close()` cancels-first to unblock a peer thread parked in
-  libsrt's `srt_sendmsg`. The `tst-c` ABI surface is deferred.
-- **Why deferred:** The C ABI's `Handle<T>` (= `Mutex<Option<T>>`) has
-  the same blocking issue at the C layer that the Rust shells had —
-  `tst_*_close` waits on the handle's mutex, so it competes with a
-  parked C-side data-path call. Fixing it cleanly means giving every
-  C handle type a separate cancel-token field outside the mutex, plus
-  a `tst_*_cancel(handle)` entry point per variant. That work is
-  scoped to land alongside the receiver-side C ABI plan so both
-  designs reach the C surface in one coherent shape (e.g. cancel
-  semantics for the future `tst_receiver_t` recv loop are designed
-  jointly with the existing sender variants, rather than retrofitting
-  later).
-- **Trigger to revisit:** The receiver-side C ABI design lands and
-  pulls cancel into its scope. At that point all six sender variants
-  plus the new receiver variants gain `_cancel` entry points and
-  thread-safe cancel tokens; the cancel tokens map directly to the
-  Rust-side `Box<dyn TransportCancel>` already exposed.
+- **Status:** Partially shipped. All six sender `_cancel` entry points
+  ship in Phase 1 (plan #59). `tst_raw_receiver_cancel` ships in
+  Phase 1; `tst_receiver_cancel` and its managed sibling ship in
+  Phase 2 (plan #60). The remaining `tst_demux_receiver_cancel` rides
+  with Phase 3.
+- **Why deferred (originally):** The C ABI's `Handle<T>`
+  (= `Mutex<Option<T>>`) has the same blocking issue at the C layer
+  that the Rust shells had — `tst_*_close` waits on the handle's
+  mutex, so it competes with a parked C-side data-path call. Fixing
+  it cleanly requires a side-channel `Arc<dyn TransportCancel>` +
+  `Arc<AtomicBool>` captured at `_open` time, outside the mutex.
+  That design was implemented in Phase 1 and carried forward.
+- **Trigger to revisit:** Phase 3 (`tst_demux_receiver_t`);
+  `tst_demux_receiver_cancel` folds into that plan.
 
 ## Typed WebVTT cue substrate (`mpegts::webvtt::format_pes_payload` + `WebVttCue`)
 

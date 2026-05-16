@@ -102,6 +102,23 @@ impl From<&tst_pipeline::RawSenderStats> for TstRawSenderStats {
     }
 }
 
+/// `repr(C)` mirror of `tst_pipeline::RawReceiverStats`. Size 16 B.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct TstRawReceiverStats {
+    pub bytes_received: u64,
+    pub packets_received: u64,
+}
+
+impl From<&tst_pipeline::RawReceiverStats> for TstRawReceiverStats {
+    fn from(s: &tst_pipeline::RawReceiverStats) -> Self {
+        Self {
+            bytes_received: s.bytes_received,
+            packets_received: s.packets_received,
+        }
+    }
+}
+
 /// `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6172 B.
 #[repr(C)]
 pub struct TstMuxerStats {

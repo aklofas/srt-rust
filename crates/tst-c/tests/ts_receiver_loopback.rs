@@ -120,10 +120,7 @@ fn loopback_ts_sender_to_ts_receiver_delivers_aligned_packets_and_eos() {
             }
             if std::time::Instant::now() > deadline {
                 unsafe { tst_sender_config_free(cfg) };
-                panic!(
-                    "tst_sender_open timed out after 5s: {}",
-                    last_error_msg()
-                );
+                panic!("tst_sender_open timed out after 5s: {}", last_error_msg());
             }
             thread::sleep(Duration::from_millis(50));
         };
@@ -139,12 +136,7 @@ fn loopback_ts_sender_to_ts_receiver_delivers_aligned_packets_and_eos() {
         // packets on the wire — exactly what the receiver expects.
         let stream = synthetic_ts(N_PACKETS);
         let rc = unsafe { tst_sender_send_ts(tx, stream.as_ptr(), stream.len()) };
-        assert_eq!(
-            rc,
-            0,
-            "send_ts expected 0, got {rc}: {}",
-            last_error_msg()
-        );
+        assert_eq!(rc, 0, "send_ts expected 0, got {rc}: {}", last_error_msg());
 
         // Brief drain pause — SRT's send queue is asynchronous with
         // respect to close. 200 ms covers typical loopback latency

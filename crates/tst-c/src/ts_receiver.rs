@@ -51,9 +51,7 @@ pub struct TstReceiver {
 /// last-error for any malformed URL, unsupported key, unknown key, or
 /// invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_receiver_open(
-    srt_url: *const libc::c_char,
-) -> *mut TstReceiver {
+pub unsafe extern "C" fn tst_receiver_open(srt_url: *const libc::c_char) -> *mut TstReceiver {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
         let url = match unsafe { parse_c_srt_url(srt_url) } {
             Ok(u) => u,
@@ -393,9 +391,7 @@ fn managed_open_listener_inner(
     finish_managed_open(managed)
 }
 
-fn finish_managed_open(
-    managed: ManagedReceiveTransport<SrtTransport>,
-) -> *mut TstManagedReceiver {
+fn finish_managed_open(managed: ManagedReceiveTransport<SrtTransport>) -> *mut TstManagedReceiver {
     let rx = Receiver::new(managed);
     let cancel = rx.cancel_handle();
     let was_cancelled = Arc::new(AtomicBool::new(false));
@@ -464,9 +460,7 @@ pub unsafe extern "C" fn tst_managed_receiver_recv_packet(
 /// any thread. Idempotent. After cancel, `_recv_packet` returns
 /// `TST_E_CLOSED`. The handle must still be `_close`'d to free memory.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_managed_receiver_cancel(
-    p: *mut TstManagedReceiver,
-) -> libc::c_int {
+pub unsafe extern "C" fn tst_managed_receiver_cancel(p: *mut TstManagedReceiver) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
@@ -561,8 +555,7 @@ mod tests {
         // Both null pointers trip the p guard first; reaching the buf
         // guard requires a non-null handle, which needs in-process
         // loopback testing — deferred to ts_receiver_loopback.rs.
-        let rc =
-            unsafe { tst_receiver_recv_packet(std::ptr::null_mut(), std::ptr::null_mut()) };
+        let rc = unsafe { tst_receiver_recv_packet(std::ptr::null_mut(), std::ptr::null_mut()) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 

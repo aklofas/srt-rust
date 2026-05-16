@@ -1,0 +1,12 @@
+# ThreadSanitizer suppressions for the nightly CI run.
+#
+# Format: one suppression per line. race:<func-name-substring> /
+# mutex:<...> / thread:<...>. See:
+# https://github.com/google/sanitizers/wiki/ThreadSanitizerSuppressions
+#
+# Adding a suppression: prepend a comment with the date, the symptom,
+# the linked CI run URL, and the planned-fix follow-up. Remove the
+# suppression in the same commit that ships the fix.
+#
+# This file starts empty. Entries land reactively as the first nightly
+# runs surface real findings vs false positives.

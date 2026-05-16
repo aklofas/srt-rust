@@ -452,7 +452,7 @@ proptest! {
         // klv_proptest.rs::imapb_roundtrip lines 73-94). Conservative
         // `length=2` keeps the bound safe for 4-byte tags too.
         let length = 2usize;
-        let tol = imapb_tol(tag.min, tag.max, length);
+        let tol = imapb_tol(tag.min, tag.max, length).tol;
 
         prop_assert!(
             (got - value).abs() <= tol,
@@ -575,14 +575,14 @@ proptest! {
             let got = decoded.horizontal_fov.expect("hfov present");
             // ST 0903.6 §10.1.11: 0..180 deg, 2-byte IMAPB. Compute
             // tolerance per klv_proptest.rs lines 73-94.
-            let tol = imapb_tol(0.0, 180.0, 2);
+            let tol = imapb_tol(0.0, 180.0, 2).tol;
             prop_assert!((got - hfov).abs() <= tol, "hfov delta {} > tol {}", (got - hfov).abs(), tol);
         } else {
             prop_assert_eq!(decoded.horizontal_fov, None);
         }
         if let Some(vfov) = record.vertical_fov {
             let got = decoded.vertical_fov.expect("vfov present");
-            let tol = imapb_tol(0.0, 180.0, 2);
+            let tol = imapb_tol(0.0, 180.0, 2).tol;
             prop_assert!((got - vfov).abs() <= tol, "vfov delta {} > tol {}", (got - vfov).abs(), tol);
         } else {
             prop_assert_eq!(decoded.vertical_fov, None);
@@ -627,12 +627,12 @@ proptest! {
         // decoded value (it's substrate-computed, not caller-supplied).
         if let Some(hfov) = record.horizontal_fov {
             let got = decoded.horizontal_fov.expect("hfov present");
-            let tol = imapb_tol(0.0, 180.0, 2);
+            let tol = imapb_tol(0.0, 180.0, 2).tol;
             prop_assert!((got - hfov).abs() <= tol, "hfov delta {} > tol {}", (got - hfov).abs(), tol);
         }
         if let Some(vfov) = record.vertical_fov {
             let got = decoded.vertical_fov.expect("vfov present");
-            let tol = imapb_tol(0.0, 180.0, 2);
+            let tol = imapb_tol(0.0, 180.0, 2).tol;
             prop_assert!((got - vfov).abs() <= tol, "vfov delta {} > tol {}", (got - vfov).abs(), tol);
         }
         let normalized = VmtiLs {
@@ -703,6 +703,8 @@ proptest! {
     ) {
         let targets: Vec<VTargetPack> = targets
             .into_iter()
+            // pixels = (target_id, centroid_pixel, bbox_top_left, bbox_bottom_right, centroid_pix_row, centroid_pix_col);
+            // scalars = (priority, confidence_level, history, percentage_of_target_pixels, target_color, target_intensity, algorithm_id, detection_status)
             .map(|(pixels, scalars)| {
                 let (target_id, centroid_pixel, bbox_top_left_pixel,
                      bbox_bottom_right_pixel, centroid_pix_row,

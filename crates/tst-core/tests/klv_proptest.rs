@@ -92,11 +92,11 @@ proptest! {
         //
         // Formula extracted to `tests/common::imapb_tol` so the typed-
         // set proptests share the same derivation.
-        let tol = imapb_tol(min, max, length);
+        let bound = imapb_tol(min, max, length);
         prop_assert!(
-            (decoded - value).abs() <= tol,
-            "IMAPB round-trip: decoded {} too far from input {} (tol={}, length={}, min={}, max={})",
-            decoded, value, tol, length, min, max
+            (decoded - value).abs() <= bound.tol,
+            "IMAPB round-trip: decoded {} too far from input {} (tol={}, scale={}, fp_eps={}, length={}, min={}, max={})",
+            decoded, value, bound.tol, bound.scale, bound.fp_eps, length, min, max
         );
     }
 }

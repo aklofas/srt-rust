@@ -7,6 +7,51 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — macOS arm64 phase-in stabilization (plan #66)
+
+### Changed
+- **Loopback integration tests stabilized for Darwin scheduling.**
+  Six tests across `crates/tst-c/tests/` and `crates/tst-srt/tests/`
+  had hardcoded `thread::sleep` drain pauses (100-500 ms) that worked
+  on Linux loopback but raced on the GHA `macos-14` (Apple Silicon)
+  runner. All bumped to 1 s — comfortably covers SRT's 120 ms
+  latency budget plus Darwin scheduling jitter on every platform.
+  Affected tests: `tst-c::raw_receiver_loopback`,
+  `tst-c::ts_receiver_loopback`, `tst-c::stats`,
+  `tst-srt::pipeline_sender`, `tst-srt::pipeline_receiver_live`,
+  `tst-srt::pipeline_receiver_live_corpus`. (Continues the pattern
+  established by the post-plan-#64 hotfix to
+  `tst-c::demux_receiver_loopback`.)
+- **`crates/tst-c/tests/smoke.rs`: cross-platform cdylib name +
+  dylib-search env var.** Was hardcoding `libtstrans.so` +
+  `LD_LIBRARY_PATH`; macOS uses `.dylib` + `DYLD_LIBRARY_PATH`,
+  Windows uses `tstrans.dll` + `PATH`. Refactored to use
+  `std::env::consts::DLL_{PREFIX,SUFFIX}` for the name + a compile-
+  time `cfg!`-evaluated const for the env var name. Windows PATH
+  handling prepends (not replaces) so basic C runtime DLLs stay
+  reachable.
+- **`crates/tst-srt/tests/lifecycle::explicit_close_succeeds`:
+  deterministic accept/close ordering.** Latent race surfaced by
+  plan #67's linux-aarch64 gating promotion — on fast ARM hardware
+  `socket.close()` could win against listener `accept()` returning,
+  leaving `accept` to panic with "Connection was broken." Swapped
+  order: `accept.join()` first, then `socket.close()`. Same
+  verification intent; no race.
+
+### Cfg-gated
+- **`crates/tst-c/tests/symbol_audit`: `#[cfg_attr(not(all(target_os =
+  "linux", target_env = "gnu")), ignore = "..."]`.** The test uses
+  GNU nm with ELF-specific flags and filters ELF housekeeping
+  symbols (`_init`, `_fini`, `__bss_start`, etc.). macOS (Mach-O)
+  and Windows (COFF) have entirely different symbol formats. Linux
+  GNU coverage (x86_64 + aarch64, both gating) is sufficient for the
+  no-Rust-symbol-leak invariant; porting the test would require
+  three separate platform-specific implementations of the same
+  invariant. Documented as Linux-GNU-only by design in the module
+  rustdoc.
+
+---
+
 ## [Unreleased] — Linux aarch64 promoted to gating (plan #67)
 
 ### Changed

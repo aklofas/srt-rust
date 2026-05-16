@@ -12,7 +12,7 @@
 use crate::config::TstReconnectPolicy;
 use crate::error::{TstError, record_eos, record_transport_error, set_last_error};
 use crate::handle::Handle;
-use crate::mux_sender::parse_c_srt_url;
+use crate::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -68,6 +68,10 @@ pub unsafe extern "C" fn tst_raw_receiver_open(
 /// `?mode=` URL value — the `_listener` suffix is authoritative. URLs
 /// with `?mode=caller` are accepted and silently overridden.
 ///
+/// Empty-host URLs like `srt://:7000` are accepted directly; the parser's
+/// requirement for an explicit `?mode=listener` does not apply here because
+/// the entry-point name is already the authoritative listener signal.
+///
 /// (Phase 1 simplification of the design spec §4.2, which originally
 /// proposed rejecting explicit `mode=caller` with `TST_E_INVALID_USAGE`.
 /// The simpler rule is more forgiving and matches what most C consumers
@@ -78,7 +82,7 @@ pub unsafe extern "C" fn tst_raw_receiver_open_listener(
     srt_url: *const libc::c_char,
 ) -> *mut TstRawReceiver {
     crate::panic::ffi_catch(std::ptr::null_mut(), || {
-        let url = match unsafe { parse_c_srt_url(srt_url) } {
+        let url = match unsafe { parse_c_srt_url_listener(srt_url) } {
             Ok(u) => u,
             Err(()) => return std::ptr::null_mut(),
         };
@@ -333,6 +337,10 @@ pub unsafe extern "C" fn tst_managed_raw_receiver_open(
 /// incoming connection. Note: the re-bind + re-accept may block
 /// significantly between attempts depending on the reconnect policy.
 ///
+/// Empty-host URLs like `srt://:7000` are accepted directly; the parser's
+/// requirement for an explicit `?mode=listener` does not apply here because
+/// the entry-point name is already the authoritative listener signal.
+///
 /// Returns `NULL` with `TST_E_INVALID_CONFIG` set for malformed URLs
 /// or `TST_E_TRANSPORT` on the initial bind/accept failure.
 #[unsafe(no_mangle)]
@@ -345,7 +353,7 @@ pub unsafe extern "C" fn tst_managed_raw_receiver_open_listener(
             Some(p) => p.inner.clone(),
             None => tst_pipeline::ReconnectPolicy::default(),
         };
-        let url = match unsafe { parse_c_srt_url(srt_url) } {
+        let url = match unsafe { parse_c_srt_url_listener(srt_url) } {
             Ok(u) => u,
             Err(()) => return std::ptr::null_mut(),
         };

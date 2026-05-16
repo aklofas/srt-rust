@@ -117,11 +117,15 @@ int main(int argc, char **argv) {
      *   For unambiguous listener-mode code, the _listener suffix is clearer
      *   than `?mode=listener` buried in the URL string.
      *
-     * WHY "srt://:7000" (empty host)?
-     *   On Linux the empty host is interpreted as the wildcard address
-     *   (0.0.0.0 for IPv4, :: for IPv6 when dual-stack is enabled).  The
-     *   listener accepts connections from any interface.  For a loopback-
-     *   only listener use "srt://127.0.0.1:7000".
+     * WHY "srt://:7000" (empty host, no ?mode=listener)?
+     *   With _open_listener entry points, the function name is the
+     *   authoritative listener-mode signal.  You can write "srt://:7000"
+     *   (clean form) or "srt://:7000?mode=listener" (explicit form) — both
+     *   work.  The clean form is preferred here for brevity.  The URL's
+     *   empty host is interpreted as the wildcard address (0.0.0.0 for
+     *   IPv4, :: for IPv6 when dual-stack is enabled), so the listener
+     *   accepts connections from any interface.  For a loopback-only
+     *   listener use "srt://127.0.0.1:7000".
      *
      * WHY no ?passphrase=... or ?pbkeylen=... here?
      *   Encryption parameters would require the connecting peer to supply

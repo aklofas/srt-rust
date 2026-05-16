@@ -347,6 +347,58 @@ pub(crate) unsafe fn parse_c_srt_url(srt_url: *const libc::c_char) -> Result<tst
     })
 }
 
+/// Like [`parse_c_srt_url`] but more forgiving for listener-mode entry points:
+/// if the URL omits both a host and `?mode=listener` (e.g. `srt://:7000`),
+/// inject `?mode=listener` and retry. This lets `_open_listener` entry points
+/// accept the clean `srt://:port` form directly — the `_listener` suffix in
+/// the function name is the authoritative listener-mode signal, so requiring
+/// the URL to also carry `?mode=listener` is redundant.
+///
+/// Any error other than [`tst_srt::UrlError::MissingHost`] is returned
+/// unchanged (the first-pass error is already recorded in the thread-local
+/// last-error by `parse_c_srt_url`).
+///
+/// Called by `tst_*_open_listener` entry points. Plain `tst_*_open` entry
+/// points keep the strict parse via `parse_c_srt_url` (an empty host is
+/// meaningless for caller mode).
+pub(crate) unsafe fn parse_c_srt_url_listener(
+    srt_url: *const libc::c_char,
+) -> Result<tst_srt::SrtUrl, ()> {
+    // First-pass: the fast common path (URL already has a host or already
+    // carries ?mode=listener).
+    let first = unsafe { parse_c_srt_url(srt_url) };
+    if first.is_ok() {
+        return first;
+    }
+    // First pass failed and already recorded the error. To branch on
+    // MissingHost specifically, re-parse here directly. The cost is negligible
+    // (one extra string parse on an error path).
+    if srt_url.is_null() {
+        // Null pointer: already handled by parse_c_srt_url above.
+        return Err(());
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(srt_url) }
+        .to_string_lossy()
+        .into_owned();
+    match tst_srt::SrtUrl::parse(&s) {
+        Err(tst_srt::UrlError::MissingHost) => {}
+        _ => {
+            // Some other error (or unexpectedly Ok) — the first pass already
+            // recorded it; return the original Err(()).
+            return Err(());
+        }
+    }
+    // MissingHost on an empty-host URL — inject mode=listener and retry.
+    let sep = if s.contains('?') { '&' } else { '?' };
+    let augmented = format!("{s}{sep}mode=listener");
+    tst_srt::SrtUrl::parse(&augmented).map_err(|e| {
+        set_last_error(
+            TstError::InvalidConfig,
+            &format!("invalid srt url: {e}"),
+        );
+    })
+}
+
 // ------------------------------------------------------------------
 // tst_managed_mux_sender_t (managed L2)
 // ------------------------------------------------------------------

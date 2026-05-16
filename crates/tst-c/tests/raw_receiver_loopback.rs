@@ -53,11 +53,12 @@ fn loopback_caller_sender_to_listener_receiver_delivers_bytes_and_eos() {
     let (ready_tx, ready_rx) = mpsc::channel::<()>();
 
     let receiver_thread = thread::spawn(move || {
-        // Empty-host listener URL requires ?mode=listener per the URL parser
-        // (Mode::Listener is the only mode that accepts an empty host).
-        // Equivalently, srt://0.0.0.0:{port} with the _open_listener entry
-        // point would also work; empty-host is more explicit about wildcard.
-        let url = CString::new(format!("srt://:{port}?mode=listener")).unwrap();
+        // Empty-host URL: tst_raw_receiver_open_listener accepts srt://:{port}
+        // directly. The entry-point name is the authoritative listener-mode
+        // signal; ?mode=listener in the URL is not required (and still works
+        // if present). The empty host binds to 0.0.0.0 (wildcard), so all
+        // loopback addresses are accepted.
+        let url = CString::new(format!("srt://:{port}")).unwrap();
 
         // Blocks until a peer connects (bind + accept internally). The URL
         // has no host component — tst-c's listen helper treats an empty host

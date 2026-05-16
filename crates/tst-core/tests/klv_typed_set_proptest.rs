@@ -24,9 +24,9 @@
 //! ## Why this is its own file (not `klv_proptest.rs`)
 //!
 //! `klv_proptest.rs` covers the **substrate** (BER, BER-OID, IMAPB).
-//! This file covers the **typed sets that sit on top**. Splitting keeps
-//! each file under ~300 LoC and makes the "where do I add the proptest
-//! for my new typed set?" answer mechanical: this file.
+//! This file covers the **typed sets that sit on top**. Splitting by
+//! layer keeps each file focused and makes the "where do I add the
+//! proptest for my new typed set?" answer mechanical: this file.
 //!
 //! ## Failure-mode discipline
 //!
@@ -38,6 +38,10 @@
 //! property test.
 
 use proptest::prelude::*;
+
+// ----------------------------------------------------------------------------
+// ST 0605 PrecisionTimeStampPack
+// ----------------------------------------------------------------------------
 
 use tst_core::klv::st0605::{self, PrecisionTimeStampPack, TimeStatus};
 
@@ -307,9 +311,10 @@ proptest! {
         which in 0u8..10,
         // Generic value space large enough to feed any single field.
         // Bytes: any opaque payload. String: ASCII subset 0x20..=0x7E
-        // (printable ASCII; lenient UTF-8 decode is identity on this
-        // subset, so round-trip is exact). Range 1..=32 keeps things
-        // BER-short-form (length ≤ 127) and proptest case fast.
+        // (printable ASCII; trivially valid UTF-8, so the strict-UTF-8
+        // decode at st0601/mod.rs:923 round-trips byte-identical).
+        // Range 1..=32 keeps things BER-short-form (length ≤ 127) and
+        // proptest case fast.
         bytes in proptest::collection::vec(any::<u8>(), 1..=32),
         s in "[ -~]{1,32}",
         v_u8 in any::<u8>(),
@@ -326,8 +331,8 @@ proptest! {
             1 => record.platform_tail_number = Some(s),
             2 => record.platform_designation = Some(s),
             3 => record.image_source_sensor = Some(s),
-            // Tag 12 image_coordinate_system: lenient decode accepts
-            // any string but spec values are short ("WGS84" etc).
+            // Tag 12 image_coordinate_system: decode accepts any valid
+            // UTF-8 but spec values are short ("WGS84" etc).
             // ASCII strategy is in-spec for the values encoders produce.
             4 => record.image_coordinate_system = Some(s),
             5 => record.platform_call_sign = Some(s),
@@ -389,7 +394,6 @@ proptest! {
         // (tag_id, min, max, field-getter). Eight representative tags
         // covering signed/unsigned and the integer-width spectrum.
         struct ImapbTag {
-            #[allow(dead_code)] // ID retained for failure-message clarity
             id: u8,
             min: f64,
             max: f64,
@@ -440,21 +444,12 @@ proptest! {
         let decoded = st0601::decode(&buf).expect("decode");
         let got = (tag.get)(&decoded).expect("field must be present after round-trip");
 
-        // Tolerance derivation (see klv_proptest.rs::imapb_roundtrip
-        // lines 73-94): max of IMAPB quantization step and f64-ULP
-        // floor scaled by field magnitude with a safety factor.
-        let span = tag.max - tag.min;
-        // Wire byte width for this tag — read from the encoded bytes is
-        // overkill; use the known per-tag widths above. The 4-byte tags
-        // (13, 14, 21, 90) give the tightest scale; widen the tolerance
-        // by computing for the smallest width we encode (2 bytes) so the
-        // bound is safe for all members of the array.
-        let length = 2usize;  // conservative — i32 tags get tighter actual scale
-        let log2_ceil = span.log2().ceil();
-        let scale = 2f64.powf(log2_ceil) / 2f64.powi(8 * length as i32 - 1);
-        let magnitude = span.max(tag.min.abs()).max(tag.max.abs()).max(1.0);
-        let fp_eps = f64::EPSILON * magnitude * 4.0;
-        let tol = scale.max(fp_eps);
+        // IMAPB tolerance derivation: see the `imapb_tol` helper at the
+        // bottom of this file (formula mirrored from
+        // klv_proptest.rs::imapb_roundtrip lines 73-94). Conservative
+        // `length=2` keeps the bound safe for 4-byte tags too.
+        let length = 2usize;
+        let tol = imapb_tol(tag.min, tag.max, length);
 
         prop_assert!(
             (got - value).abs() <= tol,
@@ -630,12 +625,12 @@ proptest! {
         if let Some(hfov) = record.horizontal_fov {
             let got = decoded.horizontal_fov.expect("hfov present");
             let tol = imapb_tol(0.0, 180.0, 2);
-            prop_assert!((got - hfov).abs() <= tol);
+            prop_assert!((got - hfov).abs() <= tol, "hfov delta {} > tol {}", (got - hfov).abs(), tol);
         }
         if let Some(vfov) = record.vertical_fov {
             let got = decoded.vertical_fov.expect("vfov present");
             let tol = imapb_tol(0.0, 180.0, 2);
-            prop_assert!((got - vfov).abs() <= tol);
+            prop_assert!((got - vfov).abs() <= tol, "vfov delta {} > tol {}", (got - vfov).abs(), tol);
         }
         let normalized = VmtiLs {
             checksum: decoded.checksum,

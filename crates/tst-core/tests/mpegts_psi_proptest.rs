@@ -136,6 +136,16 @@ proptest! {
         prop_assert_eq!(parsed[0].data[0] & 0xC0, 0xC0);
         prop_assert_eq!(parsed[0].data[3] & 0xC0, 0xC0);
         prop_assert_eq!(parsed[0].data[6] & 0xC0, 0xC0);
+        // Unpack each 22-bit value and assert it matches the input —
+        // catches swapped byte order, wrong bit-width masks, or
+        // rate1/rate2/rate3 slot mix-up that the reserved-bit check
+        // alone would miss.
+        let unpack_22 = |b: &[u8]| -> u32 {
+            ((b[0] as u32 & 0x3F) << 16) | ((b[1] as u32) << 8) | (b[2] as u32)
+        };
+        prop_assert_eq!(unpack_22(&parsed[0].data[0..3]), input_leak_rate);
+        prop_assert_eq!(unpack_22(&parsed[0].data[3..6]), buffer_size);
+        prop_assert_eq!(unpack_22(&parsed[0].data[6..9]), output_leak_rate);
     }
 
     /// User-private descriptor (tag in 0x40..=0xFF) builder → walk
@@ -249,6 +259,9 @@ proptest! {
             // Pack/unpack masks: tt_type keeps low 5 bits; mag keeps low 3.
             prop_assert_eq!(got.teletext_type, tt_type & 0x1F);
             prop_assert_eq!(got.magazine_number, mag & 0x07);
+            // page_number is BCD-encoded per spec, but the builder/parser
+            // pass it through byte-identical; the proptest verifies the
+            // wire round-trip only, not BCD semantic validity.
             prop_assert_eq!(got.page_number, *page);
         }
     }

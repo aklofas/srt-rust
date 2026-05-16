@@ -17,9 +17,7 @@
 #[allow(unused_imports)]
 use crate::config::TstReconnectPolicy;
 use crate::demux_config::TstDemuxConfig;
-#[allow(unused_imports)]
 use crate::error::{TstError, record_eos, record_transport_error, set_last_error};
-#[allow(unused_imports)]
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
 use crate::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
@@ -28,12 +26,10 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use tst_pipeline::DemuxReceiver;
-#[allow(unused_imports)]
 use tst_pipeline::DemuxReceiverError;
 #[allow(unused_imports)]
 use tst_pipeline::ManagedReceiveTransport;
 use tst_pipeline::TransportCancel;
-#[allow(unused_imports)]
 use tst_pipeline::TransportError;
 use tst_srt::SrtTransport;
 use tst_srt::SrtUrl;
@@ -201,6 +197,99 @@ pub unsafe extern "C" fn tst_demux_receiver_close(p: *mut TstDemuxReceiver) {
     drop(boxed);
 }
 
+/// Block until one typed `TstEvent` is ready, then populate
+/// `*out_event` with the converted event.
+///
+/// **Borrowed buffer lifetime (design §4.5):** pointer fields on
+/// `*out_event` borrow from this handle's `EventArena`. They are
+/// valid until the next `_recv_event` / `_close` call on the same
+/// handle. Callers wanting longer lifetime memcpy out before the
+/// next call.
+///
+/// Returns:
+/// - `0` on success (`*out_event` populated; pointer fields borrow)
+/// - `TST_E_END_OF_STREAM` (-12) on graceful peer close
+/// - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
+/// - `TST_E_TRANSPORT` (-8) on transport failure
+/// - `TST_E_INVALID_TS` (-3) on a demuxer error (strict-mode rejection
+///   or unrecoverable packet malformation)
+/// - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+///
+/// On any non-zero return the contents of `*out_event` are unspecified.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_receiver_recv_event(
+    p: *mut TstDemuxReceiver,
+    out_event: *mut TstEvent,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out_event.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out_event pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    let was_cancelled = handle.was_cancelled.clone();
+    handle.inner.with_inner_mut(|rx| match rx.recv_event() {
+        Ok(Some(ev)) => {
+            let mut arena = handle.arena.lock().expect("event arena Mutex poisoned");
+            // SAFETY: out_event non-null per guard above. event::convert
+            // writes through the pointer; pointer fields on the result
+            // alias the arena Vecs (held under the arena Mutex for the
+            // duration of this call; the arena Mutex is released before
+            // the closure returns, but Vec base pointers are stable
+            // until the next convert() call which re-clears them — see
+            // the design §4.5 lifetime contract).
+            unsafe {
+                crate::event::convert(&mut arena, &ev, &mut *out_event);
+            }
+            0
+        }
+        Ok(None) => {
+            if was_cancelled.load(Ordering::Acquire) {
+                set_last_error(TstError::Closed, "receiver was cancelled or closed by caller");
+                TstError::Closed as i32
+            } else {
+                record_eos();
+                TstError::EndOfStream as i32
+            }
+        }
+        Err(DemuxReceiverError::Transport(e)) => {
+            // Same Broken-on-non-cancelled → EOS mapping as Phase 2's
+            // tst_receiver_recv_packet (peer FIN surfaces as Broken
+            // from libsrt; ManagedReceiveTransport retries internally,
+            // so a Broken reaching the plain receiver is a peer close).
+            if let TransportError::Broken(_) = &e {
+                if !was_cancelled.load(Ordering::Acquire) {
+                    record_eos();
+                    return TstError::EndOfStream as i32;
+                }
+            }
+            if let TransportError::Closed = &e {
+                if was_cancelled.load(Ordering::Acquire) {
+                    set_last_error(
+                        TstError::Closed,
+                        "receiver was cancelled or closed by caller",
+                    );
+                    return TstError::Closed as i32;
+                }
+                record_eos();
+                return TstError::EndOfStream as i32;
+            }
+            record_transport_error(&e);
+            unsafe { crate::error::tst_get_last_error() }
+        }
+        Err(DemuxReceiverError::Demux(e)) => {
+            set_last_error(TstError::InvalidTs, &format!("demux error: {e}"));
+            TstError::InvalidTs as i32
+        }
+        Err(e) => {
+            set_last_error(TstError::Internal, &format!("unexpected demux receiver error: {e}"));
+            TstError::Internal as i32
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,5 +299,20 @@ mod tests {
         unsafe {
             tst_demux_receiver_close(std::ptr::null_mut());
         }
+    }
+
+    #[test]
+    fn null_handle_recv_event_returns_invalid_config() {
+        let mut ev = TstEvent::default();
+        let rc = unsafe { tst_demux_receiver_recv_event(std::ptr::null_mut(), &mut ev) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_out_recv_event_returns_invalid_config() {
+        let rc = unsafe {
+            tst_demux_receiver_recv_event(std::ptr::null_mut(), std::ptr::null_mut())
+        };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 }

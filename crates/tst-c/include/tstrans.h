@@ -1032,6 +1032,18 @@ int tst_managed_raw_sender_get_stats(struct tst_managed_raw_sender_t *p,
  void tst_sender_close(struct tst_sender_t *p);
 
 /**
+ * Cancel a `tst_sender_t`. Unblocks a thread parked in `_send`
+ * within one libsrt I/O cycle (~3-10 ms) by closing the underlying
+ * libsrt socket. Safe to call from any thread. Idempotent.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ *
+ * After cancel, `_send` returns `TST_E_CLOSED`. The handle must still
+ * be `_close`'d to free.
+ */
+ int tst_ts_sender_cancel(struct tst_sender_t *p);
+
+/**
  * Open a `tst_managed_sender_t` connected via SRT.
  *
  * `srt_url` is a `srt://host:port?key=value&...` URL. Query
@@ -1059,6 +1071,16 @@ struct tst_managed_sender_t *tst_managed_sender_open(const char *srt_url,
  int tst_managed_sender_reset_stats(struct tst_managed_sender_t *p);
 
  void tst_managed_sender_close(struct tst_managed_sender_t *p);
+
+/**
+ * Cancel a `tst_managed_sender_t`. Same semantics as
+ * `tst_ts_sender_cancel`; reaches the currently-active inner
+ * transport's cancel handle through `ManagedTransport`'s atomic
+ * snapshot.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ */
+ int tst_managed_ts_sender_cancel(struct tst_managed_sender_t *p);
 
 #ifdef __cplusplus
 }  // extern "C"

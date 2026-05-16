@@ -49,13 +49,13 @@
 #include <string.h>
 
 static const char *kind_name(int kind) {
-    /* Map TST_EVENT_KIND_T_* discriminator to a short tag string for the log. */
+    /* Map TST_EVENT_KIND_* discriminator to a short tag string for the log. */
     switch (kind) {
-        case TST_EVENT_KIND_T_PROGRAM_MAP:   return "PMT ";
-        case TST_EVENT_KIND_T_SAMPLE:        return "SMPL";
-        case TST_EVENT_KIND_T_METADATA:      return "META";
-        case TST_EVENT_KIND_T_DISCONTINUITY: return "DISC";
-        case TST_EVENT_KIND_T_NON_CONFORMANT: return "NONC";
+        case TST_EVENT_KIND_PROGRAM_MAP:   return "PMT ";
+        case TST_EVENT_KIND_SAMPLE:        return "SMPL";
+        case TST_EVENT_KIND_METADATA:      return "META";
+        case TST_EVENT_KIND_DISCONTINUITY: return "DISC";
+        case TST_EVENT_KIND_NON_CONFORMANT: return "NONC";
         default:                           return "????";
     }
 }
@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
             /* Tag-then-switch — discriminator-first printing keeps
              * the per-kind detail uniform across event types. */
             switch (ev.kind) {
-                case TST_EVENT_KIND_T_PROGRAM_MAP:
+                case TST_EVENT_KIND_PROGRAM_MAP:
                     fprintf(stdout,
                             "[%s] program=%u pcr_pid=0x%04x streams=%zu klv_links=%zu\n",
                             kind_name(ev.kind),
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
                             ev.u.program_map.stream_count,
                             ev.u.program_map.klv_link_count);
                     break;
-                case TST_EVENT_KIND_T_SAMPLE:
+                case TST_EVENT_KIND_SAMPLE:
                     fprintf(stdout,
                             "[%s] pid=0x%04x pts=%" PRId64
                             " kind=%d codec=%d payload_len=%zu nals=%zu obus=%zu\n",
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
                             ev.u.sample.nal_count,
                             ev.u.sample.obu_count);
                     break;
-                case TST_EVENT_KIND_T_METADATA:
+                case TST_EVENT_KIND_METADATA:
                     fprintf(stdout,
                             "[%s] pid=0x%04x pts=%" PRId64
                             " kind=%d payload_len=%zu seq=%u\n",
@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
                             ev.u.metadata.payload_len,
                             ev.u.metadata.sequence_number);
                     break;
-                case TST_EVENT_KIND_T_DISCONTINUITY:
+                case TST_EVENT_KIND_DISCONTINUITY:
                     fprintf(stdout,
                             "[%s] pid=0x%04x kind=%d cc=%u→%u\n",
                             kind_name(ev.kind),
@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
                             ev.u.discontinuity.cc_expected,
                             ev.u.discontinuity.cc_observed);
                     break;
-                case TST_EVENT_KIND_T_NON_CONFORMANT:
+                case TST_EVENT_KIND_NON_CONFORMANT:
                     fprintf(stdout,
                             "[%s] pid=0x%04x issue=%d detail=%s\n",
                             kind_name(ev.kind),

@@ -1,6 +1,6 @@
 /*
  * recv_klv_to_stdout.c — bind a listener on srt://:7000, recv typed
- * demux events, filter TST_EVENT_KIND_T_METADATA, hex-dump each KLV
+ * demux events, filter TST_EVENT_KIND_METADATA, hex-dump each KLV
  * record to stdout with a PTS + sequence_number prefix.
  *
  * Why this example:
@@ -10,7 +10,7 @@
  *   tools that pipe KLV records to a separate process for
  *   ST 0601 / ST 0903 decoding.
  *
- *   Each TST_EVENT_KIND_T_METADATA event surfaces one KLV record.
+ *   Each TST_EVENT_KIND_METADATA event surfaces one KLV record.
  *   ev.u.metadata.payload is the inner KLV LS bytes (no AU cell
  *   wrap; the demuxer strips the 5-byte H.222.0 §2.12.4.2 header
  *   for sync KLV per plan #25). The payload pointer borrows from
@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
         if (rc == 0) {
             /* Filter — only print metadata events; ignore samples,
              * PMT updates, discontinuities, etc. */
-            if (ev.kind == TST_EVENT_KIND_T_METADATA) {
+            if (ev.kind == TST_EVENT_KIND_METADATA) {
                 klv_count += 1;
                 printf("# pid=0x%04x pts=%" PRId64
                        " kind=%d seq=%u len=%zu\n",

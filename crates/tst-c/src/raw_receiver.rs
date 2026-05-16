@@ -17,6 +17,7 @@ use std::sync::atomic::AtomicBool;
 use tst_pipeline::TransportCancel;
 use tst_pipeline::RawReceiver;
 use tst_srt::SrtTransport;
+use tst_srt::SrtUrl;
 use tst_srt::url::Mode;
 
 // ------------------------------------------------------------------
@@ -26,7 +27,7 @@ use tst_srt::url::Mode;
 pub struct TstRawReceiver {
     inner: Handle<RawReceiver<SrtTransport>>,
     /// Cancel handle snapshotted at `_open` time. Reaches the underlying
-    /// libsrt socket so a blocked `recv_one` returns without waiting on
+    /// libsrt socket so a blocked `_recv` returns without waiting on
     /// the handle's `Mutex`.
     cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
     /// Set by `_cancel` and `_close` so the recv path can distinguish
@@ -81,7 +82,7 @@ pub unsafe extern "C" fn tst_raw_receiver_open_listener(
     })
 }
 
-fn open_caller_inner(url: tst_srt::SrtUrl) -> *mut TstRawReceiver {
+fn open_caller_inner(url: SrtUrl) -> *mut TstRawReceiver {
     let mut socket_cfg = tst_srt::config::SocketConfig::default();
     url.overlay.apply_to_socket(&mut socket_cfg);
     let transport = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
@@ -94,7 +95,7 @@ fn open_caller_inner(url: tst_srt::SrtUrl) -> *mut TstRawReceiver {
     finish_open(transport)
 }
 
-fn open_listener_inner(url: tst_srt::SrtUrl) -> *mut TstRawReceiver {
+fn open_listener_inner(url: SrtUrl) -> *mut TstRawReceiver {
     let mut listener_cfg = tst_srt::config::ListenerConfig::default();
     url.overlay.apply_to_listener(&mut listener_cfg);
     let transport = match crate::listen::listen_srt(&url.host, url.port, &listener_cfg) {

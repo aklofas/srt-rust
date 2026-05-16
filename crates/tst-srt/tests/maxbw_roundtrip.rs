@@ -9,31 +9,19 @@
 
 mod common;
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
 use std::time::Duration;
-use tst_srt::{ListenerBuilder, MaxBandwidth, SocketBuilder};
+use tst_srt::{MaxBandwidth, SocketBuilder};
 
 #[test]
 fn unlimited_max_bandwidth_reaches_libsrt_as_zero() {
     require_loopback!();
-    let mut listener = ListenerBuilder::new()
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
+    let lb = common::Loopback::bind();
+    let port = lb.port;
 
-    let ready = Arc::new(AtomicBool::new(false));
-    let r = ready.clone();
-    let accept_thread = thread::spawn(move || {
-        r.store(true, Ordering::SeqCst);
-        let (sock, _peer) = listener.accept().expect("accept");
+    let accept = lb.spawn_accept(|sock| {
         drop(sock);
     });
-
-    // Wait until the accept thread is about to enter accept().
-    common::wait_for_ready(&ready);
+    accept.wait_ready();
 
     let socket = SocketBuilder::new()
         .max_bandwidth(MaxBandwidth::Unlimited)
@@ -43,5 +31,5 @@ fn unlimited_max_bandwidth_reaches_libsrt_as_zero() {
         .expect("connect");
 
     drop(socket);
-    accept_thread.join().expect("listener thread");
+    accept.join();
 }

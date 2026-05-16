@@ -231,6 +231,48 @@ pub unsafe extern "C" fn tst_receiver_cancel(p: *mut TstReceiver) -> libc::c_int
     0
 }
 
+/// Snapshot stats for a `tst_receiver_t` into `*out`.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+/// null, or `TST_E_CLOSED` if the receiver has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_receiver_get_stats(
+    p: *mut TstReceiver,
+    out: *mut crate::stats::TstReceiverStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|rx| {
+        let stats = crate::stats::TstReceiverStats::from(&rx.stats());
+        // SAFETY: out non-null per guard above.
+        unsafe { *out = stats };
+        0
+    })
+}
+
+/// Reset stats counters for a `tst_receiver_t` to zero. Does not
+/// affect transport state or the syncer state machine.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+/// or `TST_E_CLOSED` if the receiver has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_receiver_reset_stats(p: *mut TstReceiver) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    handle.inner.with_inner_mut(|rx| {
+        rx.reset_stats();
+        0
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,6 +304,19 @@ mod tests {
     #[test]
     fn null_cancel_returns_invalid_config() {
         let rc = unsafe { tst_receiver_cancel(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_get_stats_returns_invalid_config() {
+        let mut stats = crate::stats::TstReceiverStats::default();
+        let rc = unsafe { tst_receiver_get_stats(std::ptr::null_mut(), &mut stats) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_reset_stats_returns_invalid_config() {
+        let rc = unsafe { tst_receiver_reset_stats(std::ptr::null_mut()) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 }

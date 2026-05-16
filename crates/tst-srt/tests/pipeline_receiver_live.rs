@@ -157,11 +157,15 @@ fn end_to_end_sender_to_receiver() {
         sender.send_klv(&klv, pts, 0x00).expect("send_klv");
     }
 
-    // Brief drain pause: SRT's send queue is async w.r.t. close, so
-    // closing immediately can drop in-flight packets before TSBPD on
-    // the peer releases them. 200 ms covers typical loopback latency
-    // plus the 120 ms latency budget.
-    thread::sleep(Duration::from_millis(200));
+    // Drain pause before close — SRT's send queue is async w.r.t.
+    // close. 1 s comfortably covers SRT's 120 ms latency budget plus
+    // loopback scheduling jitter on every platform.
+    //
+    // Bumped from 200 ms in plan #66 — Darwin scheduling on Apple
+    // Silicon (macOS arm64) pushes event emission past the previous
+    // window. Linux loopback tolerates the smaller value but the
+    // extra headroom is platform-stable.
+    thread::sleep(Duration::from_secs(1));
     sender.close();
 
     let (got_pmap, samples, metas) = accept.join();

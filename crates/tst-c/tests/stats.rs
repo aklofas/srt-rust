@@ -198,7 +198,12 @@ fn mux_sender_socket_stats_round_trip() {
         let nal: [u8; 7] = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB, 0xCC];
         let rc = tst_mux_sender_send_video(s, nal.as_ptr(), nal.len(), 0, true);
         assert_eq!(rc, 0);
-        std::thread::sleep(Duration::from_millis(100));
+        // Drain pause before the stats read — SRT's send queue is
+        // asynchronous. 100 ms worked on Linux but Darwin scheduling
+        // on Apple Silicon (plan #66) needs more headroom; 1 s covers
+        // SRT's 120 ms latency budget plus scheduling jitter on every
+        // platform.
+        std::thread::sleep(Duration::from_secs(1));
 
         // LIVE: socket stats reflect the send.
         let mut sock = TstSocketStats::default();

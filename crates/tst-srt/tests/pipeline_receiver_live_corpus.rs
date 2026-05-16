@@ -265,11 +265,15 @@ fn run_one(path: &Path) -> RunOutcome {
     }
     sender.flush().expect("flush");
 
-    // Drain pause: SRT's send queue is async w.r.t. close, and on
-    // 16 MB bursts the last few packets need a real moment to clear
-    // TSBPD on the peer before we close. 500 ms covers the latency
-    // budget plus typical loopback transit.
-    thread::sleep(Duration::from_millis(500));
+    // Drain pause before close — SRT's send queue is async w.r.t.
+    // close, and on 16 MB bursts the last few packets need a real
+    // moment to clear TSBPD on the peer before we close. 1 s covers
+    // the latency budget plus loopback transit on every platform.
+    //
+    // Bumped from 500 ms in plan #66 — Darwin scheduling on Apple
+    // Silicon (macOS arm64) needs more headroom for the corpus test's
+    // burst pattern; the extra headroom is platform-stable.
+    thread::sleep(Duration::from_secs(1));
     sender.close();
 
     // Wait for recv thread, with a generous timeout. If recv hangs

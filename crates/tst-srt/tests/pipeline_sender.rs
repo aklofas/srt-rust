@@ -43,8 +43,14 @@ fn sender_round_trip_one_frame() {
     sender.send_video(&nal, 0, true).expect("send_video");
     sender.send_klv(&klv, 0, 0x00).expect("send_klv");
 
-    // Brief pause to let bytes drain on the wire before close.
-    thread::sleep(Duration::from_millis(200));
+    // Drain pause before close — SRT's send queue is asynchronous
+    // w.r.t. close. 1 s covers the 120 ms latency budget plus
+    // scheduling jitter on every platform.
+    //
+    // Bumped from 200 ms in plan #66 — Darwin scheduling on
+    // Apple Silicon (macOS arm64) pushes timing past the previous
+    // window; the extra headroom is platform-stable.
+    thread::sleep(Duration::from_secs(1));
     sender.close();
 
     let total_bytes = accept.join();

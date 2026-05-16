@@ -138,11 +138,16 @@ fn loopback_ts_sender_to_ts_receiver_delivers_aligned_packets_and_eos() {
         let rc = unsafe { tst_sender_send_ts(tx, stream.as_ptr(), stream.len()) };
         assert_eq!(rc, 0, "send_ts expected 0, got {rc}: {}", last_error_msg());
 
-        // Brief drain pause — SRT's send queue is asynchronous with
-        // respect to close. 200 ms covers typical loopback latency
-        // plus the default 120 ms SRT latency budget. See also
-        // raw_receiver_loopback.rs for the same rationale.
-        thread::sleep(Duration::from_millis(200));
+        // Drain pause before close — SRT's send queue is asynchronous
+        // with respect to close. 1 s comfortably covers SRT's default
+        // 120 ms latency budget plus loopback scheduling jitter on every
+        // platform.
+        //
+        // Bumped from 200 ms in plan #66 — Darwin scheduling on Apple
+        // Silicon pushes timing past the previous window. Linux loopback
+        // tolerates the smaller value but the extra headroom is
+        // platform-stable.
+        thread::sleep(Duration::from_secs(1));
 
         unsafe { tst_sender_close(tx) };
         unsafe { tst_sender_config_free(cfg) };

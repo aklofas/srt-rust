@@ -139,12 +139,17 @@ fn loopback_caller_sender_to_listener_receiver_delivers_bytes_and_eos() {
             );
         }
 
-        // Brief drain pause: SRT's send queue is asynchronous with respect to
-        // close. Closing immediately can drop in-flight packets before the
-        // receiver's TSBPD (time-based packet delivery) releases them.
-        // 200 ms covers typical loopback latency plus the default 120 ms SRT
-        // latency budget. See also pipeline_receiver_live.rs line 122-123.
-        thread::sleep(Duration::from_millis(200));
+        // Drain pause before close — SRT's send queue is asynchronous with
+        // respect to close, so closing immediately can drop in-flight packets
+        // before the receiver's TSBPD (time-based packet delivery) releases
+        // them. 1 s comfortably covers SRT's default 120 ms latency budget
+        // plus loopback scheduling jitter on every platform.
+        //
+        // Bumped from 200 ms in plan #66 — Darwin scheduling on Apple Silicon
+        // (macOS arm64, GHA macos-14 runner) pushes event emission past the
+        // previous window. Linux loopback tolerates the smaller value but
+        // the extra headroom is platform-stable.
+        thread::sleep(Duration::from_secs(1));
 
         // Closing the sender triggers libsrt's graceful shutdown sequence,
         // which the receiver observes as a ConnectionBroken (mapped to

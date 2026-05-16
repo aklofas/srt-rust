@@ -7,6 +7,82 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-srt Windows MSVC port (plan #65)
+
+### Changed
+- **`tst-srt`: internal sockaddr handling switched from
+  `libc::sockaddr_*` to `os_socketaddr::OsSocketAddr`.** Public API
+  surface unchanged — `Socket::connect` / `Socket::peer_addr` /
+  `Socket::local_addr` / `Listener::bind` / `Listener::accept` all
+  still take or return `std::net::SocketAddr`. Internal substitution
+  unblocks `*-pc-windows-msvc` builds (`libc` doesn't expose
+  `sockaddr_storage` / `sockaddr_in` / `sockaddr_in6` / `linger` /
+  `AF_INET6` on that target). `Socket::set_linger`-related code uses
+  a hand-rolled `#[repr(C)] LingerOpt` POD (2-field struct, same
+  layout on every platform; POSIX `SO_LINGER` predates the BSD /
+  Win32 split). `addr::to_sockaddr` is now infallible (was
+  `Result<_, AddrError>` with a Result that was vestigial); callers
+  in `socket.rs` / `listener.rs` simplified accordingly.
+
+### Added
+- **`os_socketaddr = "0.2"` workspace dep** for cross-platform
+  sockaddr abstraction. Used only by `tst-srt` today. Tiny crate
+  (~400 LoC); deps are `libc` on Unix + `winapi` cfg-gated on
+  Windows.
+- **`crates/srt-sys/build.rs`: Windows MSVC build support.**
+  Three additions cfg-gated on `target.contains("msvc")`:
+  - `/EHsc` cxxflag for the libsrt cmake build (MSVC requires
+    explicit C++ exception unwind semantics; gcc/clang have it on
+    by default). Originally shipped under plan #64 (commit
+    `dcd04d6`); referenced here for completeness.
+  - Link `srt_static` instead of `srt` (libsrt's CMakeLists names
+    the static lib `srt_static.lib` on MSVC to avoid colliding with
+    the shared-lib import lib also called `srt.lib`; see
+    `vendor/srt/CMakeLists.txt:1169-1181`).
+  - Link `bcrypt` (mbedTLS on Windows uses `BCryptGenRandom` from
+    `bcrypt.dll` for entropy collection; on Linux it uses
+    `/dev/urandom`).
+- **`docs/deferred-features.md`: "Windows MSVC runtime test
+  stabilization" entry.** SRT loopback tests hang on Windows (at
+  least `tst-c::demux_receiver_loopback` observed at 18+ min before
+  cancellation; likely the whole loopback test family affected).
+  Most plausible root cause: `srt_close` peer-EOS propagation
+  semantics differ on winsock vs BSD sockets. Diagnosis requires
+  Windows hardware on hand to iterate. Memory note with full
+  diagnostic plan at
+  `project_plan_65_windows_runtime_test_deferral.md`.
+
+### Skipped on windows-msvc (pending deferred follow-up)
+- **`cargo test --doc`, `cargo test` (default / no-default /
+  all-features) gated on `if: matrix.name != 'windows-msvc'`**
+  in `.github/workflows/ci.yml`. Windows MSVC matrix entry now
+  runs `cargo build` (default + no-default-features) to gate
+  compile + link regressions; runtime test coverage falls to
+  Linux x86_64 + Linux aarch64 + macOS arm64.
+
+### Fixed
+- **`tst-srt/tests/socket_stats::socket_stats_returns_none_after_close`:
+  50ms pause before close to win the accept/close race.** Same
+  fast-hardware race fixed for `lifecycle.rs::explicit_close_succeeds`
+  in plan #66 (commit `40eb7f9`); surfaced on linux-aarch64 mid-
+  plan-#65 once Windows compile errors stopped masking other
+  matrix-entry failures. Order-swap fix from plan #66 doesn't
+  apply here because the accept closure calls `recv()` (blocks
+  until peer-close), so `accept.join()` before close would
+  deadlock; 50 ms pause covers the connect/accept window instead.
+
+### Allow
+- **`#[allow(clippy::unnecessary_cast)]` on the
+  `crates/tst-srt/src/error.rs` tests module.** bindgen emits the
+  `SRT_REJECT_REASON_*` and `SRT_REJX_*` constants as `u32` on
+  Linux but `i32` on `*-pc-windows-msvc`. The `as i32` casts in
+  the reject-reason ordinal-pinning tests are necessary on Linux
+  (u32→i32) but redundant on Windows (i32→i32 → clippy error
+  under `-D warnings`). Module-level allow with explanatory
+  comment rather than 25+ per-callsite cfg gates.
+
+---
+
 ## [Unreleased] — macOS arm64 phase-in stabilization (plan #66)
 
 ### Changed

@@ -213,24 +213,17 @@ fn trace(rbsp: &[u8]) -> Result<(), CodecParseError> {
 
     let mut num_delta_pocs: Vec<u32> = Vec::with_capacity(num_short_term_ref_pic_sets as usize);
     for rps_idx in 0..num_short_term_ref_pic_sets {
-        let pos_start = br.position();
         let inter = if rps_idx > 0 { br.read_bool()? } else { false };
         snap!(
             format!("[RPS {rps_idx}] inter_ref_pic_set_prediction_flag"),
             inter
         );
         if inter {
-            let delta_idx_minus1 = br.read_ue()?;
-            snap!(
-                format!("[RPS {rps_idx}] delta_idx_minus1 (ue)"),
-                delta_idx_minus1
-            );
-            if delta_idx_minus1 + 1 > rps_idx {
-                eprintln!(
-                    "DIVERGENCE at RPS {rps_idx} (RPS starts at bit {pos_start}, delta_idx_minus1={delta_idx_minus1} > rps_idx={rps_idx})",
-                );
-                return Ok(());
-            }
+            // delta_idx_minus1 is signaled ONLY when stRpsIdx == num_short_term_ref_pic_sets
+            // (H.265 §7.3.7), which can only happen in slice-header context. In SPS
+            // context (this tracer's only call site), delta_idx_minus1 is inferred
+            // to 0, so ref_rps_idx = rps_idx - 1. Matches ffmpeg
+            // cbs_h265_syntax_template.c:536-541.
             let delta_rps_sign = br.read_bool()?;
             snap!(format!("[RPS {rps_idx}] delta_rps_sign"), delta_rps_sign);
             let abs_delta_rps_minus1 = br.read_ue()?;
@@ -238,7 +231,7 @@ fn trace(rbsp: &[u8]) -> Result<(), CodecParseError> {
                 format!("[RPS {rps_idx}] abs_delta_rps_minus1"),
                 abs_delta_rps_minus1
             );
-            let ref_rps_idx = rps_idx - (delta_idx_minus1 + 1);
+            let ref_rps_idx = rps_idx - 1;
             let num_at_ref = num_delta_pocs[ref_rps_idx as usize];
             let mut new_num_delta = 0u32;
             for j in 0..=num_at_ref {

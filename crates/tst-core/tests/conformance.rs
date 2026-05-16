@@ -21,14 +21,9 @@ use tst_core::codec::{ChromaFormat, CodecParseError};
 /// SHOULD produce), the test will pass.
 const KNOWN_PARSER_BUGS: &[(&str, &str, &str)] = &[
     // (codec, fixture_name, bug_summary)
-    (
-        "h265",
-        "DBLK_A_MAIN10_VIXS_4",
-        "short_term_rps walker returns ReservedValue { delta_idx_minus1 } \
-         on what appears to be a cursor-misalignment in the inter-predicted \
-         RPS walk. Fixture is a valid JCT-VC Main10 conformance vector \
-         (176x144, 10-bit 4:2:0). Track via follow-up parser-fix plan.",
-    ),
+    // Empty — DBLK_A_MAIN10_VIXS_4 entry removed after fixing the
+    // SPS-context delta_idx_minus1 over-read in
+    // crates/tst-core/src/codec/h265/short_term_rps.rs.
 ];
 
 fn is_known_bug(codec: &str, name: &str) -> Option<&'static str> {

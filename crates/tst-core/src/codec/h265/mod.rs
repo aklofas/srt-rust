@@ -561,8 +561,12 @@ mod sps_tests {
             bw.write(1, 1); // used_by_curr_pic_s0_flag[1]
 
             // RPS 1: inter_ref_pic_set_prediction_flag=1.
+            // Per H.265 §7.3.7, delta_idx_minus1 is signaled ONLY when
+            // stRpsIdx == num_short_term_ref_pic_sets (slice-header context).
+            // In SPS context (this fixture) it is inferred to 0, so DO NOT
+            // encode it here — encoding it would mis-align the cursor by
+            // exactly the bits of an inferred ue(0)=1.
             bw.write(1, 1); // inter_ref_pic_set_prediction_flag = 1
-            bw.write_ue(0); // delta_idx_minus1 = 0 (reference is rps_idx=0)
             bw.write(0, 1); // delta_rps_sign = 0
             bw.write_ue(0); // abs_delta_rps_minus1 = 0
             // Iterate j in 0..=NumDeltaPocs[0]=2 (3 iterations):

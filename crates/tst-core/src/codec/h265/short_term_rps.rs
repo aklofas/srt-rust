@@ -45,21 +45,15 @@ fn walk_one_short_term_rps(
     let inter = if rps_idx > 0 { br.read_bool()? } else { false };
 
     if inter {
-        // delta_idx_minus1 (ue(v)) — distance back to the reference RPS.
-        // delta_idx_minus1 + 1 must be ≤ rps_idx (§7.4.8).
-        let delta_idx_minus1 = br.read_ue()?;
-        if delta_idx_minus1 + 1 > rps_idx {
-            return Err(CodecParseError::ReservedValue {
-                field: "delta_idx_minus1",
-                value: delta_idx_minus1,
-            });
-        }
-        // delta_rps_sign (1 bit) + abs_delta_rps_minus1 (ue(v))
-        // — both unused by the cursor walker; just consume bits.
+        // delta_idx_minus1 is signaled ONLY when stRpsIdx == num_short_term_ref_pic_sets
+        // (H.265 §7.3.7), which can only happen in slice-header context. In SPS
+        // context (the only caller of walk_short_term_ref_pic_sets), delta_idx_minus1
+        // is inferred to 0, so ref_rps_idx = rps_idx - 1. Matches ffmpeg
+        // cbs_h265_syntax_template.c:536-541.
         let _delta_rps_sign = br.read_bool()?;
         let _abs_delta_rps_minus1 = br.read_ue()?;
 
-        let ref_rps_idx = rps_idx - (delta_idx_minus1 + 1);
+        let ref_rps_idx = rps_idx - 1;
         let num_at_ref = num_delta_pocs[ref_rps_idx as usize];
 
         // For j in 0..=NumDeltaPocs[RIdx]:
@@ -112,6 +106,46 @@ mod tests {
         let bytes = [0x00u8];
         let mut br = BitReader::new(&bytes);
         walk_short_term_ref_pic_sets(&mut br, 0).expect("zero RPSes is a no-op");
+    }
+
+    /// Regression for the bug surfaced by JCT-VC conformance vector
+    /// DBLK_A_MAIN10_VIXS_4: the SPS-context RPS walker used to
+    /// unconditionally read `delta_idx_minus1` inside the inter arm, but
+    /// per H.265 §7.3.7 it is only signaled when stRpsIdx ==
+    /// num_short_term_ref_pic_sets (slice-header context). In SPS context
+    /// the field is inferred to 0; reading it consumed bits that belonged
+    /// to delta_rps_sign + abs_delta_rps_minus1, throwing the cursor off
+    /// for the rest of the walk.
+    #[test]
+    fn inter_rps_in_sps_context_does_not_consume_delta_idx_minus1() {
+        // Bits encoded left-to-right, MSB-first:
+        // RPS 0 (explicit form, inter=false because rps_idx==0):
+        //   num_negative_pics    ue=1 → "010"  (3 bits)
+        //   num_positive_pics    ue=0 → "1"    (1 bit)
+        //   delta_poc_s0_minus1  ue=0 → "1"    (1 bit)
+        //   used_by_curr_pic_s0  bool=1 → "1"  (1 bit)
+        //   ⇒ num_delta_pocs[0] = 1
+        // RPS 1 (inter form):
+        //   inter_ref_pic_set_prediction_flag bool=1 → "1"  (1 bit)
+        //   delta_rps_sign       bool=0 → "0"  (1 bit)
+        //   abs_delta_rps_minus1 ue=0 → "1"    (1 bit)
+        //   (loop j in 0..=num_delta_pocs[0]=1 → 2 iterations)
+        //   used_by_curr_pic_flag[0] bool=1 → "1"  (1 bit)
+        //   used_by_curr_pic_flag[1] bool=1 → "1"  (1 bit)
+        // Total = 11 bits: 0 1 0 1 1 1 1 0 1 1 1 (then 5 don't-care padding bits)
+        // Byte 0: 0101_1110 = 0x5E
+        // Byte 1: 1110_0000 = 0xE0
+        //
+        // The buggy pre-fix code interpreted bits 8.. as starting a ue(v)
+        // for delta_idx_minus1: leading_zero "0", sentinel "1", then 1 more
+        // bit "1" → code_num=3 → delta_idx_minus1=2 → 2+1 > rps_idx(1) →
+        // returned ReservedValue { field: "delta_idx_minus1", value: 2 }.
+        // Verified to fail pre-fix and pass post-fix.
+        let bytes = [0x5Eu8, 0xE0];
+        let mut br = BitReader::new(&bytes);
+        walk_short_term_ref_pic_sets(&mut br, 2)
+            .expect("two-RPS SPS walk should succeed in SPS context");
+        assert_eq!(br.position(), 11);
     }
 
     #[test]

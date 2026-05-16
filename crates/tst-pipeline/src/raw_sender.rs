@@ -161,6 +161,12 @@ impl<T: Transport> RawSender<T> {
 
     /// Borrow the inner transport (e.g., for stats accessors specific to
     /// the transport type).
+    ///
+    /// # C ABI
+    ///
+    /// `tst_raw_sender_get_socket_stats` reaches through this accessor to
+    /// call [`Transport::socket_stats`] on the inner transport. See
+    /// `crates/tst-c/include/tstrans.h`.
     pub fn transport(&self) -> &T {
         &self.transport
     }

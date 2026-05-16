@@ -182,6 +182,19 @@ ALLOWLIST=(
     "tst_managed_demux_receiver_get_stats"
     "tst_managed_demux_receiver_reset_stats"
     "tst_managed_demux_receiver_get_stream_stats"
+
+    # --- libsrt wire-stats managed-wrapper entry points (ride the plain-side
+    #     # C ABI cross-refs on MuxSender::socket_stats / Sender::socket_stats /
+    #     RawSender::transport / Receiver::socket_stats / RawReceiver::socket_stats
+    #     / DemuxReceiver::socket_stats — ManagedTransport / ManagedReceiveTransport
+    #     forward to the same underlying method; adding duplicate cross-refs would
+    #     not add useful information) ---
+    "tst_managed_mux_sender_get_socket_stats"
+    "tst_managed_sender_get_socket_stats"
+    "tst_managed_raw_sender_get_socket_stats"
+    "tst_managed_receiver_get_socket_stats"
+    "tst_managed_raw_receiver_get_socket_stats"
+    "tst_managed_demux_receiver_get_socket_stats"
 )
 
 # Step 1: enumerate C exports

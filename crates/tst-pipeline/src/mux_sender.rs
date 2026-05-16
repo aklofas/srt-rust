@@ -524,6 +524,11 @@ impl<T: Transport> MuxSender<T> {
     /// implementation. Returns `None` when the transport doesn't expose
     /// comparable telemetry (test mocks) or when a managed wrapper has
     /// no live inner socket (mid-reconnect).
+    ///
+    /// # C ABI
+    ///
+    /// `tst_mux_sender_get_socket_stats` — see
+    /// `crates/tst-c/include/tstrans.h`.
     pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
         self.inner.lock().unwrap().transport.socket_stats()
     }

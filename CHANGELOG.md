@@ -7,6 +7,65 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — libsrt wire-stats at the C ABI (plan #63)
+
+### Added
+
+- **`tst_core::transport::SocketStats`** — abstract wire-level transport
+  stats (RTT µs, send/recv/link bandwidth bps, sent/received bytes +
+  packets, recv-side byte+packet loss, send-side packet loss,
+  retransmits, send/recv drops, send/recv buffer depths in packets).
+  16-field `#[non_exhaustive]` struct so growing the field set in
+  future libsrt releases is not a breaking change.
+- **`Transport::socket_stats()` / `RecvTransport::socket_stats()`** —
+  new trait method, defaulted to `None`. `SrtTransport` /
+  `SrtRecvTransport` implement it by mapping
+  `crate::socket::Stats` (libsrt `CBytePerfMon` snapshot) through a
+  `map_stats` free function. `ManagedTransport` /
+  `ManagedReceiveTransport` forward through
+  `inner.as_ref().and_then(...)`, returning `None` mid-reconnect.
+- **`MuxSender::socket_stats()`, `Sender::socket_stats()`,
+  `Receiver::socket_stats()`, `RawReceiver::socket_stats()`,
+  `DemuxReceiver::socket_stats()`** — pipeline-shell pass-throughs.
+  `RawSender` reaches through the existing `transport()` accessor.
+- **`tst-c`: 12 new entry points `tst_*_get_socket_stats(p, out)`**
+  across all 6 sender + 6 receiver handle families (mux_sender,
+  ts_sender, raw_sender, receiver, demux_receiver, raw_receiver —
+  each plain + managed). Reads from the underlying libsrt socket and
+  copies the snapshot into the caller's `tst_socket_stats_t`.
+- **`tst-c`: `TstSocketStats` `repr(C)` struct (120 B)** — 16 fields
+  (3 u32 + 1 u32 pad + 13 u64). Const-assert pins size at 120 B.
+  Layout documented field-by-field for binding authors.
+- **`tst-c`: `TST_E_NOT_AVAILABLE = -13` error code** — returned by
+  the `_get_socket_stats` family when the inner transport has no
+  live socket (closed, or for managed: mid-reconnect). Distinguished
+  from `TST_E_INVALID_USAGE` so callers can branch on the transient
+  vs. fundamental distinction.
+- **C teaching example `examples/c/operations/socket_stats_poll.c`**
+  — 5-second send loop with periodic socket-stats print every 500 ms
+  (RTT, bytes_sent, packets_sent, loss, retransmits, send-buffer
+  depth). First entry under the new C-side `operations/` subfolder.
+
+### Changed
+
+- **`#[non_exhaustive]` workspace count guard `BASELINE`** bumped from
+  42 to 47 in `.github/workflows/ci.yml` (absorbs `SocketStats` +
+  4 prior post-plan-#62 additions).
+- **`cargo public-api` baselines** refreshed for `tst-core`,
+  `tst-pipeline`, `tst-srt` (additions: `SocketStats` struct +
+  `socket_stats()` methods on the trait + 6 shells + 2 transport
+  impls + `Box<T>` blanket forwarding).
+- **Mid-flight catch: `#[non_exhaustive]` outside-crate construction**
+  — Rust E0639 blocks `SocketStats { ... }` struct-literal even with
+  the `..Default::default()` update-syntax tail (no escape hatch as
+  of Rust 1.85). The `map_stats` site in `tst-srt` uses the
+  default-and-assign pattern instead.
+
+See the wire-stats plan at
+`docs/plans/2026-05-16-tst-c-libsrt-wire-stats.md`.
+
+---
+
 ## [Unreleased] — Phase 3 of tst-c receiver surface (plan #62)
 
 ### Added

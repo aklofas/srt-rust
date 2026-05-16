@@ -200,18 +200,17 @@ impl TransportCancel for SrtCancel {
 ///   `Stats::bytes_lost_send_side` is always 0 today and is dropped.
 fn map_stats(s: &crate::socket::Stats) -> SocketStats {
     let rtt_us = u32::try_from(s.rtt.as_micros()).unwrap_or(u32::MAX);
-    let link_bandwidth_bps = if s.mbps_estimated_bandwidth.is_finite()
-        && s.mbps_estimated_bandwidth >= 0.0
-    {
-        let scaled = s.mbps_estimated_bandwidth * 1e6;
-        if scaled >= u64::MAX as f64 {
-            u64::MAX
+    let link_bandwidth_bps =
+        if s.mbps_estimated_bandwidth.is_finite() && s.mbps_estimated_bandwidth >= 0.0 {
+            let scaled = s.mbps_estimated_bandwidth * 1e6;
+            if scaled >= u64::MAX as f64 {
+                u64::MAX
+            } else {
+                scaled.round() as u64
+            }
         } else {
-            scaled.round() as u64
-        }
-    } else {
-        0
-    };
+            0
+        };
     // `#[non_exhaustive]` blocks the `SocketStats { ... }` struct-literal
     // form from outside tst-core (Rust E0639), and `..Default::default()`
     // doesn't lift the restriction outside the defining crate. Default-

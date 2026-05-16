@@ -813,12 +813,14 @@ pub fn tst_srt::transport::SrtTransport::close(&mut self)
 pub fn tst_srt::transport::SrtTransport::is_alive(&self) -> bool
 pub fn tst_srt::transport::SrtTransport::max_payload(&self) -> usize
 pub fn tst_srt::transport::SrtTransport::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_srt::transport::SrtTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl tst_core::transport::Transport for tst_srt::transport::SrtTransport
 pub fn tst_srt::transport::SrtTransport::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_srt::transport::SrtTransport::close(&mut self)
 pub fn tst_srt::transport::SrtTransport::is_alive(&self) -> bool
 pub fn tst_srt::transport::SrtTransport::max_payload(&self) -> usize
 pub fn tst_srt::transport::SrtTransport::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_srt::transport::SrtTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl core::marker::Freeze for tst_srt::transport::SrtTransport
 impl core::marker::Send for tst_srt::transport::SrtTransport
 impl core::marker::Sync for tst_srt::transport::SrtTransport
@@ -1513,12 +1515,14 @@ pub fn tst_srt::transport::SrtTransport::close(&mut self)
 pub fn tst_srt::transport::SrtTransport::is_alive(&self) -> bool
 pub fn tst_srt::transport::SrtTransport::max_payload(&self) -> usize
 pub fn tst_srt::transport::SrtTransport::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_srt::transport::SrtTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl tst_core::transport::Transport for tst_srt::transport::SrtTransport
 pub fn tst_srt::transport::SrtTransport::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_srt::transport::SrtTransport::close(&mut self)
 pub fn tst_srt::transport::SrtTransport::is_alive(&self) -> bool
 pub fn tst_srt::transport::SrtTransport::max_payload(&self) -> usize
 pub fn tst_srt::transport::SrtTransport::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_srt::transport::SrtTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl core::marker::Freeze for tst_srt::transport::SrtTransport
 impl core::marker::Send for tst_srt::transport::SrtTransport
 impl core::marker::Sync for tst_srt::transport::SrtTransport

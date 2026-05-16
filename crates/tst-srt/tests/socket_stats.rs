@@ -21,12 +21,7 @@ fn socket_stats_returns_some_on_live_send() {
     let accept = lb.spawn_accept(|mut sock| {
         let mut buf = [0u8; 1500];
         // Recv loop; exit when peer closes (returns Broken/Closed).
-        loop {
-            match sock.recv(&mut buf) {
-                Ok(_) => continue,
-                Err(_) => break,
-            }
-        }
+        while sock.recv(&mut buf).is_ok() {}
     });
     accept.wait_ready();
 
@@ -42,14 +37,17 @@ fn socket_stats_returns_some_on_live_send() {
 
     // SrtTransport implements both Transport AND RecvTransport (it's
     // bidirectional in libsrt's model) — disambiguate the trait.
-    let stats = <SrtTransport as Transport>::socket_stats(&sender)
-        .expect("live socket has stats");
+    let stats = <SrtTransport as Transport>::socket_stats(&sender).expect("live socket has stats");
     assert!(stats.bytes_sent >= 188, "bytes_sent={}", stats.bytes_sent);
-    assert!(stats.packets_sent >= 1, "packets_sent={}", stats.packets_sent);
+    assert!(
+        stats.packets_sent >= 1,
+        "packets_sent={}",
+        stats.packets_sent
+    );
     assert_eq!(stats.bytes_received, 0, "sender should read 0 received");
 
     <SrtTransport as Transport>::close(&mut sender);
-    let _ = accept.join();
+    accept.join();
 }
 
 #[test]
@@ -76,7 +74,7 @@ fn socket_stats_returns_none_after_close() {
         "closed socket has no stats"
     );
 
-    let _ = accept.join();
+    accept.join();
 }
 
 #[test]
@@ -89,12 +87,7 @@ fn managed_socket_stats_forwards_when_alive_and_none_after_close() {
 
     let accept = lb.spawn_accept(|mut sock| {
         let mut buf = [0u8; 1500];
-        loop {
-            match sock.recv(&mut buf) {
-                Ok(_) => continue,
-                Err(_) => break,
-            }
-        }
+        while sock.recv(&mut buf).is_ok() {}
     });
     accept.wait_ready();
 
@@ -118,9 +111,7 @@ fn managed_socket_stats_forwards_when_alive_and_none_after_close() {
     std::thread::sleep(Duration::from_millis(50));
 
     // ALIVE: forwards to SrtTransport which returns Some.
-    let stats = managed
-        .socket_stats()
-        .expect("alive managed forwards Some");
+    let stats = managed.socket_stats().expect("alive managed forwards Some");
     assert!(stats.bytes_sent >= 188, "bytes_sent={}", stats.bytes_sent);
 
     // CLOSED: inner Option goes to None → returns None.
@@ -130,7 +121,7 @@ fn managed_socket_stats_forwards_when_alive_and_none_after_close() {
         "closed managed returns None"
     );
 
-    let _ = accept.join();
+    accept.join();
 }
 
 #[test]
@@ -162,7 +153,15 @@ fn recv_transport_socket_stats_returns_some_on_live_recv() {
 
     let (n, stats) = accept.join();
     assert_eq!(n, 188);
-    assert!(stats.bytes_received >= 188, "bytes_received={}", stats.bytes_received);
-    assert!(stats.packets_received >= 1, "packets_received={}", stats.packets_received);
+    assert!(
+        stats.bytes_received >= 188,
+        "bytes_received={}",
+        stats.bytes_received
+    );
+    assert!(
+        stats.packets_received >= 1,
+        "packets_received={}",
+        stats.packets_received
+    );
     assert_eq!(stats.bytes_sent, 0, "receiver should read 0 sent");
 }

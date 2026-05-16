@@ -36,6 +36,7 @@ pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::recv_event(&mut self) -> 
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::types::DemuxerOptions) -> Self
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
 impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub type tst_pipeline::demux_receiver::DemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
@@ -93,6 +94,7 @@ pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::close(&mut sel
 pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::max_payload(&self) -> usize
 pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl<R> core::marker::Freeze for tst_pipeline::managed_receive::ManagedReceiveTransport<R> where R: core::marker::Freeze
 impl<R> core::marker::Send for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
 impl<R> !core::marker::Sync for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
@@ -139,6 +141,7 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle(&self, payload: &[u
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle_to(&self, handle: tst_core::mpegts::mux::types::SubtitleStreamHandle, payload: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video(&self, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, handle: tst_core::mpegts::mux::types::VideoStreamHandle, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::stats(&self) -> tst_pipeline::mux_sender::MuxSenderStats
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
@@ -326,6 +329,7 @@ pub fn tst_pipeline::raw_receiver::RawReceiver<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::new(transport: R) -> Self
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::recv_one(&mut self) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::transport::TransportError>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::reset_stats(&mut self)
+pub fn tst_pipeline::raw_receiver::RawReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::stats(&self) -> tst_pipeline::raw_receiver::RawReceiverStats
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::raw_receiver::RawReceiver<R>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::drop(&mut self)
@@ -463,6 +467,7 @@ pub fn tst_pipeline::receiver::Receiver<R>::new(transport: R) -> Self
 pub fn tst_pipeline::receiver::Receiver<R>::next_packet(&mut self) -> core::result::Result<[u8; 188], tst_core::transport::TransportError>
 pub fn tst_pipeline::receiver::Receiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::reset_sync(&mut self)
+pub fn tst_pipeline::receiver::Receiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::receiver::Receiver<R>::stats(&self) -> tst_pipeline::receiver::ReceiverStats
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::receiver::Receiver<R>
 pub fn tst_pipeline::receiver::Receiver<R>::drop(&mut self)
@@ -567,6 +572,7 @@ pub fn tst_pipeline::reconnect::ManagedTransport<T>::close(&mut self)
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::max_payload(&self) -> usize
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_pipeline::reconnect::ManagedTransport<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl<T> core::marker::Freeze for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Send for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Sync for tst_pipeline::reconnect::ManagedTransport<T>
@@ -670,6 +676,7 @@ pub fn tst_pipeline::sender::Sender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::sender::Sender<T>::new(transport: T, config: tst_pipeline::sender::SenderConfig) -> Self
 pub fn tst_pipeline::sender::Sender<T>::reset_stats(&mut self)
 pub fn tst_pipeline::sender::Sender<T>::send_ts(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_pipeline::sender::SenderError>
+pub fn tst_pipeline::sender::Sender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::sender::Sender<T>::stats(&self) -> tst_pipeline::SenderStats
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::sender::Sender<T>
 pub fn tst_pipeline::sender::Sender<T>::drop(&mut self)
@@ -912,6 +919,7 @@ pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::recv_event(&mut self) -> 
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::types::DemuxerOptions) -> Self
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
 impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub type tst_pipeline::demux_receiver::DemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
@@ -996,6 +1004,7 @@ pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::close(&mut sel
 pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::max_payload(&self) -> usize
 pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl<R> core::marker::Freeze for tst_pipeline::managed_receive::ManagedReceiveTransport<R> where R: core::marker::Freeze
 impl<R> core::marker::Send for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
 impl<R> !core::marker::Sync for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
@@ -1012,6 +1021,7 @@ pub fn tst_pipeline::reconnect::ManagedTransport<T>::close(&mut self)
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::max_payload(&self) -> usize
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_pipeline::reconnect::ManagedTransport<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl<T> core::marker::Freeze for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Send for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Sync for tst_pipeline::reconnect::ManagedTransport<T>
@@ -1037,6 +1047,7 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle(&self, payload: &[u
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle_to(&self, handle: tst_core::mpegts::mux::types::SubtitleStreamHandle, payload: &[u8], pts_90khz: i64) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video(&self, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, handle: tst_core::mpegts::mux::types::VideoStreamHandle, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::stats(&self) -> tst_pipeline::mux_sender::MuxSenderStats
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
@@ -1138,6 +1149,7 @@ pub fn tst_pipeline::raw_receiver::RawReceiver<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::new(transport: R) -> Self
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::recv_one(&mut self) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::transport::TransportError>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::reset_stats(&mut self)
+pub fn tst_pipeline::raw_receiver::RawReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::stats(&self) -> tst_pipeline::raw_receiver::RawReceiverStats
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::raw_receiver::RawReceiver<R>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::drop(&mut self)
@@ -1232,6 +1244,7 @@ pub fn tst_pipeline::receiver::Receiver<R>::new(transport: R) -> Self
 pub fn tst_pipeline::receiver::Receiver<R>::next_packet(&mut self) -> core::result::Result<[u8; 188], tst_core::transport::TransportError>
 pub fn tst_pipeline::receiver::Receiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::reset_sync(&mut self)
+pub fn tst_pipeline::receiver::Receiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::receiver::Receiver<R>::stats(&self) -> tst_pipeline::receiver::ReceiverStats
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::receiver::Receiver<R>
 pub fn tst_pipeline::receiver::Receiver<R>::drop(&mut self)
@@ -1294,6 +1307,7 @@ pub fn tst_pipeline::sender::Sender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::sender::Sender<T>::new(transport: T, config: tst_pipeline::sender::SenderConfig) -> Self
 pub fn tst_pipeline::sender::Sender<T>::reset_stats(&mut self)
 pub fn tst_pipeline::sender::Sender<T>::send_ts(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_pipeline::sender::SenderError>
+pub fn tst_pipeline::sender::Sender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::sender::Sender<T>::stats(&self) -> tst_pipeline::SenderStats
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::sender::Sender<T>
 pub fn tst_pipeline::sender::Sender<T>::drop(&mut self)

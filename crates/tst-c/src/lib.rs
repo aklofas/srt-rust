@@ -14,6 +14,7 @@
 pub mod config;
 mod connect;
 pub mod demux_config;
+pub mod demux_receiver;
 pub mod error;
 pub mod event;
 pub mod handle;

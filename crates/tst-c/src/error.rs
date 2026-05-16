@@ -30,6 +30,11 @@ pub enum TstError {
     /// an indeterminate state. Subsequent calls on the same handle will
     /// also fail (returning `Closed`). The caller should free the handle.
     PanicCaught = -11,
+    /// Peer disconnected gracefully (received TCP-style FIN / SRT clean close).
+    /// Distinguished from `Closed` (caller-side cancel/close) so receive loops
+    /// can branch on the shutdown reason. After this code the handle is dead;
+    /// subsequent calls return `Closed`.
+    EndOfStream = -12,
 }
 
 thread_local! {
@@ -312,6 +317,12 @@ pub(crate) fn record_panic_caught(detail: &str) {
     );
 }
 
+/// Record an end-of-stream condition. Used by receivers when the transport
+/// reports a graceful peer close and the call was not caller-initiated.
+pub(crate) fn record_eos() {
+    set_last_error(TstError::EndOfStream, "end of stream (peer disconnected)");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,5 +359,20 @@ mod tests {
         let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }.to_str().unwrap();
         assert!(msg.contains("tst_*_video_to"), "got: {msg}");
         assert!(!msg.contains("deferred"), "got: {msg}");
+    }
+
+    #[test]
+    fn end_of_stream_code_is_negative_twelve() {
+        assert_eq!(TstError::EndOfStream as i32, -12);
+    }
+
+    #[test]
+    fn end_of_stream_records_distinct_from_closed() {
+        clear_last_error_for_test();
+        super::record_eos();
+        assert_eq!(unsafe { tst_get_last_error() }, TstError::EndOfStream as i32);
+        let s_ptr = unsafe { tst_get_last_error_str() };
+        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        assert!(s.to_str().unwrap().contains("end of stream"));
     }
 }

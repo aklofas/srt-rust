@@ -7,7 +7,7 @@
 use crate::Socket;
 use crate::error::{SendError, SrtErrno};
 use std::sync::Arc;
-use tst_core::transport::{Transport, TransportCancel, TransportError};
+use tst_core::transport::{SocketStats, Transport, TransportCancel, TransportError};
 
 pub struct SrtTransport {
     socket: Option<Socket>,
@@ -106,6 +106,12 @@ impl Transport for SrtTransport {
             Arc::new(SrtCancel(s.cancel_handle())) as Arc<dyn TransportCancel + Send + Sync>
         })
     }
+
+    fn socket_stats(&self) -> Option<SocketStats> {
+        let socket = self.socket.as_ref()?;
+        let s = socket.stats().ok()?;
+        Some(map_stats(&s))
+    }
 }
 
 impl tst_core::transport::RecvTransport for SrtTransport {
@@ -160,6 +166,12 @@ impl tst_core::transport::RecvTransport for SrtTransport {
             Arc::new(SrtCancel(s.cancel_handle())) as Arc<dyn TransportCancel + Send + Sync>
         })
     }
+
+    fn socket_stats(&self) -> Option<SocketStats> {
+        let socket = self.socket.as_ref()?;
+        let s = socket.stats().ok()?;
+        Some(map_stats(&s))
+    }
 }
 
 impl Drop for SrtTransport {
@@ -175,6 +187,54 @@ impl TransportCancel for SrtCancel {
     fn cancel(&self) {
         self.0.cancel();
     }
+}
+
+/// Map the libsrt-flavored `crate::socket::Stats` into the abstract
+/// `tst_core::transport::SocketStats`. Unit conversions:
+/// * RTT: `Duration` → microseconds, saturating at `u32::MAX`.
+/// * Bandwidth: libsrt-side u64 bps is passed through; the redundant
+///   `mbps_estimated_bandwidth` f64 field is multiplied by 1e6 and
+///   saturated into `link_bandwidth_bps`.
+/// * Send-side byte loss: libsrt doesn't export `byteSndLossTotal`, so
+///   the abstract struct has no `bytes_lost_send` field. The local
+///   `Stats::bytes_lost_send_side` is always 0 today and is dropped.
+fn map_stats(s: &crate::socket::Stats) -> SocketStats {
+    let rtt_us = u32::try_from(s.rtt.as_micros()).unwrap_or(u32::MAX);
+    let link_bandwidth_bps = if s.mbps_estimated_bandwidth.is_finite()
+        && s.mbps_estimated_bandwidth >= 0.0
+    {
+        let scaled = s.mbps_estimated_bandwidth * 1e6;
+        if scaled >= u64::MAX as f64 {
+            u64::MAX
+        } else {
+            scaled.round() as u64
+        }
+    } else {
+        0
+    };
+    // `#[non_exhaustive]` blocks the `SocketStats { ... }` struct-literal
+    // form from outside tst-core (Rust E0639), and `..Default::default()`
+    // doesn't lift the restriction outside the defining crate. Default-
+    // and-assign is the only pattern that preserves the #[non_exhaustive]
+    // forward-compatibility guarantee.
+    let mut out = SocketStats::default();
+    out.rtt_us = rtt_us;
+    out.send_bandwidth_bps = s.send_bandwidth_bps;
+    out.recv_bandwidth_bps = s.recv_bandwidth_bps;
+    out.link_bandwidth_bps = link_bandwidth_bps;
+    out.bytes_sent = s.bytes_sent;
+    out.packets_sent = s.packets_sent;
+    out.bytes_received = s.bytes_received;
+    out.packets_received = s.packets_received;
+    out.bytes_lost_recv = s.bytes_lost_recv_side;
+    out.packets_lost_recv = s.packets_lost_recv_side;
+    out.packets_lost_send = s.packets_lost_send_side;
+    out.packets_retransmitted = s.packets_retransmitted;
+    out.packets_dropped_send = s.packets_dropped_send_side;
+    out.packets_dropped_recv = s.packets_dropped_recv_side;
+    out.send_buffer_packets = s.send_buffer_packets;
+    out.recv_buffer_packets = s.recv_buffer_packets;
+    out
 }
 
 #[cfg(test)]

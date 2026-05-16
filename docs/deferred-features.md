@@ -1078,3 +1078,78 @@ the trigger that would unblock it.
   without codec or framing changes. A QUIC stack dependency
   (likely `quinn`) is the main new build axis. URL surface
   gets a `moq://` family alongside `srt://`.
+
+## iOS (arm64 device + arm64 simulator + x86_64 simulator)
+
+- **Status:** Deferred. `tst-c` builds Linux x86_64, Linux
+  aarch64, macOS arm64, and Windows MSVC today (see
+  `compatibility.md` build-targets table).
+- **Why deferred:** iOS requires the Xcode SDK + a macOS-based
+  build runner + iOS-specific libsrt / mbedTLS cmake toolchain
+  files (iOS SDK paths, simulator vs device arch selection,
+  framework-vs-static packaging). The work is significant and
+  the field set is best landed alongside `srt-uniffi` so
+  consumer-facing iOS packaging shape (xcframework? CocoaPod?)
+  drives the build-side decisions rather than the other way
+  around.
+- **Trigger to revisit:** The `srt-uniffi` implementation plan
+  starts. iOS support lands as part of that plan, not before.
+- **Scope when added:** Three matrix entries (arm64 device,
+  arm64 simulator, x86_64 simulator) under a separate iOS-
+  specific CI workflow (the existing GHA `macos-14` runner
+  can host all three via `xcodebuild` cross-targeting). The
+  Rust target triples are `aarch64-apple-ios`,
+  `aarch64-apple-ios-sim`, `x86_64-apple-ios`.
+
+## Android (arm64 + x86_64 emulator + armv7)
+
+- **Status:** Deferred. macOS arm64 + Windows MSVC are Tier 1
+  (see `compatibility.md`).
+- **Why deferred:** Android requires the Android NDK toolchain
+  + cross-compile toolchain files for both libsrt and mbedTLS
+  (the NDK sysroot, libc shape, and ABI selection per target
+  arch). The work is bundled with iOS as part of the future
+  `srt-uniffi` plan — mobile-binding consumers expect both
+  platforms together, and the JNI-style shared-library
+  packaging is symmetric.
+- **Trigger to revisit:** The `srt-uniffi` implementation plan
+  starts. armv7 specifically is the most-likely-to-stay-
+  deferred sub-target — only re-included if a consumer reports
+  the device class matters (modern Android devices have been
+  arm64 since ~2018).
+- **Scope when added:** NDK sysroot + cmake toolchain files
+  for libsrt + mbedTLS, plus Rust target triples
+  `aarch64-linux-android`, `x86_64-linux-android`, and
+  (conditionally) `armv7-linux-androideabi`.
+
+## macOS x86_64 (Intel)
+
+- **Status:** Deferred. macOS arm64 (Apple Silicon) is Tier 1.
+- **Why deferred:** Intel Macs are a declining install base;
+  Apple Silicon covers the contributor and laptop case for
+  modern macOS. Maintaining Intel-mac support would double the
+  macOS CI surface (one runner per arch) for diminishing
+  return.
+- **Trigger to revisit:** A consumer running an Intel Mac
+  reports a build failure they want fixed.
+- **Scope when added:** A `macos-13` matrix entry (last Intel-
+  only macOS runner; `macos-14`+ are arm64) in
+  `.github/workflows/ci.yml` with `continue-on-error: true`
+  initially, mirroring the Tier 1 phase-in pattern.
+
+## Windows MinGW (gcc toolchain)
+
+- **Status:** Deferred. Windows MSVC is Tier 1.
+- **Why deferred:** MSVC covers the production Windows case
+  (most distributed Windows binaries link MSVCRT). MinGW is
+  dev-environment friendly but doubles the Windows CI surface
+  (one runner per toolchain) and has its own set of vendored-
+  library quirks distinct from MSVC.
+- **Trigger to revisit:** A consumer asks for a non-MSVC
+  Windows build (e.g., they're shipping a MinGW-based
+  application and the toolchain mismatch creates linker
+  friction).
+- **Scope when added:** A matrix entry using the
+  `x86_64-pc-windows-gnu` Rust target on `windows-latest`
+  with `continue-on-error: true` initially, mirroring the
+  Tier 1 phase-in pattern.

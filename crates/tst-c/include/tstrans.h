@@ -96,6 +96,13 @@ enum tst_e
    * also fail (returning `Closed`). The caller should free the handle.
    */
   TST_E_PANIC_CAUGHT = -11,
+  /**
+   * Peer disconnected gracefully (received TCP-style FIN / SRT clean close).
+   * Distinguished from `Closed` (caller-side cancel/close) so receive loops
+   * can branch on the shutdown reason. After this code the handle is dead;
+   * subsequent calls return `Closed`.
+   */
+  TST_E_END_OF_STREAM = -12,
 };
 #ifndef __cplusplus
 typedef int32_t tst_e;

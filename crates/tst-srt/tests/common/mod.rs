@@ -160,9 +160,7 @@ impl Loopback {
     /// The builder MUST not already have called `.bind(...)`; this method
     /// supplies the bind address.
     pub fn bind_with(builder: tst_srt::ListenerBuilder) -> Self {
-        let listener = builder
-            .bind("127.0.0.1:0")
-            .expect("bind 127.0.0.1:0");
+        let listener = builder.bind("127.0.0.1:0").expect("bind 127.0.0.1:0");
         let port = listener.local_addr().expect("local_addr").port();
         Self { listener, port }
     }

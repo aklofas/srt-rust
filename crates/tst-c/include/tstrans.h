@@ -121,19 +121,19 @@ typedef int32_t tst_e;
  * `repr(i32)` discriminator for `TstEvent::kind`. cbindgen emits
  * `#define TST_EVENT_*` blocks.
  */
-enum tst_event_kind_t
+enum tst_event_kind
 #ifdef __cplusplus
   : int32_t
 #endif // __cplusplus
  {
-  TST_EVENT_KIND_T_PROGRAM_MAP = 1,
-  TST_EVENT_KIND_T_SAMPLE = 2,
-  TST_EVENT_KIND_T_METADATA = 3,
-  TST_EVENT_KIND_T_DISCONTINUITY = 4,
-  TST_EVENT_KIND_T_NON_CONFORMANT = 5,
+  TST_EVENT_KIND_PROGRAM_MAP = 1,
+  TST_EVENT_KIND_SAMPLE = 2,
+  TST_EVENT_KIND_METADATA = 3,
+  TST_EVENT_KIND_DISCONTINUITY = 4,
+  TST_EVENT_KIND_NON_CONFORMANT = 5,
 };
 #ifndef __cplusplus
-typedef int32_t tst_event_kind_t;
+typedef int32_t tst_event_kind;
 #endif // __cplusplus
 
 /**
@@ -141,20 +141,20 @@ typedef int32_t tst_event_kind_t;
  * discriminator. Variant payloads (codec, declared_link, unknown
  * stream_type) live on the per-event union fields, not on this enum.
  */
-enum tst_stream_kind_t
+enum tst_stream_kind
 #ifdef __cplusplus
   : int32_t
 #endif // __cplusplus
  {
-  TST_STREAM_KIND_T_VIDEO = 0,
-  TST_STREAM_KIND_T_AUDIO = 1,
-  TST_STREAM_KIND_T_SUBTITLE = 2,
-  TST_STREAM_KIND_T_KLV_SYNC = 3,
-  TST_STREAM_KIND_T_KLV_ASYNC = 4,
-  TST_STREAM_KIND_T_UNKNOWN = 5,
+  TST_STREAM_KIND_VIDEO = 0,
+  TST_STREAM_KIND_AUDIO = 1,
+  TST_STREAM_KIND_SUBTITLE = 2,
+  TST_STREAM_KIND_KLV_SYNC = 3,
+  TST_STREAM_KIND_KLV_ASYNC = 4,
+  TST_STREAM_KIND_UNKNOWN = 5,
 };
 #ifndef __cplusplus
-typedef int32_t tst_stream_kind_t;
+typedef int32_t tst_stream_kind;
 #endif // __cplusplus
 
 /**
@@ -162,17 +162,17 @@ typedef int32_t tst_stream_kind_t;
  * discriminator. Variant payload (the KlvSyncAuCell 5 fields) lives
  * on `tst_event_t.u.metadata` fields, zero/false for other kinds.
  */
-enum tst_metadata_kind_t
+enum tst_metadata_kind
 #ifdef __cplusplus
   : int32_t
 #endif // __cplusplus
  {
-  TST_METADATA_KIND_T_KLV_SYNC_AU_CELL = 0,
-  TST_METADATA_KIND_T_KLV_ASYNC = 1,
-  TST_METADATA_KIND_T_UNKNOWN = 2,
+  TST_METADATA_KIND_KLV_SYNC_AU_CELL = 0,
+  TST_METADATA_KIND_KLV_ASYNC = 1,
+  TST_METADATA_KIND_UNKNOWN = 2,
 };
 #ifndef __cplusplus
-typedef int32_t tst_metadata_kind_t;
+typedef int32_t tst_metadata_kind;
 #endif // __cplusplus
 
 /**
@@ -180,18 +180,18 @@ typedef int32_t tst_metadata_kind_t;
  * discriminator. ContinuityJump's `expected`/`observed` and
  * PesOversize's `pid` live on the union fields.
  */
-enum tst_discontinuity_kind_t
+enum tst_discontinuity_kind
 #ifdef __cplusplus
   : int32_t
 #endif // __cplusplus
  {
-  TST_DISCONTINUITY_KIND_T_CONTINUITY_JUMP = 0,
-  TST_DISCONTINUITY_KIND_T_PES_OVERSIZE = 1,
-  TST_DISCONTINUITY_KIND_T_PES_TOTAL_OVERSIZE = 2,
-  TST_DISCONTINUITY_KIND_T_ADAPTATION_FIELD_FLAG = 3,
+  TST_DISCONTINUITY_KIND_CONTINUITY_JUMP = 0,
+  TST_DISCONTINUITY_KIND_PES_OVERSIZE = 1,
+  TST_DISCONTINUITY_KIND_PES_TOTAL_OVERSIZE = 2,
+  TST_DISCONTINUITY_KIND_ADAPTATION_FIELD_FLAG = 3,
 };
 #ifndef __cplusplus
-typedef int32_t tst_discontinuity_kind_t;
+typedef int32_t tst_discontinuity_kind;
 #endif // __cplusplus
 
 /**
@@ -199,50 +199,50 @@ typedef int32_t tst_discontinuity_kind_t;
  * discriminator. Issue-specific fields live on `tst_event_t.u.nonconformant`
  * (zero/null for variants that don't carry them).
  */
-enum tst_nonconformant_code_t
+enum tst_nonconformant_code
 #ifdef __cplusplus
   : int32_t
 #endif // __cplusplus
  {
-  TST_NONCONFORMANT_CODE_T_STREAM_TYPE_MISMATCH_SYNC_ON_ASYNC_PID = 0,
-  TST_NONCONFORMANT_CODE_T_STREAM_TYPE_MISMATCH_ASYNC_ON_SYNC_PID = 1,
-  TST_NONCONFORMANT_CODE_T_MISSING_METADATA_DESCRIPTOR = 2,
-  TST_NONCONFORMANT_CODE_T_PCR_ANOMALY = 3,
-  TST_NONCONFORMANT_CODE_T_PSI_CHECKSUM_MISMATCH = 4,
-  TST_NONCONFORMANT_CODE_T_PUSI_MID_PES = 5,
-  TST_NONCONFORMANT_CODE_T_PID_REUSED_ACROSS_PROGRAMS = 6,
-  TST_NONCONFORMANT_CODE_T_SUBTITLE_MISSING_DESCRIPTOR = 7,
-  TST_NONCONFORMANT_CODE_T_SUBTITLE_DESCRIPTOR_AMBIGUOUS = 8,
-  TST_NONCONFORMANT_CODE_T_SUBTITLE_DESCRIPTOR_MALFORMED = 9,
-  TST_NONCONFORMANT_CODE_T_AV1_REGISTRATION_MALFORMED = 10,
-  TST_NONCONFORMANT_CODE_T_AV1_OBU_MISSING_SIZE_FIELD = 11,
-  TST_NONCONFORMANT_CODE_T_AV1_TILE_LIST_NOT_ALLOWED = 12,
-  TST_NONCONFORMANT_CODE_T_PSI_OVERLONG_SECTION = 13,
-  TST_NONCONFORMANT_CODE_T_TRANSPORT_ERROR_PACKET = 14,
-  TST_NONCONFORMANT_CODE_T_PSI_CC_DISCONTINUITY = 15,
-  TST_NONCONFORMANT_CODE_T_MULTI_CELL_AU = 16,
-  TST_NONCONFORMANT_CODE_T_PSI_MULTI_SECTION_UNSUPPORTED = 17,
-  TST_NONCONFORMANT_CODE_T_OTHER = 18,
+  TST_NONCONFORMANT_CODE_STREAM_TYPE_MISMATCH_SYNC_ON_ASYNC_PID = 0,
+  TST_NONCONFORMANT_CODE_STREAM_TYPE_MISMATCH_ASYNC_ON_SYNC_PID = 1,
+  TST_NONCONFORMANT_CODE_MISSING_METADATA_DESCRIPTOR = 2,
+  TST_NONCONFORMANT_CODE_PCR_ANOMALY = 3,
+  TST_NONCONFORMANT_CODE_PSI_CHECKSUM_MISMATCH = 4,
+  TST_NONCONFORMANT_CODE_PUSI_MID_PES = 5,
+  TST_NONCONFORMANT_CODE_PID_REUSED_ACROSS_PROGRAMS = 6,
+  TST_NONCONFORMANT_CODE_SUBTITLE_MISSING_DESCRIPTOR = 7,
+  TST_NONCONFORMANT_CODE_SUBTITLE_DESCRIPTOR_AMBIGUOUS = 8,
+  TST_NONCONFORMANT_CODE_SUBTITLE_DESCRIPTOR_MALFORMED = 9,
+  TST_NONCONFORMANT_CODE_AV1_REGISTRATION_MALFORMED = 10,
+  TST_NONCONFORMANT_CODE_AV1_OBU_MISSING_SIZE_FIELD = 11,
+  TST_NONCONFORMANT_CODE_AV1_TILE_LIST_NOT_ALLOWED = 12,
+  TST_NONCONFORMANT_CODE_PSI_OVERLONG_SECTION = 13,
+  TST_NONCONFORMANT_CODE_TRANSPORT_ERROR_PACKET = 14,
+  TST_NONCONFORMANT_CODE_PSI_CC_DISCONTINUITY = 15,
+  TST_NONCONFORMANT_CODE_MULTI_CELL_AU = 16,
+  TST_NONCONFORMANT_CODE_PSI_MULTI_SECTION_UNSUPPORTED = 17,
+  TST_NONCONFORMANT_CODE_OTHER = 18,
 };
 #ifndef __cplusplus
-typedef int32_t tst_nonconformant_code_t;
+typedef int32_t tst_nonconformant_code;
 #endif // __cplusplus
 
 /**
  * `repr(i32)` mirror of `tst_core::mpegts::demux::LinkSource`.
  * On `tst_klv_link_t.source` and on synthetic KLV-link inference.
  */
-enum tst_link_source_t
+enum tst_link_source
 #ifdef __cplusplus
   : int32_t
 #endif // __cplusplus
  {
-  TST_LINK_SOURCE_T_DECLARED = 0,
-  TST_LINK_SOURCE_T_INFERRED = 1,
-  TST_LINK_SOURCE_T_OVERRIDE = 2,
+  TST_LINK_SOURCE_DECLARED = 0,
+  TST_LINK_SOURCE_INFERRED = 1,
+  TST_LINK_SOURCE_OVERRIDE = 2,
 };
 #ifndef __cplusplus
-typedef int32_t tst_link_source_t;
+typedef int32_t tst_link_source;
 #endif // __cplusplus
 
 /**
@@ -256,18 +256,18 @@ typedef int32_t tst_link_source_t;
  * originally specified `0=Off, 1=KlvOnly, 2=All`. The actual Rust enum
  * is 4-valued; this mapping is the truth.
  */
-enum tst_strict_mode_t
+enum tst_strict_mode
 #ifdef __cplusplus
   : int32_t
 #endif // __cplusplus
  {
-  TST_STRICT_MODE_T_OFF = 0,
-  TST_STRICT_MODE_T_TIMING_ONLY = 1,
-  TST_STRICT_MODE_T_DESCRIPTORS_ONLY = 2,
-  TST_STRICT_MODE_T_FULL = 3,
+  TST_STRICT_MODE_OFF = 0,
+  TST_STRICT_MODE_TIMING_ONLY = 1,
+  TST_STRICT_MODE_DESCRIPTORS_ONLY = 2,
+  TST_STRICT_MODE_FULL = 3,
 };
 #ifndef __cplusplus
-typedef int32_t tst_strict_mode_t;
+typedef int32_t tst_strict_mode;
 #endif // __cplusplus
 
 /**
@@ -275,18 +275,18 @@ typedef int32_t tst_strict_mode_t;
  * On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_AUDIO`,
  * and on `tst_stream_info_t.codec`.
  */
-enum tst_audio_codec_t
+enum tst_audio_codec
 #ifdef __cplusplus
   : int32_t
 #endif // __cplusplus
  {
-  TST_AUDIO_CODEC_T_MP2 = 0,
-  TST_AUDIO_CODEC_T_AAC = 1,
-  TST_AUDIO_CODEC_T_AAC_LATM = 2,
-  TST_AUDIO_CODEC_T_AC3 = 3,
+  TST_AUDIO_CODEC_MP2 = 0,
+  TST_AUDIO_CODEC_AAC = 1,
+  TST_AUDIO_CODEC_AAC_LATM = 2,
+  TST_AUDIO_CODEC_AC3 = 3,
 };
 #ifndef __cplusplus
-typedef int32_t tst_audio_codec_t;
+typedef int32_t tst_audio_codec;
 #endif // __cplusplus
 
 /**
@@ -294,18 +294,18 @@ typedef int32_t tst_audio_codec_t;
  * On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_SUBTITLE`,
  * and on `tst_stream_info_t.codec`.
  */
-enum tst_subtitle_codec_t
+enum tst_subtitle_codec
 #ifdef __cplusplus
   : int32_t
 #endif // __cplusplus
  {
-  TST_SUBTITLE_CODEC_T_DVB_SUBTITLING = 0,
-  TST_SUBTITLE_CODEC_T_DVB_TELETEXT = 1,
-  TST_SUBTITLE_CODEC_T_CEA708_STANDALONE = 2,
-  TST_SUBTITLE_CODEC_T_WEB_VTT_IN_TS = 3,
+  TST_SUBTITLE_CODEC_DVB_SUBTITLING = 0,
+  TST_SUBTITLE_CODEC_DVB_TELETEXT = 1,
+  TST_SUBTITLE_CODEC_CEA708_STANDALONE = 2,
+  TST_SUBTITLE_CODEC_WEB_VTT_IN_TS = 3,
 };
 #ifndef __cplusplus
-typedef int32_t tst_subtitle_codec_t;
+typedef int32_t tst_subtitle_codec;
 #endif // __cplusplus
 
 /**

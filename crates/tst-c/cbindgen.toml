@@ -139,16 +139,17 @@ include = [
 "TstDescriptor"             = "tst_descriptor_t"
 "TstStreamInfo"             = "tst_stream_info_t"
 "TstKlvLink"                = "tst_klv_link_t"
-# Phase 3: discriminator enums
-"TstEventKind"              = "tst_event_kind_t"
-"TstStreamKindTag"          = "tst_stream_kind_t"
-"TstMetadataKindTag"        = "tst_metadata_kind_t"
-"TstDiscontinuityKindTag"   = "tst_discontinuity_kind_t"
-"TstNonConformantCode"      = "tst_nonconformant_code_t"
-"TstLinkSource"             = "tst_link_source_t"
-"TstStrictMode"             = "tst_strict_mode_t"
-"TstAudioCodec"             = "tst_audio_codec_t"
-"TstSubtitleCodec"          = "tst_subtitle_codec_t"
+# Phase 3: discriminator enums — no _t suffix so prefix_with_name
+# yields clean TST_EVENT_KIND_* (not TST_EVENT_KIND_T_*)
+"TstEventKind"              = "tst_event_kind"
+"TstStreamKindTag"          = "tst_stream_kind"
+"TstMetadataKindTag"        = "tst_metadata_kind"
+"TstDiscontinuityKindTag"   = "tst_discontinuity_kind"
+"TstNonConformantCode"      = "tst_nonconformant_code"
+"TstLinkSource"             = "tst_link_source"
+"TstStrictMode"             = "tst_strict_mode"
+"TstAudioCodec"             = "tst_audio_codec"
+"TstSubtitleCodec"          = "tst_subtitle_codec"
 
 [enum]
 prefix_with_name = true

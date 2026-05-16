@@ -51,10 +51,10 @@ fn load_manifest(path: &std::path::Path) -> Result<Manifest, String> {
     toml::from_str(&s).map_err(|e| format!("parse {}: {}", path.display(), e))
 }
 
-/// Iterate Annex B NAL units. Yields `(nal_header_byte, rbsp_body)` for
-/// each NAL. Start codes (3 or 4 byte) are not included in the yielded
-/// slice. Trailing bytes after the last NAL until EOF form the last
-/// yielded RBSP.
+/// Iterate Annex B NAL units. Yields each NAL unit as a byte slice
+/// starting at the NAL header byte (start codes stripped, header
+/// included). Trailing bytes after the last NAL until EOF form the
+/// last yielded slice.
 fn iter_annex_b(stream: &[u8]) -> impl Iterator<Item = &[u8]> {
     AnnexBIter { stream, cursor: 0 }
 }
@@ -83,7 +83,9 @@ impl<'a> Iterator for AnnexBIter<'a> {
 fn find_start_code(haystack: &[u8]) -> Option<(usize, usize)> {
     let mut i = 0;
     while i + 3 <= haystack.len() {
-        // 4-byte start code 00 00 00 01
+        // 4-byte start code 00 00 00 01.
+        // MUST check 4-byte before 3-byte: a `00 00 00 01` sequence would
+        // otherwise alias as a 3-byte code starting at offset 1.
         if i + 4 <= haystack.len() && haystack[i..i + 4] == [0, 0, 0, 1] {
             return Some((i, 4));
         }

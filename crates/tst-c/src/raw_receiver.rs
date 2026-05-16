@@ -9,13 +9,15 @@
 //! captured at `_open` time, not through the handle's `Mutex` — so
 //! `_cancel` does not deadlock against a concurrent `_recv`.
 
-use crate::error::record_transport_error;
+use crate::error::{TstError, record_eos, record_transport_error, set_last_error};
 use crate::handle::Handle;
 use crate::mux_sender::parse_c_srt_url;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use tst_pipeline::TransportCancel;
+use std::sync::atomic::Ordering;
 use tst_pipeline::RawReceiver;
+use tst_pipeline::TransportCancel;
+use tst_pipeline::TransportError;
 use tst_srt::SrtTransport;
 use tst_srt::SrtUrl;
 use tst_srt::url::Mode;
@@ -128,12 +130,79 @@ pub unsafe extern "C" fn tst_raw_receiver_close(p: *mut TstRawReceiver) {
     // Set the cancel flag and trip the libsrt-level cancel so any
     // concurrent recv on this handle (multi-threaded misuse) returns
     // promptly with TST_E_CLOSED rather than TST_E_END_OF_STREAM.
-    boxed.was_cancelled.store(true, std::sync::atomic::Ordering::Release);
+    boxed
+        .was_cancelled
+        .store(true, std::sync::atomic::Ordering::Release);
     if let Some(c) = &boxed.cancel {
         c.cancel();
     }
     boxed.inner.close();
     drop(boxed);
+}
+
+/// Block until one message arrives. Copies up to `len` bytes into `buf`
+/// and writes the actual length to `*out_len`.
+///
+/// Returns:
+/// - 0 on success (`*out_len` set to bytes received; ≤ `len`)
+/// - `TST_E_END_OF_STREAM` (-12) on graceful peer close
+/// - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
+/// - `TST_E_TRANSPORT` (-8) on connection failure
+/// - `TST_E_TOO_LARGE` (-6) if the inbound message exceeds `len`
+///   (`*out_len` is left unmodified)
+/// - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_raw_receiver_recv(
+    p: *mut TstRawReceiver,
+    buf: *mut u8,
+    len: usize,
+    out_len: *mut usize,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if buf.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null buf with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    if out_len.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out_len pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    let was_cancelled = handle.was_cancelled.clone();
+    handle.inner.with_inner_mut(|rx| match rx.recv_one() {
+        Ok(v) => {
+            if v.len() > len {
+                set_last_error(
+                    TstError::TooLarge,
+                    &format!("message {} bytes exceeds buf cap {}", v.len(), len),
+                );
+                return TstError::TooLarge as i32;
+            }
+            if !v.is_empty() {
+                unsafe { std::ptr::copy_nonoverlapping(v.as_ptr(), buf, v.len()) };
+            }
+            unsafe { *out_len = v.len() };
+            0
+        }
+        Err(TransportError::Closed) => {
+            if was_cancelled.load(Ordering::Acquire) {
+                set_last_error(
+                    TstError::Closed,
+                    "receiver was cancelled or closed by caller",
+                );
+                TstError::Closed as i32
+            } else {
+                record_eos();
+                TstError::EndOfStream as i32
+            }
+        }
+        Err(e) => {
+            record_transport_error(&e);
+            unsafe { crate::error::tst_get_last_error() }
+        }
+    })
 }
 
 #[cfg(test)]
@@ -145,5 +214,24 @@ mod tests {
         unsafe {
             tst_raw_receiver_close(std::ptr::null_mut());
         }
+    }
+
+    #[test]
+    fn null_pointer_recv_returns_invalid_config() {
+        let mut buf = [0u8; 16];
+        let mut got: usize = 0;
+        let rc = unsafe {
+            tst_raw_receiver_recv(std::ptr::null_mut(), buf.as_mut_ptr(), buf.len(), &mut got)
+        };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_buf_with_nonzero_len_returns_invalid_config() {
+        let mut got: usize = 0;
+        let rc = unsafe {
+            tst_raw_receiver_recv(std::ptr::null_mut(), std::ptr::null_mut(), 16, &mut got)
+        };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 }

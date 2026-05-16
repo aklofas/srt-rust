@@ -266,6 +266,17 @@ pub unsafe extern "C" fn tst_raw_receiver_recv(
                 TstError::EndOfStream as i32
             }
         }
+        // SrtTransport::recv_bytes maps a peer disconnect to
+        // TransportError::Broken("connection broken") rather than Closed
+        // so that the managed-receive decorator can distinguish a
+        // self-initiated close from a peer-initiated break and drive
+        // reconnect. At the plain C ABI boundary a Broken result on a
+        // non-cancelled handle means the peer disconnected, which the
+        // caller contract documents as TST_E_END_OF_STREAM.
+        Err(TransportError::Broken(_)) if !was_cancelled.load(Ordering::Acquire) => {
+            record_eos();
+            TstError::EndOfStream as i32
+        }
         Err(e) => {
             record_transport_error(&e);
             unsafe { crate::error::tst_get_last_error() }

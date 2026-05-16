@@ -185,6 +185,15 @@ fn build_vendored(mbedtls_prefix: Option<&PathBuf>) -> Vec<PathBuf> {
         println!("cargo:rustc-link-lib=static=mbedtls");
         println!("cargo:rustc-link-lib=static=mbedx509");
         println!("cargo:rustc-link-lib=static=mbedcrypto");
+
+        // mbedTLS on Windows uses BCryptGenRandom from bcrypt.dll for
+        // entropy collection (mbedtls_platform_entropy_poll calls into
+        // it). On Linux it uses /dev/urandom and no extra link is
+        // needed; on Windows we need bcrypt.lib (system import lib
+        // shipped with the Windows SDK).
+        if target.contains("windows") {
+            println!("cargo:rustc-link-lib=dylib=bcrypt");
+        }
     }
 
     // libsrt is C++ internally; link the C++ stdlib explicitly.

@@ -5,8 +5,8 @@ use crate::config::ListenerConfig;
 use crate::error::{AcceptError, BindError, IoError, OptionError, last_error};
 use crate::init::ensure_initialized;
 use crate::socket::{Socket, apply_listener_config, duration_to_ms, read_bool, set_bool, set_int};
+use os_socketaddr::OsSocketAddr;
 use std::ffi::c_int;
-use std::mem;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 
@@ -110,16 +110,10 @@ impl Listener {
                 continue;
             }
 
-            let (raw_sa, salen) = match to_sockaddr(sa) {
-                Ok(p) => p,
-                Err(e) => {
-                    unsafe { srt_sys::srt_close(handle) };
-                    last_err = Some(BindError::InvalidAddress(e));
-                    continue;
-                }
+            let os_addr = to_sockaddr(sa);
+            let rc = unsafe {
+                srt_sys::srt_bind(handle, os_addr.as_ptr().cast(), os_addr.len() as c_int)
             };
-            let rc =
-                unsafe { srt_sys::srt_bind(handle, (&raw const raw_sa).cast(), salen as c_int) };
             if rc < 0 {
                 let raw = last_error();
                 unsafe { srt_sys::srt_close(handle) };
@@ -147,11 +141,11 @@ impl Listener {
 
     /// Block until an incoming connection completes the SRT handshake.
     pub fn accept(&mut self) -> Result<(Socket, SocketAddr), AcceptError> {
-        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        let mut len = mem::size_of::<libc::sockaddr_storage>() as c_int;
+        let mut os_addr = OsSocketAddr::new();
+        let mut len = os_addr.capacity() as c_int;
 
         let accepted =
-            unsafe { srt_sys::srt_accept(self.handle, (&raw mut storage).cast(), &raw mut len) };
+            unsafe { srt_sys::srt_accept(self.handle, os_addr.as_mut_ptr().cast(), &raw mut len) };
         if accepted == SRT_INVALID_SOCK {
             return Err(last_error().into());
         }
@@ -167,7 +161,7 @@ impl Listener {
             IoError::System(io) => AcceptError::System(io),
         })?;
 
-        let peer = from_sockaddr(&storage)
+        let peer = from_sockaddr(&os_addr)
             .map_err(|e| AcceptError::System(std::io::Error::other(e.to_string())))?;
         Ok((socket, peer))
     }
@@ -288,10 +282,10 @@ impl Listener {
             return Ok(None);
         }
 
-        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        let mut len = mem::size_of::<libc::sockaddr_storage>() as c_int;
+        let mut os_addr = OsSocketAddr::new();
+        let mut len = os_addr.capacity() as c_int;
         let accepted =
-            unsafe { srt_sys::srt_accept(self.handle, (&raw mut storage).cast(), &raw mut len) };
+            unsafe { srt_sys::srt_accept(self.handle, os_addr.as_mut_ptr().cast(), &raw mut len) };
 
         // Capture libsrt's last-error BEFORE restoring SRTO_RCVSYN, since
         // the restore is itself a libsrt call that overwrites the
@@ -324,7 +318,7 @@ impl Listener {
                     IoError::SocketClosed => AcceptError::ListenerClosed,
                     IoError::System(io) => AcceptError::System(io),
                 })?;
-                let peer = from_sockaddr(&storage)
+                let peer = from_sockaddr(&os_addr)
                     .map_err(|e| AcceptError::System(std::io::Error::other(e.to_string())))?;
                 Ok(Some((socket, peer)))
             }
@@ -333,15 +327,15 @@ impl Listener {
     }
 
     pub fn local_addr(&self) -> Result<SocketAddr, IoError> {
-        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        let mut len = mem::size_of::<libc::sockaddr_storage>() as c_int;
+        let mut os_addr = OsSocketAddr::new();
+        let mut len = os_addr.capacity() as c_int;
         let rc = unsafe {
-            srt_sys::srt_getsockname(self.handle, (&raw mut storage).cast(), &raw mut len)
+            srt_sys::srt_getsockname(self.handle, os_addr.as_mut_ptr().cast(), &raw mut len)
         };
         if rc < 0 {
             return Err(last_error().into());
         }
-        from_sockaddr(&storage).map_err(|e| IoError::System(std::io::Error::other(e.to_string())))
+        from_sockaddr(&os_addr).map_err(|e| IoError::System(std::io::Error::other(e.to_string())))
     }
 
     /// Set the receive timeout that will be inherited by accepted [`Socket`]s.

@@ -7,6 +7,7 @@ use crate::error::{
 };
 use crate::init::ensure_initialized;
 use crate::options::{MaxBandwidth, Passphrase};
+use os_socketaddr::OsSocketAddr;
 use std::ffi::{c_char, c_int};
 use std::mem;
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -163,16 +164,10 @@ impl Socket {
                 continue;
             }
 
-            let (raw_sa, salen) = match to_sockaddr(sa) {
-                Ok(p) => p,
-                Err(e) => {
-                    unsafe { srt_sys::srt_close(handle) };
-                    last_err = Some(ConnectError::InvalidAddress(e));
-                    continue;
-                }
+            let os_addr = to_sockaddr(sa);
+            let rc = unsafe {
+                srt_sys::srt_connect(handle, os_addr.as_ptr().cast(), os_addr.len() as c_int)
             };
-            let rc =
-                unsafe { srt_sys::srt_connect(handle, (&raw const raw_sa).cast(), salen as c_int) };
             if rc < 0 {
                 let raw = last_error();
                 unsafe { srt_sys::srt_close(handle) };
@@ -262,27 +257,27 @@ impl Socket {
     }
 
     pub fn peer_addr(&self) -> Result<SocketAddr, IoError> {
-        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        let mut len = mem::size_of::<libc::sockaddr_storage>() as c_int;
+        let mut os_addr = OsSocketAddr::new();
+        let mut len = os_addr.capacity() as c_int;
         let rc = unsafe {
-            srt_sys::srt_getpeername(self.handle, (&raw mut storage).cast(), &raw mut len)
+            srt_sys::srt_getpeername(self.handle, os_addr.as_mut_ptr().cast(), &raw mut len)
         };
         if rc < 0 {
             return Err(last_error().into());
         }
-        from_sockaddr(&storage).map_err(|e| IoError::System(std::io::Error::other(e.to_string())))
+        from_sockaddr(&os_addr).map_err(|e| IoError::System(std::io::Error::other(e.to_string())))
     }
 
     pub fn local_addr(&self) -> Result<SocketAddr, IoError> {
-        let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
-        let mut len = mem::size_of::<libc::sockaddr_storage>() as c_int;
+        let mut os_addr = OsSocketAddr::new();
+        let mut len = os_addr.capacity() as c_int;
         let rc = unsafe {
-            srt_sys::srt_getsockname(self.handle, (&raw mut storage).cast(), &raw mut len)
+            srt_sys::srt_getsockname(self.handle, os_addr.as_mut_ptr().cast(), &raw mut len)
         };
         if rc < 0 {
             return Err(last_error().into());
         }
-        from_sockaddr(&storage).map_err(|e| IoError::System(std::io::Error::other(e.to_string())))
+        from_sockaddr(&os_addr).map_err(|e| IoError::System(std::io::Error::other(e.to_string())))
     }
 
     /// Stream ID negotiated during handshake. Cached at construction.
@@ -446,6 +441,17 @@ pub(crate) fn set_string(
     Ok(())
 }
 
+/// 2-field POD wire-compatible with both POSIX `struct linger` and
+/// Win32 `LINGER`. Hand-rolled rather than depending on
+/// `libc::linger` because the `libc` crate doesn't expose `linger`
+/// on `*-pc-windows-msvc`. The memory layout is POSIX-defined
+/// (predates the BSD / Win32 split) so the same struct serves both.
+#[repr(C)]
+struct LingerOpt {
+    l_onoff: c_int,
+    l_linger: c_int,
+}
+
 /// Set `SRTO_LINGER`. Unlike most SRT options it takes a `struct linger`
 /// (not an `int`), so we can't go through `set_int`. `Duration::ZERO` (or
 /// any sub-second duration) disables linger entirely (`l_onoff = 0`),
@@ -453,7 +459,7 @@ pub(crate) fn set_string(
 /// payload. Non-zero seconds are clamped into `i32` range.
 pub(crate) fn set_linger(handle: srt_sys::SRTSOCKET, d: Duration) -> Result<(), OptionError> {
     let secs = d.as_secs().min(i32::MAX as u64) as c_int;
-    let lin = libc::linger {
+    let lin = LingerOpt {
         l_onoff: if secs > 0 { 1 } else { 0 },
         l_linger: secs,
     };
@@ -463,7 +469,7 @@ pub(crate) fn set_linger(handle: srt_sys::SRTSOCKET, d: Duration) -> Result<(), 
             0,
             srt_sys::SRT_SOCKOPT_SRTO_LINGER,
             (&raw const lin).cast(),
-            std::mem::size_of::<libc::linger>() as c_int,
+            std::mem::size_of::<LingerOpt>() as c_int,
         )
     };
     if rc < 0 {

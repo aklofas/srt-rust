@@ -331,6 +331,18 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
         let closed = self.closed.clone();
         Some(Arc::new(ManagedCancel { inner, closed }))
     }
+
+    fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
+        // Mirror max_payload() / is_alive() shape: when inner is None
+        // (mid-reconnect or after close), there's no socket to query.
+        // Returns None rather than fake-zero — the C ABI maps that to
+        // TST_E_NOT_AVAILABLE so callers can distinguish "no socket"
+        // from "socket exists with zero counters".
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().and_then(|t| t.socket_stats()))
+    }
 }
 
 struct ManagedCancel<T: Transport + 'static> {

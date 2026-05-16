@@ -80,6 +80,60 @@ fn socket_stats_returns_none_after_close() {
 }
 
 #[test]
+fn managed_socket_stats_forwards_when_alive_and_none_after_close() {
+    use tst_pipeline::{ManagedTransport, ReconnectPolicy};
+
+    require_loopback!();
+    let lb = Loopback::bind();
+    let port = lb.port;
+
+    let accept = lb.spawn_accept(|mut sock| {
+        let mut buf = [0u8; 1500];
+        loop {
+            match sock.recv(&mut buf) {
+                Ok(_) => continue,
+                Err(_) => break,
+            }
+        }
+    });
+    accept.wait_ready();
+
+    let initial = SocketBuilder::new()
+        .send_timeout(Duration::from_secs(5))
+        .connect(format!("127.0.0.1:{port}"))
+        .expect("connect");
+    let initial_transport = SrtTransport::new(initial);
+
+    // factory is a no-op for this test — we never trigger a reconnect.
+    let factory = move || -> Result<SrtTransport, tst_core::transport::TransportError> {
+        Err(tst_core::transport::TransportError::Broken(
+            "reconnect not exercised by this test".into(),
+        ))
+    };
+    let mut managed = ManagedTransport::new(initial_transport, factory, ReconnectPolicy::default());
+
+    managed
+        .send_bytes(&[0u8; 188])
+        .expect("send through managed");
+    std::thread::sleep(Duration::from_millis(50));
+
+    // ALIVE: forwards to SrtTransport which returns Some.
+    let stats = managed
+        .socket_stats()
+        .expect("alive managed forwards Some");
+    assert!(stats.bytes_sent >= 188, "bytes_sent={}", stats.bytes_sent);
+
+    // CLOSED: inner Option goes to None → returns None.
+    managed.close();
+    assert!(
+        managed.socket_stats().is_none(),
+        "closed managed returns None"
+    );
+
+    let _ = accept.join();
+}
+
+#[test]
 fn recv_transport_socket_stats_returns_some_on_live_recv() {
     require_loopback!();
     let lb = Loopback::bind();

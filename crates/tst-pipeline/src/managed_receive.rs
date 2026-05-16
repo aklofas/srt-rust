@@ -225,6 +225,13 @@ impl<R: RecvTransport> RecvTransport for ManagedReceiveTransport<R> {
             inner_cancel: self.inner_cancel.clone(),
         }))
     }
+
+    fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
+        // Mirror max_payload() shape: forward to inner when alive; None
+        // when mid-reconnect or after close. The C ABI maps None to
+        // TST_E_NOT_AVAILABLE.
+        self.inner.as_ref().and_then(|r| r.socket_stats())
+    }
 }
 
 struct ManagedRecvCancel {

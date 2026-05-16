@@ -27,6 +27,9 @@ jobs:
           - name: linux-aarch64
             runner: ubuntu-24.04-arm
             continue: true
+          - name: macos-arm64
+            runner: macos-14
+            continue: true
     # Pin to MSRV via env so rust-toolchain.toml ("stable" for local dev)
     # doesn't relax the verification done in CI.
     env:

@@ -140,6 +140,27 @@ fn extract_h265_parameter_set(stream: &[u8], nal_type: u8, n: u32) -> Option<Vec
     None
 }
 
+/// Extract the RBSP body of the `n`th NAL of the given `nal_unit_type`
+/// from an Annex B H.266 / VVC bytestream. H.266 NAL header is 2 bytes;
+/// nal_unit_type lives in byte 1, bits 3-7 (i.e. `(byte_1 >> 3) & 0x1F`)
+/// per H.266 V4 §7.3.1.2.
+fn extract_h266_parameter_set(stream: &[u8], nal_type: u8, n: u32) -> Option<Vec<u8>> {
+    let mut matched = 0u32;
+    for nal in iter_annex_b(stream) {
+        if nal.len() < 2 {
+            continue;
+        }
+        let this_type = (nal[1] >> 3) & 0x1F;
+        if this_type == nal_type {
+            if matched == n {
+                return Some(nal[2..].to_vec());
+            }
+            matched += 1;
+        }
+    }
+    None
+}
+
 fn main() {
     eprintln!("not yet implemented");
     std::process::exit(2);
@@ -239,5 +260,39 @@ mod tests {
         let extracted = extract_h265_parameter_set(FAKE_H265_STREAM, 34, 0)
             .expect("PPS should be found");
         assert_eq!(extracted, vec![0x88, 0x99]);
+    }
+
+    const FAKE_H266_STREAM: &[u8] = &[
+        // 4-byte start + H.266 VPS (type 14, in byte 1 high bits)
+        // byte 0: 0 (forbidden) | 0 (reserved) | layer_id_hi<<2 = 0x00
+        // byte 1: type(14)<<3 | temporal_id_plus_1(1) = (14<<3)|1 = 0x71
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x71, 0xAA, 0xBB,
+        // SPS (type 15)
+        // byte 1: (15<<3)|1 = 0x79
+        0x00, 0x00, 0x01, 0x00, 0x79, 0xCC, 0xDD, 0xEE, 0xFF,
+        // PPS (type 16)
+        // byte 1: (16<<3)|1 = 0x81
+        0x00, 0x00, 0x01, 0x00, 0x81, 0x11, 0x22,
+    ];
+
+    #[test]
+    fn scan_h266_sps_extracts_rbsp_body() {
+        let extracted = extract_h266_parameter_set(FAKE_H266_STREAM, 15, 0)
+            .expect("SPS should be found");
+        assert_eq!(extracted, vec![0xCC, 0xDD, 0xEE, 0xFF]);
+    }
+
+    #[test]
+    fn scan_h266_vps_extracts_rbsp_body() {
+        let extracted = extract_h266_parameter_set(FAKE_H266_STREAM, 14, 0)
+            .expect("VPS should be found");
+        assert_eq!(extracted, vec![0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn scan_h266_pps_extracts_rbsp_body() {
+        let extracted = extract_h266_parameter_set(FAKE_H266_STREAM, 16, 0)
+            .expect("PPS should be found");
+        assert_eq!(extracted, vec![0x11, 0x22]);
     }
 }

@@ -8,6 +8,88 @@ use std::sync::Arc;
 use thiserror::Error;
 
 // ============================================================
+// Wire-level socket stats (shared between Transport + RecvTransport)
+// ============================================================
+
+/// Wire-level transport stats sourced from the underlying network library.
+///
+/// For SRT transports these mirror `CBytePerfMon`'s cumulative fields
+/// (since-connect totals, NOT since-last-call interval rates). For other
+/// transport implementors that don't expose comparable telemetry, the
+/// [`Transport::socket_stats`] / [`RecvTransport::socket_stats`] accessor
+/// returns `None`.
+///
+/// All bandwidth fields are in bits per second; RTT is in microseconds;
+/// buffer-depth fields are in packets. See per-field rustdoc on the
+/// members below for libsrt source mappings.
+///
+/// The field set is libsrt-flavored by design; a future RIST or WebRTC
+/// transport would map what it can into these fields and zero the rest.
+/// Pre-1.0 the struct is `#[non_exhaustive]` so adding a field is not a
+/// breaking change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub struct SocketStats {
+    /// Smoothed round-trip time, microseconds. libsrt sources from
+    /// `CBytePerfMon::msRTT` (f64 ms); the SRT impl rounds to nearest
+    /// µs and saturates at `u32::MAX` (~71 minutes). `0` means "not yet
+    /// measured" (pre-first-RTT).
+    pub rtt_us: u32,
+
+    /// Send-rate estimate, bits per second. From `mbpsSendRate` × 1e6
+    /// rounded and saturated.
+    pub send_bandwidth_bps: u64,
+    /// Receive-rate estimate, bits per second. From `mbpsRecvRate` × 1e6
+    /// rounded and saturated.
+    pub recv_bandwidth_bps: u64,
+    /// Link-capacity estimate, bits per second. From `mbpsBandwidth` × 1e6
+    /// rounded and saturated.
+    pub link_bandwidth_bps: u64,
+
+    /// Bytes accepted by the transport for send, cumulative since connect.
+    /// Receivers read `0`.
+    pub bytes_sent: u64,
+    /// Packets accepted by the transport for send. Receivers read `0`.
+    pub packets_sent: u64,
+
+    /// Bytes delivered by the transport to the application, cumulative
+    /// since connect. Senders read `0`.
+    pub bytes_received: u64,
+    /// Packets delivered by the transport to the application. Senders
+    /// read `0`.
+    pub packets_received: u64,
+
+    /// Bytes lost (network drops, not recovered). From
+    /// `CBytePerfMon::byteRcvLossTotal`.
+    pub bytes_lost_recv: u64,
+    /// Packets lost on the receive side, cumulative. From
+    /// `CBytePerfMon::pktRcvLossTotal`.
+    pub packets_lost_recv: u64,
+    /// Packets declared lost on the send side via receiver NAK feedback.
+    /// From `CBytePerfMon::pktSndLossTotal`. libsrt does not expose a
+    /// matching byte counter, so there is no `bytes_lost_send` field.
+    pub packets_lost_send: u64,
+
+    /// Retransmitted packets (sender-side; sum over all retransmit rounds).
+    /// From `CBytePerfMon::pktRetransTotal`.
+    pub packets_retransmitted: u64,
+
+    /// Packets dropped by the send-side libsrt buffer (overrun or
+    /// drop-late). From `CBytePerfMon::pktSndDropTotal`.
+    pub packets_dropped_send: u64,
+    /// Packets dropped by the receive-side libsrt buffer. From
+    /// `CBytePerfMon::pktRcvDropTotal`.
+    pub packets_dropped_recv: u64,
+
+    /// Current send-side buffer occupancy in packets. Spot reading; not
+    /// cumulative. From `CBytePerfMon::pktSndBuf`.
+    pub send_buffer_packets: u32,
+    /// Current receive-side buffer occupancy in packets. Spot reading.
+    /// From `CBytePerfMon::pktRcvBuf`.
+    pub recv_buffer_packets: u32,
+}
+
+// ============================================================
 // Send side: Transport + TransportError + TransportCancel
 // ============================================================
 
@@ -98,6 +180,21 @@ pub trait Transport: Send {
     fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
         None
     }
+
+    /// Wire-level stats (RTT, packet loss, bandwidth, queue depths) from the
+    /// underlying network library. Returns `None` when the transport doesn't
+    /// expose comparable telemetry (test mocks, in-memory channels) or when
+    /// a managed wrapper has no live inner socket.
+    ///
+    /// # Errors
+    ///
+    /// Implementors that fetch stats from a system call MAY swallow a
+    /// per-call failure into `None`; this trait does not surface a
+    /// distinct error variant. The transport's liveness (see
+    /// [`Self::is_alive`]) is the right channel for connection state.
+    fn socket_stats(&self) -> Option<SocketStats> {
+        None
+    }
 }
 
 /// Type-erased cancel-handle accessor returned by
@@ -153,6 +250,13 @@ pub trait RecvTransport: Send {
     fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
         None
     }
+
+    /// Wire-level stats. See [`Transport::socket_stats`] for shape +
+    /// failure semantics; for receivers `bytes_sent` / `packets_sent`
+    /// will read 0 on libsrt.
+    fn socket_stats(&self) -> Option<SocketStats> {
+        None
+    }
 }
 
 // ============================================================
@@ -184,6 +288,9 @@ impl<T: Transport + ?Sized> Transport for Box<T> {
     fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
         (**self).cancel_handle()
     }
+    fn socket_stats(&self) -> Option<SocketStats> {
+        (**self).socket_stats()
+    }
 }
 
 impl<T: RecvTransport + ?Sized> RecvTransport for Box<T> {
@@ -201,6 +308,9 @@ impl<T: RecvTransport + ?Sized> RecvTransport for Box<T> {
     }
     fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
         (**self).cancel_handle()
+    }
+    fn socket_stats(&self) -> Option<SocketStats> {
+        (**self).socket_stats()
     }
 }
 
@@ -221,5 +331,27 @@ mod blanket_impl_tests {
     fn box_dyn_recv_transport_satisfies_recv_transport_bound() {
         fn assert_recv<T: RecvTransport>() {}
         assert_recv::<Box<dyn RecvTransport>>();
+    }
+
+    /// Smoke test: the defaulted `socket_stats` body returns `None` so test
+    /// mocks (and any transport that doesn't own a libsrt socket) opt out
+    /// automatically.
+    #[test]
+    fn box_dyn_transport_socket_stats_defaults_to_none() {
+        struct DummyTransport;
+        impl Transport for DummyTransport {
+            fn send_bytes(&mut self, _: &[u8]) -> Result<(), TransportError> {
+                Ok(())
+            }
+            fn max_payload(&self) -> usize {
+                1316
+            }
+            fn is_alive(&self) -> bool {
+                true
+            }
+            fn close(&mut self) {}
+        }
+        let t: Box<dyn Transport> = Box::new(DummyTransport);
+        assert!(t.socket_stats().is_none());
     }
 }

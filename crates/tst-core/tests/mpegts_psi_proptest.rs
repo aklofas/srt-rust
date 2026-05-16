@@ -103,6 +103,156 @@ proptest! {
         prop_assert_eq!(&parsed[0].data[..], &format_id[..]);
     }
 
+    /// Metadata KLVA descriptor (tag 0x26) builder → walk round-trip.
+    /// `service_id` parameterizes the only variable byte.
+    #[test]
+    fn metadata_klva_roundtrip(service_id in any::<u8>()) {
+        let bytes = descriptors::metadata_klva(service_id);
+        let parsed = walk_descriptors(&bytes).expect("walk");
+        prop_assert_eq!(parsed.len(), 1);
+        prop_assert_eq!(parsed[0].tag, 0x26);
+        // Body layout: 0x01 0x00 0xFF 'K' 'L' 'V' 'A' service_id 0x0F
+        prop_assert_eq!(parsed[0].data.len(), 9);
+        prop_assert_eq!(parsed[0].data[7], service_id);
+    }
+
+    /// Metadata STD descriptor (tag 0x27) builder → walk round-trip.
+    /// Each rate field is 22 bits (top 2 reserved = 11); the strategy
+    /// samples the 22-bit value space directly so the round-trip
+    /// asserts byte-identical packing per H.222.0 §2.6.62.
+    #[test]
+    fn metadata_std_roundtrip(
+        input_leak_rate in 0u32..(1u32 << 22),
+        buffer_size in 0u32..(1u32 << 22),
+        output_leak_rate in 0u32..(1u32 << 22),
+    ) {
+        let bytes = descriptors::metadata_std(input_leak_rate, buffer_size, output_leak_rate);
+        let parsed = walk_descriptors(&bytes).expect("walk");
+        prop_assert_eq!(parsed.len(), 1);
+        prop_assert_eq!(parsed[0].tag, 0x27);
+        // 9 body bytes = 3 packed 22-bit rates. Top 2 bits of each
+        // first byte must be 11 per spec.
+        prop_assert_eq!(parsed[0].data.len(), 9);
+        prop_assert_eq!(parsed[0].data[0] & 0xC0, 0xC0);
+        prop_assert_eq!(parsed[0].data[3] & 0xC0, 0xC0);
+        prop_assert_eq!(parsed[0].data[6] & 0xC0, 0xC0);
+    }
+
+    /// User-private descriptor (tag in 0x40..=0xFF) builder → walk
+    /// round-trip. Tag and payload both vary; `payload.len() ≤ 255`
+    /// to fit in the u8 length field.
+    #[test]
+    fn user_private_with_tag_roundtrip(
+        tag in 0x40u8..=0xFFu8,
+        payload in proptest::collection::vec(any::<u8>(), 0..=255),
+    ) {
+        let bytes = descriptors::user_private_with_tag(tag, &payload);
+        let parsed = walk_descriptors(&bytes).expect("walk");
+        prop_assert_eq!(parsed.len(), 1);
+        prop_assert_eq!(parsed[0].tag, tag);
+        prop_assert_eq!(&parsed[0].data[..], &payload[..]);
+    }
+
+    /// ISO 639 language descriptor (tag 0x0A) round-trip.
+    /// 3-byte language + 1-byte audio_type. Walk-level round-trip is
+    /// byte-identical on the body.
+    #[test]
+    fn iso_639_language_roundtrip(
+        language in any::<[u8; 3]>(),
+        audio_type in any::<u8>(),
+    ) {
+        let bytes = descriptors::iso_639_language(language, audio_type);
+        let parsed = walk_descriptors(&bytes).expect("walk");
+        prop_assert_eq!(parsed.len(), 1);
+        prop_assert_eq!(parsed[0].tag, 0x0A);
+        prop_assert_eq!(parsed[0].data.len(), 4);
+        prop_assert_eq!(&parsed[0].data[..3], &language[..]);
+        prop_assert_eq!(parsed[0].data[3], audio_type);
+    }
+
+    /// Component descriptor (tag 0x50) round-trip on walker.
+    /// Asserts body length + back-byte structure; deep field equality
+    /// of the text section is exact because the strategy uses ASCII
+    /// (printable subset of UTF-8 — UTF-8 round-trip is identity here).
+    #[test]
+    fn component_descriptor_roundtrip(
+        stream_content in any::<u8>(),
+        component_type in any::<u8>(),
+        component_tag in any::<u8>(),
+        language in any::<[u8; 3]>(),
+        // Text length 0..=249 — the helper debug_asserts ≤249 and
+        // saturates in release builds.
+        text in "[ -~]{0,249}",
+    ) {
+        let bytes = descriptors::component(stream_content, component_type, component_tag, language, &text);
+        let parsed = walk_descriptors(&bytes).expect("walk");
+        prop_assert_eq!(parsed.len(), 1);
+        prop_assert_eq!(parsed[0].tag, 0x50);
+        prop_assert_eq!(parsed[0].data.len(), 6 + text.len());
+        // First byte: low nibble = stream_content & 0x0F, high nibble = 1111
+        prop_assert_eq!(parsed[0].data[0] & 0xF0, 0xF0);
+        prop_assert_eq!(parsed[0].data[0] & 0x0F, stream_content & 0x0F);
+        prop_assert_eq!(parsed[0].data[1], component_type);
+        prop_assert_eq!(parsed[0].data[2], component_tag);
+        prop_assert_eq!(&parsed[0].data[3..6], &language[..]);
+        prop_assert_eq!(&parsed[0].data[6..], text.as_bytes());
+    }
+
+    /// DVB subtitling_descriptor multi-entry (tag 0x59) typed round-trip.
+    /// Build via `subtitling_descriptor_multi`, parse via the typed
+    /// parser `parse_subtitling_descriptor`, assert structural equality
+    /// of each `SubtitlingDescriptorEntry`.
+    #[test]
+    fn subtitling_descriptor_multi_typed_roundtrip(
+        entries in proptest::collection::vec(
+            (any::<[u8; 3]>(), any::<u8>(), any::<u16>(), any::<u16>()),
+            1..=8, // u8 length field caps body at 255 / 8 bytes per entry = 31 max
+        ),
+    ) {
+        let bytes = descriptors::subtitling_descriptor_multi(&entries)
+            .expect("non-empty entries");
+        // walk_descriptors returns the [tag, length, body...] envelope;
+        // parse_subtitling_descriptor expects the body only. Skip the
+        // first 2 envelope bytes.
+        let parsed = tst_core::mpegts::descriptors::parse_subtitling_descriptor(&bytes[2..])
+            .expect("typed parse");
+        prop_assert_eq!(parsed.len(), entries.len());
+        for (got, (lang, sub_type, comp_id, anc_id)) in parsed.iter().zip(entries.iter()) {
+            prop_assert_eq!(got.language, *lang);
+            prop_assert_eq!(got.subtitling_type, *sub_type);
+            prop_assert_eq!(got.composition_page_id, *comp_id);
+            prop_assert_eq!(got.ancillary_page_id, *anc_id);
+        }
+    }
+
+    /// DVB teletext_descriptor multi-entry (tag 0x56) typed round-trip.
+    /// Mirror of the subtitling case. `teletext_type` is 5 bits;
+    /// `magazine_number` is 3 bits — the helper packs them into one
+    /// byte, the typed parser unpacks. The strategy samples the full
+    /// u8 domain for `teletext_type` and `magazine_number` because the
+    /// helper masks them (`& 0x1F`, `& 0x07`) — round-trip asserts
+    /// the parsed values match the masked inputs.
+    #[test]
+    fn teletext_descriptor_multi_typed_roundtrip(
+        entries in proptest::collection::vec(
+            (any::<[u8; 3]>(), any::<u8>(), any::<u8>(), any::<u8>()),
+            1..=8, // each entry = 5 bytes; cap below u8 length boundary
+        ),
+    ) {
+        let bytes = descriptors::teletext_descriptor_multi(&entries)
+            .expect("non-empty entries");
+        let parsed = tst_core::mpegts::descriptors::parse_teletext_descriptor(&bytes[2..])
+            .expect("typed parse");
+        prop_assert_eq!(parsed.len(), entries.len());
+        for (got, (lang, tt_type, mag, page)) in parsed.iter().zip(entries.iter()) {
+            prop_assert_eq!(got.language, *lang);
+            // Pack/unpack masks: tt_type keeps low 5 bits; mag keeps low 3.
+            prop_assert_eq!(got.teletext_type, tt_type & 0x1F);
+            prop_assert_eq!(got.magazine_number, mag & 0x07);
+            prop_assert_eq!(got.page_number, *page);
+        }
+    }
+
     /// Demuxer chunking invariance: feeding a fixed muxed TS stream as one
     /// whole feed must produce the same event sequence as feeding it split
     /// at arbitrary boundaries. Catches buffer-boundary bugs in the framing

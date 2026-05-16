@@ -12,7 +12,7 @@
 //! field captured at `_open` time, not through the handle's `Mutex` —
 //! so `_cancel` does not deadlock against a concurrent `_recv_packet`.
 
-use crate::error::record_transport_error;
+use crate::error::{TstError, record_eos, record_transport_error, set_last_error};
 use crate::handle::Handle;
 use crate::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
 use std::sync::Arc;
@@ -20,6 +20,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use tst_pipeline::Receiver;
 use tst_pipeline::TransportCancel;
+use tst_pipeline::TransportError;
 use tst_srt::SrtTransport;
 use tst_srt::SrtUrl;
 use tst_srt::url::Mode;
@@ -137,6 +138,74 @@ pub unsafe extern "C" fn tst_receiver_close(p: *mut TstReceiver) {
     drop(boxed);
 }
 
+/// Block until one 188-byte MPEG-TS packet is ready, then copy it into
+/// the caller's `out_packet` buffer.
+///
+/// `out_packet` MUST point to a buffer of at least 188 bytes (a
+/// `uint8_t[188]` array on the C side). The pointer is dereferenced
+/// once on success; no allocation crosses the FFI boundary.
+///
+/// Returns:
+/// - `0` on success (188 bytes written to `out_packet`)
+/// - `TST_E_END_OF_STREAM` (-12) on graceful peer close
+/// - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
+/// - `TST_E_TRANSPORT` (-8) on a transport failure other than a clean
+///   peer disconnect (peer FIN surfaces as `TST_E_END_OF_STREAM`; see
+///   the `TransportError::Broken` arm in this function for details)
+/// - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+///
+/// On any non-zero return the contents of `out_packet` are unspecified.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_receiver_recv_packet(
+    p: *mut TstReceiver,
+    out_packet: *mut u8,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out_packet.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out_packet pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    let was_cancelled = handle.was_cancelled.clone();
+    handle.inner.with_inner_mut(|rx| match rx.next_packet() {
+        Ok(pkt) => {
+            // SAFETY: out_packet non-null per guard above. The destination
+            // is documented as a caller-provided uint8_t[188] buffer.
+            unsafe { std::ptr::copy_nonoverlapping(pkt.as_ptr(), out_packet, 188) };
+            0
+        }
+        Err(TransportError::Closed) => {
+            if was_cancelled.load(Ordering::Acquire) {
+                set_last_error(
+                    TstError::Closed,
+                    "receiver was cancelled or closed by caller",
+                );
+                TstError::Closed as i32
+            } else {
+                record_eos();
+                TstError::EndOfStream as i32
+            }
+        }
+        // SrtTransport::recv_bytes maps a peer disconnect to
+        // TransportError::Broken("connection broken") rather than Closed
+        // so that the managed-receive decorator can distinguish a
+        // self-initiated close from a peer-initiated break and drive
+        // reconnect. At the plain C ABI boundary a Broken result on a
+        // non-cancelled handle means the peer disconnected, which the
+        // caller contract documents as TST_E_END_OF_STREAM.
+        Err(TransportError::Broken(_)) if !was_cancelled.load(Ordering::Acquire) => {
+            record_eos();
+            TstError::EndOfStream as i32
+        }
+        Err(e) => {
+            record_transport_error(&e);
+            unsafe { crate::error::tst_get_last_error() }
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,5 +215,22 @@ mod tests {
         unsafe {
             tst_receiver_close(std::ptr::null_mut());
         }
+    }
+
+    #[test]
+    fn null_handle_recv_packet_returns_invalid_config() {
+        let mut buf = [0u8; 188];
+        let rc = unsafe { tst_receiver_recv_packet(std::ptr::null_mut(), buf.as_mut_ptr()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_buf_recv_packet_returns_invalid_config() {
+        // Both null pointers trip the p guard first; reaching the buf
+        // guard requires a non-null handle, which needs in-process
+        // loopback testing — deferred to ts_receiver_loopback.rs.
+        let rc =
+            unsafe { tst_receiver_recv_packet(std::ptr::null_mut(), std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 }

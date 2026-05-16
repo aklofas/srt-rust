@@ -67,6 +67,18 @@ fn socket_stats_returns_none_after_close() {
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
     let mut sender = SrtTransport::new(socket);
+
+    // Small pause between connect and close — on fast hardware
+    // (observed on linux-aarch64 + macOS arm64) close can win the
+    // race against the listener thread's accept() returning, and
+    // accept then panics with "Connection was broken". This test's
+    // sibling above adds a send + 50 ms settle that already serves
+    // this purpose; this test goes straight to close so the pause
+    // is added explicitly. 50 ms is the same value used by the
+    // sibling test for SRT accounting settling — same order of
+    // magnitude as the connect/accept race window.
+    std::thread::sleep(Duration::from_millis(50));
+
     <SrtTransport as Transport>::close(&mut sender);
 
     assert!(

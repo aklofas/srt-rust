@@ -118,7 +118,10 @@ fn loopback_mux_sender_to_demux_receiver_delivers_pmt_and_sample_and_eos() {
             }
             if std::time::Instant::now() > deadline {
                 unsafe { tst_mux_config_free(cfg) };
-                panic!("tst_mux_sender_open timed out after 5s: {}", last_error_msg());
+                panic!(
+                    "tst_mux_sender_open timed out after 5s: {}",
+                    last_error_msg()
+                );
             }
             thread::sleep(Duration::from_millis(50));
         };
@@ -147,7 +150,13 @@ fn loopback_mux_sender_to_demux_receiver_delivers_pmt_and_sample_and_eos() {
             // PTS in 90 kHz ticks: 40 ms per frame (25 fps).
             let pts = (i as i64) * 3_600;
             let rc = unsafe {
-                tst_mux_sender_send_video(tx, nal.as_ptr(), nal.len(), pts, /*key_frame=*/ true)
+                tst_mux_sender_send_video(
+                    tx,
+                    nal.as_ptr(),
+                    nal.len(),
+                    pts,
+                    /*key_frame=*/ true,
+                )
             };
             assert_eq!(
                 rc,

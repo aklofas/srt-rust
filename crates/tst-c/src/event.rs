@@ -327,10 +327,10 @@ pub struct TstEventNonConformant {
     pub observed_len: usize,
     pub obu_type: u8,
     pub _pad3: [u8; 7],
-    pub programs: *const u16,    // PidReusedAcrossPrograms (len 2)
-    pub tags: *const u8,         // SubtitleDescriptorAmbiguous
+    pub programs: *const u16, // PidReusedAcrossPrograms (len 2)
+    pub tags: *const u8,      // SubtitleDescriptorAmbiguous
     pub tag_count: usize,
-    pub detail: *const c_char,   // Other(String); also human-readable summary
+    pub detail: *const c_char, // Other(String); also human-readable summary
 }
 
 /// Top-level event struct. Caller stack-allocates and passes
@@ -436,10 +436,20 @@ pub(crate) fn convert(
     *out = TstEvent::default();
     match ev {
         DemuxEvent::ProgramMap(pm) => fill_program_map(arena, pm, out),
-        DemuxEvent::Sample { stream, pts, dts, payload } => {
+        DemuxEvent::Sample {
+            stream,
+            pts,
+            dts,
+            payload,
+        } => {
             fill_sample(arena, stream, *pts, *dts, payload, out);
         }
-        DemuxEvent::Metadata { stream, pts, kind, payload } => {
+        DemuxEvent::Metadata {
+            stream,
+            pts,
+            kind,
+            payload,
+        } => {
             fill_metadata(stream, *pts, kind, payload, out);
         }
         DemuxEvent::Discontinuity { stream, kind } => {
@@ -526,7 +536,10 @@ fn fill_sample(
     let mut payload_ptr: *const u8 = std::ptr::null();
     let mut payload_len: usize = 0;
     match payload {
-        SamplePayload::Video { codec: vc, payload: vp } => {
+        SamplePayload::Video {
+            codec: vc,
+            payload: vp,
+        } => {
             codec = crate::config::TstVideoCodec::from_core(*vc) as i32;
             match vp {
                 VideoPayload::Nals(nals) => {
@@ -550,12 +563,18 @@ fn fill_sample(
             payload_ptr = frames.as_ptr();
             payload_len = frames.len();
         }
-        SamplePayload::Subtitle { codec: sc, payload: pl } => {
+        SamplePayload::Subtitle {
+            codec: sc,
+            payload: pl,
+        } => {
             codec = crate::config::TstSubtitleCodec::from_core(*sc) as i32;
             payload_ptr = pl.as_ptr();
             payload_len = pl.len();
         }
-        SamplePayload::Unknown { stream_type: _, raw } => {
+        SamplePayload::Unknown {
+            stream_type: _,
+            raw,
+        } => {
             // codec stays -1; stream_kind == Unknown carries the stream_type
             // via the per-stream PMT entry rather than here.
             payload_ptr = raw.as_ptr();
@@ -753,7 +772,11 @@ fn fill_nonconformant(
             body.issue_code = TstNonConformantCode::TransportErrorPacket as c_int;
             body.pid = *pid;
         }
-        NonConformantIssue::PsiCcDiscontinuity { pid, expected, observed } => {
+        NonConformantIssue::PsiCcDiscontinuity {
+            pid,
+            expected,
+            observed,
+        } => {
             body.issue_code = TstNonConformantCode::PsiCcDiscontinuity as c_int;
             body.pid = *pid;
             body.cc_expected = *expected;
@@ -764,7 +787,11 @@ fn fill_nonconformant(
             body.pid = *pid;
             body.observed_len = *dropped_bytes;
         }
-        NonConformantIssue::PsiMultiSectionUnsupported { pid, table_id, last_section_number } => {
+        NonConformantIssue::PsiMultiSectionUnsupported {
+            pid,
+            table_id,
+            last_section_number,
+        } => {
             body.issue_code = TstNonConformantCode::PsiMultiSectionUnsupported as c_int;
             body.pid = *pid;
             body.table_id = *table_id;
@@ -818,7 +845,11 @@ fn link_source_to_c(s: tst_core::mpegts::demux::LinkSource) -> c_int {
 fn nal_to_c(n: &tst_core::mpegts::demux::NalUnit) -> TstNal {
     use tst_core::mpegts::demux::NalUnit;
     match n {
-        NalUnit::H264 { nal_type, ref_idc, payload } => TstNal {
+        NalUnit::H264 {
+            nal_type,
+            ref_idc,
+            payload,
+        } => TstNal {
             nal_type: *nal_type,
             ref_idc_or_layer_id: *ref_idc,
             temporal_id_plus1: 0,
@@ -826,8 +857,18 @@ fn nal_to_c(n: &tst_core::mpegts::demux::NalUnit) -> TstNal {
             payload: payload.as_ptr(),
             payload_len: payload.len(),
         },
-        NalUnit::H265 { nal_type, layer_id, temporal_id_plus1, payload }
-        | NalUnit::H266 { nal_type, layer_id, temporal_id_plus1, payload } => TstNal {
+        NalUnit::H265 {
+            nal_type,
+            layer_id,
+            temporal_id_plus1,
+            payload,
+        }
+        | NalUnit::H266 {
+            nal_type,
+            layer_id,
+            temporal_id_plus1,
+            payload,
+        } => TstNal {
             nal_type: *nal_type,
             ref_idc_or_layer_id: *layer_id,
             temporal_id_plus1: *temporal_id_plus1,

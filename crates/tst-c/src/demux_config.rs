@@ -53,7 +53,7 @@ impl TstStrictMode {
 
 use libc::size_t;
 use std::collections::HashMap;
-use tst_core::mpegts::demux::{DemuxerOptions, StrictMode, StreamKind};
+use tst_core::mpegts::demux::{DemuxerOptions, StreamKind, StrictMode};
 
 /// Opaque demux-config builder. Heap-allocated via `_new`, mutated
 /// in place via setters, released via `_free`. The receiver clones
@@ -205,7 +205,9 @@ pub unsafe extern "C" fn tst_demux_config_add_treat_as(
             301 => StreamKind::Subtitle(SubtitleCodec::DvbTeletext),
             302 => StreamKind::Subtitle(SubtitleCodec::Cea708Standalone),
             303 => StreamKind::Subtitle(SubtitleCodec::WebVttInTs),
-            400 => StreamKind::KlvSync { declared_link: None },
+            400 => StreamKind::KlvSync {
+                declared_link: None,
+            },
             401 => StreamKind::KlvAsync,
             _ => {
                 crate::error::set_last_error(

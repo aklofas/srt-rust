@@ -5,8 +5,8 @@
 
 use crate::error::{TstError, set_last_error};
 use crate::handle::{
-    TST_INVALID_STREAM_HANDLE, TstAudioStreamHandle, TstKlvStreamHandle,
-    TstSubtitleStreamHandle, TstVideoStreamHandle,
+    TST_INVALID_STREAM_HANDLE, TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle,
+    TstVideoStreamHandle,
 };
 use crate::panic::ffi_catch;
 use std::time::Duration;
@@ -522,9 +522,7 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_klv(
 //
 // # Safety
 // Caller must validate that `desc` is non-null before calling.
-unsafe fn desc_to_tlv_blob(
-    desc: &crate::event::TstDescriptor,
-) -> Result<Vec<u8>, libc::c_int> {
+unsafe fn desc_to_tlv_blob(desc: &crate::event::TstDescriptor) -> Result<Vec<u8>, libc::c_int> {
     if desc.data_len > 255 {
         set_last_error(
             TstError::InvalidConfig,
@@ -1304,8 +1302,7 @@ mod tests {
         unsafe {
             let cfg = tst_mux_config_new();
             let prog = tst_mux_config_add_program(cfg, 1, 0x100);
-            let stream =
-                tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+            let stream = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
             assert_ne!(stream, TST_INVALID_STREAM_HANDLE);
             // Synthetic registration descriptor body: "VIDX" (4 bytes).
             let body = b"VIDX";

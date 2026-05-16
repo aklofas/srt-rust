@@ -70,6 +70,16 @@ isolation) also ride this release.
   `ts2headers.sh` capture-then-commit pattern. Invoke via
   `cargo run -p tst-core --bin corpus_to_fixture -- --help`.
 
+### Internal
+
+- Test infrastructure: new `common::Loopback` + `AcceptHandle<R>` helper
+  in `crates/tst-srt/tests/common/mod.rs` consolidates the 15-line
+  "bind / spawn accept / signal ready" boilerplate into a 3-line
+  builder + closure shape. 5 `#[test]` functions across 4 files migrated
+  as proof (`io.rs` ×2, `maxbw_roundtrip.rs`, `linger.rs`,
+  `srto_sender.rs` ×2); remaining 15 files are mechanical follow-up.
+  Pattern from GStreamer's `tests/check/elements/srt.c`. Survey item #5.
+
 ---
 
 ### tst-c FFI panic isolation (2026-05-11) — plan #50

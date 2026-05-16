@@ -287,6 +287,8 @@ pub enum CodecParseError {
 ///
 /// Returns `8 + value as u8` on success, [`CodecParseError::ReservedValue`]
 /// otherwise. The H.264 path uses `h264-reader` which validates internally.
+// NOTE: `crates/tst-core/tests/tools/trace_h265_sps.rs` keeps an inlined
+// copy of this helper for diagnostic-tool purposes. Keep in sync.
 pub(crate) fn validate_bit_depth_minus8(
     field: &'static str,
     value: u32,

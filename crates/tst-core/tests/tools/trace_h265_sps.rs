@@ -17,9 +17,11 @@
 //! `[[bin]]` target (separate crate). Per Task 1 guidance, this file
 //! mirrors `parse_sps` without expanding the production crate's public
 //! API: we inline a minimal duplicate of `BitReader` and the
-//! `validate_bit_depth_minus8` helper here. The duplicate is preserved
-//! byte-for-byte from `crates/tst-core/src/codec/bitreader.rs` so the
-//! tracer's bit-cursor behavior matches the production parser exactly.
+//! `validate_bit_depth_minus8` helper here. The inlined `BitReader` is
+//! behaviorally equivalent for the SPS-reading paths exercised by this
+//! tracer (it intentionally omits `read_se` and some explanatory comments
+//! from the production copy). If either helper is ever promoted to `pub`,
+//! replace the inlined copies with `use` imports.
 
 use std::env;
 use std::fs;
@@ -110,6 +112,9 @@ fn trace(rbsp: &[u8]) -> Result<(), CodecParseError> {
     snap!("bit_depth_chroma_minus8 (ue)", bit_depth_chroma_minus8);
     let _ = validate_bit_depth_minus8("bit_depth_chroma_minus8", bit_depth_chroma_minus8)?;
 
+    // Tracer omits production's `> 12` reject (see `sps.rs:141-146`) —
+    // diagnostic should keep tracing past hostile/malformed values to
+    // surface where the misalignment lands.
     let log2_max_pic_order_cnt_lsb_minus4 = br.read_ue()?;
     snap!(
         "log2_max_pic_order_cnt_lsb_minus4 (ue)",
@@ -222,8 +227,7 @@ fn trace(rbsp: &[u8]) -> Result<(), CodecParseError> {
             );
             if delta_idx_minus1 + 1 > rps_idx {
                 eprintln!(
-                    "DIVERGENCE at bit {} on RPS {}: delta_idx_minus1={} > rps_idx={}",
-                    pos_start, rps_idx, delta_idx_minus1, rps_idx
+                    "DIVERGENCE at RPS {rps_idx} (RPS starts at bit {pos_start}, delta_idx_minus1={delta_idx_minus1} > rps_idx={rps_idx})",
                 );
                 return Ok(());
             }
@@ -253,6 +257,9 @@ fn trace(rbsp: &[u8]) -> Result<(), CodecParseError> {
             }
             num_delta_pocs.push(new_num_delta);
         } else {
+            // Tracer omits production's `MAX_PICS_PER_SET = 32` cap (see
+            // `short_term_rps.rs:86-91`) — diagnostic intentionally keeps
+            // walking past spec-violating values.
             let num_negative = br.read_ue()?;
             snap!(
                 format!("[RPS {rps_idx}] num_negative_pics (ue)"),
@@ -291,6 +298,10 @@ fn trace(rbsp: &[u8]) -> Result<(), CodecParseError> {
         }
     }
 
+    // Stop here: the bug under investigation lives in the RPS region.
+    // Production `parse_sps` continues into `long_term_ref_pics_present_flag`,
+    // `sps_temporal_mvp_enabled_flag`, and the VUI (`sps.rs:191-211`); extend
+    // the tracer if a future bug surfaces past `num_short_term_ref_pic_sets`.
     Ok(())
 }
 
@@ -374,10 +385,11 @@ fn trace_ptl(br: &mut BitReader, max_sub_layers_minus1: u8) -> Result<(), CodecP
 //
 // Both are `pub(crate)` in `tst_core::codec` and so unreachable from a
 // `[[bin]]` target (which is a separate crate from the library). The copies
-// below are byte-for-byte mirrors of `crates/tst-core/src/codec/bitreader.rs`
-// and `crates/tst-core/src/codec/mod.rs::validate_bit_depth_minus8` so the
-// tracer's bit-cursor behavior matches the production parser exactly. If
-// either is ever promoted to `pub`, replace these with `use` imports.
+// below are behaviorally equivalent for the SPS-reading paths exercised by
+// this tracer — derived from `crates/tst-core/src/codec/bitreader.rs` and
+// `crates/tst-core/src/codec/mod.rs::validate_bit_depth_minus8`. They
+// intentionally omit `read_se` (unused here) and some inline comments. If
+// either helper is ever promoted to `pub`, replace these with `use` imports.
 // ---------------------------------------------------------------------------
 
 struct BitReader<'a> {

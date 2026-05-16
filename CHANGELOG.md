@@ -41,6 +41,16 @@ isolation) also ride this release.
   `PsiParseError::SectionTooShort` variant, instead of underflowing the
   CRC slice extraction.
 
+- H.265 SPS parser: fixed bit-cursor misalignment in
+  `walk_short_term_ref_pic_sets` that caused `parse_sps` to return
+  `ReservedValue { field: "delta_idx_minus1" }` on valid Main10
+  conformance vectors. The inter-prediction arm was unconditionally
+  reading `delta_idx_minus1` (ue), but per H.265 §7.3.7 that field is
+  only signaled when `stRpsIdx == num_short_term_ref_pic_sets` — true
+  only in slice-header context, never in SPS context. The bug was
+  surfaced by the `DBLK_A_MAIN10_VIXS_4` fixture (plan #55); its entry
+  is now removed from the test runner's `KNOWN_PARSER_BUGS` allow-list.
+
 ### Testing
 
 - `scripts/release-validation.sh` steps 3-5 (`tsanalyze` / `tspsi` / `ffprobe`)

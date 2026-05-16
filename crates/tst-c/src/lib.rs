@@ -13,6 +13,7 @@
 
 pub mod config;
 mod connect;
+pub mod demux_config;
 pub mod error;
 pub mod handle;
 mod listen;

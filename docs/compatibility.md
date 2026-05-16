@@ -23,6 +23,30 @@ that this document summarises.
 
 ---
 
+## Build targets
+
+The `ts-transformer` workspace supports the following platforms. Tier 1
+platforms are verified in CI on every PR; non-Tier-1 platforms are
+deferred — see `deferred-features.md` for triggers to revisit.
+
+| Target                       | Status                  | CI scope                          | Notes                                          |
+|------------------------------|-------------------------|-----------------------------------|------------------------------------------------|
+| Linux x86_64 (GNU)           | Tier 1, gating          | Every PR + scrub/ratchet scripts  | Reference platform                             |
+| Linux aarch64 (GNU)          | Tier 1, phase-in        | Every PR (informational ~14d)     | GHA `ubuntu-24.04-arm`; native build           |
+| macOS arm64 (Apple Silicon)  | Tier 1, phase-in        | Every PR (informational ~14d)     | GHA `macos-14`; native build; Intel not supported |
+| Windows x86_64 (MSVC)        | Tier 1, phase-in        | Every PR (informational ~14d)     | GHA `windows-latest`; MSVC toolchain only      |
+| Linux x86_64 (musl)          | Tier 2                  | `tst-core` + `tst-pipeline` only  | libsrt-bound crates not supported under musl   |
+| iOS / Android                | Deferred                | —                                 | See `deferred-features.md`                     |
+| Windows MinGW (gcc)          | Deferred                | —                                 | See `deferred-features.md`                     |
+| macOS x86_64 (Intel)         | Deferred                | —                                 | See `deferred-features.md`                     |
+
+**"Phase-in" status meaning:** the platform is built + tested in CI but
+build failures do NOT block PR merge. After ~14 consecutive green
+nightly days the platform is promoted to "gating" via a separate
+follow-up plan, at which point build failures DO block merge.
+
+---
+
 ## Versions
 
 | Component | Pinned at |

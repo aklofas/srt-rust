@@ -35,6 +35,15 @@ pub enum TstError {
     /// can branch on the shutdown reason. After this code the handle is dead;
     /// subsequent calls return `Closed`.
     EndOfStream = -12,
+    /// Requested data is not currently available — typically because a
+    /// `tst_managed_*` handle has no live inner socket (mid-reconnect or
+    /// after close). Distinct from `InvalidUsage` (which means the handle
+    /// is in a fundamentally wrong state for the call) — `NotAvailable`
+    /// is transient and may resolve on the next call.
+    ///
+    /// Returned today by the `tst_*_get_socket_stats` family when the
+    /// inner transport's `socket_stats()` returns `None`.
+    NotAvailable = -13,
 }
 
 thread_local! {
@@ -364,6 +373,11 @@ mod tests {
     #[test]
     fn end_of_stream_code_is_negative_twelve() {
         assert_eq!(TstError::EndOfStream as i32, -12);
+    }
+
+    #[test]
+    fn not_available_code_is_negative_thirteen() {
+        assert_eq!(TstError::NotAvailable as i32, -13);
     }
 
     #[test]

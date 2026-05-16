@@ -94,31 +94,26 @@ ALLOWLIST=(
     "tst_raw_sender_get_stats"
     "tst_raw_sender_reset_stats"
 
-    # --- Phase 1 receiver surface + bundled sender cancel (added 2026-05-15;
-    #     C ABI rustdoc backfill on corresponding Rust methods is a P2
-    #     follow-up — RawReceiver::recv_one/stats/reset_stats/cancel_handle,
-    #     RawSender::cancel_handle, Sender::cancel_handle, MuxSender::cancel_handle,
-    #     ManagedReceiveTransport entry points all need `# C ABI` blocks added.
-    #     See ROADMAP.md P2 backlog.) ---
+    # --- Phase 1 receiver surface open helpers (no direct Rust counterpart:
+    #     URL parsing + Box construction happen entirely in the C layer;
+    #     there is no single Rust method that maps 1:1 to these entry points) ---
     "tst_raw_receiver_open"
     "tst_raw_receiver_open_listener"
-    "tst_raw_receiver_recv"
-    "tst_raw_receiver_cancel"
-    "tst_raw_receiver_close"
-    "tst_raw_receiver_get_stats"
-    "tst_raw_receiver_reset_stats"
     "tst_managed_raw_receiver_open"
     "tst_managed_raw_receiver_open_listener"
+
+    # --- Phase 1 managed-wrapper entry points (ride the plain-side # C ABI
+    #     rustdoc cross-reference: ManagedReceiveTransport calls through to
+    #     the same underlying RawReceiver methods that carry the backfilled
+    #     # C ABI blocks; adding duplicate cross-refs on the managed wrappers
+    #     would not add useful information) ---
     "tst_managed_raw_receiver_recv"
     "tst_managed_raw_receiver_cancel"
     "tst_managed_raw_receiver_close"
     "tst_managed_raw_receiver_get_stats"
     "tst_managed_raw_receiver_reset_stats"
-    "tst_raw_sender_cancel"
     "tst_managed_raw_sender_cancel"
-    "tst_sender_cancel"
     "tst_managed_sender_cancel"
-    "tst_mux_sender_cancel"
     "tst_managed_mux_sender_cancel"
 )
 

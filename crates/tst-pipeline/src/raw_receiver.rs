@@ -105,6 +105,10 @@ impl<R: RecvTransport> RawReceiver<R> {
     /// no TS wrapping); for pre-muxed TS recovery use [`crate::Receiver`]
     /// or [`crate::DemuxReceiver`].
     ///
+    /// # C ABI
+    ///
+    /// `tst_raw_receiver_recv` — see `crates/tst-c/include/tstrans.h`.
+    ///
     /// # Errors
     /// - [`TransportError::Closed`] when the connection has ended.
     /// - [`TransportError::Backpressure`] on a recv timeout — the
@@ -152,11 +156,19 @@ impl<R: RecvTransport> RawReceiver<R> {
     }
 
     /// Return a snapshot of aggregate receive stats.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_raw_receiver_get_stats` — see `crates/tst-c/include/tstrans.h`.
     pub fn stats(&self) -> RawReceiverStats {
         self.stats
     }
 
     /// Zero all counters. Does not affect the underlying transport.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_raw_receiver_reset_stats` — see `crates/tst-c/include/tstrans.h`.
     pub fn reset_stats(&mut self) {
         self.stats = RawReceiverStats::default();
     }
@@ -168,11 +180,19 @@ impl<R: RecvTransport> RawReceiver<R> {
 
     /// Close the underlying transport. Idempotent. After close, `recv_one`
     /// returns `TransportError::Closed`. Mirrors `RawSender::close`.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_raw_receiver_close` — see `crates/tst-c/include/tstrans.h`.
     pub fn close(&mut self) {
         self.transport.close();
     }
 
     /// Snapshot of the underlying recv-transport's cancel handle.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_raw_receiver_cancel` — see `crates/tst-c/include/tstrans.h`.
     pub fn cancel_handle(
         &self,
     ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {

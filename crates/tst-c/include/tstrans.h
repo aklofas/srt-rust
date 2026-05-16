@@ -849,7 +849,9 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * - 0 on success (`*out_len` set to bytes received; ≤ `len`)
  * - `TST_E_END_OF_STREAM` (-12) on graceful peer close
  * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
- * - `TST_E_TRANSPORT` (-8) on connection failure
+ * - `TST_E_TRANSPORT` (-8) on a transport failure other than a clean
+ *   peer disconnect (peer FIN surfaces as `TST_E_END_OF_STREAM`; see
+ *   the `TransportError::Broken` arm in this function for details)
  * - `TST_E_TOO_LARGE` (-6) if the inbound message exceeds `len`
  *   (`*out_len` is left unmodified)
  * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
@@ -896,6 +898,16 @@ struct tst_managed_raw_receiver_t *tst_managed_raw_receiver_open_listener(const 
  * Block until one message arrives. Semantics match `tst_raw_receiver_recv`;
  * on transport failure the managed inner reconnects transparently before
  * returning an error only once the retry budget is exhausted.
+ *
+ * # Asymmetry with `tst_raw_receiver_recv`
+ *
+ * The plain `tst_raw_receiver_recv` maps `TransportError::Broken` on
+ * a non-cancelled handle to `TST_E_END_OF_STREAM` (peer disconnect at
+ * the bare-transport layer is semantically end-of-stream). The managed
+ * version does NOT apply that mapping: `ManagedReceiveTransport`
+ * already retries internally on Broken, so a Broken that reaches this
+ * function means all reconnect attempts have been exhausted — that is
+ * a hard transport failure (`TST_E_TRANSPORT`), not an end-of-stream.
  */
 
 int tst_managed_raw_receiver_recv(struct tst_managed_raw_receiver_t *p,

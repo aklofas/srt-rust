@@ -573,6 +573,10 @@ impl<T: Transport> MuxSender<T> {
     /// supports cancellation. Equivalent to what `close()` calls
     /// internally; exposed for callers who want to keep the MuxSender
     /// alive but still have an out-of-band wake-up mechanism.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_mux_sender_cancel` — see `crates/tst-c/include/tstrans.h`.
     pub fn cancel_handle(
         &self,
     ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {

@@ -166,6 +166,10 @@ impl<T: Transport> RawSender<T> {
     }
 
     /// Snapshot of the underlying transport's cancel handle.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_raw_sender_cancel` — see `crates/tst-c/include/tstrans.h`.
     pub fn cancel_handle(
         &self,
     ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {

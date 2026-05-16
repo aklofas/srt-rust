@@ -57,7 +57,7 @@ pub struct RawReceiverStats {
 /// | Kotlin | Wrap as `AutoCloseable`; `.use { }` calls `close()` on exit |
 /// | Swift | `deinit` calls drop; `defer { handle.cancel() }` for explicit cross-thread |
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as rx:` calls `close()` on exit |
-/// | C | (deferred to per-binding plan — receiver-surface C ABI is P0) |
+/// | C | `tst_raw_receiver_close(rx)` (explicit; mirrors `Drop`); `tst_raw_receiver_cancel(handle)` from any thread |
 ///
 /// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
 pub struct RawReceiver<R: RecvTransport> {

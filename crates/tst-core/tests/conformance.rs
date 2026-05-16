@@ -13,6 +13,8 @@ use tst_core::codec::{ChromaFormat, CodecParseError};
 
 #[derive(Debug, Deserialize)]
 struct Sidecar {
+    // Retained for documentation; not asserted by the test runner.
+    #[allow(dead_code)]
     source: String,
     kind: String,
     expected: Expected,
@@ -170,6 +172,8 @@ fn h265_conformance_vectors() {
     }
 }
 
+// Vps and Pps variants are defined for future fixtures; no field checks today.
+#[allow(dead_code)]
 enum H265AnyResult {
     Sps(tst_core::codec::h265::H265Sps),
     Vps(tst_core::codec::h265::H265Vps),
@@ -258,6 +262,8 @@ fn h266_conformance_vectors() {
     }
 }
 
+// Vps and Pps variants are defined for future fixtures; no field checks today.
+#[allow(dead_code)]
 enum H266AnyResult {
     Sps(tst_core::codec::h266::H266Sps),
     Vps(tst_core::codec::h266::H266Vps),

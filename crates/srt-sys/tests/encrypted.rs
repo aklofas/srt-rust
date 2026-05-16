@@ -8,8 +8,20 @@
 //!      handshake before reporting success).
 //!
 //! Only built when the `mbedtls` feature is enabled.
+//!
+//! Skipped on Windows: the test reaches into `libc::sockaddr_in` /
+//! `libc::sockaddr_storage`, neither of which are exposed by the
+//! `libc` crate on `*-pc-windows-msvc`. Win32 uses its own `SOCKADDR`
+//! family from <ws2def.h> reached via `windows-sys`. A Windows port
+//! would require either pulling in `windows-sys` for the test
+//! dependency or wrapping the sockaddr construction behind a
+//! cross-platform shim. Tracked in `deferred-features.md` if a
+//! consumer asks; for now Windows users still get end-to-end
+//! coverage via the higher-level `tst-srt` / `tst-c` integration
+//! tests (which use Rust's `std::net::SocketAddr` and never touch
+//! libc sockaddr types directly).
 
-#![cfg(feature = "mbedtls")]
+#![cfg(all(feature = "mbedtls", unix))]
 
 use srt_sys::*;
 use std::ffi::CString;

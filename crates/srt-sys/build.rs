@@ -66,14 +66,30 @@ fn main() {
         .allowlist_function("srt_.*")
         .allowlist_type("SRT_.*|SRTSOCKET|UDPSOCKET|CBytePerfMon")
         .allowlist_var("SRT_.*")
-        .blocklist_type("sockaddr.*")
         .ctypes_prefix("libc")
-        .raw_line("use libc::{sockaddr, sockaddr_storage};")
         .derive_debug(true)
         .derive_default(true)
         .derive_copy(true)
         .layout_tests(false)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));
+
+    // The libc crate exposes `sockaddr` / `sockaddr_storage` on Unix
+    // targets, so we blocklist bindgen's auto-generated copies and
+    // substitute libc's — this lets consumer crates reuse the same
+    // sockaddr types as Rust's std::net layer.
+    //
+    // On Windows (`*-pc-windows-msvc`), libc does NOT export these
+    // symbols at the crate root (Win32 uses its own `SOCKADDR` types
+    // from <ws2def.h>), so the substitution would generate an
+    // unresolved-import compile error. Let bindgen emit its own
+    // copies on Windows — consumers cast through raw pointers in
+    // either case, so the type identity doesn't matter end-to-end.
+    let target_family = env::var("CARGO_CFG_TARGET_FAMILY").unwrap_or_default();
+    if target_family == "unix" {
+        builder = builder
+            .blocklist_type("sockaddr.*")
+            .raw_line("use libc::{sockaddr, sockaddr_storage};");
+    }
 
     for path in &include_paths {
         builder = builder.clang_arg(format!("-I{}", path.display()));

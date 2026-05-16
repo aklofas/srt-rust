@@ -9,7 +9,9 @@ use crate::error::{
 };
 use crate::handle::Handle;
 use crate::mux_sender::parse_c_srt_url;
-use tst_pipeline::{ManagedTransport, Sender, SenderStats};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tst_pipeline::{ManagedTransport, Sender, SenderStats, TransportCancel};
 use tst_srt::SrtTransport;
 
 /// Public-ABI mirror of `tst_pipeline::SenderStats`. Same fields,
@@ -41,6 +43,13 @@ impl From<&SenderStats> for TstSenderStats {
 
 pub struct TstSender {
     inner: Handle<Sender<SrtTransport>>,
+    cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
+    /// Informational only on the sender side — set by `_cancel` and `_close`
+    /// but never read by `_send` paths. Kept for shape uniformity with the
+    /// receiver structs (where it gates peer-FIN vs caller-close discrimination
+    /// in `_recv`); future JNI/UniFFI bindings reflecting on field types see
+    /// the same shape across all 8 handle families.
+    was_cancelled: Arc<AtomicBool>,
 }
 
 /// Open a `tst_sender_t` connected via SRT.
@@ -78,8 +87,13 @@ pub unsafe extern "C" fn tst_sender_open(
                 return std::ptr::null_mut();
             }
         };
+        let sender = Sender::new(transport, cfg);
+        let cancel = sender.cancel_handle();
+        let was_cancelled = Arc::new(AtomicBool::new(false));
         Box::into_raw(Box::new(TstSender {
-            inner: Handle::new(Sender::new(transport, cfg)),
+            inner: Handle::new(sender),
+            cancel,
+            was_cancelled,
         }))
     })
 }
@@ -161,8 +175,36 @@ pub unsafe extern "C" fn tst_sender_close(p: *mut TstSender) {
         return;
     }
     let boxed = unsafe { Box::from_raw(p) };
+    boxed.was_cancelled.store(true, Ordering::Release);
+    if let Some(c) = &boxed.cancel {
+        c.cancel();
+    }
     boxed.inner.close();
     drop(boxed);
+}
+
+/// Cancel a `tst_sender_t`. Unblocks a thread parked in `_send`
+/// within one libsrt I/O cycle (~3-10 ms) by closing the underlying
+/// libsrt socket. Safe to call from any thread. Idempotent.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+///
+/// After cancel, `_send` returns `TST_E_CLOSED`. The handle must still
+/// be `_close`'d to free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_ts_sender_cancel(p: *mut TstSender) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+    // send holds it). The was_cancelled flag + cancel-handle Arc are
+    // accessible without locking.
+    handle.was_cancelled.store(true, Ordering::Release);
+    if let Some(c) = &handle.cancel {
+        c.cancel();
+    }
+    0
 }
 
 // ------------------------------------------------------------------
@@ -171,6 +213,13 @@ pub unsafe extern "C" fn tst_sender_close(p: *mut TstSender) {
 
 pub struct TstManagedSender {
     inner: Handle<Sender<ManagedTransport<SrtTransport>>>,
+    cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
+    /// Informational only on the sender side — set by `_cancel` and `_close`
+    /// but never read by `_send` paths. Kept for shape uniformity with the
+    /// receiver structs (where it gates peer-FIN vs caller-close discrimination
+    /// in `_recv`); future JNI/UniFFI bindings reflecting on field types see
+    /// the same shape across all 8 handle families.
+    was_cancelled: Arc<AtomicBool>,
 }
 
 /// Open a `tst_managed_sender_t` connected via SRT.
@@ -219,8 +268,13 @@ pub unsafe extern "C" fn tst_managed_sender_open(
         let cfg_for_reconnect = socket_cfg.clone();
         let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
         let managed = ManagedTransport::new(initial, factory, policy);
+        let sender = Sender::new(managed, cfg);
+        let cancel = sender.cancel_handle();
+        let was_cancelled = Arc::new(AtomicBool::new(false));
         Box::into_raw(Box::new(TstManagedSender {
-            inner: Handle::new(Sender::new(managed, cfg)),
+            inner: Handle::new(sender),
+            cancel,
+            was_cancelled,
         }))
     })
 }
@@ -302,8 +356,36 @@ pub unsafe extern "C" fn tst_managed_sender_close(p: *mut TstManagedSender) {
         return;
     }
     let boxed = unsafe { Box::from_raw(p) };
+    boxed.was_cancelled.store(true, Ordering::Release);
+    if let Some(c) = &boxed.cancel {
+        c.cancel();
+    }
     boxed.inner.close();
     drop(boxed);
+}
+
+/// Cancel a `tst_managed_sender_t`. Same semantics as
+/// `tst_ts_sender_cancel`; reaches the currently-active inner
+/// transport's cancel handle through `ManagedTransport`'s atomic
+/// snapshot.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_ts_sender_cancel(
+    p: *mut TstManagedSender,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+    // send holds it). The was_cancelled flag + cancel-handle Arc are
+    // accessible without locking.
+    handle.was_cancelled.store(true, Ordering::Release);
+    if let Some(c) = &handle.cancel {
+        c.cancel();
+    }
+    0
 }
 
 #[cfg(test)]
@@ -327,5 +409,17 @@ mod tests {
             tst_sender_close(std::ptr::null_mut());
             tst_managed_sender_close(std::ptr::null_mut());
         }
+    }
+
+    #[test]
+    fn null_cancel_returns_invalid_config() {
+        let rc = unsafe { tst_ts_sender_cancel(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn managed_null_cancel_returns_invalid_config() {
+        let rc = unsafe { tst_managed_ts_sender_cancel(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 }

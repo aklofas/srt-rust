@@ -3,11 +3,8 @@
 mod common;
 
 use std::ffi::c_int;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
 use std::time::Duration;
-use tst_srt::{ListenerBuilder, Role, SocketBuilder};
+use tst_srt::{Role, SocketBuilder};
 
 fn read_srto_sender(handle: srt_sys::SRTSOCKET) -> i32 {
     // Initialize to 0 — libsrt's getsockflag for SRTO_SENDER writes a single
@@ -30,20 +27,11 @@ fn read_srto_sender(handle: srt_sys::SRTSOCKET) -> i32 {
 #[test]
 fn role_sender_sets_srto_sender_on_caller() {
     require_loopback!();
-    let listener = ListenerBuilder::new()
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
-    let ready = Arc::new(AtomicBool::new(false));
-    let r = ready.clone();
-    let accept_thread = thread::spawn(move || {
-        let mut l = listener;
-        r.store(true, Ordering::SeqCst);
-        l.accept().expect("accept")
-    });
+    let lb = common::Loopback::bind();
+    let port = lb.port;
 
-    common::wait_for_ready(&ready);
+    let accept = lb.spawn_accept(|sock| sock);
+    accept.wait_ready();
 
     let socket = SocketBuilder::new()
         .role(Role::Sender)
@@ -51,7 +39,7 @@ fn role_sender_sets_srto_sender_on_caller() {
         .connect(("127.0.0.1", port))
         .expect("connect");
 
-    let _ = accept_thread.join().expect("join");
+    let _peer = accept.join();
 
     assert_eq!(
         read_srto_sender(socket.raw_handle()),
@@ -63,27 +51,18 @@ fn role_sender_sets_srto_sender_on_caller() {
 #[test]
 fn role_receiver_leaves_srto_sender_at_default() {
     require_loopback!();
-    let listener = ListenerBuilder::new()
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
-    let ready = Arc::new(AtomicBool::new(false));
-    let r = ready.clone();
-    let accept_thread = thread::spawn(move || {
-        let mut l = listener;
-        r.store(true, Ordering::SeqCst);
-        l.accept().expect("accept")
-    });
+    let lb = common::Loopback::bind();
+    let port = lb.port;
 
-    common::wait_for_ready(&ready);
+    let accept = lb.spawn_accept(|sock| sock);
+    accept.wait_ready();
 
     let socket = SocketBuilder::new()
         .send_timeout(Duration::from_secs(5))
         .connect(("127.0.0.1", port))
         .expect("connect");
 
-    let _ = accept_thread.join().expect("join");
+    let _peer = accept.join();
 
     assert_eq!(
         read_srto_sender(socket.raw_handle()),

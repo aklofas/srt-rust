@@ -117,6 +117,16 @@ enum tst_e
 typedef int32_t tst_e;
 #endif // __cplusplus
 
+/**
+ * Opaque demux-config builder. Heap-allocated via `_new`, mutated
+ * in place via setters, released via `_free`. The receiver clones
+ * what it needs at `_open_with_config` time; the caller still owns
+ * the builder.
+ *
+ * Lifecycle mirrors `tst_mux_config_t` from plan #14 exactly.
+ */
+typedef struct TstDemuxConfig TstDemuxConfig;
+
 typedef struct tst_managed_mux_sender_t tst_managed_mux_sender_t;
 
 typedef struct tst_managed_raw_receiver_t tst_managed_raw_receiver_t;
@@ -506,6 +516,60 @@ int tst_reconnect_policy_set_backoff_exponential_ms(struct tst_reconnect_policy_
 
 int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
                                              enum tst_overflow_policy policy);
+
+/**
+ * Allocate a new `tst_demux_config_t` with default values
+ * (strict mode = Off, no overrides, default PES caps).
+ *
+ * Returns `NULL` on allocation failure or internal panic.
+ * Free with `tst_demux_config_free`.
+ */
+ struct TstDemuxConfig *tst_demux_config_new(void);
+
+/**
+ * Release a `tst_demux_config_t`. Safe to call with NULL.
+ */
+ void tst_demux_config_free(struct TstDemuxConfig *cfg);
+
+/**
+ * Set the demuxer's strict mode. `mode` is one of
+ * `TST_STRICT_MODE_OFF` (0, default), `TST_STRICT_MODE_TIMING_ONLY` (1),
+ * `TST_STRICT_MODE_DESCRIPTORS_ONLY` (2), or `TST_STRICT_MODE_FULL` (3).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
+ * unrecognized `mode`.
+ */
+ int tst_demux_config_set_strict_mode(struct TstDemuxConfig *cfg, int mode);
+
+/**
+ * Add a `klv_pid` → `video_pid` KLV-link override. Bypasses PMT-descriptor
+ * inference. Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+ */
+
+int tst_demux_config_add_link_klv(struct TstDemuxConfig *cfg,
+                                  uint16_t klv_pid,
+                                  uint16_t video_pid);
+
+/**
+ * Force a PID's stream-kind classification. `stream_kind` is one of
+ * `TST_STREAM_KIND_VIDEO_H264`, `TST_STREAM_KIND_VIDEO_H265`,
+ * `TST_STREAM_KIND_AUDIO_MP2`, ... — see the header for the full table.
+ *
+ * NOTE: The C-side mapping flattens (TstStreamKindTag × codec) pairs
+ * into single integers. The implementation table below covers the
+ * common cases — extend if a consumer asks for a kind not listed.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
+ * unrecognized `stream_kind`.
+ */
+ int tst_demux_config_add_treat_as(struct TstDemuxConfig *cfg, uint16_t pid, int stream_kind);
+
+/**
+ * Set PES reassembly caps. `0` means use the Rust-side default.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+ */
+ int tst_demux_config_set_pes_cap(struct TstDemuxConfig *cfg, size_t per_pid, size_t total);
 
 /**
  * Read the most recent error code on this thread. Returns `0`

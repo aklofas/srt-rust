@@ -161,6 +161,84 @@ fn extract_h266_parameter_set(stream: &[u8], nal_type: u8, n: u32) -> Option<Vec
     None
 }
 
+/// Extract the `n`th SequenceHeader OBU payload from an AV1 bytestream.
+/// Handles both raw OBU streams and IVF-wrapped streams (autodetected
+/// via DKIF signature at offset 0). Returns None if not found.
+fn extract_av1_sequence_header(stream: &[u8], n: u32) -> Option<Vec<u8>> {
+    // IVF autodetect: DKIF + 32-byte header.
+    let obu_stream: &[u8] = if stream.len() >= 32 && &stream[..4] == b"DKIF" {
+        // Skip IVF file header.
+        let mut frames = &stream[32..];
+        // For sequence-header extraction we only need the first frame's payload.
+        // IVF per-frame header is 12 bytes: 4-byte size LE + 8-byte pts.
+        if frames.len() < 12 {
+            return None;
+        }
+        let size = u32::from_le_bytes([frames[0], frames[1], frames[2], frames[3]]) as usize;
+        frames = &frames[12..];
+        if frames.len() < size {
+            return None;
+        }
+        &frames[..size]
+    } else {
+        stream
+    };
+
+    let mut matched = 0u32;
+    let mut cursor = 0usize;
+    while cursor < obu_stream.len() {
+        let header = obu_stream[cursor];
+        // AV1 §5.3.2 OBU header bit layout:
+        //   bit 7: obu_forbidden_bit
+        //   bits 6-3: obu_type (4 bits)
+        //   bit 2: obu_extension_flag
+        //   bit 1: obu_has_size_field
+        //   bit 0: obu_reserved_1bit
+        let obu_type = (header >> 3) & 0x0F;
+        let extension = (header >> 2) & 0x01 != 0;
+        let has_size = (header >> 1) & 0x01 != 0;
+        cursor += 1;
+        if extension {
+            cursor += 1; // skip 1-byte extension header
+        }
+        let payload_size = if has_size {
+            let (sz, consumed) = read_leb128(&obu_stream[cursor..])?;
+            cursor += consumed;
+            sz
+        } else {
+            // For raw streams without size, payload runs to EOF. Conformance
+            // vectors should always have has_size set; bail otherwise.
+            obu_stream.len() - cursor
+        };
+        if obu_type == 1 {
+            // OBU type 1 = SequenceHeader per AV1 §6.4.
+            if matched == n {
+                return Some(obu_stream[cursor..cursor + payload_size].to_vec());
+            }
+            matched += 1;
+        }
+        cursor += payload_size;
+    }
+    None
+}
+
+/// Read an AV1 LEB128. Returns (value, bytes_consumed) or None on malformed input.
+/// Spec caps at 8 bytes (AV1 §4.10.5).
+fn read_leb128(bytes: &[u8]) -> Option<(usize, usize)> {
+    let mut value: u64 = 0;
+    for i in 0..8 {
+        if i >= bytes.len() {
+            return None;
+        }
+        let b = bytes[i];
+        value |= ((b & 0x7F) as u64) << (i * 7);
+        if b & 0x80 == 0 {
+            return Some((value as usize, i + 1));
+        }
+    }
+    None
+}
+
 fn main() {
     eprintln!("not yet implemented");
     std::process::exit(2);
@@ -294,5 +372,50 @@ mod tests {
         let extracted = extract_h266_parameter_set(FAKE_H266_STREAM, 16, 0)
             .expect("PPS should be found");
         assert_eq!(extracted, vec![0x11, 0x22]);
+    }
+
+    /// Raw OBU stream (no IVF): TemporalDelimiter (type 2) + SequenceHeader (type 1).
+    /// Both have obu_has_size_field=1 (bit 6 of byte 0) and a 1-byte LEB128 size.
+    const FAKE_AV1_RAW_OBUS: &[u8] = &[
+        // TD: type=2, has_size=1 -> byte = (2<<3)|(1<<1) = 0x12
+        0x12, 0x00,
+        // SeqHeader: type=1, has_size=1 -> byte = (1<<3)|(1<<1) = 0x0A
+        0x0A, 0x04, 0xAA, 0xBB, 0xCC, 0xDD,
+    ];
+
+    #[test]
+    fn scan_av1_sequence_header_raw_obus() {
+        let extracted = extract_av1_sequence_header(FAKE_AV1_RAW_OBUS, 0)
+            .expect("SequenceHeader should be found");
+        assert_eq!(extracted, vec![0xAA, 0xBB, 0xCC, 0xDD]);
+    }
+
+    /// IVF-wrapped: signature DKIF + 28 bytes header padding + one frame
+    /// containing a SequenceHeader OBU. The IVF per-frame header is 12 bytes:
+    /// 4-byte size LE + 8-byte pts LE.
+    const FAKE_AV1_IVF: &[u8] = &[
+        // IVF file header (32 bytes)
+        b'D', b'K', b'I', b'F', // signature
+        0x00, 0x00, // version
+        0x20, 0x00, // header length (32 LE)
+        b'A', b'V', b'0', b'1', // fourcc
+        0x40, 0x01, // width 320
+        0xF0, 0x00, // height 240
+        0x1E, 0x00, 0x00, 0x00, // framerate num
+        0x01, 0x00, 0x00, 0x00, // framerate den
+        0x01, 0x00, 0x00, 0x00, // frame count
+        0x00, 0x00, 0x00, 0x00, // unused
+        // Frame 0: size=6 + pts=0
+        0x06, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        // Frame 0 payload: SeqHeader OBU (type=1, has_size=1) + size=4 + 4 bytes
+        0x0A, 0x04, 0xEE, 0xFF, 0x12, 0x34,
+    ];
+
+    #[test]
+    fn scan_av1_sequence_header_ivf() {
+        let extracted = extract_av1_sequence_header(FAKE_AV1_IVF, 0)
+            .expect("SequenceHeader inside IVF should be found");
+        assert_eq!(extracted, vec![0xEE, 0xFF, 0x12, 0x34]);
     }
 }

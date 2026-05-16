@@ -1,8 +1,22 @@
 //! Compiles tests/smoke.c against the cdylib produced by `cargo build`
 //! and runs the resulting binary.
 
+use std::env;
 use std::path::PathBuf;
 use std::process::Command;
+
+/// The runtime-linker env var that points the dynamic loader at extra
+/// library search dirs. Differs per platform:
+///   * Linux / FreeBSD / etc. — `LD_LIBRARY_PATH`
+///   * macOS / iOS — `DYLD_LIBRARY_PATH`
+///   * Windows — `PATH`
+const DYLIB_SEARCH_ENV: &str = if cfg!(target_os = "macos") || cfg!(target_os = "ios") {
+    "DYLD_LIBRARY_PATH"
+} else if cfg!(target_os = "windows") {
+    "PATH"
+} else {
+    "LD_LIBRARY_PATH"
+};
 
 #[test]
 fn smoke_c_compiles_links_runs() {
@@ -14,9 +28,20 @@ fn smoke_c_compiles_links_runs() {
     let header = PathBuf::from(manifest_dir).join("include/tstrans.h");
     let smoke_c = PathBuf::from(manifest_dir).join("tests/smoke.c");
 
+    // Platform-correct cdylib filename: libtstrans.so on Linux,
+    // libtstrans.dylib on macOS, tstrans.dll on Windows. std::env::consts
+    // gives us the prefix ("lib"/"") and suffix (".so"/".dylib"/".dll")
+    // per the active target.
+    let cdylib_name = format!(
+        "{}tstrans{}",
+        env::consts::DLL_PREFIX,
+        env::consts::DLL_SUFFIX,
+    );
+    let cdylib_path = cdylib_dir.join(&cdylib_name);
     assert!(
-        cdylib_dir.join("libtstrans.so").exists(),
-        "build tst-c first"
+        cdylib_path.exists(),
+        "build tst-c first ({} missing)",
+        cdylib_path.display()
     );
     assert!(header.exists(), "header missing at {}", header.display());
 
@@ -40,7 +65,19 @@ fn smoke_c_compiles_links_runs() {
     assert!(status.success(), "cc failed");
 
     let mut cmd = Command::new(&bin_path);
-    cmd.env("LD_LIBRARY_PATH", &cdylib_dir);
+    // Set the platform-correct dylib-search env var so the dynamic
+    // loader finds libtstrans at runtime. On Windows, PATH must be
+    // *prepended* not replaced — overwriting wipes the system path
+    // and the binary fails to find basic C runtime DLLs. On Unix the
+    // dylib dir alone is sufficient since the dynamic linker also
+    // consults system default search paths.
+    let new_search_path = if cfg!(target_os = "windows") {
+        let existing = std::env::var("PATH").unwrap_or_default();
+        format!("{};{}", cdylib_dir.display(), existing)
+    } else {
+        cdylib_dir.display().to_string()
+    };
+    cmd.env(DYLIB_SEARCH_ENV, &new_search_path);
     let out = cmd.output().expect("run smoke binary");
     if !out.status.success() {
         eprintln!("stdout:\n{}", String::from_utf8_lossy(&out.stdout));

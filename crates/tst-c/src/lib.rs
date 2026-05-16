@@ -17,6 +17,7 @@ pub mod handle;
 pub mod mux_sender;
 pub mod muxer;
 mod panic;
+pub mod raw_receiver;
 pub mod raw_sender;
 pub mod stats;
 pub mod ts_sender;

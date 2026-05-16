@@ -541,6 +541,25 @@ covers.
 
 ---
 
+## Sanitizers
+
+Nightly GitHub Actions workflow `.github/workflows/sanitizers.yml` runs
+`tst-core` and `tst-pipeline` test suites under AddressSanitizer +
+ThreadSanitizer (separate jobs; sanitizers can't combine in a single
+binary). Trigger: `schedule: '0 3 * * *'` UTC + on-demand
+`workflow_dispatch`.
+
+Crates currently NOT covered by sanitizer CI:
+- `tst-srt` — links vendored libsrt (C++) which is not yet built with
+  `-fsanitize=*`. Tracked as a follow-up plan that threads sanitizer
+  flags into the cmake invocation.
+- `tst-c` — same constraint via its `tst-srt` dependency.
+
+OSS-Fuzz (separate infrastructure under `oss-fuzz/`) runs ASan + UBSan
+on the 16 fuzz harnesses continuously.
+
+---
+
 ## Out of scope
 
 These items appear in nearby specs but are explicitly **not** on the

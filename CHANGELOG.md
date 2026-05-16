@@ -79,6 +79,15 @@ isolation) also ride this release.
   as proof (`io.rs` ×2, `maxbw_roundtrip.rs`, `linger.rs`,
   `srto_sender.rs` ×2); remaining 15 files are mechanical follow-up.
   Pattern from GStreamer's `tests/check/elements/srt.c`. Survey item #5.
+- CI: new nightly `sanitizers` workflow (`.github/workflows/sanitizers.yml`)
+  runs `cargo test -p tst-core -p tst-pipeline` under AddressSanitizer
+  and ThreadSanitizer (separate jobs; sanitizers can't combine). Trigger:
+  `schedule: '0 3 * * *'` + `workflow_dispatch`. Scope intentionally
+  pure-Rust; libsrt + mbedTLS instrumentation is deferred to a follow-up
+  plan that threads sanitizer flags into the vendored cmake build.
+  Suppression files at `.sanitizer-suppressions/{asan,tsan}.txt`.
+  `continue-on-error: true` for the first 2-3 weeks; tighten once stable.
+  Survey item #8.
 
 ---
 

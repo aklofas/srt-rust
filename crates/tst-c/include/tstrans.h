@@ -110,6 +110,8 @@ typedef int32_t tst_e;
 
 typedef struct tst_managed_mux_sender_t tst_managed_mux_sender_t;
 
+typedef struct TstManagedRawReceiver TstManagedRawReceiver;
+
 typedef struct tst_managed_raw_sender_t tst_managed_raw_sender_t;
 
 typedef struct tst_managed_sender_t tst_managed_sender_t;
@@ -827,6 +829,77 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
  */
  int tst_raw_receiver_recv(struct TstRawReceiver *p, uint8_t *buf, size_t len, size_t *out_len);
+
+/**
+ * Open a `tst_managed_raw_receiver_t`. URL-driven mode dispatch
+ * matches `tst_raw_receiver_open` semantics: `?mode=listener` routes
+ * to the listener path, otherwise caller mode.
+ *
+ * On transport failure the managed wrapper automatically reconnects
+ * (or re-binds for listener mode) according to `policy`. Pass `NULL`
+ * for `policy` to use the default reconnect policy.
+ *
+ * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL. `TST_E_TRANSPORT` set on the
+ * initial connect/bind failure.
+ */
+
+struct TstManagedRawReceiver *tst_managed_raw_receiver_open(const char *srt_url,
+                                                            const struct tst_reconnect_policy_t *policy);
+
+/**
+ * Explicit listener-mode open for the managed receiver. Forces
+ * listener mode regardless of any `?mode=` URL value — the
+ * `_listener` suffix is authoritative. On peer disconnect the managed
+ * wrapper re-binds a fresh listener socket and accepts the next
+ * incoming connection. Note: the re-bind + re-accept may block
+ * significantly between attempts depending on the reconnect policy.
+ *
+ * Returns `NULL` with `TST_E_INVALID_CONFIG` set for malformed URLs
+ * or `TST_E_TRANSPORT` on the initial bind/accept failure.
+ */
+
+struct TstManagedRawReceiver *tst_managed_raw_receiver_open_listener(const char *srt_url,
+                                                                     const struct tst_reconnect_policy_t *policy);
+
+/**
+ * Block until one message arrives. Semantics match `tst_raw_receiver_recv`;
+ * on transport failure the managed inner reconnects transparently before
+ * returning an error only once the retry budget is exhausted.
+ */
+
+int tst_managed_raw_receiver_recv(struct TstManagedRawReceiver *p,
+                                  uint8_t *buf,
+                                  size_t len,
+                                  size_t *out_len);
+
+/**
+ * Cancel a `tst_managed_raw_receiver_t`. Unblocks a thread parked in
+ * `_recv` within one libsrt I/O cycle (~3-10 ms). Safe from any thread.
+ * Idempotent. After cancel, `_recv` returns `TST_E_CLOSED`. The handle
+ * must still be `_close`'d to free memory.
+ */
+ int tst_managed_raw_receiver_cancel(struct TstManagedRawReceiver *p);
+
+ void tst_managed_raw_receiver_close(struct TstManagedRawReceiver *p);
+
+/**
+ * Snapshot stats for a `tst_managed_raw_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ */
+
+int tst_managed_raw_receiver_get_stats(struct TstManagedRawReceiver *p,
+                                       struct TstRawReceiverStats *out);
+
+/**
+ * Reset stats counters for a `tst_managed_raw_receiver_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_managed_raw_receiver_reset_stats(struct TstManagedRawReceiver *p);
 
 /**
  * Open a `tst_raw_sender_t` connected via SRT.

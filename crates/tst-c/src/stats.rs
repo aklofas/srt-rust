@@ -149,6 +149,59 @@ impl From<&tst_pipeline::ReceiverStats> for TstReceiverStats {
     }
 }
 
+/// `repr(C)` mirror of `tst_pipeline::DemuxReceiverStats`. Size 48 B.
+///
+/// Application-level counters for the demux receive shell. Faithfully
+/// mirrors `tst_pipeline::DemuxReceiverStats` — six u64 fields:
+/// * `bytes_received` / `packets_received` — application-level totals
+///   from the inner `Receiver` (one 188-byte packet per success).
+/// * `program_maps_seen` / `pmt_versions_seen` — PSI topology counters.
+///   `program_maps_seen` increments on every PMT emission; `pmt_versions_seen`
+///   only on a `version_number` bump (PMT churn detector).
+/// * `discontinuities` — sum across all PIDs of `DemuxEvent::Discontinuity`
+///   emissions (continuity-counter jumps, PES oversize, etc).
+/// * `nonconformant` — sum across all PIDs of `DemuxEvent::NonConformant`
+///   emissions (17 issue variants; see `tst_event_t.u.nonconformant.issue_code`).
+///
+/// NOTE: sync-recovery counters (`bytes_skipped_for_sync`, `resync_events`)
+/// are deliberately absent — they live only on the inner `Receiver`'s
+/// `ReceiverStats` (surfaced via Phase 2's `TstReceiverStats`). Adding
+/// them here would mis-label the data source. Consumers needing them
+/// run a `tst_receiver_t` instead of a `tst_demux_receiver_t`.
+///
+/// The per-PID `BTreeMap<u16, StreamStats>` from `DemuxReceiverStats`
+/// is NOT included on this struct; it ships separately via
+/// `tst_demux_receiver_get_stream_stats` returning a borrowed
+/// `(*const TstStreamStats, size_t)` pair per design §4.5.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct TstDemuxReceiverStats {
+    pub bytes_received: u64,
+    pub packets_received: u64,
+    pub program_maps_seen: u64,
+    pub pmt_versions_seen: u64,
+    pub discontinuities: u64,
+    pub nonconformant: u64,
+}
+
+const _TST_DEMUX_RECEIVER_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstDemuxReceiverStats>() == 48,
+    "TstDemuxReceiverStats must be 48 bytes (6 × u64)"
+);
+
+impl From<&tst_pipeline::DemuxReceiverStats> for TstDemuxReceiverStats {
+    fn from(s: &tst_pipeline::DemuxReceiverStats) -> Self {
+        Self {
+            bytes_received: s.bytes_received,
+            packets_received: s.packets_received,
+            program_maps_seen: s.program_maps_seen,
+            pmt_versions_seen: s.pmt_versions_seen,
+            discontinuities: s.discontinuities,
+            nonconformant: s.nonconformant,
+        }
+    }
+}
+
 /// `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6172 B.
 #[repr(C)]
 pub struct TstMuxerStats {

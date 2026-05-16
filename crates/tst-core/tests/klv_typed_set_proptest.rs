@@ -463,3 +463,236 @@ proptest! {
         );
     }
 }
+
+// ----------------------------------------------------------------------------
+// ST 0903 VmtiLs + VTargetPack
+// ----------------------------------------------------------------------------
+
+use tst_core::klv::st0903::{self, VTargetPack, VmtiLs};
+
+/// Strategy generating a VmtiLs with `checksum: None` and ONE typed
+/// field populated. Same "one-at-a-time" pattern as ST 0102 — avoids
+/// 2^N permutation explosion across ~15 optional fields.
+///
+/// `checksum` is held at None to sidestep the encode-shape asymmetry
+/// (per VmtiLs.checksum rustdoc): embedded `encode` always drops Tag 1,
+/// standalone `encode_standalone` always recomputes it. Each variant
+/// has its own proptest below that asserts the correct post-decode
+/// shape for `checksum` specifically.
+///
+/// Numeric ranges follow the spec caps in `klv::st0903::tags::TAGS`:
+/// - Tags 5/6/8/9 are V3 (`VarUint { max_bytes: 3 }`), so values are
+///   capped at `0..=0xFF_FFFF` (2^24 − 1). The encoder side
+///   (`emit_var`) writes 4 bytes for values above that and the decoder
+///   then rejects via `InvalidLength` (silently dropping the value
+///   into `field_errors`) — out-of-spec values are not codec bugs, so
+///   restrict the strategy.
+/// - Tag 4 (`version_number`) is V2 (`max_bytes: 2`); full u16 fits.
+fn st0903_one_field_vmti_strategy() -> impl Strategy<Value = VmtiLs> {
+    let ascii_string = "[ -~]{1,32}";
+    // V3 cap: 2^24 − 1. See module comment above.
+    const V3_MAX: u32 = 0x00FF_FFFF;
+
+    prop_oneof![
+        any::<u64>().prop_map(|v| VmtiLs {
+            precision_time_stamp: Some(v),
+            ..Default::default()
+        }),
+        ascii_string.prop_map(|s| VmtiLs {
+            vmti_system_name: Some(s),
+            ..Default::default()
+        }),
+        // Tag 4 version_number: u16 per ST 0903.6 §10.1.4 (VarUint 1..=2 wire bytes).
+        any::<u16>().prop_map(|v| VmtiLs {
+            version_number: Some(v),
+            ..Default::default()
+        }),
+        // Tags 5/6/8/9 target counts and frame dims: V3 = max_bytes 3 = 0..=2^24-1.
+        (0u32..=V3_MAX).prop_map(|v| VmtiLs {
+            total_targets_in_frame: Some(v),
+            ..Default::default()
+        }),
+        (0u32..=V3_MAX).prop_map(|v| VmtiLs {
+            num_targets_reported: Some(v),
+            ..Default::default()
+        }),
+        (0u32..=V3_MAX).prop_map(|v| VmtiLs {
+            frame_width: Some(v),
+            ..Default::default()
+        }),
+        (0u32..=V3_MAX).prop_map(|v| VmtiLs {
+            frame_height: Some(v),
+            ..Default::default()
+        }),
+        ascii_string.prop_map(|s| VmtiLs {
+            source_sensor: Some(s),
+            ..Default::default()
+        }),
+        // Tags 11/12 FOV: IMAPB f64 0..180 deg, 2-byte wire. Use the
+        // klv_proptest.rs tolerance derivation locally below.
+        (0.0f64..=1.0).prop_map(|t| VmtiLs {
+            horizontal_fov: Some(t * 180.0),
+            ..Default::default()
+        }),
+        (0.0f64..=1.0).prop_map(|t| VmtiLs {
+            vertical_fov: Some(t * 180.0),
+            ..Default::default()
+        }),
+        proptest::collection::vec(any::<u8>(), 1..=32).prop_map(|b| VmtiLs {
+            miis_id: Some(b),
+            ..Default::default()
+        }),
+        proptest::collection::vec(any::<u8>(), 1..=32).prop_map(|b| VmtiLs {
+            algorithm_series: Some(b),
+            ..Default::default()
+        }),
+        proptest::collection::vec(any::<u8>(), 1..=32).prop_map(|b| VmtiLs {
+            ontology_series: Some(b),
+            ..Default::default()
+        }),
+    ]
+}
+
+proptest! {
+    /// VmtiLs embedded-shape round-trip via `encode_to_vec` + `decode`.
+    ///
+    /// Per the VmtiLs.checksum rustdoc contract, `encode` drops Tag 1.
+    /// Input `checksum` is None (from the strategy); decoded `checksum`
+    /// must also be None (no Tag 1 was emitted, so decode finds none).
+    /// The FOV fields are f64 IMAPB — we tolerate IMAPB quantization
+    /// error for those by skipping exact f64 comparison via PartialEq
+    /// when those fields are set; instead, assert each non-FOV field
+    /// exactly and assert FOV fields are within IMAPB tolerance.
+    #[test]
+    fn st0903_vmti_embedded_roundtrip(record in st0903_one_field_vmti_strategy()) {
+        let bytes = st0903::encode_to_vec(&record).expect("encode_to_vec");
+        let decoded = st0903::decode(&bytes).expect("decode");
+        prop_assert_eq!(decoded.checksum, None, "embedded encode must not emit Tag 1");
+
+        // Compare via a lossy-comparison helper that uses IMAPB tolerance
+        // for FOV fields and exact equality elsewhere. Keeping the helper
+        // inline (not a shared fn) so the comparison shape is visible at
+        // failure-report sites.
+        if let Some(hfov) = record.horizontal_fov {
+            let got = decoded.horizontal_fov.expect("hfov present");
+            // ST 0903.6 §10.1.11: 0..180 deg, 2-byte IMAPB. Compute
+            // tolerance per klv_proptest.rs lines 73-94.
+            let tol = imapb_tol(0.0, 180.0, 2);
+            prop_assert!((got - hfov).abs() <= tol, "hfov delta {} > tol {}", (got - hfov).abs(), tol);
+        } else {
+            prop_assert_eq!(decoded.horizontal_fov, None);
+        }
+        if let Some(vfov) = record.vertical_fov {
+            let got = decoded.vertical_fov.expect("vfov present");
+            let tol = imapb_tol(0.0, 180.0, 2);
+            prop_assert!((got - vfov).abs() <= tol, "vfov delta {} > tol {}", (got - vfov).abs(), tol);
+        } else {
+            prop_assert_eq!(decoded.vertical_fov, None);
+        }
+        // All other fields: exact equality. Build a "normalized" copy
+        // of the input with FOV fields equal to the decoded values
+        // (already asserted within tolerance above) so PartialEq on
+        // the full struct works for the remaining fields.
+        let normalized = VmtiLs {
+            horizontal_fov: decoded.horizontal_fov,
+            vertical_fov: decoded.vertical_fov,
+            ..record
+        };
+        prop_assert_eq!(decoded, normalized);
+    }
+
+    /// VmtiLs standalone-shape round-trip via `encode_to_vec_standalone`
+    /// + `decode`. Per VmtiLs.checksum rustdoc, `encode_standalone`
+    /// emits a fresh substrate-computed Tag 1 last per ST 0903.4-17 /
+    /// ST 0903.6-119. The strategy provides `checksum: None` (input is
+    /// ignored by `encode_standalone` anyway); the decoded record must
+    /// carry `checksum: Some(_)` populated from the wire bytes.
+    ///
+    /// `encode_to_vec_standalone` returns the full wire record:
+    /// `[UL (16 bytes)] [outer BER length] [body] [Tag 1 TLV]`. The
+    /// top-level `decode` consumes only the LS body, so we peel the UL
+    /// + outer BER length first — mirrors the in-module test at
+    /// `klv/st0903/mod.rs::encode_standalone_round_trips_via_decode`.
+    #[test]
+    fn st0903_vmti_standalone_roundtrip(record in st0903_one_field_vmti_strategy()) {
+        let bytes = st0903::encode_to_vec_standalone(&record).expect("encode_to_vec_standalone");
+        // Peel UL + outer BER length to get the LS body that `decode` expects.
+        prop_assert_eq!(&bytes[..16], &st0903::VMTI_LS_UL[..]);
+        let (outer_len, body) = tst_core::klv::length::read_ber(&bytes[16..]).expect("outer BER");
+        prop_assert_eq!(outer_len, body.len(), "outer BER length covers full body");
+
+        let decoded = st0903::decode(body).expect("decode standalone");
+        prop_assert!(decoded.checksum.is_some(), "standalone encode must emit Tag 1");
+
+        // FOV tolerance + exact-equality-for-everything-else, same shape
+        // as the embedded test but with `checksum` normalized to the
+        // decoded value (it's substrate-computed, not caller-supplied).
+        if let Some(hfov) = record.horizontal_fov {
+            let got = decoded.horizontal_fov.expect("hfov present");
+            let tol = imapb_tol(0.0, 180.0, 2);
+            prop_assert!((got - hfov).abs() <= tol);
+        }
+        if let Some(vfov) = record.vertical_fov {
+            let got = decoded.vertical_fov.expect("vfov present");
+            let tol = imapb_tol(0.0, 180.0, 2);
+            prop_assert!((got - vfov).abs() <= tol);
+        }
+        let normalized = VmtiLs {
+            checksum: decoded.checksum,
+            horizontal_fov: decoded.horizontal_fov,
+            vertical_fov: decoded.vertical_fov,
+            ..record
+        };
+        prop_assert_eq!(decoded, normalized);
+    }
+
+    /// VTargetPack inner-codec round-trip: exercises
+    /// `vtarget_pack::{write_pack, read_pack}` indirectly via the
+    /// `VmtiLs.targets` Vec round-trip through the top-level
+    /// `encode_to_vec` / `decode`. Strategy generates 1..=4 targets with
+    /// minimal fields (`target_id` u32 + optional `centroid_pixel`
+    /// u32) so the round-trip is exact (no IMAPB).
+    ///
+    /// `target_id` uses the BER-OID substrate (5 bytes covers u32::MAX);
+    /// `centroid_pixel` is V6 truncated big-endian per ST 0903.6
+    /// §10.2.2.2. Both round-trip exactly across the u32 domain.
+    ///
+    /// The existing in-module `populated_pack_round_trips` test
+    /// (vtarget_pack.rs:854) covers fixed-value full-pack records;
+    /// this proptest covers value-space across `target_id`.
+    #[test]
+    fn st0903_vtarget_pack_roundtrip(
+        targets in proptest::collection::vec(
+            (any::<u32>(), proptest::option::of(any::<u32>())),
+            1..=4
+        ),
+    ) {
+        let targets: Vec<VTargetPack> = targets
+            .into_iter()
+            .map(|(target_id, centroid)| VTargetPack {
+                target_id,
+                centroid_pixel: centroid,
+                ..Default::default()
+            })
+            .collect();
+        let record = VmtiLs { targets: targets.clone(), ..Default::default() };
+        let bytes = st0903::encode_to_vec(&record).expect("encode");
+        let decoded = st0903::decode(&bytes).expect("decode");
+        prop_assert_eq!(decoded.targets, targets);
+    }
+}
+
+/// IMAPB tolerance helper: combines quantization-step ceiling and an
+/// f64-ULP floor scaled by field magnitude. Derived from
+/// `klv_proptest.rs::imapb_roundtrip` lines 73-94 — see that file for
+/// the full rationale. Kept inline (not a shared module) because the
+/// existing site is the load-bearing precedent and copying lets each
+/// test's failure messages show the derivation locally.
+fn imapb_tol(min: f64, max: f64, length: usize) -> f64 {
+    let span = max - min;
+    let log2_ceil = span.log2().ceil();
+    let scale = 2f64.powf(log2_ceil) / 2f64.powi(8 * length as i32 - 1);
+    let magnitude = span.max(min.abs()).max(max.abs()).max(1.0);
+    let fp_eps = f64::EPSILON * magnitude * 4.0;
+    scale.max(fp_eps)
+}

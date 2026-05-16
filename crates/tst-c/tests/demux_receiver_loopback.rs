@@ -166,11 +166,19 @@ fn loopback_mux_sender_to_demux_receiver_delivers_pmt_and_sample_and_eos() {
             );
         }
 
-        // Brief drain pause — the muxer's SRT send queue is asynchronous
-        // with respect to close. 200 ms covers typical loopback latency
-        // plus the default 120 ms SRT latency budget, giving the demuxer
-        // time to surface Sample events before EOS propagates.
-        thread::sleep(Duration::from_millis(200));
+        // Drain pause before close — the muxer's SRT send queue is
+        // asynchronous with respect to close. 1 s comfortably covers the
+        // default 120 ms SRT latency budget plus loopback scheduling
+        // jitter, giving the demuxer time to surface PROGRAM_MAP +
+        // Sample events before EOS propagates.
+        //
+        // Bumped from 200 ms after plan #64's macOS arm64 (`macos-14`)
+        // matrix entry surfaced a "no PROGRAM_MAP event received" race
+        // on first post-ship run — Darwin's scheduling on Apple Silicon
+        // pushes PMT emission past the previous window. Linux loopback
+        // tolerates 200 ms but the extra headroom is cheap and keeps
+        // the test cross-platform-stable.
+        thread::sleep(Duration::from_secs(1));
 
         unsafe { tst_mux_sender_close(tx) };
         unsafe { tst_mux_config_free(cfg) };

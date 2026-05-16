@@ -119,6 +119,36 @@ impl From<&tst_pipeline::RawReceiverStats> for TstRawReceiverStats {
     }
 }
 
+/// `repr(C)` mirror of `tst_pipeline::ReceiverStats`. Size 32 B.
+///
+/// Application-level counters for the TS-aligned receive shell. Mirrors
+/// the layout of `tst_pipeline::ReceiverStats`:
+/// * `bytes_received` / `packets_received` — application-level totals
+///   (one 188-byte packet per `_recv_packet` success).
+/// * `bytes_skipped_for_sync` / `resync_events` — sync-recovery state
+///   from the underlying `tst_pipeline::receiver::sync::Syncer`. Non-zero
+///   `resync_events` indicates the syncer hit HUNT/VERIFY mid-stream
+///   (either initial lock-on or re-lock after corruption).
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct TstReceiverStats {
+    pub bytes_received: u64,
+    pub packets_received: u64,
+    pub bytes_skipped_for_sync: u64,
+    pub resync_events: u64,
+}
+
+impl From<&tst_pipeline::ReceiverStats> for TstReceiverStats {
+    fn from(s: &tst_pipeline::ReceiverStats) -> Self {
+        Self {
+            bytes_received: s.bytes_received,
+            packets_received: s.packets_received,
+            bytes_skipped_for_sync: s.bytes_skipped_for_sync,
+            resync_events: s.resync_events,
+        }
+    }
+}
+
 /// `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6172 B.
 #[repr(C)]
 pub struct TstMuxerStats {

@@ -86,3 +86,10 @@ path  = "tests/tools/strip_conformance_parameter_sets.rs"
 test  = false
 bench = false
 doc   = false
+
+[[bin]]
+name  = "trace_h265_sps"
+path  = "tests/tools/trace_h265_sps.rs"
+test  = false
+bench = false
+doc   = false

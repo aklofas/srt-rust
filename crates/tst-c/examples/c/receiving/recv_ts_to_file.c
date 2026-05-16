@@ -19,6 +19,14 @@
  *   another transport, a probe that counts PIDs, or a third-party
  *   decoder that expects raw TS packets).
  *
+ * Differences from recv_raw_to_file.c:
+ *   - Protocol unit is a fixed 188-byte TS packet (not a
+ *     variable-length SRT message), so there is no heap-fallback
+ *     buffer and no TST_E_TOO_LARGE branch in the recv loop.
+ *   - Periodic stats dump exposes the syncer counters
+ *     (bytes_skipped_for_sync, resync_events) — visible only via
+ *     tst_receiver_t, not tst_raw_receiver_t.
+ *
  * How to run:
  *   1. In one terminal (receiver first, so the port is ready):
  *        ./recv_ts_to_file out.ts
@@ -105,13 +113,14 @@ int main(int argc, char **argv) {
      * multi-peer accept loop, use tst_managed_receiver_open_listener
      * which re-binds and re-accepts on disconnect.
      */
+    fprintf(stderr, "listening on srt://:7000; waiting for peer...\n");
     tst_receiver_t *rx = tst_receiver_open_listener("srt://:7000");
     if (!rx) {
         fprintf(stderr, "open_listener failed: %s\n", tst_get_last_error_str());
         fclose(out);
         return 3;
     }
-    fprintf(stderr, "listening on srt://:7000; waiting for peer...\n");
+    fprintf(stderr, "peer connected; receiving packets...\n");
 
     /*
      * ── Recv loop ─────────────────────────────────────────────────────

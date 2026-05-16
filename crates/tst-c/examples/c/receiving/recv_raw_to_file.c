@@ -138,13 +138,14 @@ int main(int argc, char **argv) {
      * listening socket is discarded after the first accept (single-peer
      * shape).  For a multi-peer accept loop use tst_managed_raw_receiver_t.
      */
+    fprintf(stderr, "listening on srt://:7000; waiting for peer...\n");
     tst_raw_receiver_t *rx = tst_raw_receiver_open_listener("srt://:7000");
     if (!rx) {
         fprintf(stderr, "open_listener failed: %s\n", tst_get_last_error_str());
         fclose(out);
         return 3;
     }
-    fprintf(stderr, "listening on srt://:7000; waiting for peer...\n");
+    fprintf(stderr, "peer connected; receiving messages...\n");
 
     /*
      * ── Recv loop ─────────────────────────────────────────────────────────

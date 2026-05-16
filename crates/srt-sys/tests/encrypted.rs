@@ -74,14 +74,16 @@ fn sockaddr_from(addr: SocketAddr) -> (libc::sockaddr_storage, usize) {
     let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
     match addr {
         SocketAddr::V4(v4) => {
-            let sin = libc::sockaddr_in {
-                sin_family: libc::AF_INET as libc::sa_family_t,
-                sin_port: v4.port().to_be(),
-                sin_addr: libc::in_addr {
-                    s_addr: u32::from(*v4.ip()).to_be(),
-                },
-                sin_zero: [0; 8],
-            };
+            // Initialize via mem::zeroed + field assignment rather than a
+            // struct literal: BSD-derived libcs (macOS, iOS, FreeBSD,
+            // NetBSD, OpenBSD) include a `sin_len` field that glibc lacks,
+            // so a literal listing every field stops compiling cross-
+            // platform.  Zeroing covers `sin_len` (and `sin_zero`) on
+            // every target.
+            let mut sin: libc::sockaddr_in = unsafe { mem::zeroed() };
+            sin.sin_family = libc::AF_INET as libc::sa_family_t;
+            sin.sin_port = v4.port().to_be();
+            sin.sin_addr.s_addr = u32::from(*v4.ip()).to_be();
             unsafe {
                 std::ptr::copy_nonoverlapping(
                     (&raw const sin).cast::<u8>(),

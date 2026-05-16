@@ -118,19 +118,129 @@ pub enum TstNonConformantCode {
     Other = 18,
 }
 
-// Subsequent items (subordinate structs, TstEvent, EventArena) are
-// added in Tasks 7 and 8. Placeholder marker:
+// ------------------------------------------------------------------
+// Subordinate list-element structs (Task 7)
+// ------------------------------------------------------------------
+
+/// `repr(C)` mirror of `tst_core::mpegts::demux::NalUnit`.
+///
+/// Three Rust variants (H264 / H265 / H266) collapsed into one C
+/// struct; field semantics keyed by the parent `tst_event_t.u.sample.codec`.
+/// * H.264: `nal_type` 5-bit; `ref_idc_or_layer_id` is `ref_idc`;
+///   `temporal_id_plus1` is `0` (H.264 has no temporal_id).
+/// * H.265 / H.266: `nal_type` 6-bit (H.265) or 5-bit (H.266);
+///   `ref_idc_or_layer_id` is `nuh_layer_id`; `temporal_id_plus1`
+///   is the temporal-id field +1 (per spec).
+///
+/// `payload` borrows from the demuxer's NAL-unit Vec; valid until
+/// the next `_recv_event` / `_close` call on this handle.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct TstNal {
+    pub nal_type: u8,
+    pub ref_idc_or_layer_id: u8,
+    pub temporal_id_plus1: u8,
+    pub _reserved: u8,
+    pub payload: *const u8,
+    pub payload_len: usize,
+}
+
+const _TST_NAL_SIZE: () = assert!(
+    std::mem::size_of::<TstNal>() == 24,
+    "TstNal must be 24 bytes (4 bytes header + 8 bytes pointer + 8 bytes len)"
+);
+
+/// `repr(C)` mirror of `tst_core::mpegts::demux::Obu`.
+///
+/// `has_extension` is 0 or 1; `temporal_id` and `spatial_id` are
+/// valid only when `has_extension == 1`. `payload` is the OBU body
+/// (header byte + extension byte + LEB128 size already stripped).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct TstObu {
+    pub obu_type: u8,
+    pub has_extension: u8,
+    pub temporal_id: u8,
+    pub spatial_id: u8,
+    pub payload: *const u8,
+    pub payload_len: usize,
+}
+
+const _TST_OBU_SIZE: () = assert!(
+    std::mem::size_of::<TstObu>() == 24,
+    "TstObu must be 24 bytes"
+);
+
+/// `repr(C)` mirror of `tst_core::mpegts::demux::psi::RawDescriptor`.
+///
+/// `data` borrows from the demuxer's per-PMT descriptor list; valid
+/// until the next `_recv_event` / `_close` call on this handle. The
+/// length byte from the wire is stripped — `data_len` is the body length.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct TstDescriptor {
+    pub tag: u8,
+    pub _reserved: [u8; 7],
+    pub data: *const u8,
+    pub data_len: usize,
+}
+
+const _TST_DESCRIPTOR_SIZE: () = assert!(
+    std::mem::size_of::<TstDescriptor>() == 24,
+    "TstDescriptor must be 24 bytes"
+);
+
+/// `repr(C)` mirror of `tst_core::mpegts::demux::StreamInfo`.
+///
+/// `stream_kind` is `TST_STREAM_KIND_*` (see `TstStreamKindTag`);
+/// `codec` is `TST_VIDEO_CODEC_*` / `TST_AUDIO_CODEC_*` /
+/// `TST_SUBTITLE_CODEC_*` keyed by `stream_kind`, or `-1` when
+/// `stream_kind` is KlvSync / KlvAsync / Unknown.
+///
+/// `raw_descriptors` borrows from the demuxer's per-PMT descriptor
+/// list; valid until the next `_recv_event` / `_close` call.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct TstStreamInfo {
+    pub pid: u16,
+    pub stream_type: u8,
+    pub _pad: u8,
+    pub stream_kind: c_int,
+    pub codec: c_int,
+    pub program_number: u16,
+    pub _pad2: [u8; 6],
+    pub raw_descriptors: *const TstDescriptor,
+    pub descriptor_count: usize,
+}
+
+const _TST_STREAM_INFO_SIZE: () = assert!(
+    std::mem::size_of::<TstStreamInfo>() == 40,
+    "TstStreamInfo must be 40 bytes"
+);
+
+/// `repr(C)` mirror of `tst_core::mpegts::demux::KlvLink`.
+/// `source` is `TST_LINK_SOURCE_*` (see `TstLinkSource`).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct TstKlvLink {
+    pub klv_pid: u16,
+    pub video_pid: u16,
+    pub source: c_int,
+}
+
+const _TST_KLV_LINK_SIZE: () = assert!(
+    std::mem::size_of::<TstKlvLink>() == 8,
+    "TstKlvLink must be 8 bytes"
+);
+
+// Subsequent items (TstEvent, EventArena, convert) are added in Task 8.
+// Placeholder marker:
 //
-// pub struct TstNal { ... }            // Task 7
-// pub struct TstObu { ... }            // Task 7
-// pub struct TstDescriptor { ... }     // Task 7
-// pub struct TstStreamInfo { ... }     // Task 7
-// pub struct TstKlvLink { ... }        // Task 7
 // pub struct TstEvent { ... }          // Task 8
 // pub(crate) struct EventArena { ... } // Task 8
 // pub(crate) fn convert(...)           // Task 8
 
-// Suppress "unused" warnings on the C-only types until Tasks 7/8 wire
+// Suppress "unused" warnings on the C-only types until Task 8 wires
 // them into the receiver entry points.
 #[allow(dead_code)]
 fn _silence_unused() {
@@ -142,4 +252,11 @@ fn _silence_unused() {
     let _ = TstNonConformantCode::Other;
     let _: c_int = 0;
     let _: c_char = 0;
+    // Reference the new structs so unused-warnings don't fire before Task 8
+    // wires them into the event-conversion arena.
+    let _ = std::mem::size_of::<TstNal>();
+    let _ = std::mem::size_of::<TstObu>();
+    let _ = std::mem::size_of::<TstDescriptor>();
+    let _ = std::mem::size_of::<TstStreamInfo>();
+    let _ = std::mem::size_of::<TstKlvLink>();
 }

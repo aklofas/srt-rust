@@ -63,6 +63,9 @@ fn loopback_ts_sender_to_ts_receiver_delivers_aligned_packets_and_eos() {
     // exact multiple of the Sender's 7-packet bundle size ensures all
     // packets are sent during send_ts (no partial bundle held until
     // close), so the 200 ms drain window reliably covers in-flight data.
+    // Keep this an exact multiple of 7 — a remainder leaves a partial
+    // bundle in-flight during the close/drain window, which can race with
+    // the EOS signal on slower CI hosts.
     const N_PACKETS: usize = 28;
 
     let receiver_thread = thread::spawn(move || {

@@ -133,6 +133,55 @@ ALLOWLIST=(
     "tst_managed_receiver_close"
     "tst_managed_receiver_get_stats"
     "tst_managed_receiver_reset_stats"
+
+    # --- Phase 3 demux-config-builder C wrappers (Rust uses
+    #     DemuxerBuilder methods, not 1:1 names) ---
+    "tst_demux_config_new"
+    "tst_demux_config_free"
+    "tst_demux_config_set_strict_mode"
+    "tst_demux_config_add_link_klv"
+    "tst_demux_config_add_treat_as"
+    "tst_demux_config_set_pes_cap"
+
+    # --- Phase 3 mux-config descriptor wrappers (mirror existing
+    #     tst_mux_config_set_*_descriptors / set_program_descriptors
+    #     pattern: C-side TLV assembly + opaque-ptr forwarding) ---
+    "tst_mux_config_add_video_descriptor"
+    "tst_mux_config_add_klv_descriptor"
+    "tst_mux_config_add_audio_descriptor"
+    "tst_mux_config_add_subtitle_descriptor"
+
+    # --- Phase 3 receiver-surface open helpers (no direct Rust counterpart:
+    #     URL parsing + Box construction happen entirely in the C layer;
+    #     there is no single Rust method that maps 1:1 to these entry points) ---
+    "tst_demux_receiver_open"
+    "tst_demux_receiver_open_listener"
+    "tst_demux_receiver_open_with_config"
+    "tst_demux_receiver_open_listener_with_config"
+    "tst_managed_demux_receiver_open"
+    "tst_managed_demux_receiver_open_listener"
+    "tst_managed_demux_receiver_open_with_config"
+    "tst_managed_demux_receiver_open_listener_with_config"
+
+    # --- Phase 3 plain demux-receiver entry points (ride the
+    #     DemuxReceiver<R>::{recv_event, stats, reset_stats, cancel_handle}
+    #     methods — the C wrappers are thin pass-throughs; adding # C ABI
+    #     cross-refs on each method individually would duplicate without
+    #     adding useful information given the 1:1 naming) ---
+    "tst_demux_receiver_recv_event"
+    "tst_demux_receiver_cancel"
+    "tst_demux_receiver_get_stats"
+    "tst_demux_receiver_reset_stats"
+    "tst_demux_receiver_get_stream_stats"
+
+    # --- Phase 3 managed-demux-receiver entry points (ride the plain-side
+    #     allowlist entries above + the ManagedReceiveTransport wrapping) ---
+    "tst_managed_demux_receiver_recv_event"
+    "tst_managed_demux_receiver_cancel"
+    "tst_managed_demux_receiver_close"
+    "tst_managed_demux_receiver_get_stats"
+    "tst_managed_demux_receiver_reset_stats"
+    "tst_managed_demux_receiver_get_stream_stats"
 )
 
 # Step 1: enumerate C exports

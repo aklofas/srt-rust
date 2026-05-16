@@ -206,6 +206,31 @@ pub unsafe extern "C" fn tst_receiver_recv_packet(
     })
 }
 
+/// Cancel a `tst_receiver_t`. Unblocks a thread parked in
+/// `_recv_packet` within one libsrt I/O cycle (~3-10 ms) by closing
+/// the underlying libsrt socket. Safe to call from any thread.
+/// Idempotent.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+///
+/// After cancel, `_recv_packet` returns `TST_E_CLOSED` (not
+/// `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_receiver_cancel(p: *mut TstReceiver) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+    // recv_packet holds it). The was_cancelled flag + cancel-handle Arc
+    // are accessible without locking.
+    handle.was_cancelled.store(true, Ordering::Release);
+    if let Some(c) = &handle.cancel {
+        c.cancel();
+    }
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,6 +256,12 @@ mod tests {
         // loopback testing — deferred to ts_receiver_loopback.rs.
         let rc =
             unsafe { tst_receiver_recv_packet(std::ptr::null_mut(), std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_cancel_returns_invalid_config() {
+        let rc = unsafe { tst_receiver_cancel(std::ptr::null_mut()) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 }

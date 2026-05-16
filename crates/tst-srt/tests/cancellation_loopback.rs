@@ -16,7 +16,6 @@
 mod common;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tst_core::mpegts::mux::{KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_pipeline::{MuxSender, MuxSenderError, TransportError};
@@ -26,33 +25,19 @@ use tst_srt::{ListenerBuilder, SocketBuilder};
 #[test]
 fn close_unblocks_libsrt_parked_send() {
     require_loopback!();
-    // Bind a listener with very small recv buffer and DON'T consume.
-    let listener = ListenerBuilder::new()
+    // Bind a listener with very small recv buffer.
+    let mut builder = ListenerBuilder::new();
+    builder
         .recv_buf_packets(8) // tiny — back-pressure kicks in fast
-        .latency(Duration::from_millis(120))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().expect("local_addr").port();
+        .latency(Duration::from_millis(120));
+    let lb = common::Loopback::bind_with(builder);
+    let port = lb.port;
 
-    // Spawn an accepter thread that holds the accepted socket without
-    // ever calling recv. The accept call blocks until a peer connects;
-    // once it returns we hold the socket alive (without consuming) so
-    // back-pressure builds on the sender side. The accept_done signal
-    // is the post-accept marker — we don't gate connect on it
-    // (otherwise we'd deadlock: accept needs connect, connect needs us
-    // not waiting on accept_done).
-    let accept_done = Arc::new(AtomicBool::new(false));
-    let accept_done_cl = accept_done.clone();
-    let accept_thread = std::thread::spawn(move || {
-        let mut listener = listener;
-        let (sock, _peer) = listener.accept().expect("accept");
-        accept_done_cl.store(true, Ordering::SeqCst);
-        // Hold the socket without recv so the receive buffer fills
-        // and back-pressures the sender. 5 seconds is generous —
-        // the test's send/close cycle should complete in well under 1.
-        std::thread::sleep(Duration::from_secs(5));
-        drop(sock);
-    });
+    // Accept thread returns the socket immediately; main thread holds it
+    // alive (without recv) so the receive buffer fills and back-pressures
+    // the sender.
+    let accept = lb.spawn_accept(|sock| sock);
+    accept.wait_ready();
 
     // Connect the sender side. This drives the SRT handshake, which
     // unblocks `accept()` on the listener side.
@@ -63,16 +48,10 @@ fn close_unblocks_libsrt_parked_send() {
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
 
-    // After connect returns, accept on the other thread should have
-    // returned too. Confirm with a short bounded wait.
-    let deadline = Instant::now() + Duration::from_secs(2);
-    while !accept_done.load(Ordering::SeqCst) && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    assert!(
-        accept_done.load(Ordering::SeqCst),
-        "accept never completed after connect"
-    );
+    // Drain the accepted socket out of the accept thread and hold it on
+    // the main thread for the duration of the test. Connection stays
+    // open from libsrt's view (the Drop at end-of-scope closes it).
+    let _peer_socket = accept.join();
 
     let transport = SrtTransport::new(socket);
     let cfg = {
@@ -133,7 +112,4 @@ fn close_unblocks_libsrt_parked_send() {
         | Err(MuxSenderError::Transport(TransportError::Closed)) => {}
         Err(other) => panic!("unexpected sender error after cancel: {other:?}"),
     }
-
-    // Cleanup: let the accepter thread time out.
-    let _ = accept_thread.join();
 }

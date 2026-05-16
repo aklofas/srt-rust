@@ -3,7 +3,6 @@
 
 mod common;
 
-use std::thread;
 use std::time::Duration;
 use tst_srt::error::SendError;
 use tst_srt::{ListenerBuilder, SocketBuilder};
@@ -11,19 +10,15 @@ use tst_srt::{ListenerBuilder, SocketBuilder};
 #[test]
 fn payload_too_large_reports_configured_limit() {
     require_loopback!();
-    let mut listener = ListenerBuilder::new()
+    let mut builder = ListenerBuilder::new();
+    builder
         .payload_size(1456)
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
+        .recv_timeout(Duration::from_secs(5));
+    let lb = common::Loopback::bind_with(builder);
+    let port = lb.port;
 
-    let accept_thread = thread::spawn(move || {
-        let (sock, _peer) = listener.accept().expect("accept");
-        sock
-    });
-
-    thread::sleep(Duration::from_millis(50));
+    let accept = lb.spawn_accept(|sock| sock);
+    accept.wait_ready();
 
     let mut sender = SocketBuilder::new()
         .payload_size(1456)
@@ -31,7 +26,7 @@ fn payload_too_large_reports_configured_limit() {
         .connect(("127.0.0.1", port))
         .expect("connect");
 
-    let _accepted = accept_thread.join().expect("join");
+    let _accepted = accept.join();
 
     let big = vec![0u8; 2000];
     match sender.send(&big) {

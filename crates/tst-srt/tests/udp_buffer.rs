@@ -4,9 +4,6 @@
 mod common;
 
 use std::ffi::c_int;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
 use std::time::Duration;
 use tst_srt::{ListenerBuilder, SocketBuilder};
 
@@ -24,22 +21,15 @@ fn read_u32(handle: srt_sys::SRTSOCKET, opt: srt_sys::SRT_SOCKOPT) -> Option<u32
 #[test]
 fn udp_buffer_sizes_round_trip() {
     require_loopback!();
-    let listener = ListenerBuilder::new()
+    let mut builder = ListenerBuilder::new();
+    builder
         .udp_recv_buffer_bytes(2_000_000)
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
+        .recv_timeout(Duration::from_secs(5));
+    let lb = common::Loopback::bind_with(builder);
+    let port = lb.port;
 
-    let ready = Arc::new(AtomicBool::new(false));
-    let r = ready.clone();
-    let accept_thread = thread::spawn(move || {
-        let mut l = listener;
-        r.store(true, Ordering::SeqCst);
-        l.accept().expect("accept")
-    });
-
-    common::wait_for_ready(&ready);
+    let accept = lb.spawn_accept(|sock| sock);
+    accept.wait_ready();
 
     let socket = SocketBuilder::new()
         .udp_recv_buffer_bytes(2_000_000)
@@ -48,7 +38,7 @@ fn udp_buffer_sizes_round_trip() {
         .connect(("127.0.0.1", port))
         .expect("connect");
 
-    let _ = accept_thread.join().expect("join");
+    let _ = accept.join();
 
     let handle = socket.raw_handle();
     let rcv = read_u32(handle, srt_sys::SRT_SOCKOPT_SRTO_UDP_RCVBUF).expect("read RCVBUF");

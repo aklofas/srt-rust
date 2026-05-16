@@ -2,7 +2,6 @@
 
 mod common;
 
-use std::thread;
 use std::time::Duration;
 use tst_srt::{ListenerBuilder, PacketFilter, SocketBuilder};
 
@@ -12,17 +11,17 @@ fn fec_config_applies() {
     let pf_listener = PacketFilter::new("fec,cols:10,rows:5,arq:onreq").unwrap();
     let pf_caller = PacketFilter::new("fec,cols:10,rows:5,arq:onreq").unwrap();
 
-    let mut listener = ListenerBuilder::new()
+    let mut builder = ListenerBuilder::new();
+    builder
         .packet_filter(pf_listener)
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
+        .recv_timeout(Duration::from_secs(5));
+    let lb = common::Loopback::bind_with(builder);
+    let port = lb.port;
 
-    let lh = thread::spawn(move || {
-        let _ = listener.accept().expect("accept");
+    let accept = lb.spawn_accept(|sock| {
+        drop(sock);
     });
-    common::settle();
+    accept.wait_ready();
 
     let _socket = SocketBuilder::new()
         .packet_filter(pf_caller)
@@ -30,5 +29,5 @@ fn fec_config_applies() {
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
 
-    lh.join().unwrap();
+    accept.join();
 }

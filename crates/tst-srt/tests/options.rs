@@ -3,24 +3,23 @@
 
 mod common;
 
-use std::thread;
 use std::time::Duration;
 use tst_srt::{Congestion, ListenerBuilder, MaxBandwidth, SocketBuilder};
 
 #[test]
 fn latency_configures_without_error() {
     require_loopback!();
-    let mut listener = ListenerBuilder::new()
+    let mut builder = ListenerBuilder::new();
+    builder
         .latency(Duration::from_millis(200))
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
+        .recv_timeout(Duration::from_secs(5));
+    let lb = common::Loopback::bind_with(builder);
+    let port = lb.port;
 
-    let lh = thread::spawn(move || {
-        let _ = listener.accept().expect("accept");
+    let accept = lb.spawn_accept(|sock| {
+        drop(sock);
     });
-    common::settle();
+    accept.wait_ready();
 
     let _socket = SocketBuilder::new()
         .latency(Duration::from_millis(200))
@@ -28,24 +27,24 @@ fn latency_configures_without_error() {
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
 
-    lh.join().unwrap();
+    accept.join();
 }
 
 #[test]
 fn payload_size_and_mss_apply() {
     require_loopback!();
-    let mut listener = ListenerBuilder::new()
+    let mut builder = ListenerBuilder::new();
+    builder
         .mss(1316)
         .payload_size(1316)
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
+        .recv_timeout(Duration::from_secs(5));
+    let lb = common::Loopback::bind_with(builder);
+    let port = lb.port;
 
-    let lh = thread::spawn(move || {
-        let _ = listener.accept().expect("accept");
+    let accept = lb.spawn_accept(|sock| {
+        drop(sock);
     });
-    common::settle();
+    accept.wait_ready();
 
     let _socket = SocketBuilder::new()
         .mss(1316)
@@ -54,24 +53,24 @@ fn payload_size_and_mss_apply() {
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
 
-    lh.join().unwrap();
+    accept.join();
 }
 
 #[test]
 fn max_bandwidth_and_congestion_apply() {
     require_loopback!();
-    let mut listener = ListenerBuilder::new()
+    let mut builder = ListenerBuilder::new();
+    builder
         .max_bandwidth(MaxBandwidth::Limited(10_000_000))
         .congestion(Congestion::Live)
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
+        .recv_timeout(Duration::from_secs(5));
+    let lb = common::Loopback::bind_with(builder);
+    let port = lb.port;
 
-    let lh = thread::spawn(move || {
-        let _ = listener.accept().expect("accept");
+    let accept = lb.spawn_accept(|sock| {
+        drop(sock);
     });
-    common::settle();
+    accept.wait_ready();
 
     let _socket = SocketBuilder::new()
         .max_bandwidth(MaxBandwidth::Limited(10_000_000))
@@ -80,5 +79,5 @@ fn max_bandwidth_and_congestion_apply() {
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
 
-    lh.join().unwrap();
+    accept.join();
 }

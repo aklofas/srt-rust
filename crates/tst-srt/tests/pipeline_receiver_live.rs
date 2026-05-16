@@ -73,96 +73,98 @@ fn end_to_end_sender_to_receiver() {
     // Listener side: bind to ephemeral port. `recv_latency` budget gives
     // libsrt's TSBPD path time to reorder + emit packets even on a busy CI
     // box; matches the sender side's `latency` for symmetry.
-    let mut listener = ListenerBuilder::new()
-        .recv_latency(Duration::from_millis(120))
-        .bind("127.0.0.1:0")
-        .expect("bind listener");
-    let port = listener.local_addr().unwrap().port();
+    let mut builder = ListenerBuilder::new();
+    builder.recv_latency(Duration::from_millis(120));
+    let lb = common::Loopback::bind_with(builder);
+    let port = lb.port;
 
-    // MuxSender thread: connect, build the pipeline, push N video + N KLV
-    // frames at 30 fps PTS spacing (3000 ticks ≈ 33 ms at 90 kHz), then
-    // brief sleep + close to let bytes drain on the wire.
-    let send_handle = thread::spawn(move || {
-        let socket = SocketBuilder::new()
-            .latency(Duration::from_millis(120))
-            .connect(format!("127.0.0.1:{port}"))
-            .expect("connect");
+    // Receiver runs in the accept-thread closure: wrap the accepted Socket
+    // in SrtTransport, drive DemuxReceiver, count events, return a summary
+    // tuple via accept.join() at the end.
+    let accept = lb.spawn_accept(|server_socket| {
+        let mut rx = DemuxReceiver::new(SrtTransport::new(server_socket));
 
-        // Two-stream PMT: H.264 video on PID 0x100, async KLV on PID 0x101.
-        // `add_klv(.., PrivateData, false)` matches the demuxer's async-KLV
-        // recognition path — `false` means the muxer doesn't emit a PTS on
-        // the KLV PES (typical for low-rate metadata).
-        let cfg = {
-            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
-            prog.add_video(0x100, MuxVideoCodec::H264);
-            prog.add_klv(0x101, KlvStreamType::PrivateData, false);
-            let mut b = MuxerConfig::builder();
-            b.add_program(prog.build());
-            b.build().expect("build mux config")
-        };
-        let sender = MuxSender::new(SrtTransport::new(socket), cfg).expect("sender");
+        let mut samples = 0usize;
+        let mut metas = 0usize;
+        let mut got_pmap = false;
 
-        let klv = minimal_klv();
-        for i in 0..SEND as i64 {
-            // Realistic AU body (500 bytes) with synthetic NAL header.
-            // Frame 0 is a key frame; rest are P-frames. The mux treats
-            // bytes opaquely so the only thing that matters wire-side is
-            // start-code framing, which `synthetic_nal::h264_au` produces.
-            let key = i == 0;
-            let nal = synthetic_nal::h264_au(500, key);
-            let pts = i * 3_000;
-            sender.send_video(&nal, pts, key).expect("send_video");
-            sender.send_klv(&klv, pts, 0x00).expect("send_klv");
+        // Drain events. Two valid termination paths:
+        //   1. Iterator returns `None` — clean EOF after `Closed` triggered the
+        //      demuxer's tail flush.
+        //   2. Iterator returns `Some(Err(Transport(Broken(_))))` — peer hangup.
+        //      libsrt typically signals sender-side close as a Broken receive on
+        //      the peer (see `srt_transport.rs:112` mapping). Treat that as a
+        //      clean stream end here: the sender did its job and any events
+        //      already queued in the demuxer have been delivered.
+        //
+        // Early-exit once we've counted enough — covers both paths. A `Demux`
+        // error or any non-Broken transport error is a real bug; fail loudly.
+        for item in &mut rx {
+            let event = match item {
+                Ok(e) => e,
+                Err(DemuxReceiverError::Transport(TransportError::Broken(_))) => break,
+                Err(other) => panic!("unexpected receiver error: {other:?}"),
+            };
+            match event {
+                DemuxEvent::ProgramMap(_) => got_pmap = true,
+                DemuxEvent::Sample { .. } => samples += 1,
+                DemuxEvent::Metadata { .. } => metas += 1,
+                // Discontinuity / NonConformant aren't expected on a clean
+                // loopback round-trip but aren't fatal — let them pass.
+                _ => {}
+            }
+            if samples >= EXPECT && metas >= EXPECT {
+                break;
+            }
         }
 
-        // Brief drain pause: SRT's send queue is async w.r.t. close, so
-        // closing immediately can drop in-flight packets before TSBPD on
-        // the peer releases them. 200 ms covers typical loopback latency
-        // plus the 120 ms latency budget.
-        thread::sleep(Duration::from_millis(200));
-        sender.close();
+        (got_pmap, samples, metas)
     });
+    accept.wait_ready();
 
-    // DemuxReceiver side: accept, wrap in SrtTransport, drive the DemuxReceiver.
-    // `accept` blocks until the sender's connect completes the handshake.
-    let (server_socket, _peer) = listener.accept().expect("accept");
-    let mut rx = DemuxReceiver::new(SrtTransport::new(server_socket));
+    // MuxSender on the main thread: connect, build the pipeline, push N
+    // video + N KLV frames at 30 fps PTS spacing (3000 ticks ≈ 33 ms at
+    // 90 kHz), then brief sleep + close to let bytes drain on the wire.
+    let socket = SocketBuilder::new()
+        .latency(Duration::from_millis(120))
+        .connect(format!("127.0.0.1:{port}"))
+        .expect("connect");
 
-    let mut samples = 0usize;
-    let mut metas = 0usize;
-    let mut got_pmap = false;
+    // Two-stream PMT: H.264 video on PID 0x100, async KLV on PID 0x101.
+    // `add_klv(.., PrivateData, false)` matches the demuxer's async-KLV
+    // recognition path — `false` means the muxer doesn't emit a PTS on
+    // the KLV PES (typical for low-rate metadata).
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, MuxVideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().expect("build mux config")
+    };
+    let sender = MuxSender::new(SrtTransport::new(socket), cfg).expect("sender");
 
-    // Drain events. Two valid termination paths:
-    //   1. Iterator returns `None` — clean EOF after `Closed` triggered the
-    //      demuxer's tail flush.
-    //   2. Iterator returns `Some(Err(Transport(Broken(_))))` — peer hangup.
-    //      libsrt typically signals sender-side close as a Broken receive on
-    //      the peer (see `srt_transport.rs:112` mapping). Treat that as a
-    //      clean stream end here: the sender did its job and any events
-    //      already queued in the demuxer have been delivered.
-    //
-    // Early-exit once we've counted enough — covers both paths. A `Demux`
-    // error or any non-Broken transport error is a real bug; fail loudly.
-    for item in &mut rx {
-        let event = match item {
-            Ok(e) => e,
-            Err(DemuxReceiverError::Transport(TransportError::Broken(_))) => break,
-            Err(other) => panic!("unexpected receiver error: {other:?}"),
-        };
-        match event {
-            DemuxEvent::ProgramMap(_) => got_pmap = true,
-            DemuxEvent::Sample { .. } => samples += 1,
-            DemuxEvent::Metadata { .. } => metas += 1,
-            // Discontinuity / NonConformant aren't expected on a clean
-            // loopback round-trip but aren't fatal — let them pass.
-            _ => {}
-        }
-        if samples >= EXPECT && metas >= EXPECT {
-            break;
-        }
+    let klv = minimal_klv();
+    for i in 0..SEND as i64 {
+        // Realistic AU body (500 bytes) with synthetic NAL header.
+        // Frame 0 is a key frame; rest are P-frames. The mux treats
+        // bytes opaquely so the only thing that matters wire-side is
+        // start-code framing, which `synthetic_nal::h264_au` produces.
+        let key = i == 0;
+        let nal = synthetic_nal::h264_au(500, key);
+        let pts = i * 3_000;
+        sender.send_video(&nal, pts, key).expect("send_video");
+        sender.send_klv(&klv, pts, 0x00).expect("send_klv");
     }
 
-    send_handle.join().expect("send thread");
+    // Brief drain pause: SRT's send queue is async w.r.t. close, so
+    // closing immediately can drop in-flight packets before TSBPD on
+    // the peer releases them. 200 ms covers typical loopback latency
+    // plus the 120 ms latency budget.
+    thread::sleep(Duration::from_millis(200));
+    sender.close();
+
+    let (got_pmap, samples, metas) = accept.join();
 
     assert!(got_pmap, "receiver should have observed PMT");
     assert!(

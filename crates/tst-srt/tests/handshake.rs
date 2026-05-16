@@ -9,7 +9,6 @@
 
 mod common;
 
-use std::thread;
 use std::time::Duration;
 use tst_srt::error::ConnectError;
 use tst_srt::error::RejectReason;
@@ -28,18 +27,13 @@ const PASS: &str = "0123456789abcdef0123456789abcdef";
 #[test]
 fn unencrypted_handshake_succeeds() {
     require_loopback!();
-    let mut listener = ListenerBuilder::new()
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
+    let lb = common::Loopback::bind();
+    let port = lb.port;
 
-    let port = listener.local_addr().unwrap().port();
-    let lh = thread::spawn(move || {
-        let (sock, _peer) = listener.accept().expect("accept");
+    let accept = lb.spawn_accept(|sock| {
         drop(sock);
     });
-
-    common::settle();
+    accept.wait_ready();
 
     let _socket = SocketBuilder::new()
         .recv_timeout(Duration::from_secs(5))
@@ -47,25 +41,23 @@ fn unencrypted_handshake_succeeds() {
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
 
-    lh.join().expect("listener thread");
+    accept.join();
 }
 
 #[test]
 fn matching_passphrase_succeeds() {
     require_loopback!();
-    let mut listener = ListenerBuilder::new()
+    let mut builder = ListenerBuilder::new();
+    builder
         .passphrase(Passphrase::new(PASS).unwrap())
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
+        .recv_timeout(Duration::from_secs(5));
+    let lb = common::Loopback::bind_with(builder);
+    let port = lb.port;
 
-    let port = listener.local_addr().unwrap().port();
-    let lh = thread::spawn(move || {
-        let (sock, _peer) = listener.accept().expect("accept");
+    let accept = lb.spawn_accept(|sock| {
         drop(sock);
     });
-
-    common::settle();
+    accept.wait_ready();
 
     let _socket = SocketBuilder::new()
         .passphrase(Passphrase::new(PASS).unwrap())
@@ -73,12 +65,17 @@ fn matching_passphrase_succeeds() {
         .connect(format!("127.0.0.1:{port}"))
         .expect("connect");
 
-    lh.join().expect("listener");
+    accept.join();
 }
 
 #[test]
 fn mismatched_passphrase_rejects_connect() {
     require_loopback!();
+    // This test does NOT spawn an accept thread — see file header note: for
+    // rejection-path tests we leave the listener idle and rely on libsrt's
+    // internal worker threads to handle handshake-level rejection. The
+    // Loopback helper assumes an accept thread, so this test keeps a direct
+    // ListenerBuilder + bind.
     let listener = ListenerBuilder::new()
         .passphrase(Passphrase::new("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").unwrap())
         .bind("127.0.0.1:0")

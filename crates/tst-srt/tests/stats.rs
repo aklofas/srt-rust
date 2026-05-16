@@ -3,18 +3,14 @@
 mod common;
 
 use std::sync::mpsc;
-use std::thread;
 use std::time::Duration;
-use tst_srt::{ListenerBuilder, SocketBuilder};
+use tst_srt::SocketBuilder;
 
 #[test]
 fn stats_after_round_trip_show_nonzero_bytes() {
     require_loopback!();
-    let mut listener = ListenerBuilder::new()
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
+    let lb = common::Loopback::bind();
+    let port = lb.port;
 
     // Channel: listener sends (n, bytes_received) after recv + stats, then
     // waits for the main thread to release it so the socket stays alive long
@@ -22,8 +18,7 @@ fn stats_after_round_trip_show_nonzero_bytes() {
     let (tx, rx) = mpsc::channel::<(usize, u64)>();
     let (done_tx, done_rx) = mpsc::channel::<()>();
 
-    let lh = thread::spawn(move || {
-        let (mut sock, _peer) = listener.accept().expect("accept");
+    let accept = lb.spawn_accept(move |mut sock| {
         let mut buf = [0u8; 1500];
         let n = sock.recv(&mut buf).expect("recv");
         let stats = sock.stats().expect("listener stats");
@@ -31,8 +26,7 @@ fn stats_after_round_trip_show_nonzero_bytes() {
         // Keep the socket alive until the main thread has called its stats.
         done_rx.recv().unwrap();
     });
-
-    common::settle();
+    accept.wait_ready();
 
     let mut socket = SocketBuilder::new()
         .recv_timeout(Duration::from_secs(5))
@@ -58,5 +52,5 @@ fn stats_after_round_trip_show_nonzero_bytes() {
     );
 
     done_tx.send(()).unwrap();
-    lh.join().expect("listener");
+    accept.join();
 }

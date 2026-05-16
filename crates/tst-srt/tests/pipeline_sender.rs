@@ -6,25 +6,20 @@ use std::thread;
 use std::time::Duration;
 use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::MuxSender;
+use tst_srt::SocketBuilder;
 use tst_srt::SrtTransport;
-use tst_srt::{ListenerBuilder, SocketBuilder};
 use tst_test_helpers::synthetic_nal;
 
 #[test]
 fn sender_round_trip_one_frame() {
     require_loopback!();
-    // Listener side: bind to ephemeral port.
-    let mut listener = ListenerBuilder::new()
-        .bind("127.0.0.1:0")
-        .expect("bind listener");
-    let port = listener.local_addr().unwrap().port();
+    let lb = common::Loopback::bind();
+    let port = lb.port;
 
-    // Caller thread: waits for incoming, recv loop, drops bytes.
-    let recv_handle = thread::spawn(move || {
-        let (mut peer, _addr) = listener.accept().expect("accept");
+    // Recv thread: receive bytes until peer closes; return total received.
+    let accept = lb.spawn_accept(|mut peer| {
         let mut total = 0usize;
         let mut buf = vec![0u8; 1316];
-        // Recv until the peer closes (we'll close after one frame).
         while let Ok(n) = peer.recv(&mut buf) {
             if n == 0 {
                 break;
@@ -33,6 +28,7 @@ fn sender_round_trip_one_frame() {
         }
         total
     });
+    accept.wait_ready();
 
     // MuxSender thread: connect + send one frame.
     let socket = SocketBuilder::new()
@@ -51,7 +47,7 @@ fn sender_round_trip_one_frame() {
     thread::sleep(Duration::from_millis(200));
     sender.close();
 
-    let total_bytes = recv_handle.join().expect("recv thread");
+    let total_bytes = accept.join();
     assert!(
         total_bytes > 0,
         "receiver should have got bytes; got {total_bytes}"

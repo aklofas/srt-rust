@@ -23,10 +23,12 @@
 //!      flush, count `Sample{Video}` and `Metadata{Klv*}` events.
 //!      A `DemuxError::Unrecoverable` here means "not really a TS
 //!      capture" — skip with a warning, matching `mpegts_demux_local`.
-//!   3. Loopback pass: bind a 127.0.0.1 listener, accept on the main
-//!      thread, sender thread connects and pushes the same buffer
-//!      via `Sender::send_ts` in 64 KB chunks, then `flush` + close.
-//!      The recv side drives a `DemuxReceiver` to drain demux events.
+//!   3. Loopback pass: `Loopback::bind_with` + `spawn_accept` host the
+//!      recv pipeline on the accept thread; main thread connects and
+//!      pushes the same buffer via `Sender::send_ts` in 64 KB chunks,
+//!      then `flush` + close. Recv counts come back via an mpsc
+//!      channel (not `accept.join()`'s return value) so the main
+//!      thread can use `recv_timeout` as a hung-pipeline guard.
 //!   4. Compare: assert ≥ 1 ProgramMap, and that recv-side video /
 //!      KLV counts hit `≥ TOLERANCE * reference`. The slack absorbs
 //!      benign edge cases (a trailing AU that reference flush
@@ -206,28 +208,23 @@ fn run_one(path: &Path) -> RunOutcome {
         path.display()
     );
 
-    // 3. Loopback. Listener thread hosts the recv pipeline; main thread
-    // owns the sender so the panic on a wire-side mismatch points at
-    // the right file in the test report.
-    let mut listener = ListenerBuilder::new()
-        .recv_latency(LATENCY)
-        .bind("127.0.0.1:0")
-        .expect("bind listener");
-    let port = listener.local_addr().unwrap().port();
+    // 3. Loopback. Recv pipeline runs in the accept-thread closure; main
+    // thread owns the sender so the panic on a wire-side mismatch points
+    // at the right file in the test report.
+    let mut builder = ListenerBuilder::new();
+    builder.recv_latency(LATENCY);
+    let lb = common::Loopback::bind_with(builder);
+    let port = lb.port;
 
-    // Move the buffer into the sender thread without copying — share by
-    // boxing once on this side and Sending across.
     let payload = aligned.to_vec();
 
     // Channel for the recv-side counts. Done this way (rather than
-    // joining the listener thread for its return value) so the main
-    // thread can panic-with-context if the recv side hangs and the
-    // sender finishes — the channel `recv_timeout` doubles as a
-    // hung-pipeline guard.
+    // relying on `accept.join()`'s return value) so the main thread
+    // can use `recv_timeout` as a hung-pipeline guard — `AcceptHandle::join`
+    // blocks indefinitely.
     let (tx, rx) = mpsc::channel::<Counts>();
 
-    let recv_thread = thread::spawn(move || {
-        let (server_socket, _peer) = listener.accept().expect("accept");
+    let accept = lb.spawn_accept(move |server_socket| {
         let mut receiver = DemuxReceiver::new(SrtTransport::new(server_socket));
         let mut c = Counts::default();
         for item in &mut receiver {
@@ -253,15 +250,9 @@ fn run_one(path: &Path) -> RunOutcome {
                 _ => {}
             }
         }
-        // Send and let the channel close on thread exit.
         let _ = tx.send(c);
     });
-
-    // 100 ms is plenty for the listener thread to enter `accept()` —
-    // the same settle pause the other live tests use via
-    // `common::settle()`. Inlined here because this test isn't
-    // including the `common` module otherwise.
-    thread::sleep(Duration::from_millis(100));
+    accept.wait_ready();
 
     let socket = SocketBuilder::new()
         .latency(LATENCY)
@@ -287,7 +278,7 @@ fn run_one(path: &Path) -> RunOutcome {
     let wire = rx
         .recv_timeout(Duration::from_secs(30))
         .unwrap_or_else(|e| panic!("{}: recv-side hung or panicked: {e}", path.display()));
-    recv_thread.join().expect("recv thread");
+    accept.join();
 
     // 4. Compare.
     let want_video = ((reference.video as f64) * TOLERANCE) as usize;

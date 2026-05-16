@@ -2,24 +2,20 @@
 
 mod common;
 
-use std::thread;
 use std::time::Duration;
-use tst_srt::{ListenerBuilder, SocketBuilder};
+use tst_srt::SocketBuilder;
 
 #[test]
 fn drop_closes_cleanly() {
     require_loopback!();
-    let mut listener = ListenerBuilder::new()
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
+    let lb = common::Loopback::bind();
+    let port = lb.port;
 
-    let lh = thread::spawn(move || {
-        let _ = listener.accept();
+    let accept = lb.spawn_accept(|sock| {
+        let _ = sock;
     });
+    accept.wait_ready();
 
-    common::settle();
     {
         let socket = SocketBuilder::new()
             .recv_timeout(Duration::from_secs(5))
@@ -28,23 +24,19 @@ fn drop_closes_cleanly() {
         // Drop here.
         drop(socket);
     }
-    let _ = lh.join();
+    accept.join();
 }
 
 #[test]
 fn explicit_close_succeeds() {
     require_loopback!();
-    let mut listener = ListenerBuilder::new()
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
+    let lb = common::Loopback::bind();
+    let port = lb.port;
 
-    let lh = thread::spawn(move || {
-        let _ = listener.accept();
+    let accept = lb.spawn_accept(|sock| {
+        let _ = sock;
     });
-
-    common::settle();
+    accept.wait_ready();
 
     let socket = SocketBuilder::new()
         .recv_timeout(Duration::from_secs(5))
@@ -52,5 +44,5 @@ fn explicit_close_succeeds() {
         .expect("connect");
 
     socket.close().expect("close");
-    let _ = lh.join();
+    accept.join();
 }

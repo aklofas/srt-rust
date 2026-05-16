@@ -239,6 +239,14 @@ typedef struct tst_muxer_stats_t {
 } tst_muxer_stats_t;
 
 /**
+ * `repr(C)` mirror of `tst_pipeline::RawReceiverStats`. Size 16 B.
+ */
+typedef struct TstRawReceiverStats {
+  uint64_t bytes_received;
+  uint64_t packets_received;
+} TstRawReceiverStats;
+
+/**
  * `repr(C)` mirror of `tst_pipeline::RawSenderStats`. Size 16 B.
  */
 typedef struct tst_raw_sender_stats_t {
@@ -788,6 +796,22 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * The handle must still be `_close`'d to free.
  */
  int tst_raw_receiver_cancel(struct TstRawReceiver *p);
+
+/**
+ * Snapshot stats for a `tst_raw_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_raw_receiver_get_stats(struct TstRawReceiver *p, struct TstRawReceiverStats *out);
+
+/**
+ * Reset stats counters for a `tst_raw_receiver_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_raw_receiver_reset_stats(struct TstRawReceiver *p);
 
 /**
  * Block until one message arrives. Copies up to `len` bytes into `buf`

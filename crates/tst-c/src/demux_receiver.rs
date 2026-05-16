@@ -343,6 +343,38 @@ pub unsafe extern "C" fn tst_demux_receiver_get_stats(
     })
 }
 
+/// Read wire-level transport stats for the underlying libsrt socket.
+/// See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+/// for full semantics — same shape, different handle type.
+///
+/// # Safety
+///
+/// Caller MUST ensure `p` is a valid `*mut TstDemuxReceiver` opened via
+/// `tst_demux_receiver_open` and `out` points to a writable
+/// `TstSocketStats`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_receiver_get_socket_stats(
+    p: *mut TstDemuxReceiver,
+    out: *mut crate::stats::TstSocketStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    handle.inner.with_inner_ref(|rx| match rx.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => TstError::NotAvailable as i32,
+    })
+}
+
 /// Reset stats counters for a `tst_demux_receiver_t` to zero.
 /// Also invalidates the borrowed `_get_stream_stats` snapshot
 /// (design §4.5).
@@ -718,6 +750,38 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stats(
         let stats = crate::stats::TstDemuxReceiverStats::from(&rx.stats());
         unsafe { *out = stats };
         0
+    })
+}
+
+/// Managed sibling of [`tst_demux_receiver_get_socket_stats`]. Returns
+/// `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
+/// inner socket.
+///
+/// # Safety
+///
+/// Caller MUST ensure `p` is a valid `*mut TstManagedDemuxReceiver`
+/// opened via `tst_managed_demux_receiver_open` and `out` points to a
+/// writable `TstSocketStats`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_demux_receiver_get_socket_stats(
+    p: *mut TstManagedDemuxReceiver,
+    out: *mut crate::stats::TstSocketStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    handle.inner.with_inner_ref(|rx| match rx.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => TstError::NotAvailable as i32,
     })
 }
 

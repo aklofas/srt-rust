@@ -634,58 +634,6 @@ typedef struct tst_demux_receiver_stats_t {
 } tst_demux_receiver_stats_t;
 
 /**
- * `repr(C)` mirror of `tst_core::mpegts::StreamStats`. Size 96 B.
- *
- * Layout (offsets):
- *   0: items (u64, 8 B)
- *   8: bytes (u64, 8 B)
- *  16: discontinuities (u64, 8 B)
- *  24: pid (u16, 2 B)
- *  26: stream_type (u8, 1 B)
- *  27: _pad (3 B, alignment bridge)
- *  30: program_number (u16, 2 B)
- *  32: label ([c_char; 64], 64 B)
- * Total: 96 B — identical to the pre-program_number layout.
- */
-typedef struct tst_stream_stats_t {
-  uint64_t items;
-  uint64_t bytes;
-  uint64_t discontinuities;
-  uint16_t pid;
-  uint8_t stream_type;
-  /**
-   * Alignment padding bridging stream_type → program_number.
-   */
-  uint8_t _pad[3];
-  /**
-   * Program number from the PAT that owns this stream. 0 for PSI PIDs.
-   */
-  uint16_t program_number;
-  /**
-   * NUL-terminated UTF-8. `label[0]==0` means None. Truncated at 63
-   * bytes (first 63 + NUL).
-   */
-  char label[64];
-} tst_stream_stats_t;
-
-/**
- * `repr(C)` mirror of `tst_pipeline::MuxSenderStats`. Size 6188 B.
- */
-typedef struct tst_mux_sender_stats_t {
-  uint64_t bytes_sent;
-  uint64_t packets_sent;
-  uint64_t pending_bytes_queued;
-  uint64_t pending_chunks_queued;
-  /**
-   * Number of programs (PAT entries) in the muxer configuration.
-   */
-  uint32_t programs_configured;
-  uint32_t per_stream_count;
-  uint32_t per_stream_truncated;
-  struct tst_stream_stats_t per_stream[TST_STATS_MAX_STREAMS];
-} tst_mux_sender_stats_t;
-
-/**
  * `repr(C)` mirror of `tst_core::transport::SocketStats`. Size 120 B.
  *
  * Layout (offsets in bytes — verified by the `_TST_SOCKET_STATS_SIZE`
@@ -736,6 +684,58 @@ typedef struct tst_socket_stats_t {
   uint64_t packets_dropped_send;
   uint64_t packets_dropped_recv;
 } tst_socket_stats_t;
+
+/**
+ * `repr(C)` mirror of `tst_core::mpegts::StreamStats`. Size 96 B.
+ *
+ * Layout (offsets):
+ *   0: items (u64, 8 B)
+ *   8: bytes (u64, 8 B)
+ *  16: discontinuities (u64, 8 B)
+ *  24: pid (u16, 2 B)
+ *  26: stream_type (u8, 1 B)
+ *  27: _pad (3 B, alignment bridge)
+ *  30: program_number (u16, 2 B)
+ *  32: label ([c_char; 64], 64 B)
+ * Total: 96 B — identical to the pre-program_number layout.
+ */
+typedef struct tst_stream_stats_t {
+  uint64_t items;
+  uint64_t bytes;
+  uint64_t discontinuities;
+  uint16_t pid;
+  uint8_t stream_type;
+  /**
+   * Alignment padding bridging stream_type → program_number.
+   */
+  uint8_t _pad[3];
+  /**
+   * Program number from the PAT that owns this stream. 0 for PSI PIDs.
+   */
+  uint16_t program_number;
+  /**
+   * NUL-terminated UTF-8. `label[0]==0` means None. Truncated at 63
+   * bytes (first 63 + NUL).
+   */
+  char label[64];
+} tst_stream_stats_t;
+
+/**
+ * `repr(C)` mirror of `tst_pipeline::MuxSenderStats`. Size 6188 B.
+ */
+typedef struct tst_mux_sender_stats_t {
+  uint64_t bytes_sent;
+  uint64_t packets_sent;
+  uint64_t pending_bytes_queued;
+  uint64_t pending_chunks_queued;
+  /**
+   * Number of programs (PAT entries) in the muxer configuration.
+   */
+  uint32_t programs_configured;
+  uint32_t per_stream_count;
+  uint32_t per_stream_truncated;
+  struct tst_stream_stats_t per_stream[TST_STATS_MAX_STREAMS];
+} tst_mux_sender_stats_t;
 
 /**
  * `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6172 B.
@@ -1192,6 +1192,21 @@ int tst_demux_receiver_get_stats(struct tst_demux_receiver_t *p,
                                  struct tst_demux_receiver_stats_t *out);
 
 /**
+ * Read wire-level transport stats for the underlying libsrt socket.
+ * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * for full semantics — same shape, different handle type.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstDemuxReceiver` opened via
+ * `tst_demux_receiver_open` and `out` points to a writable
+ * `TstSocketStats`.
+ */
+
+int tst_demux_receiver_get_socket_stats(struct tst_demux_receiver_t *p,
+                                        struct tst_socket_stats_t *out);
+
+/**
  * Reset stats counters for a `tst_demux_receiver_t` to zero.
  * Also invalidates the borrowed `_get_stream_stats` snapshot
  * (design §4.5).
@@ -1287,6 +1302,21 @@ int tst_managed_demux_receiver_recv_event(struct tst_managed_demux_receiver_t *p
 
 int tst_managed_demux_receiver_get_stats(struct tst_managed_demux_receiver_t *p,
                                          struct tst_demux_receiver_stats_t *out);
+
+/**
+ * Managed sibling of [`tst_demux_receiver_get_socket_stats`]. Returns
+ * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
+ * inner socket.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstManagedDemuxReceiver`
+ * opened via `tst_managed_demux_receiver_open` and `out` points to a
+ * writable `TstSocketStats`.
+ */
+
+int tst_managed_demux_receiver_get_socket_stats(struct tst_managed_demux_receiver_t *p,
+                                                struct tst_socket_stats_t *out);
 
  int tst_managed_demux_receiver_reset_stats(struct tst_managed_demux_receiver_t *p);
 

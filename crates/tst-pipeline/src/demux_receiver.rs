@@ -367,6 +367,21 @@ impl<R: RecvTransport> DemuxReceiver<R> {
 
     /// Reset all counters to zero. Delegates to both the inner `Receiver`
     /// and the inner `Demuxer`.
+    /// Wire-level transport stats (RTT, packet loss, bandwidth, queue
+    /// depths) sourced from the underlying
+    /// [`RecvTransport::socket_stats`] implementation. Delegates to the
+    /// inner `Receiver`, which holds the transport. Returns `None` when
+    /// the transport doesn't expose comparable telemetry or when a
+    /// managed wrapper has no live inner socket.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_demux_receiver_get_socket_stats` — see
+    /// `crates/tst-c/include/tstrans.h`.
+    pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
+        self.ts.socket_stats()
+    }
+
     pub fn reset_stats(&mut self) {
         self.ts.reset_stats();
         self.demux.reset_stats();

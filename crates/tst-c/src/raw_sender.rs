@@ -6,7 +6,9 @@ use crate::config::{TstRawSenderConfig, TstReconnectPolicy};
 use crate::error::{TstError, record_transport_error, set_last_error, tst_get_last_error};
 use crate::handle::Handle;
 use crate::mux_sender::parse_c_srt_url;
-use tst_pipeline::{ManagedTransport, RawSender};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tst_pipeline::{ManagedTransport, RawSender, TransportCancel};
 use tst_srt::SrtTransport;
 
 // ------------------------------------------------------------------
@@ -15,6 +17,8 @@ use tst_srt::SrtTransport;
 
 pub struct TstRawSender {
     inner: Handle<RawSender<SrtTransport>>,
+    cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
+    was_cancelled: Arc<AtomicBool>,
 }
 
 /// Open a `tst_raw_sender_t` connected via SRT.
@@ -52,8 +56,13 @@ pub unsafe extern "C" fn tst_raw_sender_open(
                 return std::ptr::null_mut();
             }
         };
+        let sender = RawSender::new(transport, cfg);
+        let cancel = sender.cancel_handle();
+        let was_cancelled = Arc::new(AtomicBool::new(false));
         Box::into_raw(Box::new(TstRawSender {
-            inner: Handle::new(RawSender::new(transport, cfg)),
+            inner: Handle::new(sender),
+            cancel,
+            was_cancelled,
         }))
     })
 }
@@ -88,8 +97,36 @@ pub unsafe extern "C" fn tst_raw_sender_close(p: *mut TstRawSender) {
         return;
     }
     let boxed = unsafe { Box::from_raw(p) };
+    boxed.was_cancelled.store(true, Ordering::Release);
+    if let Some(c) = &boxed.cancel {
+        c.cancel();
+    }
     boxed.inner.close();
     drop(boxed);
+}
+
+/// Cancel a `tst_raw_sender_t`. Unblocks a thread parked in `_send`
+/// within one libsrt I/O cycle (~3-10 ms) by closing the underlying
+/// libsrt socket. Safe to call from any thread. Idempotent.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+///
+/// After cancel, `_send` returns `TST_E_CLOSED`. The handle must still
+/// be `_close`'d to free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_raw_sender_cancel(p: *mut TstRawSender) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+    // send holds it). The was_cancelled flag + cancel-handle Arc are
+    // accessible without locking.
+    handle.was_cancelled.store(true, Ordering::Release);
+    if let Some(c) = &handle.cancel {
+        c.cancel();
+    }
+    0
 }
 
 // ------------------------------------------------------------------
@@ -98,6 +135,8 @@ pub unsafe extern "C" fn tst_raw_sender_close(p: *mut TstRawSender) {
 
 pub struct TstManagedRawSender {
     inner: Handle<RawSender<ManagedTransport<SrtTransport>>>,
+    cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
+    was_cancelled: Arc<AtomicBool>,
 }
 
 /// Open a `tst_managed_raw_sender_t` connected via SRT.
@@ -146,8 +185,13 @@ pub unsafe extern "C" fn tst_managed_raw_sender_open(
         let cfg_for_reconnect = socket_cfg.clone();
         let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
         let managed = ManagedTransport::new(initial, factory, policy);
+        let sender = RawSender::new(managed, cfg);
+        let cancel = sender.cancel_handle();
+        let was_cancelled = Arc::new(AtomicBool::new(false));
         Box::into_raw(Box::new(TstManagedRawSender {
-            inner: Handle::new(RawSender::new(managed, cfg)),
+            inner: Handle::new(sender),
+            cancel,
+            was_cancelled,
         }))
     })
 }
@@ -182,8 +226,36 @@ pub unsafe extern "C" fn tst_managed_raw_sender_close(p: *mut TstManagedRawSende
         return;
     }
     let boxed = unsafe { Box::from_raw(p) };
+    boxed.was_cancelled.store(true, Ordering::Release);
+    if let Some(c) = &boxed.cancel {
+        c.cancel();
+    }
     boxed.inner.close();
     drop(boxed);
+}
+
+/// Cancel a `tst_managed_raw_sender_t`. Same semantics as
+/// `tst_raw_sender_cancel`; reaches the currently-active inner
+/// transport's cancel handle through `ManagedTransport`'s atomic
+/// snapshot.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_raw_sender_cancel(
+    p: *mut TstManagedRawSender,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+    // send holds it). The was_cancelled flag + cancel-handle Arc are
+    // accessible without locking.
+    handle.was_cancelled.store(true, Ordering::Release);
+    if let Some(c) = &handle.cancel {
+        c.cancel();
+    }
+    0
 }
 
 /// Snapshot stats for a `tst_raw_sender_t` into `*out`.
@@ -278,5 +350,17 @@ mod tests {
             tst_raw_sender_close(std::ptr::null_mut());
             tst_managed_raw_sender_close(std::ptr::null_mut());
         }
+    }
+
+    #[test]
+    fn null_cancel_returns_invalid_config() {
+        let rc = unsafe { tst_raw_sender_cancel(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn managed_null_cancel_returns_invalid_config() {
+        let rc = unsafe { tst_managed_raw_sender_cancel(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 }

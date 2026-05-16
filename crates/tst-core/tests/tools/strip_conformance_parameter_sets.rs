@@ -2,12 +2,11 @@
 //! bitstreams. Driven by `manifest.toml`. See `plan
 //! 2026-05-15-codec-conformance-bitstreams.md` for design.
 
-// Stub: scanner + downloader land in later tasks; types/functions defined now
-// for the manifest loader unit tests and to lock the TOML schema.
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 struct Manifest {
@@ -245,15 +244,165 @@ fn read_leb128(bytes: &[u8]) -> Option<(usize, usize)> {
     None
 }
 
+use sha2::{Digest, Sha256};
+use std::path::Path;
+
+fn fixtures_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/conformance")
+}
+
+fn cache_dir() -> PathBuf {
+    fixtures_root().join("_cache")
+}
+
+fn sha256_hex(path: &Path) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Fetch `url` into `dest` via curl. No-op if dest exists with correct sha.
+fn fetch_with_sha(url: &str, dest: &Path, expected_sha: &str) -> Result<(), String> {
+    if dest.exists() {
+        let observed = sha256_hex(dest)?;
+        if observed == expected_sha {
+            eprintln!("  cache hit: {}", dest.display());
+            return Ok(());
+        }
+        eprintln!("  cache miss (sha mismatch), redownloading");
+    }
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
+    }
+    let status = std::process::Command::new("curl")
+        .args([
+            "-fsSL",
+            "-o",
+            dest.to_str().ok_or("non-utf8 path")?,
+            url,
+        ])
+        .status()
+        .map_err(|e| format!("spawn curl: {e}"))?;
+    if !status.success() {
+        return Err(format!("curl failed: {}", status));
+    }
+    let observed = sha256_hex(dest)?;
+    if observed != expected_sha {
+        return Err(format!(
+            "sha mismatch for {}: expected {expected_sha}, got {observed}",
+            dest.display()
+        ));
+    }
+    Ok(())
+}
+
+/// Read the named member out of a zip archive. Uses `unzip -p` to avoid a
+/// zip crate dep. For non-zip archive_urls (raw bitstream), reads the file
+/// directly.
+fn read_archive_member(archive: &Path, member: &str) -> Result<Vec<u8>, String> {
+    if member.is_empty() {
+        return std::fs::read(archive).map_err(|e| format!("{}: {e}", archive.display()));
+    }
+    let out = std::process::Command::new("unzip")
+        .args(["-p", archive.to_str().ok_or("non-utf8")?, member])
+        .output()
+        .map_err(|e| format!("spawn unzip: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "unzip failed: stderr={}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    Ok(out.stdout)
+}
+
+fn process_entry(codec: &str, entry: &Entry) -> Result<(), String> {
+    let archive_path = cache_dir().join(format!("{}.archive", entry.name));
+    fetch_with_sha(&entry.archive_url, &archive_path, &entry.sha256)?;
+    let bytestream = read_archive_member(&archive_path, &entry.extract)?;
+
+    let parameter_set = match entry.kind.as_str() {
+        "h264_sps" => extract_h264_parameter_set(&bytestream, 7, entry.nal_index),
+        "h264_pps" => extract_h264_parameter_set(&bytestream, 8, entry.nal_index),
+        "h265_vps" => extract_h265_parameter_set(&bytestream, 32, entry.nal_index),
+        "h265_sps" => extract_h265_parameter_set(&bytestream, 33, entry.nal_index),
+        "h265_pps" => extract_h265_parameter_set(&bytestream, 34, entry.nal_index),
+        "h266_vps" => extract_h266_parameter_set(&bytestream, 14, entry.nal_index),
+        "h266_sps" => extract_h266_parameter_set(&bytestream, 15, entry.nal_index),
+        "h266_pps" => extract_h266_parameter_set(&bytestream, 16, entry.nal_index),
+        "av1_sequence_header" => extract_av1_sequence_header(&bytestream, entry.obu_index),
+        other => return Err(format!("unknown kind: {other}")),
+    }
+    .ok_or_else(|| format!("parameter set not found in {}", entry.name))?;
+
+    let out_dir = fixtures_root().join(codec);
+    std::fs::create_dir_all(&out_dir).map_err(|e| format!("mkdir: {e}"))?;
+    let bin_path = out_dir.join(format!("{}.bin", entry.name));
+    let json_path = out_dir.join(format!("{}.json", entry.name));
+
+    std::fs::write(&bin_path, &parameter_set).map_err(|e| format!("write bin: {e}"))?;
+
+    let sidecar = serde_json::json!({
+        "source": entry.extract,
+        "url": entry.archive_url,
+        "sha256_source": entry.sha256,
+        "kind": entry.kind,
+        "expected": entry.expected,
+    });
+    std::fs::write(
+        &json_path,
+        serde_json::to_string_pretty(&sidecar).map_err(|e| format!("json: {e}"))?,
+    )
+    .map_err(|e| format!("write json: {e}"))?;
+
+    eprintln!(
+        "  wrote {} ({} bytes)",
+        bin_path.strip_prefix(fixtures_root()).unwrap().display(),
+        parameter_set.len()
+    );
+    Ok(())
+}
+
 fn main() {
-    eprintln!("not yet implemented");
-    std::process::exit(2);
+    let manifest_path = fixtures_root().join("manifest.toml");
+    let manifest = match load_manifest(&manifest_path) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let mut errors: Vec<String> = vec![];
+    for (codec, entries) in [
+        ("h264", &manifest.h264),
+        ("h265", &manifest.h265),
+        ("h266", &manifest.h266),
+        ("av1", &manifest.av1),
+    ] {
+        eprintln!("=== {codec} ({} entries) ===", entries.len());
+        for entry in entries {
+            eprintln!("- {}", entry.name);
+            if let Err(e) = process_entry(codec, entry) {
+                errors.push(format!("{codec}/{}: {e}", entry.name));
+            }
+        }
+    }
+
+    if !errors.is_empty() {
+        eprintln!("\n{} entries failed:", errors.len());
+        for e in &errors {
+            eprintln!("  {e}");
+        }
+        std::process::exit(1);
+    }
+    eprintln!("\nOK");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
     fn manifest_loads_starter_set() {

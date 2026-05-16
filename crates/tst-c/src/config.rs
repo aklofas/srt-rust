@@ -564,6 +564,72 @@ pub enum TstVideoCodec {
     H265 = 1,
 }
 
+impl TstVideoCodec {
+    #[allow(dead_code)]
+    // used in later Phase 3 tasks
+    pub(crate) fn from_core(c: tst_core::mpegts::demux::VideoCodec) -> Self {
+        use tst_core::mpegts::demux::VideoCodec;
+        match c {
+            VideoCodec::H264 => Self::H264,
+            VideoCodec::H265 => Self::H265,
+            VideoCodec::H266 => Self::H265, // map H.266 to H.265 placeholder
+            VideoCodec::Av1 => Self::H265,  // map Av1 to H.265 placeholder
+        }
+    }
+}
+
+/// `repr(C)` mirror of `tst_core::mpegts::demux::AudioCodec`.
+/// On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_AUDIO`,
+/// and on `tst_stream_info_t.codec`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub enum TstAudioCodec {
+    Mp2 = 0,
+    Aac = 1,
+    AacLatm = 2,
+    Ac3 = 3,
+}
+
+impl TstAudioCodec {
+    #[allow(dead_code)]
+    // used in later Phase 3 tasks
+    pub(crate) fn from_core(c: tst_core::mpegts::demux::AudioCodec) -> Self {
+        use tst_core::mpegts::demux::AudioCodec;
+        match c {
+            AudioCodec::Mp2 => Self::Mp2,
+            AudioCodec::Aac => Self::Aac,
+            AudioCodec::AacLatm => Self::AacLatm,
+            AudioCodec::Ac3 => Self::Ac3,
+        }
+    }
+}
+
+/// `repr(C)` mirror of `tst_core::mpegts::demux::SubtitleCodec`.
+/// On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_SUBTITLE`,
+/// and on `tst_stream_info_t.codec`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub enum TstSubtitleCodec {
+    DvbSubtitling = 0,
+    DvbTeletext = 1,
+    Cea708Standalone = 2,
+    WebVttInTs = 3,
+}
+
+impl TstSubtitleCodec {
+    #[allow(dead_code)]
+    // used in later Phase 3 tasks
+    pub(crate) fn from_core(c: tst_core::mpegts::demux::SubtitleCodec) -> Self {
+        use tst_core::mpegts::demux::SubtitleCodec;
+        match c {
+            SubtitleCodec::DvbSubtitling => Self::DvbSubtitling,
+            SubtitleCodec::DvbTeletext => Self::DvbTeletext,
+            SubtitleCodec::Cea708Standalone => Self::Cea708Standalone,
+            SubtitleCodec::WebVttInTs => Self::WebVttInTs,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub enum TstKlvStreamType {

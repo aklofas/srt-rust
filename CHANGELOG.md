@@ -142,10 +142,12 @@ isolation) also ride this release.
 - Test infrastructure: new `common::Loopback` + `AcceptHandle<R>` helper
   in `crates/tst-srt/tests/common/mod.rs` consolidates the 15-line
   "bind / spawn accept / signal ready" boilerplate into a 3-line
-  builder + closure shape. 5 `#[test]` functions across 4 files migrated
-  as proof (`io.rs` ×2, `maxbw_roundtrip.rs`, `linger.rs`,
-  `srto_sender.rs` ×2); remaining 15 files are mechanical follow-up.
-  Pattern from GStreamer's `tests/check/elements/srt.c`. Survey item #5.
+  builder + closure shape. 18 of 20 integration tests now use the
+  helper (net −90 lines across the sweep). Two files don't fit:
+  `ipv6_loopback.rs` (helper hardcodes `127.0.0.1:0`) and
+  `listener_accept_timeout.rs` (tests `accept_timeout` itself; spawns
+  a connector thread — inverse pattern). Pattern from GStreamer's
+  `tests/check/elements/srt.c`. Survey item #5.
 - CI: new nightly `sanitizers` workflow (`.github/workflows/sanitizers.yml`)
   runs `cargo test -p tst-core -p tst-pipeline` under AddressSanitizer
   and ThreadSanitizer (separate jobs; sanitizers can't combine). Trigger:

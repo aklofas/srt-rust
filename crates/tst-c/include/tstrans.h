@@ -197,6 +197,32 @@ typedef uint32_t tst_video_stream_handle_t;
 typedef uint32_t tst_klv_stream_handle_t;
 
 /**
+ * `repr(C)` mirror of `tst_core::mpegts::demux::psi::RawDescriptor`.
+ *
+ * `data` borrows from the demuxer's per-PMT descriptor list; valid
+ * until the next `_recv_event` / `_close` call on this handle. The
+ * length byte from the wire is stripped — `data_len` is the body length.
+ */
+typedef struct TstDescriptor {
+  uint8_t tag;
+  uint8_t _reserved[7];
+  const uint8_t *data;
+  size_t data_len;
+} TstDescriptor;
+
+/**
+ * Opaque per-program ordinal for an audio elementary stream. Same packed
+ * encoding as [`TstVideoStreamHandle`].
+ */
+typedef uint32_t TstAudioStreamHandle;
+
+/**
+ * Opaque per-program ordinal for a subtitle elementary stream. Same packed
+ * encoding as [`TstVideoStreamHandle`].
+ */
+typedef uint32_t TstSubtitleStreamHandle;
+
+/**
  * `repr(C)` mirror of `tst_core::mpegts::StreamStats`. Size 96 B.
  *
  * Layout (offsets):
@@ -480,6 +506,57 @@ int tst_mux_config_set_stream_descriptors_for_klv(struct tst_mux_config_t *cfg,
                                                   const uint8_t *tlv_bytes,
                                                   size_t tlv_total_len,
                                                   size_t tlv_count);
+
+/**
+ * Append one PMT descriptor to a video stream's per-PID descriptor list.
+ *
+ * `stream` is the handle returned by `tst_mux_config_add_video_stream`.
+ * `desc` must be non-null with `desc.data` pointing to `desc.data_len`
+ * bytes (stripped length — does not include the tag/length header bytes).
+ * Bytes are copied; the caller's buffer is not retained after this call.
+ * Multiple calls accumulate; descriptors appear in the PMT in add-order.
+ *
+ * Returns 0 on success, or a negative `TST_E_*` code on: null `cfg` or
+ * `desc`, stale handle, null `desc.data` with non-zero `desc.data_len`,
+ * or `desc.data_len > 255` (MPEG-TS descriptor body limit).
+ */
+
+int tst_mux_config_add_video_descriptor(struct tst_mux_config_t *cfg,
+                                        tst_video_stream_handle_t stream,
+                                        const struct TstDescriptor *desc);
+
+/**
+ * Append one PMT descriptor to a KLV stream's per-PID descriptor list.
+ * Same contract as `tst_mux_config_add_video_descriptor`.
+ *
+ * `stream` is the handle returned by `tst_mux_config_add_klv_stream`.
+ */
+
+int tst_mux_config_add_klv_descriptor(struct tst_mux_config_t *cfg,
+                                      tst_klv_stream_handle_t stream,
+                                      const struct TstDescriptor *desc);
+
+/**
+ * Append one PMT descriptor to an audio stream's per-PID descriptor list.
+ * Same contract as `tst_mux_config_add_video_descriptor`.
+ *
+ * `stream` is the handle returned by `tst_mux_config_add_audio_stream`.
+ */
+
+int tst_mux_config_add_audio_descriptor(struct tst_mux_config_t *cfg,
+                                        TstAudioStreamHandle stream,
+                                        const struct TstDescriptor *desc);
+
+/**
+ * Append one PMT descriptor to a subtitle stream's per-PID descriptor list.
+ * Same contract as `tst_mux_config_add_video_descriptor`.
+ *
+ * `stream` is the handle returned by `tst_mux_config_add_subtitle_stream`.
+ */
+
+int tst_mux_config_add_subtitle_descriptor(struct tst_mux_config_t *cfg,
+                                           TstSubtitleStreamHandle stream,
+                                           const struct TstDescriptor *desc);
 
  struct tst_sender_config_t *tst_sender_config_new(void);
 

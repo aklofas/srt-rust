@@ -4,7 +4,10 @@
 //! so the caller may free immediately after a successful open.
 
 use crate::error::{TstError, set_last_error};
-use crate::handle::{TST_INVALID_STREAM_HANDLE, TstKlvStreamHandle, TstVideoStreamHandle};
+use crate::handle::{
+    TST_INVALID_STREAM_HANDLE, TstAudioStreamHandle, TstKlvStreamHandle,
+    TstSubtitleStreamHandle, TstVideoStreamHandle,
+};
 use crate::panic::ffi_catch;
 use std::time::Duration;
 use tst_core::error::MuxError;
@@ -508,6 +511,281 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_klv(
             }
         };
         prog.stream_descriptors[stream_idx] = descs;
+        0
+    })
+}
+
+// Internal helper: copy one `TstDescriptor` into a full TLV blob
+// `[tag, body_len, body...]` ready to push onto a `stream_descriptors[i]` slot.
+//
+// Returns `Err(TST_E_*)` on null data with non-zero length or body > 255 bytes.
+//
+// # Safety
+// Caller must validate that `desc` is non-null before calling.
+unsafe fn desc_to_tlv_blob(
+    desc: &crate::event::TstDescriptor,
+) -> Result<Vec<u8>, libc::c_int> {
+    if desc.data_len > 255 {
+        set_last_error(
+            TstError::InvalidConfig,
+            "descriptor body length exceeds 255 (MPEG-TS descriptor limit)",
+        );
+        return Err(TstError::InvalidConfig as i32);
+    }
+    if desc.data.is_null() && desc.data_len != 0 {
+        set_last_error(
+            TstError::InvalidConfig,
+            "descriptor data pointer is null with non-zero data_len",
+        );
+        return Err(TstError::InvalidConfig as i32);
+    }
+    let body: &[u8] = if desc.data_len == 0 {
+        &[]
+    } else {
+        // SAFETY: caller validated desc.data non-null and desc.data_len > 0;
+        // bytes are copied into the Vec so the caller's buffer can be freed.
+        unsafe { std::slice::from_raw_parts(desc.data, desc.data_len) }
+    };
+    let mut tlv = Vec::with_capacity(2 + body.len());
+    tlv.push(desc.tag);
+    tlv.push(desc.data_len as u8);
+    tlv.extend_from_slice(body);
+    Ok(tlv)
+}
+
+/// Append one PMT descriptor to a video stream's per-PID descriptor list.
+///
+/// `stream` is the handle returned by `tst_mux_config_add_video_stream`.
+/// `desc` must be non-null with `desc.data` pointing to `desc.data_len`
+/// bytes (stripped length — does not include the tag/length header bytes).
+/// Bytes are copied; the caller's buffer is not retained after this call.
+/// Multiple calls accumulate; descriptors appear in the PMT in add-order.
+///
+/// Returns 0 on success, or a negative `TST_E_*` code on: null `cfg` or
+/// `desc`, stale handle, null `desc.data` with non-zero `desc.data_len`,
+/// or `desc.data_len > 255` (MPEG-TS descriptor body limit).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_video_descriptor(
+    cfg: *mut TstMuxConfig,
+    stream: TstVideoStreamHandle,
+    desc: *const crate::event::TstDescriptor,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let Some(desc) = (unsafe { desc.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null descriptor pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let tlv = unsafe {
+            match desc_to_tlv_blob(desc) {
+                Ok(b) => b,
+                Err(rc) => return rc,
+            }
+        };
+        // Unpack (prog_idx, within_idx) from the packed handle — same bit layout
+        // as VideoStreamHandle::pack: bits 4..7 = program, bits 0..3 = within.
+        let prog_idx = (stream >> 4) as usize;
+        let video_within_idx = (stream & 0xF) as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(
+                TstError::InvalidUsage,
+                "invalid video stream handle (program out of range)",
+            );
+            return TstError::InvalidUsage as i32;
+        }
+        let prog = &mut cfg.programs[prog_idx];
+        let stream_idx = match prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Video { .. }))
+            .nth(video_within_idx)
+            .map(|(i, _)| i)
+        {
+            Some(i) => i,
+            None => {
+                set_last_error(
+                    TstError::InvalidUsage,
+                    "invalid video stream handle (stream out of range)",
+                );
+                return TstError::InvalidUsage as i32;
+            }
+        };
+        prog.stream_descriptors[stream_idx].push(tlv);
+        0
+    })
+}
+
+/// Append one PMT descriptor to a KLV stream's per-PID descriptor list.
+/// Same contract as `tst_mux_config_add_video_descriptor`.
+///
+/// `stream` is the handle returned by `tst_mux_config_add_klv_stream`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_klv_descriptor(
+    cfg: *mut TstMuxConfig,
+    stream: TstKlvStreamHandle,
+    desc: *const crate::event::TstDescriptor,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let Some(desc) = (unsafe { desc.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null descriptor pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let tlv = unsafe {
+            match desc_to_tlv_blob(desc) {
+                Ok(b) => b,
+                Err(rc) => return rc,
+            }
+        };
+        let prog_idx = (stream >> 4) as usize;
+        let klv_within_idx = (stream & 0xF) as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(
+                TstError::InvalidUsage,
+                "invalid klv stream handle (program out of range)",
+            );
+            return TstError::InvalidUsage as i32;
+        }
+        let prog = &mut cfg.programs[prog_idx];
+        let stream_idx = match prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Klv { .. }))
+            .nth(klv_within_idx)
+            .map(|(i, _)| i)
+        {
+            Some(i) => i,
+            None => {
+                set_last_error(
+                    TstError::InvalidUsage,
+                    "invalid klv stream handle (stream out of range)",
+                );
+                return TstError::InvalidUsage as i32;
+            }
+        };
+        prog.stream_descriptors[stream_idx].push(tlv);
+        0
+    })
+}
+
+/// Append one PMT descriptor to an audio stream's per-PID descriptor list.
+/// Same contract as `tst_mux_config_add_video_descriptor`.
+///
+/// `stream` is the handle returned by `tst_mux_config_add_audio_stream`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_audio_descriptor(
+    cfg: *mut TstMuxConfig,
+    stream: TstAudioStreamHandle,
+    desc: *const crate::event::TstDescriptor,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let Some(desc) = (unsafe { desc.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null descriptor pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let tlv = unsafe {
+            match desc_to_tlv_blob(desc) {
+                Ok(b) => b,
+                Err(rc) => return rc,
+            }
+        };
+        let prog_idx = (stream >> 4) as usize;
+        let audio_within_idx = (stream & 0xF) as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(
+                TstError::InvalidUsage,
+                "invalid audio stream handle (program out of range)",
+            );
+            return TstError::InvalidUsage as i32;
+        }
+        let prog = &mut cfg.programs[prog_idx];
+        let stream_idx = match prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Audio { .. }))
+            .nth(audio_within_idx)
+            .map(|(i, _)| i)
+        {
+            Some(i) => i,
+            None => {
+                set_last_error(
+                    TstError::InvalidUsage,
+                    "invalid audio stream handle (stream out of range)",
+                );
+                return TstError::InvalidUsage as i32;
+            }
+        };
+        prog.stream_descriptors[stream_idx].push(tlv);
+        0
+    })
+}
+
+/// Append one PMT descriptor to a subtitle stream's per-PID descriptor list.
+/// Same contract as `tst_mux_config_add_video_descriptor`.
+///
+/// `stream` is the handle returned by `tst_mux_config_add_subtitle_stream`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_subtitle_descriptor(
+    cfg: *mut TstMuxConfig,
+    stream: TstSubtitleStreamHandle,
+    desc: *const crate::event::TstDescriptor,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let Some(desc) = (unsafe { desc.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null descriptor pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let tlv = unsafe {
+            match desc_to_tlv_blob(desc) {
+                Ok(b) => b,
+                Err(rc) => return rc,
+            }
+        };
+        let prog_idx = (stream >> 4) as usize;
+        let subtitle_within_idx = (stream & 0xF) as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(
+                TstError::InvalidUsage,
+                "invalid subtitle stream handle (program out of range)",
+            );
+            return TstError::InvalidUsage as i32;
+        }
+        let prog = &mut cfg.programs[prog_idx];
+        let stream_idx = match prog
+            .streams
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| matches!(s, StreamSpec::Subtitle { .. }))
+            .nth(subtitle_within_idx)
+            .map(|(i, _)| i)
+        {
+            Some(i) => i,
+            None => {
+                set_last_error(
+                    TstError::InvalidUsage,
+                    "invalid subtitle stream handle (stream out of range)",
+                );
+                return TstError::InvalidUsage as i32;
+            }
+        };
+        prog.stream_descriptors[stream_idx].push(tlv);
         0
     })
 }
@@ -1018,6 +1296,84 @@ mod tests {
         unsafe {
             let h = tst_mux_config_add_program(std::ptr::null_mut(), 1, 0x1000);
             assert_eq!(h, TST_INVALID_PROGRAM_HANDLE);
+        }
+    }
+
+    #[test]
+    fn add_video_descriptor_smoke() {
+        unsafe {
+            let cfg = tst_mux_config_new();
+            let prog = tst_mux_config_add_program(cfg, 1, 0x100);
+            let stream =
+                tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+            assert_ne!(stream, TST_INVALID_STREAM_HANDLE);
+            // Synthetic registration descriptor body: "VIDX" (4 bytes).
+            let body = b"VIDX";
+            let desc = crate::event::TstDescriptor {
+                tag: 0x05,
+                _reserved: [0; 7],
+                data: body.as_ptr(),
+                data_len: body.len(),
+            };
+            let rc = tst_mux_config_add_video_descriptor(cfg, stream, &desc);
+            assert_eq!(rc, 0);
+            // Verify: exactly one descriptor blob in stream_descriptors[0],
+            // formatted as [tag=0x05, len=4, b'V', b'I', b'D', b'X'].
+            let inner_cfg = &*cfg;
+            assert_eq!(inner_cfg.programs[0].stream_descriptors[0].len(), 1);
+            assert_eq!(
+                inner_cfg.programs[0].stream_descriptors[0][0],
+                &[0x05u8, 0x04, b'V', b'I', b'D', b'X']
+            );
+            tst_mux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn add_video_descriptor_null_cfg_returns_error() {
+        unsafe {
+            let body = b"TEST";
+            let desc = crate::event::TstDescriptor {
+                tag: 0x09,
+                _reserved: [0; 7],
+                data: body.as_ptr(),
+                data_len: body.len(),
+            };
+            let rc = tst_mux_config_add_video_descriptor(std::ptr::null_mut(), 0, &desc);
+            assert!(rc < 0);
+        }
+    }
+
+    #[test]
+    fn add_klv_descriptor_smoke() {
+        unsafe {
+            let cfg = tst_mux_config_new();
+            let prog = tst_mux_config_add_program(cfg, 1, 0x100);
+            let stream = tst_mux_config_add_klv_stream(
+                cfg,
+                prog,
+                0x1031,
+                TstKlvStreamType::PrivateData,
+                false,
+            );
+            assert_ne!(stream, TST_INVALID_STREAM_HANDLE);
+            // Empty-body descriptor (data_len = 0, data pointer need not be valid).
+            let desc = crate::event::TstDescriptor {
+                tag: 0xDE,
+                _reserved: [0; 7],
+                data: std::ptr::null(),
+                data_len: 0,
+            };
+            let rc = tst_mux_config_add_klv_descriptor(cfg, stream, &desc);
+            assert_eq!(rc, 0);
+            // KLV stream is at streams[0] in this single-stream program.
+            let inner_cfg = &*cfg;
+            assert_eq!(inner_cfg.programs[0].stream_descriptors[0].len(), 1);
+            assert_eq!(
+                inner_cfg.programs[0].stream_descriptors[0][0],
+                &[0xDEu8, 0x00]
+            );
+            tst_mux_config_free(cfg);
         }
     }
 }

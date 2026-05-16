@@ -327,12 +327,6 @@ fn mode_caller_accepted_noop() {
 }
 
 #[test]
-fn mode_listener_rejected() {
-    let e = SrtUrl::parse("srt://1.2.3.4:9000?mode=listener").unwrap_err();
-    assert!(matches!(e, UrlError::UnsupportedMode { ref mode } if mode == "listener"));
-}
-
-#[test]
 fn mode_rendezvous_rejected() {
     let e = SrtUrl::parse("srt://1.2.3.4:9000?mode=rendezvous").unwrap_err();
     assert!(matches!(e, UrlError::UnsupportedMode { ref mode } if mode == "rendezvous"));

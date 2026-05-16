@@ -85,7 +85,7 @@ pub enum Mode {
     /// Bind a local port and accept the first incoming connection.
     /// Requires `?mode=listener` in the URL. Allows an empty host
     /// (e.g. `srt://:7000`) — empty host binds to the platform's default
-    /// wildcard address (`0.0.0.0` on Linux); a non-empty host binds to
+    /// wildcard address (typically `0.0.0.0`); a non-empty host binds to
     /// that specific interface.
     Listener,
 }
@@ -216,6 +216,9 @@ impl SrtUrl {
         let (parsed, host_was_empty) = match url::Url::parse(s) {
             Ok(u) => (u, false),
             Err(url::ParseError::EmptyHost) => {
+                // Safe: the url crate already tokenized `s` up to the authority before
+                // returning EmptyHost — the "://:" substring can only appear at the
+                // authority separator, not in any later query string or fragment.
                 let with_sentinel = s.replacen("://:", "://0.0.0.0:", 1);
                 match url::Url::parse(&with_sentinel) {
                     Ok(u) => (u, true),

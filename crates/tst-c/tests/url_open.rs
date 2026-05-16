@@ -1175,22 +1175,14 @@ fn url_unsupported_key_returns_null_with_srto() {
 }
 
 #[test]
-fn url_mode_listener_returns_null() {
-    // mode=listener is rejected — the library only supports mode=caller.
-    // The error names both "mode" and "listener" so the caller understands
-    // which mode was requested and why it was rejected.
-    let url_c = CString::new("srt://127.0.0.1:9000?mode=listener").unwrap();
-    unsafe {
-        let cfg = tst_sender_config_new();
-        let s = tst_sender_open(url_c.as_ptr(), cfg);
-        assert!(s.is_null(), "expected null for mode=listener");
-        let msg = last_error_msg();
-        assert!(
-            msg.contains("mode") && msg.contains("listener"),
-            "msg = {msg}"
-        );
-        tst_sender_config_free(cfg);
-    }
+fn url_mode_listener_parse_accepted() {
+    // mode=listener is now a valid URL form — the parser accepts it so that
+    // the receiver-side entry points (tst_receiver_open etc.) can use it.
+    // Verify that SrtUrl::parse no longer rejects it.
+    let u = tst_srt::SrtUrl::parse("srt://127.0.0.1:9000?mode=listener").unwrap();
+    assert_eq!(u.mode, tst_srt::url::Mode::Listener);
+    assert_eq!(u.host, "127.0.0.1");
+    assert_eq!(u.port, 9000);
 }
 
 #[test]

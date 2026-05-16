@@ -152,6 +152,35 @@ fn mux_sender_stats_round_trip() {
 }
 
 #[test]
+fn mux_sender_socket_stats_null_pointer_returns_invalid_config() {
+    use tstrans::mux_sender::tst_mux_sender_get_socket_stats;
+    use tstrans::stats::TstSocketStats;
+
+    unsafe {
+        // null sender
+        let mut st = TstSocketStats::default();
+        let rc = tst_mux_sender_get_socket_stats(std::ptr::null_mut(), &mut st);
+        assert_ne!(rc, 0);
+
+        // null out pointer is hit via a live handle in Task 13's live test
+        // — here we only need the null-handle path because constructing a
+        // live tst_mux_sender_t requires a live SRT loopback.
+    }
+}
+
+#[test]
+fn managed_mux_sender_socket_stats_null_pointer_returns_invalid_config() {
+    use tstrans::mux_sender::tst_managed_mux_sender_get_socket_stats;
+    use tstrans::stats::TstSocketStats;
+
+    unsafe {
+        let mut st = TstSocketStats::default();
+        let rc = tst_managed_mux_sender_get_socket_stats(std::ptr::null_mut(), &mut st);
+        assert_ne!(rc, 0);
+    }
+}
+
+#[test]
 fn ts_sender_reset_stats_returns_ok_on_valid_handle() {
     unsafe {
         let rc = tstrans::ts_sender::tst_sender_reset_stats(std::ptr::null_mut());

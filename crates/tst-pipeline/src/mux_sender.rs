@@ -519,6 +519,15 @@ impl<T: Transport> MuxSender<T> {
         }
     }
 
+    /// Wire-level transport stats (RTT, packet loss, bandwidth, queue
+    /// depths) sourced from the underlying [`Transport::socket_stats`]
+    /// implementation. Returns `None` when the transport doesn't expose
+    /// comparable telemetry (test mocks) or when a managed wrapper has
+    /// no live inner socket (mid-reconnect).
+    pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
+        self.inner.lock().unwrap().transport.socket_stats()
+    }
+
     /// Zero all flow counters and delegate to `Muxer::reset_stats`.
     /// `pending_bytes_queued` / `pending_chunks_queued` are live gauges and
     /// are NOT cleared.

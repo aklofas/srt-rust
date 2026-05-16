@@ -1,7 +1,7 @@
 //! `tst_raw_receiver_t` (plain) and `tst_managed_raw_receiver_t` (managed).
 //!
 //! One `_recv` call = one inbound SRT message into the caller's buffer.
-//! No MPEG-TS framing or sync recovery — that's `tst_ts_receiver_t`.
+//! No MPEG-TS framing or sync recovery — that's `tst_receiver_t`.
 //!
 //! Cancellation contract: `_cancel` unblocks a thread parked in `_recv`
 //! within ~3-10 ms (one libsrt I/O cycle). The cancel signal is

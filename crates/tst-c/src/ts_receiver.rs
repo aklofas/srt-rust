@@ -380,6 +380,10 @@ fn managed_open_listener_inner(
             return std::ptr::null_mut();
         }
     };
+    // Managed listener: on reconnect, re-bind a fresh listener socket and
+    // accept the next peer. Each factory invocation does BIND + ACCEPT, so
+    // the reconnect delay (from the policy) sits between the peer disconnect
+    // and the next bind attempt — not after accept returns.
     let host = url.host.clone();
     let port = url.port;
     let cfg_for_relisten = listener_cfg.clone();
@@ -467,6 +471,9 @@ pub unsafe extern "C" fn tst_managed_receiver_cancel(
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
         return TstError::InvalidConfig as i32;
     };
+    // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+    // recv_packet holds it). The was_cancelled flag + cancel-handle Arc
+    // are accessible without locking.
     handle.was_cancelled.store(true, Ordering::Release);
     if let Some(c) = &handle.cancel {
         c.cancel();
@@ -507,6 +514,7 @@ pub unsafe extern "C" fn tst_managed_receiver_get_stats(
     }
     handle.inner.with_inner_ref(|rx| {
         let stats = crate::stats::TstReceiverStats::from(&rx.stats());
+        // SAFETY: out non-null per guard above.
         unsafe { *out = stats };
         0
     })

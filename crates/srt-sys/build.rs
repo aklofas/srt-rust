@@ -163,7 +163,18 @@ fn build_vendored(mbedtls_prefix: Option<&PathBuf>) -> Vec<PathBuf> {
 
     println!("cargo:rustc-link-search=native={}/lib", dst.display());
     println!("cargo:rustc-link-search=native={}/lib64", dst.display());
-    println!("cargo:rustc-link-lib=static=srt");
+
+    // libsrt's CMakeLists names the static library `srt_static.lib` on
+    // MSVC to avoid colliding with the shared-library import lib (also
+    // named `srt.lib`); on every other platform it's `libsrt.a` /
+    // `libsrt.so` (rustc strips the lib prefix when linking by name).
+    // See vendor/srt/CMakeLists.txt L1169-1181.
+    let srt_lib_name = if target.contains("msvc") {
+        "srt_static"
+    } else {
+        "srt"
+    };
+    println!("cargo:rustc-link-lib=static={srt_lib_name}");
 
     // Link the mbedTLS static libs (libsrt's pkg-config file references them
     // but our static link line doesn't go through pkg-config).

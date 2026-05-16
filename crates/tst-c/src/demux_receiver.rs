@@ -314,6 +314,59 @@ pub unsafe extern "C" fn tst_demux_receiver_cancel(
     0
 }
 
+/// Snapshot stats for a `tst_demux_receiver_t` into `*out`.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer
+/// is null, `TST_E_CLOSED` if the receiver has been closed.
+///
+/// NOTE: per-PID counters are NOT included on this struct — call
+/// `tst_demux_receiver_get_stream_stats` to retrieve them.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_receiver_get_stats(
+    p: *mut TstDemuxReceiver,
+    out: *mut crate::stats::TstDemuxReceiverStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle.inner.with_inner_ref(|rx| {
+        let stats = crate::stats::TstDemuxReceiverStats::from(&rx.stats());
+        unsafe { *out = stats };
+        0
+    })
+}
+
+/// Reset stats counters for a `tst_demux_receiver_t` to zero.
+/// Also invalidates the borrowed `_get_stream_stats` snapshot
+/// (design §4.5).
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
+/// null, `TST_E_CLOSED` if the receiver has been closed.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_receiver_reset_stats(
+    p: *mut TstDemuxReceiver,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    // Clear the stream_stats_buf so any borrowed snapshot becomes
+    // a dangling pointer — caller contract documents this as the
+    // invalidation moment.
+    if let Ok(mut buf) = handle.stream_stats_buf.lock() {
+        buf.clear();
+    }
+    handle.inner.with_inner_mut(|rx| {
+        rx.reset_stats();
+        0
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,6 +396,19 @@ mod tests {
     #[test]
     fn null_cancel_returns_invalid_config() {
         let rc = unsafe { tst_demux_receiver_cancel(std::ptr::null_mut()) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_get_stats_returns_invalid_config() {
+        let mut stats = crate::stats::TstDemuxReceiverStats::default();
+        let rc = unsafe { tst_demux_receiver_get_stats(std::ptr::null_mut(), &mut stats) };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_reset_stats_returns_invalid_config() {
+        let rc = unsafe { tst_demux_receiver_reset_stats(std::ptr::null_mut()) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 }

@@ -1,0 +1,17 @@
+{
+  "expected": {
+    "fields": {
+      "bit_depth": 10,
+      "chroma_format": "Yuv420",
+      "max_frame_height": 360,
+      "max_frame_width": 640,
+      "monochrome": false,
+      "profile": 0
+    },
+    "outcome": "ok"
+  },
+  "kind": "av1_sequence_header",
+  "sha256_source": "fe6053ce4ee20a1c0ec6f7fe35db097e92ad25d8a3505598bd89162c74d7944f",
+  "source": "",
+  "url": "https://storage.googleapis.com/aom-test-data/av1-1-b10-00-quantizer-00.ivf"
+}

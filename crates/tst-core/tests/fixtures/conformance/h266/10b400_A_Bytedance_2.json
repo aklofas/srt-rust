@@ -1,0 +1,18 @@
+{
+  "expected": {
+    "fields": {
+      "bit_depth_chroma": 10,
+      "bit_depth_luma": 10,
+      "chroma_format": "Monochrome",
+      "general_level_idc": 51,
+      "general_profile_idc": 1,
+      "height": 480,
+      "width": 832
+    },
+    "outcome": "ok"
+  },
+  "kind": "h266_sps",
+  "sha256_source": "670b1a9fe96213217d52919bbf9c848fbd416d4fcf669cf2f47ba445bf70e303",
+  "source": "10b400_A_Bytedance_2.bit",
+  "url": "https://www.itu.int/wftp3/av-arch/jvet-site/bitstream_exchange/VVC/draft_conformance/draft6/10b400_A_Bytedance_2.zip"
+}

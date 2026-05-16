@@ -1,0 +1,18 @@
+{
+  "expected": {
+    "fields": {
+      "bit_depth_chroma": 8,
+      "bit_depth_luma": 8,
+      "chroma_format": "Yuv420",
+      "height": 288,
+      "level_idc": 30,
+      "profile_idc": 100,
+      "width": 352
+    },
+    "outcome": "ok"
+  },
+  "kind": "h264_sps",
+  "sha256_source": "d0d83d03aef6065715c0f91d1b31a6c445c1d4ae58aac2505f856a1a54962f94",
+  "source": "HCAFR1_HHI.264",
+  "url": "https://www.itu.int/wftp3/av-arch/jvt-site/draft_conformance/FRExt/HCAFR1_HHI_C.zip"
+}

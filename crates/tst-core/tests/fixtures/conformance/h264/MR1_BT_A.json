@@ -1,0 +1,18 @@
+{
+  "expected": {
+    "fields": {
+      "bit_depth_chroma": 8,
+      "bit_depth_luma": 8,
+      "chroma_format": "Yuv420",
+      "height": 144,
+      "level_idc": 11,
+      "profile_idc": 66,
+      "width": 176
+    },
+    "outcome": "ok"
+  },
+  "kind": "h264_sps",
+  "sha256_source": "a76d4e199e6ffb27292d1a07c516e5adea251e63e3f756de490c153b23d4684d",
+  "source": "MR1_BT_A.h264",
+  "url": "https://www.itu.int/wftp3/av-arch/jvt-site/draft_conformance/AVCv1/MR1_BT_A.zip"
+}

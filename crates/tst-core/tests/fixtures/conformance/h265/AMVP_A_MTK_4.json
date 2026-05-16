@@ -1,0 +1,18 @@
+{
+  "expected": {
+    "fields": {
+      "bit_depth_chroma": 8,
+      "bit_depth_luma": 8,
+      "chroma_format": "Yuv420",
+      "general_level_idc": 120,
+      "general_profile_idc": 1,
+      "height": 240,
+      "width": 416
+    },
+    "outcome": "ok"
+  },
+  "kind": "h265_sps",
+  "sha256_source": "b89aa3d113bdff9aff61d4c190b9035155db44a9c9b08b5a40df89fde2e6a2c7",
+  "source": "AMVP_A_MTK_4/AMVP_A_MTK_4.bit",
+  "url": "https://www.itu.int/wftp3/av-arch/jctvc-site/bitstream_exchange/draft_conformance/HEVC_v1/AMVP_A_MTK_4.zip"
+}

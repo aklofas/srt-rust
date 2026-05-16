@@ -1,0 +1,18 @@
+{
+  "expected": {
+    "fields": {
+      "bit_depth_chroma": 8,
+      "bit_depth_luma": 8,
+      "chroma_format": "Yuv444",
+      "general_level_idc": 102,
+      "general_profile_idc": 33,
+      "height": 720,
+      "width": 1280
+    },
+    "outcome": "ok"
+  },
+  "kind": "h266_sps",
+  "sha256_source": "2d57ae1a438036cbb15e8fd792743be2591fa79ed5581b3d72f63d3ca6583ee3",
+  "source": "8b444_A_Kwai_2.bit",
+  "url": "https://www.itu.int/wftp3/av-arch/jvet-site/bitstream_exchange/VVC/draft_conformance/draft6/8b444_A_Kwai_2.zip"
+}

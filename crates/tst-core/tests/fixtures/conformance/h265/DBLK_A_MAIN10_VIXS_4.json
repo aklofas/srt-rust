@@ -1,0 +1,18 @@
+{
+  "expected": {
+    "fields": {
+      "bit_depth_chroma": 10,
+      "bit_depth_luma": 10,
+      "chroma_format": "Yuv420",
+      "general_level_idc": 120,
+      "general_profile_idc": 2,
+      "height": 144,
+      "width": 176
+    },
+    "outcome": "ok"
+  },
+  "kind": "h265_sps",
+  "sha256_source": "d86ec87f98fccbcec3758954a7cf430e8af8cf021d347dfbbed2f1d5dbb00f25",
+  "source": "DBLK_A_MAIN10_VIXS_4/DBLK_A_MAIN10_VIXS_4.bit",
+  "url": "https://www.itu.int/wftp3/av-arch/jctvc-site/bitstream_exchange/draft_conformance/HEVC_v1/DBLK_A_MAIN10_VIXS_4.zip"
+}

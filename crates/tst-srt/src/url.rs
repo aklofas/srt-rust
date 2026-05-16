@@ -73,6 +73,23 @@ fn group3_lookup(key: &str) -> Option<&'static str> {
         .map(|(_, srto)| *srto)
 }
 
+/// Connection mode for an SRT endpoint. Driven by the `?mode=` URL key
+/// (default: `caller`). Determines whether the endpoint connects out
+/// (caller) or binds-and-accepts (listener).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mode {
+    /// Connect out to a peer's listener. Default when `?mode=` is absent
+    /// or set to `caller`.
+    #[default]
+    Caller,
+    /// Bind a local port and accept the first incoming connection.
+    /// Requires `?mode=listener` in the URL. Allows an empty host
+    /// (e.g. `srt://:7000`) — empty host binds to the platform's default
+    /// wildcard address (`0.0.0.0` on Linux); a non-empty host binds to
+    /// that specific interface.
+    Listener,
+}
+
 /// Parsed `srt://host:port?...` URL: connection target + a typed overlay
 /// of the recognized query parameters.
 #[derive(Debug)]
@@ -80,6 +97,7 @@ pub struct SrtUrl {
     pub host: String,
     pub port: u16,
     pub overlay: UrlOverlay,
+    pub mode: Mode,
 }
 
 /// Typed overlay of query-parameter values. Apply via `apply_to_socket`
@@ -140,7 +158,7 @@ pub enum UrlError {
     #[error("userinfo (user:pass@) is not supported in SRT URLs; use ?passphrase=... instead")]
     UserinfoNotSupported,
 
-    #[error("unsupported mode '{mode}'; only mode=caller is accepted")]
+    #[error("unsupported mode '{mode}'; only mode=caller and mode=listener are accepted")]
     UnsupportedMode { mode: String },
 
     #[error(
@@ -190,16 +208,23 @@ impl SrtUrl {
     /// assert_eq!(u.overlay.latency, Some(Duration::from_millis(200)));
     /// ```
     pub fn parse(s: &str) -> Result<Self, UrlError> {
-        let parsed = url::Url::parse(s).map_err(|e| {
-            // url::ParseError::EmptyHost means the URL had a bare ":" after the
-            // authority separator with no host — surface as MissingHost rather
-            // than the opaque Syntax variant.
-            if e == url::ParseError::EmptyHost {
-                UrlError::MissingHost
-            } else {
-                UrlError::Syntax(e)
+        // Tentatively accept empty-host URLs (e.g. srt://:7000?mode=listener)
+        // so we can check mode before deciding whether to reject. The url crate
+        // returns ParseError::EmptyHost for non-special schemes with no host;
+        // re-parse with a sentinel host so the url crate accepts the URL, then
+        // substitute the empty string back after.
+        let (parsed, host_was_empty) = match url::Url::parse(s) {
+            Ok(u) => (u, false),
+            Err(url::ParseError::EmptyHost) => {
+                let with_sentinel = s.replacen("://:", "://0.0.0.0:", 1);
+                match url::Url::parse(&with_sentinel) {
+                    Ok(u) => (u, true),
+                    Err(e) => return Err(UrlError::Syntax(e)),
+                }
             }
-        })?;
+            Err(e) => return Err(UrlError::Syntax(e)),
+        };
+
         if parsed.scheme() != "srt" {
             return Err(UrlError::WrongScheme {
                 got: parsed.scheme().to_string(),
@@ -208,28 +233,56 @@ impl SrtUrl {
         if !parsed.username().is_empty() || parsed.password().is_some() {
             return Err(UrlError::UserinfoNotSupported);
         }
+
         // Use parsed.host() (the enum) rather than host_str() so that IPv6
         // addresses come back without brackets. host_str() preserves the
         // bracketed form "[::1]"; Ipv6Addr::to_string() gives "::1".
-        let host = match parsed.host() {
-            Some(url::Host::Ipv4(addr)) => addr.to_string(),
-            Some(url::Host::Ipv6(addr)) => addr.to_string(),
-            Some(url::Host::Domain(d)) if !d.is_empty() => d.to_string(),
-            _ => return Err(UrlError::MissingHost),
+        let host = if host_was_empty {
+            String::new()
+        } else {
+            match parsed.host() {
+                Some(url::Host::Ipv4(addr)) => addr.to_string(),
+                Some(url::Host::Ipv6(addr)) => addr.to_string(),
+                Some(url::Host::Domain(d)) if !d.is_empty() => d.to_string(),
+                _ => String::new(),
+            }
         };
+
         let port = parsed.port().ok_or(UrlError::MissingPort)?;
 
         let mut overlay = UrlOverlay::default();
+        let mut mode = Mode::Caller;
         // url::Url::query_pairs() URL-decodes values automatically.
         // Last-occurrence wins (Q4-A): we just overwrite as we go.
         for (key, value) in parsed.query_pairs() {
+            // mode is consumed at the SrtUrl level (not in overlay) since it
+            // determines which apply_to_* method the caller should use.
+            if key == "mode" {
+                mode = match value.as_ref() {
+                    "caller" => Mode::Caller,
+                    "listener" => Mode::Listener,
+                    other => {
+                        return Err(UrlError::UnsupportedMode {
+                            mode: other.to_string(),
+                        });
+                    }
+                };
+                continue;
+            }
             apply_query_pair(&mut overlay, &key, &value)?;
+        }
+
+        // Caller mode requires a non-empty host (need somewhere to connect).
+        // Listener mode allows empty host (bind-to-wildcard).
+        if host.is_empty() && mode != Mode::Listener {
+            return Err(UrlError::MissingHost);
         }
 
         Ok(Self {
             host,
             port,
             overlay,
+            mode,
         })
     }
 }
@@ -424,14 +477,6 @@ fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<
             let n = parse_i32_nonneg("x-sendtimeout", value)?;
             overlay.send_timeout = Some(Duration::from_millis(n as u64));
         }
-        "mode" => match value {
-            "caller" => { /* no-op */ }
-            other => {
-                return Err(UrlError::UnsupportedMode {
-                    mode: other.to_string(),
-                });
-            }
-        },
         // ffmpeg-canonical option short-aliases that don't share a libsrt
         // URL name. Without these arms, users porting ffmpeg URLs hit the
         // generic "unknown URL key" fallthrough — surface what they're
@@ -814,5 +859,44 @@ mod tests {
             let result = SrtUrl::parse(&url);
             assert!(result.is_ok(), "expected Ok for {v}; got {result:?}");
         }
+    }
+
+    #[test]
+    fn mode_listener_parses_with_empty_host() {
+        let u = SrtUrl::parse("srt://:7000?mode=listener").unwrap();
+        assert_eq!(u.host, "");
+        assert_eq!(u.port, 7000);
+        assert_eq!(u.mode, Mode::Listener);
+    }
+
+    #[test]
+    fn mode_listener_parses_with_wildcard_host() {
+        let u = SrtUrl::parse("srt://0.0.0.0:7000?mode=listener").unwrap();
+        assert_eq!(u.host, "0.0.0.0");
+        assert_eq!(u.mode, Mode::Listener);
+    }
+
+    #[test]
+    fn mode_caller_remains_default() {
+        let u = SrtUrl::parse("srt://peer:9000").unwrap();
+        assert_eq!(u.mode, Mode::Caller);
+    }
+
+    #[test]
+    fn mode_caller_explicit_is_accepted() {
+        let u = SrtUrl::parse("srt://peer:9000?mode=caller").unwrap();
+        assert_eq!(u.mode, Mode::Caller);
+    }
+
+    #[test]
+    fn empty_host_without_listener_mode_rejects() {
+        let err = SrtUrl::parse("srt://:7000").unwrap_err();
+        assert!(matches!(err, UrlError::MissingHost));
+    }
+
+    #[test]
+    fn mode_rendezvous_unsupported() {
+        let err = SrtUrl::parse("srt://peer:9000?mode=rendezvous").unwrap_err();
+        assert!(matches!(err, UrlError::UnsupportedMode { .. }));
     }
 }

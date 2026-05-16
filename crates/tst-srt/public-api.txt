@@ -827,6 +827,27 @@ impl core::marker::UnsafeUnpin for tst_srt::transport::SrtTransport
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::transport::SrtTransport
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::transport::SrtTransport
 pub mod tst_srt::url
+pub enum tst_srt::url::Mode
+pub tst_srt::url::Mode::Caller
+pub tst_srt::url::Mode::Listener
+impl core::clone::Clone for tst_srt::url::Mode
+pub fn tst_srt::url::Mode::clone(&self) -> tst_srt::url::Mode
+impl core::cmp::Eq for tst_srt::url::Mode
+impl core::cmp::PartialEq for tst_srt::url::Mode
+pub fn tst_srt::url::Mode::eq(&self, other: &tst_srt::url::Mode) -> bool
+impl core::default::Default for tst_srt::url::Mode
+pub fn tst_srt::url::Mode::default() -> tst_srt::url::Mode
+impl core::fmt::Debug for tst_srt::url::Mode
+pub fn tst_srt::url::Mode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_srt::url::Mode
+impl core::marker::StructuralPartialEq for tst_srt::url::Mode
+impl core::marker::Freeze for tst_srt::url::Mode
+impl core::marker::Send for tst_srt::url::Mode
+impl core::marker::Sync for tst_srt::url::Mode
+impl core::marker::Unpin for tst_srt::url::Mode
+impl core::marker::UnsafeUnpin for tst_srt::url::Mode
+impl core::panic::unwind_safe::RefUnwindSafe for tst_srt::url::Mode
+impl core::panic::unwind_safe::UnwindSafe for tst_srt::url::Mode
 #[non_exhaustive] pub enum tst_srt::url::UrlError
 pub tst_srt::url::UrlError::FfmpegAliasNotExposed
 pub tst_srt::url::UrlError::FfmpegAliasNotExposed::canonical: &'static str
@@ -868,6 +889,7 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::url::UrlError
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::url::UrlError
 pub struct tst_srt::url::SrtUrl
 pub tst_srt::url::SrtUrl::host: alloc::string::String
+pub tst_srt::url::SrtUrl::mode: tst_srt::url::Mode
 pub tst_srt::url::SrtUrl::overlay: tst_srt::url::UrlOverlay
 pub tst_srt::url::SrtUrl::port: u16
 impl tst_srt::url::SrtUrl
@@ -1506,6 +1528,7 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::transport::SrtTranspo
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::transport::SrtTransport
 pub struct tst_srt::SrtUrl
 pub tst_srt::SrtUrl::host: alloc::string::String
+pub tst_srt::SrtUrl::mode: tst_srt::url::Mode
 pub tst_srt::SrtUrl::overlay: tst_srt::url::UrlOverlay
 pub tst_srt::SrtUrl::port: u16
 impl tst_srt::url::SrtUrl

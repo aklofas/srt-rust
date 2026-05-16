@@ -17,6 +17,9 @@ log          = { workspace = true }
 thiserror    = { workspace = true }
 h264-reader  = "0.8"
 tracing      = { version = "0.1", default-features = false, features = ["std"] }
+serde        = { version = "1", features = ["derive"] }
+toml         = "0.8"
+sha2         = "0.10"
 
 [dev-dependencies]
 proptest         = { workspace = true }
@@ -24,6 +27,7 @@ tracing-test     = { version = "0.2", features = ["no-env-filter"] }
 tempfile         = "3"
 criterion        = { workspace = true }
 tst-test-helpers = { path = "../tst-test-helpers" }
+serde_json       = "1"
 
 [[bench]]
 name    = "mux_throughput"
@@ -75,3 +79,7 @@ doc   = false
 [[bin]]
 name  = "corpus_to_fixture"
 path  = "tests/tools/corpus_to_fixture.rs"
+
+[[bin]]
+name  = "strip_conformance_parameter_sets"
+path  = "tests/tools/strip_conformance_parameter_sets.rs"

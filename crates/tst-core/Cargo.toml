@@ -83,3 +83,6 @@ path  = "tests/tools/corpus_to_fixture.rs"
 [[bin]]
 name  = "strip_conformance_parameter_sets"
 path  = "tests/tools/strip_conformance_parameter_sets.rs"
+test  = false
+bench = false
+doc   = false

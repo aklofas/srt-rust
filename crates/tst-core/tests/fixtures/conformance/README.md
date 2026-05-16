@@ -37,8 +37,9 @@ conformance/
 
 The committed `.bin` files are derived from `manifest.toml`. To regenerate:
 
+From the workspace root, run:
+
 ```
-cd ~/Projects/ts-transformer/ts-transformer
 cargo run -p tst-core --bin strip_conformance_parameter_sets
 ```
 

@@ -21,6 +21,8 @@
 #                  h266_sps | h266_vps | av1_sequence_header.
 #   nal_index    — 0-based index of the target NAL unit in scan order (h264/h265/h266).
 #   obu_index    — 0-based index of the target OBU in scan order (av1).
+#   level_idc    — H.264: level × 10 (e.g. 21 = Level 2.1); H.265: level × 30
+#                  (e.g. 120 = Level 4.0); H.266: per H.266 Table A.3 (e.g. 51 = Level 3.1).
 #
 # expected.outcome = "ok"  → parser must succeed and all declared fields must match.
 # expected.outcome = "err" → parser must return the named CodecParseError variant.
@@ -247,6 +249,9 @@ bit_depth_chroma = 8
 # ---------------------------------------------------------------------------
 # AV1  — AOMedia test vectors (direct IVF files, no zip container)
 # ---------------------------------------------------------------------------
+
+# AV1 monochrome (Profile 0 with mono_chrome=1) deferred — no stable vector
+# found in the AOM GCS bucket at time of writing.
 
 # Main profile (profile=0), 8-bit, 4:2:0.
 # Source: https://storage.googleapis.com/aom-test-data/ (AOMedia public GCS bucket).

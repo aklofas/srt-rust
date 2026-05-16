@@ -242,6 +242,20 @@ impl<R: RecvTransport> Receiver<R> {
         }
     }
 
+    /// Wire-level transport stats (RTT, packet loss, bandwidth, queue
+    /// depths) sourced from the underlying
+    /// [`RecvTransport::socket_stats`] implementation. Returns `None`
+    /// when the transport doesn't expose comparable telemetry (test
+    /// mocks) or when a managed wrapper has no live inner socket.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_receiver_get_socket_stats` — see
+    /// `crates/tst-c/include/tstrans.h`.
+    pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
+        self.transport.socket_stats()
+    }
+
     /// Zero all stats counters. Does not affect transport state or sync state.
     ///
     /// # C ABI

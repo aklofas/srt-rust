@@ -38,10 +38,11 @@
  * Run:
  *   /tmp/recv_raw_to_file out.ts
  *
- * Mirrors examples/receiving/recv_raw_to_file.rs (Rust).
- * The C version is more verbose because there is no RAII, and because
- * C readers may have less context about what the safe Rust wrappers
- * underneath are doing on their behalf.
+ * Closest Rust analog: examples/receiving/srt_listener_to_file.rs
+ * (listener bind, recv loop, write to file). The C version is more
+ * verbose because there is no RAII, and because C readers may have less
+ * context about what the safe Rust wrappers underneath are doing on
+ * their behalf.
  */
 
 #include "tstrans.h"

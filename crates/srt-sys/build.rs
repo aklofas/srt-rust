@@ -123,6 +123,15 @@ fn build_vendored(mbedtls_prefix: Option<&PathBuf>) -> Vec<PathBuf> {
         // linked.
         .define("ENABLE_HEAVY_LOGGING", "OFF");
 
+    // MSVC requires explicit /EHsc to enable C++ exception unwind
+    // semantics; gcc/clang have it on by default. libsrt's sources use
+    // try/catch, so without this every catch site errors C4530 and
+    // libsrt fails to build under windows-msvc.
+    let target = env::var("TARGET").unwrap_or_default();
+    if target.contains("msvc") {
+        cfg.cxxflag("/EHsc");
+    }
+
     match mbedtls_prefix {
         Some(prefix) => {
             cfg.define("ENABLE_ENCRYPTION", "ON")

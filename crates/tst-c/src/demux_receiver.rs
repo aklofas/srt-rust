@@ -290,6 +290,30 @@ pub unsafe extern "C" fn tst_demux_receiver_recv_event(
     })
 }
 
+/// Cancel a `tst_demux_receiver_t`. Unblocks a thread parked in
+/// `_recv_event` within one libsrt I/O cycle (~3-10 ms) by closing
+/// the underlying libsrt socket. Safe to call from any thread.
+/// Idempotent.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+///
+/// After cancel, `_recv_event` returns `TST_E_CLOSED` (not
+/// `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_receiver_cancel(
+    p: *mut TstDemuxReceiver,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    handle.was_cancelled.store(true, Ordering::Release);
+    if let Some(c) = &handle.cancel {
+        c.cancel();
+    }
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,6 +337,12 @@ mod tests {
         let rc = unsafe {
             tst_demux_receiver_recv_event(std::ptr::null_mut(), std::ptr::null_mut())
         };
+        assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn null_cancel_returns_invalid_config() {
+        let rc = unsafe { tst_demux_receiver_cancel(std::ptr::null_mut()) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
 }

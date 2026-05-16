@@ -1,0 +1,3 @@
+# Cache dir for the strip tool. Re-populated on demand from upstream.
+_cache/
+!_cache/.gitkeep

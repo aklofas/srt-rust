@@ -1,0 +1,295 @@
+# Codec conformance parameter-set manifest.
+#
+# Canonical input to `crates/tst-core/tests/tools/strip_conformance_parameter_sets.rs`.
+# Each entry declares one upstream conformance bitstream archive and the
+# expected parser outcome for the first parameter-set unit of the given kind.
+#
+# URL provenance:
+#   H.264 — JVT-AVC draft_conformance at https://www.itu.int/wftp3/av-arch/jvt-site/draft_conformance/
+#            (directory listing live 2026-05-15; the top-level bitstream_exchange/ dir is empty)
+#   H.265 — JCT-VC HEVC_v1 at https://www.itu.int/wftp3/av-arch/jctvc-site/bitstream_exchange/draft_conformance/HEVC_v1/
+#            RExt profile at https://www.itu.int/wftp3/av-arch/jctvc-site/bitstream_exchange/draft_conformance/RExt/
+#   H.266 — JVET draft6 at https://www.itu.int/wftp3/av-arch/jvet-site/bitstream_exchange/VVC/draft_conformance/draft6/
+#   AV1   — AOMedia test vectors at https://storage.googleapis.com/aom-test-data/
+#
+# Field semantics:
+#   archive_url  — URL of the archive to download (zip or direct bitstream).
+#   sha256       — sha256sum of the file at archive_url (64 hex chars).
+#   extract      — filename inside the zip to use as the bitstream.
+#                  Empty string when archive_url points directly to the bitstream.
+#   kind         — which parser entry point to invoke: h264_sps | h265_sps | h265_vps |
+#                  h266_sps | h266_vps | av1_sequence_header.
+#   nal_index    — 0-based index of the target NAL unit in scan order (h264/h265/h266).
+#   obu_index    — 0-based index of the target OBU in scan order (av1).
+#
+# expected.outcome = "ok"  → parser must succeed and all declared fields must match.
+# expected.outcome = "err" → parser must return the named CodecParseError variant.
+#
+# Valid chroma_format values: "Monochrome", "Yuv420", "Yuv422", "Yuv444"
+# Valid error values: "TruncatedRbsp", "InvalidGolomb", "ReservedValue",
+#   "UnsupportedProfile", "DanglingSpsReference", "DanglingVpsReference",
+#   "EngineError", "InvalidLeb128", "BadSyncWord", "Truncated", "Forbidden"
+
+# ---------------------------------------------------------------------------
+# H.264 / AVC  — JVT-AVC draft_conformance, AVCv1 and FRExt sub-trees
+# ---------------------------------------------------------------------------
+
+# Baseline profile (profile_idc=66 Constrained Baseline, level 1.1).
+# Source: AVCv1/MR1_BT_A.zip — "Main Rate point 1, British Telecom" (2003-08-04).
+# Archive size: 1,714,616 bytes.
+[[h264]]
+name = "MR1_BT_A"
+archive_url = "https://www.itu.int/wftp3/av-arch/jvt-site/draft_conformance/AVCv1/MR1_BT_A.zip"
+extract = "MR1_BT_A.h264"
+sha256 = "a76d4e199e6ffb27292d1a07c516e5adea251e63e3f756de490c153b23d4684d"
+kind = "h264_sps"
+nal_index = 0
+
+[h264.expected]
+outcome = "ok"
+
+[h264.expected.fields]
+profile_idc = 66
+level_idc = 11
+width = 176
+height = 144
+chroma_format = "Yuv420"
+bit_depth_luma = 8
+bit_depth_chroma = 8
+
+# Main profile (profile_idc=77, level 2.1).
+# Source: AVCv1/MR9_BT_B.zip — "Main Rate point 9, British Telecom" (2004-11-09).
+# Archive size: 2,509,338 bytes.
+[[h264]]
+name = "MR9_BT_B"
+archive_url = "https://www.itu.int/wftp3/av-arch/jvt-site/draft_conformance/AVCv1/MR9_BT_B.zip"
+extract = "MR9_BT_B.h264"
+sha256 = "fd10a0be32f6fbe5d35e4a4b73707af97b3d8c1999bc5680c53d7068c20bf72e"
+kind = "h264_sps"
+nal_index = 0
+
+[h264.expected]
+outcome = "ok"
+
+[h264.expected.fields]
+profile_idc = 77
+level_idc = 21
+width = 192
+height = 128
+chroma_format = "Yuv420"
+bit_depth_luma = 8
+bit_depth_chroma = 8
+
+# High profile (profile_idc=100, level 3.0).
+# Source: FRExt/HCAFR1_HHI_C.zip — "High profile Constrained, HHI" (2004-10-08).
+# Archive size: 837,502 bytes.
+[[h264]]
+name = "HCAFR1_HHI"
+archive_url = "https://www.itu.int/wftp3/av-arch/jvt-site/draft_conformance/FRExt/HCAFR1_HHI_C.zip"
+extract = "HCAFR1_HHI.264"
+sha256 = "d0d83d03aef6065715c0f91d1b31a6c445c1d4ae58aac2505f856a1a54962f94"
+kind = "h264_sps"
+nal_index = 0
+
+[h264.expected]
+outcome = "ok"
+
+[h264.expected.fields]
+profile_idc = 100
+level_idc = 30
+width = 352
+height = 288
+chroma_format = "Yuv420"
+bit_depth_luma = 8
+bit_depth_chroma = 8
+
+# ---------------------------------------------------------------------------
+# H.265 / HEVC  — JCT-VC HEVC_v1 and RExt sub-trees
+# ---------------------------------------------------------------------------
+
+# Main profile (general_profile_idc=1), level 4.0 (level_idc=120).
+# Source: HEVC_v1/AMVP_A_MTK_4.zip — AMVP candidate generation test (2013-05-29).
+# Archive size: 18,585 bytes. Inner bitstream: 17,811 bytes.
+[[h265]]
+name = "AMVP_A_MTK_4"
+archive_url = "https://www.itu.int/wftp3/av-arch/jctvc-site/bitstream_exchange/draft_conformance/HEVC_v1/AMVP_A_MTK_4.zip"
+extract = "AMVP_A_MTK_4/AMVP_A_MTK_4.bit"
+sha256 = "b89aa3d113bdff9aff61d4c190b9035155db44a9c9b08b5a40df89fde2e6a2c7"
+kind = "h265_sps"
+nal_index = 0
+
+[h265.expected]
+outcome = "ok"
+
+[h265.expected.fields]
+general_profile_idc = 1
+general_level_idc = 120
+width = 416
+height = 240
+chroma_format = "Yuv420"
+bit_depth_luma = 8
+bit_depth_chroma = 8
+
+# Main 10 profile (general_profile_idc=2), level 4.0 (level_idc=120), 10-bit.
+# Source: HEVC_v1/DBLK_A_MAIN10_VIXS_4.zip — deblocking filter Main10 test (2015-01-28).
+# Archive size: 101,230 bytes. Inner bitstream: 100,467 bytes.
+[[h265]]
+name = "DBLK_A_MAIN10_VIXS_4"
+archive_url = "https://www.itu.int/wftp3/av-arch/jctvc-site/bitstream_exchange/draft_conformance/HEVC_v1/DBLK_A_MAIN10_VIXS_4.zip"
+extract = "DBLK_A_MAIN10_VIXS_4/DBLK_A_MAIN10_VIXS_4.bit"
+sha256 = "d86ec87f98fccbcec3758954a7cf430e8af8cf021d347dfbbed2f1d5dbb00f25"
+kind = "h265_sps"
+nal_index = 0
+
+[h265.expected]
+outcome = "ok"
+
+[h265.expected.fields]
+general_profile_idc = 2
+general_level_idc = 120
+width = 176
+height = 144
+chroma_format = "Yuv420"
+bit_depth_luma = 10
+bit_depth_chroma = 10
+
+# RExt Main 4:4:4 profile (general_profile_idc=4) with sps_scaling_list_data_present_flag=true.
+# Our parser returns UnsupportedProfile when scaling_list_enabled_flag=1 AND
+# sps_scaling_list_data_present_flag=1 (the custom scaling-list walk is not yet
+# implemented). This vector was chosen specifically to exercise that bail path.
+# Source: RExt/QMATRIX_A_RExt_Sony_1.zip — quantization matrix (scaling list) test (2014-07-03).
+# Archive size: 236,406 bytes. Inner bitstream: 236,915 bytes.
+[[h265]]
+name = "QMATRIX_A_RExt_Sony_1"
+archive_url = "https://www.itu.int/wftp3/av-arch/jctvc-site/bitstream_exchange/draft_conformance/RExt/QMATRIX_A_RExt_Sony_1.zip"
+extract = "QMATRIX_A_RExt_Sony_1/QMATRIX_A_RExt_Sony_1.bit"
+sha256 = "45123e91b5d0dc9bffc09735ec532bc23a32bbcdecc1a0c7972301fef09be065"
+kind = "h265_sps"
+nal_index = 0
+
+[h265.expected]
+outcome = "err"
+error = "UnsupportedProfile"
+
+# ---------------------------------------------------------------------------
+# H.266 / VVC  — JVET draft_conformance/draft6 sub-tree
+# ---------------------------------------------------------------------------
+
+# Main 10 profile (general_profile_idc=1), level 3.1 (level_idc=51), 8-bit 4:2:0.
+# Source: draft6/8b420_A_Bytedance_2.zip — 8-bit 4:2:0 basic encoding test (2020-11-14).
+# Archive size: 54,333 bytes. Inner bitstream: 49,995 bytes.
+[[h266]]
+name = "8b420_A_Bytedance_2"
+archive_url = "https://www.itu.int/wftp3/av-arch/jvet-site/bitstream_exchange/VVC/draft_conformance/draft6/8b420_A_Bytedance_2.zip"
+extract = "8b420_A_Bytedance_2.bit"
+sha256 = "8f0b7d8e3d5e341155c5c1208fc80a7ddaa8a9b932efad0945ad344c34fabe45"
+kind = "h266_sps"
+nal_index = 0
+
+[h266.expected]
+outcome = "ok"
+
+[h266.expected.fields]
+general_profile_idc = 1
+general_level_idc = 51
+width = 832
+height = 480
+chroma_format = "Yuv420"
+bit_depth_luma = 8
+bit_depth_chroma = 8
+
+# Main 10 profile (general_profile_idc=1), level 3.1 (level_idc=51), 10-bit 4:0:0 (monochrome).
+# Source: draft6/10b400_A_Bytedance_2.zip — 10-bit 4:0:0 monochrome test (2020-11-14).
+# Archive size: 45,056 bytes. Inner bitstream: 42,526 bytes.
+[[h266]]
+name = "10b400_A_Bytedance_2"
+archive_url = "https://www.itu.int/wftp3/av-arch/jvet-site/bitstream_exchange/VVC/draft_conformance/draft6/10b400_A_Bytedance_2.zip"
+extract = "10b400_A_Bytedance_2.bit"
+sha256 = "670b1a9fe96213217d52919bbf9c848fbd416d4fcf669cf2f47ba445bf70e303"
+kind = "h266_sps"
+nal_index = 0
+
+[h266.expected]
+outcome = "ok"
+
+[h266.expected.fields]
+general_profile_idc = 1
+general_level_idc = 51
+width = 832
+height = 480
+chroma_format = "Monochrome"
+bit_depth_luma = 10
+bit_depth_chroma = 10
+
+# Main 4:4:4 10 profile (general_profile_idc=33), level 6 (level_idc=102), 8-bit 4:4:4.
+# Source: draft6/8b444_A_Kwai_2.zip — 8-bit 4:4:4 Main 4:4:4 10 profile test (2021-03-07).
+# Archive size: 78,579 bytes. Inner bitstream: 70,469 bytes.
+[[h266]]
+name = "8b444_A_Kwai_2"
+archive_url = "https://www.itu.int/wftp3/av-arch/jvet-site/bitstream_exchange/VVC/draft_conformance/draft6/8b444_A_Kwai_2.zip"
+extract = "8b444_A_Kwai_2.bit"
+sha256 = "2d57ae1a438036cbb15e8fd792743be2591fa79ed5581b3d72f63d3ca6583ee3"
+kind = "h266_sps"
+nal_index = 0
+
+[h266.expected]
+outcome = "ok"
+
+[h266.expected.fields]
+general_profile_idc = 33
+general_level_idc = 102
+width = 1280
+height = 720
+chroma_format = "Yuv444"
+bit_depth_luma = 8
+bit_depth_chroma = 8
+
+# ---------------------------------------------------------------------------
+# AV1  — AOMedia test vectors (direct IVF files, no zip container)
+# ---------------------------------------------------------------------------
+
+# Main profile (profile=0), 8-bit, 4:2:0.
+# Source: https://storage.googleapis.com/aom-test-data/ (AOMedia public GCS bucket).
+# File size: 128,943 bytes. 2 frames, 352x288.
+# Note: archive_url points directly to the IVF file; extract is empty.
+[[av1]]
+name = "av1-1-b8-00-quantizer-00"
+archive_url = "https://storage.googleapis.com/aom-test-data/av1-1-b8-00-quantizer-00.ivf"
+extract = ""
+sha256 = "6382dbd2befbbc93d4ea283586f4fb43fea5f1c52400e3d2c5281a46b1104c00"
+kind = "av1_sequence_header"
+obu_index = 0
+
+[av1.expected]
+outcome = "ok"
+
+[av1.expected.fields]
+profile = 0
+bit_depth = 8
+chroma_format = "Yuv420"
+monochrome = false
+max_frame_width = 352
+max_frame_height = 288
+
+# Main profile (profile=0), 10-bit, 4:2:0.
+# Source: https://storage.googleapis.com/aom-test-data/ (AOMedia public GCS bucket).
+# File size: 416,797 bytes. 2 frames, 640x360.
+# Note: archive_url points directly to the IVF file; extract is empty.
+[[av1]]
+name = "av1-1-b10-00-quantizer-00"
+archive_url = "https://storage.googleapis.com/aom-test-data/av1-1-b10-00-quantizer-00.ivf"
+extract = ""
+sha256 = "fe6053ce4ee20a1c0ec6f7fe35db097e92ad25d8a3505598bd89162c74d7944f"
+kind = "av1_sequence_header"
+obu_index = 0
+
+[av1.expected]
+outcome = "ok"
+
+[av1.expected.fields]
+profile = 0
+bit_depth = 10
+chroma_format = "Yuv420"
+monochrome = false
+max_frame_width = 640
+max_frame_height = 360

@@ -256,4 +256,62 @@ mod tests {
         assert!(TstStrictMode::from_c_int(-1).is_none());
         assert!(TstStrictMode::from_c_int(4).is_none());
     }
+
+    #[test]
+    fn new_then_free_smoke() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            assert!(!cfg.is_null());
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn double_free_safe() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            tst_demux_config_free(cfg);
+            // Calling _free again on the same pointer is documented as
+            // undefined behavior; this test only validates _free(NULL).
+            tst_demux_config_free(std::ptr::null_mut());
+        }
+    }
+
+    #[test]
+    fn set_strict_mode_null_cfg_returns_invalid_config() {
+        let rc = unsafe { tst_demux_config_set_strict_mode(std::ptr::null_mut(), 0) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn set_strict_mode_invalid_value_returns_invalid_config() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            let rc = tst_demux_config_set_strict_mode(cfg, 999);
+            assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn add_link_klv_null_cfg_returns_invalid_config() {
+        let rc = unsafe { tst_demux_config_add_link_klv(std::ptr::null_mut(), 0x101, 0x102) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn add_treat_as_unrecognized_kind_returns_invalid_config() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            let rc = tst_demux_config_add_treat_as(cfg, 0x101, 9999);
+            assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn set_pes_cap_null_cfg_returns_invalid_config() {
+        let rc = unsafe { tst_demux_config_set_pes_cap(std::ptr::null_mut(), 1024, 65536) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
 }

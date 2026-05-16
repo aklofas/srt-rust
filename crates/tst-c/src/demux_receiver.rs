@@ -780,6 +780,7 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stream_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::tst_get_last_error_str;
 
     #[test]
     fn null_close_is_safe() {
@@ -884,5 +885,48 @@ mod tests {
             )
         };
         assert_eq!(rc, TstError::InvalidConfig as i32);
+    }
+
+    /// Verify that an invalid SRT URL doesn't propagate a panic
+    /// across the FFI boundary; instead returns null + sets
+    /// last-error.
+    #[test]
+    fn open_invalid_url_returns_null_and_sets_last_error() {
+        let bad = std::ffi::CString::new("not-a-url://").unwrap();
+        let rx = unsafe { tst_demux_receiver_open(bad.as_ptr()) };
+        assert!(rx.is_null());
+        let last = unsafe { tst_get_last_error_str() };
+        assert!(!last.is_null());
+    }
+
+    #[test]
+    fn open_listener_invalid_url_returns_null() {
+        let bad = std::ffi::CString::new("http://example.com").unwrap();
+        let rx = unsafe { tst_demux_receiver_open_listener(bad.as_ptr()) };
+        assert!(rx.is_null());
+    }
+
+    #[test]
+    fn open_with_config_null_url_returns_null() {
+        let cfg = unsafe { crate::demux_config::tst_demux_config_new() };
+        let rx = unsafe {
+            tst_demux_receiver_open_with_config(std::ptr::null(), cfg)
+        };
+        assert!(rx.is_null());
+        unsafe { crate::demux_config::tst_demux_config_free(cfg) };
+    }
+
+    #[test]
+    fn managed_open_with_config_null_url_returns_null() {
+        let cfg = unsafe { crate::demux_config::tst_demux_config_new() };
+        let rx = unsafe {
+            tst_managed_demux_receiver_open_with_config(
+                std::ptr::null(),
+                std::ptr::null(),
+                cfg,
+            )
+        };
+        assert!(rx.is_null());
+        unsafe { crate::demux_config::tst_demux_config_free(cfg) };
     }
 }

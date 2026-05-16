@@ -7,6 +7,23 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Linux aarch64 promoted to gating (plan #67)
+
+### Changed
+- **`.github/workflows/ci.yml`: linux-aarch64 flipped from
+  `continue-on-error: true` to `continue: false`.** Aarch64 was
+  green on every post-ship run since the plan #64 matrix expansion
+  (2026-05-16), so the conservative 14-day phase-in window is no
+  longer warranted. Aarch64 build/test failure now blocks PR merge
+  alongside Linux x86_64.
+- **`docs/compatibility.md`: Linux aarch64 row** updated from
+  "Tier 1, phase-in" to "Tier 1, gating". macos-arm64 and
+  windows-msvc remain "Tier 1, phase-in" pending their own fix
+  plans (#66 macOS loopback stabilization, #65 tst-srt Windows
+  port).
+
+---
+
 ## [Unreleased] — tst-c Tier 1 multi-platform (plan #64)
 
 ### Added

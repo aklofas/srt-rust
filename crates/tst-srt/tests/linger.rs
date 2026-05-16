@@ -3,29 +3,21 @@
 
 mod common;
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
 use std::time::{Duration, Instant};
-use tst_srt::{ListenerBuilder, SocketBuilder};
+use tst_srt::SocketBuilder;
 
 #[test]
 fn drop_with_zero_linger_does_not_block() {
     require_loopback!();
-    let listener = ListenerBuilder::new()
-        .recv_timeout(Duration::from_secs(5))
-        .bind("127.0.0.1:0")
-        .expect("bind");
-    let port = listener.local_addr().unwrap().port();
-    let ready = Arc::new(AtomicBool::new(false));
-    let r = ready.clone();
-    let accept_thread = thread::spawn(move || {
-        let mut l = listener;
-        r.store(true, Ordering::SeqCst);
-        let _ = l.accept();
-    });
+    let lb = common::Loopback::bind();
+    let port = lb.port;
 
-    common::wait_for_ready(&ready);
+    let accept = lb.spawn_accept(|sock| {
+        // Just hold the accepted socket until the main thread drops the
+        // caller — that's the path linger=0 needs to short-circuit.
+        drop(sock);
+    });
+    accept.wait_ready();
 
     let socket = SocketBuilder::new()
         .linger(Duration::from_secs(0))
@@ -33,7 +25,7 @@ fn drop_with_zero_linger_does_not_block() {
         .connect(("127.0.0.1", port))
         .expect("connect");
 
-    let _ = accept_thread.join();
+    accept.join();
 
     let drop_started = Instant::now();
     drop(socket);

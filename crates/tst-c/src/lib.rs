@@ -11,9 +11,9 @@
 
 pub mod config;
 mod connect;
-mod listen;
 pub mod error;
 pub mod handle;
+mod listen;
 pub mod mux_sender;
 pub mod muxer;
 mod panic;

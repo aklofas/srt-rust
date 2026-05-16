@@ -799,6 +799,10 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * `?mode=` URL value — the `_listener` suffix is authoritative. URLs
  * with `?mode=caller` are accepted and silently overridden.
  *
+ * Empty-host URLs like `srt://:7000` are accepted directly; the parser's
+ * requirement for an explicit `?mode=listener` does not apply here because
+ * the entry-point name is already the authoritative listener signal.
+ *
  * (Phase 1 simplification of the design spec §4.2, which originally
  * proposed rejecting explicit `mode=caller` with `TST_E_INVALID_USAGE`.
  * The simpler rule is more forgiving and matches what most C consumers
@@ -876,6 +880,10 @@ struct tst_managed_raw_receiver_t *tst_managed_raw_receiver_open(const char *srt
  * wrapper re-binds a fresh listener socket and accepts the next
  * incoming connection. Note: the re-bind + re-accept may block
  * significantly between attempts depending on the reconnect policy.
+ *
+ * Empty-host URLs like `srt://:7000` are accepted directly; the parser's
+ * requirement for an explicit `?mode=listener` does not apply here because
+ * the entry-point name is already the authoritative listener signal.
  *
  * Returns `NULL` with `TST_E_INVALID_CONFIG` set for malformed URLs
  * or `TST_E_TRANSPORT` on the initial bind/accept failure.

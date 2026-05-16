@@ -77,9 +77,13 @@ fn loopback_caller_sender_to_listener_receiver_delivers_bytes_and_eos() {
         let mut buf = [0u8; 1500];
         for i in 0..3usize {
             let mut got: usize = 0;
-            let rc =
-                unsafe { tst_raw_receiver_recv(rx, buf.as_mut_ptr(), buf.len(), &mut got) };
-            assert_eq!(rc, 0, "recv[{i}] expected 0, got {rc}: {}", last_error_msg());
+            let rc = unsafe { tst_raw_receiver_recv(rx, buf.as_mut_ptr(), buf.len(), &mut got) };
+            assert_eq!(
+                rc,
+                0,
+                "recv[{i}] expected 0, got {rc}: {}",
+                last_error_msg()
+            );
             received.push(buf[..got].to_vec());
         }
 
@@ -127,7 +131,12 @@ fn loopback_caller_sender_to_listener_receiver_delivers_bytes_and_eos() {
         let msgs: &[&[u8]] = &[b"hello", b"world", b"goodbye"];
         for (i, m) in msgs.iter().enumerate() {
             let rc = unsafe { tst_raw_sender_send(tx, m.as_ptr(), m.len()) };
-            assert_eq!(rc, 0, "send[{i}] expected 0, got {rc}: {}", last_error_msg());
+            assert_eq!(
+                rc,
+                0,
+                "send[{i}] expected 0, got {rc}: {}",
+                last_error_msg()
+            );
         }
 
         // Brief drain pause: SRT's send queue is asynchronous with respect to
@@ -146,7 +155,12 @@ fn loopback_caller_sender_to_listener_receiver_delivers_bytes_and_eos() {
     let received = receiver_thread.join().expect("receiver thread panicked");
     sender_thread.join().expect("sender thread panicked");
 
-    assert_eq!(received.len(), 3, "expected 3 messages, got {}", received.len());
+    assert_eq!(
+        received.len(),
+        3,
+        "expected 3 messages, got {}",
+        received.len()
+    );
     assert_eq!(&received[0], b"hello");
     assert_eq!(&received[1], b"world");
     assert_eq!(&received[2], b"goodbye");

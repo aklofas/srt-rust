@@ -251,9 +251,7 @@ pub unsafe extern "C" fn tst_managed_raw_sender_close(p: *mut TstManagedRawSende
 ///
 /// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_managed_raw_sender_cancel(
-    p: *mut TstManagedRawSender,
-) -> libc::c_int {
+pub unsafe extern "C" fn tst_managed_raw_sender_cancel(p: *mut TstManagedRawSender) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;

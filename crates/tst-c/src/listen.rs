@@ -9,9 +9,9 @@
 //! shape of every other entry point in `tst-c`.
 
 use tst_pipeline::TransportError;
+use tst_srt::Listener;
 use tst_srt::SrtTransport;
 use tst_srt::config::ListenerConfig;
-use tst_srt::Listener;
 
 /// Build a `Listener` bound to `host:port`, block on `accept()`, and
 /// return the accepted `SrtTransport`. The listener is dropped before

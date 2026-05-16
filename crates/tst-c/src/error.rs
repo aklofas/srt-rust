@@ -370,7 +370,10 @@ mod tests {
     fn end_of_stream_records_distinct_from_closed() {
         clear_last_error_for_test();
         super::record_eos();
-        assert_eq!(unsafe { tst_get_last_error() }, TstError::EndOfStream as i32);
+        assert_eq!(
+            unsafe { tst_get_last_error() },
+            TstError::EndOfStream as i32
+        );
         let s_ptr = unsafe { tst_get_last_error_str() };
         let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
         assert!(s.to_str().unwrap().contains("end of stream"));

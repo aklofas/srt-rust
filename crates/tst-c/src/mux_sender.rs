@@ -392,10 +392,7 @@ pub(crate) unsafe fn parse_c_srt_url_listener(
     let sep = if s.contains('?') { '&' } else { '?' };
     let augmented = format!("{s}{sep}mode=listener");
     tst_srt::SrtUrl::parse(&augmented).map_err(|e| {
-        set_last_error(
-            TstError::InvalidConfig,
-            &format!("invalid srt url: {e}"),
-        );
+        set_last_error(TstError::InvalidConfig, &format!("invalid srt url: {e}"));
     })
 }
 
@@ -712,9 +709,7 @@ pub unsafe extern "C" fn tst_managed_mux_sender_close(p: *mut TstManagedMuxSende
 ///
 /// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tst_managed_mux_sender_cancel(
-    p: *mut TstManagedMuxSender,
-) -> libc::c_int {
+pub unsafe extern "C" fn tst_managed_mux_sender_cancel(p: *mut TstManagedMuxSender) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;

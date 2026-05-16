@@ -463,7 +463,10 @@ pub unsafe extern "C" fn tst_managed_raw_receiver_recv(
         }
         Err(TransportError::Closed) => {
             if was_cancelled.load(Ordering::Acquire) {
-                set_last_error(TstError::Closed, "receiver was cancelled or closed by caller");
+                set_last_error(
+                    TstError::Closed,
+                    "receiver was cancelled or closed by caller",
+                );
                 TstError::Closed as i32
             } else {
                 record_eos();

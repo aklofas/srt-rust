@@ -146,16 +146,12 @@ fn validate_result_h264(
                             sps.level_idc,
                             "{name}: level_idc"
                         ),
-                        "width" => assert_eq!(
-                            v.as_u64().unwrap() as u32,
-                            sps.width,
-                            "{name}: width"
-                        ),
-                        "height" => assert_eq!(
-                            v.as_u64().unwrap() as u32,
-                            sps.height,
-                            "{name}: height"
-                        ),
+                        "width" => {
+                            assert_eq!(v.as_u64().unwrap() as u32, sps.width, "{name}: width")
+                        }
+                        "height" => {
+                            assert_eq!(v.as_u64().unwrap() as u32, sps.height, "{name}: height")
+                        }
                         "bit_depth_luma" => assert_eq!(
                             v.as_u64().unwrap() as u8,
                             sps.bit_depth_luma,
@@ -177,7 +173,10 @@ fn validate_result_h264(
             }
         }
         ("err", Err(e)) => {
-            let want = expected.error.as_deref().expect("err outcome requires .error");
+            let want = expected
+                .error
+                .as_deref()
+                .expect("err outcome requires .error");
             assert_eq!(want, error_variant_name(e), "{name}: error variant");
         }
         ("ok", Err(e)) => panic!("{name}: expected Ok, got Err({e:?})"),
@@ -240,16 +239,12 @@ fn validate_result_h265(
                             sps.general_tier_flag,
                             "{name}: general_tier_flag"
                         ),
-                        "width" => assert_eq!(
-                            v.as_u64().unwrap() as u32,
-                            sps.width,
-                            "{name}: width"
-                        ),
-                        "height" => assert_eq!(
-                            v.as_u64().unwrap() as u32,
-                            sps.height,
-                            "{name}: height"
-                        ),
+                        "width" => {
+                            assert_eq!(v.as_u64().unwrap() as u32, sps.width, "{name}: width")
+                        }
+                        "height" => {
+                            assert_eq!(v.as_u64().unwrap() as u32, sps.height, "{name}: height")
+                        }
                         "bit_depth_luma" => assert_eq!(
                             v.as_u64().unwrap() as u8,
                             sps.bit_depth_luma,
@@ -272,7 +267,10 @@ fn validate_result_h265(
         }
         ("ok", Ok(_)) => { /* VPS/PPS: no field checks in starter set */ }
         ("err", Err(e)) => {
-            let want = expected.error.as_deref().expect("err outcome requires .error");
+            let want = expected
+                .error
+                .as_deref()
+                .expect("err outcome requires .error");
             assert_eq!(want, error_variant_name(e), "{name}: error variant");
         }
         ("ok", Err(e)) => panic!("{name}: expected Ok, got Err({e:?})"),
@@ -331,16 +329,12 @@ fn validate_result_h266(
                             sps.profile_tier_level.general_level_idc,
                             "{name}: general_level_idc"
                         ),
-                        "width" => assert_eq!(
-                            v.as_u64().unwrap() as u32,
-                            sps.width,
-                            "{name}: width"
-                        ),
-                        "height" => assert_eq!(
-                            v.as_u64().unwrap() as u32,
-                            sps.height,
-                            "{name}: height"
-                        ),
+                        "width" => {
+                            assert_eq!(v.as_u64().unwrap() as u32, sps.width, "{name}: width")
+                        }
+                        "height" => {
+                            assert_eq!(v.as_u64().unwrap() as u32, sps.height, "{name}: height")
+                        }
                         "bit_depth_luma" => assert_eq!(
                             v.as_u64().unwrap() as u8,
                             sps.bit_depth_luma,
@@ -363,7 +357,10 @@ fn validate_result_h266(
         }
         ("ok", Ok(_)) => {}
         ("err", Err(e)) => {
-            let want = expected.error.as_deref().expect("err outcome requires .error");
+            let want = expected
+                .error
+                .as_deref()
+                .expect("err outcome requires .error");
             assert_eq!(want, error_variant_name(e), "{name}: error variant");
         }
         ("ok", Err(e)) => panic!("{name}: expected Ok, got Err({e:?})"),
@@ -440,7 +437,10 @@ fn validate_result_av1(
             }
         }
         ("err", Err(e)) => {
-            let want = expected.error.as_deref().expect("err outcome requires .error");
+            let want = expected
+                .error
+                .as_deref()
+                .expect("err outcome requires .error");
             assert_eq!(want, error_variant_name(e), "{name}: error variant");
         }
         ("ok", Err(e)) => panic!("{name}: expected Ok, got Err({e:?})"),

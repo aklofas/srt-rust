@@ -274,12 +274,7 @@ fn fetch_with_sha(url: &str, dest: &Path, expected_sha: &str) -> Result<(), Stri
         std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
     }
     let out = std::process::Command::new("curl")
-        .args([
-            "-fsSL",
-            "-o",
-            dest.to_str().ok_or("non-utf8 path")?,
-            url,
-        ])
+        .args(["-fsSL", "-o", dest.to_str().ok_or("non-utf8 path")?, url])
         .output()
         .map_err(|e| format!("spawn curl: {e}"))?;
     if !out.status.success() {
@@ -444,8 +439,8 @@ mod tests {
 
     #[test]
     fn scan_h264_sps_extracts_rbsp_body() {
-        let extracted = extract_h264_parameter_set(FAKE_H264_STREAM, 7, 0)
-            .expect("SPS should be found");
+        let extracted =
+            extract_h264_parameter_set(FAKE_H264_STREAM, 7, 0).expect("SPS should be found");
         assert_eq!(extracted, vec![0xAA, 0xBB, 0xCC, 0xDD]);
     }
 
@@ -457,8 +452,8 @@ mod tests {
 
     #[test]
     fn scan_h264_pps_extracts_rbsp_body() {
-        let extracted = extract_h264_parameter_set(FAKE_H264_STREAM, 8, 0)
-            .expect("PPS should be found");
+        let extracted =
+            extract_h264_parameter_set(FAKE_H264_STREAM, 8, 0).expect("PPS should be found");
         assert_eq!(extracted, vec![0xEE, 0xFF]);
     }
 
@@ -478,22 +473,22 @@ mod tests {
 
     #[test]
     fn scan_h265_sps_extracts_rbsp_body() {
-        let extracted = extract_h265_parameter_set(FAKE_H265_STREAM, 33, 0)
-            .expect("SPS should be found");
+        let extracted =
+            extract_h265_parameter_set(FAKE_H265_STREAM, 33, 0).expect("SPS should be found");
         assert_eq!(extracted, vec![0x44, 0x55, 0x66, 0x77]);
     }
 
     #[test]
     fn scan_h265_vps_extracts_rbsp_body() {
-        let extracted = extract_h265_parameter_set(FAKE_H265_STREAM, 32, 0)
-            .expect("VPS should be found");
+        let extracted =
+            extract_h265_parameter_set(FAKE_H265_STREAM, 32, 0).expect("VPS should be found");
         assert_eq!(extracted, vec![0x11, 0x22, 0x33]);
     }
 
     #[test]
     fn scan_h265_pps_extracts_rbsp_body() {
-        let extracted = extract_h265_parameter_set(FAKE_H265_STREAM, 34, 0)
-            .expect("PPS should be found");
+        let extracted =
+            extract_h265_parameter_set(FAKE_H265_STREAM, 34, 0).expect("PPS should be found");
         assert_eq!(extracted, vec![0x88, 0x99]);
     }
 
@@ -512,22 +507,22 @@ mod tests {
 
     #[test]
     fn scan_h266_sps_extracts_rbsp_body() {
-        let extracted = extract_h266_parameter_set(FAKE_H266_STREAM, 15, 0)
-            .expect("SPS should be found");
+        let extracted =
+            extract_h266_parameter_set(FAKE_H266_STREAM, 15, 0).expect("SPS should be found");
         assert_eq!(extracted, vec![0xCC, 0xDD, 0xEE, 0xFF]);
     }
 
     #[test]
     fn scan_h266_vps_extracts_rbsp_body() {
-        let extracted = extract_h266_parameter_set(FAKE_H266_STREAM, 14, 0)
-            .expect("VPS should be found");
+        let extracted =
+            extract_h266_parameter_set(FAKE_H266_STREAM, 14, 0).expect("VPS should be found");
         assert_eq!(extracted, vec![0xAA, 0xBB]);
     }
 
     #[test]
     fn scan_h266_pps_extracts_rbsp_body() {
-        let extracted = extract_h266_parameter_set(FAKE_H266_STREAM, 16, 0)
-            .expect("PPS should be found");
+        let extracted =
+            extract_h266_parameter_set(FAKE_H266_STREAM, 16, 0).expect("PPS should be found");
         assert_eq!(extracted, vec![0x11, 0x22]);
     }
 
@@ -535,8 +530,7 @@ mod tests {
     /// Both have obu_has_size_field=1 (bit 6 of byte 0) and a 1-byte LEB128 size.
     const FAKE_AV1_RAW_OBUS: &[u8] = &[
         // TD: type=2, has_size=1 -> byte = (2<<3)|(1<<1) = 0x12
-        0x12, 0x00,
-        // SeqHeader: type=1, has_size=1 -> byte = (1<<3)|(1<<1) = 0x0A
+        0x12, 0x00, // SeqHeader: type=1, has_size=1 -> byte = (1<<3)|(1<<1) = 0x0A
         0x0A, 0x04, 0xAA, 0xBB, 0xCC, 0xDD,
     ];
 
@@ -563,8 +557,7 @@ mod tests {
         0x01, 0x00, 0x00, 0x00, // frame count
         0x00, 0x00, 0x00, 0x00, // unused
         // Frame 0: size=6 + pts=0
-        0x06, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         // Frame 0 payload: SeqHeader OBU (type=1, has_size=1) + size=4 + 4 bytes
         0x0A, 0x04, 0xEE, 0xFF, 0x12, 0x34,
     ];

@@ -1153,3 +1153,40 @@ the trigger that would unblock it.
   `x86_64-pc-windows-gnu` Rust target on `windows-latest`
   with `continue-on-error: true` initially, mirroring the
   Tier 1 phase-in pattern.
+
+## Windows MSVC runtime test stabilization
+
+- **Status:** Plan #65 (2026-05-16) ported `tst-srt` to compile +
+  link on `*-pc-windows-msvc` (sockaddr abstraction via
+  `os_socketaddr`, `srt_static.lib` linkage, `bcrypt.lib` for
+  mbedTLS entropy). The 4 `cargo test` steps (default features,
+  no-default-features, all-features, doctests) are SKIPPED on the
+  windows-msvc matrix entry pending dedicated runtime triage —
+  SRT loopback tests hang on Windows (at least
+  `tst-c::demux_receiver_loopback` observed at 18+ min before
+  cancellation; expect the whole loopback test family to be
+  affected).
+- **Why deferred:** Diagnosing the hang requires Windows hardware
+  on hand to iterate. Each GHA Windows CI cycle is ~12-18 min just
+  to reach the hang, which is impractical for the kind of
+  print-trace + retry debug loop the issue likely needs. The hang
+  most plausibly reflects different EOS / cancellation semantics
+  between winsock and BSD sockets — libsrt's `srt_close` may not
+  trigger the same peer-side broken/EOS path on Windows, leaving
+  loopback receivers parked forever in `srt_recv`. May also be
+  buffer-flush ordering. Without Windows hardware to attach a
+  debugger, the diagnosis is guesswork.
+- **Trigger to revisit:** A contributor with Windows hardware on
+  hand picks it up, OR a Windows consumer reports a real (non-test)
+  bug in the runtime path. Until then, Linux x86_64 + Linux
+  aarch64 + macOS arm64 cover the runtime behavior; the Windows
+  matrix entry gates compile + link only.
+- **Scope when revisited:** New plan in the shape of plan #66
+  (macOS loopback stabilization) — audit hanging tests, identify
+  root cause (likely a difference in `srt_close` propagation on
+  winsock vs BSD), apply the appropriate fix (test-side timeout,
+  explicit `srt_setflag`-based cancellation, or library-side
+  workaround in `tst-srt`). Once the test suite passes on Windows,
+  the 4 `if: matrix.name != 'windows-msvc'` gates in
+  `.github/workflows/ci.yml` get removed and windows-msvc rejoins
+  the gating cohort.

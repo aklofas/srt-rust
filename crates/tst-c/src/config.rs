@@ -195,6 +195,8 @@ pub unsafe extern "C" fn tst_mux_config_add_video_stream(
         let rust_codec = match codec {
             TstVideoCodec::H264 => VideoCodec::H264,
             TstVideoCodec::H265 => VideoCodec::H265,
+            TstVideoCodec::H266 => VideoCodec::H266,
+            TstVideoCodec::Av1 => VideoCodec::Av1,
         };
         prog.streams.push(StreamSpec::Video {
             pid,
@@ -557,11 +559,13 @@ unsafe fn parse_tlv_list(
     Ok(descs)
 }
 
-#[repr(C)]
-#[derive(Clone, Copy)]
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TstVideoCodec {
     H264 = 0,
     H265 = 1,
+    H266 = 2,
+    Av1 = 3,
 }
 
 impl TstVideoCodec {
@@ -572,17 +576,17 @@ impl TstVideoCodec {
         match c {
             VideoCodec::H264 => Self::H264,
             VideoCodec::H265 => Self::H265,
-            VideoCodec::H266 => Self::H265, // map H.266 to H.265 placeholder
-            VideoCodec::Av1 => Self::H265,  // map Av1 to H.265 placeholder
+            VideoCodec::H266 => Self::H266,
+            VideoCodec::Av1 => Self::Av1,
         }
     }
 }
 
-/// `repr(C)` mirror of `tst_core::mpegts::demux::AudioCodec`.
+/// `repr(i32)` mirror of `tst_core::mpegts::demux::AudioCodec`.
 /// On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_AUDIO`,
 /// and on `tst_stream_info_t.codec`.
-#[repr(C)]
-#[derive(Clone, Copy)]
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TstAudioCodec {
     Mp2 = 0,
     Aac = 1,
@@ -604,11 +608,11 @@ impl TstAudioCodec {
     }
 }
 
-/// `repr(C)` mirror of `tst_core::mpegts::demux::SubtitleCodec`.
+/// `repr(i32)` mirror of `tst_core::mpegts::demux::SubtitleCodec`.
 /// On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_SUBTITLE`,
 /// and on `tst_stream_info_t.codec`.
-#[repr(C)]
-#[derive(Clone, Copy)]
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TstSubtitleCodec {
     DvbSubtitling = 0,
     DvbTeletext = 1,

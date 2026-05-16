@@ -48,10 +48,19 @@
  */
 #define TST_STATS_MAX_STREAMS 64
 
-typedef enum tst_video_codec {
+enum tst_video_codec
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
   TST_VIDEO_CODEC_H264 = 0,
   TST_VIDEO_CODEC_H265 = 1,
-} tst_video_codec;
+  TST_VIDEO_CODEC_H266 = 2,
+  TST_VIDEO_CODEC_AV1 = 3,
+};
+#ifndef __cplusplus
+typedef int32_t tst_video_codec;
+#endif // __cplusplus
 
 typedef enum tst_klv_stream_type {
   TST_KLV_STREAM_TYPE_PRIVATE_DATA = 0,
@@ -350,7 +359,7 @@ tst_program_handle_t tst_mux_config_add_program(struct tst_mux_config_t *cfg,
 tst_video_stream_handle_t tst_mux_config_add_video_stream(struct tst_mux_config_t *cfg,
                                                           tst_program_handle_t program,
                                                           uint16_t pid,
-                                                          enum tst_video_codec codec);
+                                                          tst_video_codec codec);
 
 /**
  * Add a KLV elementary stream to the specified program and return its handle.

@@ -183,6 +183,7 @@ pub unsafe extern "C" fn tst_raw_receiver_recv(
             if !v.is_empty() {
                 unsafe { std::ptr::copy_nonoverlapping(v.as_ptr(), buf, v.len()) };
             }
+            // SAFETY: out_len non-null per guard above.
             unsafe { *out_len = v.len() };
             0
         }
@@ -227,7 +228,10 @@ mod tests {
     }
 
     #[test]
-    fn null_buf_with_nonzero_len_returns_invalid_config() {
+    fn null_handle_and_null_buf_both_return_invalid_config() {
+        // Both null pointers trip the p guard first (line 161-164), not the buf
+        // guard (line 165-168). Reaching the buf guard requires a non-null
+        // handle; in-process loopback testing deferred to Task 15.
         let mut got: usize = 0;
         let rc = unsafe {
             tst_raw_receiver_recv(std::ptr::null_mut(), std::ptr::null_mut(), 16, &mut got)

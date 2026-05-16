@@ -130,6 +130,8 @@ typedef struct tst_mux_sender_t tst_mux_sender_t;
 
 typedef struct tst_muxer_t tst_muxer_t;
 
+typedef struct TstRawReceiver TstRawReceiver;
+
 typedef struct tst_raw_sender_t tst_raw_sender_t;
 
 typedef struct tst_raw_sender_config_t tst_raw_sender_config_t;
@@ -748,6 +750,59 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * Close and free the muxer. Idempotent — passing NULL is a no-op.
  */
  void tst_muxer_close(struct tst_muxer_t *p);
+
+/**
+ * Open a `tst_raw_receiver_t`. Accepts `srt://host:port?...` URLs;
+ * URL with `?mode=listener` is routed through the listener path
+ * (equivalent to calling `tst_raw_receiver_open_listener`).
+ *
+ * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
+ */
+ struct TstRawReceiver *tst_raw_receiver_open(const char *srt_url);
+
+/**
+ * Explicit listener-mode open. Forces listener mode regardless of any
+ * `?mode=` URL value — the `_listener` suffix is authoritative. URLs
+ * with `?mode=caller` are accepted and silently overridden.
+ *
+ * (Phase 1 simplification of the design spec §4.2, which originally
+ * proposed rejecting explicit `mode=caller` with `TST_E_INVALID_USAGE`.
+ * The simpler rule is more forgiving and matches what most C consumers
+ * expect from a `_listener`-suffixed entry point. The stricter check
+ * can land in a future phase if a consumer asks.)
+ */
+ struct TstRawReceiver *tst_raw_receiver_open_listener(const char *srt_url);
+
+ void tst_raw_receiver_close(struct TstRawReceiver *p);
+
+/**
+ * Cancel a `tst_raw_receiver_t`. Unblocks a thread parked in `_recv`
+ * within one libsrt I/O cycle (~3-10 ms) by closing the underlying
+ * libsrt socket. Safe to call from any thread. Idempotent.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ *
+ * After cancel, `_recv` returns `TST_E_CLOSED` (not `TST_E_END_OF_STREAM`).
+ * The handle must still be `_close`'d to free.
+ */
+ int tst_raw_receiver_cancel(struct TstRawReceiver *p);
+
+/**
+ * Block until one message arrives. Copies up to `len` bytes into `buf`
+ * and writes the actual length to `*out_len`.
+ *
+ * Returns:
+ * - 0 on success (`*out_len` set to bytes received; ≤ `len`)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close
+ * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on connection failure
+ * - `TST_E_TOO_LARGE` (-6) if the inbound message exceeds `len`
+ *   (`*out_len` is left unmodified)
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+ */
+ int tst_raw_receiver_recv(struct TstRawReceiver *p, uint8_t *buf, size_t len, size_t *out_len);
 
 /**
  * Open a `tst_raw_sender_t` connected via SRT.

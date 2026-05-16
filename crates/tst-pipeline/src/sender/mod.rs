@@ -223,6 +223,15 @@ impl<T: Transport> Sender<T> {
         self.framing.reset_stats();
     }
 
+    /// Wire-level transport stats (RTT, packet loss, bandwidth, queue
+    /// depths) sourced from the underlying [`Transport::socket_stats`]
+    /// implementation. Returns `None` when the transport doesn't expose
+    /// comparable telemetry (test mocks) or when a managed wrapper has
+    /// no live inner socket.
+    pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
+        self.transport.socket_stats()
+    }
+
     pub fn close(&mut self) {
         // Best-effort flush of any buffered partial bundle BEFORE marking
         // closed (otherwise the subsequent flush() would early-return on

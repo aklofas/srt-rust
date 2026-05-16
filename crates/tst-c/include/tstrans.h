@@ -2079,6 +2079,18 @@ int tst_managed_receiver_get_stats(struct tst_managed_receiver_t *p,
 
  int tst_sender_get_stats(struct tst_sender_t *p, struct tst_sender_stats_t *out);
 
+/**
+ * Read wire-level transport stats for the underlying libsrt socket.
+ * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * for full semantics — same shape, different handle type.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstSender` opened via
+ * `tst_sender_open` and `out` points to a writable `TstSocketStats`.
+ */
+ int tst_sender_get_socket_stats(struct tst_sender_t *p, struct tst_socket_stats_t *out);
+
  int tst_sender_reset_stats(struct tst_sender_t *p);
 
  void tst_sender_close(struct tst_sender_t *p);
@@ -2119,6 +2131,21 @@ struct tst_managed_sender_t *tst_managed_sender_open(const char *srt_url,
  int tst_managed_sender_flush(struct tst_managed_sender_t *p);
 
  int tst_managed_sender_get_stats(struct tst_managed_sender_t *p, struct tst_sender_stats_t *out);
+
+/**
+ * Managed sibling of [`tst_sender_get_socket_stats`]. Returns
+ * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
+ * inner socket.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstManagedSender` opened via
+ * `tst_managed_sender_open` and `out` points to a writable
+ * `TstSocketStats`.
+ */
+
+int tst_managed_sender_get_socket_stats(struct tst_managed_sender_t *p,
+                                        struct tst_socket_stats_t *out);
 
  int tst_managed_sender_reset_stats(struct tst_managed_sender_t *p);
 

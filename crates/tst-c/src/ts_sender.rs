@@ -157,6 +157,37 @@ pub unsafe extern "C" fn tst_sender_get_stats(
     })
 }
 
+/// Read wire-level transport stats for the underlying libsrt socket.
+/// See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+/// for full semantics — same shape, different handle type.
+///
+/// # Safety
+///
+/// Caller MUST ensure `p` is a valid `*mut TstSender` opened via
+/// `tst_sender_open` and `out` points to a writable `TstSocketStats`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_sender_get_socket_stats(
+    p: *mut TstSender,
+    out: *mut crate::stats::TstSocketStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    handle.inner.with_inner_ref(|s| match s.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => TstError::NotAvailable as i32,
+    })
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_sender_reset_stats(p: *mut TstSender) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
@@ -335,6 +366,38 @@ pub unsafe extern "C" fn tst_managed_sender_get_stats(
         let stats = TstSenderStats::from(&s.stats());
         unsafe { *out = stats };
         0
+    })
+}
+
+/// Managed sibling of [`tst_sender_get_socket_stats`]. Returns
+/// `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
+/// inner socket.
+///
+/// # Safety
+///
+/// Caller MUST ensure `p` is a valid `*mut TstManagedSender` opened via
+/// `tst_managed_sender_open` and `out` points to a writable
+/// `TstSocketStats`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_sender_get_socket_stats(
+    p: *mut TstManagedSender,
+    out: *mut crate::stats::TstSocketStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    unsafe { *out = crate::stats::TstSocketStats::default() };
+    handle.inner.with_inner_ref(|s| match s.socket_stats() {
+        Some(stats) => {
+            unsafe { *out = (&stats).into() };
+            0
+        }
+        None => TstError::NotAvailable as i32,
     })
 }
 

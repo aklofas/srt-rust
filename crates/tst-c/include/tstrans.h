@@ -114,6 +114,8 @@ typedef struct tst_managed_raw_receiver_t tst_managed_raw_receiver_t;
 
 typedef struct tst_managed_raw_sender_t tst_managed_raw_sender_t;
 
+typedef struct tst_managed_receiver_t tst_managed_receiver_t;
+
 typedef struct tst_managed_sender_t tst_managed_sender_t;
 
 /**
@@ -137,6 +139,8 @@ typedef struct tst_raw_receiver_t tst_raw_receiver_t;
 typedef struct tst_raw_sender_t tst_raw_sender_t;
 
 typedef struct tst_raw_sender_config_t tst_raw_sender_config_t;
+
+typedef struct tst_receiver_t tst_receiver_t;
 
 typedef struct tst_reconnect_policy_t tst_reconnect_policy_t;
 
@@ -255,6 +259,25 @@ typedef struct tst_raw_sender_stats_t {
   uint64_t bytes_sent;
   uint64_t packets_sent;
 } tst_raw_sender_stats_t;
+
+/**
+ * `repr(C)` mirror of `tst_pipeline::ReceiverStats`. Size 32 B.
+ *
+ * Application-level counters for the TS-aligned receive shell. Mirrors
+ * the layout of `tst_pipeline::ReceiverStats`:
+ * * `bytes_received` / `packets_received` — application-level totals
+ *   (one 188-byte packet per `_recv_packet` success).
+ * * `bytes_skipped_for_sync` / `resync_events` — sync-recovery state
+ *   from the underlying `tst_pipeline::receiver::sync::Syncer`. Non-zero
+ *   `resync_events` indicates the syncer hit HUNT/VERIFY mid-stream
+ *   (either initial lock-on or re-lock after corruption).
+ */
+typedef struct tst_receiver_stats_t {
+  uint64_t bytes_received;
+  uint64_t bytes_skipped_for_sync;
+  uint64_t resync_events;
+  uint64_t packets_received;
+} tst_receiver_stats_t;
 
 /**
  * Public-ABI mirror of `tst_pipeline::SenderStats`. Same fields,
@@ -1046,6 +1069,160 @@ int tst_managed_raw_sender_get_stats(struct tst_managed_raw_sender_t *p,
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
  int tst_managed_raw_sender_reset_stats(struct tst_managed_raw_sender_t *p);
+
+/**
+ * Open a `tst_receiver_t`. Accepts `srt://host:port?...` URLs;
+ * URL with `?mode=listener` is routed through the listener path
+ * (equivalent to calling `tst_receiver_open_listener`).
+ *
+ * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
+ */
+ struct tst_receiver_t *tst_receiver_open(const char *srt_url);
+
+/**
+ * Explicit listener-mode open. Forces listener mode regardless of any
+ * `?mode=` URL value — the `_listener` suffix is authoritative. URLs
+ * with `?mode=caller` are accepted and silently overridden.
+ *
+ * Empty-host URLs like `srt://:7000` are accepted directly; the parser's
+ * requirement for an explicit `?mode=listener` does not apply here because
+ * the entry-point name is already the authoritative listener signal.
+ */
+ struct tst_receiver_t *tst_receiver_open_listener(const char *srt_url);
+
+ void tst_receiver_close(struct tst_receiver_t *p);
+
+/**
+ * Block until one 188-byte MPEG-TS packet is ready, then copy it into
+ * the caller's `out_packet` buffer.
+ *
+ * `out_packet` MUST point to a buffer of at least 188 bytes (a
+ * `uint8_t[188]` array on the C side). The pointer is dereferenced
+ * once on success; no allocation crosses the FFI boundary.
+ *
+ * Returns:
+ * - `0` on success (188 bytes written to `out_packet`)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close
+ * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on a transport failure other than a clean
+ *   peer disconnect (peer FIN surfaces as `TST_E_END_OF_STREAM`; see
+ *   the `TransportError::Broken` arm in this function for details)
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+ *
+ * On any non-zero return the contents of `out_packet` are unspecified.
+ */
+ int tst_receiver_recv_packet(struct tst_receiver_t *p, uint8_t *out_packet);
+
+/**
+ * Cancel a `tst_receiver_t`. Unblocks a thread parked in
+ * `_recv_packet` within one libsrt I/O cycle (~3-10 ms) by closing
+ * the underlying libsrt socket. Safe to call from any thread.
+ * Idempotent.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ *
+ * After cancel, `_recv_packet` returns `TST_E_CLOSED` (not
+ * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
+ */
+ int tst_receiver_cancel(struct tst_receiver_t *p);
+
+/**
+ * Snapshot stats for a `tst_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_receiver_get_stats(struct tst_receiver_t *p, struct tst_receiver_stats_t *out);
+
+/**
+ * Reset stats counters for a `tst_receiver_t` to zero. Does not
+ * affect transport state or the syncer state machine.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_receiver_reset_stats(struct tst_receiver_t *p);
+
+/**
+ * Open a `tst_managed_receiver_t`. URL-driven mode dispatch
+ * matches `tst_receiver_open` semantics: `?mode=listener` routes
+ * to the listener path, otherwise caller mode.
+ *
+ * On transport failure the managed wrapper automatically reconnects
+ * (or re-binds for listener mode) according to `policy`. Pass `NULL`
+ * for `policy` to use the default reconnect policy.
+ *
+ * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL. `TST_E_TRANSPORT` set on the
+ * initial connect/bind failure.
+ */
+
+struct tst_managed_receiver_t *tst_managed_receiver_open(const char *srt_url,
+                                                         const struct tst_reconnect_policy_t *policy);
+
+/**
+ * Explicit listener-mode open for the managed receiver. Forces
+ * listener mode regardless of any `?mode=` URL value — the
+ * `_listener` suffix is authoritative. On peer disconnect the managed
+ * wrapper re-binds a fresh listener socket and accepts the next
+ * incoming connection. Note: the re-bind + re-accept may block
+ * significantly between attempts depending on the reconnect policy.
+ *
+ * Empty-host URLs like `srt://:7000` are accepted directly; the parser's
+ * requirement for an explicit `?mode=listener` does not apply here because
+ * the entry-point name is already the authoritative listener signal.
+ */
+
+struct tst_managed_receiver_t *tst_managed_receiver_open_listener(const char *srt_url,
+                                                                  const struct tst_reconnect_policy_t *policy);
+
+/**
+ * Block until one 188-byte MPEG-TS packet is ready. Semantics match
+ * `tst_receiver_recv_packet`; on transport failure the managed
+ * inner reconnects transparently before returning an error only once
+ * the retry budget is exhausted.
+ *
+ * # Asymmetry with `tst_receiver_recv_packet`
+ *
+ * The plain `tst_receiver_recv_packet` maps `TransportError::Broken`
+ * on a non-cancelled handle to `TST_E_END_OF_STREAM` (peer disconnect at
+ * the bare-transport layer is semantically end-of-stream). The managed
+ * version does NOT apply that mapping: `ManagedReceiveTransport`
+ * already retries internally on Broken, so a Broken that reaches this
+ * function means all reconnect attempts have been exhausted — that is
+ * a hard transport failure (`TST_E_TRANSPORT`), not an end-of-stream.
+ */
+ int tst_managed_receiver_recv_packet(struct tst_managed_receiver_t *p, uint8_t *out_packet);
+
+/**
+ * Cancel a `tst_managed_receiver_t`. Unblocks a thread parked in
+ * `_recv_packet` within one libsrt I/O cycle (~3-10 ms). Safe from
+ * any thread. Idempotent. After cancel, `_recv_packet` returns
+ * `TST_E_CLOSED`. The handle must still be `_close`'d to free memory.
+ */
+ int tst_managed_receiver_cancel(struct tst_managed_receiver_t *p);
+
+ void tst_managed_receiver_close(struct tst_managed_receiver_t *p);
+
+/**
+ * Snapshot stats for a `tst_managed_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ */
+
+int tst_managed_receiver_get_stats(struct tst_managed_receiver_t *p,
+                                   struct tst_receiver_stats_t *out);
+
+/**
+ * Reset stats counters for a `tst_managed_receiver_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_managed_receiver_reset_stats(struct tst_managed_receiver_t *p);
 
 /**
  * Open a `tst_sender_t` connected via SRT.

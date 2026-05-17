@@ -1238,3 +1238,44 @@ the trigger that would unblock it.
   this additive without a major bump; wire the bump-site at
   `Demuxer::emit_subtitle` alongside the existing `stats_per_stream`
   bump.
+
+## Deep typed-time migration (arithmetic API design + internal sweep + signed-PCR delta type)
+
+- **Status:** All **public** Rust APIs ship with `Pts90khz` as of Wave 2.1
+  (plan `2026-05-18-typed-time-and-packet-constants.md`): `MuxSender::send_*`,
+  `Muxer::push_*`, `pts_to_duration`, `DemuxEvent::{Sample,Metadata}.pts`, and
+  `pairing::{VideoSample,KlvSample}.pts` all take/return `Pts90khz`. Internal
+  arithmetic (private PES writers in `tst-core::mpegts::mux::pes`, private
+  `psi_due`/`pcr_due`/`maybe_emit_psi` helpers, demuxer's `last_pts_by_pid:
+  HashMap<u16, i64>` and `last_pcr_27mhz: Option<u64>` state, pairing engines
+  that do `.as_ticks()` once before arithmetic) remains raw `i64` / `u64`.
+  `NonConformantIssue::PcrAnomaly.delta: i64` remains raw `i64` because it's
+  a *signed* 27 MHz delta and the existing `Pcr27mhz(u64)` newtype cannot
+  represent it.
+- **Why deferred:** Sweeping the internal sites is mechanical (~8-12h after
+  Wave 2.1 lands), but the arithmetic API on `Pts90khz` / `Pcr27mhz` is a real
+  design question: what does `pts_a + duration` return? Does `pts_a - pts_b`
+  give a typed `Duration90khz` or raw `i64`? What about 33-bit wrap-around
+  (`pts + 1` near `2^33`)? Saturate, wrap, or check (and return
+  `Option`/`Result`)? Same questions for a hypothetical `Pcr27mhzDelta(i64)`
+  signed-delta type. Picking the wrong default poisons every consumer
+  arithmetic site. The internal sweep becomes much cheaper if the arithmetic
+  API ships first.
+- **Trigger to revisit:** (a) Pre-stabilization API freeze (forces the
+  decision), (b) a binding-author request for type-safe internal arithmetic
+  in the FFI bridge layer, (c) a binding-author request for a typed signed
+  PCR delta on `PcrAnomaly`, or (d) a confirmed-by-fuzzer arithmetic bug
+  traced to a `pts_90khz: i64` / `pcr_27mhz: u64` site that typed arithmetic
+  would have caught.
+- **Scope when added:** (1) Design wrap-vs-saturate semantics on
+  `Pts90khz::Add<i64>`, `Sub<Self> -> Duration90khz` (with type definition),
+  `Add<Duration90khz>`. Same for `Pcr27mhz`. Decide whether `Duration90khz`
+  is its own type or a re-purposed `core::time::Duration`. (2) Add
+  `Pcr27mhzDelta(i64)` if signed-delta typing is wanted; migrate
+  `PcrAnomaly.delta`. (3) Sweep internal sites listed above. (4) Drop the
+  `.as_ticks()` calls in pairing engines (they become typed arithmetic
+  directly). (5) Refresh `cargo public-api` baselines; expect intentional
+  breaking deltas if `Pcr27mhzDelta` lands. (6) Decide whether the
+  fixture-generator `tests/tools/gen_*.rs` migrate too (probably not —
+  raw integers are ergonomic for test scaffolding).
+- **Effort estimate:** ~4-6h API design + writeup, ~8-12h sweep.

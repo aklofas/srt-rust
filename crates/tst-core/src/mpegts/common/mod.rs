@@ -73,6 +73,18 @@ pub mod pid {
 /// 27 MHz values. Spec range is 33-bit unsigned (0..=2^33-1), but we accept
 /// `i64` to match what encoders produce; values are masked at encoding time
 /// (PES PTS) and at PCR derivation (`Pcr27mhz::from_pts`).
+///
+/// # Arithmetic
+///
+/// `Pts90khz` does NOT currently implement `Add` / `Sub` / `Mul` — the
+/// wrap-vs-saturate-vs-check semantics across the 33-bit PTS rollover
+/// boundary need design work. See the "Deep typed-time migration" entry in
+/// the repository's `docs/deferred-features.md` for the follow-up plan. For
+/// now, recover the raw `i64` with [`as_ticks`] and reconstruct after
+/// arithmetic with [`new`].
+///
+/// [`as_ticks`]: Self::as_ticks
+/// [`new`]: Self::new
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pts90khz(i64);
 
@@ -102,6 +114,13 @@ impl Pts90khz {
 ///
 /// Stored as the full 27 MHz value; encoding splits it into the 33-bit base
 /// and 9-bit extension at write time.
+///
+/// # Arithmetic
+///
+/// Like [`Pts90khz`], `Pcr27mhz` does not currently implement arithmetic
+/// traits. The full 27 MHz value wraps at `(1 << 33) × 300`, ≈ once every
+/// 26.5 hours; design of typed wrap-aware arithmetic is tracked in the
+/// "Deep typed-time migration" entry in `docs/deferred-features.md`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pcr27mhz(u64);
 

@@ -183,15 +183,15 @@ pub unsafe extern "C" fn tst_mux_sender_send_video_to(
     let slice = unsafe { std::slice::from_raw_parts(nal, len) };
     let stream = VideoStreamHandle::from_raw(stream_handle);
     let pts = Pts90khz::new(pts_90khz);
-    wrapper.inner.with_inner_ref(
-        |s| match s.send_video_to(stream, slice, pts, key_frame) {
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_video_to(stream, slice, pts, key_frame) {
             Ok(()) => 0,
             Err(e) => {
                 record_sender_error(&e);
                 unsafe { tst_get_last_error() }
             }
-        },
-    )
+        })
 }
 
 /// Push one pre-built KLV blob targeting a specific KLV elementary stream.
@@ -673,15 +673,15 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_video_to(
     let slice = unsafe { std::slice::from_raw_parts(nal, len) };
     let stream = VideoStreamHandle::from_raw(stream_handle);
     let pts = Pts90khz::new(pts_90khz);
-    wrapper.inner.with_inner_ref(
-        |s| match s.send_video_to(stream, slice, pts, key_frame) {
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_video_to(stream, slice, pts, key_frame) {
             Ok(()) => 0,
             Err(e) => {
                 record_sender_error(&e);
                 unsafe { tst_get_last_error() }
             }
-        },
-    )
+        })
 }
 
 /// Push one pre-built KLV blob targeting a specific KLV elementary stream on

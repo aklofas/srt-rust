@@ -113,8 +113,8 @@ pub enum StreamCodecStats {
     #[non_exhaustive]
     Audio {
         /// Audio frames observed on this PID, iterated via
-        /// [`tst_core::codec::aac::frames`] (for AAC-ADTS) or
-        /// [`tst_core::codec::mpegaudio::frames`] (for MP2). Truncated /
+        /// [`crate::codec::aac::frames`] (for AAC-ADTS) or
+        /// [`crate::codec::mpegaudio::frames`] (for MP2). Truncated /
         /// bad-sync tail frames are skipped (counter only counts the
         /// `Ok` results of the iterator).
         frames: u64,

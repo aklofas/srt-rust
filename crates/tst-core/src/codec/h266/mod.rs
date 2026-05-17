@@ -18,11 +18,11 @@
 //!   `num_short_term_ref_pic_sets > 0`) that aren't exercised by
 //!   reference encoder defaults. Same conservative stance as H.265.
 
-pub mod pps;
-pub mod profile_tier_level;
-pub mod sps;
-pub mod vps;
-pub mod vui;
+mod pps;
+mod profile_tier_level;
+mod sps;
+mod vps;
+mod vui;
 
 pub use pps::{H266Pps, parse_pps};
 pub use profile_tier_level::H266ProfileTierLevel;

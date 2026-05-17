@@ -28,7 +28,8 @@ pub struct H266ProfileTierLevel {
 /// (e.g., tests, future external parameter-set walkers). Sub-parsers
 /// embedded in SPS/VPS use `parse_into` instead, which shares the
 /// caller's bit cursor so subsequent fields stay aligned.
-pub fn parse_profile_tier_level(
+#[allow(dead_code)] // kept for tests + future external parameter-set walkers
+pub(crate) fn parse_profile_tier_level(
     rbsp: &[u8],
     profile_tier_present_flag: bool,
     max_num_sub_layers_minus1: u8,

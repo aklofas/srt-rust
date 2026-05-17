@@ -252,7 +252,7 @@ pub fn tst_pipeline::pairing::Pairer::flush(&mut self) -> alloc::vec::Vec<tst_pi
 pub fn tst_pipeline::pairing::Pairer::last_before_pts(video_pid: u16, klv_pid: u16, freshness: core::option::Option<core::time::Duration>) -> Self
 pub fn tst_pipeline::pairing::Pairer::reset_stats(&mut self)
 pub fn tst_pipeline::pairing::Pairer::stats(&self) -> tst_pipeline::PairerStats
-pub fn tst_pipeline::pairing::Pairer::with_options(video_pid: u16, klv_pid: u16, opts: tst_pipeline::PairerOptions) -> Self
+pub fn tst_pipeline::pairing::Pairer::with_options(video_pid: u16, klv_pid: u16, opts: tst_pipeline::PairerConfig) -> Self
 impl core::marker::Freeze for tst_pipeline::pairing::Pairer
 impl core::marker::Send for tst_pipeline::pairing::Pairer
 impl core::marker::Sync for tst_pipeline::pairing::Pairer
@@ -260,25 +260,25 @@ impl core::marker::Unpin for tst_pipeline::pairing::Pairer
 impl core::marker::UnsafeUnpin for tst_pipeline::pairing::Pairer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::pairing::Pairer
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::pairing::Pairer
-#[non_exhaustive] pub struct tst_pipeline::pairing::PairerOptions
-pub tst_pipeline::pairing::PairerOptions::link_klv_to_video: bool
-pub tst_pipeline::pairing::PairerOptions::max_buffered_klv: u64
-pub tst_pipeline::pairing::PairerOptions::max_buffered_video: u64
-pub tst_pipeline::pairing::PairerOptions::mode: tst_pipeline::PairerMode
-pub tst_pipeline::pairing::PairerOptions::tolerance: core::time::Duration
-impl core::clone::Clone for tst_pipeline::PairerOptions
-pub fn tst_pipeline::PairerOptions::clone(&self) -> tst_pipeline::PairerOptions
-impl core::default::Default for tst_pipeline::PairerOptions
-pub fn tst_pipeline::PairerOptions::default() -> Self
-impl core::fmt::Debug for tst_pipeline::PairerOptions
-pub fn tst_pipeline::PairerOptions::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_pipeline::PairerOptions
-impl core::marker::Send for tst_pipeline::PairerOptions
-impl core::marker::Sync for tst_pipeline::PairerOptions
-impl core::marker::Unpin for tst_pipeline::PairerOptions
-impl core::marker::UnsafeUnpin for tst_pipeline::PairerOptions
-impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::PairerOptions
-impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::PairerOptions
+#[non_exhaustive] pub struct tst_pipeline::pairing::PairerConfig
+pub tst_pipeline::pairing::PairerConfig::link_klv_to_video: bool
+pub tst_pipeline::pairing::PairerConfig::max_buffered_klv: u64
+pub tst_pipeline::pairing::PairerConfig::max_buffered_video: u64
+pub tst_pipeline::pairing::PairerConfig::mode: tst_pipeline::PairerMode
+pub tst_pipeline::pairing::PairerConfig::tolerance: core::time::Duration
+impl core::clone::Clone for tst_pipeline::PairerConfig
+pub fn tst_pipeline::PairerConfig::clone(&self) -> tst_pipeline::PairerConfig
+impl core::default::Default for tst_pipeline::PairerConfig
+pub fn tst_pipeline::PairerConfig::default() -> Self
+impl core::fmt::Debug for tst_pipeline::PairerConfig
+pub fn tst_pipeline::PairerConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_pipeline::PairerConfig
+impl core::marker::Send for tst_pipeline::PairerConfig
+impl core::marker::Sync for tst_pipeline::PairerConfig
+impl core::marker::Unpin for tst_pipeline::PairerConfig
+impl core::marker::UnsafeUnpin for tst_pipeline::PairerConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::PairerConfig
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::PairerConfig
 pub struct tst_pipeline::pairing::PairerStats
 pub tst_pipeline::pairing::PairerStats::paired: u64
 pub tst_pipeline::pairing::PairerStats::pass_through: u64
@@ -1096,7 +1096,7 @@ pub fn tst_pipeline::pairing::Pairer::flush(&mut self) -> alloc::vec::Vec<tst_pi
 pub fn tst_pipeline::pairing::Pairer::last_before_pts(video_pid: u16, klv_pid: u16, freshness: core::option::Option<core::time::Duration>) -> Self
 pub fn tst_pipeline::pairing::Pairer::reset_stats(&mut self)
 pub fn tst_pipeline::pairing::Pairer::stats(&self) -> tst_pipeline::PairerStats
-pub fn tst_pipeline::pairing::Pairer::with_options(video_pid: u16, klv_pid: u16, opts: tst_pipeline::PairerOptions) -> Self
+pub fn tst_pipeline::pairing::Pairer::with_options(video_pid: u16, klv_pid: u16, opts: tst_pipeline::PairerConfig) -> Self
 impl core::marker::Freeze for tst_pipeline::pairing::Pairer
 impl core::marker::Send for tst_pipeline::pairing::Pairer
 impl core::marker::Sync for tst_pipeline::pairing::Pairer
@@ -1104,25 +1104,25 @@ impl core::marker::Unpin for tst_pipeline::pairing::Pairer
 impl core::marker::UnsafeUnpin for tst_pipeline::pairing::Pairer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::pairing::Pairer
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::pairing::Pairer
-#[non_exhaustive] pub struct tst_pipeline::PairerOptions
-pub tst_pipeline::PairerOptions::link_klv_to_video: bool
-pub tst_pipeline::PairerOptions::max_buffered_klv: u64
-pub tst_pipeline::PairerOptions::max_buffered_video: u64
-pub tst_pipeline::PairerOptions::mode: tst_pipeline::PairerMode
-pub tst_pipeline::PairerOptions::tolerance: core::time::Duration
-impl core::clone::Clone for tst_pipeline::PairerOptions
-pub fn tst_pipeline::PairerOptions::clone(&self) -> tst_pipeline::PairerOptions
-impl core::default::Default for tst_pipeline::PairerOptions
-pub fn tst_pipeline::PairerOptions::default() -> Self
-impl core::fmt::Debug for tst_pipeline::PairerOptions
-pub fn tst_pipeline::PairerOptions::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_pipeline::PairerOptions
-impl core::marker::Send for tst_pipeline::PairerOptions
-impl core::marker::Sync for tst_pipeline::PairerOptions
-impl core::marker::Unpin for tst_pipeline::PairerOptions
-impl core::marker::UnsafeUnpin for tst_pipeline::PairerOptions
-impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::PairerOptions
-impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::PairerOptions
+#[non_exhaustive] pub struct tst_pipeline::PairerConfig
+pub tst_pipeline::PairerConfig::link_klv_to_video: bool
+pub tst_pipeline::PairerConfig::max_buffered_klv: u64
+pub tst_pipeline::PairerConfig::max_buffered_video: u64
+pub tst_pipeline::PairerConfig::mode: tst_pipeline::PairerMode
+pub tst_pipeline::PairerConfig::tolerance: core::time::Duration
+impl core::clone::Clone for tst_pipeline::PairerConfig
+pub fn tst_pipeline::PairerConfig::clone(&self) -> tst_pipeline::PairerConfig
+impl core::default::Default for tst_pipeline::PairerConfig
+pub fn tst_pipeline::PairerConfig::default() -> Self
+impl core::fmt::Debug for tst_pipeline::PairerConfig
+pub fn tst_pipeline::PairerConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_pipeline::PairerConfig
+impl core::marker::Send for tst_pipeline::PairerConfig
+impl core::marker::Sync for tst_pipeline::PairerConfig
+impl core::marker::Unpin for tst_pipeline::PairerConfig
+impl core::marker::UnsafeUnpin for tst_pipeline::PairerConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::PairerConfig
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::PairerConfig
 pub struct tst_pipeline::PairerStats
 pub tst_pipeline::PairerStats::paired: u64
 pub tst_pipeline::PairerStats::pass_through: u64

@@ -14,7 +14,7 @@ use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
-use tst_pipeline::{Pairer, PairerMode, PairerOptions, PairerOutput};
+use tst_pipeline::{Pairer, PairerConfig, PairerMode, PairerOutput};
 
 const VIDEO_PID: u16 = 0x100;
 const KLV_PID: u16 = 0x102;
@@ -77,7 +77,7 @@ fn with_options_pairs_sync_klv_with_video() {
     demux.feed(&bytes).unwrap();
     demux.flush();
 
-    let mut opts = PairerOptions::default();
+    let mut opts = PairerConfig::default();
     opts.mode = PairerMode::Realtime;
     opts.tolerance = Duration::from_millis(100); // 0.1 s tolerance
     opts.max_buffered_klv = 16;

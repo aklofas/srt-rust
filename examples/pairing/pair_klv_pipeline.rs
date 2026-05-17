@@ -27,7 +27,7 @@ use std::fs;
 use std::process::ExitCode;
 use std::time::Duration;
 use tst_core::mpegts::demux::Demuxer;
-use tst_pipeline::{Pairer, PairerMode, PairerOptions, PairerOutput};
+use tst_pipeline::{Pairer, PairerConfig, PairerMode, PairerOutput};
 
 fn main() -> ExitCode {
     // --- Argument parsing -------------------------------------------------
@@ -83,9 +83,9 @@ fn main() -> ExitCode {
     // because the encoder ships KLV PES after video PES." See
     // `docs/troubleshooting.md`.
     //
-    // PairerOptions is `#[non_exhaustive]`, so construct via
+    // PairerConfig is `#[non_exhaustive]`, so construct via
     // `Default::default()` + assignment rather than struct literal.
-    let mut opts = PairerOptions::default();
+    let mut opts = PairerConfig::default();
     opts.mode = PairerMode::Realtime;
     opts.tolerance = TOLERANCE;
     opts.max_buffered_klv = MAX_BUFFERED_KLV;

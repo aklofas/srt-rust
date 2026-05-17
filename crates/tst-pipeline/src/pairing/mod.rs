@@ -60,7 +60,7 @@ mod last_before;
 mod nearest;
 mod types;
 
-pub use types::{KlvSample, PairerMode, PairerOptions, PairerOutput, PairerStats, VideoSample};
+pub use types::{KlvSample, PairerConfig, PairerMode, PairerOutput, PairerStats, VideoSample};
 
 use std::time::Duration;
 use tst_core::mpegts::demux::DemuxEvent;
@@ -145,14 +145,14 @@ impl Pairer {
     ///
     /// # Example — realtime nearest-PTS pairer with a 300 ms tolerance
     ///
-    /// `PairerOptions` is `#[non_exhaustive]`; construct via
+    /// `PairerConfig` is `#[non_exhaustive]`; construct via
     /// [`Default::default()`] and assign overrides.
     ///
     /// ```
     /// use std::time::Duration;
-    /// use tst_pipeline::pairing::{Pairer, PairerMode, PairerOptions};
+    /// use tst_pipeline::pairing::{Pairer, PairerMode, PairerConfig};
     ///
-    /// let mut opts = PairerOptions::default();
+    /// let mut opts = PairerConfig::default();
     /// opts.mode = PairerMode::Realtime;
     /// opts.tolerance = Duration::from_millis(300);
     /// opts.max_buffered_klv = 32;
@@ -170,10 +170,10 @@ impl Pairer {
     /// // in `Realtime` mode but kept for symmetry with `Buffered`).
     /// let _stats = pairer.stats();
     /// ```
-    pub fn with_options(video_pid: u16, klv_pid: u16, opts: PairerOptions) -> Self {
+    pub fn with_options(video_pid: u16, klv_pid: u16, opts: PairerConfig) -> Self {
         assert!(
             opts.max_buffered_klv > 0,
-            "PairerOptions::max_buffered_klv must be > 0"
+            "PairerConfig::max_buffered_klv must be > 0"
         );
         let tolerance_ticks = duration_to_pts_ticks(opts.tolerance);
         let internal_mode = match opts.mode {
@@ -181,7 +181,7 @@ impl Pairer {
             PairerMode::Buffered { max_lag } => {
                 assert!(
                     opts.max_buffered_video > 0,
-                    "PairerOptions::max_buffered_video must be > 0 for Buffered mode"
+                    "PairerConfig::max_buffered_video must be > 0 for Buffered mode"
                 );
                 // `max_lag` is the PTS-skew "wait window": how long a
                 // buffered video can sit in the buffer (measured against
@@ -199,7 +199,7 @@ impl Pairer {
             }
         };
         let max_klv_history = opts.max_buffered_klv as usize;
-        // `link_klv_to_video` is reserved on PairerOptions; not yet
+        // `link_klv_to_video` is reserved on PairerConfig; not yet
         // wired through to the internal NearestState. Tracking for
         // follow-up.
         let _ = opts.link_klv_to_video;
@@ -314,7 +314,7 @@ mod tests {
         Pairer::with_options(
             VIDEO_PID,
             KLV_PID,
-            PairerOptions {
+            PairerConfig {
                 mode: PairerMode::Realtime,
                 tolerance: Duration::from_millis(1),
                 max_buffered_klv: 4,
@@ -519,7 +519,7 @@ mod tests {
         Pairer::with_options(
             VIDEO_PID,
             KLV_PID,
-            PairerOptions {
+            PairerConfig {
                 mode: PairerMode::Realtime,
                 tolerance: Duration::from_millis(1),
                 max_buffered_klv: 4,
@@ -681,7 +681,7 @@ mod proptests {
             let mut p = Pairer::with_options(
                 VIDEO_PID,
                 KLV_PID,
-                PairerOptions {
+                PairerConfig {
                     mode: PairerMode::Realtime,
                     tolerance: Duration::from_millis(12),
                     max_buffered_klv: 16,
@@ -727,7 +727,7 @@ mod proptests {
         #[test]
         fn nearest_buffered_conservation(events in proptest::collection::vec(arb_event(), 0..200)) {
             // Pre-Phase-3 the second knob was `max_video_buffer: 8`. Under
-            // PairerOptions, the same effect comes from setting
+            // PairerConfig, the same effect comes from setting
             // `max_buffered_video = 8`. The new `max_lag: Duration` knob
             // is a separate constraint; pick something comfortably large
             // so the count cap is the binding limit (matching the
@@ -735,7 +735,7 @@ mod proptests {
             let mut p = Pairer::with_options(
                 VIDEO_PID,
                 KLV_PID,
-                PairerOptions {
+                PairerConfig {
                     mode: PairerMode::Buffered { max_lag: Duration::from_secs(1) },
                     tolerance: Duration::from_millis(12),
                     max_buffered_klv: 16,

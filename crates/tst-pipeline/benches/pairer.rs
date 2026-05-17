@@ -17,7 +17,7 @@ use tst_core::mpegts::demux::{
     DemuxEvent, MetadataKind, NalUnit, SamplePayload, StreamId, StreamKind, VideoCodec,
     VideoPayload,
 };
-use tst_pipeline::pairing::{Pairer, PairerMode, PairerOptions};
+use tst_pipeline::pairing::{Pairer, PairerConfig, PairerMode};
 
 const VIDEO_PID: u16 = 0x0100;
 const KLV_PID: u16 = 0x0200;
@@ -91,7 +91,7 @@ fn bench_realtime(c: &mut Criterion) {
         .flat_map(|i| [klv_events[i].clone(), video_events[i].clone()])
         .collect();
 
-    let mut opts = PairerOptions::default();
+    let mut opts = PairerConfig::default();
     opts.mode = PairerMode::Realtime;
     opts.tolerance = Duration::from_millis(20);
     opts.max_buffered_klv = 64;
@@ -126,7 +126,7 @@ fn bench_buffered(c: &mut Criterion) {
         .flat_map(|i| [video_events[i].clone(), klv_events[i].clone()])
         .collect();
 
-    let mut opts = PairerOptions::default();
+    let mut opts = PairerConfig::default();
     opts.mode = PairerMode::Buffered {
         max_lag: Duration::from_millis(100),
     };

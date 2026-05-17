@@ -221,7 +221,7 @@ video briefly to look ahead for KLV; the trade-off is up to
 
 ```rust,ignore
 use std::time::Duration;
-let mut opts = PairerOptions::default();
+let mut opts = PairerConfig::default();
 opts.mode = PairerMode::Buffered { max_lag: Duration::from_secs(2) };
 opts.tolerance = Duration::from_millis(300);
 opts.max_buffered_klv = 32;

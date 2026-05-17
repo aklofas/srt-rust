@@ -37,7 +37,7 @@ pub enum PairerMode {
 /// shape didn't translate cleanly to UniFFI).
 #[non_exhaustive]
 #[derive(Debug, Clone)]
-pub struct PairerOptions {
+pub struct PairerConfig {
     /// Matching mode: realtime (eager) or buffered (lookahead).
     pub mode: PairerMode,
     /// Maximum |video_pts - klv_pts| considered a match.
@@ -54,7 +54,7 @@ pub struct PairerOptions {
     pub link_klv_to_video: bool,
 }
 
-impl Default for PairerOptions {
+impl Default for PairerConfig {
     fn default() -> Self {
         Self {
             mode: PairerMode::Realtime,

@@ -848,7 +848,7 @@ on the output.
 use std::fs;
 use std::time::Duration;
 use tst_core::mpegts::demux::Demuxer;
-use tst_pipeline::{Pairer, PairerMode, PairerOptions, PairerOutput};
+use tst_pipeline::{Pairer, PairerMode, PairerConfig, PairerOutput};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bytes = fs::read("input.ts")?;
@@ -856,8 +856,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     demux.feed(&bytes)?;
     demux.flush();
 
-    // PairerOptions is `#[non_exhaustive]`; construct via Default + assign.
-    let mut opts = PairerOptions::default();
+    // PairerConfig is `#[non_exhaustive]`; construct via Default + assign.
+    let mut opts = PairerConfig::default();
     opts.mode = PairerMode::Realtime;
     opts.tolerance = Duration::from_millis(300);
     opts.max_buffered_klv = 32; // ~1 s history at 30 Hz cadence
@@ -892,9 +892,9 @@ briefly to look ahead.
 
 ```rust,no_run
 use std::time::Duration;
-use tst_pipeline::{Pairer, PairerMode, PairerOptions};
+use tst_pipeline::{Pairer, PairerMode, PairerConfig};
 
-let mut opts = PairerOptions::default();
+let mut opts = PairerConfig::default();
 opts.mode = PairerMode::Buffered { max_lag: Duration::from_secs(2) };
 opts.tolerance = Duration::from_millis(300);
 opts.max_buffered_klv = 32;

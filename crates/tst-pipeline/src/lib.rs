@@ -59,7 +59,7 @@ pub use dyn_aliases::{
 pub use managed_receive::ManagedReceiveTransport;
 pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderStats};
 pub use pairing::{
-    KlvSample, Pairer, PairerMode, PairerOptions, PairerOutput, PairerStats, VideoSample,
+    KlvSample, Pairer, PairerConfig, PairerMode, PairerOutput, PairerStats, VideoSample,
 };
 pub use raw_receiver::{RawReceiver, RawReceiverStats};
 pub use raw_sender::{RawSender, RawSenderConfig, RawSenderStats};

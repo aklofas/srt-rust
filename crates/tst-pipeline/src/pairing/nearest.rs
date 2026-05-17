@@ -13,7 +13,7 @@ use tst_core::mpegts::demux::{DemuxEvent, SamplePayload};
 /// against a bounded video AU buffer internally. Two knobs are wired
 /// onto the Buffered variant:
 ///   - `max_video_buffer`: count cap (memory-safety bound; mirrors
-///     `PairerOptions::max_buffered_video`).
+///     `PairerConfig::max_buffered_video`).
 ///   - `max_lag_ticks`: PTS-skew cap. A buffered video is force-released
 ///     once the newest observed KLV PTS is past `video.pts +
 ///     max_lag_ticks`. The pre-Phase-3 implementation used

@@ -75,24 +75,35 @@ no PTS) at PID `0x1031`, PCR pinned to the video PID,
 overrides:
 
 ```rust,no_run
-use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, StreamSpec, VideoCodec};
+use tst_core::mpegts::mux::{
+    KlvStreamType, MuxerConfig, MuxerProgramConfig, StreamSpec, VideoCodec,
+};
 
 // Pure default — H.264 + async KLV.
 let cfg_default = MuxerConfig::default();
 
-// Field-update form: change just the streams, keep cadence defaults.
+// Field-update form: replace the single default program with an H.265 +
+// synchronous-KLV program; keep cadence defaults (pcr_interval_ms,
+// psi_interval_ms, buffer_packets).
 let cfg_h265_sync = MuxerConfig {
-    streams: vec![
-        StreamSpec::Video {
-            pid: 0x1011,
-            codec: VideoCodec::H265,
-        },
-        StreamSpec::Klv {
-            pid: 0x1031,
-            stream_type: KlvStreamType::SynchronousMetadata,
-            carries_pts: true,
-        },
-    ],
+    programs: vec![MuxerProgramConfig {
+        program_number: 1,
+        pmt_pid: 0x1000,
+        streams: vec![
+            StreamSpec::Video {
+                pid: 0x1011,
+                codec: VideoCodec::H265,
+            },
+            StreamSpec::Klv {
+                pid: 0x1031,
+                stream_type: KlvStreamType::SynchronousMetadata,
+                carries_pts: true,
+            },
+        ],
+        pcr_pid: None,
+        program_descriptors: Vec::new(),
+        stream_descriptors: vec![Vec::new(), Vec::new()],
+    }],
     ..MuxerConfig::default()
 };
 ```

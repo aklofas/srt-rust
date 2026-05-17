@@ -74,8 +74,11 @@ pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
 ///    `recv_event`'s underlying `next_packet` call within one libsrt
 ///    I/O cycle (~3-10 ms).
 ///
-/// C ABI for the receiver surface (including `tst_demux_receiver_close`)
-/// is on the P0 backlog and not yet shipped.
+/// C ABI for the receiver surface (`tst_demux_receiver_open` /
+/// `_recv_event` / `_close` / `_cancel` / `_get_stats` and the typed
+/// event arena) shipped via the receiver-surface plans (raw byte recv
+/// → TS-aligned recv → typed demux events). See
+/// `crates/tst-c/include/tstrans.h` for the C surface.
 ///
 /// ## Per-language idiom
 ///
@@ -86,7 +89,7 @@ pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
 /// | Kotlin | Wrap as `AutoCloseable`; `.use { }` calls `close()` on exit |
 /// | Swift | `deinit` calls drop; `defer { handle.cancel() }` for explicit cross-thread |
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as rx:` calls `close()` on exit |
-/// | C | (deferred to per-binding plan — receiver-surface C ABI is P0) |
+/// | C | Call `tst_demux_receiver_close(p)` (idempotent NULL-safe); or `tst_demux_receiver_cancel(p)` from another thread to wake a blocked `tst_demux_receiver_recv_event` |
 ///
 /// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
 pub struct DemuxReceiver<R: RecvTransport> {

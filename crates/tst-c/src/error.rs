@@ -409,4 +409,292 @@ mod tests {
         let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
         assert!(s.to_str().unwrap().contains("end of stream"));
     }
+
+    /// Helper: read the thread-local last-error string and assert it does
+    /// NOT begin with `"unhandled "`. That prefix is uniquely produced by
+    /// the Debug-format wildcard arms in `record_*_error`; its presence
+    /// means a known variant fell through to the wildcard. Belt-and-
+    /// suspenders with the per-variant exact-code assertion.
+    fn assert_not_unhandled_wildcard() {
+        let s_ptr = unsafe { tst_get_last_error_str() };
+        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }
+            .to_str()
+            .unwrap();
+        assert!(
+            !msg.starts_with("unhandled "),
+            "wildcard arm fired for a known variant: {msg}"
+        );
+    }
+
+    #[test]
+    fn every_known_mux_error_variant_maps_to_expected_code() {
+        use tst_core::mpegts::mux::{StreamKind, TeletextField};
+
+        // (variant, expected TstError code). Cover every variant of MuxError.
+        // Expected codes come from reading record_mux_error's explicit match
+        // arms above.
+        let cases: Vec<(MuxError, TstError)> = vec![
+            (
+                MuxError::InvalidConfig("test"),
+                TstError::InvalidConfig,
+            ),
+            (MuxError::InvalidNal, TstError::InvalidNal),
+            (
+                MuxError::BufferFull {
+                    capacity_packets: 1,
+                },
+                TstError::BufferFull,
+            ),
+            (
+                MuxError::KlvTooLarge { size: 100, max: 50 },
+                TstError::KlvTooLarge,
+            ),
+            (
+                MuxError::InvalidStreamHandle {
+                    kind: StreamKind::Video,
+                    index: 0,
+                },
+                TstError::InvalidUsage,
+            ),
+            (
+                MuxError::AmbiguousTarget {
+                    kind: StreamKind::Video,
+                    count: 2,
+                },
+                TstError::InvalidUsage,
+            ),
+            (MuxError::NoKlvStreamsConfigured, TstError::InvalidUsage),
+            (MuxError::NoAudioStreamsConfigured, TstError::InvalidUsage),
+            (
+                MuxError::NoSubtitleStreamsConfigured,
+                TstError::InvalidUsage,
+            ),
+            (
+                MuxError::TooManyVideoStreams { count: 17, cap: 16 },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::TooManyKlvStreams { count: 17, cap: 16 },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::TooManyAudioStreams { count: 17, cap: 16 },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::PmtTooLarge {
+                    used_bytes: 200,
+                    max_bytes: 183,
+                },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::MalformedDescriptor {
+                    stream_index: 0,
+                    descriptor_index: 0,
+                    reason: "test",
+                },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::TooManyPrograms { count: 17, cap: 16 },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::EmptyProgram { program_number: 1 },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::DuplicateProgramNumber { program_number: 1 },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::DuplicatePmtPid {
+                    pid: 0x100,
+                    programs: [1, 2],
+                },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::DuplicatePidAcrossPrograms {
+                    pid: 0x100,
+                    programs: [1, 2],
+                },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::ProgramNotFound { program_number: 1 },
+                TstError::InvalidUsage,
+            ),
+            (
+                MuxError::PmtPidConflictsWithStream {
+                    pmt_pid: 0x100,
+                    program_number: 1,
+                },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::AudioTooLarge {
+                    size: 100,
+                    max: 50,
+                },
+                TstError::InvalidUsage,
+            ),
+            (
+                MuxError::TooManySubtitleStreams { count: 17, cap: 16 },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::SubtitleTooLarge {
+                    size: 100,
+                    max: 50,
+                },
+                TstError::InvalidUsage,
+            ),
+            (
+                MuxError::SubtitlePidUsedAsPcrPid { pid: 0x100 },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::KlvPidUsedAsPcrPid { pid: 0x100 },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::InvalidLanguageCode {
+                    code: [b'X', b'X', b'X'],
+                },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::InvalidTeletextField {
+                    field: TeletextField::MagazineNumber,
+                    value: 99,
+                    max: 7,
+                },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::SubtitleOnlyProgram { program_number: 1 },
+                TstError::InvalidConfig,
+            ),
+            (
+                MuxError::DescriptorIndexOutOfRange {
+                    kind: StreamKind::Video,
+                    index: 5,
+                    program_number: 1,
+                },
+                TstError::InvalidUsage,
+            ),
+            (
+                MuxError::AbsIndexOutOfRange {
+                    abs_idx: 99,
+                    len: 3,
+                    program_number: 1,
+                },
+                TstError::InvalidUsage,
+            ),
+        ];
+
+        for (case, expected) in cases {
+            clear_last_error_for_test();
+            record_mux_error(&case);
+            let code = unsafe { tst_get_last_error() };
+            assert_eq!(
+                code,
+                expected as i32,
+                "MuxError variant mapped to wrong code: {case:?} -> got {code}, expected {}",
+                expected as i32
+            );
+            assert_not_unhandled_wildcard();
+        }
+    }
+
+    #[test]
+    fn every_known_transport_error_variant_maps_to_expected_code() {
+        let cases: Vec<(TransportError, TstError)> = vec![
+            (
+                TransportError::Backpressure("test".into()),
+                TstError::Transport,
+            ),
+            (TransportError::Broken("test".into()), TstError::Transport),
+            (TransportError::Closed, TstError::Closed),
+            (
+                TransportError::TooLarge { len: 100, max: 50 },
+                TstError::TooLarge,
+            ),
+        ];
+
+        for (case, expected) in cases {
+            clear_last_error_for_test();
+            record_transport_error(&case);
+            let code = unsafe { tst_get_last_error() };
+            assert_eq!(
+                code,
+                expected as i32,
+                "TransportError variant mapped to wrong code: {case:?} -> got {code}, expected {}",
+                expected as i32
+            );
+            assert_not_unhandled_wildcard();
+        }
+    }
+
+    #[test]
+    fn every_known_mux_sender_error_variant_maps_to_expected_code() {
+        let cases: Vec<(MuxSenderError, TstError)> = vec![
+            // MuxSenderError::Mux delegates to record_mux_error.
+            (
+                MuxSenderError::Mux(MuxError::InvalidConfig("test")),
+                TstError::InvalidConfig,
+            ),
+            // MuxSenderError::Transport delegates to record_transport_error.
+            (
+                MuxSenderError::Transport(TransportError::Closed),
+                TstError::Closed,
+            ),
+        ];
+
+        for (case, expected) in cases {
+            clear_last_error_for_test();
+            record_sender_error(&case);
+            let code = unsafe { tst_get_last_error() };
+            assert_eq!(
+                code,
+                expected as i32,
+                "MuxSenderError variant mapped to wrong code: {case:?} -> got {code}, expected {}",
+                expected as i32
+            );
+            assert_not_unhandled_wildcard();
+        }
+    }
+
+    #[test]
+    fn every_known_ts_sender_error_variant_maps_to_expected_code() {
+        use tst_pipeline::sender::TsFramingError;
+
+        let cases: Vec<(SenderError, TstError)> = vec![
+            // SenderError::Framing maps to InvalidTs via Display formatting.
+            (
+                SenderError::Framing(TsFramingError::SyncLost { offset: 0 }),
+                TstError::InvalidTs,
+            ),
+            // SenderError::Transport delegates to record_transport_error.
+            (
+                SenderError::Transport(TransportError::Closed),
+                TstError::Closed,
+            ),
+        ];
+
+        for (case, expected) in cases {
+            clear_last_error_for_test();
+            record_ts_sender_error(&case);
+            let code = unsafe { tst_get_last_error() };
+            assert_eq!(
+                code,
+                expected as i32,
+                "SenderError variant mapped to wrong code: {case:?} -> got {code}, expected {}",
+                expected as i32
+            );
+            assert_not_unhandled_wildcard();
+        }
+    }
 }

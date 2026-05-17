@@ -1,6 +1,7 @@
 //! Program-specific information (PAT, PMT, descriptors).
 
 use crate::mpegts::common::crc32::crc32_mpeg2;
+use crate::mpegts::descriptors::RawDescriptor;
 use thiserror::Error;
 
 /// Decoded Program Association Table (ISO/IEC 13818-1 §2.4.4.3).
@@ -342,15 +343,6 @@ pub struct PmtStream {
     pub stream_type: u8,
     pub elementary_pid: u16,
     pub descriptors: Vec<RawDescriptor>,
-}
-
-/// Raw, unparsed descriptor. The walker (`walk_descriptors`) and the
-/// typed extractors (`has_klva_registration`, `extract_metadata_link`)
-/// interpret these.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RawDescriptor {
-    pub tag: u8,
-    pub data: Vec<u8>,
 }
 
 /// Returns true if the descriptor list contains `registration_descriptor`

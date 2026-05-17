@@ -424,7 +424,7 @@ typedef uint32_t tst_video_stream_handle_t;
 typedef uint32_t tst_klv_stream_handle_t;
 
 /**
- * `repr(C)` mirror of `tst_core::mpegts::demux::psi::RawDescriptor`.
+ * `repr(C)` mirror of `tst_core::mpegts::descriptors::RawDescriptor`.
  *
  * `data` borrows from the demuxer's per-PMT descriptor list; valid
  * until the next `_recv_event` / `_close` call on this handle. The

@@ -1645,7 +1645,7 @@ fn stream_type_from_kind(k: &StreamKind) -> u8 {
 ///   5. `registration_descriptor` format_identifier `"KLVA"` → asynchronous
 ///      MISB KLV (existing behavior).
 ///   6. Otherwise → `StreamKind::Unknown(0x06)`.
-fn classify_0x06(descriptors: &[crate::mpegts::demux::psi::RawDescriptor]) -> StreamKind {
+fn classify_0x06(descriptors: &[crate::mpegts::descriptors::RawDescriptor]) -> StreamKind {
     use crate::mpegts::descriptors::{find_descriptor_tag, find_format_identifier};
     // AV1 in MPEG-2 TS binding §2.1: format_identifier = "AV01".
     // AV01 registration is exclusive — wins over any other descriptor.
@@ -1677,7 +1677,7 @@ fn classify_0x06(descriptors: &[crate::mpegts::demux::psi::RawDescriptor]) -> St
 /// 0xF1=GA94, 0xF2=KLVA). The classification result follows the existing
 /// first-match priority — only the diagnostic tag list changes.
 fn classify_0x06_with_ambiguity(
-    descriptors: &[crate::mpegts::demux::psi::RawDescriptor],
+    descriptors: &[crate::mpegts::descriptors::RawDescriptor],
 ) -> (StreamKind, Vec<u8>) {
     use crate::mpegts::descriptors::{find_descriptor_tag, find_format_identifier};
     let mut markers: Vec<u8> = Vec::new();
@@ -1720,7 +1720,7 @@ fn classify_0x06_with_ambiguity(
 /// when a `treat_as` override (or any other path) routes a PID to
 /// `StreamKind::Subtitle(_)` but the PMT entry has none of the above.
 fn has_recognized_subtitle_descriptor(
-    descriptors: &[crate::mpegts::demux::psi::RawDescriptor],
+    descriptors: &[crate::mpegts::descriptors::RawDescriptor],
 ) -> bool {
     use crate::mpegts::descriptors::{find_descriptor_tag, find_format_identifier};
     find_descriptor_tag(descriptors, 0x59)
@@ -1743,7 +1743,9 @@ fn has_recognized_subtitle_descriptor(
 /// through to `StreamKind::Unknown(0x06)` from the standard cascade;
 /// strict mode (`StrictMode::Full`) converts the issue to a fatal
 /// `DemuxError::StrictRejection`.
-fn is_malformed_av1_registration(descriptors: &[crate::mpegts::demux::psi::RawDescriptor]) -> bool {
+fn is_malformed_av1_registration(
+    descriptors: &[crate::mpegts::descriptors::RawDescriptor],
+) -> bool {
     descriptors
         .iter()
         .any(|d| d.tag == 0x05 && d.data.len() < 4 && d.data.starts_with(b"AV"))
@@ -2305,8 +2307,8 @@ mod tests {
 
     // -- classify_0x06: PSI cascade for stream_type 0x06 ----------------------
 
-    fn raw_desc(tag: u8, data: Vec<u8>) -> crate::mpegts::demux::psi::RawDescriptor {
-        crate::mpegts::demux::psi::RawDescriptor { tag, data }
+    fn raw_desc(tag: u8, data: Vec<u8>) -> crate::mpegts::descriptors::RawDescriptor {
+        crate::mpegts::descriptors::RawDescriptor { tag, data }
     }
 
     #[test]
@@ -2419,7 +2421,7 @@ mod tests {
     #[test]
     fn classify_0x06_no_ambiguity_when_no_markers() {
         // No recognized markers — empty tag list, falls through to Unknown.
-        let descs: Vec<crate::mpegts::demux::psi::RawDescriptor> = vec![];
+        let descs: Vec<crate::mpegts::descriptors::RawDescriptor> = vec![];
         let (kind, ambiguous_tags) = classify_0x06_with_ambiguity(&descs);
         assert_eq!(kind, StreamKind::Unknown(0x06));
         assert!(ambiguous_tags.is_empty());

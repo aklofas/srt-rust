@@ -295,7 +295,7 @@ pub struct StreamInfo {
     /// [`crate::mpegts::demux::psi::extract_user_label`] for a quick
     /// label decode; reach into this list for vendor-specific or
     /// stack-shape (Family B) decoding.
-    pub raw_descriptors: Vec<crate::mpegts::demux::psi::RawDescriptor>,
+    pub raw_descriptors: Vec<crate::mpegts::descriptors::RawDescriptor>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

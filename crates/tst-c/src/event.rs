@@ -172,7 +172,7 @@ const _TST_OBU_SIZE: () = assert!(
     "TstObu must be 24 bytes"
 );
 
-/// `repr(C)` mirror of `tst_core::mpegts::demux::psi::RawDescriptor`.
+/// `repr(C)` mirror of `tst_core::mpegts::descriptors::RawDescriptor`.
 ///
 /// `data` borrows from the demuxer's per-PMT descriptor list; valid
 /// until the next `_recv_event` / `_close` call on this handle. The

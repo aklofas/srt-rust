@@ -3,7 +3,14 @@
 //! Stateless. Each parser takes the descriptor payload (length-field
 //! stripped) and returns typed entries or a [`DescriptorParseError`].
 
-use crate::mpegts::demux::psi::RawDescriptor;
+/// Raw, unparsed descriptor. The walker (`walk_descriptors`) and the
+/// typed extractors (`has_klva_registration`, `extract_metadata_link`)
+/// interpret these.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawDescriptor {
+    pub tag: u8,
+    pub data: Vec<u8>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SubtitlingDescriptorEntry {

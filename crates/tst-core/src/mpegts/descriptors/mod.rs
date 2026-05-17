@@ -10,8 +10,9 @@
 
 pub mod parse;
 pub use parse::{
-    DescriptorParseError, SubtitlingDescriptorEntry, TeletextDescriptorEntry, find_descriptor_tag,
-    find_format_identifier, parse_subtitling_descriptor, parse_teletext_descriptor,
+    DescriptorParseError, RawDescriptor, SubtitlingDescriptorEntry, TeletextDescriptorEntry,
+    find_descriptor_tag, find_format_identifier, parse_subtitling_descriptor,
+    parse_teletext_descriptor,
 };
 
 /// Errors returned by descriptor builder helpers in this module.

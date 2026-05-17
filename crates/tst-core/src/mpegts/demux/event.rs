@@ -325,6 +325,9 @@ pub enum NonConformantIssue {
     /// PUSI mid-PES — a new PUSI packet arrived before the previous PES
     /// completed. Lenient mode discards the partial PES and starts fresh.
     PusiMidPes,
+    /// PES header parse failed. Lenient mode: receiver continues parsing
+    /// subsequent packets. Strict modes: escalates to `DemuxError`.
+    MalformedPes { pid: u16, reason: &'static str },
     /// A PMT introduced a stream PID that's already bound to a different
     /// program. PID uniqueness across programs is required by ISO 13818-1;
     /// the demuxer keeps the first-program-wins binding and drops the second.
@@ -501,6 +504,9 @@ impl std::fmt::Display for NonConformantIssue {
             }
             NonConformantIssue::PusiMidPes => {
                 write!(f, "PUSI packet arrived mid-PES")
+            }
+            NonConformantIssue::MalformedPes { pid, reason } => {
+                write!(f, "malformed PES on PID 0x{pid:04X}: {reason}")
             }
             NonConformantIssue::PidReusedAcrossPrograms { pid, programs } => {
                 write!(

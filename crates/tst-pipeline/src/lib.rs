@@ -49,6 +49,7 @@ pub mod raw_sender;
 pub mod receiver;
 pub mod reconnect;
 pub mod sender;
+pub mod shell_error;
 
 // Top-level re-exports of the most common types.
 pub use demux_receiver::{ByteSink, DemuxReceiver, DemuxReceiverError, DemuxReceiverStats};
@@ -68,6 +69,7 @@ pub use reconnect::{
     BackoffStrategy, GapBuffer, ManagedTransport, OverflowPolicy, ReconnectPolicy,
 };
 pub use sender::{Sender, SenderConfig, SenderError, SenderStats, TsFramingMode};
+pub use shell_error::{ShellError, ShellErrorKind};
 
 // Re-export the core trait types for caller convenience.
 pub use tst_core::transport::{RecvTransport, Transport, TransportCancel, TransportError};

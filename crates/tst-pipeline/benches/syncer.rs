@@ -98,7 +98,6 @@ fn drain(data: Vec<u8>, chunk: usize, want: usize) -> usize {
     while count < want {
         match r.next_packet() {
             Ok(_) => count += 1,
-            Err(TransportError::Closed) => break,
             Err(_) => break,
         }
     }

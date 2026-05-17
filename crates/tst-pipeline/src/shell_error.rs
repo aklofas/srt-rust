@@ -103,7 +103,6 @@ pub trait ShellError: std::error::Error {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Direction {
     Send,
-    #[allow(dead_code)] // constructed in Task 4 (receiver shell errors)
     Recv,
 }
 
@@ -184,7 +183,6 @@ pub(crate) fn kind_from_transport(e: &TransportError, direction: Direction) -> S
 /// "the input byte stream is malformed at this point" — all map to
 /// `InputMalformed`. The exhaustive match documents that no variant has
 /// a different disposition.
-#[allow(dead_code)] // used in Task 4 when DemuxReceiverError is wired up
 pub(crate) fn kind_from_demux(e: &DemuxError) -> ShellErrorKind {
     use ShellErrorKind::*;
     match e {

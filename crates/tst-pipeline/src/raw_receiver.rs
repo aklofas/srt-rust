@@ -14,6 +14,8 @@ use tracing::{Span, info_span};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
+use crate::shell_error::ShellErrorKind;
+
 /// Aggregate receive stats for [`RawReceiver`].
 #[must_use]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -105,6 +107,51 @@ impl<R: RecvTransport> std::fmt::Debug for RawReceiver<R> {
 #[derive(Debug, Default, Clone)]
 pub struct RawReceiverConfig {}
 
+/// Error returned by [`RawReceiver::recv_one`].
+///
+/// # Categorization
+///
+/// Bindings categorize failures via [`Self::kind`] (one of 6
+/// [`ShellErrorKind`] variants); power users inspect [`Self::source`]
+/// for the typed inner error.
+///
+/// # Reachable kinds
+///
+/// `RawReceiver` can produce: `TransportBroken`, `Closed`, `EndOfStream`.
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+#[error("RawReceiver error ({kind:?}): {source}")]
+pub struct RawReceiverError {
+    pub kind: ShellErrorKind,
+    #[source]
+    pub source: RawReceiverErrorSource,
+}
+
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum RawReceiverErrorSource {
+    #[error(transparent)]
+    Transport(#[from] TransportError),
+}
+
+impl From<TransportError> for RawReceiverError {
+    fn from(e: TransportError) -> Self {
+        Self {
+            kind: crate::shell_error::kind_from_transport(
+                &e,
+                crate::shell_error::Direction::Recv,
+            ),
+            source: RawReceiverErrorSource::Transport(e),
+        }
+    }
+}
+
+impl crate::shell_error::ShellError for RawReceiverError {
+    fn kind(&self) -> ShellErrorKind {
+        self.kind
+    }
+}
+
 impl<R: RecvTransport> RawReceiver<R> {
     /// Wrap a transport with the supplied config. Allocates an
     /// internal buffer sized to `transport.max_payload()`.
@@ -140,10 +187,12 @@ impl<R: RecvTransport> RawReceiver<R> {
     /// `tst_raw_receiver_recv` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
-    /// - [`TransportError::Closed`] when the connection has ended.
-    /// - [`TransportError::Backpressure`] on a recv timeout — the
-    ///   transport is still alive; the caller may call `recv_one` again.
-    /// - Any other [`TransportError`] from the underlying transport.
+    ///
+    /// Returns [`RawReceiverError`] with `kind` one of:
+    /// - [`ShellErrorKind::TransportBroken`] — transport socket is broken.
+    /// - [`ShellErrorKind::Closed`] — caller invoked `close()` (or for
+    ///   `ManagedRecvTransport`, the cancel signal fired).
+    /// - [`ShellErrorKind::EndOfStream`] — peer closed the connection.
     ///
     /// # Example
     /// ```
@@ -174,12 +223,10 @@ impl<R: RecvTransport> RawReceiver<R> {
     /// let mut rx = RawReceiver::new(Source(q), RawReceiverConfig::default());
     /// assert_eq!(rx.recv_one()?, b"hello");
     /// assert_eq!(rx.recv_one()?, b"world");
-    /// // Drained — next recv signals end-of-stream.
-    /// assert_eq!(rx.recv_one().unwrap_err(), TransportError::Closed);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn recv_one(&mut self) -> Result<Vec<u8>, TransportError> {
+    pub fn recv_one(&mut self) -> Result<Vec<u8>, RawReceiverError> {
         let n = self.transport.recv_bytes(&mut self.buf)?;
         self.stats.bytes_received += n as u64;
         self.stats.packets_received += 1;
@@ -396,7 +443,10 @@ mod tests {
 
         assert_eq!(rx.recv_one().unwrap(), b"hello");
         assert_eq!(rx.recv_one().unwrap(), b"world");
-        assert_eq!(rx.recv_one().unwrap_err(), TransportError::Closed);
+        assert_eq!(
+            rx.recv_one().unwrap_err().kind,
+            crate::shell_error::ShellErrorKind::EndOfStream,
+        );
     }
 
     #[test]

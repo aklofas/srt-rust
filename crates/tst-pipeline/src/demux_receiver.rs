@@ -23,7 +23,8 @@
 //! PES starts or the stream ends). In normal live streams the flush emits
 //! nothing; for finite test data it recovers the last sample.
 
-use crate::receiver::{Receiver, ReceiverConfig};
+use crate::receiver::{Receiver, ReceiverConfig, ReceiverErrorSource};
+use crate::shell_error::ShellErrorKind;
 use std::sync::Arc;
 use tracing::{Span, info_span};
 use tst_core::error::DemuxError;
@@ -171,8 +172,12 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     /// - An event is available in the demuxer's internal queue → `Ok(Some(e))`.
     /// - The transport closes cleanly → flushes the demuxer and returns
     ///   `Ok(None)` once the queue is drained.
-    /// - The transport fails → `Err(DemuxReceiverError::Transport(e))`.
-    /// - The demuxer rejects a packet in strict mode → `Err(DemuxReceiverError::Demux(e))`.
+    /// - The transport fails → `Err(e)` with `e.kind` of `TransportBroken` or
+    ///   `Closed` (caller-initiated) — inspect `e.source` for the inner
+    ///   [`DemuxReceiverErrorSource::Transport`] variant.
+    /// - The demuxer rejects a packet in strict mode → `Err(e)` with `e.kind`
+    ///   of `InputMalformed` — inspect `e.source` for the inner
+    ///   [`DemuxReceiverErrorSource::Demux`] variant.
     ///
     /// # MalformedPes note
     ///
@@ -181,16 +186,19 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     /// (`NonConformantIssue::MalformedPes { pid, reason }`) and the receive
     /// loop continues — a single corrupt PES on one PID no longer tears down
     /// the receiver. In strict modes that reject `MalformedPes` (today
-    /// `StrictMode::Full`), the error propagates as `DemuxReceiverError::Demux`
+    /// `StrictMode::Full`), the error propagates with `kind` `InputMalformed`
     /// and terminates the loop.
     ///
     /// # Errors
-    /// - [`DemuxReceiverError::Transport`] wraps any
-    ///   [`TransportError`] other than `Closed` (which is the clean-EOF
-    ///   signal converted to `Ok(None)`).
-    /// - [`DemuxReceiverError::Demux`] wraps a [`DemuxError`] from the
-    ///   inner demuxer: strict-mode violation, unrecoverable packet
-    ///   malformation, or malformed PES header.
+    ///
+    /// Returns [`DemuxReceiverError`] with `kind` one of:
+    /// - [`ShellErrorKind::InputMalformed`] — demuxer rejected a packet
+    ///   (strict-mode violation, unrecoverable malformation, or malformed PES).
+    /// - [`ShellErrorKind::TransportBroken`] — transport socket is broken.
+    /// - [`ShellErrorKind::Closed`] — caller invoked `close()`.
+    /// - [`ShellErrorKind::EndOfStream`] — peer closed the connection cleanly
+    ///   (`TransportError::Closed`), but only surfaced here if a partial PES
+    ///   flush fails; the normal EOF path returns `Ok(None)`.
     ///
     /// # Example
     /// ```
@@ -235,17 +243,22 @@ impl<R: RecvTransport> DemuxReceiver<R> {
             // Pull the next aligned 188-byte TS packet.
             let pkt = match self.ts.next_packet() {
                 Ok(p) => p,
-                Err(TransportError::Closed) => {
+                Err(e) if e.kind == crate::shell_error::ShellErrorKind::EndOfStream => {
                     // Stream end: flush any partial PES sitting in reassembly
                     // (e.g. the final video AU whose PES length field is 0).
                     self.demux.flush();
                     // Drain any events the flush produced before signaling EOF.
-                    if let Some(e) = self.demux.next_event() {
-                        return Ok(Some(e));
+                    if let Some(ev) = self.demux.next_event() {
+                        return Ok(Some(ev));
                     }
                     return Ok(None);
                 }
-                Err(other) => return Err(DemuxReceiverError::Transport(other)),
+                Err(e) => {
+                    // Re-classify via DemuxReceiverError's From<TransportError>
+                    // impl so kind routing is applied.
+                    let ReceiverErrorSource::Transport(te) = e.source;
+                    return Err(te.into());
+                }
             };
             // Fan-out to byte sinks in registration order before demuxing.
             for sink in &mut self.byte_sinks {
@@ -260,7 +273,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
             // StrictRejection.
             self.demux
                 .feed_aligned(&pkt)
-                .map_err(DemuxReceiverError::Demux)?;
+                .map_err(DemuxReceiverError::from)?;
         }
     }
 
@@ -326,24 +339,61 @@ impl<R: RecvTransport> Drop for DemuxReceiver<R> {
 /// ```
 pub type BoxedDemuxReceiver = DemuxReceiver<Box<dyn crate::RecvTransport>>;
 
-/// Errors that can be returned by [`DemuxReceiver::recv_event`].
-#[derive(Debug, thiserror::Error)]
+/// Error returned by [`DemuxReceiver`] methods.
+///
+/// # Categorization
+///
+/// Bindings categorize failures via [`Self::kind`] (one of 6
+/// [`ShellErrorKind`] variants); power users inspect [`Self::source`]
+/// for the typed inner error.
+///
+/// # Reachable kinds
+///
+/// `DemuxReceiver` can produce: `InputMalformed`, `TransportBroken`,
+/// `Closed`, `EndOfStream`.
 #[non_exhaustive]
-pub enum DemuxReceiverError {
-    /// The underlying transport closed unexpectedly or returned a fatal error.
+#[derive(Debug, thiserror::Error)]
+#[error("DemuxReceiver error ({kind:?}): {source}")]
+pub struct DemuxReceiverError {
+    pub kind: ShellErrorKind,
+    #[source]
+    pub source: DemuxReceiverErrorSource,
+}
+
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum DemuxReceiverErrorSource {
     #[error(transparent)]
     Transport(#[from] TransportError),
-    /// The demuxer rejected a packet (strict-mode violation, unrecoverable
-    /// packet malformation, or malformed PES header).
-    ///
-    /// In lenient mode (the default `StrictMode::Off`) `DemuxError::MalformedPes`
-    /// no longer surfaces here — it is converted to a `NonConformant` event by
-    /// the inner demuxer. Strict modes that reject `MalformedPes` (today
-    /// `StrictMode::Full`) still propagate it; re-entry after such a strict
-    /// rejection is discouraged because reassembly state past a bad PES
-    /// header is undefined.
     #[error(transparent)]
     Demux(#[from] DemuxError),
+}
+
+impl From<TransportError> for DemuxReceiverError {
+    fn from(e: TransportError) -> Self {
+        Self {
+            kind: crate::shell_error::kind_from_transport(
+                &e,
+                crate::shell_error::Direction::Recv,
+            ),
+            source: DemuxReceiverErrorSource::Transport(e),
+        }
+    }
+}
+
+impl From<DemuxError> for DemuxReceiverError {
+    fn from(e: DemuxError) -> Self {
+        Self {
+            kind: crate::shell_error::kind_from_demux(&e),
+            source: DemuxReceiverErrorSource::Demux(e),
+        }
+    }
+}
+
+impl crate::shell_error::ShellError for DemuxReceiverError {
+    fn kind(&self) -> ShellErrorKind {
+        self.kind
+    }
 }
 
 /// Stats snapshot for [`DemuxReceiver`]. Composes the underlying

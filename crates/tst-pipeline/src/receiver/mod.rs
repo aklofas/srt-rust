@@ -19,6 +19,8 @@ use tst_core::mpegts::common::TS_PACKET_SIZE;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
+use crate::shell_error::ShellErrorKind;
+
 /// Application-level stats for [`Receiver`].
 ///
 /// Mirrors the shape of [`crate::SenderStats`] on the receive
@@ -131,6 +133,54 @@ impl<R: RecvTransport> std::fmt::Debug for Receiver<R> {
 #[derive(Debug, Default, Clone)]
 pub struct ReceiverConfig {}
 
+/// Error returned by [`Receiver::next_packet`].
+///
+/// # Categorization
+///
+/// Bindings categorize failures via [`Self::kind`] (one of 6
+/// [`ShellErrorKind`] variants); power users inspect [`Self::source`]
+/// for the typed inner error.
+///
+/// # Reachable kinds
+///
+/// `Receiver` can produce: `TransportBroken`, `Closed`, `EndOfStream`.
+/// `InputMalformed` is reachable only via `DemuxReceiver` (which adds
+/// the demuxer layer on top); plain `Receiver` is byte-pass-through and
+/// doesn't validate TS structure.
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+#[error("Receiver error ({kind:?}): {source}")]
+pub struct ReceiverError {
+    pub kind: ShellErrorKind,
+    #[source]
+    pub source: ReceiverErrorSource,
+}
+
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum ReceiverErrorSource {
+    #[error(transparent)]
+    Transport(#[from] TransportError),
+}
+
+impl From<TransportError> for ReceiverError {
+    fn from(e: TransportError) -> Self {
+        Self {
+            kind: crate::shell_error::kind_from_transport(
+                &e,
+                crate::shell_error::Direction::Recv,
+            ),
+            source: ReceiverErrorSource::Transport(e),
+        }
+    }
+}
+
+impl crate::shell_error::ShellError for ReceiverError {
+    fn kind(&self) -> ShellErrorKind {
+        self.kind
+    }
+}
+
 impl<R: RecvTransport> Receiver<R> {
     /// Wrap a transport with the supplied config. Allocates an
     /// internal receive buffer sized to `transport.max_payload()`.
@@ -173,11 +223,12 @@ impl<R: RecvTransport> Receiver<R> {
     /// 3. Repeat until a packet is available or the transport closes.
     ///
     /// # Errors
-    /// - [`TransportError::Closed`] when the transport has closed and the
-    ///   syncer's buffer is exhausted.
-    /// - [`TransportError::Backpressure`] on a recv timeout — the transport
-    ///   is still alive; the caller may call `next_packet` again.
-    /// - Any other [`TransportError`] from the underlying transport.
+    ///
+    /// Returns [`ReceiverError`] with `kind` one of:
+    /// - [`ShellErrorKind::TransportBroken`] — transport socket is broken.
+    /// - [`ShellErrorKind::Closed`] — caller invoked `close()` (or for
+    ///   `ManagedRecvTransport`, the cancel signal fired).
+    /// - [`ShellErrorKind::EndOfStream`] — peer closed the connection.
     ///
     /// # Example
     /// ```
@@ -223,7 +274,7 @@ impl<R: RecvTransport> Receiver<R> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn next_packet(&mut self) -> Result<[u8; 188], TransportError> {
+    pub fn next_packet(&mut self) -> Result<[u8; 188], ReceiverError> {
         loop {
             if let Some(pkt) = self.syncer.next_packet() {
                 self.bytes_received += TS_PACKET_SIZE as u64;
@@ -236,7 +287,7 @@ impl<R: RecvTransport> Receiver<R> {
             // guards against implementors that follow the io::Read convention
             // instead, and makes the loop terminate rather than spin.
             if n == 0 {
-                return Err(TransportError::Closed);
+                return Err(TransportError::Closed.into());
             }
             self.syncer.push(&self.recv_buf[..n]);
         }
@@ -514,7 +565,7 @@ mod tests {
         loop {
             match rx.next_packet() {
                 Ok(_) => got += 1,
-                Err(TransportError::Closed) => break,
+                Err(e) if e.kind == crate::shell_error::ShellErrorKind::EndOfStream => break,
                 Err(e) => panic!("unexpected error: {e:?}"),
             }
         }
@@ -532,7 +583,7 @@ mod tests {
         loop {
             match rx.next_packet() {
                 Ok(_) => got += 1,
-                Err(TransportError::Closed) => break,
+                Err(e) if e.kind == crate::shell_error::ShellErrorKind::EndOfStream => break,
                 Err(e) => panic!("unexpected error: {e:?}"),
             }
         }
@@ -543,6 +594,9 @@ mod tests {
     #[test]
     fn closed_transport_returns_closed() {
         let mut rx = Receiver::new(MockRecv::new(vec![]), ReceiverConfig::default());
-        assert_eq!(rx.next_packet().unwrap_err(), TransportError::Closed,);
+        assert_eq!(
+            rx.next_packet().unwrap_err().kind,
+            crate::shell_error::ShellErrorKind::EndOfStream,
+        );
     }
 }

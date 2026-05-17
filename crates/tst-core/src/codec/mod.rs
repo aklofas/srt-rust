@@ -18,6 +18,7 @@ pub mod h264;
 pub mod h265;
 pub mod h266;
 pub mod mpegaudio;
+pub mod util;
 
 /// Chroma subsampling format. From H.264 / H.265 `chroma_format_idc`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

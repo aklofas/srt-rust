@@ -848,6 +848,8 @@ impl<'a> core::marker::UnsafeUnpin for tst_core::codec::mpegaudio::Frames<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::mpegaudio::Frames<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::codec::mpegaudio::Frames<'a>
 pub fn tst_core::codec::mpegaudio::frames(bytes: &[u8]) -> tst_core::codec::mpegaudio::Frames<'_>
+pub mod tst_core::codec::util
+pub fn tst_core::codec::util::count_nal_units(buf: &[u8], codec: tst_core::mpegts::mux::VideoCodec) -> u64
 pub enum tst_core::codec::ChromaFormat
 pub tst_core::codec::ChromaFormat::Monochrome
 pub tst_core::codec::ChromaFormat::Yuv420

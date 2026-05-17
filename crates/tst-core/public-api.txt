@@ -129,123 +129,46 @@ impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::aac::AdtsF
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::codec::aac::AdtsFrames<'a>
 pub fn tst_core::codec::aac::frames(bytes: &[u8]) -> tst_core::codec::aac::AdtsFrames<'_>
 pub mod tst_core::codec::av1
-pub mod tst_core::codec::av1::frame_header
-pub struct tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-pub tst_core::codec::av1::frame_header::Av1FrameHeaderLight::frame_size: core::option::Option<(u32, u32)>
-pub tst_core::codec::av1::frame_header::Av1FrameHeaderLight::frame_type: u8
-pub tst_core::codec::av1::frame_header::Av1FrameHeaderLight::raw: alloc::vec::Vec<u8>
-pub tst_core::codec::av1::frame_header::Av1FrameHeaderLight::show_existing_frame: bool
-pub tst_core::codec::av1::frame_header::Av1FrameHeaderLight::show_frame: bool
-impl core::clone::Clone for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-pub fn tst_core::codec::av1::frame_header::Av1FrameHeaderLight::clone(&self) -> tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::cmp::Eq for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::cmp::PartialEq for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-pub fn tst_core::codec::av1::frame_header::Av1FrameHeaderLight::eq(&self, other: &tst_core::codec::av1::frame_header::Av1FrameHeaderLight) -> bool
-impl core::fmt::Debug for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-pub fn tst_core::codec::av1::frame_header::Av1FrameHeaderLight::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::marker::Freeze for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::marker::Send for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::marker::Sync for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::marker::Unpin for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::marker::UnsafeUnpin for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-pub fn tst_core::codec::av1::frame_header::parse_frame_header_light(payload: &[u8], seq: &tst_core::codec::av1::sequence_header::Av1SequenceHeader) -> core::result::Result<tst_core::codec::av1::frame_header::Av1FrameHeaderLight, tst_core::codec::CodecParseError>
-pub mod tst_core::codec::av1::leb128
-pub fn tst_core::codec::av1::leb128::read_leb128(buf: &[u8], offset: usize) -> core::result::Result<(u64, usize), tst_core::codec::CodecParseError>
-pub mod tst_core::codec::av1::obu_stream
-pub struct tst_core::codec::av1::obu_stream::Av1ObuStream
-pub tst_core::codec::av1::obu_stream::Av1ObuStream::frame_headers: alloc::vec::Vec<tst_core::codec::av1::frame_header::Av1FrameHeaderLight>
-pub tst_core::codec::av1::obu_stream::Av1ObuStream::sequence_headers: alloc::vec::Vec<tst_core::codec::av1::sequence_header::Av1SequenceHeader>
-pub tst_core::codec::av1::obu_stream::Av1ObuStream::unparseable: alloc::vec::Vec<(u8, tst_core::codec::CodecParseError)>
-impl core::clone::Clone for tst_core::codec::av1::obu_stream::Av1ObuStream
-pub fn tst_core::codec::av1::obu_stream::Av1ObuStream::clone(&self) -> tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::cmp::Eq for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::cmp::PartialEq for tst_core::codec::av1::obu_stream::Av1ObuStream
-pub fn tst_core::codec::av1::obu_stream::Av1ObuStream::eq(&self, other: &tst_core::codec::av1::obu_stream::Av1ObuStream) -> bool
-impl core::fmt::Debug for tst_core::codec::av1::obu_stream::Av1ObuStream
-pub fn tst_core::codec::av1::obu_stream::Av1ObuStream::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::marker::Freeze for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::marker::Send for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::marker::Sync for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::marker::Unpin for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::marker::UnsafeUnpin for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::av1::obu_stream::Av1ObuStream
-pub fn tst_core::codec::av1::obu_stream::parse_obu_stream(obus: &[tst_core::mpegts::demux::event::Obu]) -> tst_core::codec::av1::obu_stream::Av1ObuStream
-pub mod tst_core::codec::av1::sequence_header
-pub struct tst_core::codec::av1::sequence_header::Av1SequenceHeader
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::bit_depth: u8
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::chroma_format: tst_core::codec::ChromaFormat
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::color_info: core::option::Option<tst_core::codec::ColorInfo>
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::frame_rate: core::option::Option<tst_core::codec::Rational>
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::level: u8
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::max_frame_height: u32
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::max_frame_width: u32
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::monochrome: bool
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::profile: u8
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::raw: alloc::vec::Vec<u8>
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::reduced_still_picture_header: bool
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::still_picture: bool
-pub tst_core::codec::av1::sequence_header::Av1SequenceHeader::tier: u8
-impl core::clone::Clone for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-pub fn tst_core::codec::av1::sequence_header::Av1SequenceHeader::clone(&self) -> tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::cmp::Eq for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::cmp::PartialEq for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-pub fn tst_core::codec::av1::sequence_header::Av1SequenceHeader::eq(&self, other: &tst_core::codec::av1::sequence_header::Av1SequenceHeader) -> bool
-impl core::fmt::Debug for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-pub fn tst_core::codec::av1::sequence_header::Av1SequenceHeader::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::marker::Freeze for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::marker::Send for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::marker::Sync for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::marker::Unpin for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::marker::UnsafeUnpin for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-pub fn tst_core::codec::av1::sequence_header::parse_sequence_header(payload: &[u8]) -> core::result::Result<tst_core::codec::av1::sequence_header::Av1SequenceHeader, tst_core::codec::CodecParseError>
 pub struct tst_core::codec::av1::Av1FrameHeaderLight
 pub tst_core::codec::av1::Av1FrameHeaderLight::frame_size: core::option::Option<(u32, u32)>
 pub tst_core::codec::av1::Av1FrameHeaderLight::frame_type: u8
 pub tst_core::codec::av1::Av1FrameHeaderLight::raw: alloc::vec::Vec<u8>
 pub tst_core::codec::av1::Av1FrameHeaderLight::show_existing_frame: bool
 pub tst_core::codec::av1::Av1FrameHeaderLight::show_frame: bool
-impl core::clone::Clone for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-pub fn tst_core::codec::av1::frame_header::Av1FrameHeaderLight::clone(&self) -> tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::cmp::Eq for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::cmp::PartialEq for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-pub fn tst_core::codec::av1::frame_header::Av1FrameHeaderLight::eq(&self, other: &tst_core::codec::av1::frame_header::Av1FrameHeaderLight) -> bool
-impl core::fmt::Debug for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-pub fn tst_core::codec::av1::frame_header::Av1FrameHeaderLight::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::marker::Freeze for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::marker::Send for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::marker::Sync for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::marker::Unpin for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::marker::UnsafeUnpin for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
-impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::av1::frame_header::Av1FrameHeaderLight
+impl core::clone::Clone for tst_core::codec::av1::Av1FrameHeaderLight
+pub fn tst_core::codec::av1::Av1FrameHeaderLight::clone(&self) -> tst_core::codec::av1::Av1FrameHeaderLight
+impl core::cmp::Eq for tst_core::codec::av1::Av1FrameHeaderLight
+impl core::cmp::PartialEq for tst_core::codec::av1::Av1FrameHeaderLight
+pub fn tst_core::codec::av1::Av1FrameHeaderLight::eq(&self, other: &tst_core::codec::av1::Av1FrameHeaderLight) -> bool
+impl core::fmt::Debug for tst_core::codec::av1::Av1FrameHeaderLight
+pub fn tst_core::codec::av1::Av1FrameHeaderLight::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::codec::av1::Av1FrameHeaderLight
+impl core::marker::Freeze for tst_core::codec::av1::Av1FrameHeaderLight
+impl core::marker::Send for tst_core::codec::av1::Av1FrameHeaderLight
+impl core::marker::Sync for tst_core::codec::av1::Av1FrameHeaderLight
+impl core::marker::Unpin for tst_core::codec::av1::Av1FrameHeaderLight
+impl core::marker::UnsafeUnpin for tst_core::codec::av1::Av1FrameHeaderLight
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::av1::Av1FrameHeaderLight
+impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::av1::Av1FrameHeaderLight
 pub struct tst_core::codec::av1::Av1ObuStream
-pub tst_core::codec::av1::Av1ObuStream::frame_headers: alloc::vec::Vec<tst_core::codec::av1::frame_header::Av1FrameHeaderLight>
-pub tst_core::codec::av1::Av1ObuStream::sequence_headers: alloc::vec::Vec<tst_core::codec::av1::sequence_header::Av1SequenceHeader>
+pub tst_core::codec::av1::Av1ObuStream::frame_headers: alloc::vec::Vec<tst_core::codec::av1::Av1FrameHeaderLight>
+pub tst_core::codec::av1::Av1ObuStream::sequence_headers: alloc::vec::Vec<tst_core::codec::av1::Av1SequenceHeader>
 pub tst_core::codec::av1::Av1ObuStream::unparseable: alloc::vec::Vec<(u8, tst_core::codec::CodecParseError)>
-impl core::clone::Clone for tst_core::codec::av1::obu_stream::Av1ObuStream
-pub fn tst_core::codec::av1::obu_stream::Av1ObuStream::clone(&self) -> tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::cmp::Eq for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::cmp::PartialEq for tst_core::codec::av1::obu_stream::Av1ObuStream
-pub fn tst_core::codec::av1::obu_stream::Av1ObuStream::eq(&self, other: &tst_core::codec::av1::obu_stream::Av1ObuStream) -> bool
-impl core::fmt::Debug for tst_core::codec::av1::obu_stream::Av1ObuStream
-pub fn tst_core::codec::av1::obu_stream::Av1ObuStream::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::marker::Freeze for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::marker::Send for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::marker::Sync for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::marker::Unpin for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::marker::UnsafeUnpin for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::av1::obu_stream::Av1ObuStream
-impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::av1::obu_stream::Av1ObuStream
+impl core::clone::Clone for tst_core::codec::av1::Av1ObuStream
+pub fn tst_core::codec::av1::Av1ObuStream::clone(&self) -> tst_core::codec::av1::Av1ObuStream
+impl core::cmp::Eq for tst_core::codec::av1::Av1ObuStream
+impl core::cmp::PartialEq for tst_core::codec::av1::Av1ObuStream
+pub fn tst_core::codec::av1::Av1ObuStream::eq(&self, other: &tst_core::codec::av1::Av1ObuStream) -> bool
+impl core::fmt::Debug for tst_core::codec::av1::Av1ObuStream
+pub fn tst_core::codec::av1::Av1ObuStream::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::codec::av1::Av1ObuStream
+impl core::marker::Freeze for tst_core::codec::av1::Av1ObuStream
+impl core::marker::Send for tst_core::codec::av1::Av1ObuStream
+impl core::marker::Sync for tst_core::codec::av1::Av1ObuStream
+impl core::marker::Unpin for tst_core::codec::av1::Av1ObuStream
+impl core::marker::UnsafeUnpin for tst_core::codec::av1::Av1ObuStream
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::av1::Av1ObuStream
+impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::av1::Av1ObuStream
 pub struct tst_core::codec::av1::Av1SequenceHeader
 pub tst_core::codec::av1::Av1SequenceHeader::bit_depth: u8
 pub tst_core::codec::av1::Av1SequenceHeader::chroma_format: tst_core::codec::ChromaFormat
@@ -260,24 +183,24 @@ pub tst_core::codec::av1::Av1SequenceHeader::raw: alloc::vec::Vec<u8>
 pub tst_core::codec::av1::Av1SequenceHeader::reduced_still_picture_header: bool
 pub tst_core::codec::av1::Av1SequenceHeader::still_picture: bool
 pub tst_core::codec::av1::Av1SequenceHeader::tier: u8
-impl core::clone::Clone for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-pub fn tst_core::codec::av1::sequence_header::Av1SequenceHeader::clone(&self) -> tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::cmp::Eq for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::cmp::PartialEq for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-pub fn tst_core::codec::av1::sequence_header::Av1SequenceHeader::eq(&self, other: &tst_core::codec::av1::sequence_header::Av1SequenceHeader) -> bool
-impl core::fmt::Debug for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-pub fn tst_core::codec::av1::sequence_header::Av1SequenceHeader::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::marker::Freeze for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::marker::Send for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::marker::Sync for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::marker::Unpin for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::marker::UnsafeUnpin for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::av1::sequence_header::Av1SequenceHeader
-pub fn tst_core::codec::av1::parse_frame_header_light(payload: &[u8], seq: &tst_core::codec::av1::sequence_header::Av1SequenceHeader) -> core::result::Result<tst_core::codec::av1::frame_header::Av1FrameHeaderLight, tst_core::codec::CodecParseError>
-pub fn tst_core::codec::av1::parse_obu_stream(obus: &[tst_core::mpegts::demux::event::Obu]) -> tst_core::codec::av1::obu_stream::Av1ObuStream
-pub fn tst_core::codec::av1::parse_sequence_header(payload: &[u8]) -> core::result::Result<tst_core::codec::av1::sequence_header::Av1SequenceHeader, tst_core::codec::CodecParseError>
+impl core::clone::Clone for tst_core::codec::av1::Av1SequenceHeader
+pub fn tst_core::codec::av1::Av1SequenceHeader::clone(&self) -> tst_core::codec::av1::Av1SequenceHeader
+impl core::cmp::Eq for tst_core::codec::av1::Av1SequenceHeader
+impl core::cmp::PartialEq for tst_core::codec::av1::Av1SequenceHeader
+pub fn tst_core::codec::av1::Av1SequenceHeader::eq(&self, other: &tst_core::codec::av1::Av1SequenceHeader) -> bool
+impl core::fmt::Debug for tst_core::codec::av1::Av1SequenceHeader
+pub fn tst_core::codec::av1::Av1SequenceHeader::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::codec::av1::Av1SequenceHeader
+impl core::marker::Freeze for tst_core::codec::av1::Av1SequenceHeader
+impl core::marker::Send for tst_core::codec::av1::Av1SequenceHeader
+impl core::marker::Sync for tst_core::codec::av1::Av1SequenceHeader
+impl core::marker::Unpin for tst_core::codec::av1::Av1SequenceHeader
+impl core::marker::UnsafeUnpin for tst_core::codec::av1::Av1SequenceHeader
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::av1::Av1SequenceHeader
+impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::av1::Av1SequenceHeader
+pub fn tst_core::codec::av1::parse_frame_header_light(payload: &[u8], seq: &tst_core::codec::av1::Av1SequenceHeader) -> core::result::Result<tst_core::codec::av1::Av1FrameHeaderLight, tst_core::codec::CodecParseError>
+pub fn tst_core::codec::av1::parse_obu_stream(obus: &[tst_core::mpegts::demux::event::Obu]) -> tst_core::codec::av1::Av1ObuStream
+pub fn tst_core::codec::av1::parse_sequence_header(payload: &[u8]) -> core::result::Result<tst_core::codec::av1::Av1SequenceHeader, tst_core::codec::CodecParseError>
 pub mod tst_core::codec::h264
 pub enum tst_core::codec::h264::EntropyCodingMode
 pub tst_core::codec::h264::EntropyCodingMode::Cabac

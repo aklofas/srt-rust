@@ -381,14 +381,14 @@ fn av1_conformance_vectors() {
             sidecar.kind, "av1_sequence_header",
             "{name}: kind must be av1_sequence_header"
         );
-        let result = tst_core::codec::av1::sequence_header::parse_sequence_header(&bin);
+        let result = tst_core::codec::av1::parse_sequence_header(&bin);
         validate_result_av1(&name, &result, &sidecar.expected);
     }
 }
 
 fn validate_result_av1(
     name: &str,
-    result: &Result<tst_core::codec::av1::sequence_header::Av1SequenceHeader, CodecParseError>,
+    result: &Result<tst_core::codec::av1::Av1SequenceHeader, CodecParseError>,
     expected: &Expected,
 ) {
     match (expected.outcome.as_str(), result) {

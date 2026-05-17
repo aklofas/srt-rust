@@ -15,10 +15,10 @@
 //!   unparsed; see `mpegts::demux::event::Obu`.
 
 pub(crate) mod bitreader;
-pub mod frame_header;
-pub mod leb128;
-pub mod obu_stream;
-pub mod sequence_header;
+mod frame_header;
+pub(crate) mod leb128;
+mod obu_stream;
+mod sequence_header;
 
 pub use frame_header::{Av1FrameHeaderLight, parse_frame_header_light};
 pub use obu_stream::{Av1ObuStream, parse_obu_stream};

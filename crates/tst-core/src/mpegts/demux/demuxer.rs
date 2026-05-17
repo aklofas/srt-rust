@@ -2,7 +2,7 @@
 
 use crate::error::DemuxError;
 use crate::mpegts::common::{
-    Pts90khz, TS_PACKET_SIZE, TS_SYNC_BYTE, pcr_diff_27mhz, pts_diff_33bit,
+    Pts90khz, StreamTypeCode, TS_PACKET_SIZE, TS_SYNC_BYTE, pcr_diff_27mhz, pts_diff_33bit,
 };
 use crate::mpegts::demux::event::{
     AudioCodec, DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit,
@@ -447,7 +447,7 @@ impl Demuxer {
                         .entry(stream.pid)
                         .or_insert_with(|| crate::mpegts::stats::StreamStats {
                             pid: stream.pid,
-                            stream_type: stream_type_from_kind(&stream.kind),
+                            stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
                             program_number,
                             ..Default::default()
                         })
@@ -470,7 +470,7 @@ impl Demuxer {
                     .entry(stream.pid)
                     .or_insert_with(|| crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
-                        stream_type: stream_type_from_kind(&stream.kind),
+                        stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
                         program_number,
                         ..Default::default()
                     })
@@ -1047,7 +1047,7 @@ impl Demuxer {
                             .entry(stream.pid)
                             .or_insert_with(|| crate::mpegts::stats::StreamStats {
                                 pid: stream.pid,
-                                stream_type: stream_type_from_kind(&stream.kind),
+                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
                                 program_number,
                                 ..Default::default()
                             })
@@ -1066,7 +1066,7 @@ impl Demuxer {
                             .entry(stream.pid)
                             .or_insert_with(|| crate::mpegts::stats::StreamStats {
                                 pid: stream.pid,
-                                stream_type: stream_type_from_kind(&stream.kind),
+                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
                                 program_number,
                                 ..Default::default()
                             })
@@ -1158,7 +1158,7 @@ impl Demuxer {
                     .entry(stream.pid)
                     .or_insert_with(|| crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
-                        stream_type: stream_type_from_kind(&stream.kind),
+                        stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
                         program_number,
                         ..Default::default()
                     })
@@ -1254,7 +1254,7 @@ impl Demuxer {
                         let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
                             crate::mpegts::stats::StreamStats {
                                 pid: stream.pid,
-                                stream_type: stream_type_from_kind(&stream.kind),
+                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
                                 program_number,
                                 ..Default::default()
                             }
@@ -1277,7 +1277,7 @@ impl Demuxer {
                 let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
                     crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
-                        stream_type: stream_type_from_kind(&stream.kind),
+                        stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
                         program_number,
                         ..Default::default()
                     }
@@ -1303,7 +1303,7 @@ impl Demuxer {
                 let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
                     crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
-                        stream_type,
+                        stream_type: StreamTypeCode::from_byte(stream_type),
                         program_number,
                         ..Default::default()
                     }
@@ -1325,7 +1325,7 @@ impl Demuxer {
                 let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
                     crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
-                        stream_type: stream_type_from_kind(&stream.kind),
+                        stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
                         program_number,
                         ..Default::default()
                     }
@@ -1367,7 +1367,7 @@ impl Demuxer {
                 let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
                     crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
-                        stream_type: stream_type_from_kind(&stream.kind),
+                        stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
                         program_number,
                         label: Some(
                             crate::mpegts::stats::demux_subtitle_codec_label(codec).to_string(),

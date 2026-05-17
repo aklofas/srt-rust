@@ -3,6 +3,8 @@
 //! in `stream_type`. Same shape across sender and receiver sites so the
 //! `srt-c` ABI is one struct + one fixed-size array.
 
+use crate::mpegts::common::StreamTypeCode;
+
 /// Per-stream counters. Used at every site that emits or receives TS
 /// elementary streams. PID is identity; `stream_type` is the PMT byte
 /// (or `0x00` for PSI PIDs); `label` is None unless a PMT user-label
@@ -11,7 +13,7 @@
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StreamStats {
     pub pid: u16,
-    pub stream_type: u8,
+    pub stream_type: StreamTypeCode,
     /// Program number from the PAT/PMT that owns this stream. `0` for PSI
     /// PIDs (PAT, PMT) and for streams that were created before a PMT arrived.
     pub program_number: u16,
@@ -207,7 +209,7 @@ mod tests {
     fn default_is_all_zero() {
         let s = StreamStats::default();
         assert_eq!(s.pid, 0);
-        assert_eq!(s.stream_type, 0);
+        assert_eq!(s.stream_type, StreamTypeCode::default());
         assert_eq!(s.label, None);
         assert_eq!(s.items, 0);
         assert_eq!(s.bytes, 0);
@@ -218,7 +220,7 @@ mod tests {
     fn equality_is_field_wise() {
         let a = StreamStats {
             pid: 0x100,
-            stream_type: 0x1B,
+            stream_type: StreamTypeCode::from_byte(0x1B),
             program_number: 1,
             label: Some("EO".into()),
             items: 5,

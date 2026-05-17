@@ -21,7 +21,7 @@ pub use types::*;
 mod config;
 pub use config::*;
 
-use crate::mpegts::common::{Pcr27mhz, Pts90khz, StreamType};
+use crate::mpegts::common::{Pcr27mhz, Pts90khz, StreamType, StreamTypeCode};
 use std::collections::{BTreeMap, VecDeque};
 
 /// Stats snapshot for [`Muxer`].
@@ -458,7 +458,7 @@ impl Muxer {
                     v.pid,
                     crate::mpegts::stats::StreamStats {
                         pid: v.pid,
-                        stream_type: stream_type_byte,
+                        stream_type: StreamTypeCode::from_byte(stream_type_byte),
                         program_number: prog.program_number,
                         ..Default::default()
                     },
@@ -473,7 +473,7 @@ impl Muxer {
                     k.pid,
                     crate::mpegts::stats::StreamStats {
                         pid: k.pid,
-                        stream_type: stream_type_byte,
+                        stream_type: StreamTypeCode::from_byte(stream_type_byte),
                         program_number: prog.program_number,
                         ..Default::default()
                     },
@@ -490,7 +490,7 @@ impl Muxer {
                     a.pid,
                     crate::mpegts::stats::StreamStats {
                         pid: a.pid,
-                        stream_type: stream_type_byte,
+                        stream_type: StreamTypeCode::from_byte(stream_type_byte),
                         program_number: prog.program_number,
                         ..Default::default()
                     },
@@ -506,7 +506,7 @@ impl Muxer {
                     s.pid,
                     crate::mpegts::stats::StreamStats {
                         pid: s.pid,
-                        stream_type: StreamType::KlvPrivate.as_u8(),
+                        stream_type: StreamTypeCode::from_byte(StreamType::KlvPrivate.as_u8()),
                         program_number: prog.program_number,
                         label: Some(
                             crate::mpegts::stats::subtitle_codec_label(&s.codec).to_string(),
@@ -4116,8 +4116,14 @@ mod stats_tests {
         assert_eq!(st.per_stream.len(), 2);
         assert!(st.per_stream.contains_key(&0x100));
         assert!(st.per_stream.contains_key(&0x101));
-        assert_eq!(st.per_stream[&0x100].stream_type, 0x1B);
-        assert_eq!(st.per_stream[&0x101].stream_type, 0x06);
+        assert_eq!(
+            st.per_stream[&0x100].stream_type,
+            StreamTypeCode::from_byte(0x1B)
+        );
+        assert_eq!(
+            st.per_stream[&0x101].stream_type,
+            StreamTypeCode::from_byte(0x06)
+        );
         assert_eq!(st.per_stream[&0x100].items, 0);
     }
 
@@ -4185,7 +4191,10 @@ mod stats_tests {
         };
         let m = Muxer::new(cfg).unwrap();
         let st = m.stats();
-        assert_eq!(st.per_stream[&0x101].stream_type, 0x33);
+        assert_eq!(
+            st.per_stream[&0x101].stream_type,
+            StreamTypeCode::from_byte(0x33)
+        );
     }
 
     /// Per H.222.0 V9 §2.4.3.5: "In the PCR_PID the random_access_indicator

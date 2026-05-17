@@ -71,7 +71,7 @@ pub fn fill_stream_stats(dst: &mut TstStreamStats, src: &tst_core::mpegts::Strea
     dst.bytes = src.bytes;
     dst.discontinuities = src.discontinuities;
     dst.pid = src.pid;
-    dst.stream_type = src.stream_type;
+    dst.stream_type = src.stream_type.as_byte();
     dst._pad = [0; 3];
     dst.program_number = src.program_number;
     dst.label = [0; 64];

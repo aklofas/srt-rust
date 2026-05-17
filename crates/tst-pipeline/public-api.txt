@@ -39,6 +39,8 @@ pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
+impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::demux_receiver::DemuxReceiver<R>
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub type tst_pipeline::demux_receiver::DemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::next(&mut self) -> core::option::Option<Self::Item>
@@ -148,6 +150,8 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::stream_codec_stats(&self, pid: u1
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>
+impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::mux_sender::MuxSender<T>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::mux_sender::MuxSender<T>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::drop(&mut self)
 impl<T> !core::marker::Freeze for tst_pipeline::mux_sender::MuxSender<T>
@@ -334,6 +338,8 @@ pub fn tst_pipeline::raw_receiver::RawReceiver<R>::recv_one(&mut self) -> core::
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::stats(&self) -> tst_pipeline::raw_receiver::RawReceiverStats
+impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiver<R>
+pub fn tst_pipeline::raw_receiver::RawReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::raw_receiver::RawReceiver<R>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::drop(&mut self)
 impl<R> core::marker::Freeze for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::marker::Freeze
@@ -390,6 +396,8 @@ pub fn tst_pipeline::raw_sender::RawSender<T>::reset_stats(&mut self)
 pub fn tst_pipeline::raw_sender::RawSender<T>::send(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
 pub fn tst_pipeline::raw_sender::RawSender<T>::stats(&self) -> tst_pipeline::raw_sender::RawSenderStats
 pub fn tst_pipeline::raw_sender::RawSender<T>::transport(&self) -> &T
+impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::raw_sender::RawSender<T>
+pub fn tst_pipeline::raw_sender::RawSender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::raw_sender::RawSender<T>
 pub fn tst_pipeline::raw_sender::RawSender<T>::drop(&mut self)
 impl<T> core::marker::Freeze for tst_pipeline::raw_sender::RawSender<T> where T: core::marker::Freeze
@@ -486,6 +494,8 @@ pub fn tst_pipeline::receiver::Receiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::reset_sync(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::receiver::Receiver<R>::stats(&self) -> tst_pipeline::receiver::ReceiverStats
+impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::receiver::Receiver<R>
+pub fn tst_pipeline::receiver::Receiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::receiver::Receiver<R>
 pub fn tst_pipeline::receiver::Receiver<R>::drop(&mut self)
 impl<R> core::marker::Freeze for tst_pipeline::receiver::Receiver<R> where R: core::marker::Freeze
@@ -709,6 +719,8 @@ pub fn tst_pipeline::sender::Sender<T>::reset_stats(&mut self)
 pub fn tst_pipeline::sender::Sender<T>::send_ts(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_pipeline::sender::SenderError>
 pub fn tst_pipeline::sender::Sender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::sender::Sender<T>::stats(&self) -> tst_pipeline::SenderStats
+impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::sender::Sender<T>
+pub fn tst_pipeline::sender::Sender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::sender::Sender<T>
 pub fn tst_pipeline::sender::Sender<T>::drop(&mut self)
 impl<T> core::marker::Freeze for tst_pipeline::sender::Sender<T> where T: core::marker::Freeze
@@ -953,6 +965,8 @@ pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
+impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::demux_receiver::DemuxReceiver<R>
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub type tst_pipeline::demux_receiver::DemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::next(&mut self) -> core::option::Option<Self::Item>
@@ -1085,6 +1099,8 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::stream_codec_stats(&self, pid: u1
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>
+impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::mux_sender::MuxSender<T>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::mux_sender::MuxSender<T>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::drop(&mut self)
 impl<T> !core::marker::Freeze for tst_pipeline::mux_sender::MuxSender<T>
@@ -1185,6 +1201,8 @@ pub fn tst_pipeline::raw_receiver::RawReceiver<R>::recv_one(&mut self) -> core::
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::stats(&self) -> tst_pipeline::raw_receiver::RawReceiverStats
+impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiver<R>
+pub fn tst_pipeline::raw_receiver::RawReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::raw_receiver::RawReceiver<R>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::drop(&mut self)
 impl<R> core::marker::Freeze for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::marker::Freeze
@@ -1239,6 +1257,8 @@ pub fn tst_pipeline::raw_sender::RawSender<T>::reset_stats(&mut self)
 pub fn tst_pipeline::raw_sender::RawSender<T>::send(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
 pub fn tst_pipeline::raw_sender::RawSender<T>::stats(&self) -> tst_pipeline::raw_sender::RawSenderStats
 pub fn tst_pipeline::raw_sender::RawSender<T>::transport(&self) -> &T
+impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::raw_sender::RawSender<T>
+pub fn tst_pipeline::raw_sender::RawSender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::raw_sender::RawSender<T>
 pub fn tst_pipeline::raw_sender::RawSender<T>::drop(&mut self)
 impl<T> core::marker::Freeze for tst_pipeline::raw_sender::RawSender<T> where T: core::marker::Freeze
@@ -1294,6 +1314,8 @@ pub fn tst_pipeline::receiver::Receiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::reset_sync(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::receiver::Receiver<R>::stats(&self) -> tst_pipeline::receiver::ReceiverStats
+impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::receiver::Receiver<R>
+pub fn tst_pipeline::receiver::Receiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::receiver::Receiver<R>
 pub fn tst_pipeline::receiver::Receiver<R>::drop(&mut self)
 impl<R> core::marker::Freeze for tst_pipeline::receiver::Receiver<R> where R: core::marker::Freeze
@@ -1371,6 +1393,8 @@ pub fn tst_pipeline::sender::Sender<T>::reset_stats(&mut self)
 pub fn tst_pipeline::sender::Sender<T>::send_ts(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_pipeline::sender::SenderError>
 pub fn tst_pipeline::sender::Sender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::sender::Sender<T>::stats(&self) -> tst_pipeline::SenderStats
+impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::sender::Sender<T>
+pub fn tst_pipeline::sender::Sender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::sender::Sender<T>
 pub fn tst_pipeline::sender::Sender<T>::drop(&mut self)
 impl<T> core::marker::Freeze for tst_pipeline::sender::Sender<T> where T: core::marker::Freeze

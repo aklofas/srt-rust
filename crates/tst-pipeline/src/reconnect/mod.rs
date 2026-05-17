@@ -90,6 +90,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
 use tracing::{debug, info, warn};
+use tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES;
 use tst_core::transport::{Transport, TransportCancel, TransportError};
 
 /// Decorator that wraps an inner `Transport` with reconnect + gap-buffer
@@ -167,7 +168,7 @@ impl<T: Transport + 'static> ManagedTransport<T> {
             .unwrap()
             .as_ref()
             .map(|t| t.max_payload())
-            .unwrap_or(1316);
+            .unwrap_or(SRT_TS_BUNDLE_BYTES);
         if bytes.len() > max {
             return Err(TransportError::TooLarge {
                 len: bytes.len(),
@@ -306,7 +307,7 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
             .unwrap()
             .as_ref()
             .map(|t| t.max_payload())
-            .unwrap_or(1316)
+            .unwrap_or(SRT_TS_BUNDLE_BYTES)
     }
 
     fn is_alive(&self) -> bool {

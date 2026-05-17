@@ -65,6 +65,7 @@
 use crate::reconnect::ReconnectPolicy;
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
+use tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
@@ -198,11 +199,14 @@ impl<R: RecvTransport> RecvTransport for ManagedReceiveTransport<R> {
     }
 
     fn max_payload(&self) -> usize {
-        // 1316 is libsrt's universal SRT_DEFAULT_PAYLOADSIZE; used as a
+        // SRT_TS_BUNDLE_BYTES (1316) is libsrt's universal SRT_DEFAULT_PAYLOADSIZE; used as a
         // safe fallback when the inner is mid-reconnect (None). Receive
         // shells that cache this on construction won't observe the None
         // window since they only call max_payload at construction time.
-        self.inner.as_ref().map(|i| i.max_payload()).unwrap_or(1316)
+        self.inner
+            .as_ref()
+            .map(|i| i.max_payload())
+            .unwrap_or(SRT_TS_BUNDLE_BYTES)
     }
 
     fn is_alive(&self) -> bool {

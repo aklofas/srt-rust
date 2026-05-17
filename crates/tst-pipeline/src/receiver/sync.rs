@@ -17,7 +17,7 @@
 //! two-pass sync strategy: don't declare lock until you've seen several
 //! back-to-back aligned sync bytes.
 
-use tst_core::mpegts::common::{TS_PACKET_SIZE, TS_SYNC_BYTE};
+use tst_core::mpegts::common::{SRT_TS_BUNDLE_BYTES, TS_PACKET_SIZE, TS_SYNC_BYTE};
 
 /// Current state of the sync state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -96,10 +96,10 @@ impl Syncer {
     /// `next_packet` drains ~7 packets before the next push — this means
     /// one memmove per ~7 packet emits rather than one memmove per packet.
     pub fn push(&mut self, bytes: &[u8]) {
-        // Compact when the dead prefix is getting large. The threshold of 1316
+        // Compact when the dead prefix is getting large. The threshold of SRT_TS_BUNDLE_BYTES
         // (one SRT datagram) keeps the Vec from growing without bound while
         // limiting compaction frequency to approximately once per push.
-        if self.head >= 1316 {
+        if self.head >= SRT_TS_BUNDLE_BYTES {
             self.compact();
         }
         // Invariant: buf.len() == head + len. extend_from_slice appends at

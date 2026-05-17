@@ -12,6 +12,7 @@ use std::ffi::{c_char, c_int};
 use std::mem;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::Duration;
+use tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES;
 
 const SRT_INVALID_SOCK: srt_sys::SRTSOCKET = -1;
 
@@ -64,7 +65,7 @@ pub struct Socket {
     cached_stream_id: Option<String>,
     /// `SRTO_PAYLOADSIZE` read after handshake. Used to give accurate
     /// `SendError::PayloadTooLarge { limit }` values without a per-send
-    /// getsockopt round-trip. Defaults to 1316 (libsrt live default) if read fails.
+    /// getsockopt round-trip. Defaults to [`SRT_TS_BUNDLE_BYTES`] (libsrt live default) if read fails.
     cached_payload_limit: usize,
 }
 
@@ -719,8 +720,8 @@ pub(crate) fn read_payload_size(handle: srt_sys::SRTSOCKET) -> usize {
         )
     };
     if rc < 0 || value <= 0 {
-        // SRT_LIVE_DEF_PLSIZE = 1316 (7 x 188-byte TS packets).
-        return 1316;
+        // libsrt's SRT_LIVE_DEF_PLSIZE — see SRT_TS_BUNDLE_BYTES.
+        return SRT_TS_BUNDLE_BYTES;
     }
     value as usize
 }

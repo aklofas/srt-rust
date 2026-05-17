@@ -158,6 +158,18 @@ pub const TS_PACKET_SIZE: usize = 188;
 /// with this byte at offset 0.
 pub const TS_SYNC_BYTE: u8 = 0x47;
 
+/// Number of MPEG-TS packets in libsrt's default SRT live-mode payload — the
+/// "TS bundle" libsrt expects from a TS-over-SRT sender.
+///
+/// libsrt's `SRTO_PAYLOADSIZE` default is 1316 bytes = 7 × 188.
+pub const SRT_TS_BUNDLE_PACKETS: usize = 7;
+
+/// libsrt's default SRT live-mode payload size in bytes
+/// (`SRT_TS_BUNDLE_PACKETS × TS_PACKET_SIZE = 1316`). Senders and receivers
+/// use this as a safe fallback when the inner transport's `max_payload()`
+/// is unavailable (mid-reconnect, factory-deferred, etc.).
+pub const SRT_TS_BUNDLE_BYTES: usize = SRT_TS_BUNDLE_PACKETS * TS_PACKET_SIZE;
+
 /// Signed difference `now - last` interpreted across the 33-bit PTS
 /// rollover boundary. Returns the smaller-magnitude wrap-aware delta.
 ///

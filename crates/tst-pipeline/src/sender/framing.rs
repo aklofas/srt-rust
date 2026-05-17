@@ -16,11 +16,10 @@
 
 use std::collections::VecDeque;
 use thiserror::Error;
-
-const TS_PACKET_SIZE: usize = 188;
-const SRT_BUNDLE_PACKETS: usize = 7;
-const SRT_BUNDLE_BYTES: usize = TS_PACKET_SIZE * SRT_BUNDLE_PACKETS; // 1316
-const SYNC_BYTE: u8 = 0x47;
+use tst_core::mpegts::common::{
+    SRT_TS_BUNDLE_BYTES as SRT_BUNDLE_BYTES, SRT_TS_BUNDLE_PACKETS as SRT_BUNDLE_PACKETS,
+    TS_PACKET_SIZE, TS_SYNC_BYTE as SYNC_BYTE,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TsFramingMode {

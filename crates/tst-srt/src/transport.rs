@@ -16,12 +16,17 @@ pub struct SrtTransport {
 
 impl SrtTransport {
     /// Default SRT live-mode payload size (libsrt's `SRTO_PAYLOADSIZE` default).
-    pub const DEFAULT_PAYLOAD: usize = 1316;
+    ///
+    /// Derived from [`tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES`] — the
+    /// standard 7-packet × 188-byte TS bundle libsrt uses for live mode.
+    pub const DEFAULT_PAYLOAD: usize = tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES;
 
     /// Wrap an already-connected `Socket`. Caller is responsible for
     /// configuring it (passphrase, latency, etc.) before passing in.
     ///
-    /// `max_payload` defaults to 1316 (libsrt's default `SRTO_PAYLOADSIZE`)
+    /// `max_payload` defaults to [`Self::DEFAULT_PAYLOAD`] (libsrt's default
+    /// `SRTO_PAYLOADSIZE`) — namely
+    /// [`tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES`] (`= 1316`)
     /// and is NOT queried from the socket. Callers using a socket with a
     /// non-default `SRTO_PAYLOADSIZE` must call [`with_max_payload`] to
     /// match.
@@ -244,6 +249,11 @@ mod tests {
     fn srt_transport_max_payload_matches_default() {
         // Without an actual connected Socket, just verify the constant.
         // SrtTransport::DEFAULT_PAYLOAD == 1316 (libsrt default).
+        assert_eq!(
+            SrtTransport::DEFAULT_PAYLOAD,
+            tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES
+        );
+        // Cross-check the literal value to catch unrelated regressions.
         assert_eq!(SrtTransport::DEFAULT_PAYLOAD, 1316);
     }
 

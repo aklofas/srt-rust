@@ -2704,6 +2704,9 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::Av1RegistrationMalformed
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1RegistrationMalformed::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1TileListNotAllowed
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1TileListNotAllowed::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes
+pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes::reason: &'static str
 pub tst_core::mpegts::demux::event::NonConformantIssue::MissingMetadataDescriptor
 pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu
 pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu::dropped_bytes: usize
@@ -2959,6 +2962,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Pr
 pub struct tst_core::mpegts::demux::event::StreamId
 pub tst_core::mpegts::demux::event::StreamId::kind: tst_core::mpegts::demux::event::StreamKind
 pub tst_core::mpegts::demux::event::StreamId::pid: u16
+pub tst_core::mpegts::demux::event::StreamId::program_number: u16
 impl core::clone::Clone for tst_core::mpegts::demux::event::StreamId
 pub fn tst_core::mpegts::demux::event::StreamId::clone(&self) -> tst_core::mpegts::demux::event::StreamId
 impl core::cmp::Eq for tst_core::mpegts::demux::event::StreamId
@@ -3548,6 +3552,9 @@ pub tst_core::mpegts::demux::NonConformantIssue::Av1RegistrationMalformed
 pub tst_core::mpegts::demux::NonConformantIssue::Av1RegistrationMalformed::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::Av1TileListNotAllowed
 pub tst_core::mpegts::demux::NonConformantIssue::Av1TileListNotAllowed::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes
+pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes::reason: &'static str
 pub tst_core::mpegts::demux::NonConformantIssue::MissingMetadataDescriptor
 pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu
 pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu::dropped_bytes: usize
@@ -3913,6 +3920,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Pr
 pub struct tst_core::mpegts::demux::StreamId
 pub tst_core::mpegts::demux::StreamId::kind: tst_core::mpegts::demux::event::StreamKind
 pub tst_core::mpegts::demux::StreamId::pid: u16
+pub tst_core::mpegts::demux::StreamId::program_number: u16
 impl core::clone::Clone for tst_core::mpegts::demux::event::StreamId
 pub fn tst_core::mpegts::demux::event::StreamId::clone(&self) -> tst_core::mpegts::demux::event::StreamId
 impl core::cmp::Eq for tst_core::mpegts::demux::event::StreamId

@@ -7,6 +7,69 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — demux event fixes (plan #69)
+
+### Changed (BREAKING — pre-1.0)
+
+- **`tst_core::mpegts::demux::StreamId` gained `program_number: u16`
+  field.** All construction sites must supply it. The `Demuxer`
+  populates it from the PMT via an internal `program_number_for_pid()`
+  lookup; falls back to sentinel `0` only for pre-PMT contexts where
+  no PMT has been seen yet for the PID. Outside-crate construction of
+  `StreamId` literals must add the field; pattern matches on
+  `StreamId { .. }` are unaffected.
+- **`tst_event_sample_t.program_number` (C ABI)** is now populated
+  from the actual stream's owning program. Previously hardcoded to
+  `0` (TODO from earlier ABI work). Multi-program demux consumers
+  that depended on the always-zero behavior must update.
+- **`tst_event_metadata_t.program_number` (C ABI)** same as above.
+
+### Added
+
+- **`NonConformantIssue::MalformedPes { pid, reason }` (Rust API)** —
+  malformed PES headers now surface as a non-conformant event in
+  lenient demux mode instead of propagating as a fatal error. Strict
+  demux modes still escalate. Applies symmetrically to both
+  `Demuxer::feed` and `Demuxer::feed_aligned` via a shared internal
+  handler so the byte-aligned and packet-aligned feed paths report
+  identical issue counts on the same input.
+- **`tst_event_sample_t.random_access_indicator` (C ABI, `uint8_t`)** —
+  exposes the TS adaptation-field RAI bit on video sample events.
+  Zero for non-video sample events. Companion to the Rust-side
+  `SamplePayload::Video::random_access_indicator` field added in plan
+  #68; this entry plumbs it through the C ABI.
+- **`tst_event_sample_t.stream_type` (C ABI, `uint8_t`)** — exposes
+  the raw PMT `stream_type` byte on sample events with unknown or
+  vendor-specific codecs so C-side consumers can inspect / route
+  them. Zero for known stream types that map to a typed payload.
+- **`tst_event_discontinuity_t.variant_pid` (C ABI, `uint16_t`)** —
+  carries the discontinuity-variant-specific PID. Currently used
+  only by `PesOversize` (the offending stream's PID); the existing
+  `pid` field continues to mean the parent stream PID. Zero for
+  variants that don't have a variant-specific PID.
+- **`tst_nonconformant_code_t::TST_NCC_MALFORMED_PES = 19` (C ABI)** —
+  C-side discriminator for the new `NonConformantIssue::MalformedPes`
+  Rust variant; surfaces in `tst_event_nonconformant_t.code`.
+
+### Fixed
+
+- **`Muxer::push_video()` and `Muxer::push_klv()` now route to the
+  correct program in multi-program configs** when the lone stream of
+  that kind is not in program-index 0. Previously both hardcoded
+  `pack(0, 0)`, so a config with a single video stream in
+  program-index 1 (or any non-zero program) silently mis-routed the
+  pushed AU. Extracted shared `single_video_handle()` /
+  `single_klv_handle()` helpers matching the working
+  `push_audio()` / `push_subtitle()` pattern.
+- **`mpegts::demux::pes::Reassembler::push` previously dropped the
+  new PUSI's payload** if the prior buffer hit `MalformedPes` during
+  `parse_complete`. Restructured to insert the new `Partial` state
+  up-front and defer the prior-parse error, so lenient-mode recovery
+  actually emits subsequent `Sample` events from the same PID after a
+  malformed PES instead of stalling.
+
+---
+
 ## [Unreleased] — codec-specific per-stream stats (plan #68)
 
 ### Added

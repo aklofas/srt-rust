@@ -44,6 +44,112 @@ impl StreamType {
     }
 }
 
+/// Typed wrapper around the PMT `stream_type` byte.
+///
+/// MPEG-TS PMT carries the stream type as a single byte. The
+/// [`StreamType`] enum names the byte values this library recognizes,
+/// but real-world streams may carry codes outside that set (custom
+/// vendor codes, reserved values, codes for codecs not yet supported).
+/// `StreamTypeCode` preserves the full PMT byte space while giving
+/// callers a typed view of known codes.
+///
+/// # Construction
+///
+/// Use [`Self::from_byte`] to construct from a PMT byte:
+///
+/// ```
+/// use tst_core::mpegts::common::{StreamType, StreamTypeCode};
+///
+/// let code = StreamTypeCode::from_byte(0x1B);
+/// assert_eq!(code.known(), Some(&StreamType::H264));
+///
+/// let unknown = StreamTypeCode::from_byte(0xFF);
+/// assert!(unknown.known().is_none());
+/// assert_eq!(unknown.as_byte(), 0xFF);
+/// ```
+///
+/// # C ABI
+///
+/// The C ABI exposes the raw byte (`tst_stream_stats_t.stream_type: uint8_t`);
+/// the Rust-to-C bridge calls [`Self::as_byte`] at conversion. Bindings
+/// that want typed matching on known codes can use the `StreamType`
+/// enum directly.
+///
+/// # Cross-reference
+///
+/// See [`StreamType`] for the list of codes this library recognizes.
+#[must_use]
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamTypeCode {
+    /// PMT byte maps to a `StreamType` this library recognizes.
+    Known(StreamType),
+    /// PMT byte does not map to any known [`StreamType`] — the raw byte
+    /// is preserved verbatim for downstream inspection.
+    Unknown(u8),
+}
+
+impl StreamTypeCode {
+    /// Decode a PMT `stream_type` byte into a typed [`StreamTypeCode`].
+    ///
+    /// Returns [`Self::Known`] if the byte matches a [`StreamType`]
+    /// variant, otherwise [`Self::Unknown`] carrying the raw byte.
+    pub fn from_byte(byte: u8) -> Self {
+        match byte {
+            0x1B => Self::Known(StreamType::H264),
+            0x24 => Self::Known(StreamType::H265),
+            0x33 => Self::Known(StreamType::H266),
+            0x06 => Self::Known(StreamType::KlvPrivate),
+            0x15 => Self::Known(StreamType::KlvSyncMetadata),
+            0x03 => Self::Known(StreamType::AudioMp2),
+            0x0F => Self::Known(StreamType::AudioAac),
+            0x11 => Self::Known(StreamType::AudioAacLatm),
+            0x81 => Self::Known(StreamType::AudioAc3),
+            other => Self::Unknown(other),
+        }
+    }
+
+    /// Return the underlying PMT byte (recovers the input to [`Self::from_byte`]).
+    pub fn as_byte(&self) -> u8 {
+        match self {
+            Self::Known(st) => st.as_u8(),
+            Self::Unknown(b) => *b,
+        }
+    }
+
+    /// Return a reference to the typed [`StreamType`] if the code is
+    /// known, or `None` if it's [`Self::Unknown`].
+    ///
+    /// Bindings that want exhaustive matching on known codes can use
+    /// this to peel off the typed variant:
+    ///
+    /// ```
+    /// use tst_core::mpegts::common::{StreamType, StreamTypeCode};
+    ///
+    /// let code = StreamTypeCode::from_byte(0x1B);
+    /// match code.known() {
+    ///     Some(StreamType::H264) => { /* H.264 path */ }
+    ///     Some(StreamType::H265) => { /* H.265 path */ }
+    ///     _ => { /* other / unknown */ }
+    /// }
+    /// ```
+    pub fn known(&self) -> Option<&StreamType> {
+        match self {
+            Self::Known(st) => Some(st),
+            Self::Unknown(_) => None,
+        }
+    }
+}
+
+impl Default for StreamTypeCode {
+    /// `Unknown(0x00)` — matches the pre-typed-migration default for
+    /// PSI PIDs and unconfigured streams produced via
+    /// `StreamStats::default()`.
+    fn default() -> Self {
+        Self::Unknown(0x00)
+    }
+}
+
 /// MPEG-TS descriptor tags relevant to mux output.
 pub mod descriptor {
     /// `registration_descriptor` (ISO/IEC 13818-1 §2.6.8).
@@ -401,5 +507,66 @@ mod tests {
 
         let pcr = Pcr27mhz::new(27_000_000);
         assert_eq!(pcr.as_ticks(), 27_000_000);
+    }
+}
+
+#[cfg(test)]
+mod stream_type_code_tests {
+    use super::*;
+
+    #[test]
+    fn from_byte_known_h264() {
+        let code = StreamTypeCode::from_byte(0x1B);
+        assert_eq!(code.known(), Some(&StreamType::H264));
+        assert_eq!(code.as_byte(), 0x1B);
+    }
+
+    #[test]
+    fn from_byte_known_h265() {
+        let code = StreamTypeCode::from_byte(0x24);
+        assert_eq!(code.known(), Some(&StreamType::H265));
+        assert_eq!(code.as_byte(), 0x24);
+    }
+
+    #[test]
+    fn from_byte_known_klv_private() {
+        let code = StreamTypeCode::from_byte(0x06);
+        assert_eq!(code.known(), Some(&StreamType::KlvPrivate));
+        assert_eq!(code.as_byte(), 0x06);
+    }
+
+    #[test]
+    fn from_byte_unknown_preserves_byte() {
+        let code = StreamTypeCode::from_byte(0xFF);
+        assert!(code.known().is_none());
+        assert_eq!(code.as_byte(), 0xFF);
+    }
+
+    #[test]
+    fn round_trip_all_known_variants() {
+        for st in [
+            StreamType::H264,
+            StreamType::H265,
+            StreamType::H266,
+            StreamType::KlvPrivate,
+            StreamType::KlvSyncMetadata,
+            StreamType::AudioMp2,
+            StreamType::AudioAac,
+            StreamType::AudioAacLatm,
+            StreamType::AudioAc3,
+        ] {
+            let byte = st.as_u8();
+            let code = StreamTypeCode::from_byte(byte);
+            assert_eq!(code.known().copied(), Some(st), "byte 0x{byte:02X} should map to {st:?}");
+            assert_eq!(code.as_byte(), byte);
+        }
+    }
+
+    #[test]
+    fn default_is_unknown_zero() {
+        let code = StreamTypeCode::default();
+        assert_eq!(code, StreamTypeCode::Unknown(0x00));
+        assert_eq!(code.as_byte(), 0x00);
+        assert!(code.known().is_none());
     }
 }

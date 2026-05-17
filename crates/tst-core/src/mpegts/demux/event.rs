@@ -7,6 +7,8 @@
 
 use std::time::Duration;
 
+use crate::mpegts::common::Pts90khz;
+
 /// Top-level event emitted by `Demuxer::next_event`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DemuxEvent {
@@ -19,7 +21,7 @@ pub enum DemuxEvent {
     /// additive variants on `SamplePayload`.
     Sample {
         stream: StreamId,
-        pts: i64,
+        pts: Pts90khz,
         dts: Option<i64>,
         payload: SamplePayload,
     },
@@ -28,7 +30,7 @@ pub enum DemuxEvent {
     /// metadata-stream pattern.
     Metadata {
         stream: StreamId,
-        pts: i64,
+        pts: Pts90khz,
         kind: MetadataKind,
         payload: Vec<u8>,
     },
@@ -491,9 +493,12 @@ pub enum DiscontinuityKind {
 
 /// Approximate "elapsed time since first event" for a stream-monotonic
 /// PTS. Exposed for diagnostic / test use; production consumers usually
-/// just compare `i64` PTS values directly.
-pub fn pts_to_duration(pts_90khz: i64) -> Duration {
-    Duration::from_micros((pts_90khz as i128 * 1_000_000 / 90_000) as u64)
+/// just compare `Pts90khz` values directly.
+///
+/// Callers holding a raw `i64` can call [`Pts90khz::new`] to wrap; callers
+/// who want the inverse can read [`Pts90khz::as_ticks`].
+pub fn pts_to_duration(pts: Pts90khz) -> Duration {
+    Duration::from_micros((pts.as_ticks() as i128 * 1_000_000 / 90_000) as u64)
 }
 
 impl std::fmt::Display for NonConformantIssue {
@@ -625,7 +630,10 @@ mod tests {
     #[test]
     fn pts_to_duration_simple() {
         // 90,000 ticks @ 90 kHz = 1 second.
-        assert_eq!(pts_to_duration(90_000), Duration::from_secs(1));
+        assert_eq!(
+            pts_to_duration(Pts90khz::new(90_000)),
+            Duration::from_secs(1)
+        );
     }
 
     #[test]

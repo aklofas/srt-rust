@@ -12,6 +12,7 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use std::time::Duration;
 use tst_core::mpegts::au_cell::CellFragmentIndication;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
     DemuxEvent, MetadataKind, NalUnit, SamplePayload, StreamId, StreamKind, VideoCodec,
     VideoPayload,
@@ -33,7 +34,7 @@ fn make_video_event(frame_index: usize) -> DemuxEvent {
             kind: StreamKind::Video(VideoCodec::H264),
             program_number: 1,
         },
-        pts,
+        pts: Pts90khz::new(pts),
         dts: Some(pts),
         payload: SamplePayload::Video {
             codec: VideoCodec::H264,
@@ -62,7 +63,7 @@ fn make_klv_event(frame_index: usize) -> DemuxEvent {
             },
             program_number: 1,
         },
-        pts,
+        pts: Pts90khz::new(pts),
         kind: MetadataKind::KlvSyncAuCell {
             metadata_service_id: 0x00,
             sequence_number: frame_index as u8,

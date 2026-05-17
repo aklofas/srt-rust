@@ -296,6 +296,7 @@ impl Pairer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tst_core::mpegts::common::Pts90khz;
     use tst_core::mpegts::demux::{
         AudioCodec, DiscontinuityKind, MetadataKind, NonConformantIssue, ProgramMap, SamplePayload,
         StreamId, StreamKind, VideoCodec, VideoPayload,
@@ -381,7 +382,7 @@ mod tests {
                 kind: StreamKind::Audio(AudioCodec::Aac),
                 program_number: 1,
             },
-            pts: 0,
+            pts: Pts90khz::new(0),
             dts: None,
             payload: SamplePayload::Audio {
                 codec: AudioCodec::Aac,
@@ -401,7 +402,7 @@ mod tests {
                 kind: StreamKind::Video(VideoCodec::H264),
                 program_number: 1,
             },
-            pts: 0,
+            pts: Pts90khz::new(0),
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
@@ -422,7 +423,7 @@ mod tests {
                 kind: StreamKind::KlvAsync,
                 program_number: 1,
             },
-            pts: 0,
+            pts: Pts90khz::new(0),
             kind: MetadataKind::KlvAsync,
             payload: Vec::new(),
         };
@@ -439,7 +440,7 @@ mod tests {
                 kind: StreamKind::Video(VideoCodec::H265),
                 program_number: 1,
             },
-            pts: 0,
+            pts: Pts90khz::new(0),
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H265,
@@ -464,7 +465,7 @@ mod tests {
                 },
                 program_number: 1,
             },
-            pts: 50,
+            pts: Pts90khz::new(50),
             kind: MetadataKind::KlvSyncAuCell {
                 metadata_service_id: 0,
                 sequence_number: 0,
@@ -481,7 +482,7 @@ mod tests {
                 kind: StreamKind::Video(VideoCodec::H264),
                 program_number: 1,
             },
-            pts: 50,
+            pts: Pts90khz::new(50),
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
@@ -503,7 +504,7 @@ mod tests {
                 kind: StreamKind::Audio(AudioCodec::Aac),
                 program_number: 1,
             },
-            pts: 0,
+            pts: Pts90khz::new(0),
             dts: None,
             payload: SamplePayload::Audio {
                 codec: AudioCodec::Aac,
@@ -535,7 +536,7 @@ mod tests {
                 kind: StreamKind::KlvAsync,
                 program_number: 1,
             },
-            pts,
+            pts: Pts90khz::new(pts),
             kind: MetadataKind::KlvAsync,
             payload: vec![0xAA],
         }
@@ -548,7 +549,7 @@ mod tests {
                 kind: StreamKind::Video(VideoCodec::H264),
                 program_number: 1,
             },
-            pts,
+            pts: Pts90khz::new(pts),
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
@@ -619,6 +620,7 @@ mod tests {
 mod proptests {
     use super::*;
     use proptest::prelude::*;
+    use tst_core::mpegts::common::Pts90khz;
     use tst_core::mpegts::demux::{
         MetadataKind, SamplePayload, StreamId, StreamKind, VideoCodec, VideoPayload,
     };
@@ -640,7 +642,7 @@ mod proptests {
                     kind: StreamKind::Video(VideoCodec::H264),
                     program_number: 1,
                 },
-                pts: *pts,
+                pts: Pts90khz::new(*pts),
                 dts: None,
                 payload: SamplePayload::Video {
                     codec: VideoCodec::H264,
@@ -654,7 +656,7 @@ mod proptests {
                     kind: StreamKind::KlvAsync,
                     program_number: 1,
                 },
-                pts: *pts,
+                pts: Pts90khz::new(*pts),
                 kind: MetadataKind::KlvAsync,
                 payload: vec![0xAA],
             },

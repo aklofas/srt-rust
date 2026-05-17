@@ -1,7 +1,7 @@
 //! Top-level `Demuxer` state machine.
 
 use crate::error::DemuxError;
-use crate::mpegts::common::{pcr_diff_27mhz, pts_diff_33bit};
+use crate::mpegts::common::{Pts90khz, pcr_diff_27mhz, pts_diff_33bit};
 use crate::mpegts::demux::event::{
     AudioCodec, DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit,
     NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, SubtitleCodec,
@@ -1091,15 +1091,15 @@ impl Demuxer {
             kind,
             program_number,
         };
-        let pts = pes.pts.unwrap_or(0);
+        let pts = Pts90khz::new(pes.pts.unwrap_or(0));
         // Backward-PTS check.
         if let Some(last) = self.last_pts_by_pid.get(&pes.pid).copied() {
-            let delta = pts_diff_33bit(pts as u64, last as u64);
+            let delta = pts_diff_33bit(pts.as_ticks() as u64, last as u64);
             if delta < -90_000 {
                 self.queue_nonconformant(stream, NonConformantIssue::PcrAnomaly { delta });
             }
         }
-        self.last_pts_by_pid.insert(pes.pid, pts);
+        self.last_pts_by_pid.insert(pes.pid, pts.as_ticks());
         match kind {
             StreamKind::Video(codec) => {
                 // Codec dispatches the payload-shape: H.26x splits Annex-B NAL
@@ -2028,7 +2028,7 @@ mod tests {
         {
             assert_eq!(stream.pid, 0x300);
             assert!(matches!(stream.kind, StreamKind::Audio(AudioCodec::Aac)));
-            assert_eq!(*pts, 90_000);
+            assert_eq!(pts.as_ticks(), 90_000);
             assert_eq!(*dts, None, "audio has no DTS");
             if let SamplePayload::Audio { codec, frames } = event_payload {
                 assert_eq!(*codec, AudioCodec::Aac);
@@ -2520,7 +2520,7 @@ mod tests {
                 stream.kind,
                 StreamKind::Subtitle(DemuxSubtitleCodec::WebVttInTs)
             ));
-            assert_eq!(*pts, 90_000);
+            assert_eq!(pts.as_ticks(), 90_000);
             assert_eq!(*dts, None, "subtitles have no DTS (no B-frame reorder)");
             if let SamplePayload::Subtitle { codec, payload } = event_payload {
                 assert_eq!(*codec, DemuxSubtitleCodec::WebVttInTs);

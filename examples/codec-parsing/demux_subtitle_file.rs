@@ -97,7 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!(
                 "[{kind}] PID 0x{:04X} PTS {} ({} bytes)",
                 stream.pid,
-                pts,
+                pts.as_ticks(),
                 payload.len()
             );
             // For WebVTT, the payload is guaranteed UTF-8 (Apple's

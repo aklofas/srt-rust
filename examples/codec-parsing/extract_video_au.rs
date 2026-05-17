@@ -70,6 +70,7 @@ fn main() -> std::io::Result<()> {
             ..
         } = event
         {
+            let pts = pts.as_ticks();
             // Reassemble Annex-B bytes from the typed NAL units. The
             // demuxer stripped start codes during the H.264/H.265 NAL
             // split; consumers writing back to disk for an Annex-B

@@ -180,7 +180,7 @@ fn handle_event(event: &DemuxEvent, args: &Args, stats: &mut Stats) {
             stats.sample_bytes += payload_size(payload) as u64;
             let should_print = args.verbose || (stats.samples % args.every == 0);
             if should_print {
-                print_sample(stream, *pts, payload);
+                print_sample(stream, pts.as_ticks(), payload);
             }
         }
         DemuxEvent::Metadata {
@@ -193,7 +193,7 @@ fn handle_event(event: &DemuxEvent, args: &Args, stats: &mut Stats) {
             stats.meta_bytes += payload.len() as u64;
             let should_print = args.verbose || (stats.metas % args.every == 0);
             if should_print {
-                print_metadata(stream, *pts, kind, payload, args.decode_klv);
+                print_metadata(stream, pts.as_ticks(), kind, payload, args.decode_klv);
             }
         }
         DemuxEvent::Discontinuity { stream, kind } => {

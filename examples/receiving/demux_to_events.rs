@@ -106,65 +106,68 @@ fn main() {
                 pts,
                 dts,
                 payload,
-            } => match payload {
-                SamplePayload::Video {
-                    codec,
-                    payload: VideoPayload::Nals(nals),
-                    // `random_access_indicator` is sourced from the TS
-                    // adaptation-field RAI bit on the PES_start packet
-                    // (ISO/IEC 13818-1 §2.4.3.4). True on AUs the encoder
-                    // marked as decoder-resync points (IDR / CRA / etc.).
-                    random_access_indicator,
-                } => {
-                    println!(
-                        "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} nals={} rai={random_access_indicator}",
-                        stream.pid,
-                        nals.len()
-                    );
+            } => {
+                let pts = pts.as_ticks();
+                match payload {
+                    SamplePayload::Video {
+                        codec,
+                        payload: VideoPayload::Nals(nals),
+                        // `random_access_indicator` is sourced from the TS
+                        // adaptation-field RAI bit on the PES_start packet
+                        // (ISO/IEC 13818-1 §2.4.3.4). True on AUs the encoder
+                        // marked as decoder-resync points (IDR / CRA / etc.).
+                        random_access_indicator,
+                    } => {
+                        println!(
+                            "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} nals={} rai={random_access_indicator}",
+                            stream.pid,
+                            nals.len()
+                        );
+                    }
+                    SamplePayload::Video {
+                        codec,
+                        payload: VideoPayload::Obus(obus),
+                        random_access_indicator,
+                    } => {
+                        // OBU-shaped video (AV1) carriage lands in a later
+                        // task; the demuxer does not emit this variant today,
+                        // so this arm exists only to keep the match
+                        // exhaustive — adding AV1 wiring later won't silently
+                        // change behavior here.
+                        println!(
+                            "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} obus={} rai={random_access_indicator}",
+                            stream.pid,
+                            obus.len()
+                        );
+                    }
+                    // Audio + Subtitle are reserved variants today (no
+                    // typed codec values are defined yet) but matching
+                    // them keeps this example exhaustive — adding e.g.
+                    // `AudioCodec::Aac` later won't silently change
+                    // behavior here.
+                    SamplePayload::Audio { codec, frames } => {
+                        println!(
+                            "Sample PID=0x{:04X} pts={pts} audio={codec:?} bytes={}",
+                            stream.pid,
+                            frames.len()
+                        );
+                    }
+                    SamplePayload::Subtitle { codec, payload } => {
+                        println!(
+                            "Sample PID=0x{:04X} pts={pts} subtitle={codec:?} bytes={}",
+                            stream.pid,
+                            payload.len()
+                        );
+                    }
+                    SamplePayload::Unknown { stream_type, raw } => {
+                        println!(
+                            "Sample PID=0x{:04X} pts={pts} stream_type=0x{stream_type:02X} bytes={} (unrecognized ES)",
+                            stream.pid,
+                            raw.len()
+                        );
+                    }
                 }
-                SamplePayload::Video {
-                    codec,
-                    payload: VideoPayload::Obus(obus),
-                    random_access_indicator,
-                } => {
-                    // OBU-shaped video (AV1) carriage lands in a later
-                    // task; the demuxer does not emit this variant today,
-                    // so this arm exists only to keep the match
-                    // exhaustive — adding AV1 wiring later won't silently
-                    // change behavior here.
-                    println!(
-                        "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} obus={} rai={random_access_indicator}",
-                        stream.pid,
-                        obus.len()
-                    );
-                }
-                // Audio + Subtitle are reserved variants today (no
-                // typed codec values are defined yet) but matching
-                // them keeps this example exhaustive — adding e.g.
-                // `AudioCodec::Aac` later won't silently change
-                // behavior here.
-                SamplePayload::Audio { codec, frames } => {
-                    println!(
-                        "Sample PID=0x{:04X} pts={pts} audio={codec:?} bytes={}",
-                        stream.pid,
-                        frames.len()
-                    );
-                }
-                SamplePayload::Subtitle { codec, payload } => {
-                    println!(
-                        "Sample PID=0x{:04X} pts={pts} subtitle={codec:?} bytes={}",
-                        stream.pid,
-                        payload.len()
-                    );
-                }
-                SamplePayload::Unknown { stream_type, raw } => {
-                    println!(
-                        "Sample PID=0x{:04X} pts={pts} stream_type=0x{stream_type:02X} bytes={} (unrecognized ES)",
-                        stream.pid,
-                        raw.len()
-                    );
-                }
-            },
+            }
             DemuxEvent::Metadata {
                 stream,
                 pts,
@@ -177,8 +180,9 @@ fn main() {
                 // `pts` field is the AU cell's metadata access-unit
                 // timestamp for sync KLV, or the raw PES PTS for async.
                 println!(
-                    "Metadata PID=0x{:04X} pts={pts} kind={kind:?} bytes={}",
+                    "Metadata PID=0x{:04X} pts={} kind={kind:?} bytes={}",
                     stream.pid,
+                    pts.as_ticks(),
                     payload.len()
                 );
             }

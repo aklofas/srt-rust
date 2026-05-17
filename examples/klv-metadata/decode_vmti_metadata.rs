@@ -107,6 +107,7 @@ fn main() -> ExitCode {
         else {
             continue;
         };
+        let pts = pts.as_ticks();
         match kind {
             MetadataKind::KlvSyncAuCell { .. } | MetadataKind::KlvAsync => {}
             // Unknown metadata stream_type — not KLV, skip.

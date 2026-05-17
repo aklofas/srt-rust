@@ -78,7 +78,7 @@ fn sync_klv_mux_demux_round_trip() {
         } = evt
         {
             assert_eq!(payload, inner, "inner KLV must round-trip byte-for-byte");
-            assert_eq!(pts, 90_000, "PES PTS must surface unchanged");
+            assert_eq!(pts.as_ticks(), 90_000, "PES PTS must surface unchanged");
             // Mux defaults from Plan #25 Task 2:
             assert_eq!(metadata_service_id, 0x00, "ST 1402.2 App. B default");
             assert_eq!(sequence_number, 0, "first push starts at seq 0");

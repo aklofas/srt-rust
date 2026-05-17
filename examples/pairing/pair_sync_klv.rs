@@ -102,7 +102,7 @@ fn main() {
                 payload,
                 ..
             } => {
-                klv_history.push_back((pts, payload));
+                klv_history.push_back((pts.as_ticks(), payload));
                 if klv_history.len() > KLV_HISTORY_LEN {
                     klv_history.pop_front();
                 }
@@ -112,6 +112,7 @@ fn main() {
                 payload: SamplePayload::Video { .. },
                 ..
             } => {
+                let pts = pts.as_ticks();
                 // Linear scan for nearest. With 32 entries the linear
                 // scan is faster than a sorted-structure binary search
                 // by a wide margin (cache-friendly). For much larger

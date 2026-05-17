@@ -97,6 +97,6 @@ fn demux_audio_pts_surfaces() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(*sample.0, 90_000);
+    assert_eq!(sample.0.as_ticks(), 90_000);
     assert_eq!(*sample.1, None, "audio always has dts: None");
 }

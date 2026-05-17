@@ -63,7 +63,6 @@
 use std::env;
 use std::fs;
 use std::io::Write;
-use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::event::NalUnit;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
 use tst_core::mpegts::mux::{
@@ -282,7 +281,7 @@ fn repack_event(
                         || nals
                             .iter()
                             .any(|n| matches!(n, NalUnit::H264 { nal_type: 5, .. }));
-                    muxer.push_video_to(video_handle, &annex_b, Pts90khz::new(pts), key_frame)?;
+                    muxer.push_video_to(video_handle, &annex_b, pts, key_frame)?;
                 }
             }
             // Non-H.264 codecs (H.265 etc.) are silently skipped here.
@@ -318,7 +317,7 @@ fn repack_event(
             // streams (0x06) and for the transparent repack case here.
             // Spec default is 0x00; use non-zero only when mirroring a
             // metadata_klva() PMT descriptor `service_id` from the source.
-            muxer.push_klv_to(klv_handle, &payload, Pts90khz::new(pts), 0x00)?;
+            muxer.push_klv_to(klv_handle, &payload, pts, 0x00)?;
         }
 
         // ── Everything else is ignored ────────────────────────────────────────

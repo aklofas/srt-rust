@@ -6,6 +6,7 @@
 //! to the receiver-surface plan).
 
 use std::time::Duration;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{DemuxEvent, MetadataKind, StreamId, VideoCodec, VideoPayload};
 
 /// Pairer matching mode for [`Pairer::with_options`](super::Pairer::with_options).
@@ -91,7 +92,7 @@ pub enum PairerOutput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoSample {
     pub stream: StreamId,
-    pub pts: i64,
+    pub pts: Pts90khz,
     pub dts: Option<i64>,
     pub codec: VideoCodec,
     pub payload: VideoPayload,
@@ -105,7 +106,7 @@ pub struct VideoSample {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KlvSample {
     pub stream: StreamId,
-    pub pts: i64,
+    pub pts: Pts90khz,
     pub kind: MetadataKind,
     pub payload: Vec<u8>,
 }

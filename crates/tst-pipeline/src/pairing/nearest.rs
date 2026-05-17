@@ -181,7 +181,7 @@ impl NearestState {
             InternalMode::Buffered { max_lag_ticks, .. } => max_lag_ticks,
         };
         let mut out = Vec::new();
-        let last_klv_pts = self.klv_history.back().map(|e| e.sample.pts);
+        let last_klv_pts = self.klv_history.back().map(|e| e.sample.pts.as_ticks());
         while let Some(v) = self.video_buffer.front() {
             // Best-match scan. Doesn't mutate; we only mutate via
             // match_video_against_history below if we choose Paired.
@@ -192,7 +192,13 @@ impl NearestState {
                 // PTS values approach the limit (PIPE-03 item 1). H.222.0 §2.4.3.7
                 // bounds the demuxer's per-event PTS at 0..(2^33 − 1) ≈ 9.55e9, so
                 // saturation is defensive against non-conformant sources.
-                .map(|e| e.sample.pts.saturating_sub(v.pts).saturating_abs())
+                .map(|e| {
+                    e.sample
+                        .pts
+                        .as_ticks()
+                        .saturating_sub(v.pts.as_ticks())
+                        .saturating_abs()
+                })
                 .min();
             let in_tolerance = matches!(best, Some(d) if d <= self.tolerance_ticks);
             if in_tolerance {
@@ -204,7 +210,7 @@ impl NearestState {
                 // saturating_add caps at i64::MAX so the comparison becomes
                 // `last > i64::MAX` (always false) — keep the video buffered
                 // rather than force-emit under arithmetic overflow.
-                Some(last) => last > v.pts.saturating_add(max_lag_ticks),
+                Some(last) => last > v.pts.as_ticks().saturating_add(max_lag_ticks),
                 None => false,
             };
             if force_all || window_closed {
@@ -227,7 +233,12 @@ impl NearestState {
         for (i, entry) in self.klv_history.iter().enumerate() {
             // saturating_sub + saturating_abs guards against i64 overflow
             // (PIPE-03 item 1) — see drain_buffered for the rationale.
-            let dist = entry.sample.pts.saturating_sub(v.pts).saturating_abs();
+            let dist = entry
+                .sample
+                .pts
+                .as_ticks()
+                .saturating_sub(v.pts.as_ticks())
+                .saturating_abs();
             match best {
                 None => best = Some((i, dist)),
                 // Strict `<` so a later equidistant entry wins (newer
@@ -254,6 +265,7 @@ impl NearestState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tst_core::mpegts::common::Pts90khz;
     use tst_core::mpegts::demux::{MetadataKind, StreamId, StreamKind, VideoCodec, VideoPayload};
 
     const VIDEO_PID: u16 = 0x100;
@@ -266,7 +278,7 @@ mod tests {
                 kind: StreamKind::Video(VideoCodec::H264),
                 program_number: 1,
             },
-            pts,
+            pts: Pts90khz::new(pts),
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
@@ -283,7 +295,7 @@ mod tests {
                 kind: StreamKind::KlvAsync,
                 program_number: 1,
             },
-            pts,
+            pts: Pts90khz::new(pts),
             kind: MetadataKind::KlvAsync,
             payload: vec![0xAA, 0xBB],
         }
@@ -329,7 +341,7 @@ mod tests {
         let out = s.feed(klv_event(4));
         assert_eq!(out.len(), 1);
         match &out[0] {
-            PairerOutput::UnpairedKlv(k) => assert_eq!(k.pts, 0),
+            PairerOutput::UnpairedKlv(k) => assert_eq!(k.pts.as_ticks(), 0),
             _ => panic!("expected UnpairedKlv, got {:?}", out[0]),
         }
     }
@@ -370,7 +382,7 @@ mod tests {
         // (PTS=100) wins per the spec rule.
         let out = s.feed(video_event(50));
         match &out[0] {
-            PairerOutput::Paired { klv, .. } => assert_eq!(klv.pts, 100),
+            PairerOutput::Paired { klv, .. } => assert_eq!(klv.pts.as_ticks(), 100),
             _ => panic!("expected Paired with klv.pts=100"),
         }
     }
@@ -452,7 +464,7 @@ mod tests {
         let unpaired: Vec<_> = out
             .iter()
             .filter_map(|o| match o {
-                PairerOutput::UnpairedVideo(v) => Some(v.pts),
+                PairerOutput::UnpairedVideo(v) => Some(v.pts.as_ticks()),
                 _ => None,
             })
             .collect();
@@ -551,7 +563,7 @@ mod tests {
         let unpaired_pts: Vec<i64> = out
             .iter()
             .filter_map(|o| match o {
-                PairerOutput::UnpairedKlv(k) => Some(k.pts),
+                PairerOutput::UnpairedKlv(k) => Some(k.pts.as_ticks()),
                 _ => None,
             })
             .collect();

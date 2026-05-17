@@ -82,7 +82,7 @@ impl LastBeforeState {
                         // PIPE-16 cross-ref: `v.pts - s.sample.pts` is safe
                         // because the gate above proves `s.sample.pts <= v.pts`
                         // (non-negative diff). No saturation needed.
-                        Some(n) => v.pts - s.sample.pts <= n,
+                        Some(n) => v.pts.as_ticks() - s.sample.pts.as_ticks() <= n,
                         None => true,
                     }
             })
@@ -113,6 +113,7 @@ impl LastBeforeState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tst_core::mpegts::common::Pts90khz;
     use tst_core::mpegts::demux::{MetadataKind, StreamId, StreamKind, VideoCodec, VideoPayload};
 
     const VIDEO_PID: u16 = 0x100;
@@ -125,7 +126,7 @@ mod tests {
                 kind: StreamKind::Video(VideoCodec::H264),
                 program_number: 1,
             },
-            pts,
+            pts: Pts90khz::new(pts),
             dts: None,
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
@@ -142,7 +143,7 @@ mod tests {
                 kind: StreamKind::KlvAsync,
                 program_number: 1,
             },
-            pts,
+            pts: Pts90khz::new(pts),
             kind: MetadataKind::KlvAsync,
             payload: vec![0xAA, 0xBB],
         }
@@ -190,7 +191,7 @@ mod tests {
         let out = s.feed(klv_event(50));
         assert_eq!(out.len(), 1);
         match &out[0] {
-            PairerOutput::UnpairedKlv(k) => assert_eq!(k.pts, 0),
+            PairerOutput::UnpairedKlv(k) => assert_eq!(k.pts.as_ticks(), 0),
             _ => panic!("expected UnpairedKlv(0), got {:?}", out[0]),
         }
     }

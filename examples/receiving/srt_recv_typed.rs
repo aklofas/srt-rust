@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
             }
             Ok(DemuxEvent::Sample { stream, pts, .. }) => {
-                eprintln!("Sample PID=0x{:04X} pts={pts}", stream.pid);
+                eprintln!("Sample PID=0x{:04X} pts={}", stream.pid, pts.as_ticks());
             }
             Ok(DemuxEvent::Metadata {
                 stream,
@@ -115,8 +115,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 payload,
             }) => {
                 eprintln!(
-                    "Metadata PID=0x{:04X} pts={pts} kind={kind:?} bytes={}",
+                    "Metadata PID=0x{:04X} pts={} kind={kind:?} bytes={}",
                     stream.pid,
+                    pts.as_ticks(),
                     payload.len()
                 );
             }

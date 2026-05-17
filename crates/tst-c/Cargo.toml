@@ -28,5 +28,6 @@ thiserror = { workspace = true }
 cbindgen = { workspace = true }
 
 [dev-dependencies]
-cc       = { workspace = true }
-cbindgen = { workspace = true }
+cc               = { workspace = true }
+cbindgen         = { workspace = true }
+tst-test-helpers = { path = "../tst-test-helpers" }

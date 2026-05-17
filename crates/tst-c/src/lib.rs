@@ -27,6 +27,14 @@ pub mod raw_sender;
 pub mod stats;
 pub mod ts_receiver;
 pub mod ts_sender;
+/// Re-exports of internal error helpers for integration tests. These are not
+/// `extern "C"` and do not appear in `tstrans.h`. Named with `test_` prefix
+/// to mark their test-only intent; not gated on `#[cfg(test)]` because
+/// integration tests in `tests/` are separate crates that cannot see
+/// `pub(crate)` items.
+pub use error::{
+    test_clear_last_error, test_last_error_code, test_last_error_msg, test_record_shell_error,
+};
 /// Major version (compile-time macro in the generated header).
 pub const TST_VERSION_MAJOR: libc::c_int = 0;
 /// Minor version.

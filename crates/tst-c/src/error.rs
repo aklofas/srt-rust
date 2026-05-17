@@ -374,6 +374,45 @@ pub(crate) fn record_eos() {
     set_last_error(TstError::EndOfStream, "end of stream (peer disconnected)");
 }
 
+/// Expose `record_shell_error` to integration tests that cannot access
+/// `pub(crate)` items. Integration tests in `crates/tst-c/tests/` are
+/// separate crates that can only reach `pub` items on the rlib.
+///
+/// These functions are NOT `extern "C"` and therefore do NOT appear in the
+/// cbindgen-generated C header (`tstrans.h`). They are only reachable from
+/// Rust tests that link the rlib. Named with a `test_` prefix so call sites
+/// are self-documenting about their test-only status.
+pub fn test_record_shell_error<E: ShellError>(e: &E) -> i32 {
+    record_shell_error(e)
+}
+
+/// Read the thread-local last-error code for test assertions. Equivalent to
+/// `tst_get_last_error()` but callable without `unsafe`. Not `extern "C"`;
+/// does not appear in the C header.
+pub fn test_last_error_code() -> i32 {
+    LAST_ERROR.with(|cell| cell.borrow().0)
+}
+
+/// Read the thread-local last-error message string for test assertions. Not
+/// `extern "C"`; does not appear in the C header.
+pub fn test_last_error_msg() -> String {
+    LAST_ERROR.with(|cell| {
+        cell.borrow()
+            .1
+            .to_str()
+            .unwrap_or("<invalid utf8>")
+            .to_owned()
+    })
+}
+
+/// Clear the thread-local last-error for test isolation. Not `extern "C"`;
+/// does not appear in the C header.
+pub fn test_clear_last_error() {
+    LAST_ERROR.with(|cell| {
+        *cell.borrow_mut() = (0, CString::new("").unwrap());
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

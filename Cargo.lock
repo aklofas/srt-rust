@@ -1553,6 +1553,7 @@ dependencies = [
  "tst-core",
  "tst-pipeline",
  "tst-srt",
+ "tst-test-helpers",
 ]
 
 [[package]]

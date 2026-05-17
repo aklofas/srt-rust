@@ -243,11 +243,12 @@ impl Demuxer {
             let pkt_buf: [u8; 188] = live[..188].try_into().unwrap();
             self.sync_consumed += 188;
             self.compact_sync_buf();
-            // TODO: consider catching MalformedPes here per Task 4 review —
-            // the plan currently propagates this fatally out of `feed`, which
-            // ends the receive loop. A future task may convert it to a
-            // NonConformant event so the loop survives a single corrupt PES.
-            self.process_packet(&pkt_buf)?;
+            // Lenient mode catches `MalformedPes` and surfaces it as a
+            // `NonConformant` event so the receive loop survives a single
+            // corrupt PES on one PID. Strict modes still escalate. See
+            // `handle_process_packet_result` for the per-error policy.
+            let result = self.process_packet(&pkt_buf);
+            self.handle_process_packet_result(result)?;
             // Strict-mode hatch: if the packet just processed produced a
             // `NonConformant` event whose issue category is rejected by the
             // configured `StrictMode`, surface it as a fatal error here. The
@@ -276,9 +277,11 @@ impl Demuxer {
     ///
     /// Returns `Err(DemuxError::Unrecoverable { after_bytes: 0 })` if
     /// `pkt[0] != 0x47` — the caller violated the alignment contract.
-    /// All other errors mirror those of [`feed`](Self::feed): `MalformedPsi`,
-    /// `MalformedPes`, and (in strict mode) `StrictRejection`. The
-    /// `SyncBufExhausted` and `Unrecoverable { after_bytes > 0 }` variants
+    /// All other errors mirror those of [`feed`](Self::feed): `MalformedPsi`
+    /// and (in strict mode) `StrictRejection` or `MalformedPes`. In lenient
+    /// mode (the default) `MalformedPes` is converted to a `NonConformant`
+    /// event so a single corrupt PES doesn't tear down the receive loop.
+    /// The `SyncBufExhausted` and `Unrecoverable { after_bytes > 0 }` variants
     /// cannot be returned by this method (no sync buffer is involved).
     ///
     /// # Example
@@ -300,7 +303,8 @@ impl Demuxer {
             return Err(DemuxError::Unrecoverable { after_bytes: 0 });
         }
         self.bytes_since_sync = 0;
-        self.process_packet(pkt)?;
+        let result = self.process_packet(pkt);
+        self.handle_process_packet_result(result)?;
         if let Some(fatal) = self.fatal.take() {
             return Err(DemuxError::StrictRejection(format!("{fatal:?}")));
         }
@@ -1431,6 +1435,42 @@ impl Demuxer {
         }
         // No tracker found — no suppression.
         true
+    }
+
+    /// Convert a `process_packet` result into lenient/strict policy.
+    ///
+    /// Lenient mode (`StrictMode::Off`): `DemuxError::MalformedPes` becomes
+    /// a `NonConformant` event with `NonConformantIssue::MalformedPes` so
+    /// the receive loop survives a single corrupt PES on one PID. Strict
+    /// modes that reject `NonConformantIssue::MalformedPes` (today only
+    /// `StrictMode::Full`) propagate the original error so callers see the
+    /// failure rather than a silently-buried event.
+    ///
+    /// All other `DemuxError` variants (`MalformedPsi`, `Unrecoverable`,
+    /// `StrictRejection`, `SyncBufExhausted`) are pass-through — those
+    /// represent unrecoverable byte-stream conditions or strict-mode
+    /// rejections already shaped for caller handling.
+    fn handle_process_packet_result(
+        &mut self,
+        result: Result<(), DemuxError>,
+    ) -> Result<(), DemuxError> {
+        match result {
+            Ok(()) => Ok(()),
+            Err(DemuxError::MalformedPes { pid, reason }) => {
+                let issue = NonConformantIssue::MalformedPes { pid, reason };
+                if self.options.strict.rejects(&issue) {
+                    return Err(DemuxError::MalformedPes { pid, reason });
+                }
+                let stream = self.lookup_stream(pid).unwrap_or(StreamId {
+                    pid,
+                    kind: StreamKind::Unknown(0),
+                    program_number: self.program_number_for_pid(pid),
+                });
+                self.queue_nonconformant(stream, issue);
+                Ok(())
+            }
+            Err(other) => Err(other),
+        }
     }
 
     fn queue_nonconformant(&mut self, stream: StreamId, issue: NonConformantIssue) {

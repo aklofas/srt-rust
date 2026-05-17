@@ -166,13 +166,13 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     ///
     /// # MalformedPes note
     ///
-    /// `DemuxError::MalformedPes` propagates as `DemuxReceiverError::Demux` and
-    /// terminates the receive loop. This matches the plan default (fatal
-    /// propagation). If a production caller wants to skip bad PES and continue,
-    /// it can match on `DemuxReceiverError::Demux(DemuxError::MalformedPes { .. })`
-    /// and call `recv_event` again; but the demuxer state after a malformed PES
-    /// is undefined, so re-entry is discouraged without a design change. Tracked
-    /// in the deferred-features list.
+    /// In lenient mode (default, `StrictMode::Off`), a `MalformedPes` from the
+    /// inner demuxer is converted to a `NonConformant` event
+    /// (`NonConformantIssue::MalformedPes { pid, reason }`) and the receive
+    /// loop continues — a single corrupt PES on one PID no longer tears down
+    /// the receiver. In strict modes that reject `MalformedPes` (today
+    /// `StrictMode::Full`), the error propagates as `DemuxReceiverError::Demux`
+    /// and terminates the loop.
     ///
     /// # Errors
     /// - [`DemuxReceiverError::Transport`] wraps any
@@ -245,7 +245,8 @@ impl<R: RecvTransport> DemuxReceiver<R> {
             // transport layer already produces [u8; 188] packets so no sync
             // buffering or 0x47 hunt is needed.  In lenient mode this only
             // errors on Unrecoverable (caller violated alignment contract) or
-            // MalformedPes/MalformedPsi. In strict mode it can also return
+            // MalformedPsi (MalformedPes is converted to a NonConformant
+            // event by the inner demuxer). In strict mode it can also return
             // StrictRejection.
             self.demux
                 .feed_aligned(&pkt)
@@ -324,11 +325,12 @@ pub enum DemuxReceiverError {
     /// The demuxer rejected a packet (strict-mode violation, unrecoverable
     /// packet malformation, or malformed PES header).
     ///
-    /// Re-entry into [`DemuxReceiver::recv_event`] after this variant is
-    /// discouraged for `DemuxError::MalformedPes`: the demuxer's reassembly
-    /// state is undefined past a bad PES header, so subsequent events may
-    /// be inconsistent. Treat it as a stream-fatal signal until the demuxer
-    /// gains lenient PES recovery.
+    /// In lenient mode (the default `StrictMode::Off`) `DemuxError::MalformedPes`
+    /// no longer surfaces here — it is converted to a `NonConformant` event by
+    /// the inner demuxer. Strict modes that reject `MalformedPes` (today
+    /// `StrictMode::Full`) still propagate it; re-entry after such a strict
+    /// rejection is discouraged because reassembly state past a bad PES
+    /// header is undefined.
     #[error(transparent)]
     Demux(#[from] DemuxError),
 }

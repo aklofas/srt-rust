@@ -83,15 +83,18 @@ impl Reassembler {
         random_access_indicator: bool,
     ) -> Result<Vec<ReassemblyOutcome>, DemuxError> {
         let mut out = Vec::new();
+        // Deferred error from finalizing a malformed prior PES at PUSI.
+        // We accumulate the new PES on this PID first (so lenient-mode
+        // recovery in `Demuxer::handle_process_packet_result` can keep
+        // parsing after the demuxer converts this to a `NonConformant`
+        // event), then return the error at the end of `push`.
+        let mut deferred_err: Option<DemuxError> = None;
         if pusi {
             // PUSI: drain whatever was in flight on this PID first.
-            if let Some(prev) = self.by_pid.remove(&pid) {
-                self.total_buffered = self.total_buffered.saturating_sub(prev.buf.len());
-                if let Some(pes) = parse_complete(pid, &prev.buf, prev.random_access_indicator)? {
-                    out.push(ReassemblyOutcome::Complete(pes));
-                }
-            }
-            // Start fresh partial; latch RAI from the PES_start packet.
+            let prev = self.by_pid.remove(&pid);
+            // Start the fresh partial up-front so the new PES's payload
+            // (appended below) is captured even if `parse_complete` on
+            // the prior buffer errors.
             self.by_pid.insert(
                 pid,
                 Partial {
@@ -100,6 +103,14 @@ impl Reassembler {
                     random_access_indicator,
                 },
             );
+            if let Some(prev) = prev {
+                self.total_buffered = self.total_buffered.saturating_sub(prev.buf.len());
+                match parse_complete(pid, &prev.buf, prev.random_access_indicator) {
+                    Ok(Some(pes)) => out.push(ReassemblyOutcome::Complete(pes)),
+                    Ok(None) => {}
+                    Err(e) => deferred_err = Some(e),
+                }
+            }
         }
         // Append payload to whatever partial exists for this PID.
         let part = match self.by_pid.get_mut(&pid) {
@@ -150,6 +161,13 @@ impl Reassembler {
             if let Some(pes) = parse_complete(pid, &buf, completed_rai)? {
                 out.push(ReassemblyOutcome::Complete(pes));
             }
+        }
+        // Surface a deferred prior-PES parse error AFTER the new PES on
+        // this PID has been recorded. Lenient mode in the demuxer
+        // converts this into a `NonConformant` event and the next call
+        // continues building the new PES; strict mode propagates fatally.
+        if let Some(e) = deferred_err {
+            return Err(e);
         }
         Ok(out)
     }

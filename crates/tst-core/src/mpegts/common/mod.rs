@@ -148,6 +148,16 @@ pub const PTS_TICKS_PER_SECOND: i64 = 90_000;
 /// `NonConformantIssue::PcrAnomaly.delta` by this constant to get seconds.
 pub const PCR_TICKS_PER_SECOND: u64 = 27_000_000;
 
+/// Standard MPEG-TS packet size in bytes, per ITU-T H.222.0 §2.4.3.2.
+///
+/// All MPEG-TS packets in this library are exactly 188 bytes (no DVB-ASI
+/// 204-byte FEC-augmented packets — see `docs/deferred-features.md`).
+pub const TS_PACKET_SIZE: usize = 188;
+
+/// MPEG-TS sync byte, per ITU-T H.222.0 §2.4.3.2. Every TS packet begins
+/// with this byte at offset 0.
+pub const TS_SYNC_BYTE: u8 = 0x47;
+
 /// Signed difference `now - last` interpreted across the 33-bit PTS
 /// rollover boundary. Returns the smaller-magnitude wrap-aware delta.
 ///

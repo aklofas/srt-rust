@@ -17,6 +17,8 @@
 //! two-pass sync strategy: don't declare lock until you've seen several
 //! back-to-back aligned sync bytes.
 
+use tst_core::mpegts::common::{TS_PACKET_SIZE, TS_SYNC_BYTE};
+
 /// Current state of the sync state machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncState {
@@ -148,7 +150,7 @@ impl Syncer {
                 SyncState::Hunt => {
                     // Scan the live region for the first 0x47 sync byte.
                     let live = &self.buf[self.head..self.head + self.len];
-                    let pos = live.iter().position(|&b| b == 0x47)?;
+                    let pos = live.iter().position(|&b| b == TS_SYNC_BYTE)?;
                     self.bytes_skipped_for_sync += pos as u64;
                     // Advance head past skipped bytes — no memmove needed.
                     self.head += pos;
@@ -167,11 +169,11 @@ impl Syncer {
                     // there is at least one byte of the first real packet in
                     // the buffer, so the LOCKED arm won't immediately return
                     // None on the following iteration.
-                    let need = 188 * (count as usize + 1) + 1;
+                    let need = TS_PACKET_SIZE * (count as usize + 1) + 1;
                     if self.len < need {
                         return None;
                     }
-                    if self.buf[self.head + 188 * count as usize] == 0x47 {
+                    if self.buf[self.head + TS_PACKET_SIZE * count as usize] == TS_SYNC_BYTE {
                         let new_count = count + 1;
                         if new_count >= 4 {
                             // Four confirmations — alignment is solid.
@@ -195,10 +197,10 @@ impl Syncer {
                     }
                 }
                 SyncState::Locked => {
-                    if self.len < 188 {
+                    if self.len < TS_PACKET_SIZE {
                         return None;
                     }
-                    if self.buf[self.head] != 0x47 {
+                    if self.buf[self.head] != TS_SYNC_BYTE {
                         // Lost sync — corrupted stream or a gap in the source.
                         // Fall back to HUNT; the loop will scan for the next
                         // 0x47 without consuming the non-sync byte here
@@ -208,10 +210,10 @@ impl Syncer {
                     }
                     // Copy 188 bytes into a stack-allocated array — no heap alloc.
                     let mut pkt = [0u8; 188];
-                    pkt.copy_from_slice(&self.buf[self.head..self.head + 188]);
+                    pkt.copy_from_slice(&self.buf[self.head..self.head + TS_PACKET_SIZE]);
                     // Advance the head cursor — no memmove needed.
-                    self.head += 188;
-                    self.len -= 188;
+                    self.head += TS_PACKET_SIZE;
+                    self.len -= TS_PACKET_SIZE;
                     return Some(pkt);
                 }
             }

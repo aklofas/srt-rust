@@ -19,6 +19,7 @@ use crate::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use tst_core::mpegts::common::TS_PACKET_SIZE;
 use tst_pipeline::ManagedReceiveTransport;
 use tst_pipeline::Receiver;
 use tst_pipeline::TransportCancel;
@@ -173,7 +174,7 @@ pub unsafe extern "C" fn tst_receiver_recv_packet(
         Ok(pkt) => {
             // SAFETY: out_packet non-null per guard above. The destination
             // is documented as a caller-provided uint8_t[188] buffer.
-            unsafe { std::ptr::copy_nonoverlapping(pkt.as_ptr(), out_packet, 188) };
+            unsafe { std::ptr::copy_nonoverlapping(pkt.as_ptr(), out_packet, TS_PACKET_SIZE) };
             0
         }
         Err(TransportError::Closed) => {
@@ -464,7 +465,7 @@ pub unsafe extern "C" fn tst_managed_receiver_recv_packet(
     handle.inner.with_inner_mut(|rx| match rx.next_packet() {
         Ok(pkt) => {
             // SAFETY: out_packet non-null per guard above.
-            unsafe { std::ptr::copy_nonoverlapping(pkt.as_ptr(), out_packet, 188) };
+            unsafe { std::ptr::copy_nonoverlapping(pkt.as_ptr(), out_packet, TS_PACKET_SIZE) };
             0
         }
         Err(TransportError::Closed) => {

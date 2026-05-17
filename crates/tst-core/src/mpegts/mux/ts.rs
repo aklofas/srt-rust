@@ -14,7 +14,7 @@
 //! new PES) live in the `Muxer` orchestrator (Task 8). This module is purely
 //! mechanical packet assembly.
 
-use crate::mpegts::common::Pcr27mhz;
+use crate::mpegts::common::{Pcr27mhz, TS_PACKET_SIZE, TS_SYNC_BYTE};
 
 /// Per-PID 4-bit continuity counters.
 ///
@@ -106,7 +106,7 @@ pub(crate) fn write_packet(
     debug_assert!(pid <= 0x1FFF, "PID out of range");
 
     // Header byte 0: sync byte
-    out[0] = 0x47;
+    out[0] = TS_SYNC_BYTE;
     // Header byte 1: TEI (0) | PUSI | TP (0) | PID high 5 bits
     out[1] = ((payload_unit_start as u8) << 6) | ((pid >> 8) as u8 & 0x1F);
     // Header byte 2: PID low 8 bits
@@ -122,7 +122,7 @@ pub(crate) fn write_packet(
     // payload case, where af_length=0 (length byte alone, no flags) is the
     // spec-compliant choice.
     let af_min = adaptation.min_size();
-    let no_af_payload_capacity: usize = 188 - 4; // 184
+    let no_af_payload_capacity: usize = TS_PACKET_SIZE - 4; // 184
     let needs_padding_only_af = af_min == 0 && payload.len() < no_af_payload_capacity;
     let af_overhead = if af_min > 0 {
         af_min
@@ -135,7 +135,7 @@ pub(crate) fn write_packet(
     } else {
         0
     };
-    let payload_capacity = 188 - 4 - af_overhead;
+    let payload_capacity = TS_PACKET_SIZE - 4 - af_overhead;
     let to_copy = payload_capacity.min(payload.len());
     let stuffing = payload_capacity - to_copy;
 
@@ -186,7 +186,7 @@ pub(crate) fn write_packet(
     out[cursor..cursor + to_copy].copy_from_slice(&payload[..to_copy]);
     cursor += to_copy;
 
-    debug_assert_eq!(cursor, 188);
+    debug_assert_eq!(cursor, TS_PACKET_SIZE);
 
     WriteResult {
         payload_consumed: to_copy,

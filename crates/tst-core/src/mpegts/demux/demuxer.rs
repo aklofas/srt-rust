@@ -1,7 +1,9 @@
 //! Top-level `Demuxer` state machine.
 
 use crate::error::DemuxError;
-use crate::mpegts::common::{Pts90khz, pcr_diff_27mhz, pts_diff_33bit};
+use crate::mpegts::common::{
+    Pts90khz, TS_PACKET_SIZE, TS_SYNC_BYTE, pcr_diff_27mhz, pts_diff_33bit,
+};
 use crate::mpegts::demux::event::{
     AudioCodec, DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit,
     NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, SubtitleCodec,
@@ -24,7 +26,7 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 /// Maximum bytes the demuxer scans during sync recovery before declaring
 /// the stream unrecoverable.
-const SYNC_SEARCH_WINDOW: usize = 188 * 32;
+const SYNC_SEARCH_WINDOW: usize = TS_PACKET_SIZE * 32;
 
 /// Hard ceiling on `Demuxer::sync_buf`. `feed` always runs
 /// `extend_from_slice` before the inner sync-search-window check fires,
@@ -216,14 +218,14 @@ impl Demuxer {
         }
         loop {
             let live = &self.sync_buf[self.sync_consumed..];
-            if live.len() < 188 {
+            if live.len() < TS_PACKET_SIZE {
                 self.compact_sync_buf();
                 return Ok(());
             }
             // Sync to next 0x47.
-            if live[0] != 0x47 {
+            if live[0] != TS_SYNC_BYTE {
                 let mut i = 1;
-                while i < live.len() && live[i] != 0x47 {
+                while i < live.len() && live[i] != TS_SYNC_BYTE {
                     i += 1;
                 }
                 self.bytes_since_sync += i;
@@ -240,8 +242,8 @@ impl Demuxer {
             self.bytes_since_sync = 0;
             // Need to read 188 bytes; if the next byte after isn't 0x47 (or
             // we don't have enough buffer to check), we'll re-sync next loop.
-            let pkt_buf: [u8; 188] = live[..188].try_into().unwrap();
-            self.sync_consumed += 188;
+            let pkt_buf: [u8; 188] = live[..TS_PACKET_SIZE].try_into().unwrap();
+            self.sync_consumed += TS_PACKET_SIZE;
             self.compact_sync_buf();
             // Lenient mode catches `MalformedPes` and surfaces it as a
             // `NonConformant` event so the receive loop survives a single
@@ -299,7 +301,7 @@ impl Demuxer {
     /// while let Some(_event) = d.next_event() { /* handle */ }
     /// ```
     pub fn feed_aligned(&mut self, pkt: &[u8; 188]) -> Result<(), DemuxError> {
-        if pkt[0] != 0x47 {
+        if pkt[0] != TS_SYNC_BYTE {
             return Err(DemuxError::Unrecoverable { after_bytes: 0 });
         }
         self.bytes_since_sync = 0;

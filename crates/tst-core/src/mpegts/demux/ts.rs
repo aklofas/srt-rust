@@ -2,6 +2,8 @@
 //!
 //! Inverse of `mpegts::mux::ts::TsPacketWriter`. ISO/IEC 13818-1 §2.4.3.2.
 
+use crate::mpegts::common::{TS_PACKET_SIZE, TS_SYNC_BYTE};
+
 /// Parsed fields from one TS packet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TsPacket<'a> {
@@ -41,10 +43,10 @@ pub enum TsParseError {
 }
 
 pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
-    if buf.len() != 188 {
+    if buf.len() != TS_PACKET_SIZE {
         return Err(TsParseError::Truncated);
     }
-    if buf[0] != 0x47 {
+    if buf[0] != TS_SYNC_BYTE {
         return Err(TsParseError::NoSyncByte);
     }
     let transport_error_indicator = (buf[1] & 0x80) != 0;
@@ -60,7 +62,7 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
     let mut random_access_indicator = false;
     if has_adaptation_field {
         let af_len = buf[4] as usize;
-        if 5 + af_len > 188 {
+        if 5 + af_len > TS_PACKET_SIZE {
             return Err(TsParseError::BadAdaptationLength);
         }
         if af_len >= 1 {
@@ -82,8 +84,8 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
         }
         payload_off = 5 + af_len;
     }
-    let payload = if has_payload && payload_off < 188 {
-        &buf[payload_off..188]
+    let payload = if has_payload && payload_off < TS_PACKET_SIZE {
+        &buf[payload_off..TS_PACKET_SIZE]
     } else {
         &[]
     };

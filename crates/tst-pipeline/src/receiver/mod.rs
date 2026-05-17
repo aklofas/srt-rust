@@ -15,6 +15,7 @@ pub mod sync;
 use std::sync::Arc;
 use sync::Syncer;
 use tracing::{Span, info_span};
+use tst_core::mpegts::common::TS_PACKET_SIZE;
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
@@ -192,7 +193,7 @@ impl<R: RecvTransport> Receiver<R> {
     pub fn next_packet(&mut self) -> Result<[u8; 188], TransportError> {
         loop {
             if let Some(pkt) = self.syncer.next_packet() {
-                self.bytes_received += 188;
+                self.bytes_received += TS_PACKET_SIZE as u64;
                 self.packets_received += 1;
                 return Ok(pkt);
             }

@@ -6,6 +6,7 @@
 //! crate's mux output shape is supported.
 
 use std::collections::HashMap;
+use tst_core::mpegts::common::{TS_PACKET_SIZE, TS_SYNC_BYTE};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PmtStream {
@@ -35,8 +36,8 @@ pub fn parse(buf: &[u8]) -> ParsedStream {
     // After PMT is parsed, we know which PIDs are PES streams.
     let mut pes_pids: Vec<u16> = Vec::new();
 
-    for pkt in buf.chunks_exact(188) {
-        if pkt[0] != 0x47 {
+    for pkt in buf.chunks_exact(TS_PACKET_SIZE) {
+        if pkt[0] != TS_SYNC_BYTE {
             panic!("invalid sync byte at packet boundary");
         }
         let pusi = (pkt[1] & 0x40) != 0;
@@ -55,7 +56,7 @@ pub fn parse(buf: &[u8]) -> ParsedStream {
             }
             payload_offset = 5 + af_len;
         }
-        if afc & 0x1 == 0 || payload_offset >= 188 {
+        if afc & 0x1 == 0 || payload_offset >= TS_PACKET_SIZE {
             continue;
         }
         let payload = &pkt[payload_offset..];

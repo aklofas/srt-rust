@@ -2887,7 +2887,7 @@ mod tests {
         // streams has 2, overwrite with 1-entry descriptor vec
         cfg.programs[0].stream_descriptors = vec![Vec::new()];
         let err = cfg.validate().unwrap_err();
-        assert!(matches!(err, MuxError::InvalidConfig(_)));
+        assert!(matches!(err, MuxError::ConfigInvalid { .. }));
     }
 
     #[test]

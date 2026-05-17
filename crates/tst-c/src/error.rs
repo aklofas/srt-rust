@@ -277,6 +277,15 @@ pub(crate) fn record_mux_error(e: &MuxError) {
                 "abs_idx {abs_idx} out of range for program {program_number} (has {len} streams)"
             ),
         ),
+        MuxError::ConfigInvalid { reason } => {
+            // Maps to the same TstError::InvalidConfig as the
+            // flat-string MuxError::InvalidConfig variant — same
+            // semantic ("muxer config is invalid, here's why"), just
+            // with a richer reason. Bindings discriminating on the
+            // numeric code see no change; bindings reading the
+            // last-error string get the formatted diagnostic.
+            (TstError::InvalidConfig, reason.clone())
+        }
         _ => {
             // Required by #[non_exhaustive]. CI ratchet
             // scripts/check-tst-c-error-coverage.sh enforces that every
@@ -436,6 +445,12 @@ mod tests {
         // arms above.
         let cases: Vec<(MuxError, TstError)> = vec![
             (MuxError::InvalidConfig("test"), TstError::InvalidConfig),
+            (
+                MuxError::ConfigInvalid {
+                    reason: "test".into(),
+                },
+                TstError::InvalidConfig,
+            ),
             (MuxError::InvalidNal, TstError::InvalidNal),
             (
                 MuxError::BufferFull {

@@ -196,6 +196,18 @@ pub enum MuxError {
     #[error("muxer configuration is invalid: {0}")]
     InvalidConfig(&'static str),
 
+    /// Like [`MuxError::InvalidConfig`] but carries a `String` reason
+    /// so the diagnostic can format-print structural context
+    /// (program numbers, actual vs expected lengths). Use this variant
+    /// when the reason needs runtime context beyond a static string.
+    ///
+    /// Introduced in plan #72 (Wave 2.3) for the
+    /// `MuxerProgramConfig.stream_descriptors` length invariant; future
+    /// `validate()` checks that need formatted reasons should also
+    /// route through this variant.
+    #[error("muxer configuration is invalid: {reason}")]
+    ConfigInvalid { reason: String },
+
     #[error("video input is not Annex-B framed (no start code prefix)")]
     InvalidNal,
 

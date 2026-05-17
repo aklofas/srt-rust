@@ -353,9 +353,17 @@ impl MuxerConfig {
 
             // stream_descriptors length match + per-TLV well-formedness.
             if prog.stream_descriptors.len() != prog.streams.len() {
-                return Err(MuxError::InvalidConfig(
-                    "stream_descriptors.len() must equal streams.len()",
-                ));
+                return Err(MuxError::ConfigInvalid {
+                    reason: format!(
+                        "program {} has {} streams but {} stream_descriptors \
+                         (lengths must match — call the corresponding \
+                         stream_descriptors_for_{{video,klv,audio,subtitle}} \
+                         builder methods or hand-build with parallel Vecs)",
+                        prog.program_number,
+                        prog.streams.len(),
+                        prog.stream_descriptors.len(),
+                    ),
+                });
             }
             for (si, descs) in prog.stream_descriptors.iter().enumerate() {
                 for (di, tlv) in descs.iter().enumerate() {

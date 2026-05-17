@@ -278,8 +278,13 @@ pub(crate) fn record_mux_error(e: &MuxError) {
             ),
         ),
         _ => {
-            // Phase 1: Unknown future MuxError variant — treat as invalid config.
-            (TstError::InvalidConfig, "unknown mux error".into())
+            // Required by #[non_exhaustive]. CI ratchet
+            // scripts/check-tst-c-error-coverage.sh enforces that every
+            // upstream MuxError variant is explicitly matched above; if
+            // this arm fires at runtime, the ratchet failed (or was
+            // bypassed). The Debug format names the unmapped variant so
+            // last-error-str carries actionable diagnostics.
+            (TstError::InvalidConfig, format!("unhandled MuxError variant: {e:?}"))
         }
     };
     set_last_error(code, &msg);
@@ -295,8 +300,9 @@ pub(crate) fn record_transport_error(e: &TransportError) {
             format!("message {len} bytes exceeds payload cap {max}"),
         ),
         _ => {
-            // Phase 1: Unknown future TransportError variant — treat as generic transport error.
-            (TstError::Transport, "unknown transport error".into())
+            // Required by #[non_exhaustive]. See scripts/check-tst-c-error-coverage.sh
+            // for the CI ratchet that prevents this arm from firing.
+            (TstError::Transport, format!("unhandled TransportError variant: {e:?}"))
         }
     };
     set_last_error(code, &msg);
@@ -306,7 +312,9 @@ pub(crate) fn record_sender_error(e: &MuxSenderError) {
     match e {
         MuxSenderError::Mux(m) => record_mux_error(m),
         MuxSenderError::Transport(t) => record_transport_error(t),
-        _ => record_internal("phase-1: future MuxSenderError variant"),
+        // Required by #[non_exhaustive]. CI ratchet enforces every variant
+        // is matched above.
+        _ => record_internal(&format!("unhandled MuxSenderError variant: {e:?}")),
     }
 }
 
@@ -314,7 +322,9 @@ pub(crate) fn record_ts_sender_error(e: &SenderError) {
     match e {
         SenderError::Transport(t) => record_transport_error(t),
         SenderError::Framing(f) => set_last_error(TstError::InvalidTs, &f.to_string()),
-        _ => record_internal("phase-1: future SenderError variant"),
+        // Required by #[non_exhaustive]. CI ratchet enforces every variant
+        // is matched above.
+        _ => record_internal(&format!("unhandled SenderError variant: {e:?}")),
     }
 }
 

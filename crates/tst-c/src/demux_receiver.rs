@@ -132,7 +132,7 @@ pub unsafe extern "C" fn tst_demux_receiver_open_listener_with_config(
 
 fn open_caller_inner(
     url: SrtUrl,
-    opts: Option<tst_core::mpegts::demux::DemuxerOptions>,
+    opts: Option<tst_core::mpegts::demux::DemuxerConfig>,
 ) -> *mut TstDemuxReceiver {
     let mut socket_cfg = tst_srt::config::SocketConfig::default();
     url.overlay.apply_to_socket(&mut socket_cfg);
@@ -148,7 +148,7 @@ fn open_caller_inner(
 
 fn open_listener_inner(
     url: SrtUrl,
-    opts: Option<tst_core::mpegts::demux::DemuxerOptions>,
+    opts: Option<tst_core::mpegts::demux::DemuxerConfig>,
 ) -> *mut TstDemuxReceiver {
     let mut listener_cfg = tst_srt::config::ListenerConfig::default();
     url.overlay.apply_to_listener(&mut listener_cfg);
@@ -164,7 +164,7 @@ fn open_listener_inner(
 
 fn finish_open(
     transport: SrtTransport,
-    opts: Option<tst_core::mpegts::demux::DemuxerOptions>,
+    opts: Option<tst_core::mpegts::demux::DemuxerConfig>,
 ) -> *mut TstDemuxReceiver {
     let rx = match opts {
         Some(o) => DemuxReceiver::with_demux_options(transport, o),
@@ -613,7 +613,7 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_open_listener_with_config(
 fn managed_open_caller_inner(
     url: SrtUrl,
     policy: tst_pipeline::ReconnectPolicy,
-    opts: Option<tst_core::mpegts::demux::DemuxerOptions>,
+    opts: Option<tst_core::mpegts::demux::DemuxerConfig>,
 ) -> *mut TstManagedDemuxReceiver {
     let mut socket_cfg = tst_srt::config::SocketConfig::default();
     url.overlay.apply_to_socket(&mut socket_cfg);
@@ -636,7 +636,7 @@ fn managed_open_caller_inner(
 fn managed_open_listener_inner(
     url: SrtUrl,
     policy: tst_pipeline::ReconnectPolicy,
-    opts: Option<tst_core::mpegts::demux::DemuxerOptions>,
+    opts: Option<tst_core::mpegts::demux::DemuxerConfig>,
 ) -> *mut TstManagedDemuxReceiver {
     let mut listener_cfg = tst_srt::config::ListenerConfig::default();
     url.overlay.apply_to_listener(&mut listener_cfg);
@@ -658,7 +658,7 @@ fn managed_open_listener_inner(
 
 fn finish_managed_open(
     managed: ManagedReceiveTransport<SrtTransport>,
-    opts: Option<tst_core::mpegts::demux::DemuxerOptions>,
+    opts: Option<tst_core::mpegts::demux::DemuxerConfig>,
 ) -> *mut TstManagedDemuxReceiver {
     let rx = match opts {
         Some(o) => DemuxReceiver::with_demux_options(managed, o),

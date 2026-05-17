@@ -33,7 +33,7 @@ pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::close(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::new(transport: R) -> Self
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::types::DemuxerOptions) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::types::DemuxerConfig) -> Self
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
@@ -918,7 +918,7 @@ pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::close(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::new(transport: R) -> Self
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::types::DemuxerOptions) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::types::DemuxerConfig) -> Self
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>

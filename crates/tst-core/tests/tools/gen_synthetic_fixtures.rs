@@ -10,7 +10,7 @@ use std::path::Path;
 use tst_core::klv::UniversalLabel;
 use tst_core::klv::pack::OwnedRawField;
 use tst_core::klv::st0601::{
-    EncodeOptions, UasDatalinkLs, encode_to_vec, encode_with, encoded_len_with,
+    EncodeConfig, UasDatalinkLs, encode_to_vec, encode_with, encoded_len_with,
 };
 
 fn main() {
@@ -93,13 +93,12 @@ fn funky_ul() -> Vec<u8> {
     let mut r = UasDatalinkLs::default();
     r.timestamp_us = Some(123);
     r.sensor_lat_deg = Some(45.0);
-    let opts = EncodeOptions {
-        universal_label: UniversalLabel::new([
-            0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x09,
-            0x00, 0x00,
-        ]),
-        version: 0x09,
-    };
+    let mut opts = EncodeConfig::default();
+    opts.universal_label = UniversalLabel::new([
+        0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x09, 0x00,
+        0x00,
+    ]);
+    opts.version = 0x09;
     let n = encoded_len_with(&r, &opts);
     let mut buf = vec![0u8; n];
     let written = encode_with(&r, &opts, &mut buf).unwrap();

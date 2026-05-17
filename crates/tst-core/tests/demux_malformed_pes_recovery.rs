@@ -12,7 +12,7 @@
 use tst_core::error::DemuxError;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
-    DemuxEvent, Demuxer, DemuxerOptions, NonConformantIssue, SamplePayload, StrictMode,
+    DemuxEvent, Demuxer, DemuxerConfig, NonConformantIssue, SamplePayload, StrictMode,
 };
 use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 
@@ -201,10 +201,8 @@ fn feed_aligned_lenient_mode_recovers_from_malformed_pes() {
 
 #[test]
 fn feed_strict_mode_escalates_malformed_pes_to_error() {
-    let opts = DemuxerOptions {
-        strict: StrictMode::Full,
-        ..Default::default()
-    };
+    let mut opts = DemuxerConfig::default();
+    opts.strict = StrictMode::Full;
     let mut d = Demuxer::with_options(opts);
     let (bytes, _) = build_stream_with_malformed_pes();
     let err = d
@@ -225,10 +223,8 @@ fn feed_strict_mode_escalates_malformed_pes_to_error() {
 
 #[test]
 fn feed_aligned_strict_mode_escalates_malformed_pes_to_error() {
-    let opts = DemuxerOptions {
-        strict: StrictMode::Full,
-        ..Default::default()
-    };
+    let mut opts = DemuxerConfig::default();
+    opts.strict = StrictMode::Full;
     let mut d = Demuxer::with_options(opts);
     let (_, packets) = build_stream_with_malformed_pes();
     let mut last_err: Option<DemuxError> = None;

@@ -7,7 +7,7 @@
 //! could OOM the host before the loop got a chance to bail.
 
 use tst_core::error::DemuxError;
-use tst_core::mpegts::demux::{Demuxer, DemuxerOptions};
+use tst_core::mpegts::demux::{Demuxer, DemuxerConfig};
 
 #[test]
 fn demux_rejects_unbounded_sync_buf_growth() {
@@ -24,7 +24,7 @@ fn demux_rejects_unbounded_sync_buf_growth() {
 
 /// Regression: both `Demuxer::new()` and `Demuxer::with_options(default)`
 /// produce a reassembler with finite caps. The `pes_cap_per_pid` and
-/// `pes_cap_total` fields on `DemuxerOptions` are `Option<usize>` where
+/// `pes_cap_total` fields on `DemuxerConfig` are `Option<usize>` where
 /// `None` resolves to the module-private `DEFAULT_PES_CAP_PER_PID`
 /// (4 MiB) and `DEFAULT_PES_CAP_TOTAL` (64 MiB) at construction time.
 /// This test guards the constructor path against accidental regression
@@ -42,13 +42,14 @@ fn demuxer_default_pes_caps_are_bounded() {
     let _ = Demuxer::new();
     // Constructor path 2: `with_options(default)` — also resolves both
     // `None` cap fields to the default constants.
-    let _ = Demuxer::with_options(DemuxerOptions::default());
+    let _ = Demuxer::with_options(DemuxerConfig::default());
     // Constructor path 3: explicit cap overrides also succeed without
     // panicking. 1 MiB / 8 MiB are arbitrary finite values — the goal
     // here is the constructor doesn't reject small caps.
-    let _ = Demuxer::with_options(DemuxerOptions {
-        pes_cap_per_pid: Some(1024 * 1024),
-        pes_cap_total: Some(8 * 1024 * 1024),
-        ..DemuxerOptions::default()
+    let _ = Demuxer::with_options({
+        let mut cfg = DemuxerConfig::default();
+        cfg.pes_cap_per_pid = Some(1024 * 1024);
+        cfg.pes_cap_total = Some(8 * 1024 * 1024);
+        cfg
     });
 }

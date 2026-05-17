@@ -36,7 +36,7 @@ use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_meta
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::common::crc32::crc32_mpeg2;
 use tst_core::mpegts::demux::{
-    DemuxEvent, DemuxerBuilder, DemuxerOptions, NonConformantIssue, StrictMode,
+    DemuxEvent, DemuxerBuilder, DemuxerConfig, NonConformantIssue, StrictMode,
 };
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
@@ -375,7 +375,7 @@ fn split_pmt_with_dropped_continuation_drops_section_in_strict_mode() {
         pkts.len()
     );
 
-    let mut demux = tst_core::mpegts::demux::Demuxer::with_options(DemuxerOptions::default());
+    let mut demux = tst_core::mpegts::demux::Demuxer::with_options(DemuxerConfig::default());
     install_synthetic_pat_pointing_to(&mut demux, pmt_pid);
 
     demux.feed(&pkts[0]).unwrap();
@@ -406,9 +406,10 @@ fn split_pmt_with_dropped_continuation_keeps_section_in_lenient_mode() {
     let pmt_pid: u16 = 0x0FFF;
     let pkts = pack_section_into_ts_packets(pmt_pid, &pmt_bytes, 0x0);
 
-    let mut demux = tst_core::mpegts::demux::Demuxer::with_options(DemuxerOptions {
-        lenient_psi_reassembly: true,
-        ..Default::default()
+    let mut demux = tst_core::mpegts::demux::Demuxer::with_options({
+        let mut cfg = DemuxerConfig::default();
+        cfg.lenient_psi_reassembly = true;
+        cfg
     });
     install_synthetic_pat_pointing_to(&mut demux, pmt_pid);
 

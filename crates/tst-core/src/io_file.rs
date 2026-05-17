@@ -8,7 +8,7 @@ use std::io::{self, Read, Write};
 use std::path::Path;
 
 use crate::error::DemuxError;
-use crate::mpegts::demux::{DemuxEvent, Demuxer, DemuxerOptions};
+use crate::mpegts::demux::{DemuxEvent, Demuxer, DemuxerConfig};
 use crate::mpegts::mux::Muxer;
 
 /// Drain all pending events from a demuxer into `out`.
@@ -29,13 +29,13 @@ fn drain_events(demuxer: &mut Demuxer, out: &mut Vec<DemuxEvent>) {
 /// (e.g. unrecoverable sync loss) are mapped to
 /// `io::ErrorKind::InvalidData`.
 pub fn demux_file(path: impl AsRef<Path>) -> io::Result<Vec<DemuxEvent>> {
-    demux_file_with_options(path, DemuxerOptions::default())
+    demux_file_with_options(path, DemuxerConfig::default())
 }
 
-/// Like [`demux_file`] but with caller-supplied [`DemuxerOptions`].
+/// Like [`demux_file`] but with caller-supplied [`DemuxerConfig`].
 pub fn demux_file_with_options(
     path: impl AsRef<Path>,
-    options: DemuxerOptions,
+    options: DemuxerConfig,
 ) -> io::Result<Vec<DemuxEvent>> {
     let bytes = std::fs::read(path)?;
     let mut demuxer = Demuxer::with_options(options);
@@ -72,13 +72,13 @@ pub struct DemuxFromFile {
 }
 
 impl DemuxFromFile {
-    /// Open `path` with default [`DemuxerOptions`].
+    /// Open `path` with default [`DemuxerConfig`].
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        Self::open_with_options(path, DemuxerOptions::default())
+        Self::open_with_options(path, DemuxerConfig::default())
     }
 
-    /// Open `path` with caller-supplied [`DemuxerOptions`].
-    pub fn open_with_options(path: impl AsRef<Path>, options: DemuxerOptions) -> io::Result<Self> {
+    /// Open `path` with caller-supplied [`DemuxerConfig`].
+    pub fn open_with_options(path: impl AsRef<Path>, options: DemuxerConfig) -> io::Result<Self> {
         Ok(Self {
             file: File::open(path)?,
             buf: Box::new([0u8; 65536]),

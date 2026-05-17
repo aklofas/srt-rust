@@ -1,10 +1,10 @@
-//! Tests `DemuxerOptions::stream_kind_overrides` against the non-conformant
+//! Tests `DemuxerConfig::stream_kind_overrides` against the non-conformant
 //! audio fixtures (MP3 on user-private 0xF1, MP3 mislabeled as Layer II 0x03).
 
 use std::fs;
 use std::path::Path;
 use tst_core::mpegts::demux::{
-    Demuxer, DemuxerOptions,
+    Demuxer, DemuxerConfig,
     event::{AudioCodec, DemuxEvent, SamplePayload, StreamKind},
 };
 
@@ -76,7 +76,7 @@ fn mp3_on_0xf1_routes_to_audio_via_treat_as() {
     // Find the MP3 PID by reading the PMT manually.
     let mp3_pid = find_audio_pid_by_stream_type(&bytes, 0xF1);
 
-    let mut options = DemuxerOptions::default();
+    let mut options = DemuxerConfig::default();
     options
         .stream_kind_overrides
         .insert(mp3_pid, StreamKind::Audio(AudioCodec::Mp2));

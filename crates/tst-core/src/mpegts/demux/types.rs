@@ -54,8 +54,9 @@ pub(super) const DEFAULT_PES_CAP_PER_PID: usize = 4 * 1024 * 1024;
 pub(super) const DEFAULT_PES_CAP_TOTAL: usize = 64 * 1024 * 1024;
 
 /// Caller-supplied overrides for the demuxer.
+#[non_exhaustive]
 #[derive(Debug, Clone, Default)]
-pub struct DemuxerOptions {
+pub struct DemuxerConfig {
     pub strict: StrictMode,
     /// Per-PID PES reassembly cap. `None` uses `DEFAULT_PES_CAP_PER_PID`
     /// (4 MiB). Tune up for ultra-high-bitrate streams whose IDR keyframes
@@ -103,7 +104,7 @@ pub struct ProgramTracker {
 /// [`Demuxer`](crate::mpegts::demux::Demuxer).
 #[derive(Debug, Default)]
 pub struct DemuxerBuilder {
-    options: DemuxerOptions,
+    options: DemuxerConfig,
 }
 
 impl DemuxerBuilder {

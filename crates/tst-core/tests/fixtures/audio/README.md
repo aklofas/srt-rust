@@ -25,7 +25,7 @@ something's broken.
 
 ## Non-conformant fixtures (corpus quirks)
 
-These exercise the `DemuxerOptions::treat_as` override path. They
+These exercise the `DemuxerConfig::treat_as` override path. They
 mimic patterns observed in the local real-world corpus.
 
 | File | PMT `stream_type` | Real codec | Why non-conformant |

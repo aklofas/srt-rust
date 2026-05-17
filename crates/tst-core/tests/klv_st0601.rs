@@ -4,7 +4,7 @@ use std::path::Path;
 
 use tst_core::klv::UniversalLabel;
 use tst_core::klv::st0601::{
-    EncodeOptions, UasDatalinkLs, decode, decode_strict, decode_unchecked, encode, encode_to_vec,
+    EncodeConfig, UasDatalinkLs, decode, decode_strict, decode_unchecked, encode, encode_to_vec,
     encode_with, encoded_len,
 };
 
@@ -67,10 +67,9 @@ fn decode_strict_round_trip() {
 #[test]
 fn decode_strict_rejects_arbitrary_ul() {
     let r = UasDatalinkLs::default();
-    let opts = EncodeOptions {
-        universal_label: UniversalLabel::new([0xFF; 16]),
-        version: 0x13,
-    };
+    let mut opts = EncodeConfig::default();
+    opts.universal_label = UniversalLabel::new([0xFF; 16]);
+    opts.version = 0x13;
     let bytes = {
         let n = encoded_len(&r) + 16; // upper bound
         let mut buf = vec![0u8; n];

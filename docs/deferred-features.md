@@ -415,7 +415,7 @@ the trigger that would unblock it.
   scalable VVC video — a rare use case absent from the corpus.
 - **Trigger to revisit:** A consumer using temporal subsetting, or a
   capture surfacing 0x32 in the corpus. Workaround today:
-  `DemuxerOptions::treat_as` lets callers manually classify the PID.
+  `DemuxerConfig::treat_as` lets callers manually classify the PID.
 
 ## AV1 on `0x80` user-private `stream_type`
 
@@ -423,10 +423,10 @@ the trigger that would unblock it.
   `stream_type = 0x06` plus AV01 `registration_descriptor` — is
   auto-classified as `VideoCodec::Av1`. Non-conformant captures using
   `stream_type = 0x80` (user-private) require manual classification
-  via `DemuxerOptions::treat_as`.
+  via `DemuxerConfig::treat_as`.
 - **Why deferred:** 0x80 is reserved by H.222.0 for user-private use;
   some early AV1 captures used it before the binding settled.
-  `DemuxerOptions::treat_as` covers the corner case without baking a
+  `DemuxerConfig::treat_as` covers the corner case without baking a
   non-conformant default into the auto-classifier.
 - **Trigger to revisit:** A real-world capture stream with `stream_type
   0x80` plus AV01 registration that needs auto-classification (rather
@@ -470,7 +470,7 @@ the trigger that would unblock it.
 
 - **Status:** Deferred (no consumer ask). Audio carriage in `mpegts::mux`
   and `mpegts::demux` ships in Rust (codec scope: MP2 + AAC ADTS + AAC
-  LATM + AC-3, plus `DemuxerOptions::treat_as` for non-conformant
+  LATM + AC-3, plus `DemuxerConfig::treat_as` for non-conformant
   stream_type cases). The `tst-c` C ABI sender surface currently exposes
   `tst_mux_sender_send_video` and `tst_mux_sender_send_klv` but no
   `tst_*_send_audio` / `tst_*_send_audio_to` siblings, and the config
@@ -499,7 +499,7 @@ the trigger that would unblock it.
   etc. (a structural complication that isn't justified without a corpus
   signal), or (b) adding a new `AudioCodec::EAc3` variant plus the
   corresponding stream_type byte / muxer / demuxer plumbing.
-- **Workaround:** `DemuxerOptions::treat_as` lets callers map an
+- **Workaround:** `DemuxerConfig::treat_as` lets callers map an
   `Unknown(0x87)` PID or a `0x06` PID with the AC-3 registration
   descriptor to `AudioCodec::Ac3`. The library hands back raw PES
   bytes; the caller's decoder handles whatever framing is actually
@@ -1006,7 +1006,7 @@ the trigger that would unblock it.
   every known consumer.
 - **Workaround:** A receiver consuming DVB-shaped AC-3 today
   classifies as `Unknown(0x06)` unless the caller passes
-  `DemuxerOptions::treat_as` mapping the PID to `AudioCodec::Ac3`;
+  `DemuxerConfig::treat_as` mapping the PID to `AudioCodec::Ac3`;
   the library hands back raw PES bytes regardless of the
   registration descriptor shape.
 - **Trigger to revisit:** A DVB-only receiver appears in the

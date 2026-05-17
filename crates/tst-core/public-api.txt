@@ -1321,7 +1321,7 @@ pub mod tst_core::io_file
 pub struct tst_core::io_file::DemuxFromFile
 impl tst_core::io_file::DemuxFromFile
 pub fn tst_core::io_file::DemuxFromFile::open(path: impl core::convert::AsRef<std::path::Path>) -> std::io::error::Result<Self>
-pub fn tst_core::io_file::DemuxFromFile::open_with_options(path: impl core::convert::AsRef<std::path::Path>, options: tst_core::mpegts::demux::types::DemuxerOptions) -> std::io::error::Result<Self>
+pub fn tst_core::io_file::DemuxFromFile::open_with_options(path: impl core::convert::AsRef<std::path::Path>, options: tst_core::mpegts::demux::types::DemuxerConfig) -> std::io::error::Result<Self>
 impl core::iter::traits::iterator::Iterator for tst_core::io_file::DemuxFromFile
 pub type tst_core::io_file::DemuxFromFile::Item = tst_core::mpegts::demux::event::DemuxEvent
 pub fn tst_core::io_file::DemuxFromFile::next(&mut self) -> core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>
@@ -1333,7 +1333,7 @@ impl core::marker::UnsafeUnpin for tst_core::io_file::DemuxFromFile
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::io_file::DemuxFromFile
 impl core::panic::unwind_safe::UnwindSafe for tst_core::io_file::DemuxFromFile
 pub fn tst_core::io_file::demux_file(path: impl core::convert::AsRef<std::path::Path>) -> std::io::error::Result<alloc::vec::Vec<tst_core::mpegts::demux::event::DemuxEvent>>
-pub fn tst_core::io_file::demux_file_with_options(path: impl core::convert::AsRef<std::path::Path>, options: tst_core::mpegts::demux::types::DemuxerOptions) -> std::io::error::Result<alloc::vec::Vec<tst_core::mpegts::demux::event::DemuxEvent>>
+pub fn tst_core::io_file::demux_file_with_options(path: impl core::convert::AsRef<std::path::Path>, options: tst_core::mpegts::demux::types::DemuxerConfig) -> std::io::error::Result<alloc::vec::Vec<tst_core::mpegts::demux::event::DemuxEvent>>
 pub fn tst_core::io_file::write_mux_to_file(mux: &mut tst_core::mpegts::mux::Muxer, path: impl core::convert::AsRef<std::path::Path>) -> std::io::error::Result<()>
 pub mod tst_core::klv
 pub mod tst_core::klv::checksum
@@ -1626,26 +1626,26 @@ impl core::marker::Unpin for tst_core::klv::st0601::Corners
 impl core::marker::UnsafeUnpin for tst_core::klv::st0601::Corners
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::Corners
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::Corners
-pub struct tst_core::klv::st0601::EncodeOptions
-pub tst_core::klv::st0601::EncodeOptions::universal_label: tst_core::klv::universal_label::UniversalLabel
-pub tst_core::klv::st0601::EncodeOptions::version: u8
-impl core::clone::Clone for tst_core::klv::st0601::EncodeOptions
-pub fn tst_core::klv::st0601::EncodeOptions::clone(&self) -> tst_core::klv::st0601::EncodeOptions
-impl core::cmp::PartialEq for tst_core::klv::st0601::EncodeOptions
-pub fn tst_core::klv::st0601::EncodeOptions::eq(&self, other: &tst_core::klv::st0601::EncodeOptions) -> bool
-impl core::default::Default for tst_core::klv::st0601::EncodeOptions
-pub fn tst_core::klv::st0601::EncodeOptions::default() -> Self
-impl core::fmt::Debug for tst_core::klv::st0601::EncodeOptions
-pub fn tst_core::klv::st0601::EncodeOptions::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tst_core::klv::st0601::EncodeOptions
-impl core::marker::StructuralPartialEq for tst_core::klv::st0601::EncodeOptions
-impl core::marker::Freeze for tst_core::klv::st0601::EncodeOptions
-impl core::marker::Send for tst_core::klv::st0601::EncodeOptions
-impl core::marker::Sync for tst_core::klv::st0601::EncodeOptions
-impl core::marker::Unpin for tst_core::klv::st0601::EncodeOptions
-impl core::marker::UnsafeUnpin for tst_core::klv::st0601::EncodeOptions
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::EncodeOptions
-impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::EncodeOptions
+pub struct tst_core::klv::st0601::EncodeConfig
+pub tst_core::klv::st0601::EncodeConfig::universal_label: tst_core::klv::universal_label::UniversalLabel
+pub tst_core::klv::st0601::EncodeConfig::version: u8
+impl core::clone::Clone for tst_core::klv::st0601::EncodeConfig
+pub fn tst_core::klv::st0601::EncodeConfig::clone(&self) -> tst_core::klv::st0601::EncodeConfig
+impl core::cmp::PartialEq for tst_core::klv::st0601::EncodeConfig
+pub fn tst_core::klv::st0601::EncodeConfig::eq(&self, other: &tst_core::klv::st0601::EncodeConfig) -> bool
+impl core::default::Default for tst_core::klv::st0601::EncodeConfig
+pub fn tst_core::klv::st0601::EncodeConfig::default() -> Self
+impl core::fmt::Debug for tst_core::klv::st0601::EncodeConfig
+pub fn tst_core::klv::st0601::EncodeConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::st0601::EncodeConfig
+impl core::marker::StructuralPartialEq for tst_core::klv::st0601::EncodeConfig
+impl core::marker::Freeze for tst_core::klv::st0601::EncodeConfig
+impl core::marker::Send for tst_core::klv::st0601::EncodeConfig
+impl core::marker::Sync for tst_core::klv::st0601::EncodeConfig
+impl core::marker::Unpin for tst_core::klv::st0601::EncodeConfig
+impl core::marker::UnsafeUnpin for tst_core::klv::st0601::EncodeConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::EncodeConfig
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::EncodeConfig
 pub struct tst_core::klv::st0601::FieldOfView
 pub tst_core::klv::st0601::FieldOfView::horizontal_deg: f64
 pub tst_core::klv::st0601::FieldOfView::vertical_deg: f64
@@ -1767,9 +1767,9 @@ pub fn tst_core::klv::st0601::decode_strict_compliance(buf: &[u8]) -> core::resu
 pub fn tst_core::klv::st0601::decode_unchecked(buf: &[u8]) -> core::result::Result<tst_core::klv::st0601::UasDatalinkLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0601::encode(record: &tst_core::klv::st0601::UasDatalinkLs, out: &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0601::encode_to_vec(record: &tst_core::klv::st0601::UasDatalinkLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
-pub fn tst_core::klv::st0601::encode_with(record: &tst_core::klv::st0601::UasDatalinkLs, opts: &tst_core::klv::st0601::EncodeOptions, out: &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
+pub fn tst_core::klv::st0601::encode_with(record: &tst_core::klv::st0601::UasDatalinkLs, opts: &tst_core::klv::st0601::EncodeConfig, out: &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0601::encoded_len(record: &tst_core::klv::st0601::UasDatalinkLs) -> usize
-pub fn tst_core::klv::st0601::encoded_len_with(record: &tst_core::klv::st0601::UasDatalinkLs, opts: &tst_core::klv::st0601::EncodeOptions) -> usize
+pub fn tst_core::klv::st0601::encoded_len_with(record: &tst_core::klv::st0601::UasDatalinkLs, opts: &tst_core::klv::st0601::EncodeConfig) -> usize
 pub mod tst_core::klv::st0605
 pub struct tst_core::klv::st0605::PrecisionTimeStampPack
 pub tst_core::klv::st0605::PrecisionTimeStampPack::time_status: tst_core::klv::st0605::TimeStatus
@@ -2535,7 +2535,7 @@ pub fn tst_core::mpegts::demux::demuxer::Demuxer::next_event(&mut self) -> core:
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::reset_stats(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stats(&self) -> tst_core::mpegts::demux::types::DemuxerStats
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
-pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_options(options: tst_core::mpegts::demux::types::DemuxerOptions) -> Self
+pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_options(options: tst_core::mpegts::demux::types::DemuxerConfig) -> Self
 impl core::default::Default for tst_core::mpegts::demux::demuxer::Demuxer
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::default() -> Self
 impl core::fmt::Debug for tst_core::mpegts::demux::demuxer::Demuxer
@@ -3336,26 +3336,26 @@ impl core::marker::Unpin for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::types::DemuxerBuilder
-pub struct tst_core::mpegts::demux::types::DemuxerOptions
-pub tst_core::mpegts::demux::types::DemuxerOptions::klv_link_overrides: alloc::vec::Vec<(u16, u16)>
-pub tst_core::mpegts::demux::types::DemuxerOptions::lenient_psi_reassembly: bool
-pub tst_core::mpegts::demux::types::DemuxerOptions::pes_cap_per_pid: core::option::Option<usize>
-pub tst_core::mpegts::demux::types::DemuxerOptions::pes_cap_total: core::option::Option<usize>
-pub tst_core::mpegts::demux::types::DemuxerOptions::stream_kind_overrides: std::collections::hash::map::HashMap<u16, tst_core::mpegts::demux::event::StreamKind>
-pub tst_core::mpegts::demux::types::DemuxerOptions::strict: tst_core::mpegts::demux::strict::StrictMode
-impl core::clone::Clone for tst_core::mpegts::demux::types::DemuxerOptions
-pub fn tst_core::mpegts::demux::types::DemuxerOptions::clone(&self) -> tst_core::mpegts::demux::types::DemuxerOptions
-impl core::default::Default for tst_core::mpegts::demux::types::DemuxerOptions
-pub fn tst_core::mpegts::demux::types::DemuxerOptions::default() -> tst_core::mpegts::demux::types::DemuxerOptions
-impl core::fmt::Debug for tst_core::mpegts::demux::types::DemuxerOptions
-pub fn tst_core::mpegts::demux::types::DemuxerOptions::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::marker::Send for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::marker::Sync for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::marker::Unpin for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::types::DemuxerOptions
+pub struct tst_core::mpegts::demux::types::DemuxerConfig
+pub tst_core::mpegts::demux::types::DemuxerConfig::klv_link_overrides: alloc::vec::Vec<(u16, u16)>
+pub tst_core::mpegts::demux::types::DemuxerConfig::lenient_psi_reassembly: bool
+pub tst_core::mpegts::demux::types::DemuxerConfig::pes_cap_per_pid: core::option::Option<usize>
+pub tst_core::mpegts::demux::types::DemuxerConfig::pes_cap_total: core::option::Option<usize>
+pub tst_core::mpegts::demux::types::DemuxerConfig::stream_kind_overrides: std::collections::hash::map::HashMap<u16, tst_core::mpegts::demux::event::StreamKind>
+pub tst_core::mpegts::demux::types::DemuxerConfig::strict: tst_core::mpegts::demux::strict::StrictMode
+impl core::clone::Clone for tst_core::mpegts::demux::types::DemuxerConfig
+pub fn tst_core::mpegts::demux::types::DemuxerConfig::clone(&self) -> tst_core::mpegts::demux::types::DemuxerConfig
+impl core::default::Default for tst_core::mpegts::demux::types::DemuxerConfig
+pub fn tst_core::mpegts::demux::types::DemuxerConfig::default() -> tst_core::mpegts::demux::types::DemuxerConfig
+impl core::fmt::Debug for tst_core::mpegts::demux::types::DemuxerConfig
+pub fn tst_core::mpegts::demux::types::DemuxerConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::marker::Send for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::marker::Sync for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::marker::Unpin for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::types::DemuxerConfig
 pub struct tst_core::mpegts::demux::types::DemuxerStats
 pub tst_core::mpegts::demux::types::DemuxerStats::discontinuities: u64
 pub tst_core::mpegts::demux::types::DemuxerStats::nonconformant: u64
@@ -3766,7 +3766,7 @@ pub fn tst_core::mpegts::demux::demuxer::Demuxer::next_event(&mut self) -> core:
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::reset_stats(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stats(&self) -> tst_core::mpegts::demux::types::DemuxerStats
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
-pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_options(options: tst_core::mpegts::demux::types::DemuxerOptions) -> Self
+pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_options(options: tst_core::mpegts::demux::types::DemuxerConfig) -> Self
 impl core::default::Default for tst_core::mpegts::demux::demuxer::Demuxer
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::default() -> Self
 impl core::fmt::Debug for tst_core::mpegts::demux::demuxer::Demuxer
@@ -3798,26 +3798,26 @@ impl core::marker::Unpin for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::types::DemuxerBuilder
-pub struct tst_core::mpegts::demux::DemuxerOptions
-pub tst_core::mpegts::demux::DemuxerOptions::klv_link_overrides: alloc::vec::Vec<(u16, u16)>
-pub tst_core::mpegts::demux::DemuxerOptions::lenient_psi_reassembly: bool
-pub tst_core::mpegts::demux::DemuxerOptions::pes_cap_per_pid: core::option::Option<usize>
-pub tst_core::mpegts::demux::DemuxerOptions::pes_cap_total: core::option::Option<usize>
-pub tst_core::mpegts::demux::DemuxerOptions::stream_kind_overrides: std::collections::hash::map::HashMap<u16, tst_core::mpegts::demux::event::StreamKind>
-pub tst_core::mpegts::demux::DemuxerOptions::strict: tst_core::mpegts::demux::strict::StrictMode
-impl core::clone::Clone for tst_core::mpegts::demux::types::DemuxerOptions
-pub fn tst_core::mpegts::demux::types::DemuxerOptions::clone(&self) -> tst_core::mpegts::demux::types::DemuxerOptions
-impl core::default::Default for tst_core::mpegts::demux::types::DemuxerOptions
-pub fn tst_core::mpegts::demux::types::DemuxerOptions::default() -> tst_core::mpegts::demux::types::DemuxerOptions
-impl core::fmt::Debug for tst_core::mpegts::demux::types::DemuxerOptions
-pub fn tst_core::mpegts::demux::types::DemuxerOptions::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::marker::Send for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::marker::Sync for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::marker::Unpin for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::types::DemuxerOptions
-impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::types::DemuxerOptions
+pub struct tst_core::mpegts::demux::DemuxerConfig
+pub tst_core::mpegts::demux::DemuxerConfig::klv_link_overrides: alloc::vec::Vec<(u16, u16)>
+pub tst_core::mpegts::demux::DemuxerConfig::lenient_psi_reassembly: bool
+pub tst_core::mpegts::demux::DemuxerConfig::pes_cap_per_pid: core::option::Option<usize>
+pub tst_core::mpegts::demux::DemuxerConfig::pes_cap_total: core::option::Option<usize>
+pub tst_core::mpegts::demux::DemuxerConfig::stream_kind_overrides: std::collections::hash::map::HashMap<u16, tst_core::mpegts::demux::event::StreamKind>
+pub tst_core::mpegts::demux::DemuxerConfig::strict: tst_core::mpegts::demux::strict::StrictMode
+impl core::clone::Clone for tst_core::mpegts::demux::types::DemuxerConfig
+pub fn tst_core::mpegts::demux::types::DemuxerConfig::clone(&self) -> tst_core::mpegts::demux::types::DemuxerConfig
+impl core::default::Default for tst_core::mpegts::demux::types::DemuxerConfig
+pub fn tst_core::mpegts::demux::types::DemuxerConfig::default() -> tst_core::mpegts::demux::types::DemuxerConfig
+impl core::fmt::Debug for tst_core::mpegts::demux::types::DemuxerConfig
+pub fn tst_core::mpegts::demux::types::DemuxerConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::marker::Send for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::marker::Sync for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::marker::Unpin for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::types::DemuxerConfig
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::types::DemuxerConfig
 pub struct tst_core::mpegts::demux::DemuxerStats
 pub tst_core::mpegts::demux::DemuxerStats::discontinuities: u64
 pub tst_core::mpegts::demux::DemuxerStats::nonconformant: u64

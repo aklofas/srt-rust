@@ -39,7 +39,7 @@ Default demux behavior: classify PID 0x200 as `Audio(Mp2)`, emit
 `SamplePayload::Audio` carrying WebVTT bytes. The codec / payload
 mismatch is the caller's problem in that path.
 
-With `DemuxerOptions::treat_as.insert(0x200,
+With `DemuxerConfig::treat_as.insert(0x200,
 StreamKind::Subtitle(WebVttInTs))`: demuxer reroutes PID 0x200 to
 the subtitle dispatch path, emits `SamplePayload::Subtitle`, AND
 emits `NonConformantIssue::SubtitleMissingDescriptor` because no

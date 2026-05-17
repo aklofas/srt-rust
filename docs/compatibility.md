@@ -319,7 +319,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | Feature / Type | Status | Notes |
 | --- | --- | --- |
 | `Demuxer` | ✅ Full | Stateful TS demuxer; `feed` bytes in, `next_event` typed events out, `flush` drains trailing PES on stream end. Bytes need not be 188-aligned. |
-| `DemuxerBuilder` / `DemuxerOptions` | ✅ Full | Fluent builder + plain-struct config form. |
+| `DemuxerBuilder` / `DemuxerConfig` | ✅ Full | Fluent builder + plain-struct config form. |
 | `DemuxEvent::ProgramMap` | ✅ Full | Emitted on PAT/PMT discovery and version-bump; carries `program_number`, `pcr_pid`, `streams`, `klv_links`. |
 | `DemuxEvent::Sample` | ✅ Full | Generic ES sample; payload typed for video / audio / subtitle, `Unknown` for unrecognized stream_types. |
 | `DemuxEvent::Metadata` | ✅ Full | Standalone metadata events; `MetadataKind::KlvSyncAuCell { metadata_service_id, sequence_number, cell_fragment_indication, decoder_config_flag, random_access_indicator }` (5 fields per H.222.0 § 2.12.4.2 Table 2-156), `KlvAsync` (bare LS), `Unknown(u8)`. |
@@ -375,7 +375,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `RecvTransport` trait | ✅ Full | Receive-side counterpart to `Transport`: `recv_bytes`, `max_payload`, `is_alive`, `close`. Implemented by `SrtTransport` and any consumer-side mock. |
 | `SrtTransport` impl `RecvTransport` | ✅ Full | Same `SrtTransport` wrapper handles both send and receive directions on a connected SRT `Socket`. |
 | `DemuxReceiver::add_byte_sink` fan-out | ✅ Full | Register `Box<dyn FnMut(&[u8]) + Send>` callbacks; each sink sees every 188-byte TS packet in registration order before the demuxer parses it. |
-| `DemuxReceiver::with_demux_options` | ✅ Full | Construct a receiver around a custom `DemuxerOptions` (e.g. strict mode, PES caps, link overrides). |
+| `DemuxReceiver::with_demux_options` | ✅ Full | Construct a receiver around a custom `DemuxerConfig` (e.g. strict mode, PES caps, link overrides). |
 | Stream-end contract | ✅ Full | `TransportError::Closed` → iterator termination after `Demuxer::flush`. `Broken` → `DemuxReceiverError::Transport(Broken(_))`. `Demux` → strict-mode rejection or malformed PES. |
 | Receive-side gap buffer | ❌ Out of scope | Receive-side bytes that never arrived can't be replayed; no symmetric counterpart to `ManagedTransport`'s gap buffer. |
 

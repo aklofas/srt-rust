@@ -301,7 +301,7 @@ proptest! {
     ///
     /// **Tag 65 quirk:** the ST 0601 encoder unconditionally emits Tag 65
     /// ("UAS LS Version Number") — if `record.uas_ls_version` is None it
-    /// auto-emits the default `EncodeOptions::version` byte (19, per ST
+    /// auto-emits the default `EncodeConfig::version` byte (19, per ST
     /// 0601.19). The decoder reads that back into `uas_ls_version =
     /// Some(19)`, breaking `assert_eq` if the input had None. We pre-set
     /// `uas_ls_version = Some(19)` on the input so both sides match;

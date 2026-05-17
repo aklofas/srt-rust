@@ -20,7 +20,7 @@ use crate::mpegts::demux::psi::{
 use crate::mpegts::demux::psi_assembler::{AssemblerError, PsiSectionAssembler};
 use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
 use crate::mpegts::demux::types::{
-    DEFAULT_PES_CAP_PER_PID, DEFAULT_PES_CAP_TOTAL, DemuxerOptions, DemuxerStats, ProgramTracker,
+    DEFAULT_PES_CAP_PER_PID, DEFAULT_PES_CAP_TOTAL, DemuxerConfig, DemuxerStats, ProgramTracker,
 };
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
@@ -45,7 +45,7 @@ const PCR_ANOMALY_THRESHOLD: i64 = 27_000_000;
 /// Caller-driven: call [`Self::feed`] with bytes (any size; sync recovery
 /// is internal), then drain [`DemuxEvent`]s with [`Self::next_event`].
 /// Holds bounded reassembly state per PID with caps from
-/// [`DemuxerOptions`].
+/// [`DemuxerConfig`].
 ///
 /// # Closing
 ///
@@ -68,7 +68,7 @@ const PCR_ANOMALY_THRESHOLD: i64 = 27_000_000;
 /// | C | (deferred to per-binding plan — receiver-surface C ABI is P0) |
 #[derive(Debug)]
 pub struct Demuxer {
-    options: DemuxerOptions,
+    options: DemuxerConfig,
     /// Bytes that haven't yet been sync-aligned into 188-byte packets.
     /// `sync_consumed` is the cursor into this buffer; the live region is
     /// `sync_buf[sync_consumed..]`. Avoiding `drain(..n)` per packet is
@@ -148,10 +148,10 @@ pub struct Demuxer {
 
 impl Demuxer {
     pub fn new() -> Self {
-        Self::with_options(DemuxerOptions::default())
+        Self::with_options(DemuxerConfig::default())
     }
 
-    pub fn with_options(options: DemuxerOptions) -> Self {
+    pub fn with_options(options: DemuxerConfig) -> Self {
         let cap_per_pid = options.pes_cap_per_pid.unwrap_or(DEFAULT_PES_CAP_PER_PID);
         let cap_total = options.pes_cap_total.unwrap_or(DEFAULT_PES_CAP_TOTAL);
         // Seed the PAT PID (0x0000) so the PSI assembler is ready without a
@@ -495,7 +495,7 @@ impl Demuxer {
     ) -> Result<(), DemuxError> {
         // Strict mode: drop the partial section if a continuation packet
         // arrives with a CC jump (matches ffmpeg `mpegts.c:3118-3142`).
-        // Lenient mode (opt-in via DemuxerOptions::lenient_psi_reassembly)
+        // Lenient mode (opt-in via DemuxerConfig::lenient_psi_reassembly)
         // preserves today's permissive behavior — bytes are accumulated
         // regardless, either passing CRC by luck or surfacing as
         // PsiChecksumMismatch.
@@ -1753,7 +1753,7 @@ mod tests {
     use crate::mpegts::common::Pts90khz;
     use crate::mpegts::demux::StrictMode;
     use crate::mpegts::demux::types::{
-        DemuxerBuilder, DemuxerOptions, default_pes_cap_per_pid, default_pes_cap_total,
+        DemuxerBuilder, DemuxerConfig, default_pes_cap_per_pid, default_pes_cap_total,
     };
 
     #[test]
@@ -1765,7 +1765,7 @@ mod tests {
 
     #[test]
     fn demuxer_options_default_strict_psi_reassembly() {
-        let opts = DemuxerOptions::default();
+        let opts = DemuxerConfig::default();
         assert!(
             !opts.lenient_psi_reassembly,
             "default is strict (per ffmpeg parity); opt-in lenient via lenient_psi_reassembly=true"
@@ -2093,7 +2093,7 @@ mod tests {
         assert!(aac_classified, "default: PMT classifies as Aac");
 
         // Demux WITH treat_as override: classifies as Mp2 (override wins).
-        let mut options = DemuxerOptions::default();
+        let mut options = DemuxerConfig::default();
         options
             .stream_kind_overrides
             .insert(0x300, StreamKind::Audio(AudioCodec::Mp2));
@@ -2148,7 +2148,7 @@ mod tests {
         let n = muxer.pull(&mut buf);
         buf.truncate(n);
 
-        let mut options = DemuxerOptions::default();
+        let mut options = DemuxerConfig::default();
         options
             .stream_kind_overrides
             .insert(0x200, StreamKind::Subtitle(DemuxSubtitleCodec::WebVttInTs));
@@ -2200,7 +2200,7 @@ mod tests {
         let n = muxer.pull(&mut buf);
         buf.truncate(n);
 
-        let mut options = DemuxerOptions::default();
+        let mut options = DemuxerConfig::default();
         options
             .stream_kind_overrides
             .insert(0x200, StreamKind::Subtitle(DemuxSubtitleCodec::WebVttInTs));

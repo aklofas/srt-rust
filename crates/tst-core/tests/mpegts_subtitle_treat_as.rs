@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 
 use tst_core::mpegts::demux::{
-    DemuxEvent, Demuxer, DemuxerOptions, NonConformantIssue, SamplePayload, StreamKind,
+    DemuxEvent, Demuxer, DemuxerConfig, NonConformantIssue, SamplePayload, StreamKind,
     SubtitleCodec,
 };
 
@@ -68,7 +68,7 @@ fn non_conformant_classifies_as_audio_without_treat_as() {
 #[test]
 fn treat_as_reclassifies_non_conformant_pid_to_webvtt() {
     let bytes = load("non_conformant_subtitle_missing_descriptor.ts");
-    let mut opts = DemuxerOptions::default();
+    let mut opts = DemuxerConfig::default();
     opts.stream_kind_overrides
         .insert(0x200, StreamKind::Subtitle(SubtitleCodec::WebVttInTs));
     let mut demux = Demuxer::with_options(opts);
@@ -99,7 +99,7 @@ fn treat_as_reclassifies_non_conformant_pid_to_webvtt() {
 #[test]
 fn treat_as_with_missing_descriptor_emits_non_conformant_issue() {
     let bytes = load("non_conformant_subtitle_missing_descriptor.ts");
-    let mut opts = DemuxerOptions::default();
+    let mut opts = DemuxerConfig::default();
     opts.stream_kind_overrides
         .insert(0x200, StreamKind::Subtitle(SubtitleCodec::WebVttInTs));
     let mut demux = Demuxer::with_options(opts);

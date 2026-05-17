@@ -45,7 +45,7 @@ pub enum KlvStreamType {
 ///
 /// E-AC-3, DVB-shaped AC-3 (`stream_type 0x06` + AC-3 registration),
 /// MP3 on user-private stream_types: not classified automatically;
-/// callers route via `DemuxerOptions::treat_as` on the demux side.
+/// callers route via `DemuxerConfig::treat_as` on the demux side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AudioCodec {
     Mp2,

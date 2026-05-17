@@ -71,7 +71,7 @@ Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux
 | --- | --- |
 | `Demuxer` | Stateful TS demuxer. `feed` bytes in, `next_event` events out, `flush` at stream end. |
 | `DemuxerBuilder` | Fluent builder for the demuxer's options. |
-| `DemuxerOptions` | Plain struct of options if you'd rather build a config than chain. |
+| `DemuxerConfig` | Plain struct of options if you'd rather build a config than chain. |
 | `DemuxEvent` | Top-level event enum: `ProgramMap`, `Sample`, `Metadata`, `Discontinuity`, `NonConformant`. |
 | `StreamId` | `{ pid: u16, kind: StreamKind }` — identifies the source stream of every event. |
 | `StreamKind` | `Video(VideoCodec)`, `Audio(AudioCodec)`, `Subtitle(SubtitleCodec)`, `KlvSync { declared_link }`, `KlvAsync`, `Unknown(u8)`. |
@@ -98,7 +98,7 @@ The complete enum / struct definitions live in
 
 ```text
 Demuxer::new()                                          -> Demuxer
-Demuxer::with_options(options: DemuxerOptions)          -> Demuxer
+Demuxer::with_options(options: DemuxerConfig)          -> Demuxer
 Demuxer::feed(&mut self, bytes: &[u8])                  -> Result<(), DemuxError>
 Demuxer::next_event(&mut self)                          -> Option<DemuxEvent>
 Demuxer::flush(&mut self)                               -> ()
@@ -195,16 +195,16 @@ let _d = DemuxerBuilder::new()
     .build();
 ```
 
-`DemuxerOptions` is the plain-struct form if you'd rather build a config
+`DemuxerConfig` is the plain-struct form if you'd rather build a config
 once and pass it around:
 
 ```rust,no_run
-use tst_core::mpegts::demux::{Demuxer, DemuxerOptions, StreamKind, VideoCodec};
+use tst_core::mpegts::demux::{Demuxer, DemuxerConfig, StreamKind, VideoCodec};
 use std::collections::HashMap;
 
 let mut overrides = HashMap::new();
 overrides.insert(0x1011u16, StreamKind::Video(VideoCodec::H265));
-let mut options = DemuxerOptions::default();
+let mut options = DemuxerConfig::default();
 options.stream_kind_overrides = overrides;
 let _d = Demuxer::with_options(options);
 ```
@@ -490,10 +490,10 @@ MP3 audio on user-private stream_type `0xF1` alongside KLV. The
 demuxer's default classification surfaces these PIDs as
 `StreamKind::Unknown(0xF1)`.
 
-To route them to typed audio, use `DemuxerOptions::treat_as`:
+To route them to typed audio, use `DemuxerConfig::treat_as`:
 
 ```rust
-let mut options = DemuxerOptions::default();
+let mut options = DemuxerConfig::default();
 options.treat_as.insert(0x101, StreamKind::Audio(AudioCodec::Mp2));
 let demuxer = Demuxer::with_options(options);
 ```
@@ -563,15 +563,15 @@ while let Some(e) = demux.next_event() {
 
 ### Treating non-conformant captures
 
-`DemuxerOptions::stream_kind_overrides: HashMap<u16, StreamKind>`
+`DemuxerConfig::stream_kind_overrides: HashMap<u16, StreamKind>`
 lets you force a specific PID to a specific subtitle codec when an
 upstream encoder emits WebVTT-shaped (or other subtitle-shaped)
 bytes without the disambiguating descriptor:
 
 ```rust
-use tst_core::mpegts::demux::{Demuxer, DemuxerOptions, StreamKind, SubtitleCodec};
+use tst_core::mpegts::demux::{Demuxer, DemuxerConfig, StreamKind, SubtitleCodec};
 
-let mut opts = DemuxerOptions::default();
+let mut opts = DemuxerConfig::default();
 opts.stream_kind_overrides
     .insert(0x300, StreamKind::Subtitle(SubtitleCodec::WebVttInTs));
 let mut demux = Demuxer::with_options(opts);

@@ -28,4 +28,4 @@ pub use event::{
     StreamKind, SubtitleCodec, VideoCodec, VideoPayload, pts_to_duration,
 };
 pub use strict::StrictMode;
-pub use types::{DemuxerBuilder, DemuxerOptions, DemuxerStats};
+pub use types::{DemuxerBuilder, DemuxerConfig, DemuxerStats};

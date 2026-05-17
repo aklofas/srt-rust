@@ -27,7 +27,7 @@ use crate::receiver::Receiver;
 use std::sync::Arc;
 use tracing::{Span, info_span};
 use tst_core::error::DemuxError;
-use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerOptions};
+use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DemuxerConfig};
 use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
@@ -129,7 +129,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     }
 
     /// Wrap a transport with custom demuxer options (e.g. strict mode).
-    pub fn with_demux_options(transport: R, options: DemuxerOptions) -> Self {
+    pub fn with_demux_options(transport: R, options: DemuxerConfig) -> Self {
         let span = info_span!(
             target: "tst_pipeline::demux_receiver",
             "demux_receiver",

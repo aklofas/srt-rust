@@ -476,7 +476,7 @@ counterpart to `Transport`).
 ```rust,ignore
 impl<R: RecvTransport> DemuxReceiver<R> {
     pub fn new(transport: R) -> Self;
-    pub fn with_demux_options(transport: R, options: DemuxerOptions) -> Self;
+    pub fn with_demux_options(transport: R, options: DemuxerConfig) -> Self;
     pub fn add_byte_sink(&mut self, sink: ByteSink);
     pub fn recv_event(&mut self) -> Result<Option<DemuxEvent>, DemuxReceiverError>;
     pub fn is_alive(&self) -> bool;

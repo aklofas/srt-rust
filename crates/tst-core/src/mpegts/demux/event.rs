@@ -424,7 +424,7 @@ pub enum NonConformantIssue {
     /// PSI section reassembly observed a continuity-counter jump on a
     /// continuation packet. Per ISO/IEC 13818-1 §2.4.3.3 PSI continuation
     /// packets must increment the CC; a jump means an upstream packet drop.
-    /// Plan #29 strict mode (`DemuxerOptions::lenient_psi_reassembly = false`,
+    /// Plan #29 strict mode (`DemuxerConfig::lenient_psi_reassembly = false`,
     /// the default) drops the partial section and emits this issue,
     /// matching ffmpeg's `mpegts.c:3118-3142` behavior. Lenient mode keeps
     /// today's behavior of feeding the bytes through; the section then

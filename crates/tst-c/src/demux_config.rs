@@ -53,7 +53,7 @@ impl TstStrictMode {
 
 use libc::size_t;
 use std::collections::HashMap;
-use tst_core::mpegts::demux::{DemuxerOptions, StreamKind, StrictMode};
+use tst_core::mpegts::demux::{DemuxerConfig, StreamKind, StrictMode};
 
 /// Opaque demux-config builder. Heap-allocated via `_new`, mutated
 /// in place via setters, released via `_free`. The receiver clones
@@ -71,15 +71,15 @@ pub struct TstDemuxConfig {
 
 impl TstDemuxConfig {
     #[allow(dead_code)] // used in Task 10
-    pub(crate) fn build_options(&self) -> DemuxerOptions {
-        DemuxerOptions {
-            strict: self.strict,
-            pes_cap_per_pid: self.pes_cap_per_pid,
-            pes_cap_total: self.pes_cap_total,
-            klv_link_overrides: self.klv_link_overrides.clone(),
-            stream_kind_overrides: self.stream_kind_overrides.clone(),
-            lenient_psi_reassembly: false,
-        }
+    pub(crate) fn build_options(&self) -> DemuxerConfig {
+        let mut cfg = DemuxerConfig::default();
+        cfg.strict = self.strict;
+        cfg.pes_cap_per_pid = self.pes_cap_per_pid;
+        cfg.pes_cap_total = self.pes_cap_total;
+        cfg.klv_link_overrides = self.klv_link_overrides.clone();
+        cfg.stream_kind_overrides = self.stream_kind_overrides.clone();
+        cfg.lenient_psi_reassembly = false;
+        cfg
     }
 }
 

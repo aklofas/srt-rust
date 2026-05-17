@@ -172,14 +172,15 @@ impl Default for UasDatalinkLs {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct EncodeOptions {
+pub struct EncodeConfig {
     pub universal_label: UniversalLabel,
     /// Version byte to use for Tag 65 if the struct's `uas_ls_version` is None.
     pub version: u8,
 }
 
-impl Default for EncodeOptions {
+impl Default for EncodeConfig {
     fn default() -> Self {
         Self {
             universal_label: UniversalLabel::ST_0601_LS,
@@ -334,12 +335,12 @@ impl UasDatalinkLs {
 /// - [`KlvEncodeError::RecordTooLarge`] if the encoded body would
 ///   overflow the BER-encodable length limit.
 pub fn encode(record: &UasDatalinkLs, out: &mut [u8]) -> Result<usize, KlvEncodeError> {
-    encode_with(record, &EncodeOptions::default(), out)
+    encode_with(record, &EncodeConfig::default(), out)
 }
 
 pub fn encode_with(
     record: &UasDatalinkLs,
-    opts: &EncodeOptions,
+    opts: &EncodeConfig,
     out: &mut [u8],
 ) -> Result<usize, KlvEncodeError> {
     // Build the inner body into a temporary Vec, then assemble UL + BER length + body + checksum.
@@ -397,10 +398,10 @@ pub fn encode_to_vec(record: &UasDatalinkLs) -> Result<Vec<u8>, KlvEncodeError> 
 }
 
 pub fn encoded_len(record: &UasDatalinkLs) -> usize {
-    encoded_len_with(record, &EncodeOptions::default())
+    encoded_len_with(record, &EncodeConfig::default())
 }
 
-pub fn encoded_len_with(record: &UasDatalinkLs, opts: &EncodeOptions) -> usize {
+pub fn encoded_len_with(record: &UasDatalinkLs, opts: &EncodeConfig) -> usize {
     let mut body_len = 0usize;
     each_typed_field(record, opts, |tag, value_len| {
         body_len += ber_oid_len(tag as u32) + ber_len(value_len) + value_len;
@@ -416,7 +417,7 @@ pub fn encoded_len_with(record: &UasDatalinkLs, opts: &EncodeOptions) -> usize {
 /// Used by both `encoded_len_with` (for sizing) and `write_typed_fields` (for emission).
 fn each_typed_field<F: FnMut(u8, usize)>(
     record: &UasDatalinkLs,
-    _opts: &EncodeOptions,
+    _opts: &EncodeConfig,
     mut visit: F,
 ) {
     // Tag 65 auto-emit if not explicitly set.
@@ -490,7 +491,7 @@ fn each_typed_field<F: FnMut(u8, usize)>(
 
 fn write_typed_fields(
     record: &UasDatalinkLs,
-    opts: &EncodeOptions,
+    opts: &EncodeConfig,
     body: &mut Vec<u8>,
 ) -> Result<(), KlvEncodeError> {
     let auto_version = record.uas_ls_version.is_none();
@@ -1079,7 +1080,7 @@ mod tests {
 
     #[test]
     fn encode_options_default() {
-        let opts = EncodeOptions::default();
+        let opts = EncodeConfig::default();
         assert_eq!(opts.universal_label, UniversalLabel::ST_0601_LS);
         assert_eq!(opts.version, 0x13);
     }
@@ -1160,7 +1161,7 @@ mod tests {
     fn encode_with_custom_ul() {
         let r = UasDatalinkLs::default();
         let custom_ul = UniversalLabel::new([0xAB; 16]);
-        let opts = EncodeOptions {
+        let opts = EncodeConfig {
             universal_label: custom_ul,
             version: 0x09,
         };
@@ -1232,7 +1233,7 @@ mod tests {
     fn decode_strict_rejects_funky_ul() {
         let mut r = UasDatalinkLs::default();
         r.timestamp_us = Some(456);
-        let opts = EncodeOptions {
+        let opts = EncodeConfig {
             universal_label: UniversalLabel::new([0xAB; 16]),
             version: 0x13,
         };

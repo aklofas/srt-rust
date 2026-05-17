@@ -426,7 +426,7 @@ pub fn extract_user_label(descs: &[RawDescriptor]) -> Option<String> {
 
 /// Maps PMT `stream_type` byte → typed audio codec. Returns `None` for
 /// unrecognized stream_types; caller routes those to `StreamKind::Unknown(_)`
-/// or maps them via `DemuxerOptions::treat_as`.
+/// or maps them via `DemuxerConfig::treat_as`.
 pub(crate) fn classify_audio_stream_type(
     stream_type: u8,
 ) -> Option<crate::mpegts::demux::event::AudioCodec> {

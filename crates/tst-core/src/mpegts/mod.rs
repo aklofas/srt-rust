@@ -1,4 +1,5 @@
-//! MPEG-TS muxing — sender-side TS packetization for H.264/H.265 + ST 0601 KLV.
+//! MPEG-TS muxing and demuxing — multi-program TS with video, audio, KLV
+//! metadata, and subtitle/caption carriage.
 //!
 //! ## Quick start
 //!
@@ -25,16 +26,27 @@
 //! }
 //! ```
 //!
-//! ## What's in scope
+//! ## Capabilities
 //!
-//! - Single-program TS, one video PID, one KLV PID, no audio
-//! - H.264 (stream_type 0x1B) and H.265 (stream_type 0x24)
-//! - ST 1402 KLV — both `PrivateData` (0x06) and `SynchronousMetadata` (0x15);
-//!   sync streams auto-wrap inside [`mux::Muxer::push_klv`] with a 5-byte
-//!   `Metadata_AU_cell` header per ITU-T H.222.0 V9 §2.12.4.2 (see
-//!   [`crate::mpegts::au_cell`])
-//! - VBR output, no null padding
-//! - Annex-B input; one access unit per [`mux::Muxer::push_video`] call
+//! - **Multi-program TS** — up to 16 programs per muxer; per-program PCR pin
+//! - **Video** — H.264 (stream_type 0x1B), H.265 (0x24), H.266 (0x33), AV1
+//!   (0x06 with AV01 registration); one or more streams per program
+//! - **KLV metadata** — both `PrivateData` (0x06) and `SynchronousMetadata`
+//!   (0x15) carriage; sync streams auto-wrap inside [`mux::Muxer::push_klv`]
+//!   with a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 §2.12.4.2
+//!   (see [`crate::mpegts::au_cell`]); multi-stream supported; typed decoders
+//!   for ST 0601, ST 0102, ST 0605, ST 0903 live in [`crate::klv`]
+//! - **Audio** — MP2 (stream_type 0x03/0x04), AAC ADTS (0x0F), AAC LATM
+//!   (0x11), AC-3 (0x81 with registration); up to 16 streams per program
+//! - **Subtitles / captions** — DVB subtitling, teletext, CEA-708, and
+//!   WebVTT-in-TS, all carried via `stream_type 0x06` with descriptor
+//!   disambiguation
+//! - **Output** — VBR, no null padding; Annex-B input for H.264/H.265/H.266,
+//!   OBU input for AV1; one access unit per [`mux::Muxer::push_video`] call
+//!
+//! Defaults are conservative: [`mux::MuxerConfig::default`] produces a
+//! single-program H.264 + KLV stream. See `docs/compatibility.md` for the
+//! full feature matrix.
 
 pub mod au_cell;
 pub mod common;

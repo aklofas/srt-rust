@@ -1,7 +1,7 @@
 //! AV1 (AOM Bitstream Spec) OBU parsers.
 //!
 //! Hand-rolled per the AV1 Bitstream & Decoding Process Specification.
-//! Reuses the LEB128 primitives in [`leb128`] for OBU size encoding
+//! Reuses internal LEB128 primitives for OBU size encoding
 //! and AV1's `uvlc` reads.
 //!
 //! ## Scope

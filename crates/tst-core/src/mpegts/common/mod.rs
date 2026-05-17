@@ -137,6 +137,17 @@ impl Pcr27mhz {
     }
 }
 
+/// 90 kHz tick rate per second — matches the PTS clock per ISO/IEC 13818-1
+/// §2.4.2.2 (system_clock_frequency / 300). Use with [`Pts90khz::from_millis`]
+/// or in callers that compute frame durations directly.
+pub const PTS_TICKS_PER_SECOND: i64 = 90_000;
+
+/// 27 MHz tick rate per second — matches the PCR clock per ISO/IEC 13818-1
+/// §2.4.2.2 (the full system_clock_frequency before the 300× division to PTS).
+/// Use to convert [`Pcr27mhz`] deltas to wall-clock seconds, e.g. divide a
+/// `NonConformantIssue::PcrAnomaly.delta` by this constant to get seconds.
+pub const PCR_TICKS_PER_SECOND: u64 = 27_000_000;
+
 /// Signed difference `now - last` interpreted across the 33-bit PTS
 /// rollover boundary. Returns the smaller-magnitude wrap-aware delta.
 ///
@@ -217,6 +228,7 @@ mod tests {
     fn pts_from_millis() {
         assert_eq!(Pts90khz::from_millis(0).as_ticks(), 0);
         assert_eq!(Pts90khz::from_millis(1000).as_ticks(), 90_000);
+        assert_eq!(Pts90khz::from_millis(1000).as_ticks(), PTS_TICKS_PER_SECOND);
     }
 
     #[test]
@@ -231,6 +243,7 @@ mod tests {
     fn pcr_from_millis() {
         assert_eq!(Pcr27mhz::from_millis(0).as_ticks(), 0);
         assert_eq!(Pcr27mhz::from_millis(40).as_ticks(), 40 * 27_000);
+        assert_eq!(Pcr27mhz::from_millis(1000).as_ticks(), PCR_TICKS_PER_SECOND);
     }
 
     #[test]

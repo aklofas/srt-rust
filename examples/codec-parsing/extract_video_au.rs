@@ -65,6 +65,7 @@ fn main() -> std::io::Result<()> {
                 SamplePayload::Video {
                     codec,
                     payload: VideoPayload::Nals(nals),
+                    ..
                 },
             ..
         } = event

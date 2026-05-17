@@ -110,9 +110,14 @@ fn main() {
                 SamplePayload::Video {
                     codec,
                     payload: VideoPayload::Nals(nals),
+                    // `random_access_indicator` is sourced from the TS
+                    // adaptation-field RAI bit on the PES_start packet
+                    // (ISO/IEC 13818-1 §2.4.3.4). True on AUs the encoder
+                    // marked as decoder-resync points (IDR / CRA / etc.).
+                    random_access_indicator,
                 } => {
                     println!(
-                        "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} nals={}",
+                        "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} nals={} rai={random_access_indicator}",
                         stream.pid,
                         nals.len()
                     );
@@ -120,6 +125,7 @@ fn main() {
                 SamplePayload::Video {
                     codec,
                     payload: VideoPayload::Obus(obus),
+                    random_access_indicator,
                 } => {
                     // OBU-shaped video (AV1) carriage lands in a later
                     // task; the demuxer does not emit this variant today,
@@ -127,7 +133,7 @@ fn main() {
                     // exhaustive — adding AV1 wiring later won't silently
                     // change behavior here.
                     println!(
-                        "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} obus={}",
+                        "Sample PID=0x{:04X} pts={pts} dts={dts:?} codec={codec:?} obus={} rai={random_access_indicator}",
                         stream.pid,
                         obus.len()
                     );

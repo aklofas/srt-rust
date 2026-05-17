@@ -111,7 +111,7 @@ fn drain_and_print(dx: &mut Demuxer, last: &mut HashMap<u16, String>) {
         // skipped — run demux_to_events.rs for the full annotated event dump.
         let DemuxEvent::Sample {
             stream,
-            payload: SamplePayload::Video { codec, payload },
+            payload: SamplePayload::Video { codec, payload, .. },
             ..
         } = ev
         else {

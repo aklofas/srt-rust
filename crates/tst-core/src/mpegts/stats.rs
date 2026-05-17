@@ -144,7 +144,6 @@ pub(crate) struct StreamCodecCounters {
 /// Discriminator for [`StreamCodecCounters`]. Materialized at first
 /// push (Muxer) or first event (Demuxer) for a PID whose `stream_type`
 /// falls into a counted family.
-#[allow(dead_code)] // variants constructed by Muxer/Demuxer bump helpers in upcoming tasks (4-7)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CodecKind {
     Video,
@@ -152,7 +151,6 @@ pub(crate) enum CodecKind {
     Audio,
 }
 
-#[allow(dead_code)] // constructors called by Muxer/Demuxer bump helpers in upcoming tasks (4-7)
 impl StreamCodecCounters {
     pub(crate) fn new_video() -> Self {
         Self {

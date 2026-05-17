@@ -278,14 +278,19 @@ fn print_sample(stream: &StreamId, pts: i64, payload: &SamplePayload) {
         SamplePayload::Video {
             codec,
             payload: VideoPayload::Nals(nals),
+            // RAI sourced from the TS adaptation-field bit on the PES_start
+            // packet (ISO/IEC 13818-1 §2.4.3.4); marker for AUs the encoder
+            // treats as decoder-resync points.
+            random_access_indicator,
         } => {
             // NAL-unit type tally so you can see slice/IDR/SPS/PPS/SEI
             // distribution at a glance. Indexed by raw nal_type so the
             // line stays compact even when there's a long tail of types.
             let kinds = nal_kind_summary(nals);
             let total: usize = nals.iter().map(nal_payload_len).sum();
+            let rai = if *random_access_indicator { " RAI" } else { "" };
             eprintln!(
-                "[vid]  PID=0x{:04X} pts={pts:>10} ({}) codec={codec:?} nals={} bytes={} {kinds}",
+                "[vid]  PID=0x{:04X} pts={pts:>10} ({}) codec={codec:?} nals={} bytes={} {kinds}{rai}",
                 stream.pid,
                 fmt_pts(pts),
                 nals.len(),
@@ -295,6 +300,7 @@ fn print_sample(stream: &StreamId, pts: i64, payload: &SamplePayload) {
         SamplePayload::Video {
             codec: _,
             payload: VideoPayload::Obus(_),
+            ..
         } => {
             // OBU-shaped video (AV1) carriage lands in a later task; not
             // emitted by the demuxer today.

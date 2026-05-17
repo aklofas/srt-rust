@@ -984,9 +984,12 @@ impl Demuxer {
         &mut self,
         pkt: &crate::mpegts::demux::ts::TsPacket<'_>,
     ) -> Result<(), DemuxError> {
-        let outcomes = self
-            .pes
-            .push(pkt.pid, pkt.payload, pkt.payload_unit_start)?;
+        let outcomes = self.pes.push(
+            pkt.pid,
+            pkt.payload,
+            pkt.payload_unit_start,
+            pkt.random_access_indicator,
+        )?;
         for outcome in outcomes {
             match outcome {
                 ReassemblyOutcome::Complete(pes) => {
@@ -1058,6 +1061,7 @@ impl Demuxer {
                 // share the same Sample event surface but emit different
                 // VideoPayload variants — the invariant is documented on
                 // VideoPayload.
+                let rai = pes.random_access_indicator;
                 let (sample, payload_bytes) = match codec {
                     VideoCodec::H264 | VideoCodec::H265 | VideoCodec::H266 => {
                         let nals = split_nals(&pes.payload, codec);
@@ -1066,6 +1070,7 @@ impl Demuxer {
                             SamplePayload::Video {
                                 codec,
                                 payload: VideoPayload::Nals(nals),
+                                random_access_indicator: rai,
                             },
                             bytes,
                         )
@@ -1095,6 +1100,7 @@ impl Demuxer {
                             SamplePayload::Video {
                                 codec,
                                 payload: VideoPayload::Obus(obus),
+                                random_access_indicator: rai,
                             },
                             bytes,
                         )
@@ -1110,6 +1116,33 @@ impl Demuxer {
                     })
                     .items += 1;
                 self.stats_per_stream.get_mut(&stream.pid).unwrap().bytes += payload_bytes as u64;
+                // Codec-specific counter bump. `nals_or_obus` counts the units
+                // split off this AU; `random_access_aus` increments by 1 when
+                // the TS adaptation-field RAI bit was set on the PES_start
+                // packet (latched into `random_access_indicator` on the Video
+                // variant).
+                let (nals_or_obus_count, ra_count) = match &sample {
+                    SamplePayload::Video {
+                        payload: VideoPayload::Nals(nals),
+                        random_access_indicator,
+                        ..
+                    } => (
+                        nals.len() as u64,
+                        if *random_access_indicator { 1 } else { 0 },
+                    ),
+                    SamplePayload::Video {
+                        payload: VideoPayload::Obus(obus),
+                        random_access_indicator,
+                        ..
+                    } => (
+                        obus.len() as u64,
+                        if *random_access_indicator { 1 } else { 0 },
+                    ),
+                    _ => (0, 0),
+                };
+                if nals_or_obus_count > 0 || ra_count > 0 {
+                    self.bump_video_counters(stream.pid, nals_or_obus_count, ra_count);
+                }
                 self.queue.push_back(DemuxEvent::Sample {
                     stream,
                     pts,
@@ -1203,6 +1236,13 @@ impl Demuxer {
                 });
                 entry.items += 1;
                 entry.bytes += meta_len as u64;
+                // Codec-specific counter bump. Today every KLV PES carries
+                // exactly one record (sender-side `push_klv` is one-record-
+                // per-call, and the demuxer emits one event per PES). If a
+                // future sender or external tool ships multi-record PESes,
+                // replace `1` with an LS-substrate iterator count on
+                // `payload`.
+                self.bump_klv_counters(stream.pid, 1);
                 self.queue.push_back(DemuxEvent::Metadata {
                     stream,
                     pts: used_pts,
@@ -1244,6 +1284,23 @@ impl Demuxer {
                 });
                 entry.items += 1;
                 entry.bytes += payload_len as u64;
+                // Codec-specific counter bump. AAC-ADTS + MP2 have frame
+                // iterators in `codec::*`; LATM + AC-3 don't (their
+                // `stream_codec_stats` accessor falls back to
+                // `StreamCodecStats::Unknown` via the stats_per_stream-only
+                // path).
+                let frames_delta: u64 = match codec {
+                    AudioCodec::Aac => crate::codec::aac::frames(&pes.payload)
+                        .filter_map(Result::ok)
+                        .count() as u64,
+                    AudioCodec::Mp2 => crate::codec::mpegaudio::frames(&pes.payload)
+                        .filter_map(Result::ok)
+                        .count() as u64,
+                    _ => 0, // AacLatm / Ac3 — no iterator yet
+                };
+                if frames_delta > 0 {
+                    self.bump_audio_counters(stream.pid, frames_delta);
+                }
                 self.queue.push_back(DemuxEvent::Sample {
                     stream,
                     pts,
@@ -1349,6 +1406,31 @@ impl Demuxer {
     #[cfg(test)]
     pub(crate) fn programs_for_test(&self) -> &HashMap<u16, ProgramTracker> {
         &self.programs
+    }
+
+    fn bump_video_counters(&mut self, pid: u16, nals_or_obus_delta: u64, ra_delta: u64) {
+        let c = self
+            .stream_codec_counters
+            .entry(pid)
+            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_video);
+        c.nals_or_obus = c.nals_or_obus.saturating_add(nals_or_obus_delta);
+        c.random_access_aus = c.random_access_aus.saturating_add(ra_delta);
+    }
+
+    fn bump_klv_counters(&mut self, pid: u16, records_delta: u64) {
+        let c = self
+            .stream_codec_counters
+            .entry(pid)
+            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_klv);
+        c.records = c.records.saturating_add(records_delta);
+    }
+
+    fn bump_audio_counters(&mut self, pid: u16, frames_delta: u64) {
+        let c = self
+            .stream_codec_counters
+            .entry(pid)
+            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_audio);
+        c.frames = c.frames.saturating_add(frames_delta);
     }
 
     /// Per-PID codec-specific counters. See
@@ -1727,6 +1809,29 @@ mod tests {
         assert_eq!(demux.stream_codec_stats(0x1234), None);
         demux.reset_stats();
         assert_eq!(demux.stream_codec_stats(0x1234), None);
+    }
+
+    #[test]
+    fn bump_video_counters_increments_existing_entry() {
+        let mut demux = Demuxer::new();
+        demux.bump_video_counters(0x100, 2, 1);
+        match demux.stream_codec_stats(0x100) {
+            Some(crate::mpegts::stats::StreamCodecStats::Video {
+                nals_or_obus: 2,
+                random_access_aus: 1,
+                ..
+            }) => {}
+            other => panic!("expected Video {{2,1}}, got {:?}", other),
+        }
+        demux.bump_video_counters(0x100, 3, 0);
+        match demux.stream_codec_stats(0x100) {
+            Some(crate::mpegts::stats::StreamCodecStats::Video {
+                nals_or_obus: 5,
+                random_access_aus: 1,
+                ..
+            }) => {}
+            other => panic!("expected Video {{5,1}}, got {:?}", other),
+        }
     }
 
     #[test]

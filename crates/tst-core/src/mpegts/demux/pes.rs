@@ -17,6 +17,11 @@ pub struct PesPayload {
     pub pts: Option<i64>,
     /// 90 kHz DTS, if the PES carried one.
     pub dts: Option<i64>,
+    /// Adaptation-field `random_access_indicator` captured from the
+    /// PES_start packet (PUSI=1). First-packet-wins: continuation
+    /// packets don't overwrite the latched value, matching how
+    /// encoders/muxers signal RA points (ffmpeg/tsduck convention).
+    pub random_access_indicator: bool,
     /// Elementary stream payload bytes (after the PES header, including
     /// header_data_length adjustment).
     pub payload: Vec<u8>,
@@ -27,6 +32,8 @@ pub struct PesPayload {
 struct Partial {
     declared_total_len: Option<usize>, // PES_packet_length-derived total of the body
     buf: Vec<u8>,
+    /// Latched at PUSI=1; never overwritten by continuation packets.
+    random_access_indicator: bool,
 }
 
 /// Per-call output from `Reassembler::push`. A single TS payload chunk
@@ -62,27 +69,35 @@ impl Reassembler {
 
     /// Feed one TS-packet's payload bytes for `pid`. `pusi=true` means
     /// this packet begins a new PES on this PID.
+    ///
+    /// `random_access_indicator` is sourced from the TS adaptation-field
+    /// RAI bit (ISO/IEC 13818-1 §2.4.3.4). Only the value carried on the
+    /// PES_start packet (PUSI=1) is latched onto the in-flight PES;
+    /// continuation packets' RAI bits are ignored — encoders/muxers signal
+    /// AU-level RA on the start packet only (matches ffmpeg/tsduck).
     pub fn push(
         &mut self,
         pid: u16,
         payload: &[u8],
         pusi: bool,
+        random_access_indicator: bool,
     ) -> Result<Vec<ReassemblyOutcome>, DemuxError> {
         let mut out = Vec::new();
         if pusi {
             // PUSI: drain whatever was in flight on this PID first.
             if let Some(prev) = self.by_pid.remove(&pid) {
                 self.total_buffered = self.total_buffered.saturating_sub(prev.buf.len());
-                if let Some(pes) = parse_complete(pid, &prev.buf)? {
+                if let Some(pes) = parse_complete(pid, &prev.buf, prev.random_access_indicator)? {
                     out.push(ReassemblyOutcome::Complete(pes));
                 }
             }
-            // Start fresh partial.
+            // Start fresh partial; latch RAI from the PES_start packet.
             self.by_pid.insert(
                 pid,
                 Partial {
                     declared_total_len: None,
                     buf: Vec::new(),
+                    random_access_indicator,
                 },
             );
         }
@@ -117,11 +132,13 @@ impl Reassembler {
         }
         // Length-driven completion.
         let mut completed_now = None;
+        let mut completed_rai = false;
         if let Some(total) = part.declared_total_len {
             if part.buf.len() >= total {
                 // Slice off exactly `total` bytes; anything beyond is the next PES
                 // on this PID (rare — most PIDs use PUSI for boundaries).
                 let body = std::mem::take(&mut part.buf);
+                completed_rai = part.random_access_indicator;
                 completed_now = Some(body);
                 self.total_buffered = self
                     .total_buffered
@@ -130,7 +147,7 @@ impl Reassembler {
             }
         }
         if let Some(buf) = completed_now {
-            if let Some(pes) = parse_complete(pid, &buf)? {
+            if let Some(pes) = parse_complete(pid, &buf, completed_rai)? {
                 out.push(ReassemblyOutcome::Complete(pes));
             }
         }
@@ -140,7 +157,7 @@ impl Reassembler {
     pub fn drain_partial(&mut self) -> Vec<PesPayload> {
         let mut out = Vec::new();
         for (pid, p) in std::mem::take(&mut self.by_pid) {
-            if let Ok(Some(pes)) = parse_complete(pid, &p.buf) {
+            if let Ok(Some(pes)) = parse_complete(pid, &p.buf, p.random_access_indicator) {
                 out.push(pes);
             }
         }
@@ -155,7 +172,11 @@ impl Reassembler {
 
 /// Parse a fully-buffered PES packet (header + body) into a `PesPayload`.
 /// Returns `None` if the buffer is too short to be a valid PES.
-fn parse_complete(pid: u16, buf: &[u8]) -> Result<Option<PesPayload>, DemuxError> {
+fn parse_complete(
+    pid: u16,
+    buf: &[u8],
+    random_access_indicator: bool,
+) -> Result<Option<PesPayload>, DemuxError> {
     if buf.len() < 6 {
         return Ok(None);
     }
@@ -220,6 +241,7 @@ fn parse_complete(pid: u16, buf: &[u8]) -> Result<Option<PesPayload>, DemuxError
         stream_id,
         pts,
         dts,
+        random_access_indicator,
         payload,
     }))
 }
@@ -282,7 +304,7 @@ mod tests {
         // Split across two PUSI calls: first PUSI starts the PES, second PUSI
         // emits it.
         let mut r = Reassembler::new(1 << 20, 4 << 20);
-        let out = r.push(0x100, &pes, true).unwrap();
+        let out = r.push(0x100, &pes, true, false).unwrap();
         assert!(out.is_empty());
         // A second PUSI on the same PID closes the previous one. Zero this
         // PES's length field too so it doesn't immediately length-complete
@@ -290,7 +312,7 @@ mod tests {
         let mut pes2 = build_pes(0xE0, None, b"");
         pes2[4] = 0;
         pes2[5] = 0;
-        let out = r.push(0x100, &pes2, true).unwrap();
+        let out = r.push(0x100, &pes2, true, false).unwrap();
         assert_eq!(out.len(), 1);
         match &out[0] {
             ReassemblyOutcome::Complete(p) => {
@@ -305,7 +327,7 @@ mod tests {
     fn length_driven_completion() {
         let pes = build_pes(0xE0, Some(0), b"abc");
         let mut r = Reassembler::new(1 << 20, 4 << 20);
-        let out = r.push(0x100, &pes, true).unwrap();
+        let out = r.push(0x100, &pes, true, false).unwrap();
         // PES_packet_length is set => completion when all bytes seen.
         assert_eq!(out.len(), 1);
     }
@@ -314,11 +336,11 @@ mod tests {
     fn per_pid_overflow_emits_event_and_clears() {
         let mut r = Reassembler::new(64, 1 << 20);
         let _ = r
-            .push(0x100, b"\x00\x00\x01\xE0\x00\x00\x80\x00\x00", true)
+            .push(0x100, b"\x00\x00\x01\xE0\x00\x00\x80\x00\x00", true, false)
             .unwrap();
         // Now flood until overflow.
         let big = vec![0xCC; 256];
-        let out = r.push(0x100, &big, false).unwrap();
+        let out = r.push(0x100, &big, false, false).unwrap();
         assert!(matches!(out[0], ReassemblyOutcome::Overflow { pid: 0x100 }));
         assert_eq!(r.buffered_bytes(), 0);
     }
@@ -327,14 +349,55 @@ mod tests {
     fn aggregate_overflow() {
         let mut r = Reassembler::new(1 << 20, 200);
         let _ = r
-            .push(0x100, b"\x00\x00\x01\xE0\x00\x00\x80\x00\x00", true)
+            .push(0x100, b"\x00\x00\x01\xE0\x00\x00\x80\x00\x00", true, false)
             .unwrap();
         let big = vec![0xCC; 300];
-        let out = r.push(0x100, &big, false).unwrap();
+        let out = r.push(0x100, &big, false, false).unwrap();
         assert!(
             out.iter()
                 .any(|o| matches!(o, ReassemblyOutcome::OverflowTotal))
         );
         assert_eq!(r.buffered_bytes(), 0);
+    }
+
+    #[test]
+    fn random_access_indicator_first_packet_wins() {
+        // Start a PES with RAI=true, append continuation with RAI=false, then
+        // a new PUSI to flush — the completed PES retains RAI=true.
+        let mut pes = build_pes(0xE0, Some(900_000), b"hello");
+        pes[4] = 0;
+        pes[5] = 0;
+        let mut r = Reassembler::new(1 << 20, 4 << 20);
+        // PUSI=1 with RAI=true latches RAI on the in-flight PES.
+        let _ = r.push(0x100, &pes, true, true).unwrap();
+        // Continuation with RAI=false MUST NOT overwrite the latched value.
+        let _ = r.push(0x100, b"world", false, false).unwrap();
+        // Second PUSI closes the previous PES.
+        let mut pes2 = build_pes(0xE0, None, b"");
+        pes2[4] = 0;
+        pes2[5] = 0;
+        let out = r.push(0x100, &pes2, true, false).unwrap();
+        assert_eq!(out.len(), 1);
+        match &out[0] {
+            ReassemblyOutcome::Complete(p) => {
+                assert!(p.random_access_indicator, "RAI should latch from PUSI=1");
+                assert_eq!(p.payload, b"helloworld");
+            }
+            _ => panic!("expected Complete"),
+        }
+    }
+
+    #[test]
+    fn random_access_indicator_false_when_pusi_packet_clears_it() {
+        let pes = build_pes(0xE0, Some(0), b"abc");
+        let mut r = Reassembler::new(1 << 20, 4 << 20);
+        let out = r.push(0x100, &pes, true, false).unwrap();
+        assert_eq!(out.len(), 1);
+        match &out[0] {
+            ReassemblyOutcome::Complete(p) => {
+                assert!(!p.random_access_indicator);
+            }
+            _ => panic!("expected Complete"),
+        }
     }
 }

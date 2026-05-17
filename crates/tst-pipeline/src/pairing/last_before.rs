@@ -36,7 +36,7 @@ impl LastBeforeState {
                 stream,
                 pts,
                 dts,
-                payload: SamplePayload::Video { codec, payload },
+                payload: SamplePayload::Video { codec, payload, .. },
             } if stream.pid == self.video_pid => {
                 let v = VideoSample {
                     stream,
@@ -129,6 +129,7 @@ mod tests {
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
                 payload: VideoPayload::Nals(Vec::new()),
+                random_access_indicator: false,
             },
         }
     }

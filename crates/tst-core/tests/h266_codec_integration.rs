@@ -260,6 +260,7 @@ fn h266_end_to_end_parses_minimal_vps_sps_pps() {
                     SamplePayload::Video {
                         codec: VideoCodec::H266,
                         payload: VideoPayload::Nals(nals),
+                        ..
                     },
                 ..
             } => Some(nals.clone()),

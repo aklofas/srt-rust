@@ -18,6 +18,13 @@ pub struct TsPacket<'a> {
     pub pcr_27mhz: Option<u64>,
     /// Adaptation field's `discontinuity_indicator` flag.
     pub discontinuity_indicator: bool,
+    /// Adaptation field's `random_access_indicator` flag, per ISO/IEC
+    /// 13818-1 §2.4.3.4 flags byte bit 6 (0x40). Set by encoders and
+    /// muxers on TS packets that begin an access unit decodable without
+    /// information from previous AUs (IDR, CRA, etc.). The signal is
+    /// independent of NAL-level type and reflects the stream-level
+    /// random-access contract. False when no adaptation field is present.
+    pub random_access_indicator: bool,
     /// Slice into the input bytes pointing at the payload (post-adaptation,
     /// post-pointer-field if PSI). Empty if `has_payload=false`.
     pub payload: &'a [u8],
@@ -50,6 +57,7 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
     let mut payload_off = 4;
     let mut pcr_27mhz = None;
     let mut discontinuity_indicator = false;
+    let mut random_access_indicator = false;
     if has_adaptation_field {
         let af_len = buf[4] as usize;
         if 5 + af_len > 188 {
@@ -58,6 +66,7 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
         if af_len >= 1 {
             let flags = buf[5];
             discontinuity_indicator = (flags & 0x80) != 0;
+            random_access_indicator = (flags & 0x40) != 0;
             let pcr_flag = (flags & 0x10) != 0;
             if pcr_flag && af_len >= 7 {
                 let b = &buf[6..12];
@@ -86,6 +95,7 @@ pub fn parse_ts_packet(buf: &[u8]) -> Result<TsPacket<'_>, TsParseError> {
         has_adaptation_field,
         pcr_27mhz,
         discontinuity_indicator,
+        random_access_indicator,
         payload,
         has_payload,
     })
@@ -133,5 +143,42 @@ mod tests {
             parse_ts_packet(&buf),
             Err(TsParseError::Truncated)
         ));
+    }
+
+    #[test]
+    fn adaptation_field_random_access_indicator_extracted() {
+        // Build a TS packet with adaptation field flags byte 0x40 (RAI set).
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = 0x40 | ((0x100u16 >> 8) as u8 & 0x1F); // pusi=1, pid=0x100
+        buf[2] = 0x00;
+        buf[3] = 0x30; // adaptation_control=11 (af + payload)
+        buf[4] = 1; // adaptation_field_length=1 (flags byte only)
+        buf[5] = 0x40; // flags: RAI=1
+        let pkt = parse_ts_packet(&buf).unwrap();
+        assert!(pkt.random_access_indicator);
+        assert!(!pkt.discontinuity_indicator);
+    }
+
+    #[test]
+    fn adaptation_field_random_access_indicator_clear_when_unset() {
+        // Build a TS packet with adaptation field flags byte 0x00.
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = 0x40;
+        buf[2] = 0x00;
+        buf[3] = 0x30;
+        buf[4] = 1;
+        buf[5] = 0x00; // flags: all clear
+        let pkt = parse_ts_packet(&buf).unwrap();
+        assert!(!pkt.random_access_indicator);
+    }
+
+    #[test]
+    fn no_adaptation_field_means_rai_false() {
+        // Default-built packet: adaptation_control=01, no af present.
+        let buf = build_simple_packet(0x100, true, 0);
+        let pkt = parse_ts_packet(&buf).unwrap();
+        assert!(!pkt.random_access_indicator);
     }
 }

@@ -402,6 +402,7 @@ mod tests {
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
                 payload: VideoPayload::Nals(Vec::new()),
+                random_access_indicator: false,
             },
         };
         let out = p.feed(v);
@@ -437,6 +438,7 @@ mod tests {
             payload: SamplePayload::Video {
                 codec: VideoCodec::H265,
                 payload: VideoPayload::Nals(Vec::new()),
+                random_access_indicator: false,
             },
         };
         let out = p.feed(v);
@@ -476,6 +478,7 @@ mod tests {
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
                 payload: VideoPayload::Nals(Vec::new()),
+                random_access_indicator: false,
             },
         };
         let _ = p.feed(sync_klv);
@@ -539,6 +542,7 @@ mod tests {
             payload: SamplePayload::Video {
                 codec: VideoCodec::H264,
                 payload: VideoPayload::Nals(Vec::new()),
+                random_access_indicator: false,
             },
         }
     }
@@ -629,6 +633,7 @@ mod proptests {
                 payload: SamplePayload::Video {
                     codec: VideoCodec::H264,
                     payload: VideoPayload::Nals(Vec::new()),
+                    random_access_indicator: false,
                 },
             },
             SyntheticEvent::Klv(pts) => DemuxEvent::Metadata {

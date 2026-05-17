@@ -60,6 +60,7 @@ fn av1_end_to_end_parses_seq_header_via_obu_stream() {
                 SamplePayload::Video {
                     codec: VideoCodec::Av1,
                     payload: VideoPayload::Obus(obus),
+                    ..
                 },
             ..
         } = e

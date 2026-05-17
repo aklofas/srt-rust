@@ -539,6 +539,7 @@ fn fill_sample(
         SamplePayload::Video {
             codec: vc,
             payload: vp,
+            ..
         } => {
             codec = crate::config::TstVideoCodec::from_core(*vc) as i32;
             match vp {

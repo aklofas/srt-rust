@@ -227,6 +227,13 @@ fn repack_event(
                 SamplePayload::Video {
                     codec,
                     payload: VideoPayload::Nals(nals),
+                    // `random_access_indicator` is the TS adaptation-field RAI
+                    // bit from the input PES_start packet (ISO/IEC 13818-1
+                    // §2.4.3.4). Forwarding this directly to the output's
+                    // `key_frame` is cheaper and more authoritative than
+                    // re-scanning NALs for nal_type==5 — it reflects the
+                    // upstream encoder's own RA signal.
+                    random_access_indicator,
                 },
             ..
         } => {
@@ -264,17 +271,16 @@ fn repack_event(
             if matches!(codec, DemuxCodec::H264) {
                 let annex_b = nals_to_annex_b_h264(&nals);
                 if !annex_b.is_empty() {
-                    // Why key_frame=false: determining whether an AU is a
-                    // keyframe requires inspecting the NAL unit type (IDR =
-                    // nal_type 5 for H.264). The muxer uses `key_frame` only
-                    // to set the `random_access_indicator` bit in the TS
-                    // adaptation field — not setting it is safe (just means
-                    // the output TS won't have those trick-play hints). Adding
-                    // keyframe detection is a small enhancement left for the
-                    // reader: check `nal_type == 5` on any H264 NAL in `nals`.
-                    let key_frame = nals
-                        .iter()
-                        .any(|n| matches!(n, NalUnit::H264 { nal_type: 5, .. }));
+                    // Forward the input AU's adaptation-field RAI as the
+                    // output's key_frame signal. As a defensive cross-check
+                    // we also scan the NALs for IDR (nal_type==5) — if RAI
+                    // is set OR an IDR slice is present, mark as key_frame.
+                    // The OR fallback handles upstream muxers that fail to
+                    // set RAI on IDR boundaries (some software encoders).
+                    let key_frame = random_access_indicator
+                        || nals
+                            .iter()
+                            .any(|n| matches!(n, NalUnit::H264 { nal_type: 5, .. }));
                     muxer.push_video_to(video_handle, &annex_b, pts, key_frame)?;
                 }
             }

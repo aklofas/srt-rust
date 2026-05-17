@@ -95,6 +95,7 @@ fn h266_mux_demux_roundtrip_emits_h266_nals() {
         SamplePayload::Video {
             codec: VideoCodec::H266,
             payload: VideoPayload::Nals(nals),
+            ..
         } => {
             assert_eq!(nals.len(), 5, "expected 5 NALs (AUD/VPS/SPS/PPS/IDR)");
             // Spot-check the VPS_NUT.

@@ -95,6 +95,7 @@ fn av1_mux_demux_roundtrip_emits_obus() {
         SamplePayload::Video {
             codec: VideoCodec::Av1,
             payload: VideoPayload::Obus(obus),
+            ..
         } => {
             assert_eq!(
                 obus.len(),

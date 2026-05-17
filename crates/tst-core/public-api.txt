@@ -2770,6 +2770,7 @@ pub tst_core::mpegts::demux::event::SamplePayload::Unknown::stream_type: u8
 pub tst_core::mpegts::demux::event::SamplePayload::Video
 pub tst_core::mpegts::demux::event::SamplePayload::Video::codec: tst_core::mpegts::demux::event::VideoCodec
 pub tst_core::mpegts::demux::event::SamplePayload::Video::payload: tst_core::mpegts::demux::event::VideoPayload
+pub tst_core::mpegts::demux::event::SamplePayload::Video::random_access_indicator: bool
 impl core::clone::Clone for tst_core::mpegts::demux::event::SamplePayload
 pub fn tst_core::mpegts::demux::event::SamplePayload::clone(&self) -> tst_core::mpegts::demux::event::SamplePayload
 impl core::cmp::Eq for tst_core::mpegts::demux::event::SamplePayload
@@ -3052,6 +3053,7 @@ pub tst_core::mpegts::demux::pes::PesPayload::dts: core::option::Option<i64>
 pub tst_core::mpegts::demux::pes::PesPayload::payload: alloc::vec::Vec<u8>
 pub tst_core::mpegts::demux::pes::PesPayload::pid: u16
 pub tst_core::mpegts::demux::pes::PesPayload::pts: core::option::Option<i64>
+pub tst_core::mpegts::demux::pes::PesPayload::random_access_indicator: bool
 pub tst_core::mpegts::demux::pes::PesPayload::stream_id: u8
 impl core::clone::Clone for tst_core::mpegts::demux::pes::PesPayload
 pub fn tst_core::mpegts::demux::pes::PesPayload::clone(&self) -> tst_core::mpegts::demux::pes::PesPayload
@@ -3073,7 +3075,7 @@ impl tst_core::mpegts::demux::pes::Reassembler
 pub fn tst_core::mpegts::demux::pes::Reassembler::buffered_bytes(&self) -> usize
 pub fn tst_core::mpegts::demux::pes::Reassembler::drain_partial(&mut self) -> alloc::vec::Vec<tst_core::mpegts::demux::pes::PesPayload>
 pub fn tst_core::mpegts::demux::pes::Reassembler::new(cap_per_pid: usize, cap_total: usize) -> Self
-pub fn tst_core::mpegts::demux::pes::Reassembler::push(&mut self, pid: u16, payload: &[u8], pusi: bool) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::demux::pes::ReassemblyOutcome>, tst_core::error::DemuxError>
+pub fn tst_core::mpegts::demux::pes::Reassembler::push(&mut self, pid: u16, payload: &[u8], pusi: bool, random_access_indicator: bool) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::demux::pes::ReassemblyOutcome>, tst_core::error::DemuxError>
 impl core::fmt::Debug for tst_core::mpegts::demux::pes::Reassembler
 pub fn tst_core::mpegts::demux::pes::Reassembler::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_core::mpegts::demux::pes::Reassembler
@@ -3284,6 +3286,7 @@ pub tst_core::mpegts::demux::ts::TsPacket::payload: &'a [u8]
 pub tst_core::mpegts::demux::ts::TsPacket::payload_unit_start: bool
 pub tst_core::mpegts::demux::ts::TsPacket::pcr_27mhz: core::option::Option<u64>
 pub tst_core::mpegts::demux::ts::TsPacket::pid: u16
+pub tst_core::mpegts::demux::ts::TsPacket::random_access_indicator: bool
 pub tst_core::mpegts::demux::ts::TsPacket::transport_error_indicator: bool
 impl<'a> core::clone::Clone for tst_core::mpegts::demux::ts::TsPacket<'a>
 pub fn tst_core::mpegts::demux::ts::TsPacket<'a>::clone(&self) -> tst_core::mpegts::demux::ts::TsPacket<'a>
@@ -3611,6 +3614,7 @@ pub tst_core::mpegts::demux::SamplePayload::Unknown::stream_type: u8
 pub tst_core::mpegts::demux::SamplePayload::Video
 pub tst_core::mpegts::demux::SamplePayload::Video::codec: tst_core::mpegts::demux::event::VideoCodec
 pub tst_core::mpegts::demux::SamplePayload::Video::payload: tst_core::mpegts::demux::event::VideoPayload
+pub tst_core::mpegts::demux::SamplePayload::Video::random_access_indicator: bool
 impl core::clone::Clone for tst_core::mpegts::demux::event::SamplePayload
 pub fn tst_core::mpegts::demux::event::SamplePayload::clone(&self) -> tst_core::mpegts::demux::event::SamplePayload
 impl core::cmp::Eq for tst_core::mpegts::demux::event::SamplePayload

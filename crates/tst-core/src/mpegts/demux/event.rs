@@ -114,6 +114,13 @@ pub enum SamplePayload {
     Video {
         codec: VideoCodec,
         payload: VideoPayload,
+        /// True if the TS adaptation field carried `random_access_indicator`
+        /// on the PES_start packet for this access unit. Source per ISO/IEC
+        /// 13818-1 §2.4.3.4 flags byte bit 6 (0x40). Encoders + muxers set
+        /// this on AUs that are decoder-resync points (IDR, CRA, etc.); the
+        /// signal is independent of NAL-level type and reflects the
+        /// stream-level RA contract.
+        random_access_indicator: bool,
     },
     Audio {
         codec: AudioCodec,

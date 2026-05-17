@@ -41,6 +41,7 @@ fn make_video_event(frame_index: usize) -> DemuxEvent {
                 ref_idc: 1,
                 payload: vec![0xA5; 5_000],
             }]),
+            random_access_indicator: frame_index % 30 == 0,
         },
     }
 }

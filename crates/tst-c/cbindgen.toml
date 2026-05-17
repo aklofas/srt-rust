@@ -36,6 +36,7 @@ _TST_ABI_ASSERT(sizeof(tst_stream_info_t)          == 40, "tst_stream_info_t siz
 _TST_ABI_ASSERT(sizeof(tst_klv_link_t)             ==  8, "tst_klv_link_t size drift");
 _TST_ABI_ASSERT(sizeof(tst_demux_receiver_stats_t) == 48, "tst_demux_receiver_stats_t size drift");
 _TST_ABI_ASSERT(sizeof(tst_event_t)               <= 256, "tst_event_t exceeds 256 B");
+_TST_ABI_ASSERT(sizeof(tst_stream_codec_stats_t)   == 24, "tst_stream_codec_stats_t size drift: expected 24 bytes");
 #endif
 """
 
@@ -62,6 +63,16 @@ include = [
     "TstManagedReceiver",
     "TstReceiverStats",
     "TstSocketStats",
+    "TstStreamCodecStats",
+    "TstStreamCodecStatsUnion",
+    "TstCodecStatsUnknown",
+    "TstCodecStatsVideo",
+    "TstCodecStatsKlv",
+    "TstCodecStatsAudio",
+    "TST_CODEC_KIND_UNKNOWN",
+    "TST_CODEC_KIND_VIDEO",
+    "TST_CODEC_KIND_KLV",
+    "TST_CODEC_KIND_AUDIO",
     "TST_STATS_MAX_STREAMS",
     # Phase 3: demux receiver surface
     "TstDemuxConfig",
@@ -129,6 +140,13 @@ include = [
 "TstManagedReceiver"   = "tst_managed_receiver_t"
 "TstReceiverStats"     = "tst_receiver_stats_t"
 "TstSocketStats"       = "tst_socket_stats_t"
+# Codec-specific stats (Task 11)
+"TstStreamCodecStats"       = "tst_stream_codec_stats_t"
+"TstStreamCodecStatsUnion"  = "tst_stream_codec_stats_union_t"
+"TstCodecStatsUnknown"      = "tst_codec_stats_unknown_t"
+"TstCodecStatsVideo"        = "tst_codec_stats_video_t"
+"TstCodecStatsKlv"          = "tst_codec_stats_klv_t"
+"TstCodecStatsAudio"        = "tst_codec_stats_audio_t"
 # Phase 3: demux receiver handles + stats
 "TstDemuxConfig"            = "tst_demux_config_t"
 "TstDemuxReceiver"          = "tst_demux_receiver_t"

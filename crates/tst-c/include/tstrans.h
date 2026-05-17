@@ -48,6 +48,17 @@
  */
 #define TST_STATS_MAX_STREAMS 64
 
+/**
+ * Discriminator constants exported as named C constants.
+ */
+#define TST_CODEC_KIND_UNKNOWN 0
+
+#define TST_CODEC_KIND_VIDEO 1
+
+#define TST_CODEC_KIND_KLV 2
+
+#define TST_CODEC_KIND_AUDIO 3
+
 enum tst_video_codec
 #ifdef __cplusplus
   : int32_t
@@ -807,6 +818,49 @@ typedef struct tst_sender_stats_t {
   uint64_t resync_events;
   uint64_t packets_sent;
 } tst_sender_stats_t;
+
+typedef struct tst_codec_stats_unknown_t {
+
+} tst_codec_stats_unknown_t;
+
+typedef struct tst_codec_stats_video_t {
+  uint64_t nals_or_obus;
+  uint64_t random_access_aus;
+} tst_codec_stats_video_t;
+
+typedef struct tst_codec_stats_klv_t {
+  uint64_t records;
+} tst_codec_stats_klv_t;
+
+typedef struct tst_codec_stats_audio_t {
+  uint64_t frames;
+} tst_codec_stats_audio_t;
+
+typedef union tst_stream_codec_stats_union_t {
+  struct tst_codec_stats_unknown_t unknown;
+  struct tst_codec_stats_video_t video;
+  struct tst_codec_stats_klv_t klv;
+  struct tst_codec_stats_audio_t audio;
+} tst_stream_codec_stats_union_t;
+
+/**
+ * Tagged-union mirror of [`tst_core::mpegts::stats::StreamCodecStats`].
+ * Layout: 4 (kind) + 4 (pad) + 16 (max union arm) = 24 B.
+ */
+typedef struct tst_stream_codec_stats_t {
+  /**
+   * Discriminator: 0=unknown, 1=video, 2=klv, 3=audio. Additive — new
+   * kinds get new non-zero values; consumers MUST treat unrecognized
+   * kinds as Unknown and ignore `u`.
+   */
+  uint32_t kind;
+  /**
+   * Alignment bridge so `u.video` (which starts with a `u64`) is
+   * 8-byte aligned.
+   */
+  uint32_t _pad;
+  union tst_stream_codec_stats_union_t u;
+} tst_stream_codec_stats_t;
 
 /**
  * Sentinel returned by `tst_mux_config_add_program` on failure (null cfg
@@ -2304,4 +2358,5 @@ _TST_ABI_ASSERT(sizeof(tst_stream_info_t)          == 40, "tst_stream_info_t siz
 _TST_ABI_ASSERT(sizeof(tst_klv_link_t)             ==  8, "tst_klv_link_t size drift");
 _TST_ABI_ASSERT(sizeof(tst_demux_receiver_stats_t) == 48, "tst_demux_receiver_stats_t size drift");
 _TST_ABI_ASSERT(sizeof(tst_event_t)               <= 256, "tst_event_t exceeds 256 B");
+_TST_ABI_ASSERT(sizeof(tst_stream_codec_stats_t)   == 24, "tst_stream_codec_stats_t size drift: expected 24 bytes");
 #endif

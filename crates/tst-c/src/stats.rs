@@ -348,3 +348,142 @@ pub fn fill_per_stream(
     }
     (n as u32, total > TST_STATS_MAX_STREAMS)
 }
+
+/// Tagged-union mirror of [`tst_core::mpegts::stats::StreamCodecStats`].
+/// Layout: 4 (kind) + 4 (pad) + 16 (max union arm) = 24 B.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct TstStreamCodecStats {
+    /// Discriminator: 0=unknown, 1=video, 2=klv, 3=audio. Additive — new
+    /// kinds get new non-zero values; consumers MUST treat unrecognized
+    /// kinds as Unknown and ignore `u`.
+    pub kind: u32,
+    /// Alignment bridge so `u.video` (which starts with a `u64`) is
+    /// 8-byte aligned.
+    pub _pad: u32,
+    pub u: TstStreamCodecStatsUnion,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union TstStreamCodecStatsUnion {
+    pub unknown: TstCodecStatsUnknown,
+    pub video: TstCodecStatsVideo,
+    pub klv: TstCodecStatsKlv,
+    pub audio: TstCodecStatsAudio,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct TstCodecStatsUnknown {}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct TstCodecStatsVideo {
+    pub nals_or_obus: u64,
+    pub random_access_aus: u64,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct TstCodecStatsKlv {
+    pub records: u64,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct TstCodecStatsAudio {
+    pub frames: u64,
+}
+
+/// Discriminator constants exported as named C constants.
+pub const TST_CODEC_KIND_UNKNOWN: u32 = 0;
+pub const TST_CODEC_KIND_VIDEO: u32 = 1;
+pub const TST_CODEC_KIND_KLV: u32 = 2;
+pub const TST_CODEC_KIND_AUDIO: u32 = 3;
+
+/// Convert a Rust public [`tst_core::mpegts::stats::StreamCodecStats`] to
+/// the C tagged union.
+//
+// `dead_code` allow: Task 11 lands the converter; Task 12 wires it into
+// the per-PID codec-stats C entry points on Muxer/Demuxer handles.
+#[allow(dead_code)]
+pub(crate) fn codec_stats_to_c(
+    stats: tst_core::mpegts::stats::StreamCodecStats,
+) -> TstStreamCodecStats {
+    use tst_core::mpegts::stats::StreamCodecStats;
+    match stats {
+        StreamCodecStats::Unknown => TstStreamCodecStats {
+            kind: TST_CODEC_KIND_UNKNOWN,
+            _pad: 0,
+            u: TstStreamCodecStatsUnion {
+                unknown: TstCodecStatsUnknown {},
+            },
+        },
+        StreamCodecStats::Video {
+            nals_or_obus,
+            random_access_aus,
+            ..
+        } => TstStreamCodecStats {
+            kind: TST_CODEC_KIND_VIDEO,
+            _pad: 0,
+            u: TstStreamCodecStatsUnion {
+                video: TstCodecStatsVideo {
+                    nals_or_obus,
+                    random_access_aus,
+                },
+            },
+        },
+        StreamCodecStats::Klv { records, .. } => TstStreamCodecStats {
+            kind: TST_CODEC_KIND_KLV,
+            _pad: 0,
+            u: TstStreamCodecStatsUnion {
+                klv: TstCodecStatsKlv { records },
+            },
+        },
+        StreamCodecStats::Audio { frames, .. } => TstStreamCodecStats {
+            kind: TST_CODEC_KIND_AUDIO,
+            _pad: 0,
+            u: TstStreamCodecStatsUnion {
+                audio: TstCodecStatsAudio { frames },
+            },
+        },
+        // #[non_exhaustive] — additive variants surface as Unknown to
+        // older callers until they regenerate against a newer header.
+        _ => TstStreamCodecStats {
+            kind: TST_CODEC_KIND_UNKNOWN,
+            _pad: 0,
+            u: TstStreamCodecStatsUnion {
+                unknown: TstCodecStatsUnknown {},
+            },
+        },
+    }
+}
+
+#[cfg(test)]
+mod codec_stats_tests {
+    use super::*;
+    use tst_core::mpegts::stats::StreamCodecStats;
+
+    #[test]
+    fn c_struct_size_is_24() {
+        assert_eq!(std::mem::size_of::<TstStreamCodecStats>(), 24);
+    }
+
+    #[test]
+    fn maps_unknown_variant() {
+        let c = codec_stats_to_c(StreamCodecStats::Unknown);
+        assert_eq!(c.kind, TST_CODEC_KIND_UNKNOWN);
+    }
+
+    // NOTE: per-variant unit tests for Video/Klv/Audio mappings are
+    // deferred to the Task 12 integration tests that exercise the
+    // C entry points against a real Muxer/Demuxer. The variants
+    // themselves are `#[non_exhaustive]` (not just the enum), so they
+    // cannot be constructed via struct expression from outside tst-core
+    // (Rust E0639) — see memory note
+    // `reference_non_exhaustive_outside_crate_construction.md`. The
+    // discriminator + size invariants are covered above; the field
+    // assignments in `codec_stats_to_c` are simple plumbing exercised
+    // end-to-end by the Task 12 / Task 13 tests.
+}

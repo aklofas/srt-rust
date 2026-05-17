@@ -533,6 +533,32 @@ impl<T: Transport> MuxSender<T> {
         self.inner.lock().unwrap().transport.socket_stats()
     }
 
+    /// Per-PID codec-specific counters. Delegates to the inner
+    /// [`tst_core::mpegts::mux::Muxer::stream_codec_stats`].
+    ///
+    /// See [`tst_core::mpegts::stats::StreamCodecStats`] for the
+    /// semantics of the return value (`None` vs `Some(Unknown)` vs
+    /// typed variant).
+    ///
+    /// Result does NOT vary with transport reconnect state — the
+    /// Muxer's per-PID state is independent of the live socket. The C
+    /// ABI's `tst_managed_mux_sender_get_stream_codec_stats` returns
+    /// the same values as `tst_mux_sender_get_stream_codec_stats`
+    /// during reconnect; no `TST_E_NOT_AVAILABLE` is returned for
+    /// codec stats.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_mux_sender_get_stream_codec_stats` (plain) +
+    /// `tst_managed_mux_sender_get_stream_codec_stats` (managed wrapper) —
+    /// see `crates/tst-c/include/tstrans.h`.
+    pub fn stream_codec_stats(
+        &self,
+        pid: u16,
+    ) -> Option<tst_core::mpegts::stats::StreamCodecStats> {
+        self.inner.lock().unwrap().muxer.stream_codec_stats(pid)
+    }
+
     /// Zero all flow counters and delegate to `Muxer::reset_stats`.
     /// `pending_bytes_queued` / `pending_chunks_queued` are live gauges and
     /// are NOT cleared.

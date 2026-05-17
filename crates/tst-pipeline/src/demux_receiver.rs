@@ -382,6 +382,31 @@ impl<R: RecvTransport> DemuxReceiver<R> {
         self.ts.socket_stats()
     }
 
+    /// Per-PID codec-specific counters. Delegates to the inner
+    /// [`tst_core::mpegts::demux::Demuxer::stream_codec_stats`].
+    ///
+    /// See [`tst_core::mpegts::stats::StreamCodecStats`] for the
+    /// semantics of the return value.
+    ///
+    /// Result does NOT vary with transport reconnect state — the
+    /// Demuxer's per-PID state is independent of the live socket. The C
+    /// ABI's `tst_managed_demux_receiver_get_stream_codec_stats` returns
+    /// the same values as `tst_demux_receiver_get_stream_codec_stats`
+    /// during reconnect; no `TST_E_NOT_AVAILABLE` is returned for
+    /// codec stats.
+    ///
+    /// # C ABI
+    ///
+    /// `tst_demux_receiver_get_stream_codec_stats` (plain) +
+    /// `tst_managed_demux_receiver_get_stream_codec_stats` (managed wrapper) —
+    /// see `crates/tst-c/include/tstrans.h`.
+    pub fn stream_codec_stats(
+        &self,
+        pid: u16,
+    ) -> Option<tst_core::mpegts::stats::StreamCodecStats> {
+        self.demux.stream_codec_stats(pid)
+    }
+
     pub fn reset_stats(&mut self) {
         self.ts.reset_stats();
         self.demux.reset_stats();

@@ -38,6 +38,7 @@ impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxR
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub type tst_pipeline::demux_receiver::DemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::next(&mut self) -> core::option::Option<Self::Item>
@@ -143,6 +144,7 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video(&self, nal: &[u8], pts
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, handle: tst_core::mpegts::mux::types::VideoStreamHandle, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::stats(&self) -> tst_pipeline::mux_sender::MuxSenderStats
+pub fn tst_pipeline::mux_sender::MuxSender<T>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>
@@ -921,6 +923,7 @@ impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxR
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub type tst_pipeline::demux_receiver::DemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::next(&mut self) -> core::option::Option<Self::Item>
@@ -1049,6 +1052,7 @@ pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video(&self, nal: &[u8], pts
 pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, handle: tst_core::mpegts::mux::types::VideoStreamHandle, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::stats(&self) -> tst_pipeline::mux_sender::MuxSenderStats
+pub fn tst_pipeline::mux_sender::MuxSender<T>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>

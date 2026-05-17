@@ -705,6 +705,49 @@ typedef struct tst_socket_stats_t {
   uint64_t packets_dropped_recv;
 } tst_socket_stats_t;
 
+typedef struct tst_codec_stats_unknown_t {
+
+} tst_codec_stats_unknown_t;
+
+typedef struct tst_codec_stats_video_t {
+  uint64_t nals_or_obus;
+  uint64_t random_access_aus;
+} tst_codec_stats_video_t;
+
+typedef struct tst_codec_stats_klv_t {
+  uint64_t records;
+} tst_codec_stats_klv_t;
+
+typedef struct tst_codec_stats_audio_t {
+  uint64_t frames;
+} tst_codec_stats_audio_t;
+
+typedef union tst_stream_codec_stats_union_t {
+  struct tst_codec_stats_unknown_t unknown;
+  struct tst_codec_stats_video_t video;
+  struct tst_codec_stats_klv_t klv;
+  struct tst_codec_stats_audio_t audio;
+} tst_stream_codec_stats_union_t;
+
+/**
+ * Tagged-union mirror of [`tst_core::mpegts::stats::StreamCodecStats`].
+ * Layout: 4 (kind) + 4 (pad) + 16 (max union arm) = 24 B.
+ */
+typedef struct tst_stream_codec_stats_t {
+  /**
+   * Discriminator: 0=unknown, 1=video, 2=klv, 3=audio. Additive — new
+   * kinds get new non-zero values; consumers MUST treat unrecognized
+   * kinds as Unknown and ignore `u`.
+   */
+  uint32_t kind;
+  /**
+   * Alignment bridge so `u.video` (which starts with a `u64`) is
+   * 8-byte aligned.
+   */
+  uint32_t _pad;
+  union tst_stream_codec_stats_union_t u;
+} tst_stream_codec_stats_t;
+
 /**
  * `repr(C)` mirror of `tst_core::mpegts::StreamStats`. Size 96 B.
  *
@@ -818,49 +861,6 @@ typedef struct tst_sender_stats_t {
   uint64_t resync_events;
   uint64_t packets_sent;
 } tst_sender_stats_t;
-
-typedef struct tst_codec_stats_unknown_t {
-
-} tst_codec_stats_unknown_t;
-
-typedef struct tst_codec_stats_video_t {
-  uint64_t nals_or_obus;
-  uint64_t random_access_aus;
-} tst_codec_stats_video_t;
-
-typedef struct tst_codec_stats_klv_t {
-  uint64_t records;
-} tst_codec_stats_klv_t;
-
-typedef struct tst_codec_stats_audio_t {
-  uint64_t frames;
-} tst_codec_stats_audio_t;
-
-typedef union tst_stream_codec_stats_union_t {
-  struct tst_codec_stats_unknown_t unknown;
-  struct tst_codec_stats_video_t video;
-  struct tst_codec_stats_klv_t klv;
-  struct tst_codec_stats_audio_t audio;
-} tst_stream_codec_stats_union_t;
-
-/**
- * Tagged-union mirror of [`tst_core::mpegts::stats::StreamCodecStats`].
- * Layout: 4 (kind) + 4 (pad) + 16 (max union arm) = 24 B.
- */
-typedef struct tst_stream_codec_stats_t {
-  /**
-   * Discriminator: 0=unknown, 1=video, 2=klv, 3=audio. Additive — new
-   * kinds get new non-zero values; consumers MUST treat unrecognized
-   * kinds as Unknown and ignore `u`.
-   */
-  uint32_t kind;
-  /**
-   * Alignment bridge so `u.video` (which starts with a `u64`) is
-   * 8-byte aligned.
-   */
-  uint32_t _pad;
-  union tst_stream_codec_stats_union_t u;
-} tst_stream_codec_stats_t;
 
 /**
  * Sentinel returned by `tst_mux_config_add_program` on failure (null cfg
@@ -1270,6 +1270,32 @@ int tst_demux_receiver_get_socket_stats(struct tst_demux_receiver_t *p,
                                         struct tst_socket_stats_t *out);
 
 /**
+ * Snapshot codec-specific stats for one PID on a `tst_demux_receiver_t`
+ * into `*out`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
+ * `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed via `tst_demux_receiver_close`
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_demux_receiver_open`;
+ * `out` must be a writable `tst_stream_codec_stats_t`. The pointee is
+ * fully written on `TST_OK` and untouched on error.
+ */
+
+int tst_demux_receiver_get_stream_codec_stats(struct tst_demux_receiver_t *p,
+                                              uint16_t pid,
+                                              struct tst_stream_codec_stats_t *out);
+
+/**
  * Reset stats counters for a `tst_demux_receiver_t` to zero.
  * Also invalidates the borrowed `_get_stream_stats` snapshot
  * (design §4.5).
@@ -1365,6 +1391,29 @@ int tst_managed_demux_receiver_recv_event(struct tst_managed_demux_receiver_t *p
 
 int tst_managed_demux_receiver_get_stats(struct tst_managed_demux_receiver_t *p,
                                          struct tst_demux_receiver_stats_t *out);
+
+/**
+ * Managed sibling of [`tst_demux_receiver_get_stream_codec_stats`].
+ * Returns the same values — codec stats live on the inner `Demuxer`,
+ * so they persist across reconnect. No `TST_E_NOT_AVAILABLE` routing.
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed via `tst_managed_demux_receiver_close`
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from
+ * `tst_managed_demux_receiver_open`; `out` must be a writable
+ * `tst_stream_codec_stats_t`.
+ */
+
+int tst_managed_demux_receiver_get_stream_codec_stats(struct tst_managed_demux_receiver_t *p,
+                                                      uint16_t pid,
+                                                      struct tst_stream_codec_stats_t *out);
 
 /**
  * Managed sibling of [`tst_demux_receiver_get_socket_stats`]. Returns
@@ -1501,6 +1550,31 @@ int tst_mux_sender_send_klv_to(struct tst_mux_sender_t *p,
  int tst_mux_sender_get_socket_stats(struct tst_mux_sender_t *p, struct tst_socket_stats_t *out);
 
 /**
+ * Snapshot codec-specific stats for one PID on a `tst_mux_sender_t` into `*out`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
+ * `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed via `tst_mux_sender_close`
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_mux_sender_open`; `out`
+ * must be a writable `tst_stream_codec_stats_t`. The pointee is fully
+ * written on `TST_OK` and untouched on error.
+ */
+
+int tst_mux_sender_get_stream_codec_stats(struct tst_mux_sender_t *p,
+                                          uint16_t pid,
+                                          struct tst_stream_codec_stats_t *out);
+
+/**
  * Reset stats counters for a `tst_mux_sender_t` to zero.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
@@ -1620,6 +1694,28 @@ int tst_managed_mux_sender_get_socket_stats(struct tst_managed_mux_sender_t *p,
                                             struct tst_socket_stats_t *out);
 
 /**
+ * Managed sibling of [`tst_mux_sender_get_stream_codec_stats`]. Returns
+ * the same values — codec stats live on the inner `Muxer`, so they
+ * persist across reconnect. No `TST_E_NOT_AVAILABLE` routing.
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed via `tst_managed_mux_sender_close`
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_managed_mux_sender_open`;
+ * `out` must be a writable `tst_stream_codec_stats_t`.
+ */
+
+int tst_managed_mux_sender_get_stream_codec_stats(struct tst_managed_mux_sender_t *p,
+                                                  uint16_t pid,
+                                                  struct tst_stream_codec_stats_t *out);
+
+/**
  * Reset stats counters for a `tst_managed_mux_sender_t` to zero.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
@@ -1715,6 +1811,32 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
  * null, or `TST_E_CLOSED` if the muxer has been closed.
  */
  int tst_muxer_get_stats(struct tst_muxer_t *p, struct tst_muxer_stats_t *out);
+
+/**
+ * Snapshot codec-specific stats for one PID on a `tst_muxer_t` into `*out`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
+ * `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed via `tst_muxer_close`
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_muxer_open`; `out`
+ * must be a writable `tst_stream_codec_stats_t` of size at least
+ * `sizeof(tst_stream_codec_stats_t)`. The pointee is fully written on
+ * `TST_OK` and untouched on error.
+ */
+
+int tst_muxer_get_stream_codec_stats(struct tst_muxer_t *p,
+                                     uint16_t pid,
+                                     struct tst_stream_codec_stats_t *out);
 
 /**
  * Reset stats counters for a `tst_muxer_t` to zero.

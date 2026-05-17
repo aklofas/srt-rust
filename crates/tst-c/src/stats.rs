@@ -404,10 +404,6 @@ pub const TST_CODEC_KIND_AUDIO: u32 = 3;
 
 /// Convert a Rust public [`tst_core::mpegts::stats::StreamCodecStats`] to
 /// the C tagged union.
-//
-// `dead_code` allow: Task 11 lands the converter; Task 12 wires it into
-// the per-PID codec-stats C entry points on Muxer/Demuxer handles.
-#[allow(dead_code)]
 pub(crate) fn codec_stats_to_c(
     stats: tst_core::mpegts::stats::StreamCodecStats,
 ) -> TstStreamCodecStats {

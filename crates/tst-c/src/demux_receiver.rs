@@ -375,6 +375,56 @@ pub unsafe extern "C" fn tst_demux_receiver_get_socket_stats(
     })
 }
 
+/// Snapshot codec-specific stats for one PID on a `tst_demux_receiver_t`
+/// into `*out`.
+///
+/// The returned struct is a tagged union — read `out->kind` first, then
+/// the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
+/// `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
+///
+/// # Errors
+///
+/// * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+/// * `TST_E_CLOSED` — handle was closed via `tst_demux_receiver_close`
+/// * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+/// * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+///
+/// # Safety
+///
+/// `p` must be a valid pointer obtained from `tst_demux_receiver_open`;
+/// `out` must be a writable `tst_stream_codec_stats_t`. The pointee is
+/// fully written on `TST_OK` and untouched on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_receiver_get_stream_codec_stats(
+    p: *mut TstDemuxReceiver,
+    pid: u16,
+    out: *mut crate::stats::TstStreamCodecStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle
+        .inner
+        .with_inner_ref(|rx| match rx.stream_codec_stats(pid) {
+            Some(stats) => {
+                unsafe { *out = crate::stats::codec_stats_to_c(stats) };
+                0
+            }
+            None => {
+                set_last_error(
+                    TstError::NotFound,
+                    "tst_demux_receiver_get_stream_codec_stats: pid never observed",
+                );
+                TstError::NotFound as i32
+            }
+        })
+}
+
 /// Reset stats counters for a `tst_demux_receiver_t` to zero.
 /// Also invalidates the borrowed `_get_stream_stats` snapshot
 /// (design §4.5).
@@ -751,6 +801,53 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stats(
         unsafe { *out = stats };
         0
     })
+}
+
+/// Managed sibling of [`tst_demux_receiver_get_stream_codec_stats`].
+/// Returns the same values — codec stats live on the inner `Demuxer`,
+/// so they persist across reconnect. No `TST_E_NOT_AVAILABLE` routing.
+///
+/// # Errors
+///
+/// * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+/// * `TST_E_CLOSED` — handle was closed via `tst_managed_demux_receiver_close`
+/// * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+/// * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+///
+/// # Safety
+///
+/// `p` must be a valid pointer obtained from
+/// `tst_managed_demux_receiver_open`; `out` must be a writable
+/// `tst_stream_codec_stats_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_demux_receiver_get_stream_codec_stats(
+    p: *mut TstManagedDemuxReceiver,
+    pid: u16,
+    out: *mut crate::stats::TstStreamCodecStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null receiver pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle
+        .inner
+        .with_inner_ref(|rx| match rx.stream_codec_stats(pid) {
+            Some(stats) => {
+                unsafe { *out = crate::stats::codec_stats_to_c(stats) };
+                0
+            }
+            None => {
+                set_last_error(
+                    TstError::NotFound,
+                    "tst_managed_demux_receiver_get_stream_codec_stats: pid never observed",
+                );
+                TstError::NotFound as i32
+            }
+        })
 }
 
 /// Managed sibling of [`tst_demux_receiver_get_socket_stats`]. Returns

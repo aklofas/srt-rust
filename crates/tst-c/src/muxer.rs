@@ -251,6 +251,56 @@ pub unsafe extern "C" fn tst_muxer_get_stats(
     })
 }
 
+/// Snapshot codec-specific stats for one PID on a `tst_muxer_t` into `*out`.
+///
+/// The returned struct is a tagged union — read `out->kind` first, then
+/// the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
+/// `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
+///
+/// # Errors
+///
+/// * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+/// * `TST_E_CLOSED` — handle was closed via `tst_muxer_close`
+/// * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+/// * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+///
+/// # Safety
+///
+/// `p` must be a valid pointer obtained from `tst_muxer_open`; `out`
+/// must be a writable `tst_stream_codec_stats_t` of size at least
+/// `sizeof(tst_stream_codec_stats_t)`. The pointee is fully written on
+/// `TST_OK` and untouched on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_muxer_get_stream_codec_stats(
+    p: *mut TstMuxer,
+    pid: u16,
+    out: *mut crate::stats::TstStreamCodecStats,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null muxer pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if out.is_null() {
+        set_last_error(TstError::InvalidConfig, "null out pointer");
+        return TstError::InvalidConfig as i32;
+    }
+    handle
+        .inner
+        .with_inner_ref(|m| match m.stream_codec_stats(pid) {
+            Some(stats) => {
+                unsafe { *out = crate::stats::codec_stats_to_c(stats) };
+                0
+            }
+            None => {
+                set_last_error(
+                    TstError::NotFound,
+                    "tst_muxer_get_stream_codec_stats: pid never observed",
+                );
+                TstError::NotFound as i32
+            }
+        })
+}
+
 /// Reset stats counters for a `tst_muxer_t` to zero.
 ///
 /// Per-stream entries are preserved (identity fields remain); only flow

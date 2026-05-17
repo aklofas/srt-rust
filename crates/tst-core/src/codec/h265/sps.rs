@@ -5,6 +5,7 @@ use crate::codec::bitreader::BitReader;
 use crate::codec::{ChromaFormat, CodecParseError, ColorInfo, Rational, validate_bit_depth_minus8};
 
 /// Parsed H.265 SPS fields. Populated by [`parse_sps`].
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H265Sps {
     pub sps_seq_parameter_set_id: u8,

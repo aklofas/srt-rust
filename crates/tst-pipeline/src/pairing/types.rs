@@ -35,6 +35,7 @@ pub enum PairerMode {
 /// constructor. Field-style construction is unit-explicit
 /// (`Duration` instead of bare ticks) and FFI-friendly (the 5-arg
 /// shape didn't translate cleanly to UniFFI).
+#[must_use]
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct PairerConfig {
@@ -113,6 +114,7 @@ pub struct KlvSample {
 
 /// Counter snapshot for telemetry. Symmetric with the rest of
 /// `tst-pipeline` (per plan #16 conventions).
+#[must_use]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PairerStats {
     pub paired: u64,

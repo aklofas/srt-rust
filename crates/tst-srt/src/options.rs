@@ -13,6 +13,7 @@ use std::path::Path;
 // ============================================================================
 
 /// SRT passphrase. Backed by `secrecy::SecretString` — zeroes on drop, redacts in Debug.
+#[must_use]
 #[derive(Clone)]
 pub struct Passphrase(SecretString);
 
@@ -185,6 +186,7 @@ impl Congestion {
 // ============================================================================
 
 /// `SRTO_STREAMID` — application-defined identifier sent during handshake.
+#[must_use]
 #[derive(Debug, Clone)]
 pub struct StreamId(String);
 
@@ -242,6 +244,7 @@ pub enum Role {
 // ============================================================================
 
 /// `SRTO_PACKETFILTER` spec string (e.g. "fec,cols:10,rows:5,arq:onreq").
+#[must_use]
 #[derive(Debug, Clone)]
 pub struct PacketFilter(String);
 

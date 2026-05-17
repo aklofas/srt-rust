@@ -22,6 +22,7 @@ use tst_core::mpegts::mux::{
 use tst_core::transport::{Transport, TransportError};
 
 /// Stats snapshot for [`MuxSender`].
+#[must_use]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MuxSenderStats {
     /// Cumulative bytes successfully handed off to the transport.

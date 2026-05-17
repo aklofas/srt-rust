@@ -17,6 +17,7 @@ use crate::codec::{
     TransferCharacteristics,
 };
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Av1SequenceHeader {
     pub profile: u8,

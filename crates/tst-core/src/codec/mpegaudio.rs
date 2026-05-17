@@ -138,6 +138,7 @@ impl FrameOwned {
 }
 
 /// Iterator over MPEG audio frames in `bytes`. Use [`frames`] to construct.
+#[must_use]
 pub struct Frames<'a> {
     buf: &'a [u8],
     cursor: usize,

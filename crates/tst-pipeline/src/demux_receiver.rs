@@ -341,6 +341,7 @@ pub enum DemuxReceiverError {
 /// per-PID counters). Sync-recovery counters (`bytes_skipped_for_sync`,
 /// `resync_events`) live only on `ReceiverStats` — call
 /// `Receiver::stats()` directly to read them.
+#[must_use]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DemuxReceiverStats {
     pub bytes_received: u64,

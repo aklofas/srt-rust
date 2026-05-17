@@ -25,6 +25,7 @@ use crate::klv::st0601::tags::lookup;
 use crate::klv::st0601::tags::{Encoding, TAGS};
 use crate::klv::universal_label::UniversalLabel;
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq)]
 pub struct UasDatalinkLs {
     pub universal_label: UniversalLabel,
@@ -172,6 +173,7 @@ impl Default for UasDatalinkLs {
     }
 }
 
+#[must_use]
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EncodeConfig {

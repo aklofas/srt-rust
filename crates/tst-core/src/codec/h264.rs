@@ -14,6 +14,7 @@ use h264_reader::nal::sps::SeqParameterSet;
 use h264_reader::rbsp::{BitRead, BitReader, ByteReader};
 
 /// Parsed H.264 Sequence Parameter Set.
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H264Sps {
     pub seq_parameter_set_id: u8,
@@ -61,6 +62,7 @@ impl H264Sps {
 }
 
 /// Parsed H.264 Picture Parameter Set.
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H264Pps {
     pub pic_parameter_set_id: u8,
@@ -80,6 +82,7 @@ pub enum EntropyCodingMode {
 }
 
 /// All SPS and PPS NAL units parsed from a single access unit.
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct H264ParameterSets {
     pub sps_by_id: BTreeMap<u8, H264Sps>,

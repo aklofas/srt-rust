@@ -12,6 +12,7 @@ use tracing::{Span, info_span};
 use tst_core::transport::Transport;
 
 /// Construction-time knobs for [`Sender`].
+#[must_use]
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct SenderConfig {

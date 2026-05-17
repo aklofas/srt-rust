@@ -27,6 +27,7 @@ use thiserror::Error;
 /// transport would map what it can into these fields and zero the rest.
 /// Pre-1.0 the struct is `#[non_exhaustive]` so adding a field is not a
 /// breaking change.
+#[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub struct SocketStats {

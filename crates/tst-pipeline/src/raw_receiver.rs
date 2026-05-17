@@ -15,6 +15,7 @@ use tst_core::transport::RecvTransport;
 use tst_core::transport::TransportError;
 
 /// Aggregate receive stats for [`RawReceiver`].
+#[must_use]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RawReceiverStats {
     /// Total bytes received from the transport.
@@ -88,6 +89,7 @@ pub struct RawReceiver<R: RecvTransport> {
 ///
 /// Symmetric with [`crate::RawSenderConfig`] on the send side; the
 /// symmetry is documented in `docs/conventions.md`.
+#[must_use]
 #[non_exhaustive]
 #[derive(Debug, Default, Clone)]
 pub struct RawReceiverConfig {}

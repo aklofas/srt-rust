@@ -92,6 +92,7 @@ pub enum Mode {
 
 /// Parsed `srt://host:port?...` URL: connection target + a typed overlay
 /// of the recognized query parameters.
+#[must_use]
 #[derive(Debug)]
 pub struct SrtUrl {
     pub host: String,

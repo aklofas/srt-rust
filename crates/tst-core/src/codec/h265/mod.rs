@@ -21,6 +21,7 @@ use crate::codec::CodecParseError;
 use crate::mpegts::demux::event::NalUnit;
 use std::collections::BTreeMap;
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct H265ParameterSets {
     pub vps_by_id: BTreeMap<u8, H265Vps>,

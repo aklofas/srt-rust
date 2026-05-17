@@ -7,6 +7,7 @@
 /// elementary streams. PID is identity; `stream_type` is the PMT byte
 /// (or `0x00` for PSI PIDs); `label` is None unless a PMT user-label
 /// descriptor or a hardcoded PSI label populates it.
+#[must_use]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StreamStats {
     pub pid: u16,

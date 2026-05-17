@@ -98,7 +98,7 @@ fn group1_keys_all_parse_and_wire() {
     );
     for (key, value) in representative_value {
         let url = format!("srt://1.2.3.4:9000?{key}={value}");
-        SrtUrl::parse(&url).unwrap_or_else(|e| {
+        let _ = SrtUrl::parse(&url).unwrap_or_else(|e| {
             panic!("Group 1 key '{key}' should parse with value '{value}': {e}")
         });
     }
@@ -108,7 +108,8 @@ fn group1_keys_all_parse_and_wire() {
 fn group2_keys_all_parse_and_wire() {
     for key in GROUP2_KEYS {
         let url = format!("srt://1.2.3.4:9000?{key}=1000");
-        SrtUrl::parse(&url).unwrap_or_else(|e| panic!("Group 2 key '{key}' should parse: {e}"));
+        let _ =
+            SrtUrl::parse(&url).unwrap_or_else(|e| panic!("Group 2 key '{key}' should parse: {e}"));
     }
 }
 

@@ -43,6 +43,7 @@ impl TimeStatus {
 }
 
 /// MISB ST 0605 §7 Precision Time Stamp Pack typed view.
+#[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PrecisionTimeStampPack {
     pub time_status: TimeStatus,

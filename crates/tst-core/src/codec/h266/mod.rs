@@ -100,6 +100,7 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H266ParameterSets, Codec
     })
 }
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H266ParameterSets {
     pub vpses: Vec<H266Vps>,

@@ -5,6 +5,7 @@ use crate::codec::h266::profile_tier_level::{H266ProfileTierLevel, parse_into};
 use crate::codec::h266::vui::parse_h266_vui;
 use crate::codec::{ChromaFormat, CodecParseError, ColorInfo, Rational, validate_bit_depth_minus8};
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H266Sps {
     pub sps_id: u8,

@@ -122,7 +122,7 @@ fn bench_st0601_lenient(c: &mut Criterion) {
     c.bench_function("st0601_lenient_decode", |b| {
         b.iter(|| {
             let ls = st0601::decode(black_box(&payload)).expect("decode");
-            black_box(ls);
+            let _ = black_box(ls);
         })
     });
 }
@@ -132,7 +132,7 @@ fn bench_st0102_lenient(c: &mut Criterion) {
     c.bench_function("st0102_lenient_decode", |b| {
         b.iter(|| {
             let ls = st0102::decode(black_box(&payload)).expect("decode");
-            black_box(ls);
+            let _ = black_box(ls);
         })
     });
 }
@@ -142,7 +142,7 @@ fn bench_st0903_lenient(c: &mut Criterion) {
     c.bench_function("st0903_lenient_decode", |b| {
         b.iter(|| {
             let ls = st0903::decode(black_box(&payload)).expect("decode");
-            black_box(ls);
+            let _ = black_box(ls);
         })
     });
 }

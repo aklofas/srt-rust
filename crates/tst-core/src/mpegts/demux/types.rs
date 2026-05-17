@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 /// Per-stream entries are created lazily as events are emitted — the
 /// receiver discovers topology rather than configuring it up front. PSI
 /// PIDs (PAT 0x0000, active PMT PID) get hardcoded labels "PAT" / "PMT".
+#[must_use]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DemuxerStats {
     /// Number of `ProgramMap` events emitted (one per PMT version seen).
@@ -54,6 +55,7 @@ pub(super) const DEFAULT_PES_CAP_PER_PID: usize = 4 * 1024 * 1024;
 pub(super) const DEFAULT_PES_CAP_TOTAL: usize = 64 * 1024 * 1024;
 
 /// Caller-supplied overrides for the demuxer.
+#[must_use]
 #[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct DemuxerConfig {
@@ -102,6 +104,7 @@ pub struct ProgramTracker {
 /// [`DemuxerBuilder::default`], chain option methods, and call
 /// [`DemuxerBuilder::build`] to produce a
 /// [`Demuxer`](crate::mpegts::demux::Demuxer).
+#[must_use]
 #[derive(Debug, Default)]
 pub struct DemuxerBuilder {
     options: DemuxerConfig,

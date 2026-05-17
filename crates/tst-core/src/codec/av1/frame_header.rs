@@ -4,6 +4,7 @@ use crate::codec::CodecParseError;
 use crate::codec::av1::bitreader::Av1BitReader;
 use crate::codec::av1::sequence_header::Av1SequenceHeader;
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Av1FrameHeaderLight {
     /// `frame_type` per AV1 §5.9.1: 0=KEY_FRAME, 1=INTER_FRAME,

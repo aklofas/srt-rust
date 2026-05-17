@@ -5,6 +5,7 @@
 use crate::codec::CodecParseError;
 use crate::codec::bitreader::BitReader;
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H265Pps {
     pub pps_pic_parameter_set_id: u8,

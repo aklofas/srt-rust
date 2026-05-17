@@ -28,6 +28,7 @@ const RECEIVER_DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 ///
 /// All `Option<T>` fields default to `None`, meaning "leave the libsrt default."
 /// `KeyLength` defaults to `Aes128` (only relevant when `passphrase` is set).
+#[must_use]
 #[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct SocketConfig {
@@ -180,6 +181,7 @@ impl SocketConfig {
 ///
 /// Most fields parallel `SocketConfig`; the listener applies them to itself
 /// and inherits the timeout fields onto sockets returned by `accept()`.
+#[must_use]
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct ListenerConfig {

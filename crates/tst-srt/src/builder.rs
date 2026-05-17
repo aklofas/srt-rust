@@ -44,6 +44,7 @@ use std::time::Duration;
 /// # Ok(())
 /// # }
 /// ```
+#[must_use]
 #[derive(Default)]
 pub struct SocketBuilder {
     config: SocketConfig,
@@ -256,6 +257,7 @@ impl SocketBuilder {
 /// directly to Kotlin's `apply` scope, Swift's `var b = …; b.x(); b.y();`,
 /// Java's chain on a fresh local, and Python's step-wise assignment — see
 /// `docs/binding-authors.md`.
+#[must_use]
 #[derive(Default)]
 pub struct ListenerBuilder {
     config: ListenerConfig,

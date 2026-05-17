@@ -26,6 +26,7 @@ use tst_core::transport::TransportError;
 /// `resync_events`) reflect the [`sync::Syncer`] state machine: bytes
 /// drained while hunting for alignment, and successful lock acquisitions
 /// (initial lock-on and re-locks after losing sync mid-stream).
+#[must_use]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReceiverStats {
     /// Total bytes returned to callers as valid 188-byte TS packets.
@@ -115,6 +116,7 @@ pub struct Receiver<R: RecvTransport> {
 /// Symmetric with [`crate::SenderConfig`] and [`crate::RawSenderConfig`]
 /// on the send side; the symmetry is documented in
 /// `docs/conventions.md`.
+#[must_use]
 #[non_exhaustive]
 #[derive(Debug, Default, Clone)]
 pub struct ReceiverConfig {}

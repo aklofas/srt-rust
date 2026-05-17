@@ -6,6 +6,7 @@ use super::profile_tier_level;
 use crate::codec::CodecParseError;
 use crate::codec::bitreader::BitReader;
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H265Vps {
     pub vps_video_parameter_set_id: u8,

@@ -42,6 +42,7 @@ pub enum TsFramingError {
     NoSyncAfterLimit { max: u64 },
 }
 
+#[must_use]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SenderStats {
     pub bytes_pushed: u64,

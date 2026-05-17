@@ -302,6 +302,7 @@ pub enum VTargetPackError {
 /// `geospatial_contour_series`, `vmask`, `vtracker`, `vchip`,
 /// `vchip_series`, `vobject_series`) stay as `Option<Vec<u8>>`
 /// pass-through bytes — typed inner layers deferred.
+#[must_use]
 #[derive(Debug, Clone, Default)]
 pub struct VTargetPack {
     /// BER-OID `targetId` per §10.2.2.1. Capped at `u32::MAX` —

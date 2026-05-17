@@ -68,6 +68,7 @@ pub const SECURITY_LS_UL: [u8; 16] = [
 use crate::error::{KlvDecodeError, KlvEncodeError, KlvFieldError};
 use crate::klv::pack::OwnedRawField;
 
+#[must_use]
 #[derive(Debug, Clone, Default)]
 pub struct SecurityLs {
     // Required per spec (still Option<T> at decode time so lenient

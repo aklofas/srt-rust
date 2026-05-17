@@ -129,6 +129,7 @@ impl AdtsFrameOwned {
 }
 
 /// Iterator over ADTS frames in `bytes`. Use [`frames`] to construct.
+#[must_use]
 pub struct AdtsFrames<'a> {
     buf: &'a [u8],
     cursor: usize,

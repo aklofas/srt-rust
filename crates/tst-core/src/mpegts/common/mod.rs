@@ -85,6 +85,7 @@ pub mod pid {
 ///
 /// [`as_ticks`]: Self::as_ticks
 /// [`new`]: Self::new
+#[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pts90khz(i64);
 
@@ -121,6 +122,7 @@ impl Pts90khz {
 /// traits. The full 27 MHz value wraps at `(1 << 33) × 300`, ≈ once every
 /// 26.5 hours; design of typed wrap-aware arithmetic is tracked in the
 /// "Deep typed-time migration" entry in `docs/deferred-features.md`.
+#[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pcr27mhz(u64);
 

@@ -16,6 +16,7 @@ use crate::mpegts::mux::types::{
 /// PMT (carried on `pmt_pid`), its own PCR (driven by `pcr_pid` or
 /// auto-falling-back to the first video stream's PID), and its own
 /// elementary stream set.
+#[must_use]
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct MuxerProgramConfig {
@@ -114,6 +115,7 @@ impl MuxerProgramConfig {
 /// Construct with [`MuxerConfig::builder()`] for ergonomic chaining, or
 /// directly with field updates over [`MuxerConfig::default()`] for the
 /// canonical single-program single-video-plus-single-KLV case.
+#[must_use]
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct MuxerConfig {
@@ -532,6 +534,7 @@ impl MuxerConfig {
 /// # Ok(())
 /// # }
 /// ```
+#[must_use]
 #[derive(Default, Debug)]
 pub struct MuxerConfigBuilder {
     programs: Vec<MuxerProgramConfig>,
@@ -616,6 +619,7 @@ impl MuxerConfigBuilder {
 /// # Ok(())
 /// # }
 /// ```
+#[must_use]
 #[derive(Debug)]
 pub struct MuxerProgramConfigBuilder {
     program: MuxerProgramConfig,

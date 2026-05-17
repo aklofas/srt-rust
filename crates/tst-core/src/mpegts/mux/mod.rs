@@ -33,6 +33,7 @@ use std::collections::{BTreeMap, VecDeque};
 /// [`Muxer::new`] for every configured video and KLV stream so callers
 /// can always index by a known PID without first checking for key
 /// presence.
+#[must_use]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MuxerStats {
     /// Total 188-byte TS packets drained via [`Muxer::pull`].
@@ -2065,7 +2066,7 @@ mod tests {
             b.add_program(prog.build());
             b.build()
         };
-        cfg.expect("0x06 + PTS is valid");
+        let _ = cfg.expect("0x06 + PTS is valid");
     }
 
     #[test]
@@ -3697,7 +3698,7 @@ mod tests {
             b.add_program(prog.build());
             b.build()
         };
-        cfg.expect("video-as-PCR is fine");
+        let _ = cfg.expect("video-as-PCR is fine");
     }
 
     #[test]
@@ -3711,7 +3712,7 @@ mod tests {
             b.add_program(prog.build());
             b.build()
         };
-        cfg.expect("audio-as-PCR fallback is fine");
+        let _ = cfg.expect("audio-as-PCR fallback is fine");
     }
 
     #[test]

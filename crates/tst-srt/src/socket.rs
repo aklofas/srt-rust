@@ -78,6 +78,7 @@ pub struct Socket {
 /// - `*_recv_side` — what the receiver detected (sequence-gap discoveries,
 ///   too-late drops on incoming path). Read these on a receiver; they will
 ///   be ~0 on a sender.
+#[must_use]
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
 pub struct Stats {

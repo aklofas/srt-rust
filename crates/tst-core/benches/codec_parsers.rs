@@ -150,7 +150,7 @@ fn bench_h264_parse_sps(c: &mut Criterion) {
     c.bench_function("h264_parse_sps", |b| {
         b.iter(|| {
             let sps = h264::parse_sps(black_box(H264_SPS_RBSP)).expect("parse H.264 SPS");
-            black_box(sps);
+            let _ = black_box(sps);
         })
     });
 }
@@ -163,7 +163,7 @@ fn bench_h265_parse_sps(c: &mut Criterion) {
     c.bench_function("h265_parse_sps", |b| {
         b.iter(|| {
             let sps = h265::parse_sps(black_box(H265_SPS_RBSP)).expect("parse H.265 SPS");
-            black_box(sps);
+            let _ = black_box(sps);
         })
     });
 }
@@ -175,7 +175,7 @@ fn bench_h266_parse_sps(c: &mut Criterion) {
     c.bench_function("h266_parse_sps", |b| {
         b.iter(|| {
             let sps = h266::parse_sps(black_box(H266_SPS_RBSP)).expect("parse H.266 SPS");
-            black_box(sps);
+            let _ = black_box(sps);
         })
     });
 }
@@ -189,7 +189,7 @@ fn bench_av1_parse_sequence_header(c: &mut Criterion) {
         b.iter(|| {
             let sh =
                 av1::parse_sequence_header(black_box(AV1_SEQ_HDR)).expect("parse AV1 seq header");
-            black_box(sh);
+            let _ = black_box(sh);
         })
     });
 }

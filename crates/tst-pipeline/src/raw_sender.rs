@@ -15,6 +15,7 @@ use tst_core::transport::{Transport, TransportError};
 ///
 /// Currently empty — no behavior knobs are needed today. Reserved as a
 /// distinct type so future additions are non-breaking.
+#[must_use]
 #[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct RawSenderConfig {
@@ -24,6 +25,7 @@ pub struct RawSenderConfig {
 
 /// Stats for [`RawSender`]. Aggregate-only — there are no streams at
 /// this layer.
+#[must_use]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RawSenderStats {
     /// Bytes that succeeded through the transport.

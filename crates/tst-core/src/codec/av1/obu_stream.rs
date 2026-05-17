@@ -5,6 +5,7 @@ use crate::codec::av1::frame_header::{Av1FrameHeaderLight, parse_frame_header_li
 use crate::codec::av1::sequence_header::{Av1SequenceHeader, parse_sequence_header};
 use crate::mpegts::demux::event::Obu;
 
+#[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Av1ObuStream {
     pub sequence_headers: Vec<Av1SequenceHeader>,

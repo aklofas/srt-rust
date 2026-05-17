@@ -71,6 +71,7 @@ pub enum StreamCodecStats {
     #[default]
     Unknown,
     /// H.264 / H.265 / H.266 (NALs) or AV1 (OBUs).
+    #[non_exhaustive]
     Video {
         /// Total NAL units (H.264/H.265/H.266) or OBUs (AV1) across all
         /// access units on this PID. Caller derives NALs/AU as
@@ -90,6 +91,7 @@ pub enum StreamCodecStats {
     },
     /// KLV metadata stream (`stream_type` 0x15 synchronous, or 0x06+KLVA
     /// registration-descriptor private data).
+    #[non_exhaustive]
     Klv {
         /// Total KLV LDS records observed on this PID.
         ///
@@ -108,6 +110,7 @@ pub enum StreamCodecStats {
     /// AAC-LATM and AC-3 audio PIDs return [`StreamCodecStats::Unknown`]
     /// because no frame iterator exists in `codec::*` for those codecs
     /// today (tracked in `deferred-features.md`).
+    #[non_exhaustive]
     Audio {
         /// Audio frames observed on this PID, iterated via
         /// [`tst_core::codec::aac::frames`] (for AAC-ADTS) or

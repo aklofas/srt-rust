@@ -4505,12 +4505,12 @@ pub const tst_core::mpegts::mux::MAX_PROGRAMS: usize
 pub const tst_core::mpegts::mux::MAX_SUBTITLE_STREAMS_PER_PROGRAM: usize
 pub mod tst_core::mpegts::stats
 #[non_exhaustive] pub enum tst_core::mpegts::stats::StreamCodecStats
-pub tst_core::mpegts::stats::StreamCodecStats::Audio
+#[non_exhaustive] pub tst_core::mpegts::stats::StreamCodecStats::Audio
 pub tst_core::mpegts::stats::StreamCodecStats::Audio::frames: u64
-pub tst_core::mpegts::stats::StreamCodecStats::Klv
+#[non_exhaustive] pub tst_core::mpegts::stats::StreamCodecStats::Klv
 pub tst_core::mpegts::stats::StreamCodecStats::Klv::records: u64
 pub tst_core::mpegts::stats::StreamCodecStats::Unknown
-pub tst_core::mpegts::stats::StreamCodecStats::Video
+#[non_exhaustive] pub tst_core::mpegts::stats::StreamCodecStats::Video
 pub tst_core::mpegts::stats::StreamCodecStats::Video::nals_or_obus: u64
 pub tst_core::mpegts::stats::StreamCodecStats::Video::random_access_aus: u64
 impl core::clone::Clone for tst_core::mpegts::stats::StreamCodecStats

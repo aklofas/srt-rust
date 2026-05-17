@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
-use tst_pipeline::{MuxSender, MuxSenderError, TransportError};
+use tst_pipeline::{MuxSender, MuxSenderError, MuxSenderErrorSource, TransportError};
 use tst_srt::SrtTransport;
 use tst_srt::{ListenerBuilder, SocketBuilder};
 
@@ -109,8 +109,13 @@ fn close_unblocks_libsrt_parked_send() {
         // every payload before close (unlikely with SNDBUF=8). Both
         // outcomes prove cancel works; we only fail on stuck.
         Ok(_) => {}
-        Err(MuxSenderError::Transport(TransportError::Broken(_)))
-        | Err(MuxSenderError::Transport(TransportError::Closed)) => {}
+        Err(ref err)
+            if matches!(
+                err.source,
+                MuxSenderErrorSource::Transport(
+                    TransportError::Broken(_) | TransportError::Closed
+                )
+            ) => {}
         Err(other) => panic!("unexpected sender error after cancel: {other:?}"),
     }
 }

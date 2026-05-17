@@ -49,7 +49,7 @@ use tst_core::mpegts::demux::{
     DemuxEvent, MetadataKind, NalUnit, ProgramMap, SamplePayload, StreamId, StreamKind, VideoCodec,
     VideoPayload,
 };
-use tst_pipeline::{DemuxReceiver, DemuxReceiverError, TransportError};
+use tst_pipeline::{DemuxReceiver, ShellErrorKind};
 use tst_srt::SocketBuilder;
 use tst_srt::SrtTransport;
 
@@ -142,11 +142,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for item in &mut rx {
         match item {
             Ok(event) => handle_event(&event, &args, &mut stats),
-            // `Closed` doesn't surface as an Err arm — DemuxReceiver maps
-            // peer-graceful-close to iterator termination after a final
-            // demuxer flush. `Broken` is what the user sees on a hard
-            // hangup; treat both the same here, just print a note.
-            Err(DemuxReceiverError::Transport(TransportError::Broken(_))) => {
+            // `Closed` (peer-graceful-close) surfaces as iterator termination
+            // after a final demuxer flush — not as an `Err` arm. `Broken`
+            // is what the user sees on a hard hangup; both outcomes are
+            // terminal here so we break on either.
+            //
+            // `err.kind` is the binding-author-facing pattern:
+            //   - `ShellErrorKind::TransportBroken` — socket broken (peer
+            //     vanished, ECONNRESET, libsrt session teardown).
+            //   - `ShellErrorKind::EndOfStream` — clean peer-initiated close
+            //     that bypassed the normal flush path (should not appear via
+            //     iterator but defensively handled).
+            // Using `err.kind` here avoids matching the inner `TransportError`
+            // variant directly — the same check works across all DemuxReceiver
+            // transport adapters (SRT, TCP, in-memory for tests).
+            Err(ref err) if err.kind == ShellErrorKind::TransportBroken => {
                 eprintln!("peer hung up");
                 break;
             }

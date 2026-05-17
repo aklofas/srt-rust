@@ -49,7 +49,7 @@ use std::thread;
 use std::time::Duration;
 use tst_core::error::DemuxError;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind, SamplePayload};
-use tst_pipeline::{DemuxReceiver, DemuxReceiverError, Sender, SenderConfig, TransportError};
+use tst_pipeline::{DemuxReceiver, DemuxReceiverErrorSource, Sender, SenderConfig, TransportError};
 use tst_srt::SrtTransport;
 use tst_srt::{ListenerBuilder, SocketBuilder};
 
@@ -233,7 +233,14 @@ fn run_one(path: &Path) -> RunOutcome {
                 // `Broken` = peer hangup. libsrt commonly surfaces a
                 // sender close as Broken on the recv side; treat as
                 // a clean stream end. Any other error is a real bug.
-                Err(DemuxReceiverError::Transport(TransportError::Broken(_))) => break,
+                Err(ref err)
+                    if matches!(
+                        err.source,
+                        DemuxReceiverErrorSource::Transport(TransportError::Broken(_))
+                    ) =>
+                {
+                    break;
+                }
                 Err(other) => panic!("unexpected receiver error: {other:?}"),
             };
             match event {

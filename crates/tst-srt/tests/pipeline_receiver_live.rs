@@ -29,7 +29,7 @@ use tst_core::mpegts::demux::DemuxEvent;
 use tst_core::mpegts::mux::{
     KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
-use tst_pipeline::{DemuxReceiver, DemuxReceiverError, MuxSender, TransportError};
+use tst_pipeline::{DemuxReceiver, DemuxReceiverErrorSource, MuxSender, TransportError};
 use tst_srt::SrtTransport;
 use tst_srt::{ListenerBuilder, SocketBuilder};
 use tst_test_helpers::synthetic_nal;
@@ -92,7 +92,8 @@ fn end_to_end_sender_to_receiver() {
         // Drain events. Two valid termination paths:
         //   1. Iterator returns `None` — clean EOF after `Closed` triggered the
         //      demuxer's tail flush.
-        //   2. Iterator returns `Some(Err(Transport(Broken(_))))` — peer hangup.
+        //   2. Iterator returns `Some(Err(_))` where source is
+        //      `DemuxReceiverErrorSource::Transport(Broken(_))` — peer hangup.
         //      libsrt typically signals sender-side close as a Broken receive on
         //      the peer (see `srt_transport.rs:112` mapping). Treat that as a
         //      clean stream end here: the sender did its job and any events
@@ -103,7 +104,14 @@ fn end_to_end_sender_to_receiver() {
         for item in &mut rx {
             let event = match item {
                 Ok(e) => e,
-                Err(DemuxReceiverError::Transport(TransportError::Broken(_))) => break,
+                Err(ref err)
+                    if matches!(
+                        err.source,
+                        DemuxReceiverErrorSource::Transport(TransportError::Broken(_))
+                    ) =>
+                {
+                    break;
+                }
                 Err(other) => panic!("unexpected receiver error: {other:?}"),
             };
             match event {

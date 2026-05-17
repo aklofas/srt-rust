@@ -242,7 +242,7 @@ impl StreamSpec {
 ///   `MuxSender` wrapping that `Muxer`) that produced it. Using a handle
 ///   with a different `Muxer` / `MuxSender` instance is rejected with
 ///   [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
-///   (wrapped as `MuxSenderError::Mux(MuxError::InvalidStreamHandle { .. })`
+///   (accessible as `err.source == MuxSenderErrorSource::Mux(MuxError::InvalidStreamHandle { .. })`
 ///   when the call goes through `MuxSender`).
 /// - **Parent close invalidates.** A handle remains valid for the lifetime
 ///   of its parent muxer. After the parent is dropped or closed (e.g.,

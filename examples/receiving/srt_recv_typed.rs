@@ -82,19 +82,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     calling `Demuxer::flush()` to recover any trailing PES. Loop
     //     callers do not see `Closed` as an error variant.
     //
-    //   - **`Err(DemuxReceiverError::Transport(TransportError::Broken(_)))`**
-    //     fires for both peer-initiated cleanup and unrecoverable
-    //     links. `SrtTransport` collapses these into one `Broken`
-    //     surface by design — it lets a managed-receive decorator
-    //     distinguish a self-initiated close (`Closed`) from a
-    //     peer-initiated break (`Broken`). For a non-managed example
-    //     like this one, both are terminal. Note: on `Broken` the
-    //     demuxer is NOT auto-flushed, so any trailing PES is lost
-    //     (the receive thread can't tell mid-stream hiccup from a
-    //     clean end).
+    //   - **`Err(err)` with `err.kind == ShellErrorKind::TransportBroken`** fires
+    //     for both peer-initiated cleanup and unrecoverable links.
+    //     `SrtTransport` collapses these into one `Broken` surface by design —
+    //     it lets a managed-receive decorator distinguish a self-initiated close
+    //     (`Closed`) from a peer-initiated break (`Broken`). For a non-managed
+    //     example like this one, both are terminal. Note: on `Broken` the
+    //     demuxer is NOT auto-flushed, so any trailing PES is lost (the receive
+    //     thread can't tell mid-stream hiccup from a clean end).
+    //     Inner source: `matches!(err.source, DemuxReceiverErrorSource::Transport(
+    //     TransportError::Broken(_)))` if you need variant discrimination.
     //
-    //   - **`Err(DemuxReceiverError::Demux(_))`** is a strict-mode rejection
-    //     or malformed PES — fatal for this example.
+    //   - **`Err(err)` with `err.kind == ShellErrorKind::InputMalformed`** is a
+    //     strict-mode rejection or malformed PES — fatal for this example.
+    //     Inner source: `matches!(err.source, DemuxReceiverErrorSource::Demux(_))`.
     for item in &mut rx {
         match item {
             Ok(DemuxEvent::ProgramMap(m)) => {
@@ -128,9 +129,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("NonConformant PID=0x{:04X} {issue:?}", stream.pid);
             }
             // Any error variant terminates this single-shot example.
-            // `Broken` is what fires on peer disconnect (clean or not);
-            // `Demux` only fires in strict mode or on a malformed PES.
-            // Clean EOF is iterator termination, not an `Err` arm.
+            // `err.kind == TransportBroken` fires on peer disconnect (clean
+            // or not); `err.kind == InputMalformed` fires in strict mode or
+            // on a malformed PES. Clean EOF is iterator termination, not an
+            // `Err` arm.
             Err(e) => {
                 eprintln!("receiver error: {e}");
                 break;

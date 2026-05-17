@@ -120,6 +120,31 @@ enum PairerState {
 }
 
 impl Pairer {
+    /// Construct a [`Pairer`] for the given video + KLV PIDs using
+    /// the default [`PairerConfig`].
+    ///
+    /// Equivalent to:
+    /// ```ignore
+    /// Pairer::with_options(video_pid, klv_pid, PairerConfig::default())
+    /// ```
+    ///
+    /// The default config uses `PairerMode::Realtime`, 300 ms tolerance,
+    /// and 32-entry video / 32-entry KLV history caps. Use
+    /// [`Self::with_options`] to override any of these.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use tst_pipeline::pairing::Pairer;
+    ///
+    /// let mut pairer = Pairer::new(0x0100, 0x0102);
+    /// // ... feed DemuxEvents into pairer.feed(...) ...
+    /// let _stats = pairer.stats();
+    /// ```
+    pub fn new(video_pid: u16, klv_pid: u16) -> Self {
+        Self::with_options(video_pid, klv_pid, PairerConfig::default())
+    }
+
     /// Construct a nearest-PTS pairer with the given options.
     ///
     /// Replaces the pre-Phase-3 5-positional-arg `Pairer::nearest_pts`

@@ -264,6 +264,7 @@ mod tests {
             stream: StreamId {
                 pid: VIDEO_PID,
                 kind: StreamKind::Video(VideoCodec::H264),
+                program_number: 1,
             },
             pts,
             dts: None,
@@ -280,6 +281,7 @@ mod tests {
             stream: StreamId {
                 pid: KLV_PID,
                 kind: StreamKind::KlvAsync,
+                program_number: 1,
             },
             pts,
             kind: MetadataKind::KlvAsync,

@@ -53,6 +53,11 @@ pub enum DemuxEvent {
 pub struct StreamId {
     pub pid: u16,
     pub kind: StreamKind,
+    /// Program-number this stream belongs to. Populated by the demuxer from
+    /// PMT; provides cross-program identity for multi-program TS where two
+    /// programs may reuse a PID (resolution policy is first-program-wins per
+    /// CLAUDE.md project conventions).
+    pub program_number: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

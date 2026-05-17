@@ -344,6 +344,7 @@ mod tests {
             stream: StreamId {
                 pid: VIDEO_PID,
                 kind: StreamKind::Video(VideoCodec::H264),
+                program_number: 1,
             },
             issue: NonConformantIssue::PusiMidPes,
         };
@@ -358,6 +359,7 @@ mod tests {
             stream: StreamId {
                 pid: VIDEO_PID,
                 kind: StreamKind::Video(VideoCodec::H264),
+                program_number: 1,
             },
             kind: DiscontinuityKind::ContinuityJump {
                 expected: 0x5,
@@ -377,6 +379,7 @@ mod tests {
             stream: StreamId {
                 pid: VIDEO_PID,
                 kind: StreamKind::Audio(AudioCodec::Aac),
+                program_number: 1,
             },
             pts: 0,
             dts: None,
@@ -396,6 +399,7 @@ mod tests {
             stream: StreamId {
                 pid: KLV_PID,
                 kind: StreamKind::Video(VideoCodec::H264),
+                program_number: 1,
             },
             pts: 0,
             dts: None,
@@ -416,6 +420,7 @@ mod tests {
             stream: StreamId {
                 pid: VIDEO_PID,
                 kind: StreamKind::KlvAsync,
+                program_number: 1,
             },
             pts: 0,
             kind: MetadataKind::KlvAsync,
@@ -432,6 +437,7 @@ mod tests {
             stream: StreamId {
                 pid: OTHER_VIDEO_PID,
                 kind: StreamKind::Video(VideoCodec::H265),
+                program_number: 1,
             },
             pts: 0,
             dts: None,
@@ -456,6 +462,7 @@ mod tests {
                 kind: StreamKind::KlvSync {
                     declared_link: None,
                 },
+                program_number: 1,
             },
             pts: 50,
             kind: MetadataKind::KlvSyncAuCell {
@@ -472,6 +479,7 @@ mod tests {
             stream: StreamId {
                 pid: VIDEO_PID,
                 kind: StreamKind::Video(VideoCodec::H264),
+                program_number: 1,
             },
             pts: 50,
             dts: None,
@@ -493,6 +501,7 @@ mod tests {
             stream: StreamId {
                 pid: AUDIO_PID,
                 kind: StreamKind::Audio(AudioCodec::Aac),
+                program_number: 1,
             },
             pts: 0,
             dts: None,
@@ -524,6 +533,7 @@ mod tests {
             stream: StreamId {
                 pid,
                 kind: StreamKind::KlvAsync,
+                program_number: 1,
             },
             pts,
             kind: MetadataKind::KlvAsync,
@@ -536,6 +546,7 @@ mod tests {
             stream: StreamId {
                 pid: VIDEO_PID,
                 kind: StreamKind::Video(VideoCodec::H264),
+                program_number: 1,
             },
             pts,
             dts: None,
@@ -627,6 +638,7 @@ mod proptests {
                 stream: StreamId {
                     pid: VIDEO_PID,
                     kind: StreamKind::Video(VideoCodec::H264),
+                    program_number: 1,
                 },
                 pts: *pts,
                 dts: None,
@@ -640,6 +652,7 @@ mod proptests {
                 stream: StreamId {
                     pid: KLV_PID,
                     kind: StreamKind::KlvAsync,
+                    program_number: 1,
                 },
                 pts: *pts,
                 kind: MetadataKind::KlvAsync,

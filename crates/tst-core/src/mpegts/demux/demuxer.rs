@@ -358,6 +358,8 @@ impl Demuxer {
             let stream = self.lookup_stream(pkt.pid).unwrap_or(StreamId {
                 pid: pkt.pid,
                 kind: StreamKind::Unknown(0),
+                // program_number unavailable — pre-PMT context (PID unknown to demuxer)
+                program_number: 0,
             });
             self.queue_nonconformant(
                 stream,
@@ -514,6 +516,8 @@ impl Demuxer {
             let stream = self.lookup_stream(pid).unwrap_or(StreamId {
                 pid,
                 kind: StreamKind::Unknown(0),
+                // program_number unavailable — PSI PID (PAT/PMT) is not owned by a program
+                program_number: 0,
             });
             self.queue_nonconformant(
                 stream,
@@ -556,6 +560,8 @@ impl Demuxer {
                 let stream = self.lookup_stream(pid).unwrap_or(StreamId {
                     pid,
                     kind: StreamKind::Unknown(0),
+                    // program_number unavailable — PSI PID (PAT/PMT) is not owned by a program
+                    program_number: 0,
                 });
                 self.queue_nonconformant(
                     stream,
@@ -581,6 +587,8 @@ impl Demuxer {
                     StreamId {
                         pid: 0x0000,
                         kind: StreamKind::Unknown(0),
+                        // program_number unavailable — PAT PID is not owned by a program
+                        program_number: 0,
                     },
                     NonConformantIssue::PsiChecksumMismatch { pid: 0x0000 },
                 );
@@ -594,6 +602,8 @@ impl Demuxer {
                     StreamId {
                         pid: 0x0000,
                         kind: StreamKind::Unknown(0),
+                        // program_number unavailable — PAT PID is not owned by a program
+                        program_number: 0,
                     },
                     NonConformantIssue::PsiMultiSectionUnsupported {
                         pid: 0x0000,
@@ -661,6 +671,14 @@ impl Demuxer {
     }
 
     fn handle_pmt_section(&mut self, pmt_pid: u16, section: &[u8]) {
+        // The PMT PID itself is owned by a program (the one this PMT describes).
+        // PAT pre-populates `self.programs` keyed by PMT PID, so we can resolve
+        // the program_number here even when the PMT body fails to parse.
+        let pmt_program_number = self
+            .programs
+            .get(&pmt_pid)
+            .map(|t| t.program_number)
+            .unwrap_or(0);
         let pmt = match parse_pmt(section) {
             Ok(p) => p,
             Err(PsiParseError::CrcMismatch { .. }) => {
@@ -668,6 +686,7 @@ impl Demuxer {
                     StreamId {
                         pid: pmt_pid,
                         kind: StreamKind::Unknown(0),
+                        program_number: pmt_program_number,
                     },
                     NonConformantIssue::PsiChecksumMismatch { pid: pmt_pid },
                 );
@@ -681,6 +700,7 @@ impl Demuxer {
                     StreamId {
                         pid: pmt_pid,
                         kind: StreamKind::Unknown(0),
+                        program_number: pmt_program_number,
                     },
                     NonConformantIssue::PsiMultiSectionUnsupported {
                         pid: pmt_pid,
@@ -748,6 +768,11 @@ impl Demuxer {
                     StreamId {
                         pid: s.elementary_pid,
                         kind: StreamKind::Unknown(0),
+                        // The PID is first-program-wins owned by `other_program_number`
+                        // (the existing binding); this StreamId surfaces the collision
+                        // attempted by *this* PMT (`program_number`), so we tag it
+                        // with the attempting program.
+                        program_number,
                     },
                     NonConformantIssue::PidReusedAcrossPrograms {
                         pid: s.elementary_pid,
@@ -815,7 +840,11 @@ impl Demuxer {
         for (pid, kind) in subtitle_missing {
             if self.subtitle_missing_descriptor_emitted.insert(pid) {
                 self.queue_nonconformant(
-                    StreamId { pid, kind },
+                    StreamId {
+                        pid,
+                        kind,
+                        program_number,
+                    },
                     NonConformantIssue::SubtitleMissingDescriptor { pid },
                 );
             }
@@ -825,7 +854,11 @@ impl Demuxer {
         for (pid, kind) in av1_malformed {
             if self.av1_registration_malformed_emitted.insert(pid) {
                 self.queue_nonconformant(
-                    StreamId { pid, kind },
+                    StreamId {
+                        pid,
+                        kind,
+                        program_number,
+                    },
                     NonConformantIssue::Av1RegistrationMalformed { pid },
                 );
             }
@@ -835,7 +868,11 @@ impl Demuxer {
         for (pid, kind, tags) in subtitle_ambiguous {
             if self.subtitle_descriptor_ambiguous_emitted.insert(pid) {
                 self.queue_nonconformant(
-                    StreamId { pid, kind },
+                    StreamId {
+                        pid,
+                        kind,
+                        program_number,
+                    },
                     NonConformantIssue::SubtitleDescriptorAmbiguous { pid, tags },
                 );
             }
@@ -932,6 +969,7 @@ impl Demuxer {
                     kind: StreamKind::KlvSync {
                         declared_link: None,
                     },
+                    program_number,
                 };
                 self.queue_nonconformant(stream, NonConformantIssue::MissingMetadataDescriptor);
             }
@@ -1043,7 +1081,12 @@ impl Demuxer {
             Some(k) => k,
             None => return,
         };
-        let stream = StreamId { pid: pes.pid, kind };
+        let program_number = self.program_number_for_pid(pes.pid);
+        let stream = StreamId {
+            pid: pes.pid,
+            kind,
+            program_number,
+        };
         let pts = pes.pts.unwrap_or(0);
         // Backward-PTS check.
         if let Some(last) = self.last_pts_by_pid.get(&pes.pid).copied() {
@@ -1053,7 +1096,6 @@ impl Demuxer {
             }
         }
         self.last_pts_by_pid.insert(pes.pid, pts);
-        let program_number = self.program_number_for_pid(stream.pid);
         match kind {
             StreamKind::Video(codec) => {
                 // Codec dispatches the payload-shape: H.26x splits Annex-B NAL
@@ -1357,10 +1399,14 @@ impl Demuxer {
     }
 
     fn lookup_stream(&self, pid: u16) -> Option<StreamId> {
-        self.stream_kind_by_pid
-            .get(&pid)
-            .copied()
-            .map(|kind| StreamId { pid, kind })
+        self.stream_kind_by_pid.get(&pid).copied().map(|kind| {
+            let program_number = self.program_number_for_pid(pid);
+            StreamId {
+                pid,
+                kind,
+                program_number,
+            }
+        })
     }
 
     /// Look up the program_number for a PID via the `pid_to_program` map.

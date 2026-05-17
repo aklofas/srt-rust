@@ -31,6 +31,7 @@ fn make_video_event(frame_index: usize) -> DemuxEvent {
         stream: StreamId {
             pid: VIDEO_PID,
             kind: StreamKind::Video(VideoCodec::H264),
+            program_number: 1,
         },
         pts,
         dts: Some(pts),
@@ -59,6 +60,7 @@ fn make_klv_event(frame_index: usize) -> DemuxEvent {
             kind: StreamKind::KlvSync {
                 declared_link: Some(VIDEO_PID),
             },
+            program_number: 1,
         },
         pts,
         kind: MetadataKind::KlvSyncAuCell {

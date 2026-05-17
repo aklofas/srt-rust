@@ -1500,6 +1500,13 @@ impl Muxer {
     /// [`crate::mpegts::stats::StreamCodecStats`] for the semantics of
     /// the return value (`None` vs `Some(Unknown)` vs typed variant).
     ///
+    /// **Muxer-specific note:** the Muxer pre-populates `per_stream` for
+    /// every PID listed in `MuxerConfig` at construction time, so a
+    /// configured-but-never-pushed PID returns `Some(Unknown)`, NOT
+    /// `None`. (Contrast with the Demuxer, where `Some(Unknown)`
+    /// requires an event to have been emitted on that PID.) `None` is
+    /// only returned for PIDs the Muxer was not configured with.
+    ///
     /// # C ABI
     ///
     /// `tst_muxer_get_stream_codec_stats` — see
@@ -1518,12 +1525,10 @@ impl Muxer {
     ///
     /// Per-stream entries are preserved (their `pid` and `stream_type`
     /// identity fields remain set); only the flow counters (`items`,
-    /// `bytes`, `discontinuities`) are zeroed. Codec-specific counters
-    /// (`stream_codec_counters`) are dropped; the next push for a
-    /// previously-pushed PID re-materializes the entry. This keeps the
-    /// 3-state [`Self::stream_codec_stats`] accessor symmetric with the
-    /// Demuxer-side equivalent — a never-pushed PID returns `Unknown`
-    /// (via the per-stream contains_key path) both before AND after reset.
+    /// `bytes`, `discontinuities`) are zeroed. Codec-counter entries
+    /// are cleared on reset, so previously-pushed PIDs revert to
+    /// `Some(Unknown)` (or `None` for never-configured PIDs) until the
+    /// next push re-materializes the typed variant.
     pub fn reset_stats(&mut self) {
         self.ts_packets_emitted = 0;
         self.ts_bytes_emitted = 0;
@@ -4192,12 +4197,20 @@ mod stats_tests {
     }
 
     #[test]
-    fn muxer_stream_codec_stats_returns_none_for_never_pushed_pid() {
+    fn muxer_stream_codec_stats_distinguishes_configured_from_unconfigured() {
         // Default MuxerConfig configures PIDs 0x1011 (video) + 0x1031 (KLV).
-        // 0x9999 isn't configured, so stream_codec_stats returns None (vs
-        // Unknown, which is what a configured-but-never-pushed PID returns
-        // via the per_stream contains_key fallback).
+        // 0x9999 isn't configured, so stream_codec_stats returns None.
+        // Configured-but-never-pushed PIDs return Some(Unknown) via the
+        // per_stream contains_key fallback — this locks in the eager-
+        // population semantic that distinguishes the Muxer accessor from
+        // the Demuxer's (where Unknown requires an event to have been
+        // emitted on that PID).
         let muxer = Muxer::new(MuxerConfig::default()).expect("muxer");
-        assert_eq!(muxer.stream_codec_stats(0x9999), None);
+        assert_eq!(muxer.stream_codec_stats(0x9999), None, "unconfigured PID");
+        assert_eq!(
+            muxer.stream_codec_stats(0x1011),
+            Some(crate::mpegts::stats::StreamCodecStats::Unknown),
+            "configured-but-never-pushed PID",
+        );
     }
 }

@@ -119,8 +119,7 @@ pub struct Demuxer {
     /// for a PID whose stream_type falls into a counted family. PSI /
     /// subtitle / LATM / AC-3 PIDs do NOT get an entry — they live only
     /// in `stats_per_stream`.
-    stream_codec_counters:
-        std::collections::BTreeMap<u16, crate::mpegts::stats::StreamCodecCounters>,
+    stream_codec_counters: BTreeMap<u16, crate::mpegts::stats::StreamCodecCounters>,
     /// PIDs that have already emitted `SubtitleMissingDescriptor` for the
     /// current PMT version. Cleared at the top of each PMT-version bump so
     /// a fresh PMT re-fires if the descriptor is still missing.
@@ -179,7 +178,7 @@ impl Demuxer {
             nonconformant_count: 0,
             subtitle_streams_seen_count: 0,
             stats_per_stream: BTreeMap::new(),
-            stream_codec_counters: std::collections::BTreeMap::new(),
+            stream_codec_counters: BTreeMap::new(),
             subtitle_missing_descriptor_emitted: HashSet::new(),
             subtitle_pids_seen: HashSet::new(),
             av1_registration_malformed_emitted: HashSet::new(),
@@ -1355,8 +1354,6 @@ impl Demuxer {
     /// Per-PID codec-specific counters. See
     /// [`crate::mpegts::stats::StreamCodecStats`] for the semantics of
     /// the return value (`None` vs `Some(Unknown)` vs typed variant).
-    ///
-    /// `O(log n)` on the per-PID map.
     pub fn stream_codec_stats(&self, pid: u16) -> Option<crate::mpegts::stats::StreamCodecStats> {
         if let Some(c) = self.stream_codec_counters.get(&pid) {
             return Some(c.to_public());
@@ -1382,6 +1379,13 @@ impl Demuxer {
 
     /// Reset all stats counters to zero and clear per-stream entries.
     ///
+    /// Per-PID entries are dropped (both the unified `stats_per_stream`
+    /// and the codec-counter side table); the next event for a
+    /// previously-seen PID re-materializes both entries with the kind
+    /// discriminator derived from the current `stream_type`. This keeps
+    /// the 3-state [`Self::stream_codec_stats`] accessor symmetric across
+    /// reset — an unseen PID returns `None` both before AND after.
+    ///
     /// Also drops the cached PMT version so the next incoming PMT will
     /// increment `pmt_versions_seen` even if the version_number hasn't
     /// changed.
@@ -1393,12 +1397,7 @@ impl Demuxer {
         self.subtitle_streams_seen_count = 0;
         self.subtitle_pids_seen.clear();
         self.stats_per_stream.clear();
-        for c in self.stream_codec_counters.values_mut() {
-            c.nals_or_obus = 0;
-            c.random_access_aus = 0;
-            c.records = 0;
-            c.frames = 0;
-        }
+        self.stream_codec_counters.clear();
         // Drop cached PMT versions on each ProgramTracker so the next PMT
         // triggers pmt_versions_seen += 1 even if the version_number hasn't changed.
         for tracker in self.programs.values_mut() {
@@ -1719,6 +1718,15 @@ mod tests {
         // crates/tst-core/tests/codec_stats.rs (Task 5).
         let demux = Demuxer::new();
         assert_eq!(demux.stream_codec_stats(0x0000), None);
+    }
+
+    #[test]
+    fn reset_stats_drops_codec_counter_entries() {
+        // Counter for an unseen PID should be None both before AND after reset.
+        let mut demux = Demuxer::new();
+        assert_eq!(demux.stream_codec_stats(0x1234), None);
+        demux.reset_stats();
+        assert_eq!(demux.stream_codec_stats(0x1234), None);
     }
 
     #[test]

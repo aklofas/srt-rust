@@ -538,7 +538,21 @@ typedef struct TstEventSample {
   int64_t pts;
   int64_t dts;
   int codec;
-  uint8_t _pad[4];
+  /**
+   * (Video only) `1` if the TS adaptation field carried
+   * `random_access_indicator` (ISO/IEC 13818-1 §2.4.3.4 bit 0x40) on
+   * the PES_start packet of this access unit. Zero for non-video samples
+   * and when RAI was not set.
+   */
+  uint8_t random_access_indicator;
+  /**
+   * (Unknown samples only) Raw PMT `stream_type` byte for the source
+   * stream. Allows C callers to discriminate unknown stream types
+   * without correlating back to the most recent ProgramMap event. Zero
+   * for known stream types (use `codec` field instead).
+   */
+  uint8_t stream_type;
+  uint8_t _pad[2];
   const struct tst_nal_t *nals;
   size_t nal_count;
   const struct tst_obu_t *obus;

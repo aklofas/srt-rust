@@ -273,7 +273,17 @@ pub struct TstEventSample {
     pub pts: i64,
     pub dts: i64, // INT64_MIN if absent
     pub codec: c_int,
-    pub _pad: [u8; 4],
+    /// (Video only) `1` if the TS adaptation field carried
+    /// `random_access_indicator` (ISO/IEC 13818-1 §2.4.3.4 bit 0x40) on
+    /// the PES_start packet of this access unit. Zero for non-video samples
+    /// and when RAI was not set.
+    pub random_access_indicator: u8,
+    /// (Unknown samples only) Raw PMT `stream_type` byte for the source
+    /// stream. Allows C callers to discriminate unknown stream types
+    /// without correlating back to the most recent ProgramMap event. Zero
+    /// for known stream types (use `codec` field instead).
+    pub stream_type: u8,
+    pub _pad: [u8; 2],
     pub nals: *const TstNal,
     pub nal_count: usize,
     pub obus: *const TstObu,
@@ -536,13 +546,16 @@ fn fill_sample(
     let mut obu_count: usize = 0;
     let mut payload_ptr: *const u8 = std::ptr::null();
     let mut payload_len: usize = 0;
+    let mut random_access_indicator: u8 = 0;
+    let mut stream_type: u8 = 0;
     match payload {
         SamplePayload::Video {
             codec: vc,
             payload: vp,
-            ..
+            random_access_indicator: rai,
         } => {
             codec = crate::config::TstVideoCodec::from_core(*vc) as i32;
+            random_access_indicator = u8::from(*rai);
             match vp {
                 VideoPayload::Nals(nals) => {
                     for n in nals {
@@ -574,11 +587,13 @@ fn fill_sample(
             payload_len = pl.len();
         }
         SamplePayload::Unknown {
-            stream_type: _,
+            stream_type: st,
             raw,
         } => {
-            // codec stays -1; stream_kind == Unknown carries the stream_type
-            // via the per-stream PMT entry rather than here.
+            // codec stays -1; surface the raw PMT stream_type byte so C
+            // callers can discriminate without correlating back to the
+            // most recent ProgramMap event.
+            stream_type = *st;
             payload_ptr = raw.as_ptr();
             payload_len = raw.len();
         }
@@ -591,7 +606,9 @@ fn fill_sample(
         pts,
         dts: dts.unwrap_or(i64::MIN),
         codec,
-        _pad: [0; 4],
+        random_access_indicator,
+        stream_type,
+        _pad: [0; 2],
         nals: nals_ptr,
         nal_count,
         obus: obus_ptr,

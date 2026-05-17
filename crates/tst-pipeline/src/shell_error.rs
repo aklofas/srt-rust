@@ -110,7 +110,7 @@ pub(crate) enum Direction {
 /// Compute the shell-kind for a `MuxError`. Used by `MuxSender`'s
 /// `From<MuxError>` impl. **Every MuxError variant is matched explicitly**
 /// — the CI ratchet `scripts/check-pipeline-kind-classification.sh`
-/// enforces no variant escapes through a wildcard.
+/// (Task 10) will enforce no variant escapes through a wildcard.
 #[allow(dead_code)] // used in Task 3 when MuxSenderError is wired up
 pub(crate) fn kind_from_mux(e: &MuxError) -> ShellErrorKind {
     use ShellErrorKind::*;
@@ -204,8 +204,9 @@ pub(crate) fn kind_from_demux(e: &DemuxError) -> ShellErrorKind {
 /// Compute the shell-kind for a `TsFramingError`. Both variants are TS
 /// sync-loss failures — `InputMalformed`. Same exhaustive-match pattern.
 ///
-/// Note: `TsFramingError` is defined in the same crate so Rust treats
-/// the match as exhaustive; no wildcard arm is needed (or permitted).
+/// No wildcard needed: TsFramingError is defined in the same crate as
+/// this helper, so Rust treats the #[non_exhaustive] match as exhaustive
+/// in-crate. (TsFramingError received #[non_exhaustive] in Wave 2.3.)
 #[allow(dead_code)] // used in Task 3 when SenderError is wired up
 pub(crate) fn kind_from_framing(e: &TsFramingError) -> ShellErrorKind {
     use ShellErrorKind::*;

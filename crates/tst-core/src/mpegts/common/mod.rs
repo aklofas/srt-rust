@@ -557,7 +557,11 @@ mod stream_type_code_tests {
         ] {
             let byte = st.as_u8();
             let code = StreamTypeCode::from_byte(byte);
-            assert_eq!(code.known().copied(), Some(st), "byte 0x{byte:02X} should map to {st:?}");
+            assert_eq!(
+                code.known().copied(),
+                Some(st),
+                "byte 0x{byte:02X} should map to {st:?}"
+            );
             assert_eq!(code.as_byte(), byte);
         }
     }

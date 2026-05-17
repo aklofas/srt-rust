@@ -2463,6 +2463,31 @@ impl core::marker::Unpin for tst_core::mpegts::common::StreamType
 impl core::marker::UnsafeUnpin for tst_core::mpegts::common::StreamType
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::common::StreamType
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::common::StreamType
+#[non_exhaustive] pub enum tst_core::mpegts::common::StreamTypeCode
+pub tst_core::mpegts::common::StreamTypeCode::Known(tst_core::mpegts::common::StreamType)
+pub tst_core::mpegts::common::StreamTypeCode::Unknown(u8)
+impl tst_core::mpegts::common::StreamTypeCode
+pub fn tst_core::mpegts::common::StreamTypeCode::as_byte(&self) -> u8
+pub fn tst_core::mpegts::common::StreamTypeCode::from_byte(byte: u8) -> Self
+pub fn tst_core::mpegts::common::StreamTypeCode::known(&self) -> core::option::Option<&tst_core::mpegts::common::StreamType>
+impl core::clone::Clone for tst_core::mpegts::common::StreamTypeCode
+pub fn tst_core::mpegts::common::StreamTypeCode::clone(&self) -> tst_core::mpegts::common::StreamTypeCode
+impl core::cmp::Eq for tst_core::mpegts::common::StreamTypeCode
+impl core::cmp::PartialEq for tst_core::mpegts::common::StreamTypeCode
+pub fn tst_core::mpegts::common::StreamTypeCode::eq(&self, other: &tst_core::mpegts::common::StreamTypeCode) -> bool
+impl core::default::Default for tst_core::mpegts::common::StreamTypeCode
+pub fn tst_core::mpegts::common::StreamTypeCode::default() -> Self
+impl core::fmt::Debug for tst_core::mpegts::common::StreamTypeCode
+pub fn tst_core::mpegts::common::StreamTypeCode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::mpegts::common::StreamTypeCode
+impl core::marker::StructuralPartialEq for tst_core::mpegts::common::StreamTypeCode
+impl core::marker::Freeze for tst_core::mpegts::common::StreamTypeCode
+impl core::marker::Send for tst_core::mpegts::common::StreamTypeCode
+impl core::marker::Sync for tst_core::mpegts::common::StreamTypeCode
+impl core::marker::Unpin for tst_core::mpegts::common::StreamTypeCode
+impl core::marker::UnsafeUnpin for tst_core::mpegts::common::StreamTypeCode
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::common::StreamTypeCode
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::common::StreamTypeCode
 pub struct tst_core::mpegts::common::Pcr27mhz(_)
 impl tst_core::mpegts::common::Pcr27mhz
 pub const fn tst_core::mpegts::common::Pcr27mhz::as_ticks(self) -> u64
@@ -4563,7 +4588,7 @@ pub tst_core::mpegts::stats::StreamStats::items: u64
 pub tst_core::mpegts::stats::StreamStats::label: core::option::Option<alloc::string::String>
 pub tst_core::mpegts::stats::StreamStats::pid: u16
 pub tst_core::mpegts::stats::StreamStats::program_number: u16
-pub tst_core::mpegts::stats::StreamStats::stream_type: u8
+pub tst_core::mpegts::stats::StreamStats::stream_type: tst_core::mpegts::common::StreamTypeCode
 impl core::clone::Clone for tst_core::mpegts::stats::StreamStats
 pub fn tst_core::mpegts::stats::StreamStats::clone(&self) -> tst_core::mpegts::stats::StreamStats
 impl core::cmp::Eq for tst_core::mpegts::stats::StreamStats
@@ -4590,7 +4615,7 @@ pub tst_core::mpegts::StreamStats::items: u64
 pub tst_core::mpegts::StreamStats::label: core::option::Option<alloc::string::String>
 pub tst_core::mpegts::StreamStats::pid: u16
 pub tst_core::mpegts::StreamStats::program_number: u16
-pub tst_core::mpegts::StreamStats::stream_type: u8
+pub tst_core::mpegts::StreamStats::stream_type: tst_core::mpegts::common::StreamTypeCode
 impl core::clone::Clone for tst_core::mpegts::stats::StreamStats
 pub fn tst_core::mpegts::stats::StreamStats::clone(&self) -> tst_core::mpegts::stats::StreamStats
 impl core::cmp::Eq for tst_core::mpegts::stats::StreamStats

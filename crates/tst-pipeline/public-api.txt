@@ -88,23 +88,23 @@ pub type tst_pipeline::dyn_aliases::BoxedRawSender = tst_pipeline::raw_sender::R
 pub type tst_pipeline::dyn_aliases::BoxedReceiver = tst_pipeline::receiver::Receiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
 pub type tst_pipeline::dyn_aliases::BoxedSender = tst_pipeline::sender::Sender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
 pub mod tst_pipeline::managed_receive
-pub struct tst_pipeline::managed_receive::ManagedReceiveTransport<R: tst_core::transport::RecvTransport>
-impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_receive::ManagedReceiveTransport<R>
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::new(inner: R, factory: alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, policy: tst_pipeline::reconnect::ReconnectPolicy) -> Self
-impl<R: tst_core::transport::RecvTransport> tst_core::transport::RecvTransport for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::close(&mut self)
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::is_alive(&self) -> bool
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::max_payload(&self) -> usize
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
-impl<R> core::marker::Freeze for tst_pipeline::managed_receive::ManagedReceiveTransport<R> where R: core::marker::Freeze
-impl<R> core::marker::Send for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
-impl<R> !core::marker::Sync for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
-impl<R> core::marker::Unpin for tst_pipeline::managed_receive::ManagedReceiveTransport<R> where R: core::marker::Unpin
-impl<R> core::marker::UnsafeUnpin for tst_pipeline::managed_receive::ManagedReceiveTransport<R> where R: core::marker::UnsafeUnpin
-impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
-impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
+pub struct tst_pipeline::managed_receive::ManagedRecvTransport<R: tst_core::transport::RecvTransport>
+impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_receive::ManagedRecvTransport<R>
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new(inner: R, factory: alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, policy: tst_pipeline::reconnect::ReconnectPolicy) -> Self
+impl<R: tst_core::transport::RecvTransport> tst_core::transport::RecvTransport for tst_pipeline::managed_receive::ManagedRecvTransport<R>
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::close(&mut self)
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::is_alive(&self) -> bool
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::max_payload(&self) -> usize
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
+impl<R> core::marker::Freeze for tst_pipeline::managed_receive::ManagedRecvTransport<R> where R: core::marker::Freeze
+impl<R> core::marker::Send for tst_pipeline::managed_receive::ManagedRecvTransport<R>
+impl<R> !core::marker::Sync for tst_pipeline::managed_receive::ManagedRecvTransport<R>
+impl<R> core::marker::Unpin for tst_pipeline::managed_receive::ManagedRecvTransport<R> where R: core::marker::Unpin
+impl<R> core::marker::UnsafeUnpin for tst_pipeline::managed_receive::ManagedRecvTransport<R> where R: core::marker::UnsafeUnpin
+impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_receive::ManagedRecvTransport<R>
+impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_receive::ManagedRecvTransport<R>
 pub mod tst_pipeline::mux_sender
 #[non_exhaustive] pub enum tst_pipeline::mux_sender::MuxSenderError
 pub tst_pipeline::mux_sender::MuxSenderError::Mux(tst_core::error::MuxError)
@@ -337,7 +337,7 @@ pub fn tst_pipeline::raw_receiver::RawReceiver<R>::new(transport: R, _config: ts
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::recv_one(&mut self) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::transport::TransportError>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
-pub fn tst_pipeline::raw_receiver::RawReceiver<R>::stats(&self) -> tst_pipeline::raw_receiver::RawReceiverStats
+pub fn tst_pipeline::raw_receiver::RawReceiver<R>::stats(&self) -> tst_pipeline::raw_receiver::RawRecvStats
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiver<R>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::raw_receiver::RawReceiver<R>
@@ -363,29 +363,50 @@ impl core::marker::Unpin for tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::marker::UnsafeUnpin for tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawReceiverConfig
-pub struct tst_pipeline::raw_receiver::RawReceiverStats
-pub tst_pipeline::raw_receiver::RawReceiverStats::bytes_received: u64
-pub tst_pipeline::raw_receiver::RawReceiverStats::packets_received: u64
-impl core::clone::Clone for tst_pipeline::raw_receiver::RawReceiverStats
-pub fn tst_pipeline::raw_receiver::RawReceiverStats::clone(&self) -> tst_pipeline::raw_receiver::RawReceiverStats
-impl core::cmp::Eq for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::cmp::PartialEq for tst_pipeline::raw_receiver::RawReceiverStats
-pub fn tst_pipeline::raw_receiver::RawReceiverStats::eq(&self, other: &tst_pipeline::raw_receiver::RawReceiverStats) -> bool
-impl core::default::Default for tst_pipeline::raw_receiver::RawReceiverStats
-pub fn tst_pipeline::raw_receiver::RawReceiverStats::default() -> tst_pipeline::raw_receiver::RawReceiverStats
-impl core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiverStats
-pub fn tst_pipeline::raw_receiver::RawReceiverStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::StructuralPartialEq for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::Freeze for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::Send for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::Sync for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::Unpin for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::UnsafeUnpin for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawReceiverStats
+pub struct tst_pipeline::raw_receiver::RawRecvStats
+pub tst_pipeline::raw_receiver::RawRecvStats::bytes_received: u64
+pub tst_pipeline::raw_receiver::RawRecvStats::packets_received: u64
+impl core::clone::Clone for tst_pipeline::raw_receiver::RawRecvStats
+pub fn tst_pipeline::raw_receiver::RawRecvStats::clone(&self) -> tst_pipeline::raw_receiver::RawRecvStats
+impl core::cmp::Eq for tst_pipeline::raw_receiver::RawRecvStats
+impl core::cmp::PartialEq for tst_pipeline::raw_receiver::RawRecvStats
+pub fn tst_pipeline::raw_receiver::RawRecvStats::eq(&self, other: &tst_pipeline::raw_receiver::RawRecvStats) -> bool
+impl core::default::Default for tst_pipeline::raw_receiver::RawRecvStats
+pub fn tst_pipeline::raw_receiver::RawRecvStats::default() -> tst_pipeline::raw_receiver::RawRecvStats
+impl core::fmt::Debug for tst_pipeline::raw_receiver::RawRecvStats
+pub fn tst_pipeline::raw_receiver::RawRecvStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::StructuralPartialEq for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::Freeze for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::Send for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::Sync for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::Unpin for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::UnsafeUnpin for tst_pipeline::raw_receiver::RawRecvStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_receiver::RawRecvStats
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawRecvStats
 pub type tst_pipeline::raw_receiver::BoxedRawReceiver = tst_pipeline::raw_receiver::RawReceiver<alloc::boxed::Box<dyn tst_core::transport::RecvTransport>>
 pub mod tst_pipeline::raw_sender
+pub struct tst_pipeline::raw_sender::RawSendStats
+pub tst_pipeline::raw_sender::RawSendStats::bytes_sent: u64
+pub tst_pipeline::raw_sender::RawSendStats::packets_sent: u64
+impl core::clone::Clone for tst_pipeline::raw_sender::RawSendStats
+pub fn tst_pipeline::raw_sender::RawSendStats::clone(&self) -> tst_pipeline::raw_sender::RawSendStats
+impl core::cmp::Eq for tst_pipeline::raw_sender::RawSendStats
+impl core::cmp::PartialEq for tst_pipeline::raw_sender::RawSendStats
+pub fn tst_pipeline::raw_sender::RawSendStats::eq(&self, other: &tst_pipeline::raw_sender::RawSendStats) -> bool
+impl core::default::Default for tst_pipeline::raw_sender::RawSendStats
+pub fn tst_pipeline::raw_sender::RawSendStats::default() -> tst_pipeline::raw_sender::RawSendStats
+impl core::fmt::Debug for tst_pipeline::raw_sender::RawSendStats
+pub fn tst_pipeline::raw_sender::RawSendStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::StructuralPartialEq for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::Freeze for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::Send for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::Sync for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::Unpin for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::UnsafeUnpin for tst_pipeline::raw_sender::RawSendStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_sender::RawSendStats
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSendStats
 pub struct tst_pipeline::raw_sender::RawSender<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport> tst_pipeline::raw_sender::RawSender<T>
 pub fn tst_pipeline::raw_sender::RawSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
@@ -394,7 +415,7 @@ pub fn tst_pipeline::raw_sender::RawSender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::raw_sender::RawSender<T>::new(transport: T, config: tst_pipeline::raw_sender::RawSenderConfig) -> Self
 pub fn tst_pipeline::raw_sender::RawSender<T>::reset_stats(&mut self)
 pub fn tst_pipeline::raw_sender::RawSender<T>::send(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
-pub fn tst_pipeline::raw_sender::RawSender<T>::stats(&self) -> tst_pipeline::raw_sender::RawSenderStats
+pub fn tst_pipeline::raw_sender::RawSender<T>::stats(&self) -> tst_pipeline::raw_sender::RawSendStats
 pub fn tst_pipeline::raw_sender::RawSender<T>::transport(&self) -> &T
 impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::raw_sender::RawSender<T>
 pub fn tst_pipeline::raw_sender::RawSender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -421,27 +442,6 @@ impl core::marker::Unpin for tst_pipeline::raw_sender::RawSenderConfig
 impl core::marker::UnsafeUnpin for tst_pipeline::raw_sender::RawSenderConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_sender::RawSenderConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSenderConfig
-pub struct tst_pipeline::raw_sender::RawSenderStats
-pub tst_pipeline::raw_sender::RawSenderStats::bytes_sent: u64
-pub tst_pipeline::raw_sender::RawSenderStats::packets_sent: u64
-impl core::clone::Clone for tst_pipeline::raw_sender::RawSenderStats
-pub fn tst_pipeline::raw_sender::RawSenderStats::clone(&self) -> tst_pipeline::raw_sender::RawSenderStats
-impl core::cmp::Eq for tst_pipeline::raw_sender::RawSenderStats
-impl core::cmp::PartialEq for tst_pipeline::raw_sender::RawSenderStats
-pub fn tst_pipeline::raw_sender::RawSenderStats::eq(&self, other: &tst_pipeline::raw_sender::RawSenderStats) -> bool
-impl core::default::Default for tst_pipeline::raw_sender::RawSenderStats
-pub fn tst_pipeline::raw_sender::RawSenderStats::default() -> tst_pipeline::raw_sender::RawSenderStats
-impl core::fmt::Debug for tst_pipeline::raw_sender::RawSenderStats
-pub fn tst_pipeline::raw_sender::RawSenderStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::StructuralPartialEq for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::Freeze for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::Send for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::Sync for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::Unpin for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::UnsafeUnpin for tst_pipeline::raw_sender::RawSenderStats
-impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_sender::RawSenderStats
-impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSenderStats
 pub type tst_pipeline::raw_sender::BoxedRawSender = tst_pipeline::raw_sender::RawSender<alloc::boxed::Box<dyn tst_core::transport::Transport>>
 pub mod tst_pipeline::receiver
 pub mod tst_pipeline::receiver::sync
@@ -1041,23 +1041,23 @@ impl core::marker::Unpin for tst_pipeline::KlvSample
 impl core::marker::UnsafeUnpin for tst_pipeline::KlvSample
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::KlvSample
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::KlvSample
-pub struct tst_pipeline::ManagedReceiveTransport<R: tst_core::transport::RecvTransport>
-impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_receive::ManagedReceiveTransport<R>
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::new(inner: R, factory: alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, policy: tst_pipeline::reconnect::ReconnectPolicy) -> Self
-impl<R: tst_core::transport::RecvTransport> tst_core::transport::RecvTransport for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::close(&mut self)
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::is_alive(&self) -> bool
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::max_payload(&self) -> usize
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
-pub fn tst_pipeline::managed_receive::ManagedReceiveTransport<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
-impl<R> core::marker::Freeze for tst_pipeline::managed_receive::ManagedReceiveTransport<R> where R: core::marker::Freeze
-impl<R> core::marker::Send for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
-impl<R> !core::marker::Sync for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
-impl<R> core::marker::Unpin for tst_pipeline::managed_receive::ManagedReceiveTransport<R> where R: core::marker::Unpin
-impl<R> core::marker::UnsafeUnpin for tst_pipeline::managed_receive::ManagedReceiveTransport<R> where R: core::marker::UnsafeUnpin
-impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
-impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_receive::ManagedReceiveTransport<R>
+pub struct tst_pipeline::ManagedRecvTransport<R: tst_core::transport::RecvTransport>
+impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_receive::ManagedRecvTransport<R>
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new(inner: R, factory: alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, policy: tst_pipeline::reconnect::ReconnectPolicy) -> Self
+impl<R: tst_core::transport::RecvTransport> tst_core::transport::RecvTransport for tst_pipeline::managed_receive::ManagedRecvTransport<R>
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::close(&mut self)
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::is_alive(&self) -> bool
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::max_payload(&self) -> usize
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
+impl<R> core::marker::Freeze for tst_pipeline::managed_receive::ManagedRecvTransport<R> where R: core::marker::Freeze
+impl<R> core::marker::Send for tst_pipeline::managed_receive::ManagedRecvTransport<R>
+impl<R> !core::marker::Sync for tst_pipeline::managed_receive::ManagedRecvTransport<R>
+impl<R> core::marker::Unpin for tst_pipeline::managed_receive::ManagedRecvTransport<R> where R: core::marker::Unpin
+impl<R> core::marker::UnsafeUnpin for tst_pipeline::managed_receive::ManagedRecvTransport<R> where R: core::marker::UnsafeUnpin
+impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_receive::ManagedRecvTransport<R>
+impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_receive::ManagedRecvTransport<R>
 pub struct tst_pipeline::ManagedTransport<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport + 'static> tst_pipeline::reconnect::ManagedTransport<T>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::new<F>(inner: T, factory: F, policy: tst_pipeline::reconnect::ReconnectPolicy) -> Self where F: core::ops::function::Fn() -> core::result::Result<T, tst_core::transport::TransportError> + core::marker::Send + core::marker::Sync + 'static
@@ -1200,7 +1200,7 @@ pub fn tst_pipeline::raw_receiver::RawReceiver<R>::new(transport: R, _config: ts
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::recv_one(&mut self) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::transport::TransportError>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
-pub fn tst_pipeline::raw_receiver::RawReceiver<R>::stats(&self) -> tst_pipeline::raw_receiver::RawReceiverStats
+pub fn tst_pipeline::raw_receiver::RawReceiver<R>::stats(&self) -> tst_pipeline::raw_receiver::RawRecvStats
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiver<R>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::raw_receiver::RawReceiver<R>
@@ -1226,27 +1226,48 @@ impl core::marker::Unpin for tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::marker::UnsafeUnpin for tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawReceiverConfig
-pub struct tst_pipeline::RawReceiverStats
-pub tst_pipeline::RawReceiverStats::bytes_received: u64
-pub tst_pipeline::RawReceiverStats::packets_received: u64
-impl core::clone::Clone for tst_pipeline::raw_receiver::RawReceiverStats
-pub fn tst_pipeline::raw_receiver::RawReceiverStats::clone(&self) -> tst_pipeline::raw_receiver::RawReceiverStats
-impl core::cmp::Eq for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::cmp::PartialEq for tst_pipeline::raw_receiver::RawReceiverStats
-pub fn tst_pipeline::raw_receiver::RawReceiverStats::eq(&self, other: &tst_pipeline::raw_receiver::RawReceiverStats) -> bool
-impl core::default::Default for tst_pipeline::raw_receiver::RawReceiverStats
-pub fn tst_pipeline::raw_receiver::RawReceiverStats::default() -> tst_pipeline::raw_receiver::RawReceiverStats
-impl core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiverStats
-pub fn tst_pipeline::raw_receiver::RawReceiverStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::StructuralPartialEq for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::Freeze for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::Send for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::Sync for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::Unpin for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::marker::UnsafeUnpin for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_receiver::RawReceiverStats
-impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawReceiverStats
+pub struct tst_pipeline::RawRecvStats
+pub tst_pipeline::RawRecvStats::bytes_received: u64
+pub tst_pipeline::RawRecvStats::packets_received: u64
+impl core::clone::Clone for tst_pipeline::raw_receiver::RawRecvStats
+pub fn tst_pipeline::raw_receiver::RawRecvStats::clone(&self) -> tst_pipeline::raw_receiver::RawRecvStats
+impl core::cmp::Eq for tst_pipeline::raw_receiver::RawRecvStats
+impl core::cmp::PartialEq for tst_pipeline::raw_receiver::RawRecvStats
+pub fn tst_pipeline::raw_receiver::RawRecvStats::eq(&self, other: &tst_pipeline::raw_receiver::RawRecvStats) -> bool
+impl core::default::Default for tst_pipeline::raw_receiver::RawRecvStats
+pub fn tst_pipeline::raw_receiver::RawRecvStats::default() -> tst_pipeline::raw_receiver::RawRecvStats
+impl core::fmt::Debug for tst_pipeline::raw_receiver::RawRecvStats
+pub fn tst_pipeline::raw_receiver::RawRecvStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::StructuralPartialEq for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::Freeze for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::Send for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::Sync for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::Unpin for tst_pipeline::raw_receiver::RawRecvStats
+impl core::marker::UnsafeUnpin for tst_pipeline::raw_receiver::RawRecvStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_receiver::RawRecvStats
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawRecvStats
+pub struct tst_pipeline::RawSendStats
+pub tst_pipeline::RawSendStats::bytes_sent: u64
+pub tst_pipeline::RawSendStats::packets_sent: u64
+impl core::clone::Clone for tst_pipeline::raw_sender::RawSendStats
+pub fn tst_pipeline::raw_sender::RawSendStats::clone(&self) -> tst_pipeline::raw_sender::RawSendStats
+impl core::cmp::Eq for tst_pipeline::raw_sender::RawSendStats
+impl core::cmp::PartialEq for tst_pipeline::raw_sender::RawSendStats
+pub fn tst_pipeline::raw_sender::RawSendStats::eq(&self, other: &tst_pipeline::raw_sender::RawSendStats) -> bool
+impl core::default::Default for tst_pipeline::raw_sender::RawSendStats
+pub fn tst_pipeline::raw_sender::RawSendStats::default() -> tst_pipeline::raw_sender::RawSendStats
+impl core::fmt::Debug for tst_pipeline::raw_sender::RawSendStats
+pub fn tst_pipeline::raw_sender::RawSendStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::StructuralPartialEq for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::Freeze for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::Send for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::Sync for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::Unpin for tst_pipeline::raw_sender::RawSendStats
+impl core::marker::UnsafeUnpin for tst_pipeline::raw_sender::RawSendStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_sender::RawSendStats
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSendStats
 pub struct tst_pipeline::RawSender<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport> tst_pipeline::raw_sender::RawSender<T>
 pub fn tst_pipeline::raw_sender::RawSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
@@ -1255,7 +1276,7 @@ pub fn tst_pipeline::raw_sender::RawSender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::raw_sender::RawSender<T>::new(transport: T, config: tst_pipeline::raw_sender::RawSenderConfig) -> Self
 pub fn tst_pipeline::raw_sender::RawSender<T>::reset_stats(&mut self)
 pub fn tst_pipeline::raw_sender::RawSender<T>::send(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
-pub fn tst_pipeline::raw_sender::RawSender<T>::stats(&self) -> tst_pipeline::raw_sender::RawSenderStats
+pub fn tst_pipeline::raw_sender::RawSender<T>::stats(&self) -> tst_pipeline::raw_sender::RawSendStats
 pub fn tst_pipeline::raw_sender::RawSender<T>::transport(&self) -> &T
 impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::raw_sender::RawSender<T>
 pub fn tst_pipeline::raw_sender::RawSender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -1282,27 +1303,6 @@ impl core::marker::Unpin for tst_pipeline::raw_sender::RawSenderConfig
 impl core::marker::UnsafeUnpin for tst_pipeline::raw_sender::RawSenderConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_sender::RawSenderConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSenderConfig
-pub struct tst_pipeline::RawSenderStats
-pub tst_pipeline::RawSenderStats::bytes_sent: u64
-pub tst_pipeline::RawSenderStats::packets_sent: u64
-impl core::clone::Clone for tst_pipeline::raw_sender::RawSenderStats
-pub fn tst_pipeline::raw_sender::RawSenderStats::clone(&self) -> tst_pipeline::raw_sender::RawSenderStats
-impl core::cmp::Eq for tst_pipeline::raw_sender::RawSenderStats
-impl core::cmp::PartialEq for tst_pipeline::raw_sender::RawSenderStats
-pub fn tst_pipeline::raw_sender::RawSenderStats::eq(&self, other: &tst_pipeline::raw_sender::RawSenderStats) -> bool
-impl core::default::Default for tst_pipeline::raw_sender::RawSenderStats
-pub fn tst_pipeline::raw_sender::RawSenderStats::default() -> tst_pipeline::raw_sender::RawSenderStats
-impl core::fmt::Debug for tst_pipeline::raw_sender::RawSenderStats
-pub fn tst_pipeline::raw_sender::RawSenderStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::StructuralPartialEq for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::Freeze for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::Send for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::Sync for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::Unpin for tst_pipeline::raw_sender::RawSenderStats
-impl core::marker::UnsafeUnpin for tst_pipeline::raw_sender::RawSenderStats
-impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::raw_sender::RawSenderStats
-impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSenderStats
 pub struct tst_pipeline::Receiver<R: tst_core::transport::RecvTransport>
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::receiver::Receiver<R>
 pub fn tst_pipeline::receiver::Receiver<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>

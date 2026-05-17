@@ -447,7 +447,9 @@ impl Demuxer {
                         .entry(stream.pid)
                         .or_insert_with(|| crate::mpegts::stats::StreamStats {
                             pid: stream.pid,
-                            stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
+                            stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
+                                &stream.kind,
+                            )),
                             program_number,
                             ..Default::default()
                         })
@@ -1047,7 +1049,9 @@ impl Demuxer {
                             .entry(stream.pid)
                             .or_insert_with(|| crate::mpegts::stats::StreamStats {
                                 pid: stream.pid,
-                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
+                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
+                                    &stream.kind,
+                                )),
                                 program_number,
                                 ..Default::default()
                             })
@@ -1066,7 +1070,9 @@ impl Demuxer {
                             .entry(stream.pid)
                             .or_insert_with(|| crate::mpegts::stats::StreamStats {
                                 pid: stream.pid,
-                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
+                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
+                                    &stream.kind,
+                                )),
                                 program_number,
                                 ..Default::default()
                             })
@@ -1254,7 +1260,9 @@ impl Demuxer {
                         let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
                             crate::mpegts::stats::StreamStats {
                                 pid: stream.pid,
-                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
+                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
+                                    &stream.kind,
+                                )),
                                 program_number,
                                 ..Default::default()
                             }

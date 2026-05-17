@@ -62,7 +62,7 @@ pub use pairing::{
     KlvSample, Pairer, PairerConfig, PairerMode, PairerOutput, PairerStats, VideoSample,
 };
 pub use raw_receiver::{RawReceiver, RawReceiverConfig, RawRecvStats};
-pub use raw_sender::{RawSender, RawSenderConfig, RawSendStats};
+pub use raw_sender::{RawSendStats, RawSender, RawSenderConfig};
 pub use receiver::{Receiver, ReceiverConfig, ReceiverStats};
 pub use reconnect::{
     BackoffStrategy, GapBuffer, ManagedTransport, OverflowPolicy, ReconnectPolicy,

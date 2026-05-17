@@ -189,7 +189,6 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::AcceptError
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::AcceptError
 #[non_exhaustive] pub enum tst_srt::error::AddrError
 pub tst_srt::error::AddrError::Io(std::io::error::Error)
-pub tst_srt::error::AddrError::Ipv6Unsupported
 pub tst_srt::error::AddrError::Resolve(alloc::string::String)
 impl core::convert::From<std::io::error::Error> for tst_srt::error::AddrError
 pub fn tst_srt::error::AddrError::from(source: std::io::error::Error) -> Self

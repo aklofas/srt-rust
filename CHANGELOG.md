@@ -7,6 +7,41 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 3.2 naming consistency + Stats typing (plan TBD-by-merge)
+
+**Breaking (pre-1.0):**
+
+- Renamed `ManagedReceiveTransport` → `ManagedRecvTransport` (symmetric
+  with `ManagedTransport` and the underlying `RecvTransport` trait).
+  C ABI type names (`tst_managed_demux_receiver_t` etc.) unchanged.
+- Renamed `RawSenderStats` → `RawSendStats` and `RawReceiverStats` →
+  `RawRecvStats` (the one confusable Stats pair in the workspace).
+- Renamed C ABI mirror types `TstRawSenderStats` → `TstRawSendStats`,
+  `TstRawReceiverStats` → `TstRawRecvStats`. Header typedefs
+  `tst_raw_sender_stats_t` → `tst_raw_send_stats_t` and
+  `tst_raw_receiver_stats_t` → `tst_raw_recv_stats_t`. Affects
+  `tst_raw_*_get_stats` / `tst_managed_raw_*_get_stats` function
+  signatures.
+- Changed `StreamStats.stream_type: u8` → `StreamStats.stream_type:
+  StreamTypeCode`. C ABI `tst_stream_stats_t.stream_type: uint8_t`
+  unchanged (Rust→C bridge calls `.as_byte()` at conversion).
+- Removed deprecated `AddrError::Ipv6Unsupported` variant (deprecated
+  since plan #29 / 2026-05-06 when IPv6 shipped).
+
+**Added:**
+
+- New `tst_core::mpegts::common::StreamTypeCode` enum:
+  `Known(StreamType)` for codes this library recognizes,
+  `Unknown(u8)` for codes seen in real-world streams outside the
+  typed `StreamType` set. `#[non_exhaustive]`. Methods: `from_byte`,
+  `as_byte`, `known`.
+
+**Internal:**
+
+- `#[non_exhaustive]` BASELINE bumped 71 → 72 in `.github/workflows/ci.yml`.
+
+---
+
 ## [Unreleased] — Wave 2.3 config conventions and symmetry (plan #72)
 
 ### Added

@@ -442,9 +442,7 @@ fn managed_open_listener_inner(
     finish_managed_open(managed)
 }
 
-fn finish_managed_open(
-    managed: ManagedRecvTransport<SrtTransport>,
-) -> *mut TstManagedRawReceiver {
+fn finish_managed_open(managed: ManagedRecvTransport<SrtTransport>) -> *mut TstManagedRawReceiver {
     let rx = RawReceiver::new(managed, RawReceiverConfig::default());
     let cancel = rx.cancel_handle();
     let was_cancelled = Arc::new(AtomicBool::new(false));

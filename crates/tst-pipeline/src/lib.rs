@@ -56,7 +56,7 @@ pub use dyn_aliases::{
     BoxedDemuxReceiver, BoxedMuxSender, BoxedRawReceiver, BoxedRawSender, BoxedReceiver,
     BoxedSender,
 };
-pub use managed_receive::ManagedReceiveTransport;
+pub use managed_receive::ManagedRecvTransport;
 pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderStats};
 pub use pairing::{
     KlvSample, Pairer, PairerConfig, PairerMode, PairerOutput, PairerStats, VideoSample,

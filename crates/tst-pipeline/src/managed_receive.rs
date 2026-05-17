@@ -1,4 +1,4 @@
-//! `ManagedReceiveTransport<R>` — reconnect on receive break.
+//! `ManagedRecvTransport<R>` — reconnect on receive break.
 //!
 //! Sibling to [`ManagedTransport`][crate::reconnect::ManagedTransport]:
 //! same factory-closure + [`ReconnectPolicy`] cadence pattern, applied to the
@@ -8,14 +8,14 @@
 //!
 //! ## Composition shape
 //!
-//! `ManagedReceiveTransport` implements [`RecvTransport`], so it slots into
+//! `ManagedRecvTransport` implements [`RecvTransport`], so it slots into
 //! any of the receive shells (`RawReceiver`, `Receiver`, `DemuxReceiver`)
 //! transparently:
 //!
 //! ```ignore
 //! let factory = || SrtTransport::connect(addr, &cfg);
 //! let inner = factory()?;
-//! let managed = ManagedReceiveTransport::new(inner, Box::new(factory), ReconnectPolicy::default());
+//! let managed = ManagedRecvTransport::new(inner, Box::new(factory), ReconnectPolicy::default());
 //! let rx = DemuxReceiver::new(managed);
 //! ```
 //!
@@ -80,10 +80,10 @@ use tst_core::transport::TransportError;
 /// `recv_bytes` and `cancel_handle` snapshot the most-recently-built
 /// inner's cancel handle through an internal [`Mutex`] and panic if
 /// that lock has been poisoned by a previous panic in another thread
-/// inside the same `ManagedReceiveTransport`. This is the standard
+/// inside the same `ManagedRecvTransport`. This is the standard
 /// Rust `Mutex` behavior; a poisoned lock signals that the cancel
 /// snapshot may be inconsistent and the wrapper should be discarded.
-pub struct ManagedReceiveTransport<R: RecvTransport> {
+pub struct ManagedRecvTransport<R: RecvTransport> {
     /// Currently-live inner transport. `None` between a tear-down and a
     /// successful factory rebuild.
     inner: Option<R>,
@@ -104,7 +104,7 @@ pub struct ManagedReceiveTransport<R: RecvTransport> {
     inner_cancel: Arc<Mutex<Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>>>,
 }
 
-impl<R: RecvTransport> ManagedReceiveTransport<R> {
+impl<R: RecvTransport> ManagedRecvTransport<R> {
     /// Build a new decorator around an already-connected `inner`.
     ///
     /// `factory` is called when `inner` later fails; on the very first
@@ -129,7 +129,7 @@ impl<R: RecvTransport> ManagedReceiveTransport<R> {
     }
 }
 
-impl<R: RecvTransport> RecvTransport for ManagedReceiveTransport<R> {
+impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
         if self.closed || self.cancelled.load(std::sync::atomic::Ordering::Acquire) {
             return Err(TransportError::Closed);
@@ -317,7 +317,7 @@ mod tests {
             calls: 0,
             ok_until: 1,
         };
-        let mut managed = ManagedReceiveTransport::new(initial, factory, fast_policy(Some(5)));
+        let mut managed = ManagedRecvTransport::new(initial, factory, fast_policy(Some(5)));
 
         let mut buf = [0u8; 8];
         // First call: from initial inner, returns Ok(1).
@@ -341,7 +341,7 @@ mod tests {
             calls: 0,
             ok_until: 0,
         }; // breaks immediately
-        let mut managed = ManagedReceiveTransport::new(initial, factory, fast_policy(Some(2)));
+        let mut managed = ManagedRecvTransport::new(initial, factory, fast_policy(Some(2)));
 
         let mut buf = [0u8; 8];
         let err = managed.recv_bytes(&mut buf).unwrap_err();
@@ -378,7 +378,7 @@ mod tests {
         });
 
         let mut managed =
-            ManagedReceiveTransport::new(BackpressureRecv, factory, fast_policy(Some(5)));
+            ManagedRecvTransport::new(BackpressureRecv, factory, fast_policy(Some(5)));
 
         let mut buf = [0u8; 8];
         let err = managed.recv_bytes(&mut buf).unwrap_err();
@@ -406,7 +406,7 @@ mod tests {
             calls: 0,
             ok_until: 1,
         };
-        let mut managed = ManagedReceiveTransport::new(initial, factory, fast_policy(Some(5)));
+        let mut managed = ManagedRecvTransport::new(initial, factory, fast_policy(Some(5)));
 
         managed.close();
         assert!(!managed.is_alive());
@@ -467,7 +467,7 @@ mod tests {
                 cancelled: cancelled_cl.clone(),
             })
         });
-        let managed = ManagedReceiveTransport::new(inner, factory, fast_policy(Some(2)));
+        let managed = ManagedRecvTransport::new(inner, factory, fast_policy(Some(2)));
 
         let h = managed.cancel_handle().expect("cancellable inner -> Some");
         h.cancel();

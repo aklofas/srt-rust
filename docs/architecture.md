@@ -172,7 +172,7 @@ error. The full mechanics of each shell are covered in
               └──────────────┬────────────────────────┘
                              │ R: RecvTransport
               ┌──────────────┴────────────────────────┐
-              │  ManagedReceiveTransport<R>           │  (optional)
+              │  ManagedRecvTransport<R>           │  (optional)
               │  reconnect on Closed/Broken           │
               └──────────────┬────────────────────────┘
                              │ R: RecvTransport
@@ -211,7 +211,7 @@ before the demuxer parses them. The canonical use case is a
 "write-to-disk + forward-via-RTP + demux-for-KLV" workflow where
 multiple consumers tee off the same byte stream in one pass.
 
-`ManagedReceiveTransport<R>` is the receive-side reconnect decorator,
+`ManagedRecvTransport<R>` is the receive-side reconnect decorator,
 sibling to `ManagedTransport<T>`. It implements `RecvTransport`, so it
 slots between any receive shell and the underlying transport
 transparently. **It has no gap buffer** — receive-side bytes that

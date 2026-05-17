@@ -16,7 +16,7 @@ use crate::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use tst_pipeline::ManagedReceiveTransport;
+use tst_pipeline::ManagedRecvTransport;
 use tst_pipeline::TransportCancel;
 use tst_pipeline::TransportError;
 use tst_pipeline::{RawReceiver, RawReceiverConfig};
@@ -326,7 +326,7 @@ pub unsafe extern "C" fn tst_raw_receiver_recv(
 // ------------------------------------------------------------------
 
 pub struct TstManagedRawReceiver {
-    inner: Handle<RawReceiver<ManagedReceiveTransport<SrtTransport>>>,
+    inner: Handle<RawReceiver<ManagedRecvTransport<SrtTransport>>>,
     cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
     was_cancelled: Arc<AtomicBool>,
 }
@@ -412,7 +412,7 @@ fn managed_open_caller_inner(
     let cfg_for_reconnect = socket_cfg.clone();
     let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> =
         Box::new(move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect));
-    let managed = ManagedReceiveTransport::new(initial, factory, policy);
+    let managed = ManagedRecvTransport::new(initial, factory, policy);
     finish_managed_open(managed)
 }
 
@@ -438,12 +438,12 @@ fn managed_open_listener_inner(
     let cfg_for_relisten = listener_cfg.clone();
     let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> =
         Box::new(move || crate::listen::listen_srt(&host, port, &cfg_for_relisten));
-    let managed = ManagedReceiveTransport::new(initial, factory, policy);
+    let managed = ManagedRecvTransport::new(initial, factory, policy);
     finish_managed_open(managed)
 }
 
 fn finish_managed_open(
-    managed: ManagedReceiveTransport<SrtTransport>,
+    managed: ManagedRecvTransport<SrtTransport>,
 ) -> *mut TstManagedRawReceiver {
     let rx = RawReceiver::new(managed, RawReceiverConfig::default());
     let cancel = rx.cancel_handle();
@@ -464,7 +464,7 @@ fn finish_managed_open(
 /// The plain `tst_raw_receiver_recv` maps `TransportError::Broken` on
 /// a non-cancelled handle to `TST_E_END_OF_STREAM` (peer disconnect at
 /// the bare-transport layer is semantically end-of-stream). The managed
-/// version does NOT apply that mapping: `ManagedReceiveTransport`
+/// version does NOT apply that mapping: `ManagedRecvTransport`
 /// already retries internally on Broken, so a Broken that reaches this
 /// function means all reconnect attempts have been exhausted — that is
 /// a hard transport failure (`TST_E_TRANSPORT`), not an end-of-stream.

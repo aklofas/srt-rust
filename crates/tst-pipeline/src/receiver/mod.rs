@@ -253,7 +253,7 @@ impl<R: RecvTransport> Receiver<R> {
     /// Intended for reconnect scenarios at a higher composition layer: when
     /// the underlying transport has been re-established, bytes left over
     /// from the dead connection must not seed the new alignment search.
-    /// Note that `ManagedReceiveTransport` itself does **not** own the
+    /// Note that `ManagedRecvTransport` itself does **not** own the
     /// `Receiver` (it lives one layer up, inside `DemuxReceiver`); this method
     /// exists for a future `ManagedReceiver` shell to call.
     pub fn reset_sync(&mut self) {

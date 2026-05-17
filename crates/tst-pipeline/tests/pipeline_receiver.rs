@@ -204,10 +204,10 @@ fn byte_sinks_see_every_chunk() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 3: ManagedReceiveTransport invokes the factory on broken inner.
+// Test 3: ManagedRecvTransport invokes the factory on broken inner.
 // ---------------------------------------------------------------------------
 
-/// Confirms that `ManagedReceiveTransport` rebuilds via the supplied factory
+/// Confirms that `ManagedRecvTransport` rebuilds via the supplied factory
 /// when its inner transport breaks. The initial inner is constructed empty
 /// (so the very first `recv_bytes` returns `Closed`), driving the decorator
 /// straight into the reconnect path; the factory then supplies a fresh
@@ -216,7 +216,7 @@ fn byte_sinks_see_every_chunk() {
 fn managed_receive_reconnects_through_factory() {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
-    use tst_pipeline::ManagedReceiveTransport;
+    use tst_pipeline::ManagedRecvTransport;
     use tst_pipeline::reconnect::{BackoffStrategy, ReconnectPolicy};
 
     let attempts = Arc::new(Mutex::new(0u32));
@@ -241,7 +241,7 @@ fn managed_receive_reconnects_through_factory() {
         ..Default::default()
     };
 
-    let mut managed = ManagedReceiveTransport::new(initial, factory, policy);
+    let mut managed = ManagedRecvTransport::new(initial, factory, policy);
 
     let mut buf = [0u8; 188];
     let n = managed.recv_bytes(&mut buf).unwrap();

@@ -371,7 +371,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `DemuxReceiver<R>` | ✅ Full | `RecvTransport → Receiver → Demuxer` shell. `recv_event` → `DemuxEvent`; auto-flushes demuxer on `Closed`. Implements `Iterator<Item = Result<DemuxEvent, DemuxReceiverError>>`. |
 | `Receiver<R>` | ✅ Full | Pull bytes from a `RecvTransport`, run TS sync recovery, emit 188-byte aligned packets via `next_packet`. |
 | `RawReceiver<R>` | ✅ Full | One `recv_one` call returns one owned byte vec — no TS framing or demux. |
-| `ManagedReceiveTransport<R>` | ✅ Full | Reconnect decorator for the receive direction. No gap buffer (recv-side bytes that never arrived can't be replayed); restarts on `Closed` / `Broken` per `ReconnectPolicy`. |
+| `ManagedRecvTransport<R>` | ✅ Full | Reconnect decorator for the receive direction. No gap buffer (recv-side bytes that never arrived can't be replayed); restarts on `Closed` / `Broken` per `ReconnectPolicy`. |
 | `RecvTransport` trait | ✅ Full | Receive-side counterpart to `Transport`: `recv_bytes`, `max_payload`, `is_alive`, `close`. Implemented by `SrtTransport` and any consumer-side mock. |
 | `SrtTransport` impl `RecvTransport` | ✅ Full | Same `SrtTransport` wrapper handles both send and receive directions on a connected SRT `Socket`. |
 | `DemuxReceiver::add_byte_sink` fan-out | ✅ Full | Register `Box<dyn FnMut(&[u8]) + Send>` callbacks; each sink sees every 188-byte TS packet in registration order before the demuxer parses it. |

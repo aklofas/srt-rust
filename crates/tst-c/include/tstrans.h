@@ -1394,7 +1394,7 @@ struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener_wi
  * **Asymmetry with plain receiver:** plain `tst_demux_receiver_recv_event`
  * maps `TransportError::Broken` on a non-cancelled handle to
  * `TST_E_END_OF_STREAM`. The managed version does NOT apply that mapping —
- * `ManagedReceiveTransport` retries internally on Broken, so a Broken
+ * `ManagedRecvTransport` retries internally on Broken, so a Broken
  * reaching this function means reconnect attempts are exhausted: a hard
  * transport failure (`TST_E_TRANSPORT`), not end-of-stream.
  */
@@ -2017,7 +2017,7 @@ struct tst_managed_raw_receiver_t *tst_managed_raw_receiver_open_listener(const 
  * The plain `tst_raw_receiver_recv` maps `TransportError::Broken` on
  * a non-cancelled handle to `TST_E_END_OF_STREAM` (peer disconnect at
  * the bare-transport layer is semantically end-of-stream). The managed
- * version does NOT apply that mapping: `ManagedReceiveTransport`
+ * version does NOT apply that mapping: `ManagedRecvTransport`
  * already retries internally on Broken, so a Broken that reaches this
  * function means all reconnect attempts have been exhausted — that is
  * a hard transport failure (`TST_E_TRANSPORT`), not an end-of-stream.
@@ -2331,7 +2331,7 @@ struct tst_managed_receiver_t *tst_managed_receiver_open_listener(const char *sr
  * The plain `tst_receiver_recv_packet` maps `TransportError::Broken`
  * on a non-cancelled handle to `TST_E_END_OF_STREAM` (peer disconnect at
  * the bare-transport layer is semantically end-of-stream). The managed
- * version does NOT apply that mapping: `ManagedReceiveTransport`
+ * version does NOT apply that mapping: `ManagedRecvTransport`
  * already retries internally on Broken, so a Broken that reaches this
  * function means all reconnect attempts have been exhausted — that is
  * a hard transport failure (`TST_E_TRANSPORT`), not an end-of-stream.

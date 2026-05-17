@@ -67,7 +67,7 @@ impl ReconnectPolicy {
     /// When `max_attempts == None`, retries forever (always returns `Some`).
     ///
     /// Used by both `ManagedTransport` (send side) and
-    /// `ManagedReceiveTransport` (receive side) so the backoff math lives in
+    /// `ManagedRecvTransport` (receive side) so the backoff math lives in
     /// one place.
     pub fn next_delay(&self, attempt: u32) -> Option<Duration> {
         if let Some(max) = self.max_attempts {

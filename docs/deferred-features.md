@@ -777,7 +777,7 @@ the trigger that would unblock it.
   forces optional fields that are always zero for plain (non-managed)
   handles, which muddies the C ABI shape. The cleaner home is a
   separate `ManagedTransportStats` accessor exposed on the
-  `Sender<ManagedTransport<...>>` / `Receiver<ManagedReceiveTransport<...>>`
+  `Sender<ManagedTransport<...>>` / `Receiver<ManagedRecvTransport<...>>`
   variants only — but that means a second per-handle accessor, a
   second C struct, and decisions about how plain handles behave when
   callers ask (return zeros / return error). The first stats pass

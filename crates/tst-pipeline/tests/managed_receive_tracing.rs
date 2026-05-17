@@ -1,5 +1,5 @@
 //! Verifies `tracing` instrumentation on the receiver-side reconnect loop
-//! (`ManagedReceiveTransport::recv_bytes`).
+//! (`ManagedRecvTransport::recv_bytes`).
 //!
 //! Mirror of `reconnect_tracing.rs` for the receive side. Uses
 //! `tracing-test` to assert that the documented log emissions (info on
@@ -11,11 +11,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use tracing_test::traced_test;
 use tst_pipeline::{
-    BackoffStrategy, ManagedReceiveTransport, ReconnectPolicy, RecvTransport, TransportError,
+    BackoffStrategy, ManagedRecvTransport, ReconnectPolicy, RecvTransport, TransportError,
 };
 
 /// Mock `RecvTransport` whose every `recv_bytes` returns `Broken` so the
-/// `ManagedReceiveTransport` decorator is forced into the reconnect path.
+/// `ManagedRecvTransport` decorator is forced into the reconnect path.
 struct AlwaysBrokenRecv {
     recvs: Arc<AtomicU32>,
 }
@@ -56,7 +56,7 @@ fn receiver_reconnect_emits_info_on_attempt_and_warn_on_give_up() {
     let inner = AlwaysBrokenRecv {
         recvs: Arc::new(AtomicU32::new(0)),
     };
-    let mut managed = ManagedReceiveTransport::new(inner, factory, policy);
+    let mut managed = ManagedRecvTransport::new(inner, factory, policy);
 
     // Drive the reconnect path: a single recv triggers Broken → drop inner →
     // factory failures within the policy budget → give-up returns Closed.

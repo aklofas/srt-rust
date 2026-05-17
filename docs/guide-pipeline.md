@@ -595,10 +595,10 @@ implementors can opt in only when they own a tear-down resource.
 has been broken; `TransportError::Backpressure` on a recv timeout
 (transport still alive, caller may retry).
 
-### `ManagedReceiveTransport<R>`
+### `ManagedRecvTransport<R>`
 
 ```rust,ignore
-impl<R: RecvTransport> ManagedReceiveTransport<R> {
+impl<R: RecvTransport> ManagedRecvTransport<R> {
     pub fn new(
         inner: R,
         factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,

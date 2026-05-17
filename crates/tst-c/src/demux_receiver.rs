@@ -26,7 +26,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use tst_pipeline::DemuxReceiver;
 use tst_pipeline::DemuxReceiverError;
-use tst_pipeline::ManagedReceiveTransport;
+use tst_pipeline::ManagedRecvTransport;
 use tst_pipeline::TransportCancel;
 use tst_pipeline::TransportError;
 use tst_srt::SrtTransport;
@@ -258,7 +258,7 @@ pub unsafe extern "C" fn tst_demux_receiver_recv_event(
         Err(DemuxReceiverError::Transport(e)) => {
             // Same Broken-on-non-cancelled → EOS mapping as Phase 2's
             // tst_receiver_recv_packet (peer FIN surfaces as Broken
-            // from libsrt; ManagedReceiveTransport retries internally,
+            // from libsrt; ManagedRecvTransport retries internally,
             // so a Broken reaching the plain receiver is a peer close).
             if let TransportError::Broken(_) = &e {
                 if !was_cancelled.load(Ordering::Acquire) {
@@ -515,7 +515,7 @@ pub unsafe extern "C" fn tst_demux_receiver_get_stream_stats(
 // ------------------------------------------------------------------
 
 pub struct TstManagedDemuxReceiver {
-    inner: Handle<DemuxReceiver<ManagedReceiveTransport<SrtTransport>>>,
+    inner: Handle<DemuxReceiver<ManagedRecvTransport<SrtTransport>>>,
     arena: Mutex<EventArena>,
     stream_stats_buf: Mutex<Vec<crate::stats::TstStreamStats>>,
     cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
@@ -629,7 +629,7 @@ fn managed_open_caller_inner(
     let cfg_for_reconnect = socket_cfg.clone();
     let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> =
         Box::new(move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect));
-    let managed = ManagedReceiveTransport::new(initial, factory, policy);
+    let managed = ManagedRecvTransport::new(initial, factory, policy);
     finish_managed_open(managed, opts)
 }
 
@@ -652,12 +652,12 @@ fn managed_open_listener_inner(
     let cfg_for_relisten = listener_cfg.clone();
     let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> =
         Box::new(move || crate::listen::listen_srt(&host, port, &cfg_for_relisten));
-    let managed = ManagedReceiveTransport::new(initial, factory, policy);
+    let managed = ManagedRecvTransport::new(initial, factory, policy);
     finish_managed_open(managed, opts)
 }
 
 fn finish_managed_open(
-    managed: ManagedReceiveTransport<SrtTransport>,
+    managed: ManagedRecvTransport<SrtTransport>,
     opts: Option<tst_core::mpegts::demux::DemuxerConfig>,
 ) -> *mut TstManagedDemuxReceiver {
     let rx = match opts {
@@ -680,7 +680,7 @@ fn finish_managed_open(
 /// **Asymmetry with plain receiver:** plain `tst_demux_receiver_recv_event`
 /// maps `TransportError::Broken` on a non-cancelled handle to
 /// `TST_E_END_OF_STREAM`. The managed version does NOT apply that mapping —
-/// `ManagedReceiveTransport` retries internally on Broken, so a Broken
+/// `ManagedRecvTransport` retries internally on Broken, so a Broken
 /// reaching this function means reconnect attempts are exhausted: a hard
 /// transport failure (`TST_E_TRANSPORT`), not end-of-stream.
 #[unsafe(no_mangle)]

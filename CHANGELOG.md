@@ -405,7 +405,7 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
   `SrtRecvTransport` implement it by mapping
   `crate::socket::Stats` (libsrt `CBytePerfMon` snapshot) through a
   `map_stats` free function. `ManagedTransport` /
-  `ManagedReceiveTransport` forward through
+  `ManagedRecvTransport` forward through
   `inner.as_ref().and_then(...)`, returning `None` mid-reconnect.
 - **`MuxSender::socket_stats()`, `Sender::socket_stats()`,
   `Receiver::socket_stats()`, `RawReceiver::socket_stats()`,
@@ -1492,7 +1492,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   surfaces.** Three categories: stream-handle `pack()` debug-asserts
   on out-of-range indices (Video / Klv / Audio / Subtitle, 4 sites);
   internal Mutex poison on `MuxSender` / `ManagedTransport` /
-  `ManagedReceiveTransport` (documented at the struct level, 3 sites);
+  `ManagedRecvTransport` (documented at the struct level, 3 sites);
   libsrt startup failure on `Socket::connect_with` /
   `Listener::bind_with` (2 sites). Internal `.unwrap()` /
   `debug_assert!` sites that are unreachable invariants are

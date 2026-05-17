@@ -4352,6 +4352,7 @@ pub fn tst_core::mpegts::mux::Muxer::push_video(&mut self, nal: &[u8], pts_90khz
 pub fn tst_core::mpegts::mux::Muxer::push_video_to(&mut self, handle: tst_core::mpegts::mux::VideoStreamHandle, nal: &[u8], pts_90khz: i64, key_frame: bool) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::reset_stats(&mut self)
 pub fn tst_core::mpegts::mux::Muxer::stats(&self) -> tst_core::mpegts::mux::MuxerStats
+pub fn tst_core::mpegts::mux::Muxer::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 pub fn tst_core::mpegts::mux::Muxer::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::SubtitleStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::SubtitleStreamHandle>, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::VideoStreamHandle>

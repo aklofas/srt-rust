@@ -165,6 +165,11 @@ pub struct Muxer {
     /// never modified.
     per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
 
+    /// Per-PID codec-specific counters. Allocated lazily on first push
+    /// for a PID whose StreamSpec falls into a counted family. Subtitle
+    /// PIDs and audio PIDs with LATM/AC-3 codecs do NOT get an entry.
+    stream_codec_counters: BTreeMap<u16, crate::mpegts::stats::StreamCodecCounters>,
+
     /// Scratch buffer reused across push_video / push_klv / push_audio /
     /// push_subtitle calls. Cleared and refilled each AU; avoids one
     /// per-AU heap allocation on the hot path. Grows to the largest AU seen
@@ -535,6 +540,7 @@ impl Muxer {
             ts_packets_emitted: 0,
             ts_bytes_emitted: 0,
             per_stream,
+            stream_codec_counters: BTreeMap::new(),
             // 8 KiB heuristic: covers a typical small AU without reallocation;
             // grows automatically on first oversized frame and stays there.
             pes_scratch: Vec::with_capacity(MAX_PES_HEADER_SIZE + 8192),
@@ -1490,11 +1496,34 @@ impl Muxer {
         }
     }
 
+    /// Per-PID codec-specific counters. See
+    /// [`crate::mpegts::stats::StreamCodecStats`] for the semantics of
+    /// the return value (`None` vs `Some(Unknown)` vs typed variant).
+    ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_get_stream_codec_stats` — see
+    /// `crates/tst-c/include/tstrans.h`.
+    pub fn stream_codec_stats(&self, pid: u16) -> Option<crate::mpegts::stats::StreamCodecStats> {
+        if let Some(c) = self.stream_codec_counters.get(&pid) {
+            return Some(c.to_public());
+        }
+        if self.per_stream.contains_key(&pid) {
+            return Some(crate::mpegts::stats::StreamCodecStats::Unknown);
+        }
+        None
+    }
+
     /// Zero all flow counters.
     ///
     /// Per-stream entries are preserved (their `pid` and `stream_type`
     /// identity fields remain set); only the flow counters (`items`,
-    /// `bytes`, `discontinuities`) are zeroed.
+    /// `bytes`, `discontinuities`) are zeroed. Codec-specific counters
+    /// (`stream_codec_counters`) are dropped; the next push for a
+    /// previously-pushed PID re-materializes the entry. This keeps the
+    /// 3-state [`Self::stream_codec_stats`] accessor symmetric with the
+    /// Demuxer-side equivalent — a never-pushed PID returns `Unknown`
+    /// (via the per-stream contains_key path) both before AND after reset.
     pub fn reset_stats(&mut self) {
         self.ts_packets_emitted = 0;
         self.ts_bytes_emitted = 0;
@@ -1503,6 +1532,7 @@ impl Muxer {
             s.bytes = 0;
             s.discontinuities = 0;
         }
+        self.stream_codec_counters.clear();
     }
 
     /// Return the resolved PCR PID for program at `prog_idx` (0-based index).
@@ -4159,5 +4189,15 @@ mod stats_tests {
         assert!(stream_stat.items >= 1);
         let teletext_stat = s.per_stream.get(&0x201).unwrap();
         assert_eq!(teletext_stat.label.as_deref(), Some("DVB-Teletext"));
+    }
+
+    #[test]
+    fn muxer_stream_codec_stats_returns_none_for_never_pushed_pid() {
+        // Default MuxerConfig configures PIDs 0x1011 (video) + 0x1031 (KLV).
+        // 0x9999 isn't configured, so stream_codec_stats returns None (vs
+        // Unknown, which is what a configured-but-never-pushed PID returns
+        // via the per_stream contains_key fallback).
+        let muxer = Muxer::new(MuxerConfig::default()).expect("muxer");
+        assert_eq!(muxer.stream_codec_stats(0x9999), None);
     }
 }

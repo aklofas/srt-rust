@@ -109,6 +109,29 @@ tst_mux_sender_send_video(sender, payload, payload_len, pts_ticks);
 tst_mux_sender_close(sender);
 ```
 
+### C ABI error-mapping contract
+
+Every variant of the upstream pipeline error enums — `tst_core::error::MuxError`,
+`tst_core::transport::TransportError`, `tst_pipeline::MuxSenderError`, and
+`tst_pipeline::sender::SenderError` — is explicitly mapped to a `TstError`
+code in `crates/tst-c/src/error.rs` via the corresponding `record_*_error`
+function. Each function's wildcard `_ => ...` arm exists only to satisfy
+Rust's `#[non_exhaustive]` requirement; it is unreachable in normal use.
+
+The CI ratchet `scripts/check-tst-c-error-coverage.sh` enforces this
+contract: when an upstream variant is added, the script fails until the
+variant is explicitly handled in the relevant `record_*_error` function
+body before the wildcard. Binding authors can therefore assume that every
+documented `TstError` code maps to a specific upstream condition, and that
+no upstream variant silently degrades to `TST_E_INTERNAL`,
+`TST_E_INVALID_CONFIG`, or `TST_E_TRANSPORT` without an explicit choice by
+the tst-c maintainers.
+
+If you encounter a `tst_get_last_error_str()` value beginning with
+`"unhandled <Enum> variant: ..."`, that means the ratchet was bypassed or
+failed; please file an issue with the variant name from the last-error
+string.
+
 ## Cancel handles
 
 Every long-lived shell exposes `cancel_handle()` returning a `CancelHandle`

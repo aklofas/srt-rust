@@ -17,7 +17,7 @@ use tst_core::transport::TransportError;
 /// Aggregate receive stats for [`RawReceiver`].
 #[must_use]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct RawReceiverStats {
+pub struct RawRecvStats {
     /// Total bytes received from the transport.
     pub bytes_received: u64,
     /// Count of successful `recv_one()` calls.
@@ -67,7 +67,7 @@ pub struct RawReceiver<R: RecvTransport> {
     /// construction. Avoids a per-call allocation for the recv itself;
     /// `recv_one` still allocates a `Vec` for the returned slice.
     buf: Vec<u8>,
-    stats: RawReceiverStats,
+    stats: RawRecvStats,
     /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
     /// from [`Drop`] to bracket open/close events. Private — must NOT
     /// be exposed publicly (see CI public-API ratchet).
@@ -124,7 +124,7 @@ impl<R: RecvTransport> RawReceiver<R> {
         Self {
             transport,
             buf: vec![0u8; cap],
-            stats: RawReceiverStats::default(),
+            stats: RawRecvStats::default(),
             _span: std::panic::AssertUnwindSafe(span),
         }
     }
@@ -191,7 +191,7 @@ impl<R: RecvTransport> RawReceiver<R> {
     /// # C ABI
     ///
     /// `tst_raw_receiver_get_stats` — see `crates/tst-c/include/tstrans.h`.
-    pub fn stats(&self) -> RawReceiverStats {
+    pub fn stats(&self) -> RawRecvStats {
         self.stats
     }
 
@@ -201,7 +201,7 @@ impl<R: RecvTransport> RawReceiver<R> {
     ///
     /// `tst_raw_receiver_reset_stats` — see `crates/tst-c/include/tstrans.h`.
     pub fn reset_stats(&mut self) {
-        self.stats = RawReceiverStats::default();
+        self.stats = RawRecvStats::default();
     }
 
     /// Wire-level transport stats (RTT, packet loss, bandwidth, queue

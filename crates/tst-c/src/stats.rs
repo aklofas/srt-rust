@@ -85,16 +85,16 @@ pub fn fill_stream_stats(dst: &mut TstStreamStats, src: &tst_core::mpegts::Strea
     }
 }
 
-/// `repr(C)` mirror of `tst_pipeline::RawSenderStats`. Size 16 B.
+/// `repr(C)` mirror of `tst_pipeline::RawSendStats`. Size 16 B.
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
-pub struct TstRawSenderStats {
+pub struct TstRawSendStats {
     pub bytes_sent: u64,
     pub packets_sent: u64,
 }
 
-impl From<&tst_pipeline::RawSenderStats> for TstRawSenderStats {
-    fn from(s: &tst_pipeline::RawSenderStats) -> Self {
+impl From<&tst_pipeline::RawSendStats> for TstRawSendStats {
+    fn from(s: &tst_pipeline::RawSendStats) -> Self {
         Self {
             bytes_sent: s.bytes_sent,
             packets_sent: s.packets_sent,
@@ -102,16 +102,16 @@ impl From<&tst_pipeline::RawSenderStats> for TstRawSenderStats {
     }
 }
 
-/// `repr(C)` mirror of `tst_pipeline::RawReceiverStats`. Size 16 B.
+/// `repr(C)` mirror of `tst_pipeline::RawRecvStats`. Size 16 B.
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
-pub struct TstRawReceiverStats {
+pub struct TstRawRecvStats {
     pub bytes_received: u64,
     pub packets_received: u64,
 }
 
-impl From<&tst_pipeline::RawReceiverStats> for TstRawReceiverStats {
-    fn from(s: &tst_pipeline::RawReceiverStats) -> Self {
+impl From<&tst_pipeline::RawRecvStats> for TstRawRecvStats {
+    fn from(s: &tst_pipeline::RawRecvStats) -> Self {
         Self {
             bytes_received: s.bytes_received,
             packets_received: s.packets_received,

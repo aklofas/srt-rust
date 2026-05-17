@@ -523,8 +523,8 @@ shipped); next-up is `srt-jni` / `srt-uniffi` cross-language bindings.
   `tst_raw_receiver_get_stats`, `tst_raw_receiver_reset_stats`.
 - New `tst_managed_raw_receiver_t` opaque handle with the same 7 entry
   points (managed sibling).
-- New `TstRawReceiverStats` `repr(C)` struct mirroring
-  `tst_pipeline::RawReceiverStats`.
+- New `TstRawRecvStats` `repr(C)` struct mirroring
+  `tst_pipeline::RawRecvStats`.
 - New `tst_*_cancel` entry points for all six sender families
   (`tst_raw_sender_cancel`, `tst_managed_raw_sender_cancel`,
   `tst_sender_cancel`, `tst_managed_sender_cancel`,

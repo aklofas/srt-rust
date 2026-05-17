@@ -177,7 +177,7 @@ pub unsafe extern "C" fn tst_raw_receiver_cancel(p: *mut TstRawReceiver) -> libc
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_raw_receiver_get_stats(
     p: *mut TstRawReceiver,
-    out: *mut crate::stats::TstRawReceiverStats,
+    out: *mut crate::stats::TstRawRecvStats,
 ) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
@@ -188,7 +188,7 @@ pub unsafe extern "C" fn tst_raw_receiver_get_stats(
         return TstError::InvalidConfig as i32;
     }
     handle.inner.with_inner_ref(|rx| {
-        let stats = crate::stats::TstRawReceiverStats::from(&rx.stats());
+        let stats = crate::stats::TstRawRecvStats::from(&rx.stats());
         // SAFETY: out non-null per guard above.
         unsafe { *out = stats };
         0
@@ -566,7 +566,7 @@ pub unsafe extern "C" fn tst_managed_raw_receiver_close(p: *mut TstManagedRawRec
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_managed_raw_receiver_get_stats(
     p: *mut TstManagedRawReceiver,
-    out: *mut crate::stats::TstRawReceiverStats,
+    out: *mut crate::stats::TstRawRecvStats,
 ) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null receiver pointer");
@@ -577,7 +577,7 @@ pub unsafe extern "C" fn tst_managed_raw_receiver_get_stats(
         return TstError::InvalidConfig as i32;
     }
     handle.inner.with_inner_ref(|rx| {
-        let stats = crate::stats::TstRawReceiverStats::from(&rx.stats());
+        let stats = crate::stats::TstRawRecvStats::from(&rx.stats());
         // SAFETY: out non-null per guard above.
         unsafe { *out = stats };
         0
@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn managed_null_get_stats_returns_invalid_config() {
-        let mut stats = crate::stats::TstRawReceiverStats::default();
+        let mut stats = crate::stats::TstRawRecvStats::default();
         let rc = unsafe { tst_managed_raw_receiver_get_stats(std::ptr::null_mut(), &mut stats) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }
@@ -716,7 +716,7 @@ mod tests {
 
     #[test]
     fn null_get_stats_returns_invalid_config() {
-        let mut stats = crate::stats::TstRawReceiverStats::default();
+        let mut stats = crate::stats::TstRawRecvStats::default();
         let rc = unsafe { tst_raw_receiver_get_stats(std::ptr::null_mut(), &mut stats) };
         assert_eq!(rc, TstError::InvalidConfig as i32);
     }

@@ -55,10 +55,10 @@ include = [
     "TstMuxerStats",
     "TstMuxSenderStats",
     "TstSenderStats",
-    "TstRawSenderStats",
+    "TstRawSendStats",
     "TstRawReceiver",
     "TstManagedRawReceiver",
-    "TstRawReceiverStats",
+    "TstRawRecvStats",
     "TstReceiver",
     "TstManagedReceiver",
     "TstReceiverStats",
@@ -131,11 +131,11 @@ include = [
 "TstStreamStats"       = "tst_stream_stats_t"
 "TstMuxerStats"        = "tst_muxer_stats_t"
 "TstMuxSenderStats"    = "tst_mux_sender_stats_t"
-"TstRawSenderStats"    = "tst_raw_sender_stats_t"
+"TstRawSendStats"    = "tst_raw_send_stats_t"
 # Receiver handles
 "TstRawReceiver"       = "tst_raw_receiver_t"
 "TstManagedRawReceiver" = "tst_managed_raw_receiver_t"
-"TstRawReceiverStats"  = "tst_raw_receiver_stats_t"
+"TstRawRecvStats"  = "tst_raw_recv_stats_t"
 "TstReceiver"          = "tst_receiver_t"
 "TstManagedReceiver"   = "tst_managed_receiver_t"
 "TstReceiverStats"     = "tst_receiver_stats_t"

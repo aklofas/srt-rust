@@ -273,7 +273,7 @@ pub unsafe extern "C" fn tst_managed_raw_sender_cancel(p: *mut TstManagedRawSend
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_raw_sender_get_stats(
     p: *mut TstRawSender,
-    out: *mut crate::stats::TstRawSenderStats,
+    out: *mut crate::stats::TstRawSendStats,
 ) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null sender pointer");
@@ -284,7 +284,7 @@ pub unsafe extern "C" fn tst_raw_sender_get_stats(
         return TstError::InvalidConfig as i32;
     }
     handle.inner.with_inner_ref(|s| {
-        let stats = crate::stats::TstRawSenderStats::from(&s.stats());
+        let stats = crate::stats::TstRawSendStats::from(&s.stats());
         unsafe { *out = stats };
         0
     })
@@ -350,7 +350,7 @@ pub unsafe extern "C" fn tst_raw_sender_reset_stats(p: *mut TstRawSender) -> lib
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_managed_raw_sender_get_stats(
     p: *mut TstManagedRawSender,
-    out: *mut crate::stats::TstRawSenderStats,
+    out: *mut crate::stats::TstRawSendStats,
 ) -> libc::c_int {
     let Some(handle) = (unsafe { p.as_ref() }) else {
         set_last_error(TstError::InvalidConfig, "null sender pointer");
@@ -361,7 +361,7 @@ pub unsafe extern "C" fn tst_managed_raw_sender_get_stats(
         return TstError::InvalidConfig as i32;
     }
     handle.inner.with_inner_ref(|s| {
-        let stats = crate::stats::TstRawSenderStats::from(&s.stats());
+        let stats = crate::stats::TstRawSendStats::from(&s.stats());
         unsafe { *out = stats };
         0
     })

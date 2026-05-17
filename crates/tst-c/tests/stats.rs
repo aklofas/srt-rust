@@ -2,12 +2,12 @@
 //! gets exercised end-to-end against a live (loopback) or in-process
 //! handle.
 
-use tstrans::stats::TstRawSenderStats;
+use tstrans::stats::TstRawSendStats;
 
 #[test]
 fn raw_sender_stats_layout_is_repr_c() {
-    let s = TstRawSenderStats::default();
-    assert_eq!(std::mem::size_of::<TstRawSenderStats>(), 16);
+    let s = TstRawSendStats::default();
+    assert_eq!(std::mem::size_of::<TstRawSendStats>(), 16);
     assert_eq!(s.bytes_sent, 0);
     assert_eq!(s.packets_sent, 0);
 }

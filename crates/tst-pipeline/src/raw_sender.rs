@@ -27,7 +27,7 @@ pub struct RawSenderConfig {
 /// this layer.
 #[must_use]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct RawSenderStats {
+pub struct RawSendStats {
     /// Bytes that succeeded through the transport.
     pub bytes_sent: u64,
     /// Count of successful `send()` calls.
@@ -68,7 +68,7 @@ pub struct RawSenderStats {
 pub struct RawSender<T: Transport> {
     transport: T,
     _config: RawSenderConfig,
-    stats: RawSenderStats,
+    stats: RawSendStats,
     /// Lifetime [`tracing::Span`] opened in [`Self::new`] and entered
     /// from [`Drop`] to bracket open/close events. Private — must NOT
     /// be exposed publicly (see CI public-API ratchet).
@@ -104,7 +104,7 @@ impl<T: Transport> RawSender<T> {
         Self {
             transport,
             _config: config,
-            stats: RawSenderStats::default(),
+            stats: RawSendStats::default(),
             _span: std::panic::AssertUnwindSafe(span),
         }
     }
@@ -197,14 +197,14 @@ impl<T: Transport> RawSender<T> {
     }
 
     /// Snapshot stats counters.
-    pub fn stats(&self) -> RawSenderStats {
+    pub fn stats(&self) -> RawSendStats {
         self.stats
     }
 
     /// Zero all stats counters. Stats-only — does not affect transport,
     /// pending data, or any other state.
     pub fn reset_stats(&mut self) {
-        self.stats = RawSenderStats::default();
+        self.stats = RawSendStats::default();
     }
 }
 

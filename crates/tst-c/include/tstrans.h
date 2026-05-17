@@ -844,20 +844,20 @@ typedef struct tst_muxer_stats_t {
 } tst_muxer_stats_t;
 
 /**
- * `repr(C)` mirror of `tst_pipeline::RawReceiverStats`. Size 16 B.
+ * `repr(C)` mirror of `tst_pipeline::RawRecvStats`. Size 16 B.
  */
-typedef struct tst_raw_receiver_stats_t {
+typedef struct tst_raw_recv_stats_t {
   uint64_t bytes_received;
   uint64_t packets_received;
-} tst_raw_receiver_stats_t;
+} tst_raw_recv_stats_t;
 
 /**
- * `repr(C)` mirror of `tst_pipeline::RawSenderStats`. Size 16 B.
+ * `repr(C)` mirror of `tst_pipeline::RawSendStats`. Size 16 B.
  */
-typedef struct tst_raw_sender_stats_t {
+typedef struct tst_raw_send_stats_t {
   uint64_t bytes_sent;
   uint64_t packets_sent;
-} tst_raw_sender_stats_t;
+} tst_raw_send_stats_t;
 
 /**
  * `repr(C)` mirror of `tst_pipeline::ReceiverStats`. Size 32 B.
@@ -1930,7 +1930,7 @@ int tst_muxer_get_stream_codec_stats(struct tst_muxer_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
  * null, or `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_raw_receiver_get_stats(struct tst_raw_receiver_t *p, struct tst_raw_receiver_stats_t *out);
+ int tst_raw_receiver_get_stats(struct tst_raw_receiver_t *p, struct tst_raw_recv_stats_t *out);
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
@@ -2046,7 +2046,7 @@ int tst_managed_raw_receiver_recv(struct tst_managed_raw_receiver_t *p,
  */
 
 int tst_managed_raw_receiver_get_stats(struct tst_managed_raw_receiver_t *p,
-                                       struct tst_raw_receiver_stats_t *out);
+                                       struct tst_raw_recv_stats_t *out);
 
 /**
  * Reset stats counters for a `tst_managed_raw_receiver_t` to zero.
@@ -2145,7 +2145,7 @@ int tst_managed_raw_sender_send(struct tst_managed_raw_sender_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
- int tst_raw_sender_get_stats(struct tst_raw_sender_t *p, struct tst_raw_sender_stats_t *out);
+ int tst_raw_sender_get_stats(struct tst_raw_sender_t *p, struct tst_raw_send_stats_t *out);
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
@@ -2175,7 +2175,7 @@ int tst_managed_raw_sender_send(struct tst_managed_raw_sender_t *p,
  */
 
 int tst_managed_raw_sender_get_stats(struct tst_managed_raw_sender_t *p,
-                                     struct tst_raw_sender_stats_t *out);
+                                     struct tst_raw_send_stats_t *out);
 
 /**
  * Managed sibling of [`tst_raw_sender_get_socket_stats`]. Returns

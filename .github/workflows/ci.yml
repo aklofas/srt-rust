@@ -100,9 +100,12 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check-no-public-usize.sh
 
-      - name: check-tst-c-error-coverage
+      - name: ShellErrorKind coverage at C ABI
         if: matrix.name == 'linux-x86_64'
-        run: bash scripts/check-tst-c-error-coverage.sh
+        run: bash scripts/check-shell-error-kind-coverage.sh
+      - name: Pipeline kind-classification coverage
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check-pipeline-kind-classification.sh
 
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
@@ -205,7 +208,7 @@ jobs:
         # build). On adding a new error enum, bump the BASELINE constant.
         if: matrix.name == 'linux-x86_64'
         run: |
-          BASELINE=72
+          BASELINE=87
           OBSERVED=$(rg -c '#\[non_exhaustive\]' crates/ --type rust | awk -F: '{sum += $2} END {print sum}')
           if [ "$OBSERVED" -lt "$BASELINE" ]; then
             echo "non_exhaustive count regressed: expected >= $BASELINE, observed $OBSERVED" >&2

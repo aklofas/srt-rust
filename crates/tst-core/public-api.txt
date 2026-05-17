@@ -4360,6 +4360,7 @@ pub mod tst_core::transport
 pub tst_core::transport::TransportError::Backpressure(alloc::string::String)
 pub tst_core::transport::TransportError::Broken(alloc::string::String)
 pub tst_core::transport::TransportError::Closed
+pub tst_core::transport::TransportError::ExplicitClose
 pub tst_core::transport::TransportError::TooLarge
 pub tst_core::transport::TransportError::TooLarge::len: usize
 pub tst_core::transport::TransportError::TooLarge::max: usize
@@ -4706,6 +4707,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::error::MuxError
 pub tst_core::TransportError::Backpressure(alloc::string::String)
 pub tst_core::TransportError::Broken(alloc::string::String)
 pub tst_core::TransportError::Closed
+pub tst_core::TransportError::ExplicitClose
 pub tst_core::TransportError::TooLarge
 pub tst_core::TransportError::TooLarge::len: usize
 pub tst_core::TransportError::TooLarge::max: usize

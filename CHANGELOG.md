@@ -7,6 +7,61 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 4.A shell error kind fold (plan TBD-by-merge)
+
+**Breaking (pre-1.0):**
+
+- All 6 pipeline shells now return `struct { kind: ShellErrorKind, source: <Shell>ErrorSource }`
+  instead of variant enums (`MuxSenderError`, `SenderError`, `DemuxReceiverError` already
+  had enum-shaped errors; `RawSender::send`, `Receiver::next_packet`, `RawReceiver::recv_one`
+  now return new shell error types instead of bare `TransportError`). Three new public types
+  added: `RawSenderError`, `ReceiverError`, `RawReceiverError`.
+- Six new public source enums: `MuxSenderErrorSource`, `SenderErrorSource`,
+  `DemuxReceiverErrorSource`, `RawSenderErrorSource`, `ReceiverErrorSource`,
+  `RawReceiverErrorSource`. Each `#[non_exhaustive]` with typed `#[from]` variants.
+- Callers that matched on `MuxSenderError::Mux(_)` / `SenderError::Transport(_)` / etc.
+  switch to `match err.source` or `match err.kind`. Pattern:
+  ```rust
+  // Old:
+  Err(MuxSenderError::Transport(TransportError::Broken(_))) => { /* reconnect */ }
+  // New (kind-based — recommended for binding-portable code):
+  Err(err) if err.kind == ShellErrorKind::TransportBroken => { /* reconnect */ }
+  // OR (source-based — preserves inner-variant discrimination):
+  Err(err) if matches!(err.source, MuxSenderErrorSource::Transport(TransportError::Broken(_))) => { /* reconnect */ }
+  ```
+- New `TransportError::ExplicitClose` variant distinguishes caller-initiated close
+  from peer-EOS (the existing `Closed` variant). Runtime wiring lands in Wave 4.B.
+- `TsFramingError` is now `#[non_exhaustive]` (workspace convention sweep).
+- C ABI numeric TST_E codes unchanged, but the **kind→code mapping consolidates several
+  triggers**. The `tst_get_last_error_str()` content preserves the full inner Display
+  output so callers reading the string get the full diagnostic:
+  - `MuxError::InvalidNal` (was `TST_E_INVALID_NAL = -2`) → `TST_E_INVALID_TS = -3`
+  - `MuxError::KlvTooLarge` (was `TST_E_KLV_TOO_LARGE = -5`) → `TST_E_INVALID_TS = -3`
+  - `TransportError::TooLarge` (was `TST_E_TOO_LARGE = -6`) → `TST_E_INVALID_TS = -3`
+  - `MuxError::InvalidStreamHandle`/`AmbiguousTarget`/etc. (was `TST_E_INVALID_USAGE = -9`) → `TST_E_INVALID_CONFIG = -1`
+  - `TransportError::Backpressure` (was `TST_E_TRANSPORT = -8`) → `TST_E_BUFFER_FULL = -4`
+
+**Added:**
+
+- New `tst_pipeline::ShellErrorKind` enum with 6 variants 1:1 with TST_E codes:
+  `ConfigInvalid` (-1), `InputMalformed` (-3), `Backpressure` (-4 muxer / -8 transport),
+  `TransportBroken` (-8), `Closed` (-7), `EndOfStream` (-12). `#[non_exhaustive]`.
+- New `tst_pipeline::ShellError` trait: `fn kind(&self) -> ShellErrorKind`. Implemented
+  by all 6 shell error types.
+
+**Internal:**
+
+- `crates/tst-c/src/error.rs` collapses from 4 per-variant `record_*_error` functions
+  (~270 lines of per-variant translation) to one `record_shell_error<E: ShellError>(e: &E) -> i32`
+  helper plus `tst_error_from_kind(kind: ShellErrorKind) -> TstError`. Inline match
+  routing at 4 sites in `crates/tst-c/src/demux_receiver.rs` also collapsed.
+- `scripts/check-tst-c-error-coverage.sh` (plan #70, 134 lines) split into two new
+  scripts: `check-shell-error-kind-coverage.sh` (kind→code routing in tst-c) and
+  `check-pipeline-kind-classification.sh` (inner-variant→kind routing in tst-pipeline).
+- `#[non_exhaustive]` BASELINE bumped 72 → 87 in `.github/workflows/ci.yml`.
+
+---
+
 ## [Unreleased] — Wave 3.2 naming consistency + Stats typing (plan TBD-by-merge)
 
 **Breaking (pre-1.0):**

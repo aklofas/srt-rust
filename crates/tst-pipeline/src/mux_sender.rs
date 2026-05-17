@@ -21,6 +21,8 @@ use tst_core::mpegts::mux::{
 };
 use tst_core::transport::{Transport, TransportError};
 
+use crate::shell_error::ShellErrorKind;
+
 /// Stats snapshot for [`MuxSender`].
 #[must_use]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -709,7 +711,7 @@ impl<T: Transport> Inner<T> {
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(MuxSenderError::Transport(TransportError::Closed));
+            return Err(TransportError::Closed.into());
         }
         // Drain any leftover from a previous failed call first.
         self.drain_pending()?;
@@ -730,7 +732,7 @@ impl<T: Transport> Inner<T> {
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(MuxSenderError::Transport(TransportError::Closed));
+            return Err(TransportError::Closed.into());
         }
         self.drain_pending()?;
         let push_result = self
@@ -749,7 +751,7 @@ impl<T: Transport> Inner<T> {
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(MuxSenderError::Transport(TransportError::Closed));
+            return Err(TransportError::Closed.into());
         }
         self.drain_pending()?;
         let push_result =
@@ -768,7 +770,7 @@ impl<T: Transport> Inner<T> {
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(MuxSenderError::Transport(TransportError::Closed));
+            return Err(TransportError::Closed.into());
         }
         self.drain_pending()?;
         let push_result =
@@ -781,7 +783,7 @@ impl<T: Transport> Inner<T> {
 
     fn send_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(MuxSenderError::Transport(TransportError::Closed));
+            return Err(TransportError::Closed.into());
         }
         self.drain_pending()?;
         let push_result = self.muxer.push_audio(frames, Pts90khz::new(pts_90khz));
@@ -797,7 +799,7 @@ impl<T: Transport> Inner<T> {
         pts_90khz: i64,
     ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(MuxSenderError::Transport(TransportError::Closed));
+            return Err(TransportError::Closed.into());
         }
         self.drain_pending()?;
         // Muxer parameter order is `(handle, pts, frames)`; the public
@@ -812,7 +814,7 @@ impl<T: Transport> Inner<T> {
 
     fn send_subtitle(&mut self, payload: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(MuxSenderError::Transport(TransportError::Closed));
+            return Err(TransportError::Closed.into());
         }
         self.drain_pending()?;
         // Muxer parameter order is `(pts, payload)`; we present
@@ -830,7 +832,7 @@ impl<T: Transport> Inner<T> {
         pts_90khz: i64,
     ) -> Result<(), MuxSenderError> {
         if self.closed {
-            return Err(MuxSenderError::Transport(TransportError::Closed));
+            return Err(TransportError::Closed.into());
         }
         self.drain_pending()?;
         let push_result = self
@@ -917,7 +919,7 @@ impl<T: Transport> Inner<T> {
                         }
                         self.pending_bytes.push_back(buf[..n2].to_vec());
                     }
-                    return Err(MuxSenderError::Transport(e));
+                    return Err(e.into());
                 }
             }
         }
@@ -928,7 +930,7 @@ impl<T: Transport> Inner<T> {
             let len = chunk.len() as u64;
             self.transport
                 .send_bytes(chunk)
-                .map_err(MuxSenderError::Transport)?;
+                ?;
             // Only count after successful send.
             self.bytes_sent += len;
             self.packets_sent += 1;
@@ -938,14 +940,67 @@ impl<T: Transport> Inner<T> {
     }
 }
 
-/// Errors from `MuxSender::send_video` / `send_klv`.
-#[derive(Debug, thiserror::Error)]
+/// Error returned by [`MuxSender`] methods.
+///
+/// # Categorization
+///
+/// Bindings categorize failures via [`Self::kind`] (one of 6
+/// [`ShellErrorKind`] variants); power users inspect [`Self::source`]
+/// for the typed inner error.
+///
+/// # Reachable kinds
+///
+/// `MuxSender` can produce: `ConfigInvalid`, `InputMalformed`,
+/// `Backpressure`, `TransportBroken`, `Closed`. `EndOfStream` is
+/// receiver-only.
 #[non_exhaustive]
-pub enum MuxSenderError {
+#[derive(Debug, thiserror::Error)]
+#[error("MuxSender error ({kind:?}): {source}")]
+pub struct MuxSenderError {
+    /// Categorical reason for this failure.
+    pub kind: ShellErrorKind,
+    /// Typed inner error (the actual `MuxError` or `TransportError`
+    /// instance produced by the underlying muxer / transport).
+    #[source]
+    pub source: MuxSenderErrorSource,
+}
+
+/// Typed source enum for [`MuxSenderError`]. One variant per error type
+/// the underlying `MuxSender` internals can produce.
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum MuxSenderErrorSource {
     #[error(transparent)]
     Mux(#[from] MuxError),
     #[error(transparent)]
     Transport(#[from] TransportError),
+}
+
+impl From<MuxError> for MuxSenderError {
+    fn from(e: MuxError) -> Self {
+        Self {
+            kind: crate::shell_error::kind_from_mux(&e),
+            source: MuxSenderErrorSource::Mux(e),
+        }
+    }
+}
+
+impl From<TransportError> for MuxSenderError {
+    fn from(e: TransportError) -> Self {
+        Self {
+            kind: crate::shell_error::kind_from_transport(
+                &e,
+                crate::shell_error::Direction::Send,
+            ),
+            source: MuxSenderErrorSource::Transport(e),
+        }
+    }
+}
+
+impl crate::shell_error::ShellError for MuxSenderError {
+    fn kind(&self) -> ShellErrorKind {
+        self.kind
+    }
 }
 
 #[cfg(test)]
@@ -1191,8 +1246,8 @@ mod multi_stream_tests {
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
         let err = s.send_video(&nal, Pts90khz::new(0), true).unwrap_err();
-        match err {
-            MuxSenderError::Mux(MuxError::AmbiguousTarget {
+        match err.source {
+            MuxSenderErrorSource::Mux(MuxError::AmbiguousTarget {
                 kind: StreamKind::Video,
                 count: 2,
             }) => {}
@@ -1375,7 +1430,7 @@ mod cancel_tests {
         let result = send_thread.join().unwrap();
         assert!(matches!(
             result,
-            Err(MuxSenderError::Transport(TransportError::Broken(_)))
+            Err(ref err) if err.kind == ShellErrorKind::TransportBroken
         ));
     }
 

@@ -58,17 +58,17 @@ pub use dyn_aliases::{
     BoxedSender,
 };
 pub use managed_receive::ManagedRecvTransport;
-pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderStats};
+pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderErrorSource, MuxSenderStats};
 pub use pairing::{
     KlvSample, Pairer, PairerConfig, PairerMode, PairerOutput, PairerStats, VideoSample,
 };
 pub use raw_receiver::{RawReceiver, RawReceiverConfig, RawRecvStats};
-pub use raw_sender::{RawSendStats, RawSender, RawSenderConfig};
+pub use raw_sender::{RawSendStats, RawSender, RawSenderConfig, RawSenderError, RawSenderErrorSource};
 pub use receiver::{Receiver, ReceiverConfig, ReceiverStats};
 pub use reconnect::{
     BackoffStrategy, GapBuffer, ManagedTransport, OverflowPolicy, ReconnectPolicy,
 };
-pub use sender::{Sender, SenderConfig, SenderError, SenderStats, TsFramingMode};
+pub use sender::{Sender, SenderConfig, SenderError, SenderErrorSource, SenderStats, TsFramingMode};
 pub use shell_error::{ShellError, ShellErrorKind};
 
 // Re-export the core trait types for caller convenience.

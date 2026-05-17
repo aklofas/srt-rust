@@ -31,13 +31,51 @@ impl Default for SenderConfig {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+use crate::shell_error::ShellErrorKind;
+
 #[non_exhaustive]
-pub enum SenderError {
+#[derive(Debug, thiserror::Error)]
+#[error("Sender error ({kind:?}): {source}")]
+pub struct SenderError {
+    pub kind: ShellErrorKind,
+    #[source]
+    pub source: SenderErrorSource,
+}
+
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum SenderErrorSource {
     #[error(transparent)]
     Framing(#[from] TsFramingError),
     #[error(transparent)]
     Transport(#[from] tst_core::transport::TransportError),
+}
+
+impl From<TsFramingError> for SenderError {
+    fn from(e: TsFramingError) -> Self {
+        Self {
+            kind: crate::shell_error::kind_from_framing(&e),
+            source: SenderErrorSource::Framing(e),
+        }
+    }
+}
+
+impl From<tst_core::transport::TransportError> for SenderError {
+    fn from(e: tst_core::transport::TransportError) -> Self {
+        Self {
+            kind: crate::shell_error::kind_from_transport(
+                &e,
+                crate::shell_error::Direction::Send,
+            ),
+            source: SenderErrorSource::Transport(e),
+        }
+    }
+}
+
+impl crate::shell_error::ShellError for SenderError {
+    fn kind(&self) -> ShellErrorKind {
+        self.kind
+    }
 }
 
 /// Pre-muxed TS bytes → SRT transport with sync framing/recovery.
@@ -180,9 +218,7 @@ impl<T: Transport> Sender<T> {
     /// ```
     pub fn send_ts(&mut self, bytes: &[u8]) -> Result<(), SenderError> {
         if self.closed {
-            return Err(SenderError::Transport(
-                tst_core::transport::TransportError::Closed,
-            ));
+            return Err(tst_core::transport::TransportError::Closed.into());
         }
         let bundles = if self.mode == TsFramingMode::Recover {
             let (bundles, _stats) = self.framing.push(bytes);
@@ -191,9 +227,7 @@ impl<T: Transport> Sender<T> {
             self.framing.push_strict(bytes)?
         };
         for bundle in bundles {
-            self.transport
-                .send_bytes(&bundle)
-                .map_err(SenderError::Transport)?;
+            self.transport.send_bytes(&bundle)?;
         }
         Ok(())
     }
@@ -210,15 +244,11 @@ impl<T: Transport> Sender<T> {
     /// [`Self::close`], or `Broken` on transport flap).
     pub fn flush(&mut self) -> Result<(), SenderError> {
         if self.closed {
-            return Err(SenderError::Transport(
-                tst_core::transport::TransportError::Closed,
-            ));
+            return Err(tst_core::transport::TransportError::Closed.into());
         }
         let bundles = self.framing.flush();
         for bundle in bundles {
-            self.transport
-                .send_bytes(&bundle)
-                .map_err(SenderError::Transport)?;
+            self.transport.send_bytes(&bundle)?;
         }
         Ok(())
     }

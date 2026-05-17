@@ -11,6 +11,8 @@ use std::sync::Arc;
 use tracing::{Span, info_span};
 use tst_core::transport::{Transport, TransportError};
 
+use crate::shell_error::ShellErrorKind;
+
 /// Construction-time knobs for [`RawSender`].
 ///
 /// Currently empty — no behavior knobs are needed today. Reserved as a
@@ -21,6 +23,50 @@ use tst_core::transport::{Transport, TransportError};
 pub struct RawSenderConfig {
     // Reserved for future use. Currently empty.
     _private: (),
+}
+
+/// Error returned by [`RawSender::send`].
+///
+/// # Reachable kinds
+///
+/// `RawSender` can produce: `Backpressure`, `TransportBroken`, `Closed`.
+/// All other [`ShellErrorKind`] variants are unreachable (no muxer,
+/// no framing, no demux involved).
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+#[error("RawSender error ({kind:?}): {source}")]
+pub struct RawSenderError {
+    pub kind: ShellErrorKind,
+    #[source]
+    pub source: RawSenderErrorSource,
+}
+
+/// Typed source enum for [`RawSenderError`]. Single-variant today;
+/// `#[non_exhaustive]` preserves future-proof shape symmetry with
+/// `MuxSenderErrorSource` and other multi-source shells.
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum RawSenderErrorSource {
+    #[error(transparent)]
+    Transport(#[from] TransportError),
+}
+
+impl From<TransportError> for RawSenderError {
+    fn from(e: TransportError) -> Self {
+        Self {
+            kind: crate::shell_error::kind_from_transport(
+                &e,
+                crate::shell_error::Direction::Send,
+            ),
+            source: RawSenderErrorSource::Transport(e),
+        }
+    }
+}
+
+impl crate::shell_error::ShellError for RawSenderError {
+    fn kind(&self) -> ShellErrorKind {
+        self.kind
+    }
 }
 
 /// Stats for [`RawSender`]. Aggregate-only — there are no streams at
@@ -121,10 +167,15 @@ impl<T: Transport> RawSender<T> {
     /// `tst_raw_sender_send` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
-    /// - [`TransportError::TooLarge`] when `bytes.len()` exceeds
+    ///
+    /// Returns [`RawSenderError`] with `kind` one of:
+    /// - [`ShellErrorKind::InputMalformed`] — `bytes.len()` exceeds
     ///   `transport.max_payload()`.
-    /// - Bubbles up any other [`TransportError`] from the underlying
-    ///   transport (e.g. `Closed`, `Broken`).
+    /// - [`ShellErrorKind::Backpressure`] — transport's send buffer is full;
+    ///   retry after backing off.
+    /// - [`ShellErrorKind::TransportBroken`] — transport is dead; the handle
+    ///   is unusable.
+    /// - [`ShellErrorKind::Closed`] — caller already invoked `close()`.
     ///
     /// # Example
     /// ```
@@ -150,13 +201,14 @@ impl<T: Transport> RawSender<T> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn send(&mut self, bytes: &[u8]) -> Result<(), TransportError> {
+    pub fn send(&mut self, bytes: &[u8]) -> Result<(), RawSenderError> {
         let max = self.transport.max_payload();
         if bytes.len() > max {
             return Err(TransportError::TooLarge {
                 len: bytes.len(),
                 max,
-            });
+            }
+            .into());
         }
         self.transport.send_bytes(bytes)?;
         self.stats.bytes_sent += bytes.len() as u64;

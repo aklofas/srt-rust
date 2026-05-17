@@ -100,7 +100,6 @@ pub trait ShellError: std::error::Error {
 /// Direction parameter for `kind_from_transport` — `TransportError::Closed`
 /// has different shell-kind disposition on senders (`Closed`) vs receivers
 /// (`EndOfStream`). See `kind_from_transport` for the routing.
-#[allow(dead_code)] // used in Tasks 3-4 when shell error types are wired up
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Direction {
     Send,
@@ -111,7 +110,6 @@ pub(crate) enum Direction {
 /// `From<MuxError>` impl. **Every MuxError variant is matched explicitly**
 /// — the CI ratchet `scripts/check-pipeline-kind-classification.sh`
 /// (Task 10) will enforce no variant escapes through a wildcard.
-#[allow(dead_code)] // used in Task 3 when MuxSenderError is wired up
 pub(crate) fn kind_from_mux(e: &MuxError) -> ShellErrorKind {
     use ShellErrorKind::*;
     match e {
@@ -163,7 +161,6 @@ pub(crate) fn kind_from_mux(e: &MuxError) -> ShellErrorKind {
 /// caller-initiated) from receiver-shell-side (`Closed` -> `EndOfStream`
 /// kind, peer-initiated). `ExplicitClose` always maps to `Closed` kind
 /// regardless of direction.
-#[allow(dead_code)] // used in Tasks 3-4 when shell error types are wired up
 pub(crate) fn kind_from_transport(e: &TransportError, direction: Direction) -> ShellErrorKind {
     use ShellErrorKind::*;
     match e {
@@ -207,7 +204,6 @@ pub(crate) fn kind_from_demux(e: &DemuxError) -> ShellErrorKind {
 /// No wildcard needed: TsFramingError is defined in the same crate as
 /// this helper, so Rust treats the #[non_exhaustive] match as exhaustive
 /// in-crate. (TsFramingError received #[non_exhaustive] in Wave 2.3.)
-#[allow(dead_code)] // used in Task 3 when SenderError is wired up
 pub(crate) fn kind_from_framing(e: &TsFramingError) -> ShellErrorKind {
     use ShellErrorKind::*;
     match e {

@@ -1,6 +1,6 @@
 //! Integration tests for `pipeline::RawSender` using a mock `Transport`.
 
-use tst_pipeline::{RawSender, RawSenderConfig, TransportError};
+use tst_pipeline::{RawSender, RawSenderConfig, RawSenderErrorSource, ShellErrorKind, TransportError};
 use tst_test_helpers::mock_transport::MockTransport;
 
 #[test]
@@ -24,8 +24,8 @@ fn raw_sender_rejects_oversize_message() {
     let mut sender = RawSender::new(transport, RawSenderConfig::default());
     let big = vec![0u8; 1317];
     let err = sender.send(&big).unwrap_err();
-    match err {
-        TransportError::TooLarge { len, max } => {
+    match err.source {
+        RawSenderErrorSource::Transport(TransportError::TooLarge { len, max }) => {
             assert_eq!(len, 1317);
             assert_eq!(max, 1316);
         }
@@ -39,5 +39,5 @@ fn raw_sender_close_marks_dead() {
     let mut sender = RawSender::new(transport, RawSenderConfig::default());
     sender.close();
     let err = sender.send(b"after close").unwrap_err();
-    assert!(matches!(err, TransportError::Closed));
+    assert_eq!(err.kind, ShellErrorKind::Closed);
 }

@@ -112,9 +112,10 @@ fn warn_fires_exactly_twice_on_back_pressure_escalation() {
     assert!(
         matches!(
             res6,
-            Err(tst_pipeline::MuxSenderError::Mux(
-                tst_core::error::MuxError::BufferFull { .. }
-            ))
+            Err(ref err) if matches!(
+                err.source,
+                tst_pipeline::MuxSenderErrorSource::Mux(tst_core::error::MuxError::BufferFull { .. })
+            )
         ),
         "push 6 should hit BufferFull, got {res6:?}",
     );

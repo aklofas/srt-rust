@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tst_core::mpegts::demux::pes::Reassembler;
+use tst_core::mpegts::demux::low_level::Reassembler;
 
 // Direct fuzz of the PES reassembler. The first three bytes of each
 // fuzz input are repurposed as steering: bytes 0-1 form a 13-bit PID

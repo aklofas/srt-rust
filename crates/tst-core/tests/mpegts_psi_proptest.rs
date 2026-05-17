@@ -7,7 +7,7 @@
 
 use proptest::prelude::*;
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::demux::psi::walk_descriptors;
+use tst_core::mpegts::demux::low_level::walk_descriptors;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
 use tst_core::mpegts::descriptors;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};

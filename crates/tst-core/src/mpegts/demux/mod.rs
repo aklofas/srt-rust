@@ -13,13 +13,18 @@
 
 pub mod demuxer;
 pub mod event;
-pub mod payload;
-pub mod pes;
-pub mod psi;
+mod payload;
+mod pes;
+mod psi;
 pub(crate) mod psi_assembler;
 pub mod strict;
-pub mod ts;
-pub mod types;
+// `pub(super)` (not `mod`) so `crate::mpegts::mux::mod.rs` round-trip tests
+// can call `crate::mpegts::demux::ts::parse_ts_packet`. Not part of the
+// public API surface — invisible outside the `mpegts` parent module.
+pub(super) mod ts;
+mod types;
+
+pub mod low_level;
 
 pub use demuxer::Demuxer;
 pub use event::{

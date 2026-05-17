@@ -292,7 +292,7 @@ pub struct StreamInfo {
     pub program_number: u16,
     /// Raw PMT per-stream descriptors for this PID, in PMT loop order.
     /// Empty when the PMT carried no descriptors for this stream. Use
-    /// [`crate::mpegts::demux::psi::extract_user_label`] for a quick
+    /// [`crate::mpegts::demux::low_level::extract_user_label`] for a quick
     /// label decode; reach into this list for vendor-specific or
     /// stack-shape (Family B) decoding.
     pub raw_descriptors: Vec<crate::mpegts::descriptors::RawDescriptor>,

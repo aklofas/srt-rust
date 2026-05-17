@@ -128,7 +128,7 @@ pub fn user_private_with_tag(tag: u8, payload: &[u8]) -> Vec<u8> {
 /// Component descriptor (tag 0x50) — ETSI EN 300 468 §6.2.8.
 /// Carries language-tagged free text. Not seen in the testfiles
 /// corpus; included because it's the textbook "human label" slot
-/// that [`crate::mpegts::demux::psi::extract_user_label`] reads first.
+/// that [`crate::mpegts::demux::low_level::extract_user_label`] reads first.
 ///
 /// `text` is UTF-8; receivers conventionally treat the body as
 /// language-coded per the descriptor's `iso_639_language_code` field.

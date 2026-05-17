@@ -209,7 +209,7 @@ fn sync_klv_sequence_number_increments_across_pushes() {
 #[test]
 fn classify_klv_returns_partial_au_cell_on_non_complete_cfi() {
     use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
-    use tst_core::mpegts::demux::payload::{KlvShape, classify_klv};
+    use tst_core::mpegts::demux::low_level::{KlvShape, classify_klv};
 
     for cfi in [
         CellFragmentIndication::First,
@@ -246,7 +246,7 @@ fn classify_klv_returns_partial_au_cell_on_non_complete_cfi() {
 #[test]
 fn classify_klv_complete_cfi_still_returns_sync_au_cell() {
     use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
-    use tst_core::mpegts::demux::payload::{KlvShape, classify_klv};
+    use tst_core::mpegts::demux::low_level::{KlvShape, classify_klv};
 
     // Build a Complete AU cell whose inner payload starts with the SMPTE UL.
     let inner_klv: Vec<u8> = {
@@ -290,7 +290,7 @@ fn classify_klv_complete_cfi_still_returns_sync_au_cell() {
 #[test]
 fn classify_klv_opaque_inner_complete_cfi_returns_sync_au_cell() {
     use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
-    use tst_core::mpegts::demux::payload::{KlvShape, classify_klv};
+    use tst_core::mpegts::demux::low_level::{KlvShape, classify_klv};
 
     // Inner that does NOT start with the SMPTE UL header — opaque metadata.
     let opaque_inner = vec![0x55u8; 80];

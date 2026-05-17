@@ -1,7 +1,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use tst_core::mpegts::demux::psi::{parse_pat, parse_pmt};
+use tst_core::mpegts::demux::low_level::{parse_pat, parse_pmt};
 
 // Direct fuzz of the PAT and PMT section parsers. Calling both on the
 // same arbitrary slice is intentional — each parser returns a `Result`

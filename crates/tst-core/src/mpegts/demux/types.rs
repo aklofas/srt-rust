@@ -81,14 +81,15 @@ pub struct DemuxerConfig {
     pub lenient_psi_reassembly: bool,
 }
 
-/// Per-program state tracked after a PAT entry is discovered and a PMT
-/// arrives. One entry per `pmt_pid` in `Demuxer::programs`.
-///
-/// Exposed `pub` for field access in crate-internal tests.
-/// Not part of the stable API — treat as opaque outside this crate.
+/// Per-program demuxer state. Crate-private — accessed only by `Demuxer`
+/// and its `pub(crate) fn programs_for_test()` accessor for in-crate tests.
 #[derive(Debug)]
-pub struct ProgramTracker {
+pub(crate) struct ProgramTracker {
     pub program_number: u16,
+    // Redundant with the HashMap key in `Demuxer::programs` (which is keyed
+    // by `pmt_pid`); retained for symmetry with `program_number` and to
+    // make `Debug` output self-describing.
+    #[allow(dead_code)]
     pub pmt_pid: u16,
     pub pmt_version: Option<u8>,
     pub pcr_pid: Option<u16>,

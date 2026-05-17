@@ -7,7 +7,7 @@
 //!   - Auto-emit suppression on caller-supplied KLVA Registration works.
 
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::demux::psi::extract_user_label;
+use tst_core::mpegts::demux::low_level::extract_user_label;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
 use tst_core::mpegts::descriptors;
 use tst_core::mpegts::mux::{

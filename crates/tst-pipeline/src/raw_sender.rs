@@ -27,11 +27,18 @@ pub struct RawSenderConfig {
 
 /// Error returned by [`RawSender::send`].
 ///
+/// # Categorization
+///
+/// Bindings categorize failures via [`Self::kind`] (one of 6
+/// [`ShellErrorKind`] variants); power users inspect [`Self::source`]
+/// for the typed inner error.
+///
 /// # Reachable kinds
 ///
-/// `RawSender` can produce: `Backpressure`, `TransportBroken`, `Closed`.
-/// All other [`ShellErrorKind`] variants are unreachable (no muxer,
-/// no framing, no demux involved).
+/// `RawSender` can produce: `Backpressure`, `InputMalformed` (payload
+/// exceeds max), `TransportBroken`, `Closed`. All other
+/// [`ShellErrorKind`] variants are unreachable (no muxer, no framing,
+/// no demux involved).
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 #[error("RawSender error ({kind:?}): {source}")]

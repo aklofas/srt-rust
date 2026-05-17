@@ -22,7 +22,7 @@ use crate::sender::TsFramingError;
 /// | Kind | MuxSender | Sender | RawSender | DemuxReceiver | Receiver | RawReceiver |
 /// |------|:---------:|:------:|:---------:|:-------------:|:--------:|:-----------:|
 /// | `ConfigInvalid` | ✓ | — | — | — | — | — |
-/// | `InputMalformed` | ✓ | ✓ | — | ✓ | — | — |
+/// | `InputMalformed` | ✓ | ✓ | ✓ | ✓ | — | — |
 /// | `Backpressure` | ✓ | ✓ | ✓ | — | — | — |
 /// | `TransportBroken` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 /// | `Closed` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -103,6 +103,7 @@ pub trait ShellError: std::error::Error {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Direction {
     Send,
+    #[allow(dead_code)] // constructed in Task 4 (receiver shell errors)
     Recv,
 }
 

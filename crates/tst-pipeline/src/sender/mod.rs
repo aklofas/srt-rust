@@ -33,6 +33,19 @@ impl Default for SenderConfig {
 
 use crate::shell_error::ShellErrorKind;
 
+/// Error returned by [`Sender`] methods.
+///
+/// # Categorization
+///
+/// Bindings categorize failures via [`Self::kind`] (one of 6
+/// [`ShellErrorKind`] variants); power users inspect [`Self::source`]
+/// for the typed inner error.
+///
+/// # Reachable kinds
+///
+/// `Sender` can produce: `InputMalformed` (STRICT-mode framing failure),
+/// `Backpressure`, `TransportBroken`, `Closed`. `ConfigInvalid` and
+/// `EndOfStream` are unreachable (no muxer, sender-only).
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 #[error("Sender error ({kind:?}): {source}")]
@@ -91,7 +104,7 @@ impl crate::shell_error::ShellError for SenderError {
 /// 2. **Explicit close** — call [`Self::close`]. Best-effort flushes
 ///    any buffered partial bundle (same as Drop), marks the sender
 ///    closed so subsequent `send_ts` / `flush` calls return
-///    [`SenderError::Transport`]`(`[`tst_core::transport::TransportError::Closed`]`)`,
+///    [`SenderErrorSource::Transport`]`(`[`tst_core::transport::TransportError::Closed`]`)`,
 ///    then closes the transport. Idempotent. Equivalent to Drop —
 ///    `AutoCloseable`/`__exit__`/`.use { }` bindings that call
 ///    `close()` in their cleanup path do not lose any buffered bytes.
@@ -171,9 +184,9 @@ impl<T: Transport> Sender<T> {
     /// `tst_sender_send_ts` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
-    /// - [`SenderError::Framing`] in STRICT mode when the input fails
+    /// - [`SenderErrorSource::Framing`] in STRICT mode when the input fails
     ///   to align on a TS sync byte (`0x47`).
-    /// - [`SenderError::Transport`] when the underlying [`Transport`]
+    /// - [`SenderErrorSource::Transport`] when the underlying [`Transport`]
     ///   returns an error (e.g. `Closed`, `Broken`).
     ///
     /// # Example
@@ -239,7 +252,7 @@ impl<T: Transport> Sender<T> {
     /// `tst_sender_flush` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
-    /// Returns [`SenderError::Transport`] when the underlying [`Transport`]
+    /// Returns [`SenderErrorSource::Transport`] when the underlying [`Transport`]
     /// rejects the flushed bundle (typically `Closed` after a prior
     /// [`Self::close`], or `Broken` on transport flap).
     pub fn flush(&mut self) -> Result<(), SenderError> {

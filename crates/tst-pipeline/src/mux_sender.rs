@@ -70,7 +70,7 @@ pub struct MuxSenderStats {
 /// 2. **Explicit close** — call [`Self::close`]. Cancels the transport
 ///    *before* taking the inner lock, so a peer thread parked in
 ///    `send_video` / `send_klv` returns
-///    [`MuxSenderError::Transport`]`(`[`TransportError::Broken`]`)` within
+///    [`MuxSenderErrorSource::Transport`]`(`[`TransportError::Broken`]`)` within
 ///    one libsrt I/O cycle (~3-10 ms). Idempotent.
 /// 3. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
 ///    `Send + Sync` [`tst_core::transport::TransportCancel`] handle,
@@ -203,7 +203,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// Resolves only when exactly one video stream is configured; with
     /// multiple video streams the muxer surfaces
-    /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderError::Mux`] —
+    /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderErrorSource::Mux`] —
     /// use [`Self::send_video_to`] in that case.
     ///
     /// # C ABI
@@ -223,10 +223,10 @@ impl<T: Transport> MuxSender<T> {
     /// [`Pts90khz::from_millis`]: tst_core::mpegts::common::Pts90khz::from_millis
     ///
     /// # Errors
-    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the underlying
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the underlying
     ///   muxer (e.g. `AmbiguousTarget` when more than one video stream
     ///   is configured, `InvalidStreamHandle` from `send_video_to`).
-    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     ///
@@ -287,14 +287,14 @@ impl<T: Transport> MuxSender<T> {
     /// `tst_mux_sender_send_klv` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
-    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
     ///   [`MuxError::NoKlvStreamsConfigured`] if no KLV streams exist;
     ///   [`MuxError::AmbiguousTarget`] when more than one is configured
     ///   (use [`Self::send_klv_to`]); [`MuxError::KlvTooLarge`] if the
     ///   blob would overflow `PES_packet_length`;
     ///   [`MuxError::BufferFull`] if the muxer's outbound queue is at
     ///   `MuxerConfig::buffer_packets`.
-    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_klv(
@@ -310,21 +310,21 @@ impl<T: Transport> MuxSender<T> {
     /// Send one video access unit to a specific configured video stream.
     /// `handle` is obtained from [`Self::video_handles`]; passing a handle
     /// from a different sender / muxer surfaces as
-    /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
+    /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderErrorSource::Mux`].
     ///
     /// # C ABI
     ///
     /// `tst_mux_sender_send_video_to` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
-    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
     ///   [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
     ///   range for this muxer's video streams; [`MuxError::InvalidNal`]
     ///   if `nal` does not begin with an Annex-B start code (H.264 /
     ///   H.265 / H.266 only — AV1 OBU payloads skip this check);
     ///   [`MuxError::BufferFull`] if the muxer's outbound queue is at
     ///   `MuxerConfig::buffer_packets`.
-    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_video_to(
@@ -351,14 +351,14 @@ impl<T: Transport> MuxSender<T> {
     /// `tst_mux_sender_send_klv_to` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
-    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
     ///   [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
     ///   range for this muxer's KLV streams; [`MuxError::KlvTooLarge`]
     ///   if the blob would overflow `PES_packet_length` (with a 5-byte
     ///   AU cell header reservation for `SynchronousMetadata` streams);
     ///   [`MuxError::BufferFull`] if the muxer's outbound queue is at
     ///   `MuxerConfig::buffer_packets`.
-    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_klv_to(
@@ -378,7 +378,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// Resolves only when exactly one audio stream is configured; with
     /// zero or multiple audio streams the muxer surfaces
-    /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderError::Mux`] — use
+    /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderErrorSource::Mux`] — use
     /// [`Self::send_audio_to`] in that case.
     ///
     /// # C ABI
@@ -387,13 +387,13 @@ impl<T: Transport> MuxSender<T> {
     /// the audio stream-handle C surface).
     ///
     /// # Errors
-    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
     ///   [`MuxError::NoAudioStreamsConfigured`] if no audio streams exist;
     ///   [`MuxError::AmbiguousTarget`] when more than one is configured;
     ///   [`MuxError::AudioTooLarge`] if `frames.len()` would overflow
     ///   `PES_packet_length`; [`MuxError::BufferFull`] if the muxer's
     ///   outbound queue is at `MuxerConfig::buffer_packets`.
-    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_audio(&self, frames: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
@@ -404,7 +404,7 @@ impl<T: Transport> MuxSender<T> {
     /// Send one audio frame buffer to a specific configured audio stream.
     /// `handle` is obtained from [`Self::audio_handles`]; passing a handle
     /// from a different sender / muxer surfaces as
-    /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
+    /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderErrorSource::Mux`].
     ///
     /// # C ABI
     ///
@@ -412,13 +412,13 @@ impl<T: Transport> MuxSender<T> {
     /// the audio stream-handle C surface).
     ///
     /// # Errors
-    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
     ///   [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
     ///   range for this muxer's audio streams;
     ///   [`MuxError::AudioTooLarge`] if `frames.len()` would overflow
     ///   `PES_packet_length`; [`MuxError::BufferFull`] if the muxer's
     ///   outbound queue is at `MuxerConfig::buffer_packets`.
-    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_audio_to(
@@ -439,7 +439,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// Resolves only when exactly one subtitle stream is configured;
     /// with zero or multiple subtitle streams the muxer surfaces
-    /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderError::Mux`] — use
+    /// [`MuxError::AmbiguousTarget`] inside [`MuxSenderErrorSource::Mux`] — use
     /// [`Self::send_subtitle_to`] in that case.
     ///
     /// # C ABI
@@ -448,13 +448,13 @@ impl<T: Transport> MuxSender<T> {
     /// the subtitle stream-handle C surface).
     ///
     /// # Errors
-    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
     ///   [`MuxError::NoSubtitleStreamsConfigured`] if no subtitle streams
     ///   exist; [`MuxError::AmbiguousTarget`] when more than one is
     ///   configured; [`MuxError::SubtitleTooLarge`] if `payload.len()`
     ///   would overflow `PES_packet_length`; [`MuxError::BufferFull`] if
     ///   the muxer's outbound queue is at `MuxerConfig::buffer_packets`.
-    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_subtitle(&self, payload: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
@@ -465,7 +465,7 @@ impl<T: Transport> MuxSender<T> {
     /// Send one subtitle PES unit to a specific configured subtitle stream.
     /// `handle` is obtained from [`Self::subtitle_handles`]; passing a
     /// handle from a different sender / muxer surfaces as
-    /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderError::Mux`].
+    /// [`MuxError::InvalidStreamHandle`] inside [`MuxSenderErrorSource::Mux`].
     ///
     /// # C ABI
     ///
@@ -473,13 +473,13 @@ impl<T: Transport> MuxSender<T> {
     /// the subtitle stream-handle C surface).
     ///
     /// # Errors
-    /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the inner muxer:
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
     ///   [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
     ///   range for this muxer's subtitle streams;
     ///   [`MuxError::SubtitleTooLarge`] if `payload.len()` would overflow
     ///   `PES_packet_length`; [`MuxError::BufferFull`] if the muxer's
     ///   outbound queue is at `MuxerConfig::buffer_packets`.
-    /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_subtitle_to(

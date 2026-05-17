@@ -16,7 +16,9 @@
 
 use crate::config::TstReconnectPolicy;
 use crate::demux_config::TstDemuxConfig;
-use crate::error::{TstError, record_eos, record_transport_error, set_last_error};
+use crate::error::{
+    TstError, record_eos, record_shell_error, record_transport_error, set_last_error,
+};
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
 use crate::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
@@ -25,8 +27,8 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use tst_pipeline::DemuxReceiver;
-use tst_pipeline::DemuxReceiverError;
 use tst_pipeline::ManagedRecvTransport;
+use tst_pipeline::ShellErrorKind;
 use tst_pipeline::TransportCancel;
 use tst_pipeline::TransportError;
 use tst_srt::SrtTransport;
@@ -255,42 +257,30 @@ pub unsafe extern "C" fn tst_demux_receiver_recv_event(
                 TstError::EndOfStream as i32
             }
         }
-        Err(DemuxReceiverError::Transport(e)) => {
+        Err(e)
+            if e.kind == ShellErrorKind::TransportBroken
+                && !was_cancelled.load(Ordering::Acquire) =>
+        {
             // Same Broken-on-non-cancelled → EOS mapping as Phase 2's
             // tst_receiver_recv_packet (peer FIN surfaces as Broken
             // from libsrt; ManagedRecvTransport retries internally,
             // so a Broken reaching the plain receiver is a peer close).
-            if let TransportError::Broken(_) = &e {
-                if !was_cancelled.load(Ordering::Acquire) {
-                    record_eos();
-                    return TstError::EndOfStream as i32;
-                }
-            }
-            if let TransportError::Closed = &e {
-                if was_cancelled.load(Ordering::Acquire) {
-                    set_last_error(
-                        TstError::Closed,
-                        "receiver was cancelled or closed by caller",
-                    );
-                    return TstError::Closed as i32;
-                }
+            record_eos();
+            TstError::EndOfStream as i32
+        }
+        Err(e) if e.kind == ShellErrorKind::EndOfStream || e.kind == ShellErrorKind::Closed => {
+            if was_cancelled.load(Ordering::Acquire) {
+                set_last_error(
+                    TstError::Closed,
+                    "receiver was cancelled or closed by caller",
+                );
+                TstError::Closed as i32
+            } else {
                 record_eos();
-                return TstError::EndOfStream as i32;
+                TstError::EndOfStream as i32
             }
-            record_transport_error(&e);
-            unsafe { crate::error::tst_get_last_error() }
         }
-        Err(DemuxReceiverError::Demux(e)) => {
-            set_last_error(TstError::InvalidTs, &format!("demux error: {e}"));
-            TstError::InvalidTs as i32
-        }
-        Err(e) => {
-            set_last_error(
-                TstError::Internal,
-                &format!("unexpected demux receiver error: {e}"),
-            );
-            TstError::Internal as i32
-        }
+        Err(e) => record_shell_error(&e),
     })
 }
 
@@ -717,32 +707,19 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_recv_event(
                 TstError::EndOfStream as i32
             }
         }
-        Err(DemuxReceiverError::Transport(e)) => {
-            if let TransportError::Closed = &e {
-                if was_cancelled.load(Ordering::Acquire) {
-                    set_last_error(
-                        TstError::Closed,
-                        "receiver was cancelled or closed by caller",
-                    );
-                    return TstError::Closed as i32;
-                }
+        Err(e) if e.kind == ShellErrorKind::EndOfStream || e.kind == ShellErrorKind::Closed => {
+            if was_cancelled.load(Ordering::Acquire) {
+                set_last_error(
+                    TstError::Closed,
+                    "receiver was cancelled or closed by caller",
+                );
+                TstError::Closed as i32
+            } else {
                 record_eos();
-                return TstError::EndOfStream as i32;
+                TstError::EndOfStream as i32
             }
-            record_transport_error(&e);
-            unsafe { crate::error::tst_get_last_error() }
         }
-        Err(DemuxReceiverError::Demux(e)) => {
-            set_last_error(TstError::InvalidTs, &format!("demux error: {e}"));
-            TstError::InvalidTs as i32
-        }
-        Err(e) => {
-            set_last_error(
-                TstError::Internal,
-                &format!("unexpected demux receiver error: {e}"),
-            );
-            TstError::Internal as i32
-        }
+        Err(e) => record_shell_error(&e),
     })
 }
 

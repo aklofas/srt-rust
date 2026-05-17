@@ -76,10 +76,7 @@ impl From<TsFramingError> for SenderError {
 impl From<tst_core::transport::TransportError> for SenderError {
     fn from(e: tst_core::transport::TransportError) -> Self {
         Self {
-            kind: crate::shell_error::kind_from_transport(
-                &e,
-                crate::shell_error::Direction::Send,
-            ),
+            kind: crate::shell_error::kind_from_transport(&e, crate::shell_error::Direction::Send),
             source: SenderErrorSource::Transport(e),
         }
     }

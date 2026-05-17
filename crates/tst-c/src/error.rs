@@ -104,7 +104,40 @@ pub unsafe extern "C" fn tst_get_last_error_str() -> *const libc::c_char {
 use tst_core::error::MuxError;
 #[cfg(test)]
 use tst_core::mpegts::mux::StreamKind;
-use tst_pipeline::{MuxSenderError, SenderError, TransportError};
+use tst_pipeline::{ShellError, ShellErrorKind, TransportError};
+
+/// Map a [`ShellErrorKind`] to its corresponding [`TstError`] code.
+///
+/// This is the single point of truth for the kind-to-code projection.
+/// CI ratchet `scripts/check-shell-error-kind-coverage.sh` (Task 10)
+/// will enforce every `ShellErrorKind` variant is matched explicitly here.
+pub(crate) fn tst_error_from_kind(kind: ShellErrorKind) -> TstError {
+    match kind {
+        ShellErrorKind::ConfigInvalid => TstError::InvalidConfig,
+        ShellErrorKind::InputMalformed => TstError::InvalidTs,
+        ShellErrorKind::Backpressure => TstError::BufferFull,
+        ShellErrorKind::TransportBroken => TstError::Transport,
+        ShellErrorKind::Closed => TstError::Closed,
+        ShellErrorKind::EndOfStream => TstError::EndOfStream,
+        // Required by #[non_exhaustive]. CI ratchet
+        // scripts/check-shell-error-kind-coverage.sh (Task 10) enforces
+        // every ShellErrorKind variant is matched above before this arm.
+        _ => TstError::Internal,
+    }
+}
+
+/// Record a shell error to the per-thread last-error slot. Used by
+/// every C ABI entry point's error path; replaces the per-variant
+/// `record_mux_sender_error` / `record_transport_error` / `record_sender_error` /
+/// `record_ts_sender_error` functions from pre-Wave-4 code.
+///
+/// Returns the negative TST_E_* code suitable for direct return from
+/// the C entry point.
+pub(crate) fn record_shell_error<E: ShellError>(e: &E) -> i32 {
+    let code = tst_error_from_kind(e.kind());
+    set_last_error(code, &e.to_string());
+    code as i32
+}
 
 /// Map a `MuxError` to a code + message.
 pub(crate) fn record_mux_error(e: &MuxError) {
@@ -318,26 +351,6 @@ pub(crate) fn record_transport_error(e: &TransportError) {
         }
     };
     set_last_error(code, &msg);
-}
-
-pub(crate) fn record_sender_error(e: &MuxSenderError) {
-    match e {
-        MuxSenderError::Mux(m) => record_mux_error(m),
-        MuxSenderError::Transport(t) => record_transport_error(t),
-        // Required by #[non_exhaustive]. CI ratchet enforces every variant
-        // is matched above.
-        _ => record_internal(&format!("unhandled MuxSenderError variant: {e:?}")),
-    }
-}
-
-pub(crate) fn record_ts_sender_error(e: &SenderError) {
-    match e {
-        SenderError::Transport(t) => record_transport_error(t),
-        SenderError::Framing(f) => set_last_error(TstError::InvalidTs, &f.to_string()),
-        // Required by #[non_exhaustive]. CI ratchet enforces every variant
-        // is matched above.
-        _ => record_internal(&format!("unhandled SenderError variant: {e:?}")),
-    }
 }
 
 /// Helper for entry points that catch panics or Mutex poison.
@@ -637,64 +650,6 @@ mod tests {
             assert_eq!(
                 code, expected as i32,
                 "TransportError variant mapped to wrong code: {case:?} -> got {code}, expected {}",
-                expected as i32
-            );
-            assert_not_unhandled_wildcard();
-        }
-    }
-
-    #[test]
-    fn every_known_mux_sender_error_variant_maps_to_expected_code() {
-        let cases: Vec<(MuxSenderError, TstError)> = vec![
-            // MuxSenderError::Mux delegates to record_mux_error.
-            (
-                MuxSenderError::Mux(MuxError::InvalidConfig("test")),
-                TstError::InvalidConfig,
-            ),
-            // MuxSenderError::Transport delegates to record_transport_error.
-            (
-                MuxSenderError::Transport(TransportError::Closed),
-                TstError::Closed,
-            ),
-        ];
-
-        for (case, expected) in cases {
-            clear_last_error_for_test();
-            record_sender_error(&case);
-            let code = unsafe { tst_get_last_error() };
-            assert_eq!(
-                code, expected as i32,
-                "MuxSenderError variant mapped to wrong code: {case:?} -> got {code}, expected {}",
-                expected as i32
-            );
-            assert_not_unhandled_wildcard();
-        }
-    }
-
-    #[test]
-    fn every_known_ts_sender_error_variant_maps_to_expected_code() {
-        use tst_pipeline::sender::TsFramingError;
-
-        let cases: Vec<(SenderError, TstError)> = vec![
-            // SenderError::Framing maps to InvalidTs via Display formatting.
-            (
-                SenderError::Framing(TsFramingError::SyncLost { offset: 0 }),
-                TstError::InvalidTs,
-            ),
-            // SenderError::Transport delegates to record_transport_error.
-            (
-                SenderError::Transport(TransportError::Closed),
-                TstError::Closed,
-            ),
-        ];
-
-        for (case, expected) in cases {
-            clear_last_error_for_test();
-            record_ts_sender_error(&case);
-            let code = unsafe { tst_get_last_error() };
-            assert_eq!(
-                code, expected as i32,
-                "SenderError variant mapped to wrong code: {case:?} -> got {code}, expected {}",
                 expected as i32
             );
             assert_not_unhandled_wildcard();

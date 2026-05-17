@@ -52,7 +52,9 @@ pub mod sender;
 pub mod shell_error;
 
 // Top-level re-exports of the most common types.
-pub use demux_receiver::{ByteSink, DemuxReceiver, DemuxReceiverError, DemuxReceiverErrorSource, DemuxReceiverStats};
+pub use demux_receiver::{
+    ByteSink, DemuxReceiver, DemuxReceiverError, DemuxReceiverErrorSource, DemuxReceiverStats,
+};
 pub use dyn_aliases::{
     BoxedDemuxReceiver, BoxedMuxSender, BoxedRawReceiver, BoxedRawSender, BoxedReceiver,
     BoxedSender,
@@ -62,13 +64,19 @@ pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderErrorSource, MuxSenderS
 pub use pairing::{
     KlvSample, Pairer, PairerConfig, PairerMode, PairerOutput, PairerStats, VideoSample,
 };
-pub use raw_receiver::{RawReceiver, RawReceiverConfig, RawReceiverError, RawReceiverErrorSource, RawRecvStats};
-pub use raw_sender::{RawSendStats, RawSender, RawSenderConfig, RawSenderError, RawSenderErrorSource};
+pub use raw_receiver::{
+    RawReceiver, RawReceiverConfig, RawReceiverError, RawReceiverErrorSource, RawRecvStats,
+};
+pub use raw_sender::{
+    RawSendStats, RawSender, RawSenderConfig, RawSenderError, RawSenderErrorSource,
+};
 pub use receiver::{Receiver, ReceiverConfig, ReceiverError, ReceiverErrorSource, ReceiverStats};
 pub use reconnect::{
     BackoffStrategy, GapBuffer, ManagedTransport, OverflowPolicy, ReconnectPolicy,
 };
-pub use sender::{Sender, SenderConfig, SenderError, SenderErrorSource, SenderStats, TsFramingMode};
+pub use sender::{
+    Sender, SenderConfig, SenderError, SenderErrorSource, SenderStats, TsFramingMode,
+};
 pub use shell_error::{ShellError, ShellErrorKind};
 
 // Re-export the core trait types for caller convenience.

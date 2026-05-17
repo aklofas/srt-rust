@@ -61,10 +61,7 @@ pub enum RawSenderErrorSource {
 impl From<TransportError> for RawSenderError {
     fn from(e: TransportError) -> Self {
         Self {
-            kind: crate::shell_error::kind_from_transport(
-                &e,
-                crate::shell_error::Direction::Send,
-            ),
+            kind: crate::shell_error::kind_from_transport(&e, crate::shell_error::Direction::Send),
             source: RawSenderErrorSource::Transport(e),
         }
     }

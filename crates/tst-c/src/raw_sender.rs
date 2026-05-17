@@ -3,7 +3,7 @@
 //! One _send call = one outbound SRT message of the exact length passed in.
 
 use crate::config::{TstRawSenderConfig, TstReconnectPolicy};
-use crate::error::{TstError, record_transport_error, set_last_error, tst_get_last_error};
+use crate::error::{TstError, record_shell_error, record_transport_error, set_last_error};
 use crate::handle::Handle;
 use crate::mux_sender::parse_c_srt_url;
 use std::sync::Arc;
@@ -89,10 +89,7 @@ pub unsafe extern "C" fn tst_raw_sender_send(
     let slice = unsafe { std::slice::from_raw_parts(bytes, len) };
     handle.inner.with_inner_mut(|s| match s.send(slice) {
         Ok(()) => 0,
-        Err(e) => {
-            record_transport_error(&e);
-            unsafe { tst_get_last_error() }
-        }
+        Err(e) => record_shell_error(&e),
     })
 }
 
@@ -223,10 +220,7 @@ pub unsafe extern "C" fn tst_managed_raw_sender_send(
     let slice = unsafe { std::slice::from_raw_parts(bytes, len) };
     handle.inner.with_inner_mut(|s| match s.send(slice) {
         Ok(()) => 0,
-        Err(e) => {
-            record_transport_error(&e);
-            unsafe { tst_get_last_error() }
-        }
+        Err(e) => record_shell_error(&e),
     })
 }
 

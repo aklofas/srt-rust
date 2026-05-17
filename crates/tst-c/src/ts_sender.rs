@@ -4,9 +4,7 @@
 //! STRICT mode per `tst_sender_config_t::framing_mode`).
 
 use crate::config::{TstReconnectPolicy, TstSenderConfig};
-use crate::error::{
-    TstError, record_transport_error, record_ts_sender_error, set_last_error, tst_get_last_error,
-};
+use crate::error::{TstError, record_shell_error, record_transport_error, set_last_error};
 use crate::handle::Handle;
 use crate::mux_sender::parse_c_srt_url;
 use std::sync::Arc;
@@ -115,10 +113,7 @@ pub unsafe extern "C" fn tst_sender_send_ts(
     let slice = unsafe { std::slice::from_raw_parts(bytes, len) };
     handle.inner.with_inner_mut(|s| match s.send_ts(slice) {
         Ok(()) => 0,
-        Err(e) => {
-            record_ts_sender_error(&e);
-            unsafe { tst_get_last_error() }
-        }
+        Err(e) => record_shell_error(&e),
     })
 }
 
@@ -130,10 +125,7 @@ pub unsafe extern "C" fn tst_sender_flush(p: *mut TstSender) -> libc::c_int {
     };
     handle.inner.with_inner_mut(|s| match s.flush() {
         Ok(()) => 0,
-        Err(e) => {
-            record_ts_sender_error(&e);
-            unsafe { tst_get_last_error() }
-        }
+        Err(e) => record_shell_error(&e),
     })
 }
 
@@ -327,10 +319,7 @@ pub unsafe extern "C" fn tst_managed_sender_send_ts(
     let slice = unsafe { std::slice::from_raw_parts(bytes, len) };
     handle.inner.with_inner_mut(|s| match s.send_ts(slice) {
         Ok(()) => 0,
-        Err(e) => {
-            record_ts_sender_error(&e);
-            unsafe { tst_get_last_error() }
-        }
+        Err(e) => record_shell_error(&e),
     })
 }
 
@@ -342,10 +331,7 @@ pub unsafe extern "C" fn tst_managed_sender_flush(p: *mut TstManagedSender) -> l
     };
     handle.inner.with_inner_mut(|s| match s.flush() {
         Ok(()) => 0,
-        Err(e) => {
-            record_ts_sender_error(&e);
-            unsafe { tst_get_last_error() }
-        }
+        Err(e) => record_shell_error(&e),
     })
 }
 

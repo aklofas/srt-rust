@@ -928,9 +928,7 @@ impl<T: Transport> Inner<T> {
     fn drain_pending(&mut self) -> Result<(), MuxSenderError> {
         while let Some(chunk) = self.pending_bytes.front() {
             let len = chunk.len() as u64;
-            self.transport
-                .send_bytes(chunk)
-                ?;
+            self.transport.send_bytes(chunk)?;
             // Only count after successful send.
             self.bytes_sent += len;
             self.packets_sent += 1;
@@ -988,10 +986,7 @@ impl From<MuxError> for MuxSenderError {
 impl From<TransportError> for MuxSenderError {
     fn from(e: TransportError) -> Self {
         Self {
-            kind: crate::shell_error::kind_from_transport(
-                &e,
-                crate::shell_error::Direction::Send,
-            ),
+            kind: crate::shell_error::kind_from_transport(&e, crate::shell_error::Direction::Send),
             source: MuxSenderErrorSource::Transport(e),
         }
     }

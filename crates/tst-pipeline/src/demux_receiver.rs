@@ -372,10 +372,7 @@ pub enum DemuxReceiverErrorSource {
 impl From<TransportError> for DemuxReceiverError {
     fn from(e: TransportError) -> Self {
         Self {
-            kind: crate::shell_error::kind_from_transport(
-                &e,
-                crate::shell_error::Direction::Recv,
-            ),
+            kind: crate::shell_error::kind_from_transport(&e, crate::shell_error::Direction::Recv),
             source: DemuxReceiverErrorSource::Transport(e),
         }
     }

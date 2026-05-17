@@ -13,7 +13,9 @@
 //! so `_cancel` does not deadlock against a concurrent `_recv_packet`.
 
 use crate::config::TstReconnectPolicy;
-use crate::error::{TstError, record_eos, record_transport_error, set_last_error};
+use crate::error::{
+    TstError, record_eos, record_shell_error, record_transport_error, set_last_error,
+};
 use crate::handle::Handle;
 use crate::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
 use std::sync::Arc;
@@ -21,6 +23,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use tst_core::mpegts::common::TS_PACKET_SIZE;
 use tst_pipeline::ManagedRecvTransport;
+use tst_pipeline::ShellErrorKind;
 use tst_pipeline::TransportCancel;
 use tst_pipeline::TransportError;
 use tst_pipeline::{Receiver, ReceiverConfig};
@@ -177,7 +180,7 @@ pub unsafe extern "C" fn tst_receiver_recv_packet(
             unsafe { std::ptr::copy_nonoverlapping(pkt.as_ptr(), out_packet, TS_PACKET_SIZE) };
             0
         }
-        Err(TransportError::Closed) => {
+        Err(e) if e.kind == ShellErrorKind::Closed => {
             if was_cancelled.load(Ordering::Acquire) {
                 set_last_error(
                     TstError::Closed,
@@ -196,14 +199,14 @@ pub unsafe extern "C" fn tst_receiver_recv_packet(
         // reconnect. At the plain C ABI boundary a Broken result on a
         // non-cancelled handle means the peer disconnected, which the
         // caller contract documents as TST_E_END_OF_STREAM.
-        Err(TransportError::Broken(_)) if !was_cancelled.load(Ordering::Acquire) => {
+        Err(e)
+            if e.kind == ShellErrorKind::TransportBroken
+                && !was_cancelled.load(Ordering::Acquire) =>
+        {
             record_eos();
             TstError::EndOfStream as i32
         }
-        Err(e) => {
-            record_transport_error(&e);
-            unsafe { crate::error::tst_get_last_error() }
-        }
+        Err(e) => record_shell_error(&e),
     })
 }
 
@@ -468,7 +471,7 @@ pub unsafe extern "C" fn tst_managed_receiver_recv_packet(
             unsafe { std::ptr::copy_nonoverlapping(pkt.as_ptr(), out_packet, TS_PACKET_SIZE) };
             0
         }
-        Err(TransportError::Closed) => {
+        Err(e) if e.kind == ShellErrorKind::Closed => {
             if was_cancelled.load(Ordering::Acquire) {
                 set_last_error(
                     TstError::Closed,
@@ -480,10 +483,7 @@ pub unsafe extern "C" fn tst_managed_receiver_recv_packet(
                 TstError::EndOfStream as i32
             }
         }
-        Err(e) => {
-            record_transport_error(&e);
-            unsafe { crate::error::tst_get_last_error() }
-        }
+        Err(e) => record_shell_error(&e),
     })
 }
 

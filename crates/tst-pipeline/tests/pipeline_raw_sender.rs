@@ -1,6 +1,8 @@
 //! Integration tests for `pipeline::RawSender` using a mock `Transport`.
 
-use tst_pipeline::{RawSender, RawSenderConfig, RawSenderErrorSource, ShellErrorKind, TransportError};
+use tst_pipeline::{
+    RawSender, RawSenderConfig, RawSenderErrorSource, ShellErrorKind, TransportError,
+};
 use tst_test_helpers::mock_transport::MockTransport;
 
 #[test]

@@ -166,10 +166,7 @@ pub enum ReceiverErrorSource {
 impl From<TransportError> for ReceiverError {
     fn from(e: TransportError) -> Self {
         Self {
-            kind: crate::shell_error::kind_from_transport(
-                &e,
-                crate::shell_error::Direction::Recv,
-            ),
+            kind: crate::shell_error::kind_from_transport(&e, crate::shell_error::Direction::Recv),
             source: ReceiverErrorSource::Transport(e),
         }
     }

@@ -7,7 +7,7 @@
 
 use crate::config::{TstMuxConfig, TstReconnectPolicy};
 use crate::error::{
-    TstError, record_mux_error, record_sender_error, set_last_error, tst_get_last_error,
+    TstError, record_mux_error, record_shell_error, set_last_error, tst_get_last_error,
 };
 use crate::handle::{Handle, TstKlvStreamHandle, TstVideoStreamHandle};
 use std::sync::Arc;
@@ -115,7 +115,7 @@ pub unsafe extern "C" fn tst_mux_sender_send_video(
         .with_inner_ref(|s| match s.send_video(slice, pts, key_frame) {
             Ok(()) => 0,
             Err(e) => {
-                record_sender_error(&e);
+                record_shell_error(&e);
                 unsafe { tst_get_last_error() }
             }
         })
@@ -147,7 +147,7 @@ pub unsafe extern "C" fn tst_mux_sender_send_klv(
         ) {
             Ok(()) => 0,
             Err(e) => {
-                record_sender_error(&e);
+                record_shell_error(&e);
                 unsafe { tst_get_last_error() }
             }
         }
@@ -188,7 +188,7 @@ pub unsafe extern "C" fn tst_mux_sender_send_video_to(
         .with_inner_ref(|s| match s.send_video_to(stream, slice, pts, key_frame) {
             Ok(()) => 0,
             Err(e) => {
-                record_sender_error(&e);
+                record_shell_error(&e);
                 unsafe { tst_get_last_error() }
             }
         })
@@ -232,7 +232,7 @@ pub unsafe extern "C" fn tst_mux_sender_send_klv_to(
         ) {
             Ok(()) => 0,
             Err(e) => {
-                record_sender_error(&e);
+                record_shell_error(&e);
                 unsafe { tst_get_last_error() }
             }
         }
@@ -604,7 +604,7 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_video(
         .with_inner_ref(|s| match s.send_video(slice, pts, key_frame) {
             Ok(()) => 0,
             Err(e) => {
-                record_sender_error(&e);
+                record_shell_error(&e);
                 unsafe { tst_get_last_error() }
             }
         })
@@ -636,7 +636,7 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_klv(
         ) {
             Ok(()) => 0,
             Err(e) => {
-                record_sender_error(&e);
+                record_shell_error(&e);
                 unsafe { tst_get_last_error() }
             }
         }
@@ -678,7 +678,7 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_video_to(
         .with_inner_ref(|s| match s.send_video_to(stream, slice, pts, key_frame) {
             Ok(()) => 0,
             Err(e) => {
-                record_sender_error(&e);
+                record_shell_error(&e);
                 unsafe { tst_get_last_error() }
             }
         })
@@ -723,7 +723,7 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_klv_to(
         ) {
             Ok(()) => 0,
             Err(e) => {
-                record_sender_error(&e);
+                record_shell_error(&e);
                 unsafe { tst_get_last_error() }
             }
         }

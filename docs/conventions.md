@@ -80,6 +80,86 @@ let bldr = MuxerConfig::builder();                       // builder factory
 let pairer = Pairer::with_options(v, k, opts);           // explicit knob still fine
 ```
 
+**Per-pattern rationale:**
+
+- **`T::new(...)`** is the canonical primary constructor. Use it when the
+  type has a small fixed set of required arguments and no optional
+  knobs. If callers commonly want defaults plus 1–2 overrides, pair
+  `new` with a builder factory (`T::builder()`) rather than overloading
+  `new` with optional-argument variants.
+
+- **`T::from_<format>(...)`** signals a parsing or decoding step from
+  some input format. The `_<format>` suffix names the source: `from_bytes`,
+  `from_str`, `from_u8`, `from_h273`, `from_raw`, `from_env`, `from_file`,
+  `from_pts`, `from_millis`. The name should make it obvious what the
+  input is — never just `from_value` or `from_input`.
+
+- **`T::with_<aspect>(...)`** is for variant constructors that take one
+  meaningful behavioral knob in addition to required args. The aspect
+  noun should be generic enough to read naturally (`with_options`,
+  `with_config`) rather than re-stating the type name
+  (`with_demux_options`). Used sparingly — prefer a builder for ≥2 knobs.
+
+- **`T::default()`** is the zero-arg fallback, ONLY when every field
+  has a meaningful zero value. Types that have required args without
+  meaningful defaults (e.g., `MuxerProgramConfig`'s required
+  `program_number` + `pmt_pid`) deliberately omit `Default` and ship a
+  `new(...)` constructor with the required args instead.
+
+- **`T::builder(...)`** is the builder factory entry point. Use the
+  builder pattern when the "Builder vs Default" rule below applies.
+
+**Outliers surfaced by the plan #75 audit (listed for transparency,
+not silently renamed):**
+
+| Site | Convention concern | Disposition |
+|------|---------------------|-------------|
+| `DemuxReceiver::with_demux_options(transport, options)` | Uses over-specific `_demux_options` noun; rule recommends generic `with_options` or `with_config`. | Rename candidate for a future plan — touches the C ABI mirror at `crates/tst-c/src/demux_receiver.rs:170, 664`, so a one-line audit isn't free. |
+| `SrtTransport::with_max_payload(self, n) -> Self` | Chainable `self -> Self` modifier on an already-constructed value; reads like a constructor by prefix but is a fluent modifier. | Borderline — the rustdoc at `crates/tst-srt/src/transport.rs:31` clarifies the modifier intent. No rename; reviewers should not flag new `with_*` modifiers on existing values, but new constructors should still match the `with_<aspect>` aspect-rule. |
+
+---
+
+## Method naming conventions
+
+**Rule:** Public methods that perform operations follow these verb prefixes:
+
+| Verb | Meaning |
+|------|---------|
+| `send_*` | **Wire / transport-bound operation.** Frames a message and pushes it to a `Transport`. May block, may fail with a transport error. Examples: `MuxSender::send_video`, `Sender::send_ts`. |
+| `recv_*` | **Wire-read counterpart of `send_*`.** Reads from a `RecvTransport`. May block, may fail with a transport error or return `None` on stream end. Examples: `DemuxReceiver::recv_event`, `RawReceiver::recv_one`. |
+| `push_*` | **In-process enqueue.** Hands data to an in-process buffer / queue / parser. No transport contract; no I/O; the operation completes synchronously and either succeeds or returns a structural error. Examples: `Muxer::push_video`, `TsFraming::push_strict`. |
+| `pull_*` / `feed_*` | **Consume from an in-process source.** Pull existing buffered output, or feed incoming bytes to an in-process consumer. No transport contract. Example: `Demuxer::feed_aligned`. |
+
+**Why:** Without a codified rule, future contributors will invent local
+verb vocabularies and reviewers will have to re-litigate "is this a
+wire op or a buffer op?" on every PR. The de-facto rule above already
+holds across the workspace (verified by the verb-audit done in plan
+#75 — see plan task 1 for the per-method classification table); making
+it explicit lets new code be reviewed against it and new public APIs
+be named consistently from the start.
+
+**Examples:**
+
+```rust
+// Good — verb matches operation kind:
+mux_sender.send_video(handle, nal_bytes, pts)?;  // wire op (transport blocks)
+muxer.push_video(handle, nal_bytes, pts)?;        // in-process queue op
+demuxer.feed_aligned(&packet)?;                   // in-process consumer
+demux_receiver.recv_event()?;                     // wire read
+
+// Bad — wrong verb:
+// pub fn send_to_muxer(&mut self, ...) { ... }  // should be push_*; no wire
+// pub fn push_over_transport(&mut self, ...) { ... }  // should be send_*; has I/O
+```
+
+**Adjective use note:** `send_` and `recv_` also appear as adjectives
+on builder config-setter methods that qualify a configured aspect
+(e.g., `SocketBuilder::send_timeout`, `ListenerBuilder::recv_latency`).
+These are configuration setters returning `&mut Self`, not operations
+— the rule above governs operation names, not adjective-prefixed
+setters. Config setters follow the existing builder-method
+conventions documented in "Builder vs Default" below.
+
 ---
 
 ## Builder vs Default

@@ -7,6 +7,74 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 2.3 config conventions and symmetry (plan #72)
+
+### Added
+
+- New `docs/conventions.md` codifies workspace-wide policies for
+  Config/Options naming, constructor naming, builder-vs-Default, public
+  field policy, and where invariants are enforced.
+- New `tst_pipeline::ReceiverConfig` + `tst_pipeline::RawReceiverConfig`
+  empty `#[non_exhaustive]` structs. Future receive-side knobs can land
+  non-breakingly. Mirror the send-side `SenderConfig`/`RawSenderConfig`
+  shape.
+- New `tst_pipeline::Pairer::new(video_pid, klv_pid) -> Self` primary
+  constructor that delegates to `with_options` with default config.
+- New `tst_core::error::MuxError::ConfigInvalid { reason: String }`
+  variant for richer `validate()` diagnostics that need formatted
+  reasons. Maps to `TstError::InvalidConfig` at the C ABI (same code
+  as flat-string `MuxError::InvalidConfig`).
+- New `tst_core::mpegts::mux::MuxerProgramConfig::new(program_number,
+  pmt_pid) -> Self` in-crate constructor for external callers (now
+  required because `MuxerProgramConfig` gained `#[non_exhaustive]` and
+  has no `Default` impl).
+
+### Changed (BREAKING — pre-1.0)
+
+- `tst_core::mpegts::demux::DemuxerOptions` renamed to
+  `tst_core::mpegts::demux::DemuxerConfig`; also gained
+  `#[non_exhaustive]`. Construction via struct literal outside the
+  crate no longer permitted; use `DemuxerConfig::default()` and assign
+  overrides.
+- `tst_pipeline::PairerOptions` renamed to `tst_pipeline::PairerConfig`.
+- `tst_core::klv::st0601::EncodeOptions` renamed to
+  `tst_core::klv::st0601::EncodeConfig`; also gained
+  `#[non_exhaustive]`.
+- `tst_pipeline::Receiver::new(transport)` → `Receiver::new(transport,
+  ReceiverConfig)`. The config is currently empty; pass
+  `ReceiverConfig::default()`.
+- `tst_pipeline::RawReceiver::new(transport)` → `RawReceiver::new(
+  transport, RawReceiverConfig)`. Same.
+- `MuxerConfig::validate()` now raises `MuxError::ConfigInvalid { reason }`
+  (richer diagnostic) instead of `MuxError::InvalidConfig(static)` for
+  `stream_descriptors` length mismatches. Pattern matches on
+  `InvalidConfig` no longer catch this specific case.
+- `tst_pipeline::SenderConfig`, `tst_pipeline::RawSenderConfig`,
+  `tst_srt::SocketConfig`, `tst_srt::ListenerConfig`,
+  `tst_core::mpegts::mux::MuxerConfig`, and
+  `tst_core::mpegts::mux::MuxerProgramConfig` ALL gained
+  `#[non_exhaustive]`. Cross-crate callers using struct literal syntax
+  (incl. `Foo { field, ..Default::default() }`) must migrate to
+  default-and-assign: `let mut cfg = Foo::default(); cfg.field = ...;`.
+  See `docs/conventions.md` § "Public field policy for `*Config`
+  structs" for the canonical construction patterns.
+
+### CI
+
+- `#[non_exhaustive]` BASELINE in `.github/workflows/ci.yml` bumped
+  from 58 to 71 (+13 observed by the `rg -c` count CI uses; reflects
+  4 new annotations from Tasks 2 + 4 — `DemuxerConfig`,
+  `EncodeConfig`, `ReceiverConfig`, `RawReceiverConfig` — plus 6 from
+  the codex-required policy sweep — `SenderConfig`, `RawSenderConfig`,
+  `SocketConfig`, `ListenerConfig`, `MuxerConfig`,
+  `MuxerProgramConfig` — plus 3 doc-comment mentions of
+  `#[non_exhaustive]` that the regex naturally captures).
+- `cargo public-api` baselines refreshed for `tst-core`,
+  `tst-pipeline`, AND `tst-srt` (`tst-srt` now changes because Task 9
+  sweeps `SocketConfig` + `ListenerConfig`).
+
+---
+
 ## [Unreleased] — demux event fixes (plan #69)
 
 ### Changed (BREAKING — pre-1.0)

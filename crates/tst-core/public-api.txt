@@ -1232,6 +1232,8 @@ pub tst_core::error::MuxError::AudioTooLarge::max: usize
 pub tst_core::error::MuxError::AudioTooLarge::size: usize
 pub tst_core::error::MuxError::BufferFull
 pub tst_core::error::MuxError::BufferFull::capacity_packets: u64
+pub tst_core::error::MuxError::ConfigInvalid
+pub tst_core::error::MuxError::ConfigInvalid::reason: alloc::string::String
 pub tst_core::error::MuxError::DescriptorIndexOutOfRange
 pub tst_core::error::MuxError::DescriptorIndexOutOfRange::index: u32
 pub tst_core::error::MuxError::DescriptorIndexOutOfRange::kind: tst_core::mpegts::mux::StreamKind
@@ -1626,7 +1628,7 @@ impl core::marker::Unpin for tst_core::klv::st0601::Corners
 impl core::marker::UnsafeUnpin for tst_core::klv::st0601::Corners
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::st0601::Corners
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::st0601::Corners
-pub struct tst_core::klv::st0601::EncodeConfig
+#[non_exhaustive] pub struct tst_core::klv::st0601::EncodeConfig
 pub tst_core::klv::st0601::EncodeConfig::universal_label: tst_core::klv::universal_label::UniversalLabel
 pub tst_core::klv::st0601::EncodeConfig::version: u8
 impl core::clone::Clone for tst_core::klv::st0601::EncodeConfig
@@ -3336,7 +3338,7 @@ impl core::marker::Unpin for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::types::DemuxerBuilder
-pub struct tst_core::mpegts::demux::types::DemuxerConfig
+#[non_exhaustive] pub struct tst_core::mpegts::demux::types::DemuxerConfig
 pub tst_core::mpegts::demux::types::DemuxerConfig::klv_link_overrides: alloc::vec::Vec<(u16, u16)>
 pub tst_core::mpegts::demux::types::DemuxerConfig::lenient_psi_reassembly: bool
 pub tst_core::mpegts::demux::types::DemuxerConfig::pes_cap_per_pid: core::option::Option<usize>
@@ -3798,7 +3800,7 @@ impl core::marker::Unpin for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::types::DemuxerBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::types::DemuxerBuilder
-pub struct tst_core::mpegts::demux::DemuxerConfig
+#[non_exhaustive] pub struct tst_core::mpegts::demux::DemuxerConfig
 pub tst_core::mpegts::demux::DemuxerConfig::klv_link_overrides: alloc::vec::Vec<(u16, u16)>
 pub tst_core::mpegts::demux::DemuxerConfig::lenient_psi_reassembly: bool
 pub tst_core::mpegts::demux::DemuxerConfig::pes_cap_per_pid: core::option::Option<usize>
@@ -4379,7 +4381,7 @@ impl core::marker::Unpin for tst_core::mpegts::mux::Muxer
 impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::Muxer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::Muxer
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::Muxer
-pub struct tst_core::mpegts::mux::MuxerConfig
+#[non_exhaustive] pub struct tst_core::mpegts::mux::MuxerConfig
 pub tst_core::mpegts::mux::MuxerConfig::buffer_packets: usize
 pub tst_core::mpegts::mux::MuxerConfig::pcr_interval_ms: u32
 pub tst_core::mpegts::mux::MuxerConfig::programs: alloc::vec::Vec<tst_core::mpegts::mux::MuxerProgramConfig>
@@ -4418,13 +4420,15 @@ impl core::marker::Unpin for tst_core::mpegts::mux::MuxerConfigBuilder
 impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::MuxerConfigBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::MuxerConfigBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::MuxerConfigBuilder
-pub struct tst_core::mpegts::mux::MuxerProgramConfig
+#[non_exhaustive] pub struct tst_core::mpegts::mux::MuxerProgramConfig
 pub tst_core::mpegts::mux::MuxerProgramConfig::pcr_pid: core::option::Option<u16>
 pub tst_core::mpegts::mux::MuxerProgramConfig::pmt_pid: u16
 pub tst_core::mpegts::mux::MuxerProgramConfig::program_descriptors: alloc::vec::Vec<alloc::vec::Vec<u8>>
 pub tst_core::mpegts::mux::MuxerProgramConfig::program_number: u16
 pub tst_core::mpegts::mux::MuxerProgramConfig::stream_descriptors: alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<u8>>>
 pub tst_core::mpegts::mux::MuxerProgramConfig::streams: alloc::vec::Vec<tst_core::mpegts::mux::StreamSpec>
+impl tst_core::mpegts::mux::MuxerProgramConfig
+pub fn tst_core::mpegts::mux::MuxerProgramConfig::new(program_number: u16, pmt_pid: u16) -> Self
 impl core::clone::Clone for tst_core::mpegts::mux::MuxerProgramConfig
 pub fn tst_core::mpegts::mux::MuxerProgramConfig::clone(&self) -> tst_core::mpegts::mux::MuxerProgramConfig
 impl core::fmt::Debug for tst_core::mpegts::mux::MuxerProgramConfig
@@ -4864,6 +4868,8 @@ pub tst_core::MuxError::AudioTooLarge::max: usize
 pub tst_core::MuxError::AudioTooLarge::size: usize
 pub tst_core::MuxError::BufferFull
 pub tst_core::MuxError::BufferFull::capacity_packets: u64
+pub tst_core::MuxError::ConfigInvalid
+pub tst_core::MuxError::ConfigInvalid::reason: alloc::string::String
 pub tst_core::MuxError::DescriptorIndexOutOfRange
 pub tst_core::MuxError::DescriptorIndexOutOfRange::index: u32
 pub tst_core::MuxError::DescriptorIndexOutOfRange::kind: tst_core::mpegts::mux::StreamKind

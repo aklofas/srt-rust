@@ -81,7 +81,7 @@ impl core::marker::UnsafeUnpin for tst_srt::builder::SocketBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_srt::builder::SocketBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_srt::builder::SocketBuilder
 pub mod tst_srt::config
-pub struct tst_srt::config::ListenerConfig
+#[non_exhaustive] pub struct tst_srt::config::ListenerConfig
 pub tst_srt::config::ListenerConfig::backlog: u32
 pub tst_srt::config::ListenerConfig::congestion: core::option::Option<tst_srt::options::Congestion>
 pub tst_srt::config::ListenerConfig::flow_window_packets: core::option::Option<u32>
@@ -115,7 +115,7 @@ impl core::marker::Unpin for tst_srt::config::ListenerConfig
 impl core::marker::UnsafeUnpin for tst_srt::config::ListenerConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tst_srt::config::ListenerConfig
 impl core::panic::unwind_safe::UnwindSafe for tst_srt::config::ListenerConfig
-pub struct tst_srt::config::SocketConfig
+#[non_exhaustive] pub struct tst_srt::config::SocketConfig
 pub tst_srt::config::SocketConfig::congestion: core::option::Option<tst_srt::options::Congestion>
 pub tst_srt::config::SocketConfig::connect_timeout: core::option::Option<core::time::Duration>
 pub tst_srt::config::SocketConfig::flow_window_packets: core::option::Option<u32>
@@ -1324,7 +1324,7 @@ impl core::marker::Unpin for tst_srt::builder::ListenerBuilder
 impl core::marker::UnsafeUnpin for tst_srt::builder::ListenerBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_srt::builder::ListenerBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_srt::builder::ListenerBuilder
-pub struct tst_srt::ListenerConfig
+#[non_exhaustive] pub struct tst_srt::ListenerConfig
 pub tst_srt::ListenerConfig::backlog: u32
 pub tst_srt::ListenerConfig::congestion: core::option::Option<tst_srt::options::Congestion>
 pub tst_srt::ListenerConfig::flow_window_packets: core::option::Option<u32>
@@ -1458,7 +1458,7 @@ impl core::marker::Unpin for tst_srt::builder::SocketBuilder
 impl core::marker::UnsafeUnpin for tst_srt::builder::SocketBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_srt::builder::SocketBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_srt::builder::SocketBuilder
-pub struct tst_srt::SocketConfig
+#[non_exhaustive] pub struct tst_srt::SocketConfig
 pub tst_srt::SocketConfig::congestion: core::option::Option<tst_srt::options::Congestion>
 pub tst_srt::SocketConfig::connect_timeout: core::option::Option<core::time::Duration>
 pub tst_srt::SocketConfig::flow_window_packets: core::option::Option<u32>

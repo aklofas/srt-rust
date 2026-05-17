@@ -303,7 +303,7 @@ per RFC 2781 §4.3.
 - Calendar parsing of date fields (Tag 10 "YYYYMMDD", Tags 23/24
   "YYYY-MM-DD") — pass through as `String`.
 
-See `examples/decode_security_metadata.rs` for a runnable file walker
+See `examples/klv-metadata/decode_security_metadata.rs` for a runnable file walker
 that demonstrates the sibling-layer composition pattern end-to-end.
 
 ## Typed VMTI Local Set (`klv::st0903`)

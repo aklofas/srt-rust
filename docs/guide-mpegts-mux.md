@@ -674,7 +674,7 @@ across all programs. Resolve handles per-program via
 ≤16 video + ≤16 KLV streams per program. Each PMT must individually fit in
 one TS packet (the size budget is per-PMT, not per-multiplex).
 
-For a runnable end-to-end repacking example, see `examples/repack_two_programs.rs`.
+For a runnable end-to-end repacking example, see `examples/muxing/repack_two_programs.rs`.
 
 ## Audio output
 
@@ -828,7 +828,7 @@ mux.push_subtitle_to(
     b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nhello\n",
 )?;
 // Drain TS bytes via `mux.pull(&mut buf)` in a loop until it
-// returns 0 (queue empty); see `examples/mux_with_webvtt_subtitles.rs`
+// returns 0 (queue empty); see `examples/muxing/mux_with_webvtt_subtitles.rs`
 // for a `drain_all` helper.
 ```
 

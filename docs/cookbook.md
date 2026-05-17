@@ -647,7 +647,7 @@ let bytes = st0102::encode_to_vec(&security)?;
 // st0601::encode_to_vec the parent record.
 ```
 
-See `examples/decode_security_metadata.rs` for the full file-walking
+See `examples/klv-metadata/decode_security_metadata.rs` for the full file-walking
 example.
 
 ### 30. Decode VMTI per-target detections from an ST 0601 stream

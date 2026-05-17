@@ -636,24 +636,6 @@ impl Muxer {
         self.push_klv_to(handle, klv, pts_90khz, metadata_service_id)
     }
 
-    /// Push one audio frame buffer, single-stream shorthand.
-    ///
-    /// `pts_90khz` is required and becomes the PES PTS; audio has no DTS
-    /// (no B-frame reorder). `frames` is one or more pre-framed audio frames
-    /// concatenated by the caller.
-    ///
-    /// Resolves only when exactly one audio stream is configured across all
-    /// programs. Otherwise rejects with [`MuxError::AmbiguousTarget`].
-    ///
-    /// # Errors
-    /// - [`MuxError::NoAudioStreamsConfigured`] if no audio streams are
-    ///   configured on this muxer.
-    /// - [`MuxError::AmbiguousTarget`] when more than one audio stream is
-    ///   configured — call [`Self::push_audio_to`] with an explicit handle.
-    /// - [`MuxError::AudioTooLarge`] if `frames.len()` would overflow
-    ///   `PES_packet_length`.
-    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
-    ///   `MuxerConfig::buffer_packets`.
     /// Locate the program containing the lone video stream.
     ///
     /// Precondition: caller has verified `total_video == 1` (typically via
@@ -688,6 +670,24 @@ impl Muxer {
         KlvStreamHandle::pack(prog_idx, 0)
     }
 
+    /// Push one audio frame buffer, single-stream shorthand.
+    ///
+    /// `pts_90khz` is required and becomes the PES PTS; audio has no DTS
+    /// (no B-frame reorder). `frames` is one or more pre-framed audio frames
+    /// concatenated by the caller.
+    ///
+    /// Resolves only when exactly one audio stream is configured across all
+    /// programs. Otherwise rejects with [`MuxError::AmbiguousTarget`].
+    ///
+    /// # Errors
+    /// - [`MuxError::NoAudioStreamsConfigured`] if no audio streams are
+    ///   configured on this muxer.
+    /// - [`MuxError::AmbiguousTarget`] when more than one audio stream is
+    ///   configured — call [`Self::push_audio_to`] with an explicit handle.
+    /// - [`MuxError::AudioTooLarge`] if `frames.len()` would overflow
+    ///   `PES_packet_length`.
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
     pub fn push_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
         let total_audio: usize = self.audio_streams.iter().map(|a| a.len()).sum();
         if total_audio == 0 {

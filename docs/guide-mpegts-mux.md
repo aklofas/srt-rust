@@ -64,8 +64,9 @@ pub struct MuxerConfig {
 ```
 
 Each `MuxerProgramConfig` carries its own `program_number`, `pmt_pid`,
-optional `pcr_pid`, program-level descriptors, and per-kind stream
-lists (video, KLV, audio, subtitle).
+optional `pcr_pid`, program-level descriptors, and a single
+`streams: Vec<StreamSpec>` list whose variants distinguish video, KLV,
+audio, and subtitle streams.
 
 `MuxerConfig::default()` returns the canonical single-program shape:
 program 1 with H.264 video at PID `0x1011`, KLV `PrivateData` (async,

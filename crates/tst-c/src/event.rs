@@ -315,8 +315,19 @@ pub struct TstEventMetadata {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct TstEventDiscontinuity {
+    /// Stream PID — always the parent `StreamId.pid` for the stream this
+    /// discontinuity is associated with. Stable across discontinuity_kind
+    /// variants.
     pub pid: u16,
-    pub _pad: [u8; 2],
+
+    /// Variant-specific PID, populated for discontinuity kinds that carry
+    /// their own PID in the Rust enum (currently: `PesOversize { pid }`).
+    /// Zero for variants that don't carry a variant-specific PID
+    /// (`ContinuityJump`, `PesTotalOversize`, `AdaptationFieldFlag`). For
+    /// `PesOversize`, `variant_pid` usually equals `pid` but the variant
+    /// preserves it independently for the rare divergence case.
+    pub variant_pid: u16,
+
     pub discontinuity_kind: c_int,
     pub cc_expected: u8,
     pub cc_observed: u8,
@@ -674,26 +685,35 @@ fn fill_discontinuity(
     out: &mut TstEvent,
 ) {
     use tst_core::mpegts::demux::DiscontinuityKind;
-    let (tag, cc_expected, cc_observed) = match kind {
+    // `variant_pid` preserves the variant-specific PID for kinds that carry
+    // their own (currently only `PesOversize { pid }`); 0 for the others.
+    // Codex review pass-1 flagged the previous `pid: _` discard as
+    // identity-loss — the variant's PID usually matches `stream.pid` but
+    // the variant carries it independently for the rare divergence case.
+    let (tag, cc_expected, cc_observed, variant_pid) = match kind {
         DiscontinuityKind::ContinuityJump { expected, observed } => (
             TstDiscontinuityKindTag::ContinuityJump as c_int,
             *expected,
             *observed,
+            0,
         ),
-        DiscontinuityKind::PesOversize { pid: _ } => {
-            (TstDiscontinuityKindTag::PesOversize as c_int, 0, 0)
+        DiscontinuityKind::PesOversize { pid } => {
+            (TstDiscontinuityKindTag::PesOversize as c_int, 0, 0, *pid)
         }
         DiscontinuityKind::PesTotalOversize => {
-            (TstDiscontinuityKindTag::PesTotalOversize as c_int, 0, 0)
+            (TstDiscontinuityKindTag::PesTotalOversize as c_int, 0, 0, 0)
         }
-        DiscontinuityKind::AdaptationFieldFlag => {
-            (TstDiscontinuityKindTag::AdaptationFieldFlag as c_int, 0, 0)
-        }
+        DiscontinuityKind::AdaptationFieldFlag => (
+            TstDiscontinuityKindTag::AdaptationFieldFlag as c_int,
+            0,
+            0,
+            0,
+        ),
     };
     out.kind = TstEventKind::Discontinuity as c_int;
     out.u.discontinuity = TstEventDiscontinuity {
         pid: stream.pid,
-        _pad: [0; 2],
+        variant_pid,
         discontinuity_kind: tag,
         cc_expected,
         cc_observed,

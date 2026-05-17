@@ -579,8 +579,21 @@ typedef struct TstEventMetadata {
 } TstEventMetadata;
 
 typedef struct TstEventDiscontinuity {
+  /**
+   * Stream PID — always the parent `StreamId.pid` for the stream this
+   * discontinuity is associated with. Stable across discontinuity_kind
+   * variants.
+   */
   uint16_t pid;
-  uint8_t _pad[2];
+  /**
+   * Variant-specific PID, populated for discontinuity kinds that carry
+   * their own PID in the Rust enum (currently: `PesOversize { pid }`).
+   * Zero for variants that don't carry a variant-specific PID
+   * (`ContinuityJump`, `PesTotalOversize`, `AdaptationFieldFlag`). For
+   * `PesOversize`, `variant_pid` usually equals `pid` but the variant
+   * preserves it independently for the rare divergence case.
+   */
+  uint16_t variant_pid;
   int discontinuity_kind;
   uint8_t cc_expected;
   uint8_t cc_observed;

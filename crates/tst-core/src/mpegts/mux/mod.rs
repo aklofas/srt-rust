@@ -783,6 +783,23 @@ impl Muxer {
             s.bytes += frames.len() as u64;
         }
 
+        // Codec-counter bump. AAC + MP2 have lazy-stateless frame iterators
+        // (codec::aac::frames / codec::mpegaudio::frames). LATM and AC-3
+        // don't yet — those PIDs leave the codec counter unmaterialized
+        // so the accessor returns Some(Unknown) via per_stream fallback.
+        let frames_delta: u64 = match audio_codec {
+            crate::mpegts::mux::AudioCodec::Aac => crate::codec::aac::frames(frames)
+                .filter_map(Result::ok)
+                .count() as u64,
+            crate::mpegts::mux::AudioCodec::Mp2 => crate::codec::mpegaudio::frames(frames)
+                .filter_map(Result::ok)
+                .count() as u64,
+            crate::mpegts::mux::AudioCodec::AacLatm | crate::mpegts::mux::AudioCodec::Ac3 => 0,
+        };
+        if frames_delta > 0 {
+            self.bump_audio_counters(audio_pid, frames_delta);
+        }
+
         Ok(())
     }
 
@@ -1280,6 +1297,14 @@ impl Muxer {
             s.bytes += nal.len() as u64;
         }
 
+        // Codec-counter bump. Codec is known per-stream via VideoCodec on
+        // the stream config; key_frame is a clean caller-supplied signal
+        // for random-access (no NAL inspection required).
+        let codec = self.video_streams[prog_idx][within_idx].codec;
+        let nals_count = crate::codec::util::count_nal_units(nal, codec);
+        let ra_count = u64::from(key_frame);
+        self.bump_video_counters(video_pid, nals_count, ra_count);
+
         Ok(())
     }
 
@@ -1457,6 +1482,10 @@ impl Muxer {
             s.items += 1;
             s.bytes += klv.len() as u64;
         }
+        // One push = one KLV record (muxer contract: caller passes a single
+        // KLV LS per call). Wire-format records-per-PES > 1 are not
+        // possible through this API.
+        self.bump_klv_counters(klv_pid, 1);
         if is_sync {
             self.klv_streams[prog_idx][within_idx].au_cell_sequence_number =
                 seq_num.wrapping_add(1);
@@ -1545,6 +1574,31 @@ impl Muxer {
     #[cfg(test)]
     pub(crate) fn pcr_pid_for_program(&self, prog_idx: usize) -> Option<u16> {
         self.pcr_pids.get(prog_idx).copied()
+    }
+
+    fn bump_video_counters(&mut self, pid: u16, nals_or_obus_delta: u64, ra_delta: u64) {
+        let c = self
+            .stream_codec_counters
+            .entry(pid)
+            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_video);
+        c.nals_or_obus = c.nals_or_obus.saturating_add(nals_or_obus_delta);
+        c.random_access_aus = c.random_access_aus.saturating_add(ra_delta);
+    }
+
+    fn bump_klv_counters(&mut self, pid: u16, records_delta: u64) {
+        let c = self
+            .stream_codec_counters
+            .entry(pid)
+            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_klv);
+        c.records = c.records.saturating_add(records_delta);
+    }
+
+    fn bump_audio_counters(&mut self, pid: u16, frames_delta: u64) {
+        let c = self
+            .stream_codec_counters
+            .entry(pid)
+            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_audio);
+        c.frames = c.frames.saturating_add(frames_delta);
     }
 
     fn psi_due(&self, prog_idx: usize, pts_90khz: i64) -> bool {

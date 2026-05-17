@@ -235,6 +235,25 @@ impl StreamSpec {
 ///
 /// The internal representation encodes `(program_index, within_program_index)`
 /// in a packed `u32`. Callers treat this as an opaque token.
+///
+/// # Lifecycle
+///
+/// - **Bound to producer.** Each handle is bound to the `Muxer` (or
+///   `MuxSender` wrapping that `Muxer`) that produced it. Using a handle
+///   with a different `Muxer` / `MuxSender` instance is rejected with
+///   [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
+///   (wrapped as `MuxSenderError::Mux(MuxError::InvalidStreamHandle { .. })`
+///   when the call goes through `MuxSender`).
+/// - **Parent close invalidates.** A handle remains valid for the lifetime
+///   of its parent muxer. After the parent is dropped or closed (e.g.,
+///   `MuxSender::close()`), the handle becomes inert — any further use
+///   through the now-dropped parent path is moot. Storing a handle past
+///   parent drop is safe (the handle is `Copy + 'static`), but cannot be
+///   "rebound" to a new parent muxer.
+/// - **Clone semantics.** `VideoStreamHandle: Copy`. Cloning produces an
+///   identical handle that refers to the same configured stream within
+///   the same parent muxer. There is no per-handle identity beyond
+///   `(program_index, within_program_index)`.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VideoStreamHandle(pub(super) u32);
 
@@ -247,7 +266,21 @@ impl std::fmt::Debug for VideoStreamHandle {
 
 /// Opaque handle to a configured KLV stream on a `Muxer`.
 ///
-/// Same semantics as [`VideoStreamHandle`] but for KLV streams.
+/// Obtained from [`Muxer::klv_handles`](crate::mpegts::mux::Muxer::klv_handles) /
+/// [`Muxer::klv_handles_for_program`](crate::mpegts::mux::Muxer::klv_handles_for_program).
+/// Handles are valid only on the muxer that produced them; passing a handle
+/// to a different muxer is rejected with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle).
+///
+/// The internal representation encodes `(program_index, within_program_index)`
+/// in a packed `u32`. Callers treat this as an opaque token.
+///
+/// # Lifecycle
+///
+/// Same rules as [`VideoStreamHandle`]: handles are bound to the producing
+/// `Muxer` / `MuxSender`; parent close invalidates the handle's usefulness
+/// (the handle remains `Copy + 'static` but cannot be rebound); cloning
+/// produces an identical handle referring to the same stream within the
+/// same parent.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KlvStreamHandle(pub(super) u32);
 
@@ -373,6 +406,14 @@ impl KlvStreamHandle {
 ///
 /// The internal representation encodes `(program_index, within_program_index)`
 /// in a packed `u32`. Callers treat this as an opaque token.
+///
+/// # Lifecycle
+///
+/// Same rules as [`VideoStreamHandle`]: handles are bound to the producing
+/// `Muxer` / `MuxSender`; parent close invalidates the handle's usefulness
+/// (the handle remains `Copy + 'static` but cannot be rebound); cloning
+/// produces an identical handle referring to the same stream within the
+/// same parent.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AudioStreamHandle(pub(super) u32);
 
@@ -429,6 +470,14 @@ pub const MAX_SUBTITLE_STREAMS_PER_PROGRAM: usize = 16;
 /// The internal representation encodes `(program_index,
 /// within_program_index)` in a packed `u32`. Callers treat this as an
 /// opaque token.
+///
+/// # Lifecycle
+///
+/// Same rules as [`VideoStreamHandle`]: handles are bound to the producing
+/// `Muxer` / `MuxSender`; parent close invalidates the handle's usefulness
+/// (the handle remains `Copy + 'static` but cannot be rebound); cloning
+/// produces an identical handle referring to the same stream within the
+/// same parent.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SubtitleStreamHandle(pub(super) u32);
 

@@ -12,6 +12,21 @@ pub(crate) mod handle_pack;
 /// Single enum covers both directions: mux looks up by codec / KLV mode,
 /// demux looks up by parsed byte. Variants kept narrow to current scope —
 /// not a general MPEG-TS type registry.
+///
+/// # Relationship with [`StreamTypeCode`]
+///
+/// `StreamType` only enumerates the codes this library recognizes.
+/// Real-world MPEG-TS streams may carry `stream_type` bytes that fall
+/// outside this set (vendor-private codes, future codecs, reserved
+/// ranges). For demux-side reporting where the full PMT byte space
+/// matters, use [`StreamTypeCode`] — it wraps a `Self` for known codes
+/// and preserves the raw `u8` for unknown codes. The two enums are
+/// paired: `StreamTypeCode::from_byte(b).known()` returns
+/// `Option<&StreamType>`, and `StreamType::as_u8()` converts back to the
+/// underlying byte. Mux-side APIs use `StreamType` directly because the
+/// caller picks a known codec; demux-side stats and event APIs use
+/// `StreamTypeCode` so unrecognized PMT bytes are preserved rather than
+/// elided.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamType {

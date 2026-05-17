@@ -213,6 +213,31 @@ int main(void) {
         fprintf(stderr, "stats smoke OK\n");
     }
 
+    /* Codec-specific per-stream stats accessor smoke. Confirms
+     * tst_muxer_get_stream_codec_stats links and reports TST_E_NOT_FOUND
+     * for a PID that has never been observed on the handle. Live
+     * round-trip with populated codec arms is covered by Rust-side
+     * integration tests; this block only verifies the C link surface
+     * and the not-found error code. */
+    {
+        tst_mux_config_t* ccfg = tst_mux_config_new();
+        tst_program_handle_t cp = tst_mux_config_add_program(ccfg, 1, 0x1000);
+        tst_mux_config_add_video_stream(ccfg, cp, 0x0100, TST_VIDEO_CODEC_H264);
+        tst_muxer_t* cm = tst_muxer_open(ccfg);
+        if (!cm) { fprintf(stderr, "codec_stats: mux open failed: %s\n", tst_get_last_error_str()); return 34; }
+
+        tst_stream_codec_stats_t cs;
+        int crc = tst_muxer_get_stream_codec_stats(cm, 0x9999, &cs);
+        if (crc != TST_E_NOT_FOUND) {
+            fprintf(stderr, "codec_stats: expected TST_E_NOT_FOUND (-14) for unseen PID, got %d\n", crc);
+            return 35;
+        }
+
+        tst_muxer_close(cm);
+        tst_mux_config_free(ccfg);
+        fprintf(stderr, "codec_stats smoke: pid-not-seen returns NOT_FOUND OK\n");
+    }
+
     printf("smoke OK\n");
     return 0;
 }

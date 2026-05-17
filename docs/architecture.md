@@ -172,7 +172,7 @@ error. The full mechanics of each shell are covered in
               └──────────────┬────────────────────────┘
                              │ R: RecvTransport
               ┌──────────────┴────────────────────────┐
-              │  ManagedRecvTransport<R>           │  (optional)
+              │  ManagedRecvTransport<R>              │  (optional)
               │  reconnect on Closed/Broken           │
               └──────────────┬────────────────────────┘
                              │ R: RecvTransport

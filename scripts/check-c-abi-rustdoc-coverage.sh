@@ -64,7 +64,7 @@ ALLOWLIST=(
     "tst_reconnect_policy_set_overflow_policy"
 
     # --- managed-transport wrappers (ride 3.6.4/3.6.5 backfill on
-    #     ManagedTransport / ManagedReceiveTransport methods) ---
+    #     ManagedTransport / ManagedRecvTransport methods) ---
     "tst_managed_mux_sender_close"
     "tst_managed_mux_sender_get_stats"
     "tst_managed_mux_sender_reset_stats"
@@ -103,7 +103,7 @@ ALLOWLIST=(
     "tst_managed_raw_receiver_open_listener"
 
     # --- Phase 1 managed-wrapper entry points (ride the plain-side # C ABI
-    #     rustdoc cross-reference: ManagedReceiveTransport calls through to
+    #     rustdoc cross-reference: ManagedRecvTransport calls through to
     #     the same underlying RawReceiver methods that carry the backfilled
     #     # C ABI blocks; adding duplicate cross-refs on the managed wrappers
     #     would not add useful information) ---
@@ -175,7 +175,7 @@ ALLOWLIST=(
     "tst_demux_receiver_get_stream_stats"
 
     # --- Phase 3 managed-demux-receiver entry points (ride the plain-side
-    #     allowlist entries above + the ManagedReceiveTransport wrapping) ---
+    #     allowlist entries above + the ManagedRecvTransport wrapping) ---
     "tst_managed_demux_receiver_recv_event"
     "tst_managed_demux_receiver_cancel"
     "tst_managed_demux_receiver_close"
@@ -186,7 +186,7 @@ ALLOWLIST=(
     # --- libsrt wire-stats managed-wrapper entry points (ride the plain-side
     #     # C ABI cross-refs on MuxSender::socket_stats / Sender::socket_stats /
     #     RawSender::transport / Receiver::socket_stats / RawReceiver::socket_stats
-    #     / DemuxReceiver::socket_stats — ManagedTransport / ManagedReceiveTransport
+    #     / DemuxReceiver::socket_stats — ManagedTransport / ManagedRecvTransport
     #     forward to the same underlying method; adding duplicate cross-refs would
     #     not add useful information) ---
     "tst_managed_mux_sender_get_socket_stats"

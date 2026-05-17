@@ -16,47 +16,35 @@ use tst_test_helpers::synthetic_nal;
 ///
 /// All PIDs are in the valid user range 0x0010..=0x1FFE.
 fn two_program_config() -> MuxerConfig {
-    MuxerConfig {
-        programs: vec![
-            MuxerProgramConfig {
-                program_number: 1,
-                pmt_pid: 0x1000,
-                streams: vec![
-                    StreamSpec::Video {
-                        pid: 0x1011,
-                        codec: VideoCodec::H264,
-                    },
-                    StreamSpec::Klv {
-                        pid: 0x1031,
-                        stream_type: KlvStreamType::PrivateData,
-                        carries_pts: false,
-                    },
-                ],
-                pcr_pid: None,
-                program_descriptors: Vec::new(),
-                stream_descriptors: vec![Vec::new(), Vec::new()],
-            },
-            MuxerProgramConfig {
-                program_number: 2,
-                pmt_pid: 0x1100,
-                streams: vec![
-                    StreamSpec::Video {
-                        pid: 0x1111,
-                        codec: VideoCodec::H265,
-                    },
-                    StreamSpec::Klv {
-                        pid: 0x1131,
-                        stream_type: KlvStreamType::PrivateData,
-                        carries_pts: false,
-                    },
-                ],
-                pcr_pid: None,
-                program_descriptors: Vec::new(),
-                stream_descriptors: vec![Vec::new(), Vec::new()],
-            },
-        ],
-        ..MuxerConfig::default()
-    }
+    let mut prog1 = MuxerProgramConfig::new(1, 0x1000);
+    prog1.streams = vec![
+        StreamSpec::Video {
+            pid: 0x1011,
+            codec: VideoCodec::H264,
+        },
+        StreamSpec::Klv {
+            pid: 0x1031,
+            stream_type: KlvStreamType::PrivateData,
+            carries_pts: false,
+        },
+    ];
+    prog1.stream_descriptors = vec![Vec::new(), Vec::new()];
+    let mut prog2 = MuxerProgramConfig::new(2, 0x1100);
+    prog2.streams = vec![
+        StreamSpec::Video {
+            pid: 0x1111,
+            codec: VideoCodec::H265,
+        },
+        StreamSpec::Klv {
+            pid: 0x1131,
+            stream_type: KlvStreamType::PrivateData,
+            carries_pts: false,
+        },
+    ];
+    prog2.stream_descriptors = vec![Vec::new(), Vec::new()];
+    let mut cfg = MuxerConfig::default();
+    cfg.programs = vec![prog1, prog2];
+    cfg
 }
 
 fn drain_all(mux: &mut Muxer) -> Vec<u8> {

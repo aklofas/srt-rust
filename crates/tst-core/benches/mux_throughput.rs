@@ -28,10 +28,8 @@ fn bench_push_video(c: &mut Criterion) {
         let nal = synthetic_au(size, true);
         group.bench_with_input(BenchmarkId::from_parameter(size), &nal, |b, nal| {
             b.iter(|| {
-                let cfg = MuxerConfig {
-                    buffer_packets: 100_000,
-                    ..MuxerConfig::default()
-                };
+                let mut cfg = MuxerConfig::default();
+                cfg.buffer_packets = 100_000;
                 let mut mux = Muxer::new(cfg).unwrap();
                 mux.push_video(black_box(nal), Pts90khz::new(0), true)
                     .unwrap();
@@ -62,10 +60,8 @@ fn bench_mux_end_to_end(c: &mut Criterion) {
             .collect();
         let klv = vec![0xC3u8; 64];
         b.iter(|| {
-            let cfg = MuxerConfig {
-                buffer_packets: 200_000,
-                ..MuxerConfig::default()
-            };
+            let mut cfg = MuxerConfig::default();
+            cfg.buffer_packets = 200_000;
             let mut mux = Muxer::new(cfg).unwrap();
             for (i, f) in frames.iter().enumerate() {
                 mux.push_video(f, Pts90khz::new((i as i64) * 3000), i == 0)

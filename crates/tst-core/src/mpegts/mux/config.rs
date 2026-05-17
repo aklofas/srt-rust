@@ -16,6 +16,7 @@ use crate::mpegts::mux::types::{
 /// PMT (carried on `pmt_pid`), its own PCR (driven by `pcr_pid` or
 /// auto-falling-back to the first video stream's PID), and its own
 /// elementary stream set.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct MuxerProgramConfig {
     /// Program number (PAT entry). Must be > 0 (program 0 is reserved for
@@ -49,6 +50,37 @@ pub struct MuxerProgramConfig {
 }
 
 impl MuxerProgramConfig {
+    /// Construct a new program config with empty stream/descriptor sets.
+    ///
+    /// External callers (different-crate code that cannot use struct
+    /// literal syntax against this `#[non_exhaustive]` type) build a
+    /// `MuxerProgramConfig` by:
+    ///
+    /// 1. Calling `MuxerProgramConfig::new(program_number, pmt_pid)` to
+    ///    seed the required PIDs.
+    /// 2. Populating `streams`, `pcr_pid`, `program_descriptors`, and
+    ///    `stream_descriptors` via direct field assignment.
+    ///
+    /// Alternatively, the [`MuxerProgramConfigBuilder`] offers a
+    /// chainable shape that handles `streams` + `stream_descriptors`
+    /// in parallel — preferred when assembling more than 2-3 streams.
+    ///
+    /// `program_number` must be > 0 (program 0 is reserved for network
+    /// information) and unique within the outer [`MuxerConfig`].
+    /// `pmt_pid` carries this program's PMT and must not collide with
+    /// any other PID. These constraints are enforced by
+    /// `MuxerConfig::validate()`, not by this constructor.
+    pub fn new(program_number: u16, pmt_pid: u16) -> Self {
+        Self {
+            program_number,
+            pmt_pid,
+            streams: Vec::new(),
+            pcr_pid: None,
+            program_descriptors: Vec::new(),
+            stream_descriptors: Vec::new(),
+        }
+    }
+
     /// Returns the PID of the first video stream in this program, if any.
     pub(crate) fn first_video_pid(&self) -> Option<u16> {
         self.streams.iter().find_map(|s| match s {
@@ -82,6 +114,7 @@ impl MuxerProgramConfig {
 /// Construct with [`MuxerConfig::builder()`] for ergonomic chaining, or
 /// directly with field updates over [`MuxerConfig::default()`] for the
 /// canonical single-program single-video-plus-single-KLV case.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct MuxerConfig {
     /// Programs in this multiplex. ≤ `MAX_PROGRAMS`, ≥ 1.

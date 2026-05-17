@@ -176,10 +176,8 @@ fn multiple_video_aus_recovered_in_order() {
 
 #[test]
 fn psi_re_emitted_after_interval() {
-    let cfg = MuxerConfig {
-        psi_interval_ms: 100,
-        ..MuxerConfig::default()
-    };
+    let mut cfg = MuxerConfig::default();
+    cfg.psi_interval_ms = 100;
     let mut mux = Muxer::new(cfg).unwrap();
     // Three video frames, 200 ms apart in PTS — should trigger 3 PSI emissions.
     for i in 0..3 {

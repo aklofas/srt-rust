@@ -64,13 +64,11 @@ fn ts_sender_flush_emits_partial_bundle() {
 #[test]
 fn ts_sender_strict_rejects_misaligned() {
     let transport = MockTransport::new(1316);
-    let mut sender = Sender::new(
-        transport,
-        SenderConfig {
-            framing_mode: TsFramingMode::Strict,
-            ..Default::default()
-        },
-    );
+    let mut sender = Sender::new(transport, {
+        let mut cfg = SenderConfig::default();
+        cfg.framing_mode = TsFramingMode::Strict;
+        cfg
+    });
 
     let prefix = vec![0xAB, 0xCD];
     let mut input = prefix;

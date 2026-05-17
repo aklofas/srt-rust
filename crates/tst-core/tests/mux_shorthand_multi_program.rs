@@ -18,34 +18,22 @@ use tst_test_helpers::synthetic_nal;
 /// (`video_streams[0]` empty, `video_streams[1]` non-empty) — the exact
 /// shape that exposes the `pack(0, 0)` bug.
 fn config_video_in_program_one() -> MuxerConfig {
-    MuxerConfig {
-        programs: vec![
-            MuxerProgramConfig {
-                program_number: 1,
-                pmt_pid: 0x1000,
-                streams: vec![StreamSpec::Audio {
-                    pid: 0x1011,
-                    codec: AudioCodec::Mp2,
-                    language: None,
-                }],
-                pcr_pid: None,
-                program_descriptors: Vec::new(),
-                stream_descriptors: vec![Vec::new()],
-            },
-            MuxerProgramConfig {
-                program_number: 2,
-                pmt_pid: 0x1100,
-                streams: vec![StreamSpec::Video {
-                    pid: 0x1111,
-                    codec: VideoCodec::H264,
-                }],
-                pcr_pid: None,
-                program_descriptors: Vec::new(),
-                stream_descriptors: vec![Vec::new()],
-            },
-        ],
-        ..MuxerConfig::default()
-    }
+    let mut prog1 = MuxerProgramConfig::new(1, 0x1000);
+    prog1.streams = vec![StreamSpec::Audio {
+        pid: 0x1011,
+        codec: AudioCodec::Mp2,
+        language: None,
+    }];
+    prog1.stream_descriptors = vec![Vec::new()];
+    let mut prog2 = MuxerProgramConfig::new(2, 0x1100);
+    prog2.streams = vec![StreamSpec::Video {
+        pid: 0x1111,
+        codec: VideoCodec::H264,
+    }];
+    prog2.stream_descriptors = vec![Vec::new()];
+    let mut cfg = MuxerConfig::default();
+    cfg.programs = vec![prog1, prog2];
+    cfg
 }
 
 /// Two-program config where the lone KLV stream lives in program-index 1:
@@ -57,45 +45,34 @@ fn config_video_in_program_one() -> MuxerConfig {
 /// by `MuxerConfig::validate` (ETSI TR 101 290 §5.6.1 requires ≤100 ms
 /// between PCRs, KLV streams are sparse).
 fn config_klv_in_program_one() -> MuxerConfig {
-    MuxerConfig {
-        programs: vec![
-            MuxerProgramConfig {
-                program_number: 1,
-                pmt_pid: 0x1000,
-                streams: vec![StreamSpec::Video {
-                    pid: 0x1011,
-                    codec: VideoCodec::H264,
-                }],
-                pcr_pid: None,
-                program_descriptors: Vec::new(),
-                stream_descriptors: vec![Vec::new()],
-            },
-            MuxerProgramConfig {
-                program_number: 2,
-                pmt_pid: 0x1100,
-                streams: vec![
-                    StreamSpec::Audio {
-                        pid: 0x1121,
-                        codec: AudioCodec::Mp2,
-                        language: None,
-                    },
-                    StreamSpec::Klv {
-                        pid: 0x1131,
-                        stream_type: KlvStreamType::PrivateData,
-                        carries_pts: false,
-                    },
-                ],
-                // Pin PCR to the audio PID. The default fallback chain is
-                // `video > klv > audio`, so with no video in this program
-                // the auto-fallback would land on the KLV PID and trip
-                // `MuxError::KlvPidUsedAsPcrPid` at validate time.
-                pcr_pid: Some(0x1121),
-                program_descriptors: Vec::new(),
-                stream_descriptors: vec![Vec::new(), Vec::new()],
-            },
-        ],
-        ..MuxerConfig::default()
-    }
+    let mut prog1 = MuxerProgramConfig::new(1, 0x1000);
+    prog1.streams = vec![StreamSpec::Video {
+        pid: 0x1011,
+        codec: VideoCodec::H264,
+    }];
+    prog1.stream_descriptors = vec![Vec::new()];
+    let mut prog2 = MuxerProgramConfig::new(2, 0x1100);
+    prog2.streams = vec![
+        StreamSpec::Audio {
+            pid: 0x1121,
+            codec: AudioCodec::Mp2,
+            language: None,
+        },
+        StreamSpec::Klv {
+            pid: 0x1131,
+            stream_type: KlvStreamType::PrivateData,
+            carries_pts: false,
+        },
+    ];
+    // Pin PCR to the audio PID. The default fallback chain is
+    // `video > klv > audio`, so with no video in this program
+    // the auto-fallback would land on the KLV PID and trip
+    // `MuxError::KlvPidUsedAsPcrPid` at validate time.
+    prog2.pcr_pid = Some(0x1121);
+    prog2.stream_descriptors = vec![Vec::new(), Vec::new()];
+    let mut cfg = MuxerConfig::default();
+    cfg.programs = vec![prog1, prog2];
+    cfg
 }
 
 /// Drain all TS packets from the muxer into a flat byte buffer.

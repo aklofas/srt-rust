@@ -27,12 +27,10 @@ use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 /// is a keyframe (IDR-like NAL byte 0x65), the rest are P-frames. Buffer is
 /// sized large enough that `push_*` never returns `BufferFull`.
 fn build_synthetic_stream() -> Vec<u8> {
-    let cfg = MuxerConfig {
-        // 200 000 packets is large enough to never hit BufferFull while
-        // accumulating all 50 frames before a single pull pass.
-        buffer_packets: 200_000,
-        ..MuxerConfig::default()
-    };
+    let mut cfg = MuxerConfig::default();
+    // 200 000 packets is large enough to never hit BufferFull while
+    // accumulating all 50 frames before a single pull pass.
+    cfg.buffer_packets = 200_000;
     let mut mux = Muxer::new(cfg).unwrap();
 
     let mut out = Vec::with_capacity(1_000 * 188);

@@ -16,30 +16,25 @@ use tst_core::mpegts::mux::{
 /// number and both lengths.
 #[test]
 fn muxer_new_rejects_descriptor_length_mismatch_with_rich_diagnostic() {
-    let cfg = MuxerConfig {
-        programs: vec![MuxerProgramConfig {
-            program_number: 7,
-            pmt_pid: 0x1000,
-            streams: vec![
-                StreamSpec::Video {
-                    pid: 0x1011,
-                    codec: VideoCodec::H264,
-                },
-                StreamSpec::Klv {
-                    pid: 0x1031,
-                    stream_type: KlvStreamType::PrivateData,
-                    carries_pts: false,
-                },
-            ],
-            pcr_pid: None,
-            program_descriptors: vec![],
-            // INTENTIONAL MISMATCH: 2 streams but only 1 descriptor list.
-            stream_descriptors: vec![vec![]],
-        }],
-        pcr_interval_ms: 40,
-        psi_interval_ms: 100,
-        buffer_packets: 10_000,
-    };
+    let mut prog = MuxerProgramConfig::new(7, 0x1000);
+    prog.streams = vec![
+        StreamSpec::Video {
+            pid: 0x1011,
+            codec: VideoCodec::H264,
+        },
+        StreamSpec::Klv {
+            pid: 0x1031,
+            stream_type: KlvStreamType::PrivateData,
+            carries_pts: false,
+        },
+    ];
+    // INTENTIONAL MISMATCH: 2 streams but only 1 descriptor list.
+    prog.stream_descriptors = vec![vec![]];
+    let mut cfg = MuxerConfig::default();
+    cfg.programs = vec![prog];
+    cfg.pcr_interval_ms = 40;
+    cfg.psi_interval_ms = 100;
+    cfg.buffer_packets = 10_000;
     let result = Muxer::new(cfg);
     let err = match result {
         Ok(_) => panic!("descriptor-length mismatch must be rejected"),
@@ -67,23 +62,18 @@ fn muxer_new_rejects_descriptor_length_mismatch_with_rich_diagnostic() {
 /// Inverse: matched lengths construct the Muxer successfully.
 #[test]
 fn muxer_new_accepts_descriptor_length_match() {
-    let cfg = MuxerConfig {
-        programs: vec![MuxerProgramConfig {
-            program_number: 1,
-            pmt_pid: 0x1000,
-            streams: vec![StreamSpec::Video {
-                pid: 0x1011,
-                codec: VideoCodec::H264,
-            }],
-            pcr_pid: None,
-            program_descriptors: vec![],
-            // 1 stream, 1 descriptor list (empty is fine).
-            stream_descriptors: vec![vec![]],
-        }],
-        pcr_interval_ms: 40,
-        psi_interval_ms: 100,
-        buffer_packets: 10_000,
-    };
+    let mut prog = MuxerProgramConfig::new(1, 0x1000);
+    prog.streams = vec![StreamSpec::Video {
+        pid: 0x1011,
+        codec: VideoCodec::H264,
+    }];
+    // 1 stream, 1 descriptor list (empty is fine).
+    prog.stream_descriptors = vec![vec![]];
+    let mut cfg = MuxerConfig::default();
+    cfg.programs = vec![prog];
+    cfg.pcr_interval_ms = 40;
+    cfg.psi_interval_ms = 100;
+    cfg.buffer_packets = 10_000;
     let result = Muxer::new(cfg);
     let err = result.err();
     assert!(

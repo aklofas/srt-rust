@@ -69,21 +69,11 @@ impl TstMuxConfig {
     /// config may be opened multiple times (the C API allows `_free` after
     /// `_open`, but tests call `_open` more than once in practice).
     pub(crate) fn build_config(&self) -> Result<MuxerConfig, MuxError> {
-        let mut cfg = MuxerConfig {
-            programs: self.programs.clone(),
-            pcr_interval_ms: 40,
-            psi_interval_ms: 100,
-            buffer_packets: 10_000,
-        };
-        if let Some(ms) = self.pcr_interval_ms {
-            cfg.pcr_interval_ms = ms;
-        }
-        if let Some(ms) = self.psi_interval_ms {
-            cfg.psi_interval_ms = ms;
-        }
-        if let Some(n) = self.buffer_packets {
-            cfg.buffer_packets = n;
-        }
+        let mut cfg = MuxerConfig::default();
+        cfg.programs = self.programs.clone();
+        cfg.pcr_interval_ms = self.pcr_interval_ms.unwrap_or(40);
+        cfg.psi_interval_ms = self.psi_interval_ms.unwrap_or(100);
+        cfg.buffer_packets = self.buffer_packets.unwrap_or(10_000);
         cfg.validate()?;
         Ok(cfg)
     }
@@ -138,14 +128,8 @@ pub unsafe extern "C" fn tst_mux_config_add_program(
             set_last_error(TstError::InvalidConfig, "null config pointer");
             return TST_INVALID_PROGRAM_HANDLE;
         };
-        cfg.programs.push(MuxerProgramConfig {
-            program_number,
-            pmt_pid,
-            streams: Vec::new(),
-            pcr_pid: None,
-            program_descriptors: Vec::new(),
-            stream_descriptors: Vec::new(),
-        });
+        cfg.programs
+            .push(MuxerProgramConfig::new(program_number, pmt_pid));
         TstProgramHandle((cfg.programs.len() - 1) as u32)
     })
 }

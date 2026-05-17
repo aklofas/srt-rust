@@ -494,10 +494,8 @@ fn apply_to_socket_writes_through() {
 #[test]
 fn apply_to_socket_url_wins_over_existing() {
     // Pre-populate cfg with a builder value; overlay should overwrite.
-    let mut cfg = SocketConfig {
-        latency: Some(Duration::from_millis(100)),
-        ..Default::default()
-    };
+    let mut cfg = SocketConfig::default();
+    cfg.latency = Some(Duration::from_millis(100));
     let u = SrtUrl::parse("srt://1.2.3.4:9000?latency=200").unwrap();
     u.overlay.apply_to_socket(&mut cfg);
     assert_eq!(cfg.latency, Some(Duration::from_millis(200)));
@@ -506,10 +504,8 @@ fn apply_to_socket_url_wins_over_existing() {
 #[test]
 fn apply_to_socket_does_not_clear_unset_fields() {
     // Overlay has only latency set; other pre-populated fields stay.
-    let mut cfg = SocketConfig {
-        mss: Some(1316),
-        ..Default::default()
-    };
+    let mut cfg = SocketConfig::default();
+    cfg.mss = Some(1316);
     let u = SrtUrl::parse("srt://1.2.3.4:9000?latency=100").unwrap();
     u.overlay.apply_to_socket(&mut cfg);
     assert_eq!(cfg.latency, Some(Duration::from_millis(100)));

@@ -12,6 +12,7 @@ use tracing::{Span, info_span};
 use tst_core::transport::Transport;
 
 /// Construction-time knobs for [`Sender`].
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct SenderConfig {
     pub framing_mode: TsFramingMode,
@@ -146,10 +147,8 @@ impl<T: Transport> Sender<T> {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// // STRICT mode rejects any input that doesn't start with sync 0x47;
     /// // RECOVER (the default) silently resyncs.
-    /// let cfg = SenderConfig {
-    ///     framing_mode: TsFramingMode::Strict,
-    ///     ..SenderConfig::default()
-    /// };
+    /// let mut cfg = SenderConfig::default();
+    /// cfg.framing_mode = TsFramingMode::Strict;
     /// let mut sender = Sender::new(Sink(Vec::new()), cfg);
     ///
     /// // Three whole TS packets — STRICT-mode sync-verify needs 0x47 at

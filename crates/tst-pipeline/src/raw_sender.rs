@@ -15,6 +15,7 @@ use tst_core::transport::{Transport, TransportError};
 ///
 /// Currently empty — no behavior knobs are needed today. Reserved as a
 /// distinct type so future additions are non-breaking.
+#[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct RawSenderConfig {
     // Reserved for future use. Currently empty.

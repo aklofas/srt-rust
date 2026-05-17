@@ -28,6 +28,7 @@ const RECEIVER_DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 ///
 /// All `Option<T>` fields default to `None`, meaning "leave the libsrt default."
 /// `KeyLength` defaults to `Aes128` (only relevant when `passphrase` is set).
+#[non_exhaustive]
 #[derive(Debug, Clone, Default)]
 pub struct SocketConfig {
     // Encryption
@@ -108,10 +109,8 @@ impl SocketConfig {
     /// # use tst_srt::SocketConfig;
     /// # use tst_srt::options::Passphrase;
     /// # let passphrase = Passphrase::new("secretsecretsecret").unwrap();
-    /// let cfg = SocketConfig {
-    ///     passphrase: Some(passphrase),
-    ///     ..SocketConfig::sender_defaults()
-    /// };
+    /// let mut cfg = SocketConfig::sender_defaults();
+    /// cfg.passphrase = Some(passphrase);
     /// ```
     pub fn sender_defaults() -> Self {
         let mut cfg = Self::default();
@@ -181,6 +180,7 @@ impl SocketConfig {
 ///
 /// Most fields parallel `SocketConfig`; the listener applies them to itself
 /// and inherits the timeout fields onto sockets returned by `accept()`.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct ListenerConfig {
     // Encryption (applied to listener; libsrt enforces during handshake)

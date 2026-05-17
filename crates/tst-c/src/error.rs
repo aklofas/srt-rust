@@ -44,6 +44,13 @@ pub enum TstError {
     /// Returned today by the `tst_*_get_socket_stats` family when the
     /// inner transport's `socket_stats()` returns `None`.
     NotAvailable = -13,
+    /// Requested PID is not known to this site — used by the
+    /// `tst_*_get_stream_codec_stats` family when the caller asks for
+    /// a PID that has never been observed on this handle. Distinct from
+    /// `NotAvailable` (transient — managed handle is mid-reconnect)
+    /// and from `InvalidUsage` (handle is in a fundamentally wrong
+    /// state for the call).
+    NotFound = -14,
 }
 
 thread_local! {

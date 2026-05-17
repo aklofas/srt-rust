@@ -719,7 +719,7 @@ pub(crate) fn read_payload_size(handle: srt_sys::SRTSOCKET) -> usize {
         )
     };
     if rc < 0 || value <= 0 {
-        // SRT_LIVE_DEF_PLSIZE = 1316 (8 x 188-byte TS packets).
+        // SRT_LIVE_DEF_PLSIZE = 1316 (7 x 188-byte TS packets).
         return 1316;
     }
     value as usize

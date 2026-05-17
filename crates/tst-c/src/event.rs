@@ -464,7 +464,7 @@ pub(crate) fn convert(
             dts,
             payload,
         } => {
-            fill_sample(arena, stream, *pts, *dts, payload, out);
+            fill_sample(arena, stream, pts.as_ticks(), *dts, payload, out);
         }
         DemuxEvent::Metadata {
             stream,
@@ -472,7 +472,7 @@ pub(crate) fn convert(
             kind,
             payload,
         } => {
-            fill_metadata(stream, *pts, kind, payload, out);
+            fill_metadata(stream, pts.as_ticks(), kind, payload, out);
         }
         DemuxEvent::Discontinuity { stream, kind } => {
             fill_discontinuity(stream, kind, out);

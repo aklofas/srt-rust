@@ -14,8 +14,8 @@ use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_core::transport::{RecvTransport, Transport, TransportError};
 
 use tst_pipeline::{
-    DemuxReceiver, MuxSender, RawReceiver, RawSender, RawSenderConfig, Receiver, Sender,
-    SenderConfig,
+    DemuxReceiver, MuxSender, RawReceiver, RawReceiverConfig, RawSender, RawSenderConfig, Receiver,
+    ReceiverConfig, Sender, SenderConfig,
 };
 
 // ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ fn demux_receiver_emits_open_and_close_events() {
 #[test]
 fn receiver_emits_open_and_close_events() {
     {
-        let _rx = Receiver::new(Source(VecDeque::new()));
+        let _rx = Receiver::new(Source(VecDeque::new()), ReceiverConfig::default());
     }
     assert!(logs_contain("Receiver opened"));
     assert!(logs_contain("Receiver closed"));
@@ -128,7 +128,7 @@ fn receiver_emits_open_and_close_events() {
 #[test]
 fn raw_receiver_emits_open_and_close_events() {
     {
-        let _rx = RawReceiver::new(Source(VecDeque::new()));
+        let _rx = RawReceiver::new(Source(VecDeque::new()), RawReceiverConfig::default());
     }
     assert!(logs_contain("RawReceiver opened"));
     assert!(logs_contain("RawReceiver closed"));

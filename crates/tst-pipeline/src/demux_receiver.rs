@@ -23,7 +23,7 @@
 //! PES starts or the stream ends). In normal live streams the flush emits
 //! nothing; for finite test data it recovers the last sample.
 
-use crate::receiver::Receiver;
+use crate::receiver::{Receiver, ReceiverConfig};
 use std::sync::Arc;
 use tracing::{Span, info_span};
 use tst_core::error::DemuxError;
@@ -121,7 +121,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
         tracing::info!("DemuxReceiver opened");
         drop(_enter);
         Self {
-            ts: Receiver::new(transport),
+            ts: Receiver::new(transport, ReceiverConfig::default()),
             demux: Demuxer::new(),
             byte_sinks: Vec::new(),
             _span: std::panic::AssertUnwindSafe(span),
@@ -139,7 +139,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
         tracing::info!("DemuxReceiver opened");
         drop(_enter);
         Self {
-            ts: Receiver::new(transport),
+            ts: Receiver::new(transport, ReceiverConfig::default()),
             demux: Demuxer::with_options(options),
             byte_sinks: Vec::new(),
             _span: std::panic::AssertUnwindSafe(span),

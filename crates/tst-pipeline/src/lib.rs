@@ -61,9 +61,9 @@ pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderStats};
 pub use pairing::{
     KlvSample, Pairer, PairerConfig, PairerMode, PairerOutput, PairerStats, VideoSample,
 };
-pub use raw_receiver::{RawReceiver, RawReceiverStats};
+pub use raw_receiver::{RawReceiver, RawReceiverConfig, RawReceiverStats};
 pub use raw_sender::{RawSender, RawSenderConfig, RawSenderStats};
-pub use receiver::{Receiver, ReceiverStats};
+pub use receiver::{Receiver, ReceiverConfig, ReceiverStats};
 pub use reconnect::{
     BackoffStrategy, GapBuffer, ManagedTransport, OverflowPolicy, ReconnectPolicy,
 };

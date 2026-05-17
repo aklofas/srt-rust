@@ -8,7 +8,7 @@
 //!     cargo bench -p tst-pipeline --bench syncer
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use tst_pipeline::{Receiver, RecvTransport, TransportError};
+use tst_pipeline::{Receiver, ReceiverConfig, RecvTransport, TransportError};
 
 // ---------------------------------------------------------------------------
 // Mock transport — feeds a pre-built byte buffer in fixed-size chunks.
@@ -93,7 +93,7 @@ fn aligned_buffer(n: usize) -> Vec<u8> {
 /// transport closes. Returns how many packets were delivered.
 fn drain(data: Vec<u8>, chunk: usize, want: usize) -> usize {
     let t = BufTransport::new(data, chunk);
-    let mut r = Receiver::new(t);
+    let mut r = Receiver::new(t, ReceiverConfig::default());
     let mut count = 0usize;
     while count < want {
         match r.next_packet() {

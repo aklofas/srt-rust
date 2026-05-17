@@ -105,10 +105,27 @@ pub struct Receiver<R: RecvTransport> {
     _span: std::panic::AssertUnwindSafe<Span>,
 }
 
+/// Construction parameters for [`Receiver`].
+///
+/// Currently empty; reserved for future knobs (`recv_timeout`, custom
+/// `Syncer` settings, etc.) that can be added non-breakingly thanks to
+/// the `#[non_exhaustive]` annotation. Construct via `Default::default()`
+/// and assign overrides as more fields land.
+///
+/// Symmetric with [`crate::SenderConfig`] and [`crate::RawSenderConfig`]
+/// on the send side; the symmetry is documented in
+/// `docs/conventions.md`.
+#[non_exhaustive]
+#[derive(Debug, Default, Clone)]
+pub struct ReceiverConfig {}
+
 impl<R: RecvTransport> Receiver<R> {
-    /// Wrap a transport. Allocates an internal receive buffer sized to
-    /// `transport.max_payload()`.
-    pub fn new(transport: R) -> Self {
+    /// Wrap a transport with the supplied config. Allocates an
+    /// internal receive buffer sized to `transport.max_payload()`.
+    ///
+    /// `ReceiverConfig` is currently empty; construct via
+    /// [`ReceiverConfig::default()`].
+    pub fn new(transport: R, _config: ReceiverConfig) -> Self {
         let span = info_span!(
             target: "tst_pipeline::receiver",
             "receiver",
@@ -174,6 +191,7 @@ impl<R: RecvTransport> Receiver<R> {
     /// }
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use tst_pipeline::ReceiverConfig;
     /// // The TS syncer needs four consecutive 0x47 bytes at 188-byte
     /// // intervals to declare lock and emit the first packet — feed five
     /// // aligned packets in one transport message to satisfy that.
@@ -182,7 +200,10 @@ impl<R: RecvTransport> Receiver<R> {
     ///     stream.push(0x47);
     ///     stream.extend(vec![0u8; 187]);
     /// }
-    /// let mut rx = Receiver::new(Source(VecDeque::from(vec![stream])));
+    /// let mut rx = Receiver::new(
+    ///     Source(VecDeque::from(vec![stream])),
+    ///     ReceiverConfig::default(),
+    /// );
     ///
     /// let pkt = rx.next_packet()?;
     /// assert_eq!(pkt[0], 0x47);
@@ -300,11 +321,11 @@ impl<R: RecvTransport> Receiver<R> {
 /// # Example — opaque receiver from a runtime-chosen transport
 /// ```no_run
 /// use tst_pipeline::receiver::BoxedReceiver;
-/// use tst_pipeline::Receiver;
+/// use tst_pipeline::{Receiver, ReceiverConfig};
 /// use tst_core::RecvTransport;
 ///
 /// fn open(transport: Box<dyn RecvTransport>) -> BoxedReceiver {
-///     Receiver::new(transport)
+///     Receiver::new(transport, ReceiverConfig::default())
 /// }
 /// ```
 pub type BoxedReceiver = Receiver<Box<dyn crate::RecvTransport>>;
@@ -360,10 +381,13 @@ mod stats_tests {
 
     #[test]
     fn stats_starts_zero() {
-        let r = Receiver::new(MemRecv {
-            queue: VecDeque::new(),
-            alive: true,
-        });
+        let r = Receiver::new(
+            MemRecv {
+                queue: VecDeque::new(),
+                alive: true,
+            },
+            ReceiverConfig::default(),
+        );
         let st = r.stats();
         assert_eq!(st.bytes_received, 0);
         assert_eq!(st.packets_received, 0);
@@ -381,7 +405,7 @@ mod stats_tests {
             stream.extend_from_slice(&one_packet());
         }
         queue.push_back(stream);
-        let mut r = Receiver::new(MemRecv { queue, alive: true });
+        let mut r = Receiver::new(MemRecv { queue, alive: true }, ReceiverConfig::default());
         let _ = r.next_packet();
         let st = r.stats();
         assert_eq!(st.bytes_received, 188);
@@ -396,7 +420,7 @@ mod stats_tests {
             stream.extend_from_slice(&one_packet());
         }
         queue.push_back(stream);
-        let mut r = Receiver::new(MemRecv { queue, alive: true });
+        let mut r = Receiver::new(MemRecv { queue, alive: true }, ReceiverConfig::default());
         let _ = r.next_packet();
         r.reset_stats();
         let st = r.stats();
@@ -471,7 +495,7 @@ mod tests {
         for i in 0..6u16 {
             stream.extend_from_slice(&ts_packet(i));
         }
-        let mut rx = Receiver::new(MockRecv::new(vec![stream]));
+        let mut rx = Receiver::new(MockRecv::new(vec![stream]), ReceiverConfig::default());
 
         let mut got = 0;
         loop {
@@ -489,7 +513,7 @@ mod tests {
     fn emits_packets_across_transport_messages() {
         // Each transport message is exactly one TS packet.
         let messages: Vec<Vec<u8>> = (0..5u16).map(|i| ts_packet(i).to_vec()).collect();
-        let mut rx = Receiver::new(MockRecv::new(messages));
+        let mut rx = Receiver::new(MockRecv::new(messages), ReceiverConfig::default());
 
         let mut got = 0;
         loop {
@@ -505,7 +529,7 @@ mod tests {
     /// Closed transport with no prior data returns Closed immediately.
     #[test]
     fn closed_transport_returns_closed() {
-        let mut rx = Receiver::new(MockRecv::new(vec![]));
+        let mut rx = Receiver::new(MockRecv::new(vec![]), ReceiverConfig::default());
         assert_eq!(rx.next_packet().unwrap_err(), TransportError::Closed,);
     }
 }

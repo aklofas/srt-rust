@@ -17,9 +17,9 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use tst_pipeline::ManagedReceiveTransport;
-use tst_pipeline::RawReceiver;
 use tst_pipeline::TransportCancel;
 use tst_pipeline::TransportError;
+use tst_pipeline::{RawReceiver, RawReceiverConfig};
 use tst_srt::SrtTransport;
 use tst_srt::SrtUrl;
 use tst_srt::url::Mode;
@@ -117,7 +117,7 @@ fn open_listener_inner(url: SrtUrl) -> *mut TstRawReceiver {
 }
 
 fn finish_open(transport: SrtTransport) -> *mut TstRawReceiver {
-    let rx = RawReceiver::new(transport);
+    let rx = RawReceiver::new(transport, RawReceiverConfig::default());
     let cancel = rx.cancel_handle();
     let was_cancelled = Arc::new(AtomicBool::new(false));
     Box::into_raw(Box::new(TstRawReceiver {
@@ -445,7 +445,7 @@ fn managed_open_listener_inner(
 fn finish_managed_open(
     managed: ManagedReceiveTransport<SrtTransport>,
 ) -> *mut TstManagedRawReceiver {
-    let rx = RawReceiver::new(managed);
+    let rx = RawReceiver::new(managed, RawReceiverConfig::default());
     let cancel = rx.cancel_handle();
     let was_cancelled = Arc::new(AtomicBool::new(false));
     Box::into_raw(Box::new(TstManagedRawReceiver {

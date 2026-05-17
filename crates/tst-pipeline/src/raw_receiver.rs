@@ -79,10 +79,26 @@ pub struct RawReceiver<R: RecvTransport> {
     _span: std::panic::AssertUnwindSafe<Span>,
 }
 
+/// Construction parameters for [`RawReceiver`].
+///
+/// Currently empty; reserved for future knobs that can be added
+/// non-breakingly thanks to the `#[non_exhaustive]` annotation.
+/// Construct via `Default::default()` and assign overrides as more
+/// fields land.
+///
+/// Symmetric with [`crate::RawSenderConfig`] on the send side; the
+/// symmetry is documented in `docs/conventions.md`.
+#[non_exhaustive]
+#[derive(Debug, Default, Clone)]
+pub struct RawReceiverConfig {}
+
 impl<R: RecvTransport> RawReceiver<R> {
-    /// Wrap a transport. Allocates an internal buffer sized to
-    /// `transport.max_payload()`.
-    pub fn new(transport: R) -> Self {
+    /// Wrap a transport with the supplied config. Allocates an
+    /// internal buffer sized to `transport.max_payload()`.
+    ///
+    /// `RawReceiverConfig` is currently empty; construct via
+    /// [`RawReceiverConfig::default()`].
+    pub fn new(transport: R, _config: RawReceiverConfig) -> Self {
         let span = info_span!(
             target: "tst_pipeline::raw_receiver",
             "raw_receiver",
@@ -140,8 +156,9 @@ impl<R: RecvTransport> RawReceiver<R> {
     /// }
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// use tst_pipeline::RawReceiverConfig;
     /// let q = VecDeque::from(vec![b"hello".to_vec(), b"world".to_vec()]);
-    /// let mut rx = RawReceiver::new(Source(q));
+    /// let mut rx = RawReceiver::new(Source(q), RawReceiverConfig::default());
     /// assert_eq!(rx.recv_one()?, b"hello");
     /// assert_eq!(rx.recv_one()?, b"world");
     /// // Drained — next recv signals end-of-stream.
@@ -229,11 +246,11 @@ impl<R: RecvTransport> Drop for RawReceiver<R> {
 /// # Example
 /// ```no_run
 /// use tst_pipeline::raw_receiver::BoxedRawReceiver;
-/// use tst_pipeline::RawReceiver;
+/// use tst_pipeline::{RawReceiver, RawReceiverConfig};
 /// use tst_core::RecvTransport;
 ///
 /// fn open(transport: Box<dyn RecvTransport>) -> BoxedRawReceiver {
-///     RawReceiver::new(transport)
+///     RawReceiver::new(transport, RawReceiverConfig::default())
 /// }
 /// ```
 pub type BoxedRawReceiver = RawReceiver<Box<dyn crate::RecvTransport>>;
@@ -269,10 +286,13 @@ mod tests {
 
     #[test]
     fn stats_starts_zero() {
-        let r = RawReceiver::new(MemRecv {
-            queue: Default::default(),
-            alive: true,
-        });
+        let r = RawReceiver::new(
+            MemRecv {
+                queue: Default::default(),
+                alive: true,
+            },
+            RawReceiverConfig::default(),
+        );
         let st = r.stats();
         assert_eq!(st.bytes_received, 0);
         assert_eq!(st.packets_received, 0);
@@ -283,10 +303,13 @@ mod tests {
         let mut q = std::collections::VecDeque::new();
         q.push_back(vec![1u8; 100]);
         q.push_back(vec![2u8; 50]);
-        let mut r = RawReceiver::new(MemRecv {
-            queue: q,
-            alive: true,
-        });
+        let mut r = RawReceiver::new(
+            MemRecv {
+                queue: q,
+                alive: true,
+            },
+            RawReceiverConfig::default(),
+        );
         let _ = r.recv_one();
         let _ = r.recv_one();
         let st = r.stats();
@@ -298,10 +321,13 @@ mod tests {
     fn reset_zeros_counters() {
         let mut q = std::collections::VecDeque::new();
         q.push_back(vec![1u8; 100]);
-        let mut r = RawReceiver::new(MemRecv {
-            queue: q,
-            alive: true,
-        });
+        let mut r = RawReceiver::new(
+            MemRecv {
+                queue: q,
+                alive: true,
+            },
+            RawReceiverConfig::default(),
+        );
         let _ = r.recv_one();
         r.reset_stats();
         let st = r.stats();
@@ -352,7 +378,7 @@ mod tests {
     #[test]
     fn raw_receiver_delivers_messages() {
         let msgs: Vec<Vec<u8>> = vec![b"hello".to_vec(), b"world".to_vec()];
-        let mut rx = RawReceiver::new(MockRecv::new(msgs.clone()));
+        let mut rx = RawReceiver::new(MockRecv::new(msgs.clone()), RawReceiverConfig::default());
 
         assert_eq!(rx.recv_one().unwrap(), b"hello");
         assert_eq!(rx.recv_one().unwrap(), b"world");
@@ -361,7 +387,10 @@ mod tests {
 
     #[test]
     fn raw_receiver_is_alive_tracks_transport() {
-        let mut rx = RawReceiver::new(MockRecv::new(vec![b"x".to_vec()]));
+        let mut rx = RawReceiver::new(
+            MockRecv::new(vec![b"x".to_vec()]),
+            RawReceiverConfig::default(),
+        );
         assert!(rx.is_alive());
         let _ = rx.recv_one(); // consume the one message
         assert!(!rx.is_alive());

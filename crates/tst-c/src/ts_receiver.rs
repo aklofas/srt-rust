@@ -21,9 +21,9 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use tst_core::mpegts::common::TS_PACKET_SIZE;
 use tst_pipeline::ManagedReceiveTransport;
-use tst_pipeline::Receiver;
 use tst_pipeline::TransportCancel;
 use tst_pipeline::TransportError;
+use tst_pipeline::{Receiver, ReceiverConfig};
 use tst_srt::SrtTransport;
 use tst_srt::SrtUrl;
 use tst_srt::url::Mode;
@@ -112,7 +112,7 @@ fn open_listener_inner(url: SrtUrl) -> *mut TstReceiver {
 }
 
 fn finish_open(transport: SrtTransport) -> *mut TstReceiver {
-    let rx = Receiver::new(transport);
+    let rx = Receiver::new(transport, ReceiverConfig::default());
     let cancel = rx.cancel_handle();
     let was_cancelled = Arc::new(AtomicBool::new(false));
     Box::into_raw(Box::new(TstReceiver {
@@ -424,7 +424,7 @@ fn managed_open_listener_inner(
 }
 
 fn finish_managed_open(managed: ManagedReceiveTransport<SrtTransport>) -> *mut TstManagedReceiver {
-    let rx = Receiver::new(managed);
+    let rx = Receiver::new(managed, ReceiverConfig::default());
     let cancel = rx.cancel_handle();
     let was_cancelled = Arc::new(AtomicBool::new(false));
     Box::into_raw(Box::new(TstManagedReceiver {

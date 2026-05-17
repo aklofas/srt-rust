@@ -2528,6 +2528,7 @@ pub fn tst_core::mpegts::demux::demuxer::Demuxer::new() -> Self
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::next_event(&mut self) -> core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::reset_stats(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stats(&self) -> tst_core::mpegts::demux::types::DemuxerStats
+pub fn tst_core::mpegts::demux::demuxer::Demuxer::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_options(options: tst_core::mpegts::demux::types::DemuxerOptions) -> Self
 impl core::default::Default for tst_core::mpegts::demux::demuxer::Demuxer
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::default() -> Self
@@ -3747,6 +3748,7 @@ pub fn tst_core::mpegts::demux::demuxer::Demuxer::new() -> Self
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::next_event(&mut self) -> core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::reset_stats(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stats(&self) -> tst_core::mpegts::demux::types::DemuxerStats
+pub fn tst_core::mpegts::demux::demuxer::Demuxer::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_options(options: tst_core::mpegts::demux::types::DemuxerOptions) -> Self
 impl core::default::Default for tst_core::mpegts::demux::demuxer::Demuxer
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::default() -> Self

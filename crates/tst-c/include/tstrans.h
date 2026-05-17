@@ -254,6 +254,7 @@ enum tst_nonconformant_code
   TST_NONCONFORMANT_CODE_MULTI_CELL_AU = 16,
   TST_NONCONFORMANT_CODE_PSI_MULTI_SECTION_UNSUPPORTED = 17,
   TST_NONCONFORMANT_CODE_OTHER = 18,
+  TST_NONCONFORMANT_CODE_MALFORMED_PES = 19,
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;

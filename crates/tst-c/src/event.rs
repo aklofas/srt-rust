@@ -88,7 +88,7 @@ pub enum TstDiscontinuityKindTag {
 }
 
 // ------------------------------------------------------------------
-// Non-conformant-issue codes (19 variants)
+// Non-conformant-issue codes (20 variants)
 // ------------------------------------------------------------------
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::NonConformantIssue`'s
@@ -116,6 +116,7 @@ pub enum TstNonConformantCode {
     MultiCellAu = 16,
     PsiMultiSectionUnsupported = 17,
     Other = 18,
+    MalformedPes = 19,
 }
 
 // ------------------------------------------------------------------
@@ -585,7 +586,7 @@ fn fill_sample(
     out.kind = TstEventKind::Sample as c_int;
     out.u.sample = TstEventSample {
         pid: stream.pid,
-        program_number: 0, // TODO: thread program_number through StreamId per design §7.3
+        program_number: stream.program_number,
         stream_kind: kind_tag,
         pts,
         dts: dts.unwrap_or(i64::MIN),
@@ -634,7 +635,7 @@ fn fill_metadata(
     out.kind = TstEventKind::Metadata as c_int;
     out.u.metadata = TstEventMetadata {
         pid: stream.pid,
-        program_number: 0, // TODO: thread program_number through StreamId per design §7.3
+        program_number: stream.program_number,
         _pad: [0; 4],
         pts,
         metadata_kind: md_kind,
@@ -801,6 +802,15 @@ fn fill_nonconformant(
         NonConformantIssue::Other(s) => {
             body.issue_code = TstNonConformantCode::Other as c_int;
             arena.detail_buf.extend_from_slice(s.as_bytes());
+            arena.detail_buf.push(0); // NUL terminator
+            body.detail = arena.detail_buf.as_ptr() as *const c_char;
+        }
+        NonConformantIssue::MalformedPes { pid, reason } => {
+            body.issue_code = TstNonConformantCode::MalformedPes as c_int;
+            body.pid = *pid;
+            // Route the &'static str reason through detail_buf (NUL-terminated)
+            // so C callers read it via body.detail, mirroring the Other arm.
+            arena.detail_buf.extend_from_slice(reason.as_bytes());
             arena.detail_buf.push(0); // NUL terminator
             body.detail = arena.detail_buf.as_ptr() as *const c_char;
         }

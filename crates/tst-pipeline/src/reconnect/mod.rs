@@ -156,6 +156,16 @@ impl<T: Transport + 'static> ManagedTransport<T> {
     /// Pre-checks `bytes.len() > max_payload` against the inner transport
     /// before any state mutation, so oversized messages never enter the gap
     /// buffer (where they'd block drain forever).
+    ///
+    /// # Panics
+    ///
+    /// Panics with `"BUG: gap lock poisoned — gap buffer is invariant-critical"`
+    /// if the internal gap-buffer mutex has been poisoned by a previous panic.
+    /// The poison signals a corrupted gap-buffer invariant (length tracking,
+    /// ring cursors); proceeding would silently drop queued bytes. Caught by
+    /// `tst-c`'s `ffi_catch` as `TST_E_PANIC_CAUGHT` (-11). Recoverable-path
+    /// lock poisons (inner_cancel, inner-transport mutex) instead return
+    /// `Err(TransportError::Broken(...))` — see Task 3 sites.
     fn send_managed(&self, bytes: &[u8]) -> Result<(), TransportError> {
         if self.closed.load(std::sync::atomic::Ordering::Acquire) {
             return Err(TransportError::Closed);
@@ -222,7 +232,15 @@ impl<T: Transport + 'static> ManagedTransport<T> {
 
         // Inner is broken/closed. Queue this message and attempt reconnect.
         {
-            let mut gap = self.gap.lock().unwrap();
+            // Plan B mutex sweep (documented panic): gap-accumulator is
+            // invariant-critical. A poisoned lock means a previous panic
+            // happened while modifying the buffer's invariants (length
+            // tracking, ring cursors); proceeding would silently lose
+            // bytes. Panic with BUG: prefix per the FFI panic-isolation
+            // convention (plan #50); tst-c's ffi_catch wraps to
+            // TST_E_PANIC_CAUGHT (-11). See enclosing send_managed's
+            // /// # Panics rustdoc for the contract.
+            let mut gap = self.gap.lock().expect("BUG: gap lock poisoned — gap buffer is invariant-critical");
             let _ = gap.enqueue(bytes.to_vec()); // overflow policy applies
         }
         self.reconnect_and_drain()
@@ -233,8 +251,13 @@ impl<T: Transport + 'static> ManagedTransport<T> {
     /// # Errors
     ///
     /// Returns `TransportError::Broken` if the inner lock is poisoned (a
-    /// previous panic left it in an unknown state). The gap lock has its
-    /// own panic policy — see the inline note where it's acquired.
+    /// previous panic left it in an unknown state).
+    ///
+    /// # Panics
+    ///
+    /// Panics with `"BUG: gap lock poisoned — gap buffer is invariant-critical"`
+    /// if the gap-buffer mutex has been poisoned. See `send_managed`'s
+    /// `# Panics` section for the full rationale.
     fn drain_gap_if_alive(&self) -> Result<(), TransportError> {
         // Plan B mutex sweep (recoverable path): poisoned inner lock means
         // a previous panic happened while another caller held this lock.
@@ -248,7 +271,10 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         let Some(transport) = transport_guard.as_mut() else {
             return Ok(()); // can't drain without a transport
         };
-        let mut gap = self.gap.lock().unwrap(); // ← LEFT FOR TASK 4
+        // Plan B mutex sweep (documented panic): gap-accumulator is
+        // invariant-critical. See Step 4.1 / send_managed /// # Panics
+        // rustdoc for rationale.
+        let mut gap = self.gap.lock().expect("BUG: gap lock poisoned — gap buffer is invariant-critical");
         while let Some(msg) = gap.front() {
             match transport.send_bytes(msg) {
                 Ok(()) => {

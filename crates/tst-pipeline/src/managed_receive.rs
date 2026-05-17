@@ -205,7 +205,21 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
                 std::thread::sleep(delay);
                 match (self.factory)() {
                     Ok(t) => {
-                        *self.inner_cancel.lock().unwrap() = t.cancel_handle();
+                        // Plan B mutex sweep (recoverable path): poisoned
+                        // inner_cancel lock means a previous panic left the
+                        // cancel-snapshot in an unknown state. Route to
+                        // TransportError::Broken with a site-specific
+                        // message so the shell can map to TransportBroken
+                        // kind (→ TST_E_TRANSPORT -8). Precedent: plan #45
+                        // (.lock().ok() on MuxSender::close cancel path).
+                        let mut guard = self.inner_cancel.lock().map_err(|_| {
+                            TransportError::Broken(
+                                "managed_receive: inner_cancel lock poisoned during cancel install"
+                                    .into(),
+                            )
+                        })?;
+                        *guard = t.cancel_handle();
+                        drop(guard);
                         self.inner = Some(t);
                     }
                     Err(_) => continue,

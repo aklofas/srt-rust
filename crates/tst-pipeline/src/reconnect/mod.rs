@@ -189,7 +189,17 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         }
 
         // Try the new bytes if the transport is still alive after drain.
-        if let Some(transport) = self.inner.lock().unwrap().as_mut() {
+        // Plan B mutex sweep (recoverable path): poisoned inner lock means
+        // a previous panic happened while another caller held this lock.
+        // Route to TransportError::Broken so the caller's reconnect logic
+        // (or shell-level error propagation) tears down the wrapper.
+        // Precedent: plan #45.
+        let mut transport_guard = self.inner.lock().map_err(|_| {
+            TransportError::Broken(
+                "reconnect: inner lock poisoned during in-line send peek".into(),
+            )
+        })?;
+        if let Some(transport) = transport_guard.as_mut() {
             match transport.send_bytes(bytes) {
                 Ok(()) => return Ok(()),
                 Err(TransportError::Backpressure(_)) => {
@@ -219,12 +229,26 @@ impl<T: Transport + 'static> ManagedTransport<T> {
     }
 
     /// Drain the gap buffer if the inner transport is alive.
+    ///
+    /// # Errors
+    ///
+    /// Returns `TransportError::Broken` if the inner lock is poisoned (a
+    /// previous panic left it in an unknown state). The gap lock has its
+    /// own panic policy — see the inline note where it's acquired.
     fn drain_gap_if_alive(&self) -> Result<(), TransportError> {
-        let mut transport_guard = self.inner.lock().unwrap();
+        // Plan B mutex sweep (recoverable path): poisoned inner lock means
+        // a previous panic happened while another caller held this lock.
+        // Route to TransportError::Broken so the reconnect loop or higher
+        // shell tears down the wrapper. Precedent: plan #45.
+        let mut transport_guard = self.inner.lock().map_err(|_| {
+            TransportError::Broken(
+                "reconnect: inner lock poisoned during drain peek".into(),
+            )
+        })?;
         let Some(transport) = transport_guard.as_mut() else {
             return Ok(()); // can't drain without a transport
         };
-        let mut gap = self.gap.lock().unwrap();
+        let mut gap = self.gap.lock().unwrap(); // ← LEFT FOR TASK 4
         while let Some(msg) = gap.front() {
             match transport.send_bytes(msg) {
                 Ok(()) => {
@@ -284,7 +308,18 @@ impl<T: Transport + 'static> ManagedTransport<T> {
             thread::sleep(wait);
             match (self.factory)() {
                 Ok(new_inner) => {
-                    *self.inner.lock().unwrap() = Some(new_inner);
+                    // Plan B mutex sweep (recoverable path): poisoned inner
+                    // lock means a previous panic left the wrapper in an
+                    // unknown state. Route to TransportError::Broken; the
+                    // caller's shell propagates the error and may surface
+                    // a TST_E_TRANSPORT (-8). Precedent: plan #45.
+                    let mut guard = self.inner.lock().map_err(|_| {
+                        TransportError::Broken(
+                            "reconnect: inner lock poisoned during new-inner install".into(),
+                        )
+                    })?;
+                    *guard = Some(new_inner);
+                    drop(guard);
                     // Drain gap buffer.
                     return self.drain_gap_if_alive();
                 }

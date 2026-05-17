@@ -7,6 +7,7 @@
 use crate::config::TstMuxConfig;
 use crate::error::{TstError, record_mux_error, set_last_error};
 use crate::handle::{Handle, TstKlvStreamHandle, TstVideoStreamHandle};
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{KlvStreamHandle, Muxer, VideoStreamHandle};
 
 pub struct TstMuxer {
@@ -62,9 +63,10 @@ pub unsafe extern "C" fn tst_muxer_push_video(
         return TstError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(nal, len) };
+    let pts = Pts90khz::new(pts_90khz);
     handle
         .inner
-        .with_inner_mut(|m| match m.push_video(slice, pts_90khz, key_frame) {
+        .with_inner_mut(|m| match m.push_video(slice, pts, key_frame) {
             Ok(()) => 0,
             Err(e) => {
                 record_mux_error(&e);
@@ -91,9 +93,10 @@ pub unsafe extern "C" fn tst_muxer_push_klv(
         return TstError::InvalidConfig as i32;
     }
     let slice = unsafe { std::slice::from_raw_parts(klv, len) };
+    let pts = Pts90khz::new(pts_90khz);
     handle.inner.with_inner_mut(|m| {
         match m.push_klv(
-            slice, pts_90khz,
+            slice, pts,
             // C ABI receiver-surface plan will expose metadata_service_id;
             // today defaults to 0x00 per ST 1402.2 App. B Table 2.
             0x00,
@@ -135,8 +138,9 @@ pub unsafe extern "C" fn tst_muxer_push_video_to(
     }
     let slice = unsafe { std::slice::from_raw_parts(nal, len) };
     let stream = VideoStreamHandle::from_raw(handle);
+    let pts = Pts90khz::new(pts_90khz);
     h.inner.with_inner_mut(
-        |m| match m.push_video_to(stream, slice, pts_90khz, key_frame) {
+        |m| match m.push_video_to(stream, slice, pts, key_frame) {
             Ok(()) => 0,
             Err(e) => {
                 record_mux_error(&e);
@@ -174,9 +178,10 @@ pub unsafe extern "C" fn tst_muxer_push_klv_to(
     }
     let slice = unsafe { std::slice::from_raw_parts(klv, len) };
     let stream = KlvStreamHandle::from_raw(handle);
+    let pts = Pts90khz::new(pts_90khz);
     h.inner.with_inner_mut(|m| {
         match m.push_klv_to(
-            stream, slice, pts_90khz,
+            stream, slice, pts,
             // C ABI receiver-surface plan will expose metadata_service_id;
             // today defaults to 0x00 per ST 1402.2 App. B Table 2.
             0x00,

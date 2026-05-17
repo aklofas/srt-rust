@@ -26,6 +26,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::common::crc32::crc32_mpeg2;
 use tst_core::mpegts::mux::{
     Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
@@ -101,7 +102,7 @@ fn build_multi_program_stream_with_video_in_each_program() -> Vec<u8> {
     // 30 frames at 3003 ticks (~30fps@90kHz) spans the default 100 ms PSI
     // interval, guaranteeing PAT + both PMTs emit before drain.
     for tick in 0u64..30 {
-        let pts = 90_000i64 + (tick * 3_003) as i64;
+        let pts = Pts90khz::new(90_000i64 + (tick * 3_003) as i64);
         mux.push_video_to(v1, NAL_IDR, pts, true).expect("push v1");
         mux.push_video_to(v2, NAL_IDR, pts, true).expect("push v2");
     }
@@ -127,7 +128,7 @@ fn build_stream_with_video_rai_set() -> Vec<u8> {
     // 15 key-frames at 3003 ticks — ensures PSI emits and at least one
     // sample event makes it through with RAI set.
     for tick in 0u64..15 {
-        let pts = 90_000i64 + (tick * 3_003) as i64;
+        let pts = Pts90khz::new(90_000i64 + (tick * 3_003) as i64);
         mux.push_video_to(vh, NAL_IDR, pts, /* key_frame = */ true)
             .expect("push v");
     }
@@ -250,7 +251,7 @@ fn build_multi_program_stream_with_distinct_pids(
     let v1 = v_handles[0];
     let v2 = v_handles[1];
     for tick in 0u64..30 {
-        let pts = 90_000i64 + (tick * 3_003) as i64;
+        let pts = Pts90khz::new(90_000i64 + (tick * 3_003) as i64);
         mux.push_video_to(v1, NAL_IDR, pts, true).expect("push v1");
         mux.push_video_to(v2, NAL_IDR, pts, true).expect("push v2");
     }

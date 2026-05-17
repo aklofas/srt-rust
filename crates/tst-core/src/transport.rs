@@ -127,6 +127,30 @@ pub enum TransportError {
     /// chunking on their own framing semantics.
     #[error("message too large: {len} bytes exceeds payload-size cap of {max} bytes")]
     TooLarge { len: usize, max: usize },
+
+    /// Caller invoked `close()` or `cancel()` on this transport (or on a
+    /// shell that owns it). Distinguished from [`Self::Closed`] which means
+    /// "peer closed the connection / end-of-stream observed on the wire."
+    ///
+    /// **Producer:** today this variant is produced exclusively by
+    /// `ManagedRecvTransport::recv_bytes` when its own cancel signal has
+    /// fired (Plan B wires this). Bare transports (`SrtTransport`) do not
+    /// currently produce this variant — they map both caller-close and
+    /// peer-EOS to [`Self::Closed`] because the libsrt-level distinction
+    /// isn't reliably observable. The pipeline-shell layer treats the two
+    /// the same on the send side (`Closed` is always caller-initiated for
+    /// senders) and only distinguishes on the receive side via
+    /// `ManagedRecvTransport`'s extra tracking.
+    ///
+    /// **Shell-layer mapping (Plan A `kind_from_transport`):**
+    /// - `ExplicitClose` → `ShellErrorKind::Closed` (caller-initiated)
+    /// - `Closed` on a receiver shell → `ShellErrorKind::EndOfStream` (peer-initiated)
+    /// - `Closed` on a sender shell → `ShellErrorKind::Closed` (caller-initiated; sender shells expose `close()` and produce this on post-close calls)
+    ///
+    /// See `docs/refactor-1/_wave-4-plan-design.md` Plan A architecture
+    /// section for the full peer-vs-caller-close routing rationale.
+    #[error("transport explicitly closed by caller")]
+    ExplicitClose,
 }
 
 /// One-shot byte transport. Each `send_bytes` call sends exactly one

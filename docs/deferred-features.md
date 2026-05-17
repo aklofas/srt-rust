@@ -1190,3 +1190,45 @@ the trigger that would unblock it.
   the 4 `if: matrix.name != 'windows-msvc'` gates in
   `.github/workflows/ci.yml` get removed and windows-msvc rejoins
   the gating cohort.
+
+## Audio frame iterators for LATM + AC-3
+
+- **Status:** Deferred. No consumer trigger. Existing iterators in
+  `tst_core::codec::*` cover MP2 (`mpegaudio::frames`) and AAC-ADTS
+  (`aac::frames`) only — shipped in plan #34.
+- **Why deferred:** AAC-LATM (`audio_mux_element` +
+  `payload_length_info` framing per ISO/IEC 14496-3) and AC-3
+  (ETSI TS 102 366 §6 syncword + frame-size table) both have
+  well-defined per-spec frame boundaries; an iterator implementation
+  is roughly a day of work each. The wider "no LATM/AC-3 frame
+  parsers" entry above tracks the spec-side deferral; this entry is
+  the codec-stats-side mirror.
+- **Trigger to revisit:** A consumer asks for per-frame counters or
+  frame-aligned dispatch on LATM/AC-3 audio. Once added, the `Audio`
+  variant of `StreamCodecStats` (shipped in plan #68) automatically
+  populates `frames` for those PIDs; today LATM/AC-3 PIDs return
+  `Some(StreamCodecStats::Unknown)` via the codec-stats fallback.
+- **Scope when added:** Wire the new iterators into the demuxer's
+  per-PID audio counter-bump path in the same shape as the existing
+  MP2 + AAC-ADTS bumps; the `StreamCodecStats::Audio { frames }`
+  variant absorbs the new counts without an ABI change.
+
+## Subtitle codec-specific stats
+
+- **Status:** Deferred. The codec-stats surface shipped in plan #68
+  covers Video / KLV / Audio kinds; subtitle PIDs surface as
+  `StreamCodecStats::Unknown`.
+- **Why deferred:** Low signal value. The codecs covered by the
+  subtitle carriage plan (DVB-Subtitling, DVB-Teletext, CEA-708,
+  WebVTT-in-TS) don't have meaningful per-segment counts distinct
+  from the existing unified `items` counter on `StreamStats`. No
+  consumer has asked for them.
+- **Trigger to revisit:** A consumer asks for e.g. CEA-708
+  caption-frame counts, DVB-sub region-update counts, WebVTT
+  cue-emit counts, or DVB-teletext page-update counts.
+- **Scope when added:** Add a `Subtitle { segments: u64 }` (or
+  per-codec field names if the consumer asks for a finer breakdown)
+  variant to `StreamCodecStats`. The `#[non_exhaustive]` enum makes
+  this additive without a major bump; wire the bump-site at
+  `Demuxer::emit_subtitle` alongside the existing `stats_per_stream`
+  bump.

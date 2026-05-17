@@ -7,6 +7,88 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — codec-specific per-stream stats (plan #68)
+
+### Added
+
+- **`tst_core::stats::StreamCodecStats`** — `#[non_exhaustive]` tagged
+  enum carrying per-PID codec-specific counters. Variants (each
+  `#[non_exhaustive]`): `Video { nals_or_obus, random_access_aus }`
+  (H.264/H.265/H.266 NAL counts or AV1 OBU counts + random-access AU
+  count), `Klv { records }` (BER-TLV record count when a PES carries
+  multiple records), `Audio { frames }` (MP2 + AAC-ADTS frame counts;
+  LATM + AC-3 fall through to `Unknown` — see deferred-features.md),
+  `Unknown` (codec not classified or no codec-specific counters
+  defined yet).
+- **`Muxer::stream_codec_stats(pid)` and
+  `Demuxer::stream_codec_stats(pid)`** — `Option<StreamCodecStats>`
+  accessors; return `None` when the PID was never observed on this
+  handle. Codec kind is determined eagerly from the configured /
+  parsed `stream_type`; counters reset alongside the existing
+  `stats_per_stream` reset path.
+- **Pipeline-level `stream_codec_stats(pid)` on `MuxSender` and
+  `DemuxReceiver`** (both plain and managed-transport variants share
+  the same method via the `Transport` generic).
+- **`tst-c`: 5 new entry points** —
+  `tst_muxer_get_stream_codec_stats`,
+  `tst_mux_sender_get_stream_codec_stats`,
+  `tst_managed_mux_sender_get_stream_codec_stats`,
+  `tst_demux_receiver_get_stream_codec_stats`,
+  `tst_managed_demux_receiver_get_stream_codec_stats`.
+  All take `(handle, pid, *out tst_stream_codec_stats_t)` and return
+  the standard `tst_error_t` discriminant.
+- **`tst-c`: `TstStreamCodecStats` `repr(C)` tagged-union (24 B)** —
+  `kind` discriminator (one of `TST_CODEC_KIND_UNKNOWN`,
+  `TST_CODEC_KIND_VIDEO`, `TST_CODEC_KIND_KLV`,
+  `TST_CODEC_KIND_AUDIO`) + arm-specific payload structs
+  `tst_codec_video_stats_t` / `tst_codec_klv_stats_t` /
+  `tst_codec_audio_stats_t`. `_Static_assert` ABI size guards trip
+  consumer-side builds on accidental layout drift.
+- **`tst-c`: `TST_E_NOT_FOUND = -14` error code** — returned by the
+  `_get_stream_codec_stats` family when the PID was never observed on
+  this handle. Distinct from `TST_E_NOT_AVAILABLE` (transient
+  managed-reconnect mid-flight) so callers can branch on the
+  "PID-typo / wrong-PID" vs "wait and retry" distinction.
+- **TS adaptation-field `random_access_indicator` (bit 0x40) now
+  extracted** and propagated through PES assembly to
+  `SamplePayload::Video::random_access_indicator`. Receiver-side
+  `random_access_aus` codec counter uses this signal.
+- **`tst_core::codec::util::count_nal_units(buf, codec)`** —
+  cross-codec helper for counting NAL units
+  (H.264/H.265/H.266 Annex-B start-code scan) or OBUs (AV1 LEB128
+  walk) inside a single AU buffer. Shared between the muxer-side
+  push-time count and the demuxer-side parse-time count.
+
+### Changed
+
+- **BREAKING** — `SamplePayload::Video` gains a new field
+  `random_access_indicator: bool`. `SamplePayload` is already
+  `#[non_exhaustive]` at the variant level, but the `Video` payload
+  struct is not — outside-crate pattern matches on
+  `SamplePayload::Video { ... }` need a `..` rest binding to absorb
+  the new field; struct construction at test sites must add
+  `random_access_indicator: false` (or the relevant value).
+- **BREAKING** — `mpegts::demux::pes::PesPayload` gains a new field
+  `random_access_indicator: bool`.
+- **BREAKING** — `mpegts::demux::ts::TsPacket` gains a new field
+  `random_access_indicator: bool` (struct already `#[non_exhaustive]`
+  so pattern-match consumers absorb via `..`; struct-construction
+  consumers must add the field).
+- **BREAKING** — `mpegts::demux::pes::Reassembler::push` gains a 4th
+  parameter `random_access_indicator: bool` (RAI gets latched on the
+  first TS packet of an AU at the reassembler level so PES payload
+  emission carries it through).
+- **`#[non_exhaustive]` workspace count guard `BASELINE`** bumped
+  from 52 to 54 in `.github/workflows/ci.yml` (absorbs
+  `StreamCodecStats` enum + 3 variants worth of `#[non_exhaustive]`
+  attributes).
+
+See the plan at `docs/plans/2026-05-16-codec-specific-stats.md`.
+Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
+(deferred from plan #16).
+
+---
+
 ## [Unreleased] — tst-srt Windows MSVC port (plan #65)
 
 ### Changed

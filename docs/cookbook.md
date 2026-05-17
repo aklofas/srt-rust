@@ -1174,7 +1174,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         overflow_policy: OverflowPolicy::DropOldest,
     };
     let managed = ManagedTransport::new(initial, factory, policy);
-    let _sender = MuxSender::new(MuxerConfig::default(), managed)?;
+    let _sender = MuxSender::new(managed, MuxerConfig::default())?;
     Ok(())
 }
 ```

@@ -112,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket = SocketBuilder::new()
         .latency(Duration::from_millis(120))
         .connect("127.0.0.1:9000")?;
-    let sender = MuxSender::new(MuxerConfig::default(), SrtTransport::new(socket))?;
+    let sender = MuxSender::new(SrtTransport::new(socket), MuxerConfig::default())?;
     for i in 0..5i64 {
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0xAA];
         let klv = vec![/* ... pre-built ST 0601 ... */];
@@ -716,7 +716,7 @@ within milliseconds, then completes. You only need to grab a
 still wake a worker:
 
 ```rust,ignore
-let s = Arc::new(MuxSender::new(config, transport)?);
+let s = Arc::new(MuxSender::new(transport, config)?);
 let cancel = s.cancel_handle().expect("real SRT transport supports cancel");
 
 // Worker thread parks in s.send_video(...) when peer back-pressures.

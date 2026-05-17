@@ -127,7 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     sb.latency(Duration::from_millis(120));
     let socket = sb.connect("127.0.0.1:9000")?;
     let transport = SrtTransport::new(socket);
-    let sender = MuxSender::new(MuxerConfig::default(), transport)?;
+    let sender = MuxSender::new(transport, MuxerConfig::default())?;
 
     // Synthetic Annex-B IDR access unit + KLV blob.
     let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, /* ... payload bytes ... */];

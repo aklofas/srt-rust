@@ -148,11 +148,13 @@ impl Pcr27mhz {
     }
 
     /// 33-bit PCR base (90 kHz units).
+    #[must_use]
     pub fn base(self) -> u64 {
         (self.0 / 300) & ((1u64 << 33) - 1)
     }
 
     /// 9-bit PCR extension (27 MHz units modulo 300).
+    #[must_use]
     pub fn extension(self) -> u16 {
         (self.0 % 300) as u16
     }

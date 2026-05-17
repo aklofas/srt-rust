@@ -255,6 +255,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
     }
 
     /// Advisory liveness check. Delegates to the underlying transport.
+    #[must_use]
     pub fn is_alive(&self) -> bool {
         self.ts.is_alive()
     }

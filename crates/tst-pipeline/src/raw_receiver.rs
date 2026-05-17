@@ -208,6 +208,7 @@ impl<R: RecvTransport> RawReceiver<R> {
     }
 
     /// Advisory liveness check. Delegates to the underlying transport.
+    #[must_use]
     pub fn is_alive(&self) -> bool {
         self.transport.is_alive()
     }

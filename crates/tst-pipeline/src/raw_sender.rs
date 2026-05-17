@@ -158,6 +158,7 @@ impl<T: Transport> RawSender<T> {
         self.transport.close();
     }
 
+    #[must_use]
     pub fn is_alive(&self) -> bool {
         self.transport.is_alive()
     }

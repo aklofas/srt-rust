@@ -1546,6 +1546,7 @@ impl Muxer {
     /// The configured queue capacity in 188-byte TS packets — a snapshot
     /// of `MuxerConfig::buffer_packets`. A `push_*` that would push the
     /// queue past this cap returns [`crate::error::MuxError::BufferFull`].
+    #[must_use]
     pub fn capacity_packets(&self) -> u64 {
         self.config.buffer_packets as u64
     }

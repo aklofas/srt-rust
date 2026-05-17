@@ -638,6 +638,7 @@ impl<T: Transport> MuxSender<T> {
         self.cancel.clone()
     }
 
+    #[must_use]
     pub fn is_alive(&self) -> bool {
         let inner = self.inner.lock().unwrap();
         !inner.closed && inner.transport.is_alive()

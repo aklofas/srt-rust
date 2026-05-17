@@ -248,6 +248,7 @@ impl<T: Transport> Sender<T> {
         self.transport.close();
     }
 
+    #[must_use]
     pub fn is_alive(&self) -> bool {
         !self.closed && self.transport.is_alive()
     }

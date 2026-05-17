@@ -1,6 +1,7 @@
 //! Unit-level integration tests for `pipeline::MuxSender` using a mock
 //! `Transport`. End-to-end tests over a real Socket pair are in Task 10.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::MuxSender;
 use tst_test_helpers::mock_transport::MockTransport;
@@ -19,7 +20,9 @@ fn sender_drives_video_through_transport() {
     let log = transport.log();
     let sender = MuxSender::new(transport, MuxerConfig::default()).unwrap();
 
-    sender.send_video(&synthetic_h264_au(), 0, true).unwrap();
+    sender
+        .send_video(&synthetic_h264_au(), Pts90khz::new(0), true)
+        .unwrap();
 
     let captured = log.lock().unwrap();
     // Each captured entry should be exactly 1316 bytes (one 7-packet bundle)
@@ -50,7 +53,7 @@ fn sender_drives_klv_through_transport() {
     let sender = MuxSender::new(transport, MuxerConfig::default()).unwrap();
 
     let klv = vec![0xAB; 64];
-    sender.send_klv(&klv, 0, 0x00).unwrap();
+    sender.send_klv(&klv, Pts90khz::new(0), 0x00).unwrap();
 
     let captured = log.lock().unwrap();
     assert!(!captured.is_empty());

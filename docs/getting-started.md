@@ -114,6 +114,7 @@ message.
 Switch from raw bytes to a typed video sender:
 
 ```rust
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::MuxSender;
 use tst_srt::{SocketBuilder, SrtTransport};
@@ -132,9 +133,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Synthetic Annex-B IDR access unit + KLV blob.
     let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, /* ... payload bytes ... */];
     let klv = vec![0x06, 0x0E, 0x2B, 0x34, /* ... ST 0601 record ... */];
-    sender.send_video(&nal, /*pts_90khz=*/ 0, /*key_frame=*/ true)?;
+    sender.send_video(&nal, /*pts=*/ Pts90khz::new(0), /*key_frame=*/ true)?;
     // metadata_service_id = 0x00 is the default per ST 1402.2 App. B Table 2.
-    sender.send_klv(&klv, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0x00)?;
+    sender.send_klv(&klv, /*pts=*/ Pts90khz::new(0), /*metadata_service_id=*/ 0x00)?;
 
     sender.close();
     Ok(())
@@ -143,7 +144,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 `MuxSender` wraps an `mpegts::mux::Muxer` and an `SrtTransport`. It
 auto-mux's NAL units and KLV blobs into a single MPEG-TS stream and
-sends each TS chunk over SRT. `pts_90khz` is in 90 kHz ticks (the TS
+sends each TS chunk over SRT. `pts` is in 90 kHz ticks (the TS
 clock); `key_frame` should be true for IDR frames.
 
 In production, replace the synthetic generator with your encoder's

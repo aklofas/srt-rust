@@ -12,6 +12,7 @@ use std::env;
 use std::fs::File;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::{MuxSender, Transport, TransportError};
 
@@ -172,14 +173,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // `key_frame: i == 0` — the first frame is the IDR; subsequent
         // frames are non-IDR. The synthetic NAL is tagged accordingly
         // (see `synthetic_nal_au`).
-        sender.send_video(&nal, pts, i == 0)?;
+        sender.send_video(&nal, Pts90khz::new(pts), i == 0)?;
         // `metadata_service_id` goes into the AU cell header per H.222.0
         // §2.12.4.2 / ST 1402.2 App. B Table 2 for SynchronousMetadata
         // streams (stream_type 0x15); silently ignored for PrivateData
         // streams (0x06) like the one configured above. The spec default is
         // 0x00 — use a non-zero value only when mirroring a metadata_klva()
         // PMT descriptor `service_id` you supplied at config time.
-        sender.send_klv(&klv, pts, 0x00)?;
+        sender.send_klv(&klv, Pts90khz::new(pts), 0x00)?;
     }
     // `close` flushes any pending TS bytes to the transport before we
     // collect — without this, the tail of the muxer's output would be

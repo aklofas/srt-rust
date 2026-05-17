@@ -17,6 +17,7 @@ mod common;
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_pipeline::{MuxSender, MuxSenderError, TransportError};
 use tst_srt::SrtTransport;
@@ -75,7 +76,7 @@ fn close_unblocks_libsrt_parked_send() {
         nal[3] = 0x01;
         let mut count = 0u32;
         for pts in 0..1000 {
-            s_send.send_video(&nal, pts * 90, false)?;
+            s_send.send_video(&nal, Pts90khz::new(pts * 90), false)?;
             count += 1;
         }
         Ok(count)

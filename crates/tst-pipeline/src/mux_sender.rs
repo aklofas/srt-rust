@@ -15,6 +15,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use tracing::{Span, info_span};
 use tst_core::error::MuxError;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     AudioStreamHandle, KlvStreamHandle, Muxer, MuxerConfig, SubtitleStreamHandle, VideoStreamHandle,
 };
@@ -169,7 +170,7 @@ impl<T: Transport> MuxSender<T> {
     }
 
     /// Send one video access unit. Annex-B framing is required.
-    /// `pts_90khz` is in 90 kHz ticks (the TS clock); `key_frame` should
+    /// `pts` is in 90 kHz ticks (the TS clock); `key_frame` should
     /// be true for IDR.
     ///
     /// Resolves only when exactly one video stream is configured; with
@@ -180,6 +181,18 @@ impl<T: Transport> MuxSender<T> {
     /// # C ABI
     ///
     /// `tst_mux_sender_send_video` — see `crates/tst-c/include/tstrans.h`.
+    ///
+    /// # Typed PTS
+    ///
+    /// `pts: Pts90khz` is a newtype around the raw 90 kHz tick count. Construct
+    /// from raw ticks with [`Pts90khz::new`] or from milliseconds with
+    /// [`Pts90khz::from_millis`]. Internal arithmetic across the workspace still
+    /// uses raw `i64`; a follow-up plan tracked in `docs/deferred-features.md`
+    /// (landing later in this same plan) will design wrap-vs-saturate semantics
+    /// on `Pts90khz` and do the full internal sweep.
+    ///
+    /// [`Pts90khz::new`]: tst_core::mpegts::common::Pts90khz::new
+    /// [`Pts90khz::from_millis`]: tst_core::mpegts::common::Pts90khz::from_millis
     ///
     /// # Errors
     /// - [`MuxSenderError::Mux`] wraps [`MuxError`] from the underlying
@@ -192,6 +205,7 @@ impl<T: Transport> MuxSender<T> {
     /// # Example
     /// ```
     /// use tst_pipeline::MuxSender;
+    /// use tst_core::mpegts::common::Pts90khz;
     /// use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
     /// use tst_core::transport::{Transport, TransportError};
     ///
@@ -217,21 +231,21 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// // Minimal Annex-B H.264 IDR NAL (start code + nal_unit_type=5).
     /// let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0xBB];
-    /// sender.send_video(&nal, 0, true)?;
+    /// sender.send_video(&nal, Pts90khz::new(0), true)?;
     /// # Ok(())
     /// # }
     /// ```
     pub fn send_video(
         &self,
         nal: &[u8],
-        pts_90khz: i64,
+        pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
-        inner.send_video(nal, pts_90khz, key_frame)
+        inner.send_video(nal, pts.as_ticks(), key_frame)
     }
 
-    /// Send one pre-built KLV blob. `pts_90khz` is in 90 kHz units (the
+    /// Send one pre-built KLV blob. `pts` is in 90 kHz units (the
     /// TS clock); ignored unless the configured KLV stream carries PTS.
     ///
     /// `metadata_service_id` is written into the AU cell header per
@@ -258,11 +272,11 @@ impl<T: Transport> MuxSender<T> {
     pub fn send_klv(
         &self,
         klv: &[u8],
-        pts_90khz: i64,
+        pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
-        inner.send_klv(klv, pts_90khz, metadata_service_id)
+        inner.send_klv(klv, pts.as_ticks(), metadata_service_id)
     }
 
     /// Send one video access unit to a specific configured video stream.
@@ -289,11 +303,11 @@ impl<T: Transport> MuxSender<T> {
         &self,
         handle: VideoStreamHandle,
         nal: &[u8],
-        pts_90khz: i64,
+        pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
-        inner.send_video_to(handle, nal, pts_90khz, key_frame)
+        inner.send_video_to(handle, nal, pts.as_ticks(), key_frame)
     }
 
     /// Send one KLV blob to a specific configured KLV stream.
@@ -323,14 +337,14 @@ impl<T: Transport> MuxSender<T> {
         &self,
         handle: KlvStreamHandle,
         klv: &[u8],
-        pts_90khz: i64,
+        pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
-        inner.send_klv_to(handle, klv, pts_90khz, metadata_service_id)
+        inner.send_klv_to(handle, klv, pts.as_ticks(), metadata_service_id)
     }
 
-    /// Send one audio frame buffer. `pts_90khz` is in 90 kHz ticks (the
+    /// Send one audio frame buffer. `pts` is in 90 kHz ticks (the
     /// TS clock); audio always carries PTS (no DTS). `frames` is one or
     /// more pre-framed audio frames concatenated by the caller.
     ///
@@ -354,9 +368,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
-    pub fn send_audio(&self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
+    pub fn send_audio(&self, frames: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
-        inner.send_audio(frames, pts_90khz)
+        inner.send_audio(frames, pts.as_ticks())
     }
 
     /// Send one audio frame buffer to a specific configured audio stream.
@@ -383,13 +397,13 @@ impl<T: Transport> MuxSender<T> {
         &self,
         handle: AudioStreamHandle,
         frames: &[u8],
-        pts_90khz: i64,
+        pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
-        inner.send_audio_to(handle, frames, pts_90khz)
+        inner.send_audio_to(handle, frames, pts.as_ticks())
     }
 
-    /// Send one subtitle PES unit. `pts_90khz` is in 90 kHz ticks (the
+    /// Send one subtitle PES unit. `pts` is in 90 kHz ticks (the
     /// TS clock); subtitles carry PTS only. `payload` is one complete
     /// logical subtitle unit (DVB-sub composition page, teletext data
     /// field, CEA-708 service block, or WebVTT cue) — fragmentation
@@ -415,9 +429,9 @@ impl<T: Transport> MuxSender<T> {
     /// - [`MuxSenderError::Transport`] wraps a [`TransportError`]; on
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
-    pub fn send_subtitle(&self, payload: &[u8], pts_90khz: i64) -> Result<(), MuxSenderError> {
+    pub fn send_subtitle(&self, payload: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
-        inner.send_subtitle(payload, pts_90khz)
+        inner.send_subtitle(payload, pts.as_ticks())
     }
 
     /// Send one subtitle PES unit to a specific configured subtitle stream.
@@ -444,10 +458,10 @@ impl<T: Transport> MuxSender<T> {
         &self,
         handle: SubtitleStreamHandle,
         payload: &[u8],
-        pts_90khz: i64,
+        pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
         let mut inner = self.inner.lock().unwrap();
-        inner.send_subtitle_to(handle, payload, pts_90khz)
+        inner.send_subtitle_to(handle, payload, pts.as_ticks())
     }
 
     /// Snapshot all video stream handles for this sender's muxer, in
@@ -965,7 +979,7 @@ mod multi_stream_tests {
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let ir = s.video_handles()[1];
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
-        s.send_video_to(ir, &nal, 0, true).unwrap();
+        s.send_video_to(ir, &nal, Pts90khz::new(0), true).unwrap();
         // We can't read the transport bytes directly from outside the lock,
         // but we can confirm the call returns Ok and the sender is alive.
         assert!(s.is_alive());
@@ -1003,7 +1017,7 @@ mod multi_stream_tests {
         };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
-        s.send_video(nal, 0, true).unwrap();
+        s.send_video(nal, Pts90khz::new(0), true).unwrap();
         let st = s.stats();
         assert_eq!(st.per_stream[&0x100].items, 1);
         assert_eq!(st.per_stream[&0x100].bytes, nal.len() as u64);
@@ -1023,7 +1037,7 @@ mod multi_stream_tests {
         };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
-        s.send_video(nal, 0, true).unwrap();
+        s.send_video(nal, Pts90khz::new(0), true).unwrap();
         s.reset_stats();
         let st = s.stats();
         assert_eq!(st.bytes_sent, 0);
@@ -1048,7 +1062,7 @@ mod multi_stream_tests {
         // Synthetic audio frame bytes — the muxer doesn't validate the
         // codec payload here, so any non-empty buffer suffices.
         let frames = vec![0xFFu8; 64];
-        s.send_audio(&frames, 90_000).unwrap();
+        s.send_audio(&frames, Pts90khz::new(90_000)).unwrap();
         let st = s.stats();
         assert_eq!(st.per_stream[&0x200].items, 1);
         assert_eq!(st.per_stream[&0x200].bytes, frames.len() as u64);
@@ -1073,7 +1087,8 @@ mod multi_stream_tests {
         let handles = s.audio_handles();
         assert_eq!(handles.len(), 2);
         let frames = vec![0xAAu8; 32];
-        s.send_audio_to(handles[1], &frames, 90_000).unwrap();
+        s.send_audio_to(handles[1], &frames, Pts90khz::new(90_000))
+            .unwrap();
         let st = s.stats();
         assert_eq!(st.per_stream[&0x201].items, 1);
         assert_eq!(st.per_stream[&0x200].items, 0);
@@ -1094,7 +1109,7 @@ mod multi_stream_tests {
         // A minimal WebVTT-in-TS cue body (the muxer doesn't validate
         // contents — it just frames the bytes into a PES).
         let cue = b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhello\n";
-        s.send_subtitle(cue, 90_000).unwrap();
+        s.send_subtitle(cue, Pts90khz::new(90_000)).unwrap();
         let st = s.stats();
         assert_eq!(st.per_stream[&0x300].items, 1);
         assert_eq!(st.per_stream[&0x300].bytes, cue.len() as u64);
@@ -1117,7 +1132,8 @@ mod multi_stream_tests {
         let handles = s.subtitle_handles();
         assert_eq!(handles.len(), 2);
         let cue = b"WEBVTT\n\n00:00:03.000 --> 00:00:04.000\nrouted\n";
-        s.send_subtitle_to(handles[1], cue, 90_000).unwrap();
+        s.send_subtitle_to(handles[1], cue, Pts90khz::new(90_000))
+            .unwrap();
         let st = s.stats();
         assert_eq!(st.per_stream[&0x301].items, 1);
         assert_eq!(st.per_stream[&0x300].items, 0);
@@ -1137,7 +1153,7 @@ mod multi_stream_tests {
         };
         let s = MuxSender::new(MemTransport::new(), cfg).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
-        let err = s.send_video(&nal, 0, true).unwrap_err();
+        let err = s.send_video(&nal, Pts90khz::new(0), true).unwrap_err();
         match err {
             MuxSenderError::Mux(MuxError::AmbiguousTarget {
                 kind: StreamKind::Video,
@@ -1209,7 +1225,7 @@ mod multi_stream_tests {
         // First send: muxer emits a bundle, transport rejects, bundle lands
         // in pending_bytes. send_video returns Err(Backpressure) — ignore;
         // the relevant assertion is about close's post-condition.
-        let _ = sender.send_video(&nal, 0, true);
+        let _ = sender.send_video(&nal, Pts90khz::new(0), true);
 
         sender.close();
 
@@ -1300,7 +1316,8 @@ mod cancel_tests {
         let s_send = s.clone();
 
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
-        let send_thread = std::thread::spawn(move || s_send.send_video(&nal, 0, true));
+        let send_thread =
+            std::thread::spawn(move || s_send.send_video(&nal, Pts90khz::new(0), true));
 
         // Give the send thread a moment to grab the lock and park.
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -1366,7 +1383,7 @@ mod cancel_tests {
             // Minimal Annex-B IDR NAL — the muxer will emit a bundle into
             // drain_muxer, which calls transport.send_bytes, which panics.
             let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
-            let _ = s_panic.send_video(&nal, 0, true);
+            let _ = s_panic.send_video(&nal, Pts90khz::new(0), true);
         });
         let _ = handle.join(); // ignore the thread's panic payload
 

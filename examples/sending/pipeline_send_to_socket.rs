@@ -12,6 +12,7 @@
 
 use std::env;
 use std::time::Duration;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::MuxSender;
 use tst_srt::SocketBuilder;
@@ -69,12 +70,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let klv = synthetic_klv(64, i);
         // First frame is the key frame (i == 0) — drives the
         // `random_access_indicator` bit so a fresh receiver can attach.
-        sender.send_video(&nal, i * 33_000, i == 0)?;
+        sender.send_video(&nal, Pts90khz::new(i * 33_000), i == 0)?;
         // `metadata_service_id` goes into the AU cell header per H.222.0
         // §2.12.4.2 / ST 1402.2 App. B Table 2 for SynchronousMetadata
         // streams (stream_type 0x15); silently ignored for PrivateData
         // streams (0x06) like the one used here. The spec default is 0x00.
-        sender.send_klv(&klv, (i * 33_000) * 90 / 1000, 0x00)?;
+        sender.send_klv(&klv, Pts90khz::new((i * 33_000) * 90 / 1000), 0x00)?;
         std::thread::sleep(Duration::from_millis(33));
     }
     eprintln!("done. closing.");

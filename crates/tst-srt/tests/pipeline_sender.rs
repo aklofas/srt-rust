@@ -4,6 +4,7 @@ mod common;
 
 use std::thread;
 use std::time::Duration;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::MuxerConfig;
 use tst_pipeline::MuxSender;
 use tst_srt::SocketBuilder;
@@ -40,8 +41,12 @@ fn sender_round_trip_one_frame() {
 
     let nal = synthetic_nal::h264_au(500, true);
     let klv = synthetic_nal::klv_blob(64);
-    sender.send_video(&nal, 0, true).expect("send_video");
-    sender.send_klv(&klv, 0, 0x00).expect("send_klv");
+    sender
+        .send_video(&nal, Pts90khz::new(0), true)
+        .expect("send_video");
+    sender
+        .send_klv(&klv, Pts90khz::new(0), 0x00)
+        .expect("send_klv");
 
     // Drain pause before close — SRT's send queue is asynchronous
     // w.r.t. close. 1 s covers the 120 ms latency budget plus

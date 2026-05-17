@@ -32,6 +32,7 @@
 //!     not a transition. **No warn fires.**
 
 use tracing_test::traced_test;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{KlvStreamType, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_core::transport::{Transport, TransportError};
 use tst_pipeline::MuxSender;
@@ -82,30 +83,32 @@ fn warn_fires_exactly_twice_on_back_pressure_escalation() {
     let s = MuxSender::new(OkSink, cfg).expect("sender builds");
 
     // Push 1: small. Empirical queue depth = 3 (PSI(2) + video(1)). Ok.
-    s.send_video(&idr_nal(50), 0, true)
+    s.send_video(&idr_nal(50), Pts90khz::new(0), true)
         .expect("push 1 fits comfortably");
 
     // Push 2: medium. PSI suppressed (same PTS, default 100 ms gating
     // window). Queue rebuilt to 5. Ok.
-    s.send_video(&idr_nal(750), 0, false).expect("push 2 fits");
+    s.send_video(&idr_nal(750), Pts90khz::new(0), false)
+        .expect("push 2 fits");
 
     // Push 3: large. Queue rebuilt to 7. Ok (ratio 0.7 < 0.8).
-    s.send_video(&idr_nal(1100), 0, false).expect("push 3 fits");
+    s.send_video(&idr_nal(1100), Pts90khz::new(0), false)
+        .expect("push 3 fits");
 
     // Push 4: XL. Queue rebuilt to 8. Ratio 0.8 → Warn.
     // **WARN #1 expected here (Ok→Warn).**
-    s.send_video(&idr_nal(1400), 0, false)
+    s.send_video(&idr_nal(1400), Pts90khz::new(0), false)
         .expect("push 4 fits at 0.8");
 
     // Push 5: same XL NAL. Queue depth = 8 again. State stays Warn.
     // No additional warn should fire.
-    s.send_video(&idr_nal(1400), 0, false)
+    s.send_video(&idr_nal(1400), Pts90khz::new(0), false)
         .expect("push 5 fits at 0.8");
 
     // Push 6: oversized. ts_packets_for(~1715) = ceil(1715/184)+1 = 11
     // packets; doesn't fit in cap=10 — `push_video` returns `BufferFull`.
     // **WARN #2 (Warn→Overflow) expected here.**
-    let res6 = s.send_video(&idr_nal(1700), 0, false);
+    let res6 = s.send_video(&idr_nal(1700), Pts90khz::new(0), false);
     assert!(
         matches!(
             res6,
@@ -118,7 +121,7 @@ fn warn_fires_exactly_twice_on_back_pressure_escalation() {
 
     // Push 7: same shape — also BufferFull. Overflow→Overflow not a
     // transition. No additional warn.
-    let _ = s.send_video(&idr_nal(1700), 0, false);
+    let _ = s.send_video(&idr_nal(1700), Pts90khz::new(0), false);
 
     logs_assert(|lines: &[&str]| {
         let warn_count = lines

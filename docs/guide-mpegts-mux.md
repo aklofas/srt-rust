@@ -3,13 +3,15 @@
 ## Introduction
 
 This guide covers `tst_core::mpegts::mux` — the sender-side MPEG-TS
-muxer. `Muxer` takes encoded H.264 / H.265 access units in Annex-B
-framing plus KLV metadata blobs, builds PES packets, fragments them
-into 188-byte TS packets, and emits PAT, PMT (carrying the KLVA
-registration descriptor on the KLV PID), PCR, and PTS at configured
-cadences. Each `push_video` / `push_klv` call corresponds to one PES
-packet — the PES boundary is the AU boundary. Output is deterministic:
-a function of inputs only, with no wall-clock dependency, so the same
+muxer. `Muxer` builds PES packets from encoded video, KLV metadata,
+audio, and subtitle/caption payloads, fragments them into 188-byte
+TS packets, and emits PAT, PMT (with the appropriate registration /
+metadata / language / subtitling descriptors per stream), PCR, and
+PTS at configured cadences. Each `push_video` / `push_klv` /
+`push_audio` / `push_subtitle` call corresponds to one PES packet —
+the PES boundary is the AU boundary for video and the
+metadata-record boundary for KLV. Output is deterministic: a
+function of inputs only, with no wall-clock dependency, so the same
 input sequence produces the same output bytes regardless of how the
 caller paces its calls.
 
@@ -19,33 +21,58 @@ a Rust-native TS demuxer covering the same wire shape. Consumers can
 also feed extracted bytes to FFmpeg / Bento4 / JavaCV / platform
 demuxers if they prefer.
 
-## `MuxerConfig` shape
+## Capabilities
 
-`MuxerConfig` is multi-stream-shaped from day one:
+The muxer is multi-program and multi-stream from day one. A single
+`Muxer` instance carries:
+
+- **Multi-program TS** — up to 16 programs per muxer; each program
+  has its own PMT, PCR pin, and elementary stream set.
+- **Video** — H.264 (PMT `stream_type 0x1B`), H.265 (`0x24`), H.266
+  (`0x33`), and AV1 (`0x06` + AV01 registration descriptor per the
+  AV1-in-MPEG-2-TS binding); up to 16 video streams per program.
+- **KLV metadata** — async `PrivateData` (`0x06`) and synchronous
+  `SynchronousMetadata` (`0x15`); sync streams auto-prepend the
+  5-byte H.222.0 §2.12.4.2 `Metadata_AU_cell` header per the
+  MISB ST 1402 pipeline; up to 16 KLV streams per program.
+- **Audio** — MPEG-1 Layer II (`0x03`), AAC ADTS (`0x0F`),
+  AAC LATM (`0x11`), and AC-3 (`0x81` + AC-3 registration per
+  ATSC A/53); up to 16 audio streams per program with optional
+  ISO 639 language descriptors.
+- **Subtitles / captions** — DVB subtitling, DVB teletext,
+  CEA-708 standalone, and WebVTT-in-MPEG-TS, all carried on
+  `stream_type 0x06` with auto-emitted PMT descriptors for
+  receiver disambiguation; up to 16 subtitle streams per program.
+
+`MuxerConfig::default()` produces a conservative single-program shape
+(one H.264 video PID + one async KLV PID) so the simplest "hello
+muxer" path stays terse. Multi-program / multi-stream configurations
+are constructed via the builder API (see `MuxerConfigBuilder` below)
+or by populating the `programs` field directly. See
+[compatibility.md](compatibility.md) for the full per-codec /
+per-feature support matrix.
+
+## `MuxerConfig` shape
 
 ```rust
 pub struct MuxerConfig {
-    pub streams: Vec<StreamSpec>,
-    pub pcr_pid: Option<u16>,
+    pub programs: Vec<MuxerProgramConfig>,
     pub pcr_interval_ms: u32,
     pub psi_interval_ms: u32,
     pub buffer_packets: usize,
 }
 ```
 
-Today `MuxerConfig::validate` caps the configuration at "at most one Video
-stream and at most one Klv stream; at least one of either" — i.e.
-single-program TS with up to one video PID and one KLV PID. The
-`Vec<StreamSpec>` shape is already what a multi-stream lift needs, so
-the cap can lift additively without breaking ABI for existing
-callers. See "Multi-stream `mpegts::mux`" in
-[deferred-features.md](deferred-features.md).
+Each `MuxerProgramConfig` carries its own `program_number`, `pmt_pid`,
+optional `pcr_pid`, program-level descriptors, and per-kind stream
+lists (video, KLV, audio, subtitle).
 
 `MuxerConfig::default()` returns the canonical single-program shape:
-H.264 video at PID `0x1011`, KLV `PrivateData` (async, no PTS) at PID
-`0x1031`, PCR pinned to the video PID, `pcr_interval_ms: 40`,
-`psi_interval_ms: 100`, `buffer_packets: 10_000`. Two equivalent ways
-to construct from defaults plus selected overrides:
+program 1 with H.264 video at PID `0x1011`, KLV `PrivateData` (async,
+no PTS) at PID `0x1031`, PCR pinned to the video PID,
+`pcr_interval_ms: 40`, `psi_interval_ms: 100`, `buffer_packets:
+10_000`. Two equivalent ways to construct from defaults plus selected
+overrides:
 
 ```rust,no_run
 use tst_core::mpegts::mux::{MuxerConfig, KlvStreamType, StreamSpec, VideoCodec};

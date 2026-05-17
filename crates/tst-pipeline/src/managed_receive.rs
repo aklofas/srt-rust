@@ -93,8 +93,14 @@ pub struct ManagedRecvTransport<R: RecvTransport> {
     factory: Box<dyn FnMut() -> Result<R, TransportError> + Send>,
     /// Backoff cadence + retry budget.
     policy: ReconnectPolicy,
-    /// Local latched-close, set by `close(&mut self)`.
+    /// Local latched-close. Set by both `close(&mut self)` and the
+    /// reconnect-budget-exhausted path. Checked by `is_alive()`.
     closed: bool,
+    /// Set only by caller-initiated paths (`close()` or
+    /// `cancel_handle().cancel()`). The entry-gate uses this to decide
+    /// whether to return `ExplicitClose` (caller-initiated) or `Closed`
+    /// (budget-exhausted, latched from a prior call).
+    explicit_close: bool,
     /// Shared latched-close, set by the cancel handle from any thread.
     /// Read at every loop iteration in `recv_bytes`.
     cancelled: Arc<std::sync::atomic::AtomicBool>,
@@ -123,6 +129,7 @@ impl<R: RecvTransport> ManagedRecvTransport<R> {
             factory,
             policy,
             closed: false,
+            explicit_close: false,
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             inner_cancel,
         }
@@ -131,14 +138,31 @@ impl<R: RecvTransport> ManagedRecvTransport<R> {
 
 impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
-        if self.closed || self.cancelled.load(std::sync::atomic::Ordering::Acquire) {
+        // Caller-initiated paths (close() or cancel_handle().cancel()) return
+        // ExplicitClose. The receive-side shell's kind_from_transport maps this
+        // to ShellErrorKind::Closed (→ TST_E_CLOSED -7), distinguishing from
+        // peer-EOS which arrives as TransportError::Closed from the inner
+        // transport's recv_bytes and maps to ShellErrorKind::EndOfStream
+        // (→ TST_E_END_OF_STREAM -12). See plan TBD-by-merge-Wave-4.B.
+        //
+        // The entry gate distinguishes two latched-close scenarios:
+        // - explicit_close || cancelled → caller-initiated → ExplicitClose.
+        // - closed only (set by budget-exhausted path) → Closed (peer-EOS-ish).
+        if self.explicit_close || self.cancelled.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(TransportError::ExplicitClose);
+        }
+        if self.closed {
             return Err(TransportError::Closed);
         }
         let mut attempt: u32 = 0;
         loop {
             if self.cancelled.load(std::sync::atomic::Ordering::Acquire) {
+                // Cross-thread cancel fired mid-loop. Latch both flags:
+                // closed for is_alive(); explicit_close so re-entry returns
+                // ExplicitClose (caller-initiated, not budget-exhausted).
                 self.closed = true;
-                return Err(TransportError::Closed);
+                self.explicit_close = true;
+                return Err(TransportError::ExplicitClose);
             }
             // Get-or-rebuild inner. The factory may itself fail (e.g. DNS
             // didn't resolve, peer is still down) — treat factory failure
@@ -156,6 +180,11 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
                         max_attempts = max,
                         "reconnect gave up — propagating final error to caller",
                     );
+                    // Peer is unreachable beyond the reconnect budget — semantically
+                    // "stream is over from the inner-transport's perspective." Shell's
+                    // kind_from_transport maps Closed → EndOfStream (→ TST_E_END_OF_STREAM)
+                    // for the receive side, distinguishing from caller-initiated ExplicitClose
+                    // above. See plan TBD-by-merge-Wave-4.B for the disposition rationale.
                     self.closed = true;
                     return Err(TransportError::Closed);
                 };
@@ -214,10 +243,10 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
     }
 
     fn close(&mut self) {
-        // Latch closed first so any concurrent reconnect attempt (none
-        // possible today since recv_bytes is &mut self, but the latch is
-        // cheap and forward-compatible) sees the new state.
+        // Latch both flags: closed for is_alive(); explicit_close so
+        // subsequent recv_bytes calls return ExplicitClose (not Closed).
         self.closed = true;
+        self.explicit_close = true;
         if let Some(t) = self.inner.as_mut() {
             t.close();
         }
@@ -412,9 +441,10 @@ mod tests {
         assert!(!managed.is_alive());
 
         let mut buf = [0u8; 8];
+        // close() is a caller-initiated path → ExplicitClose (not Closed).
         assert_eq!(
             managed.recv_bytes(&mut buf).unwrap_err(),
-            TransportError::Closed
+            TransportError::ExplicitClose
         );
         assert_eq!(*factory_calls.lock().unwrap(), 0);
     }

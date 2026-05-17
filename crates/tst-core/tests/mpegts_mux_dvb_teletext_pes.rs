@@ -1,5 +1,6 @@
 //! Verifies DVB-teletext PES per ETSI EN 300 472 §4.2.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec, VideoCodec,
 };
@@ -56,7 +57,8 @@ fn dvb_teletext_pes_uses_45_byte_header_with_stuffing() {
     assert_eq!(payload.len(), 47);
 
     let h = mux.subtitle_handles()[0];
-    mux.push_subtitle_to(h, 90_000, &payload).unwrap();
+    mux.push_subtitle_to(h, Pts90khz::new(90_000), &payload)
+        .unwrap();
 
     let pes_full = reassemble_pes_full(&mut mux, 0x200);
 
@@ -148,7 +150,8 @@ fn dvb_teletext_pes_grows_to_next_ts_packet_boundary_for_large_payload() {
     assert_eq!(payload.len(), 1 + 2 * (2 + 0x2C));
 
     let h = mux.subtitle_handles()[0];
-    mux.push_subtitle_to(h, 90_000, &payload).unwrap();
+    mux.push_subtitle_to(h, Pts90khz::new(90_000), &payload)
+        .unwrap();
 
     let pes_full = reassemble_pes_full(&mut mux, 0x200);
     let pes_packet_length = u16::from_be_bytes([pes_full[4], pes_full[5]]) as usize;

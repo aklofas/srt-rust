@@ -9,6 +9,7 @@
 //! arm exposes).
 
 use std::time::Duration;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
@@ -65,8 +66,10 @@ fn with_options_pairs_sync_klv_with_video() {
     // Push 5 frames + 5 KLV records at matching PTS.
     let pts_ticks: Vec<i64> = (0..5).map(|i| 90_000 + i * 3000).collect();
     for &pts in &pts_ticks {
-        mux.push_video(&minimal_h264_au(), pts, true).unwrap();
-        mux.push_klv(&dummy_klv(), pts, 0x00).unwrap();
+        mux.push_video(&minimal_h264_au(), Pts90khz::new(pts), true)
+            .unwrap();
+        mux.push_klv(&dummy_klv(), Pts90khz::new(pts), 0x00)
+            .unwrap();
     }
     let bytes = drain_mux(&mut mux);
 
@@ -140,15 +143,16 @@ fn last_before_pts_pairs_async_klv_at_lower_cadence() {
         let next_k = klv_pts.get(ki).copied();
         match (next_v, next_k) {
             (Some(vp), Some(kp)) if kp <= vp => {
-                mux.push_klv(&dummy_klv(), kp, 0x00).unwrap();
+                mux.push_klv(&dummy_klv(), Pts90khz::new(kp), 0x00).unwrap();
                 ki += 1;
             }
             (Some(vp), _) => {
-                mux.push_video(&minimal_h264_au(), vp, true).unwrap();
+                mux.push_video(&minimal_h264_au(), Pts90khz::new(vp), true)
+                    .unwrap();
                 vi += 1;
             }
             (None, Some(kp)) => {
-                mux.push_klv(&dummy_klv(), kp, 0x00).unwrap();
+                mux.push_klv(&dummy_klv(), Pts90khz::new(kp), 0x00).unwrap();
                 ki += 1;
             }
             (None, None) => break,

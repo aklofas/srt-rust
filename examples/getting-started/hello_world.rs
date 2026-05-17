@@ -14,6 +14,7 @@
 //!   - To decode the KLV blob back:      klv-metadata/klv_decode_file.rs
 
 use tst_core::klv::st0601::{UasDatalinkLs, encode_to_vec};
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
 };
@@ -43,7 +44,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    start code. Real callers feed encoder output; we hand-roll one
     //    byte string here so the example has no codec dependency.
     let aud_nal = &[0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
-    mux.push_video(aud_nal, /*pts_90khz=*/ 0, /*key_frame=*/ true)?;
+    mux.push_video(
+        aud_nal,
+        Pts90khz::new(/*pts_90khz=*/ 0),
+        /*key_frame=*/ true,
+    )?;
 
     // 3. Push one ST 0601 KLV record (just a UTC timestamp tag — Tag 2).
     let ls = UasDatalinkLs {
@@ -52,7 +57,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     let klv_bytes = encode_to_vec(&ls)?;
     mux.push_klv(
-        &klv_bytes, /*pts_90khz=*/ 0, /*metadata_service_id=*/ 0,
+        &klv_bytes,
+        Pts90khz::new(/*pts_90khz=*/ 0),
+        /*metadata_service_id=*/ 0,
     )?;
 
     // 4. Drain TS packets out of the muxer. Muxer::pull writes 188 bytes

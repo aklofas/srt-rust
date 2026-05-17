@@ -16,6 +16,7 @@
 //!      `RUSTFLAGS="-C target-cpu=native" cargo bench -p tst-core --bench demuxer_ingest -- --quick`
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 
@@ -49,11 +50,11 @@ fn build_synthetic_stream() -> Vec<u8> {
         nal.resize(5 + payload_size, 0xA5);
 
         let pts: i64 = (i as i64) * 3_000; // 30 fps in 90 kHz ticks
-        mux.push_video(&nal, pts, key).unwrap();
+        mux.push_video(&nal, Pts90khz::new(pts), key).unwrap();
 
         // 200-byte KLV blob (synthetic ST 0601 order of magnitude).
         let klv = vec![0x42u8; 200];
-        mux.push_klv(&klv, pts, 0x00).unwrap();
+        mux.push_klv(&klv, Pts90khz::new(pts), 0x00).unwrap();
 
         // Drain after each frame so the internal queue stays bounded.
         let mut buf = [0u8; 1_316];

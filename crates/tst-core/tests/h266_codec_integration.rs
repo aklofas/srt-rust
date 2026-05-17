@@ -14,6 +14,7 @@
 //! coupling to internal `pub(crate)` helpers.
 
 use tst_core::codec::h266::{H266ParameterSets, parse_parameter_sets};
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{
     DemuxEvent, NalUnit, SamplePayload, VideoCodec, VideoPayload,
@@ -242,7 +243,8 @@ fn h266_end_to_end_parses_minimal_vps_sps_pps() {
     au.extend(h266_nal(15, &minimal_sps_rbsp())); // SPS_NUT
     au.extend(h266_nal(16, &minimal_pps_rbsp())); // PPS_NUT
 
-    mux.push_video_to(h, &au, 90_000, true).unwrap();
+    mux.push_video_to(h, &au, Pts90khz::new(90_000), true)
+        .unwrap();
     let ts_bytes = drain_mux(&mut mux);
 
     let mut demux = Demuxer::new();

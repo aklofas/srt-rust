@@ -19,6 +19,7 @@
 use std::fs;
 use std::path::PathBuf;
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec,
     VideoCodec,
@@ -122,8 +123,12 @@ fn build_dvb_sub_eng_only() -> Vec<u8> {
     // caller passes raw segment bytes.
     for i in 0..3 {
         let pts = 90_000 * (i as i64 + 1);
-        mux.push_subtitle_to(h, pts, &[0x0F, 0x10, 0x00, 0x01, 0x00, 0x02, 0x00, 0x10])
-            .unwrap();
+        mux.push_subtitle_to(
+            h,
+            Pts90khz::new(pts),
+            &[0x0F, 0x10, 0x00, 0x01, 0x00, 0x02, 0x00, 0x10],
+        )
+        .unwrap();
     }
     drain_all(&mut mux)
 }
@@ -166,8 +171,12 @@ fn build_dvb_sub_multi_lang() -> Vec<u8> {
     for h in mux.subtitle_handles() {
         // segment_length=2: zero regions per EN 300 743 §7.2.2 Table 9.
         // Muxer auto-wraps the §6.2 PES_data_field envelope around this.
-        mux.push_subtitle_to(h, 90_000, &[0x0F, 0x10, 0x00, 0x01, 0x00, 0x02, 0x00, 0x10])
-            .unwrap();
+        mux.push_subtitle_to(
+            h,
+            Pts90khz::new(90_000),
+            &[0x0F, 0x10, 0x00, 0x01, 0x00, 0x02, 0x00, 0x10],
+        )
+        .unwrap();
     }
     drain_all(&mut mux)
 }
@@ -209,7 +218,8 @@ fn build_dvb_teletext_eng() -> Vec<u8> {
         let mut payload = vec![0x10]; // data_identifier
         payload.extend_from_slice(&[0x02, 0x2C]); // data_unit_id=0x02, length=0x2C
         payload.extend(std::iter::repeat(0x00).take(0x2C));
-        mux.push_subtitle_to(h, pts, &payload).unwrap();
+        mux.push_subtitle_to(h, Pts90khz::new(pts), &payload)
+            .unwrap();
     }
     drain_all(&mut mux)
 }
@@ -236,7 +246,7 @@ fn build_cea708_standalone() -> Vec<u8> {
     for i in 0..3 {
         mux.push_subtitle_to(
             h,
-            90_000 * (i as i64 + 1),
+            Pts90khz::new(90_000 * (i as i64 + 1)),
             &[0xFC, 0x80, 0x80, 0xFC, 0x80, 0x80],
         )
         .unwrap();
@@ -259,7 +269,7 @@ fn build_webvtt_simple() -> Vec<u8> {
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
     let cue = b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nhello world\n";
-    mux.push_subtitle_to(h, 90_000, cue).unwrap();
+    mux.push_subtitle_to(h, Pts90khz::new(90_000), cue).unwrap();
     drain_all(&mut mux)
 }
 
@@ -285,7 +295,7 @@ fn build_webvtt_multi_cue() -> Vec<u8> {
             i + 1,
             i,
         );
-        mux.push_subtitle_to(h, 90_000 * (i as i64 + 1), cue.as_bytes())
+        mux.push_subtitle_to(h, Pts90khz::new(90_000 * (i as i64 + 1)), cue.as_bytes())
             .unwrap();
     }
     drain_all(&mut mux)
@@ -315,12 +325,13 @@ fn build_subtitle_with_klv() -> Vec<u8> {
     // minimum is enforced inside `classify_klv`).
     mux.push_klv(
         b"\x06\x0E\x2B\x34\x02\x0B\x01\x01\x0E\x01\x03\x01\x01\x00\x00\x00\x02\xAB\xCD",
-        90_000,
+        Pts90khz::new(90_000),
         0x00, // spec default; ST 1402.2 App. B Table 2
     )
     .unwrap();
     let h = mux.subtitle_handles()[0];
-    mux.push_subtitle_to(h, 90_000, b"WEBVTT\n").unwrap();
+    mux.push_subtitle_to(h, Pts90khz::new(90_000), b"WEBVTT\n")
+        .unwrap();
     drain_all(&mut mux)
 }
 
@@ -346,7 +357,8 @@ fn build_webvtt_multi_program() -> Vec<u8> {
     };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles_for_program(1).unwrap()[0];
-    mux.push_subtitle_to(h, 90_000, b"WEBVTT\n").unwrap();
+    mux.push_subtitle_to(h, Pts90khz::new(90_000), b"WEBVTT\n")
+        .unwrap();
     drain_all(&mut mux)
 }
 
@@ -383,6 +395,6 @@ fn build_non_conformant_missing_descriptor() -> Vec<u8> {
     // WebVTT-shaped bytes (intentionally codec-mismatched against the
     // declared MP2 stream_type — that mismatch IS the non-conformance).
     let webvtt = b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nhello\n";
-    mux.push_audio_to(h, 90_000, webvtt).unwrap();
+    mux.push_audio_to(h, Pts90khz::new(90_000), webvtt).unwrap();
     drain_all(&mut mux)
 }

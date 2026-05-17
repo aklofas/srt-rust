@@ -1,6 +1,7 @@
 //! Integration tests for subtitle / caption receiver side
 //! (`mpegts::demux`).
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, SamplePayload, StreamKind, SubtitleCodec as DemuxSub,
 };
@@ -35,7 +36,8 @@ fn build_ts_with_one_subtitle_pes(codec: MuxSub, payload: &[u8]) -> Vec<u8> {
     };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
-    mux.push_subtitle_to(h, 90_000, payload).unwrap();
+    mux.push_subtitle_to(h, Pts90khz::new(90_000), payload)
+        .unwrap();
     drain_all(&mut mux)
 }
 

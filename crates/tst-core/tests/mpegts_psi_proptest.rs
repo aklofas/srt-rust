@@ -6,6 +6,7 @@
 //! internal PSI build helpers — keeps Phase 6 zero-API-change.
 
 use proptest::prelude::*;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::psi::walk_descriptors;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
 use tst_core::mpegts::descriptors;
@@ -40,7 +41,8 @@ fn mux_fixed_one_program_stream() -> Vec<u8> {
     // Minimal Annex-B NAL: 4-byte start code + AUD (NAL type 9, primary_pic_type=0)
     let nal = [0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
     for i in 0..16 {
-        mux.push_video(&nal, i * 3000, true).expect("push_video");
+        mux.push_video(&nal, Pts90khz::new(i * 3000), true)
+            .expect("push_video");
     }
     drain(&mut mux)
 }
@@ -69,7 +71,7 @@ proptest! {
         let mut mux = Muxer::new(cfg).expect("muxer construct");
         // Minimal Annex-B AUD NAL — just enough to trigger PES + PSI emission.
         let nal = [0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
-        mux.push_video(&nal, 0, true).expect("push_video");
+        mux.push_video(&nal, Pts90khz::new(0), true).expect("push_video");
 
         let bytes = drain(&mut mux);
         prop_assume!(!bytes.is_empty());

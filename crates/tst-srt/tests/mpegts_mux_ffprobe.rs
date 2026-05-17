@@ -7,6 +7,7 @@
 //! Skipped if `ffprobe` is not on PATH (returns early with a printed note).
 
 use std::process::Command;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder};
 use tst_test_helpers::synthetic_nal;
 
@@ -64,9 +65,11 @@ fn ffprobe_recognizes_our_pmt() {
     // Several frames so the stream has structure to parse.
     for i in 0..10 {
         let nal = synthetic_nal::h264_au(800, i % 5 == 0);
-        mux.push_video(&nal, (i as i64) * 3000, i % 5 == 0).unwrap();
+        mux.push_video(&nal, Pts90khz::new((i as i64) * 3000), i % 5 == 0)
+            .unwrap();
         let klv = synthetic_nal::klv_blob(48);
-        mux.push_klv(&klv, (i as i64) * 3000, 0x00).unwrap();
+        mux.push_klv(&klv, Pts90khz::new((i as i64) * 3000), 0x00)
+            .unwrap();
     }
     let bytes = drain_all(&mut mux);
 
@@ -139,9 +142,12 @@ fn ffprobe_recognizes_dual_camera_plus_klv() {
     let mut buf = vec![0u8; 188 * 64];
     for i in 0..30i64 {
         let pts = i * 3000; // 33 ms @ 90 kHz
-        mux.push_video_to(eo, &nal, pts, i == 0).unwrap();
-        mux.push_video_to(ir, &nal, pts, i == 0).unwrap();
-        mux.push_klv_to(klv_h, &klv, pts, 0x00).unwrap();
+        mux.push_video_to(eo, &nal, Pts90khz::new(pts), i == 0)
+            .unwrap();
+        mux.push_video_to(ir, &nal, Pts90khz::new(pts), i == 0)
+            .unwrap();
+        mux.push_klv_to(klv_h, &klv, Pts90khz::new(pts), 0x00)
+            .unwrap();
         loop {
             let n = mux.pull(&mut buf);
             if n == 0 {
@@ -256,10 +262,14 @@ fn ffprobe_recognizes_two_programs_with_distinct_streams() {
     let mut buf = vec![0u8; 188 * 64];
     for i in 0..20i64 {
         let pts = i * 3_003;
-        mux.push_video_to(p1_video, &nal_h264, pts, i == 0).unwrap();
-        mux.push_video_to(p2_video, &nal_h265, pts, i == 0).unwrap();
-        mux.push_klv_to(p1_klv, &klv, pts, 0x00).unwrap();
-        mux.push_klv_to(p2_klv, &klv, pts, 0x00).unwrap();
+        mux.push_video_to(p1_video, &nal_h264, Pts90khz::new(pts), i == 0)
+            .unwrap();
+        mux.push_video_to(p2_video, &nal_h265, Pts90khz::new(pts), i == 0)
+            .unwrap();
+        mux.push_klv_to(p1_klv, &klv, Pts90khz::new(pts), 0x00)
+            .unwrap();
+        mux.push_klv_to(p2_klv, &klv, Pts90khz::new(pts), 0x00)
+            .unwrap();
         loop {
             let n = mux.pull(&mut buf);
             if n == 0 {
@@ -335,12 +345,16 @@ fn ffprobe_roundtrip_audio_video_klv_three_streams() {
     for i in 0..30 {
         let pts = 90_000 + (i as i64) * 3000;
         let nal = synthetic_nal::h264_au(128, i % 5 == 0);
-        muxer.push_video(&nal, pts, i % 5 == 0).unwrap();
+        muxer
+            .push_video(&nal, Pts90khz::new(pts), i % 5 == 0)
+            .unwrap();
         // Minimal synthetic audio frame — ffprobe identifies codec from
         // stream_type 0x0F (AAC) in the PMT, not from bitstream analysis.
-        muxer.push_audio(b"aac_frame_data", pts).unwrap();
+        muxer
+            .push_audio(b"aac_frame_data", Pts90khz::new(pts))
+            .unwrap();
         let klv = synthetic_nal::klv_blob(32);
-        muxer.push_klv(&klv, pts, 0x00).unwrap();
+        muxer.push_klv(&klv, Pts90khz::new(pts), 0x00).unwrap();
     }
 
     let ts = drain_all(&mut muxer);
@@ -441,12 +455,14 @@ fn ffprobe_roundtrip_each_audio_codec() {
         for i in 0..20 {
             let pts = 90_000 + (i as i64) * 3000;
             let nal = synthetic_nal::h264_au(128, i % 5 == 0);
-            muxer.push_video(&nal, pts, i % 5 == 0).unwrap();
+            muxer
+                .push_video(&nal, Pts90khz::new(pts), i % 5 == 0)
+                .unwrap();
             // Minimal synthetic audio — without real bitstream data, ffprobe
             // cannot determine codec_type, but it does report the stream and
             // its codec_tag (reflecting either stream_type or, for AC-3 with
             // auto-emitted Registration, the format_identifier).
-            muxer.push_audio(b"audio_data", pts).unwrap();
+            muxer.push_audio(b"audio_data", Pts90khz::new(pts)).unwrap();
         }
 
         let ts = drain_all(&mut muxer);
@@ -534,14 +550,15 @@ fn ffprobe_validates_dvb_subtitling_round_trip() {
     for i in 0..10 {
         let pts = 90_000 * (i as i64 + 1);
         let nal = synthetic_nal::h264_au(128, i % 5 == 0);
-        mux.push_video(&nal, pts, i % 5 == 0).unwrap();
+        mux.push_video(&nal, Pts90khz::new(pts), i % 5 == 0)
+            .unwrap();
     }
     for i in 0..5 {
         // Minimal DVB subtitle PES payload: data_identifier (0x20) + a tiny
         // subtitle segment. ffprobe doesn't parse this — the descriptor in
         // the PMT is what drives codec recognition.
         let payload = [0x0F, 0x10, 0x00, 0x01, 0x00, 0x06, 0, 0, 0, 0, 0, 0];
-        mux.push_subtitle_to(h, 90_000 * (i as i64 + 1), &payload)
+        mux.push_subtitle_to(h, Pts90khz::new(90_000 * (i as i64 + 1)), &payload)
             .unwrap();
     }
     let bytes = drain_all(&mut mux);
@@ -611,7 +628,8 @@ fn ffprobe_validates_dvb_teletext_round_trip() {
     for i in 0..10 {
         let pts = 90_000 * (i as i64 + 1);
         let nal = synthetic_nal::h264_au(128, i % 5 == 0);
-        mux.push_video(&nal, pts, i % 5 == 0).unwrap();
+        mux.push_video(&nal, Pts90khz::new(pts), i % 5 == 0)
+            .unwrap();
     }
     for i in 0..5 {
         // Minimal teletext PES payload: data_identifier (0x10) + a tiny
@@ -619,7 +637,7 @@ fn ffprobe_validates_dvb_teletext_round_trip() {
         let mut payload = vec![0x10];
         payload.extend_from_slice(&[0x02, 0x10]);
         payload.extend(std::iter::repeat(0x00).take(0x10));
-        mux.push_subtitle_to(h, 90_000 * (i as i64 + 1), &payload)
+        mux.push_subtitle_to(h, Pts90khz::new(90_000 * (i as i64 + 1)), &payload)
             .unwrap();
     }
     let bytes = drain_all(&mut mux);
@@ -676,11 +694,12 @@ fn ffprobe_validates_webvtt_in_ts_round_trip() {
     for i in 0..10 {
         let pts = 90_000 * (i as i64 + 1);
         let nal = synthetic_nal::h264_au(128, i % 5 == 0);
-        mux.push_video(&nal, pts, i % 5 == 0).unwrap();
+        mux.push_video(&nal, Pts90khz::new(pts), i % 5 == 0)
+            .unwrap();
     }
     mux.push_subtitle_to(
         h,
-        90_000,
+        Pts90khz::new(90_000),
         b"WEBVTT\n\n00:00:01.000 --> 00:00:05.000\nhello\n",
     )
     .unwrap();

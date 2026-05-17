@@ -1,5 +1,6 @@
 //! Verifies DVB-sub PES_data_field auto-wrap per ETSI EN 300 743 §6.2.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec, VideoCodec,
 };
@@ -59,7 +60,8 @@ fn dvb_sub_push_emits_data_identifier_stream_id_segments_marker() {
     // segment_length=2: page_time_out(1) + page_state-byte(1), zero regions.
     let segment: Vec<u8> = vec![0x0F, 0x10, 0x00, 0x01, 0x00, 0x02, 0x00, 0x10];
     let h = mux.subtitle_handles()[0];
-    mux.push_subtitle_to(h, 90_000, &segment).unwrap();
+    mux.push_subtitle_to(h, Pts90khz::new(90_000), &segment)
+        .unwrap();
 
     let pes_payload = reassemble_pes_payload(&mut mux, 0x200);
 
@@ -111,7 +113,8 @@ fn dvb_sub_multi_segment_push_chains_segments_between_envelope() {
     payload.extend_from_slice(&[0x0F, 0x80, 0x00, 0x01, 0x00, 0x00]); // end_of_display_set, length=0
 
     let h = mux.subtitle_handles()[0];
-    mux.push_subtitle_to(h, 90_000, &payload).unwrap();
+    mux.push_subtitle_to(h, Pts90khz::new(90_000), &payload)
+        .unwrap();
 
     let pes_payload = reassemble_pes_payload(&mut mux, 0x200);
     assert_eq!(pes_payload[0], 0x20);

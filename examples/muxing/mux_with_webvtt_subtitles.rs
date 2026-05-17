@@ -20,6 +20,7 @@ use std::fs::File;
 use std::io::Write;
 use std::time::Duration;
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec, VideoCodec,
 };
@@ -142,7 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // hands it into the PES payload. The PES
         // `data_alignment_indicator` is set because each PES carries
         // one logical subtitle unit (the cue).
-        mux.push_subtitle_to(sub_handle, pts_90khz, cue.as_bytes())?;
+        mux.push_subtitle_to(sub_handle, Pts90khz::new(pts_90khz), cue.as_bytes())?;
     }
 
     // Drain queued TS packets to the file. With no video pushed,

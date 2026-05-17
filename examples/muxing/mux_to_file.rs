@@ -12,6 +12,7 @@
 use std::env;
 use std::fs::File;
 use std::io::Write;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 
 fn main() -> std::io::Result<()> {
@@ -71,7 +72,8 @@ fn main() -> std::io::Result<()> {
         // mimics real bitstream variability so downstream tooling sees a
         // believable shape.
         au.resize(800 + (i as usize % 200), 0xA5);
-        mux.push_video(&au, pts, key).expect("push_video");
+        mux.push_video(&au, Pts90khz::new(pts), key)
+            .expect("push_video");
 
         // 1 KLV blob per frame, async (PrivateData stream_type 0x06; no PTS
         // alignment guarantee). Real ST 0601 KLV is built via
@@ -83,7 +85,8 @@ fn main() -> std::io::Result<()> {
         // streams (stream_type 0x15); silently ignored for PrivateData
         // streams (0x06) like the one configured here. The spec default
         // is 0x00.
-        mux.push_klv(&klv, pts, 0x00).expect("push_klv");
+        mux.push_klv(&klv, Pts90khz::new(pts), 0x00)
+            .expect("push_klv");
 
         // Standard pull pattern: drain after every push so muxer memory stays
         // bounded. `pull` returns 0 when there's nothing more to emit right

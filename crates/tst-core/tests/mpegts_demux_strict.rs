@@ -33,6 +33,7 @@
 
 use tst_core::error::DemuxError;
 use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::common::crc32::crc32_mpeg2;
 use tst_core::mpegts::demux::{
     DemuxEvent, DemuxerBuilder, DemuxerOptions, NonConformantIssue, StrictMode,
@@ -76,8 +77,12 @@ fn build_mismatched_stream() -> Vec<u8> {
         b.build().unwrap()
     };
     let mut m = Muxer::new(cfg).unwrap();
-    m.push_video(&[0x00, 0x00, 0x00, 0x01, 0x09, 0x10], 0, true)
-        .unwrap();
+    m.push_video(
+        &[0x00, 0x00, 0x00, 0x01, 0x09, 0x10],
+        Pts90khz::new(0),
+        true,
+    )
+    .unwrap();
     // Pre-wrap a synthetic Metadata_AU_cell carrying a bare ST 0601 LS, then
     // push as PrivateData so the muxer passes it through as-is. Wire form
     // is `KlvShape::SyncAuCell` while PMT says async (stream_type 0x06) —
@@ -91,7 +96,7 @@ fn build_mismatched_stream() -> Vec<u8> {
         random_access_indicator: true,
     };
     write_metadata_au_cell(&mut wrapped, header, &BARE_KLV_LS).unwrap();
-    m.push_klv(&wrapped, 0, 0x00).unwrap();
+    m.push_klv(&wrapped, Pts90khz::new(0), 0x00).unwrap();
     drain(&mut m)
 }
 

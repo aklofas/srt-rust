@@ -8,6 +8,7 @@
 //! `mpegts_mux_ffprobe.rs` and `mpegts_mux.rs` files; these tests focus
 //! on routing — the right bytes go to the right PIDs.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
 };
@@ -68,9 +69,12 @@ fn dual_video_plus_klv_routes_to_three_pids() {
     let klv_h = mux.klv_stream_handle(0).unwrap();
 
     // Push three frames — one per stream.
-    mux.push_video_to(eo, &h264_au(0xAA), 0, true).unwrap();
-    mux.push_video_to(ir, &h264_au(0xBB), 0, true).unwrap();
-    mux.push_klv_to(klv_h, &klv_blob(), 0, 0x00).unwrap();
+    mux.push_video_to(eo, &h264_au(0xAA), Pts90khz::new(0), true)
+        .unwrap();
+    mux.push_video_to(ir, &h264_au(0xBB), Pts90khz::new(0), true)
+        .unwrap();
+    mux.push_klv_to(klv_h, &klv_blob(), Pts90khz::new(0), 0x00)
+        .unwrap();
 
     let ts = drain_all(&mut mux);
     let pids = pids_present(&ts);
@@ -98,9 +102,12 @@ fn video_plus_dual_klv_routes_to_three_pids() {
     let k_async = mux.klv_stream_handle(0).unwrap();
     let k_sync = mux.klv_stream_handle(1).unwrap();
 
-    mux.push_video_to(v, &h264_au(0xAA), 0, true).unwrap();
-    mux.push_klv_to(k_async, &klv_blob(), 0, 0x00).unwrap();
-    mux.push_klv_to(k_sync, &klv_blob(), 0, 0x00).unwrap();
+    mux.push_video_to(v, &h264_au(0xAA), Pts90khz::new(0), true)
+        .unwrap();
+    mux.push_klv_to(k_async, &klv_blob(), Pts90khz::new(0), 0x00)
+        .unwrap();
+    mux.push_klv_to(k_sync, &klv_blob(), Pts90khz::new(0), 0x00)
+        .unwrap();
 
     let pids = pids_present(&drain_all(&mut mux));
     for required in [0x0000u16, 0x1000, 0x1011, 0x1031, 0x1041] {
@@ -119,7 +126,8 @@ fn video_only_emits_video_pid_only() {
     };
     let mut mux = Muxer::new(cfg).unwrap();
     let v = mux.video_stream_handle(0).unwrap();
-    mux.push_video_to(v, &h264_au(0xAA), 0, true).unwrap();
+    mux.push_video_to(v, &h264_au(0xAA), Pts90khz::new(0), true)
+        .unwrap();
 
     let pids = pids_present(&drain_all(&mut mux));
     assert!(pids.contains(&0x1011));
@@ -146,8 +154,9 @@ fn video_and_klv_emits_both_pids() {
     let k = mux.klv_stream_handle(0).unwrap();
     let v = mux.video_stream_handle(0).unwrap();
     let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
-    mux.push_video_to(v, &nal, 0, true).unwrap();
-    mux.push_klv_to(k, &klv_blob(), 0, 0x00).unwrap();
+    mux.push_video_to(v, &nal, Pts90khz::new(0), true).unwrap();
+    mux.push_klv_to(k, &klv_blob(), Pts90khz::new(0), 0x00)
+        .unwrap();
 
     let pids = pids_present(&drain_all(&mut mux));
     assert!(pids.contains(&0x1011), "video PID must appear");
@@ -174,7 +183,8 @@ fn dual_video_plus_dual_klv_pmt_lists_all_four() {
 
     // Push to one stream to trigger first PSI emission.
     let vid0 = mux.video_stream_handle(0).unwrap();
-    mux.push_video_to(vid0, &h264_au(0xAA), 0, true).unwrap();
+    mux.push_video_to(vid0, &h264_au(0xAA), Pts90khz::new(0), true)
+        .unwrap();
 
     let ts = drain_all(&mut mux);
     let pids = pids_present(&ts);

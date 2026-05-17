@@ -6,6 +6,7 @@
 
 use std::collections::VecDeque;
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::DemuxEvent;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
@@ -124,8 +125,8 @@ fn build_and_preload_muxer() -> Muxer {
     // at 90 kHz) so the PSI re-emission threshold is crossed on every push.
     for i in 0i64..3 {
         let pts = i * 9001;
-        m.push_video(&au, pts, true).unwrap();
-        m.push_klv(&klv, pts, 0x00).unwrap();
+        m.push_video(&au, Pts90khz::new(pts), true).unwrap();
+        m.push_klv(&klv, Pts90khz::new(pts), 0x00).unwrap();
     }
     m
 }

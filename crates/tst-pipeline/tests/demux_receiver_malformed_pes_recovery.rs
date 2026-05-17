@@ -9,6 +9,7 @@
 //! flows through the pipeline shell's `feed_aligned` call site.
 
 use tst_core::TransportError;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{DemuxEvent, NonConformantIssue, SamplePayload};
 use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_core::transport::RecvTransport;
@@ -46,10 +47,10 @@ fn build_packets_with_one_malformed_pes() -> Vec<[u8; 188]> {
     };
     let mut mux = Muxer::new(cfg).unwrap();
 
-    mux.push_video(&build_minimal_h264_au(), 90_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(90_000), true)
         .unwrap();
     let bytes1 = drain_mux(&mut mux);
-    mux.push_video(&build_minimal_h264_au(), 180_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(180_000), true)
         .unwrap();
     let bytes2 = drain_mux(&mut mux);
 

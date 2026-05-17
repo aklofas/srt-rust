@@ -3,6 +3,7 @@
 #![cfg(feature = "file")]
 
 use tst_core::io_file::{DemuxFromFile, demux_file, write_mux_to_file};
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 
 /// Build a minimal single-program Muxer with one H.264 video stream.
@@ -19,7 +20,8 @@ fn push_one_keyframe(mux: &mut Muxer) {
         v.extend(vec![0xA5u8; 64]);
         v
     };
-    mux.push_video(&nal, 0, true).expect("push_video");
+    mux.push_video(&nal, Pts90khz::new(0), true)
+        .expect("push_video");
 }
 
 #[test]

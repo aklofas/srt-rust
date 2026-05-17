@@ -1,6 +1,7 @@
 //! Property-based tests for `mpegts::mux::Muxer` invariants.
 
 use proptest::prelude::*;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 use tst_test_helpers::synthetic_nal;
 use tst_test_helpers::ts_parser;
@@ -55,10 +56,10 @@ proptest! {
             last_pts = pts + 3000; // 33ms forward
             if s.is_video {
                 let nal = synthetic_nal::h264_au(s.body_size, s.key_frame);
-                mux.push_video(&nal, pts, s.key_frame).unwrap();
+                mux.push_video(&nal, Pts90khz::new(pts), s.key_frame).unwrap();
             } else {
                 let klv = synthetic_nal::klv_blob(s.body_size);
-                mux.push_klv(&klv, pts, 0x00).unwrap();
+                mux.push_klv(&klv, Pts90khz::new(pts), 0x00).unwrap();
             }
         }
         let bytes = drain_all(&mut mux);
@@ -76,7 +77,7 @@ proptest! {
         let mut mux = Muxer::new(cfg).unwrap();
         for i in 0..spec_count {
             let nal = synthetic_nal::h264_au(500, i == 0);
-            mux.push_video(&nal, (i as i64) * 3000, i == 0).unwrap();
+            mux.push_video(&nal, Pts90khz::new((i as i64) * 3000), i == 0).unwrap();
         }
         let bytes = drain_all(&mut mux);
 
@@ -108,13 +109,13 @@ proptest! {
         // Need at least one video frame so PSI emits and the KLV PID
         // becomes known to the parser.
         let nal = synthetic_nal::h264_au(500, true);
-        mux.push_video(&nal, 0, true).unwrap();
+        mux.push_video(&nal, Pts90khz::new(0), true).unwrap();
 
         let mut originals: Vec<Vec<u8>> = Vec::new();
         for (i, sz) in blobs.iter().enumerate() {
             let blob = synthetic_nal::klv_blob(*sz);
             originals.push(blob.clone());
-            mux.push_klv(&blob, (i as i64 + 1) * 3000, 0x00).unwrap();
+            mux.push_klv(&blob, Pts90khz::new((i as i64 + 1) * 3000), 0x00).unwrap();
         }
         let bytes = drain_all(&mut mux);
         let parsed = ts_parser::parse(&bytes);

@@ -688,7 +688,9 @@ impl<T: Transport> Inner<T> {
         self.drain_pending()?;
         // Push and drain new content. Sample back-pressure between the
         // push (queue at peak) and the drain (queue back to zero).
-        let push_result = self.muxer.push_video(nal, pts_90khz, key_frame);
+        let push_result = self
+            .muxer
+            .push_video(nal, Pts90khz::new(pts_90khz), key_frame);
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
         push_result?;
         self.drain_muxer()
@@ -704,7 +706,9 @@ impl<T: Transport> Inner<T> {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        let push_result = self.muxer.push_klv(klv, pts_90khz, metadata_service_id);
+        let push_result = self
+            .muxer
+            .push_klv(klv, Pts90khz::new(pts_90khz), metadata_service_id);
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
         push_result?;
         self.drain_muxer()
@@ -721,7 +725,9 @@ impl<T: Transport> Inner<T> {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        let push_result = self.muxer.push_video_to(handle, nal, pts_90khz, key_frame);
+        let push_result =
+            self.muxer
+                .push_video_to(handle, nal, Pts90khz::new(pts_90khz), key_frame);
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
         push_result?;
         self.drain_muxer()
@@ -738,9 +744,9 @@ impl<T: Transport> Inner<T> {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        let push_result = self
-            .muxer
-            .push_klv_to(handle, klv, pts_90khz, metadata_service_id);
+        let push_result =
+            self.muxer
+                .push_klv_to(handle, klv, Pts90khz::new(pts_90khz), metadata_service_id);
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
         push_result?;
         self.drain_muxer()
@@ -751,7 +757,7 @@ impl<T: Transport> Inner<T> {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        let push_result = self.muxer.push_audio(frames, pts_90khz);
+        let push_result = self.muxer.push_audio(frames, Pts90khz::new(pts_90khz));
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
         push_result?;
         self.drain_muxer()
@@ -769,7 +775,9 @@ impl<T: Transport> Inner<T> {
         self.drain_pending()?;
         // Muxer parameter order is `(handle, pts, frames)`; the public
         // pipeline API mirrors `send_video` / `send_klv` (data first).
-        let push_result = self.muxer.push_audio_to(handle, pts_90khz, frames);
+        let push_result = self
+            .muxer
+            .push_audio_to(handle, Pts90khz::new(pts_90khz), frames);
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
         push_result?;
         self.drain_muxer()
@@ -782,7 +790,7 @@ impl<T: Transport> Inner<T> {
         self.drain_pending()?;
         // Muxer parameter order is `(pts, payload)`; we present
         // `(payload, pts)` for symmetry with `send_video` / `send_klv`.
-        let push_result = self.muxer.push_subtitle(pts_90khz, payload);
+        let push_result = self.muxer.push_subtitle(Pts90khz::new(pts_90khz), payload);
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
         push_result?;
         self.drain_muxer()
@@ -798,7 +806,9 @@ impl<T: Transport> Inner<T> {
             return Err(MuxSenderError::Transport(TransportError::Closed));
         }
         self.drain_pending()?;
-        let push_result = self.muxer.push_subtitle_to(handle, pts_90khz, payload);
+        let push_result = self
+            .muxer
+            .push_subtitle_to(handle, Pts90khz::new(pts_90khz), payload);
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
         push_result?;
         self.drain_muxer()

@@ -10,6 +10,7 @@
 //! path (the hot path used by `DemuxReceiver`).
 
 use tst_core::error::DemuxError;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, DemuxerOptions, NonConformantIssue, SamplePayload, StrictMode,
 };
@@ -58,13 +59,13 @@ fn build_stream_with_malformed_pes() -> (Vec<u8>, Vec<[u8; 188]>) {
     let mut mux = Muxer::new(cfg).unwrap();
 
     // First AU → first PES on PID 0x100. This is the one we'll corrupt.
-    mux.push_video(&build_minimal_h264_au(), 90_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(90_000), true)
         .unwrap();
     let bytes1 = drain_mux(&mut mux);
 
     // Second AU → second PES on PID 0x100. Stays well-formed; the demuxer
     // must recover and emit a Sample for it.
-    mux.push_video(&build_minimal_h264_au(), 180_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(180_000), true)
         .unwrap();
     let bytes2 = drain_mux(&mut mux);
 

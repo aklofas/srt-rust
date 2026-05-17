@@ -13,6 +13,7 @@
 //! / `mpegts_demux_subtitle.rs`. Hand-rolling raw PAT/PMT/PES bytes would
 //! duplicate dozens of LoC of muxer logic for no real coverage gain.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::mux::{
     AudioCodec as MuxAudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder,
@@ -118,7 +119,7 @@ fn stream_codec_stats_h264_idr_increments_video_counters() {
         b.build().unwrap()
     };
     let mut mux = Muxer::new(cfg).unwrap();
-    mux.push_video(&build_minimal_h264_au(), 90_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(90_000), true)
         .unwrap();
     let bytes = drain_all(&mut mux);
 
@@ -158,12 +159,12 @@ fn stream_codec_stats_klv_increments_records() {
     };
     let mut mux = Muxer::new(cfg).unwrap();
     // Video push to anchor PCR + force PMT emission early.
-    mux.push_video(&build_minimal_h264_au(), 90_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(90_000), true)
         .unwrap();
     let klv = build_dummy_klv();
-    mux.push_klv(&klv, 90_000, 0x00).unwrap();
-    mux.push_klv(&klv, 93_000, 0x00).unwrap();
-    mux.push_klv(&klv, 96_000, 0x00).unwrap();
+    mux.push_klv(&klv, Pts90khz::new(90_000), 0x00).unwrap();
+    mux.push_klv(&klv, Pts90khz::new(93_000), 0x00).unwrap();
+    mux.push_klv(&klv, Pts90khz::new(96_000), 0x00).unwrap();
     let bytes = drain_all(&mut mux);
 
     let demux = demux_drain(&bytes);
@@ -189,13 +190,13 @@ fn stream_codec_stats_aac_adts_increments_frames() {
         b.build().unwrap()
     };
     let mut mux = Muxer::new(cfg).unwrap();
-    mux.push_video(&build_minimal_h264_au(), 90_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(90_000), true)
         .unwrap();
     let mut adts = Vec::new();
     for _ in 0..4 {
         adts.extend(build_adts_frame(4, 2, 200));
     }
-    mux.push_audio(&adts, 90_000).unwrap();
+    mux.push_audio(&adts, Pts90khz::new(90_000)).unwrap();
     let bytes = drain_all(&mut mux);
 
     let demux = demux_drain(&bytes);
@@ -222,10 +223,10 @@ fn stream_codec_stats_returns_unknown_for_subtitle_pid() {
         b.build().unwrap()
     };
     let mut mux = Muxer::new(cfg).unwrap();
-    mux.push_video(&build_minimal_h264_au(), 90_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(90_000), true)
         .unwrap();
     let sub_handle = mux.subtitle_handles()[0];
-    mux.push_subtitle_to(sub_handle, 90_000, b"WEBVTT\nx-cue\n")
+    mux.push_subtitle_to(sub_handle, Pts90khz::new(90_000), b"WEBVTT\nx-cue\n")
         .unwrap();
     let bytes = drain_all(&mut mux);
 
@@ -250,7 +251,7 @@ fn reset_stats_clears_codec_counters() {
         b.build().unwrap()
     };
     let mut mux = Muxer::new(cfg).unwrap();
-    mux.push_video(&build_minimal_h264_au(), 90_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(90_000), true)
         .unwrap();
     let bytes = drain_all(&mut mux);
 

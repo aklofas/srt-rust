@@ -7,6 +7,7 @@
 //! to individual NAL units, and the codec parser reads the SPS RBSP.
 
 use tst_core::codec::h264;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload, VideoPayload};
 use tst_core::mpegts::mux::{Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 
@@ -62,7 +63,7 @@ fn h264_idr_au_round_trips_through_mux_demux_parse() {
     let au = build_annexb_au(SPS_RBSP, PPS_RBSP);
     // Push as a keyframe at PTS 0.
     muxer
-        .push_video_to(video_h, &au, 0, true)
+        .push_video_to(video_h, &au, Pts90khz::new(0), true)
         .expect("push_video_to");
 
     // Drain all TS packets.  `pull` fills the provided slice one 188-byte

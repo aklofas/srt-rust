@@ -1,5 +1,6 @@
 //! Integration tests for receiver-side audio carriage in `mpegts::demux`.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
     Demuxer,
     event::{AudioCodec, DemuxEvent, SamplePayload},
@@ -20,9 +21,9 @@ fn mux_audio_video(codec: MuxAudioCodec, audio_pid: u16) -> Vec<u8> {
     };
     let mut muxer = Muxer::new(cfg).unwrap();
     let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1F];
-    muxer.push_video(&nal, 90_000, true).unwrap();
+    muxer.push_video(&nal, Pts90khz::new(90_000), true).unwrap();
     muxer
-        .push_audio(b"synthetic_audio_frame_payload", 90_000)
+        .push_audio(b"synthetic_audio_frame_payload", Pts90khz::new(90_000))
         .unwrap();
     let mut buf = vec![0u8; 188 * 256];
     let n = muxer.pull(&mut buf);

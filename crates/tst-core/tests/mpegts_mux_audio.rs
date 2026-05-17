@@ -1,5 +1,6 @@
 //! Integration tests for sender-side audio carriage in `mpegts::mux`.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
 };
@@ -17,7 +18,7 @@ fn audio_only_program_mux_produces_pat_pmt_audio_pes() {
     let frames = vec![
         0xFF, 0xFD, 0x00, 0x10, /* MP2 frame header */ 0xDE, 0xAD, 0xBE, 0xEF,
     ];
-    muxer.push_audio(&frames, 90_000).unwrap();
+    muxer.push_audio(&frames, Pts90khz::new(90_000)).unwrap();
 
     let mut buf = vec![0u8; 188 * 64];
     let n = muxer.pull(&mut buf);
@@ -60,13 +61,13 @@ fn three_stream_program_audio_video_klv_routing() {
 
     let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0x42, 0x00, 0x1F]; // tiny SPS
     muxer
-        .push_video_to(video_handle, &nal, 90_000, true)
+        .push_video_to(video_handle, &nal, Pts90khz::new(90_000), true)
         .unwrap();
     muxer
-        .push_audio_to(audio_handle, 90_000, b"audio_payload_bytes")
+        .push_audio_to(audio_handle, Pts90khz::new(90_000), b"audio_payload_bytes")
         .unwrap();
     muxer
-        .push_klv_to(klv_handle, b"klv_record_bytes", 90_000, 0x00)
+        .push_klv_to(klv_handle, b"klv_record_bytes", Pts90khz::new(90_000), 0x00)
         .unwrap();
 
     let mut buf = vec![0u8; 188 * 256];
@@ -100,7 +101,7 @@ fn each_audio_codec_has_correct_pmt_stream_type() {
             b.build().unwrap()
         };
         let mut muxer = Muxer::new(cfg).unwrap();
-        muxer.push_audio(b"x", 90_000).unwrap();
+        muxer.push_audio(b"x", Pts90khz::new(90_000)).unwrap();
 
         let mut buf = vec![0u8; 188 * 16];
         let n = muxer.pull(&mut buf);

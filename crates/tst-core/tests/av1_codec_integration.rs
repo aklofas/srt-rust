@@ -1,6 +1,7 @@
 //! End-to-end: synthetic AV1 OBUs → mux → demux → codec::av1 parse.
 
 use tst_core::codec::av1::parse_obu_stream;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{DemuxEvent, Obu, SamplePayload, VideoCodec, VideoPayload};
 use tst_core::mpegts::mux::{
@@ -36,7 +37,8 @@ fn av1_end_to_end_parses_seq_header_via_obu_stream() {
     au.extend(obu_with_size(2, &[])); // TemporalDelimiter
     au.extend(obu_with_size(1, &seq_payload)); // Sequence Header
     au.extend(obu_with_size(3, &frame_payload)); // Frame Header (keyframe)
-    mux.push_video_to(h, &au, 90_000, true).expect("push");
+    mux.push_video_to(h, &au, Pts90khz::new(90_000), true)
+        .expect("push");
 
     // Drain TS bytes via mux.pull loop.
     let mut ts_bytes = Vec::new();

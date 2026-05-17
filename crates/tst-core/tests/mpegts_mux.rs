@@ -4,6 +4,7 @@
 //! recovered video AU + KLV blob → byte-equality assertions. Covers the
 //! H.264/H.265 axis × the four KLV stream_type/PTS axes.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, StreamSpec, VideoCodec,
 };
@@ -27,8 +28,8 @@ fn h264_async_klv_roundtrip() {
     let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
     let video = synthetic_nal::h264_au(800, true);
     let klv = synthetic_nal::klv_blob(64);
-    mux.push_video(&video, 0, true).unwrap();
-    mux.push_klv(&klv, 0, 0x00).unwrap();
+    mux.push_video(&video, Pts90khz::new(0), true).unwrap();
+    mux.push_klv(&klv, Pts90khz::new(0), 0x00).unwrap();
     let bytes = drain_all(&mut mux);
     assert!(!bytes.is_empty());
 
@@ -69,8 +70,8 @@ fn h265_async_klv_roundtrip() {
     let mut mux = Muxer::new(cfg).unwrap();
     let video = synthetic_nal::h265_au(1200, true);
     let klv = synthetic_nal::klv_blob(50);
-    mux.push_video(&video, 0, true).unwrap();
-    mux.push_klv(&klv, 0, 0x00).unwrap();
+    mux.push_video(&video, Pts90khz::new(0), true).unwrap();
+    mux.push_klv(&klv, Pts90khz::new(0), 0x00).unwrap();
     let bytes = drain_all(&mut mux);
 
     let parsed = ts_parser::parse(&bytes);
@@ -98,8 +99,8 @@ fn h264_klv_with_pts_keeps_pts() {
     let mut mux = Muxer::new(cfg).unwrap();
     let video = synthetic_nal::h264_au(800, true);
     let klv = synthetic_nal::klv_blob(64);
-    mux.push_video(&video, 90_000, true).unwrap();
-    mux.push_klv(&klv, 90_000, 0x00).unwrap();
+    mux.push_video(&video, Pts90khz::new(90_000), true).unwrap();
+    mux.push_klv(&klv, Pts90khz::new(90_000), 0x00).unwrap();
     let bytes = drain_all(&mut mux);
 
     let parsed = ts_parser::parse(&bytes);
@@ -130,9 +131,10 @@ fn h264_sync_metadata_stream_type() {
     }
     cfg.validate().unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
-    mux.push_video(&synthetic_nal::h264_au(500, true), 0, true)
+    mux.push_video(&synthetic_nal::h264_au(500, true), Pts90khz::new(0), true)
         .unwrap();
-    mux.push_klv(&synthetic_nal::klv_blob(40), 0, 0x00).unwrap();
+    mux.push_klv(&synthetic_nal::klv_blob(40), Pts90khz::new(0), 0x00)
+        .unwrap();
     let bytes = drain_all(&mut mux);
 
     let parsed = ts_parser::parse(&bytes);
@@ -155,7 +157,8 @@ fn multiple_video_aus_recovered_in_order() {
         .map(|i| synthetic_nal::h264_au(400 + i * 100, i == 0))
         .collect();
     for (i, f) in frames.iter().enumerate() {
-        mux.push_video(f, (i as i64) * 3000, i == 0).unwrap();
+        mux.push_video(f, Pts90khz::new((i as i64) * 3000), i == 0)
+            .unwrap();
     }
     let bytes = drain_all(&mut mux);
     let parsed = ts_parser::parse(&bytes);
@@ -181,7 +184,8 @@ fn psi_re_emitted_after_interval() {
     // Three video frames, 200 ms apart in PTS — should trigger 3 PSI emissions.
     for i in 0..3 {
         let nal = synthetic_nal::h264_au(500, i == 0);
-        mux.push_video(&nal, (i as i64) * 200 * 90, i == 0).unwrap();
+        mux.push_video(&nal, Pts90khz::new((i as i64) * 200 * 90), i == 0)
+            .unwrap();
     }
     let bytes = drain_all(&mut mux);
     // Count PAT (PID 0) occurrences.
@@ -214,9 +218,10 @@ fn pcr_pid_pinned_to_video_is_declared_in_pmt() {
     cfg.programs[0].pcr_pid = Some(video_pid);
     cfg.validate().unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
-    mux.push_video(&synthetic_nal::h264_au(500, true), 0, true)
+    mux.push_video(&synthetic_nal::h264_au(500, true), Pts90khz::new(0), true)
         .unwrap();
-    mux.push_klv(&synthetic_nal::klv_blob(64), 0, 0x00).unwrap();
+    mux.push_klv(&synthetic_nal::klv_blob(64), Pts90khz::new(0), 0x00)
+        .unwrap();
     let bytes = drain_all(&mut mux);
 
     let parsed = ts_parser::parse(&bytes);
@@ -252,10 +257,18 @@ fn pcr_is_carried_on_video_pid_packets_by_default() {
     cfg.validate().unwrap();
     let mut mux = Muxer::new(cfg).unwrap();
     for i in 0..3 {
-        mux.push_video(&synthetic_nal::h264_au(500, true), i * 3_600_000, true)
-            .unwrap();
-        mux.push_klv(&synthetic_nal::klv_blob(64), i * 3_600_000, 0x00)
-            .unwrap();
+        mux.push_video(
+            &synthetic_nal::h264_au(500, true),
+            Pts90khz::new(i * 3_600_000),
+            true,
+        )
+        .unwrap();
+        mux.push_klv(
+            &synthetic_nal::klv_blob(64),
+            Pts90khz::new(i * 3_600_000),
+            0x00,
+        )
+        .unwrap();
     }
     let bytes = drain_all(&mut mux);
 

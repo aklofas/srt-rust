@@ -3,6 +3,7 @@
 //! Verifies that PAT carries N program entries and that one PMT is emitted per
 //! program per PSI tick.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfig, MuxerProgramConfigBuilder, StreamSpec,
     VideoCodec,
@@ -79,7 +80,8 @@ fn trigger_psi(mux: &mut Muxer) -> Vec<u8> {
     // we use the handle-based variant.
     use tst_core::mpegts::mux::VideoStreamHandle;
     let handle = VideoStreamHandle::pack(0, 0);
-    mux.push_video_to(handle, &nal, 0, true).unwrap();
+    mux.push_video_to(handle, &nal, Pts90khz::new(0), true)
+        .unwrap();
     drain_all(mux)
 }
 
@@ -180,7 +182,7 @@ fn single_program_pat_unchanged() {
     // one program entry at bytes 13..16 of the PAT packet.
     let mut muxer = Muxer::new(MuxerConfig::default()).unwrap();
     let nal = synthetic_nal::h264_au(200, true);
-    muxer.push_video(&nal, 0, true).unwrap();
+    muxer.push_video(&nal, Pts90khz::new(0), true).unwrap();
     let out = drain_all(&mut muxer);
 
     let pat_packet = out
@@ -241,10 +243,10 @@ fn push_video_to_routes_to_correct_program_and_pid() {
     // validate_annex_b only checks for the start code, not the codec.
     let nal = synthetic_nal::h264_au(64, true);
     muxer
-        .push_video_to(prog1_video[0], &nal, 90_000, true)
+        .push_video_to(prog1_video[0], &nal, Pts90khz::new(90_000), true)
         .unwrap();
     muxer
-        .push_video_to(prog2_video[0], &nal, 90_000, true)
+        .push_video_to(prog2_video[0], &nal, Pts90khz::new(90_000), true)
         .unwrap();
 
     let mut out = vec![0u8; 64 * 188];
@@ -274,7 +276,9 @@ fn bare_push_video_returns_ambiguous_target_with_two_programs() {
     use tst_core::error::MuxError;
     let mut muxer = Muxer::new(two_program_config()).unwrap();
     let nal = synthetic_nal::h264_au(64, true);
-    let err = muxer.push_video(&nal, 90_000, true).unwrap_err();
+    let err = muxer
+        .push_video(&nal, Pts90khz::new(90_000), true)
+        .unwrap_err();
     assert!(
         matches!(err, MuxError::AmbiguousTarget { count: 2, .. }),
         "expected AmbiguousTarget {{ count: 2, .. }}, got {err:?}"
@@ -349,10 +353,18 @@ fn per_program_pcr_pids_resolved_independently() {
     let mut buf = vec![0u8; 64 * 188];
     for tick in 0..30i64 {
         let pts = tick * 3_003;
-        muxer.push_video_to(p1_video, &nal, pts, tick == 0).unwrap();
-        muxer.push_klv_to(p1_klv, &klv, pts, 0x00).unwrap();
-        muxer.push_video_to(p2_video, &nal, pts, tick == 0).unwrap();
-        muxer.push_klv_to(p2_klv, &klv, pts, 0x00).unwrap();
+        muxer
+            .push_video_to(p1_video, &nal, Pts90khz::new(pts), tick == 0)
+            .unwrap();
+        muxer
+            .push_klv_to(p1_klv, &klv, Pts90khz::new(pts), 0x00)
+            .unwrap();
+        muxer
+            .push_video_to(p2_video, &nal, Pts90khz::new(pts), tick == 0)
+            .unwrap();
+        muxer
+            .push_klv_to(p2_klv, &klv, Pts90khz::new(pts), 0x00)
+            .unwrap();
         loop {
             let n = muxer.pull(&mut buf);
             if n == 0 {
@@ -400,8 +412,12 @@ fn per_program_pcr_emitted_on_each_program_pid() {
     let mut buf = vec![0u8; 64 * 188];
     for tick in 0..30i64 {
         let pts = tick * 3_003; // ~33 ms per frame at 90 kHz
-        muxer.push_video_to(p1_video, &nal, pts, tick == 0).unwrap();
-        muxer.push_video_to(p2_video, &nal, pts, tick == 0).unwrap();
+        muxer
+            .push_video_to(p1_video, &nal, Pts90khz::new(pts), tick == 0)
+            .unwrap();
+        muxer
+            .push_video_to(p2_video, &nal, Pts90khz::new(pts), tick == 0)
+            .unwrap();
         loop {
             let n = muxer.pull(&mut buf);
             if n == 0 {

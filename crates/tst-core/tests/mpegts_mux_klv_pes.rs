@@ -4,6 +4,7 @@
 //! - Async KLV (stream_type 0x06 PrivateData)  → PES stream_id 0xBD (private_stream_1)
 //! - Sync  KLV (stream_type 0x15 SynchronousMetadata) → PES stream_id 0xFC (metadata)
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
 };
@@ -81,7 +82,8 @@ fn async_klv_pes_uses_stream_id_0xbd() {
     };
     let mut mux = Muxer::new(cfg).unwrap();
 
-    mux.push_klv(&synthetic_klv(), 0, 0x00).unwrap();
+    mux.push_klv(&synthetic_klv(), Pts90khz::new(0), 0x00)
+        .unwrap();
     let ts_buf = drain(&mut mux);
 
     let stream_id =
@@ -110,7 +112,8 @@ fn sync_klv_pes_keeps_stream_id_0xfc() {
     };
     let mut mux = Muxer::new(cfg).unwrap();
 
-    mux.push_klv(&synthetic_klv(), 90_000, 0x00).unwrap();
+    mux.push_klv(&synthetic_klv(), Pts90khz::new(90_000), 0x00)
+        .unwrap();
     let ts_buf = drain(&mut mux);
 
     let stream_id =

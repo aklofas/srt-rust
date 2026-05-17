@@ -6,6 +6,7 @@
 //! 0x06 with `format_identifier "AV01"` -> `VideoCodec::Av1`) and the
 //! per-OBU header bytes.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{
     DemuxEvent, Obu, SamplePayload, StreamId, StreamKind, VideoCodec, VideoPayload,
@@ -69,7 +70,7 @@ fn av1_mux_demux_roundtrip_emits_obus() {
     let au = synthetic_av1_au();
 
     // Push one AU at PTS=90000 (1 second), key frame.
-    mux.push_video_to(video_handle, &au, 90_000, true)
+    mux.push_video_to(video_handle, &au, Pts90khz::new(90_000), true)
         .expect("push");
     let ts_bytes = drain_mux(&mut mux);
 

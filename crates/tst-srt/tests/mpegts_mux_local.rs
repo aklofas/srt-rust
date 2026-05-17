@@ -9,6 +9,7 @@
 
 use std::fs;
 use std::path::Path;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
 };
@@ -110,12 +111,12 @@ fn process_one(path: &Path) {
                     continue;
                 }
                 let key = i % 30 == 0;
-                mux.push_video(body, pts.unwrap_or(0) as i64, key)
+                mux.push_video(body, Pts90khz::new(pts.unwrap_or(0) as i64), key)
                     .expect("push_video");
             }
             (None, Some(_)) => {
                 let (pts, body) = klv_iter.next().unwrap();
-                mux.push_klv(body, pts.unwrap_or(0) as i64, 0x00)
+                mux.push_klv(body, Pts90khz::new(pts.unwrap_or(0) as i64), 0x00)
                     .expect("push_klv");
             }
             (Some(vp), Some(kp)) => {
@@ -128,11 +129,11 @@ fn process_one(path: &Path) {
                         continue;
                     }
                     let key = i % 30 == 0;
-                    mux.push_video(body, pts.unwrap_or(0) as i64, key)
+                    mux.push_video(body, Pts90khz::new(pts.unwrap_or(0) as i64), key)
                         .expect("push_video");
                 } else {
                     let (pts, body) = klv_iter.next().unwrap();
-                    mux.push_klv(body, pts.unwrap_or(0) as i64, 0x00)
+                    mux.push_klv(body, Pts90khz::new(pts.unwrap_or(0) as i64), 0x00)
                         .expect("push_klv");
                 }
             }

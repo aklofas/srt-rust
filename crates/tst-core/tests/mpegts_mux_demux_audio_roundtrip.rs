@@ -1,6 +1,7 @@
 //! End-to-end roundtrip: mux audio frames + video AUs + KLV records,
 //! demux the resulting bytes, assert per-frame byte equality.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
     Demuxer,
     event::{DemuxEvent, SamplePayload},
@@ -28,8 +29,10 @@ fn roundtrip_one_codec(codec: MuxAudioCodec) {
 
     for (i, frame) in audio_frames.iter().enumerate() {
         let pts = 90_000 + (i as i64) * 1024; // 1024 samples per AAC frame
-        muxer.push_video(&video_nal, pts, true).unwrap();
-        muxer.push_audio(frame, pts).unwrap();
+        muxer
+            .push_video(&video_nal, Pts90khz::new(pts), true)
+            .unwrap();
+        muxer.push_audio(frame, Pts90khz::new(pts)).unwrap();
     }
 
     // Drain.

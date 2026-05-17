@@ -5,6 +5,7 @@
 //! which exercised the fictional UL+BER+PTSP wrapper format.
 
 use tst_core::mpegts::au_cell::{CellFragmentIndication, read_metadata_au_cell};
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind};
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
@@ -54,7 +55,7 @@ fn sync_klv_mux_demux_round_trip() {
     let mut mux = Muxer::new(cfg).unwrap();
 
     let inner = synthetic_klv_ls();
-    mux.push_klv(&inner, 90_000, 0x00).unwrap();
+    mux.push_klv(&inner, Pts90khz::new(90_000), 0x00).unwrap();
     let ts_buf = drain(&mut mux);
 
     let mut dem = Demuxer::new();
@@ -114,7 +115,7 @@ fn private_data_klv_does_not_auto_wrap() {
     let mut mux = Muxer::new(cfg).unwrap();
 
     let inner = synthetic_klv_ls();
-    mux.push_klv(&inner, 0, 0x00).unwrap();
+    mux.push_klv(&inner, Pts90khz::new(0), 0x00).unwrap();
     let ts_buf = drain(&mut mux);
 
     let mut dem = Demuxer::new();
@@ -185,13 +186,15 @@ fn sync_klv_sequence_number_increments_across_pushes() {
         hdr.sequence_number
     };
 
-    mux.push_klv(&inner, 90_000, 0x00).unwrap();
+    mux.push_klv(&inner, Pts90khz::new(90_000), 0x00).unwrap();
     assert_eq!(next_seq_num(&mut mux), 0);
 
-    mux.push_klv(&inner, 90_000 * 2, 0x00).unwrap();
+    mux.push_klv(&inner, Pts90khz::new(90_000 * 2), 0x00)
+        .unwrap();
     assert_eq!(next_seq_num(&mut mux), 1);
 
-    mux.push_klv(&inner, 90_000 * 3, 0x00).unwrap();
+    mux.push_klv(&inner, Pts90khz::new(90_000 * 3), 0x00)
+        .unwrap();
     assert_eq!(next_seq_num(&mut mux), 2);
 }
 
@@ -353,7 +356,7 @@ fn multi_cell_au_emits_non_conformant_issue_through_demuxer() {
     let mut mux = Muxer::new(cfg).unwrap();
 
     let inner = synthetic_klv_ls();
-    mux.push_klv(&inner, 90_000, 0x00).unwrap();
+    mux.push_klv(&inner, Pts90khz::new(90_000), 0x00).unwrap();
     let mut ts_bytes = drain(&mut mux);
 
     // Find the AU cell flags byte in the emitted TS stream. The muxer
@@ -516,14 +519,15 @@ fn metadata_service_id_propagates_from_push_klv_to_au_cell() {
     for i in 0..5i64 {
         let pts = 90_000 + i * 3_000;
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10]; // AUD NAL
-        mux.push_video(&nal, pts, false).unwrap();
+        mux.push_video(&nal, Pts90khz::new(pts), false).unwrap();
     }
 
     // Use a non-zero service_id (0x42) so the test can distinguish between
     // "value was plumbed" and "value was coincidentally 0x00 from the old
     // hardcoded default".
     let service_id: u8 = 0x42;
-    mux.push_klv(&raw_klv, 9000, service_id).unwrap();
+    mux.push_klv(&raw_klv, Pts90khz::new(9000), service_id)
+        .unwrap();
 
     // Drain TS bytes.
     let ts_buf = drain(&mut mux);

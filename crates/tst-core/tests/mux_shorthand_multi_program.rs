@@ -3,6 +3,7 @@
 //! used `pack(0, 0)` which misroutes when the lone stream of that kind
 //! sits in program-index >= 1.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfig, StreamSpec, VideoCodec,
 };
@@ -123,7 +124,7 @@ fn push_video_routes_to_correct_program_when_lone_video_in_program_one() {
     let nal = synthetic_nal::h264_au(200, true);
 
     muxer
-        .push_video(&nal, 90_000, true)
+        .push_video(&nal, Pts90khz::new(90_000), true)
         .expect("push_video must route correctly when lone video is in program-index 1");
 
     let out = drain_all(&mut muxer);
@@ -146,7 +147,7 @@ fn push_klv_routes_to_correct_program_when_lone_klv_in_program_one() {
     let klv = synthetic_nal::klv_blob(32);
 
     muxer
-        .push_klv(&klv, 90_000, 0x00)
+        .push_klv(&klv, Pts90khz::new(90_000), 0x00)
         .expect("push_klv must route correctly when lone KLV is in program-index 1");
 
     let out = drain_all(&mut muxer);

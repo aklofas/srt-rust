@@ -4,13 +4,14 @@
 //! ## Quick start
 //!
 //! ```no_run
+//! use tst_core::mpegts::common::Pts90khz;
 //! use tst_core::mpegts::mux::{MuxerConfig, Muxer};
 //!
 //! let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
 //!
 //! // Push one access unit (Annex-B framed) per frame:
 //! # let access_unit_bytes = vec![0u8; 0];
-//! # let pts = 0;
+//! # let pts = Pts90khz::new(0);
 //! mux.push_video(&access_unit_bytes, pts, /*key_frame=*/ true).unwrap();
 //!
 //! // Push KLV metadata at any cadence:

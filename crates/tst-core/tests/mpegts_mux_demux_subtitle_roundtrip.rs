@@ -1,6 +1,7 @@
 //! Round-trip integrity: mux→demux subtitle PES bytes must come
 //! back identical.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, SamplePayload};
 use tst_core::mpegts::mux::{
     Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec as MuxSub, VideoCodec,
@@ -34,7 +35,8 @@ fn round_trip(codec: MuxSub, payload: &[u8]) -> Vec<u8> {
     };
     let mut mux = Muxer::new(cfg).unwrap();
     let h = mux.subtitle_handles()[0];
-    mux.push_subtitle_to(h, 90_000, payload).unwrap();
+    mux.push_subtitle_to(h, Pts90khz::new(90_000), payload)
+        .unwrap();
     let bytes = drain_all(&mut mux);
 
     let mut demux = Demuxer::new();

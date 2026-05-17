@@ -1748,6 +1748,7 @@ impl Default for Demuxer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mpegts::common::Pts90khz;
     use crate::mpegts::demux::StrictMode;
     use crate::mpegts::demux::types::{
         DemuxerBuilder, DemuxerOptions, default_pes_cap_per_pid, default_pes_cap_total,
@@ -1939,7 +1940,7 @@ mod tests {
         };
         let mut mux = crate::mpegts::mux::Muxer::new(cfg).unwrap();
         // Push a minimal H.264 AU to trigger PSI + PES emission.
-        mux.push_video(&[0, 0, 0, 1, 0x09, 0x10], 9000, true)
+        mux.push_video(&[0, 0, 0, 1, 0x09, 0x10], Pts90khz::new(9000), true)
             .unwrap();
         let mut buf = vec![0u8; 188 * 32];
         let n = mux.pull(&mut buf);
@@ -1989,7 +1990,9 @@ mod tests {
             0xFF, 0xF1, 0x4C, 0x80, 0x00, 0x1F, 0xFC, 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02,
             0x03, 0x04,
         ];
-        muxer.push_audio(&audio_payload, 90_000).unwrap();
+        muxer
+            .push_audio(&audio_payload, Pts90khz::new(90_000))
+            .unwrap();
         let mut buf = vec![0u8; 188 * 64];
         let n = muxer.pull(&mut buf);
         buf.truncate(n);
@@ -2058,7 +2061,9 @@ mod tests {
         let audio_payload: Vec<u8> = vec![
             0xFF, 0xF1, 0x4C, 0x80, 0x00, 0x1F, 0xFC, 0xDE, 0xAD, 0xBE, 0xEF,
         ];
-        muxer.push_audio(&audio_payload, 90_000).unwrap();
+        muxer
+            .push_audio(&audio_payload, Pts90khz::new(90_000))
+            .unwrap();
         let mut buf = vec![0u8; 188 * 64];
         let n = muxer.pull(&mut buf);
         buf.truncate(n);
@@ -2136,7 +2141,7 @@ mod tests {
         // Body content irrelevant to dispatch — just needs to traverse
         // PES reassembly cleanly. Use a WEBVTT-like header for clarity.
         let payload = b"WEBVTT\n\n00:00.000 --> 00:01.000\nhi\n".to_vec();
-        muxer.push_audio(&payload, 90_000).unwrap();
+        muxer.push_audio(&payload, Pts90khz::new(90_000)).unwrap();
         let mut buf = vec![0u8; 188 * 64];
         let n = muxer.pull(&mut buf);
         buf.truncate(n);
@@ -2186,7 +2191,9 @@ mod tests {
             b.build().unwrap()
         };
         let mut muxer = crate::mpegts::mux::Muxer::new(cfg).unwrap();
-        muxer.push_audio(b"WEBVTT\n", 90_000).unwrap();
+        muxer
+            .push_audio(b"WEBVTT\n", Pts90khz::new(90_000))
+            .unwrap();
         let mut buf = vec![0u8; 188 * 64];
         let n = muxer.pull(&mut buf);
         buf.truncate(n);
@@ -2252,7 +2259,9 @@ mod tests {
         let mut muxer = crate::mpegts::mux::Muxer::new(cfg).unwrap();
         // Push something to force PSI emission.
         let h = muxer.subtitle_handles()[0];
-        muxer.push_subtitle_to(h, 90_000, b"WEBVTT\n\nx\n").unwrap();
+        muxer
+            .push_subtitle_to(h, Pts90khz::new(90_000), b"WEBVTT\n\nx\n")
+            .unwrap();
         let mut buf = vec![0u8; 188 * 64];
         let n = muxer.pull(&mut buf);
         buf.truncate(n);
@@ -2470,7 +2479,9 @@ mod tests {
         let mut muxer = crate::mpegts::mux::Muxer::new(cfg).unwrap();
         let h = muxer.subtitle_handles()[0];
         let cue = b"WEBVTT\n\nx-cue\n";
-        muxer.push_subtitle_to(h, 90_000, cue).unwrap();
+        muxer
+            .push_subtitle_to(h, Pts90khz::new(90_000), cue)
+            .unwrap();
         let mut buf = vec![0u8; 188 * 64];
         let n = muxer.pull(&mut buf);
         buf.truncate(n);
@@ -2539,8 +2550,10 @@ mod tests {
         let h = mux.subtitle_handles()[0];
         // Push twice on the same PID — the dedupe HashSet should keep
         // subtitle_streams_seen at 1 (one distinct PID seen).
-        mux.push_subtitle_to(h, 90_000, b"WEBVTT\n").unwrap();
-        mux.push_subtitle_to(h, 180_000, b"WEBVTT\n\n").unwrap();
+        mux.push_subtitle_to(h, Pts90khz::new(90_000), b"WEBVTT\n")
+            .unwrap();
+        mux.push_subtitle_to(h, Pts90khz::new(180_000), b"WEBVTT\n\n")
+            .unwrap();
         let mut bytes = vec![0u8; 188 * 64];
         let n = mux.pull(&mut bytes);
         bytes.truncate(n);
@@ -2754,7 +2767,7 @@ mod tests {
         let mut mux = crate::mpegts::mux::Muxer::new(cfg).unwrap();
         let mut au = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
         au.extend(std::iter::repeat(0xAB).take(64));
-        mux.push_video(&au, 9_000, true).unwrap();
+        mux.push_video(&au, Pts90khz::new(9_000), true).unwrap();
         let mut buf = vec![0u8; 188 * 64];
         let n = mux.pull(&mut buf);
 
@@ -3025,11 +3038,12 @@ mod tests {
         // Push a video AU first so PCR fires and PSI emits.
         let mut au = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
         au.extend(std::iter::repeat_n(0xAB, 64));
-        mux.push_video(&au, 9_000, true).unwrap();
+        mux.push_video(&au, Pts90khz::new(9_000), true).unwrap();
 
         // Push raw DVB-sub segment bytes; muxer auto-prepends §6.2 envelope.
         let segment_bytes = [0x0Fu8, 0x10, 0x00, 0x01, 0x00, 0x02, 0x00, 0x10];
-        mux.push_subtitle(9_000, &segment_bytes).unwrap();
+        mux.push_subtitle(Pts90khz::new(9_000), &segment_bytes)
+            .unwrap();
 
         // Drain all queued packets.
         let mut all = Vec::new();

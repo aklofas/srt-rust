@@ -40,6 +40,7 @@ use std::fs::File;
 use std::io::Write;
 
 use tst_core::klv::st0601::{UasDatalinkLs, encode_to_vec};
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     AudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
 };
@@ -100,14 +101,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // fetch frames from an encoder (libx264, x265, or hardware codec).
         // We use a synthetic placeholder so the example is dependency-free.
         let nal_h264 = build_h264_keyframe_au(i);
-        muxer.push_video(&nal_h264, pts, /*key_frame=*/ true)?;
+        muxer.push_video(&nal_h264, Pts90khz::new(pts), /*key_frame=*/ true)?;
 
         // Audio: a minimal MP2 frame. Same caveat — synthetic placeholder.
         // Real code would pull pre-framed bytes from an audio encoder
         // (libmp2enc, ffmpeg libavcodec, etc.). The library treats bytes
         // as opaque — frame headers and sync words are caller's responsibility.
         let mp2_frame = build_mp2_silent_frame();
-        muxer.push_audio(&mp2_frame, pts)?;
+        muxer.push_audio(&mp2_frame, Pts90khz::new(pts))?;
 
         // KLV: emit an ST 0601 record once per second (every 30 frames).
         // For async KLV, the PTS argument is still honored (it sets the
@@ -131,7 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // streams (stream_type 0x15); silently ignored for PrivateData
             // streams (0x06) like the one configured here. The spec default
             // is 0x00.
-            muxer.push_klv(&klv, pts, 0x00)?;
+            muxer.push_klv(&klv, Pts90khz::new(pts), 0x00)?;
         }
 
         // Drain TS bytes to disk. pull() returns byte count written;

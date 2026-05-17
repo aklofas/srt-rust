@@ -4,6 +4,7 @@
 //! muxer + demuxer round-trip preserves the codec classification (PMT
 //! stream_type 0x33 -> `VideoCodec::H266`) and the per-NAL header fields.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::demux::event::{
     DemuxEvent, NalUnit, SamplePayload, StreamKind, VideoCodec, VideoPayload,
@@ -70,7 +71,8 @@ fn h266_mux_demux_roundtrip_emits_h266_nals() {
     let au = synthetic_h266_au();
 
     // Push one AU at PTS=90000 (1 second), key frame.
-    mux.push_video_to(video_handle, &au, 90_000, true).unwrap();
+    mux.push_video_to(video_handle, &au, Pts90khz::new(90_000), true)
+        .unwrap();
     let ts_bytes = drain_mux(&mut mux);
 
     let mut demux = Demuxer::new();

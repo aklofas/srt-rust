@@ -571,7 +571,7 @@ impl Muxer {
     pub fn push_video(
         &mut self,
         nal: &[u8],
-        pts_90khz: i64,
+        pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxError> {
         // The single-target API only resolves when exactly one video stream
@@ -584,12 +584,12 @@ impl Muxer {
             });
         }
         let handle = self.single_video_handle();
-        self.push_video_to(handle, nal, pts_90khz, key_frame)
+        self.push_video_to(handle, nal, pts, key_frame)
     }
 
     /// Push one KLV metadata blob.
     ///
-    /// `pts_90khz` becomes the PES PTS when the KLV stream was configured with
+    /// `pts` becomes the PES PTS when the KLV stream was configured with
     /// `carries_pts: true` in [`StreamSpec::Klv`]; ignored otherwise.
     ///
     /// `metadata_service_id` is written into the AU cell header per
@@ -619,7 +619,7 @@ impl Muxer {
     pub fn push_klv(
         &mut self,
         klv: &[u8],
-        pts_90khz: i64,
+        pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxError> {
         let total_klv: usize = self.klv_streams.iter().map(|k| k.len()).sum();
@@ -633,7 +633,7 @@ impl Muxer {
             });
         }
         let handle = self.single_klv_handle();
-        self.push_klv_to(handle, klv, pts_90khz, metadata_service_id)
+        self.push_klv_to(handle, klv, pts, metadata_service_id)
     }
 
     /// Locate the program containing the lone video stream.
@@ -672,7 +672,7 @@ impl Muxer {
 
     /// Push one audio frame buffer, single-stream shorthand.
     ///
-    /// `pts_90khz` is required and becomes the PES PTS; audio has no DTS
+    /// `pts` is required and becomes the PES PTS; audio has no DTS
     /// (no B-frame reorder). `frames` is one or more pre-framed audio frames
     /// concatenated by the caller.
     ///
@@ -688,7 +688,7 @@ impl Muxer {
     ///   `PES_packet_length`.
     /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
     ///   `MuxerConfig::buffer_packets`.
-    pub fn push_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
+    pub fn push_audio(&mut self, frames: &[u8], pts: Pts90khz) -> Result<(), MuxError> {
         let total_audio: usize = self.audio_streams.iter().map(|a| a.len()).sum();
         if total_audio == 0 {
             return Err(MuxError::NoAudioStreamsConfigured);
@@ -713,7 +713,7 @@ impl Muxer {
             .map(|(p, _)| (p, 0))
             .expect("total_audio == 1 guarantees one non-empty program");
         let handle = AudioStreamHandle::pack(prog_idx, 0);
-        self.push_audio_to(handle, pts_90khz, frames)
+        self.push_audio_to(handle, pts, frames)
     }
 
     /// Push one audio frame buffer on a specific audio stream.
@@ -735,7 +735,7 @@ impl Muxer {
     pub fn push_audio_to(
         &mut self,
         handle: AudioStreamHandle,
-        pts_90khz: i64,
+        pts: Pts90khz,
         frames: &[u8],
     ) -> Result<(), MuxError> {
         let (prog_idx, within_idx) = handle.unpack();
@@ -761,19 +761,19 @@ impl Muxer {
             });
         }
 
-        let pts = PesPtsField::PtsOnly(Pts90khz::new(pts_90khz));
+        let pes_pts = PesPtsField::PtsOnly(pts);
         self.pes_scratch.clear();
         write_audio_pes(
             &mut self.pes_scratch,
             audio_codec,
             within_idx as u8,
-            pts,
+            pes_pts,
             frames,
         );
 
         let total = self.pes_scratch.len();
         let audio_packets = ts_packets_for(total);
-        let psi_packets = if self.psi_due(prog_idx, pts_90khz) {
+        let psi_packets = if self.psi_due(prog_idx, pts.as_ticks()) {
             2
         } else {
             0
@@ -785,14 +785,17 @@ impl Muxer {
             });
         }
 
-        self.maybe_emit_psi(prog_idx, pts_90khz);
+        self.maybe_emit_psi(prog_idx, pts.as_ticks());
 
         let mut cursor = 0;
         let mut first = true;
         while cursor < self.pes_scratch.len() {
             let mut adaptation = AdaptationField::default();
-            if first && self.pcr_pids[prog_idx] == audio_pid && self.pcr_due(prog_idx, pts_90khz) {
-                let pcr = Pcr27mhz::from_pts(Pts90khz::new(pts_90khz));
+            if first
+                && self.pcr_pids[prog_idx] == audio_pid
+                && self.pcr_due(prog_idx, pts.as_ticks())
+            {
+                let pcr = Pcr27mhz::from_pts(pts);
                 adaptation.pcr = Some(pcr);
                 self.pcr_last[prog_idx] = Some(pcr.as_ticks());
             }
@@ -870,7 +873,7 @@ impl Muxer {
 
     /// Push one subtitle PES unit, single-stream shorthand.
     ///
-    /// `pts_90khz` is required and becomes the PES PTS — subtitles are
+    /// `pts` is required and becomes the PES PTS — subtitles are
     /// rendered at presentation time, never reordered. `payload` is one
     /// complete logical subtitle unit (DVB-sub composition page,
     /// teletext data field, CEA-708 service block, or WebVTT cue);
@@ -890,7 +893,7 @@ impl Muxer {
     ///   `PES_packet_length`.
     /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
     ///   `MuxerConfig::buffer_packets`.
-    pub fn push_subtitle(&mut self, pts_90khz: i64, payload: &[u8]) -> Result<(), MuxError> {
+    pub fn push_subtitle(&mut self, pts: Pts90khz, payload: &[u8]) -> Result<(), MuxError> {
         let total_subtitle: usize = self.subtitle_streams.iter().map(|s| s.len()).sum();
         if total_subtitle == 0 {
             return Err(MuxError::NoSubtitleStreamsConfigured);
@@ -912,7 +915,7 @@ impl Muxer {
             .map(|(p, _)| (p, 0))
             .expect("total_subtitle == 1 guarantees one non-empty program");
         let handle = SubtitleStreamHandle::pack(prog_idx, 0);
-        self.push_subtitle_to(handle, pts_90khz, payload)
+        self.push_subtitle_to(handle, pts, payload)
     }
 
     /// Push one subtitle PES unit on a specific subtitle stream.
@@ -932,7 +935,7 @@ impl Muxer {
     pub fn push_subtitle_to(
         &mut self,
         handle: SubtitleStreamHandle,
-        pts_90khz: i64,
+        pts: Pts90khz,
         payload: &[u8],
     ) -> Result<(), MuxError> {
         let (prog_idx, within_idx) = handle.unpack();
@@ -994,14 +997,14 @@ impl Muxer {
         // DVB-teletext tail-stuffing can add up to one TS payload (184 B)
         // beyond header + payload; that growth is handled transparently by Vec.
         self.pes_scratch.clear();
-        write_subtitle_pes(&mut self.pes_scratch, pts_90khz, pes_shape, payload);
+        write_subtitle_pes(&mut self.pes_scratch, pts.as_ticks(), pes_shape, payload);
 
         let subtitle_packets = ts_packets_for(self.pes_scratch.len());
         // Mirror push_audio_to: reserve 2 packets (PAT + 1 PMT) when a PSI
         // tick is due. Multi-program muxers actually emit 1 PAT + N PMTs,
         // but the muxer-wide buffer slop tolerates a small under-reservation
         // here (matches the audio precedent at plan #21 push_audio_to).
-        let psi_packets = if self.psi_due(prog_idx, pts_90khz) {
+        let psi_packets = if self.psi_due(prog_idx, pts.as_ticks()) {
             2
         } else {
             0
@@ -1013,7 +1016,7 @@ impl Muxer {
             });
         }
 
-        self.maybe_emit_psi(prog_idx, pts_90khz);
+        self.maybe_emit_psi(prog_idx, pts.as_ticks());
 
         // Subtitles do NOT extend the PCR fallback chain — they are sparse
         // and event-driven, and the validate path rejects them as PCR PIDs
@@ -1189,7 +1192,7 @@ impl Muxer {
     /// Push one H.264 / H.265 / H.266 / AV1 access unit on a specific
     /// video stream.
     ///
-    /// `pts_90khz` and `key_frame` carry the same semantics as
+    /// `pts` and `key_frame` carry the same semantics as
     /// [`Self::push_video`]. The caller selects the destination stream
     /// via the [`VideoStreamHandle`] obtained from
     /// [`Self::video_handles`] / [`Self::video_stream_handle`].
@@ -1214,7 +1217,7 @@ impl Muxer {
         &mut self,
         handle: VideoStreamHandle,
         nal: &[u8],
-        pts_90khz: i64,
+        pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxError> {
         let (prog_idx, within_idx) = handle.unpack();
@@ -1263,14 +1266,14 @@ impl Muxer {
         let header_len = write_pes_header(
             &mut header,
             STREAM_ID_VIDEO,
-            PesPtsField::PtsOnly(Pts90khz::new(pts_90khz)),
+            PesPtsField::PtsOnly(pts),
             None,
             pes_flags,
         );
 
         let total = header_len + nal.len();
         let video_packets = ts_packets_for(total);
-        let psi_packets = if self.psi_due(prog_idx, pts_90khz) {
+        let psi_packets = if self.psi_due(prog_idx, pts.as_ticks()) {
             2
         } else {
             0
@@ -1282,7 +1285,7 @@ impl Muxer {
             });
         }
 
-        self.maybe_emit_psi(prog_idx, pts_90khz);
+        self.maybe_emit_psi(prog_idx, pts.as_ticks());
 
         self.pes_scratch.clear();
         self.pes_scratch.extend_from_slice(&header[..header_len]);
@@ -1303,8 +1306,8 @@ impl Muxer {
                     // with this PID even if pcr_due() would otherwise return
                     // false — matches TSDuck / ffmpeg behavior. Random-access
                     // point + PCR coincide; downstream seekers benefit.
-                    if self.pcr_due(prog_idx, pts_90khz) || key_frame {
-                        let pcr = Pcr27mhz::from_pts(Pts90khz::new(pts_90khz));
+                    if self.pcr_due(prog_idx, pts.as_ticks()) || key_frame {
+                        let pcr = Pcr27mhz::from_pts(pts);
                         adaptation.pcr = Some(pcr);
                         self.pcr_last[prog_idx] = Some(pcr.as_ticks());
                     }
@@ -1344,7 +1347,7 @@ impl Muxer {
 
     /// Push one KLV metadata blob on a specific KLV stream.
     ///
-    /// `pts_90khz` carries the same semantics as [`Self::push_klv`] —
+    /// `pts` carries the same semantics as [`Self::push_klv`] —
     /// used as the PES PTS only when the targeted KLV stream was
     /// configured with `carries_pts: true`; ignored otherwise.
     ///
@@ -1380,7 +1383,7 @@ impl Muxer {
         &mut self,
         handle: KlvStreamHandle,
         klv: &[u8],
-        pts_90khz: i64,
+        pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxError> {
         let (prog_idx, within_idx) = handle.unpack();
@@ -1424,7 +1427,7 @@ impl Muxer {
         let effective_klv: &[u8] = wrapped_storage.as_deref().unwrap_or(klv);
 
         let pts_field = if klv_carries_pts {
-            PesPtsField::PtsOnly(Pts90khz::new(pts_90khz))
+            PesPtsField::PtsOnly(pts)
         } else {
             PesPtsField::None
         };
@@ -1468,7 +1471,7 @@ impl Muxer {
 
         let total = header_len + effective_klv.len();
         let klv_packets = ts_packets_for(total);
-        let psi_packets = if self.psi_due(prog_idx, pts_90khz) {
+        let psi_packets = if self.psi_due(prog_idx, pts.as_ticks()) {
             2
         } else {
             0
@@ -1480,7 +1483,7 @@ impl Muxer {
             });
         }
 
-        self.maybe_emit_psi(prog_idx, pts_90khz);
+        self.maybe_emit_psi(prog_idx, pts.as_ticks());
 
         self.pes_scratch.clear();
         self.pes_scratch.extend_from_slice(&header[..header_len]);
@@ -1490,8 +1493,9 @@ impl Muxer {
         let mut first = true;
         while cursor < self.pes_scratch.len() {
             let mut adaptation = AdaptationField::default();
-            if first && self.pcr_pids[prog_idx] == klv_pid && self.pcr_due(prog_idx, pts_90khz) {
-                let pcr = Pcr27mhz::from_pts(Pts90khz::new(pts_90khz));
+            if first && self.pcr_pids[prog_idx] == klv_pid && self.pcr_due(prog_idx, pts.as_ticks())
+            {
+                let pcr = Pcr27mhz::from_pts(pts);
                 adaptation.pcr = Some(pcr);
                 self.pcr_last[prog_idx] = Some(pcr.as_ticks());
             }
@@ -2119,7 +2123,7 @@ mod tests {
     fn pull_returns_zero_on_short_buffer() {
         let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
-        mux.push_video(&nal, 0, true).unwrap();
+        mux.push_video(&nal, Pts90khz::new(0), true).unwrap();
         let mut buf = [0u8; 100];
         assert_eq!(mux.pull(&mut buf), 0);
     }
@@ -2129,7 +2133,7 @@ mod tests {
         let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let bad = [0x12, 0x34, 0x56];
         assert!(matches!(
-            mux.push_video(&bad, 0, false),
+            mux.push_video(&bad, Pts90khz::new(0), false),
             Err(MuxError::InvalidNal)
         ));
     }
@@ -2138,14 +2142,14 @@ mod tests {
     fn push_video_accepts_3byte_start_code() {
         let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let nal = [0x00, 0x00, 0x01, 0x09, 0x10];
-        assert!(mux.push_video(&nal, 0, true).is_ok());
+        assert!(mux.push_video(&nal, Pts90khz::new(0), true).is_ok());
     }
 
     #[test]
     fn first_pull_includes_pat_pmt() {
         let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0x88, 0x99];
-        mux.push_video(&nal, 0, true).unwrap();
+        mux.push_video(&nal, Pts90khz::new(0), true).unwrap();
         let mut buf = [0u8; 4096];
         let n = mux.pull(&mut buf);
         assert!(n >= 188 * 3, "expected at least PAT + PMT + 1 video packet");
@@ -2174,7 +2178,7 @@ mod tests {
             v[4] = 0x65; // IDR slice NAL type
             v
         };
-        let res = mux.push_video(&big_nal, 0, true);
+        let res = mux.push_video(&big_nal, Pts90khz::new(0), true);
         assert!(matches!(
             res,
             Err(MuxError::BufferFull {
@@ -2196,7 +2200,7 @@ mod tests {
             v[..4].copy_from_slice(&[0x00, 0x00, 0x00, 0x01]);
             v
         };
-        let _ = mux.push_video(&nal, 0, true);
+        let _ = mux.push_video(&nal, Pts90khz::new(0), true);
         // Queue should be empty (push didn't commit).
         let mut buf = [0u8; 1316];
         assert_eq!(mux.pull(&mut buf), 0);
@@ -2212,10 +2216,12 @@ mod tests {
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
         let just_before_wrap = (1i64 << 33) - 90;
         let well_past_wrap = 9_500;
-        mux.push_video(&nal, just_before_wrap, true).unwrap();
+        mux.push_video(&nal, Pts90khz::new(just_before_wrap), true)
+            .unwrap();
         let mut buf = vec![0u8; 188 * 64];
         while mux.pull(&mut buf) > 0 {}
-        mux.push_video(&nal, well_past_wrap, false).unwrap();
+        mux.push_video(&nal, Pts90khz::new(well_past_wrap), false)
+            .unwrap();
         let n = mux.pull(&mut buf);
         assert!(n > 0);
         // First packet should be PAT (PID 0x0000) since PSI is due.
@@ -2233,11 +2239,12 @@ mod tests {
         // cadence must NOT trigger on a backward step (it would wrongly emit).
         let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
-        mux.push_video(&nal, 100_000, true).unwrap();
+        mux.push_video(&nal, Pts90khz::new(100_000), true).unwrap();
         let mut buf = vec![0u8; 188 * 64];
         while mux.pull(&mut buf) > 0 {}
         // Now push a backward PTS (display order earlier). Should NOT emit PSI.
-        mux.push_video(&nal, 100_000 - 270, false).unwrap(); // -3ms
+        mux.push_video(&nal, Pts90khz::new(100_000 - 270), false)
+            .unwrap(); // -3ms
         let n = mux.pull(&mut buf);
         assert!(n > 0);
         let first_pid = (((buf[1] as u16) & 0x1F) << 8) | buf[2] as u16;
@@ -2253,11 +2260,11 @@ mod tests {
         // Sanity: forward by exactly psi_interval triggers PSI.
         let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let nal = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
-        mux.push_video(&nal, 0, true).unwrap();
+        mux.push_video(&nal, Pts90khz::new(0), true).unwrap();
         let mut buf = vec![0u8; 188 * 64];
         while mux.pull(&mut buf) > 0 {}
         // psi_interval default = 100ms = 9000 ticks at 90kHz.
-        mux.push_video(&nal, 9_000, false).unwrap();
+        mux.push_video(&nal, Pts90khz::new(9_000), false).unwrap();
         let n = mux.pull(&mut buf);
         assert!(n > 0);
         // First packet should be PAT (PID 0x0000) since PSI was due.
@@ -2270,7 +2277,7 @@ mod tests {
         let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         // PES_packet_length is u16; with PTS off, max KLV payload = 65535 - 3 = 65532.
         let too_big = vec![0u8; 65_533];
-        let err = mux.push_klv(&too_big, 0, 0x00).unwrap_err();
+        let err = mux.push_klv(&too_big, Pts90khz::new(0), 0x00).unwrap_err();
         match err {
             MuxError::KlvTooLarge { size, max } => {
                 assert_eq!(size, 65_533);
@@ -2285,7 +2292,7 @@ mod tests {
         let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         // 65532 with no PTS is the spec-imposed ceiling.
         let max_klv = vec![0xAB; 65_532];
-        mux.push_klv(&max_klv, 0, 0x00)
+        mux.push_klv(&max_klv, Pts90khz::new(0), 0x00)
             .expect("max-size KLV must succeed");
     }
 
@@ -2303,7 +2310,9 @@ mod tests {
         };
         let mut mux = Muxer::new(cfg).unwrap();
         let too_big = vec![0u8; 65_528];
-        let err = mux.push_klv(&too_big, 90_000, 0x00).unwrap_err();
+        let err = mux
+            .push_klv(&too_big, Pts90khz::new(90_000), 0x00)
+            .unwrap_err();
         match err {
             MuxError::KlvTooLarge { size, max } => {
                 assert_eq!(size, 65_528);
@@ -2401,7 +2410,7 @@ mod tests {
         let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let h = mux.video_stream_handle(0).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0x42];
-        mux.push_video_to(h, &nal, 0, true).unwrap();
+        mux.push_video_to(h, &nal, Pts90khz::new(0), true).unwrap();
         // Drain and inspect: at least one packet should carry video_pid (0x1011).
         let mut buf = vec![0u8; 188 * 16];
         let n = mux.pull(&mut buf);
@@ -2428,7 +2437,7 @@ mod tests {
             0x00, 0x00,
         ];
         klv.push(0x00);
-        mux.push_klv_to(h, &klv, 0, 0x00).unwrap();
+        mux.push_klv_to(h, &klv, Pts90khz::new(0), 0x00).unwrap();
         let mut buf = vec![0u8; 188 * 16];
         let n = mux.pull(&mut buf);
         assert!(n > 0);
@@ -2466,7 +2475,8 @@ mod tests {
             0x00, 0x00, 0x00,
         ];
         let h = mux.klv_stream_handle(0).unwrap();
-        mux.push_klv_to(h, &raw_klv, 45_000, 0x00).unwrap();
+        mux.push_klv_to(h, &raw_klv, Pts90khz::new(45_000), 0x00)
+            .unwrap();
 
         let mut buf = vec![0u8; 188 * 64];
         let n = mux.pull(&mut buf);
@@ -2521,7 +2531,7 @@ mod tests {
             0x0A, 0x02, 0x00, 0x00,
         ];
         let h = mux.video_stream_handle(0).unwrap();
-        mux.push_video_to(h, &obu, 45_000, true)
+        mux.push_video_to(h, &obu, Pts90khz::new(45_000), true)
             .expect("push_video_to");
 
         let mut buf = vec![0u8; 188 * 64];
@@ -2566,7 +2576,7 @@ mod tests {
         // is under test.
         let nalu: Vec<u8> = vec![0x00, 0x00, 0x00, 0x01, 0x65, 0x88];
         let h = mux.video_stream_handle(0).unwrap();
-        mux.push_video_to(h, &nalu, 45_000, true)
+        mux.push_video_to(h, &nalu, Pts90khz::new(45_000), true)
             .expect("push_video_to");
 
         let mut buf = vec![0u8; 188 * 64];
@@ -2597,7 +2607,9 @@ mod tests {
         let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let bogus = VideoStreamHandle::from_raw(99);
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
-        let err = mux.push_video_to(bogus, &nal, 0, true).unwrap_err();
+        let err = mux
+            .push_video_to(bogus, &nal, Pts90khz::new(0), true)
+            .unwrap_err();
         match err {
             MuxError::InvalidStreamHandle { kind, index } => {
                 assert_eq!(kind, StreamKind::Video);
@@ -2611,7 +2623,9 @@ mod tests {
     fn push_klv_to_invalid_handle_rejects() {
         let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
         let bogus = KlvStreamHandle::from_raw(99);
-        let err = mux.push_klv_to(bogus, &[0; 16], 0, 0x00).unwrap_err();
+        let err = mux
+            .push_klv_to(bogus, &[0; 16], Pts90khz::new(0), 0x00)
+            .unwrap_err();
         match err {
             MuxError::InvalidStreamHandle { kind, index } => {
                 assert_eq!(kind, StreamKind::Klv);
@@ -2723,7 +2737,7 @@ mod tests {
         };
         let mut mux = Muxer::new(cfg).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
-        let err = mux.push_video(&nal, 0, true).unwrap_err();
+        let err = mux.push_video(&nal, Pts90khz::new(0), true).unwrap_err();
         assert!(
             matches!(
                 err,
@@ -2748,7 +2762,7 @@ mod tests {
             b.build().unwrap()
         };
         let mut mux = Muxer::new(cfg).unwrap();
-        let err = mux.push_klv(&[0; 16], 0, 0x00).unwrap_err();
+        let err = mux.push_klv(&[0; 16], Pts90khz::new(0), 0x00).unwrap_err();
         assert!(
             matches!(
                 err,
@@ -2774,7 +2788,7 @@ mod tests {
         };
         let mut mux = Muxer::new(cfg).unwrap();
         let nal = [0x00, 0x00, 0x00, 0x01, 0x67];
-        let err = mux.push_video(&nal, 0, true).unwrap_err();
+        let err = mux.push_video(&nal, Pts90khz::new(0), true).unwrap_err();
         assert!(
             matches!(
                 err,
@@ -2797,7 +2811,7 @@ mod tests {
             b.build().unwrap()
         };
         let mut mux = Muxer::new(cfg).unwrap();
-        let err = mux.push_klv(&[0; 16], 0, 0x00).unwrap_err();
+        let err = mux.push_klv(&[0; 16], Pts90khz::new(0), 0x00).unwrap_err();
         assert!(
             matches!(err, MuxError::NoKlvStreamsConfigured),
             "expected NoKlvStreamsConfigured, got {err:?}",
@@ -2816,7 +2830,7 @@ mod tests {
             b.build().unwrap()
         };
         let mut mux = Muxer::new(cfg).unwrap();
-        let err = mux.push_subtitle(0, &[]).unwrap_err();
+        let err = mux.push_subtitle(Pts90khz::new(0), &[]).unwrap_err();
         assert!(
             matches!(err, MuxError::NoSubtitleStreamsConfigured),
             "expected NoSubtitleStreamsConfigured, got {err:?}",
@@ -2833,7 +2847,7 @@ mod tests {
             b.build().unwrap()
         };
         let mut mux = Muxer::new(cfg).unwrap();
-        let err = mux.push_audio(&[], 0).unwrap_err();
+        let err = mux.push_audio(&[], Pts90khz::new(0)).unwrap_err();
         assert!(
             matches!(err, MuxError::NoAudioStreamsConfigured),
             "expected NoAudioStreamsConfigured, got {err:?}",
@@ -2850,7 +2864,7 @@ mod tests {
             b.build().unwrap()
         };
         let mut mux = Muxer::new(cfg).unwrap();
-        let err = mux.push_klv(&[], 0, 0x00).unwrap_err();
+        let err = mux.push_klv(&[], Pts90khz::new(0), 0x00).unwrap_err();
         assert!(
             matches!(err, MuxError::NoKlvStreamsConfigured),
             "expected NoKlvStreamsConfigured, got {err:?}",
@@ -3282,7 +3296,9 @@ mod tests {
 
         // Push 100 bytes of synthetic audio data with PTS = 90000 (1 second).
         let frames: Vec<u8> = (0..100).map(|i| i as u8).collect();
-        muxer.push_audio_to(handles[0], 90_000, &frames).unwrap();
+        muxer
+            .push_audio_to(handles[0], Pts90khz::new(90_000), &frames)
+            .unwrap();
 
         // Pull the resulting TS bytes; locate the PES start packet for PID 0x300.
         let mut buf = vec![0u8; 188 * 64];
@@ -3329,7 +3345,9 @@ mod tests {
             b.build().unwrap()
         };
         let mut muxer = Muxer::new(cfg).unwrap();
-        let err = muxer.push_audio(b"frame", 90_000).unwrap_err();
+        let err = muxer
+            .push_audio(b"frame", Pts90khz::new(90_000))
+            .unwrap_err();
         assert!(
             matches!(
                 err,
@@ -3458,7 +3476,7 @@ mod tests {
 
         mux.push_subtitle_to(
             handles[0],
-            90_000,
+            Pts90khz::new(90_000),
             b"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n",
         )
         .unwrap();
@@ -3497,7 +3515,7 @@ mod tests {
             b.build().unwrap()
         };
         let mut mux = Muxer::new(cfg).unwrap();
-        let err = mux.push_subtitle(90_000, b"x").unwrap_err();
+        let err = mux.push_subtitle(Pts90khz::new(90_000), b"x").unwrap_err();
         assert!(
             matches!(
                 err,
@@ -3522,7 +3540,9 @@ mod tests {
         };
         let mut mux = Muxer::new(cfg).unwrap();
         let too_big = vec![0u8; 70_000];
-        let err = mux.push_subtitle(90_000, &too_big).unwrap_err();
+        let err = mux
+            .push_subtitle(Pts90khz::new(90_000), &too_big)
+            .unwrap_err();
         assert!(
             matches!(err, MuxError::SubtitleTooLarge { .. }),
             "expected SubtitleTooLarge, got {err:?}",
@@ -3787,7 +3807,8 @@ mod tests {
         ]);
         inner_klv.push(0x04);
         inner_klv.extend_from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]);
-        mux.push_klv(&inner_klv, 90_000, 0x00).unwrap();
+        mux.push_klv(&inner_klv, Pts90khz::new(90_000), 0x00)
+            .unwrap();
 
         let mut buf = vec![0u8; 188 * 32];
         let n = mux.pull(&mut buf);
@@ -3811,7 +3832,8 @@ mod tests {
         assert_eq!(body, &inner_klv[..]);
 
         // Push second blob; sequence_number must increment.
-        mux.push_klv(&inner_klv, 90_000 * 2, 0x00).unwrap();
+        mux.push_klv(&inner_klv, Pts90khz::new(90_000 * 2), 0x00)
+            .unwrap();
         let n2 = mux.pull(&mut buf);
         let pes2 = reassemble_pes_payload_for_pid(&buf, n2, 0x1031);
         let (hdr2, _) = read_metadata_au_cell(&pes2).expect("valid AU cell header");
@@ -3841,7 +3863,7 @@ mod tests {
             0x00, 0x00,
         ]);
         inner_klv.push(0x00);
-        mux.push_klv(&inner_klv, 0, 0x00).unwrap();
+        mux.push_klv(&inner_klv, Pts90khz::new(0), 0x00).unwrap();
 
         let mut buf = vec![0u8; 188 * 32];
         let n = mux.pull(&mut buf);
@@ -4109,12 +4131,12 @@ mod stats_tests {
         };
         let mut m = Muxer::new(cfg).unwrap();
         let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB, 0xCC];
-        m.push_video(nal, 0, true).unwrap();
+        m.push_video(nal, Pts90khz::new(0), true).unwrap();
         let klv: &[u8] = &[
             0x06, 0x0E, 0x2B, 0x34, 0x02, 0x0B, 0x01, 0x01, 0x0E, 0x01, 0x03, 0x01, 0x01, 0x00,
             0x00, 0x00, 0x00,
         ];
-        m.push_klv(klv, 0, 0x00).unwrap();
+        m.push_klv(klv, Pts90khz::new(0), 0x00).unwrap();
         let mut buf = vec![0u8; 64 * 188];
         let n = m.pull(&mut buf);
         let st = m.stats();
@@ -4138,7 +4160,7 @@ mod stats_tests {
         };
         let mut m = Muxer::new(cfg).unwrap();
         let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
-        m.push_video(nal, 0, true).unwrap();
+        m.push_video(nal, Pts90khz::new(0), true).unwrap();
         m.reset_stats();
         let st = m.stats();
         assert_eq!(st.ts_packets_emitted, 0);
@@ -4192,12 +4214,12 @@ mod stats_tests {
 
         // First key-frame at PTS=0 — pcr_last is None, so PCR is due. This
         // first packet should carry both PCR and RA.
-        mux.push_video(nal, 0, true).unwrap();
+        mux.push_video(nal, Pts90khz::new(0), true).unwrap();
         // Second key-frame at PTS=10ms (= 900 90kHz ticks) — well below the
         // 40ms PCR threshold. PCR is NOT due. After the fix we force PCR
         // emission on PCR_PID + key_frame; the buggy code would set RA=1
         // without a PCR.
-        mux.push_video(nal, 900, true).unwrap();
+        mux.push_video(nal, Pts90khz::new(900), true).unwrap();
 
         let mut all = Vec::new();
         let mut buf = vec![0u8; 1316];
@@ -4273,8 +4295,12 @@ mod stats_tests {
             b.build().unwrap()
         };
         let mut mux = Muxer::new(cfg).unwrap();
-        mux.push_subtitle_to(SubtitleStreamHandle::pack(0, 0), 90_000, b"x")
-            .unwrap();
+        mux.push_subtitle_to(
+            SubtitleStreamHandle::pack(0, 0),
+            Pts90khz::new(90_000),
+            b"x",
+        )
+        .unwrap();
         let s = mux.stats();
         assert_eq!(s.subtitle_streams_configured, 2);
         let stream_stat = s.per_stream.get(&0x200).unwrap();

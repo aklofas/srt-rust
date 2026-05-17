@@ -3,6 +3,7 @@
 //! Drives the existing `mpegts::mux::Muxer` to produce TS bytes, feeds them
 //! into `Demuxer`, asserts the events recovered match the inputs.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, MetadataKind, SamplePayload, StreamKind, VideoCodec,
 };
@@ -75,9 +76,9 @@ fn h264_async_klv_roundtrip() {
     };
     let mut mux = Muxer::new(cfg).unwrap();
     let au = build_minimal_h264_au();
-    mux.push_video(&au, 90_000, true).unwrap();
+    mux.push_video(&au, Pts90khz::new(90_000), true).unwrap();
     let klv = build_dummy_klv();
-    mux.push_klv(&klv, 90_000, 0x00).unwrap();
+    mux.push_klv(&klv, Pts90khz::new(90_000), 0x00).unwrap();
     let bytes = drain_mux(&mut mux);
 
     let mut d = Demuxer::new();
@@ -133,8 +134,9 @@ fn h265_async_klv_roundtrip() {
     };
     let mut mux = Muxer::new(cfg).unwrap();
     let au = build_minimal_h265_au();
-    mux.push_video(&au, 90_000, true).unwrap();
-    mux.push_klv(&build_dummy_klv(), 90_000, 0x00).unwrap();
+    mux.push_video(&au, Pts90khz::new(90_000), true).unwrap();
+    mux.push_klv(&build_dummy_klv(), Pts90khz::new(90_000), 0x00)
+        .unwrap();
     let bytes = drain_mux(&mut mux);
 
     let mut d = Demuxer::new();

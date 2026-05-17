@@ -359,15 +359,16 @@ The standard pattern is push-then-drain after every push so the
 muxer's internal queue stays bounded:
 
 ```rust,no_run
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{MuxerConfig, Muxer};
 
 fn drain_pattern() -> Result<(), Box<dyn std::error::Error>> {
     let mut mux = Muxer::new(MuxerConfig::default())?;
     let mut buf = [0u8; 1316]; // 7 TS packets — typical SRT payload size
     let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
-    mux.push_video(&nal, 0, true)?;
+    mux.push_video(&nal, Pts90khz::new(0), true)?;
     let klv = vec![0xAB; 50];
-    mux.push_klv(&klv, 0)?;
+    mux.push_klv(&klv, Pts90khz::new(0))?;
     loop {
         let n = mux.pull(&mut buf);
         if n == 0 {

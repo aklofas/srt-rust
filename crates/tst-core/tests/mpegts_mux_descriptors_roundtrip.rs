@@ -6,6 +6,7 @@
 //!   - extract_user_label decodes user_private labels.
 //!   - Auto-emit suppression on caller-supplied KLVA Registration works.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::psi::extract_user_label;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer};
 use tst_core::mpegts::descriptors;
@@ -16,7 +17,8 @@ use tst_core::mpegts::mux::{
 fn drive_psi(cfg: MuxerConfig) -> Vec<u8> {
     let mut mux = Muxer::new(cfg).unwrap();
     // Push one tiny video NAL to advance PTS past the PSI threshold.
-    mux.push_video(&[0, 0, 0, 1, 0x09, 0x10], 9000, true).ok();
+    mux.push_video(&[0, 0, 0, 1, 0x09, 0x10], Pts90khz::new(9000), true)
+        .ok();
     let mut buf = vec![0u8; 188 * 32];
     let n = mux.pull(&mut buf);
     buf.truncate(n);

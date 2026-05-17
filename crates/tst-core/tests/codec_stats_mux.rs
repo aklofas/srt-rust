@@ -19,6 +19,7 @@
 //! to `tests/common/mod.rs` (which currently only holds the unrelated
 //! `imapb_tol` helper).
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     AudioCodec as MuxAudioCodec, KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder,
     VideoCodec as MuxVideoCodec,
@@ -117,7 +118,7 @@ fn h264_push_aud_plus_idr_counts_2_nals_1_ra() {
     // resolves to PID 0x100 unambiguously. AUD + IDR ⇒ 2 NALs;
     // key_frame=true ⇒ 1 random-access AU.
     let mut mux = build_one_video_muxer(MuxVideoCodec::H264, 0x100);
-    mux.push_video(&build_minimal_h264_au(), 90_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(90_000), true)
         .unwrap();
 
     match mux.stream_codec_stats(0x100) {
@@ -141,7 +142,8 @@ fn h264_push_non_key_frame_does_not_bump_ra() {
     // key_frame=false (Task 7: RA delta = u64::from(key_frame)).
     let mut mux = build_one_video_muxer(MuxVideoCodec::H264, 0x100);
     let one_nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xBB, 0xCC];
-    mux.push_video(one_nal, 90_000, false).unwrap();
+    mux.push_video(one_nal, Pts90khz::new(90_000), false)
+        .unwrap();
 
     match mux.stream_codec_stats(0x100) {
         Some(StreamCodecStats::Video {
@@ -167,12 +169,12 @@ fn klv_push_three_records_counts_three() {
     let mut mux = build_one_klv_muxer(0x200);
     // Anchor video push so the muxer has something to PCR on; not
     // strictly required for the counter bump but matches Task 5's pattern.
-    mux.push_video(&build_minimal_h264_au(), 90_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(90_000), true)
         .unwrap();
     let klv = build_dummy_klv();
-    mux.push_klv(&klv, 90_000, 0x00).unwrap();
-    mux.push_klv(&klv, 93_000, 0x00).unwrap();
-    mux.push_klv(&klv, 96_000, 0x00).unwrap();
+    mux.push_klv(&klv, Pts90khz::new(90_000), 0x00).unwrap();
+    mux.push_klv(&klv, Pts90khz::new(93_000), 0x00).unwrap();
+    mux.push_klv(&klv, Pts90khz::new(96_000), 0x00).unwrap();
 
     match mux.stream_codec_stats(0x200) {
         Some(StreamCodecStats::Klv { records, .. }) => {
@@ -188,9 +190,10 @@ fn aac_push_two_frames_counts_two() {
     // dispatch uses `codec::aac::frames(...).filter_map(Result::ok).count()`
     // which sees 2 valid frames ⇒ frames=2.
     let mut mux = build_one_audio_muxer(MuxAudioCodec::Aac, 0x300);
-    mux.push_video(&build_minimal_h264_au(), 90_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(90_000), true)
         .unwrap();
-    mux.push_audio(&build_two_adts_frames(), 90_000).unwrap();
+    mux.push_audio(&build_two_adts_frames(), Pts90khz::new(90_000))
+        .unwrap();
 
     match mux.stream_codec_stats(0x300) {
         Some(StreamCodecStats::Audio { frames, .. }) => {
@@ -211,10 +214,13 @@ fn ac3_push_audio_returns_unknown() {
     // We push raw bytes (not a valid AC-3 frame); the muxer doesn't
     // parse audio payloads — it just frames them into PES.
     let mut mux = build_one_audio_muxer(MuxAudioCodec::Ac3, 0x300);
-    mux.push_video(&build_minimal_h264_au(), 90_000, true)
+    mux.push_video(&build_minimal_h264_au(), Pts90khz::new(90_000), true)
         .unwrap();
-    mux.push_audio(&[0x0Bu8, 0x77, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 90_000)
-        .unwrap();
+    mux.push_audio(
+        &[0x0Bu8, 0x77, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+        Pts90khz::new(90_000),
+    )
+    .unwrap();
 
     assert_eq!(
         mux.stream_codec_stats(0x300),

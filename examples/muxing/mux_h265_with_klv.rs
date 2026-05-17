@@ -12,6 +12,7 @@
 use std::env;
 use std::fs::File;
 use std::io::Write;
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
 };
@@ -133,7 +134,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // One AU = one PES packet by construction. The `key` flag
         // drives the TS adaptation field's `random_access_indicator`
         // bit, which receivers use to identify seek points.
-        mux.push_video(&au, pts, key)?;
+        mux.push_video(&au, Pts90khz::new(pts), key)?;
 
         // Synthetic inner KLV blob — 50 random-looking bytes. Real
         // ST 0601 KLV is built via `tst_core::klv::st0601` (see the
@@ -156,7 +157,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 0x00 — use a non-zero value only when you have multiple independent
         // metadata services on the same PID (e.g. to mirror a `service_id`
         // byte in a metadata_klva() PMT descriptor supplied at config time).
-        mux.push_klv(&inner_klv, pts, 0x00)?;
+        mux.push_klv(&inner_klv, Pts90khz::new(pts), 0x00)?;
 
         // Standard pull pattern: drain after every push so muxer
         // memory stays bounded. `pull` returns 0 when there's nothing

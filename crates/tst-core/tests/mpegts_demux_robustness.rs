@@ -13,6 +13,7 @@
 //! Strict-mode rejection of these same issues is exercised in
 //! `mpegts_demux_strict.rs`; here we only assert the lenient-mode contract.
 
+use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, DiscontinuityKind};
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
@@ -51,10 +52,10 @@ fn build_clean_stream() -> Vec<u8> {
     // ~400-byte AU with AUD prefix + filler — produces 3 video TS packets.
     let mut au1 = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
     au1.extend(std::iter::repeat(0xAB).take(400));
-    m.push_video(&au1, 0, true).unwrap();
+    m.push_video(&au1, Pts90khz::new(0), true).unwrap();
     let mut au2 = vec![0x00, 0x00, 0x00, 0x01, 0x09, 0x10];
     au2.extend(std::iter::repeat(0xCD).take(400));
-    m.push_video(&au2, 90_000, false).unwrap();
+    m.push_video(&au2, Pts90khz::new(90_000), false).unwrap();
     drain(&mut m)
 }
 

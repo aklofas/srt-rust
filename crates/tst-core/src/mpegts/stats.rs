@@ -50,6 +50,154 @@ pub fn demux_subtitle_codec_label(
     }
 }
 
+/// Per-stream codec-specific counters keyed by PID.
+///
+/// Returned by [`Muxer::stream_codec_stats`](crate::mpegts::mux::Muxer::stream_codec_stats)
+/// and [`Demuxer::stream_codec_stats`](crate::mpegts::demux::Demuxer::stream_codec_stats).
+///
+/// The outer `Option` distinguishes three states:
+/// * `None` — PID has never been observed at this site.
+/// * `Some(StreamCodecStats::Unknown)` — PID is known to the site
+///   but no counter family applies in v1 (PSI PIDs, subtitle PIDs,
+///   audio PIDs whose codec lacks a frame iterator: LATM, AC-3).
+/// * `Some(Video / Klv / Audio)` — PID is known and counters apply.
+///
+/// `#[non_exhaustive]` on the enum + every variant so additive counters
+/// land without a major bump.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum StreamCodecStats {
+    /// PID is known to the site but no counter family applies in v1.
+    #[default]
+    Unknown,
+    /// H.264 / H.265 / H.266 (NALs) or AV1 (OBUs).
+    Video {
+        /// Total NAL units (H.264/H.265/H.266) or OBUs (AV1) across all
+        /// access units on this PID. Caller derives NALs/AU as
+        /// `nals_or_obus / items` where `items` is read from the unified
+        /// [`StreamStats`].
+        nals_or_obus: u64,
+        /// Access units that are random-access points.
+        ///
+        /// Sender side: counts pushes where `key_frame == true`
+        /// (caller-supplied flag on `Muxer::push_video` /
+        /// `Muxer::push_video_to`).
+        ///
+        /// Receiver side: counts `Sample` events whose
+        /// `random_access_indicator` (sourced from the TS adaptation
+        /// field) is `true`.
+        random_access_aus: u64,
+    },
+    /// KLV metadata stream (`stream_type` 0x15 synchronous, or 0x06+KLVA
+    /// registration-descriptor private data).
+    Klv {
+        /// Total KLV LDS records observed on this PID.
+        ///
+        /// Sender side: increments per `Muxer::push_klv` call (the
+        /// muxer's contract is one record per call; the variant is
+        /// surfaced for receiver-side symmetry and to give a stable
+        /// counter surface if the muxer ever grows a batch API).
+        ///
+        /// Receiver side: increments per `DemuxEvent::Metadata` event
+        /// emitted on this PID (today's demuxer emits one event per PES;
+        /// see the module-level note for forward-compat behavior).
+        records: u64,
+    },
+    /// Audio stream — only populated for MP2 + AAC-ADTS codecs in v1.
+    ///
+    /// AAC-LATM and AC-3 audio PIDs return [`StreamCodecStats::Unknown`]
+    /// because no frame iterator exists in `codec::*` for those codecs
+    /// today (tracked in `deferred-features.md`).
+    Audio {
+        /// Audio frames observed on this PID, iterated via
+        /// [`tst_core::codec::aac::frames`] (for AAC-ADTS) or
+        /// [`tst_core::codec::mpegaudio::frames`] (for MP2). Truncated /
+        /// bad-sync tail frames are skipped (counter only counts the
+        /// `Ok` results of the iterator).
+        frames: u64,
+    },
+}
+
+/// Internal storage. Not part of the public surface — the public
+/// [`StreamCodecStats`] is built from this on accessor call.
+///
+/// Choosing flat-struct-plus-discriminator over a nested Rust enum keeps
+/// the counter-bump call sites branch-free at the field-write line; the
+/// kind discriminator is set once at first-touch and never re-checked
+/// on the hot path.
+#[allow(dead_code)] // wired into Muxer/Demuxer by upcoming tasks (3-9)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StreamCodecCounters {
+    pub kind: CodecKind,
+    /// Only meaningful when `kind == Video`. Zero otherwise.
+    pub nals_or_obus: u64,
+    /// Only meaningful when `kind == Video`. Zero otherwise.
+    pub random_access_aus: u64,
+    /// Only meaningful when `kind == Klv`. Zero otherwise.
+    pub records: u64,
+    /// Only meaningful when `kind == Audio`. Zero otherwise.
+    pub frames: u64,
+}
+
+/// Discriminator for [`StreamCodecCounters`]. Materialized at first
+/// push (Muxer) or first event (Demuxer) for a PID whose `stream_type`
+/// falls into a counted family.
+#[allow(dead_code)] // wired into Muxer/Demuxer by upcoming tasks (3-9)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CodecKind {
+    Video,
+    Klv,
+    Audio,
+}
+
+#[allow(dead_code)] // wired into Muxer/Demuxer by upcoming tasks (3-9)
+impl StreamCodecCounters {
+    pub(crate) fn new_video() -> Self {
+        Self {
+            kind: CodecKind::Video,
+            nals_or_obus: 0,
+            random_access_aus: 0,
+            records: 0,
+            frames: 0,
+        }
+    }
+
+    pub(crate) fn new_klv() -> Self {
+        Self {
+            kind: CodecKind::Klv,
+            nals_or_obus: 0,
+            random_access_aus: 0,
+            records: 0,
+            frames: 0,
+        }
+    }
+
+    pub(crate) fn new_audio() -> Self {
+        Self {
+            kind: CodecKind::Audio,
+            nals_or_obus: 0,
+            random_access_aus: 0,
+            records: 0,
+            frames: 0,
+        }
+    }
+
+    pub(crate) fn to_public(self) -> StreamCodecStats {
+        match self.kind {
+            CodecKind::Video => StreamCodecStats::Video {
+                nals_or_obus: self.nals_or_obus,
+                random_access_aus: self.random_access_aus,
+            },
+            CodecKind::Klv => StreamCodecStats::Klv {
+                records: self.records,
+            },
+            CodecKind::Audio => StreamCodecStats::Audio {
+                frames: self.frames,
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,5 +229,39 @@ mod tests {
         let mut c = a.clone();
         c.items = 6;
         assert_ne!(a, c);
+    }
+
+    #[test]
+    fn stream_codec_stats_default_is_unknown() {
+        let s = StreamCodecStats::default();
+        assert_eq!(s, StreamCodecStats::Unknown);
+    }
+
+    #[test]
+    fn counters_video_to_public_roundtrip() {
+        let mut c = StreamCodecCounters::new_video();
+        c.nals_or_obus = 7;
+        c.random_access_aus = 1;
+        assert_eq!(
+            c.to_public(),
+            StreamCodecStats::Video {
+                nals_or_obus: 7,
+                random_access_aus: 1,
+            },
+        );
+    }
+
+    #[test]
+    fn counters_klv_to_public_roundtrip() {
+        let mut c = StreamCodecCounters::new_klv();
+        c.records = 42;
+        assert_eq!(c.to_public(), StreamCodecStats::Klv { records: 42 });
+    }
+
+    #[test]
+    fn counters_audio_to_public_roundtrip() {
+        let mut c = StreamCodecCounters::new_audio();
+        c.frames = 100;
+        assert_eq!(c.to_public(), StreamCodecStats::Audio { frames: 100 });
     }
 }

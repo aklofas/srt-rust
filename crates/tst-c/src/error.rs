@@ -127,9 +127,12 @@ pub(crate) fn tst_error_from_kind(kind: ShellErrorKind) -> TstError {
 }
 
 /// Record a shell error to the per-thread last-error slot. Used by
-/// every C ABI entry point's error path; replaces the per-variant
-/// `record_mux_sender_error` / `record_transport_error` / `record_sender_error` /
-/// `record_ts_sender_error` functions from pre-Wave-4 code.
+/// every C ABI entry point's error path. Replaces the per-variant
+/// `record_sender_error` / `record_ts_sender_error` functions from
+/// pre-Wave-4 code. The standalone-muxer path still uses
+/// `record_mux_error` (for raw `MuxError` values not wrapped in a shell),
+/// and the connect/listen helper paths still use `record_transport_error`
+/// (for raw `TransportError` from pre-shell-layer code).
 ///
 /// Returns the negative TST_E_* code suitable for direct return from
 /// the C entry point.

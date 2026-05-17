@@ -349,8 +349,10 @@ pub type BoxedDemuxReceiver = DemuxReceiver<Box<dyn crate::RecvTransport>>;
 ///
 /// # Reachable kinds
 ///
-/// `DemuxReceiver` can produce: `InputMalformed`, `TransportBroken`,
-/// `Closed`, `EndOfStream`.
+/// `DemuxReceiver` can produce: `Backpressure`, `InputMalformed`,
+/// `TransportBroken`, `Closed`, `EndOfStream`. `Backpressure` is
+/// produced when the underlying transport returns
+/// `TransportError::Backpressure` on a recv timeout.
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 #[error("DemuxReceiver error ({kind:?}): {source}")]

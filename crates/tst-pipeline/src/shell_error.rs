@@ -23,7 +23,7 @@ use crate::sender::TsFramingError;
 /// |------|:---------:|:------:|:---------:|:-------------:|:--------:|:-----------:|
 /// | `ConfigInvalid` | ✓ | — | — | — | — | — |
 /// | `InputMalformed` | ✓ | ✓ | ✓ | ✓ | — | — |
-/// | `Backpressure` | ✓ | ✓ | ✓ | — | — | — |
+/// | `Backpressure` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 /// | `TransportBroken` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 /// | `Closed` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 /// | `EndOfStream` | — | — | — | ✓ | ✓ | ✓ |
@@ -52,9 +52,9 @@ pub enum ShellErrorKind {
     /// muxer internal buffer full and waiting for drain). Caller can retry
     /// the same input after backing off.
     ///
-    /// Maps to `TST_E_BACKPRESSURE` (-5) in `tst-c` on transport-side; the
-    /// muxer-internal `MuxError::BufferFull` also folds here, mapping to
-    /// `TST_E_BUFFER_FULL` (-4) via the kind-to-code table.
+    /// Maps to `TST_E_BUFFER_FULL` (-4) in `tst-c`. Both transport-side
+    /// (`TransportError::Backpressure`) and muxer-internal
+    /// (`MuxError::BufferFull`) backpressure fold to this single code.
     Backpressure,
 
     /// Transport-layer failure — socket broken, libsrt error, factory
@@ -83,8 +83,7 @@ pub enum ShellErrorKind {
 ///
 /// # Example
 ///
-/// ```ignore
-/// // MuxSenderError::kind() is wired in Task 3 (shell error type refactors).
+/// ```
 /// use tst_pipeline::{ShellError, ShellErrorKind, MuxSenderError};
 /// use tst_core::error::MuxError;
 ///

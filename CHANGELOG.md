@@ -44,7 +44,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 **Added:**
 
 - New `tst_pipeline::ShellErrorKind` enum with 6 variants 1:1 with TST_E codes:
-  `ConfigInvalid` (-1), `InputMalformed` (-3), `Backpressure` (-4 muxer / -8 transport),
+  `ConfigInvalid` (-1), `InputMalformed` (-3), `Backpressure` (-4),
   `TransportBroken` (-8), `Closed` (-7), `EndOfStream` (-12). `#[non_exhaustive]`.
 - New `tst_pipeline::ShellError` trait: `fn kind(&self) -> ShellErrorKind`. Implemented
   by all 6 shell error types.
@@ -54,7 +54,9 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `crates/tst-c/src/error.rs` collapses from 4 per-variant `record_*_error` functions
   (~270 lines of per-variant translation) to one `record_shell_error<E: ShellError>(e: &E) -> i32`
   helper plus `tst_error_from_kind(kind: ShellErrorKind) -> TstError`. Inline match
-  routing at 4 sites in `crates/tst-c/src/demux_receiver.rs` also collapsed.
+  routing at 2 recv-path sites in `crates/tst-c/src/demux_receiver.rs` also
+  collapsed to `record_shell_error` (the open-path sites still use
+  `record_transport_error` for raw `TransportError` from connect helpers).
 - `scripts/check-tst-c-error-coverage.sh` (plan #70, 134 lines) split into two new
   scripts: `check-shell-error-kind-coverage.sh` (kind→code routing in tst-c) and
   `check-pipeline-kind-classification.sh` (inner-variant→kind routing in tst-pipeline).

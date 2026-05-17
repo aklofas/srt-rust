@@ -117,7 +117,9 @@ pub struct RawReceiverConfig {}
 ///
 /// # Reachable kinds
 ///
-/// `RawReceiver` can produce: `TransportBroken`, `Closed`, `EndOfStream`.
+/// `RawReceiver` can produce: `Backpressure`, `TransportBroken`, `Closed`,
+/// `EndOfStream`. `Backpressure` is produced when the underlying transport
+/// returns `TransportError::Backpressure` on a recv timeout.
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 #[error("RawReceiver error ({kind:?}): {source}")]

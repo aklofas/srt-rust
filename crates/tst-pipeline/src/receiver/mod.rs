@@ -143,10 +143,12 @@ pub struct ReceiverConfig {}
 ///
 /// # Reachable kinds
 ///
-/// `Receiver` can produce: `TransportBroken`, `Closed`, `EndOfStream`.
-/// `InputMalformed` is reachable only via `DemuxReceiver` (which adds
-/// the demuxer layer on top); plain `Receiver` is byte-pass-through and
-/// doesn't validate TS structure.
+/// `Receiver` can produce: `Backpressure`, `TransportBroken`, `Closed`,
+/// `EndOfStream`. `Backpressure` is produced when the underlying transport
+/// (e.g. `SrtRecvTransport`) returns `TransportError::Backpressure` on a
+/// recv timeout. `InputMalformed` is reachable only via `DemuxReceiver`
+/// (which adds the demuxer layer on top); plain `Receiver` is
+/// byte-pass-through and doesn't validate TS structure.
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 #[error("Receiver error ({kind:?}): {source}")]

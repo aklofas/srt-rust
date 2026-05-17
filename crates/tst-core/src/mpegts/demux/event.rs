@@ -323,6 +323,13 @@ pub enum NonConformantIssue {
     /// `metadata_descriptor` missing on a sync-KLV-shaped PID.
     MissingMetadataDescriptor,
     /// PCR jump or stream-monotonic timing inconsistency.
+    ///
+    /// `delta` is the signed difference in **27 MHz ticks** between the
+    /// new PCR and the previously observed PCR on the same PID, computed
+    /// via [`pcr_diff_27mhz`](crate::mpegts::common::pcr_diff_27mhz). A
+    /// large-magnitude delta indicates a discontinuous jump (forward seek,
+    /// missed packets, or non-conformant encoder). Convert to seconds by
+    /// dividing by [`PCR_TICKS_PER_SECOND`](crate::mpegts::common::PCR_TICKS_PER_SECOND).
     PcrAnomaly { delta: i64 },
     /// PSI section checksum mismatch. Lenient mode falls back to the
     /// previous PSI version; strict mode converts to error.

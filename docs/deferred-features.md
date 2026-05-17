@@ -468,21 +468,22 @@ the trigger that would unblock it.
 
 ## Audio carriage at the `tst-c` C ABI
 
-- **Status:** Deferred. Audio carriage in `mpegts::mux` and `mpegts::demux`
-  ships in Rust (codec scope: MP2 + AAC ADTS + AAC LATM + AC-3, plus
-  `DemuxerOptions::treat_as` for non-conformant stream_type cases). The
-  `tst-c` C ABI exposure is held back to land jointly with the receiver-surface
-  plan, so the muxer-side audio entry points (e.g. `tst_mux_config_add_audio_stream`,
-  `tst_*_send_audio_to`, `tst_audio_stream_handle_t`) and the receive-side
-  audio classification surface (`TstAudioCodec` mirror, `TstDemuxEvent`
-  audio arm) are designed in one coherent shape rather than piecemeal.
-- **Why deferred:** Same rationale as the per-stream PMT descriptors,
-  pre-emptive cancel, multi-program demux, and codec parsers at the C ABI —
-  the receiver-surface plan is the natural carrier for FFI exposure across
-  all post-initial-release Rust features.
-- **Trigger to revisit:** The receiver-surface `tst-c` plan starts
-  execution. At that point the C ABI gets audio entry points alongside the
-  receiver event surface, sharing the same handle types and error semantics.
+- **Status:** Deferred (no consumer ask). Audio carriage in `mpegts::mux`
+  and `mpegts::demux` ships in Rust (codec scope: MP2 + AAC ADTS + AAC
+  LATM + AC-3, plus `DemuxerOptions::treat_as` for non-conformant
+  stream_type cases). The `tst-c` C ABI sender surface currently exposes
+  `tst_mux_sender_send_video` and `tst_mux_sender_send_klv` but no
+  `tst_*_send_audio` / `tst_*_send_audio_to` siblings, and the config
+  builders do not expose `tst_mux_config_add_audio_stream` /
+  `tst_audio_stream_handle_t`.
+- **Why deferred:** Adding the entries is mechanical (parallel to the
+  existing video / KLV send entries) but requires deciding the audio
+  frame envelope shape at the C boundary — whether to take raw access
+  units, ADTS frames, LATM blocks, etc., and how to surface the codec
+  selection per stream. No consumer has asked.
+- **Trigger to revisit:** A binding-author asks for audio send through
+  the C ABI; a downstream consumer needs in-band audio for a use case
+  not served by the Rust API.
 
 ## Non-ATSC AC-3 variants (E-AC-3, DVB-shaped AC-3)
 
@@ -891,15 +892,20 @@ the trigger that would unblock it.
 
 ## Subtitle carriage at the `tst-c` C ABI
 
-- **Status:** Deferred. Plan #22 ships sender-side and receiver-side
-  Rust APIs. `tst-c` exposure (`tst_subtitle_stream_handle_t`,
-  `tst_*_send_subtitle_to`, `tst_mux_config_add_subtitle_stream`,
-  receive-side `TstSubtitleCodec`) is held back to land jointly
-  with the receiver-surface `tst-c` plan, mirroring the same
-  rationale for audio / codec parsers / multi-program demux at
-  the C ABI.
-- **Trigger to revisit:** The receiver-surface C ABI plan starts
-  execution.
+- **Status:** Deferred (no consumer ask). Plan #22 ships sender-side and
+  receiver-side Rust APIs covering DVB-sub, teletext, CEA-708, and
+  WebVTT-in-TS. The `tst-c` C ABI sender surface currently exposes
+  `tst_mux_sender_send_video` and `tst_mux_sender_send_klv` but no
+  `tst_*_send_subtitle` / `tst_*_send_subtitle_to` siblings, and the
+  config builders do not expose `tst_mux_config_add_subtitle_stream` /
+  `tst_subtitle_stream_handle_t`.
+- **Why deferred:** Adding the entries is mechanical (parallel to the
+  existing video / KLV send entries) but requires deciding the subtitle
+  envelope shape at the C boundary across the four supported codec
+  families. No consumer has asked.
+- **Trigger to revisit:** A binding-author asks for subtitle send
+  through the C ABI; a downstream consumer needs in-band subtitles
+  for a use case not served by the Rust API.
 
 ## ARIB STD-B24 / ARIB STD-B37 subtitling
 

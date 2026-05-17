@@ -302,7 +302,10 @@ pub(crate) fn record_transport_error(e: &TransportError) {
         _ => {
             // Required by #[non_exhaustive]. See scripts/check-tst-c-error-coverage.sh
             // for the CI ratchet that prevents this arm from firing.
-            (TstError::Transport, format!("unhandled TransportError variant: {e:?}"))
+            (
+                TstError::Transport,
+                format!("unhandled TransportError variant: {e:?}"),
+            )
         }
     };
     set_last_error(code, &msg);
@@ -417,9 +420,7 @@ mod tests {
     /// suspenders with the per-variant exact-code assertion.
     fn assert_not_unhandled_wildcard() {
         let s_ptr = unsafe { tst_get_last_error_str() };
-        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }
-            .to_str()
-            .unwrap();
+        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }.to_str().unwrap();
         assert!(
             !msg.starts_with("unhandled "),
             "wildcard arm fired for a known variant: {msg}"
@@ -434,10 +435,7 @@ mod tests {
         // Expected codes come from reading record_mux_error's explicit match
         // arms above.
         let cases: Vec<(MuxError, TstError)> = vec![
-            (
-                MuxError::InvalidConfig("test"),
-                TstError::InvalidConfig,
-            ),
+            (MuxError::InvalidConfig("test"), TstError::InvalidConfig),
             (MuxError::InvalidNal, TstError::InvalidNal),
             (
                 MuxError::BufferFull {
@@ -534,10 +532,7 @@ mod tests {
                 TstError::InvalidConfig,
             ),
             (
-                MuxError::AudioTooLarge {
-                    size: 100,
-                    max: 50,
-                },
+                MuxError::AudioTooLarge { size: 100, max: 50 },
                 TstError::InvalidUsage,
             ),
             (
@@ -545,10 +540,7 @@ mod tests {
                 TstError::InvalidConfig,
             ),
             (
-                MuxError::SubtitleTooLarge {
-                    size: 100,
-                    max: 50,
-                },
+                MuxError::SubtitleTooLarge { size: 100, max: 50 },
                 TstError::InvalidUsage,
             ),
             (
@@ -600,8 +592,7 @@ mod tests {
             record_mux_error(&case);
             let code = unsafe { tst_get_last_error() };
             assert_eq!(
-                code,
-                expected as i32,
+                code, expected as i32,
                 "MuxError variant mapped to wrong code: {case:?} -> got {code}, expected {}",
                 expected as i32
             );
@@ -629,8 +620,7 @@ mod tests {
             record_transport_error(&case);
             let code = unsafe { tst_get_last_error() };
             assert_eq!(
-                code,
-                expected as i32,
+                code, expected as i32,
                 "TransportError variant mapped to wrong code: {case:?} -> got {code}, expected {}",
                 expected as i32
             );
@@ -658,8 +648,7 @@ mod tests {
             record_sender_error(&case);
             let code = unsafe { tst_get_last_error() };
             assert_eq!(
-                code,
-                expected as i32,
+                code, expected as i32,
                 "MuxSenderError variant mapped to wrong code: {case:?} -> got {code}, expected {}",
                 expected as i32
             );
@@ -689,8 +678,7 @@ mod tests {
             record_ts_sender_error(&case);
             let code = unsafe { tst_get_last_error() };
             assert_eq!(
-                code,
-                expected as i32,
+                code, expected as i32,
                 "SenderError variant mapped to wrong code: {case:?} -> got {code}, expected {}",
                 expected as i32
             );

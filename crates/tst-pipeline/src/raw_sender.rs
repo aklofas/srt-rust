@@ -81,6 +81,16 @@ pub struct RawSender<T: Transport> {
     _span: std::panic::AssertUnwindSafe<Span>,
 }
 
+impl<T: Transport> std::fmt::Debug for RawSender<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RawSender")
+            .field("is_alive", &self.is_alive())
+            .field("bytes_sent", &self.stats.bytes_sent)
+            .field("transport_kind", &std::any::type_name::<T>())
+            .finish()
+    }
+}
+
 impl<T: Transport> RawSender<T> {
     pub fn new(transport: T, config: RawSenderConfig) -> Self {
         let span = info_span!(

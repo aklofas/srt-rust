@@ -80,6 +80,17 @@ pub struct RawReceiver<R: RecvTransport> {
     _span: std::panic::AssertUnwindSafe<Span>,
 }
 
+impl<R: RecvTransport> std::fmt::Debug for RawReceiver<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RawReceiver")
+            .field("is_alive", &self.is_alive())
+            .field("buf_capacity", &self.buf.capacity())
+            .field("bytes_received", &self.stats.bytes_received)
+            .field("transport_kind", &std::any::type_name::<R>())
+            .finish()
+    }
+}
+
 /// Construction parameters for [`RawReceiver`].
 ///
 /// Currently empty; reserved for future knobs that can be added

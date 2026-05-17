@@ -106,6 +106,31 @@ pub struct MuxSender<T: Transport> {
     _span: std::panic::AssertUnwindSafe<Span>,
 }
 
+impl<T: Transport> std::fmt::Debug for MuxSender<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Acquire the inner Mutex briefly to read identity + lifecycle.
+        // If poisoned (a panic happened mid-send), report poisoned-state
+        // rather than panicking the formatter.
+        match self.inner.lock() {
+            Ok(inner) => f
+                .debug_struct("MuxSender")
+                .field("closed", &inner.closed)
+                .field("video_streams", &inner.muxer.video_handles().len())
+                .field("klv_streams", &inner.muxer.klv_handles().len())
+                .field("audio_streams", &inner.muxer.audio_handles().len())
+                .field("subtitle_streams", &inner.muxer.subtitle_handles().len())
+                .field("pending_chunks", &inner.pending_bytes.len())
+                .field("transport_kind", &std::any::type_name::<T>())
+                .finish(),
+            Err(_) => f
+                .debug_struct("MuxSender")
+                .field("inner", &"<poisoned>")
+                .field("transport_kind", &std::any::type_name::<T>())
+                .finish(),
+        }
+    }
+}
+
 struct Inner<T: Transport> {
     muxer: Muxer,
     transport: T,

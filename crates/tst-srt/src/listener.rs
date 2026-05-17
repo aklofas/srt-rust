@@ -63,6 +63,16 @@ pub struct Listener {
     accepted_recv_timeout: Option<Duration>,
 }
 
+impl std::fmt::Debug for Listener {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Listener")
+            .field("handle", &self.handle)
+            .field("accepted_send_timeout", &self.accepted_send_timeout)
+            .field("accepted_recv_timeout", &self.accepted_recv_timeout)
+            .finish()
+    }
+}
+
 unsafe impl Send for Listener {}
 
 impl Listener {

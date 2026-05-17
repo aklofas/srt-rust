@@ -91,6 +91,16 @@ pub struct Sender<T: Transport> {
     _span: std::panic::AssertUnwindSafe<Span>,
 }
 
+impl<T: Transport> std::fmt::Debug for Sender<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Sender")
+            .field("closed", &self.closed)
+            .field("mode", &self.mode)
+            .field("transport_kind", &std::any::type_name::<T>())
+            .finish()
+    }
+}
+
 impl<T: Transport> Sender<T> {
     pub fn new(transport: T, config: SenderConfig) -> Self {
         let span = info_span!(

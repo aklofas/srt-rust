@@ -69,6 +69,16 @@ pub struct Socket {
     cached_payload_limit: usize,
 }
 
+impl std::fmt::Debug for Socket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Socket")
+            .field("handle", &self.handle)
+            .field("stream_id", &self.cached_stream_id)
+            .field("payload_limit", &self.cached_payload_limit)
+            .finish()
+    }
+}
+
 /// Snapshot of libsrt's per-socket performance counters (subset of `CBytePerfMon`).
 ///
 /// Loss/drop counters are split by which side observed the event:

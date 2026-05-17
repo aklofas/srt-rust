@@ -109,6 +109,16 @@ pub struct DemuxReceiver<R: RecvTransport> {
     _span: std::panic::AssertUnwindSafe<Span>,
 }
 
+impl<R: RecvTransport> std::fmt::Debug for DemuxReceiver<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DemuxReceiver")
+            .field("is_alive", &self.is_alive())
+            .field("byte_sinks", &self.byte_sinks.len())
+            .field("transport_kind", &std::any::type_name::<R>())
+            .finish()
+    }
+}
+
 impl<R: RecvTransport> DemuxReceiver<R> {
     /// Wrap a transport with default demuxer options (lenient mode).
     pub fn new(transport: R) -> Self {

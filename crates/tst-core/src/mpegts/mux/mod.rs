@@ -583,7 +583,7 @@ impl Muxer {
                 count: total_video,
             });
         }
-        let handle = VideoStreamHandle::pack(0, 0);
+        let handle = self.single_video_handle();
         self.push_video_to(handle, nal, pts_90khz, key_frame)
     }
 
@@ -632,7 +632,7 @@ impl Muxer {
                 count: total_klv,
             });
         }
-        let handle = KlvStreamHandle::pack(0, 0);
+        let handle = self.single_klv_handle();
         self.push_klv_to(handle, klv, pts_90khz, metadata_service_id)
     }
 
@@ -654,6 +654,40 @@ impl Muxer {
     ///   `PES_packet_length`.
     /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
     ///   `MuxerConfig::buffer_packets`.
+    /// Locate the program containing the lone video stream.
+    ///
+    /// Precondition: caller has verified `total_video == 1` (typically via
+    /// `push_video`'s `AmbiguousTarget` check). The `expect()` is safe because
+    /// `total_video == 1` guarantees exactly one program has a non-empty
+    /// video stream list.
+    fn single_video_handle(&self) -> VideoStreamHandle {
+        let (prog_idx, _within_idx) = self
+            .video_streams
+            .iter()
+            .enumerate()
+            .find(|(_p, v)| !v.is_empty())
+            .map(|(p, _)| (p, 0))
+            .expect("total_video == 1 guarantees one non-empty program");
+        VideoStreamHandle::pack(prog_idx, 0)
+    }
+
+    /// Locate the program containing the lone KLV stream.
+    ///
+    /// Precondition: caller has verified `total_klv == 1` (typically via
+    /// `push_klv`'s `AmbiguousTarget` check). The `expect()` is safe because
+    /// `total_klv == 1` guarantees exactly one program has a non-empty
+    /// KLV stream list.
+    fn single_klv_handle(&self) -> KlvStreamHandle {
+        let (prog_idx, _within_idx) = self
+            .klv_streams
+            .iter()
+            .enumerate()
+            .find(|(_p, k)| !k.is_empty())
+            .map(|(p, _)| (p, 0))
+            .expect("total_klv == 1 guarantees one non-empty program");
+        KlvStreamHandle::pack(prog_idx, 0)
+    }
+
     pub fn push_audio(&mut self, frames: &[u8], pts_90khz: i64) -> Result<(), MuxError> {
         let total_audio: usize = self.audio_streams.iter().map(|a| a.len()).sum();
         if total_audio == 0 {

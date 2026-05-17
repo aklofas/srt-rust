@@ -25,17 +25,20 @@ srt-sys (raw FFI)  ──→  tst-core  ──→  tst-c (cdylib + staticlib + c
                               │
                               ├──→  tst-pipeline (pipeline shells)
                               ├──→  tst-srt      (SRT transports)
-                              ├──→  tst-jni      (planned)
-                              └──→  tst-uniffi   (planned)
+                              ├──→  srt-jni      (planned)
+                              └──→  srt-uniffi   (planned)
 
+dev-only: tst-test-helpers (publish = false; shared test fixtures and
+helpers consumed by tst-core / tst-pipeline / tst-srt test suites)
 vendored: vendor/srt (libsrt 1.5.5), vendor/mbedtls (3.6.6 LTS)
 ```
 
 The layering rule is one-directional: lower layers do not depend on upper
-layers. Binding crates (`tst-c`, `tst-jni`, `tst-uniffi`) depend on
-`tst-core` only — never on `srt-sys` directly. This keeps every binding's
-surface area defined by the same safe Rust API and means a fix in
-`tst-core` reaches every binding without per-binding patches.
+layers. Binding crates (`tst-c`, `srt-jni`, `srt-uniffi`) depend on
+`tst-pipeline` + `tst-srt` (and transitively `tst-core`) — never on
+`srt-sys` directly. This keeps every binding's surface area defined by
+the same safe Rust API and means a fix in `tst-core` reaches every
+binding without per-binding patches.
 
 `srt-sys` is the raw FFI layer — bindgen-generated against libsrt 1.5.5,
 exposing roughly 72 `srt_*` functions and the full `SRT_*` constant
@@ -236,8 +239,12 @@ from any thread (a signal handler, a lifecycle observer, a parent-process
 watchdog) and the parked `send_*` / `recv_*` on the calling thread
 returns within one libsrt I/O cycle (3–10 ms). Bindings expose this as
 a language-native shutdown primitive (Kotlin `Job.cancel()` analog,
-Swift `Task.cancel()` analog, Python `threading.Event` analog, C
-`tst_cancel_handle_cancel()` once the receiver-side C ABI ships).
+Swift `Task.cancel()` analog, Python `threading.Event` analog, and
+per-shell `tst_*_cancel()` entries in the C ABI —
+`tst_mux_sender_cancel` / `tst_sender_cancel` / `tst_raw_sender_cancel`
+on the send side, `tst_demux_receiver_cancel` / `tst_receiver_cancel` /
+`tst_raw_receiver_cancel` on the receive side, plus matching
+`tst_managed_*_cancel` siblings on the reconnect decorators).
 
 This is the supported shape for breaking a sync-blocking shell from
 another thread. Shells return the trait-object form
@@ -301,7 +308,7 @@ an entry in [`docs/deferred-features.md`](deferred-features.md).
 - Other typed MISB sets — ST 0102 (Security LS) and ST 0903 (top-level VMTI + per-target `VTargetPack`) ship as sibling-layer typed views over the substrate; nested VMTI sets (VMask / VTracker / VChip / Algorithm Series / Ontology Series) and ST 0806 RVT remain pass-through.
 - Owned-projection variants on borrowed iterator types — `VTargetSeriesIter`, `KlvIterator`, and the indexed NAL iterator are borrow-coupled today; cross-language wrappability needs owned-by-value variants.
 - `serde` / `no_std` for `klv` — pure additive; behind feature flags when added.
-- Receiver-side C ABI in `tst-c` — all three receiver phases shipped: raw byte receiver (`tst_raw_receiver_t`, Phase 1, plan #59), TS-packet receiver (`tst_receiver_t`, Phase 2, plan #60), and demux event surface (`tst_demux_receiver_t` + typed `tst_event_t` tagged union + multi-program demux, Phase 3, plan #62). The tst-c receiver surface is complete. Remaining: `add_byte_sink` fan-out and `tst_pairer_t` C ABI (both deferred; see `docs/deferred-features.md`).
+- `tst-c` receiver surface — fully shipped (`tst_raw_receiver_t` Phase 1 plan #59, `tst_receiver_t` Phase 2 plan #60, `tst_demux_receiver_t` + typed `tst_event_t` tagged union + multi-program demux Phase 3 plan #62), not deferred. Listed here for cross-reference only. The two genuinely-still-deferred C-ABI hooks are `add_byte_sink` fan-out and `tst_pairer_t` (both tracked in `docs/deferred-features.md`).
 - Rustdoc lift to docs.rs — these markdown files are written CommonMark-clean so the lift is mechanical when scheduled.
 
 See [`docs/deferred-features.md`](deferred-features.md) for the

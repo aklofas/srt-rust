@@ -33,6 +33,7 @@ ALLOWLIST=(
     "tst_last_error"
     "tst_get_last_error"
     "tst_get_last_error_str"
+    "tst_clear_last_error"
     "tst_version"
     "tst_panic_recover"
 

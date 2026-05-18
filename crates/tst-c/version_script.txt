@@ -1,0 +1,22 @@
+# crates/tst-c/version_script.txt
+#
+# GNU ld version script for libtstrans.so. Restricts the dynamic export
+# table to tst_*/TST_* symbols, hiding libsrt's transitive srt_*/SRT_*
+# exports that today leak through the static link.
+#
+# Consumed by build.rs via cargo:rustc-link-arg=-Wl,--version-script=...
+# on linux-x86_64 (gating) + linux-aarch64 (gating). macOS uses a separate
+# exports.txt file (Apple ld syntax differs). Windows MSVC is deferred per
+# plan #65's runtime-test deferral (see project_plan_65 memory entry).
+#
+# The version tag "TSTRANS_0_1" is a soname-versioning hook for future
+# symbol-versioning work. Per the design doc, 0_1 maps to the initial
+# ABI version (Plan A's TST_ABI_VERSION_MAJOR/MINOR = 0/1).
+
+TSTRANS_0_1 {
+    global:
+        tst_*;
+        TST_*;
+    local:
+        *;
+};

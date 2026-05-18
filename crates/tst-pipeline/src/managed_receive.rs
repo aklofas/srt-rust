@@ -75,14 +75,14 @@ use tst_core::transport::TransportError;
 /// on `Closed` / `Broken` failure, gated by a [`ReconnectPolicy`]. See
 /// the module docs for the full semantics.
 ///
-/// # Panics
+/// # Lock poisoning policy (post-Wave-4.B)
 ///
-/// `recv_bytes` and `cancel_handle` snapshot the most-recently-built
-/// inner's cancel handle through an internal [`Mutex`] and panic if
-/// that lock has been poisoned by a previous panic in another thread
-/// inside the same `ManagedRecvTransport`. This is the standard
-/// Rust `Mutex` behavior; a poisoned lock signals that the cancel
-/// snapshot may be inconsistent and the wrapper should be discarded.
+/// - **`inner_cancel` lock** (used to snapshot the inner transport's cancel
+///   handle): `recv_bytes` returns `TransportError::Broken(...)` if the
+///   lock has been poisoned by a previous panic.
+/// - **`cancel_handle().cancel()`** uses `.lock().ok()` and silently no-ops
+///   on poison (cancel is best-effort; the closed flag is already latched).
+/// - **No gap lock**: gap-accumulator is `ManagedTransport`-only (send side).
 pub struct ManagedRecvTransport<R: RecvTransport> {
     /// Currently-live inner transport. `None` between a tear-down and a
     /// successful factory rebuild.

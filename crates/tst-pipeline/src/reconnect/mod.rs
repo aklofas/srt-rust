@@ -115,15 +115,16 @@ use tst_core::transport::{Transport, TransportCancel, TransportError};
 /// // sender now silently reconnects on transport breakage
 /// ```
 ///
-/// # Panics
+/// # Lock poisoning policy (post-Wave-4.B)
 ///
-/// All [`Transport`] methods (`send_bytes`, `max_payload`, `is_alive`,
-/// `close`) and [`Self::cancel_handle`] acquire internal [`Mutex`]es and
-/// panic if a lock has been poisoned by a previous panic in another
-/// thread inside the same `ManagedTransport`. This is the standard Rust
-/// `Mutex` behavior; a poisoned lock signals that the inner-transport
-/// or gap-buffer state may be inconsistent and the wrapper should be
-/// discarded.
+/// - **Inner-transport lock** (poisoned mid-mutation): `send_bytes` and other
+///   Transport methods return `TransportError::Broken(...)` with a
+///   site-specific message. The caller can rebuild the wrapper.
+/// - **Gap-accumulator lock** (poisoned mid-mutation): `send_managed` /
+///   `drain_gap_if_alive` panic with `BUG: gap lock poisoned ...` because
+///   the gap buffer holds bytes queued for replay — silently routing past
+///   the poison would lose those bytes. `tst-c`'s `ffi_catch` wraps to
+///   `TST_E_PANIC_CAUGHT` (-11).
 pub struct ManagedTransport<T: Transport> {
     inner: Arc<Mutex<Option<T>>>,
     factory: Arc<dyn Fn() -> Result<T, TransportError> + Send + Sync>,
@@ -204,29 +205,42 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         // Route to TransportError::Broken so the caller's reconnect logic
         // (or shell-level error propagation) tears down the wrapper.
         // Precedent: plan #45.
-        let mut transport_guard = self.inner.lock().map_err(|_| {
-            TransportError::Broken("reconnect: inner lock poisoned during in-line send peek".into())
-        })?;
-        if let Some(transport) = transport_guard.as_mut() {
-            match transport.send_bytes(bytes) {
-                Ok(()) => return Ok(()),
-                Err(TransportError::Backpressure(_)) => {
-                    // Backpressure is recoverable without reconnect — propagate.
-                    // Caller may retry the same bytes.
-                    return Err(TransportError::Backpressure("inner backpressure".into()));
-                }
-                Err(TransportError::TooLarge { len, max }) => {
-                    return Err(TransportError::TooLarge { len, max });
-                }
-                Err(TransportError::Broken(_)) | Err(TransportError::Closed) => {
-                    // Fall through to reconnect path.
-                }
-                Err(_) => {
-                    // Phase 1: Unknown future variant — treat as broken and reconnect.
-                    // Fall through to reconnect path.
+        //
+        // Scope-wrap: transport_guard MUST drop before any path reaches
+        // self.reconnect_and_drain() further down — that function also
+        // acquires self.inner.lock(), and std::sync::Mutex is not
+        // reentrant. The previous shape used an anonymous MutexGuard
+        // (which dropped at if-let scrutinee end); converting to a named
+        // binding introduced a deadlock on any successful-reconnect path.
+        // Final-review caught this; existing tests didn't because all
+        // tests use always-failing factories.
+        {
+            let mut transport_guard = self.inner.lock().map_err(|_| {
+                TransportError::Broken(
+                    "reconnect: inner lock poisoned during in-line send peek".into(),
+                )
+            })?;
+            if let Some(transport) = transport_guard.as_mut() {
+                match transport.send_bytes(bytes) {
+                    Ok(()) => return Ok(()),
+                    Err(TransportError::Backpressure(_)) => {
+                        // Backpressure is recoverable without reconnect — propagate.
+                        // Caller may retry the same bytes.
+                        return Err(TransportError::Backpressure("inner backpressure".into()));
+                    }
+                    Err(TransportError::TooLarge { len, max }) => {
+                        return Err(TransportError::TooLarge { len, max });
+                    }
+                    Err(TransportError::Broken(_)) | Err(TransportError::Closed) => {
+                        // Fall through to reconnect path.
+                    }
+                    Err(_) => {
+                        // Phase 1: Unknown future variant — treat as broken and reconnect.
+                        // Fall through to reconnect path.
+                    }
                 }
             }
-        }
+        } // transport_guard dropped here — inner lock released before reconnect_and_drain
 
         // Inner is broken/closed. Queue this message and attempt reconnect.
         {

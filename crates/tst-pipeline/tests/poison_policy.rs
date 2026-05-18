@@ -218,6 +218,94 @@ fn poisoned_inner_lock_returns_broken_not_panic() {
 }
 
 // ----------------------------------------------------------------
+// Regression: deadlock-on-successful-reconnect (caught in Plan B final review)
+// ----------------------------------------------------------------
+
+/// Regression test for a same-thread deadlock in ManagedTransport::send_managed
+/// caused by holding self.inner.lock() through self.reconnect_and_drain()
+/// (which also acquires self.inner.lock()). std::sync::Mutex is not reentrant.
+///
+/// The bug fires on the production happy-reconnect path: first connection
+/// breaks (Broken from send_bytes), factory rebuilds a fresh transport
+/// successfully, reconnect_and_drain installs it via self.inner.lock() → deadlock.
+///
+/// All Plan B's other tests used always-failing factories so the install path
+/// was never reached. This test uses a one-shot factory that fails once then
+/// succeeds, exercising the path that would deadlock without the scope-wrap fix.
+#[test]
+fn successful_reconnect_does_not_deadlock() {
+    use std::sync::mpsc;
+
+    /// Transport that fails the next send_bytes with Broken (one-shot), then
+    /// succeeds. Simulates a transport that initially errors then a freshly-
+    /// constructed sibling that succeeds — the canonical happy-reconnect shape.
+    struct OneShotBrokenThenOk {
+        broken_first: Arc<AtomicUsize>,
+    }
+    impl Transport for OneShotBrokenThenOk {
+        fn send_bytes(&mut self, _: &[u8]) -> Result<(), TransportError> {
+            if self.broken_first.fetch_sub(1, Ordering::Relaxed) > 0 {
+                Err(TransportError::Broken("simulated one-shot break".into()))
+            } else {
+                Ok(())
+            }
+        }
+        fn max_payload(&self) -> usize {
+            1316
+        }
+        fn is_alive(&self) -> bool {
+            true
+        }
+        fn close(&mut self) {}
+    }
+
+    let broken_counter = Arc::new(AtomicUsize::new(1)); // first send fails once
+    let broken_counter_cl = broken_counter.clone();
+    let factory_count = Arc::new(AtomicUsize::new(0));
+    let factory_count_cl = factory_count.clone();
+    let factory = move || {
+        factory_count_cl.fetch_add(1, Ordering::Relaxed);
+        // Fresh sibling that always succeeds (broken_first counter is zero).
+        Ok(OneShotBrokenThenOk {
+            broken_first: Arc::new(AtomicUsize::new(0)),
+        })
+    };
+
+    let mut managed = ManagedTransport::new(
+        OneShotBrokenThenOk {
+            broken_first: broken_counter_cl,
+        },
+        factory,
+        fast_policy(Some(3)),
+    );
+
+    // First send: fails with Broken, triggers reconnect, fresh transport
+    // installs successfully via reconnect_and_drain. If transport_guard is
+    // held through reconnect_and_drain, this deadlocks. Run on a separate
+    // thread with a join-timeout so the test fails (not hangs) if the
+    // deadlock returns.
+    let (tx, rx) = mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let result = managed.send_bytes(b"hello world");
+        let _ = tx.send(result);
+    });
+
+    let result = rx
+        .recv_timeout(Duration::from_secs(3))
+        .expect("send_bytes deadlocked — transport_guard held through reconnect_and_drain");
+    let _ = handle.join();
+
+    // Successful reconnect path should ultimately succeed (or surface a
+    // legitimate error like Broken-after-budget-exhausted; both are OK as
+    // long as we didn't deadlock).
+    eprintln!("successful_reconnect_does_not_deadlock: send_bytes result = {result:?}");
+    assert!(
+        factory_count.load(Ordering::Relaxed) >= 1,
+        "factory should have been called for reconnect"
+    );
+}
+
+// ----------------------------------------------------------------
 // Task 4 — poisoned gap lock → BUG: panic
 // ----------------------------------------------------------------
 

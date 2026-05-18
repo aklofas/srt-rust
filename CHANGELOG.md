@@ -88,7 +88,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`reconnect/mod.rs:214/226`). Plan #45's `.lock().ok()` cancel-path
   precedent extended to all 6 audit-enumerated sites
   (05-error-handling.md Finding 2). The 17 `.lock().unwrap()` sites in
-  `mux_sender.rs` are out of scope for Plan B (not in audit enumeration).
+  `mux_sender.rs` and 4 additional sites in `reconnect/mod.rs`
+  (size-precheck inside send_managed, plus `Transport::max_payload`,
+  `Transport::is_alive`, `Transport::close`) are out of scope for Plan B
+  (not in audit enumeration).
 
 - Three booleans (`closed`, `explicit_close`, `cancelled`) now disambiguate
   ManagedRecvTransport state. The original 2-bool design (`closed` +

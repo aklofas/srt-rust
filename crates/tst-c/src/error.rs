@@ -343,7 +343,7 @@ pub(crate) fn record_mux_error(e: &MuxError) {
         }
         _ => {
             // Required by #[non_exhaustive]. CI ratchet
-            // scripts/check-tst-c-error-coverage.sh enforces that every
+            // scripts/check-raw-c-mapper-coverage.sh enforces that every
             // upstream MuxError variant is explicitly matched above; if
             // this arm fires at runtime, the ratchet failed (or was
             // bypassed). The Debug format names the unmapped variant so
@@ -364,7 +364,7 @@ pub(crate) fn record_transport_error(e: &TransportError) {
             format!("message {len} bytes exceeds payload cap {max}"),
         ),
         _ => {
-            // Required by #[non_exhaustive]. See scripts/check-tst-c-error-coverage.sh
+            // Required by #[non_exhaustive]. See scripts/check-raw-c-mapper-coverage.sh
             // for the CI ratchet that prevents this arm from firing.
             (
                 TstError::Transport,

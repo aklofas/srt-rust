@@ -120,3 +120,106 @@ pub unsafe extern "C" fn tst_get_abi_version_major() -> u32 {
 pub unsafe extern "C" fn tst_get_abi_version_minor() -> u32 {
     TST_ABI_VERSION_MINOR as u32
 }
+
+// =========================================================================
+// Package version (matches Cargo.toml)
+// =========================================================================
+//
+// Bindings query these at runtime to surface the loaded library's
+// version to their consumers (e.g., `tstrans.version` in a Java toString).
+// Distinct from the ABI version above — the package version bumps every
+// release (patches/minors/majors per SemVer), while the ABI version only
+// bumps on breaking C-ABI change.
+
+/// Returns the package major version at runtime — matches
+/// `Cargo.toml`'s major field at the time `libtstrans` was built.
+///
+/// Always equal to [`TST_VERSION_MAJOR`] cast to `u32`. Cross-validate
+/// against the compile-time header macro to detect SO/header mismatches:
+///
+/// ```c
+/// if (tst_get_version_major() != TST_VERSION_MAJOR) {
+///     fprintf(stderr, "tstrans header/SO version mismatch\n");
+///     return 1;
+/// }
+/// ```
+///
+/// # Safety
+///
+/// Sound under any caller invocation; see [`tst_get_abi_version_major`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_get_version_major() -> u32 {
+    TST_VERSION_MAJOR as u32
+}
+
+/// Returns the package minor version at runtime. See
+/// [`tst_get_version_major`] for the usage pattern.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_get_version_minor() -> u32 {
+    TST_VERSION_MINOR as u32
+}
+
+/// Returns the package patch version at runtime. See
+/// [`tst_get_version_major`] for the usage pattern.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_get_version_patch() -> u32 {
+    TST_VERSION_PATCH as u32
+}
+
+/// Returns the package version packed as `(M << 16) | (m << 8) | p`.
+///
+/// Lets binding authors compare versions as single integers:
+///
+/// ```c
+/// /* "at least 0.1.2" check */
+/// if (tst_get_version_packed() < ((0 << 16) | (1 << 8) | 2)) {
+///     fprintf(stderr, "tstrans too old\n");
+///     return 1;
+/// }
+/// ```
+///
+/// Each field caps at 255 (the encoding uses 8 bits per field with the
+/// major field shifted into the upper 8 bits of a 24-bit window). Pre-1.0
+/// values fit comfortably; revisit if any field ever exceeds 255.
+///
+/// Convention matches libsrt's `SRT_VERSION_*` packing.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_get_version_packed() -> u32 {
+    let m = TST_VERSION_MAJOR as u32;
+    let n = TST_VERSION_MINOR as u32;
+    let p = TST_VERSION_PATCH as u32;
+    (m << 16) | (n << 8) | p
+}
+
+/// Returns a NUL-terminated `"<major>.<minor>.<patch>"` C string at
+/// runtime.
+///
+/// Pointer is valid for the process lifetime (backed by a `'static`
+/// Rust string created at compile time via `concat!` of the
+/// `env!("CARGO_PKG_VERSION_*")` variables). Caller must NOT free.
+///
+/// ```c
+/// printf("tstrans version: %s\n", tst_get_version_string());
+/// ```
+///
+/// # Safety
+///
+/// Sound under any caller invocation; the returned pointer is always
+/// non-NULL and process-lifetime stable. Reading past the NUL byte is
+/// undefined behavior per usual C string rules.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_get_version_string() -> *const libc::c_char {
+    // Construct the NUL-terminated string at compile time from the
+    // Cargo-package env vars. The trailing `\0` extends the &str's
+    // backing storage by one byte so `.as_ptr()` yields a valid C
+    // string. Single source of truth: Cargo.toml.
+    static VERSION: &str = concat!(
+        env!("CARGO_PKG_VERSION_MAJOR"),
+        ".",
+        env!("CARGO_PKG_VERSION_MINOR"),
+        ".",
+        env!("CARGO_PKG_VERSION_PATCH"),
+        "\0",
+    );
+    VERSION.as_ptr() as *const libc::c_char
+}

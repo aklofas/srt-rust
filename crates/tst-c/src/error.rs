@@ -497,6 +497,49 @@ mod tests {
     }
 
     #[test]
+    fn tst_clear_last_error_resets_to_success_state() {
+        // Step 1: prime the thread-local with a non-success error.
+        set_last_error(TstError::InvalidConfig, "stale failure");
+        assert_eq!(
+            unsafe { tst_get_last_error() },
+            TstError::InvalidConfig as i32,
+            "precondition: error should be set before clear"
+        );
+        let s_ptr = unsafe { tst_get_last_error_str() };
+        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        assert_eq!(s.to_str().unwrap(), "stale failure");
+
+        // Step 2: call the new public C entry under test.
+        unsafe { tst_clear_last_error() };
+
+        // Step 3: assert both code and message are reset.
+        assert_eq!(
+            unsafe { tst_get_last_error() },
+            0,
+            "after tst_clear_last_error(), code should be TST_E_SUCCESS (0)"
+        );
+        let s_ptr = unsafe { tst_get_last_error_str() };
+        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        assert_eq!(
+            s.to_str().unwrap(),
+            "",
+            "after tst_clear_last_error(), message should be empty"
+        );
+    }
+
+    #[test]
+    fn tst_clear_last_error_idempotent_when_already_clear() {
+        // Reset baseline, then clear twice — must remain in success state.
+        clear_last_error_for_test();
+        assert_eq!(unsafe { tst_get_last_error() }, 0);
+
+        unsafe { tst_clear_last_error() };
+        assert_eq!(unsafe { tst_get_last_error() }, 0);
+        unsafe { tst_clear_last_error() };
+        assert_eq!(unsafe { tst_get_last_error() }, 0);
+    }
+
+    #[test]
     fn ambiguous_target_message_points_to_to_siblings() {
         let e = MuxError::AmbiguousTarget {
             kind: StreamKind::Video,

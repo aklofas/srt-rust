@@ -348,8 +348,6 @@ pub enum Error {
     Transport(#[from] tst_core::transport::TransportError),
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
-
 // ============================================================================
 // libsrt-error → typed-enum mapping
 // ============================================================================

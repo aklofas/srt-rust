@@ -34,6 +34,46 @@
 #define TST_VERSION_PATCH 0
 
 /**
+ * Major version of the C ABI contract. Bumped only on **breaking
+ * C-ABI change** — i.e., a change that would force a consumer to
+ * rebuild against a different `tstrans.h`. NOT bumped on:
+ *
+ * - Cargo package version bumps (track `TST_VERSION_*` for that).
+ * - Adding new `tst_*` functions or `TST_*` macros (backwards-compatible).
+ * - Adding new `TstError::*` codes (backwards-compatible; old codes
+ *   remain stable per the documented `#[repr(i32)]` policy in
+ *   `crates/tst-c/src/error.rs`).
+ *
+ * Bumped on:
+ *
+ * - Removing or renaming any `tst_*` symbol.
+ * - Changing a struct layout / size in a way that breaks
+ *   `_Static_assert(sizeof(...) == N)` lines in the header trailer.
+ * - Changing the signature of an existing `tst_*` function.
+ * - Changing the semantic contract of an existing function in a way
+ *   that would silently miscompile or misbehave in pre-existing
+ *   consumers (e.g., flipping return-code polarity, changing
+ *   buffer-ownership semantics).
+ *
+ * **Initial value:** `0.1` (pre-1.0). Bumps to `0.2`, `0.3`, ... during
+ * pre-1.0 breakage per `feedback_break_freely_prerelease.md`. Settles
+ * to `1.0` at first stable release.
+ *
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MAJOR 0` in the
+ * generated header. Runtime accessor: [`tst_get_abi_version_major`].
+ */
+#define TST_ABI_VERSION_MAJOR 0
+
+/**
+ * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
+ * for the bump policy.
+ *
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 1` in the
+ * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
+ */
+#define TST_ABI_VERSION_MINOR 1
+
+/**
  * Sentinel returned by `tst_mux_config_add_*_stream` on failure.
  * On failure, the last-error is also populated; check
  * `tst_get_last_error()` for the negative `TST_E_*` code.
@@ -920,6 +960,120 @@ extern "C" {
 #endif // __cplusplus
 
 /**
+ * Returns the C ABI contract major version at runtime.
+ *
+ * Always returns the value of [`TST_ABI_VERSION_MAJOR`] cast to `u32`.
+ * Use the compile-time macro `TST_ABI_VERSION_MAJOR` in `tstrans.h` to
+ * learn what the header you compiled against expects; compare against
+ * this runtime value to detect SO/header mismatches.
+ *
+ * # Safety
+ *
+ * Sound under any caller invocation — no pointer arguments, no
+ * mutating state, no internal locks. The `unsafe extern "C"`
+ * annotation matches the convention of every other `tst_*` entry
+ * point for consistency.
+ */
+ uint32_t tst_get_abi_version_major(void);
+
+/**
+ * Returns the C ABI contract minor version at runtime.
+ *
+ * See [`tst_get_abi_version_major`] for the binding-author usage
+ * pattern and the bump policy.
+ *
+ * # Safety
+ *
+ * Sound under any caller invocation; see [`tst_get_abi_version_major`].
+ */
+ uint32_t tst_get_abi_version_minor(void);
+
+/**
+ * Returns the package major version at runtime — matches
+ * `Cargo.toml`'s major field at the time `libtstrans` was built.
+ *
+ * Always equal to [`TST_VERSION_MAJOR`] cast to `u32`. Cross-validate
+ * against the compile-time header macro to detect SO/header mismatches:
+ *
+ * ```c
+ * if (tst_get_version_major() != TST_VERSION_MAJOR) {
+ *     fprintf(stderr, "tstrans header/SO version mismatch\n");
+ *     return 1;
+ * }
+ * ```
+ *
+ * # Safety
+ *
+ * Sound under any caller invocation; see [`tst_get_abi_version_major`].
+ */
+ uint32_t tst_get_version_major(void);
+
+/**
+ * Returns the package minor version at runtime. See
+ * [`tst_get_version_major`] for the usage pattern.
+ *
+ * # Safety
+ *
+ * Sound under any caller invocation; see [`tst_get_version_major`].
+ */
+ uint32_t tst_get_version_minor(void);
+
+/**
+ * Returns the package patch version at runtime. See
+ * [`tst_get_version_major`] for the usage pattern.
+ *
+ * # Safety
+ *
+ * Sound under any caller invocation; see [`tst_get_version_major`].
+ */
+ uint32_t tst_get_version_patch(void);
+
+/**
+ * Returns the package version packed as `(M << 16) | (m << 8) | p`.
+ *
+ * Lets binding authors compare versions as single integers:
+ *
+ * ```c
+ * /* "at least 0.1.2" check */
+ * if (tst_get_version_packed() < ((0 << 16) | (1 << 8) | 2)) {
+ *     fprintf(stderr, "tstrans too old\n");
+ *     return 1;
+ * }
+ * ```
+ *
+ * Each field caps at 255 (the encoding uses 8 bits per field with the
+ * major field shifted into the upper 8 bits of a 24-bit window). Pre-1.0
+ * values fit comfortably; revisit if any field ever exceeds 255.
+ *
+ * Convention matches libsrt's `SRT_VERSION_*` packing.
+ *
+ * # Safety
+ *
+ * Sound under any caller invocation; see [`tst_get_version_major`].
+ */
+ uint32_t tst_get_version_packed(void);
+
+/**
+ * Returns a NUL-terminated `"<major>.<minor>.<patch>"` C string at
+ * runtime.
+ *
+ * Pointer is valid for the process lifetime (backed by a `'static`
+ * Rust string created at compile time via `concat!` of the
+ * `env!("CARGO_PKG_VERSION_*")` variables). Caller must NOT free.
+ *
+ * ```c
+ * printf("tstrans version: %s\n", tst_get_version_string());
+ * ```
+ *
+ * # Safety
+ *
+ * Sound under any caller invocation; the returned pointer is always
+ * non-NULL and process-lifetime stable. Reading past the NUL byte is
+ * undefined behavior per usual C string rules.
+ */
+ const char *tst_get_version_string(void);
+
+/**
  * Create a new, empty mux config. No programs are added — call
  * `tst_mux_config_add_program` before using this config to open a muxer
  * or sender. Returns NULL only on allocation failure (OOM).
@@ -1499,6 +1653,39 @@ int tst_managed_demux_receiver_get_stream_stats(struct tst_managed_demux_receive
  * no error.
  */
  const char *tst_get_last_error_str(void);
+
+/**
+ * Clears the thread-local last-error slot, resetting it to
+ * `(TST_E_SUCCESS, "")`.
+ *
+ * Most callers should NOT need this — every fallible `tst_*` function
+ * returns its result code directly (0 on success, negative on failure),
+ * so checking the return value is the idiomatic pattern. The
+ * thread-local last-error slot is a side-channel for the **message
+ * string** corresponding to the most recent failure, useful for
+ * logging and diagnostics.
+ *
+ * Use this function when:
+ *
+ * 1. Chaining checks through code that doesn't propagate return values
+ *    (e.g., a series of `tst_mux_config_add_*_stream` calls in a
+ *    higher-level helper that returns a single combined status).
+ * 2. Discriminating "the most recent call succeeded" from "the most
+ *    recent call failed and set an error" using `tst_get_last_error()
+ *    == 0` as the post-call check.
+ *
+ * **Thread-locality:** clears only the calling thread's slot. Other
+ * threads' last-error values are unaffected. Matches the libsrt
+ * `srt_clearlasterror()` semantic.
+ *
+ * # Safety
+ *
+ * Sound under any caller invocation — no pointer arguments, no
+ * mutating shared state (the thread-local is per-thread by definition),
+ * no internal locks. The `unsafe extern "C"` annotation matches the
+ * convention of every other `tst_*` entry point for consistency.
+ */
+ void tst_clear_last_error(void);
 
 /**
  * Open a `tst_mux_sender_t` connected via SRT.

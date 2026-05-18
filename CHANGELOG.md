@@ -7,6 +7,61 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 5.A C ABI versioning + last-error clear (docs/plans/2026-05-21-c-abi-versioning-and-last-error-clear.md)
+
+**Added (purely additive — no breaking changes):**
+
+- 3-tier C ABI version model: package + ABI + header.
+  - **Package version** (tracks `Cargo.toml`):
+    - `pub const TST_VERSION_MAJOR/MINOR/PATCH` already existed; emitted
+      as `#define TST_VERSION_MAJOR 0` in `tstrans.h` since plan #1.
+    - **NEW** runtime accessors: `tst_get_version_major()`,
+      `tst_get_version_minor()`, `tst_get_version_patch()`,
+      `tst_get_version_packed()` (returns `(M<<16)|(m<<8)|p` matching
+      libsrt convention), `tst_get_version_string()` (returns a
+      process-lifetime NUL-terminated `"M.m.p"` C string).
+  - **ABI contract version** (bumped only on breaking C-ABI change):
+    - **NEW** `pub const TST_ABI_VERSION_MAJOR/MINOR = 0/1` (initial
+      `0.1` pre-1.0 value). Emitted as `#define TST_ABI_VERSION_MAJOR 0`
+      / `#define TST_ABI_VERSION_MINOR 1`.
+    - **NEW** runtime accessors `tst_get_abi_version_major()`,
+      `tst_get_abi_version_minor()`.
+- **NEW** `tst_clear_last_error()` C entry — resets the thread-local
+  last-error slot to `(TST_E_SUCCESS, "")`. Mirrors libsrt's
+  `srt_clearlasterror()`. Caller-driven; idempotent.
+- **NEW** C smoke test
+  `crates/tst-c/examples/c/getting-started/version_check.c`.
+  Cross-validates every (runtime, header) pair; the canonical pattern
+  for binding-author load-time SO/header consistency checks.
+- **NEW** Rust integration test `crates/tst-c/tests/version_check.rs`
+  (7 tests asserting each runtime accessor returns the expected const).
+- **NEW** in-file last-error-clear tests in `crates/tst-c/src/error.rs`
+  (`tst_clear_last_error_resets_to_success_state` +
+  `tst_clear_last_error_idempotent_when_already_clear`).
+
+**Internal:**
+
+- Decision D1 (see plan): macro prefix is `TST_*` not `TSTRANS_*` for
+  consistency with the existing `TST_VERSION_*` / `TST_INVALID_*` /
+  `TST_STATS_*` precedent.
+- Decision D2: version entries live inline in `crates/tst-c/src/lib.rs`
+  rather than a new `version.rs`. Plan C's tst-c reorg owns any
+  future extraction.
+- Cbindgen mechanism: `pub const FOO: <integer-type> = N;` automatically
+  emits as `#define FOO N` (verified by the existing `TST_VERSION_*`
+  precedent on HEAD). No `[defines]` config block needed.
+
+**Out of scope (deferred per Wave 5.A scope):**
+
+- ABI-bump CI ratchet (relies on maintainer discipline +
+  `header_drift.rs` to catch silent breakage).
+- Per-entry-point versioning (`*_added_in` accessors).
+- Domain-grouping comments in `tstrans.h` (Plan B).
+- Symbol-script restriction of exports (Plan B).
+- C ABI `_Static_assert` for `tst_socket_stats_t` (Plan B).
+
+---
+
 ## [Unreleased] — Wave 4.C CancelHandle rename + pairing relocate + polish (docs/plans/2026-05-20-cancelhandle-pairing-and-polish.md)
 
 **Breaking (pre-1.0):**

@@ -7,7 +7,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Wave 4.C CancelHandle rename + pairing relocate + polish (plan TBD-by-merge)
+## [Unreleased] — Wave 4.C CancelHandle rename + pairing relocate + polish (docs/plans/2026-05-20-cancelhandle-pairing-and-polish.md)
 
 **Breaking (pre-1.0):**
 
@@ -76,7 +76,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Wave 4.A shell error kind fold (plan TBD-by-merge)
+## [Unreleased] — Wave 4.A shell error kind fold (docs/plans/2026-05-20-shell-error-kind-fold.md)
 
 **Breaking (pre-1.0):**
 
@@ -133,7 +133,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Wave 4.B Transport semantics + mutex policy (plan TBD-by-merge)
+## [Unreleased] — Wave 4.B Transport semantics + mutex policy (docs/plans/2026-05-20-transport-semantics-and-mutex-policy.md)
 
 **Breaking (pre-1.0):**
 

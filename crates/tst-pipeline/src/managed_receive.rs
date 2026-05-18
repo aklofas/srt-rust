@@ -143,7 +143,8 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
         // to ShellErrorKind::Closed (→ TST_E_CLOSED -7), distinguishing from
         // peer-EOS which arrives as TransportError::Closed from the inner
         // transport's recv_bytes and maps to ShellErrorKind::EndOfStream
-        // (→ TST_E_END_OF_STREAM -12). See plan TBD-by-merge-Wave-4.B.
+        // (→ TST_E_END_OF_STREAM -12). See
+        // docs/plans/2026-05-20-transport-semantics-and-mutex-policy.md.
         //
         // The entry gate distinguishes two latched-close scenarios:
         // - explicit_close || cancelled → caller-initiated → ExplicitClose.
@@ -184,7 +185,8 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
                     // "stream is over from the inner-transport's perspective." Shell's
                     // kind_from_transport maps Closed → EndOfStream (→ TST_E_END_OF_STREAM)
                     // for the receive side, distinguishing from caller-initiated ExplicitClose
-                    // above. See plan TBD-by-merge-Wave-4.B for the disposition rationale.
+                    // above. See docs/plans/2026-05-20-transport-semantics-and-mutex-policy.md
+                    // for the disposition rationale.
                     self.closed = true;
                     return Err(TransportError::Closed);
                 };

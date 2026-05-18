@@ -111,26 +111,62 @@ tst_mux_sender_close(sender);
 
 ### C ABI error-mapping contract
 
-Every variant of the upstream pipeline error enums — `tst_core::error::MuxError`,
-`tst_core::transport::TransportError`, `tst_pipeline::MuxSenderError`, and
-`tst_pipeline::sender::SenderError` — is explicitly mapped to a `TstError`
-code in `crates/tst-c/src/error.rs` via the corresponding `record_*_error`
-function. Each function's wildcard `_ => ...` arm exists only to satisfy
-Rust's `#[non_exhaustive]` requirement; it is unreachable in normal use.
+Every C-ABI error code surfaced through `tst_get_last_error()` and the
+direct negative-return-value contract derives from one of two
+explicit-coverage paths in `crates/tst-c/src/error.rs`:
 
-The CI ratchet `scripts/check-tst-c-error-coverage.sh` enforces this
-contract: when an upstream variant is added, the script fails until the
-variant is explicitly handled in the relevant `record_*_error` function
-body before the wildcard. Binding authors can therefore assume that every
-documented `TstError` code maps to a specific upstream condition, and that
-no upstream variant silently degrades to `TST_E_INTERNAL`,
-`TST_E_INVALID_CONFIG`, or `TST_E_TRANSPORT` without an explicit choice by
-the tst-c maintainers.
+**Shell-entry path (the common case).** Every C entry point that owns
+a shell handle (`tst_mux_sender_*`, `tst_ts_sender_*`,
+`tst_raw_sender_*`, `tst_demux_receiver_*`, `tst_ts_receiver_*`,
+`tst_raw_receiver_*`) routes errors through one generic helper:
+
+```rust
+record_shell_error<E: ShellError>(e: &E) -> i32
+// 1. e.kind() -> ShellErrorKind
+// 2. tst_error_from_kind(kind) -> TstError
+// 3. set_last_error(code, &e.to_string())
+// 4. return negative code
+```
+
+Two CI ratchets guard this path against silent regressions:
+
+- `scripts/check-shell-error-kind-coverage.sh` — fails if a future
+  `ShellErrorKind` variant is added without an explicit arm in
+  `tst_error_from_kind` (before the `#[non_exhaustive]` wildcard).
+- `scripts/check-pipeline-kind-classification.sh` — fails if a future
+  variant of `MuxError`, `TransportError`, `DemuxError`, or
+  `TsFramingError` is added without an explicit arm in the
+  corresponding `kind_from_*` helper in
+  `crates/tst-pipeline/src/shell_error.rs`.
+
+**Raw-mapper path (standalone-muxer + open helpers).** Two C-ABI paths
+surface upstream errors before any shell wraps them and still go
+through dedicated per-variant tables:
+
+- `record_mux_error(&MuxError)` — used by `tst_muxer_*` (the
+  standalone muxer, no transport).
+- `record_transport_error(&TransportError)` — used by `tst_*_open_url`
+  / `tst_*_open_addr` / `tst_*_listen_*` for connect/listen failures
+  surfaced before a shell exists.
+
+One CI ratchet guards this path:
+
+- `scripts/check-raw-c-mapper-coverage.sh` — fails if a future
+  `MuxError` or `TransportError` variant is added without an explicit
+  arm in the corresponding `record_*_error` function.
+
+Each path's wildcard `_ => ...` arm exists only to satisfy Rust's
+`#[non_exhaustive]` requirement and is unreachable when the
+corresponding ratchet is green. Binding authors can therefore assume
+that every documented `TstError` code maps to a specific upstream
+condition; no upstream variant silently degrades to `TST_E_INTERNAL`,
+`TST_E_INVALID_CONFIG`, or `TST_E_TRANSPORT` without an explicit
+choice by the tst-c maintainers.
 
 If you encounter a `tst_get_last_error_str()` value beginning with
-`"unhandled <Enum> variant: ..."`, that means the ratchet was bypassed or
-failed; please file an issue with the variant name from the last-error
-string.
+`"unhandled <Enum> variant: ..."`, that means one of the three
+ratchets was bypassed or failed; please file an issue with the
+variant name from the last-error string.
 
 ### Transient vs persistent error codes
 

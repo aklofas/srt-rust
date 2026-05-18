@@ -205,9 +205,7 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         // (or shell-level error propagation) tears down the wrapper.
         // Precedent: plan #45.
         let mut transport_guard = self.inner.lock().map_err(|_| {
-            TransportError::Broken(
-                "reconnect: inner lock poisoned during in-line send peek".into(),
-            )
+            TransportError::Broken("reconnect: inner lock poisoned during in-line send peek".into())
         })?;
         if let Some(transport) = transport_guard.as_mut() {
             match transport.send_bytes(bytes) {
@@ -240,7 +238,10 @@ impl<T: Transport + 'static> ManagedTransport<T> {
             // convention (plan #50); tst-c's ffi_catch wraps to
             // TST_E_PANIC_CAUGHT (-11). See enclosing send_managed's
             // /// # Panics rustdoc for the contract.
-            let mut gap = self.gap.lock().expect("BUG: gap lock poisoned — gap buffer is invariant-critical");
+            let mut gap = self
+                .gap
+                .lock()
+                .expect("BUG: gap lock poisoned — gap buffer is invariant-critical");
             let _ = gap.enqueue(bytes.to_vec()); // overflow policy applies
         }
         self.reconnect_and_drain()
@@ -264,9 +265,7 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         // Route to TransportError::Broken so the reconnect loop or higher
         // shell tears down the wrapper. Precedent: plan #45.
         let mut transport_guard = self.inner.lock().map_err(|_| {
-            TransportError::Broken(
-                "reconnect: inner lock poisoned during drain peek".into(),
-            )
+            TransportError::Broken("reconnect: inner lock poisoned during drain peek".into())
         })?;
         let Some(transport) = transport_guard.as_mut() else {
             return Ok(()); // can't drain without a transport
@@ -274,7 +273,10 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         // Plan B mutex sweep (documented panic): gap-accumulator is
         // invariant-critical. See Step 4.1 / send_managed /// # Panics
         // rustdoc for rationale.
-        let mut gap = self.gap.lock().expect("BUG: gap lock poisoned — gap buffer is invariant-critical");
+        let mut gap = self
+            .gap
+            .lock()
+            .expect("BUG: gap lock poisoned — gap buffer is invariant-critical");
         while let Some(msg) = gap.front() {
             match transport.send_bytes(msg) {
                 Ok(()) => {

@@ -64,6 +64,47 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 4.B Transport semantics + mutex policy (plan TBD-by-merge)
+
+**Breaking (pre-1.0):**
+
+- `ManagedRecvTransport::recv_bytes` returns `TransportError::ExplicitClose`
+  on caller-initiated paths (entry check + cross-thread cancel signal),
+  replacing `TransportError::Closed`. The reconnect-budget-exhausted exit
+  continues to return `TransportError::Closed` (peer-EOS-ish). The
+  receive-side shell's `kind_from_transport` (Plan A) maps `ExplicitClose`
+  → `ShellErrorKind::Closed` → `TST_E_CLOSED` (-7) and `Closed` →
+  `ShellErrorKind::EndOfStream` → `TST_E_END_OF_STREAM` (-12), fixing the
+  long-standing peer-EOS-vs-caller-close conflation (03-architecture.md
+  Finding 5).
+
+**Internal:**
+
+- Mutex poison sweep in `tst-pipeline`: 4 recoverable-path sites now route
+  to `TransportError::Broken` with site-specific messages
+  (`managed_receive.rs:179`, `reconnect/mod.rs:193/222/287`); 2
+  invariant-critical gap-accumulator sites now panic with `BUG: ...`
+  prefix caught by `tst-c`'s `ffi_catch` as `TST_E_PANIC_CAUGHT` (-11)
+  (`reconnect/mod.rs:214/226`). Plan #45's `.lock().ok()` cancel-path
+  precedent extended to all 6 audit-enumerated sites
+  (05-error-handling.md Finding 2). The 17 `.lock().unwrap()` sites in
+  `mux_sender.rs` are out of scope for Plan B (not in audit enumeration).
+
+- Three booleans (`closed`, `explicit_close`, `cancelled`) now disambiguate
+  ManagedRecvTransport state. The original 2-bool design (`closed` +
+  `cancelled`) couldn't distinguish caller-close from budget-exhausted
+  (both set `closed=true`); added `explicit_close` set only by caller
+  paths so the re-entry gate routes correctly.
+
+- New `# Panics` rustdoc on `ManagedTransport::send_managed` and
+  `ManagedTransport::drain_gap_if_alive` documenting the `BUG: gap lock
+  poisoned` panic contract.
+
+- New `crates/tst-pipeline/tests/poison_policy.rs` with 4 discriminating
+  tests covering Tasks 2-4 behaviors.
+
+---
+
 ## [Unreleased] — Wave 3.2 naming consistency + Stats typing (plan TBD-by-merge)
 
 **Breaking (pre-1.0):**

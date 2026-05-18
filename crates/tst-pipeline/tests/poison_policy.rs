@@ -111,7 +111,9 @@ fn cancel_during_active_recv_returns_explicit_close() {
     });
 
     let mut managed = ManagedRecvTransport::new(inner, factory, fast_policy(Some(5)));
-    let cancel_handle = managed.cancel_handle().expect("cancel_handle returned None");
+    let cancel_handle = managed
+        .cancel_handle()
+        .expect("cancel_handle returned None");
 
     // Fire cancel from another thread after a brief delay so the parked
     // recv_bytes is genuinely active when cancel hits.
@@ -122,7 +124,10 @@ fn cancel_during_active_recv_returns_explicit_close() {
 
     let mut buf = [0u8; 1316];
     let result = managed.recv_bytes(&mut buf);
-    assert!(matches!(result, Err(TransportError::ExplicitClose)), "got: {result:?}");
+    assert!(
+        matches!(result, Err(TransportError::ExplicitClose)),
+        "got: {result:?}"
+    );
 }
 
 /// Peer disconnects cleanly (no caller cancel). After the reconnect budget
@@ -142,7 +147,10 @@ fn peer_eos_returns_closed_not_explicit_close() {
     let mut buf = [0u8; 1316];
     let result = managed.recv_bytes(&mut buf);
     // After 2 attempts the budget is exhausted; returns Closed (not ExplicitClose).
-    assert!(matches!(result, Err(TransportError::Closed)), "got: {result:?}");
+    assert!(
+        matches!(result, Err(TransportError::Closed)),
+        "got: {result:?}"
+    );
     // Verify we actually exercised the reconnect path (factory was called).
     assert!(factory_calls.load(Ordering::Relaxed) >= 1);
 }
@@ -197,7 +205,10 @@ fn poisoned_inner_lock_returns_broken_not_panic() {
         .map_err(|_| TransportError::Broken("test: pattern-only".into()))
         .map(|g| *g);
 
-    assert!(matches!(result, Err(TransportError::Broken(_))), "got: {result:?}");
+    assert!(
+        matches!(result, Err(TransportError::Broken(_))),
+        "got: {result:?}"
+    );
     if let Err(TransportError::Broken(s)) = result {
         assert!(s.contains("test: pattern-only"), "message: {s}");
     }

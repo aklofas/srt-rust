@@ -134,11 +134,11 @@ string.
 
 ## Cancel handles
 
-Every long-lived shell exposes `cancel_handle()` returning a `CancelHandle`
+Every long-lived shell exposes `cancel_handle()` returning a `SrtCancelHandle`
 that's `Send + Sync` and one-shot. Bindings should expose this as a
 language-native shutdown primitive (e.g. Kotlin `Job.cancel()` analog,
 Swift `Task.cancel()` analog, Python `threading.Event`-shaped). See
-`docs/cancel-handle.md` for the full pattern.
+`docs/srt-cancel-handle.md` for the full pattern.
 
 ## Builder shape
 

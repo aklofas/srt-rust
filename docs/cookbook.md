@@ -1242,7 +1242,7 @@ mux.push_subtitle_to(h, 90_000, cue.as_bytes())?;
 
 Runnable: `cargo run -p tst-examples --example mux_with_webvtt_subtitles -- output.ts`.
 
-### 31. Graceful shutdown from another thread via `CancelHandle`
+### 31. Graceful shutdown from another thread via `SrtCancelHandle`
 
 Use case: the main thread is parked in `send_*` / `recv_*`, and a
 sibling thread (signal handler, lifecycle observer, parent-process
@@ -1301,7 +1301,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-See [`cancel-handle.md`](./cancel-handle.md) for the full pattern,
+See [`srt-cancel-handle.md`](./srt-cancel-handle.md) for the full pattern,
 threading guarantees, and per-language idiom table (Java/Kotlin,
 Swift, Python, C). No standalone example; the snippet above runs as
 a doctest.

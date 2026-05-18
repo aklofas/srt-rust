@@ -35,7 +35,7 @@ const SRT_INVALID_SOCK: srt_sys::SRTSOCKET = -1;
 ///    Equivalent to drop's cancel; always returns `Ok(())` (the inner
 ///    `srt_close` rc is currently swallowed; see method doc).
 /// 3. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
-///    [`tst_core::CancelHandle`] (clone-able, `Send + Sync`), then
+///    [`tst_core::SrtCancelHandle`] (clone-able, `Send + Sync`), then
 ///    `cancel()` from any thread. Closes the libsrt socket; a peer
 ///    parked in `send` / `recv` returns
 ///    [`SendError::ConnectionBroken`] / [`RecvError::ConnectionBroken`]
@@ -52,14 +52,14 @@ const SRT_INVALID_SOCK: srt_sys::SRTSOCKET = -1;
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as sock:` calls drop on exit |
 /// | C | (deferred — `Socket` is not directly exposed at the C ABI; senders/receivers wrap it) |
 ///
-/// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
+/// See [`docs/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/srt-cancel-handle.md) for the full cancel-handle pattern.
 pub struct Socket {
     handle: srt_sys::SRTSOCKET,
     /// Shared close-once primitive. Cloned out via `cancel_handle()` so a
     /// thread parked in `send`/`recv` can be woken from another thread.
     /// Drop calls `cancel.cancel()` so explicit `close()` and Drop never
     /// double-close.
-    cancel: tst_core::CancelHandle,
+    cancel: tst_core::SrtCancelHandle,
     /// Cached at construction; libsrt allows reading via getsockflag, but
     /// reading once is cheaper.
     cached_stream_id: Option<String>,
@@ -346,9 +346,9 @@ impl Socket {
     ///
     /// **Always returns `Ok`.** The `Result` is retained for API stability
     /// and may carry an error in a future revision (the underlying
-    /// `srt_close` rc is currently swallowed by the `CancelHandle` closer).
+    /// `srt_close` rc is currently swallowed by the `SrtCancelHandle` closer).
     pub fn close(self) -> Result<(), IoError> {
-        // CancelHandle::cancel does the srt_close and is idempotent. We
+        // SrtCancelHandle::cancel does the srt_close and is idempotent. We
         // can't easily plumb the rc back out (closer is `Fn`), so the
         // Result type stays for back-compat but always returns Ok.
         self.cancel.cancel();
@@ -358,7 +358,7 @@ impl Socket {
     /// Clone-able close handle. Calling `cancel()` from any thread
     /// closes the underlying SRT socket — wakes a peer thread parked in
     /// `send` or `recv` with a Broken-class error. Idempotent.
-    pub fn cancel_handle(&self) -> tst_core::CancelHandle {
+    pub fn cancel_handle(&self) -> tst_core::SrtCancelHandle {
         self.cancel.clone()
     }
 }
@@ -811,11 +811,11 @@ fn classify_recv_error(raw: crate::error::RawError, buf_len: usize) -> RecvError
     raw.into()
 }
 
-/// Build a CancelHandle that closes the SRTSOCKET on first cancel.
-fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> tst_core::CancelHandle {
-    tst_core::CancelHandle::new(handle as i64, |h| {
+/// Build a SrtCancelHandle that closes the SRTSOCKET on first cancel.
+fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> tst_core::SrtCancelHandle {
+    tst_core::SrtCancelHandle::new(handle as i64, |h| {
         // SAFETY: h was the same SRTSOCKET we stored; libsrt accepts
-        // srt_close from any thread; the atomic-swap in CancelHandle
+        // srt_close from any thread; the atomic-swap in SrtCancelHandle
         // guarantees this runs at most once.
         let _ = unsafe { srt_sys::srt_close(h as srt_sys::SRTSOCKET) };
     })
@@ -844,13 +844,13 @@ mod tests {
     /// already ran).
     #[test]
     fn double_close_via_cancel_then_drop_is_safe() {
-        // We construct a CancelHandle by hand around a fake handle with a
+        // We construct a SrtCancelHandle by hand around a fake handle with a
         // closer that records the call count, mirroring what Socket holds.
         use std::sync::atomic::{AtomicU32, Ordering};
-        use tst_core::CancelHandle;
+        use tst_core::SrtCancelHandle;
         let calls = std::sync::Arc::new(AtomicU32::new(0));
         let calls_cl = calls.clone();
-        let cancel = CancelHandle::new(99, move |_| {
+        let cancel = SrtCancelHandle::new(99, move |_| {
             calls_cl.fetch_add(1, Ordering::SeqCst);
         });
         // Cancel once (simulates Socket::close).

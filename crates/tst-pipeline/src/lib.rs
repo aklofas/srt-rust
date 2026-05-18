@@ -82,14 +82,19 @@ pub use shell_error::{ShellError, ShellErrorKind};
 // Re-export the core trait types for caller convenience.
 pub use tst_core::transport::{RecvTransport, Transport, TransportCancel, TransportError};
 
-// Re-export the concrete cross-thread shutdown primitive at the crate
-// root so FFI binding authors (`srt-jni`, `srt-uniffi`, `tst-pyo3`,
-// `tst-c`) have a single import path: `tst_pipeline::CancelHandle`.
+// Re-export the concrete SRT cross-thread shutdown primitive at the
+// crate root so FFI binding authors (`srt-jni`, `srt-uniffi`,
+// `tst-pyo3`, `tst-c`) have a single import path:
+// `tst_pipeline::SrtCancelHandle`.
 //
-// `CancelHandle` is a transport-agnostic primitive defined in
-// `tst-core`. The pipeline-layer abstraction is `TransportCancel`
-// above; shells accept `Option<Arc<dyn TransportCancel + Send + Sync>>`
-// via `cancel_handle()`. This re-export lets binding authors name the
-// concrete type when they need to construct one or type-erase to it.
-// See [`crate`]'s `cancel-handle.md` doc for the full pattern.
-pub use tst_core::CancelHandle;
+// `SrtCancelHandle` is SRT-shaped (wraps a libsrt `SRTSOCKET` integer
+// handle with `i64::MIN` reserved as the cancelled sentinel). It is
+// defined in `tst-core` for layering reasons — non-SRT transports that
+// arrive in the future will add their own cancel primitives shaped for
+// their underlying I/O. The pipeline-layer trait abstraction is
+// `TransportCancel` above; shells accept `Option<Arc<dyn TransportCancel
+// + Send + Sync>>` via `cancel_handle()`. This re-export lets binding
+// authors name the concrete SRT-side type when they need to construct
+// one or type-erase to it. See [`crate`]'s `srt-cancel-handle.md` doc
+// for the full pattern.
+pub use tst_core::SrtCancelHandle;

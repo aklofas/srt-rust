@@ -92,7 +92,7 @@ pub type ByteSink = Box<dyn FnMut(&[u8]) + Send>;
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as rx:` calls `close()` on exit |
 /// | C | Call `tst_demux_receiver_close(p)` (idempotent NULL-safe); or `tst_demux_receiver_cancel(p)` from another thread to wake a blocked `tst_demux_receiver_recv_event` |
 ///
-/// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
+/// See [`docs/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/srt-cancel-handle.md) for the full cancel-handle pattern.
 pub struct DemuxReceiver<R: RecvTransport> {
     ts: Receiver<R>,
     demux: Demuxer,

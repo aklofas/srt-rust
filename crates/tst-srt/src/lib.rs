@@ -41,8 +41,9 @@ pub use listener::Listener;
 pub use options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, Role, StreamId};
 pub use socket::{Socket, Stats};
 pub use transport::SrtTransport;
-// `CancelHandle` is a transport-agnostic primitive defined in `tst-core`;
-// re-exported here for backwards compatibility so `tst_srt::CancelHandle`
-// keeps working at existing call sites.
-pub use tst_core::CancelHandle;
+// `SrtCancelHandle` is the SRT-shaped cancellation primitive (defined
+// in `tst-core` for layering reasons but the implementation is sized for
+// libsrt's `SRTSOCKET` integer handle); re-exported here so
+// `tst_srt::SrtCancelHandle` works without an explicit `tst_core` import.
+pub use tst_core::SrtCancelHandle;
 pub use url::{SrtUrl, UrlError, UrlOverlay};

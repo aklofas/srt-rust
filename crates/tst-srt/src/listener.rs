@@ -32,7 +32,7 @@ const SRT_EPOLL_IN: c_int = 0x1;
 ///    Equivalent to drop's cancel; always returns `Ok(())` (the inner
 ///    `srt_close` rc is currently swallowed; see method doc).
 /// 3. **Cross-thread cancel** — call [`Self::cancel_handle`] to obtain a
-///    [`tst_core::CancelHandle`] (clone-able, `Send + Sync`), then
+///    [`tst_core::SrtCancelHandle`] (clone-able, `Send + Sync`), then
 ///    `cancel()` from any thread. Closes the listening socket; a peer
 ///    parked in [`Self::accept`] returns
 ///    [`AcceptError::ListenerClosed`] within one libsrt I/O cycle
@@ -50,14 +50,14 @@ const SRT_EPOLL_IN: c_int = 0x1;
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as listener:` calls drop on exit |
 /// | C | (deferred — `Listener` is not directly exposed at the C ABI today) |
 ///
-/// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
+/// See [`docs/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/srt-cancel-handle.md) for the full cancel-handle pattern.
 pub struct Listener {
     handle: srt_sys::SRTSOCKET,
     /// Shared close-once primitive. Cloned out via `cancel_handle()` so a
     /// thread parked in `accept` can be woken from another thread. Drop
     /// calls `cancel.cancel()` so explicit `close()` and Drop never
     /// double-close.
-    cancel: tst_core::CancelHandle,
+    cancel: tst_core::SrtCancelHandle,
     /// Stored for inheritance into accepted Sockets.
     accepted_send_timeout: Option<Duration>,
     accepted_recv_timeout: Option<Duration>,
@@ -367,7 +367,7 @@ impl Listener {
     ///
     /// **Always returns `Ok`.** The `Result` is retained for API stability
     /// and may carry an error in a future revision (the underlying
-    /// `srt_close` rc is currently swallowed by the `CancelHandle` closer).
+    /// `srt_close` rc is currently swallowed by the `SrtCancelHandle` closer).
     pub fn close(self) -> Result<(), IoError> {
         self.cancel.cancel();
         Ok(())
@@ -375,7 +375,7 @@ impl Listener {
 
     /// Clone-able close handle. Calling `cancel()` from any thread
     /// closes the underlying SRT listener socket. Idempotent.
-    pub fn cancel_handle(&self) -> tst_core::CancelHandle {
+    pub fn cancel_handle(&self) -> tst_core::SrtCancelHandle {
         self.cancel.clone()
     }
 }
@@ -387,11 +387,11 @@ impl Drop for Listener {
     }
 }
 
-/// Build a CancelHandle that closes the SRTSOCKET on first cancel.
-fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> tst_core::CancelHandle {
-    tst_core::CancelHandle::new(handle as i64, |h| {
+/// Build a SrtCancelHandle that closes the SRTSOCKET on first cancel.
+fn make_cancel_handle(handle: srt_sys::SRTSOCKET) -> tst_core::SrtCancelHandle {
+    tst_core::SrtCancelHandle::new(handle as i64, |h| {
         // SAFETY: h was the same SRTSOCKET we stored; libsrt accepts
-        // srt_close from any thread; the atomic-swap in CancelHandle
+        // srt_close from any thread; the atomic-swap in SrtCancelHandle
         // guarantees this runs at most once.
         let _ = unsafe { srt_sys::srt_close(h as srt_sys::SRTSOCKET) };
     })

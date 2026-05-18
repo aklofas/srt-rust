@@ -828,7 +828,7 @@ the trigger that would unblock it.
 - **Status:** `tst_srt::Socket::close(self) -> Result<(), IoError>` always
   returns `Ok` after the 2026-05-03 cancellation refactor. The
   underlying `srt_close` return code is consumed inside the
-  `CancelHandle` closer (which has a `Fn` signature, no return path).
+  `SrtCancelHandle` closer (which has a `Fn` signature, no return path).
   Same applies to `tst_srt::Listener::close`.
 - **Why deferred:** The signature is preserved for API stability —
   changing it now would be a breaking change for consumers who pattern

@@ -1,4 +1,4 @@
-# CancelHandle — universal cross-thread shutdown
+# SrtCancelHandle — SRT cross-thread shutdown primitive
 
 Every long-lived pipeline shell (`MuxSender`, `Sender`, `RawSender`,
 `DemuxReceiver`, `Receiver`, `RawReceiver`) blocks the calling thread
@@ -11,13 +11,16 @@ The handle is `Send + Sync`, one-shot, and idempotent — multiple
 
 ## Two layers, same primitive
 
-There are two named types in play; both surface the same underlying
-behaviour. Pick the one whose layer you're on:
+There are two named types in play. The trait `TransportCancel` is
+transport-agnostic (every `Transport` impl decides whether to surface a
+cancel handle); the concrete struct `SrtCancelHandle` is SRT-shaped
+(wraps an `SRTSOCKET` integer handle with `i64::MIN` as the cancelled
+sentinel). Pick the one whose layer you're on:
 
 | Layer | Type | Where it lives |
 |-------|------|----------------|
 | Pipeline (trait, dynamic dispatch) | [`TransportCancel`](../crates/tst-core/src/transport.rs) (trait) | `tst_pipeline::TransportCancel` (re-export of `tst_core::transport::TransportCancel`) |
-| Concrete primitive (transport-agnostic) | [`CancelHandle`](../crates/tst-core/src/cancel.rs) (struct) | `tst_pipeline::CancelHandle` (re-export of `tst_core::CancelHandle`); also re-exported as `tst_srt::CancelHandle` |
+| Concrete primitive (transport-agnostic) | [`SrtCancelHandle`](../crates/tst-core/src/cancel.rs) (struct) | `tst_pipeline::SrtCancelHandle` (re-export of `tst_core::SrtCancelHandle`); also re-exported as `tst_srt::SrtCancelHandle` |
 
 Pipeline shells return the trait shape:
 
@@ -31,7 +34,7 @@ in-memory test mock returns `None`). All real transports — `SrtTransport`,
 return `Some`.
 
 `tst-srt`'s `Socket::cancel_handle()` and `Listener::cancel_handle()`
-return the concrete `CancelHandle` struct directly (no `Option`); these
+return the concrete `SrtCancelHandle` struct directly (no `Option`); these
 are the paths to use when you're working below the pipeline shells.
 
 ## Obtaining a handle
@@ -50,11 +53,11 @@ let cancel = cancel.expect("real transports always return Some");
 From `tst-srt` directly (Socket / Listener):
 
 ```rust,ignore
-use tst_pipeline::CancelHandle;  // re-exported from tst_core::CancelHandle
+use tst_pipeline::SrtCancelHandle;  // re-exported from tst_core::SrtCancelHandle
 
 let socket: tst_srt::Socket = /* ... */;
-let cancel: CancelHandle = socket.cancel_handle();
-// `CancelHandle: Clone` — the inner state is Arc-shared, so all clones
+let cancel: SrtCancelHandle = socket.cancel_handle();
+// `SrtCancelHandle: Clone` — the inner state is Arc-shared, so all clones
 // fire the closer once across the whole set.
 ```
 
@@ -117,7 +120,7 @@ shells, or the libsrt error for direct `Socket::send` / `recv`).
 
 ## Per-language idiom
 
-Bindings should expose `CancelHandle` as a language-native shutdown
+Bindings should expose `SrtCancelHandle` as a language-native shutdown
 primitive. The shape maps cleanly:
 
 | Language | Idiom |
@@ -133,7 +136,7 @@ The Rust API is the source of truth — every binding crate forwards
 
 ## Threading guarantees
 
-- `CancelHandle: Send + Sync + Clone`. Stash it in any container, move
+- `SrtCancelHandle: Send + Sync + Clone`. Stash it in any container, move
   it into any thread, clone it freely — every clone shares the same
   atomic state, so `cancel()` on any clone fires the closer at most
   once across the whole set.
@@ -145,7 +148,7 @@ The Rust API is the source of truth — every binding crate forwards
   thread that wins the atomic swap. The closer's return code is
   currently swallowed — see the inline doc on `Socket::close` for
   context.
-- `is_cancelled()` (on the concrete `CancelHandle` struct) is advisory;
+- `is_cancelled()` (on the concrete `SrtCancelHandle` struct) is advisory;
   the underlying close may not have completed yet on another thread.
 
 ## Why this and not `close()`?
@@ -167,11 +170,11 @@ doesn't*.
 
 ## Anti-priorities
 
-`CancelHandle` is the supported shape for sync-blocking shutdown. The
+`SrtCancelHandle` is the supported shape for sync-blocking shutdown. The
 API is intentionally synchronous-blocking; when async lands later as a
 separate crate (`tst-srt-async` or feature-gated), it ships
 `Future::poll`-shaped cancellation alongside but doesn't deprecate
-`CancelHandle` — sync consumers stay on the trait-object pattern
+`SrtCancelHandle` — sync consumers stay on the trait-object pattern
 above. See the **Sync vs. async** section in
 [`architecture.md`](./architecture.md) for the long form.
 

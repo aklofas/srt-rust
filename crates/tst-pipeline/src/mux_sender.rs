@@ -89,7 +89,7 @@ pub struct MuxSenderStats {
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as sender:` calls `close()` on exit |
 /// | C | `tst_mux_sender_close(sender)` (explicit; mirrors `Drop`) |
 ///
-/// See [`docs/cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/cancel-handle.md) for the full cancel-handle pattern.
+/// See [`docs/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/srt-cancel-handle.md) for the full cancel-handle pattern.
 pub struct MuxSender<T: Transport> {
     inner: Mutex<Inner<T>>,
     /// Cancel handle snapshot, taken from the transport at construction

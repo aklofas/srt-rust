@@ -72,7 +72,7 @@ free of any libsrt dependency. `tst-srt` re-exports the safe wrappers
 at the crate root: `Socket` / `Listener` (connected and listening
 sockets), `SocketBuilder` / `ListenerBuilder` (fluent construction over
 `SocketConfig` / `ListenerConfig`), `SrtTransport` (the canonical
-`Transport` + `RecvTransport` impl), `CancelHandle` (one-shot
+`Transport` + `RecvTransport` impl), `SrtCancelHandle` (one-shot
 pre-emptive close), and `Stats` (live snapshot of libsrt's internal
 counters). The `url::SrtUrl` type parses `srt://host:port?key=value&…`
 into a builder overlay using libsrt's documented option vocabulary,
@@ -230,10 +230,10 @@ everyone. The three canonical pairing patterns live as cookbook
 recipes (12, 13, 14) with runnable example companions
 (`pair_sync_klv.rs`, `tee_disk_and_demux.rs`).
 
-## Cross-thread shutdown — `CancelHandle`
+## Cross-thread shutdown — `SrtCancelHandle`
 
 Every long-lived pipeline shell exposes a
-[`CancelHandle`](./cancel-handle.md) for cross-thread cancellation. The
+[`SrtCancelHandle`](./srt-cancel-handle.md) for cross-thread cancellation. The
 handle is `Send + Sync`, one-shot, idempotent, and `Clone` — fire it
 from any thread (a signal handler, a lifecycle observer, a parent-process
 watchdog) and the parked `send_*` / `recv_*` on the calling thread
@@ -250,17 +250,17 @@ This is the supported shape for breaking a sync-blocking shell from
 another thread. Shells return the trait-object form
 `Option<Arc<dyn TransportCancel + Send + Sync>>` — pipeline-layer,
 transport-agnostic. The concrete struct lives in `tst-core`
-(`CancelHandle` wraps an integer handle plus a closer closure — for
+(`SrtCancelHandle` wraps an integer handle plus a closer closure — for
 SRT, the handle is the `SRTSOCKET` and the closer is `srt_close`) and
-is re-exported as `tst_pipeline::CancelHandle` (and as
-`tst_srt::CancelHandle`) so binding authors have a single import path.
+is re-exported as `tst_pipeline::SrtCancelHandle` (and as
+`tst_srt::SrtCancelHandle`) so binding authors have a single import path.
 The Rust API stays synchronous-blocking; the cancel handle is the
 supported escape hatch for "wake the parked syscall now" without
 time-sliced polling. (When async lands later as a separate crate,
-`CancelHandle` remains the sync-blocking primitive — see
+`SrtCancelHandle` remains the sync-blocking primitive — see
 **Sync vs. async** below.)
 
-See [`cancel-handle.md`](./cancel-handle.md) for the full pattern,
+See [`srt-cancel-handle.md`](./srt-cancel-handle.md) for the full pattern,
 threading guarantees, and per-language idiom table; cookbook recipe 31
 is the runnable companion.
 

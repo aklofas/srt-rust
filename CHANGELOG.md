@@ -130,6 +130,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   scripts: `check-shell-error-kind-coverage.sh` (kind→code routing in tst-c) and
   `check-pipeline-kind-classification.sh` (inner-variant→kind routing in tst-pipeline).
 - `#[non_exhaustive]` BASELINE bumped 72 → 87 in `.github/workflows/ci.yml`.
+- The +5 delta over Plan A's projected `72 → 82` baseline comes from
+  net new rustdoc-comment-line mentions of `#[non_exhaustive]` (7 comment
+  lines added, 2 deleted = +5 net), not from additional public-API attribute
+  decorations. The 10 actual attribute additions match Plan A's projection
+  (ShellErrorKind + 6 shell error structs + 3 source enums). Discriminating
+  attribute-only count today: 67 (`rg -c` inflated count: 87; difference: 20
+  comment-line mentions across `crates/`). Comment sites include the
+  `kind_from_transport` pattern notes, the `ShellErrorKind` variant rustdoc,
+  and shell-error-source struct docs. See memory entry
+  `feedback_baseline_count_projection_undercount.md` for the systemic root
+  cause; the CI `BASELINE` constant continues to track the inflated `rg -c`
+  count for compatibility with the existing guard expression.
 
 ---
 

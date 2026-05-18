@@ -77,3 +77,46 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 /// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 1` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 pub const TST_ABI_VERSION_MINOR: libc::c_int = 1;
+
+// =========================================================================
+// Runtime version accessors
+// =========================================================================
+//
+// Bindings (srt-jni, srt-uniffi, pure-C consumers) use these to verify
+// the loaded shared object matches the header they compiled against:
+//
+//     assert(tst_get_abi_version_major() == TST_ABI_VERSION_MAJOR);
+//     assert(tst_get_abi_version_minor() >= TST_ABI_VERSION_MINOR);
+//
+// See examples/c/getting-started/version_check.c for the canonical pattern.
+
+/// Returns the C ABI contract major version at runtime.
+///
+/// Always returns the value of [`TST_ABI_VERSION_MAJOR`] cast to `u32`.
+/// Use the compile-time macro `TST_ABI_VERSION_MAJOR` in `tstrans.h` to
+/// learn what the header you compiled against expects; compare against
+/// this runtime value to detect SO/header mismatches.
+///
+/// # Safety
+///
+/// Sound under any caller invocation — no pointer arguments, no
+/// mutating state, no internal locks. The `unsafe extern "C"`
+/// annotation matches the convention of every other `tst_*` entry
+/// point for consistency.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_get_abi_version_major() -> u32 {
+    TST_ABI_VERSION_MAJOR as u32
+}
+
+/// Returns the C ABI contract minor version at runtime.
+///
+/// See [`tst_get_abi_version_major`] for the binding-author usage
+/// pattern and the bump policy.
+///
+/// # Safety
+///
+/// Sound under any caller invocation; see [`tst_get_abi_version_major`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_get_abi_version_minor() -> u32 {
+    TST_ABI_VERSION_MINOR as u32
+}

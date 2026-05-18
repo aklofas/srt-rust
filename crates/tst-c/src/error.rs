@@ -120,6 +120,42 @@ pub unsafe extern "C" fn tst_get_last_error_str() -> *const libc::c_char {
     })
 }
 
+/// Clears the thread-local last-error slot, resetting it to
+/// `(TST_E_SUCCESS, "")`.
+///
+/// Most callers should NOT need this — every fallible `tst_*` function
+/// returns its result code directly (0 on success, negative on failure),
+/// so checking the return value is the idiomatic pattern. The
+/// thread-local last-error slot is a side-channel for the **message
+/// string** corresponding to the most recent failure, useful for
+/// logging and diagnostics.
+///
+/// Use this function when:
+///
+/// 1. Chaining checks through code that doesn't propagate return values
+///    (e.g., a series of `tst_mux_config_add_*_stream` calls in a
+///    higher-level helper that returns a single combined status).
+/// 2. Discriminating "the most recent call succeeded" from "the most
+///    recent call failed and set an error" using `tst_get_last_error()
+///    == 0` as the post-call check.
+///
+/// **Thread-locality:** clears only the calling thread's slot. Other
+/// threads' last-error values are unaffected. Matches the libsrt
+/// `srt_clearlasterror()` semantic.
+///
+/// # Safety
+///
+/// Sound under any caller invocation — no pointer arguments, no
+/// mutating shared state (the thread-local is per-thread by definition),
+/// no internal locks. The `unsafe extern "C"` annotation matches the
+/// convention of every other `tst_*` entry point for consistency.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_clear_last_error() {
+    crate::panic::ffi_catch((), || {
+        set_last_error(TstError::Success, "");
+    });
+}
+
 use tst_core::error::MuxError;
 #[cfg(test)]
 use tst_core::mpegts::mux::StreamKind;

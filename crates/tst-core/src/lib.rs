@@ -43,7 +43,7 @@ pub mod klv;
 pub mod mpegts;
 pub mod transport;
 
-pub use cancel::CancelHandle;
+pub use cancel::SrtCancelHandle;
 pub use error::{DemuxError, KlvDecodeError, KlvEncodeError, KlvFieldError, MuxError};
 pub use klv::st0601::UasDatalinkLs;
 pub use transport::{RecvTransport, SocketStats, Transport, TransportCancel, TransportError};

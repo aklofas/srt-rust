@@ -1,4 +1,4 @@
-//! `CancelHandle` — thread-safe one-shot socket-close primitive.
+//! `SrtCancelHandle` — thread-safe one-shot socket-close primitive.
 //!
 //! Wraps a libsrt `SRTSOCKET` (or any other integer handle) plus a
 //! caller-supplied closer closure. Calling `cancel()` from any thread
@@ -27,11 +27,11 @@ type Closer = Box<dyn Fn(i64) + Send + Sync>;
 /// Thread-safe one-shot socket-close primitive.
 ///
 /// Construct via `Socket::cancel_handle()` / `Listener::cancel_handle()`
-/// (or the test-only `CancelHandle::new`). Clone freely — every clone
+/// (or the test-only `SrtCancelHandle::new`). Clone freely — every clone
 /// shares the same atomic state, so calling `cancel()` on any clone
 /// fires the closer exactly once.
 #[derive(Clone)]
-pub struct CancelHandle {
+pub struct SrtCancelHandle {
     state: Arc<State>,
 }
 
@@ -40,7 +40,7 @@ struct State {
     closer: Closer,
 }
 
-impl CancelHandle {
+impl SrtCancelHandle {
     /// Build a handle. The closer is invoked at most once, with the
     /// handle value passed in here. Public so callers outside the `srt`
     /// module (e.g. test mocks) can construct one; production code uses
@@ -77,9 +77,9 @@ impl CancelHandle {
     }
 }
 
-impl std::fmt::Debug for CancelHandle {
+impl std::fmt::Debug for SrtCancelHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CancelHandle")
+        f.debug_struct("SrtCancelHandle")
             .field("cancelled", &self.is_cancelled())
             .finish()
     }
@@ -89,7 +89,7 @@ impl std::fmt::Debug for CancelHandle {
 mod tests {
     use super::*;
 
-    /// Construct a CancelHandle around an integer "handle" using a stub
+    /// Construct a SrtCancelHandle around an integer "handle" using a stub
     /// closer that records its calls. Verifies idempotence: the closer
     /// runs at most once across any number of cancel() calls (including
     /// concurrent ones).
@@ -98,7 +98,7 @@ mod tests {
         use std::sync::atomic::{AtomicU32, Ordering};
         let calls = std::sync::Arc::new(AtomicU32::new(0));
         let calls_cl = calls.clone();
-        let h = CancelHandle::new(42, move |handle| {
+        let h = SrtCancelHandle::new(42, move |handle| {
             assert_eq!(handle, 42);
             calls_cl.fetch_add(1, Ordering::SeqCst);
         });
@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn cancel_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<CancelHandle>();
+        assert_send_sync::<SrtCancelHandle>();
     }
 
     #[test]
@@ -121,7 +121,7 @@ mod tests {
         use std::sync::atomic::{AtomicU32, Ordering};
         let calls = std::sync::Arc::new(AtomicU32::new(0));
         let calls_cl = calls.clone();
-        let h = std::sync::Arc::new(CancelHandle::new(7, move |handle| {
+        let h = std::sync::Arc::new(SrtCancelHandle::new(7, move |handle| {
             // Verify the closer receives the original handle value, not the
             // CANCELLED sentinel. Catches a future bug where someone might
             // "fix" cancel() to pass CANCELLED instead of prev.
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn is_cancelled_flips_after_cancel() {
-        let h = CancelHandle::new(1, |_| {});
+        let h = SrtCancelHandle::new(1, |_| {});
         assert!(!h.is_cancelled());
         h.cancel();
         assert!(h.is_cancelled());

@@ -41,3 +41,39 @@ pub const TST_VERSION_MAJOR: libc::c_int = 0;
 pub const TST_VERSION_MINOR: libc::c_int = 1;
 /// Patch version.
 pub const TST_VERSION_PATCH: libc::c_int = 0;
+
+/// Major version of the C ABI contract. Bumped only on **breaking
+/// C-ABI change** — i.e., a change that would force a consumer to
+/// rebuild against a different `tstrans.h`. NOT bumped on:
+///
+/// - Cargo package version bumps (track `TST_VERSION_*` for that).
+/// - Adding new `tst_*` functions or `TST_*` macros (backwards-compatible).
+/// - Adding new `TstError::*` codes (backwards-compatible; old codes
+///   remain stable per the documented `#[repr(i32)]` policy in
+///   `crates/tst-c/src/error.rs`).
+///
+/// Bumped on:
+///
+/// - Removing or renaming any `tst_*` symbol.
+/// - Changing a struct layout / size in a way that breaks
+///   `_Static_assert(sizeof(...) == N)` lines in the header trailer.
+/// - Changing the signature of an existing `tst_*` function.
+/// - Changing the semantic contract of an existing function in a way
+///   that would silently miscompile or misbehave in pre-existing
+///   consumers (e.g., flipping return-code polarity, changing
+///   buffer-ownership semantics).
+///
+/// **Initial value:** `0.1` (pre-1.0). Bumps to `0.2`, `0.3`, ... during
+/// pre-1.0 breakage per `feedback_break_freely_prerelease.md`. Settles
+/// to `1.0` at first stable release.
+///
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MAJOR 0` in the
+/// generated header. Runtime accessor: [`tst_get_abi_version_major`].
+pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
+
+/// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
+/// for the bump policy.
+///
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 1` in the
+/// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
+pub const TST_ABI_VERSION_MINOR: libc::c_int = 1;

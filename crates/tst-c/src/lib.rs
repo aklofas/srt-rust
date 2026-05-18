@@ -179,7 +179,7 @@ pub unsafe extern "C" fn tst_get_version_patch() -> u32 {
 /// Lets binding authors compare versions as single integers:
 ///
 /// ```c
-/// /* "at least 0.1.2" check */
+/// // "at least 0.1.2" check
 /// if (tst_get_version_packed() < ((0 << 16) | (1 << 8) | 2)) {
 ///     fprintf(stderr, "tstrans too old\n");
 ///     return 1;

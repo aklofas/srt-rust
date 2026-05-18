@@ -498,6 +498,11 @@ mod tests {
 
     #[test]
     fn tst_clear_last_error_resets_to_success_state() {
+        // Defensive baseline: ensure we start from success state regardless
+        // of any test ordering. set_last_error in Step 1 then primes the
+        // specific non-success state we're testing the clear of.
+        clear_last_error_for_test();
+
         // Step 1: prime the thread-local with a non-success error.
         set_last_error(TstError::InvalidConfig, "stale failure");
         assert_eq!(
@@ -507,7 +512,11 @@ mod tests {
         );
         let s_ptr = unsafe { tst_get_last_error_str() };
         let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
-        assert_eq!(s.to_str().unwrap(), "stale failure");
+        assert_eq!(
+            s.to_str().unwrap(),
+            "stale failure",
+            "precondition: message should be 'stale failure' before clear"
+        );
 
         // Step 2: call the new public C entry under test.
         unsafe { tst_clear_last_error() };
@@ -531,7 +540,11 @@ mod tests {
     fn tst_clear_last_error_idempotent_when_already_clear() {
         // Reset baseline, then clear twice — must remain in success state.
         clear_last_error_for_test();
-        assert_eq!(unsafe { tst_get_last_error() }, 0);
+        assert_eq!(
+            unsafe { tst_get_last_error() },
+            0,
+            "baseline: expected TST_E_SUCCESS (0) after clear_last_error_for_test()"
+        );
 
         unsafe { tst_clear_last_error() };
         assert_eq!(unsafe { tst_get_last_error() }, 0);

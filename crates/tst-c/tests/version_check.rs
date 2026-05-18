@@ -17,9 +17,9 @@ use tstrans::{
     TST_VERSION_PATCH,
 };
 
-// SAFETY: the tst_get_*_version_* / tst_get_abi_version_* / tst_clear_last_error
-// functions are `unsafe extern "C"` by convention (no real unsafety; see the
-// rustdoc on each). Sound under any invocation.
+// SAFETY: the tst_get_*_version_* / tst_get_abi_version_* functions are
+// `unsafe extern "C"` by convention (no real unsafety; see the rustdoc
+// on each). Sound under any invocation.
 
 #[test]
 fn major_matches_compile_time_const() {
@@ -34,13 +34,21 @@ fn major_matches_compile_time_const() {
 #[test]
 fn minor_matches_compile_time_const() {
     let runtime = unsafe { tstrans::tst_get_version_minor() };
-    assert_eq!(runtime, TST_VERSION_MINOR as u32);
+    assert_eq!(
+        runtime, TST_VERSION_MINOR as u32,
+        "runtime version minor ({runtime}) != TST_VERSION_MINOR ({})",
+        TST_VERSION_MINOR
+    );
 }
 
 #[test]
 fn patch_matches_compile_time_const() {
     let runtime = unsafe { tstrans::tst_get_version_patch() };
-    assert_eq!(runtime, TST_VERSION_PATCH as u32);
+    assert_eq!(
+        runtime, TST_VERSION_PATCH as u32,
+        "runtime version patch ({runtime}) != TST_VERSION_PATCH ({})",
+        TST_VERSION_PATCH
+    );
 }
 
 #[test]
@@ -74,11 +82,19 @@ fn string_matches_dotted_form() {
 #[test]
 fn abi_major_matches_compile_time_const() {
     let runtime = unsafe { tstrans::tst_get_abi_version_major() };
-    assert_eq!(runtime, TST_ABI_VERSION_MAJOR as u32);
+    assert_eq!(
+        runtime, TST_ABI_VERSION_MAJOR as u32,
+        "runtime ABI version major ({runtime}) != TST_ABI_VERSION_MAJOR ({})",
+        TST_ABI_VERSION_MAJOR
+    );
 }
 
 #[test]
 fn abi_minor_matches_compile_time_const() {
     let runtime = unsafe { tstrans::tst_get_abi_version_minor() };
-    assert_eq!(runtime, TST_ABI_VERSION_MINOR as u32);
+    assert_eq!(
+        runtime, TST_ABI_VERSION_MINOR as u32,
+        "runtime ABI version minor ({runtime}) != TST_ABI_VERSION_MINOR ({})",
+        TST_ABI_VERSION_MINOR
+    );
 }

@@ -36,7 +36,55 @@ Builds 1 MPEG-TS frame containing 1 video AU + 1 KLV record using the
 LD_LIBRARY_PATH=../../target/debug /tmp/hello_world
 ```
 
-### 2. `muxing/send_synthetic.c` — sender + synthetic frames over SRT
+### 2. `getting-started/version_check.c` — verify loaded library matches header
+
+Cross-validates every `(runtime accessor, header macro)` pair at process
+startup. Queries `tst_get_version_major/minor/patch/packed/string` and
+`tst_get_abi_version_major/minor`, compares each against the corresponding
+`TST_*_VERSION_*` compile-time macro from `<tstrans.h>`, and exits 0 only
+when all values agree.
+
+The canonical pattern for binding authors to copy into their own startup
+checks (e.g. `JNI_OnLoad` for `srt-jni`, the UniFFI init hook for
+`srt-uniffi`):
+
+```c
+if (tst_get_abi_version_major() != TST_ABI_VERSION_MAJOR) {
+    fprintf(stderr, "tstrans ABI major mismatch\n");
+    exit(1);
+}
+if (tst_get_abi_version_minor() < TST_ABI_VERSION_MINOR) {
+    fprintf(stderr, "tstrans ABI minor too old\n");
+    exit(1);
+}
+```
+
+Expected output (versions will match your build):
+
+```text
+Package version (matches Cargo.toml):
+  TST_VERSION_MAJOR          runtime=0  header=0  [OK]
+  TST_VERSION_MINOR          runtime=1  header=1  [OK]
+  TST_VERSION_PATCH          runtime=0  header=0  [OK]
+  packed (M<<16|m<<8|p)      runtime=256  header=256  [OK]
+  version string             runtime="0.1.0"
+
+ABI contract version (breaking-change cadence):
+  TST_ABI_VERSION_MAJOR      runtime=0  header=0  [OK]
+  TST_ABI_VERSION_MINOR      runtime=1  header=1  [OK]
+
+After tst_clear_last_error():
+  tst_get_last_error()     = 0  (expect 0 = TST_E_SUCCESS)
+  tst_get_last_error_str() = ""  (expect empty)
+
+OK: all runtime/header pairs match. Loaded libtstrans is consistent with the tstrans.h compiled into this binary.
+```
+
+```sh
+LD_LIBRARY_PATH=../../target/debug /tmp/version_check
+```
+
+### 3. `muxing/send_synthetic.c` — sender + synthetic frames over SRT
 
 Open a `tst_mux_sender_t` against an SRT URL, push 5 synthetic H.264 +
 KLV frames, close. The C analogue of the Rust
@@ -46,22 +94,22 @@ KLV frames, close. The C analogue of the Rust
 LD_LIBRARY_PATH=../../target/debug /tmp/send_synthetic 127.0.0.1:9000
 ```
 
-### 3. `muxing/mux_dual_camera.c` — multi-stream within one program
+### 4. `muxing/mux_dual_camera.c` — multi-stream within one program
 
-Diff from §2: two video streams (EO + IR) sharing one program + KLV.
+Diff from §3: two video streams (EO + IR) sharing one program + KLV.
 Demonstrates `tst_mux_config_add_video_stream` returning per-stream
 handles and `tst_muxer_push_video_to(handle, ...)` for fan-out.
 Mirrors the Rust [`mux_dual_camera.rs`](../../../../examples/muxing/mux_dual_camera.rs).
 
-### 4. `muxing/mux_two_programs.c` — multi-program
+### 5. `muxing/mux_two_programs.c` — multi-program
 
-Diff from §3: two PMTs in one PAT, each with its own video + KLV
+Diff from §4: two PMTs in one PAT, each with its own video + KLV
 streams. Shows the `tst_program_handle_t` flow and the
 `tst_*_to(prog_handle, ...)` siblings. No Rust twin yet — the equivalent
 recipe lives in the cookbook ([§16](../../../../docs/cookbook.md#16-repack-two-single-program-inputs-into-one-multi-program-ts))
 under a different shape (demux + re-mux instead of synthetic frames).
 
-### 5. `operations/socket_stats_poll.c` — live libsrt wire-stats polling
+### 6. `operations/socket_stats_poll.c` — live libsrt wire-stats polling
 
 Push 5 seconds of synthetic video through a `tst_mux_sender_t` and
 print RTT + bandwidth + loss + retransmits every 500 ms using

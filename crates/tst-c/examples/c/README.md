@@ -123,10 +123,10 @@ libsrt to do). The C-side analogue of the
 LD_LIBRARY_PATH=../../target/debug /tmp/socket_stats_poll srt://127.0.0.1:9000
 ```
 
-## Why no receiver-side examples?
+## Receiver-side C examples
 
-The C ABI is sender-only today (per the project's P0 backlog item).
-Receiver-side C examples land alongside the future tst-c receiver
-surface plan. Until then, run the Rust receiving examples
+The C ABI covers both sender (mux + raw/TS sender) and receiver (demux +
+raw/TS receiver) surfaces. Receiver-side C examples are a planned addition;
+in the meantime, the Rust receiving examples
 ([`../../../../examples/receiving/`](../../../../examples/receiving/))
-against C-side senders.
+work against C-side senders.

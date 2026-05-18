@@ -13,7 +13,7 @@
  *
  * What it does: queries every tst_get_*_version_* runtime accessor,
  * compares each result against the corresponding TST_*_VERSION_* compile-
- * time macro from the header, prints all eight values, and exits 0 on
+ * time macro from the header, prints all seven values, and exits 0 on
  * agreement / 1 on mismatch.
  *
  * Why this matters:
@@ -132,7 +132,7 @@ int main(void) {
      * in the comparisons above as the "header=" column. No separate
      * runtime equivalent — they're literally compile-time integer
      * constants emitted by cbindgen from the `pub const` declarations
-     * in crates/tst-c/src/lib.rs.
+     * in the library source.
      */
 
     /*

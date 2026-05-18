@@ -1288,7 +1288,7 @@ checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
 name = "srt-sys"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "bindgen",
  "cmake",
@@ -1544,7 +1544,7 @@ dependencies = [
 
 [[package]]
 name = "tst-c"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "cbindgen",
  "cc",
@@ -1558,7 +1558,7 @@ dependencies = [
 
 [[package]]
 name = "tst-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "criterion",
  "h264-reader",
@@ -1586,7 +1586,7 @@ dependencies = [
 
 [[package]]
 name = "tst-pipeline"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "criterion",
  "proptest",
@@ -1599,7 +1599,7 @@ dependencies = [
 
 [[package]]
 name = "tst-srt"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "libc",
  "os_socketaddr",

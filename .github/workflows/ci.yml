@@ -106,6 +106,9 @@ jobs:
       - name: Pipeline kind-classification coverage
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check-pipeline-kind-classification.sh
+      - name: Raw C mapper variant coverage
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check-raw-c-mapper-coverage.sh
 
       - name: cargo fmt --check
         run: cargo fmt --all -- --check

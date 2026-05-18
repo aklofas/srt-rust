@@ -63,6 +63,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Renamed `docs/cancel-handle.md` → `docs/srt-cancel-handle.md` with
   page-header + intro-paragraph rewrites to drop the "universal
   cross-thread shutdown" framing.
+- New `scripts/check-raw-c-mapper-coverage.sh` ratchet closes a Wave 1.3
+  coverage gap noticed during static closeout review of Wave 4.A. The
+  Wave 4.A split of the old `check-tst-c-error-coverage.sh` into
+  `check-shell-error-kind-coverage.sh` + `check-pipeline-kind-classification.sh`
+  covered the new shell-layer routing but left the raw `record_mux_error`
+  / `record_transport_error` mappers (used by standalone-muxer paths and
+  by `connect_srt`/`listen_srt` open helpers) unratcheted against
+  upstream variant additions. New script restores per-variant coverage
+  with one documented exclusion: `TransportError::ExplicitClose`, which
+  the raw paths cannot construct.
 
 ---
 

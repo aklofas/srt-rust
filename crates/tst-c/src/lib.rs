@@ -154,6 +154,10 @@ pub unsafe extern "C" fn tst_get_version_major() -> u32 {
 
 /// Returns the package minor version at runtime. See
 /// [`tst_get_version_major`] for the usage pattern.
+///
+/// # Safety
+///
+/// Sound under any caller invocation; see [`tst_get_version_major`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_get_version_minor() -> u32 {
     TST_VERSION_MINOR as u32
@@ -161,6 +165,10 @@ pub unsafe extern "C" fn tst_get_version_minor() -> u32 {
 
 /// Returns the package patch version at runtime. See
 /// [`tst_get_version_major`] for the usage pattern.
+///
+/// # Safety
+///
+/// Sound under any caller invocation; see [`tst_get_version_major`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_get_version_patch() -> u32 {
     TST_VERSION_PATCH as u32
@@ -183,6 +191,10 @@ pub unsafe extern "C" fn tst_get_version_patch() -> u32 {
 /// values fit comfortably; revisit if any field ever exceeds 255.
 ///
 /// Convention matches libsrt's `SRT_VERSION_*` packing.
+///
+/// # Safety
+///
+/// Sound under any caller invocation; see [`tst_get_version_major`].
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_get_version_packed() -> u32 {
     let m = TST_VERSION_MAJOR as u32;

@@ -34,8 +34,18 @@ ALLOWLIST=(
     "tst_get_last_error"
     "tst_get_last_error_str"
     "tst_clear_last_error"
-    "tst_version"
+    # "tst_version" — removed in Wave 5.A; superseded by tst_get_version_*
     "tst_panic_recover"
+
+    # --- version accessors (no Rust counterpart by design — read Cargo.toml /
+    #     TST_*_VERSION_* compile-time macros for the same values) ---
+    "tst_get_version_major"
+    "tst_get_version_minor"
+    "tst_get_version_patch"
+    "tst_get_version_packed"
+    "tst_get_version_string"
+    "tst_get_abi_version_major"
+    "tst_get_abi_version_minor"
 
     # --- config-builder C wrappers (Rust uses builder methods, not 1:1 names) ---
     "tst_mux_config_new"

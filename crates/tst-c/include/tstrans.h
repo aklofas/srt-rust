@@ -55,9 +55,9 @@
  *   consumers (e.g., flipping return-code polarity, changing
  *   buffer-ownership semantics).
  *
- * **Initial value:** `0.1` (pre-1.0). Bumps to `0.2`, `0.3`, ... during
- * pre-1.0 breakage per `feedback_break_freely_prerelease.md`. Settles
- * to `1.0` at first stable release.
+ * **Initial value:** `0.1` (pre-1.0). The minor field bumps freely
+ * during pre-1.0 development on any breaking ABI change. Settles to
+ * `1.0` at the first stable release.
  *
  * Cbindgen emits this as `#define TST_ABI_VERSION_MAJOR 0` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_major`].

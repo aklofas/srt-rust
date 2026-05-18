@@ -124,23 +124,42 @@ enum tst_e
    */
   TST_E_END_OF_STREAM = -12,
   /**
-   * Requested data is not currently available — typically because a
-   * `tst_managed_*` handle has no live inner socket (mid-reconnect or
-   * after close). Distinct from `InvalidUsage` (which means the handle
-   * is in a fundamentally wrong state for the call) — `NotAvailable`
-   * is transient and may resolve on the next call.
+   * (-13) Resource temporarily unavailable; retry later.
+   *
+   * Returned by stats/socket_stats accessors on a managed handle while
+   * the underlying transport is reconnecting. The same call may
+   * succeed once reconnect completes — bindings should expose this as
+   * a transient signal that does not require user intervention.
    *
    * Returned today by the `tst_*_get_socket_stats` family when the
-   * inner transport's `socket_stats()` returns `None`.
+   * inner transport's `socket_stats()` returns `None` (mid-reconnect
+   * or after close).
+   *
+   * **Contract:** transient. The next call on the same handle may
+   * succeed.
+   *
+   * See [`TstError::NotFound`] for the persistent counterpart, and
+   * [`TstError::InvalidUsage`] for the wrong-handle-state case.
    */
   TST_E_NOT_AVAILABLE = -13,
   /**
-   * Requested PID is not known to this site — used by the
-   * `tst_*_get_stream_codec_stats` family when the caller asks for
-   * a PID that has never been observed on this handle. Distinct from
-   * `NotAvailable` (transient — managed handle is mid-reconnect)
-   * and from `InvalidUsage` (handle is in a fundamentally wrong
-   * state for the call).
+   * (-14) Resource not found; the request will not succeed on this handle.
+   *
+   * Returned by per-PID accessors (codec stats, stream info) when the
+   * PID has never been observed on this stream. Distinct from
+   * `NotAvailable` (which is transient — same call may later succeed)
+   * and from `InvalidUsage` (which means the handle is in a
+   * fundamentally wrong state for the call entirely).
+   *
+   * Returned today by the `tst_*_get_stream_codec_stats` family when
+   * the caller asks for a PID that has never been observed on this
+   * handle.
+   *
+   * **Contract:** persistent. The next call on the same handle with
+   * the same key will return the same error. Retry is futile unless
+   * the caller knows the key has since started being observed.
+   *
+   * See [`TstError::NotAvailable`] for the transient counterpart.
    */
   TST_E_NOT_FOUND = -14,
 };

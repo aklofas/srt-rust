@@ -7,6 +7,65 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 4.C CancelHandle rename + pairing relocate + polish (plan TBD-by-merge)
+
+**Breaking (pre-1.0):**
+
+- Renamed `CancelHandle` → `SrtCancelHandle` to telegraph SRT-specificity
+  (the type wraps a libsrt `SRTSOCKET` integer handle with `i64::MIN` as
+  the cancelled sentinel — non-SRT transports that arrive later will add
+  their own cancel primitives). Re-exports updated at `tst_pipeline::`
+  and `tst_srt::` paths. C ABI unchanged (the type is internal to Rust;
+  the `tst_*_cancel()` C function family stays the same).
+- Relocated `tst_pipeline::pairing` → `tst_pipeline::ext::pairing`. The
+  top-level `tst_pipeline::Pairer` (and `PairerMode`, `PairerConfig`,
+  `PairerOutput`, `PairerStats`, `VideoSample`, `KlvSample`) re-exports
+  are removed — callers spell out `tst_pipeline::ext::pairing::Pairer`.
+  Signals "opt-in extension, not first-class shell" by withholding the
+  convenience re-export.
+- Removed `pub type tst_srt::Result<T> = std::result::Result<T, Error>;`
+  alias (zero workspace consumers; workspace standard is to spell out
+  the error type).
+
+**Added:**
+
+- Discriminating test files: `crates/tst-core/tests/demux_error_discrimination.rs`
+  (3 tests for `DemuxError` variants — `SyncBufExhausted` + strict-mode
+  `MalformedPes`/`StrictRejection` + a documented `MalformedPsi` smoke
+  fallback since that variant has no public-API trigger path) and
+  `crates/tst-pipeline/tests/transport_error_discrimination.rs`
+  (5 tests covering `TransportError` variants flowing through shell
+  errors: Backpressure, Broken, Closed→EndOfStream on receiver,
+  ExplicitClose, TooLarge). Per
+  `feedback_audit_test_not_always_discriminating.md`, these assert on
+  the specific variant via `matches!` — not on `is_err()`.
+- `docs/binding-authors.md` gained a new "Transient vs persistent error
+  codes" subsection clarifying the contract on `TST_E_NOT_AVAILABLE` (-13)
+  vs `TST_E_NOT_FOUND` (-14) for binding-language retry policies.
+- New `tst_pipeline::ext` module with module-level rustdoc codifying
+  the opt-in-extension contract for current and future extensions.
+
+**Improved:**
+
+- Upgraded rustdoc on `TstError::NotAvailable` (-13) and `TstError::NotFound`
+  (-14) to lead with the transient-vs-persistent contract verb and to
+  cross-reference each other. The cbindgen-generated C header
+  `crates/tst-c/include/tstrans.h` regenerates with the new rustdoc.
+- `tst_pipeline::lib.rs` and `tst_srt::lib.rs` comment blocks for the
+  re-exported `SrtCancelHandle` updated from the now-misleading
+  "transport-agnostic primitive" framing to the accurate "SRT-shaped
+  primitive defined in tst-core for layering reasons" framing.
+
+**Internal:**
+
+- `#[non_exhaustive]` BASELINE in `.github/workflows/ci.yml` unchanged at
+  87 (Plan C adds zero `#[non_exhaustive]` decorations).
+- Renamed `docs/cancel-handle.md` → `docs/srt-cancel-handle.md` with
+  page-header + intro-paragraph rewrites to drop the "universal
+  cross-thread shutdown" framing.
+
+---
+
 ## [Unreleased] — Wave 4.A shell error kind fold (plan TBD-by-merge)
 
 **Breaking (pre-1.0):**

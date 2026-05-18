@@ -1,21 +1,21 @@
 pub mod tst_core
 pub mod tst_core::cancel
-pub struct tst_core::cancel::CancelHandle
-impl tst_core::cancel::CancelHandle
-pub fn tst_core::cancel::CancelHandle::cancel(&self)
-pub fn tst_core::cancel::CancelHandle::is_cancelled(&self) -> bool
-pub fn tst_core::cancel::CancelHandle::new<F>(handle: i64, closer: F) -> Self where F: core::ops::function::Fn(i64) + core::marker::Send + core::marker::Sync + 'static
-impl core::clone::Clone for tst_core::cancel::CancelHandle
-pub fn tst_core::cancel::CancelHandle::clone(&self) -> tst_core::cancel::CancelHandle
-impl core::fmt::Debug for tst_core::cancel::CancelHandle
-pub fn tst_core::cancel::CancelHandle::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_core::cancel::CancelHandle
-impl core::marker::Send for tst_core::cancel::CancelHandle
-impl core::marker::Sync for tst_core::cancel::CancelHandle
-impl core::marker::Unpin for tst_core::cancel::CancelHandle
-impl core::marker::UnsafeUnpin for tst_core::cancel::CancelHandle
-impl !core::panic::unwind_safe::RefUnwindSafe for tst_core::cancel::CancelHandle
-impl !core::panic::unwind_safe::UnwindSafe for tst_core::cancel::CancelHandle
+pub struct tst_core::cancel::SrtCancelHandle
+impl tst_core::cancel::SrtCancelHandle
+pub fn tst_core::cancel::SrtCancelHandle::cancel(&self)
+pub fn tst_core::cancel::SrtCancelHandle::is_cancelled(&self) -> bool
+pub fn tst_core::cancel::SrtCancelHandle::new<F>(handle: i64, closer: F) -> Self where F: core::ops::function::Fn(i64) + core::marker::Send + core::marker::Sync + 'static
+impl core::clone::Clone for tst_core::cancel::SrtCancelHandle
+pub fn tst_core::cancel::SrtCancelHandle::clone(&self) -> tst_core::cancel::SrtCancelHandle
+impl core::fmt::Debug for tst_core::cancel::SrtCancelHandle
+pub fn tst_core::cancel::SrtCancelHandle::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_core::cancel::SrtCancelHandle
+impl core::marker::Send for tst_core::cancel::SrtCancelHandle
+impl core::marker::Sync for tst_core::cancel::SrtCancelHandle
+impl core::marker::Unpin for tst_core::cancel::SrtCancelHandle
+impl core::marker::UnsafeUnpin for tst_core::cancel::SrtCancelHandle
+impl !core::panic::unwind_safe::RefUnwindSafe for tst_core::cancel::SrtCancelHandle
+impl !core::panic::unwind_safe::UnwindSafe for tst_core::cancel::SrtCancelHandle
 pub mod tst_core::codec
 pub mod tst_core::codec::aac
 pub enum tst_core::codec::aac::AacProfile
@@ -4729,22 +4729,6 @@ impl core::marker::Unpin for tst_core::transport::TransportError
 impl core::marker::UnsafeUnpin for tst_core::transport::TransportError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::transport::TransportError
 impl core::panic::unwind_safe::UnwindSafe for tst_core::transport::TransportError
-pub struct tst_core::CancelHandle
-impl tst_core::cancel::CancelHandle
-pub fn tst_core::cancel::CancelHandle::cancel(&self)
-pub fn tst_core::cancel::CancelHandle::is_cancelled(&self) -> bool
-pub fn tst_core::cancel::CancelHandle::new<F>(handle: i64, closer: F) -> Self where F: core::ops::function::Fn(i64) + core::marker::Send + core::marker::Sync + 'static
-impl core::clone::Clone for tst_core::cancel::CancelHandle
-pub fn tst_core::cancel::CancelHandle::clone(&self) -> tst_core::cancel::CancelHandle
-impl core::fmt::Debug for tst_core::cancel::CancelHandle
-pub fn tst_core::cancel::CancelHandle::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_core::cancel::CancelHandle
-impl core::marker::Send for tst_core::cancel::CancelHandle
-impl core::marker::Sync for tst_core::cancel::CancelHandle
-impl core::marker::Unpin for tst_core::cancel::CancelHandle
-impl core::marker::UnsafeUnpin for tst_core::cancel::CancelHandle
-impl !core::panic::unwind_safe::RefUnwindSafe for tst_core::cancel::CancelHandle
-impl !core::panic::unwind_safe::UnwindSafe for tst_core::cancel::CancelHandle
 #[non_exhaustive] pub struct tst_core::SocketStats
 pub tst_core::SocketStats::bytes_lost_recv: u64
 pub tst_core::SocketStats::bytes_received: u64
@@ -4780,6 +4764,22 @@ impl core::marker::Unpin for tst_core::transport::SocketStats
 impl core::marker::UnsafeUnpin for tst_core::transport::SocketStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::transport::SocketStats
 impl core::panic::unwind_safe::UnwindSafe for tst_core::transport::SocketStats
+pub struct tst_core::SrtCancelHandle
+impl tst_core::cancel::SrtCancelHandle
+pub fn tst_core::cancel::SrtCancelHandle::cancel(&self)
+pub fn tst_core::cancel::SrtCancelHandle::is_cancelled(&self) -> bool
+pub fn tst_core::cancel::SrtCancelHandle::new<F>(handle: i64, closer: F) -> Self where F: core::ops::function::Fn(i64) + core::marker::Send + core::marker::Sync + 'static
+impl core::clone::Clone for tst_core::cancel::SrtCancelHandle
+pub fn tst_core::cancel::SrtCancelHandle::clone(&self) -> tst_core::cancel::SrtCancelHandle
+impl core::fmt::Debug for tst_core::cancel::SrtCancelHandle
+pub fn tst_core::cancel::SrtCancelHandle::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_core::cancel::SrtCancelHandle
+impl core::marker::Send for tst_core::cancel::SrtCancelHandle
+impl core::marker::Sync for tst_core::cancel::SrtCancelHandle
+impl core::marker::Unpin for tst_core::cancel::SrtCancelHandle
+impl core::marker::UnsafeUnpin for tst_core::cancel::SrtCancelHandle
+impl !core::panic::unwind_safe::RefUnwindSafe for tst_core::cancel::SrtCancelHandle
+impl !core::panic::unwind_safe::UnwindSafe for tst_core::cancel::SrtCancelHandle
 pub struct tst_core::UasDatalinkLs
 pub tst_core::UasDatalinkLs::corner_lat_offset_p1_deg: core::option::Option<f64>
 pub tst_core::UasDatalinkLs::corner_lat_offset_p2_deg: core::option::Option<f64>

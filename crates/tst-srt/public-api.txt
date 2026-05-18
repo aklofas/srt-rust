@@ -1,5 +1,5 @@
 pub mod tst_srt
-pub use tst_srt::CancelHandle
+pub use tst_srt::SrtCancelHandle
 pub mod tst_srt::addr
 pub mod tst_srt::builder
 pub struct tst_srt::builder::ListenerBuilder
@@ -579,7 +579,6 @@ impl core::marker::Unpin for tst_srt::error::StreamIdError
 impl core::marker::UnsafeUnpin for tst_srt::error::StreamIdError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_srt::error::StreamIdError
 impl core::panic::unwind_safe::UnwindSafe for tst_srt::error::StreamIdError
-pub type tst_srt::error::Result<T> = core::result::Result<T, tst_srt::error::Error>
 pub mod tst_srt::init
 pub mod tst_srt::listener
 pub struct tst_srt::listener::Listener
@@ -587,7 +586,7 @@ impl tst_srt::listener::Listener
 pub fn tst_srt::listener::Listener::accept(&mut self) -> core::result::Result<(tst_srt::socket::Socket, core::net::socket_addr::SocketAddr), tst_srt::error::AcceptError>
 pub fn tst_srt::listener::Listener::accept_timeout(&mut self, timeout: core::time::Duration) -> core::result::Result<(tst_srt::socket::Socket, core::net::socket_addr::SocketAddr), tst_srt::error::AcceptError>
 pub fn tst_srt::listener::Listener::bind_with(config: &tst_srt::config::ListenerConfig, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::BindError>
-pub fn tst_srt::listener::Listener::cancel_handle(&self) -> tst_core::cancel::CancelHandle
+pub fn tst_srt::listener::Listener::cancel_handle(&self) -> tst_core::cancel::SrtCancelHandle
 pub fn tst_srt::listener::Listener::close(self) -> core::result::Result<(), tst_srt::error::IoError>
 pub fn tst_srt::listener::Listener::local_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
 pub fn tst_srt::listener::Listener::set_recv_timeout(&mut self, timeout: core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
@@ -747,7 +746,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_srt::options::StreamId
 pub mod tst_srt::socket
 pub struct tst_srt::socket::Socket
 impl tst_srt::socket::Socket
-pub fn tst_srt::socket::Socket::cancel_handle(&self) -> tst_core::cancel::CancelHandle
+pub fn tst_srt::socket::Socket::cancel_handle(&self) -> tst_core::cancel::SrtCancelHandle
 pub fn tst_srt::socket::Socket::close(self) -> core::result::Result<(), tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::connect_with(config: &tst_srt::config::SocketConfig, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::ConnectError>
 pub fn tst_srt::socket::Socket::local_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
@@ -1279,7 +1278,7 @@ impl tst_srt::listener::Listener
 pub fn tst_srt::listener::Listener::accept(&mut self) -> core::result::Result<(tst_srt::socket::Socket, core::net::socket_addr::SocketAddr), tst_srt::error::AcceptError>
 pub fn tst_srt::listener::Listener::accept_timeout(&mut self, timeout: core::time::Duration) -> core::result::Result<(tst_srt::socket::Socket, core::net::socket_addr::SocketAddr), tst_srt::error::AcceptError>
 pub fn tst_srt::listener::Listener::bind_with(config: &tst_srt::config::ListenerConfig, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::BindError>
-pub fn tst_srt::listener::Listener::cancel_handle(&self) -> tst_core::cancel::CancelHandle
+pub fn tst_srt::listener::Listener::cancel_handle(&self) -> tst_core::cancel::SrtCancelHandle
 pub fn tst_srt::listener::Listener::close(self) -> core::result::Result<(), tst_srt::error::IoError>
 pub fn tst_srt::listener::Listener::local_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
 pub fn tst_srt::listener::Listener::set_recv_timeout(&mut self, timeout: core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
@@ -1397,7 +1396,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_srt::options::Passphrase
 impl core::panic::unwind_safe::UnwindSafe for tst_srt::options::Passphrase
 pub struct tst_srt::Socket
 impl tst_srt::socket::Socket
-pub fn tst_srt::socket::Socket::cancel_handle(&self) -> tst_core::cancel::CancelHandle
+pub fn tst_srt::socket::Socket::cancel_handle(&self) -> tst_core::cancel::SrtCancelHandle
 pub fn tst_srt::socket::Socket::close(self) -> core::result::Result<(), tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::connect_with(config: &tst_srt::config::SocketConfig, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::ConnectError>
 pub fn tst_srt::socket::Socket::local_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
@@ -1643,4 +1642,3 @@ impl core::marker::Unpin for tst_srt::url::UrlOverlay
 impl core::marker::UnsafeUnpin for tst_srt::url::UrlOverlay
 impl core::panic::unwind_safe::RefUnwindSafe for tst_srt::url::UrlOverlay
 impl core::panic::unwind_safe::UnwindSafe for tst_srt::url::UrlOverlay
-pub type tst_srt::Result<T> = core::result::Result<T, tst_srt::error::Error>

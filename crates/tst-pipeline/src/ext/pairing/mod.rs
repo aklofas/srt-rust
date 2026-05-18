@@ -135,7 +135,7 @@ impl Pairer {
     /// # Example
     ///
     /// ```
-    /// use tst_pipeline::pairing::Pairer;
+    /// use tst_pipeline::ext::pairing::Pairer;
     ///
     /// let mut pairer = Pairer::new(0x0100, 0x0102);
     /// // ... feed DemuxEvents into pairer.feed(...) ...
@@ -175,7 +175,7 @@ impl Pairer {
     ///
     /// ```
     /// use std::time::Duration;
-    /// use tst_pipeline::pairing::{Pairer, PairerMode, PairerConfig};
+    /// use tst_pipeline::ext::pairing::{Pairer, PairerMode, PairerConfig};
     ///
     /// let mut opts = PairerConfig::default();
     /// opts.mode = PairerMode::Realtime;
@@ -250,7 +250,7 @@ impl Pairer {
     ///
     /// ```
     /// use std::time::Duration;
-    /// use tst_pipeline::pairing::Pairer;
+    /// use tst_pipeline::ext::pairing::Pairer;
     ///
     /// // 2 s freshness ceiling: drop pairing if held KLV is staler.
     /// let pairer = Pairer::last_before_pts(

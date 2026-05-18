@@ -651,7 +651,7 @@ domain decisions the library cannot make correctly without consumer
 context.
 
 For consumers who would otherwise reimplement the same nearest-PTS or
-sample-and-hold pattern, `tst_pipeline::pairing::Pairer` is an opt-in
+sample-and-hold pattern, `tst_pipeline::ext::pairing::Pairer` is an opt-in
 convenience.
 
 ### When to reach for `Pairer`

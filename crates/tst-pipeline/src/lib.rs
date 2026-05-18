@@ -41,9 +41,9 @@
 
 pub mod demux_receiver;
 pub mod dyn_aliases;
+pub mod ext;
 pub mod managed_receive;
 pub mod mux_sender;
-pub mod pairing;
 pub mod raw_receiver;
 pub mod raw_sender;
 pub mod receiver;
@@ -61,9 +61,10 @@ pub use dyn_aliases::{
 };
 pub use managed_receive::ManagedRecvTransport;
 pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderErrorSource, MuxSenderStats};
-pub use pairing::{
-    KlvSample, Pairer, PairerConfig, PairerMode, PairerOutput, PairerStats, VideoSample,
-};
+// Pairing is intentionally NOT re-exported at the crate root. It lives
+// under `ext::pairing` to signal its opt-in, extension-module nature.
+// Callers write `use tst_pipeline::ext::pairing::Pairer` explicitly.
+// See `crate::ext` for rationale.
 pub use raw_receiver::{
     RawReceiver, RawReceiverConfig, RawReceiverError, RawReceiverErrorSource, RawRecvStats,
 };

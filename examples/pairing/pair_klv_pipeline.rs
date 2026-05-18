@@ -1,5 +1,5 @@
 //! Pair sync-KLV with video AUs over a captured `.ts` file using
-//! `tst_pipeline::Pairer`.
+//! `tst_pipeline::ext::pairing::Pairer`.
 //!
 //! This example is the `Pairer`-using sibling of the inline cookbook
 //! recipe in `docs/cookbook.md` §12. The cookbook recipe shows the
@@ -27,7 +27,7 @@ use std::fs;
 use std::process::ExitCode;
 use std::time::Duration;
 use tst_core::mpegts::demux::Demuxer;
-use tst_pipeline::{Pairer, PairerConfig, PairerMode, PairerOutput};
+use tst_pipeline::ext::pairing::{Pairer, PairerConfig, PairerMode, PairerOutput};
 
 fn main() -> ExitCode {
     // --- Argument parsing -------------------------------------------------

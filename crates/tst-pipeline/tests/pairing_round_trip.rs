@@ -14,7 +14,7 @@ use tst_core::mpegts::demux::Demuxer;
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
-use tst_pipeline::{Pairer, PairerConfig, PairerMode, PairerOutput};
+use tst_pipeline::ext::pairing::{Pairer, PairerConfig, PairerMode, PairerOutput};
 
 const VIDEO_PID: u16 = 0x100;
 const KLV_PID: u16 = 0x102;

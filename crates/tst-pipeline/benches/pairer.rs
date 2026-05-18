@@ -17,7 +17,7 @@ use tst_core::mpegts::demux::{
     DemuxEvent, MetadataKind, NalUnit, SamplePayload, StreamId, StreamKind, VideoCodec,
     VideoPayload,
 };
-use tst_pipeline::pairing::{Pairer, PairerConfig, PairerMode};
+use tst_pipeline::ext::pairing::{Pairer, PairerConfig, PairerMode};
 
 const VIDEO_PID: u16 = 0x0100;
 const KLV_PID: u16 = 0x0200;

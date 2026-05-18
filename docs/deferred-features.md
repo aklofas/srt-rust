@@ -542,7 +542,7 @@ the trigger that would unblock it.
 
 ## `pipeline::pairing` — opt-in convenience pairing utility
 
-- **Status:** Shipped (Rust API). `tst_pipeline::pairing::Pairer` with
+- **Status:** Shipped (Rust API). `tst_pipeline::ext::pairing::Pairer` with
   `with_options` (Realtime + Buffered) and `last_before_pts` strategies.
   Cookbook recipes 24–27 cover the canonical patterns; recipes 12–14
   remain as the inline-pattern reference. C ABI / JNI / UniFFI

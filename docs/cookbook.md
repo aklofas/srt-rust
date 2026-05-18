@@ -840,7 +840,7 @@ Runnable: see [../examples/receiving/demux_to_events.rs](../examples/receiving/d
 ### 24. Pair sync-KLV with video AUs via `Pairer::with_options` (Realtime)
 
 The cookbook recipe 12 inline pattern in ~20 lines, expressed through
-the opt-in `tst_pipeline::pairing::Pairer`. Same semantics, with
+the opt-in `tst_pipeline::ext::pairing::Pairer`. Same semantics, with
 bounded KLV history, telemetry counters, and typed projection structs
 on the output.
 
@@ -848,7 +848,7 @@ on the output.
 use std::fs;
 use std::time::Duration;
 use tst_core::mpegts::demux::Demuxer;
-use tst_pipeline::{Pairer, PairerMode, PairerConfig, PairerOutput};
+use tst_pipeline::ext::pairing::{Pairer, PairerMode, PairerConfig, PairerOutput};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bytes = fs::read("input.ts")?;
@@ -892,7 +892,7 @@ briefly to look ahead.
 
 ```rust,no_run
 use std::time::Duration;
-use tst_pipeline::{Pairer, PairerMode, PairerConfig};
+use tst_pipeline::ext::pairing::{Pairer, PairerMode, PairerConfig};
 
 let mut opts = PairerConfig::default();
 opts.mode = PairerMode::Buffered { max_lag: Duration::from_secs(2) };
@@ -914,7 +914,7 @@ attaches the most recent KLV at `klv.pts <= video.pts`.
 
 ```rust,no_run
 use std::time::Duration;
-use tst_pipeline::{Pairer, PairerOutput};
+use tst_pipeline::ext::pairing::{Pairer, PairerOutput};
 # fn demux_events() -> impl Iterator<Item = tst_core::mpegts::demux::DemuxEvent> { std::iter::empty() }
 
 let mut pairer = Pairer::last_before_pts(
@@ -944,7 +944,7 @@ Two video PIDs sharing one async-KLV PID. Recipe 14's inline
 shape via two `Pairer` instances (one per video PID).
 
 ```rust,no_run
-use tst_pipeline::{Pairer, PairerOutput};
+use tst_pipeline::ext::pairing::{Pairer, PairerOutput};
 # fn demux_events() -> impl Iterator<Item = tst_core::mpegts::demux::DemuxEvent> { std::iter::empty() }
 
 const EO_PID: u16 = 0x100;

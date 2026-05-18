@@ -379,7 +379,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | Stream-end contract | ✅ Full | `TransportError::Closed` → iterator termination after `Demuxer::flush`. `Broken` → `DemuxReceiverError::Transport(Broken(_))`. `Demux` → strict-mode rejection or malformed PES. |
 | Receive-side gap buffer | ❌ Out of scope | Receive-side bytes that never arrived can't be replayed; no symmetric counterpart to `ManagedTransport`'s gap buffer. |
 
-### Pairing (`tst_pipeline::pairing`)
+### Pairing (`tst_pipeline::ext::pairing`)
 
 | Surface | Status |
 |---|---|

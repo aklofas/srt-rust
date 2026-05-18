@@ -189,7 +189,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Wave 3.2 naming consistency + Stats typing (plan TBD-by-merge)
+## [Unreleased] — Wave 3.2 naming consistency + Stats typing (docs/plans/2026-05-19-naming-renames-and-stats-typing.md)
 
 **Breaking (pre-1.0):**
 

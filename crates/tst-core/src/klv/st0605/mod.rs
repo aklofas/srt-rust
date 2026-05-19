@@ -4,6 +4,25 @@
 //! an 8-byte big-endian microsecond timestamp (per MISB ST 0603 §7.1).
 //!
 //! Registered in MISB ST 0807.27 row 1061 (UL CRC 23259).
+//!
+//! ## Spec coverage
+//!
+//! **Standard:** MISB ST 0605 §7 Precision Time Stamp Pack
+//! (registered in MISB ST 0807.27 row 1061; UL CRC 23259).
+//!
+//! **Fields parsed:** 1-byte Time Status (per MISB ST 0603 §7.4
+//! Table 3 — bit 7: lock; bit 6: discontinuity; bit 5: reverse
+//! direction; bits 4-0: reserved 0b11111) + 8-byte big-endian
+//! microsecond timestamp (per MISB ST 0603 §7.1).
+//!
+//! **Decode mode:** permissive — [`decode`] accepts any byte
+//! pattern with the correct UL prefix and 9-byte fixed-length BER
+//! body. Reserved-bit validation is caller-opt-in via
+//! [`TimeStatus::reserved_bits_valid`].
+//!
+//! **Deferred:** nothing — ST 0605 §7 is a single fixed-layout pack
+//! with no tag-based key/value structure; the typed model covers
+//! 100% of the spec scope.
 
 pub(crate) mod decode;
 pub(crate) mod encode;

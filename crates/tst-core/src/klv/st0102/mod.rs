@@ -51,7 +51,33 @@
 //!
 //! ## Spec coverage
 //!
-//! [BLOCK ADDED IN TASK 6 — see plan docs/plans/2026-05-19-wave-6-klv-reorg.md Task 6]
+//! **Standard:** MISB ST 0102.12 Security Metadata Local Set
+//! (LS form only — Universal Set form deferred).
+//!
+//! **Tags parsed (typed-modeled):** 1 (security classification),
+//! 2 (classifying country coding method), 3 (classifying country),
+//! 4 (security-SCI/SHI information), 5–11 (caveats + releasing
+//! instructions + classified-by + derived-from + classification
+//! reason + declassification date + marking system), 12 (object
+//! country coding method), 13 (object country names), 14
+//! (classification comments), 22 (LS version), 23–25
+//! (PMS-classifying-by + date-by + comments). Required tags per
+//! ST 0102.12 §6 Table 1: 1, 2, 3, 12, 13, 22 — [`decode_strict`]
+//! rejects records missing any of these.
+//!
+//! **Tags preserved as `unknown`:** any tag not in the
+//! typed-modeled set above — per ST 0107.5 §6.
+//!
+//! **Decode modes:**
+//! - [`decode`] — lenient: tolerates missing required tags, unknown
+//!   enum codepoints (decoded as `Unknown(u8)`), Tag 13 UTF-16
+//!   decode failures (raw bytes preserved in `unknown`).
+//! - [`decode_strict`] — strict: rejects missing required tags,
+//!   unknown enum codepoints, `OmittedValueXX` codepoints,
+//!   non-canonical BER, duplicate tags, malformed UTF-16.
+//!
+//! **Deferred per `docs/deferred-features.md`:** Universal Set form
+//! of ST 0102 (LS-only on MPEG-TS+KLV streams).
 
 pub(crate) mod decode;
 pub(crate) mod encode;

@@ -49,6 +49,54 @@
 //!    The demuxer remains UL-agnostic; consumer-side dispatch keeps
 //!    new typed-set additions from creating a coupling load on the
 //!    demuxer.
+//!
+//! ## Spec coverage
+//!
+//! **Standard:** MISB ST 0903.6 VMTI (Video Moving Target Indicator)
+//! Local Set + per-target packs (vTargetSeries, Tag 101).
+//!
+//! **Top-level tags parsed (typed-modeled per ST 0903.6 §6 Table 1):**
+//! 1 (checksum), 2 (precision timestamp), 3 (VMTI LS version), 4–7
+//! (system name + version + UID + source sensor), 8–9 (frame width
+//! + height), 10–11 (image source sensor focal length), 12 (LDS
+//! version), 13 (system source identifier), 101 (vTargetSeries —
+//! per-target packs decoded via [`VTargetPack`]), plus the nested
+//! Local Set tags 102–109 (algorithm series, ontology series — bytes
+//! preserved as `Option<Vec<u8>>` pass-through; typed layer deferred).
+//!
+//! **[`VTargetPack`] tags parsed (typed-modeled per ST 0903.6 §10.2
+//! Table 5):** 1 (targetId — BER-OID), 2 (centroid pixel number),
+//! 3 (boundary top-left + 4 boundary bottom-right), 5–7 (priority +
+//! confidence + history), 8–9 (color + intensity), 10–16 (lat/lon/
+//! HAE + offsets + bbox geo corners), plus pack-form nested LSes
+//! (VMask, VObject, VFeature, VTracker, VChip — bytes preserved as
+//! `Option<Vec<u8>>`; typed layers deferred).
+//!
+//! **Tags preserved as `unknown`:** any tag not in the typed-modeled
+//! set — per ST 0107.5 §6.
+//!
+//! **Decode modes:**
+//! - [`decode`] — lenient: tolerates missing required tags, unknown
+//!   tags (preserved in `unknown`), malformed sub-records (preserved
+//!   in `field_errors`).
+//! - [`decode_strict`] — strict: rejects missing required tags
+//!   (per ST 0903.6 §6 Table 1), duplicate tags, malformed UTF-8,
+//!   pack-level malformations.
+//!
+//! **Encode modes:**
+//! - [`encode`] / [`encode_to_vec`] — VMTI LS body bytes (no UL
+//!   prefix, no outer BER length); for nesting inside an ST 0601
+//!   Tag 74.
+//! - [`encode_standalone`] / [`encode_to_vec_standalone`] /
+//!   [`encoded_len_standalone`] — VMTI LS bytes prepended with
+//!   [`VMTI_LS_UL`] + outer BER length wrapper; for standalone
+//!   carriage on a dedicated KLV PID.
+//!
+//! **Deferred per `docs/deferred-features.md`:** typed nested-LS
+//! layers (VMask, VObject, VFeature, VTracker, VChip on each
+//! [`VTargetPack`]; Algorithm Series and Ontology Series at the VMTI
+//! top level); Universal Set form of ST 0903 (LS-only on
+//! MPEG-TS+KLV streams).
 
 pub(crate) mod decode;
 pub(crate) mod emit;

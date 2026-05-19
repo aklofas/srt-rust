@@ -15,6 +15,7 @@ pub(crate) mod ts;
 
 mod state;
 mod scheduling;
+mod stats_accounting;
 
 use crate::error::MuxError;
 
@@ -23,38 +24,10 @@ pub use types::*;
 
 mod config;
 pub use config::*;
+pub use stats_accounting::MuxerStats;
 
 use crate::mpegts::common::{Pcr27mhz, Pts90khz, StreamType, StreamTypeCode};
 use std::collections::{BTreeMap, VecDeque};
-
-/// Stats snapshot for [`Muxer`].
-///
-/// Returned by [`Muxer::stats`]. All counters are cumulative since
-/// construction (or the last [`Muxer::reset_stats`] call).
-///
-/// `per_stream` is keyed by PID. Entries are created eagerly at
-/// [`Muxer::new`] for every configured video and KLV stream so callers
-/// can always index by a known PID without first checking for key
-/// presence.
-#[must_use]
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct MuxerStats {
-    /// Total 188-byte TS packets drained via [`Muxer::pull`].
-    pub ts_packets_emitted: u64,
-    /// Total bytes drained via [`Muxer::pull`] (`ts_packets_emitted * 188`).
-    pub ts_bytes_emitted: u64,
-    /// Number of programs (PAT entries) in this muxer's configuration.
-    pub programs_configured: u32,
-    /// Number of subtitle streams configured across all programs in this
-    /// muxer. Counts the `StreamSpec::Subtitle` entries from
-    /// `MuxerConfig::programs`.
-    pub subtitle_streams_configured: u32,
-    /// Per-stream counters, keyed by PID. One entry per configured
-    /// video or KLV stream. `StreamStats::items` = push_video_to /
-    /// push_klv_to call count; `StreamStats::bytes` = raw ES bytes pushed
-    /// (before PES/TS framing overhead).
-    pub per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
-}
 
 use self::pes::{
     MAX_PES_HEADER_SIZE, PesFlags, PesPtsField, STREAM_ID_KLV, STREAM_ID_PRIVATE_STREAM_1,
@@ -1544,94 +1517,11 @@ impl Muxer {
         self.config.buffer_packets as u64
     }
 
-    /// Return a snapshot of the current stats counters.
-    ///
-    /// All per-stream entries are present regardless of whether any data has
-    /// been pushed to that stream yet.
-    pub fn stats(&self) -> MuxerStats {
-        MuxerStats {
-            ts_packets_emitted: self.ts_packets_emitted,
-            ts_bytes_emitted: self.ts_bytes_emitted,
-            programs_configured: self.config.programs.len() as u32,
-            subtitle_streams_configured: self.subtitle_streams.iter().map(|s| s.len() as u32).sum(),
-            per_stream: self.per_stream.clone(),
-        }
-    }
-
-    /// Per-PID codec-specific counters. See
-    /// [`crate::mpegts::stats::StreamCodecStats`] for the semantics of
-    /// the return value (`None` vs `Some(Unknown)` vs typed variant).
-    ///
-    /// **Muxer-specific note:** the Muxer pre-populates `per_stream` for
-    /// every PID listed in `MuxerConfig` at construction time, so a
-    /// configured-but-never-pushed PID returns `Some(Unknown)`, NOT
-    /// `None`. (Contrast with the Demuxer, where `Some(Unknown)`
-    /// requires an event to have been emitted on that PID.) `None` is
-    /// only returned for PIDs the Muxer was not configured with.
-    ///
-    /// # C ABI
-    ///
-    /// `tst_muxer_get_stream_codec_stats` — see
-    /// `crates/tst-c/include/tstrans.h`.
-    pub fn stream_codec_stats(&self, pid: u16) -> Option<crate::mpegts::stats::StreamCodecStats> {
-        if let Some(c) = self.stream_codec_counters.get(&pid) {
-            return Some(c.to_public());
-        }
-        if self.per_stream.contains_key(&pid) {
-            return Some(crate::mpegts::stats::StreamCodecStats::Unknown);
-        }
-        None
-    }
-
-    /// Zero all flow counters.
-    ///
-    /// Per-stream entries are preserved (their `pid` and `stream_type`
-    /// identity fields remain set); only the flow counters (`items`,
-    /// `bytes`, `discontinuities`) are zeroed. Codec-counter entries
-    /// are cleared on reset, so previously-pushed PIDs revert to
-    /// `Some(Unknown)` (or `None` for never-configured PIDs) until the
-    /// next push re-materializes the typed variant.
-    pub fn reset_stats(&mut self) {
-        self.ts_packets_emitted = 0;
-        self.ts_bytes_emitted = 0;
-        for s in self.per_stream.values_mut() {
-            s.items = 0;
-            s.bytes = 0;
-            s.discontinuities = 0;
-        }
-        self.stream_codec_counters.clear();
-    }
-
     /// Return the resolved PCR PID for program at `prog_idx` (0-based index).
     /// Returns `None` if `prog_idx` is out of range.
     #[cfg(test)]
     pub(crate) fn pcr_pid_for_program(&self, prog_idx: usize) -> Option<u16> {
         self.pcr_pids.get(prog_idx).copied()
-    }
-
-    fn bump_video_counters(&mut self, pid: u16, nals_or_obus_delta: u64, ra_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_video);
-        c.nals_or_obus = c.nals_or_obus.saturating_add(nals_or_obus_delta);
-        c.random_access_aus = c.random_access_aus.saturating_add(ra_delta);
-    }
-
-    fn bump_klv_counters(&mut self, pid: u16, records_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_klv);
-        c.records = c.records.saturating_add(records_delta);
-    }
-
-    fn bump_audio_counters(&mut self, pid: u16, frames_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_audio);
-        c.frames = c.frames.saturating_add(frames_delta);
     }
 }
 

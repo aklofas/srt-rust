@@ -27,8 +27,21 @@ pub(crate) mod handle_pack;
 /// caller picks a known codec; demux-side stats and event APIs use
 /// `StreamTypeCode` so unrecognized PMT bytes are preserved rather than
 /// elided.
+///
+/// # Forward compatibility
+///
+/// `StreamType` is `#[non_exhaustive]` — outside-crate code (bindings,
+/// downstream consumers) cannot exhaustively pattern-match this enum and
+/// must include a wildcard arm. This is intentional: new MPEG-TS stream
+/// types (vendor codes, future codecs, reserved-range expansions) may be
+/// added in minor releases without forcing a source-level break on
+/// consumers. To handle unknown PMT bytes specifically, prefer the
+/// [`StreamTypeCode`] wrapper which surfaces unrecognized bytes as
+/// `StreamTypeCode::Unknown(byte)` rather than triggering a wildcard arm
+/// at the typed layer.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum StreamType {
     /// H.264 / AVC video (ITU-T H.264 / ISO/IEC 14496-10).
     H264 = 0x1B,

@@ -974,6 +974,8 @@ extern "C" {
  * annotation matches the convention of every other `tst_*` entry
  * point for consistency.
  */
+
+// ─── INTROSPECTION ─────────────────────────────────────────
  uint32_t tst_get_abi_version_major(void);
 
 /**
@@ -1078,6 +1080,8 @@ extern "C" {
  * `tst_mux_config_add_program` before using this config to open a muxer
  * or sender. Returns NULL only on allocation failure (OOM).
  */
+
+// ─── MUX SENDER ────────────────────────────────────────────
  struct tst_mux_config_t *tst_mux_config_new(void);
 
 /**
@@ -1285,6 +1289,8 @@ int tst_mux_config_add_subtitle_descriptor(struct tst_mux_config_t *cfg,
                                            TstSubtitleStreamHandle stream,
                                            const struct tst_descriptor_t *desc);
 
+
+// ─── TS SENDER ─────────────────────────────────────────────
  struct tst_sender_config_t *tst_sender_config_new(void);
 
  void tst_sender_config_free(struct tst_sender_config_t *p);
@@ -1295,17 +1301,25 @@ int tst_sender_config_set_framing_mode(struct tst_sender_config_t *p,
 
  int tst_sender_config_set_max_unsynced_bytes(struct tst_sender_config_t *p, size_t n);
 
+
+// ─── RAW SENDER ────────────────────────────────────────────
  struct tst_raw_sender_config_t *tst_raw_sender_config_new(void);
 
  void tst_raw_sender_config_free(struct tst_raw_sender_config_t *p);
 
+
+// ─── OTHER ─────────────────────────────────────────────────
  struct tst_reconnect_policy_t *tst_reconnect_policy_new(void);
 
+
+// ─── LIFETIME ──────────────────────────────────────────────
  void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
 
 /**
  * Set max reconnect attempts. `n < 0` means retry forever.
  */
+
+// ─── OTHER ─────────────────────────────────────────────────
  int tst_reconnect_policy_set_max_attempts(struct tst_reconnect_policy_t *p, int32_t n);
 
  int tst_reconnect_policy_set_backoff_constant_ms(struct tst_reconnect_policy_t *p, uint32_t ms);
@@ -1328,6 +1342,8 @@ int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
  * Returns `NULL` on allocation failure or internal panic.
  * Free with `tst_demux_config_free`.
  */
+
+// ─── DEMUX RECEIVER ────────────────────────────────────────
  struct tst_demux_config_t *tst_demux_config_new(void);
 
 /**
@@ -1645,6 +1661,8 @@ int tst_managed_demux_receiver_get_stream_stats(struct tst_managed_demux_receive
  * recent failure on this thread (or `TST_E_SUCCESS` if there has been
  * none since thread start).
  */
+
+// ─── INTROSPECTION ─────────────────────────────────────────
  int tst_get_last_error(void);
 
 /**
@@ -1701,6 +1719,8 @@ int tst_managed_demux_receiver_get_stream_stats(struct tst_managed_demux_receive
  * invalid value. The detail string from
  * `tst_get_last_error_str()` describes the specific problem.
  */
+
+// ─── MUX SENDER ────────────────────────────────────────────
  struct tst_mux_sender_t *tst_mux_sender_open(const char *srt_url, struct tst_mux_config_t *cfg);
 
 
@@ -2097,6 +2117,8 @@ int tst_muxer_get_stream_codec_stats(struct tst_muxer_t *p,
  * last-error for any malformed URL, unsupported key, unknown key, or
  * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
  */
+
+// ─── RAW RECEIVER ──────────────────────────────────────────
  struct tst_raw_receiver_t *tst_raw_receiver_open(const char *srt_url);
 
 /**
@@ -2290,6 +2312,8 @@ int tst_managed_raw_receiver_get_socket_stats(struct tst_managed_raw_receiver_t 
  * `tst_get_last_error_str()` describes the specific problem.
  */
 
+
+// ─── RAW SENDER ────────────────────────────────────────────
 struct tst_raw_sender_t *tst_raw_sender_open(const char *srt_url,
                                              const struct tst_raw_sender_config_t *cfg);
 
@@ -2415,6 +2439,8 @@ int tst_managed_raw_sender_get_socket_stats(struct tst_managed_raw_sender_t *p,
  * last-error for any malformed URL, unsupported key, unknown key, or
  * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
  */
+
+// ─── TS RECEIVER ───────────────────────────────────────────
  struct tst_receiver_t *tst_receiver_open(const char *srt_url);
 
 /**
@@ -2601,6 +2627,8 @@ int tst_managed_receiver_get_socket_stats(struct tst_managed_receiver_t *p,
  * invalid value. The detail string from
  * `tst_get_last_error_str()` describes the specific problem.
  */
+
+// ─── TS SENDER ─────────────────────────────────────────────
  struct tst_sender_t *tst_sender_open(const char *srt_url, const struct tst_sender_config_t *cfg);
 
  int tst_sender_send_ts(struct tst_sender_t *p, const uint8_t *bytes, size_t len);

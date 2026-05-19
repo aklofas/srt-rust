@@ -332,6 +332,32 @@ pub(crate) fn record_eos() {
     set_last_error(TstError::EndOfStream, "end of stream (peer disconnected)");
 }
 
+/// Record `NotAvailable` (-13) with a per-call message and return the
+/// negative code. Use this from C ABI entry points that hit a transient
+/// "unavailable" condition (typically `socket_stats() -> None` mid-reconnect
+/// or after close).
+///
+/// Replaces the direct `TstError::NotAvailable as i32` pattern that leaves
+/// stale last-error state visible to `tst_get_last_error()` (per Codex
+/// re-review finding 1, plan #93).
+#[allow(dead_code)]
+pub(crate) fn record_not_available(msg: &str) -> i32 {
+    set_last_error(TstError::NotAvailable, msg);
+    TstError::NotAvailable as i32
+}
+
+/// Record `NotFound` (-14) with a per-call message and return the negative
+/// code. Use this from C ABI per-PID / per-key accessors when the requested
+/// key has never been observed on this handle.
+///
+/// Replaces the direct `TstError::NotFound as i32` pattern that leaves
+/// stale last-error state visible to `tst_get_last_error()`.
+#[allow(dead_code)]
+pub(crate) fn record_not_found(msg: &str) -> i32 {
+    set_last_error(TstError::NotFound, msg);
+    TstError::NotFound as i32
+}
+
 /// Expose `record_shell_error` to integration tests that cannot access
 /// `pub(crate)` items. Integration tests in `crates/tst-c/tests/` are
 /// separate crates that can only reach `pub` items on the rlib.
@@ -710,5 +736,53 @@ mod tests {
             );
             assert_not_unhandled_wildcard();
         }
+    }
+
+    #[test]
+    fn record_not_available_sets_last_error_code() {
+        test_clear_last_error();
+        let rc = record_not_available("socket stats unavailable (reconnecting)");
+        assert_eq!(rc, TstError::NotAvailable as i32);
+        assert_eq!(test_last_error_code(), TstError::NotAvailable as i32);
+    }
+
+    #[test]
+    fn record_not_available_overwrites_prior_error() {
+        test_clear_last_error();
+        // Seed a stale unrelated error (simulating a prior failing call).
+        set_last_error(TstError::InvalidConfig, "stale config error");
+        assert_eq!(test_last_error_code(), TstError::InvalidConfig as i32);
+
+        // record_not_available must overwrite both code AND message.
+        let _ = record_not_available("socket stats unavailable");
+        assert_eq!(test_last_error_code(), TstError::NotAvailable as i32);
+        assert!(
+            test_last_error_msg().contains("socket stats unavailable"),
+            "last-error message did not overwrite; got: {:?}",
+            test_last_error_msg()
+        );
+    }
+
+    #[test]
+    fn record_not_found_sets_last_error_code() {
+        test_clear_last_error();
+        let rc = record_not_found("pid 0x100 not observed on this handle");
+        assert_eq!(rc, TstError::NotFound as i32);
+        assert_eq!(test_last_error_code(), TstError::NotFound as i32);
+    }
+
+    #[test]
+    fn record_not_found_overwrites_prior_error() {
+        test_clear_last_error();
+        set_last_error(TstError::InvalidUsage, "stale usage error");
+        assert_eq!(test_last_error_code(), TstError::InvalidUsage as i32);
+
+        let _ = record_not_found("pid not observed");
+        assert_eq!(test_last_error_code(), TstError::NotFound as i32);
+        assert!(
+            test_last_error_msg().contains("pid not observed"),
+            "last-error message did not overwrite; got: {:?}",
+            test_last_error_msg()
+        );
     }
 }

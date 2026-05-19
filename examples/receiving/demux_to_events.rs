@@ -85,7 +85,9 @@ fn main() {
                 for s in &m.streams {
                     println!(
                         "  PID 0x{:04X}: stream_type=0x{:02X} kind={:?}",
-                        s.pid, s.stream_type.as_byte(), s.kind
+                        s.pid,
+                        s.stream_type.as_byte(),
+                        s.kind
                     );
                 }
                 // KLV-to-video links: declared by the PMT's

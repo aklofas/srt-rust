@@ -2283,7 +2283,7 @@ pub mod tst_core::mpegts::common::pid
 pub const tst_core::mpegts::common::pid::NULL: u16
 pub const tst_core::mpegts::common::pid::PAT: u16
 pub fn tst_core::mpegts::common::pid::is_user_pid(pid: u16) -> bool
-#[repr(u8)] pub enum tst_core::mpegts::common::StreamType
+#[non_exhaustive] #[repr(u8)] pub enum tst_core::mpegts::common::StreamType
 pub tst_core::mpegts::common::StreamType::AudioAac = 15
 pub tst_core::mpegts::common::StreamType::AudioAacLatm = 17
 pub tst_core::mpegts::common::StreamType::AudioAc3 = 129
@@ -2531,7 +2531,7 @@ pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell::decoder_config_
 pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell::metadata_service_id: u8
 pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell::random_access_indicator: bool
 pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell::sequence_number: u8
-pub tst_core::mpegts::demux::event::MetadataKind::Unknown(u8)
+pub tst_core::mpegts::demux::event::MetadataKind::Unknown(tst_core::mpegts::common::StreamTypeCode)
 impl core::clone::Clone for tst_core::mpegts::demux::event::MetadataKind
 pub fn tst_core::mpegts::demux::event::MetadataKind::clone(&self) -> tst_core::mpegts::demux::event::MetadataKind
 impl core::cmp::Eq for tst_core::mpegts::demux::event::MetadataKind
@@ -2650,7 +2650,7 @@ pub tst_core::mpegts::demux::event::SamplePayload::Subtitle::codec: tst_core::mp
 pub tst_core::mpegts::demux::event::SamplePayload::Subtitle::payload: alloc::vec::Vec<u8>
 pub tst_core::mpegts::demux::event::SamplePayload::Unknown
 pub tst_core::mpegts::demux::event::SamplePayload::Unknown::raw: alloc::vec::Vec<u8>
-pub tst_core::mpegts::demux::event::SamplePayload::Unknown::stream_type: u8
+pub tst_core::mpegts::demux::event::SamplePayload::Unknown::stream_type: tst_core::mpegts::common::StreamTypeCode
 pub tst_core::mpegts::demux::event::SamplePayload::Video
 pub tst_core::mpegts::demux::event::SamplePayload::Video::codec: tst_core::mpegts::demux::event::VideoCodec
 pub tst_core::mpegts::demux::event::SamplePayload::Video::payload: tst_core::mpegts::demux::event::VideoPayload
@@ -2867,7 +2867,7 @@ pub tst_core::mpegts::demux::event::StreamInfo::kind: tst_core::mpegts::demux::e
 pub tst_core::mpegts::demux::event::StreamInfo::pid: u16
 pub tst_core::mpegts::demux::event::StreamInfo::program_number: u16
 pub tst_core::mpegts::demux::event::StreamInfo::raw_descriptors: alloc::vec::Vec<tst_core::mpegts::descriptors::parse::RawDescriptor>
-pub tst_core::mpegts::demux::event::StreamInfo::stream_type: u8
+pub tst_core::mpegts::demux::event::StreamInfo::stream_type: tst_core::mpegts::common::StreamTypeCode
 impl core::clone::Clone for tst_core::mpegts::demux::event::StreamInfo
 pub fn tst_core::mpegts::demux::event::StreamInfo::clone(&self) -> tst_core::mpegts::demux::event::StreamInfo
 impl core::cmp::Eq for tst_core::mpegts::demux::event::StreamInfo
@@ -3245,7 +3245,7 @@ pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell::decoder_config_flag: b
 pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell::metadata_service_id: u8
 pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell::random_access_indicator: bool
 pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell::sequence_number: u8
-pub tst_core::mpegts::demux::MetadataKind::Unknown(u8)
+pub tst_core::mpegts::demux::MetadataKind::Unknown(tst_core::mpegts::common::StreamTypeCode)
 impl core::clone::Clone for tst_core::mpegts::demux::event::MetadataKind
 pub fn tst_core::mpegts::demux::event::MetadataKind::clone(&self) -> tst_core::mpegts::demux::event::MetadataKind
 impl core::cmp::Eq for tst_core::mpegts::demux::event::MetadataKind
@@ -3364,7 +3364,7 @@ pub tst_core::mpegts::demux::SamplePayload::Subtitle::codec: tst_core::mpegts::d
 pub tst_core::mpegts::demux::SamplePayload::Subtitle::payload: alloc::vec::Vec<u8>
 pub tst_core::mpegts::demux::SamplePayload::Unknown
 pub tst_core::mpegts::demux::SamplePayload::Unknown::raw: alloc::vec::Vec<u8>
-pub tst_core::mpegts::demux::SamplePayload::Unknown::stream_type: u8
+pub tst_core::mpegts::demux::SamplePayload::Unknown::stream_type: tst_core::mpegts::common::StreamTypeCode
 pub tst_core::mpegts::demux::SamplePayload::Video
 pub tst_core::mpegts::demux::SamplePayload::Video::codec: tst_core::mpegts::demux::event::VideoCodec
 pub tst_core::mpegts::demux::SamplePayload::Video::payload: tst_core::mpegts::demux::event::VideoPayload
@@ -3691,7 +3691,7 @@ pub tst_core::mpegts::demux::StreamInfo::kind: tst_core::mpegts::demux::event::S
 pub tst_core::mpegts::demux::StreamInfo::pid: u16
 pub tst_core::mpegts::demux::StreamInfo::program_number: u16
 pub tst_core::mpegts::demux::StreamInfo::raw_descriptors: alloc::vec::Vec<tst_core::mpegts::descriptors::parse::RawDescriptor>
-pub tst_core::mpegts::demux::StreamInfo::stream_type: u8
+pub tst_core::mpegts::demux::StreamInfo::stream_type: tst_core::mpegts::common::StreamTypeCode
 impl core::clone::Clone for tst_core::mpegts::demux::event::StreamInfo
 pub fn tst_core::mpegts::demux::event::StreamInfo::clone(&self) -> tst_core::mpegts::demux::event::StreamInfo
 impl core::cmp::Eq for tst_core::mpegts::demux::event::StreamInfo

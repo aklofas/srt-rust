@@ -1087,12 +1087,13 @@ mod tests {
         assert_eq!(opts.version, 0x13);
     }
 
-    #[allow(clippy::field_reassign_with_default)]
     #[test]
     fn encode_minimal_record_round_trip_via_iter() {
         // Encode a record with just a timestamp; verify the bytes parse back.
-        let mut r = UasDatalinkLs::default();
-        r.timestamp_us = Some(0x0123_4567_89AB_CDEF);
+        let r = UasDatalinkLs {
+            timestamp_us: Some(0x0123_4567_89AB_CDEF),
+            ..UasDatalinkLs::default()
+        };
         let mut buf = vec![0u8; 256];
         let n = encode(&r, &mut buf).unwrap();
         let bytes = &buf[..n];
@@ -1118,13 +1119,14 @@ mod tests {
         assert!(tags_seen.contains(&1), "tag 1 (checksum) missing");
     }
 
-    #[allow(clippy::field_reassign_with_default)]
     #[test]
     fn encoded_len_matches_actual() {
-        let mut r = UasDatalinkLs::default();
-        r.timestamp_us = Some(0xCAFE);
-        r.sensor_lat_deg = Some(45.0);
-        r.sensor_lon_deg = Some(-122.0);
+        let r = UasDatalinkLs {
+            timestamp_us: Some(0xCAFE),
+            sensor_lat_deg: Some(45.0),
+            sensor_lon_deg: Some(-122.0),
+            ..UasDatalinkLs::default()
+        };
         let predicted = encoded_len(&r);
         let mut buf = vec![0u8; predicted];
         let actual = encode(&r, &mut buf).unwrap();
@@ -1139,21 +1141,23 @@ mod tests {
         matches!(err, KlvEncodeError::BufferTooSmall { .. });
     }
 
-    #[allow(clippy::field_reassign_with_default)]
     #[test]
     fn encode_out_of_range_rejects() {
-        let mut r = UasDatalinkLs::default();
-        r.sensor_lat_deg = Some(95.0); // out of [-90, 90]
+        let r = UasDatalinkLs {
+            sensor_lat_deg: Some(95.0), // out of [-90, 90]
+            ..UasDatalinkLs::default()
+        };
         let mut buf = vec![0u8; 256];
         let err = encode(&r, &mut buf).unwrap_err();
         matches!(err, KlvEncodeError::OutOfRange { tag: 13, .. });
     }
 
-    #[allow(clippy::field_reassign_with_default)]
     #[test]
     fn encode_string_too_long_rejects() {
-        let mut r = UasDatalinkLs::default();
-        r.platform_call_sign = Some("x".repeat(200));
+        let r = UasDatalinkLs {
+            platform_call_sign: Some("x".repeat(200)),
+            ..UasDatalinkLs::default()
+        };
         let mut buf = vec![0u8; 512];
         let err = encode(&r, &mut buf).unwrap_err();
         matches!(err, KlvEncodeError::StringTooLong { tag: 59, max: 127 });
@@ -1173,11 +1177,12 @@ mod tests {
         let _ = n;
     }
 
-    #[allow(clippy::field_reassign_with_default)]
     #[test]
     fn encode_to_vec_succeeds() {
-        let mut r = UasDatalinkLs::default();
-        r.timestamp_us = Some(0xABCD_EF00);
+        let r = UasDatalinkLs {
+            timestamp_us: Some(0xABCD_EF00),
+            ..UasDatalinkLs::default()
+        };
         let bytes = encode_to_vec(&r).unwrap();
         assert!(!bytes.is_empty());
         assert_eq!(&bytes[..16], &UniversalLabel::ST_0601_LS.0);
@@ -1215,11 +1220,12 @@ mod tests {
         assert!(parsed.field_errors.is_empty());
     }
 
-    #[allow(clippy::field_reassign_with_default)]
     #[test]
     fn decode_unchecked_accepts_bad_checksum() {
-        let mut r = UasDatalinkLs::default();
-        r.timestamp_us = Some(123);
+        let r = UasDatalinkLs {
+            timestamp_us: Some(123),
+            ..UasDatalinkLs::default()
+        };
         let mut bytes = encode_to_vec(&r).unwrap();
         // Corrupt the last checksum byte
         let last = bytes.len() - 1;
@@ -1230,11 +1236,12 @@ mod tests {
         assert_eq!(parsed.timestamp_us, Some(123));
     }
 
-    #[allow(clippy::field_reassign_with_default)]
     #[test]
     fn decode_strict_rejects_funky_ul() {
-        let mut r = UasDatalinkLs::default();
-        r.timestamp_us = Some(456);
+        let r = UasDatalinkLs {
+            timestamp_us: Some(456),
+            ..UasDatalinkLs::default()
+        };
         let opts = EncodeConfig {
             universal_label: UniversalLabel::new([0xAB; 16]),
             version: 0x13,
@@ -1252,7 +1259,6 @@ mod tests {
         assert_eq!(parsed.universal_label, UniversalLabel::new([0xAB; 16]));
     }
 
-    #[allow(clippy::field_reassign_with_default)]
     #[test]
     fn decode_passes_through_unknown_tags() {
         let mut r = UasDatalinkLs::default();
@@ -1267,14 +1273,15 @@ mod tests {
         assert_eq!(parsed.unknown[0].value, vec![0xDE, 0xAD]);
     }
 
-    #[allow(clippy::field_reassign_with_default)]
     #[test]
     fn decode_field_errors_accumulate() {
         // Hand-build a record with a malformed Tag 13 (lat) value (1 byte instead of 4).
         // We synthesize the bytes by building a valid record and then patching it.
-        let mut r = UasDatalinkLs::default();
-        r.sensor_lat_deg = Some(45.0);
-        r.timestamp_us = Some(123);
+        let r = UasDatalinkLs {
+            sensor_lat_deg: Some(45.0),
+            timestamp_us: Some(123),
+            ..UasDatalinkLs::default()
+        };
         let bytes = encode_to_vec(&r).unwrap();
 
         // Easier path: construct a body that has a deliberately-malformed tag.

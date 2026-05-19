@@ -47,9 +47,10 @@
  *
  * WHY 0x65 (IDR slice) not 0x67 (SPS)?
  *   For a sender-only example with no actual decoder downstream, either works
- *   structurally. 0x65 chosen here because it makes the i==0 keyframe flag
- *   meaningful (the muxer routes IDR slices with the random_access_indicator
- *   bit set in the adaptation field, which is observable in ffprobe output).
+ *   structurally. 0x65 chosen for parallelism with real H.264 IDR slices that
+ *   downstream tools display as such in hex dumps; the muxer trusts the
+ *   `key_frame` parameter regardless of NAL contents (it does not parse the
+ *   bitstream to set random_access_indicator — see Step 4 below).
  *
  * WHY 500 bytes?
  *   A real H.264 IDR slice is much larger; 500 bytes is enough to land in
@@ -70,7 +71,8 @@ static void make_nal(uint8_t *buf, size_t len) {
  *   17 bytes is the smallest spec-conformant ST 0601 packet (16-byte UL +
  *   1 length byte of value 0). This example uses 33 bytes to demonstrate a
  *   non-empty payload so the receiver can hex-dump and see the changing
- *   `seq` byte across frames (each frame: payload bytes = seq * 16).
+ *   `seq` byte across frames (each frame: payload is 16 copies of the byte
+ *   value `seq`).
  *
  * WHY the specific UL bytes?
  *   0x06 0x0E 0x2B 0x34 ... is the SMPTE/MISB UL prefix; the full 16 bytes
@@ -162,12 +164,14 @@ int main(int argc, char **argv) {
     /*
      * ── Step 3: Open the sender ──────────────────────────────────────────
      *
-     * tst_mux_sender_open connects to the SRT peer and consumes the config.
-     * On failure, sets the thread-local last-error and returns NULL.
+     * tst_mux_sender_open copies what it needs from cfg and connects to the
+     * SRT peer. On failure, sets the thread-local last-error and returns
+     * NULL.
      *
      * The cfg pointer remains owned by us — tst_mux_sender_open does NOT
      * free it on either success or failure. We free it ourselves after
-     * either branch.
+     * either branch (matching Step 2's note that cfg may be freed
+     * immediately after a successful open).
      */
     tst_mux_sender_t *s = tst_mux_sender_open(url, cfg);
     if (!s) {

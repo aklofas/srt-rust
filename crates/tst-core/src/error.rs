@@ -431,7 +431,7 @@ pub enum MuxError {
 /// match on the full [`MuxError`] variant set directly via the
 /// [`crate::mpegts::mux::_detail::MuxError`] re-export.
 ///
-/// This is distinct from the **outer-tier** [`tst_pipeline::ShellErrorKind`]
+/// This is distinct from the **outer-tier** `tst_pipeline::ShellErrorKind`
 /// (6 variants, shell-agnostic). The two tiers complement each other:
 /// `ShellErrorKind` is the binding-canonical action category at the shell
 /// boundary (`MuxSender`, `Sender`, `RawSender`, `DemuxReceiver`,
@@ -519,7 +519,7 @@ pub enum MuxSenderErrorKind {
     /// downstream transport has not yet drained the queued packets.
     ///
     /// **Action:** pause pushes, drain the muxer via `pull` (or wait
-    /// for the bundled [`tst_pipeline::MuxSender`] to send queued
+    /// for the bundled `tst_pipeline::MuxSender` to send queued
     /// packets), then retry the same push.
     Backpressure,
 

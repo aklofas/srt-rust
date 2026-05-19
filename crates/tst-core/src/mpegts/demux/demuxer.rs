@@ -1,4 +1,18 @@
-//! Top-level `Demuxer` state machine.
+//! Top-level `Demuxer` state machine — the coordinator that wires
+//! together the sibling-submodule helpers extracted during Wave 6.B:
+//!
+//! - `sync_ingress` — byte-aligned 188-byte packet detection + PCR / CC
+//!   anomaly checks.
+//! - `psi_topology` — PSI section dispatch + PAT/PMT topology tracking.
+//! - `pmt_classify` — PMT stream classification + descriptor recognition.
+//! - `pes_emit` — PES reassembly dispatch + event construction.
+//! - `stats_recorder` — counter bumping + nonconformant event queueing.
+//! - `strict` (unchanged from Phase 5) — `StrictMode` policy enum.
+//!
+//! Public API (`new`, `with_options`, `feed`, `feed_aligned`,
+//! `next_event`, `flush`, `stats`, `reset_stats`, `stream_codec_stats`)
+//! lives here in the coordinator. Implementation helpers are
+//! `pub(super)` and live in the sibling submodules per Decision DB2/DB3.
 
 use crate::error::DemuxError;
 use crate::mpegts::demux::event::{DemuxEvent, NonConformantIssue, StreamId, StreamKind};
@@ -482,8 +496,7 @@ mod tests {
     use super::*;
     use crate::mpegts::common::Pts90khz;
     use crate::mpegts::demux::event::{
-        AudioCodec, DiscontinuityKind, MetadataKind, SamplePayload, SubtitleCodec, VideoCodec,
-        VideoPayload,
+        AudioCodec, DiscontinuityKind, SamplePayload, SubtitleCodec, VideoCodec,
     };
     use crate::mpegts::demux::pmt_classify::{
         classify_0x06, classify_0x06_with_ambiguity, is_malformed_av1_registration,

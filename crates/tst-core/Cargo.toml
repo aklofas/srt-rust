@@ -77,6 +77,13 @@ bench = false
 doc   = false
 
 [[bin]]
+name  = "gen_pts_rollover_fixture"
+path  = "tests/tools/gen_pts_rollover_fixture.rs"
+test  = false
+bench = false
+doc   = false
+
+[[bin]]
 name  = "corpus_to_fixture"
 path  = "tests/tools/corpus_to_fixture.rs"
 

@@ -1,0 +1,585 @@
+//! Per-stream and global-mux configuration entry points.
+//!
+//! Houses the `tst_mux_config_add_*_stream*` constructors (video / klv /
+//! audio / subtitle) plus the four global-mux setters (PCR pid, PCR
+//! interval, PSI interval, buffer packets). The codec / stream-type enums
+//! that parameterize these entries (`TstVideoCodec`, `TstAudioCodec`,
+//! `TstSubtitleCodec`, `TstKlvStreamType`) live alongside them since they
+//! are most-used here; `TstAudioCodec` and `TstSubtitleCodec` are also
+//! used on `tst_event_t` payloads (via `from_core`) so they remain `pub`.
+
+use super::{TstMuxConfig, TstProgramHandle};
+use crate::error::{TstError, set_last_error};
+use crate::handle::{
+    TST_INVALID_STREAM_HANDLE, TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle,
+    TstVideoStreamHandle,
+};
+use crate::panic::ffi_catch;
+use tst_core::mpegts::mux::{
+    AudioCodec, AudioStreamHandle, KlvStreamHandle, KlvStreamType, StreamSpec, SubtitleCodec,
+    SubtitleStreamHandle, VideoCodec, VideoStreamHandle,
+};
+
+/// Add a video elementary stream to the specified program and return its
+/// handle.
+///
+/// The returned `tst_video_stream_handle_t` is stable across the config→open
+/// boundary and across managed-sender reconnects. Pass it to
+/// `tst_muxer_push_video_to` / `tst_mux_sender_send_video_to` /
+/// `tst_managed_mux_sender_send_video_to` to fan out to this specific stream.
+///
+/// Returns `TST_INVALID_STREAM_HANDLE` and sets last-error on: null `cfg`,
+/// invalid `program` handle, or per-program stream cap exceeded (>16 streams
+/// of any kind per program). Hard validation errors surface at `_open` time.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_video_stream(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+    codec: TstVideoCodec,
+) -> TstVideoStreamHandle {
+    ffi_catch(TST_INVALID_STREAM_HANDLE, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TST_INVALID_STREAM_HANDLE;
+        };
+        let prog_idx = program.0 as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(TstError::InvalidUsage, "invalid program handle");
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        let prog = &mut cfg.programs[prog_idx];
+        // within_idx for video handles is the index among video streams only
+        // (Muxer builds video_streams[prog] as a filtered subset of streams).
+        let within_idx = prog
+            .streams
+            .iter()
+            .filter(|s| matches!(s, StreamSpec::Video { .. }))
+            .count();
+        if within_idx >= 16 {
+            // VideoStreamHandle::pack() debug_asserts within_index < 16; reject
+            // before that fires so the C caller gets a defined error.
+            set_last_error(
+                TstError::InvalidUsage,
+                "per-program video stream cap (16) exceeded",
+            );
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        let rust_codec = match codec {
+            TstVideoCodec::H264 => VideoCodec::H264,
+            TstVideoCodec::H265 => VideoCodec::H265,
+            TstVideoCodec::H266 => VideoCodec::H266,
+            TstVideoCodec::Av1 => VideoCodec::Av1,
+        };
+        prog.streams.push(StreamSpec::Video {
+            pid,
+            codec: rust_codec,
+        });
+        prog.stream_descriptors.push(Vec::new());
+        VideoStreamHandle::pack(prog_idx, within_idx).raw()
+    })
+}
+
+/// Add a KLV elementary stream to the specified program and return its handle.
+///
+/// `stream_type`: `TST_KLV_STREAM_TYPE_PRIVATE_DATA` (0x06, async — no AU
+/// cell wrapping) or `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA` (0x15 —
+/// the muxer auto-wraps each push in a 5-byte `Metadata_AU_cell` header
+/// per ITU-T H.222.0 V9 § 2.12.4.2 before TS-framing; pass raw KLV LS
+/// bytes to `push_klv_to`).
+///
+/// `carries_pts`: set `true` for synchronous KLV (PTS carried in PES header),
+/// `false` for async KLV.
+///
+/// Returns `TST_INVALID_STREAM_HANDLE` on error (same conditions as
+/// `tst_mux_config_add_video_stream`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_klv_stream(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+    stream_type: TstKlvStreamType,
+    carries_pts: bool,
+) -> TstKlvStreamHandle {
+    ffi_catch(TST_INVALID_STREAM_HANDLE, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TST_INVALID_STREAM_HANDLE;
+        };
+        let prog_idx = program.0 as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(TstError::InvalidUsage, "invalid program handle");
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        let prog = &mut cfg.programs[prog_idx];
+        // within_idx for klv handles is the index among klv streams only
+        // (Muxer builds klv_streams[prog] as a filtered subset of streams).
+        let within_idx = prog
+            .streams
+            .iter()
+            .filter(|s| matches!(s, StreamSpec::Klv { .. }))
+            .count();
+        if within_idx >= 16 {
+            set_last_error(
+                TstError::InvalidUsage,
+                "per-program klv stream cap (16) exceeded",
+            );
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        let rust_stream_type = match stream_type {
+            TstKlvStreamType::PrivateData => KlvStreamType::PrivateData,
+            TstKlvStreamType::SynchronousMetadata => KlvStreamType::SynchronousMetadata,
+        };
+        prog.streams.push(StreamSpec::Klv {
+            pid,
+            stream_type: rust_stream_type,
+            carries_pts,
+        });
+        prog.stream_descriptors.push(Vec::new());
+        KlvStreamHandle::pack(prog_idx, within_idx).raw()
+    })
+}
+
+/// Add an audio elementary stream (no language tag) to the specified program
+/// and return its handle.
+///
+/// `codec`: one of the `TstAudioCodec` variants — `Mp2` (MPEG-1 Layer II
+/// audio), `Aac` (AAC in ADTS framing), `AacLatm` (AAC in LATM framing),
+/// or `Ac3` (Dolby AC-3). These C enum values are `0..3` per the
+/// `TstAudioCodec` definition; they are NOT the MPEG-TS PMT `stream_type`
+/// codepoints — the muxer derives the appropriate `stream_type` (and any
+/// required registration descriptor) from the codec choice.
+///
+/// The returned `tst_audio_stream_handle_t` is stable across the
+/// config→open boundary and across managed-sender reconnects. Pass it to
+/// `tst_muxer_push_audio_to` / `tst_mux_sender_send_audio_to` /
+/// `tst_managed_mux_sender_send_audio_to` to fan out to this specific
+/// stream.
+///
+/// Returns `TST_INVALID_STREAM_HANDLE` and sets last-error on: null `cfg`,
+/// invalid `program` handle, or per-program stream cap exceeded (>16 audio
+/// streams per program). Hard validation errors surface at `_open` time.
+///
+/// Use `tst_mux_config_add_audio_stream_with_language` when you want the
+/// muxer to auto-emit an ISO 639 language descriptor for this stream.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_audio_stream(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+    codec: TstAudioCodec,
+) -> TstAudioStreamHandle {
+    ffi_catch(TST_INVALID_STREAM_HANDLE, || unsafe {
+        add_audio_stream_inner(cfg, program, pid, codec, None)
+    })
+}
+
+/// Add an audio elementary stream with an ISO 639-2 language tag.
+///
+/// `language` MUST be a non-null pointer to a 3-byte array of lowercase
+/// ASCII bytes (e.g. `"eng"`, `"fra"`, `"spa"`). The muxer auto-emits an
+/// `iso_639_language_descriptor` (tag `0x0A`) in the PMT for this stream
+/// with `audio_type = 0x00` (undefined / clean main).
+///
+/// Passing a null `language` is rejected with `TST_E_INVALID_CONFIG` —
+/// use the bare `tst_mux_config_add_audio_stream` variant when no language
+/// tag is desired.
+///
+/// Other failure modes match `tst_mux_config_add_audio_stream` (null
+/// `cfg`, invalid `program`, per-program cap exceeded).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_audio_stream_with_language(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+    codec: TstAudioCodec,
+    language: *const u8,
+) -> TstAudioStreamHandle {
+    ffi_catch(TST_INVALID_STREAM_HANDLE, || {
+        if language.is_null() {
+            set_last_error(
+                TstError::InvalidConfig,
+                "language pointer must be non-null for _with_language variant",
+            );
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        // SAFETY: caller documented contract — pointer to 3-byte ISO 639-2 array.
+        let lang = unsafe { std::slice::from_raw_parts(language, 3) };
+        let mut buf = [0u8; 3];
+        buf.copy_from_slice(lang);
+        unsafe { add_audio_stream_inner(cfg, program, pid, codec, Some(buf)) }
+    })
+}
+
+/// Shared body for both audio-stream constructors. `language` is `Some`
+/// only for the `_with_language` variant.
+unsafe fn add_audio_stream_inner(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+    codec: TstAudioCodec,
+    language: Option<[u8; 3]>,
+) -> TstAudioStreamHandle {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+        set_last_error(TstError::InvalidConfig, "null config pointer");
+        return TST_INVALID_STREAM_HANDLE;
+    };
+    let prog_idx = program.0 as usize;
+    if prog_idx >= cfg.programs.len() {
+        set_last_error(TstError::InvalidUsage, "invalid program handle");
+        return TST_INVALID_STREAM_HANDLE;
+    }
+    let prog = &mut cfg.programs[prog_idx];
+    // within_idx for audio handles is the index among audio streams only
+    // (Muxer builds audio_streams[prog] as a filtered subset of streams).
+    let within_idx = prog
+        .streams
+        .iter()
+        .filter(|s| matches!(s, StreamSpec::Audio { .. }))
+        .count();
+    if within_idx >= 16 {
+        // AudioStreamHandle::pack() debug_asserts within_index < 16; reject
+        // before that fires so the C caller gets a defined error.
+        set_last_error(
+            TstError::InvalidUsage,
+            "per-program audio stream cap (16) exceeded",
+        );
+        return TST_INVALID_STREAM_HANDLE;
+    }
+    let rust_codec = match codec {
+        TstAudioCodec::Mp2 => AudioCodec::Mp2,
+        TstAudioCodec::Aac => AudioCodec::Aac,
+        TstAudioCodec::AacLatm => AudioCodec::AacLatm,
+        TstAudioCodec::Ac3 => AudioCodec::Ac3,
+    };
+    prog.streams.push(StreamSpec::Audio {
+        pid,
+        codec: rust_codec,
+        language,
+    });
+    prog.stream_descriptors.push(Vec::new());
+    AudioStreamHandle::pack(prog_idx, within_idx).raw()
+}
+
+/// Add a DVB-subtitling subtitle stream to the specified program and
+/// return its handle. Drives PMT `stream_type = 0x06` with an auto-emitted
+/// subtitling_descriptor (ETSI EN 300 468 §6.2.41 + ETSI EN 300 743).
+///
+/// `language` MUST be a non-null pointer to a 3-byte array of lowercase
+/// ASCII bytes (ISO 639-2 language code, e.g. `"eng"`).
+/// `subtitling_type` is per ETSI EN 300 468 Table 26 (common values:
+/// 0x10 = DVB sub no AR signalling, 0x14 = DVB sub for 4:3 aspect-ratio).
+/// `composition_page_id` and `ancillary_page_id` are 16-bit page
+/// identifiers.
+///
+/// Returns `TST_INVALID_STREAM_HANDLE` on error (same conditions as
+/// `tst_mux_config_add_video_stream`, plus null `language` →
+/// `TST_E_INVALID_CONFIG`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_subtitle_stream_dvb_subtitling(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+    language: *const u8,
+    subtitling_type: u8,
+    composition_page_id: u16,
+    ancillary_page_id: u16,
+) -> TstSubtitleStreamHandle {
+    ffi_catch(TST_INVALID_STREAM_HANDLE, || {
+        if language.is_null() {
+            set_last_error(TstError::InvalidConfig, "null language pointer");
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        // SAFETY: caller documented contract — pointer to 3-byte ISO 639-2 array.
+        let lang_slice = unsafe { std::slice::from_raw_parts(language, 3) };
+        let mut lang = [0u8; 3];
+        lang.copy_from_slice(lang_slice);
+        unsafe {
+            add_subtitle_stream_inner(
+                cfg,
+                program,
+                pid,
+                SubtitleCodec::DvbSubtitling {
+                    language: lang,
+                    subtitling_type,
+                    composition_page_id,
+                    ancillary_page_id,
+                },
+            )
+        }
+    })
+}
+
+/// Add a DVB-teletext subtitle stream. Drives PMT `stream_type = 0x06`
+/// with an auto-emitted teletext_descriptor (ETSI EN 300 468 §6.2.43 +
+/// ETSI EN 300 706).
+///
+/// `language` MUST be a non-null pointer to a 3-byte ISO 639-2 array.
+/// `teletext_type` is 5 bits (common: 0x01 initial page, 0x02 subtitle).
+/// `magazine_number` is 0..=7 (3-bit field — values outside this range
+/// surface as `TST_E_INVALID_CONFIG` at `_open` time).
+/// `page_number` is BCD-encoded (0x00..=0x99).
+///
+/// Returns `TST_INVALID_STREAM_HANDLE` on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_subtitle_stream_dvb_teletext(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+    language: *const u8,
+    teletext_type: u8,
+    magazine_number: u8,
+    page_number: u8,
+) -> TstSubtitleStreamHandle {
+    ffi_catch(TST_INVALID_STREAM_HANDLE, || {
+        if language.is_null() {
+            set_last_error(TstError::InvalidConfig, "null language pointer");
+            return TST_INVALID_STREAM_HANDLE;
+        }
+        // SAFETY: caller documented contract — pointer to 3-byte ISO 639-2 array.
+        let lang_slice = unsafe { std::slice::from_raw_parts(language, 3) };
+        let mut lang = [0u8; 3];
+        lang.copy_from_slice(lang_slice);
+        unsafe {
+            add_subtitle_stream_inner(
+                cfg,
+                program,
+                pid,
+                SubtitleCodec::DvbTeletext {
+                    language: lang,
+                    teletext_type,
+                    magazine_number,
+                    page_number,
+                },
+            )
+        }
+    })
+}
+
+/// Add a CEA-708 standalone caption stream. Drives PMT
+/// `stream_type = 0x06` with an auto-emitted `registration_descriptor`
+/// (`format_identifier = "GA94"`). See `SubtitleCodec::Cea708Standalone`
+/// for the spec caveats — this is industry convention, not a normative
+/// codepoint.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_subtitle_stream_cea708(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+) -> TstSubtitleStreamHandle {
+    ffi_catch(TST_INVALID_STREAM_HANDLE, || unsafe {
+        add_subtitle_stream_inner(cfg, program, pid, SubtitleCodec::Cea708Standalone)
+    })
+}
+
+/// Add a WebVTT-in-MPEG-TS subtitle stream. Drives PMT
+/// `stream_type = 0x06` with an auto-emitted `registration_descriptor`
+/// (`format_identifier = "VTTC"` — ffmpeg `mpegtsenc.c` convention
+/// recognized by hls.js + mediamtx; not a normative codepoint).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_add_subtitle_stream_webvtt(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+) -> TstSubtitleStreamHandle {
+    ffi_catch(TST_INVALID_STREAM_HANDLE, || unsafe {
+        add_subtitle_stream_inner(cfg, program, pid, SubtitleCodec::WebVttInTs)
+    })
+}
+
+/// Shared body for the 4 subtitle-stream constructors.
+unsafe fn add_subtitle_stream_inner(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+    codec: SubtitleCodec,
+) -> TstSubtitleStreamHandle {
+    let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+        set_last_error(TstError::InvalidConfig, "null config pointer");
+        return TST_INVALID_STREAM_HANDLE;
+    };
+    let prog_idx = program.0 as usize;
+    if prog_idx >= cfg.programs.len() {
+        set_last_error(TstError::InvalidUsage, "invalid program handle");
+        return TST_INVALID_STREAM_HANDLE;
+    }
+    let prog = &mut cfg.programs[prog_idx];
+    // within_idx for subtitle handles is the index among subtitle streams only
+    // (Muxer builds subtitle_streams[prog] as a filtered subset of streams).
+    let within_idx = prog
+        .streams
+        .iter()
+        .filter(|s| matches!(s, StreamSpec::Subtitle { .. }))
+        .count();
+    if within_idx >= 16 {
+        // SubtitleStreamHandle::pack() debug_asserts within_index < 16; reject
+        // before that fires so the C caller gets a defined error.
+        set_last_error(
+            TstError::InvalidUsage,
+            "per-program subtitle stream cap (16) exceeded",
+        );
+        return TST_INVALID_STREAM_HANDLE;
+    }
+    prog.streams.push(StreamSpec::Subtitle { pid, codec });
+    prog.stream_descriptors.push(Vec::new());
+    SubtitleStreamHandle::pack(prog_idx, within_idx).raw()
+}
+
+/// Pin the PCR PID for the specified program. By default the muxer uses the
+/// first video stream's PID (or first KLV PID for KLV-only programs).
+///
+/// Returns 0 on success, or a negative `TST_E_*` code on null pointer or
+/// invalid program handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_set_pcr_pid(
+    cfg: *mut TstMuxConfig,
+    program: TstProgramHandle,
+    pid: u16,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        let prog_idx = program.0 as usize;
+        if prog_idx >= cfg.programs.len() {
+            set_last_error(TstError::InvalidUsage, "invalid program handle");
+            return TstError::InvalidUsage as i32;
+        }
+        cfg.programs[prog_idx].pcr_pid = Some(pid);
+        0
+    })
+}
+
+/// Set the PCR re-emission interval for this mux config (applies to all
+/// programs). Default is 40 ms. Must be in range 1..=100.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_set_pcr_interval_ms(
+    p: *mut TstMuxConfig,
+    ms: u32,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.pcr_interval_ms = Some(ms);
+        0
+    })
+}
+
+/// Set the PAT/PMT re-emission interval for this mux config. Default 100 ms.
+/// Must be >= 10.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_set_psi_interval_ms(
+    p: *mut TstMuxConfig,
+    ms: u32,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.psi_interval_ms = Some(ms);
+        0
+    })
+}
+
+/// Set the TS-packet output buffer capacity. Default 10000 (~1.88 MB).
+/// Must be >= 10.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_config_set_buffer_packets(
+    p: *mut TstMuxConfig,
+    n: usize,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(cfg) = (unsafe { p.as_mut() }) else {
+            set_last_error(TstError::InvalidConfig, "null config pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        cfg.buffer_packets = Some(n);
+        0
+    })
+}
+
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TstVideoCodec {
+    H264 = 0,
+    H265 = 1,
+    H266 = 2,
+    Av1 = 3,
+}
+
+impl TstVideoCodec {
+    #[allow(dead_code)]
+    // used in later Phase 3 tasks
+    pub(crate) fn from_core(c: tst_core::mpegts::demux::VideoCodec) -> Self {
+        use tst_core::mpegts::demux::VideoCodec;
+        match c {
+            VideoCodec::H264 => Self::H264,
+            VideoCodec::H265 => Self::H265,
+            VideoCodec::H266 => Self::H266,
+            VideoCodec::Av1 => Self::Av1,
+        }
+    }
+}
+
+/// `repr(i32)` mirror of `tst_core::mpegts::demux::AudioCodec`.
+/// On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_AUDIO`,
+/// and on `tst_stream_info_t.codec`.
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TstAudioCodec {
+    Mp2 = 0,
+    Aac = 1,
+    AacLatm = 2,
+    Ac3 = 3,
+}
+
+impl TstAudioCodec {
+    #[allow(dead_code)]
+    // used in later Phase 3 tasks
+    pub(crate) fn from_core(c: tst_core::mpegts::demux::AudioCodec) -> Self {
+        use tst_core::mpegts::demux::AudioCodec;
+        match c {
+            AudioCodec::Mp2 => Self::Mp2,
+            AudioCodec::Aac => Self::Aac,
+            AudioCodec::AacLatm => Self::AacLatm,
+            AudioCodec::Ac3 => Self::Ac3,
+        }
+    }
+}
+
+/// `repr(i32)` mirror of `tst_core::mpegts::demux::SubtitleCodec`.
+/// On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_SUBTITLE`,
+/// and on `tst_stream_info_t.codec`.
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TstSubtitleCodec {
+    DvbSubtitling = 0,
+    DvbTeletext = 1,
+    Cea708Standalone = 2,
+    WebVttInTs = 3,
+}
+
+impl TstSubtitleCodec {
+    #[allow(dead_code)]
+    // used in later Phase 3 tasks
+    pub(crate) fn from_core(c: tst_core::mpegts::demux::SubtitleCodec) -> Self {
+        use tst_core::mpegts::demux::SubtitleCodec;
+        match c {
+            SubtitleCodec::DvbSubtitling => Self::DvbSubtitling,
+            SubtitleCodec::DvbTeletext => Self::DvbTeletext,
+            SubtitleCodec::Cea708Standalone => Self::Cea708Standalone,
+            SubtitleCodec::WebVttInTs => Self::WebVttInTs,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub enum TstKlvStreamType {
+    PrivateData = 0,
+    SynchronousMetadata = 1,
+}

@@ -1,12 +1,24 @@
 //! AAC frame iterator (ADTS framing today; LATM is a follow-up plan).
 //!
-//! Spec: ISO/IEC 13818-7 §1.A (ADTS) over MPEG-2 / MPEG-4 AAC.
-//! Surfaces what the ADTS header says — does not decode audio.
+//! See [`crate::codec`] for umbrella architecture and design rationale.
 //!
-//! See [`frames`] for the iterator entry point.
+//! ## Spec coverage
+//!
+//! Parsed per ISO/IEC 13818-7 §1.A (ADTS) over MPEG-2 / MPEG-4 AAC:
+//! - ADTS sync word, MPEG version, layer validation.
+//! - Per-frame: profile, sample_rate, channel_configuration, channels,
+//!   frame_length, samples_per_frame, num_raw_data_blocks, has_crc.
+//!
+//! ## Not parsed (deferred)
+//!
+//! - LATM/LOAS framing (deferred — separate plan).
+//! - AudioSpecificConfig / SBR / PS extension headers inside raw data blocks.
+//! - MPEG-4 audio object types beyond the 4 legacy ADTS profiles.
 
 mod adts;
 mod tables;
+#[cfg(test)]
+mod tests;
 
 use crate::codec::CodecParseError;
 
@@ -30,6 +42,7 @@ pub enum MpegVersion {
 
 /// Decoded ADTS frame. Borrows from the source buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct AdtsFrame<'a> {
     pub profile: AacProfile,
     pub sample_rate_hz: u32,
@@ -41,7 +54,7 @@ pub struct AdtsFrame<'a> {
     pub has_crc: bool,
     pub mpeg_version: MpegVersion,
     pub raw_header: Vec<u8>,
-    body: &'a [u8],
+    pub(super) body: &'a [u8],
 }
 
 impl<'a> AdtsFrame<'a> {
@@ -131,9 +144,9 @@ impl AdtsFrameOwned {
 /// Iterator over ADTS frames in `bytes`. Use [`frames`] to construct.
 #[must_use]
 pub struct AdtsFrames<'a> {
-    buf: &'a [u8],
-    cursor: usize,
-    done: bool,
+    pub(super) buf: &'a [u8],
+    pub(super) cursor: usize,
+    pub(super) done: bool,
 }
 
 impl<'a> Iterator for AdtsFrames<'a> {
@@ -190,103 +203,5 @@ pub fn frames(bytes: &[u8]) -> AdtsFrames<'_> {
         buf: bytes,
         cursor: 0,
         done: false,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Helper: build full ADTS frame (7-byte header + zero-fill body).
-    /// Mirrors the build_header helper in adts.rs but pads to total_len bytes.
-    /// Defaults: MPEG-2 ID, no CRC, AAC-LC profile, num_blocks_wire=0 (1 block).
-    fn build_frame(sample_rate_index: u8, channel_config: u8, total_len: u32) -> Vec<u8> {
-        let mut h = vec![0u8; 7];
-        h[0] = 0xFF;
-        h[1] = 0b1111_0000 | (1 << 3) | 1; // ID=MPEG-2, layer=0, no CRC
-        h[2] = (1 << 6) | ((sample_rate_index & 0xF) << 2) | ((channel_config >> 2) & 1); // LC profile
-        h[3] = ((channel_config & 0b11) << 6) | (((total_len >> 11) & 0b11) as u8);
-        h[4] = ((total_len >> 3) & 0xFF) as u8;
-        h[5] = (((total_len & 0b111) as u8) << 5) | 0b1_1111;
-        h[6] = 0b11_1111 << 2;
-        let pad = total_len as usize - 7;
-        let mut out = h;
-        out.extend(std::iter::repeat(0u8).take(pad));
-        out
-    }
-
-    #[test]
-    fn frames_empty_yields_none() {
-        assert!(frames(&[]).next().is_none());
-    }
-
-    #[test]
-    fn frames_two_back_to_back() {
-        let mut buf = build_frame(4, 2, 200);
-        buf.extend(build_frame(4, 2, 200));
-        let mut it = frames(&buf);
-        let f1 = it.next().unwrap().unwrap();
-        assert_eq!(f1.frame_length_bytes, 200);
-        assert_eq!(f1.bytes().len(), 200);
-        assert_eq!(f1.raw_header.len(), 7);
-        let f2 = it.next().unwrap().unwrap();
-        assert_eq!(f2.frame_length_bytes, 200);
-        assert!(it.next().is_none());
-    }
-
-    #[test]
-    fn frames_truncated_body_yields_truncated() {
-        let mut buf = build_frame(4, 2, 200);
-        buf.truncate(50); // header decodes but body too short
-        let mut it = frames(&buf);
-        match it.next() {
-            Some(Err(CodecParseError::Truncated { .. })) => {}
-            other => panic!("expected Err(Truncated), got {:?}", other),
-        }
-        assert!(it.next().is_none());
-    }
-
-    #[test]
-    fn frames_short_header_yields_truncated() {
-        let mut it = frames(&[0xFF, 0xFF]);
-        match it.next() {
-            Some(Err(CodecParseError::Truncated { needed: 7, had: 2 })) => {}
-            other => panic!("expected Truncated 7,2, got {:?}", other),
-        }
-        assert!(it.next().is_none());
-    }
-
-    #[test]
-    fn frames_bad_sync_yields_bad_sync_word() {
-        let bad = [0xAB; 7];
-        let mut it = frames(&bad);
-        match it.next() {
-            Some(Err(CodecParseError::BadSyncWord { .. })) => {}
-            other => panic!("expected BadSyncWord, got {:?}", other),
-        }
-        assert!(it.next().is_none());
-    }
-
-    #[test]
-    fn adts_frame_owned_roundtrip() {
-        let body = vec![0xAA, 0xBB, 0xCC];
-        let raw_header = vec![0x01, 0x02];
-        let borrowed = AdtsFrame {
-            profile: AacProfile::Lc,
-            sample_rate_hz: 44100,
-            channel_configuration: 2,
-            channels: 2,
-            frame_length_bytes: 3,
-            samples_per_frame: 1024,
-            num_raw_data_blocks: 1,
-            has_crc: false,
-            mpeg_version: MpegVersion::Mpeg4,
-            raw_header: raw_header.clone(),
-            body: &body,
-        };
-        let owned = borrowed.to_owned();
-        let reborrowed = owned.as_ref();
-        assert_eq!(borrowed, reborrowed);
-        assert_eq!(owned.body, vec![0xAA, 0xBB, 0xCC]);
     }
 }

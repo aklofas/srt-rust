@@ -1,9 +1,7 @@
 //! Top-level `Demuxer` state machine.
 
 use crate::error::DemuxError;
-use crate::mpegts::common::{
-    Pts90khz, StreamTypeCode, TS_PACKET_SIZE, TS_SYNC_BYTE, pcr_diff_27mhz, pts_diff_33bit,
-};
+use crate::mpegts::common::{Pts90khz, StreamTypeCode, pts_diff_33bit};
 use crate::mpegts::demux::event::{
     AudioCodec, DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit,
     NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, SubtitleCodec,
@@ -23,22 +21,6 @@ use crate::mpegts::demux::types::{
     DEFAULT_PES_CAP_PER_PID, DEFAULT_PES_CAP_TOTAL, DemuxerConfig, DemuxerStats, ProgramTracker,
 };
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
-
-/// Maximum bytes the demuxer scans during sync recovery before declaring
-/// the stream unrecoverable.
-const SYNC_SEARCH_WINDOW: usize = TS_PACKET_SIZE * 32;
-
-/// Hard ceiling on `Demuxer::sync_buf`. `feed` always runs
-/// `extend_from_slice` before the inner sync-search-window check fires,
-/// so an oversized single-call feed (multi-GB of garbage) would otherwise
-/// allocate the whole input before the loop got to bail. The 4 MiB cap
-/// matches ffmpeg's `MpegTSSectionFilter` ceiling and is comfortably
-/// larger than `SYNC_SEARCH_WINDOW` (~6 KiB), so well-formed streams are
-/// unaffected.
-const MAX_SYNC_BUF_BYTES: usize = 4 << 20;
-
-/// PCR jump threshold beyond which we emit `PcrAnomaly`. 1 second @ 27 MHz.
-const PCR_ANOMALY_THRESHOLD: i64 = 27_000_000;
 
 /// MPEG-TS demuxer.
 ///
@@ -68,82 +50,82 @@ const PCR_ANOMALY_THRESHOLD: i64 = 27_000_000;
 /// | C | (deferred to per-binding plan — receiver-surface C ABI is P0) |
 #[derive(Debug)]
 pub struct Demuxer {
-    options: DemuxerConfig,
+    pub(super) options: DemuxerConfig,
     /// Bytes that haven't yet been sync-aligned into 188-byte packets.
     /// `sync_consumed` is the cursor into this buffer; the live region is
     /// `sync_buf[sync_consumed..]`. Avoiding `drain(..n)` per packet is
     /// what keeps `feed` amortized-linear on whole-file inputs (a naive
     /// drain is O(remaining) per call → O(N²) total).
-    sync_buf: Vec<u8>,
+    pub(super) sync_buf: Vec<u8>,
     /// Cursor into `sync_buf`; bytes before this index are consumed and
     /// will be reclaimed on the next compaction.
-    sync_consumed: usize,
+    pub(super) sync_consumed: usize,
     /// Per-PID PSI assembly state (PAT + any active PMT PIDs). Each
     /// assembler enforces the 4 KiB `MAX_SECTION_SIZE` cap and yields a
     /// complete section once `section_length + 3` bytes have been
     /// accumulated for that PID. See `psi_assembler.rs`.
-    psi_assemblers: HashMap<u16, PsiSectionAssembler>,
+    pub(super) psi_assemblers: HashMap<u16, PsiSectionAssembler>,
     /// Programs found in the current PAT, keyed by `pmt_pid`.
     /// O(1) lookup when routing PMT-bound packets.
-    programs: HashMap<u16, ProgramTracker>,
+    pub(super) programs: HashMap<u16, ProgramTracker>,
     /// Latest PAT version. Bump triggers PAT diff (programs added/removed).
-    pat_version: Option<u8>,
+    pub(super) pat_version: Option<u8>,
     /// Per-PID stream kind cache for PES dispatch. Flat across all programs
     /// (PIDs must be unique cross-program per ISO 13818-1).
-    stream_kind_by_pid: HashMap<u16, StreamKind>,
-    cc_by_pid: HashMap<u16, u8>,
+    pub(super) stream_kind_by_pid: HashMap<u16, StreamKind>,
+    pub(super) cc_by_pid: HashMap<u16, u8>,
     /// Captured (expected, observed) CC pair when `check_continuity`
     /// flagged a real jump on the packet currently being routed. Drained
     /// by `handle_psi` when it consumes the strict-mode drop arm; cleared
     /// at the top of every `check_continuity` call so PSI packets without
     /// a jump don't carry stale state.
-    last_psi_cc_jump: Option<(u8, u8)>,
-    last_pcr_27mhz: Option<u64>,
-    last_pts_by_pid: HashMap<u16, i64>,
-    pes: Reassembler,
-    queue: VecDeque<DemuxEvent>,
-    bytes_since_sync: usize,
+    pub(super) last_psi_cc_jump: Option<(u8, u8)>,
+    pub(super) last_pcr_27mhz: Option<u64>,
+    pub(super) last_pts_by_pid: HashMap<u16, i64>,
+    pub(super) pes: Reassembler,
+    pub(super) queue: VecDeque<DemuxEvent>,
+    pub(super) bytes_since_sync: usize,
     /// First strict-mode-rejected issue captured this `feed` call. Drained
     /// at the end of each packet's processing and converted into a
     /// `DemuxError::StrictRejection` return. The `NonConformant` event
     /// itself is still pushed onto `queue` so a caller that already
     /// drained events sees the rejection narrative if they wish.
-    fatal: Option<NonConformantIssue>,
+    pub(super) fatal: Option<NonConformantIssue>,
     // ── stats counters ──────────────────────────────────────────────────
-    program_maps_seen: u64,
-    pmt_versions_seen: u64,
-    discontinuities_count: u64,
-    nonconformant_count: u64,
-    subtitle_streams_seen_count: u32,
+    pub(super) program_maps_seen: u64,
+    pub(super) pmt_versions_seen: u64,
+    pub(super) discontinuities_count: u64,
+    pub(super) nonconformant_count: u64,
+    pub(super) subtitle_streams_seen_count: u32,
     /// Per-PID counters; entries created lazily on first event per PID.
-    stats_per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
+    pub(super) stats_per_stream: BTreeMap<u16, crate::mpegts::stats::StreamStats>,
     /// Per-PID codec-specific counters. Allocated lazily on first event
     /// for a PID whose stream_type falls into a counted family. PSI /
     /// subtitle / LATM / AC-3 PIDs do NOT get an entry — they live only
     /// in `stats_per_stream`.
-    stream_codec_counters: BTreeMap<u16, crate::mpegts::stats::StreamCodecCounters>,
+    pub(super) stream_codec_counters: BTreeMap<u16, crate::mpegts::stats::StreamCodecCounters>,
     /// PIDs that have already emitted `SubtitleMissingDescriptor` for the
     /// current PMT version. Cleared at the top of each PMT-version bump so
     /// a fresh PMT re-fires if the descriptor is still missing.
-    subtitle_missing_descriptor_emitted: HashSet<u16>,
+    pub(super) subtitle_missing_descriptor_emitted: HashSet<u16>,
     /// PIDs the demuxer has emitted at least one `SamplePayload::Subtitle`
     /// event for. Used to dedupe `subtitle_streams_seen` increments so
     /// repeat samples on the same PID don't double-count. Cleared on
     /// `reset_stats`.
-    subtitle_pids_seen: HashSet<u16>,
+    pub(super) subtitle_pids_seen: HashSet<u16>,
     /// PIDs that have already emitted `Av1RegistrationMalformed` for the
     /// current PMT version. Cleared at the top of each PMT-version bump so
     /// a fresh PMT re-fires if the malformed registration is still present.
-    av1_registration_malformed_emitted: HashSet<u16>,
+    pub(super) av1_registration_malformed_emitted: HashSet<u16>,
     /// PIDs that have already emitted `SubtitleDescriptorAmbiguous` for the
     /// current PMT version. Cleared at the top of each PMT-version bump so
     /// a fresh PMT re-fires if the ambiguity is still present.
-    subtitle_descriptor_ambiguous_emitted: HashSet<u16>,
+    pub(super) subtitle_descriptor_ambiguous_emitted: HashSet<u16>,
     /// PID → program_number lookup. Populated when a PMT is parsed;
     /// entries are removed when the PAT drops a program. Replaces the
     /// O(programs × streams) linear scan in `program_number_for_pid` that
     /// ran at every event-emitting callsite.
-    pid_to_program: HashMap<u16, u16>,
+    pub(super) pid_to_program: HashMap<u16, u16>,
 }
 
 impl Demuxer {
@@ -202,7 +184,7 @@ impl Demuxer {
         // check below only fires per loop iteration, but the `extend_from_slice`
         // above has already allocated the entire input. A single oversized
         // adversarial feed must be rejected before we walk the buffer.
-        if self.sync_buf.len() > MAX_SYNC_BUF_BYTES {
+        if self.sync_buf.len() > super::sync_ingress::MAX_SYNC_BUF_BYTES {
             let observed = self.sync_buf.len();
             // Defensive: once the cap is exceeded, the parser is in a known-bad
             // state and we should release the adversarial bytes. Subsequent
@@ -213,23 +195,23 @@ impl Demuxer {
             self.sync_consumed = 0;
             return Err(DemuxError::SyncBufExhausted {
                 observed,
-                max: MAX_SYNC_BUF_BYTES,
+                max: super::sync_ingress::MAX_SYNC_BUF_BYTES,
             });
         }
         loop {
             let live = &self.sync_buf[self.sync_consumed..];
-            if live.len() < TS_PACKET_SIZE {
+            if live.len() < crate::mpegts::common::TS_PACKET_SIZE {
                 self.compact_sync_buf();
                 return Ok(());
             }
             // Sync to next 0x47.
-            if live[0] != TS_SYNC_BYTE {
+            if live[0] != crate::mpegts::common::TS_SYNC_BYTE {
                 let mut i = 1;
-                while i < live.len() && live[i] != TS_SYNC_BYTE {
+                while i < live.len() && live[i] != crate::mpegts::common::TS_SYNC_BYTE {
                     i += 1;
                 }
                 self.bytes_since_sync += i;
-                if self.bytes_since_sync > SYNC_SEARCH_WINDOW {
+                if self.bytes_since_sync > super::sync_ingress::SYNC_SEARCH_WINDOW {
                     return Err(DemuxError::Unrecoverable {
                         after_bytes: self.bytes_since_sync,
                     });
@@ -242,8 +224,8 @@ impl Demuxer {
             self.bytes_since_sync = 0;
             // Need to read 188 bytes; if the next byte after isn't 0x47 (or
             // we don't have enough buffer to check), we'll re-sync next loop.
-            let pkt_buf: [u8; 188] = live[..TS_PACKET_SIZE].try_into().unwrap();
-            self.sync_consumed += TS_PACKET_SIZE;
+            let pkt_buf: [u8; 188] = live[..crate::mpegts::common::TS_PACKET_SIZE].try_into().unwrap();
+            self.sync_consumed += crate::mpegts::common::TS_PACKET_SIZE;
             self.compact_sync_buf();
             // Lenient mode catches `MalformedPes` and surfaces it as a
             // `NonConformant` event so the receive loop survives a single
@@ -301,7 +283,7 @@ impl Demuxer {
     /// while let Some(_event) = d.next_event() { /* handle */ }
     /// ```
     pub fn feed_aligned(&mut self, pkt: &[u8; 188]) -> Result<(), DemuxError> {
-        if pkt[0] != TS_SYNC_BYTE {
+        if pkt[0] != crate::mpegts::common::TS_SYNC_BYTE {
             return Err(DemuxError::Unrecoverable { after_bytes: 0 });
         }
         self.bytes_since_sync = 0;
@@ -317,19 +299,6 @@ impl Demuxer {
     /// currently queued — feed more bytes and try again.
     pub fn next_event(&mut self) -> Option<DemuxEvent> {
         self.queue.pop_front()
-    }
-
-    /// Reclaim the consumed prefix of `sync_buf` once it grows past half
-    /// the live size (or 1 MiB, whichever is larger). The half-and-compact
-    /// rule keeps total memmove work amortized-linear in bytes fed; the
-    /// 1 MiB floor avoids churn on tiny live regions.
-    fn compact_sync_buf(&mut self) {
-        let consumed = self.sync_consumed;
-        let live = self.sync_buf.len() - consumed;
-        if consumed >= live.max(1 << 20) {
-            self.sync_buf.drain(..consumed);
-            self.sync_consumed = 0;
-        }
     }
 
     /// Drain any partial PES still buffered in the reassembler — emit any
@@ -395,96 +364,6 @@ impl Demuxer {
             self.handle_pes_packet(&pkt)?;
         }
         Ok(())
-    }
-
-    fn check_pcr(&mut self, pkt: &crate::mpegts::demux::ts::TsPacket<'_>) {
-        // Rewritten from a let-chain (`if let A && let B`) to nested if-let
-        // for MSRV 1.85 compatibility — let-chains require Rust 1.88.
-        if let Some(now) = pkt.pcr_27mhz {
-            if let Some(last) = self.last_pcr_27mhz {
-                let diff = pcr_diff_27mhz(now, last);
-                if diff.abs() > PCR_ANOMALY_THRESHOLD {
-                    let issue = NonConformantIssue::PcrAnomaly { delta: diff };
-                    if let Some(stream) = self.lookup_stream(pkt.pid) {
-                        self.queue_nonconformant(stream, issue);
-                    }
-                }
-            }
-        }
-        if let Some(p) = pkt.pcr_27mhz {
-            self.last_pcr_27mhz = Some(p);
-        }
-    }
-
-    /// Returns `true` if a CC jump was observed AND not suppressed by
-    /// `discontinuity_indicator`. The caller (`process_packet`) uses this
-    /// signal to gate strict-mode PSI reassembly drops in `handle_psi`.
-    ///
-    /// Side effect: clears `self.last_psi_cc_jump` at entry, sets it to
-    /// `Some((expected, observed))` when a real jump fires. `handle_psi`
-    /// drains it via `.take()` when emitting `PsiCcDiscontinuity`.
-    fn check_continuity(&mut self, pkt: &crate::mpegts::demux::ts::TsPacket<'_>) -> bool {
-        self.last_psi_cc_jump = None;
-        if !pkt.has_payload {
-            return false;
-        }
-        let mut real_jump = false;
-        if let Some(prev_cc) = self.cc_by_pid.get(&pkt.pid).copied() {
-            let expected = (prev_cc + 1) & 0x0F;
-            // Per ISO/IEC 13818-1 §2.4.3.5, when discontinuity_indicator=1
-            // the CC is explicitly permitted to be discontinuous on this
-            // packet. Suppress the ContinuityJump (matches ffmpeg
-            // mpegts.c:3075-3078); the separate `AdaptationFieldFlag`
-            // event below already surfaces the discontinuity hint to
-            // consumers, so emitting both would double-count.
-            if expected != pkt.continuity_counter && !pkt.discontinuity_indicator {
-                real_jump = true;
-                self.last_psi_cc_jump = Some((expected, pkt.continuity_counter));
-                if let Some(stream) = self.lookup_stream(pkt.pid) {
-                    self.discontinuities_count += 1;
-                    let program_number = self.program_number_for_pid(stream.pid);
-                    self.stats_per_stream
-                        .entry(stream.pid)
-                        .or_insert_with(|| crate::mpegts::stats::StreamStats {
-                            pid: stream.pid,
-                            stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
-                                &stream.kind,
-                            )),
-                            program_number,
-                            ..Default::default()
-                        })
-                        .discontinuities += 1;
-                    self.queue.push_back(DemuxEvent::Discontinuity {
-                        stream,
-                        kind: DiscontinuityKind::ContinuityJump {
-                            expected,
-                            observed: pkt.continuity_counter,
-                        },
-                    });
-                }
-            }
-        }
-        if pkt.discontinuity_indicator {
-            if let Some(stream) = self.lookup_stream(pkt.pid) {
-                self.discontinuities_count += 1;
-                let program_number = self.program_number_for_pid(stream.pid);
-                self.stats_per_stream
-                    .entry(stream.pid)
-                    .or_insert_with(|| crate::mpegts::stats::StreamStats {
-                        pid: stream.pid,
-                        stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
-                        program_number,
-                        ..Default::default()
-                    })
-                    .discontinuities += 1;
-                self.queue.push_back(DemuxEvent::Discontinuity {
-                    stream,
-                    kind: DiscontinuityKind::AdaptationFieldFlag,
-                });
-            }
-        }
-        self.cc_by_pid.insert(pkt.pid, pkt.continuity_counter);
-        real_jump
     }
 
     fn handle_psi(
@@ -1412,7 +1291,7 @@ impl Demuxer {
         }
     }
 
-    fn lookup_stream(&self, pid: u16) -> Option<StreamId> {
+    pub(super) fn lookup_stream(&self, pid: u16) -> Option<StreamId> {
         self.stream_kind_by_pid.get(&pid).copied().map(|kind| {
             let program_number = self.program_number_for_pid(pid);
             StreamId {
@@ -1425,7 +1304,7 @@ impl Demuxer {
 
     /// Look up the program_number for a PID via the `pid_to_program` map.
     /// Returns 0 if the PID is not owned by any known program (e.g. PSI PIDs).
-    fn program_number_for_pid(&self, pid: u16) -> u16 {
+    pub(super) fn program_number_for_pid(&self, pid: u16) -> u16 {
         self.pid_to_program.get(&pid).copied().unwrap_or(0)
     }
 
@@ -1483,7 +1362,7 @@ impl Demuxer {
         }
     }
 
-    fn queue_nonconformant(&mut self, stream: StreamId, issue: NonConformantIssue) {
+    pub(super) fn queue_nonconformant(&mut self, stream: StreamId, issue: NonConformantIssue) {
         // Capture the first strict-rejected issue per `feed` call. The
         // event itself is still queued so a caller draining events
         // before/after the `feed` error sees the narrative.
@@ -1610,7 +1489,7 @@ fn nal_payload_bytes(nals: &[NalUnit]) -> usize {
 /// Used for `StreamStats.stream_type` labelling on the receiver side; not
 /// emitted on the wire (the demuxer reads stream_type from the PMT). See
 /// `mpegts::common::StreamType` for the canonical mux-side encoding.
-fn stream_type_from_kind(k: &StreamKind) -> u8 {
+pub(super) fn stream_type_from_kind(k: &StreamKind) -> u8 {
     match k {
         StreamKind::Video(VideoCodec::H264) => 0x1B,
         StreamKind::Video(VideoCodec::H265) => 0x24,
@@ -1847,7 +1726,7 @@ mod tests {
     #[test]
     fn unrecoverable_after_bytes() {
         let mut d = Demuxer::new();
-        let big = vec![0xAA; SYNC_SEARCH_WINDOW * 2];
+        let big = vec![0xAA; crate::mpegts::demux::sync_ingress::SYNC_SEARCH_WINDOW * 2];
         let err = d.feed(&big).unwrap_err();
         assert!(matches!(err, DemuxError::Unrecoverable { .. }));
     }

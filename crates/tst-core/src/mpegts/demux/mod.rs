@@ -23,6 +23,7 @@ pub mod strict;
 // public API surface — invisible outside the `mpegts` parent module.
 pub(super) mod ts;
 mod types;
+mod sync_ingress;
 
 pub mod low_level;
 

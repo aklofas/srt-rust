@@ -508,7 +508,7 @@ fn fill_program_map(
         let (kind_tag, codec_int) = stream_kind_to_c(&si.kind);
         arena.stream_infos.push(TstStreamInfo {
             pid: si.pid,
-            stream_type: si.stream_type,
+            stream_type: si.stream_type.as_byte(),
             _pad: 0,
             stream_kind: kind_tag,
             codec: codec_int,
@@ -603,8 +603,10 @@ fn fill_sample(
         } => {
             // codec stays -1; surface the raw PMT stream_type byte so C
             // callers can discriminate without correlating back to the
-            // most recent ProgramMap event.
-            stream_type = *st;
+            // most recent ProgramMap event. `st` is StreamTypeCode (typed
+            // wrapper from plan #75); .as_byte() preserves the existing
+            // uint8_t C ABI for TstEventSample.stream_type per plan #71.
+            stream_type = st.as_byte();
             payload_ptr = raw.as_ptr();
             payload_len = raw.len();
         }

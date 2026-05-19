@@ -230,7 +230,7 @@ fn print_program_map(pmap: &ProgramMap) {
         eprintln!(
             "       PID=0x{:04X} stream_type=0x{:02X} kind={}",
             s.pid,
-            s.stream_type,
+            s.stream_type.as_byte(),
             describe_stream_kind(&s.kind),
         );
     }
@@ -333,7 +333,7 @@ fn print_sample(stream: &StreamId, pts: i64, payload: &SamplePayload) {
             eprintln!(
                 "[unk]  PID=0x{:04X} pts={pts} stream_type=0x{:02X} bytes={}",
                 stream.pid,
-                stream_type,
+                stream_type.as_byte(),
                 raw.len()
             );
         }
@@ -415,7 +415,7 @@ fn print_metadata(
             return eprintln!(
                 "[meta] PID=0x{:04X} pts={pts} kind=Unknown(0x{:02X}) bytes={}",
                 stream.pid,
-                t,
+                t.as_byte(),
                 payload.len(),
             );
         }

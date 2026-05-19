@@ -85,7 +85,7 @@ fn main() {
                 for s in &m.streams {
                     println!(
                         "  PID 0x{:04X}: stream_type=0x{:02X} kind={:?}",
-                        s.pid, s.stream_type, s.kind
+                        s.pid, s.stream_type.as_byte(), s.kind
                     );
                 }
                 // KLV-to-video links: declared by the PMT's
@@ -161,8 +161,9 @@ fn main() {
                     }
                     SamplePayload::Unknown { stream_type, raw } => {
                         println!(
-                            "Sample PID=0x{:04X} pts={pts} stream_type=0x{stream_type:02X} bytes={} (unrecognized ES)",
+                            "Sample PID=0x{:04X} pts={pts} stream_type=0x{:02X} bytes={} (unrecognized ES)",
                             stream.pid,
+                            stream_type.as_byte(),
                             raw.len()
                         );
                     }

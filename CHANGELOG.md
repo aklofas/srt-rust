@@ -7,6 +7,56 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 6.D `MuxError` two-tier reshape (docs/plans/2026-05-19-wave-6-muxerror-reshape.md)
+
+**Breaking change (tst-core / tst-c — new public surface, C routing simplified):**
+
+- **`MuxSenderErrorKind` enum added** (`tst_core::error::MuxSenderErrorKind`,
+  `#[non_exhaustive]`) — 5 coarse categories for the inner (muxer-specific)
+  error tier: `InputMalformed`, `ConfigInvalid`, `InvalidUsage`, `Backpressure`,
+  `Internal`. Complements the outer `tst_pipeline::ShellErrorKind` (6 variants,
+  shell-agnostic) without overlapping it.
+
+- **`MuxError::kind()` method added** — `pub fn kind(&self) -> MuxSenderErrorKind`
+  with an exhaustive 32-arm match over every `MuxError` variant, categorizing
+  each to its canonical inner-tier kind. Bindings that need coarse routing
+  (e.g. "is this a caller bug or a data problem?") can call `kind()` rather than
+  matching the full 32-variant set.
+
+- **`mpegts::mux::_detail` module added** — `pub mod _detail { pub use
+  crate::error::MuxError; }`. The underscore prefix signals spec-domain tier:
+  bindings that need to match individual `MuxError` variants for diagnostic
+  output import via `use tst_core::mpegts::mux::_detail::MuxError;`, making
+  the non-default, high-specificity import path legible at the use site.
+
+- **`record_mux_error` rewritten** (`tst-c/src/error.rs`, 189 → ~75 LoC) —
+  two per-variant overrides kept explicit (`InvalidNal` → `TST_E_INVALID_NAL`,
+  `KlvTooLarge` → `TST_E_KLV_TOO_LARGE`); all remaining 30 variants routed via
+  `e.kind()` pattern match. Error messages now come from `e.to_string()` (the
+  `#[error]` attribute) rather than duplicated per-arm format strings.
+
+- **New CI ratchet** — `scripts/check-mux-error-kind-coverage.sh` verifies
+  every `MuxError` variant is matched explicitly in `MuxError::kind()` before
+  the `_ => Internal` wildcard arm. Registered in `.github/workflows/ci.yml`
+  alongside the existing 3 error-coverage ratchets.
+
+**Public API impact:**
+
+- `cargo public-api -p tst-core --simplified` baseline refreshed: +1 enum
+  (`MuxSenderErrorKind`, 5 variants + trait impls), +1 method
+  (`MuxError::kind`), +1 module (`mpegts::mux::_detail` with all 32 `MuxError`
+  re-exports).
+- `cargo public-api -p tst-pipeline --simplified` byte-identical to pre-plan.
+- `cargo public-api -p tst-srt --simplified` byte-identical to pre-plan.
+- `#[non_exhaustive]` BASELINE in `.github/workflows/ci.yml` bumped **105→111**
+  (empirical; `rg -c` counts attribute instances + comment-line mentions).
+
+**Test coverage:** 34 new integration tests in
+`crates/tst-core/tests/mux_error_kind_routing.rs` — one assertion per `MuxError`
+variant routing plus 2 kind-property tests. All 8 bash ratchets green.
+
+---
+
 ## [Unreleased] — Wave 6.B `mpegts/demux/demuxer.rs` god-module split (docs/plans/2026-05-19-wave-6b-demuxer-split.md)
 
 **Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**

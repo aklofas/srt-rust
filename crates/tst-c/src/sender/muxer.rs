@@ -5,7 +5,7 @@
 //! push_klv, and pull may be called from different threads.
 
 use crate::config::TstMuxConfig;
-use crate::error::{TstError, record_mux_error, set_last_error};
+use crate::error::{TstError, record_mux_error, record_not_found, set_last_error};
 use crate::handle::{
     Handle, TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
 };
@@ -450,13 +450,9 @@ pub unsafe extern "C" fn tst_muxer_get_stream_codec_stats(
                 unsafe { *out = crate::stats::codec_stats_to_c(stats) };
                 0
             }
-            None => {
-                set_last_error(
-                    TstError::NotFound,
-                    "tst_muxer_get_stream_codec_stats: pid never observed",
-                );
-                TstError::NotFound as i32
-            }
+            None => record_not_found(&format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this muxer)"
+            )),
         })
 }
 

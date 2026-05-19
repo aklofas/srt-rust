@@ -3,7 +3,9 @@
 //! One _send call = one outbound SRT message of the exact length passed in.
 
 use crate::config::{TstRawSenderConfig, TstReconnectPolicy};
-use crate::error::{TstError, record_shell_error, record_transport_error, set_last_error};
+use crate::error::{
+    TstError, record_not_available, record_shell_error, record_transport_error, set_last_error,
+};
 use crate::handle::Handle;
 use crate::sender::mux_sender::parse_c_srt_url;
 use std::sync::Arc;
@@ -318,7 +320,9 @@ pub unsafe extern "C" fn tst_raw_sender_get_socket_stats(
                 unsafe { *out = (&stats).into() };
                 0
             }
-            None => TstError::NotAvailable as i32,
+            None => record_not_available(
+                "raw sender socket stats unavailable (transport not connected or closed)",
+            ),
         })
 }
 
@@ -393,7 +397,9 @@ pub unsafe extern "C" fn tst_managed_raw_sender_get_socket_stats(
                 unsafe { *out = (&stats).into() };
                 0
             }
-            None => TstError::NotAvailable as i32,
+            None => record_not_available(
+                "raw sender socket stats unavailable (transport not connected or closed)",
+            ),
         })
 }
 

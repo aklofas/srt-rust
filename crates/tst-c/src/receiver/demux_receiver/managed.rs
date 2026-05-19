@@ -15,7 +15,8 @@
 use crate::config::TstReconnectPolicy;
 use crate::demux_config::TstDemuxConfig;
 use crate::error::{
-    TstError, record_eos, record_shell_error, record_transport_error, set_last_error,
+    TstError, record_eos, record_not_available, record_not_found, record_shell_error,
+    record_transport_error, set_last_error,
 };
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
@@ -346,13 +347,9 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stream_codec_stats(
                 unsafe { *out = crate::stats::codec_stats_to_c(stats) };
                 0
             }
-            None => {
-                set_last_error(
-                    TstError::NotFound,
-                    "tst_managed_demux_receiver_get_stream_codec_stats: pid never observed",
-                );
-                TstError::NotFound as i32
-            }
+            None => record_not_found(&format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this demux receiver)"
+            )),
         })
 }
 
@@ -384,7 +381,9 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_socket_stats(
             unsafe { *out = (&stats).into() };
             0
         }
-        None => TstError::NotAvailable as i32,
+        None => record_not_available(
+            "managed demux receiver socket stats unavailable (transport reconnecting or closed)",
+        ),
     })
 }
 

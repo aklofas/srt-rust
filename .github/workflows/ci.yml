@@ -123,6 +123,9 @@ jobs:
       - name: Check C header section uniqueness
         run: bash scripts/check-c-header-section-uniqueness.sh
 
+      - name: Check no direct NotAvailable/NotFound casts
+        run: bash scripts/check-no-direct-not-available-not-found-cast.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

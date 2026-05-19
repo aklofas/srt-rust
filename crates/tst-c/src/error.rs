@@ -340,7 +340,6 @@ pub(crate) fn record_eos() {
 /// Replaces the direct `TstError::NotAvailable as i32` pattern that leaves
 /// stale last-error state visible to `tst_get_last_error()` (per Codex
 /// re-review finding 1, plan #93).
-#[allow(dead_code)]
 pub(crate) fn record_not_available(msg: &str) -> i32 {
     set_last_error(TstError::NotAvailable, msg);
     TstError::NotAvailable as i32
@@ -352,7 +351,6 @@ pub(crate) fn record_not_available(msg: &str) -> i32 {
 ///
 /// Replaces the direct `TstError::NotFound as i32` pattern that leaves
 /// stale last-error state visible to `tst_get_last_error()`.
-#[allow(dead_code)]
 pub(crate) fn record_not_found(msg: &str) -> i32 {
     set_last_error(TstError::NotFound, msg);
     TstError::NotFound as i32

@@ -7,7 +7,7 @@
 //! `managed.rs`.
 
 use super::TstDemuxReceiver;
-use crate::error::{TstError, set_last_error};
+use crate::error::{TstError, record_not_available, record_not_found, set_last_error};
 
 /// Snapshot stats for a `tst_demux_receiver_t` into `*out`.
 ///
@@ -64,7 +64,9 @@ pub unsafe extern "C" fn tst_demux_receiver_get_socket_stats(
             unsafe { *out = (&stats).into() };
             0
         }
-        None => TstError::NotAvailable as i32,
+        None => record_not_available(
+            "demux receiver socket stats unavailable (transport not connected or closed)",
+        ),
     })
 }
 
@@ -108,13 +110,9 @@ pub unsafe extern "C" fn tst_demux_receiver_get_stream_codec_stats(
                 unsafe { *out = crate::stats::codec_stats_to_c(stats) };
                 0
             }
-            None => {
-                set_last_error(
-                    TstError::NotFound,
-                    "tst_demux_receiver_get_stream_codec_stats: pid never observed",
-                );
-                TstError::NotFound as i32
-            }
+            None => record_not_found(&format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this demux receiver)"
+            )),
         })
 }
 

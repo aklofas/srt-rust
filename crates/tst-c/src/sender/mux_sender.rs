@@ -7,7 +7,8 @@
 
 use crate::config::{TstMuxConfig, TstReconnectPolicy};
 use crate::error::{
-    TstError, record_mux_error, record_shell_error, set_last_error, tst_get_last_error,
+    TstError, record_mux_error, record_not_available, record_not_found, record_shell_error,
+    set_last_error, tst_get_last_error,
 };
 use crate::handle::{
     Handle, TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
@@ -471,7 +472,9 @@ pub unsafe extern "C" fn tst_mux_sender_get_socket_stats(
             unsafe { *out = (&stats).into() };
             0
         }
-        None => TstError::NotAvailable as i32,
+        None => record_not_available(
+            "mux sender socket stats unavailable (transport not connected or closed)",
+        ),
     })
 }
 
@@ -514,13 +517,9 @@ pub unsafe extern "C" fn tst_mux_sender_get_stream_codec_stats(
                 unsafe { *out = crate::stats::codec_stats_to_c(stats) };
                 0
             }
-            None => {
-                set_last_error(
-                    TstError::NotFound,
-                    "tst_mux_sender_get_stream_codec_stats: pid never observed",
-                );
-                TstError::NotFound as i32
-            }
+            None => record_not_found(&format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this mux sender)"
+            )),
         })
 }
 
@@ -1078,7 +1077,9 @@ pub unsafe extern "C" fn tst_managed_mux_sender_get_socket_stats(
             unsafe { *out = (&stats).into() };
             0
         }
-        None => TstError::NotAvailable as i32,
+        None => record_not_available(
+            "mux sender socket stats unavailable (transport not connected or closed)",
+        ),
     })
 }
 
@@ -1118,13 +1119,9 @@ pub unsafe extern "C" fn tst_managed_mux_sender_get_stream_codec_stats(
                 unsafe { *out = crate::stats::codec_stats_to_c(stats) };
                 0
             }
-            None => {
-                set_last_error(
-                    TstError::NotFound,
-                    "tst_managed_mux_sender_get_stream_codec_stats: pid never observed",
-                );
-                TstError::NotFound as i32
-            }
+            None => record_not_found(&format!(
+                "codec stats not available for pid 0x{pid:04x} (pid has never been observed on this mux sender)"
+            )),
         })
 }
 

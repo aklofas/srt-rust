@@ -446,7 +446,7 @@ pub enum MuxError {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```
 /// use tst_core::error::{MuxError, MuxSenderErrorKind};
 ///
 /// let err = MuxError::InvalidNal;
@@ -532,6 +532,105 @@ pub enum MuxSenderErrorKind {
     /// **Action:** treat as an unrecoverable internal error. The muxer
     /// is in an indeterminate state; reconstruct from a fresh config.
     Internal,
+}
+
+impl MuxError {
+    /// Categorize this error for binding-author pattern matching.
+    ///
+    /// Returns the coarse-tier [`MuxSenderErrorKind`] (5 stable
+    /// categories) corresponding to this variant. Use this when
+    /// writing a generic binding that maps muxer failures to a
+    /// language-native exception hierarchy without enumerating the
+    /// 32-variant inner set.
+    ///
+    /// For spec-aware diagnostic code (KLV-handling, DVB-subtitling,
+    /// descriptor validation), match on the full [`MuxError`] variant
+    /// set directly via the [`crate::mpegts::mux::_detail::MuxError`]
+    /// re-export (the same enum; the re-export signals intent at the
+    /// import site).
+    ///
+    /// The 32-variant routing is enforced by the CI ratchet
+    /// `scripts/check-mux-error-kind-coverage.sh` — every variant of
+    /// the upstream [`MuxError`] enum must be matched explicitly in
+    /// this function's body before the `#[non_exhaustive]` wildcard.
+    /// A new variant added without a corresponding arm here will fail
+    /// the ratchet in CI.
+    ///
+    /// See [`MuxSenderErrorKind`] for the per-variant rationale.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use tst_core::error::{MuxError, MuxSenderErrorKind};
+    ///
+    /// let err = MuxError::InvalidNal;
+    /// assert_eq!(err.kind(), MuxSenderErrorKind::InputMalformed);
+    /// ```
+    #[must_use]
+    pub fn kind(&self) -> MuxSenderErrorKind {
+        use MuxSenderErrorKind::*;
+        // The match is exhaustive in-crate (MuxError is #[non_exhaustive]
+        // but defined here), so the trailing wildcard would be flagged
+        // unreachable. We keep it intentionally as an anchor for the CI
+        // ratchet scripts/check-mux-error-kind-coverage.sh, which uses
+        // the wildcard's presence to delimit "above this point all
+        // variants are explicitly classified".
+        #[allow(unreachable_patterns)]
+        match self {
+            // === InputMalformed (4 variants) ===
+            // Caller pushed bytes that don't conform to the expected shape.
+            MuxError::InvalidNal => InputMalformed,
+            MuxError::KlvTooLarge { .. } => InputMalformed,
+            MuxError::AudioTooLarge { .. } => InputMalformed,
+            MuxError::SubtitleTooLarge { .. } => InputMalformed,
+
+            // === Backpressure (1 variant) ===
+            // Muxer queue at capacity; retry after drain.
+            MuxError::BufferFull { .. } => Backpressure,
+
+            // === ConfigInvalid (19 variants) ===
+            // MuxerConfig::validate() rejected the construction-time config.
+            MuxError::InvalidConfig(_) => ConfigInvalid,
+            MuxError::ConfigInvalid { .. } => ConfigInvalid,
+            MuxError::InvalidLanguageCode { .. } => ConfigInvalid,
+            MuxError::InvalidTeletextField { .. } => ConfigInvalid,
+            MuxError::TooManyVideoStreams { .. } => ConfigInvalid,
+            MuxError::TooManyKlvStreams { .. } => ConfigInvalid,
+            MuxError::TooManyAudioStreams { .. } => ConfigInvalid,
+            MuxError::TooManySubtitleStreams { .. } => ConfigInvalid,
+            MuxError::TooManyPrograms { .. } => ConfigInvalid,
+            MuxError::EmptyProgram { .. } => ConfigInvalid,
+            MuxError::DuplicateProgramNumber { .. } => ConfigInvalid,
+            MuxError::DuplicatePmtPid { .. } => ConfigInvalid,
+            MuxError::DuplicatePidAcrossPrograms { .. } => ConfigInvalid,
+            MuxError::PmtPidConflictsWithStream { .. } => ConfigInvalid,
+            MuxError::SubtitlePidUsedAsPcrPid { .. } => ConfigInvalid,
+            MuxError::KlvPidUsedAsPcrPid { .. } => ConfigInvalid,
+            MuxError::SubtitleOnlyProgram { .. } => ConfigInvalid,
+            MuxError::MalformedDescriptor { .. } => ConfigInvalid,
+            MuxError::PmtTooLarge { .. } => ConfigInvalid,
+
+            // === InvalidUsage (8 variants) ===
+            // Caller is using the muxer API incorrectly on a working muxer.
+            MuxError::InvalidStreamHandle { .. } => InvalidUsage,
+            MuxError::AmbiguousTarget { .. } => InvalidUsage,
+            MuxError::NoKlvStreamsConfigured => InvalidUsage,
+            MuxError::NoAudioStreamsConfigured => InvalidUsage,
+            MuxError::NoSubtitleStreamsConfigured => InvalidUsage,
+            MuxError::ProgramNotFound { .. } => InvalidUsage,
+            MuxError::DescriptorIndexOutOfRange { .. } => InvalidUsage,
+            MuxError::AbsIndexOutOfRange { .. } => InvalidUsage,
+
+            // Required by #[non_exhaustive]. CI ratchet
+            // scripts/check-mux-error-kind-coverage.sh enforces every
+            // upstream MuxError variant is matched explicitly above
+            // before this arm. If this arm fires at runtime, the
+            // ratchet failed (or was bypassed) — the safe default
+            // matches the workspace convention (`tst_error_from_kind`
+            // wildcard-default-to-Internal pattern from Wave 4.A).
+            _ => Internal,
+        }
+    }
 }
 
 #[cfg(test)]

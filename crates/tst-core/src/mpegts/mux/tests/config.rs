@@ -119,29 +119,37 @@ fn rejects_pcr_pid_pinned_to_klv() {
 
 #[test]
 fn rejects_pcr_interval_zero() {
-    let mut cfg = MuxerConfig::default();
-    cfg.pcr_interval_ms = 0;
+    let cfg = MuxerConfig {
+        pcr_interval_ms: 0,
+        ..Default::default()
+    };
     assert!(matches!(cfg.validate(), Err(MuxError::InvalidConfig(_))));
 }
 
 #[test]
 fn rejects_pcr_interval_over_100() {
-    let mut cfg = MuxerConfig::default();
-    cfg.pcr_interval_ms = 101;
+    let cfg = MuxerConfig {
+        pcr_interval_ms: 101,
+        ..Default::default()
+    };
     assert!(matches!(cfg.validate(), Err(MuxError::InvalidConfig(_))));
 }
 
 #[test]
 fn rejects_psi_interval_too_small() {
-    let mut cfg = MuxerConfig::default();
-    cfg.psi_interval_ms = 0;
+    let cfg = MuxerConfig {
+        psi_interval_ms: 0,
+        ..Default::default()
+    };
     assert!(matches!(cfg.validate(), Err(MuxError::InvalidConfig(_))));
 }
 
 #[test]
 fn rejects_buffer_too_small() {
-    let mut cfg = MuxerConfig::default();
-    cfg.buffer_packets = 0;
+    let cfg = MuxerConfig {
+        buffer_packets: 0,
+        ..Default::default()
+    };
     assert!(matches!(cfg.validate(), Err(MuxError::InvalidConfig(_))));
 }
 
@@ -215,8 +223,10 @@ fn muxer_constructs_with_valid_config() {
 
 #[test]
 fn muxer_rejects_invalid_config() {
-    let mut cfg = MuxerConfig::default();
-    cfg.buffer_packets = 0;
+    let cfg = MuxerConfig {
+        buffer_packets: 0,
+        ..Default::default()
+    };
     assert!(Muxer::new(cfg).is_err());
 }
 

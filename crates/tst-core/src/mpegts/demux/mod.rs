@@ -27,6 +27,7 @@ mod sync_ingress;
 mod pmt_classify;
 mod psi_topology;
 mod pes_emit;
+mod stats_recorder;
 
 pub mod low_level;
 

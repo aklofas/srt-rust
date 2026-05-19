@@ -407,18 +407,6 @@ impl Demuxer {
         }
     }
 
-    pub(super) fn queue_nonconformant(&mut self, stream: StreamId, issue: NonConformantIssue) {
-        // Capture the first strict-rejected issue per `feed` call. The
-        // event itself is still queued so a caller draining events
-        // before/after the `feed` error sees the narrative.
-        if self.options.strict.rejects(&issue) && self.fatal.is_none() {
-            self.fatal = Some(issue.clone());
-        }
-        self.nonconformant_count += 1;
-        self.queue
-            .push_back(DemuxEvent::NonConformant { stream, issue });
-    }
-
     /// Return a reference to the programs map for white-box unit tests.
     ///
     /// Keyed by `pmt_pid`. Crate-internal test accessor for PAT/PMT diffing
@@ -426,31 +414,6 @@ impl Demuxer {
     #[cfg(test)]
     pub(crate) fn programs_for_test(&self) -> &HashMap<u16, ProgramTracker> {
         &self.programs
-    }
-
-    pub(super) fn bump_video_counters(&mut self, pid: u16, nals_or_obus_delta: u64, ra_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_video);
-        c.nals_or_obus = c.nals_or_obus.saturating_add(nals_or_obus_delta);
-        c.random_access_aus = c.random_access_aus.saturating_add(ra_delta);
-    }
-
-    pub(super) fn bump_klv_counters(&mut self, pid: u16, records_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_klv);
-        c.records = c.records.saturating_add(records_delta);
-    }
-
-    pub(super) fn bump_audio_counters(&mut self, pid: u16, frames_delta: u64) {
-        let c = self
-            .stream_codec_counters
-            .entry(pid)
-            .or_insert_with(crate::mpegts::stats::StreamCodecCounters::new_audio);
-        c.frames = c.frames.saturating_add(frames_delta);
     }
 
     /// Per-PID codec-specific counters. See

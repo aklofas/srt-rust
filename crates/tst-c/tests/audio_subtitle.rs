@@ -17,9 +17,8 @@ use tstrans::config::{
 };
 use tstrans::handle::TST_INVALID_STREAM_HANDLE;
 use tstrans::muxer::{
-    tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_audio,
-    tst_muxer_push_audio_to, tst_muxer_push_subtitle, tst_muxer_push_subtitle_to,
-    tst_muxer_push_video_to,
+    tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_audio, tst_muxer_push_audio_to,
+    tst_muxer_push_subtitle, tst_muxer_push_subtitle_to, tst_muxer_push_video_to,
 };
 
 const NAL_IDR: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x65, 0xBB, 0xBB, 0xBB];
@@ -270,12 +269,7 @@ fn push_audio_emits_ts_bytes() {
         let rc = tst_muxer_push_video_to(mux, h_video, NAL_IDR.as_ptr(), NAL_IDR.len(), 0, true);
         assert_eq!(rc, 0);
         // Now push an audio frame via the bare shorthand.
-        let rc = tst_muxer_push_audio(
-            mux,
-            SYNTHETIC_ADTS.as_ptr(),
-            SYNTHETIC_ADTS.len(),
-            900,
-        );
+        let rc = tst_muxer_push_audio(mux, SYNTHETIC_ADTS.as_ptr(), SYNTHETIC_ADTS.len(), 900);
         assert_eq!(rc, 0);
 
         let mut buf = vec![0u8; 64 * 188];

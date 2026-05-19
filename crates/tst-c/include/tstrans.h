@@ -1353,7 +1353,7 @@ struct tst_demux_receiver_t *tst_demux_receiver_open_with_config(const char *srt
  void tst_managed_demux_receiver_close(struct tst_managed_demux_receiver_t *p);
 
 /**
- * Managed sibling of [`tst_demux_receiver_get_socket_stats`]. Returns
+ * Managed sibling of [`tst_demux_receiver_get_socket_stats`](super::stats::tst_demux_receiver_get_socket_stats). Returns
  * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
  * inner socket.
  *
@@ -1372,7 +1372,7 @@ int tst_managed_demux_receiver_get_stats(struct tst_managed_demux_receiver_t *p,
                                          struct tst_demux_receiver_stats_t *out);
 
 /**
- * Managed sibling of [`tst_demux_receiver_get_stream_codec_stats`].
+ * Managed sibling of [`tst_demux_receiver_get_stream_codec_stats`](super::stats::tst_demux_receiver_get_stream_codec_stats).
  * Returns the same values — codec stats live on the inner `Demuxer`,
  * so they persist across reconnect. No `TST_E_NOT_AVAILABLE` routing.
  *

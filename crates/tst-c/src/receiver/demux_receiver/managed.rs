@@ -309,7 +309,7 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stats(
     })
 }
 
-/// Managed sibling of [`tst_demux_receiver_get_stream_codec_stats`].
+/// Managed sibling of [`tst_demux_receiver_get_stream_codec_stats`](super::stats::tst_demux_receiver_get_stream_codec_stats).
 /// Returns the same values — codec stats live on the inner `Demuxer`,
 /// so they persist across reconnect. No `TST_E_NOT_AVAILABLE` routing.
 ///
@@ -356,7 +356,7 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_get_stream_codec_stats(
         })
 }
 
-/// Managed sibling of [`tst_demux_receiver_get_socket_stats`]. Returns
+/// Managed sibling of [`tst_demux_receiver_get_socket_stats`](super::stats::tst_demux_receiver_get_socket_stats). Returns
 /// `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
 /// inner socket.
 ///

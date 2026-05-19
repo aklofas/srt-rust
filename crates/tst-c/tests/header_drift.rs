@@ -91,27 +91,114 @@ fn add_section_dividers(original: &str) -> String {
         ),
     ];
 
-    let mut out = String::with_capacity(original.len() + 1024);
-    let mut prev_section: Option<&str> = None;
+    const REQUIRED_ORDER: &[&str] = &[
+        "INTROSPECTION",
+        "MUX SENDER",
+        "TS SENDER",
+        "RAW SENDER",
+        "DEMUX RECEIVER",
+        "TS RECEIVER",
+        "RAW RECEIVER",
+    ];
+    const CONDITIONAL_ORDER: &[&str] = &["LIFETIME", "OTHER"];
 
-    for line in original.lines() {
+    let mut header_bytes = String::new();
+    let mut trailer_bytes = String::new();
+    let mut chunks: Vec<(&'static str, String)> = Vec::new();
+    let mut pending = String::new();
+    let lines: Vec<&str> = original.lines().collect();
+    let mut saw_first_chunk = false;
+
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
         let symbol = extract_function_symbol(line);
         if let Some(sym) = symbol {
-            let section = classify_symbol(sym, sections);
-            if Some(section) != prev_section {
-                out.push_str(&format!(
-                    "\n// ─── {} {}\n",
-                    section,
-                    "─".repeat(60usize.saturating_sub(section.len() + 6))
-                ));
-                prev_section = Some(section);
+            if !trailer_bytes.is_empty() {
+                header_bytes.push_str(&trailer_bytes);
+                trailer_bytes.clear();
             }
+            let section = classify_symbol(sym, sections);
+            let mut chunk = std::mem::take(&mut pending);
+            chunk.push_str(line);
+            chunk.push('\n');
+            // Absorb continuation lines for multi-line declarations.
+            while !lines[i].trim_end().ends_with(';') {
+                i += 1;
+                if i >= lines.len() {
+                    break;
+                }
+                chunk.push_str(lines[i]);
+                chunk.push('\n');
+            }
+            chunks.push((section, chunk));
+            saw_first_chunk = true;
+        } else if is_chunk_prelude_line(line) {
+            pending.push_str(line);
+            pending.push('\n');
+        } else {
+            let bucket = if saw_first_chunk {
+                &mut trailer_bytes
+            } else {
+                &mut header_bytes
+            };
+            if !pending.is_empty() {
+                bucket.push_str(&pending);
+                pending.clear();
+            }
+            bucket.push_str(line);
+            bucket.push('\n');
         }
-        out.push_str(line);
-        out.push('\n');
+        i += 1;
+    }
+    if !pending.is_empty() {
+        if saw_first_chunk {
+            trailer_bytes.push_str(&pending);
+        } else {
+            header_bytes.push_str(&pending);
+        }
     }
 
+    let mut out = String::with_capacity(original.len() + 1024);
+    out.push_str(&header_bytes);
+
+    let emit_section = |out: &mut String, section: &str, chunks: &[(&'static str, String)]| {
+        let matching: Vec<&String> = chunks
+            .iter()
+            .filter_map(|(s, c)| if *s == section { Some(c) } else { None })
+            .collect();
+        if matching.is_empty() {
+            return;
+        }
+        out.push_str(&format!(
+            "\n// ─── {} {}\n",
+            section,
+            "─".repeat(60usize.saturating_sub(section.len() + 6))
+        ));
+        for chunk in matching {
+            out.push_str(chunk);
+        }
+    };
+
+    for section in REQUIRED_ORDER {
+        emit_section(&mut out, section, &chunks);
+    }
+    for section in CONDITIONAL_ORDER {
+        emit_section(&mut out, section, &chunks);
+    }
+
+    out.push_str(&trailer_bytes);
+
     out
+}
+
+fn is_chunk_prelude_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("/**")
+        || trimmed.starts_with("/*")
+        || trimmed.starts_with("*")
+        || trimmed.starts_with("//")
+        || trimmed.is_empty()
 }
 
 fn extract_function_symbol(line: &str) -> Option<&str> {

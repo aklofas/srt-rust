@@ -171,27 +171,148 @@ fn add_section_dividers(header_path: &std::path::Path) {
         ),
     ];
 
-    let mut out = String::with_capacity(original.len() + 1024);
-    let mut prev_section: Option<&str> = None;
+    // Emission order. Required sections always emit; LIFETIME and OTHER
+    // emit only when non-empty.
+    const REQUIRED_ORDER: &[&str] = &[
+        "INTROSPECTION",
+        "MUX SENDER",
+        "TS SENDER",
+        "RAW SENDER",
+        "DEMUX RECEIVER",
+        "TS RECEIVER",
+        "RAW RECEIVER",
+    ];
+    const CONDITIONAL_ORDER: &[&str] = &["LIFETIME", "OTHER"];
 
-    for line in original.lines() {
+    // Pass 1: chunk the input into (header-bytes, [(section, chunk-bytes)],
+    // trailer-bytes). Header = lines before the first function declaration
+    // (includes, typedefs, opening `extern "C" {`); trailer = lines after
+    // the last function declaration (closing `}`, `#endif`, ABI asserts).
+    // A chunk is the doc-comment + attribute block that precedes a function
+    // declaration, plus the declaration line(s) up to and including the
+    // line that terminates the declaration with `;` (cbindgen wraps long
+    // parameter lists across multiple lines; continuation lines must travel
+    // with the symbol-bearing line).
+    let mut header_bytes = String::new();
+    let mut trailer_bytes = String::new();
+    let mut chunks: Vec<(&'static str, String)> = Vec::new();
+    let mut pending: String = String::new();
+    let lines: Vec<&str> = original.lines().collect();
+    let mut saw_first_chunk = false;
+
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
         let symbol = extract_function_symbol(line);
         if let Some(sym) = symbol {
-            let section = classify_symbol(sym, sections);
-            if Some(section) != prev_section {
-                out.push_str(&format!(
-                    "\n// ─── {} {}\n",
-                    section,
-                    "─".repeat(60usize.saturating_sub(section.len() + 6))
-                ));
-                prev_section = Some(section);
+            // Any trailer-collected bytes were a misclassification — pre-decl
+            // non-prelude lines belong to header. Move them back.
+            if !trailer_bytes.is_empty() {
+                header_bytes.push_str(&trailer_bytes);
+                trailer_bytes.clear();
             }
+            // Flush any buffered doc/attr lines plus this declaration line
+            // (and any continuation lines until the `;` terminator) as one
+            // chunk classified by `sym`.
+            let section = classify_symbol(sym, sections);
+            let mut chunk = std::mem::take(&mut pending);
+            chunk.push_str(line);
+            chunk.push('\n');
+            // Absorb continuation lines for multi-line declarations.
+            while !lines[i].trim_end().ends_with(';') {
+                i += 1;
+                if i >= lines.len() {
+                    break;
+                }
+                chunk.push_str(lines[i]);
+                chunk.push('\n');
+            }
+            chunks.push((section, chunk));
+            saw_first_chunk = true;
+        } else if is_chunk_prelude_line(line) {
+            // Doc-comment, attribute, or blank-line-immediately-before-decl:
+            // buffer it; it will travel with the next declaration (or be
+            // flushed to header/trailer if no declaration follows).
+            pending.push_str(line);
+            pending.push('\n');
+        } else {
+            // Non-prelude, non-decl line. Before the first function chunk
+            // these belong to the header (includes, typedefs, opening
+            // `extern "C" {`); after the first chunk they belong to the
+            // trailer (closing `}`, `#endif`, ABI asserts). The trailer
+            // gets reclassified back to header if another function chunk
+            // appears later.
+            let bucket = if saw_first_chunk {
+                &mut trailer_bytes
+            } else {
+                &mut header_bytes
+            };
+            if !pending.is_empty() {
+                bucket.push_str(&pending);
+                pending.clear();
+            }
+            bucket.push_str(line);
+            bucket.push('\n');
         }
-        out.push_str(line);
-        out.push('\n');
+        i += 1;
+    }
+    // Flush any trailing pending (cbindgen's output usually ends in the
+    // trailer block, not a doc comment — but be defensive).
+    if !pending.is_empty() {
+        if saw_first_chunk {
+            trailer_bytes.push_str(&pending);
+        } else {
+            header_bytes.push_str(&pending);
+        }
     }
 
+    // Pass 2: emit header verbatim, then sections in order, then trailer.
+    let mut out = String::with_capacity(original.len() + 1024);
+    out.push_str(&header_bytes);
+
+    let emit_section = |out: &mut String, section: &str, chunks: &[(&str, String)]| {
+        let matching: Vec<&String> = chunks
+            .iter()
+            .filter_map(|(s, c)| if *s == section { Some(c) } else { None })
+            .collect();
+        if matching.is_empty() {
+            return;
+        }
+        out.push_str(&format!(
+            "\n// ─── {} {}\n",
+            section,
+            "─".repeat(60usize.saturating_sub(section.len() + 6))
+        ));
+        for chunk in matching {
+            out.push_str(chunk);
+        }
+    };
+
+    for section in REQUIRED_ORDER {
+        emit_section(&mut out, section, &chunks);
+    }
+    for section in CONDITIONAL_ORDER {
+        emit_section(&mut out, section, &chunks);
+    }
+
+    out.push_str(&trailer_bytes);
+
     std::fs::write(header_path, out).expect("write tstrans.h with dividers");
+}
+
+/// Returns true if a line should be buffered as part of the doc/attribute
+/// prelude immediately preceding a function declaration. Doxy block lines
+/// (`/**`, ` *`, ` */`), single-line comments (`//`), and blank lines all
+/// qualify. The chunker flushes pending prelude on either a recognized
+/// declaration (-> attach to that chunk) or a non-prelude/non-decl line
+/// (-> attach to header).
+fn is_chunk_prelude_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("/**")
+        || trimmed.starts_with("/*")
+        || trimmed.starts_with("*")
+        || trimmed.starts_with("//")
+        || trimmed.is_empty()
 }
 
 /// Extract a leading `tst_<word>` symbol from a function-declaration line.

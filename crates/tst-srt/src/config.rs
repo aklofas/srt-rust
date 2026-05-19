@@ -331,10 +331,11 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::field_reassign_with_default)]
     fn merge_sender_defaults_preserves_explicit_connect_timeout() {
-        let mut cfg = SocketConfig::default();
-        cfg.connect_timeout = Some(Duration::from_secs(7));
+        let mut cfg = SocketConfig {
+            connect_timeout: Some(Duration::from_secs(7)),
+            ..Default::default()
+        };
         cfg.merge_sender_defaults();
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(7)));
         assert_eq!(cfg.linger, Some(Duration::from_secs(5)));
@@ -342,10 +343,11 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::field_reassign_with_default)]
     fn merge_sender_defaults_preserves_explicit_linger() {
-        let mut cfg = SocketConfig::default();
-        cfg.linger = Some(Duration::from_secs(30));
+        let mut cfg = SocketConfig {
+            linger: Some(Duration::from_secs(30)),
+            ..Default::default()
+        };
         cfg.merge_sender_defaults();
         assert_eq!(cfg.linger, Some(Duration::from_secs(30)));
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));
@@ -373,21 +375,23 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::field_reassign_with_default)]
     fn merge_receiver_defaults_preserves_explicit_connect_timeout() {
-        let mut cfg = SocketConfig::default();
-        cfg.connect_timeout = Some(Duration::from_secs(7));
+        let mut cfg = SocketConfig {
+            connect_timeout: Some(Duration::from_secs(7)),
+            ..Default::default()
+        };
         cfg.merge_receiver_defaults();
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(7)));
         assert_eq!(cfg.role, Role::Receiver);
     }
 
     #[test]
-    #[allow(clippy::field_reassign_with_default)]
     fn merge_receiver_defaults_preserves_explicit_sender_role() {
         // Explicit Role::Sender is not overridden by merge_receiver_defaults.
-        let mut cfg = SocketConfig::default();
-        cfg.role = Role::Sender;
+        let mut cfg = SocketConfig {
+            role: Role::Sender,
+            ..Default::default()
+        };
         cfg.merge_receiver_defaults();
         assert_eq!(cfg.role, Role::Sender);
         assert_eq!(cfg.connect_timeout, Some(Duration::from_secs(15)));

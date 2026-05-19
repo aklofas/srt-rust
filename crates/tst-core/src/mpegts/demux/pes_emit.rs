@@ -14,6 +14,7 @@
 //!
 //! All items are `pub(super)`.
 
+use super::pmt_classify::{nal_payload_bytes, stream_type_from_kind};
 use crate::mpegts::common::{Pts90khz, StreamTypeCode, pts_diff_33bit};
 use crate::mpegts::demux::event::{
     AudioCodec, DemuxEvent, DiscontinuityKind, MetadataKind, NonConformantIssue, SamplePayload,
@@ -23,7 +24,6 @@ use crate::mpegts::demux::payload::{
     KlvShape, classify_klv, split_nals, split_obus, strip_dvb_sub_envelope,
 };
 use crate::mpegts::demux::pes::{PesPayload, ReassemblyOutcome};
-use super::pmt_classify::{nal_payload_bytes, stream_type_from_kind};
 
 impl super::demuxer::Demuxer {
     pub(super) fn handle_pes_packet(

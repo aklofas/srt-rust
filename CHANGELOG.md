@@ -7,6 +7,48 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 6.B `mpegts/demux/demuxer.rs` god-module split (docs/plans/2026-05-19-wave-6b-demuxer-split.md)
+
+**Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**
+
+- `demuxer.rs` 3584 → ~2312 LoC. The coordinator now contains only the
+  public surface methods (`new`, `with_options`, `feed`, `feed_aligned`,
+  `next_event`, `flush`, `stats`, `reset_stats`, `stream_codec_stats`), the
+  `Demuxer` struct definition, and the thin private dispatch helpers
+  (`process_packet`, `handle_process_packet_result`, `lookup_stream`,
+  `program_number_for_pid`). All struct fields are `pub(super)`.
+
+- **5 new sibling submodules** extracted from `demuxer.rs`:
+  - `sync_ingress.rs` — byte-stream sync recovery, PCR gap tracking,
+    continuity-counter validation.
+  - `pmt_classify.rs` — PMT stream-type classification and `StreamKind`
+    derivation helpers (including `classify_0x06`, `classify_0x06_with_ambiguity`,
+    `classify_klv`, `stream_type_from_kind`).
+  - `psi_topology.rs` — PSI section dispatch, PAT/PMT topology tracking,
+    `build_program_map`, `klv_mismatch_insert`.
+  - `pes_emit.rs` — PES reassembly dispatch and complete-PES-to-`DemuxEvent`
+    conversion (`handle_pes_packet`, `handle_complete_pes`).
+  - `stats_recorder.rs` — stats accounting and nonconformant event queueing
+    (`queue_nonconformant`, `bump_video_counters`, `bump_klv_counters`,
+    `bump_audio_counters`).
+
+  All sibling submodules are `mod` (not `pub mod`) — private to the `demux`
+  tree. Each uses `impl super::demuxer::Demuxer { pub(super) fn ... }` per
+  Decision DB3, keeping the coordinator struct in one place.
+
+- Binding-canonical-workflow audit: zero items promoted to `low_level` —
+  all extracted helpers are classification/accounting internals with no
+  documented FFI or binding-consumer demand.
+
+**No public API impact:**
+
+- `cargo public-api -p tst-core --simplified` byte-identical to pre-plan.
+- `cargo public-api -p tst-pipeline --simplified` byte-identical to pre-plan.
+- `cargo public-api -p tst-srt --simplified` byte-identical to pre-plan.
+- `#[non_exhaustive]` BASELINE in `.github/workflows/ci.yml` stays at **87**.
+
+---
+
 ## [Unreleased] — Wave 6.F mechanical / hygiene sweep (docs/plans/2026-05-19-wave-6-mechanical-sweep.md)
 
 **Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**

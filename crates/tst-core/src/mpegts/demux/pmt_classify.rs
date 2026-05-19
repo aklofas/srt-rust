@@ -152,9 +152,7 @@ pub(super) fn classify_0x06(descriptors: &[RawDescriptor]) -> StreamKind {
 /// synthetic codepoints for `format_identifier` matches (0xF0=VTTC,
 /// 0xF1=GA94, 0xF2=KLVA). The classification result follows the existing
 /// first-match priority — only the diagnostic tag list changes.
-pub(super) fn classify_0x06_with_ambiguity(
-    descriptors: &[RawDescriptor],
-) -> (StreamKind, Vec<u8>) {
+pub(super) fn classify_0x06_with_ambiguity(descriptors: &[RawDescriptor]) -> (StreamKind, Vec<u8>) {
     use crate::mpegts::descriptors::{find_descriptor_tag, find_format_identifier};
     let mut markers: Vec<u8> = Vec::new();
     if find_descriptor_tag(descriptors, 0x59) {

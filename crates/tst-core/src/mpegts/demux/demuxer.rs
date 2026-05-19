@@ -226,7 +226,9 @@ impl Demuxer {
             self.bytes_since_sync = 0;
             // Need to read 188 bytes; if the next byte after isn't 0x47 (or
             // we don't have enough buffer to check), we'll re-sync next loop.
-            let pkt_buf: [u8; 188] = live[..crate::mpegts::common::TS_PACKET_SIZE].try_into().unwrap();
+            let pkt_buf: [u8; 188] = live[..crate::mpegts::common::TS_PACKET_SIZE]
+                .try_into()
+                .unwrap();
             self.sync_consumed += crate::mpegts::common::TS_PACKET_SIZE;
             self.compact_sync_buf();
             // Lenient mode catches `MalformedPes` and surfaces it as a
@@ -495,6 +497,7 @@ impl Default for Demuxer {
 mod tests {
     use super::*;
     use crate::mpegts::common::Pts90khz;
+    use crate::mpegts::demux::StrictMode;
     use crate::mpegts::demux::event::{
         AudioCodec, DiscontinuityKind, SamplePayload, SubtitleCodec, VideoCodec,
     };
@@ -502,7 +505,6 @@ mod tests {
         classify_0x06, classify_0x06_with_ambiguity, is_malformed_av1_registration,
         stream_type_from_kind,
     };
-    use crate::mpegts::demux::StrictMode;
     use crate::mpegts::demux::types::{
         DemuxerBuilder, DemuxerConfig, default_pes_cap_per_pid, default_pes_cap_total,
     };

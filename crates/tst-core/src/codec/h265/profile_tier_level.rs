@@ -16,8 +16,10 @@
 use crate::codec::CodecParseError;
 use crate::codec::bitreader::BitReader;
 
+#[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) struct ProfileTierLevel {
+#[non_exhaustive]
+pub struct H265ProfileTierLevel {
     pub general_profile_space: u8,
     pub general_tier_flag: bool,
     pub general_profile_idc: u8,
@@ -43,7 +45,7 @@ pub(crate) struct ProfileTierLevel {
 pub(crate) fn parse(
     br: &mut BitReader<'_>,
     max_num_sub_layers_minus1: u8,
-) -> Result<ProfileTierLevel, CodecParseError> {
+) -> Result<H265ProfileTierLevel, CodecParseError> {
     let general_profile_space = br.read_u(2)? as u8;
     let general_tier_flag = br.read_bool()?;
     let general_profile_idc = br.read_u(5)? as u8;
@@ -85,7 +87,7 @@ pub(crate) fn parse(
         }
     }
 
-    Ok(ProfileTierLevel {
+    Ok(H265ProfileTierLevel {
         general_profile_space,
         general_tier_flag,
         general_profile_idc,

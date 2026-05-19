@@ -8,6 +8,7 @@ use crate::codec::bitreader::BitReader;
 
 #[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct H265Vps {
     pub vps_video_parameter_set_id: u8,
     pub max_layers_minus1: u8,

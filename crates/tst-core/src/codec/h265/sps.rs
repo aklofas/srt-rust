@@ -7,6 +7,7 @@ use crate::codec::{ChromaFormat, CodecParseError, ColorInfo, Rational, validate_
 /// Parsed H.265 SPS fields. Populated by [`parse_sps`].
 #[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct H265Sps {
     pub sps_seq_parameter_set_id: u8,
     pub sps_video_parameter_set_id: u8,

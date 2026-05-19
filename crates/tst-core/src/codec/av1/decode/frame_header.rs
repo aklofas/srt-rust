@@ -1,24 +1,8 @@
 //! AV1 Frame Header parser (light scope). Per AV1 spec §5.9.
 
+use super::bitreader::Av1BitReader;
 use crate::codec::CodecParseError;
-use crate::codec::av1::bitreader::Av1BitReader;
-use crate::codec::av1::sequence_header::Av1SequenceHeader;
-
-#[must_use]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Av1FrameHeaderLight {
-    /// `frame_type` per AV1 §5.9.1: 0=KEY_FRAME, 1=INTER_FRAME,
-    /// 2=INTRA_ONLY_FRAME, 3=SWITCH_FRAME.
-    pub frame_type: u8,
-    pub show_frame: bool,
-    pub show_existing_frame: bool,
-    /// Per-frame size override. Current scope always returns `None` — the bit
-    /// position of the override field depends on frame_type and
-    /// frame_id_numbers_present_flag in ways we don't fully decode here.
-    /// Consumers needing per-frame size should drive a full decoder.
-    pub frame_size: Option<(u32, u32)>,
-    pub raw: Vec<u8>,
-}
+use crate::codec::av1::model::{Av1FrameHeaderLight, Av1SequenceHeader};
 
 /// Parse an AV1 Frame Header OBU body (light scope). Per AV1 spec §5.9.1.
 ///
@@ -73,7 +57,6 @@ pub fn parse_frame_header_light(
 mod tests {
     use super::*;
     use crate::codec::ChromaFormat;
-    use crate::codec::av1::sequence_header::Av1SequenceHeader;
 
     fn dummy_seq() -> Av1SequenceHeader {
         Av1SequenceHeader {

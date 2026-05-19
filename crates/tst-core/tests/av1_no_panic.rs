@@ -12,10 +12,10 @@
 //! Inputs are chosen to exercise every truncation / malformed-header
 //! variant that the parsers must handle gracefully.
 
-use tst_core::codec::ChromaFormat;
 use tst_core::codec::CodecParseError;
-use tst_core::codec::av1::Av1SequenceHeader;
-use tst_core::codec::av1::{parse_frame_header_light, parse_obu_stream, parse_sequence_header};
+use tst_core::codec::av1::{
+    Av1SequenceHeader, parse_frame_header_light, parse_obu_stream, parse_sequence_header,
+};
 use tst_core::mpegts::demux::event::Obu;
 
 // ---------------------------------------------------------------------------
@@ -93,21 +93,12 @@ fn truncated_sequence_header_returns_truncated_rbsp() {
 // ---------------------------------------------------------------------------
 
 fn non_reduced_dummy_seq() -> Av1SequenceHeader {
-    Av1SequenceHeader {
-        profile: 0,
-        level: 0,
-        tier: 0,
-        max_frame_width: 320,
-        max_frame_height: 240,
-        bit_depth: 8,
-        monochrome: false,
-        chroma_format: ChromaFormat::Yuv420,
-        still_picture: false,
-        reduced_still_picture_header: false,
-        color_info: None,
-        frame_rate: None,
-        raw: vec![],
-    }
+    // Minimal valid SH body: Main profile, level 2.0, 320x240, 8-bit 4:2:0,
+    // no color description, no timing info. Bytes pre-computed by the
+    // sequence_header unit tests. Using parse_sequence_header avoids
+    // constructing the #[non_exhaustive] struct directly from outside the crate.
+    let minimal_sh_body: &[u8] = &[0, 0, 0, 4, 60, 255, 188, 0, 0, 0];
+    parse_sequence_header(minimal_sh_body).expect("minimal SH body must parse")
 }
 
 /// Empty frame header payload (non-reduced path) must return a typed error.

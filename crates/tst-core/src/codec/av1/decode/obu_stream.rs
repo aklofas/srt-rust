@@ -1,21 +1,11 @@
 //! AV1 OBU stream collector. Per AV1 spec §5.2.
 
 use crate::codec::CodecParseError;
-use crate::codec::av1::frame_header::{Av1FrameHeaderLight, parse_frame_header_light};
-use crate::codec::av1::sequence_header::{Av1SequenceHeader, parse_sequence_header};
+use crate::codec::av1::model::{Av1FrameHeaderLight, Av1ObuStream, Av1SequenceHeader};
 use crate::mpegts::demux::event::Obu;
 
-#[must_use]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Av1ObuStream {
-    pub sequence_headers: Vec<Av1SequenceHeader>,
-    pub frame_headers: Vec<Av1FrameHeaderLight>,
-    /// `(obu_type, parse_error)` for each OBU we attempted but failed.
-    /// Frame-header OBUs that arrive before a Sequence Header land
-    /// here too with a synthesized "frame header before sequence header"
-    /// engine error.
-    pub unparseable: Vec<(u8, CodecParseError)>,
-}
+use super::frame_header::parse_frame_header_light;
+use super::sequence_header::parse_sequence_header;
 
 /// Walk a `Vec<Obu>` and collect typed structs. Partial-success-tolerant.
 /// State limited to "current sequence header" for frame-header parsing.
@@ -23,9 +13,9 @@ pub struct Av1ObuStream {
 /// TileList, Padding) pass through unparsed and are not recorded — they're
 /// payload-only or not load-bearing for metadata extraction.
 pub fn parse_obu_stream(obus: &[Obu]) -> Av1ObuStream {
-    let mut sequence_headers = Vec::new();
-    let mut frame_headers = Vec::new();
-    let mut unparseable = Vec::new();
+    let mut sequence_headers: Vec<Av1SequenceHeader> = Vec::new();
+    let mut frame_headers: Vec<Av1FrameHeaderLight> = Vec::new();
+    let mut unparseable: Vec<(u8, CodecParseError)> = Vec::new();
     let mut current_seq: Option<Av1SequenceHeader> = None;
 
     for obu in obus {
@@ -71,6 +61,7 @@ pub fn parse_obu_stream(obus: &[Obu]) -> Av1ObuStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mpegts::demux::event::Obu;
 
     /// Minimal Sequence Header OBU body — captured byte-for-byte from
     /// `codec::av1::sequence_header::tests::minimal_sequence_header`

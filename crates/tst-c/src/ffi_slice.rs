@@ -1,0 +1,126 @@
+//! Shared FFI byte-slice helper.
+//!
+//! Establishes the safe pattern for converting a C `(ptr, len)` pair into
+//! a Rust `&[u8]`. Replaces the per-call-site `if ptr.is_null() && len > 0`
+//! guard pattern that left UB on the table for the `(NULL, 0)` case —
+//! Rust's [`std::slice::from_raw_parts`] requires the pointer to be
+//! non-null and aligned even for zero-length slices.
+//!
+//! ## Contract
+//!
+//! The C ABI accepts `(NULL, 0)` from callers passing empty payloads.
+//! This helper returns `Ok(&[])` for that case without dereferencing the
+//! pointer. For `(NULL, len > 0)` it records `InvalidConfig` to the
+//! per-thread last-error and returns the negative code, matching the
+//! pre-existing pattern at the affected call sites.
+//!
+//! ## Audit reference
+//!
+//! Codex CABI-01 + Claude slice 17 TSTC-01. Phase 2 plan §A3. Replaces
+//! the ~33 `slice::from_raw_parts(ptr, len)` sites across `tst-c/src/`.
+
+use crate::error::{TstError, set_last_error};
+
+/// Convert a C `(ptr, len)` byte pair into a Rust `&[u8]` without
+/// dereferencing a null pointer.
+///
+/// Returns `Ok(&[])` for `len == 0` regardless of `ptr` (matches the C
+/// ABI's contract that empty payloads are signaled by `len == 0`).
+///
+/// Returns `Err(TstError::InvalidConfig as i32)` if `ptr.is_null()` with
+/// `len > 0`, and records a per-thread last-error message containing the
+/// caller-supplied `name` for diagnosis.
+///
+/// # Safety
+///
+/// When `ptr` is non-null AND `len > 0`, the caller must guarantee
+/// (matching the C ABI contract documented per entry point):
+///
+/// - `ptr` is valid for reads of `len` bytes,
+/// - `ptr` points to `len` consecutive bytes of initialized memory,
+/// - the memory is not mutated for the lifetime `'a`,
+/// - the total size `len <= isize::MAX`.
+///
+/// The `(NULL, 0)` and `(non_null, 0)` cases return `Ok(&[])` without
+/// any pointer dereference and are sound even if `ptr` is dangling.
+pub(crate) unsafe fn ffi_slice<'a>(
+    ptr: *const u8,
+    len: usize,
+    name: &str,
+) -> Result<&'a [u8], i32> {
+    if len == 0 {
+        return Ok(&[]);
+    }
+    if ptr.is_null() {
+        set_last_error(
+            TstError::InvalidConfig,
+            &format!("null {name} with non-zero len"),
+        );
+        return Err(TstError::InvalidConfig as i32);
+    }
+    Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::{clear_last_error_for_test, tst_get_last_error};
+
+    #[test]
+    fn null_pointer_with_zero_len_returns_empty_slice() {
+        // The whole point of this helper: (NULL, 0) is sound and yields &[],
+        // never dereferencing the null pointer. The old per-site `if ptr.is_null()
+        // && len > 0` guard let (NULL, 0) flow into `slice::from_raw_parts(null, 0)`
+        // which is UB even though len is zero.
+        clear_last_error_for_test();
+        let result = unsafe { ffi_slice(std::ptr::null(), 0, "buf") };
+        assert_eq!(result, Ok(&[][..]));
+        assert_eq!(
+            unsafe { tst_get_last_error() },
+            0,
+            "no error should be recorded for (NULL, 0)"
+        );
+    }
+
+    #[test]
+    fn null_pointer_with_nonzero_len_records_error_and_returns_code() {
+        clear_last_error_for_test();
+        let result = unsafe { ffi_slice(std::ptr::null(), 5, "nal") };
+        assert_eq!(result, Err(TstError::InvalidConfig as i32));
+        assert_eq!(
+            unsafe { tst_get_last_error() },
+            TstError::InvalidConfig as i32
+        );
+        // The last-error message must include the caller-supplied name so
+        // the diagnostic points at the specific parameter that was wrong.
+        let s_ptr = unsafe { crate::error::tst_get_last_error_str() };
+        let s = unsafe { std::ffi::CStr::from_ptr(s_ptr) };
+        assert!(
+            s.to_str().unwrap().contains("null nal"),
+            "expected 'null nal' in message, got: {:?}",
+            s.to_str().unwrap()
+        );
+    }
+
+    #[test]
+    fn non_null_pointer_with_zero_len_returns_empty_slice() {
+        // Symmetric to the (NULL, 0) case: (non_null, 0) also yields &[]
+        // without doing a dereference. Many existing call sites pre-validate
+        // the buffer pointer; this helper preserves that semantic when len=0.
+        clear_last_error_for_test();
+        let buf = [0u8; 4];
+        let result = unsafe { ffi_slice(buf.as_ptr(), 0, "buf") };
+        assert_eq!(result, Ok(&[][..]));
+        assert_eq!(unsafe { tst_get_last_error() }, 0);
+    }
+
+    #[test]
+    fn non_null_pointer_with_nonzero_len_returns_slice_with_contents() {
+        clear_last_error_for_test();
+        let buf = [0xDEu8, 0xAD, 0xBE, 0xEF];
+        let result = unsafe { ffi_slice(buf.as_ptr(), buf.len(), "buf") };
+        let slice = result.expect("ffi_slice should succeed for valid (ptr, len)");
+        assert_eq!(slice, &[0xDE, 0xAD, 0xBE, 0xEF]);
+        assert_eq!(unsafe { tst_get_last_error() }, 0);
+    }
+}

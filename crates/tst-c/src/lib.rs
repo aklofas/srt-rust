@@ -18,6 +18,7 @@ pub mod error;
 pub mod event;
 pub mod handle;
 pub mod stats;
+mod ffi_slice;
 mod panic;
 
 // Sender-side surface:

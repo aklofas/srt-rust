@@ -110,11 +110,10 @@ pub unsafe extern "C" fn tst_mux_sender_send_video(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if nal.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null nal with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(nal, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let pts = Pts90khz::new(pts_90khz);
     handle
         .inner
@@ -170,11 +169,10 @@ pub unsafe extern "C" fn tst_mux_sender_send_klv(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if klv.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null klv with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(klv, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let pts = Pts90khz::new(pts_90khz);
     handle.inner.with_inner_ref(|s| {
         match s.send_klv(
@@ -214,11 +212,10 @@ pub unsafe extern "C" fn tst_mux_sender_send_video_to(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if nal.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null nal with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(nal, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let stream = VideoStreamHandle::from_raw(stream_handle);
     let pts = Pts90khz::new(pts_90khz);
     wrapper
@@ -254,11 +251,10 @@ pub unsafe extern "C" fn tst_mux_sender_send_klv_to(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if klv.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null klv with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(klv, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let stream = KlvStreamHandle::from_raw(stream_handle);
     let pts = Pts90khz::new(pts_90khz);
     wrapper.inner.with_inner_ref(|s| {
@@ -296,11 +292,10 @@ pub unsafe extern "C" fn tst_mux_sender_send_audio(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if frames.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null frames with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(frames, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let pts = Pts90khz::new(pts_90khz);
     handle
         .inner
@@ -334,11 +329,10 @@ pub unsafe extern "C" fn tst_mux_sender_send_audio_to(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if frames.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null frames with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(frames, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let stream = AudioStreamHandle::from_raw(stream_handle);
     let pts = Pts90khz::new(pts_90khz);
     wrapper
@@ -373,11 +367,10 @@ pub unsafe extern "C" fn tst_mux_sender_send_subtitle(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if payload.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null payload with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(payload, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let pts = Pts90khz::new(pts_90khz);
     handle
         .inner
@@ -412,11 +405,10 @@ pub unsafe extern "C" fn tst_mux_sender_send_subtitle_to(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if payload.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null payload with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(payload, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let stream = SubtitleStreamHandle::from_raw(stream_handle);
     let pts = Pts90khz::new(pts_90khz);
     wrapper
@@ -782,11 +774,10 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_video(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if nal.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null nal with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(nal, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let pts = Pts90khz::new(pts_90khz);
     handle
         .inner
@@ -834,11 +825,10 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_klv(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if klv.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null klv with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(klv, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let pts = Pts90khz::new(pts_90khz);
     handle.inner.with_inner_ref(|s| {
         match s.send_klv(
@@ -879,11 +869,10 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_video_to(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if nal.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null nal with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(nal, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let stream = VideoStreamHandle::from_raw(stream_handle);
     let pts = Pts90khz::new(pts_90khz);
     wrapper
@@ -920,11 +909,10 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_klv_to(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if klv.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null klv with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(klv, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let stream = KlvStreamHandle::from_raw(stream_handle);
     let pts = Pts90khz::new(pts_90khz);
     wrapper.inner.with_inner_ref(|s| {
@@ -956,11 +944,10 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_audio(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if frames.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null frames with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(frames, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let pts = Pts90khz::new(pts_90khz);
     handle
         .inner
@@ -987,11 +974,10 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_audio_to(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if frames.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null frames with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(frames, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let stream = AudioStreamHandle::from_raw(stream_handle);
     let pts = Pts90khz::new(pts_90khz);
     wrapper
@@ -1018,11 +1004,10 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_subtitle(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if payload.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null payload with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(payload, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let pts = Pts90khz::new(pts_90khz);
     handle
         .inner
@@ -1049,11 +1034,10 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_subtitle_to(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if payload.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null payload with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(payload, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     let stream = SubtitleStreamHandle::from_raw(stream_handle);
     let pts = Pts90khz::new(pts_90khz);
     wrapper

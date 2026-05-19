@@ -85,11 +85,10 @@ pub unsafe extern "C" fn tst_raw_sender_send(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if bytes.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null bytes with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(bytes, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(bytes, len, "bytes") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     handle.inner.with_inner_mut(|s| match s.send(slice) {
         Ok(()) => 0,
         Err(e) => record_shell_error(&e),
@@ -216,11 +215,10 @@ pub unsafe extern "C" fn tst_managed_raw_sender_send(
         set_last_error(TstError::InvalidConfig, "null sender pointer");
         return TstError::InvalidConfig as i32;
     };
-    if bytes.is_null() && len > 0 {
-        set_last_error(TstError::InvalidConfig, "null bytes with non-zero len");
-        return TstError::InvalidConfig as i32;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(bytes, len) };
+    let slice = match unsafe { crate::ffi_slice::ffi_slice(bytes, len, "bytes") } {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
     handle.inner.with_inner_mut(|s| match s.send(slice) {
         Ok(()) => 0,
         Err(e) => record_shell_error(&e),

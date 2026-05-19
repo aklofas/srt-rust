@@ -274,11 +274,14 @@ pub(crate) fn record_mux_error(e: &MuxError) {
             MuxSenderErrorKind::InputMalformed => TstError::InvalidUsage,
             MuxSenderErrorKind::Internal => TstError::Internal,
             // Required by #[non_exhaustive]. CI ratchet
-            // scripts/check-mux-error-kind-coverage.sh guards the
-            // kind() projection itself; this wildcard is the safe
-            // default for any new kind variant added before this
-            // mapper is updated.
-            _ => TstError::InvalidConfig,
+            // scripts/check-mux-error-kind-coverage.sh enforces every
+            // MuxSenderErrorKind variant is matched above before this arm.
+            // Matches the wildcard-default-to-Internal pattern from Wave
+            // 4.A (record_shell_error) and Wave 6.D (MuxError::kind() at
+            // tst-core/src/error.rs:631): an unknown future coarse kind
+            // is more truthful as a library/internal failure than as
+            // caller InvalidConfig.
+            _ => TstError::Internal,
         },
     };
     // Use the existing Display impl on MuxError — each variant's

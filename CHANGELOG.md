@@ -7,6 +7,107 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 5.C C examples retrofit + tst-c structural reorg + sender-side audio/subtitle C ABI (docs/plans/2026-05-21-c-abi-examples-and-tst-c-reorg.md)
+
+**Added (purely additive — no breaking changes):**
+
+- Sender-side audio + subtitle C ABI exposure (gap left when plans #21
+  and #22 deferred their C-side exposure "to the future receiver-surface
+  plan," but receiver-surface plans #59/#60/#62 never picked them up).
+  New entry points:
+  - `TstAudioCodec` enum (Mp2/Aac/AacLatm/Ac3) reused from the
+    pre-existing demux-event-side definition.
+  - 2 audio constructors: `tst_mux_config_add_audio_stream` +
+    `tst_mux_config_add_audio_stream_with_language` (3-byte ISO 639-2
+    language tag).
+  - 4 per-variant subtitle constructors:
+    `tst_mux_config_add_subtitle_stream_dvb_subtitling`,
+    `_dvb_teletext`, `_cea708`, `_webvtt`. Per-variant (not tagged
+    union) for JNI/UniFFI binding ergonomics.
+  - 4 muxer push: `tst_muxer_push_audio[_to]` +
+    `tst_muxer_push_subtitle[_to]`.
+  - 8 mux_sender send: `tst_mux_sender_send_audio[_to]` +
+    `tst_mux_sender_send_subtitle[_to]` plus matching
+    `tst_managed_mux_sender_send_*` wrappers (full pattern symmetry
+    with the existing video/klv send surface).
+  - 15 new integration tests in `crates/tst-c/tests/audio_subtitle.rs`.
+- New C example
+  `crates/tst-c/examples/c/muxing/mux_with_audio_klv_subtitles.c` —
+  first C example covering all four user-visible stream-handle types
+  (`TstVideoStreamHandle` + `TstAudioStreamHandle` +
+  `TstKlvStreamHandle` + `TstSubtitleStreamHandle`) in one mux program.
+  H.264 + AAC-ADTS + ST 0601 KLV + DVB subtitles with synthetic
+  payloads; output verified end-to-end with `ffprobe`.
+
+**Improved (zero ABI delta):**
+
+- Retrofitted `crates/tst-c/examples/c/muxing/send_synthetic.c` from
+  88 LoC / 19% comment density to 249 LoC / 64% density. Aligned with
+  the teaching-code convention bar set by `mux_dual_camera.c` per
+  `feedback_examples_are_teaching_code.md`: multi-line header banner,
+  WHY comments on every non-obvious API call, explicit error-check
+  pattern using `tst_get_last_error_str()`, label-based `goto fail`
+  cleanup.
+
+**Internal (zero callable-ABI delta — same symbols, same signatures,
+same struct layouts, same sizeof asserts):**
+
+- Split `crates/tst-c/src/config.rs` (1649 LoC) into `config/{mod,
+  programs, streams, descriptors, builders}.rs`.
+- Split `crates/tst-c/src/demux_receiver.rs` (1054 LoC) into
+  `demux_receiver/{mod, events, stats, managed}.rs`.
+- Reorganized `crates/tst-c/src/` from 17 flat sibling files into
+  `sender/` (5 files: muxer, mux_sender, ts_sender, raw_sender,
+  connect) + `receiver/` (4 entries: raw_receiver, ts_receiver,
+  demux_receiver/, listen) subfolders. Cross-cutting files preserved
+  at the root: `lib.rs`, `error.rs`, `panic.rs`, `handle.rs`,
+  `event.rs`, `stats.rs`, `demux_config.rs`, `config/`. Plan A keeps
+  version code inline in `lib.rs` (Decision D2); no `version.rs` file
+  exists.
+- Split `crates/tst-c/tests/url_open.rs` (1421 LoC) into
+  `tests/url_open/{mod, mux_sender, ts_sender, raw_sender,
+  demux_receiver, ts_receiver, raw_receiver}.rs`. Cargo's
+  folder-shaped integration-test discovery (via explicit `[[test]]
+  path = "..."` in `Cargo.toml`) treats `url_open/mod.rs` as the
+  test binary entry point; `cargo test -p tst-c --test url_open`
+  still runs all 31 tests as one binary.
+- Added `sort_by = "Name"` to `crates/tst-c/cbindgen.toml` so
+  generated items in `tstrans.h` are alphabetically ordered by symbol
+  name. Closes a known Plan #83 follow-up. Decouples header layout
+  from Rust source-file layout so future reorgs don't churn the
+  header. One-time mechanical re-baseline of the committed
+  `tstrans.h` (~3184-line diff, all mechanical reordering — same
+  callable surface, same struct layouts, same sizeof asserts).
+- Added workspace-level `rustfmt.toml` with `reorder_modules = false`.
+  Several `tst-c/src/*/mod.rs` files use deliberate non-alphabetical
+  `pub mod` declaration order; this config declares the intent so
+  rustfmt leaves them alone.
+
+**Verification:**
+
+- All `tst-c` tests pass on default features,
+  `--no-default-features`, and `--all-features` (214+ tests, 31 of
+  which are the url_open split).
+- `cargo public-api` baselines for `tst-core`, `tst-pipeline`,
+  `tst-srt` byte-identical (Plan C touches none of those crates'
+  Rust public surface; the audio/subtitle work promoted handle
+  helpers to `pub #[doc(hidden)]` matching the existing video/klv
+  precedent with zero baseline impact).
+- `#[non_exhaustive]` BASELINE in `.github/workflows/ci.yml`
+  unchanged at 87 (Plan C adds zero `#[non_exhaustive]` decorations).
+- All 6 pre-push bash ratchets green (10 new entries added to
+  `check-c-abi-rustdoc-coverage.sh` allowlist for the new
+  audio/subtitle entry points).
+- `cargo clippy --workspace --all-targets -- -D warnings` clean.
+- `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+  --all-features` clean.
+- `cargo fmt --all -- --check` clean.
+- All 3 muxing C examples (`send_synthetic.c`, `mux_dual_camera.c`,
+  `mux_with_audio_klv_subtitles.c`) compile cleanly with
+  `-Wall -Werror`. Comment density: 64% / 61% / 60%.
+
+---
+
 ## [Unreleased] — Wave 5.A C ABI versioning + last-error clear (docs/plans/2026-05-21-c-abi-versioning-and-last-error-clear.md)
 
 **Added (purely additive — no breaking changes):**

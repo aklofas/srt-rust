@@ -92,6 +92,43 @@ bash ratchets green.
 
 ---
 
+## [Unreleased] — Wave 6.A `mpegts/mux/mod.rs` god-module split (docs/plans/2026-05-19-wave-6-mux-mod-split.md)
+
+**Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**
+
+- `mpegts/mux/mod.rs` broken from ~4300 LoC into 8 focused modules:
+  - `mux/state.rs` — stream-state structs (`VideoStreamState`, `KlvStreamState`,
+    `AudioStreamState`, `SubtitleStreamState`), `validate_annex_b`,
+    `caller_has_recognized_subtitle_descriptor`, `ts_packets_for`.
+  - `mux/scheduling.rs` — `psi_due`, `pcr_due`, `maybe_emit_psi` (all `pub(super)`).
+  - `mux/stats_accounting.rs` — `MuxerStats` struct and `stats()`, `reset_stats()`,
+    `stream_codec_stats()`, `bump_*_counters()`.
+  - `mux/push_video.rs` — `Muxer::push_video` and `push_video_to`.
+  - `mux/push_klv.rs` — `Muxer::push_klv` and `push_klv_to`.
+  - `mux/push_audio.rs` — `Muxer::push_audio`, `push_audio_to`,
+    `audio_handles`, `audio_handles_for_program`, `audio_stream_handle`.
+  - `mux/push_subtitle.rs` — `Muxer::push_subtitle_to`, `subtitle_handles`,
+    `subtitle_handles_for_program`, `subtitle_stream_handle`.
+  - `mux/tests/` — 6 test files (`config.rs`, `handles.rs`, `push.rs`,
+    `stats.rs`, `subtitle.rs`, `validation.rs`) declared via `#[path]`
+    as direct children of `mux` so `use super::*` scope is preserved.
+- `mod.rs` reduced from ~4300 LoC to ~590 LoC (coordinator: struct definition,
+  `new`, `pull`, `pending_packets`, `capacity_packets`, `pcr_pid_for_program`,
+  and module declarations).
+- Decision D7 applied: `emit.rs` extraction skipped — the emit loop is
+  tightly coupled to per-push adaptation-field state and extracting it
+  would require a behavioral-change-risking refactor. Per-push modules
+  (`push_video.rs` etc.) own their emit loops directly.
+
+**No public API impact:**
+
+- `cargo public-api -p tst-core --simplified` byte-identical to pre-plan.
+- `#[non_exhaustive]` BASELINE in `.github/workflows/ci.yml` unchanged by this
+  plan (Plan C-codec already bumped 87→105).
+- All 760 `tst-core` lib tests pass without modification.
+
+---
+
 ## [Unreleased] — Wave 6.F mechanical / hygiene sweep (docs/plans/2026-05-19-wave-6-mechanical-sweep.md)
 
 **Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**

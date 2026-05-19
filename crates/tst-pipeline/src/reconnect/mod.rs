@@ -115,11 +115,18 @@ use tst_core::transport::{Transport, TransportCancel, TransportError};
 /// // sender now silently reconnects on transport breakage
 /// ```
 ///
-/// # Lock poisoning policy (post-Wave-4.B)
+/// # Lock poisoning policy (post-Wave-6.F)
 ///
-/// - **Inner-transport lock** (poisoned mid-mutation): `send_bytes` and other
-///   Transport methods return `TransportError::Broken(...)` with a
-///   site-specific message. The caller can rebuild the wrapper.
+/// - **Inner-transport lock** (poisoned mid-mutation):
+///   - `send_bytes`: returns `TransportError::Broken(...)`. Caller can
+///     rebuild the wrapper.
+///   - `max_payload`: returns `SRT_TS_BUNDLE_BYTES` (the same default used
+///     when the inner transport is `None` — no panic).
+///   - `is_alive`: returns `false` (the same "no live transport" default
+///     — no panic).
+///   - `close`: silent no-op; the `closed` flag is already latched before
+///     the lock attempt, so all subsequent operations exit cleanly — no
+///     panic.
 /// - **Gap-accumulator lock** (poisoned mid-mutation): `send_managed` /
 ///   `drain_gap_if_alive` panic with `BUG: gap lock poisoned ...` because
 ///   the gap buffer holds bytes queued for replay — silently routing past
@@ -379,28 +386,38 @@ impl<T: Transport + 'static> Transport for ManagedTransport<T> {
     }
 
     fn max_payload(&self) -> usize {
+        // Plan F mutex sweep (safe-default on poison): SRT_TS_BUNDLE_BYTES is
+        // already the "no live inner transport" default; poison falls through to
+        // the same default. Matches socket_stats (lines 419-422) shape.
         self.inner
             .lock()
-            .unwrap()
-            .as_ref()
-            .map(|t| t.max_payload())
+            .ok()
+            .and_then(|g| g.as_ref().map(|t| t.max_payload()))
             .unwrap_or(SRT_TS_BUNDLE_BYTES)
     }
 
     fn is_alive(&self) -> bool {
+        // Plan F mutex sweep (safe-default on poison): false matches the
+        // "no live inner transport" answer (already the unwrap_or default).
         self.inner
             .lock()
-            .unwrap()
-            .as_ref()
-            .map(|t| t.is_alive())
+            .ok()
+            .and_then(|g| g.as_ref().map(|t| t.is_alive()))
             .unwrap_or(false)
     }
 
     fn close(&mut self) {
         self.closed
             .store(true, std::sync::atomic::Ordering::Release);
-        if let Some(t) = self.inner.lock().unwrap().as_mut() {
-            t.close();
+        // Plan F mutex sweep (silent no-op on poison): close on a poisoned
+        // state is naturally a no-op — the inner transport is already in an
+        // unknown state and close-attempt would compound the problem. The
+        // closed flag is already latched above so subsequent operations exit
+        // cleanly via the existing poll-the-flag paths.
+        if let Ok(mut guard) = self.inner.lock() {
+            if let Some(t) = guard.as_mut() {
+                t.close();
+            }
         }
     }
 
@@ -493,6 +510,61 @@ mod cancel_tests {
                 calls: self.cancel_calls.clone(),
             }))
         }
+    }
+
+    /// Stub Transport whose max_payload() returns a sentinel value (4242) so
+    /// tests can distinguish "poison path returned default" from "happy path
+    /// returned inner's value".
+    struct NoopT;
+    impl Transport for NoopT {
+        fn send_bytes(&mut self, _: &[u8]) -> Result<(), TransportError> {
+            Ok(())
+        }
+        fn max_payload(&self) -> usize {
+            4242
+        }
+        fn is_alive(&self) -> bool {
+            true
+        }
+        fn close(&mut self) {}
+    }
+
+    #[test]
+    fn managed_transport_inner_lock_poisoned_returns_safe_default() {
+        // Construct a ManagedTransport with a NoopT inner whose
+        // max_payload() returns 4242. Poison the inner mutex via a sibling
+        // thread that panics while holding the lock. Then confirm that
+        // max_payload(), is_alive(), and close() all take the safe-default
+        // path rather than propagating the panic.
+        let factory =
+            || -> Result<NoopT, TransportError> { Err(TransportError::Broken("".into())) };
+        let mut managed = ManagedTransport::new(NoopT, factory, ReconnectPolicy::default());
+
+        // Sanity-check: happy path returns the inner transport's values.
+        assert_eq!(managed.max_payload(), 4242, "pre-poison: inner sentinel");
+        assert!(managed.is_alive(), "pre-poison: inner is alive");
+
+        // Poison the inner mutex: spawn a thread that holds the lock and
+        // panics. The join() returns Err (thread panicked), and the Mutex
+        // is now poisoned.
+        {
+            let inner_clone = Arc::clone(&managed.inner);
+            let h = std::thread::spawn(move || {
+                let _guard = inner_clone.lock().unwrap();
+                panic!("intentional poison");
+            });
+            let _ = h.join(); // Err — thread panicked; mutex is now poisoned
+        }
+
+        // After poison, all three methods must NOT panic and must return the
+        // documented safe defaults rather than the inner transport's values.
+        assert_eq!(
+            managed.max_payload(),
+            SRT_TS_BUNDLE_BYTES,
+            "poisoned inner lock must return SRT_TS_BUNDLE_BYTES, not inner sentinel 4242"
+        );
+        assert!(!managed.is_alive(), "poisoned inner lock must return false");
+        managed.close(); // must not panic
     }
 
     #[test]

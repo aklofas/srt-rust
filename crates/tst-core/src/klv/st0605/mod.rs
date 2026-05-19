@@ -5,108 +5,21 @@
 //!
 //! Registered in MISB ST 0807.27 row 1061 (UL CRC 23259).
 
-use crate::error::KlvDecodeError;
-use crate::klv::length::read_ber;
-use crate::klv::universal_label::UniversalLabel;
+pub(crate) mod decode;
+pub(crate) mod encode;
+pub(crate) mod model;
 
-/// Time Status byte per MISB ST 0603 §7.4 Table 3.
-///
-/// - bit 7: 0 = Locked, 1 = Lock Unknown
-/// - bit 6: 0 = Normal, 1 = Discontinuity
-/// - bit 5: 0 = Forward, 1 = Reverse (only meaningful when bit 6=1)
-/// - bits 4-0: reserved, must be 0b11111
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TimeStatus(pub u8);
-
-impl TimeStatus {
-    /// True if bit 7 = 0 (clock locked to absolute time reference).
-    pub const fn is_locked(self) -> bool {
-        self.0 & 0x80 == 0
-    }
-
-    /// True if bit 6 = 1 (time has not incremented forward in a linear
-    /// fashion — i.e., a reset, jump, or correction occurred).
-    pub const fn has_discontinuity(self) -> bool {
-        self.0 & 0x40 != 0
-    }
-
-    /// True if bit 5 = 1 (only meaningful when `has_discontinuity()` —
-    /// indicates a backward time jump rather than forward).
-    pub const fn is_reverse_jump(self) -> bool {
-        self.0 & 0x20 != 0
-    }
-
-    /// True if reserved bits 4-0 are the spec-required `0b11111`.
-    pub const fn reserved_bits_valid(self) -> bool {
-        self.0 & 0x1F == 0x1F
-    }
-}
-
-/// MISB ST 0605 §7 Precision Time Stamp Pack typed view.
-#[must_use]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PrecisionTimeStampPack {
-    pub time_status: TimeStatus,
-    /// Microseconds since 1970-01-01T00:00:00Z (POSIX epoch), big-endian.
-    pub timestamp_us: u64,
-}
-
-/// Decode a Precision Time Stamp Pack from a buffer that starts with
-/// the 16-byte UL. Returns the typed view; verifies the UL and body
-/// length match MISB ST 0605 §7. Does **not** validate the reserved
-/// bits in the status byte — call `time_status.reserved_bits_valid()`
-/// on the returned struct if you need that check.
-pub fn decode(buf: &[u8]) -> Result<PrecisionTimeStampPack, KlvDecodeError> {
-    if buf.len() < 16 {
-        return Err(KlvDecodeError::Truncated {
-            offset: 0,
-            needed: 16,
-            have: buf.len(),
-        });
-    }
-    let mut ul = [0u8; 16];
-    ul.copy_from_slice(&buf[..16]);
-    let label = UniversalLabel::new(ul);
-    if label != UniversalLabel::PRECISION_TIMESTAMP_PACK_UL {
-        return Err(KlvDecodeError::UnexpectedUniversalLabel {
-            expected: UniversalLabel::PRECISION_TIMESTAMP_PACK_UL,
-            found: label,
-        });
-    }
-    let (declared_len, after_len) = read_ber(&buf[16..])?;
-    if declared_len != 9 {
-        return Err(KlvDecodeError::BadTimeStampPackLength { got: declared_len });
-    }
-    if after_len.len() < 9 {
-        return Err(KlvDecodeError::Truncated {
-            offset: buf.len() - after_len.len(),
-            needed: 9,
-            have: after_len.len(),
-        });
-    }
-    let body = &after_len[..9];
-    let mut ts_bytes = [0u8; 8];
-    ts_bytes.copy_from_slice(&body[1..9]);
-    Ok(PrecisionTimeStampPack {
-        time_status: TimeStatus(body[0]),
-        timestamp_us: u64::from_be_bytes(ts_bytes),
-    })
-}
-
-/// Encode a Precision Time Stamp Pack to a 26-byte buffer:
-/// `[UL:16][BER 0x09:1][status:1][microseconds:8 BE]`.
-pub fn encode(pack: &PrecisionTimeStampPack) -> [u8; 26] {
-    let mut out = [0u8; 26];
-    out[..16].copy_from_slice(&UniversalLabel::PRECISION_TIMESTAMP_PACK_UL.0);
-    out[16] = 0x09;
-    out[17] = pack.time_status.0;
-    out[18..26].copy_from_slice(&pack.timestamp_us.to_be_bytes());
-    out
-}
+pub use decode::decode;
+pub use encode::encode;
+pub use model::{PrecisionTimeStampPack, TimeStatus};
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::decode::decode;
+    use super::encode::encode;
+    use super::model::{PrecisionTimeStampPack, TimeStatus};
+    use crate::error::KlvDecodeError;
+    use crate::klv::universal_label::UniversalLabel;
 
     #[test]
     fn time_status_locked_normal() {

@@ -446,7 +446,7 @@ fn handle_closed_sentinel_returns_closed_code_black_box() {
         TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
         tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::muxer::{tst_muxer_close, tst_muxer_open, tst_muxer_push_video};
+    use tstrans::sender::muxer::{tst_muxer_close, tst_muxer_open, tst_muxer_push_video};
 
     // A minimal valid H.264 Annex-B NAL: start code + IDR byte.
     let nal: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xBB, 0xCC];

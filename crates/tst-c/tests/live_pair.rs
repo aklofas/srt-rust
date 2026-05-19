@@ -19,7 +19,7 @@ use tstrans::config::{
     tst_mux_config_free, tst_mux_config_new, tst_reconnect_policy_free, tst_reconnect_policy_new,
 };
 use tstrans::error::tst_get_last_error_str;
-use tstrans::mux_sender::{
+use tstrans::sender::mux_sender::{
     tst_managed_mux_sender_close, tst_managed_mux_sender_open, tst_managed_mux_sender_send_klv_to,
     tst_managed_mux_sender_send_video_to, tst_mux_sender_close, tst_mux_sender_open,
     tst_mux_sender_send_video,

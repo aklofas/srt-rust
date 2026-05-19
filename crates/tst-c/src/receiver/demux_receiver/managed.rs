@@ -19,7 +19,7 @@ use crate::error::{
 };
 use crate::event::{EventArena, TstEvent};
 use crate::handle::Handle;
-use crate::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
+use crate::sender::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
@@ -136,7 +136,7 @@ fn managed_open_caller_inner(
 ) -> *mut TstManagedDemuxReceiver {
     let mut socket_cfg = tst_srt::config::SocketConfig::default();
     url.overlay.apply_to_socket(&mut socket_cfg);
-    let initial = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
+    let initial = match crate::sender::connect::connect_srt(&url.host, url.port, &socket_cfg) {
         Ok(t) => t,
         Err(e) => {
             record_transport_error(&e);
@@ -147,7 +147,7 @@ fn managed_open_caller_inner(
     let port = url.port;
     let cfg_for_reconnect = socket_cfg.clone();
     let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> =
-        Box::new(move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect));
+        Box::new(move || crate::sender::connect::connect_srt(&host, port, &cfg_for_reconnect));
     let managed = ManagedRecvTransport::new(initial, factory, policy);
     finish_managed_open(managed, opts)
 }
@@ -159,7 +159,7 @@ fn managed_open_listener_inner(
 ) -> *mut TstManagedDemuxReceiver {
     let mut listener_cfg = tst_srt::config::ListenerConfig::default();
     url.overlay.apply_to_listener(&mut listener_cfg);
-    let initial = match crate::listen::listen_srt(&url.host, url.port, &listener_cfg) {
+    let initial = match crate::receiver::listen::listen_srt(&url.host, url.port, &listener_cfg) {
         Ok(t) => t,
         Err(e) => {
             record_transport_error(&e);
@@ -170,7 +170,7 @@ fn managed_open_listener_inner(
     let port = url.port;
     let cfg_for_relisten = listener_cfg.clone();
     let factory: Box<dyn FnMut() -> Result<SrtTransport, TransportError> + Send> =
-        Box::new(move || crate::listen::listen_srt(&host, port, &cfg_for_relisten));
+        Box::new(move || crate::receiver::listen::listen_srt(&host, port, &cfg_for_relisten));
     let managed = ManagedRecvTransport::new(initial, factory, policy);
     finish_managed_open(managed, opts)
 }

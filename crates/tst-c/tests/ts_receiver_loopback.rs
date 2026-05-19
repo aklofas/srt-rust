@@ -19,10 +19,10 @@ use std::thread;
 use std::time::Duration;
 use tstrans::config::{tst_sender_config_free, tst_sender_config_new};
 use tstrans::error::{TstError, tst_get_last_error_str};
-use tstrans::ts_receiver::{
+use tstrans::receiver::ts_receiver::{
     tst_receiver_close, tst_receiver_open_listener, tst_receiver_recv_packet,
 };
-use tstrans::ts_sender::{tst_sender_close, tst_sender_open, tst_sender_send_ts};
+use tstrans::sender::ts_sender::{tst_sender_close, tst_sender_open, tst_sender_send_ts};
 
 fn last_error_msg() -> String {
     unsafe {

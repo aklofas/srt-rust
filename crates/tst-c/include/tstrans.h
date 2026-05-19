@@ -1067,7 +1067,7 @@ int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
- * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
  * for full semantics — same shape, different handle type.
  *
  * # Safety
@@ -2715,7 +2715,7 @@ int tst_muxer_push_video_to(struct tst_muxer_t *p,
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
- * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
  * for full semantics — same shape, different handle type.
  *
  * # Safety
@@ -2810,7 +2810,7 @@ int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
- * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
  * for full semantics — same shape, different handle type.
  *
  * # Safety
@@ -2818,7 +2818,9 @@ int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
  * Caller MUST ensure `p` is a valid `*mut TstRawSender` opened via
  * `tst_raw_sender_open` and `out` points to a writable `TstSocketStats`.
  */
- int tst_raw_sender_get_socket_stats(struct tst_raw_sender_t *p, struct tst_socket_stats_t *out);
+
+int tst_raw_sender_get_socket_stats(struct tst_raw_sender_t *p,
+                                    struct tst_socket_stats_t *out);
 
 /**
  * Snapshot stats for a `tst_raw_sender_t` into `*out`.
@@ -2875,7 +2877,7 @@ struct tst_raw_sender_t *tst_raw_sender_open(const char *srt_url,
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
- * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
  * for full semantics — same shape, different handle type.
  *
  * # Safety
@@ -2883,7 +2885,9 @@ struct tst_raw_sender_t *tst_raw_sender_open(const char *srt_url,
  * Caller MUST ensure `p` is a valid `*mut TstReceiver` opened via
  * `tst_receiver_open` and `out` points to a writable `TstSocketStats`.
  */
- int tst_receiver_get_socket_stats(struct tst_receiver_t *p, struct tst_socket_stats_t *out);
+
+int tst_receiver_get_socket_stats(struct tst_receiver_t *p,
+                                  struct tst_socket_stats_t *out);
 
 /**
  * Snapshot stats for a `tst_receiver_t` into `*out`.
@@ -3001,7 +3005,7 @@ int tst_sender_config_set_framing_mode(struct tst_sender_config_t *p,
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
- * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
  * for full semantics — same shape, different handle type.
  *
  * # Safety
@@ -3009,7 +3013,9 @@ int tst_sender_config_set_framing_mode(struct tst_sender_config_t *p,
  * Caller MUST ensure `p` is a valid `*mut TstSender` opened via
  * `tst_sender_open` and `out` points to a writable `TstSocketStats`.
  */
- int tst_sender_get_socket_stats(struct tst_sender_t *p, struct tst_socket_stats_t *out);
+
+int tst_sender_get_socket_stats(struct tst_sender_t *p,
+                                struct tst_socket_stats_t *out);
 
  int tst_sender_get_stats(struct tst_sender_t *p, struct tst_sender_stats_t *out);
 

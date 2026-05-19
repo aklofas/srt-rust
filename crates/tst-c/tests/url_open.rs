@@ -24,15 +24,15 @@ use tstrans::config::{
     tst_sender_config_new,
 };
 use tstrans::error::tst_get_last_error_str;
-use tstrans::mux_sender::{
+use tstrans::sender::mux_sender::{
     tst_managed_mux_sender_close, tst_managed_mux_sender_open, tst_mux_sender_close,
     tst_mux_sender_open,
 };
-use tstrans::raw_sender::{
+use tstrans::sender::raw_sender::{
     tst_managed_raw_sender_close, tst_managed_raw_sender_open, tst_raw_sender_close,
     tst_raw_sender_open,
 };
-use tstrans::ts_sender::{
+use tstrans::sender::ts_sender::{
     tst_managed_sender_close, tst_managed_sender_open, tst_managed_sender_send_ts,
     tst_sender_close, tst_sender_open,
 };

@@ -23,10 +23,10 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use tstrans::error::{TstError, tst_get_last_error_str};
-use tstrans::raw_receiver::{
+use tstrans::receiver::raw_receiver::{
     tst_raw_receiver_close, tst_raw_receiver_open_listener, tst_raw_receiver_recv,
 };
-use tstrans::raw_sender::{tst_raw_sender_close, tst_raw_sender_open, tst_raw_sender_send};
+use tstrans::sender::raw_sender::{tst_raw_sender_close, tst_raw_sender_open, tst_raw_sender_send};
 
 fn last_error_msg() -> String {
     unsafe {

@@ -11,22 +11,20 @@
 
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
 
+// Cross-cutting (shared by both sender and receiver):
 pub mod config;
-mod connect;
 pub mod demux_config;
-pub mod demux_receiver;
 pub mod error;
 pub mod event;
 pub mod handle;
-mod listen;
-pub mod mux_sender;
-pub mod muxer;
-mod panic;
-pub mod raw_receiver;
-pub mod raw_sender;
 pub mod stats;
-pub mod ts_receiver;
-pub mod ts_sender;
+mod panic;
+
+// Sender-side surface:
+pub mod sender;
+
+// Receiver-side surface:
+pub mod receiver;
 /// Re-exports of internal error helpers for integration tests. These are not
 /// `extern "C"` and do not appear in `tstrans.h`. Named with `test_` prefix
 /// to mark their test-only intent; not gated on `#[cfg(test)]` because

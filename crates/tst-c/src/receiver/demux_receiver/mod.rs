@@ -58,7 +58,7 @@ use crate::demux_config::TstDemuxConfig;
 use crate::error::record_transport_error;
 use crate::event::EventArena;
 use crate::handle::Handle;
-use crate::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
+use crate::sender::mux_sender::{parse_c_srt_url, parse_c_srt_url_listener};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
@@ -172,7 +172,7 @@ fn open_caller_inner(
 ) -> *mut TstDemuxReceiver {
     let mut socket_cfg = tst_srt::config::SocketConfig::default();
     url.overlay.apply_to_socket(&mut socket_cfg);
-    let transport = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
+    let transport = match crate::sender::connect::connect_srt(&url.host, url.port, &socket_cfg) {
         Ok(t) => t,
         Err(e) => {
             record_transport_error(&e);
@@ -188,7 +188,7 @@ fn open_listener_inner(
 ) -> *mut TstDemuxReceiver {
     let mut listener_cfg = tst_srt::config::ListenerConfig::default();
     url.overlay.apply_to_listener(&mut listener_cfg);
-    let transport = match crate::listen::listen_srt(&url.host, url.port, &listener_cfg) {
+    let transport = match crate::receiver::listen::listen_srt(&url.host, url.port, &listener_cfg) {
         Ok(t) => t,
         Err(e) => {
             record_transport_error(&e);

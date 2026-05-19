@@ -35,7 +35,7 @@ fn muxer_get_stream_codec_stats_null_handle_returns_invalid_config() {
         u: unsafe { std::mem::zeroed() },
     };
     let rc = unsafe {
-        tstrans::muxer::tst_muxer_get_stream_codec_stats(ptr::null_mut(), 0x100, &mut out)
+        tstrans::sender::muxer::tst_muxer_get_stream_codec_stats(ptr::null_mut(), 0x100, &mut out)
     };
     assert_eq!(rc, TstError::InvalidConfig as i32);
 }
@@ -48,7 +48,11 @@ fn mux_sender_get_stream_codec_stats_null_handle_returns_invalid_config() {
         u: unsafe { std::mem::zeroed() },
     };
     let rc = unsafe {
-        tstrans::mux_sender::tst_mux_sender_get_stream_codec_stats(ptr::null_mut(), 0x100, &mut out)
+        tstrans::sender::mux_sender::tst_mux_sender_get_stream_codec_stats(
+            ptr::null_mut(),
+            0x100,
+            &mut out,
+        )
     };
     assert_eq!(rc, TstError::InvalidConfig as i32);
 }
@@ -61,7 +65,7 @@ fn managed_mux_sender_get_stream_codec_stats_null_handle_returns_invalid_config(
         u: unsafe { std::mem::zeroed() },
     };
     let rc = unsafe {
-        tstrans::mux_sender::tst_managed_mux_sender_get_stream_codec_stats(
+        tstrans::sender::mux_sender::tst_managed_mux_sender_get_stream_codec_stats(
             ptr::null_mut(),
             0x100,
             &mut out,
@@ -78,7 +82,7 @@ fn demux_receiver_get_stream_codec_stats_null_handle_returns_invalid_config() {
         u: unsafe { std::mem::zeroed() },
     };
     let rc = unsafe {
-        tstrans::demux_receiver::tst_demux_receiver_get_stream_codec_stats(
+        tstrans::receiver::demux_receiver::tst_demux_receiver_get_stream_codec_stats(
             ptr::null_mut(),
             0x100,
             &mut out,
@@ -95,7 +99,7 @@ fn managed_demux_receiver_get_stream_codec_stats_null_handle_returns_invalid_con
         u: unsafe { std::mem::zeroed() },
     };
     let rc = unsafe {
-        tstrans::demux_receiver::tst_managed_demux_receiver_get_stream_codec_stats(
+        tstrans::receiver::demux_receiver::tst_managed_demux_receiver_get_stream_codec_stats(
             ptr::null_mut(),
             0x100,
             &mut out,
@@ -112,7 +116,7 @@ fn muxer_get_stream_codec_stats_null_out_returns_invalid_config() {
         TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
         tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::muxer::{tst_muxer_close, tst_muxer_open};
+    use tstrans::sender::muxer::{tst_muxer_close, tst_muxer_open};
     unsafe {
         let cfg = tst_mux_config_new();
         let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
@@ -120,7 +124,8 @@ fn muxer_get_stream_codec_stats_null_out_returns_invalid_config() {
         let m = tst_muxer_open(cfg);
         assert!(!m.is_null());
 
-        let rc = tstrans::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, ptr::null_mut());
+        let rc =
+            tstrans::sender::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, ptr::null_mut());
         assert_eq!(rc, TstError::InvalidConfig as i32);
 
         tst_muxer_close(m);
@@ -134,7 +139,7 @@ fn muxer_get_stream_codec_stats_unconfigured_pid_returns_not_found() {
         TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
         tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::muxer::{tst_muxer_close, tst_muxer_open};
+    use tstrans::sender::muxer::{tst_muxer_close, tst_muxer_open};
     unsafe {
         let cfg = tst_mux_config_new();
         let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
@@ -150,7 +155,7 @@ fn muxer_get_stream_codec_stats_unconfigured_pid_returns_not_found() {
             _pad: 0,
             u: std::mem::zeroed(),
         };
-        let rc = tstrans::muxer::tst_muxer_get_stream_codec_stats(m, 0x9999, &mut out);
+        let rc = tstrans::sender::muxer::tst_muxer_get_stream_codec_stats(m, 0x9999, &mut out);
         assert_eq!(rc, TstError::NotFound as i32);
 
         tst_muxer_close(m);
@@ -164,7 +169,7 @@ fn muxer_get_stream_codec_stats_after_push_video_returns_video_variant() {
         TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
         tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::muxer::{tst_muxer_close, tst_muxer_open, tst_muxer_push_video};
+    use tstrans::sender::muxer::{tst_muxer_close, tst_muxer_open, tst_muxer_push_video};
     unsafe {
         let cfg = tst_mux_config_new();
         let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
@@ -179,7 +184,7 @@ fn muxer_get_stream_codec_stats_after_push_video_returns_video_variant() {
             _pad: 0,
             u: std::mem::zeroed(),
         };
-        let rc = tstrans::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, &mut out);
+        let rc = tstrans::sender::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, &mut out);
         assert_eq!(rc, 0);
         assert_eq!(out.kind, TST_CODEC_KIND_UNKNOWN);
 
@@ -198,7 +203,7 @@ fn muxer_get_stream_codec_stats_after_push_video_returns_video_variant() {
             _pad: 0,
             u: std::mem::zeroed(),
         };
-        let rc = tstrans::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, &mut out);
+        let rc = tstrans::sender::muxer::tst_muxer_get_stream_codec_stats(m, 0x0100, &mut out);
         assert_eq!(rc, 0);
         assert_eq!(out.kind, TST_CODEC_KIND_VIDEO);
         assert!(
@@ -241,12 +246,12 @@ fn loopback_mux_sender_to_demux_receiver_codec_stats_video_and_psi_not_found() {
         TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
         tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::demux_receiver::{
-        tst_demux_receiver_close, tst_demux_receiver_open_listener, tst_demux_receiver_recv_event,
-    };
     use tstrans::error::tst_get_last_error_str;
     use tstrans::event::TstEvent;
-    use tstrans::mux_sender::{
+    use tstrans::receiver::demux_receiver::{
+        tst_demux_receiver_close, tst_demux_receiver_open_listener, tst_demux_receiver_recv_event,
+    };
+    use tstrans::sender::mux_sender::{
         tst_mux_sender_close, tst_mux_sender_open, tst_mux_sender_send_video,
     };
 
@@ -299,7 +304,7 @@ fn loopback_mux_sender_to_demux_receiver_codec_stats_video_and_psi_not_found() {
             u: unsafe { std::mem::zeroed() },
         };
         let rc_video = unsafe {
-            tstrans::demux_receiver::tst_demux_receiver_get_stream_codec_stats(
+            tstrans::receiver::demux_receiver::tst_demux_receiver_get_stream_codec_stats(
                 rx,
                 0x1011,
                 &mut video_out,
@@ -315,7 +320,7 @@ fn loopback_mux_sender_to_demux_receiver_codec_stats_video_and_psi_not_found() {
             u: unsafe { std::mem::zeroed() },
         };
         let rc_pat = unsafe {
-            tstrans::demux_receiver::tst_demux_receiver_get_stream_codec_stats(
+            tstrans::receiver::demux_receiver::tst_demux_receiver_get_stream_codec_stats(
                 rx,
                 0x0000,
                 &mut pat_out,

@@ -43,7 +43,7 @@ fn muxer_get_stats_after_push() {
         tst_mux_config_add_klv_stream, tst_mux_config_add_program, tst_mux_config_add_video_stream,
         tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::muxer::{
+    use tstrans::sender::muxer::{
         tst_muxer_close, tst_muxer_get_stats, tst_muxer_open, tst_muxer_reset_stats,
     };
     unsafe {
@@ -72,7 +72,7 @@ fn muxer_get_stats_after_push() {
 fn muxer_get_stats_null_pointer_returns_invalid_config() {
     let mut st = TstMuxerStats::default();
     unsafe {
-        let rc = tstrans::muxer::tst_muxer_get_stats(ptr::null_mut(), &mut st);
+        let rc = tstrans::sender::muxer::tst_muxer_get_stats(ptr::null_mut(), &mut st);
         assert_ne!(rc, 0);
     }
 }
@@ -88,7 +88,7 @@ fn mux_sender_stats_round_trip() {
         TstKlvStreamType, TstVideoCodec, tst_mux_config_add_klv_stream, tst_mux_config_add_program,
         tst_mux_config_add_video_stream, tst_mux_config_free, tst_mux_config_new,
     };
-    use tstrans::mux_sender::{
+    use tstrans::sender::mux_sender::{
         tst_mux_sender_close, tst_mux_sender_get_stats, tst_mux_sender_open,
         tst_mux_sender_reset_stats, tst_mux_sender_send_video,
     };
@@ -163,7 +163,7 @@ fn mux_sender_socket_stats_round_trip() {
         tst_mux_config_add_video_stream, tst_mux_config_free, tst_mux_config_new,
     };
     use tstrans::error::TstError;
-    use tstrans::mux_sender::{
+    use tstrans::sender::mux_sender::{
         tst_mux_sender_close, tst_mux_sender_get_socket_stats, tst_mux_sender_open,
         tst_mux_sender_send_video,
     };
@@ -232,7 +232,7 @@ fn mux_sender_socket_stats_round_trip() {
 
 #[test]
 fn mux_sender_socket_stats_null_pointer_returns_invalid_config() {
-    use tstrans::mux_sender::tst_mux_sender_get_socket_stats;
+    use tstrans::sender::mux_sender::tst_mux_sender_get_socket_stats;
     use tstrans::stats::TstSocketStats;
 
     unsafe {
@@ -249,7 +249,7 @@ fn mux_sender_socket_stats_null_pointer_returns_invalid_config() {
 
 #[test]
 fn managed_mux_sender_socket_stats_null_pointer_returns_invalid_config() {
-    use tstrans::mux_sender::tst_managed_mux_sender_get_socket_stats;
+    use tstrans::sender::mux_sender::tst_managed_mux_sender_get_socket_stats;
     use tstrans::stats::TstSocketStats;
 
     unsafe {
@@ -262,7 +262,7 @@ fn managed_mux_sender_socket_stats_null_pointer_returns_invalid_config() {
 #[test]
 fn ts_sender_reset_stats_returns_ok_on_valid_handle() {
     unsafe {
-        let rc = tstrans::ts_sender::tst_sender_reset_stats(std::ptr::null_mut());
+        let rc = tstrans::sender::ts_sender::tst_sender_reset_stats(std::ptr::null_mut());
         assert_ne!(rc, 0);
     }
 }
@@ -270,7 +270,7 @@ fn ts_sender_reset_stats_returns_ok_on_valid_handle() {
 #[test]
 fn managed_ts_sender_reset_stats_returns_ok_on_valid_handle() {
     unsafe {
-        let rc = tstrans::ts_sender::tst_managed_sender_reset_stats(std::ptr::null_mut());
+        let rc = tstrans::sender::ts_sender::tst_managed_sender_reset_stats(std::ptr::null_mut());
         assert_ne!(rc, 0);
     }
 }

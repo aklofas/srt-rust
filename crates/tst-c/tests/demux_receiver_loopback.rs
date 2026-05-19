@@ -19,12 +19,14 @@ use tstrans::config::{
     TstVideoCodec, tst_mux_config_add_program, tst_mux_config_add_video_stream,
     tst_mux_config_free, tst_mux_config_new,
 };
-use tstrans::demux_receiver::{
-    tst_demux_receiver_close, tst_demux_receiver_open_listener, tst_demux_receiver_recv_event,
-};
 use tstrans::error::{TstError, tst_get_last_error_str};
 use tstrans::event::{TstEvent, TstEventKind};
-use tstrans::mux_sender::{tst_mux_sender_close, tst_mux_sender_open, tst_mux_sender_send_video};
+use tstrans::receiver::demux_receiver::{
+    tst_demux_receiver_close, tst_demux_receiver_open_listener, tst_demux_receiver_recv_event,
+};
+use tstrans::sender::mux_sender::{
+    tst_mux_sender_close, tst_mux_sender_open, tst_mux_sender_send_video,
+};
 
 fn last_error_msg() -> String {
     unsafe {

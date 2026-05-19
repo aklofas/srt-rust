@@ -37,7 +37,7 @@ pub unsafe extern "C" fn tst_demux_receiver_get_stats(
 }
 
 /// Read wire-level transport stats for the underlying libsrt socket.
-/// See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+/// See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
 /// for full semantics — same shape, different handle type.
 ///
 /// # Safety

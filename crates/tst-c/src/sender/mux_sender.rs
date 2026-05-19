@@ -72,7 +72,8 @@ pub unsafe extern "C" fn tst_mux_sender_open(
         };
         let mut socket_cfg = SocketConfig::default();
         url.overlay.apply_to_socket(&mut socket_cfg);
-        let transport = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
+        let transport = match crate::sender::connect::connect_srt(&url.host, url.port, &socket_cfg)
+        {
             Ok(t) => t,
             Err(e) => {
                 crate::error::record_transport_error(&e);
@@ -704,7 +705,7 @@ pub unsafe extern "C" fn tst_managed_mux_sender_open(
         url.overlay.apply_to_socket(&mut socket_cfg);
 
         // Initial connect.
-        let initial = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
+        let initial = match crate::sender::connect::connect_srt(&url.host, url.port, &socket_cfg) {
             Ok(t) => t,
             Err(e) => {
                 crate::error::record_transport_error(&e);
@@ -718,7 +719,7 @@ pub unsafe extern "C" fn tst_managed_mux_sender_open(
         let host = url.host.clone();
         let port = url.port;
         let cfg_for_reconnect = socket_cfg.clone();
-        let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
+        let factory = move || crate::sender::connect::connect_srt(&host, port, &cfg_for_reconnect);
 
         let managed = ManagedTransport::new(initial, factory, policy);
         let sender = match MuxSender::new(managed, built) {

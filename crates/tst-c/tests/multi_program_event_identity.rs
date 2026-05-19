@@ -34,14 +34,14 @@ use tst_core::mpegts::mux::{
 use tstrans::demux_config::{
     tst_demux_config_free, tst_demux_config_new, tst_demux_config_set_pes_cap,
 };
-use tstrans::demux_receiver::{
+use tstrans::error::{TstError, tst_get_last_error_str};
+use tstrans::event::{TstDiscontinuityKindTag, TstEvent, TstEventKind, TstStreamKindTag};
+use tstrans::receiver::demux_receiver::{
     tst_demux_receiver_close, tst_demux_receiver_get_stream_stats,
     tst_demux_receiver_open_listener, tst_demux_receiver_open_listener_with_config,
     tst_demux_receiver_recv_event,
 };
-use tstrans::error::{TstError, tst_get_last_error_str};
-use tstrans::event::{TstDiscontinuityKindTag, TstEvent, TstEventKind, TstStreamKindTag};
-use tstrans::raw_sender::{tst_raw_sender_close, tst_raw_sender_open, tst_raw_sender_send};
+use tstrans::sender::raw_sender::{tst_raw_sender_close, tst_raw_sender_open, tst_raw_sender_send};
 use tstrans::stats::TstStreamStats;
 
 // ---------------------------------------------------------------------------

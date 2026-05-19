@@ -6,7 +6,7 @@
 use crate::config::{TstReconnectPolicy, TstSenderConfig};
 use crate::error::{TstError, record_shell_error, record_transport_error, set_last_error};
 use crate::handle::Handle;
-use crate::mux_sender::parse_c_srt_url;
+use crate::sender::mux_sender::parse_c_srt_url;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tst_pipeline::{ManagedTransport, Sender, SenderStats, TransportCancel};
@@ -78,7 +78,8 @@ pub unsafe extern "C" fn tst_sender_open(
         };
         let mut socket_cfg = tst_srt::config::SocketConfig::default();
         url.overlay.apply_to_socket(&mut socket_cfg);
-        let transport = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
+        let transport = match crate::sender::connect::connect_srt(&url.host, url.port, &socket_cfg)
+        {
             Ok(t) => t,
             Err(e) => {
                 record_transport_error(&e);
@@ -150,7 +151,7 @@ pub unsafe extern "C" fn tst_sender_get_stats(
 }
 
 /// Read wire-level transport stats for the underlying libsrt socket.
-/// See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+/// See [`tst_mux_sender_get_socket_stats`](crate::sender::mux_sender::tst_mux_sender_get_socket_stats)
 /// for full semantics — same shape, different handle type.
 ///
 /// # Safety
@@ -279,7 +280,7 @@ pub unsafe extern "C" fn tst_managed_sender_open(
         let mut socket_cfg = tst_srt::config::SocketConfig::default();
         url.overlay.apply_to_socket(&mut socket_cfg);
 
-        let initial = match crate::connect::connect_srt(&url.host, url.port, &socket_cfg) {
+        let initial = match crate::sender::connect::connect_srt(&url.host, url.port, &socket_cfg) {
             Ok(t) => t,
             Err(e) => {
                 record_transport_error(&e);
@@ -289,7 +290,7 @@ pub unsafe extern "C" fn tst_managed_sender_open(
         let host = url.host.clone();
         let port = url.port;
         let cfg_for_reconnect = socket_cfg.clone();
-        let factory = move || crate::connect::connect_srt(&host, port, &cfg_for_reconnect);
+        let factory = move || crate::sender::connect::connect_srt(&host, port, &cfg_for_reconnect);
         let managed = ManagedTransport::new(initial, factory, policy);
         let sender = Sender::new(managed, cfg);
         let cancel = sender.cancel_handle();

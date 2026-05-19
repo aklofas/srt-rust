@@ -84,6 +84,13 @@ bench = false
 doc   = false
 
 [[bin]]
+name  = "measure_pcr_jitter"
+path  = "tests/tools/measure_pcr_jitter.rs"
+test  = false
+bench = false
+doc   = false
+
+[[bin]]
 name  = "corpus_to_fixture"
 path  = "tests/tools/corpus_to_fixture.rs"
 

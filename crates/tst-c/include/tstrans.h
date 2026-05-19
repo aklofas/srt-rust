@@ -19,21 +19,6 @@
 #include <stddef.h>
 
 /**
- * Major version (compile-time macro in the generated header).
- */
-#define TST_VERSION_MAJOR 0
-
-/**
- * Minor version.
- */
-#define TST_VERSION_MINOR 1
-
-/**
- * Patch version.
- */
-#define TST_VERSION_PATCH 0
-
-/**
  * Major version of the C ABI contract. Bumped only on **breaking
  * C-ABI change** — i.e., a change that would force a consumer to
  * rebuild against a different `tstrans.h`. NOT bumped on:
@@ -73,6 +58,17 @@
  */
 #define TST_ABI_VERSION_MINOR 1
 
+#define TST_CODEC_KIND_AUDIO 3
+
+#define TST_CODEC_KIND_KLV 2
+
+/**
+ * Discriminator constants exported as named C constants.
+ */
+#define TST_CODEC_KIND_UNKNOWN 0
+
+#define TST_CODEC_KIND_VIDEO 1
+
 /**
  * Sentinel returned by `tst_mux_config_add_*_stream` on failure.
  * On failure, the last-error is also populated; check
@@ -89,34 +85,19 @@
 #define TST_STATS_MAX_STREAMS 64
 
 /**
- * Discriminator constants exported as named C constants.
+ * Major version (compile-time macro in the generated header).
  */
-#define TST_CODEC_KIND_UNKNOWN 0
+#define TST_VERSION_MAJOR 0
 
-#define TST_CODEC_KIND_VIDEO 1
+/**
+ * Minor version.
+ */
+#define TST_VERSION_MINOR 1
 
-#define TST_CODEC_KIND_KLV 2
-
-#define TST_CODEC_KIND_AUDIO 3
-
-enum tst_video_codec
-#ifdef __cplusplus
-  : int32_t
-#endif // __cplusplus
- {
-  TST_VIDEO_CODEC_H264 = 0,
-  TST_VIDEO_CODEC_H265 = 1,
-  TST_VIDEO_CODEC_H266 = 2,
-  TST_VIDEO_CODEC_AV1 = 3,
-};
-#ifndef __cplusplus
-typedef int32_t tst_video_codec;
-#endif // __cplusplus
-
-typedef enum tst_klv_stream_type {
-  TST_KLV_STREAM_TYPE_PRIVATE_DATA = 0,
-  TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA = 1,
-} tst_klv_stream_type;
+/**
+ * Patch version.
+ */
+#define TST_VERSION_PATCH 0
 
 /**
  * `repr(i32)` mirror of `tst_core::mpegts::demux::AudioCodec`.
@@ -137,15 +118,34 @@ enum tst_audio_codec
 typedef int32_t tst_audio_codec;
 #endif // __cplusplus
 
-typedef enum tst_ts_framing_mode {
-  TST_TS_FRAMING_MODE_RECOVER = 0,
-  TST_TS_FRAMING_MODE_STRICT = 1,
-} tst_ts_framing_mode;
+typedef enum tst_klv_stream_type {
+  TST_KLV_STREAM_TYPE_PRIVATE_DATA = 0,
+  TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA = 1,
+} tst_klv_stream_type;
+
+enum tst_video_codec
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_VIDEO_CODEC_H264 = 0,
+  TST_VIDEO_CODEC_H265 = 1,
+  TST_VIDEO_CODEC_H266 = 2,
+  TST_VIDEO_CODEC_AV1 = 3,
+};
+#ifndef __cplusplus
+typedef int32_t tst_video_codec;
+#endif // __cplusplus
 
 typedef enum tst_overflow_policy {
   TST_OVERFLOW_POLICY_DROP_OLDEST = 0,
   TST_OVERFLOW_POLICY_REJECT = 1,
 } tst_overflow_policy;
+
+typedef enum tst_ts_framing_mode {
+  TST_TS_FRAMING_MODE_RECOVER = 0,
+  TST_TS_FRAMING_MODE_STRICT = 1,
+} tst_ts_framing_mode;
 
 /**
  * Negative codes returned by every fallible tst-c entry point.
@@ -454,45 +454,169 @@ typedef struct tst_sender_t tst_sender_t;
 typedef struct tst_sender_config_t tst_sender_config_t;
 
 /**
- * Opaque handle returned by `tst_mux_config_add_program`. Used as an
- * argument to subsequent stream-add and config-set entry points to
- * disambiguate which program's streams or descriptors are being modified.
+ * `repr(C)` mirror of `tst_core::transport::SocketStats`. Size 120 B.
  *
- * The value is a zero-based index into the program list. Programs are
- * numbered in the order they were added. Handles are stable across the
- * config→open boundary — the same index applies after `tst_muxer_open`.
- */
-typedef uint32_t tst_program_handle_t;
-
-/**
- * Opaque per-program ordinal for a video elementary stream. Obtained from
- * `tst_mux_config_add_video_stream` at config time and reused with the
- * `_video_to` push siblings on every muxer-owning C variant.
+ * Layout (offsets in bytes — verified by the `_TST_SOCKET_STATS_SIZE`
+ * const assertion below):
+ *   0: rtt_us              (u32, 4 B)
+ *   4: send_buffer_packets (u32, 4 B)
+ *   8: recv_buffer_packets (u32, 4 B)
+ *  12: _pad                (u32, 4 B, alignment bridge to u64 below)
+ *  16: send_bandwidth_bps  (u64, 8 B)
+ *  24: recv_bandwidth_bps  (u64, 8 B)
+ *  32: link_bandwidth_bps  (u64, 8 B)
+ *  40: bytes_sent          (u64, 8 B)
+ *  48: packets_sent        (u64, 8 B)
+ *  56: bytes_received      (u64, 8 B)
+ *  64: packets_received    (u64, 8 B)
+ *  72: bytes_lost_recv     (u64, 8 B)
+ *  80: packets_lost_recv   (u64, 8 B)
+ *  88: packets_lost_send   (u64, 8 B)
+ *  96: packets_retransmitted (u64, 8 B)
+ * 104: packets_dropped_send  (u64, 8 B)
+ * 112: packets_dropped_recv  (u64, 8 B)
+ * Total: 120 B.
  *
- * Handles are stable across the config→open boundary and across managed
- * reconnects. They encode `(program_index, within_program_index)` as a
- * packed `u32` (bits 4..=7 = program, bits 0..=3 = within). They are NOT
- * interchangeable between muxers.
+ * All bandwidth fields are bits per second; RTT is microseconds;
+ * buffer-depth fields are in packets. See
+ * `tst_core::transport::SocketStats` rustdoc for the libsrt source
+ * mappings.
  */
-typedef uint32_t tst_video_stream_handle_t;
+typedef struct tst_socket_stats_t {
+  uint32_t rtt_us;
+  uint32_t send_buffer_packets;
+  uint32_t recv_buffer_packets;
+  /**
+   * Alignment padding bridging the u32 prefix to the u64 tail.
+   */
+  uint32_t _pad;
+  uint64_t send_bandwidth_bps;
+  uint64_t recv_bandwidth_bps;
+  uint64_t link_bandwidth_bps;
+  uint64_t bytes_sent;
+  uint64_t packets_sent;
+  uint64_t bytes_received;
+  uint64_t packets_received;
+  uint64_t bytes_lost_recv;
+  uint64_t packets_lost_recv;
+  uint64_t packets_lost_send;
+  uint64_t packets_retransmitted;
+  uint64_t packets_dropped_send;
+  uint64_t packets_dropped_recv;
+} tst_socket_stats_t;
 
 /**
- * Opaque per-program ordinal for a KLV elementary stream. Same packed
- * encoding as [`TstVideoStreamHandle`].
+ * `repr(C)` mirror of `tst_pipeline::DemuxReceiverStats`. Size 48 B.
+ *
+ * Application-level counters for the demux receive shell. Faithfully
+ * mirrors `tst_pipeline::DemuxReceiverStats` — six u64 fields:
+ * * `bytes_received` / `packets_received` — application-level totals
+ *   from the inner `Receiver` (one 188-byte packet per success).
+ * * `program_maps_seen` / `pmt_versions_seen` — PSI topology counters.
+ *   `program_maps_seen` increments on every PMT emission; `pmt_versions_seen`
+ *   only on a `version_number` bump (PMT churn detector).
+ * * `discontinuities` — sum across all PIDs of `DemuxEvent::Discontinuity`
+ *   emissions (continuity-counter jumps, PES oversize, etc).
+ * * `nonconformant` — sum across all PIDs of `DemuxEvent::NonConformant`
+ *   emissions (17 issue variants; see `tst_event_t.u.nonconformant.issue_code`).
+ *
+ * NOTE: sync-recovery counters (`bytes_skipped_for_sync`, `resync_events`)
+ * are deliberately absent — they live only on the inner `Receiver`'s
+ * `ReceiverStats` (surfaced via Phase 2's `TstReceiverStats`). Adding
+ * them here would mis-label the data source. Consumers needing them
+ * run a `tst_receiver_t` instead of a `tst_demux_receiver_t`.
+ *
+ * The per-PID `BTreeMap<u16, StreamStats>` from `DemuxReceiverStats`
+ * is NOT included on this struct; it ships separately via
+ * `tst_demux_receiver_get_stream_stats` returning a borrowed
+ * `(*const TstStreamStats, size_t)` pair per design §4.5.
  */
-typedef uint32_t tst_klv_stream_handle_t;
+typedef struct tst_demux_receiver_stats_t {
+  uint64_t bytes_received;
+  uint64_t packets_received;
+  uint64_t program_maps_seen;
+  uint64_t pmt_versions_seen;
+  uint64_t discontinuities;
+  uint64_t nonconformant;
+} tst_demux_receiver_stats_t;
+
+typedef struct tst_codec_stats_unknown_t {
+
+} tst_codec_stats_unknown_t;
+
+typedef struct tst_codec_stats_video_t {
+  uint64_t nals_or_obus;
+  uint64_t random_access_aus;
+} tst_codec_stats_video_t;
+
+typedef struct tst_codec_stats_klv_t {
+  uint64_t records;
+} tst_codec_stats_klv_t;
+
+typedef struct tst_codec_stats_audio_t {
+  uint64_t frames;
+} tst_codec_stats_audio_t;
+
+typedef union tst_stream_codec_stats_union_t {
+  struct tst_codec_stats_unknown_t unknown;
+  struct tst_codec_stats_video_t video;
+  struct tst_codec_stats_klv_t klv;
+  struct tst_codec_stats_audio_t audio;
+} tst_stream_codec_stats_union_t;
 
 /**
- * Opaque per-program ordinal for an audio elementary stream. Same packed
- * encoding as [`TstVideoStreamHandle`].
+ * Tagged-union mirror of [`tst_core::mpegts::stats::StreamCodecStats`].
+ * Layout: 4 (kind) + 4 (pad) + 16 (max union arm) = 24 B.
  */
-typedef uint32_t tst_audio_stream_handle_t;
+typedef struct tst_stream_codec_stats_t {
+  /**
+   * Discriminator: 0=unknown, 1=video, 2=klv, 3=audio. Additive — new
+   * kinds get new non-zero values; consumers MUST treat unrecognized
+   * kinds as Unknown and ignore `u`.
+   */
+  uint32_t kind;
+  /**
+   * Alignment bridge so `u.video` (which starts with a `u64`) is
+   * 8-byte aligned.
+   */
+  uint32_t _pad;
+  union tst_stream_codec_stats_union_t u;
+} tst_stream_codec_stats_t;
 
 /**
- * Opaque per-program ordinal for a subtitle elementary stream. Same packed
- * encoding as [`TstVideoStreamHandle`].
+ * `repr(C)` mirror of `tst_core::mpegts::StreamStats`. Size 96 B.
+ *
+ * Layout (offsets):
+ *   0: items (u64, 8 B)
+ *   8: bytes (u64, 8 B)
+ *  16: discontinuities (u64, 8 B)
+ *  24: pid (u16, 2 B)
+ *  26: stream_type (u8, 1 B)
+ *  27: _pad (3 B, alignment bridge)
+ *  30: program_number (u16, 2 B)
+ *  32: label ([c_char; 64], 64 B)
+ * Total: 96 B — identical to the pre-program_number layout.
  */
-typedef uint32_t tst_subtitle_stream_handle_t;
+typedef struct tst_stream_stats_t {
+  uint64_t items;
+  uint64_t bytes;
+  uint64_t discontinuities;
+  uint16_t pid;
+  uint8_t stream_type;
+  /**
+   * Alignment padding bridging stream_type → program_number.
+   */
+  uint8_t _pad[3];
+  /**
+   * Program number from the PAT that owns this stream. 0 for PSI PIDs.
+   */
+  uint16_t program_number;
+  /**
+   * NUL-terminated UTF-8. `label[0]==0` means None. Truncated at 63
+   * bytes (first 63 + NUL).
+   */
+  char label[64];
+} tst_stream_stats_t;
 
 /**
  * `repr(C)` mirror of `tst_core::mpegts::descriptors::RawDescriptor`.
@@ -706,171 +830,6 @@ typedef struct tst_event_t {
 } tst_event_t;
 
 /**
- * `repr(C)` mirror of `tst_pipeline::DemuxReceiverStats`. Size 48 B.
- *
- * Application-level counters for the demux receive shell. Faithfully
- * mirrors `tst_pipeline::DemuxReceiverStats` — six u64 fields:
- * * `bytes_received` / `packets_received` — application-level totals
- *   from the inner `Receiver` (one 188-byte packet per success).
- * * `program_maps_seen` / `pmt_versions_seen` — PSI topology counters.
- *   `program_maps_seen` increments on every PMT emission; `pmt_versions_seen`
- *   only on a `version_number` bump (PMT churn detector).
- * * `discontinuities` — sum across all PIDs of `DemuxEvent::Discontinuity`
- *   emissions (continuity-counter jumps, PES oversize, etc).
- * * `nonconformant` — sum across all PIDs of `DemuxEvent::NonConformant`
- *   emissions (17 issue variants; see `tst_event_t.u.nonconformant.issue_code`).
- *
- * NOTE: sync-recovery counters (`bytes_skipped_for_sync`, `resync_events`)
- * are deliberately absent — they live only on the inner `Receiver`'s
- * `ReceiverStats` (surfaced via Phase 2's `TstReceiverStats`). Adding
- * them here would mis-label the data source. Consumers needing them
- * run a `tst_receiver_t` instead of a `tst_demux_receiver_t`.
- *
- * The per-PID `BTreeMap<u16, StreamStats>` from `DemuxReceiverStats`
- * is NOT included on this struct; it ships separately via
- * `tst_demux_receiver_get_stream_stats` returning a borrowed
- * `(*const TstStreamStats, size_t)` pair per design §4.5.
- */
-typedef struct tst_demux_receiver_stats_t {
-  uint64_t bytes_received;
-  uint64_t packets_received;
-  uint64_t program_maps_seen;
-  uint64_t pmt_versions_seen;
-  uint64_t discontinuities;
-  uint64_t nonconformant;
-} tst_demux_receiver_stats_t;
-
-/**
- * `repr(C)` mirror of `tst_core::transport::SocketStats`. Size 120 B.
- *
- * Layout (offsets in bytes — verified by the `_TST_SOCKET_STATS_SIZE`
- * const assertion below):
- *   0: rtt_us              (u32, 4 B)
- *   4: send_buffer_packets (u32, 4 B)
- *   8: recv_buffer_packets (u32, 4 B)
- *  12: _pad                (u32, 4 B, alignment bridge to u64 below)
- *  16: send_bandwidth_bps  (u64, 8 B)
- *  24: recv_bandwidth_bps  (u64, 8 B)
- *  32: link_bandwidth_bps  (u64, 8 B)
- *  40: bytes_sent          (u64, 8 B)
- *  48: packets_sent        (u64, 8 B)
- *  56: bytes_received      (u64, 8 B)
- *  64: packets_received    (u64, 8 B)
- *  72: bytes_lost_recv     (u64, 8 B)
- *  80: packets_lost_recv   (u64, 8 B)
- *  88: packets_lost_send   (u64, 8 B)
- *  96: packets_retransmitted (u64, 8 B)
- * 104: packets_dropped_send  (u64, 8 B)
- * 112: packets_dropped_recv  (u64, 8 B)
- * Total: 120 B.
- *
- * All bandwidth fields are bits per second; RTT is microseconds;
- * buffer-depth fields are in packets. See
- * `tst_core::transport::SocketStats` rustdoc for the libsrt source
- * mappings.
- */
-typedef struct tst_socket_stats_t {
-  uint32_t rtt_us;
-  uint32_t send_buffer_packets;
-  uint32_t recv_buffer_packets;
-  /**
-   * Alignment padding bridging the u32 prefix to the u64 tail.
-   */
-  uint32_t _pad;
-  uint64_t send_bandwidth_bps;
-  uint64_t recv_bandwidth_bps;
-  uint64_t link_bandwidth_bps;
-  uint64_t bytes_sent;
-  uint64_t packets_sent;
-  uint64_t bytes_received;
-  uint64_t packets_received;
-  uint64_t bytes_lost_recv;
-  uint64_t packets_lost_recv;
-  uint64_t packets_lost_send;
-  uint64_t packets_retransmitted;
-  uint64_t packets_dropped_send;
-  uint64_t packets_dropped_recv;
-} tst_socket_stats_t;
-
-typedef struct tst_codec_stats_unknown_t {
-
-} tst_codec_stats_unknown_t;
-
-typedef struct tst_codec_stats_video_t {
-  uint64_t nals_or_obus;
-  uint64_t random_access_aus;
-} tst_codec_stats_video_t;
-
-typedef struct tst_codec_stats_klv_t {
-  uint64_t records;
-} tst_codec_stats_klv_t;
-
-typedef struct tst_codec_stats_audio_t {
-  uint64_t frames;
-} tst_codec_stats_audio_t;
-
-typedef union tst_stream_codec_stats_union_t {
-  struct tst_codec_stats_unknown_t unknown;
-  struct tst_codec_stats_video_t video;
-  struct tst_codec_stats_klv_t klv;
-  struct tst_codec_stats_audio_t audio;
-} tst_stream_codec_stats_union_t;
-
-/**
- * Tagged-union mirror of [`tst_core::mpegts::stats::StreamCodecStats`].
- * Layout: 4 (kind) + 4 (pad) + 16 (max union arm) = 24 B.
- */
-typedef struct tst_stream_codec_stats_t {
-  /**
-   * Discriminator: 0=unknown, 1=video, 2=klv, 3=audio. Additive — new
-   * kinds get new non-zero values; consumers MUST treat unrecognized
-   * kinds as Unknown and ignore `u`.
-   */
-  uint32_t kind;
-  /**
-   * Alignment bridge so `u.video` (which starts with a `u64`) is
-   * 8-byte aligned.
-   */
-  uint32_t _pad;
-  union tst_stream_codec_stats_union_t u;
-} tst_stream_codec_stats_t;
-
-/**
- * `repr(C)` mirror of `tst_core::mpegts::StreamStats`. Size 96 B.
- *
- * Layout (offsets):
- *   0: items (u64, 8 B)
- *   8: bytes (u64, 8 B)
- *  16: discontinuities (u64, 8 B)
- *  24: pid (u16, 2 B)
- *  26: stream_type (u8, 1 B)
- *  27: _pad (3 B, alignment bridge)
- *  30: program_number (u16, 2 B)
- *  32: label ([c_char; 64], 64 B)
- * Total: 96 B — identical to the pre-program_number layout.
- */
-typedef struct tst_stream_stats_t {
-  uint64_t items;
-  uint64_t bytes;
-  uint64_t discontinuities;
-  uint16_t pid;
-  uint8_t stream_type;
-  /**
-   * Alignment padding bridging stream_type → program_number.
-   */
-  uint8_t _pad[3];
-  /**
-   * Program number from the PAT that owns this stream. 0 for PSI PIDs.
-   */
-  uint16_t program_number;
-  /**
-   * NUL-terminated UTF-8. `label[0]==0` means None. Truncated at 63
-   * bytes (first 63 + NUL).
-   */
-  char label[64];
-} tst_stream_stats_t;
-
-/**
  * `repr(C)` mirror of `tst_pipeline::MuxSenderStats`. Size 6188 B.
  */
 typedef struct tst_mux_sender_stats_t {
@@ -888,19 +847,34 @@ typedef struct tst_mux_sender_stats_t {
 } tst_mux_sender_stats_t;
 
 /**
- * `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6172 B.
+ * Opaque per-program ordinal for an audio elementary stream. Same packed
+ * encoding as [`TstVideoStreamHandle`].
  */
-typedef struct tst_muxer_stats_t {
-  uint64_t ts_packets_emitted;
-  uint64_t ts_bytes_emitted;
-  /**
-   * Number of programs (PAT entries) in this muxer's configuration.
-   */
-  uint32_t programs_configured;
-  uint32_t per_stream_count;
-  uint32_t per_stream_truncated;
-  struct tst_stream_stats_t per_stream[TST_STATS_MAX_STREAMS];
-} tst_muxer_stats_t;
+typedef uint32_t tst_audio_stream_handle_t;
+
+/**
+ * Opaque per-program ordinal for a KLV elementary stream. Same packed
+ * encoding as [`TstVideoStreamHandle`].
+ */
+typedef uint32_t tst_klv_stream_handle_t;
+
+/**
+ * Opaque per-program ordinal for a subtitle elementary stream. Same packed
+ * encoding as [`TstVideoStreamHandle`].
+ */
+typedef uint32_t tst_subtitle_stream_handle_t;
+
+/**
+ * Opaque per-program ordinal for a video elementary stream. Obtained from
+ * `tst_mux_config_add_video_stream` at config time and reused with the
+ * `_video_to` push siblings on every muxer-owning C variant.
+ *
+ * Handles are stable across the config→open boundary and across managed
+ * reconnects. They encode `(program_index, within_program_index)` as a
+ * packed `u32` (bits 4..=7 = program, bits 0..=3 = within). They are NOT
+ * interchangeable between muxers.
+ */
+typedef uint32_t tst_video_stream_handle_t;
 
 /**
  * `repr(C)` mirror of `tst_pipeline::RawRecvStats`. Size 16 B.
@@ -950,6 +924,32 @@ typedef struct tst_sender_stats_t {
 } tst_sender_stats_t;
 
 /**
+ * Opaque handle returned by `tst_mux_config_add_program`. Used as an
+ * argument to subsequent stream-add and config-set entry points to
+ * disambiguate which program's streams or descriptors are being modified.
+ *
+ * The value is a zero-based index into the program list. Programs are
+ * numbered in the order they were added. Handles are stable across the
+ * config→open boundary — the same index applies after `tst_muxer_open`.
+ */
+typedef uint32_t tst_program_handle_t;
+
+/**
+ * `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6172 B.
+ */
+typedef struct tst_muxer_stats_t {
+  uint64_t ts_packets_emitted;
+  uint64_t ts_bytes_emitted;
+  /**
+   * Number of programs (PAT entries) in this muxer's configuration.
+   */
+  uint32_t programs_configured;
+  uint32_t per_stream_count;
+  uint32_t per_stream_truncated;
+  struct tst_stream_stats_t per_stream[TST_STATS_MAX_STREAMS];
+} tst_muxer_stats_t;
+
+/**
  * Sentinel returned by `tst_mux_config_add_program` on failure (null cfg
  * or other hard error). Check `tst_get_last_error()` for the reason.
  */
@@ -958,6 +958,251 @@ typedef struct tst_sender_stats_t {
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
+
+/**
+ * Clears the thread-local last-error slot, resetting it to
+ * `(TST_E_SUCCESS, "")`.
+ *
+ * Most callers should NOT need this — every fallible `tst_*` function
+ * returns its result code directly (0 on success, negative on failure),
+ * so checking the return value is the idiomatic pattern. The
+ * thread-local last-error slot is a side-channel for the **message
+ * string** corresponding to the most recent failure, useful for
+ * logging and diagnostics.
+ *
+ * Use this function when:
+ *
+ * 1. Chaining checks through code that doesn't propagate return values
+ *    (e.g., a series of `tst_mux_config_add_*_stream` calls in a
+ *    higher-level helper that returns a single combined status).
+ * 2. Discriminating "the most recent call succeeded" from "the most
+ *    recent call failed and set an error" using `tst_get_last_error()
+ *    == 0` as the post-call check.
+ *
+ * **Thread-locality:** clears only the calling thread's slot. Other
+ * threads' last-error values are unaffected. Matches the libsrt
+ * `srt_clearlasterror()` semantic.
+ *
+ * # Safety
+ *
+ * Sound under any caller invocation — no pointer arguments, no
+ * mutating shared state (the thread-local is per-thread by definition),
+ * no internal locks. The `unsafe extern "C"` annotation matches the
+ * convention of every other `tst_*` entry point for consistency.
+ */
+
+// ─── INTROSPECTION ─────────────────────────────────────────
+ void tst_clear_last_error(void);
+
+/**
+ * Add a `klv_pid` → `video_pid` KLV-link override. Bypasses PMT-descriptor
+ * inference. Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+ */
+
+
+// ─── DEMUX RECEIVER ────────────────────────────────────────
+int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
+                                  uint16_t klv_pid,
+                                  uint16_t video_pid);
+
+/**
+ * Force a PID's stream-kind classification. `stream_kind` is one of
+ * `TST_STREAM_KIND_VIDEO_H264`, `TST_STREAM_KIND_VIDEO_H265`,
+ * `TST_STREAM_KIND_AUDIO_MP2`, ... — see the header for the full table.
+ *
+ * NOTE: The C-side mapping flattens (TstStreamKindTag × codec) pairs
+ * into single integers. The implementation table below covers the
+ * common cases — extend if a consumer asks for a kind not listed.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
+ * unrecognized `stream_kind`.
+ */
+ int tst_demux_config_add_treat_as(struct tst_demux_config_t *cfg, uint16_t pid, int stream_kind);
+
+/**
+ * Release a `tst_demux_config_t`. Safe to call with NULL.
+ */
+ void tst_demux_config_free(struct tst_demux_config_t *cfg);
+
+/**
+ * Allocate a new `tst_demux_config_t` with default values
+ * (strict mode = Off, no overrides, default PES caps).
+ *
+ * Returns `NULL` on allocation failure or internal panic.
+ * Free with `tst_demux_config_free`.
+ */
+ struct tst_demux_config_t *tst_demux_config_new(void);
+
+/**
+ * Set PES reassembly caps. `0` means use the Rust-side default.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+ */
+ int tst_demux_config_set_pes_cap(struct tst_demux_config_t *cfg, size_t per_pid, size_t total);
+
+/**
+ * Set the demuxer's strict mode. `mode` is one of
+ * `TST_STRICT_MODE_OFF` (0, default), `TST_STRICT_MODE_TIMING_ONLY` (1),
+ * `TST_STRICT_MODE_DESCRIPTORS_ONLY` (2), or `TST_STRICT_MODE_FULL` (3).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
+ * unrecognized `mode`.
+ */
+ int tst_demux_config_set_strict_mode(struct tst_demux_config_t *cfg, int mode);
+
+/**
+ * Cancel a `tst_demux_receiver_t`. Unblocks a thread parked in
+ * `_recv_event` within one libsrt I/O cycle (~3-10 ms) by closing
+ * the underlying libsrt socket. Safe to call from any thread.
+ * Idempotent.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ *
+ * After cancel, `_recv_event` returns `TST_E_CLOSED` (not
+ * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
+ */
+ int tst_demux_receiver_cancel(struct tst_demux_receiver_t *p);
+
+ void tst_demux_receiver_close(struct tst_demux_receiver_t *p);
+
+/**
+ * Read wire-level transport stats for the underlying libsrt socket.
+ * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * for full semantics — same shape, different handle type.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstDemuxReceiver` opened via
+ * `tst_demux_receiver_open` and `out` points to a writable
+ * `TstSocketStats`.
+ */
+
+int tst_demux_receiver_get_socket_stats(struct tst_demux_receiver_t *p,
+                                        struct tst_socket_stats_t *out);
+
+/**
+ * Snapshot stats for a `tst_demux_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer
+ * is null, `TST_E_CLOSED` if the receiver has been closed.
+ *
+ * NOTE: per-PID counters are NOT included on this struct — call
+ * `tst_demux_receiver_get_stream_stats` to retrieve them.
+ */
+
+int tst_demux_receiver_get_stats(struct tst_demux_receiver_t *p,
+                                 struct tst_demux_receiver_stats_t *out);
+
+/**
+ * Snapshot codec-specific stats for one PID on a `tst_demux_receiver_t`
+ * into `*out`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
+ * `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed via `tst_demux_receiver_close`
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_demux_receiver_open`;
+ * `out` must be a writable `tst_stream_codec_stats_t`. The pointee is
+ * fully written on `TST_OK` and untouched on error.
+ */
+
+int tst_demux_receiver_get_stream_codec_stats(struct tst_demux_receiver_t *p,
+                                              uint16_t pid,
+                                              struct tst_stream_codec_stats_t *out);
+
+/**
+ * Snapshot per-PID stats for a `tst_demux_receiver_t` into the
+ * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
+ * pair borrowing that buffer.
+ *
+ * **Borrowed buffer lifetime (design §4.5):** `*out_array` is valid
+ * until the next `_get_stream_stats` / `_reset_stats` / `_close`
+ * call on the same handle. Callers wanting longer lifetime memcpy
+ * the array out.
+ *
+ * Capped at `TST_STATS_MAX_STREAMS = 64` entries (BTreeMap ordering
+ * preserved by ascending PID); excess streams are silently dropped.
+ * `program_number` field is `0` for now — populated once `StreamStats`
+ * surfaces it (currently absent from `tst_core::mpegts::stats::StreamStats`).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on any null pointer
+ * arg, or `TST_E_CLOSED` if the receiver has been closed.
+ */
+
+int tst_demux_receiver_get_stream_stats(struct tst_demux_receiver_t *p,
+                                        const struct tst_stream_stats_t **out_array,
+                                        size_t *out_count);
+
+/**
+ * Open a `tst_demux_receiver_t` with default demux options.
+ * Accepts `srt://host:port?...` URLs; `?mode=listener` routes through
+ * the listener path (equivalent to `_open_listener`).
+ */
+ struct tst_demux_receiver_t *tst_demux_receiver_open(const char *srt_url);
+
+/**
+ * Explicit listener-mode open with default demux options.
+ */
+ struct tst_demux_receiver_t *tst_demux_receiver_open_listener(const char *srt_url);
+
+/**
+ * Explicit listener-mode open with a caller-supplied
+ * `tst_demux_config_t`.
+ */
+
+struct tst_demux_receiver_t *tst_demux_receiver_open_listener_with_config(const char *srt_url,
+                                                                          const struct tst_demux_config_t *cfg);
+
+/**
+ * Open a `tst_demux_receiver_t` with a caller-supplied
+ * `tst_demux_config_t`. The config is cloned-from at open time;
+ * the caller still owns it and must `_free` it.
+ */
+
+struct tst_demux_receiver_t *tst_demux_receiver_open_with_config(const char *srt_url,
+                                                                 const struct tst_demux_config_t *cfg);
+
+/**
+ * Block until one typed `TstEvent` is ready, then populate
+ * `*out_event` with the converted event.
+ *
+ * **Borrowed buffer lifetime (design §4.5):** pointer fields on
+ * `*out_event` borrow from this handle's `EventArena`. They are
+ * valid until the next `_recv_event` / `_close` call on the same
+ * handle. Callers wanting longer lifetime memcpy out before the
+ * next call.
+ *
+ * Returns:
+ * - `0` on success (`*out_event` populated; pointer fields borrow)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close
+ * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on transport failure
+ * - `TST_E_INVALID_TS` (-3) on a demuxer error (strict-mode rejection
+ *   or unrecoverable packet malformation)
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+ *
+ * On any non-zero return the contents of `*out_event` are unspecified.
+ */
+ int tst_demux_receiver_recv_event(struct tst_demux_receiver_t *p, struct tst_event_t *out_event);
+
+/**
+ * Reset stats counters for a `tst_demux_receiver_t` to zero.
+ * Also invalidates the borrowed `_get_stream_stats` snapshot
+ * (design §4.5).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
+ * null, `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_demux_receiver_reset_stats(struct tst_demux_receiver_t *p);
 
 /**
  * Returns the C ABI contract major version at runtime.
@@ -991,6 +1236,22 @@ extern "C" {
  uint32_t tst_get_abi_version_minor(void);
 
 /**
+ * Read the most recent error code on this thread. Returns `0`
+ * (`TST_E_SUCCESS`) if no error has been recorded on this thread yet.
+ * The value is not cleared by successful calls; it reflects the most
+ * recent failure on this thread (or `TST_E_SUCCESS` if there has been
+ * none since thread start).
+ */
+ int tst_get_last_error(void);
+
+/**
+ * Pointer to the most recent error message on this thread. Valid until
+ * the next tst-c call on the same thread. Never NULL — empty string when
+ * no error.
+ */
+ const char *tst_get_last_error_str(void);
+
+/**
  * Returns the package major version at runtime — matches
  * `Cargo.toml`'s major field at the time `libtstrans` was built.
  *
@@ -1021,16 +1282,6 @@ extern "C" {
  uint32_t tst_get_version_minor(void);
 
 /**
- * Returns the package patch version at runtime. See
- * [`tst_get_version_major`] for the usage pattern.
- *
- * # Safety
- *
- * Sound under any caller invocation; see [`tst_get_version_major`].
- */
- uint32_t tst_get_version_patch(void);
-
-/**
  * Returns the package version packed as `(M << 16) | (m << 8) | p`.
  *
  * Lets binding authors compare versions as single integers:
@@ -1056,6 +1307,16 @@ extern "C" {
  uint32_t tst_get_version_packed(void);
 
 /**
+ * Returns the package patch version at runtime. See
+ * [`tst_get_version_major`] for the usage pattern.
+ *
+ * # Safety
+ *
+ * Sound under any caller invocation; see [`tst_get_version_major`].
+ */
+ uint32_t tst_get_version_patch(void);
+
+/**
  * Returns a NUL-terminated `"<major>.<minor>.<patch>"` C string at
  * runtime.
  *
@@ -1076,648 +1337,6 @@ extern "C" {
  const char *tst_get_version_string(void);
 
 /**
- * Create a new, empty mux config. No programs are added — call
- * `tst_mux_config_add_program` before using this config to open a muxer
- * or sender. Returns NULL only on allocation failure (OOM).
- */
-
-// ─── MUX SENDER ────────────────────────────────────────────
- struct tst_mux_config_t *tst_mux_config_new(void);
-
-/**
- * Free a mux config previously returned by `tst_mux_config_new`. No-op on
- * NULL. The config must not be used after this call.
- */
- void tst_mux_config_free(struct tst_mux_config_t *p);
-
-/**
- * Begin a new program in this multiplex. Returns a handle used as the
- * `program` argument to subsequent stream-add and descriptor-set entry
- * points. Programs are numbered in insertion order starting at 0.
- *
- * `program_number` is the PAT program_number field (must be > 0 and unique
- * within the config). `pmt_pid` is the PID on which this program's PMT will
- * be carried (must be unique within the config and not collide with any
- * stream PID).
- *
- * Returns `TST_INVALID_PROGRAM_HANDLE` and sets last-error on null `cfg`.
- * Validation (duplicate program_number, colliding PMT PID, etc.) is deferred
- * to `tst_muxer_open` / `tst_*_sender_open` time.
- */
-
-tst_program_handle_t tst_mux_config_add_program(struct tst_mux_config_t *cfg,
-                                                uint16_t program_number,
-                                                uint16_t pmt_pid);
-
-/**
- * Add a video elementary stream to the specified program and return its
- * handle.
- *
- * The returned `tst_video_stream_handle_t` is stable across the config→open
- * boundary and across managed-sender reconnects. Pass it to
- * `tst_muxer_push_video_to` / `tst_mux_sender_send_video_to` /
- * `tst_managed_mux_sender_send_video_to` to fan out to this specific stream.
- *
- * Returns `TST_INVALID_STREAM_HANDLE` and sets last-error on: null `cfg`,
- * invalid `program` handle, or per-program stream cap exceeded (>16 streams
- * of any kind per program). Hard validation errors surface at `_open` time.
- */
-
-tst_video_stream_handle_t tst_mux_config_add_video_stream(struct tst_mux_config_t *cfg,
-                                                          tst_program_handle_t program,
-                                                          uint16_t pid,
-                                                          tst_video_codec codec);
-
-/**
- * Add a KLV elementary stream to the specified program and return its handle.
- *
- * `stream_type`: `TST_KLV_STREAM_TYPE_PRIVATE_DATA` (0x06, async — no AU
- * cell wrapping) or `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA` (0x15 —
- * the muxer auto-wraps each push in a 5-byte `Metadata_AU_cell` header
- * per ITU-T H.222.0 V9 § 2.12.4.2 before TS-framing; pass raw KLV LS
- * bytes to `push_klv_to`).
- *
- * `carries_pts`: set `true` for synchronous KLV (PTS carried in PES header),
- * `false` for async KLV.
- *
- * Returns `TST_INVALID_STREAM_HANDLE` on error (same conditions as
- * `tst_mux_config_add_video_stream`).
- */
-
-tst_klv_stream_handle_t tst_mux_config_add_klv_stream(struct tst_mux_config_t *cfg,
-                                                      tst_program_handle_t program,
-                                                      uint16_t pid,
-                                                      enum tst_klv_stream_type stream_type,
-                                                      bool carries_pts);
-
-/**
- * Add an audio elementary stream (no language tag) to the specified program
- * and return its handle.
- *
- * `codec`: one of the `TstAudioCodec` variants — `Mp2` (MPEG-1 Layer II
- * audio), `Aac` (AAC in ADTS framing), `AacLatm` (AAC in LATM framing),
- * or `Ac3` (Dolby AC-3). These C enum values are `0..3` per the
- * `TstAudioCodec` definition; they are NOT the MPEG-TS PMT `stream_type`
- * codepoints — the muxer derives the appropriate `stream_type` (and any
- * required registration descriptor) from the codec choice.
- *
- * The returned `tst_audio_stream_handle_t` is stable across the
- * config→open boundary and across managed-sender reconnects. Pass it to
- * `tst_muxer_push_audio_to` / `tst_mux_sender_send_audio_to` /
- * `tst_managed_mux_sender_send_audio_to` to fan out to this specific
- * stream.
- *
- * Returns `TST_INVALID_STREAM_HANDLE` and sets last-error on: null `cfg`,
- * invalid `program` handle, or per-program stream cap exceeded (>16 audio
- * streams per program). Hard validation errors surface at `_open` time.
- *
- * Use `tst_mux_config_add_audio_stream_with_language` when you want the
- * muxer to auto-emit an ISO 639 language descriptor for this stream.
- */
-
-tst_audio_stream_handle_t tst_mux_config_add_audio_stream(struct tst_mux_config_t *cfg,
-                                                          tst_program_handle_t program,
-                                                          uint16_t pid,
-                                                          tst_audio_codec codec);
-
-/**
- * Add an audio elementary stream with an ISO 639-2 language tag.
- *
- * `language` MUST be a non-null pointer to a 3-byte array of lowercase
- * ASCII bytes (e.g. `"eng"`, `"fra"`, `"spa"`). The muxer auto-emits an
- * `iso_639_language_descriptor` (tag `0x0A`) in the PMT for this stream
- * with `audio_type = 0x00` (undefined / clean main).
- *
- * Passing a null `language` is rejected with `TST_E_INVALID_CONFIG` —
- * use the bare `tst_mux_config_add_audio_stream` variant when no language
- * tag is desired.
- *
- * Other failure modes match `tst_mux_config_add_audio_stream` (null
- * `cfg`, invalid `program`, per-program cap exceeded).
- */
-
-tst_audio_stream_handle_t tst_mux_config_add_audio_stream_with_language(struct tst_mux_config_t *cfg,
-                                                                        tst_program_handle_t program,
-                                                                        uint16_t pid,
-                                                                        tst_audio_codec codec,
-                                                                        const uint8_t *language);
-
-/**
- * Add a DVB-subtitling subtitle stream to the specified program and
- * return its handle. Drives PMT `stream_type = 0x06` with an auto-emitted
- * subtitling_descriptor (ETSI EN 300 468 §6.2.41 + ETSI EN 300 743).
- *
- * `language` MUST be a non-null pointer to a 3-byte array of lowercase
- * ASCII bytes (ISO 639-2 language code, e.g. `"eng"`).
- * `subtitling_type` is per ETSI EN 300 468 Table 26 (common values:
- * 0x10 = DVB sub no AR signalling, 0x14 = DVB sub for 4:3 aspect-ratio).
- * `composition_page_id` and `ancillary_page_id` are 16-bit page
- * identifiers.
- *
- * Returns `TST_INVALID_STREAM_HANDLE` on error (same conditions as
- * `tst_mux_config_add_video_stream`, plus null `language` →
- * `TST_E_INVALID_CONFIG`).
- */
-
-tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_dvb_subtitling(struct tst_mux_config_t *cfg,
-                                                                               tst_program_handle_t program,
-                                                                               uint16_t pid,
-                                                                               const uint8_t *language,
-                                                                               uint8_t subtitling_type,
-                                                                               uint16_t composition_page_id,
-                                                                               uint16_t ancillary_page_id);
-
-/**
- * Add a DVB-teletext subtitle stream. Drives PMT `stream_type = 0x06`
- * with an auto-emitted teletext_descriptor (ETSI EN 300 468 §6.2.43 +
- * ETSI EN 300 706).
- *
- * `language` MUST be a non-null pointer to a 3-byte ISO 639-2 array.
- * `teletext_type` is 5 bits (common: 0x01 initial page, 0x02 subtitle).
- * `magazine_number` is 0..=7 (3-bit field — values outside this range
- * surface as `TST_E_INVALID_CONFIG` at `_open` time).
- * `page_number` is BCD-encoded (0x00..=0x99).
- *
- * Returns `TST_INVALID_STREAM_HANDLE` on error.
- */
-
-tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_dvb_teletext(struct tst_mux_config_t *cfg,
-                                                                             tst_program_handle_t program,
-                                                                             uint16_t pid,
-                                                                             const uint8_t *language,
-                                                                             uint8_t teletext_type,
-                                                                             uint8_t magazine_number,
-                                                                             uint8_t page_number);
-
-/**
- * Add a CEA-708 standalone caption stream. Drives PMT
- * `stream_type = 0x06` with an auto-emitted `registration_descriptor`
- * (`format_identifier = "GA94"`). See `SubtitleCodec::Cea708Standalone`
- * for the spec caveats — this is industry convention, not a normative
- * codepoint.
- */
-
-tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_cea708(struct tst_mux_config_t *cfg,
-                                                                       tst_program_handle_t program,
-                                                                       uint16_t pid);
-
-/**
- * Add a WebVTT-in-MPEG-TS subtitle stream. Drives PMT
- * `stream_type = 0x06` with an auto-emitted `registration_descriptor`
- * (`format_identifier = "VTTC"` — ffmpeg `mpegtsenc.c` convention
- * recognized by hls.js + mediamtx; not a normative codepoint).
- */
-
-tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_webvtt(struct tst_mux_config_t *cfg,
-                                                                       tst_program_handle_t program,
-                                                                       uint16_t pid);
-
-/**
- * Pin the PCR PID for the specified program. By default the muxer uses the
- * first video stream's PID (or first KLV PID for KLV-only programs).
- *
- * Returns 0 on success, or a negative `TST_E_*` code on null pointer or
- * invalid program handle.
- */
-
-int tst_mux_config_set_pcr_pid(struct tst_mux_config_t *cfg,
-                               tst_program_handle_t program,
-                               uint16_t pid);
-
-/**
- * Set the PCR re-emission interval for this mux config (applies to all
- * programs). Default is 40 ms. Must be in range 1..=100.
- */
- int tst_mux_config_set_pcr_interval_ms(struct tst_mux_config_t *p, uint32_t ms);
-
-/**
- * Set the PAT/PMT re-emission interval for this mux config. Default 100 ms.
- * Must be >= 10.
- */
- int tst_mux_config_set_psi_interval_ms(struct tst_mux_config_t *p, uint32_t ms);
-
-/**
- * Set the TS-packet output buffer capacity. Default 10000 (~1.88 MB).
- * Must be >= 10.
- */
- int tst_mux_config_set_buffer_packets(struct tst_mux_config_t *p, size_t n);
-
-/**
- * Set program-level PMT descriptors for the specified program.
- *
- * `tlv_bytes` points to the concatenation of `tlv_count` TLV triples,
- * totalling `tlv_total_len` bytes. Each TLV has the layout:
- *   byte 0: tag
- *   byte 1: length of body (N)
- *   bytes 2..2+N: body
- *
- * Calling with `tlv_total_len == 0` or `tlv_count == 0` clears any
- * previously set program descriptors for this program.
- *
- * Returns 0 on success or a negative `TST_E_*` code on: null `cfg`,
- * null `tlv_bytes` with non-zero count, invalid program handle, or a
- * malformed TLV byte stream (truncated length or body).
- */
-
-int tst_mux_config_set_program_descriptors(struct tst_mux_config_t *cfg,
-                                           tst_program_handle_t program,
-                                           const uint8_t *tlv_bytes,
-                                           size_t tlv_total_len,
-                                           size_t tlv_count);
-
-/**
- * Set per-stream PMT descriptors for the specified video stream.
- *
- * `video` is a handle previously returned by `tst_mux_config_add_video_stream`.
- * The TLV byte format is the same as `tst_mux_config_set_program_descriptors`.
- *
- * Calling with `tlv_total_len == 0` or `tlv_count == 0` clears any
- * previously set stream descriptors for this stream.
- *
- * Returns 0 on success or a negative `TST_E_*` code on: null `cfg`,
- * invalid handle, null `tlv_bytes` with non-zero count, or malformed TLV.
- */
-
-int tst_mux_config_set_stream_descriptors_for_video(struct tst_mux_config_t *cfg,
-                                                    tst_video_stream_handle_t video,
-                                                    const uint8_t *tlv_bytes,
-                                                    size_t tlv_total_len,
-                                                    size_t tlv_count);
-
-/**
- * Set per-stream PMT descriptors for the specified KLV stream.
- *
- * `klv` is a handle previously returned by `tst_mux_config_add_klv_stream`.
- * The TLV byte format is the same as `tst_mux_config_set_program_descriptors`.
- *
- * Returns 0 on success or a negative `TST_E_*` code on the same conditions
- * as `tst_mux_config_set_stream_descriptors_for_video`.
- */
-
-int tst_mux_config_set_stream_descriptors_for_klv(struct tst_mux_config_t *cfg,
-                                                  tst_klv_stream_handle_t klv,
-                                                  const uint8_t *tlv_bytes,
-                                                  size_t tlv_total_len,
-                                                  size_t tlv_count);
-
-/**
- * Append one PMT descriptor to a video stream's per-PID descriptor list.
- *
- * `stream` is the handle returned by `tst_mux_config_add_video_stream`.
- * `desc` must be non-null with `desc.data` pointing to `desc.data_len`
- * bytes (stripped length — does not include the tag/length header bytes).
- * Bytes are copied; the caller's buffer is not retained after this call.
- * Multiple calls accumulate; descriptors appear in the PMT in add-order.
- *
- * Returns 0 on success, or a negative `TST_E_*` code on: null `cfg` or
- * `desc`, stale handle, null `desc.data` with non-zero `desc.data_len`,
- * or `desc.data_len > 255` (MPEG-TS descriptor body limit).
- */
-
-int tst_mux_config_add_video_descriptor(struct tst_mux_config_t *cfg,
-                                        tst_video_stream_handle_t stream,
-                                        const struct tst_descriptor_t *desc);
-
-/**
- * Append one PMT descriptor to a KLV stream's per-PID descriptor list.
- * Same contract as `tst_mux_config_add_video_descriptor`.
- *
- * `stream` is the handle returned by `tst_mux_config_add_klv_stream`.
- */
-
-int tst_mux_config_add_klv_descriptor(struct tst_mux_config_t *cfg,
-                                      tst_klv_stream_handle_t stream,
-                                      const struct tst_descriptor_t *desc);
-
-/**
- * Append one PMT descriptor to an audio stream's per-PID descriptor list.
- * Same contract as `tst_mux_config_add_video_descriptor`.
- *
- * `stream` is the handle returned by `tst_mux_config_add_audio_stream`.
- */
-
-int tst_mux_config_add_audio_descriptor(struct tst_mux_config_t *cfg,
-                                        tst_audio_stream_handle_t stream,
-                                        const struct tst_descriptor_t *desc);
-
-/**
- * Append one PMT descriptor to a subtitle stream's per-PID descriptor list.
- * Same contract as `tst_mux_config_add_video_descriptor`.
- *
- * `stream` is the handle returned by one of
- * `tst_mux_config_add_subtitle_stream_dvb_subtitling`,
- * `tst_mux_config_add_subtitle_stream_dvb_teletext`,
- * `tst_mux_config_add_subtitle_stream_cea708`, or
- * `tst_mux_config_add_subtitle_stream_webvtt`.
- */
-
-int tst_mux_config_add_subtitle_descriptor(struct tst_mux_config_t *cfg,
-                                           tst_subtitle_stream_handle_t stream,
-                                           const struct tst_descriptor_t *desc);
-
-
-// ─── TS SENDER ─────────────────────────────────────────────
- struct tst_sender_config_t *tst_sender_config_new(void);
-
- void tst_sender_config_free(struct tst_sender_config_t *p);
-
-
-int tst_sender_config_set_framing_mode(struct tst_sender_config_t *p,
-                                       enum tst_ts_framing_mode mode);
-
- int tst_sender_config_set_max_unsynced_bytes(struct tst_sender_config_t *p, size_t n);
-
-
-// ─── RAW SENDER ────────────────────────────────────────────
- struct tst_raw_sender_config_t *tst_raw_sender_config_new(void);
-
- void tst_raw_sender_config_free(struct tst_raw_sender_config_t *p);
-
-
-// ─── OTHER ─────────────────────────────────────────────────
- struct tst_reconnect_policy_t *tst_reconnect_policy_new(void);
-
-
-// ─── LIFETIME ──────────────────────────────────────────────
- void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
-
-/**
- * Set max reconnect attempts. `n < 0` means retry forever.
- */
-
-// ─── OTHER ─────────────────────────────────────────────────
- int tst_reconnect_policy_set_max_attempts(struct tst_reconnect_policy_t *p, int32_t n);
-
- int tst_reconnect_policy_set_backoff_constant_ms(struct tst_reconnect_policy_t *p, uint32_t ms);
-
-
-int tst_reconnect_policy_set_backoff_exponential_ms(struct tst_reconnect_policy_t *p,
-                                                    uint32_t base_ms,
-                                                    uint32_t max_ms);
-
- int tst_reconnect_policy_set_gap_buffer_capacity(struct tst_reconnect_policy_t *p, size_t n);
-
-
-int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
-                                             enum tst_overflow_policy policy);
-
-/**
- * Allocate a new `tst_demux_config_t` with default values
- * (strict mode = Off, no overrides, default PES caps).
- *
- * Returns `NULL` on allocation failure or internal panic.
- * Free with `tst_demux_config_free`.
- */
-
-// ─── DEMUX RECEIVER ────────────────────────────────────────
- struct tst_demux_config_t *tst_demux_config_new(void);
-
-/**
- * Release a `tst_demux_config_t`. Safe to call with NULL.
- */
- void tst_demux_config_free(struct tst_demux_config_t *cfg);
-
-/**
- * Set the demuxer's strict mode. `mode` is one of
- * `TST_STRICT_MODE_OFF` (0, default), `TST_STRICT_MODE_TIMING_ONLY` (1),
- * `TST_STRICT_MODE_DESCRIPTORS_ONLY` (2), or `TST_STRICT_MODE_FULL` (3).
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
- * unrecognized `mode`.
- */
- int tst_demux_config_set_strict_mode(struct tst_demux_config_t *cfg, int mode);
-
-/**
- * Add a `klv_pid` → `video_pid` KLV-link override. Bypasses PMT-descriptor
- * inference. Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
- */
-
-int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
-                                  uint16_t klv_pid,
-                                  uint16_t video_pid);
-
-/**
- * Force a PID's stream-kind classification. `stream_kind` is one of
- * `TST_STREAM_KIND_VIDEO_H264`, `TST_STREAM_KIND_VIDEO_H265`,
- * `TST_STREAM_KIND_AUDIO_MP2`, ... — see the header for the full table.
- *
- * NOTE: The C-side mapping flattens (TstStreamKindTag × codec) pairs
- * into single integers. The implementation table below covers the
- * common cases — extend if a consumer asks for a kind not listed.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
- * unrecognized `stream_kind`.
- */
- int tst_demux_config_add_treat_as(struct tst_demux_config_t *cfg, uint16_t pid, int stream_kind);
-
-/**
- * Set PES reassembly caps. `0` means use the Rust-side default.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
- */
- int tst_demux_config_set_pes_cap(struct tst_demux_config_t *cfg, size_t per_pid, size_t total);
-
-/**
- * Open a `tst_demux_receiver_t` with default demux options.
- * Accepts `srt://host:port?...` URLs; `?mode=listener` routes through
- * the listener path (equivalent to `_open_listener`).
- */
- struct tst_demux_receiver_t *tst_demux_receiver_open(const char *srt_url);
-
-/**
- * Explicit listener-mode open with default demux options.
- */
- struct tst_demux_receiver_t *tst_demux_receiver_open_listener(const char *srt_url);
-
-/**
- * Open a `tst_demux_receiver_t` with a caller-supplied
- * `tst_demux_config_t`. The config is cloned-from at open time;
- * the caller still owns it and must `_free` it.
- */
-
-struct tst_demux_receiver_t *tst_demux_receiver_open_with_config(const char *srt_url,
-                                                                 const struct tst_demux_config_t *cfg);
-
-/**
- * Explicit listener-mode open with a caller-supplied
- * `tst_demux_config_t`.
- */
-
-struct tst_demux_receiver_t *tst_demux_receiver_open_listener_with_config(const char *srt_url,
-                                                                          const struct tst_demux_config_t *cfg);
-
- void tst_demux_receiver_close(struct tst_demux_receiver_t *p);
-
-/**
- * Block until one typed `TstEvent` is ready, then populate
- * `*out_event` with the converted event.
- *
- * **Borrowed buffer lifetime (design §4.5):** pointer fields on
- * `*out_event` borrow from this handle's `EventArena`. They are
- * valid until the next `_recv_event` / `_close` call on the same
- * handle. Callers wanting longer lifetime memcpy out before the
- * next call.
- *
- * Returns:
- * - `0` on success (`*out_event` populated; pointer fields borrow)
- * - `TST_E_END_OF_STREAM` (-12) on graceful peer close
- * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
- * - `TST_E_TRANSPORT` (-8) on transport failure
- * - `TST_E_INVALID_TS` (-3) on a demuxer error (strict-mode rejection
- *   or unrecoverable packet malformation)
- * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
- *
- * On any non-zero return the contents of `*out_event` are unspecified.
- */
- int tst_demux_receiver_recv_event(struct tst_demux_receiver_t *p, struct tst_event_t *out_event);
-
-/**
- * Cancel a `tst_demux_receiver_t`. Unblocks a thread parked in
- * `_recv_event` within one libsrt I/O cycle (~3-10 ms) by closing
- * the underlying libsrt socket. Safe to call from any thread.
- * Idempotent.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
- *
- * After cancel, `_recv_event` returns `TST_E_CLOSED` (not
- * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
- */
- int tst_demux_receiver_cancel(struct tst_demux_receiver_t *p);
-
-/**
- * Snapshot stats for a `tst_demux_receiver_t` into `*out`.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer
- * is null, `TST_E_CLOSED` if the receiver has been closed.
- *
- * NOTE: per-PID counters are NOT included on this struct — call
- * `tst_demux_receiver_get_stream_stats` to retrieve them.
- */
-
-int tst_demux_receiver_get_stats(struct tst_demux_receiver_t *p,
-                                 struct tst_demux_receiver_stats_t *out);
-
-/**
- * Read wire-level transport stats for the underlying libsrt socket.
- * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
- * for full semantics — same shape, different handle type.
- *
- * # Safety
- *
- * Caller MUST ensure `p` is a valid `*mut TstDemuxReceiver` opened via
- * `tst_demux_receiver_open` and `out` points to a writable
- * `TstSocketStats`.
- */
-
-int tst_demux_receiver_get_socket_stats(struct tst_demux_receiver_t *p,
-                                        struct tst_socket_stats_t *out);
-
-/**
- * Snapshot codec-specific stats for one PID on a `tst_demux_receiver_t`
- * into `*out`.
- *
- * The returned struct is a tagged union — read `out->kind` first, then
- * the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
- * `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
- *
- * # Errors
- *
- * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
- * * `TST_E_CLOSED` — handle was closed via `tst_demux_receiver_close`
- * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
- * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
- *
- * # Safety
- *
- * `p` must be a valid pointer obtained from `tst_demux_receiver_open`;
- * `out` must be a writable `tst_stream_codec_stats_t`. The pointee is
- * fully written on `TST_OK` and untouched on error.
- */
-
-int tst_demux_receiver_get_stream_codec_stats(struct tst_demux_receiver_t *p,
-                                              uint16_t pid,
-                                              struct tst_stream_codec_stats_t *out);
-
-/**
- * Reset stats counters for a `tst_demux_receiver_t` to zero.
- * Also invalidates the borrowed `_get_stream_stats` snapshot
- * (design §4.5).
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
- * null, `TST_E_CLOSED` if the receiver has been closed.
- */
- int tst_demux_receiver_reset_stats(struct tst_demux_receiver_t *p);
-
-/**
- * Snapshot per-PID stats for a `tst_demux_receiver_t` into the
- * handle's internal buffer; return a `(*const TstStreamStats, size_t)`
- * pair borrowing that buffer.
- *
- * **Borrowed buffer lifetime (design §4.5):** `*out_array` is valid
- * until the next `_get_stream_stats` / `_reset_stats` / `_close`
- * call on the same handle. Callers wanting longer lifetime memcpy
- * the array out.
- *
- * Capped at `TST_STATS_MAX_STREAMS = 64` entries (BTreeMap ordering
- * preserved by ascending PID); excess streams are silently dropped.
- * `program_number` field is `0` for now — populated once `StreamStats`
- * surfaces it (currently absent from `tst_core::mpegts::stats::StreamStats`).
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` on any null pointer
- * arg, or `TST_E_CLOSED` if the receiver has been closed.
- */
-
-int tst_demux_receiver_get_stream_stats(struct tst_demux_receiver_t *p,
-                                        const struct tst_stream_stats_t **out_array,
-                                        size_t *out_count);
-
-/**
- * Open a `tst_managed_demux_receiver_t` with default demux options.
- * URL-driven mode dispatch matches `tst_demux_receiver_open`.
- * `policy` is the reconnect policy; pass NULL for default.
- */
-
-struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open(const char *srt_url,
-                                                                     const struct tst_reconnect_policy_t *policy);
-
-/**
- * Explicit listener-mode open for the managed demux receiver.
- */
-
-struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener(const char *srt_url,
-                                                                              const struct tst_reconnect_policy_t *policy);
-
-/**
- * Open with a TstDemuxConfig override. URL-driven mode dispatch.
- */
-
-struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_with_config(const char *srt_url,
-                                                                                 const struct tst_reconnect_policy_t *policy,
-                                                                                 const struct tst_demux_config_t *cfg);
-
-/**
- * Explicit listener-mode open with a TstDemuxConfig override.
- */
-
-struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener_with_config(const char *srt_url,
-                                                                                          const struct tst_reconnect_policy_t *policy,
-                                                                                          const struct tst_demux_config_t *cfg);
-
-/**
- * Block until one typed `TstEvent` is ready.
- *
- * **Asymmetry with plain receiver:** plain `tst_demux_receiver_recv_event`
- * maps `TransportError::Broken` on a non-cancelled handle to
- * `TST_E_END_OF_STREAM`. The managed version does NOT apply that mapping —
- * `ManagedRecvTransport` retries internally on Broken, so a Broken
- * reaching this function means reconnect attempts are exhausted: a hard
- * transport failure (`TST_E_TRANSPORT`), not end-of-stream.
- */
-
-int tst_managed_demux_receiver_recv_event(struct tst_managed_demux_receiver_t *p,
-                                          struct tst_event_t *out_event);
-
-/**
  * Cancel a `tst_managed_demux_receiver_t`. Same shape as the plain
  * sibling — side-channel cancel, no Mutex acquisition. Safe from
  * any thread. Idempotent.
@@ -1727,9 +1346,26 @@ int tst_managed_demux_receiver_recv_event(struct tst_managed_demux_receiver_t *p
  * After cancel, `_recv_event` returns `TST_E_CLOSED` (not
  * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
  */
+
+// ─── DEMUX RECEIVER ────────────────────────────────────────
  int tst_managed_demux_receiver_cancel(struct tst_managed_demux_receiver_t *p);
 
  void tst_managed_demux_receiver_close(struct tst_managed_demux_receiver_t *p);
+
+/**
+ * Managed sibling of [`tst_demux_receiver_get_socket_stats`]. Returns
+ * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
+ * inner socket.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstManagedDemuxReceiver`
+ * opened via `tst_managed_demux_receiver_open` and `out` points to a
+ * writable `TstSocketStats`.
+ */
+
+int tst_managed_demux_receiver_get_socket_stats(struct tst_managed_demux_receiver_t *p,
+                                                struct tst_socket_stats_t *out);
 
 
 int tst_managed_demux_receiver_get_stats(struct tst_managed_demux_receiver_t *p,
@@ -1758,418 +1394,72 @@ int tst_managed_demux_receiver_get_stream_codec_stats(struct tst_managed_demux_r
                                                       uint16_t pid,
                                                       struct tst_stream_codec_stats_t *out);
 
-/**
- * Managed sibling of [`tst_demux_receiver_get_socket_stats`]. Returns
- * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
- * inner socket.
- *
- * # Safety
- *
- * Caller MUST ensure `p` is a valid `*mut TstManagedDemuxReceiver`
- * opened via `tst_managed_demux_receiver_open` and `out` points to a
- * writable `TstSocketStats`.
- */
-
-int tst_managed_demux_receiver_get_socket_stats(struct tst_managed_demux_receiver_t *p,
-                                                struct tst_socket_stats_t *out);
-
- int tst_managed_demux_receiver_reset_stats(struct tst_managed_demux_receiver_t *p);
-
 
 int tst_managed_demux_receiver_get_stream_stats(struct tst_managed_demux_receiver_t *p,
                                                 const struct tst_stream_stats_t **out_array,
                                                 size_t *out_count);
 
 /**
- * Read the most recent error code on this thread. Returns `0`
- * (`TST_E_SUCCESS`) if no error has been recorded on this thread yet.
- * The value is not cleared by successful calls; it reflects the most
- * recent failure on this thread (or `TST_E_SUCCESS` if there has been
- * none since thread start).
+ * Open a `tst_managed_demux_receiver_t` with default demux options.
+ * URL-driven mode dispatch matches `tst_demux_receiver_open`.
+ * `policy` is the reconnect policy; pass NULL for default.
  */
 
-// ─── INTROSPECTION ─────────────────────────────────────────
- int tst_get_last_error(void);
+struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open(const char *srt_url,
+                                                                     const struct tst_reconnect_policy_t *policy);
 
 /**
- * Pointer to the most recent error message on this thread. Valid until
- * the next tst-c call on the same thread. Never NULL — empty string when
- * no error.
+ * Explicit listener-mode open for the managed demux receiver.
  */
- const char *tst_get_last_error_str(void);
+
+struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener(const char *srt_url,
+                                                                              const struct tst_reconnect_policy_t *policy);
 
 /**
- * Clears the thread-local last-error slot, resetting it to
- * `(TST_E_SUCCESS, "")`.
- *
- * Most callers should NOT need this — every fallible `tst_*` function
- * returns its result code directly (0 on success, negative on failure),
- * so checking the return value is the idiomatic pattern. The
- * thread-local last-error slot is a side-channel for the **message
- * string** corresponding to the most recent failure, useful for
- * logging and diagnostics.
- *
- * Use this function when:
- *
- * 1. Chaining checks through code that doesn't propagate return values
- *    (e.g., a series of `tst_mux_config_add_*_stream` calls in a
- *    higher-level helper that returns a single combined status).
- * 2. Discriminating "the most recent call succeeded" from "the most
- *    recent call failed and set an error" using `tst_get_last_error()
- *    == 0` as the post-call check.
- *
- * **Thread-locality:** clears only the calling thread's slot. Other
- * threads' last-error values are unaffected. Matches the libsrt
- * `srt_clearlasterror()` semantic.
- *
- * # Safety
- *
- * Sound under any caller invocation — no pointer arguments, no
- * mutating shared state (the thread-local is per-thread by definition),
- * no internal locks. The `unsafe extern "C"` annotation matches the
- * convention of every other `tst_*` entry point for consistency.
+ * Explicit listener-mode open with a TstDemuxConfig override.
  */
- void tst_clear_last_error(void);
+
+struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_listener_with_config(const char *srt_url,
+                                                                                          const struct tst_reconnect_policy_t *policy,
+                                                                                          const struct tst_demux_config_t *cfg);
 
 /**
- * Open a `tst_mux_sender_t` connected via SRT.
+ * Open with a TstDemuxConfig override. URL-driven mode dispatch.
+ */
+
+struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_with_config(const char *srt_url,
+                                                                                 const struct tst_reconnect_policy_t *policy,
+                                                                                 const struct tst_demux_config_t *cfg);
+
+/**
+ * Block until one typed `TstEvent` is ready.
  *
- * `srt_url` is a `srt://host:port?key=value&...` URL. Query
- * parameters apply libsrt-vocabulary options to the connection
- * (passphrase, latency, streamid, etc.). URL values override config
- * values for the same option. See
- * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ * **Asymmetry with plain receiver:** plain `tst_demux_receiver_recv_event`
+ * maps `TransportError::Broken` on a non-cancelled handle to
+ * `TST_E_END_OF_STREAM`. The managed version does NOT apply that mapping —
+ * `ManagedRecvTransport` retries internally on Broken, so a Broken
+ * reaching this function means reconnect attempts are exhausted: a hard
+ * transport failure (`TST_E_TRANSPORT`), not end-of-stream.
+ */
+
+int tst_managed_demux_receiver_recv_event(struct tst_managed_demux_receiver_t *p,
+                                          struct tst_event_t *out_event);
+
+ int tst_managed_demux_receiver_reset_stats(struct tst_managed_demux_receiver_t *p);
+
+/**
+ * Cancel a `tst_managed_mux_sender_t`. Same semantics as
+ * `tst_mux_sender_cancel`; reaches the currently-active inner
+ * transport's cancel handle through `ManagedTransport`'s atomic
+ * snapshot.
  *
- * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
- * last-error for any malformed URL, unsupported key, unknown key, or
- * invalid value. The detail string from
- * `tst_get_last_error_str()` describes the specific problem.
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
  */
 
 // ─── MUX SENDER ────────────────────────────────────────────
- struct tst_mux_sender_t *tst_mux_sender_open(const char *srt_url, struct tst_mux_config_t *cfg);
+ int tst_managed_mux_sender_cancel(struct tst_managed_mux_sender_t *p);
 
-
-int tst_mux_sender_send_video(struct tst_mux_sender_t *p,
-                              const uint8_t *nal,
-                              size_t len,
-                              int64_t pts_90khz,
-                              bool key_frame);
-
-
-int tst_mux_sender_send_klv(struct tst_mux_sender_t *p,
-                            const uint8_t *klv,
-                            size_t len,
-                            int64_t pts_90khz);
-
-/**
- * Push one Annex-B NAL targeting a specific video elementary stream.
- *
- * `stream_handle` is obtained from `tst_mux_config_add_video_stream` at
- * config time and is stable across the config→open boundary. Out-of-range
- * handles surface as `TST_E_INVALID_USAGE` (carrying
- * `MuxError::InvalidStreamHandle`).
- *
- * On a single-stream sender, prefer `tst_mux_sender_send_video` — same
- * effect, no handle required.
- */
-
-int tst_mux_sender_send_video_to(struct tst_mux_sender_t *p,
-                                 tst_video_stream_handle_t stream_handle,
-                                 const uint8_t *nal,
-                                 size_t len,
-                                 int64_t pts_90khz,
-                                 bool key_frame);
-
-/**
- * Push one pre-built KLV blob targeting a specific KLV elementary stream.
- *
- * For `KlvStreamType::SynchronousMetadata` streams, the muxer auto-wraps
- * the caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0
- * V9 § 2.12.4.2 (5 bytes prepended; PTS surfaced in the PES header).
- * For `KlvStreamType::PrivateData` streams, the caller's bytes pass
- * through unchanged.
- *
- * On a single-stream sender, prefer `tst_mux_sender_send_klv` — same
- * effect, no handle required.
- */
-
-int tst_mux_sender_send_klv_to(struct tst_mux_sender_t *p,
-                               tst_klv_stream_handle_t stream_handle,
-                               const uint8_t *klv,
-                               size_t len,
-                               int64_t pts_90khz);
-
-/**
- * Send one audio frame buffer (single-stream shorthand).
- *
- * Resolves only when exactly one audio stream is configured.
- * Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
- * `MuxError::AmbiguousTarget` or `MuxError::NoAudioStreamsConfigured`).
- *
- * `frames` is one or more pre-framed audio frames concatenated by the
- * caller. PTS is required.
- */
-
-int tst_mux_sender_send_audio(struct tst_mux_sender_t *p,
-                              const uint8_t *frames,
-                              size_t len,
-                              int64_t pts_90khz);
-
-/**
- * Send one audio frame buffer targeting a specific audio elementary stream.
- *
- * `stream_handle` is obtained from `tst_mux_config_add_audio_stream` /
- * `tst_mux_config_add_audio_stream_with_language`. Out-of-range handles
- * surface as `TST_E_INVALID_USAGE` (carrying
- * `MuxError::InvalidStreamHandle`).
- *
- * On a single-stream sender, prefer `tst_mux_sender_send_audio` — same
- * effect, no handle required.
- */
-
-int tst_mux_sender_send_audio_to(struct tst_mux_sender_t *p,
-                                 tst_audio_stream_handle_t stream_handle,
-                                 const uint8_t *frames,
-                                 size_t len,
-                                 int64_t pts_90khz);
-
-/**
- * Send one subtitle PES unit (single-stream shorthand).
- *
- * Resolves only when exactly one subtitle stream is configured.
- * Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
- * `MuxError::AmbiguousTarget` or
- * `MuxError::NoSubtitleStreamsConfigured`).
- *
- * `payload` is one complete logical subtitle unit (DVB-sub composition
- * page, teletext data field, CEA-708 service block, or WebVTT cue).
- * PTS is required.
- */
-
-int tst_mux_sender_send_subtitle(struct tst_mux_sender_t *p,
-                                 const uint8_t *payload,
-                                 size_t len,
-                                 int64_t pts_90khz);
-
-/**
- * Send one subtitle PES unit targeting a specific subtitle elementary
- * stream.
- *
- * `stream_handle` is obtained from one of the four
- * `tst_mux_config_add_subtitle_stream_*` constructors. Out-of-range
- * handles surface as `TST_E_INVALID_USAGE` (carrying
- * `MuxError::InvalidStreamHandle`).
- *
- * On a single-stream sender, prefer `tst_mux_sender_send_subtitle` —
- * same effect, no handle required.
- */
-
-int tst_mux_sender_send_subtitle_to(struct tst_mux_sender_t *p,
-                                    tst_subtitle_stream_handle_t stream_handle,
-                                    const uint8_t *payload,
-                                    size_t len,
-                                    int64_t pts_90khz);
-
-/**
- * Snapshot stats for a `tst_mux_sender_t` into `*out`.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
- * null, or `TST_E_CLOSED` if the sender has been closed.
- */
- int tst_mux_sender_get_stats(struct tst_mux_sender_t *p, struct tst_mux_sender_stats_t *out);
-
-/**
- * Read wire-level transport stats (RTT, packet loss, bandwidth, queue
- * depths) for the underlying libsrt socket. Cumulative since connect.
- *
- * `out` MUST point to a writable `TstSocketStats`; the function zeros
- * the struct on failure.
- *
- * Returns:
- * * `0` on success — `*out` is populated.
- * * `TST_E_INVALID_CONFIG` if `p` or `out` is NULL.
- * * `TST_E_NOT_AVAILABLE` if the inner transport has no live socket
- *   (closed or — for the managed sibling — mid-reconnect).
- * * `TST_E_CLOSED` if the sender has been closed.
- *
- * # Safety
- *
- * Caller MUST ensure `p` is a valid `*mut TstMuxSender` opened via
- * `tst_mux_sender_open` and `out` points to a writable `TstSocketStats`.
- */
- int tst_mux_sender_get_socket_stats(struct tst_mux_sender_t *p, struct tst_socket_stats_t *out);
-
-/**
- * Snapshot codec-specific stats for one PID on a `tst_mux_sender_t` into `*out`.
- *
- * The returned struct is a tagged union — read `out->kind` first, then
- * the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
- * `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
- *
- * # Errors
- *
- * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
- * * `TST_E_CLOSED` — handle was closed via `tst_mux_sender_close`
- * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
- * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
- *
- * # Safety
- *
- * `p` must be a valid pointer obtained from `tst_mux_sender_open`; `out`
- * must be a writable `tst_stream_codec_stats_t`. The pointee is fully
- * written on `TST_OK` and untouched on error.
- */
-
-int tst_mux_sender_get_stream_codec_stats(struct tst_mux_sender_t *p,
-                                          uint16_t pid,
-                                          struct tst_stream_codec_stats_t *out);
-
-/**
- * Reset stats counters for a `tst_mux_sender_t` to zero.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
- * null, or `TST_E_CLOSED` if the sender has been closed.
- */
- int tst_mux_sender_reset_stats(struct tst_mux_sender_t *p);
-
- void tst_mux_sender_close(struct tst_mux_sender_t *p);
-
-/**
- * Cancel a `tst_mux_sender_t`. Unblocks a thread parked in any `_send_*`
- * entry point within one libsrt I/O cycle (~3-10 ms) by closing the
- * underlying libsrt socket. Safe to call from any thread. Idempotent.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
- *
- * After cancel, all `_send_*` entry points return `TST_E_CLOSED`. The
- * handle must still be `_close`'d to free.
- */
- int tst_mux_sender_cancel(struct tst_mux_sender_t *p);
-
-/**
- * Open a `tst_managed_mux_sender_t` connected via SRT.
- *
- * `srt_url` is a `srt://host:port?key=value&...` URL. Query
- * parameters apply libsrt-vocabulary options to the connection
- * (passphrase, latency, streamid, etc.). URL values override config
- * values for the same option. See
- * `docs/guide-srt.md#url-parsing` for the recognized key table.
- *
- * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
- * last-error for any malformed URL, unsupported key, unknown key, or
- * invalid value. The detail string from
- * `tst_get_last_error_str()` describes the specific problem.
- */
-
-struct tst_managed_mux_sender_t *tst_managed_mux_sender_open(const char *srt_url,
-                                                             struct tst_mux_config_t *cfg,
-                                                             const struct tst_reconnect_policy_t *policy);
-
-
-int tst_managed_mux_sender_send_video(struct tst_managed_mux_sender_t *p,
-                                      const uint8_t *nal,
-                                      size_t len,
-                                      int64_t pts_90khz,
-                                      bool key_frame);
-
-
-int tst_managed_mux_sender_send_klv(struct tst_managed_mux_sender_t *p,
-                                    const uint8_t *klv,
-                                    size_t len,
-                                    int64_t pts_90khz);
-
-/**
- * Push one Annex-B NAL targeting a specific video elementary stream on a
- * managed (auto-reconnecting) sender.
- *
- * `stream_handle` is obtained from `tst_mux_config_add_video_stream` at
- * config time and is stable across reconnects. Out-of-range handles
- * surface as `TST_E_INVALID_USAGE` (carrying
- * `MuxError::InvalidStreamHandle`).
- *
- * On a single-stream sender, prefer `tst_managed_mux_sender_send_video` —
- * same effect, no handle required.
- */
-
-int tst_managed_mux_sender_send_video_to(struct tst_managed_mux_sender_t *p,
-                                         tst_video_stream_handle_t stream_handle,
-                                         const uint8_t *nal,
-                                         size_t len,
-                                         int64_t pts_90khz,
-                                         bool key_frame);
-
-/**
- * Push one pre-built KLV blob targeting a specific KLV elementary stream on
- * a managed (auto-reconnecting) sender.
- *
- * For `KlvStreamType::SynchronousMetadata` streams, the muxer auto-wraps
- * the caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0
- * V9 § 2.12.4.2 (5 bytes prepended; PTS surfaced in the PES header).
- * For `KlvStreamType::PrivateData` streams, the caller's bytes pass
- * through unchanged.
- *
- * On a single-stream sender, prefer `tst_managed_mux_sender_send_klv` —
- * same effect, no handle required.
- */
-
-int tst_managed_mux_sender_send_klv_to(struct tst_managed_mux_sender_t *p,
-                                       tst_klv_stream_handle_t stream_handle,
-                                       const uint8_t *klv,
-                                       size_t len,
-                                       int64_t pts_90khz);
-
-/**
- * Managed sibling of [`tst_mux_sender_send_audio`]. Same semantics; routes
- * through the inner reconnecting transport.
- */
-
-int tst_managed_mux_sender_send_audio(struct tst_managed_mux_sender_t *p,
-                                      const uint8_t *frames,
-                                      size_t len,
-                                      int64_t pts_90khz);
-
-/**
- * Managed sibling of [`tst_mux_sender_send_audio_to`]. Same semantics;
- * `stream_handle` is stable across reconnects.
- */
-
-int tst_managed_mux_sender_send_audio_to(struct tst_managed_mux_sender_t *p,
-                                         tst_audio_stream_handle_t stream_handle,
-                                         const uint8_t *frames,
-                                         size_t len,
-                                         int64_t pts_90khz);
-
-/**
- * Managed sibling of [`tst_mux_sender_send_subtitle`]. Same semantics; routes
- * through the inner reconnecting transport.
- */
-
-int tst_managed_mux_sender_send_subtitle(struct tst_managed_mux_sender_t *p,
-                                         const uint8_t *payload,
-                                         size_t len,
-                                         int64_t pts_90khz);
-
-/**
- * Managed sibling of [`tst_mux_sender_send_subtitle_to`]. Same semantics;
- * `stream_handle` is stable across reconnects.
- */
-
-int tst_managed_mux_sender_send_subtitle_to(struct tst_managed_mux_sender_t *p,
-                                            tst_subtitle_stream_handle_t stream_handle,
-                                            const uint8_t *payload,
-                                            size_t len,
-                                            int64_t pts_90khz);
-
-/**
- * Snapshot stats for a `tst_managed_mux_sender_t` into `*out`.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
- * null, or `TST_E_CLOSED` if the sender has been closed.
- */
-
-int tst_managed_mux_sender_get_stats(struct tst_managed_mux_sender_t *p,
-                                     struct tst_mux_sender_stats_t *out);
+ void tst_managed_mux_sender_close(struct tst_managed_mux_sender_t *p);
 
 /**
  * See [`tst_mux_sender_get_socket_stats`]. The managed variant returns
@@ -2185,6 +1475,16 @@ int tst_managed_mux_sender_get_stats(struct tst_managed_mux_sender_t *p,
 
 int tst_managed_mux_sender_get_socket_stats(struct tst_managed_mux_sender_t *p,
                                             struct tst_socket_stats_t *out);
+
+/**
+ * Snapshot stats for a `tst_managed_mux_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
+ */
+
+int tst_managed_mux_sender_get_stats(struct tst_managed_mux_sender_t *p,
+                                     struct tst_mux_sender_stats_t *out);
 
 /**
  * Managed sibling of [`tst_mux_sender_get_stream_codec_stats`]. Returns
@@ -2209,6 +1509,25 @@ int tst_managed_mux_sender_get_stream_codec_stats(struct tst_managed_mux_sender_
                                                   struct tst_stream_codec_stats_t *out);
 
 /**
+ * Open a `tst_managed_mux_sender_t` connected via SRT.
+ *
+ * `srt_url` is a `srt://host:port?key=value&...` URL. Query
+ * parameters apply libsrt-vocabulary options to the connection
+ * (passphrase, latency, streamid, etc.). URL values override config
+ * values for the same option. See
+ * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ *
+ * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. The detail string from
+ * `tst_get_last_error_str()` describes the specific problem.
+ */
+
+struct tst_managed_mux_sender_t *tst_managed_mux_sender_open(const char *srt_url,
+                                                             struct tst_mux_config_t *cfg,
+                                                             const struct tst_reconnect_policy_t *policy);
+
+/**
  * Reset stats counters for a `tst_managed_mux_sender_t` to zero.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
@@ -2216,298 +1535,141 @@ int tst_managed_mux_sender_get_stream_codec_stats(struct tst_managed_mux_sender_
  */
  int tst_managed_mux_sender_reset_stats(struct tst_managed_mux_sender_t *p);
 
- void tst_managed_mux_sender_close(struct tst_managed_mux_sender_t *p);
-
 /**
- * Cancel a `tst_managed_mux_sender_t`. Same semantics as
- * `tst_mux_sender_cancel`; reaches the currently-active inner
- * transport's cancel handle through `ManagedTransport`'s atomic
- * snapshot.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
- */
- int tst_managed_mux_sender_cancel(struct tst_managed_mux_sender_t *p);
-
-/**
- * Open a standalone muxer. Builds the config from `cfg` so the caller may
- * free it immediately after this returns. Returns NULL on failure with
- * last-error set.
- */
- struct tst_muxer_t *tst_muxer_open(struct tst_mux_config_t *cfg);
-
-/**
- * Push one Annex-B-framed video access unit. Returns 0 on success or a
- * negative TST_E_* code.
+ * Managed sibling of [`tst_mux_sender_send_audio`]. Same semantics; routes
+ * through the inner reconnecting transport.
  */
 
-int tst_muxer_push_video(struct tst_muxer_t *p,
-                         const uint8_t *nal,
-                         size_t len,
-                         int64_t pts_90khz,
-                         bool key_frame);
+int tst_managed_mux_sender_send_audio(struct tst_managed_mux_sender_t *p,
+                                      const uint8_t *frames,
+                                      size_t len,
+                                      int64_t pts_90khz);
 
 /**
- * Push one pre-built KLV blob.
- */
- int tst_muxer_push_klv(struct tst_muxer_t *p, const uint8_t *klv, size_t len, int64_t pts_90khz);
-
-/**
- * Push one Annex-B NAL targeting a specific video elementary stream.
- *
- * `handle` is obtained from `tst_mux_config_add_video_stream` at config
- * time and is stable across managed-sender reconnects. Out-of-range
- * handles surface as `TST_E_INVALID_USAGE` (carrying
- * `MuxError::InvalidStreamHandle`).
- *
- * On a single-stream muxer, prefer `tst_muxer_push_video` — it has the
- * same effect and doesn't require a handle.
+ * Managed sibling of [`tst_mux_sender_send_audio_to`]. Same semantics;
+ * `stream_handle` is stable across reconnects.
  */
 
-int tst_muxer_push_video_to(struct tst_muxer_t *p,
-                            tst_video_stream_handle_t handle,
-                            const uint8_t *nal,
-                            size_t len,
-                            int64_t pts_90khz,
-                            bool key_frame);
+int tst_managed_mux_sender_send_audio_to(struct tst_managed_mux_sender_t *p,
+                                         tst_audio_stream_handle_t stream_handle,
+                                         const uint8_t *frames,
+                                         size_t len,
+                                         int64_t pts_90khz);
+
+
+int tst_managed_mux_sender_send_klv(struct tst_managed_mux_sender_t *p,
+                                    const uint8_t *klv,
+                                    size_t len,
+                                    int64_t pts_90khz);
 
 /**
- * Push one pre-built KLV blob targeting a specific KLV elementary stream.
- *
- * `handle` is obtained from `tst_mux_config_add_klv_stream`. Same
- * semantics as `tst_muxer_push_video_to`.
+ * Push one pre-built KLV blob targeting a specific KLV elementary stream on
+ * a managed (auto-reconnecting) sender.
  *
  * For `KlvStreamType::SynchronousMetadata` streams, the muxer auto-wraps
  * the caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0
  * V9 § 2.12.4.2 (5 bytes prepended; PTS surfaced in the PES header).
  * For `KlvStreamType::PrivateData` streams, the caller's bytes pass
  * through unchanged.
+ *
+ * On a single-stream sender, prefer `tst_managed_mux_sender_send_klv` —
+ * same effect, no handle required.
  */
 
-int tst_muxer_push_klv_to(struct tst_muxer_t *p,
-                          tst_klv_stream_handle_t handle,
-                          const uint8_t *klv,
-                          size_t len,
-                          int64_t pts_90khz);
+int tst_managed_mux_sender_send_klv_to(struct tst_managed_mux_sender_t *p,
+                                       tst_klv_stream_handle_t stream_handle,
+                                       const uint8_t *klv,
+                                       size_t len,
+                                       int64_t pts_90khz);
 
 /**
- * Push one audio frame buffer (single-stream shorthand).
- *
- * Resolves only when exactly one audio stream is configured across all
- * programs. Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
- * `MuxError::AmbiguousTarget` or `MuxError::NoAudioStreamsConfigured`).
- *
- * `frames` is one or more pre-framed audio frames concatenated by the
- * caller (e.g. one ADTS frame for AAC, one MP2 frame, one AC-3 frame).
- * PTS is required — audio always carries PTS.
+ * Managed sibling of [`tst_mux_sender_send_subtitle`]. Same semantics; routes
+ * through the inner reconnecting transport.
  */
 
-int tst_muxer_push_audio(struct tst_muxer_t *p,
-                         const uint8_t *frames,
-                         size_t len,
-                         int64_t pts_90khz);
+int tst_managed_mux_sender_send_subtitle(struct tst_managed_mux_sender_t *p,
+                                         const uint8_t *payload,
+                                         size_t len,
+                                         int64_t pts_90khz);
 
 /**
- * Push one audio frame buffer targeting a specific audio elementary stream.
- *
- * `handle` is obtained from `tst_mux_config_add_audio_stream` /
- * `tst_mux_config_add_audio_stream_with_language` at config time and is
- * stable across the config→open boundary. Out-of-range handles surface
- * as `TST_E_INVALID_USAGE` (carrying `MuxError::InvalidStreamHandle`).
- *
- * On a single-stream muxer, prefer `tst_muxer_push_audio` — it has the
- * same effect and doesn't require a handle.
+ * Managed sibling of [`tst_mux_sender_send_subtitle_to`]. Same semantics;
+ * `stream_handle` is stable across reconnects.
  */
 
-int tst_muxer_push_audio_to(struct tst_muxer_t *p,
-                            tst_audio_stream_handle_t handle,
-                            const uint8_t *frames,
-                            size_t len,
-                            int64_t pts_90khz);
+int tst_managed_mux_sender_send_subtitle_to(struct tst_managed_mux_sender_t *p,
+                                            tst_subtitle_stream_handle_t stream_handle,
+                                            const uint8_t *payload,
+                                            size_t len,
+                                            int64_t pts_90khz);
+
+
+int tst_managed_mux_sender_send_video(struct tst_managed_mux_sender_t *p,
+                                      const uint8_t *nal,
+                                      size_t len,
+                                      int64_t pts_90khz,
+                                      bool key_frame);
 
 /**
- * Push one subtitle PES unit (single-stream shorthand).
+ * Push one Annex-B NAL targeting a specific video elementary stream on a
+ * managed (auto-reconnecting) sender.
  *
- * Resolves only when exactly one subtitle stream is configured.
- * Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
- * `MuxError::AmbiguousTarget` or `MuxError::NoSubtitleStreamsConfigured`).
- *
- * `payload` is one complete logical subtitle unit (DVB-sub composition
- * page, teletext data field, CEA-708 service block, or WebVTT cue);
- * fragmentation across PES is not used. PTS is required — subtitles
- * are rendered at presentation time and never reordered.
- */
-
-int tst_muxer_push_subtitle(struct tst_muxer_t *p,
-                            const uint8_t *payload,
-                            size_t len,
-                            int64_t pts_90khz);
-
-/**
- * Push one subtitle PES unit targeting a specific subtitle elementary stream.
- *
- * `handle` is obtained from one of the four
- * `tst_mux_config_add_subtitle_stream_*` constructors. Out-of-range
- * handles surface as `TST_E_INVALID_USAGE` (carrying
+ * `stream_handle` is obtained from `tst_mux_config_add_video_stream` at
+ * config time and is stable across reconnects. Out-of-range handles
+ * surface as `TST_E_INVALID_USAGE` (carrying
  * `MuxError::InvalidStreamHandle`).
  *
- * On a single-stream muxer, prefer `tst_muxer_push_subtitle` — same
- * effect, no handle required.
+ * On a single-stream sender, prefer `tst_managed_mux_sender_send_video` —
+ * same effect, no handle required.
  */
 
-int tst_muxer_push_subtitle_to(struct tst_muxer_t *p,
-                               tst_subtitle_stream_handle_t handle,
-                               const uint8_t *payload,
-                               size_t len,
-                               int64_t pts_90khz);
+int tst_managed_mux_sender_send_video_to(struct tst_managed_mux_sender_t *p,
+                                         tst_video_stream_handle_t stream_handle,
+                                         const uint8_t *nal,
+                                         size_t len,
+                                         int64_t pts_90khz,
+                                         bool key_frame);
 
 /**
- * Drain TS bytes into `out_buf` (capacity `out_cap`). Returns the number
- * of bytes written; 0 means nothing was ready or the buffer was too
- * small for the next chunk. Never sets last-error — 0 is a normal return
- * value.
- */
- size_t tst_muxer_pull(struct tst_muxer_t *p, uint8_t *out_buf, size_t out_cap);
-
-/**
- * Snapshot stats for a `tst_muxer_t` into `*out`.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
- * null, or `TST_E_CLOSED` if the muxer has been closed.
- */
- int tst_muxer_get_stats(struct tst_muxer_t *p, struct tst_muxer_stats_t *out);
-
-/**
- * Snapshot codec-specific stats for one PID on a `tst_muxer_t` into `*out`.
- *
- * The returned struct is a tagged union — read `out->kind` first, then
- * the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
- * `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
- *
- * # Errors
- *
- * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
- * * `TST_E_CLOSED` — handle was closed via `tst_muxer_close`
- * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
- * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
- *
- * # Safety
- *
- * `p` must be a valid pointer obtained from `tst_muxer_open`; `out`
- * must be a writable `tst_stream_codec_stats_t` of size at least
- * `sizeof(tst_stream_codec_stats_t)`. The pointee is fully written on
- * `TST_OK` and untouched on error.
- */
-
-int tst_muxer_get_stream_codec_stats(struct tst_muxer_t *p,
-                                     uint16_t pid,
-                                     struct tst_stream_codec_stats_t *out);
-
-/**
- * Reset stats counters for a `tst_muxer_t` to zero.
- *
- * Per-stream entries are preserved (identity fields remain); only flow
- * counters (`items`, `bytes`, `discontinuities`) are zeroed.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
- * null, or `TST_E_CLOSED` if the muxer has been closed.
- */
- int tst_muxer_reset_stats(struct tst_muxer_t *p);
-
-/**
- * Close and free the muxer. Idempotent — passing NULL is a no-op.
- */
- void tst_muxer_close(struct tst_muxer_t *p);
-
-/**
- * Open a `tst_raw_receiver_t`. Accepts `srt://host:port?...` URLs;
- * URL with `?mode=listener` is routed through the listener path
- * (equivalent to calling `tst_raw_receiver_open_listener`).
- *
- * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
- * last-error for any malformed URL, unsupported key, unknown key, or
- * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
+ * Cancel a `tst_managed_raw_receiver_t`. Unblocks a thread parked in
+ * `_recv` within one libsrt I/O cycle (~3-10 ms). Safe from any thread.
+ * Idempotent. After cancel, `_recv` returns `TST_E_CLOSED`. The handle
+ * must still be `_close`'d to free memory.
  */
 
 // ─── RAW RECEIVER ──────────────────────────────────────────
- struct tst_raw_receiver_t *tst_raw_receiver_open(const char *srt_url);
+ int tst_managed_raw_receiver_cancel(struct tst_managed_raw_receiver_t *p);
+
+ void tst_managed_raw_receiver_close(struct tst_managed_raw_receiver_t *p);
 
 /**
- * Explicit listener-mode open. Forces listener mode regardless of any
- * `?mode=` URL value — the `_listener` suffix is authoritative. URLs
- * with `?mode=caller` are accepted and silently overridden.
+ * Reset stats counters for a `tst_managed_raw_receiver_t` to zero.
  *
- * Empty-host URLs like `srt://:7000` are accepted directly; the parser's
- * requirement for an explicit `?mode=listener` does not apply here because
- * the entry-point name is already the authoritative listener signal.
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ * Managed sibling of [`tst_raw_receiver_get_socket_stats`]. Returns
+ * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
+ * inner socket.
  *
- * (Phase 1 simplification of the design spec §4.2, which originally
- * proposed rejecting explicit `mode=caller` with `TST_E_INVALID_USAGE`.
- * The simpler rule is more forgiving and matches what most C consumers
- * expect from a `_listener`-suffixed entry point. The stricter check
- * can land in a future phase if a consumer asks.)
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstManagedRawReceiver` opened
+ * via `tst_managed_raw_receiver_open` and `out` points to a writable
+ * `TstSocketStats`.
  */
- struct tst_raw_receiver_t *tst_raw_receiver_open_listener(const char *srt_url);
 
- void tst_raw_receiver_close(struct tst_raw_receiver_t *p);
-
-/**
- * Cancel a `tst_raw_receiver_t`. Unblocks a thread parked in `_recv`
- * within one libsrt I/O cycle (~3-10 ms) by closing the underlying
- * libsrt socket. Safe to call from any thread. Idempotent.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
- *
- * After cancel, `_recv` returns `TST_E_CLOSED` (not `TST_E_END_OF_STREAM`).
- * The handle must still be `_close`'d to free.
- */
- int tst_raw_receiver_cancel(struct tst_raw_receiver_t *p);
+int tst_managed_raw_receiver_get_socket_stats(struct tst_managed_raw_receiver_t *p,
+                                              struct tst_socket_stats_t *out);
 
 /**
- * Snapshot stats for a `tst_raw_receiver_t` into `*out`.
+ * Snapshot stats for a `tst_managed_raw_receiver_t` into `*out`.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
  * null, or `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_raw_receiver_get_stats(struct tst_raw_receiver_t *p, struct tst_raw_recv_stats_t *out);
 
-/**
- * Read wire-level transport stats for the underlying libsrt socket.
- * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
- * for full semantics — same shape, different handle type.
- *
- * # Safety
- *
- * Caller MUST ensure `p` is a valid `*mut TstRawReceiver` opened via
- * `tst_raw_receiver_open` and `out` points to a writable `TstSocketStats`.
- */
-
-int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
-                                      struct tst_socket_stats_t *out);
-
-/**
- * Reset stats counters for a `tst_raw_receiver_t` to zero.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
- * or `TST_E_CLOSED` if the receiver has been closed.
- */
- int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
-
-/**
- * Block until one message arrives. Copies up to `len` bytes into `buf`
- * and writes the actual length to `*out_len`.
- *
- * Returns:
- * - 0 on success (`*out_len` set to bytes received; ≤ `len`)
- * - `TST_E_END_OF_STREAM` (-12) on graceful peer close
- * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
- * - `TST_E_TRANSPORT` (-8) on a transport failure other than a clean
- *   peer disconnect (peer FIN surfaces as `TST_E_END_OF_STREAM`; see
- *   the `TransportError::Broken` arm in this function for details)
- * - `TST_E_TOO_LARGE` (-6) if the inbound message exceeds `len`
- *   (`*out_len` is left unmodified)
- * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
- */
- int tst_raw_receiver_recv(struct tst_raw_receiver_t *p, uint8_t *buf, size_t len, size_t *out_len);
+int tst_managed_raw_receiver_get_stats(struct tst_managed_raw_receiver_t *p,
+                                       struct tst_raw_recv_stats_t *out);
 
 /**
  * Open a `tst_managed_raw_receiver_t`. URL-driven mode dispatch
@@ -2566,82 +1728,46 @@ int tst_managed_raw_receiver_recv(struct tst_managed_raw_receiver_t *p,
                                   size_t len,
                                   size_t *out_len);
 
-/**
- * Cancel a `tst_managed_raw_receiver_t`. Unblocks a thread parked in
- * `_recv` within one libsrt I/O cycle (~3-10 ms). Safe from any thread.
- * Idempotent. After cancel, `_recv` returns `TST_E_CLOSED`. The handle
- * must still be `_close`'d to free memory.
- */
- int tst_managed_raw_receiver_cancel(struct tst_managed_raw_receiver_t *p);
-
- void tst_managed_raw_receiver_close(struct tst_managed_raw_receiver_t *p);
+ int tst_managed_raw_receiver_reset_stats(struct tst_managed_raw_receiver_t *p);
 
 /**
- * Snapshot stats for a `tst_managed_raw_receiver_t` into `*out`.
+ * Cancel a `tst_managed_raw_sender_t`. Same semantics as
+ * `tst_raw_sender_cancel`; reaches the currently-active inner
+ * transport's cancel handle through `ManagedTransport`'s atomic
+ * snapshot.
  *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
- * null, or `TST_E_CLOSED` if the receiver has been closed.
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
  */
 
-int tst_managed_raw_receiver_get_stats(struct tst_managed_raw_receiver_t *p,
-                                       struct tst_raw_recv_stats_t *out);
+// ─── RAW SENDER ────────────────────────────────────────────
+ int tst_managed_raw_sender_cancel(struct tst_managed_raw_sender_t *p);
+
+ void tst_managed_raw_sender_close(struct tst_managed_raw_sender_t *p);
 
 /**
- * Reset stats counters for a `tst_managed_raw_receiver_t` to zero.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
- * or `TST_E_CLOSED` if the receiver has been closed.
- * Managed sibling of [`tst_raw_receiver_get_socket_stats`]. Returns
+ * Managed sibling of [`tst_raw_sender_get_socket_stats`]. Returns
  * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
  * inner socket.
  *
  * # Safety
  *
- * Caller MUST ensure `p` is a valid `*mut TstManagedRawReceiver` opened
- * via `tst_managed_raw_receiver_open` and `out` points to a writable
+ * Caller MUST ensure `p` is a valid `*mut TstManagedRawSender` opened
+ * via `tst_managed_raw_sender_open` and `out` points to a writable
  * `TstSocketStats`.
  */
 
-int tst_managed_raw_receiver_get_socket_stats(struct tst_managed_raw_receiver_t *p,
-                                              struct tst_socket_stats_t *out);
-
- int tst_managed_raw_receiver_reset_stats(struct tst_managed_raw_receiver_t *p);
+int tst_managed_raw_sender_get_socket_stats(struct tst_managed_raw_sender_t *p,
+                                            struct tst_socket_stats_t *out);
 
 /**
- * Open a `tst_raw_sender_t` connected via SRT.
+ * Snapshot stats for a `tst_managed_raw_sender_t` into `*out`.
  *
- * `srt_url` is a `srt://host:port?key=value&...` URL. Query
- * parameters apply libsrt-vocabulary options to the connection
- * (passphrase, latency, streamid, etc.). URL values override config
- * values for the same option. See
- * `docs/guide-srt.md#url-parsing` for the recognized key table.
- *
- * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
- * last-error for any malformed URL, unsupported key, unknown key, or
- * invalid value. The detail string from
- * `tst_get_last_error_str()` describes the specific problem.
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
  */
 
-
-// ─── RAW SENDER ────────────────────────────────────────────
-struct tst_raw_sender_t *tst_raw_sender_open(const char *srt_url,
-                                             const struct tst_raw_sender_config_t *cfg);
-
- int tst_raw_sender_send(struct tst_raw_sender_t *p, const uint8_t *bytes, size_t len);
-
- void tst_raw_sender_close(struct tst_raw_sender_t *p);
-
-/**
- * Cancel a `tst_raw_sender_t`. Unblocks a thread parked in `_send`
- * within one libsrt I/O cycle (~3-10 ms) by closing the underlying
- * libsrt socket. Safe to call from any thread. Idempotent.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
- *
- * After cancel, `_send` returns `TST_E_CLOSED`. The handle must still
- * be `_close`'d to free.
- */
- int tst_raw_sender_cancel(struct tst_raw_sender_t *p);
+int tst_managed_raw_sender_get_stats(struct tst_managed_raw_sender_t *p,
+                                     struct tst_raw_send_stats_t *out);
 
 /**
  * Open a `tst_managed_raw_sender_t` connected via SRT.
@@ -2662,76 +1788,6 @@ struct tst_managed_raw_sender_t *tst_managed_raw_sender_open(const char *srt_url
                                                              const struct tst_raw_sender_config_t *cfg,
                                                              const struct tst_reconnect_policy_t *policy);
 
-
-int tst_managed_raw_sender_send(struct tst_managed_raw_sender_t *p,
-                                const uint8_t *bytes,
-                                size_t len);
-
- void tst_managed_raw_sender_close(struct tst_managed_raw_sender_t *p);
-
-/**
- * Cancel a `tst_managed_raw_sender_t`. Same semantics as
- * `tst_raw_sender_cancel`; reaches the currently-active inner
- * transport's cancel handle through `ManagedTransport`'s atomic
- * snapshot.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
- */
- int tst_managed_raw_sender_cancel(struct tst_managed_raw_sender_t *p);
-
-/**
- * Snapshot stats for a `tst_raw_sender_t` into `*out`.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
- * null, or `TST_E_CLOSED` if the sender has been closed.
- */
- int tst_raw_sender_get_stats(struct tst_raw_sender_t *p, struct tst_raw_send_stats_t *out);
-
-/**
- * Read wire-level transport stats for the underlying libsrt socket.
- * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
- * for full semantics — same shape, different handle type.
- *
- * # Safety
- *
- * Caller MUST ensure `p` is a valid `*mut TstRawSender` opened via
- * `tst_raw_sender_open` and `out` points to a writable `TstSocketStats`.
- */
- int tst_raw_sender_get_socket_stats(struct tst_raw_sender_t *p, struct tst_socket_stats_t *out);
-
-/**
- * Reset stats counters for a `tst_raw_sender_t` to zero.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
- * null, or `TST_E_CLOSED` if the sender has been closed.
- */
- int tst_raw_sender_reset_stats(struct tst_raw_sender_t *p);
-
-/**
- * Snapshot stats for a `tst_managed_raw_sender_t` into `*out`.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
- * null, or `TST_E_CLOSED` if the sender has been closed.
- */
-
-int tst_managed_raw_sender_get_stats(struct tst_managed_raw_sender_t *p,
-                                     struct tst_raw_send_stats_t *out);
-
-/**
- * Managed sibling of [`tst_raw_sender_get_socket_stats`]. Returns
- * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
- * inner socket.
- *
- * # Safety
- *
- * Caller MUST ensure `p` is a valid `*mut TstManagedRawSender` opened
- * via `tst_managed_raw_sender_open` and `out` points to a writable
- * `TstSocketStats`.
- */
-
-int tst_managed_raw_sender_get_socket_stats(struct tst_managed_raw_sender_t *p,
-                                            struct tst_socket_stats_t *out);
-
 /**
  * Reset stats counters for a `tst_managed_raw_sender_t` to zero.
  *
@@ -2740,94 +1796,47 @@ int tst_managed_raw_sender_get_socket_stats(struct tst_managed_raw_sender_t *p,
  */
  int tst_managed_raw_sender_reset_stats(struct tst_managed_raw_sender_t *p);
 
+
+int tst_managed_raw_sender_send(struct tst_managed_raw_sender_t *p,
+                                const uint8_t *bytes,
+                                size_t len);
+
 /**
- * Open a `tst_receiver_t`. Accepts `srt://host:port?...` URLs;
- * URL with `?mode=listener` is routed through the listener path
- * (equivalent to calling `tst_receiver_open_listener`).
- *
- * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
- * last-error for any malformed URL, unsupported key, unknown key, or
- * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
+ * Cancel a `tst_managed_receiver_t`. Unblocks a thread parked in
+ * `_recv_packet` within one libsrt I/O cycle (~3-10 ms). Safe from
+ * any thread. Idempotent. After cancel, `_recv_packet` returns
+ * `TST_E_CLOSED`. The handle must still be `_close`'d to free memory.
  */
 
 // ─── TS RECEIVER ───────────────────────────────────────────
- struct tst_receiver_t *tst_receiver_open(const char *srt_url);
+ int tst_managed_receiver_cancel(struct tst_managed_receiver_t *p);
+
+ void tst_managed_receiver_close(struct tst_managed_receiver_t *p);
 
 /**
- * Explicit listener-mode open. Forces listener mode regardless of any
- * `?mode=` URL value — the `_listener` suffix is authoritative. URLs
- * with `?mode=caller` are accepted and silently overridden.
+ * Managed sibling of [`tst_receiver_get_socket_stats`]. Returns
+ * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
+ * inner socket.
  *
- * Empty-host URLs like `srt://:7000` are accepted directly; the parser's
- * requirement for an explicit `?mode=listener` does not apply here because
- * the entry-point name is already the authoritative listener signal.
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstManagedReceiver` opened via
+ * `tst_managed_receiver_open` and `out` points to a writable
+ * `TstSocketStats`.
  */
- struct tst_receiver_t *tst_receiver_open_listener(const char *srt_url);
 
- void tst_receiver_close(struct tst_receiver_t *p);
-
-/**
- * Block until one 188-byte MPEG-TS packet is ready, then copy it into
- * the caller's `out_packet` buffer.
- *
- * `out_packet` MUST point to a buffer of at least 188 bytes (a
- * `uint8_t[188]` array on the C side). The pointer is dereferenced
- * once on success; no allocation crosses the FFI boundary.
- *
- * Returns:
- * - `0` on success (188 bytes written to `out_packet`)
- * - `TST_E_END_OF_STREAM` (-12) on graceful peer close
- * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
- * - `TST_E_TRANSPORT` (-8) on a transport failure other than a clean
- *   peer disconnect (peer FIN surfaces as `TST_E_END_OF_STREAM`; see
- *   the `TransportError::Broken` arm in this function for details)
- * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
- *
- * On any non-zero return the contents of `out_packet` are unspecified.
- */
- int tst_receiver_recv_packet(struct tst_receiver_t *p, uint8_t *out_packet);
+int tst_managed_receiver_get_socket_stats(struct tst_managed_receiver_t *p,
+                                          struct tst_socket_stats_t *out);
 
 /**
- * Cancel a `tst_receiver_t`. Unblocks a thread parked in
- * `_recv_packet` within one libsrt I/O cycle (~3-10 ms) by closing
- * the underlying libsrt socket. Safe to call from any thread.
- * Idempotent.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
- *
- * After cancel, `_recv_packet` returns `TST_E_CLOSED` (not
- * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
- */
- int tst_receiver_cancel(struct tst_receiver_t *p);
-
-/**
- * Snapshot stats for a `tst_receiver_t` into `*out`.
+ * Snapshot stats for a `tst_managed_receiver_t` into `*out`.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
  * null, or `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_receiver_get_stats(struct tst_receiver_t *p, struct tst_receiver_stats_t *out);
 
-/**
- * Read wire-level transport stats for the underlying libsrt socket.
- * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
- * for full semantics — same shape, different handle type.
- *
- * # Safety
- *
- * Caller MUST ensure `p` is a valid `*mut TstReceiver` opened via
- * `tst_receiver_open` and `out` points to a writable `TstSocketStats`.
- */
- int tst_receiver_get_socket_stats(struct tst_receiver_t *p, struct tst_socket_stats_t *out);
-
-/**
- * Reset stats counters for a `tst_receiver_t` to zero. Does not
- * affect transport state or the syncer state machine.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
- * or `TST_E_CLOSED` if the receiver has been closed.
- */
- int tst_receiver_reset_stats(struct tst_receiver_t *p);
+int tst_managed_receiver_get_stats(struct tst_managed_receiver_t *p,
+                                   struct tst_receiver_stats_t *out);
 
 /**
  * Open a `tst_managed_receiver_t`. URL-driven mode dispatch
@@ -2881,41 +1890,6 @@ struct tst_managed_receiver_t *tst_managed_receiver_open_listener(const char *sr
  int tst_managed_receiver_recv_packet(struct tst_managed_receiver_t *p, uint8_t *out_packet);
 
 /**
- * Cancel a `tst_managed_receiver_t`. Unblocks a thread parked in
- * `_recv_packet` within one libsrt I/O cycle (~3-10 ms). Safe from
- * any thread. Idempotent. After cancel, `_recv_packet` returns
- * `TST_E_CLOSED`. The handle must still be `_close`'d to free memory.
- */
- int tst_managed_receiver_cancel(struct tst_managed_receiver_t *p);
-
- void tst_managed_receiver_close(struct tst_managed_receiver_t *p);
-
-/**
- * Snapshot stats for a `tst_managed_receiver_t` into `*out`.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
- * null, or `TST_E_CLOSED` if the receiver has been closed.
- */
-
-int tst_managed_receiver_get_stats(struct tst_managed_receiver_t *p,
-                                   struct tst_receiver_stats_t *out);
-
-/**
- * Managed sibling of [`tst_receiver_get_socket_stats`]. Returns
- * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
- * inner socket.
- *
- * # Safety
- *
- * Caller MUST ensure `p` is a valid `*mut TstManagedReceiver` opened via
- * `tst_managed_receiver_open` and `out` points to a writable
- * `TstSocketStats`.
- */
-
-int tst_managed_receiver_get_socket_stats(struct tst_managed_receiver_t *p,
-                                          struct tst_socket_stats_t *out);
-
-/**
  * Reset stats counters for a `tst_managed_receiver_t` to zero.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
@@ -2924,56 +1898,37 @@ int tst_managed_receiver_get_socket_stats(struct tst_managed_receiver_t *p,
  int tst_managed_receiver_reset_stats(struct tst_managed_receiver_t *p);
 
 /**
- * Open a `tst_sender_t` connected via SRT.
+ * Cancel a `tst_managed_sender_t`. Same semantics as
+ * `tst_sender_cancel`; reaches the currently-active inner
+ * transport's cancel handle through `ManagedTransport`'s atomic
+ * snapshot.
  *
- * `srt_url` is a `srt://host:port?key=value&...` URL. Query
- * parameters apply libsrt-vocabulary options to the connection
- * (passphrase, latency, streamid, etc.). URL values override config
- * values for the same option. See
- * `docs/guide-srt.md#url-parsing` for the recognized key table.
- *
- * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
- * last-error for any malformed URL, unsupported key, unknown key, or
- * invalid value. The detail string from
- * `tst_get_last_error_str()` describes the specific problem.
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
  */
 
 // ─── TS SENDER ─────────────────────────────────────────────
- struct tst_sender_t *tst_sender_open(const char *srt_url, const struct tst_sender_config_t *cfg);
+ int tst_managed_sender_cancel(struct tst_managed_sender_t *p);
 
- int tst_sender_send_ts(struct tst_sender_t *p, const uint8_t *bytes, size_t len);
+ void tst_managed_sender_close(struct tst_managed_sender_t *p);
 
- int tst_sender_flush(struct tst_sender_t *p);
-
- int tst_sender_get_stats(struct tst_sender_t *p, struct tst_sender_stats_t *out);
+ int tst_managed_sender_flush(struct tst_managed_sender_t *p);
 
 /**
- * Read wire-level transport stats for the underlying libsrt socket.
- * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
- * for full semantics — same shape, different handle type.
+ * Managed sibling of [`tst_sender_get_socket_stats`]. Returns
+ * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
+ * inner socket.
  *
  * # Safety
  *
- * Caller MUST ensure `p` is a valid `*mut TstSender` opened via
- * `tst_sender_open` and `out` points to a writable `TstSocketStats`.
+ * Caller MUST ensure `p` is a valid `*mut TstManagedSender` opened via
+ * `tst_managed_sender_open` and `out` points to a writable
+ * `TstSocketStats`.
  */
- int tst_sender_get_socket_stats(struct tst_sender_t *p, struct tst_socket_stats_t *out);
 
- int tst_sender_reset_stats(struct tst_sender_t *p);
+int tst_managed_sender_get_socket_stats(struct tst_managed_sender_t *p,
+                                        struct tst_socket_stats_t *out);
 
- void tst_sender_close(struct tst_sender_t *p);
-
-/**
- * Cancel a `tst_sender_t`. Unblocks a thread parked in `_send`
- * within one libsrt I/O cycle (~3-10 ms) by closing the underlying
- * libsrt socket. Safe to call from any thread. Idempotent.
- *
- * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
- *
- * After cancel, `_send` returns `TST_E_CLOSED`. The handle must still
- * be `_close`'d to free.
- */
- int tst_sender_cancel(struct tst_sender_t *p);
+ int tst_managed_sender_get_stats(struct tst_managed_sender_t *p, struct tst_sender_stats_t *out);
 
 /**
  * Open a `tst_managed_sender_t` connected via SRT.
@@ -2994,40 +1949,1089 @@ struct tst_managed_sender_t *tst_managed_sender_open(const char *srt_url,
                                                      const struct tst_sender_config_t *cfg,
                                                      const struct tst_reconnect_policy_t *policy);
 
+ int tst_managed_sender_reset_stats(struct tst_managed_sender_t *p);
+
  int tst_managed_sender_send_ts(struct tst_managed_sender_t *p, const uint8_t *bytes, size_t len);
 
- int tst_managed_sender_flush(struct tst_managed_sender_t *p);
+/**
+ * Append one PMT descriptor to an audio stream's per-PID descriptor list.
+ * Same contract as `tst_mux_config_add_video_descriptor`.
+ *
+ * `stream` is the handle returned by `tst_mux_config_add_audio_stream`.
+ */
 
- int tst_managed_sender_get_stats(struct tst_managed_sender_t *p, struct tst_sender_stats_t *out);
+
+// ─── MUX SENDER ────────────────────────────────────────────
+int tst_mux_config_add_audio_descriptor(struct tst_mux_config_t *cfg,
+                                        tst_audio_stream_handle_t stream,
+                                        const struct tst_descriptor_t *desc);
 
 /**
- * Managed sibling of [`tst_sender_get_socket_stats`]. Returns
- * `TST_E_NOT_AVAILABLE` when the reconnect loop currently has no live
- * inner socket.
+ * Add an audio elementary stream (no language tag) to the specified program
+ * and return its handle.
+ *
+ * `codec`: one of the `TstAudioCodec` variants — `Mp2` (MPEG-1 Layer II
+ * audio), `Aac` (AAC in ADTS framing), `AacLatm` (AAC in LATM framing),
+ * or `Ac3` (Dolby AC-3). These C enum values are `0..3` per the
+ * `TstAudioCodec` definition; they are NOT the MPEG-TS PMT `stream_type`
+ * codepoints — the muxer derives the appropriate `stream_type` (and any
+ * required registration descriptor) from the codec choice.
+ *
+ * The returned `tst_audio_stream_handle_t` is stable across the
+ * config→open boundary and across managed-sender reconnects. Pass it to
+ * `tst_muxer_push_audio_to` / `tst_mux_sender_send_audio_to` /
+ * `tst_managed_mux_sender_send_audio_to` to fan out to this specific
+ * stream.
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` and sets last-error on: null `cfg`,
+ * invalid `program` handle, or per-program stream cap exceeded (>16 audio
+ * streams per program). Hard validation errors surface at `_open` time.
+ *
+ * Use `tst_mux_config_add_audio_stream_with_language` when you want the
+ * muxer to auto-emit an ISO 639 language descriptor for this stream.
+ */
+
+tst_audio_stream_handle_t tst_mux_config_add_audio_stream(struct tst_mux_config_t *cfg,
+                                                          tst_program_handle_t program,
+                                                          uint16_t pid,
+                                                          tst_audio_codec codec);
+
+/**
+ * Add an audio elementary stream with an ISO 639-2 language tag.
+ *
+ * `language` MUST be a non-null pointer to a 3-byte array of lowercase
+ * ASCII bytes (e.g. `"eng"`, `"fra"`, `"spa"`). The muxer auto-emits an
+ * `iso_639_language_descriptor` (tag `0x0A`) in the PMT for this stream
+ * with `audio_type = 0x00` (undefined / clean main).
+ *
+ * Passing a null `language` is rejected with `TST_E_INVALID_CONFIG` —
+ * use the bare `tst_mux_config_add_audio_stream` variant when no language
+ * tag is desired.
+ *
+ * Other failure modes match `tst_mux_config_add_audio_stream` (null
+ * `cfg`, invalid `program`, per-program cap exceeded).
+ */
+
+tst_audio_stream_handle_t tst_mux_config_add_audio_stream_with_language(struct tst_mux_config_t *cfg,
+                                                                        tst_program_handle_t program,
+                                                                        uint16_t pid,
+                                                                        tst_audio_codec codec,
+                                                                        const uint8_t *language);
+
+/**
+ * Append one PMT descriptor to a KLV stream's per-PID descriptor list.
+ * Same contract as `tst_mux_config_add_video_descriptor`.
+ *
+ * `stream` is the handle returned by `tst_mux_config_add_klv_stream`.
+ */
+
+int tst_mux_config_add_klv_descriptor(struct tst_mux_config_t *cfg,
+                                      tst_klv_stream_handle_t stream,
+                                      const struct tst_descriptor_t *desc);
+
+/**
+ * Add a KLV elementary stream to the specified program and return its handle.
+ *
+ * `stream_type`: `TST_KLV_STREAM_TYPE_PRIVATE_DATA` (0x06, async — no AU
+ * cell wrapping) or `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA` (0x15 —
+ * the muxer auto-wraps each push in a 5-byte `Metadata_AU_cell` header
+ * per ITU-T H.222.0 V9 § 2.12.4.2 before TS-framing; pass raw KLV LS
+ * bytes to `push_klv_to`).
+ *
+ * `carries_pts`: set `true` for synchronous KLV (PTS carried in PES header),
+ * `false` for async KLV.
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` on error (same conditions as
+ * `tst_mux_config_add_video_stream`).
+ */
+
+tst_klv_stream_handle_t tst_mux_config_add_klv_stream(struct tst_mux_config_t *cfg,
+                                                      tst_program_handle_t program,
+                                                      uint16_t pid,
+                                                      enum tst_klv_stream_type stream_type,
+                                                      bool carries_pts);
+
+/**
+ * Begin a new program in this multiplex. Returns a handle used as the
+ * `program` argument to subsequent stream-add and descriptor-set entry
+ * points. Programs are numbered in insertion order starting at 0.
+ *
+ * `program_number` is the PAT program_number field (must be > 0 and unique
+ * within the config). `pmt_pid` is the PID on which this program's PMT will
+ * be carried (must be unique within the config and not collide with any
+ * stream PID).
+ *
+ * Returns `TST_INVALID_PROGRAM_HANDLE` and sets last-error on null `cfg`.
+ * Validation (duplicate program_number, colliding PMT PID, etc.) is deferred
+ * to `tst_muxer_open` / `tst_*_sender_open` time.
+ */
+
+tst_program_handle_t tst_mux_config_add_program(struct tst_mux_config_t *cfg,
+                                                uint16_t program_number,
+                                                uint16_t pmt_pid);
+
+/**
+ * Append one PMT descriptor to a subtitle stream's per-PID descriptor list.
+ * Same contract as `tst_mux_config_add_video_descriptor`.
+ *
+ * `stream` is the handle returned by one of
+ * `tst_mux_config_add_subtitle_stream_dvb_subtitling`,
+ * `tst_mux_config_add_subtitle_stream_dvb_teletext`,
+ * `tst_mux_config_add_subtitle_stream_cea708`, or
+ * `tst_mux_config_add_subtitle_stream_webvtt`.
+ */
+
+int tst_mux_config_add_subtitle_descriptor(struct tst_mux_config_t *cfg,
+                                           tst_subtitle_stream_handle_t stream,
+                                           const struct tst_descriptor_t *desc);
+
+/**
+ * Add a CEA-708 standalone caption stream. Drives PMT
+ * `stream_type = 0x06` with an auto-emitted `registration_descriptor`
+ * (`format_identifier = "GA94"`). See `SubtitleCodec::Cea708Standalone`
+ * for the spec caveats — this is industry convention, not a normative
+ * codepoint.
+ */
+
+tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_cea708(struct tst_mux_config_t *cfg,
+                                                                       tst_program_handle_t program,
+                                                                       uint16_t pid);
+
+/**
+ * Add a DVB-subtitling subtitle stream to the specified program and
+ * return its handle. Drives PMT `stream_type = 0x06` with an auto-emitted
+ * subtitling_descriptor (ETSI EN 300 468 §6.2.41 + ETSI EN 300 743).
+ *
+ * `language` MUST be a non-null pointer to a 3-byte array of lowercase
+ * ASCII bytes (ISO 639-2 language code, e.g. `"eng"`).
+ * `subtitling_type` is per ETSI EN 300 468 Table 26 (common values:
+ * 0x10 = DVB sub no AR signalling, 0x14 = DVB sub for 4:3 aspect-ratio).
+ * `composition_page_id` and `ancillary_page_id` are 16-bit page
+ * identifiers.
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` on error (same conditions as
+ * `tst_mux_config_add_video_stream`, plus null `language` →
+ * `TST_E_INVALID_CONFIG`).
+ */
+
+tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_dvb_subtitling(struct tst_mux_config_t *cfg,
+                                                                               tst_program_handle_t program,
+                                                                               uint16_t pid,
+                                                                               const uint8_t *language,
+                                                                               uint8_t subtitling_type,
+                                                                               uint16_t composition_page_id,
+                                                                               uint16_t ancillary_page_id);
+
+/**
+ * Add a DVB-teletext subtitle stream. Drives PMT `stream_type = 0x06`
+ * with an auto-emitted teletext_descriptor (ETSI EN 300 468 §6.2.43 +
+ * ETSI EN 300 706).
+ *
+ * `language` MUST be a non-null pointer to a 3-byte ISO 639-2 array.
+ * `teletext_type` is 5 bits (common: 0x01 initial page, 0x02 subtitle).
+ * `magazine_number` is 0..=7 (3-bit field — values outside this range
+ * surface as `TST_E_INVALID_CONFIG` at `_open` time).
+ * `page_number` is BCD-encoded (0x00..=0x99).
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` on error.
+ */
+
+tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_dvb_teletext(struct tst_mux_config_t *cfg,
+                                                                             tst_program_handle_t program,
+                                                                             uint16_t pid,
+                                                                             const uint8_t *language,
+                                                                             uint8_t teletext_type,
+                                                                             uint8_t magazine_number,
+                                                                             uint8_t page_number);
+
+/**
+ * Add a WebVTT-in-MPEG-TS subtitle stream. Drives PMT
+ * `stream_type = 0x06` with an auto-emitted `registration_descriptor`
+ * (`format_identifier = "VTTC"` — ffmpeg `mpegtsenc.c` convention
+ * recognized by hls.js + mediamtx; not a normative codepoint).
+ */
+
+tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_webvtt(struct tst_mux_config_t *cfg,
+                                                                       tst_program_handle_t program,
+                                                                       uint16_t pid);
+
+/**
+ * Append one PMT descriptor to a video stream's per-PID descriptor list.
+ *
+ * `stream` is the handle returned by `tst_mux_config_add_video_stream`.
+ * `desc` must be non-null with `desc.data` pointing to `desc.data_len`
+ * bytes (stripped length — does not include the tag/length header bytes).
+ * Bytes are copied; the caller's buffer is not retained after this call.
+ * Multiple calls accumulate; descriptors appear in the PMT in add-order.
+ *
+ * Returns 0 on success, or a negative `TST_E_*` code on: null `cfg` or
+ * `desc`, stale handle, null `desc.data` with non-zero `desc.data_len`,
+ * or `desc.data_len > 255` (MPEG-TS descriptor body limit).
+ */
+
+int tst_mux_config_add_video_descriptor(struct tst_mux_config_t *cfg,
+                                        tst_video_stream_handle_t stream,
+                                        const struct tst_descriptor_t *desc);
+
+/**
+ * Add a video elementary stream to the specified program and return its
+ * handle.
+ *
+ * The returned `tst_video_stream_handle_t` is stable across the config→open
+ * boundary and across managed-sender reconnects. Pass it to
+ * `tst_muxer_push_video_to` / `tst_mux_sender_send_video_to` /
+ * `tst_managed_mux_sender_send_video_to` to fan out to this specific stream.
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` and sets last-error on: null `cfg`,
+ * invalid `program` handle, or per-program stream cap exceeded (>16 streams
+ * of any kind per program). Hard validation errors surface at `_open` time.
+ */
+
+tst_video_stream_handle_t tst_mux_config_add_video_stream(struct tst_mux_config_t *cfg,
+                                                          tst_program_handle_t program,
+                                                          uint16_t pid,
+                                                          tst_video_codec codec);
+
+/**
+ * Free a mux config previously returned by `tst_mux_config_new`. No-op on
+ * NULL. The config must not be used after this call.
+ */
+ void tst_mux_config_free(struct tst_mux_config_t *p);
+
+/**
+ * Create a new, empty mux config. No programs are added — call
+ * `tst_mux_config_add_program` before using this config to open a muxer
+ * or sender. Returns NULL only on allocation failure (OOM).
+ */
+ struct tst_mux_config_t *tst_mux_config_new(void);
+
+/**
+ * Set the TS-packet output buffer capacity. Default 10000 (~1.88 MB).
+ * Must be >= 10.
+ */
+ int tst_mux_config_set_buffer_packets(struct tst_mux_config_t *p, size_t n);
+
+/**
+ * Set the PCR re-emission interval for this mux config (applies to all
+ * programs). Default is 40 ms. Must be in range 1..=100.
+ */
+ int tst_mux_config_set_pcr_interval_ms(struct tst_mux_config_t *p, uint32_t ms);
+
+/**
+ * Pin the PCR PID for the specified program. By default the muxer uses the
+ * first video stream's PID (or first KLV PID for KLV-only programs).
+ *
+ * Returns 0 on success, or a negative `TST_E_*` code on null pointer or
+ * invalid program handle.
+ */
+
+int tst_mux_config_set_pcr_pid(struct tst_mux_config_t *cfg,
+                               tst_program_handle_t program,
+                               uint16_t pid);
+
+/**
+ * Set program-level PMT descriptors for the specified program.
+ *
+ * `tlv_bytes` points to the concatenation of `tlv_count` TLV triples,
+ * totalling `tlv_total_len` bytes. Each TLV has the layout:
+ *   byte 0: tag
+ *   byte 1: length of body (N)
+ *   bytes 2..2+N: body
+ *
+ * Calling with `tlv_total_len == 0` or `tlv_count == 0` clears any
+ * previously set program descriptors for this program.
+ *
+ * Returns 0 on success or a negative `TST_E_*` code on: null `cfg`,
+ * null `tlv_bytes` with non-zero count, invalid program handle, or a
+ * malformed TLV byte stream (truncated length or body).
+ */
+
+int tst_mux_config_set_program_descriptors(struct tst_mux_config_t *cfg,
+                                           tst_program_handle_t program,
+                                           const uint8_t *tlv_bytes,
+                                           size_t tlv_total_len,
+                                           size_t tlv_count);
+
+/**
+ * Set the PAT/PMT re-emission interval for this mux config. Default 100 ms.
+ * Must be >= 10.
+ */
+ int tst_mux_config_set_psi_interval_ms(struct tst_mux_config_t *p, uint32_t ms);
+
+/**
+ * Set per-stream PMT descriptors for the specified KLV stream.
+ *
+ * `klv` is a handle previously returned by `tst_mux_config_add_klv_stream`.
+ * The TLV byte format is the same as `tst_mux_config_set_program_descriptors`.
+ *
+ * Returns 0 on success or a negative `TST_E_*` code on the same conditions
+ * as `tst_mux_config_set_stream_descriptors_for_video`.
+ */
+
+int tst_mux_config_set_stream_descriptors_for_klv(struct tst_mux_config_t *cfg,
+                                                  tst_klv_stream_handle_t klv,
+                                                  const uint8_t *tlv_bytes,
+                                                  size_t tlv_total_len,
+                                                  size_t tlv_count);
+
+/**
+ * Set per-stream PMT descriptors for the specified video stream.
+ *
+ * `video` is a handle previously returned by `tst_mux_config_add_video_stream`.
+ * The TLV byte format is the same as `tst_mux_config_set_program_descriptors`.
+ *
+ * Calling with `tlv_total_len == 0` or `tlv_count == 0` clears any
+ * previously set stream descriptors for this stream.
+ *
+ * Returns 0 on success or a negative `TST_E_*` code on: null `cfg`,
+ * invalid handle, null `tlv_bytes` with non-zero count, or malformed TLV.
+ */
+
+int tst_mux_config_set_stream_descriptors_for_video(struct tst_mux_config_t *cfg,
+                                                    tst_video_stream_handle_t video,
+                                                    const uint8_t *tlv_bytes,
+                                                    size_t tlv_total_len,
+                                                    size_t tlv_count);
+
+/**
+ * Cancel a `tst_mux_sender_t`. Unblocks a thread parked in any `_send_*`
+ * entry point within one libsrt I/O cycle (~3-10 ms) by closing the
+ * underlying libsrt socket. Safe to call from any thread. Idempotent.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ *
+ * After cancel, all `_send_*` entry points return `TST_E_CLOSED`. The
+ * handle must still be `_close`'d to free.
+ */
+ int tst_mux_sender_cancel(struct tst_mux_sender_t *p);
+
+ void tst_mux_sender_close(struct tst_mux_sender_t *p);
+
+/**
+ * Read wire-level transport stats (RTT, packet loss, bandwidth, queue
+ * depths) for the underlying libsrt socket. Cumulative since connect.
+ *
+ * `out` MUST point to a writable `TstSocketStats`; the function zeros
+ * the struct on failure.
+ *
+ * Returns:
+ * * `0` on success — `*out` is populated.
+ * * `TST_E_INVALID_CONFIG` if `p` or `out` is NULL.
+ * * `TST_E_NOT_AVAILABLE` if the inner transport has no live socket
+ *   (closed or — for the managed sibling — mid-reconnect).
+ * * `TST_E_CLOSED` if the sender has been closed.
  *
  * # Safety
  *
- * Caller MUST ensure `p` is a valid `*mut TstManagedSender` opened via
- * `tst_managed_sender_open` and `out` points to a writable
- * `TstSocketStats`.
+ * Caller MUST ensure `p` is a valid `*mut TstMuxSender` opened via
+ * `tst_mux_sender_open` and `out` points to a writable `TstSocketStats`.
  */
-
-int tst_managed_sender_get_socket_stats(struct tst_managed_sender_t *p,
-                                        struct tst_socket_stats_t *out);
-
- int tst_managed_sender_reset_stats(struct tst_managed_sender_t *p);
-
- void tst_managed_sender_close(struct tst_managed_sender_t *p);
+ int tst_mux_sender_get_socket_stats(struct tst_mux_sender_t *p, struct tst_socket_stats_t *out);
 
 /**
- * Cancel a `tst_managed_sender_t`. Same semantics as
- * `tst_sender_cancel`; reaches the currently-active inner
- * transport's cancel handle through `ManagedTransport`'s atomic
- * snapshot.
+ * Snapshot stats for a `tst_mux_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
+ */
+ int tst_mux_sender_get_stats(struct tst_mux_sender_t *p, struct tst_mux_sender_stats_t *out);
+
+/**
+ * Snapshot codec-specific stats for one PID on a `tst_mux_sender_t` into `*out`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
+ * `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed via `tst_mux_sender_close`
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_mux_sender_open`; `out`
+ * must be a writable `tst_stream_codec_stats_t`. The pointee is fully
+ * written on `TST_OK` and untouched on error.
+ */
+
+int tst_mux_sender_get_stream_codec_stats(struct tst_mux_sender_t *p,
+                                          uint16_t pid,
+                                          struct tst_stream_codec_stats_t *out);
+
+/**
+ * Open a `tst_mux_sender_t` connected via SRT.
+ *
+ * `srt_url` is a `srt://host:port?key=value&...` URL. Query
+ * parameters apply libsrt-vocabulary options to the connection
+ * (passphrase, latency, streamid, etc.). URL values override config
+ * values for the same option. See
+ * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ *
+ * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. The detail string from
+ * `tst_get_last_error_str()` describes the specific problem.
+ */
+ struct tst_mux_sender_t *tst_mux_sender_open(const char *srt_url, struct tst_mux_config_t *cfg);
+
+/**
+ * Reset stats counters for a `tst_mux_sender_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
+ */
+ int tst_mux_sender_reset_stats(struct tst_mux_sender_t *p);
+
+/**
+ * Send one audio frame buffer (single-stream shorthand).
+ *
+ * Resolves only when exactly one audio stream is configured.
+ * Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::AmbiguousTarget` or `MuxError::NoAudioStreamsConfigured`).
+ *
+ * `frames` is one or more pre-framed audio frames concatenated by the
+ * caller. PTS is required.
+ */
+
+int tst_mux_sender_send_audio(struct tst_mux_sender_t *p,
+                              const uint8_t *frames,
+                              size_t len,
+                              int64_t pts_90khz);
+
+/**
+ * Send one audio frame buffer targeting a specific audio elementary stream.
+ *
+ * `stream_handle` is obtained from `tst_mux_config_add_audio_stream` /
+ * `tst_mux_config_add_audio_stream_with_language`. Out-of-range handles
+ * surface as `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream sender, prefer `tst_mux_sender_send_audio` — same
+ * effect, no handle required.
+ */
+
+int tst_mux_sender_send_audio_to(struct tst_mux_sender_t *p,
+                                 tst_audio_stream_handle_t stream_handle,
+                                 const uint8_t *frames,
+                                 size_t len,
+                                 int64_t pts_90khz);
+
+
+int tst_mux_sender_send_klv(struct tst_mux_sender_t *p,
+                            const uint8_t *klv,
+                            size_t len,
+                            int64_t pts_90khz);
+
+/**
+ * Push one pre-built KLV blob targeting a specific KLV elementary stream.
+ *
+ * For `KlvStreamType::SynchronousMetadata` streams, the muxer auto-wraps
+ * the caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0
+ * V9 § 2.12.4.2 (5 bytes prepended; PTS surfaced in the PES header).
+ * For `KlvStreamType::PrivateData` streams, the caller's bytes pass
+ * through unchanged.
+ *
+ * On a single-stream sender, prefer `tst_mux_sender_send_klv` — same
+ * effect, no handle required.
+ */
+
+int tst_mux_sender_send_klv_to(struct tst_mux_sender_t *p,
+                               tst_klv_stream_handle_t stream_handle,
+                               const uint8_t *klv,
+                               size_t len,
+                               int64_t pts_90khz);
+
+/**
+ * Send one subtitle PES unit (single-stream shorthand).
+ *
+ * Resolves only when exactly one subtitle stream is configured.
+ * Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::AmbiguousTarget` or
+ * `MuxError::NoSubtitleStreamsConfigured`).
+ *
+ * `payload` is one complete logical subtitle unit (DVB-sub composition
+ * page, teletext data field, CEA-708 service block, or WebVTT cue).
+ * PTS is required.
+ */
+
+int tst_mux_sender_send_subtitle(struct tst_mux_sender_t *p,
+                                 const uint8_t *payload,
+                                 size_t len,
+                                 int64_t pts_90khz);
+
+/**
+ * Send one subtitle PES unit targeting a specific subtitle elementary
+ * stream.
+ *
+ * `stream_handle` is obtained from one of the four
+ * `tst_mux_config_add_subtitle_stream_*` constructors. Out-of-range
+ * handles surface as `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream sender, prefer `tst_mux_sender_send_subtitle` —
+ * same effect, no handle required.
+ */
+
+int tst_mux_sender_send_subtitle_to(struct tst_mux_sender_t *p,
+                                    tst_subtitle_stream_handle_t stream_handle,
+                                    const uint8_t *payload,
+                                    size_t len,
+                                    int64_t pts_90khz);
+
+
+int tst_mux_sender_send_video(struct tst_mux_sender_t *p,
+                              const uint8_t *nal,
+                              size_t len,
+                              int64_t pts_90khz,
+                              bool key_frame);
+
+/**
+ * Push one Annex-B NAL targeting a specific video elementary stream.
+ *
+ * `stream_handle` is obtained from `tst_mux_config_add_video_stream` at
+ * config time and is stable across the config→open boundary. Out-of-range
+ * handles surface as `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream sender, prefer `tst_mux_sender_send_video` — same
+ * effect, no handle required.
+ */
+
+int tst_mux_sender_send_video_to(struct tst_mux_sender_t *p,
+                                 tst_video_stream_handle_t stream_handle,
+                                 const uint8_t *nal,
+                                 size_t len,
+                                 int64_t pts_90khz,
+                                 bool key_frame);
+
+/**
+ * Close and free the muxer. Idempotent — passing NULL is a no-op.
+ */
+ void tst_muxer_close(struct tst_muxer_t *p);
+
+/**
+ * Snapshot stats for a `tst_muxer_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the muxer has been closed.
+ */
+ int tst_muxer_get_stats(struct tst_muxer_t *p, struct tst_muxer_stats_t *out);
+
+/**
+ * Snapshot codec-specific stats for one PID on a `tst_muxer_t` into `*out`.
+ *
+ * The returned struct is a tagged union — read `out->kind` first, then
+ * the matching `out->u.<arm>` field. See `tst_stream_codec_stats_t` in
+ * `tstrans.h` for the discriminator constants (`TST_CODEC_KIND_*`).
+ *
+ * # Errors
+ *
+ * * `TST_E_INVALID_CONFIG` — `p` or `out` is null
+ * * `TST_E_CLOSED` — handle was closed via `tst_muxer_close`
+ * * `TST_E_NOT_FOUND` — `pid` has never been observed on this handle
+ * * `TST_E_INTERNAL` — internal panic caught at the FFI boundary
+ *
+ * # Safety
+ *
+ * `p` must be a valid pointer obtained from `tst_muxer_open`; `out`
+ * must be a writable `tst_stream_codec_stats_t` of size at least
+ * `sizeof(tst_stream_codec_stats_t)`. The pointee is fully written on
+ * `TST_OK` and untouched on error.
+ */
+
+int tst_muxer_get_stream_codec_stats(struct tst_muxer_t *p,
+                                     uint16_t pid,
+                                     struct tst_stream_codec_stats_t *out);
+
+/**
+ * Open a standalone muxer. Builds the config from `cfg` so the caller may
+ * free it immediately after this returns. Returns NULL on failure with
+ * last-error set.
+ */
+ struct tst_muxer_t *tst_muxer_open(struct tst_mux_config_t *cfg);
+
+/**
+ * Drain TS bytes into `out_buf` (capacity `out_cap`). Returns the number
+ * of bytes written; 0 means nothing was ready or the buffer was too
+ * small for the next chunk. Never sets last-error — 0 is a normal return
+ * value.
+ */
+ size_t tst_muxer_pull(struct tst_muxer_t *p, uint8_t *out_buf, size_t out_cap);
+
+/**
+ * Push one audio frame buffer (single-stream shorthand).
+ *
+ * Resolves only when exactly one audio stream is configured across all
+ * programs. Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::AmbiguousTarget` or `MuxError::NoAudioStreamsConfigured`).
+ *
+ * `frames` is one or more pre-framed audio frames concatenated by the
+ * caller (e.g. one ADTS frame for AAC, one MP2 frame, one AC-3 frame).
+ * PTS is required — audio always carries PTS.
+ */
+
+int tst_muxer_push_audio(struct tst_muxer_t *p,
+                         const uint8_t *frames,
+                         size_t len,
+                         int64_t pts_90khz);
+
+/**
+ * Push one audio frame buffer targeting a specific audio elementary stream.
+ *
+ * `handle` is obtained from `tst_mux_config_add_audio_stream` /
+ * `tst_mux_config_add_audio_stream_with_language` at config time and is
+ * stable across the config→open boundary. Out-of-range handles surface
+ * as `TST_E_INVALID_USAGE` (carrying `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream muxer, prefer `tst_muxer_push_audio` — it has the
+ * same effect and doesn't require a handle.
+ */
+
+int tst_muxer_push_audio_to(struct tst_muxer_t *p,
+                            tst_audio_stream_handle_t handle,
+                            const uint8_t *frames,
+                            size_t len,
+                            int64_t pts_90khz);
+
+/**
+ * Push one pre-built KLV blob.
+ */
+ int tst_muxer_push_klv(struct tst_muxer_t *p, const uint8_t *klv, size_t len, int64_t pts_90khz);
+
+/**
+ * Push one pre-built KLV blob targeting a specific KLV elementary stream.
+ *
+ * `handle` is obtained from `tst_mux_config_add_klv_stream`. Same
+ * semantics as `tst_muxer_push_video_to`.
+ *
+ * For `KlvStreamType::SynchronousMetadata` streams, the muxer auto-wraps
+ * the caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0
+ * V9 § 2.12.4.2 (5 bytes prepended; PTS surfaced in the PES header).
+ * For `KlvStreamType::PrivateData` streams, the caller's bytes pass
+ * through unchanged.
+ */
+
+int tst_muxer_push_klv_to(struct tst_muxer_t *p,
+                          tst_klv_stream_handle_t handle,
+                          const uint8_t *klv,
+                          size_t len,
+                          int64_t pts_90khz);
+
+/**
+ * Push one subtitle PES unit (single-stream shorthand).
+ *
+ * Resolves only when exactly one subtitle stream is configured.
+ * Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::AmbiguousTarget` or `MuxError::NoSubtitleStreamsConfigured`).
+ *
+ * `payload` is one complete logical subtitle unit (DVB-sub composition
+ * page, teletext data field, CEA-708 service block, or WebVTT cue);
+ * fragmentation across PES is not used. PTS is required — subtitles
+ * are rendered at presentation time and never reordered.
+ */
+
+int tst_muxer_push_subtitle(struct tst_muxer_t *p,
+                            const uint8_t *payload,
+                            size_t len,
+                            int64_t pts_90khz);
+
+/**
+ * Push one subtitle PES unit targeting a specific subtitle elementary stream.
+ *
+ * `handle` is obtained from one of the four
+ * `tst_mux_config_add_subtitle_stream_*` constructors. Out-of-range
+ * handles surface as `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream muxer, prefer `tst_muxer_push_subtitle` — same
+ * effect, no handle required.
+ */
+
+int tst_muxer_push_subtitle_to(struct tst_muxer_t *p,
+                               tst_subtitle_stream_handle_t handle,
+                               const uint8_t *payload,
+                               size_t len,
+                               int64_t pts_90khz);
+
+/**
+ * Push one Annex-B-framed video access unit. Returns 0 on success or a
+ * negative TST_E_* code.
+ */
+
+int tst_muxer_push_video(struct tst_muxer_t *p,
+                         const uint8_t *nal,
+                         size_t len,
+                         int64_t pts_90khz,
+                         bool key_frame);
+
+/**
+ * Push one Annex-B NAL targeting a specific video elementary stream.
+ *
+ * `handle` is obtained from `tst_mux_config_add_video_stream` at config
+ * time and is stable across managed-sender reconnects. Out-of-range
+ * handles surface as `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream muxer, prefer `tst_muxer_push_video` — it has the
+ * same effect and doesn't require a handle.
+ */
+
+int tst_muxer_push_video_to(struct tst_muxer_t *p,
+                            tst_video_stream_handle_t handle,
+                            const uint8_t *nal,
+                            size_t len,
+                            int64_t pts_90khz,
+                            bool key_frame);
+
+/**
+ * Reset stats counters for a `tst_muxer_t` to zero.
+ *
+ * Per-stream entries are preserved (identity fields remain); only flow
+ * counters (`items`, `bytes`, `discontinuities`) are zeroed.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
+ * null, or `TST_E_CLOSED` if the muxer has been closed.
+ */
+ int tst_muxer_reset_stats(struct tst_muxer_t *p);
+
+/**
+ * Cancel a `tst_raw_receiver_t`. Unblocks a thread parked in `_recv`
+ * within one libsrt I/O cycle (~3-10 ms) by closing the underlying
+ * libsrt socket. Safe to call from any thread. Idempotent.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ *
+ * After cancel, `_recv` returns `TST_E_CLOSED` (not `TST_E_END_OF_STREAM`).
+ * The handle must still be `_close`'d to free.
  */
- int tst_managed_sender_cancel(struct tst_managed_sender_t *p);
+
+// ─── RAW RECEIVER ──────────────────────────────────────────
+ int tst_raw_receiver_cancel(struct tst_raw_receiver_t *p);
+
+ void tst_raw_receiver_close(struct tst_raw_receiver_t *p);
+
+/**
+ * Read wire-level transport stats for the underlying libsrt socket.
+ * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * for full semantics — same shape, different handle type.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstRawReceiver` opened via
+ * `tst_raw_receiver_open` and `out` points to a writable `TstSocketStats`.
+ */
+
+int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
+                                      struct tst_socket_stats_t *out);
+
+/**
+ * Snapshot stats for a `tst_raw_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_raw_receiver_get_stats(struct tst_raw_receiver_t *p, struct tst_raw_recv_stats_t *out);
+
+/**
+ * Open a `tst_raw_receiver_t`. Accepts `srt://host:port?...` URLs;
+ * URL with `?mode=listener` is routed through the listener path
+ * (equivalent to calling `tst_raw_receiver_open_listener`).
+ *
+ * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
+ */
+ struct tst_raw_receiver_t *tst_raw_receiver_open(const char *srt_url);
+
+/**
+ * Explicit listener-mode open. Forces listener mode regardless of any
+ * `?mode=` URL value — the `_listener` suffix is authoritative. URLs
+ * with `?mode=caller` are accepted and silently overridden.
+ *
+ * Empty-host URLs like `srt://:7000` are accepted directly; the parser's
+ * requirement for an explicit `?mode=listener` does not apply here because
+ * the entry-point name is already the authoritative listener signal.
+ *
+ * (Phase 1 simplification of the design spec §4.2, which originally
+ * proposed rejecting explicit `mode=caller` with `TST_E_INVALID_USAGE`.
+ * The simpler rule is more forgiving and matches what most C consumers
+ * expect from a `_listener`-suffixed entry point. The stricter check
+ * can land in a future phase if a consumer asks.)
+ */
+ struct tst_raw_receiver_t *tst_raw_receiver_open_listener(const char *srt_url);
+
+/**
+ * Block until one message arrives. Copies up to `len` bytes into `buf`
+ * and writes the actual length to `*out_len`.
+ *
+ * Returns:
+ * - 0 on success (`*out_len` set to bytes received; ≤ `len`)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close
+ * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on a transport failure other than a clean
+ *   peer disconnect (peer FIN surfaces as `TST_E_END_OF_STREAM`; see
+ *   the `TransportError::Broken` arm in this function for details)
+ * - `TST_E_TOO_LARGE` (-6) if the inbound message exceeds `len`
+ *   (`*out_len` is left unmodified)
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+ */
+ int tst_raw_receiver_recv(struct tst_raw_receiver_t *p, uint8_t *buf, size_t len, size_t *out_len);
+
+/**
+ * Reset stats counters for a `tst_raw_receiver_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
+
+/**
+ * Cancel a `tst_raw_sender_t`. Unblocks a thread parked in `_send`
+ * within one libsrt I/O cycle (~3-10 ms) by closing the underlying
+ * libsrt socket. Safe to call from any thread. Idempotent.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ *
+ * After cancel, `_send` returns `TST_E_CLOSED`. The handle must still
+ * be `_close`'d to free.
+ */
+
+// ─── RAW SENDER ────────────────────────────────────────────
+ int tst_raw_sender_cancel(struct tst_raw_sender_t *p);
+
+ void tst_raw_sender_close(struct tst_raw_sender_t *p);
+
+ void tst_raw_sender_config_free(struct tst_raw_sender_config_t *p);
+
+ struct tst_raw_sender_config_t *tst_raw_sender_config_new(void);
+
+/**
+ * Read wire-level transport stats for the underlying libsrt socket.
+ * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * for full semantics — same shape, different handle type.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstRawSender` opened via
+ * `tst_raw_sender_open` and `out` points to a writable `TstSocketStats`.
+ */
+ int tst_raw_sender_get_socket_stats(struct tst_raw_sender_t *p, struct tst_socket_stats_t *out);
+
+/**
+ * Snapshot stats for a `tst_raw_sender_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
+ */
+ int tst_raw_sender_get_stats(struct tst_raw_sender_t *p, struct tst_raw_send_stats_t *out);
+
+/**
+ * Open a `tst_raw_sender_t` connected via SRT.
+ *
+ * `srt_url` is a `srt://host:port?key=value&...` URL. Query
+ * parameters apply libsrt-vocabulary options to the connection
+ * (passphrase, latency, streamid, etc.). URL values override config
+ * values for the same option. See
+ * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ *
+ * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. The detail string from
+ * `tst_get_last_error_str()` describes the specific problem.
+ */
+
+struct tst_raw_sender_t *tst_raw_sender_open(const char *srt_url,
+                                             const struct tst_raw_sender_config_t *cfg);
+
+/**
+ * Reset stats counters for a `tst_raw_sender_t` to zero.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
+ * null, or `TST_E_CLOSED` if the sender has been closed.
+ */
+ int tst_raw_sender_reset_stats(struct tst_raw_sender_t *p);
+
+ int tst_raw_sender_send(struct tst_raw_sender_t *p, const uint8_t *bytes, size_t len);
+
+/**
+ * Cancel a `tst_receiver_t`. Unblocks a thread parked in
+ * `_recv_packet` within one libsrt I/O cycle (~3-10 ms) by closing
+ * the underlying libsrt socket. Safe to call from any thread.
+ * Idempotent.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ *
+ * After cancel, `_recv_packet` returns `TST_E_CLOSED` (not
+ * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
+ */
+
+// ─── TS RECEIVER ───────────────────────────────────────────
+ int tst_receiver_cancel(struct tst_receiver_t *p);
+
+ void tst_receiver_close(struct tst_receiver_t *p);
+
+/**
+ * Read wire-level transport stats for the underlying libsrt socket.
+ * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * for full semantics — same shape, different handle type.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstReceiver` opened via
+ * `tst_receiver_open` and `out` points to a writable `TstSocketStats`.
+ */
+ int tst_receiver_get_socket_stats(struct tst_receiver_t *p, struct tst_socket_stats_t *out);
+
+/**
+ * Snapshot stats for a `tst_receiver_t` into `*out`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
+ * null, or `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_receiver_get_stats(struct tst_receiver_t *p, struct tst_receiver_stats_t *out);
+
+/**
+ * Open a `tst_receiver_t`. Accepts `srt://host:port?...` URLs;
+ * URL with `?mode=listener` is routed through the listener path
+ * (equivalent to calling `tst_receiver_open_listener`).
+ *
+ * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
+ */
+ struct tst_receiver_t *tst_receiver_open(const char *srt_url);
+
+/**
+ * Explicit listener-mode open. Forces listener mode regardless of any
+ * `?mode=` URL value — the `_listener` suffix is authoritative. URLs
+ * with `?mode=caller` are accepted and silently overridden.
+ *
+ * Empty-host URLs like `srt://:7000` are accepted directly; the parser's
+ * requirement for an explicit `?mode=listener` does not apply here because
+ * the entry-point name is already the authoritative listener signal.
+ */
+ struct tst_receiver_t *tst_receiver_open_listener(const char *srt_url);
+
+/**
+ * Block until one 188-byte MPEG-TS packet is ready, then copy it into
+ * the caller's `out_packet` buffer.
+ *
+ * `out_packet` MUST point to a buffer of at least 188 bytes (a
+ * `uint8_t[188]` array on the C side). The pointer is dereferenced
+ * once on success; no allocation crosses the FFI boundary.
+ *
+ * Returns:
+ * - `0` on success (188 bytes written to `out_packet`)
+ * - `TST_E_END_OF_STREAM` (-12) on graceful peer close
+ * - `TST_E_CLOSED` (-7) if the handle was `_cancel`'d or `_close`'d
+ * - `TST_E_TRANSPORT` (-8) on a transport failure other than a clean
+ *   peer disconnect (peer FIN surfaces as `TST_E_END_OF_STREAM`; see
+ *   the `TransportError::Broken` arm in this function for details)
+ * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
+ *
+ * On any non-zero return the contents of `out_packet` are unspecified.
+ */
+ int tst_receiver_recv_packet(struct tst_receiver_t *p, uint8_t *out_packet);
+
+/**
+ * Reset stats counters for a `tst_receiver_t` to zero. Does not
+ * affect transport state or the syncer state machine.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
+ * or `TST_E_CLOSED` if the receiver has been closed.
+ */
+ int tst_receiver_reset_stats(struct tst_receiver_t *p);
+
+
+// ─── LIFETIME ──────────────────────────────────────────────
+ void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
+
+
+// ─── OTHER ─────────────────────────────────────────────────
+ struct tst_reconnect_policy_t *tst_reconnect_policy_new(void);
+
+ int tst_reconnect_policy_set_backoff_constant_ms(struct tst_reconnect_policy_t *p, uint32_t ms);
+
+
+int tst_reconnect_policy_set_backoff_exponential_ms(struct tst_reconnect_policy_t *p,
+                                                    uint32_t base_ms,
+                                                    uint32_t max_ms);
+
+ int tst_reconnect_policy_set_gap_buffer_capacity(struct tst_reconnect_policy_t *p, size_t n);
+
+/**
+ * Set max reconnect attempts. `n < 0` means retry forever.
+ */
+ int tst_reconnect_policy_set_max_attempts(struct tst_reconnect_policy_t *p, int32_t n);
+
+
+int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
+                                             enum tst_overflow_policy policy);
+
+/**
+ * Cancel a `tst_sender_t`. Unblocks a thread parked in `_send`
+ * within one libsrt I/O cycle (~3-10 ms) by closing the underlying
+ * libsrt socket. Safe to call from any thread. Idempotent.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
+ *
+ * After cancel, `_send` returns `TST_E_CLOSED`. The handle must still
+ * be `_close`'d to free.
+ */
+
+// ─── TS SENDER ─────────────────────────────────────────────
+ int tst_sender_cancel(struct tst_sender_t *p);
+
+ void tst_sender_close(struct tst_sender_t *p);
+
+ void tst_sender_config_free(struct tst_sender_config_t *p);
+
+ struct tst_sender_config_t *tst_sender_config_new(void);
+
+
+int tst_sender_config_set_framing_mode(struct tst_sender_config_t *p,
+                                       enum tst_ts_framing_mode mode);
+
+ int tst_sender_config_set_max_unsynced_bytes(struct tst_sender_config_t *p, size_t n);
+
+ int tst_sender_flush(struct tst_sender_t *p);
+
+/**
+ * Read wire-level transport stats for the underlying libsrt socket.
+ * See [`tst_mux_sender_get_socket_stats`](crate::mux_sender::tst_mux_sender_get_socket_stats)
+ * for full semantics — same shape, different handle type.
+ *
+ * # Safety
+ *
+ * Caller MUST ensure `p` is a valid `*mut TstSender` opened via
+ * `tst_sender_open` and `out` points to a writable `TstSocketStats`.
+ */
+ int tst_sender_get_socket_stats(struct tst_sender_t *p, struct tst_socket_stats_t *out);
+
+ int tst_sender_get_stats(struct tst_sender_t *p, struct tst_sender_stats_t *out);
+
+/**
+ * Open a `tst_sender_t` connected via SRT.
+ *
+ * `srt_url` is a `srt://host:port?key=value&...` URL. Query
+ * parameters apply libsrt-vocabulary options to the connection
+ * (passphrase, latency, streamid, etc.). URL values override config
+ * values for the same option. See
+ * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ *
+ * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
+ * last-error for any malformed URL, unsupported key, unknown key, or
+ * invalid value. The detail string from
+ * `tst_get_last_error_str()` describes the specific problem.
+ */
+ struct tst_sender_t *tst_sender_open(const char *srt_url, const struct tst_sender_config_t *cfg);
+
+ int tst_sender_reset_stats(struct tst_sender_t *p);
+
+ int tst_sender_send_ts(struct tst_sender_t *p, const uint8_t *bytes, size_t len);
 
 #ifdef __cplusplus
 }  // extern "C"

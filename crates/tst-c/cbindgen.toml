@@ -18,6 +18,12 @@ documentation = true
 documentation_style = "doxy"
 usize_is_size_t = true
 
+# Emit items alphabetically by symbol name (default would be source order).
+# Decouples header layout from Rust source-file layout so internal reorgs
+# (e.g. plan #84 Wave 5.C src/ subfolder reorg) don't churn tstrans.h.
+# Closes the Plan #83 follow-up flagged in CLAUDE.md plan list.
+sort_by = "Name"
+
 trailer = """
 /* Phase 3 ABI layout guards — trip the C compiler at consumer-build
  * time if the Rust-side struct sizes drift from their Phase 3 baseline.

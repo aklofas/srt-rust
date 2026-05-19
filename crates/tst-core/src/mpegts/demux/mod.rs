@@ -26,6 +26,7 @@ mod types;
 mod sync_ingress;
 mod pmt_classify;
 mod psi_topology;
+mod pes_emit;
 
 pub mod low_level;
 

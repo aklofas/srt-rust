@@ -4127,20 +4127,21 @@ impl tst_core::mpegts::mux::Muxer
 pub fn tst_core::mpegts::mux::Muxer::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::audio_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::capacity_packets(&self) -> u64
-pub fn tst_core::mpegts::mux::Muxer::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>
-pub fn tst_core::mpegts::mux::Muxer::klv_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>, tst_core::error::MuxError>
-pub fn tst_core::mpegts::mux::Muxer::klv_stream_handle(&self, index: usize) -> core::option::Option<tst_core::mpegts::mux::KlvStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::new(config: tst_core::mpegts::mux::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::pending_packets(&self) -> u64
 pub fn tst_core::mpegts::mux::Muxer::pull(&mut self, out: &mut [u8]) -> usize
 pub fn tst_core::mpegts::mux::Muxer::push_audio(&mut self, frames: &[u8], pts: tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_audio_to(&mut self, handle: tst_core::mpegts::mux::AudioStreamHandle, pts: tst_core::mpegts::common::Pts90khz, frames: &[u8]) -> core::result::Result<(), tst_core::error::MuxError>
-pub fn tst_core::mpegts::mux::Muxer::push_klv(&mut self, klv: &[u8], pts: tst_core::mpegts::common::Pts90khz, metadata_service_id: u8) -> core::result::Result<(), tst_core::error::MuxError>
-pub fn tst_core::mpegts::mux::Muxer::push_klv_to(&mut self, handle: tst_core::mpegts::mux::KlvStreamHandle, klv: &[u8], pts: tst_core::mpegts::common::Pts90khz, metadata_service_id: u8) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_subtitle(&mut self, pts: tst_core::mpegts::common::Pts90khz, payload: &[u8]) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_subtitle_to(&mut self, handle: tst_core::mpegts::mux::SubtitleStreamHandle, pts: tst_core::mpegts::common::Pts90khz, payload: &[u8]) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::SubtitleStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::SubtitleStreamHandle>, tst_core::error::MuxError>
+impl tst_core::mpegts::mux::Muxer
+pub fn tst_core::mpegts::mux::Muxer::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>
+pub fn tst_core::mpegts::mux::Muxer::klv_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::KlvStreamHandle>, tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::klv_stream_handle(&self, index: usize) -> core::option::Option<tst_core::mpegts::mux::KlvStreamHandle>
+pub fn tst_core::mpegts::mux::Muxer::push_klv(&mut self, klv: &[u8], pts: tst_core::mpegts::common::Pts90khz, metadata_service_id: u8) -> core::result::Result<(), tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::push_klv_to(&mut self, handle: tst_core::mpegts::mux::KlvStreamHandle, klv: &[u8], pts: tst_core::mpegts::common::Pts90khz, metadata_service_id: u8) -> core::result::Result<(), tst_core::error::MuxError>
 impl tst_core::mpegts::mux::Muxer
 pub fn tst_core::mpegts::mux::Muxer::push_video(&mut self, nal: &[u8], pts: tst_core::mpegts::common::Pts90khz, key_frame: bool) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_video_to(&mut self, handle: tst_core::mpegts::mux::VideoStreamHandle, nal: &[u8], pts: tst_core::mpegts::common::Pts90khz, key_frame: bool) -> core::result::Result<(), tst_core::error::MuxError>

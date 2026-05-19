@@ -17,6 +17,7 @@
 //! All items are `pub(super)` — invisible outside `mpegts::demux`.
 
 use crate::error::DemuxError;
+use crate::mpegts::common::StreamTypeCode;
 use crate::mpegts::demux::event::{
     DemuxEvent, KlvLink, LinkSource, NonConformantIssue, ProgramMap, StreamId, StreamInfo,
     StreamKind, VideoCodec,
@@ -372,7 +373,7 @@ impl super::demuxer::Demuxer {
 
             stream_infos.push(StreamInfo {
                 pid: s.elementary_pid,
-                stream_type: s.stream_type,
+                stream_type: StreamTypeCode::from_byte(s.stream_type),
                 kind,
                 program_number,
                 raw_descriptors: s.descriptors.clone(),

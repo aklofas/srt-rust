@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use crate::mpegts::common::Pts90khz;
+use crate::mpegts::common::{Pts90khz, StreamTypeCode};
 
 /// Top-level event emitted by `Demuxer::next_event`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -284,7 +284,12 @@ pub struct ProgramMap {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamInfo {
     pub pid: u16,
-    pub stream_type: u8,
+    /// PMT `stream_type` byte wrapped as a typed [`StreamTypeCode`].
+    /// Use [`StreamTypeCode::known`] to peel off the typed [`crate::mpegts::common::StreamType`]
+    /// variant for recognized codes, or [`StreamTypeCode::as_byte`] to
+    /// recover the raw PMT byte (e.g., for C ABI marshalling — `tstrans.h`
+    /// exposes this as `uint8_t`).
+    pub stream_type: StreamTypeCode,
     pub kind: StreamKind,
     /// Program number from the PAT entry whose PMT owns this stream.
     /// Apps filtering `Sample`/`Metadata` events by program can build a

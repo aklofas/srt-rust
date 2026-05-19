@@ -17,8 +17,9 @@ use tstrans::config::{
 };
 use tstrans::handle::TST_INVALID_STREAM_HANDLE;
 use tstrans::muxer::{
-    tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_audio_to,
-    tst_muxer_push_subtitle_to, tst_muxer_push_video_to,
+    tst_muxer_close, tst_muxer_open, tst_muxer_pull, tst_muxer_push_audio,
+    tst_muxer_push_audio_to, tst_muxer_push_subtitle, tst_muxer_push_subtitle_to,
+    tst_muxer_push_video_to,
 };
 
 const NAL_IDR: &[u8] = &[0x00, 0x00, 0x00, 0x01, 0x65, 0xBB, 0xBB, 0xBB];
@@ -239,6 +240,71 @@ fn push_subtitle_to_emits_ts_bytes() {
         // Push a tiny WebVTT cue.
         let cue = b"WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nHello\n";
         let rc = tst_muxer_push_subtitle_to(mux, h_sub, cue.as_ptr(), cue.len(), 900);
+        assert_eq!(rc, 0);
+
+        let mut buf = vec![0u8; 64 * 188];
+        let n = tst_muxer_pull(mux, buf.as_mut_ptr(), buf.len());
+        assert!(n >= 188, "expected at least one TS packet, got {n}");
+        assert_eq!(buf[0], 0x47);
+        tst_muxer_close(mux);
+    }
+}
+
+#[test]
+fn push_audio_emits_ts_bytes() {
+    // Bare single-stream shorthand (no handle arg) — resolves only when
+    // exactly one audio stream is configured across all programs. Mirrors
+    // push_audio_to_emits_ts_bytes minus the handle-capture + handle param.
+    unsafe {
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        // Video is needed to satisfy PCR-source resolution; audio cadence
+        // alone isn't always enough.
+        let h_video = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        tst_mux_config_add_audio_stream(cfg, prog, 0x1041, TstAudioCodec::Aac);
+        let mux = tst_muxer_open(cfg);
+        tst_mux_config_free(cfg);
+        assert!(!mux.is_null());
+
+        // Prime with one video IDR so PCR/PSI are established.
+        let rc = tst_muxer_push_video_to(mux, h_video, NAL_IDR.as_ptr(), NAL_IDR.len(), 0, true);
+        assert_eq!(rc, 0);
+        // Now push an audio frame via the bare shorthand.
+        let rc = tst_muxer_push_audio(
+            mux,
+            SYNTHETIC_ADTS.as_ptr(),
+            SYNTHETIC_ADTS.len(),
+            900,
+        );
+        assert_eq!(rc, 0);
+
+        let mut buf = vec![0u8; 64 * 188];
+        let n = tst_muxer_pull(mux, buf.as_mut_ptr(), buf.len());
+        assert!(n >= 188, "expected at least one TS packet, got {n}");
+        assert_eq!(buf[0], 0x47);
+        tst_muxer_close(mux);
+    }
+}
+
+#[test]
+fn push_subtitle_emits_ts_bytes() {
+    // Bare single-stream shorthand (no handle arg) — resolves only when
+    // exactly one subtitle stream is configured across all programs.
+    unsafe {
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        let h_video = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        tst_mux_config_add_subtitle_stream_webvtt(cfg, prog, 0x1054);
+        let mux = tst_muxer_open(cfg);
+        tst_mux_config_free(cfg);
+        assert!(!mux.is_null());
+
+        // Prime with one video IDR.
+        let rc = tst_muxer_push_video_to(mux, h_video, NAL_IDR.as_ptr(), NAL_IDR.len(), 0, true);
+        assert_eq!(rc, 0);
+        // Push a tiny WebVTT cue via the bare shorthand.
+        let cue = b"WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nHello\n";
+        let rc = tst_muxer_push_subtitle(mux, cue.as_ptr(), cue.len(), 900);
         assert_eq!(rc, 0);
 
         let mut buf = vec![0u8; 64 * 188];

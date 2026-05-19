@@ -1154,9 +1154,12 @@ tst_klv_stream_handle_t tst_mux_config_add_klv_stream(struct tst_mux_config_t *c
  * Add an audio elementary stream (no language tag) to the specified program
  * and return its handle.
  *
- * `codec`: one of `TST_AUDIO_CODEC_MP2` (0x03), `TST_AUDIO_CODEC_AAC`
- * (0x0F — ADTS), `TST_AUDIO_CODEC_AAC_LATM` (0x11), or
- * `TST_AUDIO_CODEC_AC3` (0x81).
+ * `codec`: one of the `TstAudioCodec` variants — `Mp2` (MPEG-1 Layer II
+ * audio), `Aac` (AAC in ADTS framing), `AacLatm` (AAC in LATM framing),
+ * or `Ac3` (Dolby AC-3). These C enum values are `0..3` per the
+ * `TstAudioCodec` definition; they are NOT the MPEG-TS PMT `stream_type`
+ * codepoints — the muxer derives the appropriate `stream_type` (and any
+ * required registration descriptor) from the codec choice.
  *
  * The returned `tst_audio_stream_handle_t` is stable across the
  * config→open boundary and across managed-sender reconnects. Pass it to

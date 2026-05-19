@@ -25,6 +25,7 @@ pub(super) mod ts;
 mod types;
 mod sync_ingress;
 mod pmt_classify;
+mod psi_topology;
 
 pub mod low_level;
 

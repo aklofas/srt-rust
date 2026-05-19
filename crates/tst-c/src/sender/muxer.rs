@@ -80,7 +80,35 @@ pub unsafe extern "C" fn tst_muxer_push_video(
         })
 }
 
-/// Push one pre-built KLV blob.
+/// Push one KLV blob onto the muxer's single KLV stream.
+///
+/// `klv` must point to **raw MISB Local Set bytes**. For streams configured
+/// as `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`, the muxer prepends a
+/// 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 §2.12.4.2 before
+/// emitting. **Do not pre-wrap the AU cell on the caller side** —
+/// double-wrapping produces metadata that receivers cannot parse. For
+/// streams configured as `TST_KLV_STREAM_TYPE_PRIVATE_DATA`, the payload
+/// is emitted as-is.
+///
+/// `pts_90khz` is the presentation timestamp in 90 kHz ticks, lives in
+/// the PES header, and is the same value pulled by demux-side consumers.
+///
+/// Single-stream form: the muxer must have exactly one KLV stream
+/// configured. Multi-stream callers use `tst_muxer_push_klv_to` with an
+/// explicit `TstKlvStreamHandle`.
+///
+/// # Errors
+///
+/// - `TST_E_INVALID_USAGE` — no KLV stream configured (`NoKlvStreamsConfigured`).
+/// - `TST_E_INVALID_USAGE` — more than one KLV stream configured
+///   (`AmbiguousTarget` — caller must use `_to` variant).
+/// - `TST_E_KLV_TOO_LARGE` — payload exceeds the per-frame KLV size limit
+///   (`KlvTooLarge`).
+/// - `TST_E_INVALID_CONFIG` — `klv` is null with non-zero `len`.
+///
+/// # C ABI
+///
+/// `tst_muxer_push_klv` — see `crates/tst-c/include/tstrans.h`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_muxer_push_klv(
     p: *mut TstMuxer,

@@ -1233,6 +1233,32 @@ int tst_managed_mux_sender_send_audio_to(struct tst_managed_mux_sender_t *p,
                                          size_t len,
                                          int64_t pts_90khz);
 
+/**
+ * Send one KLV blob through the managed mux sender's single KLV stream
+ * and out the underlying reconnecting transport.
+ *
+ * Same payload contract as `tst_mux_sender_send_klv`: **raw MISB Local
+ * Set bytes**, muxer auto-wraps the AU cell for SynchronousMetadata
+ * streams. Do not pre-wrap.
+ *
+ * `pts_90khz` is the presentation timestamp in 90 kHz ticks. The current
+ * API uses `metadata_service_id = 0x00`.
+ *
+ * Single-stream form: see `tst_managed_mux_sender_send_klv_to` for the
+ * multi-stream variant.
+ *
+ * # Errors
+ *
+ * Routed through `tst_get_last_error()`. Same code set as
+ * `tst_mux_sender_send_klv` plus reconnect-specific transient codes:
+ *
+ * - `TST_E_NOT_AVAILABLE` — transport mid-reconnect (transient; next
+ *   call may succeed).
+ *
+ * # C ABI
+ *
+ * `tst_managed_mux_sender_send_klv` — see `crates/tst-c/include/tstrans.h`.
+ */
 
 int tst_managed_mux_sender_send_klv(struct tst_managed_mux_sender_t *p,
                                     const uint8_t *klv,
@@ -1771,6 +1797,40 @@ int tst_mux_sender_send_audio_to(struct tst_mux_sender_t *p,
                                  size_t len,
                                  int64_t pts_90khz);
 
+/**
+ * Send one KLV blob through the muxer's single KLV stream and out the
+ * transport.
+ *
+ * `klv` must point to **raw MISB Local Set bytes**. For streams configured
+ * as `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`, the muxer prepends a
+ * 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 §2.12.4.2 before
+ * emitting. **Do not pre-wrap the AU cell on the caller side** —
+ * double-wrapping produces metadata that receivers cannot parse. For
+ * streams configured as `TST_KLV_STREAM_TYPE_PRIVATE_DATA`, the payload
+ * is emitted as-is.
+ *
+ * `pts_90khz` is the presentation timestamp in 90 kHz ticks. The current
+ * API uses `metadata_service_id = 0x00` per ST 1402.2 App. B Table 2; a
+ * future entry will expose the field explicitly.
+ *
+ * Single-stream form: the mux sender must have exactly one KLV stream
+ * configured. Multi-stream callers use `tst_mux_sender_send_klv_to` with
+ * an explicit `TstKlvStreamHandle`.
+ *
+ * # Errors
+ *
+ * Routed through `tst_get_last_error()` via the inner `MuxSender`
+ * shell's `record_shell_error`. Common codes:
+ *
+ * - `TST_E_INVALID_USAGE` — no KLV stream configured or ambiguous target.
+ * - `TST_E_KLV_TOO_LARGE` — payload exceeds the per-frame KLV size limit.
+ * - `TST_E_TRANSPORT` — transport-layer failure (closed, timeout, broken pipe).
+ * - `TST_E_INVALID_CONFIG` — `klv` is null with non-zero `len`.
+ *
+ * # C ABI
+ *
+ * `tst_mux_sender_send_klv` — see `crates/tst-c/include/tstrans.h`.
+ */
 
 int tst_mux_sender_send_klv(struct tst_mux_sender_t *p,
                             const uint8_t *klv,
@@ -1949,7 +2009,35 @@ int tst_muxer_push_audio_to(struct tst_muxer_t *p,
                             int64_t pts_90khz);
 
 /**
- * Push one pre-built KLV blob.
+ * Push one KLV blob onto the muxer's single KLV stream.
+ *
+ * `klv` must point to **raw MISB Local Set bytes**. For streams configured
+ * as `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`, the muxer prepends a
+ * 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 §2.12.4.2 before
+ * emitting. **Do not pre-wrap the AU cell on the caller side** —
+ * double-wrapping produces metadata that receivers cannot parse. For
+ * streams configured as `TST_KLV_STREAM_TYPE_PRIVATE_DATA`, the payload
+ * is emitted as-is.
+ *
+ * `pts_90khz` is the presentation timestamp in 90 kHz ticks, lives in
+ * the PES header, and is the same value pulled by demux-side consumers.
+ *
+ * Single-stream form: the muxer must have exactly one KLV stream
+ * configured. Multi-stream callers use `tst_muxer_push_klv_to` with an
+ * explicit `TstKlvStreamHandle`.
+ *
+ * # Errors
+ *
+ * - `TST_E_INVALID_USAGE` — no KLV stream configured (`NoKlvStreamsConfigured`).
+ * - `TST_E_INVALID_USAGE` — more than one KLV stream configured
+ *   (`AmbiguousTarget` — caller must use `_to` variant).
+ * - `TST_E_KLV_TOO_LARGE` — payload exceeds the per-frame KLV size limit
+ *   (`KlvTooLarge`).
+ * - `TST_E_INVALID_CONFIG` — `klv` is null with non-zero `len`.
+ *
+ * # C ABI
+ *
+ * `tst_muxer_push_klv` — see `crates/tst-c/include/tstrans.h`.
  */
  int tst_muxer_push_klv(struct tst_muxer_t *p, const uint8_t *klv, size_t len, int64_t pts_90khz);
 

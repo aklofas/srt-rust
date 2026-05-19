@@ -1,0 +1,314 @@
+//! H.264 / AVC parameter-set decoders (private; re-exported through [`super`]).
+
+use super::model::{EntropyCodingMode, H264ParameterSets, H264Pps, H264Sps};
+use crate::codec::{
+    ChromaFormat, CodecParseError, ColorInfo, ColourPrimaries, MatrixCoefficients, Rational,
+    TransferCharacteristics,
+};
+use crate::mpegts::demux::event::NalUnit;
+
+use h264_reader::nal::sps::SeqParameterSet;
+use h264_reader::rbsp::{BitRead, BitReader, ByteReader};
+
+/// Parse all SPS/PPS NAL units from a slice of [`NalUnit`]s.
+///
+/// Behavior is partial-success-tolerant: bad parameter set NALs emit a
+/// `tracing::warn!` and are skipped. If every parameter set NAL in the
+/// input failed, the function returns `Err`. Inputs that contain no
+/// parameter set NALs (e.g., non-IDR access units, H.265-only slices)
+/// return `Ok(H264ParameterSets::default())`.
+pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H264ParameterSets, CodecParseError> {
+    let mut out = H264ParameterSets::default();
+    let mut had_param_set = false;
+    let mut all_failed = true;
+
+    for nal in nals {
+        let NalUnit::H264 {
+            nal_type, payload, ..
+        } = nal
+        else {
+            continue;
+        };
+        match *nal_type {
+            7 => {
+                had_param_set = true;
+                match parse_sps(payload) {
+                    Ok(sps) => {
+                        out.sps_by_id.insert(sps.seq_parameter_set_id, sps);
+                        all_failed = false;
+                    }
+                    Err(e) => {
+                        tracing::warn!(target: "tst_core::codec::h264",
+                            error = ?e, "skipping malformed SPS");
+                    }
+                }
+            }
+            8 => {
+                had_param_set = true;
+                match parse_pps(payload) {
+                    Ok(pps) => {
+                        out.pps_by_id.insert(pps.pic_parameter_set_id, pps);
+                        all_failed = false;
+                    }
+                    Err(e) => {
+                        tracing::warn!(target: "tst_core::codec::h264",
+                            error = ?e, "skipping malformed PPS");
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if had_param_set && all_failed {
+        return Err(CodecParseError::EngineError(
+            "every parameter set NAL in the input failed to parse".into(),
+        ));
+    }
+    Ok(out)
+}
+
+/// Parse a single PPS RBSP. Same input contract as `parse_sps`. Strict
+/// (returns Err on first failure). Note: this standalone variant cannot
+/// validate that `seq_parameter_set_id` references a real SPS — that
+/// check happens in [`parse_parameter_sets`] which has the SPS context.
+pub fn parse_pps(rbsp: &[u8]) -> Result<H264Pps, CodecParseError> {
+    if rbsp.is_empty() {
+        return Err(CodecParseError::TruncatedRbsp {
+            offset_bits: 0,
+            needed_bits: 8,
+        });
+    }
+    // ByteReader::without_skip strips emulation-prevention-three bytes,
+    // matching the same setup as parse_sps. We only need the first three
+    // fields (pic_parameter_set_id, seq_parameter_set_id,
+    // entropy_coding_mode_flag) — all three are at the very start of the
+    // PPS RBSP, so we never need SPS context to read them.
+    let byte_reader = ByteReader::without_skip(std::io::Cursor::new(rbsp));
+    let mut bit_reader = BitReader::new(byte_reader);
+    let pps_id = bit_reader
+        .read_ue("pic_parameter_set_id")
+        .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
+    let sps_id = bit_reader
+        .read_ue("seq_parameter_set_id")
+        .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
+    let cabac = bit_reader
+        .read_bool("entropy_coding_mode_flag")
+        .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
+    // Both IDs are constrained to [0, 255] by the H.264 spec (Table 7-1).
+    let pic_parameter_set_id =
+        u8::try_from(pps_id).map_err(|_| CodecParseError::ReservedValue {
+            field: "pic_parameter_set_id",
+            value: pps_id,
+        })?;
+    let seq_parameter_set_id =
+        u8::try_from(sps_id).map_err(|_| CodecParseError::ReservedValue {
+            field: "seq_parameter_set_id",
+            value: sps_id,
+        })?;
+    Ok(H264Pps {
+        pic_parameter_set_id,
+        seq_parameter_set_id,
+        entropy_coding_mode: if cabac {
+            EntropyCodingMode::Cabac
+        } else {
+            EntropyCodingMode::Cavlc
+        },
+        raw_rbsp: rbsp.to_vec(),
+    })
+}
+
+/// Parse a single SPS RBSP. Input contract: RBSP body only — Annex B
+/// start code stripped, NAL header byte stripped, emulation prevention
+/// bytes preserved (matches `NalUnit::H264 { payload }`).
+pub fn parse_sps(rbsp: &[u8]) -> Result<H264Sps, CodecParseError> {
+    if rbsp.is_empty() {
+        return Err(CodecParseError::TruncatedRbsp {
+            offset_bits: 0,
+            needed_bits: 8,
+        });
+    }
+    // ByteReader::without_skip strips emulation-prevention-three bytes
+    // (the 0x03 escaping in the stream), producing clean RBSP for the
+    // bit-level parser. No header bytes remain since callers strip the
+    // 1-byte NAL header before passing the payload here.
+    let byte_reader = ByteReader::without_skip(std::io::Cursor::new(rbsp));
+    let bit_reader = BitReader::new(byte_reader);
+    let parsed = SeqParameterSet::from_bits(bit_reader)
+        .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
+    convert_sps(&parsed, rbsp)
+}
+
+fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> Result<H264Sps, CodecParseError> {
+    // pixel_dimensions() implements the spec crop math correctly.
+    // Propagate errors (FieldValueTooLarge, CroppingError) rather than
+    // silently returning (0, 0) on malformed streams.
+    let (width, height) = p
+        .pixel_dimensions()
+        .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
+
+    let chroma_format = match p.chroma_info.chroma_format {
+        h264_reader::nal::sps::ChromaFormat::Monochrome => ChromaFormat::Monochrome,
+        h264_reader::nal::sps::ChromaFormat::YUV420 => ChromaFormat::Yuv420,
+        h264_reader::nal::sps::ChromaFormat::YUV422 => ChromaFormat::Yuv422,
+        h264_reader::nal::sps::ChromaFormat::YUV444 => ChromaFormat::Yuv444,
+        // H.264 V15 §7.4.2.1.1: chroma_format_idc shall be in 0..=3.
+        // h264-reader surfaces 4..=255 as Invalid(u32). Match the posture
+        // of `validate_bit_depth_minus8` (mod.rs:282) and reject — the
+        // downstream cropping math (lines 248-259) and chroma bit-depth
+        // (line 281) both assume a spec-valid chroma_format_idc.
+        h264_reader::nal::sps::ChromaFormat::Invalid(v) => {
+            return Err(CodecParseError::ReservedValue {
+                field: "chroma_format_idc",
+                value: v,
+            });
+        }
+    };
+
+    let frame_mbs_only = matches!(
+        p.frame_mbs_flags,
+        h264_reader::nal::sps::FrameMbsFlags::Frames
+    );
+
+    // Convert h264-reader's chroma-unit crop offsets into luma samples per
+    // H.264 §6.4. step_x = SubWidthC, step_y = SubHeightC * (2 -
+    // frame_mbs_only_flag) — matches the math in
+    // `SeqParameterSet::pixel_dimensions` so our (coded - cropped) reverses
+    // exactly what the post-crop dimensions discarded.
+    let mul: u32 = match p.frame_mbs_flags {
+        h264_reader::nal::sps::FrameMbsFlags::Fields { .. } => 2,
+        h264_reader::nal::sps::FrameMbsFlags::Frames => 1,
+    };
+    let vsub: u32 = if p.chroma_info.chroma_format == h264_reader::nal::sps::ChromaFormat::YUV420 {
+        1
+    } else {
+        0
+    };
+    let hsub: u32 = if p.chroma_info.chroma_format == h264_reader::nal::sps::ChromaFormat::YUV420
+        || p.chroma_info.chroma_format == h264_reader::nal::sps::ChromaFormat::YUV422
+    {
+        1
+    } else {
+        0
+    };
+    let step_x: u32 = 1 << hsub;
+    let step_y: u32 = mul << vsub;
+    let (crop_left, crop_right, crop_top, crop_bottom) = match p.frame_cropping.as_ref() {
+        Some(c) => (
+            c.left_offset.saturating_mul(step_x),
+            c.right_offset.saturating_mul(step_x),
+            c.top_offset.saturating_mul(step_y),
+            c.bottom_offset.saturating_mul(step_y),
+        ),
+        None => (0, 0, 0, 0),
+    };
+
+    Ok(H264Sps {
+        seq_parameter_set_id: p.seq_parameter_set_id.id(),
+        width,
+        height,
+        profile_idc: p.profile_idc.into(),
+        level_idc: p.level_idc,
+        // ConstraintFlags is a newtype over u8 that implements Into<u8>.
+        constraint_set_flags: p.constraint_flags.into(),
+        bit_depth_luma: 8 + p.chroma_info.bit_depth_luma_minus8,
+        bit_depth_chroma: 8 + p.chroma_info.bit_depth_chroma_minus8,
+        chroma_format,
+        frame_mbs_only,
+        frame_rate: extract_frame_rate(p),
+        fixed_frame_rate: extract_fixed_frame_rate(p),
+        has_b_frames: extract_has_b_frames(p),
+        color: extract_color(p),
+        crop_left,
+        crop_right,
+        crop_top,
+        crop_bottom,
+        raw_rbsp: rbsp.to_vec(),
+    })
+}
+
+fn extract_frame_rate(p: &SeqParameterSet) -> Option<Rational> {
+    let vui = p.vui_parameters.as_ref()?;
+    let timing = vui.timing_info.as_ref()?;
+    // H.264 §E.2.1: frame_rate = time_scale / (2 * num_units_in_tick)
+    // when fixed_frame_rate_flag is set. We report the ratio regardless
+    // so callers can decide how to interpret it.
+    Some(Rational {
+        num: timing.time_scale,
+        den: 2 * timing.num_units_in_tick,
+    })
+}
+
+fn extract_fixed_frame_rate(p: &SeqParameterSet) -> bool {
+    p.vui_parameters
+        .as_ref()
+        .and_then(|v| v.timing_info.as_ref())
+        .map(|t| t.fixed_frame_rate_flag)
+        .unwrap_or(false)
+}
+
+fn extract_has_b_frames(p: &SeqParameterSet) -> bool {
+    // Prefer the explicit VUI bitstream_restrictions field when present.
+    if let Some(vui) = p.vui_parameters.as_ref() {
+        if let Some(restr) = vui.bitstream_restrictions.as_ref() {
+            return restr.max_num_reorder_frames > 0;
+        }
+    }
+    // Fallback: Baseline (66) never uses B-frames by definition.
+    let profile: u8 = p.profile_idc.into();
+    profile != 66
+}
+
+fn extract_color(p: &SeqParameterSet) -> Option<ColorInfo> {
+    let vui = p.vui_parameters.as_ref()?;
+
+    let (full_range, primaries, transfer, matrix) = if let Some(vs) = vui.video_signal_type.as_ref()
+    {
+        let full_range = vs.video_full_range_flag;
+        let (prim, trc, mat) = match &vs.colour_description {
+            Some(cd) => (
+                ColourPrimaries::from_h273(cd.colour_primaries),
+                TransferCharacteristics::from_h273(cd.transfer_characteristics),
+                MatrixCoefficients::from_h273(cd.matrix_coefficients),
+            ),
+            None => (
+                ColourPrimaries::Unspecified,
+                TransferCharacteristics::Unspecified,
+                MatrixCoefficients::Unspecified,
+            ),
+        };
+        (full_range, prim, trc, mat)
+    } else {
+        (
+            false,
+            ColourPrimaries::Unspecified,
+            TransferCharacteristics::Unspecified,
+            MatrixCoefficients::Unspecified,
+        )
+    };
+
+    let chroma_loc = vui
+        .chroma_loc_info
+        .as_ref()
+        .map(|c| c.chroma_sample_loc_type_top_field as u8);
+
+    // AspectRatioInfo::get() returns None for Unspecified and invalid
+    // Extended(0,*)/(*,0) cases — preserves spec semantics cleanly.
+    let sample_aspect_ratio =
+        vui.aspect_ratio_info
+            .as_ref()
+            .and_then(|ar| ar.get())
+            .map(|(w, h)| Rational {
+                num: w as u32,
+                den: h as u32,
+            });
+
+    Some(ColorInfo {
+        primaries,
+        transfer,
+        matrix,
+        full_range,
+        chroma_loc,
+        sample_aspect_ratio,
+    })
+}

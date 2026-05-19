@@ -7,6 +7,73 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Codex Waves 1-6 re-review fixes (docs/plans/2026-05-19-codex-waves-1-6-rereview-fixes.md)
+
+**Three follow-up fixes from a 2026-05-19 Codex comprehensive re-review of
+Waves 1-6** (`docs/refactor-1/_codex-waves-1-6-comprehensive-rereview-report.md`),
+performed after plan #92 closed the first round of Codex Wave 6 findings:
+
+**Fixed:**
+
+- **C ABI `TstError::NotAvailable` / `TstError::NotFound` now record fresh
+  last-error state before returning.** 17 C ABI sites in `crates/tst-c/src/`
+  (12 NotAvailable socket_stats accessors + 5 NotFound per-PID codec_stats
+  accessors) returned the negative code via `TstError::Foo as i32` without
+  calling `set_last_error()` first, leaving stale message visible to
+  `tst_get_last_error()`. Each site now uses `record_not_available(msg)` or
+  `record_not_found(msg)` — new `pub(crate)` helpers in
+  `crates/tst-c/src/error.rs` paired with the existing `record_shell_error`
+  / `record_mux_error` / `record_eos` family. 4 new unit tests prove the
+  helpers overwrite prior unrelated last-error state.
+
+- **Single-stream KLV C ABI entry points now document the raw-LS-bytes /
+  no-AU-cell-pre-wrap contract.** `tst_muxer_push_klv`,
+  `tst_mux_sender_send_klv`, and `tst_managed_mux_sender_send_klv` had
+  thin or absent rustdoc, leaving binding authors at risk of pre-wrapping
+  the 5-byte `Metadata_AU_cell` header (which the muxer auto-prepends for
+  `SynchronousMetadata` streams per ITU-T H.222.0 V9 §2.12.4.2 —
+  double-wrapping produces unparseable metadata). New rustdoc on each
+  entry mirrors the contract documented in
+  `memory/reference_klv_au_cell_caller_responsibility.md`. Regenerated
+  `tstrans.h` propagates the new blocks into the MUX SENDER section.
+
+- **User-facing docs refreshed for Waves 2-4 API renames.** `guide-mpegts-mux.md`'s
+  `push_video` / `push_klv` signature box updated from raw `i64` PTS to
+  `Pts90khz` (Wave 2 typed boundary); its `push_klv` example updated to
+  include the now-required `metadata_service_id: u8` 3rd arg.
+  `guide-klv.md` updated from `EncodeOptions` to `EncodeConfig` (Wave 2's
+  `*Options→*Config` rename). `architecture.md`, `guide-pipeline.md`, and
+  `guide-mpegts-demux.md` updated from `pipeline::pairing` to
+  `tst_pipeline::ext::pairing` (Wave 4 module move). Plus a bonus stale
+  `pts_to_duration(pts_90khz: i64)` signature in `guide-mpegts-demux.md`
+  caught and updated to `Pts90khz`. Historical references in
+  `deferred-features.md` and the "potential" cross-reference at
+  `guide-mpegts-demux.md:409` intentionally left as-is — these describe
+  the deferral itself.
+
+**New CI ratchet:**
+
+- `scripts/check-no-direct-not-available-not-found-cast.sh` (the **10th**
+  bash ratchet) forbids the `TstError::NotAvailable as i32` /
+  `TstError::NotFound as i32` direct-cast pattern in `crates/tst-c/src/`.
+  Excludes `crates/tst-c/src/error.rs` (where the helpers' own bodies
+  legitimately contain the cast paired with `set_last_error`). Wired
+  into `.github/workflows/ci.yml` alongside the existing 9.
+
+**Public API impact:**
+
+- Zero public Rust API delta on all 3 ratcheted crates (`tst-core`,
+  `tst-pipeline`, `tst-srt`). New helpers are `pub(crate)`.
+- `#[non_exhaustive]` BASELINE in CI: unchanged at 113.
+- `tstrans.h` byte delta: +~90 lines from the 3 new KLV docstring blocks
+  (cbindgen propagates Rust rustdoc into the header), 0 symbol changes.
+
+**Test coverage:** 4 new unit tests in `crates/tst-c/src/error.rs` covering
+the 2 new helpers' code-and-message overwrite behavior. All 10 bash
+ratchets green. All 3 cargo-public-api baselines clean.
+
+---
+
 ## [Unreleased] — Codex Wave 6 validation fixes (docs/plans/2026-05-19-codex-wave-6-validation-fixes.md)
 
 **Three follow-up fixes to Wave 6 sign-off**, surfaced by a 2026-05-19 Codex static

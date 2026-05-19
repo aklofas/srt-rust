@@ -127,6 +127,11 @@ use tst_core::transport::{Transport, TransportCancel, TransportError};
 ///   - `close`: silent no-op; the `closed` flag is already latched before
 ///     the lock attempt, so all subsequent operations exit cleanly — no
 ///     panic.
+///   - `cancel_handle`: clones `Arc`s only — no `inner` lock taken,
+///     poison-immune by construction.
+///   - `socket_stats`: returns `None` on poison (pre-existing Wave 4.B
+///     shape; `lock().ok()` silently swallows the error the same way
+///     `None` inner is handled).
 /// - **Gap-accumulator lock** (poisoned mid-mutation): `send_managed` /
 ///   `drain_gap_if_alive` panic with `BUG: gap lock poisoned ...` because
 ///   the gap buffer holds bytes queued for replay — silently routing past
@@ -180,10 +185,18 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         }
         // Pre-check size against inner before queuing — oversized messages
         // would otherwise sit in the gap buffer and fail every drain.
+        //
+        // Plan F mutex sweep (recoverable path): poisoned inner lock during the
+        // size pre-check routes to TransportError::Broken with a site-specific
+        // diagnostic. Wave 4.B's send_managed lines 225/288/365 use the same shape.
         let max = self
             .inner
             .lock()
-            .unwrap()
+            .map_err(|_| {
+                TransportError::Broken(
+                    "reconnect: inner lock poisoned during size pre-check".into(),
+                )
+            })?
             .as_ref()
             .map(|t| t.max_payload())
             .unwrap_or(SRT_TS_BUNDLE_BYTES);
@@ -553,7 +566,8 @@ mod cancel_tests {
                 let _guard = inner_clone.lock().unwrap();
                 panic!("intentional poison");
             });
-            let _ = h.join(); // Err — thread panicked; mutex is now poisoned
+            h.join()
+                .expect_err("poison thread must panic to poison the mutex");
         }
 
         // After poison, all three methods must NOT panic and must return the

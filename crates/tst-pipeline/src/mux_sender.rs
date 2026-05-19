@@ -51,12 +51,15 @@ pub struct MuxSenderStats {
 ///
 /// # Panics
 ///
-/// All `&self` methods (`send_*`, `*_handles`, `stats`, `reset_stats`,
-/// `close`, `is_alive`) acquire an internal [`Mutex`] and panic if the
-/// lock has been poisoned by a previous panic in another thread inside
-/// the same `MuxSender`. This is the standard Rust `Mutex` behavior;
-/// a poisoned lock signals that the muxer state may be inconsistent and
-/// the `MuxSender` should be discarded.
+/// No method panics on a poisoned inner mutex. If a prior call panicked
+/// mid-mutation and poisoned the lock, each method falls back gracefully:
+/// fallible methods (`send_*`, `*_handles_for_program`) return a typed
+/// [`MuxSenderError`] with kind [`ShellErrorKind::TransportBroken`] (or
+/// [`MuxError::ProgramNotFound`]); infallible methods (`*_handles`,
+/// `stats`, `socket_stats`, `stream_codec_stats`, `reset_stats`,
+/// `is_alive`) return the corresponding safe default (`Vec::new()`,
+/// `MuxSenderStats::default()`, `None`, silent no-op, `false`). `close`
+/// and `Drop` already used `if let Ok` before this policy was formalized.
 ///
 /// # Closing
 ///
@@ -537,18 +540,36 @@ impl<T: Transport> MuxSender<T> {
     /// declaration order. Allocates an owned Vec so callers don't need
     /// to hold the lock.
     pub fn video_handles(&self) -> Vec<VideoStreamHandle> {
-        self.inner.lock().unwrap().muxer.video_handles()
+        // Plan F mutex sweep (safe-default on poison): poisoned inner lock
+        // returns empty handle list — matches the "no live muxer state" answer.
+        // Precedent: reconnect/mod.rs:419-422 (socket_stats → None on poison).
+        // Per Plan F Decision F2.
+        if let Ok(inner) = self.inner.lock() {
+            inner.muxer.video_handles()
+        } else {
+            Vec::new()
+        }
     }
 
     /// Snapshot all KLV stream handles for this sender's muxer.
     pub fn klv_handles(&self) -> Vec<KlvStreamHandle> {
-        self.inner.lock().unwrap().muxer.klv_handles()
+        // Plan F mutex sweep (safe-default on poison) — see video_handles for rationale.
+        if let Ok(inner) = self.inner.lock() {
+            inner.muxer.klv_handles()
+        } else {
+            Vec::new()
+        }
     }
 
     /// Snapshot all audio stream handles for this sender's muxer, in
     /// declaration order.
     pub fn audio_handles(&self) -> Vec<AudioStreamHandle> {
-        self.inner.lock().unwrap().muxer.audio_handles()
+        // Plan F mutex sweep (safe-default on poison) — see video_handles for rationale.
+        if let Ok(inner) = self.inner.lock() {
+            inner.muxer.audio_handles()
+        } else {
+            Vec::new()
+        }
     }
 
     /// Audio stream handles for the named program, in declaration order.
@@ -573,7 +594,12 @@ impl<T: Transport> MuxSender<T> {
 
     /// Snapshot all subtitle stream handles for this sender's muxer.
     pub fn subtitle_handles(&self) -> Vec<SubtitleStreamHandle> {
-        self.inner.lock().unwrap().muxer.subtitle_handles()
+        // Plan F mutex sweep (safe-default on poison) — see video_handles for rationale.
+        if let Ok(inner) = self.inner.lock() {
+            inner.muxer.subtitle_handles()
+        } else {
+            Vec::new()
+        }
     }
 
     /// Subtitle stream handles for the named program, in declaration
@@ -596,7 +622,11 @@ impl<T: Transport> MuxSender<T> {
     /// Return a point-in-time stats snapshot. `per_stream` is delegated from
     /// the inner `Muxer`; `pending_*` fields are live gauges.
     pub fn stats(&self) -> MuxSenderStats {
-        let inner = self.inner.lock().unwrap();
+        // Plan F mutex sweep (safe-default on poison): zeroed stats matches
+        // "no live state available." Per Plan F Decision F2.
+        let Ok(inner) = self.inner.lock() else {
+            return MuxSenderStats::default();
+        };
         let mux_stats = inner.muxer.stats();
         let pending_bytes_queued: u64 = inner.pending_bytes.iter().map(|c| c.len() as u64).sum();
         let pending_chunks_queued = inner.pending_bytes.len() as u64;
@@ -621,7 +651,13 @@ impl<T: Transport> MuxSender<T> {
     /// `tst_mux_sender_get_socket_stats` — see
     /// `crates/tst-c/include/tstrans.h`.
     pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
-        self.inner.lock().unwrap().transport.socket_stats()
+        // Plan F mutex sweep (safe-default on poison): mirrors reconnect/mod.rs
+        // verbatim — None on poison, indistinguishable from "no live socket."
+        // C ABI surfaces this as TST_E_NOT_AVAILABLE (-13).
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|i| i.transport.socket_stats())
     }
 
     /// Per-PID codec-specific counters. Delegates to the inner
@@ -647,17 +683,26 @@ impl<T: Transport> MuxSender<T> {
         &self,
         pid: u16,
     ) -> Option<tst_core::mpegts::stats::StreamCodecStats> {
-        self.inner.lock().unwrap().muxer.stream_codec_stats(pid)
+        // Plan F mutex sweep (safe-default on poison): None on poison —
+        // same shape as socket_stats. Per Plan F Decision F2.
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|i| i.muxer.stream_codec_stats(pid))
     }
 
     /// Zero all flow counters and delegate to `Muxer::reset_stats`.
     /// `pending_bytes_queued` / `pending_chunks_queued` are live gauges and
     /// are NOT cleared.
     pub fn reset_stats(&self) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.bytes_sent = 0;
-        inner.packets_sent = 0;
-        inner.muxer.reset_stats();
+        // Plan F mutex sweep (silent no-op on poison): reset_stats on a
+        // poisoned state is naturally a no-op since the stats are already
+        // lost. Matches close() + Drop shape verbatim.
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.bytes_sent = 0;
+            inner.packets_sent = 0;
+            inner.muxer.reset_stats();
+        }
     }
 
     /// Close the sender. Idempotent. Best-effort drains any pending
@@ -716,8 +761,13 @@ impl<T: Transport> MuxSender<T> {
 
     #[must_use]
     pub fn is_alive(&self) -> bool {
-        let inner = self.inner.lock().unwrap();
-        !inner.closed && inner.transport.is_alive()
+        // Plan F mutex sweep (safe-default on poison): poisoned state is not
+        // alive. False matches the "wrapper unusable" answer. Per Decision F2.
+        if let Ok(inner) = self.inner.lock() {
+            !inner.closed && inner.transport.is_alive()
+        } else {
+            false
+        }
     }
 }
 
@@ -1495,38 +1545,51 @@ mod cancel_tests {
         }
     }
 
+    /// Build a `MuxerConfig` with one stream of every type under program 1.
+    /// This is the canonical config shared by Tasks 2 and 3 poisoned-lock
+    /// regression tests — stream handle indices are deterministic for a given
+    /// config layout, so both tests can use handles snapshotted from any
+    /// sender built from this config.
+    fn all_streams_config() -> MuxerConfig {
+        use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, SubtitleCodec};
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+        prog.add_audio(0x102, AudioCodec::Aac);
+        prog.add_subtitle(0x103, SubtitleCodec::WebVttInTs);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    }
+
+    /// Create a `MuxSender<PanicOnSend>` whose inner mutex has been
+    /// poisoned. Poison mechanism: a spawned thread calls `send_video`
+    /// which reaches `transport.send_bytes`, which panics while holding
+    /// the `MutexGuard`, auto-poisoning `Inner` during stack unwinding.
+    ///
+    /// The returned `Arc` is shared-ownership so callers can invoke
+    /// methods on the already-poisoned value without taking ownership.
+    fn poison_sender() -> Arc<MuxSender<PanicOnSend>> {
+        let sender = Arc::new(MuxSender::new(PanicOnSend, all_streams_config()).unwrap());
+        let s = sender.clone();
+        let h = std::thread::spawn(move || {
+            // Minimal Annex-B IDR NAL — the muxer emits TS packets into
+            // drain_muxer, which calls send_bytes, which panics.
+            let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+            let _ = s.send_video(&nal, Pts90khz::new(0), true);
+        });
+        let _ = h.join(); // panics; inner is now poisoned
+        sender
+    }
+
     /// PIPE-02 secondary regression: explicit `close()` on a `MuxSender`
     /// whose inner mutex was poisoned by a panic-during-send must NOT
     /// itself panic — it returns silently via the `if let Ok` branch,
     /// matching `Drop`'s graceful poisoned-lock catch.
     #[test]
     fn close_does_not_panic_on_poisoned_lock() {
-        let cfg = {
-            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
-            prog.add_video(0x100, VideoCodec::H264);
-            let mut b = MuxerConfig::builder();
-            b.add_program(prog.build());
-            b.build().unwrap()
-        };
-        let sender = Arc::new(MuxSender::new(PanicOnSend, cfg).unwrap());
-
-        // Poison the inner mutex: spawn a thread whose `send_video` call
-        // dives into `transport.send_bytes`, which panics. The Mutex auto-
-        // poisons during stack unwinding because the MutexGuard is on the
-        // panicking frame.
-        let s_panic = sender.clone();
-        let handle = std::thread::spawn(move || {
-            // Minimal Annex-B IDR NAL — the muxer will emit a bundle into
-            // drain_muxer, which calls transport.send_bytes, which panics.
-            let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
-            let _ = s_panic.send_video(&nal, Pts90khz::new(0), true);
-        });
-        let _ = handle.join(); // ignore the thread's panic payload
-
-        // Pre-Task-5: this panics via `.unwrap()` on the poisoned lock.
-        // Post-Task-5: returns silently via `if let Ok(mut inner)`.
         // Surviving the call IS the assertion.
-        sender.close();
+        poison_sender().close();
     }
 
     /// Wave 6.F Task 2 regression: every fallible-return method on
@@ -1534,42 +1597,20 @@ mod cancel_tests {
     /// of panicking. The 8 `send_*` methods must return a `MuxSenderError`
     /// whose kind is `ShellErrorKind::TransportBroken`; the 2
     /// `*_handles_for_program` methods must return `MuxError::ProgramNotFound`.
-    ///
-    /// Poison mechanism: same as `close_does_not_panic_on_poisoned_lock`
-    /// above — a spawned thread calls `send_video` with `PanicOnSend`, which
-    /// panics inside `transport.send_bytes` while the `MutexGuard` is live,
-    /// auto-poisoning `inner`.
     #[test]
     fn mux_sender_inner_lock_poisoned_returns_broken_error() {
-        use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, SubtitleCodec};
-        // Configure one of every stream type so all 10 methods are reachable.
-        let cfg = {
-            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
-            prog.add_video(0x100, VideoCodec::H264);
-            prog.add_klv(0x101, KlvStreamType::PrivateData, false);
-            prog.add_audio(0x102, AudioCodec::Aac);
-            prog.add_subtitle(0x103, SubtitleCodec::WebVttInTs);
-            let mut b = MuxerConfig::builder();
-            b.add_program(prog.build());
-            b.build().unwrap()
-        };
-        let sender = Arc::new(MuxSender::new(PanicOnSend, cfg).unwrap());
+        // Snapshot handles from a fresh (unpoisoned) sender with the same
+        // config — stream handles are packed indices deterministic for a given
+        // config layout, so any sender built from all_streams_config() has the
+        // same handles.
+        let fresh = MuxSender::new(PanicOnSend, all_streams_config()).unwrap();
+        let video_h = fresh.video_handles()[0];
+        let klv_h = fresh.klv_handles()[0];
+        let audio_h = fresh.audio_handles()[0];
+        let subtitle_h = fresh.subtitle_handles()[0];
+        drop(fresh);
 
-        // Snapshot handles before poisoning — the poisoned sender can't return
-        // them from `*_handles()` without panicking, so grab them first.
-        let video_h = sender.video_handles()[0];
-        let klv_h = sender.klv_handles()[0];
-        let audio_h = sender.audio_handles()[0];
-        let subtitle_h = sender.subtitle_handles()[0];
-
-        // Poison the inner mutex via PanicOnSend — identical setup to
-        // `close_does_not_panic_on_poisoned_lock` above.
-        let s_poison = sender.clone();
-        let handle = std::thread::spawn(move || {
-            let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
-            let _ = s_poison.send_video(&nal, Pts90khz::new(0), true);
-        });
-        let _ = handle.join(); // panics; inner is now poisoned
+        let sender = poison_sender();
 
         // --- 8 send_* methods: must return TransportBroken, not panic ---
 
@@ -1658,5 +1699,67 @@ mod cancel_tests {
             matches!(err, MuxError::ProgramNotFound { program_number: 1 }),
             "subtitle_handles_for_program: expected ProgramNotFound{{1}}, got: {err:?}"
         );
+    }
+
+    /// Wave 6.F Task 3 regression: every infallible-return method on a
+    /// `MuxSender` with a poisoned inner mutex returns a safe default instead
+    /// of panicking. Safe defaults match the "no live muxer state" answer per
+    /// Plan F Decision F2.
+    ///
+    /// Uses the same `poison_sender()` helper as Task 2 — same poison
+    /// mechanism, same config layout.
+    #[test]
+    fn mux_sender_inner_lock_poisoned_returns_safe_default() {
+        let sender = poison_sender();
+
+        // *_handles → empty Vec
+        assert!(
+            sender.video_handles().is_empty(),
+            "video_handles: expected empty vec on poisoned lock"
+        );
+        assert!(
+            sender.klv_handles().is_empty(),
+            "klv_handles: expected empty vec on poisoned lock"
+        );
+        assert!(
+            sender.audio_handles().is_empty(),
+            "audio_handles: expected empty vec on poisoned lock"
+        );
+        assert!(
+            sender.subtitle_handles().is_empty(),
+            "subtitle_handles: expected empty vec on poisoned lock"
+        );
+
+        // stats → MuxSenderStats::default() (zeroed)
+        let s = sender.stats();
+        assert_eq!(
+            s.bytes_sent, 0,
+            "stats.bytes_sent should be 0 on poisoned lock"
+        );
+        assert_eq!(
+            s.packets_sent, 0,
+            "stats.packets_sent should be 0 on poisoned lock"
+        );
+
+        // socket_stats → None
+        assert!(
+            sender.socket_stats().is_none(),
+            "socket_stats: expected None on poisoned lock"
+        );
+
+        // stream_codec_stats → None (any PID)
+        assert!(
+            sender.stream_codec_stats(0x100).is_none(),
+            "stream_codec_stats: expected None on poisoned lock"
+        );
+
+        // is_alive → false
+        assert!(
+            !sender.is_alive(),
+            "is_alive: expected false on poisoned lock"
+        );
+
+        // reset_stats → must not panic (call and proceed)
+        sender.reset_stats();
     }
 }

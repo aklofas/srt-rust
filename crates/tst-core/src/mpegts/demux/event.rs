@@ -138,7 +138,7 @@ pub enum SamplePayload {
         payload: Vec<u8>,
     },
     Unknown {
-        stream_type: u8,
+        stream_type: StreamTypeCode,
         raw: Vec<u8>,
     },
 }

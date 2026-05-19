@@ -274,7 +274,7 @@ impl super::demuxer::Demuxer {
                             pts,
                             dts: pes.dts,
                             payload: SamplePayload::Unknown {
-                                stream_type: 0x15,
+                                stream_type: StreamTypeCode::from_byte(0x15),
                                 raw,
                             },
                         });
@@ -323,7 +323,7 @@ impl super::demuxer::Demuxer {
                     pts,
                     dts: pes.dts,
                     payload: SamplePayload::Unknown {
-                        stream_type,
+                        stream_type: StreamTypeCode::from_byte(stream_type),
                         raw: pes.payload,
                     },
                 });

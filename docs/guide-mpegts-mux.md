@@ -298,8 +298,8 @@ For a 4 Mbps encoded video plus low-rate KLV that lands around
 ## `push_video` / `push_klv` contract
 
 ```text
-push_video(nal: &[u8], pts_90khz: i64, key_frame: bool)         -> Result<(), MuxError>
-push_klv(klv: &[u8], pts_90khz: i64, metadata_service_id: u8)   -> Result<(), MuxError>
+push_video(nal: &[u8], pts: Pts90khz, key_frame: bool)                    -> Result<(), MuxError>
+push_klv(klv: &[u8], pts: Pts90khz, metadata_service_id: u8)              -> Result<(), MuxError>
 ```
 
 Required:
@@ -368,7 +368,7 @@ fn drain_pattern() -> Result<(), Box<dyn std::error::Error>> {
     let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0x00];
     mux.push_video(&nal, Pts90khz::new(0), true)?;
     let klv = vec![0xAB; 50];
-    mux.push_klv(&klv, Pts90khz::new(0))?;
+    mux.push_klv(&klv, Pts90khz::new(0), 0x00)?;
     loop {
         let n = mux.pull(&mut buf);
         if n == 0 {

@@ -89,7 +89,7 @@ Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux
 | `NonConformantIssue` | `StreamTypeMismatchSyncOnAsyncPid`, `StreamTypeMismatchAsyncOnSyncPid`, `MissingMetadataDescriptor`, `PcrAnomaly { delta }`, `PsiChecksumMismatch { pid }`, `PusiMidPes`, `PidReusedAcrossPrograms { pid, programs }`, `SubtitleMissingDescriptor { pid }`, `SubtitleDescriptorMalformed { pid, tag }` (reserved — not currently emitted), `Other(String)`. |
 | `DiscontinuityKind` | `ContinuityJump { expected, observed }`, `PesOversize { pid }`, `PesTotalOversize`, `AdaptationFieldFlag`. |
 | `StrictMode` | `Off` (default), `TimingOnly`, `DescriptorsOnly`, `Full`. |
-| `pts_to_duration(pts_90khz: i64) -> Duration` | Convenience: 90 kHz ticks to `std::time::Duration`. Diagnostic / test use. |
+| `pts_to_duration(pts: Pts90khz) -> Duration` | Convenience: 90 kHz ticks to `std::time::Duration`. Diagnostic / test use. |
 
 The complete enum / struct definitions live in
 [../crates/tst-core/src/mpegts/demux/event.rs](../crates/tst-core/src/mpegts/demux/event.rs).
@@ -663,7 +663,7 @@ first program.
 Each item below maps to an entry in
 [deferred-features.md](deferred-features.md).
 
-- **`pipeline::pairing` opt-in helper** — pairing stays consumer-side
+- **`tst_pipeline::ext::pairing` opt-in helper** — pairing stays consumer-side
   via cookbook recipes; library-level helper is deferred.
 - **AV1 full Frame Header parser** — current `codec::av1::parse_frame_header_light`
   surfaces type / show flags only; per-frame size + reference management

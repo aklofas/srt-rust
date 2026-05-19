@@ -642,7 +642,7 @@ The receive surface distinguishes three end-of-stream signals:
   discouraged — the demuxer's reassembly state is undefined past a bad
   PES header. Treat as stream-fatal until lenient PES recovery lands.
 
-## KLV ↔ video pairing (`pipeline::pairing`)
+## KLV ↔ video pairing (`tst_pipeline::ext::pairing`)
 
 The demuxer emits independent stream-tagged events; it does not pair
 sync-KLV with video AUs. This is a deliberate design choice: pairing

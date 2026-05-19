@@ -1,245 +1,8 @@
-//! MPEG-1 / MPEG-2 / MPEG-2.5 audio frame iterator.
-//!
-//! Spec: ISO/IEC 11172-3 (MPEG-1 Audio) §2.4 + ISO/IEC 13818-3 (MPEG-2
-//! Lower Sampling Frequencies, "LSF") + the de-facto MPEG-2.5 half-rate
-//! extension. Covers Layer I, II, and III in one module per the spec
-//! scope.
-//!
-//! See [`frames`] for the iterator entry point.
+//! MPEG audio header decoding and frame iterator implementation.
 
+use super::model::{ChannelMode, Frame, Frames, Layer, Version};
+use super::tables::{BITRATE_TABLE, SAMPLE_RATE_TABLE, bitrate_column};
 use crate::codec::CodecParseError;
-
-/// MPEG audio layer.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Layer {
-    I,
-    II,
-    III,
-}
-
-/// MPEG audio version. MPEG-2.5 is the de-facto half-rate extension
-/// (8 / 11.025 / 12 kHz Layer III); not part of any ratified ISO spec
-/// but ubiquitous in consumer MP3 streams.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Version {
-    Mpeg1,
-    Mpeg2,
-    Mpeg2_5,
-}
-
-/// MPEG audio channel mode (header bits 25-26).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChannelMode {
-    Stereo,
-    JointStereo,
-    DualChannel,
-    Mono,
-}
-
-/// Decoded MPEG audio frame. Borrows from the source buffer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Frame<'a> {
-    pub layer: Layer,
-    pub version: Version,
-    pub bitrate_kbps: u32,
-    pub sample_rate_hz: u32,
-    pub channel_mode: ChannelMode,
-    pub channels: u8,
-    pub frame_length_bytes: u32,
-    pub samples_per_frame: u16,
-    pub has_crc: bool,
-    pub raw_header: [u8; 4],
-    body: &'a [u8],
-}
-
-impl<'a> Frame<'a> {
-    /// Full-frame slice (header + body, including CRC bytes when
-    /// `has_crc`). The `raw_header` field is the first 4 bytes of this
-    /// slice copied for ownership convenience.
-    pub fn bytes(&self) -> &'a [u8] {
-        self.body
-    }
-
-    /// Promote this borrowed frame to a [`FrameOwned`] by copying the body.
-    pub fn to_owned(&self) -> FrameOwned {
-        FrameOwned {
-            layer: self.layer,
-            version: self.version,
-            bitrate_kbps: self.bitrate_kbps,
-            sample_rate_hz: self.sample_rate_hz,
-            channel_mode: self.channel_mode,
-            channels: self.channels,
-            frame_length_bytes: self.frame_length_bytes,
-            samples_per_frame: self.samples_per_frame,
-            has_crc: self.has_crc,
-            raw_header: self.raw_header,
-            body: self.body.to_vec(),
-        }
-    }
-}
-
-/// Owned variant of [`Frame`].
-///
-/// `body: Vec<u8>` instead of `&'a [u8]` — usable across FFI / thread /
-/// async boundaries where the borrowed source slice doesn't outlive the
-/// consumer.
-///
-/// Round-trip with [`Frame::to_owned`] / [`Self::as_ref`].
-///
-/// # Example — collect owned frames for a Java consumer
-/// ```
-/// use tst_core::codec::mpegaudio::{frames, FrameOwned};
-///
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let payload: &[u8] = &[/* MPEG-Audio bytes */];
-/// # let payload: &[u8] = &[];
-/// let owned: Vec<FrameOwned> = frames(payload)
-///     .filter_map(Result::ok)
-///     .map(|f| f.to_owned())
-///     .collect();
-/// // `owned` outlives `payload` — safe to wrap as a Java List<MpegAudioFrame>.
-/// let _ = owned;
-/// # Ok(())
-/// # }
-/// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct FrameOwned {
-    pub layer: Layer,
-    pub version: Version,
-    pub bitrate_kbps: u32,
-    pub sample_rate_hz: u32,
-    pub channel_mode: ChannelMode,
-    pub channels: u8,
-    pub frame_length_bytes: u32,
-    pub samples_per_frame: u16,
-    pub has_crc: bool,
-    pub raw_header: [u8; 4],
-    pub body: Vec<u8>,
-}
-
-impl FrameOwned {
-    /// Borrow this owned frame as a [`Frame`] — zero-copy.
-    pub fn as_ref(&self) -> Frame<'_> {
-        Frame {
-            layer: self.layer,
-            version: self.version,
-            bitrate_kbps: self.bitrate_kbps,
-            sample_rate_hz: self.sample_rate_hz,
-            channel_mode: self.channel_mode,
-            channels: self.channels,
-            frame_length_bytes: self.frame_length_bytes,
-            samples_per_frame: self.samples_per_frame,
-            has_crc: self.has_crc,
-            raw_header: self.raw_header,
-            body: &self.body,
-        }
-    }
-}
-
-/// Iterator over MPEG audio frames in `bytes`. Use [`frames`] to construct.
-#[must_use]
-pub struct Frames<'a> {
-    buf: &'a [u8],
-    cursor: usize,
-    done: bool,
-}
-
-impl<'a> Iterator for Frames<'a> {
-    type Item = Result<Frame<'a>, CodecParseError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.done {
-            return None;
-        }
-        if self.cursor >= self.buf.len() {
-            self.done = true;
-            return None;
-        }
-        let remaining = &self.buf[self.cursor..];
-        let header = match parse_header(remaining) {
-            Ok(h) => h,
-            Err(e) => {
-                self.done = true;
-                return Some(Err(e));
-            }
-        };
-        let len = header.frame_length_bytes as usize;
-        if remaining.len() < len {
-            self.done = true;
-            return Some(Err(CodecParseError::Truncated {
-                needed: header.frame_length_bytes,
-                had: remaining.len() as u32,
-            }));
-        }
-        let body = &remaining[..len];
-        let frame = Frame {
-            layer: header.layer,
-            version: header.version,
-            bitrate_kbps: header.bitrate_kbps,
-            sample_rate_hz: header.sample_rate_hz,
-            channel_mode: header.channel_mode,
-            channels: header.channels,
-            frame_length_bytes: header.frame_length_bytes,
-            samples_per_frame: header.samples_per_frame,
-            has_crc: header.has_crc,
-            raw_header: header.raw,
-            body,
-        };
-        self.cursor += len;
-        Some(Ok(frame))
-    }
-}
-
-/// Construct a frame iterator over an MPEG audio elementary stream
-/// (PES payload bytes).
-pub fn frames(bytes: &[u8]) -> Frames<'_> {
-    Frames {
-        buf: bytes,
-        cursor: 0,
-        done: false,
-    }
-}
-
-// Bitrate table per ISO 11172-3 §2.4.2.3 Table 8 + ISO 13818-3 Table 5.
-// Indexed by [column][bitrate_index]. Column selection is by
-// (version, layer); see `bitrate_column` below. Index 0 = free format
-// (rejected); index 15 = forbidden.
-//
-// Columns:
-//   0 = MPEG-1 Layer I
-//   1 = MPEG-1 Layer II
-//   2 = MPEG-1 Layer III
-//   3 = MPEG-2/2.5 Layer I
-//   4 = MPEG-2/2.5 Layer II/III (shared column per ISO 13818-3 Table 5)
-const BITRATE_TABLE: [[u32; 16]; 5] = [
-    // index: 0   1   2   3   4    5    6    7    8    9    10   11   12   13   14   15
-    [
-        0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 0,
-    ], // V1L1
-    [
-        0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 0,
-    ], // V1L2
-    [
-        0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0,
-    ], // V1L3
-    [
-        0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256, 0,
-    ], // V2L1
-    [
-        0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0,
-    ], // V2L2/L3
-];
-
-fn bitrate_column(version: Version, layer: Layer) -> usize {
-    match (version, layer) {
-        (Version::Mpeg1, Layer::I) => 0,
-        (Version::Mpeg1, Layer::II) => 1,
-        (Version::Mpeg1, Layer::III) => 2,
-        (_, Layer::I) => 3,
-        (_, _) => 4, // V2/V2.5 Layer II + Layer III share column 4
-    }
-}
 
 /// Decode bitrate (kbps) from `(version, layer, bitrate_index)` per
 /// ISO 11172-3 §2.4.2.3 Table 8 + ISO 13818-3 Table 5.
@@ -266,14 +29,6 @@ pub(crate) fn decode_bitrate(
     let col = bitrate_column(version, layer);
     Ok(BITRATE_TABLE[col][bitrate_index as usize])
 }
-
-// Sample rate table per ISO 11172-3 §2.4.2.3 Table 9 + ISO 13818-3 Table 6.
-// Indexed by [version][sample_rate_index]. Index 3 = reserved.
-const SAMPLE_RATE_TABLE: [[u32; 4]; 3] = [
-    [44100, 48000, 32000, 0], // MPEG-1
-    [22050, 24000, 16000, 0], // MPEG-2
-    [11025, 12000, 8000, 0],  // MPEG-2.5
-];
 
 /// Decode sample rate (Hz) from `(version, sample_rate_index)`.
 ///
@@ -356,17 +111,17 @@ fn frame_length(
 
 /// Decoded view of the 4-byte header (no body slice yet).
 #[derive(Debug)]
-struct Header {
-    version: Version,
-    layer: Layer,
-    bitrate_kbps: u32,
-    sample_rate_hz: u32,
-    channel_mode: ChannelMode,
-    channels: u8,
-    frame_length_bytes: u32,
-    samples_per_frame: u16,
-    has_crc: bool,
-    raw: [u8; 4],
+pub(super) struct Header {
+    pub(super) version: Version,
+    pub(super) layer: Layer,
+    pub(super) bitrate_kbps: u32,
+    pub(super) sample_rate_hz: u32,
+    pub(super) channel_mode: ChannelMode,
+    pub(super) channels: u8,
+    pub(super) frame_length_bytes: u32,
+    pub(super) samples_per_frame: u16,
+    pub(super) has_crc: bool,
+    pub(super) raw: [u8; 4],
 }
 
 /// Decode the 4-byte MPEG audio header.
@@ -384,7 +139,7 @@ struct Header {
 ///   padding_bit:        bit  22 (1 bit)
 ///   private_bit:        bit  23 (1 bit)
 ///   channel_mode:       bits 24..26 (2 bits)
-fn parse_header(bytes: &[u8]) -> Result<Header, CodecParseError> {
+pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, CodecParseError> {
     if bytes.len() < 4 {
         return Err(CodecParseError::Truncated {
             needed: 4,
@@ -466,6 +221,59 @@ fn parse_header(bytes: &[u8]) -> Result<Header, CodecParseError> {
         has_crc,
         raw,
     })
+}
+
+/// Construct a frame iterator over an MPEG audio elementary stream
+/// (PES payload bytes).
+pub fn frames(bytes: &[u8]) -> Frames<'_> {
+    Frames {
+        buf: bytes,
+        cursor: 0,
+        done: false,
+    }
+}
+
+/// `Iterator::next` implementation for [`Frames`], called from the model module.
+pub(super) fn frames_next<'a>(it: &mut Frames<'a>) -> Option<Result<Frame<'a>, CodecParseError>> {
+    if it.done {
+        return None;
+    }
+    if it.cursor >= it.buf.len() {
+        it.done = true;
+        return None;
+    }
+    let remaining = &it.buf[it.cursor..];
+    let header = match parse_header(remaining) {
+        Ok(h) => h,
+        Err(e) => {
+            it.done = true;
+            return Some(Err(e));
+        }
+    };
+    let len = header.frame_length_bytes as usize;
+    if remaining.len() < len {
+        it.done = true;
+        return Some(Err(CodecParseError::Truncated {
+            needed: header.frame_length_bytes,
+            had: remaining.len() as u32,
+        }));
+    }
+    let body = &remaining[..len];
+    let frame = Frame {
+        layer: header.layer,
+        version: header.version,
+        bitrate_kbps: header.bitrate_kbps,
+        sample_rate_hz: header.sample_rate_hz,
+        channel_mode: header.channel_mode,
+        channels: header.channels,
+        frame_length_bytes: header.frame_length_bytes,
+        samples_per_frame: header.samples_per_frame,
+        has_crc: header.has_crc,
+        raw_header: header.raw,
+        body,
+    };
+    it.cursor += len;
+    Some(Ok(frame))
 }
 
 #[cfg(test)]
@@ -686,6 +494,7 @@ mod tests {
 
     #[test]
     fn mpegaudio_frame_owned_roundtrip() {
+        use crate::codec::mpegaudio::{ChannelMode, Frame, FrameOwned, Layer, Version};
         let payload = vec![0xFF, 0xFB, 0x90, 0x40, 0x01, 0x02, 0x03];
         let borrowed = Frame {
             layer: Layer::III,

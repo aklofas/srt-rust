@@ -420,6 +420,120 @@ pub enum MuxError {
     },
 }
 
+/// Categorical reason for a [`MuxError`], suitable for action-discriminating
+/// dispatch in binding-author code.
+///
+/// The 5-variant set is the **inner-tier** coarse classification of muxer
+/// failures: a JNI/UniFFI/pure-C binding author pattern-matches on this enum
+/// to map muxer failures into a language-native exception hierarchy without
+/// enumerating the 32 underlying [`MuxError`] variants. For spec-aware
+/// diagnostic code (KLV-handling, DVB-subtitling, descriptor validation),
+/// match on the full [`MuxError`] variant set directly via the
+/// [`crate::mpegts::mux::_detail::MuxError`] re-export.
+///
+/// This is distinct from the **outer-tier** [`tst_pipeline::ShellErrorKind`]
+/// (6 variants, shell-agnostic). The two tiers complement each other:
+/// `ShellErrorKind` is the binding-canonical action category at the shell
+/// boundary (`MuxSender`, `Sender`, `RawSender`, `DemuxReceiver`,
+/// `Receiver`, `RawReceiver`); `MuxSenderErrorKind` is the muxer-specific
+/// inner category exposing the runtime-API-misuse-vs-construction-rejection
+/// distinction that `ShellErrorKind::ConfigInvalid` collapses.
+///
+/// **Stability:** the variant set is `#[non_exhaustive]` and may grow.
+/// New variants will be added without a major version bump; bindings that
+/// pattern-match on this enum should include a wildcard arm routing to a
+/// generic "muxer-side failure" exception.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use tst_core::error::{MuxError, MuxSenderErrorKind};
+///
+/// let err = MuxError::InvalidNal;
+/// match err.kind() {
+///     MuxSenderErrorKind::InputMalformed => {
+///         eprintln!("caller pushed malformed input: {err}");
+///     }
+///     MuxSenderErrorKind::ConfigInvalid => {
+///         eprintln!("muxer config is invalid: {err}");
+///     }
+///     MuxSenderErrorKind::InvalidUsage => {
+///         eprintln!("caller is using the muxer API incorrectly: {err}");
+///     }
+///     MuxSenderErrorKind::Backpressure => {
+///         eprintln!("muxer queue full; back off and retry");
+///     }
+///     MuxSenderErrorKind::Internal => {
+///         eprintln!("muxer hit a bug-path invariant: {err}");
+///     }
+///     _ => {
+///         eprintln!("muxer-side failure (new category): {err}");
+///     }
+/// }
+/// ```
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MuxSenderErrorKind {
+    /// Caller pushed input bytes that don't conform to the expected
+    /// shape. Includes non-Annex-B NAL units
+    /// ([`MuxError::InvalidNal`]), KLV blobs over the
+    /// `PES_packet_length` ceiling ([`MuxError::KlvTooLarge`]), and
+    /// audio / subtitle PES payloads over the PES cap
+    /// ([`MuxError::AudioTooLarge`], [`MuxError::SubtitleTooLarge`]).
+    ///
+    /// **Action:** the push input was invalid; the muxer state is
+    /// unchanged. Surface a "bad input" diagnostic to the caller and
+    /// do not retry with the same input.
+    InputMalformed,
+
+    /// `MuxerConfig::validate()` rejected the construction-time config
+    /// (duplicate PIDs, too many streams, malformed descriptor TLV,
+    /// PCR-PID conflicts, ISO 639 / DVB teletext field violations,
+    /// PMT over-budget, etc.). The muxer was not constructed; no
+    /// pushes have happened.
+    ///
+    /// **Action:** fix the config and retry construction. The 19
+    /// `MuxError` variants in this category collectively cover every
+    /// `MuxerConfig::validate()` rejection path.
+    ConfigInvalid,
+
+    /// Caller is using the muxer API incorrectly on a successfully-built
+    /// muxer. Includes passing a stream handle from a different muxer
+    /// ([`MuxError::InvalidStreamHandle`]), invoking the single-target
+    /// shorthand on a multi-stream muxer
+    /// ([`MuxError::AmbiguousTarget`]), invoking shorthand with no
+    /// streams of that kind ([`MuxError::NoKlvStreamsConfigured`] etc.),
+    /// referencing an unknown program ([`MuxError::ProgramNotFound`]),
+    /// or passing an out-of-range descriptor / absolute stream index
+    /// ([`MuxError::DescriptorIndexOutOfRange`],
+    /// [`MuxError::AbsIndexOutOfRange`]).
+    ///
+    /// **Action:** the muxer state is unchanged. Fix the API call site
+    /// and retry; the muxer remains usable. Distinct from
+    /// `ConfigInvalid` (which requires reconstructing the muxer from a
+    /// new config).
+    InvalidUsage,
+
+    /// Muxer outbound queue is at capacity ([`MuxError::BufferFull`]).
+    /// The push input is valid and the muxer state is consistent; the
+    /// downstream transport has not yet drained the queued packets.
+    ///
+    /// **Action:** pause pushes, drain the muxer via `pull` (or wait
+    /// for the bundled [`tst_pipeline::MuxSender`] to send queued
+    /// packets), then retry the same push.
+    Backpressure,
+
+    /// Reserved for BUG-path variants (Mutex poison surfaces,
+    /// arithmetic-overflow guards firing, internal-invariant
+    /// violations). No current [`MuxError`] variant maps here; future
+    /// internal-failure variants would route here rather than expanding
+    /// the user-facing categories.
+    ///
+    /// **Action:** treat as an unrecoverable internal error. The muxer
+    /// is in an indeterminate state; reconstruct from a fresh config.
+    Internal,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

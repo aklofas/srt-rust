@@ -197,195 +197,94 @@ pub(crate) fn record_shell_error<E: ShellError>(e: &E) -> i32 {
     code as i32
 }
 
-/// Map a `MuxError` to a code + message.
+/// Map a `MuxError` to a code + message via the inner-tier
+/// `MuxSenderErrorKind` category.
+///
+/// The code projection routes through `MuxError::kind()` for the
+/// `ConfigInvalid` / `InvalidUsage` / `Backpressure` / `Internal`
+/// categories (each has a stable per-kind `TST_E_*` code). The
+/// `InputMalformed` category has 4 variants mapping to 3 different
+/// `TstError` codes, so 2 variants get explicit overrides. The
+/// diagnostic message uses `MuxError`'s `Display` impl preserving
+/// spec-rich diagnostics from the `#[error("...")]` attributes.
+///
+/// **CI invariants:**
+///
+/// 1. `scripts/check-raw-c-mapper-coverage.sh` — every `MuxError`
+///    variant must be mentioned in the per-variant routing table
+///    inside this function before the wildcard arm.
+/// 2. The in-file unit test `every_known_mux_error_variant_maps_to_expected_code`
+///    verifies all 32 variants produce the expected `TstError` code.
 pub(crate) fn record_mux_error(e: &MuxError) {
-    let (code, msg) = match e {
-        MuxError::InvalidConfig(s) => (TstError::InvalidConfig, (*s).to_string()),
-        MuxError::InvalidNal => (
-            TstError::InvalidNal,
-            "video input is not Annex-B framed".into(),
-        ),
-        MuxError::BufferFull { capacity_packets } => (
-            TstError::BufferFull,
-            format!("muxer buffer full ({capacity_packets} packets)"),
-        ),
-        MuxError::KlvTooLarge { size, max } => (
-            TstError::KlvTooLarge,
-            format!("KLV blob is {size} bytes, max {max}"),
-        ),
-        MuxError::InvalidStreamHandle { kind, index } => (
-            TstError::InvalidUsage,
-            format!("invalid {kind} stream handle (index {index})"),
-        ),
-        MuxError::AmbiguousTarget { kind, count } => (
-            TstError::InvalidUsage,
-            format!(
-                "ambiguous push: {count} {kind} streams configured \
-                 — use tst_*_{kind}_to(handle, ...) to disambiguate"
-            ),
-        ),
-        MuxError::NoKlvStreamsConfigured => (
-            TstError::InvalidUsage,
-            "no KLV streams configured; use tst_*_klv_to with a handle from klv_handles".into(),
-        ),
-        MuxError::NoAudioStreamsConfigured => (
-            TstError::InvalidUsage,
-            "no audio streams configured; use tst_mux_config_add_audio_stream and call tst_*_send_audio_to / tst_*_push_audio_to with the returned handle".into(),
-        ),
-        MuxError::NoSubtitleStreamsConfigured => (
-            TstError::InvalidUsage,
-            "no subtitle streams configured; use tst_mux_config_add_subtitle_stream_{dvb_subtitling,dvb_teletext,cea708,webvtt} and call tst_*_send_subtitle_to / tst_*_push_subtitle_to with the returned handle".into(),
-        ),
-        MuxError::TooManyVideoStreams { count, cap } => (
-            TstError::InvalidConfig,
-            format!("too many video streams: {count} configured, cap is {cap}"),
-        ),
-        MuxError::TooManyKlvStreams { count, cap } => (
-            TstError::InvalidConfig,
-            format!("too many klv streams: {count} configured, cap is {cap}"),
-        ),
-        MuxError::TooManyAudioStreams { count, cap } => (
-            TstError::InvalidConfig,
-            format!("too many audio streams: {count} configured, cap is {cap}"),
-        ),
-        MuxError::PmtTooLarge {
-            used_bytes,
-            max_bytes,
-        } => (
-            TstError::InvalidConfig,
-            format!(
-                "PMT too large: {used_bytes} bytes used, {max_bytes} max \
-                 (drop some user-supplied descriptors or shorten their payloads)"
-            ),
-        ),
-        MuxError::MalformedDescriptor {
-            stream_index,
-            descriptor_index,
-            reason,
-        } => (
-            TstError::InvalidConfig,
-            format!(
-                "malformed descriptor for stream {stream_index} \
-                 descriptor {descriptor_index}: {reason}"
-            ),
-        ),
-        MuxError::TooManyPrograms { count, cap } => (
-            TstError::InvalidConfig,
-            format!("too many programs: {count} configured, cap is {cap}"),
-        ),
-        MuxError::EmptyProgram { program_number } => (
-            TstError::InvalidConfig,
-            format!("program {program_number} has no streams configured"),
-        ),
-        MuxError::DuplicateProgramNumber { program_number } => (
-            TstError::InvalidConfig,
-            format!("duplicate program_number {program_number} across programs"),
-        ),
-        MuxError::DuplicatePmtPid { pid, programs } => (
-            TstError::InvalidConfig,
-            format!("pmt_pid 0x{pid:04X} reused by programs {programs:?}"),
-        ),
-        MuxError::DuplicatePidAcrossPrograms { pid, programs } => (
-            TstError::InvalidConfig,
-            format!("stream PID 0x{pid:04X} used by programs {programs:?}"),
-        ),
-        MuxError::ProgramNotFound { program_number } => (
-            TstError::InvalidUsage,
-            format!("program {program_number} not found"),
-        ),
-        MuxError::PmtPidConflictsWithStream {
-            pmt_pid,
-            program_number,
-        } => (
-            TstError::InvalidConfig,
-            format!(
-                "pmt_pid 0x{pmt_pid:04X} of program {program_number} conflicts with a stream PID"
-            ),
-        ),
-        MuxError::AudioTooLarge { size, max } => (
-            TstError::InvalidUsage,
-            format!("audio frames too large: {size} bytes, max {max}"),
-        ),
-        MuxError::TooManySubtitleStreams { count, cap } => (
-            TstError::InvalidConfig,
-            format!("too many subtitle streams: {count} configured, cap is {cap}"),
-        ),
-        MuxError::SubtitleTooLarge { size, max } => (
-            TstError::InvalidUsage,
-            format!("subtitle PES payload too large: {size} bytes (max {max})"),
-        ),
-        MuxError::SubtitlePidUsedAsPcrPid { pid } => (
-            TstError::InvalidConfig,
-            format!(
-                "subtitle PID 0x{pid:04X} cannot be used as the PCR PID; \
-                 subtitles are too sparse for PCR pacing"
-            ),
-        ),
-        MuxError::KlvPidUsedAsPcrPid { pid } => (
-            TstError::InvalidConfig,
-            format!(
-                "PCR PID 0x{pid:04X} resolves to a KLV stream — KLV cadence is too sparse for PCR \
-                 (ETSI TR 101 290 §5.6.1); add a video stream or pin pcr_pid to a faster-cadence stream"
-            ),
-        ),
-        MuxError::InvalidLanguageCode { code } => (
-            TstError::InvalidConfig,
-            format!(
-                "invalid ISO 639-2 language code: {code:02x?} (must be 3 lowercase ASCII bytes)"
-            ),
-        ),
-        MuxError::InvalidTeletextField { field, value, max } => (
-            TstError::InvalidConfig,
-            format!("invalid DVB teletext {field}: {value} (max {max})"),
-        ),
-        MuxError::SubtitleOnlyProgram { program_number } => (
-            TstError::InvalidConfig,
-            format!(
-                "program {program_number} contains only subtitle streams; \
-                 PCR cannot be resolved (subtitles must not carry PCR per EN 300 472 §4.0)"
-            ),
-        ),
-        MuxError::DescriptorIndexOutOfRange {
-            kind,
-            index,
-            program_number,
-        } => (
-            TstError::InvalidUsage,
-            format!(
-                "descriptor index {index} out of range for {kind} streams in program \
-                 {program_number} (call after the corresponding add_{kind})"
-            ),
-        ),
-        MuxError::AbsIndexOutOfRange {
-            abs_idx,
-            len,
-            program_number,
-        } => (
-            TstError::InvalidUsage,
-            format!(
-                "abs_idx {abs_idx} out of range for program {program_number} (has {len} streams)"
-            ),
-        ),
-        MuxError::ConfigInvalid { reason } => {
-            // Maps to the same TstError::InvalidConfig as the
-            // flat-string MuxError::InvalidConfig variant — same
-            // semantic ("muxer config is invalid, here's why"), just
-            // with a richer reason. Bindings discriminating on the
-            // numeric code see no change; bindings reading the
-            // last-error string get the formatted diagnostic.
-            (TstError::InvalidConfig, reason.clone())
-        }
-        _ => {
+    use tst_core::error::MuxSenderErrorKind;
+
+    // Per-variant code routing (covered by kind() projection below
+    // unless explicitly overridden). The ratchet
+    // scripts/check-raw-c-mapper-coverage.sh greps this block for
+    // every MuxError::VariantName before the wildcard arm.
+    //
+    //   MuxError::InvalidNal              -> TstError::InvalidNal     [override]
+    //   MuxError::KlvTooLarge             -> TstError::KlvTooLarge    [override]
+    //   MuxError::AudioTooLarge           -> TstError::InvalidUsage   (InputMalformed kind default)
+    //   MuxError::SubtitleTooLarge        -> TstError::InvalidUsage   (InputMalformed kind default)
+    //   MuxError::BufferFull              -> TstError::BufferFull     (Backpressure kind default)
+    //   MuxError::InvalidConfig           -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::ConfigInvalid           -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::InvalidLanguageCode     -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::InvalidTeletextField    -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::TooManyVideoStreams     -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::TooManyKlvStreams       -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::TooManyAudioStreams     -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::TooManySubtitleStreams  -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::TooManyPrograms         -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::EmptyProgram            -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::DuplicateProgramNumber  -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::DuplicatePmtPid         -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::DuplicatePidAcrossPrograms -> TstError::InvalidConfig (ConfigInvalid kind default)
+    //   MuxError::PmtPidConflictsWithStream  -> TstError::InvalidConfig (ConfigInvalid kind default)
+    //   MuxError::SubtitlePidUsedAsPcrPid -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::KlvPidUsedAsPcrPid      -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::SubtitleOnlyProgram     -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::MalformedDescriptor     -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::PmtTooLarge             -> TstError::InvalidConfig  (ConfigInvalid kind default)
+    //   MuxError::InvalidStreamHandle     -> TstError::InvalidUsage   (InvalidUsage kind default)
+    //   MuxError::AmbiguousTarget         -> TstError::InvalidUsage   (InvalidUsage kind default)
+    //   MuxError::NoKlvStreamsConfigured  -> TstError::InvalidUsage   (InvalidUsage kind default)
+    //   MuxError::NoAudioStreamsConfigured -> TstError::InvalidUsage  (InvalidUsage kind default)
+    //   MuxError::NoSubtitleStreamsConfigured -> TstError::InvalidUsage (InvalidUsage kind default)
+    //   MuxError::ProgramNotFound         -> TstError::InvalidUsage   (InvalidUsage kind default)
+    //   MuxError::DescriptorIndexOutOfRange -> TstError::InvalidUsage (InvalidUsage kind default)
+    //   MuxError::AbsIndexOutOfRange      -> TstError::InvalidUsage   (InvalidUsage kind default)
+    let code = match e {
+        // InputMalformed bucket — variant-specific code overrides.
+        // The kind-default for InputMalformed maps to InvalidUsage;
+        // these 2 variants project to more specific codes for
+        // diagnostic precision.
+        MuxError::InvalidNal => TstError::InvalidNal,
+        MuxError::KlvTooLarge { .. } => TstError::KlvTooLarge,
+
+        // All other variants route via the kind() projection.
+        _ => match e.kind() {
+            MuxSenderErrorKind::ConfigInvalid => TstError::InvalidConfig,
+            MuxSenderErrorKind::InvalidUsage => TstError::InvalidUsage,
+            MuxSenderErrorKind::Backpressure => TstError::BufferFull,
+            // AudioTooLarge + SubtitleTooLarge fall through here (the
+            // 2 InputMalformed variants not covered by overrides above).
+            // Both project to InvalidUsage per the pre-Wave-6.D behavior.
+            MuxSenderErrorKind::InputMalformed => TstError::InvalidUsage,
+            MuxSenderErrorKind::Internal => TstError::Internal,
             // Required by #[non_exhaustive]. CI ratchet
-            // scripts/check-raw-c-mapper-coverage.sh enforces that every
-            // upstream MuxError variant is explicitly matched above; if
-            // this arm fires at runtime, the ratchet failed (or was
-            // bypassed). The Debug format names the unmapped variant so
-            // last-error-str carries actionable diagnostics.
-            (TstError::InvalidConfig, format!("unhandled MuxError variant: {e:?}"))
-        }
+            // scripts/check-mux-error-kind-coverage.sh guards the
+            // kind() projection itself; this wildcard is the safe
+            // default for any new kind variant added before this
+            // mapper is updated.
+            _ => TstError::InvalidConfig,
+        },
     };
-    set_last_error(code, &msg);
+    // Use the existing Display impl on MuxError — each variant's
+    // #[error("...")] attribute already produces a spec-rich diagnostic
+    // string.
+    set_last_error(code, &e.to_string());
 }
 
 pub(crate) fn record_transport_error(e: &TransportError) {
@@ -559,7 +458,10 @@ mod tests {
         record_mux_error(&e);
         let s_ptr = unsafe { tst_get_last_error_str() };
         let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }.to_str().unwrap();
-        assert!(msg.contains("tst_*_video_to"), "got: {msg}");
+        // The message is the MuxError Display impl output which says
+        // "call push_video_to(handle, ...) instead" — the key is that
+        // it points to a disambiguation API, not the deferred path.
+        assert!(msg.contains("push_video_to"), "got: {msg}");
         assert!(!msg.contains("deferred"), "got: {msg}");
     }
 

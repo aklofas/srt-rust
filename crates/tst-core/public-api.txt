@@ -4126,12 +4126,13 @@ pub struct tst_core::mpegts::mux::Muxer
 impl tst_core::mpegts::mux::Muxer
 pub fn tst_core::mpegts::mux::Muxer::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>
 pub fn tst_core::mpegts::mux::Muxer::audio_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::AudioStreamHandle>, tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::push_audio(&mut self, frames: &[u8], pts: tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_core::error::MuxError>
+pub fn tst_core::mpegts::mux::Muxer::push_audio_to(&mut self, handle: tst_core::mpegts::mux::AudioStreamHandle, pts: tst_core::mpegts::common::Pts90khz, frames: &[u8]) -> core::result::Result<(), tst_core::error::MuxError>
+impl tst_core::mpegts::mux::Muxer
 pub fn tst_core::mpegts::mux::Muxer::capacity_packets(&self) -> u64
 pub fn tst_core::mpegts::mux::Muxer::new(config: tst_core::mpegts::mux::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::pending_packets(&self) -> u64
 pub fn tst_core::mpegts::mux::Muxer::pull(&mut self, out: &mut [u8]) -> usize
-pub fn tst_core::mpegts::mux::Muxer::push_audio(&mut self, frames: &[u8], pts: tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_core::error::MuxError>
-pub fn tst_core::mpegts::mux::Muxer::push_audio_to(&mut self, handle: tst_core::mpegts::mux::AudioStreamHandle, pts: tst_core::mpegts::common::Pts90khz, frames: &[u8]) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_subtitle(&mut self, pts: tst_core::mpegts::common::Pts90khz, payload: &[u8]) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::push_subtitle_to(&mut self, handle: tst_core::mpegts::mux::SubtitleStreamHandle, pts: tst_core::mpegts::common::Pts90khz, payload: &[u8]) -> core::result::Result<(), tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::Muxer::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::SubtitleStreamHandle>

@@ -269,7 +269,17 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
-        let mut inner = self.inner.lock().unwrap();
+        // Plan F mutex sweep (recoverable path): poisoned inner lock means a
+        // previous panic happened mid-mutation. Route to MuxSenderError whose
+        // kind is TransportBroken with a site-specific message so the C ABI
+        // surfaces a useful diagnostic via tst_get_last_error_str().
+        // Precedent: Wave 4.B plan #79 + the gap-buffer policy at
+        // reconnect/mod.rs:218,281,358.
+        let mut inner = self.inner.lock().map_err(|_| {
+            MuxSenderError::from(TransportError::Broken(
+                "mux_sender: inner lock poisoned during send_video".into(),
+            ))
+        })?;
         inner.send_video(nal, pts.as_ticks(), key_frame)
     }
 
@@ -303,7 +313,12 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
-        let mut inner = self.inner.lock().unwrap();
+        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| {
+            MuxSenderError::from(TransportError::Broken(
+                "mux_sender: inner lock poisoned during send_klv".into(),
+            ))
+        })?;
         inner.send_klv(klv, pts.as_ticks(), metadata_service_id)
     }
 
@@ -334,7 +349,12 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxSenderError> {
-        let mut inner = self.inner.lock().unwrap();
+        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| {
+            MuxSenderError::from(TransportError::Broken(
+                "mux_sender: inner lock poisoned during send_video_to".into(),
+            ))
+        })?;
         inner.send_video_to(handle, nal, pts.as_ticks(), key_frame)
     }
 
@@ -368,7 +388,12 @@ impl<T: Transport> MuxSender<T> {
         pts: Pts90khz,
         metadata_service_id: u8,
     ) -> Result<(), MuxSenderError> {
-        let mut inner = self.inner.lock().unwrap();
+        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| {
+            MuxSenderError::from(TransportError::Broken(
+                "mux_sender: inner lock poisoned during send_klv_to".into(),
+            ))
+        })?;
         inner.send_klv_to(handle, klv, pts.as_ticks(), metadata_service_id)
     }
 
@@ -396,7 +421,12 @@ impl<T: Transport> MuxSender<T> {
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_audio(&self, frames: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
-        let mut inner = self.inner.lock().unwrap();
+        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| {
+            MuxSenderError::from(TransportError::Broken(
+                "mux_sender: inner lock poisoned during send_audio".into(),
+            ))
+        })?;
         inner.send_audio(frames, pts.as_ticks())
     }
 
@@ -425,7 +455,12 @@ impl<T: Transport> MuxSender<T> {
         frames: &[u8],
         pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
-        let mut inner = self.inner.lock().unwrap();
+        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| {
+            MuxSenderError::from(TransportError::Broken(
+                "mux_sender: inner lock poisoned during send_audio_to".into(),
+            ))
+        })?;
         inner.send_audio_to(handle, frames, pts.as_ticks())
     }
 
@@ -455,7 +490,12 @@ impl<T: Transport> MuxSender<T> {
     ///   transport flap the unsent TS chunks are retained for a later
     ///   `send_*` call to drain.
     pub fn send_subtitle(&self, payload: &[u8], pts: Pts90khz) -> Result<(), MuxSenderError> {
-        let mut inner = self.inner.lock().unwrap();
+        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| {
+            MuxSenderError::from(TransportError::Broken(
+                "mux_sender: inner lock poisoned during send_subtitle".into(),
+            ))
+        })?;
         inner.send_subtitle(payload, pts.as_ticks())
     }
 
@@ -484,7 +524,12 @@ impl<T: Transport> MuxSender<T> {
         payload: &[u8],
         pts: Pts90khz,
     ) -> Result<(), MuxSenderError> {
-        let mut inner = self.inner.lock().unwrap();
+        // Plan F mutex sweep (recoverable path) — see send_video for rationale.
+        let mut inner = self.inner.lock().map_err(|_| {
+            MuxSenderError::from(TransportError::Broken(
+                "mux_sender: inner lock poisoned during send_subtitle_to".into(),
+            ))
+        })?;
         inner.send_subtitle_to(handle, payload, pts.as_ticks())
     }
 
@@ -513,9 +558,15 @@ impl<T: Transport> MuxSender<T> {
         &self,
         program_number: u16,
     ) -> Result<Vec<AudioStreamHandle>, MuxError> {
+        // Plan F mutex sweep (recoverable path / closest-semantic mapping):
+        // poisoned inner lock returns ProgramNotFound since the muxer state is
+        // unreachable — the closest existing semantic for "no programs available"
+        // given the function's narrow MuxError surface. Per Decision F2:
+        // alternative would be a new MuxError::LockPoisoned variant, rejected
+        // due to BASELINE bump + binding-surface ripple.
         self.inner
             .lock()
-            .unwrap()
+            .map_err(|_| MuxError::ProgramNotFound { program_number })?
             .muxer
             .audio_handles_for_program(program_number)
     }
@@ -533,9 +584,11 @@ impl<T: Transport> MuxSender<T> {
         &self,
         program_number: u16,
     ) -> Result<Vec<SubtitleStreamHandle>, MuxError> {
+        // Plan F mutex sweep (recoverable path / closest-semantic mapping) —
+        // see audio_handles_for_program for rationale.
         self.inner
             .lock()
-            .unwrap()
+            .map_err(|_| MuxError::ProgramNotFound { program_number })?
             .muxer
             .subtitle_handles_for_program(program_number)
     }
@@ -1474,5 +1527,136 @@ mod cancel_tests {
         // Post-Task-5: returns silently via `if let Ok(mut inner)`.
         // Surviving the call IS the assertion.
         sender.close();
+    }
+
+    /// Wave 6.F Task 2 regression: every fallible-return method on
+    /// `MuxSender` converts a poisoned inner lock to a typed error instead
+    /// of panicking. The 8 `send_*` methods must return a `MuxSenderError`
+    /// whose kind is `ShellErrorKind::TransportBroken`; the 2
+    /// `*_handles_for_program` methods must return `MuxError::ProgramNotFound`.
+    ///
+    /// Poison mechanism: same as `close_does_not_panic_on_poisoned_lock`
+    /// above — a spawned thread calls `send_video` with `PanicOnSend`, which
+    /// panics inside `transport.send_bytes` while the `MutexGuard` is live,
+    /// auto-poisoning `inner`.
+    #[test]
+    fn mux_sender_inner_lock_poisoned_returns_broken_error() {
+        use tst_core::mpegts::mux::{AudioCodec, KlvStreamType, SubtitleCodec};
+        // Configure one of every stream type so all 10 methods are reachable.
+        let cfg = {
+            let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+            prog.add_video(0x100, VideoCodec::H264);
+            prog.add_klv(0x101, KlvStreamType::PrivateData, false);
+            prog.add_audio(0x102, AudioCodec::Aac);
+            prog.add_subtitle(0x103, SubtitleCodec::WebVttInTs);
+            let mut b = MuxerConfig::builder();
+            b.add_program(prog.build());
+            b.build().unwrap()
+        };
+        let sender = Arc::new(MuxSender::new(PanicOnSend, cfg).unwrap());
+
+        // Snapshot handles before poisoning — the poisoned sender can't return
+        // them from `*_handles()` without panicking, so grab them first.
+        let video_h = sender.video_handles()[0];
+        let klv_h = sender.klv_handles()[0];
+        let audio_h = sender.audio_handles()[0];
+        let subtitle_h = sender.subtitle_handles()[0];
+
+        // Poison the inner mutex via PanicOnSend — identical setup to
+        // `close_does_not_panic_on_poisoned_lock` above.
+        let s_poison = sender.clone();
+        let handle = std::thread::spawn(move || {
+            let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+            let _ = s_poison.send_video(&nal, Pts90khz::new(0), true);
+        });
+        let _ = handle.join(); // panics; inner is now poisoned
+
+        // --- 8 send_* methods: must return TransportBroken, not panic ---
+
+        let nal = [0x00, 0x00, 0x00, 0x01, 0x67, 0xBB];
+        let pts = Pts90khz::new(0);
+
+        let err = sender.send_video(&nal, pts, true).unwrap_err();
+        assert_eq!(
+            err.kind,
+            ShellErrorKind::TransportBroken,
+            "send_video: expected TransportBroken, got {:?}",
+            err.kind
+        );
+        assert!(
+            matches!(&err.source, MuxSenderErrorSource::Transport(TransportError::Broken(msg)) if msg.contains("send_video")),
+            "send_video: message should contain 'send_video', got: {err:?}"
+        );
+
+        let err = sender.send_klv(&[0xAA, 0xBB, 0xCC], pts, 0x00).unwrap_err();
+        assert_eq!(err.kind, ShellErrorKind::TransportBroken, "send_klv");
+        assert!(
+            matches!(&err.source, MuxSenderErrorSource::Transport(TransportError::Broken(msg)) if msg.contains("send_klv")),
+            "send_klv: message should contain 'send_klv', got: {err:?}"
+        );
+
+        let err = sender.send_video_to(video_h, &nal, pts, true).unwrap_err();
+        assert_eq!(err.kind, ShellErrorKind::TransportBroken, "send_video_to");
+        assert!(
+            matches!(&err.source, MuxSenderErrorSource::Transport(TransportError::Broken(msg)) if msg.contains("send_video_to")),
+            "send_video_to: message should contain 'send_video_to', got: {err:?}"
+        );
+
+        let err = sender
+            .send_klv_to(klv_h, &[0xAA, 0xBB, 0xCC], pts, 0x00)
+            .unwrap_err();
+        assert_eq!(err.kind, ShellErrorKind::TransportBroken, "send_klv_to");
+        assert!(
+            matches!(&err.source, MuxSenderErrorSource::Transport(TransportError::Broken(msg)) if msg.contains("send_klv_to")),
+            "send_klv_to: message should contain 'send_klv_to', got: {err:?}"
+        );
+
+        let err = sender.send_audio(&[0xFF; 32], pts).unwrap_err();
+        assert_eq!(err.kind, ShellErrorKind::TransportBroken, "send_audio");
+        assert!(
+            matches!(&err.source, MuxSenderErrorSource::Transport(TransportError::Broken(msg)) if msg.contains("send_audio")),
+            "send_audio: message should contain 'send_audio', got: {err:?}"
+        );
+
+        let err = sender.send_audio_to(audio_h, &[0xFF; 32], pts).unwrap_err();
+        assert_eq!(err.kind, ShellErrorKind::TransportBroken, "send_audio_to");
+        assert!(
+            matches!(&err.source, MuxSenderErrorSource::Transport(TransportError::Broken(msg)) if msg.contains("send_audio_to")),
+            "send_audio_to: message should contain 'send_audio_to', got: {err:?}"
+        );
+
+        let err = sender.send_subtitle(b"WEBVTT cue", pts).unwrap_err();
+        assert_eq!(err.kind, ShellErrorKind::TransportBroken, "send_subtitle");
+        assert!(
+            matches!(&err.source, MuxSenderErrorSource::Transport(TransportError::Broken(msg)) if msg.contains("send_subtitle")),
+            "send_subtitle: message should contain 'send_subtitle', got: {err:?}"
+        );
+
+        let err = sender
+            .send_subtitle_to(subtitle_h, b"WEBVTT cue", pts)
+            .unwrap_err();
+        assert_eq!(
+            err.kind,
+            ShellErrorKind::TransportBroken,
+            "send_subtitle_to"
+        );
+        assert!(
+            matches!(&err.source, MuxSenderErrorSource::Transport(TransportError::Broken(msg)) if msg.contains("send_subtitle_to")),
+            "send_subtitle_to: message should contain 'send_subtitle_to', got: {err:?}"
+        );
+
+        // --- 2 *_handles_for_program methods: must return ProgramNotFound ---
+
+        let err = sender.audio_handles_for_program(1).unwrap_err();
+        assert!(
+            matches!(err, MuxError::ProgramNotFound { program_number: 1 }),
+            "audio_handles_for_program: expected ProgramNotFound{{1}}, got: {err:?}"
+        );
+
+        let err = sender.subtitle_handles_for_program(1).unwrap_err();
+        assert!(
+            matches!(err, MuxError::ProgramNotFound { program_number: 1 }),
+            "subtitle_handles_for_program: expected ProgramNotFound{{1}}, got: {err:?}"
+        );
     }
 }

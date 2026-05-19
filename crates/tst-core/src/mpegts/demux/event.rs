@@ -269,8 +269,12 @@ pub enum MetadataKind {
     /// `pts` on the parent event is the PES PTS.
     KlvAsync,
 
-    /// Unrecognized metadata `stream_type`. `payload` is raw PES payload.
-    Unknown(u8),
+    /// Unrecognized metadata `stream_type`. `payload` (on the parent
+    /// event) is raw PES payload. The inner [`StreamTypeCode`] preserves
+    /// the raw PMT byte for forward-compat; bindings that recognize
+    /// future metadata-stream types can pattern-match on
+    /// `StreamTypeCode::Known(StreamType::*)`.
+    Unknown(StreamTypeCode),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

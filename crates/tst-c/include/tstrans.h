@@ -118,6 +118,25 @@ typedef enum tst_klv_stream_type {
   TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA = 1,
 } tst_klv_stream_type;
 
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::demux::AudioCodec`.
+ * On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_AUDIO`,
+ * and on `tst_stream_info_t.codec`.
+ */
+enum tst_audio_codec
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_AUDIO_CODEC_MP2 = 0,
+  TST_AUDIO_CODEC_AAC = 1,
+  TST_AUDIO_CODEC_AAC_LATM = 2,
+  TST_AUDIO_CODEC_AC3 = 3,
+};
+#ifndef __cplusplus
+typedef int32_t tst_audio_codec;
+#endif // __cplusplus
+
 typedef enum tst_ts_framing_mode {
   TST_TS_FRAMING_MODE_RECOVER = 0,
   TST_TS_FRAMING_MODE_STRICT = 1,
@@ -362,25 +381,6 @@ typedef int32_t tst_strict_mode;
 #endif // __cplusplus
 
 /**
- * `repr(i32)` mirror of `tst_core::mpegts::demux::AudioCodec`.
- * On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_AUDIO`,
- * and on `tst_stream_info_t.codec`.
- */
-enum tst_audio_codec
-#ifdef __cplusplus
-  : int32_t
-#endif // __cplusplus
- {
-  TST_AUDIO_CODEC_MP2 = 0,
-  TST_AUDIO_CODEC_AAC = 1,
-  TST_AUDIO_CODEC_AAC_LATM = 2,
-  TST_AUDIO_CODEC_AC3 = 3,
-};
-#ifndef __cplusplus
-typedef int32_t tst_audio_codec;
-#endif // __cplusplus
-
-/**
  * `repr(i32)` mirror of `tst_core::mpegts::demux::SubtitleCodec`.
  * On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_SUBTITLE`,
  * and on `tst_stream_info_t.codec`.
@@ -483,6 +483,18 @@ typedef uint32_t tst_video_stream_handle_t;
 typedef uint32_t tst_klv_stream_handle_t;
 
 /**
+ * Opaque per-program ordinal for an audio elementary stream. Same packed
+ * encoding as [`TstVideoStreamHandle`].
+ */
+typedef uint32_t tst_audio_stream_handle_t;
+
+/**
+ * Opaque per-program ordinal for a subtitle elementary stream. Same packed
+ * encoding as [`TstVideoStreamHandle`].
+ */
+typedef uint32_t tst_subtitle_stream_handle_t;
+
+/**
  * `repr(C)` mirror of `tst_core::mpegts::descriptors::RawDescriptor`.
  *
  * `data` borrows from the demuxer's per-PMT descriptor list; valid
@@ -495,18 +507,6 @@ typedef struct tst_descriptor_t {
   const uint8_t *data;
   size_t data_len;
 } tst_descriptor_t;
-
-/**
- * Opaque per-program ordinal for an audio elementary stream. Same packed
- * encoding as [`TstVideoStreamHandle`].
- */
-typedef uint32_t TstAudioStreamHandle;
-
-/**
- * Opaque per-program ordinal for a subtitle elementary stream. Same packed
- * encoding as [`TstVideoStreamHandle`].
- */
-typedef uint32_t TstSubtitleStreamHandle;
 
 /**
  * `repr(C)` mirror of `tst_core::mpegts::demux::StreamInfo`.
@@ -1151,6 +1151,125 @@ tst_klv_stream_handle_t tst_mux_config_add_klv_stream(struct tst_mux_config_t *c
                                                       bool carries_pts);
 
 /**
+ * Add an audio elementary stream (no language tag) to the specified program
+ * and return its handle.
+ *
+ * `codec`: one of `TST_AUDIO_CODEC_MP2` (0x03), `TST_AUDIO_CODEC_AAC`
+ * (0x0F — ADTS), `TST_AUDIO_CODEC_AAC_LATM` (0x11), or
+ * `TST_AUDIO_CODEC_AC3` (0x81).
+ *
+ * The returned `tst_audio_stream_handle_t` is stable across the
+ * config→open boundary and across managed-sender reconnects. Pass it to
+ * `tst_muxer_push_audio_to` / `tst_mux_sender_send_audio_to` /
+ * `tst_managed_mux_sender_send_audio_to` to fan out to this specific
+ * stream.
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` and sets last-error on: null `cfg`,
+ * invalid `program` handle, or per-program stream cap exceeded (>16 audio
+ * streams per program). Hard validation errors surface at `_open` time.
+ *
+ * Use `tst_mux_config_add_audio_stream_with_language` when you want the
+ * muxer to auto-emit an ISO 639 language descriptor for this stream.
+ */
+
+tst_audio_stream_handle_t tst_mux_config_add_audio_stream(struct tst_mux_config_t *cfg,
+                                                          tst_program_handle_t program,
+                                                          uint16_t pid,
+                                                          tst_audio_codec codec);
+
+/**
+ * Add an audio elementary stream with an ISO 639-2 language tag.
+ *
+ * `language` MUST be a non-null pointer to a 3-byte array of lowercase
+ * ASCII bytes (e.g. `"eng"`, `"fra"`, `"spa"`). The muxer auto-emits an
+ * `iso_639_language_descriptor` (tag `0x0A`) in the PMT for this stream
+ * with `audio_type = 0x00` (undefined / clean main).
+ *
+ * Passing a null `language` is rejected with `TST_E_INVALID_CONFIG` —
+ * use the bare `tst_mux_config_add_audio_stream` variant when no language
+ * tag is desired.
+ *
+ * Other failure modes match `tst_mux_config_add_audio_stream` (null
+ * `cfg`, invalid `program`, per-program cap exceeded).
+ */
+
+tst_audio_stream_handle_t tst_mux_config_add_audio_stream_with_language(struct tst_mux_config_t *cfg,
+                                                                        tst_program_handle_t program,
+                                                                        uint16_t pid,
+                                                                        tst_audio_codec codec,
+                                                                        const uint8_t *language);
+
+/**
+ * Add a DVB-subtitling subtitle stream to the specified program and
+ * return its handle. Drives PMT `stream_type = 0x06` with an auto-emitted
+ * subtitling_descriptor (ETSI EN 300 468 §6.2.41 + ETSI EN 300 743).
+ *
+ * `language` MUST be a non-null pointer to a 3-byte array of lowercase
+ * ASCII bytes (ISO 639-2 language code, e.g. `"eng"`).
+ * `subtitling_type` is per ETSI EN 300 468 Table 26 (common values:
+ * 0x10 = DVB sub no AR signalling, 0x14 = DVB sub for 4:3 aspect-ratio).
+ * `composition_page_id` and `ancillary_page_id` are 16-bit page
+ * identifiers.
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` on error (same conditions as
+ * `tst_mux_config_add_video_stream`, plus null `language` →
+ * `TST_E_INVALID_CONFIG`).
+ */
+
+tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_dvb_subtitling(struct tst_mux_config_t *cfg,
+                                                                               tst_program_handle_t program,
+                                                                               uint16_t pid,
+                                                                               const uint8_t *language,
+                                                                               uint8_t subtitling_type,
+                                                                               uint16_t composition_page_id,
+                                                                               uint16_t ancillary_page_id);
+
+/**
+ * Add a DVB-teletext subtitle stream. Drives PMT `stream_type = 0x06`
+ * with an auto-emitted teletext_descriptor (ETSI EN 300 468 §6.2.43 +
+ * ETSI EN 300 706).
+ *
+ * `language` MUST be a non-null pointer to a 3-byte ISO 639-2 array.
+ * `teletext_type` is 5 bits (common: 0x01 initial page, 0x02 subtitle).
+ * `magazine_number` is 0..=7 (3-bit field — values outside this range
+ * surface as `TST_E_INVALID_CONFIG` at `_open` time).
+ * `page_number` is BCD-encoded (0x00..=0x99).
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` on error.
+ */
+
+tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_dvb_teletext(struct tst_mux_config_t *cfg,
+                                                                             tst_program_handle_t program,
+                                                                             uint16_t pid,
+                                                                             const uint8_t *language,
+                                                                             uint8_t teletext_type,
+                                                                             uint8_t magazine_number,
+                                                                             uint8_t page_number);
+
+/**
+ * Add a CEA-708 standalone caption stream. Drives PMT
+ * `stream_type = 0x06` with an auto-emitted `registration_descriptor`
+ * (`format_identifier = "GA94"`). See `SubtitleCodec::Cea708Standalone`
+ * for the spec caveats — this is industry convention, not a normative
+ * codepoint.
+ */
+
+tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_cea708(struct tst_mux_config_t *cfg,
+                                                                       tst_program_handle_t program,
+                                                                       uint16_t pid);
+
+/**
+ * Add a WebVTT-in-MPEG-TS subtitle stream. Drives PMT
+ * `stream_type = 0x06` with an auto-emitted `registration_descriptor`
+ * (`format_identifier = "VTTC"` — ffmpeg `mpegtsenc.c` convention
+ * recognized by hls.js + mediamtx; not a normative codepoint).
+ */
+
+tst_subtitle_stream_handle_t tst_mux_config_add_subtitle_stream_webvtt(struct tst_mux_config_t *cfg,
+                                                                       tst_program_handle_t program,
+                                                                       uint16_t pid);
+
+/**
  * Pin the PCR PID for the specified program. By default the muxer uses the
  * first video stream's PID (or first KLV PID for KLV-only programs).
  *
@@ -1275,18 +1394,22 @@ int tst_mux_config_add_klv_descriptor(struct tst_mux_config_t *cfg,
  */
 
 int tst_mux_config_add_audio_descriptor(struct tst_mux_config_t *cfg,
-                                        TstAudioStreamHandle stream,
+                                        tst_audio_stream_handle_t stream,
                                         const struct tst_descriptor_t *desc);
 
 /**
  * Append one PMT descriptor to a subtitle stream's per-PID descriptor list.
  * Same contract as `tst_mux_config_add_video_descriptor`.
  *
- * `stream` is the handle returned by `tst_mux_config_add_subtitle_stream`.
+ * `stream` is the handle returned by one of
+ * `tst_mux_config_add_subtitle_stream_dvb_subtitling`,
+ * `tst_mux_config_add_subtitle_stream_dvb_teletext`,
+ * `tst_mux_config_add_subtitle_stream_cea708`, or
+ * `tst_mux_config_add_subtitle_stream_webvtt`.
  */
 
 int tst_mux_config_add_subtitle_descriptor(struct tst_mux_config_t *cfg,
-                                           TstSubtitleStreamHandle stream,
+                                           tst_subtitle_stream_handle_t stream,
                                            const struct tst_descriptor_t *desc);
 
 
@@ -1775,6 +1898,77 @@ int tst_mux_sender_send_klv_to(struct tst_mux_sender_t *p,
                                int64_t pts_90khz);
 
 /**
+ * Send one audio frame buffer (single-stream shorthand).
+ *
+ * Resolves only when exactly one audio stream is configured.
+ * Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::AmbiguousTarget` or `MuxError::NoAudioStreamsConfigured`).
+ *
+ * `frames` is one or more pre-framed audio frames concatenated by the
+ * caller. PTS is required.
+ */
+
+int tst_mux_sender_send_audio(struct tst_mux_sender_t *p,
+                              const uint8_t *frames,
+                              size_t len,
+                              int64_t pts_90khz);
+
+/**
+ * Send one audio frame buffer targeting a specific audio elementary stream.
+ *
+ * `stream_handle` is obtained from `tst_mux_config_add_audio_stream` /
+ * `tst_mux_config_add_audio_stream_with_language`. Out-of-range handles
+ * surface as `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream sender, prefer `tst_mux_sender_send_audio` — same
+ * effect, no handle required.
+ */
+
+int tst_mux_sender_send_audio_to(struct tst_mux_sender_t *p,
+                                 tst_audio_stream_handle_t stream_handle,
+                                 const uint8_t *frames,
+                                 size_t len,
+                                 int64_t pts_90khz);
+
+/**
+ * Send one subtitle PES unit (single-stream shorthand).
+ *
+ * Resolves only when exactly one subtitle stream is configured.
+ * Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::AmbiguousTarget` or
+ * `MuxError::NoSubtitleStreamsConfigured`).
+ *
+ * `payload` is one complete logical subtitle unit (DVB-sub composition
+ * page, teletext data field, CEA-708 service block, or WebVTT cue).
+ * PTS is required.
+ */
+
+int tst_mux_sender_send_subtitle(struct tst_mux_sender_t *p,
+                                 const uint8_t *payload,
+                                 size_t len,
+                                 int64_t pts_90khz);
+
+/**
+ * Send one subtitle PES unit targeting a specific subtitle elementary
+ * stream.
+ *
+ * `stream_handle` is obtained from one of the four
+ * `tst_mux_config_add_subtitle_stream_*` constructors. Out-of-range
+ * handles surface as `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream sender, prefer `tst_mux_sender_send_subtitle` —
+ * same effect, no handle required.
+ */
+
+int tst_mux_sender_send_subtitle_to(struct tst_mux_sender_t *p,
+                                    tst_subtitle_stream_handle_t stream_handle,
+                                    const uint8_t *payload,
+                                    size_t len,
+                                    int64_t pts_90khz);
+
+/**
  * Snapshot stats for a `tst_mux_sender_t` into `*out`.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
@@ -1923,6 +2117,48 @@ int tst_managed_mux_sender_send_klv_to(struct tst_managed_mux_sender_t *p,
                                        int64_t pts_90khz);
 
 /**
+ * Managed sibling of [`tst_mux_sender_send_audio`]. Same semantics; routes
+ * through the inner reconnecting transport.
+ */
+
+int tst_managed_mux_sender_send_audio(struct tst_managed_mux_sender_t *p,
+                                      const uint8_t *frames,
+                                      size_t len,
+                                      int64_t pts_90khz);
+
+/**
+ * Managed sibling of [`tst_mux_sender_send_audio_to`]. Same semantics;
+ * `stream_handle` is stable across reconnects.
+ */
+
+int tst_managed_mux_sender_send_audio_to(struct tst_managed_mux_sender_t *p,
+                                         tst_audio_stream_handle_t stream_handle,
+                                         const uint8_t *frames,
+                                         size_t len,
+                                         int64_t pts_90khz);
+
+/**
+ * Managed sibling of [`tst_mux_sender_send_subtitle`]. Same semantics; routes
+ * through the inner reconnecting transport.
+ */
+
+int tst_managed_mux_sender_send_subtitle(struct tst_managed_mux_sender_t *p,
+                                         const uint8_t *payload,
+                                         size_t len,
+                                         int64_t pts_90khz);
+
+/**
+ * Managed sibling of [`tst_mux_sender_send_subtitle_to`]. Same semantics;
+ * `stream_handle` is stable across reconnects.
+ */
+
+int tst_managed_mux_sender_send_subtitle_to(struct tst_managed_mux_sender_t *p,
+                                            tst_subtitle_stream_handle_t stream_handle,
+                                            const uint8_t *payload,
+                                            size_t len,
+                                            int64_t pts_90khz);
+
+/**
  * Snapshot stats for a `tst_managed_mux_sender_t` into `*out`.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
@@ -2049,6 +2285,77 @@ int tst_muxer_push_klv_to(struct tst_muxer_t *p,
                           const uint8_t *klv,
                           size_t len,
                           int64_t pts_90khz);
+
+/**
+ * Push one audio frame buffer (single-stream shorthand).
+ *
+ * Resolves only when exactly one audio stream is configured across all
+ * programs. Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::AmbiguousTarget` or `MuxError::NoAudioStreamsConfigured`).
+ *
+ * `frames` is one or more pre-framed audio frames concatenated by the
+ * caller (e.g. one ADTS frame for AAC, one MP2 frame, one AC-3 frame).
+ * PTS is required — audio always carries PTS.
+ */
+
+int tst_muxer_push_audio(struct tst_muxer_t *p,
+                         const uint8_t *frames,
+                         size_t len,
+                         int64_t pts_90khz);
+
+/**
+ * Push one audio frame buffer targeting a specific audio elementary stream.
+ *
+ * `handle` is obtained from `tst_mux_config_add_audio_stream` /
+ * `tst_mux_config_add_audio_stream_with_language` at config time and is
+ * stable across the config→open boundary. Out-of-range handles surface
+ * as `TST_E_INVALID_USAGE` (carrying `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream muxer, prefer `tst_muxer_push_audio` — it has the
+ * same effect and doesn't require a handle.
+ */
+
+int tst_muxer_push_audio_to(struct tst_muxer_t *p,
+                            tst_audio_stream_handle_t handle,
+                            const uint8_t *frames,
+                            size_t len,
+                            int64_t pts_90khz);
+
+/**
+ * Push one subtitle PES unit (single-stream shorthand).
+ *
+ * Resolves only when exactly one subtitle stream is configured.
+ * Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::AmbiguousTarget` or `MuxError::NoSubtitleStreamsConfigured`).
+ *
+ * `payload` is one complete logical subtitle unit (DVB-sub composition
+ * page, teletext data field, CEA-708 service block, or WebVTT cue);
+ * fragmentation across PES is not used. PTS is required — subtitles
+ * are rendered at presentation time and never reordered.
+ */
+
+int tst_muxer_push_subtitle(struct tst_muxer_t *p,
+                            const uint8_t *payload,
+                            size_t len,
+                            int64_t pts_90khz);
+
+/**
+ * Push one subtitle PES unit targeting a specific subtitle elementary stream.
+ *
+ * `handle` is obtained from one of the four
+ * `tst_mux_config_add_subtitle_stream_*` constructors. Out-of-range
+ * handles surface as `TST_E_INVALID_USAGE` (carrying
+ * `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream muxer, prefer `tst_muxer_push_subtitle` — same
+ * effect, no handle required.
+ */
+
+int tst_muxer_push_subtitle_to(struct tst_muxer_t *p,
+                               tst_subtitle_stream_handle_t handle,
+                               const uint8_t *payload,
+                               size_t len,
+                               int64_t pts_90khz);
 
 /**
  * Drain TS bytes into `out_buf` (capacity `out_cap`). Returns the number

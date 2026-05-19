@@ -9,11 +9,15 @@ use crate::config::{TstMuxConfig, TstReconnectPolicy};
 use crate::error::{
     TstError, record_mux_error, record_shell_error, set_last_error, tst_get_last_error,
 };
-use crate::handle::{Handle, TstKlvStreamHandle, TstVideoStreamHandle};
+use crate::handle::{
+    Handle, TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
+};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::mux::{KlvStreamHandle, VideoStreamHandle};
+use tst_core::mpegts::mux::{
+    AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
+};
 use tst_pipeline::{ManagedTransport, MuxSender, TransportCancel};
 use tst_srt::SrtTransport;
 use tst_srt::config::SocketConfig;
@@ -237,6 +241,159 @@ pub unsafe extern "C" fn tst_mux_sender_send_klv_to(
             }
         }
     })
+}
+
+/// Send one audio frame buffer (single-stream shorthand).
+///
+/// Resolves only when exactly one audio stream is configured.
+/// Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::AmbiguousTarget` or `MuxError::NoAudioStreamsConfigured`).
+///
+/// `frames` is one or more pre-framed audio frames concatenated by the
+/// caller. PTS is required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_audio(
+    p: *mut TstMuxSender,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if frames.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null frames with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(frames, len) };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_audio(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Send one audio frame buffer targeting a specific audio elementary stream.
+///
+/// `stream_handle` is obtained from `tst_mux_config_add_audio_stream` /
+/// `tst_mux_config_add_audio_stream_with_language`. Out-of-range handles
+/// surface as `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::InvalidStreamHandle`).
+///
+/// On a single-stream sender, prefer `tst_mux_sender_send_audio` — same
+/// effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_audio_to(
+    p: *mut TstMuxSender,
+    stream_handle: TstAudioStreamHandle,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if frames.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null frames with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(frames, len) };
+    let stream = AudioStreamHandle::from_raw(stream_handle);
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_audio_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Send one subtitle PES unit (single-stream shorthand).
+///
+/// Resolves only when exactly one subtitle stream is configured.
+/// Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::AmbiguousTarget` or
+/// `MuxError::NoSubtitleStreamsConfigured`).
+///
+/// `payload` is one complete logical subtitle unit (DVB-sub composition
+/// page, teletext data field, CEA-708 service block, or WebVTT cue).
+/// PTS is required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_subtitle(
+    p: *mut TstMuxSender,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if payload.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null payload with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(payload, len) };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_subtitle(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Send one subtitle PES unit targeting a specific subtitle elementary
+/// stream.
+///
+/// `stream_handle` is obtained from one of the four
+/// `tst_mux_config_add_subtitle_stream_*` constructors. Out-of-range
+/// handles surface as `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::InvalidStreamHandle`).
+///
+/// On a single-stream sender, prefer `tst_mux_sender_send_subtitle` —
+/// same effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_mux_sender_send_subtitle_to(
+    p: *mut TstMuxSender,
+    stream_handle: TstSubtitleStreamHandle,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if payload.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null payload with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(payload, len) };
+    let stream = SubtitleStreamHandle::from_raw(stream_handle);
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_subtitle_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
 }
 
 /// Snapshot stats for a `tst_mux_sender_t` into `*out`.
@@ -728,6 +885,130 @@ pub unsafe extern "C" fn tst_managed_mux_sender_send_klv_to(
             }
         }
     })
+}
+
+/// Managed sibling of [`tst_mux_sender_send_audio`]. Same semantics; routes
+/// through the inner reconnecting transport.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_audio(
+    p: *mut TstManagedMuxSender,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if frames.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null frames with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(frames, len) };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_audio(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Managed sibling of [`tst_mux_sender_send_audio_to`]. Same semantics;
+/// `stream_handle` is stable across reconnects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_audio_to(
+    p: *mut TstManagedMuxSender,
+    stream_handle: TstAudioStreamHandle,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if frames.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null frames with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(frames, len) };
+    let stream = AudioStreamHandle::from_raw(stream_handle);
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_audio_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Managed sibling of [`tst_mux_sender_send_subtitle`]. Same semantics; routes
+/// through the inner reconnecting transport.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_subtitle(
+    p: *mut TstManagedMuxSender,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if payload.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null payload with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(payload, len) };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_ref(|s| match s.send_subtitle(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
+}
+
+/// Managed sibling of [`tst_mux_sender_send_subtitle_to`]. Same semantics;
+/// `stream_handle` is stable across reconnects.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_managed_mux_sender_send_subtitle_to(
+    p: *mut TstManagedMuxSender,
+    stream_handle: TstSubtitleStreamHandle,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(wrapper) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null sender pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if payload.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null payload with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(payload, len) };
+    let stream = SubtitleStreamHandle::from_raw(stream_handle);
+    let pts = Pts90khz::new(pts_90khz);
+    wrapper
+        .inner
+        .with_inner_ref(|s| match s.send_subtitle_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_shell_error(&e);
+                unsafe { tst_get_last_error() }
+            }
+        })
 }
 
 /// Snapshot stats for a `tst_managed_mux_sender_t` into `*out`.

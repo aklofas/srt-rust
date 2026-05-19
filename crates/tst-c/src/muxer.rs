@@ -6,9 +6,13 @@
 
 use crate::config::TstMuxConfig;
 use crate::error::{TstError, record_mux_error, set_last_error};
-use crate::handle::{Handle, TstKlvStreamHandle, TstVideoStreamHandle};
+use crate::handle::{
+    Handle, TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
+};
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::mux::{KlvStreamHandle, Muxer, VideoStreamHandle};
+use tst_core::mpegts::mux::{
+    AudioStreamHandle, KlvStreamHandle, Muxer, SubtitleStreamHandle, VideoStreamHandle,
+};
 
 pub struct TstMuxer {
     inner: Handle<Muxer>,
@@ -192,6 +196,157 @@ pub unsafe extern "C" fn tst_muxer_push_klv_to(
             }
         }
     })
+}
+
+/// Push one audio frame buffer (single-stream shorthand).
+///
+/// Resolves only when exactly one audio stream is configured across all
+/// programs. Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::AmbiguousTarget` or `MuxError::NoAudioStreamsConfigured`).
+///
+/// `frames` is one or more pre-framed audio frames concatenated by the
+/// caller (e.g. one ADTS frame for AAC, one MP2 frame, one AC-3 frame).
+/// PTS is required — audio always carries PTS.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_muxer_push_audio(
+    p: *mut TstMuxer,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null muxer pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if frames.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null frames with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(frames, len) };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_mut(|m| match m.push_audio(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                unsafe { crate::error::tst_get_last_error() }
+            }
+        })
+}
+
+/// Push one audio frame buffer targeting a specific audio elementary stream.
+///
+/// `handle` is obtained from `tst_mux_config_add_audio_stream` /
+/// `tst_mux_config_add_audio_stream_with_language` at config time and is
+/// stable across the config→open boundary. Out-of-range handles surface
+/// as `TST_E_INVALID_USAGE` (carrying `MuxError::InvalidStreamHandle`).
+///
+/// On a single-stream muxer, prefer `tst_muxer_push_audio` — it has the
+/// same effect and doesn't require a handle.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_muxer_push_audio_to(
+    p: *mut TstMuxer,
+    handle: TstAudioStreamHandle,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(h) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null muxer pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if frames.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null frames with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(frames, len) };
+    let stream = AudioStreamHandle::from_raw(handle);
+    let pts = Pts90khz::new(pts_90khz);
+    h.inner
+        .with_inner_mut(|m| match m.push_audio_to(stream, pts, slice) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                unsafe { crate::error::tst_get_last_error() }
+            }
+        })
+}
+
+/// Push one subtitle PES unit (single-stream shorthand).
+///
+/// Resolves only when exactly one subtitle stream is configured.
+/// Otherwise rejects with `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::AmbiguousTarget` or `MuxError::NoSubtitleStreamsConfigured`).
+///
+/// `payload` is one complete logical subtitle unit (DVB-sub composition
+/// page, teletext data field, CEA-708 service block, or WebVTT cue);
+/// fragmentation across PES is not used. PTS is required — subtitles
+/// are rendered at presentation time and never reordered.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_muxer_push_subtitle(
+    p: *mut TstMuxer,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(handle) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null muxer pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if payload.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null payload with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(payload, len) };
+    let pts = Pts90khz::new(pts_90khz);
+    handle
+        .inner
+        .with_inner_mut(|m| match m.push_subtitle(pts, slice) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                unsafe { crate::error::tst_get_last_error() }
+            }
+        })
+}
+
+/// Push one subtitle PES unit targeting a specific subtitle elementary stream.
+///
+/// `handle` is obtained from one of the four
+/// `tst_mux_config_add_subtitle_stream_*` constructors. Out-of-range
+/// handles surface as `TST_E_INVALID_USAGE` (carrying
+/// `MuxError::InvalidStreamHandle`).
+///
+/// On a single-stream muxer, prefer `tst_muxer_push_subtitle` — same
+/// effect, no handle required.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_muxer_push_subtitle_to(
+    p: *mut TstMuxer,
+    handle: TstSubtitleStreamHandle,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    let Some(h) = (unsafe { p.as_ref() }) else {
+        set_last_error(TstError::InvalidConfig, "null muxer pointer");
+        return TstError::InvalidConfig as i32;
+    };
+    if payload.is_null() && len > 0 {
+        set_last_error(TstError::InvalidConfig, "null payload with non-zero len");
+        return TstError::InvalidConfig as i32;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(payload, len) };
+    let stream = SubtitleStreamHandle::from_raw(handle);
+    let pts = Pts90khz::new(pts_90khz);
+    h.inner
+        .with_inner_mut(|m| match m.push_subtitle_to(stream, pts, slice) {
+            Ok(()) => 0,
+            Err(e) => {
+                record_mux_error(&e);
+                unsafe { crate::error::tst_get_last_error() }
+            }
+        })
 }
 
 /// Drain TS bytes into `out_buf` (capacity `out_cap`). Returns the number

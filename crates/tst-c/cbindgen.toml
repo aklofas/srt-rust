@@ -50,6 +50,8 @@ include = [
     "TstOverflowPolicy",
     "TstVideoStreamHandle",
     "TstKlvStreamHandle",
+    "TstAudioStreamHandle",
+    "TstSubtitleStreamHandle",
     "TstProgramHandle",
     "TST_INVALID_PROGRAM_HANDLE",
     "TstStreamStats",
@@ -124,8 +126,10 @@ include = [
 "TstReconnectPolicy"   = "tst_reconnect_policy_t"
 "TstSenderStats"       = "tst_sender_stats_t"
 # Stream handle typedefs (transparent u32; idiomatic C _t suffix)
-"TstVideoStreamHandle" = "tst_video_stream_handle_t"
-"TstKlvStreamHandle"   = "tst_klv_stream_handle_t"
+"TstVideoStreamHandle"    = "tst_video_stream_handle_t"
+"TstKlvStreamHandle"      = "tst_klv_stream_handle_t"
+"TstAudioStreamHandle"    = "tst_audio_stream_handle_t"
+"TstSubtitleStreamHandle" = "tst_subtitle_stream_handle_t"
 # Program handle typedef
 "TstProgramHandle"     = "tst_program_handle_t"
 # Stats structs

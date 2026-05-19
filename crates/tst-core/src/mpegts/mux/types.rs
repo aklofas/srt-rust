@@ -425,8 +425,14 @@ impl std::fmt::Debug for AudioStreamHandle {
 }
 
 impl AudioStreamHandle {
+    // These methods are `#[doc(hidden)]` — same rationale as `VideoStreamHandle`.
+    // See the comment on that impl block for the full explanation.
+
     /// Pack `(program_index, within_program_index)` into the opaque u32.
     /// Both inputs are bounded by `MAX_PROGRAMS` and 16 respectively.
+    ///
+    /// Public so `tst-c` can construct handles at the FFI boundary.
+    /// Single-program callers pass `program_index = 0`.
     ///
     /// # Panics
     ///
@@ -434,8 +440,10 @@ impl AudioStreamHandle {
     /// if `within_index >= 16` (the per-program audio cap). Release builds
     /// silently mask the inputs into the 4-bit fields, which produces a
     /// handle that the muxer will reject with [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
-    /// at `push_audio_to` time.
-    pub(crate) fn pack(program_index: usize, within_index: usize) -> Self {
+    /// at `push_audio_to` time. Use [`Self::from_raw`] when re-wrapping a
+    /// handle that was already packed (e.g. round-tripped through C ABI).
+    #[doc(hidden)]
+    pub fn pack(program_index: usize, within_index: usize) -> Self {
         Self(crate::mpegts::common::handle_pack::pack(
             program_index,
             within_index,
@@ -443,14 +451,23 @@ impl AudioStreamHandle {
     }
 
     /// Inverse of `pack`. Returns `(program_index, within_index)`.
-    pub(crate) fn unpack(self) -> (usize, usize) {
+    #[doc(hidden)]
+    pub fn unpack(self) -> (usize, usize) {
         crate::mpegts::common::handle_pack::unpack(self.0)
     }
 
-    /// Wrap an already-packed `u32`. Test-only — production code has no
-    /// external consumer for Audio handles at the C ABI boundary yet.
-    #[cfg(test)]
-    pub(crate) fn from_raw(raw: u32) -> Self {
+    /// Return the packed `u32` representation. Used at the FFI boundary when
+    /// `tst-c` needs to return a handle to a C caller as a bare integer.
+    #[doc(hidden)]
+    pub fn raw(self) -> u32 {
+        self.0
+    }
+
+    /// Wrap a raw packed `u32` handle that was previously produced by
+    /// [`pack`](Self::pack) and returned to a C caller. Same semantics as
+    /// [`VideoStreamHandle::from_raw`].
+    #[doc(hidden)]
+    pub fn from_raw(raw: u32) -> Self {
         Self(raw)
     }
 }
@@ -489,11 +506,16 @@ impl std::fmt::Debug for SubtitleStreamHandle {
 }
 
 impl SubtitleStreamHandle {
+    // These methods are `#[doc(hidden)]` — same rationale as `VideoStreamHandle`.
+    // See the comment on that impl block for the full explanation.
+
     /// Pack `(program_index, within_program_index)` into the opaque u32.
     ///
     /// Bit layout: bits 0..=3 = within_program_index
     /// (0..=`MAX_SUBTITLE_STREAMS_PER_PROGRAM`-1), bits 4..=7 =
     /// program_index (0..=`MAX_PROGRAMS`-1), upper bits zero.
+    ///
+    /// Public so `tst-c` can construct handles at the FFI boundary.
     ///
     /// # Panics
     ///
@@ -502,7 +524,10 @@ impl SubtitleStreamHandle {
     /// builds silently mask the inputs into the 4-bit fields, which
     /// produces a handle that the muxer will reject with
     /// [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle) at `push_subtitle_to` time.
-    pub(crate) fn pack(program_index: usize, within_index: usize) -> Self {
+    /// Use [`Self::from_raw`] when re-wrapping a handle that was already
+    /// packed (e.g. round-tripped through C ABI).
+    #[doc(hidden)]
+    pub fn pack(program_index: usize, within_index: usize) -> Self {
         Self(crate::mpegts::common::handle_pack::pack(
             program_index,
             within_index,
@@ -510,20 +535,23 @@ impl SubtitleStreamHandle {
     }
 
     /// Unpack the opaque u32 into `(program_index, within_program_index)`.
-    pub(crate) fn unpack(self) -> (usize, usize) {
+    #[doc(hidden)]
+    pub fn unpack(self) -> (usize, usize) {
         crate::mpegts::common::handle_pack::unpack(self.0)
     }
 
-    /// Return the packed `u32` representation. Test-only — production code
-    /// has no external consumer for Subtitle handles at the C ABI boundary yet.
-    #[cfg(test)]
-    pub(crate) fn raw(self) -> u32 {
+    /// Return the packed `u32` representation. Used at the FFI boundary when
+    /// `tst-c` needs to return a handle to a C caller as a bare integer.
+    #[doc(hidden)]
+    pub fn raw(self) -> u32 {
         self.0
     }
 
-    /// Wrap an already-packed `u32`. Test-only.
-    #[cfg(test)]
-    pub(crate) fn from_raw(raw: u32) -> Self {
+    /// Wrap a raw packed `u32` handle that was previously produced by
+    /// [`pack`](Self::pack) and returned to a C caller. Same semantics as
+    /// [`VideoStreamHandle::from_raw`].
+    #[doc(hidden)]
+    pub fn from_raw(raw: u32) -> Self {
         Self(raw)
     }
 }

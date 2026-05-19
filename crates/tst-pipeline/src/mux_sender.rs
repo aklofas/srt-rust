@@ -383,8 +383,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// No C counterpart yet (deferred to receiver-surface plan along with
-    /// the audio stream-handle C surface).
+    /// `tst_mux_sender_send_audio` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -408,8 +407,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// No C counterpart yet (deferred to receiver-surface plan along with
-    /// the audio stream-handle C surface).
+    /// `tst_mux_sender_send_audio_to` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -444,8 +442,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// No C counterpart yet (deferred to receiver-surface plan along with
-    /// the subtitle stream-handle C surface).
+    /// `tst_mux_sender_send_subtitle` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:
@@ -469,8 +466,7 @@ impl<T: Transport> MuxSender<T> {
     ///
     /// # C ABI
     ///
-    /// No C counterpart yet (deferred to receiver-surface plan along with
-    /// the subtitle stream-handle C surface).
+    /// `tst_mux_sender_send_subtitle_to` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner muxer:

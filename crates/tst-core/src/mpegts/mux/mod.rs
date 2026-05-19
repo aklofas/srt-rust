@@ -680,6 +680,10 @@ impl Muxer {
     /// Resolves only when exactly one audio stream is configured across all
     /// programs. Otherwise rejects with [`MuxError::AmbiguousTarget`].
     ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_audio` — see `crates/tst-c/include/tstrans.h`.
+    ///
     /// # Errors
     /// - [`MuxError::NoAudioStreamsConfigured`] if no audio streams are
     ///   configured on this muxer.
@@ -724,6 +728,10 @@ impl Muxer {
     /// stream is configured. Handles are obtained from
     /// [`audio_handles`][Self::audio_handles] /
     /// [`audio_handles_for_program`][Self::audio_handles_for_program].
+    ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_audio_to` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
@@ -884,6 +892,10 @@ impl Muxer {
     /// across all programs. Otherwise rejects with
     /// [`MuxError::AmbiguousTarget`].
     ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_subtitle` — see `crates/tst-c/include/tstrans.h`.
+    ///
     /// # Errors
     /// - [`MuxError::NoSubtitleStreamsConfigured`] if no subtitle streams
     ///   are configured on this muxer.
@@ -925,6 +937,10 @@ impl Muxer {
     /// bare [`push_subtitle`][Self::push_subtitle] shorthand when
     /// exactly one subtitle stream is configured. Handles are obtained
     /// from [`subtitle_handles`][Self::subtitle_handles].
+    ///
+    /// # C ABI
+    ///
+    /// `tst_muxer_push_subtitle_to` — see `crates/tst-c/include/tstrans.h`.
     ///
     /// # Errors
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of

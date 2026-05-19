@@ -230,13 +230,11 @@ pub(crate) fn record_mux_error(e: &MuxError) {
         ),
         MuxError::NoAudioStreamsConfigured => (
             TstError::InvalidUsage,
-            "no audio streams configured (audio carriage is supported via the Rust API; the C ABI sender surface does not currently expose audio send entries — see docs/deferred-features.md)"
-                .into(),
+            "no audio streams configured; use tst_mux_config_add_audio_stream and call tst_*_send_audio_to / tst_*_push_audio_to with the returned handle".into(),
         ),
         MuxError::NoSubtitleStreamsConfigured => (
             TstError::InvalidUsage,
-            "no subtitle streams configured (subtitle carriage is supported via the Rust API; the C ABI sender surface does not currently expose subtitle send entries — see docs/deferred-features.md)"
-                .into(),
+            "no subtitle streams configured; use tst_mux_config_add_subtitle_stream_{dvb_subtitling,dvb_teletext,cea708,webvtt} and call tst_*_send_subtitle_to / tst_*_push_subtitle_to with the returned handle".into(),
         ),
         MuxError::TooManyVideoStreams { count, cap } => (
             TstError::InvalidConfig,

@@ -342,184 +342,247 @@ fn parse_bool_strict(key: &str, value: &str) -> Result<bool, UrlError> {
 
 fn apply_query_pair(overlay: &mut UrlOverlay, key: &str, value: &str) -> Result<(), UrlError> {
     match key {
-        "congestion" | "smoother" => {
-            // libsrt-URL canonical key is `congestion` (renamed from `smoother`
-            // in libsrt 1.4.1); `smoother` is the pre-rename ffmpeg-style alias.
-            overlay.congestion = Some(Congestion::from_str_strict(value).map_err(|source| {
-                UrlError::OptionValidation {
-                    key: "congestion".into(),
-                    source,
-                }
-            })?);
-        }
-        "conntimeo" | "connect_timeout" => {
-            // libsrt-URL canonical key is `conntimeo` (milliseconds);
-            // `connect_timeout` is the ffmpeg-style alias.
-            let n = parse_i32_nonneg("conntimeo", value)?;
-            overlay.connect_timeout = Some(Duration::from_millis(n as u64));
-        }
-        "fc" | "ffs" => {
-            // libsrt-URL canonical key is `fc` (flow control window);
-            // `ffs` is the ffmpeg-style alias (flight flag size).
-            overlay.flow_window_packets = Some(parse_int_nonneg("fc", value)?);
-        }
-        "inputbw" => {
-            overlay.input_bandwidth = Some(parse_int_nonneg("inputbw", value)?);
-        }
-        "latency" | "tsbpddelay" => {
-            // libsrt-URL canonical key is `latency`; `tsbpddelay` is the
-            // ffmpeg-style alias (the `SRTO_*` constant for SRT's TSBPD
-            // mechanism is `SRTO_LATENCY`).
-            let n = parse_i32_nonneg("latency", value)?;
-            warn_if_suspicious_latency("latency", n);
-            // n is a non-negative i32; widening to u64 is lossless.
-            overlay.latency = Some(Duration::from_millis(n as u64));
-        }
-        "linger" => {
-            // SRTO_LINGER value is in seconds (matches ffmpeg's URL).
-            let n = parse_i32_nonneg("linger", value)?;
-            overlay.linger = Some(Duration::from_secs(n as u64));
-        }
-        "lossmaxttl" => {
-            overlay.loss_max_ttl = Some(parse_int_nonneg("lossmaxttl", value)?);
-        }
-        "maxbw" => {
-            // SRTO_MAXBW is i64; we expose non-negative as Limited(u64).
-            // Negative-sentinel forms (Auto/Infinite) are not URL-settable
-            // under strict-A.
-            let n = parse_int_nonneg::<u64>("maxbw", value)?;
-            overlay.max_bandwidth = Some(MaxBandwidth::Limited(n));
-        }
-        "mss" => {
-            overlay.mss = Some(parse_int_nonneg::<u16>("mss", value)?);
-        }
-        "oheadbw" => {
-            overlay.overhead_bandwidth_pct = Some(parse_oheadbw(value)?);
-        }
-        "packetfilter" => {
-            overlay.packet_filter = Some(PacketFilter::new(value.to_string()).map_err(|e| {
-                UrlError::OptionValidation {
-                    key: "packetfilter".into(),
-                    source: OptionError::from(e),
-                }
-            })?);
-        }
-        "passphrase" => {
-            overlay.passphrase = Some(Passphrase::new(value.to_string()).map_err(|e| {
-                UrlError::OptionValidation {
-                    key: "passphrase".into(),
-                    source: OptionError::from(e),
-                }
-            })?);
-        }
-        "payloadsize" | "pkt_size" | "payload_size" => {
-            // libsrt-URL canonical key is `payloadsize`; `pkt_size` and
-            // `payload_size` are ffmpeg-style aliases.
-            //
-            // Cap at libsrt's live-mode maximum SRT_LIVE_MAX_PLSIZE = 1456
-            // (srt.h:297). ffmpeg clamps this via AVOption.max in
-            // libsrt.c:107-108. Without a parse-time cap, accepting any u16
-            // (up to 65535) defers the failure to apply_socket_config's
-            // PRE setsockopt, which surfaces a generic libsrt error — much
-            // less helpful than a clear "1456 cap" message at parse time.
-            let n: u16 = parse_int_nonneg::<u16>("payloadsize", value)?;
-            if n > 1456 {
-                return Err(UrlError::InvalidValue {
-                    key: "payloadsize".into(),
-                    detail: format!(
-                        "must be <= 1456 (libsrt SRT_LIVE_MAX_PLSIZE, live-mode cap), got {n}"
-                    ),
-                });
-            }
-            overlay.payload_size = Some(n);
-        }
-        "pbkeylen" => {
-            let n = parse_i32_nonneg("pbkeylen", value)?;
-            overlay.key_length =
-                Some(
-                    KeyLength::from_bytes(n).map_err(|source| UrlError::OptionValidation {
-                        key: "pbkeylen".into(),
-                        source,
-                    })?,
-                );
-        }
-        "peerlatency" => {
-            let n = parse_i32_nonneg("peerlatency", value)?;
-            warn_if_suspicious_latency("peerlatency", n);
-            overlay.peer_latency = Some(Duration::from_millis(n as u64));
-        }
-        "rcvlatency" => {
-            let n = parse_i32_nonneg("rcvlatency", value)?;
-            warn_if_suspicious_latency("rcvlatency", n);
-            overlay.recv_latency = Some(Duration::from_millis(n as u64));
-        }
-        "streamid" | "srt_streamid" => {
-            // libsrt-URL canonical key is `streamid`; `srt_streamid` is the
-            // ffmpeg-style alias.
-            overlay.stream_id =
-                Some(
-                    StreamId::new(value.to_string()).map_err(|e| UrlError::OptionValidation {
-                        key: "streamid".into(),
-                        source: OptionError::from(e),
-                    })?,
-                );
-        }
-        "tlpktdrop" => {
-            overlay.too_late_packet_drop = Some(parse_bool_strict("tlpktdrop", value)?);
-        }
-        "udprcvbuf" | "recv_buffer_size" => {
-            overlay.udp_recv_buffer_bytes = Some(parse_int_nonneg("udprcvbuf", value)?);
-        }
-        "udpsndbuf" | "send_buffer_size" => {
-            overlay.udp_send_buffer_bytes = Some(parse_int_nonneg("udpsndbuf", value)?);
-        }
-        "x-recvtimeout" => {
-            let n = parse_i32_nonneg("x-recvtimeout", value)?;
-            overlay.recv_timeout = Some(Duration::from_millis(n as u64));
-        }
-        "x-sendtimeout" => {
-            let n = parse_i32_nonneg("x-sendtimeout", value)?;
-            overlay.send_timeout = Some(Duration::from_millis(n as u64));
-        }
-        // ffmpeg-canonical option short-aliases that don't share a libsrt
-        // URL name. Without these arms, users porting ffmpeg URLs hit the
-        // generic "unknown URL key" fallthrough — surface what they're
-        // trying to set + what to use instead (or that we don't expose it).
-        // ffmpeg names: libsrt.c:103/104/118/149.
-        "timeout" => {
-            return Err(UrlError::FfmpegAliasNotExposed {
-                key: key.to_string(),
-                canonical: "ffmpeg's read/write timeout, libsrt rw_timeout, microseconds",
-                suggestion: "use x-recvtimeout / x-sendtimeout (milliseconds) for the closest equivalent",
-            });
-        }
-        "listen_timeout" => {
-            return Err(UrlError::FfmpegAliasNotExposed {
-                key: key.to_string(),
-                canonical: "ffmpeg's listen_timeout (connection-awaiting timeout, microseconds)",
-                suggestion: "not exposed by this library; see deferred-features.md",
-            });
-        }
-        "tsbpd" => {
-            return Err(UrlError::FfmpegAliasNotExposed {
-                key: key.to_string(),
-                canonical: "ffmpeg short alias for SRTO_TSBPDMODE (also reachable via the longer 'tsbpdmode' libsrt URL key)",
-                suggestion: "not exposed by this library; see deferred-features.md",
-            });
-        }
-        other => {
-            if let Some(srto) = group3_lookup(other) {
-                return Err(UrlError::UnsupportedKey {
-                    key: other.to_string(),
-                    srto,
-                });
-            }
-            return Err(UrlError::UnknownKey {
-                key: other.to_string(),
-            });
-        }
+        "congestion" | "smoother" => apply_congestion(overlay, value),
+        "conntimeo" | "connect_timeout" => apply_connect_timeout(overlay, value),
+        "fc" | "ffs" => apply_flow_window(overlay, value),
+        "inputbw" => apply_inputbw(overlay, value),
+        "latency" | "tsbpddelay" => apply_latency(overlay, "latency", value),
+        "linger" => apply_linger(overlay, value),
+        "lossmaxttl" => apply_lossmaxttl(overlay, value),
+        "maxbw" => apply_maxbw(overlay, value),
+        "mss" => apply_mss(overlay, value),
+        "oheadbw" => apply_oheadbw(overlay, value),
+        "packetfilter" => apply_packetfilter(overlay, value),
+        "passphrase" => apply_passphrase(overlay, value),
+        "payloadsize" | "pkt_size" | "payload_size" => apply_payloadsize(overlay, value),
+        "pbkeylen" => apply_pbkeylen(overlay, value),
+        "peerlatency" => apply_latency(overlay, "peerlatency", value),
+        "rcvlatency" => apply_latency(overlay, "rcvlatency", value),
+        "streamid" | "srt_streamid" => apply_streamid(overlay, value),
+        "tlpktdrop" => apply_tlpktdrop(overlay, value),
+        "udprcvbuf" | "recv_buffer_size" => apply_udprcvbuf(overlay, value),
+        "udpsndbuf" | "send_buffer_size" => apply_udpsndbuf(overlay, value),
+        "x-recvtimeout" => apply_recv_timeout(overlay, value),
+        "x-sendtimeout" => apply_send_timeout(overlay, value),
+        "timeout" | "listen_timeout" | "tsbpd" => Err(ffmpeg_alias_not_exposed(key)),
+        other => fallback_unknown(other),
+    }
+}
+
+// ── per-parameter-family helpers ─────────────────────────────────────────────
+
+fn apply_congestion(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    // libsrt-URL canonical key is `congestion` (renamed from `smoother`
+    // in libsrt 1.4.1); `smoother` is the pre-rename ffmpeg-style alias.
+    overlay.congestion =
+        Some(
+            Congestion::from_str_strict(value).map_err(|source| UrlError::OptionValidation {
+                key: "congestion".into(),
+                source,
+            })?,
+        );
+    Ok(())
+}
+
+fn apply_connect_timeout(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    // libsrt-URL canonical key is `conntimeo` (milliseconds);
+    // `connect_timeout` is the ffmpeg-style alias.
+    let n = parse_i32_nonneg("conntimeo", value)?;
+    overlay.connect_timeout = Some(Duration::from_millis(n as u64));
+    Ok(())
+}
+
+fn apply_flow_window(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    // libsrt-URL canonical key is `fc` (flow control window);
+    // `ffs` is the ffmpeg-style alias (flight flag size).
+    overlay.flow_window_packets = Some(parse_int_nonneg("fc", value)?);
+    Ok(())
+}
+
+fn apply_inputbw(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    overlay.input_bandwidth = Some(parse_int_nonneg("inputbw", value)?);
+    Ok(())
+}
+
+fn apply_latency(overlay: &mut UrlOverlay, key: &'static str, value: &str) -> Result<(), UrlError> {
+    // libsrt-URL canonical key is `latency`; `tsbpddelay` is the
+    // ffmpeg-style alias (the `SRTO_*` constant for SRT's TSBPD
+    // mechanism is `SRTO_LATENCY`).
+    let n = parse_i32_nonneg(key, value)?;
+    warn_if_suspicious_latency(key, n);
+    // n is a non-negative i32; widening to u64 is lossless.
+    let dur = Duration::from_millis(n as u64);
+    match key {
+        "latency" => overlay.latency = Some(dur),
+        "peerlatency" => overlay.peer_latency = Some(dur),
+        "rcvlatency" => overlay.recv_latency = Some(dur),
+        _ => unreachable!("apply_latency called with non-latency key {key}"),
     }
     Ok(())
+}
+
+fn apply_linger(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    // SRTO_LINGER value is in seconds (matches ffmpeg's URL).
+    let n = parse_i32_nonneg("linger", value)?;
+    overlay.linger = Some(Duration::from_secs(n as u64));
+    Ok(())
+}
+
+fn apply_lossmaxttl(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    overlay.loss_max_ttl = Some(parse_int_nonneg("lossmaxttl", value)?);
+    Ok(())
+}
+
+fn apply_maxbw(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    // SRTO_MAXBW is i64; we expose non-negative as Limited(u64).
+    // Negative-sentinel forms (Auto/Infinite) are not URL-settable
+    // under strict-A.
+    let n = parse_int_nonneg::<u64>("maxbw", value)?;
+    overlay.max_bandwidth = Some(MaxBandwidth::Limited(n));
+    Ok(())
+}
+
+fn apply_mss(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    overlay.mss = Some(parse_int_nonneg::<u16>("mss", value)?);
+    Ok(())
+}
+
+fn apply_oheadbw(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    overlay.overhead_bandwidth_pct = Some(parse_oheadbw(value)?);
+    Ok(())
+}
+
+fn apply_packetfilter(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    overlay.packet_filter =
+        Some(
+            PacketFilter::new(value.to_string()).map_err(|e| UrlError::OptionValidation {
+                key: "packetfilter".into(),
+                source: OptionError::from(e),
+            })?,
+        );
+    Ok(())
+}
+
+fn apply_passphrase(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    overlay.passphrase =
+        Some(
+            Passphrase::new(value.to_string()).map_err(|e| UrlError::OptionValidation {
+                key: "passphrase".into(),
+                source: OptionError::from(e),
+            })?,
+        );
+    Ok(())
+}
+
+fn apply_payloadsize(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    // libsrt-URL canonical key is `payloadsize`; `pkt_size` and
+    // `payload_size` are ffmpeg-style aliases.
+    //
+    // Cap at libsrt's live-mode maximum SRT_LIVE_MAX_PLSIZE = 1456
+    // (srt.h:297). ffmpeg clamps this via AVOption.max in
+    // libsrt.c:107-108. Without a parse-time cap, accepting any u16
+    // (up to 65535) defers the failure to apply_socket_config's
+    // PRE setsockopt, which surfaces a generic libsrt error — much
+    // less helpful than a clear "1456 cap" message at parse time.
+    let n: u16 = parse_int_nonneg::<u16>("payloadsize", value)?;
+    if n > 1456 {
+        return Err(UrlError::InvalidValue {
+            key: "payloadsize".into(),
+            detail: format!("must be <= 1456 (libsrt SRT_LIVE_MAX_PLSIZE, live-mode cap), got {n}"),
+        });
+    }
+    overlay.payload_size = Some(n);
+    Ok(())
+}
+
+fn apply_pbkeylen(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    let n = parse_i32_nonneg("pbkeylen", value)?;
+    overlay.key_length =
+        Some(
+            KeyLength::from_bytes(n).map_err(|source| UrlError::OptionValidation {
+                key: "pbkeylen".into(),
+                source,
+            })?,
+        );
+    Ok(())
+}
+
+fn apply_streamid(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    // libsrt-URL canonical key is `streamid`; `srt_streamid` is the
+    // ffmpeg-style alias.
+    overlay.stream_id =
+        Some(
+            StreamId::new(value.to_string()).map_err(|e| UrlError::OptionValidation {
+                key: "streamid".into(),
+                source: OptionError::from(e),
+            })?,
+        );
+    Ok(())
+}
+
+fn apply_tlpktdrop(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    overlay.too_late_packet_drop = Some(parse_bool_strict("tlpktdrop", value)?);
+    Ok(())
+}
+
+fn apply_udprcvbuf(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    overlay.udp_recv_buffer_bytes = Some(parse_int_nonneg("udprcvbuf", value)?);
+    Ok(())
+}
+
+fn apply_udpsndbuf(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    overlay.udp_send_buffer_bytes = Some(parse_int_nonneg("udpsndbuf", value)?);
+    Ok(())
+}
+
+fn apply_recv_timeout(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    let n = parse_i32_nonneg("x-recvtimeout", value)?;
+    overlay.recv_timeout = Some(Duration::from_millis(n as u64));
+    Ok(())
+}
+
+fn apply_send_timeout(overlay: &mut UrlOverlay, value: &str) -> Result<(), UrlError> {
+    let n = parse_i32_nonneg("x-sendtimeout", value)?;
+    overlay.send_timeout = Some(Duration::from_millis(n as u64));
+    Ok(())
+}
+
+/// Returns a `UrlError::FfmpegAliasNotExposed` for the three ffmpeg-canonical
+/// option short-aliases that don't share a libsrt URL name. Without these
+/// arms, users porting ffmpeg URLs hit the generic "unknown URL key"
+/// fallthrough — surface what they're trying to set + what to use instead
+/// (or that we don't expose it). ffmpeg names: libsrt.c:103/104/118/149.
+fn ffmpeg_alias_not_exposed(key: &str) -> UrlError {
+    match key {
+        "timeout" => UrlError::FfmpegAliasNotExposed {
+            key: key.to_string(),
+            canonical: "ffmpeg's read/write timeout, libsrt rw_timeout, microseconds",
+            suggestion: "use x-recvtimeout / x-sendtimeout (milliseconds) for the closest equivalent",
+        },
+        "listen_timeout" => UrlError::FfmpegAliasNotExposed {
+            key: key.to_string(),
+            canonical: "ffmpeg's listen_timeout (connection-awaiting timeout, microseconds)",
+            suggestion: "not exposed by this library; see deferred-features.md",
+        },
+        "tsbpd" => UrlError::FfmpegAliasNotExposed {
+            key: key.to_string(),
+            canonical: "ffmpeg short alias for SRTO_TSBPDMODE (also reachable via the longer 'tsbpdmode' libsrt URL key)",
+            suggestion: "not exposed by this library; see deferred-features.md",
+        },
+        _ => unreachable!("ffmpeg_alias_not_exposed called with unexpected key '{key}'"),
+    }
+}
+
+fn fallback_unknown(other: &str) -> Result<(), UrlError> {
+    if let Some(srto) = group3_lookup(other) {
+        return Err(UrlError::UnsupportedKey {
+            key: other.to_string(),
+            srto,
+        });
+    }
+    Err(UrlError::UnknownKey {
+        key: other.to_string(),
+    })
 }
 
 impl UrlOverlay {

@@ -120,6 +120,9 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check-no-srt-symbol-leak.sh
 
+      - name: Check C header section uniqueness
+        run: bash scripts/check-c-header-section-uniqueness.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

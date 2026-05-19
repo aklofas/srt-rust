@@ -7,6 +7,85 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Codex Wave 6 validation fixes (docs/plans/2026-05-19-codex-wave-6-validation-fixes.md)
+
+**Three follow-up fixes to Wave 6 sign-off**, surfaced by a 2026-05-19 Codex static
+review of the shipped Wave 5.B + 6.A + 6.D implementations
+(`docs/refactor-1/_codex-wave-6-implementation-validation.md`):
+
+**Fixed:**
+
+- **C header section dividers no longer repeat.** Wave 5.B's `add_section_dividers`
+  post-process in `crates/tst-c/build.rs` walked cbindgen's name-sorted output
+  line-by-line and emitted a divider on every classified-section transition.
+  With `cbindgen.toml` `sort_by = "Name"`, alphabetic symbol order interleaved
+  domains (`tst_clear_*` → INTROSPECTION, `tst_demux_*` → DEMUX RECEIVER,
+  `tst_get_*` → INTROSPECTION again, etc.), producing 16 dividers with 7
+  domain sections each appearing twice. Replaced with **chunk-then-group-then-emit**:
+  pass 1 buffers each doc-comment + declaration block classified by section;
+  pass 2 emits header content verbatim, then iterates 7 required sections +
+  2 conditional catch-alls in declared order, emitting each at most once.
+  Result: `crates/tst-c/include/tstrans.h` now has 9 dividers (7 required +
+  LIFETIME + OTHER), matching the original Wave 5.B spec. Implementation
+  required two adaptations beyond the plan's sketch: multi-line declaration
+  absorption (cbindgen wraps long parameter lists) and a trailer bucket
+  (`} // extern "C"` + `#endif` + `_TST_ABI_ASSERT` block must emit AFTER
+  sections, not before). `crates/tst-c/tests/header_drift.rs` carries a
+  mirror copy of `add_section_dividers` (intentional — build.rs runs
+  pre-compile and cannot import from `tst_c::`); both copies updated in
+  lock-step and enforced byte-identical by the existing drift test.
+
+- **`record_mux_error` wildcard for unknown future `MuxSenderErrorKind`
+  variants now maps to `TstError::Internal` (was `InvalidConfig`).** Aligns
+  with the adjacent `record_shell_error` wildcard at `tst-c/src/error.rs:180`
+  (`Internal`) and with `MuxError::kind()`'s wildcard at
+  `tst-core/src/error.rs:631` (`Internal`). Rationale: an unknown future
+  coarse kind is more truthful surfaced as a library/runtime failure than
+  as caller-side `InvalidConfig`. Behavior change is in the future-only
+  path — no current variant takes the wildcard.
+
+**Changed:**
+
+- **`mpegts::mux::mod.rs` shrunk from 629 LoC to 320 LoC** (Wave 6.A
+  follow-up). `Muxer::new` is now a thin ~50-LoC coordinator; per-program
+  state collection, PCR PID resolution, PMT descriptor cache construction,
+  and per-stream stats initialization moved to 4 new `pub(super)` helpers
+  in `mpegts::mux::state`:
+  - `collect_stream_states(prog) -> (Vec<Video>, Vec<Klv>, Vec<Audio>, Vec<Sub>)`
+  - `resolve_pcr_pid(prog) -> u16`
+  - `build_pmt_descriptor_cache(prog) -> Vec<Vec<u8>>`
+  - `initialize_stats(prog, &video, &klv, &audio, &subtitle, &mut into)`
+
+  Final `state.rs`: 445 LoC (was 96). **Zero public Rust API delta**
+  (`cargo public-api -p tst-core --simplified` baseline byte-identical).
+  **Zero `#[non_exhaustive]` BASELINE delta** (stays 113). Zero behavior
+  change — mechanical extraction with all 761 tst-core tests + workspace
+  suite green.
+
+**New CI ratchet:**
+
+- `scripts/check-c-header-section-uniqueness.sh` (the **9th** bash ratchet)
+  asserts `tstrans.h` has 7-9 dividers AND all section names are unique.
+  Guards against regression to the pre-fix line-by-line transition-emission
+  shape. Wired into `.github/workflows/ci.yml` alongside the existing 8.
+
+**Public API impact:**
+
+- `cargo public-api` baselines for `tst-core` / `tst-pipeline` / `tst-srt`:
+  byte-identical to pre-plan.
+- `#[non_exhaustive]` BASELINE in `.github/workflows/ci.yml`: unchanged at 113.
+- `tstrans.h` byte delta: cbindgen output reordering (sort-by-name groups
+  now travel as section blocks instead of interleaved) + 9 divider lines
+  emitted in canonical order instead of 16 in transition order.
+
+**Test coverage:** no new tests added — the byte-identity header drift test
+(`crates/tst-c/tests/header_drift.rs`) covers the post-process change end-to-end;
+existing muxer roundtrip + descriptor + per-stream-class test suites cover
+the `Muxer::new` extraction behavior-equivalence. All 9 bash ratchets green;
+all 3 cargo-public-api baselines clean.
+
+---
+
 ## [Unreleased] — Wave 6.D `MuxError` two-tier reshape (docs/plans/2026-05-19-wave-6-muxerror-reshape.md)
 
 **Breaking change (tst-core / tst-c — new public surface, C routing simplified):**

@@ -99,7 +99,7 @@ impl super::demuxer::Demuxer {
                         .or_insert_with(|| crate::mpegts::stats::StreamStats {
                             pid: stream.pid,
                             stream_type: StreamTypeCode::from_byte(
-                                super::demuxer::stream_type_from_kind(&stream.kind),
+                                super::pmt_classify::stream_type_from_kind(&stream.kind),
                             ),
                             program_number,
                             ..Default::default()
@@ -124,7 +124,7 @@ impl super::demuxer::Demuxer {
                     .or_insert_with(|| crate::mpegts::stats::StreamStats {
                         pid: stream.pid,
                         stream_type: StreamTypeCode::from_byte(
-                            super::demuxer::stream_type_from_kind(&stream.kind),
+                            super::pmt_classify::stream_type_from_kind(&stream.kind),
                         ),
                         program_number,
                         ..Default::default()

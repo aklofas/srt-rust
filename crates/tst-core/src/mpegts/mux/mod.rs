@@ -1787,7 +1787,7 @@ fn validate_annex_b(nal: &[u8]) -> Result<(), MuxError> {
 
 /// True iff `caller_descs` contains any descriptor that the receiver-side
 /// subtitle classifier recognizes as a codec marker. Mirrors the demux-side
-/// `mpegts::demux::demuxer::has_recognized_subtitle_descriptor` predicate
+/// `mpegts::demux::pmt_classify::has_recognized_subtitle_descriptor` predicate
 /// but operates on raw TLV bytes (the form held in `prog.stream_descriptors`)
 /// rather than on parsed `RawDescriptor`.
 ///

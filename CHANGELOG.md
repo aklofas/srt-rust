@@ -49,6 +49,49 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 6.C-KLV typed-set module reorg (docs/plans/2026-05-19-wave-6-klv-reorg.md)
+
+**Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**
+
+- `klv::st0601` fan-out — 1711-line `mod.rs` god-file extracted into:
+  `model.rs` (`UasDatalinkLs`, `EncodeConfig`, `GeoPoint`, `Attitude`,
+  `FieldOfView`, `Corners`), `decode.rs` (4 decode entry points + inner
+  helpers), `encode.rs` (5 encode / len functions). `mod.rs` becomes a
+  ~35-line thin facade; all canonical re-exports preserved byte-identically
+  at `klv::st0601::*`.
+- `klv::st0102` fan-out — 1242-line `mod.rs` extracted into `model.rs`
+  (`SecurityLs` + `pub(super)` UTF-16 helpers), `decode.rs`, `encode.rs`.
+  `mod.rs` becomes a ~25-line thin facade.
+- `klv::st0903` fan-out — 1572-line `mod.rs` + 1012-line `vtarget_pack.rs`
+  extracted into `model.rs` (`VmtiLs`), `decode.rs`, `encode.rs`, `tests.rs`,
+  and a nested `vtarget_pack/` subdirectory (`mod.rs`, `model.rs`, `decode.rs`,
+  `encode.rs`, `tests.rs`). `mod.rs` becomes a ~90-line thin facade.
+- `klv::st0605` directory conversion — 219-line `st0605.rs` single-file
+  converted to `st0605/{mod.rs, model.rs, decode.rs, encode.rs}` for shape
+  uniformity. Tests stay inline in `mod.rs` per Decision K5.
+- `## Spec coverage` rustdoc blocks added to all 4 typed-set `mod.rs` files,
+  listing parsed tags/fields, `unknown`-preservation policy, decode/encode
+  modes, and deferred items. Closes audit `04-documentation.md` Finding 4
+  and `08-test-infrastructure.md` Finding 4 (spec-coverage docstring scope).
+
+**No public API impact:**
+
+- `cargo public-api -p tst-core --simplified` baseline refreshed (re-export
+  path resolution churn for some impl blocks; zero callable-symbol delta).
+- `cargo public-api -p tst-pipeline --simplified` byte-identical to pre-plan.
+- `cargo public-api -p tst-srt --simplified` byte-identical to pre-plan.
+- `#[non_exhaustive]` BASELINE in `.github/workflows/ci.yml` unchanged by this
+  plan (Wave 6.C-codec already bumped 87→105 — that plan's entry was
+  inadvertently omitted from CHANGELOG during its ship; covered by memory
+  entry `project_plan_87_wave_6_C_codec_reorg_shipped.md`).
+
+**Test coverage:** 761 `tst-core` lib tests pass (unchanged count). All 4
+KLV-touching fuzz targets (`klv_iter`, `klv_st0601_decode`, `klv_st0102_decode`,
+`klv_st0903_decode`) compile clean under `cargo +nightly fuzz check`. All 6
+bash ratchets green.
+
+---
+
 ## [Unreleased] — Wave 6.F mechanical / hygiene sweep (docs/plans/2026-05-19-wave-6-mechanical-sweep.md)
 
 **Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**

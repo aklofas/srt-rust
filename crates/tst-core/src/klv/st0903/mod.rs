@@ -55,22 +55,22 @@
 //! **Standard:** MISB ST 0903.6 VMTI (Video Moving Target Indicator)
 //! Local Set + per-target packs (vTargetSeries, Tag 101).
 //!
-//! **Top-level tags parsed (typed-modeled per ST 0903.6 §6 Table 1):**
-//! 1 (checksum), 2 (precision timestamp), 3 (VMTI LS version), 4–7
-//! (system name + version + UID + source sensor), 8–9 (frame width
-//! + height), 10–11 (image source sensor focal length), 12 (LDS
-//! version), 13 (system source identifier), 101 (vTargetSeries —
-//! per-target packs decoded via [`VTargetPack`]), plus the nested
+//! **Top-level tags parsed** (typed-modeled per ST 0903.6 §6
+//! Table 1): checksum (1), precision timestamp (2), VMTI LS version
+//! (3), system name + version + UID + source sensor (4–7), frame
+//! width + height (8–9), image source sensor focal length (10–11),
+//! LDS version (12), system source identifier (13), vTargetSeries
+//! (101, per-target packs decoded via [`VTargetPack`]), plus nested
 //! Local Set tags 102–109 (algorithm series, ontology series — bytes
 //! preserved as `Option<Vec<u8>>` pass-through; typed layer deferred).
 //!
-//! **[`VTargetPack`] tags parsed (typed-modeled per ST 0903.6 §10.2
-//! Table 5):** 1 (targetId — BER-OID), 2 (centroid pixel number),
-//! 3 (boundary top-left + 4 boundary bottom-right), 5–7 (priority +
-//! confidence + history), 8–9 (color + intensity), 10–16 (lat/lon/
-//! HAE + offsets + bbox geo corners), plus pack-form nested LSes
-//! (VMask, VObject, VFeature, VTracker, VChip — bytes preserved as
-//! `Option<Vec<u8>>`; typed layers deferred).
+//! **[`VTargetPack`] tags parsed** (typed-modeled per ST 0903.6
+//! §10.2 Table 5): targetId/BER-OID (1), centroid pixel number (2),
+//! boundary corners (3–4), priority + confidence + history (5–7),
+//! color + intensity (8–9), lat/lon/HAE + offsets + bbox geo corners
+//! (10–16), plus pack-form nested LSes (VMask, VObject, VFeature,
+//! VTracker, VChip — bytes preserved as `Option<Vec<u8>>`; typed
+//! layers deferred).
 //!
 //! **Tags preserved as `unknown`:** any tag not in the typed-modeled
 //! set — per ST 0107.5 §6.

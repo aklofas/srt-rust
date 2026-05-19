@@ -109,6 +109,13 @@ jobs:
       - name: Raw C mapper variant coverage
         if: matrix.name == 'linux-x86_64'
         run: bash scripts/check-raw-c-mapper-coverage.sh
+      - name: No srt_*/SRT_* symbol leak in libtstrans.so
+        # Plan B Wave 5.B ratchet — fails if libtstrans.so's dynamic
+        # export table contains any srt_*/SRT_* symbols (defense in depth
+        # alongside the symbol_audit.rs Rust-side check). Linux-only
+        # (uses GNU nm).
+        if: matrix.name == 'linux-x86_64'
+        run: bash scripts/check-no-srt-symbol-leak.sh
 
       - name: cargo fmt --check
         run: cargo fmt --all -- --check

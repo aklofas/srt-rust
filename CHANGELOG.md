@@ -62,6 +62,94 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 5.B C ABI symbol hygiene + layout asserts + release-validation (docs/plans/2026-05-21-c-abi-symbol-hygiene-and-release-validation.md)
+
+**Tooling / build:**
+
+- **Symbol hygiene.** `crates/tst-c/build.rs` now emits per-OS linker args to restrict
+  `libtstrans` dynamic exports to `tst_*`/`TST_*`:
+  - Linux: `-Wl,--exclude-libs=ALL` (hides all static-library symbols, including
+    libsrt's `srt_*`/`SRT_*` and mbedTLS's `mbedtls_*`).
+  - macOS: `-Wl,-exported_symbols_list,exports.txt` (Apple ld whitelist with the
+    Mach-O leading-underscore convention).
+  - Windows: documented no-op pending plan #65 runtime-test deferral.
+
+  The original plan specified a Linux `-Wl,--version-script=...` mechanism, but
+  that conflicts with rustc's auto-emitted anonymous version-script for cdylib
+  targets (GNU BFD ld rejects mixing named and anonymous version tags). The
+  `--exclude-libs=ALL` pivot achieves the same outcome (0 `srt_*`/`SRT_*` in
+  the dynamic export table) without touching the auto-emitted script.
+
+  New file: `crates/tst-c/exports.txt`. Closes audit `09-c-abi.md` Finding 3.
+
+- **Layout assertion.** `crates/tst-c/cbindgen.toml` trailer gains a 9th
+  `_TST_ABI_ASSERT(sizeof(tst_socket_stats_t) == 120, ...)` line. Catches
+  Rust-side `SocketStats` reorders that change the struct size at C-consumer
+  build time. Closes audit `09-c-abi.md` Finding 2.
+
+- **Domain-grouping section dividers.** `crates/tst-c/build.rs` runs a
+  post-process step after cbindgen that inserts prefix-keyed section dividers
+  in `tstrans.h` (`// ─── INTROSPECTION ───`, `// ─── MUX SENDER ───`, etc.).
+  7 required sections (INTROSPECTION, MUX SENDER, TS SENDER, RAW SENDER,
+  DEMUX RECEIVER, TS RECEIVER, RAW RECEIVER) + 2 conditional catch-alls
+  (LIFETIME, OTHER). Symbol-name-based grouping is independent of source-file
+  layout. Closes audit `09-c-abi.md` Finding 5.
+
+- **CI ratchet.** New `scripts/check-no-srt-symbol-leak.sh`; runs
+  `nm -D -g --defined-only` against `target/debug/libtstrans.so` + fails on any
+  `srt_*`/`SRT_*` match. Wired into `.github/workflows/ci.yml` after the
+  existing 6 ratchets. Linux-only (same gate as `symbol_audit.rs`).
+
+- **`crates/tst-c/tests/symbol_audit.rs` update.** Removed the `srt_*`
+  allowlist (no longer needed after Task 4); added `srt_symbols_not_exported`
+  test for defense-in-depth (clearer failure message naming the specific
+  leaked symbol).
+
+**Release-validation:**
+
+- **Step 6 (ffmpeg muxer differential).** `release-validation.sh:138-200` was a
+  TODO stub; now extracts H.264 NALs via `ffmpeg -c:v copy`, re-muxes through
+  ffmpeg, diffs `tsdump --psi` of `$BASELINE` vs ffmpeg-remux. Soft-fail on diff.
+  Skips cleanly if ffmpeg or tsdump are missing.
+
+- **Step 7 (player decode matrix).** `release-validation.sh` Step 7 had a
+  partial-stub that only ran `$player --version`; now invokes each of
+  `ffplay` / `vlc` / `mpv` / `gst-play-1.0` with player-specific headless flags
+  + 10s timeout wrapper; greps stderr for error markers. Soft-fail per Tier-B
+  convention. SKIPs missing players.
+
+- **Step 8 (PTS rollover).** New test tool `gen_pts_rollover_fixture` at
+  `crates/tst-core/tests/tools/gen_pts_rollover_fixture.rs` emits a synthetic
+  .ts file with initial PTS 5 seconds below 2^33; the 10s stream straddles the
+  MPEG-TS PTS wraparound. `release-validation.sh` Step 8 invokes the tool +
+  probes with `tsdump` to confirm the demux side handles the wrap cleanly.
+
+- **Step 9 (PCR jitter).** New test tool `measure_pcr_jitter` at
+  `crates/tst-core/tests/tools/measure_pcr_jitter.rs` walks PCR samples +
+  computes inter-PCR delta median + p95 (in milliseconds). Thresholds:
+  median > 67 ms or p95 > 100 ms → fail (per
+  `reference_ts_corpus_cadence.md` baseline). PCR extraction inlined per
+  ISO/IEC 13818-1 §2.4.3.4-5 because `parse_ts_packet` is `pub(super)`.
+
+**Internal (no public-API surface delta):**
+
+- New files: `crates/tst-c/exports.txt`,
+  `crates/tst-core/tests/tools/gen_pts_rollover_fixture.rs`,
+  `crates/tst-core/tests/tools/measure_pcr_jitter.rs`,
+  `scripts/check-no-srt-symbol-leak.sh`.
+- Modified: `crates/tst-c/build.rs` (link args + post-process function),
+  `crates/tst-c/cbindgen.toml` (9th layout assert),
+  `crates/tst-c/include/tstrans.h` (regenerated +1 trailer line + section
+  dividers), `crates/tst-c/tests/symbol_audit.rs` (allowlist removal + new
+  test), `crates/tst-c/tests/header_drift.rs` (mirrored
+  `add_section_dividers` to keep the drift check in sync; kept in lock-step
+  with `build.rs` by convention).
+- `cargo public-api` baselines for tst-core / tst-pipeline / tst-srt:
+  unchanged.
+- `#[non_exhaustive]` BASELINE in `.github/workflows/ci.yml`: unchanged.
+
+---
+
 ## [Unreleased] — Wave 4.C CancelHandle rename + pairing relocate + polish (docs/plans/2026-05-20-cancelhandle-pairing-and-polish.md)
 
 **Breaking (pre-1.0):**

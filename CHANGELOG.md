@@ -7,6 +7,73 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Wave 6.F mechanical / hygiene sweep (docs/plans/2026-05-19-wave-6-mechanical-sweep.md)
+
+**Refactor (purely internal — zero public API change, zero `#[non_exhaustive]` BASELINE delta):**
+
+- Mutex policy sweep — 23 sites. Applies the Wave 4.B hybrid mutex policy
+  (plan #79) to every remaining `.lock().unwrap()` production site in
+  `tst-pipeline`:
+  - **19 sites in `mux_sender.rs`**: 10 fallible-return methods (`send_*`,
+    `*_handles_for_program`) → `.lock().map_err(...)?` with site-specific
+    diagnostic string mapped to `MuxSenderError::Broken` (via
+    `From<TransportError>`) / `MuxError::ProgramNotFound`; 9 infallible-return
+    methods (`*_handles`, `stats`, `socket_stats`, `stream_codec_stats`,
+    `reset_stats`, `is_alive`) → `if let Ok(...) { ... } else { <safe default> }`
+    matching the `socket_stats` precedent (reconnect/mod.rs:419-422).
+  - **4 sites in `reconnect/mod.rs`** (`<ManagedTransport as Transport>`'s
+    `max_payload`, `is_alive`, `close` + the multi-line site in `send_managed`'s
+    pre-check size guard) → safe-default shape via
+    `.lock().ok().and_then(...).unwrap_or(...)` for the trait methods, and
+    `.lock().map_err(...)?` for the fallible pre-check site.
+  - **Zero new BUG: panic sites** — per Plan F Decision F1, every site is
+    recoverable (no in-flight queued bytes that would be silently lost on
+    lock recovery).
+- `apply_query_pair` split — `tst-srt/src/url.rs:343-523`. Decomposes the
+  180-line `match`-arm-soup into 22 free-function helpers grouped by
+  query-parameter family + a slim ~30-line routing match (24 arms after
+  collapsing the latency trio + ffmpeg-alias trio). Per audit
+  `01-structure-and-size.md` Finding 8 (Option (b) — "smallest change").
+- `#[allow(clippy::field_reassign_with_default)]` tightening — per-site
+  evaluation of the 16 sites in `tst-srt/src/config.rs` (4) and
+  `tst-core/src/klv/st0601/mod.rs` (12). 13 converted to
+  `..Default::default()` struct-update syntax; 3 kept on intentional
+  spec-style `UasLs` round-trip construction. Per Plan F Decision F7 +
+  audit `07-internal-hygiene.md` Finding 6.
+- `#[allow(clippy::unnecessary_cast)]` verification — single site in
+  `tst-srt/src/error.rs`. The existing 5-line cross-platform comment was
+  re-verified as current; no edit needed. Per audit Finding 7.
+
+**Tests (new regressions, in-file in `crates/tst-pipeline/src/{mux_sender,reconnect/mod}.rs`'s `#[cfg(test)]` mods):**
+
+- `mux_sender_inner_lock_poisoned_returns_broken_error` — covers the 10
+  fallible-return mutex sweep sites.
+- `mux_sender_inner_lock_poisoned_returns_safe_default` — covers the 9
+  infallible-return mutex sweep sites.
+- `managed_transport_inner_lock_poisoned_returns_safe_default` — covers
+  the 3 `Transport` trait impl sites in `reconnect/mod.rs`.
+- Plan #79's `successful_reconnect_does_not_deadlock` regression stays
+  passing — Plan F doesn't change `send_managed`'s scoped-guard discipline.
+
+**No public API impact:**
+
+- `cargo public-api -p tst-core --simplified` byte-identical to pre-plan.
+- `cargo public-api -p tst-pipeline --simplified` byte-identical to pre-plan.
+- `cargo public-api -p tst-srt --simplified` byte-identical to pre-plan.
+- `#[non_exhaustive]` BASELINE in `.github/workflows/ci.yml` stays at **87**.
+
+**Lock-policy rustdoc updates:** Both `MuxSender` and `ManagedTransport`
+struct-level `# Panics` / "Lock poisoning policy" rustdoc sections updated
+to reflect the now-complete hybrid policy across all transport-facing
+methods.
+
+**Wave 6 status after Plan F ships:** Plan F is the first of Wave 6's 5
+Phase-1 plans (parallel with A, B, C-KLV, C-codec). Plans D and E (Phase 2)
+wait on A and B respectively. Once all 7 land, refactor-1 is **complete**
+and the project moves to `srt-jni` binding work.
+
+---
+
 ## [Unreleased] — Wave 5.C C examples retrofit + tst-c structural reorg + sender-side audio/subtitle C ABI (docs/plans/2026-05-21-c-abi-examples-and-tst-c-reorg.md)
 
 **Added (purely additive — no breaking changes):**

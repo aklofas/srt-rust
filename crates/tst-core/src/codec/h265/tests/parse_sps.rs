@@ -1,6 +1,6 @@
 //! SPS parser tests.
 
-use crate::codec::h265::{H265Sps, parse_sps};
+use crate::codec::h265::parse_sps;
 use crate::codec::{
     ChromaFormat, CodecParseError, ColourPrimaries, MatrixCoefficients, TransferCharacteristics,
 };

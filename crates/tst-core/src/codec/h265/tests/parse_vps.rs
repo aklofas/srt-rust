@@ -1,6 +1,6 @@
 //! VPS parser tests.
 
-use crate::codec::h265::{H265Vps, parse_vps};
+use crate::codec::h265::parse_vps;
 
 const VPS_1080P_MAIN40: &[u8] =
     include_bytes!("../../../../tests/fixtures/codec/h265/h265_1080p_main40_vps.bin");

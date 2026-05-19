@@ -4,6 +4,7 @@ use crate::codec::CodecParseError;
 use crate::codec::bitreader::BitReader;
 
 #[must_use]
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct H266ProfileTierLevel {
     /// `general_profile_idc` u(7) — H.266 V4 Annex A profile assignment.

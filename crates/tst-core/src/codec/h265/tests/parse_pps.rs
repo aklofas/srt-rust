@@ -1,6 +1,6 @@
 //! PPS parser tests.
 
-use crate::codec::h265::{H265Pps, parse_pps};
+use crate::codec::h265::parse_pps;
 
 const PPS_1080P_MAIN40: &[u8] =
     include_bytes!("../../../../tests/fixtures/codec/h265/h265_1080p_main40_pps.bin");

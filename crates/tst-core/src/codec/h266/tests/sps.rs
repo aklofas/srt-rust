@@ -1,0 +1,493 @@
+//! H.266 SPS parser tests.
+
+use crate::codec::h266::parse_sps;
+use crate::codec::{ChromaFormat, CodecParseError};
+
+/// Inline bit-builder. Mirrors the parser's expected reads exactly,
+/// keeping the test bytes debuggable by reading the field-write
+/// sequence top-to-bottom.
+struct BitWriter {
+    bytes: Vec<u8>,
+    pos: u32,
+}
+
+impl BitWriter {
+    fn new() -> Self {
+        Self {
+            bytes: Vec::new(),
+            pos: 0,
+        }
+    }
+    fn write(&mut self, value: u32, n: u32) {
+        for i in (0..n).rev() {
+            let bit = ((value >> i) & 1) as u8;
+            let byte_idx = (self.pos / 8) as usize;
+            let bit_in_byte = 7 - (self.pos % 8);
+            if byte_idx == self.bytes.len() {
+                self.bytes.push(0);
+            }
+            self.bytes[byte_idx] |= bit << bit_in_byte;
+            self.pos += 1;
+        }
+    }
+    /// Exp-Golomb ue(v) per H.266 §9.3.2.2 (identical formula to H.264/H.265).
+    fn write_ue(&mut self, value: u32) {
+        let v = value + 1;
+        let leading_zeros = 31 - v.leading_zeros();
+        for _ in 0..leading_zeros {
+            self.write(0, 1);
+        }
+        self.write(v, leading_zeros + 1);
+    }
+    /// rbsp_trailing_bits(): one '1' bit + zero-pad to byte align.
+    fn end_rbsp(&mut self) {
+        self.write(1, 1);
+        while self.pos % 8 != 0 {
+            self.write(0, 1);
+        }
+    }
+}
+
+/// Construct a minimal valid H.266 SPS bitstream:
+/// sps_id=0, vps_id=0, 320x240, 8-bit 4:2:0, Main 10 profile @ Level 4.0.
+///
+/// Per H.266 V4 §7.3.2.4 SPS syntax + §7.3.3.1 PTL syntax.
+fn minimal_sps_rbsp() -> Vec<u8> {
+    minimal_sps_rbsp_with_bitdepth_minus8(0)
+}
+
+/// Same as [`minimal_sps_rbsp`] but lets callers inject an arbitrary
+/// `sps_bitdepth_minus8` value to exercise the bounds check.
+fn minimal_sps_rbsp_with_bitdepth_minus8(bitdepth_minus8: u32) -> Vec<u8> {
+    minimal_sps_rbsp_full(bitdepth_minus8, None, 0)
+}
+
+/// Same minimal SPS but with `sps_conformance_window_flag = 1` and
+/// caller-supplied `(left, right, top, bottom)` offsets in
+/// SubWidthC/SubHeightC units. 4:2:0 chroma → SubWidthC=SubHeightC=2,
+/// so the surfaced `crop_*` luma-sample values are 2× the offsets.
+fn minimal_sps_rbsp_with_conformance_window(offsets: (u32, u32, u32, u32)) -> Vec<u8> {
+    minimal_sps_rbsp_full(0, Some(offsets), 0)
+}
+
+/// Same minimal SPS but with `sps_vui_parameters_present_flag = 1` and
+/// the declared `vui_payload(payloadSize)` region sized 1 byte larger
+/// than the actual `vui_parameters()` body (which is 8 bits for an
+/// all-zero-flags VUI). The extra byte is `0xFF` to expose any
+/// mis-framing: a parser that fails to advance past the declared payload
+/// size will read the wrong `sps_extension_flag` bit and corrupt the
+/// trailing-bits check.
+///
+/// Mirrors H.266 V4 §7.3.2.21 — `vui_payload(payloadSize)` reserves the
+/// entire `8 * payloadSize` bit region; encoders MAY emit
+/// `vui_reserved_payload_extension_data` + marker + pad in the tail.
+fn minimal_sps_rbsp_with_vui_tail_padding() -> Vec<u8> {
+    minimal_sps_rbsp_full(0, None, 1)
+}
+
+fn minimal_sps_rbsp_full(
+    bitdepth_minus8: u32,
+    conf_window: Option<(u32, u32, u32, u32)>,
+    vui_extra_padding_bytes: usize,
+) -> Vec<u8> {
+    let mut bw = BitWriter::new();
+
+    // §7.3.2.4 SPS header.
+    bw.write(0, 4); // sps_seq_parameter_set_id
+    bw.write(0, 4); // sps_video_parameter_set_id
+    bw.write(0, 3); // sps_max_sublayers_minus1
+    bw.write(1, 2); // sps_chroma_format_idc = 1 (4:2:0)
+    bw.write(0, 2); // sps_log2_ctu_size_minus5
+    bw.write(1, 1); // sps_ptl_dpb_hrd_params_present_flag = 1
+
+    // §7.3.3.1 profile_tier_level(profileTierPresentFlag=1, MaxNumSubLayersMinus1=0).
+    bw.write(1, 7); // general_profile_idc = 1 (Main 10)
+    bw.write(0, 1); // general_tier_flag = 0 (Main tier)
+    bw.write(63, 8); // general_level_idc = 63 (Level 4.0)
+    bw.write(0, 1); // ptl_frame_only_constraint_flag
+    bw.write(0, 1); // ptl_multilayer_enabled_flag
+    // §7.3.3.2 general_constraints_info(): gci_present_flag=0 → only
+    // the flag bit, then byte-align.
+    bw.write(0, 1); // gci_present_flag = 0
+    // Byte-align: bits written so far in PTL = 7+1+8+1+1+1 = 19,
+    // need 5 zero bits to align to 24 bits = 3 bytes.
+    bw.write(0, 5);
+    // No sublayer ptl_sublayer_level_present_flag loop (count = -1).
+    // No sublayer level_idc loop.
+    bw.write(0, 8); // ptl_num_sub_profiles = 0
+    // No sub_profile_idc loop.
+    // PTL total = 32 bits = 4 bytes.
+
+    // §7.3.2.4 continues.
+    bw.write(0, 1); // sps_gdr_enabled_flag
+    bw.write(0, 1); // sps_ref_pic_resampling_enabled_flag = 0
+    // (sps_res_change_in_clvs_allowed_flag not coded.)
+
+    // sps_pic_width_max_in_luma_samples is the direct sample count
+    // (not minus-1 like H.264/H.265 use elsewhere). Per V4 §7.3.2.4.
+    bw.write_ue(320); // sps_pic_width_max_in_luma_samples
+    bw.write_ue(240); // sps_pic_height_max_in_luma_samples
+
+    if let Some((left, right, top, bottom)) = conf_window {
+        bw.write(1, 1); // sps_conformance_window_flag = 1
+        bw.write_ue(left); // sps_conf_win_left_offset
+        bw.write_ue(right); // sps_conf_win_right_offset
+        bw.write_ue(top); // sps_conf_win_top_offset
+        bw.write_ue(bottom); // sps_conf_win_bottom_offset
+    } else {
+        bw.write(0, 1); // sps_conformance_window_flag = 0
+    }
+    bw.write(0, 1); // sps_subpic_info_present_flag = 0
+    bw.write_ue(bitdepth_minus8); // sps_bitdepth_minus8
+
+    // ── body walk fields (Task 4.2) ──────────────────────────────────────
+    // All flags set to 0 / false; all ue(v) values = 0.  This produces the
+    // simplest valid SPS that the walk can traverse without any conditional
+    // branches being taken.
+    //
+    // §7.3.2.4 continued (order mirrors walk_sps_body exactly):
+    bw.write(0, 1); // sps_entropy_coding_sync_enabled_flag = 0
+    bw.write(0, 1); // sps_entry_point_offsets_present_flag = 0
+    bw.write(0, 4); // sps_log2_max_pic_order_cnt_lsb_minus4 = 0 (u4)
+    bw.write(0, 1); // sps_poc_msb_cycle_flag = 0
+    // (no sps_poc_msb_cycle_len_minus1)
+    bw.write(0, 2); // sps_num_extra_ph_bytes = 0 (u2)
+    // (no extra_ph_bit_present_flag loop)
+    bw.write(0, 2); // sps_num_extra_sh_bytes = 0 (u2)
+    // (no extra_sh_bit_present_flag loop)
+
+    // ptl_dpb_hrd_params_present_flag = 1, sps_max_sublayers_minus1 = 0
+    // → sps_sublayer_dpb_params_flag NOT read (only present when
+    //   max_sublayers_minus1 > 0).
+    // dpb_parameters(0, false): loop from 0 to 0 (one iteration).
+    bw.write_ue(1); // dpb_max_dec_pic_buffering_minus1[0] = 1
+    bw.write_ue(0); // dpb_max_num_reorder_pics[0] = 0
+    bw.write_ue(0); // dpb_max_latency_increase_plus1[0] = 0
+
+    bw.write_ue(0); // sps_log2_min_luma_coding_block_size_minus2 = 0
+    // log2_ctu_size_minus5 = 0 → CTBsize = 32 (not > 32).
+
+    bw.write(0, 1); // sps_partition_constraints_override_enabled_flag = 0
+
+    // Intra luma partition constraints (always present).
+    bw.write_ue(0); // sps_log2_diff_min_qt_min_cb_intra_slice_luma = 0
+    bw.write_ue(0); // sps_max_mtt_hierarchy_depth_intra_slice_luma = 0
+    // (depth=0 → no BT/TT max-diff fields)
+
+    // chroma_format_idc = 1 (not 0) → sps_qtbtt_dual_tree_intra_flag present.
+    bw.write(0, 1); // sps_qtbtt_dual_tree_intra_flag = 0
+    // (dual_tree=0 → no chroma partition fields)
+
+    // Inter partition constraints (always present).
+    bw.write_ue(0); // sps_log2_diff_min_qt_min_cb_inter_slice = 0
+    bw.write_ue(0); // sps_max_mtt_hierarchy_depth_inter_slice = 0
+    // (depth=0 → no BT/TT max-diff fields)
+
+    // CTBsize = 32 (not > 32) → sps_max_luma_transform_size_64_flag NOT present.
+
+    bw.write(0, 1); // sps_transform_skip_enabled_flag = 0
+    // (ts=0 → no log2_transform_skip + bdpcm fields)
+    bw.write(0, 1); // sps_mts_enabled_flag = 0
+    // (mts=0 → no intra/inter mts fields)
+    bw.write(0, 1); // sps_lfnst_enabled_flag = 0
+
+    // chroma_format_idc = 1 (not 0) → joint_cbcr + qp_table present.
+    bw.write(0, 1); // sps_joint_cbcr_enabled_flag = 0
+    bw.write(1, 1); // sps_same_qp_table_for_chroma_flag = 1
+    // numQpTables = 1 (same_qp=1).
+    // QP table [0]: qp_table_start_minus26=0, num_points=0, one (in,out) pair.
+    // se(0) = ue(0) → codeword "1" (1 bit).
+    bw.write_ue(0); // sps_qp_table_start_minus26[0] = se(0) → maps to ue(0)
+    bw.write_ue(0); // sps_num_points_in_qp_table_minus1[0] = 0
+    // for j in 0..=0: two ue(0) values.
+    bw.write_ue(0); // sps_delta_qp_in_val_minus1[0][0] = 0
+    bw.write_ue(0); // sps_delta_qp_diff_val[0][0] = 0
+
+    bw.write(0, 1); // sps_sao_enabled_flag = 0
+    bw.write(0, 1); // sps_alf_enabled_flag = 0
+    // (alf=0 → no ccalf field)
+    bw.write(0, 1); // sps_lmcs_enabled_flag = 0
+    bw.write(0, 1); // sps_weighted_pred_flag = 0
+    bw.write(0, 1); // sps_weighted_bipred_flag = 0
+    bw.write(0, 1); // sps_long_term_ref_pics_flag = 0
+    // vps_id = 0 → sps_inter_layer_prediction_enabled_flag NOT present.
+    bw.write(0, 1); // sps_idr_rpl_present_flag = 0
+    bw.write(0, 1); // sps_rpl1_same_as_rpl0_flag = 0
+    // → loop 2 directions (L0 and L1).
+    // L0: sps_num_ref_pic_lists[0] = 0 → no ref_pic_list_struct calls.
+    bw.write_ue(0); // sps_num_ref_pic_lists[0] = 0
+    // L1: sps_num_ref_pic_lists[1] = 0.
+    bw.write_ue(0); // sps_num_ref_pic_lists[1] = 0
+
+    bw.write(0, 1); // sps_ref_wraparound_enabled_flag = 0
+    bw.write(0, 1); // sps_temporal_mvp_enabled_flag = 0
+    // (tmvp=0 → no sbtmvp field)
+    bw.write(0, 1); // sps_amvr_enabled_flag = 0
+    bw.write(0, 1); // sps_bdof_enabled_flag = 0
+    // (bdof=0 → no bdof_control_present_in_ph field)
+    bw.write(0, 1); // sps_smvd_enabled_flag = 0
+    bw.write(0, 1); // sps_dmvr_enabled_flag = 0
+    // (dmvr=0 → no dmvr_control_present_in_ph field)
+    bw.write(0, 1); // sps_mmvd_enabled_flag = 0
+    // (mmvd=0 → no mmvd_fullpel_only field)
+    // sps_six_minus_max_num_merge_cand = 0 → MaxNumMergeCand = 6.
+    bw.write_ue(0); // sps_six_minus_max_num_merge_cand = 0
+    bw.write(0, 1); // sps_sbt_enabled_flag = 0
+    bw.write(0, 1); // sps_affine_enabled_flag = 0
+    // (affine=0 → no affine sub-fields)
+    bw.write(0, 1); // sps_bcw_enabled_flag = 0
+    bw.write(0, 1); // sps_ciip_enabled_flag = 0
+    // MaxNumMergeCand = 6 >= 2 → sps_gpm_enabled_flag present.
+    bw.write(0, 1); // sps_gpm_enabled_flag = 0
+    // (gpm=0 → no max_num_gpm_cand field)
+    bw.write_ue(0); // sps_log2_parallel_merge_level_minus2 = 0
+    bw.write(0, 1); // sps_isp_enabled_flag = 0
+    bw.write(0, 1); // sps_mrl_enabled_flag = 0
+    bw.write(0, 1); // sps_mip_enabled_flag = 0
+    // chroma_format_idc = 1 (not 0) → sps_cclm_enabled_flag present.
+    bw.write(0, 1); // sps_cclm_enabled_flag = 0
+    // chroma_format_idc = 1 → sps_chroma_horiz/vert_collocated_flag present.
+    bw.write(0, 1); // sps_chroma_horizontal_collocated_flag = 0
+    bw.write(0, 1); // sps_chroma_vertical_collocated_flag = 0
+    bw.write(0, 1); // sps_palette_enabled_flag = 0
+    // chroma_format_idc=1 (not 3) → sps_act_enabled_flag NOT present.
+    // ts=0, palette=0 → sps_min_qp_prime_ts NOT present.
+    bw.write(0, 1); // sps_ibc_enabled_flag = 0
+    // (ibc=0 → no six_minus_max_num_ibc field)
+    bw.write(0, 1); // sps_ladf_enabled_flag = 0
+    bw.write(0, 1); // sps_explicit_scaling_list_enabled_flag = 0
+    // (explicit_scaling=0 → no scaling list fields)
+    // lfnst=0, explicit_scaling=0 → no lfnst_disabled flag.
+    // act=0, explicit_scaling=0 → no act_disabled flag.
+    bw.write(0, 1); // sps_dep_quant_enabled_flag = 0
+    bw.write(0, 1); // sps_sign_data_hiding_enabled_flag = 0
+    bw.write(0, 1); // sps_virtual_boundaries_enabled_flag = 0
+
+    // ptl_dpb_hrd_params_present_flag = 1 → sps_timing_hrd_params_present_flag present.
+    bw.write(0, 1); // sps_timing_hrd_params_present_flag = 0
+    // (timing_hrd=0 → no general_timing_hrd_parameters call)
+
+    bw.write(0, 1); // sps_field_seq_flag = 0
+    if vui_extra_padding_bytes > 0 {
+        bw.write(1, 1); // sps_vui_parameters_present_flag = 1
+        // §7.3.2.4: vui_payload_size_minus1 ue(v). 1 byte of VUI flags +
+        // `vui_extra_padding_bytes` of tail = total bytes - 1.
+        let total_bytes = 1 + vui_extra_padding_bytes;
+        bw.write_ue((total_bytes - 1) as u32);
+        // §7.3.2.4: while(!byte_aligned()) sps_vui_alignment_zero_bit f(1).
+        while bw.pos % 8 != 0 {
+            bw.write(0, 1);
+        }
+        // vui_parameters(): 8 flag bits (all zero) — see H.274 §7.2.
+        // 4 source flags + aspect_ratio_present + overscan_present +
+        // colour_description_present + chroma_loc_present.
+        bw.write(0, 8);
+        // Tail padding: fill with 0xFF so a mis-framed parser reads
+        // sps_extension_flag = 1 (which fails downstream rbsp_trailing_bits).
+        for _ in 0..vui_extra_padding_bytes {
+            bw.write(0xFF, 8);
+        }
+    } else {
+        bw.write(0, 1); // sps_vui_parameters_present_flag = 0
+        // (vui=0 → no vui_payload_size or vui_parameters call)
+    }
+
+    bw.write(0, 1); // sps_extension_flag = 0
+
+    bw.end_rbsp();
+    bw.bytes
+}
+
+#[test]
+fn parse_sps_320x240_main10() {
+    let rbsp = minimal_sps_rbsp();
+    let sps = parse_sps(&rbsp).expect("minimal SPS should parse");
+    assert_eq!(sps.sps_id, 0);
+    assert_eq!(sps.vps_id, 0);
+    assert_eq!(sps.profile_tier_level.general_profile_idc, 1);
+    assert!(!sps.profile_tier_level.general_tier_flag);
+    assert_eq!(sps.profile_tier_level.general_level_idc, 63);
+    assert_eq!(sps.width, 320);
+    assert_eq!(sps.height, 240);
+    assert_eq!(sps.chroma_format, ChromaFormat::Yuv420);
+    assert_eq!(sps.bit_depth_luma, 8);
+    assert_eq!(sps.bit_depth_chroma, 8);
+    assert_eq!(sps.color_info, None);
+    assert_eq!(sps.frame_rate, None);
+}
+
+#[test]
+fn parse_sps_truncated_returns_err() {
+    assert!(parse_sps(&[]).is_err());
+}
+
+#[test]
+fn parse_sps_truncated_byte_returns_err() {
+    // Parser reads sps_id(4) + vps_id(4) = 8 bits, then max_sublayers(3)
+    // beyond a single byte should bail with TruncatedRbsp.
+    assert!(parse_sps(&[0x00]).is_err());
+}
+
+/// Per H.266 V4 §7.4.3.4, `sps_bitdepth_minus8 ∈ 0..=8` (bit_depth ∈
+/// 8..=16). ffmpeg's `libavcodec/hevc/ps.c:366-369` clamps at 14
+/// (minus8 ≤ 6); we adopt the same threshold. A fuzzed value of 248
+/// would have silently wrapped to `bit_depth_luma=0` via
+/// `8u8.saturating_add(248 as u8)` — caught now via
+/// [`validate_bit_depth_minus8`].
+/// Per H.266 V4 §7.4.3.4, conformance-window crop offsets are
+/// expressed in SubWidthC / SubHeightC units. For 4:2:0 chroma both
+/// are 2, so a (1, 2, 3, 4) offset tuple → luma crops (2, 4, 6, 8)
+/// and width/height shrink by (left+right) / (top+bottom).
+#[test]
+fn h266_sps_surfaces_conformance_window_offsets_invariant() {
+    let rbsp = minimal_sps_rbsp_with_conformance_window((1, 2, 3, 4));
+    let sps = parse_sps(&rbsp).expect("SPS with conformance window should parse");
+    assert_eq!(sps.crop_left, 2);
+    assert_eq!(sps.crop_right, 4);
+    assert_eq!(sps.crop_top, 6);
+    assert_eq!(sps.crop_bottom, 8);
+    // pic_width_max=320, pic_height_max=240. After cropping:
+    // width = 320 - (2+4) = 314, height = 240 - (6+8) = 226.
+    assert_eq!(sps.width, 314);
+    assert_eq!(sps.height, 226);
+    assert_eq!(sps.coded_width(), 320);
+    assert_eq!(sps.coded_height(), 240);
+    assert_eq!(
+        sps.coded_width(),
+        sps.width + sps.crop_left + sps.crop_right
+    );
+    assert_eq!(
+        sps.coded_height(),
+        sps.height + sps.crop_top + sps.crop_bottom
+    );
+}
+
+/// Adversarial-input regression: the conformance-window crop arithmetic
+/// at the end of `parse_sps` could overflow on hostile input. With
+/// `chroma_format_idc = 1` (sub_w = 2), the case `(1<<30, 1<<30, 0, 0)`
+/// triggers the addition path (`(1<<31) + (1<<31) = 1<<32`); the case
+/// `(1<<31, 0, 0, 0)` triggers the multiplication path (`2 * (1<<31) = 1<<32`).
+/// Bug closed = parse returns `Ok(sps)` with bounded dims or a typed
+/// `CodecParseError`; no panic in either build mode.
+#[test]
+fn parse_sps_saturates_crop_on_adversarial_offsets() {
+    for offsets in [
+        (1u32 << 30, 1u32 << 30, 0u32, 0u32),
+        (1u32 << 31, 0u32, 0u32, 0u32),
+    ] {
+        let rbsp = minimal_sps_rbsp_with_conformance_window(offsets);
+        let result = parse_sps(&rbsp);
+        match result {
+            Ok(sps) => {
+                assert!(
+                    sps.width <= 320,
+                    "post-crop width must not exceed coded pic_width; got {} for {:?}",
+                    sps.width,
+                    offsets
+                );
+            }
+            Err(
+                CodecParseError::ReservedValue { .. }
+                | CodecParseError::Truncated { .. }
+                | CodecParseError::TruncatedRbsp { .. }
+                | CodecParseError::InvalidGolomb { .. }
+                | CodecParseError::UnsupportedProfile { .. },
+            ) => {
+                // Typed error is also acceptable per the plan — body
+                // walk may bail past the crop for various reasons.
+            }
+            Err(e) => panic!("unexpected error variant for {offsets:?}: {e:?}"),
+        }
+    }
+}
+
+/// When `sps_conformance_window_flag=0`, all four crop offsets are
+/// zero and `coded_*` matches the cropped dimensions.
+#[test]
+fn h266_sps_no_conformance_window_zero_crops() {
+    let sps = parse_sps(&minimal_sps_rbsp()).expect("minimal SPS should parse");
+    assert_eq!(sps.crop_left, 0);
+    assert_eq!(sps.crop_right, 0);
+    assert_eq!(sps.crop_top, 0);
+    assert_eq!(sps.crop_bottom, 0);
+    assert_eq!(sps.coded_width(), sps.width);
+    assert_eq!(sps.coded_height(), sps.height);
+}
+
+#[test]
+fn h266_sps_rejects_bit_depth_overflow() {
+    let rbsp = minimal_sps_rbsp_with_bitdepth_minus8(248);
+    let result = parse_sps(&rbsp);
+    assert!(
+        matches!(
+            result,
+            Err(CodecParseError::ReservedValue {
+                field: "sps_bitdepth_minus8",
+                value: 248
+            })
+        ),
+        "expected ReservedValue, got {result:?}"
+    );
+}
+
+/// Parse a real VVenC-encoded 320×240 @ 30fps SPS and verify the parser
+/// walks the full body correctly (AbsDeltaPocSt fix, timing_hrd walk) so
+/// that frame_rate is recovered from general_timing_hrd_parameters().
+///
+/// This fixture has `sps_vui_parameters_present_flag = 0` (VVenC does not
+/// emit VUI for this encoding profile), so `color_info` is `None`. The
+/// primary goal is confirming the body walk lands at the correct bit
+/// offset and `num_units_in_tick = 1, time_scale = 30`.
+#[test]
+fn real_vvenc_sps_recovers_frame_rate_via_timing_hrd() {
+    let rbsp =
+        include_bytes!("../../../../tests/fixtures/codec/h266/h266_320x240_main10_real_sps.bin");
+    let sps = parse_sps(rbsp).expect("real VVenC SPS parses");
+    assert_eq!(sps.width, 320);
+    assert_eq!(sps.height, 240);
+    assert_eq!(sps.chroma_format, ChromaFormat::Yuv420);
+    assert_eq!(sps.bit_depth_luma, 10);
+    let fr = sps.frame_rate.expect(
+        "general_timing_hrd_parameters should recover frame_rate from num_units=1 time_scale=30",
+    );
+    // VVenC encodes num_units_in_tick=1, time_scale=30 → 30 fps.
+    let ratio = fr.num as f64 / fr.den as f64;
+    assert!((ratio - 30.0).abs() < 0.5, "frame_rate≈30; got {fr:?}");
+    // This fixture has no VUI (vui_parameters_present_flag=0 in VVenC output
+    // at this encoding profile), so color_info is None.
+    assert!(
+        sps.color_info.is_none(),
+        "VVenC fixture has no VUI in this profile"
+    );
+}
+
+/// Smoke test for H.266 V4 §7.3.2.21 — `vui_payload(payloadSize)`
+/// reserves exactly `8 * payloadSize` bits; `vui_parameters()`
+/// (H.274 §7.2) may not consume all of them, and the SPS caller
+/// must advance the cursor to the declared payload end before
+/// reading `sps_extension_flag`.
+///
+/// This test builds an SPS with a 2-byte declared VUI region but a
+/// 1-byte actual `vui_parameters()` body. The trailing byte is
+/// `0xFF` to expose any mis-framing: post-fix, the parser skips
+/// the padding and reads `sps_extension_flag = 0` correctly;
+/// pre-fix, the parser reads bit 0 of `0xFF` as `sps_extension_flag = 1`.
+///
+/// **Note:** The bug isn't directly observable as `Err` vs `Ok` —
+/// `sps_extension_flag` isn't surfaced on `H266Sps`, and the parser
+/// doesn't validate `rbsp_trailing_bits`. The test functions as
+/// a structural smoke test ensuring the new VUI-with-padding
+/// builder path produces a parseable stream end-to-end. Strict-mode
+/// trailing-bit validation (a separate plan) would make pre-fix
+/// fail; until then the test guards against builder-side regressions
+/// and documents the §7.3.2.21 contract.
+#[test]
+fn vui_tail_padding_consumed_before_extension_flag() {
+    let rbsp = minimal_sps_rbsp_with_vui_tail_padding();
+    let sps = parse_sps(&rbsp).expect(
+        "SPS with VUI tail padding must parse — caller advances cursor to declared payload end",
+    );
+    // Ensure VUI itself parsed (all zero gates → no color_info, but the
+    // structural walk reached here).
+    assert_eq!(sps.color_info, None);
+}

@@ -494,7 +494,7 @@ mod tests {
 
     #[test]
     fn mpegaudio_frame_owned_roundtrip() {
-        use crate::codec::mpegaudio::{ChannelMode, Frame, FrameOwned, Layer, Version};
+        use crate::codec::mpegaudio::{ChannelMode, Frame, Layer, Version};
         let payload = vec![0xFF, 0xFB, 0x90, 0x40, 0x01, 0x02, 0x03];
         let borrowed = Frame {
             layer: Layer::III,

@@ -81,7 +81,7 @@ pub struct MockRecvTransport {
     max_payload: usize,
     /// Set by `close()`; subsequent recvs return `Closed`.
     closed: bool,
-    /// Set by `close()` after an explicit-close fixture; lets callers
+    /// Set when the `ExplicitCloseOnNext` fail-mode fires; lets callers
     /// distinguish caller-initiated close from peer-EOS via stats / fixtures.
     /// Currently informational; reserved for future use.
     explicit_closed: bool,

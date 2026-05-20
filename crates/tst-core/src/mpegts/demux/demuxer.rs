@@ -535,6 +535,63 @@ impl Demuxer {
         }
     }
 
+    /// Drop all per-PID parse state — sync buffer, PSI assemblers,
+    /// program/PMT topology, PES reassembly, CC/PCR/PTS tracking, and
+    /// the pending event queue. Does NOT reset stats counters (those
+    /// reflect cumulative observations across the receiver's lifetime
+    /// and are reset only via [`Self::reset_stats`]).
+    ///
+    /// Intended for transport-reconnect scenarios at a higher
+    /// composition layer (`ManagedDemuxReceiver`): when the underlying
+    /// transport has been re-established, partial PSI sections, half-
+    /// assembled PES samples, and continuity-counter state from the
+    /// dead connection MUST NOT splice into the new connection's parse
+    /// state — otherwise the next PMT, the next PUSI, and the next CC
+    /// jump all carry stale predecessors and produce corrupted
+    /// downstream events.
+    ///
+    /// Idempotent: safe to call repeatedly with no intervening feed.
+    ///
+    /// The PAT PID (0x0000) assembler is re-seeded so the next PAT
+    /// section arrives ready to parse. Configuration (`DemuxerConfig`,
+    /// strict mode, PES caps) is preserved across reset.
+    pub fn reset_sync(&mut self) {
+        self.sync_buf.clear();
+        self.sync_consumed = 0;
+        self.psi_assemblers.clear();
+        self.psi_assemblers
+            .insert(0x0000, PsiSectionAssembler::new());
+        self.programs.clear();
+        self.pat_version = None;
+        self.stream_kind_by_pid.clear();
+        self.cc_by_pid.clear();
+        self.last_psi_cc_jump = None;
+        self.last_pcr_by_pid.clear();
+        self.last_pts_by_pid.clear();
+        // Drop all in-flight PES reassembly state. A new reassembler
+        // with the same caps replaces it (Reassembler exposes no
+        // public reset method; constructing fresh is the canonical
+        // way to drop all `by_pid` partials + the total_buffered counter).
+        let cap_per_pid = self
+            .options
+            .pes_cap_per_pid
+            .unwrap_or(DEFAULT_PES_CAP_PER_PID);
+        let cap_total = self.options.pes_cap_total.unwrap_or(DEFAULT_PES_CAP_TOTAL);
+        self.pes = Reassembler::new(cap_per_pid, cap_total);
+        self.queue.clear();
+        self.bytes_since_sync = 0;
+        self.is_synced = false;
+        self.fatal = None;
+        // Per-PMT-version PID dedupe sets clear so a fresh PMT post-
+        // reconnect re-fires `SubtitleMissingDescriptor` /
+        // `Av1RegistrationMalformed` / `SubtitleDescriptorAmbiguous` if
+        // those still apply on the new connection.
+        self.subtitle_missing_descriptor_emitted.clear();
+        self.av1_registration_malformed_emitted.clear();
+        self.subtitle_descriptor_ambiguous_emitted.clear();
+        self.pid_to_program.clear();
+    }
+
     /// Reset all stats counters to zero and clear per-stream entries.
     ///
     /// Per-PID entries are dropped (both the unified `stats_per_stream`

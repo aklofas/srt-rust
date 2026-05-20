@@ -50,6 +50,22 @@ pub enum DemuxEvent {
         stream: StreamId,
         issue: NonConformantIssue,
     },
+
+    /// Transport-level reconnect occurred between the prior event and
+    /// this one. The owning shell has already dropped sync/PSI/PES
+    /// state from the dead connection; all subsequent events are
+    /// re-derived from the new connection's byte stream (next PAT,
+    /// next PMT, next PUSI). Programs / streams seen pre-reconnect do
+    /// NOT carry over; consumers must re-build any per-stream caches
+    /// they hold on the next `ProgramMap` event.
+    ///
+    /// Emitted only by `ManagedDemuxReceiver` shells (in
+    /// `tst-pipeline`) that own both the reconnect wrapper and the
+    /// demuxer. Plain [`Demuxer::next_event`][crate::mpegts::demux::Demuxer::next_event]
+    /// never emits this — it is inserted into the queue by the
+    /// owning receive shell before the first post-reconnect event is
+    /// yielded.
+    ReconnectDiscontinuity,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

@@ -2546,6 +2546,7 @@ pub fn tst_core::mpegts::demux::demuxer::Demuxer::flush(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::new() -> Self
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::next_event(&mut self) -> core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::reset_stats(&mut self)
+pub fn tst_core::mpegts::demux::demuxer::Demuxer::reset_sync(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stats(&self) -> tst_core::mpegts::demux::DemuxerStats
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_config(config: tst_core::mpegts::demux::DemuxerConfig) -> Self
@@ -2619,6 +2620,7 @@ pub tst_core::mpegts::demux::event::DemuxEvent::NonConformant
 pub tst_core::mpegts::demux::event::DemuxEvent::NonConformant::issue: tst_core::mpegts::demux::event::NonConformantIssue
 pub tst_core::mpegts::demux::event::DemuxEvent::NonConformant::stream: tst_core::mpegts::demux::event::StreamId
 pub tst_core::mpegts::demux::event::DemuxEvent::ProgramMap(tst_core::mpegts::demux::event::ProgramMap)
+pub tst_core::mpegts::demux::event::DemuxEvent::ReconnectDiscontinuity
 pub tst_core::mpegts::demux::event::DemuxEvent::Sample
 pub tst_core::mpegts::demux::event::DemuxEvent::Sample::dts: core::option::Option<tst_core::mpegts::common::Pts90khz>
 pub tst_core::mpegts::demux::event::DemuxEvent::Sample::payload: tst_core::mpegts::demux::event::SamplePayload
@@ -3452,6 +3454,7 @@ pub tst_core::mpegts::demux::DemuxEvent::NonConformant
 pub tst_core::mpegts::demux::DemuxEvent::NonConformant::issue: tst_core::mpegts::demux::event::NonConformantIssue
 pub tst_core::mpegts::demux::DemuxEvent::NonConformant::stream: tst_core::mpegts::demux::event::StreamId
 pub tst_core::mpegts::demux::DemuxEvent::ProgramMap(tst_core::mpegts::demux::event::ProgramMap)
+pub tst_core::mpegts::demux::DemuxEvent::ReconnectDiscontinuity
 pub tst_core::mpegts::demux::DemuxEvent::Sample
 pub tst_core::mpegts::demux::DemuxEvent::Sample::dts: core::option::Option<tst_core::mpegts::common::Pts90khz>
 pub tst_core::mpegts::demux::DemuxEvent::Sample::payload: tst_core::mpegts::demux::event::SamplePayload
@@ -3878,6 +3881,7 @@ pub fn tst_core::mpegts::demux::demuxer::Demuxer::flush(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::new() -> Self
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::next_event(&mut self) -> core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::reset_stats(&mut self)
+pub fn tst_core::mpegts::demux::demuxer::Demuxer::reset_sync(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stats(&self) -> tst_core::mpegts::demux::DemuxerStats
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_config(config: tst_core::mpegts::demux::DemuxerConfig) -> Self

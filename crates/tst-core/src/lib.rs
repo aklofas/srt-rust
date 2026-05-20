@@ -6,6 +6,14 @@
 //! companion crate `tst-pipeline`; concrete transport impls (SRT/UDP/
 //! RTP/TCP/RTSP) live in their own crates.
 //!
+//! A few trait-adjacent helpers carry SRT-flavored naming
+//! ([`SrtCancelHandle`], [`SocketStats`]) because today's only
+//! production transport is libsrt-backed. The code is transport-generic
+//! (no `srt-sys` dependency from this crate); the names reflect contract
+//! shape, not call sites. Future non-SRT transports may need their own
+//! cancel-handle / stats types if the libsrt-flavored contracts don't
+//! fit — flagged for post-1.0 review.
+//!
 //! ## Quick start — round-trip a ST 0601 record
 //!
 //! ```

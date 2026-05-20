@@ -1021,8 +1021,8 @@ typedef struct tst_receiver_stats_t {
 
 /**
  * Public-ABI mirror of `tst_pipeline::SenderStats`. Same fields,
- * same units. Caller passes a pointer to a stack-allocated struct;
- * `tst_sender_get_stats` fills it in.
+ * same units. Size 32 B (4 × u64). Caller passes a pointer to a
+ * stack-allocated struct; `tst_sender_get_stats` fills it in.
  */
 typedef struct tst_sender_stats_t {
   uint64_t bytes_pushed;
@@ -3252,6 +3252,7 @@ _TST_ABI_ASSERT(sizeof(tst_stream_stats_t)         == 96, "tst_stream_stats_t si
 _TST_ABI_ASSERT(sizeof(tst_raw_send_stats_t)       == 16, "tst_raw_send_stats_t size drift: expected 16 bytes");
 _TST_ABI_ASSERT(sizeof(tst_raw_recv_stats_t)       == 16, "tst_raw_recv_stats_t size drift: expected 16 bytes");
 _TST_ABI_ASSERT(sizeof(tst_receiver_stats_t)       == 32, "tst_receiver_stats_t size drift: expected 32 bytes");
+_TST_ABI_ASSERT(sizeof(tst_sender_stats_t)         == 32, "tst_sender_stats_t size drift: expected 32 bytes");
 _TST_ABI_ASSERT(sizeof(tst_muxer_stats_t)          == 6176, "tst_muxer_stats_t size drift: expected 6176 bytes");
 _TST_ABI_ASSERT(sizeof(tst_mux_sender_stats_t)     == 6192, "tst_mux_sender_stats_t size drift: expected 6192 bytes");
 #endif

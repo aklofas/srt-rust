@@ -15,8 +15,8 @@ use tst_pipeline::{ManagedTransport, Sender, SenderStats, TransportCancel};
 use tst_srt::SrtTransport;
 
 /// Public-ABI mirror of `tst_pipeline::SenderStats`. Same fields,
-/// same units. Caller passes a pointer to a stack-allocated struct;
-/// `tst_sender_get_stats` fills it in.
+/// same units. Size 32 B (4 × u64). Caller passes a pointer to a
+/// stack-allocated struct; `tst_sender_get_stats` fills it in.
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
 pub struct TstSenderStats {
@@ -25,6 +25,11 @@ pub struct TstSenderStats {
     pub resync_events: u64,
     pub packets_sent: u64,
 }
+
+const _TST_SENDER_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstSenderStats>() == 32,
+    "TstSenderStats must be 32 bytes (4 × u64)"
+);
 
 impl From<&SenderStats> for TstSenderStats {
     fn from(s: &SenderStats) -> Self {

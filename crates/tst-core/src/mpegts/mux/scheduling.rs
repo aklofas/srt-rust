@@ -25,6 +25,20 @@ impl Muxer {
         }
     }
 
+    /// Reserve count for a PSI tick — `1 + programs.len()` (1 PAT + N PMTs)
+    /// when `psi_due` is true, else 0. Centralizes the formula so every
+    /// push path (`push_video` / `push_klv` / `push_audio` / `push_subtitle`)
+    /// agrees on the count `maybe_emit_psi` actually emits. The historical
+    /// hardcoded `2` (PAT + one PMT) under-reserved with N ≥ 2 programs and
+    /// let queue overflows slip past the BufferFull check.
+    pub(super) fn psi_packets_due(&self, prog_idx: usize, pts_90khz: i64) -> usize {
+        if self.psi_due(prog_idx, pts_90khz) {
+            1 + self.config.programs.len()
+        } else {
+            0
+        }
+    }
+
     pub(super) fn pcr_due(&self, prog_idx: usize, pts_90khz: i64) -> bool {
         match self.pcr_last[prog_idx] {
             None => true,
@@ -130,6 +144,15 @@ impl Muxer {
             self.queue.push_back(pmt);
         }
 
-        self.psi_last[prog_idx] = Some(Pts90khz::new(pts_90khz).masked_33bit());
+        // Update psi_last for ALL programs to the same masked timestamp.
+        // maybe_emit_psi emits one PAT + one PMT per program on a single
+        // tick, so every program's state is now fresh; updating only the
+        // triggering index left other programs' psi_last == None, which
+        // psi_due reads as "always due" and would re-fire the entire
+        // PAT+PMTs set on the next push for a different program.
+        let masked = Pts90khz::new(pts_90khz).masked_33bit();
+        for slot in self.psi_last.iter_mut() {
+            *slot = Some(masked);
+        }
     }
 }

@@ -126,11 +126,7 @@ impl Muxer {
 
         let total = self.pes_scratch.len();
         let audio_packets = ts_packets_for(total);
-        let psi_packets = if self.psi_due(prog_idx, pts.as_ticks()) {
-            2
-        } else {
-            0
-        };
+        let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
 
         if self.queue.len() + psi_packets + audio_packets > self.config.buffer_packets {
             return Err(MuxError::BufferFull {

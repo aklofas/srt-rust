@@ -174,15 +174,7 @@ impl Muxer {
         write_subtitle_pes(&mut self.pes_scratch, pts.as_ticks(), pes_shape, payload);
 
         let subtitle_packets = ts_packets_for(self.pes_scratch.len());
-        // Mirror push_audio_to: reserve 2 packets (PAT + 1 PMT) when a PSI
-        // tick is due. Multi-program muxers actually emit 1 PAT + N PMTs,
-        // but the muxer-wide buffer slop tolerates a small under-reservation
-        // here (matches the audio precedent at plan #21 push_audio_to).
-        let psi_packets = if self.psi_due(prog_idx, pts.as_ticks()) {
-            2
-        } else {
-            0
-        };
+        let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
 
         if self.queue.len() + psi_packets + subtitle_packets > self.config.buffer_packets {
             return Err(MuxError::BufferFull {

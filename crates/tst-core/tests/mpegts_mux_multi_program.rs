@@ -481,3 +481,120 @@ fn single_program_muxer_stats_programs_configured_is_one() {
         );
     }
 }
+
+// ── PSI multi-program backpressure (validate-1 B2) ───────────────────────────
+
+/// Build a 4-program H.264 config used by the backpressure-reservation tests
+/// below. Each program has a single video stream so PSI tick = 1 PAT + 4 PMTs
+/// = 5 packets — enough to discriminate a `1 + N` reservation from the
+/// historical hardcoded `2`.
+fn four_program_video_config() -> MuxerConfig {
+    let mut b = MuxerConfig::builder();
+    for i in 0..4u16 {
+        let mut prog = MuxerProgramConfigBuilder::new(i + 1, 0x1000 + i * 0x100);
+        prog.add_video(0x1011 + i * 0x100, VideoCodec::H264);
+        b.add_program(prog.build());
+    }
+    b.buffer_packets(10); // minimum allowed; tight enough to surface a 1+N vs 2 reservation gap
+    b.build().unwrap()
+}
+
+#[test]
+fn psi_reservation_accounts_for_one_pat_plus_n_pmts() {
+    // Defect (Codex TS-PSI-03): each push path reserved a hardcoded 2 PSI
+    // packets, but `maybe_emit_psi` emits 1 PAT + N PMTs. With N ≥ 3 programs
+    // and a tight `buffer_packets`, a push that the bug accepted on the basis
+    // of "2 reserved" would actually overflow the queue past
+    // `buffer_packets`. The fix reserves `1 + programs.len()` and surfaces
+    // `BufferFull` BEFORE the over-emit can happen.
+    //
+    // Setup: 4 programs, `buffer_packets = 10`, PSI tick = 5 packets, payload
+    // = 1 packet. First push uses 6 packets of capacity. Second push at the
+    // next PSI interval needs 5 PSI + 1 video = 6 more (queue would land at
+    // 12, but capacity is 10) → MUST be rejected as BufferFull. With the bug
+    // (reservation=2), check `6 + 2 + 1 = 9 ≤ 10` passes silently and the
+    // queue overflows.
+    use tst_core::error::MuxError;
+    use tst_core::mpegts::mux::VideoStreamHandle;
+
+    let mut muxer = Muxer::new(four_program_video_config()).unwrap();
+    let nal = synthetic_nal::h264_au(8, true); // tiny payload → 1 TS packet
+
+    // First push on program 0 — PSI is due (first ever). 5 PSI + 1 video → queue=6.
+    muxer
+        .push_video_to(VideoStreamHandle::pack(0, 0), &nal, Pts90khz::new(0), true)
+        .expect("first push must fit: 5 PSI + 1 video = 6 ≤ buffer_packets=10");
+
+    // Second push on program 0 past one PSI interval (default 100 ms = 9000
+    // 90 kHz ticks). PSI fires again; with the fix, reservation = 5 + 1 = 6,
+    // and 6 (queue) + 6 (reservation) > 10 → BufferFull. With the bug
+    // (reservation = 2), 6 + 2 + 1 = 9 ≤ 10 would pass, allowing the over-emit.
+    let err = muxer
+        .push_video_to(
+            VideoStreamHandle::pack(0, 0),
+            &nal,
+            Pts90khz::new(9_000),
+            false,
+        )
+        .expect_err("second push must surface BufferFull when 1+N PSI packets would overflow");
+    assert!(
+        matches!(
+            err,
+            MuxError::BufferFull {
+                capacity_packets: 10
+            }
+        ),
+        "expected MuxError::BufferFull {{ capacity_packets: 10 }}, got {err:?}"
+    );
+}
+
+#[test]
+fn psi_emit_updates_psi_last_for_all_programs() {
+    // Defect (Codex TS-PSI-04): `maybe_emit_psi` only wrote
+    // `self.psi_last[prog_idx] = Some(masked_pts)` for the triggering
+    // program. With other programs' `psi_last[i]` still `None`, a subsequent
+    // push on program `i` inside the same PSI window re-fired the entire
+    // PAT+PMTs set because `psi_due(i, ..)` returns true for any None entry.
+    //
+    // The fix writes the masked timestamp to every entry of `self.psi_last`
+    // on emit, so a push on a different program inside the interval window
+    // does NOT re-fire PSI.
+    //
+    // Setup: 2-program config. Push on program 0 at PTS=0 → PSI fires.
+    // Drain. Push on program 1 at PTS=1000 (well inside the 9000-tick PSI
+    // interval). Drain again. Count PAT packets emitted on the second push;
+    // with the fix it must be 0, with the bug it would be 1.
+    use tst_core::mpegts::mux::VideoStreamHandle;
+
+    let mut muxer = Muxer::new(two_program_config()).unwrap();
+    let nal = synthetic_nal::h264_au(64, true);
+
+    // First push on program 0 — fires PSI for the first time.
+    muxer
+        .push_video_to(VideoStreamHandle::pack(0, 0), &nal, Pts90khz::new(0), true)
+        .unwrap();
+    let _ = drain_all(&mut muxer);
+
+    // Second push on program 1 (different program) at PTS well inside the
+    // 9000-tick PSI interval. The fix must mark psi_last[1] = masked(0)
+    // during the first push, so psi_due(1, 1000) returns false here.
+    muxer
+        .push_video_to(
+            VideoStreamHandle::pack(1, 0),
+            &nal,
+            Pts90khz::new(1_000),
+            true,
+        )
+        .unwrap();
+    let out = drain_all(&mut muxer);
+
+    let pat_count = out
+        .chunks_exact(188)
+        .filter(|p| (((p[1] as u16 & 0x1F) << 8) | p[2] as u16) == 0x0000)
+        .count();
+    assert_eq!(
+        pat_count, 0,
+        "PSI must NOT re-fire on program 1 inside the same interval window: \
+         psi_last must be updated for all programs on emit (got {pat_count} PATs)"
+    );
+}

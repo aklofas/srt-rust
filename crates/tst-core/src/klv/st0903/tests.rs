@@ -659,3 +659,209 @@ fn encoded_len_standalone_matches_encode_standalone() {
     let bytes = encode_to_vec_standalone(&ls).unwrap();
     assert_eq!(bytes.len(), encoded_len_standalone(&ls));
 }
+
+// ---------- Validate-1 E5: BER-OID walker round-trip tests ----------
+//
+// The ST 0903 §10.1 typed universe (tags 1..=103) all fit in a single
+// BER-OID byte (`write_ber_oid(N) == [N]` for `N ≤ 127`). The walker
+// migration from `cursor[0]`-style single-byte reads to BER-OID
+// decode is byte-identical for these. The tests below pin that
+// invariant and exercise the multi-byte boundaries (128 / 16383 /
+// 16384) that the migration unlocks for forward-compat tags. Mirrors
+// the ST 0102 E4 test suite (`unknown_tag_*_round_trips_*_byte_ber_oid`).
+
+/// Byte-identical encode for the typed universe: a maximally-populated
+/// LS using only defined tags 1..=103 emits the same wire bytes
+/// pre- and post-E5 because BER-OID(N) == [N] for N ≤ 127. Pins the
+/// fact that the walker rewrite did not regress legacy emission.
+#[test]
+fn defined_tags_byte_identical_pre_and_post_e5() {
+    use crate::klv::st0903::vtarget_pack::VTargetPack;
+
+    let ls = VmtiLs {
+        precision_time_stamp: Some(1_700_000_000_000_000),
+        vmti_system_name: Some("test-cam".to_string()),
+        version_number: Some(6),
+        total_targets_in_frame: Some(4),
+        num_targets_reported: Some(2),
+        frame_width: Some(1920),
+        frame_height: Some(1080),
+        source_sensor: Some("EO".to_string()),
+        horizontal_fov: Some(45.0),
+        vertical_fov: Some(30.0),
+        miis_id: Some(vec![0x11, 0x22, 0x33]),
+        targets: vec![VTargetPack {
+            target_id: 1,
+            ..Default::default()
+        }],
+        algorithm_series: Some(vec![0xAA]),
+        ontology_series: Some(vec![0xBB]),
+        ..Default::default()
+    };
+
+    let bytes = encode_to_vec(&ls).unwrap();
+    // Pre-E5 baseline: each tag emits as a single byte. Spot-check
+    // the first few wire bytes — tag 2 (PTS, U64Be) header is
+    // `[0x02, 0x08, ...]`. If the walker ever regressed to a
+    // 2-byte BER-OID for a < 128 value, this would catch it.
+    assert_eq!(bytes[0], 0x02, "tag 2 must encode as single byte 0x02");
+    assert_eq!(bytes[1], 0x08, "tag 2 BER length 8");
+    assert_eq!(bytes.len(), encoded_len(&ls));
+
+    // Round-trip through both lenient and strict decoders.
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.vmti_system_name.as_deref(), Some("test-cam"));
+    assert_eq!(decoded.num_targets_reported, Some(2));
+    assert!(decoded.unknown.is_empty());
+}
+
+/// BER-OID round-trip boundary: unknown tag 127 — last single-byte
+/// value (`0x7F`). Mirrors `klv::st0102::tests::
+/// unknown_tag_127_round_trips_single_byte_ber_oid`.
+#[test]
+fn unknown_tag_127_round_trips_single_byte_ber_oid() {
+    let ls = VmtiLs {
+        precision_time_stamp: Some(1_700_000_000_000_000),
+        version_number: Some(6),
+        num_targets_reported: Some(0),
+        unknown: vec![OwnedRawField {
+            tag: 127,
+            value: b"max-single-byte".to_vec(),
+        }],
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&ls).unwrap();
+    assert_eq!(bytes.len(), encoded_len(&ls));
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.unknown.len(), 1);
+    assert_eq!(decoded.unknown[0].tag, 127);
+    assert_eq!(decoded.unknown[0].value, b"max-single-byte");
+}
+
+/// BER-OID round-trip boundary: unknown tag 128 — first multi-byte
+/// value (`0x81 0x00`). The continuation bit `0x80` on the first byte
+/// signals "more bytes follow". Pre-E5 this tag would have been
+/// silently dropped on encode (the `field.tag <= 0xFF` guard kept it,
+/// but the cast `as u8` truncated to `0x80`, and the decoder's
+/// `cursor[0]` would have read that `0x80` as start of a BER length).
+/// Post-E5 it survives a full encode/decode round-trip.
+#[test]
+fn unknown_tag_128_round_trips_multi_byte_ber_oid() {
+    let ls = VmtiLs {
+        precision_time_stamp: Some(1_700_000_000_000_000),
+        version_number: Some(6),
+        num_targets_reported: Some(0),
+        unknown: vec![OwnedRawField {
+            tag: 128,
+            value: b"first-multi-byte".to_vec(),
+        }],
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&ls).unwrap();
+    assert_eq!(bytes.len(), encoded_len(&ls));
+
+    // Hand-verify the BER-OID bytes for tag 128 land where expected
+    // on the wire. The tail of `bytes` ends with `[0x81, 0x00, BER
+    // length, value...]` — locate the BER-OID prefix by scanning
+    // backwards.
+    let tail_start = bytes.len() - (b"first-multi-byte".len() + 1 + 2);
+    assert_eq!(
+        &bytes[tail_start..tail_start + 2],
+        &[0x81, 0x00],
+        "tag 128 BER-OID encoding is 0x81 0x00"
+    );
+
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.unknown.len(), 1);
+    assert_eq!(decoded.unknown[0].tag, 128);
+    assert_eq!(decoded.unknown[0].value, b"first-multi-byte");
+}
+
+/// BER-OID round-trip boundary: unknown tag 16383 (`2^14 - 1`) — last
+/// two-byte value (`0xFF 0x7F`).
+#[test]
+fn unknown_tag_16383_round_trips_two_byte_ber_oid() {
+    let ls = VmtiLs {
+        precision_time_stamp: Some(1_700_000_000_000_000),
+        version_number: Some(6),
+        num_targets_reported: Some(0),
+        unknown: vec![OwnedRawField {
+            tag: 16383,
+            value: b"max-two-byte".to_vec(),
+        }],
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&ls).unwrap();
+    assert_eq!(bytes.len(), encoded_len(&ls));
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.unknown.len(), 1);
+    assert_eq!(decoded.unknown[0].tag, 16383);
+    assert_eq!(decoded.unknown[0].value, b"max-two-byte");
+}
+
+/// BER-OID round-trip boundary: unknown tag 16384 (`2^14`) — first
+/// three-byte value (`0x81 0x80 0x00`).
+#[test]
+fn unknown_tag_16384_round_trips_three_byte_ber_oid() {
+    let ls = VmtiLs {
+        precision_time_stamp: Some(1_700_000_000_000_000),
+        version_number: Some(6),
+        num_targets_reported: Some(0),
+        unknown: vec![OwnedRawField {
+            tag: 16384,
+            value: b"first-three-byte".to_vec(),
+        }],
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&ls).unwrap();
+    assert_eq!(bytes.len(), encoded_len(&ls));
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.unknown.len(), 1);
+    assert_eq!(decoded.unknown[0].tag, 16384);
+    assert_eq!(decoded.unknown[0].value, b"first-three-byte");
+}
+
+/// Strict decode also preserves multi-byte BER-OID unknown tags per
+/// ST 0107.5 §6 (strict mode is about codepoint legality, not
+/// future-spec rejection). Mirrors `klv::st0102::tests::
+/// strict_preserves_unknown_tag` extended to the BER-OID boundary.
+#[test]
+fn strict_decode_preserves_multi_byte_ber_oid_unknown() {
+    let ls = VmtiLs {
+        version_number: Some(6),
+        num_targets_reported: Some(0),
+        unknown: vec![OwnedRawField {
+            tag: 200,
+            value: b"forward-compat".to_vec(),
+        }],
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&ls).unwrap();
+    let decoded = decode_strict(&bytes).unwrap();
+    assert_eq!(decoded.unknown.len(), 1);
+    assert_eq!(decoded.unknown[0].tag, 200);
+    assert_eq!(decoded.unknown[0].value, b"forward-compat");
+}
+
+/// Strict mode catches a duplicate multi-byte BER-OID tag. Pre-E5
+/// the `[bool; 256]` seen array would have silently collided tag
+/// 256 with tag 0 (`as u8`-narrowing); post-E5 the dedup runs on
+/// the full `u32` tag value so multi-byte duplicates are caught.
+#[test]
+fn strict_decode_rejects_duplicate_multi_byte_ber_oid_tag() {
+    // Hand-craft a body with two copies of BER-OID tag 200 (encoded
+    // `0x81 0x48`). Both have an empty value.
+    let mut bytes = Vec::new();
+    // Tag 4 (Version, required), length 1, value 6.
+    bytes.extend_from_slice(&[4, 1, 6]);
+    // Tag 6 (NumTargetsReported, required), length 1, value 0.
+    bytes.extend_from_slice(&[6, 1, 0]);
+    // Tag 200 (BER-OID = 0x81 0x48), length 0.
+    bytes.extend_from_slice(&[0x81, 0x48, 0]);
+    bytes.extend_from_slice(&[0x81, 0x48, 0]);
+    let err = decode_strict(&bytes).unwrap_err();
+    assert!(
+        matches!(err, KlvDecodeError::DuplicateTag { tag: 200, .. }),
+        "expected DuplicateTag(200), got {err:?}"
+    );
+}

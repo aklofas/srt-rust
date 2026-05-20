@@ -17,6 +17,12 @@ use crate::klv::st0903::vtarget_pack;
 /// are preserved in [`VmtiLs::unknown`] per ST 0107.5 §6 future-proof skip
 /// rule.
 ///
+/// Tags are walked as BER-OID per ST 0107.5 §6.3.1 via [`Iter::local_set`]
+/// — defined tags 1..=103 fit in one byte (`write_ber_oid(N) == [N]` for
+/// `N ≤ 127`), but a future ST 0903.7+ tag ≥ 128 would encode as multi-byte
+/// BER-OID. Such forward-compat tags land in [`VmtiLs::unknown`] keyed by
+/// their decoded `u32` tag value.
+///
 /// VTargetSeries (Tag 101) inner packs are dispatched to
 /// `vtarget_pack::read_pack`; pack-level errors land in `field_errors`
 /// as [`KlvDecodeError::St0903InvalidVTargetPack`] reasons too — but
@@ -33,42 +39,41 @@ use crate::klv::st0903::vtarget_pack;
 /// [`KlvDecodeError::St0903InvalidVTargetPack`]. Tag-level
 /// malformations on the parent LS are non-fatal in lenient mode and
 /// are captured in [`VmtiLs::field_errors`] instead.
+///
+/// [`Iter::local_set`]: crate::klv::pack::Iter::local_set
 pub fn decode(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
     use crate::klv::imapb::{ImapbParams, decode_imapb};
-    use crate::klv::length::read_ber;
+    use crate::klv::pack::Iter;
 
     let mut ls = VmtiLs::default();
-    let mut cursor = bytes;
 
-    while !cursor.is_empty() {
-        // Single-byte BER-OID tag — ST 0903.6 §10.1 IDs (1..=103) all
-        // fit in one byte where the encoded form == raw byte. Matches
-        // the substrate-wide convention used by `klv::st0102` /
-        // `klv::st0601` LS body walks.
-        let tag = cursor[0];
-        cursor = &cursor[1..];
-
-        // BER outer length. A framing failure here is unrecoverable
-        // for the rest of the buffer (we can't find the next tag), so
-        // record it and stop walking — surface partial state to the
-        // caller.
-        let (declared_len, after_len) = match read_ber(cursor) {
-            Ok(x) => x,
+    for r in Iter::local_set(bytes) {
+        // Framing failure (truncated tag / length / value): surface
+        // the partial state to the caller as a final field_error and
+        // stop. `Iter` already advances `finished` so subsequent
+        // calls return None — but matching `break` is clearer.
+        let f = match r {
+            Ok(f) => f,
             Err(_) => {
                 ls.field_errors
-                    .push(KlvFieldError::TruncatedField { tag: tag as u32 });
+                    .push(KlvFieldError::TruncatedField { tag: 0 });
                 break;
             }
         };
-        cursor = after_len;
+        let value = f.value;
 
-        if cursor.len() < declared_len {
-            ls.field_errors
-                .push(KlvFieldError::TruncatedField { tag: tag as u32 });
-            break;
-        }
-        let value = &cursor[..declared_len];
-        cursor = &cursor[declared_len..];
+        // BER-OID-decoded tag arrives as u32. ST 0903.6 §10.1 typed
+        // tags all fit in u8 (highest is 103); narrow only for the
+        // table lookup. Tags > 0xFF (future-spec multi-byte BER-OID)
+        // are preserved as forward-compat unknowns per ST 0107.5 §6,
+        // matching the sibling ST 0601 / ST 0102 lenient pattern.
+        let Ok(tag) = u8::try_from(f.tag) else {
+            ls.unknown.push(OwnedRawField {
+                tag: f.tag,
+                value: value.to_vec(),
+            });
+            continue;
+        };
 
         let Some(spec) = lookup(tag) else {
             // Unknown / deprecated tag — preserve per ST 0107.5 §6.
@@ -331,35 +336,98 @@ fn decode_vtarget_series(
 ///   canonical BER length encoding.
 pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
     use crate::klv::imapb::{ImapbParams, decode_imapb};
-    use crate::klv::length::read_ber_strict;
+    use crate::klv::length::{read_ber_oid_strict, read_ber_strict};
 
     let mut ls = VmtiLs::default();
+    // BER-OID dedup must run on u32 (future ST 0903.7+ tags ≥ 128 will
+    // encode as multi-byte BER-OID; using `[bool; 256]` would silently
+    // collide tag 128 with tag 0). Mirrors the ST 0601 strict walker
+    // which gates dedup on `u8::try_from(tag)` against the typed table
+    // but tracks all tag IDs in a `Vec<u32>`. ST 0903's strict dispatch
+    // is single-pass so we keep both checks inline.
+    let mut seen_u8 = [false; 256];
+    let mut seen_other: std::collections::HashSet<u32> = std::collections::HashSet::new();
     let mut cursor = bytes;
-    let mut seen = [false; 256];
+    // `offset` tracks the start of the current item in `bytes` so
+    // framing errors and duplicate-tag errors surface a useful
+    // `offset` field (the ST 0601 strict walker uses the same scheme).
+    let mut offset = 0usize;
 
     while !cursor.is_empty() {
-        let tag = cursor[0];
-        cursor = &cursor[1..];
+        let item_start = offset;
+        // Strict BER-OID tag per ST 0107.5 §6.3.1 (rejects leading 0x80
+        // continuation-of-zero encoding).
+        let (tag, after_tag) = match read_ber_oid_strict(cursor) {
+            Ok(v) => v,
+            Err(mut e) => {
+                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
+                    *o += item_start;
+                }
+                if let KlvDecodeError::NonCanonicalTag { offset: o } = &mut e {
+                    *o += item_start;
+                }
+                if let KlvDecodeError::MalformedTag { offset: o } = &mut e {
+                    *o += item_start;
+                }
+                return Err(e);
+            }
+        };
+        let consumed_tag = cursor.len() - after_tag.len();
 
-        if seen[tag as usize] {
+        // Duplicate-tag check on the BER-OID-decoded u32 — covers both
+        // the typed u8 universe (tags 1..=103) and future multi-byte
+        // BER-OID extensions per ST 0107.5 §6.
+        let is_dup = if let Ok(tag_u8) = u8::try_from(tag) {
+            let was = seen_u8[tag_u8 as usize];
+            seen_u8[tag_u8 as usize] = true;
+            was
+        } else {
+            !seen_other.insert(tag)
+        };
+        if is_dup {
             return Err(KlvDecodeError::DuplicateTag {
-                tag: tag as u32,
-                offset: 0, // single-pass walk doesn't track buffer offset
+                tag,
+                offset: item_start,
             });
         }
-        seen[tag as usize] = true;
 
-        let (declared_len, after_len) = read_ber_strict(cursor)?;
-        cursor = after_len;
-        if cursor.len() < declared_len {
+        let (declared_len, after_len) = match read_ber_strict(after_tag) {
+            Ok(v) => v,
+            Err(mut e) => {
+                let inner_off = item_start + consumed_tag;
+                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
+                    *o += inner_off;
+                }
+                if let KlvDecodeError::NonCanonicalLength { offset: o } = &mut e {
+                    *o += inner_off;
+                }
+                if let KlvDecodeError::MalformedLength { offset: o } = &mut e {
+                    *o += inner_off;
+                }
+                return Err(e);
+            }
+        };
+        let consumed_len = after_tag.len() - after_len.len();
+        if after_len.len() < declared_len {
             return Err(KlvDecodeError::Truncated {
-                offset: 0,
+                offset: item_start + consumed_tag + consumed_len,
                 needed: declared_len,
-                have: cursor.len(),
+                have: after_len.len(),
             });
         }
-        let value = &cursor[..declared_len];
-        cursor = &cursor[declared_len..];
+        let value = &after_len[..declared_len];
+        cursor = &after_len[declared_len..];
+        offset = item_start + consumed_tag + consumed_len + declared_len;
+
+        // Tags > 0xFF are preserved as forward-compat unknowns (ST
+        // 0107.5 §6); the typed table only covers the u8 universe.
+        let Ok(tag) = u8::try_from(tag) else {
+            ls.unknown.push(OwnedRawField {
+                tag,
+                value: value.to_vec(),
+            });
+            continue;
+        };
 
         let Some(spec) = lookup(tag) else {
             // ST 0107.5 §6 skip rule — preserve unknown tags.
@@ -484,8 +552,9 @@ pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
     }
 
     // Required-tag validation per Task 2's audit: required = {4, 6}.
+    // Both are typed (u8) tags so `seen_u8` is the right index.
     for spec in TAGS {
-        if spec.required && !seen[spec.id as usize] {
+        if spec.required && !seen_u8[spec.id as usize] {
             return Err(KlvDecodeError::St0903MissingRequiredTag { tag: spec.id });
         }
     }

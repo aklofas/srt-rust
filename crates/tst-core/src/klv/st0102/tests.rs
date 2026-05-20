@@ -523,13 +523,11 @@ fn strict_rejects_truncated_value() {
 }
 
 #[test]
-fn unknown_tags_above_127_dropped_on_encode() {
-    // ST 0102 LS uses single-byte BER-OID tags only. The lenient
-    // decoder accepts tag > 127 as forward-compat (ST 0107.5 §6)
-    // but encode silently drops them; encoded_len agrees. This
-    // test pins that contract — change of behavior here means
-    // either making encode emit multi-byte BER-OID, or making
-    // decode reject tag > 127.
+fn unknown_tags_above_127_preserved_via_ber_oid_on_encode() {
+    // ST 0102 LS may grow new tags > 127 in future revisions; the
+    // lenient decoder already preserves them per ST 0107.5 §6, and
+    // since the validate-1 E4 fix encode emits multi-byte BER-OID
+    // per ST 0107 §6.3.1 so the round-trip stays lossless.
     let r = SecurityLs {
         security_classification: Some(SecurityClassification::Unclassified),
         unknown: vec![
@@ -548,20 +546,112 @@ fn unknown_tags_above_127_dropped_on_encode() {
     let n = encoded_len(&r);
     let bytes = encode_to_vec(&r).unwrap();
 
-    // encoded_len + encode agree on size (both skip the > 127 tags).
+    // encoded_len + encode agree on size (both account for the
+    // multi-byte BER-OID encoding of tags > 127).
     assert_eq!(n, bytes.len());
 
-    // Re-decode: typed field round-trips; unknown vec is empty
-    // (the > 127 tags were dropped on encode).
     let decoded = decode(&bytes).unwrap();
     assert_eq!(
         decoded.security_classification,
         Some(SecurityClassification::Unclassified)
     );
-    assert!(
-        decoded.unknown.is_empty(),
-        "tags > 127 should be silently dropped on encode"
-    );
+    assert_eq!(decoded.unknown.len(), 2);
+    assert_eq!(decoded.unknown[0].tag, 128);
+    assert_eq!(decoded.unknown[0].value, b"forward-compat");
+    assert_eq!(decoded.unknown[1].tag, 200);
+    assert_eq!(decoded.unknown[1].value, b"other");
+}
+
+/// BER-OID round-trip boundary: tag 127 — last single-byte value
+/// (`0x7F`). Encoded as one byte.
+#[test]
+fn unknown_tag_127_round_trips_single_byte_ber_oid() {
+    let r = SecurityLs {
+        security_classification: Some(SecurityClassification::Unclassified),
+        unknown: vec![OwnedRawField {
+            tag: 127,
+            value: b"max-single-byte".to_vec(),
+        }],
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&r).unwrap();
+    assert_eq!(encoded_len(&r), bytes.len());
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.unknown.len(), 1);
+    assert_eq!(decoded.unknown[0].tag, 127);
+    assert_eq!(decoded.unknown[0].value, b"max-single-byte");
+}
+
+/// BER-OID round-trip boundary: tag 128 — first multi-byte value
+/// (`0x81 0x00`). The continuation bit `0x80` on the first byte
+/// signals "more bytes follow".
+#[test]
+fn unknown_tag_128_round_trips_multi_byte_ber_oid() {
+    let r = SecurityLs {
+        security_classification: Some(SecurityClassification::Unclassified),
+        unknown: vec![OwnedRawField {
+            tag: 128,
+            value: b"first-multi-byte".to_vec(),
+        }],
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&r).unwrap();
+    assert_eq!(encoded_len(&r), bytes.len());
+
+    // Hand-verify the on-wire BER-OID bytes for tag 128. After the
+    // single-byte tag-1 record (3 bytes), the next two bytes are
+    // the BER-OID tag = 0x81 0x00.
+    // Tag 1 record: [0x01, 0x01, 0x00] = 3 bytes.
+    assert_eq!(&bytes[3..5], &[0x81, 0x00]);
+
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.unknown.len(), 1);
+    assert_eq!(decoded.unknown[0].tag, 128);
+    assert_eq!(decoded.unknown[0].value, b"first-multi-byte");
+}
+
+/// BER-OID round-trip boundary: tag 16383 (`2^14 - 1`) — last
+/// two-byte value (`0xFF 0x7F`).
+#[test]
+fn unknown_tag_16383_round_trips_two_byte_ber_oid() {
+    let r = SecurityLs {
+        security_classification: Some(SecurityClassification::Unclassified),
+        unknown: vec![OwnedRawField {
+            tag: 16383,
+            value: b"max-two-byte".to_vec(),
+        }],
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&r).unwrap();
+    assert_eq!(encoded_len(&r), bytes.len());
+    assert_eq!(&bytes[3..5], &[0xFF, 0x7F]);
+
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.unknown.len(), 1);
+    assert_eq!(decoded.unknown[0].tag, 16383);
+    assert_eq!(decoded.unknown[0].value, b"max-two-byte");
+}
+
+/// BER-OID round-trip boundary: tag 16384 (`2^14`) — first
+/// three-byte value (`0x81 0x80 0x00`).
+#[test]
+fn unknown_tag_16384_round_trips_three_byte_ber_oid() {
+    let r = SecurityLs {
+        security_classification: Some(SecurityClassification::Unclassified),
+        unknown: vec![OwnedRawField {
+            tag: 16384,
+            value: b"first-three-byte".to_vec(),
+        }],
+        ..Default::default()
+    };
+    let bytes = encode_to_vec(&r).unwrap();
+    assert_eq!(encoded_len(&r), bytes.len());
+    assert_eq!(&bytes[3..6], &[0x81, 0x80, 0x00]);
+
+    let decoded = decode(&bytes).unwrap();
+    assert_eq!(decoded.unknown.len(), 1);
+    assert_eq!(decoded.unknown[0].tag, 16384);
+    assert_eq!(decoded.unknown[0].value, b"first-three-byte");
 }
 
 /// `klv::st0102::SECURITY_LS_UL` is a re-export of the

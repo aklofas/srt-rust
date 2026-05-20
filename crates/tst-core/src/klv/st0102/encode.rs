@@ -13,7 +13,7 @@ use crate::klv::st0102::model::{SecurityLs, encode_utf16_bom};
 ///   declared length would overflow BER encoding (in practice,
 ///   a value > 2^64 bytes — guards against pathological input).
 pub fn encode(record: &SecurityLs, out: &mut [u8]) -> Result<usize, KlvEncodeError> {
-    use crate::klv::length::write_ber;
+    use crate::klv::length::{write_ber, write_ber_oid};
 
     let needed = encoded_len(record);
     if out.len() < needed {
@@ -24,6 +24,11 @@ pub fn encode(record: &SecurityLs, out: &mut [u8]) -> Result<usize, KlvEncodeErr
     }
 
     let mut pos = 0usize;
+    // Defined ST 0102 LS tags are all ≤ 127 (single-byte BER-OID); a
+    // dedicated single-byte writer keeps the call sites concise. The
+    // multi-byte BER-OID path is reserved for the `unknown` loop
+    // below — see comment there for why round-tripping multi-byte
+    // tags matters for forward-compat.
     let emit =
         |out: &mut [u8], pos: &mut usize, tag: u8, value: &[u8]| -> Result<(), KlvEncodeError> {
             out[*pos] = tag;
@@ -96,18 +101,22 @@ pub fn encode(record: &SecurityLs, out: &mut [u8]) -> Result<usize, KlvEncodeErr
         emit(out, &mut pos, 24, s.as_bytes())?;
     }
 
-    // Emit unknown tags last to preserve forward-compat. ST 0102 LS
-    // uses single-byte BER-OID tags only; multi-byte tags (>127)
-    // are silently dropped — `encoded_len` matches this behavior so
-    // the buffer-size precheck stays consistent. The decoder still
-    // accepts tag > 127 as forward-compat (ST 0107.5 §6), but
-    // encoding round-trip drops them.
+    // Emit unknown tags last to preserve forward-compat. Tags above
+    // 127 use multi-byte BER-OID encoding per ST 0107 §6.3.1 (also
+    // SMPTE ST 336 §6) — write them via `write_ber_oid` so future
+    // ST 0102 security-marking extensions (which the decoder already
+    // preserves in `unknown`) survive an encode/decode round-trip.
+    // `encoded_len` sizes via `ber_oid_len(tag)` to keep the
+    // buffer-size precheck consistent.
     for u in record.unknown.iter() {
-        let tag_u8 = match u8::try_from(u.tag) {
-            Ok(t) if t <= 127 => t,
-            _ => continue, // tag > 127: drop (matches encoded_len)
-        };
-        emit(out, &mut pos, tag_u8, &u.value)?;
+        let n =
+            write_ber_oid(u.tag, &mut out[pos..]).map_err(|_| KlvEncodeError::RecordTooLarge)?;
+        pos += n;
+        let n = write_ber(u.value.len(), &mut out[pos..])
+            .map_err(|_| KlvEncodeError::RecordTooLarge)?;
+        pos += n;
+        out[pos..pos + u.value.len()].copy_from_slice(&u.value);
+        pos += u.value.len();
     }
 
     Ok(pos)
@@ -130,7 +139,7 @@ pub fn encode_to_vec(record: &SecurityLs) -> Result<Vec<u8>, KlvEncodeError> {
 
 /// Pre-compute the encoded length for a given record.
 pub fn encoded_len(record: &SecurityLs) -> usize {
-    use crate::klv::length::ber_len;
+    use crate::klv::length::{ber_len, ber_oid_len};
 
     let mut total = 0usize;
     let mut add = |value_len: usize| {
@@ -195,16 +204,11 @@ pub fn encoded_len(record: &SecurityLs) -> usize {
     }
 
     for u in record.unknown.iter() {
-        // Re-emit unknown tags verbatim. ST 0102 LS uses single-byte
-        // BER-OID tags (≤ 127); tags above that range are silently
-        // dropped on encode (see the `encode` function's u8::try_from
-        // branch), so we don't size for them here either. Asymmetric
-        // round-trip is acceptable because the spec doesn't define
-        // tags above 127 for ST 0102 LS — preserving them on lenient
-        // decode is a forward-compat courtesy, not a contract.
-        if u.tag <= 127 {
-            total += 1 + ber_len(u.value.len()) + u.value.len();
-        }
+        // Re-emit unknown tags verbatim with multi-byte BER-OID support
+        // per ST 0107 §6.3.1. The decoder already preserves any
+        // forward-compat tag in `unknown`; sizing via `ber_oid_len`
+        // ensures encode round-trip stays lossless for tags > 127.
+        total += ber_oid_len(u.tag) + ber_len(u.value.len()) + u.value.len();
     }
 
     total

@@ -300,29 +300,64 @@ pub fn classify_klv(payload: &[u8]) -> KlvShape {
     KlvShape::Other
 }
 
-/// Strip the EN 300 743 §6.2 PES_data_field envelope from a DVB-subtitle PES
-/// payload. The wire format is:
+/// Outcome of parsing the EN 300 743 §6.2 PES_data_field envelope on a
+/// DVB-subtitle PES payload.
+///
+/// The envelope wire format is:
 ///
 /// ```text
 ///   data_identifier(1) + subtitle_stream_id(1) + segments(N) + end_marker(0xFF)
 /// ```
 ///
-/// Returns the segments slice if the envelope is well-formed, `None`
-/// otherwise — caller falls through to passthrough on malformed input so
-/// strict-mode consumers can still observe the unexpected payload shape.
+/// Three terminal shapes per the spec + permissive carriage handling:
 ///
-/// `data_identifier` valid range per ETSI EN 300 743 §7.1: `0x20..=0x3F`
-/// (DVB subtitle) or `0x70..=0x7F` (DVB subtitle for HD). The
-/// `subtitle_stream_id` is fixed at `0x00` per §6.2.
-pub(crate) fn strip_dvb_sub_envelope(bytes: &[u8]) -> Option<&[u8]> {
+/// * `Conformant` — `data_identifier == 0x20`, `subtitle_stream_id == 0x00`,
+///   end marker present. Strip and emit.
+/// * `NonConformantDataId` — envelope is well-formed (stream_id + marker
+///   match) but `data_identifier` falls in the legacy permissive carriage
+///   range (`0x20..=0x3F | 0x70..=0x7F` per EN 300 743 §7.1) other than the
+///   exact `0x20` required by §6.2 Table 3. Stripping still produces
+///   sensible segment bytes; caller decides whether to emit a sample.
+/// * `Malformed` — envelope shape doesn't match (too short, bad stream_id,
+///   missing end marker, or data_identifier completely outside the
+///   permissive range). Caller falls through to passthrough so strict-mode
+///   consumers can still observe the unexpected payload shape.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum DvbSubStripResult<'a> {
+    /// Conformant envelope per EN 300 743 §6.2 Table 3.
+    Conformant(&'a [u8]),
+    /// Envelope well-formed but `data_identifier != 0x20`. The legacy
+    /// permissive range (`0x20..=0x3F | 0x70..=0x7F`) is accepted here so
+    /// the caller can choose strict reject vs. lenient pass-through.
+    NonConformantDataId { observed: u8, stripped: &'a [u8] },
+    /// Envelope shape invalid — caller should fall back to passthrough.
+    Malformed,
+}
+
+/// Parse the EN 300 743 §6.2 PES_data_field envelope from a DVB-subtitle
+/// PES payload.
+///
+/// See [`DvbSubStripResult`] for the per-outcome contract. The
+/// `subtitle_stream_id` is fixed at `0x00` per §6.2. The end-marker byte
+/// `0xFF` per §6.2.
+pub(crate) fn strip_dvb_sub_envelope(bytes: &[u8]) -> DvbSubStripResult<'_> {
     if bytes.len() < 3 {
-        return None;
+        return DvbSubStripResult::Malformed;
     }
-    let valid_id = matches!(bytes[0], 0x20..=0x3F | 0x70..=0x7F);
-    if !valid_id || bytes[1] != 0x00 || *bytes.last().unwrap() != 0xFF {
-        return None;
+    let data_id = bytes[0];
+    let in_permissive_range = matches!(data_id, 0x20..=0x3F | 0x70..=0x7F);
+    if !in_permissive_range || bytes[1] != 0x00 || *bytes.last().unwrap() != 0xFF {
+        return DvbSubStripResult::Malformed;
     }
-    Some(&bytes[2..bytes.len() - 1])
+    let stripped = &bytes[2..bytes.len() - 1];
+    if data_id == 0x20 {
+        DvbSubStripResult::Conformant(stripped)
+    } else {
+        DvbSubStripResult::NonConformantDataId {
+            observed: data_id,
+            stripped,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -623,37 +658,76 @@ mod tests {
     fn strip_dvb_sub_envelope_round_trip() {
         let segs = [0x0F, 0x10, 0xAB, 0xCD];
         let wrapped = [&[0x20u8, 0x00][..], &segs[..], &[0xFF][..]].concat();
-        assert_eq!(strip_dvb_sub_envelope(&wrapped), Some(&segs[..]));
+        assert_eq!(
+            strip_dvb_sub_envelope(&wrapped),
+            DvbSubStripResult::Conformant(&segs[..])
+        );
     }
 
     #[test]
-    fn strip_dvb_sub_envelope_accepts_hd_data_identifier_range() {
-        // 0x70..=0x7F is HD subtitle per EN 300 743 §7.1.
+    fn strip_dvb_sub_envelope_hd_range_is_non_conformant_data_id() {
+        // 0x70..=0x7F is the legacy permissive HD-subtitle range per
+        // EN 300 743 §7.1, but §6.2 Table 3 binds DVB-subtitle to exactly
+        // 0x20. Surface as NonConformantDataId so caller (strict vs lenient)
+        // decides whether to emit the sample.
         let wrapped = [0x70, 0x00, 0x0F, 0x10, 0xFF];
-        assert_eq!(strip_dvb_sub_envelope(&wrapped), Some(&[0x0F, 0x10][..]));
+        assert_eq!(
+            strip_dvb_sub_envelope(&wrapped),
+            DvbSubStripResult::NonConformantDataId {
+                observed: 0x70,
+                stripped: &[0x0F, 0x10][..],
+            }
+        );
+    }
+
+    #[test]
+    fn strip_dvb_sub_envelope_permissive_range_above_0x20_is_non_conformant() {
+        // 0x21 sits in 0x20..=0x3F but isn't the §6.2 binding (which is 0x20
+        // exact). Surface as NonConformantDataId.
+        let wrapped = [0x21, 0x00, 0x0F, 0xAB, 0xFF];
+        assert_eq!(
+            strip_dvb_sub_envelope(&wrapped),
+            DvbSubStripResult::NonConformantDataId {
+                observed: 0x21,
+                stripped: &[0x0F, 0xAB][..],
+            }
+        );
     }
 
     #[test]
     fn strip_dvb_sub_envelope_rejects_missing_marker() {
-        assert!(strip_dvb_sub_envelope(&[0x20, 0x00, 0xAB, 0xCD]).is_none());
+        assert_eq!(
+            strip_dvb_sub_envelope(&[0x20, 0x00, 0xAB, 0xCD]),
+            DvbSubStripResult::Malformed
+        );
     }
 
     #[test]
     fn strip_dvb_sub_envelope_rejects_bad_data_identifier() {
-        // 0x40 is outside both 0x20..=0x3F and 0x70..=0x7F.
-        assert!(strip_dvb_sub_envelope(&[0x40, 0x00, 0xAB, 0xFF]).is_none());
+        // 0x40 is outside both 0x20..=0x3F and 0x70..=0x7F — Malformed (not
+        // even in the legacy permissive range).
+        assert_eq!(
+            strip_dvb_sub_envelope(&[0x40, 0x00, 0xAB, 0xFF]),
+            DvbSubStripResult::Malformed
+        );
     }
 
     #[test]
     fn strip_dvb_sub_envelope_rejects_bad_stream_id() {
         // subtitle_stream_id must be 0x00 per §6.2.
-        assert!(strip_dvb_sub_envelope(&[0x20, 0x01, 0xAB, 0xFF]).is_none());
+        assert_eq!(
+            strip_dvb_sub_envelope(&[0x20, 0x01, 0xAB, 0xFF]),
+            DvbSubStripResult::Malformed
+        );
     }
 
     #[test]
     fn strip_dvb_sub_envelope_too_short() {
-        assert!(strip_dvb_sub_envelope(&[0x20]).is_none());
-        assert!(strip_dvb_sub_envelope(&[]).is_none());
+        assert_eq!(
+            strip_dvb_sub_envelope(&[0x20]),
+            DvbSubStripResult::Malformed
+        );
+        assert_eq!(strip_dvb_sub_envelope(&[]), DvbSubStripResult::Malformed);
     }
 
     // The AV1 arm of `parse_one_nal` is unreachable in normal demuxer flow

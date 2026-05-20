@@ -430,6 +430,24 @@ pub enum NonConformantIssue {
     /// `mpegts.c:3091-3097`.
     TransportErrorPacket { pid: u16 },
 
+    /// DVB-subtitle PES_data_field carries a `data_identifier` byte other
+    /// than `0x20`. Per ETSI EN 300 743 §6.2 Table 3 the binding for
+    /// DVB subtitling streams is exactly `0x20`. The broader range
+    /// `0x20..=0x3F | 0x70..=0x7F` cited by EN 300 743 §7.1 covers
+    /// PES_data_field carriage in general (with extensions for future use);
+    /// for DVB-subtitle PIDs specifically, only `0x20` is conformant.
+    ///
+    /// `observed` is the byte found at offset 0 of the PES payload — useful
+    /// for telemetry (e.g., distinguishing "off-by-one in caller's encoder"
+    /// from "wrong subtitle binding entirely").
+    ///
+    /// Lenient mode (`StrictMode::Off`): the demuxer continues to strip the
+    /// envelope (matching today's permissive behavior) and emits a
+    /// `Sample` event alongside this `NonConformant`. Strict mode
+    /// (`StrictMode::Full`): the demuxer suppresses the `Sample` event and
+    /// the issue propagates as a `DemuxError::StrictRejection`.
+    DvbSubDataIdentifier { observed: u8 },
+
     /// PSI section reassembly observed a continuity-counter jump on a
     /// continuation packet. Per ISO/IEC 13818-1 §2.4.3.3 PSI continuation
     /// packets must increment the CC; a jump means an upstream packet drop.
@@ -589,6 +607,13 @@ impl std::fmt::Display for NonConformantIssue {
                 write!(
                     f,
                     "PSI continuity-counter jump on PID 0x{pid:04X}: expected 0x{expected:X}, observed 0x{observed:X}"
+                )
+            }
+            NonConformantIssue::DvbSubDataIdentifier { observed } => {
+                write!(
+                    f,
+                    "DVB-subtitle data_identifier=0x{observed:02X} \
+                     (EN 300 743 §6.2 Table 3 requires 0x20)"
                 )
             }
             NonConformantIssue::MultiCellAu { pid, dropped_bytes } => {

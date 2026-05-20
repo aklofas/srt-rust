@@ -333,6 +333,12 @@ enum tst_nonconformant_code
   TST_NONCONFORMANT_CODE_PSI_MULTI_SECTION_UNSUPPORTED = 17,
   TST_NONCONFORMANT_CODE_OTHER = 18,
   TST_NONCONFORMANT_CODE_MALFORMED_PES = 19,
+  /**
+   * EN 300 743 §6.2 Table 3 binds DVB-subtitle `data_identifier` to
+   * exactly `0x20`. Reuses `table_id` field as the observed byte carrier
+   * (mirroring `SubtitleDescriptorMalformed`'s reuse).
+   */
+  TST_NONCONFORMANT_CODE_DVB_SUB_DATA_IDENTIFIER = 20,
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;

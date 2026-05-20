@@ -3,7 +3,8 @@
 
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
-    DemuxEvent, Demuxer, SamplePayload, StreamKind, SubtitleCodec as DemuxSub,
+    DemuxEvent, Demuxer, DemuxerBuilder, NonConformantIssue, SamplePayload, StreamKind, StrictMode,
+    SubtitleCodec as DemuxSub,
 };
 use tst_core::mpegts::mux::{
     Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec as MuxSub, VideoCodec,
@@ -146,6 +147,128 @@ fn demux_classifies_cea708_standalone_via_ga94_format_identifier() {
             }
         )),
         "expected Cea708Standalone subtitle Sample, got {events:?}"
+    );
+}
+
+/// Patch the `data_identifier` byte (offset 0 of the §6.2 envelope) inside
+/// a muxed DVB-subtitle TS byte stream. Finds the envelope by locating the
+/// triplet `[0x20, 0x00, marker]` (the muxer auto-prepends data_id=0x20,
+/// stream_id=0x00, and the first caller-supplied segment byte is `marker`).
+/// Returns the patched bytes.
+fn patch_dvb_sub_data_identifier(mut bytes: Vec<u8>, marker: u8, new_id: u8) -> Vec<u8> {
+    let needle = [0x20u8, 0x00, marker];
+    let pos = bytes
+        .windows(3)
+        .position(|w| w == needle)
+        .expect("muxed TS should contain the §6.2 envelope header followed by the marker");
+    bytes[pos] = new_id;
+    bytes
+}
+
+#[test]
+fn demux_dvb_sub_non_conformant_data_identifier_lenient_emits_sample_and_issue() {
+    // Use a recognizable first-segment byte (0x0F == DVB-sub segment sync per
+    // §7.2) so the patcher can locate the envelope unambiguously.
+    let segments = vec![0x0F, 0xAB, 0xCD, 0xEF];
+    let mut raw = build_ts_with_one_subtitle_pes(
+        MuxSub::DvbSubtitling {
+            language: *b"eng",
+            subtitling_type: 0x10,
+            composition_page_id: 1,
+            ancillary_page_id: 1,
+        },
+        &segments,
+    );
+    // Flip data_identifier from the §6.2 binding (0x20) to a value that
+    // sits in the legacy §7.1 permissive range but is non-conformant per
+    // §6.2 Table 3.
+    raw = patch_dvb_sub_data_identifier(raw, 0x0F, 0x21);
+    let events = collect_events(&raw);
+
+    // Lenient (default) — both a NonConformant issue AND the stripped Sample.
+    let issue_seen = events.iter().any(|e| {
+        matches!(
+            e,
+            DemuxEvent::NonConformant {
+                issue: NonConformantIssue::DvbSubDataIdentifier { observed: 0x21 },
+                ..
+            }
+        )
+    });
+    let sample_seen = events.iter().any(|e| {
+        matches!(
+            e,
+            DemuxEvent::Sample {
+                payload: SamplePayload::Subtitle {
+                    codec: DemuxSub::DvbSubtitling,
+                    payload,
+                },
+                ..
+            } if payload == &segments
+        )
+    });
+    assert!(
+        issue_seen,
+        "expected DvbSubDataIdentifier {{ observed: 0x21 }}, got {events:?}"
+    );
+    assert!(
+        sample_seen,
+        "lenient mode should still emit the stripped subtitle sample, got {events:?}"
+    );
+}
+
+#[test]
+fn demux_dvb_sub_non_conformant_data_identifier_strict_suppresses_sample() {
+    let segments = vec![0x0F, 0xAB, 0xCD, 0xEF];
+    let mut raw = build_ts_with_one_subtitle_pes(
+        MuxSub::DvbSubtitling {
+            language: *b"eng",
+            subtitling_type: 0x10,
+            composition_page_id: 1,
+            ancillary_page_id: 1,
+        },
+        &segments,
+    );
+    raw = patch_dvb_sub_data_identifier(raw, 0x0F, 0x21);
+
+    let mut demux = DemuxerBuilder::new().strict(StrictMode::Full).build();
+    // StrictMode::Full converts the first DvbSubDataIdentifier to a fatal —
+    // feed() may surface it as Err. Drain events regardless.
+    let _ = demux.feed(&raw);
+    demux.flush();
+    let mut events = Vec::new();
+    while let Some(e) = demux.next_event() {
+        events.push(e);
+    }
+
+    let issue_seen = events.iter().any(|e| {
+        matches!(
+            e,
+            DemuxEvent::NonConformant {
+                issue: NonConformantIssue::DvbSubDataIdentifier { observed: 0x21 },
+                ..
+            }
+        )
+    });
+    let dvb_sub_sample_seen = events.iter().any(|e| {
+        matches!(
+            e,
+            DemuxEvent::Sample {
+                payload: SamplePayload::Subtitle {
+                    codec: DemuxSub::DvbSubtitling,
+                    ..
+                },
+                ..
+            }
+        )
+    });
+    assert!(
+        issue_seen,
+        "strict mode should still surface the DvbSubDataIdentifier issue, got {events:?}"
+    );
+    assert!(
+        !dvb_sub_sample_seen,
+        "strict mode should suppress the DVB-sub Sample event, got {events:?}"
     );
 }
 

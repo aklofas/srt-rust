@@ -2639,6 +2639,8 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::Av1RegistrationMalformed
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1RegistrationMalformed::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1TileListNotAllowed
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1TileListNotAllowed::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::DvbSubDataIdentifier
+pub tst_core::mpegts::demux::event::NonConformantIssue::DvbSubDataIdentifier::observed: u8
 pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes
 pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes::reason: &'static str
@@ -3353,6 +3355,8 @@ pub tst_core::mpegts::demux::NonConformantIssue::Av1RegistrationMalformed
 pub tst_core::mpegts::demux::NonConformantIssue::Av1RegistrationMalformed::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::Av1TileListNotAllowed
 pub tst_core::mpegts::demux::NonConformantIssue::Av1TileListNotAllowed::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::DvbSubDataIdentifier
+pub tst_core::mpegts::demux::NonConformantIssue::DvbSubDataIdentifier::observed: u8
 pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes
 pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes::reason: &'static str

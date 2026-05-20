@@ -88,7 +88,7 @@ pub enum TstDiscontinuityKindTag {
 }
 
 // ------------------------------------------------------------------
-// Non-conformant-issue codes (20 variants)
+// Non-conformant-issue codes (21 variants)
 // ------------------------------------------------------------------
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::NonConformantIssue`'s
@@ -117,6 +117,10 @@ pub enum TstNonConformantCode {
     PsiMultiSectionUnsupported = 17,
     Other = 18,
     MalformedPes = 19,
+    /// EN 300 743 §6.2 Table 3 binds DVB-subtitle `data_identifier` to
+    /// exactly `0x20`. Reuses `table_id` field as the observed byte carrier
+    /// (mirroring `SubtitleDescriptorMalformed`'s reuse).
+    DvbSubDataIdentifier = 20,
 }
 
 // ------------------------------------------------------------------
@@ -901,6 +905,10 @@ fn fill_nonconformant(
             arena.detail_buf.extend_from_slice(s.as_bytes());
             arena.detail_buf.push(0); // NUL terminator
             body.detail = arena.detail_buf.as_ptr() as *const c_char;
+        }
+        NonConformantIssue::DvbSubDataIdentifier { observed } => {
+            body.issue_code = TstNonConformantCode::DvbSubDataIdentifier as c_int;
+            body.table_id = *observed; // reuse table_id field as the observed-byte carrier
         }
         NonConformantIssue::MalformedPes { pid, reason } => {
             body.issue_code = TstNonConformantCode::MalformedPes as c_int;

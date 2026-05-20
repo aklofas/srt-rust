@@ -21,7 +21,7 @@ use crate::mpegts::demux::event::{
     StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload,
 };
 use crate::mpegts::demux::payload::{
-    KlvShape, classify_klv, split_nals, split_obus, strip_dvb_sub_envelope,
+    DvbSubStripResult, KlvShape, classify_klv, split_nals, split_obus, strip_dvb_sub_envelope,
 };
 use crate::mpegts::demux::pes::{PesPayload, ReassemblyOutcome};
 
@@ -392,22 +392,41 @@ impl super::demuxer::Demuxer {
                 // anything that doesn't begin with a segment sync_byte 0x0F).
                 // Other subtitle codecs (teletext, CEA-708 standalone, WebVTT)
                 // do not have this wrapper; pass through verbatim.
+                //
+                // §6.2 Table 3 binds DVB-subtitle data_identifier to exactly
+                // 0x20. The strip helper distinguishes Conformant (== 0x20),
+                // NonConformantDataId (in the legacy permissive range
+                // 0x20..=0x3F | 0x70..=0x7F but != 0x20), and Malformed
+                // (anything else). For NonConformantDataId, lenient mode
+                // strips + emits the sample alongside the
+                // DvbSubDataIdentifier issue; strict mode suppresses the
+                // sample so consumers can fail closed.
                 let raw = &pes.payload;
                 let surfaced_payload = match codec {
-                    SubtitleCodec::DvbSubtitling => strip_dvb_sub_envelope(raw)
-                        .map(|s| s.to_vec())
-                        .unwrap_or_else(|| raw.to_vec()),
-                    _ => raw.to_vec(),
-                };
-                self.queue.push_back(DemuxEvent::Sample {
-                    stream,
-                    pts,
-                    dts: None,
-                    payload: SamplePayload::Subtitle {
-                        codec,
-                        payload: surfaced_payload,
+                    SubtitleCodec::DvbSubtitling => match strip_dvb_sub_envelope(raw) {
+                        DvbSubStripResult::Conformant(s) => Some(s.to_vec()),
+                        DvbSubStripResult::NonConformantDataId { observed, stripped } => {
+                            let stripped = stripped.to_vec();
+                            let issue = NonConformantIssue::DvbSubDataIdentifier { observed };
+                            let reject = self.options.strict.rejects(&issue);
+                            self.queue_nonconformant(stream, issue);
+                            if reject { None } else { Some(stripped) }
+                        }
+                        DvbSubStripResult::Malformed => Some(raw.to_vec()),
                     },
-                });
+                    _ => Some(raw.to_vec()),
+                };
+                if let Some(surfaced_payload) = surfaced_payload {
+                    self.queue.push_back(DemuxEvent::Sample {
+                        stream,
+                        pts,
+                        dts: None,
+                        payload: SamplePayload::Subtitle {
+                            codec,
+                            payload: surfaced_payload,
+                        },
+                    });
+                }
             }
         }
     }

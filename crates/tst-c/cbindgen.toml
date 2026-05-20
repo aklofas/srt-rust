@@ -105,6 +105,7 @@ include = [
     "TstMetadataKindTag",
     "TstDiscontinuityKindTag",
     "TstNonConformantCode",
+    "TstPcrMalformedKind",
     "TstLinkSource",
     "TstStrictMode",
     "TstAudioCodec",
@@ -177,6 +178,7 @@ include = [
 "TstMetadataKindTag"        = "tst_metadata_kind"
 "TstDiscontinuityKindTag"   = "tst_discontinuity_kind"
 "TstNonConformantCode"      = "tst_nonconformant_code"
+"TstPcrMalformedKind"       = "tst_pcr_malformed_kind"
 "TstLinkSource"             = "tst_link_source"
 "TstStrictMode"             = "tst_strict_mode"
 "TstAudioCodec"             = "tst_audio_codec"

@@ -294,13 +294,43 @@ impl super::demuxer::Demuxer {
             .collect();
         for pmt_pid in removed {
             if let Some(tracker) = self.programs.remove(&pmt_pid) {
-                // Remove the PES stream-kind entries owned by this program.
+                // Per-PID state cleanup (validate-1 B8). When PAT removes a
+                // program, every per-PID map keyed by an elementary PID of
+                // that program is unreachable (no PSI binding connects it to
+                // a stream) and would leak under PAT rotation. Clean:
+                //  - stream_kind_by_pid + pid_to_program (PMT classification)
+                //  - cc_by_pid (continuity-counter tracker)
+                //  - last_pcr_by_pid + last_pts_by_pid (timing trackers)
+                //  - pes (PES reassembly partial buffer)
+                //  - stats_per_stream + stream_codec_counters
+                //  - subtitle_*_emitted / av1_*_emitted / subtitle_pids_seen
+                //    (per-PMT-version emission guards)
+                // The PCR PID for this program is also cleaned — it lives
+                // outside `tracker.streams` when it's a PCR-only PID, so
+                // handle it explicitly.
                 for stream in &tracker.streams {
-                    self.stream_kind_by_pid.remove(&stream.pid);
-                    self.pid_to_program.remove(&stream.pid);
+                    let pid = stream.pid;
+                    self.stream_kind_by_pid.remove(&pid);
+                    self.pid_to_program.remove(&pid);
+                    self.cc_by_pid.remove(&pid);
+                    self.last_pcr_by_pid.remove(&pid);
+                    self.last_pts_by_pid.remove(&pid);
+                    self.pes.remove_pid(pid);
+                    self.stats_per_stream.remove(&pid);
+                    self.stream_codec_counters.remove(&pid);
+                    self.subtitle_missing_descriptor_emitted.remove(&pid);
+                    self.av1_registration_malformed_emitted.remove(&pid);
+                    self.subtitle_descriptor_ambiguous_emitted.remove(&pid);
+                    self.subtitle_pids_seen.remove(&pid);
+                }
+                if let Some(pcr_pid) = tracker.pcr_pid {
+                    self.last_pcr_by_pid.remove(&pcr_pid);
                 }
                 // Free the PSI assembly buffer for this PMT PID.
                 self.psi_assemblers.remove(&pmt_pid);
+                // Continuity-counter state on the PMT PID itself is also
+                // unreachable now that the program is gone.
+                self.cc_by_pid.remove(&pmt_pid);
             }
         }
 

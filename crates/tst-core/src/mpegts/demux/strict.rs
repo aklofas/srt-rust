@@ -35,6 +35,7 @@ impl StrictMode {
                 NonConformantIssue::PcrAnomaly { .. }
                     | NonConformantIssue::PtsAnomaly { .. }
                     | NonConformantIssue::MissingRequiredPts { .. }
+                    | NonConformantIssue::PcrMalformed { .. }
                     | NonConformantIssue::PusiMidPes
                     | NonConformantIssue::PsiChecksumMismatch { .. }
             ),

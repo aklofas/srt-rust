@@ -88,7 +88,7 @@ pub enum TstDiscontinuityKindTag {
 }
 
 // ------------------------------------------------------------------
-// Non-conformant-issue codes (27 variants)
+// Non-conformant-issue codes (28 variants)
 // ------------------------------------------------------------------
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::NonConformantIssue`'s
@@ -138,7 +138,10 @@ pub enum TstNonConformantCode {
     /// `data_alignment_indicator = 0` (validate-1 B6). `pid` carries the
     /// stream PID.
     SubtitleAlignmentMissing = 24,
-    // Code 25 reserved for B8+B12 (PcrMalformed).
+    /// H.222.0 §2.4.3.5 PCR field syntax violation (reserved bits not all 1,
+    /// or `program_clock_reference_extension > 299`). Reuses the `table_id`
+    /// field to carry a `TstPcrMalformedKind` discriminator.
+    PcrMalformed = 25,
     /// H.264 / H.265 / H.266 NAL header constraint violation
     /// (forbidden_zero_bit / reserved bit / temporal_id_plus1 / layer_id).
     /// `codec` byte surfaces on `table_id` (reusing the existing carrier;
@@ -154,6 +157,18 @@ pub enum TstNonConformantCode {
     /// `obu_header_kind` byte (`obu_type` carrier) encodes which constraint
     /// variant (0=ForbiddenBit, 1=ReservedBit, 2=ExtensionReservedBits).
     Av1ObuHeader = 27,
+}
+
+/// `repr(i32)` mirror of `tst_core::mpegts::demux::PcrMalformedKind`.
+/// Surfaced on `tst_event_t.u.nonconformant.table_id` when
+/// `issue_code == TST_NONCONFORMANT_CODE_PCR_MALFORMED`.
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TstPcrMalformedKind {
+    /// Six reserved bits of PCR byte 4 (mask `0x7E`) were not all 1.
+    InvalidReservedBits = 0,
+    /// `program_clock_reference_extension` decoded to a value > 299.
+    ExtensionOutOfRange = 1,
 }
 
 // ------------------------------------------------------------------
@@ -983,6 +998,29 @@ fn fill_nonconformant(
         NonConformantIssue::SubtitleAlignmentMissing { pid } => {
             body.issue_code = TstNonConformantCode::SubtitleAlignmentMissing as c_int;
             body.pid = *pid;
+        }
+        NonConformantIssue::PcrMalformed { kind } => {
+            use tst_core::mpegts::demux::PcrMalformedKind;
+            body.issue_code = TstNonConformantCode::PcrMalformed as c_int;
+            // Reuse the table_id field as a `TstPcrMalformedKind` discriminator
+            // (u8 wide; PcrMalformedKind has 2 variants today, comfortably
+            // under 256). Mirrors the SubtitleDescriptorMalformed reuse of
+            // the same field.
+            body.table_id = match kind {
+                PcrMalformedKind::InvalidReservedBits => {
+                    TstPcrMalformedKind::InvalidReservedBits as u8
+                }
+                PcrMalformedKind::ExtensionOutOfRange => {
+                    TstPcrMalformedKind::ExtensionOutOfRange as u8
+                }
+                // PcrMalformedKind is #[non_exhaustive]; future variants
+                // fall back to InvalidReservedBits until the C surface
+                // gains a discriminator entry. The bash ratchet
+                // check-raw-c-mapper-coverage.sh covers MuxError /
+                // TransportError but not PcrMalformedKind; rely on this
+                // wildcard plus the explicit arms above.
+                _ => 0xFF,
+            };
         }
         NonConformantIssue::NalHeader { codec, kind } => {
             use tst_core::mpegts::demux::{NalHeaderKind, VideoCodec};

@@ -210,6 +210,17 @@ impl Reassembler {
         out
     }
 
+    /// Drop any partial PES state buffered for `pid` without emitting it.
+    /// Used by the demuxer when PAT removes a program — per-PID reassembly
+    /// state for that program's PIDs is no longer reachable (no PSI binding
+    /// connects the PID to a stream), so leaving the buffer in place is a
+    /// bounded leak under PAT rotation (validate-1 B8).
+    pub fn remove_pid(&mut self, pid: u16) {
+        if let Some(p) = self.by_pid.remove(&pid) {
+            self.total_buffered = self.total_buffered.saturating_sub(p.buf.len());
+        }
+    }
+
     pub fn buffered_bytes(&self) -> usize {
         self.total_buffered
     }

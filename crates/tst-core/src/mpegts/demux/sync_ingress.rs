@@ -13,7 +13,9 @@
 //! `mpegts/demux/mod.rs`).
 
 use crate::mpegts::common::{StreamTypeCode, pcr_diff_27mhz};
-use crate::mpegts::demux::event::{DemuxEvent, DiscontinuityKind, NonConformantIssue};
+use crate::mpegts::demux::event::{
+    DemuxEvent, DiscontinuityKind, NonConformantIssue, StreamId, StreamKind,
+};
 
 /// Maximum bytes the demuxer scans during sync recovery before declaring
 /// the stream unrecoverable.
@@ -131,6 +133,20 @@ impl super::demuxer::Demuxer {
         // TS-TIME-01). Key the last-seen map by `pkt.pid` (the on-wire PCR
         // PID) — that's the canonical identifier of a time base.
         //
+        // Malformed-PCR check fires first (validate-1 B12): if the on-wire
+        // PCR field violated H.222.0 §2.4.3.5 syntax, the parser already
+        // dropped the decoded value (`pcr_27mhz = None`) and recorded the
+        // reason in `pcr_malformed`. Surface that here as a separate issue
+        // so lenient receivers see the corruption while strict-mode timing
+        // categories escalate to StrictRejection.
+        if let Some(kind) = pkt.pcr_malformed {
+            let stream = self.lookup_stream(pkt.pid).unwrap_or(StreamId {
+                pid: pkt.pid,
+                kind: StreamKind::Unknown(0),
+                program_number: 0,
+            });
+            self.queue_nonconformant(stream, NonConformantIssue::PcrMalformed { kind });
+        }
         // Nested if-let (not let-chain) for MSRV 1.85 — let-chains require 1.88.
         if let Some(now) = pkt.pcr_27mhz {
             if let Some(&last) = self.last_pcr_by_pid.get(&pkt.pid) {

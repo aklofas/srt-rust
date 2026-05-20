@@ -2705,6 +2705,8 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::NalHeader::kind: tst_cor
 pub tst_core::mpegts::demux::event::NonConformantIssue::Other(alloc::string::String)
 pub tst_core::mpegts::demux::event::NonConformantIssue::PcrAnomaly
 pub tst_core::mpegts::demux::event::NonConformantIssue::PcrAnomaly::delta: i64
+pub tst_core::mpegts::demux::event::NonConformantIssue::PcrMalformed
+pub tst_core::mpegts::demux::event::NonConformantIssue::PcrMalformed::kind: tst_core::mpegts::demux::PcrMalformedKind
 pub tst_core::mpegts::demux::event::NonConformantIssue::PesHeaderMalformed
 pub tst_core::mpegts::demux::event::NonConformantIssue::PesHeaderMalformed::kind: tst_core::mpegts::demux::event::PesHeaderMalformedKind
 pub tst_core::mpegts::demux::event::NonConformantIssue::PesHeaderMalformed::pid: u16
@@ -2758,6 +2760,25 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::NonConformantIssue
+#[non_exhaustive] pub enum tst_core::mpegts::demux::event::PcrMalformedKind
+pub tst_core::mpegts::demux::event::PcrMalformedKind::ExtensionOutOfRange
+pub tst_core::mpegts::demux::event::PcrMalformedKind::InvalidReservedBits
+impl core::clone::Clone for tst_core::mpegts::demux::PcrMalformedKind
+pub fn tst_core::mpegts::demux::PcrMalformedKind::clone(&self) -> tst_core::mpegts::demux::PcrMalformedKind
+impl core::cmp::Eq for tst_core::mpegts::demux::PcrMalformedKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::PcrMalformedKind
+pub fn tst_core::mpegts::demux::PcrMalformedKind::eq(&self, other: &tst_core::mpegts::demux::PcrMalformedKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::PcrMalformedKind
+pub fn tst_core::mpegts::demux::PcrMalformedKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::Freeze for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::Send for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::Sync for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::Unpin for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::PcrMalformedKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::PcrMalformedKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::PcrMalformedKind
 #[non_exhaustive] pub enum tst_core::mpegts::demux::event::PesHeaderMalformedKind
 pub tst_core::mpegts::demux::event::PesHeaderMalformedKind::ForbiddenPtsDtsFlags
 pub tst_core::mpegts::demux::event::PesHeaderMalformedKind::InvalidDtsPrefix
@@ -3238,6 +3259,7 @@ pub fn tst_core::mpegts::demux::low_level::Reassembler::buffered_bytes(&self) ->
 pub fn tst_core::mpegts::demux::low_level::Reassembler::drain_partial(&mut self) -> alloc::vec::Vec<tst_core::mpegts::demux::low_level::PesPayload>
 pub fn tst_core::mpegts::demux::low_level::Reassembler::new(cap_per_pid: usize, cap_total: usize) -> Self
 pub fn tst_core::mpegts::demux::low_level::Reassembler::push(&mut self, pid: u16, payload: &[u8], pusi: bool, random_access_indicator: bool) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::demux::low_level::ReassemblyOutcome>, tst_core::error::DemuxError>
+pub fn tst_core::mpegts::demux::low_level::Reassembler::remove_pid(&mut self, pid: u16)
 impl core::fmt::Debug for tst_core::mpegts::demux::low_level::Reassembler
 pub fn tst_core::mpegts::demux::low_level::Reassembler::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_core::mpegts::demux::low_level::Reassembler
@@ -3506,6 +3528,8 @@ pub tst_core::mpegts::demux::NonConformantIssue::NalHeader::kind: tst_core::mpeg
 pub tst_core::mpegts::demux::NonConformantIssue::Other(alloc::string::String)
 pub tst_core::mpegts::demux::NonConformantIssue::PcrAnomaly
 pub tst_core::mpegts::demux::NonConformantIssue::PcrAnomaly::delta: i64
+pub tst_core::mpegts::demux::NonConformantIssue::PcrMalformed
+pub tst_core::mpegts::demux::NonConformantIssue::PcrMalformed::kind: tst_core::mpegts::demux::PcrMalformedKind
 pub tst_core::mpegts::demux::NonConformantIssue::PesHeaderMalformed
 pub tst_core::mpegts::demux::NonConformantIssue::PesHeaderMalformed::kind: tst_core::mpegts::demux::event::PesHeaderMalformedKind
 pub tst_core::mpegts::demux::NonConformantIssue::PesHeaderMalformed::pid: u16
@@ -3559,6 +3583,25 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::NonConformantIssue
+#[non_exhaustive] pub enum tst_core::mpegts::demux::PcrMalformedKind
+pub tst_core::mpegts::demux::PcrMalformedKind::ExtensionOutOfRange
+pub tst_core::mpegts::demux::PcrMalformedKind::InvalidReservedBits
+impl core::clone::Clone for tst_core::mpegts::demux::PcrMalformedKind
+pub fn tst_core::mpegts::demux::PcrMalformedKind::clone(&self) -> tst_core::mpegts::demux::PcrMalformedKind
+impl core::cmp::Eq for tst_core::mpegts::demux::PcrMalformedKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::PcrMalformedKind
+pub fn tst_core::mpegts::demux::PcrMalformedKind::eq(&self, other: &tst_core::mpegts::demux::PcrMalformedKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::PcrMalformedKind
+pub fn tst_core::mpegts::demux::PcrMalformedKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::Freeze for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::Send for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::Sync for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::Unpin for tst_core::mpegts::demux::PcrMalformedKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::PcrMalformedKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::PcrMalformedKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::PcrMalformedKind
 #[non_exhaustive] pub enum tst_core::mpegts::demux::PesHeaderMalformedKind
 pub tst_core::mpegts::demux::PesHeaderMalformedKind::ForbiddenPtsDtsFlags
 pub tst_core::mpegts::demux::PesHeaderMalformedKind::InvalidDtsPrefix

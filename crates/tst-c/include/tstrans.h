@@ -365,6 +365,12 @@ enum tst_nonconformant_code
    */
   TST_NONCONFORMANT_CODE_SUBTITLE_ALIGNMENT_MISSING = 24,
   /**
+   * H.222.0 §2.4.3.5 PCR field syntax violation (reserved bits not all 1,
+   * or `program_clock_reference_extension > 299`). Reuses the `table_id`
+   * field to carry a `TstPcrMalformedKind` discriminator.
+   */
+  TST_NONCONFORMANT_CODE_PCR_MALFORMED = 25,
+  /**
    * H.264 / H.265 / H.266 NAL header constraint violation
    * (forbidden_zero_bit / reserved bit / temporal_id_plus1 / layer_id).
    * `codec` byte surfaces on `table_id` (reusing the existing carrier;
@@ -386,6 +392,29 @@ enum tst_nonconformant_code
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;
+#endif // __cplusplus
+
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::demux::PcrMalformedKind`.
+ * Surfaced on `tst_event_t.u.nonconformant.table_id` when
+ * `issue_code == TST_NONCONFORMANT_CODE_PCR_MALFORMED`.
+ */
+enum tst_pcr_malformed_kind
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  /**
+   * Six reserved bits of PCR byte 4 (mask `0x7E`) were not all 1.
+   */
+  TST_PCR_MALFORMED_KIND_INVALID_RESERVED_BITS = 0,
+  /**
+   * `program_clock_reference_extension` decoded to a value > 299.
+   */
+  TST_PCR_MALFORMED_KIND_EXTENSION_OUT_OF_RANGE = 1,
+};
+#ifndef __cplusplus
+typedef int32_t tst_pcr_malformed_kind;
 #endif // __cplusplus
 
 /**

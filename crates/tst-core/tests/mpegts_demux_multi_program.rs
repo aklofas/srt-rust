@@ -379,3 +379,7 @@ fn pcr_anomaly_fires_for_same_pid_jump() {
         "same-PID PCR jump of 28 MHz must emit exactly one PcrAnomaly, got {pcr_anomalies:?}"
     );
 }
+
+// White-box B8 (PAT cleanup) tests live in the demuxer.rs #[cfg(test)] mod
+// (alongside the existing PAT/PMT tracker tests that use `programs_for_test`).
+// See `pat_remove_program_clears_per_pid_state` etc. there.

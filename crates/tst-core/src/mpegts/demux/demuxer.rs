@@ -2404,4 +2404,437 @@ mod tests {
             }
         }
     }
+
+    // -------------------------------------------------------------------------
+    // PAT cleanup on program removal (validate-1 B8)
+    // -------------------------------------------------------------------------
+    //
+    // When PAT removes a program, per-PID state for that program's PIDs is
+    // unreachable and must be cleaned. White-box tests inspect the private
+    // per-PID maps directly via `pub(super)` field access.
+
+    /// Build a 188-byte TS packet carrying a PCR via the adaptation field.
+    fn pcr_packet_for_test(pid: u16, pcr_27mhz: u64) -> [u8; 188] {
+        let base: u64 = pcr_27mhz / 300;
+        let ext: u64 = pcr_27mhz % 300;
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = (pid >> 8) as u8 & 0x1F;
+        buf[2] = (pid & 0xFF) as u8;
+        buf[3] = 0x20; // adaptation_field_control = 0b10 (af only), CC=0
+        buf[4] = 183; // af_length fills the rest
+        buf[5] = 0x10; // PCR_flag=1
+        buf[6] = (base >> 25) as u8;
+        buf[7] = (base >> 17) as u8;
+        buf[8] = (base >> 9) as u8;
+        buf[9] = (base >> 1) as u8;
+        buf[10] = (((base & 0x01) as u8) << 7) | 0x7E | ((ext >> 8) as u8 & 0x01);
+        buf[11] = (ext & 0xFF) as u8;
+        buf
+    }
+
+    /// Build a payload-only TS packet on `pid` with the given CC. Drives
+    /// `cc_by_pid` registration without needing a PES header.
+    fn payload_packet_for_test(pid: u16, cc: u8) -> [u8; 188] {
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = (pid >> 8) as u8 & 0x1F;
+        buf[2] = (pid & 0xFF) as u8;
+        buf[3] = 0x10 | (cc & 0x0F); // payload-only + CC
+        buf
+    }
+
+    #[test]
+    fn pat_removed_program_clears_cc_by_pid() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1100,
+                2,
+                0x1111,
+                &[(0x1B, 0x1111)],
+                0,
+            ))
+            .unwrap();
+        // Seed CC entries for both programs' video PIDs + the PMT PIDs.
+        demuxer.feed(&payload_packet_for_test(0x1011, 5)).unwrap();
+        demuxer.feed(&payload_packet_for_test(0x1111, 7)).unwrap();
+        assert!(demuxer.cc_by_pid.contains_key(&0x1011));
+        assert!(demuxer.cc_by_pid.contains_key(&0x1111));
+        assert!(demuxer.cc_by_pid.contains_key(&0x1100)); // PMT PID
+
+        // PAT v1 drops program 2.
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .unwrap();
+
+        assert!(
+            demuxer.cc_by_pid.contains_key(&0x1011),
+            "program 1's PID 0x1011 cc must survive"
+        );
+        assert!(
+            !demuxer.cc_by_pid.contains_key(&0x1111),
+            "program 2's PID 0x1111 cc must be cleared"
+        );
+        assert!(
+            !demuxer.cc_by_pid.contains_key(&0x1100),
+            "program 2's PMT PID 0x1100 cc must be cleared"
+        );
+    }
+
+    #[test]
+    fn pat_removed_program_clears_last_pcr_by_pid() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1100,
+                2,
+                0x1111,
+                &[(0x1B, 0x1111)],
+                0,
+            ))
+            .unwrap();
+        demuxer
+            .feed(&pcr_packet_for_test(0x1011, 90_000_000))
+            .unwrap();
+        demuxer
+            .feed(&pcr_packet_for_test(0x1111, 90_000_000))
+            .unwrap();
+        assert!(demuxer.last_pcr_by_pid.contains_key(&0x1011));
+        assert!(demuxer.last_pcr_by_pid.contains_key(&0x1111));
+
+        // PAT v1 drops program 2.
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .unwrap();
+
+        assert!(
+            demuxer.last_pcr_by_pid.contains_key(&0x1011),
+            "program 1's PCR must survive"
+        );
+        assert!(
+            !demuxer.last_pcr_by_pid.contains_key(&0x1111),
+            "program 2's PCR must be cleared"
+        );
+    }
+
+    #[test]
+    fn pat_removed_program_clears_stream_kind_and_pid_to_program() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1100,
+                2,
+                0x1111,
+                &[(0x1B, 0x1111)],
+                0,
+            ))
+            .unwrap();
+        assert!(demuxer.stream_kind_by_pid.contains_key(&0x1111));
+        assert!(demuxer.pid_to_program.contains_key(&0x1111));
+
+        // PAT v1 drops program 2.
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .unwrap();
+
+        // Pre-existing behavior (already in place before B8) — sanity that
+        // we haven't broken what was working.
+        assert!(
+            !demuxer.stream_kind_by_pid.contains_key(&0x1111),
+            "stream_kind_by_pid must drop removed program's PID"
+        );
+        assert!(
+            !demuxer.pid_to_program.contains_key(&0x1111),
+            "pid_to_program must drop removed program's PID"
+        );
+    }
+
+    #[test]
+    fn pat_removed_program_clears_pes_reassembler_state() {
+        // Drive the Reassembler to buffer a partial PES on program 2's PID,
+        // then drop program 2 via PAT and verify the PES partial buffer is
+        // cleaned.
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000), (2, 0x1100)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1100,
+                2,
+                0x1111,
+                &[(0x1B, 0x1111)],
+                0,
+            ))
+            .unwrap();
+        // Build a PUSI packet with PES start code so the Reassembler
+        // initialises its partial-PES buffer on PID 0x1111.
+        let mut pes_start = [0xFFu8; 188];
+        pes_start[0] = 0x47;
+        pes_start[1] = 0x40 | ((0x1111u16 >> 8) as u8 & 0x1F); // PUSI + pid hi
+        pes_start[2] = (0x1111u16 & 0xFF) as u8;
+        pes_start[3] = 0x10; // payload-only, CC=0
+        // PES header at offset 4..
+        pes_start[4] = 0x00;
+        pes_start[5] = 0x00;
+        pes_start[6] = 0x01;
+        pes_start[7] = 0xE0; // stream_id = video
+        pes_start[8] = 0x00;
+        pes_start[9] = 0x00; // PES_packet_length = 0 (unbounded)
+        pes_start[10] = 0x80;
+        pes_start[11] = 0x00;
+        pes_start[12] = 0x00; // PES_header_data_length=0
+        demuxer.feed(&pes_start).unwrap();
+        let buffered_before = demuxer.pes.buffered_bytes();
+        assert!(
+            buffered_before > 0,
+            "PES reassembler must have buffered bytes for PID 0x1111"
+        );
+
+        // PAT v1 drops program 2.
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 1))
+            .unwrap();
+
+        // The PID's partial-PES buffer must be cleaned; total_buffered drops
+        // back to 0.
+        assert_eq!(
+            demuxer.pes.buffered_bytes(),
+            0,
+            "PES reassembler total_buffered must reflect dropped PID's bytes"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // PCR field validation (validate-1 B12)
+    // -------------------------------------------------------------------------
+    //
+    // Parser-level validation lives in `ts.rs` unit tests; these tests cover
+    // the demuxer's lenient-mode emission of NonConformantIssue::PcrMalformed.
+
+    #[test]
+    fn pcr_malformed_reserved_bits_emits_nonconformant() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+
+        // Drain PAT/PMT events.
+        while demuxer.next_event().is_some() {}
+
+        // PCR packet with one reserved bit cleared.
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = (0x1011u16 >> 8) as u8 & 0x1F;
+        buf[2] = (0x1011u16 & 0xFF) as u8;
+        buf[3] = 0x20; // af-only
+        buf[4] = 183;
+        buf[5] = 0x10; // PCR_flag
+        buf[6] = 0;
+        buf[7] = 0;
+        buf[8] = 0;
+        buf[9] = 0;
+        // byte 10: bit 7 = base lsb (0); reserved mask 0x7E but flip bit 1 to 0 → 0x7C
+        buf[10] = 0x7C;
+        buf[11] = 0;
+        demuxer.feed(&buf).unwrap();
+
+        let mut found = false;
+        while let Some(e) = demuxer.next_event() {
+            if let DemuxEvent::NonConformant {
+                issue:
+                    NonConformantIssue::PcrMalformed {
+                        kind: crate::mpegts::demux::PcrMalformedKind::InvalidReservedBits,
+                    },
+                ..
+            } = e
+            {
+                found = true;
+            }
+        }
+        assert!(
+            found,
+            "expected PcrMalformed::InvalidReservedBits event from corrupt PCR field"
+        );
+    }
+
+    #[test]
+    fn pcr_malformed_extension_out_of_range_emits_nonconformant() {
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+        while demuxer.next_event().is_some() {}
+
+        // PCR with extension = 300 (max valid = 299).
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = (0x1011u16 >> 8) as u8 & 0x1F;
+        buf[2] = (0x1011u16 & 0xFF) as u8;
+        buf[3] = 0x20;
+        buf[4] = 183;
+        buf[5] = 0x10;
+        buf[6] = 0;
+        buf[7] = 0;
+        buf[8] = 0;
+        buf[9] = 0;
+        // base lsb 0; reserved 0x7E; ext bit 8 = 1 (300 = 0x12C)
+        buf[10] = 0x7E | 0x01;
+        buf[11] = 0x2C;
+        demuxer.feed(&buf).unwrap();
+
+        let mut found = false;
+        while let Some(e) = demuxer.next_event() {
+            if let DemuxEvent::NonConformant {
+                issue:
+                    NonConformantIssue::PcrMalformed {
+                        kind: crate::mpegts::demux::PcrMalformedKind::ExtensionOutOfRange,
+                    },
+                ..
+            } = e
+            {
+                found = true;
+            }
+        }
+        assert!(
+            found,
+            "expected PcrMalformed::ExtensionOutOfRange event from ext=300 PCR field"
+        );
+    }
+
+    #[test]
+    fn pcr_malformed_does_not_seed_last_pcr_by_pid() {
+        // A malformed PCR must NOT populate last_pcr_by_pid — otherwise the
+        // next valid PCR could fire a spurious PcrAnomaly using the corrupt
+        // value as the comparison baseline.
+        let mut demuxer = Demuxer::new();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+        while demuxer.next_event().is_some() {}
+
+        // Feed a malformed PCR.
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = (0x1011u16 >> 8) as u8 & 0x1F;
+        buf[2] = (0x1011u16 & 0xFF) as u8;
+        buf[3] = 0x20;
+        buf[4] = 183;
+        buf[5] = 0x10;
+        buf[6] = 0;
+        buf[7] = 0;
+        buf[8] = 0;
+        buf[9] = 0;
+        buf[10] = 0x7C; // reserved bits malformed
+        buf[11] = 0;
+        demuxer.feed(&buf).unwrap();
+
+        assert!(
+            !demuxer.last_pcr_by_pid.contains_key(&0x1011),
+            "malformed PCR must not seed last_pcr_by_pid"
+        );
+    }
+
+    #[test]
+    fn pcr_malformed_strict_timing_rejects() {
+        // StrictMode::TimingOnly must escalate PcrMalformed to StrictRejection.
+        use crate::mpegts::demux::DemuxerBuilder;
+        let mut demuxer = DemuxerBuilder::new().strict(StrictMode::TimingOnly).build();
+        demuxer
+            .feed(&pat_packet_with_programs(&[(1, 0x1000)], 0))
+            .unwrap();
+        demuxer
+            .feed(&pmt_packet_for_test(
+                0x1000,
+                1,
+                0x1011,
+                &[(0x1B, 0x1011)],
+                0,
+            ))
+            .unwrap();
+        while demuxer.next_event().is_some() {}
+
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = (0x1011u16 >> 8) as u8 & 0x1F;
+        buf[2] = (0x1011u16 & 0xFF) as u8;
+        buf[3] = 0x20;
+        buf[4] = 183;
+        buf[5] = 0x10;
+        buf[6] = 0;
+        buf[7] = 0;
+        buf[8] = 0;
+        buf[9] = 0;
+        buf[10] = 0x7C; // malformed reserved bits
+        buf[11] = 0;
+        let result = demuxer.feed(&buf);
+        assert!(
+            matches!(result, Err(DemuxError::StrictRejection(_))),
+            "TimingOnly strict mode must reject malformed PCR, got {result:?}"
+        );
+    }
 }

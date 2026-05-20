@@ -8,6 +8,7 @@
 use std::time::Duration;
 
 use crate::mpegts::common::{Pts90khz, StreamTypeCode};
+pub use crate::mpegts::demux::ts::PcrMalformedKind;
 
 /// Top-level event emitted by `Demuxer::next_event`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -487,6 +488,20 @@ pub enum NonConformantIssue {
     /// PES). Lenient mode emits the sample anyway; strict mode rejects.
     SubtitleAlignmentMissing { pid: u16 },
 
+    /// PCR field decoded from the adaptation field violated ITU-T H.222.0
+    /// §2.4.3.5 syntax (six reserved bits not all 1, or
+    /// `program_clock_reference_extension > 299`). Surfaced separately from
+    /// [`Self::PcrAnomaly`] because the latter compares values across
+    /// packets while this fires on a single packet's on-wire syntax.
+    ///
+    /// Lenient mode (`StrictMode::Off`): the malformed PCR is dropped (the
+    /// demuxer does not feed it into [`Self::PcrAnomaly`] detection or the
+    /// `last_pcr_by_pid` map) so a single corrupt packet can't seed bogus
+    /// timing tracking on a PID. Strict-mode timing categories
+    /// (`StrictMode::TimingOnly`, `StrictMode::Full`) escalate this issue
+    /// to `DemuxError::StrictRejection`.
+    PcrMalformed { kind: PcrMalformedKind },
+
     /// NAL header constraint violation per H.264 §7.3.1 / H.265 §7.3.1.2 /
     /// H.266 V4 §7.3.1.2. The demuxer detected a NAL whose header bits
     /// violate a spec-mandated constraint (`forbidden_zero_bit`, reserved
@@ -863,6 +878,15 @@ impl std::fmt::Display for NonConformantIssue {
                 Av1ObuHeaderKind::ExtensionReservedBits => write!(
                     f,
                     "AV1 OBU extension header reserved bits set on PID 0x{pid:04X} (spec mandates =0)"
+                ),
+            },
+            NonConformantIssue::PcrMalformed { kind } => match kind {
+                PcrMalformedKind::InvalidReservedBits => {
+                    write!(f, "PCR field reserved bits not all 1 (H.222.0 §2.4.3.5)")
+                }
+                PcrMalformedKind::ExtensionOutOfRange => write!(
+                    f,
+                    "PCR field program_clock_reference_extension > 299 (H.222.0 §2.4.3.5)"
                 ),
             },
             NonConformantIssue::Other(msg) => {

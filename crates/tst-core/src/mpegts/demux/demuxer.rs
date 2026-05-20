@@ -91,6 +91,13 @@ pub struct Demuxer {
     pub(super) pes: Reassembler,
     pub(super) queue: VecDeque<DemuxEvent>,
     pub(super) bytes_since_sync: usize,
+    /// `true` once the demuxer has acquired a confirmed packet boundary
+    /// (a candidate 0x47 that satisfies the N-of-M stride check, OR a
+    /// successful steady-state parse continuation). Cleared whenever
+    /// sync is lost (`live[0] != 0x47`) so the next candidate is
+    /// re-validated. See `SYNC_REACQ_N` / `SYNC_REACQ_M` constants for
+    /// the rationale (ffmpeg `mpegts.c::mpegts_resync` semantics).
+    pub(super) is_synced: bool,
     /// First strict-mode-rejected issue captured this `feed` call. Drained
     /// at the end of each packet's processing and converted into a
     /// `DemuxError::StrictRejection` return. The `NonConformant` event
@@ -161,6 +168,7 @@ impl Demuxer {
             pes: Reassembler::new(cap_per_pid, cap_total),
             queue: VecDeque::new(),
             bytes_since_sync: 0,
+            is_synced: false,
             fatal: None,
             program_maps_seen: 0,
             pmt_versions_seen: 0,
@@ -199,11 +207,21 @@ impl Demuxer {
             // response is to teardown the demuxer.
             self.sync_buf.clear();
             self.sync_consumed = 0;
+            self.is_synced = false;
             return Err(DemuxError::SyncBufExhausted {
                 observed,
                 max: super::sync_ingress::MAX_SYNC_BUF_BYTES,
             });
         }
+        // `resyncing` tracks whether the next 0x47 we find arrived via
+        // a SCAN (loss-of-sync recovery path) — in which case it must
+        // pass N-of-M validation before acceptance. Initial acquisition
+        // (`live[0] == 0x47` on the first call, no scanning required)
+        // and steady-state continuation (next-packet boundary aligned)
+        // bypass N-of-M, matching ffmpeg `mpegts_resync` semantics
+        // (resync logic fires only after a packet boundary turned out
+        // not to carry 0x47).
+        let mut resyncing = !self.is_synced && self.bytes_since_sync > 0;
         loop {
             let live = &self.sync_buf[self.sync_consumed..];
             if live.len() < crate::mpegts::common::TS_PACKET_SIZE {
@@ -212,6 +230,10 @@ impl Demuxer {
             }
             // Sync to next 0x47.
             if live[0] != crate::mpegts::common::TS_SYNC_BYTE {
+                // Lost sync (or never had it). Set the resync flag so
+                // the next 0x47 we find must pass N-of-M validation.
+                self.is_synced = false;
+                resyncing = true;
                 let mut i = 1;
                 while i < live.len() && live[i] != crate::mpegts::common::TS_SYNC_BYTE {
                     i += 1;
@@ -226,7 +248,48 @@ impl Demuxer {
                 self.compact_sync_buf();
                 continue;
             }
-            // Have sync; try to parse one packet.
+            // Candidate sync byte. Only validate via N-of-M stride check
+            // if we got here through the scan path (`resyncing`). Per
+            // H.222.0 §2.4.3.2 and ffmpeg `mpegts.c::mpegts_resync`,
+            // without this a stray 0x47 inside PES payload causes false
+            // sync after a packet loss.
+            if resyncing {
+                use super::sync_ingress::NofMResult;
+                match super::sync_ingress::sync_n_of_m_check(live) {
+                    NofMResult::Accept => {
+                        // Fall through to packet parse below.
+                    }
+                    NofMResult::Reject => {
+                        // Stray 0x47 — advance past it and keep
+                        // searching. Charge 1 byte against the
+                        // sync-search window so adversarial input
+                        // still hits Unrecoverable.
+                        self.bytes_since_sync += 1;
+                        if self.bytes_since_sync > super::sync_ingress::SYNC_SEARCH_WINDOW {
+                            return Err(DemuxError::Unrecoverable {
+                                after_bytes: self.bytes_since_sync,
+                            });
+                        }
+                        self.sync_consumed += 1;
+                        self.compact_sync_buf();
+                        continue;
+                    }
+                    NofMResult::NeedMoreBytes => {
+                        // Not enough strides buffered to confirm or
+                        // reject. Keep the candidate in the buffer and
+                        // return — the next `feed` call will deliver
+                        // more bytes and re-evaluate. Preserve the
+                        // `bytes_since_sync` charge so adversarial
+                        // inputs that keep us in this state still hit
+                        // Unrecoverable eventually.
+                        self.compact_sync_buf();
+                        return Ok(());
+                    }
+                }
+            }
+            // Have confirmed sync. Mark locked + reset the search counter.
+            self.is_synced = true;
+            resyncing = false;
             self.bytes_since_sync = 0;
             // Need to read 188 bytes; if the next byte after isn't 0x47 (or
             // we don't have enough buffer to check), we'll re-sync next loop.
@@ -294,6 +357,9 @@ impl Demuxer {
         if pkt[0] != crate::mpegts::common::TS_SYNC_BYTE {
             return Err(DemuxError::Unrecoverable { after_bytes: 0 });
         }
+        // Caller guarantees alignment — lock sync state so the next
+        // `feed` (if any) doesn't re-acquire via N-of-M.
+        self.is_synced = true;
         self.bytes_since_sync = 0;
         let result = self.process_packet(pkt);
         self.handle_process_packet_result(result)?;

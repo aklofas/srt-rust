@@ -79,10 +79,23 @@ impl super::demuxer::Demuxer {
             return Ok(());
         }
 
-        let assembler = self.psi_assemblers.entry(pid).or_default();
+        // Per ISO/IEC 13818-1 §2.4.4.1, PUSI with `pointer_field > 0`
+        // signals section-mapped layout: `payload[1..1+pointer_field]`
+        // is the tail of a prior partial section that started in an
+        // earlier packet, and `payload[1+pointer_field..]` begins a new
+        // section. Section-mapped payloads can also carry multiple
+        // complete sections back-to-back.
+        //
+        // Sequence:
+        //   1. If PUSI: append the prior-section tail (`payload[1..1+pf]`)
+        //      as continuation. If it completes a section, dispatch it.
+        //   2. If PUSI: start a new section at `payload[1+pf..]`. If it
+        //      completes, dispatch.
+        //   3. Loop `try_complete_section()` to drain any subsequent
+        //      back-to-back sections from the same payload window.
+        //   4. Continuation packets (PUSI=0) just append.
 
-        let result = if pusi {
-            // First byte after pointer_field marks where the section starts.
+        let mut iter = if pusi {
             if payload.is_empty() {
                 return Ok(());
             }
@@ -90,22 +103,67 @@ impl super::demuxer::Demuxer {
             if 1 + pointer_field > payload.len() {
                 return Ok(());
             }
-            assembler.start_new_section(&payload[1 + pointer_field..])
+            // Step 1: feed the prior-section tail as continuation FIRST,
+            // then start the new section. `dispatch_completed_section`
+            // handles overflow + PAT/PMT routing for each completed
+            // section.
+            if pointer_field > 0 {
+                let cont = &payload[1..1 + pointer_field];
+                let assembler = self.psi_assemblers.entry(pid).or_default();
+                let res = assembler.append_continuation(cont);
+                if !self.dispatch_psi_result(pid, is_pat, res)? {
+                    return Ok(());
+                }
+            }
+            // Step 2: start the new section at the pointer-field offset.
+            let new_section_payload = &payload[1 + pointer_field..];
+            let assembler = self.psi_assemblers.entry(pid).or_default();
+            let res = assembler.start_new_section(new_section_payload);
+            if !self.dispatch_psi_result(pid, is_pat, res)? {
+                return Ok(());
+            }
+            true
         } else {
-            assembler.append_continuation(payload)
+            // Continuation packet — no pointer_field, just append.
+            let assembler = self.psi_assemblers.entry(pid).or_default();
+            let res = assembler.append_continuation(payload);
+            if !self.dispatch_psi_result(pid, is_pat, res)? {
+                return Ok(());
+            }
+            true
         };
 
+        // Step 3: drain any subsequent complete sections in the same
+        // payload (section-mapped layout per §2.4.4.1). The assembler
+        // returns None when the leftover buffer is empty, starts with
+        // 0xFF (stuffing), or doesn't yet contain a complete section.
+        while iter {
+            let assembler = self.psi_assemblers.entry(pid).or_default();
+            let res = assembler.try_complete_section();
+            iter = self.dispatch_psi_result(pid, is_pat, res)?;
+        }
+        Ok(())
+    }
+
+    /// Centralized PSI section dispatch + overflow handling. Returns
+    /// `Ok(true)` when a section was dispatched (caller may want to loop
+    /// for more), `Ok(false)` when no section was ready (caller stops).
+    /// `Err` propagates assembler overflow as a NonConformant event
+    /// (mapped here) and a benign `Ok(false)` so the caller's loop stops.
+    fn dispatch_psi_result(
+        &mut self,
+        pid: u16,
+        is_pat: bool,
+        result: Result<Option<Vec<u8>>, AssemblerError>,
+    ) -> Result<bool, DemuxError> {
         let section = match result {
             Ok(Some(section)) => section,
-            Ok(None) => return Ok(()),
+            Ok(None) => return Ok(false),
             Err(AssemblerError::Overflow { observed_len })
             | Err(AssemblerError::DeclaredTooLong {
                 declared_len: observed_len,
             }) => {
-                // Cap fired — partial section discarded by the assembler. Surface
-                // the overflow as a NonConformant event keyed to this PSI PID so
-                // the caller can detect the DoS attempt without losing the
-                // receive loop.
+                // Cap fired — partial section discarded by the assembler.
                 let stream = self.lookup_stream(pid).unwrap_or(StreamId {
                     pid,
                     kind: StreamKind::Unknown(0),
@@ -116,16 +174,15 @@ impl super::demuxer::Demuxer {
                     stream,
                     NonConformantIssue::PsiOverlongSection { pid, observed_len },
                 );
-                return Ok(());
+                return Ok(false);
             }
         };
-
         if is_pat {
             self.handle_pat_section(&section);
         } else {
             self.handle_pmt_section(pid, &section);
         }
-        Ok(())
+        Ok(true)
     }
 
     pub(super) fn handle_pat_section(&mut self, section: &[u8]) {

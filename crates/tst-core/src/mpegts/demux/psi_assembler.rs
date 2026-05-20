@@ -84,13 +84,41 @@ impl PsiSectionAssembler {
 
         if let Some(total) = self.declared_total {
             if self.buf.len() >= total {
-                let mut complete = std::mem::take(&mut self.buf);
-                complete.truncate(total);
+                // Split off [0..total] as the completed section. Any
+                // trailing bytes ([total..]) are bytes of the NEXT
+                // section that arrived in the same payload chunk (per
+                // H.222.0 §2.4.4.1 section-mapped layout); they remain
+                // buffered for the next `try_complete_section` call.
+                let leftover = self.buf.split_off(total);
+                let complete = std::mem::take(&mut self.buf);
+                self.buf = leftover;
                 self.declared_total = None;
                 return Ok(Some(complete));
             }
         }
         Ok(None)
+    }
+
+    /// Attempt to extract another complete section from already-buffered
+    /// bytes (no new payload). Used by callers that may have multiple
+    /// sections per payload — after a PUSI append completes one section,
+    /// call this in a loop to drain any subsequent sections that arrived
+    /// in the same payload window.
+    pub fn try_complete_section(&mut self) -> Result<Option<Vec<u8>>, AssemblerError> {
+        // ISO/IEC 13818-1 §2.4.4.5: stuffing within a section-mapped
+        // payload is signaled by 0xFF table_id. If the leftover bytes
+        // start with 0xFF, the rest of the payload is stuffing — drop
+        // and stop. This matches ffmpeg `mpegts.c:3168-3170`.
+        if self.buf.first() == Some(&0xFF) {
+            self.reset();
+            return Ok(None);
+        }
+        if self.buf.is_empty() {
+            return Ok(None);
+        }
+        // Call append with no new bytes so the parse-section-length
+        // + completion check runs against current buffer state.
+        self.append(&[])
     }
 
     /// Reset internal state. Used on overflow + after returning a complete

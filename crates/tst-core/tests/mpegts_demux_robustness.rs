@@ -148,6 +148,217 @@ fn corrupted_pat_surfaces_psi_checksum_event() {
     );
 }
 
+/// Validate-1 B7 — Sync re-acquisition must verify N-of-M (5 of 7) packet
+/// boundaries before declaring sync, not blindly accept any 0x47. Without
+/// this check, a random 0x47 byte inside a payload (TS packets routinely
+/// carry 0x47 in PES payload, descriptors, etc.) was treated as the start
+/// of a new packet, causing false sync and downstream parse errors.
+///
+/// Discriminator: feed a long buffer of garbage that contains stray 0x47
+/// bytes at non-188-stride offsets — without enough 0x47s spaced at 188
+/// to confirm a real packet boundary. With the bug, each stray 0x47
+/// resets `bytes_since_sync` to 0 and parses 188 bytes as if it were a
+/// valid TS packet (parse_ts_packet succeeds because it only requires
+/// pkt[0] == 0x47). The parser remains "alive" indefinitely on garbage.
+///
+/// With the N-of-M fix, none of the stray 0x47s satisfy the
+/// "5 of 7 spaced 188 bytes" check, so no false sync is acquired; the
+/// parser correctly exhausts SYNC_SEARCH_WINDOW and surfaces
+/// `DemuxError::Unrecoverable`.
+#[test]
+fn sync_reacquisition_strays_at_non_188_stride_do_not_acquire() {
+    // 18800 bytes (= 100 stride positions). Every 250 bytes, place a stray
+    // 0x47. After accounting for the SYNC_SEARCH_WINDOW = 188 * 32 = 6016
+    // bytes, we have enough strays (>= 24) to keep the bug alive.
+    //
+    // 250 is chosen as the stray stride because gcd(250, 188) > 0 means
+    // none of these 0x47s are 188-aligned with each other for sufficient
+    // depth — specifically, 250, 500, 750, ... 250*k vs 188*j. For k=1,
+    // candidate at 250: checks 250+188=438 (0xAA), 250+376=626 (0xAA),
+    // 250+564=814 (0xAA), 250+752=1002 (0xAA), 250+940=1190 (0xAA),
+    // 250+1128=1378 (0xAA), 250+1316=1566 (0xAA). All seven slots are
+    // 0xAA — 0 of 7 → no sync.
+    let mut bytes = vec![0xAAu8; 188 * 100];
+    for off in (250..bytes.len()).step_by(250) {
+        bytes[off] = 0x47;
+    }
+
+    let mut d = Demuxer::new();
+    let res = d.feed(&bytes);
+    assert!(
+        res.is_err(),
+        "stray 0x47 bytes at non-188-aligned offsets must NOT acquire sync; \
+         expected DemuxError::Unrecoverable past SYNC_SEARCH_WINDOW, got {res:?}"
+    );
+}
+
+/// Companion B7 check — the fix MUST still accept legitimate sync when
+/// N-of-M aligns. Feed pure garbage prefix then the clean stream; the
+/// real stream's 188-aligned 0x47s satisfy the N-of-M check at the very
+/// first candidate (7-of-7), so sync is acquired and the stream parses.
+#[test]
+fn sync_reacquisition_accepts_n_of_m_aligned_stream() {
+    // 500 bytes of 0xAA (no 0x47 anywhere — clean prefix), then the real
+    // stream. The first 0x47 the demuxer finds is at offset 500 (start of
+    // a real TS packet). Checking 0x47 at +188, +376, ... finds 0x47s at
+    // every stride within the real stream → ≥5 of 7 → sync acquired.
+    let prefix = vec![0xAA; 500];
+    let mut bytes = prefix;
+    bytes.extend_from_slice(&build_clean_stream());
+
+    let mut d = Demuxer::new();
+    d.feed(&bytes).unwrap();
+    d.flush();
+
+    let mut saw_program_map = false;
+    while let Some(e) = d.next_event() {
+        if matches!(e, DemuxEvent::ProgramMap(_)) {
+            saw_program_map = true;
+        }
+    }
+    assert!(
+        saw_program_map,
+        "real 188-aligned 0x47 stride must pass N-of-M and acquire sync"
+    );
+}
+
+/// Validate-1 B3 — PUSI handler must NOT discard the section continuation
+/// bytes preceding `pointer_field`. Per H.222.0 §2.4.4.1, when PUSI is set
+/// and `pointer_field > 0`, bytes `payload[1..1+pointer_field]` complete
+/// the prior partial section that started in an earlier packet, and
+/// `payload[1+pointer_field..]` begins a NEW section. The bug discarded
+/// the continuation bytes, losing the prior section entirely.
+///
+/// We construct a LARGE PAT (~200 bytes — 47 programs) that genuinely
+/// requires two packets to deliver. The first packet (PUSI=1,
+/// pointer_field=0) carries the section header + most programs but not
+/// the full CRC. The second packet (PUSI=1, pointer_field=N) carries the
+/// remaining `N` bytes of the prior PAT as continuation, then starts a
+/// NEW (incomplete) section past the pointer_field.
+///
+/// With the bug: pkt2's pointer_field>0 + PUSI logic discards
+/// `payload[1..1+pointer_field]` (the PAT tail) and starts fresh at
+/// `payload[1+pointer_field..]`. The first PAT is lost. No ProgramMap.
+/// With the fix: pkt2's continuation bytes complete the first PAT,
+/// programs are registered, subsequent PMTs route correctly, ProgramMap
+/// fires.
+#[test]
+fn pusi_pointer_field_preserves_prior_section_continuation() {
+    use tst_core::mpegts::common::crc32::crc32_mpeg2;
+    use tst_core::mpegts::demux::DemuxEvent;
+
+    // Build a LARGE PAT with 47 programs. Each program-loop entry is 4
+    // bytes (`program_number` + `reserved+pid`). Header tail: 5 bytes.
+    // Total section size: 3 (fixed) + 5 (header tail) + 47*4 + 4 (CRC)
+    // = 200 bytes; section_length = 197 = 0x0C5.
+    let mut pat = Vec::with_capacity(200);
+    pat.push(0x00); // table_id
+    pat.push(0xB0); // syntax=1
+    pat.push(0xC5); // section_length lo = 0xC5 (high nibble 0 inside byte 1)
+    // Actually section_length is 12 bits across (byte1[3:0], byte2). Need
+    // 197 = 0x0C5 → byte1 low nibble = 0x0, byte2 = 0xC5. Fix byte 1.
+    pat[1] = 0xB0; // syntax=1, '0', reserved=11, section_length hi = 0
+    pat[2] = 0xC5; // section_length lo = 0xC5
+    pat.push(0x00); // transport_stream_id hi
+    pat.push(0x01); // transport_stream_id lo = 1
+    pat.push(0xC1); // reserved=11, version=0, current_next=1
+    pat.push(0x00); // section_number = 0
+    pat.push(0x00); // last_section_number = 0
+    // 47 program entries:
+    //   program 1 → PMT PID 0x100
+    //   program 2..47 → arbitrary distinct PIDs 0x101..0x12E (kept under
+    //   the 13-bit PID limit and disjoint from 0x100).
+    for i in 0..47u16 {
+        let prog_num: u16 = i + 1;
+        let pmt_pid: u16 = 0x100 + i; // 0x100, 0x101, ..., 0x12E
+        pat.push((prog_num >> 8) as u8);
+        pat.push(prog_num as u8);
+        pat.push(0xE0 | ((pmt_pid >> 8) as u8 & 0x1F));
+        pat.push(pmt_pid as u8);
+    }
+    let crc = crc32_mpeg2(&pat);
+    pat.extend_from_slice(&crc.to_be_bytes());
+    assert_eq!(pat.len(), 200);
+
+    // ── Packet 1: PUSI=1, pointer_field=0. Payload = pointer_field +
+    // first 183 bytes of PAT (4 TS header + 1 pointer_field = 5; 188-5
+    // = 183 payload bytes for the section). PAT is 200 bytes so 17
+    // bytes remain unsent — they must come from packet 2.
+    let mut pkt1 = [0u8; 188];
+    pkt1[0] = 0x47;
+    pkt1[1] = 0x40; // PUSI=1, PID hi=0
+    pkt1[2] = 0x00; // PID lo=0
+    pkt1[3] = 0x10; // adaptation=01, CC=0
+    pkt1[4] = 0x00; // pointer_field=0
+    pkt1[5..188].copy_from_slice(&pat[..183]);
+
+    // ── Packet 2: PUSI=1, pointer_field=17, carries:
+    //   - bytes [1..18] = last 17 bytes of prior PAT (completing it)
+    //   - bytes [18..]  = start of NEW section (PAT v1, partial)
+    // Available payload size: 188 - 4 (TS header) - 1 (pointer_field) -
+    // 17 (continuation) = 166 bytes for the new section. To keep it
+    // incomplete, declare a section_length of 0xC5 (197) again — needs
+    // 200 bytes total, so 166 < 200.
+    let mut pkt2 = [0xFFu8; 188];
+    pkt2[0] = 0x47;
+    pkt2[1] = 0x40; // PUSI=1
+    pkt2[2] = 0x00;
+    pkt2[3] = 0x11; // adaptation=01, CC=1
+    pkt2[4] = 17; // pointer_field=17
+    pkt2[5..22].copy_from_slice(&pat[183..200]); // 17 PAT continuation bytes
+    // New section header at offset 22 — a benign partial PAT-v1 header.
+    pkt2[22] = 0x00; // table_id
+    pkt2[23] = 0xB0; // syntax=1
+    pkt2[24] = 0xC5; // section_length = 197
+    // Remaining bytes are stuffing (0xFF) — assembler accumulates them
+    // but never reaches 200 total. Section stays partial; no events.
+
+    let mut d = Demuxer::new();
+    d.feed(&pkt1).unwrap();
+    d.feed(&pkt2).unwrap();
+    while d.next_event().is_some() {}
+
+    // ── Packet 3: complete PMT on PID 0x100 (program 1 from the PAT).
+    let mut pmt = vec![
+        0x02, // table_id = PMT
+        0xB0, 0x12, // syntax=1, section_length=0x012
+        0x00, 0x01, // program_number=1
+        0xC1, // version=0, current_next=1
+        0x00, 0x00, // section/last
+        0xE1, 0x01, // pcr_pid = 0x101
+        0xF0, 0x00, // program_info_length = 0
+        0x1B, // stream_type = H.264
+        0xE1, 0x01, // elementary_pid = 0x101
+        0xF0, 0x00, // es_info_length = 0
+    ];
+    let pmt_crc = crc32_mpeg2(&pmt);
+    pmt.extend_from_slice(&pmt_crc.to_be_bytes());
+
+    let mut pkt3 = [0xFFu8; 188];
+    pkt3[0] = 0x47;
+    pkt3[1] = 0x41; // PUSI=1, PID hi=1 → PID 0x100
+    pkt3[2] = 0x00;
+    pkt3[3] = 0x10; // CC=0
+    pkt3[4] = 0x00; // pointer_field=0
+    pkt3[5..5 + pmt.len()].copy_from_slice(&pmt);
+    d.feed(&pkt3).unwrap();
+
+    let mut saw_program_map = false;
+    while let Some(e) = d.next_event() {
+        if let DemuxEvent::ProgramMap(pm) = e {
+            if pm.pcr_pid == 0x101 {
+                saw_program_map = true;
+            }
+        }
+    }
+    assert!(
+        saw_program_map,
+        "PUSI with pointer_field > 0 must process the prior-section continuation \
+         bytes — without the fix the prior PAT is lost, PID 0x100 is not \
+         registered, and the PMT on PID 0x100 produces no ProgramMap."
+    );
+}
+
 #[test]
 fn cc_jump_emits_discontinuity() {
     let mut bytes = build_clean_stream();

@@ -180,13 +180,20 @@ impl Muxer {
         // (codec::aac::frames / codec::mpegaudio::frames). LATM and AC-3
         // don't yet — those PIDs leave the codec counter unmaterialized
         // so the accessor returns Some(Unknown) via per_stream fallback.
+        //
+        // validate-1 followup-2: count with the resync variants so a single
+        // malformed syncframe inside the caller-supplied buffer doesn't
+        // truncate the rest of the frame count. Strict `frames()` is still
+        // available for fail-fast conformance callers.
         let frames_delta: u64 = match audio_codec {
-            crate::mpegts::mux::AudioCodec::Aac => crate::codec::aac::frames(frames)
+            crate::mpegts::mux::AudioCodec::Aac => crate::codec::aac::frames_with_resync(frames)
                 .filter_map(Result::ok)
                 .count() as u64,
-            crate::mpegts::mux::AudioCodec::Mp2 => crate::codec::mpegaudio::frames(frames)
-                .filter_map(Result::ok)
-                .count() as u64,
+            crate::mpegts::mux::AudioCodec::Mp2 => {
+                crate::codec::mpegaudio::frames_with_resync(frames)
+                    .filter_map(Result::ok)
+                    .count() as u64
+            }
             crate::mpegts::mux::AudioCodec::AacLatm | crate::mpegts::mux::AudioCodec::Ac3 => 0,
         };
         if frames_delta > 0 {

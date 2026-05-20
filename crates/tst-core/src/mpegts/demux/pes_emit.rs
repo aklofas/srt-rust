@@ -496,11 +496,19 @@ impl super::demuxer::Demuxer {
                 // `stream_codec_stats` accessor falls back to
                 // `StreamCodecStats::Unknown` via the stats_per_stream-only
                 // path).
+                //
+                // validate-1 followup-2: use the resync variants
+                // (`frames_with_resync`) so a single malformed syncframe in
+                // the middle of a PES payload doesn't drop the rest of the
+                // frame count — the strict `frames()` iterators terminate
+                // on first parse error and undercount stats. Strict
+                // `frames()` remains available for fail-fast conformance
+                // callers (fuzzers, spec tests).
                 let frames_delta: u64 = match codec {
-                    AudioCodec::Aac => crate::codec::aac::frames(&pes.payload)
+                    AudioCodec::Aac => crate::codec::aac::frames_with_resync(&pes.payload)
                         .filter_map(Result::ok)
                         .count() as u64,
-                    AudioCodec::Mp2 => crate::codec::mpegaudio::frames(&pes.payload)
+                    AudioCodec::Mp2 => crate::codec::mpegaudio::frames_with_resync(&pes.payload)
                         .filter_map(Result::ok)
                         .count() as u64,
                     _ => 0, // AacLatm / Ac3 — no iterator yet

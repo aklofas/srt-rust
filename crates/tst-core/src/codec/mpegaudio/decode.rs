@@ -656,6 +656,48 @@ mod tests {
         );
     }
 
+    /// validate-1 followup-2 — malformed-MIDDLE-frame regression test.
+    ///
+    /// Layout: [valid frame] [8 bytes of garbage that fail parse_header]
+    /// [valid frame]. Strict `frames()` parses the first valid frame, then
+    /// fails on the garbage and terminates — yielding only 1 valid frame
+    /// (this is the stats-undercount bug). `frames_with_resync()` recovers
+    /// past the garbage to the second syncword and yields 2 valid frames.
+    ///
+    /// This exercises the same iterator switch that the mpegts demux + mux
+    /// audio stats sites now use (`frames_with_resync` replacing `frames`
+    /// at validate-1 followup-2).
+    #[test]
+    fn frames_with_resync_recovers_past_middle_garbage_two_valid_frames() {
+        let header: [u8; 4] = V1L3_128K_44100_JS;
+        let mut buf = Vec::with_capacity(417 + 8 + 417);
+        // Frame 1: full 417-byte V1L3 128k frame.
+        buf.extend_from_slice(&header);
+        buf.extend(std::iter::repeat(0u8).take(417 - 4));
+        // 8 bytes of garbage between frames — no 0xFF, so parse_header
+        // fails BadSyncWord at cursor=417 and resync must scan past these.
+        buf.extend_from_slice(&[0x00u8; 8]);
+        // Frame 2: another full 417-byte V1L3 128k frame.
+        buf.extend_from_slice(&header);
+        buf.extend(std::iter::repeat(0u8).take(417 - 4));
+
+        // Strict iterator: gets the first valid frame, then terminates on
+        // the garbage — undercount.
+        let strict_count = frames(&buf).filter_map(Result::ok).count();
+        assert_eq!(
+            strict_count, 1,
+            "strict iterator must terminate on middle garbage (undercount)"
+        );
+
+        // Resync iterator: skips past the garbage and finds the second
+        // valid syncword, recovering both frames.
+        let resync_count = frames_with_resync(&buf).filter_map(Result::ok).count();
+        assert_eq!(
+            resync_count, 2,
+            "resync iterator must recover the second valid frame after middle garbage"
+        );
+    }
+
     /// G1 — free-format MPEG audio (bitrate_index == 0) surfaces as the
     /// distinct `UnsupportedFreeFormat` error from the frame iterator
     /// (not `ReservedValue`).

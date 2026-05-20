@@ -8,7 +8,6 @@ use std::fs;
 use std::path::Path;
 
 use tst_core::klv::UniversalLabel;
-use tst_core::klv::pack::OwnedRawField;
 use tst_core::klv::st0601::{
     EncodeConfig, UasDatalinkLs, encode_to_vec, encode_with, encoded_len_with,
 };
@@ -107,11 +106,62 @@ fn funky_ul() -> Vec<u8> {
 }
 
 fn field_errors_record() -> Vec<u8> {
-    let mut r = UasDatalinkLs::default();
-    r.timestamp_us = Some(789);
-    r.unknown.push(OwnedRawField {
-        tag: 13, // lat — but with malformed length (3 bytes instead of 4)
-        value: vec![0x00, 0x00, 0x00],
-    });
-    encode_to_vec(&r).unwrap()
+    // Hand-assemble bytes: a Tag 13 (Sensor Latitude) declared with the
+    // wrong length (3 bytes instead of the spec-required 4) inside an
+    // otherwise-valid ST 0601 Local Set carrying a Tag 2 timestamp.
+    //
+    // The public encoder will not produce this — validate-1 E3 added a
+    // filter that rejects typed/reserved tags routed through the
+    // `unknown` pass-through bag, since that path was historically used
+    // here to smuggle a malformed Tag 13 onto the wire. Building the
+    // bytes by hand keeps the fixture intentional-malformation while
+    // letting the encoder enforce conformance everywhere else.
+    let mut body: Vec<u8> = Vec::new();
+    // Tag 2 (Precision Time Stamp): 8-byte big-endian u64 = 789.
+    body.extend_from_slice(&[0x02, 0x08]);
+    body.extend_from_slice(&789u64.to_be_bytes());
+    // Tag 65 (UAS LS Version Number): value 0x13 = 19, the
+    // `EncodeConfig::default().version` the original `encode_to_vec`
+    // path auto-emitted. Tag 65 is BER-OID-encoded as 0x41 because it
+    // fits in 7 bits. Emitted before Tag 13 because the typed-encoder
+    // pass (TAGS order) ran before the unknown pass — preserving that
+    // wire order keeps this fixture byte-for-byte identical to the
+    // committed file generated under the pre-E3 encoder.
+    body.extend_from_slice(&[0x41, 0x01, 0x13]);
+    // Tag 13 (Sensor Latitude): declared len = 3 bytes, malformed
+    // (spec = 4). Appended via the old `unknown` path, hence ordered
+    // after Tag 65.
+    body.extend_from_slice(&[0x0D, 0x03, 0x00, 0x00, 0x00]);
+
+    let mut out: Vec<u8> = Vec::new();
+    // 16-byte ST 0601 Universal Label.
+    out.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+    // Outer BER length covers body + Tag 1 checksum (tag+len+value = 4 bytes).
+    let body_len_with_checksum = body.len() + 4;
+    assert!(
+        body_len_with_checksum < 128,
+        "short-form BER assumed in this fixture"
+    );
+    out.push(body_len_with_checksum as u8);
+    out.extend_from_slice(&body);
+    // Tag 1 (Checksum), 2-byte big-endian running 16-bit sum.
+    out.extend_from_slice(&[0x01, 0x02]);
+    let cksum = checksum_16(&out);
+    out.push((cksum >> 8) as u8);
+    out.push(cksum as u8);
+    out
+}
+
+/// 16-bit running-sum checksum per MISB ST 0601 §7.5, computed over all
+/// bytes from the start of the UL through the Tag 1 length byte.
+fn checksum_16(bytes: &[u8]) -> u16 {
+    let mut sum: u16 = 0;
+    for (i, b) in bytes.iter().enumerate() {
+        if i & 1 == 0 {
+            sum = sum.wrapping_add((*b as u16) << 8);
+        } else {
+            sum = sum.wrapping_add(*b as u16);
+        }
+    }
+    sum
 }

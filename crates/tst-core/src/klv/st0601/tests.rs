@@ -168,6 +168,104 @@ fn encode_string_too_long_rejects() {
     matches!(err, KlvEncodeError::StringTooLong { tag: 59, max: 127 });
 }
 
+// --- Reserved/typed-tag-in-unknown filter (validate-1 E3) ------------------
+// `record.unknown` is for forward-compat pass-through of tags the encoder
+// does not model. Putting a reserved structural tag (1 = Checksum, 2 = PTS,
+// 65 = UAS LS Version) or a typed tag (anything in `tags::TAGS`) there
+// would produce a non-conformant Local Set — duplicate entries or, for
+// Tag 1, a bogus pseudo-checksum before the real one. The encoder fails
+// fast with `ReservedTagInUnknown` before writing any bytes.
+
+#[test]
+fn encode_rejects_tag1_in_unknown() {
+    let mut r = UasDatalinkLs::default();
+    r.unknown.push(OwnedRawField {
+        tag: 1,
+        value: vec![0x00, 0x00],
+    });
+    let err = encode_to_vec(&r).unwrap_err();
+    assert!(matches!(
+        err,
+        KlvEncodeError::ReservedTagInUnknown { tag: 1 }
+    ));
+}
+
+#[test]
+fn encode_rejects_tag2_in_unknown() {
+    let mut r = UasDatalinkLs::default();
+    r.unknown.push(OwnedRawField {
+        tag: 2,
+        value: vec![0u8; 8],
+    });
+    let err = encode_to_vec(&r).unwrap_err();
+    assert!(matches!(
+        err,
+        KlvEncodeError::ReservedTagInUnknown { tag: 2 }
+    ));
+}
+
+#[test]
+fn encode_rejects_tag65_in_unknown() {
+    let mut r = UasDatalinkLs::default();
+    r.unknown.push(OwnedRawField {
+        tag: 65,
+        value: vec![0x0D],
+    });
+    let err = encode_to_vec(&r).unwrap_err();
+    assert!(matches!(
+        err,
+        KlvEncodeError::ReservedTagInUnknown { tag: 65 }
+    ));
+}
+
+#[test]
+fn encode_rejects_typed_tag_in_unknown() {
+    // Tag 13 (Sensor Latitude) is typed-modeled by the encoder. Even if
+    // the caller didn't set `sensor_lat_deg`, smuggling Tag 13 in via
+    // `unknown` would shadow the typed path and risk duplicate emission
+    // on a later record.
+    let mut r = UasDatalinkLs::default();
+    r.unknown.push(OwnedRawField {
+        tag: 13,
+        value: vec![0u8; 4],
+    });
+    let err = encode_to_vec(&r).unwrap_err();
+    assert!(matches!(
+        err,
+        KlvEncodeError::ReservedTagInUnknown { tag: 13 }
+    ));
+}
+
+#[test]
+fn encode_accepts_genuinely_unknown_tag() {
+    // Tag 200 is not in `tags::TAGS` and not a reserved structural tag.
+    // Forward-compat pass-through is the whole point of `unknown` — this
+    // must continue to succeed.
+    let mut r = UasDatalinkLs::default();
+    r.unknown.push(OwnedRawField {
+        tag: 200,
+        value: vec![0xDE, 0xAD, 0xBE, 0xEF],
+    });
+    let bytes = encode_to_vec(&r).expect("genuinely-unknown tag should encode");
+    // Round-trip preserves it.
+    let parsed = decode(&bytes).unwrap();
+    assert_eq!(parsed.unknown.len(), 1);
+    assert_eq!(parsed.unknown[0].tag, 200);
+    assert_eq!(parsed.unknown[0].value, vec![0xDE, 0xAD, 0xBE, 0xEF]);
+}
+
+#[test]
+fn encode_accepts_genuinely_unknown_high_tag() {
+    // Tag 500 exceeds u8::MAX — the typed table is u8-keyed so this short-
+    // circuits in `is_reserved_or_typed_tag` without iterating TAGS.
+    let mut r = UasDatalinkLs::default();
+    r.unknown.push(OwnedRawField {
+        tag: 500,
+        value: vec![0x01],
+    });
+    encode_to_vec(&r).expect("genuinely-unknown high tag should encode");
+}
+
 #[test]
 fn encode_with_custom_ul() {
     let r = UasDatalinkLs::default();

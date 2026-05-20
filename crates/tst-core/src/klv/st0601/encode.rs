@@ -24,6 +24,10 @@ use super::tags::{Encoding, TAGS};
 ///   the spec-declared byte cap.
 /// - [`KlvEncodeError::RecordTooLarge`] if the encoded body would
 ///   overflow the BER-encodable length limit.
+/// - [`KlvEncodeError::ReservedTagInUnknown`] if `record.unknown` carries
+///   a tag the typed encoder would emit (any tag in `tags::TAGS`) or a
+///   reserved structural tag (`{1, 2, 65}`). The `unknown` vec is only
+///   for forward-compat pass-through of tags this encoder does not model.
 pub fn encode(record: &UasDatalinkLs, out: &mut [u8]) -> Result<usize, KlvEncodeError> {
     encode_with(record, &EncodeConfig::default(), out)
 }
@@ -75,8 +79,10 @@ pub fn encode_with(
 /// # Errors
 /// Returns the same [`KlvEncodeError`] variants as [`encode`] —
 /// [`KlvEncodeError::OutOfRange`] for IMAPB ranges,
-/// [`KlvEncodeError::StringTooLong`] for over-cap UTF-8 fields, and
-/// [`KlvEncodeError::RecordTooLarge`] for BER-overflow records.
+/// [`KlvEncodeError::StringTooLong`] for over-cap UTF-8 fields,
+/// [`KlvEncodeError::RecordTooLarge`] for BER-overflow records, and
+/// [`KlvEncodeError::ReservedTagInUnknown`] if `record.unknown` carries
+/// a reserved or typed tag.
 /// (`KlvEncodeError::BufferTooSmall` cannot fire on this path — the
 /// buffer is pre-sized via [`encoded_len`].)
 pub fn encode_to_vec(record: &UasDatalinkLs) -> Result<Vec<u8>, KlvEncodeError> {
@@ -292,6 +298,16 @@ fn write_typed_fields(
 
 fn write_unknown_fields(record: &UasDatalinkLs, body: &mut Vec<u8>) -> Result<(), KlvEncodeError> {
     for f in &record.unknown {
+        // Reject reserved/typed tags before emitting. Without this guard,
+        // a caller-constructed Tag 2 in `unknown` would produce a duplicate
+        // Precision Time Stamp; a Tag 1 would produce a bogus mid-stream
+        // pseudo-checksum followed by the real final checksum; a Tag 65
+        // would produce a duplicate UAS LS Version Number; and any typed
+        // tag (5-91 modeled) would produce a non-conformant duplicate. The
+        // `unknown` vec is for forward-compat pass-through only.
+        if is_reserved_or_typed_tag(f.tag) {
+            return Err(KlvEncodeError::ReservedTagInUnknown { tag: f.tag });
+        }
         let mut tag_buf = [0u8; 8];
         let n = write_ber_oid(f.tag, &mut tag_buf)?;
         body.extend_from_slice(&tag_buf[..n]);
@@ -301,6 +317,21 @@ fn write_unknown_fields(record: &UasDatalinkLs, body: &mut Vec<u8>) -> Result<()
         body.extend_from_slice(&f.value);
     }
     Ok(())
+}
+
+/// True iff `tag` is a structural reserved tag (1 = Checksum, 2 = PTS,
+/// 65 = UAS LS Version) or a tag the typed encoder would emit (anything
+/// in `tags::TAGS`). Used by `write_unknown_fields` to fail-fast on
+/// caller-constructed `unknown` entries that would produce a duplicate
+/// or non-conformant Local Set.
+///
+/// The typed table is u8-keyed; `OwnedRawField.tag` is u32, so any tag
+/// > 255 is by definition not in the typed table and not structural.
+fn is_reserved_or_typed_tag(tag: u32) -> bool {
+    if tag > u8::MAX as u32 {
+        return false;
+    }
+    super::tags::lookup(tag as u8).is_some()
 }
 
 fn encode_ranged(

@@ -132,6 +132,24 @@ pub enum KlvEncodeError {
     /// L > 8, swap the internal arithmetic to `u128`.
     #[error("IMAPB length {length} not supported (must be 1..=8)")]
     UnsupportedImapbLength { length: usize },
+
+    /// Caller placed a reserved or typed tag in `UasDatalinkLs.unknown`.
+    ///
+    /// `unknown` is for forward-compat pass-through of tags the encoder
+    /// does not model — emitting a typed tag or a reserved structural
+    /// tag from `unknown` would produce a non-conformant Local Set. Per
+    /// MISB ST 0601.13 §6 (and ST 0601.24 §6) the reserved structural
+    /// tags are Tag 1 (Checksum, always last and computed by the
+    /// encoder), Tag 2 (Precision Time Stamp, encoded from
+    /// `timestamp_us`), and Tag 65 (UAS LS Version Number, encoded from
+    /// `uas_ls_version` / auto-emitted). Tags listed in the encoder's
+    /// typed table (`tags::TAGS`) would produce duplicate entries.
+    ///
+    /// Surfaced by [`crate::klv::st0601::encode`] before any bytes are
+    /// written; remove the offending entry from `unknown` or set the
+    /// corresponding typed field.
+    #[error("tag {tag} is reserved or modeled by the typed encoder and cannot appear in `unknown`")]
+    ReservedTagInUnknown { tag: u32 },
 }
 
 #[derive(Debug, Clone, Error, PartialEq)]

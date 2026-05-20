@@ -1086,6 +1086,8 @@ pub tst_core::error::KlvEncodeError::OutOfRange::min: f64
 pub tst_core::error::KlvEncodeError::OutOfRange::tag: u32
 pub tst_core::error::KlvEncodeError::OutOfRange::value: f64
 pub tst_core::error::KlvEncodeError::RecordTooLarge
+pub tst_core::error::KlvEncodeError::ReservedTagInUnknown
+pub tst_core::error::KlvEncodeError::ReservedTagInUnknown::tag: u32
 pub tst_core::error::KlvEncodeError::StringTooLong
 pub tst_core::error::KlvEncodeError::StringTooLong::max: usize
 pub tst_core::error::KlvEncodeError::StringTooLong::tag: u32
@@ -5078,6 +5080,8 @@ pub tst_core::KlvEncodeError::OutOfRange::min: f64
 pub tst_core::KlvEncodeError::OutOfRange::tag: u32
 pub tst_core::KlvEncodeError::OutOfRange::value: f64
 pub tst_core::KlvEncodeError::RecordTooLarge
+pub tst_core::KlvEncodeError::ReservedTagInUnknown
+pub tst_core::KlvEncodeError::ReservedTagInUnknown::tag: u32
 pub tst_core::KlvEncodeError::StringTooLong
 pub tst_core::KlvEncodeError::StringTooLong::max: usize
 pub tst_core::KlvEncodeError::StringTooLong::tag: u32

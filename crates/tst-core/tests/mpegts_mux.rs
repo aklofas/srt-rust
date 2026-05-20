@@ -292,3 +292,169 @@ fn pcr_is_carried_on_video_pid_packets_by_default() {
         parsed.pcr_samples
     );
 }
+
+#[test]
+fn pcr_injected_as_adaptation_only_packet_when_pcr_pid_has_no_payload() {
+    // Validate-1 C3 (Codex TS-TIME-02): when the configured PCR PID receives
+    // no payload pushes within the configured `pcr_interval_ms`, the muxer
+    // must inject standalone PCR-only adaptation-field packets on that PID
+    // (H.222.0 Annex D max-100ms PCR interval). Without the fix, a config
+    // where PCR_PID == video_pid but the caller only pushes KLV produces
+    // zero PCR samples on the wire.
+    let mut cfg = MuxerConfig::default();
+    // Pin PCR to the video PID (default fallback already picks it, but be
+    // explicit so the test's intent is unmistakable).
+    let video_pid = cfg.programs[0]
+        .streams
+        .iter()
+        .find_map(|s| match s {
+            StreamSpec::Video { pid, .. } => Some(*pid),
+            _ => None,
+        })
+        .unwrap();
+    let klv_pid = cfg.programs[0]
+        .streams
+        .iter()
+        .find_map(|s| match s {
+            StreamSpec::Klv { pid, .. } => Some(*pid),
+            _ => None,
+        })
+        .unwrap();
+    cfg.programs[0].pcr_pid = Some(video_pid);
+    cfg.pcr_interval_ms = 40; // default; restate for clarity
+    cfg.validate().unwrap();
+    let mut mux = Muxer::new(cfg).unwrap();
+
+    // Push KLV-only pushes spread over 300ms. At 40ms PCR interval, the
+    // muxer should inject ~7+ PCR-only packets on video_pid even though
+    // no video is ever pushed. 90 kHz × 50 ms = 4500 ticks per step.
+    for i in 0..6u64 {
+        mux.push_klv(
+            &synthetic_nal::klv_blob(64),
+            Pts90khz::new((i * 4500) as i64),
+            0x00,
+        )
+        .unwrap();
+    }
+    let bytes = drain_all(&mut mux);
+
+    let parsed = ts_parser::parse(&bytes);
+    let pcrs_on_video: Vec<u64> = parsed
+        .pcr_samples
+        .iter()
+        .filter(|(pid, _)| *pid == video_pid)
+        .map(|(_, p)| *p)
+        .collect();
+    let pcrs_on_klv = parsed
+        .pcr_samples
+        .iter()
+        .filter(|(pid, _)| *pid == klv_pid)
+        .count();
+    assert!(
+        pcrs_on_video.len() >= 2,
+        "expected ≥2 injected PCR-only packets on video_pid={video_pid:#06x} \
+         (300ms span × 40ms interval), got pcr_samples={:?}",
+        parsed.pcr_samples
+    );
+    assert_eq!(
+        pcrs_on_klv, 0,
+        "PCR PID is video_pid; no PCR should leak onto klv_pid={klv_pid:#06x}; \
+         pcr_samples={:?}",
+        parsed.pcr_samples
+    );
+
+    // PCR deltas must stay ≤ 100ms (Annex D). The library writes PCRs whose
+    // base is the push PTS (90 kHz units); convert and check spacing.
+    // 100 ms in 27 MHz units = 2_700_000 ticks.
+    let max_delta_27mhz = 100u64 * 27_000;
+    for w in pcrs_on_video.windows(2) {
+        let delta = w[1] - w[0];
+        assert!(
+            delta <= max_delta_27mhz,
+            "PCR interval {} ticks (27 MHz) exceeds Annex D 100ms cap ({} ticks); \
+             samples={:?}",
+            delta,
+            max_delta_27mhz,
+            pcrs_on_video
+        );
+    }
+}
+
+#[test]
+fn pcr_only_packet_does_not_increment_continuity_counter() {
+    // H.222.0 §2.4.3.3: TS packets carrying only adaptation_field (no
+    // payload) SHALL NOT increment the continuity_counter on that PID.
+    // Validate by triggering one or more PCR-only injections on the video
+    // PID, then sending a real video frame — the CC of that real packet
+    // must be 0 (first payload-carrying packet on the PID).
+    let mut cfg = MuxerConfig::default();
+    let video_pid = cfg.programs[0]
+        .streams
+        .iter()
+        .find_map(|s| match s {
+            StreamSpec::Video { pid, .. } => Some(*pid),
+            _ => None,
+        })
+        .unwrap();
+    cfg.programs[0].pcr_pid = Some(video_pid);
+    cfg.pcr_interval_ms = 10; // shorter so injection fires quickly
+    cfg.validate().unwrap();
+    let mut mux = Muxer::new(cfg).unwrap();
+
+    // Two KLV pushes 50ms apart guarantees ≥4 PCR-only injection windows
+    // (the first push triggers initial PCR; subsequent need the C3 path).
+    for i in 0..2u64 {
+        mux.push_klv(
+            &synthetic_nal::klv_blob(32),
+            Pts90khz::new((i * 4500) as i64),
+            0x00,
+        )
+        .unwrap();
+    }
+    let bytes = drain_all(&mut mux);
+
+    // Walk every TS packet on video_pid. Adaptation-only packets (afc==0b10)
+    // must NOT advance the CC; payload-bearing packets (afc==0b01 or 0b11)
+    // do. Track expected CC by walking through.
+    let mut cc_expected: Option<u8> = None;
+    let mut saw_pcr_only = false;
+    for pkt in bytes.chunks_exact(188) {
+        let pid = (((pkt[1] as u16) & 0x1F) << 8) | (pkt[2] as u16);
+        if pid != video_pid {
+            continue;
+        }
+        let afc = (pkt[3] >> 4) & 0x3;
+        let cc = pkt[3] & 0x0F;
+        match afc {
+            0b10 => {
+                // PCR-only — CC must equal previous (or last seen, since
+                // no payload-bearing packet has been emitted yet).
+                saw_pcr_only = true;
+                if let Some(prev) = cc_expected {
+                    assert_eq!(
+                        cc, prev,
+                        "PCR-only packet must NOT increment CC (spec §2.4.3.3); \
+                         saw cc={cc}, expected previous cc={prev}"
+                    );
+                }
+                cc_expected = Some(cc);
+            }
+            0b01 | 0b11 => {
+                // Payload-bearing — CC must be expected_next.
+                if let Some(prev) = cc_expected {
+                    let want = (prev + 1) & 0x0F;
+                    assert_eq!(
+                        cc, want,
+                        "payload-bearing packet CC mismatch: prev={prev}, got={cc}, want={want}"
+                    );
+                }
+                cc_expected = Some(cc);
+            }
+            _ => panic!("unexpected afc {afc}"),
+        }
+    }
+    assert!(
+        saw_pcr_only,
+        "test design error: expected at least one PCR-only packet on video_pid"
+    );
+}

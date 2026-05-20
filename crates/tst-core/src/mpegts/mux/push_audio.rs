@@ -127,14 +127,21 @@ impl Muxer {
         let total = self.pes_scratch.len();
         let audio_packets = ts_packets_for(total);
         let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
+        // Validate-1 C3: see push_video for the rationale. Audio is
+        // typically high-cadence, but a low-frame-rate stream (sparse
+        // language tracks, sign-language audio) could still drift.
+        let pcr_only_packets = self.pcr_only_packets_due(prog_idx, pts.as_ticks(), audio_pid);
 
-        if self.queue.len() + psi_packets + audio_packets > self.config.buffer_packets {
+        if self.queue.len() + psi_packets + pcr_only_packets + audio_packets
+            > self.config.buffer_packets
+        {
             return Err(MuxError::BufferFull {
                 capacity_packets: self.config.buffer_packets as u64,
             });
         }
 
         self.maybe_emit_psi(prog_idx, pts.as_ticks());
+        self.maybe_emit_pcr_only(prog_idx, pts.as_ticks(), audio_pid);
 
         let mut cursor = 0;
         let mut first = true;

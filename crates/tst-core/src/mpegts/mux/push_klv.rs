@@ -253,14 +253,22 @@ impl Muxer {
         let total = header_len + effective_klv.len();
         let klv_packets = ts_packets_for(total);
         let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
+        // Validate-1 C3: see push_video for the rationale. KLV is the
+        // most-likely-affected push path because KLV streams are frequently
+        // configured on a non-PCR PID with low push cadence relative to
+        // the PCR PID's own (zero, here) push cadence.
+        let pcr_only_packets = self.pcr_only_packets_due(prog_idx, pts.as_ticks(), klv_pid);
 
-        if self.queue.len() + psi_packets + klv_packets > self.config.buffer_packets {
+        if self.queue.len() + psi_packets + pcr_only_packets + klv_packets
+            > self.config.buffer_packets
+        {
             return Err(MuxError::BufferFull {
                 capacity_packets: self.config.buffer_packets as u64,
             });
         }
 
         self.maybe_emit_psi(prog_idx, pts.as_ticks());
+        self.maybe_emit_pcr_only(prog_idx, pts.as_ticks(), klv_pid);
 
         self.pes_scratch.clear();
         self.pes_scratch.extend_from_slice(&header[..header_len]);

@@ -193,6 +193,51 @@ pub(crate) fn write_packet(
     }
 }
 
+/// Write one 188-byte adaptation-field-only TS packet carrying just a PCR
+/// (no payload). Used by the muxer to satisfy H.222.0 Annex D's 100ms
+/// max-PCR-interval when the configured PCR PID hasn't received any
+/// caller-pushed payload within the configured `pcr_interval_ms`.
+///
+/// Per H.222.0 §2.4.3.3, the continuity_counter is NOT incremented on
+/// adaptation-only packets — this function leaves `counters` alone (it is
+/// passed only to read the current CC value, which the spec requires the
+/// PCR-only packet to repeat from the last payload-bearing packet on the
+/// same PID).
+///
+/// `out.len()` must be exactly 188; panics otherwise (private API).
+pub(crate) fn write_pcr_only_packet(
+    out: &mut [u8; 188],
+    pid: u16,
+    pcr: Pcr27mhz,
+    counters: &ContinuityCounters,
+) {
+    debug_assert!(pid <= 0x1FFF, "PID out of range");
+
+    // TS header.
+    out[0] = TS_SYNC_BYTE;
+    out[1] = (pid >> 8) as u8 & 0x1F; // TEI=0, PUSI=0, TP=0, PID hi
+    out[2] = (pid & 0xFF) as u8;
+
+    // adaptation_field_control = 0b10 (AF only, no payload).
+    // continuity_counter: repeat current value without incrementing
+    // (H.222.0 §2.4.3.3). We read the per-PID counter directly here
+    // because `write_pcr_only_packet` lives in the same module as
+    // `ContinuityCounters` and the field is private to the module.
+    let cc = counters.counters[(pid & 0x1FFF) as usize] & 0x0F;
+    out[3] = (0b10 << 4) | cc;
+
+    // adaptation_field_length: 188 - 4 (header) - 1 (length byte itself) = 183.
+    out[4] = 183;
+    // Flags byte: discontinuity=0, random_access=0, ES_priority=0,
+    // PCR_flag=1, OPCR=0, splicing=0, transport_private=0, AF_extension=0.
+    out[5] = 0x10;
+    write_pcr(&mut out[6..12], pcr);
+    // Stuffing (0xFF) fills the remainder per ITU-T H.222.0 §2.4.3.4.
+    for byte in &mut out[12..188] {
+        *byte = 0xFF;
+    }
+}
+
 /// Encode a PCR into 6 bytes per ISO/IEC 13818-1 §2.4.3.5:
 ///   33-bit base (90 kHz) | 6 reserved bits (set to 1) | 9-bit extension (27 MHz mod 300)
 fn write_pcr(out: &mut [u8], pcr: Pcr27mhz) {

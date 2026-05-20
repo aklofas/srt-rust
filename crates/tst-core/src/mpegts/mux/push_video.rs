@@ -200,14 +200,23 @@ impl Muxer {
         let total = header_len + nal.len();
         let video_packets = ts_packets_for(total);
         let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
+        // Validate-1 C3: when the PCR PID hasn't received payload within
+        // `pcr_interval_ms`, the muxer injects a standalone PCR-only
+        // adaptation-only packet on it. Reserve one packet for that.
+        // Returns 0 when the current push lands on the PCR PID (the
+        // in-band PCR-on-push path below handles emission instead).
+        let pcr_only_packets = self.pcr_only_packets_due(prog_idx, pts.as_ticks(), video_pid);
 
-        if self.queue.len() + psi_packets + video_packets > self.config.buffer_packets {
+        if self.queue.len() + psi_packets + pcr_only_packets + video_packets
+            > self.config.buffer_packets
+        {
             return Err(MuxError::BufferFull {
                 capacity_packets: self.config.buffer_packets as u64,
             });
         }
 
         self.maybe_emit_psi(prog_idx, pts.as_ticks());
+        self.maybe_emit_pcr_only(prog_idx, pts.as_ticks(), video_pid);
 
         self.pes_scratch.clear();
         self.pes_scratch.extend_from_slice(&header[..header_len]);

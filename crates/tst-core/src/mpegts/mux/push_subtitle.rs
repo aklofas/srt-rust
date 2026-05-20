@@ -175,14 +175,23 @@ impl Muxer {
 
         let subtitle_packets = ts_packets_for(self.pes_scratch.len());
         let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
+        // Validate-1 C3: validate() bans subtitle PIDs as PCR PIDs, so
+        // current_pid here will never equal self.pcr_pids[prog_idx] and
+        // pcr_only_packets_due reduces to the pure pcr_due predicate.
+        // Subtitle pushes are sparse; this is the prototypical case where
+        // PCR injection is needed.
+        let pcr_only_packets = self.pcr_only_packets_due(prog_idx, pts.as_ticks(), subtitle_pid);
 
-        if self.queue.len() + psi_packets + subtitle_packets > self.config.buffer_packets {
+        if self.queue.len() + psi_packets + pcr_only_packets + subtitle_packets
+            > self.config.buffer_packets
+        {
             return Err(MuxError::BufferFull {
                 capacity_packets: self.config.buffer_packets as u64,
             });
         }
 
         self.maybe_emit_psi(prog_idx, pts.as_ticks());
+        self.maybe_emit_pcr_only(prog_idx, pts.as_ticks(), subtitle_pid);
 
         // Subtitles do NOT extend the PCR fallback chain — they are sparse
         // and event-driven, and the validate path rejects them as PCR PIDs

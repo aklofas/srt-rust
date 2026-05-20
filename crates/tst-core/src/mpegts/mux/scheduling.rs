@@ -10,8 +10,9 @@
 //! returns false until the next interval boundary.
 
 use super::psi::{PmtStreamEntry, write_pat_packet, write_pmt_packet};
+use super::ts::write_pcr_only_packet;
 use super::{AudioCodec, KlvStreamType, Muxer, StreamSpec, StreamType, VideoCodec};
-use crate::mpegts::common::Pts90khz;
+use crate::mpegts::common::{Pcr27mhz, Pts90khz};
 
 impl Muxer {
     pub(super) fn psi_due(&self, prog_idx: usize, pts_90khz: i64) -> bool {
@@ -54,6 +55,57 @@ impl Muxer {
                 delta_90khz >= threshold_90khz
             }
         }
+    }
+
+    /// Returns true when the configured PCR PID has fallen behind the
+    /// `pcr_interval_ms` ceiling AND the current push is landing on a
+    /// non-PCR PID (so the in-band PCR-on-push path won't run). Mirrors
+    /// the role of `psi_due` for the PCR-only adaptation-only-packet
+    /// injection introduced for validate-1 C3.
+    ///
+    /// `current_pid` is the elementary PID the push path is about to
+    /// write its payload onto. When it equals the PCR PID, the regular
+    /// PCR-on-push path already handles emission and this predicate
+    /// returns false to avoid duplicate PCR samples.
+    pub(super) fn pcr_only_due(&self, prog_idx: usize, pts_90khz: i64, current_pid: u16) -> bool {
+        self.pcr_pids[prog_idx] != current_pid && self.pcr_due(prog_idx, pts_90khz)
+    }
+
+    /// Reservation count (in 188-byte packets) for a possible PCR-only
+    /// injection prior to the current push. 1 if `pcr_only_due` is true,
+    /// else 0. Centralizes the formula so every push path
+    /// (`push_video` / `push_klv` / `push_audio` / `push_subtitle`)
+    /// agrees with what `maybe_emit_pcr_only` actually emits.
+    pub(super) fn pcr_only_packets_due(
+        &self,
+        prog_idx: usize,
+        pts_90khz: i64,
+        current_pid: u16,
+    ) -> usize {
+        usize::from(self.pcr_only_due(prog_idx, pts_90khz, current_pid))
+    }
+
+    /// Emit one adaptation-field-only PCR packet on the program's PCR PID
+    /// when [`Self::pcr_only_due`] is true. No-op otherwise. Used to keep
+    /// the PCR cadence within H.222.0 Annex D's 100ms ceiling when the
+    /// caller pushes only to non-PCR PIDs (e.g. KLV-only push on a video-
+    /// PCR config). Updates `pcr_last[prog_idx]` to the emitted PCR's
+    /// 27 MHz value.
+    pub(super) fn maybe_emit_pcr_only(
+        &mut self,
+        prog_idx: usize,
+        pts_90khz: i64,
+        current_pid: u16,
+    ) {
+        if !self.pcr_only_due(prog_idx, pts_90khz, current_pid) {
+            return;
+        }
+        let pcr_pid = self.pcr_pids[prog_idx];
+        let pcr = Pcr27mhz::from_pts(Pts90khz::new(pts_90khz));
+        let mut pkt = [0u8; 188];
+        write_pcr_only_packet(&mut pkt, pcr_pid, pcr, &self.counters);
+        self.queue.push_back(pkt);
+        self.pcr_last[prog_idx] = Some(pcr.as_ticks());
     }
 
     pub(super) fn maybe_emit_psi(&mut self, prog_idx: usize, pts_90khz: i64) {

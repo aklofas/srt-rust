@@ -851,3 +851,153 @@ fn known_tag_2_still_decodes_correctly_after_high_tag_fix() {
         "Tag 2 is known; nothing should land in record.unknown",
     );
 }
+
+// ---------------------------------------------------------------------------
+// Validate-1 E1+E2: strict-mode duplicate-tag detection + canonical-BER walker
+// ---------------------------------------------------------------------------
+
+/// Wrap a hand-crafted body into a full ST 0601 LS buffer (UL + outer BER
+/// length + body) with the trailing Tag 1 checksum patched in over an
+/// existing `0x01 0x02 0x00 0x00` placeholder. Caller must include the
+/// placeholder at the end of `body`.
+fn wrap_st0601_with_inline_checksum(body: &[u8]) -> Vec<u8> {
+    use crate::klv::checksum::checksum_running_sum_16;
+    use crate::klv::length::write_ber;
+    use crate::klv::universal_label::UniversalLabel;
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+    let mut len_bytes = [0u8; 9];
+    let n = write_ber(body.len(), &mut len_bytes).unwrap();
+    buf.extend_from_slice(&len_bytes[..n]);
+    let body_offset = buf.len();
+    buf.extend_from_slice(body);
+    // Find the LAST `01 02 00 00` placeholder in the body and patch over
+    // the value bytes with the running-sum-16 checksum.
+    let body_slice_start = body_offset;
+    let body_slice_end = buf.len();
+    let mut value_off: Option<usize> = None;
+    let mut i = body_slice_start;
+    while i + 4 <= body_slice_end {
+        if buf[i] == 0x01 && buf[i + 1] == 0x02 && buf[i + 2] == 0x00 && buf[i + 3] == 0x00 {
+            value_off = Some(i + 2);
+        }
+        i += 1;
+    }
+    let off = value_off.expect("body must contain a 01 02 00 00 placeholder");
+    let computed = checksum_running_sum_16(&buf[..off]);
+    buf[off] = (computed >> 8) as u8;
+    buf[off + 1] = (computed & 0xFF) as u8;
+    buf
+}
+
+#[test]
+fn decode_strict_compliance_rejects_duplicate_tag_13() {
+    // ST 0601.13-24: each non-multiple item appears at most once.
+    // Tag 13 (Sensor Latitude) is a single-use item. Build a body
+    // with Tag 2 first, Tag 65, Tag 13 TWICE, then Tag 1 last.
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x02, 0x08]); // Tag 2
+    body.extend_from_slice(&1_700_000_000_000_000u64.to_be_bytes());
+    body.extend_from_slice(&[0x41, 0x01, 0x13]); // Tag 65 = 0x41
+    // Tag 13: I32Range, 4 bytes (per the spec's Sensor Latitude
+    // ranged encoding). Two copies.
+    body.extend_from_slice(&[0x0D, 0x04, 0x12, 0x34, 0x56, 0x78]);
+    body.extend_from_slice(&[0x0D, 0x04, 0x12, 0x34, 0x56, 0x78]);
+    body.extend_from_slice(&[0x01, 0x02, 0x00, 0x00]); // Tag 1 placeholder
+    let buf = wrap_st0601_with_inline_checksum(&body);
+
+    // Lenient decode accepts the duplicate (second one clobbers the
+    // first, but that's the lenient contract — see ST 0601.13).
+    let _ = decode(&buf).expect("lenient decode accepts duplicate tags");
+
+    // Strict-compliance rejects with DuplicateTag.
+    let err = decode_strict_compliance(&buf).unwrap_err();
+    assert!(
+        matches!(err, KlvDecodeError::DuplicateTag { tag: 13, .. }),
+        "expected DuplicateTag {{ tag: 13, .. }}, got {err:?}",
+    );
+}
+
+#[test]
+fn decode_strict_compliance_allows_duplicate_unknown_tag() {
+    // ST 0601.13-24 mandates once-per-packet only for DEFINED items.
+    // An unknown tag (outside the typed table) may repeat without
+    // violating the local-set contract — the strict walker must
+    // ignore duplicates of unknown tags. Tag 70 (0x46) sits in a
+    // gap of the typed table (the table jumps 65→74), so it
+    // qualifies as "unknown" for this test. Its BER-OID encoding
+    // is the single byte 0x46 (high bit clear) — strict-canonical.
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x02, 0x08]); // Tag 2
+    body.extend_from_slice(&1_700_000_000_000_000u64.to_be_bytes());
+    body.extend_from_slice(&[0x41, 0x01, 0x13]); // Tag 65
+    // Tag 70 twice with arbitrary 1-byte payloads.
+    body.extend_from_slice(&[0x46, 0x01, 0xAA]);
+    body.extend_from_slice(&[0x46, 0x01, 0xBB]);
+    body.extend_from_slice(&[0x01, 0x02, 0x00, 0x00]); // Tag 1
+    let buf = wrap_st0601_with_inline_checksum(&body);
+
+    let record =
+        decode_strict_compliance(&buf).expect("strict-compliance allows duplicate unknown tags");
+    // Both copies land in record.unknown via the typed dispatcher.
+    let unknown_70 = record.unknown.iter().filter(|f| f.tag == 70).count();
+    assert_eq!(unknown_70, 2, "both unknown Tag 70 copies preserved");
+}
+
+#[test]
+fn decode_strict_compliance_rejects_non_canonical_per_item_length() {
+    // ST 0107.5 §6.3.2: BER length must use fewest bytes. Per-item
+    // length 0x81 0x13 is the long-form encoding of value 19 — which
+    // fits in the short form `0x13`. Strict-compliance must reject.
+    //
+    // Body layout:
+    //   Tag 2 (8-byte timestamp)
+    //   Tag 65 with NON-CANONICAL length 0x81 0x01 (value 1) carrying
+    //     the 1-byte UAS LS version 0x13
+    //   Tag 1 placeholder
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x02, 0x08]); // Tag 2
+    body.extend_from_slice(&1_700_000_000_000_000u64.to_be_bytes());
+    body.extend_from_slice(&[0x41, 0x81, 0x01, 0x13]); // Tag 65, BAD length encoding
+    body.extend_from_slice(&[0x01, 0x02, 0x00, 0x00]);
+    let buf = wrap_st0601_with_inline_checksum(&body);
+
+    // Lenient decode accepts the non-canonical length.
+    let _ = decode(&buf).expect("lenient decode accepts non-canonical per-item length");
+
+    // Strict-compliance rejects.
+    let err = decode_strict_compliance(&buf).unwrap_err();
+    assert!(
+        matches!(err, KlvDecodeError::NonCanonicalLength { .. }),
+        "expected NonCanonicalLength, got {err:?}",
+    );
+}
+
+#[test]
+fn decode_strict_compliance_rejects_non_canonical_per_item_tag() {
+    // ST 0107.5 §6.3.1: BER-OID forbids a leading 0x80 (overlong
+    // encoding of value 0). Build a body with Tag 2, Tag 65, an
+    // overlong-encoded tag `0x80 0x05` (= value 5), then Tag 1.
+    //
+    // Note: value 5 is a valid ST 0601 tag (Platform Heading Angle)
+    // but the encoding `0x80 0x05` is non-canonical. The lenient
+    // reader accepts it.
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x02, 0x08]); // Tag 2
+    body.extend_from_slice(&1_700_000_000_000_000u64.to_be_bytes());
+    body.extend_from_slice(&[0x41, 0x01, 0x13]); // Tag 65
+    // Non-canonical BER-OID tag: 0x80 0x05 followed by 2-byte u16 value.
+    body.extend_from_slice(&[0x80, 0x05, 0x02, 0x12, 0x34]);
+    body.extend_from_slice(&[0x01, 0x02, 0x00, 0x00]);
+    let buf = wrap_st0601_with_inline_checksum(&body);
+
+    // Lenient decode accepts the non-canonical tag.
+    let _ = decode(&buf).expect("lenient decode accepts non-canonical per-item tag");
+
+    // Strict-compliance rejects.
+    let err = decode_strict_compliance(&buf).unwrap_err();
+    assert!(
+        matches!(err, KlvDecodeError::NonCanonicalTag { .. }),
+        "expected NonCanonicalTag, got {err:?}",
+    );
+}

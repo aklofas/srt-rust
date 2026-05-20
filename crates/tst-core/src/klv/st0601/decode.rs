@@ -2,7 +2,7 @@
 //! lenient/strict/compliance lineage.
 
 use crate::error::{KlvDecodeError, KlvFieldError};
-use crate::klv::length::{read_ber, read_ber_strict};
+use crate::klv::length::{read_ber, read_ber_oid_strict, read_ber_strict};
 use crate::klv::pack::{Iter, OwnedRawField};
 use crate::klv::universal_label::UniversalLabel;
 
@@ -94,13 +94,23 @@ pub fn decode_strict(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
 ///   element in the Local Set body.
 /// - ST 0601.8-11: Tag 1 (Checksum) must be the last element.
 /// - ST 0601.8-12: Tag 65 (UAS LS Version) must be present.
-/// - ST 0107.5 §6.3.2: outer BER length encoding must be canonical
-///   (fewest-bytes). The body iteration via `Iter::local_set` remains
-///   permissive on per-tag BER encoding for now.
+/// - ST 0601.13-24: each non-multiple ST 0601 item appears at most
+///   once per packet. The strict walker rejects duplicate
+///   occurrences of known typed tags via
+///   [`KlvDecodeError::DuplicateTag`]. Unknown tags (outside the
+///   typed table) are allowed to repeat: ST 0601.13 only mandates
+///   once-per-packet for defined items.
+/// - ST 0107.5 §6.3.1 / §6.3.2: BER-OID tag bytes and BER length
+///   bytes must use canonical (fewest-bytes) encoding both for the
+///   outer total-length and for every per-item TLV inside the body.
+///   The strict walker uses [`read_ber_oid_strict`] +
+///   [`read_ber_strict`] so a non-canonical encoding anywhere
+///   inside the body trips
+///   [`KlvDecodeError::NonCanonicalTag`] / [`KlvDecodeError::NonCanonicalLength`].
 ///
 /// Use this only when validating compliance against published
 /// captures or reference test vectors. Real-world captures from the
-/// corpus often violate -09/-11/-12 in benign ways; prefer `decode`
+/// corpus often violate -09/-11/-12/-24 in benign ways; prefer `decode`
 /// for production parsing.
 ///
 /// # Errors
@@ -111,11 +121,17 @@ pub fn decode_strict(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
 ///   final body element.
 /// - [`KlvDecodeError::MissingTag65`] if the UAS LS Version tag is
 ///   absent.
-/// - [`KlvDecodeError::NonCanonicalLength`] if the outer BER length is
-///   not encoded with the fewest bytes per ST 0107.5 §6.3.2.
+/// - [`KlvDecodeError::DuplicateTag`] if a known typed tag appears
+///   more than once in the body.
+/// - [`KlvDecodeError::NonCanonicalLength`] or
+///   [`KlvDecodeError::NonCanonicalTag`] if any BER or BER-OID
+///   encoding in the outer length or the body is non-canonical.
 pub fn decode_strict_compliance(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeError> {
-    // Step 1: walk the LS body and record tag order WITHOUT ST 0601
-    // typed-decode. We need raw tag positions to enforce ordering.
+    // Step 1: walk the LS body strictly and record tag order WITHOUT
+    // ST 0601 typed-decode. The walker uses the canonical-encoding
+    // strict BER + BER-OID readers and tracks duplicate occurrences
+    // of known typed tags. We need raw tag positions to enforce
+    // ordering (ST 0601.8-09 / -11) and once-per-packet (ST 0601.13-24).
     if buf.len() < 16 {
         return Err(KlvDecodeError::Truncated {
             offset: 0,
@@ -132,11 +148,11 @@ pub fn decode_strict_compliance(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeEr
         });
     }
     let body = &after_len[..declared_len];
-    let mut tag_order: Vec<u32> = Vec::new();
-    for r in Iter::local_set(body) {
-        let f = r?;
-        tag_order.push(f.tag);
-    }
+    // Offset of `body[0]` inside the original `buf`, so DuplicateTag/
+    // truncation errors report a buf-relative offset matching the
+    // permissive path.
+    let body_offset_in_buf = buf.len() - after_len.len();
+    let tag_order = strict_body_walk(body, body_offset_in_buf)?;
     if tag_order.first() != Some(&2) {
         return Err(KlvDecodeError::Tag2NotFirst);
     }
@@ -147,10 +163,94 @@ pub fn decode_strict_compliance(buf: &[u8]) -> Result<UasDatalinkLs, KlvDecodeEr
         return Err(KlvDecodeError::MissingTag65);
     }
     // Step 2: delegate to existing strict decode (verifies checksum + UL
-    // family). All the typed dispatch happens there.
+    // family). All the typed dispatch happens there. The body has
+    // already cleared the strict-BER + duplicate gates above, so the
+    // permissive iterator inside `decode_inner` will see the same
+    // bytes without surfacing a stricter error.
     decode_inner(
         buf, /* verify_checksum */ true, /* strict_ul */ true,
     )
+}
+
+/// Walk an ST 0601 LS body using the canonical-encoding strict BER
+/// readers, rejecting duplicate occurrences of known typed tags.
+/// Returns the in-order list of tags encountered (used by the
+/// caller for Tag 2/Tag 1/Tag 65 ordering checks).
+///
+/// `body_offset_in_buf` is the offset of `body[0]` within the
+/// original outer buffer; surfaced through `DuplicateTag.offset`
+/// and `Truncated.offset` so callers can locate the violation.
+///
+/// Duplicate detection is gated on `lookup(tag_u8).is_some()` —
+/// ST 0601.13-24's once-per-packet rule applies only to defined
+/// items. Unknown tags (including 2-byte BER-OID encoded tag IDs
+/// beyond the 1-byte universe) are walked but never tracked.
+fn strict_body_walk(body: &[u8], body_offset_in_buf: usize) -> Result<Vec<u32>, KlvDecodeError> {
+    let mut tag_order: Vec<u32> = Vec::new();
+    let mut seen = [false; 256];
+    let mut offset = 0usize;
+    while offset < body.len() {
+        let item_start = offset;
+        let rest = &body[item_start..];
+        // Strict BER-OID tag.
+        let (tag, after_tag) = match read_ber_oid_strict(rest) {
+            Ok(v) => v,
+            Err(mut e) => {
+                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
+                    *o += body_offset_in_buf + item_start;
+                }
+                if let KlvDecodeError::NonCanonicalTag { offset: o } = &mut e {
+                    *o += body_offset_in_buf + item_start;
+                }
+                if let KlvDecodeError::MalformedTag { offset: o } = &mut e {
+                    *o += body_offset_in_buf + item_start;
+                }
+                return Err(e);
+            }
+        };
+        let consumed_tag = rest.len() - after_tag.len();
+        // Strict BER length.
+        let (len, after_len) = match read_ber_strict(after_tag) {
+            Ok(v) => v,
+            Err(mut e) => {
+                let inner_off = body_offset_in_buf + item_start + consumed_tag;
+                if let KlvDecodeError::Truncated { offset: o, .. } = &mut e {
+                    *o += inner_off;
+                }
+                if let KlvDecodeError::NonCanonicalLength { offset: o } = &mut e {
+                    *o += inner_off;
+                }
+                if let KlvDecodeError::MalformedLength { offset: o } = &mut e {
+                    *o += inner_off;
+                }
+                return Err(e);
+            }
+        };
+        let consumed_len = after_tag.len() - after_len.len();
+        if after_len.len() < len {
+            return Err(KlvDecodeError::Truncated {
+                offset: body_offset_in_buf + item_start + consumed_tag + consumed_len,
+                needed: len,
+                have: after_len.len(),
+            });
+        }
+        // Duplicate-tag check (E1) — only meaningful for typed tags
+        // that fit in u8 AND are present in the ST 0601 table.
+        if let Ok(tag_u8) = u8::try_from(tag) {
+            if lookup(tag_u8).is_some() {
+                if seen[tag_u8 as usize] {
+                    return Err(KlvDecodeError::DuplicateTag {
+                        tag,
+                        offset: body_offset_in_buf + item_start,
+                    });
+                }
+                seen[tag_u8 as usize] = true;
+            }
+        }
+        tag_order.push(tag);
+        offset = item_start + consumed_tag + consumed_len + len;
+    }
+    Ok(tag_order)
 }
 
 fn decode_inner(

@@ -35,7 +35,7 @@ fn make_video_event(frame_index: usize) -> DemuxEvent {
             program_number: 1,
         },
         pts: Pts90khz::new(pts),
-        dts: Some(pts),
+        dts: Some(Pts90khz::new(pts)),
         payload: SamplePayload::Video {
             codec: VideoCodec::H264,
             payload: VideoPayload::Nals(vec![NalUnit::H264 {

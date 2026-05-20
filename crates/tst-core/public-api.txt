@@ -2616,7 +2616,7 @@ pub tst_core::mpegts::demux::event::DemuxEvent::NonConformant::issue: tst_core::
 pub tst_core::mpegts::demux::event::DemuxEvent::NonConformant::stream: tst_core::mpegts::demux::event::StreamId
 pub tst_core::mpegts::demux::event::DemuxEvent::ProgramMap(tst_core::mpegts::demux::event::ProgramMap)
 pub tst_core::mpegts::demux::event::DemuxEvent::Sample
-pub tst_core::mpegts::demux::event::DemuxEvent::Sample::dts: core::option::Option<i64>
+pub tst_core::mpegts::demux::event::DemuxEvent::Sample::dts: core::option::Option<tst_core::mpegts::common::Pts90khz>
 pub tst_core::mpegts::demux::event::DemuxEvent::Sample::payload: tst_core::mpegts::demux::event::SamplePayload
 pub tst_core::mpegts::demux::event::DemuxEvent::Sample::pts: tst_core::mpegts::common::Pts90khz
 pub tst_core::mpegts::demux::event::DemuxEvent::Sample::stream: tst_core::mpegts::demux::event::StreamId
@@ -3262,7 +3262,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::low_le
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::low_level::PatEntry
 pub struct tst_core::mpegts::demux::low_level::PesPayload
 pub tst_core::mpegts::demux::low_level::PesPayload::data_alignment_indicator: bool
-pub tst_core::mpegts::demux::low_level::PesPayload::dts: core::option::Option<i64>
+pub tst_core::mpegts::demux::low_level::PesPayload::dts: core::option::Option<tst_core::mpegts::common::Pts90khz>
 pub tst_core::mpegts::demux::low_level::PesPayload::header_issues: alloc::vec::Vec<tst_core::mpegts::demux::event::PesHeaderMalformedKind>
 pub tst_core::mpegts::demux::low_level::PesPayload::payload: alloc::vec::Vec<u8>
 pub tst_core::mpegts::demux::low_level::PesPayload::pid: u16
@@ -3449,7 +3449,7 @@ pub tst_core::mpegts::demux::DemuxEvent::NonConformant::issue: tst_core::mpegts:
 pub tst_core::mpegts::demux::DemuxEvent::NonConformant::stream: tst_core::mpegts::demux::event::StreamId
 pub tst_core::mpegts::demux::DemuxEvent::ProgramMap(tst_core::mpegts::demux::event::ProgramMap)
 pub tst_core::mpegts::demux::DemuxEvent::Sample
-pub tst_core::mpegts::demux::DemuxEvent::Sample::dts: core::option::Option<i64>
+pub tst_core::mpegts::demux::DemuxEvent::Sample::dts: core::option::Option<tst_core::mpegts::common::Pts90khz>
 pub tst_core::mpegts::demux::DemuxEvent::Sample::payload: tst_core::mpegts::demux::event::SamplePayload
 pub tst_core::mpegts::demux::DemuxEvent::Sample::pts: tst_core::mpegts::common::Pts90khz
 pub tst_core::mpegts::demux::DemuxEvent::Sample::stream: tst_core::mpegts::demux::event::StreamId

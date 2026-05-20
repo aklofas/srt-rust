@@ -23,7 +23,7 @@ pub enum DemuxEvent {
     Sample {
         stream: StreamId,
         pts: Pts90khz,
-        dts: Option<i64>,
+        dts: Option<Pts90khz>,
         payload: SamplePayload,
     },
 

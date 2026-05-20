@@ -549,7 +549,17 @@ pub(crate) fn convert(
             dts,
             payload,
         } => {
-            fill_sample(arena, stream, pts.as_ticks(), *dts, payload, out);
+            // Pts90khz typed at the public Rust boundary; the C ABI keeps
+            // DTS as `int64_t` ticks per
+            // `reference_typed_pts_pcr_public_boundary.md`.
+            fill_sample(
+                arena,
+                stream,
+                pts.as_ticks(),
+                dts.map(|d| d.as_ticks()),
+                payload,
+                out,
+            );
         }
         DemuxEvent::Metadata {
             stream,

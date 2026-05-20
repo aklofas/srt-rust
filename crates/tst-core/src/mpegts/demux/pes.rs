@@ -16,8 +16,10 @@ pub struct PesPayload {
     pub stream_id: u8,
     /// 90 kHz PTS, if the PES carried one.
     pub pts: Option<i64>,
-    /// 90 kHz DTS, if the PES carried one.
-    pub dts: Option<i64>,
+    /// 90 kHz DTS, if the PES carried one. Typed
+    /// [`Pts90khz`](crate::mpegts::common::Pts90khz) per the public-boundary
+    /// policy (DTS surfaces as `int64_t` across the C ABI).
+    pub dts: Option<crate::mpegts::common::Pts90khz>,
     /// Adaptation-field `random_access_indicator` captured from the
     /// PES_start packet (PUSI=1). First-packet-wins: continuation
     /// packets don't overwrite the latched value, matching how
@@ -336,7 +338,9 @@ fn parse_complete(
             if !pts_dts_marker_bits_ok(&buf[14..19]) {
                 header_issues.push(PesHeaderMalformedKind::InvalidPtsDtsMarkerBits);
             }
-            dts = Some(decode_pts_dts(&buf[14..19]));
+            dts = Some(crate::mpegts::common::Pts90khz::new(decode_pts_dts(
+                &buf[14..19],
+            )));
         }
     }
     let payload = buf[body_off..].to_vec();

@@ -232,7 +232,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::ext::pairing::Pai
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::ext::pairing::PairerStats
 pub struct tst_pipeline::ext::pairing::VideoSample
 pub tst_pipeline::ext::pairing::VideoSample::codec: tst_core::mpegts::demux::event::VideoCodec
-pub tst_pipeline::ext::pairing::VideoSample::dts: core::option::Option<i64>
+pub tst_pipeline::ext::pairing::VideoSample::dts: core::option::Option<tst_core::mpegts::common::Pts90khz>
 pub tst_pipeline::ext::pairing::VideoSample::payload: tst_core::mpegts::demux::event::VideoPayload
 pub tst_pipeline::ext::pairing::VideoSample::pts: tst_core::mpegts::common::Pts90khz
 pub tst_pipeline::ext::pairing::VideoSample::stream: tst_core::mpegts::demux::event::StreamId

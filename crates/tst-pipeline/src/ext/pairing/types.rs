@@ -94,7 +94,7 @@ pub enum PairerOutput {
 pub struct VideoSample {
     pub stream: StreamId,
     pub pts: Pts90khz,
-    pub dts: Option<i64>,
+    pub dts: Option<Pts90khz>,
     pub codec: VideoCodec,
     pub payload: VideoPayload,
 }

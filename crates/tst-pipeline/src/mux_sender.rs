@@ -823,10 +823,15 @@ impl<T: Transport> Drop for MuxSender<T> {
     fn drop(&mut self) {
         let _enter = self._span.0.enter();
         // Best-effort drain of pending_bytes on drop; if transport rejects,
-        // they're discarded.
+        // they're discarded. Gate on `!inner.closed` to mirror Sender::Drop —
+        // a prior explicit close() already drained + closed, so close-then-drop
+        // would otherwise call transport.close() twice. Idempotent in practice,
+        // but the gate keeps the contract consistent across the three shells.
         if let Ok(mut inner) = self.inner.lock() {
-            let _ = inner.drain_pending();
-            inner.transport.close();
+            if !inner.closed {
+                let _ = inner.drain_pending();
+                inner.transport.close();
+            }
         }
         tracing::info!("MuxSender closed");
     }

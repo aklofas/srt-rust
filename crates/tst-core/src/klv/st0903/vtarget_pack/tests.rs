@@ -139,8 +139,12 @@ fn truncated_field_value_rejected() {
 #[test]
 fn unknown_tags_preserved() {
     // Build by hand: target_id=1, then unknown tag 200 with 3 bytes
-    // [0xAA 0xBB 0xCC].
-    let bytes = [0x01u8, 200, 3, 0xAA, 0xBB, 0xCC];
+    // [0xAA 0xBB 0xCC]. Tag 200 is BER-OID-encoded as 0x81 0x48 per
+    // ST 0107.5 §6.3.1 (post-E5-followup the body walker reads tags
+    // as BER-OID, so multi-byte tag IDs need their proper encoding
+    // on the wire — a raw 0xC8 byte would be parsed as a continuation
+    // prefix and misframe the BER length).
+    let bytes = [0x01u8, 0x81, 0x48, 3, 0xAA, 0xBB, 0xCC];
     let (decoded, _) = read_pack(&bytes).unwrap();
     assert_eq!(decoded.target_id, 1);
     assert_eq!(decoded.unknown.len(), 1);
@@ -223,4 +227,81 @@ fn round_trip_with_unknown_preserved() {
     assert_eq!(decoded.priority, Some(3));
     assert_eq!(decoded.unknown.len(), 1);
     assert_eq!(decoded.unknown[0].tag, 200);
+}
+
+/// E5 follow-up: the LS body walker reads tags as BER-OID per
+/// ST 0107.5 §6.3.1, so a future ST 0903.7+ pack tag ≥ 128 (which
+/// encodes as multi-byte BER-OID) survives the inner walk. Pre-fix,
+/// the walker read tags as `cursor[0]` and would have misframed the
+/// first continuation byte (0x81 0x..) as the start of the BER length.
+///
+/// Verifies the two BER-OID size boundaries that matter for forward-
+/// compat: 128 (smallest multi-byte: 0x81 0x00) and 16384 (smallest
+/// three-byte: 0x81 0x80 0x00). Tags 127 and 16383 stay one-/two-byte
+/// respectively but bracket the boundary symmetrically.
+#[test]
+fn unknown_tag_multibyte_ber_oid_round_trips() {
+    for tag in [127u32, 128, 16383, 16384] {
+        let mut pack = VTargetPack {
+            target_id: 1,
+            ..Default::default()
+        };
+        pack.unknown.push(OwnedRawField {
+            tag,
+            value: vec![0xAA, 0xBB, 0xCC],
+        });
+        let mut bytes = Vec::new();
+        write_pack(&pack, &mut bytes).unwrap();
+        let (decoded, _) = read_pack(&bytes).unwrap();
+        assert_eq!(
+            decoded.unknown.len(),
+            1,
+            "tag {tag}: unknown count mismatch"
+        );
+        assert_eq!(
+            decoded.unknown[0].tag, tag,
+            "tag {tag}: round-trip lost tag ID"
+        );
+        assert_eq!(
+            decoded.unknown[0].value,
+            vec![0xAA, 0xBB, 0xCC],
+            "tag {tag}: value bytes corrupted"
+        );
+    }
+}
+
+/// E5 follow-up: BER-OID-encoded tag IDs ≤ 127 are byte-identical to
+/// the pre-fix raw single-byte tags. Every §10.2 typed pack tag fits
+/// in this range (highest is 107), so legacy wire bytes encode bit-
+/// for-bit unchanged. This regression-pins the backward-compat
+/// guarantee for the §10.2.2 typed dispatch tags (4 U8 tags spot-
+/// checked: 4 priority, 5 confidence, 7 percentage, 23 detection;
+/// plus the BER-OID Target ID = 7 leading byte).
+#[test]
+fn defined_pack_tags_byte_identical_pre_and_post_e5_followup() {
+    let pack = VTargetPack {
+        target_id: 7,
+        priority: Some(2),
+        confidence_level: Some(95),
+        percentage_of_target_pixels: Some(60),
+        detection_status: Some(1),
+        ..Default::default()
+    };
+    let mut bytes = Vec::new();
+    write_pack(&pack, &mut bytes).unwrap();
+    // Same exact layout the canonical-bytes test would emit pre-E5
+    // (single-byte tags, BER length, value): a hand-built reference
+    // catches drift if a future change accidentally widened the
+    // BER-OID emit path for tags ≤ 127.
+    let expected: Vec<u8> = vec![
+        0x07, // BER-OID Target ID = 7 (1 byte, value < 128)
+        0x04, 0x01, 0x02, // Tag 4 priority
+        0x05, 0x01, 0x5F, // Tag 5 confidence (0x5F = 95)
+        0x07, 0x01, 0x3C, // Tag 7 percentage (0x3C = 60)
+        0x17, 0x01, 0x01, // Tag 23 detection_status
+    ];
+    assert_eq!(
+        bytes, expected,
+        "single-byte BER-OID emit drifted from pre-fix byte layout for typed tags"
+    );
 }

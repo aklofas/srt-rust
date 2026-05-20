@@ -1803,17 +1803,17 @@ pub mod tst_core::klv::st0903
 pub tst_core::klv::st0903::VTargetPackError::InvalidLength
 pub tst_core::klv::st0903::VTargetPackError::InvalidLength::expected: usize
 pub tst_core::klv::st0903::VTargetPackError::InvalidLength::got: usize
-pub tst_core::klv::st0903::VTargetPackError::InvalidLength::tag: u8
+pub tst_core::klv::st0903::VTargetPackError::InvalidLength::tag: u32
 pub tst_core::klv::st0903::VTargetPackError::LengthOverrun
 pub tst_core::klv::st0903::VTargetPackError::LengthOverrun::available: usize
 pub tst_core::klv::st0903::VTargetPackError::LengthOverrun::declared: usize
-pub tst_core::klv::st0903::VTargetPackError::LengthOverrun::tag: u8
+pub tst_core::klv::st0903::VTargetPackError::LengthOverrun::tag: u32
 pub tst_core::klv::st0903::VTargetPackError::MalformedImapb
-pub tst_core::klv::st0903::VTargetPackError::MalformedImapb::tag: u8
+pub tst_core::klv::st0903::VTargetPackError::MalformedImapb::tag: u32
 pub tst_core::klv::st0903::VTargetPackError::MalformedUtf8
-pub tst_core::klv::st0903::VTargetPackError::MalformedUtf8::tag: u8
+pub tst_core::klv::st0903::VTargetPackError::MalformedUtf8::tag: u32
 pub tst_core::klv::st0903::VTargetPackError::TruncatedField
-pub tst_core::klv::st0903::VTargetPackError::TruncatedField::tag: u8
+pub tst_core::klv::st0903::VTargetPackError::TruncatedField::tag: u32
 pub tst_core::klv::st0903::VTargetPackError::TruncatedTargetId
 impl core::clone::Clone for tst_core::klv::VTargetPackError
 pub fn tst_core::klv::VTargetPackError::clone(&self) -> tst_core::klv::VTargetPackError
@@ -2065,17 +2065,17 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::SecurityClassificat
 pub tst_core::klv::VTargetPackError::InvalidLength
 pub tst_core::klv::VTargetPackError::InvalidLength::expected: usize
 pub tst_core::klv::VTargetPackError::InvalidLength::got: usize
-pub tst_core::klv::VTargetPackError::InvalidLength::tag: u8
+pub tst_core::klv::VTargetPackError::InvalidLength::tag: u32
 pub tst_core::klv::VTargetPackError::LengthOverrun
 pub tst_core::klv::VTargetPackError::LengthOverrun::available: usize
 pub tst_core::klv::VTargetPackError::LengthOverrun::declared: usize
-pub tst_core::klv::VTargetPackError::LengthOverrun::tag: u8
+pub tst_core::klv::VTargetPackError::LengthOverrun::tag: u32
 pub tst_core::klv::VTargetPackError::MalformedImapb
-pub tst_core::klv::VTargetPackError::MalformedImapb::tag: u8
+pub tst_core::klv::VTargetPackError::MalformedImapb::tag: u32
 pub tst_core::klv::VTargetPackError::MalformedUtf8
-pub tst_core::klv::VTargetPackError::MalformedUtf8::tag: u8
+pub tst_core::klv::VTargetPackError::MalformedUtf8::tag: u32
 pub tst_core::klv::VTargetPackError::TruncatedField
-pub tst_core::klv::VTargetPackError::TruncatedField::tag: u8
+pub tst_core::klv::VTargetPackError::TruncatedField::tag: u32
 pub tst_core::klv::VTargetPackError::TruncatedTargetId
 impl core::clone::Clone for tst_core::klv::VTargetPackError
 pub fn tst_core::klv::VTargetPackError::clone(&self) -> tst_core::klv::VTargetPackError

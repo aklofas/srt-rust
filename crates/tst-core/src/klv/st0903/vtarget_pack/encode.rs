@@ -9,7 +9,7 @@ use crate::error::KlvEncodeError;
 /// 104, 105, 106, 107), then any preserved `unknown` tags last per
 /// ST 0107.5 §6.
 pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize, KlvEncodeError> {
-    use crate::klv::length::write_ber_oid;
+    use crate::klv::length::{write_ber, write_ber_oid};
     use crate::klv::st0903::emit::{emit_imapb_n, emit_tlv, emit_var};
 
     let start = out.len();
@@ -106,13 +106,20 @@ pub(crate) fn write_pack(pack: &VTargetPack, out: &mut Vec<u8>) -> Result<usize,
         emit_tlv(out, 107, bytes)?;
     }
 
-    // Unknown tags preserved last (ST 0107.5 §6). Tag IDs >0xFF are
-    // silently dropped — VTargetPack tag IDs are single-byte by spec
-    // (highest is 107) so a >0xFF tag here would be a corrupted parse.
+    // Unknown tags preserved last (ST 0107.5 §6). Tag IDs use multi-
+    // byte BER-OID per ST 0107.5 §6.3.1 for values ≥ 128, so a future
+    // ST 0903.7+ pack tag in the unknown bucket round-trips losslessly.
+    // Tags 1..=107 (the §10.2 typed universe) are all ≤ 127 and encode
+    // as a single byte, byte-identical to the pre-E5-followup emit.
+    // `encoded_len` mirrors this via `ber_oid_len(field.tag)`.
     for field in &pack.unknown {
-        if field.tag <= 0xFF {
-            emit_tlv(out, field.tag as u8, &field.value)?;
-        }
+        let mut tag_buf = [0u8; 5]; // u32 fits in at most 5 BER-OID bytes
+        let tag_n = write_ber_oid(field.tag, &mut tag_buf)?;
+        out.extend_from_slice(&tag_buf[..tag_n]);
+        let mut len_buf = [0u8; 9];
+        let len_n = write_ber(field.value.len(), &mut len_buf)?;
+        out.extend_from_slice(&len_buf[..len_n]);
+        out.extend_from_slice(&field.value);
     }
 
     Ok(out.len() - start)
@@ -210,10 +217,12 @@ pub(crate) fn encoded_len(pack: &VTargetPack) -> usize {
     if let Some(ref b) = pack.vobject_series {
         total += tlv_len(b.len());
     }
+    // Unknown tags use BER-OID tag + BER length + value (mirrors
+    // `write_pack`). For tags ≤ 127 (the §10.2 typed universe),
+    // `ber_oid_len(tag) == 1` so this collapses to the same byte
+    // count as the pre-E5-followup `tlv_len(value.len())`.
     for field in &pack.unknown {
-        if field.tag <= 0xFF {
-            total += tlv_len(field.value.len());
-        }
+        total += ber_oid_len(field.tag) + ber_len(field.value.len()) + field.value.len();
     }
     total
 }

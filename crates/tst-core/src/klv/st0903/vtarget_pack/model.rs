@@ -250,21 +250,24 @@ pub(crate) fn pack_lookup(tag: u8) -> Option<&'static PackTagSpec> {
 pub enum VTargetPackError {
     #[error("truncated BER-OID Target ID")]
     TruncatedTargetId,
+    /// Field-level framing or value truncation. `tag` is BER-OID-
+    /// decoded (`u32`) to cover both the §10.2 typed universe (1..=107)
+    /// and forward-compat ST 0903.7+ multi-byte BER-OID tag IDs.
     #[error("VTargetPack tag {tag}: truncated value")]
-    TruncatedField { tag: u8 },
+    TruncatedField { tag: u32 },
     #[error("VTargetPack tag {tag}: declared length {declared} exceeds available {available}")]
     LengthOverrun {
-        tag: u8,
+        tag: u32,
         declared: usize,
         available: usize,
     },
     #[error("VTargetPack tag {tag}: malformed IMAPB value")]
-    MalformedImapb { tag: u8 },
+    MalformedImapb { tag: u32 },
     #[error("VTargetPack tag {tag}: malformed UTF-8 string")]
-    MalformedUtf8 { tag: u8 },
+    MalformedUtf8 { tag: u32 },
     #[error("VTargetPack tag {tag}: invalid value length {got} (expected {expected})")]
     InvalidLength {
-        tag: u8,
+        tag: u32,
         expected: usize,
         got: usize,
     },

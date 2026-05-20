@@ -8,7 +8,14 @@ use super::model::{PackEncoding, VTargetPack, VTargetPackError, pack_lookup};
 /// Wire form per ST 0903.6 §10.2 Table 10:
 /// - Leading BER-OID `targetId` (no Tag, per §10.2.2.1).
 /// - Then a Local Set–encoded body where each field is
-///   `[1-byte tag][BER short/long length][value bytes]`.
+///   `[BER-OID tag][BER short/long length][value bytes]` per
+///   ST 0107.5 §6.3.1.
+///
+/// Tags 1..=107 (the §10.2 typed universe) all fit in a single BER-OID
+/// byte (`write_ber_oid(N) == [N]` for `N ≤ 127`), so legacy wire bytes
+/// parse byte-identical. A future ST 0903.7+ pack tag ≥ 128 would
+/// encode as multi-byte BER-OID — the walker decodes it correctly and
+/// preserves it as a forward-compat unknown.
 ///
 /// Unknown / deprecated tags (e.g. 21, 102, 103) are preserved in
 /// `pack.unknown` per ST 0107.5 §6 future-proof skip rule.
@@ -24,14 +31,22 @@ pub(crate) fn read_pack(bytes: &[u8]) -> Result<(VTargetPack, usize), VTargetPac
         ..Default::default()
     };
 
-    // 2. Walk the LS-encoded body. Each field is a single-byte tag
-    //    (PACK_TAGS only uses 1..=107) + BER-encoded length + value.
+    // 2. Walk the LS-encoded body. Each field is a BER-OID tag per
+    //    ST 0107.5 §6.3.1 + BER-encoded length + value. Mirrors the
+    //    top-level ST 0903 walker (post-E5) and the sibling ST 0102
+    //    / ST 0601 walkers.
     let mut cursor = rest;
     let mut consumed = header_consumed;
     while !cursor.is_empty() {
-        let tag = cursor[0];
-        cursor = &cursor[1..];
-        consumed += 1;
+        let (tag, after_tag) = read_ber_oid(cursor).map_err(|_| {
+            // We don't know the tag yet — surface tag=0 as the closest
+            // available sentinel. Production wire shouldn't trip this
+            // (BER-OID needs a continuation-byte stream to fail).
+            VTargetPackError::TruncatedField { tag: 0 }
+        })?;
+        let tag_consumed = cursor.len() - after_tag.len();
+        cursor = after_tag;
+        consumed += tag_consumed;
 
         let (declared_len, after_len) =
             read_ber(cursor).map_err(|_| VTargetPackError::TruncatedField { tag })?;
@@ -60,15 +75,31 @@ pub(crate) fn read_pack(bytes: &[u8]) -> Result<(VTargetPack, usize), VTargetPac
 /// `VTargetPack` field based on the spec's encoding for that tag.
 /// Unknown / deprecated tags fall through to `pack.unknown` per
 /// ST 0107.5 §6.
-fn decode_field(tag: u8, value: &[u8], pack: &mut VTargetPack) -> Result<(), VTargetPackError> {
+///
+/// `tag` arrives as BER-OID-decoded `u32`. Tags > 0xFF (future ST
+/// 0903.7+ multi-byte BER-OID) are preserved in `pack.unknown` per
+/// ST 0107.5 §6; the typed table only covers the u8 universe.
+fn decode_field(tag: u32, value: &[u8], pack: &mut VTargetPack) -> Result<(), VTargetPackError> {
     use crate::klv::imapb::{ImapbParams, decode_imapb};
     use crate::klv::pack::OwnedRawField;
     use crate::klv::st0903::var_uint::read_var_u32;
 
-    let Some(spec) = pack_lookup(tag) else {
+    // Forward-compat tags (≥ 128 in BER-OID) — preserve verbatim.
+    // The typed table only covers tag IDs ≤ 127 (the §10.2 universe
+    // tops out at 107), so a multi-byte BER-OID tag from a future spec
+    // bumps directly to `unknown` without spec-table lookup.
+    let Ok(tag_u8) = u8::try_from(tag) else {
+        pack.unknown.push(OwnedRawField {
+            tag,
+            value: value.to_vec(),
+        });
+        return Ok(());
+    };
+
+    let Some(spec) = pack_lookup(tag_u8) else {
         // ST 0107.5 §6 skip rule — preserve unknown / deprecated tags.
         pack.unknown.push(OwnedRawField {
-            tag: tag as u32,
+            tag,
             value: value.to_vec(),
         });
         return Ok(());
@@ -84,12 +115,12 @@ fn decode_field(tag: u8, value: &[u8], pack: &mut VTargetPack) -> Result<(), VTa
                 });
             }
             let v = value[0];
-            match tag {
+            match tag_u8 {
                 4 => pack.priority = Some(v),
                 5 => pack.confidence_level = Some(v),
                 7 => pack.percentage_of_target_pixels = Some(v),
                 23 => pack.detection_status = Some(v),
-                _ => unreachable!("U8 dispatch missing tag {tag}"),
+                _ => unreachable!("U8 dispatch missing tag {tag_u8}"),
             }
         }
         PackEncoding::VarUint { max_bytes } => {
@@ -102,7 +133,7 @@ fn decode_field(tag: u8, value: &[u8], pack: &mut VTargetPack) -> Result<(), VTa
             }
             // VarUint codec returns u32; per-tag downcasts handled below.
             let v = read_var_u32(value).map_err(|_| VTargetPackError::TruncatedField { tag })?;
-            match tag {
+            match tag_u8 {
                 1 => pack.centroid_pixel = Some(v),
                 2 => pack.bbox_top_left_pixel = Some(v),
                 3 => pack.bbox_bottom_right_pixel = Some(v),
@@ -111,7 +142,7 @@ fn decode_field(tag: u8, value: &[u8], pack: &mut VTargetPack) -> Result<(), VTa
                 19 => pack.centroid_pix_row = Some(v),
                 20 => pack.centroid_pix_col = Some(v),
                 22 => pack.algorithm_id = Some(v),
-                _ => unreachable!("VarUint dispatch missing tag {tag}"),
+                _ => unreachable!("VarUint dispatch missing tag {tag_u8}"),
             }
         }
         PackEncoding::U24Rgb => {
@@ -127,7 +158,7 @@ fn decode_field(tag: u8, value: &[u8], pack: &mut VTargetPack) -> Result<(), VTa
         PackEncoding::ImapbF64 { min, max } => {
             // Tag 12 (`targetHae`) uses 2-byte IMAPB; all other IMAPB
             // pack tags use 3-byte IMAPB per §10.2.2.11–.17.
-            let length = if tag == 12 { 2 } else { 3 };
+            let length = if tag_u8 == 12 { 2 } else { 3 };
             let params = ImapbParams { min, max, length };
             // A7: decode_imapb returns DecodedImapb (ST 1201.5 §7.2.2/.3
             // special values + bounds check). VTargetPack treats every
@@ -139,7 +170,7 @@ fn decode_field(tag: u8, value: &[u8], pack: &mut VTargetPack) -> Result<(), VTa
                 .map_err(|_| VTargetPackError::MalformedImapb { tag })?
                 .value()
                 .ok_or(VTargetPackError::MalformedImapb { tag })?;
-            match tag {
+            match tag_u8 {
                 10 => pack.centroid_lat_offset = Some(v),
                 11 => pack.centroid_lon_offset = Some(v),
                 12 => pack.centroid_hae = Some(v),
@@ -147,12 +178,12 @@ fn decode_field(tag: u8, value: &[u8], pack: &mut VTargetPack) -> Result<(), VTa
                 14 => pack.bbox_top_left_lon_offset = Some(v),
                 15 => pack.bbox_bottom_right_lat_offset = Some(v),
                 16 => pack.bbox_bottom_right_lon_offset = Some(v),
-                _ => unreachable!("ImapbF64 dispatch missing tag {tag}"),
+                _ => unreachable!("ImapbF64 dispatch missing tag {tag_u8}"),
             }
         }
         PackEncoding::RawBytes => {
             let bytes = value.to_vec();
-            match tag {
+            match tag_u8 {
                 17 => pack.target_location = Some(bytes),
                 18 => pack.geospatial_contour_series = Some(bytes),
                 101 => pack.vmask = Some(bytes),
@@ -160,7 +191,7 @@ fn decode_field(tag: u8, value: &[u8], pack: &mut VTargetPack) -> Result<(), VTa
                 105 => pack.vchip = Some(bytes),
                 106 => pack.vchip_series = Some(bytes),
                 107 => pack.vobject_series = Some(bytes),
-                _ => unreachable!("RawBytes dispatch missing tag {tag}"),
+                _ => unreachable!("RawBytes dispatch missing tag {tag_u8}"),
             }
         }
     }

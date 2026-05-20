@@ -14,8 +14,10 @@ use std::collections::HashMap;
 pub struct PesPayload {
     pub pid: u16,
     pub stream_id: u8,
-    /// 90 kHz PTS, if the PES carried one.
-    pub pts: Option<i64>,
+    /// 90 kHz PTS, if the PES carried one. Typed
+    /// [`Pts90khz`](crate::mpegts::common::Pts90khz) per the public-boundary
+    /// policy (PTS surfaces as `int64_t` across the C ABI).
+    pub pts: Option<crate::mpegts::common::Pts90khz>,
     /// 90 kHz DTS, if the PES carried one. Typed
     /// [`Pts90khz`](crate::mpegts::common::Pts90khz) per the public-boundary
     /// policy (DTS surfaces as `int64_t` across the C ABI).
@@ -321,7 +323,9 @@ fn parse_complete(
             if !pts_dts_marker_bits_ok(&buf[9..14]) {
                 header_issues.push(PesHeaderMalformedKind::InvalidPtsDtsMarkerBits);
             }
-            pts = Some(decode_pts_dts(&buf[9..14]));
+            pts = Some(crate::mpegts::common::Pts90khz::new(decode_pts_dts(
+                &buf[9..14],
+            )));
         }
         if pts_dts_flags == 0b11 {
             if buf.len() < 19 {
@@ -446,7 +450,7 @@ mod tests {
         assert_eq!(out.len(), 1);
         match &out[0] {
             ReassemblyOutcome::Complete(p) => {
-                assert_eq!(p.pts, Some(900_000));
+                assert_eq!(p.pts, Some(crate::mpegts::common::Pts90khz::new(900_000)));
                 assert_eq!(p.payload, b"hello");
             }
             _ => panic!("expected Complete"),

@@ -128,7 +128,7 @@ impl super::demuxer::Demuxer {
         // omit PTS sporadically). For stream types where H.222.0 §2.7.4
         // makes PTS mandatory (audio + video), emit
         // `MissingRequiredPts` when absent.
-        let pts = Pts90khz::new(pes.pts.unwrap_or(0));
+        let pts = pes.pts.unwrap_or(Pts90khz::new(0));
         if pes.pts.is_none() && stream_type_requires_pts(&kind) {
             self.queue_nonconformant(
                 stream,
@@ -137,7 +137,7 @@ impl super::demuxer::Demuxer {
         }
         if let Some(observed_pts) = pes.pts {
             if let Some(last) = self.last_pts_by_pid.get(&pes.pid).copied() {
-                let delta = pts_diff_33bit(observed_pts as u64, last as u64);
+                let delta = pts_diff_33bit(observed_pts.as_ticks() as u64, last as u64);
                 if delta < -90_000 {
                     // PTS anomaly is its own variant (90 kHz / per-PID
                     // elementary stream), distinct from PcrAnomaly
@@ -145,7 +145,8 @@ impl super::demuxer::Demuxer {
                     self.queue_nonconformant(stream, NonConformantIssue::PtsAnomaly { delta });
                 }
             }
-            self.last_pts_by_pid.insert(pes.pid, observed_pts);
+            self.last_pts_by_pid
+                .insert(pes.pid, observed_pts.as_ticks());
         }
         match kind {
             StreamKind::Video(codec) => {

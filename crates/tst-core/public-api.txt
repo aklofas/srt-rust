@@ -3266,7 +3266,7 @@ pub tst_core::mpegts::demux::low_level::PesPayload::dts: core::option::Option<ts
 pub tst_core::mpegts::demux::low_level::PesPayload::header_issues: alloc::vec::Vec<tst_core::mpegts::demux::event::PesHeaderMalformedKind>
 pub tst_core::mpegts::demux::low_level::PesPayload::payload: alloc::vec::Vec<u8>
 pub tst_core::mpegts::demux::low_level::PesPayload::pid: u16
-pub tst_core::mpegts::demux::low_level::PesPayload::pts: core::option::Option<i64>
+pub tst_core::mpegts::demux::low_level::PesPayload::pts: core::option::Option<tst_core::mpegts::common::Pts90khz>
 pub tst_core::mpegts::demux::low_level::PesPayload::random_access_indicator: bool
 pub tst_core::mpegts::demux::low_level::PesPayload::stream_id: u8
 impl core::clone::Clone for tst_core::mpegts::demux::low_level::PesPayload

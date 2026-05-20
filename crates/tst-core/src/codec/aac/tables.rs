@@ -54,13 +54,33 @@ pub(crate) fn decode_channels(
     }
 }
 
-/// Decode `profile` (2 bits, ADTS Annex 1.A) to typed profile.
-pub(crate) fn decode_profile(profile: u8) -> super::AacProfile {
-    match profile & 0b11 {
-        0 => super::AacProfile::Main,
-        1 => super::AacProfile::Lc,
-        2 => super::AacProfile::Ssr,
-        3 => super::AacProfile::LongTermPrediction,
+/// Decode `profile` (2 bits, ADTS Annex 1.A) to typed profile, gated on
+/// the ADTS `ID` bit (MPEG version).
+///
+/// Per ISO/IEC 13818-7 §1.A Table 8, when `ID == 1` (MPEG-2) the `profile`
+/// field is the MPEG-2 audio Profile and value `3` is **reserved**. When
+/// `ID == 0` (MPEG-4) the field carries an MPEG-4 audio object type minus
+/// one, where value `3` decodes to LongTermPrediction (AOT 4). Accepting
+/// `profile == 3` unconditionally would surface a misleading enum value
+/// for MPEG-2 ADTS streams.
+///
+/// # Errors
+///
+/// Returns [`CodecParseError::ReservedValue`] when `profile == 3` and
+/// `mpeg_version == MpegVersion::Mpeg2`.
+pub(crate) fn decode_profile(
+    profile: u8,
+    mpeg_version: super::MpegVersion,
+) -> Result<super::AacProfile, CodecParseError> {
+    match (profile & 0b11, mpeg_version) {
+        (0, _) => Ok(super::AacProfile::Main),
+        (1, _) => Ok(super::AacProfile::Lc),
+        (2, _) => Ok(super::AacProfile::Ssr),
+        (3, super::MpegVersion::Mpeg4) => Ok(super::AacProfile::LongTermPrediction),
+        (3, super::MpegVersion::Mpeg2) => Err(CodecParseError::ReservedValue {
+            field: "adts_profile",
+            value: 3,
+        }),
         _ => unreachable!(),
     }
 }
@@ -119,6 +139,37 @@ mod tests {
     }
     #[test]
     fn profile_lc() {
-        assert_eq!(decode_profile(1), AacProfile::Lc);
+        use crate::codec::aac::MpegVersion;
+        assert_eq!(
+            decode_profile(1, MpegVersion::Mpeg4).unwrap(),
+            AacProfile::Lc
+        );
+        assert_eq!(
+            decode_profile(1, MpegVersion::Mpeg2).unwrap(),
+            AacProfile::Lc
+        );
+    }
+
+    /// G3 — per ISO/IEC 13818-7 §1.A Table 8, profile=3 is reserved when
+    /// ID=1 (MPEG-2). Only valid as LongTermPrediction when ID=0 (MPEG-4).
+    #[test]
+    fn profile_3_mpeg4_is_long_term_prediction() {
+        use crate::codec::aac::MpegVersion;
+        assert_eq!(
+            decode_profile(3, MpegVersion::Mpeg4).unwrap(),
+            AacProfile::LongTermPrediction
+        );
+    }
+
+    #[test]
+    fn profile_3_mpeg2_is_reserved() {
+        use crate::codec::aac::MpegVersion;
+        assert!(matches!(
+            decode_profile(3, MpegVersion::Mpeg2).unwrap_err(),
+            CodecParseError::ReservedValue {
+                field: "adts_profile",
+                value: 3,
+            }
+        ));
     }
 }

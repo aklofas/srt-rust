@@ -75,8 +75,13 @@ pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, CodecParseError> {
     let has_crc = protection_absent == 0;
 
     // bytes[2]: profile(2) sample_rate_index(4) private(1) channel_config(MSB 1)
+    //
+    // Per ISO/IEC 13818-7 §1.A Table 8, `profile == 3` is reserved when
+    // ID=1 (MPEG-2) and only valid as LongTermPrediction when ID=0
+    // (MPEG-4). `decode_profile` handles the gating; reserved values
+    // surface as `CodecParseError::ReservedValue`.
     let profile_bits = (bytes[2] >> 6) & 0b11;
-    let profile = decode_profile(profile_bits);
+    let profile = decode_profile(profile_bits, mpeg_version)?;
 
     let sample_rate_index = (bytes[2] >> 2) & 0b1111;
     let sample_rate_hz = decode_sample_rate(sample_rate_index)?;
@@ -131,9 +136,32 @@ pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, CodecParseError> {
 mod tests {
     use super::*;
 
-    /// Helper: build a 7-byte ADTS header.
+    /// Helper: build a 7-byte ADTS header with MPEG-2 ID bit.
     /// Defaults: MPEG-2 ID, no CRC, AAC-LC profile, 44.1 kHz, stereo.
     fn build_header(
+        profile: u8,               // 2 bits
+        sample_rate_index: u8,     // 4 bits
+        channel_configuration: u8, // 3 bits
+        aac_frame_length: u32,     // 13 bits
+        num_blocks_wire: u8,       // 2 bits
+        protection_absent: bool,   // true = no CRC
+    ) -> Vec<u8> {
+        build_header_with_id(
+            1, // MPEG-2
+            profile,
+            sample_rate_index,
+            channel_configuration,
+            aac_frame_length,
+            num_blocks_wire,
+            protection_absent,
+        )
+    }
+
+    /// Helper: build a 7-byte ADTS header with explicit `ID` bit
+    /// (`0` = MPEG-4, `1` = MPEG-2). Used by G3 tests that need to
+    /// exercise the MPEG version gating in `decode_profile`.
+    fn build_header_with_id(
+        id_bit: u8,                // 1 bit (0 = MPEG-4, 1 = MPEG-2)
         profile: u8,               // 2 bits
         sample_rate_index: u8,     // 4 bits
         channel_configuration: u8, // 3 bits
@@ -144,9 +172,9 @@ mod tests {
         let mut h = vec![0u8; 7];
         // bytes[0] + bytes[1] high nibble: 0xFFF sync
         h[0] = 0xFF;
-        // bytes[1]: 1111 (sync low) | 1 (ID=MPEG-2) | 00 (layer) | protection_absent
+        // bytes[1]: 1111 (sync low) | ID(1) | 00 (layer) | protection_absent
         let pa = if protection_absent { 1 } else { 0 };
-        h[1] = 0b1111_0000 | (1 << 3) | pa;
+        h[1] = 0b1111_0000 | ((id_bit & 1) << 3) | pa;
         // bytes[2]: profile(2) | sample_rate_idx(4) | private(0) | chan_cfg MSB
         h[2] =
             (profile << 6) | ((sample_rate_index & 0xF) << 2) | ((channel_configuration >> 2) & 1);
@@ -241,5 +269,47 @@ mod tests {
         let h = parse_header(&bytes).unwrap();
         assert_eq!(h.num_raw_data_blocks, 4);
         assert_eq!(h.samples_per_frame, 4096);
+    }
+
+    /// G3 — when ID=0 (MPEG-4) the ADTS `profile` field carries an MPEG-4
+    /// audio object type minus one; value `3` decodes to LongTermPrediction
+    /// (AOT 4) and the header parses successfully.
+    #[test]
+    fn parse_header_profile_3_mpeg4_is_long_term_prediction() {
+        let bytes = build_header_with_id(0, 3, 4, 2, 7 + 100, 0, true);
+        let h = parse_header(&bytes).unwrap();
+        assert_eq!(h.mpeg_version, MpegVersion::Mpeg4);
+        assert_eq!(h.profile, AacProfile::LongTermPrediction);
+    }
+
+    /// G3 — when ID=1 (MPEG-2) profile=3 is reserved per ISO/IEC 13818-7
+    /// §1.A Table 8 and must surface as a typed parse error rather than
+    /// the misleading `LongTermPrediction` MPEG-4 enum value.
+    #[test]
+    fn parse_header_profile_3_mpeg2_is_reserved() {
+        let bytes = build_header_with_id(1, 3, 4, 2, 7 + 100, 0, true);
+        assert!(matches!(
+            parse_header(&bytes).unwrap_err(),
+            CodecParseError::ReservedValue {
+                field: "adts_profile",
+                value: 3,
+            }
+        ));
+    }
+
+    /// G3 — profiles `0..=2` (Main / LC / SSR) are valid under both ID
+    /// values; verify the MPEG-2 path still decodes them correctly.
+    #[test]
+    fn parse_header_profile_0_1_2_mpeg2_decode() {
+        for (profile_bits, expected) in [
+            (0u8, AacProfile::Main),
+            (1, AacProfile::Lc),
+            (2, AacProfile::Ssr),
+        ] {
+            let bytes = build_header_with_id(1, profile_bits, 4, 2, 7 + 100, 0, true);
+            let h = parse_header(&bytes).unwrap();
+            assert_eq!(h.mpeg_version, MpegVersion::Mpeg2);
+            assert_eq!(h.profile, expected, "profile_bits={profile_bits}");
+        }
     }
 }

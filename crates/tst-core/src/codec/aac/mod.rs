@@ -35,6 +35,15 @@ use crate::codec::CodecParseError;
 /// AAC profile per ADTS §1.A (legacy MPEG-2 AAC profile names; most
 /// real-world ADTS encodes AAC-LC regardless of which MPEG-4 audio
 /// object type the encoder used).
+///
+/// Per ISO/IEC 13818-7 §1.A Table 8, the `profile` field's interpretation
+/// depends on the ADTS `ID` bit (MPEG version):
+/// - `ID == 0` (MPEG-4): profile is an MPEG-4 audio object type minus
+///   one; values `0..=3` map to Main / Lc / Ssr / LongTermPrediction.
+/// - `ID == 1` (MPEG-2): profile is the MPEG-2 audio Profile; values
+///   `0..=2` map to Main / Lc / Ssr and value `3` is reserved. The
+///   parser surfaces reserved profile=3 in MPEG-2 streams as
+///   [`crate::codec::CodecParseError::ReservedValue`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AacProfile {
     Main,

@@ -82,7 +82,11 @@ pub struct Demuxer {
     /// at the top of every `check_continuity` call so PSI packets without
     /// a jump don't carry stale state.
     pub(super) last_psi_cc_jump: Option<(u8, u8)>,
-    pub(super) last_pcr_27mhz: Option<u64>,
+    /// Per-PCR-PID last-seen 27 MHz PCR. Keyed by the PID of the packet
+    /// carrying the PCR (each program advertises its own PCR PID in its
+    /// PMT; per ITU-T H.222.0 §2.4.3.5 each program has its own time base,
+    /// so PCR comparison MUST stay within a single PID's timeline).
+    pub(super) last_pcr_by_pid: HashMap<u16, u64>,
     pub(super) last_pts_by_pid: HashMap<u16, i64>,
     pub(super) pes: Reassembler,
     pub(super) queue: VecDeque<DemuxEvent>,
@@ -152,7 +156,7 @@ impl Demuxer {
             stream_kind_by_pid: HashMap::new(),
             cc_by_pid: HashMap::new(),
             last_psi_cc_jump: None,
-            last_pcr_27mhz: None,
+            last_pcr_by_pid: HashMap::new(),
             last_pts_by_pid: HashMap::new(),
             pes: Reassembler::new(cap_per_pid, cap_total),
             queue: VecDeque::new(),

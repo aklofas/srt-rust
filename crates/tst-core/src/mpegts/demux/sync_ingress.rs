@@ -46,10 +46,16 @@ impl super::demuxer::Demuxer {
     }
 
     pub(super) fn check_pcr(&mut self, pkt: &crate::mpegts::demux::ts::TsPacket<'_>) {
-        // Rewritten from a let-chain (`if let A && let B`) to nested if-let
-        // for MSRV 1.85 compatibility — let-chains require Rust 1.88.
+        // Per ITU-T H.222.0 §2.4.3.5, each program carries its own time base
+        // via its declared PCR PID. PCR comparisons MUST stay within a
+        // single PID's timeline; comparing across PIDs in a multi-program TS
+        // produces spurious PcrAnomaly events (validate-1 B1 / Codex
+        // TS-TIME-01). Key the last-seen map by `pkt.pid` (the on-wire PCR
+        // PID) — that's the canonical identifier of a time base.
+        //
+        // Nested if-let (not let-chain) for MSRV 1.85 — let-chains require 1.88.
         if let Some(now) = pkt.pcr_27mhz {
-            if let Some(last) = self.last_pcr_27mhz {
+            if let Some(&last) = self.last_pcr_by_pid.get(&pkt.pid) {
                 let diff = pcr_diff_27mhz(now, last);
                 if diff.abs() > PCR_ANOMALY_THRESHOLD {
                     let issue = NonConformantIssue::PcrAnomaly { delta: diff };
@@ -58,9 +64,7 @@ impl super::demuxer::Demuxer {
                     }
                 }
             }
-        }
-        if let Some(p) = pkt.pcr_27mhz {
-            self.last_pcr_27mhz = Some(p);
+            self.last_pcr_by_pid.insert(pkt.pid, now);
         }
     }
 

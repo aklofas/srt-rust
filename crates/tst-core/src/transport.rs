@@ -218,6 +218,17 @@ pub trait Transport: Send {
     /// with concurrent sends. The "close from any thread is always safe"
     /// contract in the wider design lives at the sender-shell layer,
     /// not on `Transport` itself.
+    ///
+    /// # Asymmetry with [`RecvTransport::close`]
+    ///
+    /// This method has **no default body** — every `Transport` impl MUST
+    /// implement it explicitly. This is the deliberate counterpart to
+    /// [`RecvTransport::close`], which defaults to a no-op. See that
+    /// method's docs for the full rationale: send-side close owns the
+    /// underlying resource and must release it; receive-side close
+    /// typically rides on a socket whose lifetime is owned by the paired
+    /// send-side transport, so a default no-op is correct for the common
+    /// case.
     fn close(&mut self);
 
     /// Optional cancellation accessor. Implementors that own a wakeable
@@ -292,8 +303,38 @@ pub trait RecvTransport: Send {
     /// Close the transport. Idempotent. After close, `recv_bytes` returns
     /// `TransportError::Closed`.
     ///
-    /// Defaulted as a no-op so test mocks and channel-backed implementors can
-    /// opt in only when they own a tear-down resource.
+    /// # Asymmetry with [`Transport::close`] — intentional, not an oversight
+    ///
+    /// This method defaults to a no-op, while [`Transport::close`] has no
+    /// default and MUST be implemented by every send-side impl. The two
+    /// halves of the contract form a deliberate pair:
+    ///
+    /// - **Send-side close is mandatory.** Every `Transport` impl owns its
+    ///   underlying resource (a libsrt socket, a file handle, an MPSC
+    ///   channel sender) and is responsible for releasing it.
+    /// - **Receive-side close is OFTEN a no-op.** The typical `RecvTransport`
+    ///   impl holds a *shared* socket whose lifetime is owned by the matching
+    ///   `Transport` (e.g., `SrtTransport` implements both traits over one
+    ///   socket; closing it twice would be incorrect — at best redundant,
+    ///   at worst a double-close error from the underlying library).
+    ///
+    /// Defaulting to no-op means simple `RecvTransport` impls (test mocks,
+    /// channel-backed receivers that share the send-side handle) get the
+    /// right behavior for free.
+    ///
+    /// # When you MUST override
+    ///
+    /// Impls that own a resource NOT shared with a paired `Transport` MUST
+    /// override this default. Examples:
+    ///
+    /// - File-backed recv (owns a `File` handle to flush/close).
+    /// - Network-backed recv that does not share its socket with a sender.
+    /// - Any impl whose `recv_bytes` parks on a wakeable primitive that
+    ///   needs explicit shutdown to release a thread blocked elsewhere.
+    ///
+    /// Forgetting to override in these cases leaks the resource silently —
+    /// the compiler will not flag it. If in doubt, override and call the
+    /// underlying close; an extra explicit close is preferable to a leak.
     fn close(&mut self) {}
 
     /// Optional cancellation accessor. Wakes a thread parked in `recv_bytes`.

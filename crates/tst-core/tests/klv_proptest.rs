@@ -74,7 +74,14 @@ proptest! {
         // prop_assume skips those samples; the round-trip property
         // only applies when encode succeeds.
         prop_assume!(encode_imapb(&params, value, &mut buf).is_ok());
-        let decoded = decode_imapb(&params, &buf).unwrap();
+        // A7: decode_imapb returns DecodedImapb (ST 1201.5 §7.2.2/.3
+        // special values + bounds check). The round-trip property only
+        // applies when encode produced normal-range output, so chain
+        // `.value()` to extract the f64; if the legitimate encoded
+        // integer arithmetic-decodes to a top-2-bits-set pattern
+        // (impossible by construction here since encode rejects values
+        // outside [min, max]), the prop_assume above already filtered.
+        let decoded = decode_imapb(&params, &buf).unwrap().value().unwrap();
         // Tolerance is the max of two sources of round-trip error:
         // (1) IMAPB quantization step `scale = 2^ceil(log2(span)) / 2^(8L-1)`.
         //     Encode rounds to nearest grid point so the integer-rounding

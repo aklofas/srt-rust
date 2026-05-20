@@ -129,8 +129,16 @@ fn decode_field(tag: u8, value: &[u8], pack: &mut VTargetPack) -> Result<(), VTa
             // pack tags use 3-byte IMAPB per §10.2.2.11–.17.
             let length = if tag == 12 { 2 } else { 3 };
             let params = ImapbParams { min, max, length };
+            // A7: decode_imapb returns DecodedImapb (ST 1201.5 §7.2.2/.3
+            // special values + bounds check). VTargetPack treats every
+            // non-Value result as MalformedImapb — special-value
+            // signaling at the per-target pack layer isn't a use case
+            // the API surfaces today; callers needing to differentiate
+            // can pattern-match the enum directly.
             let v = decode_imapb(&params, value)
-                .map_err(|_| VTargetPackError::MalformedImapb { tag })?;
+                .map_err(|_| VTargetPackError::MalformedImapb { tag })?
+                .value()
+                .ok_or(VTargetPackError::MalformedImapb { tag })?;
             match tag {
                 10 => pack.centroid_lat_offset = Some(v),
                 11 => pack.centroid_lon_offset = Some(v),

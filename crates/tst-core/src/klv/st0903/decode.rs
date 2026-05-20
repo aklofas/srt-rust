@@ -195,8 +195,24 @@ pub fn decode(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
                     max,
                     length: expected_len,
                 };
+                // A7: decode_imapb returns DecodedImapb (special values + bounds
+                // check per ST 1201.5 §7.2.2 step 1 + §7.2.3). The lenient
+                // top-level walker treats special values and out-of-range as
+                // "field unavailable" — surface InvalidLength as a generic
+                // field error and continue. Sites that want to differentiate
+                // +∞ / NaN / BelowMin / AboveMax can pattern-match the enum.
                 let v = match decode_imapb(&params, value) {
-                    Ok(v) => v,
+                    Ok(decoded) => match decoded.value() {
+                        Some(v) => v,
+                        None => {
+                            ls.field_errors.push(KlvFieldError::InvalidLength {
+                                tag: tag as u32,
+                                expected: expected_len,
+                                got: value.len(),
+                            });
+                            continue;
+                        }
+                    },
                     Err(_) => {
                         ls.field_errors.push(KlvFieldError::InvalidLength {
                             tag: tag as u32,
@@ -437,7 +453,18 @@ pub fn decode_strict(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
                     max,
                     length: expected_len,
                 };
-                let v = decode_imapb(&params, value).map_err(KlvDecodeError::FieldError)?;
+                // A7: strict mode rejects special values + out-of-range as
+                // InvalidLength (the most caller-friendly map onto existing
+                // error vocabulary). Future tightening could promote these
+                // to dedicated KlvFieldError variants.
+                let decoded = decode_imapb(&params, value).map_err(KlvDecodeError::FieldError)?;
+                let v = decoded.value().ok_or(KlvDecodeError::FieldError(
+                    KlvFieldError::InvalidLength {
+                        tag: tag as u32,
+                        expected: expected_len,
+                        got: value.len(),
+                    },
+                ))?;
                 match tag {
                     11 => ls.horizontal_fov = Some(v),
                     12 => ls.vertical_fov = Some(v),

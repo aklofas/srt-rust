@@ -1215,6 +1215,34 @@ pub mod tst_core::klv
 pub mod tst_core::klv::checksum
 pub fn tst_core::klv::checksum::checksum_running_sum_16(buf: &[u8]) -> u16
 pub mod tst_core::klv::imapb
+#[non_exhaustive] pub enum tst_core::klv::imapb::DecodedImapb
+pub tst_core::klv::imapb::DecodedImapb::AboveMax
+pub tst_core::klv::imapb::DecodedImapb::BelowMin
+pub tst_core::klv::imapb::DecodedImapb::NaN
+pub tst_core::klv::imapb::DecodedImapb::NegativeInfinity
+pub tst_core::klv::imapb::DecodedImapb::OutOfRange
+pub tst_core::klv::imapb::DecodedImapb::OutOfRange::decoded: f64
+pub tst_core::klv::imapb::DecodedImapb::PositiveInfinity
+pub tst_core::klv::imapb::DecodedImapb::ReservedSpecial
+pub tst_core::klv::imapb::DecodedImapb::ReservedSpecial::raw: u64
+pub tst_core::klv::imapb::DecodedImapb::Value(f64)
+impl tst_core::klv::imapb::DecodedImapb
+pub fn tst_core::klv::imapb::DecodedImapb::value(self) -> core::option::Option<f64>
+impl core::clone::Clone for tst_core::klv::imapb::DecodedImapb
+pub fn tst_core::klv::imapb::DecodedImapb::clone(&self) -> tst_core::klv::imapb::DecodedImapb
+impl core::cmp::PartialEq for tst_core::klv::imapb::DecodedImapb
+pub fn tst_core::klv::imapb::DecodedImapb::eq(&self, other: &tst_core::klv::imapb::DecodedImapb) -> bool
+impl core::fmt::Debug for tst_core::klv::imapb::DecodedImapb
+pub fn tst_core::klv::imapb::DecodedImapb::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::klv::imapb::DecodedImapb
+impl core::marker::StructuralPartialEq for tst_core::klv::imapb::DecodedImapb
+impl core::marker::Freeze for tst_core::klv::imapb::DecodedImapb
+impl core::marker::Send for tst_core::klv::imapb::DecodedImapb
+impl core::marker::Sync for tst_core::klv::imapb::DecodedImapb
+impl core::marker::Unpin for tst_core::klv::imapb::DecodedImapb
+impl core::marker::UnsafeUnpin for tst_core::klv::imapb::DecodedImapb
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::imapb::DecodedImapb
+impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::imapb::DecodedImapb
 pub struct tst_core::klv::imapb::ImapbParams
 pub tst_core::klv::imapb::ImapbParams::length: usize
 pub tst_core::klv::imapb::ImapbParams::max: f64
@@ -1234,7 +1262,7 @@ impl core::marker::Unpin for tst_core::klv::imapb::ImapbParams
 impl core::marker::UnsafeUnpin for tst_core::klv::imapb::ImapbParams
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::klv::imapb::ImapbParams
 impl core::panic::unwind_safe::UnwindSafe for tst_core::klv::imapb::ImapbParams
-pub fn tst_core::klv::imapb::decode_imapb(p: &tst_core::klv::imapb::ImapbParams, bytes: &[u8]) -> core::result::Result<f64, tst_core::error::KlvFieldError>
+pub fn tst_core::klv::imapb::decode_imapb(p: &tst_core::klv::imapb::ImapbParams, bytes: &[u8]) -> core::result::Result<tst_core::klv::imapb::DecodedImapb, tst_core::error::KlvFieldError>
 pub fn tst_core::klv::imapb::encode_imapb(p: &tst_core::klv::imapb::ImapbParams, value: f64, out: &mut [u8]) -> core::result::Result<(), tst_core::error::KlvEncodeError>
 pub mod tst_core::klv::length
 pub enum tst_core::klv::length::LengthEncoding

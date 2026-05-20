@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc d8455703642e7e4fdd6a632e58d1f5dec48297f62ca89a4d85c23fd7e88e9703 # shrinks to length = 7, min = -105.06312612898851, max = 147.621397249181, value = 141.58187619289842
 cc 6ef303fcfce17d98fcc73ffe836fd4a9a5570bebef5d19c7edb24f150784c5bc # shrinks to length = 7, min = -174.50685485872313, max = 0.0, value = -6.50296791890737
+cc 98b1bf66afc32c1b5a9c3cae4a6c2c0fbebfac7ed5d645d21f7caa4ca851dc92 # shrinks to length = 1, min = -119.69244547500175, max = 122.35848368258804, t = 0.0

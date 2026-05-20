@@ -8,11 +8,13 @@
 
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::Demuxer;
+use tst_core::mpegts::demux::DemuxerBuilder;
 use tst_core::mpegts::demux::event::{
-    DemuxEvent, Obu, SamplePayload, StreamId, StreamKind, VideoCodec, VideoPayload,
+    DemuxEvent, NonConformantIssue, Obu, SamplePayload, StreamId, StreamKind, VideoCodec,
+    VideoPayload,
 };
 use tst_core::mpegts::mux::{
-    Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
+    Av1CarriageMode, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec as MuxVideoCodec,
 };
 
 /// Build a minimal AV1 access unit: Temporal Delimiter + Sequence Header +
@@ -109,3 +111,208 @@ fn av1_mux_demux_roundtrip_emits_obus() {
         other => panic!("unexpected SamplePayload: {other:?}"),
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// C8 — AV1-in-MPEG-2-TS binding-conformant round-trips
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Default mux + default demux both use `Av1CarriageMode::Mpeg2TsBinding`.
+/// The OBUs must round-trip without raising any binding nonconformance
+/// issues, even when the payload contains bytes that would alias the
+/// `ts_open_bitstream_unit` start code (the mux escapes, the demux unwraps).
+#[test]
+fn av1_binding_mode_round_trip_no_issues_with_emulation_prevention() {
+    fn obu(obu_type: u8, body: &[u8]) -> Vec<u8> {
+        let header = (obu_type << 3) | 0x02;
+        let mut v = vec![header];
+        v.push(body.len() as u8);
+        v.extend_from_slice(body);
+        v
+    }
+    // OBU bodies contain bytes that, when concatenated, produce a
+    // 0x00 0x00 0x01 sequence — the muxer MUST insert emulation
+    // prevention, the demuxer MUST strip it back out.
+    let mut au = Vec::new();
+    au.extend(obu(2, &[])); // Temporal Delimiter
+    au.extend(obu(1, &[0x00, 0x00, 0x01, 0xAA])); // Sequence Header (carries the aliasing sequence)
+    au.extend(obu(3, &[0x00, 0xFF])); // Frame Header
+    au.extend(obu(4, &[0x00, 0x00, 0x02])); // Tile Group (another aliasing sequence)
+
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, MuxVideoCodec::Av1);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    assert_eq!(cfg.av1_carriage, Av1CarriageMode::Mpeg2TsBinding);
+    let mut mux = Muxer::new(cfg).unwrap();
+    let h = mux.video_handles()[0];
+    mux.push_video_to(h, &au, Pts90khz::new(90_000), true)
+        .unwrap();
+    let ts_bytes = drain_mux(&mut mux);
+
+    let mut demux = Demuxer::new();
+    demux.feed(&ts_bytes).unwrap();
+    demux.flush();
+
+    let mut issues: Vec<NonConformantIssue> = Vec::new();
+    let mut sample_evt: Option<SamplePayload> = None;
+    while let Some(e) = demux.next_event() {
+        match e {
+            DemuxEvent::Sample { payload, .. } => sample_evt = Some(payload),
+            DemuxEvent::NonConformant { issue, .. } => issues.push(issue),
+            _ => {}
+        }
+    }
+    // No binding-conformance issues should fire on a binding-conformant
+    // mux+demux pair. (Other issues like the AV1 OBU forbidden/reserved
+    // bit checks are not exercised here — the synthetic OBUs are clean.)
+    for i in &issues {
+        assert!(
+            !matches!(
+                i,
+                NonConformantIssue::Av1WrongStreamId { .. }
+                    | NonConformantIssue::Av1MissingTsObuFraming { .. }
+            ),
+            "unexpected binding-conformance issue on a conformant round-trip: {i:?}"
+        );
+    }
+    let payload = sample_evt.expect("expected Sample event");
+    if let SamplePayload::Video {
+        payload: VideoPayload::Obus(obus),
+        ..
+    } = payload
+    {
+        let types: Vec<u8> = obus.iter().map(|o| o.obu_type).collect();
+        assert_eq!(types, vec![2, 1, 3, 4]);
+        // Body bytes recovered byte-for-byte after demux unwrap +
+        // emulation-prevention strip.
+        assert_eq!(obus[1].payload, vec![0x00, 0x00, 0x01, 0xAA]);
+        assert_eq!(obus[3].payload, vec![0x00, 0x00, 0x02]);
+    } else {
+        panic!("expected AV1 OBUs sample, got {payload:?}");
+    }
+}
+
+/// Interop-mode sender + binding-mode demuxer: the demuxer should surface
+/// both `Av1WrongStreamId` (stream_id=0xE0 instead of 0xBD) AND
+/// `Av1MissingTsObuFraming` (no start-code prefix) on the PES, and still
+/// emit the Sample via raw-OBU fallback in lenient mode.
+#[test]
+fn av1_interop_sender_into_binding_demuxer_surfaces_both_issues() {
+    fn obu(obu_type: u8, body: &[u8]) -> Vec<u8> {
+        let header = (obu_type << 3) | 0x02;
+        let mut v = vec![header];
+        v.push(body.len() as u8);
+        v.extend_from_slice(body);
+        v
+    }
+    let mut au = Vec::new();
+    au.extend(obu(2, &[]));
+    au.extend(obu(1, &[0xAA]));
+
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, MuxVideoCodec::Av1);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.av1_carriage(Av1CarriageMode::InteropRawObu);
+        b.build().unwrap()
+    };
+    let mut mux = Muxer::new(cfg).unwrap();
+    let h = mux.video_handles()[0];
+    mux.push_video_to(h, &au, Pts90khz::new(90_000), true)
+        .unwrap();
+    let ts_bytes = drain_mux(&mut mux);
+
+    // Default demuxer = binding-mode.
+    let mut demux = Demuxer::new();
+    demux.feed(&ts_bytes).unwrap();
+    demux.flush();
+
+    let mut saw_wrong_stream_id = false;
+    let mut saw_missing_framing = false;
+    let mut saw_sample = false;
+    while let Some(e) = demux.next_event() {
+        match e {
+            DemuxEvent::NonConformant { issue, .. } => match issue {
+                NonConformantIssue::Av1WrongStreamId { observed, .. } => {
+                    assert_eq!(observed, 0xE0);
+                    saw_wrong_stream_id = true;
+                }
+                NonConformantIssue::Av1MissingTsObuFraming { .. } => {
+                    saw_missing_framing = true;
+                }
+                _ => {}
+            },
+            DemuxEvent::Sample { .. } => saw_sample = true,
+            _ => {}
+        }
+    }
+    assert!(saw_wrong_stream_id, "expected Av1WrongStreamId issue");
+    assert!(saw_missing_framing, "expected Av1MissingTsObuFraming issue");
+    assert!(
+        saw_sample,
+        "lenient mode should still emit the Sample via raw-OBU fallback"
+    );
+}
+
+/// Interop-mode sender + interop-mode demuxer: no binding issues, classic
+/// round-trip. Exercises the escape-hatch matching.
+#[test]
+fn av1_interop_round_trip_no_binding_issues() {
+    fn obu(obu_type: u8, body: &[u8]) -> Vec<u8> {
+        let header = (obu_type << 3) | 0x02;
+        let mut v = vec![header];
+        v.push(body.len() as u8);
+        v.extend_from_slice(body);
+        v
+    }
+    let mut au = Vec::new();
+    au.extend(obu(2, &[]));
+    au.extend(obu(1, &[0xAA]));
+
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, MuxVideoCodec::Av1);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.av1_carriage(Av1CarriageMode::InteropRawObu);
+        b.build().unwrap()
+    };
+    let mut mux = Muxer::new(cfg).unwrap();
+    let h = mux.video_handles()[0];
+    mux.push_video_to(h, &au, Pts90khz::new(90_000), true)
+        .unwrap();
+    let ts_bytes = drain_mux(&mut mux);
+
+    let mut demux = DemuxerBuilder::new()
+        .av1_carriage(Av1CarriageMode::InteropRawObu)
+        .build();
+    demux.feed(&ts_bytes).unwrap();
+    demux.flush();
+
+    let mut saw_sample = false;
+    while let Some(e) = demux.next_event() {
+        match e {
+            DemuxEvent::NonConformant { issue, .. } => {
+                assert!(
+                    !matches!(
+                        issue,
+                        NonConformantIssue::Av1WrongStreamId { .. }
+                            | NonConformantIssue::Av1MissingTsObuFraming { .. }
+                    ),
+                    "interop demuxer must not raise binding-conformance issues: {issue:?}"
+                );
+            }
+            DemuxEvent::Sample { .. } => saw_sample = true,
+            _ => {}
+        }
+    }
+    assert!(saw_sample, "interop round-trip should emit Sample");
+}
+
+// Suppress unused import warning when StreamId-only branches don't fire.
+#[allow(dead_code)]
+fn _unused_imports(_: StreamId) {}

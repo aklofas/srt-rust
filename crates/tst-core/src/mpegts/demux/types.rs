@@ -79,6 +79,22 @@ pub struct DemuxerConfig {
     /// `NonConformantIssue::PsiCcDiscontinuity`. Matches ffmpeg
     /// `mpegts.c:3118-3142`.
     pub lenient_psi_reassembly: bool,
+    /// AV1 PES carriage mode the demuxer expects. Default
+    /// [`crate::mpegts::mux::Av1CarriageMode::Mpeg2TsBinding`]
+    /// (spec-conformant per the AV1-in-MPEG-2-TS binding).
+    ///
+    /// In `Mpeg2TsBinding` mode the demuxer expects PES
+    /// `stream_id=0xBD` and `ts_open_bitstream_unit()` framing on each
+    /// OBU. Violations surface as
+    /// [`crate::mpegts::demux::NonConformantIssue::Av1WrongStreamId`]
+    /// and [`crate::mpegts::demux::NonConformantIssue::Av1MissingTsObuFraming`].
+    /// The demuxer falls back to raw-OBU parsing in lenient mode so the
+    /// sample still surfaces.
+    ///
+    /// In `InteropRawObu` mode the demuxer accepts raw OBUs without the
+    /// `ts_open_bitstream_unit` framing (matches ffmpeg / libaom /
+    /// hls.js / mediamtx today) and does not raise the binding issues.
+    pub av1_carriage: crate::mpegts::mux::Av1CarriageMode,
 }
 
 /// Per-program demuxer state. Crate-private — accessed only by `Demuxer`
@@ -138,6 +154,14 @@ impl DemuxerBuilder {
 
     pub fn treat_as(mut self, pid: u16, kind: StreamKind) -> Self {
         self.options.stream_kind_overrides.insert(pid, kind);
+        self
+    }
+
+    /// Set the expected AV1 PES carriage mode. Default
+    /// [`crate::mpegts::mux::Av1CarriageMode::Mpeg2TsBinding`] (spec-conformant).
+    /// Set to `InteropRawObu` to match ffmpeg/libaom/hls.js senders.
+    pub fn av1_carriage(mut self, mode: crate::mpegts::mux::Av1CarriageMode) -> Self {
+        self.options.av1_carriage = mode;
         self
     }
 

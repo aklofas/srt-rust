@@ -158,6 +158,49 @@ pub(super) fn validate_annex_b(nal: &[u8]) -> Result<(), MuxError> {
     Ok(())
 }
 
+/// AV1-in-MPEG-2-TS binding §3.2 `ts_open_bitstream_unit()` start code.
+///
+/// Per binding spec the 4-byte sequence `0x00 0x00 0x00 0x02` prefixes
+/// each OBU (the `0x02` final byte distinguishes this framing from H.264 /
+/// H.265 Annex-B start codes `0x00 0x00 0x00 0x01`).
+pub(super) const AV1_TS_OBU_START_CODE: [u8; 4] = [0x00, 0x00, 0x00, 0x02];
+
+/// Wrap a raw OBU payload in `ts_open_bitstream_unit()` framing
+/// (AV1-in-MPEG-2-TS binding §3.2): prefix with [`AV1_TS_OBU_START_CODE`]
+/// then copy the OBU bytes while inserting emulation-prevention `0x03`
+/// bytes anywhere a `0x00 0x00 0x0X` (X ≤ 0x02) byte sequence would
+/// otherwise occur in the body.
+///
+/// The emulation-prevention scheme preserves the uniqueness of the
+/// start code so a streaming receiver can resynchronize on it. The
+/// receiver-side `split_obus_binding` undoes both the prefix and the
+/// escapes.
+///
+/// Appends to `out` (does not clear it). Returns the number of bytes
+/// written to `out`.
+pub(super) fn wrap_av1_obus_binding(obu_bytes: &[u8], out: &mut Vec<u8>) -> usize {
+    let start_len = out.len();
+    out.extend_from_slice(&AV1_TS_OBU_START_CODE);
+    // Walk the OBU bytes and insert 0x03 emulation-prevention bytes any
+    // time a 0x00 0x00 followed by 0x00/0x01/0x02 sequence would appear
+    // in the output. Tracks the trailing-zero count to detect 2-byte
+    // 0x00 0x00 windows landing in the output stream.
+    let mut zero_run = 0u8;
+    for &b in obu_bytes {
+        if zero_run >= 2 && b <= 0x02 {
+            out.push(0x03);
+            zero_run = 0;
+        }
+        out.push(b);
+        if b == 0x00 {
+            zero_run = zero_run.saturating_add(1);
+        } else {
+            zero_run = 0;
+        }
+    }
+    out.len() - start_len
+}
+
 /// True iff `caller_descs` contains any descriptor that the receiver-side
 /// subtitle classifier recognizes as a codec marker. Mirrors the demux-side
 /// `mpegts::demux::pmt_classify::has_recognized_subtitle_descriptor` predicate
@@ -502,8 +545,38 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
                 bytes.extend_from_slice(&auto);
             }
         }
-        for tlv in caller_descs {
-            bytes.extend_from_slice(tlv);
+        // AV1-in-MPEG-2-TS binding §2.1 — AV01 registration_descriptor
+        // MUST be the FIRST descriptor in the per-stream PMT loop.
+        // When the caller-supplied descriptor set itself contains an
+        // AV01 Registration (and we therefore suppressed the auto-emit
+        // above), reorder it to the front so receiver classification
+        // gates on the first-position Registration. Mirrors the
+        // §2.1 "MUST be FIRST" constraint surfaced in the auto-emit
+        // path. Non-AV1 streams pass through unchanged.
+        if let StreamSpec::Video {
+            codec: VideoCodec::Av1,
+            ..
+        } = spec
+        {
+            let av01_idx = caller_descs
+                .iter()
+                .position(|tlv| tlv.len() >= 6 && tlv[0] == 0x05 && &tlv[2..6] == b"AV01");
+            if let Some(idx) = av01_idx {
+                bytes.extend_from_slice(&caller_descs[idx]);
+                for (i, tlv) in caller_descs.iter().enumerate() {
+                    if i != idx {
+                        bytes.extend_from_slice(tlv);
+                    }
+                }
+            } else {
+                for tlv in caller_descs {
+                    bytes.extend_from_slice(tlv);
+                }
+            }
+        } else {
+            for tlv in caller_descs {
+                bytes.extend_from_slice(tlv);
+            }
         }
         cache.push(bytes);
     }
@@ -589,5 +662,80 @@ pub(super) fn initialize_stats(
                 ..Default::default()
             },
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mpegts::demux::payload::{Av1BindingUnwrap, unwrap_av1_binding};
+
+    /// `wrap_av1_obus_binding` paired with the demuxer's `unwrap_av1_binding`
+    /// must form a faithful round-trip: any input byte sequence wraps to
+    /// a binding-conformant payload that unwraps back to the original.
+    #[test]
+    fn av1_binding_wrap_unwrap_round_trip_plain_bytes() {
+        let input: &[u8] = &[0xFF, 0x12, 0x34, 0x56];
+        let mut wrapped = Vec::new();
+        let written = wrap_av1_obus_binding(input, &mut wrapped);
+        assert_eq!(written, wrapped.len());
+        // Must begin with the binding §3.2 start code.
+        assert_eq!(&wrapped[..4], &[0x00, 0x00, 0x00, 0x02]);
+        match unwrap_av1_binding(&wrapped) {
+            Av1BindingUnwrap::Conformant(out) => assert_eq!(&out[..], input),
+            Av1BindingUnwrap::MissingFraming => panic!("conformant input misclassified"),
+        }
+    }
+
+    #[test]
+    fn av1_binding_wrap_inserts_escape_for_zero_zero_one() {
+        // Body byte sequence 0x00 0x00 0x01 (the H.264-Annex-B start code)
+        // is forbidden inside the wrapped body — wrap MUST escape it to
+        // 0x00 0x00 0x03 0x01 on the wire.
+        let input: &[u8] = &[0xAA, 0x00, 0x00, 0x01, 0xBB];
+        let mut wrapped = Vec::new();
+        wrap_av1_obus_binding(input, &mut wrapped);
+        let expected: &[u8] = &[
+            0x00, 0x00, 0x00, 0x02, // start code
+            0xAA, 0x00, 0x00, 0x03, 0x01, 0xBB, // body + emulation prevention
+        ];
+        assert_eq!(&wrapped[..], expected);
+    }
+
+    #[test]
+    fn av1_binding_wrap_escapes_zero_zero_zero() {
+        // 0x00 0x00 0x00 (three zeros) needs ONE escape inserted after the
+        // first two zeros so the third zero can't form a fresh
+        // alias-with-the-next-byte sequence. Verifies the zero-run resets
+        // after an emulation-prevention insertion.
+        let input: &[u8] = &[0x00, 0x00, 0x00, 0xCC];
+        let mut wrapped = Vec::new();
+        wrap_av1_obus_binding(input, &mut wrapped);
+        let expected: &[u8] = &[
+            0x00, 0x00, 0x00, 0x02, // start code
+            0x00, 0x00, 0x03, 0x00, 0xCC, // first 0x00 0x00 escaped, then plain bytes
+        ];
+        assert_eq!(&wrapped[..], expected);
+    }
+
+    #[test]
+    fn av1_binding_unwrap_missing_start_code_reports_missing_framing() {
+        // Raw OBU shape (no start code prefix) — unwrap reports
+        // MissingFraming; demuxer treats this as a non-conformance signal.
+        let raw: &[u8] = &[0x12, 0x00, 0xAA];
+        assert_eq!(unwrap_av1_binding(raw), Av1BindingUnwrap::MissingFraming);
+    }
+
+    #[test]
+    fn av1_binding_round_trip_empty_body() {
+        // Empty input wraps to just the 4-byte start code; unwraps back
+        // to an empty Vec.
+        let mut wrapped = Vec::new();
+        wrap_av1_obus_binding(&[], &mut wrapped);
+        assert_eq!(&wrapped[..], &[0x00, 0x00, 0x00, 0x02]);
+        match unwrap_av1_binding(&wrapped) {
+            Av1BindingUnwrap::Conformant(out) => assert!(out.is_empty()),
+            Av1BindingUnwrap::MissingFraming => panic!(),
+        }
     }
 }

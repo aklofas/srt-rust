@@ -621,6 +621,33 @@ pub enum NonConformantIssue {
     /// `pid` is the stream PID.
     Ac3SyncMissing { pid: u16 },
 
+    /// AV1-in-MPEG-2-TS binding §3.4 violation — AV1 PES arrived with
+    /// `stream_id` other than `0xBD` (private_stream_1).
+    ///
+    /// Emitted only when the demuxer is configured for binding-conformant
+    /// AV1 carriage (`DemuxerConfig::av1_carriage == Av1CarriageMode::Mpeg2TsBinding`,
+    /// the default). In `InteropRawObu` mode the demuxer accepts
+    /// `stream_id=0xE0` without raising this issue.
+    ///
+    /// `observed` is the actual PES `stream_id` byte. Lenient mode
+    /// (`StrictMode::Off`): the demuxer continues to dispatch the PES.
+    /// Strict mode (`StrictMode::Full`): escalates to `DemuxError::StrictRejection`.
+    Av1WrongStreamId { pid: u16, observed: u8 },
+
+    /// AV1-in-MPEG-2-TS binding §3.2 violation — AV1 PES payload did not
+    /// begin with a `ts_open_bitstream_unit()` start code
+    /// (`0x00 0x00 0x00 0x02`).
+    ///
+    /// Emitted only when the demuxer is configured for binding-conformant
+    /// AV1 carriage (`DemuxerConfig::av1_carriage == Av1CarriageMode::Mpeg2TsBinding`).
+    /// Indicates the payload is being interpreted as raw OBUs (interop
+    /// shape) rather than binding-framed.
+    ///
+    /// Lenient mode (`StrictMode::Off`): the demuxer falls back to raw-OBU
+    /// parsing and the OBUs surface on the `Sample` event. Strict mode
+    /// (`StrictMode::Full`): escalates to `DemuxError::StrictRejection`.
+    Av1MissingTsObuFraming { pid: u16 },
+
     /// Other.
     Other(String),
 }
@@ -943,6 +970,20 @@ impl std::fmt::Display for NonConformantIssue {
                     f,
                     "AAC-LATM framing violation on PID 0x{pid:04X}: {detail} \
                      (ISO/IEC 14496-3 §1.7 + H.222.0 Table 2-34 stream_type 0x11)"
+                )
+            }
+            NonConformantIssue::Av1WrongStreamId { pid, observed } => {
+                write!(
+                    f,
+                    "AV1 PES on PID 0x{pid:04X} carries stream_id=0x{observed:02X} \
+                     (AV1-in-MPEG-2-TS binding §3.4 mandates 0xBD)"
+                )
+            }
+            NonConformantIssue::Av1MissingTsObuFraming { pid } => {
+                write!(
+                    f,
+                    "AV1 PES on PID 0x{pid:04X} missing ts_open_bitstream_unit \
+                     start code (AV1-in-MPEG-2-TS binding §3.2 mandates 0x00000002 prefix)"
                 )
             }
             NonConformantIssue::Other(msg) => {

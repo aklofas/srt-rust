@@ -11,10 +11,13 @@ use crate::error::MuxError;
 use crate::mpegts::common::{Pcr27mhz, Pts90khz};
 
 use super::Muxer;
-use super::pes::{MAX_PES_HEADER_SIZE, PesFlags, PesPtsField, STREAM_ID_VIDEO, write_pes_header};
-use super::state::{ts_packets_for, validate_annex_b};
+use super::pes::{
+    MAX_PES_HEADER_SIZE, PesFlags, PesPtsField, STREAM_ID_PRIVATE_STREAM_1, STREAM_ID_VIDEO,
+    write_pes_header,
+};
+use super::state::{ts_packets_for, validate_annex_b, wrap_av1_obus_binding};
 use super::ts::{AdaptationField, write_packet};
-use super::types::{StreamKind, VideoCodec, VideoStreamHandle};
+use super::types::{Av1CarriageMode, StreamKind, VideoCodec, VideoStreamHandle};
 
 impl Muxer {
     /// Push one H.264 / H.265 access unit in Annex-B framing.
@@ -233,42 +236,58 @@ impl Muxer {
             });
         }
         let video_pid = self.video_streams[prog_idx][within_idx].pid;
+        let codec = self.video_streams[prog_idx][within_idx].codec;
         // AV1 carries OBUs (AV1 spec §5), not Annex-B NAL units — its push
         // payload is the OBU bitstream and must skip the Annex-B start-code
         // check that H.264 / H.265 / H.266 require.
-        if !matches!(
-            self.video_streams[prog_idx][within_idx].codec,
-            VideoCodec::Av1
-        ) {
+        if !matches!(codec, VideoCodec::Av1) {
             validate_annex_b(nal)?;
         }
 
-        let mut header = [0u8; MAX_PES_HEADER_SIZE];
-        // AV1-in-MPEG-2-TS binding (`av1-mpeg2-ts-binding.html`) carriage notes:
-        // - §3.4 `data_alignment_indicator=1` — REQUIRED, set below per binding.
-        // - §3.4 `stream_id=0xBD` (private_stream_1) — DEVIATION: library uses
-        //   `STREAM_ID_VIDEO` (0xE0) for ffmpeg + libaom interop. See
-        //   `docs/deferred-features.md` §"AV1-in-MPEG-2-TS binding §3.2 / §3.4
-        //   carriage conformance" for rationale + trigger-to-revisit.
-        // - §3.2 `ts_open_bitstream_unit()` framing (start codes + emulation
-        //   prevention bytes) — DEVIATION: library carries raw OBUs in the
-        //   PES payload (low-overhead bitstream format directly). Same
-        //   deferred-features.md entry covers this; strict-mode receivers
-        //   would surface `NonConformantIssue::Av1MissingTsObuFraming` /
-        //   `Av1WrongStreamId` (planned additions — not yet in
-        //   `mpegts::demux::event`).
+        // AV1-in-MPEG-2-TS binding (`av1-mpeg2-ts-binding.html`) carriage:
+        // - §3.4 `data_alignment_indicator=1` — REQUIRED for AV1, set below.
+        // - §3.4 `stream_id` — `0xBD` (private_stream_1) in
+        //   `Mpeg2TsBinding` mode; `0xE0` (video) in `InteropRawObu`.
+        // - §3.2 `ts_open_bitstream_unit()` framing — applied in
+        //   `Mpeg2TsBinding` mode via [`wrap_av1_obus_binding`]; raw OBUs
+        //   in `InteropRawObu` mode.
         // H.222.0 §2.4.3.7 leaves the alignment bit codec-defined for
         // H.264 / H.265 / H.266 — keep them unset.
-        let pes_flags = PesFlags {
-            data_alignment_indicator: matches!(
-                self.video_streams[prog_idx][within_idx].codec,
-                VideoCodec::Av1
-            ),
+        let av1_binding = matches!(codec, VideoCodec::Av1)
+            && matches!(self.config.av1_carriage, Av1CarriageMode::Mpeg2TsBinding);
+        let stream_id = if av1_binding {
+            STREAM_ID_PRIVATE_STREAM_1
+        } else {
+            STREAM_ID_VIDEO
         };
-        let header_len = write_pes_header(&mut header, STREAM_ID_VIDEO, pts_field, None, pes_flags);
+        let pes_flags = PesFlags {
+            data_alignment_indicator: matches!(codec, VideoCodec::Av1),
+        };
+        let mut header = [0u8; MAX_PES_HEADER_SIZE];
+        let header_len =
+            write_pes_header(&mut header, stream_id, pts_field, None, pes_flags);
         let pts = pacing_pts;
 
-        let total = header_len + nal.len();
+        // Bytes that will land in the PES payload (after the PES header).
+        // In `Mpeg2TsBinding` mode for AV1 streams, the raw OBU input is
+        // wrapped in `ts_open_bitstream_unit()` framing here so the
+        // payload size accounting below (ts_packets_for) sees the final
+        // on-wire length. Wrapping is one extra contiguous scratch
+        // buffer; the hot non-AV1 path is unchanged.
+        let wrapped_scratch: Vec<u8> = if av1_binding {
+            // Reserve an upper bound: 4-byte start code + body + worst-case
+            // ~1.5x for emulation-prevention escapes. The wrap function
+            // grows the Vec as needed; this preallocation just avoids
+            // a couple of reallocations on typical input.
+            let mut v = Vec::with_capacity(4 + nal.len() + (nal.len() >> 1));
+            wrap_av1_obus_binding(nal, &mut v);
+            v
+        } else {
+            Vec::new()
+        };
+        let payload_bytes: &[u8] = if av1_binding { &wrapped_scratch } else { nal };
+
+        let total = header_len + payload_bytes.len();
         let video_packets = ts_packets_for(total);
         let psi_packets = self.psi_packets_due(prog_idx, pts.as_ticks());
         // Validate-1 C3: when the PCR PID hasn't received payload within
@@ -291,7 +310,7 @@ impl Muxer {
 
         self.pes_scratch.clear();
         self.pes_scratch.extend_from_slice(&header[..header_len]);
-        self.pes_scratch.extend_from_slice(nal);
+        self.pes_scratch.extend_from_slice(payload_bytes);
 
         let mut cursor = 0;
         let mut first = true;
@@ -331,15 +350,17 @@ impl Muxer {
         }
 
         // Count on the Ok path only — after all early-returns above.
+        // Stats track *caller-supplied* AU bytes — binding-mode framing
+        // overhead is wire-level and not counted here.
         if let Some(s) = self.per_stream.get_mut(&video_pid) {
             s.items += 1;
             s.bytes += nal.len() as u64;
         }
 
-        // Codec-counter bump. Codec is known per-stream via VideoCodec on
-        // the stream config; key_frame is a clean caller-supplied signal
-        // for random-access (no NAL inspection required).
-        let codec = self.video_streams[prog_idx][within_idx].codec;
+        // Codec-counter bump. Codec already bound above; key_frame is a
+        // clean caller-supplied signal for random-access (no NAL inspection
+        // required). NAL-unit count walks the caller-supplied AU bytes
+        // regardless of carriage mode.
         let nals_count = crate::codec::util::count_nal_units(nal, codec);
         let ra_count = u64::from(key_frame);
         self.bump_video_counters(video_pid, nals_count, ra_count);

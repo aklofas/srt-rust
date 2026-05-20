@@ -13,7 +13,7 @@
 
 pub mod demuxer;
 pub mod event;
-mod payload;
+pub(crate) mod payload;
 mod pes;
 mod psi;
 pub(crate) mod psi_assembler;

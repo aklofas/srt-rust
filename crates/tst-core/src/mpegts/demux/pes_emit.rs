@@ -21,7 +21,8 @@ use crate::mpegts::demux::event::{
     StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload,
 };
 use crate::mpegts::demux::payload::{
-    DvbSubStripResult, KlvShape, classify_klv, split_nals, split_obus, strip_dvb_sub_envelope,
+    Av1BindingUnwrap, DvbSubStripResult, KlvShape, classify_klv, split_nals, split_obus,
+    strip_dvb_sub_envelope, unwrap_av1_binding,
 };
 use crate::mpegts::demux::pes::{PesPayload, ReassemblyOutcome};
 
@@ -181,7 +182,71 @@ impl super::demuxer::Demuxer {
                         )
                     }
                     VideoCodec::Av1 => {
-                        let (obus, mut issues) = split_obus(&pes.payload);
+                        // AV1-in-MPEG-2-TS binding §3.2 + §3.4 conformance —
+                        // surface binding-spec violations BEFORE running the
+                        // OBU splitter. In `Mpeg2TsBinding` mode the demuxer
+                        // expects PES `stream_id=0xBD` (§3.4) and a
+                        // `ts_open_bitstream_unit()` start-code prefix on
+                        // each OBU (§3.2). The matching mux-side carriage
+                        // is `MuxerConfig::av1_carriage = Mpeg2TsBinding`.
+                        //
+                        // In `InteropRawObu` mode (matches ffmpeg / libaom
+                        // / hls.js / mediamtx today) the demuxer accepts
+                        // `stream_id=0xE0` and raw OBUs without raising
+                        // any binding issues. Senders that emit interop
+                        // carriage but consumers running binding-strict
+                        // demuxers will see one each of `Av1WrongStreamId`
+                        // + `Av1MissingTsObuFraming` per PES — both are
+                        // best-effort detectors; lenient mode still
+                        // surfaces the OBUs via the raw-OBU fallback.
+                        use crate::mpegts::mux::Av1CarriageMode;
+                        let binding_mode =
+                            matches!(self.options.av1_carriage, Av1CarriageMode::Mpeg2TsBinding);
+                        let mut reject_sample = false;
+
+                        // Per AV1-in-MPEG-2-TS binding §3.4 PES stream_id
+                        // MUST be 0xBD. Surface the observed byte when it
+                        // disagrees, but only in binding mode — interop
+                        // mode tolerates 0xE0 silently.
+                        if binding_mode && pes.stream_id != 0xBD {
+                            let issue = NonConformantIssue::Av1WrongStreamId {
+                                pid: stream.pid,
+                                observed: pes.stream_id,
+                            };
+                            if self.options.strict.rejects(&issue) {
+                                reject_sample = true;
+                            }
+                            self.queue_nonconformant(stream, issue);
+                        }
+
+                        // Try the `ts_open_bitstream_unit()` unwrap in
+                        // binding mode. If it fails, surface
+                        // `Av1MissingTsObuFraming` and fall back to raw-OBU
+                        // parsing on the original payload — strict mode
+                        // will still reject via `reject_sample`.
+                        let owned_payload: Vec<u8>;
+                        let obu_input: &[u8] = if binding_mode {
+                            match unwrap_av1_binding(&pes.payload) {
+                                Av1BindingUnwrap::Conformant(v) => {
+                                    owned_payload = v;
+                                    &owned_payload
+                                }
+                                Av1BindingUnwrap::MissingFraming => {
+                                    let issue = NonConformantIssue::Av1MissingTsObuFraming {
+                                        pid: stream.pid,
+                                    };
+                                    if self.options.strict.rejects(&issue) {
+                                        reject_sample = true;
+                                    }
+                                    self.queue_nonconformant(stream, issue);
+                                    &pes.payload
+                                }
+                            }
+                        } else {
+                            &pes.payload
+                        };
+
+                        let (obus, mut issues) = split_obus(obu_input);
                         // split_obus uses pid=0 as a sentinel on the issues it
                         // raises (it doesn't know its own PID context). Patch
                         // each issue with the real stream pid before forwarding
@@ -198,7 +263,6 @@ impl super::demuxer::Demuxer {
                                 _ => {}
                             }
                         }
-                        let mut reject_sample = false;
                         for issue in issues {
                             if self.options.strict.rejects(&issue) {
                                 reject_sample = true;

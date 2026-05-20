@@ -8,8 +8,8 @@
 use crate::error::MuxError;
 use crate::mpegts::common::pid;
 use crate::mpegts::mux::types::{
-    AudioCodec, KlvStreamType, MAX_PROGRAMS, MAX_SUBTITLE_STREAMS_PER_PROGRAM, StreamKind,
-    StreamSpec, SubtitleCodec, TeletextField, VideoCodec,
+    AudioCodec, Av1CarriageMode, KlvStreamType, MAX_PROGRAMS, MAX_SUBTITLE_STREAMS_PER_PROGRAM,
+    StreamKind, StreamSpec, SubtitleCodec, TeletextField, VideoCodec,
 };
 
 /// One program in a multi-program TS multiplex. Each program has its own
@@ -133,6 +133,18 @@ pub struct MuxerConfig {
     /// Maximum buffered TS packets before push returns `BufferFull`.
     /// Default 10000 (~1.88 MB, ~600 ms at 25 Mbps). Validation: >= 10.
     pub buffer_packets: usize,
+
+    /// AV1 PES carriage mode — see [`Av1CarriageMode`].
+    ///
+    /// Default is [`Av1CarriageMode::Mpeg2TsBinding`] for spec
+    /// conformance (PES `stream_id=0xBD`, `ts_open_bitstream_unit()`
+    /// framing). Set to [`Av1CarriageMode::InteropRawObu`] for the
+    /// ffmpeg / libaom / hls.js / mediamtx interop carriage.
+    ///
+    /// Has no effect on non-AV1 streams. The matching
+    /// `DemuxerConfig::av1_carriage` controls the receiver-side
+    /// expectation — the two MUST match for a round-trip.
+    pub av1_carriage: Av1CarriageMode,
 }
 
 impl Default for MuxerConfig {
@@ -161,6 +173,7 @@ impl Default for MuxerConfig {
             pcr_interval_ms: 40,
             psi_interval_ms: 100,
             buffer_packets: 10_000,
+            av1_carriage: Av1CarriageMode::Mpeg2TsBinding,
         }
     }
 }
@@ -541,6 +554,7 @@ pub struct MuxerConfigBuilder {
     pcr_interval_ms: Option<u32>,
     psi_interval_ms: Option<u32>,
     buffer_packets: Option<usize>,
+    av1_carriage: Option<Av1CarriageMode>,
 }
 
 impl MuxerConfigBuilder {
@@ -569,6 +583,16 @@ impl MuxerConfigBuilder {
         self
     }
 
+    /// Set the AV1 PES carriage mode. Default is
+    /// [`Av1CarriageMode::Mpeg2TsBinding`] (spec-conformant per the
+    /// AV1-in-MPEG-2-TS binding). Set to [`Av1CarriageMode::InteropRawObu`]
+    /// for ffmpeg/libaom/hls.js interop carriage. See [`Av1CarriageMode`]
+    /// for the carriage-shape differences.
+    pub fn av1_carriage(&mut self, mode: Av1CarriageMode) -> &mut Self {
+        self.av1_carriage = Some(mode);
+        self
+    }
+
     /// Finalize. Returns a validated [`MuxerConfig`] or an error describing
     /// the failed rule.
     ///
@@ -584,6 +608,7 @@ impl MuxerConfigBuilder {
             pcr_interval_ms: self.pcr_interval_ms.unwrap_or(40),
             psi_interval_ms: self.psi_interval_ms.unwrap_or(100),
             buffer_packets: self.buffer_packets.unwrap_or(10_000),
+            av1_carriage: self.av1_carriage.unwrap_or_default(),
         };
         cfg.validate()?;
         Ok(cfg)

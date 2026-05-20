@@ -859,6 +859,45 @@ fn reassemble_full_ts_payload_for_pid(buf: &[u8], n: usize, target_pid: u16) -> 
     payload
 }
 
+/// Locate the PES_start packet for `target_pid` in `buf[..n]` and return
+/// the parsed PES `stream_id` byte plus the PES payload bytes (after the
+/// PES header) reassembled across continuation packets.
+fn reassemble_pes_stream_id_and_payload(buf: &[u8], n: usize, target_pid: u16) -> (u8, Vec<u8>) {
+    let mut stream_id = 0u8;
+    let mut payload = Vec::new();
+    let mut saw_start = false;
+    for pkt in buf[..n].chunks_exact(188) {
+        let pid = ((pkt[1] as u16 & 0x1F) << 8) | pkt[2] as u16;
+        if pid != target_pid {
+            continue;
+        }
+        let payload_unit_start = (pkt[1] & 0x40) != 0;
+        let adaptation_present = (pkt[3] & 0x20) != 0;
+        let mut idx = 4usize;
+        if adaptation_present {
+            let af_len = pkt[idx] as usize;
+            idx += 1 + af_len;
+        }
+        if payload_unit_start {
+            saw_start = true;
+            // PES: start_code(3) + stream_id(1) + length(2) + flags(2)
+            //      + PES_header_data_length(1) + N PTS bytes.
+            assert_eq!(&pkt[idx..idx + 3], &[0x00, 0x00, 0x01]);
+            stream_id = pkt[idx + 3];
+            let pes_header_data_length = pkt[idx + 8] as usize;
+            idx += 9 + pes_header_data_length;
+        }
+        if idx < 188 {
+            payload.extend_from_slice(&pkt[idx..188]);
+        }
+    }
+    assert!(
+        saw_start,
+        "no PES_start packet found for PID {target_pid:#06x}"
+    );
+    (stream_id, payload)
+}
+
 #[test]
 fn push_video_to_with_dts_emits_pts_dts_flags_11() {
     // Validate-1 C4: reordered video (B-frames) must emit
@@ -1009,4 +1048,195 @@ fn push_video_accepts_single_nal_unchanged() {
     let mut m = Muxer::new(MuxerConfig::default()).unwrap();
     let nal = [0x00u8, 0x00, 0x01, 0x67]; // 3-byte start code + NAL body
     assert!(m.push_video(&nal, Pts90khz::new(0), false).is_ok());
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// C8 — AV1-in-MPEG-2-TS binding-conformant carriage (validate-1 Wave C)
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn av1_default_uses_binding_mode_with_stream_id_bd_and_obu_framing() {
+    // Default AV1 carriage MUST be binding-conformant per the binding
+    // §3.4 (stream_id=0xBD) + §3.2 (ts_open_bitstream_unit framing).
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x101, VideoCodec::Av1);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    // No carriage call — default must be Mpeg2TsBinding.
+    assert_eq!(cfg.av1_carriage, Av1CarriageMode::Mpeg2TsBinding);
+
+    let mut m = Muxer::new(cfg).unwrap();
+    // Two OBUs: temporal_unit_delimiter (type 2) + a sequence-header-like
+    // OBU (type 1) with no body. The exact OBU types don't matter — we
+    // only care about the wire framing.
+    let obu_payload = vec![0x12u8, 0x00, 0x0A, 0x00];
+    m.push_video_to(
+        VideoStreamHandle::pack(0, 0),
+        &obu_payload,
+        Pts90khz::new(90_000),
+        true,
+    )
+    .unwrap();
+
+    let mut buf = vec![0u8; 188 * 16];
+    let n = m.pull(&mut buf);
+    let (stream_id, pes_payload) = reassemble_pes_stream_id_and_payload(&buf, n, 0x101);
+
+    // §3.4 — PES stream_id MUST be 0xBD (private_stream_1).
+    assert_eq!(stream_id, 0xBD, "binding §3.4 mandates stream_id=0xBD");
+    // §3.2 — PES payload MUST begin with the 4-byte ts_open_bitstream_unit
+    // start code 0x00 0x00 0x00 0x02.
+    assert_eq!(
+        &pes_payload[..4],
+        &[0x00, 0x00, 0x00, 0x02],
+        "binding §3.2 mandates ts_open_bitstream_unit start code"
+    );
+    // Body bytes (after the 4-byte start code) recover the OBU input.
+    // No emulation-prevention escapes needed here — none of the input
+    // bytes produce a 0x00 0x00 0x0X (X<=2) sequence.
+    assert_eq!(&pes_payload[4..4 + obu_payload.len()], &obu_payload[..]);
+}
+
+#[test]
+fn av1_interop_mode_preserves_existing_carriage() {
+    // InteropRawObu mode preserves stream_id=0xE0 + raw OBU payload, for
+    // ffmpeg / libaom / hls.js loopback. The escape hatch when binding
+    // carriage breaks interop.
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x101, VideoCodec::Av1);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.av1_carriage(Av1CarriageMode::InteropRawObu);
+        b.build().unwrap()
+    };
+    let mut m = Muxer::new(cfg).unwrap();
+    let obu_payload = vec![0x12u8, 0x00];
+    m.push_video_to(
+        VideoStreamHandle::pack(0, 0),
+        &obu_payload,
+        Pts90khz::new(90_000),
+        false,
+    )
+    .unwrap();
+
+    let mut buf = vec![0u8; 188 * 16];
+    let n = m.pull(&mut buf);
+    let (stream_id, pes_payload) = reassemble_pes_stream_id_and_payload(&buf, n, 0x101);
+
+    assert_eq!(stream_id, 0xE0, "interop mode uses stream_id=0xE0");
+    // No ts_open_bitstream_unit start code in interop mode — raw OBUs.
+    assert_eq!(&pes_payload[..obu_payload.len()], &obu_payload[..]);
+}
+
+#[test]
+fn av1_binding_mode_inserts_emulation_prevention_bytes() {
+    // wrap_av1_obus_binding must insert 0x03 after a 0x00 0x00 run when
+    // the next byte is ≤ 0x02. Use an OBU payload containing 0x00 0x00 0x01
+    // — that 3-byte sequence would alias the binding start code and MUST
+    // be escaped to 0x00 0x00 0x03 0x01 on the wire.
+    let cfg = MuxerConfig::default();
+    // Default config is single H.264 program, no AV1. Build a custom AV1 cfg.
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x101, VideoCodec::Av1);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.pcr_interval_ms(cfg.pcr_interval_ms);
+        b.psi_interval_ms(cfg.psi_interval_ms);
+        b.build().unwrap()
+    };
+    let mut m = Muxer::new(cfg).unwrap();
+    let obu_payload = vec![0xFFu8, 0x00, 0x00, 0x01, 0xAA];
+    m.push_video_to(
+        VideoStreamHandle::pack(0, 0),
+        &obu_payload,
+        Pts90khz::new(90_000),
+        false,
+    )
+    .unwrap();
+
+    let mut buf = vec![0u8; 188 * 16];
+    let n = m.pull(&mut buf);
+    let (_, pes_payload) = reassemble_pes_stream_id_and_payload(&buf, n, 0x101);
+
+    // Expected on the wire:
+    //   start code  : 00 00 00 02
+    //   body byte 0 : FF
+    //   body bytes  : 00 00 03 01 AA  (0x03 inserted between 00 00 and 01)
+    let expected: &[u8] = &[
+        0x00, 0x00, 0x00, 0x02, // ts_open_bitstream_unit start code
+        0xFF, 0x00, 0x00, 0x03, 0x01, 0xAA,
+    ];
+    assert_eq!(
+        &pes_payload[..expected.len()],
+        expected,
+        "binding §3.2 emulation prevention must escape 0x00 0x00 0x0X (X<=2)"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// C9 — AV01 registration descriptor MUST be FIRST in PMT ES descriptor loop
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn pmt_av1_with_caller_supplied_av01_after_other_descriptor_reorders_to_first() {
+    // Caller supplies [OtherDescriptor, AV01RegDescriptor]; the muxer MUST
+    // reorder AV01 to position 0 per binding §2.1 ("MUST be FIRST").
+    let other_desc: Vec<u8> = vec![
+        0x52, // stream_identifier_descriptor tag
+        0x01, // length
+        0x07, // component_tag value
+    ];
+    let av01_desc: Vec<u8> = vec![0x05, 0x04, b'A', b'V', b'0', b'1'];
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x101, VideoCodec::Av1);
+        prog.stream_descriptors_for_video(0, vec![other_desc.clone(), av01_desc.clone()])
+            .unwrap();
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    let muxer = Muxer::new(cfg).unwrap();
+    let entry = &muxer.pmt_descriptor_caches[0][0];
+
+    // AV01 must come first (positions 0..6), followed by other_desc (3 bytes).
+    assert_eq!(
+        &entry[..6],
+        &av01_desc[..],
+        "AV01 reg must be reordered to position 0 per binding §2.1"
+    );
+    assert_eq!(
+        &entry[6..6 + other_desc.len()],
+        &other_desc[..],
+        "non-AV01 descriptor must follow the reordered AV01"
+    );
+    assert_eq!(entry.len(), av01_desc.len() + other_desc.len());
+}
+
+#[test]
+fn pmt_av1_without_av01_passes_caller_descriptors_through() {
+    // Caller supplies a non-Registration descriptor only; auto-emit fires
+    // and prepends AV01 (existing behavior — sanity that the reorder
+    // logic doesn't disturb the auto-emit path).
+    let other_desc: Vec<u8> = vec![0x52, 0x01, 0x07];
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x101, VideoCodec::Av1);
+        prog.stream_descriptors_for_video(0, vec![other_desc.clone()])
+            .unwrap();
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    let muxer = Muxer::new(cfg).unwrap();
+    let entry = &muxer.pmt_descriptor_caches[0][0];
+
+    // First 6 bytes auto-emitted AV01; then caller's other_desc bytes.
+    assert_eq!(&entry[..6], &[0x05, 0x04, b'A', b'V', b'0', b'1']);
+    assert_eq!(&entry[6..6 + other_desc.len()], &other_desc[..]);
 }

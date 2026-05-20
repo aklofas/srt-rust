@@ -166,6 +166,15 @@ pub enum TstNonConformantCode {
     /// (`obu_type` carrier) encodes which violation variant
     /// (0=MissingSyncword, 1=AudioMuxLengthOverrun, 2=Truncated).
     LatmFraming = 29,
+    /// AV1-in-MPEG-2-TS binding §3.4 violation — PES `stream_id` other than
+    /// `0xBD`. `pid` carries the AV1 stream PID; `table_id` carrier
+    /// surfaces the observed `stream_id` byte (reused field, same shape as
+    /// `DvbSubDataIdentifier` and `SubtitleDescriptorMalformed`).
+    Av1WrongStreamId = 30,
+    /// AV1-in-MPEG-2-TS binding §3.2 violation — PES payload did not begin
+    /// with a `ts_open_bitstream_unit()` start code (`0x00 0x00 0x00 0x02`).
+    /// `pid` carries the AV1 stream PID.
+    Av1MissingTsObuFraming = 31,
 }
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::PcrMalformedKind`.
@@ -1091,6 +1100,22 @@ fn fill_nonconformant(
                 LatmFramingKind::Truncated => 2,
                 _ => 0xFF,
             };
+        }
+        NonConformantIssue::Av1WrongStreamId { pid, observed } => {
+            // AV1-in-MPEG-2-TS binding §3.4 violation. `table_id` carrier
+            // surfaces the observed stream_id byte (re-uses the same field
+            // as DvbSubDataIdentifier / SubtitleDescriptorMalformed —
+            // C ABI conserves struct width by routing per-variant bytes
+            // through shared carriers; the issue_code disambiguates).
+            body.issue_code = TstNonConformantCode::Av1WrongStreamId as c_int;
+            body.pid = *pid;
+            body.table_id = *observed;
+        }
+        NonConformantIssue::Av1MissingTsObuFraming { pid } => {
+            // AV1-in-MPEG-2-TS binding §3.2 violation — no per-variant
+            // payload beyond the PID.
+            body.issue_code = TstNonConformantCode::Av1MissingTsObuFraming as c_int;
+            body.pid = *pid;
         }
     }
     out.kind = TstEventKind::NonConformant as c_int;

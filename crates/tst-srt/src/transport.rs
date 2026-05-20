@@ -19,28 +19,48 @@ impl SrtTransport {
     ///
     /// Derived from [`tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES`] — the
     /// standard 7-packet × 188-byte TS bundle libsrt uses for live mode.
+    /// Used as a fallback only — [`Self::new`] queries the socket directly.
     pub const DEFAULT_PAYLOAD: usize = tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES;
 
     /// Wrap an already-connected `Socket`. Caller is responsible for
     /// configuring it (passphrase, latency, etc.) before passing in.
     ///
-    /// `max_payload` defaults to [`Self::DEFAULT_PAYLOAD`] (libsrt's default
-    /// `SRTO_PAYLOADSIZE`) — namely
-    /// [`tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES`] (`= 1316`)
-    /// and is NOT queried from the socket. Callers using a socket with a
-    /// non-default `SRTO_PAYLOADSIZE` must call [`with_max_payload`] to
-    /// match.
+    /// `max_payload` is read from the socket's negotiated `SRTO_PAYLOADSIZE`
+    /// (via [`Socket::payload_limit`]). On a fresh post-handshake socket
+    /// this matches whatever both peers agreed during the SRT handshake —
+    /// libsrt's default of 1316 bytes for unconfigured sockets, or a
+    /// configured value like 1456 when the `payloadsize=` URL key (or
+    /// [`SocketConfig::payload_size`]) was set on either side.
     ///
+    /// Callers that need a different `max_payload` value (e.g., they're
+    /// wrapping a non-libsrt transport, or testing without a live socket)
+    /// can override via [`with_max_payload`] after construction.
+    ///
+    /// [`Socket::payload_limit`]: crate::Socket::payload_limit
+    /// [`SocketConfig::payload_size`]: crate::config::SocketConfig::payload_size
     /// [`with_max_payload`]: SrtTransport::with_max_payload
     pub fn new(socket: Socket) -> Self {
+        let max_payload = socket.payload_limit();
         Self {
             socket: Some(socket),
-            max_payload: Self::DEFAULT_PAYLOAD,
+            max_payload,
         }
     }
 
-    /// Override the max payload (for callers who've configured a
-    /// non-default `SRTO_PAYLOADSIZE` on the socket).
+    /// Override the max payload after construction.
+    ///
+    /// Normally unnecessary — [`Self::new`] reads
+    /// [`Socket::payload_limit`] which already reflects the negotiated
+    /// `SRTO_PAYLOADSIZE`. Provided as an escape hatch for callers who
+    /// (a) wrap a non-libsrt `Socket`-shaped transport via an alternative
+    /// constructor in the future, or (b) need to artificially constrain
+    /// the per-send size below what libsrt agreed to.
+    ///
+    /// **Setting this larger than the negotiated `SRTO_PAYLOADSIZE` will
+    /// cause libsrt to reject sends with `PayloadTooLarge` at runtime.**
+    /// Use it to lower the bound, not raise it.
+    ///
+    /// [`Socket::payload_limit`]: crate::Socket::payload_limit
     pub fn with_max_payload(mut self, n: usize) -> Self {
         self.max_payload = n;
         self

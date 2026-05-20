@@ -750,6 +750,7 @@ pub fn tst_srt::socket::Socket::cancel_handle(&self) -> tst_core::cancel::SrtCan
 pub fn tst_srt::socket::Socket::close(self) -> core::result::Result<(), tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::connect_with(config: &tst_srt::config::SocketConfig, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::ConnectError>
 pub fn tst_srt::socket::Socket::local_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
+pub fn tst_srt::socket::Socket::payload_limit(&self) -> usize
 pub fn tst_srt::socket::Socket::peer_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::recv(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_srt::error::RecvError>
 pub fn tst_srt::socket::Socket::send(&mut self, buf: &[u8]) -> core::result::Result<usize, tst_srt::error::SendError>
@@ -1400,6 +1401,7 @@ pub fn tst_srt::socket::Socket::cancel_handle(&self) -> tst_core::cancel::SrtCan
 pub fn tst_srt::socket::Socket::close(self) -> core::result::Result<(), tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::connect_with(config: &tst_srt::config::SocketConfig, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::ConnectError>
 pub fn tst_srt::socket::Socket::local_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
+pub fn tst_srt::socket::Socket::payload_limit(&self) -> usize
 pub fn tst_srt::socket::Socket::peer_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::recv(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_srt::error::RecvError>
 pub fn tst_srt::socket::Socket::send(&mut self, buf: &[u8]) -> core::result::Result<usize, tst_srt::error::SendError>

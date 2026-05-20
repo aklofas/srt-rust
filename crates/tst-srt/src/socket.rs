@@ -297,6 +297,27 @@ impl Socket {
         self.cached_stream_id.as_deref()
     }
 
+    /// Post-handshake `SRTO_PAYLOADSIZE`, cached at construction.
+    ///
+    /// Returned in bytes. After the SRT handshake completes, both peers
+    /// have agreed on a payload size (the smaller of the two configured
+    /// values). This is the upper bound on the per-message length passed
+    /// to [`Self::send`] in live mode — exceeding it causes
+    /// [`SendError::PayloadTooLarge`].
+    ///
+    /// Defaults to libsrt's `SRT_LIVE_DEF_PLSIZE` (1316 bytes — i.e.
+    /// [`tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES`]) when libsrt's
+    /// option-readback fails or returns a non-positive value.
+    ///
+    /// Used by [`SrtTransport::new`] to derive its `max_payload`; callers
+    /// that build their own transport wrappers should query the same way.
+    ///
+    /// [`SendError::PayloadTooLarge`]: crate::error::SendError::PayloadTooLarge
+    /// [`SrtTransport::new`]: crate::SrtTransport::new
+    pub fn payload_limit(&self) -> usize {
+        self.cached_payload_limit
+    }
+
     /// Snapshot of libsrt's per-socket performance counters.
     pub fn stats(&self) -> Result<Stats, IoError> {
         let mut perf: srt_sys::CBytePerfMon = unsafe { mem::zeroed() };

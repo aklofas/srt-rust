@@ -151,8 +151,17 @@ best-effort flushes.
   `bytes_skipped_for_sync`); auto-resyncs after sync loss.
 - `framing_mode: TsFramingMode::Strict` returns
   `TsFramingError::SyncLost { offset }` on any non-aligned input.
-- `max_unsynced_bytes: usize` — bytes consumed while UNSYNCED before
-  terminal `TsFramingError::NoSyncAfterLimit`. Default 18,800.
+- `max_unsynced_bytes: usize` — threshold (in bytes consumed while
+  UNSYNCED) above which RECOVER mode flags that sync has not been
+  acquired. The current implementation tracks this threshold for
+  diagnostic accounting only — the sender does NOT stop or fail when
+  it is exceeded; RECOVER mode keeps scanning for a sync byte
+  indefinitely. Default 18,800 (≈100 packets' worth). Callers who
+  want fail-fast on persistent no-sync should monitor
+  `stats.bytes_skipped_for_sync` against their own threshold and
+  abort externally. `TsFramingError::NoSyncAfterLimit` is part of the
+  public error type for forward compatibility but is not currently
+  emitted by the sender.
 
 `SenderError` is two-variant: `Framing(TsFramingError)` and
 `Transport(TransportError)`.
@@ -427,7 +436,9 @@ Where errors come from:
 - `MuxSenderError::Transport(TransportError)` — the transport layer
   reported an error (`MuxSender`).
 - `SenderError::Framing(TsFramingError)` — STRICT mode rejected
-  unaligned input, or RECOVER mode burned through `max_unsynced_bytes`.
+  unaligned input (`SyncLost`). RECOVER mode does not return
+  `Framing` errors; the `max_unsynced_bytes` threshold is tracked
+  for diagnostic accounting only and does not stop the sender.
 - `SenderError::Transport(TransportError)` — transport error (`Sender`).
 - `RawSender::send` returns `TransportError` directly.
 

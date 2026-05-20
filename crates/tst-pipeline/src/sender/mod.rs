@@ -17,8 +17,20 @@ use tst_core::transport::Transport;
 #[derive(Debug, Clone)]
 pub struct SenderConfig {
     pub framing_mode: TsFramingMode,
-    /// Bytes consumed while UNSYNCED before sender enters terminal failed
-    /// state. Default 18,800 = 100 packets' worth.
+    /// Threshold (bytes consumed while UNSYNCED) above which RECOVER mode
+    /// flags that sync has not been acquired. Default 18,800 (≈100
+    /// packets' worth).
+    ///
+    /// This is a diagnostic-only threshold in the current implementation:
+    /// the sender does NOT stop or fail when it is exceeded — RECOVER
+    /// mode keeps scanning for a sync byte indefinitely. Callers who
+    /// want fail-fast on persistent no-sync should monitor
+    /// [`SenderStats::bytes_skipped_for_sync`] against their own
+    /// threshold and abort externally.
+    ///
+    /// [`TsFramingError::NoSyncAfterLimit`] is part of the public error
+    /// type for forward compatibility but is not currently emitted by
+    /// the sender.
     pub max_unsynced_bytes: usize,
 }
 

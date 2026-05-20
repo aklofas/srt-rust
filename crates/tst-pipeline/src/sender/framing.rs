@@ -35,6 +35,16 @@ pub enum TsFramingMode {
 pub enum TsFramingError {
     #[error("TS sync byte not found at expected boundary (offset {offset})")]
     SyncLost { offset: u64 },
+    /// Reserved for the case where RECOVER mode has consumed more than
+    /// [`super::SenderConfig::max_unsynced_bytes`] without acquiring sync.
+    ///
+    /// The current sender implementation does NOT emit this variant —
+    /// RECOVER mode keeps scanning indefinitely and the
+    /// `max_unsynced_bytes` knob is tracked for diagnostic accounting
+    /// only. The variant is preserved on the public surface for forward
+    /// compatibility and so that downstream code can still classify it
+    /// (it routes to [`crate::shell_error::ShellErrorKind::InputMalformed`])
+    /// if a future revision starts emitting it.
     #[error(
         "exceeded max_unsynced_bytes ({max}) without acquiring sync; \
          input does not look like a TS stream"

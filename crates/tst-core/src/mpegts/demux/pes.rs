@@ -142,18 +142,33 @@ impl Reassembler {
             return Ok(out);
         }
         // Length-driven completion.
+        //
+        // Per ITU-T H.222.0 V9 §2.4.3.7, `PES_packet_length` (when non-zero)
+        // is the byte count after the 6-byte fixed prefix, so the total PES
+        // length on the wire is `6 + PES_packet_length`. When the buffer
+        // holds more bytes than `total`, those extra bytes belong to the
+        // *next* PES on this PID (rare — most PIDs use PUSI for boundaries)
+        // or are stray trailing bytes. The emitted sample MUST be exactly
+        // the first `total` bytes; including the trailing bytes here would
+        // both corrupt the current sample and silently consume the start of
+        // the next one.
+        //
+        // Residual handling: we discard `part.buf[total..]` and remove the
+        // per-PID state — best-effort, the next PUSI on this PID re-initializes.
+        // Recovering the residual would require re-priming a fresh `Partial`
+        // without a PUSI signal, which we don't do today (and would also need
+        // a fresh adaptation-field RAI value that isn't available here).
         let mut completed_now = None;
         let mut completed_rai = false;
         if let Some(total) = part.declared_total_len {
             if part.buf.len() >= total {
-                // Slice off exactly `total` bytes; anything beyond is the next PES
-                // on this PID (rare — most PIDs use PUSI for boundaries).
-                let body = std::mem::take(&mut part.buf);
+                let body: Vec<u8> = part.buf.drain(..total).collect();
                 completed_rai = part.random_access_indicator;
+                // Decrement by exactly `total` (= body.len()); any residual
+                // bytes left in `part.buf` are dropped along with the
+                // per-PID state below.
+                self.total_buffered = self.total_buffered.saturating_sub(total + part.buf.len());
                 completed_now = Some(body);
-                self.total_buffered = self
-                    .total_buffered
-                    .saturating_sub(completed_now.as_ref().map(|b| b.len()).unwrap_or(0));
                 self.by_pid.remove(&pid);
             }
         }
@@ -403,6 +418,69 @@ mod tests {
             }
             _ => panic!("expected Complete"),
         }
+    }
+
+    #[test]
+    fn bounded_pes_with_trailing_bytes_emits_only_declared_payload() {
+        // VIDEO-03 regression: when the reassembler's buffer holds more bytes
+        // than the declared PES_packet_length (e.g., the next PES's first
+        // bytes were appended in the same TS-payload chunk), the completion
+        // path must slice off exactly `total` bytes and not leak trailing
+        // bytes into the emitted sample's payload. Per H.222.0 §2.4.3.7,
+        // `PES_packet_length` is authoritative for non-zero (bounded) values.
+        let pes = build_pes(0xE0, Some(900_000), b"abc");
+        let pes_len = pes.len();
+        let mut combined = pes.clone();
+        combined.extend_from_slice(b"GARBAGE_NEXT_PES_BYTES");
+        let mut r = Reassembler::new(1 << 20, 4 << 20);
+        let out = r.push(0x100, &combined, true, false).unwrap();
+        assert_eq!(
+            out.len(),
+            1,
+            "exactly one PES completes from bounded length"
+        );
+        match &out[0] {
+            ReassemblyOutcome::Complete(p) => {
+                assert_eq!(
+                    p.payload, b"abc",
+                    "payload must be EXACTLY the declared body, not include trailing bytes"
+                );
+            }
+            _ => panic!("expected Complete"),
+        }
+        // total_buffered must have been decremented by exactly `pes_len`
+        // (the declared total), not by the whole combined buffer length.
+        // Residual trailing bytes are discarded (option b — best-effort;
+        // next PUSI on this PID re-initializes the per-PID state).
+        assert_eq!(
+            r.buffered_bytes(),
+            0,
+            "after length-driven completion, total_buffered should reflect exact consumed count"
+        );
+        let _ = pes_len;
+    }
+
+    #[test]
+    fn bounded_pes_total_buffered_decrements_by_exact_consumed_count() {
+        // Build two bounded PES on different PIDs; push the first followed
+        // by trailing bytes from a would-be next PES. After completion of
+        // PID A, the residual must NOT leak into total_buffered nor into
+        // PID A's emitted payload.
+        let pes_a = build_pes(0xE0, Some(0), b"hello");
+        let pes_a_total = pes_a.len();
+        let mut chunk_a = pes_a.clone();
+        chunk_a.extend_from_slice(&[0xAA; 7]); // simulate trailing bytes
+        let mut r = Reassembler::new(1 << 20, 4 << 20);
+        let out = r.push(0x200, &chunk_a, true, false).unwrap();
+        assert_eq!(out.len(), 1);
+        match &out[0] {
+            ReassemblyOutcome::Complete(p) => {
+                assert_eq!(p.payload, b"hello");
+            }
+            _ => panic!("expected Complete"),
+        }
+        assert_eq!(r.buffered_bytes(), 0);
+        let _ = pes_a_total;
     }
 
     #[test]

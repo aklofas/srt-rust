@@ -172,8 +172,9 @@ pub enum TstNonConformantCode {
     /// `DvbSubDataIdentifier` and `SubtitleDescriptorMalformed`).
     Av1WrongStreamId = 30,
     /// AV1-in-MPEG-2-TS binding §3.2 violation — PES payload did not begin
-    /// with a `ts_open_bitstream_unit()` start code (`0x00 0x00 0x00 0x02`).
-    /// `pid` carries the AV1 stream PID.
+    /// with a `ts_open_bitstream_unit()` start code (`0x00 0x00 0x01`, the
+    /// 3-byte `obu_start_code` = `uimsbf(24)` = `0x000001` per the binding
+    /// syntax table). `pid` carries the AV1 stream PID.
     Av1MissingTsObuFraming = 31,
 }
 

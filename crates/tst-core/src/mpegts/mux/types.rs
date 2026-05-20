@@ -30,10 +30,11 @@ pub enum VideoCodec {
 /// - **§3.4**: PES `stream_id` MUST be `0xBD` (private_stream_1),
 ///   distinct from the typical `0xE0` for video.
 /// - **§3.2**: OBUs MUST be wrapped in `ts_open_bitstream_unit()` framing
-///   — each OBU prefixed with a 4-byte start code `0x00 0x00 0x00 0x02`
-///   plus emulation-prevention escapes inside the payload (any byte
-///   sequence `0x00 0x00 0x0X` where X ≤ 2 has a `0x03` emulation
-///   prevention byte inserted after the second `0x00`).
+///   — each OBU prefixed with a 3-byte `obu_start_code` (`uimsbf(24)`
+///   with value `0x000001`, i.e. the byte sequence `0x00 0x00 0x01`) plus
+///   emulation-prevention escapes inside the payload (any byte sequence
+///   `0x00 0x00 0x0X` with `X ∈ {0x00, 0x01, 0x02, 0x03}` has a `0x03`
+///   emulation prevention byte inserted after the second `0x00`).
 ///
 /// Default is [`Av1CarriageMode::Mpeg2TsBinding`] for spec conformance.
 /// Use [`Av1CarriageMode::InteropRawObu`] when interoperating with
@@ -56,7 +57,7 @@ pub enum VideoCodec {
 pub enum Av1CarriageMode {
     /// AV1-in-MPEG-2-TS binding conformant carriage. PES `stream_id=0xBD`
     /// (private_stream_1) per §3.4; OBUs wrapped in `ts_open_bitstream_unit()`
-    /// framing per §3.2 (4-byte start code `0x00 0x00 0x00 0x02` + emulation
+    /// framing per §3.2 (3-byte start code `0x00 0x00 0x01` + emulation
     /// prevention bytes). This is the default.
     #[default]
     Mpeg2TsBinding,

@@ -275,11 +275,11 @@ impl Muxer {
         // on-wire length. Wrapping is one extra contiguous scratch
         // buffer; the hot non-AV1 path is unchanged.
         let wrapped_scratch: Vec<u8> = if av1_binding {
-            // Reserve an upper bound: 4-byte start code + body + worst-case
+            // Reserve an upper bound: 3-byte start code + body + worst-case
             // ~1.5x for emulation-prevention escapes. The wrap function
             // grows the Vec as needed; this preallocation just avoids
             // a couple of reallocations on typical input.
-            let mut v = Vec::with_capacity(4 + nal.len() + (nal.len() >> 1));
+            let mut v = Vec::with_capacity(3 + nal.len() + (nal.len() >> 1));
             wrap_av1_obus_binding(nal, &mut v);
             v
         } else {

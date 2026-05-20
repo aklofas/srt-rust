@@ -332,8 +332,9 @@ the trigger that would unblock it.
 - **Status:** Shipped (validate-1 C8). Default carriage is now
   `Av1CarriageMode::Mpeg2TsBinding`: PES `stream_id = 0xBD`
   (private_stream_1, §3.4) and `ts_open_bitstream_unit()` framing
-  on each OBU (4-byte start code `0x00 0x00 0x00 0x02` + emulation
-  prevention bytes, §3.2). Set `MuxerConfig::av1_carriage =
+  on each OBU (3-byte `obu_start_code` = `uimsbf(24)` = `0x000001`,
+  i.e. byte sequence `0x00 0x00 0x01`, + emulation prevention
+  bytes, §3.2). Set `MuxerConfig::av1_carriage =
   Av1CarriageMode::InteropRawObu` (escape hatch) for ffmpeg /
   libaom / hls.js / mediamtx interop carriage.
   Demuxer-side: matching `DemuxerConfig::av1_carriage`; binding

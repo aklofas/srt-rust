@@ -160,20 +160,35 @@ pub(super) fn validate_annex_b(nal: &[u8]) -> Result<(), MuxError> {
 
 /// AV1-in-MPEG-2-TS binding §3.2 `ts_open_bitstream_unit()` start code.
 ///
-/// Per binding spec the 4-byte sequence `0x00 0x00 0x00 0x02` prefixes
-/// each OBU (the `0x02` final byte distinguishes this framing from H.264 /
-/// H.265 Annex-B start codes `0x00 0x00 0x00 0x01`).
-pub(super) const AV1_TS_OBU_START_CODE: [u8; 4] = [0x00, 0x00, 0x00, 0x02];
+/// Per binding spec the `obu_start_code` field is `uimsbf(24)` —
+/// 24 bits = 3 bytes — with value `0x000001`. The on-wire byte
+/// sequence is `0x00 0x00 0x01`, identical to the H.264 / H.265
+/// Annex-B 3-byte start code. (Stream classification keeps AV1 and
+/// H.264 distinguishable via the PMT `stream_type` + `AV01`
+/// registration descriptor — the §3.2 start code only marks OBU
+/// boundaries within an AV1 PES.)
+pub(super) const AV1_TS_OBU_START_CODE: [u8; 3] = [0x00, 0x00, 0x01];
 
 /// Wrap a raw OBU payload in `ts_open_bitstream_unit()` framing
 /// (AV1-in-MPEG-2-TS binding §3.2): prefix with [`AV1_TS_OBU_START_CODE`]
 /// then copy the OBU bytes while inserting emulation-prevention `0x03`
-/// bytes anywhere a `0x00 0x00 0x0X` (X ≤ 0x02) byte sequence would
-/// otherwise occur in the body.
+/// bytes anywhere a forbidden 3-byte sequence (`0x00 0x00 0x00` /
+/// `0x00 0x00 0x01` / `0x00 0x00 0x02`) or a 4-byte sequence starting
+/// `0x00 0x00 0x03` would otherwise occur in the body.
+///
+/// Per binding §3.2 the on-wire body forbids the three 3-byte sequences
+/// `0x000000` / `0x000001` / `0x000002`, AND requires that any 4-byte
+/// sequence starting with `0x000003` have a 4th byte in
+/// `{0x00, 0x01, 0x02, 0x03}` (because the receiver consumes every
+/// `0x00 0x00 0x03` triple as an escape and emits the leading
+/// `0x00 0x00` as OBU bytes). So whenever the OBU input contains
+/// `0x00 0x00 X` with `X ∈ {0x00, 0x01, 0x02, 0x03}`, the wrap inserts
+/// a `0x03` between the second `0x00` and `X`. The decoder reverses
+/// this by consuming the `0x03` after any `0x00 0x00` triple.
 ///
 /// The emulation-prevention scheme preserves the uniqueness of the
 /// start code so a streaming receiver can resynchronize on it. The
-/// receiver-side `split_obus_binding` undoes both the prefix and the
+/// receiver-side `unwrap_av1_binding` undoes both the prefix and the
 /// escapes.
 ///
 /// Appends to `out` (does not clear it). Returns the number of bytes
@@ -182,12 +197,18 @@ pub(super) fn wrap_av1_obus_binding(obu_bytes: &[u8], out: &mut Vec<u8>) -> usiz
     let start_len = out.len();
     out.extend_from_slice(&AV1_TS_OBU_START_CODE);
     // Walk the OBU bytes and insert 0x03 emulation-prevention bytes any
-    // time a 0x00 0x00 followed by 0x00/0x01/0x02 sequence would appear
-    // in the output. Tracks the trailing-zero count to detect 2-byte
-    // 0x00 0x00 windows landing in the output stream.
+    // time the output would otherwise carry a 0x00 0x00 followed by
+    // 0x00 / 0x01 / 0x02 / 0x03 sequence — the four byte values the
+    // receiver's `nextbits(24) == 0x000003` check (or its `obu_start_code
+    // == 0x000001` synchronization) would misinterpret. Including 0x03
+    // is critical: the decoder consumes EVERY `0x00 0x00 0x03` triple as
+    // an escape, so an OBU body literally containing `0x00 0x00 0x03`
+    // must be wired as `0x00 0x00 0x03 0x03` to survive round-trip.
+    // Tracks the trailing-zero count to detect 2-byte 0x00 0x00 windows
+    // landing in the output stream.
     let mut zero_run = 0u8;
     for &b in obu_bytes {
-        if zero_run >= 2 && b <= 0x02 {
+        if zero_run >= 2 && b <= 0x03 {
             out.push(0x03);
             zero_run = 0;
         }
@@ -679,8 +700,8 @@ mod tests {
         let mut wrapped = Vec::new();
         let written = wrap_av1_obus_binding(input, &mut wrapped);
         assert_eq!(written, wrapped.len());
-        // Must begin with the binding §3.2 start code.
-        assert_eq!(&wrapped[..4], &[0x00, 0x00, 0x00, 0x02]);
+        // Must begin with the binding §3.2 3-byte start code 0x000001.
+        assert_eq!(&wrapped[..3], &[0x00, 0x00, 0x01]);
         match unwrap_av1_binding(&wrapped) {
             Av1BindingUnwrap::Conformant(out) => assert_eq!(&out[..], input),
             Av1BindingUnwrap::MissingFraming => panic!("conformant input misclassified"),
@@ -689,14 +710,14 @@ mod tests {
 
     #[test]
     fn av1_binding_wrap_inserts_escape_for_zero_zero_one() {
-        // Body byte sequence 0x00 0x00 0x01 (the H.264-Annex-B start code)
-        // is forbidden inside the wrapped body — wrap MUST escape it to
-        // 0x00 0x00 0x03 0x01 on the wire.
+        // Body byte sequence 0x00 0x00 0x01 (the same as the binding start
+        // code itself) is forbidden inside the wrapped body — wrap MUST
+        // escape it to 0x00 0x00 0x03 0x01 on the wire.
         let input: &[u8] = &[0xAA, 0x00, 0x00, 0x01, 0xBB];
         let mut wrapped = Vec::new();
         wrap_av1_obus_binding(input, &mut wrapped);
         let expected: &[u8] = &[
-            0x00, 0x00, 0x00, 0x02, // start code
+            0x00, 0x00, 0x01, // 3-byte start code
             0xAA, 0x00, 0x00, 0x03, 0x01, 0xBB, // body + emulation prevention
         ];
         assert_eq!(&wrapped[..], expected);
@@ -705,14 +726,14 @@ mod tests {
     #[test]
     fn av1_binding_wrap_escapes_zero_zero_zero() {
         // 0x00 0x00 0x00 (three zeros) needs ONE escape inserted after the
-        // first two zeros so the third zero can't form a fresh
-        // alias-with-the-next-byte sequence. Verifies the zero-run resets
-        // after an emulation-prevention insertion.
+        // first two zeros so the third zero can't form a forbidden
+        // 0x000000 3-byte sequence. Verifies the zero-run resets after
+        // an emulation-prevention insertion.
         let input: &[u8] = &[0x00, 0x00, 0x00, 0xCC];
         let mut wrapped = Vec::new();
         wrap_av1_obus_binding(input, &mut wrapped);
         let expected: &[u8] = &[
-            0x00, 0x00, 0x00, 0x02, // start code
+            0x00, 0x00, 0x01, // 3-byte start code
             0x00, 0x00, 0x03, 0x00, 0xCC, // first 0x00 0x00 escaped, then plain bytes
         ];
         assert_eq!(&wrapped[..], expected);
@@ -728,14 +749,144 @@ mod tests {
 
     #[test]
     fn av1_binding_round_trip_empty_body() {
-        // Empty input wraps to just the 4-byte start code; unwraps back
+        // Empty input wraps to just the 3-byte start code; unwraps back
         // to an empty Vec.
         let mut wrapped = Vec::new();
         wrap_av1_obus_binding(&[], &mut wrapped);
-        assert_eq!(&wrapped[..], &[0x00, 0x00, 0x00, 0x02]);
+        assert_eq!(&wrapped[..], &[0x00, 0x00, 0x01]);
         match unwrap_av1_binding(&wrapped) {
             Av1BindingUnwrap::Conformant(out) => assert!(out.is_empty()),
             Av1BindingUnwrap::MissingFraming => panic!(),
+        }
+    }
+
+    /// SPEC COMPLIANCE — `obu_start_code` is `uimsbf(24)` per binding §3.2
+    /// syntax table, with value `0x000001`. The on-wire byte sequence MUST
+    /// be exactly `0x00 0x00 0x01` (3 bytes), not the previously-incorrect
+    /// 4-byte `0x00 0x00 0x00 0x02`. This test hand-constructs a body byte
+    /// sequence and asserts the exact wire layout matches the spec table.
+    #[test]
+    fn av1_binding_wrap_emits_3byte_start_code_per_spec() {
+        // Body bytes deliberately contain no forbidden 3-byte sequences
+        // so the output is start-code-prefix + body verbatim.
+        let body: &[u8] = &[0x42, 0xAA, 0x55, 0xFF, 0xDE, 0xAD, 0xBE, 0xEF];
+        let mut wrapped = Vec::new();
+        wrap_av1_obus_binding(body, &mut wrapped);
+        // Hand-built expected: 3-byte start code then body verbatim.
+        let mut expected: Vec<u8> = vec![0x00, 0x00, 0x01];
+        expected.extend_from_slice(body);
+        assert_eq!(&wrapped[..], &expected[..]);
+        // And the constant itself MUST be 3 bytes per binding §3.2 syntax.
+        assert_eq!(AV1_TS_OBU_START_CODE.len(), 3);
+        assert_eq!(AV1_TS_OBU_START_CODE, [0x00, 0x00, 0x01]);
+
+        // Hand-decode the start code as uimsbf(24): big-endian read of
+        // the first 3 bytes MUST equal 0x000001 per the binding spec.
+        let start_code_u24: u32 =
+            (u32::from(wrapped[0]) << 16) | (u32::from(wrapped[1]) << 8) | u32::from(wrapped[2]);
+        assert_eq!(start_code_u24, 0x000001);
+    }
+
+    /// SPEC COMPLIANCE — binding §3.2 forbids any 4-byte sequence starting
+    /// with `0x000003` unless the 4th byte is in `{0x00, 0x01, 0x02, 0x03}`.
+    /// The decoder consumes EVERY `0x00 0x00 0x03` triple as an escape,
+    /// so an OBU body literally containing a `0x03` after `0x00 0x00`
+    /// MUST be wired as `0x00 0x00 0x03 0x03` (the second `0x03` is the
+    /// real body byte; the first is the inserted emulation-prevention
+    /// byte). Without this rule the round-trip would lose the `0x03`.
+    #[test]
+    fn av1_binding_escapes_0x03_after_zero_zero() {
+        // Input contains 0x00 0x00 0x03 0x04 — without the 0x03-escape
+        // rule the decoder would consume 00 00 03 as escape and emit only
+        // 00 00, losing the literal 0x03.
+        let input: &[u8] = &[0x00, 0x00, 0x03, 0x04];
+        let mut wrapped = Vec::new();
+        wrap_av1_obus_binding(input, &mut wrapped);
+        // Expected wire layout: start code + 00 00 03 03 04
+        //   (the first 0x03 is the inserted emulation_prevention_three_byte;
+        //    the second 0x03 is the literal body byte; 0x04 follows verbatim).
+        let expected: &[u8] = &[
+            0x00, 0x00, 0x01, // 3-byte start code
+            0x00, 0x00, 0x03, 0x03, 0x04, // body: 00 00 then escaped 03 then 04
+        ];
+        assert_eq!(&wrapped[..], expected);
+
+        // And the round-trip MUST recover the original input byte-for-byte.
+        match unwrap_av1_binding(&wrapped) {
+            Av1BindingUnwrap::Conformant(out) => assert_eq!(&out[..], input),
+            Av1BindingUnwrap::MissingFraming => {
+                panic!("conformant escape-0x03 round-trip misclassified")
+            }
+        }
+
+        // Cross-check: also verify forbidden 4-byte sequence is absent
+        // from the wire body. The 4-byte sequence 0x00 0x00 0x03 0x04
+        // is explicitly forbidden by §3.2 (4th byte 0x04 ≥ 0x04).
+        let body = &wrapped[3..]; // skip start code
+        for window in body.windows(4) {
+            // Body MUST NOT contain 00 00 03 X where X >= 0x04.
+            assert!(
+                !(window[0] == 0x00 && window[1] == 0x00 && window[2] == 0x03 && window[3] >= 0x04),
+                "wire body contains forbidden 4-byte sequence 0x00 0x00 0x03 0x{:02X}",
+                window[3]
+            );
+        }
+    }
+
+    /// SPEC COMPLIANCE — hand-encode a 3-byte start code byte sequence and
+    /// confirm the demuxer recognizes it as Conformant (not MissingFraming).
+    /// Mirrors what an external AV1-binding-conformant encoder would emit.
+    #[test]
+    fn av1_binding_unwrap_accepts_hand_encoded_3byte_start_code() {
+        // Hand-built wire payload: 3-byte start code + a simple body.
+        let wire: Vec<u8> = vec![
+            0x00, 0x00, 0x01, // start code
+            0x10, 0x20, 0x30, 0x40, // OBU body
+        ];
+        match unwrap_av1_binding(&wire) {
+            Av1BindingUnwrap::Conformant(out) => {
+                assert_eq!(&out[..], &[0x10, 0x20, 0x30, 0x40]);
+            }
+            Av1BindingUnwrap::MissingFraming => {
+                panic!("spec-conformant 3-byte start code misclassified as MissingFraming")
+            }
+        }
+
+        // Negative: a 4-byte `0x00 0x00 0x00 0x02` (the previously-wrong
+        // start code) MUST now be classified as MissingFraming since it
+        // doesn't begin with `0x00 0x00 0x01`.
+        let wrong_start_code: Vec<u8> = vec![0x00, 0x00, 0x00, 0x02, 0x10, 0x20];
+        assert_eq!(
+            unwrap_av1_binding(&wrong_start_code),
+            Av1BindingUnwrap::MissingFraming,
+            "previously-incorrect 4-byte 0x00000002 must now be rejected"
+        );
+    }
+
+    /// SPEC COMPLIANCE — hand-encode the 0x03-escape corner case (a 4-byte
+    /// `0x000003XX` sequence where `XX >= 0x04` would be forbidden on the
+    /// wire) and confirm the demuxer correctly recovers the body byte 0x03.
+    #[test]
+    fn av1_binding_unwrap_handles_hand_encoded_0x03_escape() {
+        // Hand-built wire: start code + 00 00 03 03 FF
+        //   Decoder rule: at position 3 (after start code), nextbits(24) at
+        //   wire offset (3 + zero-run-tracking) sees 00 00 03 as escape →
+        //   emit 00 00, consume 03. Then process the second 03 as a normal
+        //   byte (since the zero-run reset after emit), then 0xFF.
+        // Expected OBU body recovered: 00 00 03 FF.
+        let wire: Vec<u8> = vec![
+            0x00, 0x00, 0x01, // 3-byte start code
+            0x00, 0x00, 0x03, 0x03, 0xFF, // escape encodes literal 00 00 03 then FF
+        ];
+        match unwrap_av1_binding(&wire) {
+            Av1BindingUnwrap::Conformant(out) => {
+                assert_eq!(
+                    &out[..],
+                    &[0x00, 0x00, 0x03, 0xFF],
+                    "0x03-after-0x00-0x00 escape must recover literal 0x03"
+                );
+            }
+            Av1BindingUnwrap::MissingFraming => panic!("escape sequence misclassified"),
         }
     }
 }

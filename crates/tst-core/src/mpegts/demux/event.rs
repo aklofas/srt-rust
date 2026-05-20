@@ -636,7 +636,8 @@ pub enum NonConformantIssue {
 
     /// AV1-in-MPEG-2-TS binding §3.2 violation — AV1 PES payload did not
     /// begin with a `ts_open_bitstream_unit()` start code
-    /// (`0x00 0x00 0x00 0x02`).
+    /// (`0x00 0x00 0x01`, the 3-byte `obu_start_code` = `uimsbf(24)` =
+    /// `0x000001` per the binding syntax table).
     ///
     /// Emitted only when the demuxer is configured for binding-conformant
     /// AV1 carriage (`DemuxerConfig::av1_carriage == Av1CarriageMode::Mpeg2TsBinding`).

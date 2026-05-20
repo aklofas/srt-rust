@@ -334,7 +334,7 @@ pub fn split_obus(es_payload: &[u8]) -> (Vec<Obu>, Vec<NonConformantIssue>) {
 /// [`NonConformantIssue::Av1MissingTsObuFraming`] issue.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Av1BindingUnwrap {
-    /// PES payload was binding-framed: 4-byte start code `0x00 0x00 0x00 0x02`
+    /// PES payload was binding-framed: 3-byte start code `0x00 0x00 0x01`
     /// observed at offset 0, OBU bytes unwrapped (emulation-prevention `0x03`
     /// bytes stripped). Returned vector is ready for [`split_obus`].
     Conformant(Vec<u8>),
@@ -348,30 +348,39 @@ pub(crate) enum Av1BindingUnwrap {
 /// Unwrap AV1-binding `ts_open_bitstream_unit()` framing from a PES payload.
 ///
 /// Per AV1-in-MPEG-2-TS binding §3.2:
-/// - Each OBU is prefixed with the 4-byte sequence `0x00 0x00 0x00 0x02`.
-/// - Inside the body, any sequence `0x00 0x00 0x0X` (X ≤ 0x02) has had a
-///   `0x03` emulation-prevention byte inserted between the second `0x00`
-///   and the `0x0X`; the unwrap strips those.
+/// - Each OBU is prefixed with the 3-byte sequence `0x00 0x00 0x01`
+///   (`obu_start_code` is `uimsbf(24)` with value `0x000001`).
+/// - Inside the body, any sequence `0x00 0x00 0x0X` with `X ∈ {0x00, 0x01,
+///   0x02, 0x03}` has had a `0x03` emulation-prevention byte inserted
+///   between the second `0x00` and the `0x0X`; the unwrap strips those.
+///   (Including the `X == 0x03` case is required: the decoder consumes
+///   every `0x00 0x00 0x03` triple as an escape, so an OBU body byte
+///   `0x03` after `0x00 0x00` was wired as `0x00 0x00 0x03 0x03` by the
+///   encoder.)
 ///
 /// On a malformed input (start code missing, truncated escape) the unwrap
 /// returns [`Av1BindingUnwrap::MissingFraming`]; the demuxer treats that
 /// as a non-conformance signal and falls back to raw-OBU parsing in
 /// lenient mode.
 pub(crate) fn unwrap_av1_binding(payload: &[u8]) -> Av1BindingUnwrap {
-    // Binding §3.2 start code is 4 bytes; anything shorter can't carry it.
-    if payload.len() < 4 || payload[0..4] != [0x00, 0x00, 0x00, 0x02] {
+    // Binding §3.2 start code is 3 bytes; anything shorter can't carry it.
+    if payload.len() < 3 || payload[0..3] != [0x00, 0x00, 0x01] {
         return Av1BindingUnwrap::MissingFraming;
     }
-    // Strip the start-code prefix and walk the body, removing
+    // Strip the 3-byte start-code prefix and walk the body, removing
     // emulation-prevention 0x03 bytes that follow a run of two 0x00s
-    // when the next byte after the 0x03 is ≤ 0x02 (matches the muxer's
-    // injection rule in `wrap_av1_obus_binding`).
-    let mut out = Vec::with_capacity(payload.len().saturating_sub(4));
+    // when the next byte after the 0x03 is ≤ 0x03 (matches the muxer's
+    // injection rule in `wrap_av1_obus_binding`). The `<= 0x03` upper
+    // bound is required: when an OBU body contains a literal `0x03`
+    // after `0x00 0x00`, the encoder wired `0x00 0x00 0x03 0x03` so the
+    // decoder consumes the first 0x03 as escape and emits the second 0x03
+    // as a body byte.
+    let mut out = Vec::with_capacity(payload.len().saturating_sub(3));
     let mut zero_run = 0u8;
-    let mut i = 4usize;
+    let mut i = 3usize;
     while i < payload.len() {
         let b = payload[i];
-        if zero_run >= 2 && b == 0x03 && i + 1 < payload.len() && payload[i + 1] <= 0x02 {
+        if zero_run >= 2 && b == 0x03 && i + 1 < payload.len() && payload[i + 1] <= 0x03 {
             // Drop the emulation-prevention byte; reset zero_run so the
             // next 0x00 starts a fresh run.
             zero_run = 0;

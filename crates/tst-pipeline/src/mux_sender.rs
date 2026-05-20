@@ -361,6 +361,45 @@ impl<T: Transport> MuxSender<T> {
         inner.send_video_to(handle, nal, pts.as_ticks(), key_frame)
     }
 
+    /// Send one access unit with explicit composition (PTS) and decode (DTS)
+    /// timestamps. Required for reordered codecs (H.264/H.265/H.266/AV1
+    /// streams with B-frames).
+    ///
+    /// Mirrors [`tst_core::mpegts::mux::Muxer::push_video_to_with_dts`]:
+    /// the muxer emits PES with `PTS_DTS_flags = '11'` per
+    /// ISO/IEC 13818-1 §2.4.3.6, carrying both timestamps. When
+    /// `pts == dts`, prefer [`Self::send_video_to`] for the smaller
+    /// 5-byte PTS-only PES encoding.
+    ///
+    /// **Caller invariant:** `dts <= pts` per §2.4.3.6. The muxer does
+    /// not enforce this; receivers will reject inverted timestamps.
+    ///
+    /// # C ABI
+    ///
+    /// Not yet exposed via the C ABI. Callers needing B-frame support
+    /// from C should bridge through the Rust API or open an issue
+    /// requesting the C entry.
+    ///
+    /// # Errors
+    /// - [`MuxSenderErrorSource::Mux`] wraps [`MuxError`] from the inner
+    ///   muxer (same variants as [`Self::send_video_to`]).
+    /// - [`MuxSenderErrorSource::Transport`] wraps a [`TransportError`].
+    pub fn send_video_to_with_dts(
+        &self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts: Pts90khz,
+        dts: Pts90khz,
+        key_frame: bool,
+    ) -> Result<(), MuxSenderError> {
+        let mut inner = self.inner.lock().map_err(|_| {
+            MuxSenderError::from(TransportError::Broken(
+                "mux_sender: inner lock poisoned during send_video_to_with_dts".into(),
+            ))
+        })?;
+        inner.send_video_to_with_dts(handle, nal, pts.as_ticks(), dts.as_ticks(), key_frame)
+    }
+
     /// Send one KLV blob to a specific configured KLV stream.
     ///
     /// `metadata_service_id` is written into the AU cell header per
@@ -856,6 +895,30 @@ impl<T: Transport> Inner<T> {
         let push_result =
             self.muxer
                 .push_video_to(handle, nal, Pts90khz::new(pts_90khz), key_frame);
+        self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
+        push_result?;
+        self.drain_muxer()
+    }
+
+    fn send_video_to_with_dts(
+        &mut self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts_90khz: i64,
+        dts_90khz: i64,
+        key_frame: bool,
+    ) -> Result<(), MuxSenderError> {
+        if self.closed {
+            return Err(TransportError::Closed.into());
+        }
+        self.drain_pending()?;
+        let push_result = self.muxer.push_video_to_with_dts(
+            handle,
+            nal,
+            Pts90khz::new(pts_90khz),
+            Pts90khz::new(dts_90khz),
+            key_frame,
+        );
         self.maybe_warn_backpressure(matches!(push_result, Err(MuxError::BufferFull { .. })));
         push_result?;
         self.drain_muxer()

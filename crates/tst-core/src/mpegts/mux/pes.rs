@@ -62,6 +62,11 @@ pub(crate) enum PesPtsField {
     None,
     /// PTS present, no DTS — video without B-frame reorder, sync KLV.
     PtsOnly(Pts90khz),
+    /// Both PTS and DTS present — reordered video (H.264/H.265/H.266/AV1
+    /// streams with B-frames) per ISO/IEC 13818-1 §2.4.3.6. Emits
+    /// `PTS_DTS_flags = '11'` and writes 10 bytes (5-byte PTS with
+    /// marker_high `0b0011` + 5-byte DTS with marker_high `0b0001`).
+    PtsAndDts { pts: Pts90khz, dts: Pts90khz },
 }
 
 /// PES header flag bits the writer can set up-front. Matches ffmpeg's pattern
@@ -82,8 +87,14 @@ pub(crate) struct PesFlags {
 }
 
 /// Maximum size of a PES header for the cases this muxer emits.
-/// = 3(start) + 1(stream_id) + 2(length) + 1(flags1) + 1(flags2) + 1(header_data_length) + 5(PTS) = 14
-pub(crate) const MAX_PES_HEADER_SIZE: usize = 14;
+/// = 3(start) + 1(stream_id) + 2(length) + 1(flags1) + 1(flags2) + 1(header_data_length) + 5(PTS) + 5(DTS) = 19
+///
+/// The 19-byte ceiling covers the `PesPtsField::PtsAndDts` variant used by
+/// reordered video (B-frames). Non-DTS callers (audio, KLV, subtitle,
+/// non-reordered video) only use the first 14 bytes; the extra 5-byte
+/// reservation is a no-cost array bound — `write_pes_header` returns the
+/// actual bytes-written count.
+pub(crate) const MAX_PES_HEADER_SIZE: usize = 19;
 
 /// Write a complete audio PES packet (header + caller's frame bytes) into `out`.
 ///
@@ -393,10 +404,15 @@ pub(crate) fn write_pes_header(
 ) -> usize {
     debug_assert!(out.len() >= MAX_PES_HEADER_SIZE);
 
-    // flags2 high two bits = PTS_DTS_flags. We only support None (0b00) and PtsOnly (0b10).
+    // flags2 high two bits = PTS_DTS_flags per ISO/IEC 13818-1 §2.4.3.6:
+    //   '00' — neither PTS nor DTS present
+    //   '10' — PTS only (5 bytes)
+    //   '11' — PTS + DTS (10 bytes) — used by reordered video (B-frames)
+    //   '01' — forbidden
     let (pts_dts_flags, pts_size) = match pts_field {
         PesPtsField::None => (0b00u8, 0u8),
         PesPtsField::PtsOnly(_) => (0b10u8, 5u8),
+        PesPtsField::PtsAndDts { .. } => (0b11u8, 10u8),
     };
 
     // PES_header_data_length = bytes after this field that are PES-header (PTS/DTS/etc.)
@@ -436,9 +452,21 @@ pub(crate) fn write_pes_header(
     out[8] = header_data_length;
 
     let mut idx = 9;
-    if let PesPtsField::PtsOnly(pts) = pts_field {
-        write_pts(&mut out[idx..idx + 5], pts, /*marker_high=*/ 0b0010);
-        idx += 5;
+    match pts_field {
+        PesPtsField::None => {}
+        PesPtsField::PtsOnly(pts) => {
+            // marker_high '0010' per ISO/IEC 13818-1 §2.4.3.6 for PTS-only.
+            write_pts(&mut out[idx..idx + 5], pts, /*marker_high=*/ 0b0010);
+            idx += 5;
+        }
+        PesPtsField::PtsAndDts { pts, dts } => {
+            // marker_high '0011' for the PTS half of a PTS+DTS pair,
+            // '0001' for the DTS half, per ISO/IEC 13818-1 §2.4.3.6.
+            write_pts(&mut out[idx..idx + 5], pts, /*marker_high=*/ 0b0011);
+            idx += 5;
+            write_pts(&mut out[idx..idx + 5], dts, /*marker_high=*/ 0b0001);
+            idx += 5;
+        }
     }
     idx
 }
@@ -509,6 +537,46 @@ mod tests {
         assert_eq!(buf[8], 5);
         // PTS round-trips
         assert_eq!(read_pts(&buf[9..14]), 90_000);
+    }
+
+    #[test]
+    fn video_pes_header_pts_and_dts() {
+        // Reordered video (B-frames) carries both PTS and DTS per
+        // ISO/IEC 13818-1 §2.4.3.6 with PTS_DTS_flags = '11'.
+        let mut buf = [0u8; MAX_PES_HEADER_SIZE];
+        let n = write_pes_header(
+            &mut buf,
+            STREAM_ID_VIDEO,
+            PesPtsField::PtsAndDts {
+                pts: Pts90khz::new(200),
+                dts: Pts90khz::new(100),
+            },
+            None,
+            PesFlags::default(),
+        );
+        assert_eq!(n, 19);
+        assert_eq!(&buf[..3], &[0x00, 0x00, 0x01]);
+        assert_eq!(buf[3], STREAM_ID_VIDEO);
+        // PES_packet_length = 0 (unbounded).
+        assert_eq!(buf[4], 0);
+        assert_eq!(buf[5], 0);
+        // flags1 marker '10', no data_alignment.
+        assert_eq!(buf[6], 0x80);
+        // PTS_DTS_flags = '11' in flags2 bits 7..6.
+        assert_eq!((buf[7] >> 6) & 0b11, 0b11);
+        // PES_header_data_length = 10 (5 PTS + 5 DTS).
+        assert_eq!(buf[8], 10);
+        // PTS marker_high '0011' in byte 9 high nibble.
+        assert_eq!(buf[9] >> 4, 0b0011);
+        // DTS marker_high '0001' in byte 14 high nibble.
+        assert_eq!(buf[14] >> 4, 0b0001);
+        // Marker bits (low bit of bytes 9/11/13 for PTS, 14/16/18 for DTS).
+        for b in [buf[9], buf[11], buf[13], buf[14], buf[16], buf[18]] {
+            assert_eq!(b & 0x01, 0x01, "marker bit must be 1");
+        }
+        // PTS and DTS round-trip.
+        assert_eq!(read_pts(&buf[9..14]), 200);
+        assert_eq!(read_pts(&buf[14..19]), 100);
     }
 
     #[test]

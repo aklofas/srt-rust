@@ -832,3 +832,181 @@ fn private_data_klv_does_not_auto_wrap() {
         "PrivateData payload must pass through unchanged"
     );
 }
+
+// ── Validate-1 C4: push_video_to_with_dts (B-frame reorder) ──────────────
+
+/// Reassemble the FULL TS payload (including PES header) for `target_pid`
+/// across the TS packets in `buf[..n]`. Used to inspect PES header bytes —
+/// the standard `reassemble_pes_payload_for_pid` helper strips the PES
+/// header. Validate-1 C4: needed to verify PTS_DTS_flags encoding.
+fn reassemble_full_ts_payload_for_pid(buf: &[u8], n: usize, target_pid: u16) -> Vec<u8> {
+    let mut payload = Vec::new();
+    for pkt in buf[..n].chunks_exact(188) {
+        let pid = ((pkt[1] as u16 & 0x1F) << 8) | pkt[2] as u16;
+        if pid != target_pid {
+            continue;
+        }
+        let adaptation_present = (pkt[3] & 0x20) != 0;
+        let mut idx = 4usize;
+        if adaptation_present {
+            let af_len = pkt[idx] as usize;
+            idx += 1 + af_len;
+        }
+        if idx < 188 {
+            payload.extend_from_slice(&pkt[idx..188]);
+        }
+    }
+    payload
+}
+
+#[test]
+fn push_video_to_with_dts_emits_pts_dts_flags_11() {
+    // Validate-1 C4: reordered video (B-frames) must emit
+    // PTS_DTS_flags='11' with separate PTS and DTS bytes per
+    // ISO/IEC 13818-1 §2.4.3.6.
+    let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
+    let handle = mux.video_stream_handle(0).unwrap();
+    let nal = [0x00u8, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xBB];
+    mux.push_video_to_with_dts(
+        handle,
+        &nal,
+        /*pts=*/ Pts90khz::new(200_000),
+        /*dts=*/ Pts90khz::new(100_000),
+        /*key_frame=*/ true,
+    )
+    .expect("push_video_to_with_dts must succeed");
+
+    let mut buf = vec![0u8; 188 * 64];
+    let n = mux.pull(&mut buf);
+    // Find the video PID's PES bytes (default video PID is 0x1011).
+    let pes = reassemble_full_ts_payload_for_pid(&buf, n, 0x1011);
+    assert!(pes.len() >= 19, "PES must include 19-byte PTS+DTS header");
+    // start_code + stream_id (video PES uses 0xE0).
+    assert_eq!(&pes[0..3], &[0x00, 0x00, 0x01]);
+    assert_eq!(pes[3], 0xE0);
+    // flags2 byte: PTS_DTS_flags = '11' in bits 7..6.
+    assert_eq!(
+        (pes[7] >> 6) & 0b11,
+        0b11,
+        "PTS_DTS_flags must be '11' for PtsAndDts"
+    );
+    // PES_header_data_length = 10 (5 PTS + 5 DTS).
+    assert_eq!(pes[8], 10);
+    // PTS marker_high in byte 9 high nibble = 0b0011.
+    assert_eq!(pes[9] >> 4, 0b0011);
+    // DTS marker_high in byte 14 high nibble = 0b0001.
+    assert_eq!(pes[14] >> 4, 0b0001);
+    // PTS round-trip: decode the 5-byte PTS at pes[9..14].
+    let decoded_pts = read_5byte_pts(&pes[9..14]);
+    assert_eq!(decoded_pts, 200_000);
+    let decoded_dts = read_5byte_pts(&pes[14..19]);
+    assert_eq!(decoded_dts, 100_000);
+}
+
+#[test]
+fn push_video_to_keeps_pts_only_encoding() {
+    // Regression guard: the PTS-only path must remain unchanged after
+    // adding PtsAndDts (the variant addition is additive).
+    let mut mux = Muxer::new(MuxerConfig::default()).unwrap();
+    let handle = mux.video_stream_handle(0).unwrap();
+    let nal = [0x00u8, 0x00, 0x00, 0x01, 0x65, 0xAA];
+    mux.push_video_to(handle, &nal, Pts90khz::new(45_000), true)
+        .unwrap();
+    let mut buf = vec![0u8; 188 * 16];
+    let n = mux.pull(&mut buf);
+    let pes = reassemble_full_ts_payload_for_pid(&buf, n, 0x1011);
+    assert!(pes.len() >= 14);
+    // PTS_DTS_flags = '10' (PTS only).
+    assert_eq!((pes[7] >> 6) & 0b11, 0b10);
+    // PES_header_data_length = 5 (PTS only).
+    assert_eq!(pes[8], 5);
+}
+
+/// Decode a 5-byte ISO/IEC 13818-1 §2.4.3.6 PTS field. Test-only helper.
+fn read_5byte_pts(buf: &[u8]) -> u64 {
+    let b0 = buf[0] as u64;
+    let b1 = buf[1] as u64;
+    let b2 = buf[2] as u64;
+    let b3 = buf[3] as u64;
+    let b4 = buf[4] as u64;
+    (((b0 >> 1) & 0x07) << 30)
+        | (b1 << 22)
+        | (((b2 >> 1) & 0x7F) << 15)
+        | (b3 << 7)
+        | ((b4 >> 1) & 0x7F)
+}
+
+// ── Validate-1 C13: structural Annex-B validation ────────────────────────
+
+#[test]
+fn push_video_rejects_start_code_only_no_nal_body() {
+    // Validate-1 C13: an input consisting solely of a start code with
+    // no NAL body must be rejected (prior check accepted this).
+    let mut m = Muxer::new(MuxerConfig::default()).unwrap();
+    let bad = [0x00u8, 0x00, 0x00, 0x01]; // just the start code, no NAL byte
+    assert!(matches!(
+        m.push_video(&bad, Pts90khz::new(0), false),
+        Err(MuxError::InvalidNal)
+    ));
+}
+
+#[test]
+fn push_video_rejects_3byte_start_code_only() {
+    let mut m = Muxer::new(MuxerConfig::default()).unwrap();
+    let bad = [0x00u8, 0x00, 0x01]; // 3-byte start code with no body
+    assert!(matches!(
+        m.push_video(&bad, Pts90khz::new(0), false),
+        Err(MuxError::InvalidNal)
+    ));
+}
+
+#[test]
+fn push_video_rejects_adjacent_start_codes_no_body_between() {
+    // Validate-1 C13: two start codes with no NAL bytes between them
+    // (empty NAL unit) — forbidden by H.264/H.265/H.266.
+    let mut m = Muxer::new(MuxerConfig::default()).unwrap();
+    let bad = [
+        0x00u8, 0x00, 0x00, 0x01, // first start code
+        0x00, 0x00, 0x00, 0x01, // immediately another start code (zero body)
+        0x09, // body of second NAL
+    ];
+    assert!(matches!(
+        m.push_video(&bad, Pts90khz::new(0), false),
+        Err(MuxError::InvalidNal)
+    ));
+}
+
+#[test]
+fn push_video_rejects_trailing_start_code() {
+    // Validate-1 C13: the buffer ends with a start code (no body after) —
+    // the final NAL would be empty.
+    let mut m = Muxer::new(MuxerConfig::default()).unwrap();
+    let bad = [
+        0x00u8, 0x00, 0x00, 0x01, 0x09, 0xAA, // first NAL has a body
+        0x00, 0x00, 0x00, 0x01, // trailing start code, no NAL body
+    ];
+    assert!(matches!(
+        m.push_video(&bad, Pts90khz::new(0), false),
+        Err(MuxError::InvalidNal)
+    ));
+}
+
+#[test]
+fn push_video_accepts_multi_nal_au() {
+    // Validate-1 C13: a well-formed multi-NAL AU must continue to pass.
+    let mut m = Muxer::new(MuxerConfig::default()).unwrap();
+    let good = [
+        0x00u8, 0x00, 0x00, 0x01, 0x67, 0x42, 0xC0, 0x1F, // SPS NAL
+        0x00, 0x00, 0x00, 0x01, 0x68, 0xCE, 0x3C, 0x80, // PPS NAL
+        0x00, 0x00, 0x00, 0x01, 0x65, 0x88, 0x84, 0x00, // IDR NAL
+    ];
+    assert!(m.push_video(&good, Pts90khz::new(0), true).is_ok());
+}
+
+#[test]
+fn push_video_accepts_single_nal_unchanged() {
+    // Backward compat: the simple single-NAL case must still pass.
+    let mut m = Muxer::new(MuxerConfig::default()).unwrap();
+    let nal = [0x00u8, 0x00, 0x01, 0x67]; // 3-byte start code + NAL body
+    assert!(m.push_video(&nal, Pts90khz::new(0), false).is_ok());
+}

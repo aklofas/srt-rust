@@ -127,6 +127,11 @@ impl Muxer {
     /// the Annex-B start-code check; H.264 / H.265 / H.266 require
     /// Annex-B framing.
     ///
+    /// The emitted PES carries `PTS_DTS_flags = '10'` (PTS only) per
+    /// ISO/IEC 13818-1 §2.4.3.6. Streams with B-frame reorder where
+    /// `composition_time != decode_time` must instead use
+    /// [`Self::push_video_to_with_dts`] which emits `PTS_DTS_flags = '11'`.
+    ///
     /// # C ABI
     ///
     /// `tst_muxer_push_video_to` — see `crates/tst-c/include/tstrans.h`.
@@ -135,7 +140,8 @@ impl Muxer {
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
     ///   range for this muxer's configured video stream count.
     /// - [`MuxError::InvalidNal`] if `nal` does not begin with an Annex-B
-    ///   start code (only checked for H.264 / H.265 / H.266; AV1 OBU
+    ///   start code or is not structurally composed of start-code-delimited
+    ///   NAL units (only checked for H.264 / H.265 / H.266; AV1 OBU
     ///   payloads pass through this check).
     /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
     ///   `MuxerConfig::buffer_packets`.
@@ -144,6 +150,76 @@ impl Muxer {
         handle: VideoStreamHandle,
         nal: &[u8],
         pts: Pts90khz,
+        key_frame: bool,
+    ) -> Result<(), MuxError> {
+        self.push_video_to_internal(handle, nal, PesPtsField::PtsOnly(pts), pts, key_frame)
+    }
+
+    /// Push one access unit with explicit composition (PTS) and decode (DTS)
+    /// timestamps. Required for codecs that emit reordered output (B-frames
+    /// in H.264 / H.265 / H.266 / AV1).
+    ///
+    /// Emits PES with `PTS_DTS_flags = '11'` per ISO/IEC 13818-1 §2.4.3.6 —
+    /// 10 bytes of PES header data carrying both PTS (composition time)
+    /// and DTS (decode time). When `pts == dts`, prefer
+    /// [`Self::push_video_to`] for the smaller 5-byte PTS-only encoding.
+    ///
+    /// **Caller invariant:** `dts <= pts` per §2.4.3.6 (decode order precedes
+    /// composition order). The muxer does not enforce this — receivers
+    /// will reject inverted timestamps.
+    ///
+    /// **Internal cadence:** PCR pacing, PSI emission cadence, and buffer
+    /// reservation all key off `pts`. DTS does not influence the
+    /// wall-clock or scheduling state.
+    ///
+    /// AV1 streams expect OBU bitstream input (AV1 spec §5) and skip
+    /// the Annex-B start-code check; H.264 / H.265 / H.266 require
+    /// Annex-B framing.
+    ///
+    /// # C ABI
+    ///
+    /// Not yet exposed via the C ABI; the C surface tracks the PTS-only
+    /// API today. Callers needing B-frame support from C should bridge
+    /// through the Rust API or open an issue requesting the C entry.
+    ///
+    /// # Errors
+    /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
+    ///   range for this muxer's configured video stream count.
+    /// - [`MuxError::InvalidNal`] if `nal` does not begin with an Annex-B
+    ///   start code or is not structurally composed of start-code-delimited
+    ///   NAL units (only checked for H.264 / H.265 / H.266; AV1 OBU
+    ///   payloads pass through this check).
+    /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
+    ///   `MuxerConfig::buffer_packets`.
+    pub fn push_video_to_with_dts(
+        &mut self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts: Pts90khz,
+        dts: Pts90khz,
+        key_frame: bool,
+    ) -> Result<(), MuxError> {
+        // Pacing keys off PTS — see method-level rustdoc.
+        self.push_video_to_internal(
+            handle,
+            nal,
+            PesPtsField::PtsAndDts { pts, dts },
+            pts,
+            key_frame,
+        )
+    }
+
+    /// Shared body for `push_video_to` and `push_video_to_with_dts`.
+    ///
+    /// `pts_field` controls the PES header shape (PTS-only vs PTS+DTS);
+    /// `pacing_pts` is the timestamp used for PCR / PSI cadence and stats
+    /// (always the presentation time — DTS doesn't drive scheduling).
+    fn push_video_to_internal(
+        &mut self,
+        handle: VideoStreamHandle,
+        nal: &[u8],
+        pts_field: PesPtsField,
+        pacing_pts: Pts90khz,
         key_frame: bool,
     ) -> Result<(), MuxError> {
         let (prog_idx, within_idx) = handle.unpack();
@@ -189,13 +265,8 @@ impl Muxer {
                 VideoCodec::Av1
             ),
         };
-        let header_len = write_pes_header(
-            &mut header,
-            STREAM_ID_VIDEO,
-            PesPtsField::PtsOnly(pts),
-            None,
-            pes_flags,
-        );
+        let header_len = write_pes_header(&mut header, STREAM_ID_VIDEO, pts_field, None, pes_flags);
+        let pts = pacing_pts;
 
         let total = header_len + nal.len();
         let video_packets = ts_packets_for(total);

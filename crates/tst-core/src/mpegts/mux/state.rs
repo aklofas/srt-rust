@@ -44,12 +44,118 @@ pub(super) struct SubtitleStreamState {
     pub(super) codec: SubtitleCodec,
 }
 
+/// Structural Annex-B access-unit validator per H.264 / H.265 / H.266
+/// byte-stream syntax (ISO/IEC 14496-10 Annex B; ITU-T H.265 Annex B;
+/// ITU-T H.266 Annex B).
+///
+/// Validate-1 C13: the prior implementation only checked the AU's leading
+/// prefix. That accepted malformed inputs whose first 3-4 bytes happened
+/// to be a start code but whose interior contained no real NAL units, or
+/// trailed off mid-start-code. This walker scans every start code in the
+/// buffer and rejects:
+///
+/// - inputs that do not start with `00 00 01` or `00 00 00 01`,
+/// - inputs that contain only start codes with no NAL body byte between
+///   them (zero-length NAL unit),
+/// - inputs whose final NAL unit is empty (start code at the very tail),
+/// - inputs that end mid-start-code (trailing `00 00` or `00` is
+///   ambiguous in Annex-B framing).
+///
+/// Spec note: H.264/H.265/H.266 forbid empty NAL units — a `nal_unit()`
+/// element must contain at least a 1-byte (H.264) or 2-byte (H.265/H.266)
+/// `nal_unit_header()`. Validating "non-empty NAL" without parsing the
+/// header is the minimum compatible check; we don't enforce the
+/// codec-specific header size here (codec-specific parsers in
+/// `crate::codec` do that downstream).
 pub(super) fn validate_annex_b(nal: &[u8]) -> Result<(), MuxError> {
-    if nal.starts_with(&[0x00, 0x00, 0x00, 0x01]) || nal.starts_with(&[0x00, 0x00, 0x01]) {
-        Ok(())
+    // Must start with a recognised Annex-B start code.
+    let leading_len = if nal.starts_with(&[0x00, 0x00, 0x00, 0x01]) {
+        4
+    } else if nal.starts_with(&[0x00, 0x00, 0x01]) {
+        3
     } else {
-        Err(MuxError::InvalidNal)
+        return Err(MuxError::InvalidNal);
+    };
+
+    // Walk the buffer counting non-empty NAL units (bytes between
+    // consecutive start codes, and between the last start code and EOF).
+    let mut nal_count: usize = 0;
+    // Position immediately after the current start code (i.e., start of
+    // the current NAL unit's body).
+    let mut nal_body_start: usize = leading_len;
+    let mut i: usize = leading_len;
+    while i < nal.len() {
+        // Look for the next start code: `00 00 01` or `00 00 00 01`.
+        // The byte preceding `00 00 01` may be a `00` (4-byte form) or
+        // any other byte (3-byte form); either way the NAL body ends
+        // before the leading zero pair.
+        if i + 3 <= nal.len() && nal[i] == 0 && nal[i + 1] == 0 && nal[i + 2] == 1 {
+            // 3-byte start code — close the current NAL.
+            if i <= nal_body_start {
+                // Zero-length NAL between two adjacent start codes (no
+                // body bytes), e.g., `00 00 01 00 00 01`. Forbidden.
+                return Err(MuxError::InvalidNal);
+            }
+            nal_count += 1;
+            nal_body_start = i + 3;
+            i += 3;
+            continue;
+        }
+        if i + 4 <= nal.len()
+            && nal[i] == 0
+            && nal[i + 1] == 0
+            && nal[i + 2] == 0
+            && nal[i + 3] == 1
+        {
+            // 4-byte start code — close the current NAL.
+            if i <= nal_body_start {
+                return Err(MuxError::InvalidNal);
+            }
+            nal_count += 1;
+            nal_body_start = i + 4;
+            i += 4;
+            continue;
+        }
+        i += 1;
     }
+    // Reject buffers that end mid-start-code (trailing `00` or `00 00`
+    // with no terminating `01` byte). The Annex-B framing makes such a
+    // tail ambiguous — receivers could read it as a start-code prefix
+    // and expect more data. Allow benign trailing zero-byte padding
+    // only if the last closed NAL had a body (caller-supplied
+    // emulation-prevention-style tails).
+    //
+    // We only reject if the *very last* bytes look like an unterminated
+    // start code AND no NAL body has been emitted after it. This avoids
+    // false positives for legitimate emulation prevention bytes inside
+    // a NAL body.
+    if nal.len() >= 2 && nal[nal.len() - 1] == 0 && nal[nal.len() - 2] == 0 {
+        // Trailing `... 00 00` with no terminating `01` — only a problem
+        // if those zeros are not part of the last NAL body. Cheap proxy:
+        // when nal_body_start sits more than 2 bytes from EOF, the zeros
+        // are inside a NAL body (fine). When they ARE the start of a
+        // would-be new start code (i.e., at the boundary of the last NAL),
+        // reject.
+        if nal.len() <= nal_body_start + 2 && nal.len() > nal_body_start {
+            return Err(MuxError::InvalidNal);
+        }
+    }
+
+    // Close out the final NAL (from `nal_body_start` to EOF).
+    if nal.len() <= nal_body_start {
+        // No bytes after the last start code — final NAL is empty.
+        return Err(MuxError::InvalidNal);
+    }
+    nal_count += 1;
+
+    if nal_count == 0 {
+        // Defensive: leading start code guarantees ≥1 NAL closes above,
+        // so this branch is unreachable in practice. Keep as a safety
+        // net so the function returns Err on any zero-NAL slip.
+        return Err(MuxError::InvalidNal);
+    }
+
+    Ok(())
 }
 
 /// True iff `caller_descs` contains any descriptor that the receiver-side

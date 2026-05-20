@@ -263,6 +263,21 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         } // transport_guard dropped here — inner lock released before reconnect_and_drain
 
         // Inner is broken/closed. Queue this message and attempt reconnect.
+        //
+        // Validate-1 C2 (Codex PIPE-01): `OverflowPolicy::Reject` is a
+        // correctness-over-freshness contract — when the gap buffer is full,
+        // the caller has explicitly asked us to refuse new bytes rather than
+        // evict queued ones. Surface `GapBufferError::Full` as
+        // `TransportError::Backpressure("gap buffer full")` so the caller's
+        // shell maps it to `ShellErrorKind::Backpressure` (and `tst-c` to
+        // `TST_E_BUFFER_FULL`) instead of silently dropping the bytes. We
+        // also skip the reconnect attempt on this path: the buffer rejection
+        // is about local capacity, not transport liveness, and a reconnect
+        // wouldn't change the buffer state.
+        //
+        // `OverflowPolicy::DropOldest` continues to return `Ok(())` from
+        // `enqueue` (it evicts and pushes) so this path is unchanged for
+        // that policy.
         {
             // Plan B mutex sweep (documented panic): gap-accumulator is
             // invariant-critical. A poisoned lock means a previous panic
@@ -276,7 +291,9 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                 .gap
                 .lock()
                 .expect("BUG: gap lock poisoned — gap buffer is invariant-critical");
-            let _ = gap.enqueue(bytes.to_vec()); // overflow policy applies
+            if let Err(gap_buffer::GapBufferError::Full) = gap.enqueue(bytes.to_vec()) {
+                return Err(TransportError::Backpressure("gap buffer full".into()));
+            }
         }
         self.reconnect_and_drain()
     }

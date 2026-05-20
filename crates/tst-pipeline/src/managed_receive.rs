@@ -43,13 +43,17 @@
 //!
 //! ## Limitations worth knowing about
 //!
-//! - **Demuxer / sync state outlives reconnect.** This decorator only
-//!   replaces the byte source. If the consumer wraps it in `Receiver`,
-//!   the syncer's internal buffer carries over from the dead connection.
-//!   In practice that costs at most one re-VERIFY pass (a stale packet of
-//!   bytes is skipped during HUNT). For a clean restart, callers can use
-//!   the `Receiver::reset_sync` helper from a higher-level shell. A
-//!   future `ManagedReceiver` may wire this in automatically.
+//! - **Demuxer / sync state outlives reconnect at THIS layer.** This
+//!   decorator only replaces the byte source. If the consumer wraps it
+//!   directly in `Receiver` / `DemuxReceiver`, the syncer's internal
+//!   buffer and the demuxer's PSI/PES state carry over from the dead
+//!   connection — bytes from the dropped connection can splice into
+//!   the new connection's framing and produce corrupted samples.
+//!   Use [`ManagedDemuxReceiver`][crate::ManagedDemuxReceiver] to
+//!   wire reconnect detection into both layers automatically. The
+//!   [`ManagedRecvTransport::reconnects_count`] accessor exposes the
+//!   rebuild count for callers that want to build their own reset
+//!   logic.
 //! - **`max_payload` is assumed stable across reconnects.** The
 //!   `RecvTransport` value reported here is the live inner's current
 //!   value, but consumers that cache it at construction time (e.g.
@@ -63,6 +67,7 @@
 //!   `Demuxer::flush()` to drain any partial PES at end-of-stream.
 
 use crate::reconnect::ReconnectPolicy;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 use tst_core::mpegts::common::SRT_TS_BUNDLE_BYTES;
@@ -108,6 +113,16 @@ pub struct ManagedRecvTransport<R: RecvTransport> {
     /// successful build. Held in an Arc<Mutex<>> so the cancel handle
     /// (separate object) can read without owning &mut self.
     inner_cancel: Arc<Mutex<Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>>>>,
+    /// Number of times the factory has been successfully invoked to
+    /// rebuild a fresh inner transport (does NOT include the
+    /// initial `new()` inner). Higher-level shells
+    /// (`ManagedDemuxReceiver`) poll this between `recv_bytes` calls
+    /// to detect a transport reconnect and reset their parse state.
+    /// Atomic so a future cross-thread observer (e.g. a stats thread)
+    /// can read it without locking. Stored as `Arc<AtomicU64>` so
+    /// observers can hold a handle independent of the decorator's
+    /// lifetime.
+    reconnects: Arc<AtomicU64>,
 }
 
 impl<R: RecvTransport> ManagedRecvTransport<R> {
@@ -132,7 +147,37 @@ impl<R: RecvTransport> ManagedRecvTransport<R> {
             explicit_close: false,
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             inner_cancel,
+            reconnects: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    /// Total number of successful factory rebuilds since construction.
+    ///
+    /// Returns 0 if no reconnect has fired yet (the initial inner
+    /// passed to [`Self::new`] does NOT count). Increments by 1 on
+    /// each successful `(self.factory)()` call inside `recv_bytes`.
+    ///
+    /// Higher-level shells like
+    /// [`ManagedDemuxReceiver`][crate::ManagedDemuxReceiver] poll this
+    /// between `recv_bytes` calls; when the count rises, they reset
+    /// their sync + demux state to prevent stale bytes from the dead
+    /// connection from spliced into the new connection's parse state.
+    #[must_use]
+    pub fn reconnects_count(&self) -> u64 {
+        self.reconnects.load(Ordering::Acquire)
+    }
+
+    /// Shared handle to the reconnect counter. Lets a higher-level
+    /// shell that no longer owns `&self` (e.g. after the
+    /// `ManagedRecvTransport` has been moved into a `Receiver`) still
+    /// poll the count to detect reconnects.
+    ///
+    /// The returned `Arc<AtomicU64>` is updated by the decorator each
+    /// time the factory successfully rebuilds the inner transport.
+    /// Read with `.load(Ordering::Acquire)`.
+    #[must_use]
+    pub fn reconnects_handle(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.reconnects)
     }
 }
 
@@ -223,6 +268,15 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
                         *guard = t.cancel_handle();
                         drop(guard);
                         self.inner = Some(t);
+                        // Observable post-rebuild — higher-level shells
+                        // (`ManagedDemuxReceiver`) read this counter between
+                        // `recv_bytes` calls to detect a fresh transport and
+                        // reset their sync/demux state. Release ordering so a
+                        // reader using Acquire sees the new inner installed
+                        // above. Increment AFTER `self.inner = Some(t)` so a
+                        // reader that races observes count rise only when the
+                        // new inner is in place.
+                        self.reconnects.fetch_add(1, Ordering::Release);
                     }
                     Err(_) => continue,
                 }

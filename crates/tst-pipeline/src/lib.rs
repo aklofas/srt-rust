@@ -42,6 +42,7 @@
 pub mod demux_receiver;
 pub mod dyn_aliases;
 pub mod ext;
+pub mod managed_demux_receiver;
 pub mod managed_receive;
 pub mod mux_sender;
 pub mod raw_receiver;
@@ -59,6 +60,7 @@ pub use dyn_aliases::{
     BoxedDemuxReceiver, BoxedMuxSender, BoxedRawReceiver, BoxedRawSender, BoxedReceiver,
     BoxedSender,
 };
+pub use managed_demux_receiver::{ManagedDemuxReceiver, ManagedDemuxReceiverConfig};
 pub use managed_receive::ManagedRecvTransport;
 pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderErrorSource, MuxSenderStats};
 // Pairing is intentionally NOT re-exported at the crate root. It lives

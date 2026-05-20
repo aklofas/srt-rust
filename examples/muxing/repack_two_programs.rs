@@ -331,7 +331,11 @@ fn repack_event(
         // playback glitch with a continuity_counter jump in the input).
         DemuxEvent::ProgramMap(_)
         | DemuxEvent::Discontinuity { .. }
-        | DemuxEvent::NonConformant { .. } => {}
+        | DemuxEvent::NonConformant { .. }
+        // Emitted only by `ManagedDemuxReceiver` reconnect-aware shells;
+        // this repacker reads from a file via plain `Demuxer`, never
+        // emits this variant. Included for exhaustive matching.
+        | DemuxEvent::ReconnectDiscontinuity => {}
 
         // Guard: exhaustive match so future DemuxEvent variants cause a
         // compile error here rather than being silently swallowed.

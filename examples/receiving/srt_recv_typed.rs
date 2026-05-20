@@ -128,6 +128,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(DemuxEvent::NonConformant { stream, issue }) => {
                 eprintln!("NonConformant PID=0x{:04X} {issue:?}", stream.pid);
             }
+            // Emitted only by the reconnect-aware `ManagedDemuxReceiver`
+            // shell (which this example doesn't use); plain `DemuxReceiver`
+            // never produces this. Included only to satisfy exhaustive
+            // matching on `DemuxEvent`.
+            Ok(DemuxEvent::ReconnectDiscontinuity) => {}
             // Any error variant terminates this single-shot example.
             // `err.kind == TransportBroken` fires on peer disconnect (clean
             // or not); `err.kind == InputMalformed` fires in strict mode or

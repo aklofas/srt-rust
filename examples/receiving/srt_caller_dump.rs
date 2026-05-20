@@ -215,6 +215,10 @@ fn handle_event(event: &DemuxEvent, args: &Args, stats: &mut Stats) {
             stats.nonconformant += 1;
             eprintln!("[nc]   PID=0x{:04X} {issue:?}", stream.pid);
         }
+        // Only emitted by `ManagedDemuxReceiver` (tst-pipeline) shells
+        // that own reconnect; not produced by plain `DemuxReceiver`.
+        // Included for exhaustive matching.
+        DemuxEvent::ReconnectDiscontinuity => {}
     }
 }
 

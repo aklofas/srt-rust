@@ -252,10 +252,50 @@ impl core::marker::Unpin for tst_pipeline::ext::pairing::VideoSample
 impl core::marker::UnsafeUnpin for tst_pipeline::ext::pairing::VideoSample
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::ext::pairing::VideoSample
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::ext::pairing::VideoSample
+pub mod tst_pipeline::managed_demux_receiver
+pub struct tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R: tst_core::transport::RecvTransport>
+impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::close(&mut self)
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::is_alive(&self) -> bool
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::new(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnects_count(&self) -> u64
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::with_demux_options(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, options: tst_core::mpegts::demux::types::DemuxerConfig, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
+impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+pub type tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::next(&mut self) -> core::option::Option<Self::Item>
+impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::drop(&mut self)
+impl<R> core::marker::Freeze for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R> where R: core::marker::Freeze
+impl<R> core::marker::Send for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+impl<R> !core::marker::Sync for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+impl<R> core::marker::Unpin for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R> where R: core::marker::Unpin
+impl<R> core::marker::UnsafeUnpin for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R> where R: core::marker::UnsafeUnpin
+impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+#[non_exhaustive] pub struct tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::clone::Clone for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::clone(&self) -> tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::default::Default for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::default() -> tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::fmt::Debug for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::marker::Send for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::marker::Sync for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::marker::Unpin for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::marker::UnsafeUnpin for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 pub mod tst_pipeline::managed_receive
 pub struct tst_pipeline::managed_receive::ManagedRecvTransport<R: tst_core::transport::RecvTransport>
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_receive::ManagedRecvTransport<R>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new(inner: R, factory: alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, policy: tst_pipeline::reconnect::ReconnectPolicy) -> Self
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_count(&self) -> u64
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicU64>
 impl<R: tst_core::transport::RecvTransport> tst_core::transport::RecvTransport for tst_pipeline::managed_receive::ManagedRecvTransport<R>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::close(&mut self)
@@ -1312,9 +1352,48 @@ impl core::marker::Unpin for tst_pipeline::GapBuffer
 impl core::marker::UnsafeUnpin for tst_pipeline::GapBuffer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::GapBuffer
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::GapBuffer
+pub struct tst_pipeline::ManagedDemuxReceiver<R: tst_core::transport::RecvTransport>
+impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::close(&mut self)
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::is_alive(&self) -> bool
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::new(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnects_count(&self) -> u64
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::with_demux_options(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, options: tst_core::mpegts::demux::types::DemuxerConfig, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
+impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+pub type tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::next(&mut self) -> core::option::Option<Self::Item>
+impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::drop(&mut self)
+impl<R> core::marker::Freeze for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R> where R: core::marker::Freeze
+impl<R> core::marker::Send for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+impl<R> !core::marker::Sync for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+impl<R> core::marker::Unpin for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R> where R: core::marker::Unpin
+impl<R> core::marker::UnsafeUnpin for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R> where R: core::marker::UnsafeUnpin
+impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
+#[non_exhaustive] pub struct tst_pipeline::ManagedDemuxReceiverConfig
+impl core::clone::Clone for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::clone(&self) -> tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::default::Default for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::default() -> tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::fmt::Debug for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::marker::Send for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::marker::Sync for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::marker::Unpin for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::marker::UnsafeUnpin for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 pub struct tst_pipeline::ManagedRecvTransport<R: tst_core::transport::RecvTransport>
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_receive::ManagedRecvTransport<R>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new(inner: R, factory: alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, policy: tst_pipeline::reconnect::ReconnectPolicy) -> Self
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_count(&self) -> u64
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicU64>
 impl<R: tst_core::transport::RecvTransport> tst_core::transport::RecvTransport for tst_pipeline::managed_receive::ManagedRecvTransport<R>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::close(&mut self)

@@ -205,6 +205,11 @@ fn main() {
             DemuxEvent::NonConformant { stream, issue } => {
                 println!("NonConformant PID=0x{:04X} {issue:?}", stream.pid);
             }
+            // Only emitted by `ManagedDemuxReceiver` (tst-pipeline) on
+            // transport reconnect; not produced by the file-driven
+            // `Demuxer` this example uses. Included to satisfy
+            // exhaustive matching.
+            DemuxEvent::ReconnectDiscontinuity => {}
         }
     }
 }

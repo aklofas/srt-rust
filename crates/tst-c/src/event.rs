@@ -575,6 +575,16 @@ pub(crate) fn convert(
         DemuxEvent::NonConformant { stream, issue } => {
             fill_nonconformant(arena, stream, issue, out);
         }
+        DemuxEvent::ReconnectDiscontinuity => {
+            // Only emitted by `ManagedDemuxReceiver` (tst-pipeline), which
+            // is not yet wired into the C ABI's managed receive surface —
+            // today the C side wraps `DemuxReceiver<ManagedRecvTransport>`,
+            // which has no path to produce this variant. Leave the event
+            // body unset (`*out` already defaulted above); future C ABI
+            // work that exposes the reset-aware receiver will add a
+            // dedicated `TstEventKind::ReconnectDiscontinuity` and fill
+            // here.
+        }
     }
 }
 

@@ -186,7 +186,7 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
         let reconnects = transport.reconnects_handle();
         Self {
             ts: Receiver::new(transport, ReceiverConfig::default()),
-            demux: Demuxer::with_options(options),
+            demux: Demuxer::with_config(options),
             reconnects,
             last_reconnects: 0,
             pending_reconnect_event: false,

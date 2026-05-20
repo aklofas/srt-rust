@@ -1,7 +1,7 @@
 //! H.266 SPS parser tests.
 
 use crate::codec::h266::parse_sps;
-use crate::codec::{ChromaFormat, CodecParseError};
+use crate::codec::{ChromaFormat, CodecParseError, Rational};
 
 /// Inline bit-builder. Mirrors the parser's expected reads exactly,
 /// keeping the test bytes debuggable by reading the field-write
@@ -490,4 +490,201 @@ fn vui_tail_padding_consumed_before_extension_flag() {
     // Ensure VUI itself parsed (all zero gates → no color_info, but the
     // structural walk reached here).
     assert_eq!(sps.color_info, None);
+}
+
+/// Construct an H.266 SPS that exercises the `walk_ref_pic_list_struct`
+/// `AbsDeltaPocSt` predicate (H.266 V4 §7.4.9 equation 150).
+///
+/// `sps_weighted_pred_flag` and `sps_weighted_bipred_flag` are both `0`.
+/// The single emitted RPS struct has `num_ref_entries = 2` with both
+/// `abs_delta_poc_st = 0`. Per spec each entry's `AbsDeltaPocSt` is
+/// `0 + 1 = 1 > 0`, so a `strp_entry_sign_flag` u(1) is coded for BOTH.
+///
+/// `timing_hrd_params_present_flag = 1` then writes `num_units_in_tick = 1`
+/// and `time_scale = 30` so the parser surfaces `frame_rate = 30/1` only
+/// when the RPS walk lands the cursor at the spec-correct position. A
+/// 1-bit drift would mis-frame `num_units_in_tick` (a u(32)) and either
+/// produce garbage timing or trigger `TruncatedRbsp` near the RBSP end.
+fn sps_rbsp_with_two_entry_short_term_rps_and_timing_hrd() -> Vec<u8> {
+    let mut bw = BitWriter::new();
+
+    // §7.3.2.4 SPS header — same layout as `minimal_sps_rbsp_full`.
+    bw.write(0, 4); // sps_seq_parameter_set_id
+    bw.write(0, 4); // sps_video_parameter_set_id
+    bw.write(0, 3); // sps_max_sublayers_minus1
+    bw.write(1, 2); // sps_chroma_format_idc = 1 (4:2:0)
+    bw.write(0, 2); // sps_log2_ctu_size_minus5
+    bw.write(1, 1); // sps_ptl_dpb_hrd_params_present_flag = 1
+
+    // §7.3.3.1 profile_tier_level(1, 0). Total 32 bits = 4 bytes.
+    bw.write(1, 7); // general_profile_idc = 1 (Main 10)
+    bw.write(0, 1); // general_tier_flag
+    bw.write(63, 8); // general_level_idc
+    bw.write(0, 1); // ptl_frame_only_constraint_flag
+    bw.write(0, 1); // ptl_multilayer_enabled_flag
+    bw.write(0, 1); // gci_present_flag = 0
+    bw.write(0, 5); // byte-align PTL (19 + 5 = 24 = byte boundary)
+    bw.write(0, 8); // ptl_num_sub_profiles = 0
+
+    bw.write(0, 1); // sps_gdr_enabled_flag
+    bw.write(0, 1); // sps_ref_pic_resampling_enabled_flag
+    bw.write_ue(320); // pic_width_max_in_luma_samples
+    bw.write_ue(240); // pic_height_max_in_luma_samples
+    bw.write(0, 1); // sps_conformance_window_flag = 0
+    bw.write(0, 1); // sps_subpic_info_present_flag = 0
+    bw.write_ue(0); // sps_bitdepth_minus8 = 0 → 8-bit
+
+    // ── body walk — mirrors `walk_sps_body` order ───────────────────────────
+    bw.write(0, 1); // sps_entropy_coding_sync_enabled_flag
+    bw.write(0, 1); // sps_entry_point_offsets_present_flag
+    bw.write(0, 4); // sps_log2_max_pic_order_cnt_lsb_minus4
+    bw.write(0, 1); // sps_poc_msb_cycle_flag
+    bw.write(0, 2); // sps_num_extra_ph_bytes
+    bw.write(0, 2); // sps_num_extra_sh_bytes
+
+    // dpb_parameters(0, false): one iteration.
+    bw.write_ue(1); // dpb_max_dec_pic_buffering_minus1[0]
+    bw.write_ue(0); // dpb_max_num_reorder_pics[0]
+    bw.write_ue(0); // dpb_max_latency_increase_plus1[0]
+
+    bw.write_ue(0); // sps_log2_min_luma_coding_block_size_minus2
+    bw.write(0, 1); // sps_partition_constraints_override_enabled_flag
+
+    // intra luma partition constraints (always present)
+    bw.write_ue(0); // log2_diff_min_qt_min_cb_intra_slice_luma
+    bw.write_ue(0); // max_mtt_hierarchy_depth_intra_slice_luma
+    // chroma_format_idc=1 → dual_tree flag present
+    bw.write(0, 1); // sps_qtbtt_dual_tree_intra_flag = 0
+    // inter partition constraints (always present)
+    bw.write_ue(0); // log2_diff_min_qt_min_cb_inter_slice
+    bw.write_ue(0); // max_mtt_hierarchy_depth_inter_slice
+
+    bw.write(0, 1); // sps_transform_skip_enabled_flag
+    bw.write(0, 1); // sps_mts_enabled_flag
+    bw.write(0, 1); // sps_lfnst_enabled_flag
+
+    // chroma_format_idc != 0 → joint_cbcr + qp_table.
+    bw.write(0, 1); // sps_joint_cbcr_enabled_flag
+    bw.write(1, 1); // sps_same_qp_table_for_chroma_flag = 1 → numQpTables = 1
+    bw.write_ue(0); // qp_table_start_minus26[0]
+    bw.write_ue(0); // num_points[0] = 0 → one (in,out) pair
+    bw.write_ue(0); // delta_qp_in_val_minus1[0][0]
+    bw.write_ue(0); // delta_qp_diff_val[0][0]
+
+    bw.write(0, 1); // sps_sao_enabled_flag
+    bw.write(0, 1); // sps_alf_enabled_flag = 0 → no ccalf flag
+    bw.write(0, 1); // sps_lmcs_enabled_flag
+    // Critical for this regression: both weighted flags 0. The spec gate
+    // `(weighted_pred || weighted_bipred) && i != 0` evaluates false at
+    // every entry — AbsDeltaPocSt = abs_delta_poc_st + 1 always.
+    bw.write(0, 1); // sps_weighted_pred_flag = 0
+    bw.write(0, 1); // sps_weighted_bipred_flag = 0
+    bw.write(0, 1); // sps_long_term_ref_pics_flag = 0
+    // vps_id == 0 → sps_inter_layer_prediction_enabled_flag NOT coded
+    bw.write(0, 1); // sps_idr_rpl_present_flag
+    bw.write(0, 1); // sps_rpl1_same_as_rpl0_flag = 0 → two RPL directions
+
+    // L0: one RPS struct with two short-term entries.
+    bw.write_ue(1); // sps_num_ref_pic_lists[0] = 1
+    // ref_pic_list_struct(0, 0):
+    bw.write_ue(2); // num_ref_entries = 2
+    // long_term_ref_pics_flag=0 → ltrp_in_header_flag NOT coded.
+    // inter_layer_pred_enabled_flag=0 → inter_layer_ref_pic_flag NOT coded.
+    // long_term_ref_pics_flag=0 → st_ref_pic_flag inferred 1.
+    // Entry 0: abs_delta_poc_st = 0, AbsDeltaPocSt = 1 → sign coded.
+    bw.write_ue(0); // abs_delta_poc_st[0]
+    bw.write(0, 1); // strp_entry_sign_flag[0]
+    // Entry 1: abs_delta_poc_st = 0; spec says AbsDeltaPocSt = 1 → sign coded.
+    bw.write_ue(0); // abs_delta_poc_st[1]
+    bw.write(0, 1); // strp_entry_sign_flag[1]
+    // L1: no RPS structs.
+    bw.write_ue(0); // sps_num_ref_pic_lists[1] = 0
+
+    bw.write(0, 1); // sps_ref_wraparound_enabled_flag
+    bw.write(0, 1); // sps_temporal_mvp_enabled_flag = 0 → no sbtmvp
+    bw.write(0, 1); // sps_amvr_enabled_flag
+    bw.write(0, 1); // sps_bdof_enabled_flag = 0 → no bdof_control flag
+    bw.write(0, 1); // sps_smvd_enabled_flag
+    bw.write(0, 1); // sps_dmvr_enabled_flag = 0 → no dmvr_control flag
+    bw.write(0, 1); // sps_mmvd_enabled_flag = 0 → no mmvd_fullpel flag
+    bw.write_ue(0); // sps_six_minus_max_num_merge_cand = 0 → MaxNumMergeCand=6
+    bw.write(0, 1); // sps_sbt_enabled_flag
+    bw.write(0, 1); // sps_affine_enabled_flag = 0 → no affine sub-fields
+    bw.write(0, 1); // sps_bcw_enabled_flag
+    bw.write(0, 1); // sps_ciip_enabled_flag
+    // MaxNumMergeCand >= 2 → sps_gpm_enabled_flag present.
+    bw.write(0, 1); // sps_gpm_enabled_flag = 0 → no max_num_gpm_cand
+
+    bw.write_ue(0); // sps_log2_parallel_merge_level_minus2
+    bw.write(0, 1); // sps_isp_enabled_flag
+    bw.write(0, 1); // sps_mrl_enabled_flag
+    bw.write(0, 1); // sps_mip_enabled_flag
+    bw.write(0, 1); // sps_cclm_enabled_flag (chroma_format_idc != 0)
+    bw.write(0, 1); // sps_chroma_horizontal_collocated_flag (chroma_format_idc==1)
+    bw.write(0, 1); // sps_chroma_vertical_collocated_flag
+    bw.write(0, 1); // sps_palette_enabled_flag
+    // chroma_format_idc=1 (not 3) → sps_act_enabled_flag NOT present.
+    bw.write(0, 1); // sps_ibc_enabled_flag = 0 → no ibc_merge_cand
+    bw.write(0, 1); // sps_ladf_enabled_flag = 0 → no ladf fields
+    bw.write(0, 1); // sps_explicit_scaling_list_enabled_flag = 0
+    bw.write(0, 1); // sps_dep_quant_enabled_flag
+    bw.write(0, 1); // sps_sign_data_hiding_enabled_flag
+    bw.write(0, 1); // sps_virtual_boundaries_enabled_flag = 0
+
+    // ptl_dpb_hrd_params_present_flag=1 → timing_hrd flag present.
+    bw.write(1, 1); // sps_timing_hrd_params_present_flag = 1
+    // §7.3.5.1 general_timing_hrd_parameters().
+    bw.write(1, 32); // num_units_in_tick = 1
+    bw.write(30, 32); // time_scale = 30 → 30 fps
+    bw.write(0, 1); // general_nal_hrd_params_present_flag
+    bw.write(0, 1); // general_vcl_hrd_params_present_flag
+    // Both 0 → no further general_timing_hrd fields.
+    // §7.3.5.2 ols_timing_hrd_parameters: max_sublayers_minus1=0 → no
+    // sublayer_cpb_params_present_flag; first_sub_layer = 0.
+    // Loop 0..=0:
+    bw.write(1, 1); // fixed_pic_rate_general_flag = 1 → infer within_cvs=true
+    bw.write_ue(0); // elemental_duration_in_tc_minus1
+    // No sublayer_hrd_parameters (neither nal_hrd nor vcl_hrd present).
+
+    bw.write(0, 1); // sps_field_seq_flag
+    bw.write(0, 1); // sps_vui_parameters_present_flag
+    bw.write(0, 1); // sps_extension_flag
+
+    bw.end_rbsp();
+    bw.bytes
+}
+
+/// Regression for H.266 V4 §7.4.9 equation 150 — `AbsDeltaPocSt` derivation
+/// in `ref_pic_list_struct`.
+///
+/// Pre-fix, `walk_ref_pic_list_struct` gated the `+1` on
+/// `i == 0 || !prev_use_ref_pic_list` (an `inter_layer_ref_pic_flag`-shaped
+/// predicate falsely attributed to §7.4.9). Spec predicate (cross-checked
+/// against ffmpeg `libavcodec/vvc/refs.c:522-526` and
+/// `libavcodec/cbs_h266_syntax_template.c:464-471`):
+///
+/// ```text
+/// if !((sps_weighted_pred_flag || sps_weighted_bipred_flag) && i != 0)
+///     AbsDeltaPocSt = abs_delta_poc_st + 1
+/// else
+///     AbsDeltaPocSt = abs_delta_poc_st
+/// ```
+///
+/// With both weighted flags `0` (the common default), spec ALWAYS adds +1;
+/// the buggy predicate only adds +1 at `i == 0`. For an RPS with two
+/// short-term entries at `abs_delta_poc_st = 0`, spec consumes a
+/// `strp_entry_sign_flag` u(1) for BOTH entries; the buggy parser only
+/// consumes one. The 1-bit cursor drift then mis-frames `num_units_in_tick`,
+/// returning garbage timing rather than the encoded 30 fps.
+#[test]
+fn h266_abs_delta_poc_st_predicate_matches_spec_no_weighted_pred() {
+    let rbsp = sps_rbsp_with_two_entry_short_term_rps_and_timing_hrd();
+    let sps =
+        parse_sps(&rbsp).expect("SPS with 2-entry short-term RPS at delta=0 must parse cleanly");
+    assert_eq!(
+        sps.frame_rate,
+        Some(Rational { num: 30, den: 1 }),
+        "frame_rate must surface as 30/1 from num_units_in_tick=1, time_scale=30 — \
+         1-bit cursor drift after the RPS walk would mis-frame these reads"
+    );
 }

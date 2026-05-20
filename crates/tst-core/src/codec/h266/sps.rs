@@ -323,8 +323,14 @@ fn walk_sps_body(
         let _ccalf_enabled_flag = br.read_bool()?;
     }
     let _lmcs_enabled_flag = br.read_bool()?;
-    let _weighted_pred_flag = br.read_bool()?;
-    let _weighted_bipred_flag = br.read_bool()?;
+    // Weighted-pred flags gate the `AbsDeltaPocSt` +1 fallback in
+    // `ref_pic_list_struct` per H.266 V4 §7.4.9 equation (150) — threaded
+    // into the walker below. Pre-fix this code stored them as `_weighted_*`
+    // and discarded them, leaving the walker to use an
+    // `inter_layer_ref_pic_flag`-shaped predicate that diverged from spec
+    // at `i >= 1`.
+    let weighted_pred_flag = br.read_bool()?;
+    let weighted_bipred_flag = br.read_bool()?;
     let long_term_ref_pics_flag = br.read_bool()?;
     // sps_inter_layer_prediction_enabled_flag present only when vps_id > 0.
     let inter_layer_pred_enabled_flag = if vps_id > 0 { br.read_bool()? } else { false };
@@ -344,6 +350,8 @@ fn walk_sps_body(
                 num_ref_pic_lists,
                 long_term_ref_pics_flag,
                 inter_layer_pred_enabled_flag,
+                weighted_pred_flag,
+                weighted_bipred_flag,
             )?;
         }
     }
@@ -664,6 +672,15 @@ fn walk_sublayer_hrd_parameters(
 /// since that width is not passed into this helper, the long-term non-in-header
 /// path bails to `UnsupportedProfile`. In practice `sps_long_term_ref_pics_flag`
 /// is `false` on VVenC default output so this path is never taken on real fixtures.
+///
+/// `weighted_pred_flag` and `weighted_bipred_flag` gate the `AbsDeltaPocSt`
+/// +1 fallback per H.266 V4 §7.4.9 equation (150). Cross-checked against
+/// ffmpeg `libavcodec/vvc/refs.c:522-526` and
+/// `libavcodec/cbs_h266_syntax_template.c:464-471`.
+//
+// Each argument threads a distinct SPS field through the walker — grouping
+// them into a context struct would obscure the spec's per-call shape.
+#[allow(clippy::too_many_arguments)]
 fn walk_ref_pic_list_struct(
     br: &mut BitReader<'_>,
     _list_idx: u32,
@@ -671,6 +688,8 @@ fn walk_ref_pic_list_struct(
     num_ref_pic_lists: u32,
     long_term_ref_pics_flag: bool,
     inter_layer_pred_enabled_flag: bool,
+    weighted_pred_flag: bool,
+    weighted_bipred_flag: bool,
 ) -> Result<(), CodecParseError> {
     let num_ref_entries = br.read_ue()?;
     // ltrp_in_header_flag: present when long_term_ref_pics_flag is true,
@@ -682,18 +701,20 @@ fn walk_ref_pic_list_struct(
             true // implied when not signalled
         };
 
-    // useRefPicList[i]: True when entry i is NOT an inter-layer reference.
-    // Used to compute AbsDeltaPocSt per §7.4.9:
-    //   i == 0 OR useRefPicList[i-1] == 0  →  AbsDeltaPocSt = abs_delta_poc_st + 1
-    //   otherwise                            →  AbsDeltaPocSt = abs_delta_poc_st
-    let mut prev_use_ref_pic_list = false; // seeds the "i == 0" case below
+    // AbsDeltaPocSt derivation per H.266 V4 §7.4.9 equation (150):
+    //   if ((sps_weighted_pred_flag || sps_weighted_bipred_flag) && i != 0)
+    //       AbsDeltaPocSt[ listIdx ][ rplsIdx ][ i ] = abs_delta_poc_st[ ... ][ i ]
+    //   else
+    //       AbsDeltaPocSt[ listIdx ][ rplsIdx ][ i ] = abs_delta_poc_st[ ... ][ i ] + 1
+    // The +1 fallback ensures `strp_entry_sign_flag` is coded at `i == 0` even
+    // when `abs_delta_poc_st == 0`, and continues to fire at `i >= 1` unless
+    // weighted-pred signalling is enabled.
     for i in 0..num_ref_entries {
         let inter_layer_ref_pic_flag = if inter_layer_pred_enabled_flag {
             br.read_bool()?
         } else {
             false
         };
-        let use_ref_pic_list = !inter_layer_ref_pic_flag;
         if !inter_layer_ref_pic_flag {
             let st_ref_pic_flag = if long_term_ref_pics_flag {
                 br.read_bool()? // st_ref_pic_flag[listIdx][rplsIdx][i]
@@ -701,19 +722,15 @@ fn walk_ref_pic_list_struct(
                 true // short-term only when long_term_ref_pics=0
             };
             if st_ref_pic_flag {
-                // Short-term entry: abs_delta_poc_st ue(v) +
-                // sign bit when AbsDeltaPocSt > 0 per §7.4.9.
-                //
-                // AbsDeltaPocSt = abs_delta_poc_st + 1 when i==0 or the
-                // previous entry was an inter-layer ref (UseRefPicList[i-1]==0).
-                // The +1 means AbsDeltaPocSt is always ≥ 1 for i==0, so the
-                // sign bit is always present for the first entry even when
-                // abs_delta_poc_st == 0.
+                // Short-term entry: abs_delta_poc_st ue(v) + sign bit when
+                // AbsDeltaPocSt > 0 per §7.4.9 eq.(150).
                 let abs_delta_poc_st = br.read_ue()?;
-                let abs_delta_poc_st_semantics = if i == 0 || !prev_use_ref_pic_list {
-                    abs_delta_poc_st + 1
-                } else {
+                let weighted_signalling_present =
+                    (weighted_pred_flag || weighted_bipred_flag) && i != 0;
+                let abs_delta_poc_st_semantics = if weighted_signalling_present {
                     abs_delta_poc_st
+                } else {
+                    abs_delta_poc_st + 1
                 };
                 if abs_delta_poc_st_semantics > 0 {
                     let _strp_entry_sign_flag = br.read_bool()?;
@@ -730,7 +747,6 @@ fn walk_ref_pic_list_struct(
             // Inter-layer ref-pic: ilrp_idx ue(v).
             let _ilrp_idx = br.read_ue()?;
         }
-        prev_use_ref_pic_list = use_ref_pic_list;
     }
     Ok(())
 }

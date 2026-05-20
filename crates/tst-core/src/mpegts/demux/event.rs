@@ -448,6 +448,39 @@ pub enum NonConformantIssue {
     /// the issue propagates as a `DemuxError::StrictRejection`.
     DvbSubDataIdentifier { observed: u8 },
 
+    /// NAL header constraint violation per H.264 §7.3.1 / H.265 §7.3.1.2 /
+    /// H.266 V4 §7.3.1.2. The demuxer detected a NAL whose header bits
+    /// violate a spec-mandated constraint (`forbidden_zero_bit`, reserved
+    /// bits, `temporal_id_plus1`, layer-id range).
+    ///
+    /// `codec` identifies which codec's constraint table was violated.
+    /// `kind` carries the specific violation; see [`NalHeaderKind`].
+    ///
+    /// Lenient mode (`StrictMode::Off`): the demuxer continues. For most
+    /// violations the offending NAL is still surfaced on the `Sample`
+    /// event. For H.266 `ReservedBit` and `LayerIdOutOfRange { id > 55 }`
+    /// the H.266 spec mandates **discard**, so lenient mode drops the
+    /// NAL but still emits the issue. Strict mode (`StrictMode::Full`):
+    /// the issue escalates to `DemuxError::StrictRejection` and the
+    /// `Sample` event is suppressed.
+    NalHeader {
+        codec: VideoCodec,
+        kind: NalHeaderKind,
+    },
+
+    /// AV1 OBU header constraint violation per AV1 Bitstream Spec §5.3.2.
+    /// `obu_forbidden_bit`, `obu_reserved_1bit`, or the 3 reserved bits
+    /// on the OBU extension header are non-zero on a parsed OBU.
+    ///
+    /// `kind` carries the specific violation; see [`Av1ObuHeaderKind`].
+    /// `pid` is patched in by [`Demuxer`](crate::mpegts::demux::Demuxer)
+    /// before queue-time (the split layer uses sentinel `0`).
+    ///
+    /// Lenient mode (`StrictMode::Off`): the demuxer continues and the OBU
+    /// surfaces on the `Sample` event. Strict mode (`StrictMode::Full`):
+    /// the issue escalates to `DemuxError::StrictRejection`.
+    Av1ObuHeader { pid: u16, kind: Av1ObuHeaderKind },
+
     /// PSI section reassembly observed a continuity-counter jump on a
     /// continuation packet. Per ISO/IEC 13818-1 §2.4.3.3 PSI continuation
     /// packets must increment the CC; a jump means an upstream packet drop.
@@ -504,6 +537,64 @@ pub enum NonConformantIssue {
 
     /// Other.
     Other(String),
+}
+
+/// Spec-clause that a NAL header byte violated. Carried inside
+/// [`NonConformantIssue::NalHeader`].
+///
+/// Per H.264 §7.3.1 / H.265 §7.3.1.2 / H.266 V4 §7.3.1.2 the NAL header
+/// carries a small number of fixed-value or range-constrained fields.
+/// Encoders violating these constraints produce streams that strict
+/// decoders MUST reject (and many lenient ones will mis-decode); the
+/// demuxer surfaces the specific violation here so consumers can
+/// telemetry-correlate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum NalHeaderKind {
+    /// `forbidden_zero_bit` (high bit of byte 0) is set. Common to all
+    /// three codecs. Per H.264 §7.3.1 / H.265 §7.3.1.2 / H.266 §7.3.1.2
+    /// this bit MUST be `0` (it exists to disambiguate start-code emulation
+    /// in network-shaped envelopes).
+    ForbiddenZeroBit,
+    /// A reserved field is non-zero. H.266 V4 §7.3.1.2 defines
+    /// `nuh_reserved_zero_bit` (bit 6 of byte 0); H.264/265 have no
+    /// equivalent surfaced through this variant (their reserved bits are
+    /// folded into other field shapes).
+    ReservedBit,
+    /// `nuh_temporal_id_plus1` is `0`. H.265 §7.3.1.2 + H.266 §7.3.1.2
+    /// require `nuh_temporal_id_plus1 != 0` (temporal IDs are 0-based;
+    /// the plus-1 encoding reserves 0 as forbidden so decoders can
+    /// distinguish missing/sync). H.264 has no temporal-id field.
+    ZeroTemporalIdPlus1,
+    /// `nuh_layer_id` is out of the allowed range. Per H.266 V4 §7.4.2.2
+    /// `nuh_layer_id` MUST be in `0..=55`; values `56..=63` are
+    /// spec-reserved (currently no defined NAL types use them) and
+    /// receivers MUST discard such NALs. H.264 has no layer-id; H.265's
+    /// `nuh_layer_id` is unconstrained at the spec level (extension layers
+    /// are valid). This variant fires only for H.266.
+    LayerIdOutOfRange { id: u8 },
+}
+
+/// Spec-clause that an AV1 OBU header violated. Carried inside
+/// [`NonConformantIssue::Av1ObuHeader`].
+///
+/// Per AV1 Bitstream Spec §5.3.2 the OBU header byte and (when present)
+/// the OBU extension header byte carry forbidden / reserved bit positions
+/// that conformant encoders MUST leave zero. Encoders violating these
+/// constraints produce streams strict AV1 decoders may reject.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Av1ObuHeaderKind {
+    /// `obu_forbidden_bit` (high bit of the OBU header byte) is set.
+    /// Per AV1 §5.3.2 this MUST be `0`.
+    ForbiddenBit,
+    /// `obu_reserved_1bit` (low bit of the OBU header byte) is set.
+    /// Per AV1 §5.3.2 this MUST be `0`.
+    ReservedBit,
+    /// One or more of the 3 reserved bits on the OBU extension header
+    /// (low 3 bits, after `temporal_id` and `spatial_id`) are set.
+    /// Per AV1 §5.3.3 these MUST be `0`.
+    ExtensionReservedBits,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -634,6 +725,38 @@ impl std::fmt::Display for NonConformantIssue {
                      (full §2.4.4.5 reassembly deferred — partial section dropped)"
                 )
             }
+            NonConformantIssue::NalHeader { codec, kind } => match kind {
+                NalHeaderKind::ForbiddenZeroBit => write!(
+                    f,
+                    "{codec:?} NAL header forbidden_zero_bit set (spec mandates =0)"
+                ),
+                NalHeaderKind::ReservedBit => write!(
+                    f,
+                    "{codec:?} NAL header reserved bit set (spec mandates =0)"
+                ),
+                NalHeaderKind::ZeroTemporalIdPlus1 => write!(
+                    f,
+                    "{codec:?} NAL header nuh_temporal_id_plus1 = 0 (spec mandates !=0)"
+                ),
+                NalHeaderKind::LayerIdOutOfRange { id } => write!(
+                    f,
+                    "{codec:?} NAL header nuh_layer_id={id} out of range (spec allows 0..=55)"
+                ),
+            },
+            NonConformantIssue::Av1ObuHeader { pid, kind } => match kind {
+                Av1ObuHeaderKind::ForbiddenBit => write!(
+                    f,
+                    "AV1 OBU header obu_forbidden_bit set on PID 0x{pid:04X} (spec mandates =0)"
+                ),
+                Av1ObuHeaderKind::ReservedBit => write!(
+                    f,
+                    "AV1 OBU header obu_reserved_1bit set on PID 0x{pid:04X} (spec mandates =0)"
+                ),
+                Av1ObuHeaderKind::ExtensionReservedBits => write!(
+                    f,
+                    "AV1 OBU extension header reserved bits set on PID 0x{pid:04X} (spec mandates =0)"
+                ),
+            },
             NonConformantIssue::Other(msg) => {
                 write!(f, "{msg}")
             }

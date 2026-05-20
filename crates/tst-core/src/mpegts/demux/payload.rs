@@ -1,15 +1,25 @@
 //! ES payload parsers: H.264 / H.265 NAL split, KLV unwrap.
 
 use crate::codec::av1::leb128::read_leb128;
-use crate::mpegts::demux::event::{NalUnit, NonConformantIssue, Obu, ObuExtension, VideoCodec};
+use crate::mpegts::demux::event::{
+    Av1ObuHeaderKind, NalHeaderKind, NalUnit, NonConformantIssue, Obu, ObuExtension, VideoCodec,
+};
 
 /// Split an Annex-B-framed elementary stream payload into typed NAL units.
 ///
 /// Looks for `0x000001` or `0x00000001` start codes. NAL bytes between
 /// start codes are passed through (RBSP with emulation-prevention bytes
 /// preserved); the consumer's decoder removes the 0x03 escapes.
-pub fn split_nals(es_payload: &[u8], codec: VideoCodec) -> Vec<NalUnit> {
+///
+/// Returns `(nals, issues)`. `issues` carries any NAL-header constraint
+/// violations detected per H.264 §7.3.1 / H.265 §7.3.1.2 / H.266 §7.3.1.2
+/// (forbidden_zero_bit set, reserved bits non-zero, etc.). Issues use
+/// sentinel `codec` carried verbatim; the caller annotates with PID at
+/// queue-time. NALs for which the spec mandates discard (H.266 reserved /
+/// layer>55) are dropped from the output but the issue is still emitted.
+pub fn split_nals(es_payload: &[u8], codec: VideoCodec) -> (Vec<NalUnit>, Vec<NonConformantIssue>) {
     let mut out = Vec::new();
+    let mut issues = Vec::new();
     let starts = find_start_codes(es_payload);
     for win in starts.windows(2) {
         // `data_start` is the offset of the first NAL byte after this NAL's
@@ -18,16 +28,16 @@ pub fn split_nals(es_payload: &[u8], codec: VideoCodec) -> Vec<NalUnit> {
         // yields exactly this NAL's bytes with no inter-NAL prefix bleed.
         let data_start = win[0].data_start;
         let nal_end = win[1].prefix_start;
-        if let Some(unit) = parse_one_nal(&es_payload[data_start..nal_end], codec) {
+        if let Some(unit) = parse_one_nal(&es_payload[data_start..nal_end], codec, &mut issues) {
             out.push(unit);
         }
     }
     if let Some(&last) = starts.last() {
-        if let Some(unit) = parse_one_nal(&es_payload[last.data_start..], codec) {
+        if let Some(unit) = parse_one_nal(&es_payload[last.data_start..], codec, &mut issues) {
             out.push(unit);
         }
     }
-    out
+    (out, issues)
 }
 
 /// Offsets of one Annex-B start-code occurrence: where the prefix starts
@@ -66,7 +76,11 @@ fn find_start_codes(buf: &[u8]) -> Vec<StartCode> {
     out
 }
 
-fn parse_one_nal(nal: &[u8], codec: VideoCodec) -> Option<NalUnit> {
+fn parse_one_nal(
+    nal: &[u8],
+    codec: VideoCodec,
+    issues: &mut Vec<NonConformantIssue>,
+) -> Option<NalUnit> {
     match codec {
         VideoCodec::H264 => {
             if nal.is_empty() {
@@ -74,6 +88,14 @@ fn parse_one_nal(nal: &[u8], codec: VideoCodec) -> Option<NalUnit> {
             }
             let header = nal[0];
             // forbidden_zero_bit (1) | nal_ref_idc (2) | nal_unit_type (5)
+            // Per H.264 §7.3.1: forbidden_zero_bit MUST be 0. H.264 has no
+            // reserved bit and no temporal-id field at the NAL header level.
+            if (header & 0x80) != 0 {
+                issues.push(NonConformantIssue::NalHeader {
+                    codec,
+                    kind: NalHeaderKind::ForbiddenZeroBit,
+                });
+            }
             let ref_idc = (header >> 5) & 0x03;
             let nal_type = header & 0x1F;
             Some(NalUnit::H264 {
@@ -87,11 +109,26 @@ fn parse_one_nal(nal: &[u8], codec: VideoCodec) -> Option<NalUnit> {
                 return None;
             }
             // forbidden_zero_bit (1) | nal_unit_type (6) | nuh_layer_id (6) | nuh_temporal_id_plus1 (3)
+            // Per H.265 §7.3.1.2: forbidden_zero_bit MUST be 0;
+            // nuh_temporal_id_plus1 MUST be != 0 (plus-1 encoding reserves
+            // 0 as forbidden so decoders can distinguish missing/sync).
             let h0 = nal[0];
             let h1 = nal[1];
+            if (h0 & 0x80) != 0 {
+                issues.push(NonConformantIssue::NalHeader {
+                    codec,
+                    kind: NalHeaderKind::ForbiddenZeroBit,
+                });
+            }
             let nal_type = (h0 >> 1) & 0x3F;
             let layer_id = ((h0 & 0x01) << 5) | (h1 >> 3);
             let temporal_id_plus1 = h1 & 0x07;
+            if temporal_id_plus1 == 0 {
+                issues.push(NonConformantIssue::NalHeader {
+                    codec,
+                    kind: NalHeaderKind::ZeroTemporalIdPlus1,
+                });
+            }
             Some(NalUnit::H265 {
                 nal_type,
                 layer_id,
@@ -109,11 +146,51 @@ fn parse_one_nal(nal: &[u8], codec: VideoCodec) -> Option<NalUnit> {
             //
             // Note nal_type lives in byte 1 (top 5 bits); H.265 has it in
             // byte 0 — different layout, not just renamed fields.
+            //
+            // Spec constraints:
+            // - forbidden_zero_bit MUST be 0.
+            // - nuh_reserved_zero_bit MUST be 0; receivers MUST discard
+            //   NALs that violate this (H.266 §7.3.1.2). Drop the NAL.
+            // - nuh_layer_id MUST be in 0..=55 (§7.4.2.2); values 56..=63
+            //   are reserved and receivers MUST discard such NALs.
+            // - nuh_temporal_id_plus1 MUST be != 0.
             let h0 = nal[0];
             let h1 = nal[1];
+            let forbidden = (h0 & 0x80) != 0;
+            let reserved = (h0 & 0x40) != 0;
             let layer_id = h0 & 0x3F;
             let nal_type = (h1 >> 3) & 0x1F;
             let temporal_id_plus1 = h1 & 0x07;
+            if forbidden {
+                issues.push(NonConformantIssue::NalHeader {
+                    codec,
+                    kind: NalHeaderKind::ForbiddenZeroBit,
+                });
+            }
+            if reserved {
+                issues.push(NonConformantIssue::NalHeader {
+                    codec,
+                    kind: NalHeaderKind::ReservedBit,
+                });
+                // H.266 §7.3.1.2 requires receivers to discard NALs with
+                // nuh_reserved_zero_bit set. Emit issue + drop.
+                return None;
+            }
+            if layer_id > 55 {
+                issues.push(NonConformantIssue::NalHeader {
+                    codec,
+                    kind: NalHeaderKind::LayerIdOutOfRange { id: layer_id },
+                });
+                // H.266 §7.4.2.2: layer_id in 56..=63 is reserved; receivers
+                // MUST discard. Emit issue + drop.
+                return None;
+            }
+            if temporal_id_plus1 == 0 {
+                issues.push(NonConformantIssue::NalHeader {
+                    codec,
+                    kind: NalHeaderKind::ZeroTemporalIdPlus1,
+                });
+            }
             Some(NalUnit::H266 {
                 nal_type,
                 layer_id,
@@ -164,6 +241,22 @@ pub fn split_obus(es_payload: &[u8]) -> (Vec<Obu>, Vec<NonConformantIssue>) {
         //   obu_has_size_field f(1)
         //   obu_reserved_1bit  f(1)
         let header = es_payload[i];
+        // Validate the spec-mandated forbidden + reserved bits before
+        // peeling off the field-level decode. `pid` is sentinel 0; the
+        // demuxer patches it in pes_emit.rs (same pattern as the other
+        // AV1 issues this splitter emits).
+        if (header & 0x80) != 0 {
+            issues.push(NonConformantIssue::Av1ObuHeader {
+                pid: 0,
+                kind: Av1ObuHeaderKind::ForbiddenBit,
+            });
+        }
+        if (header & 0x01) != 0 {
+            issues.push(NonConformantIssue::Av1ObuHeader {
+                pid: 0,
+                kind: Av1ObuHeaderKind::ReservedBit,
+            });
+        }
         let obu_type = (header >> 3) & 0x0F;
         let extension_flag = (header >> 2) & 0x01 != 0;
         let has_size_field = (header >> 1) & 0x01 != 0;
@@ -176,6 +269,13 @@ pub fn split_obus(es_payload: &[u8]) -> (Vec<Obu>, Vec<NonConformantIssue>) {
             let ext = es_payload[i];
             i += 1;
             // temporal_id(3) | spatial_id(2) | reserved(3)
+            // Per AV1 §5.3.3 the low 3 reserved bits MUST be 0.
+            if (ext & 0x07) != 0 {
+                issues.push(NonConformantIssue::Av1ObuHeader {
+                    pid: 0,
+                    kind: Av1ObuHeaderKind::ExtensionReservedBits,
+                });
+            }
             Some(ObuExtension {
                 temporal_id: (ext >> 5) & 0x07,
                 spatial_id: (ext >> 3) & 0x03,
@@ -370,8 +470,9 @@ mod tests {
         let buf = vec![
             0x00, 0x00, 0x00, 0x01, 0x09, 0x10, 0x00, 0x00, 0x01, 0x65, 0xAA, 0xBB,
         ];
-        let nals = split_nals(&buf, VideoCodec::H264);
+        let (nals, issues) = split_nals(&buf, VideoCodec::H264);
         assert_eq!(nals.len(), 2);
+        assert!(issues.is_empty(), "conformant input emits no issues");
         match &nals[0] {
             NalUnit::H264 {
                 nal_type, payload, ..
@@ -393,8 +494,9 @@ mod tests {
         let buf = vec![
             0x00, 0x00, 0x00, 0x01, 0x40, 0x01, 0xAA, 0x00, 0x00, 0x01, 0x26, 0x01, 0xBB,
         ];
-        let nals = split_nals(&buf, VideoCodec::H265);
+        let (nals, issues) = split_nals(&buf, VideoCodec::H265);
         assert_eq!(nals.len(), 2);
+        assert!(issues.is_empty(), "conformant input emits no issues");
         match &nals[0] {
             NalUnit::H265 {
                 nal_type,
@@ -462,8 +564,9 @@ mod tests {
         // slice-boundary bug (NAL bytes must NOT include any next-NAL
         // prefix bytes — there's no next NAL here).
         let buf = vec![0x00, 0x00, 0x01, 0x67, 0xAA, 0xBB];
-        let nals = split_nals(&buf, VideoCodec::H264);
+        let (nals, issues) = split_nals(&buf, VideoCodec::H264);
         assert_eq!(nals.len(), 1);
+        assert!(issues.is_empty());
         match &nals[0] {
             NalUnit::H264 {
                 nal_type, payload, ..
@@ -479,8 +582,10 @@ mod tests {
     fn split_nals_empty_input() {
         // Empty input produces no NALs. find_start_codes returns vec![],
         // both the inner-window loop and the trailing-NAL branch no-op.
-        assert_eq!(split_nals(&[], VideoCodec::H264), vec![]);
-        assert_eq!(split_nals(&[], VideoCodec::H265), vec![]);
+        let (nals_264, issues_264) = split_nals(&[], VideoCodec::H264);
+        assert!(nals_264.is_empty() && issues_264.is_empty());
+        let (nals_265, issues_265) = split_nals(&[], VideoCodec::H265);
+        assert!(nals_265.is_empty() && issues_265.is_empty());
     }
 
     #[test]
@@ -500,8 +605,9 @@ mod tests {
         let buf = vec![
             0x00, 0x00, 0x00, 0x01, 0x00, 0x71, 0xAA, 0x00, 0x00, 0x01, 0x00, 0x39, 0xBB,
         ];
-        let nals = split_nals(&buf, VideoCodec::H266);
+        let (nals, issues) = split_nals(&buf, VideoCodec::H266);
         assert_eq!(nals.len(), 2);
+        assert!(issues.is_empty(), "conformant H.266 emits no issues");
         match &nals[0] {
             NalUnit::H266 {
                 nal_type,
@@ -529,7 +635,8 @@ mod tests {
         // sync recovery is the demuxer state machine's job (Task 7),
         // not the leaf NAL splitter's.
         let buf = vec![0xAA, 0xBB, 0xCC, 0xDD, 0xEE];
-        assert_eq!(split_nals(&buf, VideoCodec::H264), vec![]);
+        let (nals, issues) = split_nals(&buf, VideoCodec::H264);
+        assert!(nals.is_empty() && issues.is_empty());
     }
 
     fn build_obu_with_size(obu_type: u8, payload: &[u8]) -> Vec<u8> {
@@ -756,7 +863,207 @@ mod tests {
         // Release builds (no debug_assertions): the defense-in-depth arm
         // returns None from parse_one_nal, so split_nals yields an empty
         // Vec without panicking.
-        let nals = split_nals(&[0x00, 0x00, 0x01, 0xAA, 0xBB], VideoCodec::Av1);
+        let (nals, _issues) = split_nals(&[0x00, 0x00, 0x01, 0xAA, 0xBB], VideoCodec::Av1);
         assert!(nals.is_empty(), "AV1 must yield no NALs from NAL splitter");
+    }
+
+    // -----------------------------------------------------------------
+    // B9 — NAL-header constraint enforcement tests
+    // (validate-1 Phase 2 Wave B Task 9)
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn h264_forbidden_zero_bit_set_emits_nal_header_issue() {
+        // forbidden_zero_bit=1 → header high bit set. Byte 0x80 alone:
+        // forbidden=1, ref_idc=00, nal_type=0 (unspecified). The NAL is
+        // still emitted (no spec-mandated discard for H.264) but the
+        // issue is surfaced.
+        let buf = vec![0x00, 0x00, 0x01, 0x80, 0xAA];
+        let (nals, issues) = split_nals(&buf, VideoCodec::H264);
+        assert_eq!(nals.len(), 1, "H.264 forbidden-bit NAL still emitted");
+        assert_eq!(issues.len(), 1, "exactly one NalHeader issue raised");
+        match &issues[0] {
+            NonConformantIssue::NalHeader {
+                codec: VideoCodec::H264,
+                kind: NalHeaderKind::ForbiddenZeroBit,
+            } => {}
+            other => panic!("expected H.264 ForbiddenZeroBit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn h265_forbidden_zero_bit_set_emits_nal_header_issue() {
+        // H.265 byte 0: forbidden(1) | nal_type(6) | top-bit-of-layer_id(1).
+        // 0x80 sets forbidden=1, leaves nal_type=0, layer_id top=0.
+        // Byte 1: layer_id_low(5) | temporal_id_plus1(3); use 0x01 →
+        // temporal_id_plus1=1 (valid) so we isolate the forbidden-bit issue.
+        let buf = vec![0x00, 0x00, 0x01, 0x80, 0x01, 0xAA];
+        let (nals, issues) = split_nals(&buf, VideoCodec::H265);
+        assert_eq!(nals.len(), 1, "H.265 forbidden-bit NAL still emitted");
+        assert!(
+            issues.iter().any(|i| matches!(
+                i,
+                NonConformantIssue::NalHeader {
+                    codec: VideoCodec::H265,
+                    kind: NalHeaderKind::ForbiddenZeroBit
+                }
+            )),
+            "expected H.265 ForbiddenZeroBit issue, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn h265_zero_temporal_id_plus1_emits_issue() {
+        // H.265: temporal_id_plus1=0 (forbidden per §7.3.1.2). Header
+        // bytes: byte0=0x40 (forbidden=0, nal_type=32 VPS, layer_id_top=0),
+        // byte1=0x00 (layer_id_low=0, temporal_id_plus1=0).
+        let buf = vec![0x00, 0x00, 0x01, 0x40, 0x00, 0xAA];
+        let (nals, issues) = split_nals(&buf, VideoCodec::H265);
+        assert_eq!(nals.len(), 1);
+        assert!(
+            issues.iter().any(|i| matches!(
+                i,
+                NonConformantIssue::NalHeader {
+                    codec: VideoCodec::H265,
+                    kind: NalHeaderKind::ZeroTemporalIdPlus1
+                }
+            )),
+            "expected H.265 ZeroTemporalIdPlus1 issue, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn h266_reserved_bit_set_drops_nal_and_emits_issue() {
+        // H.266: byte0 forbidden(1) | reserved(1) | layer_id(6).
+        // 0x40 → forbidden=0, reserved=1, layer_id=0. byte1=0x71 →
+        // nal_type=14 (VPS), temporal_id_plus1=1. Per H.266 §7.3.1.2
+        // receivers MUST discard NALs with nuh_reserved_zero_bit set;
+        // the NAL is dropped from `nals` but the issue is still emitted.
+        let buf = vec![0x00, 0x00, 0x01, 0x40, 0x71, 0xAA];
+        let (nals, issues) = split_nals(&buf, VideoCodec::H266);
+        assert!(
+            nals.is_empty(),
+            "H.266 spec mandates discard for reserved-bit NALs"
+        );
+        assert!(
+            issues.iter().any(|i| matches!(
+                i,
+                NonConformantIssue::NalHeader {
+                    codec: VideoCodec::H266,
+                    kind: NalHeaderKind::ReservedBit
+                }
+            )),
+            "expected H.266 ReservedBit issue, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn h266_layer_id_out_of_range_drops_nal_and_emits_issue() {
+        // H.266: layer_id=56 violates §7.4.2.2 (allowed range 0..=55).
+        // byte0 forbidden(1) | reserved(1) | layer_id(6) = 0x38 →
+        // forbidden=0, reserved=0, layer_id=56 (0x38 = 0b00111000;
+        // low 6 bits = 0b111000 = 56). byte1=0x71 → nal_type=14, t+1=1.
+        // Receivers MUST discard.
+        let buf = vec![0x00, 0x00, 0x01, 0x38, 0x71, 0xAA];
+        let (nals, issues) = split_nals(&buf, VideoCodec::H266);
+        assert!(
+            nals.is_empty(),
+            "H.266 spec mandates discard for layer_id > 55"
+        );
+        assert!(
+            issues.iter().any(|i| matches!(
+                i,
+                NonConformantIssue::NalHeader {
+                    codec: VideoCodec::H266,
+                    kind: NalHeaderKind::LayerIdOutOfRange { id: 56 }
+                }
+            )),
+            "expected H.266 LayerIdOutOfRange{{id=56}}, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn h266_forbidden_zero_bit_set_emits_issue_keeps_nal() {
+        // H.266 forbidden_zero_bit set, otherwise valid (reserved=0,
+        // layer_id=0, t+1=1). byte0=0x80, byte1=0x71. forbidden-bit
+        // violation alone is NOT spec-mandated discard for H.266 (only
+        // reserved + layer>55 are); the NAL stays in the output.
+        let buf = vec![0x00, 0x00, 0x01, 0x80, 0x71, 0xAA];
+        let (nals, issues) = split_nals(&buf, VideoCodec::H266);
+        assert_eq!(
+            nals.len(),
+            1,
+            "H.266 forbidden-bit alone does not mandate discard"
+        );
+        assert!(
+            issues.iter().any(|i| matches!(
+                i,
+                NonConformantIssue::NalHeader {
+                    codec: VideoCodec::H266,
+                    kind: NalHeaderKind::ForbiddenZeroBit
+                }
+            )),
+            "expected H.266 ForbiddenZeroBit issue, got {issues:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------
+    // B10 — AV1 OBU header bit validation tests
+    // (validate-1 Phase 2 Wave B Task 10)
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn split_obus_forbidden_bit_set_emits_issue() {
+        // obu_type=1 (Seq Header), ext_flag=0, has_size=1, reserved_1bit=0,
+        // forbidden_bit=1. Header byte = 0x80 | (1<<3) | 0x02 = 0x8A.
+        let buf = vec![0x8A, 0x00];
+        let (_obus, issues) = split_obus(&buf);
+        assert!(
+            issues.iter().any(|i| matches!(
+                i,
+                NonConformantIssue::Av1ObuHeader {
+                    pid: 0,
+                    kind: Av1ObuHeaderKind::ForbiddenBit
+                }
+            )),
+            "expected ForbiddenBit issue, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn split_obus_reserved_bit_set_emits_issue() {
+        // obu_type=1, ext_flag=0, has_size=1, reserved_1bit=1 → low bit set.
+        // Header = (1<<3) | 0b011 = 0x0B.
+        let buf = vec![0x0B, 0x00];
+        let (_obus, issues) = split_obus(&buf);
+        assert!(
+            issues.iter().any(|i| matches!(
+                i,
+                NonConformantIssue::Av1ObuHeader {
+                    pid: 0,
+                    kind: Av1ObuHeaderKind::ReservedBit
+                }
+            )),
+            "expected ReservedBit issue, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn split_obus_extension_reserved_bits_set_emits_issue() {
+        // obu_type=1, ext_flag=1, has_size=1 → header = (1<<3) | 0b110 = 0x0E.
+        // Extension byte: temporal_id(3) | spatial_id(2) | reserved(3).
+        // Set the low 3 reserved bits: ext = 0x07. Then size LEB128 = 0x00.
+        let buf = vec![0x0E, 0x07, 0x00];
+        let (_obus, issues) = split_obus(&buf);
+        assert!(
+            issues.iter().any(|i| matches!(
+                i,
+                NonConformantIssue::Av1ObuHeader {
+                    pid: 0,
+                    kind: Av1ObuHeaderKind::ExtensionReservedBits
+                }
+            )),
+            "expected ExtensionReservedBits issue, got {issues:?}"
+        );
     }
 }

@@ -33,9 +33,9 @@ pub mod low_level;
 
 pub use demuxer::Demuxer;
 pub use event::{
-    AudioCodec, DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind, NalUnit,
-    NonConformantIssue, Obu, ObuExtension, ProgramMap, SamplePayload, StreamId, StreamInfo,
-    StreamKind, SubtitleCodec, VideoCodec, VideoPayload, pts_to_duration,
+    AudioCodec, Av1ObuHeaderKind, DemuxEvent, DiscontinuityKind, KlvLink, LinkSource, MetadataKind,
+    NalHeaderKind, NalUnit, NonConformantIssue, Obu, ObuExtension, ProgramMap, SamplePayload,
+    StreamId, StreamInfo, StreamKind, SubtitleCodec, VideoCodec, VideoPayload, pts_to_duration,
 };
 pub use strict::StrictMode;
 pub use types::{DemuxerBuilder, DemuxerConfig, DemuxerStats};

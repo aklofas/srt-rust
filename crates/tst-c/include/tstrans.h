@@ -339,6 +339,25 @@ enum tst_nonconformant_code
    * (mirroring `SubtitleDescriptorMalformed`'s reuse).
    */
   TST_NONCONFORMANT_CODE_DVB_SUB_DATA_IDENTIFIER = 20,
+  /**
+   * H.264 / H.265 / H.266 NAL header constraint violation
+   * (forbidden_zero_bit / reserved bit / temporal_id_plus1 / layer_id).
+   * `codec` byte surfaces on `table_id` (reusing the existing carrier;
+   * values match `TstVideoCodec` discriminants — H264=0, H265=1, H266=2,
+   * Av1=3); `nal_header_kind` byte (`obu_type` carrier) encodes which
+   * constraint variant (0=ForbiddenZeroBit, 1=ReservedBit,
+   * 2=ZeroTemporalIdPlus1, 3=LayerIdOutOfRange).
+   * `LayerIdOutOfRange.id` surfaces on `cc_observed` (the offending
+   * `nuh_layer_id` byte).
+   */
+  TST_NONCONFORMANT_CODE_NAL_HEADER = 26,
+  /**
+   * AV1 OBU header constraint violation (obu_forbidden_bit /
+   * obu_reserved_1bit / OBU extension reserved bits).
+   * `obu_header_kind` byte (`obu_type` carrier) encodes which constraint
+   * variant (0=ForbiddenBit, 1=ReservedBit, 2=ExtensionReservedBits).
+   */
+  TST_NONCONFORMANT_CODE_AV1_OBU_HEADER = 27,
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;

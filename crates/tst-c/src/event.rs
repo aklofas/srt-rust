@@ -88,7 +88,7 @@ pub enum TstDiscontinuityKindTag {
 }
 
 // ------------------------------------------------------------------
-// Non-conformant-issue codes (21 variants)
+// Non-conformant-issue codes (23 variants)
 // ------------------------------------------------------------------
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::NonConformantIssue`'s
@@ -121,6 +121,21 @@ pub enum TstNonConformantCode {
     /// exactly `0x20`. Reuses `table_id` field as the observed byte carrier
     /// (mirroring `SubtitleDescriptorMalformed`'s reuse).
     DvbSubDataIdentifier = 20,
+    /// H.264 / H.265 / H.266 NAL header constraint violation
+    /// (forbidden_zero_bit / reserved bit / temporal_id_plus1 / layer_id).
+    /// `codec` byte surfaces on `table_id` (reusing the existing carrier;
+    /// values match `TstVideoCodec` discriminants — H264=0, H265=1, H266=2,
+    /// Av1=3); `nal_header_kind` byte (`obu_type` carrier) encodes which
+    /// constraint variant (0=ForbiddenZeroBit, 1=ReservedBit,
+    /// 2=ZeroTemporalIdPlus1, 3=LayerIdOutOfRange).
+    /// `LayerIdOutOfRange.id` surfaces on `cc_observed` (the offending
+    /// `nuh_layer_id` byte).
+    NalHeader = 26,
+    /// AV1 OBU header constraint violation (obu_forbidden_bit /
+    /// obu_reserved_1bit / OBU extension reserved bits).
+    /// `obu_header_kind` byte (`obu_type` carrier) encodes which constraint
+    /// variant (0=ForbiddenBit, 1=ReservedBit, 2=ExtensionReservedBits).
+    Av1ObuHeader = 27,
 }
 
 // ------------------------------------------------------------------
@@ -918,6 +933,48 @@ fn fill_nonconformant(
             arena.detail_buf.extend_from_slice(reason.as_bytes());
             arena.detail_buf.push(0); // NUL terminator
             body.detail = arena.detail_buf.as_ptr() as *const c_char;
+        }
+        NonConformantIssue::NalHeader { codec, kind } => {
+            use tst_core::mpegts::demux::{NalHeaderKind, VideoCodec};
+            body.issue_code = TstNonConformantCode::NalHeader as c_int;
+            // Encode codec byte on table_id (reuses existing u8 carrier;
+            // values match TstVideoCodec discriminants: H264=0, H265=1,
+            // H266=2, Av1=3).
+            body.table_id = match codec {
+                VideoCodec::H264 => 0,
+                VideoCodec::H265 => 1,
+                VideoCodec::H266 => 2,
+                VideoCodec::Av1 => 3,
+            };
+            // Encode the NalHeaderKind discriminator on the obu_type carrier
+            // (a free u8 on TstEventNonConformant). LayerIdOutOfRange's `id`
+            // additionally lands on cc_observed.
+            // `NalHeaderKind` is `#[non_exhaustive]` (future-extension
+            // contract); the wildcard arm encodes future variants as a
+            // sentinel `0xFF` so C callers see "unknown kind" rather than
+            // a silent miscategorization. Update with each new variant.
+            let (kind_code, layer_id) = match kind {
+                NalHeaderKind::ForbiddenZeroBit => (0u8, 0u8),
+                NalHeaderKind::ReservedBit => (1u8, 0u8),
+                NalHeaderKind::ZeroTemporalIdPlus1 => (2u8, 0u8),
+                NalHeaderKind::LayerIdOutOfRange { id } => (3u8, *id),
+                _ => (0xFFu8, 0u8),
+            };
+            body.obu_type = kind_code;
+            body.cc_observed = layer_id;
+        }
+        NonConformantIssue::Av1ObuHeader { pid, kind } => {
+            use tst_core::mpegts::demux::Av1ObuHeaderKind;
+            body.issue_code = TstNonConformantCode::Av1ObuHeader as c_int;
+            body.pid = *pid;
+            // `Av1ObuHeaderKind` is `#[non_exhaustive]`; wildcard arm
+            // encodes future variants as sentinel `0xFF`.
+            body.obu_type = match kind {
+                Av1ObuHeaderKind::ForbiddenBit => 0,
+                Av1ObuHeaderKind::ReservedBit => 1,
+                Av1ObuHeaderKind::ExtensionReservedBits => 2,
+                _ => 0xFF,
+            };
         }
     }
     out.kind = TstEventKind::NonConformant as c_int;

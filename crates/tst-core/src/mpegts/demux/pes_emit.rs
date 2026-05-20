@@ -116,9 +116,21 @@ impl super::demuxer::Demuxer {
                 // VideoPayload variants — the invariant is documented on
                 // VideoPayload.
                 let rai = pes.random_access_indicator;
-                let (sample, payload_bytes) = match codec {
+                let (sample, payload_bytes, suppress_sample) = match codec {
                     VideoCodec::H264 | VideoCodec::H265 | VideoCodec::H266 => {
-                        let nals = split_nals(&pes.payload, codec);
+                        let (nals, issues) = split_nals(&pes.payload, codec);
+                        // NAL-header issues from B9 — forward to the
+                        // non-conformance pipeline. If strict mode rejects
+                        // any of them, suppress the Sample event so strict
+                        // consumers see only the StrictRejection (mirrors
+                        // C10's DvbSubDataIdentifier handling).
+                        let mut reject_sample = false;
+                        for issue in issues {
+                            if self.options.strict.rejects(&issue) {
+                                reject_sample = true;
+                            }
+                            self.queue_nonconformant(stream, issue);
+                        }
                         let bytes = nal_payload_bytes(&nals);
                         (
                             SamplePayload::Video {
@@ -127,6 +139,7 @@ impl super::demuxer::Demuxer {
                                 random_access_indicator: rai,
                             },
                             bytes,
+                            reject_sample,
                         )
                     }
                     VideoCodec::Av1 => {
@@ -143,10 +156,15 @@ impl super::demuxer::Demuxer {
                                 NonConformantIssue::Av1TileListNotAllowed { pid } => {
                                     *pid = stream.pid
                                 }
+                                NonConformantIssue::Av1ObuHeader { pid, .. } => *pid = stream.pid,
                                 _ => {}
                             }
                         }
+                        let mut reject_sample = false;
                         for issue in issues {
+                            if self.options.strict.rejects(&issue) {
+                                reject_sample = true;
+                            }
                             self.queue_nonconformant(stream, issue);
                         }
                         let bytes: usize = obus.iter().map(|o| o.payload.len()).sum();
@@ -157,6 +175,7 @@ impl super::demuxer::Demuxer {
                                 random_access_indicator: rai,
                             },
                             bytes,
+                            reject_sample,
                         )
                     }
                 };
@@ -197,12 +216,17 @@ impl super::demuxer::Demuxer {
                 if nals_or_obus_count > 0 || ra_count > 0 {
                     self.bump_video_counters(stream.pid, nals_or_obus_count, ra_count);
                 }
-                self.queue.push_back(DemuxEvent::Sample {
-                    stream,
-                    pts,
-                    dts: pes.dts,
-                    payload: sample,
-                });
+                // In strict mode, NAL/OBU header violations suppress the
+                // Sample event so consumers see only the StrictRejection
+                // (same shape as C10's DvbSubDataIdentifier handling).
+                if !suppress_sample {
+                    self.queue.push_back(DemuxEvent::Sample {
+                        stream,
+                        pts,
+                        dts: pes.dts,
+                        payload: sample,
+                    });
+                }
             }
             StreamKind::KlvSync { .. } | StreamKind::KlvAsync => {
                 let shape = classify_klv(&pes.payload);

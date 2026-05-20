@@ -2500,6 +2500,28 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::AudioCodec
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::AudioCodec
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::AudioCodec
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::AudioCodec
+#[non_exhaustive] pub enum tst_core::mpegts::demux::event::Av1ObuHeaderKind
+pub tst_core::mpegts::demux::event::Av1ObuHeaderKind::ExtensionReservedBits
+pub tst_core::mpegts::demux::event::Av1ObuHeaderKind::ForbiddenBit
+pub tst_core::mpegts::demux::event::Av1ObuHeaderKind::ReservedBit
+impl core::clone::Clone for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+pub fn tst_core::mpegts::demux::event::Av1ObuHeaderKind::clone(&self) -> tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::cmp::Eq for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+pub fn tst_core::mpegts::demux::event::Av1ObuHeaderKind::eq(&self, other: &tst_core::mpegts::demux::event::Av1ObuHeaderKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+pub fn tst_core::mpegts::demux::event::Av1ObuHeaderKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+pub fn tst_core::mpegts::demux::event::Av1ObuHeaderKind::hash<__H: core::hash::Hasher>(&self, state: &mut __H)
+impl core::marker::Copy for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::Freeze for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::Send for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::Sync for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::Unpin for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Av1ObuHeaderKind
 pub enum tst_core::mpegts::demux::event::DemuxEvent
 pub tst_core::mpegts::demux::event::DemuxEvent::Discontinuity
 pub tst_core::mpegts::demux::event::DemuxEvent::Discontinuity::kind: tst_core::mpegts::demux::event::DiscontinuityKind
@@ -2601,6 +2623,30 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::MetadataKind
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::MetadataKind
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::MetadataKind
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::MetadataKind
+#[non_exhaustive] pub enum tst_core::mpegts::demux::event::NalHeaderKind
+pub tst_core::mpegts::demux::event::NalHeaderKind::ForbiddenZeroBit
+pub tst_core::mpegts::demux::event::NalHeaderKind::LayerIdOutOfRange
+pub tst_core::mpegts::demux::event::NalHeaderKind::LayerIdOutOfRange::id: u8
+pub tst_core::mpegts::demux::event::NalHeaderKind::ReservedBit
+pub tst_core::mpegts::demux::event::NalHeaderKind::ZeroTemporalIdPlus1
+impl core::clone::Clone for tst_core::mpegts::demux::event::NalHeaderKind
+pub fn tst_core::mpegts::demux::event::NalHeaderKind::clone(&self) -> tst_core::mpegts::demux::event::NalHeaderKind
+impl core::cmp::Eq for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::event::NalHeaderKind
+pub fn tst_core::mpegts::demux::event::NalHeaderKind::eq(&self, other: &tst_core::mpegts::demux::event::NalHeaderKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::event::NalHeaderKind
+pub fn tst_core::mpegts::demux::event::NalHeaderKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::mpegts::demux::event::NalHeaderKind
+pub fn tst_core::mpegts::demux::event::NalHeaderKind::hash<__H: core::hash::Hasher>(&self, state: &mut __H)
+impl core::marker::Copy for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::Freeze for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::Send for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::Sync for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::Unpin for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::NalHeaderKind
 pub enum tst_core::mpegts::demux::event::NalUnit
 pub tst_core::mpegts::demux::event::NalUnit::H264
 pub tst_core::mpegts::demux::event::NalUnit::H264::nal_type: u8
@@ -2632,6 +2678,9 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::NalUnit
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::NalUnit
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::NalUnit
 pub enum tst_core::mpegts::demux::event::NonConformantIssue
+pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuHeader
+pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuHeader::kind: tst_core::mpegts::demux::event::Av1ObuHeaderKind
+pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuHeader::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuMissingSizeField
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuMissingSizeField::obu_type: u8
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuMissingSizeField::pid: u16
@@ -2648,6 +2697,9 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::MissingMetadataDescripto
 pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu
 pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu::dropped_bytes: usize
 pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::NalHeader
+pub tst_core::mpegts::demux::event::NonConformantIssue::NalHeader::codec: tst_core::mpegts::demux::event::VideoCodec
+pub tst_core::mpegts::demux::event::NonConformantIssue::NalHeader::kind: tst_core::mpegts::demux::event::NalHeaderKind
 pub tst_core::mpegts::demux::event::NonConformantIssue::Other(alloc::string::String)
 pub tst_core::mpegts::demux::event::NonConformantIssue::PcrAnomaly
 pub tst_core::mpegts::demux::event::NonConformantIssue::PcrAnomaly::delta: i64
@@ -3216,6 +3268,28 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::AudioCodec
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::AudioCodec
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::AudioCodec
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::AudioCodec
+#[non_exhaustive] pub enum tst_core::mpegts::demux::Av1ObuHeaderKind
+pub tst_core::mpegts::demux::Av1ObuHeaderKind::ExtensionReservedBits
+pub tst_core::mpegts::demux::Av1ObuHeaderKind::ForbiddenBit
+pub tst_core::mpegts::demux::Av1ObuHeaderKind::ReservedBit
+impl core::clone::Clone for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+pub fn tst_core::mpegts::demux::event::Av1ObuHeaderKind::clone(&self) -> tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::cmp::Eq for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+pub fn tst_core::mpegts::demux::event::Av1ObuHeaderKind::eq(&self, other: &tst_core::mpegts::demux::event::Av1ObuHeaderKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+pub fn tst_core::mpegts::demux::event::Av1ObuHeaderKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+pub fn tst_core::mpegts::demux::event::Av1ObuHeaderKind::hash<__H: core::hash::Hasher>(&self, state: &mut __H)
+impl core::marker::Copy for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::Freeze for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::Send for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::Sync for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::Unpin for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::Av1ObuHeaderKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Av1ObuHeaderKind
 pub enum tst_core::mpegts::demux::DemuxEvent
 pub tst_core::mpegts::demux::DemuxEvent::Discontinuity
 pub tst_core::mpegts::demux::DemuxEvent::Discontinuity::kind: tst_core::mpegts::demux::event::DiscontinuityKind
@@ -3317,6 +3391,30 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::MetadataKind
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::MetadataKind
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::MetadataKind
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::MetadataKind
+#[non_exhaustive] pub enum tst_core::mpegts::demux::NalHeaderKind
+pub tst_core::mpegts::demux::NalHeaderKind::ForbiddenZeroBit
+pub tst_core::mpegts::demux::NalHeaderKind::LayerIdOutOfRange
+pub tst_core::mpegts::demux::NalHeaderKind::LayerIdOutOfRange::id: u8
+pub tst_core::mpegts::demux::NalHeaderKind::ReservedBit
+pub tst_core::mpegts::demux::NalHeaderKind::ZeroTemporalIdPlus1
+impl core::clone::Clone for tst_core::mpegts::demux::event::NalHeaderKind
+pub fn tst_core::mpegts::demux::event::NalHeaderKind::clone(&self) -> tst_core::mpegts::demux::event::NalHeaderKind
+impl core::cmp::Eq for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::event::NalHeaderKind
+pub fn tst_core::mpegts::demux::event::NalHeaderKind::eq(&self, other: &tst_core::mpegts::demux::event::NalHeaderKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::event::NalHeaderKind
+pub fn tst_core::mpegts::demux::event::NalHeaderKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::mpegts::demux::event::NalHeaderKind
+pub fn tst_core::mpegts::demux::event::NalHeaderKind::hash<__H: core::hash::Hasher>(&self, state: &mut __H)
+impl core::marker::Copy for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::Freeze for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::Send for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::Sync for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::Unpin for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::NalHeaderKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::NalHeaderKind
 pub enum tst_core::mpegts::demux::NalUnit
 pub tst_core::mpegts::demux::NalUnit::H264
 pub tst_core::mpegts::demux::NalUnit::H264::nal_type: u8
@@ -3348,6 +3446,9 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::NalUnit
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::NalUnit
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::NalUnit
 pub enum tst_core::mpegts::demux::NonConformantIssue
+pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuHeader
+pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuHeader::kind: tst_core::mpegts::demux::event::Av1ObuHeaderKind
+pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuHeader::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuMissingSizeField
 pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuMissingSizeField::obu_type: u8
 pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuMissingSizeField::pid: u16
@@ -3364,6 +3465,9 @@ pub tst_core::mpegts::demux::NonConformantIssue::MissingMetadataDescriptor
 pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu
 pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu::dropped_bytes: usize
 pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::NalHeader
+pub tst_core::mpegts::demux::NonConformantIssue::NalHeader::codec: tst_core::mpegts::demux::event::VideoCodec
+pub tst_core::mpegts::demux::NonConformantIssue::NalHeader::kind: tst_core::mpegts::demux::event::NalHeaderKind
 pub tst_core::mpegts::demux::NonConformantIssue::Other(alloc::string::String)
 pub tst_core::mpegts::demux::NonConformantIssue::PcrAnomaly
 pub tst_core::mpegts::demux::NonConformantIssue::PcrAnomaly::delta: i64

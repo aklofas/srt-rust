@@ -55,16 +55,31 @@ impl<'a> Av1BitReader<'a> {
     /// read `n` more bits as unsigned `extra`. Result is
     /// `(1 << n) - 1 + extra`. If leading zeros >= 32, return the
     /// spec sentinel `2^32 - 1`.
+    ///
+    /// The cursor advances past the marker `1` bit in both paths
+    /// (normal value and overflow sentinel). Per AV1 §4.10.3 the marker
+    /// is part of the encoded form regardless of which branch the value
+    /// falls into; consuming it preserves bit-stream sync for any
+    /// trailing bits the caller reads next.
     pub fn uvlc(&mut self) -> Result<u64, CodecParseError> {
         let mut leading_zeros = 0usize;
+        let mut saw_terminator = false;
         while leading_zeros < 32 {
             let bit = self.f(1)?;
             if bit == 1 {
+                saw_terminator = true;
                 break;
             }
             leading_zeros += 1;
         }
-        if leading_zeros >= 32 {
+        if !saw_terminator {
+            // 32 leading zeros encountered. The spec still requires a
+            // terminating marker `1`-bit even on this overflow path —
+            // consume it so the cursor stays aligned for any bits the
+            // caller reads next. Pre-fix the loop exited without
+            // consuming the marker, leaving the cursor 1 bit short and
+            // causing every subsequent f(n) to read the wrong bit.
+            let _ = self.f(1)?;
             // Spec: return 2^32 - 1 (the "infinity" / overflow sentinel).
             return Ok((1u64 << 32) - 1);
         }
@@ -148,6 +163,39 @@ mod tests {
         let mut br = Av1BitReader::new(&[0xFF]);
         br.byte_align();
         assert_eq!(br.bit_pos(), 0);
+    }
+
+    #[test]
+    fn uvlc_consumes_marker_bit_on_32_leading_zeros_overflow_sentinel() {
+        // Validate-1 B10: pre-fix, the uvlc loop exited at `leading_zeros == 32`
+        // without consuming the trailing marker `1`-bit. A subsequent f(1) call
+        // would then read what should have been the marker, leaving cursors
+        // 1 bit short on every downstream read.
+        //
+        // Stream layout: 32 leading zeros + 1 marker + sentinel-trailing bit
+        // we'll read after uvlc(). 32 zero bits = 4 zero bytes. Then byte 4
+        // bit 7 (MSB) is the marker `1`, bit 6 is the next caller bit (set to
+        // `0` here so we can detect the off-by-one — pre-fix the caller would
+        // read the marker bit `1` and post-fix gets the intended `0`).
+        let buf = [0x00, 0x00, 0x00, 0x00, 0x80, 0xFF];
+        let mut br = Av1BitReader::new(&buf);
+        let v = br
+            .uvlc()
+            .expect("uvlc must succeed on 32-zero + marker form");
+        assert_eq!(
+            v,
+            (1u64 << 32) - 1,
+            "32-zero overflow returns spec sentinel"
+        );
+        // Cursor must now sit past the marker bit (33 bits in, byte 4 bit 6).
+        // Pre-fix: cursor was at bit 32 and this read returned `1` (the
+        // marker byte's MSB). Post-fix: cursor is at bit 33 and the next bit
+        // is `0`.
+        let next = br.f(1).expect("post-uvlc read must succeed");
+        assert_eq!(
+            next, 0,
+            "post-uvlc cursor must be past the marker bit (pre-fix returned 1)"
+        );
     }
 
     #[test]

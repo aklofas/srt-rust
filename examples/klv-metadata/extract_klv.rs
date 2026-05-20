@@ -11,12 +11,13 @@
 //! Output: one `<prefix>_NNNN_<sync|async>.klv` file per metadata event,
 //! written next to the input file by default. The `_sync` / `_async`
 //! suffix lets downstream consumers tell at a glance whether a file is a
-//! sync record (ST 1402 / ST 1910 — paired in time with a video AU) or an
+//! sync record (H.222.0 V9 §2.12.4.2 Metadata_AU_cell, also defined in
+//! ST 1402.2 §9.4.1 — paired in time with a video AU) or an
 //! async / free-running record (typically 1–10 Hz, no AU pairing). Both
 //! flavors are valid MISB ST 0601 KLV LS bytes and decode the same way
 //! via `klv::st0601::decode`; the suffix is purely advisory.
 //!
-//! For sync KLV the demuxer has already unwrapped the ST 1910 AU cell, so
+//! For sync KLV the demuxer has already unwrapped the Metadata_AU_cell, so
 //! the file contains the inner KLV LS bytes — NOT the AU-cell-wrapped
 //! form. The AU cell's Precision Time Stamp Pack timestamp is dropped on
 //! the floor by this example; if you need it, switch to using `pts` on
@@ -77,7 +78,8 @@ fn main() {
             // Distinguish sync vs async KLV in the filename:
             //
             // - `KlvSyncAuCell`: PMT stream_type 0x15 (Synchronous
-            //   Metadata) carrying ST 1910 AU-cell-wrapped KLV. The
+            //   Metadata) carrying Metadata_AU_cell-wrapped KLV per
+            //   H.222.0 V9 §2.12.4.2 (also defined in ST 1402.2 §9.4.1). The
             //   demuxer has already stripped the AU cell header — the
             //   `payload` is the inner KLV LS bytes, not the wrapped
             //   form. The parent event's `pts` is the AU cell's

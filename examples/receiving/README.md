@@ -36,15 +36,18 @@ Diff from §1/§2: instead of writing raw bytes, run them through the
 (per-stream samples, PSI events, errors). The shape every consumer
 that wants real-time access to the parsed stream uses.
 
-## 4. `ts_relay_from_file.rs` — file → demux → re-mux → file
+## 4. `ts_relay_from_file.rs` — file → SRT
 
 ```sh
-cargo run -p tst-examples --example ts_relay_from_file -- input.ts /tmp/relay.ts
+cargo run -p tst-examples --example ts_relay_from_file -- input.ts 127.0.0.1:9000
 ```
 
-A full pipeline round-trip without an SRT link. Useful for testing
-demux + remux logic in isolation. The on-disk output should be
-structurally equivalent to the input modulo PCR/PTS adjustments.
+Reads a pre-muxed `.ts` from disk and relays it over SRT via the
+TS-bytes-in `pipeline::Sender` path (the input is already muxed
+upstream, e.g. by ffmpeg). Useful for testing SRT options against a
+captured stream without standing up a live encoder. Pair with
+`srt-live-transmit srt://:9000 file:///tmp/out.ts` (or another
+SRT-aware listener) on the receiver side.
 
 Cookbook: [§4 — Relay a captured `.ts` file over SRT](../../docs/cookbook.md#4-relay-a-captured-ts-file-over-srt).
 

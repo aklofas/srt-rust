@@ -37,8 +37,9 @@
  *      -o /tmp/recv_demux_to_console \
  *      crates/tst-c/examples/c/receiving/recv_demux_to_console.c -ltstrans
  *
- * Mirrors: the receiving-side Rust analog at
- *   examples/receiving/demux_receiver_to_console.rs (if present).
+ * Closest Rust analog: examples/receiving/demux_to_events.rs (event-stream
+ *   pretty-printer over a Demuxer; the C side here drives the equivalent
+ *   walk through the C ABI).
  */
 
 #include "tstrans.h"

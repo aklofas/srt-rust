@@ -871,6 +871,44 @@ the trigger that would unblock it.
   tag-presence-based via `find_descriptor_tag`, so malformed
   descriptor bodies pass through today).
 
+## WebVTT-in-TS interop
+
+- **Status:** Deferred. WebVTT-in-MPEG-TS carriage ships in plan #22
+  (registration_descriptor `"VTTC"` + single-cue PES + subtitle PID
+  excluded from PCR fallback) and round-trips through the library's
+  own mux + demux. Interop with external tools (ffmpeg, hls.js,
+  mediamtx, etc.) has not been empirically verified.
+- **Why deferred:** The `"VTTC"` format_identifier is not defined by
+  any published normative spec (RFC 8216, draft-pantos-hls-rfc8216bis,
+  Apple HLS authoring docs — none mention it). It appears in ffmpeg's
+  `mpegtsenc.c` emitter and is widely observed in WebVTT-in-TS
+  captures, but the cross-tool interop is empirical, not normative.
+  Empirical interop testing requires fixture corpus from each tool +
+  a test matrix — a separate session's worth of work.
+- **Trigger to revisit:** Validate-1 Wave I (empirical interop matrix)
+  schedules an interop test against ffmpeg / hls.js / mediamtx /
+  GStreamer; results from that pass either confirm interop or
+  surface concrete divergences requiring spec follow-up.
+
+## CEA-708 interop
+
+- **Status:** Deferred. CEA-708 caption data as a standalone
+  elementary stream ships in plan #22 (registration_descriptor
+  `"GA94"` + private-data PES). Library-internal round-trip works;
+  interop with ATSC ecosystem tooling (decoders, MPEG-2 video user_data
+  bridges) has not been empirically verified.
+- **Why deferred:** ATSC A/53 Part 4 §6.2.3 defines `"GA94"` as the
+  `user_data_identifier` for caption data **embedded in MPEG-2 video
+  user_data**, not as a stream-level marker. Using it for standalone
+  PES carriage is best-effort interop with ATSC ecosystem tooling,
+  not normatively defined. Empirical interop testing requires the
+  same fixture / matrix infrastructure as the WebVTT-in-TS entry
+  above.
+- **Trigger to revisit:** Validate-1 Wave I (empirical interop matrix)
+  schedules CEA-708 interop testing against ATSC ecosystem tooling;
+  results from that pass either confirm interop or surface the need
+  for a different marker convention.
+
 ## Subtitle carriage at the `tst-c` C ABI
 
 - **Status:** Deferred (no consumer ask). Plan #22 ships sender-side and

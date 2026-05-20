@@ -1,5 +1,5 @@
 /*
- * mux_two_programs.c — Two-program MPEG-TS mux via the srt-c C ABI.
+ * mux_two_programs.c — Two-program MPEG-TS mux via the tst-c C ABI.
  *
  * ── USE CASE ─────────────────────────────────────────────────────────────────
  *
@@ -34,7 +34,7 @@
  *
  *   From the ts-transformer workspace root:
  *
- *   SRT_FORCE_VENDORED=1 cargo build -p srt-c --release
+ *   SRT_FORCE_VENDORED=1 cargo build -p tst-c --release
  *   gcc crates/tst-c/examples/c/muxing/mux_two_programs.c \
  *       -I crates/tst-c/include \
  *       -L target/release \

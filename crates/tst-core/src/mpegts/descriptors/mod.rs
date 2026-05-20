@@ -106,7 +106,7 @@ pub fn registration(
     Ok(out)
 }
 
-/// Metadata descriptor (tag 0x26) — H.222.0 §2.6.58 — for KLV PIDs
+/// Metadata descriptor (tag 0x26) — H.222.0 §2.6.60 — for KLV PIDs
 /// carried as `stream_type=0x15` (Metadata in PES). Hard-coded to the
 /// canonical KLVA shape:
 ///   metadata_application_format = 0x0100 (User defined)
@@ -365,21 +365,26 @@ pub fn teletext_descriptor_multi(
 }
 
 /// `registration_descriptor` (tag 0x05) carrying ASCII format_identifier
-/// `"VTTC"` — **informal industry convention** for WebVTT-in-MPEG-TS.
-/// Not defined by RFC 8216 / draft-pantos-hls-rfc8216bis nor any
-/// published normative spec. Originates in ffmpeg's `mpegtsenc.c`
-/// emitter and is recognized by hls.js v1.7+ and mediamtx.
+/// `"VTTC"` — used as a marker for WebVTT-in-MPEG-TS. Not defined by
+/// RFC 8216 / draft-pantos-hls-rfc8216bis nor any published normative
+/// spec; appears in ffmpeg's `mpegtsenc.c` emitter and is widely
+/// observed in WebVTT-in-TS captures. **Library-internal round-trip
+/// only — external-tool interop has not been empirically verified as
+/// of this writing.** See `docs/deferred-features.md` "WebVTT-in-TS
+/// interop" for the empirical-test-pending status.
 pub fn format_identifier_vttc() -> Vec<u8> {
     vec![0x05, 0x04, b'V', b'T', b'T', b'C']
 }
 
 /// `registration_descriptor` (tag 0x05) carrying ASCII format_identifier
-/// `"GA94"` — **informal industry convention** for CEA-708 caption data
-/// carried as a standalone elementary stream. ATSC A/53 Part 4 §6.2.3
-/// defines `"GA94"` as the `user_data_identifier` for caption data
-/// **embedded in MPEG-2 video user_data**, not as a stream-level
-/// marker. The auto-emitted descriptor here is best-effort interop with
-/// ATSC ecosystem tooling, not normatively defined.
+/// `"GA94"` — used as a marker for CEA-708 caption data carried as a
+/// standalone elementary stream. ATSC A/53 Part 4 §6.2.3 defines
+/// `"GA94"` as the `user_data_identifier` for caption data **embedded
+/// in MPEG-2 video user_data**, not as a stream-level marker. **The
+/// auto-emitted descriptor here is for library-internal round-trip only
+/// — external-tool interop has not been empirically verified as of
+/// this writing.** See `docs/deferred-features.md` "CEA-708 interop"
+/// for the empirical-test-pending status.
 pub fn format_identifier_ga94() -> Vec<u8> {
     vec![0x05, 0x04, b'G', b'A', b'9', b'4']
 }

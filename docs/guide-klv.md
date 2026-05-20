@@ -44,7 +44,7 @@ body without allocating, and `RawField<'a>` borrows its `value` slice
 straight from the input buffer.
 
 The typed layer is the right entry point for production decoding and
-encoding of ST 0601 / ST 0605 / ST 1910. `klv::st0601::UasDatalinkLs` is
+encoding of ST 0601 / ST 0605 / ST 0903. `klv::st0601::UasDatalinkLs` is
 a flat plain-old-data struct: every typed item is `Option<T>`, the
 unrecognized tags pass through in a `Vec<OwnedRawField>`, and the four
 decode entry points (`decode`, `decode_unchecked`, `decode_strict`,

@@ -391,7 +391,7 @@ enum tst_nonconformant_code
   TST_NONCONFORMANT_CODE_AV1_OBU_HEADER = 27,
   /**
    * AC-3 PES with `data_alignment_indicator=1` did not start with
-   * the syncword `0x0B77` (validate-1 C12; ATSC A/52 §A.2.4.1).
+   * the syncword `0x0B77` (validate-1 C12; ATSC A/52:2018 §A.6.3).
    * `pid` carries the stream PID.
    */
   TST_NONCONFORMANT_CODE_AC3_SYNC_MISSING = 28,

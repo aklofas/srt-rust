@@ -158,7 +158,7 @@ pub enum TstNonConformantCode {
     /// variant (0=ForbiddenBit, 1=ReservedBit, 2=ExtensionReservedBits).
     Av1ObuHeader = 27,
     /// AC-3 PES with `data_alignment_indicator=1` did not start with
-    /// the syncword `0x0B77` (validate-1 C12; ATSC A/52 §A.2.4.1).
+    /// the syncword `0x0B77` (validate-1 C12; ATSC A/52:2018 §A.6.3).
     /// `pid` carries the stream PID.
     Ac3SyncMissing = 28,
     /// AAC-LATM (stream_type 0x11) PES framing violation (validate-1 C11).

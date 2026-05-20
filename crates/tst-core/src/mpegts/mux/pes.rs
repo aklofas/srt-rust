@@ -12,7 +12,7 @@
 //!   Table 2-22 reserves 0xFC for metadata streams (stream_type 0x15) only.
 //! - Audio: stream_id 0xC0..=0xCF (base + within-program index) for MP2/AAC/
 //!   LATM, 0xBD (private_stream_1) for AC-3 with data_alignment=1 per ATSC
-//!   A/52 §A.2.4.1.
+//!   A/52:2018 §A.6.3.
 //! - Subtitle: stream_id 0xBD, PTS only, bounded, data_alignment=1.
 //!   DVB-sub adds a 3-byte EN 300 743 §6.2 envelope; DVB-teletext uses a
 //!   45-byte stuffed PES per EN 300 472 §4.2.
@@ -44,12 +44,12 @@ pub(crate) const STREAM_ID_KLV: u8 = 0xFC;
 /// stream_id space (16 audio streams per program; H.222.0 allows up to 32
 /// at `0xC0..=0xDF` but `MAX_AUDIO_STREAMS_PER_PROGRAM` caps at 16).
 ///
-/// AC-3 is the exception: per ATSC A/52 §A.2.2, AC-3 PES on PMT
+/// AC-3 is the exception: per ATSC A/52:2018 §A.4.2, AC-3 PES on PMT
 /// stream_type 0x81 MUST use `stream_id = 0xBD` (private_stream_1).
 pub(crate) const STREAM_ID_AUDIO_BASE: u8 = 0xC0;
 /// PES `stream_id` for `private_stream_1` (ISO/IEC 13818-1 Table 2-22, 0xBD).
 ///
-/// Used by AC-3 audio (ATSC A/52 §A.2.2 mandate), DVB subtitling (EN 300 743
+/// Used by AC-3 audio (ATSC A/52:2018 §A.4.2 mandate), DVB subtitling (EN 300 743
 /// §6.2), DVB teletext (EN 300 472 §4.2), CEA-708 standalone, and WebVTT-in-TS.
 /// MPEG-TS demuxer dispatch is by `elementary_PID`, not `stream_id`.
 pub(crate) const STREAM_ID_PRIVATE_STREAM_1: u8 = 0xBD;
@@ -81,7 +81,7 @@ pub(crate) struct PesFlags {
     /// Bit 2 of flags1 (byte 6 of the PES header). Set when the PES carries
     /// one logical access unit (a complete subtitle composition page, KLV
     /// access unit, AAC ADTS frame, etc.). Required for AC-3 (ATSC A/52
-    /// §A.2.4.1), DVB-sub (EN 300 743 §6.2), DVB-teletext (EN 300 472 §4.2),
+    /// §A.6.3), DVB-sub (EN 300 743 §6.2), DVB-teletext (EN 300 472 §4.2),
     /// metadata streams (H.222.0 V9 §2.12.4.1), AV1 (binding §3.4).
     pub data_alignment_indicator: bool,
 }
@@ -99,8 +99,8 @@ pub(crate) const MAX_PES_HEADER_SIZE: usize = 19;
 /// Write a complete audio PES packet (header + caller's frame bytes) into `out`.
 ///
 /// PES `stream_id` dispatched by codec:
-/// * `Ac3` — `0xBD` (private_stream_1) per ATSC A/52 §A.2.2 (PDF p.116,
-///   normative "shall"); `data_alignment_indicator` set to 1 per §A.2.4.1.
+/// * `Ac3` — `0xBD` (private_stream_1) per ATSC A/52:2018 §A.4.2 (PDF p.116,
+///   normative "shall"); `data_alignment_indicator` set to 1 per §A.6.3.
 /// * `Mp2` / `Aac` / `AacLatm` — `STREAM_ID_AUDIO_BASE + within_program_index`
 ///   (range `0xC0..=0xCF`) per ISO/IEC 13818-1 Table 2-22.
 ///
@@ -123,7 +123,7 @@ pub(crate) fn write_audio_pes(
         }
     };
     let mut header = [0u8; MAX_PES_HEADER_SIZE];
-    // AC-3 PES requires data_alignment_indicator=1 per ATSC A/52 §A.2.4.1.
+    // AC-3 PES requires data_alignment_indicator=1 per ATSC A/52:2018 §A.6.3.
     // Other audio codecs (MP2 / AAC ADTS / AAC LATM) leave the bit clear.
     let flags = PesFlags {
         data_alignment_indicator: matches!(codec, AudioCodec::Ac3),
@@ -649,9 +649,9 @@ mod tests {
         }
     }
 
-    /// Per ATSC A/52:2018 §A.2.2 (PDF p.116, normative "shall"): for AC-3
+    /// Per ATSC A/52:2018 §A.4.2 (PDF p.116, normative "shall"): for AC-3
     /// (PMT stream_type 0x81), "the value of stream_id in the PES header
-    /// shall be 0xBD (indicating private_stream_1)." §A.2.4.1 mandates
+    /// shall be 0xBD (indicating private_stream_1)." §A.6.3 mandates
     /// data_alignment_indicator = 1.
     #[test]
     fn ac3_pes_uses_stream_id_0xbd_with_alignment() {
@@ -665,13 +665,13 @@ mod tests {
         assert_eq!(&out[0..3], &[0x00, 0x00, 0x01], "PES start code");
         assert_eq!(
             out[3], 0xBD,
-            "AC-3 PES stream_id must be 0xBD (private_stream_1) per ATSC A/52 §A.2.2",
+            "AC-3 PES stream_id must be 0xBD (private_stream_1) per ATSC A/52:2018 §A.4.2",
         );
         // data_alignment_indicator is bit 2 of flags1 (byte 6).
         assert_eq!(
             (out[6] >> 2) & 0b1,
             1,
-            "AC-3 PES data_alignment_indicator must be set per ATSC A/52 §A.2.4.1",
+            "AC-3 PES data_alignment_indicator must be set per ATSC A/52:2018 §A.6.3",
         );
     }
 

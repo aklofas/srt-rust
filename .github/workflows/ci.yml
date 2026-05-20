@@ -73,15 +73,16 @@ jobs:
 
       - name: Scrub guard (no pre-rename names in tree)
         # Fails the build if any pre-rename name (`srt-core`, `srt-rust`,
-        # `TsSender`, `TsReceiver`) or internal codeword (`v0`) leaks into
-        # the published tree. CLAUDE.md is the documented exception (per the
-        # repo-standalone guardrail); vendor/, target/, and Cargo.lock are
-        # excluded. Ubuntu's GHA image ships ripgrep preinstalled.
-        # Linux-only — rg / bash invocation differs on Windows and this is
-        # a workspace-state check, so running it once is enough.
+        # `srt-c`, `TsSender`, `TsReceiver`) or internal codeword (`v0`)
+        # leaks into the published tree. CLAUDE.md is the documented
+        # exception (per the repo-standalone guardrail); vendor/, target/,
+        # and Cargo.lock are excluded. Ubuntu's GHA image ships ripgrep
+        # preinstalled. Linux-only — rg / bash invocation differs on
+        # Windows and this is a workspace-state check, so running it once
+        # is enough.
         if: matrix.name == 'linux-x86_64'
         run: |
-          if rg 'srt[_-]core|srt[_-]rust|TsSender|TsReceiver|\bv0\b' \
+          if rg 'srt[_-]core|srt[_-]rust|\bsrt[_-]c\b|TsSender|TsReceiver|\bv0\b' \
               --glob '!target' --glob '!CLAUDE.md' \
               --glob '!**/Cargo.lock' --glob '!vendor'; then
             echo "Pre-rename name regression detected" >&2
@@ -158,7 +159,7 @@ jobs:
         run: cargo test --doc --workspace
 
       # `cargo test` only builds the rlib of crates with multiple crate-types.
-      # srt-c's smoke test asserts on target/debug/libsrtc.so, so we need an
+      # tst-c's smoke test asserts on target/debug/libtstrans.so, so we need an
       # explicit `cargo build` to produce the cdylib + staticlib first.
       - name: cargo build (all crate types, with mbedtls)
         env:

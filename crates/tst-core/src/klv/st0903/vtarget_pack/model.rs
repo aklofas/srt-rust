@@ -289,9 +289,9 @@ pub enum VTargetPackError {
 /// range) but capped here at u32 — an 8K (33 MP) frame's pixel count
 /// fits comfortably.
 ///
-/// `detection_status` is the raw §10.2.2.24 / §7.2 codepoint:
-/// 0=Active-Moving, 1=Active-Stopped, 2=Active-Coasting, 3=Inactive,
-/// 4=Dropped. Typed enum deferred — stays as raw `u8`.
+/// `detection_status` is the raw §10.2.2.24 / §7.2 Table 5 codepoint:
+/// 0=Inactive, 1=Active-Moving, 2=Dropped, 3=Active-Stopped,
+/// 4=Active-Coasting. Typed enum deferred — stays as raw `u8`.
 ///
 /// 7 nested/sibling Local Sets (`target_location`,
 /// `geospatial_contour_series`, `vmask`, `vtracker`, `vchip`,

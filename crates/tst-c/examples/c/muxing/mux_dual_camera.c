@@ -10,7 +10,7 @@
  * `examples/c/muxing/mux_two_programs.c`.
  *
  * Build (from the ts-transformer workspace root):
- *   SRT_FORCE_VENDORED=1 cargo build -p srt-c
+ *   SRT_FORCE_VENDORED=1 cargo build -p tst-c
  *   cc -I crates/tst-c/include \
  *      -L target/debug \
  *      -Wall -Werror \
@@ -151,10 +151,11 @@ int main(void) {
      *       This is the simpler shape — no AU cell wrapping required.
      *     - TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA (stream_type 0x15):
      *       "synchronous" KLV. The PES carries a PTS, so a demuxer can
-     *       pair each KLV packet with the nearest-PTS video frame.
-     *       IMPORTANT: for synchronous KLV, callers MUST pre-wrap each blob
-     *       via the ST 1910 AU cell wrapper BEFORE calling push_klv_to. The
-     *       muxer does NOT auto-wrap.
+     *       pair each KLV packet with the nearest-PTS video frame. The muxer
+     *       auto-wraps each push in a 5-byte Metadata_AU_cell header per
+     *       ITU-T H.222.0 V9 § 2.12.4.2 (also defined in ST 1402.2 § 9.4.1)
+     *       before TS-framing. Pass raw KLV LS bytes to tst_muxer_push_klv_to;
+     *       PTS lives in the PES header (per § 2.12.4.1).
      *   This example uses async (carries_pts=false) — the simpler shape.
      *
      * The handle returned here is a tst_klv_stream_handle_t (also uint32_t).

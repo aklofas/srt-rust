@@ -1,7 +1,7 @@
 //! Shared per-stream stats shape used by `mpegts::mux::MuxerStats` and
 //! `mpegts::demux::DemuxerStats`. Identity is the PID; kind/codec lives
 //! in `stream_type`. Same shape across sender and receiver sites so the
-//! `srt-c` ABI is one struct + one fixed-size array.
+//! `tst-c` ABI is one struct + one fixed-size array.
 
 use crate::mpegts::common::StreamTypeCode;
 

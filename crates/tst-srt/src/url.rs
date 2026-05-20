@@ -4,10 +4,12 @@
 //! rejects any key for which this library doesn't yet expose a builder
 //! setter, with a clear "known but unsupported" error).
 //!
-//! Plus two `srt-c`-flavor extensions: `x-recvtimeout` / `x-sendtimeout`
+//! Plus two `tst-c`-flavor extensions: `x-recvtimeout` / `x-sendtimeout`
 //! (no libsrt-URL precedent; `SRTO_RCVTIMEO` / `SRTO_SNDTIMEO`).
 //!
-//! Spec: `docs/specs/2026-05-02-srt-c-url-query-params-design.md`.
+//! Spec: parent-level `docs/specs/` URL query parameters design note
+//! (2026-05-02; pre-rename — filename predates the workspace rename to
+//! `tst-c`).
 
 use crate::config::{ListenerConfig, SocketConfig};
 use crate::error::OptionError;
@@ -123,7 +125,7 @@ pub struct UrlOverlay {
     pub packet_filter: Option<PacketFilter>,
     pub congestion: Option<Congestion>,
 
-    // Group 2 — `srt-c` extension keys.
+    // Group 2 — `tst-c` extension keys.
     pub recv_timeout: Option<Duration>,
     pub send_timeout: Option<Duration>,
 
@@ -657,7 +659,7 @@ impl UrlOverlay {
     }
 
     /// Same shape for `ListenerConfig` (for symmetry with future
-    /// listener-side URL support; v1 has no listener-side _open in srt-c).
+    /// listener-side URL support; v1 has no listener-side _open in tst-c).
     pub fn apply_to_listener(&self, cfg: &mut ListenerConfig) {
         if let Some(v) = self.passphrase.as_ref() {
             cfg.passphrase = Some(v.clone());

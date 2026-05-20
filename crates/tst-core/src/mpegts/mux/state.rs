@@ -498,7 +498,7 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
             }
         }
         // AC-3 auto-emit: Registration descriptor with format_identifier
-        // "AC-3" per ATSC A/52 §A.2.3. Receivers use this to distinguish
+        // "AC-3" per ATSC A/52:2018 §A.3. Receivers use this to distinguish
         // AC-3 from other private-stream-1 (PES stream_id 0xBD) audio.
         // Suppression mirrors the KLVA / AV01 rules: suppress when the
         // caller has already supplied an AC-3 Registration (tag 0x05 with

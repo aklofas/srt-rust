@@ -510,7 +510,7 @@ impl super::demuxer::Demuxer {
                 }
                 // C12 — AC-3 syncframe alignment enforcement.
                 //
-                // ATSC A/52:2018 §A.2.4.1 mandates `data_alignment_indicator=1`
+                // ATSC A/52:2018 §A.6.3 mandates `data_alignment_indicator=1`
                 // for every AC-3 PES, with the implication that the PES
                 // payload starts at an AC-3 syncframe (sync word 0x0B77).
                 // Surface a NonConformantIssue when the alignment flag is

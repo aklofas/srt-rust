@@ -29,7 +29,7 @@ pub struct PesPayload {
     pub random_access_indicator: bool,
     /// PES flags1 bit 2 — `data_alignment_indicator`. Required for DVB
     /// subtitle (EN 300 743 §6.2), DVB teletext (EN 300 472 §4.2), AC-3
-    /// (ATSC A/52 §A.2.4.1), AV1 (binding §3.4), metadata streams
+    /// (ATSC A/52:2018 §A.6.3), AV1 (binding §3.4), metadata streams
     /// (H.222.0 V9 §2.12.4.1). For codecs that don't require it the bit
     /// is informational. `false` when the PES has no optional header.
     pub data_alignment_indicator: bool,

@@ -19,7 +19,8 @@
 //!   IDR you'll see SPS + PPS + IDR slice (3+ NALs); for a P-frame just
 //!   one slice NAL (1).
 //! - `Metadata` lines on the KLV PID. `kind=KlvSyncAuCell` means the
-//!   demuxer unwrapped an ST 1910 AU cell; `kind=KlvAsync` means bare
+//!   demuxer unwrapped a Metadata_AU_cell (H.222.0 V9 §2.12.4.2,
+//!   also defined in ST 1402.2 §9.4.1); `kind=KlvAsync` means bare
 //!   KLV LS bytes from a private-data PID. Both decode the same way via
 //!   `klv::st0601::decode` — the kind is just provenance.
 //! - `Discontinuity` and `NonConformant` lines flag problems that the

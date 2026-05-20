@@ -1,4 +1,4 @@
-//! AV1 + sync-KLV (ST 1910) flavor of `mux_to_file`.
+//! AV1 + sync-KLV (H.222.0 V9 §2.12.4.2 Metadata_AU_cell) flavor of `mux_to_file`.
 //!
 //! Diffs against `mux_h266_with_klv.rs` to show what flips when
 //! switching from a NAL-shaped codec (H.264 / H.265 / H.266) to an

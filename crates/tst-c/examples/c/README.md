@@ -126,7 +126,15 @@ LD_LIBRARY_PATH=../../target/debug /tmp/socket_stats_poll srt://127.0.0.1:9000
 ## Receiver-side C examples
 
 The C ABI covers both sender (mux + raw/TS sender) and receiver (demux +
-raw/TS receiver) surfaces. Receiver-side C examples are a planned addition;
-in the meantime, the Rust receiving examples
-([`../../../../examples/receiving/`](../../../../examples/receiving/))
-work against C-side senders.
+raw/TS receiver) surfaces. Receiver-side C examples ship under
+[`receiving/`](receiving/):
+
+- [`receiving/recv_ts_to_file.c`](receiving/recv_ts_to_file.c) — TS-bytes
+  receiver: drain TS packets straight to a file via the C ABI's Receiver
+  shape.
+- [`receiving/recv_demux_to_console.c`](receiving/recv_demux_to_console.c)
+  — DemuxReceiver event walk: print one line per demux event to stdout.
+- [`receiving/recv_klv_to_stdout.c`](receiving/recv_klv_to_stdout.c) — KLV
+  extraction: dump KLV payloads as hex / file on the side of a Demuxer.
+- [`receiving/recv_raw_to_file.c`](receiving/recv_raw_to_file.c) — raw
+  socket bytes (no TS framing): the lowest-level RawReceiver shape.

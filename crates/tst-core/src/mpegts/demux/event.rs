@@ -110,10 +110,18 @@ pub enum SubtitleCodec {
     /// CEA-708 caption data carried as a separate elementary stream
     /// (rather than embedded in H.264/H.265 SEI). Marked via
     /// registration_descriptor format_identifier "GA94".
+    /// **Library-internal round-trip only — external-tool interop has
+    /// not been empirically verified as of this writing.** See
+    /// `docs/deferred-features.md` "CEA-708 interop" for the
+    /// empirical-test-pending status.
     Cea708Standalone,
-    /// WebVTT cues carried inside MPEG-TS PES per Apple's HLS
-    /// authoring spec. Marked via registration_descriptor
-    /// format_identifier "VTTC".
+    /// WebVTT cues carried inside MPEG-TS PES. Marked via
+    /// registration_descriptor format_identifier "VTTC" (not defined by
+    /// any published normative spec — see the `format_identifier_vttc`
+    /// rustdoc). **Library-internal round-trip only — external-tool
+    /// interop has not been empirically verified as of this writing.**
+    /// See `docs/deferred-features.md` "WebVTT-in-TS interop" for the
+    /// empirical-test-pending status.
     WebVttInTs,
 }
 
@@ -244,7 +252,7 @@ pub enum MetadataKind {
     /// the AU cell carries no embedded timestamp).
     ///
     /// Field names match the spec (Table 2-156) verbatim for FFI
-    /// traceability across `srt-c` / `srt-jni` / `srt-uniffi` wrappers.
+    /// traceability across `tst-c` / `srt-jni` / `srt-uniffi` wrappers.
     KlvSyncAuCell {
         /// `metadata_service_id` u8. ST 1402.2 App. B Table 2: `0x00` typical.
         metadata_service_id: u8,
@@ -328,7 +336,8 @@ pub enum LinkSource {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NonConformantIssue {
-    /// `stream_type=0x06` carries ST 1910 AU cell payload; treated as sync KLV.
+    /// `stream_type=0x06` carries Metadata_AU_cell payload (H.222.0 V9 §2.12.4.2,
+    /// also defined in ST 1402.2 §9.4.1); treated as sync KLV.
     StreamTypeMismatchSyncOnAsyncPid,
     /// `stream_type=0x15` carries bare KLV without AU cell wrap; treated as async KLV.
     StreamTypeMismatchAsyncOnSyncPid,
@@ -610,7 +619,7 @@ pub enum NonConformantIssue {
     /// AC-3 PES on a stream type `0x81` (System A) arrived with
     /// `data_alignment_indicator = 1` but the payload does not begin
     /// with the AC-3 syncword `0x0B77` (validate-1 C12). Per ATSC
-    /// A/52:2018 §A.2.4.1, every AC-3 PES with the alignment flag set
+    /// A/52:2018 §A.6.3, every AC-3 PES with the alignment flag set
     /// MUST start with a syncframe; receivers gating on the flag may
     /// drop or mis-decode misaligned payloads.
     ///
@@ -953,7 +962,7 @@ impl std::fmt::Display for NonConformantIssue {
                 write!(
                     f,
                     "AC-3 PES on PID 0x{pid:04X} missing syncword 0x0B77 \
-                     despite data_alignment_indicator=1 (A/52 §A.2.4.1)"
+                     despite data_alignment_indicator=1 (A/52:2018 §A.6.3)"
                 )
             }
             NonConformantIssue::LatmFraming { pid, kind } => {

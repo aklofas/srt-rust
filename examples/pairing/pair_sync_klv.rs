@@ -16,8 +16,9 @@
 //! 1. **Both `KlvSyncAuCell` AND `KlvAsync` are paired here.** The
 //!    natural intuition is "sync KLV is the kind that needs pairing,"
 //!    and that's how the underlying ISO 13818-1 structure presents it
-//!    — `stream_type=0x15` (synchronous metadata) carries an ST 1910
-//!    AU cell whose Precision Time Stamp Pack drives the pairing PTS.
+//!    — `stream_type=0x15` (synchronous metadata) carries a
+//!    Metadata_AU_cell (H.222.0 V9 §2.12.4.2, also defined in
+//!    ST 1402.2 §9.4.1) whose Precision Time Stamp Pack drives the pairing PTS.
 //!    But many production ISR encoders emit a `stream_type=0x15` PID
 //!    whose AU cell wraps an *async-shape* inner UL (no AU cell wrap
 //!    on the inner KLV). The demuxer peels the outer AU cell wrap and,

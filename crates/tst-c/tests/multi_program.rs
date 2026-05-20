@@ -1,4 +1,4 @@
-//! Multi-program integration test for srt-c.
+//! Multi-program integration test for tst-c.
 //!
 //! Builds a 2-program mux config via the C ABI entry points
 //! (`tst_mux_config_add_program`, `_add_video_stream`, `_add_klv_stream`),

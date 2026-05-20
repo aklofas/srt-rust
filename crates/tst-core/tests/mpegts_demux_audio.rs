@@ -102,7 +102,7 @@ fn demux_audio_pts_surfaces() {
 }
 
 /// validate-1 C12 — AC-3 PES with `data_alignment_indicator=1` MUST start
-/// with the syncword 0x0B77 (ATSC A/52 §A.2.4.1). The mux side sets the
+/// with the syncword 0x0B77 (ATSC A/52:2018 §A.6.3). The mux side sets the
 /// flag unconditionally for AC-3 (`mpegts::mux::pes::write_audio_pes`), so
 /// any caller pushing non-syncframe bytes (a stub payload, a mis-aligned
 /// upstream demux) triggers this issue on the receive side.

@@ -1,4 +1,4 @@
-//! H.266 + sync-KLV (ST 1910) flavor of `mux_to_file`.
+//! H.266 + sync-KLV (H.222.0 V9 §2.12.4.2 Metadata_AU_cell) flavor of `mux_to_file`.
 //!
 //! Diffs against `mux_to_file.rs` to show which MuxerConfig knobs flip when
 //! switching codec and KLV mode:

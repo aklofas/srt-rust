@@ -351,7 +351,7 @@ impl VideoStreamHandle {
     /// Bit layout: bits 0..=3 = within_program_index (0..=15),
     /// bits 4..=7 = program_index (0..=15), upper bits zero.
     ///
-    /// Public so `srt-c` can construct handles at the FFI boundary. Single-
+    /// Public so `tst-c` can construct handles at the FFI boundary. Single-
     /// program callers pass `program_index = 0`.
     ///
     /// # Panics
@@ -379,7 +379,7 @@ impl VideoStreamHandle {
     }
 
     /// Return the packed `u32` representation. Used at the FFI boundary when
-    /// `srt-c` needs to return a handle to a C caller as a bare integer.
+    /// `tst-c` needs to return a handle to a C caller as a bare integer.
     #[doc(hidden)]
     pub fn raw(self) -> u32 {
         self.0
@@ -404,7 +404,7 @@ impl KlvStreamHandle {
 
     /// Pack `(program_index, within_program_index)` into the opaque u32.
     ///
-    /// Same bit layout as [`VideoStreamHandle::pack`]. Public so `srt-c`
+    /// Same bit layout as [`VideoStreamHandle::pack`]. Public so `tst-c`
     /// can construct handles at the FFI boundary.
     ///
     /// # Panics
@@ -430,7 +430,7 @@ impl KlvStreamHandle {
     }
 
     /// Return the packed `u32` representation. Used at the FFI boundary when
-    /// `srt-c` needs to return a handle to a C caller as a bare integer.
+    /// `tst-c` needs to return a handle to a C caller as a bare integer.
     #[doc(hidden)]
     pub fn raw(self) -> u32 {
         self.0

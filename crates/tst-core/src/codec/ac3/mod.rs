@@ -4,7 +4,7 @@
 //! an AC-3 elementary stream, used by the muxer to derive the mandatory
 //! `AC-3_audio_stream_descriptor` (ATSC A/52 §A.4.3 + Table A4.1) and
 //! by the demuxer to enforce `data_alignment_indicator = 1` per ATSC
-//! A/52 §A.2.4.1 (which mandates one syncframe per PES with the
+//! A/52:2018 §A.6.3 (which mandates one syncframe per PES with the
 //! alignment indicator set).
 //!
 //! ## Spec coverage

@@ -109,8 +109,87 @@ fn parse_sequence_header_main_320x240() {
     assert_eq!(seq.chroma_format, ChromaFormat::Yuv420);
     assert!(!seq.still_picture);
     assert!(!seq.reduced_still_picture_header);
-    assert_eq!(seq.color_info, None);
+    // Even though color_description_present_flag == 0, the wire-format still
+    // carries the color_range bit per AV1 §6.4.2; we surface it via ColorInfo
+    // with UNSPECIFIED primaries/transfer/matrix so callers can read the
+    // dynamic-range signal. minimal_sequence_header() encodes color_range = 0.
+    let ci = seq
+        .color_info
+        .as_ref()
+        .expect("color_info should be Some so full_range is surfaced");
+    assert_eq!(ci.primaries, ColourPrimaries::Unspecified);
+    assert_eq!(ci.transfer, TransferCharacteristics::Unspecified);
+    assert_eq!(ci.matrix, MatrixCoefficients::Unspecified);
+    assert!(!ci.full_range);
     assert_eq!(seq.frame_rate, None);
+}
+
+/// Same shape as the minimal payload, but `color_range = 1` (full range).
+/// Verifies the implicit-color-description branch still threads the
+/// wire-read color_range bit through to `ColorInfo.full_range`.
+fn minimal_sequence_header_full_range() -> Vec<u8> {
+    let mut bw = BitWriter::new();
+
+    bw.write(0, 3); // seq_profile = 0
+    bw.write(0, 1); // still_picture
+    bw.write(0, 1); // reduced_still_picture_header
+    bw.write(0, 1); // timing_info_present_flag
+    bw.write(0, 1); // initial_display_delay_present_flag
+    bw.write(0, 5); // operating_points_cnt_minus_1
+    bw.write(0, 12); // operating_point_idc[0]
+    bw.write(0, 5); // seq_level_idx[0]
+
+    bw.write(8, 4); // frame_width_bits_minus_1
+    bw.write(7, 4); // frame_height_bits_minus_1
+    bw.write(319, 9); // max_frame_width_minus_1
+    bw.write(239, 8); // max_frame_height_minus_1
+
+    bw.write(0, 1); // frame_id_numbers_present_flag
+    bw.write(0, 1); // use_128x128_superblock
+    bw.write(0, 1); // enable_filter_intra
+    bw.write(0, 1); // enable_intra_edge_filter
+
+    bw.write(0, 1); // enable_interintra_compound
+    bw.write(0, 1); // enable_masked_compound
+    bw.write(0, 1); // enable_warped_motion
+    bw.write(0, 1); // enable_dual_filter
+    bw.write(0, 1); // enable_order_hint
+    bw.write(0, 1); // seq_choose_screen_content_tools
+    bw.write(0, 1); // seq_force_screen_content_tools
+
+    bw.write(0, 1); // enable_superres
+    bw.write(0, 1); // enable_cdef
+    bw.write(0, 1); // enable_restoration
+
+    bw.write(0, 1); // high_bitdepth
+    bw.write(0, 1); // mono_chrome
+    bw.write(0, 1); // color_description_present_flag = 0
+    bw.write(1, 1); // color_range = 1 (full range)
+    bw.write(0, 2); // chroma_sample_position
+    bw.write(0, 1); // separate_uv_delta_q
+
+    bw.write(0, 1); // film_grain_params_present
+    bw.bytes
+}
+
+#[test]
+fn parse_sequence_header_implicit_color_range_full() {
+    // Regression for validate-1 B11: when color_description_present_flag=0
+    // the parser must still read the color_range bit and surface it via
+    // ColorInfo.full_range — not discard it.
+    let payload = minimal_sequence_header_full_range();
+    let seq = parse_sequence_header(&payload).expect("should parse");
+    let ci = seq
+        .color_info
+        .as_ref()
+        .expect("color_info should be Some even without explicit color description");
+    assert_eq!(ci.primaries, ColourPrimaries::Unspecified);
+    assert_eq!(ci.transfer, TransferCharacteristics::Unspecified);
+    assert_eq!(ci.matrix, MatrixCoefficients::Unspecified);
+    assert!(
+        ci.full_range,
+        "wire color_range=1 should map to full_range=true"
+    );
 }
 
 /// Reduced still-picture variant — single op, seq_level_idx[0] f(5)

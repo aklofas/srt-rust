@@ -180,8 +180,13 @@ pub fn parse_sequence_header(payload: &[u8]) -> Result<Av1SequenceHeader, CodecP
         (2u8, 2u8, 2u8)
     };
 
-    // Stash ColorInfo only when color_description_present_flag=1 — implicit
-    // (BT.709-derived) color values are noise without an explicit signal.
+    // The wire-format color_range bit lives outside the
+    // color_description_present_flag=1 block (see AV1 §6.4.2): for both
+    // monochrome and non-monochrome non-special-case paths we read it
+    // unconditionally. To preserve the dynamic-range signal even when no
+    // explicit color description is signalled, we emit ColorInfo with
+    // UNSPECIFIED primaries/transfer/matrix in that branch — mirroring the
+    // H.264/H.265/H.266 parsers' treatment of the same shape.
     let (full_range, subsampling_x, subsampling_y);
     if monochrome {
         full_range = br.f(1)? != 0;
@@ -247,18 +252,18 @@ pub fn parse_sequence_header(payload: &[u8]) -> Result<Av1SequenceHeader, CodecP
         }
     };
 
-    let color_info = if color_description_present {
-        Some(ColorInfo {
-            primaries: ColourPrimaries::from_h273(cp_byte),
-            transfer: TransferCharacteristics::from_h273(tc_byte),
-            matrix: MatrixCoefficients::from_h273(mc_byte),
-            full_range,
-            chroma_loc: None,
-            sample_aspect_ratio: None,
-        })
-    } else {
-        None
-    };
+    // Always surface ColorInfo: even with color_description_present_flag=0,
+    // the wire-format carries color_range, so the dynamic-range signal is
+    // observable. When the explicit description is absent, fields default to
+    // UNSPECIFIED (CP/TC/MC byte 2) per AV1 §5.5.2.
+    let color_info = Some(ColorInfo {
+        primaries: ColourPrimaries::from_h273(cp_byte),
+        transfer: TransferCharacteristics::from_h273(tc_byte),
+        matrix: MatrixCoefficients::from_h273(mc_byte),
+        full_range,
+        chroma_loc: None,
+        sample_aspect_ratio: None,
+    });
 
     if !reduced_still_picture_header {
         let _film_grain_params_present = br.f(1)?;

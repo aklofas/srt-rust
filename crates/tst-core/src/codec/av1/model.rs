@@ -21,6 +21,13 @@ pub struct Av1SequenceHeader {
     pub chroma_format: ChromaFormat,
     pub still_picture: bool,
     pub reduced_still_picture_header: bool,
+    /// Color metadata. AV1 always carries a `color_range` bit in the wire
+    /// format (see §6.4.2), so a successful parse populates this with at
+    /// least the dynamic-range signal. When `color_description_present_flag
+    /// == 0`, `primaries`/`transfer`/`matrix` default to `Unspecified` per
+    /// §5.5.2 and only `full_range` carries observed data. The `Option`
+    /// wrapper is kept for `ColorInfo` parity with the H.26x parsers and for
+    /// forward-compatibility with future error-recovery paths.
     pub color_info: Option<ColorInfo>,
     /// Frame rate derived from `time_scale / num_units_in_display_tick`,
     /// only populated when `timing_info_present_flag == 1` and

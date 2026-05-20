@@ -557,9 +557,16 @@ descriptor types real-world senders actually emit:
 | `stream_identifier(component_tag)` | 0x52 | Pairs with Component for routing |
 | `iso_639_language(lang, audio_type)` | 0x0A | 3-byte language code, conventional on audio |
 
-Each helper returns a `Vec<u8>` containing the complete descriptor
-(tag + length byte + body). Hand the result list to one of the
-`MuxerConfigBuilder` methods.
+Helpers whose payload is statically bounded (`metadata_klva`,
+`metadata_std`, `stream_identifier`, `iso_639_language`,
+`format_identifier_*`) return a `Vec<u8>` directly. The remaining
+helpers (`registration`, `user_private`, `user_private_with_tag`,
+`component`, `subtitling_descriptor_multi`,
+`teletext_descriptor_multi`) accept caller-sized payloads and return
+`Result<Vec<u8>, DescriptorError>` so payloads that would overflow
+the 8-bit `descriptor_length` field surface as
+`DescriptorError::TooLarge`. Hand the result list to one of the
+`MuxerConfigBuilder` methods (use `?` on the fallible builders).
 
 ### Setting descriptors on the builder
 
@@ -571,16 +578,16 @@ use tst_core::mpegts::mux::{
 
 let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
 prog.add_video(0x100, VideoCodec::H264);
-prog.stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])?;
+prog.stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")?])?;
 prog.add_video(0x101, VideoCodec::H264);
-prog.stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640")])?;
+prog.stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640")?])?;
 prog.add_klv(0x102, KlvStreamType::SynchronousMetadata, true);
 prog.stream_descriptors_for_klv(
     0,
     vec![
         desc::metadata_klva(0x00),
         desc::metadata_std(0, 0, 0),
-        desc::user_private(b"KLV_SYNC"),
+        desc::user_private(b"KLV_SYNC")?,
     ],
 )?;
 

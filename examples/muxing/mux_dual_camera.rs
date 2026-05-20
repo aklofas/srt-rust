@@ -61,11 +61,21 @@ fn main() -> std::io::Result<()> {
         // docs/guide-mpegts-mux.md for the full descriptor builder menu
         // including spec-conformant alternatives (Component 0x50, Stream
         // Identifier 0x52).
-        prog.stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
-            .unwrap();
+        // Builders now return Result so oversized payloads surface as
+        // DescriptorError::TooLarge rather than silently truncating.
+        // Static byte strings here are well under the 255-byte cap, so
+        // `.expect()` is safe and documents the precondition.
+        prog.stream_descriptors_for_video(
+            0,
+            vec![descriptors::user_private(b"EO 1080p").expect("label within 255-byte cap")],
+        )
+        .unwrap();
         prog.add_video(0x1021, VideoCodec::H264); // IR (thermal)
-        prog.stream_descriptors_for_video(1, vec![descriptors::user_private(b"IR 640x480")])
-            .unwrap();
+        prog.stream_descriptors_for_video(
+            1,
+            vec![descriptors::user_private(b"IR 640x480").expect("label within 255-byte cap")],
+        )
+        .unwrap();
         prog.add_klv(0x1031, KlvStreamType::PrivateData, false);
         // KLV is PrivateData here (no PTS in PES), so we skip the
         // canonical 0x26 + 0x27 metadata-service descriptor pair — those
@@ -73,8 +83,11 @@ fn main() -> std::io::Result<()> {
         // 0x15). For PrivateData (stream_type 0x06) a user_private label
         // is enough: receivers that call us out by label still find this
         // stream, and tools like ffprobe surface it as "Data: KLVA".
-        prog.stream_descriptors_for_klv(0, vec![descriptors::user_private(b"KLV_META")])
-            .unwrap();
+        prog.stream_descriptors_for_klv(
+            0,
+            vec![descriptors::user_private(b"KLV_META").expect("label within 255-byte cap")],
+        )
+        .unwrap();
         prog.pcr_pid(0x1011);
         let mut b = MuxerConfig::builder();
         b.add_program(prog.build());

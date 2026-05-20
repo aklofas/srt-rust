@@ -98,7 +98,8 @@ proptest! {
     /// one `RawDescriptor` with `tag=0x05` and `data == format_id`.
     #[test]
     fn descriptor_roundtrip(format_id in any::<[u8; 4]>()) {
-        let bytes = descriptors::registration(format_id, &[]);
+        let bytes = descriptors::registration(format_id, &[])
+            .expect("zero-byte additional within length cap");
         let parsed = walk_descriptors(&bytes).expect("walk_descriptors ok");
         prop_assert_eq!(parsed.len(), 1);
         prop_assert_eq!(parsed[0].tag, 0x05);
@@ -158,7 +159,8 @@ proptest! {
         tag in 0x40u8..=0xFFu8,
         payload in proptest::collection::vec(any::<u8>(), 0..=255),
     ) {
-        let bytes = descriptors::user_private_with_tag(tag, &payload);
+        let bytes = descriptors::user_private_with_tag(tag, &payload)
+            .expect("payload strategy capped at 255 bytes");
         let parsed = walk_descriptors(&bytes).expect("walk");
         prop_assert_eq!(parsed.len(), 1);
         prop_assert_eq!(parsed[0].tag, tag);
@@ -192,11 +194,12 @@ proptest! {
         component_type in any::<u8>(),
         component_tag in any::<u8>(),
         language in any::<[u8; 3]>(),
-        // Text length 0..=249 — the helper debug_asserts ≤249 and
-        // saturates in release builds.
+        // Text length 0..=249 — the helper returns
+        // DescriptorError::TooLarge above 249 (validate-1 C5).
         text in "[ -~]{0,249}",
     ) {
-        let bytes = descriptors::component(stream_content, component_type, component_tag, language, &text);
+        let bytes = descriptors::component(stream_content, component_type, component_tag, language, &text)
+            .expect("text strategy capped at 249 bytes");
         let parsed = walk_descriptors(&bytes).expect("walk");
         prop_assert_eq!(parsed.len(), 1);
         prop_assert_eq!(parsed[0].tag, 0x50);

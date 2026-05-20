@@ -3958,6 +3958,10 @@ pub fn tst_core::mpegts::descriptors::parse::parse_teletext_descriptor(payload: 
 #[non_exhaustive] pub enum tst_core::mpegts::descriptors::DescriptorError
 pub tst_core::mpegts::descriptors::DescriptorError::EmptyEntries
 pub tst_core::mpegts::descriptors::DescriptorError::EmptyEntries::tag: u8
+pub tst_core::mpegts::descriptors::DescriptorError::TooLarge
+pub tst_core::mpegts::descriptors::DescriptorError::TooLarge::len: usize
+pub tst_core::mpegts::descriptors::DescriptorError::TooLarge::max: usize
+pub tst_core::mpegts::descriptors::DescriptorError::TooLarge::tag: u8
 impl core::clone::Clone for tst_core::mpegts::descriptors::DescriptorError
 pub fn tst_core::mpegts::descriptors::DescriptorError::clone(&self) -> tst_core::mpegts::descriptors::DescriptorError
 impl core::cmp::Eq for tst_core::mpegts::descriptors::DescriptorError
@@ -4056,7 +4060,7 @@ impl core::marker::Unpin for tst_core::mpegts::descriptors::parse::TeletextDescr
 impl core::marker::UnsafeUnpin for tst_core::mpegts::descriptors::parse::TeletextDescriptorEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::descriptors::parse::TeletextDescriptorEntry
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::descriptors::parse::TeletextDescriptorEntry
-pub fn tst_core::mpegts::descriptors::component(stream_content: u8, component_type: u8, component_tag: u8, iso_639_language: [u8; 3], text: &str) -> alloc::vec::Vec<u8>
+pub fn tst_core::mpegts::descriptors::component(stream_content: u8, component_type: u8, component_tag: u8, iso_639_language: [u8; 3], text: &str) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::mpegts::descriptors::DescriptorError>
 pub fn tst_core::mpegts::descriptors::find_descriptor_tag(descriptors: &[tst_core::mpegts::descriptors::parse::RawDescriptor], tag: u8) -> bool
 pub fn tst_core::mpegts::descriptors::find_format_identifier(descriptors: &[tst_core::mpegts::descriptors::parse::RawDescriptor], target: &[u8; 4]) -> bool
 pub fn tst_core::mpegts::descriptors::format_identifier_ac3() -> alloc::vec::Vec<u8>
@@ -4068,14 +4072,14 @@ pub fn tst_core::mpegts::descriptors::metadata_klva(service_id: u8) -> alloc::ve
 pub fn tst_core::mpegts::descriptors::metadata_std(input_leak_rate: u32, buffer_size: u32, output_leak_rate: u32) -> alloc::vec::Vec<u8>
 pub fn tst_core::mpegts::descriptors::parse_subtitling_descriptor(payload: &[u8]) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::descriptors::parse::SubtitlingDescriptorEntry>, tst_core::mpegts::descriptors::parse::DescriptorParseError>
 pub fn tst_core::mpegts::descriptors::parse_teletext_descriptor(payload: &[u8]) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::descriptors::parse::TeletextDescriptorEntry>, tst_core::mpegts::descriptors::parse::DescriptorParseError>
-pub fn tst_core::mpegts::descriptors::registration(format_identifier: [u8; 4], additional: &[u8]) -> alloc::vec::Vec<u8>
+pub fn tst_core::mpegts::descriptors::registration(format_identifier: [u8; 4], additional: &[u8]) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::mpegts::descriptors::DescriptorError>
 pub fn tst_core::mpegts::descriptors::stream_identifier(component_tag: u8) -> alloc::vec::Vec<u8>
 pub fn tst_core::mpegts::descriptors::subtitling_descriptor(language: [u8; 3], subtitling_type: u8, composition_page_id: u16, ancillary_page_id: u16) -> alloc::vec::Vec<u8>
 pub fn tst_core::mpegts::descriptors::subtitling_descriptor_multi(entries: &[([u8; 3], u8, u16, u16)]) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::mpegts::descriptors::DescriptorError>
 pub fn tst_core::mpegts::descriptors::teletext_descriptor(language: [u8; 3], teletext_type: u8, magazine_number: u8, page_number: u8) -> alloc::vec::Vec<u8>
 pub fn tst_core::mpegts::descriptors::teletext_descriptor_multi(entries: &[([u8; 3], u8, u8, u8)]) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::mpegts::descriptors::DescriptorError>
-pub fn tst_core::mpegts::descriptors::user_private(payload: &[u8]) -> alloc::vec::Vec<u8>
-pub fn tst_core::mpegts::descriptors::user_private_with_tag(tag: u8, payload: &[u8]) -> alloc::vec::Vec<u8>
+pub fn tst_core::mpegts::descriptors::user_private(payload: &[u8]) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::mpegts::descriptors::DescriptorError>
+pub fn tst_core::mpegts::descriptors::user_private_with_tag(tag: u8, payload: &[u8]) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::mpegts::descriptors::DescriptorError>
 pub mod tst_core::mpegts::mux
 pub mod tst_core::mpegts::mux::_detail
 #[non_exhaustive] pub enum tst_core::mpegts::mux::_detail::MuxError

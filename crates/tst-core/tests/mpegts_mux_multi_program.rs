@@ -280,12 +280,18 @@ fn config_builder_descriptors_for_video_attaches_to_correct_program() {
         let mut prog0 = MuxerProgramConfigBuilder::new(1, 0x1000);
         prog0.add_video(0x1011, VideoCodec::H264);
         prog0
-            .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])
+            .stream_descriptors_for_video(
+                0,
+                vec![desc::user_private(b"EO 1080p").expect("within cap")],
+            )
             .unwrap();
         let mut prog1 = MuxerProgramConfigBuilder::new(2, 0x1100);
         prog1.add_video(0x1111, VideoCodec::H265);
         prog1
-            .stream_descriptors_for_video(0, vec![desc::user_private(b"EO 4K")])
+            .stream_descriptors_for_video(
+                0,
+                vec![desc::user_private(b"EO 4K").expect("within cap")],
+            )
             .unwrap();
         let mut b = MuxerConfig::builder();
         b.add_program(prog0.build());
@@ -295,11 +301,11 @@ fn config_builder_descriptors_for_video_attaches_to_correct_program() {
 
     assert_eq!(
         config.programs[0].stream_descriptors[0][0],
-        desc::user_private(b"EO 1080p")
+        desc::user_private(b"EO 1080p").expect("within cap")
     );
     assert_eq!(
         config.programs[1].stream_descriptors[0][0],
-        desc::user_private(b"EO 4K")
+        desc::user_private(b"EO 4K").expect("within cap")
     );
 }
 

@@ -228,9 +228,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
         prog.add_video(EO_PID, VideoCodec::H264);
-        prog.stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")])?;
+        // `user_private` returns Result<_, DescriptorError> so oversized
+        // labels surface as TooLarge rather than silently truncating.
+        prog.stream_descriptors_for_video(0, vec![desc::user_private(b"EO 1080p")?])?;
         prog.add_video(IR_PID, VideoCodec::H264);
-        prog.stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640x480")])?;
+        prog.stream_descriptors_for_video(1, vec![desc::user_private(b"IR 640x480")?])?;
         prog.add_klv(KLV_PID, KlvStreamType::SynchronousMetadata, true);
         prog.stream_descriptors_for_klv(
             0,
@@ -241,7 +243,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 desc::metadata_klva(0x00),
                 desc::metadata_std(0, 0, 0),
                 // Plus a human label.
-                desc::user_private(b"KLV_SYNC"),
+                desc::user_private(b"KLV_SYNC")?,
             ],
         )?;
         let mut b = MuxerConfig::builder();

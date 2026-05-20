@@ -40,15 +40,18 @@ fn family_b_klv_descriptor_stack_round_trips() {
     let cfg = {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
         prog.add_video(0x100, VideoCodec::H264);
-        prog.stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
-            .unwrap();
+        prog.stream_descriptors_for_video(
+            0,
+            vec![descriptors::user_private(b"EO 1080p").expect("label within cap")],
+        )
+        .unwrap();
         prog.add_klv(0x102, KlvStreamType::SynchronousMetadata, true);
         prog.stream_descriptors_for_klv(
             0,
             vec![
                 descriptors::metadata_klva(0x00),
                 descriptors::metadata_std(0, 0, 0),
-                descriptors::user_private(b"KLV_SYNC"),
+                descriptors::user_private(b"KLV_SYNC").expect("label within cap"),
             ],
         )
         .unwrap();
@@ -98,8 +101,11 @@ fn klva_auto_emit_suppressed_when_caller_supplies_registration() {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
         prog.add_video(0x100, VideoCodec::H264);
         prog.add_klv(0x101, KlvStreamType::PrivateData, false);
-        prog.stream_descriptors_for_klv(0, vec![descriptors::registration(*b"KLVA", &[])])
-            .unwrap();
+        prog.stream_descriptors_for_klv(
+            0,
+            vec![descriptors::registration(*b"KLVA", &[]).expect("within cap")],
+        )
+        .unwrap();
         let mut b = MuxerConfig::builder();
         b.add_program(prog.build());
         b.build().unwrap()
@@ -140,10 +146,10 @@ fn family_a_hdmv_video_registration_round_trips() {
         prog.add_video(0x100, VideoCodec::H264);
         prog.stream_descriptors_for_video(
             0,
-            vec![descriptors::registration(
-                *b"HDMV",
-                &[0xFF, 0x1B, 0x44, 0x3F],
-            )],
+            vec![
+                descriptors::registration(*b"HDMV", &[0xFF, 0x1B, 0x44, 0x3F])
+                    .expect("4-byte trailer within cap"),
+            ],
         )
         .unwrap();
         let mut b = MuxerConfig::builder();
@@ -175,8 +181,11 @@ fn non_klva_registration_on_klv_pid_logs_warning() {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
         prog.add_video(0x100, VideoCodec::H264);
         prog.add_klv(0x101, KlvStreamType::PrivateData, false);
-        prog.stream_descriptors_for_klv(0, vec![descriptors::registration(*b"VEND", &[])])
-            .unwrap();
+        prog.stream_descriptors_for_klv(
+            0,
+            vec![descriptors::registration(*b"VEND", &[]).expect("within cap")],
+        )
+        .unwrap();
         let mut b = MuxerConfig::builder();
         b.add_program(prog.build());
         b.build().unwrap()
@@ -231,8 +240,11 @@ fn ac3_auto_emit_suppressed_when_caller_supplies_registration() {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
         prog.add_video(0x100, VideoCodec::H264);
         prog.add_audio(0x101, AudioCodec::Ac3);
-        prog.stream_descriptors_for_audio(0, vec![descriptors::registration(*b"AC-3", &[])])
-            .unwrap();
+        prog.stream_descriptors_for_audio(
+            0,
+            vec![descriptors::registration(*b"AC-3", &[]).expect("within cap")],
+        )
+        .unwrap();
         let mut b = MuxerConfig::builder();
         b.add_program(prog.build());
         b.build().unwrap()

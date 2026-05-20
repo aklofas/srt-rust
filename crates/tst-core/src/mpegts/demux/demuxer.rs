@@ -764,8 +764,11 @@ mod tests {
         let cfg = {
             let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
             prog.add_video(0x100, MuxVideoCodec::H264);
-            prog.stream_descriptors_for_video(0, vec![descriptors::user_private(b"EO 1080p")])
-                .unwrap();
+            prog.stream_descriptors_for_video(
+                0,
+                vec![descriptors::user_private(b"EO 1080p").expect("label within 255-byte cap")],
+            )
+            .unwrap();
             let mut b = MuxerConfig::builder();
             b.add_program(prog.build());
             b.build().unwrap()

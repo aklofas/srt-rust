@@ -43,7 +43,7 @@ fn validate_rejects_malformed_descriptor() {
 #[test]
 fn validate_rejects_oversized_pmt() {
     // 4 streams × 100-byte descriptor = ~400 bytes > 166 max.
-    let big = crate::mpegts::descriptors::user_private(&[0u8; 100]);
+    let big = crate::mpegts::descriptors::user_private(&[0u8; 100]).expect("100B within cap");
     let cfg = {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
         prog.add_video(0x100, VideoCodec::H264);
@@ -73,8 +73,11 @@ fn builder_routes_video_descriptors_by_video_index() {
         prog.add_video(0x100, VideoCodec::H264);
         prog.add_klv(0x102, KlvStreamType::PrivateData, false);
         prog.add_video(0x101, VideoCodec::H264);
-        prog.stream_descriptors_for_video(1, vec![crate::mpegts::descriptors::user_private(b"V2")])
-            .unwrap();
+        prog.stream_descriptors_for_video(
+            1,
+            vec![crate::mpegts::descriptors::user_private(b"V2").expect("label within cap")],
+        )
+        .unwrap();
         let mut b = MuxerConfig::builder();
         b.add_program(prog.build());
         b.build().unwrap()
@@ -92,8 +95,10 @@ fn builder_rejects_out_of_range_video_index() {
     // setter call (Phase 3 sub-phase 3.4.2).
     let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
     prog.add_video(0x100, VideoCodec::H264);
-    let result =
-        prog.stream_descriptors_for_video(7, vec![crate::mpegts::descriptors::user_private(b"X")]);
+    let result = prog.stream_descriptors_for_video(
+        7,
+        vec![crate::mpegts::descriptors::user_private(b"X").expect("label within cap")],
+    );
     assert!(
         matches!(
             result,
@@ -116,7 +121,7 @@ fn cache_composes_auto_emit_then_caller_bytes_on_klv_private() {
         prog.add_klv(0x101, KlvStreamType::PrivateData, false);
         prog.stream_descriptors_for_klv(
             0,
-            vec![crate::mpegts::descriptors::user_private(b"KLV_LBL")],
+            vec![crate::mpegts::descriptors::user_private(b"KLV_LBL").expect("label within cap")],
         )
         .unwrap();
         let mut b = MuxerConfig::builder();
@@ -146,7 +151,7 @@ fn cache_suppresses_klva_auto_emit_when_caller_supplies_registration() {
         prog.add_klv(0x101, KlvStreamType::PrivateData, false);
         prog.stream_descriptors_for_klv(
             0,
-            vec![crate::mpegts::descriptors::registration(*b"KLVA", &[])],
+            vec![crate::mpegts::descriptors::registration(*b"KLVA", &[]).expect("within cap")],
         )
         .unwrap();
         let mut b = MuxerConfig::builder();

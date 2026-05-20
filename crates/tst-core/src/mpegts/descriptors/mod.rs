@@ -17,10 +17,20 @@ pub use parse::{
 
 /// Errors returned by descriptor builder helpers in this module.
 ///
-/// Empty `entries` arguments produce a degenerate `tag 0x00` descriptor
-/// that the demux parser rejects with [`DescriptorParseError::EmptyInput`]. The
-/// encoder rejects the same shape symmetrically rather than emitting
-/// invalid PSI.
+/// Two failure modes today:
+///
+/// - [`DescriptorError::EmptyEntries`] — empty `entries` arguments
+///   produce a degenerate `tag 0x00` descriptor that the demux parser
+///   rejects with [`DescriptorParseError::EmptyInput`]. The encoder
+///   rejects the same shape symmetrically rather than emitting invalid
+///   PSI.
+/// - [`DescriptorError::TooLarge`] — the payload would overflow the
+///   8-bit `descriptor_length` field (H.222.0 §2.6: max body 255 bytes).
+///   Previously the builders silently truncated trailing bytes in
+///   release builds via `debug_assert!` + `body_len.min(MAX)`; that
+///   behavior was changed to a hard error in validate-1 C5 because
+///   silent truncation produces malformed PSI without surfacing the bug
+///   to the caller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum DescriptorError {
@@ -29,6 +39,21 @@ pub enum DescriptorError {
     /// one entry.
     #[error("descriptor tag 0x{tag:02X}: entries slice is empty (must be non-empty)")]
     EmptyEntries { tag: u8 },
+
+    /// Descriptor body would exceed the 8-bit `descriptor_length` field
+    /// (max 255 bytes per H.222.0 §2.6). `len` is the would-be body
+    /// length (excluding the 2-byte tag + length header); `max` is the
+    /// spec ceiling for this tag (255 for most descriptors; 249 for
+    /// `component` which carries 6 bytes of metadata before the text;
+    /// 251 for `registration`'s `additional_identification_info` which
+    /// follows the 4-byte format_identifier).
+    ///
+    /// Returned by every builder whose payload is caller-supplied and
+    /// not statically bounded — [`registration`], [`user_private`],
+    /// [`user_private_with_tag`], [`component`],
+    /// [`subtitling_descriptor_multi`], [`teletext_descriptor_multi`].
+    #[error("descriptor tag 0x{tag:02X}: payload length {len} exceeds spec maximum of {max} bytes")]
+    TooLarge { tag: u8, len: usize, max: usize },
 }
 
 /// Registration descriptor (tag 0x05) — H.222.0 §2.6.8.
@@ -38,20 +63,36 @@ pub enum DescriptorError {
 /// `FF 1B 44 3F` trailer Haivision-shaped senders put after `"HDMV"`
 /// on H.264 video PIDs).
 ///
-/// Total body must be ≤ 251 bytes (`additional.len() ≤ 247`).
-/// `debug_assert!` catches overflow in debug builds; release builds
-/// silently clamp the trailing bytes (caller is responsible for
-/// staying within the bound — invariant is not checked in release).
-pub fn registration(format_identifier: [u8; 4], additional: &[u8]) -> Vec<u8> {
+/// Total body must be ≤ 255 bytes per the 8-bit `descriptor_length`
+/// field (H.222.0 §2.6), bounding `additional.len()` to 251 bytes
+/// (4 bytes of format_identifier + 251 bytes of additional info).
+///
+/// # Errors
+///
+/// Returns [`DescriptorError::TooLarge`] when `additional.len() > 251`.
+/// Pre-validate-1 builds silently truncated; the C5 fix surfaces the
+/// overflow as a hard error so malformed PSI never goes on the wire.
+pub fn registration(
+    format_identifier: [u8; 4],
+    additional: &[u8],
+) -> Result<Vec<u8>, DescriptorError> {
+    // Cap on additional_identification_info: 255 (descriptor_length) -
+    // 4 (format_identifier) = 251.
+    const REGISTRATION_ADDITIONAL_MAX: usize = 251;
+    if additional.len() > REGISTRATION_ADDITIONAL_MAX {
+        return Err(DescriptorError::TooLarge {
+            tag: 0x05,
+            len: additional.len(),
+            max: REGISTRATION_ADDITIONAL_MAX,
+        });
+    }
     let body_len = 4 + additional.len();
-    debug_assert!(body_len <= 251, "registration descriptor body too large");
-    let body_len = body_len.min(251);
     let mut out = Vec::with_capacity(2 + body_len);
     out.push(0x05);
     out.push(body_len as u8);
     out.extend_from_slice(&format_identifier);
-    out.extend_from_slice(&additional[..body_len - 4]);
-    out
+    out.extend_from_slice(additional);
+    Ok(out)
 }
 
 /// Metadata descriptor (tag 0x26) — H.222.0 §2.6.58 — for KLV PIDs
@@ -98,7 +139,11 @@ pub fn metadata_std(input_leak_rate: u32, buffer_size: u32, output_leak_rate: u3
 /// payload is valid UTF-8) via the demuxer-side stats label.
 ///
 /// `payload` ≤ 255 bytes; not interpreted by this helper.
-pub fn user_private(payload: &[u8]) -> Vec<u8> {
+///
+/// # Errors
+///
+/// Returns [`DescriptorError::TooLarge`] when `payload.len() > 255`.
+pub fn user_private(payload: &[u8]) -> Result<Vec<u8>, DescriptorError> {
     user_private_with_tag(0xFF, payload)
 }
 
@@ -111,18 +156,25 @@ pub fn user_private(payload: &[u8]) -> Vec<u8> {
 /// staying within the user-private range. Passing a reserved-by-spec
 /// tag (e.g. `0x05` for Registration) will produce a malformed
 /// descriptor with no error.
-pub fn user_private_with_tag(tag: u8, payload: &[u8]) -> Vec<u8> {
+///
+/// # Errors
+///
+/// Returns [`DescriptorError::TooLarge`] when `payload.len() > 255`.
+pub fn user_private_with_tag(tag: u8, payload: &[u8]) -> Result<Vec<u8>, DescriptorError> {
     debug_assert!(tag >= 0x40, "user-private tags must be in 0x40..=0xFF");
-    debug_assert!(
-        payload.len() <= 255,
-        "descriptor body must fit in u8 length"
-    );
-    let len = payload.len().min(255);
+    if payload.len() > 255 {
+        return Err(DescriptorError::TooLarge {
+            tag,
+            len: payload.len(),
+            max: 255,
+        });
+    }
+    let len = payload.len();
     let mut out = Vec::with_capacity(2 + len);
     out.push(tag);
     out.push(len as u8);
-    out.extend_from_slice(&payload[..len]);
-    out
+    out.extend_from_slice(payload);
+    Ok(out)
 }
 
 /// Component descriptor (tag 0x50) — ETSI EN 300 468 §6.2.8.
@@ -132,20 +184,31 @@ pub fn user_private_with_tag(tag: u8, payload: &[u8]) -> Vec<u8> {
 ///
 /// `text` is UTF-8; receivers conventionally treat the body as
 /// language-coded per the descriptor's `iso_639_language_code` field.
+///
+/// # Errors
+///
+/// Returns [`DescriptorError::TooLarge`] when `text.len() > 249`
+/// (255-byte `descriptor_length` ceiling minus 6 bytes of leading
+/// fields = 249 bytes of text).
 pub fn component(
     stream_content: u8,
     component_type: u8,
     component_tag: u8,
     iso_639_language: [u8; 3],
     text: &str,
-) -> Vec<u8> {
+) -> Result<Vec<u8>, DescriptorError> {
+    // Cap on text: 255 (descriptor_length) - 6 (stream_content +
+    // component_type + component_tag + 3 language bytes) = 249.
+    const COMPONENT_TEXT_MAX: usize = 249;
     let text_bytes = text.as_bytes();
-    debug_assert!(
-        text_bytes.len() <= 249,
-        "component text too long for single descriptor"
-    );
-    let text_len = text_bytes.len().min(249);
-    let body_len = 6 + text_len;
+    if text_bytes.len() > COMPONENT_TEXT_MAX {
+        return Err(DescriptorError::TooLarge {
+            tag: 0x50,
+            len: text_bytes.len(),
+            max: COMPONENT_TEXT_MAX,
+        });
+    }
+    let body_len = 6 + text_bytes.len();
     let mut out = Vec::with_capacity(2 + body_len);
     out.push(0x50);
     out.push(body_len as u8);
@@ -153,8 +216,8 @@ pub fn component(
     out.push(component_type);
     out.push(component_tag);
     out.extend_from_slice(&iso_639_language);
-    out.extend_from_slice(&text_bytes[..text_len]);
-    out
+    out.extend_from_slice(text_bytes);
+    Ok(out)
 }
 
 /// Stream Identifier descriptor (tag 0x52) — ETSI EN 300 468 §6.2.39.
@@ -176,15 +239,16 @@ pub fn subtitling_descriptor(
     composition_page_id: u16,
     ancillary_page_id: u16,
 ) -> Vec<u8> {
-    // Single-entry input is statically non-empty, so the multi helper's
-    // EmptyEntries branch is unreachable here.
+    // Single-entry input is statically non-empty (rules out
+    // EmptyEntries) and the 8-byte body is well under 255 (rules out
+    // TooLarge). Multi-helper failure modes are unreachable here.
     subtitling_descriptor_multi(&[(
         language,
         subtitling_type,
         composition_page_id,
         ancillary_page_id,
     )])
-    .expect("single-entry slice is statically non-empty")
+    .expect("single-entry 8-byte body is statically within both DescriptorError bounds")
 }
 
 /// DVB subtitling_descriptor (tag 0x59), multi-entry form per
@@ -194,9 +258,15 @@ pub fn subtitling_descriptor(
 /// Use this for multi-language single-PID DVB subtitling services. The
 /// single-entry helper [`subtitling_descriptor`] is a `len=1` shorthand.
 ///
-/// Returns [`DescriptorError::EmptyEntries`] if `entries` is empty —
-/// the demux parser rejects an empty subtitling_descriptor with
-/// [`DescriptorParseError::EmptyInput`], so the encoder rejects symmetrically.
+/// # Errors
+///
+/// - [`DescriptorError::EmptyEntries`] if `entries` is empty — the
+///   demux parser rejects an empty subtitling_descriptor with
+///   [`DescriptorParseError::EmptyInput`], so the encoder rejects
+///   symmetrically.
+/// - [`DescriptorError::TooLarge`] if the total body
+///   (`entries.len() * 8`) exceeds 255 bytes (i.e. more than 31
+///   entries).
 pub fn subtitling_descriptor_multi(
     entries: &[([u8; 3], u8, u16, u16)],
 ) -> Result<Vec<u8>, DescriptorError> {
@@ -204,7 +274,13 @@ pub fn subtitling_descriptor_multi(
         return Err(DescriptorError::EmptyEntries { tag: 0x59 });
     }
     let body_len = entries.len() * 8;
-    debug_assert!(body_len <= u8::MAX as usize, "descriptor length is u8");
+    if body_len > u8::MAX as usize {
+        return Err(DescriptorError::TooLarge {
+            tag: 0x59,
+            len: body_len,
+            max: u8::MAX as usize,
+        });
+    }
     let mut out = Vec::with_capacity(2 + body_len);
     out.push(0x59); // tag
     out.push(body_len as u8); // length
@@ -229,10 +305,11 @@ pub fn teletext_descriptor(
     magazine_number: u8,
     page_number: u8,
 ) -> Vec<u8> {
-    // Single-entry input is statically non-empty, so the multi helper's
-    // EmptyEntries branch is unreachable here.
+    // Single-entry input is statically non-empty (rules out
+    // EmptyEntries) and the 5-byte body is well under 255 (rules out
+    // TooLarge). Multi-helper failure modes are unreachable here.
     teletext_descriptor_multi(&[(language, teletext_type, magazine_number, page_number)])
-        .expect("single-entry slice is statically non-empty")
+        .expect("single-entry 5-byte body is statically within both DescriptorError bounds")
 }
 
 /// DVB teletext_descriptor (tag 0x56), multi-entry form per
@@ -242,9 +319,15 @@ pub fn teletext_descriptor(
 /// Use this for multi-language single-PID DVB teletext services. The
 /// single-entry helper [`teletext_descriptor`] is a `len=1` shorthand.
 ///
-/// Returns [`DescriptorError::EmptyEntries`] if `entries` is empty —
-/// the demux parser rejects an empty teletext_descriptor with
-/// [`DescriptorParseError::EmptyInput`], so the encoder rejects symmetrically.
+/// # Errors
+///
+/// - [`DescriptorError::EmptyEntries`] if `entries` is empty — the
+///   demux parser rejects an empty teletext_descriptor with
+///   [`DescriptorParseError::EmptyInput`], so the encoder rejects
+///   symmetrically.
+/// - [`DescriptorError::TooLarge`] if the total body
+///   (`entries.len() * 5`) exceeds 255 bytes (i.e. more than 51
+///   entries).
 pub fn teletext_descriptor_multi(
     entries: &[([u8; 3], u8, u8, u8)],
 ) -> Result<Vec<u8>, DescriptorError> {
@@ -252,7 +335,13 @@ pub fn teletext_descriptor_multi(
         return Err(DescriptorError::EmptyEntries { tag: 0x56 });
     }
     let body_len = entries.len() * 5;
-    debug_assert!(body_len <= u8::MAX as usize, "descriptor length is u8");
+    if body_len > u8::MAX as usize {
+        return Err(DescriptorError::TooLarge {
+            tag: 0x56,
+            len: body_len,
+            max: u8::MAX as usize,
+        });
+    }
     let mut out = Vec::with_capacity(2 + body_len);
     out.push(0x56); // tag
     out.push(body_len as u8); // length
@@ -326,7 +415,7 @@ mod tests {
 
     #[test]
     fn registration_klva_no_additional() {
-        let bytes = registration(*b"KLVA", &[]);
+        let bytes = registration(*b"KLVA", &[]).expect("within length cap");
         assert_eq!(bytes, vec![0x05, 0x04, b'K', b'L', b'V', b'A']);
     }
 
@@ -349,33 +438,41 @@ mod tests {
     #[test]
     fn registration_hdmv_with_trailing_bytes() {
         // Family A's video PID shape from the testfiles corpus.
-        let bytes = registration(*b"HDMV", &[0xFF, 0x1B, 0x44, 0x3F]);
+        let bytes = registration(*b"HDMV", &[0xFF, 0x1B, 0x44, 0x3F]).expect("within length cap");
         assert_eq!(
             bytes,
             vec![0x05, 0x08, b'H', b'D', b'M', b'V', 0xFF, 0x1B, 0x44, 0x3F]
         );
     }
 
-    // Skipped in debug builds because debug_assert! catches the overflow
-    // before the clamp branch runs. Release builds rely on the clamp;
-    // this test verifies the clamp is correct so the cache path in
-    // Muxer::new can't overflow downstream descriptor buffers.
-    #[cfg(not(debug_assertions))]
     #[test]
-    fn registration_clamps_additional_to_251_body() {
-        // Caller-supplied 252 bytes of additional info — body would be 256
-        // (4 + 252) which exceeds the 251 single-byte length cap. Release
-        // build silently clamps trailing bytes; verify the resulting TLV
-        // is well-formed.
-        let long = vec![0xAAu8; 252];
-        let bytes = registration(*b"TEST", &long);
+    fn registration_accepts_max_additional() {
+        // additional.len() == 251 → body == 4 + 251 == 255 (descriptor_length max).
+        let long = vec![0xAAu8; 251];
+        let bytes = registration(*b"TEST", &long).expect("251 bytes within cap");
         assert_eq!(bytes[0], 0x05); // descriptor_tag
-        assert_eq!(bytes[1], 251); // descriptor_length (clamped)
-        assert_eq!(bytes.len(), 2 + 251); // tag + length + 251 body
+        assert_eq!(bytes[1], 255); // descriptor_length at the u8 ceiling
+        assert_eq!(bytes.len(), 2 + 255);
         assert_eq!(&bytes[2..6], b"TEST");
-        // 251 - 4 (format_identifier) = 247 bytes of additional data retained.
         assert!(bytes[6..].iter().all(|&b| b == 0xAA));
-        assert_eq!(bytes[6..].len(), 247);
+        assert_eq!(bytes[6..].len(), 251);
+    }
+
+    #[test]
+    fn registration_rejects_oversized_additional() {
+        // additional.len() == 252 would overflow the u8 descriptor_length;
+        // pre-validate-1 silently truncated to 247 in release builds. C5
+        // converts the overflow to a hard error.
+        let long = vec![0xAAu8; 252];
+        let err = registration(*b"TEST", &long).unwrap_err();
+        assert_eq!(
+            err,
+            DescriptorError::TooLarge {
+                tag: 0x05,
+                len: 252,
+                max: 251,
+            }
+        );
     }
 
     #[test]
@@ -423,7 +520,7 @@ mod tests {
 
     #[test]
     fn user_private_default_tag_0xff() {
-        let bytes = user_private(b"VIDEO-ARS");
+        let bytes = user_private(b"VIDEO-ARS").expect("within length cap");
         assert_eq!(
             bytes,
             vec![
@@ -434,13 +531,51 @@ mod tests {
 
     #[test]
     fn user_private_with_tag_lets_caller_pick_slot() {
-        let bytes = user_private_with_tag(0x7E, b"VENDOR");
+        let bytes = user_private_with_tag(0x7E, b"VENDOR").expect("within length cap");
         assert_eq!(bytes, vec![0x7E, 6, b'V', b'E', b'N', b'D', b'O', b'R']);
     }
 
     #[test]
+    fn user_private_rejects_oversized_payload() {
+        // Payload 256 bytes overflows u8 descriptor_length.
+        let payload = vec![0u8; 256];
+        let err = user_private(&payload).unwrap_err();
+        assert_eq!(
+            err,
+            DescriptorError::TooLarge {
+                tag: 0xFF,
+                len: 256,
+                max: 255,
+            }
+        );
+    }
+
+    #[test]
+    fn user_private_with_tag_rejects_oversized_payload() {
+        let payload = vec![0u8; 300];
+        let err = user_private_with_tag(0x7E, &payload).unwrap_err();
+        assert_eq!(
+            err,
+            DescriptorError::TooLarge {
+                tag: 0x7E,
+                len: 300,
+                max: 255,
+            }
+        );
+    }
+
+    #[test]
+    fn user_private_accepts_max_255_bytes() {
+        let payload = vec![0xABu8; 255];
+        let bytes = user_private(&payload).expect("255 bytes within cap");
+        assert_eq!(bytes[0], 0xFF);
+        assert_eq!(bytes[1], 255);
+        assert_eq!(bytes.len(), 2 + 255);
+    }
+
+    #[test]
     fn component_descriptor_textbook_shape() {
-        let bytes = component(0x09, 0x00, 0x42, *b"eng", "EO 1080p");
+        let bytes = component(0x09, 0x00, 0x42, *b"eng", "EO 1080p").expect("within length cap");
         // tag(1) + len(1) + (4-bit reserved + 4-bit content)(1) + type(1)
         // + tag(1) + lang(3) + text("EO 1080p" = 8 bytes) = 16 bytes total.
         // First body byte = 0xF0 | (0x09 & 0x0F) = 0xF9.
@@ -451,6 +586,31 @@ mod tests {
                 b'0', b'p',
             ]
         );
+    }
+
+    #[test]
+    fn component_rejects_oversized_text() {
+        // 250 bytes of text would overflow the 249-byte cap (6 fixed
+        // bytes + 250 = 256 body > 255).
+        let text: String = "A".repeat(250);
+        let err = component(0x09, 0x00, 0x42, *b"eng", &text).unwrap_err();
+        assert_eq!(
+            err,
+            DescriptorError::TooLarge {
+                tag: 0x50,
+                len: 250,
+                max: 249,
+            }
+        );
+    }
+
+    #[test]
+    fn component_accepts_max_249_byte_text() {
+        let text: String = "A".repeat(249);
+        let bytes = component(0x09, 0x00, 0x42, *b"eng", &text).expect("249 bytes within cap");
+        assert_eq!(bytes[0], 0x50);
+        assert_eq!(bytes[1], 255); // body length at u8 ceiling
+        assert_eq!(bytes.len(), 2 + 255);
     }
 
     #[test]
@@ -618,5 +778,69 @@ mod tests {
             DescriptorError::EmptyEntries { tag: 0x56 }.to_string(),
             "descriptor tag 0x56: entries slice is empty (must be non-empty)"
         );
+    }
+
+    #[test]
+    fn descriptor_error_too_large_display() {
+        assert_eq!(
+            DescriptorError::TooLarge {
+                tag: 0x05,
+                len: 252,
+                max: 251,
+            }
+            .to_string(),
+            "descriptor tag 0x05: payload length 252 exceeds spec maximum of 251 bytes"
+        );
+    }
+
+    #[test]
+    fn subtitling_descriptor_multi_rejects_too_many_entries() {
+        // 32 entries × 8 bytes = 256 byte body — one byte over the
+        // u8 descriptor_length ceiling.
+        let entries: Vec<([u8; 3], u8, u16, u16)> =
+            (0..32).map(|_| (*b"eng", 0x10, 0, 0)).collect();
+        let err = subtitling_descriptor_multi(&entries).unwrap_err();
+        assert_eq!(
+            err,
+            DescriptorError::TooLarge {
+                tag: 0x59,
+                len: 256,
+                max: 255,
+            }
+        );
+    }
+
+    #[test]
+    fn subtitling_descriptor_multi_accepts_31_entries() {
+        // 31 × 8 = 248 bytes body, at the spec edge.
+        let entries: Vec<([u8; 3], u8, u16, u16)> =
+            (0..31).map(|_| (*b"eng", 0x10, 0, 0)).collect();
+        let bytes = subtitling_descriptor_multi(&entries).expect("31 entries within cap");
+        assert_eq!(bytes[0], 0x59);
+        assert_eq!(bytes[1], 248);
+    }
+
+    #[test]
+    fn teletext_descriptor_multi_rejects_too_many_entries() {
+        // 52 entries × 5 bytes = 260 byte body, over the u8 cap.
+        let entries: Vec<([u8; 3], u8, u8, u8)> = (0..52).map(|_| (*b"eng", 0x02, 0, 0)).collect();
+        let err = teletext_descriptor_multi(&entries).unwrap_err();
+        assert_eq!(
+            err,
+            DescriptorError::TooLarge {
+                tag: 0x56,
+                len: 260,
+                max: 255,
+            }
+        );
+    }
+
+    #[test]
+    fn teletext_descriptor_multi_accepts_51_entries() {
+        // 51 × 5 = 255 bytes body, exactly at the u8 ceiling.
+        let entries: Vec<([u8; 3], u8, u8, u8)> = (0..51).map(|_| (*b"eng", 0x02, 0, 0)).collect();
+        let bytes = teletext_descriptor_multi(&entries).expect("51 entries within cap");
+        assert_eq!(bytes[0], 0x56);
+        assert_eq!(bytes[1], 255);
     }
 }

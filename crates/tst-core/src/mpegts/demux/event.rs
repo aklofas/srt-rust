@@ -984,7 +984,7 @@ impl std::fmt::Display for NonConformantIssue {
                 write!(
                     f,
                     "AV1 PES on PID 0x{pid:04X} missing ts_open_bitstream_unit \
-                     start code (AV1-in-MPEG-2-TS binding §3.2 mandates 0x00000002 prefix)"
+                     start code (AV1-in-MPEG-2-TS binding §3.2 mandates 0x00 0x00 0x01 prefix)"
                 )
             }
             NonConformantIssue::Other(msg) => {

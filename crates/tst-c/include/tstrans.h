@@ -402,6 +402,20 @@ enum tst_nonconformant_code
    * (0=MissingSyncword, 1=AudioMuxLengthOverrun, 2=Truncated).
    */
   TST_NONCONFORMANT_CODE_LATM_FRAMING = 29,
+  /**
+   * AV1-in-MPEG-2-TS binding §3.4 violation — PES `stream_id` other than
+   * `0xBD`. `pid` carries the AV1 stream PID; `table_id` carrier
+   * surfaces the observed `stream_id` byte (reused field, same shape as
+   * `DvbSubDataIdentifier` and `SubtitleDescriptorMalformed`).
+   */
+  TST_NONCONFORMANT_CODE_AV1_WRONG_STREAM_ID = 30,
+  /**
+   * AV1-in-MPEG-2-TS binding §3.2 violation — PES payload did not begin
+   * with a `ts_open_bitstream_unit()` start code (`0x00 0x00 0x01`, the
+   * 3-byte `obu_start_code` = `uimsbf(24)` = `0x000001` per the binding
+   * syntax table). `pid` carries the AV1 stream PID.
+   */
+  TST_NONCONFORMANT_CODE_AV1_MISSING_TS_OBU_FRAMING = 31,
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;

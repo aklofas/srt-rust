@@ -264,8 +264,7 @@ impl Muxer {
             data_alignment_indicator: matches!(codec, VideoCodec::Av1),
         };
         let mut header = [0u8; MAX_PES_HEADER_SIZE];
-        let header_len =
-            write_pes_header(&mut header, stream_id, pts_field, None, pes_flags);
+        let header_len = write_pes_header(&mut header, stream_id, pts_field, None, pes_flags);
         let pts = pacing_pts;
 
         // Bytes that will land in the PES payload (after the PES header).

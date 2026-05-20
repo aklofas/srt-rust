@@ -2758,6 +2758,8 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Na
 pub enum tst_core::mpegts::demux::event::NonConformantIssue
 pub tst_core::mpegts::demux::event::NonConformantIssue::Ac3SyncMissing
 pub tst_core::mpegts::demux::event::NonConformantIssue::Ac3SyncMissing::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::Av1MissingTsObuFraming
+pub tst_core::mpegts::demux::event::NonConformantIssue::Av1MissingTsObuFraming::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuHeader
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuHeader::kind: tst_core::mpegts::demux::event::Av1ObuHeaderKind
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuHeader::pid: u16
@@ -2768,6 +2770,9 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::Av1RegistrationMalformed
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1RegistrationMalformed::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1TileListNotAllowed
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1TileListNotAllowed::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::Av1WrongStreamId
+pub tst_core::mpegts::demux::event::NonConformantIssue::Av1WrongStreamId::observed: u8
+pub tst_core::mpegts::demux::event::NonConformantIssue::Av1WrongStreamId::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::DvbSubDataIdentifier
 pub tst_core::mpegts::demux::event::NonConformantIssue::DvbSubDataIdentifier::observed: u8
 pub tst_core::mpegts::demux::event::NonConformantIssue::LatmFraming
@@ -3586,6 +3591,8 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Na
 pub enum tst_core::mpegts::demux::NonConformantIssue
 pub tst_core::mpegts::demux::NonConformantIssue::Ac3SyncMissing
 pub tst_core::mpegts::demux::NonConformantIssue::Ac3SyncMissing::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::Av1MissingTsObuFraming
+pub tst_core::mpegts::demux::NonConformantIssue::Av1MissingTsObuFraming::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuHeader
 pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuHeader::kind: tst_core::mpegts::demux::event::Av1ObuHeaderKind
 pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuHeader::pid: u16
@@ -3596,6 +3603,9 @@ pub tst_core::mpegts::demux::NonConformantIssue::Av1RegistrationMalformed
 pub tst_core::mpegts::demux::NonConformantIssue::Av1RegistrationMalformed::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::Av1TileListNotAllowed
 pub tst_core::mpegts::demux::NonConformantIssue::Av1TileListNotAllowed::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::Av1WrongStreamId
+pub tst_core::mpegts::demux::NonConformantIssue::Av1WrongStreamId::observed: u8
+pub tst_core::mpegts::demux::NonConformantIssue::Av1WrongStreamId::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::DvbSubDataIdentifier
 pub tst_core::mpegts::demux::NonConformantIssue::DvbSubDataIdentifier::observed: u8
 pub tst_core::mpegts::demux::NonConformantIssue::LatmFraming
@@ -3878,6 +3888,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::demuxe
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::demuxer::Demuxer
 pub struct tst_core::mpegts::demux::DemuxerBuilder
 impl tst_core::mpegts::demux::DemuxerBuilder
+pub fn tst_core::mpegts::demux::DemuxerBuilder::av1_carriage(self, mode: tst_core::mpegts::mux::Av1CarriageMode) -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::build(self) -> tst_core::mpegts::demux::demuxer::Demuxer
 pub fn tst_core::mpegts::demux::DemuxerBuilder::link_klv(self, klv_pid: u16, video_pid: u16) -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::new() -> Self
@@ -3897,6 +3908,7 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::DemuxerBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::DemuxerBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::DemuxerBuilder
 #[non_exhaustive] pub struct tst_core::mpegts::demux::DemuxerConfig
+pub tst_core::mpegts::demux::DemuxerConfig::av1_carriage: tst_core::mpegts::mux::Av1CarriageMode
 pub tst_core::mpegts::demux::DemuxerConfig::klv_link_overrides: alloc::vec::Vec<(u16, u16)>
 pub tst_core::mpegts::demux::DemuxerConfig::lenient_psi_reassembly: bool
 pub tst_core::mpegts::demux::DemuxerConfig::pes_cap_per_pid: core::option::Option<usize>
@@ -4403,6 +4415,27 @@ impl core::marker::Unpin for tst_core::mpegts::mux::AudioCodec
 impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::AudioCodec
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::AudioCodec
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::AudioCodec
+#[non_exhaustive] pub enum tst_core::mpegts::mux::Av1CarriageMode
+pub tst_core::mpegts::mux::Av1CarriageMode::InteropRawObu
+pub tst_core::mpegts::mux::Av1CarriageMode::Mpeg2TsBinding
+impl core::clone::Clone for tst_core::mpegts::mux::Av1CarriageMode
+pub fn tst_core::mpegts::mux::Av1CarriageMode::clone(&self) -> tst_core::mpegts::mux::Av1CarriageMode
+impl core::cmp::Eq for tst_core::mpegts::mux::Av1CarriageMode
+impl core::cmp::PartialEq for tst_core::mpegts::mux::Av1CarriageMode
+pub fn tst_core::mpegts::mux::Av1CarriageMode::eq(&self, other: &tst_core::mpegts::mux::Av1CarriageMode) -> bool
+impl core::default::Default for tst_core::mpegts::mux::Av1CarriageMode
+pub fn tst_core::mpegts::mux::Av1CarriageMode::default() -> tst_core::mpegts::mux::Av1CarriageMode
+impl core::fmt::Debug for tst_core::mpegts::mux::Av1CarriageMode
+pub fn tst_core::mpegts::mux::Av1CarriageMode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::mpegts::mux::Av1CarriageMode
+impl core::marker::StructuralPartialEq for tst_core::mpegts::mux::Av1CarriageMode
+impl core::marker::Freeze for tst_core::mpegts::mux::Av1CarriageMode
+impl core::marker::Send for tst_core::mpegts::mux::Av1CarriageMode
+impl core::marker::Sync for tst_core::mpegts::mux::Av1CarriageMode
+impl core::marker::Unpin for tst_core::mpegts::mux::Av1CarriageMode
+impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::Av1CarriageMode
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::Av1CarriageMode
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::Av1CarriageMode
 pub enum tst_core::mpegts::mux::KlvStreamType
 pub tst_core::mpegts::mux::KlvStreamType::PrivateData
 pub tst_core::mpegts::mux::KlvStreamType::SynchronousMetadata
@@ -4628,6 +4661,7 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::mux::Muxer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::mux::Muxer
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::Muxer
 #[non_exhaustive] pub struct tst_core::mpegts::mux::MuxerConfig
+pub tst_core::mpegts::mux::MuxerConfig::av1_carriage: tst_core::mpegts::mux::Av1CarriageMode
 pub tst_core::mpegts::mux::MuxerConfig::buffer_packets: usize
 pub tst_core::mpegts::mux::MuxerConfig::pcr_interval_ms: u32
 pub tst_core::mpegts::mux::MuxerConfig::programs: alloc::vec::Vec<tst_core::mpegts::mux::MuxerProgramConfig>
@@ -4651,6 +4685,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::mux::MuxerConfig
 pub struct tst_core::mpegts::mux::MuxerConfigBuilder
 impl tst_core::mpegts::mux::MuxerConfigBuilder
 pub fn tst_core::mpegts::mux::MuxerConfigBuilder::add_program(&mut self, program: tst_core::mpegts::mux::MuxerProgramConfig) -> &mut Self
+pub fn tst_core::mpegts::mux::MuxerConfigBuilder::av1_carriage(&mut self, mode: tst_core::mpegts::mux::Av1CarriageMode) -> &mut Self
 pub fn tst_core::mpegts::mux::MuxerConfigBuilder::buffer_packets(&mut self, n: usize) -> &mut Self
 pub fn tst_core::mpegts::mux::MuxerConfigBuilder::build(&self) -> core::result::Result<tst_core::mpegts::mux::MuxerConfig, tst_core::error::MuxError>
 pub fn tst_core::mpegts::mux::MuxerConfigBuilder::pcr_interval_ms(&mut self, ms: u32) -> &mut Self

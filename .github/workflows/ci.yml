@@ -126,6 +126,9 @@ jobs:
       - name: Check no direct NotAvailable/NotFound casts
         run: bash scripts/check-no-direct-not-available-not-found-cast.sh
 
+      - name: Check lifecycle ffi_catch coverage
+        run: bash scripts/check-lifecycle-ffi-catch-coverage.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

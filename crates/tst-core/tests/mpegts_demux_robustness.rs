@@ -171,10 +171,11 @@ fn sync_reacquisition_strays_at_non_188_stride_do_not_acquire() {
     // 0x47. After accounting for the SYNC_SEARCH_WINDOW = 188 * 32 = 6016
     // bytes, we have enough strays (>= 24) to keep the bug alive.
     //
-    // 250 is chosen as the stray stride because gcd(250, 188) > 0 means
-    // none of these 0x47s are 188-aligned with each other for sufficient
-    // depth — specifically, 250, 500, 750, ... 250*k vs 188*j. For k=1,
-    // candidate at 250: checks 250+188=438 (0xAA), 250+376=626 (0xAA),
+    // 250 is chosen as the stray stride because lcm(250, 188) = 23500 is
+    // larger than our buffer (18800), so within the buffer no two stray
+    // 0x47s are 188-aligned with each other — every N-of-M probe from a
+    // stray candidate lands on a 0xAA filler byte. Concretely for the
+    // candidate at byte 250: checks 250+188=438 (0xAA), 250+376=626 (0xAA),
     // 250+564=814 (0xAA), 250+752=1002 (0xAA), 250+940=1190 (0xAA),
     // 250+1128=1378 (0xAA), 250+1316=1566 (0xAA). All seven slots are
     // 0xAA — 0 of 7 → no sync.
@@ -251,14 +252,12 @@ fn pusi_pointer_field_preserves_prior_section_continuation() {
     // bytes (`program_number` + `reserved+pid`). Header tail: 5 bytes.
     // Total section size: 3 (fixed) + 5 (header tail) + 47*4 + 4 (CRC)
     // = 200 bytes; section_length = 197 = 0x0C5.
+    // section_length is 12 bits split across (byte1[3:0], byte2). 197 =
+    // 0x0C5 → byte1 low nibble = 0x0, byte2 = 0xC5.
     let mut pat = Vec::with_capacity(200);
-    pat.push(0x00); // table_id
-    pat.push(0xB0); // syntax=1
-    pat.push(0xC5); // section_length lo = 0xC5 (high nibble 0 inside byte 1)
-    // Actually section_length is 12 bits across (byte1[3:0], byte2). Need
-    // 197 = 0x0C5 → byte1 low nibble = 0x0, byte2 = 0xC5. Fix byte 1.
-    pat[1] = 0xB0; // syntax=1, '0', reserved=11, section_length hi = 0
-    pat[2] = 0xC5; // section_length lo = 0xC5
+    pat.push(0x00); // table_id = PAT
+    pat.push(0xB0); // syntax=1, '0', reserved=11, section_length hi nibble = 0
+    pat.push(0xC5); // section_length lo = 0xC5
     pat.push(0x00); // transport_stream_id hi
     pat.push(0x01); // transport_stream_id lo = 1
     pat.push(0xC1); // reserved=11, version=0, current_next=1
@@ -356,6 +355,114 @@ fn pusi_pointer_field_preserves_prior_section_continuation() {
         "PUSI with pointer_field > 0 must process the prior-section continuation \
          bytes — without the fix the prior PAT is lost, PID 0x100 is not \
          registered, and the PMT on PID 0x100 produces no ProgramMap."
+    );
+}
+
+/// Validate-1 B3+B7 follow-up Critical Issue 1 — mid-stream-join scenario.
+/// When the demuxer attaches to an in-progress stream and the first PAT
+/// packet has `PUSI=1` with `pointer_field > 0` (i.e. carries the tail of
+/// some prior PAT section we never saw the start of, then a new section),
+/// the `append_continuation` call on the leading bytes silently drops
+/// them (no prior PUSI state → §2.4.4.4 mandates discard) and returns
+/// `Ok(None)`. The pre-fix code conflated this with "bail" and discarded
+/// the new section at `payload[1+pointer_field..]` too — losing the
+/// fresh PAT that the demuxer's PSI dispatch was actively waiting for.
+///
+/// The fix splits the helper return into `Completed` / `Incomplete` /
+/// `Overflowed`. Only `Overflowed` (4 KiB DoS cap) bails. `Incomplete`
+/// after step 1 must allow step 2 (start the new section) to run.
+///
+/// Construction: a single PUSI=1 PAT packet with `pointer_field=20`,
+/// where the first 20 bytes are arbitrary garbage (the "prior section
+/// tail" we never saw — the assembler will drop them silently because
+/// there's no prior PUSI state), followed by a complete in-spec PAT
+/// section. With the bug, the PAT is silently lost. With the fix, the
+/// PAT is parsed, programs are registered, the follow-up PMT routes
+/// correctly, and a `ProgramMap` event fires.
+#[test]
+fn pusi_pointer_field_mid_stream_join_starts_new_section() {
+    use tst_core::mpegts::common::crc32::crc32_mpeg2;
+    use tst_core::mpegts::demux::DemuxEvent;
+
+    // Build a minimal in-spec PAT with one program → PMT PID 0x100.
+    let mut pat = Vec::with_capacity(20);
+    pat.push(0x00); // table_id = PAT
+    pat.push(0xB0); // syntax=1, '0', reserved=11, section_length hi nibble = 0
+    pat.push(0x0D); // section_length lo = 13 (5 header tail + 4 program entry + 4 CRC)
+    pat.push(0x00); // transport_stream_id hi
+    pat.push(0x01); // transport_stream_id lo = 1
+    pat.push(0xC1); // reserved=11, version=0, current_next=1
+    pat.push(0x00); // section_number = 0
+    pat.push(0x00); // last_section_number = 0
+    pat.push(0x00); // program_number hi
+    pat.push(0x01); // program_number lo = 1
+    pat.push(0xE1); // reserved=111, PMT PID hi = 0x100 >> 8 = 0x01
+    pat.push(0x00); // PMT PID lo = 0x00
+    let crc = crc32_mpeg2(&pat);
+    pat.extend_from_slice(&crc.to_be_bytes());
+    assert_eq!(pat.len(), 16); // 3 fixed + 13 section_length
+
+    // Single TS packet, PUSI=1, pointer_field=20. Bytes 5..25 are 20 bytes
+    // of garbage (the "prior partial section tail"); bytes 25..(25+pat.len())
+    // are the real PAT. Remainder is 0xFF stuffing.
+    let mut pkt = [0xFFu8; 188];
+    pkt[0] = 0x47;
+    pkt[1] = 0x40; // PUSI=1, PID hi=0
+    pkt[2] = 0x00; // PID lo=0 → PAT
+    pkt[3] = 0x10; // adaptation=01, CC=0
+    pkt[4] = 20; // pointer_field=20
+    // Bytes [5..25] = garbage continuation that the assembler will drop
+    // silently (no prior PUSI on PID 0). Use 0xAA to avoid colliding with
+    // legitimate table IDs.
+    for b in &mut pkt[5..25] {
+        *b = 0xAA;
+    }
+    // Bytes [25..25+16] = the real PAT section.
+    pkt[25..25 + pat.len()].copy_from_slice(&pat);
+
+    let mut d = Demuxer::new();
+    d.feed(&pkt).unwrap();
+
+    // Now send a complete PMT on PID 0x100 — only routes correctly if
+    // the PAT above was actually parsed and registered PMT PID 0x100.
+    let mut pmt = vec![
+        0x02, // table_id = PMT
+        0xB0, 0x12, // syntax=1, section_length=0x012
+        0x00, 0x01, // program_number=1
+        0xC1, // version=0, current_next=1
+        0x00, 0x00, // section/last
+        0xE1, 0x01, // pcr_pid = 0x101
+        0xF0, 0x00, // program_info_length = 0
+        0x1B, // stream_type = H.264
+        0xE1, 0x01, // elementary_pid = 0x101
+        0xF0, 0x00, // es_info_length = 0
+    ];
+    let pmt_crc = crc32_mpeg2(&pmt);
+    pmt.extend_from_slice(&pmt_crc.to_be_bytes());
+
+    let mut pmt_pkt = [0xFFu8; 188];
+    pmt_pkt[0] = 0x47;
+    pmt_pkt[1] = 0x41; // PUSI=1, PID hi=1 → PID 0x100
+    pmt_pkt[2] = 0x00;
+    pmt_pkt[3] = 0x10; // adaptation=01, CC=0
+    pmt_pkt[4] = 0x00; // pointer_field=0
+    pmt_pkt[5..5 + pmt.len()].copy_from_slice(&pmt);
+    d.feed(&pmt_pkt).unwrap();
+
+    let mut saw_program_map = false;
+    while let Some(e) = d.next_event() {
+        if let DemuxEvent::ProgramMap(pm) = e {
+            if pm.pcr_pid == 0x101 {
+                saw_program_map = true;
+            }
+        }
+    }
+    assert!(
+        saw_program_map,
+        "mid-stream join: PUSI with pointer_field > 0 and no prior PUSI on this PID \
+         must still START the new section at payload[1+pointer_field..]. Pre-fix \
+         code bailed after the silent-drop continuation and discarded the new \
+         section header, leaving the PMT on PID 0x100 unroutable."
     );
 }
 

@@ -27,6 +27,26 @@ use crate::mpegts::demux::psi_assembler::AssemblerError;
 use crate::mpegts::demux::types::ProgramTracker;
 use std::collections::HashSet;
 
+/// Three-state outcome from `Demuxer::dispatch_psi_result`. Replaces the
+/// earlier two-state `bool` return that conflated "section incomplete /
+/// silently dropped" with "DoS cap fired" (Validate-1 B3+B7 follow-up
+/// Critical Issue 1 — without disambiguation, a mid-stream join that
+/// produced an `Ok(None)` from `append_continuation` was indistinguishable
+/// from an overflow bail, and the new section header at
+/// `payload[1+pointer_field..]` was silently discarded).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PsiStep {
+    /// A section was fully dispatched. Caller may loop to drain more.
+    Completed,
+    /// No section ready (buffer growing or continuation dropped because
+    /// no prior PUSI was seen). Caller MUST keep processing — this is
+    /// NOT a bail signal.
+    Incomplete,
+    /// 4 KiB section-size cap fired; assembler reset; NonConformant
+    /// queued. Caller MUST bail.
+    Overflowed,
+}
+
 impl super::demuxer::Demuxer {
     pub(super) fn handle_psi(
         &mut self,
@@ -104,14 +124,26 @@ impl super::demuxer::Demuxer {
                 return Ok(());
             }
             // Step 1: feed the prior-section tail as continuation FIRST,
-            // then start the new section. `dispatch_completed_section`
-            // handles overflow + PAT/PMT routing for each completed
-            // section.
+            // then start the new section. `dispatch_psi_result` handles
+            // overflow + PAT/PMT routing for each completed section.
+            //
+            // CRITICAL: only `PsiStep::Overflowed` bails — `Incomplete`
+            // here means the continuation didn't complete the prior
+            // section, OR (the silent-discard case) no prior PUSI was
+            // ever seen on this PID and `append_continuation` dropped
+            // the bytes per §2.4.4.4. Both are normal — Step 2 must
+            // still run to start the NEW section at `payload[1+pf..]`.
+            // The pre-fix code bailed on `Ok(false)` here and silently
+            // discarded the new section header in the mid-stream-join
+            // scenario (Validate-1 follow-up Critical Issue 1).
             if pointer_field > 0 {
                 let cont = &payload[1..1 + pointer_field];
                 let assembler = self.psi_assemblers.entry(pid).or_default();
                 let res = assembler.append_continuation(cont);
-                if !self.dispatch_psi_result(pid, is_pat, res)? {
+                if matches!(
+                    self.dispatch_psi_result(pid, is_pat, res)?,
+                    PsiStep::Overflowed
+                ) {
                     return Ok(());
                 }
             }
@@ -119,18 +151,20 @@ impl super::demuxer::Demuxer {
             let new_section_payload = &payload[1 + pointer_field..];
             let assembler = self.psi_assemblers.entry(pid).or_default();
             let res = assembler.start_new_section(new_section_payload);
-            if !self.dispatch_psi_result(pid, is_pat, res)? {
-                return Ok(());
+            match self.dispatch_psi_result(pid, is_pat, res)? {
+                PsiStep::Overflowed => return Ok(()),
+                PsiStep::Completed => true,
+                PsiStep::Incomplete => false,
             }
-            true
         } else {
             // Continuation packet — no pointer_field, just append.
             let assembler = self.psi_assemblers.entry(pid).or_default();
             let res = assembler.append_continuation(payload);
-            if !self.dispatch_psi_result(pid, is_pat, res)? {
-                return Ok(());
+            match self.dispatch_psi_result(pid, is_pat, res)? {
+                PsiStep::Overflowed => return Ok(()),
+                PsiStep::Completed => true,
+                PsiStep::Incomplete => false,
             }
-            true
         };
 
         // Step 3: drain any subsequent complete sections in the same
@@ -140,25 +174,41 @@ impl super::demuxer::Demuxer {
         while iter {
             let assembler = self.psi_assemblers.entry(pid).or_default();
             let res = assembler.try_complete_section();
-            iter = self.dispatch_psi_result(pid, is_pat, res)?;
+            iter = matches!(
+                self.dispatch_psi_result(pid, is_pat, res)?,
+                PsiStep::Completed
+            );
         }
         Ok(())
     }
 
-    /// Centralized PSI section dispatch + overflow handling. Returns
-    /// `Ok(true)` when a section was dispatched (caller may want to loop
-    /// for more), `Ok(false)` when no section was ready (caller stops).
-    /// `Err` propagates assembler overflow as a NonConformant event
-    /// (mapped here) and a benign `Ok(false)` so the caller's loop stops.
+    /// Centralized PSI section dispatch + overflow handling.
+    ///
+    /// Returns a three-state result that disambiguates "no section yet"
+    /// from "DoS-cap fired":
+    ///
+    /// - `PsiStep::Completed` — a section was dispatched (caller may
+    ///   loop to drain additional sections from the same payload).
+    /// - `PsiStep::Incomplete` — no section ready: the buffer is still
+    ///   growing, OR `append_continuation` silently dropped bytes
+    ///   because no prior PUSI was seen on this PID (mid-stream join).
+    ///   Caller MUST continue processing (e.g. start a new section at
+    ///   the pointer-field offset); this is NOT a bail signal.
+    /// - `PsiStep::Overflowed` — the 4 KiB MAX_SECTION_SIZE cap fired
+    ///   on this PID. The assembler queued a NonConformant event and
+    ///   reset itself; caller MUST bail to avoid feeding more bytes
+    ///   into the just-reset assembler within the same packet, which
+    ///   would mask the DoS condition. Higher-bandwidth DoS attempts
+    ///   are still caught on the next PUSI packet.
     fn dispatch_psi_result(
         &mut self,
         pid: u16,
         is_pat: bool,
         result: Result<Option<Vec<u8>>, AssemblerError>,
-    ) -> Result<bool, DemuxError> {
+    ) -> Result<PsiStep, DemuxError> {
         let section = match result {
             Ok(Some(section)) => section,
-            Ok(None) => return Ok(false),
+            Ok(None) => return Ok(PsiStep::Incomplete),
             Err(AssemblerError::Overflow { observed_len })
             | Err(AssemblerError::DeclaredTooLong {
                 declared_len: observed_len,
@@ -174,7 +224,7 @@ impl super::demuxer::Demuxer {
                     stream,
                     NonConformantIssue::PsiOverlongSection { pid, observed_len },
                 );
-                return Ok(false);
+                return Ok(PsiStep::Overflowed);
             }
         };
         if is_pat {
@@ -182,7 +232,7 @@ impl super::demuxer::Demuxer {
         } else {
             self.handle_pmt_section(pid, &section);
         }
-        Ok(true)
+        Ok(PsiStep::Completed)
     }
 
     pub(super) fn handle_pat_section(&mut self, section: &[u8]) {

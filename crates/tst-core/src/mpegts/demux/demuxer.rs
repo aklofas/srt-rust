@@ -221,6 +221,13 @@ impl Demuxer {
         // bypass N-of-M, matching ffmpeg `mpegts_resync` semantics
         // (resync logic fires only after a packet boundary turned out
         // not to carry 0x47).
+        //
+        // Cross-feed resume: if a previous `feed()` call ran out of
+        // bytes mid-scan (live.len() < 188 with `bytes_since_sync > 0`
+        // already accumulated), we re-enter here with `is_synced=false`
+        // and a non-zero `bytes_since_sync`. The `> 0` predicate keeps
+        // us in resync mode across the call boundary so the next 0x47
+        // we find still has to pass N-of-M.
         let mut resyncing = !self.is_synced && self.bytes_since_sync > 0;
         loop {
             let live = &self.sync_buf[self.sync_consumed..];

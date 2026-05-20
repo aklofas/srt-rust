@@ -196,4 +196,95 @@ mod tests {
         let err = a.append_continuation(&oversized).unwrap_err();
         assert!(matches!(err, AssemblerError::Overflow { .. }));
     }
+
+    /// Validate-1 B3 follow-up — leftover bytes after a completed section
+    /// must be retained in `self.buf` (via `split_off`) so the next
+    /// `try_complete_section` call can drain them. Tests the section-mapped
+    /// layout per H.222.0 §2.4.4.1: a single payload window carrying the
+    /// tail of section A followed by section B's prefix.
+    #[test]
+    fn split_off_preserves_leftover_for_next_section() {
+        let mut a = PsiSectionAssembler::new();
+        // Section A: table_id=0x02 + section_length=5 + 5 payload bytes = 8 bytes total.
+        let section_a = [0x02, 0xB0, 0x05, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE];
+        // Section B prefix: just the first 3 bytes of an incomplete section.
+        let section_b_prefix = [0x02, 0xB0, 0x05]; // declares section_length=5 → total 8, only have 3
+        let mut combined = Vec::new();
+        combined.extend_from_slice(&section_a);
+        combined.extend_from_slice(&section_b_prefix);
+
+        // Feed combined as one start_new_section call.
+        let r = a.start_new_section(&combined).expect("ok");
+        assert_eq!(r.as_deref(), Some(&section_a[..]));
+        // Section A is dispatched; B's 3-byte prefix is buffered.
+        // Calling try_complete_section returns None (B not yet complete)
+        // but should NOT discard the leftover.
+        let r2 = a.try_complete_section().expect("ok");
+        assert_eq!(r2, None);
+        // Now feed the remaining 5 bytes of section B as a continuation.
+        let r3 = a
+            .append_continuation(&[0xAA, 0xBB, 0xCC, 0xDD, 0xEE])
+            .expect("ok");
+        assert_eq!(
+            r3.as_deref(),
+            Some(&[0x02, 0xB0, 0x05, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE][..])
+        );
+    }
+
+    /// Validate-1 B3 follow-up — 0xFF as the first byte of leftover means
+    /// stuffing per §2.4.4.5; `try_complete_section` must reset and stop.
+    #[test]
+    fn try_complete_section_resets_on_0xff_stuffing() {
+        let mut a = PsiSectionAssembler::new();
+        // Section A + 0xFF stuffing prefix.
+        let mut combined: Vec<u8> = vec![0x02, 0xB0, 0x05, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE];
+        combined.extend_from_slice(&[0xFF, 0xFF, 0xFF, 0xFF]);
+        let r = a.start_new_section(&combined).expect("ok");
+        assert!(r.is_some());
+        // Section A delivered. Leftover = [0xFF, 0xFF, 0xFF, 0xFF]. Next
+        // try_complete_section sees 0xFF first → reset + stop.
+        let r2 = a.try_complete_section().expect("ok");
+        assert_eq!(r2, None);
+        // Buffer is now empty (reset). A follow-up start_new_section
+        // works fine on a fresh section.
+        let r3 = a
+            .start_new_section(&[0x02, 0xB0, 0x05, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE])
+            .expect("ok");
+        assert!(r3.is_some());
+    }
+
+    /// Validate-1 B3 follow-up — empty-leftover case: section A completes
+    /// exactly at the end of the payload window, no bytes spill into the
+    /// next section. `try_complete_section` returns None on the next call.
+    #[test]
+    fn empty_leftover_returns_none_on_followup() {
+        let mut a = PsiSectionAssembler::new();
+        let section_a = [0x02, 0xB0, 0x05, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE];
+        let r = a.start_new_section(&section_a).expect("ok");
+        assert_eq!(r.as_deref(), Some(&section_a[..]));
+        // No leftover → try_complete_section returns None and buf stays empty.
+        let r2 = a.try_complete_section().expect("ok");
+        assert_eq!(r2, None);
+        assert!(a.buf.is_empty());
+    }
+
+    /// Validate-1 B3 follow-up — `try_complete_section` with leftover that
+    /// already constitutes a full section returns it on the first call.
+    /// Models the section-A-completes-then-section-B-fully-present case.
+    #[test]
+    fn try_complete_section_drains_second_full_section() {
+        let mut a = PsiSectionAssembler::new();
+        let section_a = [0x02, 0xB0, 0x05, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE];
+        let section_b = [0x02, 0xB0, 0x05, 0x11, 0x22, 0x33, 0x44, 0x55];
+        let mut combined = Vec::new();
+        combined.extend_from_slice(&section_a);
+        combined.extend_from_slice(&section_b);
+        let r = a.start_new_section(&combined).expect("ok");
+        assert_eq!(r.as_deref(), Some(&section_a[..]));
+        let r2 = a.try_complete_section().expect("ok");
+        assert_eq!(r2.as_deref(), Some(&section_b[..]));
+        // After draining both, buf is empty.
+        let r3 = a.try_complete_section().expect("ok");
+        assert_eq!(r3, None);
+    }
 }

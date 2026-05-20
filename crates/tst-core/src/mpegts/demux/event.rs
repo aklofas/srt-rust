@@ -589,6 +589,20 @@ pub enum NonConformantIssue {
         last_section_number: u8,
     },
 
+    /// AC-3 PES on a stream type `0x81` (System A) arrived with
+    /// `data_alignment_indicator = 1` but the payload does not begin
+    /// with the AC-3 syncword `0x0B77` (validate-1 C12). Per ATSC
+    /// A/52:2018 §A.2.4.1, every AC-3 PES with the alignment flag set
+    /// MUST start with a syncframe; receivers gating on the flag may
+    /// drop or mis-decode misaligned payloads.
+    ///
+    /// Lenient mode emits the sample alongside this issue; strict mode
+    /// (`StrictMode::Full`) suppresses the sample so receivers can
+    /// fail closed.
+    ///
+    /// `pid` is the stream PID.
+    Ac3SyncMissing { pid: u16 },
+
     /// Other.
     Other(String),
 }
@@ -889,6 +903,13 @@ impl std::fmt::Display for NonConformantIssue {
                     "PCR field program_clock_reference_extension > 299 (H.222.0 §2.4.3.5)"
                 ),
             },
+            NonConformantIssue::Ac3SyncMissing { pid } => {
+                write!(
+                    f,
+                    "AC-3 PES on PID 0x{pid:04X} missing syncword 0x0B77 \
+                     despite data_alignment_indicator=1 (A/52 §A.2.4.1)"
+                )
+            }
             NonConformantIssue::Other(msg) => {
                 write!(f, "{msg}")
             }

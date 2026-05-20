@@ -157,6 +157,10 @@ pub enum TstNonConformantCode {
     /// `obu_header_kind` byte (`obu_type` carrier) encodes which constraint
     /// variant (0=ForbiddenBit, 1=ReservedBit, 2=ExtensionReservedBits).
     Av1ObuHeader = 27,
+    /// AC-3 PES with `data_alignment_indicator=1` did not start with
+    /// the syncword `0x0B77` (validate-1 C12; ATSC A/52 §A.2.4.1).
+    /// `pid` carries the stream PID.
+    Ac3SyncMissing = 28,
 }
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::PcrMalformedKind`.
@@ -1063,6 +1067,10 @@ fn fill_nonconformant(
                 Av1ObuHeaderKind::ExtensionReservedBits => 2,
                 _ => 0xFF,
             };
+        }
+        NonConformantIssue::Ac3SyncMissing { pid } => {
+            body.issue_code = TstNonConformantCode::Ac3SyncMissing as c_int;
+            body.pid = *pid;
         }
     }
     out.kind = TstEventKind::NonConformant as c_int;

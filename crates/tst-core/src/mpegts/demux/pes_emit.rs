@@ -419,15 +419,37 @@ impl super::demuxer::Demuxer {
                 if frames_delta > 0 {
                     self.bump_audio_counters(stream.pid, frames_delta);
                 }
-                self.queue.push_back(DemuxEvent::Sample {
-                    stream,
-                    pts,
-                    dts: None,
-                    payload: SamplePayload::Audio {
-                        codec,
-                        frames: pes.payload.to_vec(),
-                    },
-                });
+                // C12 — AC-3 syncframe alignment enforcement.
+                //
+                // ATSC A/52:2018 §A.2.4.1 mandates `data_alignment_indicator=1`
+                // for every AC-3 PES, with the implication that the PES
+                // payload starts at an AC-3 syncframe (sync word 0x0B77).
+                // Surface a NonConformantIssue when the alignment flag is
+                // set but the payload doesn't begin with the syncword;
+                // strict mode (Full) suppresses the sample so consumers
+                // can fail closed.
+                let ac3_sync_rejected = if matches!(codec, AudioCodec::Ac3)
+                    && pes.data_alignment_indicator
+                    && !(pes.payload.len() >= 2 && pes.payload[0] == 0x0B && pes.payload[1] == 0x77)
+                {
+                    let issue = NonConformantIssue::Ac3SyncMissing { pid: pes.pid };
+                    let reject = self.options.strict.rejects(&issue);
+                    self.queue_nonconformant(stream, issue);
+                    reject
+                } else {
+                    false
+                };
+                if !ac3_sync_rejected {
+                    self.queue.push_back(DemuxEvent::Sample {
+                        stream,
+                        pts,
+                        dts: None,
+                        payload: SamplePayload::Audio {
+                            codec,
+                            frames: pes.payload.to_vec(),
+                        },
+                    });
+                }
             }
             StreamKind::Subtitle(codec) => {
                 let payload_len = pes.payload.len();

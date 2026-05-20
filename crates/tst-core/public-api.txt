@@ -128,6 +128,35 @@ impl<'a> core::marker::UnsafeUnpin for tst_core::codec::aac::AdtsFrames<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::aac::AdtsFrames<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::codec::aac::AdtsFrames<'a>
 pub fn tst_core::codec::aac::frames(bytes: &[u8]) -> tst_core::codec::aac::AdtsFrames<'_>
+pub mod tst_core::codec::ac3
+#[non_exhaustive] pub struct tst_core::codec::ac3::Ac3SyncInfo
+pub tst_core::codec::ac3::Ac3SyncInfo::acmod: u8
+pub tst_core::codec::ac3::Ac3SyncInfo::bit_rate_kbps: u32
+pub tst_core::codec::ac3::Ac3SyncInfo::bsid: u8
+pub tst_core::codec::ac3::Ac3SyncInfo::bsmod: u8
+pub tst_core::codec::ac3::Ac3SyncInfo::frame_length_bytes: u32
+pub tst_core::codec::ac3::Ac3SyncInfo::frmsizecod: u8
+pub tst_core::codec::ac3::Ac3SyncInfo::fscod: u8
+pub tst_core::codec::ac3::Ac3SyncInfo::lfeon: bool
+pub tst_core::codec::ac3::Ac3SyncInfo::num_full_bandwidth_channels: u8
+pub tst_core::codec::ac3::Ac3SyncInfo::sample_rate_hz: u32
+impl core::clone::Clone for tst_core::codec::ac3::Ac3SyncInfo
+pub fn tst_core::codec::ac3::Ac3SyncInfo::clone(&self) -> tst_core::codec::ac3::Ac3SyncInfo
+impl core::cmp::Eq for tst_core::codec::ac3::Ac3SyncInfo
+impl core::cmp::PartialEq for tst_core::codec::ac3::Ac3SyncInfo
+pub fn tst_core::codec::ac3::Ac3SyncInfo::eq(&self, other: &tst_core::codec::ac3::Ac3SyncInfo) -> bool
+impl core::fmt::Debug for tst_core::codec::ac3::Ac3SyncInfo
+pub fn tst_core::codec::ac3::Ac3SyncInfo::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::codec::ac3::Ac3SyncInfo
+impl core::marker::StructuralPartialEq for tst_core::codec::ac3::Ac3SyncInfo
+impl core::marker::Freeze for tst_core::codec::ac3::Ac3SyncInfo
+impl core::marker::Send for tst_core::codec::ac3::Ac3SyncInfo
+impl core::marker::Sync for tst_core::codec::ac3::Ac3SyncInfo
+impl core::marker::Unpin for tst_core::codec::ac3::Ac3SyncInfo
+impl core::marker::UnsafeUnpin for tst_core::codec::ac3::Ac3SyncInfo
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::ac3::Ac3SyncInfo
+impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::ac3::Ac3SyncInfo
+pub fn tst_core::codec::ac3::parse_syncframe(bytes: &[u8]) -> core::result::Result<tst_core::codec::ac3::Ac3SyncInfo, tst_core::codec::CodecParseError>
 pub mod tst_core::codec::av1
 #[non_exhaustive] pub struct tst_core::codec::av1::Av1FrameHeaderLight
 pub tst_core::codec::av1::Av1FrameHeaderLight::frame_size: core::option::Option<(u32, u32)>
@@ -2678,6 +2707,8 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::NalUnit
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::NalUnit
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::NalUnit
 pub enum tst_core::mpegts::demux::event::NonConformantIssue
+pub tst_core::mpegts::demux::event::NonConformantIssue::Ac3SyncMissing
+pub tst_core::mpegts::demux::event::NonConformantIssue::Ac3SyncMissing::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuHeader
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuHeader::kind: tst_core::mpegts::demux::event::Av1ObuHeaderKind
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1ObuHeader::pid: u16
@@ -3501,6 +3532,8 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::NalUnit
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::NalUnit
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::NalUnit
 pub enum tst_core::mpegts::demux::NonConformantIssue
+pub tst_core::mpegts::demux::NonConformantIssue::Ac3SyncMissing
+pub tst_core::mpegts::demux::NonConformantIssue::Ac3SyncMissing::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuHeader
 pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuHeader::kind: tst_core::mpegts::demux::event::Av1ObuHeaderKind
 pub tst_core::mpegts::demux::NonConformantIssue::Av1ObuHeader::pid: u16
@@ -4167,6 +4200,7 @@ impl core::marker::Unpin for tst_core::mpegts::descriptors::parse::TeletextDescr
 impl core::marker::UnsafeUnpin for tst_core::mpegts::descriptors::parse::TeletextDescriptorEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::descriptors::parse::TeletextDescriptorEntry
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::descriptors::parse::TeletextDescriptorEntry
+pub fn tst_core::mpegts::descriptors::ac3_audio_stream_descriptor(sample_rate_code: u8, bsid: u8, bit_rate_code: u8, surround_mode: u8, bsmod: u8, num_channels: u8, full_svc: bool) -> alloc::vec::Vec<u8>
 pub fn tst_core::mpegts::descriptors::component(stream_content: u8, component_type: u8, component_tag: u8, iso_639_language: [u8; 3], text: &str) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::mpegts::descriptors::DescriptorError>
 pub fn tst_core::mpegts::descriptors::find_descriptor_tag(descriptors: &[tst_core::mpegts::descriptors::parse::RawDescriptor], tag: u8) -> bool
 pub fn tst_core::mpegts::descriptors::find_format_identifier(descriptors: &[tst_core::mpegts::descriptors::parse::RawDescriptor], target: &[u8; 4]) -> bool

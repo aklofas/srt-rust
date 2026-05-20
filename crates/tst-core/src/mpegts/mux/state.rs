@@ -394,6 +394,48 @@ pub(super) fn build_pmt_descriptor_cache(prog: &MuxerProgramConfig) -> Vec<Vec<u
             if !caller_has_ac3 {
                 bytes.extend_from_slice(&crate::mpegts::descriptors::format_identifier_ac3());
             }
+            // C6 — AC-3 audio descriptor auto-emit (tag 0x81).
+            //
+            // ATSC A/52:2018 §A.4.3 mandates this descriptor on every
+            // System A (ATSC) AC-3 PMT entry; without it strict
+            // receivers (ffmpeg, GStreamer, TSDuck) must probe the
+            // elementary stream to learn sample_rate / bsid / channels.
+            //
+            // The muxer has no syncframe at PMT-build time (the
+            // descriptor cache is built once in `Muxer::new`), so we
+            // emit a permissive shape per Table A4.2 + A4.3 + A4.5:
+            //   sample_rate_code = 0b111 ("48 or 44.1 or 32" — any)
+            //   bsid             = 8     (canonical AC-3:2018 version)
+            //   bit_rate_code    = 0b110010 (MSB=1 upper-limit, 640 kbps —
+            //                      the table's maximum)
+            //   surround_mode    = 0b00  (not indicated)
+            //   bsmod            = 0     (CM, complete main)
+            //   num_channels     = 0b1001 (MSB=1 upper-limit mode: ≤2
+            //                      encoded channels — typical for ISR
+            //                      payloads)
+            //   full_svc         = true  (complete program — no associated
+            //                      service overlay)
+            //
+            // Suppression: when the caller supplies any descriptor with
+            // tag 0x81, we honor it verbatim (caller intent wins).
+            // Callers needing exact-derived fields from a parsed
+            // syncframe (via codec::ac3::parse_syncframe) can build
+            // their own with descriptors::ac3_audio_stream_descriptor
+            // and pass it through stream_descriptors_for_audio.
+            let caller_has_ac3_audio_desc = caller_descs
+                .iter()
+                .any(|tlv| !tlv.is_empty() && tlv[0] == 0x81);
+            if !caller_has_ac3_audio_desc {
+                bytes.extend_from_slice(&crate::mpegts::descriptors::ac3_audio_stream_descriptor(
+                    0b111,    // sample_rate_code: any
+                    8,        // bsid: AC-3:2018 canonical
+                    0b110010, // bit_rate_code: MSB=1 upper-limit, 640 kbps
+                    0,        // surround_mode: not indicated
+                    0,        // bsmod: CM (complete main)
+                    0b1001,   // num_channels: MSB=1 upper-limit, ≤2 channels
+                    true,     // full_svc: complete program
+                ));
+            }
         }
         // ISO 639 language descriptor auto-emit on Audio when
         // StreamSpec::Audio.language is Some. Per ISO/IEC 13818-1

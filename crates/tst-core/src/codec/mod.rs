@@ -8,10 +8,12 @@
 //!
 //! Shipped: H.264 ([`h264`]), H.265 ([`h265`]), H.266 ([`h266`]),
 //! AV1 ([`av1`]), MPEG audio Layer I/II/III ([`mpegaudio`]), AAC ADTS
-//! ([`aac`]). AAC LATM and AC-3 frame iterators are deferred to
-//! follow-up plans.
+//! ([`aac`]), AC-3 syncframe header ([`ac3`]). AAC LATM frame iterator
+//! is deferred to a follow-up plan; AC-3 full-frame iteration (vs the
+//! header-only parser shipped) is deferred to a follow-up plan.
 
 pub mod aac;
+pub mod ac3;
 pub mod av1;
 pub(crate) mod bitreader;
 pub mod h264;

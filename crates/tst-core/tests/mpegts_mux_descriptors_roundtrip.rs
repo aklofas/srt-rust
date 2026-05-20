@@ -443,3 +443,99 @@ fn audio_language_auto_emit_suppressed_when_caller_supplies() {
         "caller's language code (fra) should win over auto-emit (eng)"
     );
 }
+
+#[test]
+fn ac3_audio_stream_descriptor_auto_emits_on_pmt() {
+    // validate-1 C6 — ATSC A/52:2018 §A.4.3 mandates the AC-3 audio
+    // descriptor (tag 0x81) on every AC-3 PMT entry. The muxer should
+    // emit it automatically alongside the AC-3 Registration descriptor.
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_audio(0x101, AudioCodec::Ac3);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+
+    let bytes = drive_psi(cfg);
+    let events = drain_events(&bytes);
+    let pm = events
+        .iter()
+        .find_map(|e| match e {
+            DemuxEvent::ProgramMap(pm) => Some(pm),
+            _ => None,
+        })
+        .expect("ProgramMap emitted");
+
+    let audio = pm.streams.iter().find(|s| s.pid == 0x101).unwrap();
+    let ac3_audio: Vec<_> = audio
+        .raw_descriptors
+        .iter()
+        .filter(|d| d.tag == 0x81)
+        .collect();
+    assert_eq!(
+        ac3_audio.len(),
+        1,
+        "expected one AC-3 audio stream descriptor (tag 0x81), found {}",
+        ac3_audio.len()
+    );
+    // 3-byte body per the minimal-conformant shape (Table A4.1, fields
+    // up to and including the first termination point after langcod).
+    assert_eq!(ac3_audio[0].data.len(), 3);
+    // byte0 high 3 bits = sample_rate_code (0b111 = any per Table A4.2);
+    // bsid = 8 in low 5 bits → (7 << 5) | 8 = 0xE8.
+    assert_eq!(ac3_audio[0].data[0], 0xE8);
+}
+
+#[test]
+fn ac3_audio_descriptor_suppressed_when_caller_supplies() {
+    // Caller pre-supplies their own tag-0x81 descriptor; the muxer
+    // should honor it verbatim and NOT auto-emit a second one.
+    let caller_desc = descriptors::ac3_audio_stream_descriptor(
+        0,      // sample_rate_code: 48kHz exact
+        8,      // bsid
+        10,     // bit_rate_code: 192 kbps exact
+        0,      // surround_mode
+        0,      // bsmod: CM
+        0b0010, // num_channels: 2/0 stereo
+        true,   // full_svc
+    );
+
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x100, VideoCodec::H264);
+        prog.add_audio(0x101, AudioCodec::Ac3);
+        prog.stream_descriptors_for_audio(0, vec![caller_desc.clone()])
+            .unwrap();
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+
+    let bytes = drive_psi(cfg);
+    let events = drain_events(&bytes);
+    let pm = events
+        .iter()
+        .find_map(|e| match e {
+            DemuxEvent::ProgramMap(pm) => Some(pm),
+            _ => None,
+        })
+        .expect("ProgramMap emitted");
+
+    let audio = pm.streams.iter().find(|s| s.pid == 0x101).unwrap();
+    let ac3_audio: Vec<_> = audio
+        .raw_descriptors
+        .iter()
+        .filter(|d| d.tag == 0x81)
+        .collect();
+    assert_eq!(
+        ac3_audio.len(),
+        1,
+        "auto-emit was not suppressed (found {} tag-0x81 descriptors)",
+        ac3_audio.len()
+    );
+    // Caller's payload survives verbatim (body bytes 0xE8 are the byte0
+    // shape; caller's emits byte0 = (0<<5)|8 = 0x08).
+    assert_eq!(ac3_audio[0].data[0], 0x08);
+}

@@ -395,6 +395,85 @@ pub fn format_identifier_ac3() -> Vec<u8> {
     vec![0x05, 0x04, b'A', b'C', b'-', b'3']
 }
 
+/// AC-3 audio stream descriptor (tag 0x81) — ATSC A/52:2018 §A.4.3
+/// Table A4.1.
+///
+/// Mandatory on every AC-3 elementary-stream PMT entry under System A
+/// (ATSC), per §A.4.3 ("shall be constructed"). Without it, strict
+/// receivers may fall back to probing the elementary stream for the
+/// fields signaled here (sample_rate / bsid / bit_rate / surround /
+/// service-mode / channels / language).
+///
+/// This builder emits the minimum-conformant 3-byte payload — fields
+/// up to and including `langcod` (the first allowed termination point
+/// per the table's horizontal lines). Callers needing the full
+/// extension (text, language codes, asvcflags) can build them on top
+/// of [`registration`] or layer additional bytes via a follow-up
+/// helper.
+///
+/// Field encoding per Table A4.1 (3 bytes after tag+length):
+///
+/// | Byte | Bits 7..5 | Bits 4..0 |
+/// |---|---|---|
+/// | 0 | sample_rate_code (3) | bsid (5) |
+/// | 1 | bit_rate_code (6) | surround_mode (2) |
+/// | 2 | bsmod (3) | num_channels (4) | full_svc (1) |
+///
+/// Field values (from a parsed `Ac3SyncInfo` — see
+/// [`crate::codec::ac3::parse_syncframe`]):
+///
+/// - `sample_rate_code` — 3-bit per Table A4.2. Mirrors `fscod`
+///   directly (0=48k, 1=44.1k, 2=32k). Values 4..=7 indicate sets of
+///   rates but aren't used here (we always have exact `fscod`).
+/// - `bsid` — same as AC-3 elementary stream's `bsid` field.
+/// - `bit_rate_code` — 6-bit per Table A4.3. The lower 5 bits index a
+///   nominal-bit-rate table; the MSB is 0 for "exact rate" or 1 for
+///   "upper limit". We emit MSB=0 (exact) since `frmsizecod` gives the
+///   exact rate.
+/// - `surround_mode` — 2-bit per Table A4.4. We emit 0b00 ("not
+///   indicated"); the AC-3 elementary stream's `dsurmod` is not surfaced
+///   by the minimal parser.
+/// - `bsmod` — same as AC-3 elementary stream's `bsmod` field.
+/// - `num_channels` — 4-bit per Table A4.5. We mirror `acmod` in the
+///   MSB-0 ("audio coding mode") encoding so receivers see the exact
+///   channel layout (e.g. acmod=2 → num_channels=0b0010 = 2/0 stereo).
+/// - `full_svc` — 1-bit (1 = "complete program suitable for
+///   presentation"). We emit 1 — the strict-A/53 default for ISR /
+///   gimbaled-platform audio (no associated-service overlay).
+///
+/// Field-range invariants are enforced via `debug_assert!`; release
+/// builds silently mask the inputs to their bit widths. Callers source
+/// the fields from a parsed [`crate::codec::ac3::Ac3SyncInfo`] which
+/// already range-validates each field, so production paths never trip
+/// the asserts. The 3-byte payload is statically bounded (no
+/// `DescriptorError::TooLarge` path), so the return type is plain
+/// `Vec<u8>` rather than `Result`.
+pub fn ac3_audio_stream_descriptor(
+    sample_rate_code: u8,
+    bsid: u8,
+    bit_rate_code: u8,
+    surround_mode: u8,
+    bsmod: u8,
+    num_channels: u8,
+    full_svc: bool,
+) -> Vec<u8> {
+    // All callers pre-validate the inputs to fit within their bit
+    // widths (sourced from a parsed Ac3SyncInfo). debug_assert is the
+    // workspace convention for caller-contract checks that production
+    // code paths never violate.
+    debug_assert!(sample_rate_code < 8, "sample_rate_code is 3 bits");
+    debug_assert!(bsid < 32, "bsid is 5 bits");
+    debug_assert!(bit_rate_code < 64, "bit_rate_code is 6 bits");
+    debug_assert!(surround_mode < 4, "surround_mode is 2 bits");
+    debug_assert!(bsmod < 8, "bsmod is 3 bits");
+    debug_assert!(num_channels < 16, "num_channels is 4 bits");
+    let byte0 = ((sample_rate_code & 0b111) << 5) | (bsid & 0b1_1111);
+    let byte1 = ((bit_rate_code & 0b0011_1111) << 2) | (surround_mode & 0b11);
+    let byte2 =
+        ((bsmod & 0b111) << 5) | ((num_channels & 0b1111) << 1) | if full_svc { 1 } else { 0 };
+    vec![0x81, 0x03, byte0, byte1, byte2]
+}
+
 /// ISO 639 Language descriptor (tag 0x0A) — H.222.0 §2.6.18.
 /// 3-byte language code + 1-byte audio_type. Conventional on audio PIDs;
 /// valid on any ES.
@@ -842,5 +921,42 @@ mod tests {
         let bytes = teletext_descriptor_multi(&entries).expect("51 entries within cap");
         assert_eq!(bytes[0], 0x56);
         assert_eq!(bytes[1], 255);
+    }
+
+    #[test]
+    fn ac3_audio_stream_descriptor_canonical_48khz_stereo_192kbps() {
+        // sample_rate_code=0 (48kHz), bsid=8, bit_rate_code=10 (192 kbps,
+        // MSB=0 = exact), surround_mode=0 (not indicated), bsmod=0 (CM),
+        // num_channels=0b0010 (2/0 stereo), full_svc=1.
+        let bytes = ac3_audio_stream_descriptor(0, 8, 10, 0, 0, 0b0010, true);
+        assert_eq!(bytes.len(), 5);
+        assert_eq!(bytes[0], 0x81); // descriptor_tag (A/52 §A.4.3)
+        assert_eq!(bytes[1], 0x03); // descriptor_length
+        // byte0: sample_rate_code(3) << 5 | bsid(5) = (0<<5)|8 = 0x08
+        assert_eq!(bytes[2], 0x08);
+        // byte1: bit_rate_code(6) << 2 | surround_mode(2) = (10<<2)|0 = 0x28
+        assert_eq!(bytes[3], 0x28);
+        // byte2: bsmod(3) << 5 | num_channels(4) << 1 | full_svc(1)
+        //      = (0<<5)|(2<<1)|1 = 0x05
+        assert_eq!(bytes[4], 0x05);
+    }
+
+    #[test]
+    fn ac3_audio_stream_descriptor_packs_all_max_values() {
+        // Exercise upper bits of every field — confirm no overflow into
+        // adjacent fields. sample_rate_code=7, bsid=31, bit_rate_code=63
+        // (MSB=1 = upper limit; lower 5 bits = 31 → 640 kbps),
+        // surround_mode=3 (reserved but bit-legal), bsmod=7 (VO),
+        // num_channels=15 (reserved but bit-legal), full_svc=0.
+        let bytes = ac3_audio_stream_descriptor(7, 31, 63, 3, 7, 15, false);
+        assert_eq!(bytes.len(), 5);
+        assert_eq!(bytes[0], 0x81);
+        assert_eq!(bytes[1], 0x03);
+        // (7<<5)|31 = 0xFF
+        assert_eq!(bytes[2], 0xFF);
+        // (63<<2)|3 = 0xFF
+        assert_eq!(bytes[3], 0xFF);
+        // (7<<5)|(15<<1)|0 = 0xFE
+        assert_eq!(bytes[4], 0xFE);
     }
 }

@@ -113,4 +113,16 @@ mod tests {
         assert!(m.rejects(&NonConformantIssue::PtsAnomaly { delta: -100_000 }));
         assert!(m.rejects(&NonConformantIssue::MissingRequiredPts { pid: 0x100 }));
     }
+
+    #[test]
+    fn ac3_sync_missing_only_rejected_by_full() {
+        // validate-1 C12 — AC-3 syncframe alignment is a content-layer
+        // concern, neither timing nor descriptor; only StrictMode::Full
+        // escalates it.
+        let issue = NonConformantIssue::Ac3SyncMissing { pid: 0x300 };
+        assert!(!StrictMode::Off.rejects(&issue));
+        assert!(!StrictMode::TimingOnly.rejects(&issue));
+        assert!(!StrictMode::DescriptorsOnly.rejects(&issue));
+        assert!(StrictMode::Full.rejects(&issue));
+    }
 }

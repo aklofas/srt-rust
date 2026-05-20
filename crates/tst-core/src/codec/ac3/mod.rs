@@ -1,0 +1,38 @@
+//! AC-3 (ATSC A/52) syncframe parser.
+//!
+//! Stateless, minimal parser for the syncinfo + first few bsi fields of
+//! an AC-3 elementary stream, used by the muxer to derive the mandatory
+//! `AC-3_audio_stream_descriptor` (ATSC A/52 §A.4.3 + Table A4.1) and
+//! by the demuxer to enforce `data_alignment_indicator = 1` per ATSC
+//! A/52 §A.2.4.1 (which mandates one syncframe per PES with the
+//! alignment indicator set).
+//!
+//! ## Spec coverage
+//!
+//! Parsed per ATSC A/52:2018 §5.4.1 (syncinfo) + §5.4.2 (bsi prefix):
+//! - syncword (16 bits, must be 0x0B77).
+//! - fscod (2 bits → sample rate, Table 5.6).
+//! - frmsizecod (6 bits → frame length + nominal bit rate, Table 5.18).
+//! - bsid (5 bits → AC-3 bitstream version; usually 8 for modern AC-3).
+//! - bsmod (3 bits → audio service type; 0=CM, 1=ME, etc.).
+//! - acmod (3 bits → audio coding mode; 2=2/0 stereo, 7=3/2 surround, etc.).
+//! - lfeon (1 bit, but the surrounding optional cmixlev/surmixlev/dsurmod
+//!   bits shift its position — see [`parse_syncframe`]).
+//!
+//! ## Not parsed (deferred)
+//!
+//! - dialnorm, compr, langcod, audprodie, time codes, addbsi — bsi tail
+//!   fields after lfeon. The descriptor fields the muxer needs
+//!   (sample_rate_code / bit_rate_code / surround_mode / bsmod /
+//!   num_channels) are all available from the syncinfo + first few bsi
+//!   bits.
+//! - audblk / auxdata / errorcheck — block-level audio data and CRCs.
+//! - E-AC-3 (Annex E) — extension to AC-3 with bsid in 11..=16.
+//!   `parse_syncframe` rejects bsid >= 11 as unsupported; if E-AC-3
+//!   support is needed, add a separate parser keyed on bsid.
+
+mod decode;
+#[cfg(test)]
+mod tests;
+
+pub use decode::{Ac3SyncInfo, parse_syncframe};

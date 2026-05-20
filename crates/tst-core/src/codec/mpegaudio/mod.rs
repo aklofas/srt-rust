@@ -23,5 +23,5 @@ mod decode;
 mod model;
 mod tables;
 
-pub use decode::frames;
+pub use decode::{frames, frames_with_resync};
 pub use model::{ChannelMode, Frame, FrameOwned, Frames, Layer, Version};

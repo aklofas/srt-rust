@@ -231,12 +231,40 @@ impl AdtsFrameOwned {
     }
 }
 
-/// Iterator over ADTS frames in `bytes`. Use [`frames`] to construct.
+/// Iterator over ADTS frames in `bytes`.
+///
+/// Construct with [`frames`] for the strict (fail-fast) variant or
+/// [`frames_with_resync`] for the best-effort variant that scans
+/// forward for the next plausible ADTS syncword after a parse error.
 #[must_use]
 pub struct AdtsFrames<'a> {
     pub(super) buf: &'a [u8],
     pub(super) cursor: usize,
     pub(super) done: bool,
+    /// G2 — when `true`, parse errors do NOT terminate the iterator.
+    /// Instead, `next()` scans forward from `cursor + 1` for the next
+    /// plausible 12-bit ADTS syncword (`0xFFF`) and repositions there.
+    /// The current error is still yielded; subsequent `next()` calls
+    /// resume from the new cursor.
+    pub(super) resync: bool,
+}
+
+/// Scan `buf[start..]` for the next plausible 12-bit ADTS syncword
+/// (`buf[i] == 0xFF` and `(buf[i+1] & 0xF0) == 0xF0`). Returns the
+/// absolute position of the first candidate, or `None` if no candidate
+/// exists before `buf.len() - 1`.
+fn find_next_adts_sync(buf: &[u8], start: usize) -> Option<usize> {
+    if buf.len() < 2 || start >= buf.len() - 1 {
+        return None;
+    }
+    let mut i = start;
+    while i < buf.len() - 1 {
+        if buf[i] == 0xFF && (buf[i + 1] & 0xF0) == 0xF0 {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
 }
 
 impl<'a> Iterator for AdtsFrames<'a> {
@@ -254,13 +282,31 @@ impl<'a> Iterator for AdtsFrames<'a> {
         let header = match adts::parse_header(remaining) {
             Ok(h) => h,
             Err(e) => {
-                self.done = true;
+                if self.resync {
+                    // G2 — advance cursor to next plausible syncword
+                    // (or to end-of-buffer to terminate on subsequent
+                    // call). The error is still yielded so the caller
+                    // can count corruption.
+                    match find_next_adts_sync(self.buf, self.cursor + 1) {
+                        Some(next) => self.cursor = next,
+                        None => self.done = true,
+                    }
+                } else {
+                    self.done = true;
+                }
                 return Some(Err(e));
             }
         };
         let len = header.frame_length_bytes as usize;
         if remaining.len() < len {
-            self.done = true;
+            if self.resync {
+                match find_next_adts_sync(self.buf, self.cursor + 1) {
+                    Some(next) => self.cursor = next,
+                    None => self.done = true,
+                }
+            } else {
+                self.done = true;
+            }
             return Some(Err(CodecParseError::Truncated {
                 needed: header.frame_length_bytes,
                 had: remaining.len() as u32,
@@ -286,12 +332,39 @@ impl<'a> Iterator for AdtsFrames<'a> {
     }
 }
 
-/// Construct an ADTS frame iterator over an AAC elementary stream
-/// (PES payload bytes).
+/// Construct a strict (fail-fast) ADTS frame iterator over an AAC
+/// elementary stream (PES payload bytes).
+///
+/// The first parse error terminates the iterator. Use
+/// [`frames_with_resync`] when populating stats from possibly-corrupted
+/// streams, where dropping every frame after the first malformed one is
+/// worse than yielding an error and continuing.
 pub fn frames(bytes: &[u8]) -> AdtsFrames<'_> {
     AdtsFrames {
         buf: bytes,
         cursor: 0,
         done: false,
+        resync: false,
+    }
+}
+
+/// Construct a best-effort ADTS frame iterator that scans forward for
+/// the next plausible 12-bit ADTS syncword (`0xFFF`) after each parse
+/// error.
+///
+/// On a parse error at position `C`, the iterator yields the error
+/// once, then advances the cursor to the next plausible syncword in
+/// `buf[C+1..]` (or to the end-of-buffer if none is found, after which
+/// the iterator terminates).
+///
+/// Strict callers (fuzzers, conformance tests) should use [`frames`];
+/// stats/telemetry callers should prefer `frames_with_resync` to
+/// avoid stream-wide stat undercount on first bit-flip.
+pub fn frames_with_resync(bytes: &[u8]) -> AdtsFrames<'_> {
+    AdtsFrames {
+        buf: bytes,
+        cursor: 0,
+        done: false,
+        resync: true,
     }
 }

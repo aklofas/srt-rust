@@ -3,6 +3,7 @@
 use crate::codec::CodecParseError;
 use crate::codec::aac::{
     AacChannelLayout, AacProfile, AdtsFrame, AdtsFrameOwned, MpegVersion, frames,
+    frames_with_resync,
 };
 
 /// Helper: build full ADTS frame (7-byte header + zero-fill body).
@@ -112,6 +113,69 @@ fn adts_frame_owned_roundtrip() {
         raw_header: vec![],
         body: vec![],
     };
+}
+
+/// G2 — strict iterator terminates after the first parse error,
+/// dropping every subsequent valid frame. Failing-test-first proof.
+#[test]
+fn strict_iterator_drops_frames_after_first_corruption() {
+    // Layout: [corrupted bytes that aren't a sync] [valid frame].
+    let mut buf = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    buf.extend(build_frame(4, 2, 200));
+
+    let mut it = frames(&buf);
+    match it.next() {
+        Some(Err(CodecParseError::BadSyncWord { .. })) => {}
+        other => panic!("expected BadSyncWord, got {:?}", other),
+    }
+    assert!(
+        it.next().is_none(),
+        "strict iterator must terminate after first error"
+    );
+}
+
+/// G2 — resync iterator yields the error then resumes from the next
+/// plausible ADTS syncword, recovering the valid frame at position N+M.
+#[test]
+fn resync_iterator_recovers_valid_frame_after_corruption() {
+    let mut buf = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    buf.extend(build_frame(4, 2, 200));
+
+    let mut it = frames_with_resync(&buf);
+
+    // First call: parse fails BadSyncWord on the 0x00 prefix; resync
+    // scans forward and finds the valid 0xFF... syncword at byte 7.
+    match it.next() {
+        Some(Err(CodecParseError::BadSyncWord { .. })) => {}
+        other => panic!("expected BadSyncWord, got {:?}", other),
+    }
+
+    // Second call: parses cleanly from the recovered cursor.
+    let f = it.next().unwrap().unwrap();
+    assert_eq!(f.frame_length_bytes, 200);
+    assert_eq!(f.bytes().len(), 200);
+
+    assert!(it.next().is_none());
+}
+
+/// G2 — resync iterator over a buffer with no plausible syncword
+/// anywhere terminates after yielding the initial error (no infinite
+/// loop, no spurious extra yields).
+#[test]
+fn resync_iterator_no_syncword_terminates() {
+    // 32 bytes of zero — no 0xFF prefix anywhere.
+    let buf = vec![0x00u8; 32];
+    let mut it = frames_with_resync(&buf);
+
+    match it.next() {
+        Some(Err(CodecParseError::BadSyncWord { .. })) => {}
+        other => panic!("expected BadSyncWord, got {:?}", other),
+    }
+
+    assert!(
+        it.next().is_none(),
+        "resync iterator must terminate when no sync found"
+    );
 }
 
 /// C7 — iterator continues past a frame with `channel_configuration == 0`

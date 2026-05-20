@@ -177,6 +177,7 @@ impl<'a> core::marker::UnsafeUnpin for tst_core::codec::aac::AdtsFrames<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::aac::AdtsFrames<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::codec::aac::AdtsFrames<'a>
 pub fn tst_core::codec::aac::frames(bytes: &[u8]) -> tst_core::codec::aac::AdtsFrames<'_>
+pub fn tst_core::codec::aac::frames_with_resync(bytes: &[u8]) -> tst_core::codec::aac::AdtsFrames<'_>
 pub mod tst_core::codec::ac3
 #[non_exhaustive] pub struct tst_core::codec::ac3::Ac3SyncInfo
 pub tst_core::codec::ac3::Ac3SyncInfo::acmod: u8
@@ -774,6 +775,7 @@ impl<'a> core::marker::UnsafeUnpin for tst_core::codec::mpegaudio::Frames<'a>
 impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::mpegaudio::Frames<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::codec::mpegaudio::Frames<'a>
 pub fn tst_core::codec::mpegaudio::frames(bytes: &[u8]) -> tst_core::codec::mpegaudio::Frames<'_>
+pub fn tst_core::codec::mpegaudio::frames_with_resync(bytes: &[u8]) -> tst_core::codec::mpegaudio::Frames<'_>
 pub mod tst_core::codec::util
 pub fn tst_core::codec::util::count_nal_units(buf: &[u8], codec: tst_core::mpegts::mux::VideoCodec) -> u64
 pub enum tst_core::codec::ChromaFormat
@@ -821,6 +823,8 @@ pub tst_core::codec::CodecParseError::Truncated::needed: u32
 pub tst_core::codec::CodecParseError::TruncatedRbsp
 pub tst_core::codec::CodecParseError::TruncatedRbsp::needed_bits: u32
 pub tst_core::codec::CodecParseError::TruncatedRbsp::offset_bits: u32
+pub tst_core::codec::CodecParseError::UnsupportedFreeFormat
+pub tst_core::codec::CodecParseError::UnsupportedFreeFormat::layer: u8
 pub tst_core::codec::CodecParseError::UnsupportedProfile
 pub tst_core::codec::CodecParseError::UnsupportedProfile::profile_idc: u8
 impl core::clone::Clone for tst_core::codec::CodecParseError

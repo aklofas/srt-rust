@@ -8,17 +8,18 @@ use crate::codec::CodecParseError;
 /// ISO 11172-3 §2.4.2.3 Table 8 + ISO 13818-3 Table 5.
 ///
 /// Errors:
-/// - `ReservedValue { field: "bitrate_index", value: 0 }` for free-format
-/// - `Forbidden { field: "bitrate_index" }` for index 15
+/// - [`CodecParseError::UnsupportedFreeFormat`] for `bitrate_index == 0`
+///   (free-format mode — frame length must be discovered by scanning for
+///   the next syncword; we do not implement that today).
+/// - [`CodecParseError::Forbidden`] for `bitrate_index == 15`.
 pub(crate) fn decode_bitrate(
     version: Version,
     layer: Layer,
     bitrate_index: u8,
 ) -> Result<u32, CodecParseError> {
     if bitrate_index == 0 {
-        return Err(CodecParseError::ReservedValue {
-            field: "bitrate_index",
-            value: 0,
+        return Err(CodecParseError::UnsupportedFreeFormat {
+            layer: layer_to_u8(layer),
         });
     }
     if bitrate_index == 15 {
@@ -28,6 +29,15 @@ pub(crate) fn decode_bitrate(
     }
     let col = bitrate_column(version, layer);
     Ok(BITRATE_TABLE[col][bitrate_index as usize])
+}
+
+/// Map a [`Layer`] to its numeric 1/2/3 form for diagnostic surfacing.
+fn layer_to_u8(layer: Layer) -> u8 {
+    match layer {
+        Layer::I => 1,
+        Layer::II => 2,
+        Layer::III => 3,
+    }
 }
 
 /// Decode sample rate (Hz) from `(version, sample_rate_index)`.
@@ -223,14 +233,68 @@ pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, CodecParseError> {
     })
 }
 
-/// Construct a frame iterator over an MPEG audio elementary stream
-/// (PES payload bytes).
+/// Construct a strict (fail-fast) frame iterator over an MPEG audio
+/// elementary stream (PES payload bytes).
+///
+/// The first parse error terminates the iterator. Use
+/// [`frames_with_resync`] when populating stats from possibly-corrupted
+/// streams, where dropping every frame after the first malformed one is
+/// worse than yielding an error and continuing.
 pub fn frames(bytes: &[u8]) -> Frames<'_> {
     Frames {
         buf: bytes,
         cursor: 0,
         done: false,
+        resync: false,
     }
+}
+
+/// Construct a best-effort frame iterator that scans forward for the
+/// next plausible 11-bit MPEG audio syncword after each parse error.
+///
+/// On a parse error at position `C`, the iterator yields the error
+/// once, then advances the cursor to the next plausible syncword in
+/// `buf[C+1..]` (or to the end-of-buffer if none is found, after which
+/// the iterator terminates).
+///
+/// This does NOT implement free-format frame-length discovery — when
+/// the spec-defined sync-scan strategy resolves to a corrupted region,
+/// the iterator may yield further errors at the same density as the
+/// corruption. Strict callers (fuzzers, conformance tests) should use
+/// [`frames`]; stats/telemetry callers should prefer
+/// `frames_with_resync` to avoid stream-wide stat undercount on first
+/// bit-flip.
+pub fn frames_with_resync(bytes: &[u8]) -> Frames<'_> {
+    Frames {
+        buf: bytes,
+        cursor: 0,
+        done: false,
+        resync: true,
+    }
+}
+
+/// Scan `buf[start..]` for the next plausible 11-bit MPEG audio
+/// syncword (top 11 bits = `0x7FF`, i.e. `buf[i] == 0xFF` and
+/// `(buf[i+1] & 0xE0) == 0xE0`). Returns the absolute position of the
+/// first candidate, or `None` if no candidate exists before
+/// `buf.len() - 1`.
+///
+/// Note: this matches the byte-level sync only — the version_id /
+/// layer / bitrate fields are validated downstream by `parse_header`.
+/// Resync may therefore land on a false positive that re-fails parse;
+/// the next `next()` call will simply re-resync from `cursor + 1`.
+fn find_next_sync(buf: &[u8], start: usize) -> Option<usize> {
+    if buf.len() < 2 || start >= buf.len() - 1 {
+        return None;
+    }
+    let mut i = start;
+    while i < buf.len() - 1 {
+        if buf[i] == 0xFF && (buf[i + 1] & 0xE0) == 0xE0 {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
 }
 
 /// `Iterator::next` implementation for [`Frames`], called from the model module.
@@ -246,13 +310,29 @@ pub(super) fn frames_next<'a>(it: &mut Frames<'a>) -> Option<Result<Frame<'a>, C
     let header = match parse_header(remaining) {
         Ok(h) => h,
         Err(e) => {
-            it.done = true;
+            if it.resync {
+                // G2 — advance cursor to next plausible syncword (or
+                // to end-of-buffer to terminate on subsequent call).
+                match find_next_sync(it.buf, it.cursor + 1) {
+                    Some(next) => it.cursor = next,
+                    None => it.done = true,
+                }
+            } else {
+                it.done = true;
+            }
             return Some(Err(e));
         }
     };
     let len = header.frame_length_bytes as usize;
     if remaining.len() < len {
-        it.done = true;
+        if it.resync {
+            match find_next_sync(it.buf, it.cursor + 1) {
+                Some(next) => it.cursor = next,
+                None => it.done = true,
+            }
+        } else {
+            it.done = true;
+        }
         return Some(Err(CodecParseError::Truncated {
             needed: header.frame_length_bytes,
             had: remaining.len() as u32,
@@ -295,10 +375,20 @@ mod tests {
     }
     #[test]
     fn bitrate_index0_is_free_format_rejected() {
+        // G1 — bitrate_index=0 surfaces as the distinct
+        // `UnsupportedFreeFormat` variant (not `ReservedValue`) so callers
+        // can tell "spec defines this but we don't decode it" apart from
+        // "spec leaves this for future use".
         let err = decode_bitrate(Version::Mpeg1, Layer::I, 0).unwrap_err();
-        assert!(
-            matches!(err, CodecParseError::ReservedValue { field, value: 0 } if field == "bitrate_index")
-        );
+        assert!(matches!(
+            err,
+            CodecParseError::UnsupportedFreeFormat { layer: 1 }
+        ));
+        let err2 = decode_bitrate(Version::Mpeg2, Layer::III, 0).unwrap_err();
+        assert!(matches!(
+            err2,
+            CodecParseError::UnsupportedFreeFormat { layer: 3 }
+        ));
     }
     #[test]
     fn bitrate_index15_is_forbidden() {
@@ -490,6 +580,116 @@ mod tests {
             other => panic!("expected Err(Truncated), got {:?}", other),
         }
         assert!(it.next().is_none());
+    }
+
+    /// G2 — strict iterator terminates after the first parse error,
+    /// dropping every subsequent valid frame. Failing-test-first proof.
+    #[test]
+    fn strict_iterator_drops_frames_after_first_corruption() {
+        // Layout: [corrupted 4 bytes that fail parse_header] [valid frame].
+        // Use a buffer where the first bytes are not a valid sync but
+        // contain 0xFF later, so a strict iter fails immediately.
+        let mut buf = vec![0x00, 0x00, 0x00, 0x00];
+        let header: [u8; 4] = [0xFF, 0xFB, 0x90, 0x40];
+        buf.extend_from_slice(&header);
+        buf.extend(std::iter::repeat(0u8).take(417 - 4));
+
+        let mut it = frames(&buf);
+        match it.next() {
+            Some(Err(CodecParseError::BadSyncWord { .. })) => {}
+            other => panic!("expected BadSyncWord, got {:?}", other),
+        }
+        assert!(
+            it.next().is_none(),
+            "strict iterator must terminate after first error"
+        );
+    }
+
+    /// G2 — resync iterator yields the error then resumes from the next
+    /// plausible syncword, recovering the valid frame at position N+M.
+    #[test]
+    fn resync_iterator_recovers_valid_frame_after_corruption() {
+        // Same layout as the strict-iterator failing-test above, but
+        // confirm the resync variant yields Err + then the valid frame.
+        let mut buf = vec![0x00, 0x00, 0x00, 0x00];
+        let header: [u8; 4] = [0xFF, 0xFB, 0x90, 0x40];
+        buf.extend_from_slice(&header);
+        buf.extend(std::iter::repeat(0u8).take(417 - 4));
+
+        let mut it = frames_with_resync(&buf);
+
+        // First call: parse_header on [0x00, 0x00, 0x00, 0x00] fails
+        // BadSyncWord; resync scans forward and finds the valid 0xFF
+        // 0xFB 0x90 0x40 syncword at byte 4.
+        match it.next() {
+            Some(Err(CodecParseError::BadSyncWord { .. })) => {}
+            other => panic!("expected BadSyncWord, got {:?}", other),
+        }
+
+        // Second call: parses cleanly from the recovered cursor.
+        let f = it.next().unwrap().unwrap();
+        assert_eq!(f.frame_length_bytes, 417);
+        assert_eq!(f.bitrate_kbps, 128);
+
+        assert!(it.next().is_none());
+    }
+
+    /// G2 — resync iterator over a buffer with no plausible syncword
+    /// anywhere terminates after yielding the initial error (no infinite
+    /// loop, no spurious extra yields).
+    #[test]
+    fn resync_iterator_no_syncword_terminates() {
+        // 32 bytes of zero — no 0xFF prefix anywhere.
+        let buf = vec![0x00u8; 32];
+        let mut it = frames_with_resync(&buf);
+
+        // The first byte is 0x00 so parse_header fails BadSyncWord.
+        match it.next() {
+            Some(Err(CodecParseError::BadSyncWord { .. })) => {}
+            other => panic!("expected BadSyncWord, got {:?}", other),
+        }
+
+        // No further syncword exists; iterator must terminate.
+        assert!(
+            it.next().is_none(),
+            "resync iterator must terminate when no sync found"
+        );
+    }
+
+    /// G1 — free-format MPEG audio (bitrate_index == 0) surfaces as the
+    /// distinct `UnsupportedFreeFormat` error from the frame iterator
+    /// (not `ReservedValue`).
+    #[test]
+    fn frames_free_format_yields_unsupported_free_format() {
+        // V1L3 header but bitrate_index = 0 (free format):
+        //   FF FB 0X XX  where bitrate_index nibble = 0
+        // Original V1L3 128k header was FF FB 90 40; flip bitrate nibble to 0.
+        let header: [u8; 4] = [0xFF, 0xFB, 0x00, 0x40];
+        let mut it = frames(&header);
+        match it.next() {
+            Some(Err(CodecParseError::UnsupportedFreeFormat { layer: 3 })) => {}
+            other => panic!("expected UnsupportedFreeFormat(layer=3), got {:?}", other),
+        }
+    }
+
+    /// G2 — `find_next_sync` returns None when no candidate exists.
+    #[test]
+    fn find_next_sync_no_candidate() {
+        assert_eq!(find_next_sync(&[], 0), None);
+        assert_eq!(find_next_sync(&[0xFF], 0), None); // single 0xFF — no room for second byte
+        assert_eq!(find_next_sync(&[0x00, 0x00, 0x00], 0), None);
+        // 0xFF present but second byte's top 3 bits != 0b111
+        assert_eq!(find_next_sync(&[0xFF, 0x00], 0), None);
+    }
+
+    /// G2 — `find_next_sync` locates the first plausible syncword.
+    #[test]
+    fn find_next_sync_finds_candidate() {
+        // 0xFF at index 2, 0xE0 at index 3 — valid 11-bit sync.
+        let buf = [0x00, 0x11, 0xFF, 0xE0, 0xAA];
+        assert_eq!(find_next_sync(&buf, 0), Some(2));
+        // Start search past the candidate — must return None.
+        assert_eq!(find_next_sync(&buf, 3), None);
     }
 
     #[test]

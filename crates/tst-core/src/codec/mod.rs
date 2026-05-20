@@ -280,6 +280,20 @@ pub enum CodecParseError {
     /// it for future use.
     #[error("forbidden value in field '{field}'")]
     Forbidden { field: &'static str },
+
+    /// MPEG audio header carries `bitrate_index == 0`, signaling
+    /// "free-format" mode per ISO 11172-3 §2.4.2.3 Table 8 / ISO 13818-3
+    /// Table 5: the frame length must be discovered by scanning for the
+    /// next syncword rather than computed from the bitrate table. This
+    /// parser does not implement next-syncword frame-length discovery;
+    /// free-format streams are rare in modern encoders. Distinct from
+    /// [`Self::ReservedValue`] so callers can distinguish "spec leaves
+    /// this for future use" from "spec defines this but we don't decode
+    /// it".
+    ///
+    /// `layer` is the decoded MPEG audio layer (1, 2, or 3) for diagnostics.
+    #[error("unsupported free-format MPEG audio (layer {layer})")]
+    UnsupportedFreeFormat { layer: u8 },
 }
 
 /// Validate `bit_depth_*_minus8` per H.264 / H.265 / H.266: spec range

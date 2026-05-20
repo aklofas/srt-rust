@@ -219,16 +219,18 @@ fn finish_open(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_demux_receiver_close(p: *mut TstDemuxReceiver) {
-    if p.is_null() {
-        return;
-    }
-    let boxed = unsafe { Box::from_raw(p) };
-    boxed.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &boxed.cancel {
-        c.cancel();
-    }
-    boxed.inner.close();
-    drop(boxed);
+    crate::panic::ffi_catch((), || {
+        if p.is_null() {
+            return;
+        }
+        let boxed = unsafe { Box::from_raw(p) };
+        boxed.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &boxed.cancel {
+            c.cancel();
+        }
+        boxed.inner.close();
+        drop(boxed);
+    });
 }
 
 #[cfg(test)]

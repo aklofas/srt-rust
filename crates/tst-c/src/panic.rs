@@ -158,4 +158,48 @@ mod tests {
         let msg = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_str().unwrap();
         assert!(msg.contains("simulated connect"), "got: {msg}");
     }
+
+    /// Validate-1 D1: lifecycle entries (`_close` / `_cancel`) now wrap
+    /// their bodies in `ffi_catch` so a panic raised inside (e.g., a
+    /// poisoned-mutex unwrap deep in `boxed.inner.close()`, or a
+    /// `cancel_handle()` Drop that itself panics) cannot unwind across
+    /// the C boundary. Both default-value conventions are exercised:
+    /// `_close` uses `()` and `_cancel` uses `TstError::Internal as i32`
+    /// (the c_int convention from the table at the top of this file).
+    /// The C-side observable is: `_close` returns control normally,
+    /// `_cancel` returns -10, and `tst_get_last_error()` reads
+    /// `PanicCaught` afterward.
+    #[test]
+    fn close_path_simulated_panic_returns_unit_and_records() {
+        clear_last_error_for_test();
+        // _close entries return `()`. The lifecycle body roughly is
+        // `if p.is_null() { return; } let boxed = Box::from_raw(p); ...
+        // boxed.inner.close(); drop(boxed);`. A panic in any of those
+        // inner steps must NOT unwind past the C boundary.
+        ffi_catch((), || panic!("simulated close-path panic"));
+        assert_eq!(
+            unsafe { tst_get_last_error() },
+            TstError::PanicCaught as i32
+        );
+    }
+
+    #[test]
+    fn cancel_path_simulated_panic_returns_internal_and_records() {
+        clear_last_error_for_test();
+        // _cancel entries return `c_int`. Convention from the table at
+        // the top of this file: pass `TstError::Internal as i32` (-10)
+        // as the default. Last-error reads `PanicCaught` so the caller
+        // can distinguish a panic from a normal Internal return.
+        let rc: i32 = ffi_catch(TstError::Internal as i32, || {
+            panic!("simulated cancel-path panic")
+        });
+        assert_eq!(rc, TstError::Internal as i32);
+        assert_eq!(
+            unsafe { tst_get_last_error() },
+            TstError::PanicCaught as i32
+        );
+        let ptr = unsafe { crate::error::tst_get_last_error_str() };
+        let msg = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_str().unwrap();
+        assert!(msg.contains("simulated cancel-path"), "got: {msg}");
+    }
 }

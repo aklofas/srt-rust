@@ -97,16 +97,18 @@ pub unsafe extern "C" fn tst_raw_sender_send(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_raw_sender_close(p: *mut TstRawSender) {
-    if p.is_null() {
-        return;
-    }
-    let boxed = unsafe { Box::from_raw(p) };
-    boxed.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &boxed.cancel {
-        c.cancel();
-    }
-    boxed.inner.close();
-    drop(boxed);
+    crate::panic::ffi_catch((), || {
+        if p.is_null() {
+            return;
+        }
+        let boxed = unsafe { Box::from_raw(p) };
+        boxed.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &boxed.cancel {
+            c.cancel();
+        }
+        boxed.inner.close();
+        drop(boxed);
+    });
 }
 
 /// Cancel a `tst_raw_sender_t`. Unblocks a thread parked in `_send`
@@ -119,18 +121,20 @@ pub unsafe extern "C" fn tst_raw_sender_close(p: *mut TstRawSender) {
 /// be `_close`'d to free.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_raw_sender_cancel(p: *mut TstRawSender) -> libc::c_int {
-    let Some(handle) = (unsafe { p.as_ref() }) else {
-        set_last_error(TstError::InvalidConfig, "null sender pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
-    // send holds it). The was_cancelled flag + cancel-handle Arc are
-    // accessible without locking.
-    handle.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &handle.cancel {
-        c.cancel();
-    }
-    0
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null sender pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+        // send holds it). The was_cancelled flag + cancel-handle Arc are
+        // accessible without locking.
+        handle.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &handle.cancel {
+            c.cancel();
+        }
+        0
+    })
 }
 
 // ------------------------------------------------------------------
@@ -227,16 +231,18 @@ pub unsafe extern "C" fn tst_managed_raw_sender_send(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_managed_raw_sender_close(p: *mut TstManagedRawSender) {
-    if p.is_null() {
-        return;
-    }
-    let boxed = unsafe { Box::from_raw(p) };
-    boxed.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &boxed.cancel {
-        c.cancel();
-    }
-    boxed.inner.close();
-    drop(boxed);
+    crate::panic::ffi_catch((), || {
+        if p.is_null() {
+            return;
+        }
+        let boxed = unsafe { Box::from_raw(p) };
+        boxed.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &boxed.cancel {
+            c.cancel();
+        }
+        boxed.inner.close();
+        drop(boxed);
+    });
 }
 
 /// Cancel a `tst_managed_raw_sender_t`. Same semantics as
@@ -247,18 +253,20 @@ pub unsafe extern "C" fn tst_managed_raw_sender_close(p: *mut TstManagedRawSende
 /// Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_managed_raw_sender_cancel(p: *mut TstManagedRawSender) -> libc::c_int {
-    let Some(handle) = (unsafe { p.as_ref() }) else {
-        set_last_error(TstError::InvalidConfig, "null sender pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
-    // send holds it). The was_cancelled flag + cancel-handle Arc are
-    // accessible without locking.
-    handle.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &handle.cancel {
-        c.cancel();
-    }
-    0
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null sender pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+        // send holds it). The was_cancelled flag + cancel-handle Arc are
+        // accessible without locking.
+        handle.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &handle.cancel {
+            c.cancel();
+        }
+        0
+    })
 }
 
 /// Snapshot stats for a `tst_raw_sender_t` into `*out`.

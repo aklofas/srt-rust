@@ -116,13 +116,15 @@ pub unsafe extern "C" fn tst_demux_receiver_recv_event(
 /// `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_demux_receiver_cancel(p: *mut TstDemuxReceiver) -> libc::c_int {
-    let Some(handle) = (unsafe { p.as_ref() }) else {
-        set_last_error(TstError::InvalidConfig, "null receiver pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    handle.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &handle.cancel {
-        c.cancel();
-    }
-    0
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null receiver pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        handle.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &handle.cancel {
+            c.cancel();
+        }
+        0
+    })
 }

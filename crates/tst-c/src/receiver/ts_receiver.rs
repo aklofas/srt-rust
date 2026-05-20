@@ -128,19 +128,21 @@ fn finish_open(transport: SrtTransport) -> *mut TstReceiver {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_receiver_close(p: *mut TstReceiver) {
-    if p.is_null() {
-        return;
-    }
-    let boxed = unsafe { Box::from_raw(p) };
-    // Set the cancel flag and trip the libsrt-level cancel so any
-    // concurrent recv_packet on this handle (multi-threaded misuse)
-    // returns promptly with TST_E_CLOSED rather than TST_E_END_OF_STREAM.
-    boxed.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &boxed.cancel {
-        c.cancel();
-    }
-    boxed.inner.close();
-    drop(boxed);
+    crate::panic::ffi_catch((), || {
+        if p.is_null() {
+            return;
+        }
+        let boxed = unsafe { Box::from_raw(p) };
+        // Set the cancel flag and trip the libsrt-level cancel so any
+        // concurrent recv_packet on this handle (multi-threaded misuse)
+        // returns promptly with TST_E_CLOSED rather than TST_E_END_OF_STREAM.
+        boxed.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &boxed.cancel {
+            c.cancel();
+        }
+        boxed.inner.close();
+        drop(boxed);
+    });
 }
 
 /// Block until one 188-byte MPEG-TS packet is ready, then copy it into
@@ -222,18 +224,20 @@ pub unsafe extern "C" fn tst_receiver_recv_packet(
 /// `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_receiver_cancel(p: *mut TstReceiver) -> libc::c_int {
-    let Some(handle) = (unsafe { p.as_ref() }) else {
-        set_last_error(TstError::InvalidConfig, "null receiver pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
-    // recv_packet holds it). The was_cancelled flag + cancel-handle Arc
-    // are accessible without locking.
-    handle.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &handle.cancel {
-        c.cancel();
-    }
-    0
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null receiver pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+        // recv_packet holds it). The was_cancelled flag + cancel-handle Arc
+        // are accessible without locking.
+        handle.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &handle.cancel {
+            c.cancel();
+        }
+        0
+    })
 }
 
 /// Snapshot stats for a `tst_receiver_t` into `*out`.
@@ -496,32 +500,36 @@ pub unsafe extern "C" fn tst_managed_receiver_recv_packet(
 /// `TST_E_CLOSED`. The handle must still be `_close`'d to free memory.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_managed_receiver_cancel(p: *mut TstManagedReceiver) -> libc::c_int {
-    let Some(handle) = (unsafe { p.as_ref() }) else {
-        set_last_error(TstError::InvalidConfig, "null receiver pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
-    // recv_packet holds it). The was_cancelled flag + cancel-handle Arc
-    // are accessible without locking.
-    handle.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &handle.cancel {
-        c.cancel();
-    }
-    0
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null receiver pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        // Side-channel: do NOT acquire handle.inner's Mutex (a concurrent
+        // recv_packet holds it). The was_cancelled flag + cancel-handle Arc
+        // are accessible without locking.
+        handle.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &handle.cancel {
+            c.cancel();
+        }
+        0
+    })
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_managed_receiver_close(p: *mut TstManagedReceiver) {
-    if p.is_null() {
-        return;
-    }
-    let boxed = unsafe { Box::from_raw(p) };
-    boxed.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &boxed.cancel {
-        c.cancel();
-    }
-    boxed.inner.close();
-    drop(boxed);
+    crate::panic::ffi_catch((), || {
+        if p.is_null() {
+            return;
+        }
+        let boxed = unsafe { Box::from_raw(p) };
+        boxed.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &boxed.cancel {
+            c.cancel();
+        }
+        boxed.inner.close();
+        drop(boxed);
+    });
 }
 
 /// Snapshot stats for a `tst_managed_receiver_t` into `*out`.

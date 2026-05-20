@@ -265,29 +265,33 @@ pub unsafe extern "C" fn tst_managed_demux_receiver_recv_event(
 pub unsafe extern "C" fn tst_managed_demux_receiver_cancel(
     p: *mut TstManagedDemuxReceiver,
 ) -> libc::c_int {
-    let Some(handle) = (unsafe { p.as_ref() }) else {
-        set_last_error(TstError::InvalidConfig, "null receiver pointer");
-        return TstError::InvalidConfig as i32;
-    };
-    handle.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &handle.cancel {
-        c.cancel();
-    }
-    0
+    crate::panic::ffi_catch(TstError::Internal as i32, || {
+        let Some(handle) = (unsafe { p.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null receiver pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        handle.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &handle.cancel {
+            c.cancel();
+        }
+        0
+    })
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_managed_demux_receiver_close(p: *mut TstManagedDemuxReceiver) {
-    if p.is_null() {
-        return;
-    }
-    let boxed = unsafe { Box::from_raw(p) };
-    boxed.was_cancelled.store(true, Ordering::Release);
-    if let Some(c) = &boxed.cancel {
-        c.cancel();
-    }
-    boxed.inner.close();
-    drop(boxed);
+    crate::panic::ffi_catch((), || {
+        if p.is_null() {
+            return;
+        }
+        let boxed = unsafe { Box::from_raw(p) };
+        boxed.was_cancelled.store(true, Ordering::Release);
+        if let Some(c) = &boxed.cancel {
+            c.cancel();
+        }
+        boxed.inner.close();
+        drop(boxed);
+    });
 }
 
 #[unsafe(no_mangle)]

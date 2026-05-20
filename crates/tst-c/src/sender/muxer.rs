@@ -498,12 +498,14 @@ pub unsafe extern "C" fn tst_muxer_reset_stats(p: *mut TstMuxer) -> libc::c_int 
 /// Close and free the muxer. Idempotent — passing NULL is a no-op.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_muxer_close(p: *mut TstMuxer) {
-    if p.is_null() {
-        return;
-    }
-    let boxed = unsafe { Box::from_raw(p) };
-    boxed.inner.close();
-    drop(boxed);
+    crate::panic::ffi_catch((), || {
+        if p.is_null() {
+            return;
+        }
+        let boxed = unsafe { Box::from_raw(p) };
+        boxed.inner.close();
+        drop(boxed);
+    });
 }
 
 #[cfg(test)]

@@ -133,10 +133,9 @@ impl MockRecvTransport {
         Arc::clone(&self.fail_mode)
     }
 
-    /// Returns `true` if [`Self::close`] was called after an
-    /// `ExplicitCloseOnNext` fixture fired (i.e., caller-initiated close
-    /// path). Reserved for future stat-style assertions; not currently
-    /// observable through the `RecvTransport` trait.
+    /// Returns `true` once the `ExplicitCloseOnNext` fail-mode has fired.
+    /// Reserved for future stat-style assertions; not currently observable
+    /// through the `RecvTransport` trait.
     #[must_use]
     pub fn was_explicit_closed(&self) -> bool {
         self.explicit_closed

@@ -391,6 +391,13 @@ impl Default for TstEvent {
 ///
 /// All Vec fields are cleared (not dropped) at the start of each
 /// `convert()` call; capacity is retained.
+///
+/// `payload_buf` owns the byte ranges that pointer fields on `TstEvent`,
+/// `TstNal`, `TstObu`, and `TstDescriptor` reference. Without this the
+/// fill_* helpers used to write `payload.as_ptr()` into the C structs
+/// while `payload` was borrowed from the input `DemuxEvent`, which is
+/// dropped at the end of the `recv_event` closure — leaving C callers
+/// with dangling pointers (validate-1 A2 / Codex CABI-02).
 #[allow(dead_code)]
 pub(crate) struct EventArena {
     pub(crate) nals: Vec<TstNal>,
@@ -405,6 +412,11 @@ pub(crate) struct EventArena {
     pub(crate) programs_buf: [u16; 2],
     /// Tags array for SubtitleDescriptorAmbiguous.
     pub(crate) tags_buf: Vec<u8>,
+    /// Owned byte storage for every C pointer field that previously
+    /// aliased input `DemuxEvent` storage. After all `convert()` extends
+    /// complete, `payload_buf.as_ptr()` is the stable base for `base +
+    /// offset` pointer resolution.
+    pub(crate) payload_buf: Vec<u8>,
 }
 
 #[allow(dead_code)]
@@ -419,6 +431,7 @@ impl EventArena {
             detail_buf: Vec::new(),
             programs_buf: [0; 2],
             tags_buf: Vec::new(),
+            payload_buf: Vec::new(),
         }
     }
 
@@ -431,6 +444,7 @@ impl EventArena {
         self.detail_buf.clear();
         self.programs_buf = [0; 2];
         self.tags_buf.clear();
+        self.payload_buf.clear();
     }
 }
 
@@ -472,7 +486,7 @@ pub(crate) fn convert(
             kind,
             payload,
         } => {
-            fill_metadata(stream, pts.as_ticks(), kind, payload, out);
+            fill_metadata(arena, stream, pts.as_ticks(), kind, payload, out);
         }
         DemuxEvent::Discontinuity { stream, kind } => {
             fill_discontinuity(stream, kind, out);
@@ -488,20 +502,37 @@ fn fill_program_map(
     pm: &tst_core::mpegts::demux::ProgramMap,
     out: &mut TstEvent,
 ) {
-    // Populate descriptors first (one flat Vec across all streams);
-    // each StreamInfo references a slice via pointer + count.
+    // Two-pass: first collect each descriptor's byte range as
+    // (payload_buf offset, len) so the arena owns the bytes, then
+    // resolve to base+offset pointers after all extends are done
+    // (payload_buf.as_ptr() is only stable after the final extend).
     let mut per_stream_desc_ranges: Vec<(usize, usize)> = Vec::with_capacity(pm.streams.len());
+    let mut desc_byte_records: Vec<(usize, usize)> = Vec::new();
     for si in &pm.streams {
         let start = arena.descriptors.len();
         for d in &si.raw_descriptors {
+            let offset = arena.payload_buf.len();
+            arena.payload_buf.extend_from_slice(&d.data);
+            desc_byte_records.push((offset, d.data.len()));
             arena.descriptors.push(TstDescriptor {
                 tag: d.tag,
                 _reserved: [0; 7],
-                data: d.data.as_ptr(),
+                // Pointer placeholder; resolved after payload_buf stops growing.
+                data: std::ptr::null(),
                 data_len: d.data.len(),
             });
         }
         per_stream_desc_ranges.push((start, arena.descriptors.len() - start));
+    }
+    // Resolve descriptor pointers now that payload_buf is fully populated
+    // for this convert() call (PMTs don't share storage with NAL/OBU/
+    // sample payloads; convert() processes one event at a time).
+    let payload_base = arena.payload_buf.as_ptr();
+    for (desc_slot, (offset, _len)) in arena.descriptors.iter_mut().zip(desc_byte_records.iter()) {
+        // SAFETY: `offset` was returned by `payload_buf.len()` BEFORE the
+        // extend that contributed `_len` bytes, so `base + offset` points
+        // into the buf and `[base+offset .. base+offset+len]` is in-bounds.
+        desc_slot.data = unsafe { payload_base.add(*offset) };
     }
     let descriptors_base = arena.descriptors.as_ptr();
     for (si, (start, count)) in pm.streams.iter().zip(per_stream_desc_ranges.iter()) {
@@ -569,15 +600,37 @@ fn fill_sample(
             random_access_indicator = u8::from(*rai);
             match vp {
                 VideoPayload::Nals(nals) => {
+                    // Two-pass: collect (offset, len) per NAL, resolve to
+                    // `payload_buf.as_ptr() + offset` after all extends
+                    // are done so the base pointer is stable.
+                    let mut records: Vec<(usize, usize)> = Vec::with_capacity(nals.len());
                     for n in nals {
+                        let bytes = nal_payload_bytes(n);
+                        let offset = arena.payload_buf.len();
+                        arena.payload_buf.extend_from_slice(bytes);
+                        records.push((offset, bytes.len()));
                         arena.nals.push(nal_to_c(n));
+                    }
+                    let base = arena.payload_buf.as_ptr();
+                    for (slot, (offset, _len)) in arena.nals.iter_mut().zip(records.iter()) {
+                        // SAFETY: offset returned by len() before the
+                        // contributing extend; base+offset is in-bounds.
+                        slot.payload = unsafe { base.add(*offset) };
                     }
                     nals_ptr = arena.nals.as_ptr();
                     nal_count = arena.nals.len();
                 }
                 VideoPayload::Obus(obus) => {
+                    let mut records: Vec<(usize, usize)> = Vec::with_capacity(obus.len());
                     for o in obus {
+                        let offset = arena.payload_buf.len();
+                        arena.payload_buf.extend_from_slice(&o.payload);
+                        records.push((offset, o.payload.len()));
                         arena.obus.push(obu_to_c(o));
+                    }
+                    let base = arena.payload_buf.as_ptr();
+                    for (slot, (offset, _len)) in arena.obus.iter_mut().zip(records.iter()) {
+                        slot.payload = unsafe { base.add(*offset) };
                     }
                     obus_ptr = arena.obus.as_ptr();
                     obu_count = arena.obus.len();
@@ -586,16 +639,18 @@ fn fill_sample(
         }
         SamplePayload::Audio { codec: ac, frames } => {
             codec = crate::config::TstAudioCodec::from_core(*ac) as i32;
-            payload_ptr = frames.as_ptr();
-            payload_len = frames.len();
+            arena.payload_buf.extend_from_slice(frames);
+            payload_ptr = arena.payload_buf.as_ptr();
+            payload_len = arena.payload_buf.len();
         }
         SamplePayload::Subtitle {
             codec: sc,
             payload: pl,
         } => {
             codec = crate::config::TstSubtitleCodec::from_core(*sc) as i32;
-            payload_ptr = pl.as_ptr();
-            payload_len = pl.len();
+            arena.payload_buf.extend_from_slice(pl);
+            payload_ptr = arena.payload_buf.as_ptr();
+            payload_len = arena.payload_buf.len();
         }
         SamplePayload::Unknown {
             stream_type: st,
@@ -607,8 +662,9 @@ fn fill_sample(
             // wrapper from plan #75); .as_byte() preserves the existing
             // uint8_t C ABI for TstEventSample.stream_type per plan #71.
             stream_type = st.as_byte();
-            payload_ptr = raw.as_ptr();
-            payload_len = raw.len();
+            arena.payload_buf.extend_from_slice(raw);
+            payload_ptr = arena.payload_buf.as_ptr();
+            payload_len = arena.payload_buf.len();
         }
     }
     out.kind = TstEventKind::Sample as c_int;
@@ -632,6 +688,7 @@ fn fill_sample(
 }
 
 fn fill_metadata(
+    arena: &mut EventArena,
     stream: &tst_core::mpegts::demux::StreamId,
     pts: i64,
     kind: &tst_core::mpegts::demux::MetadataKind,
@@ -662,6 +719,7 @@ fn fill_metadata(
         MetadataKind::KlvAsync => TstMetadataKindTag::KlvAsync as c_int,
         MetadataKind::Unknown(_) => TstMetadataKindTag::Unknown as c_int,
     };
+    arena.payload_buf.extend_from_slice(payload);
     out.kind = TstEventKind::Metadata as c_int;
     out.u.metadata = TstEventMetadata {
         pid: stream.pid,
@@ -670,8 +728,8 @@ fn fill_metadata(
         pts,
         metadata_kind: md_kind,
         _pad2: [0; 4],
-        payload: payload.as_ptr(),
-        payload_len: payload.len(),
+        payload: arena.payload_buf.as_ptr(),
+        payload_len: arena.payload_buf.len(),
         metadata_service_id,
         sequence_number,
         cell_fragment_indication,
@@ -892,6 +950,22 @@ fn link_source_to_c(s: tst_core::mpegts::demux::LinkSource) -> c_int {
     }
 }
 
+/// Extract the payload byte slice from a [`NalUnit`] without copying.
+/// Single-source-of-truth for the codec-variant → bytes mapping; used
+/// during `fill_sample`'s two-pass arena-extend/resolve.
+fn nal_payload_bytes(n: &tst_core::mpegts::demux::NalUnit) -> &[u8] {
+    use tst_core::mpegts::demux::NalUnit;
+    match n {
+        NalUnit::H264 { payload, .. }
+        | NalUnit::H265 { payload, .. }
+        | NalUnit::H266 { payload, .. } => payload,
+    }
+}
+
+/// Build a `TstNal` with metadata fields populated and `payload` set to
+/// null + `payload_len` carrying the actual size. The caller (`fill_sample`)
+/// resolves `payload` to an arena-owned pointer after `payload_buf` stops
+/// growing in the current `convert()` call.
 fn nal_to_c(n: &tst_core::mpegts::demux::NalUnit) -> TstNal {
     use tst_core::mpegts::demux::NalUnit;
     match n {
@@ -904,7 +978,7 @@ fn nal_to_c(n: &tst_core::mpegts::demux::NalUnit) -> TstNal {
             ref_idc_or_layer_id: *ref_idc,
             temporal_id_plus1: 0,
             _reserved: 0,
-            payload: payload.as_ptr(),
+            payload: std::ptr::null(),
             payload_len: payload.len(),
         },
         NalUnit::H265 {
@@ -923,12 +997,14 @@ fn nal_to_c(n: &tst_core::mpegts::demux::NalUnit) -> TstNal {
             ref_idc_or_layer_id: *layer_id,
             temporal_id_plus1: *temporal_id_plus1,
             _reserved: 0,
-            payload: payload.as_ptr(),
+            payload: std::ptr::null(),
             payload_len: payload.len(),
         },
     }
 }
 
+/// Build a `TstObu` with metadata fields populated and `payload` set to
+/// null. Caller (`fill_sample`) resolves the pointer after extends finish.
 fn obu_to_c(o: &tst_core::mpegts::demux::Obu) -> TstObu {
     match &o.extension {
         Some(ext) => TstObu {
@@ -936,7 +1012,7 @@ fn obu_to_c(o: &tst_core::mpegts::demux::Obu) -> TstObu {
             has_extension: 1,
             temporal_id: ext.temporal_id,
             spatial_id: ext.spatial_id,
-            payload: o.payload.as_ptr(),
+            payload: std::ptr::null(),
             payload_len: o.payload.len(),
         },
         None => TstObu {
@@ -944,8 +1020,227 @@ fn obu_to_c(o: &tst_core::mpegts::demux::Obu) -> TstObu {
             has_extension: 0,
             temporal_id: 0,
             spatial_id: 0,
-            payload: o.payload.as_ptr(),
+            payload: std::ptr::null(),
             payload_len: o.payload.len(),
         },
+    }
+}
+
+// =========================================================================
+// Tests — arena ownership of payload bytes (validate-1 A2 / CABI-02)
+// =========================================================================
+//
+// The docstring at the top of this file promises that all pointer fields
+// on TstEvent borrow from the EventArena, valid until the next recv_event
+// or close on the same handle. Pre-A2, that contract was violated for
+// every byte-payload pointer field — they aliased the input DemuxEvent
+// storage, which is dropped at the end of the recv_event closure. C
+// callers would dereference dangling pointers.
+//
+// These tests assert that after convert(), each C pointer field is NOT
+// the input Vec's data pointer (i.e., the arena holds an owned copy).
+// Vec moves are pointer-stable, so capturing the source `.as_ptr()`
+// BEFORE moving the Vec into the DemuxEvent gives us a deterministic
+// reference for the "owns its own bytes" check.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tst_core::mpegts::common::{Pts90khz, StreamTypeCode};
+    use tst_core::mpegts::demux::{
+        AudioCodec, DemuxEvent, MetadataKind, NalUnit, Obu, SamplePayload, StreamId, StreamKind,
+        SubtitleCodec, VideoCodec, VideoPayload,
+    };
+
+    fn stream_id(pid: u16, kind: StreamKind) -> StreamId {
+        StreamId {
+            pid,
+            kind,
+            program_number: 1,
+        }
+    }
+
+    #[test]
+    fn audio_sample_payload_is_arena_owned() {
+        let frames = vec![0xAAu8, 0xBB, 0xCC, 0xDD];
+        let frames_ptr_before = frames.as_ptr();
+        let ev = DemuxEvent::Sample {
+            stream: stream_id(0x100, StreamKind::Audio(AudioCodec::Aac)),
+            pts: Pts90khz::new(0),
+            dts: None,
+            payload: SamplePayload::Audio {
+                codec: AudioCodec::Aac,
+                frames,
+            },
+        };
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &ev, &mut out);
+        let out_ptr = unsafe { out.u.sample.payload };
+        assert_ne!(
+            out_ptr, frames_ptr_before,
+            "audio payload pointer must NOT alias the input Vec — arena should own a copy"
+        );
+        let payload_len = unsafe { out.u.sample.payload_len };
+        let out_bytes = unsafe { std::slice::from_raw_parts(out_ptr, payload_len) };
+        assert_eq!(out_bytes, &[0xAA, 0xBB, 0xCC, 0xDD]);
+    }
+
+    #[test]
+    fn subtitle_sample_payload_is_arena_owned() {
+        let pl = vec![0x20u8, 0x00, 0xDE, 0xAD, 0xFF];
+        let pl_ptr_before = pl.as_ptr();
+        let ev = DemuxEvent::Sample {
+            stream: stream_id(0x200, StreamKind::Subtitle(SubtitleCodec::DvbSubtitling)),
+            pts: Pts90khz::new(0),
+            dts: None,
+            payload: SamplePayload::Subtitle {
+                codec: SubtitleCodec::DvbSubtitling,
+                payload: pl,
+            },
+        };
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &ev, &mut out);
+        let out_ptr = unsafe { out.u.sample.payload };
+        assert_ne!(
+            out_ptr, pl_ptr_before,
+            "subtitle payload pointer must NOT alias the input Vec"
+        );
+    }
+
+    #[test]
+    fn unknown_sample_raw_is_arena_owned() {
+        let raw = vec![0x01u8, 0x02, 0x03];
+        let raw_ptr_before = raw.as_ptr();
+        let ev = DemuxEvent::Sample {
+            stream: stream_id(0x300, StreamKind::Unknown(0xFE)),
+            pts: Pts90khz::new(0),
+            dts: None,
+            payload: SamplePayload::Unknown {
+                stream_type: StreamTypeCode::Unknown(0xFE),
+                raw,
+            },
+        };
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &ev, &mut out);
+        let out_ptr = unsafe { out.u.sample.payload };
+        assert_ne!(
+            out_ptr, raw_ptr_before,
+            "unknown sample raw pointer must NOT alias the input Vec"
+        );
+    }
+
+    #[test]
+    fn metadata_payload_is_arena_owned() {
+        let payload = vec![0x06u8, 0x0Eu8, 0x2Bu8, 0x34u8];
+        let payload_ptr_before = payload.as_ptr();
+        let ev = DemuxEvent::Metadata {
+            stream: stream_id(0x400, StreamKind::KlvAsync),
+            pts: Pts90khz::new(0),
+            kind: MetadataKind::KlvAsync,
+            payload,
+        };
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &ev, &mut out);
+        let out_ptr = unsafe { out.u.metadata.payload };
+        assert_ne!(
+            out_ptr, payload_ptr_before,
+            "metadata payload pointer must NOT alias the input Vec"
+        );
+    }
+
+    #[test]
+    fn h264_nal_payload_is_arena_owned() {
+        let nal_payload = vec![0x67u8, 0x42, 0x00, 0x1E];
+        let nal_ptr_before = nal_payload.as_ptr();
+        let ev = DemuxEvent::Sample {
+            stream: stream_id(0x500, StreamKind::Video(VideoCodec::H264)),
+            pts: Pts90khz::new(0),
+            dts: None,
+            payload: SamplePayload::Video {
+                codec: VideoCodec::H264,
+                payload: VideoPayload::Nals(vec![NalUnit::H264 {
+                    nal_type: 7,
+                    ref_idc: 3,
+                    payload: nal_payload,
+                }]),
+                random_access_indicator: true,
+            },
+        };
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &ev, &mut out);
+        assert_eq!(arena.nals.len(), 1);
+        let nal_out_ptr = arena.nals[0].payload;
+        assert_ne!(
+            nal_out_ptr, nal_ptr_before,
+            "H.264 NAL payload pointer must NOT alias the input Vec"
+        );
+    }
+
+    #[test]
+    fn av1_obu_payload_is_arena_owned() {
+        let obu_payload = vec![0x0Au8, 0x0B, 0x0C];
+        let obu_ptr_before = obu_payload.as_ptr();
+        let ev = DemuxEvent::Sample {
+            stream: stream_id(0x600, StreamKind::Video(VideoCodec::Av1)),
+            pts: Pts90khz::new(0),
+            dts: None,
+            payload: SamplePayload::Video {
+                codec: VideoCodec::Av1,
+                payload: VideoPayload::Obus(vec![Obu {
+                    obu_type: 1, // SequenceHeader
+                    extension: None,
+                    payload: obu_payload,
+                }]),
+                random_access_indicator: true,
+            },
+        };
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &ev, &mut out);
+        assert_eq!(arena.obus.len(), 1);
+        let obu_out_ptr = arena.obus[0].payload;
+        assert_ne!(
+            obu_out_ptr, obu_ptr_before,
+            "AV1 OBU payload pointer must NOT alias the input Vec"
+        );
+    }
+
+    #[test]
+    fn program_map_descriptor_data_is_arena_owned() {
+        use tst_core::mpegts::demux::{ProgramMap, StreamInfo};
+        use tst_core::mpegts::descriptors::RawDescriptor;
+
+        let desc_data = vec![b'K', b'L', b'V', b'A'];
+        let desc_data_ptr_before = desc_data.as_ptr();
+        let pm = ProgramMap {
+            program_number: 1,
+            pcr_pid: 0x100,
+            streams: vec![StreamInfo {
+                pid: 0x100,
+                stream_type: StreamTypeCode::Unknown(0x06),
+                kind: StreamKind::KlvAsync,
+                program_number: 1,
+                raw_descriptors: vec![RawDescriptor {
+                    tag: 0x05, // registration_descriptor
+                    data: desc_data,
+                }],
+            }],
+            klv_links: vec![],
+        };
+        let ev = DemuxEvent::ProgramMap(pm);
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &ev, &mut out);
+        assert_eq!(arena.descriptors.len(), 1);
+        let desc_out_ptr = arena.descriptors[0].data;
+        assert_ne!(
+            desc_out_ptr, desc_data_ptr_before,
+            "ProgramMap descriptor data pointer must NOT alias the input Vec"
+        );
     }
 }

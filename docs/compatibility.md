@@ -383,7 +383,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 
 | Surface | Status |
 |---|---|
-| Rust API (`Pairer::with_options`, `Pairer::last_before_pts`, `feed`/`flush`/`stats`) | Shipped 2026-05-07 |
+| Rust API (`Pairer::with_config`, `Pairer::last_before_pts`, `feed`/`flush`/`stats`) | Shipped 2026-05-07 |
 | C ABI exposure | Deferred to future receiver-surface plan |
 | JNI exposure | Deferred to future `srt-jni` plan |
 | UniFFI exposure | Deferred to future `srt-uniffi` plan |

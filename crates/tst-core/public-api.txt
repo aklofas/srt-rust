@@ -1281,7 +1281,7 @@ pub mod tst_core::io_file
 pub struct tst_core::io_file::DemuxFromFile
 impl tst_core::io_file::DemuxFromFile
 pub fn tst_core::io_file::DemuxFromFile::open(path: impl core::convert::AsRef<std::path::Path>) -> std::io::error::Result<Self>
-pub fn tst_core::io_file::DemuxFromFile::open_with_options(path: impl core::convert::AsRef<std::path::Path>, options: tst_core::mpegts::demux::DemuxerConfig) -> std::io::error::Result<Self>
+pub fn tst_core::io_file::DemuxFromFile::open_with_config(path: impl core::convert::AsRef<std::path::Path>, config: tst_core::mpegts::demux::DemuxerConfig) -> std::io::error::Result<Self>
 impl core::iter::traits::iterator::Iterator for tst_core::io_file::DemuxFromFile
 pub type tst_core::io_file::DemuxFromFile::Item = tst_core::mpegts::demux::event::DemuxEvent
 pub fn tst_core::io_file::DemuxFromFile::next(&mut self) -> core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>
@@ -1293,7 +1293,7 @@ impl core::marker::UnsafeUnpin for tst_core::io_file::DemuxFromFile
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::io_file::DemuxFromFile
 impl core::panic::unwind_safe::UnwindSafe for tst_core::io_file::DemuxFromFile
 pub fn tst_core::io_file::demux_file(path: impl core::convert::AsRef<std::path::Path>) -> std::io::error::Result<alloc::vec::Vec<tst_core::mpegts::demux::event::DemuxEvent>>
-pub fn tst_core::io_file::demux_file_with_options(path: impl core::convert::AsRef<std::path::Path>, options: tst_core::mpegts::demux::DemuxerConfig) -> std::io::error::Result<alloc::vec::Vec<tst_core::mpegts::demux::event::DemuxEvent>>
+pub fn tst_core::io_file::demux_file_with_config(path: impl core::convert::AsRef<std::path::Path>, config: tst_core::mpegts::demux::DemuxerConfig) -> std::io::error::Result<alloc::vec::Vec<tst_core::mpegts::demux::event::DemuxEvent>>
 pub fn tst_core::io_file::write_mux_to_file(mux: &mut tst_core::mpegts::mux::Muxer, path: impl core::convert::AsRef<std::path::Path>) -> std::io::error::Result<()>
 pub mod tst_core::klv
 pub mod tst_core::klv::checksum
@@ -2548,7 +2548,7 @@ pub fn tst_core::mpegts::demux::demuxer::Demuxer::next_event(&mut self) -> core:
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::reset_stats(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stats(&self) -> tst_core::mpegts::demux::DemuxerStats
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
-pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_options(options: tst_core::mpegts::demux::DemuxerConfig) -> Self
+pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_config(config: tst_core::mpegts::demux::DemuxerConfig) -> Self
 impl core::default::Default for tst_core::mpegts::demux::demuxer::Demuxer
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::default() -> Self
 impl core::fmt::Debug for tst_core::mpegts::demux::demuxer::Demuxer
@@ -3880,7 +3880,7 @@ pub fn tst_core::mpegts::demux::demuxer::Demuxer::next_event(&mut self) -> core:
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::reset_stats(&mut self)
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stats(&self) -> tst_core::mpegts::demux::DemuxerStats
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
-pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_options(options: tst_core::mpegts::demux::DemuxerConfig) -> Self
+pub fn tst_core::mpegts::demux::demuxer::Demuxer::with_config(config: tst_core::mpegts::demux::DemuxerConfig) -> Self
 impl core::default::Default for tst_core::mpegts::demux::demuxer::Demuxer
 pub fn tst_core::mpegts::demux::demuxer::Demuxer::default() -> Self
 impl core::fmt::Debug for tst_core::mpegts::demux::demuxer::Demuxer

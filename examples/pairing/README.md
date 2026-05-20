@@ -23,14 +23,14 @@ Cookbook: [§12 — Pair sync-KLV with video AUs by nearest PTS](../../docs/cook
 cargo run -p tst-examples --example pair_klv_pipeline -- path/to/capture.ts
 ```
 
-Diff from §1: replace the hand-rolled matcher with `Pairer::with_options`
+Diff from §1: replace the hand-rolled matcher with `Pairer::with_config`
 (in `Realtime` mode). Pairer takes care of bounded history, typed
 projections (`VideoSample` / `KlvSample`), and telemetry counters. This
 is the production shape — less boilerplate, same result.
 
 Cookbook recipes:
 
-- [§24 — Pair sync-KLV with video AUs via `Pairer::with_options` (Realtime)](../../docs/cookbook.md#24-pair-sync-klv-with-video-aus-via-pairerwith_options-realtime)
+- [§24 — Pair sync-KLV with video AUs via `Pairer::with_config` (Realtime)](../../docs/cookbook.md#24-pair-sync-klv-with-video-aus-via-pairerwith_config-realtime)
 - [§25 — Pair sync-KLV in batch mode (`PairerMode::Buffered`)](../../docs/cookbook.md#25-pair-sync-klv-in-batch-mode-pairermodebuffered)
 - [§26 — Sample-and-hold async KLV via `Pairer::last_before_pts`](../../docs/cookbook.md#26-sample-and-hold-async-klv-via-pairerlast_before_pts)
 - [§27 — EO + IR composition with shared async-KLV](../../docs/cookbook.md#27-eo--ir-composition-with-shared-async-klv)

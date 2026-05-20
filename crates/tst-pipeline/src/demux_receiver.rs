@@ -151,7 +151,7 @@ impl<R: RecvTransport> DemuxReceiver<R> {
         drop(_enter);
         Self {
             ts: Receiver::new(transport, ReceiverConfig::default()),
-            demux: Demuxer::with_options(options),
+            demux: Demuxer::with_config(options),
             byte_sinks: Vec::new(),
             _span: std::panic::AssertUnwindSafe(span),
         }

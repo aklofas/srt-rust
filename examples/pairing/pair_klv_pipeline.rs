@@ -90,7 +90,7 @@ fn main() -> ExitCode {
     opts.tolerance = TOLERANCE;
     opts.max_buffered_klv = MAX_BUFFERED_KLV;
     opts.max_buffered_video = MAX_BUFFERED_KLV;
-    let mut pairer = Pairer::with_options(VIDEO_PID, KLV_PID, opts);
+    let mut pairer = Pairer::with_config(VIDEO_PID, KLV_PID, opts);
 
     while let Some(event) = demux.next_event() {
         for output in pairer.feed(event) {

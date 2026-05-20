@@ -166,7 +166,7 @@ impl DemuxerBuilder {
     }
 
     pub fn build(self) -> crate::mpegts::demux::Demuxer {
-        crate::mpegts::demux::Demuxer::with_options(self.options)
+        crate::mpegts::demux::Demuxer::with_config(self.options)
     }
 }
 

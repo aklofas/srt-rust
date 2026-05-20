@@ -375,7 +375,7 @@ fn split_pmt_with_dropped_continuation_drops_section_in_strict_mode() {
         pkts.len()
     );
 
-    let mut demux = tst_core::mpegts::demux::Demuxer::with_options(DemuxerConfig::default());
+    let mut demux = tst_core::mpegts::demux::Demuxer::with_config(DemuxerConfig::default());
     install_synthetic_pat_pointing_to(&mut demux, pmt_pid);
 
     demux.feed(&pkts[0]).unwrap();
@@ -406,7 +406,7 @@ fn split_pmt_with_dropped_continuation_keeps_section_in_lenient_mode() {
     let pmt_pid: u16 = 0x0FFF;
     let pkts = pack_section_into_ts_packets(pmt_pid, &pmt_bytes, 0x0);
 
-    let mut demux = tst_core::mpegts::demux::Demuxer::with_options({
+    let mut demux = tst_core::mpegts::demux::Demuxer::with_config({
         let mut cfg = DemuxerConfig::default();
         cfg.lenient_psi_reassembly = true;
         cfg

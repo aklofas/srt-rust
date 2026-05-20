@@ -71,7 +71,7 @@ fn treat_as_reclassifies_non_conformant_pid_to_webvtt() {
     let mut opts = DemuxerConfig::default();
     opts.stream_kind_overrides
         .insert(0x200, StreamKind::Subtitle(SubtitleCodec::WebVttInTs));
-    let mut demux = Demuxer::with_options(opts);
+    let mut demux = Demuxer::with_config(opts);
     demux.feed(&bytes).unwrap();
     demux.flush();
     let events = collect_events(&mut demux);
@@ -102,7 +102,7 @@ fn treat_as_with_missing_descriptor_emits_non_conformant_issue() {
     let mut opts = DemuxerConfig::default();
     opts.stream_kind_overrides
         .insert(0x200, StreamKind::Subtitle(SubtitleCodec::WebVttInTs));
-    let mut demux = Demuxer::with_options(opts);
+    let mut demux = Demuxer::with_config(opts);
     demux.feed(&bytes).unwrap();
     demux.flush();
     let events = collect_events(&mut demux);

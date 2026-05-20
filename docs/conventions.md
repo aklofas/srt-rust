@@ -56,11 +56,11 @@ need a formatted reason. New error variants should also prefer the
 |---------|---------|
 | `T::new(...)` | **Primary constructor.** Takes all required arguments. Use this for the canonical way to construct. |
 | `T::from_<format>(...)` | **Parsing constructor.** Decodes from a wire format / encoding (`from_bytes`, `from_str_strict`, `from_u8`, `from_h273`, `from_raw`, `from_pts`, `from_millis`, `from_env`, `from_file`). Always reads from input. |
-| `T::with_<aspect>(...)` | **Variant constructor.** Takes one optional behavioral knob in addition to the required args. Useful when the knob is part of construction (not chainable later). Example: `Demuxer::with_options(options)`. |
+| `T::with_<aspect>(...)` | **Variant constructor.** Takes one optional behavioral knob in addition to the required args. Useful when the knob is part of construction (not chainable later). Example: `Demuxer::with_config(config)`. |
 | `T::default()` | **Zero-arg fallback.** Only when `Default` is implementable and meaningful. |
 | `T::builder(...)` | **Builder factory.** Returns a builder type that produces `T`. Use the builder pattern (see "Builder vs Default" below) when the rule applies. |
 
-**Why:** Mixed patterns across the workspace (`Pairer::with_options(opts)`,
+**Why:** Mixed patterns across the workspace (`Pairer::with_config(config)`,
 `Sender::new(transport, config)`, `H264Sps::from_bytes(...)`,
 `MuxerConfig::builder()`) confuse callers reading imports. Codifying
 the rule lets future code be reviewed against it.
@@ -72,12 +72,12 @@ the rule lets future code be reviewed against it.
 let sender = Sender::new(transport, config);             // primary
 let pairer = Pairer::new(video_pid, klv_pid);            // primary with required args
 let sps = H264Sps::from_bytes(nal_payload)?;             // parsing
-let demuxer = Demuxer::with_options(options);            // variant
+let demuxer = Demuxer::with_config(config);              // variant
 let cfg = MuxerConfig::default();                        // zero-arg fallback
 let bldr = MuxerConfig::builder();                       // builder factory
 
 // Acceptable but exceptional — document why if you use them:
-let pairer = Pairer::with_options(v, k, opts);           // explicit knob still fine
+let pairer = Pairer::with_config(v, k, config);          // explicit knob still fine
 ```
 
 **Per-pattern rationale:**
@@ -96,9 +96,9 @@ let pairer = Pairer::with_options(v, k, opts);           // explicit knob still 
 
 - **`T::with_<aspect>(...)`** is for variant constructors that take one
   meaningful behavioral knob in addition to required args. The aspect
-  noun should be generic enough to read naturally (`with_options`,
-  `with_config`) rather than re-stating the type name
-  (`with_demux_options`). Used sparingly — prefer a builder for ≥2 knobs.
+  noun should be generic enough to read naturally (`with_config`)
+  rather than re-stating the type name (`with_demux_options`). Used
+  sparingly — prefer a builder for ≥2 knobs.
 
 - **`T::default()`** is the zero-arg fallback, ONLY when every field
   has a meaningful zero value. Types that have required args without
@@ -114,7 +114,7 @@ not silently renamed):**
 
 | Site | Convention concern | Disposition |
 |------|---------------------|-------------|
-| `DemuxReceiver::with_demux_options(transport, options)` | Uses over-specific `_demux_options` noun; rule recommends generic `with_options` or `with_config`. | Rename candidate for a future plan — touches the C ABI mirror at `crates/tst-c/src/demux_receiver.rs:170, 664`, so a one-line audit isn't free. |
+| `DemuxReceiver::with_demux_options(transport, options)` | Uses over-specific `_demux_options` noun; rule recommends generic `with_config`. | Rename candidate for a future plan — touches the C ABI mirror at `crates/tst-c/src/demux_receiver.rs:170, 664`, so a one-line audit isn't free. |
 | `SrtTransport::with_max_payload(self, n) -> Self` | Chainable `self -> Self` modifier on an already-constructed value; reads like a constructor by prefix but is a fluent modifier. | Borderline — the rustdoc at `crates/tst-srt/src/transport.rs:31` clarifies the modifier intent. No rename; reviewers should not flag new `with_*` modifiers on existing values, but new constructors should still match the `with_<aspect>` aspect-rule. |
 
 ---

@@ -182,7 +182,7 @@ pub fn tst_pipeline::ext::pairing::Pairer::last_before_pts(video_pid: u16, klv_p
 pub fn tst_pipeline::ext::pairing::Pairer::new(video_pid: u16, klv_pid: u16) -> Self
 pub fn tst_pipeline::ext::pairing::Pairer::reset_stats(&mut self)
 pub fn tst_pipeline::ext::pairing::Pairer::stats(&self) -> tst_pipeline::ext::pairing::PairerStats
-pub fn tst_pipeline::ext::pairing::Pairer::with_options(video_pid: u16, klv_pid: u16, opts: tst_pipeline::ext::pairing::PairerConfig) -> Self
+pub fn tst_pipeline::ext::pairing::Pairer::with_config(video_pid: u16, klv_pid: u16, config: tst_pipeline::ext::pairing::PairerConfig) -> Self
 impl core::marker::Freeze for tst_pipeline::ext::pairing::Pairer
 impl core::marker::Send for tst_pipeline::ext::pairing::Pairer
 impl core::marker::Sync for tst_pipeline::ext::pairing::Pairer

@@ -52,7 +52,7 @@ fn drain_mux(mux: &mut Muxer) -> Vec<u8> {
 }
 
 #[test]
-fn with_options_pairs_sync_klv_with_video() {
+fn with_config_pairs_sync_klv_with_video() {
     let cfg = {
         let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
         prog.add_video(VIDEO_PID, MuxVideoCodec::H264);
@@ -82,7 +82,7 @@ fn with_options_pairs_sync_klv_with_video() {
     opts.tolerance = Duration::from_millis(100); // 0.1 s tolerance
     opts.max_buffered_klv = 16;
     opts.max_buffered_video = 16;
-    let mut pairer = Pairer::with_options(VIDEO_PID, KLV_PID, opts);
+    let mut pairer = Pairer::with_config(VIDEO_PID, KLV_PID, opts);
     let mut paired = 0;
     let mut unpaired_video = 0;
     let mut unpaired_klv = 0;

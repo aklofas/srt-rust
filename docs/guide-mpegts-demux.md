@@ -98,7 +98,7 @@ The complete enum / struct definitions live in
 
 ```text
 Demuxer::new()                                          -> Demuxer
-Demuxer::with_options(options: DemuxerConfig)          -> Demuxer
+Demuxer::with_config(config: DemuxerConfig)            -> Demuxer
 Demuxer::feed(&mut self, bytes: &[u8])                  -> Result<(), DemuxError>
 Demuxer::next_event(&mut self)                          -> Option<DemuxEvent>
 Demuxer::flush(&mut self)                               -> ()
@@ -204,9 +204,9 @@ use std::collections::HashMap;
 
 let mut overrides = HashMap::new();
 overrides.insert(0x1011u16, StreamKind::Video(VideoCodec::H265));
-let mut options = DemuxerConfig::default();
-options.stream_kind_overrides = overrides;
-let _d = Demuxer::with_options(options);
+let mut config = DemuxerConfig::default();
+config.stream_kind_overrides = overrides;
+let _d = Demuxer::with_config(config);
 ```
 
 ## Robustness behaviours
@@ -493,9 +493,9 @@ demuxer's default classification surfaces these PIDs as
 To route them to typed audio, use `DemuxerConfig::treat_as`:
 
 ```rust
-let mut options = DemuxerConfig::default();
-options.treat_as.insert(0x101, StreamKind::Audio(AudioCodec::Mp2));
-let demuxer = Demuxer::with_options(options);
+let mut config = DemuxerConfig::default();
+config.treat_as.insert(0x101, StreamKind::Audio(AudioCodec::Mp2));
+let demuxer = Demuxer::with_config(config);
 ```
 
 The override fires before the PMT-driven classification, so PIDs
@@ -571,10 +571,10 @@ bytes without the disambiguating descriptor:
 ```rust
 use tst_core::mpegts::demux::{Demuxer, DemuxerConfig, StreamKind, SubtitleCodec};
 
-let mut opts = DemuxerConfig::default();
-opts.stream_kind_overrides
+let mut config = DemuxerConfig::default();
+config.stream_kind_overrides
     .insert(0x300, StreamKind::Subtitle(SubtitleCodec::WebVttInTs));
-let mut demux = Demuxer::with_options(opts);
+let mut demux = Demuxer::with_config(config);
 ```
 
 Equivalently, `DemuxerBuilder::treat_as(pid, kind)` is a one-liner

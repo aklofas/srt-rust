@@ -9,7 +9,7 @@
 //! - `stats_recorder` — counter bumping + nonconformant event queueing.
 //! - `strict` (unchanged from Phase 5) — `StrictMode` policy enum.
 //!
-//! Public API (`new`, `with_options`, `feed`, `feed_aligned`,
+//! Public API (`new`, `with_config`, `feed`, `feed_aligned`,
 //! `next_event`, `flush`, `stats`, `reset_stats`, `stream_codec_stats`)
 //! lives here in the coordinator. Implementation helpers are
 //! `pub(super)` and live in the sibling submodules per Decision DB2/DB3.
@@ -143,18 +143,18 @@ pub struct Demuxer {
 
 impl Demuxer {
     pub fn new() -> Self {
-        Self::with_options(DemuxerConfig::default())
+        Self::with_config(DemuxerConfig::default())
     }
 
-    pub fn with_options(options: DemuxerConfig) -> Self {
-        let cap_per_pid = options.pes_cap_per_pid.unwrap_or(DEFAULT_PES_CAP_PER_PID);
-        let cap_total = options.pes_cap_total.unwrap_or(DEFAULT_PES_CAP_TOTAL);
+    pub fn with_config(config: DemuxerConfig) -> Self {
+        let cap_per_pid = config.pes_cap_per_pid.unwrap_or(DEFAULT_PES_CAP_PER_PID);
+        let cap_total = config.pes_cap_total.unwrap_or(DEFAULT_PES_CAP_TOTAL);
         // Seed the PAT PID (0x0000) so the PSI assembler is ready without a
         // separate "first packet" initialisation step.
         let mut psi_assemblers: HashMap<u16, PsiSectionAssembler> = HashMap::new();
         psi_assemblers.insert(0x0000, PsiSectionAssembler::new());
         Self {
-            options,
+            options: config,
             sync_buf: Vec::new(),
             sync_consumed: 0,
             psi_assemblers,
@@ -930,7 +930,7 @@ mod tests {
         options
             .stream_kind_overrides
             .insert(0x300, StreamKind::Audio(AudioCodec::Mp2));
-        let mut demuxer = Demuxer::with_options(options);
+        let mut demuxer = Demuxer::with_config(options);
         demuxer.feed(&buf).unwrap();
         demuxer.flush();
         let mut events = Vec::new();
@@ -985,7 +985,7 @@ mod tests {
         options
             .stream_kind_overrides
             .insert(0x200, StreamKind::Subtitle(DemuxSubtitleCodec::WebVttInTs));
-        let mut demuxer = Demuxer::with_options(options);
+        let mut demuxer = Demuxer::with_config(options);
         demuxer.feed(&buf).unwrap();
         demuxer.flush();
 
@@ -1037,7 +1037,7 @@ mod tests {
         options
             .stream_kind_overrides
             .insert(0x200, StreamKind::Subtitle(DemuxSubtitleCodec::WebVttInTs));
-        let mut demuxer = Demuxer::with_options(options);
+        let mut demuxer = Demuxer::with_config(options);
         demuxer.feed(&buf).unwrap();
         demuxer.flush();
 

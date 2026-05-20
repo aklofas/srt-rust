@@ -9,7 +9,7 @@ use std::time::Duration;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{DemuxEvent, MetadataKind, StreamId, VideoCodec, VideoPayload};
 
-/// Pairer matching mode for [`Pairer::with_options`](super::Pairer::with_options).
+/// Pairer matching mode for [`Pairer::with_config`](super::Pairer::with_config).
 /// `last_before_pts` is past-only by definition and ignores this knob.
 ///
 /// Field-style `Buffered { max_lag }` is unit-explicit (`Duration`
@@ -29,7 +29,7 @@ pub enum PairerMode {
     },
 }
 
-/// Options for [`Pairer::with_options`](super::Pairer::with_options).
+/// Options for [`Pairer::with_config`](super::Pairer::with_config).
 ///
 /// Replaces the pre-Phase-3 5-positional-arg `Pairer::nearest_pts`
 /// constructor. Field-style construction is unit-explicit

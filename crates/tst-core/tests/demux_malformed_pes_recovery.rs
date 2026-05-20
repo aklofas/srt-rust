@@ -203,7 +203,7 @@ fn feed_aligned_lenient_mode_recovers_from_malformed_pes() {
 fn feed_strict_mode_escalates_malformed_pes_to_error() {
     let mut opts = DemuxerConfig::default();
     opts.strict = StrictMode::Full;
-    let mut d = Demuxer::with_options(opts);
+    let mut d = Demuxer::with_config(opts);
     let (bytes, _) = build_stream_with_malformed_pes();
     let err = d
         .feed(&bytes)
@@ -225,7 +225,7 @@ fn feed_strict_mode_escalates_malformed_pes_to_error() {
 fn feed_aligned_strict_mode_escalates_malformed_pes_to_error() {
     let mut opts = DemuxerConfig::default();
     opts.strict = StrictMode::Full;
-    let mut d = Demuxer::with_options(opts);
+    let mut d = Demuxer::with_config(opts);
     let (_, packets) = build_stream_with_malformed_pes();
     let mut last_err: Option<DemuxError> = None;
     for pkt in &packets {

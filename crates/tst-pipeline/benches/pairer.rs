@@ -99,7 +99,7 @@ fn bench_realtime(c: &mut Criterion) {
 
     c.bench_function("pairer_realtime_1000", |b| {
         b.iter(|| {
-            let mut p = Pairer::with_options(VIDEO_PID, KLV_PID, opts.clone());
+            let mut p = Pairer::with_config(VIDEO_PID, KLV_PID, opts.clone());
             for ev in &events {
                 let outputs = p.feed(ev.clone());
                 black_box(outputs);
@@ -136,7 +136,7 @@ fn bench_buffered(c: &mut Criterion) {
 
     c.bench_function("pairer_buffered_1000", |b| {
         b.iter(|| {
-            let mut p = Pairer::with_options(VIDEO_PID, KLV_PID, opts.clone());
+            let mut p = Pairer::with_config(VIDEO_PID, KLV_PID, opts.clone());
             for ev in &events {
                 let outputs = p.feed(ev.clone());
                 black_box(outputs);

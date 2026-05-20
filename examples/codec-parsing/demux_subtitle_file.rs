@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // For non-conformant streams (e.g. WebVTT-shaped bytes on a
     // PID with no VTTC descriptor — encoder bug), use
-    // `Demuxer::with_options(DemuxerConfig { stream_kind_overrides:
+    // `Demuxer::with_config(DemuxerConfig { stream_kind_overrides:
     // <map>, .. })` to force a specific PID to a specific kind.
     let mut demux = Demuxer::new();
 

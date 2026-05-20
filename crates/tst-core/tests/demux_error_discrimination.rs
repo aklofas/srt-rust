@@ -186,7 +186,7 @@ fn malformed_pes_strict_mode_returns_malformed_pes_or_strict_rejection() {
     // Feed to a strict-mode demuxer; must escalate rather than swallow.
     let mut opts = DemuxerConfig::default();
     opts.strict = StrictMode::Full;
-    let mut d = Demuxer::with_options(opts);
+    let mut d = Demuxer::with_config(opts);
 
     let err = d
         .feed(&ts_bytes)

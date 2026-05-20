@@ -80,7 +80,7 @@ fn mp3_on_0xf1_routes_to_audio_via_treat_as() {
     options
         .stream_kind_overrides
         .insert(mp3_pid, StreamKind::Audio(AudioCodec::Mp2));
-    let mut demuxer = Demuxer::with_options(options);
+    let mut demuxer = Demuxer::with_config(options);
     demuxer.feed(&bytes).expect("feed succeeds");
     demuxer.flush();
 

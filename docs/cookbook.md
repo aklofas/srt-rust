@@ -839,7 +839,7 @@ If the encoder declares the linkage via `metadata_descriptor`, the demuxer surfa
 
 Runnable: see [../examples/receiving/demux_to_events.rs](../examples/receiving/demux_to_events.rs) for the file-feed shape; [../examples/pairing/pair_sync_klv.rs](../examples/pairing/pair_sync_klv.rs) is the related sync-KLV sibling.
 
-### 24. Pair sync-KLV with video AUs via `Pairer::with_options` (Realtime)
+### 24. Pair sync-KLV with video AUs via `Pairer::with_config` (Realtime)
 
 The cookbook recipe 12 inline pattern in ~20 lines, expressed through
 the opt-in `tst_pipeline::ext::pairing::Pairer`. Same semantics, with
@@ -864,7 +864,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     opts.tolerance = Duration::from_millis(300);
     opts.max_buffered_klv = 32; // ~1 s history at 30 Hz cadence
     opts.max_buffered_video = 32;
-    let mut pairer = Pairer::with_options(
+    let mut pairer = Pairer::with_config(
         0x100, // video PID (discover from ProgramMap)
         0x102, // KLV PID
         opts,
@@ -901,7 +901,7 @@ opts.mode = PairerMode::Buffered { max_lag: Duration::from_secs(2) };
 opts.tolerance = Duration::from_millis(300);
 opts.max_buffered_klv = 32;
 opts.max_buffered_video = 60; // ≈2 s @ 30 fps
-let mut pairer = Pairer::with_options(0x100, 0x102, opts);
+let mut pairer = Pairer::with_config(0x100, 0x102, opts);
 // feed loop unchanged from recipe 24.
 ```
 

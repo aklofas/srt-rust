@@ -29,16 +29,16 @@ fn drain_events(demuxer: &mut Demuxer, out: &mut Vec<DemuxEvent>) {
 /// (e.g. unrecoverable sync loss) are mapped to
 /// `io::ErrorKind::InvalidData`.
 pub fn demux_file(path: impl AsRef<Path>) -> io::Result<Vec<DemuxEvent>> {
-    demux_file_with_options(path, DemuxerConfig::default())
+    demux_file_with_config(path, DemuxerConfig::default())
 }
 
 /// Like [`demux_file`] but with caller-supplied [`DemuxerConfig`].
-pub fn demux_file_with_options(
+pub fn demux_file_with_config(
     path: impl AsRef<Path>,
-    options: DemuxerConfig,
+    config: DemuxerConfig,
 ) -> io::Result<Vec<DemuxEvent>> {
     let bytes = std::fs::read(path)?;
-    let mut demuxer = Demuxer::with_options(options);
+    let mut demuxer = Demuxer::with_config(config);
     let mut out: Vec<DemuxEvent> = Vec::new();
     demuxer
         .feed(&bytes)
@@ -74,15 +74,15 @@ pub struct DemuxFromFile {
 impl DemuxFromFile {
     /// Open `path` with default [`DemuxerConfig`].
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        Self::open_with_options(path, DemuxerConfig::default())
+        Self::open_with_config(path, DemuxerConfig::default())
     }
 
     /// Open `path` with caller-supplied [`DemuxerConfig`].
-    pub fn open_with_options(path: impl AsRef<Path>, options: DemuxerConfig) -> io::Result<Self> {
+    pub fn open_with_config(path: impl AsRef<Path>, config: DemuxerConfig) -> io::Result<Self> {
         Ok(Self {
             file: File::open(path)?,
             buf: Box::new([0u8; 65536]),
-            demuxer: Demuxer::with_options(options),
+            demuxer: Demuxer::with_config(config),
             pending: std::collections::VecDeque::new(),
             eof: false,
         })

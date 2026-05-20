@@ -204,7 +204,7 @@ Fix: set `SocketConfig::udp_recv_buffer_bytes = Some(12_500_000)` (or higher) fo
 
 ## All `UnpairedVideo`, zero `Paired`
 
-**Symptom:** Using `tst_pipeline::Pairer::with_options` with `PairerMode::Realtime`,
+**Symptom:** Using `tst_pipeline::Pairer::with_config` with `PairerMode::Realtime`,
 the stats report `paired = 0` and `unpaired_video` matches your video event count.
 KLV events are present (PMT shows the stream, demux events arrive).
 
@@ -226,7 +226,7 @@ opts.mode = PairerMode::Buffered { max_lag: Duration::from_secs(2) };
 opts.tolerance = Duration::from_millis(300);
 opts.max_buffered_klv = 32;
 opts.max_buffered_video = 60; // ≈2 s @ 30 fps
-let pairer = Pairer::with_options(video_pid, klv_pid, opts);
+let pairer = Pairer::with_config(video_pid, klv_pid, opts);
 ```
 
 If `paired` is still zero after switching, the cause is not interleave

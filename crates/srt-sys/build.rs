@@ -38,6 +38,31 @@ fn main() {
     println!("cargo:rerun-if-env-changed=SRT_NO_PKG_CONFIG");
     println!("cargo:rerun-if-env-changed=SRT_FORCE_VENDORED");
 
+    // Symbol hygiene for downstream cdylib consumers (validate-1 D6).
+    //
+    // Any crate that depends on srt-sys and builds as a cdylib (today
+    // tst-c; tomorrow srt-jni) should hide libsrt's static-library
+    // exports from its own dynamic export table. The standard Linux
+    // recipe is `-Wl,--exclude-libs=ALL`, which drops every symbol
+    // sourced from a static archive while leaving the cdylib's own
+    // `#[no_mangle]` exports untouched.
+    //
+    // `cargo:rustc-link-arg-cdylib` only flows into cdylib builds, so
+    // staticlib consumers (and downstream Rust rlibs) are unaffected.
+    // macOS / Windows linkers don't accept `--exclude-libs`; their
+    // equivalent hygiene wiring lives in each cdylib's own build.rs
+    // (see crates/tst-c/build.rs for the macOS exported_symbols_list
+    // path and the Windows .def deferral).
+    //
+    // Cargo emits a warning here because srt-sys itself isn't a
+    // cdylib (rust-lang/cargo#9562); the directive still flows to
+    // downstream cdylib crates today. tst-c also emits the same
+    // arg from its own build.rs as a defensive duplicate — passing
+    // `--exclude-libs=ALL` twice is idempotent.
+    if cfg!(target_os = "linux") {
+        println!("cargo:rustc-link-arg-cdylib=-Wl,--exclude-libs=ALL");
+    }
+
     let force_vendored = env::var_os("SRT_FORCE_VENDORED").is_some();
     let no_pkg_config = env::var_os("SRT_NO_PKG_CONFIG").is_some();
     let want_mbedtls = env::var_os("CARGO_FEATURE_MBEDTLS").is_some();

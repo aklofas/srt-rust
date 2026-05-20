@@ -17,6 +17,14 @@ use h264_reader::rbsp::{BitRead, BitReader, ByteReader};
 /// input failed, the function returns `Err`. Inputs that contain no
 /// parameter set NALs (e.g., non-IDR access units, H.265-only slices)
 /// return `Ok(H264ParameterSets::default())`.
+///
+/// After NAL collection, each PPS is cross-validated against the parsed
+/// SPS map: per H.264 V15 §7.4.2.2, a PPS's `seq_parameter_set_id` must
+/// refer to an SPS active in the stream. PPSes whose referenced SPS is
+/// absent from the input emit a `tracing::warn!` and are dropped from
+/// the output. (Strict cross-validation enforcement is not currently
+/// surfaced as a typed error — see [`CodecParseError::DanglingSpsReference`]
+/// for the variant reserved for future strict-mode use.)
 pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H264ParameterSets, CodecParseError> {
     let mut out = H264ParameterSets::default();
     let mut had_param_set = false;
@@ -65,13 +73,38 @@ pub fn parse_parameter_sets(nals: &[NalUnit]) -> Result<H264ParameterSets, Codec
             "every parameter set NAL in the input failed to parse".into(),
         ));
     }
+
+    // Cross-validate PPS→SPS references per H.264 V15 §7.4.2.2: each
+    // PPS's `seq_parameter_set_id` must refer to an SPS present in the
+    // stream. Drop dangling PPSes (matches the partial-success policy
+    // used above for malformed SPS/PPS NALs).
+    let sps_ids = &out.sps_by_id;
+    out.pps_by_id.retain(|pps_id, pps| {
+        if sps_ids.contains_key(&pps.seq_parameter_set_id) {
+            true
+        } else {
+            tracing::warn!(
+                target: "tst_core::codec::h264",
+                pps_id = *pps_id,
+                sps_id = pps.seq_parameter_set_id,
+                "dropping PPS that references SPS id not in input"
+            );
+            false
+        }
+    });
+
     Ok(out)
 }
 
 /// Parse a single PPS RBSP. Same input contract as `parse_sps`. Strict
-/// (returns Err on first failure). Note: this standalone variant cannot
-/// validate that `seq_parameter_set_id` references a real SPS — that
-/// check happens in [`parse_parameter_sets`] which has the SPS context.
+/// (returns Err on first failure). Range-checks both IDs per H.264 V15
+/// §7.4.2.2: `pic_parameter_set_id` ∈ [0, 255], `seq_parameter_set_id`
+/// ∈ [0, 31].
+///
+/// This standalone variant does NOT cross-validate that
+/// `seq_parameter_set_id` references an SPS actually present elsewhere
+/// in the stream — that cross-check is performed by
+/// [`parse_parameter_sets`], which has visibility into both maps.
 pub fn parse_pps(rbsp: &[u8]) -> Result<H264Pps, CodecParseError> {
     if rbsp.is_empty() {
         return Err(CodecParseError::TruncatedRbsp {
@@ -95,17 +128,25 @@ pub fn parse_pps(rbsp: &[u8]) -> Result<H264Pps, CodecParseError> {
     let cabac = bit_reader
         .read_bool("entropy_coding_mode_flag")
         .map_err(|e| CodecParseError::EngineError(format!("{e:?}")))?;
-    // Both IDs are constrained to [0, 255] by the H.264 spec (Table 7-1).
+    // H.264 V15 §7.4.2.2 (PDF p. 109):
+    //   pic_parameter_set_id ∈ [0, 255]
+    //   seq_parameter_set_id ∈ [0, 31] (NOT the same range as pic id)
+    // The PPS ID storage type (u8) enforces the first bound implicitly via
+    // u8::try_from; the SPS ID bound is tighter than u8 and must be
+    // checked explicitly. Accepting sps_id ∈ [32, 255] would silently
+    // create a PPS that can never match any spec-conformant SPS map.
     let pic_parameter_set_id =
         u8::try_from(pps_id).map_err(|_| CodecParseError::ReservedValue {
             field: "pic_parameter_set_id",
             value: pps_id,
         })?;
-    let seq_parameter_set_id =
-        u8::try_from(sps_id).map_err(|_| CodecParseError::ReservedValue {
+    if sps_id > 31 {
+        return Err(CodecParseError::ReservedValue {
             field: "seq_parameter_set_id",
             value: sps_id,
-        })?;
+        });
+    }
+    let seq_parameter_set_id = sps_id as u8;
     Ok(H264Pps {
         pic_parameter_set_id,
         seq_parameter_set_id,

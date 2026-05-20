@@ -247,7 +247,20 @@ fn apply_typed_tag(
     f: &crate::klv::pack::RawField<'_>,
 ) -> Result<(), KlvFieldError> {
     let tag = f.tag;
-    let Some(spec) = lookup(tag as u8) else {
+    // Per MISB ST 0107.3-04 the decoder shall skip unknown LS values
+    // without impacting the decoding of known items. ST 0107.5 §6.3.1
+    // specifies BER-OID tags so the wire-format tag space is unlimited —
+    // multi-byte tags up to u32 already arrive here via
+    // `Iter::local_set`. Narrow only after rejecting tags outside the
+    // typed table's u8 universe; otherwise a future tag 258 (= 0x102,
+    // encoded `0x82 0x02`) would `as u8`-narrow to 2 and silently
+    // collide with Tag 2 (Precision Time Stamp). The sibling ST 0102
+    // decoder uses the same `u8::try_from` gate.
+    let Ok(tag_u8) = u8::try_from(tag) else {
+        record.unknown.push(OwnedRawField::from(f.clone()));
+        return Ok(());
+    };
+    let Some(spec) = lookup(tag_u8) else {
         // Unknown tag — pass through.
         record.unknown.push(OwnedRawField::from(f.clone()));
         return Ok(());

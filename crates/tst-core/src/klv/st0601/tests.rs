@@ -717,3 +717,137 @@ fn tag_59_is_platform_call_sign_utf8_per_spec() {
         "Tag 59 must NOT populate Angle of Attack — that field belongs to Tag 50"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Regression — Validate-1 Phase 2 §A6: ST 0601 high-numbered BER-OID tags
+// must not narrow to u8 and collide with known low-numbered tags.
+//
+// Per MISB ST 0107.3-04, decoders shall preserve unknown LS values without
+// impacting the decoding of known items. Pre-fix the typed-decode site
+// cast the multi-byte BER-OID tag to `u8`, so a future tag 258 (= 0x102,
+// encoded `0x82 0x02`) narrowed to 2 and was treated as Tag 2 (Precision
+// Time Stamp) — silently clobbering the typed `timestamp_us` field.
+// ---------------------------------------------------------------------------
+
+/// Build a strict-decodable ST 0601 LS buffer from a raw body. The body
+/// is wrapped with the ST 0601 UL + outer BER length + a trailing Tag 1
+/// (running-sum 16 checksum) so `decode` accepts it. The caller owns
+/// emitting Tag 2 (timestamp) or omitting it inside `body_before_checksum`
+/// — this helper does not inject either.
+fn wrap_st0601(body_before_checksum: &[u8]) -> Vec<u8> {
+    use crate::klv::checksum::checksum_running_sum_16;
+    use crate::klv::length::write_ber;
+    use crate::klv::universal_label::UniversalLabel;
+    let mut body = Vec::from(body_before_checksum);
+    // Append Tag 1 (checksum) placeholder.
+    body.extend_from_slice(&[0x01, 0x02, 0x00, 0x00]);
+    let mut buf = Vec::new();
+    buf.extend_from_slice(&UniversalLabel::ST_0601_LS.0);
+    let mut len_bytes = [0u8; 9];
+    let n = write_ber(body.len(), &mut len_bytes).unwrap();
+    buf.extend_from_slice(&len_bytes[..n]);
+    let body_offset = buf.len();
+    buf.extend_from_slice(&body);
+    // Checksum spans UL + outer length + body up through the Tag 1
+    // length byte (value bytes 0x00 0x00 placeholder are NOT included).
+    let cksum_value_offset = body_offset + body.len() - 2;
+    let computed = checksum_running_sum_16(&buf[..cksum_value_offset]);
+    buf[cksum_value_offset] = (computed >> 8) as u8;
+    buf[cksum_value_offset + 1] = (computed & 0xFF) as u8;
+    buf
+}
+
+#[test]
+fn future_tag_258_with_8_byte_value_does_not_clobber_timestamp_us() {
+    // BER-OID tag 258 encodes as `0x82, 0x02` (continuation bit on byte 1,
+    // value 0x02 in the low 7 bits of each byte: (2<<7)|2 == 258).
+    // We hand `0x82 0x02` to the iterator's `read_ber_oid` which returns
+    // u32 = 258. Pre-fix `lookup(258 as u8)` returned the Tag 2 spec
+    // (Precision Time Stamp, 8-byte u64). With an 8-byte payload the
+    // length check passed and `record.timestamp_us` was overwritten —
+    // silent corruption of typed metadata by a tag that does not exist in
+    // ST 0601 today.
+    let mut body = Vec::new();
+    // Tag 258 with 8-byte value (would have been mis-decoded as Tag 2):
+    body.extend_from_slice(&[0x82, 0x02, 0x08]);
+    body.extend_from_slice(&[0xAA; 8]);
+    let buf = wrap_st0601(&body);
+
+    let record = decode(&buf).expect("strict decode should succeed");
+
+    assert!(
+        record.timestamp_us.is_none(),
+        "Tag 258 must NOT populate timestamp_us; that slot belongs to Tag 2 only. \
+         Got timestamp_us={:?}",
+        record.timestamp_us,
+    );
+    assert_eq!(
+        record.unknown.len(),
+        1,
+        "Tag 258 (unknown) must be preserved in record.unknown",
+    );
+    assert_eq!(
+        record.unknown[0].tag, 258,
+        "preserved unknown tag must carry the full u32 BER-OID value, not narrowed",
+    );
+    assert_eq!(
+        record.unknown[0].value,
+        vec![0xAA; 8],
+        "preserved unknown tag value bytes must round-trip verbatim",
+    );
+    assert!(
+        record.field_errors.is_empty(),
+        "no field errors expected; unknown tag goes to record.unknown not record.field_errors",
+    );
+}
+
+#[test]
+fn future_tag_300_with_arbitrary_value_preserved_in_unknown() {
+    // BER-OID tag 300 encodes as `0x82, 0x2C` ((2<<7)|0x2C = 300).
+    // Narrowing `300 as u8` yields 0x2C = 44 (not in the typed table
+    // today, so this case wouldn't silently corrupt — but the wrong tag
+    // value would be recorded in `record.unknown`, which is just as bad
+    // for any downstream consumer trying to round-trip).
+    let mut body = Vec::new();
+    body.extend_from_slice(&[0x82, 0x2C, 0x03]);
+    body.extend_from_slice(&[0x11, 0x22, 0x33]);
+    let buf = wrap_st0601(&body);
+
+    let record = decode(&buf).expect("strict decode should succeed");
+
+    assert_eq!(
+        record.unknown.len(),
+        1,
+        "Tag 300 (unknown) must be preserved in record.unknown",
+    );
+    assert_eq!(
+        record.unknown[0].tag, 300,
+        "preserved unknown tag must carry the full u32 BER-OID value (300), not narrowed (44)",
+    );
+    assert_eq!(record.unknown[0].value, vec![0x11, 0x22, 0x33]);
+}
+
+#[test]
+fn known_tag_2_still_decodes_correctly_after_high_tag_fix() {
+    // Regression: ensure single-byte BER-OID tags in [0, 127] still go
+    // through the typed-decode dispatch table. Tag 2 (Precision Time
+    // Stamp) is the canonical example — and the one the high-tag bug
+    // was clobbering.
+    let mut body = Vec::new();
+    body.push(0x02);
+    body.push(0x08);
+    body.extend_from_slice(&0x1234_5678_9ABC_DEF0u64.to_be_bytes());
+    let buf = wrap_st0601(&body);
+
+    let record = decode(&buf).expect("strict decode should succeed");
+
+    assert_eq!(
+        record.timestamp_us,
+        Some(0x1234_5678_9ABC_DEF0),
+        "Tag 2 must round-trip into timestamp_us",
+    );
+    assert!(
+        record.unknown.is_empty(),
+        "Tag 2 is known; nothing should land in record.unknown",
+    );
+}

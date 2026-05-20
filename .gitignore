@@ -35,3 +35,6 @@ Thumbs.db
 
 # Parallel-subagent worktrees (see CLAUDE.md feedback_per_subagent_worktree_for_parallel_code_changes.md)
 /.worktrees/
+
+# Claude Code scratch directory (Agent isolation:"worktree" creates worktrees here)
+/.claude/

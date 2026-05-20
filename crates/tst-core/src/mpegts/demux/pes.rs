@@ -163,17 +163,20 @@ impl Reassembler {
         // is the byte count after the 6-byte fixed prefix, so the total PES
         // length on the wire is `6 + PES_packet_length`. When the buffer
         // holds more bytes than `total`, those extra bytes belong to the
-        // *next* PES on this PID (rare — most PIDs use PUSI for boundaries)
-        // or are stray trailing bytes. The emitted sample MUST be exactly
-        // the first `total` bytes; including the trailing bytes here would
-        // both corrupt the current sample and silently consume the start of
-        // the next one.
+        // *next* PES on this PID or are stray trailing bytes (most PIDs use
+        // PUSI for boundaries, so reaching this branch with residual is the
+        // off-nominal path). The emitted sample MUST be exactly the first
+        // `total` bytes; including the trailing bytes here would both
+        // corrupt the current sample and silently consume the start of the
+        // next one.
         //
-        // Residual handling: we discard `part.buf[total..]` and remove the
-        // per-PID state — best-effort, the next PUSI on this PID re-initializes.
-        // Recovering the residual would require re-priming a fresh `Partial`
-        // without a PUSI signal, which we don't do today (and would also need
-        // a fresh adaptation-field RAI value that isn't available here).
+        // Residual disposition (deliberate, see Validate-1 Sprint 1-3
+        // Codex review Finding #2): we discard `part.buf[total..]` and
+        // remove the per-PID state. Recovering the residual into a fresh
+        // `Partial` would require a PUSI signal AND a fresh adaptation-field
+        // RAI value, neither of which is available at this completion site
+        // — the next PUSI on this PID re-initializes cleanly. The next
+        // PES start, if it landed in the residual, is reacquired then.
         let mut completed_now = None;
         let mut completed_rai = false;
         if let Some(total) = part.declared_total_len {

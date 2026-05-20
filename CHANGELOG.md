@@ -7,7 +7,159 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased] — Validate-1 Phase 2 Sprint 1: Wave A wire-format & UB fixes (docs/validate-1/11-phase-2-plan.md §2.1)
+## [Unreleased] — Validate-1 Phase 2 Sprint 2: Waves B + C demux & mux conformance (docs/validate-1/11-phase-2-plan.md §2.2 + §2.3)
+
+**Sixteen demux-correctness, mux-conformance, and FFI-hardening fixes from the
+Validate-1 Phase 1 audit (Codex + Claude reports at `docs/validate-1/`).**
+Shipped as 20 commits on `main` (`43545ef..2d73294`) on 2026-05-19/20 via
+parallel `superpowers:subagent-driven-development` background controllers
+across 13 isolated git worktrees, with sequential rebase-and-merge to keep
+linear history.
+
+**Fixed (High):**
+
+- **Multi-program PCR global tracking** (commit `43545ef`, B1, Codex TS-TIME-01).
+  Replaced single `last_pcr_27mhz: Option<u64>` field with
+  `last_pcr_by_pid: HashMap<u16, u64>` so each program's PCR PID has its own
+  time base. Multi-program TS no longer produces false `PcrAnomaly` events.
+- **Mux PSI multi-program backpressure** (commit `577abb1`, B2). New
+  `Muxer::psi_packets_due` helper centralises reservation math (was hardcoded
+  `2` in all 4 push paths; correct shape is `1 + programs.len()`).
+  `maybe_emit_psi` now writes `psi_last` for ALL programs on emit.
+- **PUSI pointer_field continuation + N-of-M sync re-acquisition**
+  (commits `07bbed8` + `b2ceab3`, B3+B7 + followup). PSI assembler now
+  honours `pointer_field` continuation bytes (prior section completed first,
+  then new section started). Sync re-acquisition uses ffmpeg's 5-of-7
+  188-byte-stride validation, no longer false-syncs on isolated `0x47` bytes.
+  Mid-stream-join scenario regression-test added in followup.
+- **DVB-sub data_identifier strict mode** (commit `ac4db93`, C10,
+  Codex 02 #6). Strict mode rejects `data_identifier != 0x20`; lenient
+  emits sample + `NonConformantIssue::DvbSubDataIdentifier { observed }`.
+- **SRT payload size threading** (commit `a0d7d24`, C1, Codex SRT-01).
+  New `Socket::payload_limit() -> usize` returns post-handshake
+  `SRTO_PAYLOADSIZE`. `SrtTransport::new` queries it instead of hardcoding
+  `1316`. URL `payloadsize=1456` now actually takes effect.
+- **OverflowPolicy::Reject surface** (commit `3be1096`, C2, Codex PIPE-01).
+  `GapBufferError::Full` now maps to `TransportError::Backpressure("gap buffer full")`
+  instead of silent `let _ = gap.enqueue(...)`. Counter-test guards
+  `DropOldest` continues silent-evict per its contract.
+- **PES header validation + PTS anomaly + subtitle alignment**
+  (commit `1cc0653`, B4+B5+B6). `NonConformantIssue::{PtsAnomaly,
+  MissingRequiredPts, PesHeaderMalformed, SubtitleAlignmentMissing}`
+  variants + `PesHeaderMalformedKind` enum. PTS no longer poisons
+  `last_pts_by_pid` when absent. Forbidden `PTS_DTS_flags = 0b01` rejected.
+  DVB-sub/teletext PES missing `data_alignment_indicator` surfaces issue.
+- **PCR-only adaptation-field injection** (commit `a2445f8`, C3,
+  Codex TS-TIME-02). New `Muxer::maybe_emit_pcr_only` injects PCR-only
+  TS packets on the PCR PID when no payload arrives within
+  `pcr_interval_ms`. Honours H.222.0 Annex D 100ms cap when video/audio
+  frame intervals exceed it. CC of PCR-only packets does NOT increment.
+- **PesPtsField::PtsAndDts + Annex-B AU validation** (commit `8938ca7`,
+  C4+C13). New `Muxer::push_video_to_with_dts(handle, nal, pts, dts, key_frame)`
+  API emits `PTS_DTS_flags = 0b11` + correct 5-byte PTS + DTS with marker
+  prefixes (`0b0011` PTS, `0b0001` DTS). B-frame reordered video now muxes
+  correctly. `validate_annex_b` rewritten as structural NAL walker
+  (rejects empty NALs + malformed start-code structure).
+- **AC-3 mandatory audio descriptor + syncframe parser** (commit `0ead2f9`,
+  C6+C12, Codex AUDIO-01/04). New `codec::ac3` module + `Ac3SyncInfo`
+  struct + `parse_syncframe` API per A/52 §5.4.1. Muxer auto-emits
+  `ac3_audio_stream_descriptor` (tag 0x81) for `AudioCodec::Ac3`. Demuxer
+  emits `NonConformantIssue::Ac3SyncMissing` when
+  `data_alignment_indicator=1` but payload doesn't start at `0x0B77`.
+- **AAC PCE channel layout + LATM/LOAS sync** (commit `c9835b9`, C7+C11,
+  Codex AUDIO-02/03). New `AacChannelLayout::{PceDefined, Channels(u8)}`
+  enum — `decode_channels(0)` returns `PceDefined` instead of error.
+  Iterator no longer terminates on PCE-prefixed frames. New
+  `codec::aac::latm` module validates LOAS syncword
+  (`0x2B7` 11-bit pattern) + audioMuxLengthBytes per ISO/IEC 14496-3 §1.7.
+- **AV1 binding-conformant mode + AV01 reg first** (commits `5394c00`
+  + `78d9b8e` + `2d73294`, C8+C9). New `Av1CarriageMode::{Mpeg2TsBinding,
+  InteropRawObu}` enum, default `Mpeg2TsBinding`. Mux emits
+  `stream_id=0xBD` + `ts_open_bitstream_unit` framing with spec-correct
+  3-byte `[0x00, 0x00, 0x01]` start code + emulation prevention bytes
+  (escape rule covers `b ∈ {0x00, 0x01, 0x02, 0x03}` after `0x00 0x00`).
+  Demux unwraps binding bytes + surfaces `Av1WrongStreamId` /
+  `Av1MissingTsObuFraming` diagnostics. PMT descriptor cache reorders
+  caller-supplied AV01 registration descriptor to position 0.
+
+**Fixed (Medium):**
+
+- **AV1 implicit color_range bit** (commit `dd42c33`, B11). `ColorInfo`
+  populated unconditionally on well-formed sequence headers — the
+  `color_range` wire bit was being read but discarded when
+  `color_description_present_flag=0`.
+- **NAL/OBU header validation + AV1 uvlc cursor fix** (commit `5d47391`,
+  B9+B10). `NonConformantIssue::{NalHeader, Av1ObuHeader}` variants +
+  `NalHeaderKind` + `Av1ObuHeaderKind` enums. H.264/265/266 `forbidden_zero_bit`,
+  H.265/266 `temporal_id_plus1!=0`, H.266 `reserved_zero_bit` and
+  `layer_id ∈ 0..=55` constraints enforced. H.266 `ReservedBit` and
+  `LayerIdOutOfRange { id > 55 }` NALs unconditionally dropped per spec
+  mandate. AV1 `uvlc()` now consumes the trailing 1-bit marker even on
+  the 32-leading-zeros sentinel path.
+- **PAT cleanup + PCR field validation** (commit `7752ec8`, B8+B12).
+  On PAT change, all per-PID state (cc_by_pid, last_pts_by_pid,
+  last_pcr_by_pid, reassembly state, stream_kind_by_pid, pid_to_program,
+  PSI assemblers) cleared for removed programs' PIDs. PCR validation:
+  reserved 6 bits + extension ≤ 299 per H.222.0 §2.4.3.5.
+  `NonConformantIssue::PcrMalformed { kind }` + `PcrMalformedKind` enum.
+
+**Fixed (Medium, breaking — pre-1.0 per `feedback_break_freely_prerelease.md`):**
+
+- **Descriptor builders return Result** (commit `f88f036`, C5,
+  Codex 02 #5). `descriptors::{registration, user_private,
+  user_private_with_tag, component}` now return
+  `Result<Vec<u8>, DescriptorError>` instead of silently truncating via
+  `body_len as u8`. `DescriptorError::TooLarge { tag, len, max }`
+  variant added. `registration()` body cap corrected 251→255 (additional
+  cap 247→251) per spec H.222.0 §2.6. 10 caller sites updated in
+  `tst-core`, examples, docs.
+
+**Public API changes (pre-1.0, recorded — see `crates/tst-core/public-api.txt`):**
+
+- New `NonConformantIssue` variants (12 total across the sprint).
+- New `tst-core` modules: `codec::ac3` (with `Ac3SyncInfo` + `parse_syncframe`),
+  `codec::aac::latm` (with `parse_latm` + `LatmFramingKind`).
+- New `tst-core` enums: `AacChannelLayout`, `PesHeaderMalformedKind`,
+  `PcrMalformedKind`, `NalHeaderKind`, `Av1ObuHeaderKind`,
+  `Av1CarriageMode`, `DescriptorError` (and its `TooLarge` variant).
+- New `MuxerConfig::av1_carriage` + `DemuxerConfig::av1_carriage` config
+  fields with corresponding builder setters.
+- New `Muxer::push_video_to_with_dts` + `MuxSender::send_video_to_with_dts`
+  methods for B-frame-reordered video.
+- `Socket::payload_limit() -> usize` exposed on `tst-srt`.
+- `AdtsFrame.channels: u8` field renamed to
+  `AdtsFrame.channel_layout: AacChannelLayout` with `.channels() -> Option<u8>`
+  accessor.
+
+**Infrastructure / CI:**
+
+- `#[non_exhaustive]` BASELINE bumped 114 → 131 across the sprint
+  (`.github/workflows/ci.yml`). 9 new `#[non_exhaustive]` types contributed:
+  `PesHeaderMalformedKind`, `PcrMalformedKind`, `NalHeaderKind`,
+  `Av1ObuHeaderKind`, `AacChannelLayout`, `LatmFramingKind`,
+  `Av1CarriageMode`, `Ac3SyncInfo`, `DvbSubStripResult`. The remaining
+  +8 are comment/rustdoc mentions counted by `rg -c` per
+  `feedback_baseline_count_projection_undercount.md`.
+- New `.gitignore` entry `/.worktrees/` (commit `145c46b`) enables
+  parallel-subagent worktree isolation per
+  `feedback_per_subagent_worktree_for_parallel_code_changes.md`.
+- C ABI variant codes 21-31 assigned to new `TstNonConformantCode`
+  entries; `tstrans.h` regenerated.
+
+**Sprint 2 execution shape:** Phase 1 (5 parallel worktrees) → Phase 2
+(4 parallel) → Phase 3 (4 parallel) → 2 follow-up fixes (B3+B7 mid-stream-join
+bug + C8+C9 wire-format spec-conformance fix in 2 commits). Per-item
+two-stage review (spec compliance + code quality) before merge; 4 items
+landed APPROVED_WITH_NOTES with minor polish deferred; 2 items required
+implementer-iteration fix cycles (B3+B7 critical bug, C8+C9 wire format).
+
+Closeout memory: `project_validate_1_sprint_2_shipped.md`.
+**Sprints 3-5 (Waves D/E/F/G/H/I) remain pending** — see
+`docs/validate-1/11-phase-2-plan.md` for the per-wave dispositions.
+
+---
+
+## [Previous-Unreleased] — Validate-1 Phase 2 Sprint 1: Wave A wire-format & UB fixes (docs/validate-1/11-phase-2-plan.md §2.1)
 
 **Eight wire-format / UB / parser-correctness fixes from the Validate-1
 Phase 1 audit (20 Claude slices + 8 Codex reports at `docs/validate-1/`).**

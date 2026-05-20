@@ -473,8 +473,7 @@ fn clean_reconnect_drops_first_post_reconnect_packet() {
                 saw_reconnect = true;
             }
             Ok(Some(DemuxEvent::NonConformant {
-                issue:
-                    tst_core::mpegts::demux::NonConformantIssue::TransportErrorPacket { pid },
+                issue: tst_core::mpegts::demux::NonConformantIssue::TransportErrorPacket { pid },
                 ..
             })) => match pid {
                 0x100 => phase1_count += 1,

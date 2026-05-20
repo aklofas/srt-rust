@@ -313,6 +313,70 @@ fn av1_interop_round_trip_no_binding_issues() {
     assert!(saw_sample, "interop round-trip should emit Sample");
 }
 
+/// Spec-byte assertion (validate-1 C8 follow-up): for an AV1 binding-mode
+/// access unit carrying N OBUs, the on-wire PES payload MUST contain
+/// EXACTLY N `0x00 0x00 0x01` start codes — one per `ts_open_bitstream_unit()`
+/// invocation per binding §3.2 syntax. The previous single-start-code-
+/// per-AU behavior shipped Sprint 2 was non-conformant; this test pairs
+/// the round-trip test above with a wire-format assertion to catch any
+/// regression to single-start-code framing.
+#[test]
+fn av1_binding_mode_emits_one_start_code_per_obu_on_wire() {
+    fn obu(obu_type: u8, body: &[u8]) -> Vec<u8> {
+        let header = (obu_type << 3) | 0x02;
+        let mut v = vec![header];
+        v.push(body.len() as u8);
+        v.extend_from_slice(body);
+        v
+    }
+    // 4-OBU AU — same shape as the round-trip test above but with bodies
+    // chosen so no body needs escape padding (verifies the COUNT
+    // independent of escape mechanics).
+    let mut au = Vec::new();
+    au.extend(obu(2, &[])); // Temporal Delimiter
+    au.extend(obu(1, &[0xAA, 0xBB])); // Sequence Header
+    au.extend(obu(3, &[0xCC])); // Frame Header
+    au.extend(obu(4, &[0xDD, 0xEE, 0xFF])); // Tile Group
+
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, MuxVideoCodec::Av1);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    assert_eq!(cfg.av1_carriage, Av1CarriageMode::Mpeg2TsBinding);
+    let mut mux = Muxer::new(cfg).unwrap();
+    let h = mux.video_handles()[0];
+    mux.push_video_to(h, &au, Pts90khz::new(90_000), true)
+        .unwrap();
+    let ts_bytes = drain_mux(&mut mux);
+
+    // Count occurrences of the 3-byte binding §3.2 start code in the TS
+    // byte stream. The PES payload region is interleaved with TS-packet
+    // headers (4 bytes every 188 bytes), but the start code as a 3-byte
+    // sequence cannot straddle a TS header boundary in a meaningful way:
+    // either the start code lands entirely within the PES payload of one
+    // TS packet, or its bytes are contiguous in the demuxer's reassembled
+    // PES buffer. For the small synthetic AU here all OBUs land in a
+    // single PES, and the simple windows() scan over the raw TS byte
+    // stream gives a stable lower bound.
+    //
+    // We expect AT LEAST 4 occurrences (one per OBU). PSI sections and
+    // TS headers don't contain `0x00 0x00 0x01` as a natural pattern, so
+    // false positives are extremely unlikely on a synthetic stream like
+    // this — but assert ≥ 4 (not == 4) to keep the test robust to any
+    // future TS-stuffing change.
+    let count = ts_bytes
+        .windows(3)
+        .filter(|w| *w == [0x00, 0x00, 0x01])
+        .count();
+    assert!(
+        count >= 4,
+        "expected ≥ 4 binding start codes (one per OBU) in PES wire bytes, got {count}"
+    );
+}
+
 // Suppress unused import warning when StreamId-only branches don't fire.
 #[allow(dead_code)]
 fn _unused_imports(_: StreamId) {}

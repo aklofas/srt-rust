@@ -347,39 +347,76 @@ pub(crate) enum Av1BindingUnwrap {
 
 /// Unwrap AV1-binding `ts_open_bitstream_unit()` framing from a PES payload.
 ///
-/// Per AV1-in-MPEG-2-TS binding §3.2:
+/// Per AV1-in-MPEG-2-TS binding §3.2 the on-wire PES payload is a
+/// sequence of `ts_open_bitstream_unit()` invocations, one per OBU:
+///
+/// ```text
+/// [0x00 0x00 0x01] [escape(OBU1)] [0x00 0x00 0x01] [escape(OBU2)] …
+/// ```
+///
 /// - Each OBU is prefixed with the 3-byte sequence `0x00 0x00 0x01`
 ///   (`obu_start_code` is `uimsbf(24)` with value `0x000001`).
-/// - Inside the body, any sequence `0x00 0x00 0x0X` with `X ∈ {0x00, 0x01,
-///   0x02, 0x03}` has had a `0x03` emulation-prevention byte inserted
-///   between the second `0x00` and the `0x0X`; the unwrap strips those.
-///   (Including the `X == 0x03` case is required: the decoder consumes
-///   every `0x00 0x00 0x03` triple as an escape, so an OBU body byte
-///   `0x03` after `0x00 0x00` was wired as `0x00 0x00 0x03 0x03` by the
-///   encoder.)
+/// - Inside each unit body, any sequence `0x00 0x00 0x0X` with
+///   `X ∈ {0x00, 0x01, 0x02, 0x03}` has had a `0x03` emulation-prevention
+///   byte inserted between the second `0x00` and the `0x0X`; the unwrap
+///   strips those. (Including the `X == 0x03` case is required: the
+///   decoder consumes every `0x00 0x00 0x03` triple as an escape, so an
+///   OBU body byte `0x03` after `0x00 0x00` was wired as
+///   `0x00 0x00 0x03 0x03` by the encoder.)
+/// - The emulation-prevention rule makes start codes uniquely detectable
+///   on the wire: a real OBU body byte `0x01` following `0x00 0x00`
+///   would have been escaped to `0x00 0x00 0x03 0x01` by the encoder,
+///   so when we see an UN-escaped `0x00 0x00 0x01` past the first start
+///   code it can only be a NEW OBU boundary.
 ///
-/// On a malformed input (start code missing, truncated escape) the unwrap
-/// returns [`Av1BindingUnwrap::MissingFraming`]; the demuxer treats that
-/// as a non-conformance signal and falls back to raw-OBU parsing in
-/// lenient mode.
+/// Returns the concatenated unescaped low-overhead OBU bytestream — ready
+/// to feed to [`split_obus`]. Each `escape(OBU_n)` is reversed independently
+/// (zero-run state resets at each start code boundary) and the recovered
+/// OBU bytes are appended back-to-back.
+///
+/// On a malformed input (start code missing) the unwrap returns
+/// [`Av1BindingUnwrap::MissingFraming`]; the demuxer treats that as a
+/// non-conformance signal and falls back to raw-OBU parsing in lenient
+/// mode. A truncated escape near end-of-payload is tolerated by emitting
+/// the trailing bytes verbatim (lenient stance — matches `split_obus`).
 pub(crate) fn unwrap_av1_binding(payload: &[u8]) -> Av1BindingUnwrap {
     // Binding §3.2 start code is 3 bytes; anything shorter can't carry it.
     if payload.len() < 3 || payload[0..3] != [0x00, 0x00, 0x01] {
         return Av1BindingUnwrap::MissingFraming;
     }
-    // Strip the 3-byte start-code prefix and walk the body, removing
-    // emulation-prevention 0x03 bytes that follow a run of two 0x00s
-    // when the next byte after the 0x03 is ≤ 0x03 (matches the muxer's
-    // injection rule in `wrap_av1_obus_binding`). The `<= 0x03` upper
-    // bound is required: when an OBU body contains a literal `0x03`
-    // after `0x00 0x00`, the encoder wired `0x00 0x00 0x03 0x03` so the
-    // decoder consumes the first 0x03 as escape and emits the second 0x03
-    // as a body byte.
+    // Walk the body byte-by-byte, tracking the trailing-zero count to
+    // disambiguate three on-wire patterns:
+    //   (1) `0x00 0x00 0x01` — a NEW start code (next OBU). Pop the two
+    //       trailing zeros we just appended to `out` (they were the
+    //       start-code prefix, not body bytes) and continue into the
+    //       next unit's body.
+    //   (2) `0x00 0x00 0x03 X` with `X ≤ 0x03` — emulation-prevention
+    //       escape. Drop the 0x03; the 0x00 0x00 are real body bytes;
+    //       reset the zero-run so a subsequent 0x00 starts a fresh run.
+    //   (3) anything else — body byte; push verbatim.
+    //
+    // The mux guarantees (1) and (2) are mutually exclusive on
+    // conformant input: a literal body 0x01 after 0x00 0x00 is wired as
+    // (2) with X=0x01; a literal body 0x03 after 0x00 0x00 is wired as
+    // (2) with X=0x03. So an un-escaped 0x00 0x00 0x01 is ALWAYS a start
+    // code, never a body sequence.
     let mut out = Vec::with_capacity(payload.len().saturating_sub(3));
     let mut zero_run = 0u8;
     let mut i = 3usize;
     while i < payload.len() {
         let b = payload[i];
+        if zero_run >= 2 && b == 0x01 {
+            // New start code. The two 0x00 bytes immediately preceding
+            // this 0x01 in `out` were the start-code prefix, not body
+            // bytes — truncate them off. (`out.len() >= 2` is guaranteed
+            // because zero_run >= 2 implies we pushed at least two
+            // 0x00s into `out` since the last reset.)
+            let new_len = out.len() - 2;
+            out.truncate(new_len);
+            zero_run = 0;
+            i += 1;
+            continue;
+        }
         if zero_run >= 2 && b == 0x03 && i + 1 < payload.len() && payload[i + 1] <= 0x03 {
             // Drop the emulation-prevention byte; reset zero_run so the
             // next 0x00 starts a fresh run.

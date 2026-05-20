@@ -1089,16 +1089,26 @@ fn av1_default_uses_binding_mode_with_stream_id_bd_and_obu_framing() {
     assert_eq!(stream_id, 0xBD, "binding §3.4 mandates stream_id=0xBD");
     // §3.2 — PES payload MUST begin with the 3-byte ts_open_bitstream_unit
     // start code 0x00 0x00 0x01 (obu_start_code is uimsbf(24) = 0x000001
-    // per the binding syntax table).
+    // per the binding syntax table). The production is applied ONCE PER
+    // OBU, so 2 OBUs → 2 start codes (validate-1 C8 follow-up).
     assert_eq!(
         &pes_payload[..3],
         &[0x00, 0x00, 0x01],
         "binding §3.2 mandates ts_open_bitstream_unit start code 0x000001"
     );
-    // Body bytes (after the 3-byte start code) recover the OBU input.
-    // No emulation-prevention escapes needed here — none of the input
-    // bytes produce a forbidden 0x00 0x00 0x0X (X<=3) sequence.
-    assert_eq!(&pes_payload[3..3 + obu_payload.len()], &obu_payload[..]);
+    // Expected on-wire layout: start code + OBU1 + start code + OBU2.
+    // Neither OBU body needs emulation-prevention escapes.
+    let expected: &[u8] = &[
+        0x00, 0x00, 0x01, // start code 1
+        0x12, 0x00, // OBU1: TD header + size=0
+        0x00, 0x00, 0x01, // start code 2
+        0x0A, 0x00, // OBU2: SeqHeader-like header + size=0
+    ];
+    assert_eq!(
+        &pes_payload[..expected.len()],
+        expected,
+        "binding §3.2 emits one start code per OBU"
+    );
 }
 
 #[test]
@@ -1135,10 +1145,9 @@ fn av1_interop_mode_preserves_existing_carriage() {
 
 #[test]
 fn av1_binding_mode_inserts_emulation_prevention_bytes() {
-    // wrap_av1_obus_binding must insert 0x03 after a 0x00 0x00 run when
-    // the next byte is ≤ 0x03. Use an OBU payload containing 0x00 0x00 0x01
-    // — that 3-byte sequence IS the binding start code and MUST
-    // be escaped to 0x00 0x00 0x03 0x01 on the wire.
+    // Per-OBU emulation prevention (validate-1 C8 follow-up): a single OBU
+    // whose body contains 0x00 0x00 0x01 MUST have a 0x03 inserted to
+    // prevent the body bytes from being misread as a NEW start code.
     let cfg = MuxerConfig::default();
     // Default config is single H.264 program, no AV1. Build a custom AV1 cfg.
     let cfg = {
@@ -1151,7 +1160,14 @@ fn av1_binding_mode_inserts_emulation_prevention_bytes() {
         b.build().unwrap()
     };
     let mut m = Muxer::new(cfg).unwrap();
-    let obu_payload = vec![0xFFu8, 0x00, 0x00, 0x01, 0xAA];
+    // One AV1 low-overhead OBU: Frame Header (obu_type=3), extension_flag=0,
+    // has_size_field=1, reserved=0 → header byte `(3 << 3) | 0b010 = 0x1A`.
+    // Body deliberately contains 0x00 0x00 0x01 to exercise the escape rule.
+    let obu_payload = vec![
+        0x1A, // OBU header: obu_type=3 (Frame Header), has_size_field=1
+        0x04, // LEB128 size = 4
+        0x00, 0x00, 0x01, 0xAA, // body: triggers emulation prevention
+    ];
     m.push_video_to(
         VideoStreamHandle::pack(0, 0),
         &obu_payload,
@@ -1165,12 +1181,13 @@ fn av1_binding_mode_inserts_emulation_prevention_bytes() {
     let (_, pes_payload) = reassemble_pes_stream_id_and_payload(&buf, n, 0x101);
 
     // Expected on the wire:
-    //   start code  : 00 00 01           (3-byte obu_start_code per §3.2)
-    //   body byte 0 : FF
-    //   body bytes  : 00 00 03 01 AA     (0x03 inserted between 00 00 and 01)
+    //   start code   : 00 00 01           (3-byte obu_start_code per §3.2)
+    //   OBU header   : 1A
+    //   LEB128 size  : 04
+    //   body w/escape: 00 00 03 01 AA     (0x03 inserted between 00 00 and 01)
     let expected: &[u8] = &[
         0x00, 0x00, 0x01, // ts_open_bitstream_unit start code (3 bytes)
-        0xFF, 0x00, 0x00, 0x03, 0x01, 0xAA,
+        0x1A, 0x04, 0x00, 0x00, 0x03, 0x01, 0xAA,
     ];
     assert_eq!(
         &pes_payload[..expected.len()],

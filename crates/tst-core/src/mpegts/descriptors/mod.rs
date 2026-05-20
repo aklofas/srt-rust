@@ -1,7 +1,18 @@
 //! Builders for MPEG-TS PMT per-stream descriptor TLVs.
 //!
-//! Each builder returns a `Vec<u8>` containing one complete descriptor
-//! (`descriptor_tag` + `descriptor_length` + body). Hand the result to
+//! Each builder produces one complete descriptor (`descriptor_tag` +
+//! `descriptor_length` + body). Two return-type families exist:
+//!
+//! - **Fixed-shape builders** return `Vec<u8>` infallibly — the body
+//!   size is bounded by the call signature (e.g. [`stream_identifier`],
+//!   [`format_identifier_av01`], [`iso_639_language`], [`metadata_klva`]).
+//! - **Caller-sized builders** return `Result<Vec<u8>, DescriptorError>`
+//!   because the body can overflow the 8-bit `descriptor_length` field
+//!   (H.222.0 §2.6: max 255 bytes) — [`registration`], [`user_private`],
+//!   [`user_private_with_tag`], [`component`],
+//!   [`subtitling_descriptor_multi`], [`teletext_descriptor_multi`].
+//!
+//! Hand the result (unwrap or `?`) to
 //! [`crate::mpegts::mux::MuxerProgramConfigBuilder::stream_descriptors_for_video`]
 //! / `_for_klv` / `_for_audio` to splice it into the per-stream
 //! descriptor loop emitted in PMT.

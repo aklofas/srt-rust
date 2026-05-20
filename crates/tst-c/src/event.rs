@@ -88,7 +88,7 @@ pub enum TstDiscontinuityKindTag {
 }
 
 // ------------------------------------------------------------------
-// Non-conformant-issue codes (23 variants)
+// Non-conformant-issue codes (27 variants)
 // ------------------------------------------------------------------
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::NonConformantIssue`'s
@@ -121,6 +121,24 @@ pub enum TstNonConformantCode {
     /// exactly `0x20`. Reuses `table_id` field as the observed byte carrier
     /// (mirroring `SubtitleDescriptorMalformed`'s reuse).
     DvbSubDataIdentifier = 20,
+    /// PTS backward jump on an elementary stream PID (validate-1 B4).
+    /// `pcr_delta` field carries the 90 kHz tick delta (re-used from
+    /// PcrAnomaly; PTS and PCR anomalies never co-occur for a single
+    /// event, so the storage is shared without ambiguity).
+    PtsAnomaly = 21,
+    /// PES on a PTS-required stream type (audio / video) arrived without
+    /// one (validate-1 B4). `pid` carries the stream PID.
+    MissingRequiredPts = 22,
+    /// PES header structural violation (validate-1 B5). Re-uses the
+    /// `table_id` field as the [`tst_core::mpegts::demux::PesHeaderMalformedKind`]
+    /// discriminator (0=ForbiddenPtsDtsFlags, 1=InvalidMarkerBits,
+    /// 2=InvalidPtsPrefix, 3=InvalidDtsPrefix, 4=InvalidPtsDtsMarkerBits).
+    PesHeaderMalformed = 23,
+    /// DVB subtitle / teletext PES arrived with
+    /// `data_alignment_indicator = 0` (validate-1 B6). `pid` carries the
+    /// stream PID.
+    SubtitleAlignmentMissing = 24,
+    // Code 25 reserved for B8+B12 (PcrMalformed).
     /// H.264 / H.265 / H.266 NAL header constraint violation
     /// (forbidden_zero_bit / reserved bit / temporal_id_plus1 / layer_id).
     /// `codec` byte surfaces on `table_id` (reusing the existing carrier;
@@ -933,6 +951,38 @@ fn fill_nonconformant(
             arena.detail_buf.extend_from_slice(reason.as_bytes());
             arena.detail_buf.push(0); // NUL terminator
             body.detail = arena.detail_buf.as_ptr() as *const c_char;
+        }
+        NonConformantIssue::PtsAnomaly { delta } => {
+            // B4 — PTS delta in 90 kHz ticks. Re-uses `pcr_delta` field;
+            // the issue_code disambiguates the unit (27 MHz for PcrAnomaly
+            // vs 90 kHz for PtsAnomaly).
+            body.issue_code = TstNonConformantCode::PtsAnomaly as c_int;
+            body.pcr_delta = *delta;
+        }
+        NonConformantIssue::MissingRequiredPts { pid } => {
+            body.issue_code = TstNonConformantCode::MissingRequiredPts as c_int;
+            body.pid = *pid;
+        }
+        NonConformantIssue::PesHeaderMalformed { pid, kind } => {
+            use tst_core::mpegts::demux::PesHeaderMalformedKind;
+            body.issue_code = TstNonConformantCode::PesHeaderMalformed as c_int;
+            body.pid = *pid;
+            // Re-use `table_id` field as the kind discriminator. Match
+            // values per the docstring on TstNonConformantCode::PesHeaderMalformed.
+            body.table_id = match kind {
+                PesHeaderMalformedKind::ForbiddenPtsDtsFlags => 0,
+                PesHeaderMalformedKind::InvalidMarkerBits => 1,
+                PesHeaderMalformedKind::InvalidPtsPrefix => 2,
+                PesHeaderMalformedKind::InvalidDtsPrefix => 3,
+                PesHeaderMalformedKind::InvalidPtsDtsMarkerBits => 4,
+                // `PesHeaderMalformedKind` is #[non_exhaustive]. Future
+                // variants surface as 0xFF until the C mapping is widened.
+                _ => 0xFF,
+            };
+        }
+        NonConformantIssue::SubtitleAlignmentMissing { pid } => {
+            body.issue_code = TstNonConformantCode::SubtitleAlignmentMissing as c_int;
+            body.pid = *pid;
         }
         NonConformantIssue::NalHeader { codec, kind } => {
             use tst_core::mpegts::demux::{NalHeaderKind, VideoCodec};

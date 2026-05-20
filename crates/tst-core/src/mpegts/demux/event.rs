@@ -448,6 +448,45 @@ pub enum NonConformantIssue {
     /// the issue propagates as a `DemuxError::StrictRejection`.
     DvbSubDataIdentifier { observed: u8 },
 
+    /// PTS anomaly distinct from PCR anomaly (validate-1 B4). Per ITU-T
+    /// H.222.0 V9 §2.4.3.6 the PTS clock is per-PES and must be
+    /// monotonically non-decreasing on a given elementary stream PID
+    /// (modulo the 33-bit wrap). A backward jump means either an
+    /// upstream re-mux mishap, a non-conformant encoder, or packet
+    /// drops between PES boundaries.
+    ///
+    /// `delta` is the signed difference in **90 kHz ticks** between the
+    /// new PTS and the previously observed PTS on the same PID
+    /// (computed via [`pts_diff_33bit`](crate::mpegts::common::pts_diff_33bit)).
+    /// Convert to seconds by dividing by 90_000.
+    ///
+    /// Distinct from [`NonConformantIssue::PcrAnomaly`] — the PCR
+    /// anomaly uses 27 MHz ticks and lives on the program's PCR PID;
+    /// this PTS anomaly uses 90 kHz ticks and lives on the elementary
+    /// stream PID.
+    PtsAnomaly { delta: i64 },
+
+    /// A PES on a stream type that requires PTS (audio or video per
+    /// H.222.0 V9 §2.7.4) arrived without one. The demuxer cannot
+    /// timestamp the sample; lenient mode emits the sample with PTS=0
+    /// and surfaces this issue. Strict mode (`StrictMode::Full`) rejects.
+    MissingRequiredPts { pid: u16 },
+
+    /// PES header structural validation failure (validate-1 B5). Catches
+    /// spec violations the prior "too short for header" check missed.
+    /// See [`PesHeaderMalformedKind`] for the specific violation.
+    PesHeaderMalformed {
+        pid: u16,
+        kind: PesHeaderMalformedKind,
+    },
+
+    /// DVB subtitle or teletext PES arrived with
+    /// `data_alignment_indicator = 0` (validate-1 B6). Per ETSI EN 300
+    /// 743 §6.2 and EN 300 472 §4.2, subtitle streams MUST set this
+    /// flag (one complete composition page / one teletext block per
+    /// PES). Lenient mode emits the sample anyway; strict mode rejects.
+    SubtitleAlignmentMissing { pid: u16 },
+
     /// NAL header constraint violation per H.264 §7.3.1 / H.265 §7.3.1.2 /
     /// H.266 V4 §7.3.1.2. The demuxer detected a NAL whose header bits
     /// violate a spec-mandated constraint (`forbidden_zero_bit`, reserved
@@ -537,6 +576,39 @@ pub enum NonConformantIssue {
 
     /// Other.
     Other(String),
+}
+
+/// Specific PES header structural violations detected by the demuxer
+/// per ITU-T H.222.0 V9 §2.4.3.6.
+///
+/// All PES headers carry a fixed-shape prefix with marker bits, a
+/// `PTS_DTS_flags` selector, and (when PTS/DTS are present) 5-byte
+/// PTS/DTS fields with 4-bit prefix + 3 marker bits. Violations of any
+/// of these forms produce different repair strategies, so the variants
+/// are kept distinct for telemetry.
+///
+/// `#[non_exhaustive]` per workspace convention — new violations
+/// (e.g. ESCR marker checks if we ever decode that field) will be
+/// added without breaking matchers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PesHeaderMalformedKind {
+    /// `PTS_DTS_flags == 0b01` — H.222.0 §2.4.3.7 marks this combination
+    /// as "forbidden" (DTS-only with no PTS is not a valid shape).
+    ForbiddenPtsDtsFlags,
+    /// Byte 6 (`flags1`) of the PES header has high bits `!= 0b10`. The
+    /// top two bits are the standard marker (`'10'b` per §2.4.3.6).
+    InvalidMarkerBits,
+    /// First nibble of the PTS 5-byte field does not match the expected
+    /// prefix: `0b0010` (PTS-only) or `0b0011` (PTS in PTS+DTS combo).
+    /// Per H.222.0 §2.4.3.7.
+    InvalidPtsPrefix,
+    /// First nibble of the DTS 5-byte field does not match the expected
+    /// prefix `0b0001`. Per H.222.0 §2.4.3.7.
+    InvalidDtsPrefix,
+    /// One of the three trailing marker bits inside a 5-byte PTS or DTS
+    /// field is `0`. Each must be `1` per H.222.0 §2.4.3.7.
+    InvalidPtsDtsMarkerBits,
 }
 
 /// Spec-clause that a NAL header byte violated. Carried inside
@@ -705,6 +777,42 @@ impl std::fmt::Display for NonConformantIssue {
                     f,
                     "DVB-subtitle data_identifier=0x{observed:02X} \
                      (EN 300 743 §6.2 Table 3 requires 0x20)"
+                )
+            }
+            NonConformantIssue::PtsAnomaly { delta } => {
+                write!(f, "PTS anomaly: delta={delta} (90 kHz ticks)")
+            }
+            NonConformantIssue::MissingRequiredPts { pid } => {
+                write!(
+                    f,
+                    "PTS required by stream type on PID 0x{pid:04X} but absent in PES header"
+                )
+            }
+            NonConformantIssue::PesHeaderMalformed { pid, kind } => {
+                let detail = match kind {
+                    PesHeaderMalformedKind::ForbiddenPtsDtsFlags => {
+                        "PTS_DTS_flags=0b01 forbidden by H.222.0 §2.4.3.7"
+                    }
+                    PesHeaderMalformedKind::InvalidMarkerBits => {
+                        "flags1 byte top bits != '10' marker (H.222.0 §2.4.3.6)"
+                    }
+                    PesHeaderMalformedKind::InvalidPtsPrefix => {
+                        "PTS 4-bit prefix mismatch (H.222.0 §2.4.3.7)"
+                    }
+                    PesHeaderMalformedKind::InvalidDtsPrefix => {
+                        "DTS 4-bit prefix mismatch (H.222.0 §2.4.3.7)"
+                    }
+                    PesHeaderMalformedKind::InvalidPtsDtsMarkerBits => {
+                        "PTS/DTS 5-byte marker bit != 1 (H.222.0 §2.4.3.7)"
+                    }
+                };
+                write!(f, "PES header malformed on PID 0x{pid:04X}: {detail}")
+            }
+            NonConformantIssue::SubtitleAlignmentMissing { pid } => {
+                write!(
+                    f,
+                    "subtitle PES on PID 0x{pid:04X} missing data_alignment_indicator \
+                     (EN 300 743 §6.2 / EN 300 472 §4.2 require =1)"
                 )
             }
             NonConformantIssue::MultiCellAu { pid, dropped_bytes } => {

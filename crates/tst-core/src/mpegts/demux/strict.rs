@@ -33,6 +33,8 @@ impl StrictMode {
             StrictMode::TimingOnly => matches!(
                 issue,
                 NonConformantIssue::PcrAnomaly { .. }
+                    | NonConformantIssue::PtsAnomaly { .. }
+                    | NonConformantIssue::MissingRequiredPts { .. }
                     | NonConformantIssue::PusiMidPes
                     | NonConformantIssue::PsiChecksumMismatch { .. }
             ),
@@ -101,5 +103,13 @@ mod tests {
         assert!(m.rejects(&NonConformantIssue::Other("anything".into())));
         assert!(m.rejects(&NonConformantIssue::MissingMetadataDescriptor));
         assert!(m.rejects(&NonConformantIssue::PcrAnomaly { delta: 0 }));
+    }
+
+    #[test]
+    fn timing_only_rejects_pts_anomaly_and_missing_required_pts() {
+        // validate-1 B4 — PTS timing concerns join the timing-only cascade.
+        let m = StrictMode::TimingOnly;
+        assert!(m.rejects(&NonConformantIssue::PtsAnomaly { delta: -100_000 }));
+        assert!(m.rejects(&NonConformantIssue::MissingRequiredPts { pid: 0x100 }));
     }
 }

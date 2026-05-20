@@ -25,6 +25,14 @@ use crate::mpegts::demux::payload::{
 };
 use crate::mpegts::demux::pes::{PesPayload, ReassemblyOutcome};
 
+/// True when H.222.0 §2.7.4 requires the PES to carry a PTS for this
+/// stream kind. Audio and video have a mandatory PTS contract; subtitle,
+/// KLV (sync via PTS-bearing AU cells, async without PTS), and unknown
+/// stream types are optional/codec-defined.
+fn stream_type_requires_pts(kind: &StreamKind) -> bool {
+    matches!(kind, StreamKind::Video(_) | StreamKind::Audio(_))
+}
+
 impl super::demuxer::Demuxer {
     pub(super) fn handle_pes_packet(
         &mut self,
@@ -99,15 +107,45 @@ impl super::demuxer::Demuxer {
             kind,
             program_number,
         };
-        let pts = Pts90khz::new(pes.pts.unwrap_or(0));
-        // Backward-PTS check.
-        if let Some(last) = self.last_pts_by_pid.get(&pes.pid).copied() {
-            let delta = pts_diff_33bit(pts.as_ticks() as u64, last as u64);
-            if delta < -90_000 {
-                self.queue_nonconformant(stream, NonConformantIssue::PcrAnomaly { delta });
-            }
+        // B5 — surface PES header structural issues collected during
+        // parse_complete. These travel through the strict-mode cascade
+        // like any other NonConformantIssue. We process them BEFORE the
+        // PTS / DTS dispatch so consumers see the issue alongside the
+        // (possibly-truncated) sample event.
+        for kind_violation in &pes.header_issues {
+            self.queue_nonconformant(
+                stream,
+                NonConformantIssue::PesHeaderMalformed {
+                    pid: pes.pid,
+                    kind: *kind_violation,
+                },
+            );
         }
-        self.last_pts_by_pid.insert(pes.pid, pts.as_ticks());
+        // B4 — PTS distinct from PCR. Only update `last_pts_by_pid`
+        // when an actual PTS arrived; never write 0 as a fallback (the
+        // prior code corrupted the monotonicity check for streams that
+        // omit PTS sporadically). For stream types where H.222.0 §2.7.4
+        // makes PTS mandatory (audio + video), emit
+        // `MissingRequiredPts` when absent.
+        let pts = Pts90khz::new(pes.pts.unwrap_or(0));
+        if pes.pts.is_none() && stream_type_requires_pts(&kind) {
+            self.queue_nonconformant(
+                stream,
+                NonConformantIssue::MissingRequiredPts { pid: pes.pid },
+            );
+        }
+        if let Some(observed_pts) = pes.pts {
+            if let Some(last) = self.last_pts_by_pid.get(&pes.pid).copied() {
+                let delta = pts_diff_33bit(observed_pts as u64, last as u64);
+                if delta < -90_000 {
+                    // PTS anomaly is its own variant (90 kHz / per-PID
+                    // elementary stream), distinct from PcrAnomaly
+                    // (27 MHz / per-program PCR PID).
+                    self.queue_nonconformant(stream, NonConformantIssue::PtsAnomaly { delta });
+                }
+            }
+            self.last_pts_by_pid.insert(pes.pid, observed_pts);
+        }
         match kind {
             StreamKind::Video(codec) => {
                 // Codec dispatches the payload-shape: H.26x splits Annex-B NAL
@@ -409,6 +447,24 @@ impl super::demuxer::Demuxer {
                 });
                 entry.items += 1;
                 entry.bytes += payload_len as u64;
+                // B6 — EN 300 743 §6.2 (DVB-sub) + EN 300 472 §4.2
+                // (teletext) mandate `data_alignment_indicator = 1`.
+                // CEA-708 standalone and WebVTT-in-TS don't formally
+                // require it but conventionally set it. Surface a
+                // NonConformant issue when absent on the DVB pair;
+                // strict mode (Full) suppresses the sample.
+                let needs_alignment = matches!(
+                    codec,
+                    SubtitleCodec::DvbSubtitling | SubtitleCodec::DvbTeletext
+                );
+                let alignment_rejected = if needs_alignment && !pes.data_alignment_indicator {
+                    let issue = NonConformantIssue::SubtitleAlignmentMissing { pid: pes.pid };
+                    let reject = self.options.strict.rejects(&issue);
+                    self.queue_nonconformant(stream, issue);
+                    reject
+                } else {
+                    false
+                };
                 // For DVB subtitling, strip the EN 300 743 §6.2 PES_data_field
                 // envelope (data_identifier + subtitle_stream_id + segments +
                 // 0xFF end_marker) so callers see just the segment bytes —
@@ -426,19 +482,26 @@ impl super::demuxer::Demuxer {
                 // DvbSubDataIdentifier issue; strict mode suppresses the
                 // sample so consumers can fail closed.
                 let raw = &pes.payload;
-                let surfaced_payload = match codec {
-                    SubtitleCodec::DvbSubtitling => match strip_dvb_sub_envelope(raw) {
-                        DvbSubStripResult::Conformant(s) => Some(s.to_vec()),
-                        DvbSubStripResult::NonConformantDataId { observed, stripped } => {
-                            let stripped = stripped.to_vec();
-                            let issue = NonConformantIssue::DvbSubDataIdentifier { observed };
-                            let reject = self.options.strict.rejects(&issue);
-                            self.queue_nonconformant(stream, issue);
-                            if reject { None } else { Some(stripped) }
-                        }
-                        DvbSubStripResult::Malformed => Some(raw.to_vec()),
-                    },
-                    _ => Some(raw.to_vec()),
+                let surfaced_payload = if alignment_rejected {
+                    // Strict-mode B6 rejection suppresses the sample so
+                    // the receive loop can fail closed (parallel to the
+                    // DvbSubDataIdentifier strict-mode path).
+                    None
+                } else {
+                    match codec {
+                        SubtitleCodec::DvbSubtitling => match strip_dvb_sub_envelope(raw) {
+                            DvbSubStripResult::Conformant(s) => Some(s.to_vec()),
+                            DvbSubStripResult::NonConformantDataId { observed, stripped } => {
+                                let stripped = stripped.to_vec();
+                                let issue = NonConformantIssue::DvbSubDataIdentifier { observed };
+                                let reject = self.options.strict.rejects(&issue);
+                                self.queue_nonconformant(stream, issue);
+                                if reject { None } else { Some(stripped) }
+                            }
+                            DvbSubStripResult::Malformed => Some(raw.to_vec()),
+                        },
+                        _ => Some(raw.to_vec()),
+                    }
                 };
                 if let Some(surfaced_payload) = surfaced_payload {
                     self.queue.push_back(DemuxEvent::Sample {

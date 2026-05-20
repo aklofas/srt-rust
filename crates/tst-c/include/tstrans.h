@@ -340,6 +340,31 @@ enum tst_nonconformant_code
    */
   TST_NONCONFORMANT_CODE_DVB_SUB_DATA_IDENTIFIER = 20,
   /**
+   * PTS backward jump on an elementary stream PID (validate-1 B4).
+   * `pcr_delta` field carries the 90 kHz tick delta (re-used from
+   * PcrAnomaly; PTS and PCR anomalies never co-occur for a single
+   * event, so the storage is shared without ambiguity).
+   */
+  TST_NONCONFORMANT_CODE_PTS_ANOMALY = 21,
+  /**
+   * PES on a PTS-required stream type (audio / video) arrived without
+   * one (validate-1 B4). `pid` carries the stream PID.
+   */
+  TST_NONCONFORMANT_CODE_MISSING_REQUIRED_PTS = 22,
+  /**
+   * PES header structural violation (validate-1 B5). Re-uses the
+   * `table_id` field as the [`tst_core::mpegts::demux::PesHeaderMalformedKind`]
+   * discriminator (0=ForbiddenPtsDtsFlags, 1=InvalidMarkerBits,
+   * 2=InvalidPtsPrefix, 3=InvalidDtsPrefix, 4=InvalidPtsDtsMarkerBits).
+   */
+  TST_NONCONFORMANT_CODE_PES_HEADER_MALFORMED = 23,
+  /**
+   * DVB subtitle / teletext PES arrived with
+   * `data_alignment_indicator = 0` (validate-1 B6). `pid` carries the
+   * stream PID.
+   */
+  TST_NONCONFORMANT_CODE_SUBTITLE_ALIGNMENT_MISSING = 24,
+  /**
    * H.264 / H.265 / H.266 NAL header constraint violation
    * (forbidden_zero_bit / reserved bit / temporal_id_plus1 / layer_id).
    * `codec` byte surfaces on `table_id` (reusing the existing carrier;

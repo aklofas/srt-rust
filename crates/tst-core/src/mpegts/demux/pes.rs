@@ -6,6 +6,7 @@
 //! per-PID and aggregate caps; breaches surface as `Overflow` events.
 
 use crate::error::DemuxError;
+use crate::mpegts::demux::event::PesHeaderMalformedKind;
 use std::collections::HashMap;
 
 /// One reassembled PES on a single PID.
@@ -22,6 +23,17 @@ pub struct PesPayload {
     /// packets don't overwrite the latched value, matching how
     /// encoders/muxers signal RA points (ffmpeg/tsduck convention).
     pub random_access_indicator: bool,
+    /// PES flags1 bit 2 — `data_alignment_indicator`. Required for DVB
+    /// subtitle (EN 300 743 §6.2), DVB teletext (EN 300 472 §4.2), AC-3
+    /// (ATSC A/52 §A.2.4.1), AV1 (binding §3.4), metadata streams
+    /// (H.222.0 V9 §2.12.4.1). For codecs that don't require it the bit
+    /// is informational. `false` when the PES has no optional header.
+    pub data_alignment_indicator: bool,
+    /// PES header structural issues detected during parsing
+    /// (validate-1 B5). These are best-effort observations: the
+    /// dispatcher decides whether to escalate via `queue_nonconformant`.
+    /// Empty for conformant PESes.
+    pub header_issues: Vec<PesHeaderMalformedKind>,
     /// Elementary stream payload bytes (after the PES header, including
     /// header_data_length adjustment).
     pub payload: Vec<u8>,
@@ -205,6 +217,13 @@ impl Reassembler {
 
 /// Parse a fully-buffered PES packet (header + body) into a `PesPayload`.
 /// Returns `None` if the buffer is too short to be a valid PES.
+///
+/// Per validate-1 B5, performs structural validation on the PES header:
+/// `flags1` marker bits, `PTS_DTS_flags` (forbidden 0b01), PTS/DTS
+/// 4-bit prefixes, and PTS/DTS 5-byte trailing marker bits. Issues are
+/// collected onto `PesPayload::header_issues` rather than thrown as
+/// fatal errors — the dispatcher in `pes_emit.rs` routes them through
+/// the strict-mode cascade.
 fn parse_complete(
     pid: u16,
     buf: &[u8],
@@ -232,6 +251,8 @@ fn parse_complete(
     let mut body_off = 6;
     let mut pts = None;
     let mut dts = None;
+    let mut data_alignment_indicator = false;
+    let mut header_issues: Vec<PesHeaderMalformedKind> = Vec::new();
     if has_optional_header {
         if buf.len() < 9 {
             return Err(DemuxError::MalformedPes {
@@ -239,7 +260,25 @@ fn parse_complete(
                 reason: "PES too short for optional header",
             });
         }
+        // Byte 6 (`flags1`): top 2 bits must be the marker '10'. Per
+        // H.222.0 V9 §2.4.3.6 Table 2-21. Surface as a structural issue
+        // rather than a fatal — encoders that scramble this byte usually
+        // still have valid PTS bytes.
+        let marker_bits = (buf[6] >> 6) & 0x03;
+        if marker_bits != 0b10 {
+            header_issues.push(PesHeaderMalformedKind::InvalidMarkerBits);
+        }
+        data_alignment_indicator = (buf[6] & 0x04) != 0;
         let pts_dts_flags = (buf[7] >> 6) & 0x03;
+        // Per H.222.0 V9 §2.4.3.7 Table 2-21 `PTS_DTS_flags` of `0b01`
+        // is "forbidden" — DTS-without-PTS is not a valid shape. Some
+        // legacy non-conformant encoders emit it (we've seen field
+        // tests). Surface as a structural issue and treat as "no
+        // PTS/DTS" (don't try to decode either since their offsets are
+        // undefined under this flag).
+        if pts_dts_flags == 0b01 {
+            header_issues.push(PesHeaderMalformedKind::ForbiddenPtsDtsFlags);
+        }
         let header_data_length = buf[8] as usize;
         body_off = 9 + header_data_length;
         if buf.len() < body_off {
@@ -256,6 +295,19 @@ fn parse_complete(
                     reason: "PES too short for PTS",
                 });
             }
+            // 4-bit PTS prefix: '0010' (PTS-only) or '0011' (PTS+DTS).
+            let pts_prefix = (buf[9] >> 4) & 0x0F;
+            let expected_pts_prefix = if pts_dts_flags == 0b11 {
+                0b0011
+            } else {
+                0b0010
+            };
+            if pts_prefix != expected_pts_prefix {
+                header_issues.push(PesHeaderMalformedKind::InvalidPtsPrefix);
+            }
+            if !pts_dts_marker_bits_ok(&buf[9..14]) {
+                header_issues.push(PesHeaderMalformedKind::InvalidPtsDtsMarkerBits);
+            }
             pts = Some(decode_pts_dts(&buf[9..14]));
         }
         if pts_dts_flags == 0b11 {
@@ -264,6 +316,14 @@ fn parse_complete(
                     pid,
                     reason: "PES too short for DTS",
                 });
+            }
+            // 4-bit DTS prefix: '0001'.
+            let dts_prefix = (buf[14] >> 4) & 0x0F;
+            if dts_prefix != 0b0001 {
+                header_issues.push(PesHeaderMalformedKind::InvalidDtsPrefix);
+            }
+            if !pts_dts_marker_bits_ok(&buf[14..19]) {
+                header_issues.push(PesHeaderMalformedKind::InvalidPtsDtsMarkerBits);
             }
             dts = Some(decode_pts_dts(&buf[14..19]));
         }
@@ -275,6 +335,8 @@ fn parse_complete(
         pts,
         dts,
         random_access_indicator,
+        data_alignment_indicator,
+        header_issues,
         payload,
     }))
 }
@@ -285,6 +347,26 @@ fn decode_pts_dts(b: &[u8]) -> i64 {
     let p29_15 = (((b[1] as u64) << 7) | ((b[2] as u64) >> 1)) & 0x7FFF;
     let p14_0 = (((b[3] as u64) << 7) | ((b[4] as u64) >> 1)) & 0x7FFF;
     ((p32_30 << 30) | (p29_15 << 15) | p14_0) as i64
+}
+
+/// Validate the 3 trailing marker bits inside a 5-byte PTS / DTS field.
+///
+/// Per H.222.0 V9 §2.4.3.7 the 5-byte field is laid out as:
+///
+/// ```text
+///   prefix(4) | PTS[32..30](3) | marker(1)
+///   PTS[29..22](8)
+///   PTS[21..15](7) | marker(1)
+///   PTS[14..7](8)
+///   PTS[6..0](7) | marker(1)
+/// ```
+///
+/// Each of the three `marker` bits MUST be `1`. Returns `true` when all
+/// three are set; the caller decides whether to surface an issue or
+/// continue decoding (we always continue — the field's data bits are
+/// still readable independently of the markers).
+fn pts_dts_marker_bits_ok(b: &[u8]) -> bool {
+    (b[0] & 0x01) == 1 && (b[2] & 0x01) == 1 && (b[4] & 0x01) == 1
 }
 
 #[cfg(test)]
@@ -495,5 +577,92 @@ mod tests {
             }
             _ => panic!("expected Complete"),
         }
+    }
+
+    // ------------------------------------------------------------------
+    // B5 — PES header structural validation (validate-1)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn parse_complete_captures_data_alignment_indicator_true() {
+        let mut pes = build_pes(0xE0, Some(0), b"x");
+        // Set bit 2 of flags1 (byte 6).
+        pes[6] |= 0x04;
+        let parsed = parse_complete(0x100, &pes, false).unwrap().unwrap();
+        assert!(
+            parsed.data_alignment_indicator,
+            "DAI bit set in flags1 should round-trip to PesPayload::data_alignment_indicator"
+        );
+    }
+
+    #[test]
+    fn parse_complete_captures_data_alignment_indicator_false() {
+        // build_pes pushes flags1 = 0x80 (marker only); DAI = 0.
+        let pes = build_pes(0xE0, Some(0), b"x");
+        let parsed = parse_complete(0x100, &pes, false).unwrap().unwrap();
+        assert!(!parsed.data_alignment_indicator);
+    }
+
+    #[test]
+    fn parse_complete_flags_forbidden_pts_dts_combo() {
+        let mut pes = build_pes(0xE0, Some(0), b"x");
+        // Set PTS_DTS_flags to 0b01 (forbidden combination).
+        pes[7] = (pes[7] & 0x3F) | (0b01 << 6);
+        let parsed = parse_complete(0x100, &pes, false).unwrap().unwrap();
+        assert!(
+            parsed
+                .header_issues
+                .contains(&PesHeaderMalformedKind::ForbiddenPtsDtsFlags)
+        );
+    }
+
+    #[test]
+    fn parse_complete_flags_invalid_byte6_marker_bits() {
+        let mut pes = build_pes(0xE0, Some(0), b"x");
+        // Clear the top '10' marker on flags1 — leave bit 2 (DAI) etc. zero.
+        pes[6] &= 0x3F;
+        let parsed = parse_complete(0x100, &pes, false).unwrap().unwrap();
+        assert!(
+            parsed
+                .header_issues
+                .contains(&PesHeaderMalformedKind::InvalidMarkerBits)
+        );
+    }
+
+    #[test]
+    fn parse_complete_flags_invalid_pts_prefix() {
+        let mut pes = build_pes(0xE0, Some(0), b"x");
+        // PTS lives at offset 9. Top nibble should be '0010'. Smash it.
+        pes[9] = (pes[9] & 0x0F) | 0xA0; // top nibble '1010'
+        let parsed = parse_complete(0x100, &pes, false).unwrap().unwrap();
+        assert!(
+            parsed
+                .header_issues
+                .contains(&PesHeaderMalformedKind::InvalidPtsPrefix)
+        );
+    }
+
+    #[test]
+    fn parse_complete_flags_invalid_pts_marker_bits() {
+        let mut pes = build_pes(0xE0, Some(0), b"x");
+        // Clear the bottom marker bit on PTS byte 0 (offset 9).
+        pes[9] &= 0xFE;
+        let parsed = parse_complete(0x100, &pes, false).unwrap().unwrap();
+        assert!(
+            parsed
+                .header_issues
+                .contains(&PesHeaderMalformedKind::InvalidPtsDtsMarkerBits)
+        );
+    }
+
+    #[test]
+    fn parse_complete_conformant_has_no_header_issues() {
+        let pes = build_pes(0xE0, Some(900_000), b"x");
+        let parsed = parse_complete(0x100, &pes, false).unwrap().unwrap();
+        assert!(
+            parsed.header_issues.is_empty(),
+            "conformant PES should produce zero header issues, got {:?}",
+            parsed.header_issues
+        );
     }
 }

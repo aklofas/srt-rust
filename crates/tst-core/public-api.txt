@@ -2694,6 +2694,8 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes
 pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes::reason: &'static str
 pub tst_core::mpegts::demux::event::NonConformantIssue::MissingMetadataDescriptor
+pub tst_core::mpegts::demux::event::NonConformantIssue::MissingRequiredPts
+pub tst_core::mpegts::demux::event::NonConformantIssue::MissingRequiredPts::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu
 pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu::dropped_bytes: usize
 pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu::pid: u16
@@ -2703,6 +2705,9 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::NalHeader::kind: tst_cor
 pub tst_core::mpegts::demux::event::NonConformantIssue::Other(alloc::string::String)
 pub tst_core::mpegts::demux::event::NonConformantIssue::PcrAnomaly
 pub tst_core::mpegts::demux::event::NonConformantIssue::PcrAnomaly::delta: i64
+pub tst_core::mpegts::demux::event::NonConformantIssue::PesHeaderMalformed
+pub tst_core::mpegts::demux::event::NonConformantIssue::PesHeaderMalformed::kind: tst_core::mpegts::demux::event::PesHeaderMalformedKind
+pub tst_core::mpegts::demux::event::NonConformantIssue::PesHeaderMalformed::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::PidReusedAcrossPrograms
 pub tst_core::mpegts::demux::event::NonConformantIssue::PidReusedAcrossPrograms::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::PidReusedAcrossPrograms::programs: [u16; 2]
@@ -2719,9 +2724,13 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::PsiMultiSectionUnsupport
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiOverlongSection
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiOverlongSection::observed_len: usize
 pub tst_core::mpegts::demux::event::NonConformantIssue::PsiOverlongSection::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::PtsAnomaly
+pub tst_core::mpegts::demux::event::NonConformantIssue::PtsAnomaly::delta: i64
 pub tst_core::mpegts::demux::event::NonConformantIssue::PusiMidPes
 pub tst_core::mpegts::demux::event::NonConformantIssue::StreamTypeMismatchAsyncOnSyncPid
 pub tst_core::mpegts::demux::event::NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid
+pub tst_core::mpegts::demux::event::NonConformantIssue::SubtitleAlignmentMissing
+pub tst_core::mpegts::demux::event::NonConformantIssue::SubtitleAlignmentMissing::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::SubtitleDescriptorAmbiguous
 pub tst_core::mpegts::demux::event::NonConformantIssue::SubtitleDescriptorAmbiguous::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::SubtitleDescriptorAmbiguous::tags: alloc::vec::Vec<u8>
@@ -2749,6 +2758,28 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::NonConformantIssue
+#[non_exhaustive] pub enum tst_core::mpegts::demux::event::PesHeaderMalformedKind
+pub tst_core::mpegts::demux::event::PesHeaderMalformedKind::ForbiddenPtsDtsFlags
+pub tst_core::mpegts::demux::event::PesHeaderMalformedKind::InvalidDtsPrefix
+pub tst_core::mpegts::demux::event::PesHeaderMalformedKind::InvalidMarkerBits
+pub tst_core::mpegts::demux::event::PesHeaderMalformedKind::InvalidPtsDtsMarkerBits
+pub tst_core::mpegts::demux::event::PesHeaderMalformedKind::InvalidPtsPrefix
+impl core::clone::Clone for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+pub fn tst_core::mpegts::demux::event::PesHeaderMalformedKind::clone(&self) -> tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::cmp::Eq for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+pub fn tst_core::mpegts::demux::event::PesHeaderMalformedKind::eq(&self, other: &tst_core::mpegts::demux::event::PesHeaderMalformedKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+pub fn tst_core::mpegts::demux::event::PesHeaderMalformedKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::Freeze for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::Send for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::Sync for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::Unpin for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::PesHeaderMalformedKind
 pub enum tst_core::mpegts::demux::event::SamplePayload
 pub tst_core::mpegts::demux::event::SamplePayload::Audio
 pub tst_core::mpegts::demux::event::SamplePayload::Audio::codec: tst_core::mpegts::demux::event::AudioCodec
@@ -3119,7 +3150,9 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::low_level::PatEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::low_level::PatEntry
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::low_level::PatEntry
 pub struct tst_core::mpegts::demux::low_level::PesPayload
+pub tst_core::mpegts::demux::low_level::PesPayload::data_alignment_indicator: bool
 pub tst_core::mpegts::demux::low_level::PesPayload::dts: core::option::Option<i64>
+pub tst_core::mpegts::demux::low_level::PesPayload::header_issues: alloc::vec::Vec<tst_core::mpegts::demux::event::PesHeaderMalformedKind>
 pub tst_core::mpegts::demux::low_level::PesPayload::payload: alloc::vec::Vec<u8>
 pub tst_core::mpegts::demux::low_level::PesPayload::pid: u16
 pub tst_core::mpegts::demux::low_level::PesPayload::pts: core::option::Option<i64>
@@ -3462,6 +3495,8 @@ pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes
 pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes::reason: &'static str
 pub tst_core::mpegts::demux::NonConformantIssue::MissingMetadataDescriptor
+pub tst_core::mpegts::demux::NonConformantIssue::MissingRequiredPts
+pub tst_core::mpegts::demux::NonConformantIssue::MissingRequiredPts::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu
 pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu::dropped_bytes: usize
 pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu::pid: u16
@@ -3471,6 +3506,9 @@ pub tst_core::mpegts::demux::NonConformantIssue::NalHeader::kind: tst_core::mpeg
 pub tst_core::mpegts::demux::NonConformantIssue::Other(alloc::string::String)
 pub tst_core::mpegts::demux::NonConformantIssue::PcrAnomaly
 pub tst_core::mpegts::demux::NonConformantIssue::PcrAnomaly::delta: i64
+pub tst_core::mpegts::demux::NonConformantIssue::PesHeaderMalformed
+pub tst_core::mpegts::demux::NonConformantIssue::PesHeaderMalformed::kind: tst_core::mpegts::demux::event::PesHeaderMalformedKind
+pub tst_core::mpegts::demux::NonConformantIssue::PesHeaderMalformed::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::PidReusedAcrossPrograms
 pub tst_core::mpegts::demux::NonConformantIssue::PidReusedAcrossPrograms::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::PidReusedAcrossPrograms::programs: [u16; 2]
@@ -3487,9 +3525,13 @@ pub tst_core::mpegts::demux::NonConformantIssue::PsiMultiSectionUnsupported::tab
 pub tst_core::mpegts::demux::NonConformantIssue::PsiOverlongSection
 pub tst_core::mpegts::demux::NonConformantIssue::PsiOverlongSection::observed_len: usize
 pub tst_core::mpegts::demux::NonConformantIssue::PsiOverlongSection::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::PtsAnomaly
+pub tst_core::mpegts::demux::NonConformantIssue::PtsAnomaly::delta: i64
 pub tst_core::mpegts::demux::NonConformantIssue::PusiMidPes
 pub tst_core::mpegts::demux::NonConformantIssue::StreamTypeMismatchAsyncOnSyncPid
 pub tst_core::mpegts::demux::NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid
+pub tst_core::mpegts::demux::NonConformantIssue::SubtitleAlignmentMissing
+pub tst_core::mpegts::demux::NonConformantIssue::SubtitleAlignmentMissing::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::SubtitleDescriptorAmbiguous
 pub tst_core::mpegts::demux::NonConformantIssue::SubtitleDescriptorAmbiguous::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::SubtitleDescriptorAmbiguous::tags: alloc::vec::Vec<u8>
@@ -3517,6 +3559,28 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::NonConformantIssue
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::NonConformantIssue
+#[non_exhaustive] pub enum tst_core::mpegts::demux::PesHeaderMalformedKind
+pub tst_core::mpegts::demux::PesHeaderMalformedKind::ForbiddenPtsDtsFlags
+pub tst_core::mpegts::demux::PesHeaderMalformedKind::InvalidDtsPrefix
+pub tst_core::mpegts::demux::PesHeaderMalformedKind::InvalidMarkerBits
+pub tst_core::mpegts::demux::PesHeaderMalformedKind::InvalidPtsDtsMarkerBits
+pub tst_core::mpegts::demux::PesHeaderMalformedKind::InvalidPtsPrefix
+impl core::clone::Clone for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+pub fn tst_core::mpegts::demux::event::PesHeaderMalformedKind::clone(&self) -> tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::cmp::Eq for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::cmp::PartialEq for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+pub fn tst_core::mpegts::demux::event::PesHeaderMalformedKind::eq(&self, other: &tst_core::mpegts::demux::event::PesHeaderMalformedKind) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+pub fn tst_core::mpegts::demux::event::PesHeaderMalformedKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::Freeze for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::Send for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::Sync for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::Unpin for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::PesHeaderMalformedKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::PesHeaderMalformedKind
 pub enum tst_core::mpegts::demux::SamplePayload
 pub tst_core::mpegts::demux::SamplePayload::Audio
 pub tst_core::mpegts::demux::SamplePayload::Audio::codec: tst_core::mpegts::demux::event::AudioCodec

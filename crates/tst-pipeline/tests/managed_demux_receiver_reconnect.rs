@@ -44,6 +44,24 @@ fn ts_packet(pid: u16, cc: u8) -> [u8; 188] {
     buf
 }
 
+/// Build a 188-byte aligned TS packet with the `transport_error_indicator`
+/// bit (byte 1, mask 0x80) set. Per ISO/IEC 13818-1 §2.4.3.2 each such
+/// packet is dropped by the demuxer with a single
+/// `DemuxEvent::NonConformant { issue: TransportErrorPacket { pid } }`
+/// event. We use TEI packets as a unit-counting discriminator: each
+/// packet that REACHES the demuxer produces exactly one observable
+/// event, so the count of `NonConformant` events on the receiver
+/// equals the count of packets that survived sync + reconnect-drop.
+fn ts_packet_tei(pid: u16, cc: u8) -> [u8; 188] {
+    let mut buf = [0xFFu8; 188];
+    buf[0] = 0x47;
+    // TEI=1 (0x80) + PUSI=1 (0x40) + pid_high
+    buf[1] = 0xC0 | ((pid >> 8) as u8 & 0x1F);
+    buf[2] = (pid & 0xFF) as u8;
+    buf[3] = 0x10 | (cc & 0x0F);
+    buf
+}
+
 fn pack_chunk(packets: &[[u8; 188]]) -> Vec<u8> {
     let mut v = Vec::with_capacity(packets.len() * 188);
     for p in packets {
@@ -337,4 +355,163 @@ fn reconnect_during_in_flight_psi_drops_partial_state() {
     // adaptation-field bits are NOT expected on these well-formed
     // packets either.
     assert!(!emitted_nonconformant);
+}
+
+// ---------------------------------------------------------------------------
+// Test 4 — Clean reconnect still drops the first post-reconnect packet
+// ---------------------------------------------------------------------------
+
+/// Documents the `# Data-loss budget on reconnect` contract on
+/// [`ManagedDemuxReceiver`]: at least one packet is unconditionally
+/// dropped on every reconnect, EVEN WHEN the boundary falls cleanly on
+/// a 188-byte packet edge with no dead-tail bytes left in the syncer's
+/// ring buffer.
+///
+/// Counting mechanism: every input packet has the
+/// `transport_error_indicator` bit set (TEI). Per ISO/IEC 13818-1
+/// §2.4.3.2 the demuxer drops TEI packets with a single
+/// `DemuxEvent::NonConformant { issue: TransportErrorPacket { .. } }`
+/// event per packet — so the count of `NonConformant` events on the
+/// receiver-side equals the count of packets that survived sync +
+/// reconnect-drop and reached the demuxer.
+///
+/// Setup: N TEI packets in phase 1 (chunk ends EXACTLY on a packet
+/// boundary — no dead-tail bytes). Inner exhausts with `Broken`,
+/// triggering reconnect. Phase 2 serves a long sequence of more TEI
+/// packets across multiple `recv_bytes` chunks so the receiver has
+/// enough bytes to (a) lock once, get the first packet dropped by the
+/// shell, then (b) re-lock cleanly on subsequent bytes and emit a
+/// stream of events.
+///
+/// Acceptance: a `ReconnectDiscontinuity` event surfaces AND the count
+/// of phase-2 events is STRICTLY LESS than the number of phase-2
+/// packets fed. The strict inequality is the contract: if the shell
+/// ever stopped dropping the first post-reconnect packet on clean
+/// boundaries, the phase-2 event count would equal the phase-2 packet
+/// count and this assertion would fail.
+///
+/// Why a strict inequality rather than an exact count: when the
+/// reconnect is detected the syncer's reset clears not only the
+/// just-emitted post-reconnect packet but also any bytes the syncer
+/// had pulled from the transport but not yet drained as aligned
+/// packets (per the `Data-loss budget on reconnect` rustdoc section
+/// on [`ManagedDemuxReceiver`]). The exact number of dropped packets
+/// depends on `recv_bytes` chunking which is transport-specific
+/// (typically one SRT payload = ~7 TS packets). Asserting strict
+/// less-than is robust across both single-chunk and multi-chunk
+/// recv_bytes patterns.
+#[test]
+fn clean_reconnect_drops_first_post_reconnect_packet() {
+    // Phase 1: 8 TEI packets on PID 0x100. Chunk length is exactly
+    // 8 * 188 = 1504 bytes — no fractional / dead-tail bytes appended.
+    let n: usize = 8;
+    let p1_packets: Vec<[u8; 188]> = (0..n).map(|i| ts_packet_tei(0x100, i as u8)).collect();
+    let p1_chunk = pack_chunk(&p1_packets);
+    assert_eq!(
+        p1_chunk.len(),
+        n * 188,
+        "phase 1 chunk must end on a packet boundary (no dead-tail)"
+    );
+
+    let inner = ScriptedInner {
+        chunks: vec![p1_chunk].into(),
+        on_exhaust: TransportError::Broken {
+            msg: "phase 1 ended (clean boundary)".into(),
+            errno_code: None,
+        },
+    };
+
+    // Phase 2: M TEI packets delivered as TWO clean-aligned chunks. The
+    // shell's reset_sync clears the syncer buffer at reconnect time so
+    // bytes already pulled-but-not-emitted in the first chunk are also
+    // lost; the second chunk lets the syncer re-lock and drain a
+    // measurable tail of events.
+    let m: usize = 16;
+    let calls = Arc::new(AtomicU32::new(0));
+    let calls_cl = calls.clone();
+    let factory = Box::new(move || -> Result<ScriptedInner, TransportError> {
+        let n = calls_cl.fetch_add(1, Ordering::SeqCst);
+        if n == 0 {
+            let p2_first: Vec<[u8; 188]> = (0..8).map(|i| ts_packet_tei(0x200, i as u8)).collect();
+            let p2_second: Vec<[u8; 188]> = (0..8)
+                .map(|i| ts_packet_tei(0x200, (i + 8) as u8))
+                .collect();
+            let chunk_a = pack_chunk(&p2_first);
+            let chunk_b = pack_chunk(&p2_second);
+            assert_eq!(chunk_a.len() % 188, 0);
+            assert_eq!(chunk_b.len() % 188, 0);
+            Ok(ScriptedInner {
+                chunks: vec![chunk_a, chunk_b].into(),
+                on_exhaust: TransportError::Broken {
+                    msg: "phase 2 ended".into(),
+                    errno_code: None,
+                },
+            })
+        } else {
+            Err(TransportError::Broken {
+                msg: "no more rebuilds".into(),
+                errno_code: None,
+            })
+        }
+    });
+
+    let managed = ManagedRecvTransport::new(inner, factory, fast_policy(Some(2)));
+    let mut rx = ManagedDemuxReceiver::new(managed, ManagedDemuxReceiverConfig::default());
+
+    let mut saw_reconnect = false;
+    // Track NonConformant events by PID so phase-1 (PID 0x100) and
+    // phase-2 (PID 0x200) counts stay separable — the contract under
+    // test concerns the phase-2 count specifically.
+    let mut phase1_count = 0usize;
+    let mut phase2_count = 0usize;
+    let mut iters = 0;
+    loop {
+        iters += 1;
+        assert!(iters < 1000, "test loop should bound");
+        match rx.recv_event() {
+            Ok(Some(DemuxEvent::ReconnectDiscontinuity)) => {
+                saw_reconnect = true;
+            }
+            Ok(Some(DemuxEvent::NonConformant {
+                issue:
+                    tst_core::mpegts::demux::NonConformantIssue::TransportErrorPacket { pid },
+                ..
+            })) => match pid {
+                0x100 => phase1_count += 1,
+                0x200 => phase2_count += 1,
+                _ => {}
+            },
+            Ok(Some(_)) => {}
+            Ok(None) => break,
+            Err(_) => break,
+        }
+    }
+    assert!(saw_reconnect, "ReconnectDiscontinuity must surface");
+    assert_eq!(rx.reconnects_count(), 1);
+
+    // Sanity: phase-1 packets all reached the demuxer (no drop applies
+    // before the first reconnect).
+    assert_eq!(
+        phase1_count, n,
+        "phase 1 events should match all {} input packets",
+        n
+    );
+
+    // The contract: even with a clean (no dead-tail) reconnect boundary,
+    // at least one phase-2 packet is dropped by the shell. If the shell
+    // ever stopped dropping on clean boundaries, phase2_count would
+    // equal `m` and this assertion would fail — surfacing the contract
+    // change for review.
+    assert!(
+        phase2_count < m,
+        "expected fewer than {} phase-2 events (some dropped by reconnect handler); got {}",
+        m,
+        phase2_count
+    );
+    // Sanity: at least one phase-2 packet survived (so we know we're
+    // measuring the drop, not a total post-reconnect stall).
+    assert!(
+        phase2_count > 0,
+        "phase 2 should have emitted some events after re-lock; got 0"
+    );
 }

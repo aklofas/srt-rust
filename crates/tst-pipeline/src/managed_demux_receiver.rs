@@ -44,6 +44,49 @@
 //! event for the next `recv_event` call so the consumer sees the
 //! boundary explicitly.
 //!
+//! # Data-loss budget on reconnect
+//!
+//! After the underlying [`ManagedRecvTransport`] reconnects, the FIRST
+//! aligned 188-byte TS packet returned by [`Receiver::next_packet`]
+//! after the reconnect boundary is **discarded** by this shell before
+//! it reaches the demuxer. The shell additionally clears the syncer's
+//! buffer (via [`Receiver::reset_sync`]), which drops any bytes already
+//! pulled from the transport but not yet emitted as aligned packets —
+//! in practice on the order of one SRT payload (~1316 bytes ≈ 7 TS
+//! packets at worst) of buffered bytes are lost at the moment of
+//! detection.
+//!
+//! **Why:** the first packet returned post-reconnect may have been
+//! assembled from a mix of dead-tail bytes left in the syncer's ring
+//! buffer (from the dropped connection) plus fresh bytes from the new
+//! connection. Separating the two would require packet-byte forensics
+//! inside the syncer; discarding the packet, clearing the syncer
+//! buffer, and letting the syncer re-lock cleanly on subsequent fresh
+//! bytes is simpler and safer. The drop applies uniformly — even when
+//! the reconnect boundary happens to fall exactly on a packet edge with
+//! no dead-tail bytes, the first post-reconnect packet is still
+//! dropped. The shell does not attempt to detect "clean" vs "spliced"
+//! reconnect cases; it pays the cost in all cases for predictability
+//! and simplicity.
+//!
+//! **The cost:** at least one TS packet (188 bytes) plus any bytes the
+//! syncer had buffered but not yet drained — bounded by the underlying
+//! transport's `max_payload` (typically a single SRT payload). For
+//! streams with PSI repetition rates of tens of milliseconds, the next
+//! PAT/PMT repetition arrives quickly and the consumer sees a fresh
+//! [`DemuxEvent::ProgramMap`] event shortly after the boundary. Lost
+//! packets that fall on a PES sample boundary are handled transparently
+//! by the demuxer's PES reassembler, which is also reset across the
+//! boundary — the next [`DemuxEvent::Sample`] arrives once a new
+//! PUSI-marked packet seeds reassembly on the corresponding PID.
+//!
+//! **What consumers should expect:** stream tables (PAT/PMT topology),
+//! codec parameters, and PES reassembly state from the dead connection
+//! are dropped — the demuxer is reset to a clean state. Consumers that
+//! cached the prior [`DemuxEvent::ProgramMap`] should drop that cache on
+//! receipt of [`DemuxEvent::ReconnectDiscontinuity`] and rebuild it from
+//! the next `ProgramMap` event that arrives over the new connection.
+//!
 //! # Closing
 //!
 //! Mirrors [`DemuxReceiver`][crate::DemuxReceiver]'s shutdown patterns

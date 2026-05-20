@@ -7,6 +7,98 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Validate-1 Phase 2 Sprint 1: Wave A wire-format & UB fixes (docs/validate-1/11-phase-2-plan.md §2.1)
+
+**Eight wire-format / UB / parser-correctness fixes from the Validate-1
+Phase 1 audit (20 Claude slices + 8 Codex reports at `docs/validate-1/`).**
+Shipped as 8 commits on `main` (`3cd175e..9c29400`) on 2026-05-19/20.
+
+**Fixed (Critical):**
+
+- **DVB teletext PES_packet_length truncation** (commit `dbd0cbb`, Phase 2
+  plan §A1, Codex 02 #1). For payloads near the previous cap (65490),
+  the writer padded to `N*184` then emitted `(N*184 - 6) as u16` which
+  silently wrapped modulo 65536 — conformant demuxers mis-framed the PES
+  and the downstream subtitle stream corrupted. New
+  `dvb_teletext_total_pes_bytes(payload_len, auto_prepend)` helper
+  pre-validates against `u16::MAX`; max payload tightened to 65458
+  (auto-prepend) / 65459 (caller-supplied data_identifier). 6 boundary
+  tests.
+
+**Fixed (High):**
+
+- **C ABI `slice::from_raw_parts(null, 0)` UB safety** (commit `3cd175e`,
+  Phase 2 plan §A3, Codex CABI-01). The pre-existing `(NULL, len > 0)`
+  guard missed the `(NULL, 0)` case — Rust requires non-null pointer
+  even for zero-length slices. New `tst-c/src/ffi_slice.rs`
+  with `pub(crate) ffi_slice(ptr, len, name) -> Result<&[u8], i32>`
+  applied to 28 sender-side data-path call sites. 4 contract tests.
+
+- **C event arena lifetime correctness** (commit `e2958be`, Phase 2 plan
+  §A2, Codex CABI-02 material omission). Event-payload pointer fields on
+  `TstEvent` (audio/subtitle/unknown sample, metadata, NAL/OBU, PMT
+  descriptor) referenced the input `DemuxEvent` Vec's storage instead of
+  the arena's — dangling after `_recv_event` returned. Extended
+  `EventArena` with `payload_buf: Vec<u8>` + two-pass collect-then-
+  resolve for multi-payload events. 7 inline tests assert C pointers do
+  NOT alias input Vec pointers.
+
+- **Bounded PES reassembly tail bytes** (commit `c6acf84`, Phase 2 plan
+  §A4, Codex VIDEO-03). Length-driven completion was taking the whole
+  reassembly buffer via `std::mem::take`, including bytes past the
+  declared `PES_packet_length`. Replaced with
+  `part.buf.drain(..total).collect()`; residual dropped along with
+  per-PID state (option B per plan). 2 new regression tests.
+
+- **H.266 `walk_ref_pic_list_struct` AbsDeltaPocSt predicate** (commit
+  `568c6cf`, Phase 2 plan §A5, Claude slice 11 H266-V1-H1). Walker used
+  an `inter_layer_ref_pic_flag`-shaped predicate falsely attributed to
+  §7.4.9; spec per H.266 V4 §7.4.9 eq.(150) +
+  ffmpeg `vvc/refs.c:522-526` is
+  `!((sps_weighted_pred_flag || sps_weighted_bipred_flag) && i != 0)`.
+  Cascaded into 1-bit cursor drift on streams with multi-entry RPS where
+  `abs_delta_poc_st == 0` at `i ≥ 1`. Helper signature gains the two
+  flags; dead `prev_use_ref_pic_list` tracking removed. RED test:
+  `TruncatedRbsp { offset_bits: 240 }` (the exact drift).
+
+- **ST 0601 high-numbered tag narrowing** (commit `3600fd3`, Phase 2 plan
+  §A6, Codex 03 #3). `apply_typed_tag` called `lookup(tag as u8)` where
+  `tag: u32`; future BER-OID tag 258 narrowed to tag 2 (Precision Time
+  Stamp Pack) and overwrote `record.timestamp_us`. Option B fix:
+  `u8::try_from(tag)` at call site, matching the ST 0102 precedent at
+  `klv/st0102/decode.rs:117-128`. 3 regression tests.
+
+- **H.264 PPS `seq_parameter_set_id` range + PPS→SPS cross-validation**
+  (commit `00bd703`, Phase 2 plan §A8, Claude slice 09 H264-RV1). PPS
+  parse accepted SPS-ID ∈ [0, 255] vs H.264 V15 §7.4.2.2 mandate
+  [0, 31]. Adds `CodecParseError::ReservedValue` for out-of-range.
+  `parse_parameter_sets` now drops orphan PPS with `tracing::warn!` if
+  the referenced SPS isn't in the map. 4 new tests.
+
+- **IMAPB decode special values + decoded bounds check** (commit
+  `9c29400`, Phase 2 plan §A7, Claude slice 01 H2 + H3). Decoder didn't
+  implement ST 1201.5 §7.2.2 step 1 special-value detection
+  (`0xC8...` +∞, `0xD0...` NaN, `0xE0...` BelowMin, `0xE1...` AboveMax
+  silently decoded as garbage normal floats) and didn't bounds-check
+  against `[min, max]` (`IMAPB(0,100,3)` wire `0x800000` decoded ~128.0).
+  New `pub enum DecodedImapb { Value(f64), PositiveInfinity,
+  NegativeInfinity, NaN, BelowMin, AboveMax, ReservedSpecial { raw },
+  OutOfRange { decoded } }` with `#[non_exhaustive]`. `value()`
+  ergonomic accessor returns `Some(f64)` only for `Value`. Cascade:
+  3 KLV consumers + 1 proptest. 9 new tests.
+
+**Workspace updates:**
+
+- BASELINE non_exhaustive in `.github/workflows/ci.yml` bumped 113 → 114
+  (one new `#[non_exhaustive]` on `DecodedImapb`).
+- `crates/tst-core/public-api.txt` baseline regenerated (additive change
+  for `DecodedImapb` enum + variants + impls + `decode_imapb` return
+  type).
+
+**Note on remaining Wave A items:** None. Sprint 1 closed all 8 Wave A
+items end-to-end. Sprints 2-5 (Waves B-I) cover the remaining ~62
+Medium + ~110 Low findings + the empirical interop test suite.
+
 ## [Unreleased] — Codex Waves 1-6 re-review fixes (docs/plans/2026-05-19-codex-waves-1-6-rereview-fixes.md)
 
 **Three follow-up fixes from a 2026-05-19 Codex comprehensive re-review of

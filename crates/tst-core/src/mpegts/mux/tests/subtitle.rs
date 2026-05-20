@@ -136,6 +136,153 @@ fn push_subtitle_payload_too_large_rejected() {
     );
 }
 
+// ── DVB teletext PES_packet_length boundary (Validate-1 A1) ───────────────
+//
+// Spec: EN 300 472 §4.2 — `PES_packet_length = (N * 184) - 6`, where N is
+// the number of TS payload areas the PES occupies. H.222.0 V9 §2.4.3.7
+// caps `PES_packet_length` to a 16-bit field (max 65535). A pre-fix bug
+// allowed payloads up to ~65490 bytes to pass the cap check; the writer
+// then padded to `N * 184` bytes and the resulting `pes_packet_length`
+// (e.g. 65682 for N=357) silently wrapped modulo 65536 to 146, causing
+// wire-format truncation that conformant demuxers cannot recover from.
+//
+// Boundary math (per EN 300 472 §4.2 + H.222.0 §2.4.3.7):
+// - `useful = HEADER(45) + auto_id_byte + payload.len()`
+// - `n = ceil(useful / 184).max(1)`
+// - `total_pes_bytes = n * 184`
+// - `pes_packet_length = total_pes_bytes - 6` must fit in `u16` ⇒
+//   `total_pes_bytes ≤ 65541`. Because `total_pes_bytes` is `n * 184`,
+//   the largest valid total is `floor(65541 / 184) * 184 = 356 * 184 =
+//   65504`. Therefore max `useful` is 65504, and max payload is:
+//   - 65458 when `auto_prepend=true` (auto_id_byte=1)
+//   - 65459 when `auto_prepend=false` (caller supplied 0x10..=0x1F)
+
+fn teletext_muxer() -> Muxer {
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_subtitle(
+            0x200,
+            SubtitleCodec::DvbTeletext {
+                language: *b"eng",
+                teletext_type: 0x02,
+                magazine_number: 1,
+                page_number: 0x88,
+            },
+        );
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    Muxer::new(cfg).unwrap()
+}
+
+/// Largest payload accepted when the writer auto-prepends `0x10`. Caller's
+/// first byte is OUT of the `0x10..=0x1F` range → auto_id_byte=1 →
+/// `useful = 45 + 1 + 65458 = 65504 = 356 * 184` → `pes_packet_length =
+/// 65498` (fits in u16). One byte over this rejects.
+#[test]
+fn dvb_teletext_payload_65458_with_auto_prepend_accepted() {
+    let mut mux = teletext_muxer();
+    // First byte = 0x02 (not in 0x10..=0x1F) so the writer auto-prepends.
+    let mut payload = vec![0u8; 65458];
+    payload[0] = 0x02;
+    mux.push_subtitle(Pts90khz::new(90_000), &payload)
+        .expect("65458-byte teletext payload must be accepted with auto-prepend");
+}
+
+/// One byte beyond the auto-prepend cap rejects with `SubtitleTooLarge`.
+/// `useful = 45 + 1 + 65459 = 65505 > 65504` ⇒ N=357 ⇒
+/// `pes_packet_length = 65682 > u16::MAX`.
+#[test]
+fn dvb_teletext_payload_65459_with_auto_prepend_rejected() {
+    let mut mux = teletext_muxer();
+    let mut payload = vec![0u8; 65459];
+    payload[0] = 0x02; // forces auto_prepend = true
+    let err = mux
+        .push_subtitle(Pts90khz::new(90_000), &payload)
+        .unwrap_err();
+    assert!(
+        matches!(err, MuxError::SubtitleTooLarge { .. }),
+        "expected SubtitleTooLarge for 65459-byte auto-prepend payload, got {err:?}",
+    );
+}
+
+/// When the caller supplies a valid `data_identifier` (0x10..=0x1F) as the
+/// first byte, no auto-prepend → 1 extra byte of headroom. `useful = 45 +
+/// 0 + 65459 = 65504` exactly. Accepts.
+#[test]
+fn dvb_teletext_payload_65459_with_caller_supplied_id_accepted() {
+    let mut mux = teletext_muxer();
+    let mut payload = vec![0u8; 65459];
+    payload[0] = 0x10; // EBU teletext data_identifier — suppresses auto-prepend
+    mux.push_subtitle(Pts90khz::new(90_000), &payload).expect(
+        "65459-byte teletext payload must be accepted when caller supplies data_identifier",
+    );
+}
+
+/// One byte beyond the caller-supplied-id cap rejects. `useful = 45 + 0 +
+/// 65460 = 65505 > 65504`.
+#[test]
+fn dvb_teletext_payload_65460_with_caller_supplied_id_rejected() {
+    let mut mux = teletext_muxer();
+    let mut payload = vec![0u8; 65460];
+    payload[0] = 0x10;
+    let err = mux
+        .push_subtitle(Pts90khz::new(90_000), &payload)
+        .unwrap_err();
+    assert!(
+        matches!(err, MuxError::SubtitleTooLarge { .. }),
+        "expected SubtitleTooLarge for 65460-byte caller-id payload, got {err:?}",
+    );
+}
+
+/// 65490 was the previous (incorrect) cap: `(u16::MAX as usize) - 45`. At
+/// this size the writer would pad to N=357 TS payloads and emit
+/// `pes_packet_length = 357*184 - 6 = 65682`, which truncates to 146
+/// when cast to `u16`. The fix must reject this size.
+#[test]
+fn dvb_teletext_payload_65490_rejected_post_fix() {
+    let mut mux = teletext_muxer();
+    let mut payload = vec![0u8; 65490];
+    payload[0] = 0x02;
+    let err = mux
+        .push_subtitle(Pts90khz::new(90_000), &payload)
+        .unwrap_err();
+    assert!(
+        matches!(err, MuxError::SubtitleTooLarge { .. }),
+        "expected SubtitleTooLarge for previously-accepted 65490-byte payload, got {err:?}",
+    );
+}
+
+/// Wire-byte verification: an accepted near-boundary payload must produce
+/// the spec-mandated `PES_packet_length = (N * 184) - 6` value, NOT a
+/// silently-truncated `(N * 184 - 6) as u16` wrap. We probe the writer
+/// directly so we can read the emitted bytes (TS framing in `pull` would
+/// hide the PES header behind the 188-byte TS packet structure).
+#[test]
+fn dvb_teletext_near_boundary_pes_packet_length_matches_formula() {
+    use super::pes::{SubtitlePesShape, write_subtitle_pes};
+
+    // 65458-byte payload + auto-prepend → useful = 65504 = 356 * 184 →
+    // pes_packet_length = 65498.
+    let mut payload = vec![0u8; 65458];
+    payload[0] = 0x02;
+    let mut out = Vec::new();
+    write_subtitle_pes(&mut out, 90_000, SubtitlePesShape::DvbTeletext, &payload);
+    assert_eq!(
+        out.len(),
+        356 * 184,
+        "total PES bytes must be N*184 per EN 300 472 §4.2",
+    );
+    let pes_packet_length = u16::from_be_bytes([out[4], out[5]]);
+    assert_eq!(
+        pes_packet_length, 65498,
+        "PES_packet_length must be N*184 - 6 = 65498 per EN 300 472 §4.2; \
+         a value of 146 would indicate u16 truncation of 65682",
+    );
+}
+
 // ── Handle accessors ──────────────────────────────────────────────────────
 
 #[test]

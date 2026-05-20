@@ -9,7 +9,10 @@ use crate::error::MuxError;
 use crate::mpegts::common::Pts90khz;
 
 use super::Muxer;
-use super::pes::{SubtitlePesShape, write_subtitle_pes};
+use super::pes::{
+    SubtitlePesShape, dvb_teletext_total_pes_bytes, dvb_teletext_will_auto_prepend,
+    write_subtitle_pes,
+};
 use super::state::ts_packets_for;
 use super::ts::{AdaptationField, write_packet};
 use super::types::{StreamKind, SubtitleCodec, SubtitleStreamHandle};
@@ -81,7 +84,11 @@ impl Muxer {
     /// - [`MuxError::InvalidStreamHandle`] if `handle`'s index is out of
     ///   range for this muxer's configured subtitle stream count.
     /// - [`MuxError::SubtitleTooLarge`] if `payload.len()` would overflow
-    ///   `PES_packet_length` (max 65527 bytes).
+    ///   `PES_packet_length` (max 65527 bytes for DVB-sub / CEA-708 /
+    ///   WebVTT shapes; DVB-teletext caps at 65458 when the writer
+    ///   auto-prepends the EN 300 472 §4.4.1 `data_identifier` byte and
+    ///   65459 when the caller's first payload byte is already in
+    ///   `0x10..=0x1F`).
     /// - [`MuxError::BufferFull`] if the resulting TS packets would exceed
     ///   `MuxerConfig::buffer_packets`.
     pub fn push_subtitle_to(
@@ -121,25 +128,40 @@ impl Muxer {
             SubtitlePesShape::Passthrough => 0,
         };
 
-        // PES overhead in u16 PES_packet_length terms:
-        // - DVB-teletext: writer emits a 45-byte header (everything before the
-        //   caller payload) and pads the PES tail to N×184 bytes. The size cap
-        //   is still header(45) + payload <= u16::MAX since PES_packet_length
-        //   (which excludes the 6 fixed prefix bytes) holds 45 − 6 + payload =
-        //   39 + payload + tail_stuffing.
+        // PES size cap differs by codec shape:
+        // - DVB-teletext: writer emits a 45-byte stuffed PES header and pads
+        //   the PES to exactly N×184 bytes per EN 300 472 §4.2. The wire
+        //   `PES_packet_length` is `N*184 - 6` and must fit in u16, so the
+        //   max acceptable payload is whatever fits inside `dvb_teletext_
+        //   total_pes_bytes(...) ≤ 65541`. Auto-prepend of `0x10` (when the
+        //   caller's first byte is not already in `0x10..=0x1F`) costs 1
+        //   byte of headroom: 65458 max with auto-prepend, 65459 without.
         // - Other codecs: standard 14-byte header (3 byte prefix + flags(3) +
         //   PTS(5)), so PES_packet_length covers flags(3) + PTS(5) + envelope
         //   + payload.
-        let pes_overhead = match pes_shape {
-            SubtitlePesShape::DvbTeletext => 45,
-            _ => 3usize + 5 + envelope_overhead,
-        };
-        let max_subtitle = (u16::MAX as usize) - pes_overhead;
-        if payload.len() > max_subtitle {
-            return Err(MuxError::SubtitleTooLarge {
-                size: payload.len(),
-                max: max_subtitle,
-            });
+        if matches!(pes_shape, SubtitlePesShape::DvbTeletext) {
+            let auto_prepend = dvb_teletext_will_auto_prepend(payload);
+            if dvb_teletext_total_pes_bytes(payload.len(), auto_prepend).is_none() {
+                // Compute the largest payload we WOULD accept for this
+                // `auto_prepend` flag so the error reports a useful max.
+                // Per EN 300 472 §4.2 + H.222.0 §2.4.3.7: max total_pes_bytes
+                // = 356*184 = 65504; subtract HEADER(45) and the auto-prepend
+                // byte (if any) to recover max payload.
+                let max = 65504 - 45 - usize::from(auto_prepend);
+                return Err(MuxError::SubtitleTooLarge {
+                    size: payload.len(),
+                    max,
+                });
+            }
+        } else {
+            let pes_overhead = 3usize + 5 + envelope_overhead;
+            let max_subtitle = (u16::MAX as usize) - pes_overhead;
+            if payload.len() > max_subtitle {
+                return Err(MuxError::SubtitleTooLarge {
+                    size: payload.len(),
+                    max: max_subtitle,
+                });
+            }
         }
 
         let subtitle_pid = self.subtitle_streams[prog_idx][within_idx].pid;

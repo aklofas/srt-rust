@@ -172,6 +172,57 @@ pub(crate) fn write_subtitle_pes(
     }
 }
 
+/// Compute the on-wire DVB teletext PES packet size in bytes, or `None`
+/// if it would overflow `PES_packet_length`'s 16-bit field.
+///
+/// Per ETSI EN 300 472 §4.2, a DVB teletext PES is composed of:
+/// * a fixed 45-byte PES header (`HEADER_TOTAL`),
+/// * an optional auto-prepended `data_identifier` byte (`0x10`) when the
+///   caller's first payload byte is not already in the `0x10..=0x1F`
+///   range mandated by EN 300 472 §4.4.1,
+/// * the caller's payload, and
+/// * tail stuffing padding the PES to exactly `N * 184` bytes (one TS
+///   payload area per packet, no adaptation field).
+///
+/// The wire `PES_packet_length` field (ISO/IEC 13818-1 §2.4.3.7) is a
+/// 16-bit big-endian unsigned and equals `total_pes_bytes - 6`. This
+/// helper returns `Some(total_pes_bytes)` when that subtraction fits in
+/// `u16`, and `None` otherwise. Callers (`push_subtitle_to`) use this to
+/// pre-validate against `MuxError::SubtitleTooLarge` so the writer can
+/// safely `u16::try_from(...).expect(...)` the cast.
+///
+/// `auto_prepend` mirrors the writer's own auto-prepend decision: pass
+/// `true` when the caller's first payload byte is NOT in `0x10..=0x1F`
+/// (forcing the writer to insert a `0x10`), `false` otherwise. The
+/// boundary differs by 1 byte across this flag because the prepended
+/// byte counts toward `useful`.
+pub(super) fn dvb_teletext_total_pes_bytes(
+    payload_len: usize,
+    auto_prepend: bool,
+) -> Option<usize> {
+    const HEADER_TOTAL: usize = 45;
+    const TS_PAYLOAD_PER_PKT: usize = 184;
+    let auto_id_byte = usize::from(auto_prepend);
+    let useful = HEADER_TOTAL + auto_id_byte + payload_len;
+    let n = useful.div_ceil(TS_PAYLOAD_PER_PKT).max(1);
+    let total_pes_bytes = n * TS_PAYLOAD_PER_PKT;
+    // PES_packet_length = total_pes_bytes - 6 must fit in u16.
+    if total_pes_bytes < 6 || total_pes_bytes - 6 > u16::MAX as usize {
+        None
+    } else {
+        Some(total_pes_bytes)
+    }
+}
+
+/// Caller-side helper: does `write_dvb_teletext_pes` auto-prepend a
+/// `data_identifier` byte for this payload? EN 300 472 §4.4.1 mandates
+/// the first payload byte be in `0x10..=0x1F`; the writer inserts `0x10`
+/// when the caller has not. Exposed at module scope so `push_subtitle_to`
+/// can compute the same flag the writer will use when sizing the PES.
+pub(super) fn dvb_teletext_will_auto_prepend(payload: &[u8]) -> bool {
+    !matches!(payload.first(), Some(0x10..=0x1F))
+}
+
 /// Write a complete DVB teletext PES packet per ETSI EN 300 472 §4.2 + §4.4.
 ///
 /// - 45-byte PES header total: `start_code(3) + stream_id(1) + length(2) +
@@ -191,7 +242,9 @@ pub(crate) fn write_subtitle_pes(
 /// - `PES_packet_length = (N × 184) − 6`, where
 ///   `N = ceil((45 + auto_id_byte + payload.len()) / 184)`. The PES
 ///   packet is exactly `N × 184` bytes, with stuffing data_units padding
-///   the tail.
+///   the tail. Callers must pre-validate via
+///   [`dvb_teletext_total_pes_bytes`] so `pes_packet_length` fits in u16
+///   per EN 300 472 §4.2 + ISO/IEC 13818-1 §2.4.3.7.
 /// - `data_alignment_indicator = 1` (every PES carries one logical teletext
 ///   data unit).
 fn write_dvb_teletext_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
@@ -201,8 +254,6 @@ fn write_dvb_teletext_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
     const PES_HEADER_DATA_LENGTH: u8 = 0x24;
     /// Stuffing byte for the 31-byte PES-header stuffing region.
     const PES_HEADER_STUFFING: u8 = 0xFF;
-    /// TS packet payload area when no adaptation field is present.
-    const TS_PAYLOAD_PER_PKT: usize = 184;
     /// Default `data_identifier` per EN 300 472 §4.4.1 Table 1 (EBU teletext).
     const DEFAULT_DATA_IDENTIFIER: u8 = 0x10;
     /// Stuffing data_unit per EN 300 472 §4.4: 46 bytes total.
@@ -213,21 +264,24 @@ fn write_dvb_teletext_pes(out: &mut Vec<u8>, pts_90khz: i64, payload: &[u8]) {
         arr
     };
 
-    let auto_prepend = !matches!(payload.first(), Some(0x10..=0x1F));
-    let auto_id_byte = if auto_prepend { 1 } else { 0 };
+    let auto_prepend = dvb_teletext_will_auto_prepend(payload);
 
-    let useful = HEADER_TOTAL + auto_id_byte + payload.len();
-    let n = useful.div_ceil(TS_PAYLOAD_PER_PKT).max(1);
-    let total_pes_bytes = n * TS_PAYLOAD_PER_PKT;
+    // The caller (push_subtitle_to) must have pre-validated payload size
+    // against `dvb_teletext_total_pes_bytes` and rejected oversized inputs
+    // with `MuxError::SubtitleTooLarge`. The expect() here is a hard
+    // invariant — see EN 300 472 §4.2 + ISO/IEC 13818-1 §2.4.3.7.
+    let total_pes_bytes = dvb_teletext_total_pes_bytes(payload.len(), auto_prepend)
+        .expect("caller pre-validates DVB teletext PES length fits in u16");
     // PES_packet_length excludes the 6 fixed bytes (start_code + stream_id +
     // length itself) per ISO/IEC 13818-1 §2.4.3.7.
-    let pes_packet_length = total_pes_bytes - 6;
+    let pes_packet_length = u16::try_from(total_pes_bytes - 6)
+        .expect("caller pre-validates DVB teletext PES length fits in u16");
 
     // Fixed prefix: start_code(3) + stream_id(1).
     out.extend_from_slice(&[0x00, 0x00, 0x01]);
     out.push(STREAM_ID_PRIVATE_STREAM_1);
     // PES_packet_length (BE u16).
-    out.extend_from_slice(&(pes_packet_length as u16).to_be_bytes());
+    out.extend_from_slice(&pes_packet_length.to_be_bytes());
     // flags1: '10' marker | data_alignment_indicator (bit 2). Hardcoded
     // inline (vs routed through write_pes_header) because the teletext
     // path doesn't share the standard 14-byte header — it has 36 bytes

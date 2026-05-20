@@ -936,7 +936,9 @@ typedef struct tst_event_t {
 } tst_event_t;
 
 /**
- * `repr(C)` mirror of `tst_pipeline::MuxSenderStats`. Size 6188 B.
+ * `repr(C)` mirror of `tst_pipeline::MuxSenderStats`. Size 6192 B
+ * (4×u64 + 3×u32 + 4 B alignment pad + 64 × `TstStreamStats`); see
+ * the `_TST_MUX_SENDER_STATS_SIZE` const assertion below.
  */
 typedef struct tst_mux_sender_stats_t {
   uint64_t bytes_sent;
@@ -1041,7 +1043,9 @@ typedef struct tst_sender_stats_t {
 typedef uint32_t tst_program_handle_t;
 
 /**
- * `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6172 B.
+ * `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6176 B
+ * (2×u64 + 3×u32 + 4 B alignment pad + 64 × `TstStreamStats`); see the
+ * `_TST_MUXER_STATS_SIZE` const assertion below.
  */
 typedef struct tst_muxer_stats_t {
   uint64_t ts_packets_emitted;
@@ -3225,12 +3229,12 @@ int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
 
 #endif  /* TSTRANS_H */
 
-/* Phase 3 ABI layout guards — trip the C compiler at consumer-build
- * time if the Rust-side struct sizes drift from their Phase 3 baseline.
- * Layouts are pinned in `crates/tst-c/src/event.rs` via const-assertion
- * blocks on the Rust side; this duplicates the guard on the C side so
- * consumers building against an upgraded libtstrans see the mismatch
- * immediately.
+/* ABI layout guards — trip the C compiler at consumer-build time if
+ * the Rust-side struct sizes drift from their pinned baselines. Layouts
+ * are pinned in `crates/tst-c/src/event.rs` and `crates/tst-c/src/stats.rs`
+ * via `const _: () = assert!(...)` blocks on the Rust side; this
+ * duplicates the guard on the C side so consumers building against an
+ * upgraded libtstrans see the mismatch immediately rather than at runtime.
  */
 #if !defined(TST_SKIP_ABI_ASSERTS) && !defined(_TST_ABI_ASSERTS_DONE)
 #define _TST_ABI_ASSERTS_DONE
@@ -3244,4 +3248,10 @@ _TST_ABI_ASSERT(sizeof(tst_demux_receiver_stats_t) == 48, "tst_demux_receiver_st
 _TST_ABI_ASSERT(sizeof(tst_event_t)               <= 256, "tst_event_t exceeds 256 B");
 _TST_ABI_ASSERT(sizeof(tst_stream_codec_stats_t)   == 24, "tst_stream_codec_stats_t size drift: expected 24 bytes");
 _TST_ABI_ASSERT(sizeof(tst_socket_stats_t)         == 120, "tst_socket_stats_t size drift: expected 120 bytes");
+_TST_ABI_ASSERT(sizeof(tst_stream_stats_t)         == 96, "tst_stream_stats_t size drift: expected 96 bytes");
+_TST_ABI_ASSERT(sizeof(tst_raw_send_stats_t)       == 16, "tst_raw_send_stats_t size drift: expected 16 bytes");
+_TST_ABI_ASSERT(sizeof(tst_raw_recv_stats_t)       == 16, "tst_raw_recv_stats_t size drift: expected 16 bytes");
+_TST_ABI_ASSERT(sizeof(tst_receiver_stats_t)       == 32, "tst_receiver_stats_t size drift: expected 32 bytes");
+_TST_ABI_ASSERT(sizeof(tst_muxer_stats_t)          == 6176, "tst_muxer_stats_t size drift: expected 6176 bytes");
+_TST_ABI_ASSERT(sizeof(tst_mux_sender_stats_t)     == 6192, "tst_mux_sender_stats_t size drift: expected 6192 bytes");
 #endif

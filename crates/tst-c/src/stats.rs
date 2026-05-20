@@ -93,6 +93,11 @@ pub struct TstRawSendStats {
     pub packets_sent: u64,
 }
 
+const _TST_RAW_SEND_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstRawSendStats>() == 16,
+    "TstRawSendStats must be 16 bytes (2 × u64)"
+);
+
 impl From<&tst_pipeline::RawSendStats> for TstRawSendStats {
     fn from(s: &tst_pipeline::RawSendStats) -> Self {
         Self {
@@ -109,6 +114,11 @@ pub struct TstRawRecvStats {
     pub bytes_received: u64,
     pub packets_received: u64,
 }
+
+const _TST_RAW_RECV_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstRawRecvStats>() == 16,
+    "TstRawRecvStats must be 16 bytes (2 × u64)"
+);
 
 impl From<&tst_pipeline::RawRecvStats> for TstRawRecvStats {
     fn from(s: &tst_pipeline::RawRecvStats) -> Self {
@@ -137,6 +147,11 @@ pub struct TstReceiverStats {
     pub resync_events: u64,
     pub packets_received: u64,
 }
+
+const _TST_RECEIVER_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstReceiverStats>() == 32,
+    "TstReceiverStats must be 32 bytes (4 × u64)"
+);
 
 impl From<&tst_pipeline::ReceiverStats> for TstReceiverStats {
     fn from(s: &tst_pipeline::ReceiverStats) -> Self {
@@ -281,7 +296,9 @@ impl From<&tst_core::transport::SocketStats> for TstSocketStats {
     }
 }
 
-/// `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6172 B.
+/// `repr(C)` mirror of `tst_core::mpegts::mux::MuxerStats`. Size 6176 B
+/// (2×u64 + 3×u32 + 4 B alignment pad + 64 × `TstStreamStats`); see the
+/// `_TST_MUXER_STATS_SIZE` const assertion below.
 #[repr(C)]
 pub struct TstMuxerStats {
     pub ts_packets_emitted: u64,
@@ -292,6 +309,11 @@ pub struct TstMuxerStats {
     pub per_stream_truncated: u32,
     pub per_stream: [TstStreamStats; TST_STATS_MAX_STREAMS],
 }
+
+const _TST_MUXER_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstMuxerStats>() == 6176,
+    "TstMuxerStats must be 6176 bytes (2×u64 + 3×u32 + 4 pad + 64 × TstStreamStats)"
+);
 
 impl Default for TstMuxerStats {
     fn default() -> Self {
@@ -306,7 +328,9 @@ impl Default for TstMuxerStats {
     }
 }
 
-/// `repr(C)` mirror of `tst_pipeline::MuxSenderStats`. Size 6188 B.
+/// `repr(C)` mirror of `tst_pipeline::MuxSenderStats`. Size 6192 B
+/// (4×u64 + 3×u32 + 4 B alignment pad + 64 × `TstStreamStats`); see
+/// the `_TST_MUX_SENDER_STATS_SIZE` const assertion below.
 #[repr(C)]
 pub struct TstMuxSenderStats {
     pub bytes_sent: u64,
@@ -319,6 +343,11 @@ pub struct TstMuxSenderStats {
     pub per_stream_truncated: u32,
     pub per_stream: [TstStreamStats; TST_STATS_MAX_STREAMS],
 }
+
+const _TST_MUX_SENDER_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstMuxSenderStats>() == 6192,
+    "TstMuxSenderStats must be 6192 bytes (4×u64 + 3×u32 + 4 pad + 64 × TstStreamStats)"
+);
 
 impl Default for TstMuxSenderStats {
     fn default() -> Self {

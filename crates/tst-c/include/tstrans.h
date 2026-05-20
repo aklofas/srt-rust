@@ -53,10 +53,10 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 1` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 2` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  */
-#define TST_ABI_VERSION_MINOR 1
+#define TST_ABI_VERSION_MINOR 2
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -240,6 +240,19 @@ enum tst_event_kind
   TST_EVENT_KIND_METADATA = 3,
   TST_EVENT_KIND_DISCONTINUITY = 4,
   TST_EVENT_KIND_NON_CONFORMANT = 5,
+  /**
+   * Boundary marker emitted by `tst_managed_demux_receiver_*` after
+   * the underlying transport reconnects and the demuxer's sync /
+   * PSI / PES state was reset (validate-1 Sprint 4 F2 + followup-1).
+   *
+   * **Carries no body** — the `u` union is zero-initialized for this
+   * kind. Consumers should drop any per-stream caches and wait for
+   * the next [`ProgramMap`](Self::ProgramMap) event on the fresh
+   * connection.
+   *
+   * The plain `tst_demux_receiver_*` family never emits this kind.
+   */
+  TST_EVENT_KIND_RECONNECT_DISCONTINUITY = 6,
 };
 #ifndef __cplusplus
 typedef int32_t tst_event_kind;

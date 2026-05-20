@@ -261,6 +261,10 @@ pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::is_alive(&
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::new(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnects_count(&self) -> u64
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reset_stats(&mut self)
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::with_demux_options(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, options: tst_core::mpegts::demux::types::DemuxerConfig, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -1360,6 +1364,10 @@ pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::is_alive(&
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::new(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnects_count(&self) -> u64
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reset_stats(&mut self)
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::with_demux_options(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, options: tst_core::mpegts::demux::types::DemuxerConfig, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result

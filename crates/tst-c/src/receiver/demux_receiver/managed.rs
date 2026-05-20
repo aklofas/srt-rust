@@ -1,10 +1,13 @@
 //! `tst_managed_demux_receiver_t` — reconnect-aware sibling of the
 //! plain `tst_demux_receiver_t`.
 //!
-//! Wraps a `DemuxReceiver<ManagedRecvTransport<SrtTransport>>`. Open /
-//! lifecycle / event / stats surfaces mirror the plain receiver one-for-one
-//! with `managed_` infix on every C entry. The two notable shape changes
-//! vs the plain sibling:
+//! Wraps a `ManagedDemuxReceiver<SrtTransport>`. Per-reconnect sync /
+//! demux state reset is automatic — a `ReconnectDiscontinuity` event
+//! surfaces from `_recv_event` after each transport reconnect
+//! (validate-1 Sprint 4 F2 + followup-1). Open / lifecycle / event /
+//! stats surfaces mirror the plain receiver one-for-one with `managed_`
+//! infix on every C entry. The two notable shape changes vs the plain
+//! sibling:
 //!
 //! * `_open*` family takes an optional `*const TstReconnectPolicy`.
 //! * `_recv_event` does NOT apply the Broken→EOS mapping the plain
@@ -25,7 +28,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use tst_pipeline::DemuxReceiver;
+use tst_pipeline::ManagedDemuxReceiver;
+use tst_pipeline::ManagedDemuxReceiverConfig;
 use tst_pipeline::ManagedRecvTransport;
 use tst_pipeline::ShellErrorKind;
 use tst_pipeline::TransportCancel;
@@ -35,7 +39,7 @@ use tst_srt::SrtUrl;
 use tst_srt::url::Mode;
 
 pub struct TstManagedDemuxReceiver {
-    inner: Handle<DemuxReceiver<ManagedRecvTransport<SrtTransport>>>,
+    inner: Handle<ManagedDemuxReceiver<SrtTransport>>,
     arena: Mutex<EventArena>,
     stream_stats_buf: Mutex<Vec<crate::stats::TstStreamStats>>,
     cancel: Option<Arc<dyn TransportCancel + Send + Sync>>,
@@ -181,8 +185,12 @@ fn finish_managed_open(
     opts: Option<tst_core::mpegts::demux::DemuxerConfig>,
 ) -> *mut TstManagedDemuxReceiver {
     let rx = match opts {
-        Some(o) => DemuxReceiver::with_demux_options(managed, o),
-        None => DemuxReceiver::new(managed),
+        Some(o) => ManagedDemuxReceiver::with_demux_options(
+            managed,
+            o,
+            ManagedDemuxReceiverConfig::default(),
+        ),
+        None => ManagedDemuxReceiver::new(managed, ManagedDemuxReceiverConfig::default()),
     };
     let cancel = rx.cancel_handle();
     let was_cancelled = Arc::new(AtomicBool::new(false));

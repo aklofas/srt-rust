@@ -361,6 +361,52 @@ impl<R: RecvTransport> ManagedDemuxReceiver<R> {
     pub fn reconnects_count(&self) -> u64 {
         self.reconnects.load(Ordering::Acquire)
     }
+
+    /// Snapshot the current counters. Mirrors
+    /// [`DemuxReceiver::stats`](crate::DemuxReceiver::stats) — composes
+    /// transport-layer byte/packet counts from the inner [`Receiver`]
+    /// with demux-layer event counts from the inner [`Demuxer`].
+    pub fn stats(&self) -> crate::demux_receiver::DemuxReceiverStats {
+        let ts = self.ts.stats();
+        let dx = self.demux.stats();
+        crate::demux_receiver::DemuxReceiverStats {
+            bytes_received: ts.bytes_received,
+            packets_received: ts.packets_received,
+            program_maps_seen: dx.program_maps_seen,
+            pmt_versions_seen: dx.pmt_versions_seen,
+            discontinuities: dx.discontinuities,
+            nonconformant: dx.nonconformant,
+            per_stream: dx.per_stream,
+        }
+    }
+
+    /// Reset all counters to zero. Delegates to both the inner
+    /// [`Receiver`] and the inner [`Demuxer`].
+    pub fn reset_stats(&mut self) {
+        self.ts.reset_stats();
+        self.demux.reset_stats();
+    }
+
+    /// Wire-level transport stats sourced from the inner
+    /// [`ManagedRecvTransport`]. Returns `None` when the managed wrapper
+    /// has no live inner socket (e.g. mid-reconnect or after terminal
+    /// close).
+    pub fn socket_stats(&self) -> Option<tst_core::transport::SocketStats> {
+        self.ts.socket_stats()
+    }
+
+    /// Per-PID codec-specific counters. Mirrors
+    /// [`DemuxReceiver::stream_codec_stats`](crate::DemuxReceiver::stream_codec_stats) —
+    /// delegates to the inner
+    /// [`tst_core::mpegts::demux::Demuxer::stream_codec_stats`]. The
+    /// demuxer's per-PID state is independent of the live socket, so
+    /// results don't vary across reconnect.
+    pub fn stream_codec_stats(
+        &self,
+        pid: u16,
+    ) -> Option<tst_core::mpegts::stats::StreamCodecStats> {
+        self.demux.stream_codec_stats(pid)
+    }
 }
 
 /// `ManagedDemuxReceiver` implements `Iterator` so callers can use

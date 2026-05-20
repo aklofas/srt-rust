@@ -9,7 +9,7 @@
 use libc::{c_char, c_int};
 
 // ------------------------------------------------------------------
-// Top-level event kind discriminator (5 variants)
+// Top-level event kind discriminator (6 variants)
 // ------------------------------------------------------------------
 
 /// `repr(i32)` discriminator for `TstEvent::kind`. cbindgen emits
@@ -22,6 +22,17 @@ pub enum TstEventKind {
     Metadata = 3,
     Discontinuity = 4,
     NonConformant = 5,
+    /// Boundary marker emitted by `tst_managed_demux_receiver_*` after
+    /// the underlying transport reconnects and the demuxer's sync /
+    /// PSI / PES state was reset (validate-1 Sprint 4 F2 + followup-1).
+    ///
+    /// **Carries no body** — the `u` union is zero-initialized for this
+    /// kind. Consumers should drop any per-stream caches and wait for
+    /// the next [`ProgramMap`](Self::ProgramMap) event on the fresh
+    /// connection.
+    ///
+    /// The plain `tst_demux_receiver_*` family never emits this kind.
+    ReconnectDiscontinuity = 6,
 }
 
 // ------------------------------------------------------------------
@@ -576,14 +587,12 @@ pub(crate) fn convert(
             fill_nonconformant(arena, stream, issue, out);
         }
         DemuxEvent::ReconnectDiscontinuity => {
-            // Only emitted by `ManagedDemuxReceiver` (tst-pipeline), which
-            // is not yet wired into the C ABI's managed receive surface —
-            // today the C side wraps `DemuxReceiver<ManagedRecvTransport>`,
-            // which has no path to produce this variant. Leave the event
-            // body unset (`*out` already defaulted above); future C ABI
-            // work that exposes the reset-aware receiver will add a
-            // dedicated `TstEventKind::ReconnectDiscontinuity` and fill
-            // here.
+            // No-payload event surfaced only by the managed demux
+            // receiver after the underlying transport reconnects and
+            // sync / demux state was reset (followup-1). The union
+            // body is left zero-initialized via the `*out =
+            // TstEvent::default()` above.
+            out.kind = TstEventKind::ReconnectDiscontinuity as c_int;
         }
     }
 }
@@ -1435,6 +1444,23 @@ mod tests {
             obu_out_ptr, obu_ptr_before,
             "AV1 OBU payload pointer must NOT alias the input Vec"
         );
+    }
+
+    #[test]
+    fn reconnect_discontinuity_maps_to_event_kind_6() {
+        // Sprint 4-5 review followup-1: the managed demux receiver now
+        // wires `DemuxEvent::ReconnectDiscontinuity` through to a
+        // dedicated `TstEventKind::ReconnectDiscontinuity` (= 6) with a
+        // zeroed union body. Verify the mapping here so the C ABI
+        // contract is locked at unit-test resolution; an end-to-end
+        // reconnect-driven test is out of scope (would require either
+        // SRT loopback or replumbing the C wrapper for a generic
+        // transport).
+        let mut arena = EventArena::new();
+        let mut out = TstEvent::default();
+        convert(&mut arena, &DemuxEvent::ReconnectDiscontinuity, &mut out);
+        assert_eq!(out.kind, TstEventKind::ReconnectDiscontinuity as c_int);
+        // No body assertions — the variant intentionally carries no payload.
     }
 
     #[test]

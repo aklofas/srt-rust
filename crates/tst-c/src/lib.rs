@@ -73,9 +73,9 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 1` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 2` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
-pub const TST_ABI_VERSION_MINOR: libc::c_int = 1;
+pub const TST_ABI_VERSION_MINOR: libc::c_int = 2;
 
 // =========================================================================
 // Runtime version accessors

@@ -23,7 +23,10 @@ struct AlwaysBrokenRecv {
 impl RecvTransport for AlwaysBrokenRecv {
     fn recv_bytes(&mut self, _buf: &mut [u8]) -> Result<usize, TransportError> {
         self.recvs.fetch_add(1, Ordering::SeqCst);
-        Err(TransportError::Broken("always broken (test)".into()))
+        Err(TransportError::Broken {
+            msg: "always broken (test)".into(),
+            errno_code: None,
+        })
     }
 
     fn max_payload(&self) -> usize {
@@ -43,7 +46,10 @@ fn receiver_reconnect_emits_info_on_attempt_and_warn_on_give_up() {
     // Factory always fails so the reconnect budget is exhausted and the
     // give-up branch fires.
     let factory = Box::new(|| -> Result<AlwaysBrokenRecv, TransportError> {
-        Err(TransportError::Broken("test factory always fails".into()))
+        Err(TransportError::Broken {
+            msg: "test factory always fails".into(),
+            errno_code: None,
+        })
     });
 
     // Cap attempts low + zero backoff so the test is fast.

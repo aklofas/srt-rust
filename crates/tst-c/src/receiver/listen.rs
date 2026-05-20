@@ -32,10 +32,17 @@ pub(crate) fn listen_srt(
 ) -> Result<SrtTransport, TransportError> {
     let bind_host = if host.is_empty() { "0.0.0.0" } else { host };
     let addr = format!("{bind_host}:{port}");
-    let mut listener = Listener::bind_with(cfg, addr.as_str())
-        .map_err(|e| TransportError::Broken(format!("bind: {e}")))?;
-    let (socket, _peer) = listener
-        .accept()
-        .map_err(|e| TransportError::Broken(format!("accept: {e}")))?;
+    let mut listener = Listener::bind_with(cfg, addr.as_str()).map_err(|e| {
+        // Bind/accept errors aren't libsrt MJ_* errnos in the typed
+        // sense — pass None and let the message carry the detail.
+        TransportError::Broken {
+            msg: format!("bind: {e}"),
+            errno_code: None,
+        }
+    })?;
+    let (socket, _peer) = listener.accept().map_err(|e| TransportError::Broken {
+        msg: format!("accept: {e}"),
+        errno_code: None,
+    })?;
     Ok(SrtTransport::new(socket))
 }

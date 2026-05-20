@@ -236,7 +236,7 @@ fn run_one(path: &Path) -> RunOutcome {
                 Err(ref err)
                     if matches!(
                         err.source,
-                        DemuxReceiverErrorSource::Transport(TransportError::Broken(_))
+                        DemuxReceiverErrorSource::Transport(TransportError::Broken { .. })
                     ) =>
                 {
                     break;

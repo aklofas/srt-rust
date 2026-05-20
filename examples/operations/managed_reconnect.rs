@@ -180,9 +180,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // mutating steps.
         let mut sb = SocketBuilder::new();
         sb.latency(Duration::from_millis(120));
-        let socket = sb
-            .connect(connect_addr_for_factory.as_str())
-            .map_err(|e| TransportError::Broken(format!("connect failed: {e}")))?;
+        let socket =
+            sb.connect(connect_addr_for_factory.as_str())
+                .map_err(|e| TransportError::Broken {
+                    msg: format!("connect failed: {e}"),
+                    // Examples don't propagate the typed libsrt errno here —
+                    // the educational point is the reconnect shape, not the
+                    // typed-source plumbing. Real consumers wrapping
+                    // `Socket::connect` directly should fish out the typed
+                    // error and map it to a meaningful code.
+                    errno_code: None,
+                })?;
         Ok(SrtTransport::new(socket))
     };
 

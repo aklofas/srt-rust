@@ -78,21 +78,38 @@ impl Transport for SrtTransport {
         let socket = self.socket.as_mut().ok_or(TransportError::Closed)?;
         match socket.send(msg) {
             Ok(_) => Ok(()),
-            Err(SendError::TimedOut) => Err(TransportError::Backpressure("send timed out".into())),
-            Err(SendError::QueueFull) => {
-                Err(TransportError::Backpressure("send queue full".into()))
-            }
+            Err(SendError::TimedOut) => Err(TransportError::Backpressure {
+                msg: "send timed out".into(),
+                // libsrt SRT_ETIMEOUT — typed as SrtErrno::Async major
+                // category (6) by From<RawError>; recorded here so JNI/
+                // UniFFI bindings can discriminate on the wire-level
+                // code without parsing the message.
+                errno_code: Some(SrtErrno::Async.raw_code()),
+            }),
+            Err(SendError::QueueFull) => Err(TransportError::Backpressure {
+                msg: "send queue full".into(),
+                errno_code: Some(SrtErrno::Async.raw_code()),
+            }),
             Err(SendError::PayloadTooLarge { actual, .. }) => Err(TransportError::TooLarge {
                 len: actual,
                 max: self.max_payload,
             }),
             Err(SendError::ConnectionBroken) => {
                 self.socket = None;
-                Err(TransportError::Broken("connection broken".into()))
+                Err(TransportError::Broken {
+                    msg: "connection broken".into(),
+                    errno_code: Some(SrtErrno::Connection.raw_code()),
+                })
             }
             Err(SendError::System(e)) => {
                 self.socket = None;
-                Err(TransportError::Broken(format!("system error: {e}")))
+                Err(TransportError::Broken {
+                    msg: format!("system error: {e}"),
+                    // OS-level IO error — not a libsrt MJ_* code. None
+                    // is the honest signal; bindings should treat
+                    // None+Broken as "wire-level cause not exposed."
+                    errno_code: None,
+                })
             }
             Err(SendError::Other { kind, message }) => {
                 // SrtErrno::Async coarsens libsrt's async-class category. The only
@@ -101,11 +118,18 @@ impl Transport for SrtTransport {
                 // pre-consumed into SendError::TimedOut by From<RawError>, and
                 // SRT_EASYNCRCV / SRT_EASYNCFAIL don't fire on srt_sendmsg2.
                 // Everything else → broken (rebuild the transport).
+                let errno_code = Some(kind.raw_code());
                 if matches!(kind, SrtErrno::Async) {
-                    Err(TransportError::Backpressure(message))
+                    Err(TransportError::Backpressure {
+                        msg: message,
+                        errno_code,
+                    })
                 } else {
                     self.socket = None;
-                    Err(TransportError::Broken(message))
+                    Err(TransportError::Broken {
+                        msg: message,
+                        errno_code,
+                    })
                 }
             }
         }
@@ -145,7 +169,10 @@ impl tst_core::transport::RecvTransport for SrtTransport {
         let socket = self.socket.as_mut().ok_or(TransportError::Closed)?;
         match socket.recv(buf) {
             Ok(n) => Ok(n),
-            Err(RecvError::TimedOut) => Err(TransportError::Backpressure("recv timed out".into())),
+            Err(RecvError::TimedOut) => Err(TransportError::Backpressure {
+                msg: "recv timed out".into(),
+                errno_code: Some(SrtErrno::Async.raw_code()),
+            }),
             Err(RecvError::ConnectionBroken) => {
                 // Peer hung up or mid-stream abort. Surface as Broken (not
                 // Closed) so a managed receive decorator can distinguish a
@@ -153,7 +180,10 @@ impl tst_core::transport::RecvTransport for SrtTransport {
                 // reconnect. Matches the send-side mapping for the same
                 // RecvError-equivalent variant.
                 self.socket = None;
-                Err(TransportError::Broken("connection broken".into()))
+                Err(TransportError::Broken {
+                    msg: "connection broken".into(),
+                    errno_code: Some(SrtErrno::Connection.raw_code()),
+                })
             }
             Err(RecvError::BufferTooSmall {
                 buf_len,
@@ -163,13 +193,28 @@ impl tst_core::transport::RecvTransport for SrtTransport {
                 // Surface as Broken — the receive shell is misconfigured (it
                 // should have sized buf to at least max_payload()).
                 self.socket = None;
-                Err(TransportError::Broken(format!(
-                    "recv buf too small: {buf_len} < {message_len}"
-                )))
+                Err(TransportError::Broken {
+                    msg: format!("recv buf too small: {buf_len} < {message_len}"),
+                    // Caller-misconfiguration shape, not a libsrt errno;
+                    // pass None to keep the signal honest.
+                    errno_code: None,
+                })
             }
             Err(other) => {
+                // Catch-all for the remaining RecvError variants
+                // (`System(io::Error)`, `Other { kind, message }`, and
+                // any future #[non_exhaustive] additions). Carries the
+                // raw libsrt errno when the underlying typed variant
+                // exposes one; otherwise None.
+                let errno_code = match &other {
+                    RecvError::Other { kind, .. } => Some(kind.raw_code()),
+                    _ => None,
+                };
                 self.socket = None;
-                Err(TransportError::Broken(other.to_string()))
+                Err(TransportError::Broken {
+                    msg: other.to_string(),
+                    errno_code,
+                })
             }
         }
     }
@@ -291,5 +336,57 @@ mod tests {
         // We can't construct an SrtTransport without a live Socket
         // through the public API, so this assertion lives in the
         // integration test instead. Documented as a guarantee here.
+    }
+
+    /// validate-1 D5: ensure `SrtErrno::raw_code()` produces the libsrt
+    /// MJ_* major-category integers the `errno_code` field on
+    /// `TransportError::{Backpressure, Broken}` carries. Bindings that
+    /// pattern-match on these codes need them stable across releases.
+    #[test]
+    fn srt_errno_raw_code_maps_to_libsrt_major() {
+        assert_eq!(SrtErrno::Setup.raw_code(), 1);
+        assert_eq!(SrtErrno::Connection.raw_code(), 2);
+        assert_eq!(SrtErrno::SystemRes.raw_code(), 3);
+        assert_eq!(SrtErrno::FileSystem.raw_code(), 4);
+        assert_eq!(SrtErrno::Notsup.raw_code(), 5);
+        assert_eq!(SrtErrno::Async.raw_code(), 6);
+        assert_eq!(SrtErrno::PeerError.raw_code(), 7);
+        // Unknown preserves the raw libsrt errno verbatim — used by
+        // bindings to probe sub-codes that aren't categorized here.
+        assert_eq!(SrtErrno::Unknown(6002).raw_code(), 6002);
+    }
+
+    /// validate-1 D5: the transport error variants carry an optional
+    /// errno code. Verify the field is constructible (non-SRT producers
+    /// pass None) and round-trips through pattern destructuring.
+    #[test]
+    fn transport_error_errno_code_destructure() {
+        let err = TransportError::Backpressure {
+            msg: "test".into(),
+            errno_code: Some(SrtErrno::Async.raw_code()),
+        };
+        if let TransportError::Backpressure {
+            msg: _,
+            errno_code: Some(c),
+        } = err
+        {
+            assert_eq!(c, 6, "Backpressure should carry SRT Async major (6)");
+        } else {
+            panic!("expected Backpressure with errno");
+        }
+
+        let err = TransportError::Broken {
+            msg: "test".into(),
+            errno_code: Some(SrtErrno::Connection.raw_code()),
+        };
+        if let TransportError::Broken {
+            msg: _,
+            errno_code: Some(c),
+        } = err
+        {
+            assert_eq!(c, 2, "Broken should carry SRT Connection major (2)");
+        } else {
+            panic!("expected Broken with errno");
+        }
     }
 }

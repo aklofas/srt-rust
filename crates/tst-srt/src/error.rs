@@ -405,6 +405,37 @@ impl SrtErrno {
             _ => SrtErrno::Unknown(raw),
         }
     }
+
+    /// Map back to an integer code for transport-layer error propagation.
+    ///
+    /// Returns the libsrt MJ_* major category for the known variants
+    /// (`Setup`→1, `Connection`→2, `SystemRes`→3, `FileSystem`→4,
+    /// `Notsup`→5, `Async`→6, `PeerError`→7, `Timeout`→6, `Bad`→0), or
+    /// the preserved raw libsrt errno for [`Self::Unknown`]. Used by
+    /// [`crate::transport::SrtTransport`] to populate the `errno_code`
+    /// field on [`tst_core::transport::TransportError::Backpressure`] /
+    /// [`tst_core::transport::TransportError::Broken`], giving JNI /
+    /// UniFFI bindings a typed-source signal without depending on the
+    /// `SrtErrno` enum directly (which lives in `tst-srt`, not `tst-core`).
+    ///
+    /// Note: `Timeout` and `Bad` aren't produced by the internal
+    /// `from_raw` constructor today (no major-category mapping); they're
+    /// listed for future-proofing if the typed enum is ever populated
+    /// through another path.
+    pub fn raw_code(&self) -> i32 {
+        match self {
+            SrtErrno::Setup => 1,
+            SrtErrno::Connection => 2,
+            SrtErrno::SystemRes => 3,
+            SrtErrno::FileSystem => 4,
+            SrtErrno::Notsup => 5,
+            SrtErrno::Async => 6,
+            SrtErrno::PeerError => 7,
+            SrtErrno::Timeout => 6,
+            SrtErrno::Bad => 0,
+            SrtErrno::Unknown(raw) => *raw,
+        }
+    }
 }
 
 impl RejectReason {

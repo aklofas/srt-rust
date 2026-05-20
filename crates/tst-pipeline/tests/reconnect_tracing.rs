@@ -20,7 +20,10 @@ struct AlwaysBroken {
 impl Transport for AlwaysBroken {
     fn send_bytes(&mut self, _: &[u8]) -> Result<(), TransportError> {
         self.sends.fetch_add(1, Ordering::SeqCst);
-        Err(TransportError::Broken("always broken (test)".into()))
+        Err(TransportError::Broken {
+            msg: "always broken (test)".into(),
+            errno_code: None,
+        })
     }
 
     fn max_payload(&self) -> usize {
@@ -42,7 +45,10 @@ fn sender_reconnect_emits_info_on_attempt_and_warn_on_give_up() {
     // Factory always fails so the reconnect budget is exhausted and the
     // give-up branch fires.
     let factory = || -> Result<AlwaysBroken, TransportError> {
-        Err(TransportError::Broken("test factory always fails".into()))
+        Err(TransportError::Broken {
+            msg: "test factory always fails".into(),
+            errno_code: None,
+        })
     };
 
     // Cap attempts low + zero backoff so the test is fast.
@@ -61,7 +67,7 @@ fn sender_reconnect_emits_info_on_attempt_and_warn_on_give_up() {
     // reconnect_and_drain → 3 factory failures → give-up.
     let err = managed.send_bytes(b"trigger").unwrap_err();
     assert!(
-        matches!(err, TransportError::Broken(_)),
+        matches!(err, TransportError::Broken { .. }),
         "expected Broken after give-up, got {err:?}"
     );
 

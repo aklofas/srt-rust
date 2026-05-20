@@ -196,7 +196,7 @@ pub unsafe extern "C" fn tst_receiver_recv_packet(
             }
         }
         // SrtTransport::recv_bytes maps a peer disconnect to
-        // TransportError::Broken("connection broken") rather than Closed
+        // TransportError::Broken { msg: "connection broken", .. } rather than Closed
         // so that the managed-receive decorator can distinguish a
         // self-initiated close from a peer-initiated break and drive
         // reconnect. At the plain C ABI boundary a Broken result on a

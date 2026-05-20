@@ -302,7 +302,10 @@ mod tests {
             if self.accept {
                 Ok(())
             } else {
-                Err(TransportError::Broken("test".into()))
+                Err(TransportError::Broken {
+                    msg: "test".into(),
+                    errno_code: None,
+                })
             }
         }
         fn max_payload(&self) -> usize {

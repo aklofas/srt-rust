@@ -129,7 +129,10 @@ fn mux_sender_backpressure_returns_buffer_full_code() {
 fn mux_sender_transport_broken_returns_transport_code() {
     reset();
     // `TransportError::Broken` on a sender shell → kind TransportBroken.
-    let e = MuxSenderError::from(TransportError::Broken("socket reset".into()));
+    let e = MuxSenderError::from(TransportError::Broken {
+        msg: "socket reset".into(),
+        errno_code: None,
+    });
     let rc = test_record_shell_error(&e);
     assert_eq!(rc, TST_E_TRANSPORT, "MuxSender TransportBroken: wrong code");
     assert_eq!(test_last_error_code(), TST_E_TRANSPORT);
@@ -180,7 +183,10 @@ fn sender_input_malformed_returns_invalid_ts_code() {
 fn sender_backpressure_returns_buffer_full_code() {
     reset();
     // `TransportError::Backpressure` on a sender → kind Backpressure.
-    let e = SenderError::from(TransportError::Backpressure("tx queue full".into()));
+    let e = SenderError::from(TransportError::Backpressure {
+        msg: "tx queue full".into(),
+        errno_code: None,
+    });
     let rc = test_record_shell_error(&e);
     assert_eq!(rc, TST_E_BUFFER_FULL, "Sender Backpressure: wrong code");
     assert_eq!(test_last_error_code(), TST_E_BUFFER_FULL);
@@ -193,7 +199,10 @@ fn sender_backpressure_returns_buffer_full_code() {
 #[test]
 fn sender_transport_broken_returns_transport_code() {
     reset();
-    let e = SenderError::from(TransportError::Broken("link down".into()));
+    let e = SenderError::from(TransportError::Broken {
+        msg: "link down".into(),
+        errno_code: None,
+    });
     let rc = test_record_shell_error(&e);
     assert_eq!(rc, TST_E_TRANSPORT, "Sender TransportBroken: wrong code");
     assert_eq!(test_last_error_code(), TST_E_TRANSPORT);
@@ -224,7 +233,10 @@ fn sender_closed_returns_closed_code() {
 #[test]
 fn raw_sender_backpressure_returns_buffer_full_code() {
     reset();
-    let e = RawSenderError::from(TransportError::Backpressure("raw send queue full".into()));
+    let e = RawSenderError::from(TransportError::Backpressure {
+        msg: "raw send queue full".into(),
+        errno_code: None,
+    });
     let rc = test_record_shell_error(&e);
     assert_eq!(rc, TST_E_BUFFER_FULL, "RawSender Backpressure: wrong code");
     assert_eq!(test_last_error_code(), TST_E_BUFFER_FULL);
@@ -237,7 +249,10 @@ fn raw_sender_backpressure_returns_buffer_full_code() {
 #[test]
 fn raw_sender_transport_broken_returns_transport_code() {
     reset();
-    let e = RawSenderError::from(TransportError::Broken("raw socket broken".into()));
+    let e = RawSenderError::from(TransportError::Broken {
+        msg: "raw socket broken".into(),
+        errno_code: None,
+    });
     let rc = test_record_shell_error(&e);
     assert_eq!(rc, TST_E_TRANSPORT, "RawSender TransportBroken: wrong code");
     assert_eq!(test_last_error_code(), TST_E_TRANSPORT);
@@ -298,7 +313,10 @@ fn demux_receiver_input_malformed_returns_invalid_ts_code() {
 fn demux_receiver_transport_broken_returns_transport_code() {
     reset();
     // On the receiver side, `TransportError::Broken` → kind TransportBroken.
-    let e = DemuxReceiverError::from(TransportError::Broken("recv socket error".into()));
+    let e = DemuxReceiverError::from(TransportError::Broken {
+        msg: "recv socket error".into(),
+        errno_code: None,
+    });
     let rc = test_record_shell_error(&e);
     assert_eq!(
         rc, TST_E_TRANSPORT,
@@ -348,7 +366,10 @@ fn demux_receiver_end_of_stream_returns_eos_code() {
 #[test]
 fn receiver_transport_broken_returns_transport_code() {
     reset();
-    let e = ReceiverError::from(TransportError::Broken("ts recv broken".into()));
+    let e = ReceiverError::from(TransportError::Broken {
+        msg: "ts recv broken".into(),
+        errno_code: None,
+    });
     let rc = test_record_shell_error(&e);
     assert_eq!(rc, TST_E_TRANSPORT, "Receiver TransportBroken: wrong code");
     assert_eq!(test_last_error_code(), TST_E_TRANSPORT);
@@ -388,7 +409,10 @@ fn receiver_end_of_stream_returns_eos_code() {
 #[test]
 fn raw_receiver_transport_broken_returns_transport_code() {
     reset();
-    let e = RawReceiverError::from(TransportError::Broken("raw recv broken".into()));
+    let e = RawReceiverError::from(TransportError::Broken {
+        msg: "raw recv broken".into(),
+        errno_code: None,
+    });
     let rc = test_record_shell_error(&e);
     assert_eq!(
         rc, TST_E_TRANSPORT,

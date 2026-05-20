@@ -69,7 +69,7 @@ fn backpressure_propagates_to_shell_as_backpressure_kind() {
     assert!(
         matches!(
             err.source,
-            RawSenderErrorSource::Transport(TransportError::Backpressure(_))
+            RawSenderErrorSource::Transport(TransportError::Backpressure { .. })
         ),
         "source must be Transport(Backpressure(_)), got: {:?}",
         err.source
@@ -105,7 +105,7 @@ fn broken_propagates_to_shell_as_transport_broken_kind() {
     assert!(
         matches!(
             err.source,
-            RawSenderErrorSource::Transport(TransportError::Broken(_))
+            RawSenderErrorSource::Transport(TransportError::Broken { .. })
         ),
         "source must be Transport(Broken(_)), got: {:?}",
         err.source

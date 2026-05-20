@@ -372,7 +372,10 @@ fn mux_error_abs_index_out_of_range_routes_to_config_invalid() {
 #[test]
 fn transport_backpressure_routes_to_backpressure_in_senders() {
     assert_transport_send(
-        TransportError::Backpressure("test".into()),
+        TransportError::Backpressure {
+            msg: "test".into(),
+            errno_code: None,
+        },
         ShellErrorKind::Backpressure,
     );
 }
@@ -380,7 +383,10 @@ fn transport_backpressure_routes_to_backpressure_in_senders() {
 #[test]
 fn transport_broken_routes_to_transport_broken_in_senders() {
     assert_transport_send(
-        TransportError::Broken("test".into()),
+        TransportError::Broken {
+            msg: "test".into(),
+            errno_code: None,
+        },
         ShellErrorKind::TransportBroken,
     );
 }
@@ -409,7 +415,10 @@ fn transport_explicit_close_routes_to_closed_in_senders() {
 #[test]
 fn transport_backpressure_routes_to_backpressure_in_receivers() {
     assert_transport_recv(
-        TransportError::Backpressure("test".into()),
+        TransportError::Backpressure {
+            msg: "test".into(),
+            errno_code: None,
+        },
         ShellErrorKind::Backpressure,
     );
 }
@@ -417,7 +426,10 @@ fn transport_backpressure_routes_to_backpressure_in_receivers() {
 #[test]
 fn transport_broken_routes_to_transport_broken_in_receivers() {
     assert_transport_recv(
-        TransportError::Broken("test".into()),
+        TransportError::Broken {
+            msg: "test".into(),
+            errno_code: None,
+        },
         ShellErrorKind::TransportBroken,
     );
 }

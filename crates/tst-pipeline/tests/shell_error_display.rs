@@ -57,7 +57,10 @@ fn sender_display_contains_kind() {
 
 #[test]
 fn raw_sender_display_contains_kind() {
-    let err = RawSenderError::from(TransportError::Backpressure("test".into()));
+    let err = RawSenderError::from(TransportError::Backpressure {
+        msg: "test".into(),
+        errno_code: None,
+    });
     let display = format!("{err}");
     assert!(
         display.contains("Backpressure"),
@@ -90,7 +93,10 @@ fn receiver_explicit_close_displays_as_closed() {
 
 #[test]
 fn raw_receiver_broken_displays_as_transport_broken() {
-    let err = RawReceiverError::from(TransportError::Broken("test".into()));
+    let err = RawReceiverError::from(TransportError::Broken {
+        msg: "test".into(),
+        errno_code: None,
+    });
     let display = format!("{err}");
     assert!(display.contains("TransportBroken"), "{display}");
     assert_eq!(err.kind(), ShellErrorKind::TransportBroken);

@@ -28,7 +28,14 @@ pub(crate) fn connect_srt(
 ) -> Result<SrtTransport, TransportError> {
     let mut cfg = cfg.clone();
     cfg.merge_sender_defaults();
-    let socket = Socket::connect_with(&cfg, format!("{host}:{port}").as_str())
-        .map_err(|e| TransportError::Broken(format!("connect: {e}")))?;
+    let socket = Socket::connect_with(&cfg, format!("{host}:{port}").as_str()).map_err(|e| {
+        // ConnectError is a typed enum but doesn't expose a libsrt
+        // errno on every variant; pass None and let the message carry
+        // the diagnostic.
+        TransportError::Broken {
+            msg: format!("connect: {e}"),
+            errno_code: None,
+        }
+    })?;
     Ok(SrtTransport::new(socket))
 }

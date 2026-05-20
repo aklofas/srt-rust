@@ -155,11 +155,17 @@ impl RecvTransport for MockRecvTransport {
         match &mut *mode {
             RecvFailMode::BrokenForN(n) if *n > 0 => {
                 *n -= 1;
-                return Err(TransportError::Broken("mock recv broken".into()));
+                return Err(TransportError::Broken {
+                    msg: "mock recv broken".into(),
+                    errno_code: None,
+                });
             }
             RecvFailMode::BackpressureForN(n) if *n > 0 => {
                 *n -= 1;
-                return Err(TransportError::Backpressure("mock recv timeout".into()));
+                return Err(TransportError::Backpressure {
+                    msg: "mock recv timeout".into(),
+                    errno_code: None,
+                });
             }
             RecvFailMode::ExplicitCloseOnNext => {
                 // One-shot: revert to Never so the next call resumes queue
@@ -288,11 +294,11 @@ mod tests {
         // 2 backpressure errors...
         assert!(matches!(
             rx.recv_bytes(&mut buf),
-            Err(TransportError::Backpressure(_))
+            Err(TransportError::Backpressure { .. })
         ));
         assert!(matches!(
             rx.recv_bytes(&mut buf),
-            Err(TransportError::Backpressure(_))
+            Err(TransportError::Backpressure { .. })
         ));
 
         // ...then happy-path replay resumes.
@@ -307,7 +313,7 @@ mod tests {
         let mut buf = [0u8; 8];
         assert!(matches!(
             rx.recv_bytes(&mut buf),
-            Err(TransportError::Broken(_))
+            Err(TransportError::Broken { .. })
         ));
         // Resumes — Broken is recoverable in the mock even though real
         // libsrt wouldn't typically; the fixture is for shell-routing tests.

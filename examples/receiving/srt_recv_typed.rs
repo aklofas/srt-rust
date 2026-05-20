@@ -91,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     demuxer is NOT auto-flushed, so any trailing PES is lost (the receive
     //     thread can't tell mid-stream hiccup from a clean end).
     //     Inner source: `matches!(err.source, DemuxReceiverErrorSource::Transport(
-    //     TransportError::Broken(_)))` if you need variant discrimination.
+    //     TransportError::Broken { .. }))` if you need variant discrimination.
     //
     //   - **`Err(err)` with `err.kind == ShellErrorKind::InputMalformed`** is a
     //     strict-mode rejection or malformed PES — fatal for this example.

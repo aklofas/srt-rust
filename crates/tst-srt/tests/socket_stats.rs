@@ -111,9 +111,10 @@ fn managed_socket_stats_forwards_when_alive_and_none_after_close() {
 
     // factory is a no-op for this test — we never trigger a reconnect.
     let factory = move || -> Result<SrtTransport, tst_core::transport::TransportError> {
-        Err(tst_core::transport::TransportError::Broken(
-            "reconnect not exercised by this test".into(),
-        ))
+        Err(tst_core::transport::TransportError::Broken {
+            msg: "reconnect not exercised by this test".into(),
+            errno_code: None,
+        })
     };
     let mut managed = ManagedTransport::new(initial_transport, factory, ReconnectPolicy::default());
 

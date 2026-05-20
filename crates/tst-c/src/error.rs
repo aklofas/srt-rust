@@ -292,8 +292,26 @@ pub(crate) fn record_mux_error(e: &MuxError) {
 
 pub(crate) fn record_transport_error(e: &TransportError) {
     let (code, msg) = match e {
-        TransportError::Backpressure(s) => (TstError::Transport, format!("backpressure: {s}")),
-        TransportError::Broken(s) => (TstError::Transport, format!("broken: {s}")),
+        // The struct variants now carry an optional `errno_code` (libsrt
+        // MJ_* major when the underlying transport is SRT). Append it to
+        // the message when present so C consumers can see the wire-level
+        // cause without reaching past the C ABI; Rust callers that need
+        // structured access still get the typed field via the
+        // TransportError struct variant directly.
+        TransportError::Backpressure { msg: s, errno_code } => (
+            TstError::Transport,
+            match errno_code {
+                Some(c) => format!("backpressure: {s} (errno {c})"),
+                None => format!("backpressure: {s}"),
+            },
+        ),
+        TransportError::Broken { msg: s, errno_code } => (
+            TstError::Transport,
+            match errno_code {
+                Some(c) => format!("broken: {s} (errno {c})"),
+                None => format!("broken: {s}"),
+            },
+        ),
         TransportError::Closed => (TstError::Closed, "transport closed".into()),
         TransportError::TooLarge { len, max } => (
             TstError::TooLarge,
@@ -712,10 +730,19 @@ mod tests {
     fn every_known_transport_error_variant_maps_to_expected_code() {
         let cases: Vec<(TransportError, TstError)> = vec![
             (
-                TransportError::Backpressure("test".into()),
+                TransportError::Backpressure {
+                    msg: "test".into(),
+                    errno_code: None,
+                },
                 TstError::Transport,
             ),
-            (TransportError::Broken("test".into()), TstError::Transport),
+            (
+                TransportError::Broken {
+                    msg: "test".into(),
+                    errno_code: None,
+                },
+                TstError::Transport,
+            ),
             (TransportError::Closed, TstError::Closed),
             (
                 TransportError::TooLarge { len: 100, max: 50 },

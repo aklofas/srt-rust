@@ -112,7 +112,9 @@ fn close_unblocks_libsrt_parked_send() {
         Err(ref err)
             if matches!(
                 err.source,
-                MuxSenderErrorSource::Transport(TransportError::Broken(_) | TransportError::Closed)
+                MuxSenderErrorSource::Transport(
+                    TransportError::Broken { .. } | TransportError::Closed
+                )
             ) => {}
         Err(other) => panic!("unexpected sender error after cancel: {other:?}"),
     }

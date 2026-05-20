@@ -546,6 +546,8 @@ pub tst_srt::error::SrtErrno::Setup
 pub tst_srt::error::SrtErrno::SystemRes
 pub tst_srt::error::SrtErrno::Timeout
 pub tst_srt::error::SrtErrno::Unknown(i32)
+impl tst_srt::error::SrtErrno
+pub fn tst_srt::error::SrtErrno::raw_code(&self) -> i32
 impl core::clone::Clone for tst_srt::error::SrtErrno
 pub fn tst_srt::error::SrtErrno::clone(&self) -> tst_srt::error::SrtErrno
 impl core::cmp::Eq for tst_srt::error::SrtErrno

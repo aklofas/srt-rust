@@ -118,7 +118,7 @@ use tst_core::transport::{Transport, TransportCancel, TransportError};
 /// # Lock poisoning policy (post-Wave-6.F)
 ///
 /// - **Inner-transport lock** (poisoned mid-mutation):
-///   - `send_bytes`: returns `TransportError::Broken(...)`. Caller can
+///   - `send_bytes`: returns `TransportError::Broken { .. }`. Caller can
 ///     rebuild the wrapper.
 ///   - `max_payload`: returns `SRT_TS_BUNDLE_BYTES` (the same default used
 ///     when the inner transport is `None` — no panic).
@@ -178,7 +178,7 @@ impl<T: Transport + 'static> ManagedTransport<T> {
     /// ring cursors); proceeding would silently drop queued bytes. Caught by
     /// `tst-c`'s `ffi_catch` as `TST_E_PANIC_CAUGHT` (-11). Recoverable-path
     /// lock poisons (inner_cancel, inner-transport mutex) instead return
-    /// `Err(TransportError::Broken(...))` — see Task 3 sites.
+    /// `Err(TransportError::Broken { .. })` — see Task 3 sites.
     fn send_managed(&self, bytes: &[u8]) -> Result<(), TransportError> {
         if self.closed.load(std::sync::atomic::Ordering::Acquire) {
             return Err(TransportError::Closed);
@@ -192,10 +192,9 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         let max = self
             .inner
             .lock()
-            .map_err(|_| {
-                TransportError::Broken(
-                    "reconnect: inner lock poisoned during size pre-check".into(),
-                )
+            .map_err(|_| TransportError::Broken {
+                msg: "reconnect: inner lock poisoned during size pre-check".into(),
+                errno_code: None,
             })?
             .as_ref()
             .map(|t| t.max_payload())
@@ -212,7 +211,7 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         // queuing. Capture that case and fall through to enqueue+reconnect.
         match self.drain_gap_if_alive() {
             Ok(()) => {}
-            Err(TransportError::Broken(_)) | Err(TransportError::Closed) => {
+            Err(TransportError::Broken { .. }) | Err(TransportError::Closed) => {
                 // Fall through to enqueue + reconnect — the new bytes get
                 // queued alongside whatever's still in the gap buffer.
             }
@@ -235,23 +234,25 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         // Final-review caught this; existing tests didn't because all
         // tests use always-failing factories.
         {
-            let mut transport_guard = self.inner.lock().map_err(|_| {
-                TransportError::Broken(
-                    "reconnect: inner lock poisoned during in-line send peek".into(),
-                )
+            let mut transport_guard = self.inner.lock().map_err(|_| TransportError::Broken {
+                msg: "reconnect: inner lock poisoned during in-line send peek".into(),
+                errno_code: None,
             })?;
             if let Some(transport) = transport_guard.as_mut() {
                 match transport.send_bytes(bytes) {
                     Ok(()) => return Ok(()),
-                    Err(TransportError::Backpressure(_)) => {
+                    Err(TransportError::Backpressure { .. }) => {
                         // Backpressure is recoverable without reconnect — propagate.
                         // Caller may retry the same bytes.
-                        return Err(TransportError::Backpressure("inner backpressure".into()));
+                        return Err(TransportError::Backpressure {
+                            msg: "inner backpressure".into(),
+                            errno_code: None,
+                        });
                     }
                     Err(TransportError::TooLarge { len, max }) => {
                         return Err(TransportError::TooLarge { len, max });
                     }
-                    Err(TransportError::Broken(_)) | Err(TransportError::Closed) => {
+                    Err(TransportError::Broken { .. }) | Err(TransportError::Closed) => {
                         // Fall through to reconnect path.
                     }
                     Err(_) => {
@@ -268,7 +269,7 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         // correctness-over-freshness contract — when the gap buffer is full,
         // the caller has explicitly asked us to refuse new bytes rather than
         // evict queued ones. Surface `GapBufferError::Full` as
-        // `TransportError::Backpressure("gap buffer full")` so the caller's
+        // `TransportError::Backpressure { msg: "gap buffer full", errno_code: None }` so the caller's
         // shell maps it to `ShellErrorKind::Backpressure` (and `tst-c` to
         // `TST_E_BUFFER_FULL`) instead of silently dropping the bytes. We
         // also skip the reconnect attempt on this path: the buffer rejection
@@ -292,7 +293,10 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                 .lock()
                 .expect("BUG: gap lock poisoned — gap buffer is invariant-critical");
             if let Err(gap_buffer::GapBufferError::Full) = gap.enqueue(bytes.to_vec()) {
-                return Err(TransportError::Backpressure("gap buffer full".into()));
+                return Err(TransportError::Backpressure {
+                    msg: "gap buffer full".into(),
+                    errno_code: None,
+                });
             }
         }
         self.reconnect_and_drain()
@@ -315,8 +319,9 @@ impl<T: Transport + 'static> ManagedTransport<T> {
         // a previous panic happened while another caller held this lock.
         // Route to TransportError::Broken so the reconnect loop or higher
         // shell tears down the wrapper. Precedent: plan #45.
-        let mut transport_guard = self.inner.lock().map_err(|_| {
-            TransportError::Broken("reconnect: inner lock poisoned during drain peek".into())
+        let mut transport_guard = self.inner.lock().map_err(|_| TransportError::Broken {
+            msg: "reconnect: inner lock poisoned during drain peek".into(),
+            errno_code: None,
         })?;
         let Some(transport) = transport_guard.as_mut() else {
             return Ok(()); // can't drain without a transport
@@ -333,14 +338,18 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                 Ok(()) => {
                     gap.pop_front();
                 }
-                Err(TransportError::Backpressure(_)) => {
-                    return Err(TransportError::Backpressure("drain backpressure".into()));
+                Err(TransportError::Backpressure { .. }) => {
+                    return Err(TransportError::Backpressure {
+                        msg: "drain backpressure".into(),
+                        errno_code: None,
+                    });
                 }
-                Err(TransportError::Broken(_)) | Err(TransportError::Closed) => {
+                Err(TransportError::Broken { .. }) | Err(TransportError::Closed) => {
                     *transport_guard = None;
-                    return Err(TransportError::Broken(
-                        "transport broken during drain".into(),
-                    ));
+                    return Err(TransportError::Broken {
+                        msg: "transport broken during drain".into(),
+                        errno_code: None,
+                    });
                 }
                 Err(e) => return Err(e),
             }
@@ -366,9 +375,10 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                     max_attempts = max,
                     "reconnect gave up — propagating final error to caller",
                 );
-                return Err(TransportError::Broken(format!(
-                    "reconnect gave up after {max} attempts"
-                )));
+                return Err(TransportError::Broken {
+                    msg: format!("reconnect gave up after {max} attempts"),
+                    errno_code: None,
+                });
             };
             info!(
                 target: "tst_pipeline::reconnect",
@@ -392,10 +402,9 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                     // unknown state. Route to TransportError::Broken; the
                     // caller's shell propagates the error and may surface
                     // a TST_E_TRANSPORT (-8). Precedent: plan #45.
-                    let mut guard = self.inner.lock().map_err(|_| {
-                        TransportError::Broken(
-                            "reconnect: inner lock poisoned during new-inner install".into(),
-                        )
+                    let mut guard = self.inner.lock().map_err(|_| TransportError::Broken {
+                        msg: "reconnect: inner lock poisoned during new-inner install".into(),
+                        errno_code: None,
                     })?;
                     *guard = Some(new_inner);
                     drop(guard);
@@ -520,7 +529,10 @@ mod cancel_tests {
     impl Transport for CancellableMock {
         fn send_bytes(&mut self, _: &[u8]) -> Result<(), TransportError> {
             if self.cancelled.load(Ordering::SeqCst) {
-                Err(TransportError::Broken("cancelled".into()))
+                Err(TransportError::Broken {
+                    msg: "cancelled".into(),
+                    errno_code: None,
+                })
             } else {
                 Ok(())
             }
@@ -566,8 +578,12 @@ mod cancel_tests {
         // thread that panics while holding the lock. Then confirm that
         // max_payload(), is_alive(), and close() all take the safe-default
         // path rather than propagating the panic.
-        let factory =
-            || -> Result<NoopT, TransportError> { Err(TransportError::Broken("".into())) };
+        let factory = || -> Result<NoopT, TransportError> {
+            Err(TransportError::Broken {
+                msg: "".into(),
+                errno_code: None,
+            })
+        };
         let mut managed = ManagedTransport::new(NoopT, factory, ReconnectPolicy::default());
 
         // Sanity-check: happy path returns the inner transport's values.
@@ -607,7 +623,10 @@ mod cancel_tests {
             cancel_calls: calls.clone(),
         };
         let factory = move || -> Result<CancellableMock, TransportError> {
-            Err(TransportError::Broken("test factory always fails".into()))
+            Err(TransportError::Broken {
+                msg: "test factory always fails".into(),
+                errno_code: None,
+            })
         };
         let managed = ManagedTransport::new(inner, factory, ReconnectPolicy::default());
 
@@ -653,7 +672,7 @@ mod cancel_tests {
         let err = managed.send_bytes(b"x").unwrap_err();
         assert!(matches!(
             err,
-            TransportError::Broken(_) | TransportError::Closed
+            TransportError::Broken { .. } | TransportError::Closed
         ));
         // The factory should NOT have been called repeatedly trying to
         // reconnect after cancel.

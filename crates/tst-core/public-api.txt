@@ -4893,8 +4893,12 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::stats::Stream
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::stats::StreamStats
 pub mod tst_core::transport
 #[non_exhaustive] pub enum tst_core::transport::TransportError
-pub tst_core::transport::TransportError::Backpressure(alloc::string::String)
-pub tst_core::transport::TransportError::Broken(alloc::string::String)
+pub tst_core::transport::TransportError::Backpressure
+pub tst_core::transport::TransportError::Backpressure::errno_code: core::option::Option<i32>
+pub tst_core::transport::TransportError::Backpressure::msg: alloc::string::String
+pub tst_core::transport::TransportError::Broken
+pub tst_core::transport::TransportError::Broken::errno_code: core::option::Option<i32>
+pub tst_core::transport::TransportError::Broken::msg: alloc::string::String
 pub tst_core::transport::TransportError::Closed
 pub tst_core::transport::TransportError::ExplicitClose
 pub tst_core::transport::TransportError::TooLarge
@@ -5244,8 +5248,12 @@ impl core::marker::UnsafeUnpin for tst_core::error::MuxError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::error::MuxError
 impl core::panic::unwind_safe::UnwindSafe for tst_core::error::MuxError
 #[non_exhaustive] pub enum tst_core::TransportError
-pub tst_core::TransportError::Backpressure(alloc::string::String)
-pub tst_core::TransportError::Broken(alloc::string::String)
+pub tst_core::TransportError::Backpressure
+pub tst_core::TransportError::Backpressure::errno_code: core::option::Option<i32>
+pub tst_core::TransportError::Backpressure::msg: alloc::string::String
+pub tst_core::TransportError::Broken
+pub tst_core::TransportError::Broken::errno_code: core::option::Option<i32>
+pub tst_core::TransportError::Broken::msg: alloc::string::String
 pub tst_core::TransportError::Closed
 pub tst_core::TransportError::ExplicitClose
 pub tst_core::TransportError::TooLarge

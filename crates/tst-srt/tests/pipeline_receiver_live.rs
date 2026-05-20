@@ -107,7 +107,7 @@ fn end_to_end_sender_to_receiver() {
                 Err(ref err)
                     if matches!(
                         err.source,
-                        DemuxReceiverErrorSource::Transport(TransportError::Broken(_))
+                        DemuxReceiverErrorSource::Transport(TransportError::Broken { .. })
                     ) =>
                 {
                     break;

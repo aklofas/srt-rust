@@ -110,13 +110,39 @@ pub enum TransportError {
     /// Transport was alive but couldn't accept the bytes right now (full
     /// send buffer, transient backpressure). Retrying the same bytes later
     /// is reasonable.
-    #[error("transport temporarily unavailable: {0}")]
-    Backpressure(String),
+    ///
+    /// `errno_code` carries the wire-level transport error code where the
+    /// implementation can supply one (libsrt MJ_* major category for
+    /// `SrtTransport` — `1=Setup`, `2=Connection`, `3=SystemRes`,
+    /// `4=FileSystem`, `5=Notsup`, `6=Async`, `7=PeerError`, other = raw
+    /// libsrt errno). Transports that don't expose a numeric code (test
+    /// mocks, in-memory channels, the `reconnect` orchestration layer)
+    /// pass `None`. Surfaced as a typed-source aid for JNI/UniFFI bindings
+    /// that want to discriminate on the wire-level cause without parsing
+    /// the message string.
+    #[error("transport temporarily unavailable: {msg}")]
+    Backpressure {
+        /// Human-readable diagnostic detail.
+        msg: String,
+        /// Wire-level transport errno code (libsrt MJ_* major for
+        /// `SrtTransport`); `None` when the implementation doesn't
+        /// expose one.
+        errno_code: Option<i32>,
+    },
 
     /// Transport is dead. Caller must rebuild it (or rely on a managed
     /// wrapper to do so).
-    #[error("transport broken: {0}")]
-    Broken(String),
+    ///
+    /// See [`Self::Backpressure`] for the `errno_code` semantics — same
+    /// rules apply here.
+    #[error("transport broken: {msg}")]
+    Broken {
+        /// Human-readable diagnostic detail.
+        msg: String,
+        /// Wire-level transport errno code; `None` when the
+        /// implementation doesn't expose one.
+        errno_code: Option<i32>,
+    },
 
     /// Transport was already closed.
     #[error("transport closed")]

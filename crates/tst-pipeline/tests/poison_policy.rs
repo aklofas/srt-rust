@@ -202,14 +202,17 @@ fn poisoned_inner_lock_returns_broken_not_panic() {
     // a site-specific message.
     let result: Result<i32, TransportError> = m
         .lock()
-        .map_err(|_| TransportError::Broken("test: pattern-only".into()))
+        .map_err(|_| TransportError::Broken {
+            msg: "test: pattern-only".into(),
+            errno_code: None,
+        })
         .map(|g| *g);
 
     assert!(
-        matches!(result, Err(TransportError::Broken(_))),
+        matches!(result, Err(TransportError::Broken { .. })),
         "got: {result:?}"
     );
-    if let Err(TransportError::Broken(s)) = result {
+    if let Err(TransportError::Broken { msg: s, .. }) = result {
         assert!(s.contains("test: pattern-only"), "message: {s}");
     }
 
@@ -245,7 +248,10 @@ fn successful_reconnect_does_not_deadlock() {
     impl Transport for OneShotBrokenThenOk {
         fn send_bytes(&mut self, _: &[u8]) -> Result<(), TransportError> {
             if self.broken_first.fetch_sub(1, Ordering::Relaxed) > 0 {
-                Err(TransportError::Broken("simulated one-shot break".into()))
+                Err(TransportError::Broken {
+                    msg: "simulated one-shot break".into(),
+                    errno_code: None,
+                })
             } else {
                 Ok(())
             }

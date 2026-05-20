@@ -78,7 +78,7 @@ use tst_core::transport::TransportError;
 /// # Lock poisoning policy (post-Wave-4.B)
 ///
 /// - **`inner_cancel` lock** (used to snapshot the inner transport's cancel
-///   handle): `recv_bytes` returns `TransportError::Broken(...)` if the
+///   handle): `recv_bytes` returns `TransportError::Broken { .. }` if the
 ///   lock has been poisoned by a previous panic.
 /// - **`cancel_handle().cancel()`** uses `.lock().ok()` and silently no-ops
 ///   on poison (cancel is best-effort; the closed flag is already latched).
@@ -215,10 +215,10 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
                         // kind (→ TST_E_TRANSPORT -8). Precedent: plan #45
                         // (.lock().ok() on MuxSender::close cancel path).
                         let mut guard = self.inner_cancel.lock().map_err(|_| {
-                            TransportError::Broken(
+                            TransportError::Broken { msg:
                                 "managed_receive: inner_cancel lock poisoned during cancel install"
                                     .into(),
-                            )
+                            errno_code: None }
                         })?;
                         *guard = t.cancel_handle();
                         drop(guard);
@@ -232,7 +232,7 @@ impl<R: RecvTransport> RecvTransport for ManagedRecvTransport<R> {
             let t = self.inner.as_mut().unwrap();
             match t.recv_bytes(buf) {
                 Ok(n) => return Ok(n),
-                Err(TransportError::Closed) | Err(TransportError::Broken(_)) => {
+                Err(TransportError::Closed) | Err(TransportError::Broken { .. }) => {
                     // Transport is dead. Drop it; next loop iteration
                     // reconnects via the factory under the configured backoff.
                     self.inner = None;
@@ -321,7 +321,10 @@ mod tests {
                 buf[0] = self.calls as u8;
                 Ok(1)
             } else {
-                Err(TransportError::Broken("flaky test transport".into()))
+                Err(TransportError::Broken {
+                    msg: "flaky test transport".into(),
+                    errno_code: None,
+                })
             }
         }
 
@@ -379,7 +382,10 @@ mod tests {
     fn gives_up_after_max_attempts() {
         // Factory always fails — budget gets exhausted immediately.
         let factory = Box::new(|| -> Result<FlakyRecv, TransportError> {
-            Err(TransportError::Broken("factory always fails".into()))
+            Err(TransportError::Broken {
+                msg: "factory always fails".into(),
+                errno_code: None,
+            })
         });
 
         let initial = FlakyRecv {
@@ -405,7 +411,10 @@ mod tests {
         struct BackpressureRecv;
         impl RecvTransport for BackpressureRecv {
             fn recv_bytes(&mut self, _buf: &mut [u8]) -> Result<usize, TransportError> {
-                Err(TransportError::Backpressure("recv timeout".into()))
+                Err(TransportError::Backpressure {
+                    msg: "recv timeout".into(),
+                    errno_code: None,
+                })
             }
             fn max_payload(&self) -> usize {
                 1316
@@ -427,7 +436,7 @@ mod tests {
 
         let mut buf = [0u8; 8];
         let err = managed.recv_bytes(&mut buf).unwrap_err();
-        assert!(matches!(err, TransportError::Backpressure(_)));
+        assert!(matches!(err, TransportError::Backpressure { .. }));
         // Factory must NOT have been called — backpressure is not a reason
         // to rebuild the transport.
         assert_eq!(*factory_calls.lock().unwrap(), 0);
@@ -481,7 +490,10 @@ mod tests {
     impl RecvTransport for CancellableRecv {
         fn recv_bytes(&mut self, _: &mut [u8]) -> Result<usize, TransportError> {
             if self.cancelled.load(std::sync::atomic::Ordering::SeqCst) {
-                Err(TransportError::Broken("cancelled".into()))
+                Err(TransportError::Broken {
+                    msg: "cancelled".into(),
+                    errno_code: None,
+                })
             } else {
                 Ok(0)
             }

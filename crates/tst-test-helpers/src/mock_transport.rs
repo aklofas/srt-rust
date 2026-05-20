@@ -56,11 +56,17 @@ impl Transport for MockTransport {
         match &mut *mode {
             FailMode::BrokenForN(n) if *n > 0 => {
                 *n -= 1;
-                return Err(TransportError::Broken("mock broken".into()));
+                return Err(TransportError::Broken {
+                    msg: "mock broken".into(),
+                    errno_code: None,
+                });
             }
             FailMode::BackpressureForN(n) if *n > 0 => {
                 *n -= 1;
-                return Err(TransportError::Backpressure("mock backpressure".into()));
+                return Err(TransportError::Backpressure {
+                    msg: "mock backpressure".into(),
+                    errno_code: None,
+                });
             }
             _ => {}
         }

@@ -163,8 +163,8 @@ pub(crate) fn kind_from_mux(e: &MuxError) -> ShellErrorKind {
 pub(crate) fn kind_from_transport(e: &TransportError, direction: Direction) -> ShellErrorKind {
     use ShellErrorKind::*;
     match e {
-        TransportError::Backpressure(_) => Backpressure,
-        TransportError::Broken(_) => TransportBroken,
+        TransportError::Backpressure { .. } => Backpressure,
+        TransportError::Broken { .. } => TransportBroken,
         TransportError::Closed => match direction {
             Direction::Send => Closed,
             Direction::Recv => EndOfStream,

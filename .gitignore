@@ -32,3 +32,6 @@ Thumbs.db
 # Example output files dropped at the repo root. Root-only — does not
 # affect tests/fixtures/**/*.ts.
 /*.ts
+
+# Parallel-subagent worktrees (see CLAUDE.md feedback_per_subagent_worktree_for_parallel_code_changes.md)
+/.worktrees/

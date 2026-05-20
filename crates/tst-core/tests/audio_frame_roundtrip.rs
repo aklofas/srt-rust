@@ -98,9 +98,16 @@ fn aac_adts_roundtrip_parses_frames_consistently() {
                 Some(sr) => assert_eq!(f.sample_rate_hz, sr, "sample rate jumped mid-stream"),
                 None => seen_sample_rate = Some(f.sample_rate_hz),
             }
+            // C7 — `.channels()` returns `Some` for canonical layouts
+            // (`channel_configuration` 1..=7) and `None` for PCE-defined
+            // (`channel_configuration == 0`). The conformant aac-adts
+            // fixture uses canonical mono.
+            let ch = f
+                .channels()
+                .expect("aac-adts fixture uses canonical channel_configuration");
             match seen_channels {
-                Some(c) => assert_eq!(f.channels, c, "channel count jumped mid-stream"),
-                None => seen_channels = Some(f.channels),
+                Some(c) => assert_eq!(ch, c, "channel count jumped mid-stream"),
+                None => seen_channels = Some(ch),
             }
             total_frames += 1;
         }

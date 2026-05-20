@@ -161,6 +161,11 @@ pub enum TstNonConformantCode {
     /// the syncword `0x0B77` (validate-1 C12; ATSC A/52 §A.2.4.1).
     /// `pid` carries the stream PID.
     Ac3SyncMissing = 28,
+    /// AAC-LATM (stream_type 0x11) PES framing violation (validate-1 C11).
+    /// `pid` carries the stream PID; `latm_framing_kind` byte
+    /// (`obu_type` carrier) encodes which violation variant
+    /// (0=MissingSyncword, 1=AudioMuxLengthOverrun, 2=Truncated).
+    LatmFraming = 29,
 }
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::PcrMalformedKind`.
@@ -1071,6 +1076,21 @@ fn fill_nonconformant(
         NonConformantIssue::Ac3SyncMissing { pid } => {
             body.issue_code = TstNonConformantCode::Ac3SyncMissing as c_int;
             body.pid = *pid;
+        }
+        NonConformantIssue::LatmFraming { pid, kind } => {
+            use tst_core::codec::aac::latm::LatmFramingKind;
+            body.issue_code = TstNonConformantCode::LatmFraming as c_int;
+            body.pid = *pid;
+            // `LatmFramingKind` is `#[non_exhaustive]`; wildcard arm
+            // encodes future variants as sentinel `0xFF`. Discriminator
+            // lands on the `obu_type` carrier (free u8 byte; reuses the
+            // pattern from NalHeader / Av1ObuHeader).
+            body.obu_type = match kind {
+                LatmFramingKind::MissingSyncword => 0,
+                LatmFramingKind::AudioMuxLengthOverrun => 1,
+                LatmFramingKind::Truncated => 2,
+                _ => 0xFF,
+            };
         }
     }
     out.kind = TstEventKind::NonConformant as c_int;

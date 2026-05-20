@@ -402,6 +402,30 @@ impl super::demuxer::Demuxer {
                 });
                 entry.items += 1;
                 entry.bytes += payload_len as u64;
+                // C11 — for AAC-LATM (stream_type 0x11) validate the LOAS
+                // syncword at the start of the PES payload. Pre-C11 we
+                // advertised LATM without any framing check, so malformed
+                // streams produced opaque Sample events that downstream
+                // decoders couldn't parse. Lenient mode surfaces the
+                // NonConformantIssue alongside the Sample (callers may
+                // want the raw bytes for forensic analysis); strict mode
+                // (Full) suppresses the sample.
+                let latm_rejected = if codec == AudioCodec::AacLatm {
+                    match crate::codec::aac::latm::validate_latm_sync(&pes.payload) {
+                        Ok(_) => false,
+                        Err(kind) => {
+                            let issue = NonConformantIssue::LatmFraming { pid: pes.pid, kind };
+                            let reject = self.options.strict.rejects(&issue);
+                            self.queue_nonconformant(stream, issue);
+                            reject
+                        }
+                    }
+                } else {
+                    false
+                };
+                if latm_rejected {
+                    return;
+                }
                 // Codec-specific counter bump. AAC-ADTS + MP2 have frame
                 // iterators in `codec::*`; LATM + AC-3 don't (their
                 // `stream_codec_stats` accessor falls back to

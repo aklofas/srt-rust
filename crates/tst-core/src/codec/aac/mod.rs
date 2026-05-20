@@ -6,16 +6,26 @@
 //!
 //! Parsed per ISO/IEC 13818-7 §1.A (ADTS) over MPEG-2 / MPEG-4 AAC:
 //! - ADTS sync word, MPEG version, layer validation.
-//! - Per-frame: profile, sample_rate, channel_configuration, channels,
+//! - Per-frame: profile, sample_rate, channel_configuration, channel_layout,
 //!   frame_length, samples_per_frame, num_raw_data_blocks, has_crc.
+//!
+//! Validate-1 C11 adds a LATM/LOAS sync validator at [`latm`] for the
+//! AAC-LATM PES path (stream_type 0x11). The validator is consumed by
+//! the demuxer's PES emission layer and surfaces non-conformant framing
+//! to [`crate::mpegts::demux::NonConformantIssue::LatmFraming`].
 //!
 //! ## Not parsed (deferred)
 //!
-//! - LATM/LOAS framing (deferred — separate plan).
+//! - LATM/LOAS full audioMuxElement decode (only the sync word is
+//!   validated today; AudioSpecificConfig walks are deferred).
 //! - AudioSpecificConfig / SBR / PS extension headers inside raw data blocks.
 //! - MPEG-4 audio object types beyond the 4 legacy ADTS profiles.
+//! - Program Config Element (PCE) parsing for `channel_configuration == 0`.
+//!   The iterator surfaces [`AacChannelLayout::PceDefined`] so callers
+//!   know the channel count is not derivable from the ADTS header.
 
 mod adts;
+pub mod latm;
 mod tables;
 #[cfg(test)]
 mod tests;
@@ -40,14 +50,67 @@ pub enum MpegVersion {
     Mpeg4,
 }
 
+/// AAC channel layout decoded from `channel_configuration` (3 bits)
+/// per ISO/IEC 14496-3 Table 1.19.
+///
+/// `channel_configuration == 0` is a valid streaming shape: the channel
+/// layout is carried in a Program Config Element (PCE) inside the
+/// raw_data_block. The demuxer surfaces [`Self::PceDefined`] so callers
+/// know the channel count cannot be derived from the ADTS header alone.
+/// Walking the PCE to recover the exact count is deferred.
+///
+/// `channel_configuration` values `1..=7` map to canonical channel
+/// counts; value `7` carries 8 channels (7.1).
+///
+/// `#[non_exhaustive]` — future variants (e.g. a `Pce` variant carrying
+/// the walked PCE details) can be added without breaking matchers.
+///
+/// Validate-1 C7 — prior to this enum `decode_channels(0)` returned
+/// `CodecParseError::ReservedValue`, which terminated the ADTS iterator
+/// and dropped every subsequent frame on streams using PCE-defined
+/// channel layouts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum AacChannelLayout {
+    /// `channel_configuration == 0` — channel layout is defined by a
+    /// Program Config Element (PCE) inside the raw_data_block. The ADTS
+    /// header alone is insufficient to determine the channel count.
+    PceDefined,
+    /// Canonical channel count from `channel_configuration` `1..=7`.
+    /// Note: index `7` decodes to 8 channels (7.1) per Table 1.19.
+    Channels(u8),
+}
+
+impl AacChannelLayout {
+    /// Convenience accessor: returns the canonical channel count when
+    /// known, or `None` when the layout is PCE-defined (and therefore
+    /// not derivable from the ADTS header alone).
+    #[must_use]
+    pub fn channels(&self) -> Option<u8> {
+        match self {
+            Self::Channels(n) => Some(*n),
+            Self::PceDefined => None,
+            // `#[non_exhaustive]` — future variants may map to channel
+            // counts (e.g. Pce { channels }); update this match alongside.
+        }
+    }
+}
+
 /// Decoded ADTS frame. Borrows from the source buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct AdtsFrame<'a> {
     pub profile: AacProfile,
     pub sample_rate_hz: u32,
+    /// Raw `channel_configuration` field (3 bits) from the ADTS header.
+    /// `0` indicates the channel layout is PCE-defined (see
+    /// [`channel_layout`](Self::channel_layout)); `1..=7` are canonical
+    /// channel-count indices per ISO/IEC 14496-3 Table 1.19.
     pub channel_configuration: u8,
-    pub channels: u8,
+    /// Typed channel layout. [`AacChannelLayout::PceDefined`] when
+    /// `channel_configuration == 0`; [`AacChannelLayout::Channels(n)`]
+    /// otherwise.
+    pub channel_layout: AacChannelLayout,
     pub frame_length_bytes: u32,
     pub samples_per_frame: u16,
     pub num_raw_data_blocks: u8,
@@ -65,13 +128,21 @@ impl<'a> AdtsFrame<'a> {
         self.body
     }
 
+    /// Convenience accessor: canonical channel count when derivable
+    /// from the ADTS header, or `None` when the layout is PCE-defined.
+    /// Equivalent to `self.channel_layout.channels()`.
+    #[must_use]
+    pub fn channels(&self) -> Option<u8> {
+        self.channel_layout.channels()
+    }
+
     /// Promote this borrowed frame to an [`AdtsFrameOwned`] by copying `body`.
     pub fn to_owned(&self) -> AdtsFrameOwned {
         AdtsFrameOwned {
             profile: self.profile,
             sample_rate_hz: self.sample_rate_hz,
             channel_configuration: self.channel_configuration,
-            channels: self.channels,
+            channel_layout: self.channel_layout,
             frame_length_bytes: self.frame_length_bytes,
             samples_per_frame: self.samples_per_frame,
             num_raw_data_blocks: self.num_raw_data_blocks,
@@ -111,8 +182,10 @@ impl<'a> AdtsFrame<'a> {
 pub struct AdtsFrameOwned {
     pub profile: AacProfile,
     pub sample_rate_hz: u32,
+    /// See [`AdtsFrame::channel_configuration`].
     pub channel_configuration: u8,
-    pub channels: u8,
+    /// See [`AdtsFrame::channel_layout`].
+    pub channel_layout: AacChannelLayout,
     pub frame_length_bytes: u32,
     pub samples_per_frame: u16,
     pub num_raw_data_blocks: u8,
@@ -129,7 +202,7 @@ impl AdtsFrameOwned {
             profile: self.profile,
             sample_rate_hz: self.sample_rate_hz,
             channel_configuration: self.channel_configuration,
-            channels: self.channels,
+            channel_layout: self.channel_layout,
             frame_length_bytes: self.frame_length_bytes,
             samples_per_frame: self.samples_per_frame,
             num_raw_data_blocks: self.num_raw_data_blocks,
@@ -138,6 +211,14 @@ impl AdtsFrameOwned {
             raw_header: self.raw_header.clone(),
             body: &self.body,
         }
+    }
+
+    /// Convenience accessor: canonical channel count when derivable
+    /// from the ADTS header, or `None` when the layout is PCE-defined.
+    /// Equivalent to `self.channel_layout.channels()`.
+    #[must_use]
+    pub fn channels(&self) -> Option<u8> {
+        self.channel_layout.channels()
     }
 }
 
@@ -182,7 +263,7 @@ impl<'a> Iterator for AdtsFrames<'a> {
             profile: header.profile,
             sample_rate_hz: header.sample_rate_hz,
             channel_configuration: header.channel_configuration,
-            channels: header.channels,
+            channel_layout: header.channel_layout,
             frame_length_bytes: header.frame_length_bytes,
             samples_per_frame: header.samples_per_frame,
             num_raw_data_blocks: header.num_raw_data_blocks,

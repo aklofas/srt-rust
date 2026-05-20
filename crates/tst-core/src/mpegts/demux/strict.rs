@@ -125,4 +125,21 @@ mod tests {
         assert!(!StrictMode::DescriptorsOnly.rejects(&issue));
         assert!(StrictMode::Full.rejects(&issue));
     }
+
+    /// C11 — LATM framing is data-conformance (the bitstream itself, not
+    /// timing or descriptors). Only `Full` strict mode rejects it; the
+    /// narrower `TimingOnly` / `DescriptorsOnly` modes leave it as a
+    /// surface-only NonConformant event.
+    #[test]
+    fn latm_framing_rejected_only_by_full() {
+        use crate::codec::aac::latm::LatmFramingKind;
+        let issue = NonConformantIssue::LatmFraming {
+            pid: 0x101,
+            kind: LatmFramingKind::MissingSyncword,
+        };
+        assert!(!StrictMode::Off.rejects(&issue));
+        assert!(!StrictMode::TimingOnly.rejects(&issue));
+        assert!(!StrictMode::DescriptorsOnly.rejects(&issue));
+        assert!(StrictMode::Full.rejects(&issue));
+    }
 }

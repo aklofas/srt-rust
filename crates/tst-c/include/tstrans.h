@@ -395,6 +395,13 @@ enum tst_nonconformant_code
    * `pid` carries the stream PID.
    */
   TST_NONCONFORMANT_CODE_AC3_SYNC_MISSING = 28,
+  /**
+   * AAC-LATM (stream_type 0x11) PES framing violation (validate-1 C11).
+   * `pid` carries the stream PID; `latm_framing_kind` byte
+   * (`obu_type` carrier) encodes which violation variant
+   * (0=MissingSyncword, 1=AudioMuxLengthOverrun, 2=Truncated).
+   */
+  TST_NONCONFORMANT_CODE_LATM_FRAMING = 29,
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;

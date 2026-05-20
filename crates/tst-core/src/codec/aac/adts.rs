@@ -3,7 +3,7 @@
 //! Spec: ISO/IEC 13818-7 §1.A Tables 6–7.
 
 use super::tables::{decode_channels, decode_profile, decode_sample_rate};
-use super::{AacProfile, MpegVersion};
+use super::{AacChannelLayout, AacProfile, MpegVersion};
 use crate::codec::CodecParseError;
 
 /// Decoded view of the 7- or 9-byte ADTS header (no body slice yet).
@@ -13,7 +13,7 @@ pub(super) struct Header {
     pub mpeg_version: MpegVersion,
     pub sample_rate_hz: u32,
     pub channel_configuration: u8,
-    pub channels: u8,
+    pub channel_layout: AacChannelLayout,
     pub frame_length_bytes: u32,
     pub samples_per_frame: u16,
     pub num_raw_data_blocks: u8,
@@ -83,7 +83,7 @@ pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, CodecParseError> {
 
     // channel_config spans bytes[2] bit0 + bytes[3] bits 7-6
     let channel_configuration = ((bytes[2] & 1) << 2) | ((bytes[3] >> 6) & 0b11);
-    let channels = decode_channels(channel_configuration)?;
+    let channel_layout = decode_channels(channel_configuration)?;
 
     // bytes[3] bits 5-2: original/home/copyright bits (don't care)
     // bytes[3] bits 1-0 + bytes[4] + bytes[5] high bits: aac_frame_length (13 bits)
@@ -118,7 +118,7 @@ pub(super) fn parse_header(bytes: &[u8]) -> Result<Header, CodecParseError> {
         mpeg_version,
         sample_rate_hz,
         channel_configuration,
-        channels,
+        channel_layout,
         frame_length_bytes: aac_frame_length,
         samples_per_frame,
         num_raw_data_blocks,
@@ -168,12 +168,24 @@ mod tests {
         assert_eq!(h.profile, AacProfile::Lc);
         assert_eq!(h.sample_rate_hz, 44100);
         assert_eq!(h.channel_configuration, 2);
-        assert_eq!(h.channels, 2);
+        assert_eq!(h.channel_layout, AacChannelLayout::Channels(2));
         assert_eq!(h.frame_length_bytes, 107);
         assert_eq!(h.num_raw_data_blocks, 1);
         assert_eq!(h.samples_per_frame, 1024);
         assert!(!h.has_crc);
         assert_eq!(h.raw_header_len, 7);
+    }
+
+    /// C7 — `channel_configuration == 0` is a valid AAC streaming shape:
+    /// channel layout is carried in a Program Config Element (PCE) inside
+    /// the raw_data_block. The header must parse successfully and surface
+    /// `AacChannelLayout::PceDefined`.
+    #[test]
+    fn parse_header_pce_defined_channel_configuration_0() {
+        let bytes = build_header(1, 4, 0, 7 + 100, 0, true);
+        let h = parse_header(&bytes).unwrap();
+        assert_eq!(h.channel_configuration, 0);
+        assert_eq!(h.channel_layout, AacChannelLayout::PceDefined);
     }
 
     #[test]

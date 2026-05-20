@@ -807,7 +807,12 @@ fn ffprobe_agrees_on_aac_adts_sample_rate_and_channels() {
                 .and_then(|r| r.ok())
             {
                 parsed_sr = Some(f.sample_rate_hz);
-                parsed_ch = Some(f.channels);
+                // C7 — `.channels()` returns `None` for PCE-defined
+                // layouts (`channel_configuration == 0`). The aac-adts
+                // fixture uses canonical stereo (config 2), so we expect
+                // `Some(2)`; assertion against ffprobe-derived count
+                // would still hold for any canonical-layout encoder.
+                parsed_ch = f.channels();
             }
         }
         if parsed_sr.is_some() {

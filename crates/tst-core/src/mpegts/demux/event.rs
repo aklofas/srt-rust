@@ -535,6 +535,24 @@ pub enum NonConformantIssue {
     /// the issue escalates to `DemuxError::StrictRejection`.
     Av1ObuHeader { pid: u16, kind: Av1ObuHeaderKind },
 
+    /// AAC-LATM PES (stream_type `0x11`) framing violation
+    /// (validate-1 C11). Per ISO/IEC 14496-3 §1.7 + H.222.0 Table 2-34,
+    /// each PES on a LATM-advertising PID MUST begin with a 24-bit LOAS
+    /// header (`syncword=0x2B7` + 13-bit `audioMuxLengthBytes`).
+    ///
+    /// `kind` carries the specific violation;
+    /// see [`crate::codec::aac::latm::LatmFramingKind`].
+    ///
+    /// Lenient mode (`StrictMode::Off`): the demuxer continues and emits
+    /// the `Sample` event alongside this issue (consumers may still want
+    /// the bytes for forensic analysis). Strict mode (`StrictMode::Full`):
+    /// the issue escalates to `DemuxError::StrictRejection` and the
+    /// `Sample` event is suppressed.
+    LatmFraming {
+        pid: u16,
+        kind: crate::codec::aac::latm::LatmFramingKind,
+    },
+
     /// PSI section reassembly observed a continuity-counter jump on a
     /// continuation packet. Per ISO/IEC 13818-1 §2.4.3.3 PSI continuation
     /// packets must increment the CC; a jump means an upstream packet drop.
@@ -908,6 +926,23 @@ impl std::fmt::Display for NonConformantIssue {
                     f,
                     "AC-3 PES on PID 0x{pid:04X} missing syncword 0x0B77 \
                      despite data_alignment_indicator=1 (A/52 §A.2.4.1)"
+                )
+            }
+            NonConformantIssue::LatmFraming { pid, kind } => {
+                use crate::codec::aac::latm::LatmFramingKind;
+                let detail = match kind {
+                    LatmFramingKind::MissingSyncword => {
+                        "LOAS syncword (0x2B7) missing at start of PES payload"
+                    }
+                    LatmFramingKind::AudioMuxLengthOverrun => {
+                        "audioMuxLengthBytes runs past end of PES payload"
+                    }
+                    LatmFramingKind::Truncated => "PES payload shorter than 3-byte LOAS header",
+                };
+                write!(
+                    f,
+                    "AAC-LATM framing violation on PID 0x{pid:04X}: {detail} \
+                     (ISO/IEC 14496-3 §1.7 + H.222.0 Table 2-34 stream_type 0x11)"
                 )
             }
             NonConformantIssue::Other(msg) => {

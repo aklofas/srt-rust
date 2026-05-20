@@ -23,21 +23,30 @@ pub(crate) fn decode_sample_rate(idx: u8) -> Result<u32, CodecParseError> {
     Ok(SAMPLING_FREQUENCY[idx as usize])
 }
 
-/// Decode `channel_configuration` (3 bits) to canonical channel count
-/// per ISO 14496-3 Table 1.19. Index 0 = PCE-defined (we don't walk PCE).
-pub(crate) fn decode_channels(channel_config: u8) -> Result<u8, CodecParseError> {
+/// Decode `channel_configuration` (3 bits) to a typed channel layout
+/// per ISO 14496-3 Table 1.19.
+///
+/// `channel_configuration == 0` indicates the channel layout is defined
+/// by a Program Config Element (PCE) inside the raw_data_block — a valid
+/// AAC streaming shape (used by some encoders to carry 7.1+ or otherwise
+/// non-canonical layouts). We don't walk the PCE; the iterator surfaces
+/// [`AacChannelLayout::PceDefined`] so callers know "channel count not
+/// derivable from the ADTS header alone".
+///
+/// Indices `1..=7` map to the canonical Table 1.19 channel counts.
+/// Index `7` → 8 channels (7.1).
+pub(crate) fn decode_channels(
+    channel_config: u8,
+) -> Result<super::AacChannelLayout, CodecParseError> {
     match channel_config {
-        0 => Err(CodecParseError::ReservedValue {
-            field: "channel_configuration",
-            value: 0,
-        }),
-        1 => Ok(1),
-        2 => Ok(2),
-        3 => Ok(3),
-        4 => Ok(4),
-        5 => Ok(5),
-        6 => Ok(6),
-        7 => Ok(8),
+        0 => Ok(super::AacChannelLayout::PceDefined),
+        1 => Ok(super::AacChannelLayout::Channels(1)),
+        2 => Ok(super::AacChannelLayout::Channels(2)),
+        3 => Ok(super::AacChannelLayout::Channels(3)),
+        4 => Ok(super::AacChannelLayout::Channels(4)),
+        5 => Ok(super::AacChannelLayout::Channels(5)),
+        6 => Ok(super::AacChannelLayout::Channels(6)),
+        7 => Ok(super::AacChannelLayout::Channels(8)),
         _ => Err(CodecParseError::ReservedValue {
             field: "channel_configuration",
             value: channel_config as u32,
@@ -77,21 +86,36 @@ mod tests {
     }
     #[test]
     fn channels_stereo_is_2() {
-        assert_eq!(decode_channels(2).unwrap(), 2);
+        use crate::codec::aac::AacChannelLayout;
+        assert_eq!(decode_channels(2).unwrap(), AacChannelLayout::Channels(2));
     }
     #[test]
     fn channels_7_1_is_8() {
-        assert_eq!(decode_channels(7).unwrap(), 8);
+        use crate::codec::aac::AacChannelLayout;
+        assert_eq!(decode_channels(7).unwrap(), AacChannelLayout::Channels(8));
+    }
+    /// C7 — `channel_configuration == 0` indicates the channel layout
+    /// is carried in a Program Config Element (PCE) inside the
+    /// raw_data_block, not derivable from the ADTS header. Per ISO/IEC
+    /// 14496-3 Table 1.19 this is a valid streaming shape. Previously
+    /// `decode_channels(0)` returned `ReservedValue`, which terminated
+    /// the iterator and dropped all subsequent frames.
+    #[test]
+    fn channels_pce_defined_value_0() {
+        use crate::codec::aac::AacChannelLayout;
+        assert_eq!(decode_channels(0).unwrap(), AacChannelLayout::PceDefined);
     }
     #[test]
-    fn channels_pce_defined_is_reserved() {
-        assert!(matches!(
-            decode_channels(0).unwrap_err(),
-            CodecParseError::ReservedValue {
-                field: "channel_configuration",
-                value: 0
-            }
-        ));
+    fn channels_reserved_8_to_15() {
+        for v in 8u8..=15 {
+            assert!(matches!(
+                decode_channels(v).unwrap_err(),
+                CodecParseError::ReservedValue {
+                    field: "channel_configuration",
+                    ..
+                }
+            ));
+        }
     }
     #[test]
     fn profile_lc() {

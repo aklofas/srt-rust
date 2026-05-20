@@ -91,15 +91,30 @@ fn main() -> ExitCode {
                 }
                 AudioCodec::Aac => {
                     for r in codec::aac::frames(&frames).filter_map(Result::ok) {
+                        // C7 — `r.channels()` returns `None` for streams
+                        // whose channel layout is PCE-defined
+                        // (`channel_configuration == 0`). Walking the PCE
+                        // to recover the count is deferred; the iterator
+                        // surfaces None here so callers see "unknown"
+                        // rather than silently dropping the frame (the
+                        // pre-C7 behavior).
                         let new_state = AudioState {
                             sample_rate_hz: Some(r.sample_rate_hz),
-                            channels: Some(r.channels),
+                            channels: r.channels(),
                             layer_or_profile: Some(format!("{:?}", r.profile)),
                         };
                         if *state != new_state {
+                            let channels_display = match r.channels() {
+                                Some(c) => c.to_string(),
+                                None => "pce-defined".to_string(),
+                            };
                             println!(
                                 "PID 0x{:04x} aac-adts: profile={:?} sample_rate={} channels={} blocks_per_frame={}",
-                                pid, r.profile, r.sample_rate_hz, r.channels, r.num_raw_data_blocks
+                                pid,
+                                r.profile,
+                                r.sample_rate_hz,
+                                channels_display,
+                                r.num_raw_data_blocks
                             );
                             *state = new_state;
                         }

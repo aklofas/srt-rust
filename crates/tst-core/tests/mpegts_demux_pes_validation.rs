@@ -1,6 +1,6 @@
-//! Demuxer PES header & PTS validation tests (validate-1 B4 + B5 + B6).
+//! Demuxer PES header & PTS validation tests (validate-1 B4 + B5 + B6 + C11).
 //!
-//! Three discrete fixes, each verified by a failing-first integration test
+//! Four discrete fixes, each verified by a failing-first integration test
 //! per the project's TDD convention:
 //!
 //! - **B4 — PTS anomaly distinct from PCR anomaly.** Backward-PTS detection
@@ -17,13 +17,20 @@
 //! - **B6 — Subtitle data_alignment validation.** Per EN 300 743 §6.2 +
 //!   EN 300 472 §4.2 the demuxer surfaces `SubtitleAlignmentMissing` when
 //!   a DVB-sub / teletext PES arrives with `data_alignment_indicator = 0`.
+//!
+//! - **C11 — AAC-LATM (stream_type 0x11) sync validation.** Per ISO/IEC
+//!   14496-3 §1.7 + H.222.0 Table 2-34 each LATM PES MUST begin with the
+//!   24-bit LOAS header (syncword 0x2B7 + 13-bit audioMuxLengthBytes). The
+//!   demuxer surfaces `LatmFraming` when the syncword is absent or the
+//!   declared length runs past the PES payload.
 
+use tst_core::codec::aac::latm::LatmFramingKind;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, DemuxerBuilder, NonConformantIssue, PesHeaderMalformedKind, StrictMode,
 };
 use tst_core::mpegts::mux::{
-    Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec as MuxSub, VideoCodec,
+    AudioCodec, Muxer, MuxerConfig, MuxerProgramConfigBuilder, SubtitleCodec as MuxSub, VideoCodec,
 };
 
 /// Drain every queued packet from the muxer into a single Vec.
@@ -457,4 +464,200 @@ fn patch_dvb_sub_pes_clear_data_alignment(mut bytes: Vec<u8>) -> Vec<u8> {
     let flags1_off = pes_start + 6;
     bytes[flags1_off] &= !0x04;
     bytes
+}
+
+// =====================================================================
+// C11 — AAC-LATM (stream_type 0x11) sync validation
+// =====================================================================
+
+/// Build a TS byte stream containing one AAC-LATM PES on PID 0x150. The
+/// "LATM frame" is `payload` — used in conjunction with a conformant
+/// (`build_loas_record`) or non-conformant (`bad_latm_payload`) shape
+/// to drive C11 acceptance.
+fn build_ts_with_aac_latm_pes(payload: &[u8]) -> Vec<u8> {
+    let cfg = {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x100);
+        prog.add_video(0x101, VideoCodec::H264);
+        prog.add_audio(0x150, AudioCodec::AacLatm);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    };
+    let mut mux = Muxer::new(cfg).unwrap();
+    let audio_handle = mux.audio_handles()[0];
+    // The muxer wraps the supplied bytes in a PES; on the wire what the
+    // demuxer sees as the PES payload is precisely `payload`.
+    mux.push_audio_to(audio_handle, Pts90khz::new(90_000), payload)
+        .unwrap();
+    drain_all(&mut mux)
+}
+
+/// Build a 3-byte LOAS header + `len` body bytes (zeros). Matches the
+/// helper inside `codec::aac::latm` tests; duplicated here to avoid
+/// re-exporting test-only constants.
+fn build_valid_loas_record(len: u16) -> Vec<u8> {
+    let mut out = Vec::with_capacity(3 + usize::from(len));
+    out.push(0x56);
+    out.push(0xE0 | ((len >> 8) as u8 & 0x1F));
+    out.push((len & 0xFF) as u8);
+    out.resize(3 + usize::from(len), 0);
+    out
+}
+
+/// C11 — primary lenient-mode test: PES that does not begin with the LOAS
+/// syncword on a `stream_type=0x11` PID surfaces
+/// `NonConformantIssue::LatmFraming { kind: MissingSyncword }`.
+///
+/// Common real-world cause: ADTS-framed AAC mistakenly shipped on a
+/// LATM-advertising PID (encoder configuration bug). The
+/// `[0xFF, 0xF1, ...]` payload prefix is a valid ADTS sync word that
+/// fails LOAS validation.
+#[test]
+fn demux_c11_latm_missing_syncword_emits_issue() {
+    let bad_payload = [0xFFu8, 0xF1, 0x4C, 0x80, 0x00, 0x1F, 0xFC];
+    let bytes = build_ts_with_aac_latm_pes(&bad_payload);
+
+    let mut demux = Demuxer::new();
+    demux.feed(&bytes).unwrap();
+    demux.flush();
+    let mut events = Vec::new();
+    while let Some(e) = demux.next_event() {
+        events.push(e);
+    }
+
+    let issue_seen = events.iter().any(|e| {
+        matches!(
+            e,
+            DemuxEvent::NonConformant {
+                issue: NonConformantIssue::LatmFraming {
+                    pid: 0x150,
+                    kind: LatmFramingKind::MissingSyncword,
+                },
+                ..
+            }
+        )
+    });
+    assert!(
+        issue_seen,
+        "expected LatmFraming::MissingSyncword on PID 0x150, got {events:?}"
+    );
+}
+
+/// C11 — overrun case: LOAS header parses but the declared
+/// `audioMuxLengthBytes` runs past the PES payload.
+#[test]
+fn demux_c11_latm_audio_mux_length_overrun_emits_issue() {
+    // Construct a 3-byte LOAS header advertising 200 bytes followed by
+    // only 10 body bytes — overrun.
+    // LOAS header advertising audioMuxLengthBytes=200 (high-5 = 0, low-8 = 200).
+    let mut payload = vec![0x56u8, 0xE0, 200u8];
+    payload.resize(payload.len() + 10, 0u8);
+    let bytes = build_ts_with_aac_latm_pes(&payload);
+
+    let mut demux = Demuxer::new();
+    demux.feed(&bytes).unwrap();
+    demux.flush();
+    let mut events = Vec::new();
+    while let Some(e) = demux.next_event() {
+        events.push(e);
+    }
+
+    let issue_seen = events.iter().any(|e| {
+        matches!(
+            e,
+            DemuxEvent::NonConformant {
+                issue: NonConformantIssue::LatmFraming {
+                    pid: 0x150,
+                    kind: LatmFramingKind::AudioMuxLengthOverrun,
+                },
+                ..
+            }
+        )
+    });
+    assert!(
+        issue_seen,
+        "expected LatmFraming::AudioMuxLengthOverrun on PID 0x150, got {events:?}"
+    );
+}
+
+/// C11 — valid LATM PES: no issue should fire, sample event present.
+#[test]
+fn demux_c11_latm_valid_syncword_no_issue() {
+    let payload = build_valid_loas_record(64);
+    let bytes = build_ts_with_aac_latm_pes(&payload);
+
+    let mut demux = Demuxer::new();
+    demux.feed(&bytes).unwrap();
+    demux.flush();
+    let mut events = Vec::new();
+    while let Some(e) = demux.next_event() {
+        events.push(e);
+    }
+
+    let issue_seen = events.iter().any(|e| {
+        matches!(
+            e,
+            DemuxEvent::NonConformant {
+                issue: NonConformantIssue::LatmFraming { .. },
+                ..
+            }
+        )
+    });
+    assert!(
+        !issue_seen,
+        "valid LOAS-framed LATM PES must not emit LatmFraming, got {events:?}"
+    );
+    let sample_seen = events.iter().any(|e| {
+        matches!(
+            e,
+            DemuxEvent::Sample {
+                stream,
+                ..
+            } if stream.pid == 0x150
+        )
+    });
+    assert!(sample_seen, "expected Sample event on PID 0x150");
+}
+
+/// C11 — strict mode `Full`: LATM framing violation suppresses the
+/// `Sample` event but still emits the `NonConformant` issue.
+#[test]
+fn demux_c11_latm_strict_full_suppresses_sample() {
+    let bad_payload = [0xFFu8, 0xF1, 0x4C, 0x80, 0x00, 0x1F, 0xFC];
+    let bytes = build_ts_with_aac_latm_pes(&bad_payload);
+
+    let mut demux = DemuxerBuilder::new().strict(StrictMode::Full).build();
+    let _ = demux.feed(&bytes);
+    demux.flush();
+    let mut events = Vec::new();
+    while let Some(e) = demux.next_event() {
+        events.push(e);
+    }
+
+    let issue_seen = events.iter().any(|e| {
+        matches!(
+            e,
+            DemuxEvent::NonConformant {
+                issue: NonConformantIssue::LatmFraming { .. },
+                ..
+            }
+        )
+    });
+    let sample_seen = events.iter().any(|e| {
+        matches!(
+            e,
+            DemuxEvent::Sample {
+                stream,
+                ..
+            } if stream.pid == 0x150
+        )
+    });
+    assert!(
+        issue_seen,
+        "strict mode must still emit the LatmFraming issue, got {events:?}"
+    );
+    assert!(
+        !sample_seen,
+        "strict mode must suppress the LATM Sample, got {events:?}"
+    );
 }

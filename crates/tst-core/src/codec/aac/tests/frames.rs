@@ -1,7 +1,9 @@
 //! Tests for the `codec::aac` public iterator surface (frame-level).
 
 use crate::codec::CodecParseError;
-use crate::codec::aac::{AacProfile, AdtsFrame, AdtsFrameOwned, MpegVersion, frames};
+use crate::codec::aac::{
+    AacChannelLayout, AacProfile, AdtsFrame, AdtsFrameOwned, MpegVersion, frames,
+};
 
 /// Helper: build full ADTS frame (7-byte header + zero-fill body).
 /// Defaults: MPEG-2 ID, no CRC, AAC-LC profile, num_blocks_wire=0 (1 block).
@@ -80,7 +82,7 @@ fn adts_frame_owned_roundtrip() {
         profile: AacProfile::Lc,
         sample_rate_hz: 44100,
         channel_configuration: 2,
-        channels: 2,
+        channel_layout: AacChannelLayout::Channels(2),
         frame_length_bytes: 3,
         samples_per_frame: 1024,
         num_raw_data_blocks: 1,
@@ -93,12 +95,15 @@ fn adts_frame_owned_roundtrip() {
     let reborrowed = owned.as_ref();
     assert_eq!(borrowed, reborrowed);
     assert_eq!(owned.body, vec![0xAA, 0xBB, 0xCC]);
+    // C7 — `.channels()` returns `Some(2)` for canonical layouts.
+    assert_eq!(borrowed.channels(), Some(2));
+    assert_eq!(owned.channels(), Some(2));
     // Verify AdtsFrameOwned is constructible (all fields present)
     let _ = AdtsFrameOwned {
         profile: AacProfile::Lc,
         sample_rate_hz: 44100,
         channel_configuration: 2,
-        channels: 2,
+        channel_layout: AacChannelLayout::Channels(2),
         frame_length_bytes: 3,
         samples_per_frame: 1024,
         num_raw_data_blocks: 1,
@@ -107,4 +112,31 @@ fn adts_frame_owned_roundtrip() {
         raw_header: vec![],
         body: vec![],
     };
+}
+
+/// C7 — iterator continues past a frame with `channel_configuration == 0`
+/// (PCE-defined). Previously `decode_channels(0)` returned `ReservedValue`
+/// which terminated the iterator and dropped every subsequent frame.
+#[test]
+fn frames_iterator_continues_past_pce_defined_channel_configuration() {
+    // Three back-to-back frames: first uses `channel_configuration == 0`
+    // (PCE-defined), the second and third use canonical stereo.
+    let mut buf = build_frame(4, 0, 200);
+    buf.extend(build_frame(4, 2, 200));
+    buf.extend(build_frame(4, 2, 200));
+    let mut it = frames(&buf);
+
+    let f1 = it.next().unwrap().unwrap();
+    assert_eq!(f1.channel_configuration, 0);
+    assert_eq!(f1.channel_layout, AacChannelLayout::PceDefined);
+    assert_eq!(f1.channels(), None, "PceDefined -> None");
+
+    let f2 = it.next().unwrap().unwrap();
+    assert_eq!(f2.channel_layout, AacChannelLayout::Channels(2));
+    assert_eq!(f2.channels(), Some(2));
+
+    let f3 = it.next().unwrap().unwrap();
+    assert_eq!(f3.channel_layout, AacChannelLayout::Channels(2));
+
+    assert!(it.next().is_none());
 }

@@ -18,6 +18,53 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tst_core::cancel::SrtCancelHan
 impl !core::panic::unwind_safe::UnwindSafe for tst_core::cancel::SrtCancelHandle
 pub mod tst_core::codec
 pub mod tst_core::codec::aac
+pub mod tst_core::codec::aac::latm
+#[non_exhaustive] pub enum tst_core::codec::aac::latm::LatmFramingKind
+pub tst_core::codec::aac::latm::LatmFramingKind::AudioMuxLengthOverrun
+pub tst_core::codec::aac::latm::LatmFramingKind::MissingSyncword
+pub tst_core::codec::aac::latm::LatmFramingKind::Truncated
+impl core::clone::Clone for tst_core::codec::aac::latm::LatmFramingKind
+pub fn tst_core::codec::aac::latm::LatmFramingKind::clone(&self) -> tst_core::codec::aac::latm::LatmFramingKind
+impl core::cmp::Eq for tst_core::codec::aac::latm::LatmFramingKind
+impl core::cmp::PartialEq for tst_core::codec::aac::latm::LatmFramingKind
+pub fn tst_core::codec::aac::latm::LatmFramingKind::eq(&self, other: &tst_core::codec::aac::latm::LatmFramingKind) -> bool
+impl core::fmt::Debug for tst_core::codec::aac::latm::LatmFramingKind
+pub fn tst_core::codec::aac::latm::LatmFramingKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::codec::aac::latm::LatmFramingKind
+pub fn tst_core::codec::aac::latm::LatmFramingKind::hash<__H: core::hash::Hasher>(&self, state: &mut __H)
+impl core::marker::Copy for tst_core::codec::aac::latm::LatmFramingKind
+impl core::marker::StructuralPartialEq for tst_core::codec::aac::latm::LatmFramingKind
+impl core::marker::Freeze for tst_core::codec::aac::latm::LatmFramingKind
+impl core::marker::Send for tst_core::codec::aac::latm::LatmFramingKind
+impl core::marker::Sync for tst_core::codec::aac::latm::LatmFramingKind
+impl core::marker::Unpin for tst_core::codec::aac::latm::LatmFramingKind
+impl core::marker::UnsafeUnpin for tst_core::codec::aac::latm::LatmFramingKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::aac::latm::LatmFramingKind
+impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::aac::latm::LatmFramingKind
+pub fn tst_core::codec::aac::latm::validate_latm_sync(pes_payload: &[u8]) -> core::result::Result<u16, tst_core::codec::aac::latm::LatmFramingKind>
+#[non_exhaustive] pub enum tst_core::codec::aac::AacChannelLayout
+pub tst_core::codec::aac::AacChannelLayout::Channels(u8)
+pub tst_core::codec::aac::AacChannelLayout::PceDefined
+impl tst_core::codec::aac::AacChannelLayout
+pub fn tst_core::codec::aac::AacChannelLayout::channels(&self) -> core::option::Option<u8>
+impl core::clone::Clone for tst_core::codec::aac::AacChannelLayout
+pub fn tst_core::codec::aac::AacChannelLayout::clone(&self) -> tst_core::codec::aac::AacChannelLayout
+impl core::cmp::Eq for tst_core::codec::aac::AacChannelLayout
+impl core::cmp::PartialEq for tst_core::codec::aac::AacChannelLayout
+pub fn tst_core::codec::aac::AacChannelLayout::eq(&self, other: &tst_core::codec::aac::AacChannelLayout) -> bool
+impl core::fmt::Debug for tst_core::codec::aac::AacChannelLayout
+pub fn tst_core::codec::aac::AacChannelLayout::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tst_core::codec::aac::AacChannelLayout
+pub fn tst_core::codec::aac::AacChannelLayout::hash<__H: core::hash::Hasher>(&self, state: &mut __H)
+impl core::marker::Copy for tst_core::codec::aac::AacChannelLayout
+impl core::marker::StructuralPartialEq for tst_core::codec::aac::AacChannelLayout
+impl core::marker::Freeze for tst_core::codec::aac::AacChannelLayout
+impl core::marker::Send for tst_core::codec::aac::AacChannelLayout
+impl core::marker::Sync for tst_core::codec::aac::AacChannelLayout
+impl core::marker::Unpin for tst_core::codec::aac::AacChannelLayout
+impl core::marker::UnsafeUnpin for tst_core::codec::aac::AacChannelLayout
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::aac::AacChannelLayout
+impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::aac::AacChannelLayout
 pub enum tst_core::codec::aac::AacProfile
 pub tst_core::codec::aac::AacProfile::Lc
 pub tst_core::codec::aac::AacProfile::LongTermPrediction
@@ -60,7 +107,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::codec::aac::MpegVersi
 impl core::panic::unwind_safe::UnwindSafe for tst_core::codec::aac::MpegVersion
 #[non_exhaustive] pub struct tst_core::codec::aac::AdtsFrame<'a>
 pub tst_core::codec::aac::AdtsFrame::channel_configuration: u8
-pub tst_core::codec::aac::AdtsFrame::channels: u8
+pub tst_core::codec::aac::AdtsFrame::channel_layout: tst_core::codec::aac::AacChannelLayout
 pub tst_core::codec::aac::AdtsFrame::frame_length_bytes: u32
 pub tst_core::codec::aac::AdtsFrame::has_crc: bool
 pub tst_core::codec::aac::AdtsFrame::mpeg_version: tst_core::codec::aac::MpegVersion
@@ -71,6 +118,7 @@ pub tst_core::codec::aac::AdtsFrame::sample_rate_hz: u32
 pub tst_core::codec::aac::AdtsFrame::samples_per_frame: u16
 impl<'a> tst_core::codec::aac::AdtsFrame<'a>
 pub fn tst_core::codec::aac::AdtsFrame<'a>::bytes(&self) -> &'a [u8]
+pub fn tst_core::codec::aac::AdtsFrame<'a>::channels(&self) -> core::option::Option<u8>
 pub fn tst_core::codec::aac::AdtsFrame<'a>::to_owned(&self) -> tst_core::codec::aac::AdtsFrameOwned
 impl<'a> core::clone::Clone for tst_core::codec::aac::AdtsFrame<'a>
 pub fn tst_core::codec::aac::AdtsFrame<'a>::clone(&self) -> tst_core::codec::aac::AdtsFrame<'a>
@@ -90,7 +138,7 @@ impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::codec::aac::AdtsFram
 #[non_exhaustive] pub struct tst_core::codec::aac::AdtsFrameOwned
 pub tst_core::codec::aac::AdtsFrameOwned::body: alloc::vec::Vec<u8>
 pub tst_core::codec::aac::AdtsFrameOwned::channel_configuration: u8
-pub tst_core::codec::aac::AdtsFrameOwned::channels: u8
+pub tst_core::codec::aac::AdtsFrameOwned::channel_layout: tst_core::codec::aac::AacChannelLayout
 pub tst_core::codec::aac::AdtsFrameOwned::frame_length_bytes: u32
 pub tst_core::codec::aac::AdtsFrameOwned::has_crc: bool
 pub tst_core::codec::aac::AdtsFrameOwned::mpeg_version: tst_core::codec::aac::MpegVersion
@@ -101,6 +149,7 @@ pub tst_core::codec::aac::AdtsFrameOwned::sample_rate_hz: u32
 pub tst_core::codec::aac::AdtsFrameOwned::samples_per_frame: u16
 impl tst_core::codec::aac::AdtsFrameOwned
 pub fn tst_core::codec::aac::AdtsFrameOwned::as_ref(&self) -> tst_core::codec::aac::AdtsFrame<'_>
+pub fn tst_core::codec::aac::AdtsFrameOwned::channels(&self) -> core::option::Option<u8>
 impl core::clone::Clone for tst_core::codec::aac::AdtsFrameOwned
 pub fn tst_core::codec::aac::AdtsFrameOwned::clone(&self) -> tst_core::codec::aac::AdtsFrameOwned
 impl core::cmp::Eq for tst_core::codec::aac::AdtsFrameOwned
@@ -2721,6 +2770,9 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::Av1TileListNotAllowed
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1TileListNotAllowed::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::DvbSubDataIdentifier
 pub tst_core::mpegts::demux::event::NonConformantIssue::DvbSubDataIdentifier::observed: u8
+pub tst_core::mpegts::demux::event::NonConformantIssue::LatmFraming
+pub tst_core::mpegts::demux::event::NonConformantIssue::LatmFraming::kind: tst_core::codec::aac::latm::LatmFramingKind
+pub tst_core::mpegts::demux::event::NonConformantIssue::LatmFraming::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes
 pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes::reason: &'static str
@@ -3546,6 +3598,9 @@ pub tst_core::mpegts::demux::NonConformantIssue::Av1TileListNotAllowed
 pub tst_core::mpegts::demux::NonConformantIssue::Av1TileListNotAllowed::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::DvbSubDataIdentifier
 pub tst_core::mpegts::demux::NonConformantIssue::DvbSubDataIdentifier::observed: u8
+pub tst_core::mpegts::demux::NonConformantIssue::LatmFraming
+pub tst_core::mpegts::demux::NonConformantIssue::LatmFraming::kind: tst_core::codec::aac::latm::LatmFramingKind
+pub tst_core::mpegts::demux::NonConformantIssue::LatmFraming::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes
 pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes::reason: &'static str

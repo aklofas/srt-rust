@@ -241,12 +241,15 @@ impl<T: Transport + 'static> ManagedTransport<T> {
             if let Some(transport) = transport_guard.as_mut() {
                 match transport.send_bytes(bytes) {
                     Ok(()) => return Ok(()),
-                    Err(TransportError::Backpressure { .. }) => {
+                    Err(TransportError::Backpressure { errno_code, .. }) => {
                         // Backpressure is recoverable without reconnect — propagate.
-                        // Caller may retry the same bytes.
+                        // Caller may retry the same bytes. Forward the inner
+                        // errno_code (D5 follow-up): the wrapper does not have its
+                        // own libsrt origin, so the only meaningful errno_code on
+                        // this path is the one the inner transport supplied.
                         return Err(TransportError::Backpressure {
                             msg: "inner backpressure".into(),
-                            errno_code: None,
+                            errno_code,
                         });
                     }
                     Err(TransportError::TooLarge { len, max }) => {
@@ -338,13 +341,25 @@ impl<T: Transport + 'static> ManagedTransport<T> {
                 Ok(()) => {
                     gap.pop_front();
                 }
-                Err(TransportError::Backpressure { .. }) => {
+                Err(TransportError::Backpressure { errno_code, .. }) => {
+                    // D5 follow-up: forward inner errno_code.
                     return Err(TransportError::Backpressure {
                         msg: "drain backpressure".into(),
-                        errno_code: None,
+                        errno_code,
                     });
                 }
-                Err(TransportError::Broken { .. }) | Err(TransportError::Closed) => {
+                Err(TransportError::Broken { errno_code, .. }) => {
+                    // D5 follow-up: forward inner errno_code; the wrapper
+                    // doesn't have its own SRT origin.
+                    *transport_guard = None;
+                    return Err(TransportError::Broken {
+                        msg: "transport broken during drain".into(),
+                        errno_code,
+                    });
+                }
+                Err(TransportError::Closed) => {
+                    // Inner reported Closed (no errno surface) — surface as
+                    // Broken so the caller's shell maps to TransportBroken.
                     *transport_guard = None;
                     return Err(TransportError::Broken {
                         msg: "transport broken during drain".into(),

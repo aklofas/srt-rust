@@ -1167,6 +1167,13 @@ impl crate::shell_error::ShellError for MuxSenderError {
     fn kind(&self) -> ShellErrorKind {
         self.kind
     }
+
+    fn errno_code(&self) -> Option<i32> {
+        match &self.source {
+            MuxSenderErrorSource::Transport(t) => crate::shell_error::errno_code_from_transport(t),
+            MuxSenderErrorSource::Mux(_) => None,
+        }
+    }
 }
 
 #[cfg(test)]

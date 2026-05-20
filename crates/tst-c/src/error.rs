@@ -291,6 +291,20 @@ pub(crate) fn record_mux_error(e: &MuxError) {
 }
 
 pub(crate) fn record_transport_error(e: &TransportError) {
+    // D5 follow-up: helper to render the optional errno suffix. `SrtErrno::Bad.raw_code() == 0`,
+    // which would read as "(errno 0)" — i.e., "no error" in libsrt's idiom.
+    // That's a footgun for C consumers; suppress the suffix when the code
+    // is 0 (the Bad sentinel) so it doesn't masquerade as a real errno.
+    // Extracted into a fn (rather than a nested match) so the outer match
+    // body doesn't contain an inner `_ =>` arm — that would confuse the
+    // check-raw-c-mapper-coverage.sh ratchet (its awk extractor stops at
+    // the first `_ =>` line, treating it as the outer wildcard).
+    fn errno_suffix(errno_code: &Option<i32>) -> String {
+        match errno_code {
+            Some(c) if *c != 0 => format!(" (errno {c})"),
+            Some(_) | None => String::new(),
+        }
+    }
     let (code, msg) = match e {
         // The struct variants now carry an optional `errno_code` (libsrt
         // MJ_* major when the underlying transport is SRT). Append it to
@@ -300,17 +314,11 @@ pub(crate) fn record_transport_error(e: &TransportError) {
         // TransportError struct variant directly.
         TransportError::Backpressure { msg: s, errno_code } => (
             TstError::Transport,
-            match errno_code {
-                Some(c) => format!("backpressure: {s} (errno {c})"),
-                None => format!("backpressure: {s}"),
-            },
+            format!("backpressure: {s}{}", errno_suffix(errno_code)),
         ),
         TransportError::Broken { msg: s, errno_code } => (
             TstError::Transport,
-            match errno_code {
-                Some(c) => format!("broken: {s} (errno {c})"),
-                None => format!("broken: {s}"),
-            },
+            format!("broken: {s}{}", errno_suffix(errno_code)),
         ),
         TransportError::Closed => (TstError::Closed, "transport closed".into()),
         TransportError::TooLarge { len, max } => (
@@ -794,6 +802,35 @@ mod tests {
         let rc = record_not_found("pid 0x100 not observed on this handle");
         assert_eq!(rc, TstError::NotFound as i32);
         assert_eq!(test_last_error_code(), TstError::NotFound as i32);
+    }
+
+    /// D5 follow-up: `(errno N)` suffix only appended for non-zero
+    /// codes. `errno_code: Some(0)` (the `SrtErrno::Bad` sentinel) is
+    /// suppressed because "(errno 0)" reads as "no error" — a footgun
+    /// for C consumers parsing the message string.
+    #[test]
+    fn record_transport_error_suppresses_errno_zero_suffix() {
+        clear_last_error_for_test();
+        record_transport_error(&TransportError::Broken {
+            msg: "synthetic".into(),
+            errno_code: Some(0),
+        });
+        let s_ptr = unsafe { tst_get_last_error_str() };
+        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }.to_str().unwrap();
+        assert!(
+            !msg.contains("(errno"),
+            "errno 0 should not surface a (errno N) suffix: {msg}"
+        );
+
+        // Non-zero codes still surface.
+        clear_last_error_for_test();
+        record_transport_error(&TransportError::Broken {
+            msg: "synthetic".into(),
+            errno_code: Some(2),
+        });
+        let s_ptr = unsafe { tst_get_last_error_str() };
+        let msg = unsafe { std::ffi::CStr::from_ptr(s_ptr) }.to_str().unwrap();
+        assert!(msg.contains("(errno 2)"), "got: {msg}");
     }
 
     #[test]

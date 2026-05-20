@@ -71,6 +71,12 @@ impl crate::shell_error::ShellError for RawSenderError {
     fn kind(&self) -> ShellErrorKind {
         self.kind
     }
+
+    fn errno_code(&self) -> Option<i32> {
+        match &self.source {
+            RawSenderErrorSource::Transport(t) => crate::shell_error::errno_code_from_transport(t),
+        }
+    }
 }
 
 /// Stats for [`RawSender`]. Aggregate-only — there are no streams at
@@ -408,5 +414,34 @@ mod tests {
             accept: true,
         };
         assert!(t.cancel_handle().is_none());
+    }
+
+    /// D5 follow-up: `ShellError::errno_code()` reaches through the
+    /// typed source tree and returns the inner TransportError's
+    /// `errno_code` field. Other ShellError types share this shape.
+    #[test]
+    fn shell_error_errno_code_reaches_through_source() {
+        use crate::shell_error::ShellError;
+
+        let err: RawSenderError = TransportError::Broken {
+            msg: "test".into(),
+            errno_code: Some(2),
+        }
+        .into();
+        assert_eq!(err.errno_code(), Some(2));
+        assert_eq!(err.kind(), ShellErrorKind::TransportBroken);
+
+        // None propagates as None.
+        let err_none: RawSenderError = TransportError::Backpressure {
+            msg: "test".into(),
+            errno_code: None,
+        }
+        .into();
+        assert_eq!(err_none.errno_code(), None);
+
+        // Non-carrying TransportError variants return None at the
+        // shell layer too.
+        let err_closed: RawSenderError = TransportError::Closed.into();
+        assert_eq!(err_closed.errno_code(), None);
     }
 }

@@ -393,6 +393,15 @@ impl crate::shell_error::ShellError for DemuxReceiverError {
     fn kind(&self) -> ShellErrorKind {
         self.kind
     }
+
+    fn errno_code(&self) -> Option<i32> {
+        match &self.source {
+            DemuxReceiverErrorSource::Transport(t) => {
+                crate::shell_error::errno_code_from_transport(t)
+            }
+            DemuxReceiverErrorSource::Demux(_) => None,
+        }
+    }
 }
 
 /// Stats snapshot for [`DemuxReceiver`]. Composes the underlying

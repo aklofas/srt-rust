@@ -408,20 +408,28 @@ impl SrtErrno {
 
     /// Map back to an integer code for transport-layer error propagation.
     ///
-    /// Returns the libsrt MJ_* major category for the known variants
-    /// (`Setup`→1, `Connection`→2, `SystemRes`→3, `FileSystem`→4,
-    /// `Notsup`→5, `Async`→6, `PeerError`→7, `Timeout`→6, `Bad`→0), or
-    /// the preserved raw libsrt errno for [`Self::Unknown`]. Used by
-    /// [`crate::transport::SrtTransport`] to populate the `errno_code`
-    /// field on [`tst_core::transport::TransportError::Backpressure`] /
+    /// Always returns the libsrt MJ_* major category (`1..=7`) for known
+    /// variants — `Setup`→1, `Connection`→2, `SystemRes`→3, `FileSystem`→4,
+    /// `Notsup`→5, `Async`→6, `PeerError`→7, `Timeout`→6, `Bad`→0. For
+    /// [`Self::Unknown`] the preserved raw libsrt errno is folded back to
+    /// its major category via integer division (libsrt encodes errnos as
+    /// `major * 1000 + minor`, so `raw / 1000` recovers the major).
+    /// Callers that need the full raw errno can pattern-match on
+    /// `SrtErrno::Unknown(raw)` directly.
+    ///
+    /// Used by [`crate::transport::SrtTransport`] to populate the
+    /// `errno_code` field on
+    /// [`tst_core::transport::TransportError::Backpressure`] /
     /// [`tst_core::transport::TransportError::Broken`], giving JNI /
-    /// UniFFI bindings a typed-source signal without depending on the
-    /// `SrtErrno` enum directly (which lives in `tst-srt`, not `tst-core`).
+    /// UniFFI bindings a typed-source signal in a small, stable range.
+    /// Bindings can match on `code <= 7` without worrying about an
+    /// `Unknown(6002)` slipping through as the full encoded errno.
     ///
     /// Note: `Timeout` and `Bad` aren't produced by the internal
     /// `from_raw` constructor today (no major-category mapping); they're
     /// listed for future-proofing if the typed enum is ever populated
     /// through another path.
+    #[must_use]
     pub fn raw_code(&self) -> i32 {
         match self {
             SrtErrno::Setup => 1,
@@ -433,7 +441,11 @@ impl SrtErrno {
             SrtErrno::PeerError => 7,
             SrtErrno::Timeout => 6,
             SrtErrno::Bad => 0,
-            SrtErrno::Unknown(raw) => *raw,
+            // libsrt errnos are `major * 1000 + minor`; fold back to the
+            // major category so the return value range matches the typed
+            // variants. Bindings that want the full raw errno can match
+            // `SrtErrno::Unknown(raw)` directly.
+            SrtErrno::Unknown(raw) => raw / 1000,
         }
     }
 }

@@ -178,6 +178,12 @@ impl crate::shell_error::ShellError for ReceiverError {
     fn kind(&self) -> ShellErrorKind {
         self.kind
     }
+
+    fn errno_code(&self) -> Option<i32> {
+        match &self.source {
+            ReceiverErrorSource::Transport(t) => crate::shell_error::errno_code_from_transport(t),
+        }
+    }
 }
 
 impl<R: RecvTransport> Receiver<R> {

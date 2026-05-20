@@ -341,7 +341,9 @@ mod tests {
     /// validate-1 D5: ensure `SrtErrno::raw_code()` produces the libsrt
     /// MJ_* major-category integers the `errno_code` field on
     /// `TransportError::{Backpressure, Broken}` carries. Bindings that
-    /// pattern-match on these codes need them stable across releases.
+    /// pattern-match on these codes need them stable across releases —
+    /// the return value is always in the `0..=7` range (or the major
+    /// component of an unknown errno).
     #[test]
     fn srt_errno_raw_code_maps_to_libsrt_major() {
         assert_eq!(SrtErrno::Setup.raw_code(), 1);
@@ -351,9 +353,16 @@ mod tests {
         assert_eq!(SrtErrno::Notsup.raw_code(), 5);
         assert_eq!(SrtErrno::Async.raw_code(), 6);
         assert_eq!(SrtErrno::PeerError.raw_code(), 7);
-        // Unknown preserves the raw libsrt errno verbatim — used by
-        // bindings to probe sub-codes that aren't categorized here.
-        assert_eq!(SrtErrno::Unknown(6002).raw_code(), 6002);
+        // D5 follow-up: Unknown(raw) folds back to the major category
+        // via `raw / 1000`. Bindings that match on `code <= 7` should
+        // see 6 here, not the full encoded 6002. Callers that need the
+        // raw sub-code can match `SrtErrno::Unknown(raw)` directly.
+        assert_eq!(SrtErrno::Unknown(6002).raw_code(), 6);
+        // Sub-code 0 (i.e., raw == major exactly) still produces major.
+        assert_eq!(SrtErrno::Unknown(5000).raw_code(), 5);
+        // Defensive: out-of-range major still folds (caller decides
+        // what to do with an unrecognized major).
+        assert_eq!(SrtErrno::Unknown(99999).raw_code(), 99);
     }
 
     /// validate-1 D5: the transport error variants carry an optional

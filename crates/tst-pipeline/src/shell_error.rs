@@ -94,6 +94,45 @@ pub trait ShellError: std::error::Error {
     /// Categorical reason for this failure. See [`ShellErrorKind`] for
     /// the per-shell-applicability matrix.
     fn kind(&self) -> ShellErrorKind;
+
+    /// Wire-level transport errno code when this failure originated in
+    /// the underlying `TransportError::{Backpressure, Broken}` variants
+    /// and the transport implementation supplied one (libsrt MJ_* major
+    /// for `SrtTransport`).
+    ///
+    /// Returns `None` for non-transport failures (`MuxError`-derived,
+    /// `DemuxError`-derived, framing errors, lock-poison shells) and for
+    /// transport failures from transports that don't expose a numeric
+    /// code (test mocks, in-memory channels, the `reconnect`
+    /// orchestration layer's own shell-poison paths).
+    ///
+    /// Surfaced as a flat accessor on the canonical pipeline-error
+    /// surface so JNI / UniFFI bindings can read the wire-level cause
+    /// without drilling through the typed `source` enum tree. Rust
+    /// callers that want full structured access still match on the
+    /// inner `*ErrorSource::Transport(TransportError { errno_code })`.
+    ///
+    /// Default implementation returns `None` — error types whose inner
+    /// source can't carry a transport errno override only when they
+    /// can.
+    fn errno_code(&self) -> Option<i32> {
+        None
+    }
+}
+
+/// Extract the transport errno_code from a `TransportError` when the
+/// variant carries one. Used by the per-shell `errno_code()` impls on
+/// the 6 ShellError types, each of which holds a typed source enum that
+/// has a `Transport(TransportError)` variant.
+///
+/// Pulled into a helper here because all 6 impls are identical in shape:
+/// reach into the source enum's Transport variant; otherwise None.
+pub(crate) fn errno_code_from_transport(e: &TransportError) -> Option<i32> {
+    match e {
+        TransportError::Backpressure { errno_code, .. } => *errno_code,
+        TransportError::Broken { errno_code, .. } => *errno_code,
+        _ => None,
+    }
 }
 
 /// Direction parameter for `kind_from_transport` — `TransportError::Closed`
@@ -303,6 +342,41 @@ mod tests {
         assert_eq!(
             kind_from_framing(&TsFramingError::NoSyncAfterLimit { max: 4096 }),
             ShellErrorKind::InputMalformed
+        );
+    }
+
+    /// D5 follow-up: `errno_code_from_transport` extracts the field from
+    /// the carrying variants and returns `None` for non-carrying ones.
+    #[test]
+    fn errno_code_from_transport_extracts_from_carrying_variants() {
+        let bp = TransportError::Backpressure {
+            msg: "test".into(),
+            errno_code: Some(6),
+        };
+        assert_eq!(errno_code_from_transport(&bp), Some(6));
+
+        let bk = TransportError::Broken {
+            msg: "test".into(),
+            errno_code: Some(2),
+        };
+        assert_eq!(errno_code_from_transport(&bk), Some(2));
+
+        // None field round-trips as None.
+        let bp_none = TransportError::Backpressure {
+            msg: "test".into(),
+            errno_code: None,
+        };
+        assert_eq!(errno_code_from_transport(&bp_none), None);
+
+        // Non-carrying variants return None.
+        assert_eq!(errno_code_from_transport(&TransportError::Closed), None);
+        assert_eq!(
+            errno_code_from_transport(&TransportError::TooLarge { len: 1, max: 0 }),
+            None
+        );
+        assert_eq!(
+            errno_code_from_transport(&TransportError::ExplicitClose),
+            None
         );
     }
 }

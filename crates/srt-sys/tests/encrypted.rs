@@ -32,6 +32,23 @@ use std::time::Duration;
 
 const SRT_INVALID_SOCK: SRTSOCKET = -1;
 
+/// RAII guard that closes the wrapped SRT socket on drop.
+///
+/// Used by the test threads to ensure listener / caller handles are released
+/// even when an `assert!` between create and the manual `srt_close` unwinds
+/// the test. Without this, a panic mid-test leaks a libsrt socket into the
+/// global table, which then survives `srt_cleanup` and can confuse later
+/// runs in the same process.
+struct SocketGuard(SRTSOCKET);
+
+impl Drop for SocketGuard {
+    fn drop(&mut self) {
+        if self.0 != SRT_INVALID_SOCK {
+            unsafe { srt_close(self.0) };
+        }
+    }
+}
+
 fn ensure_startup() {
     let rc = unsafe { srt_startup() };
     assert!(rc >= 0, "srt_startup failed: rc={rc}");
@@ -153,13 +170,18 @@ fn matching_passphrase_round_trips_payload() {
     let (listener, port) = unsafe { bind_loopback_listener(passphrase) };
 
     // Listener thread: accept once, recv, close accepted handle.
+    // Both the moved-in `listener` and the `accepted` peer are wrapped in
+    // SocketGuards so a panic between create and the natural close still
+    // releases the libsrt socket table entry.
     let listener_handle = thread::spawn(move || {
+        let _listener_guard = SocketGuard(listener);
         let mut peer: libc::sockaddr_storage = unsafe { mem::zeroed() };
         let mut peer_len = mem::size_of::<libc::sockaddr_storage>() as libc::c_int;
         let accepted = unsafe { srt_accept(listener, (&raw mut peer).cast(), &raw mut peer_len) };
         if accepted == SRT_INVALID_SOCK {
             return Err(format!("accept failed: {}", last_error()));
         }
+        let _accepted_guard = SocketGuard(accepted);
 
         // Live mode requires a recv buffer >= the payload size (default 1316 bytes).
         let mut buf = [0u8; 1500];
@@ -170,7 +192,6 @@ fn matching_passphrase_round_trips_payload() {
                 buf.len() as libc::c_int,
             )
         };
-        unsafe { srt_close(accepted) };
         if n < 0 {
             return Err(format!("recv failed: {}", last_error()));
         }
@@ -183,6 +204,7 @@ fn matching_passphrase_round_trips_payload() {
     // Caller side: connect and send.
     let caller = unsafe { srt_create_socket() };
     assert_ne!(caller, SRT_INVALID_SOCK);
+    let caller_guard = SocketGuard(caller);
     unsafe {
         set_passphrase(caller, passphrase);
         set_int_opt(caller, SRT_SOCKOPT_SRTO_RCVTIMEO, 5_000);
@@ -213,10 +235,7 @@ fn matching_passphrase_round_trips_payload() {
     let received = received.expect("listener returned error");
     assert_eq!(&received[..], payload, "round-tripped payload mismatch");
 
-    unsafe {
-        srt_close(caller);
-        srt_close(listener);
-    }
+    drop(caller_guard);
     cleanup();
 }
 
@@ -228,6 +247,12 @@ fn mismatched_passphrase_rejects_connect() {
     let caller_pass = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 
     let (listener, port) = unsafe { bind_loopback_listener(listener_pass) };
+    // Listener is owned by the main thread: closing it from main is what
+    // unblocks the spawned `srt_accept` below, so the SocketGuard lives
+    // here rather than in the thread closure. `SRTSOCKET` is `i32` (Copy),
+    // so the `move` closure receives its own copy of the integer; only
+    // this guard calls `srt_close`.
+    let listener_guard = SocketGuard(listener);
 
     // Listener thread: accept with timeout; close any accepted handle.
     let listener_handle = thread::spawn(move || {
@@ -235,7 +260,7 @@ fn mismatched_passphrase_rejects_connect() {
         let mut peer_len = mem::size_of::<libc::sockaddr_storage>() as libc::c_int;
         let accepted = unsafe { srt_accept(listener, (&raw mut peer).cast(), &raw mut peer_len) };
         if accepted != SRT_INVALID_SOCK {
-            unsafe { srt_close(accepted) };
+            let _accepted_guard = SocketGuard(accepted);
         }
     });
 
@@ -243,6 +268,7 @@ fn mismatched_passphrase_rejects_connect() {
 
     let caller = unsafe { srt_create_socket() };
     assert_ne!(caller, SRT_INVALID_SOCK);
+    let caller_guard = SocketGuard(caller);
     unsafe {
         set_passphrase(caller, caller_pass);
         set_int_opt(caller, SRT_SOCKOPT_SRTO_RCVTIMEO, 5_000);
@@ -261,10 +287,8 @@ fn mismatched_passphrase_rejects_connect() {
     let err = last_error();
     println!("expected connect failure: {err}");
 
-    unsafe {
-        srt_close(caller);
-        srt_close(listener); // unblocks the listener thread
-    }
+    drop(caller_guard);
+    drop(listener_guard); // unblocks the listener thread
     let _ = listener_handle.join();
     cleanup();
 }

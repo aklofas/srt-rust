@@ -84,6 +84,19 @@ fn chroma_format_from(
     }
 }
 
+/// Parse an H.265 SPS RBSP per §7.3.2.2 (+ §E.2.1 VUI).
+///
+/// # Errors
+///
+/// Returns a [`CodecParseError`] when the RBSP is truncated, contains a
+/// reserved/out-of-range value, or hits a parser gap. In particular, an
+/// SPS with `scaling_list_enabled_flag=1` **and**
+/// `sps_scaling_list_data_present_flag=1` returns
+/// [`CodecParseError::EngineError`] referencing
+/// `scaling_list_data` — the syntax structure at H.265 §7.3.4 is not yet
+/// implemented in this parser. This is a parser limitation, **not** a
+/// profile-level rejection: conformant HDR Main10 streams routinely set
+/// this flag.
 pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, CodecParseError> {
     if rbsp.is_empty() {
         return Err(CodecParseError::TruncatedRbsp {
@@ -170,9 +183,14 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, CodecParseError> {
     if scaling_list_enabled_flag {
         let sps_scaling_list_data_present_flag = br.read_bool()?;
         if sps_scaling_list_data_present_flag {
-            return Err(CodecParseError::UnsupportedProfile {
-                profile_idc: ptl.general_profile_idc,
-            });
+            // The `scaling_list_data()` syntax structure (H.265 §7.3.4) is
+            // a parser gap, not a profile-level rejection: conformant
+            // Main10 HDR streams routinely set this flag. Surface the
+            // gap honestly via `EngineError` so consumers debugging HDR
+            // streams aren't misdirected toward "profile not supported".
+            return Err(CodecParseError::EngineError(
+                "scaling_list_data parsing not yet implemented (H.265 §7.4.2.2)".to_string(),
+            ));
         }
     }
 

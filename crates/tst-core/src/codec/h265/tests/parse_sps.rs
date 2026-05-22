@@ -275,6 +275,85 @@ fn h265_sps_rejects_log2_max_pic_order_cnt_lsb_minus4_overflow() {
     );
 }
 
+/// Construct a synthetic Main10 H.265 SPS prefix that walks correctly
+/// up through `scaling_list_enabled_flag`, then sets both
+/// `scaling_list_enabled_flag` and `sps_scaling_list_data_present_flag`
+/// to 1 so the parser hits the `scaling_list_data()` gap (§7.3.4).
+///
+/// Per H.265 §7.3.2.2 SPS syntax + §7.3.3 PTL syntax with
+/// `max_sub_layers_minus1 = 0` (no sublayer fields). Profile is Main10
+/// (idc=2, compat-bit 2 set) so the test can confirm the error is
+/// attributed to the parser gap and **not** to the profile.
+fn h265_main10_sps_with_scaling_list_data_present() -> Vec<u8> {
+    let mut bw = BitWriter::new();
+
+    // §7.3.2.2 SPS header.
+    bw.write(0, 4); // sps_video_parameter_set_id
+    bw.write(0, 3); // sps_max_sub_layers_minus1 = 0
+    bw.write(0, 1); // sps_temporal_id_nesting_flag
+
+    // §7.3.3 profile_tier_level(max_sub_layers_minus1 = 0): 96 bits.
+    bw.write(0, 2); // general_profile_space
+    bw.write(0, 1); // general_tier_flag
+    bw.write(2, 5); // general_profile_idc = 2 (Main10)
+    bw.write(0x2000_0000, 32); // profile_compatibility_flags (Main10 bit)
+    bw.write(0, 32); // 32 of the 48 constraint/reserved bits
+    bw.write(0, 16); // remaining 16 constraint/reserved bits
+    bw.write(150, 8); // general_level_idc = 150 (Level 5.0)
+
+    // §7.3.2.2 continues.
+    bw.write_ue(0); // sps_seq_parameter_set_id
+    bw.write_ue(1); // chroma_format_idc = 1 (4:2:0)
+    bw.write_ue(320); // pic_width_in_luma_samples
+    bw.write_ue(240); // pic_height_in_luma_samples
+    bw.write(0, 1); // conformance_window_flag = 0
+    bw.write_ue(2); // bit_depth_luma_minus8 = 2 (10-bit)
+    bw.write_ue(2); // bit_depth_chroma_minus8 = 2 (10-bit)
+    bw.write_ue(4); // log2_max_pic_order_cnt_lsb_minus4
+    bw.write(0, 1); // sps_sub_layer_ordering_info_present_flag = 0
+    bw.write_ue(0); // max_dec_pic_buffering_minus1[0]
+    bw.write_ue(0); // max_num_reorder_pics[0]
+    bw.write_ue(0); // max_latency_increase_plus1[0]
+    bw.write_ue(0); // log2_min_luma_coding_block_size_minus3
+    bw.write_ue(0); // log2_diff_max_min_luma_coding_block_size
+    bw.write_ue(0); // log2_min_luma_transform_block_size_minus2
+    bw.write_ue(0); // log2_diff_max_min_luma_transform_block_size
+    bw.write_ue(0); // max_transform_hierarchy_depth_inter
+    bw.write_ue(0); // max_transform_hierarchy_depth_intra
+    bw.write(1, 1); // scaling_list_enabled_flag = 1
+    bw.write(1, 1); // sps_scaling_list_data_present_flag = 1
+    // Parser exits here with an EngineError — bytes after this are
+    // never consumed and need not be valid.
+
+    bw.bytes
+}
+
+/// Conformant HDR Main10 streams routinely set
+/// `scaling_list_data_present_flag=1`. Prior to validate-1 item H265-V1-M02
+/// the parser surfaced this as `UnsupportedProfile { profile_idc: 2 }`,
+/// misdirecting consumers debugging HDR streams. The cause is a parser
+/// gap (`scaling_list_data()` at H.265 §7.3.4 is not implemented) — it is
+/// surfaced via `EngineError` referencing `scaling_list`.
+#[test]
+fn h265_sps_scaling_list_data_returns_engine_error_not_unsupported_profile() {
+    let rbsp = h265_main10_sps_with_scaling_list_data_present();
+    let result = parse_sps(&rbsp);
+    match &result {
+        Err(CodecParseError::EngineError(msg)) => {
+            assert!(
+                msg.contains("scaling_list"),
+                "EngineError should reference scaling_list; got {msg:?}"
+            );
+        }
+        other => panic!("expected EngineError(scaling_list_data ...), got {other:?}"),
+    }
+    // And explicitly NOT UnsupportedProfile — the bug we're fixing.
+    assert!(
+        !matches!(result, Err(CodecParseError::UnsupportedProfile { .. })),
+        "must not attribute to UnsupportedProfile"
+    );
+}
+
 /// Build a complete synthetic H.265 SPS RBSP with a configurable RPS
 /// section and an optional VUI body. The SPS header fields are fixed
 /// (1920×1088, 10-bit, 4:2:0, Level 5.0 High). The caller supplies a

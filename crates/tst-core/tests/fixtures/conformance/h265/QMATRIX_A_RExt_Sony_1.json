@@ -1,6 +1,6 @@
 {
   "expected": {
-    "error": "UnsupportedProfile",
+    "error": "EngineError",
     "outcome": "err"
   },
   "kind": "h265_sps",

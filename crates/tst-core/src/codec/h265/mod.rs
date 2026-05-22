@@ -18,8 +18,10 @@
 //!
 //! ## Not parsed (deferred)
 //!
-//! - `scaling_list_data` — parser bails with `UnsupportedProfile` if
-//!   `sps_scaling_list_data_present_flag = 1`.
+//! - `scaling_list_data` (H.265 §7.3.4) — parser bails with
+//!   `EngineError("scaling_list_data parsing not yet implemented ...")`
+//!   when `sps_scaling_list_data_present_flag = 1`. This is a parser
+//!   gap, not a profile-level rejection.
 //! - `short_term_ref_pic_sets` past num_short_term_ref_pic_sets > 0 —
 //!   handled by `short_term_rps` walker but consumed fields aren't
 //!   surfaced.

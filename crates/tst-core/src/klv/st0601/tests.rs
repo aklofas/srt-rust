@@ -1,7 +1,7 @@
 use super::decode::{
     assign_ranged, decode, decode_strict, decode_strict_compliance, decode_unchecked,
 };
-use super::encode::{encode, encode_to_vec, encode_with, encoded_len};
+use super::encode::{encode, encode_strict_compliance, encode_to_vec, encode_with, encoded_len};
 use super::model::{EncodeConfig, UasDatalinkLs};
 use super::tags::TAGS;
 use crate::error::{KlvDecodeError, KlvEncodeError};
@@ -1098,4 +1098,78 @@ fn decode_strict_compliance_rejects_non_canonical_per_item_tag() {
         matches!(err, KlvDecodeError::NonCanonicalTag { .. }),
         "expected NonCanonicalTag, got {err:?}",
     );
+}
+
+// --- ST 0601 encode_strict_compliance (validate-1 act-now ST0601-NEW-01) ---
+//
+// Symmetric counterpart to decode_strict_compliance: the encoder now
+// refuses to emit a record missing any caller-supplied mandatory item.
+// Today that's only Tag 2 (Precision Time Stamp); Tags 1 + 65 auto-emit.
+
+#[test]
+fn encode_strict_rejects_missing_tag_2() {
+    // ST 0601.13-22: Tag 2 (Precision Time Stamp) is mandatory in every
+    // conformant LS instance. Strict-encode must refuse a record where
+    // it is absent.
+    let r = UasDatalinkLs {
+        timestamp_us: None,
+        ..UasDatalinkLs::default()
+    };
+    let err = encode_strict_compliance(&r).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            KlvEncodeError::MissingMandatoryItem {
+                tag: 2,
+                name: "Precision Time Stamp",
+            }
+        ),
+        "expected MissingMandatoryItem(tag=2), got {err:?}"
+    );
+}
+
+#[test]
+fn encode_strict_accepts_minimal_record() {
+    // The strict path must succeed on the bare-minimum conformant
+    // record (timestamp set, nothing else). The output bytes must in
+    // turn satisfy decode_strict_compliance — pin the round trip.
+    let r = UasDatalinkLs {
+        timestamp_us: Some(1_700_000_000_000_000),
+        ..UasDatalinkLs::default()
+    };
+    let bytes = encode_strict_compliance(&r).expect("minimal strict record must encode");
+    let back = decode_strict_compliance(&bytes)
+        .expect("strict-encoded bytes must round-trip through decode_strict_compliance");
+    assert_eq!(back.timestamp_us, Some(1_700_000_000_000_000));
+    // Tag 65 was auto-emitted by encode (ST 0601.x version byte) — the
+    // strict decode would have failed via `MissingTag65` otherwise.
+}
+
+#[test]
+fn encode_then_decode_strict_roundtrip() {
+    // Multi-field record: pin that strict encode preserves Tag 2,
+    // Tag 65 (auto), Tag 1 (auto checksum) AND the user-supplied
+    // typed fields when round-tripped through strict decode.
+    let r = UasDatalinkLs {
+        timestamp_us: Some(1_700_000_000_000_000),
+        platform_heading_deg: Some(123.4),
+        platform_pitch_deg: Some(-5.6),
+        platform_roll_deg: Some(2.7),
+        sensor_lat_deg: Some(45.0),
+        sensor_lon_deg: Some(-122.0),
+        sensor_alt_m: Some(1500.0),
+        ..UasDatalinkLs::default()
+    };
+    let bytes = encode_strict_compliance(&r).expect("multi-field strict record must encode");
+    let back = decode_strict_compliance(&bytes).expect("strict round-trip must succeed");
+    assert_eq!(back.timestamp_us, Some(1_700_000_000_000_000));
+    assert!((back.platform_heading_deg.unwrap() - 123.4).abs() < 0.01);
+    assert!((back.platform_pitch_deg.unwrap() - -5.6).abs() < 0.01);
+    assert!((back.platform_roll_deg.unwrap() - 2.7).abs() < 0.01);
+    assert!((back.sensor_lat_deg.unwrap() - 45.0).abs() < 1e-6);
+    assert!((back.sensor_lon_deg.unwrap() - -122.0).abs() < 1e-6);
+    // Tag 15 (Sensor True Altitude) is IMAPB-encoded with 2-byte width
+    // over the [-900, 19000] m range; quantization step is ~0.3 m, so a
+    // tolerance of 1 m is generous-but-safe for round-trip pinning.
+    assert!((back.sensor_alt_m.unwrap() - 1500.0).abs() < 1.0);
 }

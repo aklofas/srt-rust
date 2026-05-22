@@ -45,6 +45,11 @@ impl ImapbParams {
     /// Forward scale factor `sF = 2^(dPow − bPow)` per ST 1201.5 §8.9.
     /// Returns `f64::INFINITY` for the degenerate `max == min` case (caller
     /// pre-checks parameters; this function is internal).
+    ///
+    /// Preconditions (`min < max` and `length ∈ [1, 8]`) are now enforced
+    /// at every public call site — `encode_imapb` and `decode_imapb`
+    /// pre-screen the params and surface `KlvEncodeError::InvalidImapbParams`
+    /// / `KlvFieldError::InvalidImapbParams` before invoking `sf()`.
     fn sf(&self) -> f64 {
         let span = self.max - self.min;
         let b_pow = span.log2().ceil();
@@ -132,6 +137,18 @@ pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), K
     if !(1..=8).contains(&p.length) {
         return Err(KlvEncodeError::UnsupportedImapbLength { length: p.length });
     }
+    // ST 1201.5 §6 `min < max` precondition. The §8.9
+    // `bPow = ceil(log2(max − min))` derivation is undefined when
+    // `max <= min` (log2(0) = -∞, log2(neg) = NaN). NaN-tolerant form:
+    // `partial_cmp` returns `None` for NaN inputs, which we treat as a
+    // violation (clippy::neg_cmp_op_on_partial_ord forbids `!(min<max)`).
+    if !matches!(p.min.partial_cmp(&p.max), Some(core::cmp::Ordering::Less)) {
+        return Err(KlvEncodeError::InvalidImapbParams {
+            min: p.min,
+            max: p.max,
+            length: p.length as u8,
+        });
+    }
     if out.len() < p.length {
         return Err(KlvEncodeError::BufferTooSmall {
             needed: p.length,
@@ -185,6 +202,8 @@ pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), K
 ///
 /// - [`KlvFieldError::UnsupportedImapbLength`] when `length` is outside
 ///   `1..=8` (substrate caps at L=8 because internal arithmetic uses `u64`).
+/// - [`KlvFieldError::InvalidImapbParams`] when `min >= max` (ST 1201.5 §6
+///   precondition; the §8.9 scale-factor derivation is undefined otherwise).
 /// - [`KlvFieldError::InvalidLength`] when `bytes.len() != length`.
 ///
 /// Note that special values and out-of-range bit patterns are **not**
@@ -203,6 +222,19 @@ pub fn encode_imapb(p: &ImapbParams, value: f64, out: &mut [u8]) -> Result<(), K
 pub fn decode_imapb(p: &ImapbParams, bytes: &[u8]) -> Result<DecodedImapb, KlvFieldError> {
     if !(1..=8).contains(&p.length) {
         return Err(KlvFieldError::UnsupportedImapbLength { length: p.length });
+    }
+    // ST 1201.5 §6 `min < max` precondition — checked AFTER the L gate
+    // so pure-length failures keep their narrow `UnsupportedImapbLength`
+    // diagnostic, then BEFORE the `bytes.len()` and arithmetic steps so
+    // a malformed `(min, max)` never reaches `sf()`. NaN-tolerant via
+    // `partial_cmp` (clippy::neg_cmp_op_on_partial_ord forbids
+    // `!(min<max)`).
+    if !matches!(p.min.partial_cmp(&p.max), Some(core::cmp::Ordering::Less)) {
+        return Err(KlvFieldError::InvalidImapbParams {
+            min: p.min,
+            max: p.max,
+            length: p.length as u8,
+        });
     }
     if bytes.len() != p.length {
         return Err(KlvFieldError::InvalidLength {
@@ -602,5 +634,157 @@ mod tests {
             DecodedImapb::Value(v) => assert!(v.abs() < 1e-9, "expected 0.0, got {v}"),
             other => panic!("expected Value(0.0), got {other:?}"),
         }
+    }
+
+    // --- ST 1201.5 §6 IMAPB precondition guards (validate-1 act-now M-02) ---
+    //
+    // These tests pin the new `min < max` precondition on both the encode
+    // and decode entry points, plus the evaluation-order contract between
+    // the existing `UnsupportedImapbLength` check and the new
+    // `InvalidImapbParams` check.
+
+    #[test]
+    fn encode_rejects_min_eq_max() {
+        // ST 1201.5 §6 requires min < max. Degenerate ranges blow up §8.9's
+        // `bPow = ceil(log2(max − min))` derivation (log2(0) = −∞).
+        let p = ImapbParams {
+            min: 5.0,
+            max: 5.0,
+            length: 2,
+        };
+        let mut buf = [0u8; 2];
+        let err = encode_imapb(&p, 5.0, &mut buf).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                KlvEncodeError::InvalidImapbParams {
+                    min: 5.0,
+                    max: 5.0,
+                    length: 2,
+                }
+            ),
+            "expected InvalidImapbParams, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn encode_rejects_min_gt_max() {
+        let p = ImapbParams {
+            min: 10.0,
+            max: -10.0,
+            length: 4,
+        };
+        let mut buf = [0u8; 4];
+        let err = encode_imapb(&p, 0.0, &mut buf).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                KlvEncodeError::InvalidImapbParams {
+                    min: 10.0,
+                    max: -10.0,
+                    length: 4,
+                }
+            ),
+            "expected InvalidImapbParams, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn encode_rejects_length_out_of_range() {
+        // L=0 and L=9 both surface as the narrower UnsupportedImapbLength,
+        // NOT InvalidImapbParams — the length check fires first.
+        let p0 = ImapbParams {
+            min: 0.0,
+            max: 1.0,
+            length: 0,
+        };
+        let mut buf = [0u8; 4];
+        let err = encode_imapb(&p0, 0.0, &mut buf).unwrap_err();
+        assert!(
+            matches!(err, KlvEncodeError::UnsupportedImapbLength { length: 0 }),
+            "L=0: expected UnsupportedImapbLength, got {err:?}"
+        );
+
+        let p9 = ImapbParams {
+            min: 0.0,
+            max: 1.0,
+            length: 9,
+        };
+        let mut buf = [0u8; 16];
+        let err = encode_imapb(&p9, 0.0, &mut buf).unwrap_err();
+        assert!(
+            matches!(err, KlvEncodeError::UnsupportedImapbLength { length: 9 }),
+            "L=9: expected UnsupportedImapbLength, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn decode_rejects_min_eq_max() {
+        let p = ImapbParams {
+            min: -1.0,
+            max: -1.0,
+            length: 2,
+        };
+        let err = decode_imapb(&p, &[0x00, 0x00]).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                KlvFieldError::InvalidImapbParams {
+                    min: -1.0,
+                    max: -1.0,
+                    length: 2,
+                }
+            ),
+            "expected InvalidImapbParams, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn decode_rejects_min_gt_max() {
+        let p = ImapbParams {
+            min: 100.0,
+            max: 0.0,
+            length: 3,
+        };
+        let err = decode_imapb(&p, &[0x00, 0x00, 0x00]).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                KlvFieldError::InvalidImapbParams {
+                    min: 100.0,
+                    max: 0.0,
+                    length: 3,
+                }
+            ),
+            "expected InvalidImapbParams, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn decode_length_zero_or_nine_still_caught_by_existing_check() {
+        // Evaluation-order contract: when BOTH the L gate AND the min<max
+        // gate would trigger, the existing UnsupportedImapbLength diagnostic
+        // wins. This keeps pre-existing diagnostics narrow and stable.
+        let p0 = ImapbParams {
+            min: 5.0,
+            max: 5.0, // would also trigger InvalidImapbParams
+            length: 0,
+        };
+        let err = decode_imapb(&p0, &[]).unwrap_err();
+        assert!(
+            matches!(err, KlvFieldError::UnsupportedImapbLength { length: 0 }),
+            "L=0+badrange: expected UnsupportedImapbLength to fire first, got {err:?}"
+        );
+
+        let p9 = ImapbParams {
+            min: 10.0,
+            max: -10.0, // would also trigger InvalidImapbParams
+            length: 9,
+        };
+        let err = decode_imapb(&p9, &[0u8; 9]).unwrap_err();
+        assert!(
+            matches!(err, KlvFieldError::UnsupportedImapbLength { length: 9 }),
+            "L=9+badrange: expected UnsupportedImapbLength to fire first, got {err:?}"
+        );
     }
 }

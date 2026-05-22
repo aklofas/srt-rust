@@ -1084,6 +1084,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::error::KlvDecodeError
 pub tst_core::error::KlvEncodeError::BufferTooSmall
 pub tst_core::error::KlvEncodeError::BufferTooSmall::got: usize
 pub tst_core::error::KlvEncodeError::BufferTooSmall::needed: usize
+pub tst_core::error::KlvEncodeError::InvalidImapbParams
+pub tst_core::error::KlvEncodeError::InvalidImapbParams::length: u8
+pub tst_core::error::KlvEncodeError::InvalidImapbParams::max: f64
+pub tst_core::error::KlvEncodeError::InvalidImapbParams::min: f64
+pub tst_core::error::KlvEncodeError::MissingMandatoryItem
+pub tst_core::error::KlvEncodeError::MissingMandatoryItem::name: &'static str
+pub tst_core::error::KlvEncodeError::MissingMandatoryItem::tag: u16
 pub tst_core::error::KlvEncodeError::OutOfRange
 pub tst_core::error::KlvEncodeError::OutOfRange::max: f64
 pub tst_core::error::KlvEncodeError::OutOfRange::min: f64
@@ -1113,6 +1120,10 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::error::KlvEncodeError
 pub tst_core::error::KlvFieldError::InvalidCodepoint
 pub tst_core::error::KlvFieldError::InvalidCodepoint::tag: u32
 pub tst_core::error::KlvFieldError::InvalidCodepoint::value: u8
+pub tst_core::error::KlvFieldError::InvalidImapbParams
+pub tst_core::error::KlvFieldError::InvalidImapbParams::length: u8
+pub tst_core::error::KlvFieldError::InvalidImapbParams::max: f64
+pub tst_core::error::KlvFieldError::InvalidImapbParams::min: f64
 pub tst_core::error::KlvFieldError::InvalidLength
 pub tst_core::error::KlvFieldError::InvalidLength::expected: usize
 pub tst_core::error::KlvFieldError::InvalidLength::got: usize
@@ -1754,6 +1765,7 @@ pub fn tst_core::klv::st0601::decode_strict(buf: &[u8]) -> core::result::Result<
 pub fn tst_core::klv::st0601::decode_strict_compliance(buf: &[u8]) -> core::result::Result<tst_core::UasDatalinkLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0601::decode_unchecked(buf: &[u8]) -> core::result::Result<tst_core::UasDatalinkLs, tst_core::error::KlvDecodeError>
 pub fn tst_core::klv::st0601::encode(record: &tst_core::UasDatalinkLs, out: &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
+pub fn tst_core::klv::st0601::encode_strict_compliance(record: &tst_core::UasDatalinkLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0601::encode_to_vec(record: &tst_core::UasDatalinkLs) -> core::result::Result<alloc::vec::Vec<u8>, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0601::encode_with(record: &tst_core::UasDatalinkLs, opts: &tst_core::klv::st0601::EncodeConfig, out: &mut [u8]) -> core::result::Result<usize, tst_core::error::KlvEncodeError>
 pub fn tst_core::klv::st0601::encoded_len(record: &tst_core::UasDatalinkLs) -> usize
@@ -5086,6 +5098,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::error::KlvDecodeError
 pub tst_core::KlvEncodeError::BufferTooSmall
 pub tst_core::KlvEncodeError::BufferTooSmall::got: usize
 pub tst_core::KlvEncodeError::BufferTooSmall::needed: usize
+pub tst_core::KlvEncodeError::InvalidImapbParams
+pub tst_core::KlvEncodeError::InvalidImapbParams::length: u8
+pub tst_core::KlvEncodeError::InvalidImapbParams::max: f64
+pub tst_core::KlvEncodeError::InvalidImapbParams::min: f64
+pub tst_core::KlvEncodeError::MissingMandatoryItem
+pub tst_core::KlvEncodeError::MissingMandatoryItem::name: &'static str
+pub tst_core::KlvEncodeError::MissingMandatoryItem::tag: u16
 pub tst_core::KlvEncodeError::OutOfRange
 pub tst_core::KlvEncodeError::OutOfRange::max: f64
 pub tst_core::KlvEncodeError::OutOfRange::min: f64
@@ -5115,6 +5134,10 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::error::KlvEncodeError
 pub tst_core::KlvFieldError::InvalidCodepoint
 pub tst_core::KlvFieldError::InvalidCodepoint::tag: u32
 pub tst_core::KlvFieldError::InvalidCodepoint::value: u8
+pub tst_core::KlvFieldError::InvalidImapbParams
+pub tst_core::KlvFieldError::InvalidImapbParams::length: u8
+pub tst_core::KlvFieldError::InvalidImapbParams::max: f64
+pub tst_core::KlvFieldError::InvalidImapbParams::min: f64
 pub tst_core::KlvFieldError::InvalidLength
 pub tst_core::KlvFieldError::InvalidLength::expected: usize
 pub tst_core::KlvFieldError::InvalidLength::got: usize

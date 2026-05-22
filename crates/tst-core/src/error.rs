@@ -133,6 +133,36 @@ pub enum KlvEncodeError {
     #[error("IMAPB length {length} not supported (must be 1..=8)")]
     UnsupportedImapbLength { length: usize },
 
+    /// `ImapbParams` violates the ST 1201.5 §6 `min < max` precondition.
+    /// Surfaced by [`crate::klv::imapb::encode_imapb`] (and any sibling
+    /// that derives a scale factor via `sf()`) before any wire bytes are
+    /// written — the §8.9 `bPow = ceil(log2(max − min))` derivation is
+    /// undefined when `max <= min` (`log2(0) = −∞`, `log2` of a negative
+    /// is NaN). The `length` field is included for diagnostic
+    /// completeness; pure-L failures (length outside `1..=8`) keep
+    /// surfacing as the narrower `UnsupportedImapbLength` so existing
+    /// diagnostics don't regress.
+    #[error(
+        "IMAPB params violate ST 1201.5 §6 preconditions: min={min}, max={max}, length={length} (require min < max and length in 1..=8)"
+    )]
+    InvalidImapbParams { min: f64, max: f64, length: u8 },
+
+    /// A mandatory ST 0601 item is missing from a record passed to
+    /// [`crate::klv::st0601::encode_strict_compliance`]. `tag` is the
+    /// numeric item code (e.g. `2` for Precision Time Stamp) and
+    /// `name` is the human-readable item label from ST 0601.13-22 +
+    /// ST 0601.24 §6 for diagnostics. The library's
+    /// `decode_strict_compliance` rejects records missing such tags;
+    /// this variant makes the encoder symmetric.
+    ///
+    /// Today `encode_strict_compliance` enforces Tag 2 (Precision Time
+    /// Stamp). Tag 1 (Checksum) and Tag 65 (LS Version Number) are
+    /// auto-emitted by the encoder and therefore not flagged here.
+    /// Future strict-compliance items added to `_mandatory_tags` will
+    /// reuse this same variant.
+    #[error("ST 0601 mandatory item missing: tag {tag} ({name})")]
+    MissingMandatoryItem { tag: u16, name: &'static str },
+
     /// Caller placed a reserved or typed tag in `UasDatalinkLs.unknown`.
     ///
     /// `unknown` is for forward-compat pass-through of tags the encoder
@@ -202,6 +232,18 @@ pub enum KlvFieldError {
     /// holds at most 8 bytes.
     #[error("IMAPB length {length} not supported (must be 1..=8)")]
     UnsupportedImapbLength { length: usize },
+
+    /// `ImapbParams` violates the ST 1201.5 §6 `min < max` precondition.
+    /// Surfaced by [`crate::klv::imapb::decode_imapb`] after the
+    /// existing `UnsupportedImapbLength` check (which keeps its narrow
+    /// diagnostic for pure-L failures) but before the wire bytes are
+    /// interpreted — the §8.9 `bPow = ceil(log2(max − min))` derivation
+    /// is undefined when `max <= min`. The `length` field is included
+    /// for diagnostic completeness.
+    #[error(
+        "IMAPB params violate ST 1201.5 §6 preconditions: min={min}, max={max}, length={length} (require min < max and length in 1..=8)"
+    )]
+    InvalidImapbParams { min: f64, max: f64, length: u8 },
 }
 
 // ============================================================================

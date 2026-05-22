@@ -93,6 +93,54 @@ pub fn encode_to_vec(record: &UasDatalinkLs) -> Result<Vec<u8>, KlvEncodeError> 
     Ok(buf)
 }
 
+/// Encode a UAS Datalink Local Set, rejecting records that omit any
+/// item the spec marks mandatory. Symmetric with
+/// [`super::decode_strict_compliance`], which already rejects on-the-wire
+/// instances missing the same mandatory items.
+///
+/// Per MISB ST 0601.13 §6 (and re-affirmed by ST 0601.24 §6 and
+/// ST 0107.5 §6.2 — Local Set conformance rules), every conformant ST
+/// 0601 instance must carry Tag 2 (Precision Time Stamp). Tag 1
+/// (Checksum) and Tag 65 (LS Version Number) are also mandatory but are
+/// auto-emitted by this encoder, so the only caller-supplied mandatory
+/// item this function gates is Tag 2.
+///
+/// The set of enforced tags is exposed (hidden from doc) as
+/// [`_mandatory_tags`] for future proptest hookup; production callers
+/// should not depend on it.
+///
+/// # Errors
+///
+/// - [`KlvEncodeError::MissingMandatoryItem`] if `record.timestamp_us`
+///   is `None`. `tag` will be `2` and `name` will be
+///   `"Precision Time Stamp"`.
+/// - All [`KlvEncodeError`] variants that [`encode_to_vec`] can return,
+///   surfaced verbatim from the underlying encode path once the strict
+///   precondition gate passes.
+pub fn encode_strict_compliance(record: &UasDatalinkLs) -> Result<Vec<u8>, KlvEncodeError> {
+    // The only caller-supplied mandatory item under ST 0601.13-22 +
+    // ST 0107.5 §6.2 — Tags 1 + 65 auto-emit (see encode.rs:45-73 +
+    // 119-166), so they cannot be missing here.
+    if record.timestamp_us.is_none() {
+        return Err(KlvEncodeError::MissingMandatoryItem {
+            tag: 2,
+            name: "Precision Time Stamp",
+        });
+    }
+    encode_to_vec(record)
+}
+
+/// Caller-supplied mandatory ST 0601 tag IDs enforced by
+/// [`encode_strict_compliance`]. Tag 1 (Checksum) and Tag 65 (LS Version
+/// Number) are deliberately excluded — both are auto-emitted by the
+/// encoder. Validate-2 proptests may pivot on this list to fuzz strict
+/// vs. lenient encode paths.
+#[doc(hidden)]
+#[must_use]
+pub fn _mandatory_tags() -> &'static [u16] {
+    &[2]
+}
+
 pub fn encoded_len(record: &UasDatalinkLs) -> usize {
     encoded_len_with(record, &EncodeConfig::default())
 }

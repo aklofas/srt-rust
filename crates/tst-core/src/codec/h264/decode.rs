@@ -274,9 +274,19 @@ fn extract_frame_rate(p: &SeqParameterSet) -> Option<Rational> {
     // H.264 §E.2.1: frame_rate = time_scale / (2 * num_units_in_tick)
     // when fixed_frame_rate_flag is set. We report the ratio regardless
     // so callers can decide how to interpret it.
+    //
+    // num_units_in_tick is a u32, so `2 * num_units_in_tick` can overflow
+    // in debug builds (panic) for streams claiming num_units_in_tick > u32::MAX/2.
+    // CodecParseError rustdoc promises non-panicking parse — use saturating_mul
+    // and treat saturation as "unknowable" by returning None rather than emitting
+    // a nonsense ratio like `time_scale / u32::MAX`.
+    let den = timing.num_units_in_tick.saturating_mul(2);
+    if den == u32::MAX {
+        return None;
+    }
     Some(Rational {
         num: timing.time_scale,
-        den: 2 * timing.num_units_in_tick,
+        den,
     })
 }
 
@@ -297,7 +307,26 @@ fn extract_has_b_frames(p: &SeqParameterSet) -> bool {
     }
     // Fallback: Baseline (66) never uses B-frames by definition.
     let profile: u8 = p.profile_idc.into();
-    profile != 66
+    if profile == 66 {
+        return false;
+    }
+    // H.264 §A.2: profile_idc=100 (High) admits two B-frameless subsets
+    // distinguished by constraint flags:
+    //   - Constrained High: constraint_set1_flag = 1
+    //   - Constrained-Baseline-lifted-to-High:
+    //       constraint_set4_flag = 1 AND constraint_set5_flag = 1
+    // h264-reader's ConstraintFlags maps flag1/flag4/flag5 to
+    // constraint_set1/4/5 respectively. Narrowed to profile_idc == 100
+    // because the same constraint bits carry different semantics on other
+    // profile_idc values (e.g., constraint_set1_flag on Baseline (66)
+    // signals Main compatibility, not "no B-frames").
+    if profile == 100 {
+        let cf = p.constraint_flags;
+        if cf.flag1() || (cf.flag4() && cf.flag5()) {
+            return false;
+        }
+    }
+    true
 }
 
 fn extract_color(p: &SeqParameterSet) -> Option<ColorInfo> {

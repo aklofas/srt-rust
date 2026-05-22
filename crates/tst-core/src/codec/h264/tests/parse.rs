@@ -435,3 +435,176 @@ fn parse_parameter_sets_with_pps_referencing_missing_sps_drops_pps() {
         "PPS referencing missing SPS must be dropped"
     );
 }
+
+// --- H264-RV4 + H264-RV7 regression tests ---
+// RV4: constraint flags consulted in B-frame detection (profile_idc=100).
+// RV7: frame_rate overflow when 2 * num_units_in_tick overflows u32.
+
+/// Hand-craft a High-profile (profile_idc=100) SPS RBSP with caller-supplied
+/// `constraint_set_flags` byte (MSB-first per H.264 §7.3.2.1.1: bit 7 =
+/// constraint_set0_flag, bit 6 = constraint_set1_flag, ..., bit 2 =
+/// constraint_set5_flag, bits 1-0 = reserved_zero_2bits = 0). Optionally
+/// embeds a VUI with timing_info using the supplied `num_units_in_tick`
+/// (time_scale is fixed at 30, fixed_frame_rate_flag = true). The VUI
+/// emits NO bitstream_restrictions, so `extract_has_b_frames` falls back
+/// to the profile/constraint-flag logic rather than the
+/// `max_num_reorder_frames` short-circuit. No NAL header byte.
+fn craft_high_sps_with_constraints_and_timing(
+    constraint_flags: u8,
+    num_units_in_tick: Option<u32>,
+) -> Vec<u8> {
+    struct Bw {
+        bytes: Vec<u8>,
+        pos: u32,
+    }
+    impl Bw {
+        fn new() -> Self {
+            Self {
+                bytes: vec![],
+                pos: 0,
+            }
+        }
+        fn u(&mut self, value: u32, n: u32) {
+            for i in (0..n).rev() {
+                let bit = ((value >> i) & 1) as u8;
+                let byte_idx = (self.pos / 8) as usize;
+                let bit_in_byte = 7 - (self.pos % 8);
+                if byte_idx == self.bytes.len() {
+                    self.bytes.push(0);
+                }
+                self.bytes[byte_idx] |= bit << bit_in_byte;
+                self.pos += 1;
+            }
+        }
+        fn ue(&mut self, value: u32) {
+            let v = value + 1;
+            let leading_zeros = 31 - v.leading_zeros();
+            for _ in 0..leading_zeros {
+                self.u(0, 1);
+            }
+            self.u(v, leading_zeros + 1);
+        }
+        fn trailing(&mut self) {
+            self.u(1, 1);
+            while self.pos % 8 != 0 {
+                self.u(0, 1);
+            }
+        }
+    }
+    let mut bw = Bw::new();
+    // §7.3.2.1.1 SPS body (NAL header already stripped by caller).
+    bw.u(100, 8); // profile_idc = 100 (High)
+    bw.u(constraint_flags as u32, 8); // constraint_set_flags + reserved_zero_2bits (CALLER-SUPPLIED)
+    bw.u(40, 8); // level_idc = 40 (Level 4.0)
+    bw.ue(0); // seq_parameter_set_id = 0
+    // profile_idc == 100 → chroma_format_idc is present.
+    bw.ue(1); // chroma_format_idc = 1 (YUV 4:2:0)
+    bw.ue(0); // bit_depth_luma_minus8 = 0
+    bw.ue(0); // bit_depth_chroma_minus8 = 0
+    bw.u(0, 1); // qpprime_y_zero_transform_bypass_flag = 0
+    bw.u(0, 1); // seq_scaling_matrix_present_flag = 0
+    bw.ue(0); // log2_max_frame_num_minus4 = 0
+    bw.ue(0); // pic_order_cnt_type = 0
+    bw.ue(0); // log2_max_pic_order_cnt_lsb_minus4 = 0
+    bw.ue(1); // num_ref_frames = 1
+    bw.u(0, 1); // gaps_in_frame_num_value_allowed_flag = 0
+    bw.ue(19); // pic_width_in_mbs_minus1 = 19 (320px / 16)
+    bw.ue(14); // pic_height_in_map_units_minus1 = 14 (240px / 16)
+    bw.u(1, 1); // frame_mbs_only_flag = 1
+    bw.u(0, 1); // direct_8x8_inference_flag = 0
+    bw.u(0, 1); // frame_cropping_flag = 0
+    // vui_parameters_present_flag — 1 iff caller asked for timing_info.
+    if let Some(units) = num_units_in_tick {
+        bw.u(1, 1); // vui_parameters_present_flag = 1
+        bw.u(0, 1); // aspect_ratio_info_present_flag = 0
+        bw.u(0, 1); // overscan_info_present_flag = 0
+        bw.u(0, 1); // video_signal_type_present_flag = 0
+        bw.u(0, 1); // chroma_loc_info_present_flag = 0
+        bw.u(1, 1); // timing_info_present_flag = 1
+        bw.u(units, 32); // num_units_in_tick (CALLER-SUPPLIED)
+        // time_scale chosen to avoid 24 leading-zero bits (which can
+        // produce 0x00 0x00 0x00 in the byte-stream that
+        // ByteReader::without_skip rejects per RBSP emulation-prevention
+        // semantics). 0x4000_001E retains frame-rate semantics for any
+        // test that asserts on the value; for overflow tests the value
+        // is irrelevant.
+        bw.u(0x4000_001E, 32); // time_scale
+        bw.u(1, 1); // fixed_frame_rate_flag = 1
+        bw.u(0, 1); // nal_hrd_parameters_present_flag = 0
+        bw.u(0, 1); // vcl_hrd_parameters_present_flag = 0
+        bw.u(0, 1); // pic_struct_present_flag = 0
+        bw.u(0, 1); // bitstream_restriction_flag = 0 (no max_num_reorder_frames)
+    } else {
+        bw.u(0, 1); // vui_parameters_present_flag = 0
+    }
+    bw.trailing();
+    bw.bytes
+}
+
+/// H264-RV4: Constrained High (profile_idc=100 + constraint_set1_flag=1)
+/// per H.264 §A.2 excludes B-frames. h264-reader's `ConstraintFlags::flag1()`
+/// corresponds to constraint_set1_flag (bit 6, mask 0b0100_0000).
+#[test]
+fn extract_has_b_frames_false_for_constrained_high() {
+    let rbsp = craft_high_sps_with_constraints_and_timing(0b0100_0000, None);
+    let sps = parse_sps(&rbsp).expect("parse constrained-high SPS");
+    assert_eq!(sps.profile_idc, 100);
+    assert!(
+        !sps.has_b_frames,
+        "Constrained High (constraint_set1_flag=1) excludes B-frames per H.264 §A.2"
+    );
+}
+
+/// H264-RV4: Constrained-Baseline-lifted-to-High (profile_idc=100 +
+/// constraint_set4_flag=1 + constraint_set5_flag=1) per H.264 §A.2
+/// excludes B-frames. h264-reader's `flag4()`/`flag5()` correspond to
+/// constraint_set4/5_flag (bits 3/2, masks 0b0000_1000 / 0b0000_0100).
+#[test]
+fn extract_has_b_frames_false_for_constrained_baseline_lifted_high() {
+    // constraint_set4_flag=1 | constraint_set5_flag=1 = 0b0000_1100
+    let rbsp = craft_high_sps_with_constraints_and_timing(0b0000_1100, None);
+    let sps = parse_sps(&rbsp).expect("parse constrained-baseline-lifted-high SPS");
+    assert_eq!(sps.profile_idc, 100);
+    assert!(
+        !sps.has_b_frames,
+        "constraint_set4+5_flags excludes B-frames per H.264 §A.2"
+    );
+}
+
+/// H264-RV4: Regression guard — unconstrained High (profile_idc=100 with
+/// all constraint flags clear) MUST still report `has_b_frames=true`.
+/// Catches over-broad narrowing of the constraint-flag check.
+#[test]
+fn extract_has_b_frames_true_for_unconstrained_high() {
+    let rbsp = craft_high_sps_with_constraints_and_timing(0, None);
+    let sps = parse_sps(&rbsp).expect("parse unconstrained-high SPS");
+    assert_eq!(sps.profile_idc, 100);
+    assert_eq!(sps.constraint_set_flags, 0);
+    assert!(
+        sps.has_b_frames,
+        "unconstrained High must report has_b_frames=true"
+    );
+}
+
+/// H264-RV7: `CodecParseError` rustdoc promises non-panicking parse. A
+/// stream with a num_units_in_tick value such that `2 * num_units_in_tick`
+/// overflows u32 previously panicked in debug builds. The
+/// `saturating_mul(2)` fix should treat the result as unknowable and
+/// surface `frame_rate: None` rather than emit a nonsense ratio.
+///
+/// Test value note: We use `0xFFFF_FFFE` (u32::MAX - 1) instead of u32::MAX
+/// directly so the encoded 32-bit `num_units_in_tick` field carries no
+/// three-consecutive-zero-byte sequence — `ByteReader::without_skip` still
+/// validates RBSP emulation-prevention semantics, and a hand-crafted
+/// fixture with raw 0x00 0x00 0x00 anywhere in the payload would fail to
+/// parse for unrelated reasons. Both values saturate `* 2` identically, so
+/// the fix's None-on-saturation behavior is exercised either way.
+#[test]
+fn num_units_in_tick_overflow_no_panic() {
+    let rbsp = craft_high_sps_with_constraints_and_timing(0, Some(0xFFFF_FFFE));
+    let sps = parse_sps(&rbsp).expect("parse SPS with num_units_in_tick = u32::MAX - 1");
+    assert!(
+        sps.frame_rate.is_none(),
+        "frame_rate must be None when 2 * num_units_in_tick saturates u32"
+    );
+}

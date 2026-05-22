@@ -12,7 +12,7 @@
 //! can call them; the module itself is private (`mod sync_ingress` in
 //! `mpegts/demux/mod.rs`).
 
-use crate::mpegts::common::{StreamTypeCode, pcr_diff_27mhz};
+use crate::mpegts::common::{StreamTypeCode, pcr_diff_27mhz, pid};
 use crate::mpegts::demux::event::{
     DemuxEvent, DiscontinuityKind, NonConformantIssue, StreamId, StreamKind,
 };
@@ -174,6 +174,17 @@ impl super::demuxer::Demuxer {
         pkt: &crate::mpegts::demux::ts::TsPacket<'_>,
     ) -> bool {
         self.last_psi_cc_jump = None;
+        // Per ITU-T H.222.0 §2.4.3.3, the continuity_counter field on null
+        // PID (0x1FFF) packets is undefined and MUST NOT be validated. Null
+        // packets are >50% of bytes in CBR feeds, so tracking them would
+        // grow `cc_by_pid` with a sentinel entry that's never useful and
+        // could spuriously fire ContinuityJump (validate-1 act-now Slice 06
+        // M-02). PCR tracking is intentionally NOT skipped — PCR may
+        // legitimately ride null packets per §2.4.3.5 — that path lives in
+        // `check_pcr` and is keyed on `pcr_27mhz.is_some()`.
+        if pkt.pid == pid::NULL {
+            return false;
+        }
         if !pkt.has_payload {
             return false;
         }
@@ -236,5 +247,40 @@ impl super::demuxer::Demuxer {
         }
         self.cc_by_pid.insert(pkt.pid, pkt.continuity_counter);
         real_jump
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::demuxer::Demuxer;
+    use crate::mpegts::common::pid;
+
+    /// Build a payload-only TS packet on the given `pid` with CC=0.
+    /// Mirrors `payload_packet_for_test` in `demuxer.rs` tests.
+    fn payload_packet(pid: u16, cc: u8) -> [u8; 188] {
+        let mut buf = [0xFFu8; 188];
+        buf[0] = 0x47;
+        buf[1] = (pid >> 8) as u8 & 0x1F;
+        buf[2] = (pid & 0xFF) as u8;
+        buf[3] = 0x10 | (cc & 0x0F); // payload-only + CC
+        buf
+    }
+
+    #[test]
+    fn null_pid_does_not_grow_cc_map() {
+        // H.222.0 §2.4.3.3: continuity_counter on null PID (0x1FFF) is
+        // undefined and MUST NOT be tracked. Feed 100 null packets with
+        // varying CC values — `cc_by_pid` must remain empty.
+        let mut demuxer = Demuxer::new();
+        for i in 0..100u8 {
+            demuxer
+                .feed_aligned(&payload_packet(pid::NULL, i & 0x0F))
+                .unwrap();
+        }
+        assert_eq!(
+            demuxer.cc_by_pid.len(),
+            0,
+            "null PID packets must not populate cc_by_pid"
+        );
     }
 }

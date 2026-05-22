@@ -107,11 +107,18 @@ fn count_av1_obus(buf: &[u8]) -> u64 {
             if !ok {
                 return count;
             }
-            if i + (size as usize) > buf.len() {
+            // Overflow safety: `size` is decoded from untrusted input as a
+            // u64 and cast to usize; `i + size` must not wrap. Treat
+            // overflow as "truncated" (same sentinel as the bounds-check
+            // below) — count the header and stop walking.
+            let Some(end) = i.checked_add(size as usize) else {
+                return count + 1;
+            };
+            if end > buf.len() {
                 // Truncated — count the header but stop walking.
                 return count + 1;
             }
-            i += size as usize;
+            i = end;
             count += 1;
         } else {
             // OBUs without size field consume the rest of the buffer per
@@ -196,6 +203,25 @@ mod tests {
         // OBU type=6 (FRAME), has_size=0 → consumes rest of buffer = 1 OBU.
         //   header 0b0_0110_0_0_0 = 0x30
         let buf = [0x30, 0xAA, 0xBB, 0xCC, 0xDD];
+        assert_eq!(count_nal_units(&buf, VideoCodec::Av1), 1);
+    }
+
+    #[test]
+    fn av1_obu_huge_size_field_does_not_panic() {
+        // Robustness: an OBU whose LEB128 size field decodes to the
+        // largest representable AV1 size (8 bytes of 0x7F continuation
+        // payload, last byte without continuation bit clears `ok=true`)
+        // must NOT panic via `i + (size as usize)` overflow. The function
+        // must return the accumulated count (treating the case as
+        // truncated). Encoded max size is (1 << 56) - 1; combined with
+        // any non-zero `i` this would wrap on a 32-bit usize and is
+        // architecturally close to the wrap boundary on 64-bit. The
+        // `checked_add` path treats overflow the same as the
+        // bounds-exceeded sentinel — count the header and stop walking.
+        //
+        // OBU header: type=6 (FRAME), has_size=1 → 0x32.
+        // Then 8 LEB128 bytes: 7×0xFF (continuation) + 1×0x7F (terminator).
+        let buf = [0x32, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F];
         assert_eq!(count_nal_units(&buf, VideoCodec::Av1), 1);
     }
 

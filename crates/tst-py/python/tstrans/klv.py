@@ -23,5 +23,44 @@ Phase 3 of the tst-py v1 plan added the KLV decode surface:
 Phase 4 (Muxer) adds the symmetric `encode_*` surface.
 """
 
-# Population happens task-by-task. __all__ accumulates as types land.
-__all__: list[str] = []
+import enum
+from dataclasses import dataclass
+
+
+class KlvFieldErrorKind(enum.Enum):
+    """Mirrors Rust's `tst_core::error::KlvFieldError` variants.
+
+    Field-level decode failures are recoverable — they do NOT raise;
+    they accumulate on the typed-set object's `.field_errors` list per
+    the design spec's "best-effort parse" semantics for ST 0601 in the
+    field. Marked `#[non_exhaustive]` on the Rust side; Python matchers
+    should include a default arm."""
+
+    OUT_OF_RANGE = "out_of_range"
+    INVALID_UTF8 = "invalid_utf8"
+    INVALID_UTF16 = "invalid_utf16"
+    INVALID_LENGTH = "invalid_length"
+    INVALID_SENTINEL = "invalid_sentinel"
+    INVALID_CODEPOINT = "invalid_codepoint"
+    TRUNCATED_FIELD = "truncated_field"
+    UNSUPPORTED_IMAPB_LENGTH = "unsupported_imapb_length"
+    INVALID_IMAPB_PARAMS = "invalid_imapb_params"
+
+
+@dataclass(frozen=True, slots=True)
+class KlvFieldError:
+    """Non-fatal per-field decode failure. Each decoded typed-set
+    object carries a `.field_errors: tuple[KlvFieldError, ...]`
+    collecting these. `tag` is the BER-OID-decoded tag (u32 to cover
+    forward-compat multi-byte BER-OID); `message` is the
+    `Display` string from the Rust variant."""
+
+    kind: KlvFieldErrorKind
+    tag: int
+    message: str
+
+
+__all__: list[str] = [
+    "KlvFieldErrorKind",
+    "KlvFieldError",
+]

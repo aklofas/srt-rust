@@ -51,13 +51,25 @@ class DemuxErrorKind(enum.Enum):
 
 
 class KlvErrorKind(enum.Enum):
-    """Mirrors Rust's `tst_core::klv::KlvError` variants. Only
-    set-level (not field-level) errors raise — field warnings live on
-    the parsed typed-set object as `field_errors`."""
+    """Mirrors Rust's `tst_core::error::KlvDecodeError` variants
+    collapsed to user-facing buckets. Only set-level (structural)
+    errors raise as `KlvError` — per-field validation failures land
+    on the decoded typed-set object as `.field_errors: list[KlvFieldError]`
+    instead. See `docs/specs/2026-05-22-tst-py-design.md` "Error
+    mapping" for the full mapping table.
+
+    The Rust `KlvDecodeError` enum is `#[non_exhaustive]` — Python
+    matchers should include a default arm. Phase 3 establishes the
+    initial 8-variant lineup; future Rust variants get added here
+    when surfaced."""
 
     BAD_UNIVERSAL_LABEL = "bad_universal_label"
     TRUNCATED_SET = "truncated_set"
     UNKNOWN_SET = "unknown_set"
+    CHECKSUM_MISMATCH = "checksum_mismatch"
+    DUPLICATE_TAG = "duplicate_tag"
+    MISSING_REQUIRED_TAG = "missing_required_tag"
+    MALFORMED_BYTES = "malformed_bytes"
     INTERNAL = "internal"
 
 

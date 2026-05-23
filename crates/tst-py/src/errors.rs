@@ -65,6 +65,44 @@ pub fn make_mux_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyEr
     }
 }
 
+/// Build a `DemuxError` Python exception. Mirror of `make_mux_error`
+/// targeting `tstrans.exceptions.DemuxError` + `DemuxErrorKind`.
+///
+/// `kind_variant` must be a Python-side `DemuxErrorKind` Enum variant
+/// name (e.g. `"SYNC_LOSS"`, `"BAD_PMT"`, `"INTERNAL"`).
+// Task 8 (Demuxer wrapper) will call this; suppress the dead-code lint
+// until that task ships.
+#[allow(dead_code)]
+pub fn make_demux_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
+    let exceptions = match py.import_bound("tstrans.exceptions") {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    let kind_enum = match exceptions.getattr(intern!(py, "DemuxErrorKind")) {
+        Ok(e) => e,
+        Err(e) => return e,
+    };
+    let kind_value = match kind_enum.getattr(kind_variant) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let demux_error_cls = match exceptions.getattr(intern!(py, "DemuxError")) {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+    let kwargs = PyDict::new_bound(py);
+    if let Err(e) = kwargs.set_item("kind", kind_value) {
+        return e;
+    }
+    if let Err(e) = kwargs.set_item("message", message) {
+        return e;
+    }
+    match demux_error_cls.call((), Some(&kwargs)) {
+        Ok(instance) => PyErr::from_value_bound(instance),
+        Err(e) => e,
+    }
+}
+
 /// Test helper: forces a `MuxError` raise from Rust, used by
 /// `test_error_wiring.py` to confirm end-to-end wiring. Exposed only
 /// under the `_native._raise_mux_error_for_test` name.

@@ -172,3 +172,69 @@ def test_program_config_is_frozen():
     cfg = MuxerProgramConfigBuilder(1, 0x100).add_video(0x101, VideoCodec.H264).build()
     with pytest.raises((AttributeError, TypeError)):
         cfg.program_number = 99  # type: ignore[misc]
+
+
+# --- Task 5: MuxerConfig + MuxerConfigBuilder ---
+
+from tstrans.exceptions import MuxError, MuxErrorKind
+from tstrans.mpegts import MuxerConfig, MuxerConfigBuilder
+
+
+def test_muxer_config_builder_minimum_build():
+    prog = MuxerProgramConfigBuilder(1, 0x100).add_video(0x101, VideoCodec.H264).build()
+    cfg = MuxerConfigBuilder().add_program(prog).build()
+    assert isinstance(cfg, MuxerConfig)
+    assert len(cfg.programs) == 1
+    assert cfg.programs[0].program_number == 1
+
+
+def test_muxer_config_pcr_psi_defaults_reasonable():
+    prog = MuxerProgramConfigBuilder(1, 0x100).add_video(0x101, VideoCodec.H264).build()
+    cfg = MuxerConfigBuilder().add_program(prog).build()
+    assert cfg.pcr_interval_ms > 0
+    assert cfg.psi_interval_ms > 0
+    assert cfg.buffer_packets > 0
+
+
+def test_muxer_config_av1_default_is_mpeg2_ts_binding():
+    prog = MuxerProgramConfigBuilder(1, 0x100).add_video(0x101, VideoCodec.AV1).build()
+    cfg = MuxerConfigBuilder().add_program(prog).build()
+    # Variant name from actual Rust (Task 2 finding).
+    assert cfg.av1_carriage is Av1CarriageMode.MPEG2_TS_BINDING
+
+
+def test_muxer_config_invalid_pid_collision_raises():
+    # Two video streams on the same PID — should fail validation.
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_video(0x101, VideoCodec.H265)
+        .build()
+    )
+    with pytest.raises(MuxError) as ei:
+        MuxerConfigBuilder().add_program(prog).build()
+    # Use CONFIG_INVALID — the actual Rust variant name (Task 1 finding).
+    # If actual rejection variant is different, adjust to the value seen.
+    assert ei.value.kind in (
+        MuxErrorKind.CONFIG_INVALID,
+        MuxErrorKind.INPUT_MALFORMED,
+        MuxErrorKind.INVALID_USAGE,
+    )
+
+
+def test_muxer_config_builder_pcr_interval_override():
+    prog = MuxerProgramConfigBuilder(1, 0x100).add_video(0x101, VideoCodec.H264).build()
+    cfg = MuxerConfigBuilder().add_program(prog).pcr_interval_ms(20).build()
+    assert cfg.pcr_interval_ms == 20
+
+
+def test_muxer_config_is_frozen():
+    prog = MuxerProgramConfigBuilder(1, 0x100).add_video(0x101, VideoCodec.H264).build()
+    cfg = MuxerConfigBuilder().add_program(prog).build()
+    with pytest.raises((AttributeError, TypeError)):
+        cfg.pcr_interval_ms = 99  # type: ignore[misc]
+
+
+def test_muxer_config_static_builder_constructor():
+    b = MuxerConfig.builder()
+    assert isinstance(b, MuxerConfigBuilder)

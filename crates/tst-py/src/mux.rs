@@ -17,7 +17,8 @@ use pyo3::types::{PyBytes, PyTuple};
 use tst_core::mpegts::mux::{
     AudioCodec as RustAudioCodec, AudioStreamHandle as RustAudioStreamHandle,
     Av1CarriageMode as RustAv1CarriageMode, KlvStreamHandle as RustKlvStreamHandle,
-    KlvStreamType as RustKlvStreamType, MuxerProgramConfig as RustMuxerProgramConfig,
+    KlvStreamType as RustKlvStreamType, MuxerConfig as RustMuxerConfig,
+    MuxerConfigBuilder as RustMuxerConfigBuilder, MuxerProgramConfig as RustMuxerProgramConfig,
     MuxerProgramConfigBuilder as RustMuxerProgramConfigBuilder, StreamSpec as RustStreamSpec,
     SubtitleCodec as RustSubtitleCodec, SubtitleStreamHandle as RustSubtitleStreamHandle,
     VideoCodec as RustVideoCodec, VideoStreamHandle as RustVideoStreamHandle,
@@ -603,5 +604,164 @@ impl PyMuxerProgramConfigBuilder {
             pyo3::exceptions::PyRuntimeError::new_err("MuxerProgramConfigBuilder is consumed")
         })?;
         Ok(PyMuxerProgramConfig { inner: b.build() })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MuxerConfig + MuxerConfigBuilder — Task 5.
+// ---------------------------------------------------------------------------
+//
+// Wraps the outer half of the 4-type Rust config family: the
+// top-level `MuxerConfig` (one or more programs + global cadence /
+// buffer / AV1 carriage knobs) and its chainable builder. The
+// builder's `build()` runs Rust-side `MuxerConfig::validate` — the
+// returned `MuxError` is mapped through the 5-variant
+// `MuxSenderErrorKind` classifier into a Python `MuxError` carrying
+// the right `MuxErrorKind` (Task 1).
+
+/// Frozen view of a built [`MuxerConfig`] — top-level muxer
+/// configuration. Holds the program list plus PCR / PSI cadence,
+/// the buffered-packet ceiling, and the AV1 PES carriage mode.
+/// Construct via [`MuxerConfigBuilder`] or the static
+/// [`MuxerConfig.builder()`][PyMuxerConfig::builder] shortcut.
+#[pyclass(name = "MuxerConfig", module = "tstrans.mpegts", frozen)]
+#[derive(Clone)]
+pub struct PyMuxerConfig {
+    pub(crate) inner: RustMuxerConfig,
+}
+
+#[pymethods]
+impl PyMuxerConfig {
+    /// Start a new [`MuxerConfigBuilder`]. Equivalent to
+    /// `MuxerConfigBuilder()`; mirrors Rust's `MuxerConfig::builder`.
+    #[staticmethod]
+    pub fn builder() -> PyMuxerConfigBuilder {
+        PyMuxerConfigBuilder {
+            inner: Some(RustMuxerConfig::builder()),
+        }
+    }
+
+    /// Tuple of [`MuxerProgramConfig`] entries — one per program in
+    /// this multiplex, in add-order.
+    #[getter]
+    pub fn programs(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let items: Vec<PyObject> = self
+            .inner
+            .programs
+            .iter()
+            .map(|p| -> PyResult<PyObject> {
+                let py_obj = PyMuxerProgramConfig { inner: p.clone() };
+                let bound = Py::new(py, py_obj)?;
+                Ok(bound.into_any())
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        Ok(PyTuple::new_bound(py, items).unbind().into())
+    }
+
+    /// PCR re-emission interval in milliseconds (per program).
+    #[getter]
+    pub fn pcr_interval_ms(&self) -> u32 {
+        self.inner.pcr_interval_ms
+    }
+
+    /// PAT/PMT re-emission interval in milliseconds.
+    #[getter]
+    pub fn psi_interval_ms(&self) -> u32 {
+        self.inner.psi_interval_ms
+    }
+
+    /// Maximum buffered TS packets before push returns backpressure.
+    #[getter]
+    pub fn buffer_packets(&self) -> usize {
+        self.inner.buffer_packets
+    }
+
+    /// AV1 PES carriage mode — `MPEG2_TS_BINDING` (default,
+    /// spec-conformant) or `INTEROP_RAW_OBU` (ffmpeg-style).
+    #[getter]
+    pub fn av1_carriage<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
+        av1_carriage_to_py(py, self.inner.av1_carriage)
+    }
+}
+
+/// Chainable builder for [`PyMuxerConfig`]. Append programs with
+/// `add_program(...)` and override the global cadence / buffer /
+/// AV1 carriage settings as needed; finalize with `build()`, which
+/// runs Rust-side validation. Mirrors
+/// `tst_core::mpegts::mux::MuxerConfigBuilder`.
+///
+/// The inner Rust builder lives in an `Option<...>` so `build()` can
+/// take `&self` (the Rust API takes `&self` and clones internally).
+#[pyclass(name = "MuxerConfigBuilder", module = "tstrans.mpegts")]
+pub struct PyMuxerConfigBuilder {
+    pub(crate) inner: Option<RustMuxerConfigBuilder>,
+}
+
+impl PyMuxerConfigBuilder {
+    fn get_mut(&mut self) -> PyResult<&mut RustMuxerConfigBuilder> {
+        self.inner.as_mut().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err("MuxerConfigBuilder is consumed")
+        })
+    }
+}
+
+#[pymethods]
+impl PyMuxerConfigBuilder {
+    #[new]
+    pub fn new() -> Self {
+        Self {
+            inner: Some(RustMuxerConfig::builder()),
+        }
+    }
+
+    pub fn add_program<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        prog: PyRef<'_, PyMuxerProgramConfig>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        slf.get_mut()?.add_program(prog.inner.clone());
+        Ok(slf)
+    }
+
+    pub fn pcr_interval_ms(mut slf: PyRefMut<'_, Self>, ms: u32) -> PyResult<PyRefMut<'_, Self>> {
+        slf.get_mut()?.pcr_interval_ms(ms);
+        Ok(slf)
+    }
+
+    pub fn psi_interval_ms(mut slf: PyRefMut<'_, Self>, ms: u32) -> PyResult<PyRefMut<'_, Self>> {
+        slf.get_mut()?.psi_interval_ms(ms);
+        Ok(slf)
+    }
+
+    pub fn buffer_packets(mut slf: PyRefMut<'_, Self>, n: usize) -> PyResult<PyRefMut<'_, Self>> {
+        slf.get_mut()?.buffer_packets(n);
+        Ok(slf)
+    }
+
+    pub fn av1_carriage<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        mode: &Bound<'_, PyAny>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let rust_mode = py_av1_carriage(mode)?;
+        slf.get_mut()?.av1_carriage(rust_mode);
+        Ok(slf)
+    }
+
+    /// Finalize. Runs Rust-side `MuxerConfig::validate` and surfaces
+    /// the first failed rule as a Python `MuxError` (kind chosen via
+    /// `MuxSenderErrorKind` — typically `CONFIG_INVALID`).
+    pub fn build(slf: PyRef<'_, Self>) -> PyResult<PyMuxerConfig> {
+        let py = slf.py();
+        let b = slf.inner.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err("MuxerConfigBuilder is consumed")
+        })?;
+        b.build()
+            .map(|cfg| PyMuxerConfig { inner: cfg })
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+}
+
+impl Default for PyMuxerConfigBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -35,5 +35,8 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Phase 4 Task 4: program-level config + builder.
     m.add_class::<crate::mux::PyMuxerProgramConfig>()?;
     m.add_class::<crate::mux::PyMuxerProgramConfigBuilder>()?;
+    // Phase 4 Task 5: top-level muxer config + builder.
+    m.add_class::<crate::mux::PyMuxerConfig>()?;
+    m.add_class::<crate::mux::PyMuxerConfigBuilder>()?;
     Ok(())
 }

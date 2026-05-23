@@ -463,6 +463,14 @@ SubtitleStreamHandle = _native_mod.SubtitleStreamHandle
 MuxerProgramConfig = _native_mod.MuxerProgramConfig
 MuxerProgramConfigBuilder = _native_mod.MuxerProgramConfigBuilder
 
+# Phase 4 Task 5 — top-level muxer config + builder. Rust impls in
+# crates/tst-py/src/mux.rs as `PyMuxerConfig` / `PyMuxerConfigBuilder`,
+# exposed on `_native` under the names below via `#[pyclass(name=...)]`.
+# `MuxerConfigBuilder.build()` runs Rust-side validation and raises
+# `tstrans.exceptions.MuxError` on failure.
+MuxerConfig = _native_mod.MuxerConfig
+MuxerConfigBuilder = _native_mod.MuxerConfigBuilder
+
 # Population happens task-by-task. __all__ accumulates as types land.
 __all__: list[str] = [
     "Pts90khz",
@@ -496,4 +504,6 @@ __all__: list[str] = [
     "SubtitleStreamHandle",
     "MuxerProgramConfig",
     "MuxerProgramConfigBuilder",
+    "MuxerConfig",
+    "MuxerConfigBuilder",
 ]

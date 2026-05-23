@@ -11,6 +11,7 @@
 mod errors;
 mod klv;
 mod mpegts;
+mod mux;
 
 use pyo3::prelude::*;
 

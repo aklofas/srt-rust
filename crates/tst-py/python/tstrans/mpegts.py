@@ -79,6 +79,94 @@ class SubtitleCodec(enum.Enum):
     WEBVTT_IN_TS = "webvtt_in_ts"
 
 
+class KlvStreamType(enum.Enum):
+    """Mirrors Rust `tst_core::mpegts::mux::KlvStreamType`. Picks the
+    PMT stream_type byte (and PES wrap shape) for KLV streams:
+    `SYNCHRONOUS_METADATA` (0x15) is strict ST 1402 sync and triggers
+    a 5-byte H.222.0 §2.12.4.2 Metadata_AU_cell wrapper (auto-prepended
+    by the muxer — callers pass raw LS bytes); `PRIVATE_DATA` (0x06)
+    is the broadly-recognized form (pass-through, no AU cell wrap).
+
+    Whether the KLV PES carries a PTS is controlled separately via the
+    `carries_pts` field on `KlvStreamSpec`.
+    """
+
+    PRIVATE_DATA = "private_data"
+    SYNCHRONOUS_METADATA = "synchronous_metadata"
+
+
+class Av1CarriageMode(enum.Enum):
+    """Mirrors Rust `tst_core::mpegts::mux::Av1CarriageMode`. Default
+    is `MPEG2_TS_BINDING` — AV1-in-MPEG-2-TS binding conformant
+    carriage (PES `stream_id=0xBD`, OBUs wrapped in
+    `ts_open_bitstream_unit()` framing).
+
+    `INTEROP_RAW_OBU` is the interoperability mode for the
+    ffmpeg / libaom / hls.js / mediamtx AV1-in-TS toolchain — PES
+    `stream_id=0xE0` and raw OBU payload (no
+    `ts_open_bitstream_unit` framing). Non-conformant per the binding
+    spec, but matches the de facto carriage used by those tools today.
+
+    The symmetric setting on the demuxer (`DemuxerConfig.av1_carriage`)
+    MUST match for a successful round-trip.
+    """
+
+    MPEG2_TS_BINDING = "mpeg2_ts_binding"
+    INTEROP_RAW_OBU = "interop_raw_obu"
+
+
+# StreamSpec ABC + 4 concrete subclasses — match-statement-compat
+# tagged union, same pattern as Phase 2's DemuxEvent hierarchy.
+# Mirrors Rust `tst_core::mpegts::mux::StreamSpec`'s variants.
+
+@dataclass(frozen=True, slots=True)
+class StreamSpec:
+    """Abstract base for elementary-stream specs within a program.
+
+    Concrete subclasses: `VideoStreamSpec`, `KlvStreamSpec`,
+    `AudioStreamSpec`, `SubtitleStreamSpec`. Frozen + slotted so
+    instances are hashable, value-equal, and immutable.
+    """
+
+    pid: int
+
+
+@dataclass(frozen=True, slots=True)
+class VideoStreamSpec(StreamSpec):
+    """Video elementary stream — `pid` + `codec`."""
+
+    codec: VideoCodec
+
+
+@dataclass(frozen=True, slots=True)
+class KlvStreamSpec(StreamSpec):
+    """KLV metadata elementary stream — `pid`, `stream_type`
+    (`PRIVATE_DATA` 0x06 or `SYNCHRONOUS_METADATA` 0x15), and
+    `carries_pts` (whether to emit a PTS in the PES header)."""
+
+    stream_type: KlvStreamType
+    carries_pts: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AudioStreamSpec(StreamSpec):
+    """Audio elementary stream — `pid`, `codec`, optional `language`
+    (3-byte ISO 639-2 lowercase ASCII, e.g. `b"eng"`; None omits the
+    ISO 639 language descriptor)."""
+
+    codec: AudioCodec
+    language: Optional[bytes] = None
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleStreamSpec(StreamSpec):
+    """Subtitle / caption elementary stream — `pid` + `codec`. The
+    codec value itself carries any per-variant parameters (language,
+    DVB subtitling_type, etc.)."""
+
+    codec: SubtitleCodec
+
+
 class StreamKindTag(enum.Enum):
     """Discriminator for `StreamKind`. The actual codec (when applicable)
     lives on the `codec` field of `StreamInfo` / `StreamId`."""
@@ -366,6 +454,13 @@ __all__: list[str] = [
     "VideoCodec",
     "AudioCodec",
     "SubtitleCodec",
+    "KlvStreamType",
+    "Av1CarriageMode",
+    "StreamSpec",
+    "VideoStreamSpec",
+    "KlvStreamSpec",
+    "AudioStreamSpec",
+    "SubtitleStreamSpec",
     "StreamKindTag",
     "MetadataKindTag",
     "DiscontinuityKindTag",

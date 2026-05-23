@@ -7,6 +7,105 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py Phase 4 — Muxer wrap + KLV encoders (2026-05-23)
+
+**Python bindings build path complete via 15 subagent-driven tasks**
+(`8912bf5..aa09777`). Wraps the full `tst_core::mpegts::mux::Muxer`
+surface (config family + push entries + handles + stats + draining
+context-manager sink) and adds symmetric KLV encoders for ST 0601 /
+0102 / 0605 / 0903. After Phase 4, a notebook can parse a `.ts` file
+(Phase 2), modify KLV records (Phase 3), and re-mux to a new `.ts`
+(Phase 4) — closing the round-trip use case from the parent spec.
+
+**Added:**
+
+- `tstrans.mpegts.{Muxer, MuxerConfig, MuxerConfigBuilder,
+  MuxerProgramConfig, MuxerProgramConfigBuilder}` — 4-type config
+  family mirroring Rust 1:1.
+- `tstrans.mpegts.{KlvStreamType, Av1CarriageMode}` — pure-Python
+  enums (`KlvStreamType.SYNCHRONOUS_METADATA / PRIVATE_DATA`;
+  `Av1CarriageMode.MPEG2_TS_BINDING / INTEROP_RAW_OBU`, default
+  `MPEG2_TS_BINDING`).
+- `tstrans.mpegts.{StreamSpec, VideoStreamSpec, KlvStreamSpec,
+  AudioStreamSpec, SubtitleStreamSpec}` — frozen dataclass tagged
+  union over the streams in a program; Python 3.10+ match-statement
+  compatible.
+- `tstrans.mpegts.{VideoStreamHandle, AudioStreamHandle,
+  KlvStreamHandle, SubtitleStreamHandle}` — opaque `u32`-backed
+  PyO3 newtypes for handle-form pushes.
+- `tstrans.mpegts.{MuxerStats, StreamCodecStats,
+  VideoStreamCodecStats, KlvStreamCodecStats,
+  AudioStreamCodecStats}` — stats accessors + per-stream tagged
+  union (`Unknown` collapses to `None`).
+- `tstrans.mpegts.{MuxerFileSink, MuxerDrainProxy}` +
+  `Muxer.write_file(path)` — context manager that auto-drains
+  after each push and flushes-and-closes on `__exit__`, never
+  suppresses user exceptions.
+- `tstrans.klv.{encode_uas_datalink,
+  encode_uas_datalink_strict_compliance}` — ST 0601 encoders.
+  `_strict_compliance` raises
+  `KlvEncodeError(MISSING_MANDATORY_ITEM)` per ST 0601.8 §10.3.
+- `tstrans.klv.encode_security` — ST 0102 encoder.
+- `tstrans.klv.encode_precision_timestamp` — ST 0605 encoder
+  (always returns 26 bytes).
+- `tstrans.klv.{encode_vmti, encode_vmti_standalone}` — ST 0903
+  encoders; `encode_vmti` emits LS body only,
+  `encode_vmti_standalone` adds the SMPTE UL + BER-length prefix.
+  `parse_klv_universal(encode_vmti_standalone(rec))` round-trips.
+- `tstrans.exceptions.{MuxError, MuxErrorKind, KlvEncodeError,
+  KlvEncodeErrorKind}` — 5-variant `MuxErrorKind` (`INPUT_MALFORMED
+  / CONFIG_INVALID / INVALID_USAGE / BACKPRESSURE / INTERNAL`);
+  8-variant `KlvEncodeErrorKind`.
+
+**Push surface conventions (mirrors Rust 1:1 — arg order is
+deliberately non-uniform across stream kinds):**
+
+- `push_video(nal, pts, key_frame=False)`,
+  `push_video_to(handle, nal, pts, key_frame=False)`,
+  `push_video_to_with_dts(handle, nal, *, pts, dts, key_frame=False)`.
+  No `pid` parameter — auto-resolves the lone video stream or
+  raises `MuxError(INVALID_USAGE)` (Rust `AmbiguousTarget`).
+- `push_audio(frames, pts)`,
+  `push_audio_to(handle, pts, frames)`. **Arg order differs.**
+- `push_klv(klv, pts, metadata_service_id=0)`,
+  `push_klv_to(handle, klv, pts, metadata_service_id=0)`.
+- `push_subtitle(pts, payload)`,
+  `push_subtitle_to(handle, pts, payload)`. **Pts before payload.**
+- Unknown handle → `MuxError(INVALID_USAGE)`; invalid payload →
+  `MuxError(INPUT_MALFORMED)`; back-pressure →
+  `MuxError(BACKPRESSURE)`.
+
+**Verified:**
+
+- Determinism sentinel: two fresh `Muxer` instances with the same
+  config + same push sequence emit byte-identical output (4324
+  bytes / 23 packets for the synthetic 1-video-1-klv fixture).
+- 5/5 video + 5/5 klv input frames round-trip to 5 video + 5 klv
+  events via `parse_file` (exact, not just within tolerance).
+- 270 pytest tests + 2 skipped (was 178 after Phase 3 cleanup
+  → +92 tests).
+
+**Known follow-ups (NOT blocking Phase 5):**
+
+- `add_subtitle` raises `NotImplementedError` — mux-side
+  `SubtitleCodec` is a struct-variant Rust enum (per-variant
+  fields for language / subtitling-type) incompatible with the
+  Phase 2 flat `SubtitleCodec` Python string-enum. Deepening the
+  Python representation is the work item.
+- Full real-fixture round-trip needs config-from-probe
+  reconstruction (currently the `tests/fixtures/local/`
+  smoke-test is `pytest.skip`).
+- NumPy zero-copy view of `pull()` output (Phase 6 pandas extra).
+- `Muxer.write_to(io.BufferedWriter)` second sink shape (if a
+  consumer asks).
+
+**Build infrastructure:**
+
+- BASELINE `#[non_exhaustive]` count bumped 135 → 140 in
+  `.github/workflows/ci.yml`.
+
+---
+
 ## [Unreleased] — Validate-1 act-now batch (plan #94, docs/plans/2026-05-22-validate-1-act-now-batch.md)
 
 **Ten validate-1 carry-forward items closed via 7-worktree parallel SDD,

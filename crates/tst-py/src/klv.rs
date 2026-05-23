@@ -27,6 +27,7 @@ use tst_core::klv::st0102::{
     decode_strict as decode_st0102_strict,
 };
 use tst_core::klv::st0605::{PrecisionTimeStampPack, decode as decode_st0605};
+use tst_core::klv::st0903::VTargetPack as RustVTargetPack;
 
 use crate::errors::make_klv_error;
 
@@ -288,6 +289,82 @@ fn decode_security_py(py: Python<'_>, buf: &[u8], strict: bool) -> PyResult<PyOb
         Ok(sec) => convert_security_ls(py, &sec),
         Err(e) => Err(klv_decode_error_to_pyerr(py, e)),
     }
+}
+
+// ---------------------------------------------------------------------------
+// ST 0903 — VTargetPack (translator only; entry points in Task 9)
+// ---------------------------------------------------------------------------
+
+/// Translate a Rust `VTargetPack` to a Python `tstrans.klv.VTargetPack`
+/// dataclass instance.
+#[allow(dead_code)] // Wired in by Task 9's convert_vmti_ls; remove the allow there.
+fn convert_vtarget_pack(py: Python<'_>, p: &RustVTargetPack) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "VTargetPack"))?;
+    let kwargs = PyDict::new_bound(py);
+
+    kwargs.set_item("target_id", p.target_id)?;
+
+    macro_rules! opt_set {
+        ($key:expr, $val:expr) => {
+            if let Some(v) = $val {
+                kwargs.set_item($key, v)?;
+            }
+        };
+    }
+    macro_rules! opt_set_ref {
+        ($key:expr, $val:expr) => {
+            if let Some(v) = $val.as_ref() {
+                kwargs.set_item($key, v.as_slice())?;
+            }
+        };
+    }
+
+    opt_set!("centroid_pixel", p.centroid_pixel);
+    opt_set!("bbox_top_left_pixel", p.bbox_top_left_pixel);
+    opt_set!("bbox_bottom_right_pixel", p.bbox_bottom_right_pixel);
+    opt_set!("priority", p.priority);
+    opt_set!("confidence_level", p.confidence_level);
+    opt_set!("history", p.history);
+    opt_set!("percentage_of_target_pixels", p.percentage_of_target_pixels);
+
+    if let Some([r, g, b]) = p.target_color {
+        kwargs.set_item(
+            "target_color",
+            pyo3::types::PyTuple::new_bound(py, [r, g, b]),
+        )?;
+    }
+
+    opt_set!("target_intensity", p.target_intensity);
+    opt_set!("centroid_lat_offset", p.centroid_lat_offset);
+    opt_set!("centroid_lon_offset", p.centroid_lon_offset);
+    opt_set!("centroid_hae", p.centroid_hae);
+    opt_set!("bbox_top_left_lat_offset", p.bbox_top_left_lat_offset);
+    opt_set!("bbox_top_left_lon_offset", p.bbox_top_left_lon_offset);
+    opt_set!(
+        "bbox_bottom_right_lat_offset",
+        p.bbox_bottom_right_lat_offset
+    );
+    opt_set!(
+        "bbox_bottom_right_lon_offset",
+        p.bbox_bottom_right_lon_offset
+    );
+    opt_set_ref!("target_location", p.target_location);
+    opt_set_ref!("geospatial_contour_series", p.geospatial_contour_series);
+    opt_set!("centroid_pix_row", p.centroid_pix_row);
+    opt_set!("centroid_pix_col", p.centroid_pix_col);
+    opt_set!("algorithm_id", p.algorithm_id);
+    opt_set!("detection_status", p.detection_status);
+    opt_set_ref!("vmask", p.vmask);
+    opt_set_ref!("vtracker", p.vtracker);
+    opt_set_ref!("vchip", p.vchip);
+    opt_set_ref!("vchip_series", p.vchip_series);
+    opt_set_ref!("vobject_series", p.vobject_series);
+
+    kwargs.set_item("unknown", convert_unknown(py, &p.unknown)?)?;
+    kwargs.set_item("field_errors", convert_field_errors(py, &p.field_errors)?)?;
+
+    Ok(cls.call((), Some(&kwargs))?.unbind())
 }
 
 // ---------------------------------------------------------------------------

@@ -277,6 +277,60 @@ Klv0102 = SecurityLs
 decode_security = _native_mod.decode_security
 
 
+# ---------------------------------------------------------------------------
+# ST 0903.6 §10.2 VTargetPack (carried inside VmtiLs.targets)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class VTargetPack:
+    """MISB ST 0903.6 §10.2 Table 10 per-target pack.
+
+    Wire form is a leading BER-OID-encoded `target_id` (no Tag — per
+    §10.2.2.1) followed by a Local Set body with BER-OID tag + BER
+    short/long length + value tuples.
+
+    7 nested LSes (VMask, VObject, VFeature, VTracker, VChip, VChipSeries,
+    VObjectSeries) stay as `bytes | None` pass-through bytes — typed
+    inner layers are deferred at the Rust layer too (see
+    `docs/deferred-features.md`).
+
+    `detection_status` is the raw §10.2.2.24 / §7.2 Table 5 codepoint:
+    0=Inactive, 1=Active-Moving, 2=Dropped, 3=Active-Stopped,
+    4=Active-Coasting. Typed enum deferred — stays as raw `int`."""
+
+    target_id: int  # BER-OID, capped at u32::MAX
+    centroid_pixel: int | None = None
+    bbox_top_left_pixel: int | None = None
+    bbox_bottom_right_pixel: int | None = None
+    priority: int | None = None
+    confidence_level: int | None = None
+    history: int | None = None
+    percentage_of_target_pixels: int | None = None
+    target_color: tuple[int, int, int] | None = None  # R, G, B
+    target_intensity: int | None = None
+    centroid_lat_offset: float | None = None
+    centroid_lon_offset: float | None = None
+    centroid_hae: float | None = None
+    bbox_top_left_lat_offset: float | None = None
+    bbox_top_left_lon_offset: float | None = None
+    bbox_bottom_right_lat_offset: float | None = None
+    bbox_bottom_right_lon_offset: float | None = None
+    target_location: bytes | None = None
+    geospatial_contour_series: bytes | None = None
+    centroid_pix_row: int | None = None
+    centroid_pix_col: int | None = None
+    algorithm_id: int | None = None
+    detection_status: int | None = None
+    vmask: bytes | None = None
+    vtracker: bytes | None = None
+    vchip: bytes | None = None
+    vchip_series: bytes | None = None
+    vobject_series: bytes | None = None
+    unknown: tuple[tuple[int, bytes], ...] = ()
+    field_errors: tuple[KlvFieldError, ...] = ()
+
+
 __all__: list[str] = [
     "KlvFieldErrorKind",
     "KlvFieldError",
@@ -295,4 +349,5 @@ __all__: list[str] = [
     "SecurityLs",
     "Klv0102",
     "decode_security",
+    "VTargetPack",
 ]

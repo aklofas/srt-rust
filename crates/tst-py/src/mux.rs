@@ -11,9 +11,11 @@
 
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion, dead_code)]
 
+use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{PyByteArray, PyBytes, PyTuple};
 
+use tst_core::mpegts::common::Pts90khz as RustPts90khz;
 use tst_core::mpegts::mux::{
     AudioCodec as RustAudioCodec, AudioStreamHandle as RustAudioStreamHandle,
     Av1CarriageMode as RustAv1CarriageMode, KlvStreamHandle as RustKlvStreamHandle,
@@ -23,6 +25,20 @@ use tst_core::mpegts::mux::{
     SubtitleCodec as RustSubtitleCodec, SubtitleStreamHandle as RustSubtitleStreamHandle,
     VideoCodec as RustVideoCodec, VideoStreamHandle as RustVideoStreamHandle,
 };
+
+/// Translate a Python `Pts90khz` dataclass instance to the Rust
+/// `Pts90khz` newtype.
+///
+/// The Python class is a pure-Python `@dataclass(frozen=True)` with
+/// a single `raw: int` field (see `python/tstrans/mpegts.py`), so we
+/// extract the attribute via the Python protocol rather than holding
+/// a `PyRef` to a PyO3 class. Construction is `Pts90khz::new(i64)`
+/// per `tst_core::mpegts::common`.
+pub(crate) fn py_pts90khz(v: &Bound<'_, PyAny>) -> PyResult<RustPts90khz> {
+    let py = v.py();
+    let raw: i64 = v.getattr(intern!(py, "raw"))?.extract()?;
+    Ok(RustPts90khz::new(raw))
+}
 
 /// Translate a Python `KlvStreamType` enum value (string-valued) to
 /// the Rust enum variant.
@@ -824,5 +840,102 @@ impl PyMuxer {
     /// cap return `MuxError(BACKPRESSURE)`.
     pub fn capacity_packets(&self) -> u64 {
         self.inner.capacity_packets()
+    }
+
+    /// Push one H.264 / H.265 access unit in Annex-B framing onto the
+    /// lone configured video stream.
+    ///
+    /// Convenience for single-video-stream muxers — raises
+    /// `MuxError(INVALID_USAGE)` (mapped from `MuxError::AmbiguousTarget`)
+    /// if zero or more than one video stream is configured across all
+    /// programs; use [`push_video_to`][PyMuxer::push_video_to] with an
+    /// explicit handle in that case.
+    ///
+    /// `key_frame=True` causes the first TS packet of the resulting
+    /// PES to carry an adaptation field with `random_access_indicator`
+    /// set; key-frame coincident with the PCR PID also forces a PCR.
+    ///
+    /// Raises `MuxError(INPUT_MALFORMED)` if `nal` does not begin with
+    /// an Annex-B start code; `MuxError(BACKPRESSURE)` if the queue
+    /// would exceed `MuxerConfig.buffer_packets`.
+    #[pyo3(signature = (nal, pts, key_frame = false))]
+    pub fn push_video(
+        &mut self,
+        py: Python<'_>,
+        nal: &[u8],
+        pts: &Bound<'_, PyAny>,
+        key_frame: bool,
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        self.inner
+            .push_video(nal, rust_pts, key_frame)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Push one access unit onto a specific video stream identified
+    /// by `handle` (obtained from `Muxer.video_handles()` in Task 9).
+    ///
+    /// Carries the same `key_frame` semantics as
+    /// [`push_video`][PyMuxer::push_video]. AV1 streams receive OBU
+    /// bitstream input and skip the Annex-B start-code check;
+    /// H.264 / H.265 / H.266 require Annex-B framing.
+    ///
+    /// The PES carries `PTS_DTS_flags = '10'` (PTS only) per
+    /// ISO/IEC 13818-1 §2.4.3.6. Streams with B-frame reorder where
+    /// `composition_time != decode_time` must use
+    /// [`push_video_to_with_dts`][PyMuxer::push_video_to_with_dts]
+    /// instead.
+    ///
+    /// Raises `MuxError(INVALID_USAGE)` on an out-of-range handle,
+    /// `MuxError(INPUT_MALFORMED)` on a bad Annex-B payload, or
+    /// `MuxError(BACKPRESSURE)` on a full queue.
+    #[pyo3(signature = (handle, nal, pts, key_frame = false))]
+    pub fn push_video_to(
+        &mut self,
+        py: Python<'_>,
+        handle: PyRef<'_, PyVideoStreamHandle>,
+        nal: &[u8],
+        pts: &Bound<'_, PyAny>,
+        key_frame: bool,
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        self.inner
+            .push_video_to(handle.0, nal, rust_pts, key_frame)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Push one access unit with explicit composition (PTS) and decode
+    /// (DTS) timestamps. Required for codecs that emit reordered output
+    /// (B-frames in H.264 / H.265 / H.266 / AV1).
+    ///
+    /// Emits PES with `PTS_DTS_flags = '11'` per ISO/IEC 13818-1
+    /// §2.4.3.6 — 10 bytes of PES header data carrying both PTS
+    /// (composition time) and DTS (decode time). When `pts == dts`,
+    /// prefer [`push_video_to`][PyMuxer::push_video_to] for the smaller
+    /// 5-byte PTS-only encoding.
+    ///
+    /// Caller invariant: `dts <= pts` per §2.4.3.6 (decode order
+    /// precedes composition order). The muxer does not enforce this —
+    /// receivers will reject inverted timestamps.
+    ///
+    /// Internal cadence (PCR pacing, PSI emission, buffer reservation)
+    /// keys off `pts`. DTS does not influence wall-clock scheduling.
+    ///
+    /// Error mapping matches `push_video_to`.
+    #[pyo3(signature = (handle, nal, *, pts, dts, key_frame = false))]
+    pub fn push_video_to_with_dts(
+        &mut self,
+        py: Python<'_>,
+        handle: PyRef<'_, PyVideoStreamHandle>,
+        nal: &[u8],
+        pts: &Bound<'_, PyAny>,
+        dts: &Bound<'_, PyAny>,
+        key_frame: bool,
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        let rust_dts = py_pts90khz(dts)?;
+        self.inner
+            .push_video_to_with_dts(handle.0, nal, rust_pts, rust_dts, key_frame)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 }

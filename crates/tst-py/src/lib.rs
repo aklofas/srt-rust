@@ -40,5 +40,8 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::mux::PyMuxerConfigBuilder>()?;
     // Phase 4 Task 6: Muxer base (init + pull + pending + capacity).
     m.add_class::<crate::mux::PyMuxer>()?;
+    // Phase 4 Task 10: MuxerStats snapshot (StreamCodecStats is pure
+    // Python — constructed by `Muxer.stream_codec_stats` per call).
+    m.add_class::<crate::mux::PyMuxerStats>()?;
     Ok(())
 }

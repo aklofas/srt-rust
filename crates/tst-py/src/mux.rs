@@ -13,7 +13,7 @@
 
 use pyo3::intern;
 use pyo3::prelude::*;
-use pyo3::types::{PyByteArray, PyBytes, PyTuple};
+use pyo3::types::{PyByteArray, PyBytes, PyDict, PyTuple};
 
 use tst_core::mpegts::common::Pts90khz as RustPts90khz;
 use tst_core::mpegts::mux::{
@@ -21,10 +21,12 @@ use tst_core::mpegts::mux::{
     Av1CarriageMode as RustAv1CarriageMode, KlvStreamHandle as RustKlvStreamHandle,
     KlvStreamType as RustKlvStreamType, Muxer as RustMuxer, MuxerConfig as RustMuxerConfig,
     MuxerConfigBuilder as RustMuxerConfigBuilder, MuxerProgramConfig as RustMuxerProgramConfig,
-    MuxerProgramConfigBuilder as RustMuxerProgramConfigBuilder, StreamSpec as RustStreamSpec,
-    SubtitleCodec as RustSubtitleCodec, SubtitleStreamHandle as RustSubtitleStreamHandle,
-    VideoCodec as RustVideoCodec, VideoStreamHandle as RustVideoStreamHandle,
+    MuxerProgramConfigBuilder as RustMuxerProgramConfigBuilder, MuxerStats as RustMuxerStats,
+    StreamSpec as RustStreamSpec, SubtitleCodec as RustSubtitleCodec,
+    SubtitleStreamHandle as RustSubtitleStreamHandle, VideoCodec as RustVideoCodec,
+    VideoStreamHandle as RustVideoStreamHandle,
 };
+use tst_core::mpegts::stats::StreamCodecStats as RustStreamCodecStats;
 
 /// Translate a Python `Pts90khz` dataclass instance to the Rust
 /// `Pts90khz` newtype.
@@ -1230,5 +1232,136 @@ impl PyMuxer {
             .subtitle_handles_for_program(program_number)
             .map(|v| v.into_iter().map(PySubtitleStreamHandle).collect())
             .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    // -----------------------------------------------------------------
+    // Task 10 — stats accessors (stats + reset_stats + stream_codec_stats).
+    // -----------------------------------------------------------------
+    //
+    // `stats()` returns a frozen `MuxerStats` snapshot (scalar counters
+    // only — `per_stream` BTreeMap not surfaced in v1). `reset_stats`
+    // zeros the cumulative counters in place (mirrors Rust contract:
+    // per-stream identity preserved, codec counters cleared so a
+    // previously-pushed PID reverts to `None` from Python's view).
+    // `stream_codec_stats(pid)` constructs the right Python subclass
+    // (`VideoStreamCodecStats` / `KlvStreamCodecStats` /
+    // `AudioStreamCodecStats`) per the Rust enum variant; the
+    // `Some(StreamCodecStats::Unknown)` Rust case (configured but no
+    // data yet) collapses to Python `None` for caller simplicity.
+
+    /// Snapshot the current muxer stats counters. Always succeeds.
+    pub fn stats(&self) -> PyMuxerStats {
+        PyMuxerStats {
+            inner: self.inner.stats(),
+        }
+    }
+
+    /// Zero all cumulative flow counters. Per-stream identity (PID,
+    /// stream_type, label) is preserved; codec-specific counters are
+    /// cleared, so a previously-pushed PID's `stream_codec_stats(pid)`
+    /// returns `None` until the next push re-materializes the typed
+    /// variant.
+    pub fn reset_stats(&mut self) {
+        self.inner.reset_stats();
+    }
+
+    /// Per-PID codec-specific counter snapshot. Returns `None` for
+    /// PIDs the muxer was not configured with AND for configured PIDs
+    /// that have no codec-family counters in v1 (PSI / subtitle / LATM
+    /// / AC-3 — Rust returns `Some(StreamCodecStats::Unknown)` for
+    /// those, which this wrap collapses to `None` so Python callers
+    /// only see `None` vs a typed `*StreamCodecStats` subclass).
+    pub fn stream_codec_stats(&self, py: Python<'_>, pid: u16) -> PyResult<Option<PyObject>> {
+        let Some(rs) = self.inner.stream_codec_stats(pid) else {
+            return Ok(None);
+        };
+        let mpegts_mod = py.import_bound("tstrans.mpegts")?;
+        // Each variant uses `..` because the Rust enum *variants* are
+        // `#[non_exhaustive]` (see tst_core::mpegts::stats) — additive
+        // counter fields land without a major bump.
+        let (cls_name, kwargs) = match rs {
+            RustStreamCodecStats::Video {
+                nals_or_obus,
+                random_access_aus,
+                ..
+            } => {
+                let kw = PyDict::new_bound(py);
+                kw.set_item("nals_or_obus", nals_or_obus)?;
+                kw.set_item("random_access_aus", random_access_aus)?;
+                ("VideoStreamCodecStats", kw)
+            }
+            RustStreamCodecStats::Klv { records, .. } => {
+                let kw = PyDict::new_bound(py);
+                kw.set_item("records", records)?;
+                ("KlvStreamCodecStats", kw)
+            }
+            RustStreamCodecStats::Audio { frames, .. } => {
+                let kw = PyDict::new_bound(py);
+                kw.set_item("frames", frames)?;
+                ("AudioStreamCodecStats", kw)
+            }
+            // `Unknown` (configured PID without a counter family in v1)
+            // and any future `#[non_exhaustive]` variant collapse to
+            // `None` from Python's view.
+            _ => return Ok(None),
+        };
+        let cls = mpegts_mod.getattr(cls_name)?;
+        let obj = cls.call((), Some(&kwargs))?.unbind();
+        Ok(Some(obj))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MuxerStats — Task 10.
+// ---------------------------------------------------------------------------
+//
+// Frozen view of the Rust `MuxerStats` snapshot returned from
+// `Muxer::stats`. Only the scalar fields are exposed in v1; the
+// `per_stream` BTreeMap of `StreamStats` entries is not yet wrapped
+// (no consumer demand — adding it later is additive).
+
+/// Frozen snapshot of [`Muxer`] cumulative counters. Returned by
+/// [`Muxer.stats`][PyMuxer::stats]. Reset to zero by
+/// [`Muxer.reset_stats`][PyMuxer::reset_stats].
+#[pyclass(name = "MuxerStats", module = "tstrans.mpegts", frozen)]
+pub struct PyMuxerStats {
+    inner: RustMuxerStats,
+}
+
+#[pymethods]
+impl PyMuxerStats {
+    /// Total 188-byte TS packets drained via [`Muxer.pull`][PyMuxer::pull].
+    #[getter]
+    pub fn ts_packets_emitted(&self) -> u64 {
+        self.inner.ts_packets_emitted
+    }
+
+    /// Total bytes drained via [`Muxer.pull`][PyMuxer::pull]
+    /// (`ts_packets_emitted * 188`).
+    #[getter]
+    pub fn ts_bytes_emitted(&self) -> u64 {
+        self.inner.ts_bytes_emitted
+    }
+
+    /// Number of programs (PAT entries) in this muxer's configuration.
+    #[getter]
+    pub fn programs_configured(&self) -> u32 {
+        self.inner.programs_configured
+    }
+
+    /// Number of subtitle streams configured across all programs.
+    #[getter]
+    pub fn subtitle_streams_configured(&self) -> u32 {
+        self.inner.subtitle_streams_configured
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "MuxerStats(ts_packets_emitted={}, ts_bytes_emitted={}, programs_configured={}, subtitle_streams_configured={})",
+            self.inner.ts_packets_emitted,
+            self.inner.ts_bytes_emitted,
+            self.inner.programs_configured,
+            self.inner.subtitle_streams_configured,
+        )
     }
 }

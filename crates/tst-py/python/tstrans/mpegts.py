@@ -479,6 +479,58 @@ MuxerConfigBuilder = _native_mod.MuxerConfigBuilder
 # surface lands in Tasks 7-9.
 Muxer = _native_mod.Muxer
 
+# Phase 4 Task 10 — MuxerStats snapshot type. Rust impl in
+# crates/tst-py/src/mux.rs as `PyMuxerStats`, exposed on `_native` under
+# the name below via `#[pyclass(name=...)]`. Frozen — returned by
+# `Muxer.stats()`. The `per_stream` BTreeMap on the Rust side is not
+# surfaced in v1 (the per-PID `StreamStats` shape exists but isn't yet
+# wrapped); the scalar counters cover the common dashboard case.
+MuxerStats = _native_mod.MuxerStats
+
+
+# Phase 4 Task 10 — StreamCodecStats tagged union. Pure-Python
+# dataclasses (no PyO3 wrap) because the Rust enum has 3+ struct
+# variants and PyO3 lacks ergonomic enum support — the
+# `Muxer.stream_codec_stats(pid)` accessor constructs the right
+# subclass on each call. `Some(Unknown)` from Rust (configured-but-
+# no-data PID) is rendered as `None` from Python in v1; callers
+# distinguish "configured and pushed" (typed subclass) from "either
+# unconfigured or never pushed" (`None`).
+
+@dataclass(frozen=True, slots=True)
+class StreamCodecStats:
+    """Abstract base for per-stream codec counter snapshots.
+
+    Returned by `Muxer.stream_codec_stats(pid)`. Concrete subclasses
+    are `VideoStreamCodecStats`, `KlvStreamCodecStats`, and
+    `AudioStreamCodecStats` — match on the subclass to read the
+    typed counters. Mirrors Rust
+    `tst_core::mpegts::stats::StreamCodecStats`.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class VideoStreamCodecStats(StreamCodecStats):
+    """H.264 / H.265 / H.266 (NALs) or AV1 (OBUs) counters."""
+
+    nals_or_obus: int
+    random_access_aus: int
+
+
+@dataclass(frozen=True, slots=True)
+class KlvStreamCodecStats(StreamCodecStats):
+    """KLV metadata counters — one bump per `push_klv` call."""
+
+    records: int
+
+
+@dataclass(frozen=True, slots=True)
+class AudioStreamCodecStats(StreamCodecStats):
+    """Audio frame counters — populated for MP2 + AAC-ADTS only; LATM
+    and AC-3 PIDs return `None` (no frame iterator in v1)."""
+
+    frames: int
+
 # Population happens task-by-task. __all__ accumulates as types land.
 __all__: list[str] = [
     "Pts90khz",
@@ -515,4 +567,9 @@ __all__: list[str] = [
     "MuxerConfig",
     "MuxerConfigBuilder",
     "Muxer",
+    "MuxerStats",
+    "StreamCodecStats",
+    "VideoStreamCodecStats",
+    "KlvStreamCodecStats",
+    "AudioStreamCodecStats",
 ]

@@ -156,19 +156,43 @@ def probe(path: Union[str, Path]) -> ProbeResult:
 
 def extract_klv(
     path: Union[str, Path],
+    *,
     with_pts: bool = False,
+    parsed: bool = False,
+    skip_unknown: bool = True,
 ) -> Iterator:
-    """Iterate over KLV payloads in a file. Yields `bytes` by default,
-    or `(Pts90khz, bytes)` tuples when `with_pts=True`. KLV records
-    are emitted as raw payload bytes — Phase 3's `tstrans.klv` adds
-    the typed `Klv0601` decode."""
+    """Iterate over KLV payloads in a file. Yields one of:
+
+    - `bytes` (default — `with_pts=False, parsed=False`)
+    - `(Pts90khz, bytes)` (when `with_pts=True, parsed=False`)
+    - typed `UasDatalinkLs | SecurityLs | PrecisionTimeStampPack | VmtiLs`
+      (when `parsed=True, with_pts=False`)
+    - `(Pts90khz, typed)` (when `parsed=True, with_pts=True`)
+
+    With `parsed=True`, each payload is run through
+    `tstrans.klv.parse_klv_universal`. When the UL is unknown, the
+    payload is skipped (default) or yielded as `None` /
+    `(pts, None)` if `skip_unknown=False`.
+    """
+
+    # Local import dodges import-cycle with tstrans.klv at module load.
+    from tstrans.klv import parse_klv_universal
 
     for ev in parse_file(path):
-        if isinstance(ev, DemuxEvent.Klv):
-            if with_pts:
-                yield (ev.pts, ev.payload)
-            else:
-                yield ev.payload
+        if not isinstance(ev, DemuxEvent.Klv):
+            continue
+        if parsed:
+            try:
+                typed = parse_klv_universal(ev.payload)
+            except Exception:  # noqa: BLE001 — caller decides via skip_unknown
+                if skip_unknown:
+                    continue
+                typed = None
+            if typed is None and skip_unknown:
+                continue
+            yield (ev.pts, typed) if with_pts else typed
+        else:
+            yield (ev.pts, ev.payload) if with_pts else ev.payload
 
 
 __all__: list[str] = [

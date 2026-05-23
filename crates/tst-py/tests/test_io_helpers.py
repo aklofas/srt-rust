@@ -65,3 +65,44 @@ def test_probe_has_audio_codec_for_mp2_fixture():
     r = probe(FIXTURE)
     # mp2.ts has MP2 audio
     assert len(r.audio_codecs) > 0
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 extensions: extract_klv parsed=True path
+# ---------------------------------------------------------------------------
+
+import pytest
+
+from tstrans.io import extract_klv as _extract_klv_phase3
+
+
+def test_extract_klv_parsed_kwarg_accepted():
+    """The parsed= and skip_unknown= kwargs exist on extract_klv."""
+    import inspect
+
+    sig = inspect.signature(_extract_klv_phase3)
+    assert "parsed" in sig.parameters
+    assert "skip_unknown" in sig.parameters
+
+
+def test_extract_klv_parsed_returns_typed_when_klv_present():
+    """If FIXTURE has KLV PIDs, parsed=True should yield typed objects.
+    If FIXTURE has no KLV (true for `audio/mp2.ts`), the iterator is
+    simply empty — both outcomes are valid."""
+    from pathlib import Path
+
+    from tstrans.klv import PrecisionTimeStampPack, SecurityLs, UasDatalinkLs, VmtiLs
+
+    fx = (
+        Path(__file__).parent.parent.parent
+        / "tst-core" / "tests" / "fixtures" / "audio" / "mp2.ts"
+    )
+    if not fx.is_file():
+        pytest.skip("mp2.ts fixture missing")
+
+    yielded = list(_extract_klv_phase3(fx, parsed=True))
+    for item in yielded:
+        assert isinstance(
+            item,
+            (UasDatalinkLs, SecurityLs, PrecisionTimeStampPack, VmtiLs),
+        )

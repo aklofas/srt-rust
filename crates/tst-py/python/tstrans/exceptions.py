@@ -8,12 +8,20 @@ variants may appear in minor releases; matchers should include a
 default arm.
 
 Field-level KLV parse warnings are NOT raised -- they live on the
-parsed object as `field_errors: list[KlvFieldError]`, matching Rust's
-"best-effort parse" semantics for ST 0601 in the field.
+parsed object as `field_errors`, matching Rust's "best-effort parse"
+semantics for ST 0601 in the field.
+
+**Variants in this Phase 0+1 release are preliminary placeholders.**
+Each `*ErrorKind` enum will be refined in the domain-specific phase
+plans (Phase 2 for `DemuxErrorKind`, Phase 3 for `KlvErrorKind`,
+Phase 4 for `MuxErrorKind`, Phase 5 for `CodecErrorKind`) once the
+corresponding Rust types are actually wrapped. `INTERNAL` is the
+catch-all for any Rust error variant not yet modeled -- Phase 2+
+PyO3 code maps unmodeled Rust variants to `INTERNAL` until a more
+specific Python variant is added.
 """
 
 import enum
-from typing import Optional
 
 
 class TstError(Exception):
@@ -45,7 +53,7 @@ class DemuxErrorKind(enum.Enum):
 class KlvErrorKind(enum.Enum):
     """Mirrors Rust's `tst_core::klv::KlvError` variants. Only
     set-level (not field-level) errors raise -- field warnings live on
-    `Klv0601.field_errors`."""
+    the parsed typed-set object as `field_errors`."""
 
     BAD_UNIVERSAL_LABEL = "bad_universal_label"
     TRUNCATED_SET = "truncated_set"

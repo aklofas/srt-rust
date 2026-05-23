@@ -42,8 +42,22 @@ def test_codec_error_carries_codec_label():
     assert err.kind is CodecErrorKind.UNSUPPORTED_PROFILE
 
 
-def test_can_catch_specific_then_general():
+def test_specific_error_catchable_as_base_class():
     try:
         raise MuxError(kind=MuxErrorKind.INVALID_CONFIG, message="x")
     except TstError as e:
         assert isinstance(e, MuxError)
+
+
+def test_demux_error_carries_kind_and_message():
+    err = DemuxError(kind=DemuxErrorKind.SYNC_LOSS, message="lost sync at byte 12345")
+    assert err.kind is DemuxErrorKind.SYNC_LOSS
+    assert err.message == "lost sync at byte 12345"
+    assert "lost sync" in str(err)
+
+
+def test_klv_error_carries_kind_and_message():
+    err = KlvError(kind=KlvErrorKind.TRUNCATED_SET, message="set truncated at 47/100")
+    assert err.kind is KlvErrorKind.TRUNCATED_SET
+    assert err.message == "set truncated at 47/100"
+    assert "truncated" in str(err)

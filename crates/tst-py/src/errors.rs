@@ -210,7 +210,10 @@ pub(crate) fn codec_parse_error_to_pyerr(
         Err(e) => return e,
     };
     let (kind_name, extra_attrs): (&str, Vec<(&str, PyObject)>) = match err {
-        CodecParseError::TruncatedRbsp { offset_bits, needed_bits } => (
+        CodecParseError::TruncatedRbsp {
+            offset_bits,
+            needed_bits,
+        } => (
             "TRUNCATED_RBSP",
             vec![
                 ("offset_bits", offset_bits.into_py(py)),
@@ -254,15 +257,11 @@ pub(crate) fn codec_parse_error_to_pyerr(
         ),
         CodecParseError::Truncated { needed, had } => (
             "TRUNCATED",
-            vec![
-                ("needed", needed.into_py(py)),
-                ("had", had.into_py(py)),
-            ],
+            vec![("needed", needed.into_py(py)), ("had", had.into_py(py))],
         ),
-        CodecParseError::Forbidden { field } => (
-            "FORBIDDEN",
-            vec![("field", (*field).into_py(py))],
-        ),
+        CodecParseError::Forbidden { field } => {
+            ("FORBIDDEN", vec![("field", (*field).into_py(py))])
+        }
         CodecParseError::UnsupportedFreeFormat { layer } => (
             "UNSUPPORTED_FREE_FORMAT",
             vec![("layer", layer.into_py(py))],

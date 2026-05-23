@@ -8,6 +8,7 @@
 //! handles, and a test helper — type wrappers ship in later phase
 //! plans.
 
+mod codec;
 mod errors;
 mod klv;
 mod mpegts;
@@ -43,5 +44,8 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Phase 4 Task 10: MuxerStats snapshot (StreamCodecStats is pure
     // Python — constructed by `Muxer.stream_codec_stats` per call).
     m.add_class::<crate::mux::PyMuxerStats>()?;
+    // Phase 5 Task 8: codec submodule — shared types, NalUnit, Obu.
+    // Per-codec classes (Tasks 9-14) extend the same submodule.
+    codec::register(m)?;
     Ok(())
 }

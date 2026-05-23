@@ -37,3 +37,9 @@ Issues     = "https://github.com/aklofas/ts-transformer/issues"
 features      = ["pyo3/extension-module"]
 python-source = "python"
 module-name   = "tstrans._native"
+
+[tool.pytest.ini_options]
+markers = [
+    "pandas: tests that require the [pandas] extra (skipped by default)",
+]
+addopts = "-m 'not pandas'"

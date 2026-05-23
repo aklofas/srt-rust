@@ -153,6 +153,78 @@ from tstrans import _native as _native_mod
 decode_precision_timestamp = _native_mod.decode_precision_timestamp
 
 
+# ---------------------------------------------------------------------------
+# ST 0102.12 §6.1 enums
+# ---------------------------------------------------------------------------
+
+
+class SecurityClassification(enum.Enum):
+    """ST 0102.12 §6.1.1 Tag 1 Security Classification.
+
+    Rust adds an `Unknown(u8)` arm for forward-compat; on the Python
+    side, unknown codepoints surface as the raw `int` on the
+    `SecurityLs.security_classification` field rather than an enum
+    instance (kept simple — the typed enum is the high-fidelity 90%
+    path)."""
+
+    UNCLASSIFIED = 0x01
+    RESTRICTED = 0x02
+    CONFIDENTIAL = 0x03
+    SECRET = 0x04
+    TOP_SECRET = 0x05
+
+
+class ClassifyingCountryCodingMethod(enum.Enum):
+    """ST 0102.12 §6.1.2 Tag 2 Classifying Country / Releasing
+    Instructions Country Coding Method.
+
+    Tag 2 and Tag 12 use DIFFERENT codepoints for the same logical
+    coding method — see `ObjectCountryCodingMethod` for Tag 12 values.
+    `OmittedValueXX` slots are spec-reserved; strict-mode decode
+    rejects them."""
+
+    ISO_3166_TWO_LETTER = 0x01
+    ISO_3166_THREE_LETTER = 0x02
+    FIPS_104_TWO_LETTER = 0x03
+    FIPS_104_FOUR_LETTER = 0x04
+    ISO_3166_NUMERIC = 0x05
+    STANAG_1059_TWO_LETTER = 0x06
+    STANAG_1059_THREE_LETTER = 0x07
+    OMITTED_VALUE_08 = 0x08
+    OMITTED_VALUE_09 = 0x09
+    FIPS_104_MIXED = 0x0A
+    ISO_3166_MIXED = 0x0B
+    STANAG_1059_MIXED = 0x0C
+    GENC_TWO_LETTER = 0x0D
+    GENC_THREE_LETTER = 0x0E
+    GENC_NUMERIC = 0x0F
+    GENC_MIXED = 0x10
+
+
+class ObjectCountryCodingMethod(enum.Enum):
+    """ST 0102.12 §6.1.12 Tag 12 Object Country Coding Method.
+
+    Codepoints differ from Tag 2 — the spec is non-contiguous and
+    jumps to 0x40 for `GencAdminSub`."""
+
+    ISO_3166_TWO_LETTER = 0x01
+    ISO_3166_THREE_LETTER = 0x02
+    ISO_3166_NUMERIC = 0x03  # vs Tag 2's 0x05
+    FIPS_104_TWO_LETTER = 0x04  # vs Tag 2's 0x03
+    FIPS_104_FOUR_LETTER = 0x05  # vs Tag 2's 0x04
+    STANAG_1059_TWO_LETTER = 0x06
+    STANAG_1059_THREE_LETTER = 0x07
+    OMITTED_VALUE_08 = 0x08
+    OMITTED_VALUE_09 = 0x09
+    OMITTED_VALUE_0A = 0x0A
+    OMITTED_VALUE_0B = 0x0B
+    OMITTED_VALUE_0C = 0x0C
+    GENC_TWO_LETTER = 0x0D
+    GENC_THREE_LETTER = 0x0E
+    GENC_NUMERIC = 0x0F
+    GENC_ADMIN_SUB = 0x40
+
+
 __all__: list[str] = [
     "KlvFieldErrorKind",
     "KlvFieldError",
@@ -165,4 +237,7 @@ __all__: list[str] = [
     "PrecisionTimeStampPack",
     "Klv0605",
     "decode_precision_timestamp",
+    "SecurityClassification",
+    "ClassifyingCountryCodingMethod",
+    "ObjectCountryCodingMethod",
 ]

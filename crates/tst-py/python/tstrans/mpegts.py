@@ -471,6 +471,14 @@ MuxerProgramConfigBuilder = _native_mod.MuxerProgramConfigBuilder
 MuxerConfig = _native_mod.MuxerConfig
 MuxerConfigBuilder = _native_mod.MuxerConfigBuilder
 
+# Phase 4 Task 6 — Muxer base (init + pull + pending + capacity). Rust
+# impl in crates/tst-py/src/mux.rs as `PyMuxer`, exposed on `_native`
+# under the name below via `#[pyclass(name=...)]`. Constructor takes a
+# `MuxerConfig` and re-runs Rust-side validation, surfacing failures
+# as `tstrans.exceptions.MuxError`. The `push_*` and handle-getter
+# surface lands in Tasks 7-9.
+Muxer = _native_mod.Muxer
+
 # Population happens task-by-task. __all__ accumulates as types land.
 __all__: list[str] = [
     "Pts90khz",
@@ -506,4 +514,5 @@ __all__: list[str] = [
     "MuxerProgramConfigBuilder",
     "MuxerConfig",
     "MuxerConfigBuilder",
+    "Muxer",
 ]

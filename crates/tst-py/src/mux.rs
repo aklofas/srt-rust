@@ -12,12 +12,12 @@
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion, dead_code)]
 
 use pyo3::prelude::*;
-use pyo3::types::{PyBytes, PyTuple};
+use pyo3::types::{PyByteArray, PyBytes, PyTuple};
 
 use tst_core::mpegts::mux::{
     AudioCodec as RustAudioCodec, AudioStreamHandle as RustAudioStreamHandle,
     Av1CarriageMode as RustAv1CarriageMode, KlvStreamHandle as RustKlvStreamHandle,
-    KlvStreamType as RustKlvStreamType, MuxerConfig as RustMuxerConfig,
+    KlvStreamType as RustKlvStreamType, Muxer as RustMuxer, MuxerConfig as RustMuxerConfig,
     MuxerConfigBuilder as RustMuxerConfigBuilder, MuxerProgramConfig as RustMuxerProgramConfig,
     MuxerProgramConfigBuilder as RustMuxerProgramConfigBuilder, StreamSpec as RustStreamSpec,
     SubtitleCodec as RustSubtitleCodec, SubtitleStreamHandle as RustSubtitleStreamHandle,
@@ -763,5 +763,66 @@ impl PyMuxerConfigBuilder {
 impl Default for PyMuxerConfigBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Muxer — Task 6 (base: init + pull + pending_packets + capacity_packets).
+// ---------------------------------------------------------------------------
+//
+// Wraps `tst_core::mpegts::mux::Muxer` — the stateful TS multiplexer.
+// Tasks 7-9 will add the `push_*` and handle-getter surface; this task
+// covers construction (which re-runs config validation Rust-side) and
+// the drain side (`pull` + back-pressure gauges). `pull` is infallible
+// per Rust — the only failure modes surface at `push_*` time.
+
+/// Stateful MPEG-TS multiplexer. Configured at construction with a
+/// [`MuxerConfig`]; subsequent `push_*` calls (Tasks 7-8) feed encoded
+/// elementary streams, and `pull` drains the assembled TS packets.
+///
+/// `push_*` may return `MuxError(BACKPRESSURE)` when the internal
+/// queue would exceed [`Muxer.capacity_packets`][PyMuxer::capacity_packets];
+/// the caller must drain via `pull` before retrying.
+#[pyclass(name = "Muxer", module = "tstrans.mpegts")]
+pub struct PyMuxer {
+    inner: RustMuxer,
+}
+
+#[pymethods]
+impl PyMuxer {
+    /// Construct from a built [`MuxerConfig`]. Re-runs Rust-side
+    /// validation; any failure is surfaced as a Python `MuxError`
+    /// (typically `CONFIG_INVALID`).
+    #[new]
+    pub fn new(py: Python<'_>, config: PyRef<'_, PyMuxerConfig>) -> PyResult<Self> {
+        RustMuxer::new(config.inner.clone())
+            .map(|m| Self { inner: m })
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Drain ready TS packets into `out`. Returns the number of bytes
+    /// written: either 0 or a positive multiple of 188. A return of 0
+    /// indicates either an empty queue or `len(out) < 188`.
+    pub fn pull(&mut self, out: &Bound<'_, PyByteArray>) -> PyResult<usize> {
+        // SAFETY: `as_bytes_mut` returns a mutable slice into the
+        // Python bytearray for the duration of this call. The
+        // underlying Rust `Muxer::pull` writes into the slice and
+        // does not retain it. The GIL is held for the whole call, so
+        // Python cannot mutate or resize the bytearray concurrently.
+        let slice = unsafe { out.as_bytes_mut() };
+        Ok(self.inner.pull(slice))
+    }
+
+    /// Number of 188-byte TS packets currently queued in the muxer's
+    /// internal output buffer awaiting [`pull`][PyMuxer::pull].
+    pub fn pending_packets(&self) -> u64 {
+        self.inner.pending_packets()
+    }
+
+    /// Configured queue capacity in 188-byte TS packets — snapshot of
+    /// `MuxerConfig.buffer_packets`. Push calls that would exceed this
+    /// cap return `MuxError(BACKPRESSURE)`.
+    pub fn capacity_packets(&self) -> u64 {
+        self.inner.capacity_packets()
     }
 }

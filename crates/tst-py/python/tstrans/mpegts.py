@@ -162,6 +162,63 @@ class LinkSource(enum.Enum):
     OVERRIDE = "override"
 
 
+# Type alias for "any codec enum or None". Used on StreamId / StreamInfo
+# where the kind determines which codec enum (if any) is meaningful.
+Codec = VideoCodec | AudioCodec | SubtitleCodec | None
+
+
+@dataclass(frozen=True, slots=True)
+class StreamId:
+    """Identity of a single elementary stream in a TS. `kind` is the
+    discriminator; `codec` carries the specific codec when applicable
+    (None for KLV / Unknown). `program_number` resolves cross-program
+    PID reuse (per the project's first-program-wins policy)."""
+
+    pid: int
+    kind: StreamKindTag
+    codec: Codec
+    program_number: int
+
+
+@dataclass(frozen=True, slots=True)
+class StreamInfo:
+    """PMT-derived per-stream metadata. `stream_type` is the raw PMT
+    byte (kept for forward-compat with stream types not yet recognized
+    by the demuxer)."""
+
+    pid: int
+    stream_type: int  # u8
+    kind: StreamKindTag
+    codec: Codec
+    program_number: int
+
+
+@dataclass(frozen=True, slots=True)
+class KlvLink:
+    """A declared, inferred, or overridden link between a KLV PID and
+    the video PID it timestamps against. Lives on `ProgramMap`."""
+
+    klv_pid: int
+    video_pid: int
+    source: LinkSource
+
+
+@dataclass(frozen=True, slots=True)
+class ProgramMap:
+    """One program's PSI summary, emitted on PAT/PMT discovery and on
+    each PSI version-bump. `streams` is the elementary-stream list;
+    `klv_links` is the demuxer's view of which KLV PIDs belong to
+    which video PIDs.
+
+    `streams` and `klv_links` are tuples (not lists) so the dataclass
+    remains hashable + value-equal."""
+
+    program_number: int
+    pcr_pid: int
+    streams: tuple
+    klv_links: tuple
+
+
 # Population happens task-by-task. __all__ accumulates as types land.
 __all__: list[str] = [
     "Pts90khz",
@@ -174,4 +231,9 @@ __all__: list[str] = [
     "NonConformantKind",
     "StrictMode",
     "LinkSource",
+    "Codec",
+    "StreamId",
+    "StreamInfo",
+    "KlvLink",
+    "ProgramMap",
 ]

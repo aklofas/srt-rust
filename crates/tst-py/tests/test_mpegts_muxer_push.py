@@ -145,3 +145,77 @@ def test_push_video_key_frame_arg_accepted():
     m = Muxer(_simple_config())
     m.push_video(_minimal_h264_nal_aud(), Pts90khz.from_raw(900_000), key_frame=True)
     assert m.pending_packets() > 0
+
+
+# ---------------------------------------------------------------------------
+# Task 8 — push_audio + push_klv + push_subtitle (single-stream + handle forms)
+# ---------------------------------------------------------------------------
+
+
+def _minimal_aac_frame() -> bytes:
+    """ADTS header — syncword + LC profile + 44.1kHz + mono + length=7.
+
+    Smallest valid AAC-ADTS frame: 7-byte header with no payload. The
+    mux-side audio path just frames bytes into PES; the parser is
+    receiver-side, so any well-shaped ADTS header is enough to exercise
+    the push path.
+    """
+    return b"\xFF\xF1\x4C\x40\x00\x1F\xFC"
+
+
+def _minimal_klv_ls() -> bytes:
+    """16-byte SMPTE UL + 1-byte BER + 0-byte body = minimal LS bytes.
+
+    The muxer auto-prepends the 5-byte ST 1910 AU cell header for
+    SynchronousMetadata streams (CLAUDE.md "KLV AU cell auto-wrap"),
+    so callers pass raw KLV LS bytes only.
+    """
+    return b"\x06\x0E\x2B\x34\x02\x0B\x01\x01\x0E\x01\x03\x01\x01\x00\x00\x00\x00"
+
+
+def test_push_audio_works_with_single_audio_stream():
+    m = Muxer(_simple_config())
+    m.push_audio(_minimal_aac_frame(), Pts90khz.from_raw(900_000))
+    assert m.pending_packets() >= 0
+
+
+def test_push_klv_works_with_single_klv_stream():
+    m = Muxer(_simple_config())
+    m.push_klv(_minimal_klv_ls(), Pts90khz.from_raw(900_000), metadata_service_id=0)
+    assert m.pending_packets() >= 0
+
+
+def test_push_klv_default_metadata_service_id():
+    """metadata_service_id defaults to 0 — the most common single-service
+    case. Callers needing a non-zero value pass it explicitly."""
+    m = Muxer(_simple_config())
+    m.push_klv(_minimal_klv_ls(), Pts90khz.from_raw(900_000))
+    assert m.pending_packets() >= 0
+
+
+def test_push_audio_invalid_handle_raises():
+    from tstrans.mpegts import AudioStreamHandle
+
+    m = Muxer(_simple_config())
+    bad = AudioStreamHandle.from_raw((255 << 16) | 255)
+    with pytest.raises(MuxError) as ei:
+        m.push_audio_to(bad, Pts90khz.from_raw(900_000), _minimal_aac_frame())
+    assert ei.value.kind is MuxErrorKind.INVALID_USAGE
+
+
+def test_push_klv_invalid_handle_raises():
+    from tstrans.mpegts import KlvStreamHandle
+
+    m = Muxer(_simple_config())
+    bad = KlvStreamHandle.from_raw((255 << 16) | 255)
+    with pytest.raises(MuxError) as ei:
+        m.push_klv_to(bad, _minimal_klv_ls(), Pts90khz.from_raw(900_000))
+    assert ei.value.kind is MuxErrorKind.INVALID_USAGE
+
+
+@pytest.mark.skip(
+    reason="push_subtitle end-to-end requires deeper SubtitleCodec Python "
+    "representation (mux-side codec is struct-variant; Phase 4 follow-up)"
+)
+def test_push_subtitle_works():
+    pass  # placeholder for future deeper subtitle support

@@ -938,4 +938,164 @@ impl PyMuxer {
             .push_video_to_with_dts(handle.0, nal, rust_pts, rust_dts, key_frame)
             .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
+
+    // -----------------------------------------------------------------
+    // Task 8 — push_audio + push_klv + push_subtitle (single + handle).
+    // -----------------------------------------------------------------
+    //
+    // Python signatures mirror the Rust arg ordering byte-for-byte even
+    // where Rust is internally inconsistent (push_audio = frames,pts;
+    // push_audio_to = handle,pts,frames; push_klv = klv,pts,svc_id;
+    // push_subtitle = pts,payload). Fidelity to the underlying surface
+    // outweighs Python-side normalization — callers cross-referencing
+    // the Rust API expect the same arg names in the same positions.
+
+    /// Push one encoded audio frame (codec-native framing — ADTS for
+    /// AAC, raw frame for MP2 / AC-3 / AAC-LATM) onto the lone
+    /// configured audio stream.
+    ///
+    /// Convenience for single-audio-stream muxers — raises
+    /// `MuxError(INVALID_USAGE)` if zero or more than one audio stream
+    /// is configured; use [`push_audio_to`][PyMuxer::push_audio_to] with
+    /// an explicit handle in that case.
+    ///
+    /// Raises `MuxError(INPUT_MALFORMED)` if `frames` does not parse
+    /// for the configured codec; `MuxError(BACKPRESSURE)` on a full
+    /// queue.
+    pub fn push_audio(
+        &mut self,
+        py: Python<'_>,
+        frames: &[u8],
+        pts: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        self.inner
+            .push_audio(frames, rust_pts)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Push one encoded audio frame onto a specific audio stream
+    /// identified by `handle` (obtained from `Muxer.audio_handles()`
+    /// in Task 9).
+    ///
+    /// Argument order follows the Rust API: `(handle, pts, frames)` —
+    /// note `pts` precedes `frames`, unlike `push_audio` where the
+    /// frames come first.
+    ///
+    /// Raises `MuxError(INVALID_USAGE)` on an out-of-range handle,
+    /// `MuxError(INPUT_MALFORMED)` on a codec parse failure, or
+    /// `MuxError(BACKPRESSURE)` on a full queue.
+    pub fn push_audio_to(
+        &mut self,
+        py: Python<'_>,
+        handle: PyRef<'_, PyAudioStreamHandle>,
+        pts: &Bound<'_, PyAny>,
+        frames: &[u8],
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        self.inner
+            .push_audio_to(handle.0, rust_pts, frames)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Push one KLV local-set onto the lone configured KLV stream.
+    ///
+    /// `klv` is raw KLV LS bytes — for `SynchronousMetadata` streams
+    /// the muxer auto-prepends the 5-byte ST 1910 Metadata AU cell
+    /// header per H.222.0 V9 §2.12.4.2; callers must NOT pre-wrap.
+    /// `PrivateData` streams pass `klv` through as-is.
+    ///
+    /// `metadata_service_id` selects which service the metadata AU
+    /// belongs to (defaults to 0, the common single-service case).
+    ///
+    /// Convenience for single-KLV-stream muxers — raises
+    /// `MuxError(INVALID_USAGE)` if zero or more than one KLV stream is
+    /// configured; use [`push_klv_to`][PyMuxer::push_klv_to] with an
+    /// explicit handle in that case.
+    ///
+    /// Raises `MuxError(INPUT_MALFORMED)` if `klv` is too large for a
+    /// single PES; `MuxError(BACKPRESSURE)` on a full queue.
+    #[pyo3(signature = (klv, pts, metadata_service_id = 0))]
+    pub fn push_klv(
+        &mut self,
+        py: Python<'_>,
+        klv: &[u8],
+        pts: &Bound<'_, PyAny>,
+        metadata_service_id: u8,
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        self.inner
+            .push_klv(klv, rust_pts, metadata_service_id)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Push one KLV local-set onto a specific KLV stream identified by
+    /// `handle` (obtained from `Muxer.klv_handles()` in Task 9).
+    ///
+    /// Same `klv` framing rules as [`push_klv`][PyMuxer::push_klv]:
+    /// raw LS bytes; muxer auto-wraps the AU cell for synchronous
+    /// streams. `metadata_service_id` defaults to 0.
+    ///
+    /// Raises `MuxError(INVALID_USAGE)` on an out-of-range handle,
+    /// `MuxError(INPUT_MALFORMED)` on oversized payload, or
+    /// `MuxError(BACKPRESSURE)` on a full queue.
+    #[pyo3(signature = (handle, klv, pts, metadata_service_id = 0))]
+    pub fn push_klv_to(
+        &mut self,
+        py: Python<'_>,
+        handle: PyRef<'_, PyKlvStreamHandle>,
+        klv: &[u8],
+        pts: &Bound<'_, PyAny>,
+        metadata_service_id: u8,
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        self.inner
+            .push_klv_to(handle.0, klv, rust_pts, metadata_service_id)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Push one subtitle payload onto the lone configured subtitle
+    /// stream. Argument order follows the Rust API: `(pts, payload)`.
+    ///
+    /// Note: subtitle stream construction from Python is currently
+    /// blocked by `MuxerProgramConfigBuilder.add_subtitle` (returns
+    /// `NotImplementedError` until the Python `SubtitleCodec` gains
+    /// structured per-variant payloads — language, page IDs, etc.).
+    /// The method is wired here so it works as soon as that gap closes.
+    ///
+    /// Raises `MuxError(INVALID_USAGE)` if zero or more than one
+    /// subtitle stream is configured; `MuxError(INPUT_MALFORMED)` for
+    /// oversized payloads; `MuxError(BACKPRESSURE)` on a full queue.
+    pub fn push_subtitle(
+        &mut self,
+        py: Python<'_>,
+        pts: &Bound<'_, PyAny>,
+        payload: &[u8],
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        self.inner
+            .push_subtitle(rust_pts, payload)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Push one subtitle payload onto a specific subtitle stream
+    /// identified by `handle` (obtained from
+    /// `Muxer.subtitle_handles()` in Task 9). Same gating note as
+    /// [`push_subtitle`][PyMuxer::push_subtitle].
+    ///
+    /// Raises `MuxError(INVALID_USAGE)` on an out-of-range handle,
+    /// `MuxError(INPUT_MALFORMED)` on oversized payload, or
+    /// `MuxError(BACKPRESSURE)` on a full queue.
+    pub fn push_subtitle_to(
+        &mut self,
+        py: Python<'_>,
+        handle: PyRef<'_, PySubtitleStreamHandle>,
+        pts: &Bound<'_, PyAny>,
+        payload: &[u8],
+    ) -> PyResult<()> {
+        let rust_pts = py_pts90khz(pts)?;
+        self.inner
+            .push_subtitle_to(handle.0, rust_pts, payload)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
 }

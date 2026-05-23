@@ -380,6 +380,8 @@ Klv0903 = VmtiLs
 
 
 decode_vmti = _native_mod.decode_vmti
+encode_vmti = _native_mod.encode_vmti
+encode_vmti_standalone = _native_mod.encode_vmti_standalone
 
 
 # ---------------------------------------------------------------------------
@@ -753,6 +755,8 @@ __all__: list[str] = [
     "VmtiLs",
     "Klv0903",
     "decode_vmti",
+    "encode_vmti",
+    "encode_vmti_standalone",
     "GeoPoint",
     "Attitude",
     "FieldOfView",

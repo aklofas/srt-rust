@@ -38,7 +38,8 @@ use tst_core::klv::st0605::{
 };
 use tst_core::klv::st0903::{
     VTargetPack as RustVTargetPack, VmtiLs, decode as decode_st0903_lenient,
-    decode_strict as decode_st0903_strict,
+    decode_strict as decode_st0903_strict, encode_to_vec as encode_st0903,
+    encode_to_vec_standalone as encode_st0903_standalone,
 };
 
 use crate::errors::{klv_encode_error_to_pyerr, make_klv_error};
@@ -592,6 +593,176 @@ fn decode_vmti_py(py: Python<'_>, buf: &[u8], strict: bool) -> PyResult<PyObject
 }
 
 // ---------------------------------------------------------------------------
+// ST 0903 — Python → Rust inverse translators + encode entry points
+// ---------------------------------------------------------------------------
+
+/// Inverse of `convert_vtarget_pack`. Read-only output fields
+/// (`unknown`, `field_errors`) are deliberately NOT round-tripped — they
+/// are parser diagnostics, not encoder inputs.
+#[allow(clippy::cognitive_complexity)]
+fn py_to_vtarget_pack(p: &Bound<'_, PyAny>) -> PyResult<RustVTargetPack> {
+    let mut r = RustVTargetPack::default();
+    let py = p.py();
+
+    // BER-OID `target_id` (mandatory, no Tag).
+    r.target_id = p.getattr(intern!(py, "target_id"))?.extract::<u32>()?;
+
+    macro_rules! op {
+        ($field:ident, $ty:ty) => {
+            if let Some(v) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<$ty>>()?
+            {
+                r.$field = Some(v);
+            }
+        };
+    }
+    macro_rules! ob {
+        ($field:ident) => {
+            if let Some(v) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<Vec<u8>>>()?
+            {
+                r.$field = Some(v);
+            }
+        };
+    }
+
+    op!(centroid_pixel, u32);
+    op!(bbox_top_left_pixel, u32);
+    op!(bbox_bottom_right_pixel, u32);
+    op!(priority, u8);
+    op!(confidence_level, u8);
+    op!(history, u16);
+    op!(percentage_of_target_pixels, u8);
+
+    // target_color: Optional<tuple[int, int, int]> → Option<[u8; 3]>.
+    let tc = p.getattr(intern!(py, "target_color"))?;
+    if !tc.is_none() {
+        let arr: Vec<u8> = tc.extract()?;
+        if arr.len() == 3 {
+            r.target_color = Some([arr[0], arr[1], arr[2]]);
+        }
+    }
+
+    op!(target_intensity, u32);
+    op!(centroid_lat_offset, f64);
+    op!(centroid_lon_offset, f64);
+    op!(centroid_hae, f64);
+    op!(bbox_top_left_lat_offset, f64);
+    op!(bbox_top_left_lon_offset, f64);
+    op!(bbox_bottom_right_lat_offset, f64);
+    op!(bbox_bottom_right_lon_offset, f64);
+    ob!(target_location);
+    ob!(geospatial_contour_series);
+    op!(centroid_pix_row, u32);
+    op!(centroid_pix_col, u32);
+    op!(algorithm_id, u32);
+    op!(detection_status, u8);
+    ob!(vmask);
+    ob!(vtracker);
+    ob!(vchip);
+    ob!(vchip_series);
+    ob!(vobject_series);
+
+    Ok(r)
+}
+
+/// Inverse of `convert_vmti_ls`. `unknown` + `field_errors` skipped per
+/// `py_to_vtarget_pack` rationale.
+fn py_to_vmti_ls(p: &Bound<'_, PyAny>) -> PyResult<VmtiLs> {
+    let mut r = VmtiLs::default();
+    let py = p.py();
+
+    macro_rules! op {
+        ($field:ident, $ty:ty) => {
+            if let Some(v) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<$ty>>()?
+            {
+                r.$field = Some(v);
+            }
+        };
+    }
+    macro_rules! os {
+        ($field:ident) => {
+            if let Some(s) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<String>>()?
+            {
+                r.$field = Some(s);
+            }
+        };
+    }
+    macro_rules! ob {
+        ($field:ident) => {
+            if let Some(v) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<Vec<u8>>>()?
+            {
+                r.$field = Some(v);
+            }
+        };
+    }
+
+    // Note: `checksum` is intentionally ignored by `encode_standalone`
+    // (it computes a fresh substrate checksum from the framing) and
+    // dropped by `encode` (embedded-VMTI per ST 0903.6-120). We still
+    // populate the Rust field for symmetry — encoders consult their own
+    // policy.
+    op!(checksum, u16);
+    op!(precision_time_stamp, u64);
+    os!(vmti_system_name);
+    op!(version_number, u16);
+    op!(total_targets_in_frame, u32);
+    op!(num_targets_reported, u32);
+    op!(frame_width, u32);
+    op!(frame_height, u32);
+    os!(source_sensor);
+    op!(horizontal_fov, f64);
+    op!(vertical_fov, f64);
+    ob!(miis_id);
+    ob!(algorithm_series);
+    ob!(ontology_series);
+
+    // targets: tuple[VTargetPack, ...] → Vec<VTargetPack>. The Python
+    // dataclass uses a tuple (frozen + hashable); iterate generically.
+    let targets_obj = p.getattr(intern!(py, "targets"))?;
+    for t in targets_obj.iter()? {
+        let t = t?;
+        r.targets.push(py_to_vtarget_pack(&t)?);
+    }
+
+    Ok(r)
+}
+
+/// Encode a Python `VmtiLs` to wire bytes — VMTI LS **body only** (no UL
+/// / outer BER length wrapper / no Tag 1 checksum per ST 0903.6-120).
+/// Use for embedded-VMTI carried inside MPEG-TS via tst-pipeline. Returns
+/// `bytes`.
+#[pyfunction]
+#[pyo3(name = "encode_vmti")]
+fn encode_vmti_py(py: Python<'_>, record: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let rust_rec = py_to_vmti_ls(record)?;
+    let bytes = encode_st0903(&rust_rec).map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
+/// Encode a Python `VmtiLs` as a **standalone-VMTI** wire record:
+/// `[VMTI_LS_UL:16][outer BER length][body][Tag 1 checkSum TLV]` per
+/// ST 0903.4-17 / ST 0903.6-119. The Tag 1 checksum is computed from
+/// the assembled framing; any value in `VmtiLs.checksum` is ignored.
+/// Returns `bytes`.
+#[pyfunction]
+#[pyo3(name = "encode_vmti_standalone")]
+fn encode_vmti_standalone_py(py: Python<'_>, record: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let rust_rec = py_to_vmti_ls(record)?;
+    let bytes =
+        encode_st0903_standalone(&rust_rec).map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
+// ---------------------------------------------------------------------------
 // ST 0601 — UAS Datalink LS
 // ---------------------------------------------------------------------------
 
@@ -887,5 +1058,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     m.add_function(wrap_pyfunction!(encode_security_py, m)?)?;
     m.add_function(wrap_pyfunction!(encode_precision_timestamp_py, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_vmti_py, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_vmti_standalone_py, m)?)?;
     Ok(())
 }

@@ -639,6 +639,10 @@ pub enum H264SliceTypePy {
     /// SI slice — switching I.
     #[pyo3(name = "Si")]
     Si,
+    /// Unknown slice type — returned when the Rust parser produces a
+    /// `#[non_exhaustive]` variant not yet mapped to a Python constant.
+    #[pyo3(name = "Unknown")]
+    Unknown,
 }
 
 impl From<RustH264SliceType> for H264SliceTypePy {
@@ -649,8 +653,10 @@ impl From<RustH264SliceType> for H264SliceTypePy {
             RustH264SliceType::I => Self::I,
             RustH264SliceType::Sp => Self::Sp,
             RustH264SliceType::Si => Self::Si,
-            // #[non_exhaustive] catch-all — should not arise from the parser.
-            _ => Self::I,
+            // #[non_exhaustive] catch-all — maps any future variant to Unknown
+            // rather than mis-classifying it as intra (I) which would cause callers
+            // to treat an unrecognised slice type as a keyframe indicator.
+            _ => Self::Unknown,
         }
     }
 }
@@ -939,6 +945,14 @@ impl H264ParameterSetsPy {
             dict.set_item(*k, pps_py)?;
         }
         Ok(dict)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H264ParameterSets(n_sps={}, n_pps={})",
+            self.inner.sps_by_id.len(),
+            self.inner.pps_by_id.len()
+        )
     }
 }
 

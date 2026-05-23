@@ -425,6 +425,209 @@ class Corners:
     p4: tuple[float, float]
 
 
+# ---------------------------------------------------------------------------
+# ST 0601 UAS Datalink Local Set
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class UasDatalinkLs:
+    """MISB ST 0601 UAS Datalink Local Set typed view.
+
+    Mirror of the 80-field Rust `tst_core::klv::st0601::UasDatalinkLs`
+    flat struct. Composite views (sensor position, attitude, FOV,
+    corners) are accessor methods that return `None` when any of the
+    underlying primitive fields is absent.
+
+    `security_local_set: bytes | None` carries the Tag 48 ST 0102 LS
+    body bytes (no UL prefix); call `tstrans.klv.decode_security(...)`
+    on it for typed access.
+
+    `vmti: bytes | None` carries the Tag 74 ST 0903 LS body bytes (no
+    UL prefix); call `tstrans.klv.decode_vmti(...)` on it for typed
+    access.
+
+    `unknown` preserves any tag not in the typed-modeled set per
+    ST 0107.5 §6 future-proof skip rule.
+
+    `field_errors` collects per-field decode failures from lenient
+    mode; strict mode raises `KlvError` instead."""
+
+    universal_label: bytes = b"\x00" * 16
+    declared_version: int = 0
+    # Identity
+    mission_id: str | None = None
+    platform_tail_number: str | None = None
+    platform_designation: str | None = None
+    image_source_sensor: str | None = None
+    image_coordinate_system: str | None = None
+    platform_call_sign: str | None = None
+    uas_ls_version: int | None = None
+    # Time
+    timestamp_us: int | None = None
+    # Platform state
+    platform_heading_deg: float | None = None
+    platform_pitch_deg: float | None = None
+    platform_roll_deg: float | None = None
+    platform_true_airspeed: float | None = None
+    platform_indicated_airspeed: float | None = None
+    platform_pitch_full_deg: float | None = None
+    platform_roll_full_deg: float | None = None
+    platform_angle_of_attack_deg: float | None = None
+    # Sensor pose & position
+    sensor_lat_deg: float | None = None
+    sensor_lon_deg: float | None = None
+    sensor_alt_m: float | None = None
+    sensor_ellipsoid_height_m: float | None = None
+    sensor_hfov_deg: float | None = None
+    sensor_vfov_deg: float | None = None
+    sensor_rel_az_deg: float | None = None
+    sensor_rel_el_deg: float | None = None
+    sensor_rel_roll_deg: float | None = None
+    # Ranging & frame center
+    slant_range_m: float | None = None
+    target_width_m: float | None = None
+    frame_center_lat_deg: float | None = None
+    frame_center_lon_deg: float | None = None
+    frame_center_elev_m: float | None = None
+    frame_center_ellipsoid_height_m: float | None = None
+    # Image corner offsets (tags 26-33)
+    corner_lat_offset_p1_deg: float | None = None
+    corner_lon_offset_p1_deg: float | None = None
+    corner_lat_offset_p2_deg: float | None = None
+    corner_lon_offset_p2_deg: float | None = None
+    corner_lat_offset_p3_deg: float | None = None
+    corner_lon_offset_p3_deg: float | None = None
+    corner_lat_offset_p4_deg: float | None = None
+    corner_lon_offset_p4_deg: float | None = None
+    # Image corner full lat/lon (tags 82-89)
+    corner_lat_p1_deg: float | None = None
+    corner_lon_p1_deg: float | None = None
+    corner_lat_p2_deg: float | None = None
+    corner_lon_p2_deg: float | None = None
+    corner_lat_p3_deg: float | None = None
+    corner_lon_p3_deg: float | None = None
+    corner_lat_p4_deg: float | None = None
+    corner_lon_p4_deg: float | None = None
+    # Misc
+    generic_flag_data: int | None = None
+    security_local_set: bytes | None = None  # Tag 48 → ST 0102
+    vmti: bytes | None = None  # Tag 74 → ST 0903
+    # Pass-through
+    unknown: tuple[tuple[int, bytes], ...] = ()
+    field_errors: tuple[KlvFieldError, ...] = ()
+
+    def sensor_position(self) -> GeoPoint | None:
+        if (
+            self.sensor_lat_deg is not None
+            and self.sensor_lon_deg is not None
+            and self.sensor_alt_m is not None
+        ):
+            return GeoPoint(
+                lat_deg=self.sensor_lat_deg,
+                lon_deg=self.sensor_lon_deg,
+                alt_m=self.sensor_alt_m,
+            )
+        return None
+
+    def sensor_attitude(self) -> Attitude | None:
+        if (
+            self.sensor_rel_az_deg is not None
+            and self.sensor_rel_el_deg is not None
+            and self.sensor_rel_roll_deg is not None
+        ):
+            return Attitude(
+                heading_deg=self.sensor_rel_az_deg,
+                pitch_deg=self.sensor_rel_el_deg,
+                roll_deg=self.sensor_rel_roll_deg,
+            )
+        return None
+
+    def sensor_fov(self) -> FieldOfView | None:
+        if self.sensor_hfov_deg is not None and self.sensor_vfov_deg is not None:
+            return FieldOfView(
+                horizontal_deg=self.sensor_hfov_deg,
+                vertical_deg=self.sensor_vfov_deg,
+            )
+        return None
+
+    def platform_attitude(self) -> Attitude | None:
+        if (
+            self.platform_heading_deg is not None
+            and self.platform_pitch_deg is not None
+            and self.platform_roll_deg is not None
+        ):
+            return Attitude(
+                heading_deg=self.platform_heading_deg,
+                pitch_deg=self.platform_pitch_deg,
+                roll_deg=self.platform_roll_deg,
+            )
+        return None
+
+    def frame_center(self) -> GeoPoint | None:
+        if (
+            self.frame_center_lat_deg is not None
+            and self.frame_center_lon_deg is not None
+            and self.frame_center_elev_m is not None
+        ):
+            return GeoPoint(
+                lat_deg=self.frame_center_lat_deg,
+                lon_deg=self.frame_center_lon_deg,
+                alt_m=self.frame_center_elev_m,
+            )
+        return None
+
+    def corners(self) -> Corners | None:
+        # Prefer absolute (tags 82-89) when fully populated.
+        absolute = (
+            self.corner_lat_p1_deg,
+            self.corner_lon_p1_deg,
+            self.corner_lat_p2_deg,
+            self.corner_lon_p2_deg,
+            self.corner_lat_p3_deg,
+            self.corner_lon_p3_deg,
+            self.corner_lat_p4_deg,
+            self.corner_lon_p4_deg,
+        )
+        if all(v is not None for v in absolute):
+            return Corners(
+                p1=(absolute[0], absolute[1]),  # type: ignore[arg-type]
+                p2=(absolute[2], absolute[3]),  # type: ignore[arg-type]
+                p3=(absolute[4], absolute[5]),  # type: ignore[arg-type]
+                p4=(absolute[6], absolute[7]),  # type: ignore[arg-type]
+            )
+        # Fall back to offsets + frame center.
+        if self.frame_center_lat_deg is None or self.frame_center_lon_deg is None:
+            return None
+        offsets = (
+            self.corner_lat_offset_p1_deg,
+            self.corner_lon_offset_p1_deg,
+            self.corner_lat_offset_p2_deg,
+            self.corner_lon_offset_p2_deg,
+            self.corner_lat_offset_p3_deg,
+            self.corner_lon_offset_p3_deg,
+            self.corner_lat_offset_p4_deg,
+            self.corner_lon_offset_p4_deg,
+        )
+        if not all(v is not None for v in offsets):
+            return None
+        lat0 = self.frame_center_lat_deg
+        lon0 = self.frame_center_lon_deg
+        return Corners(
+            p1=(lat0 + offsets[0], lon0 + offsets[1]),  # type: ignore[operator]
+            p2=(lat0 + offsets[2], lon0 + offsets[3]),  # type: ignore[operator]
+            p3=(lat0 + offsets[4], lon0 + offsets[5]),  # type: ignore[operator]
+            p4=(lat0 + offsets[6], lon0 + offsets[7]),  # type: ignore[operator]
+        )
+
+
+# Spec-compat alias.
+Klv0601 = UasDatalinkLs
+
+
+decode_uas_datalink = _native_mod.decode_uas_datalink
+
+
 __all__: list[str] = [
     "KlvFieldErrorKind",
     "KlvFieldError",
@@ -451,4 +654,7 @@ __all__: list[str] = [
     "Attitude",
     "FieldOfView",
     "Corners",
+    "UasDatalinkLs",
+    "Klv0601",
+    "decode_uas_datalink",
 ]

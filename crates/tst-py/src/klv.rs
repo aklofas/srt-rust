@@ -26,6 +26,10 @@ use tst_core::klv::st0102::{
     SecurityClassification as RustSecCls, SecurityLs, decode as decode_st0102_lenient,
     decode_strict as decode_st0102_strict,
 };
+use tst_core::klv::st0601::{
+    UasDatalinkLs, decode as decode_st0601_lenient, decode_strict as decode_st0601_strict,
+    decode_strict_compliance as decode_st0601_strict_compliance,
+};
 use tst_core::klv::st0605::{PrecisionTimeStampPack, decode as decode_st0605};
 use tst_core::klv::st0903::{
     VTargetPack as RustVTargetPack, VmtiLs, decode as decode_st0903_lenient,
@@ -452,6 +456,147 @@ fn decode_vmti_py(py: Python<'_>, buf: &[u8], strict: bool) -> PyResult<PyObject
 }
 
 // ---------------------------------------------------------------------------
+// ST 0601 — UAS Datalink LS
+// ---------------------------------------------------------------------------
+
+/// Translate a Rust `UasDatalinkLs` to a Python `tstrans.klv.UasDatalinkLs`
+/// dataclass instance. Mechanical 80-field projection.
+#[allow(clippy::cognitive_complexity)]
+fn convert_uas_datalink_ls(py: Python<'_>, r: &UasDatalinkLs) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "UasDatalinkLs"))?;
+    let kwargs = PyDict::new_bound(py);
+
+    kwargs.set_item(
+        "universal_label",
+        pyo3::types::PyBytes::new_bound(py, &r.universal_label.0),
+    )?;
+    kwargs.set_item("declared_version", r.declared_version)?;
+
+    // Optional<String>
+    macro_rules! os {
+        ($k:expr, $v:expr) => {
+            if let Some(s) = $v.as_ref() {
+                kwargs.set_item($k, s.as_str())?;
+            }
+        };
+    }
+    // Optional<scalar> (Copy)
+    macro_rules! op {
+        ($k:expr, $v:expr) => {
+            if let Some(v) = $v {
+                kwargs.set_item($k, v)?;
+            }
+        };
+    }
+    // Optional<Vec<u8>> — emit as Python `bytes` (not list[int]); the
+    // Python dataclass field is typed `bytes | None` and downstream
+    // typed decoders (`decode_security` / `decode_vmti`) take `bytes`.
+    macro_rules! ob {
+        ($k:expr, $v:expr) => {
+            if let Some(b) = $v.as_ref() {
+                kwargs.set_item($k, pyo3::types::PyBytes::new_bound(py, b.as_slice()))?;
+            }
+        };
+    }
+
+    os!("mission_id", r.mission_id);
+    os!("platform_tail_number", r.platform_tail_number);
+    os!("platform_designation", r.platform_designation);
+    os!("image_source_sensor", r.image_source_sensor);
+    os!("image_coordinate_system", r.image_coordinate_system);
+    os!("platform_call_sign", r.platform_call_sign);
+    op!("uas_ls_version", r.uas_ls_version);
+    op!("timestamp_us", r.timestamp_us);
+    op!("platform_heading_deg", r.platform_heading_deg);
+    op!("platform_pitch_deg", r.platform_pitch_deg);
+    op!("platform_roll_deg", r.platform_roll_deg);
+    op!("platform_true_airspeed", r.platform_true_airspeed);
+    op!("platform_indicated_airspeed", r.platform_indicated_airspeed);
+    op!("platform_pitch_full_deg", r.platform_pitch_full_deg);
+    op!("platform_roll_full_deg", r.platform_roll_full_deg);
+    op!(
+        "platform_angle_of_attack_deg",
+        r.platform_angle_of_attack_deg
+    );
+    op!("sensor_lat_deg", r.sensor_lat_deg);
+    op!("sensor_lon_deg", r.sensor_lon_deg);
+    op!("sensor_alt_m", r.sensor_alt_m);
+    op!("sensor_ellipsoid_height_m", r.sensor_ellipsoid_height_m);
+    op!("sensor_hfov_deg", r.sensor_hfov_deg);
+    op!("sensor_vfov_deg", r.sensor_vfov_deg);
+    op!("sensor_rel_az_deg", r.sensor_rel_az_deg);
+    op!("sensor_rel_el_deg", r.sensor_rel_el_deg);
+    op!("sensor_rel_roll_deg", r.sensor_rel_roll_deg);
+    op!("slant_range_m", r.slant_range_m);
+    op!("target_width_m", r.target_width_m);
+    op!("frame_center_lat_deg", r.frame_center_lat_deg);
+    op!("frame_center_lon_deg", r.frame_center_lon_deg);
+    op!("frame_center_elev_m", r.frame_center_elev_m);
+    op!(
+        "frame_center_ellipsoid_height_m",
+        r.frame_center_ellipsoid_height_m
+    );
+    op!("corner_lat_offset_p1_deg", r.corner_lat_offset_p1_deg);
+    op!("corner_lon_offset_p1_deg", r.corner_lon_offset_p1_deg);
+    op!("corner_lat_offset_p2_deg", r.corner_lat_offset_p2_deg);
+    op!("corner_lon_offset_p2_deg", r.corner_lon_offset_p2_deg);
+    op!("corner_lat_offset_p3_deg", r.corner_lat_offset_p3_deg);
+    op!("corner_lon_offset_p3_deg", r.corner_lon_offset_p3_deg);
+    op!("corner_lat_offset_p4_deg", r.corner_lat_offset_p4_deg);
+    op!("corner_lon_offset_p4_deg", r.corner_lon_offset_p4_deg);
+    op!("corner_lat_p1_deg", r.corner_lat_p1_deg);
+    op!("corner_lon_p1_deg", r.corner_lon_p1_deg);
+    op!("corner_lat_p2_deg", r.corner_lat_p2_deg);
+    op!("corner_lon_p2_deg", r.corner_lon_p2_deg);
+    op!("corner_lat_p3_deg", r.corner_lat_p3_deg);
+    op!("corner_lon_p3_deg", r.corner_lon_p3_deg);
+    op!("corner_lat_p4_deg", r.corner_lat_p4_deg);
+    op!("corner_lon_p4_deg", r.corner_lon_p4_deg);
+    op!("generic_flag_data", r.generic_flag_data);
+    ob!("security_local_set", r.security_local_set);
+    ob!("vmti", r.vmti);
+
+    kwargs.set_item("unknown", convert_unknown(py, &r.unknown)?)?;
+    kwargs.set_item("field_errors", convert_field_errors(py, &r.field_errors)?)?;
+
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+/// Decode an ST 0601 UAS Datalink LS. `buf` is the full wire-format
+/// payload starting with the 16-byte Universal Label.
+///
+/// - Default (lenient): any 16-byte UL accepted, checksum verified,
+///   field-level malformations collected in `.field_errors`.
+/// - `strict=True`: also requires the ST 0601 family UL pattern.
+/// - `compliance=True`: also enforces Tag 2 first / Tag 1 last /
+///   Tag 65 present / no duplicate tags / canonical BER. Implies
+///   `strict=True`.
+#[pyfunction]
+#[pyo3(
+    name = "decode_uas_datalink",
+    signature = (buf, *, strict = false, compliance = false)
+)]
+fn decode_uas_datalink_py(
+    py: Python<'_>,
+    buf: &[u8],
+    strict: bool,
+    compliance: bool,
+) -> PyResult<PyObject> {
+    let result = if compliance {
+        decode_st0601_strict_compliance(buf)
+    } else if strict {
+        decode_st0601_strict(buf)
+    } else {
+        decode_st0601_lenient(buf)
+    };
+    match result {
+        Ok(rec) => convert_uas_datalink_ls(py, &rec),
+        Err(e) => Err(klv_decode_error_to_pyerr(py, e)),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
 
@@ -459,5 +604,6 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(decode_precision_timestamp_py, m)?)?;
     m.add_function(wrap_pyfunction!(decode_security_py, m)?)?;
     m.add_function(wrap_pyfunction!(decode_vmti_py, m)?)?;
+    m.add_function(wrap_pyfunction!(decode_uas_datalink_py, m)?)?;
     Ok(())
 }

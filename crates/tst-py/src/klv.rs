@@ -318,10 +318,13 @@ fn convert_vtarget_pack(py: Python<'_>, p: &RustVTargetPack) -> PyResult<PyObjec
             }
         };
     }
+    // Optional<Vec<u8>> — emit as Python `bytes` (not list[int]); the
+    // Python dataclass fields are typed `bytes | None`. Matches the
+    // `ob!` macro in `convert_uas_datalink_ls`.
     macro_rules! opt_set_ref {
         ($key:expr, $val:expr) => {
             if let Some(v) = $val.as_ref() {
-                kwargs.set_item($key, v.as_slice())?;
+                kwargs.set_item($key, pyo3::types::PyBytes::new_bound(py, v.as_slice()))?;
             }
         };
     }
@@ -418,13 +421,19 @@ fn convert_vmti_ls(py: Python<'_>, v: &VmtiLs) -> PyResult<PyObject> {
         kwargs.set_item("vertical_fov", f)?;
     }
     if let Some(m) = v.miis_id.as_ref() {
-        kwargs.set_item("miis_id", m.as_slice())?;
+        kwargs.set_item("miis_id", pyo3::types::PyBytes::new_bound(py, m.as_slice()))?;
     }
     if let Some(b) = v.algorithm_series.as_ref() {
-        kwargs.set_item("algorithm_series", b.as_slice())?;
+        kwargs.set_item(
+            "algorithm_series",
+            pyo3::types::PyBytes::new_bound(py, b.as_slice()),
+        )?;
     }
     if let Some(b) = v.ontology_series.as_ref() {
-        kwargs.set_item("ontology_series", b.as_slice())?;
+        kwargs.set_item(
+            "ontology_series",
+            pyo3::types::PyBytes::new_bound(py, b.as_slice()),
+        )?;
     }
     let targets: Vec<PyObject> = v
         .targets

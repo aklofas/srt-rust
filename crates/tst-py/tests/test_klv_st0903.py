@@ -92,3 +92,12 @@ def test_unknown_tag_preserved():
     body = _minimal_vmti_body() + _tlv(50, b"hello")
     v = decode_vmti(body)
     assert any(tag == 50 for tag, _ in v.unknown)
+
+
+def test_vmti_ls_miis_id_is_bytes_not_list():
+    """Regression: `Option<Vec<u8>>` translators must emit Python `bytes`,
+    not `list[int]`. The dataclass field is typed `bytes | None`."""
+    body = _minimal_vmti_body() + _tlv(13, b"\xde\xad\xbe\xef")  # Tag 13 MIIS
+    v = decode_vmti(body)
+    assert isinstance(v.miis_id, bytes)
+    assert v.miis_id == b"\xde\xad\xbe\xef"

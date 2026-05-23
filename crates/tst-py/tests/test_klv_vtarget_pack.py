@@ -5,7 +5,7 @@ from dataclasses import fields
 
 import pytest
 
-from tstrans.klv import KlvFieldError, VTargetPack
+from tstrans.klv import KlvFieldError, VTargetPack, decode_vmti
 
 
 def test_vtarget_pack_has_target_id():
@@ -58,3 +58,27 @@ def test_vtarget_pack_field_count():
     """Sanity: ~30 fields per ST 0903.6 §10.2 Table 10."""
     f = fields(VTargetPack)
     assert len(f) >= 29
+
+
+def test_vtarget_pack_vmask_is_bytes_not_list():
+    """Regression: VTargetPack `Option<Vec<u8>>` translators must emit
+    Python `bytes`, not `list[int]`. Decodes through a synthetic
+    VTargetSeries (VmtiLs Tag 101) carrying one pack with a vmask
+    payload (pack-internal Tag 101)."""
+    # PSI baseline for VmtiLs decode: precision_time_stamp + version_number.
+    minimal_vmti = (
+        bytes([2, 8])
+        + (1_700_000_000_000_000).to_bytes(8, "big")
+        + bytes([4, 1, 6])
+    )
+    # VTargetPack body: BER-OID target_id=1, then Tag 101 vmask = 0xDEAD.
+    pack_body = bytes([0x01, 0x65, 0x02, 0xDE, 0xAD])
+    # VTargetSeries (VmtiLs Tag 101): each pack is BER-length-prefixed.
+    series = bytes([len(pack_body)]) + pack_body
+    body = minimal_vmti + bytes([101, len(series)]) + series
+
+    v = decode_vmti(body)
+    assert len(v.targets) == 1
+    assert v.targets[0].target_id == 1
+    assert isinstance(v.targets[0].vmask, bytes)
+    assert v.targets[0].vmask == b"\xde\xad"

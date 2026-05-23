@@ -585,7 +585,7 @@ fn demux_error_to_pyerr(py: Python<'_>, e: DemuxError) -> PyErr {
         DemuxError::MalformedPsi { .. } => "BAD_PMT",
         DemuxError::MalformedPes { .. } => "BAD_PES",
         DemuxError::SyncBufExhausted { .. } => "SYNC_LOSS",
-        // DemuxError is #[non_exhaustive]; forward-compat catch-all.
+        // DemuxError carries the non-exhaustive attribute; forward-compat catch-all.
         _ => "INTERNAL",
     };
     let msg = format!("{e}");

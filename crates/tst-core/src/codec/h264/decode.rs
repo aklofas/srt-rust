@@ -264,6 +264,8 @@ fn convert_sps(p: &SeqParameterSet, rbsp: &[u8]) -> Result<H264Sps, CodecParseEr
         crop_right,
         crop_top,
         crop_bottom,
+        // Surfaced for slice_header_light: frame_num bit width = log2_max_frame_num_minus4 + 4.
+        log2_max_frame_num_minus4: p.log2_max_frame_num_minus4,
         raw_rbsp: rbsp.to_vec(),
     })
 }

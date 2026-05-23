@@ -22,9 +22,11 @@
 
 mod decode;
 mod model;
+pub mod slice_header_light;
 
 #[cfg(test)]
 mod tests;
 
 pub use decode::{parse_parameter_sets, parse_pps, parse_sps};
 pub use model::{EntropyCodingMode, H264ParameterSets, H264Pps, H264Sps};
+pub use slice_header_light::{H264SliceHeaderLight, H264SliceType, parse_slice_header_light};

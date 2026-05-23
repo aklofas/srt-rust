@@ -35,6 +35,10 @@ pub struct H264Sps {
     pub crop_right: u32,
     pub crop_top: u32,
     pub crop_bottom: u32,
+    /// `log2_max_frame_num_minus4` (H.264 §7.4.2.1.1). The bit width of
+    /// `frame_num` in slice headers equals this + 4. Surfaced for
+    /// `slice_header_light::parse_slice_header_light`.
+    pub log2_max_frame_num_minus4: u8,
     /// The original RBSP bytes as supplied by the caller.
     pub raw_rbsp: Vec<u8>,
 }

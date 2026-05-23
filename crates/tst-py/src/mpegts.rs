@@ -19,14 +19,14 @@ use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList, PyTuple};
 
+use tst_core::error::DemuxError;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::event::AudioCodec;
 use tst_core::mpegts::demux::{
-    DemuxEvent, Demuxer, DemuxerBuilder, DiscontinuityKind, LinkSource,
-    MetadataKind, NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo,
-    StreamKind, StrictMode, SubtitleCodec, VideoCodec, VideoPayload,
+    DemuxEvent, Demuxer, DemuxerBuilder, DiscontinuityKind, LinkSource, MetadataKind,
+    NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, StrictMode,
+    SubtitleCodec, VideoCodec, VideoPayload,
 };
-use tst_core::error::DemuxError;
 
 use crate::errors::make_demux_error;
 
@@ -119,10 +119,7 @@ impl PyDemuxer {
 // ---------------------------------------------------------------------------
 
 /// Build a `Demuxer` from an optional Python `DemuxerConfig` dataclass.
-fn build_demuxer(
-    py: Python<'_>,
-    config: Option<&Bound<'_, PyAny>>,
-) -> PyResult<Demuxer> {
+fn build_demuxer(py: Python<'_>, config: Option<&Bound<'_, PyAny>>) -> PyResult<Demuxer> {
     let mut b = DemuxerBuilder::new();
     if let Some(cfg) = config {
         let strict_attr = cfg.getattr(intern!(py, "strict_mode"))?;
@@ -158,12 +155,18 @@ fn convert_event(py: Python<'_>, ev: &DemuxEvent) -> PyResult<PyObject> {
     let mpegts = py.import_bound("tstrans.mpegts")?;
     match ev {
         DemuxEvent::ProgramMap(pm) => convert_program_map_event(py, &mpegts, pm),
-        DemuxEvent::Sample { stream, pts, dts, payload } => {
-            convert_sample_event(py, &mpegts, stream, *pts, *dts, payload)
-        }
-        DemuxEvent::Metadata { stream, pts, kind, payload } => {
-            convert_metadata_event(py, &mpegts, stream, *pts, kind, payload)
-        }
+        DemuxEvent::Sample {
+            stream,
+            pts,
+            dts,
+            payload,
+        } => convert_sample_event(py, &mpegts, stream, *pts, *dts, payload),
+        DemuxEvent::Metadata {
+            stream,
+            pts,
+            kind,
+            payload,
+        } => convert_metadata_event(py, &mpegts, stream, *pts, kind, payload),
         DemuxEvent::Discontinuity { stream, kind } => {
             convert_discontinuity_event(py, &mpegts, stream, kind)
         }
@@ -261,27 +264,23 @@ fn stream_kind_to_py(
     let kind_enum = mpegts.getattr(intern!(py, "StreamKindTag"))?;
     let none = py.None();
     match kind {
-        StreamKind::Video(c) => {
-            Ok((kind_enum.getattr(intern!(py, "VIDEO"))?.into(),
-                video_codec_to_py(py, mpegts, c)?))
-        }
-        StreamKind::Audio(c) => {
-            Ok((kind_enum.getattr(intern!(py, "AUDIO"))?.into(),
-                audio_codec_to_py(py, mpegts, c)?))
-        }
-        StreamKind::Subtitle(c) => {
-            Ok((kind_enum.getattr(intern!(py, "SUBTITLE"))?.into(),
-                subtitle_codec_to_py(py, mpegts, c)?))
-        }
+        StreamKind::Video(c) => Ok((
+            kind_enum.getattr(intern!(py, "VIDEO"))?.into(),
+            video_codec_to_py(py, mpegts, c)?,
+        )),
+        StreamKind::Audio(c) => Ok((
+            kind_enum.getattr(intern!(py, "AUDIO"))?.into(),
+            audio_codec_to_py(py, mpegts, c)?,
+        )),
+        StreamKind::Subtitle(c) => Ok((
+            kind_enum.getattr(intern!(py, "SUBTITLE"))?.into(),
+            subtitle_codec_to_py(py, mpegts, c)?,
+        )),
         StreamKind::KlvSync { .. } => {
             Ok((kind_enum.getattr(intern!(py, "KLV_SYNC"))?.into(), none))
         }
-        StreamKind::KlvAsync => {
-            Ok((kind_enum.getattr(intern!(py, "KLV_ASYNC"))?.into(), none))
-        }
-        StreamKind::Unknown(_) => {
-            Ok((kind_enum.getattr(intern!(py, "UNKNOWN"))?.into(), none))
-        }
+        StreamKind::KlvAsync => Ok((kind_enum.getattr(intern!(py, "KLV_ASYNC"))?.into(), none)),
+        StreamKind::Unknown(_) => Ok((kind_enum.getattr(intern!(py, "UNKNOWN"))?.into(), none)),
     }
 }
 
@@ -346,7 +345,9 @@ fn link_source_to_py(
 
 fn pts_to_py(py: Python<'_>, mpegts: &Bound<'_, PyModule>, p: Pts90khz) -> PyResult<PyObject> {
     let cls = mpegts.getattr(intern!(py, "Pts90khz"))?;
-    Ok(cls.call_method1(intern!(py, "from_raw"), (p.as_ticks(),))?.into())
+    Ok(cls
+        .call_method1(intern!(py, "from_raw"), (p.as_ticks(),))?
+        .into())
 }
 
 fn opt_pts_to_py(
@@ -373,7 +374,11 @@ fn convert_sample_event(
     let dts_py = opt_pts_to_py(py, mpegts, dts)?;
     let de = mpegts.getattr(intern!(py, "DemuxEvent"))?;
     match payload {
-        SamplePayload::Video { codec, payload, random_access_indicator } => {
+        SamplePayload::Video {
+            codec,
+            payload,
+            random_access_indicator,
+        } => {
             let nals_bytes = concat_video_payload(payload);
             let cls = de.getattr(intern!(py, "Video"))?;
             let kwargs = PyDict::new_bound(py);
@@ -405,7 +410,10 @@ fn convert_sample_event(
             kwargs.set_item("payload", PyBytes::new_bound(py, payload))?;
             Ok(cls.call((), Some(&kwargs))?.into())
         }
-        SamplePayload::Unknown { stream_type: _, raw } => {
+        SamplePayload::Unknown {
+            stream_type: _,
+            raw,
+        } => {
             // No typed Video/Audio/Subtitle subclass fits; surface as
             // NonConformant with an OTHER kind. Phase 5 (codec wrap)
             // may add typed Unknown support if needed.

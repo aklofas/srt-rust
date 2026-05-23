@@ -24,5 +24,13 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(errors::raise_mux_error_for_test, m)?)?;
     mpegts::register(m)?;
     klv::register(m)?;
+    // Phase 4 Task 3: stream handle newtypes. Registered here (not in
+    // mux::register) because Task 3 is the first surface to land in
+    // src/mux.rs; later tasks may add a `mux::register` helper if more
+    // classes accumulate.
+    m.add_class::<crate::mux::PyVideoStreamHandle>()?;
+    m.add_class::<crate::mux::PyAudioStreamHandle>()?;
+    m.add_class::<crate::mux::PyKlvStreamHandle>()?;
+    m.add_class::<crate::mux::PySubtitleStreamHandle>()?;
     Ok(())
 }

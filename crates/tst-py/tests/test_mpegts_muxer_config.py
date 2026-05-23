@@ -3,15 +3,19 @@
 import pytest
 
 from tstrans.mpegts import (
-    Av1CarriageMode,
     AudioCodec,
+    AudioStreamHandle,
     AudioStreamSpec,
+    Av1CarriageMode,
+    KlvStreamHandle,
     KlvStreamSpec,
     KlvStreamType,
     StreamSpec,
     SubtitleCodec,
+    SubtitleStreamHandle,
     SubtitleStreamSpec,
     VideoCodec,
+    VideoStreamHandle,
     VideoStreamSpec,
 )
 
@@ -54,3 +58,39 @@ def test_stream_spec_subclasses_inherit_from_stream_spec_abc():
     assert issubclass(KlvStreamSpec, StreamSpec)
     assert issubclass(AudioStreamSpec, StreamSpec)
     assert issubclass(SubtitleStreamSpec, StreamSpec)
+
+
+def test_handle_raw_round_trip():
+    h = VideoStreamHandle.from_raw(0x12345678)
+    assert h.raw == 0x12345678
+
+
+def test_handle_equality_and_hash():
+    a = AudioStreamHandle.from_raw(42)
+    b = AudioStreamHandle.from_raw(42)
+    c = AudioStreamHandle.from_raw(43)
+    assert a == b
+    assert hash(a) == hash(b)
+    assert a != c
+
+
+def test_handles_are_distinct_types():
+    v = VideoStreamHandle.from_raw(1)
+    a = AudioStreamHandle.from_raw(1)
+    assert type(v) is not type(a)
+    assert v != a  # different types, even with same raw
+
+
+def test_handle_repr_includes_class_name_and_raw():
+    h = KlvStreamHandle.from_raw(0xDEAD)
+    r = repr(h)
+    assert "KlvStreamHandle" in r
+    # 0xDEAD = 57005 — accept any reasonable rendering
+    assert ("57005" in r) or ("0xdead" in r.lower()) or ("DEAD" in r)
+
+
+def test_handle_unpack():
+    h = SubtitleStreamHandle.from_raw(0)
+    program_idx, within_idx = h.unpack()
+    assert isinstance(program_idx, int)
+    assert isinstance(within_idx, int)

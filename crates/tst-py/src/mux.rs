@@ -14,7 +14,9 @@
 use pyo3::prelude::*;
 
 use tst_core::mpegts::mux::{
-    Av1CarriageMode as RustAv1CarriageMode, KlvStreamType as RustKlvStreamType,
+    AudioStreamHandle as RustAudioStreamHandle, Av1CarriageMode as RustAv1CarriageMode,
+    KlvStreamHandle as RustKlvStreamHandle, KlvStreamType as RustKlvStreamType,
+    SubtitleStreamHandle as RustSubtitleStreamHandle, VideoStreamHandle as RustVideoStreamHandle,
 };
 
 /// Translate a Python `KlvStreamType` enum value (string-valued) to
@@ -79,4 +81,143 @@ pub(crate) fn av1_carriage_to_py(
         }
     };
     cls.getattr(name)
+}
+
+// ---------------------------------------------------------------------------
+// Stream handle newtypes — one PyO3 wrapper per Rust handle kind.
+// ---------------------------------------------------------------------------
+//
+// The Rust handles are `Copy + Eq + Hash` u32 newtypes. PyO3 needs the
+// `frozen + eq + hash` pyclass flags to expose `__eq__` + `__hash__`
+// based on the derived `PartialEq + Eq + Hash` impls. `from_raw` is a
+// staticmethod so callers can round-trip handles through the C ABI or
+// reconstruct them from saved state. Deliberate per-kind repetition
+// (~25 LoC × 4) keeps each class trivially auditable; a macro would
+// hide the `name` / `module` / repr-string per-kind variation that the
+// Python tests rely on.
+
+/// Opaque handle for a video stream within a configured muxer.
+/// Obtain from `Muxer.video_handles()`. Equality + hash by raw `u32`.
+#[pyclass(
+    name = "VideoStreamHandle",
+    module = "tstrans.mpegts",
+    frozen,
+    eq,
+    hash
+)]
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct PyVideoStreamHandle(pub(crate) RustVideoStreamHandle);
+
+#[pymethods]
+impl PyVideoStreamHandle {
+    #[staticmethod]
+    pub fn from_raw(raw: u32) -> Self {
+        Self(RustVideoStreamHandle::from_raw(raw))
+    }
+
+    #[getter]
+    pub fn raw(&self) -> u32 {
+        self.0.raw()
+    }
+
+    pub fn unpack(&self) -> (usize, usize) {
+        self.0.unpack()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("VideoStreamHandle(raw={})", self.0.raw())
+    }
+}
+
+/// Opaque handle for an audio stream within a configured muxer.
+/// Obtain from `Muxer.audio_handles()`. Equality + hash by raw `u32`.
+#[pyclass(
+    name = "AudioStreamHandle",
+    module = "tstrans.mpegts",
+    frozen,
+    eq,
+    hash
+)]
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct PyAudioStreamHandle(pub(crate) RustAudioStreamHandle);
+
+#[pymethods]
+impl PyAudioStreamHandle {
+    #[staticmethod]
+    pub fn from_raw(raw: u32) -> Self {
+        Self(RustAudioStreamHandle::from_raw(raw))
+    }
+
+    #[getter]
+    pub fn raw(&self) -> u32 {
+        self.0.raw()
+    }
+
+    pub fn unpack(&self) -> (usize, usize) {
+        self.0.unpack()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("AudioStreamHandle(raw={})", self.0.raw())
+    }
+}
+
+/// Opaque handle for a KLV stream within a configured muxer.
+/// Obtain from `Muxer.klv_handles()`. Equality + hash by raw `u32`.
+#[pyclass(name = "KlvStreamHandle", module = "tstrans.mpegts", frozen, eq, hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct PyKlvStreamHandle(pub(crate) RustKlvStreamHandle);
+
+#[pymethods]
+impl PyKlvStreamHandle {
+    #[staticmethod]
+    pub fn from_raw(raw: u32) -> Self {
+        Self(RustKlvStreamHandle::from_raw(raw))
+    }
+
+    #[getter]
+    pub fn raw(&self) -> u32 {
+        self.0.raw()
+    }
+
+    pub fn unpack(&self) -> (usize, usize) {
+        self.0.unpack()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("KlvStreamHandle(raw={})", self.0.raw())
+    }
+}
+
+/// Opaque handle for a subtitle stream within a configured muxer.
+/// Obtain from `Muxer.subtitle_handles()`. Equality + hash by raw `u32`.
+#[pyclass(
+    name = "SubtitleStreamHandle",
+    module = "tstrans.mpegts",
+    frozen,
+    eq,
+    hash
+)]
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct PySubtitleStreamHandle(pub(crate) RustSubtitleStreamHandle);
+
+#[pymethods]
+impl PySubtitleStreamHandle {
+    #[staticmethod]
+    pub fn from_raw(raw: u32) -> Self {
+        Self(RustSubtitleStreamHandle::from_raw(raw))
+    }
+
+    #[getter]
+    pub fn raw(&self) -> u32 {
+        self.0.raw()
+    }
+
+    pub fn unpack(&self) -> (usize, usize) {
+        self.0.unpack()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("SubtitleStreamHandle(raw={})", self.0.raw())
+    }
 }

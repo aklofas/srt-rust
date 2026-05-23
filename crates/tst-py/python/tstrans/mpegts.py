@@ -448,6 +448,14 @@ from tstrans import _native as _native_mod
 
 Demuxer = _native_mod.Demuxer
 
+# Phase 4 Task 3 — stream handle newtypes. Rust impls live in
+# crates/tst-py/src/mux.rs as `Py{Video,Audio,Klv,Subtitle}StreamHandle`,
+# exposed on `_native` under the names below via `#[pyclass(name=...)]`.
+VideoStreamHandle = _native_mod.VideoStreamHandle
+AudioStreamHandle = _native_mod.AudioStreamHandle
+KlvStreamHandle = _native_mod.KlvStreamHandle
+SubtitleStreamHandle = _native_mod.SubtitleStreamHandle
+
 # Population happens task-by-task. __all__ accumulates as types land.
 __all__: list[str] = [
     "Pts90khz",
@@ -475,4 +483,8 @@ __all__: list[str] = [
     "DemuxEvent",
     "DemuxerConfig",
     "Demuxer",
+    "VideoStreamHandle",
+    "AudioStreamHandle",
+    "KlvStreamHandle",
+    "SubtitleStreamHandle",
 ]

@@ -36,6 +36,7 @@ mod pps;
 mod profile_tier_level;
 mod short_term_rps;
 mod sps;
+pub mod slice_header_light;
 mod vps;
 mod vui;
 
@@ -44,6 +45,7 @@ mod tests;
 
 pub use pps::{H265Pps, parse_pps};
 pub use profile_tier_level::H265ProfileTierLevel;
+pub use slice_header_light::{H265SliceHeaderLight, H265SliceType, parse_slice_header_light};
 pub use sps::{H265Sps, parse_sps};
 pub use vps::{H265Vps, parse_vps};
 

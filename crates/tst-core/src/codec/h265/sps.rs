@@ -48,6 +48,10 @@ pub struct H265Sps {
     pub crop_right: u32,
     pub crop_top: u32,
     pub crop_bottom: u32,
+    /// `log2_max_pic_order_cnt_lsb_minus4` (H.265 §7.4.3.2.1). The bit width
+    /// of `pic_order_cnt_lsb` in slice headers equals this value plus 4.
+    /// Surfaced for use by `slice_header_light::parse_slice_header_light`.
+    pub log2_max_pic_order_cnt_lsb_minus4: u8,
     pub raw_rbsp: Vec<u8>,
 }
 
@@ -260,6 +264,7 @@ pub fn parse_sps(rbsp: &[u8]) -> Result<H265Sps, CodecParseError> {
         crop_right: crop_x_right,
         crop_top: crop_y_top,
         crop_bottom: crop_y_bottom,
+        log2_max_pic_order_cnt_lsb_minus4: log2_max_pic_order_cnt_lsb_minus4 as u8,
         raw_rbsp: rbsp.to_vec(),
     })
 }

@@ -31,7 +31,7 @@ use pyo3::types::PyDict;
 /// inside the `Muxer.push_video` / `push_klv` / `push_audio` wrappers.
 ///
 /// `kind_variant` is the Python-side `MuxErrorKind` Enum variant name
-/// (e.g. `"INVALID_CONFIG"`, `"INTERNAL"`). Caller must pass a valid
+/// (e.g. `"CONFIG_INVALID"`, `"INTERNAL"`). Caller must pass a valid
 /// variant — invalid names raise `AttributeError` from
 /// `MuxErrorKind.<NAME>` lookup, which surfaces as a `PyErr` and is
 /// returned in place of the intended `MuxError`.
@@ -144,4 +144,95 @@ pub fn make_klv_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyEr
 #[pyo3(name = "_raise_mux_error_for_test")]
 pub fn raise_mux_error_for_test(py: Python<'_>, message: &str) -> PyResult<()> {
     Err(make_mux_error(py, "INTERNAL", message))
+}
+
+// ---------------------------------------------------------------------------
+// Rust-typed → PyErr mappers — Phase 4 (Muxer wrap)
+// ---------------------------------------------------------------------------
+
+/// Map a Rust `MuxError` to a Python `MuxError` instance. Routes
+/// via the 5-variant `MuxSenderErrorKind` coarse classification —
+/// the muxer's `kind()` accessor (plan #91) is the source of truth
+/// for which Python `MuxErrorKind` variant to use.
+///
+/// The `MuxSenderErrorKind` enum is `#[non_exhaustive]`; the wildcard
+/// arm routes unknown future variants to `INTERNAL` so this fn never
+/// panics on a Rust-side enum addition (the test suite will surface
+/// the omission when the new variant gets a tagged-test fixture).
+///
+/// Called from Phase 4 Muxer wrappers — unused until those land.
+#[allow(dead_code)]
+pub(crate) fn mux_error_to_pyerr(py: Python<'_>, e: tst_core::MuxError) -> PyErr {
+    use tst_core::error::MuxSenderErrorKind;
+    let kind_str = match e.kind() {
+        MuxSenderErrorKind::InputMalformed => "INPUT_MALFORMED",
+        MuxSenderErrorKind::ConfigInvalid => "CONFIG_INVALID",
+        MuxSenderErrorKind::InvalidUsage => "INVALID_USAGE",
+        MuxSenderErrorKind::Backpressure => "BACKPRESSURE",
+        MuxSenderErrorKind::Internal => "INTERNAL",
+        _ => "INTERNAL",
+    };
+    let msg = e.to_string();
+    make_mux_error(py, kind_str, &msg)
+}
+
+/// Map a Rust `KlvEncodeError` to a Python `KlvEncodeError` instance.
+/// Covers all 8 variants; the wildcard arm routes to `BUFFER_TOO_SMALL`
+/// (a benign "encode failed; widen output buffer" fallback) for any
+/// future Rust variants introduced through the `#[non_exhaustive]`
+/// hatch — explicit arms get added as new variants surface.
+///
+/// Where the Rust variant carries a `tag` field (`OutOfRange`,
+/// `StringTooLong`, `MissingMandatoryItem`, `ReservedTagInUnknown`)
+/// it is forwarded to the Python `KlvEncodeError.tag` attribute.
+/// Variants without a tag (`BufferTooSmall`, `RecordTooLarge`,
+/// `UnsupportedImapbLength`, `InvalidImapbParams`) leave `.tag = None`.
+///
+/// Called from Phase 4 KLV `encode_*` wrappers — unused until those land.
+#[allow(dead_code)]
+pub(crate) fn klv_encode_error_to_pyerr(py: Python<'_>, e: tst_core::KlvEncodeError) -> PyErr {
+    use tst_core::error::KlvEncodeError as RustE;
+    let (kind_str, tag): (&str, Option<u32>) = match &e {
+        RustE::BufferTooSmall { .. } => ("BUFFER_TOO_SMALL", None),
+        RustE::RecordTooLarge => ("RECORD_TOO_LARGE", None),
+        RustE::OutOfRange { tag, .. } => ("OUT_OF_RANGE", Some(*tag)),
+        RustE::StringTooLong { tag, .. } => ("STRING_TOO_LONG", Some(*tag)),
+        RustE::UnsupportedImapbLength { .. } => ("UNSUPPORTED_IMAPB_LENGTH", None),
+        RustE::InvalidImapbParams { .. } => ("INVALID_IMAPB_PARAMS", None),
+        RustE::MissingMandatoryItem { tag, .. } => {
+            ("MISSING_MANDATORY_ITEM", Some(u32::from(*tag)))
+        }
+        RustE::ReservedTagInUnknown { tag } => ("RESERVED_TAG_IN_UNKNOWN", Some(*tag)),
+        _ => ("BUFFER_TOO_SMALL", None),
+    };
+    let msg = e.to_string();
+    let exceptions = match py.import_bound("tstrans.exceptions") {
+        Ok(m) => m,
+        Err(err) => return err,
+    };
+    let kind_enum = match exceptions.getattr(intern!(py, "KlvEncodeErrorKind")) {
+        Ok(en) => en,
+        Err(err) => return err,
+    };
+    let kind_value = match kind_enum.getattr(kind_str) {
+        Ok(v) => v,
+        Err(err) => return err,
+    };
+    let cls = match exceptions.getattr(intern!(py, "KlvEncodeError")) {
+        Ok(c) => c,
+        Err(err) => return err,
+    };
+    let kwargs = PyDict::new_bound(py);
+    if let Err(err) = kwargs.set_item("kind", kind_value) {
+        return err;
+    }
+    if let Some(t) = tag {
+        if let Err(err) = kwargs.set_item("tag", t) {
+            return err;
+        }
+    }
+    match cls.call((msg,), Some(&kwargs)) {
+        Ok(instance) => PyErr::from_value_bound(instance),
+        Err(err) => err,
+    }
 }

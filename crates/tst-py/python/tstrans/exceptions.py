@@ -1,27 +1,25 @@
 """Exception hierarchy raised by tstrans.
 
 Every error raised by any tstrans surface is a subclass of `TstError`.
-Domain errors (`MuxError`, `DemuxError`, `KlvError`, `CodecError`) carry
-a typed `.kind` attribute matching the corresponding Rust *ErrorKind
-enum. These enums mirror Rust enums marked `#[non_exhaustive]`, so new
-variants may appear in minor releases; matchers should include a
-default arm.
+Domain errors (`MuxError`, `DemuxError`, `KlvError`, `KlvEncodeError`,
+`CodecError`) carry a typed `.kind` attribute matching the corresponding
+Rust *ErrorKind enum. These enums mirror Rust enums marked
+`#[non_exhaustive]`, so new variants may appear in minor releases;
+matchers should include a default arm.
 
 Field-level KLV parse warnings are NOT raised — they live on the
 parsed object as `field_errors`, matching Rust's "best-effort parse"
 semantics for ST 0601 in the field.
 
-**Variants in this Phase 0+1 release are preliminary placeholders.**
-Each `*ErrorKind` enum will be refined in the domain-specific phase
-plans (Phase 2 for `DemuxErrorKind`, Phase 3 for `KlvErrorKind`,
-Phase 4 for `MuxErrorKind`, Phase 5 for `CodecErrorKind`) once the
-corresponding Rust types are actually wrapped. `INTERNAL` is the
-catch-all for any Rust error variant not yet modeled — Phase 2+
-PyO3 code maps unmodeled Rust variants to `INTERNAL` until a more
-specific Python variant is added.
+`MuxErrorKind` was refined in Phase 4 (Muxer wrap) to mirror Rust's
+5-variant `tst_core::error::MuxSenderErrorKind` coarse-tier categorical
+classification. `KlvEncodeErrorKind` ships in Phase 4 alongside the
+`klv.encode_*` Python wrappers. `DemuxErrorKind` / `KlvErrorKind` /
+`CodecErrorKind` are placeholders refined in their owning phases.
 """
 
 import enum
+from typing import Optional
 
 
 class TstError(Exception):
@@ -29,15 +27,40 @@ class TstError(Exception):
     handle anything from this package."""
 
 
-class MuxErrorKind(enum.Enum):
-    """Mirrors Rust's `tst_core::mpegts::MuxError` variants. Marked
-    `#[non_exhaustive]` on the Rust side; new variants may appear in
-    minor releases."""
+class MuxErrorKind(enum.IntEnum):
+    """Mirrors Rust `tst_core::error::MuxSenderErrorKind` — the
+    coarse-tier 5-variant classification of muxer-side failures
+    introduced in plan #91. Every `MuxError` carries one of these on
+    `.kind` for programmatic matching; the underlying free-text message
+    captures the specific Rust `MuxError` variant.
 
-    INVALID_CONFIG = "invalid_config"
-    MISSING_STREAM = "missing_stream"
-    PID_CONFLICT = "pid_conflict"
-    INTERNAL = "internal"
+    The Rust enum is `#[non_exhaustive]`; Python matchers should
+    include a default arm. Mapping is performed by
+    `tst_py::errors::make_mux_error` in Rust, which translates from
+    `MuxSenderErrorKind` to this enum's variant name via SHOUTY_SNAKE.
+    """
+
+    # Caller pushed input bytes that don't conform — non-Annex-B NAL,
+    # KLV / audio / subtitle PES payloads over the 16-bit PES length cap.
+    INPUT_MALFORMED = 0
+
+    # `MuxerConfig::validate()` rejected the construction-time config —
+    # duplicate PIDs, too many streams, malformed descriptor TLV,
+    # PCR-PID conflicts, ISO 639 / DVB teletext field violations, PMT
+    # over-budget, etc. The muxer was not constructed.
+    CONFIG_INVALID = 1
+
+    # API misuse on a successfully-built muxer — wrong-muxer stream
+    # handle, ambiguous-target shorthand on a multi-stream muxer,
+    # unknown program reference, out-of-range descriptor / abs index.
+    INVALID_USAGE = 2
+
+    # Muxer output buffer is full; drain via pull and retry.
+    BACKPRESSURE = 3
+
+    # Bug-path invariant tripped inside the muxer — should not occur in
+    # well-formed use; file an issue with reproduction bytes.
+    INTERNAL = 4
 
 
 class DemuxErrorKind(enum.Enum):
@@ -73,6 +96,29 @@ class KlvErrorKind(enum.Enum):
     INTERNAL = "internal"
 
 
+class KlvEncodeErrorKind(enum.IntEnum):
+    """Mirrors Rust `tst_core::error::KlvEncodeError` variant tags.
+    Raised by KLV `encode_*` functions when a typed record cannot be
+    serialized to wire bytes — output buffer too small, value outside
+    the spec-declared range, IMAPB params violating ST 1201.5 §6
+    preconditions, mandatory ST 0601 items missing under
+    `encode_strict_compliance`, or a reserved tag placed in `unknown`.
+
+    The Rust enum is `#[non_exhaustive]`; new variants land as the
+    encoder catches more failure modes. Python matchers should include
+    a default arm.
+    """
+
+    BUFFER_TOO_SMALL = 0
+    RECORD_TOO_LARGE = 1
+    OUT_OF_RANGE = 2
+    STRING_TOO_LONG = 3
+    UNSUPPORTED_IMAPB_LENGTH = 4
+    INVALID_IMAPB_PARAMS = 5
+    MISSING_MANDATORY_ITEM = 6
+    RESERVED_TAG_IN_UNKNOWN = 7
+
+
 class CodecErrorKind(enum.Enum):
     """Mirrors Rust's `tst_core::codec` error variants."""
 
@@ -84,15 +130,33 @@ class CodecErrorKind(enum.Enum):
 
 
 class MuxError(TstError):
-    """Raised by `tstrans.mpegts.Muxer` operations."""
+    """Raised by `tstrans.mpegts.Muxer` construction, `push_*`, and
+    builder `.build()` calls. Carries `MuxErrorKind` on `.kind` and a
+    free-text message on `.message` / `.args[0]`. Optional `.pid` is
+    populated for stream-not-found and PID-conflict diagnostics.
+
+    Both signatures supported:
+      `MuxError("bad config", kind=MuxErrorKind.CONFIG_INVALID)`
+      `MuxError(kind=MuxErrorKind.CONFIG_INVALID, message="bad config")`
+    """
 
     kind: MuxErrorKind
     message: str
+    pid: Optional[int]
 
-    def __init__(self, *, kind: MuxErrorKind, message: str) -> None:
+    def __init__(
+        self,
+        message: Optional[str] = None,
+        *,
+        kind: MuxErrorKind,
+        pid: Optional[int] = None,
+    ) -> None:
+        if message is None:
+            raise TypeError("MuxError requires a message (positional or via message=)")
         super().__init__(message)
         self.kind = kind
         self.message = message
+        self.pid = pid
 
 
 class DemuxError(TstError):
@@ -108,9 +172,9 @@ class DemuxError(TstError):
 
 
 class KlvError(TstError):
-    """Raised by `tstrans.klv` set-level decoders / encoders. Field-level
-    warnings appear as `field_errors` on the returned typed-set object,
-    not raised."""
+    """Raised by `tstrans.klv` set-level decoders. Field-level warnings
+    appear as `field_errors` on the returned typed-set object, not
+    raised."""
 
     kind: KlvErrorKind
     message: str
@@ -119,6 +183,35 @@ class KlvError(TstError):
         super().__init__(message)
         self.kind = kind
         self.message = message
+
+
+class KlvEncodeError(TstError):
+    """Raised by `tstrans.klv.encode_*` functions when the typed record
+    cannot be serialized. Carries `.kind` (`KlvEncodeErrorKind`) and
+    optional `.tag` (the ST item code that triggered the rejection,
+    where applicable — e.g. `OUT_OF_RANGE`, `STRING_TOO_LONG`,
+    `MISSING_MANDATORY_ITEM`, `RESERVED_TAG_IN_UNKNOWN`). `BUFFER_TOO_SMALL`,
+    `RECORD_TOO_LARGE`, `UNSUPPORTED_IMAPB_LENGTH`, and
+    `INVALID_IMAPB_PARAMS` have no associated tag — `.tag` is `None`.
+    """
+
+    kind: KlvEncodeErrorKind
+    message: str
+    tag: Optional[int]
+
+    def __init__(
+        self,
+        message: Optional[str] = None,
+        *,
+        kind: KlvEncodeErrorKind,
+        tag: Optional[int] = None,
+    ) -> None:
+        if message is None:
+            raise TypeError("KlvEncodeError requires a message (positional or via message=)")
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+        self.tag = tag
 
 
 class CodecError(TstError):
@@ -144,6 +237,8 @@ __all__ = [
     "DemuxErrorKind",
     "KlvError",
     "KlvErrorKind",
+    "KlvEncodeError",
+    "KlvEncodeErrorKind",
     "CodecError",
     "CodecErrorKind",
 ]

@@ -1,9 +1,13 @@
 # Python build artifacts
 *.pyc
-*.so
 __pycache__/
 *.egg-info/
 .pytest_cache/
+# Compiled extension modules (one per platform)
+*.so
+*.dylib
+*.dll
+*.pyd
 
 # maturin / pip
 target/wheels/

@@ -61,6 +61,14 @@ parse_h266_slice_header_light = _native_mod.parse_h266_slice_header_light
 parse_h266_sps = _native_mod.parse_h266_sps
 parse_h266_vps = _native_mod.parse_h266_vps
 
+# AV1
+Av1FrameHeaderLight = _native_mod.Av1FrameHeaderLight
+Av1ObuStream = _native_mod.Av1ObuStream
+Av1SequenceHeader = _native_mod.Av1SequenceHeader
+parse_av1_frame_header_light = _native_mod.parse_av1_frame_header_light
+parse_av1_obu_stream = _native_mod.parse_av1_obu_stream
+parse_av1_sequence_header = _native_mod.parse_av1_sequence_header
+
 __all__ = [
     "ChromaFormat",
     "ColorInfo",
@@ -108,4 +116,11 @@ __all__ = [
     "parse_h266_slice_header_light",
     "parse_h266_sps",
     "parse_h266_vps",
+    # AV1
+    "Av1FrameHeaderLight",
+    "Av1ObuStream",
+    "Av1SequenceHeader",
+    "parse_av1_frame_header_light",
+    "parse_av1_obu_stream",
+    "parse_av1_sequence_header",
 ]

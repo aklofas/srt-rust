@@ -1197,6 +1197,7 @@ impl H265ProfileTierLevelPy {
 /// `H265Sps` or `H265Vps` (which both carry the PTL fields flattened).
 /// `general_profile_space` is not stored on either of those types (it is
 /// always 0 for all ITU-T registered profiles).
+#[allow(clippy::too_many_arguments)]
 fn ptl_from_sps_fields(
     general_tier_flag: bool,
     general_profile_idc: u8,
@@ -2349,6 +2350,292 @@ fn parse_h266_slice_header_light_py(
         .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h266"))
 }
 
+// === AV1 ===
+
+use tst_core::codec::av1::{
+    parse_frame_header_light as rust_parse_av1_frame_header_light,
+    parse_obu_stream as rust_parse_av1_obu_stream,
+    parse_sequence_header as rust_parse_av1_sequence_header,
+    Av1FrameHeaderLight as RustAv1FrameHeaderLight,
+    Av1ObuStream as RustAv1ObuStream,
+    Av1SequenceHeader as RustAv1SequenceHeader,
+};
+use tst_core::mpegts::demux::event::{Obu as RustObu, ObuExtension as RustObuExtension};
+
+/// Parsed AV1 Sequence Header OBU. Mirrors `tst_core::codec::av1::Av1SequenceHeader`.
+#[pyclass(name = "Av1SequenceHeader", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct Av1SequenceHeaderPy {
+    inner: RustAv1SequenceHeader,
+}
+
+#[pymethods]
+impl Av1SequenceHeaderPy {
+    /// `seq_profile` — 0=Main, 1=High, 2=Professional.
+    #[getter]
+    fn profile(&self) -> u8 {
+        self.inner.profile
+    }
+
+    /// `seq_level_idx[0]` — operating point 0 level index.
+    #[getter]
+    fn level(&self) -> u8 {
+        self.inner.level
+    }
+
+    /// `seq_tier[0]` — operating point 0 tier (0 unless level > 7).
+    #[getter]
+    fn tier(&self) -> u8 {
+        self.inner.tier
+    }
+
+    /// `max_frame_width_minus_1 + 1`.
+    #[getter]
+    fn max_frame_width(&self) -> u32 {
+        self.inner.max_frame_width
+    }
+
+    /// `max_frame_height_minus_1 + 1`.
+    #[getter]
+    fn max_frame_height(&self) -> u32 {
+        self.inner.max_frame_height
+    }
+
+    /// 8, 10, or 12 per BitDepth derivation in AV1 §5.5.2.
+    #[getter]
+    fn bit_depth(&self) -> u8 {
+        self.inner.bit_depth
+    }
+
+    /// True when `mono_chrome = 1` (Y-only stream).
+    #[getter]
+    fn monochrome(&self) -> bool {
+        self.inner.monochrome
+    }
+
+    /// Chroma subsampling format derived from profile + mono_chrome bits.
+    #[getter]
+    fn chroma_format(&self) -> ChromaFormatPy {
+        self.inner.chroma_format.into()
+    }
+
+    /// True when `still_picture = 1`.
+    #[getter]
+    fn still_picture(&self) -> bool {
+        self.inner.still_picture
+    }
+
+    /// True when `reduced_still_picture_header = 1`.
+    #[getter]
+    fn reduced_still_picture_header(&self) -> bool {
+        self.inner.reduced_still_picture_header
+    }
+
+    /// Colour metadata (primaries/transfer/matrix + full_range flag),
+    /// or `None` when the wire format contained no color config section.
+    /// AV1 always writes a `color_range` bit in the wire format when
+    /// `color_description_present_flag == 0`, so a successful parse
+    /// always populates this with at least the dynamic-range signal.
+    #[getter]
+    fn color_info(&self) -> Option<ColorInfoPy> {
+        self.inner.color_info.clone().map(Into::into)
+    }
+
+    /// Frame rate as `Rational(num, den)`, derived from
+    /// `time_scale / num_units_in_display_tick` when
+    /// `timing_info_present_flag == 1` and `equal_picture_interval == 1`.
+    /// Otherwise `None`.
+    #[getter]
+    fn frame_rate(&self) -> Option<RationalPy> {
+        self.inner.frame_rate.map(Into::into)
+    }
+
+    /// Original payload bytes as passed to `parse_av1_sequence_header`.
+    #[getter]
+    fn raw<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Av1SequenceHeader(profile={}, {}x{}, bit_depth={})",
+            self.inner.profile,
+            self.inner.max_frame_width,
+            self.inner.max_frame_height,
+            self.inner.bit_depth,
+        )
+    }
+}
+
+/// Light-weight AV1 Frame Header.
+/// Mirrors `tst_core::codec::av1::Av1FrameHeaderLight`.
+///
+/// Light scope: `frame_type` + `show_frame` + `show_existing_frame` only.
+/// `frame_size` is always `None` — full per-frame size extraction requires
+/// reference-frame management beyond this parser's scope.
+#[pyclass(name = "Av1FrameHeaderLight", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct Av1FrameHeaderLightPy {
+    inner: RustAv1FrameHeaderLight,
+}
+
+#[pymethods]
+impl Av1FrameHeaderLightPy {
+    /// `frame_type` per AV1 §5.9.1: 0=KEY_FRAME, 1=INTER_FRAME,
+    /// 2=INTRA_ONLY_FRAME, 3=SWITCH_FRAME.
+    #[getter]
+    fn frame_type(&self) -> u8 {
+        self.inner.frame_type
+    }
+
+    /// True when the decoded frame is displayed immediately.
+    #[getter]
+    fn show_frame(&self) -> bool {
+        self.inner.show_frame
+    }
+
+    /// True when this OBU references a previously decoded frame for display.
+    #[getter]
+    fn show_existing_frame(&self) -> bool {
+        self.inner.show_existing_frame
+    }
+
+    /// Per-frame size override, or `None` in the current light scope.
+    #[getter]
+    fn frame_size(&self) -> Option<(u32, u32)> {
+        self.inner.frame_size
+    }
+
+    /// Original payload bytes as passed to `parse_av1_frame_header_light`.
+    #[getter]
+    fn raw<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Av1FrameHeaderLight(type={}, show={}, show_existing={})",
+            self.inner.frame_type, self.inner.show_frame, self.inner.show_existing_frame,
+        )
+    }
+}
+
+/// Aggregate of all typed structs extracted from a sequence of AV1 OBUs.
+/// Mirrors `tst_core::codec::av1::Av1ObuStream`.
+///
+/// Build a list of `Obu` objects, then call `parse_av1_obu_stream` to
+/// populate the three fields. Partial-success-tolerant: OBUs that fail
+/// to parse accumulate in `unparseable` rather than aborting the walk.
+#[pyclass(name = "Av1ObuStream", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct Av1ObuStreamPy {
+    inner: RustAv1ObuStream,
+}
+
+#[pymethods]
+impl Av1ObuStreamPy {
+    /// All successfully parsed Sequence Header OBUs in encounter order.
+    #[getter]
+    fn sequence_headers(&self) -> Vec<Av1SequenceHeaderPy> {
+        self.inner
+            .sequence_headers
+            .iter()
+            .cloned()
+            .map(|inner| Av1SequenceHeaderPy { inner })
+            .collect()
+    }
+
+    /// All successfully parsed Frame Header OBUs in encounter order.
+    #[getter]
+    fn frame_headers(&self) -> Vec<Av1FrameHeaderLightPy> {
+        self.inner
+            .frame_headers
+            .iter()
+            .cloned()
+            .map(|inner| Av1FrameHeaderLightPy { inner })
+            .collect()
+    }
+
+    /// List of `(obu_type, error_message)` for each OBU that failed to parse.
+    /// Frame Header OBUs arriving before any Sequence Header land here with a
+    /// synthesised "frame header before sequence header" error message.
+    #[getter]
+    fn unparseable(&self) -> Vec<(u8, String)> {
+        self.inner
+            .unparseable
+            .iter()
+            .map(|(t, e)| (*t, format!("{e}")))
+            .collect()
+    }
+}
+
+/// Parse an AV1 Sequence Header OBU body.
+///
+/// `payload` carries the OBU body bytes — the OBU header byte and any
+/// LEB128 `obu_size` prefix are stripped before calling this function
+/// (as `Obu.payload` provides from a demuxed stream).
+///
+/// Raises `CodecError` on parse failure.
+#[pyfunction]
+#[pyo3(name = "parse_av1_sequence_header")]
+fn parse_av1_sequence_header_py(
+    py: Python<'_>,
+    payload: &[u8],
+) -> PyResult<Av1SequenceHeaderPy> {
+    rust_parse_av1_sequence_header(payload)
+        .map(|inner| Av1SequenceHeaderPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "av1"))
+}
+
+/// Parse a light AV1 Frame Header OBU body.
+///
+/// `payload` carries the OBU body bytes. `seq` is the Sequence Header
+/// context required by the AV1 parser — it must correspond to the
+/// Sequence Header that precedes this Frame Header in the bitstream.
+/// Use `parse_av1_sequence_header` to obtain `seq`.
+///
+/// Light scope: extracts `frame_type` + `show_frame` +
+/// `show_existing_frame` only. `frame_size` is always `None`.
+///
+/// Raises `CodecError` on parse failure.
+#[pyfunction]
+#[pyo3(name = "parse_av1_frame_header_light")]
+fn parse_av1_frame_header_light_py(
+    py: Python<'_>,
+    payload: &[u8],
+    seq: &Av1SequenceHeaderPy,
+) -> PyResult<Av1FrameHeaderLightPy> {
+    rust_parse_av1_frame_header_light(payload, &seq.inner)
+        .map(|inner| Av1FrameHeaderLightPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "av1"))
+}
+
+/// Walk a list of `Obu` objects and collect typed AV1 structs.
+///
+/// Partial-success-tolerant: OBUs that fail to parse accumulate in
+/// `Av1ObuStream.unparseable` rather than aborting the walk. Skips
+/// TemporalDelimiter, TileGroup, Metadata, TileList, and Padding OBUs
+/// silently (they carry no metadata for this parser).
+///
+/// This function never raises — errors appear in `Av1ObuStream.unparseable`.
+#[pyfunction]
+#[pyo3(name = "parse_av1_obu_stream")]
+fn parse_av1_obu_stream_py(obus: Vec<ObuPy>) -> Av1ObuStreamPy {
+    let rust_obus: Vec<RustObu> = obus
+        .into_iter()
+        .map(|o| RustObu {
+            obu_type: o.obu_type,
+            extension: o.extension.map(|ext| RustObuExtension {
+                temporal_id: ext.temporal_id,
+                spatial_id: ext.spatial_id,
+            }),
+            payload: o.payload,
+        })
+        .collect();
+    let inner = rust_parse_av1_obu_stream(&rust_obus);
+    Av1ObuStreamPy { inner }
+}
+
 // === Module registration ===
 
 /// Register all codec classes on `m` (`tstrans._native`).
@@ -2413,5 +2700,13 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_h266_vps_py, m)?)?;
     m.add_function(wrap_pyfunction!(parse_h266_parameter_sets_py, m)?)?;
     m.add_function(wrap_pyfunction!(parse_h266_slice_header_light_py, m)?)?;
+    // AV1 structs
+    m.add_class::<Av1SequenceHeaderPy>()?;
+    m.add_class::<Av1FrameHeaderLightPy>()?;
+    m.add_class::<Av1ObuStreamPy>()?;
+    // AV1 parser functions
+    m.add_function(wrap_pyfunction!(parse_av1_sequence_header_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_av1_frame_header_light_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_av1_obu_stream_py, m)?)?;
     Ok(())
 }

@@ -380,6 +380,51 @@ Klv0903 = VmtiLs
 decode_vmti = _native_mod.decode_vmti
 
 
+# ---------------------------------------------------------------------------
+# ST 0601 composite read-only views
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class GeoPoint:
+    """Lat / lon / alt triple. ST 0601 surfaces multiple GeoPoints
+    (sensor position, frame center). Altitude is meters AMSL unless
+    the source field specifies WGS84 ellipsoid height."""
+
+    lat_deg: float
+    lon_deg: float
+    alt_m: float
+
+
+@dataclass(frozen=True, slots=True)
+class Attitude:
+    """3-axis attitude in degrees. ST 0601 surfaces multiple
+    Attitudes (sensor relative az/el/roll, platform heading/pitch/roll)."""
+
+    heading_deg: float
+    pitch_deg: float
+    roll_deg: float
+
+
+@dataclass(frozen=True, slots=True)
+class FieldOfView:
+    """Horizontal + vertical sensor field-of-view in degrees."""
+
+    horizontal_deg: float
+    vertical_deg: float
+
+
+@dataclass(frozen=True, slots=True)
+class Corners:
+    """Four corner lat/lon points (upper-left looking forward). Each
+    corner is a `(lat_deg, lon_deg)` tuple."""
+
+    p1: tuple[float, float]
+    p2: tuple[float, float]
+    p3: tuple[float, float]
+    p4: tuple[float, float]
+
+
 __all__: list[str] = [
     "KlvFieldErrorKind",
     "KlvFieldError",
@@ -402,4 +447,8 @@ __all__: list[str] = [
     "VmtiLs",
     "Klv0903",
     "decode_vmti",
+    "GeoPoint",
+    "Attitude",
+    "FieldOfView",
+    "Corners",
 ]

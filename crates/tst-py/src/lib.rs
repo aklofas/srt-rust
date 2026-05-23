@@ -9,6 +9,7 @@
 //! plans.
 
 mod errors;
+mod klv;
 mod mpegts;
 
 use pyo3::prelude::*;
@@ -21,5 +22,6 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_function(wrap_pyfunction!(errors::raise_mux_error_for_test, m)?)?;
     mpegts::register(m)?;
+    klv::register(m)?;
     Ok(())
 }

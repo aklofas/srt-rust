@@ -60,7 +60,45 @@ class KlvFieldError:
     message: str
 
 
+# ---------------------------------------------------------------------------
+# Well-known SMPTE / MISB Universal Labels (16 bytes each)
+# ---------------------------------------------------------------------------
+
+# Per MISB ST 0601.19 §6.2 (PDF p.4) — bytes 13/14/15 all 0x00.
+# UL CRC 56773.
+ST_0601_UL: bytes = bytes.fromhex("060e2b34020b01010e01030101000000")
+
+# Per MISB ST 0102.12 §6.7 — Security Metadata LS UL. CRC 40980.
+SECURITY_LS_UL: bytes = bytes.fromhex("060e2b34020301010e01030302000000")
+
+# Per MISB ST 0807.27 row 1061 — Precision Time Stamp Pack UL. CRC 23259.
+PRECISION_TIMESTAMP_PACK_UL: bytes = bytes.fromhex("060e2b34020501010e01010311000000")
+
+# Per MISB ST 0903.6 §10.1 — VMTI LS UL.
+VMTI_LS_UL: bytes = bytes.fromhex("060e2b34020b01010e01030306000000")
+
+
+def is_st0601_family(buf: bytes) -> bool:
+    """Mirror of Rust `UniversalLabel::is_st0601_family`. Returns True
+    iff `buf` is at least 16 bytes AND bytes 0..=12 match the canonical
+    ST 0601 family prefix AND byte 15 is 0x00. Bytes 13 (document
+    version byte) and 14 are tolerated for legacy capture interop
+    per ST 0601.8-19's transitional rule."""
+
+    if len(buf) < 16:
+        return False
+    canonical = bytes.fromhex("060e2b34020b01010e01030101")
+    if buf[:13] != canonical:
+        return False
+    return buf[15] == 0x00
+
+
 __all__: list[str] = [
     "KlvFieldErrorKind",
     "KlvFieldError",
+    "ST_0601_UL",
+    "SECURITY_LS_UL",
+    "PRECISION_TIMESTAMP_PACK_UL",
+    "VMTI_LS_UL",
+    "is_st0601_family",
 ]

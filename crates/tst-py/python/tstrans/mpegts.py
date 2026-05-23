@@ -15,6 +15,7 @@ Phase 4 adds `Muxer` + `MuxerConfig` here.
 
 import enum
 from dataclasses import dataclass
+from typing import Optional, Union
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,7 +165,10 @@ class LinkSource(enum.Enum):
 
 # Type alias for "any codec enum or None". Used on StreamId / StreamInfo
 # where the kind determines which codec enum (if any) is meaningful.
-Codec = VideoCodec | AudioCodec | SubtitleCodec | None
+# `typing.Union` is used (rather than PEP 604 `X | Y`) because the
+# union is a runtime expression at module level; PEP 604 requires
+# Python 3.10+ at runtime, but our `requires-python` floor is 3.9.
+Codec = Union[VideoCodec, AudioCodec, SubtitleCodec, None]
 
 
 @dataclass(frozen=True, slots=True)

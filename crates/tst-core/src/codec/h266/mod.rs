@@ -25,12 +25,15 @@
 //! - `general_constraint_info` parsing.
 //! - `scaling_list_data_present_flag = 1` — parser bails with
 //!   `UnsupportedProfile`.
-//! - SEI messages, slice headers.
+//! - SEI messages.
+//! - Full slice headers — only the light subset is parsed; see
+//!   [`parse_slice_header_light`].
 //!
 //! See `docs/deferred-features.md` for rationale and revisit triggers.
 
 mod pps;
 mod profile_tier_level;
+mod slice_header_light;
 mod sps;
 mod vps;
 mod vui;
@@ -40,6 +43,7 @@ mod tests;
 
 pub use pps::{H266Pps, parse_pps};
 pub use profile_tier_level::H266ProfileTierLevel;
+pub use slice_header_light::{H266SliceHeaderLight, H266SliceType, parse_slice_header_light};
 pub use sps::{H266Sps, parse_sps};
 pub use vps::{H266Vps, parse_vps};
 

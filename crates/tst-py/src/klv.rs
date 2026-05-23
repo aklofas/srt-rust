@@ -20,6 +20,7 @@ use pyo3::types::PyDict;
 
 use tst_core::error::KlvDecodeError;
 use tst_core::error::KlvFieldError as RustKlvFieldError;
+use tst_core::klv::UniversalLabel;
 use tst_core::klv::pack::OwnedRawField;
 use tst_core::klv::st0102::{
     ClassifyingCountryCodingMethod as RustClsCountry, ObjectCountryCodingMethod as RustObjCountry,
@@ -29,6 +30,7 @@ use tst_core::klv::st0102::{
 use tst_core::klv::st0601::{
     UasDatalinkLs, decode as decode_st0601_lenient, decode_strict as decode_st0601_strict,
     decode_strict_compliance as decode_st0601_strict_compliance,
+    encode_strict_compliance as encode_st0601_strict_compliance, encode_to_vec as encode_st0601,
 };
 use tst_core::klv::st0605::{PrecisionTimeStampPack, decode as decode_st0605};
 use tst_core::klv::st0903::{
@@ -36,7 +38,7 @@ use tst_core::klv::st0903::{
     decode_strict as decode_st0903_strict,
 };
 
-use crate::errors::make_klv_error;
+use crate::errors::{klv_encode_error_to_pyerr, make_klv_error};
 
 // ---------------------------------------------------------------------------
 // KlvDecodeError → KlvError mapping
@@ -606,6 +608,145 @@ fn decode_uas_datalink_py(
 }
 
 // ---------------------------------------------------------------------------
+// ST 0601 — Python → Rust inverse translator + encode entry points
+// ---------------------------------------------------------------------------
+
+/// Inverse of `convert_uas_datalink_ls`: extracts every field from a
+/// Python `tstrans.klv.UasDatalinkLs` dataclass into a Rust
+/// `UasDatalinkLs`. Read-only output fields (`unknown`, `field_errors`)
+/// are deliberately NOT round-tripped — they are parser diagnostics,
+/// not encoder inputs.
+#[allow(clippy::cognitive_complexity)]
+fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
+    let mut r = UasDatalinkLs::default();
+
+    // universal_label: 16-byte bytes → UniversalLabel
+    let ul_bytes: Vec<u8> = p.getattr(intern!(p.py(), "universal_label"))?.extract()?;
+    if ul_bytes.len() == 16 {
+        let mut ul = [0u8; 16];
+        ul.copy_from_slice(&ul_bytes);
+        r.universal_label = UniversalLabel(ul);
+    }
+
+    // declared_version: u8 in Rust, int in Python
+    r.declared_version = p.getattr(intern!(p.py(), "declared_version"))?.extract()?;
+
+    // Optional<String>
+    macro_rules! os {
+        ($field:ident) => {
+            if let Some(s) = p
+                .getattr(intern!(p.py(), stringify!($field)))?
+                .extract::<Option<String>>()?
+            {
+                r.$field = Some(s);
+            }
+        };
+    }
+    // Optional<scalar> — works for u8 / u64 / f64 fields
+    macro_rules! op {
+        ($field:ident, $ty:ty) => {
+            if let Some(v) = p
+                .getattr(intern!(p.py(), stringify!($field)))?
+                .extract::<Option<$ty>>()?
+            {
+                r.$field = Some(v);
+            }
+        };
+    }
+    // Optional<Vec<u8>>
+    macro_rules! ob {
+        ($field:ident) => {
+            if let Some(b) = p
+                .getattr(intern!(p.py(), stringify!($field)))?
+                .extract::<Option<Vec<u8>>>()?
+            {
+                r.$field = Some(b);
+            }
+        };
+    }
+
+    os!(mission_id);
+    os!(platform_tail_number);
+    os!(platform_designation);
+    os!(image_source_sensor);
+    os!(image_coordinate_system);
+    os!(platform_call_sign);
+    op!(uas_ls_version, u8);
+    op!(timestamp_us, u64);
+    op!(platform_heading_deg, f64);
+    op!(platform_pitch_deg, f64);
+    op!(platform_roll_deg, f64);
+    op!(platform_true_airspeed, f64);
+    op!(platform_indicated_airspeed, f64);
+    op!(platform_pitch_full_deg, f64);
+    op!(platform_roll_full_deg, f64);
+    op!(platform_angle_of_attack_deg, f64);
+    op!(sensor_lat_deg, f64);
+    op!(sensor_lon_deg, f64);
+    op!(sensor_alt_m, f64);
+    op!(sensor_ellipsoid_height_m, f64);
+    op!(sensor_hfov_deg, f64);
+    op!(sensor_vfov_deg, f64);
+    op!(sensor_rel_az_deg, f64);
+    op!(sensor_rel_el_deg, f64);
+    op!(sensor_rel_roll_deg, f64);
+    op!(slant_range_m, f64);
+    op!(target_width_m, f64);
+    op!(frame_center_lat_deg, f64);
+    op!(frame_center_lon_deg, f64);
+    op!(frame_center_elev_m, f64);
+    op!(frame_center_ellipsoid_height_m, f64);
+    op!(corner_lat_offset_p1_deg, f64);
+    op!(corner_lon_offset_p1_deg, f64);
+    op!(corner_lat_offset_p2_deg, f64);
+    op!(corner_lon_offset_p2_deg, f64);
+    op!(corner_lat_offset_p3_deg, f64);
+    op!(corner_lon_offset_p3_deg, f64);
+    op!(corner_lat_offset_p4_deg, f64);
+    op!(corner_lon_offset_p4_deg, f64);
+    op!(corner_lat_p1_deg, f64);
+    op!(corner_lon_p1_deg, f64);
+    op!(corner_lat_p2_deg, f64);
+    op!(corner_lon_p2_deg, f64);
+    op!(corner_lat_p3_deg, f64);
+    op!(corner_lon_p3_deg, f64);
+    op!(corner_lat_p4_deg, f64);
+    op!(corner_lon_p4_deg, f64);
+    op!(generic_flag_data, u8);
+    ob!(security_local_set);
+    ob!(vmti);
+
+    Ok(r)
+}
+
+/// Encode a Python `UasDatalinkLs` to wire bytes (lenient — emits only
+/// the populated fields, no mandatory-tag enforcement). Returns
+/// `bytes` containing the 16-byte UL + BER length + body.
+#[pyfunction]
+#[pyo3(name = "encode_uas_datalink")]
+fn encode_uas_datalink_py(py: Python<'_>, record: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let rust_rec = py_to_uas_datalink_ls(record)?;
+    let bytes = encode_st0601(&rust_rec).map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
+/// Encode a Python `UasDatalinkLs` to wire bytes with strict compliance
+/// per ST 0601.19 — requires Tag 2 (precision timestamp), Tag 1
+/// (checksum slot — synthesized), and Tag 65 (version). Raises
+/// `KlvEncodeError(MISSING_MANDATORY_ITEM)` if a required tag is absent.
+#[pyfunction]
+#[pyo3(name = "encode_uas_datalink_strict_compliance")]
+fn encode_uas_datalink_strict_compliance_py(
+    py: Python<'_>,
+    record: &Bound<'_, PyAny>,
+) -> PyResult<PyObject> {
+    let rust_rec = py_to_uas_datalink_ls(record)?;
+    let bytes =
+        encode_st0601_strict_compliance(&rust_rec).map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
+// ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
 
@@ -614,5 +755,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(decode_security_py, m)?)?;
     m.add_function(wrap_pyfunction!(decode_vmti_py, m)?)?;
     m.add_function(wrap_pyfunction!(decode_uas_datalink_py, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_uas_datalink_py, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        encode_uas_datalink_strict_compliance_py,
+        m
+    )?)?;
     Ok(())
 }

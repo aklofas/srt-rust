@@ -7,6 +7,65 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py Phase 5 — Codec parsers (2026-05-23)
+
+**`tstrans.codec` module fully populated; `Sample.payload` typed-replaced.**
+(`b8aa957..a9d1634`). Exposes ~50 classes and ~25 functions covering
+H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio parsers. Three new
+Rust parsers (`parse_slice_header_light` for H.264 / H.265 / H.266) and
+three fuzz harnesses ship alongside the Python surface. `Sample.payload`
+changes from `bytes` to a typed list — first breaking change since Phase 2
+(pre-1.0, per the project's break-freely policy).
+
+**Added:**
+
+- `tstrans.codec` module: `NalUnit`, `Obu`, `ObuExtension`,
+  `H264Sps`, `H264SliceHeaderLight`, `H264SliceType`, `H264Pps`,
+  `H264HrdParameters`, `H264VuiParameters`, `H264ColorPrimaries`,
+  `H264MatrixCoefficients`, `H264TransferCharacteristics`,
+  `parse_h264_sps`, `parse_h264_slice_header_light`,
+  `H265Sps`, `H265SliceHeaderLight`, `H265SliceType`, `H265Vps`,
+  `H265Pps`, `H265HrdParameters`, `H265VuiParameters`,
+  `H265ColorPrimaries`, `H265MatrixCoefficients`,
+  `H265TransferCharacteristics`, `parse_h265_sps`,
+  `parse_h265_slice_header_light`,
+  `H266Sps`, `H266SliceHeaderLight`, `H266SliceType`,
+  `parse_h266_sps`, `parse_h266_slice_header_light`,
+  `Av1SequenceHeader`, `Av1FrameHeaderLight`, `Av1FrameType`,
+  `ObuType`, `parse_av1_sequence_header`,
+  `parse_av1_frame_header_light`,
+  `AdtsFrame`, `AacProfile`, `parse_adts_frame`,
+  `Mpeg2AudioFrame`, `Mpeg2AudioVersion`, `Mpeg2AudioLayer`,
+  `Mpeg2AudioChannelMode`, `parse_mpeg2_audio_frame`.
+- New Rust public APIs: `tst_core::codec::{h264,h265,h266}::parse_slice_header_light`
+  + `*SliceHeaderLight` structs + `*SliceType` enums (parity with AV1's
+  existing `parse_frame_header_light`). H.266 returns sentinel `slice_type`
+  / `pps_id` (deferred — full VVC syntax deferred per plan Task 4 note).
+- 3 new fuzz harnesses in `crates/tst-core/fuzz/fuzz_targets/`
+  (`fuzz_h264_slice_header_light`, `fuzz_h265_slice_header_light`,
+  `fuzz_h266_slice_header_light`).
+- `tstrans.exceptions.CodecError` + `CodecErrorKind` enum — 8-variant
+  error hierarchy matching Rust `CodecParseError`.
+- 12th bash ratchet `scripts/check-py-codec-error-mapping-coverage.sh`.
+
+**Changed (BREAKING — pre-1.0):**
+
+- `tstrans.mpegts.Sample.payload` changed type from `bytes` to one of
+  `list[NalUnit]` (H.264 / H.265 / H.266) / `list[Obu]` (AV1) /
+  `list[AdtsFrame]` (AAC) / `list[Mpeg2AudioFrame]` (MPEG-2 audio).
+  Subtitle and AAC-LATM remain `bytes`. On audio parse failure mid-stream,
+  payload falls back to `bytes` and `sample.codec_parse_error: CodecError`
+  is populated.
+
+**Internal:**
+
+- `BASELINE` non_exhaustive count: 140 → 159 in `.github/workflows/ci.yml`.
+- `tst-core` public-api baseline updated (+19 new entries for
+  `*SliceHeaderLight` / `*SliceType` / `parse_slice_header_light` × 3 codecs).
+- pytest count: 270 → 513 (2 skipped throughout).
+
+---
+
 ## [Unreleased] — tst-py Phase 4 — Muxer wrap + KLV encoders (2026-05-23)
 
 **Python bindings build path complete via 15 subagent-driven tasks**

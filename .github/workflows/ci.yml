@@ -231,7 +231,7 @@ jobs:
         # build). On adding a new error enum, bump the BASELINE constant.
         if: matrix.name == 'linux-x86_64'
         run: |
-          BASELINE=146
+          BASELINE=159
           OBSERVED=$(rg -c '#\[non_exhaustive\]' crates/ --type rust | awk -F: '{sum += $2} END {print sum}')
           if [ "$OBSERVED" -lt "$BASELINE" ]; then
             echo "non_exhaustive count regressed: expected >= $BASELINE, observed $OBSERVED" >&2

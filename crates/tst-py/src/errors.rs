@@ -176,6 +176,127 @@ pub(crate) fn mux_error_to_pyerr(py: Python<'_>, e: tst_core::MuxError) -> PyErr
     make_mux_error(py, kind_str, &msg)
 }
 
+/// Map a Rust `CodecParseError` to a Python `CodecError` instance.
+///
+/// `codec` is a short lowercase string naming the codec that failed
+/// (e.g. `"h264"`, `"h265"`, `"aac"`). Forwards all variant-specific
+/// fields as keyword arguments to `CodecError.__init__` so the Python
+/// side can read `.offset_bits`, `.field`, `.expected`, etc.
+///
+/// The wildcard arm routes unknown future variants (added via the
+/// `#[non_exhaustive]` hatch on `CodecParseError`) to `ENGINE_ERROR`
+/// so this fn never panics on a Rust-side enum addition — the bash
+/// ratchet `check-py-codec-error-mapping-coverage.sh` will surface the
+/// omission in CI.
+///
+/// Called from Phase 5 codec-parser wrappers — unused until those land.
+#[allow(dead_code)]
+pub(crate) fn codec_parse_error_to_pyerr(
+    py: Python<'_>,
+    err: &tst_core::codec::CodecParseError,
+    codec: &str,
+) -> PyErr {
+    use tst_core::codec::CodecParseError;
+    let exceptions = match py.import_bound("tstrans.exceptions") {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    let kind_class = match exceptions.getattr(intern!(py, "CodecErrorKind")) {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+    let codec_error_class = match exceptions.getattr(intern!(py, "CodecError")) {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+    let (kind_name, extra_attrs): (&str, Vec<(&str, PyObject)>) = match err {
+        CodecParseError::TruncatedRbsp { offset_bits, needed_bits } => (
+            "TRUNCATED_RBSP",
+            vec![
+                ("offset_bits", offset_bits.into_py(py)),
+                ("needed_bits", needed_bits.into_py(py)),
+            ],
+        ),
+        CodecParseError::InvalidGolomb { offset_bits } => (
+            "INVALID_GOLOMB",
+            vec![("offset_bits", offset_bits.into_py(py))],
+        ),
+        CodecParseError::ReservedValue { field, value } => (
+            "RESERVED_VALUE",
+            vec![
+                ("field", (*field).into_py(py)),
+                ("value", value.into_py(py)),
+            ],
+        ),
+        CodecParseError::UnsupportedProfile { profile_idc } => (
+            "UNSUPPORTED_PROFILE",
+            vec![("profile_idc", profile_idc.into_py(py))],
+        ),
+        CodecParseError::DanglingSpsReference { sps_id } => (
+            "DANGLING_SPS_REFERENCE",
+            vec![("sps_id", sps_id.into_py(py))],
+        ),
+        CodecParseError::DanglingVpsReference { vps_id } => (
+            "DANGLING_VPS_REFERENCE",
+            vec![("vps_id", vps_id.into_py(py))],
+        ),
+        CodecParseError::EngineError(_) => ("ENGINE_ERROR", vec![]),
+        CodecParseError::InvalidLeb128 { offset_bytes } => (
+            "INVALID_LEB128",
+            vec![("offset_bytes", offset_bytes.into_py(py))],
+        ),
+        CodecParseError::BadSyncWord { expected, found } => (
+            "BAD_SYNC_WORD",
+            vec![
+                ("expected", expected.into_py(py)),
+                ("found", found.into_py(py)),
+            ],
+        ),
+        CodecParseError::Truncated { needed, had } => (
+            "TRUNCATED",
+            vec![
+                ("needed", needed.into_py(py)),
+                ("had", had.into_py(py)),
+            ],
+        ),
+        CodecParseError::Forbidden { field } => (
+            "FORBIDDEN",
+            vec![("field", (*field).into_py(py))],
+        ),
+        CodecParseError::UnsupportedFreeFormat { layer } => (
+            "UNSUPPORTED_FREE_FORMAT",
+            vec![("layer", layer.into_py(py))],
+        ),
+        // Catch-all for #[non_exhaustive] additions not yet mapped:
+        _ => ("ENGINE_ERROR", vec![]),
+    };
+    let kind = match kind_class.getattr(kind_name) {
+        Ok(k) => k,
+        Err(e) => return e,
+    };
+    let message = format!("{err}");
+    let kwargs = PyDict::new_bound(py);
+    if let Err(e) = kwargs.set_item("kind", kind) {
+        return e;
+    }
+    if let Err(e) = kwargs.set_item("codec", codec) {
+        return e;
+    }
+    if let Err(e) = kwargs.set_item("message", &message) {
+        return e;
+    }
+    for (k, v) in extra_attrs {
+        if let Err(e) = kwargs.set_item(k, v) {
+            return e;
+        }
+    }
+    let positional_args = pyo3::types::PyTuple::empty_bound(py);
+    match codec_error_class.call(positional_args, Some(&kwargs)) {
+        Ok(instance) => PyErr::from_value_bound(instance),
+        Err(e) => e,
+    }
+}
+
 /// Map a Rust `KlvEncodeError` to a Python `KlvEncodeError` instance.
 /// Covers all 8 variants; the wildcard arm routes to `BUFFER_TOO_SMALL`
 /// (a benign "encode failed; widen output buffer" fallback) for any

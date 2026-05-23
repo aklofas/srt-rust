@@ -119,14 +119,26 @@ class KlvEncodeErrorKind(enum.IntEnum):
     RESERVED_TAG_IN_UNKNOWN = 7
 
 
-class CodecErrorKind(enum.Enum):
-    """Mirrors Rust's `tst_core::codec` error variants."""
+class CodecErrorKind(enum.IntEnum):
+    """Mirrors `tst_core::codec::CodecParseError` variants.
 
-    UNSUPPORTED_PROFILE = "unsupported_profile"
-    BAD_SLICE_HEADER = "bad_slice_header"
-    BAD_PARAMETER_SET = "bad_parameter_set"
-    TRUNCATED_NAL = "truncated_nal"
-    INTERNAL = "internal"
+    New Rust variants surface as `UNKNOWN_<RawName>` with raw int values
+    starting at 1000; Python pattern-matchers must include a default
+    fallback to remain robust.
+    """
+
+    TRUNCATED_RBSP = 1
+    INVALID_GOLOMB = 2
+    RESERVED_VALUE = 3
+    UNSUPPORTED_PROFILE = 4
+    DANGLING_SPS_REFERENCE = 5
+    DANGLING_VPS_REFERENCE = 6
+    ENGINE_ERROR = 7
+    INVALID_LEB128 = 8
+    BAD_SYNC_WORD = 9
+    TRUNCATED = 10
+    FORBIDDEN = 11
+    UNSUPPORTED_FREE_FORMAT = 12
 
 
 class MuxError(TstError):
@@ -215,18 +227,57 @@ class KlvEncodeError(TstError):
 
 
 class CodecError(TstError):
-    """Raised by `tstrans.codec` frame parsers. `codec` is one of
-    `"h264"`, `"h265"`, `"h266"`, `"av1"`, `"aac"`, `"mpeg2audio"`."""
+    """Codec parser failure. See `CodecErrorKind` for the variant set.
 
-    kind: CodecErrorKind
-    message: str
-    codec: str
+    Variant-specific optional attributes:
+    - `offset_bits` / `needed_bits` on TRUNCATED_RBSP / INVALID_GOLOMB
+    - `field` / `value` on RESERVED_VALUE (Forbidden has only `field`)
+    - `layer` on UNSUPPORTED_FREE_FORMAT
+    - `profile_idc` on UNSUPPORTED_PROFILE
+    - `sps_id` on DANGLING_SPS_REFERENCE
+    - `vps_id` on DANGLING_VPS_REFERENCE
+    - `offset_bytes` on INVALID_LEB128 / TRUNCATED
+    - `expected` / `found` on BAD_SYNC_WORD
+    - `needed` / `had` on TRUNCATED
+    """
 
-    def __init__(self, *, kind: CodecErrorKind, message: str, codec: str) -> None:
-        super().__init__(message)
+    def __init__(
+        self,
+        kind: CodecErrorKind,
+        codec: str,
+        message: str,
+        *,
+        offset_bits: Optional[int] = None,
+        needed_bits: Optional[int] = None,
+        field: Optional[str] = None,
+        value: Optional[int] = None,
+        profile_idc: Optional[int] = None,
+        sps_id: Optional[int] = None,
+        vps_id: Optional[int] = None,
+        offset_bytes: Optional[int] = None,
+        expected: Optional[int] = None,
+        found: Optional[int] = None,
+        needed: Optional[int] = None,
+        had: Optional[int] = None,
+        layer: Optional[int] = None,
+    ) -> None:
+        super().__init__(f"{codec}: {message}")
         self.kind = kind
-        self.message = message
         self.codec = codec
+        self.message = message
+        self.offset_bits = offset_bits
+        self.needed_bits = needed_bits
+        self.field = field
+        self.value = value
+        self.profile_idc = profile_idc
+        self.sps_id = sps_id
+        self.vps_id = vps_id
+        self.offset_bytes = offset_bytes
+        self.expected = expected
+        self.found = found
+        self.needed = needed
+        self.had = had
+        self.layer = layer
 
 
 __all__ = [

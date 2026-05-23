@@ -151,6 +151,7 @@ Klv0605 = PrecisionTimeStampPack
 from tstrans import _native as _native_mod
 
 decode_precision_timestamp = _native_mod.decode_precision_timestamp
+encode_precision_timestamp = _native_mod.encode_precision_timestamp
 
 
 # ---------------------------------------------------------------------------
@@ -275,6 +276,7 @@ Klv0102 = SecurityLs
 
 
 decode_security = _native_mod.decode_security
+encode_security = _native_mod.encode_security
 
 
 # ---------------------------------------------------------------------------
@@ -739,12 +741,14 @@ __all__: list[str] = [
     "PrecisionTimeStampPack",
     "Klv0605",
     "decode_precision_timestamp",
+    "encode_precision_timestamp",
     "SecurityClassification",
     "ClassifyingCountryCodingMethod",
     "ObjectCountryCodingMethod",
     "SecurityLs",
     "Klv0102",
     "decode_security",
+    "encode_security",
     "VTargetPack",
     "VmtiLs",
     "Klv0903",

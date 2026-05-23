@@ -25,14 +25,17 @@ use tst_core::klv::pack::OwnedRawField;
 use tst_core::klv::st0102::{
     ClassifyingCountryCodingMethod as RustClsCountry, ObjectCountryCodingMethod as RustObjCountry,
     SecurityClassification as RustSecCls, SecurityLs, decode as decode_st0102_lenient,
-    decode_strict as decode_st0102_strict,
+    decode_strict as decode_st0102_strict, encode_to_vec as encode_st0102,
 };
 use tst_core::klv::st0601::{
     UasDatalinkLs, decode as decode_st0601_lenient, decode_strict as decode_st0601_strict,
     decode_strict_compliance as decode_st0601_strict_compliance,
     encode_strict_compliance as encode_st0601_strict_compliance, encode_to_vec as encode_st0601,
 };
-use tst_core::klv::st0605::{PrecisionTimeStampPack, decode as decode_st0605};
+use tst_core::klv::st0605::{
+    PrecisionTimeStampPack, TimeStatus as RustTimeStatus, decode as decode_st0605,
+    encode as encode_st0605,
+};
 use tst_core::klv::st0903::{
     VTargetPack as RustVTargetPack, VmtiLs, decode as decode_st0903_lenient,
     decode_strict as decode_st0903_strict,
@@ -298,6 +301,128 @@ fn decode_security_py(py: Python<'_>, buf: &[u8], strict: bool) -> PyResult<PyOb
         Ok(sec) => convert_security_ls(py, &sec),
         Err(e) => Err(klv_decode_error_to_pyerr(py, e)),
     }
+}
+
+// ---------------------------------------------------------------------------
+// ST 0102 — Python → Rust inverse translator + encode entry point
+// ---------------------------------------------------------------------------
+
+/// Extract a u8 codepoint from a Python field that may be either an
+/// `enum.Enum` instance (with `.value: int`) or a raw `int` (Unknown
+/// codepoint pass-through). Mirrors the asymmetric forward translator
+/// (`convert_security_classification` / `convert_classifying_country` /
+/// `convert_object_country`) which emits a typed enum for known
+/// codepoints and a raw int for `Unknown(b)`.
+fn enum_field_to_u8(p: &Bound<'_, PyAny>) -> PyResult<u8> {
+    if let Ok(value_attr) = p.getattr("value") {
+        // enum.Enum instance — pull `.value`
+        value_attr.extract()
+    } else {
+        // raw int — extract directly
+        p.extract()
+    }
+}
+
+/// Inverse of `convert_security_ls`: extracts every field from a Python
+/// `tstrans.klv.SecurityLs` dataclass into a Rust `SecurityLs`. Read-
+/// only output fields (`unknown`, `field_errors`) are deliberately NOT
+/// round-tripped — they are parser diagnostics, not encoder inputs.
+fn py_to_security_ls(p: &Bound<'_, PyAny>) -> PyResult<SecurityLs> {
+    let mut r = SecurityLs::default();
+    let py = p.py();
+
+    // 3 typed-enum fields: Python sends either an enum instance OR a raw int
+    // (Unknown codepoint). Use enum_field_to_u8 to coerce both shapes.
+    let sc_obj = p.getattr(intern!(py, "security_classification"))?;
+    if !sc_obj.is_none() {
+        r.security_classification = Some(RustSecCls::from_u8(enum_field_to_u8(&sc_obj)?));
+    }
+    let cc_obj = p.getattr(intern!(py, "classifying_country_coding_method"))?;
+    if !cc_obj.is_none() {
+        r.classifying_country_coding_method =
+            Some(RustClsCountry::from_u8(enum_field_to_u8(&cc_obj)?));
+    }
+    let oc_obj = p.getattr(intern!(py, "object_country_coding_method"))?;
+    if !oc_obj.is_none() {
+        r.object_country_coding_method = Some(RustObjCountry::from_u8(enum_field_to_u8(&oc_obj)?));
+    }
+
+    // Optional<String> fields (15 of them) + Optional<u16> for version.
+    macro_rules! os {
+        ($field:ident) => {
+            if let Some(s) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<String>>()?
+            {
+                r.$field = Some(s);
+            }
+        };
+    }
+    macro_rules! op {
+        ($field:ident, $ty:ty) => {
+            if let Some(v) = p
+                .getattr(intern!(py, stringify!($field)))?
+                .extract::<Option<$ty>>()?
+            {
+                r.$field = Some(v);
+            }
+        };
+    }
+
+    os!(classifying_country);
+    os!(object_country_codes);
+    op!(version, u16);
+    os!(sci_shi_info);
+    os!(caveats);
+    os!(releasing_instructions);
+    os!(classified_by);
+    os!(derived_from);
+    os!(classification_reason);
+    os!(declassification_date);
+    os!(classification_marking_system);
+    os!(classification_comments);
+    os!(classifying_country_coding_method_version_date);
+    os!(object_country_coding_method_version_date);
+
+    Ok(r)
+}
+
+/// Encode a Python `SecurityLs` to wire bytes (lenient — emits only the
+/// populated fields, no mandatory-tag enforcement). Returns `bytes`
+/// containing the ST 0102 body (no outer UL / BER length wrapper).
+#[pyfunction]
+#[pyo3(name = "encode_security")]
+fn encode_security_py(py: Python<'_>, record: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let rust_rec = py_to_security_ls(record)?;
+    let bytes = encode_st0102(&rust_rec).map_err(|e| klv_encode_error_to_pyerr(py, e))?;
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
+}
+
+// ---------------------------------------------------------------------------
+// ST 0605 — Python → Rust inverse translator + encode entry point
+// ---------------------------------------------------------------------------
+
+/// Inverse of `convert_precision_timestamp_pack`.
+fn py_to_precision_timestamp_pack(p: &Bound<'_, PyAny>) -> PyResult<PrecisionTimeStampPack> {
+    let py = p.py();
+    let ts_obj = p.getattr(intern!(py, "time_status"))?;
+    let raw: u8 = ts_obj.getattr(intern!(py, "raw"))?.extract()?;
+    let timestamp_us: u64 = p.getattr(intern!(py, "timestamp_us"))?.extract()?;
+    Ok(PrecisionTimeStampPack {
+        time_status: RustTimeStatus(raw),
+        timestamp_us,
+    })
+}
+
+/// Encode a Python `PrecisionTimeStampPack` to the 26-byte wire form
+/// (16-byte UL + 1-byte BER length + 1-byte TimeStatus + 8-byte BE
+/// microsecond timestamp). Returns `bytes`.
+#[pyfunction]
+#[pyo3(name = "encode_precision_timestamp")]
+fn encode_precision_timestamp_py(py: Python<'_>, pack: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    let rust_pack = py_to_precision_timestamp_pack(pack)?;
+    let bytes = encode_st0605(&rust_pack);
+    Ok(pyo3::types::PyBytes::new_bound(py, &bytes).unbind().into())
 }
 
 // ---------------------------------------------------------------------------
@@ -760,5 +885,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
         encode_uas_datalink_strict_compliance_py,
         m
     )?)?;
+    m.add_function(wrap_pyfunction!(encode_security_py, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_precision_timestamp_py, m)?)?;
     Ok(())
 }

@@ -27,7 +27,10 @@ use tst_core::klv::st0102::{
     decode_strict as decode_st0102_strict,
 };
 use tst_core::klv::st0605::{PrecisionTimeStampPack, decode as decode_st0605};
-use tst_core::klv::st0903::VTargetPack as RustVTargetPack;
+use tst_core::klv::st0903::{
+    VTargetPack as RustVTargetPack, VmtiLs, decode as decode_st0903_lenient,
+    decode_strict as decode_st0903_strict,
+};
 
 use crate::errors::make_klv_error;
 
@@ -297,7 +300,6 @@ fn decode_security_py(py: Python<'_>, buf: &[u8], strict: bool) -> PyResult<PyOb
 
 /// Translate a Rust `VTargetPack` to a Python `tstrans.klv.VTargetPack`
 /// dataclass instance.
-#[allow(dead_code)] // Wired in by Task 9's convert_vmti_ls; remove the allow there.
 fn convert_vtarget_pack(py: Python<'_>, p: &RustVTargetPack) -> PyResult<PyObject> {
     let klv_mod = py.import_bound("tstrans.klv")?;
     let cls = klv_mod.getattr(intern!(py, "VTargetPack"))?;
@@ -368,11 +370,94 @@ fn convert_vtarget_pack(py: Python<'_>, p: &RustVTargetPack) -> PyResult<PyObjec
 }
 
 // ---------------------------------------------------------------------------
+// ST 0903 — VmtiLs entry point
+// ---------------------------------------------------------------------------
+
+/// Translate a Rust `VmtiLs` to a Python `tstrans.klv.VmtiLs`
+/// dataclass instance.
+fn convert_vmti_ls(py: Python<'_>, v: &VmtiLs) -> PyResult<PyObject> {
+    let klv_mod = py.import_bound("tstrans.klv")?;
+    let cls = klv_mod.getattr(intern!(py, "VmtiLs"))?;
+    let kwargs = PyDict::new_bound(py);
+
+    if let Some(c) = v.checksum {
+        kwargs.set_item("checksum", c)?;
+    }
+    if let Some(t) = v.precision_time_stamp {
+        kwargs.set_item("precision_time_stamp", t)?;
+    }
+    if let Some(s) = &v.vmti_system_name {
+        kwargs.set_item("vmti_system_name", s.as_str())?;
+    }
+    if let Some(n) = v.version_number {
+        kwargs.set_item("version_number", n)?;
+    }
+    if let Some(n) = v.total_targets_in_frame {
+        kwargs.set_item("total_targets_in_frame", n)?;
+    }
+    if let Some(n) = v.num_targets_reported {
+        kwargs.set_item("num_targets_reported", n)?;
+    }
+    if let Some(n) = v.frame_width {
+        kwargs.set_item("frame_width", n)?;
+    }
+    if let Some(n) = v.frame_height {
+        kwargs.set_item("frame_height", n)?;
+    }
+    if let Some(s) = &v.source_sensor {
+        kwargs.set_item("source_sensor", s.as_str())?;
+    }
+    if let Some(f) = v.horizontal_fov {
+        kwargs.set_item("horizontal_fov", f)?;
+    }
+    if let Some(f) = v.vertical_fov {
+        kwargs.set_item("vertical_fov", f)?;
+    }
+    if let Some(m) = v.miis_id.as_ref() {
+        kwargs.set_item("miis_id", m.as_slice())?;
+    }
+    if let Some(b) = v.algorithm_series.as_ref() {
+        kwargs.set_item("algorithm_series", b.as_slice())?;
+    }
+    if let Some(b) = v.ontology_series.as_ref() {
+        kwargs.set_item("ontology_series", b.as_slice())?;
+    }
+    let targets: Vec<PyObject> = v
+        .targets
+        .iter()
+        .map(|t| convert_vtarget_pack(py, t))
+        .collect::<PyResult<Vec<_>>>()?;
+    kwargs.set_item("targets", pyo3::types::PyTuple::new_bound(py, targets))?;
+    kwargs.set_item("unknown", convert_unknown(py, &v.unknown)?)?;
+    kwargs.set_item("field_errors", convert_field_errors(py, &v.field_errors)?)?;
+
+    Ok(cls.call((), Some(&kwargs))?.unbind())
+}
+
+/// Decode an ST 0903 VMTI LS. `buf` is **body-only** (no UL / outer
+/// BER length wrapper). With `strict=True`, rejects missing required
+/// tags per ST 0903.6 §6 Table 1, duplicate tags, malformed UTF-8.
+#[pyfunction]
+#[pyo3(name = "decode_vmti", signature = (buf, *, strict = false))]
+fn decode_vmti_py(py: Python<'_>, buf: &[u8], strict: bool) -> PyResult<PyObject> {
+    let result = if strict {
+        decode_st0903_strict(buf)
+    } else {
+        decode_st0903_lenient(buf)
+    };
+    match result {
+        Ok(vmti) => convert_vmti_ls(py, &vmti),
+        Err(e) => Err(klv_decode_error_to_pyerr(py, e)),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Module registration
 // ---------------------------------------------------------------------------
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(decode_precision_timestamp_py, m)?)?;
     m.add_function(wrap_pyfunction!(decode_security_py, m)?)?;
+    m.add_function(wrap_pyfunction!(decode_vmti_py, m)?)?;
     Ok(())
 }

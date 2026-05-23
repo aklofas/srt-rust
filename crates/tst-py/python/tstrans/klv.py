@@ -331,6 +331,55 @@ class VTargetPack:
     field_errors: tuple[KlvFieldError, ...] = ()
 
 
+# ---------------------------------------------------------------------------
+# ST 0903.6 VMTI Local Set
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class VmtiLs:
+    """MISB ST 0903.6 VMTI (Video Moving Target Indicator) Local Set
+    typed view.
+
+    Required tags per ST 0903.6 §6 Table 1: precision_time_stamp,
+    vmti_system_name (when applicable), version_number, frame_width,
+    frame_height. Lenient decode tolerates missing required tags and
+    surfaces per-field decode failures in `field_errors`. Strict
+    decode rejects missing required tags.
+
+    `algorithm_series` and `ontology_series` are top-level nested LS
+    pass-through bytes (typed inner layers deferred at the Rust layer
+    too — see `docs/deferred-features.md`).
+
+    `miis_id` is the MISB ST 1204 Minor Item Identification System
+    Core Identifier — pass-through bytes (typed layer deferred)."""
+
+    checksum: int | None = None
+    precision_time_stamp: int | None = None
+    vmti_system_name: str | None = None
+    version_number: int | None = None
+    total_targets_in_frame: int | None = None
+    num_targets_reported: int | None = None
+    frame_width: int | None = None
+    frame_height: int | None = None
+    source_sensor: str | None = None
+    horizontal_fov: float | None = None
+    vertical_fov: float | None = None
+    miis_id: bytes | None = None
+    targets: tuple[VTargetPack, ...] = ()
+    algorithm_series: bytes | None = None
+    ontology_series: bytes | None = None
+    unknown: tuple[tuple[int, bytes], ...] = ()
+    field_errors: tuple[KlvFieldError, ...] = ()
+
+
+# Spec-compat alias.
+Klv0903 = VmtiLs
+
+
+decode_vmti = _native_mod.decode_vmti
+
+
 __all__: list[str] = [
     "KlvFieldErrorKind",
     "KlvFieldError",
@@ -350,4 +399,7 @@ __all__: list[str] = [
     "Klv0102",
     "decode_security",
     "VTargetPack",
+    "VmtiLs",
+    "Klv0903",
+    "decode_vmti",
 ]

@@ -22,8 +22,8 @@
 // only; hand-written code in this file contains no unsafe blocks.
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion)]
 
-use pyo3::prelude::*;
 use pyo3::intern;
+use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 /// Build a `MuxError` Python exception with the right `.kind` Enum

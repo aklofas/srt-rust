@@ -107,7 +107,6 @@ pub fn make_demux_error(py: Python<'_>, kind_variant: &str, message: &str) -> Py
 /// `kind_variant` must be a Python-side `KlvErrorKind` Enum variant
 /// name (e.g. `"BAD_UNIVERSAL_LABEL"`, `"TRUNCATED_SET"`,
 /// `"CHECKSUM_MISMATCH"`, `"INTERNAL"`).
-#[allow(dead_code)] // Task 5 will start calling this; remove the allow there.
 pub fn make_klv_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
     let exceptions = match py.import_bound("tstrans.exceptions") {
         Ok(m) => m,

@@ -93,6 +93,66 @@ def is_st0601_family(buf: bytes) -> bool:
     return buf[15] == 0x00
 
 
+# ---------------------------------------------------------------------------
+# ST 0605 §7 Precision Time Stamp Pack
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class TimeStatus:
+    """Time Status byte per MISB ST 0603 §7.4 Table 3.
+
+    - bit 7: 0 = Locked, 1 = Lock Unknown
+    - bit 6: 0 = Normal, 1 = Discontinuity
+    - bit 5: 0 = Forward, 1 = Reverse (only meaningful when bit 6=1)
+    - bits 4-0: reserved, must be 0b11111"""
+
+    raw: int
+
+    @property
+    def is_locked(self) -> bool:
+        """True if bit 7 = 0 (clock locked to absolute time reference)."""
+        return (self.raw & 0x80) == 0
+
+    @property
+    def has_discontinuity(self) -> bool:
+        """True if bit 6 = 1 (time has not incremented linearly forward)."""
+        return (self.raw & 0x40) != 0
+
+    @property
+    def is_reverse_jump(self) -> bool:
+        """True if bit 5 = 1 (only meaningful when `has_discontinuity` —
+        indicates a backward time jump rather than forward)."""
+        return (self.raw & 0x20) != 0
+
+    @property
+    def reserved_bits_valid(self) -> bool:
+        """True if reserved bits 4-0 are the spec-required 0b11111."""
+        return (self.raw & 0x1F) == 0x1F
+
+
+@dataclass(frozen=True, slots=True)
+class PrecisionTimeStampPack:
+    """MISB ST 0605 §7 Precision Time Stamp Pack typed view.
+
+    Wire form is 26 bytes: 16-byte UL + 1-byte BER length (`0x09`) +
+    1-byte `TimeStatus` + 8-byte big-endian microsecond timestamp."""
+
+    time_status: TimeStatus
+    timestamp_us: int
+
+
+# Spec-compat alias per design spec §API shape table.
+Klv0605 = PrecisionTimeStampPack
+
+
+# Re-export the Rust-side decode entry points. The Rust impls live in
+# crates/tst-py/src/klv.rs and are exposed via `_native.decode_*`.
+from tstrans import _native as _native_mod
+
+decode_precision_timestamp = _native_mod.decode_precision_timestamp
+
+
 __all__: list[str] = [
     "KlvFieldErrorKind",
     "KlvFieldError",
@@ -101,4 +161,8 @@ __all__: list[str] = [
     "PRECISION_TIMESTAMP_PACK_UL",
     "VMTI_LS_UL",
     "is_st0601_family",
+    "TimeStatus",
+    "PrecisionTimeStampPack",
+    "Klv0605",
+    "decode_precision_timestamp",
 ]

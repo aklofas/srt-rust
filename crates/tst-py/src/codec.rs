@@ -1048,6 +1048,743 @@ fn parse_h264_slice_header_light_py(
         .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h264"))
 }
 
+// === H.265 ===
+
+use tst_core::codec::h265::{
+    H265ParameterSets as RustH265ParameterSets, H265Pps as RustH265Pps,
+    H265SliceHeaderLight as RustH265SliceHeaderLight, H265SliceType as RustH265SliceType,
+    H265Sps as RustH265Sps, H265Vps as RustH265Vps,
+    parse_parameter_sets as rust_parse_h265_parameter_sets, parse_pps as rust_parse_h265_pps,
+    parse_slice_header_light as rust_parse_h265_slice_header_light,
+    parse_sps as rust_parse_h265_sps, parse_vps as rust_parse_h265_vps,
+};
+
+/// H.265 slice type (B / P / I). Only three values are defined by H.265
+/// §7.4.7.1 Table 7-7.
+/// Mirrors `tst_core::codec::h265::H265SliceType`.
+#[pyclass(eq, eq_int, name = "H265SliceType", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum H265SliceTypePy {
+    /// B slice — bidirectionally predicted.
+    #[pyo3(name = "B")]
+    B,
+    /// P slice — predicted.
+    #[pyo3(name = "P")]
+    P,
+    /// I slice — intra-coded.
+    #[pyo3(name = "I")]
+    I,
+    /// Unknown slice type — returned when the Rust parser produces a
+    /// `#[non_exhaustive]` variant not yet mapped to a Python constant.
+    #[pyo3(name = "Unknown")]
+    Unknown,
+}
+
+impl From<RustH265SliceType> for H265SliceTypePy {
+    fn from(v: RustH265SliceType) -> Self {
+        match v {
+            RustH265SliceType::B => Self::B,
+            RustH265SliceType::P => Self::P,
+            RustH265SliceType::I => Self::I,
+            // #[non_exhaustive] catch-all — maps any future variant to Unknown
+            // rather than mis-classifying it as intra (I) which would cause callers
+            // to treat an unrecognised slice type as a keyframe indicator.
+            _ => Self::Unknown,
+        }
+    }
+}
+
+/// H.265 profile/tier/level fields parsed from a VPS or SPS NAL unit.
+/// Mirrors the fields from `tst_core::codec::h265::H265ProfileTierLevel`.
+///
+/// These fields are decoded from the `profile_tier_level()` syntax structure
+/// at H.265 §7.3.3. Both [`H265SpsPy`] and [`H265VpsPy`] expose the same
+/// values via their `profile_tier_level()` method, which returns this object.
+/// The fields are also available directly as getters on both SPS and VPS
+/// classes for convenience.
+///
+/// Note: `general_profile_space` is always 0 when reconstructed from an SPS
+/// or VPS object because `H265Sps` / `H265Vps` do not store that field
+/// separately (it is always 0 for all ITU-T registered profiles).
+#[pyclass(name = "H265ProfileTierLevel", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy)]
+pub struct H265ProfileTierLevelPy {
+    general_profile_space: u8,
+    general_tier_flag: bool,
+    general_profile_idc: u8,
+    general_profile_compatibility_flags: u32,
+    general_progressive_source_flag: bool,
+    general_interlaced_source_flag: bool,
+    general_non_packed_constraint_flag: bool,
+    general_frame_only_constraint_flag: bool,
+    general_level_idc: u8,
+}
+
+#[pymethods]
+impl H265ProfileTierLevelPy {
+    /// 2-bit `general_profile_space` (§7.3.3). In practice always 0 for
+    /// ITU-T registered profiles.
+    #[getter]
+    fn general_profile_space(&self) -> u8 {
+        self.general_profile_space
+    }
+
+    /// `general_tier_flag` (§7.4.4): true = High tier, false = Main tier.
+    #[getter]
+    fn general_tier_flag(&self) -> bool {
+        self.general_tier_flag
+    }
+
+    /// 5-bit `general_profile_idc` (§7.3.3). Common values: 1=Main,
+    /// 2=Main10, 4=Rext, 5=HEVC-HM, 6=Multiview-Main, 7=Scalable-Main.
+    #[getter]
+    fn general_profile_idc(&self) -> u8 {
+        self.general_profile_idc
+    }
+
+    /// 32-bit `general_profile_compatibility_flags` (§7.3.3). Bit `i` set
+    /// means the stream conforms to profile `i`. MSB-first: spec-bit j lives
+    /// at `flags & (1 << (31 - j))`. ffmpeg uses bit 2 (= 1 << 29) to
+    /// disambiguate Main vs Main10 vs Main10-Intra.
+    #[getter]
+    fn general_profile_compatibility_flags(&self) -> u32 {
+        self.general_profile_compatibility_flags
+    }
+
+    /// `general_progressive_source_flag` (§7.4.4): stream is progressive.
+    #[getter]
+    fn general_progressive_source_flag(&self) -> bool {
+        self.general_progressive_source_flag
+    }
+
+    /// `general_interlaced_source_flag` (§7.4.4): stream is interlaced.
+    #[getter]
+    fn general_interlaced_source_flag(&self) -> bool {
+        self.general_interlaced_source_flag
+    }
+
+    /// `general_non_packed_constraint_flag` (§7.4.4): no frame-packing
+    /// arrangement SEI in the bitstream.
+    #[getter]
+    fn general_non_packed_constraint_flag(&self) -> bool {
+        self.general_non_packed_constraint_flag
+    }
+
+    /// `general_frame_only_constraint_flag` (§7.4.4): stream contains only
+    /// frames (no field pictures).
+    #[getter]
+    fn general_frame_only_constraint_flag(&self) -> bool {
+        self.general_frame_only_constraint_flag
+    }
+
+    /// `general_level_idc` (§7.3.3). Level encoded as `30 * level_major +
+    /// 3 * level_minor` for levels up to 6.2: e.g. 120 = Level 4.0,
+    /// 150 = Level 5.0, 180 = Level 6.0.
+    #[getter]
+    fn general_level_idc(&self) -> u8 {
+        self.general_level_idc
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H265ProfileTierLevel(profile_idc={}, tier={}, level_idc={})",
+            self.general_profile_idc, self.general_tier_flag, self.general_level_idc,
+        )
+    }
+}
+
+/// Construct an `H265ProfileTierLevelPy` from the fields stored on an
+/// `H265Sps` or `H265Vps` (which both carry the PTL fields flattened).
+/// `general_profile_space` is not stored on either of those types (it is
+/// always 0 for all ITU-T registered profiles).
+fn ptl_from_sps_fields(
+    general_tier_flag: bool,
+    general_profile_idc: u8,
+    general_profile_compatibility_flags: u32,
+    general_progressive_source_flag: bool,
+    general_interlaced_source_flag: bool,
+    general_non_packed_constraint_flag: bool,
+    general_frame_only_constraint_flag: bool,
+    general_level_idc: u8,
+) -> H265ProfileTierLevelPy {
+    H265ProfileTierLevelPy {
+        general_profile_space: 0,
+        general_tier_flag,
+        general_profile_idc,
+        general_profile_compatibility_flags,
+        general_progressive_source_flag,
+        general_interlaced_source_flag,
+        general_non_packed_constraint_flag,
+        general_frame_only_constraint_flag,
+        general_level_idc,
+    }
+}
+
+/// Parsed H.265 Sequence Parameter Set.
+/// Mirrors `tst_core::codec::h265::H265Sps`.
+#[pyclass(name = "H265Sps", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H265SpsPy {
+    inner: RustH265Sps,
+}
+
+#[pymethods]
+impl H265SpsPy {
+    /// `sps_seq_parameter_set_id` — identifies this SPS (H.265 §7.4.3.2.1).
+    #[getter]
+    fn sps_seq_parameter_set_id(&self) -> u8 {
+        self.inner.sps_seq_parameter_set_id
+    }
+
+    /// `sps_video_parameter_set_id` — links this SPS to a VPS.
+    #[getter]
+    fn sps_video_parameter_set_id(&self) -> u8 {
+        self.inner.sps_video_parameter_set_id
+    }
+
+    /// Post-crop display width in luma samples (after conformance window is
+    /// applied).
+    #[getter]
+    fn width(&self) -> u32 {
+        self.inner.width
+    }
+
+    /// Post-crop display height in luma samples.
+    #[getter]
+    fn height(&self) -> u32 {
+        self.inner.height
+    }
+
+    /// `general_profile_idc` (1=Main, 2=Main10, …). Decoded from the
+    /// `profile_tier_level()` block inside the SPS (§7.3.3).
+    #[getter]
+    fn general_profile_idc(&self) -> u8 {
+        self.inner.general_profile_idc
+    }
+
+    /// `general_tier_flag` — true = High tier, false = Main tier.
+    #[getter]
+    fn general_tier_flag(&self) -> bool {
+        self.inner.general_tier_flag
+    }
+
+    /// `general_level_idc` — e.g. 120 for Level 4.0, 150 for Level 5.0.
+    #[getter]
+    fn general_level_idc(&self) -> u8 {
+        self.inner.general_level_idc
+    }
+
+    /// 32-bit `general_profile_compatibility_flags`. See
+    /// [`H265ProfileTierLevel.general_profile_compatibility_flags`] for
+    /// bit-ordering details.
+    #[getter]
+    fn general_profile_compatibility_flags(&self) -> u32 {
+        self.inner.general_profile_compatibility_flags
+    }
+
+    /// `general_progressive_source_flag` (§7.4.4).
+    #[getter]
+    fn general_progressive_source_flag(&self) -> bool {
+        self.inner.general_progressive_source_flag
+    }
+
+    /// `general_interlaced_source_flag` (§7.4.4).
+    #[getter]
+    fn general_interlaced_source_flag(&self) -> bool {
+        self.inner.general_interlaced_source_flag
+    }
+
+    /// `general_non_packed_constraint_flag` (§7.4.4).
+    #[getter]
+    fn general_non_packed_constraint_flag(&self) -> bool {
+        self.inner.general_non_packed_constraint_flag
+    }
+
+    /// `general_frame_only_constraint_flag` (§7.4.4).
+    #[getter]
+    fn general_frame_only_constraint_flag(&self) -> bool {
+        self.inner.general_frame_only_constraint_flag
+    }
+
+    /// Luma bit depth (8 + `bit_depth_luma_minus8`).
+    #[getter]
+    fn bit_depth_luma(&self) -> u8 {
+        self.inner.bit_depth_luma
+    }
+
+    /// Chroma bit depth (8 + `bit_depth_chroma_minus8`).
+    #[getter]
+    fn bit_depth_chroma(&self) -> u8 {
+        self.inner.bit_depth_chroma
+    }
+
+    /// Chroma subsampling format.
+    #[getter]
+    fn chroma_format(&self) -> ChromaFormatPy {
+        self.inner.chroma_format.into()
+    }
+
+    /// `sps_max_sub_layers_minus1` — max sub-layer temporal scalability.
+    #[getter]
+    fn max_sub_layers_minus1(&self) -> u8 {
+        self.inner.max_sub_layers_minus1
+    }
+
+    /// Frame rate as `Rational(num, den)`, or `None` when VUI timing is absent.
+    #[getter]
+    fn frame_rate(&self) -> Option<RationalPy> {
+        self.inner.frame_rate.map(Into::into)
+    }
+
+    /// VUI colour info, or `None` when VUI or `video_signal_type_present_flag`
+    /// is absent.
+    #[getter]
+    fn color(&self) -> Option<ColorInfoPy> {
+        self.inner.color.clone().map(Into::into)
+    }
+
+    /// Left crop offset in luma samples (after `SubWidthC` scaling).
+    #[getter]
+    fn crop_left(&self) -> u32 {
+        self.inner.crop_left
+    }
+
+    /// Right crop offset in luma samples.
+    #[getter]
+    fn crop_right(&self) -> u32 {
+        self.inner.crop_right
+    }
+
+    /// Top crop offset in luma samples.
+    #[getter]
+    fn crop_top(&self) -> u32 {
+        self.inner.crop_top
+    }
+
+    /// Bottom crop offset in luma samples.
+    #[getter]
+    fn crop_bottom(&self) -> u32 {
+        self.inner.crop_bottom
+    }
+
+    /// `log2_max_pic_order_cnt_lsb_minus4` (H.265 §7.4.3.2.1). The bit width
+    /// of `pic_order_cnt_lsb` in slice headers equals this value plus 4.
+    #[getter]
+    fn log2_max_pic_order_cnt_lsb_minus4(&self) -> u8 {
+        self.inner.log2_max_pic_order_cnt_lsb_minus4
+    }
+
+    /// Original RBSP bytes as supplied to `parse_h265_sps`.
+    #[getter]
+    fn raw_rbsp<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_rbsp)
+    }
+
+    /// Reconstructed `H265ProfileTierLevel` from the fields decoded inside
+    /// this SPS's `profile_tier_level()` block.
+    fn profile_tier_level(&self) -> H265ProfileTierLevelPy {
+        ptl_from_sps_fields(
+            self.inner.general_tier_flag,
+            self.inner.general_profile_idc,
+            self.inner.general_profile_compatibility_flags,
+            self.inner.general_progressive_source_flag,
+            self.inner.general_interlaced_source_flag,
+            self.inner.general_non_packed_constraint_flag,
+            self.inner.general_frame_only_constraint_flag,
+            self.inner.general_level_idc,
+        )
+    }
+
+    /// Coded picture width before conformance-window crop is applied
+    /// (luma samples). Equal to `width + crop_left + crop_right`.
+    fn coded_width(&self) -> u32 {
+        self.inner.coded_width()
+    }
+
+    /// Coded picture height before conformance-window crop is applied
+    /// (luma samples). Equal to `height + crop_top + crop_bottom`.
+    fn coded_height(&self) -> u32 {
+        self.inner.coded_height()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H265Sps(profile={}, level={}, {}x{}, sps_id={})",
+            self.inner.general_profile_idc,
+            self.inner.general_level_idc,
+            self.inner.width,
+            self.inner.height,
+            self.inner.sps_seq_parameter_set_id,
+        )
+    }
+}
+
+/// Parsed H.265 Picture Parameter Set.
+/// Mirrors `tst_core::codec::h265::H265Pps`.
+#[pyclass(name = "H265Pps", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H265PpsPy {
+    inner: RustH265Pps,
+}
+
+#[pymethods]
+impl H265PpsPy {
+    /// `pps_pic_parameter_set_id` ∈ [0, 63].
+    #[getter]
+    fn pps_pic_parameter_set_id(&self) -> u8 {
+        self.inner.pps_pic_parameter_set_id
+    }
+
+    /// `pps_seq_parameter_set_id` — links this PPS to an SPS. ∈ [0, 15].
+    #[getter]
+    fn pps_seq_parameter_set_id(&self) -> u8 {
+        self.inner.pps_seq_parameter_set_id
+    }
+
+    /// Original RBSP bytes as supplied to `parse_h265_pps`.
+    #[getter]
+    fn raw_rbsp<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_rbsp)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H265Pps(pps_id={}, sps_id={})",
+            self.inner.pps_pic_parameter_set_id, self.inner.pps_seq_parameter_set_id
+        )
+    }
+}
+
+/// Parsed H.265 Video Parameter Set.
+/// Mirrors `tst_core::codec::h265::H265Vps`.
+#[pyclass(name = "H265Vps", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H265VpsPy {
+    inner: RustH265Vps,
+}
+
+#[pymethods]
+impl H265VpsPy {
+    /// 4-bit `vps_video_parameter_set_id` — identifies this VPS.
+    #[getter]
+    fn vps_video_parameter_set_id(&self) -> u8 {
+        self.inner.vps_video_parameter_set_id
+    }
+
+    /// `vps_max_layers_minus1` — max number of spatial layers (6-bit).
+    #[getter]
+    fn max_layers_minus1(&self) -> u8 {
+        self.inner.max_layers_minus1
+    }
+
+    /// `vps_max_sub_layers_minus1` — max temporal sub-layer count (3-bit).
+    #[getter]
+    fn max_sub_layers_minus1(&self) -> u8 {
+        self.inner.max_sub_layers_minus1
+    }
+
+    /// `vps_temporal_id_nesting_flag`: when true, temporal sub-layer
+    /// `j < max_sub_layers_minus1` nests inside sub-layer `j+1`.
+    #[getter]
+    fn temporal_id_nesting_flag(&self) -> bool {
+        self.inner.temporal_id_nesting_flag
+    }
+
+    /// `general_profile_idc` decoded from the VPS profile_tier_level block.
+    #[getter]
+    fn general_profile_idc(&self) -> u8 {
+        self.inner.general_profile_idc
+    }
+
+    /// `general_tier_flag` decoded from the VPS profile_tier_level block.
+    #[getter]
+    fn general_tier_flag(&self) -> bool {
+        self.inner.general_tier_flag
+    }
+
+    /// `general_level_idc` decoded from the VPS profile_tier_level block.
+    #[getter]
+    fn general_level_idc(&self) -> u8 {
+        self.inner.general_level_idc
+    }
+
+    /// 32-bit `general_profile_compatibility_flags` from the VPS.
+    #[getter]
+    fn general_profile_compatibility_flags(&self) -> u32 {
+        self.inner.general_profile_compatibility_flags
+    }
+
+    /// `general_progressive_source_flag` (§7.4.4).
+    #[getter]
+    fn general_progressive_source_flag(&self) -> bool {
+        self.inner.general_progressive_source_flag
+    }
+
+    /// `general_interlaced_source_flag` (§7.4.4).
+    #[getter]
+    fn general_interlaced_source_flag(&self) -> bool {
+        self.inner.general_interlaced_source_flag
+    }
+
+    /// `general_non_packed_constraint_flag` (§7.4.4).
+    #[getter]
+    fn general_non_packed_constraint_flag(&self) -> bool {
+        self.inner.general_non_packed_constraint_flag
+    }
+
+    /// `general_frame_only_constraint_flag` (§7.4.4).
+    #[getter]
+    fn general_frame_only_constraint_flag(&self) -> bool {
+        self.inner.general_frame_only_constraint_flag
+    }
+
+    /// Original RBSP bytes as supplied to `parse_h265_vps`.
+    #[getter]
+    fn raw_rbsp<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_rbsp)
+    }
+
+    /// Reconstructed `H265ProfileTierLevel` from the fields decoded inside
+    /// this VPS's `profile_tier_level()` block.
+    fn profile_tier_level(&self) -> H265ProfileTierLevelPy {
+        ptl_from_sps_fields(
+            self.inner.general_tier_flag,
+            self.inner.general_profile_idc,
+            self.inner.general_profile_compatibility_flags,
+            self.inner.general_progressive_source_flag,
+            self.inner.general_interlaced_source_flag,
+            self.inner.general_non_packed_constraint_flag,
+            self.inner.general_frame_only_constraint_flag,
+            self.inner.general_level_idc,
+        )
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H265Vps(vps_id={}, profile={}, level={})",
+            self.inner.vps_video_parameter_set_id,
+            self.inner.general_profile_idc,
+            self.inner.general_level_idc,
+        )
+    }
+}
+
+/// Light-weight H.265 slice segment header — fields required for keyframe
+/// detection and frame-type classification.
+/// Mirrors `tst_core::codec::h265::H265SliceHeaderLight`.
+#[pyclass(name = "H265SliceHeaderLight", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H265SliceHeaderLightPy {
+    inner: RustH265SliceHeaderLight,
+}
+
+#[pymethods]
+impl H265SliceHeaderLightPy {
+    /// True when `first_slice_segment_in_pic_flag == 1` — start of a new frame.
+    #[getter]
+    fn first_in_pic(&self) -> bool {
+        self.inner.first_in_pic
+    }
+
+    /// Slice type (B / P / I / Unknown).
+    #[getter]
+    fn slice_type(&self) -> H265SliceTypePy {
+        self.inner.slice_type.into()
+    }
+
+    /// `slice_pic_parameter_set_id` — links this slice to a PPS.
+    #[getter]
+    fn pps_id(&self) -> u8 {
+        self.inner.pps_id
+    }
+
+    /// `pic_order_cnt_lsb` read using the bit width from the supplied SPS, or
+    /// `None` when no SPS context was passed to `parse_h265_slice_header_light`.
+    /// `Some(0)` for IDR slices (implicit per spec).
+    #[getter]
+    fn pic_order_cnt_lsb(&self) -> Option<u16> {
+        self.inner.pic_order_cnt_lsb
+    }
+
+    /// True when `nal_unit_type` is IDR_W_RADL (19) or IDR_N_LP (20).
+    #[getter]
+    fn idr(&self) -> bool {
+        self.inner.idr
+    }
+
+    /// Original RBSP bytes as supplied to `parse_h265_slice_header_light`.
+    #[getter]
+    fn raw_rbsp<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_rbsp)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H265SliceHeaderLight(first={}, slice_type={:?}, idr={})",
+            self.inner.first_in_pic, self.inner.slice_type, self.inner.idr,
+        )
+    }
+}
+
+/// All VPS, SPS, and PPS NAL units parsed from a slice.
+/// Mirrors `tst_core::codec::h265::H265ParameterSets`.
+#[pyclass(name = "H265ParameterSets", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H265ParameterSetsPy {
+    inner: RustH265ParameterSets,
+}
+
+#[pymethods]
+impl H265ParameterSetsPy {
+    /// Mapping of `vps_id → H265Vps`. Keys are `int`, values are `H265Vps`.
+    #[getter]
+    fn vps_by_id<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+        let dict = pyo3::types::PyDict::new_bound(py);
+        for (k, v) in &self.inner.vps_by_id {
+            let vps_py = Py::new(py, H265VpsPy { inner: v.clone() })?;
+            dict.set_item(*k, vps_py)?;
+        }
+        Ok(dict)
+    }
+
+    /// Mapping of `sps_id → H265Sps`. Keys are `int`, values are `H265Sps`.
+    #[getter]
+    fn sps_by_id<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+        let dict = pyo3::types::PyDict::new_bound(py);
+        for (k, v) in &self.inner.sps_by_id {
+            let sps_py = Py::new(py, H265SpsPy { inner: v.clone() })?;
+            dict.set_item(*k, sps_py)?;
+        }
+        Ok(dict)
+    }
+
+    /// Mapping of `pps_id → H265Pps`. Keys are `int`, values are `H265Pps`.
+    #[getter]
+    fn pps_by_id<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+        let dict = pyo3::types::PyDict::new_bound(py);
+        for (k, v) in &self.inner.pps_by_id {
+            let pps_py = Py::new(py, H265PpsPy { inner: v.clone() })?;
+            dict.set_item(*k, pps_py)?;
+        }
+        Ok(dict)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H265ParameterSets(n_vps={}, n_sps={}, n_pps={})",
+            self.inner.vps_by_id.len(),
+            self.inner.sps_by_id.len(),
+            self.inner.pps_by_id.len()
+        )
+    }
+}
+
+/// Parse a single H.265 SPS RBSP.
+///
+/// `rbsp` must be the raw RBSP body — Annex B start code stripped, NAL header
+/// (2 bytes for H.265) stripped, emulation-prevention bytes preserved (matches
+/// ``NalUnit.h265(...).payload``).
+///
+/// Raises `CodecError` with ``kind=CodecErrorKind.TRUNCATED_RBSP`` for empty
+/// input; ``kind=CodecErrorKind.ENGINE_ERROR`` for unparseable bitstreams.
+#[pyfunction]
+#[pyo3(name = "parse_h265_sps")]
+fn parse_h265_sps_py(py: Python<'_>, rbsp: &[u8]) -> PyResult<H265SpsPy> {
+    rust_parse_h265_sps(rbsp)
+        .map(|inner| H265SpsPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h265"))
+}
+
+/// Parse a single H.265 PPS RBSP.
+///
+/// `rbsp` must be the raw RBSP body — same contract as `parse_h265_sps`.
+///
+/// Raises `CodecError` on parse failure.
+#[pyfunction]
+#[pyo3(name = "parse_h265_pps")]
+fn parse_h265_pps_py(py: Python<'_>, rbsp: &[u8]) -> PyResult<H265PpsPy> {
+    rust_parse_h265_pps(rbsp)
+        .map(|inner| H265PpsPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h265"))
+}
+
+/// Parse a single H.265 VPS RBSP.
+///
+/// `rbsp` must be the raw RBSP body — same contract as `parse_h265_sps`.
+///
+/// Raises `CodecError` on parse failure.
+#[pyfunction]
+#[pyo3(name = "parse_h265_vps")]
+fn parse_h265_vps_py(py: Python<'_>, rbsp: &[u8]) -> PyResult<H265VpsPy> {
+    rust_parse_h265_vps(rbsp)
+        .map(|inner| H265VpsPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h265"))
+}
+
+/// Parse all H.265 VPS, SPS, and PPS NAL units from a list of `NalUnit` objects.
+///
+/// Non-H.265 NAL units in the list are silently skipped. Parse is
+/// partial-success-tolerant: bad individual parameter-set NALs emit a warning
+/// and are skipped.
+///
+/// Raises `CodecError` only when every parameter-set NAL in the input
+/// failed to parse.
+#[pyfunction]
+#[pyo3(name = "parse_h265_parameter_sets")]
+fn parse_h265_parameter_sets_py(
+    py: Python<'_>,
+    nals: Vec<PyRef<'_, NalUnitPy>>,
+) -> PyResult<H265ParameterSetsPy> {
+    use tst_core::mpegts::demux::event::NalUnit as RustNalUnit;
+    // Convert each NalUnitPy to the Rust NalUnit::H265 variant.
+    // Non-H265 entries are silently filtered out.
+    let rust_nals: Vec<RustNalUnit> = nals
+        .iter()
+        .filter_map(|n| {
+            if n.kind != "H265" {
+                return None;
+            }
+            Some(RustNalUnit::H265 {
+                nal_type: n.nal_type,
+                layer_id: n.layer_id.unwrap_or(0),
+                temporal_id_plus1: n.temporal_id_plus1.unwrap_or(1),
+                payload: n.payload.clone(),
+            })
+        })
+        .collect();
+    rust_parse_h265_parameter_sets(&rust_nals)
+        .map(|inner| H265ParameterSetsPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h265"))
+}
+
+/// Parse a light H.265 slice segment header from a RBSP byte slice.
+///
+/// `rbsp` carries the RBSP body of a slice NAL — Annex B start code and NAL
+/// header (2 bytes) stripped, emulation-prevention bytes preserved.
+///
+/// `sps` is optional SPS context — when supplied, `pic_order_cnt_lsb` is
+/// read from the bitstream using the bit width
+/// `log2_max_pic_order_cnt_lsb_minus4 + 4`. When `None`,
+/// `H265SliceHeaderLight.pic_order_cnt_lsb` is `None`.
+///
+/// `nal_unit_type` is the 6-bit NAL type from the NAL header
+/// — used to derive `idr` (IDR_W_RADL=19 or IDR_N_LP=20) and to gate
+/// IRAP-specific fields.
+///
+/// Raises `CodecError` on parse failure.
+#[pyfunction]
+#[pyo3(name = "parse_h265_slice_header_light", signature = (rbsp, sps, nal_unit_type))]
+fn parse_h265_slice_header_light_py(
+    py: Python<'_>,
+    rbsp: &[u8],
+    sps: Option<&H265SpsPy>,
+    nal_unit_type: u8,
+) -> PyResult<H265SliceHeaderLightPy> {
+    rust_parse_h265_slice_header_light(rbsp, sps.map(|s| &s.inner), nal_unit_type)
+        .map(|inner| H265SliceHeaderLightPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h265"))
+}
+
 // === Module registration ===
 
 /// Register all codec classes on `m` (`tstrans._native`).
@@ -1082,5 +1819,20 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_h264_pps_py, m)?)?;
     m.add_function(wrap_pyfunction!(parse_h264_parameter_sets_py, m)?)?;
     m.add_function(wrap_pyfunction!(parse_h264_slice_header_light_py, m)?)?;
+    // H.265 enums
+    m.add_class::<H265SliceTypePy>()?;
+    // H.265 structs
+    m.add_class::<H265ProfileTierLevelPy>()?;
+    m.add_class::<H265SpsPy>()?;
+    m.add_class::<H265PpsPy>()?;
+    m.add_class::<H265VpsPy>()?;
+    m.add_class::<H265SliceHeaderLightPy>()?;
+    m.add_class::<H265ParameterSetsPy>()?;
+    // H.265 parser functions
+    m.add_function(wrap_pyfunction!(parse_h265_sps_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_h265_pps_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_h265_vps_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_h265_parameter_sets_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_h265_slice_header_light_py, m)?)?;
     Ok(())
 }

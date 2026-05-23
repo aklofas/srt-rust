@@ -33,6 +33,20 @@ parse_h264_pps = _native_mod.parse_h264_pps
 parse_h264_slice_header_light = _native_mod.parse_h264_slice_header_light
 parse_h264_sps = _native_mod.parse_h264_sps
 
+# H.265
+H265ParameterSets = _native_mod.H265ParameterSets
+H265Pps = _native_mod.H265Pps
+H265ProfileTierLevel = _native_mod.H265ProfileTierLevel
+H265SliceHeaderLight = _native_mod.H265SliceHeaderLight
+H265SliceType = _native_mod.H265SliceType
+H265Sps = _native_mod.H265Sps
+H265Vps = _native_mod.H265Vps
+parse_h265_parameter_sets = _native_mod.parse_h265_parameter_sets
+parse_h265_pps = _native_mod.parse_h265_pps
+parse_h265_slice_header_light = _native_mod.parse_h265_slice_header_light
+parse_h265_sps = _native_mod.parse_h265_sps
+parse_h265_vps = _native_mod.parse_h265_vps
+
 __all__ = [
     "ChromaFormat",
     "ColorInfo",
@@ -54,4 +68,17 @@ __all__ = [
     "parse_h264_pps",
     "parse_h264_slice_header_light",
     "parse_h264_sps",
+    # H.265
+    "H265ParameterSets",
+    "H265Pps",
+    "H265ProfileTierLevel",
+    "H265SliceHeaderLight",
+    "H265SliceType",
+    "H265Sps",
+    "H265Vps",
+    "parse_h265_parameter_sets",
+    "parse_h265_pps",
+    "parse_h265_slice_header_light",
+    "parse_h265_sps",
+    "parse_h265_vps",
 ]

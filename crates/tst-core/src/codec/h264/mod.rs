@@ -22,7 +22,7 @@
 
 mod decode;
 mod model;
-pub mod slice_header_light;
+mod slice_header_light;
 
 #[cfg(test)]
 mod tests;

@@ -54,17 +54,14 @@ pub enum H264SliceType {
 }
 
 impl H264SliceType {
-    fn from_raw(v: u32) -> Result<Self, CodecParseError> {
+    fn from_raw(v: u32) -> Self {
         match v % 5 {
-            0 => Ok(Self::P),
-            1 => Ok(Self::B),
-            2 => Ok(Self::I),
-            3 => Ok(Self::Sp),
-            4 => Ok(Self::Si),
-            _ => Err(CodecParseError::ReservedValue {
-                field: "slice_type",
-                value: v,
-            }),
+            0 => Self::P,
+            1 => Self::B,
+            2 => Self::I,
+            3 => Self::Sp,
+            4 => Self::Si,
+            _ => unreachable!("v % 5 is bounded to 0..=4; covered by prior arms"),
         }
     }
 }
@@ -96,7 +93,7 @@ pub fn parse_slice_header_light(
     let mut br = BitReader::new(rbsp);
     let first_mb_in_slice = br.read_ue()?;
     let slice_type_raw = br.read_ue()?;
-    let slice_type = H264SliceType::from_raw(slice_type_raw)?;
+    let slice_type = H264SliceType::from_raw(slice_type_raw);
     let pps_id_u32 = br.read_ue()?;
     let pps_id: u8 = u8::try_from(pps_id_u32).map_err(|_| CodecParseError::ReservedValue {
         field: "pic_parameter_set_id",

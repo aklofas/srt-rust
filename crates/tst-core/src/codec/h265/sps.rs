@@ -50,7 +50,6 @@ pub struct H265Sps {
     pub crop_bottom: u32,
     /// `log2_max_pic_order_cnt_lsb_minus4` (H.265 §7.4.3.2.1). The bit width
     /// of `pic_order_cnt_lsb` in slice headers equals this value plus 4.
-    /// Surfaced for use by `slice_header_light::parse_slice_header_light`.
     pub log2_max_pic_order_cnt_lsb_minus4: u8,
     pub raw_rbsp: Vec<u8>,
 }

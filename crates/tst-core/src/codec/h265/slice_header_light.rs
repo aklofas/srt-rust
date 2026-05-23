@@ -84,6 +84,12 @@ const fn is_irap_nal(nal_unit_type: u8) -> bool {
 /// `nal_unit_type` is the 6-bit NAL unit type from the NAL header byte pair
 /// — used to derive `idr` and to gate IRAP-specific fields.
 ///
+/// # Known limitation
+///
+/// This parser assumes `num_extra_slice_header_bits == 0` (the PPS default).
+/// Streams where the PPS overrides this will be silently mis-parsed. Full
+/// slice header support requires PPS context and is deferred.
+///
 /// # Errors
 ///
 /// Returns [`CodecParseError::TruncatedRbsp`] when `rbsp` is too short.

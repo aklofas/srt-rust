@@ -26,7 +26,8 @@
 //!   handled by `short_term_rps` walker but consumed fields aren't
 //!   surfaced.
 //! - SEI messages.
-//! - Slice headers.
+//! - Full slice headers — only the light subset is parsed; see
+//!   [`parse_slice_header_light`].
 //!
 //! H.265 parsing is hand-rolled (the `hevc-parser` crate's struct fields
 //! are crate-private, and `h265-parser` does not exist); reference
@@ -36,7 +37,7 @@ mod pps;
 mod profile_tier_level;
 mod short_term_rps;
 mod sps;
-pub mod slice_header_light;
+mod slice_header_light;
 mod vps;
 mod vui;
 

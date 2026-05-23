@@ -15,10 +15,10 @@
 //! this module has no unsafe blocks.
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion)]
 
+use pyo3::Py;
 use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList, PyTuple};
-use pyo3::Py;
 
 use tst_core::error::DemuxError;
 use tst_core::mpegts::common::Pts90khz;
@@ -474,7 +474,9 @@ fn convert_sample_event(
                         match res {
                             Ok(f) => parsed.push(Py::new(
                                 py,
-                                crate::codec::AdtsFramePy { inner: f.to_owned() },
+                                crate::codec::AdtsFramePy {
+                                    inner: f.to_owned(),
+                                },
                             )?),
                             Err(e) => {
                                 last_err = Some(e);
@@ -501,7 +503,9 @@ fn convert_sample_event(
                         match res {
                             Ok(f) => parsed.push(Py::new(
                                 py,
-                                crate::codec::Mpeg2AudioFramePy { inner: f.to_owned() },
+                                crate::codec::Mpeg2AudioFramePy {
+                                    inner: f.to_owned(),
+                                },
                             )?),
                             Err(e) => {
                                 last_err = Some(e);

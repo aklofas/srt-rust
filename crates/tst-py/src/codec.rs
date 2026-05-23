@@ -2411,12 +2411,11 @@ fn parse_h266_slice_header_light_py(
 // === AV1 ===
 
 use tst_core::codec::av1::{
+    Av1FrameHeaderLight as RustAv1FrameHeaderLight, Av1ObuStream as RustAv1ObuStream,
+    Av1SequenceHeader as RustAv1SequenceHeader,
     parse_frame_header_light as rust_parse_av1_frame_header_light,
     parse_obu_stream as rust_parse_av1_obu_stream,
     parse_sequence_header as rust_parse_av1_sequence_header,
-    Av1FrameHeaderLight as RustAv1FrameHeaderLight,
-    Av1ObuStream as RustAv1ObuStream,
-    Av1SequenceHeader as RustAv1SequenceHeader,
 };
 use tst_core::mpegts::demux::event::{Obu as RustObu, ObuExtension as RustObuExtension};
 
@@ -2636,10 +2635,7 @@ impl Av1ObuStreamPy {
 /// Raises `CodecError` on parse failure.
 #[pyfunction]
 #[pyo3(name = "parse_av1_sequence_header")]
-fn parse_av1_sequence_header_py(
-    py: Python<'_>,
-    payload: &[u8],
-) -> PyResult<Av1SequenceHeaderPy> {
+fn parse_av1_sequence_header_py(py: Python<'_>, payload: &[u8]) -> PyResult<Av1SequenceHeaderPy> {
     rust_parse_av1_sequence_header(payload)
         .map(|inner| Av1SequenceHeaderPy { inner })
         .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "av1"))
@@ -2697,9 +2693,9 @@ fn parse_av1_obu_stream_py(obus: Vec<ObuPy>) -> Av1ObuStreamPy {
 // === AAC ===
 
 use tst_core::codec::aac::{
-    frames as rust_aac_frames, frames_with_resync as rust_aac_frames_with_resync,
     AacChannelLayout as RustAacChannelLayout, AacProfile as RustAacProfile,
     AdtsFrameOwned as RustAdtsFrameOwned, MpegVersion as RustMpegVersion,
+    frames as rust_aac_frames, frames_with_resync as rust_aac_frames_with_resync,
 };
 
 /// AAC profile per ADTS ISO/IEC 13818-7 §1.A.
@@ -2973,8 +2969,10 @@ fn iter_aac_frames_with_resync_py(bytes_buf: &[u8]) -> AdtsFrameIterPy {
 fn parse_aac_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<Vec<AdtsFramePy>> {
     rust_aac_frames(bytes_buf)
         .map(|res| {
-            res.map(|f| AdtsFramePy { inner: f.to_owned() })
-                .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "aac"))
+            res.map(|f| AdtsFramePy {
+                inner: f.to_owned(),
+            })
+            .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "aac"))
         })
         .collect()
 }
@@ -2990,16 +2988,18 @@ fn parse_aac_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<Vec<AdtsFra
 fn parse_aac_frames_with_resync_py(bytes_buf: &[u8]) -> Vec<AdtsFramePy> {
     rust_aac_frames_with_resync(bytes_buf)
         .filter_map(|res| res.ok())
-        .map(|f| AdtsFramePy { inner: f.to_owned() })
+        .map(|f| AdtsFramePy {
+            inner: f.to_owned(),
+        })
         .collect()
 }
 
 // === MPEG-2 audio ===
 
 use tst_core::codec::mpegaudio::{
-    frames as rust_mpeg2audio_frames, frames_with_resync as rust_mpeg2audio_frames_with_resync,
-    ChannelMode as RustChannelMode, FrameOwned as RustMpeg2AudioFrameOwned,
-    Layer as RustLayer, Version as RustVersion,
+    ChannelMode as RustChannelMode, FrameOwned as RustMpeg2AudioFrameOwned, Layer as RustLayer,
+    Version as RustVersion, frames as rust_mpeg2audio_frames,
+    frames_with_resync as rust_mpeg2audio_frames_with_resync,
 };
 
 /// MPEG audio layer (I, II, or III).
@@ -3214,10 +3214,7 @@ impl Mpeg2AudioFrameIterPy {
 /// Raises `CodecError` immediately if any frame fails to parse.
 #[pyfunction]
 #[pyo3(name = "iter_mpeg2_audio_frames")]
-fn iter_mpeg2_audio_frames_py(
-    py: Python<'_>,
-    bytes_buf: &[u8],
-) -> PyResult<Mpeg2AudioFrameIterPy> {
+fn iter_mpeg2_audio_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<Mpeg2AudioFrameIterPy> {
     let frames = rust_mpeg2audio_frames(bytes_buf)
         .map(|res| res.map(|f| f.to_owned()))
         .collect::<Result<Vec<_>, _>>()
@@ -3254,8 +3251,10 @@ fn parse_mpeg2_audio_frames_py(
 ) -> PyResult<Vec<Mpeg2AudioFramePy>> {
     rust_mpeg2audio_frames(bytes_buf)
         .map(|res| {
-            res.map(|f| Mpeg2AudioFramePy { inner: f.to_owned() })
-                .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "mpeg2audio"))
+            res.map(|f| Mpeg2AudioFramePy {
+                inner: f.to_owned(),
+            })
+            .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "mpeg2audio"))
         })
         .collect()
 }
@@ -3271,7 +3270,9 @@ fn parse_mpeg2_audio_frames_py(
 fn parse_mpeg2_audio_frames_with_resync_py(bytes_buf: &[u8]) -> Vec<Mpeg2AudioFramePy> {
     rust_mpeg2audio_frames_with_resync(bytes_buf)
         .filter_map(|res| res.ok())
-        .map(|f| Mpeg2AudioFramePy { inner: f.to_owned() })
+        .map(|f| Mpeg2AudioFramePy {
+            inner: f.to_owned(),
+        })
         .collect()
 }
 
@@ -3370,6 +3371,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(iter_mpeg2_audio_frames_py, m)?)?;
     m.add_function(wrap_pyfunction!(iter_mpeg2_audio_frames_with_resync_py, m)?)?;
     m.add_function(wrap_pyfunction!(parse_mpeg2_audio_frames_py, m)?)?;
-    m.add_function(wrap_pyfunction!(parse_mpeg2_audio_frames_with_resync_py, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        parse_mpeg2_audio_frames_with_resync_py,
+        m
+    )?)?;
     Ok(())
 }

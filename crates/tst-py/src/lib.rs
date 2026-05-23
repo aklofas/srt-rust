@@ -9,6 +9,7 @@
 //! plans.
 
 mod errors;
+mod mpegts;
 
 use pyo3::prelude::*;
 

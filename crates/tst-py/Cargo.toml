@@ -1,0 +1,27 @@
+[package]
+name        = "tst-py"
+description = "Python bindings (PyO3) for the ts-transformer MPEG-TS + KLV + codec parsers"
+# tst-py versions independently from the rest of the workspace
+# (per spec: docs/specs/2026-05-22-tst-py-design.md — "tst-py crate
+# version is independent of the rest of the workspace; v1 starts at
+# 0.1.0"). Keep this in sync with pyproject.toml's `[project] version`.
+version     = "0.1.0"
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[lib]
+name       = "tstrans_native"
+crate-type = ["cdylib", "rlib"]
+doctest    = false
+
+[features]
+default = []
+# v2 will add: srt = ["dep:tst-srt", "dep:tst-pipeline"]
+# v3 will add: rtp = ["dep:tst-rtp"]
+
+[dependencies]
+tst-core = { path = "../tst-core" }
+pyo3     = { version = "0.22", features = ["extension-module", "abi3-py39"] }

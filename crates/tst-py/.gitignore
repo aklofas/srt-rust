@@ -1,0 +1,13 @@
+# Python build artifacts
+*.pyc
+__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# maturin / pip
+target/wheels/
+build/
+dist/
+
+# Local development venv
+.venv/

@@ -12,11 +12,15 @@
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion, dead_code)]
 
 use pyo3::prelude::*;
+use pyo3::types::{PyBytes, PyTuple};
 
 use tst_core::mpegts::mux::{
-    AudioStreamHandle as RustAudioStreamHandle, Av1CarriageMode as RustAv1CarriageMode,
-    KlvStreamHandle as RustKlvStreamHandle, KlvStreamType as RustKlvStreamType,
-    SubtitleStreamHandle as RustSubtitleStreamHandle, VideoStreamHandle as RustVideoStreamHandle,
+    AudioCodec as RustAudioCodec, AudioStreamHandle as RustAudioStreamHandle,
+    Av1CarriageMode as RustAv1CarriageMode, KlvStreamHandle as RustKlvStreamHandle,
+    KlvStreamType as RustKlvStreamType, MuxerProgramConfig as RustMuxerProgramConfig,
+    MuxerProgramConfigBuilder as RustMuxerProgramConfigBuilder, StreamSpec as RustStreamSpec,
+    SubtitleCodec as RustSubtitleCodec, SubtitleStreamHandle as RustSubtitleStreamHandle,
+    VideoCodec as RustVideoCodec, VideoStreamHandle as RustVideoStreamHandle,
 };
 
 /// Translate a Python `KlvStreamType` enum value (string-valued) to
@@ -219,5 +223,385 @@ impl PySubtitleStreamHandle {
 
     fn __repr__(&self) -> String {
         format!("SubtitleStreamHandle(raw={})", self.0.raw())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Codec enum converters — Python ↔ Rust (mux-side enums).
+// ---------------------------------------------------------------------------
+//
+// Demux-side codec enums are unit variants; mux-side `VideoCodec` and
+// `AudioCodec` are also unit variants (same shape); mux-side
+// `SubtitleCodec` is a struct-variant enum (DvbSubtitling carries
+// language + page IDs, etc.). Task 4 supports the unit-variant
+// converters; the mux-side `SubtitleCodec → Python` rendering uses the
+// flat Python `SubtitleCodec` enum (variant tag only). Construction
+// of mux-side subtitles from Python is deferred to a future task when
+// the Python `SubtitleCodec` enum gains structured payloads.
+
+/// Translate a Python `VideoCodec` enum to the mux-side Rust variant.
+fn py_video_codec(v: &Bound<'_, PyAny>) -> PyResult<RustVideoCodec> {
+    let s: String = v.getattr("value")?.extract()?;
+    match s.as_str() {
+        "h264" => Ok(RustVideoCodec::H264),
+        "h265" => Ok(RustVideoCodec::H265),
+        "h266" => Ok(RustVideoCodec::H266),
+        "av1" => Ok(RustVideoCodec::Av1),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown VideoCodec: {other}"
+        ))),
+    }
+}
+
+/// Translate a Python `AudioCodec` enum to the mux-side Rust variant.
+fn py_audio_codec(v: &Bound<'_, PyAny>) -> PyResult<RustAudioCodec> {
+    let s: String = v.getattr("value")?.extract()?;
+    match s.as_str() {
+        "mp2" => Ok(RustAudioCodec::Mp2),
+        "aac" => Ok(RustAudioCodec::Aac),
+        "aac_latm" => Ok(RustAudioCodec::AacLatm),
+        "ac3" => Ok(RustAudioCodec::Ac3),
+        other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "unknown AudioCodec: {other}"
+        ))),
+    }
+}
+
+/// Look up `tstrans.mpegts.VideoCodec.<NAME>` for a mux-side Rust variant.
+fn video_codec_to_py(py: Python<'_>, c: RustVideoCodec) -> PyResult<Bound<'_, PyAny>> {
+    let cls = py.import_bound("tstrans.mpegts")?.getattr("VideoCodec")?;
+    let name = match c {
+        RustVideoCodec::H264 => "H264",
+        RustVideoCodec::H265 => "H265",
+        RustVideoCodec::H266 => "H266",
+        RustVideoCodec::Av1 => "AV1",
+    };
+    cls.getattr(name)
+}
+
+/// Look up `tstrans.mpegts.AudioCodec.<NAME>` for a mux-side Rust variant.
+fn audio_codec_to_py(py: Python<'_>, c: RustAudioCodec) -> PyResult<Bound<'_, PyAny>> {
+    let cls = py.import_bound("tstrans.mpegts")?.getattr("AudioCodec")?;
+    let name = match c {
+        RustAudioCodec::Mp2 => "MP2",
+        RustAudioCodec::Aac => "AAC",
+        RustAudioCodec::AacLatm => "AAC_LATM",
+        RustAudioCodec::Ac3 => "AC3",
+    };
+    cls.getattr(name)
+}
+
+/// Look up `tstrans.mpegts.SubtitleCodec.<NAME>` for a mux-side
+/// Rust variant — variant tag only (structured DVB / teletext
+/// parameters on the Rust side are not surfaced; the flat Python
+/// enum only carries the codec discriminator).
+fn subtitle_codec_to_py<'py>(
+    py: Python<'py>,
+    c: &RustSubtitleCodec,
+) -> PyResult<Bound<'py, PyAny>> {
+    let cls = py
+        .import_bound("tstrans.mpegts")?
+        .getattr("SubtitleCodec")?;
+    let name = match c {
+        RustSubtitleCodec::DvbSubtitling { .. } => "DVB_SUBTITLING",
+        RustSubtitleCodec::DvbTeletext { .. } => "DVB_TELETEXT",
+        RustSubtitleCodec::Cea708Standalone => "CEA708_STANDALONE",
+        RustSubtitleCodec::WebVttInTs => "WEBVTT_IN_TS",
+    };
+    cls.getattr(name)
+}
+
+// ---------------------------------------------------------------------------
+// MuxerProgramConfig + MuxerProgramConfigBuilder — Task 4.
+// ---------------------------------------------------------------------------
+
+/// Frozen view of a built [`MuxerProgramConfig`] — one program in a
+/// multi-program TS multiplex. Holds the PMT PID, program number,
+/// PCR PID override, stream specs, and descriptors. Construct via
+/// [`MuxerProgramConfigBuilder`].
+#[pyclass(name = "MuxerProgramConfig", module = "tstrans.mpegts", frozen)]
+#[derive(Clone)]
+pub struct PyMuxerProgramConfig {
+    pub(crate) inner: RustMuxerProgramConfig,
+}
+
+#[pymethods]
+impl PyMuxerProgramConfig {
+    #[getter]
+    pub fn program_number(&self) -> u16 {
+        self.inner.program_number
+    }
+
+    #[getter]
+    pub fn pmt_pid(&self) -> u16 {
+        self.inner.pmt_pid
+    }
+
+    #[getter]
+    pub fn pcr_pid(&self) -> Option<u16> {
+        self.inner.pcr_pid
+    }
+
+    /// Tuple of `StreamSpec` subclass instances mirroring
+    /// `inner.streams` add-order. Returns the Python-side
+    /// `VideoStreamSpec / KlvStreamSpec / AudioStreamSpec /
+    /// SubtitleStreamSpec` dataclasses from `tstrans.mpegts`.
+    #[getter]
+    pub fn streams(&self, py: Python<'_>) -> PyResult<PyObject> {
+        let mpegts_mod = py.import_bound("tstrans.mpegts")?;
+        let mut items: Vec<PyObject> = Vec::with_capacity(self.inner.streams.len());
+        for s in &self.inner.streams {
+            let obj = match s {
+                RustStreamSpec::Video { pid, codec } => {
+                    let cls = mpegts_mod.getattr("VideoStreamSpec")?;
+                    let codec_obj = video_codec_to_py(py, *codec)?;
+                    cls.call1((*pid, codec_obj))?.unbind()
+                }
+                RustStreamSpec::Klv {
+                    pid,
+                    stream_type,
+                    carries_pts,
+                } => {
+                    let cls = mpegts_mod.getattr("KlvStreamSpec")?;
+                    let st_obj = klv_stream_type_to_py(py, *stream_type)?;
+                    cls.call1((*pid, st_obj, *carries_pts))?.unbind()
+                }
+                RustStreamSpec::Audio {
+                    pid,
+                    codec,
+                    language,
+                } => {
+                    let cls = mpegts_mod.getattr("AudioStreamSpec")?;
+                    let codec_obj = audio_codec_to_py(py, *codec)?;
+                    let lang_obj: PyObject = match language {
+                        Some(l) => PyBytes::new_bound(py, l).unbind().into(),
+                        None => py.None(),
+                    };
+                    cls.call1((*pid, codec_obj, lang_obj))?.unbind()
+                }
+                RustStreamSpec::Subtitle { pid, codec } => {
+                    let cls = mpegts_mod.getattr("SubtitleStreamSpec")?;
+                    let codec_obj = subtitle_codec_to_py(py, codec)?;
+                    cls.call1((*pid, codec_obj))?.unbind()
+                }
+            };
+            items.push(obj);
+        }
+        Ok(PyTuple::new_bound(py, items).unbind().into())
+    }
+
+    /// Tuple of program-level descriptor TLV bytes (PMT program info
+    /// loop, before per-stream entries).
+    #[getter]
+    pub fn program_descriptors(&self, py: Python<'_>) -> PyObject {
+        let items: Vec<PyObject> = self
+            .inner
+            .program_descriptors
+            .iter()
+            .map(|d| PyBytes::new_bound(py, d).unbind().into())
+            .collect();
+        PyTuple::new_bound(py, items).unbind().into()
+    }
+
+    /// Tuple-of-tuples of per-stream descriptor TLVs. Outer indexed
+    /// parallel to `streams`; inner is the descriptor list for that
+    /// stream.
+    #[getter]
+    pub fn stream_descriptors(&self, py: Python<'_>) -> PyObject {
+        let outer: Vec<PyObject> = self
+            .inner
+            .stream_descriptors
+            .iter()
+            .map(|descs| {
+                let inner: Vec<PyObject> = descs
+                    .iter()
+                    .map(|d| PyBytes::new_bound(py, d).unbind().into())
+                    .collect();
+                PyTuple::new_bound(py, inner).unbind().into()
+            })
+            .collect();
+        PyTuple::new_bound(py, outer).unbind().into()
+    }
+}
+
+/// Chainable builder for [`PyMuxerProgramConfig`]. Each `add_*` call
+/// appends an elementary stream and returns `self` for fluent
+/// chaining. Terminal `build()` returns the frozen config.
+///
+/// Mirrors `tst_core::mpegts::mux::MuxerProgramConfigBuilder`. The
+/// inner Rust builder is held in an `Option<...>` so `build()` can
+/// take `&self` (the Rust API uses `&self` and clones internally).
+#[pyclass(name = "MuxerProgramConfigBuilder", module = "tstrans.mpegts")]
+pub struct PyMuxerProgramConfigBuilder {
+    inner: Option<RustMuxerProgramConfigBuilder>,
+}
+
+impl PyMuxerProgramConfigBuilder {
+    fn get_mut(&mut self) -> PyResult<&mut RustMuxerProgramConfigBuilder> {
+        self.inner.as_mut().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err("MuxerProgramConfigBuilder is consumed")
+        })
+    }
+}
+
+#[pymethods]
+impl PyMuxerProgramConfigBuilder {
+    #[new]
+    pub fn new(program_number: u16, pmt_pid: u16) -> Self {
+        Self {
+            inner: Some(RustMuxerProgramConfigBuilder::new(program_number, pmt_pid)),
+        }
+    }
+
+    pub fn add_video<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        pid: u16,
+        codec: &Bound<'_, PyAny>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let rust_codec = py_video_codec(codec)?;
+        slf.get_mut()?.add_video(pid, rust_codec);
+        Ok(slf)
+    }
+
+    #[pyo3(signature = (pid, stream_type, *, carries_pts))]
+    pub fn add_klv<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        pid: u16,
+        stream_type: &Bound<'_, PyAny>,
+        carries_pts: bool,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let rust_st = py_klv_stream_type(stream_type)?;
+        slf.get_mut()?.add_klv(pid, rust_st, carries_pts);
+        Ok(slf)
+    }
+
+    pub fn add_audio<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        pid: u16,
+        codec: &Bound<'_, PyAny>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let rust_codec = py_audio_codec(codec)?;
+        slf.get_mut()?.add_audio(pid, rust_codec);
+        Ok(slf)
+    }
+
+    #[pyo3(signature = (pid, codec, *, language))]
+    pub fn add_audio_with_language<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        pid: u16,
+        codec: &Bound<'_, PyAny>,
+        language: &[u8],
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        if language.len() != 3 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "language must be 3 bytes (ISO 639-2), got {}",
+                language.len()
+            )));
+        }
+        let mut lang = [0u8; 3];
+        lang.copy_from_slice(language);
+        let rust_codec = py_audio_codec(codec)?;
+        slf.get_mut()?
+            .add_audio_with_language(pid, rust_codec, lang);
+        Ok(slf)
+    }
+
+    /// Mux-side subtitles need structured per-variant data
+    /// (language, page IDs, ...) that the flat Python `SubtitleCodec`
+    /// enum doesn't carry. Deferred to a future task.
+    pub fn add_subtitle<'py>(
+        _slf: PyRefMut<'py, Self>,
+        _pid: u16,
+        _codec: &Bound<'_, PyAny>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        Err(pyo3::exceptions::PyNotImplementedError::new_err(
+            "add_subtitle is not yet wired in Python; mux-side SubtitleCodec \
+             variants carry structured fields (language, page IDs) that the \
+             Python SubtitleCodec enum does not yet model. Deferred to a \
+             future tst-py task.",
+        ))
+    }
+
+    pub fn pcr_pid(mut slf: PyRefMut<'_, Self>, pid: u16) -> PyResult<PyRefMut<'_, Self>> {
+        slf.get_mut()?.pcr_pid(pid);
+        Ok(slf)
+    }
+
+    pub fn program_descriptors(
+        mut slf: PyRefMut<'_, Self>,
+        descs: Vec<Vec<u8>>,
+    ) -> PyResult<PyRefMut<'_, Self>> {
+        slf.get_mut()?.program_descriptors(descs);
+        Ok(slf)
+    }
+
+    pub fn stream_descriptors_for_video<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        py: Python<'py>,
+        video_idx: usize,
+        descs: Vec<Vec<u8>>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        slf.get_mut()?
+            .stream_descriptors_for_video(video_idx, descs)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))?;
+        Ok(slf)
+    }
+
+    pub fn stream_descriptors_for_klv<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        py: Python<'py>,
+        klv_idx: usize,
+        descs: Vec<Vec<u8>>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        slf.get_mut()?
+            .stream_descriptors_for_klv(klv_idx, descs)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))?;
+        Ok(slf)
+    }
+
+    pub fn stream_descriptors_for_audio<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        py: Python<'py>,
+        audio_idx: usize,
+        descs: Vec<Vec<u8>>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        slf.get_mut()?
+            .stream_descriptors_for_audio(audio_idx, descs)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))?;
+        Ok(slf)
+    }
+
+    pub fn stream_descriptors_for_subtitle<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        py: Python<'py>,
+        subtitle_idx: usize,
+        descs: Vec<Vec<u8>>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        slf.get_mut()?
+            .stream_descriptors_for_subtitle(subtitle_idx, descs)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))?;
+        Ok(slf)
+    }
+
+    pub fn stream_descriptors_for_stream<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        py: Python<'py>,
+        abs_idx: usize,
+        descs: Vec<Vec<u8>>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        slf.get_mut()?
+            .stream_descriptors_for_stream(abs_idx, descs)
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))?;
+        Ok(slf)
+    }
+
+    /// Finalize and return a [`PyMuxerProgramConfig`]. The Rust
+    /// builder uses `&self + clone`, so the same builder can produce
+    /// multiple configs.
+    pub fn build(slf: PyRef<'_, Self>) -> PyResult<PyMuxerProgramConfig> {
+        let b = slf.inner.as_ref().ok_or_else(|| {
+            pyo3::exceptions::PyRuntimeError::new_err("MuxerProgramConfigBuilder is consumed")
+        })?;
+        Ok(PyMuxerProgramConfig { inner: b.build() })
     }
 }

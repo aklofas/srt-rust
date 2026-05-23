@@ -94,3 +94,81 @@ def test_handle_unpack():
     program_idx, within_idx = h.unpack()
     assert isinstance(program_idx, int)
     assert isinstance(within_idx, int)
+
+
+# --- Task 4: MuxerProgramConfig + MuxerProgramConfigBuilder ---
+
+from tstrans.mpegts import MuxerProgramConfig, MuxerProgramConfigBuilder
+
+
+def test_program_builder_minimum_constructs():
+    cfg = (
+        MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .build()
+    )
+    assert isinstance(cfg, MuxerProgramConfig)
+    assert cfg.program_number == 1
+    assert cfg.pmt_pid == 0x100
+    assert len(cfg.streams) == 1
+    assert cfg.streams[0].pid == 0x101
+
+
+def test_program_builder_fluent_chain():
+    cfg = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_klv(0x102, KlvStreamType.SYNCHRONOUS_METADATA, carries_pts=True)
+        .add_audio(0x103, AudioCodec.AAC)
+        .pcr_pid(0x101)
+        .build()
+    )
+    assert len(cfg.streams) == 3
+    assert cfg.pcr_pid == 0x101
+
+
+def test_program_streams_tuple_match_dispatch():
+    cfg = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_klv(0x102, KlvStreamType.SYNCHRONOUS_METADATA, carries_pts=True)
+        .build()
+    )
+    kinds = []
+    for s in cfg.streams:
+        match s:
+            case VideoStreamSpec(pid=p):
+                kinds.append(("video", p))
+            case KlvStreamSpec(pid=p):
+                kinds.append(("klv", p))
+            case _:
+                pytest.fail(f"unexpected spec: {s}")
+    assert kinds == [("video", 0x101), ("klv", 0x102)]
+
+
+def test_program_descriptors_round_trip():
+    cfg = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .program_descriptors([b"\x05\x04KLVA"])
+        .build()
+    )
+    assert cfg.program_descriptors == (b"\x05\x04KLVA",)
+
+
+def test_audio_with_language_attaches_language():
+    cfg = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_audio_with_language(0x102, AudioCodec.AAC, language=b"eng")
+        .build()
+    )
+    audio_specs = [s for s in cfg.streams if isinstance(s, AudioStreamSpec)]
+    assert len(audio_specs) == 1
+    assert audio_specs[0].language == b"eng"
+
+
+def test_program_config_is_frozen():
+    cfg = MuxerProgramConfigBuilder(1, 0x100).add_video(0x101, VideoCodec.H264).build()
+    with pytest.raises((AttributeError, TypeError)):
+        cfg.program_number = 99  # type: ignore[misc]

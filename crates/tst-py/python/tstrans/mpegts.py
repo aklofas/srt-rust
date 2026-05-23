@@ -456,6 +456,13 @@ AudioStreamHandle = _native_mod.AudioStreamHandle
 KlvStreamHandle = _native_mod.KlvStreamHandle
 SubtitleStreamHandle = _native_mod.SubtitleStreamHandle
 
+# Phase 4 Task 4 — program-level config + builder. Rust impls in
+# crates/tst-py/src/mux.rs as `PyMuxerProgramConfig` /
+# `PyMuxerProgramConfigBuilder`, exposed on `_native` under the
+# names below via `#[pyclass(name=...)]`.
+MuxerProgramConfig = _native_mod.MuxerProgramConfig
+MuxerProgramConfigBuilder = _native_mod.MuxerProgramConfigBuilder
+
 # Population happens task-by-task. __all__ accumulates as types land.
 __all__: list[str] = [
     "Pts90khz",
@@ -487,4 +494,6 @@ __all__: list[str] = [
     "AudioStreamHandle",
     "KlvStreamHandle",
     "SubtitleStreamHandle",
+    "MuxerProgramConfig",
+    "MuxerProgramConfigBuilder",
 ]

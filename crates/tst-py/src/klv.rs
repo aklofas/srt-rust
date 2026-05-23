@@ -43,9 +43,9 @@ use crate::errors::make_klv_error;
 // ---------------------------------------------------------------------------
 
 /// Map a Rust `KlvDecodeError` to a Python `KlvError` instance. Covers
-/// every Rust variant; `KlvDecodeError` is `#[non_exhaustive]` so the
-/// default arm routes to `INTERNAL` and we'll add new explicit arms as
-/// new Rust variants surface.
+/// every Rust variant; `KlvDecodeError` carries the non-exhaustive
+/// attribute so the default arm routes to `INTERNAL` and we'll add new
+/// explicit arms as new Rust variants surface.
 pub(crate) fn klv_decode_error_to_pyerr(py: Python<'_>, e: KlvDecodeError) -> PyErr {
     let msg = format!("{e}");
     let kind = match &e {
@@ -115,9 +115,9 @@ fn decode_precision_timestamp_py(py: Python<'_>, buf: &[u8]) -> PyResult<PyObjec
 
 /// Translate a Rust `KlvFieldError` to a Python `KlvFieldError` dataclass
 /// instance. Variant→`KlvFieldErrorKind` mapping is exhaustive over the
-/// current Rust enum; the wildcard arm covers future `#[non_exhaustive]`
-/// additions by routing to `INVALID_LENGTH` (consumers should treat
-/// unrecognized kinds as best-effort diagnostic only).
+/// current Rust enum; the wildcard arm covers future non-exhaustive
+/// attribute additions by routing to `INVALID_LENGTH` (consumers should
+/// treat unrecognized kinds as best-effort diagnostic only).
 fn convert_field_error(py: Python<'_>, fe: &RustKlvFieldError) -> PyResult<PyObject> {
     let klv_mod = py.import_bound("tstrans.klv")?;
     let kind_enum = klv_mod.getattr(intern!(py, "KlvFieldErrorKind"))?;

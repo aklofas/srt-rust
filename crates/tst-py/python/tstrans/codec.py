@@ -166,3 +166,39 @@ __all__ = [
     "parse_mpeg2_audio_frames",
     "parse_mpeg2_audio_frames_with_resync",
 ]
+
+
+def _make_np_property(attr_name: str):
+    """Builds a property that returns np.frombuffer(getattr(self, attr_name), uint8).
+
+    Lazy-imports numpy on first call; raises ImportError with install hint
+    if [pandas] extra not installed.
+    """
+    def getter(self):
+        try:
+            import numpy as np
+        except ImportError as e:
+            raise ImportError(
+                "tstrans NumPy views require: pip install 'tstrans[pandas]'"
+            ) from e
+        return np.frombuffer(getattr(self, attr_name), dtype=np.uint8)
+    return property(getter)
+
+
+# Attach .payload_np to byte-payload classes (NAL/OBU/audio frames)
+for _cls in (NalUnit, Obu, AdtsFrame, Mpeg2AudioFrame):
+    _cls.payload_np = _make_np_property("payload")
+
+# Attach .raw_rbsp_np to parameter-set / slice-header classes
+for _cls in (
+    H264Sps, H264Pps, H264SliceHeaderLight,
+    H265Sps, H265Pps, H265Vps, H265SliceHeaderLight,
+    H266Sps, H266Pps, H266Vps, H266SliceHeaderLight,
+):
+    _cls.raw_rbsp_np = _make_np_property("raw_rbsp")
+
+# Attach .raw_np to AV1 types (field is `raw`, not `raw_rbsp`)
+for _cls in (Av1SequenceHeader, Av1FrameHeaderLight):
+    _cls.raw_np = _make_np_property("raw")
+
+del _cls  # don't pollute module namespace

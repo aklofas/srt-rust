@@ -628,6 +628,103 @@ Klv0601 = UasDatalinkLs
 decode_uas_datalink = _native_mod.decode_uas_datalink
 
 
+# ---------------------------------------------------------------------------
+# Universal Label dispatcher
+# ---------------------------------------------------------------------------
+
+
+def _read_ber_length(buf: bytes, offset: int) -> tuple[int, int]:
+    """Read a BER short/long-form length starting at `offset`. Returns
+    `(value, bytes_consumed)`. Raises ValueError if malformed."""
+    if offset >= len(buf):
+        raise ValueError("truncated BER length")
+    first = buf[offset]
+    if first < 0x80:
+        return (first, 1)
+    nbytes = first & 0x7F
+    if nbytes == 0:
+        raise ValueError("indefinite-length BER not permitted in KLV")
+    if offset + 1 + nbytes > len(buf):
+        raise ValueError("truncated BER long-form length")
+    value = int.from_bytes(buf[offset + 1 : offset + 1 + nbytes], "big")
+    return (value, 1 + nbytes)
+
+
+def parse_klv_universal(buf: bytes):
+    """Inspect the first 16 bytes of `buf` (the SMPTE Universal Label)
+    and route to the matching typed decoder. Returns one of:
+
+    - `UasDatalinkLs` (alias `Klv0601`) when the UL is in the ST 0601 family
+    - `SecurityLs` (alias `Klv0102`) for `SECURITY_LS_UL`
+    - `PrecisionTimeStampPack` (alias `Klv0605`) for `PRECISION_TIMESTAMP_PACK_UL`
+    - `VmtiLs` (alias `Klv0903`) for `VMTI_LS_UL`
+    - `None` when the UL doesn't match any known set
+
+    Raises `tstrans.exceptions.KlvError(BAD_UNIVERSAL_LABEL)` when
+    `buf` is too short to contain a 16-byte UL.
+
+    For the body-only sets (ST 0102, ST 0903), `parse_klv_universal`
+    peels the UL + outer BER length wrapper before invoking the
+    per-set decoder. For the others (ST 0601, ST 0605), the
+    per-set decoder consumes the full buffer including the UL."""
+
+    # Local import dodges any module-init ordering ambiguity.
+    from tstrans.exceptions import KlvError, KlvErrorKind
+
+    if len(buf) < 16:
+        raise KlvError(
+            kind=KlvErrorKind.BAD_UNIVERSAL_LABEL,
+            message=f"buffer too short for 16-byte UL: have {len(buf)} bytes",
+        )
+
+    ul = buf[:16]
+
+    if is_st0601_family(ul):
+        return decode_uas_datalink(buf)
+    if ul == PRECISION_TIMESTAMP_PACK_UL:
+        return decode_precision_timestamp(buf)
+    if ul == SECURITY_LS_UL:
+        try:
+            value_len, ber_bytes = _read_ber_length(buf, 16)
+        except ValueError as e:
+            raise KlvError(
+                kind=KlvErrorKind.TRUNCATED_SET,
+                message=f"ST 0102 outer BER length unreadable: {e}",
+            ) from e
+        body_start = 16 + ber_bytes
+        body_end = body_start + value_len
+        if body_end > len(buf):
+            raise KlvError(
+                kind=KlvErrorKind.TRUNCATED_SET,
+                message=(
+                    f"ST 0102 declared body length {value_len} exceeds "
+                    f"available {len(buf) - body_start}"
+                ),
+            )
+        return decode_security(buf[body_start:body_end])
+    if ul == VMTI_LS_UL:
+        try:
+            value_len, ber_bytes = _read_ber_length(buf, 16)
+        except ValueError as e:
+            raise KlvError(
+                kind=KlvErrorKind.TRUNCATED_SET,
+                message=f"ST 0903 outer BER length unreadable: {e}",
+            ) from e
+        body_start = 16 + ber_bytes
+        body_end = body_start + value_len
+        if body_end > len(buf):
+            raise KlvError(
+                kind=KlvErrorKind.TRUNCATED_SET,
+                message=(
+                    f"ST 0903 declared body length {value_len} exceeds "
+                    f"available {len(buf) - body_start}"
+                ),
+            )
+        return decode_vmti(buf[body_start:body_end])
+
+    return None
+
+
 __all__: list[str] = [
     "KlvFieldErrorKind",
     "KlvFieldError",
@@ -657,4 +754,5 @@ __all__: list[str] = [
     "UasDatalinkLs",
     "Klv0601",
     "decode_uas_datalink",
+    "parse_klv_universal",
 ]

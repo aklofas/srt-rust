@@ -44,13 +44,14 @@ def test_video_event():
 
 
 def test_audio_event():
+    # Phase 5: Audio event uses `payload=` (was `frames=` before typed rewire).
     ev = DemuxEvent.Audio(
         stream=StreamId(pid=258, kind=StreamKindTag.AUDIO,
                         codec=AudioCodec.AAC, program_number=1),
         pts=Pts90khz.from_ms(100),
         dts=None,
         codec=AudioCodec.AAC,
-        frames=b"adts frame bytes",
+        payload=b"adts frame bytes",
     )
     assert isinstance(ev, DemuxEvent)
     assert ev.codec is AudioCodec.AAC

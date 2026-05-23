@@ -18,6 +18,7 @@
 use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList, PyTuple};
+use pyo3::Py;
 
 use tst_core::error::DemuxError;
 use tst_core::mpegts::common::Pts90khz;
@@ -28,7 +29,7 @@ use tst_core::mpegts::demux::{
     SubtitleCodec, VideoCodec, VideoPayload,
 };
 
-use crate::errors::make_demux_error;
+use crate::errors::{codec_parse_error_to_pyerr, make_demux_error};
 
 // ---------------------------------------------------------------------------
 // PyDemuxer — the main wrapper
@@ -379,25 +380,168 @@ fn convert_sample_event(
             payload,
             random_access_indicator,
         } => {
-            let nals_bytes = concat_video_payload(payload);
+            // Phase 5: emit typed list[NalUnit] | list[Obu] instead of raw bytes.
+            let payload_py: PyObject = match payload {
+                VideoPayload::Nals(nals) => {
+                    let list = pyo3::types::PyList::empty_bound(py);
+                    for nal in nals {
+                        let nal_py = match nal {
+                            tst_core::mpegts::demux::NalUnit::H264 {
+                                nal_type,
+                                ref_idc,
+                                payload,
+                            } => Py::new(
+                                py,
+                                crate::codec::NalUnitPy::make_h264(
+                                    *nal_type,
+                                    *ref_idc,
+                                    payload.clone(),
+                                ),
+                            )?,
+                            tst_core::mpegts::demux::NalUnit::H265 {
+                                nal_type,
+                                layer_id,
+                                temporal_id_plus1,
+                                payload,
+                            } => Py::new(
+                                py,
+                                crate::codec::NalUnitPy::make_h265(
+                                    *nal_type,
+                                    *layer_id,
+                                    *temporal_id_plus1,
+                                    payload.clone(),
+                                ),
+                            )?,
+                            tst_core::mpegts::demux::NalUnit::H266 {
+                                nal_type,
+                                layer_id,
+                                temporal_id_plus1,
+                                payload,
+                            } => Py::new(
+                                py,
+                                crate::codec::NalUnitPy::make_h266(
+                                    *nal_type,
+                                    *layer_id,
+                                    *temporal_id_plus1,
+                                    payload.clone(),
+                                ),
+                            )?,
+                        };
+                        list.append(nal_py)?;
+                    }
+                    list.into_py(py)
+                }
+                VideoPayload::Obus(obus) => {
+                    let list = pyo3::types::PyList::empty_bound(py);
+                    for obu in obus {
+                        let ext = obu.extension.map(|e| crate::codec::ObuExtensionPy {
+                            temporal_id: e.temporal_id,
+                            spatial_id: e.spatial_id,
+                        });
+                        let obu_py = Py::new(
+                            py,
+                            crate::codec::ObuPy::make(obu.obu_type, ext, obu.payload.clone()),
+                        )?;
+                        list.append(obu_py)?;
+                    }
+                    list.into_py(py)
+                }
+            };
             let cls = de.getattr(intern!(py, "Video"))?;
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("stream", stream_py)?;
             kwargs.set_item("pts", pts_py)?;
             kwargs.set_item("dts", dts_py)?;
             kwargs.set_item("codec", video_codec_to_py(py, mpegts, codec)?)?;
-            kwargs.set_item("payload", PyBytes::new_bound(py, &nals_bytes))?;
+            kwargs.set_item("payload", payload_py)?;
             kwargs.set_item("random_access_indicator", *random_access_indicator)?;
+            // codec_parse_error: None — video typed-parse cannot fail at this layer.
+            kwargs.set_item("codec_parse_error", py.None())?;
             Ok(cls.call((), Some(&kwargs))?.into())
         }
         SamplePayload::Audio { codec, frames } => {
+            // Phase 5: emit typed list[AdtsFrame] | list[Mpeg2AudioFrame],
+            // or bytes-fallback + codec_parse_error on mid-stream parse failure (option c).
+            use tst_core::codec::aac::frames_with_resync as aac_frames;
+            use tst_core::codec::mpegaudio::frames_with_resync as mpegaudio_frames;
+            // `frames` is a Vec<u8>; we need a &[u8] slice.
+            let payload: &[u8] = frames;
+            let (payload_py, parse_err): (PyObject, Option<PyErr>) = match codec {
+                AudioCodec::Aac => {
+                    let mut parsed: Vec<Py<crate::codec::AdtsFramePy>> = Vec::new();
+                    let mut last_err = None;
+                    for res in aac_frames(payload) {
+                        match res {
+                            Ok(f) => parsed.push(Py::new(
+                                py,
+                                crate::codec::AdtsFramePy { inner: f.to_owned() },
+                            )?),
+                            Err(e) => {
+                                last_err = Some(e);
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(e) = last_err {
+                        let err = codec_parse_error_to_pyerr(py, &e, "aac");
+                        let bytes_py = PyBytes::new_bound(py, payload).into_py(py);
+                        (bytes_py, Some(err))
+                    } else {
+                        let list = pyo3::types::PyList::empty_bound(py);
+                        for f in parsed {
+                            list.append(f)?;
+                        }
+                        (list.into_py(py), None)
+                    }
+                }
+                AudioCodec::Mp2 => {
+                    let mut parsed: Vec<Py<crate::codec::Mpeg2AudioFramePy>> = Vec::new();
+                    let mut last_err = None;
+                    for res in mpegaudio_frames(payload) {
+                        match res {
+                            Ok(f) => parsed.push(Py::new(
+                                py,
+                                crate::codec::Mpeg2AudioFramePy { inner: f.to_owned() },
+                            )?),
+                            Err(e) => {
+                                last_err = Some(e);
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(e) = last_err {
+                        let err = codec_parse_error_to_pyerr(py, &e, "mp2");
+                        let bytes_py = PyBytes::new_bound(py, payload).into_py(py);
+                        (bytes_py, Some(err))
+                    } else {
+                        let list = pyo3::types::PyList::empty_bound(py);
+                        for f in parsed {
+                            list.append(f)?;
+                        }
+                        (list.into_py(py), None)
+                    }
+                }
+                // AAC-LATM typed parsing deferred — fall back to bytes silently.
+                // AC-3 is not yet parsed — fall back to bytes silently.
+                _ => {
+                    let bytes_py = PyBytes::new_bound(py, payload).into_py(py);
+                    (bytes_py, None)
+                }
+            };
             let cls = de.getattr(intern!(py, "Audio"))?;
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("stream", stream_py)?;
             kwargs.set_item("pts", pts_py)?;
             kwargs.set_item("dts", dts_py)?;
             kwargs.set_item("codec", audio_codec_to_py(py, mpegts, codec)?)?;
-            kwargs.set_item("frames", PyBytes::new_bound(py, frames))?;
+            kwargs.set_item("payload", payload_py)?;
+            match parse_err {
+                Some(err) => {
+                    let val = err.value_bound(py).clone().into_any();
+                    kwargs.set_item("codec_parse_error", val)?;
+                }
+                None => kwargs.set_item("codec_parse_error", py.None())?,
+            }
             Ok(cls.call((), Some(&kwargs))?.into())
         }
         SamplePayload::Subtitle { codec, payload } => {
@@ -432,36 +576,6 @@ fn convert_sample_event(
             Ok(nc_cls.call((), Some(&kwargs))?.into())
         }
     }
-}
-
-fn concat_video_payload(p: &VideoPayload) -> Vec<u8> {
-    // Phase 2 ships raw concatenated payload bytes — Phase 5 will
-    // expose typed NAL/OBU access. For NAL codecs we reinsert
-    // Annex-B start codes between units so the buffer is a valid
-    // Annex-B stream. For AV1 OBUs we just concatenate the payloads
-    // (lossy framing-wise, but acceptable for Phase 2 raw access;
-    // Phase 5 will preserve OBU framing).
-    let mut out = Vec::new();
-    match p {
-        VideoPayload::Nals(nals) => {
-            for n in nals {
-                out.extend_from_slice(&[0u8, 0, 0, 1]);
-                match n {
-                    tst_core::mpegts::demux::NalUnit::H264 { payload, .. }
-                    | tst_core::mpegts::demux::NalUnit::H265 { payload, .. }
-                    | tst_core::mpegts::demux::NalUnit::H266 { payload, .. } => {
-                        out.extend_from_slice(payload);
-                    }
-                }
-            }
-        }
-        VideoPayload::Obus(obus) => {
-            for o in obus {
-                out.extend_from_slice(&o.payload);
-            }
-        }
-    }
-    out
 }
 
 fn convert_metadata_event(

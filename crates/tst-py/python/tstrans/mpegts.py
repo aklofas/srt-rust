@@ -360,8 +360,11 @@ class _VideoEvent(DemuxEvent):
     pts: Pts90khz
     dts: Optional[Pts90khz]
     codec: VideoCodec
-    payload: bytes
+    # Phase 5: list[NalUnit] for H.264/H.265/H.266; list[Obu] for AV1.
+    payload: Any
     random_access_indicator: bool
+    # None — video typed-parse cannot fail at this layer.
+    codec_parse_error: Optional[Any] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -370,7 +373,13 @@ class _AudioEvent(DemuxEvent):
     pts: Pts90khz
     dts: Optional[Pts90khz]
     codec: AudioCodec
-    frames: bytes
+    # Phase 5: list[AdtsFrame] (AAC) | list[Mpeg2AudioFrame] (MP2) | bytes
+    # (LATM/AC-3/fallback-on-error). Use `codec_parse_error` to distinguish
+    # bytes-due-to-error from bytes-by-design.
+    payload: Any
+    # Populated when mid-stream parse failure triggers bytes fallback (option c).
+    # None on clean parse or codec types whose typed parser is deferred.
+    codec_parse_error: Optional[Any] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -442,6 +451,11 @@ class DemuxerConfig:
     pes_cap_per_pid: int = _DEFAULT_PES_CAP_PER_PID
     pes_cap_total: int = _DEFAULT_PES_CAP_TOTAL
 
+
+# Phase 5: re-export NalUnit / Obu / ObuExtension so callers can import
+# them from `tstrans.mpegts` without also importing from `tstrans.codec`.
+# These are the types that appear in `DemuxEvent.Video.payload` lists.
+from tstrans.codec import NalUnit, Obu, ObuExtension
 
 # Re-export the Rust-side PyDemuxer class. The Rust impl lives in
 # crates/tst-py/src/mpegts.rs and is exposed via `_native.Demuxer`.
@@ -709,4 +723,10 @@ __all__: list[str] = [
     "AudioStreamCodecStats",
     "MuxerFileSink",
     "MuxerDrainProxy",
+    # Phase 5: NalUnit / Obu / ObuExtension re-exported from tstrans.codec
+    # for convenient import from tstrans.mpegts (they appear in
+    # DemuxEvent.Video.payload lists).
+    "NalUnit",
+    "Obu",
+    "ObuExtension",
 ]

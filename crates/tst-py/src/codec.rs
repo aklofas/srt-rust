@@ -490,6 +490,53 @@ impl NalUnitPy {
     }
 }
 
+// Crate-internal Rust constructors for NalUnitPy — separate impl block
+// so they don't appear as #[pymethods] (which would make them Python-callable).
+impl NalUnitPy {
+    pub(crate) fn make_h264(nal_type: u8, ref_idc: u8, payload: Vec<u8>) -> Self {
+        Self {
+            kind: "H264".into(),
+            nal_type,
+            ref_idc: Some(ref_idc),
+            layer_id: None,
+            temporal_id_plus1: None,
+            payload,
+        }
+    }
+
+    pub(crate) fn make_h265(
+        nal_type: u8,
+        layer_id: u8,
+        temporal_id_plus1: u8,
+        payload: Vec<u8>,
+    ) -> Self {
+        Self {
+            kind: "H265".into(),
+            nal_type,
+            ref_idc: None,
+            layer_id: Some(layer_id),
+            temporal_id_plus1: Some(temporal_id_plus1),
+            payload,
+        }
+    }
+
+    pub(crate) fn make_h266(
+        nal_type: u8,
+        layer_id: u8,
+        temporal_id_plus1: u8,
+        payload: Vec<u8>,
+    ) -> Self {
+        Self {
+            kind: "H266".into(),
+            nal_type,
+            ref_idc: None,
+            layer_id: Some(layer_id),
+            temporal_id_plus1: Some(temporal_id_plus1),
+            payload,
+        }
+    }
+}
+
 // === Obu + ObuExtension ===
 
 /// AV1 OBU extension header. Present when `obu_extension_flag = 1`.
@@ -583,6 +630,17 @@ impl ObuPy {
             self.obu_type,
             self.payload.len()
         )
+    }
+}
+
+// Crate-internal Rust constructor for ObuPy.
+impl ObuPy {
+    pub(crate) fn make(obu_type: u8, extension: Option<ObuExtensionPy>, payload: Vec<u8>) -> Self {
+        Self {
+            obu_type,
+            extension,
+            payload,
+        }
     }
 }
 
@@ -2755,7 +2813,7 @@ impl From<RustAacChannelLayout> for AacChannelLayoutPy {
 #[pyclass(name = "AdtsFrame", module = "tstrans.codec")]
 #[derive(Debug, Clone)]
 pub struct AdtsFramePy {
-    inner: RustAdtsFrameOwned,
+    pub(crate) inner: RustAdtsFrameOwned,
 }
 
 #[pymethods]
@@ -3027,7 +3085,7 @@ impl From<RustChannelMode> for ChannelModePy {
 #[pyclass(name = "Mpeg2AudioFrame", module = "tstrans.codec")]
 #[derive(Debug, Clone)]
 pub struct Mpeg2AudioFramePy {
-    inner: RustMpeg2AudioFrameOwned,
+    pub(crate) inner: RustMpeg2AudioFrameOwned,
 }
 
 #[pymethods]

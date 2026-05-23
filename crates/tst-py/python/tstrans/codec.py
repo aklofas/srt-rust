@@ -21,6 +21,18 @@ ObuExtension = _native_mod.ObuExtension
 Rational = _native_mod.Rational
 TransferCharacteristics = _native_mod.TransferCharacteristics
 
+# H.264
+EntropyCodingMode = _native_mod.EntropyCodingMode
+H264ParameterSets = _native_mod.H264ParameterSets
+H264Pps = _native_mod.H264Pps
+H264SliceHeaderLight = _native_mod.H264SliceHeaderLight
+H264SliceType = _native_mod.H264SliceType
+H264Sps = _native_mod.H264Sps
+parse_h264_parameter_sets = _native_mod.parse_h264_parameter_sets
+parse_h264_pps = _native_mod.parse_h264_pps
+parse_h264_slice_header_light = _native_mod.parse_h264_slice_header_light
+parse_h264_sps = _native_mod.parse_h264_sps
+
 __all__ = [
     "ChromaFormat",
     "ColorInfo",
@@ -31,4 +43,15 @@ __all__ = [
     "ObuExtension",
     "Rational",
     "TransferCharacteristics",
+    # H.264
+    "EntropyCodingMode",
+    "H264ParameterSets",
+    "H264Pps",
+    "H264SliceHeaderLight",
+    "H264SliceType",
+    "H264Sps",
+    "parse_h264_parameter_sets",
+    "parse_h264_pps",
+    "parse_h264_slice_header_light",
+    "parse_h264_sps",
 ]

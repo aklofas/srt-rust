@@ -586,6 +586,454 @@ impl ObuPy {
     }
 }
 
+// === H.264 ===
+
+use tst_core::codec::h264::{
+    EntropyCodingMode as RustEntropyCodingMode, H264ParameterSets as RustH264ParameterSets,
+    H264Pps as RustH264Pps, H264SliceHeaderLight as RustH264SliceHeaderLight,
+    H264SliceType as RustH264SliceType, H264Sps as RustH264Sps,
+    parse_parameter_sets as rust_parse_h264_parameter_sets, parse_pps as rust_parse_h264_pps,
+    parse_slice_header_light as rust_parse_h264_slice_header_light,
+    parse_sps as rust_parse_h264_sps,
+};
+
+/// H.264 entropy coding mode signalled in the PPS.
+/// Mirrors `tst_core::codec::h264::EntropyCodingMode`.
+#[pyclass(eq, eq_int, name = "EntropyCodingMode", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntropyCodingModePy {
+    /// Context-Adaptive Variable Length Coding (Baseline/Main profiles).
+    #[pyo3(name = "CAVLC")]
+    Cavlc,
+    /// Context-Adaptive Binary Arithmetic Coding (Main/High profiles).
+    #[pyo3(name = "CABAC")]
+    Cabac,
+}
+
+impl From<RustEntropyCodingMode> for EntropyCodingModePy {
+    fn from(v: RustEntropyCodingMode) -> Self {
+        match v {
+            RustEntropyCodingMode::Cavlc => Self::Cavlc,
+            RustEntropyCodingMode::Cabac => Self::Cabac,
+        }
+    }
+}
+
+/// H.264 slice type, normalised via `slice_type % 5` per H.264 §7.4.3.
+/// Mirrors `tst_core::codec::h264::H264SliceType`.
+#[pyclass(eq, eq_int, name = "H264SliceType", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum H264SliceTypePy {
+    /// P slice — predicted.
+    #[pyo3(name = "P")]
+    P,
+    /// B slice — bidirectionally predicted.
+    #[pyo3(name = "B")]
+    B,
+    /// I slice — intra-coded.
+    #[pyo3(name = "I")]
+    I,
+    /// SP slice — switching P.
+    #[pyo3(name = "Sp")]
+    Sp,
+    /// SI slice — switching I.
+    #[pyo3(name = "Si")]
+    Si,
+}
+
+impl From<RustH264SliceType> for H264SliceTypePy {
+    fn from(v: RustH264SliceType) -> Self {
+        match v {
+            RustH264SliceType::P => Self::P,
+            RustH264SliceType::B => Self::B,
+            RustH264SliceType::I => Self::I,
+            RustH264SliceType::Sp => Self::Sp,
+            RustH264SliceType::Si => Self::Si,
+            // #[non_exhaustive] catch-all — should not arise from the parser.
+            _ => Self::I,
+        }
+    }
+}
+
+/// Parsed H.264 Sequence Parameter Set.
+/// Mirrors `tst_core::codec::h264::H264Sps`.
+#[pyclass(name = "H264Sps", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H264SpsPy {
+    inner: RustH264Sps,
+}
+
+#[pymethods]
+impl H264SpsPy {
+    /// `seq_parameter_set_id` — identifies this SPS (H.264 §7.4.2.1.1).
+    #[getter]
+    fn seq_parameter_set_id(&self) -> u8 {
+        self.inner.seq_parameter_set_id
+    }
+
+    /// Post-crop display width in luma samples.
+    #[getter]
+    fn width(&self) -> u32 {
+        self.inner.width
+    }
+
+    /// Post-crop display height in luma samples.
+    #[getter]
+    fn height(&self) -> u32 {
+        self.inner.height
+    }
+
+    /// `profile_idc` (66=Baseline, 77=Main, 100=High, …).
+    #[getter]
+    fn profile_idc(&self) -> u8 {
+        self.inner.profile_idc
+    }
+
+    /// `level_idc` — e.g. 40 for Level 4.0.
+    #[getter]
+    fn level_idc(&self) -> u8 {
+        self.inner.level_idc
+    }
+
+    /// `constraint_set_flags` byte (bits 7-2 = flags; bits 1-0 = reserved zero).
+    #[getter]
+    fn constraint_set_flags(&self) -> u8 {
+        self.inner.constraint_set_flags
+    }
+
+    /// Luma bit depth (8 + `bit_depth_luma_minus8`).
+    #[getter]
+    fn bit_depth_luma(&self) -> u8 {
+        self.inner.bit_depth_luma
+    }
+
+    /// Chroma bit depth (8 + `bit_depth_chroma_minus8`).
+    #[getter]
+    fn bit_depth_chroma(&self) -> u8 {
+        self.inner.bit_depth_chroma
+    }
+
+    /// Chroma subsampling format.
+    #[getter]
+    fn chroma_format(&self) -> ChromaFormatPy {
+        self.inner.chroma_format.into()
+    }
+
+    /// True for progressive encoding (`frame_mbs_only_flag=1`).
+    #[getter]
+    fn frame_mbs_only(&self) -> bool {
+        self.inner.frame_mbs_only
+    }
+
+    /// True when `fixed_frame_rate_flag=1` in the VUI.
+    #[getter]
+    fn fixed_frame_rate(&self) -> bool {
+        self.inner.fixed_frame_rate
+    }
+
+    /// True when the stream may contain B-frames (heuristic; see Rust docs).
+    #[getter]
+    fn has_b_frames(&self) -> bool {
+        self.inner.has_b_frames
+    }
+
+    /// Frame rate as `Rational(num, den)`, or `None` when the VUI is absent.
+    #[getter]
+    fn frame_rate(&self) -> Option<RationalPy> {
+        self.inner.frame_rate.map(Into::into)
+    }
+
+    /// VUI colour info, or `None` when the VUI is absent or video_signal_type
+    /// is not present.
+    #[getter]
+    fn color(&self) -> Option<ColorInfoPy> {
+        self.inner.color.clone().map(Into::into)
+    }
+
+    /// Left crop offset in luma samples (H.264 §6.4 after SubWidthC scaling).
+    #[getter]
+    fn crop_left(&self) -> u32 {
+        self.inner.crop_left
+    }
+
+    /// Right crop offset in luma samples.
+    #[getter]
+    fn crop_right(&self) -> u32 {
+        self.inner.crop_right
+    }
+
+    /// Top crop offset in luma samples.
+    #[getter]
+    fn crop_top(&self) -> u32 {
+        self.inner.crop_top
+    }
+
+    /// Bottom crop offset in luma samples.
+    #[getter]
+    fn crop_bottom(&self) -> u32 {
+        self.inner.crop_bottom
+    }
+
+    /// `log2_max_frame_num_minus4` — determines the bit width of `frame_num`
+    /// in slice headers (`frame_num` width = this + 4).
+    #[getter]
+    fn log2_max_frame_num_minus4(&self) -> u8 {
+        self.inner.log2_max_frame_num_minus4
+    }
+
+    /// Original RBSP bytes as supplied to `parse_h264_sps`.
+    #[getter]
+    fn raw_rbsp<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_rbsp)
+    }
+
+    /// Coded picture width before `frame_crop` is applied (luma samples).
+    /// Equal to `width + crop_left + crop_right`.
+    fn coded_width(&self) -> u32 {
+        self.inner.coded_width()
+    }
+
+    /// Coded picture height before `frame_crop` is applied (luma samples).
+    /// Equal to `height + crop_top + crop_bottom`.
+    fn coded_height(&self) -> u32 {
+        self.inner.coded_height()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H264Sps(profile={}, level={}, {}x{}, sps_id={})",
+            self.inner.profile_idc,
+            self.inner.level_idc,
+            self.inner.width,
+            self.inner.height,
+            self.inner.seq_parameter_set_id,
+        )
+    }
+}
+
+/// Parsed H.264 Picture Parameter Set.
+/// Mirrors `tst_core::codec::h264::H264Pps`.
+#[pyclass(name = "H264Pps", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H264PpsPy {
+    inner: RustH264Pps,
+}
+
+#[pymethods]
+impl H264PpsPy {
+    /// `pic_parameter_set_id` ∈ [0, 255].
+    #[getter]
+    fn pic_parameter_set_id(&self) -> u8 {
+        self.inner.pic_parameter_set_id
+    }
+
+    /// `seq_parameter_set_id` — links this PPS to an SPS. ∈ [0, 31].
+    #[getter]
+    fn seq_parameter_set_id(&self) -> u8 {
+        self.inner.seq_parameter_set_id
+    }
+
+    /// Entropy coding mode: `CAVLC` or `CABAC`.
+    #[getter]
+    fn entropy_coding_mode(&self) -> EntropyCodingModePy {
+        self.inner.entropy_coding_mode.into()
+    }
+
+    /// Original RBSP bytes as supplied to `parse_h264_pps`.
+    #[getter]
+    fn raw_rbsp<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_rbsp)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H264Pps(pps_id={}, sps_id={})",
+            self.inner.pic_parameter_set_id, self.inner.seq_parameter_set_id
+        )
+    }
+}
+
+/// Light-weight H.264 slice header — fields required for keyframe detection
+/// and frame-type classification.
+/// Mirrors `tst_core::codec::h264::H264SliceHeaderLight`.
+#[pyclass(name = "H264SliceHeaderLight", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H264SliceHeaderLightPy {
+    inner: RustH264SliceHeaderLight,
+}
+
+#[pymethods]
+impl H264SliceHeaderLightPy {
+    /// True when `first_mb_in_slice == 0` — start of a new frame.
+    #[getter]
+    fn first_in_pic(&self) -> bool {
+        self.inner.first_in_pic
+    }
+
+    /// Slice type (normalised via `slice_type % 5` per H.264 §7.4.3).
+    #[getter]
+    fn slice_type(&self) -> H264SliceTypePy {
+        self.inner.slice_type.into()
+    }
+
+    /// `pic_parameter_set_id` — links this slice to a PPS.
+    #[getter]
+    fn pps_id(&self) -> u8 {
+        self.inner.pps_id
+    }
+
+    /// `frame_num` using the bit width from the referenced SPS, or `None`
+    /// when no SPS context was passed to `parse_h264_slice_header_light`.
+    #[getter]
+    fn frame_num(&self) -> Option<u32> {
+        self.inner.frame_num
+    }
+
+    /// True when `nal_unit_type == 5` (IDR slice).
+    #[getter]
+    fn idr(&self) -> bool {
+        self.inner.idr
+    }
+
+    /// Original RBSP bytes as supplied to `parse_h264_slice_header_light`.
+    #[getter]
+    fn raw_rbsp<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_rbsp)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H264SliceHeaderLight(first={}, slice_type={:?}, idr={})",
+            self.inner.first_in_pic, self.inner.slice_type, self.inner.idr,
+        )
+    }
+}
+
+/// All SPS and PPS NAL units parsed from an access unit.
+/// Mirrors `tst_core::codec::h264::H264ParameterSets`.
+#[pyclass(name = "H264ParameterSets", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H264ParameterSetsPy {
+    inner: RustH264ParameterSets,
+}
+
+#[pymethods]
+impl H264ParameterSetsPy {
+    /// Mapping of `sps_id → H264Sps`. Keys are `int`, values are `H264Sps`.
+    #[getter]
+    fn sps_by_id<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+        let dict = pyo3::types::PyDict::new_bound(py);
+        for (k, v) in &self.inner.sps_by_id {
+            let sps_py = Py::new(py, H264SpsPy { inner: v.clone() })?;
+            dict.set_item(*k, sps_py)?;
+        }
+        Ok(dict)
+    }
+
+    /// Mapping of `pps_id → H264Pps`. Keys are `int`, values are `H264Pps`.
+    #[getter]
+    fn pps_by_id<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, pyo3::types::PyDict>> {
+        let dict = pyo3::types::PyDict::new_bound(py);
+        for (k, v) in &self.inner.pps_by_id {
+            let pps_py = Py::new(py, H264PpsPy { inner: v.clone() })?;
+            dict.set_item(*k, pps_py)?;
+        }
+        Ok(dict)
+    }
+}
+
+/// Parse a single H.264 SPS RBSP.
+///
+/// `rbsp` must be the raw RBSP body — Annex B start code stripped, NAL header
+/// byte stripped, emulation-prevention bytes preserved (matches
+/// ``NalUnit.h264(...).payload``).
+///
+/// Raises `CodecError` with ``kind=CodecErrorKind.TRUNCATED_RBSP`` for empty
+/// input; ``kind=CodecErrorKind.ENGINE_ERROR`` for unparseable bitstreams.
+#[pyfunction]
+#[pyo3(name = "parse_h264_sps")]
+fn parse_h264_sps_py(py: Python<'_>, rbsp: &[u8]) -> PyResult<H264SpsPy> {
+    rust_parse_h264_sps(rbsp)
+        .map(|inner| H264SpsPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h264"))
+}
+
+/// Parse a single H.264 PPS RBSP.
+///
+/// `rbsp` must be the raw RBSP body — same contract as `parse_h264_sps`.
+///
+/// Raises `CodecError` on parse failure.
+#[pyfunction]
+#[pyo3(name = "parse_h264_pps")]
+fn parse_h264_pps_py(py: Python<'_>, rbsp: &[u8]) -> PyResult<H264PpsPy> {
+    rust_parse_h264_pps(rbsp)
+        .map(|inner| H264PpsPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h264"))
+}
+
+/// Parse all H.264 SPS and PPS NAL units from a list of `NalUnit` objects.
+///
+/// Non-H.264 NAL units in the list are silently skipped. Non-SPS/PPS H.264
+/// NAL units are also skipped. Parse is partial-success-tolerant: bad
+/// individual parameter-set NALs emit a warning and are skipped.
+///
+/// Raises `CodecError` only when every parameter-set NAL in the input
+/// failed to parse.
+#[pyfunction]
+#[pyo3(name = "parse_h264_parameter_sets")]
+fn parse_h264_parameter_sets_py(
+    py: Python<'_>,
+    nals: Vec<PyRef<'_, NalUnitPy>>,
+) -> PyResult<H264ParameterSetsPy> {
+    use tst_core::mpegts::demux::event::NalUnit as RustNalUnit;
+    // Convert each NalUnitPy to the Rust NalUnit::H264 variant.
+    // Non-H.264 entries (H265, H266) are silently filtered out — the Rust
+    // parse_parameter_sets fn already ignores non-H264 variants, but filtering
+    // here avoids allocating dummy payloads for non-H264 discriminants.
+    let rust_nals: Vec<RustNalUnit> = nals
+        .iter()
+        .filter_map(|n| {
+            if n.kind != "H264" {
+                return None;
+            }
+            Some(RustNalUnit::H264 {
+                nal_type: n.nal_type,
+                ref_idc: n.ref_idc.unwrap_or(3),
+                payload: n.payload.clone(),
+            })
+        })
+        .collect();
+    rust_parse_h264_parameter_sets(&rust_nals)
+        .map(|inner| H264ParameterSetsPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h264"))
+}
+
+/// Parse a light H.264 slice header from a RBSP byte slice.
+///
+/// `rbsp` carries the RBSP body of a slice NAL — Annex B start code and NAL
+/// header byte stripped, emulation-prevention bytes preserved.
+///
+/// `sps` is optional SPS context — when supplied, `frame_num` is read from
+/// the bitstream using the bit width `log2_max_frame_num_minus4 + 4`. When
+/// `None`, `H264SliceHeaderLight.frame_num` is `None`.
+///
+/// `nal_unit_type` is the 5-bit NAL type from the NAL header (`& 0x1F`) —
+/// used to derive `H264SliceHeaderLight.idr` (`== 5`) without re-parsing.
+///
+/// Raises `CodecError` on parse failure.
+#[pyfunction]
+#[pyo3(name = "parse_h264_slice_header_light", signature = (rbsp, sps, nal_unit_type))]
+fn parse_h264_slice_header_light_py(
+    py: Python<'_>,
+    rbsp: &[u8],
+    sps: Option<&H264SpsPy>,
+    nal_unit_type: u8,
+) -> PyResult<H264SliceHeaderLightPy> {
+    rust_parse_h264_slice_header_light(rbsp, sps.map(|s| &s.inner), nal_unit_type)
+        .map(|inner| H264SliceHeaderLightPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h264"))
+}
+
 // === Module registration ===
 
 /// Register all codec classes on `m` (`tstrans._native`).
@@ -607,5 +1055,18 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NalUnitPy>()?;
     m.add_class::<ObuExtensionPy>()?;
     m.add_class::<ObuPy>()?;
+    // H.264 enums
+    m.add_class::<EntropyCodingModePy>()?;
+    m.add_class::<H264SliceTypePy>()?;
+    // H.264 structs
+    m.add_class::<H264SpsPy>()?;
+    m.add_class::<H264PpsPy>()?;
+    m.add_class::<H264SliceHeaderLightPy>()?;
+    m.add_class::<H264ParameterSetsPy>()?;
+    // H.264 parser functions
+    m.add_function(wrap_pyfunction!(parse_h264_sps_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_h264_pps_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_h264_parameter_sets_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_h264_slice_header_light_py, m)?)?;
     Ok(())
 }

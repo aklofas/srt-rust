@@ -15,7 +15,8 @@ Phase 4 adds `Muxer` + `MuxerConfig` here.
 
 import enum
 from dataclasses import dataclass
-from typing import ClassVar, Optional
+from pathlib import Path
+from typing import Any, ClassVar, Optional
 
 
 @dataclass(frozen=True, slots=True)
@@ -531,6 +532,140 @@ class AudioStreamCodecStats(StreamCodecStats):
 
     frames: int
 
+# Phase 4 Task 11 — MuxerFileSink + MuxerDrainProxy + `Muxer.write_file`.
+# Pure-Python sink: opens a file in `wb` mode and drains pending TS
+# packets after every `push_*` call inside the `with` block. The proxy
+# uses `__getattr__` to forward every other attribute to the wrapped
+# Muxer untouched, so callers see a near-transparent Muxer surface plus
+# the implicit drain-to-disk behavior.
+
+# Drain chunk size: 4 packets × 188 bytes. Small enough to keep memory
+# footprint low; large enough to amortize the pull() call cost.
+_DRAIN_CHUNK_PACKETS = 4
+_DRAIN_CHUNK_BYTES = _DRAIN_CHUNK_PACKETS * 188
+
+
+def _drain_muxer_to_file(muxer: "Muxer", fh) -> None:
+    """Pull pending packets in 4-packet chunks and write to `fh`.
+
+    Stops when pull() returns 0 or pending drops to 0. Used by both
+    `MuxerDrainProxy` (after each push) and `MuxerFileSink.__exit__`
+    (final drain on close).
+    """
+
+    buf = bytearray(_DRAIN_CHUNK_BYTES)
+    while muxer.pending_packets() > 0:
+        n = muxer.pull(buf)
+        if n == 0:
+            break
+        fh.write(bytes(buf[:n]))
+
+
+class MuxerDrainProxy:
+    """Returned by `MuxerFileSink.__enter__`. Delegates every attribute
+    access to the wrapped `Muxer`; intercepts the `push_*` methods to
+    drain pending packets to the sink's file after each push call.
+
+    Non-push methods (e.g. `pending_packets()`, `video_handles()`,
+    `stats()`) pass through unchanged via `__getattr__`. This keeps the
+    proxy near-transparent — code inside the `with` block can treat
+    `proxy` as a Muxer for read-only inspection while the implicit
+    drain happens behind the scenes on every push.
+    """
+
+    __slots__ = ("_muxer", "_fh")
+
+    # The set of methods to wrap with a post-push drain. Kept in sync
+    # with `PyMuxer`'s push_* surface (Tasks 7 + 8).
+    _PUSH_METHODS = frozenset({
+        "push_video", "push_video_to", "push_video_to_with_dts",
+        "push_audio", "push_audio_to",
+        "push_klv", "push_klv_to",
+        "push_subtitle", "push_subtitle_to",
+    })
+
+    def __init__(self, muxer, fh) -> None:
+        # `object.__setattr__` because we use `__slots__` and want to
+        # bypass any future `__setattr__` override (defensive).
+        object.__setattr__(self, "_muxer", muxer)
+        object.__setattr__(self, "_fh", fh)
+
+    def __getattr__(self, name: str) -> Any:
+        # `__getattr__` only fires for attrs NOT found via the normal
+        # lookup chain — so `_muxer` and `_fh` (slot descriptors) hit
+        # the fast path and never recurse here.
+        attr = getattr(self._muxer, name)
+        if name in MuxerDrainProxy._PUSH_METHODS:
+            fh = self._fh
+            muxer = self._muxer
+
+            def wrapper(*args, **kwargs):
+                result = attr(*args, **kwargs)
+                _drain_muxer_to_file(muxer, fh)
+                return result
+
+            return wrapper
+        return attr
+
+
+class MuxerFileSink:
+    """Context manager owning a file handle + a draining proxy for an
+    external `Muxer`. Always flushes + closes on `__exit__`; user
+    exceptions inside the `with` body are re-raised unchanged (the
+    sink does NOT suppress them, but it DOES still drain whatever's
+    pending and close the file so partial output is preserved).
+
+    Construct via `Muxer.write_file(path)`, not directly. The Muxer
+    itself is borrowed, not owned — it remains usable after the `with`
+    block exits, including for further `write_file(...)` calls.
+    """
+
+    __slots__ = ("_muxer", "_path", "_fh", "_proxy")
+
+    def __init__(self, muxer, path) -> None:
+        self._muxer = muxer
+        # `Path()` accepts str, os.PathLike, and Path itself.
+        self._path = Path(path)
+        self._fh = None
+        self._proxy = None
+
+    def __enter__(self) -> MuxerDrainProxy:
+        self._fh = self._path.open("wb")
+        self._proxy = MuxerDrainProxy(self._muxer, self._fh)
+        return self._proxy
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        # Drain whatever the Muxer still has pending BEFORE closing,
+        # so callers get a complete TS file even when the `with` body
+        # didn't manually drain after its last push. Wrapped in
+        # try/finally so a drain failure still closes the file.
+        try:
+            _drain_muxer_to_file(self._muxer, self._fh)
+        finally:
+            self._fh.close()
+        # Return None — never suppress the user's exception.
+
+
+def _muxer_write_file(self, path) -> MuxerFileSink:
+    """Open `path` for writing (mode `wb`) and return a context manager
+    that drains pending TS packets after each `push_*` call inside the
+    `with` block and on exit. The Muxer is borrowed, not owned —
+    callers can reuse it for further `write_file(...)` calls after the
+    `with` block exits.
+
+    Equivalent to constructing `MuxerFileSink(self, path)` directly.
+    """
+
+    return MuxerFileSink(self, path)
+
+
+# Bind `write_file` onto the PyO3 Muxer class. PyO3 #[pyclass] types
+# in abi3 mode without `subclass` may reject attribute assignment; if
+# that happens, switch to the `#[pyclass(..., subclass)]` + subclass
+# pattern (see task notes).
+Muxer.write_file = _muxer_write_file  # type: ignore[attr-defined]
+
+
 # Population happens task-by-task. __all__ accumulates as types land.
 __all__: list[str] = [
     "Pts90khz",
@@ -572,4 +707,6 @@ __all__: list[str] = [
     "VideoStreamCodecStats",
     "KlvStreamCodecStats",
     "AudioStreamCodecStats",
+    "MuxerFileSink",
+    "MuxerDrainProxy",
 ]

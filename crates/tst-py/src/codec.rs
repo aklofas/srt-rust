@@ -2936,6 +2936,287 @@ fn parse_aac_frames_with_resync_py(bytes_buf: &[u8]) -> Vec<AdtsFramePy> {
         .collect()
 }
 
+// === MPEG-2 audio ===
+
+use tst_core::codec::mpegaudio::{
+    frames as rust_mpeg2audio_frames, frames_with_resync as rust_mpeg2audio_frames_with_resync,
+    ChannelMode as RustChannelMode, FrameOwned as RustMpeg2AudioFrameOwned,
+    Layer as RustLayer, Version as RustVersion,
+};
+
+/// MPEG audio layer (I, II, or III).
+/// Mirrors `tst_core::codec::mpegaudio::Layer` (exhaustive — 3 spec-defined values).
+#[pyclass(eq, eq_int, name = "Layer", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayerPy {
+    #[pyo3(name = "I")]
+    I,
+    #[pyo3(name = "II")]
+    Ii,
+    #[pyo3(name = "III")]
+    Iii,
+}
+
+impl From<RustLayer> for LayerPy {
+    fn from(v: RustLayer) -> Self {
+        match v {
+            RustLayer::I => Self::I,
+            RustLayer::II => Self::Ii,
+            RustLayer::III => Self::Iii,
+        }
+    }
+}
+
+/// MPEG audio version (MPEG-1, MPEG-2, or MPEG-2.5).
+///
+/// MPEG-2.5 is the de-facto half-rate extension (8/11.025/12 kHz Layer III);
+/// not part of any ratified ISO spec but ubiquitous in consumer MP3 streams.
+/// Mirrors `tst_core::codec::mpegaudio::Version` (exhaustive — 3 values).
+#[pyclass(eq, eq_int, name = "Version", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VersionPy {
+    #[pyo3(name = "MPEG1")]
+    Mpeg1,
+    #[pyo3(name = "MPEG2")]
+    Mpeg2,
+    #[pyo3(name = "MPEG2_5")]
+    Mpeg2_5,
+}
+
+impl From<RustVersion> for VersionPy {
+    fn from(v: RustVersion) -> Self {
+        match v {
+            RustVersion::Mpeg1 => Self::Mpeg1,
+            RustVersion::Mpeg2 => Self::Mpeg2,
+            RustVersion::Mpeg2_5 => Self::Mpeg2_5,
+        }
+    }
+}
+
+/// MPEG audio channel mode (header bits 25-26).
+/// Mirrors `tst_core::codec::mpegaudio::ChannelMode` (exhaustive — 4 values).
+#[pyclass(eq, eq_int, name = "ChannelMode", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelModePy {
+    #[pyo3(name = "STEREO")]
+    Stereo,
+    #[pyo3(name = "JOINT_STEREO")]
+    JointStereo,
+    #[pyo3(name = "DUAL_CHANNEL")]
+    DualChannel,
+    #[pyo3(name = "MONO")]
+    Mono,
+}
+
+impl From<RustChannelMode> for ChannelModePy {
+    fn from(v: RustChannelMode) -> Self {
+        match v {
+            RustChannelMode::Stereo => Self::Stereo,
+            RustChannelMode::JointStereo => Self::JointStereo,
+            RustChannelMode::DualChannel => Self::DualChannel,
+            RustChannelMode::Mono => Self::Mono,
+        }
+    }
+}
+
+/// Decoded MPEG audio frame. Wraps `tst_core::codec::mpegaudio::FrameOwned`.
+///
+/// The `payload` getter returns the full frame bytes (header + body) sourced
+/// from `FrameOwned.body` — the Rust field name for the owned body slice.
+/// The `raw_header` getter returns the 4-byte fixed-size header array.
+#[pyclass(name = "Mpeg2AudioFrame", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct Mpeg2AudioFramePy {
+    inner: RustMpeg2AudioFrameOwned,
+}
+
+#[pymethods]
+impl Mpeg2AudioFramePy {
+    /// MPEG audio layer (I, II, or III).
+    #[getter]
+    fn layer(&self) -> LayerPy {
+        self.inner.layer.into()
+    }
+
+    /// MPEG audio version (MPEG-1, MPEG-2, or MPEG-2.5).
+    #[getter]
+    fn version(&self) -> VersionPy {
+        self.inner.version.into()
+    }
+
+    /// Bitrate in kilobits per second (e.g. 128, 192, 320).
+    #[getter]
+    fn bitrate_kbps(&self) -> u32 {
+        self.inner.bitrate_kbps
+    }
+
+    /// Sample rate in Hz (e.g. 44100, 48000).
+    #[getter]
+    fn sample_rate_hz(&self) -> u32 {
+        self.inner.sample_rate_hz
+    }
+
+    /// Channel mode (Stereo, JointStereo, DualChannel, or Mono).
+    #[getter]
+    fn channel_mode(&self) -> ChannelModePy {
+        self.inner.channel_mode.into()
+    }
+
+    /// Number of audio channels (1 for Mono, 2 for all other modes).
+    #[getter]
+    fn channels(&self) -> u8 {
+        self.inner.channels
+    }
+
+    /// Total frame byte count as computed from the header fields.
+    #[getter]
+    fn frame_length_bytes(&self) -> u32 {
+        self.inner.frame_length_bytes
+    }
+
+    /// Number of PCM samples encoded in this frame.
+    ///
+    /// Depends on (version, layer): Layer I = 384; Layer II = 1152;
+    /// Layer III MPEG-1 = 1152; Layer III MPEG-2/2.5 = 576.
+    #[getter]
+    fn samples_per_frame(&self) -> u16 {
+        self.inner.samples_per_frame
+    }
+
+    /// True when a 16-bit CRC follows the 4-byte header
+    /// (protection_bit == 0 in the raw header).
+    #[getter]
+    fn has_crc(&self) -> bool {
+        self.inner.has_crc
+    }
+
+    /// Raw 4-byte MPEG audio frame header bytes.
+    #[getter]
+    fn raw_header<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_header)
+    }
+
+    /// Full frame bytes (header + body). Sources from `FrameOwned.body`.
+    #[getter]
+    fn payload<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.body)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Mpeg2AudioFrame(layer={:?}, version={:?}, bitrate={}kbps, sr={}Hz, ch_mode={:?}, frame_len={})",
+            self.inner.layer,
+            self.inner.version,
+            self.inner.bitrate_kbps,
+            self.inner.sample_rate_hz,
+            self.inner.channel_mode,
+            self.inner.frame_length_bytes,
+        )
+    }
+}
+
+/// Lazy MPEG audio frame iterator returned by `iter_mpeg2_audio_frames` /
+/// `iter_mpeg2_audio_frames_with_resync`.
+///
+/// Implementation: frames are collected eagerly at construction time into a
+/// `Vec<FrameOwned>` — the lifetime-borrowed `Frames<'_>` iterator cannot
+/// cross the PyO3 boundary. From Python's perspective the type has the
+/// standard iterator protocol (`__iter__` + `__next__`).
+#[pyclass(name = "Mpeg2AudioFrameIter", module = "tstrans.codec")]
+pub struct Mpeg2AudioFrameIterPy {
+    frames: Vec<RustMpeg2AudioFrameOwned>,
+    index: usize,
+}
+
+#[pymethods]
+impl Mpeg2AudioFrameIterPy {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self) -> Option<Mpeg2AudioFramePy> {
+        if self.index < self.frames.len() {
+            let frame = self.frames[self.index].clone();
+            self.index += 1;
+            Some(Mpeg2AudioFramePy { inner: frame })
+        } else {
+            None
+        }
+    }
+}
+
+/// Lazy MPEG audio frame iterator over `bytes_buf` (strict — raises
+/// `CodecError` on first parse failure).
+///
+/// Internally collects all frames eagerly from the Rust
+/// `tst_core::codec::mpegaudio::frames` iterator at construction time.
+/// Returns an `Mpeg2AudioFrameIter` that yields `Mpeg2AudioFrame` objects
+/// one at a time.
+///
+/// Raises `CodecError` immediately if any frame fails to parse.
+#[pyfunction]
+#[pyo3(name = "iter_mpeg2_audio_frames")]
+fn iter_mpeg2_audio_frames_py(
+    py: Python<'_>,
+    bytes_buf: &[u8],
+) -> PyResult<Mpeg2AudioFrameIterPy> {
+    let frames = rust_mpeg2audio_frames(bytes_buf)
+        .map(|res| res.map(|f| f.to_owned()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "mpeg2audio"))?;
+    Ok(Mpeg2AudioFrameIterPy { frames, index: 0 })
+}
+
+/// Lazy MPEG audio frame iterator over `bytes_buf` (best-effort — never
+/// raises, silently skips frames that fail to parse).
+///
+/// Uses `tst_core::codec::mpegaudio::frames_with_resync` which scans forward
+/// for the next plausible 11-bit syncword after each parse error. Errors are
+/// filtered out; only successfully decoded frames are yielded.
+#[pyfunction]
+#[pyo3(name = "iter_mpeg2_audio_frames_with_resync")]
+fn iter_mpeg2_audio_frames_with_resync_py(bytes_buf: &[u8]) -> Mpeg2AudioFrameIterPy {
+    let frames: Vec<_> = rust_mpeg2audio_frames_with_resync(bytes_buf)
+        .filter_map(|res| res.ok())
+        .map(|f| f.to_owned())
+        .collect();
+    Mpeg2AudioFrameIterPy { frames, index: 0 }
+}
+
+/// Eagerly parse all MPEG audio frames from `bytes_buf` (strict — raises
+/// `CodecError` on first parse failure).
+///
+/// Returns a `list[Mpeg2AudioFrame]` on success. Equivalent to
+/// `list(iter_mpeg2_audio_frames(bytes_buf))` but avoids the iterator object.
+#[pyfunction]
+#[pyo3(name = "parse_mpeg2_audio_frames")]
+fn parse_mpeg2_audio_frames_py(
+    py: Python<'_>,
+    bytes_buf: &[u8],
+) -> PyResult<Vec<Mpeg2AudioFramePy>> {
+    rust_mpeg2audio_frames(bytes_buf)
+        .map(|res| {
+            res.map(|f| Mpeg2AudioFramePy { inner: f.to_owned() })
+                .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "mpeg2audio"))
+        })
+        .collect()
+}
+
+/// Eagerly parse all MPEG audio frames from `bytes_buf`, skipping parse
+/// errors (best-effort — never raises).
+///
+/// Uses `frames_with_resync` internally; only successfully decoded frames
+/// appear in the returned list. Suitable for stats / telemetry use where
+/// dropping a frame on corruption is preferable to aborting the parse.
+#[pyfunction]
+#[pyo3(name = "parse_mpeg2_audio_frames_with_resync")]
+fn parse_mpeg2_audio_frames_with_resync_py(bytes_buf: &[u8]) -> Vec<Mpeg2AudioFramePy> {
+    rust_mpeg2audio_frames_with_resync(bytes_buf)
+        .filter_map(|res| res.ok())
+        .map(|f| Mpeg2AudioFramePy { inner: f.to_owned() })
+        .collect()
+}
+
 // === Module registration ===
 
 /// Register all codec classes on `m` (`tstrans._native`).
@@ -3020,5 +3301,17 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(iter_aac_frames_with_resync_py, m)?)?;
     m.add_function(wrap_pyfunction!(parse_aac_frames_py, m)?)?;
     m.add_function(wrap_pyfunction!(parse_aac_frames_with_resync_py, m)?)?;
+    // MPEG-2 audio enums
+    m.add_class::<LayerPy>()?;
+    m.add_class::<VersionPy>()?;
+    m.add_class::<ChannelModePy>()?;
+    // MPEG-2 audio frame + iterator
+    m.add_class::<Mpeg2AudioFramePy>()?;
+    m.add_class::<Mpeg2AudioFrameIterPy>()?;
+    // MPEG-2 audio parser functions
+    m.add_function(wrap_pyfunction!(iter_mpeg2_audio_frames_py, m)?)?;
+    m.add_function(wrap_pyfunction!(iter_mpeg2_audio_frames_with_resync_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_mpeg2_audio_frames_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_mpeg2_audio_frames_with_resync_py, m)?)?;
     Ok(())
 }

@@ -80,6 +80,17 @@ iter_aac_frames_with_resync = _native_mod.iter_aac_frames_with_resync
 parse_aac_frames = _native_mod.parse_aac_frames
 parse_aac_frames_with_resync = _native_mod.parse_aac_frames_with_resync
 
+# MPEG-2 audio
+ChannelMode = _native_mod.ChannelMode
+Layer = _native_mod.Layer
+Mpeg2AudioFrame = _native_mod.Mpeg2AudioFrame
+Mpeg2AudioFrameIter = _native_mod.Mpeg2AudioFrameIter
+Version = _native_mod.Version
+iter_mpeg2_audio_frames = _native_mod.iter_mpeg2_audio_frames
+iter_mpeg2_audio_frames_with_resync = _native_mod.iter_mpeg2_audio_frames_with_resync
+parse_mpeg2_audio_frames = _native_mod.parse_mpeg2_audio_frames
+parse_mpeg2_audio_frames_with_resync = _native_mod.parse_mpeg2_audio_frames_with_resync
+
 __all__ = [
     "ChromaFormat",
     "ColorInfo",
@@ -144,4 +155,14 @@ __all__ = [
     "iter_aac_frames_with_resync",
     "parse_aac_frames",
     "parse_aac_frames_with_resync",
+    # MPEG-2 audio
+    "ChannelMode",
+    "Layer",
+    "Mpeg2AudioFrame",
+    "Mpeg2AudioFrameIter",
+    "Version",
+    "iter_mpeg2_audio_frames",
+    "iter_mpeg2_audio_frames_with_resync",
+    "parse_mpeg2_audio_frames",
+    "parse_mpeg2_audio_frames_with_resync",
 ]

@@ -76,6 +76,7 @@ crates/
   tst-pipeline/  pipeline shells — MuxSender/Sender/RawSender, DemuxReceiver, etc.   ✅ done
   tst-srt/       SRT transport + top-level examples                                  ✅ done
   tst-c/         cdylib + staticlib + cbindgen header — Linux x86_64                 ✅ done
+  tst-py/        Python bindings via PyO3 — Jupyter notebook / data-science          🚧 in progress
   srt-jni/       JNI bindings — JAR for JDK 17+ JVM consumers                       ⏳ planned
   srt-uniffi/    Swift/Kotlin via UniFFI — iOS/Android frameworks                    ⏳ planned
 vendor/

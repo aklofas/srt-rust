@@ -225,6 +225,58 @@ class ObjectCountryCodingMethod(enum.Enum):
     GENC_ADMIN_SUB = 0x40
 
 
+# ---------------------------------------------------------------------------
+# ST 0102.12 Security Metadata LS
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class SecurityLs:
+    """MISB ST 0102.12 Security Metadata Local Set typed view.
+
+    Required tags per spec (§6.7 Table 1): 1, 2, 3, 12, 13, 22.
+    Lenient decode tolerates missing required tags + unknown enum
+    codepoints (surfaced as raw int) + malformed Tag 13 UTF-16
+    (recorded in `field_errors`; raw bytes are NOT preserved in
+    `unknown` for Tag 13 per Rust's decode comment — re-emitting
+    malformed UTF-16 wouldn't help any consumer). Strict decode
+    (`decode_security(buf, strict=True)`) rejects all of the above.
+
+    Unknown enum codepoints on Tags 1 / 2 / 12 surface as the raw
+    `int` codepoint rather than an enum instance — callers checking
+    `isinstance(field, SecurityClassification)` will be False for
+    out-of-spec codepoints; check `isinstance(..., int)` if you want
+    to handle forward-compat values.
+    """
+
+    security_classification: SecurityClassification | int | None = None
+    classifying_country_coding_method: ClassifyingCountryCodingMethod | int | None = None
+    classifying_country: str | None = None
+    object_country_coding_method: ObjectCountryCodingMethod | int | None = None
+    object_country_codes: str | None = None
+    version: int | None = None
+    sci_shi_info: str | None = None
+    caveats: str | None = None
+    releasing_instructions: str | None = None
+    classified_by: str | None = None
+    derived_from: str | None = None
+    classification_reason: str | None = None
+    declassification_date: str | None = None
+    classification_marking_system: str | None = None
+    classification_comments: str | None = None
+    classifying_country_coding_method_version_date: str | None = None
+    object_country_coding_method_version_date: str | None = None
+    unknown: tuple[tuple[int, bytes], ...] = ()
+    field_errors: tuple[KlvFieldError, ...] = ()
+
+
+# Spec-compat alias.
+Klv0102 = SecurityLs
+
+
+decode_security = _native_mod.decode_security
+
+
 __all__: list[str] = [
     "KlvFieldErrorKind",
     "KlvFieldError",
@@ -240,4 +292,7 @@ __all__: list[str] = [
     "SecurityClassification",
     "ClassifyingCountryCodingMethod",
     "ObjectCountryCodingMethod",
+    "SecurityLs",
+    "Klv0102",
+    "decode_security",
 ]

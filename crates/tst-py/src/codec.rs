@@ -2636,6 +2636,306 @@ fn parse_av1_obu_stream_py(obus: Vec<ObuPy>) -> Av1ObuStreamPy {
     Av1ObuStreamPy { inner }
 }
 
+// === AAC ===
+
+use tst_core::codec::aac::{
+    frames as rust_aac_frames, frames_with_resync as rust_aac_frames_with_resync,
+    AacChannelLayout as RustAacChannelLayout, AacProfile as RustAacProfile,
+    AdtsFrameOwned as RustAdtsFrameOwned, MpegVersion as RustMpegVersion,
+};
+
+/// AAC profile per ADTS ISO/IEC 13818-7 §1.A.
+/// Mirrors `tst_core::codec::aac::AacProfile` (exhaustive — 4 spec-defined values).
+#[pyclass(eq, eq_int, name = "AacProfile", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AacProfilePy {
+    #[pyo3(name = "MAIN")]
+    Main,
+    #[pyo3(name = "LC")]
+    Lc,
+    #[pyo3(name = "SSR")]
+    Ssr,
+    #[pyo3(name = "LTP")]
+    Ltp,
+}
+
+impl From<RustAacProfile> for AacProfilePy {
+    fn from(v: RustAacProfile) -> Self {
+        match v {
+            RustAacProfile::Main => Self::Main,
+            RustAacProfile::Lc => Self::Lc,
+            RustAacProfile::Ssr => Self::Ssr,
+            RustAacProfile::LongTermPrediction => Self::Ltp,
+        }
+    }
+}
+
+/// ADTS MPEG version bit.
+/// Mirrors `tst_core::codec::aac::MpegVersion` (exhaustive — 2 values).
+#[pyclass(eq, eq_int, name = "MpegVersion", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MpegVersionPy {
+    #[pyo3(name = "MPEG2")]
+    Mpeg2,
+    #[pyo3(name = "MPEG4")]
+    Mpeg4,
+}
+
+impl From<RustMpegVersion> for MpegVersionPy {
+    fn from(v: RustMpegVersion) -> Self {
+        match v {
+            RustMpegVersion::Mpeg2 => Self::Mpeg2,
+            RustMpegVersion::Mpeg4 => Self::Mpeg4,
+        }
+    }
+}
+
+/// AAC channel layout decoded from the ADTS `channel_configuration` field.
+///
+/// Mirrors `tst_core::codec::aac::AacChannelLayout` (`#[non_exhaustive]`).
+/// Two cases:
+/// - `is_pce_defined == True` — channel layout is in a PCE inside the raw
+///   data block; `channels` is `None`.
+/// - `is_pce_defined == False` — canonical channel count; `channels` is `Some(n)`.
+#[pyclass(name = "AacChannelLayout", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct AacChannelLayoutPy {
+    is_pce_defined: bool,
+    channels: Option<u8>,
+}
+
+#[pymethods]
+impl AacChannelLayoutPy {
+    /// True when the channel layout is defined by a Program Config Element
+    /// (PCE) inside the raw_data_block — not derivable from the ADTS header.
+    #[getter]
+    fn is_pce_defined(&self) -> bool {
+        self.is_pce_defined
+    }
+
+    /// Canonical channel count, or `None` when PCE-defined.
+    #[getter]
+    fn channels(&self) -> Option<u8> {
+        self.channels
+    }
+
+    fn __repr__(&self) -> String {
+        if self.is_pce_defined {
+            "AacChannelLayout(pce_defined)".to_owned()
+        } else {
+            format!("AacChannelLayout(channels={})", self.channels.unwrap_or(0))
+        }
+    }
+}
+
+impl From<RustAacChannelLayout> for AacChannelLayoutPy {
+    fn from(v: RustAacChannelLayout) -> Self {
+        match v {
+            RustAacChannelLayout::PceDefined => Self {
+                is_pce_defined: true,
+                channels: None,
+            },
+            RustAacChannelLayout::Channels(n) => Self {
+                is_pce_defined: false,
+                channels: Some(n),
+            },
+            // #[non_exhaustive] catch-all — forward-compat for future variants.
+            _ => Self {
+                is_pce_defined: false,
+                channels: None,
+            },
+        }
+    }
+}
+
+/// Decoded ADTS frame. Wraps `tst_core::codec::aac::AdtsFrameOwned`.
+///
+/// The `payload` getter returns the full frame bytes (header + body) sourced
+/// from `AdtsFrameOwned.body` — the Rust field name for the owned body slice.
+#[pyclass(name = "AdtsFrame", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct AdtsFramePy {
+    inner: RustAdtsFrameOwned,
+}
+
+#[pymethods]
+impl AdtsFramePy {
+    /// AAC profile (Main / LC / SSR / LTP).
+    #[getter]
+    fn profile(&self) -> AacProfilePy {
+        self.inner.profile.into()
+    }
+
+    /// Sample rate in Hz (e.g. 44100, 48000).
+    #[getter]
+    fn sample_rate_hz(&self) -> u32 {
+        self.inner.sample_rate_hz
+    }
+
+    /// Raw 3-bit `channel_configuration` field from the ADTS header.
+    /// `0` = PCE-defined; `1..=7` = canonical channel counts.
+    #[getter]
+    fn channel_configuration(&self) -> u8 {
+        self.inner.channel_configuration
+    }
+
+    /// Typed channel layout.
+    #[getter]
+    fn channel_layout(&self) -> AacChannelLayoutPy {
+        self.inner.channel_layout.into()
+    }
+
+    /// Total frame byte count (header + body), as encoded in the ADTS header.
+    #[getter]
+    fn frame_length_bytes(&self) -> u32 {
+        self.inner.frame_length_bytes
+    }
+
+    /// Number of PCM samples in the frame (1024 for standard ADTS).
+    #[getter]
+    fn samples_per_frame(&self) -> u16 {
+        self.inner.samples_per_frame
+    }
+
+    /// Number of raw data blocks in the frame (logical, not wire value).
+    #[getter]
+    fn num_raw_data_blocks(&self) -> u8 {
+        self.inner.num_raw_data_blocks
+    }
+
+    /// True when a 16-bit CRC follows the 7-byte fixed header.
+    #[getter]
+    fn has_crc(&self) -> bool {
+        self.inner.has_crc
+    }
+
+    /// MPEG version: `MpegVersion.MPEG2` or `MpegVersion.MPEG4`.
+    #[getter]
+    fn mpeg_version(&self) -> MpegVersionPy {
+        self.inner.mpeg_version.into()
+    }
+
+    /// Raw ADTS header bytes (7 bytes without CRC, 9 with CRC).
+    #[getter]
+    fn raw_header<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_header)
+    }
+
+    /// Full frame bytes (header + body). Sources from `AdtsFrameOwned.body`.
+    #[getter]
+    fn payload<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.body)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "AdtsFrame(profile={:?}, sr={}, ch={}, frame_len={})",
+            self.inner.profile,
+            self.inner.sample_rate_hz,
+            self.inner.channel_configuration,
+            self.inner.frame_length_bytes,
+        )
+    }
+}
+
+/// Lazy ADTS frame iterator returned by `iter_aac_frames` /
+/// `iter_aac_frames_with_resync`.
+///
+/// Implementation: frames are collected eagerly at construction time into a
+/// `Vec<AdtsFrameOwned>` — the lifetime-borrowed `AdtsFrames<'_>` iterator
+/// cannot cross the PyO3 boundary. From Python's perspective the type has
+/// the standard iterator protocol (`__iter__` + `__next__`).
+#[pyclass(name = "AdtsFrameIter", module = "tstrans.codec")]
+pub struct AdtsFrameIterPy {
+    frames: Vec<RustAdtsFrameOwned>,
+    index: usize,
+}
+
+#[pymethods]
+impl AdtsFrameIterPy {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self) -> Option<AdtsFramePy> {
+        if self.index < self.frames.len() {
+            let frame = self.frames[self.index].clone();
+            self.index += 1;
+            Some(AdtsFramePy { inner: frame })
+        } else {
+            None
+        }
+    }
+}
+
+/// Lazy ADTS frame iterator over `bytes_buf` (strict — raises `CodecError`
+/// on first parse failure).
+///
+/// Internally collects all frames eagerly from the Rust
+/// `tst_core::codec::aac::frames` iterator at construction time. Returns
+/// an `AdtsFrameIter` that yields `AdtsFrame` objects one at a time.
+///
+/// Raises `CodecError` immediately if any frame fails to parse.
+#[pyfunction]
+#[pyo3(name = "iter_aac_frames")]
+fn iter_aac_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<AdtsFrameIterPy> {
+    let frames: Result<Vec<_>, _> = rust_aac_frames(bytes_buf)
+        .map(|res| res.map(|f| f.to_owned()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "aac"));
+    Ok(AdtsFrameIterPy {
+        frames: frames?,
+        index: 0,
+    })
+}
+
+/// Lazy ADTS frame iterator over `bytes_buf` (best-effort — never raises,
+/// silently skips frames that fail to parse).
+///
+/// Uses `tst_core::codec::aac::frames_with_resync` which scans forward for
+/// the next plausible ADTS syncword after each parse error. Errors are
+/// filtered out; only successfully decoded frames are yielded.
+#[pyfunction]
+#[pyo3(name = "iter_aac_frames_with_resync")]
+fn iter_aac_frames_with_resync_py(bytes_buf: &[u8]) -> AdtsFrameIterPy {
+    let frames: Vec<_> = rust_aac_frames_with_resync(bytes_buf)
+        .filter_map(|res| res.ok())
+        .map(|f| f.to_owned())
+        .collect();
+    AdtsFrameIterPy { frames, index: 0 }
+}
+
+/// Eagerly parse all ADTS frames from `bytes_buf` (strict — raises
+/// `CodecError` on first parse failure).
+///
+/// Returns a `list[AdtsFrame]` on success. Equivalent to
+/// `list(iter_aac_frames(bytes_buf))` but avoids the iterator object.
+#[pyfunction]
+#[pyo3(name = "parse_aac_frames")]
+fn parse_aac_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<Vec<AdtsFramePy>> {
+    rust_aac_frames(bytes_buf)
+        .map(|res| {
+            res.map(|f| AdtsFramePy { inner: f.to_owned() })
+                .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "aac"))
+        })
+        .collect()
+}
+
+/// Eagerly parse all ADTS frames from `bytes_buf`, skipping parse errors
+/// (best-effort — never raises).
+///
+/// Uses `frames_with_resync` internally; only successfully decoded frames
+/// appear in the returned list. Suitable for stats / telemetry use where
+/// dropping a frame on corruption is preferable to aborting the parse.
+#[pyfunction]
+#[pyo3(name = "parse_aac_frames_with_resync")]
+fn parse_aac_frames_with_resync_py(bytes_buf: &[u8]) -> Vec<AdtsFramePy> {
+    rust_aac_frames_with_resync(bytes_buf)
+        .filter_map(|res| res.ok())
+        .map(|f| AdtsFramePy { inner: f.to_owned() })
+        .collect()
+}
+
 // === Module registration ===
 
 /// Register all codec classes on `m` (`tstrans._native`).
@@ -2708,5 +3008,17 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_av1_sequence_header_py, m)?)?;
     m.add_function(wrap_pyfunction!(parse_av1_frame_header_light_py, m)?)?;
     m.add_function(wrap_pyfunction!(parse_av1_obu_stream_py, m)?)?;
+    // AAC enums + channel layout class
+    m.add_class::<AacProfilePy>()?;
+    m.add_class::<MpegVersionPy>()?;
+    m.add_class::<AacChannelLayoutPy>()?;
+    // AAC frame + iterator
+    m.add_class::<AdtsFramePy>()?;
+    m.add_class::<AdtsFrameIterPy>()?;
+    // AAC parser functions
+    m.add_function(wrap_pyfunction!(iter_aac_frames_py, m)?)?;
+    m.add_function(wrap_pyfunction!(iter_aac_frames_with_resync_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_aac_frames_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_aac_frames_with_resync_py, m)?)?;
     Ok(())
 }

@@ -69,6 +69,17 @@ parse_av1_frame_header_light = _native_mod.parse_av1_frame_header_light
 parse_av1_obu_stream = _native_mod.parse_av1_obu_stream
 parse_av1_sequence_header = _native_mod.parse_av1_sequence_header
 
+# AAC
+AacChannelLayout = _native_mod.AacChannelLayout
+AacProfile = _native_mod.AacProfile
+AdtsFrame = _native_mod.AdtsFrame
+AdtsFrameIter = _native_mod.AdtsFrameIter
+MpegVersion = _native_mod.MpegVersion
+iter_aac_frames = _native_mod.iter_aac_frames
+iter_aac_frames_with_resync = _native_mod.iter_aac_frames_with_resync
+parse_aac_frames = _native_mod.parse_aac_frames
+parse_aac_frames_with_resync = _native_mod.parse_aac_frames_with_resync
+
 __all__ = [
     "ChromaFormat",
     "ColorInfo",
@@ -123,4 +134,14 @@ __all__ = [
     "parse_av1_frame_header_light",
     "parse_av1_obu_stream",
     "parse_av1_sequence_header",
+    # AAC
+    "AacChannelLayout",
+    "AacProfile",
+    "AdtsFrame",
+    "AdtsFrameIter",
+    "MpegVersion",
+    "iter_aac_frames",
+    "iter_aac_frames_with_resync",
+    "parse_aac_frames",
+    "parse_aac_frames_with_resync",
 ]

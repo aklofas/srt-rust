@@ -333,6 +333,27 @@ DemuxEvent.NonConformant = _NonConformantEvent
 DemuxEvent.ReconnectDiscontinuity = _ReconnectDiscontinuityEvent
 
 
+# Default PES caps mirror `tst_core::mpegts::demux::DemuxerConfig`
+# (4 MB per-PID, 64 MB total). Update both sides together if Rust
+# changes its defaults.
+_DEFAULT_PES_CAP_PER_PID: int = 4 * 1024 * 1024
+_DEFAULT_PES_CAP_TOTAL: int = 64 * 1024 * 1024
+
+
+@dataclass(frozen=True, slots=True)
+class DemuxerConfig:
+    """Phase 2 minimal Demuxer configuration. Advanced knobs
+    (link_klv, treat_as, av1_carriage) are deferred — a future plan
+    will add them once a Python consumer needs them.
+
+    Defaults mirror Rust's `tst_core::mpegts::demux::DemuxerConfig`.
+    """
+
+    strict_mode: StrictMode = StrictMode.OFF
+    pes_cap_per_pid: int = _DEFAULT_PES_CAP_PER_PID
+    pes_cap_total: int = _DEFAULT_PES_CAP_TOTAL
+
+
 # Population happens task-by-task. __all__ accumulates as types land.
 __all__: list[str] = [
     "Pts90khz",
@@ -351,4 +372,5 @@ __all__: list[str] = [
     "KlvLink",
     "ProgramMap",
     "DemuxEvent",
+    "DemuxerConfig",
 ]

@@ -354,6 +354,12 @@ class DemuxerConfig:
     pes_cap_total: int = _DEFAULT_PES_CAP_TOTAL
 
 
+# Re-export the Rust-side PyDemuxer class. The Rust impl lives in
+# crates/tst-py/src/mpegts.rs and is exposed via `_native.Demuxer`.
+from tstrans import _native as _native_mod
+
+Demuxer = _native_mod.Demuxer
+
 # Population happens task-by-task. __all__ accumulates as types land.
 __all__: list[str] = [
     "Pts90khz",
@@ -373,4 +379,5 @@ __all__: list[str] = [
     "ProgramMap",
     "DemuxEvent",
     "DemuxerConfig",
+    "Demuxer",
 ]

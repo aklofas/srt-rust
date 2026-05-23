@@ -70,9 +70,6 @@ pub fn make_mux_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyEr
 ///
 /// `kind_variant` must be a Python-side `DemuxErrorKind` Enum variant
 /// name (e.g. `"SYNC_LOSS"`, `"BAD_PMT"`, `"INTERNAL"`).
-// Task 8 (Demuxer wrapper) will call this; suppress the dead-code lint
-// until that task ships.
-#[allow(dead_code)]
 pub fn make_demux_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
     let exceptions = match py.import_bound("tstrans.exceptions") {
         Ok(m) => m,

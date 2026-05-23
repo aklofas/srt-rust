@@ -17,7 +17,7 @@ from tstrans.exceptions import TstError
 
 __version__: str = _native.__version__
 
-__all__ = [
+__all__: list[str] = [
     "__version__",
     "TstError",
     "codec",

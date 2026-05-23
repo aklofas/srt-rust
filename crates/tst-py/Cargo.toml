@@ -24,4 +24,4 @@ default = []
 
 [dependencies]
 tst-core = { path = "../tst-core" }
-pyo3     = { version = "0.22", features = ["extension-module", "abi3-py39"] }
+pyo3     = { version = "0.22", features = ["extension-module", "abi3-py310"] }

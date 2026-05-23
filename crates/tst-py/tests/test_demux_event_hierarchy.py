@@ -112,9 +112,6 @@ def test_subclasses_are_distinct_types():
 
 
 def test_video_event_match_statement_310_plus():
-    import sys
-    if sys.version_info < (3, 10):
-        return  # match-statement requires 3.10+
     ev = DemuxEvent.Video(
         stream=_v_stream(),
         pts=Pts90khz.from_ms(100),

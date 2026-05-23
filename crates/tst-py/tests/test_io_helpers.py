@@ -1,0 +1,67 @@
+"""tstrans.io convenience helpers — parse_file (iterator) and probe (summary)."""
+
+from pathlib import Path
+
+import pytest
+
+from tstrans.io import parse_file, probe, ProbeResult
+from tstrans.mpegts import DemuxEvent, DemuxerConfig, StrictMode
+
+FIXTURE = (
+    Path(__file__).parent.parent.parent
+    / "tst-core" / "tests" / "fixtures" / "audio" / "mp2.ts"
+)
+
+
+def test_parse_file_yields_events():
+    events = list(parse_file(FIXTURE))
+    assert len(events) > 0
+
+
+def test_parse_file_accepts_str_or_path():
+    a = list(parse_file(str(FIXTURE)))
+    b = list(parse_file(FIXTURE))
+    assert len(a) == len(b)
+
+
+def test_parse_file_accepts_config():
+    cfg = DemuxerConfig(strict_mode=StrictMode.OFF)
+    events = list(parse_file(FIXTURE, config=cfg))
+    assert len(events) > 0
+
+
+def test_parse_file_first_program_map_appears_early():
+    found = False
+    for i, ev in enumerate(parse_file(FIXTURE)):
+        if isinstance(ev, DemuxEvent.ProgramMap):
+            found = True
+            break
+        if i > 50:
+            break
+    assert found
+
+
+def test_probe_returns_probe_result():
+    r = probe(FIXTURE)
+    assert isinstance(r, ProbeResult)
+
+
+def test_probe_finds_at_least_one_program():
+    r = probe(FIXTURE)
+    assert len(r.programs) >= 1
+
+
+def test_probe_size_bytes_matches_file():
+    r = probe(FIXTURE)
+    assert r.size_bytes == FIXTURE.stat().st_size
+
+
+def test_probe_packet_count_nonzero():
+    r = probe(FIXTURE)
+    assert r.packet_count > 0
+
+
+def test_probe_has_audio_codec_for_mp2_fixture():
+    r = probe(FIXTURE)
+    # mp2.ts has MP2 audio
+    assert len(r.audio_codecs) > 0

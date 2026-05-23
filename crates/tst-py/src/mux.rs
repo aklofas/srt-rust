@@ -1098,4 +1098,137 @@ impl PyMuxer {
             .push_subtitle_to(handle.0, rust_pts, payload)
             .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
+
+    // -----------------------------------------------------------------
+    // Task 9 — handle getters (video/audio/klv/subtitle × list +
+    // by_program + by_index).
+    // -----------------------------------------------------------------
+    //
+    // Rust surface (verified against tst-core/src/mpegts/mux/*.rs):
+    //   video_*    — list + by_program + by_index
+    //   audio_*    — list + by_program             (no by-index getter)
+    //   klv_*      — list + by_program + by_index
+    //   subtitle_* — list + by_program             (no by-index getter)
+    //
+    // `_for_program` returns `Result<Vec<_>, MuxError>` in Rust and
+    // surfaces `ProgramNotFound` for an unknown program number; the
+    // wraps below propagate that error through the standard
+    // MuxSenderErrorKind classifier (Task 1) so callers see a Python
+    // `MuxError(INVALID_USAGE)`. The list getters and the
+    // by-index getters never fail — empty / `None` mean "no match".
+
+    /// All [`VideoStreamHandle`]s across every program, in
+    /// `(program_idx, stream_idx)` add-order.
+    pub fn video_handles(&self) -> Vec<PyVideoStreamHandle> {
+        self.inner
+            .video_handles()
+            .into_iter()
+            .map(PyVideoStreamHandle)
+            .collect()
+    }
+
+    /// All [`VideoStreamHandle`]s belonging to the given program number.
+    /// Raises `MuxError(INVALID_USAGE)` if the program does not exist.
+    pub fn video_handles_for_program(
+        &self,
+        py: Python<'_>,
+        program_number: u16,
+    ) -> PyResult<Vec<PyVideoStreamHandle>> {
+        self.inner
+            .video_handles_for_program(program_number)
+            .map(|v| v.into_iter().map(PyVideoStreamHandle).collect())
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Single-program convenience: the `index`th video stream of the
+    /// first program, or `None` if out-of-range. Mirrors Rust's
+    /// `Muxer::video_stream_handle` (program 0 only).
+    pub fn video_stream_handle(&self, index: usize) -> Option<PyVideoStreamHandle> {
+        self.inner
+            .video_stream_handle(index)
+            .map(PyVideoStreamHandle)
+    }
+
+    /// All [`AudioStreamHandle`]s across every program, in
+    /// `(program_idx, stream_idx)` add-order.
+    pub fn audio_handles(&self) -> Vec<PyAudioStreamHandle> {
+        self.inner
+            .audio_handles()
+            .into_iter()
+            .map(PyAudioStreamHandle)
+            .collect()
+    }
+
+    /// All [`AudioStreamHandle`]s belonging to the given program number.
+    /// Raises `MuxError(INVALID_USAGE)` if the program does not exist.
+    ///
+    /// Note: there is no by-index audio-handle getter Rust-side; use
+    /// `audio_handles()[idx]` for the single-program case.
+    pub fn audio_handles_for_program(
+        &self,
+        py: Python<'_>,
+        program_number: u16,
+    ) -> PyResult<Vec<PyAudioStreamHandle>> {
+        self.inner
+            .audio_handles_for_program(program_number)
+            .map(|v| v.into_iter().map(PyAudioStreamHandle).collect())
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// All [`KlvStreamHandle`]s across every program, in
+    /// `(program_idx, stream_idx)` add-order.
+    pub fn klv_handles(&self) -> Vec<PyKlvStreamHandle> {
+        self.inner
+            .klv_handles()
+            .into_iter()
+            .map(PyKlvStreamHandle)
+            .collect()
+    }
+
+    /// All [`KlvStreamHandle`]s belonging to the given program number.
+    /// Raises `MuxError(INVALID_USAGE)` if the program does not exist.
+    pub fn klv_handles_for_program(
+        &self,
+        py: Python<'_>,
+        program_number: u16,
+    ) -> PyResult<Vec<PyKlvStreamHandle>> {
+        self.inner
+            .klv_handles_for_program(program_number)
+            .map(|v| v.into_iter().map(PyKlvStreamHandle).collect())
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
+
+    /// Single-program convenience: the `index`th KLV stream of the
+    /// first program, or `None` if out-of-range. Mirrors Rust's
+    /// `Muxer::klv_stream_handle` (program 0 only).
+    pub fn klv_stream_handle(&self, index: usize) -> Option<PyKlvStreamHandle> {
+        self.inner.klv_stream_handle(index).map(PyKlvStreamHandle)
+    }
+
+    /// All [`SubtitleStreamHandle`]s across every program, in
+    /// `(program_idx, stream_idx)` add-order.
+    pub fn subtitle_handles(&self) -> Vec<PySubtitleStreamHandle> {
+        self.inner
+            .subtitle_handles()
+            .into_iter()
+            .map(PySubtitleStreamHandle)
+            .collect()
+    }
+
+    /// All [`SubtitleStreamHandle`]s belonging to the given program
+    /// number. Raises `MuxError(INVALID_USAGE)` if the program does not
+    /// exist.
+    ///
+    /// Note: there is no by-index subtitle-handle getter Rust-side; use
+    /// `subtitle_handles()[idx]` for the single-program case.
+    pub fn subtitle_handles_for_program(
+        &self,
+        py: Python<'_>,
+        program_number: u16,
+    ) -> PyResult<Vec<PySubtitleStreamHandle>> {
+        self.inner
+            .subtitle_handles_for_program(program_number)
+            .map(|v| v.into_iter().map(PySubtitleStreamHandle).collect())
+            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+    }
 }

@@ -114,11 +114,7 @@ def test_push_video_then_pull_emits_188_aligned_bytes():
 
 
 def test_push_video_to_handle_form_works():
-    # Task 9 will add video_handles(); without it, skip and rely on the
-    # single-target form's coverage above.
     m = Muxer(_simple_config())
-    if not hasattr(m, "video_handles"):
-        pytest.skip("video_handles() not yet wired (Task 9)")
     handle = m.video_handles()[0]
     m.push_video_to(handle, _minimal_h264_nal_aud(), Pts90khz.from_raw(900_000))
     assert m.pending_packets() > 0
@@ -126,8 +122,6 @@ def test_push_video_to_handle_form_works():
 
 def test_push_video_to_with_dts_b_frame_schedule():
     m = Muxer(_simple_config())
-    if not hasattr(m, "video_handles"):
-        pytest.skip("video_handles() not yet wired (Task 9)")
     handle = m.video_handles()[0]
     m.push_video_to_with_dts(
         handle,
@@ -219,3 +213,124 @@ def test_push_klv_invalid_handle_raises():
 )
 def test_push_subtitle_works():
     pass  # placeholder for future deeper subtitle support
+
+
+# ---------------------------------------------------------------------------
+# Task 9 — handle getters (video/audio/klv/subtitle × list + by_program + by_index)
+# ---------------------------------------------------------------------------
+#
+# Rust surface coverage (verified against tst-core/src/mpegts/mux/*.rs):
+#   video_*    — list + by_program + by_index
+#   audio_*    — list + by_program             (no by-index getter Rust-side)
+#   klv_*      — list + by_program + by_index
+#   subtitle_* — list + by_program             (no by-index getter Rust-side)
+#
+# `*_handles_for_program` returns `Result<Vec<_>, MuxError>` in Rust and
+# raises `MuxError(INVALID_USAGE)` (via the MuxSenderErrorKind classifier
+# mapping `ProgramNotFound`) on a non-existent program number; the Python
+# wraps propagate that error rather than returning an empty list, so the
+# call-site sees the same shape as the Rust API.
+
+
+def test_video_handles_returns_one_per_video_stream():
+    from tstrans.mpegts import VideoStreamHandle
+
+    m = Muxer(_simple_config())
+    h = m.video_handles()
+    assert len(h) == 1
+    assert isinstance(h[0], VideoStreamHandle)
+
+
+def test_audio_handles_returns_one_per_audio_stream():
+    from tstrans.mpegts import AudioStreamHandle
+
+    m = Muxer(_simple_config())
+    h = m.audio_handles()
+    assert len(h) == 1
+    assert isinstance(h[0], AudioStreamHandle)
+
+
+def test_klv_handles_returns_one_per_klv_stream():
+    from tstrans.mpegts import KlvStreamHandle
+
+    m = Muxer(_simple_config())
+    h = m.klv_handles()
+    assert len(h) == 1
+    assert isinstance(h[0], KlvStreamHandle)
+
+
+def test_subtitle_handles_empty_when_no_subtitle_stream():
+    # _simple_config configures no subtitle stream — list-form getter
+    # returns an empty list (not an error), matching the Rust contract.
+    m = Muxer(_simple_config())
+    assert m.subtitle_handles() == []
+
+
+def test_video_handles_for_program_returns_program_streams():
+    m = Muxer(_simple_config())
+    h_p1 = m.video_handles_for_program(1)
+    assert len(h_p1) == 1
+
+
+def test_video_handles_for_program_unknown_raises_invalid_usage():
+    # Rust returns `Err(MuxError::ProgramNotFound)`, classified as
+    # INVALID_USAGE by the MuxSenderErrorKind classifier in
+    # tst-core/src/error.rs. The Python wrap propagates that error.
+    m = Muxer(_simple_config())
+    with pytest.raises(MuxError) as ei:
+        m.video_handles_for_program(99)
+    assert ei.value.kind is MuxErrorKind.INVALID_USAGE
+
+
+def test_audio_handles_for_program_returns_program_streams():
+    m = Muxer(_simple_config())
+    h_p1 = m.audio_handles_for_program(1)
+    assert len(h_p1) == 1
+
+
+def test_klv_handles_for_program_returns_program_streams():
+    m = Muxer(_simple_config())
+    h_p1 = m.klv_handles_for_program(1)
+    assert len(h_p1) == 1
+
+
+def test_subtitle_handles_for_program_empty_program_returns_empty():
+    # Program 1 exists but has no subtitle streams — empty list, no error.
+    m = Muxer(_simple_config())
+    assert m.subtitle_handles_for_program(1) == []
+
+
+def test_video_stream_handle_by_index_returns_handle():
+    from tstrans.mpegts import VideoStreamHandle
+
+    m = Muxer(_simple_config())
+    h = m.video_stream_handle(0)
+    assert h is not None
+    assert isinstance(h, VideoStreamHandle)
+
+
+def test_video_stream_handle_by_index_oob_returns_none():
+    m = Muxer(_simple_config())
+    assert m.video_stream_handle(99) is None
+
+
+def test_klv_stream_handle_by_index_returns_handle():
+    from tstrans.mpegts import KlvStreamHandle
+
+    m = Muxer(_simple_config())
+    h = m.klv_stream_handle(0)
+    assert h is not None
+    assert isinstance(h, KlvStreamHandle)
+
+
+def test_klv_stream_handle_by_index_oob_returns_none():
+    m = Muxer(_simple_config())
+    assert m.klv_stream_handle(99) is None
+
+
+def test_video_handle_round_trips_through_push_video_to():
+    # End-to-end: getter → push_video_to → muxer accepts.
+    m = Muxer(_simple_config())
+    handle = m.video_handles()[0]
+    m.push_video_to(handle, _minimal_h264_nal_aud(), Pts90khz.from_raw(900_000))
+    assert m.pending_packets() > 0

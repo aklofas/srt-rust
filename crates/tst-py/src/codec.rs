@@ -1785,6 +1785,570 @@ fn parse_h265_slice_header_light_py(
         .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h265"))
 }
 
+// === H.266 ===
+
+use tst_core::codec::h266::{
+    H266ParameterSets as RustH266ParameterSets, H266Pps as RustH266Pps,
+    H266SliceHeaderLight as RustH266SliceHeaderLight, H266SliceType as RustH266SliceType,
+    H266Sps as RustH266Sps, H266Vps as RustH266Vps,
+    parse_parameter_sets as rust_parse_h266_parameter_sets, parse_pps as rust_parse_h266_pps,
+    parse_slice_header_light as rust_parse_h266_slice_header_light,
+    parse_sps as rust_parse_h266_sps, parse_vps as rust_parse_h266_vps,
+};
+
+/// H.266 slice type (B / P / I). Only three values are defined by H.266 V4
+/// §7.4.8 Table 9.
+/// Mirrors `tst_core::codec::h266::H266SliceType`.
+#[pyclass(eq, eq_int, name = "H266SliceType", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum H266SliceTypePy {
+    /// B slice — bidirectionally predicted.
+    #[pyo3(name = "B")]
+    B,
+    /// P slice — predicted.
+    #[pyo3(name = "P")]
+    P,
+    /// I slice — intra-coded.
+    #[pyo3(name = "I")]
+    I,
+    /// Unknown slice type — returned when the Rust parser produces a
+    /// `#[non_exhaustive]` variant not yet mapped to a Python constant.
+    #[pyo3(name = "Unknown")]
+    Unknown,
+}
+
+impl From<RustH266SliceType> for H266SliceTypePy {
+    fn from(v: RustH266SliceType) -> Self {
+        match v {
+            RustH266SliceType::B => Self::B,
+            RustH266SliceType::P => Self::P,
+            RustH266SliceType::I => Self::I,
+            // #[non_exhaustive] catch-all — maps any future variant to Unknown
+            // rather than mis-classifying it as intra (I) which would cause callers
+            // to treat an unrecognised slice type as a keyframe indicator.
+            _ => Self::Unknown,
+        }
+    }
+}
+
+/// H.266 profile/tier/level fields parsed from an SPS NAL unit.
+/// Mirrors the fields from `tst_core::codec::h266::H266ProfileTierLevel`.
+///
+/// H.266 V4 §7.3.3 PTL carries fewer fields than H.265 — only
+/// `general_profile_idc`, `general_tier_flag`, and `general_level_idc` are
+/// surfaced here. Both [`H266SpsPy`] exposes the same values via its
+/// `profile_tier_level()` method.
+#[pyclass(name = "H266ProfileTierLevel", module = "tstrans.codec")]
+#[derive(Debug, Clone, Copy)]
+pub struct H266ProfileTierLevelPy {
+    general_profile_idc: u8,
+    general_tier_flag: bool,
+    general_level_idc: u8,
+}
+
+#[pymethods]
+impl H266ProfileTierLevelPy {
+    /// 7-bit `general_profile_idc` (H.266 V4 §7.3.3). Common values:
+    /// 1=Main10, 2=MultilayerMain10 (H.266 V4 Annex A).
+    #[getter]
+    fn general_profile_idc(&self) -> u8 {
+        self.general_profile_idc
+    }
+
+    /// `general_tier_flag` — false = Main tier, true = High tier.
+    #[getter]
+    fn general_tier_flag(&self) -> bool {
+        self.general_tier_flag
+    }
+
+    /// `general_level_idc` — H.266 V4 Annex A.4 level table. Encoded as the
+    /// level value multiplied by 16: e.g. 64 = Level 4.0, 80 = Level 5.0.
+    #[getter]
+    fn general_level_idc(&self) -> u8 {
+        self.general_level_idc
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H266ProfileTierLevel(profile_idc={}, tier={}, level_idc={})",
+            self.general_profile_idc, self.general_tier_flag, self.general_level_idc,
+        )
+    }
+}
+
+/// Parsed H.266 Sequence Parameter Set.
+/// Mirrors `tst_core::codec::h266::H266Sps`.
+#[pyclass(name = "H266Sps", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H266SpsPy {
+    inner: RustH266Sps,
+}
+
+#[pymethods]
+impl H266SpsPy {
+    /// `sps_seq_parameter_set_id` (4-bit) — identifies this SPS (H.266 §7.3.2.4).
+    #[getter]
+    fn sps_id(&self) -> u8 {
+        self.inner.sps_id
+    }
+
+    /// `sps_video_parameter_set_id` (4-bit) — links this SPS to a VPS.
+    #[getter]
+    fn vps_id(&self) -> u8 {
+        self.inner.vps_id
+    }
+
+    /// Post-crop display width in luma samples (after conformance window is
+    /// applied).
+    #[getter]
+    fn width(&self) -> u32 {
+        self.inner.width
+    }
+
+    /// Post-crop display height in luma samples.
+    #[getter]
+    fn height(&self) -> u32 {
+        self.inner.height
+    }
+
+    /// `general_profile_idc` decoded from the SPS profile_tier_level block
+    /// (H.266 V4 §7.3.3). Common values: 1=Main10, 2=MultilayerMain10.
+    #[getter]
+    fn general_profile_idc(&self) -> u8 {
+        self.inner.profile_tier_level.general_profile_idc
+    }
+
+    /// `general_tier_flag` — false = Main tier, true = High tier.
+    #[getter]
+    fn general_tier_flag(&self) -> bool {
+        self.inner.profile_tier_level.general_tier_flag
+    }
+
+    /// `general_level_idc` — H.266 V4 Annex A.4 level table.
+    #[getter]
+    fn general_level_idc(&self) -> u8 {
+        self.inner.profile_tier_level.general_level_idc
+    }
+
+    /// Luma bit depth. In H.266 V4, a single `sps_bitdepth_minus8` encodes
+    /// both luma and chroma — they are always equal.
+    #[getter]
+    fn bit_depth_luma(&self) -> u8 {
+        self.inner.bit_depth_luma
+    }
+
+    /// Chroma bit depth. Equal to `bit_depth_luma` per H.266 V4 §7.4.3.4
+    /// (single `sps_bitdepth_minus8` field covers both planes).
+    #[getter]
+    fn bit_depth_chroma(&self) -> u8 {
+        self.inner.bit_depth_chroma
+    }
+
+    /// Chroma subsampling format.
+    #[getter]
+    fn chroma_format(&self) -> ChromaFormatPy {
+        self.inner.chroma_format.into()
+    }
+
+    /// Frame rate as `Rational(num, den)`, or `None` when timing_hrd
+    /// parameters are absent. In H.266, timing lives in
+    /// `general_timing_hrd_parameters()` (§7.3.5.1), not the VUI.
+    #[getter]
+    fn frame_rate(&self) -> Option<RationalPy> {
+        self.inner.frame_rate.map(Into::into)
+    }
+
+    /// VUI colour info, or `None` when the VUI is absent or colour_description
+    /// is not present. Decoded per H.274 §7.2 (codec-independent colour registry).
+    #[getter]
+    fn color(&self) -> Option<ColorInfoPy> {
+        self.inner.color_info.clone().map(Into::into)
+    }
+
+    /// Left crop offset in luma samples (H.266 §7.4.3.4 after SubWidthC
+    /// scaling). See `coded_width()` for the pre-crop dimension.
+    #[getter]
+    fn crop_left(&self) -> u32 {
+        self.inner.crop_left
+    }
+
+    /// Right crop offset in luma samples.
+    #[getter]
+    fn crop_right(&self) -> u32 {
+        self.inner.crop_right
+    }
+
+    /// Top crop offset in luma samples.
+    #[getter]
+    fn crop_top(&self) -> u32 {
+        self.inner.crop_top
+    }
+
+    /// Bottom crop offset in luma samples.
+    #[getter]
+    fn crop_bottom(&self) -> u32 {
+        self.inner.crop_bottom
+    }
+
+    /// Original RBSP bytes as supplied to `parse_h266_sps`.
+    #[getter]
+    fn raw_rbsp<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_rbsp)
+    }
+
+    /// Reconstructed `H266ProfileTierLevel` from the fields decoded inside
+    /// this SPS's `profile_tier_level()` block (H.266 V4 §7.3.3).
+    fn profile_tier_level(&self) -> H266ProfileTierLevelPy {
+        H266ProfileTierLevelPy {
+            general_profile_idc: self.inner.profile_tier_level.general_profile_idc,
+            general_tier_flag: self.inner.profile_tier_level.general_tier_flag,
+            general_level_idc: self.inner.profile_tier_level.general_level_idc,
+        }
+    }
+
+    /// Pre-crop luma width — `pic_width_max_in_luma_samples` before conformance-
+    /// window cropping. Equal to `width + crop_left + crop_right`.
+    fn coded_width(&self) -> u32 {
+        self.inner.coded_width()
+    }
+
+    /// Pre-crop luma height — `pic_height_max_in_luma_samples` before
+    /// conformance-window cropping. Equal to `height + crop_top + crop_bottom`.
+    fn coded_height(&self) -> u32 {
+        self.inner.coded_height()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H266Sps(profile={}, level={}, {}x{}, sps_id={})",
+            self.inner.profile_tier_level.general_profile_idc,
+            self.inner.profile_tier_level.general_level_idc,
+            self.inner.width,
+            self.inner.height,
+            self.inner.sps_id,
+        )
+    }
+}
+
+/// Parsed H.266 Picture Parameter Set.
+/// Mirrors `tst_core::codec::h266::H266Pps`.
+#[pyclass(name = "H266Pps", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H266PpsPy {
+    inner: RustH266Pps,
+}
+
+#[pymethods]
+impl H266PpsPy {
+    /// `pps_id` (6-bit) ∈ [0, 63] — H.266 V4 §7.3.2.5.
+    #[getter]
+    fn pps_id(&self) -> u8 {
+        self.inner.pps_id
+    }
+
+    /// `sps_id` (4-bit) — links this PPS to an SPS.
+    #[getter]
+    fn sps_id(&self) -> u8 {
+        self.inner.sps_id
+    }
+
+    /// Original RBSP bytes as supplied to `parse_h266_pps`.
+    #[getter]
+    fn raw_rbsp<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_rbsp)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H266Pps(pps_id={}, sps_id={})",
+            self.inner.pps_id, self.inner.sps_id
+        )
+    }
+}
+
+/// Parsed H.266 Video Parameter Set.
+/// Mirrors `tst_core::codec::h266::H266Vps`.
+#[pyclass(name = "H266Vps", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H266VpsPy {
+    inner: RustH266Vps,
+}
+
+#[pymethods]
+impl H266VpsPy {
+    /// 4-bit `vps_id` — identifies this VPS (H.266 V4 §7.3.2.3).
+    #[getter]
+    fn vps_id(&self) -> u8 {
+        self.inner.vps_id
+    }
+
+    /// Maximum number of spatial layers (`vps_max_layers_minus1 + 1`).
+    #[getter]
+    fn max_layers(&self) -> u8 {
+        self.inner.max_layers
+    }
+
+    /// Maximum number of temporal sub-layers (`vps_max_sub_layers_minus1 + 1`).
+    #[getter]
+    fn max_sub_layers(&self) -> u8 {
+        self.inner.max_sub_layers
+    }
+
+    /// Original RBSP bytes as supplied to `parse_h266_vps`.
+    #[getter]
+    fn raw_rbsp<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_rbsp)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H266Vps(vps_id={}, max_layers={}, max_sub_layers={})",
+            self.inner.vps_id, self.inner.max_layers, self.inner.max_sub_layers,
+        )
+    }
+}
+
+/// Light-weight H.266 slice header — fields required for keyframe detection.
+/// Mirrors `tst_core::codec::h266::H266SliceHeaderLight`.
+///
+/// # Known limitations
+///
+/// `slice_type` and `pps_id` are returned as **sentinels** — always
+/// `H266SliceType.I` and `0` respectively. Accurate extraction requires
+/// walking through `picture_header_rbsp()`, whose length is governed by
+/// SPS / PPS context fields that the light parser does not carry. This
+/// deferred work is tracked as a future Phase 5.x or Phase 7 follow-up.
+///
+/// Only `idr`, `first_in_pic`, and `pic_order_cnt_lsb` are accurate.
+#[pyclass(name = "H266SliceHeaderLight", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H266SliceHeaderLightPy {
+    inner: RustH266SliceHeaderLight,
+}
+
+#[pymethods]
+impl H266SliceHeaderLightPy {
+    /// True when `picture_header_in_slice_header_flag == 1` — the picture
+    /// header is embedded in this slice, marking the start of a new picture.
+    /// This field is **accurate**.
+    #[getter]
+    fn first_in_pic(&self) -> bool {
+        self.inner.first_in_pic
+    }
+
+    /// Slice type. **Always returns `H266SliceType.I` as a sentinel.**
+    ///
+    /// Accurate extraction requires walking through `picture_header_rbsp()`,
+    /// whose length depends on SPS / PPS context fields that this light parser
+    /// does not carry. Deferred to a future Phase 5.x or Phase 7 follow-up.
+    #[getter]
+    fn slice_type(&self) -> H266SliceTypePy {
+        self.inner.slice_type.into()
+    }
+
+    /// PPS id. **Always returns `0` as a sentinel** — see `slice_type`
+    /// for the same reason and deferral note.
+    #[getter]
+    fn pps_id(&self) -> u8 {
+        self.inner.pps_id
+    }
+
+    /// `slice_pic_order_cnt_lsb`. `Some(0)` for IDR slices (implicit per
+    /// H.266 spec); `None` for non-IDR slices where SPS context is required
+    /// to determine the bit width. This field is **accurate** for IDR slices.
+    #[getter]
+    fn pic_order_cnt_lsb(&self) -> Option<u16> {
+        self.inner.pic_order_cnt_lsb
+    }
+
+    /// True when `nal_unit_type` is IDR_W_RADL (7) or IDR_N_LP (8) per
+    /// H.266 V4 Table 5. This field is **accurate**.
+    #[getter]
+    fn idr(&self) -> bool {
+        self.inner.idr
+    }
+
+    /// Original RBSP bytes as supplied to `parse_h266_slice_header_light`.
+    #[getter]
+    fn raw_rbsp<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.inner.raw_rbsp)
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H266SliceHeaderLight(first={}, slice_type={:?}, idr={})",
+            self.inner.first_in_pic, self.inner.slice_type, self.inner.idr,
+        )
+    }
+}
+
+/// All VPS, SPS, and PPS NAL units parsed from a sequence.
+/// Mirrors `tst_core::codec::h266::H266ParameterSets`.
+///
+/// Unlike the H.265 version (which uses dict-by-id), H.266 parameter sets
+/// are stored as ordered lists — use `vpses[i].vps_id`, `spses[i].sps_id`,
+/// and `ppses[i].pps_id` to look up by id.
+#[pyclass(name = "H266ParameterSets", module = "tstrans.codec")]
+#[derive(Debug, Clone)]
+pub struct H266ParameterSetsPy {
+    inner: RustH266ParameterSets,
+}
+
+#[pymethods]
+impl H266ParameterSetsPy {
+    /// List of parsed `H266Vps` objects, ordered by `vps_id`.
+    #[getter]
+    fn vpses(&self, py: Python<'_>) -> PyResult<pyo3::Py<pyo3::types::PyList>> {
+        let list = pyo3::types::PyList::empty_bound(py);
+        for v in &self.inner.vpses {
+            list.append(Py::new(py, H266VpsPy { inner: v.clone() })?)?;
+        }
+        Ok(list.unbind())
+    }
+
+    /// List of parsed `H266Sps` objects, ordered by `sps_id`.
+    #[getter]
+    fn spses(&self, py: Python<'_>) -> PyResult<pyo3::Py<pyo3::types::PyList>> {
+        let list = pyo3::types::PyList::empty_bound(py);
+        for s in &self.inner.spses {
+            list.append(Py::new(py, H266SpsPy { inner: s.clone() })?)?;
+        }
+        Ok(list.unbind())
+    }
+
+    /// List of parsed `H266Pps` objects, ordered by `pps_id`.
+    #[getter]
+    fn ppses(&self, py: Python<'_>) -> PyResult<pyo3::Py<pyo3::types::PyList>> {
+        let list = pyo3::types::PyList::empty_bound(py);
+        for p in &self.inner.ppses {
+            list.append(Py::new(py, H266PpsPy { inner: p.clone() })?)?;
+        }
+        Ok(list.unbind())
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "H266ParameterSets(n_vps={}, n_sps={}, n_pps={})",
+            self.inner.vpses.len(),
+            self.inner.spses.len(),
+            self.inner.ppses.len()
+        )
+    }
+}
+
+/// Parse a single H.266 SPS RBSP.
+///
+/// `rbsp` must be the raw RBSP body — Annex B start code stripped, NAL header
+/// (2 bytes for H.266) stripped, emulation-prevention bytes preserved (matches
+/// ``NalUnit.h266(...).payload``).
+///
+/// Raises `CodecError` with ``kind=CodecErrorKind.TRUNCATED_RBSP`` for empty
+/// input; ``kind=CodecErrorKind.ENGINE_ERROR`` for unparseable bitstreams.
+#[pyfunction]
+#[pyo3(name = "parse_h266_sps")]
+fn parse_h266_sps_py(py: Python<'_>, rbsp: &[u8]) -> PyResult<H266SpsPy> {
+    rust_parse_h266_sps(rbsp)
+        .map(|inner| H266SpsPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h266"))
+}
+
+/// Parse a single H.266 PPS RBSP.
+///
+/// `rbsp` must be the raw RBSP body — same contract as `parse_h266_sps`.
+///
+/// Raises `CodecError` on parse failure.
+#[pyfunction]
+#[pyo3(name = "parse_h266_pps")]
+fn parse_h266_pps_py(py: Python<'_>, rbsp: &[u8]) -> PyResult<H266PpsPy> {
+    rust_parse_h266_pps(rbsp)
+        .map(|inner| H266PpsPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h266"))
+}
+
+/// Parse a single H.266 VPS RBSP.
+///
+/// `rbsp` must be the raw RBSP body — same contract as `parse_h266_sps`.
+///
+/// Raises `CodecError` on parse failure.
+#[pyfunction]
+#[pyo3(name = "parse_h266_vps")]
+fn parse_h266_vps_py(py: Python<'_>, rbsp: &[u8]) -> PyResult<H266VpsPy> {
+    rust_parse_h266_vps(rbsp)
+        .map(|inner| H266VpsPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h266"))
+}
+
+/// Parse all H.266 VPS, SPS, and PPS NAL units from a list of `NalUnit` objects.
+///
+/// Non-H.266 NAL units in the list are silently skipped. Parse is
+/// partial-success-tolerant: bad individual parameter-set NALs emit a warning
+/// and are skipped.
+///
+/// Raises `CodecError` only when every parameter-set NAL in the input
+/// failed to parse.
+#[pyfunction]
+#[pyo3(name = "parse_h266_parameter_sets")]
+fn parse_h266_parameter_sets_py(
+    py: Python<'_>,
+    nals: Vec<PyRef<'_, NalUnitPy>>,
+) -> PyResult<H266ParameterSetsPy> {
+    use tst_core::mpegts::demux::event::NalUnit as RustNalUnit;
+    // Convert each NalUnitPy to the Rust NalUnit::H266 variant.
+    // Non-H266 entries (H264, H265) are silently filtered out.
+    let rust_nals: Vec<RustNalUnit> = nals
+        .iter()
+        .filter_map(|n| {
+            if n.kind != "H266" {
+                return None;
+            }
+            Some(RustNalUnit::H266 {
+                nal_type: n.nal_type,
+                layer_id: n.layer_id.unwrap_or(0),
+                temporal_id_plus1: n.temporal_id_plus1.unwrap_or(1),
+                payload: n.payload.clone(),
+            })
+        })
+        .collect();
+    rust_parse_h266_parameter_sets(&rust_nals)
+        .map(|inner| H266ParameterSetsPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h266"))
+}
+
+/// Parse a light H.266 slice header from a RBSP byte slice.
+///
+/// `rbsp` carries the RBSP body of a slice NAL — Annex B start code and NAL
+/// header (2 bytes) stripped, emulation-prevention bytes preserved.
+///
+/// `sps` is optional SPS context — accepted for API symmetry with the H.264 /
+/// H.265 counterparts, but currently unused. Pass ``None`` in all cases.
+///
+/// `nal_unit_type` is the 5-bit NAL type from the H.266 NAL header — used to
+/// derive `idr` (IDR_W_RADL=7 or IDR_N_LP=8 per H.266 V4 Table 5) and
+/// `pic_order_cnt_lsb` for IDR slices.
+///
+/// # Sentinel values
+///
+/// ``H266SliceHeaderLight.slice_type`` always returns ``H266SliceType.I``
+/// and ``H266SliceHeaderLight.pps_id`` always returns ``0`` regardless of
+/// the bitstream content. Accurate extraction requires walking
+/// ``picture_header_rbsp()``, whose length is governed by SPS / PPS context
+/// fields that this light parser does not carry. Only ``idr``,
+/// ``first_in_pic``, and ``pic_order_cnt_lsb`` (for IDR slices) are accurate.
+///
+/// Raises `CodecError` on parse failure.
+#[pyfunction]
+#[pyo3(name = "parse_h266_slice_header_light", signature = (rbsp, sps, nal_unit_type))]
+fn parse_h266_slice_header_light_py(
+    py: Python<'_>,
+    rbsp: &[u8],
+    sps: Option<&H266SpsPy>,
+    nal_unit_type: u8,
+) -> PyResult<H266SliceHeaderLightPy> {
+    rust_parse_h266_slice_header_light(rbsp, sps.map(|s| &s.inner), nal_unit_type)
+        .map(|inner| H266SliceHeaderLightPy { inner })
+        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "h266"))
+}
+
 // === Module registration ===
 
 /// Register all codec classes on `m` (`tstrans._native`).
@@ -1834,5 +2398,20 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_h265_vps_py, m)?)?;
     m.add_function(wrap_pyfunction!(parse_h265_parameter_sets_py, m)?)?;
     m.add_function(wrap_pyfunction!(parse_h265_slice_header_light_py, m)?)?;
+    // H.266 enums
+    m.add_class::<H266SliceTypePy>()?;
+    // H.266 structs
+    m.add_class::<H266ProfileTierLevelPy>()?;
+    m.add_class::<H266SpsPy>()?;
+    m.add_class::<H266PpsPy>()?;
+    m.add_class::<H266VpsPy>()?;
+    m.add_class::<H266SliceHeaderLightPy>()?;
+    m.add_class::<H266ParameterSetsPy>()?;
+    // H.266 parser functions
+    m.add_function(wrap_pyfunction!(parse_h266_sps_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_h266_pps_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_h266_vps_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_h266_parameter_sets_py, m)?)?;
+    m.add_function(wrap_pyfunction!(parse_h266_slice_header_light_py, m)?)?;
     Ok(())
 }

@@ -47,6 +47,20 @@ parse_h265_slice_header_light = _native_mod.parse_h265_slice_header_light
 parse_h265_sps = _native_mod.parse_h265_sps
 parse_h265_vps = _native_mod.parse_h265_vps
 
+# H.266
+H266ParameterSets = _native_mod.H266ParameterSets
+H266Pps = _native_mod.H266Pps
+H266ProfileTierLevel = _native_mod.H266ProfileTierLevel
+H266SliceHeaderLight = _native_mod.H266SliceHeaderLight
+H266SliceType = _native_mod.H266SliceType
+H266Sps = _native_mod.H266Sps
+H266Vps = _native_mod.H266Vps
+parse_h266_parameter_sets = _native_mod.parse_h266_parameter_sets
+parse_h266_pps = _native_mod.parse_h266_pps
+parse_h266_slice_header_light = _native_mod.parse_h266_slice_header_light
+parse_h266_sps = _native_mod.parse_h266_sps
+parse_h266_vps = _native_mod.parse_h266_vps
+
 __all__ = [
     "ChromaFormat",
     "ColorInfo",
@@ -81,4 +95,17 @@ __all__ = [
     "parse_h265_slice_header_light",
     "parse_h265_sps",
     "parse_h265_vps",
+    # H.266
+    "H266ParameterSets",
+    "H266Pps",
+    "H266ProfileTierLevel",
+    "H266SliceHeaderLight",
+    "H266SliceType",
+    "H266Sps",
+    "H266Vps",
+    "parse_h266_parameter_sets",
+    "parse_h266_pps",
+    "parse_h266_slice_header_light",
+    "parse_h266_sps",
+    "parse_h266_vps",
 ]

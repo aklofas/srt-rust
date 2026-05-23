@@ -223,6 +223,105 @@ class ProgramMap:
     klv_links: tuple
 
 
+class DemuxEvent:
+    """Top-level event emitted by `Demuxer.next_event()`.
+
+    `DemuxEvent` is a namespace base class — instantiate one of its
+    subclasses (`DemuxEvent.Video(...)`, `DemuxEvent.Klv(...)`, etc.)
+    or let `Demuxer` construct them for you. Pattern-match with
+    Python 3.10+:
+
+    ```
+    for ev in parse_file(path):
+        match ev:
+            case DemuxEvent.Video(stream=s, pts=p, payload=b):
+                ...
+            case DemuxEvent.Klv(payload=b):
+                ...
+    ```
+
+    Subclasses are defined immediately below as class-attribute
+    dataclasses for clean `DemuxEvent.Video(...)` access syntax.
+    """
+
+
+# Subclasses use the `DemuxEvent.X` attribute pattern. Each is a
+# frozen dataclass so it's hashable, equality-by-value, and reads
+# nicely with pattern matching.
+
+@dataclass(frozen=True, slots=True)
+class _ProgramMapEvent(DemuxEvent):
+    programs: tuple[ProgramMap, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _VideoEvent(DemuxEvent):
+    stream: StreamId
+    pts: Pts90khz
+    dts: Optional[Pts90khz]
+    codec: VideoCodec
+    payload: bytes
+    random_access_indicator: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _AudioEvent(DemuxEvent):
+    stream: StreamId
+    pts: Pts90khz
+    dts: Optional[Pts90khz]
+    codec: AudioCodec
+    frames: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class _SubtitleEvent(DemuxEvent):
+    stream: StreamId
+    pts: Pts90khz
+    dts: Optional[Pts90khz]
+    codec: SubtitleCodec
+    payload: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class _KlvEvent(DemuxEvent):
+    stream: StreamId
+    pts: Pts90khz
+    kind: MetadataKindTag
+    payload: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class _DiscontinuityEvent(DemuxEvent):
+    stream: StreamId
+    kind: DiscontinuityKindTag
+
+
+@dataclass(frozen=True, slots=True)
+class _NonConformantEvent(DemuxEvent):
+    stream: StreamId
+    issue: str
+    kind: NonConformantKind
+
+
+@dataclass(frozen=True, slots=True)
+class _ReconnectDiscontinuityEvent(DemuxEvent):
+    pass
+
+
+# Expose subclasses as attributes of the base. This gives the
+# `DemuxEvent.Video(...)` access syntax in the spec while keeping
+# the subclasses defined as top-level dataclasses (so dataclass
+# decorators work properly).
+DemuxEvent.ProgramMap = _ProgramMapEvent
+DemuxEvent.Video = _VideoEvent
+DemuxEvent.Audio = _AudioEvent
+DemuxEvent.Subtitle = _SubtitleEvent
+DemuxEvent.Klv = _KlvEvent
+DemuxEvent.Discontinuity = _DiscontinuityEvent
+DemuxEvent.NonConformant = _NonConformantEvent
+DemuxEvent.ReconnectDiscontinuity = _ReconnectDiscontinuityEvent
+
+
 # Population happens task-by-task. __all__ accumulates as types land.
 __all__: list[str] = [
     "Pts90khz",
@@ -240,4 +339,5 @@ __all__: list[str] = [
     "StreamInfo",
     "KlvLink",
     "ProgramMap",
+    "DemuxEvent",
 ]

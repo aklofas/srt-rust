@@ -12,8 +12,9 @@ module, organized into topic-focused submodules:
 See the per-submodule docstrings for usage.
 """
 
-from tstrans import _native
+from tstrans import _native, exceptions
+from tstrans.exceptions import TstError
 
 __version__: str = _native.__version__
 
-__all__ = ["__version__"]
+__all__ = ["__version__", "TstError", "exceptions"]

@@ -31,7 +31,15 @@ SRC_DIRS=(
 WINDOW=5
 
 # Step 1: enumerate lifecycle entries (file:lineno pairs).
-mapfile -t ENTRIES < <(
+#
+# Portable read-into-array pattern (bash 3.2+, including macOS default
+# bash 3.2.57). `mapfile`/`readarray` are bash 4.0+ only and silently
+# fail with "command not found" on macOS — see
+# `feedback_bash_ratchets_macos_portability.md`.
+ENTRIES=()
+while IFS= read -r entry; do
+    ENTRIES+=("$entry")
+done < <(
     grep -rEn 'pub (unsafe )?extern "C" fn tst_\w+_(close|cancel)\b' \
         "${SRC_DIRS[@]}" \
         --include='*.rs' \

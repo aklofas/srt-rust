@@ -219,7 +219,15 @@ ALLOWLIST=(
 )
 
 # Step 1: enumerate C exports
-mapfile -t C_EXPORTS < <(
+#
+# Portable read-into-array pattern (bash 3.2+, including macOS default
+# bash 3.2.57). `mapfile`/`readarray` are bash 4.0+ only and silently
+# fail with "command not found" on macOS — see
+# `feedback_bash_ratchets_macos_portability.md`.
+C_EXPORTS=()
+while IFS= read -r c_export; do
+    C_EXPORTS+=("$c_export")
+done < <(
     grep -oE 'tst_[a-z_]+\(' "$HEADER" \
     | sed 's/(//' \
     | sort -u

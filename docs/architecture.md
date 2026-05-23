@@ -25,8 +25,8 @@ srt-sys (raw FFI)  ──→  tst-core  ──→  tst-c (cdylib + staticlib + c
                               │
                               ├──→  tst-pipeline (pipeline shells)
                               ├──→  tst-srt      (SRT transports)
-                              ├──→  tst-jni      (planned)
-                              └──→  tst-uniffi   (planned)
+                              ├──→  srt-jni      (planned)
+                              └──→  srt-uniffi   (planned)
 
 dev-only: tst-test-helpers (publish = false; shared test fixtures and
 helpers consumed by tst-core / tst-pipeline / tst-srt test suites)
@@ -34,7 +34,7 @@ vendored: vendor/srt (libsrt 1.5.5), vendor/mbedtls (3.6.6 LTS)
 ```
 
 The layering rule is one-directional: lower layers do not depend on upper
-layers. Binding crates (`tst-c`, `tst-jni`, `tst-uniffi`) depend on
+layers. Binding crates (`tst-c`, `srt-jni`, `srt-uniffi`) depend on
 `tst-pipeline` + `tst-srt` (and transitively `tst-core`) — never on
 `srt-sys` directly. This keeps every binding's surface area defined by
 the same safe Rust API and means a fix in `tst-core` reaches every
@@ -316,4 +316,4 @@ canonical list and the rationale for each entry.
 
 ## See also
 
-- [Binding-author starter](./binding-authors.md) — entry point for `srt-jni`, `srt-uniffi`, `tst-pyo3` authors.
+- [Binding-author starter](./binding-authors.md) — entry point for `srt-jni` and `srt-uniffi` authors (plus the existing `tst-c` ABI).

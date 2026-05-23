@@ -72,7 +72,7 @@ Runnable: [../examples/receiving/demux_to_events.rs](../examples/receiving/demux
 | `Demuxer` | Stateful TS demuxer. `feed` bytes in, `next_event` events out, `flush` at stream end. |
 | `DemuxerBuilder` | Fluent builder for the demuxer's options. |
 | `DemuxerConfig` | Plain struct of options if you'd rather build a config than chain. |
-| `DemuxEvent` | Top-level event enum: `ProgramMap`, `Sample`, `Metadata`, `Discontinuity`, `NonConformant`. |
+| `DemuxEvent` | Top-level event enum: `ProgramMap`, `Sample`, `Metadata`, `Discontinuity`, `NonConformant`, `ReconnectDiscontinuity` (emitted only by `ManagedDemuxReceiver` after a reconnect; signals a hard byte-stream discontinuity). |
 | `StreamId` | `{ pid: u16, kind: StreamKind }` — identifies the source stream of every event. |
 | `StreamKind` | `Video(VideoCodec)`, `Audio(AudioCodec)`, `Subtitle(SubtitleCodec)`, `KlvSync { declared_link }`, `KlvAsync`, `Unknown(u8)`. |
 | `VideoCodec` | `H264`, `H265`, `H266`, `Av1`. |
@@ -102,6 +102,7 @@ Demuxer::with_config(config: DemuxerConfig)            -> Demuxer
 Demuxer::feed(&mut self, bytes: &[u8])                  -> Result<(), DemuxError>
 Demuxer::next_event(&mut self)                          -> Option<DemuxEvent>
 Demuxer::flush(&mut self)                               -> ()
+Demuxer::reset_sync(&mut self)                          -> ()
 ```
 
 `feed` accepts arbitrary byte slices — the demuxer handles sync
@@ -124,6 +125,15 @@ the next PES arrives — at end-of-file there is no next PES, so without
 safe to call repeatedly. For live SRT receive, `pipeline::Receiver`
 auto-flushes on `Closed` — you only call `flush` directly when feeding
 finite inputs (file replay, test fixtures).
+
+`reset_sync` discards the 188-byte syncer state and any in-flight PES
+reassembly — used by `ManagedDemuxReceiver` on reconnect to force a
+fresh `0x47` sync hunt on the first packet from the new transport.
+Reassembly tables (PAT/PMT, per-PID CC history, last PTS) are
+*preserved* across `reset_sync`; only the byte-level sync rail and any
+partial PES are dropped. Most direct callers should not need this —
+call it only when the byte stream is known to have a hard discontinuity
+that can't be diagnosed from PCR or CC alone.
 
 ```rust,no_run
 use tst_core::mpegts::demux::Demuxer;

@@ -453,21 +453,45 @@ ADTS streams encode AAC-LC (`profile = Lc`) regardless of which MPEG-4 audio
 object type the encoder used. Streams using HE-AAC, HE-AACv2, or other MPEG-4
 AOTs are usually carried in LATM, not ADTS.
 
+### Resync — `frames_with_resync()`
+
+Every audio module ships two iterator entry points:
+
+```rust,ignore
+codec::mpegaudio::frames(&bytes)             // strict: first parse error ends iteration
+codec::mpegaudio::frames_with_resync(&bytes) // best-effort: skip garbage, find the next valid frame
+codec::aac::adts::frames(&bytes)             // (same pair on aac::adts)
+codec::aac::adts::frames_with_resync(&bytes) //
+```
+
+`frames_with_resync` walks past unparsable bytes until it finds the next
+valid header. Use it whenever you're populating stats from possibly-
+corrupted PES payloads (the demuxer's per-stream stats sites switched
+to this iterator after the Validate-1 G2 audit revealed first-parse-error
+stream-wide undercount). Use the strict `frames()` form when feeding
+known-good test fixtures or when any parse error should abort the loop.
+
+`CodecParseError::UnsupportedFreeFormat { layer }` is distinct from
+`ReservedValue` — `bitrate_index == 0` (free-format) is *legal* per
+ISO/IEC 11172-3 but not supported by this parser; the resync iterator
+treats it as a recoverable error and continues past the affected frame.
+
 ### What the parsers don't do
 
 - **No CRC verification.** `has_crc` is surfaced; the CRC bytes are consumed
   for offset accounting but not validated. Callers wanting verification can
   use `frame.bytes()` to access the full frame slice and run their own CRC.
-- **No mid-stream sync-resync.** First parse error ends iteration. PES payload
-  bytes from the demuxer are sync-aligned by construction; mid-stream
-  corruption surfaces as `NonConformantIssue::*` upstream.
 - **No raw_data_block enumeration for multi-block AAC frames.** The frame is
   surfaced as one `AdtsFrame` with `samples_per_frame = 1024 *
   num_raw_data_blocks`. Splitting into individual blocks is decoder territory.
 
-### Deferred
+### AAC LATM + AC-3
 
-AAC LATM (LOAS/LATM framing per ISO 14496-3 §1.7) and AC-3 frame parsers are
-deferred to follow-up plans. See `docs/deferred-features.md`.
+`codec::aac::latm` validates LOAS syncword (`0x2B7` 11-bit pattern) and
+`audioMuxLengthBytes` per ISO/IEC 14496-3 §1.7. `codec::ac3::parse_syncframe`
+parses A/52 §5.4.1 syncframes (sync word `0x0B77`, bsid, frame size,
+sample rate, channel layout). Both shipped in Validate-1 Sprint 2
+(commits `c9835b9` + `0ead2f9`).
 
-See `docs/deferred-features.md` for the trigger conditions on each.
+See `docs/deferred-features.md` for any remaining audio surface that
+hasn't shipped yet.

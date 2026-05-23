@@ -2,7 +2,7 @@
 
 Cross-platform SRT-based libraries for live video streaming from **gimbaled platforms** — drones (rotary and fixed-wing UAVs), manned fixed-wing aircraft with sensor pods, helicopters with EO/IR turrets, and other manned/unmanned platforms carrying stabilized imaging payloads.
 
-**Status:** Sender + receiver pipelines complete on Linux x86_64. `srt-sys` (raw FFI + vendored mbedTLS), `tst-srt` (safe `Socket` / `Listener` / config + builder API), `tst-core::klv` (typed MISB ST 0601 / ST 0102 / ST 0605 / ST 0903 over a generic SMPTE / MISB substrate), `tst-core::mpegts::mux` (multi-program TS muxer with H.264 / H.265 / H.266 / AV1 video, MP2 / AAC / AC-3 audio, DVB-sub / teletext / CEA-708 / WebVTT subtitles, and typed ST 0601 / ST 0102 / ST 0605 / ST 0903 KLV per ST 1402 / ST 1910), `tst-core::mpegts::demux` (receiver-side TS demuxer — bytes in, typed `DemuxEvent` out; lenient by default with four-tier `StrictMode` ladder; AU-cell unwrap; consumer-side pairing via cookbook recipes), and `tst-pipeline` (composition layer: `Transport` + `RecvTransport` traits, `MuxSender` / `Sender` / `RawSender`, `DemuxReceiver` / `Receiver` / `RawReceiver`, reconnecting `ManagedTransport` + `ManagedRecvTransport`, `add_byte_sink` fan-out for tee patterns) are all implemented. `tst-c` exposes both sender and demux/receiver surfaces as a stable C ABI (`cdylib` + `staticlib` + cbindgen-generated `tstrans.h` + `tstrans.pc`). Workspace ships hundreds of tests across both feature modes. The remaining binding crates (`srt-jni`, `srt-uniffi`) are next on the roadmap.
+**Status:** Sender + receiver pipelines complete, with **multi-platform Tier 1 support** — Linux x86_64 + Linux aarch64 are gating; macOS arm64 (Apple Silicon) and Windows x86_64 (MSVC) phase in (compile + link verified, runtime test promotion tracked in `docs/deferred-features.md`). `srt-sys` (raw FFI + vendored mbedTLS), `tst-srt` (safe `Socket` / `Listener` / config + builder API + `SrtCancelHandle`), `tst-core::klv` (typed MISB ST 0601 / ST 0102 / ST 0605 / ST 0903 over a generic SMPTE / MISB substrate), `tst-core::mpegts::mux` (multi-program TS muxer with H.264 / H.265 / H.266 / AV1 video, MP2 / AAC ADTS / AAC LATM / AC-3 audio, DVB-sub / teletext / CEA-708 / WebVTT subtitles, and typed ST 0601 / ST 0102 / ST 0605 / ST 0903 KLV per ST 1402 / ST 1910), `tst-core::mpegts::demux` (receiver-side TS demuxer — bytes in, typed `DemuxEvent` out; lenient by default with four-tier `StrictMode` ladder; AU-cell unwrap; consumer-side pairing via cookbook recipes), and `tst-pipeline` (composition layer: `Transport` + `RecvTransport` traits, `MuxSender` / `Sender` / `RawSender`, `DemuxReceiver` / `Receiver` / `RawReceiver`, reconnecting `ManagedTransport` + `ManagedRecvTransport` + `ManagedDemuxReceiver`, `add_byte_sink` fan-out for tee patterns) are all implemented. `tst-c` exposes both sender and demux/receiver surfaces as a stable C ABI (`cdylib` + `staticlib` + cbindgen-generated `tstrans.h` + `tstrans.pc`; ABI version 0.2). Workspace ships hundreds of tests across both feature modes. The remaining binding crates (`srt-jni`, `srt-uniffi`) are next on the roadmap.
 
 ## Scope
 
@@ -63,7 +63,7 @@ The repo's documentation lives under [`docs/`](docs/):
 - **[`troubleshooting.md`](docs/troubleshooting.md)** — diagnose build failures, connection failures, KLV rejection, TS framing issues, reconnect loops.
 - **[`deferred-features.md`](docs/deferred-features.md)** — what's not yet supported and the trigger conditions to revisit.
 - **[`compatibility.md`](docs/compatibility.md)** — feature-by-feature support matrix.
-- **[`binding-authors.md`](docs/binding-authors.md)** — entry point for `srt-jni`, `srt-uniffi`, `tst-pyo3` authors.
+- **[`binding-authors.md`](docs/binding-authors.md)** — entry point for `srt-jni` and `srt-uniffi` authors (plus the existing `tst-c` ABI).
 
 Runnable Rust examples live at [`examples/`](examples/) — a workspace-level `tst-examples` crate organized into 8 task-oriented subfolders. Run any with `cargo run -p tst-examples --example <name>`. See `cookbook.md` for which example illustrates which recipe.
 
@@ -241,8 +241,8 @@ git submodule update --init --recursive
 By default the build script tries `pkg-config srt ≥ 1.5.0` first, falling back to compiling the vendored `vendor/srt`. Force the vendored path with `SRT_FORCE_VENDORED=1` (recommended for reproducible builds):
 
 ```bash
-SRT_FORCE_VENDORED=1 cargo test --workspace                        # ~313 tests (default features)
-SRT_FORCE_VENDORED=1 cargo test --workspace --no-default-features  # ~308 tests (no encryption)
+SRT_FORCE_VENDORED=1 cargo test --workspace                        # default features (mbedTLS encryption)
+SRT_FORCE_VENDORED=1 cargo test --workspace --no-default-features  # no encryption
 SRT_FORCE_VENDORED=1 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
@@ -288,7 +288,9 @@ cargo +nightly fuzz run klv_iter
 
 ### CI
 
-Linux x86_64 CI runs `cargo fmt --check`, `cargo clippy -D warnings`, and the test suite in both feature modes (default + `--no-default-features`) against the vendored libsrt + mbedTLS builds. See [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+CI runs `cargo fmt --check`, `cargo clippy -D warnings`, and the test suite in both feature modes (default + `--no-default-features`) against the vendored libsrt + mbedTLS builds. The platform matrix is gating on **Linux x86_64** and **Linux aarch64** (`ubuntu-latest` + `ubuntu-24.04-arm`); **macOS arm64** (`macos-14`) and **Windows x86_64 MSVC** (`windows-latest`) are phase-in with `continue-on-error: true` until their respective promotion windows close. A separate job builds `tst-core` + `tst-pipeline` against linux-musl (no libsrt), and a nightly job compile-checks every fuzz target. See [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+Eleven bash ratchets in [`scripts/`](scripts/) guard cross-cutting invariants (shell-error coverage, C-ABI rustdoc coverage, no-direct `NotAvailable`/`NotFound` casts, header section uniqueness, `srt_*` symbol leak, lifecycle `ffi_catch` coverage, and more). `cargo public-api` baselines for `tst-core` / `tst-pipeline` / `tst-srt` plus a workspace-wide `#[non_exhaustive]` count guard catch public-API drift. All ratchets and the public-API diff run in CI; the same scripts can be invoked locally before pushing.
 
 ## Project conventions
 

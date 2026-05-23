@@ -225,6 +225,21 @@ For a worked example with attitude + sensor pose + frame center, plus
 explicit `LinearRange` step-size calculations for each ranged tag, see
 [../examples/klv-metadata/klv_encode_minimal.rs](../examples/klv-metadata/klv_encode_minimal.rs).
 
+### Strict-compliance encode
+
+`encode_strict_compliance(&record) -> Result<Vec<u8>, KlvEncodeError>`
+is the mirror of `decode_strict_compliance` on the encode side. It runs
+the same ST 0601.8 §10.3 mandatory-structure checks *before* serialising,
+returning `KlvEncodeError::MissingMandatoryItem { tag, reason }` rather
+than silently producing wire bytes a strict decoder would reject. Use
+this when you want a single round-trip invariant — "if it encodes,
+`decode_strict_compliance` will accept it." Auto-emission of Tag 1
+(checksum) and Tag 65 (LS Version) is unchanged.
+
+`encode_to_vec` remains the lenient path: it produces conformant bytes
+when the caller has set the conventional fields, but it does not gate
+on every ST 0601.8-mandated item.
+
 ## ST 0605 Precision Time Stamp Pack
 
 ST 0605 is a separate KLV record from ST 0601 Tag 2, and the two

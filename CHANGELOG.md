@@ -7,6 +7,290 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Validate-1 act-now batch (plan #94, docs/plans/2026-05-22-validate-1-act-now-batch.md)
+
+**Ten validate-1 carry-forward items closed via 7-worktree parallel SDD,
+2026-05-22.** Shipped as 7 cherry-picks on `main` (`707f447..dc3a4b6`);
+the other two of the act-now-12 list were verified-superseded at pre-flight
+(ST0903-02 by Sprint 3 E5, M-05 by Sprint 2 B8). H264-RV2 was found
+pre-shipped by Sprint 1 A8 `00bd703` during execution.
+
+**Fixed:**
+
+- **IMAPB `min < max` precondition guard** (commit `f36d533`, M-02). Encode
+  and decode now reject `min >= max` up front with new variants
+  `KlvEncodeError::InvalidImapbParams` and `KlvFieldError::InvalidImapbParams`
+  rather than returning misleading bounds errors deeper in the call.
+- **ST 0601 `encode_strict_compliance`** (commit `f36d533`, ST0601-NEW-01).
+  Mirrors `decode_strict_compliance` on the encode side; new variant
+  `KlvEncodeError::MissingMandatoryItem { tag, reason }` so producers can
+  validate against ST 0601.8 §10.3 before emitting wire bytes.
+- **Null PID skip in `cc_by_pid` tracking** (commit `656cecf`, Slice 06 M-02).
+  Stuffing/null-PID packets no longer pollute the continuity-counter state
+  machine, eliminating spurious `ContinuityJump` events under sparse PSI.
+- **H.264 constraint flags consulted for `profile_idc=100` B-frame detection**
+  (commit `dc3a4b6`, H264-RV4). `H264Sps::constraint_set_flags` is now a
+  typed newtype; B-frame heuristics consult `constraint_set1_flag` per
+  H.264 §A.2.1.
+- **H.264 `frame_rate` `saturating_mul(2)` with None-on-saturation** (commit
+  `dc3a4b6`, H264-RV7). Field-coded streams with extreme `num_units_in_tick`
+  no longer panic on overflow; the iterator returns `None` for the affected
+  frame and keeps walking.
+- **H.265 `scaling_list` returns `EngineError` not `UnsupportedProfile`**
+  (commit `46b2fd0`, H265-V1-M02). Scaling-list parse failures are
+  surfaced as the parser-internal error type rather than misclassified as
+  an unsupported codec profile; 3 conformance-fixture consumer sites
+  updated.
+- **AV1 `count_av1_obus` overflow safety** (commit `4b856a3`, TC-ROOT-V1-M2).
+  `checked_add` replaces wrapping arithmetic; truncation surfaces as
+  `None` rather than a wrap to zero.
+- **`srt-sys` `SocketGuard` RAII for listener handle** (commit `707f447`,
+  SS-V1-04). `encrypted.rs` listener tests no longer leak SRT sockets on
+  early return; the guard wraps `srt_close` per-test.
+- **`mock_transport` mutex poison recovery** (commit `738e9b2`, SS-V1-10).
+  `unwrap_or_else(|e| e.into_inner())` lets a panicking test continue
+  draining state from the shared mock instead of cascading the poison.
+
+**Workspace updates:**
+
+- BASELINE `#[non_exhaustive]` stays at 135 (additive variants on already-
+  `#[non_exhaustive]` enums).
+- `crates/tst-core/public-api.txt` baseline regenerated for
+  `encode_strict_compliance` + 3 new error variants. `tst-pipeline` and
+  `tst-srt` baselines unchanged.
+- All 11 bash ratchets green.
+
+**Follow-up (same day):** commit `46a454e` ported
+`check-lifecycle-ffi-catch-coverage.sh` and `check-c-abi-rustdoc-coverage.sh`
+to the portable `while IFS= read -r x; do arr+=("$x"); done < <(...)`
+pattern (bash 3.2 / macOS), unblocking `macos-arm64` from gating
+promotion (target 2026-05-30). First post-fix CI run had `macos-arm64`
+pass cleanly for the first time since Sprint 3 D1.
+
+## [Unreleased] — Validate-1 Phase 2 Sprint 4-5 follow-ups (docs/validate-1/15-sprint-4-5-review-codex.md)
+
+**Five follow-up fixes from a 2026-05-20 Codex review of Sprints 4-5.**
+Closed by 4 commits on `main` (`a0b0f8f`, `feffff8`, `361242a`, `d711ecb`).
+Codex review at `docs/validate-1/15-sprint-4-5-review-codex.md`.
+
+**Fixed:**
+
+- **Stats wired to `frames_with_resync`** (commit `a0b0f8f`, follow-up #2).
+  Sprint 4 G2 added the resync iterator but the `pes_emit` and
+  `push_audio` stats sites were still calling strict `frames()`. The
+  user-visible symptom Sprint 4 G2 named ("stats undercount on first
+  parse error") is now actually fixed; this is the pattern documented in
+  the `feedback_g2_pattern_plan_says_fix_symptom.md` memo.
+- **`ManagedDemuxReceiver` data-loss budget rustdoc + no-dead-tail test**
+  (commit `feffff8`, follow-up #3). Documents the reconnect drop budget
+  (≤ `max_payload` bytes, typically ~7 TS packets, never an entire flow)
+  and adds an integration test asserting no dead tail under repeated
+  reconnect.
+- **`tst-c` wires `ManagedDemuxReceiver` + `TST_EVENT_RECONNECT_DISCONTINUITY = 6`**
+  (commit `361242a`, follow-up #1). New C entry points
+  `tst_managed_demux_receiver_*` + new event kind exposed via the
+  existing tagged-union event ABI. `TST_ABI_VERSION_MINOR` bumped 1 → 2
+  (additive). Four pass-through delegates added on the managed wrapper:
+  `stats`, `reset_stats`, `socket_stats`, `stream_codec_stats`.
+
+**Workspace updates:**
+
+- BASELINE `#[non_exhaustive]` stays at 135 (`TstEventKind` is not
+  `#[non_exhaustive]` per existing convention).
+- Docs-only follow-ups: 11-phase-2-plan.md Wave I SHIPPED + Sprint 5
+  SHIPPED status blocks, 99-audit-summary.md H5/H6/H7/H8/H10/H11 cells
+  closed, 13-interop-results.md acceptance-criterion correction.
+
+## [Unreleased] — Validate-1 Phase 2 Sprint 5: Wave I empirical interop (docs/validate-1/11-phase-2-plan.md §2.6)
+
+**Four empirical-interop fixtures from the Validate-1 audit's "validate
+in the world" wave.** Shipped as 4 commits on `main`
+(`774181c..e900779`) on 2026-05-20 via 4-worktree parallel SDD.
+
+**Added (tests + harness only — no public-API delta):**
+
+- **WebVTT / CEA-708 ignore-matrix** (commit `774181c`, I1). 32/32 ignore
+  cells confirmed across ffprobe / tsp / tsanalyze / gst-launch tsdemux,
+  empirically validating the H7 docs-only stance for these two subtitle
+  codecs.
+- **AV1 binding-conformant external decoder interop** (commit `ed80acd`,
+  I2). ffmpeg / ffprobe accept the binding stream byte-identically to
+  the legacy `Av1InteropRawObu` stream, validating the D-1 default
+  (`Av1CarriageMode::Mpeg2TsBinding`).
+- **KLV ST 1201.5 + ST 0903.6 spec vectors** (commit `f3fe8f9`, I3). 54
+  tests covering 7/7 IMAPB substrate variants, `L ∈ 1..=8` bounds,
+  Appendix A worked examples, and 22 BER-OID symmetry pairs across
+  ST 0107.5 / 0601 / 0102 / 0903.
+- **`scripts/cross-impl-byte-diff.sh`** (commit `e900779`, I5). 5-case
+  content matrix comparing our output against tsduck `tsp` (byte-
+  identical on all 5) and ffmpeg (diffs cosmetic only).
+
+**Workspace updates:**
+
+- BASELINE `#[non_exhaustive]` stays at 135 (tests + scripts only).
+- No external receiver rejected any output under any test case.
+- Plan-text gap surfaced (recorded in 13-interop-results.md): ST 0903.6
+  §10.1.11/12 are Horizontal_FOV / Vertical_FOV worked examples, not
+  incremental-update flows. If a different MISB doc was intended, file
+  as a follow-up plan.
+
+## [Unreleased] — Validate-1 Phase 2 Sprint 4: Waves F + G + H pipeline/codec/docs sweep (docs/validate-1/11-phase-2-plan.md §2.4 + §2.5)
+
+**Twenty-one fixes (5 F + 3 G + 13 H docs sweep) from the Validate-1
+audit's pipeline-correctness + codec-conformance + documentation
+slices.** Shipped as 10 commits on `main` (`7275ae8..6182f02`) on
+2026-05-20 via 8-worktree parallel SDD.
+
+**Fixed (High):**
+
+- **`ManagedDemuxReceiver` shell + `Demuxer::reset_sync` +
+  `DemuxEvent::ReconnectDiscontinuity`** (commits `987c230` + `c969129`,
+  F2; BREAKING — new public API). Sibling to `ManagedTransport` for the
+  demux pipeline. On underlying-transport reconnect, the demuxer's
+  syncer is reset and a `ReconnectDiscontinuity` event is emitted so
+  consumers can mark a hard discontinuity in any downstream state.
+  Reassembly tables (PAT/PMT, per-PID CC, last PTS) are preserved
+  across reconnect.
+- **`*_with_options(*Config)` → `*_with_config` rename** (commit
+  `834a651`, F5; BREAKING). Workspace-wide constructor convention sweep:
+  `Demuxer::with_options(DemuxerConfig)` → `Demuxer::with_config(DemuxerConfig)`,
+  same pattern on `Pairer` and `io_file`. `DemuxReceiver::with_demux_options`
+  is intentionally kept as a deferred rename (see `docs/conventions.md`
+  outliers table).
+- **`CodecParseError::UnsupportedFreeFormat` + `frames_with_resync()`**
+  (commit `df51bdf`, G1 + G2). `bitrate_index == 0` (legal per ISO
+  11172-3 but unsupported here) now surfaces a distinct variant rather
+  than `ReservedValue`. New `frames_with_resync()` iterators on both
+  `codec::mpegaudio` and `codec::aac::adts` walk past unparsable bytes
+  to recover stream-wide stat accuracy.
+- **`F2+F5` cross-worktree integration fix** (commit `6182f02`).
+  `ManagedDemuxReceiver` was constructing the demuxer via the
+  post-F5-renamed `Demuxer::with_config` after the rename landed on a
+  separate worktree; integrated fix-up applied per
+  `feedback_cherry_pick_build_between_parallel_worktrees.md`.
+
+**Fixed (Medium):**
+
+- **ADTS `profile = 3` gated on MPEG-2/-4 ID bit** (commit `12fb3d4`, G3).
+  `profile = 3` is the SSR (Scalable Sample Rate) profile for MPEG-2 AAC
+  but reserved for MPEG-4 AAC; the iterator now consults the `ID` bit
+  and rejects vs. accepts accordingly.
+- **`MuxSender::Drop` gated on `!closed`** (commit `5869573`, F4). The
+  drop impl no longer double-cancels an already-closed sender; idempotent
+  by construction.
+
+**Documentation:**
+
+- **`Transport::close` vs `RecvTransport::close` asymmetry** (commit
+  `7275ae8`, F3). Rustdoc clarifies that the send-side `close` waits for
+  outbound queue drain while the receive-side `close` is immediate;
+  asymmetry was real but undocumented.
+- **`max_unsynced_bytes` is diagnostic-only** (commit `c942d6d`, F1).
+  Clarifies the threshold is a warning, not a fail-fast — a long
+  unsynced run is logged but doesn't terminate the receive loop.
+- **Wave H one-shot docs sweep (H1-H13)** (commit `ceb54a5`). Thirteen
+  small docs corrections / consistency fixes across guides and examples;
+  scrub-guard regex extended to forbid `srt-c` (which would catch a
+  regression to the inner-workspace shape).
+
+**Workspace updates:**
+
+- BASELINE `#[non_exhaustive]` bumped 134 → 135 (one new
+  `ManagedDemuxReceiverConfig` in `tst-pipeline`).
+- `crates/tst-pipeline/public-api.txt` baseline regenerated (new
+  `ManagedDemuxReceiver` + `ManagedDemuxReceiverConfig` + new variant on
+  `DemuxEvent`).
+
+## [Unreleased] — Validate-1 Phase 2 Sprint 1-3 review follow-ups (docs/validate-1/14-sprint-1-3-review-codex.md)
+
+**Three follow-up fixes from a 2026-05-20 Codex review of Sprints 1-3.**
+Codex re-reviewed the response and corrected the Sprint 3 BASELINE wave
+attribution per `feedback_baseline_attribution_verify_via_ci_yml_diff.md`.
+
+**Fixed:**
+
+- **A4 bounded-PES residual-discard rationale clarified** (commit
+  `c351b1f`). Rustdoc now records why tail residual is dropped along
+  with per-PID state (Option B per Sprint 1 plan) rather than emitted as
+  a malformed-PES diagnostic.
+- **Descriptors module docs cover Result-returning builders** (commit
+  `1631123`). `mpegts::descriptors` rustdoc previously documented only
+  the parser path; now covers the build-side error subset.
+- **AV1 per-OBU framing fix** (commit `9f83250`, extending Sprint 2 C8
+  chain). The first AV1 OBU in a Frame carrier was getting the spec
+  3-byte start code but subsequent OBUs were not; per-OBU framing now
+  unconditionally emits the 3-byte prefix.
+
+**Workspace updates:** BASELINE `#[non_exhaustive]` stays at 134 (no
+new variants).
+
+## [Unreleased] — Validate-1 Phase 2 Sprint 3: Waves D + E FFI hardening + KLV strict-compliance (docs/validate-1/11-phase-2-plan.md §2.4)
+
+**Twelve FFI + KLV-encode fixes from the Validate-1 audit.** Shipped as
+19 commits on `main` (`5813c72..566789b`) on 2026-05-20 via 11-worktree
+3-phase parallel SDD.
+
+**Fixed (High):**
+
+- **C ABI lifecycle entries wrapped in `ffi_catch`** (commits `94cdfaf`
+  + `feff2ff`, D1). `_close` and `_cancel` entries previously bypassed
+  panic-catch; a panicking shell on close could unwind across the FFI
+  boundary as undefined behaviour. New (11th) bash ratchet
+  `check-lifecycle-ffi-catch-coverage.sh` ratchets this against
+  regression.
+- **`TransportError` carries optional typed errno source** (commits
+  `76e89fa` + `4f3a1e0`, D5). `TransportError::*` now embed an
+  `Option<TypedErrnoSource>` so FFI bindings can propagate the libsrt /
+  POSIX errno code distinctly from the message string. New trait method
+  `ShellError::errno_code()`.
+- **DTS + PTS migrated to `Option<Pts90khz>`** (commits `07641e0` +
+  `d169771`, D4; BREAKING). Previously both lived as `Option<i64>` on
+  `PesPayload` — now typed at the API boundary.
+- **`sizeof` guards for 7 `#[repr(C)]` stats structs** (commits `a3ce423`
+  + `6c6c87a`, D2). New `static_assert(sizeof(struct) == EXPECTED)` per
+  struct in the cbindgen-generated header, catching silent layout drift
+  before bindings link.
+
+**Fixed (KLV encode strictness — Wave E):**
+
+- **ST 0601 strict-mode duplicate-tag + canonical BER walker** (commit
+  `76361ed`, E1 + E2). Strict decode now rejects duplicate tags and
+  non-canonical BER length encodings.
+- **ST 0601 encode reserved-tag filter** (commit `5f6ddd9`, E3). New
+  variant on the unknown-tag enum; reserved tags filtered before
+  serialisation.
+- **ST 0102 BER-OID encode for unknown tags** (commit `20d1038`, E4).
+  Symmetric with the BER-OID decode path added in Sprint 2.
+- **ST 0903 BER-OID local-set walker + `VTargetPack` inner walk**
+  (commits `031b3c4` + `566789b`, E5). VMTI local sets and per-target
+  packs now traverse BER-OID encoded tags correctly; nested LSes still
+  pass-through.
+
+**Fixed (other Wave D items):**
+
+- **`SrtCancelHandle` module docstring** (commit `489eaf6`, D3). Clarifies
+  that the handle is the canonical cross-thread shutdown primitive and
+  that `is_cancelled()` is advisory.
+- **`MockRecvTransport` with `FailMode` fixtures** (commits `1197b61` +
+  `11cc28f` + `c27d2ff`, D7). New test helper with deterministic failure
+  injection (Closed, Broken, Backpressure) for receive-side reconnect
+  tests.
+- **`srt-sys` cdylib `--exclude-libs=ALL` on Linux** (commit `5813c72`,
+  D6). Symbol-hygiene fix preventing vendored mbedTLS / libstdc++
+  symbols from leaking into `libtstrans.so`'s dynamic symbol table.
+
+**Workspace updates:**
+
+- BASELINE `#[non_exhaustive]` bumped 131 → 134 (+3: Wave D additions;
+  Wave E additions ride on already-`#[non_exhaustive]` enums).
+- `crates/tst-core/public-api.txt` baseline regenerated (`Pts90khz` on
+  DTS, new `ShellError::errno_code` trait method, new KLV-encode
+  variants, new `MockRecvTransport`).
+- 11 bash ratchets (10th was added in plan #93; 11th
+  `check-lifecycle-ffi-catch-coverage.sh` added here).
+
+---
+
 ## [Unreleased] — Validate-1 Phase 2 Sprint 2: Waves B + C demux & mux conformance (docs/validate-1/11-phase-2-plan.md §2.2 + §2.3)
 
 **Sixteen demux-correctness, mux-conformance, and FFI-hardening fixes from the

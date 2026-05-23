@@ -521,7 +521,7 @@ the trigger that would unblock it.
   `Unknown` PIDs, or a corpus analysis workflow needs stream-kind heuristics
   without PMT descriptors.
 
-## `pipeline::pairing` — opt-in convenience pairing utility
+## `pipeline::ext::pairing` — opt-in convenience pairing utility
 
 - **Status:** Shipped (Rust API). `tst_pipeline::ext::pairing::Pairer` with
   `with_config` (Realtime + Buffered) and `last_before_pts` strategies.
@@ -529,7 +529,7 @@ the trigger that would unblock it.
   remain as the inline-pattern reference. C ABI / JNI / UniFFI
   exposure deferred — see the next entry.
 
-## `pipeline::pairing` C ABI / JNI / UniFFI exposure
+## `pipeline::ext::pairing` C ABI / JNI / UniFFI exposure
 
 - **Status:** Rust API only. `tst-c`, `srt-jni`, `srt-uniffi` do not
   yet expose `Pairer`.
@@ -992,9 +992,10 @@ the trigger that would unblock it.
 - **Trigger to revisit:** A typed surface for a stateful set
   lands, OR a consumer emits non-ST-0601 sync KLV that needs
   different semantics. Likely landing shape:
-  `Muxer::push_klv_to_with_options(handle, klv, pts,
-  SyncKlvOptions { random_access_indicator,
-  decoder_config_flag })`.
+  `Muxer::push_klv_to_with_config(handle, klv, pts,
+  SyncKlvConfig { random_access_indicator,
+  decoder_config_flag })` — following the workspace
+  `_with_config` constructor convention (see `docs/conventions.md`).
 
 ## ST 1910.1 KLV-in-CMAF-emsg-box delivery
 

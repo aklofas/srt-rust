@@ -220,6 +220,46 @@ so consumers should drop senders before receivers when both share state.
 ## Versioning
 
 The Rust API uses pre-1.0 SemVer (`0.x.y`). The C ABI uses its own
-versioning scheme keyed to `tstrans.h` symbol stability. JNI / UniFFI /
-PyO3 bindings track the C ABI for binary stability and the Rust crate
-for feature parity.
+three-tier scheme exposed through `tstrans.h`:
+
+- `TST_ABI_VERSION_MAJOR` — incremented on any source- or binary-
+  incompatible change to the ABI shape. **0** today.
+- `TST_ABI_VERSION_MINOR` — incremented on additive, source-compatible
+  changes (new event kinds, new C entry points, new error codes).
+  **2** today (last bumped when `ManagedDemuxReceiver` was wired into
+  `tst-c` and `TST_EVENT_RECONNECT_DISCONTINUITY = 6` was added).
+- `TST_ABI_VERSION_PATCH` — incremented on internal fixes that
+  preserve both shape and behaviour.
+
+Bindings should compile-time-assert the minor they require:
+
+```c
+#if TST_ABI_VERSION_MAJOR != 0 || TST_ABI_VERSION_MINOR < 2
+#  error "this binding requires tst-c ABI ≥ 0.2"
+#endif
+```
+
+`srt-jni` and `srt-uniffi` track the C ABI for binary stability and the
+Rust crate for feature parity.
+
+## Thread-local last-error reset
+
+`tst_clear_last_error()` (added in ABI 0.1) clears the thread-local
+`(code, message)` slot read by `tst_get_last_error()` /
+`tst_get_last_error_str()`. Bindings should call it at the start of
+every public entry point that may return success but doesn't otherwise
+overwrite the slot — without the clear, callers polling the error
+string after a successful call see stale data from the previous call.
+
+## Receiver-side reconnect (ABI 0.2)
+
+`tst_managed_demux_receiver_*` mirrors the Rust `ManagedDemuxReceiver`
+shell. When the underlying transport reconnects, the next
+`tst_managed_demux_receiver_recv_event` emits a
+`TST_EVENT_RECONNECT_DISCONTINUITY` event (kind = 6) so the language
+binding can mark a hard discontinuity in any downstream state
+(timestamp resets, PSI cache invalidation, decoder reset, etc.) instead
+of guessing from the byte stream. The demuxer's `reset_sync()` is
+called transparently before the next packet hits the syncer; reassembly
+tables (PAT/PMT, per-PID CC, last PTS) are preserved across the
+reconnect.

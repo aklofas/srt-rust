@@ -632,6 +632,43 @@ The factory is `Box<dyn FnMut + Send>` rather than the send-side
 exclusive-mutable — there's no concurrent close-from-any-thread
 requirement to design around.
 
+### `ManagedDemuxReceiver<R>`
+
+```rust,ignore
+impl<R: RecvTransport> ManagedDemuxReceiver<R> {
+    pub fn new(
+        inner: ManagedRecvTransport<R>,
+        config: ManagedDemuxReceiverConfig,
+    ) -> Self;
+    pub fn with_demux_options(
+        inner: ManagedRecvTransport<R>,
+        options: DemuxerConfig,
+        config: ManagedDemuxReceiverConfig,
+    ) -> Self;
+    pub fn recv_event(&mut self) -> Result<Option<DemuxEvent>, DemuxReceiverError>;
+}
+```
+
+Sibling shell to `DemuxReceiver<R>` that wraps a
+`ManagedRecvTransport<R>` and integrates the reconnect lifecycle with
+the demuxer's sync-recovery state.
+
+**What it adds over `DemuxReceiver<ManagedRecvTransport<R>>`:** on each
+underlying-transport reconnect, `ManagedDemuxReceiver` calls
+[`Demuxer::reset_sync`](#demuxerreset_sync) and emits a
+`DemuxEvent::ReconnectDiscontinuity` event so consumers can mark a hard
+discontinuity in their downstream state (PTS reset, PSI re-fetch, etc.)
+rather than guessing from the byte stream. The 188-byte sync rail is
+re-VERIFIED on the first packet from the new transport — the demuxer
+does *not* assume the new connection picks up where the old one left
+off.
+
+**Data-loss budget on reconnect.** A few unfinished bytes from the old
+transport may be discarded when sync is rebuilt; the drop is bounded by
+`SocketConfig::max_payload` (typically ≈ 7 TS packets, never an entire
+flow). See the rustdoc on `ManagedDemuxReceiver` for the exact
+contract; cookbook recipe 22 has a runnable companion.
+
 ### Stream-end contract
 
 The receive surface distinguishes three end-of-stream signals:

@@ -116,5 +116,26 @@ test              = false
 doc               = false
 bench             = false
 
+[[bin]]
+name              = "h264_slice_header_light"
+path              = "fuzz_targets/h264_slice_header_light.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
+name              = "h265_slice_header_light"
+path              = "fuzz_targets/h265_slice_header_light.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
+name              = "h266_slice_header_light"
+path              = "fuzz_targets/h266_slice_header_light.rs"
+test              = false
+doc               = false
+bench             = false
+
 [workspace]
 members = []

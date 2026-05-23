@@ -9,13 +9,13 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(record) = decode_unchecked(data) {
         // Round-trip property: re-encoding a decoded record produces a buffer
         // that decodes back to an equivalent record.
-        if let Ok(re_encoded) = encode_to_vec(&record) {
-            if let Ok(re_decoded) = decode_unchecked(&re_encoded) {
-                // Field equality across the round trip — typed fields only;
-                // unknown ordering may differ.
-                assert_eq!(record.timestamp_us, re_decoded.timestamp_us);
-                assert_eq!(record.sensor_lat_deg, re_decoded.sensor_lat_deg);
-            }
+        if let Ok(re_encoded) = encode_to_vec(&record)
+            && let Ok(re_decoded) = decode_unchecked(&re_encoded)
+        {
+            // Field equality across the round trip — typed fields only;
+            // unknown ordering may differ.
+            assert_eq!(record.timestamp_us, re_decoded.timestamp_us);
+            assert_eq!(record.sensor_lat_deg, re_decoded.sensor_lat_deg);
         }
     }
 });

@@ -100,6 +100,44 @@ pub fn make_demux_error(py: Python<'_>, kind_variant: &str, message: &str) -> Py
     }
 }
 
+/// Build a `KlvError` Python exception. Mirror of `make_mux_error` /
+/// `make_demux_error` targeting `tstrans.exceptions.KlvError` +
+/// `KlvErrorKind`.
+///
+/// `kind_variant` must be a Python-side `KlvErrorKind` Enum variant
+/// name (e.g. `"BAD_UNIVERSAL_LABEL"`, `"TRUNCATED_SET"`,
+/// `"CHECKSUM_MISMATCH"`, `"INTERNAL"`).
+#[allow(dead_code)] // Task 5 will start calling this; remove the allow there.
+pub fn make_klv_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
+    let exceptions = match py.import_bound("tstrans.exceptions") {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    let kind_enum = match exceptions.getattr(intern!(py, "KlvErrorKind")) {
+        Ok(e) => e,
+        Err(e) => return e,
+    };
+    let kind_value = match kind_enum.getattr(kind_variant) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let klv_error_cls = match exceptions.getattr(intern!(py, "KlvError")) {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+    let kwargs = PyDict::new_bound(py);
+    if let Err(e) = kwargs.set_item("kind", kind_value) {
+        return e;
+    }
+    if let Err(e) = kwargs.set_item("message", message) {
+        return e;
+    }
+    match klv_error_cls.call((), Some(&kwargs)) {
+        Ok(instance) => PyErr::from_value_bound(instance),
+        Err(e) => e,
+    }
+}
+
 /// Test helper: forces a `MuxError` raise from Rust, used by
 /// `test_error_wiring.py` to confirm end-to-end wiring. Exposed only
 /// under the `_native._raise_mux_error_for_test` name.

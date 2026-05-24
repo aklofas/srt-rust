@@ -2922,12 +2922,16 @@ impl AdtsFrameIterPy {
     }
 }
 
-/// Lazy ADTS frame iterator over `bytes_buf` (strict — raises `CodecError`
-/// on first parse failure).
+/// Returns an iterator over ADTS frames parsed from `bytes_buf` (strict —
+/// raises `CodecError` on first parse failure). **Eager:** all frames are
+/// collected upfront into a `Vec`; the returned object iterates that `Vec`,
+/// not a true streaming parser. Memory usage is O(num_frames); peak
+/// allocation occurs at construction. For very large buffers, prefer
+/// chunked input or process in segments.
 ///
-/// Internally collects all frames eagerly from the Rust
-/// `tst_core::codec::aac::frames` iterator at construction time. Returns
-/// an `AdtsFrameIter` that yields `AdtsFrame` objects one at a time.
+/// Internally drives the Rust `tst_core::codec::aac::frames` iterator at
+/// construction time. The returned `AdtsFrameIter` yields `AdtsFrame`
+/// objects one at a time from the pre-built `Vec`.
 ///
 /// Raises `CodecError` immediately if any frame fails to parse.
 #[pyfunction]
@@ -2943,8 +2947,12 @@ fn iter_aac_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<AdtsFrameIte
     })
 }
 
-/// Lazy ADTS frame iterator over `bytes_buf` (best-effort — never raises,
-/// silently skips frames that fail to parse).
+/// Returns an iterator over ADTS frames parsed from `bytes_buf`
+/// (best-effort — never raises, silently skips frames that fail to parse).
+/// **Eager:** all frames are collected upfront into a `Vec`; the returned
+/// object iterates that `Vec`, not a true streaming parser. Memory usage
+/// is O(num_frames); peak allocation occurs at construction. For very
+/// large buffers, prefer chunked input or process in segments.
 ///
 /// Uses `tst_core::codec::aac::frames_with_resync` which scans forward for
 /// the next plausible ADTS syncword after each parse error. Errors are
@@ -3203,13 +3211,17 @@ impl Mpeg2AudioFrameIterPy {
     }
 }
 
-/// Lazy MPEG audio frame iterator over `bytes_buf` (strict — raises
-/// `CodecError` on first parse failure).
+/// Returns an iterator over MPEG audio frames parsed from `bytes_buf`
+/// (strict — raises `CodecError` on first parse failure). **Eager:** all
+/// frames are collected upfront into a `Vec`; the returned object iterates
+/// that `Vec`, not a true streaming parser. Memory usage is O(num_frames);
+/// peak allocation occurs at construction. For very large buffers, prefer
+/// chunked input or process in segments.
 ///
-/// Internally collects all frames eagerly from the Rust
-/// `tst_core::codec::mpegaudio::frames` iterator at construction time.
-/// Returns an `Mpeg2AudioFrameIter` that yields `Mpeg2AudioFrame` objects
-/// one at a time.
+/// Internally drives the Rust `tst_core::codec::mpegaudio::frames`
+/// iterator at construction time. The returned `Mpeg2AudioFrameIter`
+/// yields `Mpeg2AudioFrame` objects one at a time from the pre-built
+/// `Vec`.
 ///
 /// Raises `CodecError` immediately if any frame fails to parse.
 #[pyfunction]
@@ -3222,8 +3234,12 @@ fn iter_mpeg2_audio_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<Mpeg
     Ok(Mpeg2AudioFrameIterPy { frames, index: 0 })
 }
 
-/// Lazy MPEG audio frame iterator over `bytes_buf` (best-effort — never
-/// raises, silently skips frames that fail to parse).
+/// Returns an iterator over MPEG audio frames parsed from `bytes_buf`
+/// (best-effort — never raises, silently skips frames that fail to parse).
+/// **Eager:** all frames are collected upfront into a `Vec`; the returned
+/// object iterates that `Vec`, not a true streaming parser. Memory usage
+/// is O(num_frames); peak allocation occurs at construction. For very
+/// large buffers, prefer chunked input or process in segments.
 ///
 /// Uses `tst_core::codec::mpegaudio::frames_with_resync` which scans forward
 /// for the next plausible 11-bit syncword after each parse error. Errors are

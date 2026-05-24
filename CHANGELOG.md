@@ -74,6 +74,16 @@ plan.
   `import pandas as pd` in the 4 `test_pandas_*.py` files when the
   extras weren't installed.
 
+**Docs:**
+
+- `tstrans.codec.iter_aac_frames` / `iter_aac_frames_with_resync` /
+  `iter_mpeg2_audio_frames` / `iter_mpeg2_audio_frames_with_resync`
+  docstrings now state explicitly that all frames are collected
+  upfront into a `Vec` at construction time — the returned object
+  iterates that `Vec`, it is not a true streaming parser. Memory
+  usage is O(num_frames); peak allocation occurs at construction.
+  Behavior unchanged. Closes audit #12.
+
 **Fixed:**
 
 - `Pts90khz.ms` now truncates toward zero instead of flooring toward

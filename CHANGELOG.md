@@ -39,6 +39,34 @@ modes surface as typed `MultiCellAuReason` on
 - `NonConformantIssue::MultiCellAu` Display reworded — describes the
   reassembly failure mode instead of the prior "not implemented" message.
 
+**Bindings:**
+
+- `tst-py`: `_KlvEvent` gains `was_reassembled: bool` + `cell_count: int`;
+  new `MultiCellAuReason` PyO3 `eq_int` enum (`ORPHAN` / `SEQUENCE_GAP` /
+  `CONCURRENT_FIRST` / `OVERFLOW`); `_NonConformantEvent` gains optional
+  `multi_cell_au_reason` field.
+- `tst-c`: `TstEventMetadata` gains `was_reassembled` + `cell_count` at
+  the end of the struct (additive ABI change); new
+  `tst_multi_cell_au_reason` enum mirrors `MultiCellAuReason`;
+  `TST_ABI_VERSION_MINOR` bumped 2 → 3.
+
+**Corpus validation (2026-05-24, 251 files):**
+
+- _FMV captures (28 files): **60,089 typed KLV records** (previously 0
+  before this plan — every cell past the first was silently dropped).
+  175,121 NonConformant `MultiCellAu(Orphan)` events surface real
+  wire-format issues that were previously invisible.
+- _Raw captures (22 files): 88,635 typed KLV records, 92,691 Orphans.
+- Other captures (201 files): 1,644,958 typed KLV records, 113,355
+  Orphans.
+- Total across 251 files: **1,793,682 typed KLV records.**
+  `klv_reassembled = 0` indicates the corpus's actual fragmentation
+  pattern is back-to-back Complete cells in one PES (the
+  classify_klv-only-looked-at-first-cell bug) plus malformed
+  `Middle`/`Last`-CFI orphans — not legitimate `First`+`Middle`+`Last`
+  cross-PES fragmentation (which Task 5 integration tests prove the
+  reassembler handles correctly).
+
 ---
 
 ## [Unreleased] — tst-py Phase 6 — pandas + NumPy adapters (2026-05-23)

@@ -9,11 +9,11 @@
 //! 2. Tolerance mode: same wire produces one
 //!    `MetadataKind::KlvSyncAuCell { cell_fragment_indication: Complete,
 //!    was_reassembled: false, cell_count: 1 }` event PLUS one
-//!    `NonConformantIssue::MalformedAuCellCfiTolerated` diagnostic.
+//!    `NonConformantIssue::CfiTolerated` diagnostic.
 //! 3. Tolerance mode + invalid orphan payload (no SMPTE UL OR BER length
 //!    mismatch) → still no metadata, still orphan diagnostic.
 //! 4. Tolerance mode + legitimate First/Middle/Last reassembly → one
-//!    reassembled metadata event, ZERO `MalformedAuCellCfiTolerated`
+//!    reassembled metadata event, ZERO `CfiTolerated`
 //!    diagnostics. The new path must not steal cells from real fragmentation.
 //! 5. Tolerance mode + active buffer + sequence-gap Middle → existing
 //!    `MultiCellAu { SequenceGap }` still fires (tolerance only rescues
@@ -224,7 +224,7 @@ fn strict_mode_orphan_middle_with_complete_klv_stays_orphan() {
             matches!(
                 e,
                 DemuxEvent::NonConformant {
-                    issue: NonConformantIssue::MalformedAuCellCfiTolerated { .. },
+                    issue: NonConformantIssue::CfiTolerated { .. },
                     ..
                 }
             )
@@ -232,7 +232,7 @@ fn strict_mode_orphan_middle_with_complete_klv_stays_orphan() {
         .collect();
     assert!(
         tolerated.is_empty(),
-        "strict mode must not emit MalformedAuCellCfiTolerated diagnostics",
+        "strict mode must not emit CfiTolerated diagnostics",
     );
 }
 
@@ -243,7 +243,7 @@ fn tolerance_mode_valid_orphan_middle_emits_metadata_plus_diagnostic() {
     let inner = synth_klv_record(32);
     let ts = ts_with_patched_single_cell(&inner, &inner, CellFragmentIndication::Middle, 7);
 
-    let builder = DemuxerBuilder::new().malformed_au_cell_cfi_tolerance(true);
+    let builder = DemuxerBuilder::new().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let metas: Vec<_> = events
@@ -288,7 +288,7 @@ fn tolerance_mode_valid_orphan_middle_emits_metadata_plus_diagnostic() {
         .filter_map(|e| match e {
             DemuxEvent::NonConformant {
                 issue:
-                    NonConformantIssue::MalformedAuCellCfiTolerated {
+                    NonConformantIssue::CfiTolerated {
                         pid,
                         observed_cfi,
                         treated_as,
@@ -340,7 +340,7 @@ fn tolerance_mode_valid_orphan_last_emits_metadata_plus_diagnostic() {
     let inner = synth_klv_record(8);
     let ts = ts_with_patched_single_cell(&inner, &inner, CellFragmentIndication::Last, 3);
 
-    let builder = DemuxerBuilder::new().malformed_au_cell_cfi_tolerance(true);
+    let builder = DemuxerBuilder::new().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let meta_count = events
@@ -358,7 +358,7 @@ fn tolerance_mode_valid_orphan_last_emits_metadata_plus_diagnostic() {
             matches!(
                 e,
                 DemuxEvent::NonConformant {
-                    issue: NonConformantIssue::MalformedAuCellCfiTolerated {
+                    issue: NonConformantIssue::CfiTolerated {
                         observed_cfi: CellFragmentIndication::Last,
                         ..
                     },
@@ -379,7 +379,7 @@ fn tolerance_mode_invalid_payload_stays_orphan() {
     let inner = vec![0xFFu8; 32];
     let ts = ts_with_patched_single_cell(&inner, &inner, CellFragmentIndication::Middle, 5);
 
-    let builder = DemuxerBuilder::new().malformed_au_cell_cfi_tolerance(true);
+    let builder = DemuxerBuilder::new().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let meta_count = events
@@ -417,7 +417,7 @@ fn tolerance_mode_invalid_payload_stays_orphan() {
             matches!(
                 e,
                 DemuxEvent::NonConformant {
-                    issue: NonConformantIssue::MalformedAuCellCfiTolerated { .. },
+                    issue: NonConformantIssue::CfiTolerated { .. },
                     ..
                 }
             )
@@ -439,7 +439,7 @@ fn tolerance_mode_ber_length_mismatch_stays_orphan() {
     inner[16] = 64; // declares 64 bytes but only 15 follow
     let ts = ts_with_patched_single_cell(&inner, &inner, CellFragmentIndication::Middle, 8);
 
-    let builder = DemuxerBuilder::new().malformed_au_cell_cfi_tolerance(true);
+    let builder = DemuxerBuilder::new().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let meta_count = events
@@ -452,7 +452,7 @@ fn tolerance_mode_ber_length_mismatch_stays_orphan() {
             matches!(
                 e,
                 DemuxEvent::NonConformant {
-                    issue: NonConformantIssue::MalformedAuCellCfiTolerated { .. },
+                    issue: NonConformantIssue::CfiTolerated { .. },
                     ..
                 }
             )
@@ -489,7 +489,7 @@ fn tolerance_mode_legitimate_fragmentation_unaffected() {
     patch_au_cell(&mut ts, off1, CellFragmentIndication::Middle, 11, part_b);
     patch_au_cell(&mut ts, off2, CellFragmentIndication::Last, 12, part_c);
 
-    let builder = DemuxerBuilder::new().malformed_au_cell_cfi_tolerance(true);
+    let builder = DemuxerBuilder::new().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let metas: Vec<_> = events
@@ -523,7 +523,7 @@ fn tolerance_mode_legitimate_fragmentation_unaffected() {
             matches!(
                 e,
                 DemuxEvent::NonConformant {
-                    issue: NonConformantIssue::MalformedAuCellCfiTolerated { .. },
+                    issue: NonConformantIssue::CfiTolerated { .. },
                     ..
                 }
             )
@@ -556,7 +556,7 @@ fn tolerance_mode_active_buffer_sequence_gap_still_emits_existing_failure() {
     // Skip seq 11 — go straight to 12 to trigger SequenceGap.
     patch_au_cell(&mut ts, off1, CellFragmentIndication::Middle, 12, part_b);
 
-    let builder = DemuxerBuilder::new().malformed_au_cell_cfi_tolerance(true);
+    let builder = DemuxerBuilder::new().cfi_tolerance(true);
     let events = collect_events_with(builder, &ts);
 
     let meta_count = events
@@ -594,7 +594,7 @@ fn tolerance_mode_active_buffer_sequence_gap_still_emits_existing_failure() {
             matches!(
                 e,
                 DemuxEvent::NonConformant {
-                    issue: NonConformantIssue::MalformedAuCellCfiTolerated { .. },
+                    issue: NonConformantIssue::CfiTolerated { .. },
                     ..
                 }
             )

@@ -130,7 +130,7 @@ pub struct DemuxerConfig {
     /// available payload). If it passes, the cell is emitted as a
     /// [`crate::mpegts::demux::MetadataKind::KlvSyncAuCell`] with
     /// `cell_fragment_indication = Complete` AND a
-    /// [`crate::mpegts::demux::NonConformantIssue::MalformedAuCellCfiTolerated`]
+    /// [`crate::mpegts::demux::NonConformantIssue::CfiTolerated`]
     /// diagnostic so the malformation remains visible to callers.
     ///
     /// Enable for known producer-malformed sources that ship complete KLV
@@ -138,7 +138,7 @@ pub struct DemuxerConfig {
     /// reject such streams loudly (the safe default for receivers that
     /// must surface wire-format malformation, e.g. interoperability
     /// validators).
-    pub malformed_au_cell_cfi_tolerance: bool,
+    pub cfi_tolerance: bool,
 }
 
 /// Per-program demuxer state. Crate-private — accessed only by `Demuxer`
@@ -219,9 +219,9 @@ impl DemuxerBuilder {
     /// Enable opt-in tolerance for sync-metadata AU cells whose
     /// `cell_fragment_indication` bits are set to `0b00` (middle) or
     /// `0b01` (last) without a prior First cell. See
-    /// [`DemuxerConfig::malformed_au_cell_cfi_tolerance`].
-    pub fn malformed_au_cell_cfi_tolerance(mut self, enable: bool) -> Self {
-        self.options.malformed_au_cell_cfi_tolerance = enable;
+    /// [`DemuxerConfig::cfi_tolerance`].
+    pub fn cfi_tolerance(mut self, enable: bool) -> Self {
+        self.options.cfi_tolerance = enable;
         self
     }
 
@@ -245,26 +245,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_malformed_au_cell_cfi_tolerance_is_false() {
+    fn default_cfi_tolerance_is_false() {
         // Strict-by-default posture: receivers must explicitly opt in to
         // tolerate producer-malformed CFI bits. Matches lenient_psi_reassembly
         // shape (also default false) and the project's broader
         // "strict-default + named compatibility knob" convention.
-        assert!(!DemuxerConfig::default().malformed_au_cell_cfi_tolerance);
+        assert!(!DemuxerConfig::default().cfi_tolerance);
     }
 
     #[test]
-    fn builder_sets_malformed_au_cell_cfi_tolerance() {
-        let builder = DemuxerBuilder::new().malformed_au_cell_cfi_tolerance(true);
+    fn builder_sets_cfi_tolerance() {
+        let builder = DemuxerBuilder::new().cfi_tolerance(true);
         let config = builder.options;
-        assert!(config.malformed_au_cell_cfi_tolerance);
+        assert!(config.cfi_tolerance);
     }
 
     #[test]
-    fn builder_can_toggle_malformed_au_cell_cfi_tolerance_off() {
+    fn builder_can_toggle_cfi_tolerance_off() {
         let builder = DemuxerBuilder::new()
-            .malformed_au_cell_cfi_tolerance(true)
-            .malformed_au_cell_cfi_tolerance(false);
-        assert!(!builder.options.malformed_au_cell_cfi_tolerance);
+            .cfi_tolerance(true)
+            .cfi_tolerance(false);
+        assert!(!builder.options.cfi_tolerance);
     }
 }

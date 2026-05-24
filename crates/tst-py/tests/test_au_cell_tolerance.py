@@ -7,7 +7,7 @@ cover the binding surface — the new config field, the new
 re-export, and the new optional fields on `_NonConformantEvent` — plus
 one minimum-discriminating end-to-end test that exercises the full
 config-through-translation path (a Python `DemuxerConfig` with
-`malformed_au_cell_cfi_tolerance=True` produces a `Demuxer` that
+`cfi_tolerance=True` produces a `Demuxer` that
 surfaces the tolerance diagnostic with the right typed fields).
 """
 
@@ -60,19 +60,19 @@ def test_cell_fragment_indication_eq_int_semantics() -> None:
 def test_demuxer_config_default_for_tolerance_is_false() -> None:
     """Strict-by-default — receivers must opt in to tolerate malformed CFI."""
     cfg = DemuxerConfig()
-    assert cfg.malformed_au_cell_cfi_tolerance is False
+    assert cfg.cfi_tolerance is False
 
 
 def test_demuxer_config_accepts_tolerance_true() -> None:
-    cfg = DemuxerConfig(malformed_au_cell_cfi_tolerance=True)
-    assert cfg.malformed_au_cell_cfi_tolerance is True
+    cfg = DemuxerConfig(cfi_tolerance=True)
+    assert cfg.cfi_tolerance is True
 
 
 def test_non_conformant_kind_has_malformed_au_cell_cfi_tolerated() -> None:
     """The new kind is reachable from the `NonConformantKind` enum."""
-    assert NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED is not None
+    assert NonConformantKind.CFI_TOLERATED is not None
     # String discriminant per the established pattern.
-    assert NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED.value == (
+    assert NonConformantKind.CFI_TOLERATED.value == (
         "malformed_au_cell_cfi_tolerated"
     )
 
@@ -110,7 +110,7 @@ def test_non_conformant_event_accepts_typed_cfi_fields() -> None:
     ev = _NonConformantEvent(
         stream=stream,
         issue="malformed AU cell CFI tolerated",
-        kind=NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED,
+        kind=NonConformantKind.CFI_TOLERATED,
         observed_cfi=CellFragmentIndication.MIDDLE,
         treated_as=CellFragmentIndication.COMPLETE,
     )
@@ -247,7 +247,7 @@ def test_strict_mode_orphan_middle_emits_orphan_diagnostic_only() -> None:
     tolerated = [
         e
         for e in nonconf_events
-        if e.kind == NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED
+        if e.kind == NonConformantKind.CFI_TOLERATED
     ]
     assert len(orphans) == 1, f"expected 1 orphan, got {len(orphans)}"
     assert len(tolerated) == 0, "strict mode must not emit tolerance diagnostics"
@@ -256,10 +256,10 @@ def test_strict_mode_orphan_middle_emits_orphan_diagnostic_only() -> None:
 def test_tolerance_mode_orphan_middle_emits_klv_plus_typed_diagnostic() -> None:
     """Tolerance config (tolerance True): orphan Middle with valid KLV
     surfaces as one `DemuxEvent.Klv` (Complete) plus one
-    `DemuxEvent.NonConformant` with `kind=MALFORMED_AU_CELL_CFI_TOLERATED`
+    `DemuxEvent.NonConformant` with `kind=CFI_TOLERATED`
     and typed `observed_cfi=MIDDLE` / `treated_as=COMPLETE`."""
     ts = _build_ts_with_orphan_middle_cell()
-    cfg = DemuxerConfig(malformed_au_cell_cfi_tolerance=True)
+    cfg = DemuxerConfig(cfi_tolerance=True)
     events = _collect_events(Demuxer(cfg), ts)
 
     klv_events = [e for e in events if isinstance(e, DemuxEvent.Klv)]
@@ -276,7 +276,7 @@ def test_tolerance_mode_orphan_middle_emits_klv_plus_typed_diagnostic() -> None:
     tolerated = [
         e
         for e in nonconf_events
-        if e.kind == NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED
+        if e.kind == NonConformantKind.CFI_TOLERATED
     ]
     assert len(tolerated) == 1, (
         f"tolerance mode: 1 tolerance diagnostic expected, got {len(tolerated)}"
@@ -324,12 +324,12 @@ def test_extract_klv_strict_default_yields_zero_records_on_malformed(tmp_path) -
 
 
 def test_extract_klv_with_tolerance_config_yields_records_on_malformed(tmp_path) -> None:
-    """extract_klv with config=DemuxerConfig(malformed_au_cell_cfi_tolerance=True)
+    """extract_klv with config=DemuxerConfig(cfi_tolerance=True)
     rescues the raw KLV bytes that the strict path drops."""
     from tstrans.io import extract_klv
 
     ts_path = _write_malformed_ts(tmp_path)
-    cfg = DemuxerConfig(malformed_au_cell_cfi_tolerance=True)
+    cfg = DemuxerConfig(cfi_tolerance=True)
     # The synthetic payload is built from MISB ST 0601 UL bytes + 32 filler
     # value bytes (0x42 × 32). The UL prefix + BER length make it pass the
     # tolerance validator, but parse_klv_universal would fail to decode the
@@ -358,7 +358,7 @@ def test_probe_accepts_config_kwarg(tmp_path) -> None:
     result_strict = probe(ts_path)
     assert result_strict.has_klv is True, "PMT declares KLV stream"
 
-    cfg = DemuxerConfig(malformed_au_cell_cfi_tolerance=True)
+    cfg = DemuxerConfig(cfi_tolerance=True)
     result_tolerant = probe(ts_path, config=cfg)
     assert result_tolerant.has_klv is True
 
@@ -370,14 +370,14 @@ def test_parse_file_accepts_config_kwarg(tmp_path) -> None:
     from tstrans.io import parse_file
 
     ts_path = _write_malformed_ts(tmp_path)
-    cfg = DemuxerConfig(malformed_au_cell_cfi_tolerance=True)
+    cfg = DemuxerConfig(cfi_tolerance=True)
     events = list(parse_file(ts_path, config=cfg))
 
     tolerated = [
         e
         for e in events
         if isinstance(e, DemuxEvent.NonConformant)
-        and e.kind == NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED
+        and e.kind == NonConformantKind.CFI_TOLERATED
     ]
     assert len(tolerated) == 1, (
         f"parse_file with tolerance config: expected 1 tolerance diagnostic, "

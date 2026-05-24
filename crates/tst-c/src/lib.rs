@@ -82,8 +82,8 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 ///   pull-loop hardening + F2 C-ABI shape additions.
 /// - `3` (AU cell reassembly `5527a9e`): `TstMultiCellAuReason` +
 ///   `multi_cell_au_reason` field on `TstEventNonConformant`.
-/// - `4` (AU cell CFI tolerance): `TstNonConformantCode::MalformedAuCellCfiTolerated`
-///   (= 32) + `TstCellFragmentIndication` enum + `tst_demux_config_set_malformed_au_cell_cfi_tolerance`
+/// - `4` (AU cell CFI tolerance): `TstNonConformantCode::CfiTolerated`
+///   (= 32) + `TstCellFragmentIndication` enum + `tst_demux_config_set_cfi_tolerance`
 ///   setter. The new variant reuses the existing `cc_expected` + `cc_observed`
 ///   field carriers to surface `observed_cfi` + `treated_as` without growing
 ///   the struct.

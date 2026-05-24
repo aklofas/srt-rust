@@ -99,7 +99,7 @@ def probe(
     plus PCR analysis).
 
     Pass `config` to use a non-default demuxer configuration (e.g.
-    `DemuxerConfig(malformed_au_cell_cfi_tolerance=True)` to detect
+    `DemuxerConfig(cfi_tolerance=True)` to detect
     KLV in streams whose encoders mis-set the AU cell CFI bits — see
     `tstrans.mpegts.DemuxerConfig` for the full knob list).
     """
@@ -207,7 +207,7 @@ def extract_klv(
 
     Pass `config` to use a non-default demuxer configuration. The
     most common reason to do this today is to opt into
-    `DemuxerConfig(malformed_au_cell_cfi_tolerance=True)`, which
+    `DemuxerConfig(cfi_tolerance=True)`, which
     rescues complete KLV records from sync-metadata streams whose
     encoders set the AU cell `cell_fragment_indication` bits to
     `0b00` (Middle) or `0b01` (Last) for what are actually single

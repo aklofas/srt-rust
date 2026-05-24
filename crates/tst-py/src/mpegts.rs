@@ -183,14 +183,12 @@ fn build_demuxer(py: Python<'_>, config: Option<&Bound<'_, PyAny>>) -> PyResult<
         };
         let cap_per_pid: usize = cfg.getattr(intern!(py, "pes_cap_per_pid"))?.extract()?;
         let cap_total: usize = cfg.getattr(intern!(py, "pes_cap_total"))?.extract()?;
-        let cfi_tolerance: bool = cfg
-            .getattr(intern!(py, "malformed_au_cell_cfi_tolerance"))?
-            .extract()?;
+        let cfi_tolerance: bool = cfg.getattr(intern!(py, "cfi_tolerance"))?.extract()?;
 
         b = b.strict(strict);
         b = b.pes_cap_per_pid(cap_per_pid);
         b = b.pes_cap_total(cap_total);
-        b = b.malformed_au_cell_cfi_tolerance(cfi_tolerance);
+        b = b.cfi_tolerance(cfi_tolerance);
     }
     Ok(b.build())
 }
@@ -718,10 +716,10 @@ fn convert_non_conformant_event(
     };
     kwargs.set_item("multi_cell_au_reason", reason_py)?;
 
-    // Surface the typed CFI bits only on MalformedAuCellCfiTolerated;
+    // Surface the typed CFI bits only on CfiTolerated;
     // None on every other issue kind (Python-side default).
     let (observed_py, treated_py): (PyObject, PyObject) = match issue {
-        NonConformantIssue::MalformedAuCellCfiTolerated {
+        NonConformantIssue::CfiTolerated {
             observed_cfi,
             treated_as,
             ..
@@ -768,7 +766,7 @@ fn non_conformant_kind_name(issue: &NonConformantIssue) -> &'static str {
         LatmFraming { .. } => "LATM_FRAMING",
         PsiCcDiscontinuity { .. } => "PSI_CC_DISCONTINUITY",
         MultiCellAu { .. } => "MULTI_CELL_AU",
-        MalformedAuCellCfiTolerated { .. } => "MALFORMED_AU_CELL_CFI_TOLERATED",
+        CfiTolerated { .. } => "CFI_TOLERATED",
         PsiMultiSectionUnsupported { .. } => "PSI_MULTI_SECTION_UNSUPPORTED",
         Ac3SyncMissing { .. } => "AC3_SYNC_MISSING",
         Av1WrongStreamId { .. } => "AV1_WRONG_STREAM_ID",
@@ -845,7 +843,7 @@ impl From<MultiCellAuReason> for PyMultiCellAuReason {
 ///
 /// Mirrors `tst_core::mpegts::au_cell::CellFragmentIndication`. Surfaced on
 /// `_NonConformantEvent.observed_cfi` and `_NonConformantEvent.treated_as`
-/// when the underlying issue is `MALFORMED_AU_CELL_CFI_TOLERATED`. PyO3
+/// when the underlying issue is `CFI_TOLERATED`. PyO3
 /// `eq_int` enum — compare with `==`.
 ///
 /// Discriminant values match the wire bits exactly: `MIDDLE=0`, `LAST=1`,

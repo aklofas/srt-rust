@@ -43,7 +43,7 @@ fn stream_type_requires_pts(kind: &StreamKind) -> bool {
 /// a real fragment would not have a self-consistent BER length.
 ///
 /// This is the gate behind
-/// [`DemuxerConfig::malformed_au_cell_cfi_tolerance`](crate::mpegts::demux::DemuxerConfig::malformed_au_cell_cfi_tolerance) —
+/// [`DemuxerConfig::cfi_tolerance`](crate::mpegts::demux::DemuxerConfig::cfi_tolerance) —
 /// the demuxer reframes an orphan cell as Complete only if this returns
 /// `true`. A real loss / mid-stream-join / fragment fails the BER check
 /// and falls through to the existing
@@ -546,7 +546,7 @@ impl super::demuxer::Demuxer {
                                 // diagnostic so the malformation is loud but
                                 // the data flows. Off by default (callers
                                 // must opt in via
-                                // DemuxerConfig::malformed_au_cell_cfi_tolerance).
+                                // DemuxerConfig::cfi_tolerance).
                                 let observed_cfi = h.cell_fragment_indication;
                                 let orphan_continuation =
                                     matches!(reason, MultiCellAuReason::Orphan)
@@ -556,7 +556,7 @@ impl super::demuxer::Demuxer {
                                                 | CellFragmentIndication::Last
                                         );
                                 let tolerated = orphan_continuation
-                                    && self.options.malformed_au_cell_cfi_tolerance
+                                    && self.options.cfi_tolerance
                                     && orphan_validates_as_complete_klv(current_inner);
 
                                 if tolerated {
@@ -597,7 +597,7 @@ impl super::demuxer::Demuxer {
                                     });
                                     self.queue_nonconformant(
                                         stream,
-                                        NonConformantIssue::MalformedAuCellCfiTolerated {
+                                        NonConformantIssue::CfiTolerated {
                                             pid: pes.pid,
                                             observed_cfi,
                                             treated_as: CellFragmentIndication::Complete,

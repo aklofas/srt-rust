@@ -225,7 +225,7 @@ class NonConformantKind(enum.Enum):
     SUBTITLE_MISSING_DESCRIPTOR = "subtitle_missing_descriptor"
     SUBTITLE_ALIGNMENT_MISSING = "subtitle_alignment_missing"
     MULTI_CELL_AU = "multi_cell_au"
-    MALFORMED_AU_CELL_CFI_TOLERATED = "malformed_au_cell_cfi_tolerated"
+    CFI_TOLERATED = "malformed_au_cell_cfi_tolerated"
     PSI_MULTI_SECTION_UNSUPPORTED = "psi_multi_section_unsupported"
     PSI_CC_DISCONTINUITY = "psi_cc_discontinuity"
     PSI_OVERLONG_SECTION = "psi_overlong_section"
@@ -431,7 +431,7 @@ class _NonConformantEvent(DemuxEvent):
     # working without changes.
     multi_cell_au_reason: Optional["MultiCellAuReason"] = None
     # Typed CFI bits set only when
-    # `kind == NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED`; `None`
+    # `kind == NonConformantKind.CFI_TOLERATED`; `None`
     # for all other issues. `observed_cfi` is the wire value the demuxer
     # read; `treated_as` is the value substituted (always
     # `CellFragmentIndication.COMPLETE` today). Both default to None so
@@ -482,10 +482,10 @@ class DemuxerConfig:
     # Complete if the inner payload independently validates as one
     # complete KLV record (SMPTE 336M UL + BER length match). Always
     # emits a `_NonConformantEvent` with kind
-    # `MALFORMED_AU_CELL_CFI_TOLERATED` alongside the rescued metadata
+    # `CFI_TOLERATED` alongside the rescued metadata
     # event. Default False keeps the spec-strict behavior: orphan cells
     # surface only as `MULTI_CELL_AU{ORPHAN}`.
-    malformed_au_cell_cfi_tolerance: bool = False
+    cfi_tolerance: bool = False
 
 
 # Phase 5: re-export NalUnit / Obu / ObuExtension so callers can import
@@ -510,7 +510,7 @@ MultiCellAuReason = _native_mod.MultiCellAuReason
 # `tst_core::mpegts::au_cell::CellFragmentIndication`. Re-exported here so
 # Python users can `from tstrans.mpegts import CellFragmentIndication`.
 # Set on `_NonConformantEvent.observed_cfi` and `_NonConformantEvent.treated_as`
-# when the issue is `MALFORMED_AU_CELL_CFI_TOLERATED`; `None` otherwise.
+# when the issue is `CFI_TOLERATED`; `None` otherwise.
 # Discriminant values match the wire bits exactly: MIDDLE=0, LAST=1,
 # FIRST=2, COMPLETE=3 (per H.222.0 V9 Table 2-157).
 CellFragmentIndication = _native_mod.CellFragmentIndication

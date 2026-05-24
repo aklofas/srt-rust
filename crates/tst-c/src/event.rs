@@ -189,19 +189,19 @@ pub enum TstNonConformantCode {
     Av1MissingTsObuFraming = 31,
     /// Orphan sync-metadata AU cell with malformed
     /// `cell_fragment_indication` was tolerated under
-    /// `tst_demux_config_set_malformed_au_cell_cfi_tolerance(_, true)`.
+    /// `tst_demux_config_set_cfi_tolerance(_, true)`.
     /// `pid` is the elementary stream PID. `cc_expected` carries the
     /// observed CFI bits (`TstCellFragmentIndication` mirror); `cc_observed`
     /// carries the substituted CFI bits (today always `Complete = 3`).
     /// The KLV metadata payload was also emitted as a separate
     /// `TST_EVENT_KIND_METADATA` event with `cell_fragment_indication = Complete`.
-    MalformedAuCellCfiTolerated = 32,
+    CfiTolerated = 32,
 }
 
 /// `repr(i32)` mirror of `tst_core::mpegts::au_cell::CellFragmentIndication`.
 /// Surfaced on `tst_event_t.u.nonconformant.cc_expected` (observed) and
 /// `tst_event_t.u.nonconformant.cc_observed` (substituted) when
-/// `issue_code == TST_NONCONFORMANT_CODE_MALFORMED_AU_CELL_CFI_TOLERATED`.
+/// `issue_code == TST_NONCONFORMANT_CODE_CFI_TOLERATED`.
 ///
 /// Discriminants match the H.222.0 V9 Table 2-157 wire bits exactly:
 /// `Middle = 0` (0b00), `Last = 1` (0b01), `First = 2` (0b10),
@@ -1092,7 +1092,7 @@ fn fill_nonconformant(
             body.table_id = *table_id;
             body.last_section_number = *last_section_number;
         }
-        NonConformantIssue::MalformedAuCellCfiTolerated {
+        NonConformantIssue::CfiTolerated {
             pid,
             observed_cfi,
             treated_as,
@@ -1107,7 +1107,7 @@ fn fill_nonconformant(
                 CellFragmentIndication::First => TstCellFragmentIndication::First as u8,
                 CellFragmentIndication::Complete => TstCellFragmentIndication::Complete as u8,
             };
-            body.issue_code = TstNonConformantCode::MalformedAuCellCfiTolerated as c_int;
+            body.issue_code = TstNonConformantCode::CfiTolerated as c_int;
             body.pid = *pid;
             // Reuse the existing single-byte carriers: cc_expected for
             // the observed CFI, cc_observed for the substituted value

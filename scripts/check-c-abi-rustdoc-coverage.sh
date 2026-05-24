@@ -163,7 +163,7 @@ ALLOWLIST=(
     "tst_demux_config_add_link_klv"
     "tst_demux_config_add_treat_as"
     "tst_demux_config_set_pes_cap"
-    "tst_demux_config_set_malformed_au_cell_cfi_tolerance"
+    "tst_demux_config_set_cfi_tolerance"
 
     # --- Phase 3 mux-config descriptor wrappers (mirror existing
     #     tst_mux_config_set_*_descriptors / set_program_descriptors

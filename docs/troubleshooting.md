@@ -146,11 +146,11 @@ Fix: opt into the receive-side tolerance mode if you need data from such encoder
 ```rust,ignore
 use tst_core::mpegts::demux::DemuxerBuilder;
 let demuxer = DemuxerBuilder::new()
-    .malformed_au_cell_cfi_tolerance(true)
+    .cfi_tolerance(true)
     .build();
 ```
 
-The demuxer then payload-validates the orphan cell as one complete KLV unit (SMPTE 336M UL prefix + BER length match) and, if it passes, emits the cell as `KlvSyncAuCell{Complete}` plus a `NonConformantIssue::MalformedAuCellCfiTolerated { pid, observed_cfi, treated_as }` diagnostic so the malformation remains visible to telemetry. Tolerance is opt-in because it reinterprets wire semantics; keep it off when you want to surface producer malformation loudly. See [guide-mpegts-demux.md](guide-mpegts-demux.md#malformed-cell_fragment_indication-tolerance-opt-in) for the full contract.
+The demuxer then payload-validates the orphan cell as one complete KLV unit (SMPTE 336M UL prefix + BER length match) and, if it passes, emits the cell as `KlvSyncAuCell{Complete}` plus a `NonConformantIssue::CfiTolerated { pid, observed_cfi, treated_as }` diagnostic so the malformation remains visible to telemetry. Tolerance is opt-in because it reinterprets wire semantics; keep it off when you want to surface producer malformation loudly. See [guide-mpegts-demux.md](guide-mpegts-demux.md#malformed-cell_fragment_indication-tolerance-opt-in) for the full contract.
 
 ## TS framing issues
 

@@ -642,7 +642,7 @@ pub enum NonConformantIssue {
     /// A sync-metadata AU cell arrived with `cell_fragment_indication`
     /// set to `0b00` (Middle) or `0b01` (Last) when no prior `First`
     /// cell was buffered for the PID, AND the demuxer was configured
-    /// with [`crate::mpegts::demux::DemuxerConfig::malformed_au_cell_cfi_tolerance`]
+    /// with [`crate::mpegts::demux::DemuxerConfig::cfi_tolerance`]
     /// `= true`, AND the cell's inner payload independently validated
     /// as a single complete KLV unit (SMPTE 336M UL prefix
     /// `06 0e 2b 34` followed by a BER length describing exactly the
@@ -665,7 +665,7 @@ pub enum NonConformantIssue {
     /// value the demuxer read. `treated_as` is the value the demuxer
     /// substituted (always [`crate::mpegts::au_cell::CellFragmentIndication::Complete`]
     /// today).
-    MalformedAuCellCfiTolerated {
+    CfiTolerated {
         pid: u16,
         observed_cfi: crate::mpegts::au_cell::CellFragmentIndication,
         treated_as: crate::mpegts::au_cell::CellFragmentIndication,
@@ -997,7 +997,7 @@ impl std::fmt::Display for NonConformantIssue {
                     "multi-cell AU reassembly failed on PID 0x{pid:04X}: {dropped_bytes} bytes dropped ({reason_str})"
                 )
             }
-            NonConformantIssue::MalformedAuCellCfiTolerated {
+            NonConformantIssue::CfiTolerated {
                 pid,
                 observed_cfi,
                 treated_as,
@@ -1177,7 +1177,7 @@ mod tests {
     #[test]
     fn malformed_au_cell_cfi_tolerated_displays_pid_and_cfi_bits() {
         use crate::mpegts::au_cell::CellFragmentIndication;
-        let issue = NonConformantIssue::MalformedAuCellCfiTolerated {
+        let issue = NonConformantIssue::CfiTolerated {
             pid: 0x1002,
             observed_cfi: CellFragmentIndication::Middle,
             treated_as: CellFragmentIndication::Complete,

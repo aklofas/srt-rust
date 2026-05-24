@@ -11,7 +11,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 **Added:**
 
-- `DemuxerConfig::malformed_au_cell_cfi_tolerance: bool` (default
+- `DemuxerConfig::cfi_tolerance: bool` (default
   `false`) — opt-in tolerance for sync-metadata AU cells that arrive
   with `cell_fragment_indication` bits set to `0b00` (Middle) or
   `0b01` (Last) without a prior `First` cell. When enabled AND the
@@ -19,26 +19,26 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   KLV record (SMPTE 336M UL prefix + BER length match), the demuxer
   emits the cell as `MetadataKind::KlvSyncAuCell { cell_fragment_indication:
   Complete, .. }` plus a
-  `NonConformantIssue::MalformedAuCellCfiTolerated { pid,
+  `NonConformantIssue::CfiTolerated { pid,
   observed_cfi, treated_as }` diagnostic so the malformation remains
   visible. Off by default keeps the spec-strict behavior: orphan
   cells surface only as `NonConformantIssue::MultiCellAu { reason:
   MultiCellAuReason::Orphan }`.
-- `DemuxerBuilder::malformed_au_cell_cfi_tolerance(enable)` — builder
+- `DemuxerBuilder::cfi_tolerance(enable)` — builder
   method for the new config field.
-- `NonConformantIssue::MalformedAuCellCfiTolerated { pid: u16,
+- `NonConformantIssue::CfiTolerated { pid: u16,
   observed_cfi: CellFragmentIndication, treated_as:
   CellFragmentIndication }` — new variant carrying the wire-observed
   and substituted CFI bytes for telemetry / diagnostics.
 
 **Python (`tstrans` 0.1.0):**
 
-- `tstrans.mpegts.DemuxerConfig.malformed_au_cell_cfi_tolerance: bool`
+- `tstrans.mpegts.DemuxerConfig.cfi_tolerance: bool`
   (default `False`) — mirrors the Rust config field.
 - `tstrans.mpegts.CellFragmentIndication` — new `eq_int` enum
   (`MIDDLE=0`, `LAST=1`, `FIRST=2`, `COMPLETE=3`; discriminants match
   the H.222.0 V9 Table 2-157 wire bits exactly).
-- `tstrans.mpegts.NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED`
+- `tstrans.mpegts.NonConformantKind.CFI_TOLERATED`
   — new enum member.
 - `tstrans.mpegts._NonConformantEvent.observed_cfi` and
   `tstrans.mpegts._NonConformantEvent.treated_as` — new optional
@@ -47,7 +47,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 **C (ABI minor 3 → 4):**
 
-- `TST_NONCONFORMANT_CODE_MALFORMED_AU_CELL_CFI_TOLERATED` (= 32) —
+- `TST_NONCONFORMANT_CODE_CFI_TOLERATED` (= 32) —
   new `TstNonConformantCode` variant.
 - `TstCellFragmentIndication` — new `repr(i32)` enum mirror.
   Discriminants match the wire bits: `Middle=0`, `Last=1`, `First=2`,
@@ -56,7 +56,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `TstEventNonConformant.cc_observed` carry the observed and
   substituted CFI bytes (reusing the existing single-byte field
   carriers — no struct-size change).
-- `tst_demux_config_set_malformed_au_cell_cfi_tolerance(cfg, enable)`
+- `tst_demux_config_set_cfi_tolerance(cfg, enable)`
   — new setter on the opaque `tst_demux_config_t` builder.
 - `TST_ABI_VERSION_MINOR` bumped 3 → 4 (additive).
 

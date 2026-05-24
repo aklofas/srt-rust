@@ -375,7 +375,7 @@ tolerance:
 ```rust,ignore
 use tst_core::mpegts::demux::DemuxerBuilder;
 let demuxer = DemuxerBuilder::new()
-    .malformed_au_cell_cfi_tolerance(true)
+    .cfi_tolerance(true)
     .build();
 ```
 
@@ -388,7 +388,7 @@ exactly the available bytes). If validation passes, the demuxer emits:
    `cell_fragment_indication = Complete` (the substituted value),
    `was_reassembled = false`, `cell_count = 1`, and the verbatim KLV
    payload.
-2. A `NonConformantIssue::MalformedAuCellCfiTolerated { pid,
+2. A `NonConformantIssue::CfiTolerated { pid,
    observed_cfi, treated_as }` diagnostic so callers can quantify
    the malformation, log it, or surface it to telemetry.
 

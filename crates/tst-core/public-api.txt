@@ -2949,15 +2949,15 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::Av1TileListNotAllowed::p
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1WrongStreamId
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1WrongStreamId::observed: u8
 pub tst_core::mpegts::demux::event::NonConformantIssue::Av1WrongStreamId::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::CfiTolerated
+pub tst_core::mpegts::demux::event::NonConformantIssue::CfiTolerated::observed_cfi: tst_core::mpegts::au_cell::CellFragmentIndication
+pub tst_core::mpegts::demux::event::NonConformantIssue::CfiTolerated::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::CfiTolerated::treated_as: tst_core::mpegts::au_cell::CellFragmentIndication
 pub tst_core::mpegts::demux::event::NonConformantIssue::DvbSubDataIdentifier
 pub tst_core::mpegts::demux::event::NonConformantIssue::DvbSubDataIdentifier::observed: u8
 pub tst_core::mpegts::demux::event::NonConformantIssue::LatmFraming
 pub tst_core::mpegts::demux::event::NonConformantIssue::LatmFraming::kind: tst_core::codec::aac::latm::LatmFramingKind
 pub tst_core::mpegts::demux::event::NonConformantIssue::LatmFraming::pid: u16
-pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedAuCellCfiTolerated
-pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedAuCellCfiTolerated::observed_cfi: tst_core::mpegts::au_cell::CellFragmentIndication
-pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedAuCellCfiTolerated::pid: u16
-pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedAuCellCfiTolerated::treated_as: tst_core::mpegts::au_cell::CellFragmentIndication
 pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes
 pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes::pid: u16
 pub tst_core::mpegts::demux::event::NonConformantIssue::MalformedPes::reason: &'static str
@@ -3786,15 +3786,15 @@ pub tst_core::mpegts::demux::NonConformantIssue::Av1TileListNotAllowed::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::Av1WrongStreamId
 pub tst_core::mpegts::demux::NonConformantIssue::Av1WrongStreamId::observed: u8
 pub tst_core::mpegts::demux::NonConformantIssue::Av1WrongStreamId::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::CfiTolerated
+pub tst_core::mpegts::demux::NonConformantIssue::CfiTolerated::observed_cfi: tst_core::mpegts::au_cell::CellFragmentIndication
+pub tst_core::mpegts::demux::NonConformantIssue::CfiTolerated::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::CfiTolerated::treated_as: tst_core::mpegts::au_cell::CellFragmentIndication
 pub tst_core::mpegts::demux::NonConformantIssue::DvbSubDataIdentifier
 pub tst_core::mpegts::demux::NonConformantIssue::DvbSubDataIdentifier::observed: u8
 pub tst_core::mpegts::demux::NonConformantIssue::LatmFraming
 pub tst_core::mpegts::demux::NonConformantIssue::LatmFraming::kind: tst_core::codec::aac::latm::LatmFramingKind
 pub tst_core::mpegts::demux::NonConformantIssue::LatmFraming::pid: u16
-pub tst_core::mpegts::demux::NonConformantIssue::MalformedAuCellCfiTolerated
-pub tst_core::mpegts::demux::NonConformantIssue::MalformedAuCellCfiTolerated::observed_cfi: tst_core::mpegts::au_cell::CellFragmentIndication
-pub tst_core::mpegts::demux::NonConformantIssue::MalformedAuCellCfiTolerated::pid: u16
-pub tst_core::mpegts::demux::NonConformantIssue::MalformedAuCellCfiTolerated::treated_as: tst_core::mpegts::au_cell::CellFragmentIndication
 pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes
 pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::MalformedPes::reason: &'static str
@@ -4077,8 +4077,8 @@ impl tst_core::mpegts::demux::DemuxerBuilder
 pub fn tst_core::mpegts::demux::DemuxerBuilder::au_cell_cap_per_pid(self, bytes: usize) -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::av1_carriage(self, mode: tst_core::mpegts::mux::Av1CarriageMode) -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::build(self) -> tst_core::mpegts::demux::demuxer::Demuxer
+pub fn tst_core::mpegts::demux::DemuxerBuilder::cfi_tolerance(self, enable: bool) -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::link_klv(self, klv_pid: u16, video_pid: u16) -> Self
-pub fn tst_core::mpegts::demux::DemuxerBuilder::malformed_au_cell_cfi_tolerance(self, enable: bool) -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::new() -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::pes_cap_per_pid(self, bytes: usize) -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::pes_cap_total(self, bytes: usize) -> Self
@@ -4098,9 +4098,9 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::DemuxerBu
 #[non_exhaustive] pub struct tst_core::mpegts::demux::DemuxerConfig
 pub tst_core::mpegts::demux::DemuxerConfig::au_cell_cap_per_pid: core::option::Option<usize>
 pub tst_core::mpegts::demux::DemuxerConfig::av1_carriage: tst_core::mpegts::mux::Av1CarriageMode
+pub tst_core::mpegts::demux::DemuxerConfig::cfi_tolerance: bool
 pub tst_core::mpegts::demux::DemuxerConfig::klv_link_overrides: alloc::vec::Vec<(u16, u16)>
 pub tst_core::mpegts::demux::DemuxerConfig::lenient_psi_reassembly: bool
-pub tst_core::mpegts::demux::DemuxerConfig::malformed_au_cell_cfi_tolerance: bool
 pub tst_core::mpegts::demux::DemuxerConfig::pes_cap_per_pid: core::option::Option<usize>
 pub tst_core::mpegts::demux::DemuxerConfig::pes_cap_total: core::option::Option<usize>
 pub tst_core::mpegts::demux::DemuxerConfig::stream_kind_overrides: std::collections::hash::map::HashMap<u16, tst_core::mpegts::demux::event::StreamKind>

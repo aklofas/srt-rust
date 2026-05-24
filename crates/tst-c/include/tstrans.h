@@ -62,8 +62,8 @@
  *   pull-loop hardening + F2 C-ABI shape additions.
  * - `3` (AU cell reassembly `5527a9e`): `TstMultiCellAuReason` +
  *   `multi_cell_au_reason` field on `TstEventNonConformant`.
- * - `4` (AU cell CFI tolerance): `TstNonConformantCode::MalformedAuCellCfiTolerated`
- *   (= 32) + `TstCellFragmentIndication` enum + `tst_demux_config_set_malformed_au_cell_cfi_tolerance`
+ * - `4` (AU cell CFI tolerance): `TstNonConformantCode::CfiTolerated`
+ *   (= 32) + `TstCellFragmentIndication` enum + `tst_demux_config_set_cfi_tolerance`
  *   setter. The new variant reuses the existing `cc_expected` + `cc_observed`
  *   field carriers to surface `observed_cfi` + `treated_as` without growing
  *   the struct.
@@ -444,14 +444,14 @@ enum tst_nonconformant_code
   /**
    * Orphan sync-metadata AU cell with malformed
    * `cell_fragment_indication` was tolerated under
-   * `tst_demux_config_set_malformed_au_cell_cfi_tolerance(_, true)`.
+   * `tst_demux_config_set_cfi_tolerance(_, true)`.
    * `pid` is the elementary stream PID. `cc_expected` carries the
    * observed CFI bits (`TstCellFragmentIndication` mirror); `cc_observed`
    * carries the substituted CFI bits (today always `Complete = 3`).
    * The KLV metadata payload was also emitted as a separate
    * `TST_EVENT_KIND_METADATA` event with `cell_fragment_indication = Complete`.
    */
-  TST_NONCONFORMANT_CODE_MALFORMED_AU_CELL_CFI_TOLERATED = 32,
+  TST_NONCONFORMANT_CODE_CFI_TOLERATED = 32,
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;
@@ -478,6 +478,30 @@ enum tst_pcr_malformed_kind
 };
 #ifndef __cplusplus
 typedef int32_t tst_pcr_malformed_kind;
+#endif // __cplusplus
+
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::au_cell::CellFragmentIndication`.
+ * Surfaced on `tst_event_t.u.nonconformant.cc_expected` (observed) and
+ * `tst_event_t.u.nonconformant.cc_observed` (substituted) when
+ * `issue_code == TST_NONCONFORMANT_CODE_CFI_TOLERATED`.
+ *
+ * Discriminants match the H.222.0 V9 Table 2-157 wire bits exactly:
+ * `Middle = 0` (0b00), `Last = 1` (0b01), `First = 2` (0b10),
+ * `Complete = 3` (0b11).
+ */
+enum tst_cell_fragment_indication
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_CELL_FRAGMENT_INDICATION_MIDDLE = 0,
+  TST_CELL_FRAGMENT_INDICATION_LAST = 1,
+  TST_CELL_FRAGMENT_INDICATION_FIRST = 2,
+  TST_CELL_FRAGMENT_INDICATION_COMPLETE = 3,
+};
+#ifndef __cplusplus
+typedef int32_t tst_cell_fragment_indication;
 #endif // __cplusplus
 
 /**
@@ -2650,7 +2674,7 @@ int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
  * KLV record (SMPTE 336M UL prefix + BER length match), the demuxer
  * emits a `KlvSyncAuCell` event with `cell_fragment_indication`
  * substituted to `Complete` AND a
- * `TST_NONCONFORMANT_CODE_MALFORMED_AU_CELL_CFI_TOLERATED` (= 32)
+ * `TST_NONCONFORMANT_CODE_CFI_TOLERATED` (= 32)
  * diagnostic carrying the observed and substituted CFI bytes on
  * `cc_expected` and `cc_observed`. Default `false` keeps the
  * spec-strict path: orphan cells surface only as
@@ -2661,9 +2685,7 @@ int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
  */
-
-int tst_demux_config_set_malformed_au_cell_cfi_tolerance(struct tst_demux_config_t *cfg,
-                                                         int enable);
+ int tst_demux_config_set_cfi_tolerance(struct tst_demux_config_t *cfg, int enable);
 
 /**
  * Set PES reassembly caps. `0` means use the Rust-side default.

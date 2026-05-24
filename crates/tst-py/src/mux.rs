@@ -525,22 +525,6 @@ impl PyMuxerProgramConfigBuilder {
         Ok(slf)
     }
 
-    /// Mux-side subtitles need structured per-variant data
-    /// (language, page IDs, ...) that the flat Python `SubtitleCodec`
-    /// enum doesn't carry. Deferred to a future task.
-    pub fn add_subtitle<'py>(
-        _slf: PyRefMut<'py, Self>,
-        _pid: u16,
-        _codec: &Bound<'_, PyAny>,
-    ) -> PyResult<PyRefMut<'py, Self>> {
-        Err(pyo3::exceptions::PyNotImplementedError::new_err(
-            "add_subtitle is not yet wired in Python; mux-side SubtitleCodec \
-             variants carry structured fields (language, page IDs) that the \
-             Python SubtitleCodec enum does not yet model. Deferred to a \
-             future tst-py task.",
-        ))
-    }
-
     pub fn pcr_pid(mut slf: PyRefMut<'_, Self>, pid: u16) -> PyResult<PyRefMut<'_, Self>> {
         slf.get_mut()?.pcr_pid(pid);
         Ok(slf)
@@ -1059,11 +1043,13 @@ impl PyMuxer {
     /// Push one subtitle payload onto the lone configured subtitle
     /// stream. Argument order follows the Rust API: `(pts, payload)`.
     ///
-    /// Note: subtitle stream construction from Python is currently
-    /// blocked by `MuxerProgramConfigBuilder.add_subtitle` (returns
-    /// `NotImplementedError` until the Python `SubtitleCodec` gains
-    /// structured per-variant payloads — language, page IDs, etc.).
-    /// The method is wired here so it works as soon as that gap closes.
+    /// Note: subtitle stream construction from Python is not currently
+    /// supported — `MuxerProgramConfigBuilder` does not expose an
+    /// `add_subtitle` method because the Rust mux-side `SubtitleCodec`
+    /// is a struct-variant enum (language, page IDs, ...) that the flat
+    /// Python `SubtitleCodec` enum doesn't yet model. See
+    /// `docs/deferred-features.md` for the trigger to revisit. This
+    /// method remains wired so it works once that gap closes.
     ///
     /// Raises `MuxError(INVALID_USAGE)` if zero or more than one
     /// subtitle stream is configured; `MuxError(INPUT_MALFORMED)` for

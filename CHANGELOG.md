@@ -7,6 +7,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py: audit #14 — remove unimplemented subtitle muxing surface (2026-05-24)
+
+**Removed:**
+
+- `MuxerProgramConfigBuilder.add_subtitle(pid, codec)` has been removed
+  from the Python public API. It previously raised
+  `NotImplementedError` unconditionally because the Rust mux-side
+  `SubtitleCodec` is a struct-variant enum (carrying language, page
+  IDs, and ancillary descriptors) that the flat Python `SubtitleCodec`
+  enum doesn't yet model. A half-implemented placeholder is worse than
+  a missing one — users built against it, then hit a runtime error.
+  Demux-side subtitle decoding via `DemuxEvent.Subtitle` remains
+  supported and unchanged. The `Muxer.push_subtitle` /
+  `push_subtitle_to` / `Muxer.subtitle_handles()` /
+  `MuxerProgramConfigBuilder.stream_descriptors_for_subtitle` surfaces
+  remain wired so they begin working as soon as the construction gap
+  closes. See `docs/deferred-features.md` "Python-side subtitle
+  muxing" for the trigger to revisit. Closes audit #14.
+
+---
+
 ## [Unreleased] — tst-py: audit #8 — Python docs refreshed to Phase 6 reality (2026-05-24)
 
 **Docs:**

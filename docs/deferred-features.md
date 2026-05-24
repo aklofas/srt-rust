@@ -1303,3 +1303,31 @@ the trigger that would unblock it.
   fixture-generator `tests/tools/gen_*.rs` migrate too (probably not —
   raw integers are ergonomic for test scaffolding).
 - **Effort estimate:** ~4-6h API design + writeup, ~8-12h sweep.
+
+## Python-side subtitle muxing
+
+- **Status:** `tstrans.Muxer` does not expose `add_subtitle` because the
+  Rust mux-side `SubtitleCodec` is a struct-variant enum (carrying
+  per-codec configuration like language, page IDs, and ancillary
+  descriptors) that the flat Python `SubtitleCodec` enum doesn't yet
+  model. Demux-side subtitle decoding via `DemuxEvent.Subtitle` IS
+  supported. The `Muxer.push_subtitle` / `push_subtitle_to` /
+  `Muxer.subtitle_handles()` / `MuxerProgramConfigBuilder.stream_descriptors_for_subtitle`
+  surfaces remain wired so they work as soon as the construction gap
+  closes.
+- **Why deferred:** A half-implemented mux-side API (the previous
+  `add_subtitle` that always raised `NotImplementedError`) is worse than
+  a missing one — users build against it, then break. Mirroring the
+  Rust struct-variant `SubtitleCodec` in Python as a tagged-union /
+  dataclass hierarchy is sizeable work that should land as its own
+  focused plan, not as a placeholder.
+- **Trigger to revisit:** A consumer with a concrete Python subtitle
+  muxing use case provides the structured config schema (which
+  codec(s), which fields per codec, descriptor emission expectations).
+- **Scope when added:** (1) Model the Rust mux-side `SubtitleCodec`
+  variants as Python dataclasses (e.g. `DvbSubtitling(language: bytes,
+  composition_page_id: int, ancillary_page_id: int)`, `DvbTeletext(...)`,
+  `Cea708Standalone`, `WebVttInTs`). (2) Add `add_subtitle(pid, codec)`
+  back to `MuxerProgramConfigBuilder` accepting the structured form.
+  (3) Round-trip test against demux output. (4) Update CHANGELOG +
+  binding-authors doc.

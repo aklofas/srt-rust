@@ -121,10 +121,14 @@ def _event_to_row(event: Any) -> dict:
         if isinstance(payload, (bytes, bytearray)):
             row["payload_len"] = len(payload)
         elif hasattr(payload, "__len__"):
-            # Typed NAL / OBU / ADTS / Mpeg2 list — use len() for both the
-            # generic payload count and the NAL-specific nal_count column.
             row["payload_len"] = len(payload)
-            row["nal_count"] = len(payload)
+            # nal_count is video-only. Audio events (_AudioEvent) also carry
+            # typed lists (AdtsFrame / Mpeg2AudioFrame) that satisfy
+            # hasattr(__len__), but those are NOT NAL units — populating
+            # nal_count for them would give analysts filtering
+            # `df[df["nal_count"] > N]` false positives on audio rows.
+            if type(event).__name__ == "_VideoEvent":
+                row["nal_count"] = len(payload)
 
     # Random access indicator (video samples only)
     rai = getattr(event, "random_access_indicator", None)

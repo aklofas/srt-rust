@@ -28,10 +28,15 @@ import pandas as pd  # noqa: E402
 
 from tstrans.io import parse_file  # noqa: E402
 from tstrans.mpegts import (  # noqa: E402
+    DiscontinuityKindTag,
+    MetadataKindTag,
     NonConformantKind,
+    Pts90khz,
     StreamId,
     StreamKindTag,
     VideoCodec,
+    _DiscontinuityEvent,
+    _KlvEvent,
     _NonConformantEvent,
     _ReconnectDiscontinuityEvent,
 )
@@ -137,3 +142,46 @@ def test_events_to_dataframe_reconnect_discontinuity_has_kind_only():
     # All payload/stream columns should be NaN/None
     assert pd.isna(df["pid"].iloc[0])
     assert pd.isna(df["pts_ms"].iloc[0])
+
+
+def test_events_to_dataframe_klv_event_has_metadata_kind():
+    """Hand-built _KlvEvent — verify kind=Metadata, payload_len set, nal_count is None."""
+    sid = StreamId(
+        pid=257,
+        kind=StreamKindTag.KLV_SYNC,
+        codec=None,
+        program_number=1,
+    )
+    klv = _KlvEvent(
+        stream=sid,
+        pts=Pts90khz(raw=900000),  # 10 seconds
+        kind=MetadataKindTag.KLV_SYNC_AU_CELL,
+        payload=b"\x06\x0e\x2b\x34\x02\x0b\x01\x01\x0e\x01\x03\x01\x01\x00\x00\x00",  # 16 bytes
+    )
+    df = events_to_dataframe([klv])
+    row = df.iloc[0]
+    assert row["kind"] == "Metadata"
+    assert row["pts_ms"] is not None and not pd.isna(row["pts_ms"])
+    assert row["payload_len"] == 16
+    # nal_count must be None — KLV payload is bytes, not NAL units
+    assert pd.isna(row["nal_count"])
+
+
+def test_events_to_dataframe_discontinuity_has_kind_only():
+    """Hand-built _DiscontinuityEvent — verify kind column populated, issue/issue_kind both None."""
+    sid = StreamId(
+        pid=256,
+        kind=StreamKindTag.VIDEO,
+        codec=VideoCodec.H264,
+        program_number=1,
+    )
+    de = _DiscontinuityEvent(
+        stream=sid,
+        kind=DiscontinuityKindTag.CONTINUITY_JUMP,
+    )
+    df = events_to_dataframe([de])
+    row = df.iloc[0]
+    assert row["kind"] == "Discontinuity"
+    # issue and issue_kind must both be None — DiscontinuityKindTag is NOT an "issue"
+    assert pd.isna(row["issue"]) or row["issue"] is None
+    assert pd.isna(row["issue_kind"]) or row["issue_kind"] is None

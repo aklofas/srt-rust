@@ -34,6 +34,14 @@ plan.
   `import pandas as pd` in the 4 `test_pandas_*.py` files when the
   extras weren't installed.
 
+**Fixed:**
+
+- `Pts90khz.ms` now truncates toward zero instead of flooring toward
+  -infinity, matching Rust's `i64 / 90` semantics. Negative timestamps
+  off-by-one for any raw value `-89 .. -1` (returned `-1`, should
+  return `0`) and similar non-multiples-of-90 below zero. Closes
+  audit #2.
+
 ## [Unreleased] — mpegts: multi-cell AU cell reassembly (2026-05-24)
 
 **`mpegts::demux` now reassembles fragmented Metadata AU cells per

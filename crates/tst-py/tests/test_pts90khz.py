@@ -55,3 +55,42 @@ def test_negative_raw_allowed():
     # Rust's i64 PTS allows negative for diff arithmetic
     pts = Pts90khz.from_raw(-100)
     assert pts.raw == -100
+
+
+# Audit #2 — Pts90khz.ms must truncate toward zero (Rust integer division
+# semantics), not floor toward -inf (Python's `//`). Boundary values around
+# ±90 ticks (= 1 ms) prove the divergence: e.g. -1 ticks floor-divided by 90
+# is -1 in Python, but truncated-divided is 0 — which is what Rust returns.
+
+@pytest.mark.parametrize(
+    "raw,expected_ms",
+    [
+        # Positive — floor and truncate agree on positives.
+        (0, 0),
+        (1, 0),
+        (89, 0),
+        (90, 1),
+        (91, 1),
+        (100, 1),
+        # Negative — these are the discriminators between floor and truncate.
+        # int_div(raw, 90) toward zero matches Rust:
+        (-1, 0),     # Python floor: -1; Rust trunc: 0
+        (-89, 0),    # Python floor: -1; Rust trunc: 0
+        (-90, -1),   # exact — both agree
+        (-91, -1),   # Python floor: -2; Rust trunc: -1
+        (-100, -1),  # Python floor: -2; Rust trunc: -1
+    ],
+)
+def test_ms_truncates_toward_zero(raw, expected_ms):
+    assert Pts90khz.from_raw(raw).ms == expected_ms
+
+
+def test_ms_int_overflow_safe_for_large_negatives():
+    # i64 lower bound — use a value far beyond float64's 53-bit mantissa
+    # exact-int range so a naive `int(self.raw / 90)` implementation would
+    # produce a wrong answer. raw = -(2**60); truncated divide by 90 gives
+    # `-(2**60) / 90` truncated toward zero. Compute the expected value via
+    # the same sign-aware integer formula the implementation should use:
+    raw = -(2**60)
+    expected = -((-raw) // 90)  # toward-zero integer divide
+    assert Pts90khz.from_raw(raw).ms == expected

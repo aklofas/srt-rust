@@ -45,7 +45,13 @@ class Pts90khz:
 
     @property
     def ms(self) -> int:
-        # Truncating divide — matches Rust's integer arithmetic.
+        # Sign-aware integer truncate toward zero — matches Rust's `i64 / 90`
+        # semantics. Python's `//` floors toward -inf, which diverges on
+        # negatives (e.g. `-1 // 90 == -1` vs Rust's `0`); a float-based
+        # `int(raw / 90)` would lose precision past float64's 53-bit
+        # mantissa, so do it in integers only.
+        if self.raw < 0:
+            return -((-self.raw) // 90)
         return self.raw // 90
 
     @property

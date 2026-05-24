@@ -187,6 +187,32 @@ pub enum TstNonConformantCode {
     /// 3-byte `obu_start_code` = `uimsbf(24)` = `0x000001` per the binding
     /// syntax table). `pid` carries the AV1 stream PID.
     Av1MissingTsObuFraming = 31,
+    /// Orphan sync-metadata AU cell with malformed
+    /// `cell_fragment_indication` was tolerated under
+    /// `tst_demux_config_set_malformed_au_cell_cfi_tolerance(_, true)`.
+    /// `pid` is the elementary stream PID. `cc_expected` carries the
+    /// observed CFI bits (`TstCellFragmentIndication` mirror); `cc_observed`
+    /// carries the substituted CFI bits (today always `Complete = 3`).
+    /// The KLV metadata payload was also emitted as a separate
+    /// `TST_EVENT_KIND_METADATA` event with `cell_fragment_indication = Complete`.
+    MalformedAuCellCfiTolerated = 32,
+}
+
+/// `repr(i32)` mirror of `tst_core::mpegts::au_cell::CellFragmentIndication`.
+/// Surfaced on `tst_event_t.u.nonconformant.cc_expected` (observed) and
+/// `tst_event_t.u.nonconformant.cc_observed` (substituted) when
+/// `issue_code == TST_NONCONFORMANT_CODE_MALFORMED_AU_CELL_CFI_TOLERATED`.
+///
+/// Discriminants match the H.222.0 V9 Table 2-157 wire bits exactly:
+/// `Middle = 0` (0b00), `Last = 1` (0b01), `First = 2` (0b10),
+/// `Complete = 3` (0b11).
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TstCellFragmentIndication {
+    Middle = 0,
+    Last = 1,
+    First = 2,
+    Complete = 3,
 }
 
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::PcrMalformedKind`.
@@ -1066,20 +1092,29 @@ fn fill_nonconformant(
             body.table_id = *table_id;
             body.last_section_number = *last_section_number;
         }
-        NonConformantIssue::MalformedAuCellCfiTolerated { pid, .. } => {
-            // Temporary keepalive arm: Task 6 will add a dedicated
-            // TstNonConformantCode variant (= 32) with explicit field
-            // carriage for the observed/treated_as CFI bytes and bump
-            // the ABI version. Until then, surface the variant as the
-            // catch-all `Other` code so C callers receive a stable
-            // (if low-detail) signal that something tolerated landed.
-            body.issue_code = TstNonConformantCode::Other as c_int;
+        NonConformantIssue::MalformedAuCellCfiTolerated {
+            pid,
+            observed_cfi,
+            treated_as,
+        } => {
+            use tst_core::mpegts::au_cell::CellFragmentIndication;
+            // Map CellFragmentIndication discriminants to the mirror;
+            // the discriminant values agree with the wire bits, so this
+            // is a one-to-one cast.
+            let to_byte = |c: CellFragmentIndication| match c {
+                CellFragmentIndication::Middle => TstCellFragmentIndication::Middle as u8,
+                CellFragmentIndication::Last => TstCellFragmentIndication::Last as u8,
+                CellFragmentIndication::First => TstCellFragmentIndication::First as u8,
+                CellFragmentIndication::Complete => TstCellFragmentIndication::Complete as u8,
+            };
+            body.issue_code = TstNonConformantCode::MalformedAuCellCfiTolerated as c_int;
             body.pid = *pid;
-            arena
-                .detail_buf
-                .extend_from_slice(b"malformed_au_cell_cfi_tolerated");
-            arena.detail_buf.push(0);
-            body.detail = arena.detail_buf.as_ptr() as *const c_char;
+            // Reuse the existing single-byte carriers: cc_expected for
+            // the observed CFI, cc_observed for the substituted value
+            // (mirrors PsiCcDiscontinuity's expected/observed shape).
+            // Avoids growing TstEventNonConformant on this ABI bump.
+            body.cc_expected = to_byte(*observed_cfi);
+            body.cc_observed = to_byte(*treated_as);
         }
         NonConformantIssue::Other(s) => {
             body.issue_code = TstNonConformantCode::Other as c_int;

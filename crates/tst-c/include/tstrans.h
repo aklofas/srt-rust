@@ -53,10 +53,22 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 3` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 4` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
+ *
+ * History (additive bumps only — major stays at 0 pre-1.0):
+ * - `1` (plan #62): receiver-surface initial drop.
+ * - `2` (validate-1 Phase 2 wrap-up `d711ecb`): TS-bytes raw-receiver
+ *   pull-loop hardening + F2 C-ABI shape additions.
+ * - `3` (AU cell reassembly `5527a9e`): `TstMultiCellAuReason` +
+ *   `multi_cell_au_reason` field on `TstEventNonConformant`.
+ * - `4` (AU cell CFI tolerance): `TstNonConformantCode::MalformedAuCellCfiTolerated`
+ *   (= 32) + `TstCellFragmentIndication` enum + `tst_demux_config_set_malformed_au_cell_cfi_tolerance`
+ *   setter. The new variant reuses the existing `cc_expected` + `cc_observed`
+ *   field carriers to surface `observed_cfi` + `treated_as` without growing
+ *   the struct.
  */
-#define TST_ABI_VERSION_MINOR 3
+#define TST_ABI_VERSION_MINOR 4
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -429,6 +441,17 @@ enum tst_nonconformant_code
    * syntax table). `pid` carries the AV1 stream PID.
    */
   TST_NONCONFORMANT_CODE_AV1_MISSING_TS_OBU_FRAMING = 31,
+  /**
+   * Orphan sync-metadata AU cell with malformed
+   * `cell_fragment_indication` was tolerated under
+   * `tst_demux_config_set_malformed_au_cell_cfi_tolerance(_, true)`.
+   * `pid` is the elementary stream PID. `cc_expected` carries the
+   * observed CFI bits (`TstCellFragmentIndication` mirror); `cc_observed`
+   * carries the substituted CFI bits (today always `Complete = 3`).
+   * The KLV metadata payload was also emitted as a separate
+   * `TST_EVENT_KIND_METADATA` event with `cell_fragment_indication = Complete`.
+   */
+  TST_NONCONFORMANT_CODE_MALFORMED_AU_CELL_CFI_TOLERATED = 32,
 };
 #ifndef __cplusplus
 typedef int32_t tst_nonconformant_code;
@@ -2618,6 +2641,29 @@ int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
  * Free with `tst_demux_config_free`.
  */
  struct tst_demux_config_t *tst_demux_config_new(void);
+
+/**
+ * Enable opt-in tolerance for sync-metadata AU cells whose
+ * `cell_fragment_indication` bits are set to `0b00` (Middle) or
+ * `0b01` (Last) without a prior `First` cell. When enabled AND the
+ * orphan cell's inner payload independently validates as a complete
+ * KLV record (SMPTE 336M UL prefix + BER length match), the demuxer
+ * emits a `KlvSyncAuCell` event with `cell_fragment_indication`
+ * substituted to `Complete` AND a
+ * `TST_NONCONFORMANT_CODE_MALFORMED_AU_CELL_CFI_TOLERATED` (= 32)
+ * diagnostic carrying the observed and substituted CFI bytes on
+ * `cc_expected` and `cc_observed`. Default `false` keeps the
+ * spec-strict path: orphan cells surface only as
+ * `TST_NONCONFORMANT_CODE_MULTI_CELL_AU` with reason
+ * `TST_MULTI_CELL_AU_REASON_ORPHAN`.
+ *
+ * `enable` is read as a C `bool` (any non-zero value enables).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+ */
+
+int tst_demux_config_set_malformed_au_cell_cfi_tolerance(struct tst_demux_config_t *cfg,
+                                                         int enable);
 
 /**
  * Set PES reassembly caps. `0` means use the Rust-side default.

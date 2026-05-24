@@ -67,6 +67,7 @@ pub struct TstDemuxConfig {
     pes_cap_total: Option<usize>,
     klv_link_overrides: Vec<(u16, u16)>,
     stream_kind_overrides: HashMap<u16, StreamKind>,
+    malformed_au_cell_cfi_tolerance: bool,
 }
 
 impl TstDemuxConfig {
@@ -79,6 +80,7 @@ impl TstDemuxConfig {
         cfg.klv_link_overrides = self.klv_link_overrides.clone();
         cfg.stream_kind_overrides = self.stream_kind_overrides.clone();
         cfg.lenient_psi_reassembly = false;
+        cfg.malformed_au_cell_cfi_tolerance = self.malformed_au_cell_cfi_tolerance;
         cfg
     }
 }
@@ -97,6 +99,7 @@ pub unsafe extern "C" fn tst_demux_config_new() -> *mut TstDemuxConfig {
             pes_cap_total: None,
             klv_link_overrides: Vec::new(),
             stream_kind_overrides: HashMap::new(),
+            malformed_au_cell_cfi_tolerance: false,
         }))
     })
 }
@@ -245,6 +248,41 @@ pub unsafe extern "C" fn tst_demux_config_set_pes_cap(
     })
 }
 
+/// Enable opt-in tolerance for sync-metadata AU cells whose
+/// `cell_fragment_indication` bits are set to `0b00` (Middle) or
+/// `0b01` (Last) without a prior `First` cell. When enabled AND the
+/// orphan cell's inner payload independently validates as a complete
+/// KLV record (SMPTE 336M UL prefix + BER length match), the demuxer
+/// emits a `KlvSyncAuCell` event with `cell_fragment_indication`
+/// substituted to `Complete` AND a
+/// `TST_NONCONFORMANT_CODE_MALFORMED_AU_CELL_CFI_TOLERATED` (= 32)
+/// diagnostic carrying the observed and substituted CFI bytes on
+/// `cc_expected` and `cc_observed`. Default `false` keeps the
+/// spec-strict path: orphan cells surface only as
+/// `TST_NONCONFORMANT_CODE_MULTI_CELL_AU` with reason
+/// `TST_MULTI_CELL_AU_REASON_ORPHAN`.
+///
+/// `enable` is read as a C `bool` (any non-zero value enables).
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_config_set_malformed_au_cell_cfi_tolerance(
+    cfg: *mut TstDemuxConfig,
+    enable: c_int,
+) -> c_int {
+    crate::panic::ffi_catch(crate::error::TstError::PanicCaught as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            crate::error::set_last_error(
+                crate::error::TstError::InvalidConfig,
+                "null config pointer",
+            );
+            return crate::error::TstError::InvalidConfig as i32;
+        };
+        cfg.malformed_au_cell_cfi_tolerance = enable != 0;
+        0
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,6 +352,36 @@ mod tests {
     #[test]
     fn set_pes_cap_null_cfg_returns_invalid_config() {
         let rc = unsafe { tst_demux_config_set_pes_cap(std::ptr::null_mut(), 1024, 65536) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn malformed_au_cell_cfi_tolerance_default_is_false() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            let opts = (*cfg).build_options();
+            assert!(!opts.malformed_au_cell_cfi_tolerance);
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn set_malformed_au_cell_cfi_tolerance_toggles() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            assert_eq!(tst_demux_config_set_malformed_au_cell_cfi_tolerance(cfg, 1), 0);
+            assert!((*cfg).build_options().malformed_au_cell_cfi_tolerance);
+            assert_eq!(tst_demux_config_set_malformed_au_cell_cfi_tolerance(cfg, 0), 0);
+            assert!(!(*cfg).build_options().malformed_au_cell_cfi_tolerance);
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn set_malformed_au_cell_cfi_tolerance_null_cfg_returns_invalid_config() {
+        let rc = unsafe {
+            tst_demux_config_set_malformed_au_cell_cfi_tolerance(std::ptr::null_mut(), 1)
+        };
         assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 }

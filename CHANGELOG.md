@@ -7,6 +7,78 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py Phase 6 — pandas + NumPy adapters (2026-05-23)
+
+**`tstrans.pandas` DataFrame adapters + zero-copy NumPy views via optional
+[pandas] extra.** Python-only; no Rust changes. Existing `pip install
+tstrans` workflow continues to work identically — adapters and accessors
+appear only when `pip install 'tstrans[pandas]'` activates the extra.
+
+**Added:**
+- Optional `[pandas]` extra in `pyproject.toml` (pandas >= 2.0, numpy >= 1.24).
+  Install: `pip install 'tstrans[pandas]'`. Without the extra, the
+  adapters raise a friendly `ImportError` directing the user to install
+  the extra.
+- New `tstrans.pandas` submodule with 5 DataFrame adapters:
+  - `klv_to_dataframe(records, *, mode="summary")` — polymorphic over
+    `UasDatalinkLs` / `SecurityLs` / `PrecisionTimeStampPack` / `VmtiLs`.
+    KLV DataFrames use `pd.DatetimeIndex(tz="UTC")` built from
+    `timestamp_us` (microseconds since UTC epoch) when present; RangeIndex
+    fallback when absent. ST 0903 supports `mode="summary"` (one row per
+    VMTI LS) and `mode="targets"` (MultiIndex `[pts, target_id]`, one row
+    per VTarget). Composite fields flatten to FLAT scalar columns (e.g.
+    `frame_center_lat_deg`, `corner_lat_pt1_deg`).
+  - `events_to_dataframe(events)` — union schema across all DemuxEvent
+    kinds. Kind labels: `Pmt` / `ProgramMap` / `Sample` / `Klv` /
+    `Discontinuity` / `NonConformant` / `EndOfStream`.
+  - `nals_to_dataframe(nals, pts=None)` — H.264/H.265/H.266 NAL lists
+    with spec-name lookup column.
+  - `obus_to_dataframe(obus, pts=None)` — AV1 OBU lists with type-name
+    lookup.
+  - `audio_frames_to_dataframe(frames)` — polymorphic AdtsFrame /
+    Mpeg2AudioFrame; enum-typed fields render as bare names (e.g. `LC`,
+    `III`, `JOINT_STEREO`) for analyst-friendly grouping.
+- Zero-copy NumPy accessors via Python monkey-patches on 15 byte-bearing
+  classes:
+  - `.payload_np` on `NalUnit` / `Obu` / `AdtsFrame` / `Mpeg2AudioFrame`.
+  - `.raw_rbsp_np` on H.264/H.265/H.266 `Sps` / `Pps` / `Vps` /
+    `SliceHeaderLight`.
+  - `.raw_np` on `Av1SequenceHeader` / `Av1FrameHeaderLight`.
+  - Returns `numpy.ndarray` (uint8 view) backed by the underlying `bytes`
+    — no copy.
+- `KlvFieldError` `field_errors` field renders as `|`-joined string of
+  `tag<N>:<kind>:<message>` triples in the DataFrame (pipe-separator
+  avoids ambiguity since `KlvFieldError.__str__` already contains commas).
+- `nal_count` column is gated to video-only event rows; audio AdtsFrame
+  lists do not populate it (avoids misleading `df.nal_count > N` filters
+  on audio sample rows).
+- Pytest marker `@pytest.mark.pandas` (default-skipped via
+  `addopts = "-m 'not pandas'"` in `pyproject.toml`). Existing 513
+  default unit tests remain unchanged.
+- New CI job `python-pandas-extra` installs the extra and runs
+  marker-only pytest (`pytest -m pandas --override-ini=addopts=`).
+- 7 `test_pandas_missing_extra.py` tests (NOT marked) confirm every
+  adapter raises a friendly `ImportError` when the extra is absent.
+- User guide at `ts-transformer/docs/guide-python-pandas.md` covers
+  install, adapters, NumPy views, common analyst recipes.
+
+**Unchanged:**
+- Core package `pip install tstrans` continues to work identically to
+  Phase 5; no return types change.
+- BASELINE non_exhaustive: 159 (Phase 6 = Python-only, no Rust changes).
+- 12 bash ratchets: green.
+- All 3 cargo public-api baselines (`tst-core` / `tst-pipeline` /
+  `tst-srt`): clean.
+
+**Internal:**
+- pytest count: 513 → 520 default (added 7 missing-extra tests) +
+  60 pandas-marker = ~582 total (520 default + 60 pandas, plus 5
+  skipped across the two runs).
+- No new Rust public API surface.
+- No new fuzz targets.
+
+---
+
 ## [Unreleased] — tst-py Phase 5 — Codec parsers (2026-05-23)
 
 **`tstrans.codec` module fully populated; `Sample.payload` typed-replaced.**

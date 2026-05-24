@@ -25,3 +25,11 @@ default = []
 [dependencies]
 tst-core = { path = "../tst-core" }
 pyo3     = { version = "0.22", features = ["extension-module", "abi3-py310"] }
+
+[build-dependencies]
+# On macOS, PyO3's `extension-module` feature requires the *consuming* crate
+# to emit `-undefined dynamic_lookup` so the cdylib links without a Python
+# interpreter at link time. `cargo:rustc-cdylib-link-arg` only takes effect
+# from the cdylib package's own build script, so PyO3 itself can't do this
+# for us. `add_extension_module_link_args()` is the documented helper.
+pyo3-build-config = "0.22"

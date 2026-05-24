@@ -89,3 +89,70 @@ def test_obus_to_dataframe_empty():
     df = obus_to_dataframe([])
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 0
+
+
+# === Audio frame tests ===
+#
+# Fixture bytes lifted from sibling test files to avoid duplicating the
+# ADTS/MPEG-audio bit-layout knowledge — see test_codec_aac.py and
+# test_codec_mpeg2_audio.py for the source-of-truth definitions.
+
+SYNTHETIC_AAC_FRAME = bytes.fromhex("fff95080021ffc000000000000000000")
+# V1L3 header + zero payload = 417-byte MPEG-1 Layer III joint-stereo frame
+# (matches FRAME_V1L3_128K_44100_JS in test_codec_mpeg2_audio.py).
+SYNTHETIC_MP2_FRAME = b"\xff\xfb\x90\x44" + bytes(417 - 4)
+
+
+@pytest.fixture(scope="module")
+def aac_frames():
+    from tstrans.codec import parse_aac_frames
+    return parse_aac_frames(SYNTHETIC_AAC_FRAME + SYNTHETIC_AAC_FRAME)
+
+
+@pytest.fixture(scope="module")
+def mp2_frames():
+    from tstrans.codec import parse_mpeg2_audio_frames
+    return parse_mpeg2_audio_frames(SYNTHETIC_MP2_FRAME)
+
+
+def test_audio_frames_to_dataframe_aac(aac_frames):
+    from tstrans.pandas import audio_frames_to_dataframe
+    df = audio_frames_to_dataframe(aac_frames)
+    assert len(df) == 2
+    # AdtsFrame schema columns
+    expected = {
+        "profile", "sample_rate_hz", "channel_configuration",
+        "channel_layout", "frame_length_bytes", "samples_per_frame",
+        "num_raw_data_blocks", "has_crc", "mpeg_version",
+        "raw_header_len", "payload_len", "byte_offset",
+    }
+    assert expected.issubset(set(df.columns))
+
+
+def test_audio_frames_to_dataframe_byte_offset_accumulates(aac_frames):
+    from tstrans.pandas import audio_frames_to_dataframe
+    df = audio_frames_to_dataframe(aac_frames)
+    assert df["byte_offset"].tolist() == [0, df["frame_length_bytes"].iloc[0]]
+
+
+def test_audio_frames_to_dataframe_mpeg2(mp2_frames):
+    from tstrans.pandas import audio_frames_to_dataframe
+    df = audio_frames_to_dataframe(mp2_frames)
+    assert "layer" in df.columns
+    assert "bitrate_kbps" in df.columns
+    assert df["bitrate_kbps"].iloc[0] == 128
+    assert df["sample_rate_hz"].iloc[0] == 44100
+    assert df["byte_offset"].iloc[0] == 0
+
+
+def test_audio_frames_to_dataframe_empty():
+    from tstrans.pandas import audio_frames_to_dataframe
+    df = audio_frames_to_dataframe([])
+    assert len(df) == 0
+
+
+def test_audio_frames_to_dataframe_mixed_raises(aac_frames, mp2_frames):
+    from tstrans.pandas import audio_frames_to_dataframe
+    mixed = [aac_frames[0], mp2_frames[0]]
+    with pytest.raises(TypeError, match="homogeneous"):
+        audio_frames_to_dataframe(mixed)

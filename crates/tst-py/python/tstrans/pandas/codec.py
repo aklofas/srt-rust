@@ -75,7 +75,95 @@ def obus_to_dataframe(obus: Iterable[Any], pts: float | None = None):
     return df
 
 
-# audio_frames_to_dataframe defined in Task 7
-def audio_frames_to_dataframe(frames):
-    """Stub — replaced in Task 7."""
-    raise NotImplementedError("audio_frames_to_dataframe is implemented in Phase 6 Task 7")
+def audio_frames_to_dataframe(frames: Iterable[Any]):
+    """Convert a list of AdtsFrame or Mpeg2AudioFrame to a DataFrame.
+
+    Polymorphic — detects type from first element.
+
+    Args:
+        frames: iterable of AdtsFrame or Mpeg2AudioFrame instances
+            (homogeneous required).
+
+    Returns:
+        pandas.DataFrame. AdtsFrame schema: profile, sample_rate_hz,
+        channel_configuration, channel_layout, frame_length_bytes,
+        samples_per_frame, num_raw_data_blocks, has_crc, mpeg_version,
+        raw_header_len, payload_len, byte_offset. Mpeg2AudioFrame schema:
+        layer, version, bitrate_kbps, sample_rate_hz, channel_mode,
+        channels, frame_length_bytes, samples_per_frame, has_crc,
+        payload_len, byte_offset.
+
+    Raises:
+        TypeError: on mixed-type input.
+        ImportError: if [pandas] extra not installed.
+    """
+    pd, np = require_pandas()
+    frames_list = list(frames)
+    if not frames_list:
+        # Empty: return empty AdtsFrame-schema DataFrame
+        return pd.DataFrame(columns=[
+            "profile", "sample_rate_hz", "channel_configuration",
+            "channel_layout", "frame_length_bytes", "samples_per_frame",
+            "num_raw_data_blocks", "has_crc", "mpeg_version",
+            "raw_header_len", "payload_len", "byte_offset",
+        ])
+
+    type_names = {type(f).__name__ for f in frames_list}
+    if len(type_names) > 1:
+        raise TypeError(
+            f"audio_frames_to_dataframe requires homogeneous frame types; "
+            f"got mixed {sorted(type_names)}"
+        )
+
+    first = frames_list[0]
+    first_type = type(first).__name__
+
+    if first_type == "AdtsFrame":
+        return _adts_frames_to_dataframe(frames_list, pd, np)
+    elif first_type == "Mpeg2AudioFrame":
+        return _mpeg2_audio_frames_to_dataframe(frames_list, pd, np)
+    else:
+        raise TypeError(f"unsupported audio frame type: {first_type}")
+
+
+def _adts_frames_to_dataframe(frames, pd, np):
+    rows = []
+    cumulative = 0
+    for f in frames:
+        rows.append({
+            "profile": str(f.profile),
+            "sample_rate_hz": f.sample_rate_hz,
+            "channel_configuration": f.channel_configuration,
+            "channel_layout": str(f.channel_layout),
+            "frame_length_bytes": f.frame_length_bytes,
+            "samples_per_frame": f.samples_per_frame,
+            "num_raw_data_blocks": f.num_raw_data_blocks,
+            "has_crc": f.has_crc,
+            "mpeg_version": str(f.mpeg_version),
+            "raw_header_len": len(f.raw_header),
+            "payload_len": len(f.payload),
+            "byte_offset": cumulative,
+        })
+        cumulative += f.frame_length_bytes
+    return pd.DataFrame(rows)
+
+
+def _mpeg2_audio_frames_to_dataframe(frames, pd, np):
+    rows = []
+    cumulative = 0
+    for f in frames:
+        rows.append({
+            "layer": str(f.layer),
+            "version": str(f.version),
+            "bitrate_kbps": f.bitrate_kbps,
+            "sample_rate_hz": f.sample_rate_hz,
+            "channel_mode": str(f.channel_mode),
+            "channels": f.channels,
+            "frame_length_bytes": f.frame_length_bytes,
+            "samples_per_frame": f.samples_per_frame,
+            "has_crc": f.has_crc,
+            "payload_len": len(f.payload),
+            "byte_offset": cumulative,
+        })
+        cumulative += f.frame_length_bytes
+    return pd.DataFrame(rows)

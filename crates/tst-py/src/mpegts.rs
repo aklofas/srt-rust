@@ -57,13 +57,46 @@ impl PyDemuxer {
         Ok(Self { inner })
     }
 
-    /// Feed a buffer of bytes. May produce events available via
-    /// `next_event` / `__iter__`. Raises `tstrans.exceptions.DemuxError`
-    /// in strict mode on non-conformance.
-    fn feed(&mut self, py: Python<'_>, bytes: &Bound<'_, PyBytes>) -> PyResult<()> {
-        let slice = bytes.as_bytes();
+    /// Feed a buffer of bytes. Accepts any bytes-like input that
+    /// Python's `bytes()` constructor accepts: `bytes`, `bytearray`,
+    /// `memoryview` (over either), and NumPy `uint8` arrays.
+    ///
+    /// Fast path: a `bytes` argument is borrowed via PyO3's `&[u8]`
+    /// extractor with no extra copy. Fallback: any other bytes-like
+    /// is coerced through the Python `bytes()` builtin (a single C
+    /// copy into a fresh immutable `bytes` object) and then borrowed
+    /// the same way. The copy is the price of accepting writable
+    /// (`bytearray`) or non-contiguous (`memoryview` slice) producers
+    /// safely under the GIL; the demuxer itself then parses without
+    /// further copying.
+    ///
+    /// `PyBuffer` would let us skip the Python-side coercion, but it
+    /// is gated behind `not(Py_LIMITED_API)` in PyO3 0.22, and
+    /// `tst-py` builds with the `abi3-py310` stable-ABI feature so
+    /// one wheel covers Python 3.10+.
+    ///
+    /// May produce events available via `next_event` / `__iter__`.
+    /// Raises `tstrans.exceptions.DemuxError` in strict mode on
+    /// non-conformance. Raises `TypeError` if the argument is not
+    /// bytes-like (i.e. cannot be passed to `bytes()`).
+    fn feed(&mut self, py: Python<'_>, bytes: &Bound<'_, PyAny>) -> PyResult<()> {
+        // Fast path: real `bytes` extracts to a borrowed &[u8].
+        if let Ok(slice) = bytes.extract::<&[u8]>() {
+            return self
+                .inner
+                .feed(slice)
+                .map_err(|e| demux_error_to_pyerr(py, e));
+        }
+        // Fallback: coerce via the Python `bytes()` builtin. Accepts
+        // `bytearray`, `memoryview`, and any object exposing the
+        // buffer protocol; raises `TypeError` if not bytes-like.
+        let coerced: Bound<'_, PyBytes> = py
+            .import_bound("builtins")?
+            .getattr(intern!(py, "bytes"))?
+            .call1((bytes,))?
+            .downcast_into::<PyBytes>()?;
         self.inner
-            .feed(slice)
+            .feed(coerced.as_bytes())
             .map_err(|e| demux_error_to_pyerr(py, e))
     }
 

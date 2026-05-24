@@ -120,6 +120,20 @@ plan.
   and the observed length. `target_color=None` (field absent) is still
   accepted. Closes audit #6.
 
+**Changed:**
+
+- `tstrans.mpegts.Demuxer.feed` now accepts any bytes-like input
+  (`bytes`, `bytearray`, `memoryview`, NumPy `uint8` arrays), not
+  only `bytes`. The previous signature required callers to pre-copy
+  `bytearray` / `memoryview` via `bytes(...)` themselves. `bytes`
+  callers stay on the existing zero-copy borrow path; other
+  bytes-like inputs are coerced once through Python's `bytes()`
+  builtin (one C-level copy) before being fed to the demuxer.
+  `PyBuffer` would skip that coercion but is gated behind
+  `not(Py_LIMITED_API)` in PyO3 0.22; `tst-py` builds with
+  `abi3-py310` so the coercion is unavoidable on Python 3.10. Closes
+  audit #10.
+
 ## [Unreleased] — mpegts: multi-cell AU cell reassembly (2026-05-24)
 
 **`mpegts::demux` now reassembles fragmented Metadata AU cells per

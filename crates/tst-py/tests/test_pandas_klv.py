@@ -37,7 +37,7 @@ from tstrans.pandas import klv_to_dataframe  # noqa: E402
 
 # --- fixtures ------------------------------------------------------------
 
-_FIXTURE_ROOT = pathlib.Path("crates/tst-core/tests/fixtures")
+_FIXTURE_ROOT = pathlib.Path(__file__).parent.parent.parent / "tst-core" / "tests" / "fixtures"
 
 
 def _uas_full():
@@ -210,6 +210,38 @@ def test_klv_to_dataframe_security_uses_range_index():
     rec = _security()
     df = klv_to_dataframe([rec])
     assert isinstance(df.index, pd.RangeIndex)
+
+
+# --- VMTI (ST 0903) — synthetic (no fixture) -----------------------------
+
+
+def test_vmti_summary_with_default_record():
+    """Synthetic VmtiLs (no fixture) — covers the summary code path.
+
+    Guards the CRITICAL bug where `precision_time_stamp` was incorrectly
+    treated as a `PrecisionTimeStampPack` instead of `int | None`; that
+    bug previously hid silently because all VMTI tests depended on a
+    fixture that doesn't ship in the workspace.
+    """
+    df = klv_to_dataframe([VmtiLs(precision_time_stamp=1700000000_000000)])
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 1
+    assert "num_targets" in df.columns
+    assert df["num_targets"].iloc[0] == 0
+    # With precision_time_stamp set, index is DatetimeIndex
+    assert isinstance(df.index, pd.DatetimeIndex)
+
+
+def test_vmti_targets_empty_yields_empty_df():
+    """Synthetic VmtiLs with no targets — covers the targets-mode empty path.
+
+    Default-constructed VmtiLs has `targets=()`, so the inner loop emits
+    zero rows; the result is an empty DataFrame and the early-exit branch
+    (no MultiIndex assignment) takes over.
+    """
+    df = klv_to_dataframe([VmtiLs()], mode="targets")
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 0
 
 
 # --- VMTI (ST 0903) — skipped unless fixture present ---------------------

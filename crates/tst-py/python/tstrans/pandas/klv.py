@@ -12,7 +12,7 @@ Column selection rule: only data fields — `dataclass.fields()` source-of-
 truth, NOT `dir(obj)`. This excludes method synthesizers (`frame_center`,
 `sensor_position`, etc., which compute composites on demand from the
 underlying flat scalars) and class-level helpers. `field_errors` collapses
-to a comma-joined string column.
+to a `|`-joined string column (per-error format `tag<N>:<kind>:<message>`).
 
 The [pandas] extra must be installed; missing import yields a friendly
 ImportError via `require_pandas()`.
@@ -102,7 +102,7 @@ def _uas_to_dataframe(records, pd, np):
     df = pd.DataFrame(rows, columns=field_names)
     if any(t is not None for t in timestamps):
         df.index = pd.DatetimeIndex(
-            [pd.Timestamp(t, unit="us") if t is not None else pd.NaT for t in timestamps],
+            [pd.Timestamp(t, unit="us", tz="UTC") if t is not None else pd.NaT for t in timestamps],
             name="pts",
         )
     return df
@@ -151,7 +151,7 @@ def _timestamp_pack_to_dataframe(records, pd, np):
         timestamps.append(ts)
     df = pd.DataFrame(rows)
     df.index = pd.DatetimeIndex(
-        [pd.Timestamp(t, unit="us") for t in timestamps], name="pts"
+        [pd.Timestamp(t, unit="us", tz="UTC") for t in timestamps], name="pts"
     )
     return df
 
@@ -173,14 +173,15 @@ def _vmti_summary_to_dataframe(records, pd, np):
                 continue
             row[attr] = val
         rows.append(row)
-        # VmtiLs precision_time_stamp is a PrecisionTimeStampPack (or None)
-        ptsp = getattr(rec, "precision_time_stamp", None)
-        timestamps.append(ptsp.timestamp_us if ptsp is not None else None)
+        # VmtiLs.precision_time_stamp is `int | None` (microseconds since Unix epoch),
+        # NOT a PrecisionTimeStampPack — see crates/tst-py/python/tstrans/klv.py:360
+        # and crates/tst-py/src/klv.rs:521-523. Use the raw int directly.
+        timestamps.append(getattr(rec, "precision_time_stamp", None))
 
     df = pd.DataFrame(rows)
     if any(t is not None for t in timestamps):
         df.index = pd.DatetimeIndex(
-            [pd.Timestamp(t, unit="us") if t is not None else pd.NaT for t in timestamps],
+            [pd.Timestamp(t, unit="us", tz="UTC") if t is not None else pd.NaT for t in timestamps],
             name="pts",
         )
     return df
@@ -196,8 +197,9 @@ def _vmti_targets_to_dataframe(records, pd, np):
     pts_values = []
     target_ids = []
     for rec in records:
-        ptsp = getattr(rec, "precision_time_stamp", None)
-        ts = ptsp.timestamp_us if ptsp is not None else None
+        # VmtiLs.precision_time_stamp is `int | None` (microseconds since Unix
+        # epoch), NOT a PrecisionTimeStampPack — use the raw int directly.
+        ts = getattr(rec, "precision_time_stamp", None)
         targets = getattr(rec, "targets", None) or ()
         for target in targets:
             row = {}
@@ -218,7 +220,7 @@ def _vmti_targets_to_dataframe(records, pd, np):
     df = pd.DataFrame(rows)
     if pts_values:
         ts_index = [
-            pd.Timestamp(t, unit="us") if t is not None else pd.NaT
+            pd.Timestamp(t, unit="us", tz="UTC") if t is not None else pd.NaT
             for t in pts_values
         ]
         df.index = pd.MultiIndex.from_arrays(
@@ -240,10 +242,22 @@ def _dataclass_field_names(cls) -> list[str]:
 
 
 def _field_errors_to_str(val) -> str:
-    """Collapse a tuple/list of KlvFieldError values to a comma-joined string."""
+    """Collapse a tuple/list of KlvFieldError values to a string.
+
+    Uses `|` as the per-error joiner (NOT comma) and a deterministic
+    `tag<N>:<kind>:<message>` per-error format so the column is parseable
+    even when `message` contains commas. Kind is projected to its enum
+    `.value` (e.g. "out_of_range") when available, falling back to `str`.
+    """
     if not val:
         return ""
-    return ", ".join(str(e) for e in val)
+
+    def _fmt(e):
+        kind = getattr(e, "kind", None)
+        kind_str = kind.value if hasattr(kind, "value") else str(kind)
+        return f"tag{e.tag}:{kind_str}:{e.message}"
+
+    return " | ".join(_fmt(e) for e in val)
 
 
 def _is_enum_like(val) -> bool:

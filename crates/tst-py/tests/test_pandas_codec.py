@@ -127,6 +127,12 @@ def test_audio_frames_to_dataframe_aac(aac_frames):
         "raw_header_len", "payload_len", "byte_offset",
     }
     assert expected.issubset(set(df.columns))
+    # Lock in bare-variant-name form (matches events.py "VIDEO" not
+    # "StreamKind.VIDEO"); _enum_name strips the type prefix.
+    assert df["profile"].iloc[0] == "LC"
+    assert df["mpeg_version"].iloc[0] == "MPEG2"
+    # channel_layout is a struct (parenthesised form) — passes through unchanged.
+    assert df["channel_layout"].iloc[0] == "AacChannelLayout(channels=2)"
 
 
 def test_audio_frames_to_dataframe_byte_offset_accumulates(aac_frames):
@@ -143,6 +149,10 @@ def test_audio_frames_to_dataframe_mpeg2(mp2_frames):
     assert df["bitrate_kbps"].iloc[0] == 128
     assert df["sample_rate_hz"].iloc[0] == 44100
     assert df["byte_offset"].iloc[0] == 0
+    # Lock in bare-variant-name form for enum-stringified columns.
+    assert df["layer"].iloc[0] == "III"
+    assert df["version"].iloc[0] == "MPEG1"
+    assert df["channel_mode"].iloc[0] == "JOINT_STEREO"
 
 
 def test_audio_frames_to_dataframe_empty():

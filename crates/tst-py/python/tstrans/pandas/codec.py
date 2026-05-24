@@ -6,6 +6,32 @@ from tstrans.pandas._imports import require_pandas
 from tstrans.pandas._nal_type_names import nal_name, obu_name
 
 
+def _enum_name(value: Any) -> str | None:
+    """Extract just the variant name from a qualified enum string.
+
+    `AacProfile.LC` → `LC`. Falls back to str() for non-dotted forms
+    (e.g., `AacChannelLayout(channels=2)` stays as-is — that's a struct).
+    """
+    if value is None:
+        return None
+    s = str(value)
+    return s.rsplit(".", 1)[-1] if "." in s and "(" not in s else s
+
+
+_ADTS_COLUMNS = (
+    "profile", "sample_rate_hz", "channel_configuration",
+    "channel_layout", "frame_length_bytes", "samples_per_frame",
+    "num_raw_data_blocks", "has_crc", "mpeg_version",
+    "raw_header_len", "payload_len", "byte_offset",
+)
+
+_MP2_COLUMNS = (
+    "layer", "version", "bitrate_kbps", "sample_rate_hz",
+    "channel_mode", "channels", "frame_length_bytes",
+    "samples_per_frame", "has_crc", "payload_len", "byte_offset",
+)
+
+
 def nals_to_dataframe(nals: Iterable[Any], pts: float | None = None):
     """Convert a list of NalUnit instances to a DataFrame.
 
@@ -101,12 +127,7 @@ def audio_frames_to_dataframe(frames: Iterable[Any]):
     frames_list = list(frames)
     if not frames_list:
         # Empty: return empty AdtsFrame-schema DataFrame
-        return pd.DataFrame(columns=[
-            "profile", "sample_rate_hz", "channel_configuration",
-            "channel_layout", "frame_length_bytes", "samples_per_frame",
-            "num_raw_data_blocks", "has_crc", "mpeg_version",
-            "raw_header_len", "payload_len", "byte_offset",
-        ])
+        return pd.DataFrame(columns=list(_ADTS_COLUMNS))
 
     type_names = {type(f).__name__ for f in frames_list}
     if len(type_names) > 1:
@@ -131,21 +152,21 @@ def _adts_frames_to_dataframe(frames, pd, np):
     cumulative = 0
     for f in frames:
         rows.append({
-            "profile": str(f.profile),
+            "profile": _enum_name(f.profile),
             "sample_rate_hz": f.sample_rate_hz,
             "channel_configuration": f.channel_configuration,
-            "channel_layout": str(f.channel_layout),
+            "channel_layout": _enum_name(f.channel_layout),
             "frame_length_bytes": f.frame_length_bytes,
             "samples_per_frame": f.samples_per_frame,
             "num_raw_data_blocks": f.num_raw_data_blocks,
             "has_crc": f.has_crc,
-            "mpeg_version": str(f.mpeg_version),
+            "mpeg_version": _enum_name(f.mpeg_version),
             "raw_header_len": len(f.raw_header),
             "payload_len": len(f.payload),
             "byte_offset": cumulative,
         })
         cumulative += f.frame_length_bytes
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=list(_ADTS_COLUMNS))
 
 
 def _mpeg2_audio_frames_to_dataframe(frames, pd, np):
@@ -153,11 +174,11 @@ def _mpeg2_audio_frames_to_dataframe(frames, pd, np):
     cumulative = 0
     for f in frames:
         rows.append({
-            "layer": str(f.layer),
-            "version": str(f.version),
+            "layer": _enum_name(f.layer),
+            "version": _enum_name(f.version),
             "bitrate_kbps": f.bitrate_kbps,
             "sample_rate_hz": f.sample_rate_hz,
-            "channel_mode": str(f.channel_mode),
+            "channel_mode": _enum_name(f.channel_mode),
             "channels": f.channels,
             "frame_length_bytes": f.frame_length_bytes,
             "samples_per_frame": f.samples_per_frame,
@@ -166,4 +187,4 @@ def _mpeg2_audio_frames_to_dataframe(frames, pd, np):
             "byte_offset": cumulative,
         })
         cumulative += f.frame_length_bytes
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=list(_MP2_COLUMNS))

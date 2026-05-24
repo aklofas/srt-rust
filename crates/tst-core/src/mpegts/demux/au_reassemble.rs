@@ -40,7 +40,9 @@ struct PidReassemblyState {
 
 impl PidReassemblyState {
     fn next_expected_seq(&self) -> u8 {
-        self.first_header.sequence_number.wrapping_add(self.cell_count as u8)
+        self.first_header
+            .sequence_number
+            .wrapping_add(self.cell_count as u8)
     }
 }
 
@@ -96,7 +98,10 @@ impl AuCellReassembler {
         header: AuCellHeader,
         payload: &'a [u8],
     ) -> ReassembleOutcome<'a> {
-        match (self.per_pid.contains_key(&pid), header.cell_fragment_indication) {
+        match (
+            self.per_pid.contains_key(&pid),
+            header.cell_fragment_indication,
+        ) {
             // Empty + Complete → emit directly.
             (false, CellFragmentIndication::Complete) => ReassembleOutcome::Emit {
                 header,
@@ -241,9 +246,17 @@ mod tests {
     #[test]
     fn complete_cell_emits_directly() {
         let mut r = AuCellReassembler::new(1024);
-        let out = r.process_cell(0x100, hdr(CellFragmentIndication::Complete, 42), &[0xAA, 0xBB]);
+        let out = r.process_cell(
+            0x100,
+            hdr(CellFragmentIndication::Complete, 42),
+            &[0xAA, 0xBB],
+        );
         match out {
-            ReassembleOutcome::Emit { header, payload, cell_count } => {
+            ReassembleOutcome::Emit {
+                header,
+                payload,
+                cell_count,
+            } => {
                 assert_eq!(header.sequence_number, 42);
                 assert_eq!(payload, &[0xAA, 0xBB]);
                 assert_eq!(cell_count, 1);
@@ -265,8 +278,15 @@ mod tests {
         ));
         let out = r.process_cell(0x100, hdr(CellFragmentIndication::Last, 12), &[0x33; 3]);
         match out {
-            ReassembleOutcome::Emit { header, payload, cell_count } => {
-                assert_eq!(header.cell_fragment_indication, CellFragmentIndication::Complete);
+            ReassembleOutcome::Emit {
+                header,
+                payload,
+                cell_count,
+            } => {
+                assert_eq!(
+                    header.cell_fragment_indication,
+                    CellFragmentIndication::Complete
+                );
                 assert_eq!(header.sequence_number, 10);
                 assert_eq!(payload.len(), 9);
                 assert_eq!(&payload[..3], &[0x11; 3]);
@@ -286,7 +306,10 @@ mod tests {
         let out = r.process_cell(0x100, hdr(CellFragmentIndication::Middle, 5), &[0xAA; 10]);
         assert!(matches!(
             out,
-            ReassembleOutcome::Failure { reason: MultiCellAuReason::Orphan, dropped_bytes: 10 }
+            ReassembleOutcome::Failure {
+                reason: MultiCellAuReason::Orphan,
+                dropped_bytes: 10
+            }
         ));
     }
 
@@ -296,7 +319,10 @@ mod tests {
         let out = r.process_cell(0x100, hdr(CellFragmentIndication::Last, 5), &[0xAA; 7]);
         assert!(matches!(
             out,
-            ReassembleOutcome::Failure { reason: MultiCellAuReason::Orphan, dropped_bytes: 7 }
+            ReassembleOutcome::Failure {
+                reason: MultiCellAuReason::Orphan,
+                dropped_bytes: 7
+            }
         ));
     }
 
@@ -331,6 +357,37 @@ mod tests {
             r.process_cell(0x100, hdr(CellFragmentIndication::First, 20), &[0x22; 5]),
             ReassembleOutcome::Buffered
         ));
+    }
+
+    #[test]
+    fn complete_while_buffering_drops_old_then_passes_through() {
+        // State-table row 5: (Buffering, Complete) → Failure(ConcurrentFirst),
+        // caller re-enters with the same Complete cell against now-empty state
+        // (which then matches row 1 → Emit).
+        let mut r = AuCellReassembler::new(1024);
+        r.process_cell(0x100, hdr(CellFragmentIndication::First, 10), &[0x11; 5]);
+        let out = r.process_cell(0x100, hdr(CellFragmentIndication::Complete, 20), &[0x22; 5]);
+        assert!(matches!(
+            out,
+            ReassembleOutcome::Failure {
+                reason: MultiCellAuReason::ConcurrentFirst,
+                dropped_bytes: 5,
+            }
+        ));
+        // Re-entry: same Complete on now-empty state → Emit (cell_count=1).
+        let reentry = r.process_cell(0x100, hdr(CellFragmentIndication::Complete, 20), &[0x22; 5]);
+        match reentry {
+            ReassembleOutcome::Emit {
+                header,
+                payload,
+                cell_count,
+            } => {
+                assert_eq!(header.sequence_number, 20);
+                assert_eq!(payload, &[0x22; 5]);
+                assert_eq!(cell_count, 1);
+            }
+            _ => panic!("expected Emit on re-entry, got {:?}", reentry),
+        }
     }
 
     #[test]

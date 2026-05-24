@@ -352,6 +352,8 @@ impl super::demuxer::Demuxer {
                             cell_fragment_indication: header.cell_fragment_indication,
                             decoder_config_flag: header.decoder_config_flag,
                             random_access_indicator: header.random_access_indicator,
+                            was_reassembled: false,
+                            cell_count: 1,
                         };
                         // PES PTS surfaces unchanged; per H.222.0 §2.12.4.1 the
                         // AU cell itself carries no embedded timestamp.
@@ -368,15 +370,17 @@ impl super::demuxer::Demuxer {
                     }
                     (KlvShape::Async { klv }, _) => (MetadataKind::KlvAsync, klv, pts),
                     (KlvShape::PartialAuCell { dropped_bytes }, _) => {
-                        // AU cell header parsed but CFI != Complete (First /
-                        // Middle / Last). Reassembly is not implemented; drop
-                        // the payload and emit a detect-only NonConformant event
-                        // so consumers can observe the loss in telemetry.
+                        // TEMPORARY: Task 4 replaces this whole arm with the
+                        // iter_au_cells + reassembler flow. Until then, every
+                        // non-Complete cell drops with reason=Orphan as a
+                        // placeholder mapping (the previous detect-only
+                        // behavior had no taxonomy).
                         self.queue_nonconformant(
                             stream,
                             NonConformantIssue::MultiCellAu {
                                 pid: pes.pid,
                                 dropped_bytes,
+                                reason: crate::mpegts::demux::event::MultiCellAuReason::Orphan,
                             },
                         );
                         return;

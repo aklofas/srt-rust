@@ -808,6 +808,9 @@ fn fill_metadata(
             cell_fragment_indication: cfi,
             decoder_config_flag: dcf,
             random_access_indicator: rai,
+            // Task 7 will mirror these in the C ABI; ignore here until then.
+            was_reassembled: _,
+            cell_count: _,
         } => {
             metadata_service_id = *sid;
             sequence_number = *seq;
@@ -981,7 +984,12 @@ fn fill_nonconformant(
             body.cc_expected = *expected;
             body.cc_observed = *observed;
         }
-        NonConformantIssue::MultiCellAu { pid, dropped_bytes } => {
+        NonConformantIssue::MultiCellAu {
+            pid,
+            dropped_bytes,
+            // Task 7 will mirror this in the C ABI; ignore here until then.
+            reason: _,
+        } => {
             body.issue_code = TstNonConformantCode::MultiCellAu as c_int;
             body.pid = *pid;
             body.observed_len = *dropped_bytes;

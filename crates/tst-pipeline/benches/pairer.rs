@@ -70,6 +70,8 @@ fn make_klv_event(frame_index: usize) -> DemuxEvent {
             cell_fragment_indication: CellFragmentIndication::Complete,
             decoder_config_flag: false,
             random_access_indicator: true,
+            was_reassembled: false,
+            cell_count: 1,
         },
         payload: vec![0x42; 200],
     }

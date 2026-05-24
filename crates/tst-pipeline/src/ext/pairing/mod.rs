@@ -498,6 +498,8 @@ mod tests {
                     tst_core::mpegts::au_cell::CellFragmentIndication::Complete,
                 decoder_config_flag: false,
                 random_access_indicator: true,
+                was_reassembled: false,
+                cell_count: 1,
             },
             payload: vec![0xAA],
         };

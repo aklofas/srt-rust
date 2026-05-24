@@ -275,9 +275,9 @@ pub enum MetadataKind {
         /// 8-bit cell counter wrapping mod 256. Useful for loss detection on
         /// the metadata path (gaps in the sequence indicate dropped cells).
         sequence_number: u8,
-        /// Cell fragmentation per H.222.0 Table 2-157. Today the demuxer
-        /// only delivers `Complete` (single-cell AUs); multi-cell support
-        /// is deferred (see `docs/deferred-features.md`).
+        /// Cell fragmentation per H.222.0 Table 2-157. Always `Complete`
+        /// on emitted samples: reassembled multi-cell AUs collapse into
+        /// one event (see [`Self::KlvSyncAuCell::was_reassembled`]).
         cell_fragment_indication: crate::mpegts::au_cell::CellFragmentIndication,
         /// True if this cell carries decoder configuration data per the
         /// H.222.0 §2.12.4.2 definition. The current muxer never sets this;
@@ -288,6 +288,13 @@ pub enum MetadataKind {
         /// format-defined; for ST 0601 LS payloads (self-contained per
         /// record) this is typically `true` on every cell.
         random_access_indicator: bool,
+        /// `true` if this event represents a multi-cell AU that the
+        /// demuxer reassembled from `First` + 0..n `Middle` + `Last`
+        /// cells. `false` for single-cell (Complete) AUs.
+        was_reassembled: bool,
+        /// Number of AU cells that contributed to this event. `1` for
+        /// single-cell (Complete) AUs; `≥ 2` for reassembled AUs.
+        cell_count: u32,
     },
 
     /// Bare KLV LS (no AU cell wrap). Async metadata, typically 1–10 Hz.
@@ -348,6 +355,32 @@ pub enum LinkSource {
     Inferred,
     /// Caller provided the link via `DemuxerBuilder::link_klv`.
     Override,
+}
+
+/// Why a multi-cell AU reassembly attempt did not produce a `Sample`.
+///
+/// Surfaced via [`NonConformantIssue::MultiCellAu::reason`]. Each variant
+/// names a distinct wire-format or operational failure mode the
+/// per-PID `AuCellReassembler` can hit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum MultiCellAuReason {
+    /// A continuation cell (`Middle` or `Last`) arrived without a prior
+    /// `First`. Either the stream started mid-AU (e.g. seek into a recording)
+    /// or a `First` cell was lost upstream.
+    Orphan,
+    /// A continuation cell arrived but its `sequence_number` did not equal
+    /// `(first.sequence_number + cells_seen) mod 256`. Indicates a cell was
+    /// lost between the buffered `First`/`Middle` and the arriving cell.
+    SequenceGap,
+    /// A new `First` cell arrived while the previous AU was still being
+    /// buffered (i.e. its `Last` never appeared). The partial buffer is
+    /// dropped before the new `First` is processed.
+    ConcurrentFirst,
+    /// The buffered AU's accumulated inner bytes would exceed
+    /// [`crate::mpegts::demux::DemuxerConfig::au_cell_cap_per_pid`]
+    /// (default 1 MiB). The partial buffer is dropped.
+    Overflow,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -592,18 +625,19 @@ pub enum NonConformantIssue {
         observed: u8,
     },
 
-    /// Per H.222.0 §2.12.4.2 the `cell_fragment_indication` field can
-    /// indicate a fragmented AU split across multiple cells (First /
-    /// Middle / Last). Plan #30 exposes this as a detect-only event for
-    /// observability — the demuxer drops the partial payload (does not
-    /// reassemble) and emits this issue. Real reassembly is deferred
-    /// (deferred-features.md from plan #25); today's consumers don't
-    /// see fragmented AUs in the wild (ST 0601 records fit in <64 KB
-    /// which never hits the fragmentation threshold).
+    /// A multi-cell AU reassembly attempt failed and the partial inner
+    /// payload was dropped. `reason` names the specific failure mode;
+    /// `dropped_bytes` is the cumulative inner-byte count discarded
+    /// (useful for telemetry — quantifies what was lost).
     ///
-    /// `dropped_bytes` is the AU cell payload length the partial cell
-    /// declared (useful for telemetry — quantifies what was lost).
-    MultiCellAu { pid: u16, dropped_bytes: usize },
+    /// On the happy path (reassembly succeeded → `DemuxEvent::Sample`
+    /// with `MetadataKind::KlvSyncAuCell { was_reassembled: true, .. }`)
+    /// this event is NOT emitted.
+    MultiCellAu {
+        pid: u16,
+        dropped_bytes: usize,
+        reason: MultiCellAuReason,
+    },
 
     /// Per ISO/IEC 13818-1 §2.4.4.5, PSI tables may be split across
     /// multiple sections (the table's `last_section_number > 0`).
@@ -915,10 +949,16 @@ impl std::fmt::Display for NonConformantIssue {
                      (EN 300 743 §6.2 / EN 300 472 §4.2 require =1)"
                 )
             }
-            NonConformantIssue::MultiCellAu { pid, dropped_bytes } => {
+            NonConformantIssue::MultiCellAu { pid, dropped_bytes, reason } => {
+                let reason_str = match reason {
+                    MultiCellAuReason::Orphan => "orphan continuation (no prior First)",
+                    MultiCellAuReason::SequenceGap => "sequence_number gap",
+                    MultiCellAuReason::ConcurrentFirst => "new First while buffering previous AU",
+                    MultiCellAuReason::Overflow => "buffer exceeded au_cell_cap_per_pid",
+                };
                 write!(
                     f,
-                    "fragmented AU cell on PID 0x{pid:04X}: {dropped_bytes} bytes dropped (multi-cell reassembly not implemented)"
+                    "multi-cell AU reassembly failed on PID 0x{pid:04X}: {dropped_bytes} bytes dropped ({reason_str})"
                 )
             }
             NonConformantIssue::PsiMultiSectionUnsupported {

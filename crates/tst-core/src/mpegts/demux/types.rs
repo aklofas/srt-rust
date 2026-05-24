@@ -54,6 +54,17 @@ pub(super) const DEFAULT_PES_CAP_PER_PID: usize = 4 * 1024 * 1024;
 /// partial PES on every PID are dropped.
 pub(super) const DEFAULT_PES_CAP_TOTAL: usize = 64 * 1024 * 1024;
 
+/// Default per-PID AU cell reassembly buffer cap (1 MiB). Comfortable
+/// for any realistic MISB sync-metadata AU (ST 0903 VMTI with hundreds
+/// of target packs is ~hundreds of KB at most); well below the
+/// per-PES default. Configurable via
+/// [`DemuxerBuilder::au_cell_cap_per_pid`].
+//
+// Task 4 wires this into the reassembler; until then the const is
+// surfaced only to docs (referenced via `Self::au_cell_cap_per_pid`).
+#[allow(dead_code)]
+pub(super) const DEFAULT_AU_CELL_CAP_PER_PID: usize = 1024 * 1024;
+
 /// Caller-supplied overrides for the demuxer.
 #[must_use]
 #[non_exhaustive]
@@ -95,6 +106,15 @@ pub struct DemuxerConfig {
     /// `ts_open_bitstream_unit` framing (matches ffmpeg / libaom /
     /// hls.js / mediamtx today) and does not raise the binding issues.
     pub av1_carriage: crate::mpegts::mux::Av1CarriageMode,
+    /// Per-PID cap on the in-flight AU cell reassembly buffer.
+    /// `None` uses [`DEFAULT_AU_CELL_CAP_PER_PID`] (1 MiB). When the
+    /// buffered inner-byte total would exceed this, the demuxer drops
+    /// the buffer and emits
+    /// [`crate::mpegts::demux::NonConformantIssue::MultiCellAu`] with
+    /// `reason = MultiCellAuReason::Overflow`. Tune up for streams with
+    /// unusually large sync-metadata AUs; tune down for adversarial-input
+    /// scenarios where faster failure is preferable.
+    pub au_cell_cap_per_pid: Option<usize>,
 }
 
 /// Per-program demuxer state. Crate-private — accessed only by `Demuxer`
@@ -162,6 +182,13 @@ impl DemuxerBuilder {
     /// Set to `InteropRawObu` to match ffmpeg/libaom/hls.js senders.
     pub fn av1_carriage(mut self, mode: crate::mpegts::mux::Av1CarriageMode) -> Self {
         self.options.av1_carriage = mode;
+        self
+    }
+
+    /// Set the per-PID AU cell reassembly buffer cap. See
+    /// [`DemuxerConfig::au_cell_cap_per_pid`].
+    pub fn au_cell_cap_per_pid(mut self, bytes: usize) -> Self {
+        self.options.au_cell_cap_per_pid = Some(bytes);
         self
     }
 

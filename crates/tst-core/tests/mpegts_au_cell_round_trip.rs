@@ -71,6 +71,8 @@ fn sync_klv_mux_demux_round_trip() {
                     cell_fragment_indication,
                     decoder_config_flag,
                     random_access_indicator,
+                    was_reassembled: _,
+                    cell_count: _,
                 },
             payload,
             pts,
@@ -405,7 +407,7 @@ fn multi_cell_au_emits_non_conformant_issue_through_demuxer() {
     let mut multi_cell_seen = false;
     while let Some(evt) = dem.next_event() {
         if let DemuxEvent::NonConformant {
-            issue: NonConformantIssue::MultiCellAu { pid, dropped_bytes },
+            issue: NonConformantIssue::MultiCellAu { pid, dropped_bytes, reason: _ },
             ..
         } = evt
         {

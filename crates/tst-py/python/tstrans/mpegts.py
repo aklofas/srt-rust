@@ -430,6 +430,14 @@ class _NonConformantEvent(DemuxEvent):
     # `None` for all other issues. Default keeps existing constructors
     # working without changes.
     multi_cell_au_reason: Optional["MultiCellAuReason"] = None
+    # Typed CFI bits set only when
+    # `kind == NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED`; `None`
+    # for all other issues. `observed_cfi` is the wire value the demuxer
+    # read; `treated_as` is the value substituted (always
+    # `CellFragmentIndication.COMPLETE` today). Both default to None so
+    # existing constructors keep working.
+    observed_cfi: Optional["CellFragmentIndication"] = None
+    treated_as: Optional["CellFragmentIndication"] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -470,6 +478,14 @@ class DemuxerConfig:
     strict_mode: StrictMode = StrictMode.OFF
     pes_cap_per_pid: int = _DEFAULT_PES_CAP_PER_PID
     pes_cap_total: int = _DEFAULT_PES_CAP_TOTAL
+    # When True, the demuxer treats orphan Middle/Last AU cells as
+    # Complete if the inner payload independently validates as one
+    # complete KLV record (SMPTE 336M UL + BER length match). Always
+    # emits a `_NonConformantEvent` with kind
+    # `MALFORMED_AU_CELL_CFI_TOLERATED` alongside the rescued metadata
+    # event. Default False keeps the spec-strict behavior: orphan cells
+    # surface only as `MULTI_CELL_AU{ORPHAN}`.
+    malformed_au_cell_cfi_tolerance: bool = False
 
 
 # Phase 5: re-export NalUnit / Obu / ObuExtension so callers can import
@@ -489,6 +505,15 @@ Demuxer = _native_mod.Demuxer
 # `_NonConformantEvent.multi_cell_au_reason` when the issue is
 # `MULTI_CELL_AU`; `None` otherwise.
 MultiCellAuReason = _native_mod.MultiCellAuReason
+
+# `CellFragmentIndication` — PyO3 `eq_int` enum mirroring
+# `tst_core::mpegts::au_cell::CellFragmentIndication`. Re-exported here so
+# Python users can `from tstrans.mpegts import CellFragmentIndication`.
+# Set on `_NonConformantEvent.observed_cfi` and `_NonConformantEvent.treated_as`
+# when the issue is `MALFORMED_AU_CELL_CFI_TOLERATED`; `None` otherwise.
+# Discriminant values match the wire bits exactly: MIDDLE=0, LAST=1,
+# FIRST=2, COMPLETE=3 (per H.222.0 V9 Table 2-157).
+CellFragmentIndication = _native_mod.CellFragmentIndication
 
 # Phase 4 Task 3 — stream handle newtypes. Rust impls live in
 # crates/tst-py/src/mux.rs as `Py{Video,Audio,Klv,Subtitle}StreamHandle`,
@@ -787,6 +812,7 @@ __all__: list[str] = [
     "DemuxerConfig",
     "Demuxer",
     "MultiCellAuReason",
+    "CellFragmentIndication",
     "VideoStreamHandle",
     "AudioStreamHandle",
     "KlvStreamHandle",

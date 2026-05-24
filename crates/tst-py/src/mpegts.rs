@@ -183,10 +183,14 @@ fn build_demuxer(py: Python<'_>, config: Option<&Bound<'_, PyAny>>) -> PyResult<
         };
         let cap_per_pid: usize = cfg.getattr(intern!(py, "pes_cap_per_pid"))?.extract()?;
         let cap_total: usize = cfg.getattr(intern!(py, "pes_cap_total"))?.extract()?;
+        let cfi_tolerance: bool = cfg
+            .getattr(intern!(py, "malformed_au_cell_cfi_tolerance"))?
+            .extract()?;
 
         b = b.strict(strict);
         b = b.pes_cap_per_pid(cap_per_pid);
         b = b.pes_cap_total(cap_total);
+        b = b.malformed_au_cell_cfi_tolerance(cfi_tolerance);
     }
     Ok(b.build())
 }
@@ -713,6 +717,23 @@ fn convert_non_conformant_event(
         _ => py.None(),
     };
     kwargs.set_item("multi_cell_au_reason", reason_py)?;
+
+    // Surface the typed CFI bits only on MalformedAuCellCfiTolerated;
+    // None on every other issue kind (Python-side default).
+    let (observed_py, treated_py): (PyObject, PyObject) = match issue {
+        NonConformantIssue::MalformedAuCellCfiTolerated {
+            observed_cfi,
+            treated_as,
+            ..
+        } => (
+            Py::new(py, PyCellFragmentIndication::from(*observed_cfi))?.into_py(py),
+            Py::new(py, PyCellFragmentIndication::from(*treated_as))?.into_py(py),
+        ),
+        _ => (py.None(), py.None()),
+    };
+    kwargs.set_item("observed_cfi", observed_py)?;
+    kwargs.set_item("treated_as", treated_py)?;
+
     Ok(cls.call((), Some(&kwargs))?.into())
 }
 
@@ -817,11 +838,54 @@ impl From<MultiCellAuReason> for PyMultiCellAuReason {
 }
 
 // ---------------------------------------------------------------------------
+// CellFragmentIndication — Python eq_int enum mirroring Rust
+// ---------------------------------------------------------------------------
+
+/// H.222.0 V9 §2.12.4.2 Table 2-157 `cell_fragment_indication` bits.
+///
+/// Mirrors `tst_core::mpegts::au_cell::CellFragmentIndication`. Surfaced on
+/// `_NonConformantEvent.observed_cfi` and `_NonConformantEvent.treated_as`
+/// when the underlying issue is `MALFORMED_AU_CELL_CFI_TOLERATED`. PyO3
+/// `eq_int` enum — compare with `==`.
+///
+/// Discriminant values match the wire bits exactly: `MIDDLE=0`, `LAST=1`,
+/// `FIRST=2`, `COMPLETE=3`.
+#[pyclass(eq, eq_int, name = "CellFragmentIndication", module = "tstrans.mpegts")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PyCellFragmentIndication {
+    /// `0b00` (0): middle cell of a multi-cell AU.
+    #[pyo3(name = "MIDDLE")]
+    Middle = 0,
+    /// `0b01` (1): last cell of a multi-cell AU.
+    #[pyo3(name = "LAST")]
+    Last = 1,
+    /// `0b10` (2): first cell of a multi-cell AU.
+    #[pyo3(name = "FIRST")]
+    First = 2,
+    /// `0b11` (3): single cell carrying a complete AU.
+    #[pyo3(name = "COMPLETE")]
+    Complete = 3,
+}
+
+impl From<tst_core::mpegts::au_cell::CellFragmentIndication> for PyCellFragmentIndication {
+    fn from(c: tst_core::mpegts::au_cell::CellFragmentIndication) -> Self {
+        use tst_core::mpegts::au_cell::CellFragmentIndication;
+        match c {
+            CellFragmentIndication::Middle => Self::Middle,
+            CellFragmentIndication::Last => Self::Last,
+            CellFragmentIndication::First => Self::First,
+            CellFragmentIndication::Complete => Self::Complete,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // PyModule registration
 // ---------------------------------------------------------------------------
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDemuxer>()?;
     m.add_class::<PyMultiCellAuReason>()?;
+    m.add_class::<PyCellFragmentIndication>()?;
     Ok(())
 }

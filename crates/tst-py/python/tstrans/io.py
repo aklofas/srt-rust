@@ -163,6 +163,7 @@ def extract_klv(
     with_pts: bool = False,
     parsed: bool = False,
     skip_unknown: bool = True,
+    skip_malformed: bool = False,
 ) -> Iterator:
     """Iterate over KLV payloads in a file. Yields one of:
 
@@ -173,12 +174,30 @@ def extract_klv(
     - `(Pts90khz, typed)` (when `parsed=True, with_pts=True`)
 
     With `parsed=True`, each payload is run through
-    `tstrans.klv.parse_klv_universal`. When the UL is unknown, the
-    payload is skipped (default) or yielded as `None` /
-    `(pts, None)` if `skip_unknown=False`.
+    `tstrans.klv.parse_klv_universal`. Two independent error knobs
+    control how the iterator reacts:
+
+    - `skip_unknown` (default `True`) — controls payloads whose
+      universal label is not recognized by any of the four supported
+      sets (ST 0601 / ST 0102 / ST 0605 / ST 0903). When True, such
+      payloads are silently dropped. When False, `None` (or
+      `(pts, None)`) is yielded so the caller can count or log them.
+    - `skip_malformed` (default `False`) — controls
+      `tstrans.exceptions.KlvError` raised by the decoder on a
+      recognized UL (truncated set, bad checksum, etc.). When False
+      (the default), the exception propagates so data corruption is
+      not silently lost. When True, the offending row is skipped.
+
+    These two knobs are independent on purpose: prior to the audit-#3
+    fix, a single `skip_unknown=True` overload swallowed both unknown
+    ULs and `KlvError` from known ULs, hiding decoder bugs and
+    upstream corruption. Catching `KlvError` specifically (rather than
+    bare `Exception`) also lets binding-shape regressions (TypeError,
+    AttributeError) surface naturally instead of being suppressed.
     """
 
-    # Local import dodges import-cycle with tstrans.klv at module load.
+    # Local imports dodge import-cycle with tstrans.klv at module load.
+    from tstrans.exceptions import KlvError
     from tstrans.klv import parse_klv_universal
 
     for ev in parse_file(path):
@@ -187,10 +206,10 @@ def extract_klv(
         if parsed:
             try:
                 typed = parse_klv_universal(ev.payload)
-            except Exception:  # noqa: BLE001 — caller decides via skip_unknown
-                if skip_unknown:
+            except KlvError:
+                if skip_malformed:
                     continue
-                typed = None
+                raise
             if typed is None and skip_unknown:
                 continue
             yield (ev.pts, typed) if with_pts else typed

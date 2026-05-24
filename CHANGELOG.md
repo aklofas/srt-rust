@@ -22,6 +22,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   to mark Phases 0-6 SHIPPED and Phase 7 (CI wheels + PyPI publish)
   as UP NEXT. Closes audit #8.
 
+---
+
+## [Unreleased] — tst-py: audit #3 — split `skip_unknown` from `skip_malformed` (2026-05-24)
+
+**Changed:**
+
+- `tstrans.io.extract_klv(parsed=True)` gains a new keyword-only
+  `skip_malformed: bool = False` parameter and stops conflating it
+  with `skip_unknown`. Previously `skip_unknown=True` (the default)
+  silently swallowed *both* unknown universal labels and `KlvError`
+  raised by the decoder on a recognized UL — masking real upstream
+  corruption (truncated sets, bad checksums) as "skipped unknown".
+  Now `skip_unknown` only suppresses payloads whose UL doesn't match
+  any of the four supported sets, and `skip_malformed=False`
+  propagates the `KlvError` so callers see data loss. The decoder
+  exception is also caught specifically as `KlvError` (not bare
+  `Exception`), so binding-shape regressions surface as `TypeError` /
+  `AttributeError` rather than being absorbed. Closes audit #3.
+
+  Migration: callers that want the old swallow-everything behavior
+  should pass both `skip_unknown=True, skip_malformed=True`; callers
+  who only ever fed well-formed KLV need no change.
+
+---
+
 ## [Unreleased] — tst-py: Python bindings audit small wave (2026-05-24)
 
 Small carry-forward batch from the 2026-05-24 Python bindings audit

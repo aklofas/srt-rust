@@ -2833,11 +2833,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Li
 pub enum tst_core::mpegts::demux::event::MetadataKind
 pub tst_core::mpegts::demux::event::MetadataKind::KlvAsync
 pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell
+pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell::cell_count: u32
 pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell::cell_fragment_indication: tst_core::mpegts::au_cell::CellFragmentIndication
 pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell::decoder_config_flag: bool
 pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell::metadata_service_id: u8
 pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell::random_access_indicator: bool
 pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell::sequence_number: u8
+pub tst_core::mpegts::demux::event::MetadataKind::KlvSyncAuCell::was_reassembled: bool
 pub tst_core::mpegts::demux::event::MetadataKind::Unknown(tst_core::mpegts::common::StreamTypeCode)
 impl core::clone::Clone for tst_core::mpegts::demux::event::MetadataKind
 pub fn tst_core::mpegts::demux::event::MetadataKind::clone(&self) -> tst_core::mpegts::demux::event::MetadataKind
@@ -2854,6 +2856,27 @@ impl core::marker::Unpin for tst_core::mpegts::demux::event::MetadataKind
 impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::MetadataKind
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::MetadataKind
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::MetadataKind
+#[non_exhaustive] pub enum tst_core::mpegts::demux::event::MultiCellAuReason
+pub tst_core::mpegts::demux::event::MultiCellAuReason::ConcurrentFirst
+pub tst_core::mpegts::demux::event::MultiCellAuReason::Orphan
+pub tst_core::mpegts::demux::event::MultiCellAuReason::Overflow
+pub tst_core::mpegts::demux::event::MultiCellAuReason::SequenceGap
+impl core::clone::Clone for tst_core::mpegts::demux::event::MultiCellAuReason
+pub fn tst_core::mpegts::demux::event::MultiCellAuReason::clone(&self) -> tst_core::mpegts::demux::event::MultiCellAuReason
+impl core::cmp::Eq for tst_core::mpegts::demux::event::MultiCellAuReason
+impl core::cmp::PartialEq for tst_core::mpegts::demux::event::MultiCellAuReason
+pub fn tst_core::mpegts::demux::event::MultiCellAuReason::eq(&self, other: &tst_core::mpegts::demux::event::MultiCellAuReason) -> bool
+impl core::fmt::Debug for tst_core::mpegts::demux::event::MultiCellAuReason
+pub fn tst_core::mpegts::demux::event::MultiCellAuReason::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_core::mpegts::demux::event::MultiCellAuReason
+impl core::marker::StructuralPartialEq for tst_core::mpegts::demux::event::MultiCellAuReason
+impl core::marker::Freeze for tst_core::mpegts::demux::event::MultiCellAuReason
+impl core::marker::Send for tst_core::mpegts::demux::event::MultiCellAuReason
+impl core::marker::Sync for tst_core::mpegts::demux::event::MultiCellAuReason
+impl core::marker::Unpin for tst_core::mpegts::demux::event::MultiCellAuReason
+impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::event::MultiCellAuReason
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::event::MultiCellAuReason
+impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::MultiCellAuReason
 #[non_exhaustive] pub enum tst_core::mpegts::demux::event::NalHeaderKind
 pub tst_core::mpegts::demux::event::NalHeaderKind::ForbiddenZeroBit
 pub tst_core::mpegts::demux::event::NalHeaderKind::LayerIdOutOfRange
@@ -2940,6 +2963,7 @@ pub tst_core::mpegts::demux::event::NonConformantIssue::MissingRequiredPts::pid:
 pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu
 pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu::dropped_bytes: usize
 pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu::pid: u16
+pub tst_core::mpegts::demux::event::NonConformantIssue::MultiCellAu::reason: tst_core::mpegts::demux::event::MultiCellAuReason
 pub tst_core::mpegts::demux::event::NonConformantIssue::NalHeader
 pub tst_core::mpegts::demux::event::NonConformantIssue::NalHeader::codec: tst_core::mpegts::demux::event::VideoCodec
 pub tst_core::mpegts::demux::event::NonConformantIssue::NalHeader::kind: tst_core::mpegts::demux::event::NalHeaderKind
@@ -3290,11 +3314,7 @@ pub enum tst_core::mpegts::demux::low_level::KlvShape
 pub tst_core::mpegts::demux::low_level::KlvShape::Async
 pub tst_core::mpegts::demux::low_level::KlvShape::Async::klv: alloc::vec::Vec<u8>
 pub tst_core::mpegts::demux::low_level::KlvShape::Other
-pub tst_core::mpegts::demux::low_level::KlvShape::PartialAuCell
-pub tst_core::mpegts::demux::low_level::KlvShape::PartialAuCell::dropped_bytes: usize
-pub tst_core::mpegts::demux::low_level::KlvShape::SyncAuCell
-pub tst_core::mpegts::demux::low_level::KlvShape::SyncAuCell::header: tst_core::mpegts::au_cell::AuCellHeader
-pub tst_core::mpegts::demux::low_level::KlvShape::SyncAuCell::klv: alloc::vec::Vec<u8>
+pub tst_core::mpegts::demux::low_level::KlvShape::Sync
 impl core::clone::Clone for tst_core::mpegts::demux::low_level::KlvShape
 pub fn tst_core::mpegts::demux::low_level::KlvShape::clone(&self) -> tst_core::mpegts::demux::low_level::KlvShape
 impl core::cmp::Eq for tst_core::mpegts::demux::low_level::KlvShape
@@ -3667,11 +3687,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::event::Li
 pub enum tst_core::mpegts::demux::MetadataKind
 pub tst_core::mpegts::demux::MetadataKind::KlvAsync
 pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell
+pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell::cell_count: u32
 pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell::cell_fragment_indication: tst_core::mpegts::au_cell::CellFragmentIndication
 pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell::decoder_config_flag: bool
 pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell::metadata_service_id: u8
 pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell::random_access_indicator: bool
 pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell::sequence_number: u8
+pub tst_core::mpegts::demux::MetadataKind::KlvSyncAuCell::was_reassembled: bool
 pub tst_core::mpegts::demux::MetadataKind::Unknown(tst_core::mpegts::common::StreamTypeCode)
 impl core::clone::Clone for tst_core::mpegts::demux::event::MetadataKind
 pub fn tst_core::mpegts::demux::event::MetadataKind::clone(&self) -> tst_core::mpegts::demux::event::MetadataKind
@@ -3774,6 +3796,7 @@ pub tst_core::mpegts::demux::NonConformantIssue::MissingRequiredPts::pid: u16
 pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu
 pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu::dropped_bytes: usize
 pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu::pid: u16
+pub tst_core::mpegts::demux::NonConformantIssue::MultiCellAu::reason: tst_core::mpegts::demux::event::MultiCellAuReason
 pub tst_core::mpegts::demux::NonConformantIssue::NalHeader
 pub tst_core::mpegts::demux::NonConformantIssue::NalHeader::codec: tst_core::mpegts::demux::event::VideoCodec
 pub tst_core::mpegts::demux::NonConformantIssue::NalHeader::kind: tst_core::mpegts::demux::event::NalHeaderKind
@@ -4043,6 +4066,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::demuxe
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::demuxer::Demuxer
 pub struct tst_core::mpegts::demux::DemuxerBuilder
 impl tst_core::mpegts::demux::DemuxerBuilder
+pub fn tst_core::mpegts::demux::DemuxerBuilder::au_cell_cap_per_pid(self, bytes: usize) -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::av1_carriage(self, mode: tst_core::mpegts::mux::Av1CarriageMode) -> Self
 pub fn tst_core::mpegts::demux::DemuxerBuilder::build(self) -> tst_core::mpegts::demux::demuxer::Demuxer
 pub fn tst_core::mpegts::demux::DemuxerBuilder::link_klv(self, klv_pid: u16, video_pid: u16) -> Self
@@ -4063,6 +4087,7 @@ impl core::marker::UnsafeUnpin for tst_core::mpegts::demux::DemuxerBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::demux::DemuxerBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::demux::DemuxerBuilder
 #[non_exhaustive] pub struct tst_core::mpegts::demux::DemuxerConfig
+pub tst_core::mpegts::demux::DemuxerConfig::au_cell_cap_per_pid: core::option::Option<usize>
 pub tst_core::mpegts::demux::DemuxerConfig::av1_carriage: tst_core::mpegts::mux::Av1CarriageMode
 pub tst_core::mpegts::demux::DemuxerConfig::klv_link_overrides: alloc::vec::Vec<(u16, u16)>
 pub tst_core::mpegts::demux::DemuxerConfig::lenient_psi_reassembly: bool

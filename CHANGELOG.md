@@ -25,6 +25,15 @@ plan.
   `CodecParseError` variants can no longer silently miss Python
   exception mapping.
 
+**Tests:**
+
+- Pandas-marked test modules now use `pytest.importorskip("pandas")`
+  / `pytest.importorskip("numpy")` so the default `-m 'not pandas'`
+  run can collect without the optional extras installed. Latent bug
+  surfaced by the new `python-core` job — collection failed on
+  `import pandas as pd` in the 4 `test_pandas_*.py` files when the
+  extras weren't installed.
+
 ## [Unreleased] — mpegts: multi-cell AU cell reassembly (2026-05-24)
 
 **`mpegts::demux` now reassembles fragmented Metadata AU cells per

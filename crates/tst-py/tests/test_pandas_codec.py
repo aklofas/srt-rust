@@ -4,6 +4,11 @@ import pytest
 
 pytestmark = pytest.mark.pandas
 
+# The `pandas` marker filters at run-time, but pytest still imports test
+# modules at collection. Skip the whole module when the [pandas] extra
+# isn't installed (the python-core CI job runs without it).
+pytest.importorskip("pandas")
+
 import pandas as pd  # noqa: E402
 
 from tstrans.codec import NalUnit, Obu, ObuExtension

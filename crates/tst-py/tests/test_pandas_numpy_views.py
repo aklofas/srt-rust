@@ -4,6 +4,11 @@ import pytest
 
 pytestmark = pytest.mark.pandas
 
+# The `pandas` marker filters at run-time, but pytest still imports test
+# modules at collection. Skip the whole module when the [pandas] extra
+# isn't installed — these tests use NumPy which is part of the same extra.
+pytest.importorskip("numpy")
+
 import numpy as np  # noqa: E402
 
 from tstrans.codec import (

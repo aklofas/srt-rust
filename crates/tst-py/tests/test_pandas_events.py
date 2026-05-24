@@ -1,0 +1,139 @@
+"""Phase 6: DemuxEvent DataFrame adapter tests.
+
+Tests `tstrans.pandas.events_to_dataframe` — the union-schema dispatcher
+across all DemuxEvent kinds. Fixture availability drives skips for the
+real-stream paths; an unconditional hand-built path covers the empty and
+NonConformantEvent cases.
+
+Plan-vs-Rust drift notes (from Task 5 pre-flight):
+  - Plan referenced `_KlvMetadataEvent` / `_NonConformantIssueEvent` /
+    `_PatEvent` — actual classes are `_KlvEvent` / `_NonConformantEvent`,
+    and there is no separate `_PatEvent` (PAT data lives on
+    `_ProgramMapEvent.programs`). The adapter `kind_map` reflects the real
+    names.
+  - Plan-cited fixtures `h264_aac_klv_sample.ts` and
+    `codec/h264/baseline_30fps.ts` do not exist. Tests use
+    `audio/aac-adts.ts` (Video + Audio + ProgramMap) and
+    `subtitles/subtitle_with_klv_same_program.ts` (Subtitle + KLV +
+    ProgramMap) instead.
+"""
+
+import pathlib
+
+import pytest
+
+pytestmark = pytest.mark.pandas
+
+import pandas as pd  # noqa: E402
+
+from tstrans.io import parse_file  # noqa: E402
+from tstrans.mpegts import (  # noqa: E402
+    NonConformantKind,
+    StreamId,
+    StreamKindTag,
+    VideoCodec,
+    _NonConformantEvent,
+    _ReconnectDiscontinuityEvent,
+)
+from tstrans.pandas import events_to_dataframe  # noqa: E402
+
+
+# --- fixtures ------------------------------------------------------------
+
+_FIXTURE_ROOT = pathlib.Path(__file__).parent.parent.parent / "tst-core" / "tests" / "fixtures"
+
+
+def _real_ts_fixture() -> pathlib.Path:
+    """Return a real .ts fixture path, or skip if none available."""
+    for candidate in [
+        "audio/aac-adts.ts",
+        "subtitles/subtitle_with_klv_same_program.ts",
+    ]:
+        p = _FIXTURE_ROOT / candidate
+        if p.exists():
+            return p
+    pytest.skip("no real .ts fixture available")
+
+
+# --- tests ---------------------------------------------------------------
+
+
+def test_events_to_dataframe_returns_dataframe():
+    events = list(parse_file(_real_ts_fixture()))
+    df = events_to_dataframe(events)
+    assert isinstance(df, pd.DataFrame)
+
+
+def test_events_to_dataframe_has_kind_column():
+    events = list(parse_file(_real_ts_fixture()))
+    df = events_to_dataframe(events)
+    assert "kind" in df.columns
+
+
+def test_events_to_dataframe_union_columns_present():
+    events = list(parse_file(_real_ts_fixture()))
+    df = events_to_dataframe(events)
+    expected = {
+        "kind", "pts_raw", "pts_ms", "dts_ms", "pid",
+        "stream_type", "codec", "payload_len", "nal_count",
+        "random_access", "has_codec_parse_error", "issue", "issue_kind",
+    }
+    assert expected.issubset(set(df.columns)), f"missing {expected - set(df.columns)}"
+
+
+def test_events_to_dataframe_empty_returns_empty_df():
+    df = events_to_dataframe([])
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 0
+
+
+def test_events_to_dataframe_sample_rows_have_pts_ms():
+    events = list(parse_file(_real_ts_fixture()))
+    df = events_to_dataframe(events)
+    sample_rows = df[df["kind"] == "Sample"]
+    if len(sample_rows) == 0:
+        pytest.skip("no Sample events in fixture")
+    # At least some Sample rows should have non-NaN pts_ms
+    assert sample_rows["pts_ms"].notna().any()
+
+
+def test_events_to_dataframe_non_conformant_rows_have_issue():
+    # Hand-build a NonConformantEvent so this test runs unconditionally
+    # (real fixtures don't reliably emit NonConformantEvent rows).
+    sid = StreamId(
+        pid=256,
+        kind=StreamKindTag.VIDEO,
+        codec=VideoCodec.H264,
+        program_number=1,
+    )
+    nce = _NonConformantEvent(
+        stream=sid,
+        kind=NonConformantKind.MALFORMED_PES,
+        issue="hand-built test row",
+    )
+    df = events_to_dataframe([nce])
+    nci_rows = df[df["kind"] == "NonConformant"]
+    assert len(nci_rows) == 1
+    assert nci_rows["issue"].iloc[0] == "hand-built test row"
+    assert nci_rows["issue_kind"].iloc[0] == "MALFORMED_PES"
+    assert nci_rows["pid"].iloc[0] == 256
+
+
+def test_events_to_dataframe_default_range_index():
+    events = list(parse_file(_real_ts_fixture()))
+    df = events_to_dataframe(events)
+    assert isinstance(df.index, pd.RangeIndex)
+
+
+# --- extra coverage for hand-built mixed batch ---------------------------
+
+
+def test_events_to_dataframe_reconnect_discontinuity_has_kind_only():
+    """ReconnectDiscontinuity carries no stream/pts/payload — only the kind label."""
+    rde = _ReconnectDiscontinuityEvent()
+    df = events_to_dataframe([rde])
+    assert len(df) == 1
+    assert df["kind"].iloc[0] == "ReconnectDiscontinuity"
+    # All payload/stream columns should be NaN/None
+    assert pd.isna(df["pid"].iloc[0])
+    assert pd.isna(df["pts_ms"].iloc[0])

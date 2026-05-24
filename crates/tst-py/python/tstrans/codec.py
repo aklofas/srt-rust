@@ -169,7 +169,13 @@ __all__ = [
 
 
 def _make_np_property(attr_name: str):
-    """Builds a property that returns np.frombuffer(getattr(self, attr_name), uint8).
+    """Build a property that returns np.frombuffer(getattr(self, attr_name), uint8).
+
+    Returns a NumPy ndarray snapshot view. Each property access materializes
+    a fresh Python `bytes` from Rust-owned storage (one copy of payload_length
+    bytes), then NumPy views that bytes object with zero further copies. For
+    repeated access on the same wrapped instance, cache the result manually
+    to avoid repeated Rust→Python copies.
 
     Lazy-imports numpy on first call; raises ImportError with install hint
     if [pandas] extra not installed.

@@ -28,6 +28,30 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py: audit #7 — NumPy "zero-copy" rewritten as "snapshot view" (2026-05-24)
+
+**Docs:**
+
+- Reworded the NumPy accessor documentation across
+  `docs/guide-python-pandas.md`, `docs/guide-python.md`, and the
+  `_make_np_property` docstring in
+  `crates/tst-py/python/tstrans/codec.py` to describe
+  `.payload_np` / `.raw_rbsp_np` / `.raw_np` as **snapshot views**
+  rather than **zero-copy views**. Each accessor call materializes a
+  fresh Python `bytes` from Rust-owned storage (one `O(payload_length)`
+  copy), then NumPy views that bytes object with zero further copies.
+  Added a new "Snapshot vs zero-copy" subsection to the pandas guide
+  explaining the per-access cost, the manual-cache pattern for repeated
+  reads, and a forward note that a future plan may implement the
+  Python buffer protocol on the Rust types to eliminate the bytes copy.
+  Extended `tests/test_pandas_numpy_views.py` with two new tests
+  pinning the snapshot semantic: each access returns a distinct
+  ndarray object (`a1 is not a2`), and the read-only guard + the
+  fresh-snapshot guarantee together prevent any mutation from leaking
+  to a subsequent access. Closes audit #7.
+
+---
+
 ## [Unreleased] — tst-py: audit #8 — Python docs refreshed to Phase 6 reality (2026-05-24)
 
 **Docs:**

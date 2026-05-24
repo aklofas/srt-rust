@@ -72,7 +72,7 @@ See the `tstrans.klv` module docstring for the full type listing.
 
 ### pandas + NumPy adapters (optional)
 
-Install the optional extra to enable DataFrame adapters and zero-copy
+Install the optional extra to enable DataFrame adapters and snapshot
 NumPy views over NAL / OBU / parameter-set payloads:
 
 ```bash

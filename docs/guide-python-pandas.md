@@ -165,20 +165,21 @@ does NOT account for skipped (garbage) bytes between recovered frames
 — if you need absolute offsets across a resync boundary, pre-compute
 them from the resync output itself.
 
-## NumPy zero-copy views
+## NumPy snapshot views
 
 Every byte-bearing class (NalUnit, Obu, AdtsFrame, Mpeg2AudioFrame, all
 H.264/H.265/H.266 SPS/PPS/VPS/SliceHeaderLight, AV1 sequence/frame
 headers) carries a `.payload_np` / `.raw_rbsp_np` / `.raw_np` accessor
-that returns a zero-copy `numpy.ndarray(dtype=uint8)` view of the
-underlying bytes:
+that returns a `numpy.ndarray(dtype=uint8)` snapshot — each access
+copies from Rust-owned storage into a fresh Python `bytes`, which
+NumPy then views without further copy:
 
 ```python
 import numpy as np
 from tstrans.codec import parse_h264_sps
 
 sps = parse_h264_sps(rbsp_bytes)
-arr = sps.raw_rbsp_np   # zero-copy np.ndarray(dtype=np.uint8)
+arr = sps.raw_rbsp_np   # snapshot np.ndarray(dtype=np.uint8)
 ```
 
 Mapping:
@@ -193,8 +194,28 @@ These accessors are **read-only** views — `np.frombuffer` sets
 `writeable=False` on Python `bytes`. Mutating attempts raise
 `ValueError: assignment destination is read-only` by design.
 
-For users who don't want the `.payload_np` indirection, the equivalent
-zero-copy is one line of stdlib NumPy:
+### Snapshot vs zero-copy
+
+Each `.payload_np` / `.raw_rbsp_np` / `.raw_np` access materializes a
+fresh Python `bytes` from Rust-owned storage (one copy), then NumPy
+views that bytes object with no further copy. Per-access cost is
+`O(payload_length)`; the view itself is a true zero-copy view over the
+bytes object, but the bytes object is freshly allocated each time. For
+repeated access on the same frame/NAL, cache the result manually:
+
+```python
+arr = nal.payload_np  # one copy from Rust
+# use `arr` repeatedly — no further copy
+```
+
+A future plan may implement the Python buffer protocol directly on the
+Rust types, eliminating the bytes copy. This is non-trivial because
+each of the ~15 PyClass types would need `__getbuffer__` /
+`__releasebuffer__` magic methods over stable Rust-owned storage.
+Tracked as a v2 optimization.
+
+For users who don't want the `.payload_np` indirection, the snapshot
+is one line of stdlib NumPy:
 
 ```python
 import numpy as np

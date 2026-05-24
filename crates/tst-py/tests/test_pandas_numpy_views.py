@@ -1,4 +1,4 @@
-"""Phase 6: NumPy zero-copy accessor tests for tstrans.codec types."""
+"""Phase 6: NumPy snapshot-view accessor tests for tstrans.codec types."""
 
 import pytest
 
@@ -95,3 +95,33 @@ def test_class_has_numpy_accessor(cls_name, attr):
     import tstrans.codec as c
     cls = getattr(c, cls_name)
     assert hasattr(cls, attr), f"{cls_name} missing {attr}"
+
+
+def test_payload_np_returns_fresh_array_each_access():
+    # Confirm the snapshot semantic: accessing the property twice returns
+    # DISTINCT array objects (because each call allocates a fresh bytes
+    # snapshot under the hood). Documents that `.payload_np` is NOT a
+    # cached view — repeated callers should cache the result manually.
+    nal = NalUnit.h264(nal_type=5, ref_idc=3, payload=b"\x01\x02\x03\x04\x05")
+    a1 = nal.payload_np
+    a2 = nal.payload_np
+    assert a1 is not a2
+    # Sanity: both snapshots carry identical content.
+    assert bytes(a1) == bytes(a2) == b"\x01\x02\x03\x04\x05"
+
+
+def test_payload_np_mutation_doesnt_leak_to_next_access():
+    # Because each access is a fresh snapshot, mutating one ndarray cannot
+    # affect a subsequent access. Well, you can't directly mutate the array
+    # because it's read-only — but verify both guards work together: the
+    # read-only guard prevents the in-place write, AND the fresh-snapshot
+    # guarantee means a subsequent access always reads the original Rust
+    # storage unmodified.
+    nal = NalUnit.h264(nal_type=5, ref_idc=3, payload=b"\x01\x02\x03")
+    a1 = nal.payload_np
+    with pytest.raises(ValueError, match="read-only"):
+        a1[0] = 99
+    # Next access still sees the original bytes from Rust-owned storage.
+    a2 = nal.payload_np
+    assert bytes(a2) == b"\x01\x02\x03"
+    assert a1 is not a2

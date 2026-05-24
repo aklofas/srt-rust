@@ -115,6 +115,30 @@ pub struct DemuxerConfig {
     /// unusually large sync-metadata AUs; tune down for adversarial-input
     /// scenarios where faster failure is preferable.
     pub au_cell_cap_per_pid: Option<usize>,
+    /// Tolerate sync-metadata AU cells that arrive with
+    /// `cell_fragment_indication` bits set to `0b00` (middle) or `0b01`
+    /// (last) when there is no active reassembly buffer for the PID.
+    ///
+    /// Default `false` — spec-strict per H.222.0 V9 §2.12.4.2 Table 2-157:
+    /// orphan Middle/Last cells produce
+    /// [`crate::mpegts::demux::NonConformantIssue::MultiCellAu`] with
+    /// `reason = MultiCellAuReason::Orphan` and no metadata event.
+    ///
+    /// When `true`, the demuxer additionally validates the orphan cell's
+    /// inner payload as a single complete KLV unit (SMPTE 336M UL prefix
+    /// `06 0e 2b 34` followed by a BER length that describes exactly the
+    /// available payload). If it passes, the cell is emitted as a
+    /// [`crate::mpegts::demux::MetadataKind::KlvSyncAuCell`] with
+    /// `cell_fragment_indication = Complete` AND a
+    /// [`crate::mpegts::demux::NonConformantIssue::MalformedAuCellCfiTolerated`]
+    /// diagnostic so the malformation remains visible to callers.
+    ///
+    /// Enable for known producer-malformed sources that ship complete KLV
+    /// records under spec-middle CFI bits. Keep `false` if you want to
+    /// reject such streams loudly (the safe default for receivers that
+    /// must surface wire-format malformation, e.g. interoperability
+    /// validators).
+    pub malformed_au_cell_cfi_tolerance: bool,
 }
 
 /// Per-program demuxer state. Crate-private — accessed only by `Demuxer`
@@ -192,6 +216,15 @@ impl DemuxerBuilder {
         self
     }
 
+    /// Enable opt-in tolerance for sync-metadata AU cells whose
+    /// `cell_fragment_indication` bits are set to `0b00` (middle) or
+    /// `0b01` (last) without a prior First cell. See
+    /// [`DemuxerConfig::malformed_au_cell_cfi_tolerance`].
+    pub fn malformed_au_cell_cfi_tolerance(mut self, enable: bool) -> Self {
+        self.options.malformed_au_cell_cfi_tolerance = enable;
+        self
+    }
+
     pub fn build(self) -> crate::mpegts::demux::Demuxer {
         crate::mpegts::demux::Demuxer::with_config(self.options)
     }
@@ -205,4 +238,33 @@ pub(crate) const fn default_pes_cap_per_pid() -> usize {
 #[cfg(test)]
 pub(crate) const fn default_pes_cap_total() -> usize {
     DEFAULT_PES_CAP_TOTAL
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_malformed_au_cell_cfi_tolerance_is_false() {
+        // Strict-by-default posture: receivers must explicitly opt in to
+        // tolerate producer-malformed CFI bits. Matches lenient_psi_reassembly
+        // shape (also default false) and the project's broader
+        // "strict-default + named compatibility knob" convention.
+        assert!(!DemuxerConfig::default().malformed_au_cell_cfi_tolerance);
+    }
+
+    #[test]
+    fn builder_sets_malformed_au_cell_cfi_tolerance() {
+        let builder = DemuxerBuilder::new().malformed_au_cell_cfi_tolerance(true);
+        let config = builder.options;
+        assert!(config.malformed_au_cell_cfi_tolerance);
+    }
+
+    #[test]
+    fn builder_can_toggle_malformed_au_cell_cfi_tolerance_off() {
+        let builder = DemuxerBuilder::new()
+            .malformed_au_cell_cfi_tolerance(true)
+            .malformed_au_cell_cfi_tolerance(false);
+        assert!(!builder.options.malformed_au_cell_cfi_tolerance);
+    }
 }

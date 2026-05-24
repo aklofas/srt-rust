@@ -1,0 +1,278 @@
+# Python pandas + NumPy integration guide
+
+Optional pandas DataFrame adapters and NumPy zero-copy views for the
+`tstrans` Python package. Requires the `[pandas]` extra:
+
+```bash
+pip install 'tstrans[pandas]'
+```
+
+Without the extra, `tstrans` works as documented in
+[guide-python.md](guide-python.md). Calling any pandas adapter or any
+NumPy `.payload_np` / `.raw_rbsp_np` / `.raw_np` accessor without the
+extra raises:
+
+```
+ImportError: tstrans pandas adapters require: pip install 'tstrans[pandas]'
+```
+
+## Quick start
+
+```python
+import tstrans.io
+import tstrans.pandas
+
+# Parse a .ts file into events
+events = list(tstrans.io.parse_file("capture.ts"))
+
+# Convert to DataFrame for analysis
+df = tstrans.pandas.events_to_dataframe(events)
+print(df.kind.value_counts())
+#  Sample                  1234
+#  Metadata                  56
+#  ProgramMap                12
+```
+
+## DataFrame adapters
+
+### KLV records — `klv_to_dataframe`
+
+```python
+from tstrans.io import extract_klv
+
+records = list(extract_klv("capture.ts", parsed=True))
+df = tstrans.pandas.klv_to_dataframe(records)
+df.head()
+```
+
+`klv_to_dataframe` is polymorphic — it dispatches on the record type
+and produces a per-set schema. Input must be homogeneous (one set type
+per call); mixed input raises `TypeError`. Supported types: `UasDatalinkLs`
+(ST 0601), `SecurityLs` (ST 0102), `PrecisionTimeStampPack` (ST 0605),
+`VmtiLs` (ST 0903).
+
+KLV DataFrames are indexed by `pd.DatetimeIndex` (with `tz="UTC"`,
+named `pts`) derived from the per-record timestamp where present:
+ST 0601 / ST 0903 use the `timestamp_us` field (microseconds since
+the 1970 UTC epoch), ST 0605 uses its own precision timestamp. If a
+record lacks a timestamp the row's index entry is `pd.NaT`; if NO
+record in the batch has one the DataFrame falls back to
+`pd.RangeIndex`.
+
+**Column shape.** ST 0601 (UasDatalinkLs) flattens to its full set of
+~50 scalar fields — fields like `frame_center_lat_deg`,
+`frame_center_lon_deg`, `frame_center_elev_m`, `sensor_lat_deg`,
+`sensor_lon_deg`, `sensor_alt_m`, `platform_heading_deg`,
+`platform_pitch_deg`, `platform_roll_deg` are direct top-level columns
+(no dotted composite namespacing). Enum-valued fields collapse to their
+variant name string (e.g. `"FullyEncrypted"`). Per-field parse errors
+(Phase 3 `KlvFieldError`) collapse to a single string `field_errors`
+column using a `|` joiner with the per-error format
+`tag<N>:<kind>:<message>` — the `|` (not `,`) joiner keeps the column
+parseable even when an error `message` contains commas.
+
+**ST 0903 (VmtiLs) supports two modes:**
+
+- `mode="summary"` (default): one row per VMTI record, with a
+  `num_targets` column counting `VTargetPack` entries. Indexed by
+  `pd.DatetimeIndex` of record timestamps.
+- `mode="targets"`: one row per `VTargetPack`, indexed by
+  `pd.MultiIndex` with levels `[pts, target_id]`.
+
+```python
+# Aggregate targets across the full capture
+targets = tstrans.pandas.klv_to_dataframe(vmti_records, mode="targets")
+```
+
+### DemuxEvents — `events_to_dataframe`
+
+```python
+df = tstrans.pandas.events_to_dataframe(events)
+```
+
+Union schema across all event kinds. Video / Audio / Subtitle events
+collapse to `kind="Sample"`; KLV events collapse to `kind="Metadata"`;
+ProgramMap / NonConformant / Discontinuity / ReconnectDiscontinuity
+keep their own labels. (`Pat` is folded into `ProgramMap` by the
+demuxer; it never appears as a separate kind.)
+
+| Column | Type | Description |
+|---|---|---|
+| kind | str | `Sample` / `Metadata` / `ProgramMap` / `NonConformant` / `Discontinuity` / `ReconnectDiscontinuity` |
+| pts_raw | u64 | `Pts90khz.raw` ticks |
+| pts_ms | float | `Pts90khz.ms` (PTS in milliseconds) |
+| dts_ms | float | DTS in ms (Sample events that carry it; otherwise NaN) |
+| pid | u16 | Source PID (NaN for global events) |
+| stream_type | str | `StreamKind` variant name (`Video` / `Audio` / `Klv` / `Subtitle`) |
+| codec | str | Codec tag (`H264` / `H265` / `H266` / `Av1` / `Aac` / `Mpeg2Audio` / `WebVtt` / ...) |
+| payload_len | int | `len(payload)` — bytes for KLV / subtitle / audio-fallback rows; element count for typed lists |
+| nal_count | int | Video-only — `len(payload)` for `_VideoEvent` rows whose payload is a typed `list[NalUnit]` or `list[Obu]`. NaN on audio rows (whose typed `list[AdtsFrame]` would otherwise produce false positives in a filter like `df[df.nal_count > N]`) and on non-Sample rows |
+| random_access | bool | TS adaptation-field RAI bit (video samples) |
+| has_codec_parse_error | bool | True iff the Phase 5 codec parser fell back to raw bytes for this event |
+| issue | str | `NonConformant` event's issue text |
+| issue_kind | str | `NonConformant` event's `.kind` enum variant name |
+
+Payloads themselves stay on the original event objects — they're not
+materialised in the DataFrame.
+
+### NAL / OBU lists — `nals_to_dataframe` / `obus_to_dataframe`
+
+```python
+# Extract NALs from a single video Sample
+sample = next(e for e in events if type(e).__name__ == "_VideoEvent")
+df = tstrans.pandas.nals_to_dataframe(sample.payload, pts=sample.pts.ms)
+df.nal_type_name.value_counts()
+```
+
+NAL type names are decoded via H.264 §Table 7-1 / H.265 §Table 7-1 /
+H.266 V4 §Table 5 lookup keyed on `nal.kind`. Unknown types fall back
+to `unknown_{n}`.
+
+Columns: `kind`, `nal_type`, `nal_type_name`, `ref_idc` (H.264 only;
+NaN elsewhere), `layer_id` (H.265/H.266 only; NaN on H.264),
+`temporal_id_plus1`, `payload_len`, and `pts_ms` if the optional `pts`
+argument was supplied.
+
+```python
+# AV1 sample
+df = tstrans.pandas.obus_to_dataframe(sample.payload, pts=sample.pts.ms)
+```
+
+OBU schema: `obu_type`, `obu_type_name`, `temporal_id`, `spatial_id`
+(both from the optional OBU extension; NaN when absent), `payload_len`,
+and `pts_ms` if supplied.
+
+### Audio frames — `audio_frames_to_dataframe`
+
+```python
+from tstrans.codec import parse_aac_frames
+
+frames = parse_aac_frames(buf)
+df = tstrans.pandas.audio_frames_to_dataframe(frames)
+df.plot(x="byte_offset", y="frame_length_bytes")
+```
+
+Polymorphic — detects `AdtsFrame` vs `Mpeg2AudioFrame` from the first
+element. Mixed-type input raises `TypeError`. Enum-valued fields
+collapse to their bare variant name (e.g. `"LC"`, not `"AacProfile.LC"`;
+`"III"` for MPEG-2 Audio Layer III; `"JOINT_STEREO"` for the channel
+mode). Struct-valued `AacChannelLayout` is kept as its `repr`.
+
+`byte_offset` is the running cumulative offset of each parsed frame
+inside the input buffer, computed by summing `frame_length_bytes`
+from zero. For inputs produced by `parse_*_frames_with_resync`, this
+does NOT account for skipped (garbage) bytes between recovered frames
+— if you need absolute offsets across a resync boundary, pre-compute
+them from the resync output itself.
+
+## NumPy zero-copy views
+
+Every byte-bearing class (NalUnit, Obu, AdtsFrame, Mpeg2AudioFrame, all
+H.264/H.265/H.266 SPS/PPS/VPS/SliceHeaderLight, AV1 sequence/frame
+headers) carries a `.payload_np` / `.raw_rbsp_np` / `.raw_np` accessor
+that returns a zero-copy `numpy.ndarray(dtype=uint8)` view of the
+underlying bytes:
+
+```python
+import numpy as np
+from tstrans.codec import parse_h264_sps
+
+sps = parse_h264_sps(rbsp_bytes)
+arr = sps.raw_rbsp_np   # zero-copy np.ndarray(dtype=np.uint8)
+```
+
+Mapping:
+
+- `.payload_np` — `NalUnit`, `Obu`, `AdtsFrame`, `Mpeg2AudioFrame`
+- `.raw_rbsp_np` — H.264 / H.265 / H.266 `Sps` / `Pps` / `Vps` /
+  `SliceHeaderLight`
+- `.raw_np` — `Av1SequenceHeader`, `Av1FrameHeaderLight` (the field is
+  named `raw`, not `raw_rbsp`)
+
+These accessors are **read-only** views — `np.frombuffer` sets
+`writeable=False` on Python `bytes`. Mutating attempts raise
+`ValueError: assignment destination is read-only` by design.
+
+For users who don't want the `.payload_np` indirection, the equivalent
+zero-copy is one line of stdlib NumPy:
+
+```python
+import numpy as np
+arr = np.frombuffer(nal.payload, dtype=np.uint8)
+```
+
+Both forms are equivalent.
+
+## Common recipes
+
+### Plot platform altitude over time
+
+```python
+df = tstrans.pandas.klv_to_dataframe(uas_records)
+df["sensor_alt_m"].plot()
+# Or, if you want the framed-scene centre instead of the sensor itself:
+df["frame_center_elev_m"].plot()
+```
+
+### Filter Sample events by codec
+
+```python
+df = tstrans.pandas.events_to_dataframe(events)
+h264_samples = df[(df.kind == "Sample") & (df.codec == "H264")]
+```
+
+### NAL type histogram across an entire capture
+
+```python
+all_nals = []
+for ev in events:
+    if type(ev).__name__ == "_VideoEvent" and isinstance(ev.payload, list):
+        all_nals.extend(ev.payload)
+df = tstrans.pandas.nals_to_dataframe(all_nals)
+df.nal_type_name.value_counts().plot.bar()
+```
+
+### Audio frame-length over byte offset
+
+```python
+frames = list(parse_aac_frames(buf))
+df = tstrans.pandas.audio_frames_to_dataframe(frames)
+df.set_index("byte_offset")["frame_length_bytes"].plot()
+```
+
+## Troubleshooting
+
+**`TypeError: klv_to_dataframe requires homogeneous record types`** — your
+input mixes ST sets (e.g. `UasDatalinkLs` + `SecurityLs`). Split into
+per-set lists:
+
+```python
+from tstrans.klv import UasDatalinkLs, SecurityLs
+uas = [r for r in records if isinstance(r, UasDatalinkLs)]
+sec = [r for r in records if isinstance(r, SecurityLs)]
+df_uas = tstrans.pandas.klv_to_dataframe(uas)
+df_sec = tstrans.pandas.klv_to_dataframe(sec)
+```
+
+**KLV DataFrame falls back to `RangeIndex` instead of `DatetimeIndex`** —
+none of your records had a populated timestamp. Common with legacy
+ST 0102 SecurityLs (no internal timestamp) or partial captures whose
+records pre-date the precision-timestamp tag.
+
+**`field_errors` looks empty / non-empty unexpectedly** — lenient KLV
+decode (the default) keeps a per-record `field_errors` list of
+`KlvFieldError` entries for tags that failed to parse. The DataFrame
+collapses these to a `|`-joined string. Empty `field_errors` becomes
+the empty string `""`, not `NaN`. If you need a boolean instead, use
+`df.field_errors.astype(bool)`.
+
+**`nal_count` is `NaN` on audio rows** — by design.
+`audio_frames_to_dataframe` is the audio-frame adapter; `nal_count` is
+populated only on video Sample rows. See the column table above.
+
+**`byte_offset` doesn't match the absolute byte position I expected** —
+the cumulative offset is a running sum of `frame_length_bytes` starting
+at zero, so it represents the offset within the contiguous-frame slice
+the adapter saw. For `*_with_resync` flows, gaps caused by skipped
+garbage bytes between frames are NOT reflected. Use the resync API
+output directly when absolute byte offsets matter.

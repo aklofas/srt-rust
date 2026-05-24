@@ -68,6 +68,18 @@ input and accumulates per-field errors on `.field_errors`; strict
 mode raises `tstrans.exceptions.KlvError`. See `tstrans.klv` module
 docstring for the full type listing.
 
+### pandas + NumPy adapters (Phase 6, optional)
+
+Install the optional extra to enable DataFrame adapters and zero-copy
+NumPy views over NAL / OBU / parameter-set payloads:
+
+```bash
+pip install 'tstrans[pandas]'
+```
+
+See [guide-python-pandas.md](guide-python-pandas.md) for the full
+integration guide.
+
 ## Design
 
 See [docs/specs/2026-05-22-tst-py-design.md](../../docs/specs/2026-05-22-tst-py-design.md)

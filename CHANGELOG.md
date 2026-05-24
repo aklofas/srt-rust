@@ -7,6 +7,40 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — mpegts: multi-cell AU cell reassembly (2026-05-24)
+
+**`mpegts::demux` now reassembles fragmented Metadata AU cells per
+H.222.0 V9 §2.12.4.2.** Two flavors covered: multiple AU cells back-to-back
+within one PES (previously silently truncated to the first cell), and cells
+of a single AU spread across multiple PES packets (`First` / `Middle` /
+`Last`). Per-PID reassembly buffer capped at 1 MiB by default; failure
+modes surface as typed `MultiCellAuReason` on
+`NonConformantIssue::MultiCellAu`.
+
+**Added:**
+
+- `mpegts::demux` multi-cell Metadata AU cell reassembly
+  (H.222.0 §2.12.4.2). Fragmented sync-metadata AUs (`First` / `Middle` /
+  `Last`) now reassemble into a single demuxer event with
+  `MetadataKind::KlvSyncAuCell::was_reassembled = true` and
+  `cell_count = N`. Multiple AU cells packed into one PES (previously
+  silently truncated to the first cell) now each emit their own event.
+- `DemuxerConfig::au_cell_cap_per_pid` (default 1 MiB) caps the per-PID
+  reassembly buffer; overflow drops with
+  `NonConformantIssue::MultiCellAu { reason: Overflow, .. }`.
+- `MultiCellAuReason` enum (`Orphan` / `SequenceGap` / `ConcurrentFirst` /
+  `Overflow`) surfaces typed reassembly failure modes via
+  `NonConformantIssue::MultiCellAu::reason`.
+- `MetadataKind::KlvSyncAuCell` gains `was_reassembled: bool` +
+  `cell_count: u32` fields.
+
+**Changed:**
+
+- `NonConformantIssue::MultiCellAu` Display reworded — describes the
+  reassembly failure mode instead of the prior "not implemented" message.
+
+---
+
 ## [Unreleased] — tst-py Phase 6 — pandas + NumPy adapters (2026-05-23)
 
 **`tstrans.pandas` DataFrame adapters + zero-copy NumPy views via optional

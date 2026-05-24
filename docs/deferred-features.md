@@ -962,20 +962,24 @@ the trigger that would unblock it.
 
 ## Multi-cell fragmented metadata AU cells
 
-- **Status:** Deferred.
-- **Why deferred:** All current MISB sync KLV deployments emit one
-  KLV record per AU cell (`cell_fragment_indication = '11'`
-  Complete). Multi-cell support per H.222.0 V9 § 2.12.4.2
-  Table 2-157 ('00'/'01'/'10' fragments)
-  lets a single metadata Access Unit span multiple cells, but is
-  not used by any consumer we know of. The demuxer surfaces
-  `cell_fragment_indication` on `MetadataKind::KlvSyncAuCell`, so
-  consumers receiving fragmented input can detect non-Complete
-  cells; the muxer always emits Complete.
-- **Trigger to revisit:** A capture surfaces fragmented AU cells
-  (demuxer would today route them to `KlvShape::Other` because the
-  inner-payload sniff would fail on non-first cells), or a
-  consumer asks for fragmented-output emit on the mux side.
+- **Status:** SHIPPED 2026-05-24.
+- **Plan:** `docs/plans/2026-05-24-multi-cell-au-reassembly.md` (outside the published repo).
+- **Behavior:** the demuxer now reassembles fragmented AU cells per
+  H.222.0 V9 §2.12.4.2 Table 2-157. Both flavors covered:
+  - Multiple AU cells back-to-back within one PES — every cell emits
+    its own event; previously only the first cell did.
+  - Cells of one AU spread across multiple PES packets — `First` +
+    `Middle`* + `Last` accumulate in a per-PID buffer until `Last`
+    completes the AU; the demuxer then emits one event with
+    `MetadataKind::KlvSyncAuCell::was_reassembled = true` and
+    `cell_count = N`.
+- **Failure modes:** `NonConformantIssue::MultiCellAu` now carries a
+  typed `reason: MultiCellAuReason` (`Orphan` / `SequenceGap` /
+  `ConcurrentFirst` / `Overflow`). Per-PID buffer cap configurable via
+  `DemuxerConfig::au_cell_cap_per_pid` (default 1 MiB).
+- **Out of scope:** caller override of `random_access_indicator` /
+  `decoder_config_flag` on the mux side; mux-side emit of fragmented
+  output. Both remain as separate deferred entries.
 
 ## Caller override of `random_access_indicator` / `decoder_config_flag` on mux
 

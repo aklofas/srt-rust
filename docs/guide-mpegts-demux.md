@@ -338,6 +338,26 @@ preserved verbatim. Audio not declared via the recognized stream_type
 bytes also falls through here; use `treat_as` to route by-PID. See
 [deferred-features.md](deferred-features.md).
 
+### Multi-cell AU cell reassembly
+
+The demuxer reassembles fragmented Metadata AU cells per H.222.0 V9
+§2.12.4.2. Most MISB sync KLV deployments emit one KLV record per cell
+(`cell_fragment_indication = '11'` Complete) and reassembly is a no-op
+— each cell emits its own event.
+
+Some recording pipelines split a single KLV record across multiple AU
+cells (`First` → 0..n `Middle` → `Last`). The demuxer accumulates the
+fragments in a per-PID buffer and emits one event when `Last`
+arrives, with `MetadataKind::KlvSyncAuCell::was_reassembled = true`
+and `cell_count = N`.
+
+If reassembly fails (orphan continuation, sequence-number gap, a new
+`First` arrives mid-buffer, or the per-PID 1 MiB cap is exceeded) the
+demuxer drops the partial buffer and emits
+`NonConformantIssue::MultiCellAu` with a typed
+`MultiCellAuReason` naming the failure mode. Tune the cap via
+`DemuxerBuilder::au_cell_cap_per_pid(bytes)`.
+
 ## Reading per-stream descriptors
 
 Every `DemuxEvent::ProgramMap`'s `streams: Vec<StreamInfo>` carries

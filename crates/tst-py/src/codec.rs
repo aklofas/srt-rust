@@ -2982,14 +2982,18 @@ fn iter_aac_frames_with_resync_py(py: Python<'_>, bytes_buf: &[u8]) -> AdtsFrame
 #[pyfunction]
 #[pyo3(name = "parse_aac_frames")]
 fn parse_aac_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<Vec<AdtsFramePy>> {
-    rust_aac_frames(bytes_buf)
-        .map(|res| {
-            res.map(|f| AdtsFramePy {
-                inner: f.to_owned(),
-            })
-            .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "aac"))
-        })
-        .collect()
+    // GIL-release rationale: see `iter_aac_frames_py`. Parse + own-copy
+    // off-thread, then map errors to PyErr inside the GIL (cheap).
+    let frames = py.allow_threads(|| {
+        rust_aac_frames(bytes_buf)
+            .map(|res| res.map(|f| f.to_owned()))
+            .collect::<Result<Vec<_>, _>>()
+    });
+    let frames = frames.map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "aac"))?;
+    Ok(frames
+        .into_iter()
+        .map(|inner| AdtsFramePy { inner })
+        .collect())
 }
 
 /// Eagerly parse all ADTS frames from `bytes_buf`, skipping parse errors
@@ -3000,12 +3004,17 @@ fn parse_aac_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<Vec<AdtsFra
 /// dropping a frame on corruption is preferable to aborting the parse.
 #[pyfunction]
 #[pyo3(name = "parse_aac_frames_with_resync")]
-fn parse_aac_frames_with_resync_py(bytes_buf: &[u8]) -> Vec<AdtsFramePy> {
-    rust_aac_frames_with_resync(bytes_buf)
-        .filter_map(|res| res.ok())
-        .map(|f| AdtsFramePy {
-            inner: f.to_owned(),
-        })
+fn parse_aac_frames_with_resync_py(py: Python<'_>, bytes_buf: &[u8]) -> Vec<AdtsFramePy> {
+    // GIL-release rationale: see `iter_aac_frames_py`.
+    let frames: Vec<_> = py.allow_threads(|| {
+        rust_aac_frames_with_resync(bytes_buf)
+            .filter_map(|res| res.ok())
+            .map(|f| f.to_owned())
+            .collect()
+    });
+    frames
+        .into_iter()
+        .map(|inner| AdtsFramePy { inner })
         .collect()
 }
 
@@ -3282,14 +3291,18 @@ fn parse_mpeg2_audio_frames_py(
     py: Python<'_>,
     bytes_buf: &[u8],
 ) -> PyResult<Vec<Mpeg2AudioFramePy>> {
-    rust_mpeg2audio_frames(bytes_buf)
-        .map(|res| {
-            res.map(|f| Mpeg2AudioFramePy {
-                inner: f.to_owned(),
-            })
-            .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "mpeg2audio"))
-        })
-        .collect()
+    // GIL-release rationale: see `iter_aac_frames_py`.
+    let frames = py.allow_threads(|| {
+        rust_mpeg2audio_frames(bytes_buf)
+            .map(|res| res.map(|f| f.to_owned()))
+            .collect::<Result<Vec<_>, _>>()
+    });
+    let frames =
+        frames.map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "mpeg2audio"))?;
+    Ok(frames
+        .into_iter()
+        .map(|inner| Mpeg2AudioFramePy { inner })
+        .collect())
 }
 
 /// Eagerly parse all MPEG audio frames from `bytes_buf`, skipping parse
@@ -3300,12 +3313,20 @@ fn parse_mpeg2_audio_frames_py(
 /// dropping a frame on corruption is preferable to aborting the parse.
 #[pyfunction]
 #[pyo3(name = "parse_mpeg2_audio_frames_with_resync")]
-fn parse_mpeg2_audio_frames_with_resync_py(bytes_buf: &[u8]) -> Vec<Mpeg2AudioFramePy> {
-    rust_mpeg2audio_frames_with_resync(bytes_buf)
-        .filter_map(|res| res.ok())
-        .map(|f| Mpeg2AudioFramePy {
-            inner: f.to_owned(),
-        })
+fn parse_mpeg2_audio_frames_with_resync_py(
+    py: Python<'_>,
+    bytes_buf: &[u8],
+) -> Vec<Mpeg2AudioFramePy> {
+    // GIL-release rationale: see `iter_aac_frames_py`.
+    let frames: Vec<_> = py.allow_threads(|| {
+        rust_mpeg2audio_frames_with_resync(bytes_buf)
+            .filter_map(|res| res.ok())
+            .map(|f| f.to_owned())
+            .collect()
+    });
+    frames
+        .into_iter()
+        .map(|inner| Mpeg2AudioFramePy { inner })
         .collect()
 }
 

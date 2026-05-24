@@ -130,6 +130,14 @@ jobs:
       - name: Check lifecycle ffi_catch coverage
         run: bash scripts/check-lifecycle-ffi-catch-coverage.sh
 
+      - name: Check C header mirror-enum export
+        # Catches Tst* enums declared in crates/tst-c/src/ but missing
+        # from cbindgen.toml [export] include allowlist — silently
+        # dropped from the generated header (regression bug 2026-05-24
+        # CFI tolerance: TstCellFragmentIndication was defined but
+        # never exported, so C callers had no constants).
+        run: bash scripts/check-c-header-mirror-enum-export.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

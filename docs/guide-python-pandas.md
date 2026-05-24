@@ -1,7 +1,8 @@
 # Python pandas + NumPy integration guide
 
-Optional pandas DataFrame adapters and NumPy zero-copy views for the
-`tstrans` Python package. Requires the `[pandas]` extra:
+Optional pandas DataFrame adapters and NumPy snapshot views (one
+Rust-to-Python `bytes` copy per access; see [Snapshot vs zero-copy](#snapshot-vs-zero-copy)
+below) for the `tstrans` Python package. Requires the `[pandas]` extra:
 
 ```bash
 pip install 'tstrans[pandas]'

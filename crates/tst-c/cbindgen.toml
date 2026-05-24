@@ -113,6 +113,7 @@ include = [
     "TstDiscontinuityKindTag",
     "TstNonConformantCode",
     "TstPcrMalformedKind",
+    "TstCellFragmentIndication",
     "TstMultiCellAuReason",
     "TstLinkSource",
     "TstStrictMode",
@@ -187,6 +188,7 @@ include = [
 "TstDiscontinuityKindTag"   = "tst_discontinuity_kind"
 "TstNonConformantCode"      = "tst_nonconformant_code"
 "TstPcrMalformedKind"       = "tst_pcr_malformed_kind"
+"TstCellFragmentIndication" = "tst_cell_fragment_indication"
 "TstMultiCellAuReason"      = "tst_multi_cell_au_reason"
 "TstLinkSource"             = "tst_link_source"
 "TstStrictMode"             = "tst_strict_mode"

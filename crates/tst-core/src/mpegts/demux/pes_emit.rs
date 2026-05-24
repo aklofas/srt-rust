@@ -21,8 +21,8 @@ use crate::mpegts::demux::event::{
     StreamId, StreamKind, SubtitleCodec, VideoCodec, VideoPayload,
 };
 use crate::mpegts::demux::payload::{
-    Av1BindingUnwrap, DvbSubStripResult, KlvShape, classify_klv, split_nals, split_obus,
-    strip_dvb_sub_envelope, unwrap_av1_binding,
+    Av1BindingUnwrap, DvbSubStripResult, KlvShape, classify_klv, iter_au_cells, split_nals,
+    split_obus, strip_dvb_sub_envelope, unwrap_av1_binding,
 };
 use crate::mpegts::demux::pes::{PesPayload, ReassemblyOutcome};
 
@@ -333,155 +333,203 @@ impl super::demuxer::Demuxer {
             }
             StreamKind::KlvSync { .. } | StreamKind::KlvAsync => {
                 let shape = classify_klv(&pes.payload);
-                let (kind_meta, payload, used_pts) = match (shape, kind) {
-                    (KlvShape::Sync, _) => {
-                        // TEMPORARY shim: Task 4 replaces this with
-                        // iter_au_cells + the per-PID reassembler from Task 3.
-                        // For now we preserve Task-1 semantics by decoding
-                        // just the first cell — single-cell Complete works,
-                        // First/Middle/Last fall through to MultiCellAu.
-                        let (header, inner) =
-                            match crate::mpegts::au_cell::read_metadata_au_cell(&pes.payload) {
-                                Ok(pair) => pair,
-                                Err(_) => {
-                                    // Sniff said Sync but full parse failed — bail to
-                                    // the existing Other-style pass-through (matches
-                                    // the KlvShape::Other arm verbatim).
-                                    let payload_len = pes.payload.len();
-                                    let raw = pes.payload;
-                                    let entry = self
-                                        .stats_per_stream
-                                        .entry(stream.pid)
-                                        .or_insert_with(|| crate::mpegts::stats::StreamStats {
+
+                // Async-shape PIDs (bare SMPTE UL) — bypass the AU cell
+                // reassembler entirely. One emit per PES, unchanged from
+                // the pre-Task-4 path.
+                if let KlvShape::Async { klv } = shape {
+                    if matches!(kind, StreamKind::KlvSync { .. })
+                        && self.klv_mismatch_insert(pes.pid)
+                    {
+                        self.queue_nonconformant(
+                            stream,
+                            NonConformantIssue::StreamTypeMismatchAsyncOnSyncPid,
+                        );
+                    }
+                    let meta_len = klv.len();
+                    let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
+                        crate::mpegts::stats::StreamStats {
+                            pid: stream.pid,
+                            stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
+                                &stream.kind,
+                            )),
+                            program_number,
+                            ..Default::default()
+                        }
+                    });
+                    entry.items += 1;
+                    entry.bytes += meta_len as u64;
+                    self.bump_klv_counters(stream.pid, 1);
+                    self.queue.push_back(DemuxEvent::Metadata {
+                        stream,
+                        pts,
+                        kind: MetadataKind::KlvAsync,
+                        payload: klv,
+                    });
+                    return;
+                }
+
+                // Other-shape PIDs (neither AU cell nor SMPTE UL) — pass
+                // through as raw Unknown samples for forensic visibility.
+                if matches!(shape, KlvShape::Other) {
+                    let payload_len = pes.payload.len();
+                    let raw = pes.payload;
+                    let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
+                        crate::mpegts::stats::StreamStats {
+                            pid: stream.pid,
+                            stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
+                                &stream.kind,
+                            )),
+                            program_number,
+                            ..Default::default()
+                        }
+                    });
+                    entry.items += 1;
+                    entry.bytes += payload_len as u64;
+                    self.queue.push_back(DemuxEvent::Sample {
+                        stream,
+                        pts,
+                        dts: pes.dts,
+                        payload: SamplePayload::Unknown {
+                            stream_type: StreamTypeCode::from_byte(0x15),
+                            raw,
+                        },
+                    });
+                    return;
+                }
+
+                // Sync shape — walk every cell in this PES, feed each into
+                // the per-PID reassembler, emit Metadata on Emit and
+                // NonConformant on Failure. Multi-cell AUs (First → 0..n
+                // Middle → Last) collapse into one Metadata event with
+                // `was_reassembled=true, cell_count=N`. Single-cell
+                // (Complete) AUs emit immediately with cell_count=1.
+                if matches!(kind, StreamKind::KlvAsync) && self.klv_mismatch_insert(pes.pid) {
+                    self.queue_nonconformant(
+                        stream,
+                        NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid,
+                    );
+                }
+
+                // Collect cells eagerly into a Vec so the iterator's borrow
+                // on `pes.payload` is released before we re-borrow self
+                // mutably to call process_cell + queue.push_back. Each
+                // `inner` slice still borrows from pes.payload; ownership
+                // of the outer Vec doesn't change that.
+                let cells: Vec<_> = iter_au_cells(&pes.payload).collect();
+                for cell_result in cells {
+                    let (header, inner) = match cell_result {
+                        Ok(pair) => pair,
+                        Err(_) => {
+                            // Truncated / malformed trailing cell. Stop
+                            // walking — earlier cells in this PES already
+                            // emitted or buffered; the partial tail is
+                            // dropped silently (the prior detect-only path
+                            // never surfaced this either).
+                            break;
+                        }
+                    };
+
+                    // ConcurrentFirst loop: process_cell may report
+                    // ConcurrentFirst (a new First/Complete arrived while
+                    // a buffer was already open for this PID). The
+                    // reassembler dropped its buffer and emitted Failure;
+                    // we surface the NonConformant and re-process the
+                    // triggering cell against the now-empty state. Bounded
+                    // to one re-entry per cell — after the re-entry the
+                    // state is empty, so the second call hits the
+                    // empty-state row of the table (Buffered or Emit).
+                    let mut to_process = Some((header, inner));
+                    while let Some((h, current_inner)) = to_process.take() {
+                        let outcome = self.au_reassembler.process_cell(pes.pid, h, current_inner);
+                        match outcome {
+                            crate::mpegts::demux::au_reassemble::ReassembleOutcome::Emit {
+                                header: emit_header,
+                                payload: emit_payload,
+                                cell_count,
+                            } => {
+                                let was_reassembled = cell_count > 1;
+                                let payload_vec = emit_payload.to_vec();
+                                // Drain the buffer (drops the borrow on
+                                // emit_payload). Safe to no-op for the
+                                // single-cell case since the buffer is
+                                // never populated then.
+                                if was_reassembled {
+                                    self.au_reassembler.clear_after_emit(pes.pid);
+                                }
+                                let meta_len = payload_vec.len();
+                                let entry =
+                                    self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
+                                        crate::mpegts::stats::StreamStats {
                                             pid: stream.pid,
                                             stream_type: StreamTypeCode::from_byte(
                                                 stream_type_from_kind(&stream.kind),
                                             ),
                                             program_number,
                                             ..Default::default()
-                                        });
-                                    entry.items += 1;
-                                    entry.bytes += payload_len as u64;
-                                    self.queue.push_back(DemuxEvent::Sample {
-                                        stream,
-                                        pts,
-                                        dts: pes.dts,
-                                        payload: SamplePayload::Unknown {
-                                            stream_type: StreamTypeCode::from_byte(0x15),
-                                            raw,
-                                        },
+                                        }
                                     });
-                                    return;
-                                }
-                            };
-                        match header.cell_fragment_indication {
-                            crate::mpegts::au_cell::CellFragmentIndication::Complete => {
-                                // If declared async but payload is sync, surface
-                                // mismatch — but only once per PID per PMT
-                                // version. Coalesces what would otherwise be
-                                // thousands of identical events.
-                                if matches!(kind, StreamKind::KlvAsync)
-                                    && self.klv_mismatch_insert(pes.pid)
-                                {
-                                    self.queue_nonconformant(
-                                        stream,
-                                        NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid,
-                                    );
-                                }
-                                let kind_meta = MetadataKind::KlvSyncAuCell {
-                                    metadata_service_id: header.metadata_service_id,
-                                    sequence_number: header.sequence_number,
-                                    cell_fragment_indication: header.cell_fragment_indication,
-                                    decoder_config_flag: header.decoder_config_flag,
-                                    random_access_indicator: header.random_access_indicator,
-                                    was_reassembled: false,
-                                    cell_count: 1,
-                                };
-                                // PES PTS surfaces unchanged; per H.222.0
-                                // §2.12.4.1 the AU cell itself carries no
-                                // embedded timestamp.
-                                (kind_meta, inner.to_vec(), pts)
+                                entry.items += 1;
+                                entry.bytes += meta_len as u64;
+                                self.bump_klv_counters(stream.pid, 1);
+                                self.queue.push_back(DemuxEvent::Metadata {
+                                    stream,
+                                    // PES PTS reused for every AU emitted
+                                    // from this PES (documented limitation
+                                    // — multi-AU PES has only one PTS).
+                                    pts,
+                                    kind: MetadataKind::KlvSyncAuCell {
+                                        metadata_service_id: emit_header.metadata_service_id,
+                                        sequence_number: emit_header.sequence_number,
+                                        // Always Complete on emit — the
+                                        // reassembler collapses First/
+                                        // Middle/Last into Complete on the
+                                        // emit path.
+                                        cell_fragment_indication:
+                                            crate::mpegts::au_cell::CellFragmentIndication::Complete,
+                                        decoder_config_flag: emit_header.decoder_config_flag,
+                                        random_access_indicator: emit_header
+                                            .random_access_indicator,
+                                        was_reassembled,
+                                        cell_count,
+                                    },
+                                    payload: payload_vec,
+                                });
                             }
-                            _ => {
-                                // Non-Complete cell — Task 4 will reassemble.
-                                // Until then, every partial cell drops with
-                                // reason=Orphan as a placeholder mapping (the
-                                // previous detect-only behavior had no taxonomy).
-                                let dropped_bytes = inner.len();
+                            crate::mpegts::demux::au_reassemble::ReassembleOutcome::Buffered => {
+                                // Wait for more cells (either later in
+                                // this PES, or in a subsequent PES on the
+                                // same PID).
+                            }
+                            crate::mpegts::demux::au_reassemble::ReassembleOutcome::Failure {
+                                reason,
+                                dropped_bytes,
+                            } => {
                                 self.queue_nonconformant(
                                     stream,
                                     NonConformantIssue::MultiCellAu {
                                         pid: pes.pid,
                                         dropped_bytes,
-                                        reason:
-                                            crate::mpegts::demux::event::MultiCellAuReason::Orphan,
+                                        reason,
                                     },
                                 );
-                                return;
+                                // ConcurrentFirst is the only Failure
+                                // variant the spec says to re-process — the
+                                // reassembler dropped the prior buffer and
+                                // the caller must replay the triggering
+                                // cell against the now-empty state. Other
+                                // failures (Orphan / SequenceGap /
+                                // Overflow) terminate the AU outright.
+                                if matches!(
+                                    reason,
+                                    crate::mpegts::demux::event::MultiCellAuReason::ConcurrentFirst
+                                ) {
+                                    to_process = Some((h, current_inner));
+                                }
                             }
                         }
                     }
-                    (KlvShape::Async { klv }, StreamKind::KlvSync { .. }) => {
-                        if self.klv_mismatch_insert(pes.pid) {
-                            self.queue_nonconformant(
-                                stream,
-                                NonConformantIssue::StreamTypeMismatchAsyncOnSyncPid,
-                            );
-                        }
-                        (MetadataKind::KlvAsync, klv, pts)
-                    }
-                    (KlvShape::Async { klv }, _) => (MetadataKind::KlvAsync, klv, pts),
-                    (KlvShape::Other, _) => {
-                        let payload_len = pes.payload.len();
-                        let raw = pes.payload;
-                        let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
-                            crate::mpegts::stats::StreamStats {
-                                pid: stream.pid,
-                                stream_type: StreamTypeCode::from_byte(stream_type_from_kind(
-                                    &stream.kind,
-                                )),
-                                program_number,
-                                ..Default::default()
-                            }
-                        });
-                        entry.items += 1;
-                        entry.bytes += payload_len as u64;
-                        self.queue.push_back(DemuxEvent::Sample {
-                            stream,
-                            pts,
-                            dts: pes.dts,
-                            payload: SamplePayload::Unknown {
-                                stream_type: StreamTypeCode::from_byte(0x15),
-                                raw,
-                            },
-                        });
-                        return;
-                    }
-                };
-                let meta_len = payload.len();
-                let entry = self.stats_per_stream.entry(stream.pid).or_insert_with(|| {
-                    crate::mpegts::stats::StreamStats {
-                        pid: stream.pid,
-                        stream_type: StreamTypeCode::from_byte(stream_type_from_kind(&stream.kind)),
-                        program_number,
-                        ..Default::default()
-                    }
-                });
-                entry.items += 1;
-                entry.bytes += meta_len as u64;
-                // Codec-specific counter bump. Today every KLV PES carries
-                // exactly one record (sender-side `push_klv` is one-record-
-                // per-call, and the demuxer emits one event per PES). If a
-                // future sender or external tool ships multi-record PESes,
-                // replace `1` with an LS-substrate iterator count on
-                // `payload`.
-                self.bump_klv_counters(stream.pid, 1);
-                self.queue.push_back(DemuxEvent::Metadata {
-                    stream,
-                    pts: used_pts,
-                    kind: kind_meta,
-                    payload,
-                });
+                }
             }
             StreamKind::Unknown(stream_type) => {
                 let payload_len = pes.payload.len();

@@ -12,14 +12,6 @@
 //! PMTs. Cleared wholesale on `Demuxer::reset_sync()` and on PMT
 //! version change.
 
-// Module-wide `dead_code` allowance: Task 3 lands this state machine
-// standalone with full unit-test coverage; Task 4 wires it into
-// `pes_emit.rs`. Until Task 4 ships, the public-to-the-crate items
-// `new` / `process_cell` / `reset_all` / `clear_after_emit` / the
-// `cap_per_pid` field / the `PidReassemblyState` fields and method
-// are unused by non-test code. Removing the allow after Task 4 lands.
-#![allow(dead_code)]
-
 use crate::mpegts::au_cell::{AuCellHeader, CellFragmentIndication};
 use std::collections::HashMap;
 
@@ -209,7 +201,10 @@ impl AuCellReassembler {
     }
 
     /// Clear the buffer for one PID (operational reset, not a wire-format
-    /// violation; no NonConformant emit).
+    /// violation; no NonConformant emit). Reserved for future hooks; not
+    /// called from the current pes_emit / reset_sync paths (those use
+    /// [`Self::reset_all`]).
+    #[allow(dead_code)]
     pub(crate) fn reset_pid(&mut self, pid: u16) {
         self.per_pid.remove(&pid);
     }

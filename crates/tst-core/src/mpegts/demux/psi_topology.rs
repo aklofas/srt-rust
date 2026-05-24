@@ -425,6 +425,14 @@ impl super::demuxer::Demuxer {
             self.subtitle_descriptor_ambiguous_emitted
                 .remove(&s.elementary_pid);
         }
+        // Drop any in-flight AU cell reassembly buffers wholesale on PMT
+        // version change. A PMT bump may have reassigned PIDs (sync ↔ async
+        // metadata, KLV ↔ video) and stale per-PID state would be
+        // ambiguous to interpret. Clearing all PIDs (not just the ones in
+        // this PMT) avoids any chance of cross-program leakage; the cost is
+        // dropping at most one partially-reassembled AU per active sync
+        // metadata PID — same shape as a reset_sync.
+        self.au_reassembler.reset_all();
 
         // Build StreamInfo list + check cross-program PID collisions.
         // Collect work to do before mutating self — satisfies borrow checker.

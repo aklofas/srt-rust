@@ -20,7 +20,8 @@ use crate::mpegts::demux::pes::Reassembler;
 use crate::mpegts::demux::psi_assembler::PsiSectionAssembler;
 use crate::mpegts::demux::ts::{TsParseError, parse_ts_packet};
 use crate::mpegts::demux::types::{
-    DEFAULT_PES_CAP_PER_PID, DEFAULT_PES_CAP_TOTAL, DemuxerConfig, DemuxerStats, ProgramTracker,
+    DEFAULT_AU_CELL_CAP_PER_PID, DEFAULT_PES_CAP_PER_PID, DEFAULT_PES_CAP_TOTAL, DemuxerConfig,
+    DemuxerStats, ProgramTracker,
 };
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
@@ -139,6 +140,11 @@ pub struct Demuxer {
     /// O(programs × streams) linear scan in `program_number_for_pid` that
     /// ran at every event-emitting callsite.
     pub(super) pid_to_program: HashMap<u16, u16>,
+    /// Per-PID Metadata AU cell reassembler. Accumulates fragmented sync-
+    /// metadata cells (H.222.0 §2.12.4.2 First/Middle/Last) into complete
+    /// AUs. Single-cell (`Complete`) AUs pass through unchanged. Cleared
+    /// wholesale on [`Self::reset_sync`] and on PMT version change.
+    pub(super) au_reassembler: crate::mpegts::demux::au_reassemble::AuCellReassembler,
 }
 
 impl Demuxer {
@@ -149,6 +155,9 @@ impl Demuxer {
     pub fn with_config(config: DemuxerConfig) -> Self {
         let cap_per_pid = config.pes_cap_per_pid.unwrap_or(DEFAULT_PES_CAP_PER_PID);
         let cap_total = config.pes_cap_total.unwrap_or(DEFAULT_PES_CAP_TOTAL);
+        let au_cap = config
+            .au_cell_cap_per_pid
+            .unwrap_or(DEFAULT_AU_CELL_CAP_PER_PID);
         // Seed the PAT PID (0x0000) so the PSI assembler is ready without a
         // separate "first packet" initialisation step.
         let mut psi_assemblers: HashMap<u16, PsiSectionAssembler> = HashMap::new();
@@ -182,6 +191,7 @@ impl Demuxer {
             av1_registration_malformed_emitted: HashSet::new(),
             subtitle_descriptor_ambiguous_emitted: HashSet::new(),
             pid_to_program: HashMap::new(),
+            au_reassembler: crate::mpegts::demux::au_reassemble::AuCellReassembler::new(au_cap),
         }
     }
 
@@ -590,6 +600,9 @@ impl Demuxer {
         self.av1_registration_malformed_emitted.clear();
         self.subtitle_descriptor_ambiguous_emitted.clear();
         self.pid_to_program.clear();
+        // Drop all in-flight AU cell reassembly buffers. Operational reset
+        // — no NonConformant emitted; pre-reconnect cells are simply gone.
+        self.au_reassembler.reset_all();
     }
 
     /// Reset all stats counters to zero and clear per-stream entries.

@@ -338,13 +338,19 @@ fn classify_klv_opaque_inner_complete_cfi_returns_sync() {
 }
 
 /// Integration test: MultiCellAu NonConformantIssue surfaces through the
-/// demuxer when a sync KLV PES carries a partial AU cell.
+/// demuxer when a sync KLV PES carries an orphan continuation cell.
 ///
 /// Approach: mux a normal sync KLV stream so we get a valid PAT + PMT +
-/// PES on PID 0x1031. Then locate the AU cell flags byte in the emitted TS
-/// bytes and patch the CFI bits to "First" (0b10 in the two MSBs of the
-/// flags byte). Feed the patched bytes to the demuxer and assert that a
-/// MultiCellAu issue surfaces instead of a Metadata event.
+/// PES on PID 0x1031. Then locate the AU cell flags byte in the emitted
+/// TS bytes and patch the CFI bits to "Last" (0b01 in the two MSBs of
+/// the flags byte). With no prior `First` buffered for this PID, the
+/// reassembler reports `MultiCellAuReason::Orphan` and the demuxer
+/// surfaces a `MultiCellAu` NonConformantIssue.
+///
+/// Before Task 4: any non-Complete CFI (First/Middle/Last) was treated as
+/// detect-only NonConformant. Now Task 4 actually reassembles, so we test
+/// the orphan case (Last with empty state) rather than First — a First
+/// cell with no continuation simply buffers and emits nothing.
 ///
 /// AU cell flags byte layout (H.222.0 V9 §2.12.4.2 Table 2-156):
 ///   [7:6] cell_fragment_indication  (Complete = 0b11)
@@ -354,7 +360,7 @@ fn classify_klv_opaque_inner_complete_cfi_returns_sync() {
 ///
 /// The muxer writes CFI=Complete (0b11) with dcf=0 and rai=1 and reserved=0b1111
 /// → flags byte = 0b11_0_1_1111 = 0xDF.
-/// Patching to CFI=First (0b10): 0b10_0_1_1111 = 0x9F.
+/// Patching to CFI=Last (0b01): 0b01_0_1_1111 = 0x5F.
 #[test]
 fn multi_cell_au_emits_non_conformant_issue_through_demuxer() {
     use tst_core::mpegts::demux::{DemuxEvent, Demuxer, NonConformantIssue};
@@ -406,8 +412,10 @@ fn multi_cell_au_emits_non_conformant_issue_through_demuxer() {
         //                 [2] flags byte, [3..4] AU_cell_data_length
         let flags_offset = idx + 2;
         if flags_offset < 188 {
-            // CFI Complete (0b11) lives in bits [7:6]. Patch to First (0b10).
-            pkt[flags_offset] = (pkt[flags_offset] & 0x3F) | 0x80;
+            // CFI Complete (0b11) lives in bits [7:6]. Patch to Last
+            // (0b01) — orphan continuation with no prior First in the
+            // reassembler triggers MultiCellAuReason::Orphan.
+            pkt[flags_offset] = (pkt[flags_offset] & 0x3F) | 0x40;
             patched = true;
             break 'outer;
         }
@@ -436,7 +444,7 @@ fn multi_cell_au_emits_non_conformant_issue_through_demuxer() {
     }
     assert!(
         multi_cell_seen,
-        "MultiCellAu NonConformantIssue must surface when CFI is non-Complete"
+        "MultiCellAu NonConformantIssue must surface for orphan Last cell"
     );
 }
 

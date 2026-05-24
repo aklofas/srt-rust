@@ -225,6 +225,7 @@ class NonConformantKind(enum.Enum):
     SUBTITLE_MISSING_DESCRIPTOR = "subtitle_missing_descriptor"
     SUBTITLE_ALIGNMENT_MISSING = "subtitle_alignment_missing"
     MULTI_CELL_AU = "multi_cell_au"
+    MALFORMED_AU_CELL_CFI_TOLERATED = "malformed_au_cell_cfi_tolerated"
     PSI_MULTI_SECTION_UNSUPPORTED = "psi_multi_section_unsupported"
     PSI_CC_DISCONTINUITY = "psi_cc_discontinuity"
     PSI_OVERLONG_SECTION = "psi_overlong_section"

@@ -639,6 +639,37 @@ pub enum NonConformantIssue {
         reason: MultiCellAuReason,
     },
 
+    /// A sync-metadata AU cell arrived with `cell_fragment_indication`
+    /// set to `0b00` (Middle) or `0b01` (Last) when no prior `First`
+    /// cell was buffered for the PID, AND the demuxer was configured
+    /// with [`crate::mpegts::demux::DemuxerConfig::malformed_au_cell_cfi_tolerance`]
+    /// `= true`, AND the cell's inner payload independently validated
+    /// as a single complete KLV unit (SMPTE 336M UL prefix
+    /// `06 0e 2b 34` followed by a BER length describing exactly the
+    /// available payload).
+    ///
+    /// The demuxer emitted the cell as a
+    /// [`MetadataKind::KlvSyncAuCell`] event with
+    /// `cell_fragment_indication = Complete` AND this diagnostic.
+    /// Without the opt-in tolerance knob, the cell would have surfaced
+    /// only as [`Self::MultiCellAu`] `{ reason = MultiCellAuReason::Orphan }`.
+    ///
+    /// Per H.222.0 V9 §2.12.4.2 Table 2-157, only `cfi_bits = 0b11`
+    /// indicates a single complete cell. Producers that emit `0b00`
+    /// (middle) or `0b01` (last) for a single complete payload are
+    /// non-conformant; this diagnostic surfaces every tolerated cell
+    /// so downstream consumers can quantify the malformation, log it,
+    /// or surface it to telemetry.
+    ///
+    /// `pid` is the elementary stream PID. `observed_cfi` is the wire
+    /// value the demuxer read. `treated_as` is the value the demuxer
+    /// substituted (always [`CellFragmentIndication::Complete`] today).
+    MalformedAuCellCfiTolerated {
+        pid: u16,
+        observed_cfi: crate::mpegts::au_cell::CellFragmentIndication,
+        treated_as: crate::mpegts::au_cell::CellFragmentIndication,
+    },
+
     /// Per ISO/IEC 13818-1 §2.4.4.5, PSI tables may be split across
     /// multiple sections (the table's `last_section_number > 0`).
     /// Current demuxer scope reassembles single-section tables only;
@@ -965,6 +996,20 @@ impl std::fmt::Display for NonConformantIssue {
                     "multi-cell AU reassembly failed on PID 0x{pid:04X}: {dropped_bytes} bytes dropped ({reason_str})"
                 )
             }
+            NonConformantIssue::MalformedAuCellCfiTolerated {
+                pid,
+                observed_cfi,
+                treated_as,
+            } => {
+                write!(
+                    f,
+                    "malformed AU cell CFI tolerated on PID 0x{pid:04X}: \
+                     observed {observed_cfi:?} (0b{observed_bits:02b}), \
+                     treated as {treated_as:?} (0b{treated_bits:02b})",
+                    observed_bits = *observed_cfi as u8,
+                    treated_bits = *treated_as as u8,
+                )
+            }
             NonConformantIssue::PsiMultiSectionUnsupported {
                 pid,
                 table_id,
@@ -1126,5 +1171,21 @@ mod tests {
         assert!(s.contains("PID 0x0100"), "Display includes PID: {s}");
         assert!(s.contains("expected 0x9"), "Display includes expected: {s}");
         assert!(s.contains("observed 0xC"), "Display includes observed: {s}");
+    }
+
+    #[test]
+    fn malformed_au_cell_cfi_tolerated_displays_pid_and_cfi_bits() {
+        use crate::mpegts::au_cell::CellFragmentIndication;
+        let issue = NonConformantIssue::MalformedAuCellCfiTolerated {
+            pid: 0x1002,
+            observed_cfi: CellFragmentIndication::Middle,
+            treated_as: CellFragmentIndication::Complete,
+        };
+        let s = format!("{issue}");
+        assert!(s.contains("PID 0x1002"), "Display includes PID: {s}");
+        assert!(s.contains("Middle"), "Display names observed variant: {s}");
+        assert!(s.contains("0b00"), "Display includes observed CFI bits: {s}");
+        assert!(s.contains("Complete"), "Display names treated_as variant: {s}");
+        assert!(s.contains("0b11"), "Display includes treated_as CFI bits: {s}");
     }
 }

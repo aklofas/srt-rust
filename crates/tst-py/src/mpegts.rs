@@ -747,6 +747,7 @@ fn non_conformant_kind_name(issue: &NonConformantIssue) -> &'static str {
         LatmFraming { .. } => "LATM_FRAMING",
         PsiCcDiscontinuity { .. } => "PSI_CC_DISCONTINUITY",
         MultiCellAu { .. } => "MULTI_CELL_AU",
+        MalformedAuCellCfiTolerated { .. } => "MALFORMED_AU_CELL_CFI_TOLERATED",
         PsiMultiSectionUnsupported { .. } => "PSI_MULTI_SECTION_UNSUPPORTED",
         Ac3SyncMissing { .. } => "AC3_SYNC_MISSING",
         Av1WrongStreamId { .. } => "AV1_WRONG_STREAM_ID",

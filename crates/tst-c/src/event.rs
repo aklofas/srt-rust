@@ -1066,6 +1066,21 @@ fn fill_nonconformant(
             body.table_id = *table_id;
             body.last_section_number = *last_section_number;
         }
+        NonConformantIssue::MalformedAuCellCfiTolerated { pid, .. } => {
+            // Temporary keepalive arm: Task 6 will add a dedicated
+            // TstNonConformantCode variant (= 32) with explicit field
+            // carriage for the observed/treated_as CFI bytes and bump
+            // the ABI version. Until then, surface the variant as the
+            // catch-all `Other` code so C callers receive a stable
+            // (if low-detail) signal that something tolerated landed.
+            body.issue_code = TstNonConformantCode::Other as c_int;
+            body.pid = *pid;
+            arena
+                .detail_buf
+                .extend_from_slice(b"malformed_au_cell_cfi_tolerated");
+            arena.detail_buf.push(0);
+            body.detail = arena.detail_buf.as_ptr() as *const c_char;
+        }
         NonConformantIssue::Other(s) => {
             body.issue_code = TstNonConformantCode::Other as c_int;
             arena.detail_buf.extend_from_slice(s.as_bytes());

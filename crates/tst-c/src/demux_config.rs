@@ -369,9 +369,15 @@ mod tests {
     fn set_malformed_au_cell_cfi_tolerance_toggles() {
         unsafe {
             let cfg = tst_demux_config_new();
-            assert_eq!(tst_demux_config_set_malformed_au_cell_cfi_tolerance(cfg, 1), 0);
+            assert_eq!(
+                tst_demux_config_set_malformed_au_cell_cfi_tolerance(cfg, 1),
+                0
+            );
             assert!((*cfg).build_options().malformed_au_cell_cfi_tolerance);
-            assert_eq!(tst_demux_config_set_malformed_au_cell_cfi_tolerance(cfg, 0), 0);
+            assert_eq!(
+                tst_demux_config_set_malformed_au_cell_cfi_tolerance(cfg, 0),
+                0
+            );
             assert!(!(*cfg).build_options().malformed_au_cell_cfi_tolerance);
             tst_demux_config_free(cfg);
         }

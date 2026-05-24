@@ -7,6 +7,82 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — au-cell CFI tolerance mode (opt-in receive-side compatibility) (2026-05-24)
+
+**Added:**
+
+- `DemuxerConfig::malformed_au_cell_cfi_tolerance: bool` (default
+  `false`) — opt-in tolerance for sync-metadata AU cells that arrive
+  with `cell_fragment_indication` bits set to `0b00` (Middle) or
+  `0b01` (Last) without a prior `First` cell. When enabled AND the
+  orphan cell's inner payload independently validates as one complete
+  KLV record (SMPTE 336M UL prefix + BER length match), the demuxer
+  emits the cell as `MetadataKind::KlvSyncAuCell { cell_fragment_indication:
+  Complete, .. }` plus a
+  `NonConformantIssue::MalformedAuCellCfiTolerated { pid,
+  observed_cfi, treated_as }` diagnostic so the malformation remains
+  visible. Off by default keeps the spec-strict behavior: orphan
+  cells surface only as `NonConformantIssue::MultiCellAu { reason:
+  MultiCellAuReason::Orphan }`.
+- `DemuxerBuilder::malformed_au_cell_cfi_tolerance(enable)` — builder
+  method for the new config field.
+- `NonConformantIssue::MalformedAuCellCfiTolerated { pid: u16,
+  observed_cfi: CellFragmentIndication, treated_as:
+  CellFragmentIndication }` — new variant carrying the wire-observed
+  and substituted CFI bytes for telemetry / diagnostics.
+
+**Python (`tstrans` 0.1.0):**
+
+- `tstrans.mpegts.DemuxerConfig.malformed_au_cell_cfi_tolerance: bool`
+  (default `False`) — mirrors the Rust config field.
+- `tstrans.mpegts.CellFragmentIndication` — new `eq_int` enum
+  (`MIDDLE=0`, `LAST=1`, `FIRST=2`, `COMPLETE=3`; discriminants match
+  the H.222.0 V9 Table 2-157 wire bits exactly).
+- `tstrans.mpegts.NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED`
+  — new enum member.
+- `tstrans.mpegts._NonConformantEvent.observed_cfi` and
+  `tstrans.mpegts._NonConformantEvent.treated_as` — new optional
+  `CellFragmentIndication` fields set only on the new variant; `None`
+  on every other issue kind.
+
+**C (ABI minor 3 → 4):**
+
+- `TST_NONCONFORMANT_CODE_MALFORMED_AU_CELL_CFI_TOLERATED` (= 32) —
+  new `TstNonConformantCode` variant.
+- `TstCellFragmentIndication` — new `repr(i32)` enum mirror.
+  Discriminants match the wire bits: `Middle=0`, `Last=1`, `First=2`,
+  `Complete=3`.
+- `TstEventNonConformant.cc_expected` and
+  `TstEventNonConformant.cc_observed` carry the observed and
+  substituted CFI bytes (reusing the existing single-byte field
+  carriers — no struct-size change).
+- `tst_demux_config_set_malformed_au_cell_cfi_tolerance(cfg, enable)`
+  — new setter on the opaque `tst_demux_config_t` builder.
+- `TST_ABI_VERSION_MINOR` bumped 3 → 4 (additive).
+
+**Tests:**
+
+- `crates/tst-core/tests/mpegts_au_cell_tolerance.rs` (NEW, 7
+  integration tests) — strict mode + tolerance mode coverage matrix
+  (orphan Middle/Last with valid KLV, invalid payload, BER-length
+  mismatch, legitimate fragmentation unaffected, mid-buffer
+  SequenceGap unaffected).
+- `crates/tst-core/src/mpegts/demux/pes_emit.rs` (6 new validator
+  unit tests + tests module).
+- `crates/tst-core/src/mpegts/demux/types.rs` (3 new config-field
+  unit tests).
+- `crates/tst-core/src/mpegts/demux/event.rs` (1 new Display test).
+- `crates/tst-py/tests/test_au_cell_tolerance.py` (NEW, 11 tests) —
+  surface + end-to-end binding coverage.
+- `crates/tst-c/src/demux_config.rs` (3 new setter unit tests).
+
+**Background:** ITU-T H.222.0 V9 §2.12.4.2 Table 2-157 defines
+`cell_fragment_indication = 0b11` as a single complete cell. Some
+encoders mis-emit `0b00` or `0b01` for single complete KLV records.
+The library now supports both spec-strict reception (default) and
+opt-in tolerance for malformed producers — see
+`docs/guide-mpegts-demux.md` and `docs/troubleshooting.md`.
+
 ## [Unreleased] — tst-py: audit #11 — release the GIL around heavy Rust work (2026-05-24)
 
 **Performance:**

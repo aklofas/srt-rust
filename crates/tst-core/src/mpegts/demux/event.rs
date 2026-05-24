@@ -663,7 +663,8 @@ pub enum NonConformantIssue {
     ///
     /// `pid` is the elementary stream PID. `observed_cfi` is the wire
     /// value the demuxer read. `treated_as` is the value the demuxer
-    /// substituted (always [`CellFragmentIndication::Complete`] today).
+    /// substituted (always [`crate::mpegts::au_cell::CellFragmentIndication::Complete`]
+    /// today).
     MalformedAuCellCfiTolerated {
         pid: u16,
         observed_cfi: crate::mpegts::au_cell::CellFragmentIndication,

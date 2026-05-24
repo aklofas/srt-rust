@@ -128,9 +128,29 @@ Fix: this is almost always a producer bug; fix the producer.
 
 **`NonConformantIssue::MultiCellAu` events on a sync KLV PID**
 
-The upstream sender is fragmenting AU cells across multiple PES packets (`cell_fragment_indication != Complete`). The demuxer detects this but does not reassemble — the partial payload is dropped. `dropped_bytes` is the declared inner length for telemetry.
+A multi-cell AU reassembly attempt failed on the named PID. `reason` discriminates the failure mode:
 
-Fix: configure the upstream sender to keep AU cells single-cell (the typical case for ST 0601 records, which fit well below the H.222.0 64 KB AU cell ceiling). If the sender is `ts-transformer`'s muxer, this is automatic — `Muxer::push_klv*` always emits `Complete` cells. Multi-cell reassembly is in `deferred-features.md`.
+- `Orphan` — a `Middle` or `Last` cell arrived without a prior `First`. Either the stream started mid-AU (e.g. seek into a recording) or a `First` cell was lost upstream. Also fires when an encoder sets `cell_fragment_indication` bits to `0b00` (Middle) or `0b01` (Last) for what is actually a single complete KLV record — see "I see `MultiCellAu{Orphan}` events but zero KLV" below for the tolerance knob.
+- `SequenceGap` — a buffered AU's continuation cell had the wrong `sequence_number`. A cell was lost between the buffered `First`/`Middle` and the arriving cell.
+- `ConcurrentFirst` — a new `First` arrived while the previous AU was still buffering (its `Last` never appeared). The partial buffer is dropped before the new `First` is processed.
+- `Overflow` — the accumulated inner-byte total would exceed `DemuxerConfig::au_cell_cap_per_pid` (default 1 MiB). Tune the cap via `DemuxerBuilder::au_cell_cap_per_pid(bytes)`.
+
+Fix: for `SequenceGap` and `Overflow`, investigate the upstream sender. If `ts-transformer`'s muxer is the sender, this is automatic — `Muxer::push_klv*` always emits `Complete` cells. Legitimate multi-cell streams reassemble transparently into a single `MetadataKind::KlvSyncAuCell` event with `was_reassembled = true` and `cell_count = N`.
+
+**I see `MultiCellAu{Orphan}` events but zero typed KLV from a malformed encoder**
+
+Some real-world encoders mis-set H.222.0 V9 §2.12.4.2 `cell_fragment_indication` bits — emitting `0b00` (Middle) or `0b01` (Last) for single complete KLV records. The default-strict demuxer rejects these as orphan continuations.
+
+Fix: opt into the receive-side tolerance mode if you need data from such encoders to flow:
+
+```rust,ignore
+use tst_core::mpegts::demux::DemuxerBuilder;
+let demuxer = DemuxerBuilder::new()
+    .malformed_au_cell_cfi_tolerance(true)
+    .build();
+```
+
+The demuxer then payload-validates the orphan cell as one complete KLV unit (SMPTE 336M UL prefix + BER length match) and, if it passes, emits the cell as `KlvSyncAuCell{Complete}` plus a `NonConformantIssue::MalformedAuCellCfiTolerated { pid, observed_cfi, treated_as }` diagnostic so the malformation remains visible to telemetry. Tolerance is opt-in because it reinterprets wire semantics; keep it off when you want to surface producer malformation loudly. See [guide-mpegts-demux.md](guide-mpegts-demux.md#malformed-cell_fragment_indication-tolerance-opt-in) for the full contract.
 
 ## TS framing issues
 

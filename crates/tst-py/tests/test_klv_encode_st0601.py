@@ -64,3 +64,33 @@ def test_encode_strict_compliance_missing_mandatory_raises():
     with pytest.raises(KlvEncodeError) as ei:
         encode_uas_datalink_strict_compliance(rec)
     assert ei.value.kind is KlvEncodeErrorKind.MISSING_MANDATORY_ITEM
+
+
+# ---------------------------------------------------------------------------
+# Encode-path validation: invalid `universal_label` shapes must raise, not
+# be silently dropped (audit #6).
+# ---------------------------------------------------------------------------
+
+
+def test_encode_universal_label_3_bytes_raises():
+    """A 3-byte universal_label must raise ValueError, not be silently
+    replaced with the default 16-byte zero UL."""
+    rec = UasDatalinkLs(universal_label=b"\x06\x0e\x2b")
+    with pytest.raises(ValueError, match="universal_label"):
+        encode_uas_datalink(rec)
+
+
+def test_encode_universal_label_17_bytes_raises():
+    """A 17-byte universal_label must raise ValueError, not be silently
+    truncated or dropped."""
+    rec = UasDatalinkLs(universal_label=b"\x00" * 17)
+    with pytest.raises(ValueError, match="universal_label"):
+        encode_uas_datalink(rec)
+
+
+def test_encode_universal_label_16_bytes_ok():
+    """A correctly-sized 16-byte universal_label still passes the
+    encoder."""
+    rec = UasDatalinkLs(universal_label=b"\x00" * 16)
+    out = encode_uas_datalink(rec)
+    assert isinstance(out, bytes)

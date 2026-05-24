@@ -637,12 +637,19 @@ fn py_to_vtarget_pack(p: &Bound<'_, PyAny>) -> PyResult<RustVTargetPack> {
     op!(percentage_of_target_pixels, u8);
 
     // target_color: Optional<tuple[int, int, int]> → Option<[u8; 3]>.
+    // `None` is a valid value — the field is simply absent from the LS.
+    // A non-None value with the wrong tuple length is a caller bug; raise
+    // instead of silently dropping (audit #6).
     let tc = p.getattr(intern!(py, "target_color"))?;
     if !tc.is_none() {
         let arr: Vec<u8> = tc.extract()?;
-        if arr.len() == 3 {
-            r.target_color = Some([arr[0], arr[1], arr[2]]);
+        if arr.len() != 3 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "target_color must be a 3-tuple, got length {}",
+                arr.len()
+            )));
         }
+        r.target_color = Some([arr[0], arr[1], arr[2]]);
     }
 
     op!(target_intensity, u32);
@@ -916,13 +923,19 @@ fn decode_uas_datalink_py(
 fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
     let mut r = UasDatalinkLs::default();
 
-    // universal_label: 16-byte bytes → UniversalLabel
+    // universal_label: 16-byte bytes → UniversalLabel. Any other length
+    // is a caller bug; raise instead of silently leaving the field at the
+    // default 16-byte zero UL (audit #6).
     let ul_bytes: Vec<u8> = p.getattr(intern!(p.py(), "universal_label"))?.extract()?;
-    if ul_bytes.len() == 16 {
-        let mut ul = [0u8; 16];
-        ul.copy_from_slice(&ul_bytes);
-        r.universal_label = UniversalLabel(ul);
+    if ul_bytes.len() != 16 {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "universal_label must be 16 bytes, got {}",
+            ul_bytes.len()
+        )));
     }
+    let mut ul = [0u8; 16];
+    ul.copy_from_slice(&ul_bytes);
+    r.universal_label = UniversalLabel(ul);
 
     // declared_version: u8 in Rust, int in Python
     r.declared_version = p.getattr(intern!(p.py(), "declared_version"))?.extract()?;

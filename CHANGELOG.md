@@ -110,6 +110,15 @@ plan.
   `DemuxerStats`. Existing callers relying on the field for
   bitrate / ingest validation / progress estimates were getting
   wrong numbers. Closes audit #4.
+- KLV inverse conversion (`encode_uas_datalink` / `encode_vmti`) now
+  raises `ValueError` when `UasDatalinkLs.universal_label` is not
+  exactly 16 bytes or when `VTargetPack.target_color` is not exactly
+  a 3-tuple. Previously both were silently dropped — `universal_label`
+  fell back to the all-zero default UL and `target_color` was omitted
+  from the encoded LS, producing a valid-looking-but-wrong KLV record
+  with no error surfaced to the caller. Error messages name the field
+  and the observed length. `target_color=None` (field absent) is still
+  accepted. Closes audit #6.
 
 ## [Unreleased] — mpegts: multi-cell AU cell reassembly (2026-05-24)
 

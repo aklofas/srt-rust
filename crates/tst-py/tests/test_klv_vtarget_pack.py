@@ -5,7 +5,7 @@ from dataclasses import fields
 
 import pytest
 
-from tstrans.klv import KlvFieldError, VTargetPack, decode_vmti
+from tstrans.klv import KlvFieldError, VmtiLs, VTargetPack, decode_vmti, encode_vmti
 
 
 def test_vtarget_pack_has_target_id():
@@ -82,3 +82,51 @@ def test_vtarget_pack_vmask_is_bytes_not_list():
     assert v.targets[0].target_id == 1
     assert isinstance(v.targets[0].vmask, bytes)
     assert v.targets[0].vmask == b"\xde\xad"
+
+
+# ---------------------------------------------------------------------------
+# Encode-path validation: invalid `target_color` shapes must raise, not be
+# silently dropped (audit #6).
+# ---------------------------------------------------------------------------
+
+
+def _vmti_with_color(color):
+    """Minimal VmtiLs carrying one VTargetPack with the given target_color,
+    constructed so it round-trips through `encode_vmti` (which dispatches
+    via `py_to_vtarget_pack` — the validator under test)."""
+    return VmtiLs(
+        precision_time_stamp=1_700_000_000_000_000,
+        version_number=6,
+        targets=(VTargetPack(target_id=1, target_color=color),),
+    )
+
+
+def test_encode_vtarget_pack_color_2tuple_raises():
+    """A 2-element target_color must raise ValueError, not silently drop."""
+    rec = _vmti_with_color((1, 2))
+    with pytest.raises(ValueError, match="target_color"):
+        encode_vmti(rec)
+
+
+def test_encode_vtarget_pack_color_4tuple_raises():
+    """A 4-element target_color must raise ValueError, not silently drop."""
+    rec = _vmti_with_color((1, 2, 3, 4))
+    with pytest.raises(ValueError, match="target_color"):
+        encode_vmti(rec)
+
+
+def test_encode_vtarget_pack_color_3tuple_ok():
+    """A correctly-sized 3-tuple still passes the encoder."""
+    rec = _vmti_with_color((1, 2, 3))
+    out = encode_vmti(rec)
+    assert isinstance(out, bytes)
+    assert len(out) > 0
+
+
+def test_encode_vtarget_pack_color_none_ok():
+    """`None` (the default) is still a valid value — it means the field
+    is absent from the encoded LS — and must not be flagged."""
+    rec = _vmti_with_color(None)
+    out = encode_vmti(rec)
+    assert isinstance(out, bytes)
+    assert len(out) > 0

@@ -334,30 +334,92 @@ impl super::demuxer::Demuxer {
             StreamKind::KlvSync { .. } | StreamKind::KlvAsync => {
                 let shape = classify_klv(&pes.payload);
                 let (kind_meta, payload, used_pts) = match (shape, kind) {
-                    (KlvShape::SyncAuCell { klv, header }, _) => {
-                        // If declared async but payload is sync, surface mismatch
-                        // — but only once per PID per PMT version. Coalesces
-                        // what would otherwise be thousands of identical events.
-                        // Coalesce set now lives on ProgramTracker; look up by PID.
-                        if matches!(kind, StreamKind::KlvAsync) && self.klv_mismatch_insert(pes.pid)
-                        {
-                            self.queue_nonconformant(
-                                stream,
-                                NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid,
-                            );
+                    (KlvShape::Sync, _) => {
+                        // TEMPORARY shim: Task 4 replaces this with
+                        // iter_au_cells + the per-PID reassembler from Task 3.
+                        // For now we preserve Task-1 semantics by decoding
+                        // just the first cell — single-cell Complete works,
+                        // First/Middle/Last fall through to MultiCellAu.
+                        let (header, inner) =
+                            match crate::mpegts::au_cell::read_metadata_au_cell(&pes.payload) {
+                                Ok(pair) => pair,
+                                Err(_) => {
+                                    // Sniff said Sync but full parse failed — bail to
+                                    // the existing Other-style pass-through (matches
+                                    // the KlvShape::Other arm verbatim).
+                                    let payload_len = pes.payload.len();
+                                    let raw = pes.payload;
+                                    let entry = self
+                                        .stats_per_stream
+                                        .entry(stream.pid)
+                                        .or_insert_with(|| crate::mpegts::stats::StreamStats {
+                                            pid: stream.pid,
+                                            stream_type: StreamTypeCode::from_byte(
+                                                stream_type_from_kind(&stream.kind),
+                                            ),
+                                            program_number,
+                                            ..Default::default()
+                                        });
+                                    entry.items += 1;
+                                    entry.bytes += payload_len as u64;
+                                    self.queue.push_back(DemuxEvent::Sample {
+                                        stream,
+                                        pts,
+                                        dts: pes.dts,
+                                        payload: SamplePayload::Unknown {
+                                            stream_type: StreamTypeCode::from_byte(0x15),
+                                            raw,
+                                        },
+                                    });
+                                    return;
+                                }
+                            };
+                        match header.cell_fragment_indication {
+                            crate::mpegts::au_cell::CellFragmentIndication::Complete => {
+                                // If declared async but payload is sync, surface
+                                // mismatch — but only once per PID per PMT
+                                // version. Coalesces what would otherwise be
+                                // thousands of identical events.
+                                if matches!(kind, StreamKind::KlvAsync)
+                                    && self.klv_mismatch_insert(pes.pid)
+                                {
+                                    self.queue_nonconformant(
+                                        stream,
+                                        NonConformantIssue::StreamTypeMismatchSyncOnAsyncPid,
+                                    );
+                                }
+                                let kind_meta = MetadataKind::KlvSyncAuCell {
+                                    metadata_service_id: header.metadata_service_id,
+                                    sequence_number: header.sequence_number,
+                                    cell_fragment_indication: header.cell_fragment_indication,
+                                    decoder_config_flag: header.decoder_config_flag,
+                                    random_access_indicator: header.random_access_indicator,
+                                    was_reassembled: false,
+                                    cell_count: 1,
+                                };
+                                // PES PTS surfaces unchanged; per H.222.0
+                                // §2.12.4.1 the AU cell itself carries no
+                                // embedded timestamp.
+                                (kind_meta, inner.to_vec(), pts)
+                            }
+                            _ => {
+                                // Non-Complete cell — Task 4 will reassemble.
+                                // Until then, every partial cell drops with
+                                // reason=Orphan as a placeholder mapping (the
+                                // previous detect-only behavior had no taxonomy).
+                                let dropped_bytes = inner.len();
+                                self.queue_nonconformant(
+                                    stream,
+                                    NonConformantIssue::MultiCellAu {
+                                        pid: pes.pid,
+                                        dropped_bytes,
+                                        reason:
+                                            crate::mpegts::demux::event::MultiCellAuReason::Orphan,
+                                    },
+                                );
+                                return;
+                            }
                         }
-                        let kind_meta = MetadataKind::KlvSyncAuCell {
-                            metadata_service_id: header.metadata_service_id,
-                            sequence_number: header.sequence_number,
-                            cell_fragment_indication: header.cell_fragment_indication,
-                            decoder_config_flag: header.decoder_config_flag,
-                            random_access_indicator: header.random_access_indicator,
-                            was_reassembled: false,
-                            cell_count: 1,
-                        };
-                        // PES PTS surfaces unchanged; per H.222.0 §2.12.4.1 the
-                        // AU cell itself carries no embedded timestamp.
-                        (kind_meta, klv, pts)
                     }
                     (KlvShape::Async { klv }, StreamKind::KlvSync { .. }) => {
                         if self.klv_mismatch_insert(pes.pid) {
@@ -369,22 +431,6 @@ impl super::demuxer::Demuxer {
                         (MetadataKind::KlvAsync, klv, pts)
                     }
                     (KlvShape::Async { klv }, _) => (MetadataKind::KlvAsync, klv, pts),
-                    (KlvShape::PartialAuCell { dropped_bytes }, _) => {
-                        // TEMPORARY: Task 4 replaces this whole arm with the
-                        // iter_au_cells + reassembler flow. Until then, every
-                        // non-Complete cell drops with reason=Orphan as a
-                        // placeholder mapping (the previous detect-only
-                        // behavior had no taxonomy).
-                        self.queue_nonconformant(
-                            stream,
-                            NonConformantIssue::MultiCellAu {
-                                pid: pes.pid,
-                                dropped_bytes,
-                                reason: crate::mpegts::demux::event::MultiCellAuReason::Orphan,
-                            },
-                        );
-                        return;
-                    }
                     (KlvShape::Other, _) => {
                         let payload_len = pes.payload.len();
                         let raw = pes.payload;

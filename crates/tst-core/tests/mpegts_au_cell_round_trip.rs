@@ -4,7 +4,7 @@
 //! Replaces the obsolete tests/mpegts_mux_st1910.rs + tests/mpegts_demux_st1910.rs
 //! which exercised the fictional UL+BER+PTSP wrapper format.
 
-use tst_core::mpegts::au_cell::{CellFragmentIndication, read_metadata_au_cell};
+use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, read_metadata_au_cell};
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{DemuxEvent, Demuxer, MetadataKind};
 use tst_core::mpegts::mux::{
@@ -202,16 +202,17 @@ fn sync_klv_sequence_number_increments_across_pushes() {
 
 // ── Task 3.4 — MultiCellAu detect-only tests ─────────────────────────────────
 
-/// Unit test: classify_klv returns PartialAuCell when CFI != Complete.
+/// Unit test: classify_klv returns Sync regardless of CFI; iter_au_cells
+/// surfaces the per-cell CFI for downstream handling.
 ///
-/// This exercises the classify_klv path directly without going through the
-/// mux/demux machinery. Validates that First / Middle / Last CFI values all
-/// route to PartialAuCell and that dropped_bytes equals the declared inner
-/// payload length.
+/// Pre-Task-2 `classify_klv` had a `PartialAuCell { dropped_bytes }` variant
+/// for non-Complete CFI. Task 2 shrinks classify_klv to a SHAPE sniff —
+/// per-cell field access moves to `iter_au_cells`.
 #[test]
-fn classify_klv_returns_partial_au_cell_on_non_complete_cfi() {
+fn classify_klv_returns_sync_on_any_cfi_with_iter_surfacing_cfi() {
     use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
     use tst_core::mpegts::demux::low_level::{KlvShape, classify_klv};
+    use tst_core::mpegts::demux::payload_test_hooks::iter_au_cells;
 
     for cfi in [
         CellFragmentIndication::First,
@@ -232,23 +233,32 @@ fn classify_klv_returns_partial_au_cell_on_non_complete_cfi() {
         )
         .unwrap();
 
-        match classify_klv(&bytes) {
-            KlvShape::PartialAuCell { dropped_bytes } => {
-                assert_eq!(
-                    dropped_bytes, 100,
-                    "dropped_bytes must equal declared inner payload length for CFI {cfi:?}"
-                );
-            }
-            other => panic!("expected PartialAuCell for CFI {cfi:?}; got {other:?}"),
-        }
+        assert_eq!(
+            classify_klv(&bytes),
+            KlvShape::Sync,
+            "any valid AU cell header → KlvShape::Sync (CFI {cfi:?})"
+        );
+
+        // iter_au_cells surfaces the per-cell CFI + inner body.
+        let cells: Vec<_> = iter_au_cells(&bytes).collect();
+        assert_eq!(cells.len(), 1);
+        let (header, inner) = cells[0].as_ref().unwrap();
+        assert_eq!(header.cell_fragment_indication, cfi);
+        assert_eq!(
+            inner.len(),
+            100,
+            "inner length must match declared payload for CFI {cfi:?}"
+        );
     }
 }
 
-/// Complete CFI still returns SyncAuCell — the existing path is unchanged.
+/// Complete CFI returns KlvShape::Sync — iter_au_cells recovers the
+/// inner KLV bytes verbatim.
 #[test]
-fn classify_klv_complete_cfi_still_returns_sync_au_cell() {
+fn classify_klv_complete_cfi_returns_sync_and_iter_recovers_inner() {
     use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
     use tst_core::mpegts::demux::low_level::{KlvShape, classify_klv};
+    use tst_core::mpegts::demux::payload_test_hooks::iter_au_cells;
 
     // Build a Complete AU cell whose inner payload starts with the SMPTE UL.
     let inner_klv: Vec<u8> = {
@@ -275,24 +285,27 @@ fn classify_klv_complete_cfi_still_returns_sync_au_cell() {
     )
     .unwrap();
 
-    match classify_klv(&bytes) {
-        KlvShape::SyncAuCell { klv, .. } => assert_eq!(klv, inner_klv),
-        other => panic!("expected SyncAuCell for Complete CFI; got {other:?}"),
-    }
+    assert_eq!(classify_klv(&bytes), KlvShape::Sync);
+
+    let cells: Vec<_> = iter_au_cells(&bytes).collect();
+    assert_eq!(cells.len(), 1);
+    let (_, inner_recovered) = cells[0].as_ref().unwrap();
+    assert_eq!(*inner_recovered, &inner_klv[..]);
 }
 
-/// Opaque-inner AU cells now surface as SyncAuCell (Task 3.5: B4-E broadening).
+/// Opaque-inner AU cells surface as KlvShape::Sync (Task 3.5 broadening).
 ///
 /// Pre-Task-3.5 the demuxer required `inner[0..4] == [0x06, 0x0E, 0x2B, 0x34]`
-/// (the SMPTE UL header) before returning SyncAuCell. Legitimate non-LS sync
-/// metadata (proprietary metadata payloads wrapped in an H.222.0 AU cell per
-/// §2.12.4.2 — receiver classification of the inner is the consumer's
-/// concern, not the demuxer's) was misclassified as Other and the wrapper
-/// info (sequence_number, service_id, RAI) was lost.
+/// (the SMPTE UL header) before treating a cell as sync. Legitimate non-LS
+/// sync metadata (proprietary metadata payloads wrapped in an H.222.0 AU
+/// cell per §2.12.4.2 — receiver classification of the inner is the
+/// consumer's concern, not the demuxer's) was misclassified as Other and
+/// the wrapper info (sequence_number, service_id, RAI) was lost.
 #[test]
-fn classify_klv_opaque_inner_complete_cfi_returns_sync_au_cell() {
+fn classify_klv_opaque_inner_complete_cfi_returns_sync() {
     use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
     use tst_core::mpegts::demux::low_level::{KlvShape, classify_klv};
+    use tst_core::mpegts::demux::payload_test_hooks::iter_au_cells;
 
     // Inner that does NOT start with the SMPTE UL header — opaque metadata.
     let opaque_inner = vec![0x55u8; 80];
@@ -310,18 +323,18 @@ fn classify_klv_opaque_inner_complete_cfi_returns_sync_au_cell() {
     )
     .unwrap();
 
-    match classify_klv(&bytes) {
-        KlvShape::SyncAuCell { klv, header } => {
-            // Inner is surfaced verbatim — the demuxer doesn't validate
-            // KLV-LS shape on it.
-            assert_eq!(klv, opaque_inner);
-            // Wrapper fields preserved.
-            assert_eq!(header.metadata_service_id, 0x42);
-            assert_eq!(header.sequence_number, 7);
-            assert!(header.random_access_indicator);
-        }
-        other => panic!("expected SyncAuCell for opaque-inner Complete CFI; got {other:?}"),
-    }
+    assert_eq!(classify_klv(&bytes), KlvShape::Sync);
+
+    let cells: Vec<_> = iter_au_cells(&bytes).collect();
+    assert_eq!(cells.len(), 1);
+    let (header, klv_inner) = cells[0].as_ref().unwrap();
+    // Inner is surfaced verbatim — the demuxer doesn't validate
+    // KLV-LS shape on it.
+    assert_eq!(*klv_inner, &opaque_inner[..]);
+    // Wrapper fields preserved.
+    assert_eq!(header.metadata_service_id, 0x42);
+    assert_eq!(header.sequence_number, 7);
+    assert!(header.random_access_indicator);
 }
 
 /// Integration test: MultiCellAu NonConformantIssue surfaces through the
@@ -557,4 +570,111 @@ fn metadata_service_id_propagates_from_push_klv_to_au_cell() {
 
     // Sanity check: the inner bytes are our raw KLV.
     assert_eq!(inner, &raw_klv[..], "inner KLV must pass through verbatim");
+}
+
+// ── Task 2 — iter_au_cells tests ──────────────────────────────────────────────
+
+/// Helper: synthesize a PES payload containing N back-to-back AU cells.
+fn make_pes_payload(cells: &[(AuCellHeader, &[u8])]) -> Vec<u8> {
+    use tst_core::mpegts::au_cell::write_metadata_au_cell;
+    let mut out = Vec::new();
+    for (hdr, body) in cells {
+        write_metadata_au_cell(&mut out, *hdr, body).unwrap();
+    }
+    out
+}
+
+fn cell_header(cfi: tst_core::mpegts::au_cell::CellFragmentIndication, seq: u8) -> AuCellHeader {
+    AuCellHeader {
+        metadata_service_id: 0,
+        sequence_number: seq,
+        cell_fragment_indication: cfi,
+        decoder_config_flag: false,
+        random_access_indicator: true,
+    }
+}
+
+#[test]
+fn iter_au_cells_walks_three_back_to_back_complete_cells() {
+    let payload = make_pes_payload(&[
+        (
+            cell_header(CellFragmentIndication::Complete, 1),
+            &[0xAA, 0xBB],
+        ),
+        (
+            cell_header(CellFragmentIndication::Complete, 2),
+            &[0xCC, 0xDD, 0xEE],
+        ),
+        (cell_header(CellFragmentIndication::Complete, 3), &[0xFF]),
+    ]);
+    let cells: Vec<_> =
+        tst_core::mpegts::demux::payload_test_hooks::iter_au_cells(&payload).collect();
+    assert_eq!(cells.len(), 3);
+    let (h1, body1) = cells[0].as_ref().unwrap();
+    assert_eq!(h1.sequence_number, 1);
+    assert_eq!(*body1, &[0xAA, 0xBB][..]);
+    let (h2, body2) = cells[1].as_ref().unwrap();
+    assert_eq!(h2.sequence_number, 2);
+    assert_eq!(*body2, &[0xCC, 0xDD, 0xEE][..]);
+    let (h3, body3) = cells[2].as_ref().unwrap();
+    assert_eq!(h3.sequence_number, 3);
+    assert_eq!(*body3, &[0xFF][..]);
+}
+
+#[test]
+fn iter_au_cells_walks_first_middle_last_in_one_pes() {
+    let payload = make_pes_payload(&[
+        (cell_header(CellFragmentIndication::First, 10), &[0x11; 100]),
+        (
+            cell_header(CellFragmentIndication::Middle, 11),
+            &[0x22; 100],
+        ),
+        (cell_header(CellFragmentIndication::Last, 12), &[0x33; 50]),
+    ]);
+    let cells: Vec<_> = tst_core::mpegts::demux::payload_test_hooks::iter_au_cells(&payload)
+        .map(|r| r.unwrap())
+        .collect();
+    assert_eq!(cells.len(), 3);
+    assert_eq!(
+        cells[0].0.cell_fragment_indication,
+        CellFragmentIndication::First
+    );
+    assert_eq!(
+        cells[1].0.cell_fragment_indication,
+        CellFragmentIndication::Middle
+    );
+    assert_eq!(
+        cells[2].0.cell_fragment_indication,
+        CellFragmentIndication::Last
+    );
+}
+
+#[test]
+fn iter_au_cells_empty_payload_yields_nothing() {
+    let cells: Vec<_> = tst_core::mpegts::demux::payload_test_hooks::iter_au_cells(&[]).collect();
+    assert!(cells.is_empty());
+}
+
+#[test]
+fn iter_au_cells_stops_at_truncated_trailing_cell() {
+    let mut payload = make_pes_payload(&[(
+        cell_header(CellFragmentIndication::Complete, 1),
+        &[0xAA, 0xBB],
+    )]);
+    payload.extend_from_slice(&[0x00, 0x02, 0xDF]);
+    let cells: Vec<_> =
+        tst_core::mpegts::demux::payload_test_hooks::iter_au_cells(&payload).collect();
+    assert_eq!(cells.len(), 2);
+    assert!(cells[0].is_ok());
+    assert!(cells[1].is_err());
+}
+
+#[test]
+fn iter_au_cells_stops_at_declared_length_overrun() {
+    let mut payload = vec![0x00, 0x00, 0xDF, 0x00, 0x64];
+    payload.extend_from_slice(&[0xAA; 10]);
+    let cells: Vec<_> =
+        tst_core::mpegts::demux::payload_test_hooks::iter_au_cells(&payload).collect();
+    assert_eq!(cells.len(), 1);
+    assert!(cells[0].is_err());
 }

@@ -133,14 +133,17 @@ def probe(path: Union[str, Path]) -> ProbeResult:
                     elif s.kind in (StreamKindTag.KLV_SYNC, StreamKindTag.KLV_ASYNC):
                         has_klv = True
 
-    stats = d.stats()
-    # The actual stats field name for total packets fed; pick the
-    # closest match. Fall back to summing whatever's present.
-    packet_count = (
-        stats.get("ts_packets_in", 0)
-        or stats.get("packets_processed", 0)
-        or sum(int(v) for v in stats.values() if isinstance(v, int))
-    )
+    # Compute packet_count from bytes actually read during the probe scan.
+    # The demuxer doesn't expose a "TS packets fed" counter (see Rust
+    # `DemuxerStats` — its fields are PSI/discontinuity/nonconformant
+    # counts, not per-packet). Bytes-read / 188 is exact for any properly
+    # 188-aligned TS file; an off-by-one in the last fragment is
+    # acceptable since `read_total` is read in 64 KiB chunks (which are
+    # always multiples of 188 ÷ chunk only when the underlying file is
+    # 188-aligned, which valid TS files are). For files larger than the
+    # 5 MiB probe budget, `packet_count` reflects packets in the scanned
+    # prefix, matching the "first-N-MB scan summary" docstring.
+    packet_count = read_total // 188
 
     return ProbeResult(
         size_bytes=size,

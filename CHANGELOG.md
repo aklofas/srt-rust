@@ -41,6 +41,14 @@ plan.
   off-by-one for any raw value `-89 .. -1` (returned `-1`, should
   return `0`) and similar non-multiples-of-90 below zero. Closes
   audit #2.
+- `tstrans.io.probe().packet_count` now reflects actual TS packets
+  scanned (`bytes_read // 188`). Previously this field fell through
+  to a sum of unrelated demuxer stats
+  (`program_maps_seen + pmt_versions_seen + ...`) because neither
+  `ts_packets_in` nor `packets_processed` exists on the Rust
+  `DemuxerStats`. Existing callers relying on the field for
+  bitrate / ingest validation / progress estimates were getting
+  wrong numbers. Closes audit #4.
 
 ## [Unreleased] — mpegts: multi-cell AU cell reassembly (2026-05-24)
 

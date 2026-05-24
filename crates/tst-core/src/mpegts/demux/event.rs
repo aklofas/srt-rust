@@ -949,7 +949,11 @@ impl std::fmt::Display for NonConformantIssue {
                      (EN 300 743 §6.2 / EN 300 472 §4.2 require =1)"
                 )
             }
-            NonConformantIssue::MultiCellAu { pid, dropped_bytes, reason } => {
+            NonConformantIssue::MultiCellAu {
+                pid,
+                dropped_bytes,
+                reason,
+            } => {
                 let reason_str = match reason {
                     MultiCellAuReason::Orphan => "orphan continuation (no prior First)",
                     MultiCellAuReason::SequenceGap => "sequence_number gap",

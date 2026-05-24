@@ -69,8 +69,8 @@ def _make_aac_ts(tmp: Path) -> Path:
     pts0 = 900_000
 
     with m.write_file(path) as proxy:
-        proxy.push_video(nal_aud, Pts90khz.from_raw(pts0))
-        proxy.push_audio(adts_frame, Pts90khz.from_raw(pts0))
+        proxy.push_video(nal_aud, pts=Pts90khz.from_raw(pts0))
+        proxy.push_audio(adts_frame, pts=Pts90khz.from_raw(pts0))
     return path
 
 

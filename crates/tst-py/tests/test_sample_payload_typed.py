@@ -52,7 +52,7 @@ def _make_h264_ts(tmp: Path) -> Path:
     pts0 = 900_000  # ~10 s at 90 kHz
     with m.write_file(path) as proxy:
         for i in range(4):
-            proxy.push_video(nal_aud, Pts90khz.from_raw(pts0 + i * 3000))
+            proxy.push_video(nal_aud, pts=Pts90khz.from_raw(pts0 + i * 3000))
     return path
 
 

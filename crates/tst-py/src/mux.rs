@@ -844,7 +844,10 @@ impl PyMuxer {
     /// Raises `MuxError(INPUT_MALFORMED)` if `nal` does not begin with
     /// an Annex-B start code; `MuxError(BACKPRESSURE)` if the queue
     /// would exceed `MuxerConfig.buffer_packets`.
-    #[pyo3(signature = (nal, pts, key_frame = false))]
+    ///
+    /// `pts` is keyword-only — pass as `pts=...` (audit #9 normalization
+    /// across all `push_*` methods).
+    #[pyo3(signature = (nal, *, pts, key_frame = false))]
     pub fn push_video(
         &mut self,
         py: Python<'_>,
@@ -875,7 +878,10 @@ impl PyMuxer {
     /// Raises `MuxError(INVALID_USAGE)` on an out-of-range handle,
     /// `MuxError(INPUT_MALFORMED)` on a bad Annex-B payload, or
     /// `MuxError(BACKPRESSURE)` on a full queue.
-    #[pyo3(signature = (handle, nal, pts, key_frame = false))]
+    ///
+    /// `pts` is keyword-only — pass as `pts=...` (audit #9 normalization
+    /// across all `push_*` methods).
+    #[pyo3(signature = (handle, nal, *, pts, key_frame = false))]
     pub fn push_video_to(
         &mut self,
         py: Python<'_>,
@@ -929,12 +935,13 @@ impl PyMuxer {
     // Task 8 — push_audio + push_klv + push_subtitle (single + handle).
     // -----------------------------------------------------------------
     //
-    // Python signatures mirror the Rust arg ordering byte-for-byte even
-    // where Rust is internally inconsistent (push_audio = frames,pts;
-    // push_audio_to = handle,pts,frames; push_klv = klv,pts,svc_id;
-    // push_subtitle = pts,payload). Fidelity to the underlying surface
-    // outweighs Python-side normalization — callers cross-referencing
-    // the Rust API expect the same arg names in the same positions.
+    // Audit #9 (2026-05-24) normalized the Python `push_*` surface:
+    // `pts` (and `dts` where applicable) is keyword-only on every
+    // method, and `push_audio_to` takes `frames` positionally BEFORE
+    // its kw-only `pts` so the `_to` variant mirrors the single-stream
+    // variant's `(frames, *, pts)` shape rather than Rust's internally
+    // inconsistent `(handle, pts, frames)`. The Rust API is unchanged;
+    // the inconsistency was in the Python surface only.
 
     /// Push one encoded audio frame (codec-native framing — ADTS for
     /// AAC, raw frame for MP2 / AC-3 / AAC-LATM) onto the lone
@@ -948,6 +955,10 @@ impl PyMuxer {
     /// Raises `MuxError(INPUT_MALFORMED)` if `frames` does not parse
     /// for the configured codec; `MuxError(BACKPRESSURE)` on a full
     /// queue.
+    ///
+    /// `pts` is keyword-only — pass as `pts=...` (audit #9 normalization
+    /// across all `push_*` methods).
+    #[pyo3(signature = (frames, *, pts))]
     pub fn push_audio(
         &mut self,
         py: Python<'_>,
@@ -964,19 +975,23 @@ impl PyMuxer {
     /// identified by `handle` (obtained from `Muxer.audio_handles()`
     /// in Task 9).
     ///
-    /// Argument order follows the Rust API: `(handle, pts, frames)` —
-    /// note `pts` precedes `frames`, unlike `push_audio` where the
-    /// frames come first.
+    /// Argument order: `(handle, frames, *, pts)` — `frames` is
+    /// positional (matches the single-stream `push_audio(frames, *, pts)`
+    /// shape) and `pts` is keyword-only. This intentionally diverges
+    /// from the lower-level Rust `(handle, pts, frames)` order; the
+    /// Python surface normalizes to a consistent `(target?, payload, *,
+    /// pts)` shape across all `push_*` methods (audit #9).
     ///
     /// Raises `MuxError(INVALID_USAGE)` on an out-of-range handle,
     /// `MuxError(INPUT_MALFORMED)` on a codec parse failure, or
     /// `MuxError(BACKPRESSURE)` on a full queue.
+    #[pyo3(signature = (handle, frames, *, pts))]
     pub fn push_audio_to(
         &mut self,
         py: Python<'_>,
         handle: PyRef<'_, PyAudioStreamHandle>,
-        pts: &Bound<'_, PyAny>,
         frames: &[u8],
+        pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
         self.inner
@@ -1001,7 +1016,10 @@ impl PyMuxer {
     ///
     /// Raises `MuxError(INPUT_MALFORMED)` if `klv` is too large for a
     /// single PES; `MuxError(BACKPRESSURE)` on a full queue.
-    #[pyo3(signature = (klv, pts, metadata_service_id = 0))]
+    ///
+    /// `pts` is keyword-only — pass as `pts=...` (audit #9 normalization
+    /// across all `push_*` methods).
+    #[pyo3(signature = (klv, *, pts, metadata_service_id = 0))]
     pub fn push_klv(
         &mut self,
         py: Python<'_>,
@@ -1025,7 +1043,10 @@ impl PyMuxer {
     /// Raises `MuxError(INVALID_USAGE)` on an out-of-range handle,
     /// `MuxError(INPUT_MALFORMED)` on oversized payload, or
     /// `MuxError(BACKPRESSURE)` on a full queue.
-    #[pyo3(signature = (handle, klv, pts, metadata_service_id = 0))]
+    ///
+    /// `pts` is keyword-only — pass as `pts=...` (audit #9 normalization
+    /// across all `push_*` methods).
+    #[pyo3(signature = (handle, klv, *, pts, metadata_service_id = 0))]
     pub fn push_klv_to(
         &mut self,
         py: Python<'_>,

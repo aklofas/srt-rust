@@ -33,7 +33,7 @@ def test_write_file_creates_non_empty_file():
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "out.ts"
         with m.write_file(path) as proxy:
-            proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+            proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
         assert path.stat().st_size > 0
         assert path.stat().st_size % 188 == 0
 
@@ -44,7 +44,7 @@ def test_write_file_drains_on_exit():
         path = Path(tmp) / "out.ts"
         with m.write_file(path) as proxy:
             for i in range(5):
-                proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000 + i * 3000))
+                proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000 + i * 3000))
         # After __exit__, all pending must be drained
         assert m.pending_packets() == 0
 
@@ -55,7 +55,7 @@ def test_write_file_propagates_user_exception():
         path = Path(tmp) / "out.ts"
         with pytest.raises(RuntimeError, match="boom"):
             with m.write_file(path) as proxy:
-                proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+                proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
                 raise RuntimeError("boom")
         # File still flushed + closed despite the exception
         assert path.stat().st_size > 0
@@ -76,10 +76,10 @@ def test_write_file_accepts_str_and_pathlike():
     with tempfile.TemporaryDirectory() as tmp:
         p1 = Path(tmp) / "a.ts"
         with m1.write_file(str(p1)) as proxy:
-            proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+            proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
         p2 = Path(tmp) / "b.ts"
         with m2.write_file(p2) as proxy:
-            proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+            proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
         assert p1.stat().st_size > 0
         assert p2.stat().st_size > 0
 
@@ -89,10 +89,10 @@ def test_muxer_reusable_after_sink_exit():
     with tempfile.TemporaryDirectory() as tmp:
         path1 = Path(tmp) / "a.ts"
         with m.write_file(path1) as proxy:
-            proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+            proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
         path2 = Path(tmp) / "b.ts"
         with m.write_file(path2) as proxy:
-            proxy.push_video(_nal_aud(), Pts90khz.from_raw(1_800_000))
+            proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(1_800_000))
         assert path1.stat().st_size > 0
         assert path2.stat().st_size > 0
 
@@ -121,7 +121,7 @@ def test_atomic_false_exception_leaves_partial_at_dest(tmp_path):
     path = tmp_path / "out.ts"
     with pytest.raises(_MyTestError):
         with m.write_file(path) as proxy:
-            proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+            proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
             raise _MyTestError()
     assert path.exists()
     assert path.stat().st_size > 0
@@ -134,7 +134,7 @@ def test_atomic_true_exception_no_file_at_dest(tmp_path):
     path = tmp_path / "out.ts"
     with pytest.raises(_MyTestError):
         with m.write_file(path, atomic=True) as proxy:
-            proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+            proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
             raise _MyTestError()
     assert not path.exists()
     # No `.partial` tempfile should remain in tmp_path either.
@@ -147,7 +147,7 @@ def test_atomic_true_clean_exit_file_at_dest(tmp_path):
     m = Muxer(_cfg())
     path = tmp_path / "out.ts"
     with m.write_file(path, atomic=True) as proxy:
-        proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+        proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
     assert path.exists()
     assert path.stat().st_size > 0
     assert path.stat().st_size % 188 == 0
@@ -163,6 +163,6 @@ def test_atomic_kwarg_default_is_false(tmp_path):
     path = tmp_path / "out.ts"
     with pytest.raises(_MyTestError):
         with m.write_file(path) as proxy:
-            proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+            proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
             raise _MyTestError()
     assert path.exists()

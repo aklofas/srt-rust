@@ -87,9 +87,9 @@ def _build_ts_with_klv(klv_payloads: list[bytes]) -> Path:
 
     m = Muxer(cfg)
     with m.write_file(path) as proxy:
-        proxy.push_video(_NAL_AUD, Pts90khz.from_raw(900_000))
+        proxy.push_video(_NAL_AUD, pts=Pts90khz.from_raw(900_000))
         for i, payload in enumerate(klv_payloads):
-            proxy.push_klv(payload, Pts90khz.from_raw(900_000 + i * 9000))
+            proxy.push_klv(payload, pts=Pts90khz.from_raw(900_000 + i * 9000))
 
     return path
 

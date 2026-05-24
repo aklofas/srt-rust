@@ -61,7 +61,7 @@ def test_stats_initial_state():
 
 def test_stats_increments_after_push_pull():
     m = Muxer(_cfg())
-    m.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+    m.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
     n = int(m.pending_packets())
     buf = bytearray(n * 188)
     m.pull(buf)
@@ -72,7 +72,7 @@ def test_stats_increments_after_push_pull():
 
 def test_reset_stats_zeros_counters():
     m = Muxer(_cfg())
-    m.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+    m.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
     buf = bytearray(int(m.pending_packets()) * 188)
     m.pull(buf)
     m.reset_stats()
@@ -83,7 +83,7 @@ def test_reset_stats_zeros_counters():
 
 def test_stream_codec_stats_video_variant():
     m = Muxer(_cfg())
-    m.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+    m.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
     s = m.stream_codec_stats(0x101)
     assert s is not None
     assert isinstance(s, VideoStreamCodecStats)
@@ -102,7 +102,7 @@ def test_stream_codec_stats_unknown_pid_returns_none():
 
 def test_stream_codec_stats_klv_variant():
     m = Muxer(_cfg())
-    m.push_klv(_klv_ls(), Pts90khz.from_raw(900_000))
+    m.push_klv(_klv_ls(), pts=Pts90khz.from_raw(900_000))
     s = m.stream_codec_stats(0x103)
     assert s is not None
     assert isinstance(s, KlvStreamCodecStats)

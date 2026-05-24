@@ -7,6 +7,54 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py: audit #9 — pythonic muxer arg order + keyword-only pts (2026-05-24)
+
+**Changed (BREAKING — pre-1.0):**
+
+- All `Muxer.push_*` methods now require `pts` (and `dts` where
+  applicable) as a keyword-only argument. Positional `pts` raises
+  `TypeError` at the PyO3 argument-extraction boundary. Affected
+  methods: `push_video`, `push_video_to`, `push_audio`, `push_audio_to`,
+  `push_klv`, `push_klv_to`. `push_video_to_with_dts` was already
+  keyword-only and is unchanged.
+
+- `Muxer.push_audio_to` argument order changed from
+  `(handle, pts, frames)` to `(handle, frames, *, pts)` — `frames`
+  moved before `pts`, and `pts` became keyword-only. This normalizes
+  the `_to` form to match the single-stream `push_audio(frames, *, pts)`
+  shape and the broader Python convention of `(target?, payload, *,
+  pts)` across all `push_*` methods. The lower-level Rust API
+  (`MuxerCore::push_audio_to`) is unchanged; the inconsistency was in
+  the Python surface only.
+
+**Migration:**
+
+```python
+# Before
+muxer.push_video(nal, ts)
+muxer.push_video(nal, ts, True)
+muxer.push_video_to(handle, nal, ts)
+muxer.push_audio(frames, ts)
+muxer.push_audio_to(handle, ts, frames)   # note pts before frames
+muxer.push_klv(klv, ts)
+muxer.push_klv_to(handle, klv, ts)
+
+# After
+muxer.push_video(nal, pts=ts)
+muxer.push_video(nal, pts=ts, key_frame=True)
+muxer.push_video_to(handle, nal, pts=ts)
+muxer.push_audio(frames, pts=ts)
+muxer.push_audio_to(handle, frames, pts=ts)   # frames first, kw pts
+muxer.push_klv(klv, pts=ts)
+muxer.push_klv_to(handle, klv, pts=ts)
+```
+
+Closes audit #9. See
+`docs/python-1/python-bindings-audit.md` §9 and
+`docs/plans/2026-05-24-python-audit-backlog.md` §9.
+
+---
+
 ## [Unreleased] — tst-py: audit #14 — remove unimplemented subtitle muxing surface (2026-05-24)
 
 **Removed:**

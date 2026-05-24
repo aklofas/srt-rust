@@ -35,9 +35,9 @@ def _deterministic_push_sequence(proxy, n_video: int = 5, n_klv: int = 5) -> Non
     pts0 = 900_000  # ~10s at 90kHz
 
     for i in range(n_video):
-        proxy.push_video(nal_aud, Pts90khz.from_raw(pts0 + i * 3000))
+        proxy.push_video(nal_aud, pts=Pts90khz.from_raw(pts0 + i * 3000))
     for i in range(n_klv):
-        proxy.push_klv(klv_ul_zero, Pts90khz.from_raw(pts0 + i * 9000))
+        proxy.push_klv(klv_ul_zero, pts=Pts90khz.from_raw(pts0 + i * 9000))
 
 
 def test_synthetic_determinism_two_muxers_produce_identical_bytes():

@@ -34,6 +34,37 @@ fn stream_type_requires_pts(kind: &StreamKind) -> bool {
     matches!(kind, StreamKind::Video(_) | StreamKind::Audio(_))
 }
 
+/// Tolerance-mode validator for orphan Middle/Last AU cells.
+///
+/// Returns `true` when `payload` looks like a single complete KLV record:
+/// SMPTE 336M Universal Label prefix (`06 0e 2b 34`), followed by a 12-byte
+/// UL completion, followed by a BER length that describes exactly the
+/// remainder of the payload. Stricter than just "starts with UL" because
+/// a real fragment would not have a self-consistent BER length.
+///
+/// This is the gate behind
+/// [`DemuxerConfig::malformed_au_cell_cfi_tolerance`](crate::mpegts::demux::DemuxerConfig::malformed_au_cell_cfi_tolerance) —
+/// the demuxer reframes an orphan cell as Complete only if this returns
+/// `true`. A real loss / mid-stream-join / fragment fails the BER check
+/// and falls through to the existing
+/// [`NonConformantIssue::MultiCellAu`] `{ reason = Orphan }` path.
+fn orphan_validates_as_complete_klv(payload: &[u8]) -> bool {
+    // SMPTE 336M Universal Label is 16 bytes; first 4 are the registered
+    // prefix `06 0e 2b 34` (per SMPTE 298M Registered SMPTE Universal Label).
+    // Anything else is not a recognizable KLV record.
+    if payload.len() < 17 || &payload[0..4] != b"\x06\x0e\x2b\x34" {
+        return false;
+    }
+    // BER length lives immediately after the 16-byte UL. The decoded
+    // length must equal the available payload bytes after the length
+    // field — i.e. the BER length describes exactly the value portion
+    // and there is no trailing junk that would suggest a fragment.
+    match crate::klv::length::read_ber(&payload[16..]) {
+        Ok((declared_len, rest)) => declared_len == rest.len(),
+        Err(_) => false,
+    }
+}
+
 impl super::demuxer::Demuxer {
     pub(super) fn handle_pes_packet(
         &mut self,
@@ -505,26 +536,99 @@ impl super::demuxer::Demuxer {
                                 reason,
                                 dropped_bytes,
                             } => {
-                                self.queue_nonconformant(
-                                    stream,
-                                    NonConformantIssue::MultiCellAu {
-                                        pid: pes.pid,
-                                        dropped_bytes,
-                                        reason,
-                                    },
-                                );
-                                // ConcurrentFirst is the only Failure
-                                // variant the spec says to re-process — the
-                                // reassembler dropped the prior buffer and
-                                // the caller must replay the triggering
-                                // cell against the now-empty state. Other
-                                // failures (Orphan / SequenceGap /
-                                // Overflow) terminate the AU outright.
-                                if matches!(
+                                use crate::mpegts::au_cell::CellFragmentIndication;
+                                use crate::mpegts::demux::event::MultiCellAuReason;
+
+                                // Tolerance branch: when configured AND the
+                                // failure was an orphan Middle/Last AND the
+                                // orphan payload is a self-consistent KLV
+                                // record, emit it as Complete + a dedicated
+                                // diagnostic so the malformation is loud but
+                                // the data flows. Off by default (callers
+                                // must opt in via
+                                // DemuxerConfig::malformed_au_cell_cfi_tolerance).
+                                let observed_cfi = h.cell_fragment_indication;
+                                let orphan_continuation = matches!(
                                     reason,
-                                    crate::mpegts::demux::event::MultiCellAuReason::ConcurrentFirst
-                                ) {
-                                    to_process = Some((h, current_inner));
+                                    MultiCellAuReason::Orphan
+                                ) && matches!(
+                                    observed_cfi,
+                                    CellFragmentIndication::Middle
+                                        | CellFragmentIndication::Last
+                                );
+                                let tolerated = orphan_continuation
+                                    && self.options.malformed_au_cell_cfi_tolerance
+                                    && orphan_validates_as_complete_klv(current_inner);
+
+                                if tolerated {
+                                    let payload_vec = current_inner.to_vec();
+                                    let meta_len = payload_vec.len();
+                                    let entry = self
+                                        .stats_per_stream
+                                        .entry(stream.pid)
+                                        .or_insert_with(|| {
+                                            crate::mpegts::stats::StreamStats {
+                                                pid: stream.pid,
+                                                stream_type: StreamTypeCode::from_byte(
+                                                    stream_type_from_kind(&stream.kind),
+                                                ),
+                                                program_number,
+                                                ..Default::default()
+                                            }
+                                        });
+                                    entry.items += 1;
+                                    entry.bytes += meta_len as u64;
+                                    self.bump_klv_counters(stream.pid, 1);
+                                    self.queue.push_back(DemuxEvent::Metadata {
+                                        stream,
+                                        pts,
+                                        kind: MetadataKind::KlvSyncAuCell {
+                                            metadata_service_id: h.metadata_service_id,
+                                            sequence_number: h.sequence_number,
+                                            // Substituted: the wire said
+                                            // Middle/Last, but we surface as
+                                            // Complete since the payload is
+                                            // self-consistent.
+                                            cell_fragment_indication:
+                                                CellFragmentIndication::Complete,
+                                            decoder_config_flag: h.decoder_config_flag,
+                                            random_access_indicator: h
+                                                .random_access_indicator,
+                                            was_reassembled: false,
+                                            cell_count: 1,
+                                        },
+                                        payload: payload_vec,
+                                    });
+                                    self.queue_nonconformant(
+                                        stream,
+                                        NonConformantIssue::MalformedAuCellCfiTolerated {
+                                            pid: pes.pid,
+                                            observed_cfi,
+                                            treated_as: CellFragmentIndication::Complete,
+                                        },
+                                    );
+                                    // Do NOT also queue MultiCellAu{Orphan} —
+                                    // the cell was rescued, not dropped.
+                                } else {
+                                    self.queue_nonconformant(
+                                        stream,
+                                        NonConformantIssue::MultiCellAu {
+                                            pid: pes.pid,
+                                            dropped_bytes,
+                                            reason,
+                                        },
+                                    );
+                                    // ConcurrentFirst is the only Failure
+                                    // variant the spec says to re-process —
+                                    // the reassembler dropped the prior
+                                    // buffer and the caller must replay the
+                                    // triggering cell against the now-empty
+                                    // state. Other failures (Orphan /
+                                    // SequenceGap / Overflow) terminate the
+                                    // AU outright.
+                                    if matches!(reason, MultiCellAuReason::ConcurrentFirst) {
+                                        to_process = Some((h, current_inner));
+                                    }
                                 }
                             }
                         }
@@ -733,5 +837,78 @@ impl super::demuxer::Demuxer {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Build a minimal-valid sync-KLV body: 16-byte SMPTE UAS Datalink UL
+    /// + 1-byte BER length + `value_len` value bytes. Total length is
+    /// `16 + 1 + value_len`. Use small `value_len` (< 128) so BER short-form
+    /// applies.
+    fn synth_klv_record(value_len: usize) -> Vec<u8> {
+        assert!(value_len < 128, "BER short-form only — use < 128");
+        let mut buf = Vec::with_capacity(17 + value_len);
+        // MISB ST 0601 UAS Datalink Local Set UL prefix.
+        buf.extend_from_slice(&[
+            0x06, 0x0e, 0x2b, 0x34, 0x02, 0x0b, 0x01, 0x01, 0x0e, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00,
+        ]);
+        buf.push(value_len as u8); // BER short-form length
+        buf.extend(std::iter::repeat_n(0x00u8, value_len));
+        buf
+    }
+
+    #[test]
+    fn validator_accepts_minimal_consistent_klv() {
+        let payload = synth_klv_record(32);
+        assert!(orphan_validates_as_complete_klv(&payload));
+    }
+
+    #[test]
+    fn validator_rejects_short_payload() {
+        // < 17 bytes can't carry UL + length.
+        assert!(!orphan_validates_as_complete_klv(&[]));
+        assert!(!orphan_validates_as_complete_klv(&[0x06; 16]));
+    }
+
+    #[test]
+    fn validator_rejects_wrong_ul_prefix() {
+        let mut payload = synth_klv_record(8);
+        payload[0] = 0xFF; // first byte of UL is not 0x06
+        assert!(!orphan_validates_as_complete_klv(&payload));
+    }
+
+    #[test]
+    fn validator_rejects_ber_length_mismatch_short() {
+        let mut payload = synth_klv_record(32);
+        payload[16] = 64; // declares 64 bytes but only 32 follow
+        assert!(!orphan_validates_as_complete_klv(&payload));
+    }
+
+    #[test]
+    fn validator_rejects_ber_length_mismatch_long() {
+        let mut payload = synth_klv_record(32);
+        payload[16] = 16; // declares 16 bytes but 32 follow
+        assert!(!orphan_validates_as_complete_klv(&payload));
+    }
+
+    #[test]
+    fn validator_accepts_ber_long_form() {
+        // 200-byte value with BER long-form length (one length byte).
+        let value_len = 200usize;
+        let mut buf = Vec::with_capacity(2 + 16 + value_len);
+        // UL prefix (same MISB ST 0601 UL as above).
+        buf.extend_from_slice(&[
+            0x06, 0x0e, 0x2b, 0x34, 0x02, 0x0b, 0x01, 0x01, 0x0e, 0x01, 0x03, 0x01, 0x01, 0x00,
+            0x00, 0x00,
+        ]);
+        // BER long-form: 0x81 (length-of-length=1), then 200.
+        buf.push(0x81);
+        buf.push(value_len as u8);
+        buf.extend(std::iter::repeat_n(0x00u8, value_len));
+        assert!(orphan_validates_as_complete_klv(&buf));
     }
 }

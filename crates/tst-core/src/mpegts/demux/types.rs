@@ -107,7 +107,7 @@ pub struct DemuxerConfig {
     /// hls.js / mediamtx today) and does not raise the binding issues.
     pub av1_carriage: crate::mpegts::mux::Av1CarriageMode,
     /// Per-PID cap on the in-flight AU cell reassembly buffer.
-    /// `None` uses [`DEFAULT_AU_CELL_CAP_PER_PID`] (1 MiB). When the
+    /// `None` uses `DEFAULT_AU_CELL_CAP_PER_PID` (1 MiB). When the
     /// buffered inner-byte total would exceed this, the demuxer drops
     /// the buffer and emits
     /// [`crate::mpegts::demux::NonConformantIssue::MultiCellAu`] with

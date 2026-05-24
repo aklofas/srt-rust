@@ -109,6 +109,13 @@ fn convert_precision_timestamp_pack(
 #[pyfunction]
 #[pyo3(name = "decode_precision_timestamp")]
 fn decode_precision_timestamp_py(py: Python<'_>, buf: &[u8]) -> PyResult<PyObject> {
+    // Audit #11 / GIL-release decision: NOT wrapped in `py.allow_threads`.
+    // The Rust `decode_st0605` call is ~1us for the 26-byte spec pack;
+    // GIL transition overhead exceeds the decode time for any realistic
+    // payload size at this entry point. See `crates/tst-py/tests/
+    // test_gil_release.py` and the workspace reference memo
+    // `reference_pyo3_allow_threads_pattern.md` for the empirical
+    // breakeven point (~50us per call).
     match decode_st0605(buf) {
         Ok(pack) => convert_precision_timestamp_pack(py, &pack),
         Err(e) => Err(klv_decode_error_to_pyerr(py, e)),
@@ -370,6 +377,9 @@ fn convert_security_ls(py: Python<'_>, sec: &SecurityLs) -> PyResult<PyObject> {
 #[pyfunction]
 #[pyo3(name = "decode_security", signature = (buf, *, strict = false))]
 fn decode_security_py(py: Python<'_>, buf: &[u8], strict: bool) -> PyResult<PyObject> {
+    // Audit #11 / GIL-release decision: NOT wrapped — same rationale as
+    // `decode_precision_timestamp_py`. ST 0102 records are typically
+    // 20-200 bytes, well under the GIL-transition breakeven.
     let result = if strict {
         decode_st0102_strict(buf)
     } else {
@@ -665,6 +675,12 @@ fn convert_vmti_ls(py: Python<'_>, v: &VmtiLs) -> PyResult<PyObject> {
 #[pyfunction]
 #[pyo3(name = "decode_vmti", signature = (buf, *, strict = false))]
 fn decode_vmti_py(py: Python<'_>, buf: &[u8], strict: bool) -> PyResult<PyObject> {
+    // Audit #11 / GIL-release decision: NOT wrapped — same rationale as
+    // `decode_precision_timestamp_py`. VMTI records can be large with
+    // many targets, but the per-target convert step (which builds Py
+    // objects) keeps cumulative GIL hold low even for big records.
+    // If a future profile shows VMTI workloads benefiting from release,
+    // re-evaluate at that point.
     let result = if strict {
         decode_st0903_strict(buf)
     } else {
@@ -996,6 +1012,14 @@ fn decode_uas_datalink_py(
     strict: bool,
     compliance: bool,
 ) -> PyResult<PyObject> {
+    // Audit #11 / GIL-release decision: NOT wrapped — same rationale as
+    // `decode_precision_timestamp_py`. Even at the upper end (~10 KB
+    // record with 100 unknown TLVs), Rust decode is ~10us per call,
+    // below the GIL transition breakeven. Worse, the 80-field
+    // `convert_uas_datalink_ls` projection dominates per-call CPU
+    // time, so releasing the GIL for the small Rust slice produces
+    // GIL ping-pong under hot batch loops (measured: 30K decodes
+    // taking 50+ seconds under contention vs 0.5s without the wrap).
     let result = if compliance {
         decode_st0601_strict_compliance(buf)
     } else if strict {

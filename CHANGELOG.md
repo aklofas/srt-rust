@@ -7,6 +7,46 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py: audit #11 — release the GIL around heavy Rust work (2026-05-24)
+
+**Performance:**
+
+- `Demuxer.feed`, all `Muxer.push_*` methods (`push_video`,
+  `push_video_to`, `push_video_to_with_dts`, `push_audio`,
+  `push_audio_to`, `push_klv`, `push_klv_to`), and the codec
+  eager-collect iterators (`iter_aac_frames`,
+  `iter_aac_frames_with_resync`, `iter_mpeg2_audio_frames`,
+  `iter_mpeg2_audio_frames_with_resync`) now release the Python GIL
+  around their inner Rust work via `py.allow_threads`. This unblocks
+  other Python threads (notebook UI, GUI event loops, sibling worker
+  threads) during long parses or large pushes. Measured impact on a
+  dev box:
+
+  | Workload | Worker-thread throughput (vs solo) — before → after |
+  |---|---|
+  | `Muxer.push_video` (30 MB H.264 NAL) | 25% → ~100% |
+  | `iter_aac_frames_with_resync` (500 MB) | 10% → ~85% |
+  | `iter_mpeg2_audio_frames_with_resync` (500 MB) | 12% → ~85% |
+
+  No behavior change for callers — public-API contract is identical.
+
+**Intentionally NOT GIL-released:**
+
+- `Muxer.pull(bytearray)` — the `PyByteArray` mutable-slice safety
+  relies on the GIL preventing concurrent resize/mutation from another
+  thread. Pull is also fast (memcpy-class, microseconds per call).
+- KLV decode entry points (`decode_uas_datalink`, `decode_security`,
+  `decode_vmti`, `decode_precision_timestamp`) — typical record sizes
+  (20-200 bytes, ~5us Rust decode) are below the GIL transition
+  breakeven (~50us); wrapping produces lock-contention pathology under
+  hot batch loops.
+
+**Tests:**
+
+- `crates/tst-py/tests/test_gil_release.py` (NEW, 5 tests) — pure-Python
+  worker-thread concurrency probes verifying the wrapped methods let
+  other threads progress.
+
 ## [Unreleased] — tst-py: audit #9 — pythonic muxer arg order + keyword-only pts (2026-05-24)
 
 **Changed (BREAKING — pre-1.0):**

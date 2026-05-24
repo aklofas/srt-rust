@@ -81,11 +81,16 @@ impl PyDemuxer {
     /// bytes-like (i.e. cannot be passed to `bytes()`).
     fn feed(&mut self, py: Python<'_>, bytes: &Bound<'_, PyAny>) -> PyResult<()> {
         // Fast path: real `bytes` extracts to a borrowed &[u8].
+        //
+        // GIL-release rationale (audit #11): the `&[u8]` borrows from a
+        // `Py<PyBytes>` whose strong reference is held by the calling
+        // Python frame for the duration of this call. Python's GC cannot
+        // collect a referenced object, so the slice remains valid without
+        // the GIL held. `feed` does pure-Rust parsing (no Python object
+        // construction inside), so it is safe to wrap in `allow_threads`.
         if let Ok(slice) = bytes.extract::<&[u8]>() {
-            return self
-                .inner
-                .feed(slice)
-                .map_err(|e| demux_error_to_pyerr(py, e));
+            let res = py.allow_threads(|| self.inner.feed(slice));
+            return res.map_err(|e| demux_error_to_pyerr(py, e));
         }
         // Fallback: coerce via the Python `bytes()` builtin. Accepts
         // `bytearray`, `memoryview`, and any object exposing the
@@ -95,9 +100,14 @@ impl PyDemuxer {
             .getattr(intern!(py, "bytes"))?
             .call1((bytes,))?
             .downcast_into::<PyBytes>()?;
-        self.inner
-            .feed(coerced.as_bytes())
-            .map_err(|e| demux_error_to_pyerr(py, e))
+        // `coerced` is `!Ungil` (contains `Python<'_>`), but the
+        // underlying `&[u8]` is — extract the slice first and let
+        // `coerced` (the strong `Py<PyBytes>` reference) keep it alive
+        // on the stack across the GIL drop. Python's GC cannot collect
+        // a referenced object.
+        let slice: &[u8] = coerced.as_bytes();
+        let res = py.allow_threads(|| self.inner.feed(slice));
+        res.map_err(|e| demux_error_to_pyerr(py, e))
     }
 
     /// Flush any in-flight PES reassembly. Call once at EOF before

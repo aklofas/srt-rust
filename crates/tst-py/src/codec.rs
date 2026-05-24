@@ -2937,14 +2937,18 @@ impl AdtsFrameIterPy {
 #[pyfunction]
 #[pyo3(name = "iter_aac_frames")]
 fn iter_aac_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<AdtsFrameIterPy> {
-    let frames: Result<Vec<_>, _> = rust_aac_frames(bytes_buf)
-        .map(|res| res.map(|f| f.to_owned()))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "aac"));
-    Ok(AdtsFrameIterPy {
-        frames: frames?,
-        index: 0,
-    })
+    // GIL-release rationale (audit #11): the eager collect is the heavy
+    // work — it scans `bytes_buf` and copies every frame into an owned
+    // Vec. `bytes_buf` borrows from a `Py<PyBytes>` held by the caller's
+    // frame, safe to access without the GIL. Per-iter `__next__` stays
+    // inside the GIL (overhead of release per element exceeds benefit).
+    let frames = py.allow_threads(|| {
+        rust_aac_frames(bytes_buf)
+            .map(|res| res.map(|f| f.to_owned()))
+            .collect::<Result<Vec<_>, _>>()
+    });
+    let frames = frames.map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "aac"))?;
+    Ok(AdtsFrameIterPy { frames, index: 0 })
 }
 
 /// Returns an iterator over ADTS frames parsed from `bytes_buf`
@@ -2959,11 +2963,14 @@ fn iter_aac_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<AdtsFrameIte
 /// filtered out; only successfully decoded frames are yielded.
 #[pyfunction]
 #[pyo3(name = "iter_aac_frames_with_resync")]
-fn iter_aac_frames_with_resync_py(bytes_buf: &[u8]) -> AdtsFrameIterPy {
-    let frames: Vec<_> = rust_aac_frames_with_resync(bytes_buf)
-        .filter_map(|res| res.ok())
-        .map(|f| f.to_owned())
-        .collect();
+fn iter_aac_frames_with_resync_py(py: Python<'_>, bytes_buf: &[u8]) -> AdtsFrameIterPy {
+    // GIL-release rationale: see `iter_aac_frames_py`.
+    let frames: Vec<_> = py.allow_threads(|| {
+        rust_aac_frames_with_resync(bytes_buf)
+            .filter_map(|res| res.ok())
+            .map(|f| f.to_owned())
+            .collect()
+    });
     AdtsFrameIterPy { frames, index: 0 }
 }
 
@@ -3227,10 +3234,14 @@ impl Mpeg2AudioFrameIterPy {
 #[pyfunction]
 #[pyo3(name = "iter_mpeg2_audio_frames")]
 fn iter_mpeg2_audio_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<Mpeg2AudioFrameIterPy> {
-    let frames = rust_mpeg2audio_frames(bytes_buf)
-        .map(|res| res.map(|f| f.to_owned()))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "mpeg2audio"))?;
+    // GIL-release rationale: see `iter_aac_frames_py`.
+    let frames = py.allow_threads(|| {
+        rust_mpeg2audio_frames(bytes_buf)
+            .map(|res| res.map(|f| f.to_owned()))
+            .collect::<Result<Vec<_>, _>>()
+    });
+    let frames =
+        frames.map_err(|e| crate::errors::codec_parse_error_to_pyerr(py, &e, "mpeg2audio"))?;
     Ok(Mpeg2AudioFrameIterPy { frames, index: 0 })
 }
 
@@ -3246,11 +3257,17 @@ fn iter_mpeg2_audio_frames_py(py: Python<'_>, bytes_buf: &[u8]) -> PyResult<Mpeg
 /// filtered out; only successfully decoded frames are yielded.
 #[pyfunction]
 #[pyo3(name = "iter_mpeg2_audio_frames_with_resync")]
-fn iter_mpeg2_audio_frames_with_resync_py(bytes_buf: &[u8]) -> Mpeg2AudioFrameIterPy {
-    let frames: Vec<_> = rust_mpeg2audio_frames_with_resync(bytes_buf)
-        .filter_map(|res| res.ok())
-        .map(|f| f.to_owned())
-        .collect();
+fn iter_mpeg2_audio_frames_with_resync_py(
+    py: Python<'_>,
+    bytes_buf: &[u8],
+) -> Mpeg2AudioFrameIterPy {
+    // GIL-release rationale: see `iter_aac_frames_py`.
+    let frames: Vec<_> = py.allow_threads(|| {
+        rust_mpeg2audio_frames_with_resync(bytes_buf)
+            .filter_map(|res| res.ok())
+            .map(|f| f.to_owned())
+            .collect()
+    });
     Mpeg2AudioFrameIterPy { frames, index: 0 }
 }
 

@@ -811,6 +811,18 @@ impl PyMuxer {
         // underlying Rust `Muxer::pull` writes into the slice and
         // does not retain it. The GIL is held for the whole call, so
         // Python cannot mutate or resize the bytearray concurrently.
+        //
+        // Audit #11 / GIL-release decision: `pull` is NOT wrapped in
+        // `py.allow_threads` even though the rest of the `push_*`
+        // family is. Rationale: `PyByteArray` is mutable + resizable
+        // from any Python thread that holds a reference, so releasing
+        // the GIL while holding `&mut [u8]` into it would violate
+        // Rust's aliasing rules if a racing thread resized or wrote
+        // the bytearray. The single-threaded `Muxer.pull(buf)` pattern
+        // is the conventional use, but the safety contract here rests
+        // on the GIL — unlike `push_*`, which borrows from immutable
+        // `Py<PyBytes>`. `pull` is also fast (memcpy-class) so the
+        // ergonomic loss is minimal.
         let slice = unsafe { out.as_bytes_mut() };
         Ok(self.inner.pull(slice))
     }
@@ -856,9 +868,13 @@ impl PyMuxer {
         key_frame: bool,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        self.inner
-            .push_video(nal, rust_pts, key_frame)
-            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+        // GIL-release rationale (audit #11): `nal` borrows from a
+        // `Py<PyBytes>` held by the caller's frame; safe to access
+        // without the GIL because GC cannot collect a referenced
+        // object during the call. The Rust `push_video` is pure
+        // computation — no Python object construction.
+        let res = py.allow_threads(|| self.inner.push_video(nal, rust_pts, key_frame));
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
     /// Push one access unit onto a specific video stream identified
@@ -891,9 +907,15 @@ impl PyMuxer {
         key_frame: bool,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        self.inner
-            .push_video_to(handle.0, nal, rust_pts, key_frame)
-            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+        // GIL-release rationale (audit #11): see `push_video`. `handle.0`
+        // is a `Copy` u32 newtype; capturing it does not retain the
+        // `PyRef`. `nal` is GIL-safe per the `push_video` argument.
+        let handle_inner = handle.0;
+        let res = py.allow_threads(|| {
+            self.inner
+                .push_video_to(handle_inner, nal, rust_pts, key_frame)
+        });
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
     /// Push one access unit with explicit composition (PTS) and decode
@@ -926,9 +948,14 @@ impl PyMuxer {
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
         let rust_dts = py_pts90khz(dts)?;
-        self.inner
-            .push_video_to_with_dts(handle.0, nal, rust_pts, rust_dts, key_frame)
-            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+        // GIL-release rationale (audit #11): see `push_video`. `handle.0`
+        // copied out before release; `nal` is GIL-safe.
+        let handle_inner = handle.0;
+        let res = py.allow_threads(|| {
+            self.inner
+                .push_video_to_with_dts(handle_inner, nal, rust_pts, rust_dts, key_frame)
+        });
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
     // -----------------------------------------------------------------
@@ -966,9 +993,10 @@ impl PyMuxer {
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        self.inner
-            .push_audio(frames, rust_pts)
-            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+        // GIL-release rationale (audit #11): see `push_video` — `frames`
+        // borrows from a `Py<PyBytes>` held by the caller's frame.
+        let res = py.allow_threads(|| self.inner.push_audio(frames, rust_pts));
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
     /// Push one encoded audio frame onto a specific audio stream
@@ -994,9 +1022,10 @@ impl PyMuxer {
         pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        self.inner
-            .push_audio_to(handle.0, rust_pts, frames)
-            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+        // GIL-release rationale (audit #11): see `push_video`.
+        let handle_inner = handle.0;
+        let res = py.allow_threads(|| self.inner.push_audio_to(handle_inner, rust_pts, frames));
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
     /// Push one KLV local-set onto the lone configured KLV stream.
@@ -1028,9 +1057,10 @@ impl PyMuxer {
         metadata_service_id: u8,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        self.inner
-            .push_klv(klv, rust_pts, metadata_service_id)
-            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+        // GIL-release rationale (audit #11): see `push_video` — `klv`
+        // borrows from a `Py<PyBytes>` held by the caller's frame.
+        let res = py.allow_threads(|| self.inner.push_klv(klv, rust_pts, metadata_service_id));
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
     /// Push one KLV local-set onto a specific KLV stream identified by
@@ -1056,9 +1086,13 @@ impl PyMuxer {
         metadata_service_id: u8,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        self.inner
-            .push_klv_to(handle.0, klv, rust_pts, metadata_service_id)
-            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+        // GIL-release rationale (audit #11): see `push_video`.
+        let handle_inner = handle.0;
+        let res = py.allow_threads(|| {
+            self.inner
+                .push_klv_to(handle_inner, klv, rust_pts, metadata_service_id)
+        });
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
     /// Push one subtitle payload onto the lone configured subtitle

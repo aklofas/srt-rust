@@ -53,10 +53,10 @@
  * Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
  * for the bump policy.
  *
- * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 2` in the
+ * Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 3` in the
  * generated header. Runtime accessor: [`tst_get_abi_version_minor`].
  */
-#define TST_ABI_VERSION_MINOR 2
+#define TST_ABI_VERSION_MINOR 3
 
 #define TST_CODEC_KIND_AUDIO 3
 
@@ -455,6 +455,44 @@ enum tst_pcr_malformed_kind
 };
 #ifndef __cplusplus
 typedef int32_t tst_pcr_malformed_kind;
+#endif // __cplusplus
+
+/**
+ * `repr(i32)` mirror of `tst_core::mpegts::demux::MultiCellAuReason`.
+ * Surfaced on `tst_event_t.u.nonconformant.multi_cell_au_reason` when
+ * `issue_code == TST_NONCONFORMANT_CODE_MULTI_CELL_AU`.
+ */
+enum tst_multi_cell_au_reason
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  /**
+   * A continuation cell (`Middle` or `Last`) arrived without a prior
+   * `First`. Stream started mid-AU or a `First` was lost upstream.
+   */
+  TST_MULTI_CELL_AU_REASON_ORPHAN = 0,
+  /**
+   * A continuation cell's `sequence_number` did not match the expected
+   * `(first.sequence_number + cells_seen) mod 256`. Cell loss between
+   * the buffered prefix and the arriving cell.
+   */
+  TST_MULTI_CELL_AU_REASON_SEQUENCE_GAP = 1,
+  /**
+   * A new `First` cell arrived while the previous AU was still being
+   * buffered (its `Last` never appeared). The partial buffer is
+   * dropped before the new `First` is processed.
+   */
+  TST_MULTI_CELL_AU_REASON_CONCURRENT_FIRST = 2,
+  /**
+   * The buffered AU's accumulated inner bytes would exceed
+   * [`tst_core::mpegts::demux::DemuxerConfig::au_cell_cap_per_pid`]
+   * (default 1 MiB). The partial buffer is dropped.
+   */
+  TST_MULTI_CELL_AU_REASON_OVERFLOW = 3,
+};
+#ifndef __cplusplus
+typedef int32_t tst_multi_cell_au_reason;
 #endif // __cplusplus
 
 /**
@@ -878,6 +916,21 @@ typedef struct TstEventMetadata {
   uint8_t decoder_config_flag;
   uint8_t random_access_indicator;
   uint8_t _pad3[3];
+  /**
+   * Multi-cell AU reassembly outcome (KlvSyncAuCell only). `true` if
+   * `payload` is the concatenated inner bytes of 2+ cells whose
+   * `cell_fragment_indication` chain (First → Middle\* → Last) was
+   * validated and joined; `false` if `payload` is a single complete
+   * cell or the metadata kind is not KlvSyncAuCell.
+   */
+  bool was_reassembled;
+  uint8_t _pad4[3];
+  /**
+   * Number of source cells contributing to `payload` (KlvSyncAuCell
+   * only). `1` for single-cell AUs and non-KlvSyncAuCell kinds; `>= 2`
+   * when `was_reassembled == true`.
+   */
+  uint32_t cell_count;
 } TstEventMetadata;
 
 typedef struct TstEventDiscontinuity {
@@ -914,7 +967,17 @@ typedef struct TstEventNonConformant {
   uint8_t _pad2[4];
   size_t observed_len;
   uint8_t obu_type;
-  uint8_t _pad3[7];
+  uint8_t _pad3[3];
+  /**
+   * `repr(i32)` mirror of `tst_core::mpegts::demux::MultiCellAuReason`.
+   * Valid only when `issue_code == TST_NONCONFORMANT_CODE_MULTI_CELL_AU`;
+   * values match `TstMultiCellAuReason` discriminants
+   * (Orphan=0, SequenceGap=1, ConcurrentFirst=2, Overflow=3).
+   * Zero (Orphan) for unrelated issue codes — gate on `issue_code`
+   * before reading. The accompanying `observed_len` field carries
+   * the cumulative inner-byte count discarded.
+   */
+  int multi_cell_au_reason;
   const uint16_t *programs;
   const uint8_t *tags;
   size_t tag_count;

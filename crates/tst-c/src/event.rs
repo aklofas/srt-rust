@@ -201,6 +201,29 @@ pub enum TstPcrMalformedKind {
     ExtensionOutOfRange = 1,
 }
 
+/// `repr(i32)` mirror of `tst_core::mpegts::demux::MultiCellAuReason`.
+/// Surfaced on `tst_event_t.u.nonconformant.multi_cell_au_reason` when
+/// `issue_code == TST_NONCONFORMANT_CODE_MULTI_CELL_AU`.
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TstMultiCellAuReason {
+    /// A continuation cell (`Middle` or `Last`) arrived without a prior
+    /// `First`. Stream started mid-AU or a `First` was lost upstream.
+    Orphan = 0,
+    /// A continuation cell's `sequence_number` did not match the expected
+    /// `(first.sequence_number + cells_seen) mod 256`. Cell loss between
+    /// the buffered prefix and the arriving cell.
+    SequenceGap = 1,
+    /// A new `First` cell arrived while the previous AU was still being
+    /// buffered (its `Last` never appeared). The partial buffer is
+    /// dropped before the new `First` is processed.
+    ConcurrentFirst = 2,
+    /// The buffered AU's accumulated inner bytes would exceed
+    /// [`tst_core::mpegts::demux::DemuxerConfig::au_cell_cap_per_pid`]
+    /// (default 1 MiB). The partial buffer is dropped.
+    Overflow = 3,
+}
+
 // ------------------------------------------------------------------
 // Subordinate list-element structs (Task 7)
 // ------------------------------------------------------------------
@@ -392,6 +415,17 @@ pub struct TstEventMetadata {
     pub decoder_config_flag: u8,
     pub random_access_indicator: u8,
     pub _pad3: [u8; 3],
+    /// Multi-cell AU reassembly outcome (KlvSyncAuCell only). `true` if
+    /// `payload` is the concatenated inner bytes of 2+ cells whose
+    /// `cell_fragment_indication` chain (First → Middle\* → Last) was
+    /// validated and joined; `false` if `payload` is a single complete
+    /// cell or the metadata kind is not KlvSyncAuCell.
+    pub was_reassembled: bool,
+    pub _pad4: [u8; 3],
+    /// Number of source cells contributing to `payload` (KlvSyncAuCell
+    /// only). `1` for single-cell AUs and non-KlvSyncAuCell kinds; `>= 2`
+    /// when `was_reassembled == true`.
+    pub cell_count: u32,
 }
 
 #[repr(C)]
@@ -430,7 +464,15 @@ pub struct TstEventNonConformant {
     pub _pad2: [u8; 4],
     pub observed_len: usize,
     pub obu_type: u8,
-    pub _pad3: [u8; 7],
+    pub _pad3: [u8; 3],
+    /// `repr(i32)` mirror of `tst_core::mpegts::demux::MultiCellAuReason`.
+    /// Valid only when `issue_code == TST_NONCONFORMANT_CODE_MULTI_CELL_AU`;
+    /// values match `TstMultiCellAuReason` discriminants
+    /// (Orphan=0, SequenceGap=1, ConcurrentFirst=2, Overflow=3).
+    /// Zero (Orphan) for unrelated issue codes — gate on `issue_code`
+    /// before reading. The accompanying `observed_len` field carries
+    /// the cumulative inner-byte count discarded.
+    pub multi_cell_au_reason: c_int,
     pub programs: *const u16, // PidReusedAcrossPrograms (len 2)
     pub tags: *const u8,      // SubtitleDescriptorAmbiguous
     pub tag_count: usize,
@@ -801,6 +843,8 @@ fn fill_metadata(
     let mut cell_fragment_indication = 0u8;
     let mut decoder_config_flag = 0u8;
     let mut random_access_indicator = 0u8;
+    let mut was_reassembled = false;
+    let mut cell_count: u32 = 0;
     let md_kind = match kind {
         MetadataKind::KlvSyncAuCell {
             metadata_service_id: sid,
@@ -808,15 +852,16 @@ fn fill_metadata(
             cell_fragment_indication: cfi,
             decoder_config_flag: dcf,
             random_access_indicator: rai,
-            // Task 7 will mirror these in the C ABI; ignore here until then.
-            was_reassembled: _,
-            cell_count: _,
+            was_reassembled: wr,
+            cell_count: cc,
         } => {
             metadata_service_id = *sid;
             sequence_number = *seq;
             cell_fragment_indication = *cfi as u8;
             decoder_config_flag = *dcf as u8;
             random_access_indicator = *rai as u8;
+            was_reassembled = *wr;
+            cell_count = *cc;
             TstMetadataKindTag::KlvSyncAuCell as c_int
         }
         MetadataKind::KlvAsync => TstMetadataKindTag::KlvAsync as c_int,
@@ -839,6 +884,9 @@ fn fill_metadata(
         decoder_config_flag,
         random_access_indicator,
         _pad3: [0; 3],
+        was_reassembled,
+        _pad4: [0; 3],
+        cell_count,
     };
 }
 
@@ -903,7 +951,8 @@ fn fill_nonconformant(
         _pad2: [0; 4],
         observed_len: 0,
         obu_type: 0,
-        _pad3: [0; 7],
+        _pad3: [0; 3],
+        multi_cell_au_reason: 0,
         programs: std::ptr::null(),
         tags: std::ptr::null(),
         tag_count: 0,
@@ -987,12 +1036,25 @@ fn fill_nonconformant(
         NonConformantIssue::MultiCellAu {
             pid,
             dropped_bytes,
-            // Task 7 will mirror this in the C ABI; ignore here until then.
-            reason: _,
+            reason,
         } => {
+            use tst_core::mpegts::demux::event::MultiCellAuReason;
             body.issue_code = TstNonConformantCode::MultiCellAu as c_int;
             body.pid = *pid;
             body.observed_len = *dropped_bytes;
+            // `MultiCellAuReason` is `#[non_exhaustive]`; future variants
+            // fall through to `Orphan` (0) so the consumer-visible code
+            // remains stable. Add a new `TstMultiCellAuReason` variant
+            // when a future Rust variant warrants distinct C-side handling.
+            body.multi_cell_au_reason = match reason {
+                MultiCellAuReason::Orphan => TstMultiCellAuReason::Orphan as c_int,
+                MultiCellAuReason::SequenceGap => TstMultiCellAuReason::SequenceGap as c_int,
+                MultiCellAuReason::ConcurrentFirst => {
+                    TstMultiCellAuReason::ConcurrentFirst as c_int
+                }
+                MultiCellAuReason::Overflow => TstMultiCellAuReason::Overflow as c_int,
+                _ => TstMultiCellAuReason::Orphan as c_int,
+            };
         }
         NonConformantIssue::PsiMultiSectionUnsupported {
             pid,

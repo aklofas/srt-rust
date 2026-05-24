@@ -7,6 +7,21 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py: audit #8 — Python docs refreshed to Phase 6 reality (2026-05-24)
+
+**Docs:**
+
+- Refreshed stale Python binding status text across `README.md`,
+  `crates/tst-py/README.md`, and `docs/guide-python.md` to reflect the
+  Phase 6 shipped reality (Demuxer + Muxer + typed KLV decode/encode
+  for ST 0601 / ST 0102 / ST 0605 / ST 0903, codec parsers for
+  H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio, optional pandas
+  DataFrame + NumPy adapters). Replaced the "Once v1 ships" placeholder
+  Quickstart in `crates/tst-py/README.md` with real `parse_file` /
+  `probe` / `Muxer.write_file` examples. Updated the v1 roadmap
+  to mark Phases 0-6 SHIPPED and Phase 7 (CI wheels + PyPI publish)
+  as UP NEXT. Closes audit #8.
+
 ## [Unreleased] — tst-py: Python bindings audit small wave (2026-05-24)
 
 Small carry-forward batch from the 2026-05-24 Python bindings audit

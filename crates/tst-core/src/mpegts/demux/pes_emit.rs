@@ -548,14 +548,13 @@ impl super::demuxer::Demuxer {
                                 // must opt in via
                                 // DemuxerConfig::malformed_au_cell_cfi_tolerance).
                                 let observed_cfi = h.cell_fragment_indication;
-                                let orphan_continuation = matches!(
-                                    reason,
-                                    MultiCellAuReason::Orphan
-                                ) && matches!(
-                                    observed_cfi,
-                                    CellFragmentIndication::Middle
-                                        | CellFragmentIndication::Last
-                                );
+                                let orphan_continuation =
+                                    matches!(reason, MultiCellAuReason::Orphan)
+                                        && matches!(
+                                            observed_cfi,
+                                            CellFragmentIndication::Middle
+                                                | CellFragmentIndication::Last
+                                        );
                                 let tolerated = orphan_continuation
                                     && self.options.malformed_au_cell_cfi_tolerance
                                     && orphan_validates_as_complete_klv(current_inner);
@@ -566,15 +565,13 @@ impl super::demuxer::Demuxer {
                                     let entry = self
                                         .stats_per_stream
                                         .entry(stream.pid)
-                                        .or_insert_with(|| {
-                                            crate::mpegts::stats::StreamStats {
-                                                pid: stream.pid,
-                                                stream_type: StreamTypeCode::from_byte(
-                                                    stream_type_from_kind(&stream.kind),
-                                                ),
-                                                program_number,
-                                                ..Default::default()
-                                            }
+                                        .or_insert_with(|| crate::mpegts::stats::StreamStats {
+                                            pid: stream.pid,
+                                            stream_type: StreamTypeCode::from_byte(
+                                                stream_type_from_kind(&stream.kind),
+                                            ),
+                                            program_number,
+                                            ..Default::default()
                                         });
                                     entry.items += 1;
                                     entry.bytes += meta_len as u64;
@@ -592,8 +589,7 @@ impl super::demuxer::Demuxer {
                                             cell_fragment_indication:
                                                 CellFragmentIndication::Complete,
                                             decoder_config_flag: h.decoder_config_flag,
-                                            random_access_indicator: h
-                                                .random_access_indicator,
+                                            random_access_indicator: h.random_access_indicator,
                                             was_reassembled: false,
                                             cell_count: 1,
                                         },
@@ -844,10 +840,9 @@ impl super::demuxer::Demuxer {
 mod tests {
     use super::*;
 
-    /// Build a minimal-valid sync-KLV body: 16-byte SMPTE UAS Datalink UL
-    /// + 1-byte BER length + `value_len` value bytes. Total length is
-    /// `16 + 1 + value_len`. Use small `value_len` (< 128) so BER short-form
-    /// applies.
+    /// Build a minimal-valid sync-KLV body: 16-byte SMPTE UAS Datalink UL,
+    /// 1-byte BER short-form length, then `value_len` value bytes
+    /// (total `17 + value_len`). Caller must keep `value_len < 128`.
     fn synth_klv_record(value_len: usize) -> Vec<u8> {
         assert!(value_len < 128, "BER short-form only — use < 128");
         let mut buf = Vec::with_capacity(17 + value_len);

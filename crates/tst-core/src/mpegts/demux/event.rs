@@ -1184,8 +1184,17 @@ mod tests {
         let s = format!("{issue}");
         assert!(s.contains("PID 0x1002"), "Display includes PID: {s}");
         assert!(s.contains("Middle"), "Display names observed variant: {s}");
-        assert!(s.contains("0b00"), "Display includes observed CFI bits: {s}");
-        assert!(s.contains("Complete"), "Display names treated_as variant: {s}");
-        assert!(s.contains("0b11"), "Display includes treated_as CFI bits: {s}");
+        assert!(
+            s.contains("0b00"),
+            "Display includes observed CFI bits: {s}"
+        );
+        assert!(
+            s.contains("Complete"),
+            "Display names treated_as variant: {s}"
+        );
+        assert!(
+            s.contains("0b11"),
+            "Display includes treated_as CFI bits: {s}"
+        );
     }
 }

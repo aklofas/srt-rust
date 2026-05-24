@@ -7,6 +7,24 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py: Python bindings audit small wave (2026-05-24)
+
+Small carry-forward batch from the 2026-05-24 Python bindings audit
+(`docs/python-1/python-bindings-audit.md`). Three independent fixes
+shipped as three commits; the larger #3 + #5-14 backlog gets its own
+plan.
+
+**CI:**
+
+- New `python-core` GitHub Actions job runs the default (non-pandas)
+  pytest suite after `maturin develop --release`. Closes audit #1
+  (Python core tests previously had no CI coverage — only the pandas
+  extra job ran, and only against pandas-marked tests).
+- The 12th bash ratchet `scripts/check-py-codec-error-mapping-coverage.sh`
+  now runs in CI (as the first step of `python-core`). Future
+  `CodecParseError` variants can no longer silently miss Python
+  exception mapping.
+
 ## [Unreleased] — mpegts: multi-cell AU cell reassembly (2026-05-24)
 
 **`mpegts::demux` now reassembles fragmented Metadata AU cells per

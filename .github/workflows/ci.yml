@@ -324,11 +324,92 @@ jobs:
           cd crates/tst-srt/fuzz
           cargo +nightly fuzz check
 
+  python-core:
+    name: tst-py default tests
+    runs-on: ubuntu-latest
+    # Default (non-pandas) pytest suite. Phase 0/1 didn't add a python
+    # CI job; Phase 6 added `python-pandas-extra` for the optional extra;
+    # this job (added via audit #1, 2026-05-24) closes the gap by running
+    # the broader default-marker suite that exercises Demuxer, Muxer,
+    # KLV typed decode/encode, codec parsers, and io helpers. Wires
+    # scripts/check-py-codec-error-mapping-coverage.sh (the 12th bash
+    # ratchet) as a fast-fail step so future CodecParseError variants
+    # cannot silently miss Python exception mapping.
+    env:
+      # Same `RUSTUP_TOOLCHAIN` pin as `build` and `python-pandas-extra` —
+      # avoids the pre-installed clippy / rustup-sync clash on
+      # ubuntu-latest runners (per
+      # `reference_maturin_develop_ci_venv_recipe`).
+      RUSTUP_TOOLCHAIN: "1.85"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: check-py-codec-error-mapping-coverage
+        # Cheap grep over Rust source — run before the expensive maturin
+        # build so a missing exception-mapping arm fails CI fast.
+        run: bash scripts/check-py-codec-error-mapping-coverage.sh
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            !target/debug/incremental
+            !target/debug/.fingerprint
+            !target/debug/deps
+          key: cargo-python-core-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-python-core-
+
+      - name: Create + activate venv, install maturin + pytest
+        # maturin develop requires VIRTUAL_ENV/CONDA_PREFIX/.venv; setup-python
+        # alone gives a system python. No numpy/pandas here — this job runs
+        # the default `-m 'not pandas'` set; the [pandas] extra is covered
+        # by `python-pandas-extra`.
+        run: |
+          cd crates/tst-py
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install maturin pytest
+
+      - name: Build tst-py (maturin develop --release)
+        env:
+          SRT_FORCE_VENDORED: "1"
+        run: |
+          cd crates/tst-py
+          source .venv/bin/activate
+          maturin develop --release
+
+      - name: pytest default (non-pandas)
+        # pyproject.toml sets `addopts = "-m 'not pandas'"` so this runs
+        # the default marker set. Pandas-marked tests live in the
+        # `python-pandas-extra` job; missing-extra ImportError smoke also
+        # lives there (patches sys.modules to be extra-agnostic).
+        run: |
+          cd crates/tst-py
+          .venv/bin/pytest tests/ -v
+
   python-pandas-extra:
     name: tst-py with [pandas] extra
     runs-on: ubuntu-latest
-    # No existing python CI job to chain after (Phase 0/1 didn't add one);
-    # this is the first python job and runs standalone. The missing-extra
+    # Sibling to `python-core`: same venv recipe, plus numpy + pandas to
+    # exercise the `tstrans.pandas` adapters. The missing-extra
     # test file (test_pandas_missing_extra.py) runs unconditionally in this
     # job as a smoke check — it patches sys.modules so the [pandas] extra
     # being installed here doesn't suppress the test.

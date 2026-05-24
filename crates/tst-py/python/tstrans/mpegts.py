@@ -397,6 +397,13 @@ class _KlvEvent(DemuxEvent):
     pts: Pts90khz
     kind: MetadataKindTag
     payload: bytes
+    # Multi-cell AU reassembly surface (H.222.0 §2.12.4.2). `False` + `1`
+    # on single-cell (Complete) AUs and on non-KlvSyncAuCell metadata
+    # events. Defaults preserve backward compatibility for any callers
+    # that construct `_KlvEvent` directly (the Rust converter always
+    # populates these explicitly).
+    was_reassembled: bool = False
+    cell_count: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -410,6 +417,10 @@ class _NonConformantEvent(DemuxEvent):
     stream: StreamId
     issue: str
     kind: NonConformantKind
+    # Typed reason set only when `kind == NonConformantKind.MULTI_CELL_AU`;
+    # `None` for all other issues. Default keeps existing constructors
+    # working without changes.
+    multi_cell_au_reason: Optional["MultiCellAuReason"] = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -462,6 +473,13 @@ from tstrans.codec import NalUnit, Obu, ObuExtension
 from tstrans import _native as _native_mod
 
 Demuxer = _native_mod.Demuxer
+
+# `MultiCellAuReason` — PyO3 `eq_int` enum mirroring
+# `tst_core::mpegts::demux::event::MultiCellAuReason`. Re-exported here so
+# Python users can `from tstrans.mpegts import MultiCellAuReason`. Set on
+# `_NonConformantEvent.multi_cell_au_reason` when the issue is
+# `MULTI_CELL_AU`; `None` otherwise.
+MultiCellAuReason = _native_mod.MultiCellAuReason
 
 # Phase 4 Task 3 — stream handle newtypes. Rust impls live in
 # crates/tst-py/src/mux.rs as `Py{Video,Audio,Klv,Subtitle}StreamHandle`,
@@ -707,6 +725,7 @@ __all__: list[str] = [
     "DemuxEvent",
     "DemuxerConfig",
     "Demuxer",
+    "MultiCellAuReason",
     "VideoStreamHandle",
     "AudioStreamHandle",
     "KlvStreamHandle",

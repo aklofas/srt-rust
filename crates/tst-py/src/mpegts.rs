@@ -22,7 +22,7 @@ use pyo3::types::{PyBytes, PyDict, PyList, PyTuple};
 
 use tst_core::error::DemuxError;
 use tst_core::mpegts::common::Pts90khz;
-use tst_core::mpegts::demux::event::AudioCodec;
+use tst_core::mpegts::demux::event::{AudioCodec, MultiCellAuReason};
 use tst_core::mpegts::demux::{
     DemuxEvent, Demuxer, DemuxerBuilder, DiscontinuityKind, LinkSource, MetadataKind,
     NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, StrictMode,
@@ -593,10 +593,20 @@ fn convert_metadata_event(
     let stream_py = build_stream_id(py, mpegts, stream)?;
     let pts_py = pts_to_py(py, mpegts, pts)?;
     let kind_enum = mpegts.getattr(intern!(py, "MetadataKindTag"))?;
-    let kind_py = match kind {
-        MetadataKind::KlvSyncAuCell { .. } => kind_enum.getattr(intern!(py, "KLV_SYNC_AU_CELL"))?,
-        MetadataKind::KlvAsync => kind_enum.getattr(intern!(py, "KLV_ASYNC"))?,
-        MetadataKind::Unknown(_) => kind_enum.getattr(intern!(py, "UNKNOWN"))?,
+    // Extract the new multi-cell reassembly fields when present.
+    // Single-cell + non-KlvSyncAuCell paths default to (false, 1).
+    let (kind_py, was_reassembled, cell_count) = match kind {
+        MetadataKind::KlvSyncAuCell {
+            was_reassembled,
+            cell_count,
+            ..
+        } => (
+            kind_enum.getattr(intern!(py, "KLV_SYNC_AU_CELL"))?,
+            *was_reassembled,
+            *cell_count,
+        ),
+        MetadataKind::KlvAsync => (kind_enum.getattr(intern!(py, "KLV_ASYNC"))?, false, 1u32),
+        MetadataKind::Unknown(_) => (kind_enum.getattr(intern!(py, "UNKNOWN"))?, false, 1u32),
     };
     let cls = mpegts
         .getattr(intern!(py, "DemuxEvent"))?
@@ -606,6 +616,8 @@ fn convert_metadata_event(
     kwargs.set_item("pts", pts_py)?;
     kwargs.set_item("kind", kind_py)?;
     kwargs.set_item("payload", PyBytes::new_bound(py, payload))?;
+    kwargs.set_item("was_reassembled", was_reassembled)?;
+    kwargs.set_item("cell_count", cell_count)?;
     Ok(cls.call((), Some(&kwargs))?.into())
 }
 
@@ -649,6 +661,15 @@ fn convert_non_conformant_event(
     kwargs.set_item("stream", stream_py)?;
     kwargs.set_item("issue", issue_str)?;
     kwargs.set_item("kind", kind_enum.getattr(kind_name)?)?;
+    // Surface the typed multi-cell reason only on MultiCellAu issues; all
+    // other issue kinds get None (Python-side default).
+    let reason_py: PyObject = match issue {
+        NonConformantIssue::MultiCellAu { reason, .. } => {
+            Py::new(py, PyMultiCellAuReason::from(*reason))?.into_py(py)
+        }
+        _ => py.None(),
+    };
+    kwargs.set_item("multi_cell_au_reason", reason_py)?;
     Ok(cls.call((), Some(&kwargs))?.into())
 }
 
@@ -711,10 +732,52 @@ fn demux_error_to_pyerr(py: Python<'_>, e: DemuxError) -> PyErr {
 }
 
 // ---------------------------------------------------------------------------
+// MultiCellAuReason — Python eq_int enum mirroring Rust
+// ---------------------------------------------------------------------------
+
+/// Why a multi-cell AU reassembly attempt did not produce a `Sample`.
+///
+/// Mirrors `tst_core::mpegts::demux::event::MultiCellAuReason`. Surfaced on
+/// `_NonConformantEvent.multi_cell_au_reason` when the underlying issue is
+/// `MULTI_CELL_AU`. PyO3 `eq_int` enum — compare with `==`.
+#[pyclass(eq, eq_int, name = "MultiCellAuReason", module = "tstrans.mpegts")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PyMultiCellAuReason {
+    /// Continuation cell (Middle/Last) arrived without a prior First.
+    #[pyo3(name = "ORPHAN")]
+    Orphan,
+    /// Continuation cell's sequence_number did not match expected mod-256.
+    #[pyo3(name = "SEQUENCE_GAP")]
+    SequenceGap,
+    /// A new First arrived while the previous AU was still buffering.
+    #[pyo3(name = "CONCURRENT_FIRST")]
+    ConcurrentFirst,
+    /// Buffered AU exceeded `au_cell_cap_per_pid`.
+    #[pyo3(name = "OVERFLOW")]
+    Overflow,
+}
+
+impl From<MultiCellAuReason> for PyMultiCellAuReason {
+    fn from(r: MultiCellAuReason) -> Self {
+        match r {
+            MultiCellAuReason::Orphan => Self::Orphan,
+            MultiCellAuReason::SequenceGap => Self::SequenceGap,
+            MultiCellAuReason::ConcurrentFirst => Self::ConcurrentFirst,
+            MultiCellAuReason::Overflow => Self::Overflow,
+            // Forward-compat for #[non_exhaustive] additions on the Rust side.
+            // Map any future variant to Orphan as a safe-but-imprecise default;
+            // future Python releases should extend the enum.
+            _ => Self::Orphan,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // PyModule registration
 // ---------------------------------------------------------------------------
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDemuxer>()?;
+    m.add_class::<PyMultiCellAuReason>()?;
     Ok(())
 }

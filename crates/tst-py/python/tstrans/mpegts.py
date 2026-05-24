@@ -14,6 +14,8 @@ Phase 4 adds `Muxer` + `MuxerConfig` here.
 """
 
 import enum
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Optional
@@ -653,22 +655,54 @@ class MuxerFileSink:
     sink does NOT suppress them, but it DOES still drain whatever's
     pending and close the file so partial output is preserved).
 
-    Construct via `Muxer.write_file(path)`, not directly. The Muxer
+    **Non-atomic exit behavior (default, `atomic=False`):** on
+    exception inside the `with` block, the destination file may exist
+    as a valid TS prefix (whatever was drained before the exception).
+    The caller is responsible for unlinking it if partial output is
+    unwanted. For atomic semantics — file appears at destination only
+    on successful exit — use `Muxer.write_file(path, atomic=True)`.
+
+    **Atomic mode (`atomic=True`):** on `__enter__`, opens a
+    `*.partial` temp file in the same directory as `path` (so the
+    final rename stays on the same filesystem). On successful exit,
+    drains + closes + `os.replace(tmp, path)` (atomic on both POSIX
+    and Windows). On exception, drains + closes + unlinks the temp
+    file so nothing appears at the destination. The user's exception
+    is re-raised either way.
+
+    Construct via `Muxer.write_file(path)` or
+    `Muxer.write_file(path, atomic=True)`, not directly. The Muxer
     itself is borrowed, not owned — it remains usable after the `with`
     block exits, including for further `write_file(...)` calls.
     """
 
-    __slots__ = ("_muxer", "_path", "_fh", "_proxy")
+    __slots__ = ("_muxer", "_path", "_fh", "_proxy", "_atomic", "_tmp_path")
 
-    def __init__(self, muxer, path) -> None:
+    def __init__(self, muxer, path, *, atomic: bool = False) -> None:
         self._muxer = muxer
         # `Path()` accepts str, os.PathLike, and Path itself.
         self._path = Path(path)
         self._fh = None
         self._proxy = None
+        self._atomic = atomic
+        self._tmp_path = None
 
     def __enter__(self) -> MuxerDrainProxy:
-        self._fh = self._path.open("wb")
+        if self._atomic:
+            # Tempfile in the SAME directory as the destination so the
+            # eventual `os.replace` stays on one filesystem (rename
+            # across filesystems is not atomic). `delete=False` so the
+            # NamedTemporaryFile wrapper doesn't try to unlink on close
+            # — we manage the lifetime ourselves in `__exit__`.
+            tmp = tempfile.NamedTemporaryFile(
+                dir=self._path.parent,
+                suffix=".partial",
+                delete=False,
+            )
+            self._tmp_path = Path(tmp.name)
+            self._fh = tmp
+        else:
+            self._fh = self._path.open("wb")
         self._proxy = MuxerDrainProxy(self._muxer, self._fh)
         return self._proxy
 
@@ -681,20 +715,40 @@ class MuxerFileSink:
             _drain_muxer_to_file(self._muxer, self._fh)
         finally:
             self._fh.close()
+
+        if self._atomic:
+            if exc_type is None:
+                # Atomic on POSIX (rename within filesystem); atomic
+                # on Windows (Python 3.3+ `os.replace` overwrites).
+                os.replace(self._tmp_path, self._path)
+            else:
+                # Exception path: discard partial output. Suppress
+                # FileNotFoundError in case something else removed it.
+                try:
+                    os.unlink(self._tmp_path)
+                except FileNotFoundError:
+                    pass
         # Return None — never suppress the user's exception.
 
 
-def _muxer_write_file(self, path) -> MuxerFileSink:
+def _muxer_write_file(self, path, *, atomic: bool = False) -> MuxerFileSink:
     """Open `path` for writing (mode `wb`) and return a context manager
     that drains pending TS packets after each `push_*` call inside the
     `with` block and on exit. The Muxer is borrowed, not owned —
     callers can reuse it for further `write_file(...)` calls after the
     `with` block exits.
 
-    Equivalent to constructing `MuxerFileSink(self, path)` directly.
+    Pass `atomic=True` to write via a `*.partial` tempfile in the same
+    directory and `os.replace` to `path` only on successful exit. On
+    exception, the tempfile is removed and no file appears at the
+    destination. See `MuxerFileSink` for the full atomic-vs-default
+    contract.
+
+    Equivalent to constructing `MuxerFileSink(self, path, atomic=...)`
+    directly.
     """
 
-    return MuxerFileSink(self, path)
+    return MuxerFileSink(self, path, atomic=atomic)
 
 
 # Bind `write_file` onto the PyO3 Muxer class. PyO3 #[pyclass] types

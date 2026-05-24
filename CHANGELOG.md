@@ -54,6 +54,17 @@ Small carry-forward batch from the 2026-05-24 Python bindings audit
 shipped as three commits; the larger #3 + #5-14 backlog gets its own
 plan.
 
+**Added:**
+
+- `Muxer.write_file(path, atomic=True)` — opt-in atomic file sink.
+  When `atomic=True`, `MuxerFileSink` writes to a `*.partial`
+  tempfile in the same directory as `path` and `os.replace`s into
+  place only on successful `__exit__`; on exception the tempfile
+  is removed so nothing appears at the destination. Default
+  `atomic=False` preserves the existing non-atomic
+  drain-and-close-on-exception contract (the destination may exist
+  as a valid TS prefix). Closes audit #13.
+
 **CI:**
 
 - New `python-core` GitHub Actions job runs the default (non-pandas)

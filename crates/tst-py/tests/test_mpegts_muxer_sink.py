@@ -104,3 +104,65 @@ def test_write_file_no_pushes_writes_initial_psi():
         with m.write_file(path):
             pass
         assert path.exists()
+
+
+# audit #13 — atomic-write opt-in via `Muxer.write_file(path, atomic=True)`.
+
+
+class _MyTestError(Exception):
+    """Sentinel exception used to trigger the exception-exit branch."""
+
+
+def test_atomic_false_exception_leaves_partial_at_dest(tmp_path):
+    # Default (atomic=False): exception inside `with` still flushes +
+    # closes the destination file, leaving a partial TS at the user's
+    # path. This documents the existing non-atomic contract.
+    m = Muxer(_cfg())
+    path = tmp_path / "out.ts"
+    with pytest.raises(_MyTestError):
+        with m.write_file(path) as proxy:
+            proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+            raise _MyTestError()
+    assert path.exists()
+    assert path.stat().st_size > 0
+
+
+def test_atomic_true_exception_no_file_at_dest(tmp_path):
+    # atomic=True: exception inside `with` discards the tempfile and
+    # leaves nothing at the destination path.
+    m = Muxer(_cfg())
+    path = tmp_path / "out.ts"
+    with pytest.raises(_MyTestError):
+        with m.write_file(path, atomic=True) as proxy:
+            proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+            raise _MyTestError()
+    assert not path.exists()
+    # No `.partial` tempfile should remain in tmp_path either.
+    assert list(tmp_path.glob("*.partial")) == []
+
+
+def test_atomic_true_clean_exit_file_at_dest(tmp_path):
+    # atomic=True happy path: file appears at destination on success,
+    # tempfile is renamed away (no `.partial` leftover).
+    m = Muxer(_cfg())
+    path = tmp_path / "out.ts"
+    with m.write_file(path, atomic=True) as proxy:
+        proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+    assert path.exists()
+    assert path.stat().st_size > 0
+    assert path.stat().st_size % 188 == 0
+    assert list(tmp_path.glob("*.partial")) == []
+
+
+def test_atomic_kwarg_default_is_false(tmp_path):
+    # No kwarg → default-False behavior matches existing
+    # `test_write_file_propagates_user_exception` (partial file at
+    # destination after exception). Regression guard against an
+    # accidental default flip.
+    m = Muxer(_cfg())
+    path = tmp_path / "out.ts"
+    with pytest.raises(_MyTestError):
+        with m.write_file(path) as proxy:
+            proxy.push_video(_nal_aud(), Pts90khz.from_raw(900_000))
+            raise _MyTestError()
+    assert path.exists()

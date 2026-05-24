@@ -11,6 +11,7 @@
 //! `DemuxerBuilder::strict(StrictMode::*)` opts in to hard-fail
 //! categories for compliance / ingest workflows.
 
+pub(crate) mod au_reassemble;
 pub mod demuxer;
 pub mod event;
 pub(crate) mod payload;

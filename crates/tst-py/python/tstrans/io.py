@@ -88,16 +88,25 @@ def parse_file(
         yield ev
 
 
-def probe(path: Union[str, Path]) -> ProbeResult:
+def probe(
+    path: Union[str, Path],
+    *,
+    config: Optional[DemuxerConfig] = None,
+) -> ProbeResult:
     """Scan the first `_PROBE_BYTES` of a file and summarize. Returns
     a `ProbeResult` with program list, PID list, codec sets, and KLV
     presence. Does NOT compute duration (would require a full scan
     plus PCR analysis).
+
+    Pass `config` to use a non-default demuxer configuration (e.g.
+    `DemuxerConfig(malformed_au_cell_cfi_tolerance=True)` to detect
+    KLV in streams whose encoders mis-set the AU cell CFI bits — see
+    `tstrans.mpegts.DemuxerConfig` for the full knob list).
     """
 
     p = Path(path)
     size = p.stat().st_size
-    d = Demuxer()
+    d = Demuxer(config) if config is not None else Demuxer()
     read_total = 0
     with p.open("rb") as f:
         while read_total < _PROBE_BYTES:
@@ -164,6 +173,7 @@ def extract_klv(
     parsed: bool = False,
     skip_unknown: bool = True,
     skip_malformed: bool = False,
+    config: Optional[DemuxerConfig] = None,
 ) -> Iterator:
     """Iterate over KLV payloads in a file. Yields one of:
 
@@ -194,13 +204,22 @@ def extract_klv(
     upstream corruption. Catching `KlvError` specifically (rather than
     bare `Exception`) also lets binding-shape regressions (TypeError,
     AttributeError) surface naturally instead of being suppressed.
+
+    Pass `config` to use a non-default demuxer configuration. The
+    most common reason to do this today is to opt into
+    `DemuxerConfig(malformed_au_cell_cfi_tolerance=True)`, which
+    rescues complete KLV records from sync-metadata streams whose
+    encoders set the AU cell `cell_fragment_indication` bits to
+    `0b00` (Middle) or `0b01` (Last) for what are actually single
+    complete records (a real-world malformation pattern). See
+    `tstrans.mpegts.DemuxerConfig` for the full knob list.
     """
 
     # Local imports dodge import-cycle with tstrans.klv at module load.
     from tstrans.exceptions import KlvError
     from tstrans.klv import parse_klv_universal
 
-    for ev in parse_file(path):
+    for ev in parse_file(path, config=config):
         if not isinstance(ev, DemuxEvent.Klv):
             continue
         if parsed:

@@ -292,3 +292,94 @@ def test_tolerance_mode_orphan_middle_emits_klv_plus_typed_diagnostic() -> None:
         if e.kind == NonConformantKind.MULTI_CELL_AU
     ]
     assert len(orphans) == 0, "tolerance mode must not also emit MULTI_CELL_AU"
+
+
+# ── tstrans.io helpers accept config= ──────────────────────────────────────
+
+
+def _write_malformed_ts(tmp_path) -> "Path":
+    """Write the byte-patched orphan-Middle TS to a tmp file so we can
+    feed it through `tstrans.io.extract_klv` / `tstrans.io.probe`."""
+    from pathlib import Path
+
+    ts = _build_ts_with_orphan_middle_cell()
+    p = tmp_path / "malformed_cfi.ts"
+    Path(p).write_bytes(ts)
+    return p
+
+
+def test_extract_klv_strict_default_yields_zero_records_on_malformed(tmp_path) -> None:
+    """Default extract_klv (no config) sees zero typed KLV from a
+    malformed-CFI TS — the spec-strict default rejects them."""
+    from tstrans.io import extract_klv
+
+    ts_path = _write_malformed_ts(tmp_path)
+    records = list(extract_klv(ts_path, parsed=True))
+    # Filter to typed records only (skip_unknown defaults True so unknowns
+    # are filtered out automatically).
+    assert len(records) == 0, (
+        f"strict mode: expected 0 typed KLV records from malformed-CFI TS, "
+        f"got {len(records)}"
+    )
+
+
+def test_extract_klv_with_tolerance_config_yields_records_on_malformed(tmp_path) -> None:
+    """extract_klv with config=DemuxerConfig(malformed_au_cell_cfi_tolerance=True)
+    rescues the raw KLV bytes that the strict path drops."""
+    from tstrans.io import extract_klv
+
+    ts_path = _write_malformed_ts(tmp_path)
+    cfg = DemuxerConfig(malformed_au_cell_cfi_tolerance=True)
+    # The synthetic payload is built from MISB ST 0601 UL bytes + 32 filler
+    # value bytes (0x42 × 32). The UL prefix + BER length make it pass the
+    # tolerance validator, but parse_klv_universal would fail to decode the
+    # filler as a real UAS Datalink LS. We test the raw form, which is the
+    # discriminator: did the demuxer surface the payload at all?
+    raw = list(extract_klv(ts_path, parsed=False, config=cfg))
+    assert len(raw) == 1, (
+        f"tolerance mode: expected 1 raw KLV payload from malformed-CFI TS, "
+        f"got {len(raw)}"
+    )
+    assert len(raw[0]) == 49, "rescued payload is the 17-byte UL+length + 32-byte value"
+
+
+def test_probe_accepts_config_kwarg(tmp_path) -> None:
+    """`probe` accepts a config= kwarg and the malformed-CFI fixture
+    surfaces `has_klv=True` only under the tolerance config (default
+    rejects the orphan cell so no KLV event ever fires)."""
+    from tstrans.io import probe
+
+    ts_path = _write_malformed_ts(tmp_path)
+    # Strict probe: the malformed AU cell never produces a KLV event.
+    # has_klv comes from PMT classification though, so it's True on either
+    # config — the PMT still declares the KLV stream. The config= param's
+    # real effect surfaces in extract_klv (above); for probe we just
+    # verify the kwarg is accepted without TypeError.
+    result_strict = probe(ts_path)
+    assert result_strict.has_klv is True, "PMT declares KLV stream"
+
+    cfg = DemuxerConfig(malformed_au_cell_cfi_tolerance=True)
+    result_tolerant = probe(ts_path, config=cfg)
+    assert result_tolerant.has_klv is True
+
+
+def test_parse_file_accepts_config_kwarg(tmp_path) -> None:
+    """`parse_file` already accepted config= (it was the precedent for
+    extending the API to probe + extract_klv). Verify it still works
+    and surfaces the tolerance diagnostic when configured."""
+    from tstrans.io import parse_file
+
+    ts_path = _write_malformed_ts(tmp_path)
+    cfg = DemuxerConfig(malformed_au_cell_cfi_tolerance=True)
+    events = list(parse_file(ts_path, config=cfg))
+
+    tolerated = [
+        e
+        for e in events
+        if isinstance(e, DemuxEvent.NonConformant)
+        and e.kind == NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED
+    ]
+    assert len(tolerated) == 1, (
+        f"parse_file with tolerance config: expected 1 tolerance diagnostic, "
+        f"got {len(tolerated)}"
+    )

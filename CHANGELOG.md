@@ -52,6 +52,48 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py: audit #5 — KLV unknown TLV round-trip preservation (2026-05-24)
+
+**Fixed:**
+
+- KLV inverse converters now forward the `unknown: tuple[tuple[int, bytes],
+  ...]` field from each typed-set Python dataclass into the corresponding
+  Rust struct's `Vec<OwnedRawField>`, so `decode -> encode -> decode` is
+  losslessly round-trip-preserving for forward-compat tags. Previously
+  ST 0102 `SecurityLs`, ST 0903 `VmtiLs` + `VTargetPack`, and ST 0601
+  `UasDatalinkLs` decoded an unknown tag into `.unknown` but their
+  inverse translators dropped it before encode — making decode-edit-encode
+  workflows silently lossy for any vendor-private, ST 0107-only, or
+  future-standard TLV. Closes audit #5.
+
+**Added:**
+
+- Collision precedence rule documented + enforced at the Python-Rust
+  boundary: when a Python-supplied `unknown` entry's tag is already
+  covered by the encoder's typed table for that set (e.g. tag 13 in
+  ST 0601, tag 3 in ST 0102, tag 3 in ST 0903 VMTI, tag 5 in
+  ST 0903 VTargetPack), the unknown entry is silently dropped — the
+  typed field wins. This keeps the wire form free of duplicate TLVs
+  and sidesteps ST 0601's `KlvEncodeError::ReservedTagInUnknown` for
+  user-hand-constructed records. Real decode never produces such an
+  `unknown` entry (the decoder routes typed tags to typed fields), so
+  the drop only affects manual record construction.
+
+- New `crates/tst-py/tests/test_klv_round_trip_unknown.py` (15 tests):
+  per-set round-trip preservation, dataclass-construction preservation,
+  the collision-typed-wins matrix, the nested VmtiLs-with-VTargetPack
+  case, and Python-side `unknown` shape validation (raises on non-
+  tuple / non-int tag / non-bytes value entries).
+
+**Notes:**
+
+- ST 0605 `PrecisionTimeStampPack` has no `unknown` field (it's a
+  fixed 2-field pack) and is unaffected.
+- No new Rust public-API surface; no `#[non_exhaustive]` BASELINE
+  change (stays at 162).
+
+---
+
 ## [Unreleased] — tst-py: audit #8 — Python docs refreshed to Phase 6 reality (2026-05-24)
 
 **Docs:**

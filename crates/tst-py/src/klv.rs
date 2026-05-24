@@ -179,6 +179,83 @@ fn convert_unknown(py: Python<'_>, unknown: &[OwnedRawField]) -> PyResult<PyObje
     Ok(pyo3::types::PyTuple::new_bound(py, items).unbind().into())
 }
 
+/// Inverse of `convert_unknown`: extracts the `unknown` field from a
+/// Python typed-set dataclass into a `Vec<OwnedRawField>` for the
+/// Rust struct. Each entry must be a 2-tuple `(int, bytes)`; malformed
+/// shapes raise `TypeError` / `ValueError` rather than silently
+/// corrupting the Rust side (audit #6's "validate-don't-drop" stance).
+///
+/// `is_typed_tag` is the per-set predicate identifying tags the
+/// encoder's typed table covers. When a Python-supplied `unknown` entry
+/// collides with a typed tag, the entry is silently dropped — the typed
+/// field wins. Three reasons:
+///
+/// 1. Real decode never produces such an entry (the decoder routes
+///    typed tags to typed fields, not to `unknown`), so this only
+///    affects user-hand-constructed records.
+/// 2. ST 0601's encoder errors with `ReservedTagInUnknown` on the same
+///    collision pattern; filtering here keeps the four sets consistent
+///    (the others' encoders would otherwise emit duplicate TLVs).
+/// 3. "Drop on collision" produces deterministic, valid wire output
+///    rather than failing the round-trip — matches the audit #5
+///    "deterministic precedence" requirement.
+fn py_to_unknown(
+    p: &Bound<'_, PyAny>,
+    is_typed_tag: impl Fn(u32) -> bool,
+) -> PyResult<Vec<OwnedRawField>> {
+    let py = p.py();
+    let unknown_obj = p.getattr(intern!(py, "unknown"))?;
+    let mut out = Vec::new();
+    for item in unknown_obj.iter()? {
+        let item = item?;
+        // Each entry must be a 2-tuple. We rely on tuple-shaped extraction
+        // via `(u32, Vec<u8>)` — PyO3 enforces the 2-arity + element types.
+        let (tag, value): (u32, Vec<u8>) = item.extract().map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "unknown TLV must be a (int, bytes) 2-tuple: {e}"
+            ))
+        })?;
+        if is_typed_tag(tag) {
+            // Collision: typed field wins; drop the unknown entry.
+            continue;
+        }
+        out.push(OwnedRawField { tag, value });
+    }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------------------
+// Per-set typed-tag predicates — narrow inventories duplicated locally
+// (a few u8 constants) rather than threading internal Rust APIs out of
+// `tst-core`. Each predicate mirrors the typed inventory listed in the
+// corresponding `encode.rs`.
+// ---------------------------------------------------------------------------
+
+/// ST 0102 LS typed tags: 1..=14 + 22 + 23 + 24.
+fn is_st0102_typed_tag(tag: u32) -> bool {
+    matches!(tag, 1..=14 | 22 | 23 | 24)
+}
+
+/// ST 0601 LS typed + reserved tags. Reserved structural tags: 1 (Checksum),
+/// 2 (PrecisionTimeStamp), 65 (LS Version). Typed range: 5..=91 (the
+/// encoder's `tags::TAGS` inventory). Tags 3, 4, 92..=255 are forward-
+/// compat and may legitimately appear in `unknown`.
+fn is_st0601_typed_tag(tag: u32) -> bool {
+    matches!(tag, 1 | 2 | 65 | 5..=91)
+}
+
+/// ST 0903.6 VMTI LS typed tags: 1 (Checksum), 2..=13, 101..=103.
+/// Tag 7 is deprecated in v6; treat it as typed so a colliding user
+/// `unknown` entry doesn't sneak it back in.
+fn is_st0903_vmti_typed_tag(tag: u32) -> bool {
+    matches!(tag, 1..=13 | 101..=103)
+}
+
+/// ST 0903.6 VTargetPack typed tags: 1..=23 + 100..=107.
+fn is_st0903_vtarget_typed_tag(tag: u32) -> bool {
+    matches!(tag, 1..=23 | 100..=107)
+}
+
 // ---------------------------------------------------------------------------
 // ST 0102 — Security Metadata LS
 // ---------------------------------------------------------------------------
@@ -325,9 +402,14 @@ fn enum_field_to_u8(p: &Bound<'_, PyAny>) -> PyResult<u8> {
 }
 
 /// Inverse of `convert_security_ls`: extracts every field from a Python
-/// `tstrans.klv.SecurityLs` dataclass into a Rust `SecurityLs`. Read-
-/// only output fields (`unknown`, `field_errors`) are deliberately NOT
-/// round-tripped — they are parser diagnostics, not encoder inputs.
+/// `tstrans.klv.SecurityLs` dataclass into a Rust `SecurityLs`.
+///
+/// `field_errors` is a parser-only diagnostic and is not round-tripped.
+///
+/// `unknown` IS round-tripped: forward-compat TLVs the decoder preserved
+/// are forwarded into the encoder so `decode -> encode -> decode` is
+/// lossless (audit #5). Entries whose tag collides with a typed field
+/// (see `is_st0102_typed_tag`) are silently dropped — typed wins.
 fn py_to_security_ls(p: &Bound<'_, PyAny>) -> PyResult<SecurityLs> {
     let mut r = SecurityLs::default();
     let py = p.py();
@@ -384,6 +466,8 @@ fn py_to_security_ls(p: &Bound<'_, PyAny>) -> PyResult<SecurityLs> {
     os!(classification_comments);
     os!(classifying_country_coding_method_version_date);
     os!(object_country_coding_method_version_date);
+
+    r.unknown = py_to_unknown(p, is_st0102_typed_tag)?;
 
     Ok(r)
 }
@@ -596,9 +680,14 @@ fn decode_vmti_py(py: Python<'_>, buf: &[u8], strict: bool) -> PyResult<PyObject
 // ST 0903 — Python → Rust inverse translators + encode entry points
 // ---------------------------------------------------------------------------
 
-/// Inverse of `convert_vtarget_pack`. Read-only output fields
-/// (`unknown`, `field_errors`) are deliberately NOT round-tripped — they
-/// are parser diagnostics, not encoder inputs.
+/// Inverse of `convert_vtarget_pack`.
+///
+/// `field_errors` is a parser-only diagnostic and is not round-tripped.
+///
+/// `unknown` IS round-tripped (audit #5): forward-compat TLVs preserved
+/// by the VTargetPack decoder flow back into the encoder. Entries whose
+/// tag collides with a typed field (see `is_st0903_vtarget_typed_tag`)
+/// are silently dropped — typed wins.
 #[allow(clippy::cognitive_complexity)]
 fn py_to_vtarget_pack(p: &Bound<'_, PyAny>) -> PyResult<RustVTargetPack> {
     let mut r = RustVTargetPack::default();
@@ -672,11 +761,19 @@ fn py_to_vtarget_pack(p: &Bound<'_, PyAny>) -> PyResult<RustVTargetPack> {
     ob!(vchip_series);
     ob!(vobject_series);
 
+    r.unknown = py_to_unknown(p, is_st0903_vtarget_typed_tag)?;
+
     Ok(r)
 }
 
-/// Inverse of `convert_vmti_ls`. `unknown` + `field_errors` skipped per
-/// `py_to_vtarget_pack` rationale.
+/// Inverse of `convert_vmti_ls`.
+///
+/// `field_errors` is parser-only and is not round-tripped.
+///
+/// `unknown` IS round-tripped (audit #5): forward-compat TLVs preserved
+/// by the VMTI LS decoder flow back into the encoder. Entries whose tag
+/// collides with a typed field (see `is_st0903_vmti_typed_tag`) are
+/// silently dropped — typed wins.
 fn py_to_vmti_ls(p: &Bound<'_, PyAny>) -> PyResult<VmtiLs> {
     let mut r = VmtiLs::default();
     let py = p.py();
@@ -739,6 +836,8 @@ fn py_to_vmti_ls(p: &Bound<'_, PyAny>) -> PyResult<VmtiLs> {
         let t = t?;
         r.targets.push(py_to_vtarget_pack(&t)?);
     }
+
+    r.unknown = py_to_unknown(p, is_st0903_vmti_typed_tag)?;
 
     Ok(r)
 }
@@ -916,9 +1015,17 @@ fn decode_uas_datalink_py(
 
 /// Inverse of `convert_uas_datalink_ls`: extracts every field from a
 /// Python `tstrans.klv.UasDatalinkLs` dataclass into a Rust
-/// `UasDatalinkLs`. Read-only output fields (`unknown`, `field_errors`)
-/// are deliberately NOT round-tripped — they are parser diagnostics,
-/// not encoder inputs.
+/// `UasDatalinkLs`.
+///
+/// `field_errors` is a parser-only diagnostic and is not round-tripped.
+///
+/// `unknown` IS round-tripped (audit #5): forward-compat TLVs preserved
+/// by the ST 0601 decoder flow back into the encoder. Entries whose tag
+/// collides with a typed field (see `is_st0601_typed_tag`) are silently
+/// dropped — typed wins. Without this filter, ST 0601's encoder would
+/// reject the call with `KlvEncodeError::ReservedTagInUnknown`; dropping
+/// at the boundary lets `decode -> encode -> decode` succeed for any
+/// record the decoder produced.
 #[allow(clippy::cognitive_complexity)]
 fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
     let mut r = UasDatalinkLs::default();
@@ -1024,6 +1131,8 @@ fn py_to_uas_datalink_ls(p: &Bound<'_, PyAny>) -> PyResult<UasDatalinkLs> {
     op!(generic_flag_data, u8);
     ob!(security_local_set);
     ob!(vmti);
+
+    r.unknown = py_to_unknown(p, is_st0601_typed_tag)?;
 
     Ok(r)
 }

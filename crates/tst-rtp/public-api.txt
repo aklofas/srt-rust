@@ -1,0 +1,597 @@
+pub mod tst_rtp
+pub mod tst_rtp::builder
+pub struct tst_rtp::builder::RtpRecvSocketBuilder
+impl tst_rtp::builder::RtpRecvSocketBuilder
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::iface(&mut self, impl core::convert::Into<alloc::string::String>) -> &mut Self
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::listen(&self) -> core::result::Result<tst_rtp::transport::RtpRecvTransport, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::new(impl core::convert::Into<alloc::string::String>, u16) -> Self
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::pkt_size(&mut self, usize) -> &mut Self
+impl core::clone::Clone for tst_rtp::builder::RtpRecvSocketBuilder
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::clone(&self) -> tst_rtp::builder::RtpRecvSocketBuilder
+impl core::fmt::Debug for tst_rtp::builder::RtpRecvSocketBuilder
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::marker::Send for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::marker::Sync for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::marker::Unpin for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::marker::UnsafeUnpin for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::builder::RtpRecvSocketBuilder
+pub struct tst_rtp::builder::RtpSocketBuilder
+impl tst_rtp::builder::RtpSocketBuilder
+pub fn tst_rtp::builder::RtpSocketBuilder::connect(&self) -> core::result::Result<tst_rtp::transport::RtpTransport, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::builder::RtpSocketBuilder::iface(&mut self, impl core::convert::Into<alloc::string::String>) -> &mut Self
+pub fn tst_rtp::builder::RtpSocketBuilder::new(impl core::convert::Into<alloc::string::String>, u16) -> Self
+pub fn tst_rtp::builder::RtpSocketBuilder::pkt_size(&mut self, usize) -> &mut Self
+pub fn tst_rtp::builder::RtpSocketBuilder::ssrc(&mut self, u32) -> &mut Self
+pub fn tst_rtp::builder::RtpSocketBuilder::ttl(&mut self, u8) -> &mut Self
+impl core::clone::Clone for tst_rtp::builder::RtpSocketBuilder
+pub fn tst_rtp::builder::RtpSocketBuilder::clone(&self) -> tst_rtp::builder::RtpSocketBuilder
+impl core::fmt::Debug for tst_rtp::builder::RtpSocketBuilder
+pub fn tst_rtp::builder::RtpSocketBuilder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::builder::RtpSocketBuilder
+impl core::marker::Send for tst_rtp::builder::RtpSocketBuilder
+impl core::marker::Sync for tst_rtp::builder::RtpSocketBuilder
+impl core::marker::Unpin for tst_rtp::builder::RtpSocketBuilder
+impl core::marker::UnsafeUnpin for tst_rtp::builder::RtpSocketBuilder
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::builder::RtpSocketBuilder
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::builder::RtpSocketBuilder
+pub mod tst_rtp::cancel
+pub struct tst_rtp::cancel::RtpCancelHandle
+impl tst_rtp::cancel::RtpCancelHandle
+pub fn tst_rtp::cancel::RtpCancelHandle::cancel(&self)
+pub fn tst_rtp::cancel::RtpCancelHandle::is_cancelled(&self) -> bool
+pub fn tst_rtp::cancel::RtpCancelHandle::new() -> alloc::sync::Arc<Self>
+impl core::default::Default for tst_rtp::cancel::RtpCancelHandle
+pub fn tst_rtp::cancel::RtpCancelHandle::default() -> tst_rtp::cancel::RtpCancelHandle
+impl core::fmt::Debug for tst_rtp::cancel::RtpCancelHandle
+pub fn tst_rtp::cancel::RtpCancelHandle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl tst_core::transport::TransportCancel for tst_rtp::cancel::RtpCancelHandle
+pub fn tst_rtp::cancel::RtpCancelHandle::cancel(&self)
+impl !core::marker::Freeze for tst_rtp::cancel::RtpCancelHandle
+impl core::marker::Send for tst_rtp::cancel::RtpCancelHandle
+impl core::marker::Sync for tst_rtp::cancel::RtpCancelHandle
+impl core::marker::Unpin for tst_rtp::cancel::RtpCancelHandle
+impl core::marker::UnsafeUnpin for tst_rtp::cancel::RtpCancelHandle
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::cancel::RtpCancelHandle
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::cancel::RtpCancelHandle
+pub mod tst_rtp::clock
+pub struct tst_rtp::clock::RtpClock
+impl tst_rtp::clock::RtpClock
+pub fn tst_rtp::clock::RtpClock::new(u32) -> Self
+pub fn tst_rtp::clock::RtpClock::now_ticks(&self) -> u32
+impl core::clone::Clone for tst_rtp::clock::RtpClock
+pub fn tst_rtp::clock::RtpClock::clone(&self) -> tst_rtp::clock::RtpClock
+impl core::fmt::Debug for tst_rtp::clock::RtpClock
+pub fn tst_rtp::clock::RtpClock::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::clock::RtpClock
+impl core::marker::Freeze for tst_rtp::clock::RtpClock
+impl core::marker::Send for tst_rtp::clock::RtpClock
+impl core::marker::Sync for tst_rtp::clock::RtpClock
+impl core::marker::Unpin for tst_rtp::clock::RtpClock
+impl core::marker::UnsafeUnpin for tst_rtp::clock::RtpClock
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::clock::RtpClock
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::clock::RtpClock
+pub mod tst_rtp::init
+pub fn tst_rtp::init::init()
+pub mod tst_rtp::packet
+#[non_exhaustive] pub enum tst_rtp::packet::RtpParseError
+pub tst_rtp::packet::RtpParseError::Truncated
+pub tst_rtp::packet::RtpParseError::Truncated::got: usize
+pub tst_rtp::packet::RtpParseError::Truncated::need: usize
+pub tst_rtp::packet::RtpParseError::UnsupportedPayloadType(u8)
+pub tst_rtp::packet::RtpParseError::UnsupportedVersion(u8)
+impl core::clone::Clone for tst_rtp::packet::RtpParseError
+pub fn tst_rtp::packet::RtpParseError::clone(&self) -> tst_rtp::packet::RtpParseError
+impl core::cmp::Eq for tst_rtp::packet::RtpParseError
+impl core::cmp::PartialEq for tst_rtp::packet::RtpParseError
+pub fn tst_rtp::packet::RtpParseError::eq(&self, &tst_rtp::packet::RtpParseError) -> bool
+impl core::error::Error for tst_rtp::packet::RtpParseError
+impl core::fmt::Debug for tst_rtp::packet::RtpParseError
+pub fn tst_rtp::packet::RtpParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::packet::RtpParseError
+pub fn tst_rtp::packet::RtpParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_rtp::packet::RtpParseError
+impl core::marker::Freeze for tst_rtp::packet::RtpParseError
+impl core::marker::Send for tst_rtp::packet::RtpParseError
+impl core::marker::Sync for tst_rtp::packet::RtpParseError
+impl core::marker::Unpin for tst_rtp::packet::RtpParseError
+impl core::marker::UnsafeUnpin for tst_rtp::packet::RtpParseError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::packet::RtpParseError
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::packet::RtpParseError
+pub struct tst_rtp::packet::Parsed
+pub tst_rtp::packet::Parsed::header: tst_rtp::packet::RtpHeader
+pub tst_rtp::packet::Parsed::payload_offset: usize
+impl core::clone::Clone for tst_rtp::packet::Parsed
+pub fn tst_rtp::packet::Parsed::clone(&self) -> tst_rtp::packet::Parsed
+impl core::cmp::Eq for tst_rtp::packet::Parsed
+impl core::cmp::PartialEq for tst_rtp::packet::Parsed
+pub fn tst_rtp::packet::Parsed::eq(&self, &tst_rtp::packet::Parsed) -> bool
+impl core::fmt::Debug for tst_rtp::packet::Parsed
+pub fn tst_rtp::packet::Parsed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::packet::Parsed
+impl core::marker::StructuralPartialEq for tst_rtp::packet::Parsed
+impl core::marker::Freeze for tst_rtp::packet::Parsed
+impl core::marker::Send for tst_rtp::packet::Parsed
+impl core::marker::Sync for tst_rtp::packet::Parsed
+impl core::marker::Unpin for tst_rtp::packet::Parsed
+impl core::marker::UnsafeUnpin for tst_rtp::packet::Parsed
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::packet::Parsed
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::packet::Parsed
+#[non_exhaustive] pub struct tst_rtp::packet::RtpHeader
+pub tst_rtp::packet::RtpHeader::seq: u16
+pub tst_rtp::packet::RtpHeader::ssrc: u32
+pub tst_rtp::packet::RtpHeader::timestamp: u32
+impl tst_rtp::packet::RtpHeader
+pub fn tst_rtp::packet::RtpHeader::decode(&[u8]) -> core::result::Result<tst_rtp::packet::Parsed, tst_rtp::packet::RtpParseError>
+impl tst_rtp::packet::RtpHeader
+pub fn tst_rtp::packet::RtpHeader::encode_into(&self, &mut [u8])
+pub fn tst_rtp::packet::RtpHeader::new(u16, u32, u32) -> Self
+impl core::clone::Clone for tst_rtp::packet::RtpHeader
+pub fn tst_rtp::packet::RtpHeader::clone(&self) -> tst_rtp::packet::RtpHeader
+impl core::cmp::Eq for tst_rtp::packet::RtpHeader
+impl core::cmp::PartialEq for tst_rtp::packet::RtpHeader
+pub fn tst_rtp::packet::RtpHeader::eq(&self, &tst_rtp::packet::RtpHeader) -> bool
+impl core::fmt::Debug for tst_rtp::packet::RtpHeader
+pub fn tst_rtp::packet::RtpHeader::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::packet::RtpHeader
+impl core::marker::StructuralPartialEq for tst_rtp::packet::RtpHeader
+impl core::marker::Freeze for tst_rtp::packet::RtpHeader
+impl core::marker::Send for tst_rtp::packet::RtpHeader
+impl core::marker::Sync for tst_rtp::packet::RtpHeader
+impl core::marker::Unpin for tst_rtp::packet::RtpHeader
+impl core::marker::UnsafeUnpin for tst_rtp::packet::RtpHeader
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::packet::RtpHeader
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::packet::RtpHeader
+pub const tst_rtp::packet::RTP_HEADER_LEN: usize
+pub const tst_rtp::packet::RTP_PT_MP2T: u8
+pub const tst_rtp::packet::RTP_VERSION: u8
+pub mod tst_rtp::transport
+#[non_exhaustive] pub enum tst_rtp::transport::ConnectError
+pub tst_rtp::transport::ConnectError::HostNotLiteral
+pub tst_rtp::transport::ConnectError::HostNotLiteral::detail: alloc::string::String
+pub tst_rtp::transport::ConnectError::HostNotLiteral::host: alloc::string::String
+pub tst_rtp::transport::ConnectError::IfaceUnsupported
+pub tst_rtp::transport::ConnectError::IfaceUnsupported::detail: alloc::string::String
+pub tst_rtp::transport::ConnectError::IfaceUnsupported::iface: alloc::string::String
+pub tst_rtp::transport::ConnectError::Io(std::io::error::Error)
+pub tst_rtp::transport::ConnectError::Url(tst_rtp::url::UrlError)
+impl core::convert::From<std::io::error::Error> for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::from(std::io::error::Error) -> Self
+impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::from(tst_rtp::url::UrlError) -> Self
+impl core::error::Error for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::transport::ConnectError
+impl core::marker::Send for tst_rtp::transport::ConnectError
+impl core::marker::Sync for tst_rtp::transport::ConnectError
+impl core::marker::Unpin for tst_rtp::transport::ConnectError
+impl core::marker::UnsafeUnpin for tst_rtp::transport::ConnectError
+impl !core::panic::unwind_safe::RefUnwindSafe for tst_rtp::transport::ConnectError
+impl !core::panic::unwind_safe::UnwindSafe for tst_rtp::transport::ConnectError
+pub struct tst_rtp::transport::RtpRecvTransport
+impl tst_rtp::transport::RtpRecvTransport
+pub fn tst_rtp::transport::RtpRecvTransport::listen(&str) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::transport::RtpRecvTransport::listen_with(&tst_rtp::url::RtpUrl) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::transport::RtpRecvTransport::rtp_stats(&self) -> tst_rtp::transport::RtpStats
+impl core::ops::drop::Drop for tst_rtp::transport::RtpRecvTransport
+pub fn tst_rtp::transport::RtpRecvTransport::drop(&mut self)
+impl tst_core::transport::RecvTransport for tst_rtp::transport::RtpRecvTransport
+pub fn tst_rtp::transport::RtpRecvTransport::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn tst_rtp::transport::RtpRecvTransport::close(&mut self)
+pub fn tst_rtp::transport::RtpRecvTransport::is_alive(&self) -> bool
+pub fn tst_rtp::transport::RtpRecvTransport::max_payload(&self) -> usize
+pub fn tst_rtp::transport::RtpRecvTransport::recv_bytes(&mut self, &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_rtp::transport::RtpRecvTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
+impl core::marker::Freeze for tst_rtp::transport::RtpRecvTransport
+impl core::marker::Send for tst_rtp::transport::RtpRecvTransport
+impl core::marker::Sync for tst_rtp::transport::RtpRecvTransport
+impl core::marker::Unpin for tst_rtp::transport::RtpRecvTransport
+impl core::marker::UnsafeUnpin for tst_rtp::transport::RtpRecvTransport
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::transport::RtpRecvTransport
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::transport::RtpRecvTransport
+#[non_exhaustive] pub struct tst_rtp::transport::RtpStats
+pub tst_rtp::transport::RtpStats::malformed_packets: u64
+impl core::clone::Clone for tst_rtp::transport::RtpStats
+pub fn tst_rtp::transport::RtpStats::clone(&self) -> tst_rtp::transport::RtpStats
+impl core::cmp::Eq for tst_rtp::transport::RtpStats
+impl core::cmp::PartialEq for tst_rtp::transport::RtpStats
+pub fn tst_rtp::transport::RtpStats::eq(&self, &tst_rtp::transport::RtpStats) -> bool
+impl core::default::Default for tst_rtp::transport::RtpStats
+pub fn tst_rtp::transport::RtpStats::default() -> tst_rtp::transport::RtpStats
+impl core::fmt::Debug for tst_rtp::transport::RtpStats
+pub fn tst_rtp::transport::RtpStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::transport::RtpStats
+impl core::marker::StructuralPartialEq for tst_rtp::transport::RtpStats
+impl core::marker::Freeze for tst_rtp::transport::RtpStats
+impl core::marker::Send for tst_rtp::transport::RtpStats
+impl core::marker::Sync for tst_rtp::transport::RtpStats
+impl core::marker::Unpin for tst_rtp::transport::RtpStats
+impl core::marker::UnsafeUnpin for tst_rtp::transport::RtpStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::transport::RtpStats
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::transport::RtpStats
+pub struct tst_rtp::transport::RtpTransport
+impl tst_rtp::transport::RtpTransport
+pub fn tst_rtp::transport::RtpTransport::connect(&str) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::transport::RtpTransport::connect_with(&tst_rtp::url::RtpUrl) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+impl core::ops::drop::Drop for tst_rtp::transport::RtpTransport
+pub fn tst_rtp::transport::RtpTransport::drop(&mut self)
+impl tst_core::transport::Transport for tst_rtp::transport::RtpTransport
+pub fn tst_rtp::transport::RtpTransport::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn tst_rtp::transport::RtpTransport::close(&mut self)
+pub fn tst_rtp::transport::RtpTransport::is_alive(&self) -> bool
+pub fn tst_rtp::transport::RtpTransport::max_payload(&self) -> usize
+pub fn tst_rtp::transport::RtpTransport::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_rtp::transport::RtpTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
+impl core::marker::Freeze for tst_rtp::transport::RtpTransport
+impl core::marker::Send for tst_rtp::transport::RtpTransport
+impl core::marker::Sync for tst_rtp::transport::RtpTransport
+impl core::marker::Unpin for tst_rtp::transport::RtpTransport
+impl core::marker::UnsafeUnpin for tst_rtp::transport::RtpTransport
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::transport::RtpTransport
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::transport::RtpTransport
+pub mod tst_rtp::url
+#[non_exhaustive] pub enum tst_rtp::url::UrlError
+pub tst_rtp::url::UrlError::BadIface
+pub tst_rtp::url::UrlError::BadIface::got: alloc::string::String
+pub tst_rtp::url::UrlError::BadPktSize
+pub tst_rtp::url::UrlError::BadPktSize::detail: alloc::string::String
+pub tst_rtp::url::UrlError::BadPktSize::got: alloc::string::String
+pub tst_rtp::url::UrlError::BadSsrc
+pub tst_rtp::url::UrlError::BadSsrc::detail: alloc::string::String
+pub tst_rtp::url::UrlError::BadSsrc::got: alloc::string::String
+pub tst_rtp::url::UrlError::BadTtl
+pub tst_rtp::url::UrlError::BadTtl::detail: alloc::string::String
+pub tst_rtp::url::UrlError::BadTtl::got: alloc::string::String
+pub tst_rtp::url::UrlError::MissingPort
+pub tst_rtp::url::UrlError::Syntax(tst_core::url::common::UrlError)
+pub tst_rtp::url::UrlError::UnknownKey
+pub tst_rtp::url::UrlError::UnknownKey::got: alloc::string::String
+pub tst_rtp::url::UrlError::WrongScheme
+pub tst_rtp::url::UrlError::WrongScheme::got: alloc::string::String
+impl core::clone::Clone for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::clone(&self) -> tst_rtp::url::UrlError
+impl core::cmp::Eq for tst_rtp::url::UrlError
+impl core::cmp::PartialEq for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::eq(&self, &tst_rtp::url::UrlError) -> bool
+impl core::convert::From<tst_core::url::common::UrlError> for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::from(tst_core::url::common::UrlError) -> Self
+impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::from(tst_rtp::url::UrlError) -> Self
+impl core::error::Error for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_rtp::url::UrlError
+impl core::marker::Freeze for tst_rtp::url::UrlError
+impl core::marker::Send for tst_rtp::url::UrlError
+impl core::marker::Sync for tst_rtp::url::UrlError
+impl core::marker::Unpin for tst_rtp::url::UrlError
+impl core::marker::UnsafeUnpin for tst_rtp::url::UrlError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::url::UrlError
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::UrlError
+pub struct tst_rtp::url::RtpUrl
+pub tst_rtp::url::RtpUrl::host: alloc::string::String
+pub tst_rtp::url::RtpUrl::iface: core::option::Option<alloc::string::String>
+pub tst_rtp::url::RtpUrl::pkt_size: usize
+pub tst_rtp::url::RtpUrl::port: u16
+pub tst_rtp::url::RtpUrl::ssrc: core::option::Option<u32>
+pub tst_rtp::url::RtpUrl::ttl: core::option::Option<u8>
+impl tst_rtp::url::RtpUrl
+pub fn tst_rtp::url::RtpUrl::parse(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
+impl core::clone::Clone for tst_rtp::url::RtpUrl
+pub fn tst_rtp::url::RtpUrl::clone(&self) -> tst_rtp::url::RtpUrl
+impl core::cmp::Eq for tst_rtp::url::RtpUrl
+impl core::cmp::PartialEq for tst_rtp::url::RtpUrl
+pub fn tst_rtp::url::RtpUrl::eq(&self, &tst_rtp::url::RtpUrl) -> bool
+impl core::fmt::Debug for tst_rtp::url::RtpUrl
+pub fn tst_rtp::url::RtpUrl::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_rtp::url::RtpUrl
+impl core::marker::Freeze for tst_rtp::url::RtpUrl
+impl core::marker::Send for tst_rtp::url::RtpUrl
+impl core::marker::Sync for tst_rtp::url::RtpUrl
+impl core::marker::Unpin for tst_rtp::url::RtpUrl
+impl core::marker::UnsafeUnpin for tst_rtp::url::RtpUrl
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::url::RtpUrl
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::RtpUrl
+pub const tst_rtp::url::DEFAULT_PKT_SIZE: usize
+#[non_exhaustive] pub enum tst_rtp::ConnectError
+pub tst_rtp::ConnectError::HostNotLiteral
+pub tst_rtp::ConnectError::HostNotLiteral::detail: alloc::string::String
+pub tst_rtp::ConnectError::HostNotLiteral::host: alloc::string::String
+pub tst_rtp::ConnectError::IfaceUnsupported
+pub tst_rtp::ConnectError::IfaceUnsupported::detail: alloc::string::String
+pub tst_rtp::ConnectError::IfaceUnsupported::iface: alloc::string::String
+pub tst_rtp::ConnectError::Io(std::io::error::Error)
+pub tst_rtp::ConnectError::Url(tst_rtp::url::UrlError)
+impl core::convert::From<std::io::error::Error> for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::from(std::io::error::Error) -> Self
+impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::from(tst_rtp::url::UrlError) -> Self
+impl core::error::Error for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::transport::ConnectError
+impl core::marker::Send for tst_rtp::transport::ConnectError
+impl core::marker::Sync for tst_rtp::transport::ConnectError
+impl core::marker::Unpin for tst_rtp::transport::ConnectError
+impl core::marker::UnsafeUnpin for tst_rtp::transport::ConnectError
+impl !core::panic::unwind_safe::RefUnwindSafe for tst_rtp::transport::ConnectError
+impl !core::panic::unwind_safe::UnwindSafe for tst_rtp::transport::ConnectError
+#[non_exhaustive] pub enum tst_rtp::RtpParseError
+pub tst_rtp::RtpParseError::Truncated
+pub tst_rtp::RtpParseError::Truncated::got: usize
+pub tst_rtp::RtpParseError::Truncated::need: usize
+pub tst_rtp::RtpParseError::UnsupportedPayloadType(u8)
+pub tst_rtp::RtpParseError::UnsupportedVersion(u8)
+impl core::clone::Clone for tst_rtp::packet::RtpParseError
+pub fn tst_rtp::packet::RtpParseError::clone(&self) -> tst_rtp::packet::RtpParseError
+impl core::cmp::Eq for tst_rtp::packet::RtpParseError
+impl core::cmp::PartialEq for tst_rtp::packet::RtpParseError
+pub fn tst_rtp::packet::RtpParseError::eq(&self, &tst_rtp::packet::RtpParseError) -> bool
+impl core::error::Error for tst_rtp::packet::RtpParseError
+impl core::fmt::Debug for tst_rtp::packet::RtpParseError
+pub fn tst_rtp::packet::RtpParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::packet::RtpParseError
+pub fn tst_rtp::packet::RtpParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_rtp::packet::RtpParseError
+impl core::marker::Freeze for tst_rtp::packet::RtpParseError
+impl core::marker::Send for tst_rtp::packet::RtpParseError
+impl core::marker::Sync for tst_rtp::packet::RtpParseError
+impl core::marker::Unpin for tst_rtp::packet::RtpParseError
+impl core::marker::UnsafeUnpin for tst_rtp::packet::RtpParseError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::packet::RtpParseError
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::packet::RtpParseError
+#[non_exhaustive] pub enum tst_rtp::RtpUrlError
+pub tst_rtp::RtpUrlError::BadIface
+pub tst_rtp::RtpUrlError::BadIface::got: alloc::string::String
+pub tst_rtp::RtpUrlError::BadPktSize
+pub tst_rtp::RtpUrlError::BadPktSize::detail: alloc::string::String
+pub tst_rtp::RtpUrlError::BadPktSize::got: alloc::string::String
+pub tst_rtp::RtpUrlError::BadSsrc
+pub tst_rtp::RtpUrlError::BadSsrc::detail: alloc::string::String
+pub tst_rtp::RtpUrlError::BadSsrc::got: alloc::string::String
+pub tst_rtp::RtpUrlError::BadTtl
+pub tst_rtp::RtpUrlError::BadTtl::detail: alloc::string::String
+pub tst_rtp::RtpUrlError::BadTtl::got: alloc::string::String
+pub tst_rtp::RtpUrlError::MissingPort
+pub tst_rtp::RtpUrlError::Syntax(tst_core::url::common::UrlError)
+pub tst_rtp::RtpUrlError::UnknownKey
+pub tst_rtp::RtpUrlError::UnknownKey::got: alloc::string::String
+pub tst_rtp::RtpUrlError::WrongScheme
+pub tst_rtp::RtpUrlError::WrongScheme::got: alloc::string::String
+impl core::clone::Clone for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::clone(&self) -> tst_rtp::url::UrlError
+impl core::cmp::Eq for tst_rtp::url::UrlError
+impl core::cmp::PartialEq for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::eq(&self, &tst_rtp::url::UrlError) -> bool
+impl core::convert::From<tst_core::url::common::UrlError> for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::from(tst_core::url::common::UrlError) -> Self
+impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::transport::ConnectError
+pub fn tst_rtp::transport::ConnectError::from(tst_rtp::url::UrlError) -> Self
+impl core::error::Error for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::url::UrlError
+pub fn tst_rtp::url::UrlError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_rtp::url::UrlError
+impl core::marker::Freeze for tst_rtp::url::UrlError
+impl core::marker::Send for tst_rtp::url::UrlError
+impl core::marker::Sync for tst_rtp::url::UrlError
+impl core::marker::Unpin for tst_rtp::url::UrlError
+impl core::marker::UnsafeUnpin for tst_rtp::url::UrlError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::url::UrlError
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::UrlError
+pub struct tst_rtp::Parsed
+pub tst_rtp::Parsed::header: tst_rtp::packet::RtpHeader
+pub tst_rtp::Parsed::payload_offset: usize
+impl core::clone::Clone for tst_rtp::packet::Parsed
+pub fn tst_rtp::packet::Parsed::clone(&self) -> tst_rtp::packet::Parsed
+impl core::cmp::Eq for tst_rtp::packet::Parsed
+impl core::cmp::PartialEq for tst_rtp::packet::Parsed
+pub fn tst_rtp::packet::Parsed::eq(&self, &tst_rtp::packet::Parsed) -> bool
+impl core::fmt::Debug for tst_rtp::packet::Parsed
+pub fn tst_rtp::packet::Parsed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::packet::Parsed
+impl core::marker::StructuralPartialEq for tst_rtp::packet::Parsed
+impl core::marker::Freeze for tst_rtp::packet::Parsed
+impl core::marker::Send for tst_rtp::packet::Parsed
+impl core::marker::Sync for tst_rtp::packet::Parsed
+impl core::marker::Unpin for tst_rtp::packet::Parsed
+impl core::marker::UnsafeUnpin for tst_rtp::packet::Parsed
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::packet::Parsed
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::packet::Parsed
+pub struct tst_rtp::RtpCancelHandle
+impl tst_rtp::cancel::RtpCancelHandle
+pub fn tst_rtp::cancel::RtpCancelHandle::cancel(&self)
+pub fn tst_rtp::cancel::RtpCancelHandle::is_cancelled(&self) -> bool
+pub fn tst_rtp::cancel::RtpCancelHandle::new() -> alloc::sync::Arc<Self>
+impl core::default::Default for tst_rtp::cancel::RtpCancelHandle
+pub fn tst_rtp::cancel::RtpCancelHandle::default() -> tst_rtp::cancel::RtpCancelHandle
+impl core::fmt::Debug for tst_rtp::cancel::RtpCancelHandle
+pub fn tst_rtp::cancel::RtpCancelHandle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl tst_core::transport::TransportCancel for tst_rtp::cancel::RtpCancelHandle
+pub fn tst_rtp::cancel::RtpCancelHandle::cancel(&self)
+impl !core::marker::Freeze for tst_rtp::cancel::RtpCancelHandle
+impl core::marker::Send for tst_rtp::cancel::RtpCancelHandle
+impl core::marker::Sync for tst_rtp::cancel::RtpCancelHandle
+impl core::marker::Unpin for tst_rtp::cancel::RtpCancelHandle
+impl core::marker::UnsafeUnpin for tst_rtp::cancel::RtpCancelHandle
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::cancel::RtpCancelHandle
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::cancel::RtpCancelHandle
+pub struct tst_rtp::RtpClock
+impl tst_rtp::clock::RtpClock
+pub fn tst_rtp::clock::RtpClock::new(u32) -> Self
+pub fn tst_rtp::clock::RtpClock::now_ticks(&self) -> u32
+impl core::clone::Clone for tst_rtp::clock::RtpClock
+pub fn tst_rtp::clock::RtpClock::clone(&self) -> tst_rtp::clock::RtpClock
+impl core::fmt::Debug for tst_rtp::clock::RtpClock
+pub fn tst_rtp::clock::RtpClock::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::clock::RtpClock
+impl core::marker::Freeze for tst_rtp::clock::RtpClock
+impl core::marker::Send for tst_rtp::clock::RtpClock
+impl core::marker::Sync for tst_rtp::clock::RtpClock
+impl core::marker::Unpin for tst_rtp::clock::RtpClock
+impl core::marker::UnsafeUnpin for tst_rtp::clock::RtpClock
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::clock::RtpClock
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::clock::RtpClock
+#[non_exhaustive] pub struct tst_rtp::RtpHeader
+pub tst_rtp::RtpHeader::seq: u16
+pub tst_rtp::RtpHeader::ssrc: u32
+pub tst_rtp::RtpHeader::timestamp: u32
+impl tst_rtp::packet::RtpHeader
+pub fn tst_rtp::packet::RtpHeader::decode(&[u8]) -> core::result::Result<tst_rtp::packet::Parsed, tst_rtp::packet::RtpParseError>
+impl tst_rtp::packet::RtpHeader
+pub fn tst_rtp::packet::RtpHeader::encode_into(&self, &mut [u8])
+pub fn tst_rtp::packet::RtpHeader::new(u16, u32, u32) -> Self
+impl core::clone::Clone for tst_rtp::packet::RtpHeader
+pub fn tst_rtp::packet::RtpHeader::clone(&self) -> tst_rtp::packet::RtpHeader
+impl core::cmp::Eq for tst_rtp::packet::RtpHeader
+impl core::cmp::PartialEq for tst_rtp::packet::RtpHeader
+pub fn tst_rtp::packet::RtpHeader::eq(&self, &tst_rtp::packet::RtpHeader) -> bool
+impl core::fmt::Debug for tst_rtp::packet::RtpHeader
+pub fn tst_rtp::packet::RtpHeader::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::packet::RtpHeader
+impl core::marker::StructuralPartialEq for tst_rtp::packet::RtpHeader
+impl core::marker::Freeze for tst_rtp::packet::RtpHeader
+impl core::marker::Send for tst_rtp::packet::RtpHeader
+impl core::marker::Sync for tst_rtp::packet::RtpHeader
+impl core::marker::Unpin for tst_rtp::packet::RtpHeader
+impl core::marker::UnsafeUnpin for tst_rtp::packet::RtpHeader
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::packet::RtpHeader
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::packet::RtpHeader
+pub struct tst_rtp::RtpRecvSocketBuilder
+impl tst_rtp::builder::RtpRecvSocketBuilder
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::iface(&mut self, impl core::convert::Into<alloc::string::String>) -> &mut Self
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::listen(&self) -> core::result::Result<tst_rtp::transport::RtpRecvTransport, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::new(impl core::convert::Into<alloc::string::String>, u16) -> Self
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::pkt_size(&mut self, usize) -> &mut Self
+impl core::clone::Clone for tst_rtp::builder::RtpRecvSocketBuilder
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::clone(&self) -> tst_rtp::builder::RtpRecvSocketBuilder
+impl core::fmt::Debug for tst_rtp::builder::RtpRecvSocketBuilder
+pub fn tst_rtp::builder::RtpRecvSocketBuilder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::marker::Send for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::marker::Sync for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::marker::Unpin for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::marker::UnsafeUnpin for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::builder::RtpRecvSocketBuilder
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::builder::RtpRecvSocketBuilder
+pub struct tst_rtp::RtpRecvTransport
+impl tst_rtp::transport::RtpRecvTransport
+pub fn tst_rtp::transport::RtpRecvTransport::listen(&str) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::transport::RtpRecvTransport::listen_with(&tst_rtp::url::RtpUrl) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::transport::RtpRecvTransport::rtp_stats(&self) -> tst_rtp::transport::RtpStats
+impl core::ops::drop::Drop for tst_rtp::transport::RtpRecvTransport
+pub fn tst_rtp::transport::RtpRecvTransport::drop(&mut self)
+impl tst_core::transport::RecvTransport for tst_rtp::transport::RtpRecvTransport
+pub fn tst_rtp::transport::RtpRecvTransport::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn tst_rtp::transport::RtpRecvTransport::close(&mut self)
+pub fn tst_rtp::transport::RtpRecvTransport::is_alive(&self) -> bool
+pub fn tst_rtp::transport::RtpRecvTransport::max_payload(&self) -> usize
+pub fn tst_rtp::transport::RtpRecvTransport::recv_bytes(&mut self, &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_rtp::transport::RtpRecvTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
+impl core::marker::Freeze for tst_rtp::transport::RtpRecvTransport
+impl core::marker::Send for tst_rtp::transport::RtpRecvTransport
+impl core::marker::Sync for tst_rtp::transport::RtpRecvTransport
+impl core::marker::Unpin for tst_rtp::transport::RtpRecvTransport
+impl core::marker::UnsafeUnpin for tst_rtp::transport::RtpRecvTransport
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::transport::RtpRecvTransport
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::transport::RtpRecvTransport
+pub struct tst_rtp::RtpSocketBuilder
+impl tst_rtp::builder::RtpSocketBuilder
+pub fn tst_rtp::builder::RtpSocketBuilder::connect(&self) -> core::result::Result<tst_rtp::transport::RtpTransport, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::builder::RtpSocketBuilder::iface(&mut self, impl core::convert::Into<alloc::string::String>) -> &mut Self
+pub fn tst_rtp::builder::RtpSocketBuilder::new(impl core::convert::Into<alloc::string::String>, u16) -> Self
+pub fn tst_rtp::builder::RtpSocketBuilder::pkt_size(&mut self, usize) -> &mut Self
+pub fn tst_rtp::builder::RtpSocketBuilder::ssrc(&mut self, u32) -> &mut Self
+pub fn tst_rtp::builder::RtpSocketBuilder::ttl(&mut self, u8) -> &mut Self
+impl core::clone::Clone for tst_rtp::builder::RtpSocketBuilder
+pub fn tst_rtp::builder::RtpSocketBuilder::clone(&self) -> tst_rtp::builder::RtpSocketBuilder
+impl core::fmt::Debug for tst_rtp::builder::RtpSocketBuilder
+pub fn tst_rtp::builder::RtpSocketBuilder::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::builder::RtpSocketBuilder
+impl core::marker::Send for tst_rtp::builder::RtpSocketBuilder
+impl core::marker::Sync for tst_rtp::builder::RtpSocketBuilder
+impl core::marker::Unpin for tst_rtp::builder::RtpSocketBuilder
+impl core::marker::UnsafeUnpin for tst_rtp::builder::RtpSocketBuilder
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::builder::RtpSocketBuilder
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::builder::RtpSocketBuilder
+#[non_exhaustive] pub struct tst_rtp::RtpStats
+pub tst_rtp::RtpStats::malformed_packets: u64
+impl core::clone::Clone for tst_rtp::transport::RtpStats
+pub fn tst_rtp::transport::RtpStats::clone(&self) -> tst_rtp::transport::RtpStats
+impl core::cmp::Eq for tst_rtp::transport::RtpStats
+impl core::cmp::PartialEq for tst_rtp::transport::RtpStats
+pub fn tst_rtp::transport::RtpStats::eq(&self, &tst_rtp::transport::RtpStats) -> bool
+impl core::default::Default for tst_rtp::transport::RtpStats
+pub fn tst_rtp::transport::RtpStats::default() -> tst_rtp::transport::RtpStats
+impl core::fmt::Debug for tst_rtp::transport::RtpStats
+pub fn tst_rtp::transport::RtpStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::transport::RtpStats
+impl core::marker::StructuralPartialEq for tst_rtp::transport::RtpStats
+impl core::marker::Freeze for tst_rtp::transport::RtpStats
+impl core::marker::Send for tst_rtp::transport::RtpStats
+impl core::marker::Sync for tst_rtp::transport::RtpStats
+impl core::marker::Unpin for tst_rtp::transport::RtpStats
+impl core::marker::UnsafeUnpin for tst_rtp::transport::RtpStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::transport::RtpStats
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::transport::RtpStats
+pub struct tst_rtp::RtpTransport
+impl tst_rtp::transport::RtpTransport
+pub fn tst_rtp::transport::RtpTransport::connect(&str) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+pub fn tst_rtp::transport::RtpTransport::connect_with(&tst_rtp::url::RtpUrl) -> core::result::Result<Self, tst_rtp::transport::ConnectError>
+impl core::ops::drop::Drop for tst_rtp::transport::RtpTransport
+pub fn tst_rtp::transport::RtpTransport::drop(&mut self)
+impl tst_core::transport::Transport for tst_rtp::transport::RtpTransport
+pub fn tst_rtp::transport::RtpTransport::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
+pub fn tst_rtp::transport::RtpTransport::close(&mut self)
+pub fn tst_rtp::transport::RtpTransport::is_alive(&self) -> bool
+pub fn tst_rtp::transport::RtpTransport::max_payload(&self) -> usize
+pub fn tst_rtp::transport::RtpTransport::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_rtp::transport::RtpTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
+impl core::marker::Freeze for tst_rtp::transport::RtpTransport
+impl core::marker::Send for tst_rtp::transport::RtpTransport
+impl core::marker::Sync for tst_rtp::transport::RtpTransport
+impl core::marker::Unpin for tst_rtp::transport::RtpTransport
+impl core::marker::UnsafeUnpin for tst_rtp::transport::RtpTransport
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::transport::RtpTransport
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::transport::RtpTransport
+pub struct tst_rtp::RtpUrl
+pub tst_rtp::RtpUrl::host: alloc::string::String
+pub tst_rtp::RtpUrl::iface: core::option::Option<alloc::string::String>
+pub tst_rtp::RtpUrl::pkt_size: usize
+pub tst_rtp::RtpUrl::port: u16
+pub tst_rtp::RtpUrl::ssrc: core::option::Option<u32>
+pub tst_rtp::RtpUrl::ttl: core::option::Option<u8>
+impl tst_rtp::url::RtpUrl
+pub fn tst_rtp::url::RtpUrl::parse(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
+impl core::clone::Clone for tst_rtp::url::RtpUrl
+pub fn tst_rtp::url::RtpUrl::clone(&self) -> tst_rtp::url::RtpUrl
+impl core::cmp::Eq for tst_rtp::url::RtpUrl
+impl core::cmp::PartialEq for tst_rtp::url::RtpUrl
+pub fn tst_rtp::url::RtpUrl::eq(&self, &tst_rtp::url::RtpUrl) -> bool
+impl core::fmt::Debug for tst_rtp::url::RtpUrl
+pub fn tst_rtp::url::RtpUrl::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_rtp::url::RtpUrl
+impl core::marker::Freeze for tst_rtp::url::RtpUrl
+impl core::marker::Send for tst_rtp::url::RtpUrl
+impl core::marker::Sync for tst_rtp::url::RtpUrl
+impl core::marker::Unpin for tst_rtp::url::RtpUrl
+impl core::marker::UnsafeUnpin for tst_rtp::url::RtpUrl
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::url::RtpUrl
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::RtpUrl
+pub const tst_rtp::DEFAULT_PKT_SIZE: usize
+pub const tst_rtp::RTP_HEADER_LEN: usize
+pub const tst_rtp::RTP_PT_MP2T: u8
+pub const tst_rtp::RTP_VERSION: u8

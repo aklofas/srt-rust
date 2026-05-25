@@ -22,5 +22,5 @@ pub mod url;
 pub use cancel::RtpCancelHandle;
 pub use clock::RtpClock;
 pub use packet::{Parsed, RTP_HEADER_LEN, RTP_PT_MP2T, RTP_VERSION, RtpHeader, RtpParseError};
-pub use transport::{ConnectError, RtpTransport};
+pub use transport::{ConnectError, RtpRecvTransport, RtpStats, RtpTransport};
 pub use url::{DEFAULT_PKT_SIZE, RtpUrl, UrlError as RtpUrlError};

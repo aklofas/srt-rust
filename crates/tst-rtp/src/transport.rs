@@ -10,7 +10,7 @@ use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::Arc;
 use std::time::Duration;
 
-use tst_core::transport::{SocketStats, Transport, TransportCancel, TransportError};
+use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportCancel, TransportError};
 
 use crate::cancel::RtpCancelHandle;
 use crate::clock::RtpClock;
@@ -364,6 +364,203 @@ fn set_multicast_if_v4(_socket: &UdpSocket, addr: &std::net::Ipv4Addr) -> Result
         iface: addr.to_string(),
         detail: "IP_MULTICAST_IF via raw setsockopt is Unix-only in Phase 1".to_string(),
     })
+}
+
+/// RTP receive-side transport: reads UDP datagrams, strips the 12-byte
+/// RTP header, returns the TS payload bytes to callers.
+///
+/// Malformed packets (wrong version, wrong payload type, truncated,
+/// CSRC list overflowing the datagram) are silently dropped — the
+/// counter on [`Self::rtp_stats`] ticks for diagnosis. RFC 3550 §5.1
+/// expects receivers to ignore unparseable packets.
+pub struct RtpRecvTransport {
+    socket: Option<UdpSocket>,
+    /// Max UDP payload — used to size the recv scratch buffer.
+    max_payload: usize,
+    cancel: Arc<RtpCancelHandle>,
+    bytes_received: u64,
+    packets_received: u64,
+    /// Counter for RTP packets that failed the header check.
+    malformed_packets: u64,
+    /// Per-recv scratch — heap allocated once.
+    scratch: Vec<u8>,
+}
+
+/// RTP-protocol-level stats separate from [`SocketStats`].
+///
+/// Currently exposes only the malformed-packet counter. Future fields
+/// (out-of-order delta, gap counter, etc.) can be added under
+/// `#[non_exhaustive]` without breaking consumers.
+#[must_use]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct RtpStats {
+    /// Number of UDP datagrams received whose RTP header was invalid
+    /// (wrong V, wrong PT, truncated, CSRC overflow). Cumulative since
+    /// `listen()`.
+    pub malformed_packets: u64,
+}
+
+impl RtpRecvTransport {
+    /// Bind to `url`'s host:port and (for multicast) join the group.
+    pub fn listen(url: &str) -> Result<Self, ConnectError> {
+        let parsed = RtpUrl::parse(url).map_err(ConnectError::Url)?;
+        Self::listen_with(&parsed)
+    }
+
+    /// Bind using an already-parsed URL.
+    pub fn listen_with(url: &RtpUrl) -> Result<Self, ConnectError> {
+        let ip: IpAddr = url.host.parse().map_err(|e: std::net::AddrParseError| {
+            ConnectError::HostNotLiteral {
+                host: url.host.clone(),
+                detail: e.to_string(),
+            }
+        })?;
+        // For multicast recv, bind to ANY:port and JoinMulticast on the
+        // group; for unicast recv, bind to the literal host:port. This
+        // matches GStreamer's `udpsrc address=...` behavior and tcpdump.
+        let is_multicast = match ip {
+            IpAddr::V4(v4) => v4.is_multicast(),
+            IpAddr::V6(v6) => v6.is_multicast(),
+        };
+        let local: SocketAddr = if is_multicast {
+            match ip {
+                IpAddr::V4(_) => SocketAddr::new("0.0.0.0".parse().unwrap(), url.port),
+                IpAddr::V6(_) => SocketAddr::new("::".parse().unwrap(), url.port),
+            }
+        } else {
+            SocketAddr::new(ip, url.port)
+        };
+        let socket = UdpSocket::bind(local).map_err(ConnectError::Io)?;
+        socket
+            .set_read_timeout(Some(CANCEL_POLL_INTERVAL))
+            .map_err(ConnectError::Io)?;
+        if is_multicast {
+            apply_multicast_recv_join(&socket, &ip, url)?;
+        }
+        Ok(Self {
+            socket: Some(socket),
+            max_payload: url.pkt_size,
+            cancel: RtpCancelHandle::new(),
+            bytes_received: 0,
+            packets_received: 0,
+            malformed_packets: 0,
+            scratch: vec![0u8; url.pkt_size],
+        })
+    }
+
+    /// RTP-protocol-level stats — separate from [`SocketStats`].
+    pub fn rtp_stats(&self) -> RtpStats {
+        RtpStats {
+            malformed_packets: self.malformed_packets,
+        }
+    }
+}
+
+impl RecvTransport for RtpRecvTransport {
+    fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+        let socket = self.socket.as_ref().ok_or(TransportError::Closed)?;
+        loop {
+            if self.cancel.is_cancelled() {
+                return Err(TransportError::ExplicitClose);
+            }
+            match socket.recv(&mut self.scratch) {
+                Ok(0) => continue, // Zero-byte recv is meaningless on UDP; loop.
+                Ok(n) => {
+                    self.bytes_received += n as u64;
+                    self.packets_received += 1;
+                    match RtpHeader::decode(&self.scratch[..n]) {
+                        Ok(parsed) => {
+                            let payload = &self.scratch[parsed.payload_offset..n];
+                            if payload.len() > buf.len() {
+                                // Caller buf too small. Treat as broken,
+                                // since the recv shell is misconfigured
+                                // (it should have sized buf to at least
+                                // max_payload()).
+                                return Err(TransportError::Broken {
+                                    msg: format!(
+                                        "recv buf too small: {} < {}",
+                                        buf.len(),
+                                        payload.len()
+                                    ),
+                                    errno_code: None,
+                                });
+                            }
+                            buf[..payload.len()].copy_from_slice(payload);
+                            return Ok(payload.len());
+                        }
+                        Err(parse_err) => {
+                            self.malformed_packets = self.malformed_packets.saturating_add(1);
+                            tracing::debug!(
+                                error = ?parse_err,
+                                "RTP packet rejected at recv; counter ticked",
+                            );
+                            // Drop + continue the recv loop.
+                            continue;
+                        }
+                    }
+                }
+                Err(e)
+                    if e.kind() == io::ErrorKind::WouldBlock
+                        || e.kind() == io::ErrorKind::TimedOut =>
+                {
+                    continue;
+                }
+                Err(e) => {
+                    self.socket = None;
+                    return Err(TransportError::Broken {
+                        msg: format!("UDP recv failed: {e}"),
+                        errno_code: e.raw_os_error(),
+                    });
+                }
+            }
+        }
+    }
+
+    fn max_payload(&self) -> usize {
+        self.max_payload.saturating_sub(RTP_HEADER_LEN)
+    }
+
+    fn is_alive(&self) -> bool {
+        self.socket.is_some()
+    }
+
+    fn close(&mut self) {
+        self.socket = None;
+    }
+
+    fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
+        Some(self.cancel.clone() as Arc<dyn TransportCancel + Send + Sync>)
+    }
+
+    fn socket_stats(&self) -> Option<SocketStats> {
+        self.socket.as_ref()?;
+        #[allow(clippy::field_reassign_with_default)]
+        // SocketStats is #[non_exhaustive] in tst-core, so the
+        // default-and-assign pattern is the only way to construct one
+        // from outside that crate.
+        let mut s = SocketStats::default();
+        s.bytes_received = self.bytes_received;
+        s.packets_received = self.packets_received;
+        Some(s)
+    }
+}
+
+impl Drop for RtpRecvTransport {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+/// Placeholder for multicast join — body lands in Task 11.
+fn apply_multicast_recv_join(
+    _socket: &UdpSocket,
+    _ip: &IpAddr,
+    _url: &RtpUrl,
+) -> Result<(), ConnectError> {
+    // Task 11 fills this in. Unicast paths reach this branch with
+    // `is_multicast == false` and never call this function.
+    Ok(())
 }
 
 #[cfg(test)]

@@ -120,6 +120,12 @@ pub struct TstDemuxConfig {
 /// builder path end-to-end without going through a real SRT loopback.
 /// Not part of the public C ABI (no `extern "C"`).
 ///
+/// **Stability:** internal test-only API. The `test_` prefix combined
+/// with `#[doc(hidden)]` follows the established convention in this
+/// crate — see `lib.rs::test_clear_last_error` and siblings, whose
+/// own comment explains the pattern. Not part of the supported Rust
+/// API surface; downstream Rust consumers must not depend on it.
+///
 /// # Safety
 ///
 /// `cfg` must be a valid non-null pointer returned by

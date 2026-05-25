@@ -2,7 +2,7 @@
 
 Cross-platform SRT-based libraries for live video streaming from **gimbaled platforms** — drones (rotary and fixed-wing UAVs), manned fixed-wing aircraft with sensor pods, helicopters with EO/IR turrets, and other manned/unmanned platforms carrying stabilized imaging payloads.
 
-**Status:** Sender + receiver pipelines complete, with **multi-platform Tier 1 support** — Linux x86_64 + Linux aarch64 are gating; macOS arm64 (Apple Silicon) and Windows x86_64 (MSVC) phase in (compile + link verified, runtime test promotion tracked in `docs/deferred-features.md`). `srt-sys` (raw FFI + vendored mbedTLS), `tst-srt` (safe `Socket` / `Listener` / config + builder API + `SrtCancelHandle`), `tst-core::klv` (typed MISB ST 0601 / ST 0102 / ST 0605 / ST 0903 over a generic SMPTE / MISB substrate), `tst-core::mpegts::mux` (multi-program TS muxer with H.264 / H.265 / H.266 / AV1 video, MP2 / AAC ADTS / AAC LATM / AC-3 audio, DVB-sub / teletext / CEA-708 / WebVTT subtitles, and typed ST 0601 / ST 0102 / ST 0605 / ST 0903 KLV per ST 1402 with H.222.0 §2.12.4.2 sync metadata AU cells), `tst-core::mpegts::demux` (receiver-side TS demuxer — bytes in, typed `DemuxEvent` out; lenient by default with four-tier `StrictMode` ladder; AU-cell unwrap; consumer-side pairing via cookbook recipes), and `tst-pipeline` (composition layer: `Transport` + `RecvTransport` traits, `MuxSender` / `Sender` / `RawSender`, `DemuxReceiver` / `Receiver` / `RawReceiver`, reconnecting `ManagedTransport` + `ManagedRecvTransport` + `ManagedDemuxReceiver`, `add_byte_sink` fan-out for tee patterns) are all implemented. `tst-c` exposes both sender and demux/receiver surfaces as a stable C ABI (`cdylib` + `staticlib` + cbindgen-generated `tstrans.h` + `tstrans.pc`; ABI version 0.5). Workspace ships hundreds of tests across both feature modes. The remaining binding crates (`srt-jni`, `srt-uniffi`) are next on the roadmap.
+**Status:** Sender + receiver pipelines complete, with **multi-platform Tier 1 support** — Linux x86_64 + Linux aarch64 are gating; macOS arm64 (Apple Silicon) and Windows x86_64 (MSVC) phase in (compile + link verified, runtime test promotion tracked in `docs/project/deferred-features.md`). `srt-sys` (raw FFI + vendored mbedTLS), `tst-srt` (safe `Socket` / `Listener` / config + builder API + `SrtCancelHandle`), `tst-core::klv` (typed MISB ST 0601 / ST 0102 / ST 0605 / ST 0903 over a generic SMPTE / MISB substrate), `tst-core::mpegts::mux` (multi-program TS muxer with H.264 / H.265 / H.266 / AV1 video, MP2 / AAC ADTS / AAC LATM / AC-3 audio, DVB-sub / teletext / CEA-708 / WebVTT subtitles, and typed ST 0601 / ST 0102 / ST 0605 / ST 0903 KLV per ST 1402 with H.222.0 §2.12.4.2 sync metadata AU cells), `tst-core::mpegts::demux` (receiver-side TS demuxer — bytes in, typed `DemuxEvent` out; lenient by default with four-tier `StrictMode` ladder; AU-cell unwrap; consumer-side pairing via cookbook recipes), and `tst-pipeline` (composition layer: `Transport` + `RecvTransport` traits, `MuxSender` / `Sender` / `RawSender`, `DemuxReceiver` / `Receiver` / `RawReceiver`, reconnecting `ManagedTransport` + `ManagedRecvTransport` + `ManagedDemuxReceiver`, `add_byte_sink` fan-out for tee patterns) are all implemented. `tst-c` exposes both sender and demux/receiver surfaces as a stable C ABI (`cdylib` + `staticlib` + cbindgen-generated `tstrans.h` + `tstrans.pc`; ABI version 0.5). Workspace ships hundreds of tests across both feature modes. The remaining binding crates (`srt-jni`, `srt-uniffi`) are next on the roadmap.
 
 ## Scope
 
@@ -11,7 +11,7 @@ Cross-platform SRT-based libraries for live video streaming from **gimbaled plat
 - Transport: **SRT** (Haivision libsrt 1.5.5, vendored)
 - Encryption: **mbedTLS 3.6.6 LTS** (vendored, statically linked, on by default)
 
-For a feature-by-feature support matrix — SRT options, MISB specs, typed ST 0601 items, and what's planned vs. out of scope — see [`docs/compatibility.md`](docs/compatibility.md).
+For a feature-by-feature support matrix — SRT options, MISB specs, typed ST 0601 items, and what's planned vs. out of scope — see [`docs/reference/compatibility.md`](docs/reference/compatibility.md).
 
 ## Hello, MPEG-TS
 
@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`cargo run --example mux_to_file -- out.ts 5` runs the longer 5-second version. To send those bytes over SRT, see [`docs/getting-started.md`](docs/getting-started.md).
+`cargo run --example mux_to_file -- out.ts 5` runs the longer 5-second version. To send those bytes over SRT, see [`docs/start/quickstart.md`](docs/start/quickstart.md).
 
 ## Architecture
 
@@ -51,19 +51,19 @@ A Rust core wrapping libsrt via FFI, with bindings for JVM (JNI, JDK 17+), iOS/A
 
 The repo's documentation lives under [`docs/`](docs/):
 
-- **[`getting-started.md`](docs/getting-started.md)** — install, first send, first receive in 10 minutes.
-- **[`architecture.md`](docs/architecture.md)** — crate graph, pipeline composition model, sync vs. async stance.
-- **[`guide-codec.md`](docs/guide-codec.md)** — typed codec parameter-set parsers (`codec::h264`, `codec::h265`, `codec::h266`, `codec::av1`); stateless SPS / VPS / PPS / Sequence Header parsing from demuxer NAL / OBU bytes; shared color and frame-rate types.
-- **[`guide-klv.md`](docs/guide-klv.md)** — generic substrate plus typed ST 0601 / ST 0102 / ST 0605 / ST 0903 layers; the four-rung decode strictness ladder.
-- **[`guide-mpegts-demux.md`](docs/guide-mpegts-demux.md)** — `Demuxer`, `DemuxEvent`, `StrictMode` ladder, override surface, robustness behaviours, decoupled-pairing rationale.
-- **[`guide-mpegts-mux.md`](docs/guide-mpegts-mux.md)** — `Config` / `ConfigBuilder`, codec + KLV-mode selection, PCR/PSI cadence, push/pull contract.
-- **[`guide-pipeline.md`](docs/guide-pipeline.md)** — picking among `MuxSender` / `Sender` / `RawSender` (send) and `DemuxReceiver` / `Receiver` / `RawReceiver` (receive); the `Transport` and `RecvTransport` traits; `ManagedTransport` / `ManagedRecvTransport` reconnect; `add_byte_sink` fan-out.
-- **[`guide-srt.md`](docs/guide-srt.md)** — `Socket` / `Listener`, encryption, latency, stats, error model.
+- **[`getting-started.md`](docs/start/quickstart.md)** — install, first send, first receive in 10 minutes.
+- **[`architecture.md`](docs/reference/architecture.md)** — crate graph, pipeline composition model, sync vs. async stance.
+- **[`guide-codec.md`](docs/guides/codec.md)** — typed codec parameter-set parsers (`codec::h264`, `codec::h265`, `codec::h266`, `codec::av1`); stateless SPS / VPS / PPS / Sequence Header parsing from demuxer NAL / OBU bytes; shared color and frame-rate types.
+- **[`guide-klv.md`](docs/guides/klv.md)** — generic substrate plus typed ST 0601 / ST 0102 / ST 0605 / ST 0903 layers; the four-rung decode strictness ladder.
+- **[`guide-mpegts-demux.md`](docs/guides/mpegts-demux.md)** — `Demuxer`, `DemuxEvent`, `StrictMode` ladder, override surface, robustness behaviours, decoupled-pairing rationale.
+- **[`guide-mpegts-mux.md`](docs/guides/mpegts-mux.md)** — `Config` / `ConfigBuilder`, codec + KLV-mode selection, PCR/PSI cadence, push/pull contract.
+- **[`guide-pipeline.md`](docs/guides/pipeline.md)** — picking among `MuxSender` / `Sender` / `RawSender` (send) and `DemuxReceiver` / `Receiver` / `RawReceiver` (receive); the `Transport` and `RecvTransport` traits; `ManagedTransport` / `ManagedRecvTransport` reconnect; `add_byte_sink` fan-out.
+- **[`guide-srt.md`](docs/guides/srt.md)** — `Socket` / `Listener`, encryption, latency, stats, error model.
 - **[`cookbook.md`](docs/cookbook.md)** — recipes linking to runnable examples.
 - **[`troubleshooting.md`](docs/troubleshooting.md)** — diagnose build failures, connection failures, KLV rejection, TS framing issues, reconnect loops.
-- **[`deferred-features.md`](docs/deferred-features.md)** — what's not yet supported and the trigger conditions to revisit.
-- **[`compatibility.md`](docs/compatibility.md)** — feature-by-feature support matrix.
-- **[`binding-authors.md`](docs/binding-authors.md)** — entry point for `srt-jni` and `srt-uniffi` authors (plus the existing `tst-c` ABI).
+- **[`deferred-features.md`](docs/project/deferred-features.md)** — what's not yet supported and the trigger conditions to revisit.
+- **[`compatibility.md`](docs/reference/compatibility.md)** — feature-by-feature support matrix.
+- **[`binding-authors.md`](docs/reference/binding-authors.md)** — entry point for `srt-jni` and `srt-uniffi` authors (plus the existing `tst-c` ABI).
 
 Runnable Rust examples live at [`examples/`](examples/) — a workspace-level `tst-examples` crate organized into 8 task-oriented subfolders. Run any with `cargo run -p tst-examples --example <name>`. See `cookbook.md` for which example illustrates which recipe.
 
@@ -112,7 +112,7 @@ srt-sys = { git = "https://github.com/aklofas/ts-transformer", default-features 
 
 Three crates built on `srt-sys`. `tst-core` holds parsing and codec logic; `tst-pipeline` holds the pipeline shells; `tst-srt` ties them together and provides examples. Together they provide:
 
-- **SRT transport** (`tst_srt`) — `Socket`, `Listener`, `SocketConfig` / `ListenerConfig`, fluent `SocketBuilder` / `ListenerBuilder`, AES-128/192/256 passphrase-based encryption, packet-filter strings, latency / bandwidth / TLPKTDROP / flow-window / SRTO_STREAMID tunables, and `Stats` snapshots. Per-call-category error model. Sync blocking API today; async / reactor are deferred. Plus `srt://host:port?key=value&...` URL parsing (libsrt vocabulary, URL-wins-over-builder precedence) — see [`docs/guide-srt.md#url-parsing`](docs/guide-srt.md#url-parsing).
+- **SRT transport** (`tst_srt`) — `Socket`, `Listener`, `SocketConfig` / `ListenerConfig`, fluent `SocketBuilder` / `ListenerBuilder`, AES-128/192/256 passphrase-based encryption, packet-filter strings, latency / bandwidth / TLPKTDROP / flow-window / SRTO_STREAMID tunables, and `Stats` snapshots. Per-call-category error model. Sync blocking API today; async / reactor are deferred. Plus `srt://host:port?key=value&...` URL parsing (libsrt vocabulary, URL-wins-over-builder precedence) — see [`docs/guides/srt.md#url-parsing`](docs/guides/srt.md#url-parsing).
 - **KLV codec** (`tst_core::klv`) — generic SMPTE / MISB substrate plus typed MISB ST 0601 / ST 0102 / ST 0605 / ST 0903 layers (see below). Also includes AU-cell wrap/unwrap for sync KLV in TS.
 - **MPEG-TS muxer** (`tst_core::mpegts::mux`) — multi-program `Muxer` carrying H.264 / H.265 / H.266 / AV1 video, MP2 / AAC / AC-3 audio, DVB-sub / teletext / CEA-708 / WebVTT subtitles, and KLV metadata (typed ST 0601, ST 0102, ST 0605, ST 0903). KLV is carried per ST 1402 — async via `stream_type 0x06` + KLVA registration descriptor, sync via the H.222.0 §2.12.4.2 `Metadata_AU_cell` header. Up to 16 programs per muxer, up to 16 streams per kind per program, per-program PCR pin. PCR/PTS/PSI cadence configurable; deterministic output (no wall-clock dependency).
 - **Pipeline composition** (`tst_pipeline`) — composes the muxer with a `Transport` (the SRT socket, or any custom transport) into ergonomic sender shells: `MuxSender` (NAL+KLV → TS → SRT, internally synchronized, lossless across transient failures), `Sender` (pre-muxed TS → SRT with sync-byte framing/recovery in RECOVER or STRICT mode), `RawSender` (one byte-blind message per send). All three are generic over `Transport`; wrap any of them with `ManagedTransport<T>` for reconnect + gap-buffer behavior with configurable backoff and overflow policy.
@@ -163,7 +163,7 @@ A two-layer codec living in `tst-core`:
 - **Typed MISB ST 0601** (`klv::st0601`) — `UasDatalinkLs` flat struct mirroring the wire format with **49 of 143 typed items** (timestamp, platform attitude / airspeed, sensor lat/lon/altitude/FOV/azimuth/elevation/roll, slant range, frame center + ellipsoid heights, full-resolution corner lat/lon, full-resolution platform pitch / roll, security-LS pass-through, version, and more). Composite views: `GeoPoint`, `Attitude`, `FieldOfView`, `Corners`. Four decode entry points trade off strictness — `decode` (checksum-verified, any UL), `decode_unchecked` (skips checksum), `decode_strict` (gates on the ST 0601-family UL), and `decode_strict_compliance` (also enforces ST 0601.8-09/-11/-12 mandatory structure rules). Encoder auto-emits Tag 1 checksum and Tag 65 version when unset.
 - **Typed MISB ST 0605** (`klv::st0605`) — Precision Time Stamp Pack (`PrecisionTimeStampPack` + `TimeStatus(u8)` newtype with `is_locked` / `has_discontinuity` / `is_reverse_jump` / `reserved_bits_valid` accessors per MISB ST 0603.5 §7.4). Decode and encode for the 26-byte pack commonly multiplexed alongside ST 0601 records in real captures.
 
-For the full feature-by-feature matrix — SRT options, MISB specs, every typed ST 0601 item, decode strictness ladder, planned vs. out of scope — see [`docs/compatibility.md`](docs/compatibility.md).
+For the full feature-by-feature matrix — SRT options, MISB specs, every typed ST 0601 item, decode strictness ladder, planned vs. out of scope — see [`docs/reference/compatibility.md`](docs/reference/compatibility.md).
 
 ### `tst-c` — stable C ABI for the sender pipeline
 
@@ -254,7 +254,7 @@ A clean rebuild compiles libsrt and mbedTLS from source — expect 3–5 minutes
 
 **Tier 1 platforms:** Linux x86_64, Linux aarch64, macOS arm64 (Apple Silicon), Windows x86_64 (MSVC). The `cargo build` command works on all four with no platform-specific flags — vendored libsrt 1.5.5 + mbedTLS 3.6.6 build natively from the included submodules.
 
-For the full platform support matrix (including Tier 2 and deferred platforms), see [`docs/compatibility.md`](docs/compatibility.md). For what isn't supported yet and what would trigger support, see [`docs/deferred-features.md`](docs/deferred-features.md).
+For the full platform support matrix (including Tier 2 and deferred platforms), see [`docs/reference/compatibility.md`](docs/reference/compatibility.md). For what isn't supported yet and what would trigger support, see [`docs/project/deferred-features.md`](docs/project/deferred-features.md).
 
 ### Build the C ABI artifacts
 

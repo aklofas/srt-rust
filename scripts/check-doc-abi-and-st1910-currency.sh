@@ -5,7 +5,7 @@
 # Three rules:
 #
 #   1. README.md, docs/, and crate-level rustdoc must not mention
-#      a stale ABI minor (`ABI version 0.0`..`0.3`). Current value is
+#      a stale ABI minor (`ABI version 0.0`..`0.4`). Current value is
 #      tracked by TST_ABI_VERSION_MINOR in crates/tst-c/src/lib.rs; the
 #      published docs must match.
 #
@@ -48,7 +48,7 @@ done < <(
 )
 
 if [ ${#ABI_HITS[@]} -gt 0 ]; then
-    echo "FAIL: stale 'ABI version 0.[0-3]' references found:"
+    echo "FAIL: stale 'ABI version 0.[0-4]' references found:"
     for h in "${ABI_HITS[@]}"; do echo "  $h"; done
     echo
     echo "Current ABI minor (per crates/tst-c/src/lib.rs TST_ABI_VERSION_MINOR): 5"

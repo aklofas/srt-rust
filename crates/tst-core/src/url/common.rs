@@ -69,9 +69,8 @@ pub enum UrlError {
 /// + key recognition on top.
 ///
 /// Path and host are returned verbatim (callers parse host into IP address
-/// via [`parse_host_port`] when needed). Once Task 4 lands, query values
-/// will be percent-decoded; the current `parse_url` always returns an
-/// empty query vector.
+/// via [`parse_host_port`] when needed). Query values are percent-decoded;
+/// path and host strings are returned verbatim.
 pub fn parse_url(s: &str) -> Result<ParsedUrl<'_>, UrlError> {
     // Split scheme from rest at first `://`.
     let sep = s.find("://").ok_or(UrlError::MissingSchemeSeparator)?;
@@ -100,9 +99,10 @@ pub fn parse_url(s: &str) -> Result<ParsedUrl<'_>, UrlError> {
     // Split host[:port], handling IPv6 brackets.
     let (host, port) = split_host_port(host_port)?;
 
-    // Query parsing: implemented in Task 4. For now, leave empty.
-    let _ = query_raw;
-    let query = Vec::new();
+    let query = match query_raw {
+        Some(q) => parse_query(q)?,
+        None => Vec::new(),
+    };
 
     Ok(ParsedUrl { scheme, username, password, host, port, path, query })
 }
@@ -159,6 +159,66 @@ fn parse_port(s: &str) -> Result<u16, UrlError> {
         got: s.to_string(),
         detail: e.to_string(),
     })
+}
+
+/// Parse `key=value&key=value` into a vector of decoded pairs.
+/// Order is preserved (caller decides last-wins / first-wins semantics).
+fn parse_query(q: &str) -> Result<Vec<(Cow<'_, str>, Cow<'_, str>)>, UrlError> {
+    let mut out = Vec::new();
+    for pair in q.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        let (k, v) = match pair.find('=') {
+            Some(i) => (&pair[..i], &pair[i + 1..]),
+            None => (pair, ""),
+        };
+        out.push((percent_decode(k)?, percent_decode(v)?));
+    }
+    Ok(out)
+}
+
+/// Percent-decode a string. Returns `Cow::Borrowed` when no `%` appears
+/// (the fast path); otherwise allocates. Invalid `%XY` sequences return
+/// `Err(UrlError::BadPercentEncoding)`.
+fn percent_decode(s: &str) -> Result<Cow<'_, str>, UrlError> {
+    if !s.contains('%') {
+        return Ok(Cow::Borrowed(s));
+    }
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if i + 2 >= bytes.len() {
+                return Err(UrlError::BadPercentEncoding {
+                    detail: format!("truncated escape at byte {i}: '{s}'"),
+                });
+            }
+            let h = hex_nibble(bytes[i + 1])?;
+            let l = hex_nibble(bytes[i + 2])?;
+            out.push((h << 4) | l);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    // UTF-8 lossy on the decoded bytes — invalid sequences become U+FFFD,
+    // which is preferable to a hard error for already-validated transport
+    // contexts (passphrase bytes may not be UTF-8 strictly).
+    Ok(Cow::Owned(String::from_utf8_lossy(&out).into_owned()))
+}
+
+fn hex_nibble(b: u8) -> Result<u8, UrlError> {
+    match b {
+        b'0'..=b'9' => Ok(b - b'0'),
+        b'a'..=b'f' => Ok(b - b'a' + 10),
+        b'A'..=b'F' => Ok(b - b'A' + 10),
+        _ => Err(UrlError::BadPercentEncoding {
+            detail: format!("non-hex char in escape: '{}' (byte 0x{b:02x})", b as char),
+        }),
+    }
 }
 
 /// Stub — implemented in Task 6.
@@ -263,5 +323,45 @@ mod tests {
     fn parse_url_ipv6_unclosed_bracket_rejected() {
         let err = parse_url("rtp://[::1:5004").unwrap_err();
         assert!(matches!(err, UrlError::UnclosedIpv6Bracket));
+    }
+
+    #[test]
+    fn parse_url_query_pairs() {
+        let u = parse_url("srt://h:9000?streamid=front&latency=200").unwrap();
+        assert_eq!(u.query.len(), 2);
+        assert_eq!(u.query[0].0.as_ref(), "streamid");
+        assert_eq!(u.query[0].1.as_ref(), "front");
+        assert_eq!(u.query[1].0.as_ref(), "latency");
+        assert_eq!(u.query[1].1.as_ref(), "200");
+    }
+
+    #[test]
+    fn parse_url_query_value_percent_decoded() {
+        // `%20` → space, `%3D` → `=` inside a value.
+        let u = parse_url("srt://h:9000?passphrase=hello%20world%3Dx").unwrap();
+        assert_eq!(u.query[0].0.as_ref(), "passphrase");
+        assert_eq!(u.query[0].1.as_ref(), "hello world=x");
+    }
+
+    #[test]
+    fn parse_url_query_value_without_eq() {
+        // `?flag&latency=200` — flag has no `=`, value is empty.
+        let u = parse_url("srt://h:9000?flag&latency=200").unwrap();
+        assert_eq!(u.query[0].0.as_ref(), "flag");
+        assert_eq!(u.query[0].1.as_ref(), "");
+        assert_eq!(u.query[1].0.as_ref(), "latency");
+        assert_eq!(u.query[1].1.as_ref(), "200");
+    }
+
+    #[test]
+    fn parse_url_query_bad_percent_rejected() {
+        let err = parse_url("srt://h:9000?key=%ZZ").unwrap_err();
+        assert!(matches!(err, UrlError::BadPercentEncoding { .. }));
+    }
+
+    #[test]
+    fn parse_url_query_truncated_percent_rejected() {
+        let err = parse_url("srt://h:9000?key=%2").unwrap_err();
+        assert!(matches!(err, UrlError::BadPercentEncoding { .. }));
     }
 }

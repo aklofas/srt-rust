@@ -31,6 +31,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   semantics); literal `+` characters in passphrases now stay literal.
   Embed a `+` via percent-encoding (`%2B`) if it must be in a value.
 
+  **Migration:** if you previously relied on `+` being decoded to a space
+  in a URL query value (e.g., a passphrase containing a space), replace
+  the `+` with `%20`. Values that already used `%2B` for a literal `+`
+  are unaffected. Values without `+` are unaffected. Values with
+  malformed percent-escapes that previously parsed successfully (rare)
+  now return `UrlError::Syntax(BadPercentEncoding)`.
+
 ---
 
 ## [Unreleased] — docs/ framing pass (Phase 2 of polish) (2026-05-25)

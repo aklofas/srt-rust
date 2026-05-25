@@ -12,4 +12,7 @@
 
 #![warn(rustdoc::broken_intra_doc_links)]
 
+pub mod clock;
 pub mod init;
+
+pub use clock::RtpClock;

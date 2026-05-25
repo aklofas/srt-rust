@@ -142,8 +142,8 @@ def _event_to_row(event: Any) -> dict:
     if rai is not None:
         row["random_access"] = rai
 
-    # codec_parse_error (Phase 5 codec-parse fallback — present on Video
-    # and Audio events; truthy iff parsing failed and payload is raw bytes)
+    # codec_parse_error (codec-parse fallback — present on Video and
+    # Audio events; truthy iff parsing failed and payload is raw bytes)
     cpe = getattr(event, "codec_parse_error", None)
     # Only set the column when the attribute exists on this event kind;
     # leave None for events that never carry codec_parse_error.

@@ -752,9 +752,9 @@ typedef struct tst_socket_stats_t {
  *
  * NOTE: sync-recovery counters (`bytes_skipped_for_sync`, `resync_events`)
  * are deliberately absent — they live only on the inner `Receiver`'s
- * `ReceiverStats` (surfaced via Phase 2's `TstReceiverStats`). Adding
- * them here would mis-label the data source. Consumers needing them
- * run a `tst_receiver_t` instead of a `tst_demux_receiver_t`.
+ * `ReceiverStats` (surfaced via `TstReceiverStats`). Adding them
+ * here would mis-label the data source. Consumers needing them run
+ * a `tst_receiver_t` instead of a `tst_demux_receiver_t`.
  *
  * The per-PID `BTreeMap<u16, StreamStats>` from `DemuxReceiverStats`
  * is NOT included on this struct; it ships separately via
@@ -3493,11 +3493,11 @@ struct tst_raw_receiver_t *tst_raw_receiver_open(const char *srt_url);
  * requirement for an explicit `?mode=listener` does not apply here because
  * the entry-point name is already the authoritative listener signal.
  *
- * (Phase 1 simplification of the design spec §4.2, which originally
- * proposed rejecting explicit `mode=caller` with `TST_E_INVALID_USAGE`.
- * The simpler rule is more forgiving and matches what most C consumers
+ * (Simplification of the design spec §4.2, which originally proposed
+ * rejecting explicit `mode=caller` with `TST_E_INVALID_USAGE`. The
+ * simpler rule is more forgiving and matches what most C consumers
  * expect from a `_listener`-suffixed entry point. The stricter check
- * can land in a future phase if a consumer asks.)
+ * can land later if a consumer asks.)
  */
 struct tst_raw_receiver_t *tst_raw_receiver_open_listener(const char *srt_url);
 

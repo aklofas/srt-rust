@@ -6,9 +6,10 @@
 //! types (`StreamId`, `StreamInfo`, `ProgramMap`) are built from
 //! Python-side dataclasses defined in `tstrans/mpegts.py`.
 //!
-//! Phase 2 ships: `Demuxer` PyClass + event conversion for all 6
-//! Rust DemuxEvent variants. Sample.payload exposed as raw `bytes`;
-//! typed NAL/OBU access lands in Phase 5.
+//! Ships the `Demuxer` PyClass + event conversion for all
+//! `DemuxEvent` variants. `Sample.payload` is typed (NAL/OBU lists
+//! for video, ADTS / MPEG-2 audio frame lists for audio, bytes
+//! fallback for the rest).
 //!
 //! `#![allow(...)]` mirrors the pattern in `errors.rs` — PyO3 0.22 +
 //! Rust 2024 macro expansions trip these lints. Hand-written code in
@@ -37,7 +38,7 @@ use crate::errors::{codec_parse_error_to_pyerr, make_demux_error};
 
 /// Python `Demuxer` — wraps `tst_core::mpegts::demux::Demuxer`.
 ///
-/// Phase 2 surface: `feed(bytes)`, `flush()`, `next_event()`, iterator,
+/// Surface: `feed(bytes)`, `flush()`, `next_event()`, iterator,
 /// `stats()`, `reset_stats()`. Advanced knobs are exposed via
 /// `DemuxerConfig` (Python-side dataclass) translated to Rust at
 /// construction.
@@ -455,7 +456,7 @@ fn convert_sample_event(
             payload,
             random_access_indicator,
         } => {
-            // Phase 5: emit typed list[NalUnit] | list[Obu] instead of raw bytes.
+            // Emit typed list[NalUnit] | list[Obu].
             let payload_py: PyObject = match payload {
                 VideoPayload::Nals(nals) => {
                     let list = pyo3::types::PyList::empty_bound(py);
@@ -535,8 +536,8 @@ fn convert_sample_event(
             Ok(cls.call((), Some(&kwargs))?.into())
         }
         SamplePayload::Audio { codec, frames } => {
-            // Phase 5: emit typed list[AdtsFrame] | list[Mpeg2AudioFrame],
-            // or bytes-fallback + codec_parse_error on mid-stream parse failure (option c).
+            // Emit typed list[AdtsFrame] | list[Mpeg2AudioFrame], or
+            // bytes-fallback + codec_parse_error on mid-stream parse failure (option c).
             use tst_core::codec::aac::frames_with_resync as aac_frames;
             use tst_core::codec::mpegaudio::frames_with_resync as mpegaudio_frames;
             // `frames` is a Vec<u8>; we need a &[u8] slice.

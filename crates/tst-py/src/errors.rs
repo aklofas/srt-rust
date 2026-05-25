@@ -1,6 +1,6 @@
 //! Rust-side helpers that construct the Python exception classes
-//! defined in `tstrans.exceptions`. Phase 2+ plans use these from
-//! within type wrappers — e.g. `Demuxer.feed_bytes` calls
+//! defined in `tstrans.exceptions`. Type wrappers use these to raise
+//! Python-side exceptions — e.g. `Demuxer.feed_bytes` calls
 //! `make_demux_error(py, "BAD_PMT", "...")` when the underlying
 //! `tst_core::mpegts::Demuxer` returns an error.
 //!
@@ -27,8 +27,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 /// Build a `MuxError` Python exception with the right `.kind` Enum
-/// value and `message` attribute. Phase 4 (Muxer wrap) uses this from
-/// inside the `Muxer.push_video` / `push_klv` / `push_audio` wrappers.
+/// value and `message` attribute. Used from inside the
+/// `Muxer.push_video` / `push_klv` / `push_audio` wrappers.
 ///
 /// `kind_variant` is the Python-side `MuxErrorKind` Enum variant name
 /// (e.g. `"CONFIG_INVALID"`, `"INTERNAL"`). Caller must pass a valid
@@ -147,7 +147,7 @@ pub fn raise_mux_error_for_test(py: Python<'_>, message: &str) -> PyResult<()> {
 }
 
 // ---------------------------------------------------------------------------
-// Rust-typed → PyErr mappers — Phase 4 (Muxer wrap)
+// Rust-typed → PyErr mappers
 // ---------------------------------------------------------------------------
 
 /// Map a Rust `MuxError` to a Python `MuxError` instance. Routes
@@ -160,7 +160,7 @@ pub fn raise_mux_error_for_test(py: Python<'_>, message: &str) -> PyResult<()> {
 /// panics on a Rust-side enum addition (the test suite will surface
 /// the omission when the new variant gets a tagged-test fixture).
 ///
-/// Called from Phase 4 Muxer wrappers — unused until those land.
+/// Called from Muxer wrappers.
 #[allow(dead_code)]
 pub(crate) fn mux_error_to_pyerr(py: Python<'_>, e: tst_core::MuxError) -> PyErr {
     use tst_core::error::MuxSenderErrorKind;
@@ -189,7 +189,7 @@ pub(crate) fn mux_error_to_pyerr(py: Python<'_>, e: tst_core::MuxError) -> PyErr
 /// ratchet `check-py-codec-error-mapping-coverage.sh` will surface the
 /// omission in CI.
 ///
-/// Called from Phase 5 codec-parser wrappers — unused until those land.
+/// Called from codec-parser wrappers.
 #[allow(dead_code)]
 pub(crate) fn codec_parse_error_to_pyerr(
     py: Python<'_>,
@@ -308,7 +308,7 @@ pub(crate) fn codec_parse_error_to_pyerr(
 /// Variants without a tag (`BufferTooSmall`, `RecordTooLarge`,
 /// `UnsupportedImapbLength`, `InvalidImapbParams`) leave `.tag = None`.
 ///
-/// Called from Phase 4 KLV `encode_*` wrappers — unused until those land.
+/// Called from KLV `encode_*` wrappers.
 #[allow(dead_code)]
 pub(crate) fn klv_encode_error_to_pyerr(py: Python<'_>, e: tst_core::KlvEncodeError) -> PyErr {
     use tst_core::error::KlvEncodeError as RustE;

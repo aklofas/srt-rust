@@ -1,6 +1,6 @@
 """tstrans.klv — KLV typed sets (ST 0601, ST 0102, ST 0605, ST 0903).
 
-Phase 3 of the tst-py v1 plan added the KLV decode surface:
+Decode surface:
 
 - `TimeStatus` — ST 0603 §7.4 time-status byte wrapper
 - `PrecisionTimeStampPack` (alias `Klv0605`) — ST 0605 §7 pack
@@ -20,7 +20,7 @@ Phase 3 of the tst-py v1 plan added the KLV decode surface:
 - `is_st0601_family` — predicate for the ST 0601 UL family
   (tolerates legacy non-zero byte 13 + byte 14)
 
-Phase 4 (Muxer) adds the symmetric `encode_*` surface.
+Symmetric `encode_*` entry points live alongside the decoders.
 """
 
 import enum

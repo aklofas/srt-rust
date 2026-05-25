@@ -1,13 +1,12 @@
 //! PyO3 wrappers for the Rust `tst_core::mpegts::mux` family. Houses
-//! the config types (Tasks 4-5), the Muxer (Tasks 6-9), stream
-//! handles (Task 3), and stats (Task 10).
+//! the config types, the `Muxer`, stream handles, and stats.
 //!
 //! Python-side enums (`KlvStreamType`, `Av1CarriageMode`) and the
 //! `StreamSpec` hierarchy live in `python/tstrans/mpegts.py` as pure
 //! Python — no PyO3 wrap needed for them. The converters in this
 //! file translate the string `.value` of the Python enum to the
-//! Rust counterpart (and back), so later tasks can lift Python
-//! configs onto the Rust muxer without re-deriving the mapping.
+//! Rust counterpart (and back), so Python configs can be lifted onto
+//! the Rust muxer without re-deriving the mapping.
 
 #![allow(unsafe_op_in_unsafe_fn, clippy::useless_conversion, dead_code)]
 
@@ -283,12 +282,12 @@ impl PySubtitleStreamHandle {
 // Demux-side codec enums are unit variants; mux-side `VideoCodec` and
 // `AudioCodec` are also unit variants (same shape); mux-side
 // `SubtitleCodec` is a struct-variant enum (DvbSubtitling carries
-// language + page IDs, etc.). Task 4 supports the unit-variant
-// converters; the mux-side `SubtitleCodec → Python` rendering uses the
-// flat Python `SubtitleCodec` enum (variant tag only) for the streams
-// listing. Construction of mux-side subtitles from Python uses the
-// `SubtitleCodecConfig` dataclass family in `tstrans.mpegts` and the
-// `py_subtitle_codec` converter below (closeout audit finding 3).
+// language + page IDs, etc.). The mux-side `SubtitleCodec → Python`
+// rendering uses the flat Python `SubtitleCodec` enum (variant tag
+// only) for the streams listing. Construction of mux-side subtitles
+// from Python uses the `SubtitleCodecConfig` dataclass family in
+// `tstrans.mpegts` and the `py_subtitle_codec` converter below
+// (closeout audit finding 3).
 
 /// Translate a Python `VideoCodec` enum to the mux-side Rust variant.
 fn py_video_codec(v: &Bound<'_, PyAny>) -> PyResult<RustVideoCodec> {
@@ -430,7 +429,7 @@ fn py_subtitle_codec(v: &Bound<'_, PyAny>) -> PyResult<RustSubtitleCodec> {
 }
 
 // ---------------------------------------------------------------------------
-// MuxerProgramConfig + MuxerProgramConfigBuilder — Task 4.
+// MuxerProgramConfig + MuxerProgramConfigBuilder.
 // ---------------------------------------------------------------------------
 
 /// Frozen view of a built [`MuxerProgramConfig`] — one program in a
@@ -730,7 +729,7 @@ impl PyMuxerProgramConfigBuilder {
 }
 
 // ---------------------------------------------------------------------------
-// MuxerConfig + MuxerConfigBuilder — Task 5.
+// MuxerConfig + MuxerConfigBuilder.
 // ---------------------------------------------------------------------------
 //
 // Wraps the outer half of the 4-type Rust config family: the
@@ -739,7 +738,7 @@ impl PyMuxerProgramConfigBuilder {
 // builder's `build()` runs Rust-side `MuxerConfig::validate` — the
 // returned `MuxError` is mapped through the 5-variant
 // `MuxSenderErrorKind` classifier into a Python `MuxError` carrying
-// the right `MuxErrorKind` (Task 1).
+// the right `MuxErrorKind`.
 
 /// Frozen view of a built [`MuxerConfig`] — top-level muxer
 /// configuration. Holds the program list plus PCR / PSI cadence,
@@ -889,17 +888,16 @@ impl Default for PyMuxerConfigBuilder {
 }
 
 // ---------------------------------------------------------------------------
-// Muxer — Task 6 (base: init + pull + pending_packets + capacity_packets).
+// Muxer (init + pull + pending_packets + capacity_packets).
 // ---------------------------------------------------------------------------
 //
 // Wraps `tst_core::mpegts::mux::Muxer` — the stateful TS multiplexer.
-// Tasks 7-9 will add the `push_*` and handle-getter surface; this task
-// covers construction (which re-runs config validation Rust-side) and
-// the drain side (`pull` + back-pressure gauges). `pull` is infallible
-// per Rust — the only failure modes surface at `push_*` time.
+// Construction re-runs config validation Rust-side; the drain side
+// (`pull` + back-pressure gauges) is infallible per Rust — the only
+// failure modes surface at `push_*` time.
 
 /// Stateful MPEG-TS multiplexer. Configured at construction with a
-/// [`MuxerConfig`]; subsequent `push_*` calls (Tasks 7-8) feed encoded
+/// [`MuxerConfig`]; subsequent `push_*` calls feed encoded
 /// elementary streams, and `pull` drains the assembled TS packets.
 ///
 /// `push_*` may return `MuxError(BACKPRESSURE)` when the internal
@@ -998,7 +996,7 @@ impl PyMuxer {
     }
 
     /// Push one access unit onto a specific video stream identified
-    /// by `handle` (obtained from `Muxer.video_handles()` in Task 9).
+    /// by `handle` (obtained from `Muxer.video_handles()`).
     ///
     /// Carries the same `key_frame` semantics as
     /// [`push_video`][PyMuxer::push_video]. AV1 streams receive OBU
@@ -1079,7 +1077,7 @@ impl PyMuxer {
     }
 
     // -----------------------------------------------------------------
-    // Task 8 — push_audio + push_klv + push_subtitle (single + handle).
+    // push_audio + push_klv + push_subtitle (single + handle).
     // -----------------------------------------------------------------
     //
     // Audit #9 (2026-05-24) normalized the Python `push_*` surface:
@@ -1120,8 +1118,7 @@ impl PyMuxer {
     }
 
     /// Push one encoded audio frame onto a specific audio stream
-    /// identified by `handle` (obtained from `Muxer.audio_handles()`
-    /// in Task 9).
+    /// identified by `handle` (obtained from `Muxer.audio_handles()`).
     ///
     /// Argument order: `(handle, frames, *, pts)` — `frames` is
     /// positional (matches the single-stream `push_audio(frames, *, pts)`
@@ -1184,7 +1181,7 @@ impl PyMuxer {
     }
 
     /// Push one KLV local-set onto a specific KLV stream identified by
-    /// `handle` (obtained from `Muxer.klv_handles()` in Task 9).
+    /// `handle` (obtained from `Muxer.klv_handles()`).
     ///
     /// Same `klv` framing rules as [`push_klv`][PyMuxer::push_klv]:
     /// raw LS bytes; muxer auto-wraps the AU cell for synchronous
@@ -1272,8 +1269,8 @@ impl PyMuxer {
     }
 
     // -----------------------------------------------------------------
-    // Task 9 — handle getters (video/audio/klv/subtitle × list +
-    // by_program + by_index).
+    // Handle getters (video/audio/klv/subtitle × list + by_program +
+    // by_index).
     // -----------------------------------------------------------------
     //
     // Rust surface (verified against tst-core/src/mpegts/mux/*.rs):
@@ -1285,7 +1282,7 @@ impl PyMuxer {
     // `_for_program` returns `Result<Vec<_>, MuxError>` in Rust and
     // surfaces `ProgramNotFound` for an unknown program number; the
     // wraps below propagate that error through the standard
-    // MuxSenderErrorKind classifier (Task 1) so callers see a Python
+    // MuxSenderErrorKind classifier so callers see a Python
     // `MuxError(INVALID_USAGE)`. The list getters and the
     // by-index getters never fail — empty / `None` mean "no match".
 
@@ -1405,7 +1402,7 @@ impl PyMuxer {
     }
 
     // -----------------------------------------------------------------
-    // Task 10 — stats accessors (stats + reset_stats + stream_codec_stats).
+    // Stats accessors (stats + reset_stats + stream_codec_stats).
     // -----------------------------------------------------------------
     //
     // `stats()` returns a frozen `MuxerStats` snapshot (scalar counters
@@ -1482,7 +1479,7 @@ impl PyMuxer {
 }
 
 // ---------------------------------------------------------------------------
-// MuxerStats — Task 10.
+// MuxerStats.
 // ---------------------------------------------------------------------------
 //
 // Frozen view of the Rust `MuxerStats` snapshot returned from

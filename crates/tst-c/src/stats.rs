@@ -180,9 +180,9 @@ impl From<&tst_pipeline::ReceiverStats> for TstReceiverStats {
 ///
 /// NOTE: sync-recovery counters (`bytes_skipped_for_sync`, `resync_events`)
 /// are deliberately absent — they live only on the inner `Receiver`'s
-/// `ReceiverStats` (surfaced via Phase 2's `TstReceiverStats`). Adding
-/// them here would mis-label the data source. Consumers needing them
-/// run a `tst_receiver_t` instead of a `tst_demux_receiver_t`.
+/// `ReceiverStats` (surfaced via `TstReceiverStats`). Adding them
+/// here would mis-label the data source. Consumers needing them run
+/// a `tst_receiver_t` instead of a `tst_demux_receiver_t`.
 ///
 /// The per-PID `BTreeMap<u16, StreamStats>` from `DemuxReceiverStats`
 /// is NOT included on this struct; it ships separately via
@@ -501,14 +501,14 @@ mod codec_stats_tests {
         assert_eq!(c.kind, TST_CODEC_KIND_UNKNOWN);
     }
 
-    // NOTE: per-variant unit tests for Video/Klv/Audio mappings are
-    // deferred to the Task 12 integration tests that exercise the
-    // C entry points against a real Muxer/Demuxer. The variants
-    // themselves are `#[non_exhaustive]` (not just the enum), so they
-    // cannot be constructed via struct expression from outside tst-core
+    // NOTE: per-variant unit tests for Video/Klv/Audio mappings live
+    // in the integration tests that exercise the C entry points
+    // against a real Muxer/Demuxer. The variants themselves are
+    // `#[non_exhaustive]` (not just the enum), so they cannot be
+    // constructed via struct expression from outside tst-core
     // (Rust E0639) — see memory note
     // `reference_non_exhaustive_outside_crate_construction.md`. The
     // discriminator + size invariants are covered above; the field
     // assignments in `codec_stats_to_c` are simple plumbing exercised
-    // end-to-end by the Task 12 / Task 13 tests.
+    // end-to-end by the integration tests.
 }

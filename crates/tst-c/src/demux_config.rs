@@ -130,7 +130,7 @@ pub unsafe fn test_build_options(cfg: *const TstDemuxConfig) -> DemuxerConfig {
 }
 
 impl TstDemuxConfig {
-    #[allow(dead_code)] // used in Task 10
+    #[allow(dead_code)] // used by receiver _open paths
     pub(crate) fn build_options(&self) -> DemuxerConfig {
         let mut cfg = DemuxerConfig::default();
         cfg.strict = self.strict;

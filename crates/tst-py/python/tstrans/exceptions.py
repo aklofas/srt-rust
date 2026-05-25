@@ -11,11 +11,11 @@ Field-level KLV parse warnings are NOT raised — they live on the
 parsed object as `field_errors`, matching Rust's "best-effort parse"
 semantics for ST 0601 in the field.
 
-`MuxErrorKind` was refined in Phase 4 (Muxer wrap) to mirror Rust's
-5-variant `tst_core::error::MuxSenderErrorKind` coarse-tier categorical
-classification. `KlvEncodeErrorKind` ships in Phase 4 alongside the
-`klv.encode_*` Python wrappers. `DemuxErrorKind` / `KlvErrorKind` /
-`CodecErrorKind` are placeholders refined in their owning phases.
+`MuxErrorKind` mirrors Rust's 5-variant
+`tst_core::error::MuxSenderErrorKind` coarse-tier categorical
+classification. `KlvEncodeErrorKind` accompanies the `klv.encode_*`
+Python wrappers. `DemuxErrorKind` / `KlvErrorKind` / `CodecErrorKind`
+mirror their owning Rust enums.
 """
 
 import enum
@@ -97,9 +97,9 @@ class KlvErrorKind(enum.Enum):
     mapping" for the full mapping table.
 
     The Rust `KlvDecodeError` enum is `#[non_exhaustive]` — Python
-    matchers should include a default arm. Phase 3 establishes the
-    initial 8-variant lineup; future Rust variants get added here
-    when surfaced."""
+    matchers should include a default arm. The initial 8-variant
+    lineup is below; future Rust variants get added here when
+    surfaced."""
 
     BAD_UNIVERSAL_LABEL = "bad_universal_label"
     TRUNCATED_SET = "truncated_set"

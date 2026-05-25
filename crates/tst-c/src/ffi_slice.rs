@@ -16,8 +16,8 @@
 //!
 //! ## Audit reference
 //!
-//! Codex CABI-01 + Claude slice 17 TSTC-01. Phase 2 plan §A3. Replaces
-//! the ~33 `slice::from_raw_parts(ptr, len)` sites across `tst-c/src/`.
+//! Codex CABI-01 + Claude slice 17 TSTC-01. Replaces the
+//! `slice::from_raw_parts(ptr, len)` sites across `tst-c/src/`.
 
 use crate::error::{TstError, set_last_error};
 

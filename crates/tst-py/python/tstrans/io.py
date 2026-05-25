@@ -1,12 +1,13 @@
 """tstrans.io — convenience helpers for reading + writing `.ts` files.
 
-Phase 2 ships read-side helpers:
+Read-side helpers:
 
 - `parse_file(path, config=None)` → `Iterator[DemuxEvent]`
 - `probe(path)` → `ProbeResult` summary
 - `extract_klv(path, with_pts=False)` → iterator of KLV payloads
 
-Phase 4 adds the write-side `Muxer.write_file(path)` context manager.
+The write-side `Muxer.write_file(path)` context manager lives on the
+`Muxer` class in `tstrans.mpegts`.
 """
 
 from dataclasses import dataclass

@@ -76,11 +76,11 @@ pub unsafe extern "C" fn tst_raw_receiver_open(
 /// requirement for an explicit `?mode=listener` does not apply here because
 /// the entry-point name is already the authoritative listener signal.
 ///
-/// (Phase 1 simplification of the design spec §4.2, which originally
-/// proposed rejecting explicit `mode=caller` with `TST_E_INVALID_USAGE`.
-/// The simpler rule is more forgiving and matches what most C consumers
+/// (Simplification of the design spec §4.2, which originally proposed
+/// rejecting explicit `mode=caller` with `TST_E_INVALID_USAGE`. The
+/// simpler rule is more forgiving and matches what most C consumers
 /// expect from a `_listener`-suffixed entry point. The stricter check
-/// can land in a future phase if a consumer asks.)
+/// can land later if a consumer asks.)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_raw_receiver_open_listener(
     srt_url: *const libc::c_char,
@@ -721,7 +721,7 @@ mod tests {
     fn null_handle_and_null_buf_both_return_invalid_config() {
         // Both null pointers trip the p guard first (line 161-164), not the buf
         // guard (line 165-168). Reaching the buf guard requires a non-null
-        // handle; in-process loopback testing deferred to Task 15.
+        // handle; in-process loopback testing lives in the integration suite.
         let mut got: usize = 0;
         let rc = unsafe {
             tst_raw_receiver_recv(std::ptr::null_mut(), std::ptr::null_mut(), 16, &mut got)

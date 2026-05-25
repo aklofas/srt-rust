@@ -2,7 +2,7 @@
 
 Python bindings (via PyO3) for the [ts-transformer](https://github.com/aklofas/ts-transformer) Rust workspace.
 
-> **Status (Phase 6 shipped, 2026-05-23):** `tstrans` is feature-complete for v1: file inspection + construction (`Demuxer` / `Muxer` / `MuxerFileSink`), typed KLV decode + encode for ST 0601 / ST 0102 / ST 0605 / ST 0903 (with `VTargetPack`), codec parsers for H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio, and optional pandas DataFrame adapters + NumPy snapshot views via `pip install tstrans[pandas]`. ~582 pytest tests. Live SRT (v2) and RTP (v3) transports remain on the roadmap. Minimum Python 3.10.
+> **Status:** `tstrans` is feature-complete for v1: file inspection + construction (`Demuxer` / `Muxer` / `MuxerFileSink`), typed KLV decode + encode for ST 0601 / ST 0102 / ST 0605 / ST 0903 (with `VTargetPack`), codec parsers for H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio, and optional pandas DataFrame adapters + NumPy snapshot views via `pip install tstrans[pandas]`. ~582 pytest tests. Live SRT (v2) and RTP (v3) transports remain on the roadmap. Minimum Python 3.10.
 
 ## Install
 

@@ -7,8 +7,8 @@
 //! lifetime). `_cancel` lives alongside `_recv_event` (rather than with
 //! the `_open` / `_close` lifecycle in `mod.rs`) because its sole
 //! purpose is to unblock a thread parked in `_recv_event`, and the two
-//! must remain adjacent in `tstrans.h` for the Task 5 byte-identical
-//! header contract (cbindgen emits all parent-module items first, then
+//! must remain adjacent in `tstrans.h` for the byte-identical header
+//! contract (cbindgen emits all parent-module items first, then
 //! sub-modules in declaration order). Sibling-managed variant lives in
 //! `managed.rs`.
 
@@ -82,7 +82,7 @@ pub unsafe extern "C" fn tst_demux_receiver_recv_event(
             if e.kind == ShellErrorKind::TransportBroken
                 && !was_cancelled.load(Ordering::Acquire) =>
         {
-            // Same Broken-on-non-cancelled → EOS mapping as Phase 2's
+            // Same Broken-on-non-cancelled → EOS mapping as
             // tst_receiver_recv_packet (peer FIN surfaces as Broken
             // from libsrt; ManagedRecvTransport retries internally,
             // so a Broken reaching the plain receiver is a peer close).

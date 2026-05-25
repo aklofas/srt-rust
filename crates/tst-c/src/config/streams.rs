@@ -512,8 +512,6 @@ pub enum TstVideoCodec {
 }
 
 impl TstVideoCodec {
-    #[allow(dead_code)]
-    // used in later Phase 3 tasks
     pub(crate) fn from_core(c: tst_core::mpegts::demux::VideoCodec) -> Self {
         use tst_core::mpegts::demux::VideoCodec;
         match c {
@@ -538,8 +536,6 @@ pub enum TstAudioCodec {
 }
 
 impl TstAudioCodec {
-    #[allow(dead_code)]
-    // used in later Phase 3 tasks
     pub(crate) fn from_core(c: tst_core::mpegts::demux::AudioCodec) -> Self {
         use tst_core::mpegts::demux::AudioCodec;
         match c {
@@ -564,8 +560,6 @@ pub enum TstSubtitleCodec {
 }
 
 impl TstSubtitleCodec {
-    #[allow(dead_code)]
-    // used in later Phase 3 tasks
     pub(crate) fn from_core(c: tst_core::mpegts::demux::SubtitleCodec) -> Self {
         use tst_core::mpegts::demux::SubtitleCodec;
         match c {

@@ -164,8 +164,8 @@ use tst_pipeline::{ShellError, ShellErrorKind, TransportError};
 /// Map a [`ShellErrorKind`] to its corresponding [`TstError`] code.
 ///
 /// This is the single point of truth for the kind-to-code projection.
-/// CI ratchet `scripts/check-shell-error-kind-coverage.sh` (Task 10)
-/// will enforce every `ShellErrorKind` variant is matched explicitly here.
+/// CI ratchet `scripts/check-shell-error-kind-coverage.sh` enforces
+/// every `ShellErrorKind` variant is matched explicitly here.
 pub(crate) fn tst_error_from_kind(kind: ShellErrorKind) -> TstError {
     match kind {
         ShellErrorKind::ConfigInvalid => TstError::InvalidConfig,
@@ -175,8 +175,8 @@ pub(crate) fn tst_error_from_kind(kind: ShellErrorKind) -> TstError {
         ShellErrorKind::Closed => TstError::Closed,
         ShellErrorKind::EndOfStream => TstError::EndOfStream,
         // Required by #[non_exhaustive]. CI ratchet
-        // scripts/check-shell-error-kind-coverage.sh (Task 10) enforces
-        // every ShellErrorKind variant is matched above before this arm.
+        // scripts/check-shell-error-kind-coverage.sh enforces every
+        // ShellErrorKind variant is matched above before this arm.
         _ => TstError::Internal,
     }
 }

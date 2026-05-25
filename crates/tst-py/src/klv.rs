@@ -6,8 +6,8 @@
 //! entry points are `#[pyfunction]`s that map `KlvDecodeError` to
 //! `tstrans.exceptions.KlvError` via `make_klv_error`.
 //!
-//! Phase 3 ships: ST 0601 / ST 0102 / ST 0605 / ST 0903 decode +
-//! field-error surfacing. Encode lands with Phase 4 (Muxer wrap).
+//! Covers ST 0601 / ST 0102 / ST 0605 / ST 0903 decode and encode
+//! with field-error surfacing on the decode path.
 //!
 //! `#![allow(...)]` mirrors the pattern in `errors.rs` and `mpegts.rs` —
 //! PyO3 0.22 + Rust 2024 macro expansions trip these lints. Hand-
@@ -521,7 +521,7 @@ fn encode_precision_timestamp_py(py: Python<'_>, pack: &Bound<'_, PyAny>) -> PyR
 }
 
 // ---------------------------------------------------------------------------
-// ST 0903 — VTargetPack (translator only; entry points in Task 9)
+// ST 0903 — VTargetPack translator (entry points further down)
 // ---------------------------------------------------------------------------
 
 /// Translate a Rust `VTargetPack` to a Python `tstrans.klv.VTargetPack`

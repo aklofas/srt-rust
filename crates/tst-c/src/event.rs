@@ -251,7 +251,7 @@ pub enum TstMultiCellAuReason {
 }
 
 // ------------------------------------------------------------------
-// Subordinate list-element structs (Task 7)
+// Subordinate list-element structs
 // ------------------------------------------------------------------
 
 /// `repr(C)` mirror of `tst_core::mpegts::demux::NalUnit`.
@@ -366,7 +366,7 @@ const _TST_KLV_LINK_SIZE: () = assert!(
 );
 
 // ------------------------------------------------------------------
-// TstEvent tagged union (Task 8)
+// TstEvent tagged union
 // ------------------------------------------------------------------
 
 /// Per-event-kind union body for `TstEvent`. cbindgen emits this as

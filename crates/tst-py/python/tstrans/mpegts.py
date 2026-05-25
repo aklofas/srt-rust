@@ -144,7 +144,7 @@ class Av1CarriageMode(enum.Enum):
 
 
 # StreamSpec ABC + 4 concrete subclasses — match-statement-compat
-# tagged union, same pattern as Phase 2's DemuxEvent hierarchy.
+# tagged union, same pattern as the DemuxEvent hierarchy.
 # Mirrors Rust `tst_core::mpegts::mux::StreamSpec`'s variants.
 
 @dataclass(frozen=True, slots=True)
@@ -539,7 +539,7 @@ class _VideoEvent(DemuxEvent):
     pts: Pts90khz
     dts: Optional[Pts90khz]
     codec: VideoCodec
-    # Phase 5: list[NalUnit] for H.264/H.265/H.266; list[Obu] for AV1.
+    # list[NalUnit] for H.264/H.265/H.266; list[Obu] for AV1.
     payload: Any
     random_access_indicator: bool
     # None — video typed-parse cannot fail at this layer.
@@ -552,7 +552,7 @@ class _AudioEvent(DemuxEvent):
     pts: Pts90khz
     dts: Optional[Pts90khz]
     codec: AudioCodec
-    # Phase 5: list[AdtsFrame] (AAC) | list[Mpeg2AudioFrame] (MP2) | bytes
+    # list[AdtsFrame] (AAC) | list[Mpeg2AudioFrame] (MP2) | bytes
     # (LATM/AC-3/fallback-on-error). Use `codec_parse_error` to distinguish
     # bytes-due-to-error from bytes-by-design.
     payload: Any
@@ -784,8 +784,8 @@ class DemuxerConfig:
             )
 
 
-# Phase 5: re-export NalUnit / Obu / ObuExtension so callers can import
-# them from `tstrans.mpegts` without also importing from `tstrans.codec`.
+# Re-export NalUnit / Obu / ObuExtension so callers can import them
+# from `tstrans.mpegts` without also importing from `tstrans.codec`.
 # These are the types that appear in `DemuxEvent.Video.payload` lists.
 from tstrans.codec import NalUnit, Obu, ObuExtension
 
@@ -811,7 +811,7 @@ MultiCellAuReason = _native_mod.MultiCellAuReason
 # FIRST=2, COMPLETE=3 (per H.222.0 V9 Table 2-157).
 CellFragmentIndication = _native_mod.CellFragmentIndication
 
-# Phase 4 Task 3 — stream handle newtypes. Rust impls live in
+# Stream handle newtypes. Rust impls live in
 # crates/tst-py/src/mux.rs as `Py{Video,Audio,Klv,Subtitle}StreamHandle`,
 # exposed on `_native` under the names below via `#[pyclass(name=...)]`.
 VideoStreamHandle = _native_mod.VideoStreamHandle
@@ -819,14 +819,14 @@ AudioStreamHandle = _native_mod.AudioStreamHandle
 KlvStreamHandle = _native_mod.KlvStreamHandle
 SubtitleStreamHandle = _native_mod.SubtitleStreamHandle
 
-# Phase 4 Task 4 — program-level config + builder. Rust impls in
+# Program-level config + builder. Rust impls in
 # crates/tst-py/src/mux.rs as `PyMuxerProgramConfig` /
 # `PyMuxerProgramConfigBuilder`, exposed on `_native` under the
 # names below via `#[pyclass(name=...)]`.
 MuxerProgramConfig = _native_mod.MuxerProgramConfig
 MuxerProgramConfigBuilder = _native_mod.MuxerProgramConfigBuilder
 
-# Phase 4 Task 5 — top-level muxer config + builder. Rust impls in
+# Top-level muxer config + builder. Rust impls in
 # crates/tst-py/src/mux.rs as `PyMuxerConfig` / `PyMuxerConfigBuilder`,
 # exposed on `_native` under the names below via `#[pyclass(name=...)]`.
 # `MuxerConfigBuilder.build()` runs Rust-side validation and raises
@@ -834,31 +834,29 @@ MuxerProgramConfigBuilder = _native_mod.MuxerProgramConfigBuilder
 MuxerConfig = _native_mod.MuxerConfig
 MuxerConfigBuilder = _native_mod.MuxerConfigBuilder
 
-# Phase 4 Task 6 — Muxer base (init + pull + pending + capacity). Rust
-# impl in crates/tst-py/src/mux.rs as `PyMuxer`, exposed on `_native`
-# under the name below via `#[pyclass(name=...)]`. Constructor takes a
+# Muxer base (init + pull + pending + capacity). Rust impl in
+# crates/tst-py/src/mux.rs as `PyMuxer`, exposed on `_native` under
+# the name below via `#[pyclass(name=...)]`. Constructor takes a
 # `MuxerConfig` and re-runs Rust-side validation, surfacing failures
-# as `tstrans.exceptions.MuxError`. The `push_*` and handle-getter
-# surface lands in Tasks 7-9.
+# as `tstrans.exceptions.MuxError`.
 Muxer = _native_mod.Muxer
 
-# Phase 4 Task 10 — MuxerStats snapshot type. Rust impl in
-# crates/tst-py/src/mux.rs as `PyMuxerStats`, exposed on `_native` under
-# the name below via `#[pyclass(name=...)]`. Frozen — returned by
-# `Muxer.stats()`. The `per_stream` BTreeMap on the Rust side is not
-# surfaced in v1 (the per-PID `StreamStats` shape exists but isn't yet
-# wrapped); the scalar counters cover the common dashboard case.
+# MuxerStats snapshot type. Rust impl in crates/tst-py/src/mux.rs as
+# `PyMuxerStats`, exposed on `_native` under the name below via
+# `#[pyclass(name=...)]`. Frozen — returned by `Muxer.stats()`. The
+# `per_stream` BTreeMap on the Rust side is not surfaced in v1 (the
+# per-PID `StreamStats` shape exists but isn't yet wrapped); the
+# scalar counters cover the common dashboard case.
 MuxerStats = _native_mod.MuxerStats
 
 
-# Phase 4 Task 10 — StreamCodecStats tagged union. Pure-Python
-# dataclasses (no PyO3 wrap) because the Rust enum has 3+ struct
-# variants and PyO3 lacks ergonomic enum support — the
-# `Muxer.stream_codec_stats(pid)` accessor constructs the right
-# subclass on each call. `Some(Unknown)` from Rust (configured-but-
-# no-data PID) is rendered as `None` from Python in v1; callers
-# distinguish "configured and pushed" (typed subclass) from "either
-# unconfigured or never pushed" (`None`).
+# StreamCodecStats tagged union. Pure-Python dataclasses (no PyO3
+# wrap) because the Rust enum has 3+ struct variants and PyO3 lacks
+# ergonomic enum support — the `Muxer.stream_codec_stats(pid)`
+# accessor constructs the right subclass on each call. `Some(Unknown)`
+# from Rust (configured-but-no-data PID) is rendered as `None` from
+# Python in v1; callers distinguish "configured and pushed" (typed
+# subclass) from "either unconfigured or never pushed" (`None`).
 
 @dataclass(frozen=True, slots=True)
 class StreamCodecStats:
@@ -894,7 +892,7 @@ class AudioStreamCodecStats(StreamCodecStats):
 
     frames: int
 
-# Phase 4 Task 11 — MuxerFileSink + MuxerDrainProxy + `Muxer.write_file`.
+# MuxerFileSink + MuxerDrainProxy + `Muxer.write_file`.
 # Pure-Python sink: opens a file in `wb` mode and drains pending TS
 # packets after every `push_*` call inside the `with` block. The proxy
 # uses `__getattr__` to forward every other attribute to the wrapped
@@ -1150,8 +1148,8 @@ __all__: list[str] = [
     "AudioStreamCodecStats",
     "MuxerFileSink",
     "MuxerDrainProxy",
-    # Phase 5: NalUnit / Obu / ObuExtension re-exported from tstrans.codec
-    # for convenient import from tstrans.mpegts (they appear in
+    # NalUnit / Obu / ObuExtension re-exported from tstrans.codec for
+    # convenient import from tstrans.mpegts (they appear in
     # DemuxEvent.Video.payload lists).
     "NalUnit",
     "Obu",

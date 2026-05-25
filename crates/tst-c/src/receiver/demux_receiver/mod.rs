@@ -10,9 +10,9 @@
 //!
 //! Cancellation contract: `_cancel` unblocks a thread parked in
 //! `_recv_event` within ~3-10 ms (one libsrt I/O cycle). Side-channel
-//! `Arc<dyn TransportCancel>` + `Arc<AtomicBool>` pattern from
-//! Phase 2's ts_receiver.rs — `_cancel` does not acquire the handle
-//! Mutex so it does not deadlock against a concurrent `_recv_event`.
+//! `Arc<dyn TransportCancel>` + `Arc<AtomicBool>` pattern shared with
+//! `ts_receiver.rs` — `_cancel` does not acquire the handle Mutex so
+//! it does not deadlock against a concurrent `_recv_event`.
 //!
 //! This module is split across sibling files grouped by concern:
 //! - `events` — `tst_demux_receiver_recv_event` + `tst_demux_receiver_cancel`

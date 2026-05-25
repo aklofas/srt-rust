@@ -90,7 +90,7 @@ include = [
     "TST_CODEC_KIND_KLV",
     "TST_CODEC_KIND_AUDIO",
     "TST_STATS_MAX_STREAMS",
-    # Phase 3: demux receiver surface
+    # Demux receiver surface
     "TstDemuxConfig",
     "TstDemuxReceiver",
     "TstManagedDemuxReceiver",
@@ -162,27 +162,27 @@ include = [
 "TstManagedReceiver"   = "tst_managed_receiver_t"
 "TstReceiverStats"     = "tst_receiver_stats_t"
 "TstSocketStats"       = "tst_socket_stats_t"
-# Codec-specific stats (Task 11)
+# Codec-specific stats
 "TstStreamCodecStats"       = "tst_stream_codec_stats_t"
 "TstStreamCodecStatsUnion"  = "tst_stream_codec_stats_union_t"
 "TstCodecStatsUnknown"      = "tst_codec_stats_unknown_t"
 "TstCodecStatsVideo"        = "tst_codec_stats_video_t"
 "TstCodecStatsKlv"          = "tst_codec_stats_klv_t"
 "TstCodecStatsAudio"        = "tst_codec_stats_audio_t"
-# Phase 3: demux receiver handles + stats
+# Demux receiver handles + stats
 "TstDemuxConfig"            = "tst_demux_config_t"
 "TstDemuxReceiver"          = "tst_demux_receiver_t"
 "TstManagedDemuxReceiver"   = "tst_managed_demux_receiver_t"
 "TstDemuxReceiverStats"     = "tst_demux_receiver_stats_t"
-# Phase 3: event tagged union + subordinate structs
+# Event tagged union + subordinate structs
 "TstEvent"                  = "tst_event_t"
 "TstNal"                    = "tst_nal_t"
 "TstObu"                    = "tst_obu_t"
 "TstDescriptor"             = "tst_descriptor_t"
 "TstStreamInfo"             = "tst_stream_info_t"
 "TstKlvLink"                = "tst_klv_link_t"
-# Phase 3: discriminator enums — no _t suffix so prefix_with_name
-# yields clean TST_EVENT_KIND_* (not TST_EVENT_KIND_T_*)
+# Discriminator enums — no _t suffix so prefix_with_name yields
+# clean TST_EVENT_KIND_* (not TST_EVENT_KIND_T_*)
 "TstEventKind"              = "tst_event_kind"
 "TstStreamKindTag"          = "tst_stream_kind"
 "TstMetadataKindTag"        = "tst_metadata_kind"

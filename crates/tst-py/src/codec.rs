@@ -1,4 +1,4 @@
-//! tst-py — codec module (Phase 5).
+//! tst-py — codec module.
 //!
 //! All codec PyO3 wraps for H.264/H.265/H.266/AV1/AAC/MPEG-2 audio,
 //! plus shared types (ChromaFormat, Rational, ColorInfo, primaries/transfer/
@@ -2176,7 +2176,7 @@ impl H266VpsPy {
 /// `H266SliceType.I` and `0` respectively. Accurate extraction requires
 /// walking through `picture_header_rbsp()`, whose length is governed by
 /// SPS / PPS context fields that the light parser does not carry. This
-/// deferred work is tracked as a future Phase 5.x or Phase 7 follow-up.
+/// remains deferred work pending a context-tracking H.266 parser.
 ///
 /// Only `idr`, `first_in_pic`, and `pic_order_cnt_lsb` are accurate.
 #[pyclass(name = "H266SliceHeaderLight", module = "tstrans.codec")]
@@ -2199,7 +2199,7 @@ impl H266SliceHeaderLightPy {
     ///
     /// Accurate extraction requires walking through `picture_header_rbsp()`,
     /// whose length depends on SPS / PPS context fields that this light parser
-    /// does not carry. Deferred to a future Phase 5.x or Phase 7 follow-up.
+    /// does not carry. Deferred pending a context-tracking H.266 parser.
     #[getter]
     fn slice_type(&self) -> H266SliceTypePy {
         self.inner.slice_type.into()

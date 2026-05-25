@@ -379,7 +379,7 @@ the payload, while H.264 has a 1-byte header.
 
 ## Shared types
 
-`tst_srt::codec` re-exports several types used by both the H.264 and H.265
+`tst_core::codec` re-exports several types used by both the H.264 and H.265
 modules:
 
 | Type | Description |
@@ -398,7 +398,7 @@ Table 4 assignments.
 
 ## Roadmap
 
-`tst_srt::codec` is an umbrella for typed payload parsing across codec and
+`tst_core::codec` is an umbrella for typed payload parsing across codec and
 stream types. H.264, H.265, H.266, and AV1 parameter-set parsers ship today.
 Future slices in the same umbrella (each landing additively when a consumer
 asks):

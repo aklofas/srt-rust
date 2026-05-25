@@ -19,6 +19,11 @@ thiserror  = { workspace = true }
 getrandom  = "0.2"
 # Single facade for diagnostics workspace-wide.
 tracing    = { version = "0.1", default-features = false, features = ["std"] }
+# Raw setsockopt for multicast knobs not exposed on stable std::net::UdpSocket
+# in Rust 1.85: IPV6_MULTICAST_HOPS and IP_MULTICAST_IF. Unix-only; Phase 1
+# returns IfaceUnsupported on non-Unix platforms.
+[target.'cfg(unix)'.dependencies]
+libc       = { workspace = true }
 
 [dev-dependencies]
 tst-pipeline     = { path = "../tst-pipeline" }

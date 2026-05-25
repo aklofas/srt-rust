@@ -1,12 +1,25 @@
 # KLV Codec Guide
 
+
+> **Who this is for:** You need to encode or decode MISB KLV metadata (ST 0601 FMV, ST 0102 security, ST 0605 amend tags, ST 0903 VMTI) — typed Rust structs in, bytes out, or the inverse.
+
+> **You will learn:**
+> - The substrate: SMPTE UL tags, BER length, the encode/decode round-trip
+> - How typed `St0601Record` / `St0102Record` / `St0605Record` / `St0903Record` map to the wire format
+> - The non-conformant-issue model (lenient decode + diagnostics) vs strict mode
+> - How `KlvStreamType::SynchronousMetadata` wraps your KLV in H.222.0 §2.12.4.2 AU cells (and what to pass — raw KLV, not pre-wrapped)
+> - VTargetPack inner structure for ST 0903
+> - How to encode strict-compliance ST 0601 with `encode_strict_compliance`
+
 ## Introduction
 
-This guide covers `tst_srt::klv` — the KLV codec, bidirectional. Encoding
-and decoding for the MISB ST 0601 UAS Datalink Local Set and the ST 0605
-Precision Time Stamp Pack, layered on a generic SMPTE KLV substrate
-(Universal Labels, BER lengths, IMAPB, checksum, pack iteration).
-MPEG-TS sync-metadata AU cell carriage lives at `mpegts::au_cell` (per
+When you need to put MISB-typed metadata onto an MPEG-TS — sensor pose,
+platform telemetry, security marking, target tracks — `tst_core::klv` is the
+bidirectional codec. It covers the MISB ST 0601 UAS Datalink Local Set, the
+ST 0102 Security Metadata Universal Set, the ST 0605 Precision Time Stamp Pack,
+and the ST 0903 VMTI Local Set, all layered on a generic SMPTE KLV substrate
+(Universal Labels, BER lengths, IMAPB, checksum, pack iteration). MPEG-TS
+sync-metadata AU cell carriage lives at `mpegts::au_cell` (per
 ITU-T H.222.0 V9 § 2.12.4.2) — the muxer auto-wraps for
 `KlvStreamType::SynchronousMetadata` streams.
 
@@ -615,3 +628,10 @@ Each item below maps to an entry in
 - Streaming / chunked decode — today is buffer-in / buffer-out; a
   growable streaming decoder lands behind an explicit consumer ask.
   See [deferred-features.md](/docs/project/deferred-features.md).
+
+## See also
+
+- **Runnable example:** `cargo run -p tst-examples --example extract_klv` — [examples/klv-metadata/extract_klv.rs](/examples/klv-metadata/extract_klv.rs)
+- **Runnable example:** `cargo run -p tst-examples --example klv_encode_minimal` — [examples/klv-metadata/klv_encode_minimal.rs](/examples/klv-metadata/klv_encode_minimal.rs)
+- [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) — pushing KLV through the muxer.
+- [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — receiving KLV from a TS stream.

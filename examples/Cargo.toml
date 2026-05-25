@@ -95,6 +95,10 @@ name = "demux_to_events"
 path = "receiving/demux_to_events.rs"
 
 [[example]]
+name = "rtp_recv_basic"
+path = "receiving/rtp_recv_basic.rs"
+
+[[example]]
 name = "klv_encode_minimal"
 path = "klv-metadata/klv_encode_minimal.rs"
 

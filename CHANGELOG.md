@@ -7,6 +7,39 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — docs/ folder restructure (Phase 1 of polish) (2026-05-24)
+
+**BREAKING (docs paths only).** Restructured `docs/` from a flat 18-file tree
+into a folder hierarchy. No code, ABI, or API surface changes — BASELINE
+stays at 162, public-api baselines unchanged, no ABI bump.
+
+### Docs
+
+- `docs/getting-started.md` → `docs/start/quickstart.md`
+- `docs/guide-*.md` → `docs/guides/*.md` (drops `guide-` prefix; 6 files)
+- `docs/{guide-python,guide-python-pandas}.md` → `docs/languages/python.md`
+  (mechanical merge; pandas content lives as a top-level section beneath
+  the existing Python intro)
+- `docs/{architecture,compatibility,conventions,public-api,binding-authors,srt-cancel-handle}.md`
+  → `docs/reference/` (6 files)
+- `docs/deferred-features.md` → `docs/project/deferred-features.md`
+- `docs/troubleshooting.md` and `docs/cookbook.md` retain their paths this
+  phase (cookbook splits in Phase 2; troubleshooting stays top-level by
+  design — high-traffic, cross-audience)
+- New empty `docs/cookbook/{sending,receiving,klv,codecs,operations}/`
+  subfolder scaffold (`.gitkeep` placeholders) awaiting Phase 2 recipe
+  split
+- All in-repo references (README.md, rustdoc inside `crates/**/*.rs`,
+  cbindgen-emitted `crates/tst-c/include/tstrans.h`, examples/READMEs,
+  intra-`docs/` cross-links) updated to the new paths. Intra-`docs/`
+  cross-links now use leading-slash absolute form (`/docs/...`) for
+  GitHub-rendered portability from any nesting depth.
+- External bookmarks to old paths will 404; no redirect shims (pre-1.0
+  break-freely policy applies). Phase 2 will add the new landing page,
+  per-language entry docs, and split the cookbook into per-recipe files.
+
+---
+
 ## [Unreleased] — Phase 1 scoped test infrastructure (2026-05-25)
 
 Tests-only / docs-only. No public API changes, no `#[non_exhaustive]` count

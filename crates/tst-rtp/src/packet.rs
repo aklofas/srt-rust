@@ -78,9 +78,9 @@ impl RtpHeader {
 /// Why an RTP packet failed to parse.
 ///
 /// At the transport boundary these are silently dropped + counter-ticked
-/// (see [`crate::transport::RtpStats::malformed_packets`]) rather than
-/// surfaced as errors — RFC 3550 §5.1 expects receivers to ignore
-/// unparseable packets and continue.
+/// (the recv-side transport's malformed-packet counter, defined in
+/// Task 10) rather than surfaced as errors — RFC 3550 §5.1 expects
+/// receivers to ignore unparseable packets and continue.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[non_exhaustive]
 pub enum RtpParseError {
@@ -114,11 +114,11 @@ impl RtpHeader {
     /// offset of the application payload (skipping any CSRC list).
     ///
     /// CSRC entries are skipped, not retained — Phase 1 doesn't need
-    /// them. The `X` (extension) bit is honored: if set, the extension
-    /// header is also skipped from the payload offset (added in a
-    /// follow-up to this task if interop demands it; in Phase 1, X=1
-    /// from peers is parsed but ignored — payload_offset still points
-    /// at the bytes after the fixed+CSRC header).
+    /// them. The `X` (extension) bit is NOT honored in Phase 1: if
+    /// set, the extension header is parsed-but-not-skipped — the
+    /// returned `payload_offset` still points at the bytes immediately
+    /// after the fixed+CSRC header. A follow-up will add real
+    /// extension skipping if interop demands it.
     pub fn decode(buf: &[u8]) -> Result<Parsed, RtpParseError> {
         if buf.len() < RTP_HEADER_LEN {
             return Err(RtpParseError::Truncated {

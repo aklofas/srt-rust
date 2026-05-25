@@ -66,23 +66,29 @@ def _uas_minimal():
 
 
 def _security():
-    """Decode a SecurityLs fixture if available (no ST 0102 fixtures ship)."""
-    from tstrans.klv import decode_security
+    """Return a synthetic SecurityLs decoded from a spec-minimal ST 0102 record.
 
-    p = _FIXTURE_ROOT / "st0102" / "minimal.klv"
-    if not p.exists():
-        pytest.skip("st0102 fixture not present")
-    return decode_security(p.read_bytes())
+    Audit-2 #9: replaced fixture-gated skip with an in-process synthetic
+    builder so the test always runs without requiring a local corpus file.
+    The builder calls encode_security() on a known-good SecurityLs, prefixes
+    the 16-byte SECURITY_LS_UL, and round-trips through parse_klv_universal().
+    """
+    from _builders.synthetic_klv_universal import synthetic_security_ls
+    from tstrans.klv import parse_klv_universal
+
+    return parse_klv_universal(synthetic_security_ls())
 
 
 def _vmti():
-    """Decode a VmtiLs fixture if available (no ST 0903 fixtures ship)."""
-    from tstrans.klv import decode_vmti
+    """Return a synthetic VmtiLs decoded from a spec-minimal ST 0903 record.
 
-    p = _FIXTURE_ROOT / "st0903" / "minimal.klv"
-    if not p.exists():
-        pytest.skip("st0903 fixture not present")
-    return decode_vmti(p.read_bytes())
+    Audit-2 #9: replaced fixture-gated skip with an in-process synthetic
+    builder. Contains 2 VTargetPacks so the targets-mode DataFrame has >0 rows.
+    """
+    from _builders.synthetic_klv_universal import synthetic_vmti_ls
+    from tstrans.klv import parse_klv_universal
+
+    return parse_klv_universal(synthetic_vmti_ls(n_targets=2))
 
 
 # --- unconditional tests (no fixture deps) -------------------------------

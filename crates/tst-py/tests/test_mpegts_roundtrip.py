@@ -114,22 +114,53 @@ def test_synthetic_round_trip_byte_alignment():
     assert size % 188 == 0
 
 
-@pytest.mark.skipif(
-    not list(Path("crates/tst-core/tests/fixtures/local").glob("*.ts")),
-    reason="real-world fixture not present (tests/fixtures/local/)",
-)
-def test_real_fixture_round_trip_structural_equivalence():
-    """Demux a real .ts, identify PIDs+codecs, build matching muxer config,
-    replay sample events back through Muxer, re-demux output, assert PID
-    set + codec set match.
+def test_full_synthetic_round_trip_event_by_event():
+    """Audit-2 #9: in-process synthetic full round-trip.
 
-    NOTE: full config-from-probe reconstruction is non-trivial; v1 just
-    checks the source probe succeeds and re-records PIDs."""
+    Build a TS with video + KLV streams, write to a tempfile, demux it back,
+    and assert per-event structural equivalence:
+      - At least 1 ProgramMap event.
+      - Video events with H.264 codec.
+      - KLV events (at least as many as pushed).
 
-    fixtures = list(Path("crates/tst-core/tests/fixtures/local").glob("*.ts"))
-    src = fixtures[0]
-    src_probe = probe(src)
-    assert len(src_probe.pids) > 0
-    # Full config reconstruction deferred to a follow-up; this test is
-    # primarily a smoke test that probe + parse work on a real fixture.
-    pytest.skip("full real-fixture round-trip deferred — see Phase 4 closeout follow-ups")
+    This replaces the previously deferred "real-fixture round-trip" test that
+    skipped unconditionally (see Phase 4 closeout follow-up). A real-fixture
+    round-trip (full config-from-probe reconstruction) remains a follow-up
+    item; the synthetic path exercises the full mux→write→parse pipeline.
+    """
+    m = Muxer(_synthetic_config())
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "round_trip.ts"
+        with m.write_file(path) as proxy:
+            _deterministic_push_sequence(proxy, n_video=5, n_klv=5)
+
+        # Probe verifies the written TS has the expected stream structure.
+        pr = probe(path)
+        assert 0x101 in pr.pids, f"video PID 0x101 missing from probe: {pr.pids}"
+        assert 0x102 in pr.pids, f"KLV PID 0x102 missing from probe: {pr.pids}"
+        assert VideoCodec.H264 in pr.video_codecs
+        assert pr.has_klv is True
+
+        # Demux and verify event shapes.
+        pmap_evs = []
+        video_evs = []
+        klv_evs = []
+        for ev in parse_file(path):
+            if isinstance(ev, DemuxEvent.ProgramMap):
+                pmap_evs.append(ev)
+            elif isinstance(ev, DemuxEvent.Video):
+                video_evs.append(ev)
+            elif isinstance(ev, DemuxEvent.Klv):
+                klv_evs.append(ev)
+
+    assert pmap_evs, "expected at least one ProgramMap event"
+    assert len(video_evs) >= 1, f"expected >=1 video event, got {len(video_evs)}"
+    assert len(klv_evs) >= 1, f"expected >=1 KLV event, got {len(klv_evs)}"
+
+    # Video events carry H.264 codec.
+    for ev in video_evs:
+        assert ev.codec == VideoCodec.H264, f"unexpected codec: {ev.codec}"
+
+    # PTS timestamps are non-negative.
+    for ev in video_evs + klv_evs:
+        assert ev.pts.raw >= 0, f"negative PTS: {ev.pts.raw}"

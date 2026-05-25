@@ -5190,6 +5190,124 @@ pub fn alloc::boxed::Box<T>::send_bytes(&mut self, msg: &[u8]) -> core::result::
 pub fn alloc::boxed::Box<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub trait tst_core::transport::TransportCancel: core::marker::Send + core::marker::Sync
 pub fn tst_core::transport::TransportCancel::cancel(&self)
+pub mod tst_core::url
+pub mod tst_core::url::common
+#[non_exhaustive] pub enum tst_core::url::common::UrlError
+pub tst_core::url::common::UrlError::BadPercentEncoding
+pub tst_core::url::common::UrlError::BadPercentEncoding::detail: alloc::string::String
+pub tst_core::url::common::UrlError::EmptyScheme
+pub tst_core::url::common::UrlError::InvalidPort
+pub tst_core::url::common::UrlError::InvalidPort::detail: alloc::string::String
+pub tst_core::url::common::UrlError::InvalidPort::got: alloc::string::String
+pub tst_core::url::common::UrlError::MalformedIpv6Literal
+pub tst_core::url::common::UrlError::MalformedIpv6Literal::got: alloc::string::String
+pub tst_core::url::common::UrlError::MissingHost
+pub tst_core::url::common::UrlError::MissingPort
+pub tst_core::url::common::UrlError::MissingSchemeSeparator
+pub tst_core::url::common::UrlError::UnclosedIpv6Bracket
+impl core::clone::Clone for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::clone(&self) -> tst_core::url::common::UrlError
+impl core::cmp::Eq for tst_core::url::common::UrlError
+impl core::cmp::PartialEq for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::eq(&self, other: &tst_core::url::common::UrlError) -> bool
+impl core::error::Error for tst_core::url::common::UrlError
+impl core::fmt::Debug for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::url::common::UrlError
+impl core::marker::Freeze for tst_core::url::common::UrlError
+impl core::marker::Send for tst_core::url::common::UrlError
+impl core::marker::Sync for tst_core::url::common::UrlError
+impl core::marker::Unpin for tst_core::url::common::UrlError
+impl core::marker::UnsafeUnpin for tst_core::url::common::UrlError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::url::common::UrlError
+impl core::panic::unwind_safe::UnwindSafe for tst_core::url::common::UrlError
+pub struct tst_core::url::common::ParsedUrl<'a>
+pub tst_core::url::common::ParsedUrl::host: &'a str
+pub tst_core::url::common::ParsedUrl::password: core::option::Option<&'a str>
+pub tst_core::url::common::ParsedUrl::path: &'a str
+pub tst_core::url::common::ParsedUrl::port: core::option::Option<u16>
+pub tst_core::url::common::ParsedUrl::query: alloc::vec::Vec<(alloc::borrow::Cow<'a, str>, alloc::borrow::Cow<'a, str>)>
+pub tst_core::url::common::ParsedUrl::scheme: &'a str
+pub tst_core::url::common::ParsedUrl::username: core::option::Option<&'a str>
+impl<'a> core::clone::Clone for tst_core::url::common::ParsedUrl<'a>
+pub fn tst_core::url::common::ParsedUrl<'a>::clone(&self) -> tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::cmp::Eq for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::cmp::PartialEq for tst_core::url::common::ParsedUrl<'a>
+pub fn tst_core::url::common::ParsedUrl<'a>::eq(&self, other: &tst_core::url::common::ParsedUrl<'a>) -> bool
+impl<'a> core::fmt::Debug for tst_core::url::common::ParsedUrl<'a>
+pub fn tst_core::url::common::ParsedUrl<'a>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Freeze for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Send for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Sync for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Unpin for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::UnsafeUnpin for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::url::common::ParsedUrl<'a>
+pub fn tst_core::url::common::is_multicast_v4(addr: core::net::ip_addr::Ipv4Addr) -> bool
+pub fn tst_core::url::common::is_multicast_v6(addr: core::net::ip_addr::Ipv6Addr) -> bool
+pub fn tst_core::url::common::parse_host_port(s: &str) -> core::result::Result<(core::net::ip_addr::IpAddr, u16), tst_core::url::common::UrlError>
+pub fn tst_core::url::common::parse_url(s: &str) -> core::result::Result<tst_core::url::common::ParsedUrl<'_>, tst_core::url::common::UrlError>
+#[non_exhaustive] pub enum tst_core::url::UrlError
+pub tst_core::url::UrlError::BadPercentEncoding
+pub tst_core::url::UrlError::BadPercentEncoding::detail: alloc::string::String
+pub tst_core::url::UrlError::EmptyScheme
+pub tst_core::url::UrlError::InvalidPort
+pub tst_core::url::UrlError::InvalidPort::detail: alloc::string::String
+pub tst_core::url::UrlError::InvalidPort::got: alloc::string::String
+pub tst_core::url::UrlError::MalformedIpv6Literal
+pub tst_core::url::UrlError::MalformedIpv6Literal::got: alloc::string::String
+pub tst_core::url::UrlError::MissingHost
+pub tst_core::url::UrlError::MissingPort
+pub tst_core::url::UrlError::MissingSchemeSeparator
+pub tst_core::url::UrlError::UnclosedIpv6Bracket
+impl core::clone::Clone for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::clone(&self) -> tst_core::url::common::UrlError
+impl core::cmp::Eq for tst_core::url::common::UrlError
+impl core::cmp::PartialEq for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::eq(&self, other: &tst_core::url::common::UrlError) -> bool
+impl core::error::Error for tst_core::url::common::UrlError
+impl core::fmt::Debug for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::url::common::UrlError
+impl core::marker::Freeze for tst_core::url::common::UrlError
+impl core::marker::Send for tst_core::url::common::UrlError
+impl core::marker::Sync for tst_core::url::common::UrlError
+impl core::marker::Unpin for tst_core::url::common::UrlError
+impl core::marker::UnsafeUnpin for tst_core::url::common::UrlError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::url::common::UrlError
+impl core::panic::unwind_safe::UnwindSafe for tst_core::url::common::UrlError
+pub struct tst_core::url::ParsedUrl<'a>
+pub tst_core::url::ParsedUrl::host: &'a str
+pub tst_core::url::ParsedUrl::password: core::option::Option<&'a str>
+pub tst_core::url::ParsedUrl::path: &'a str
+pub tst_core::url::ParsedUrl::port: core::option::Option<u16>
+pub tst_core::url::ParsedUrl::query: alloc::vec::Vec<(alloc::borrow::Cow<'a, str>, alloc::borrow::Cow<'a, str>)>
+pub tst_core::url::ParsedUrl::scheme: &'a str
+pub tst_core::url::ParsedUrl::username: core::option::Option<&'a str>
+impl<'a> core::clone::Clone for tst_core::url::common::ParsedUrl<'a>
+pub fn tst_core::url::common::ParsedUrl<'a>::clone(&self) -> tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::cmp::Eq for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::cmp::PartialEq for tst_core::url::common::ParsedUrl<'a>
+pub fn tst_core::url::common::ParsedUrl<'a>::eq(&self, other: &tst_core::url::common::ParsedUrl<'a>) -> bool
+impl<'a> core::fmt::Debug for tst_core::url::common::ParsedUrl<'a>
+pub fn tst_core::url::common::ParsedUrl<'a>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Freeze for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Send for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Sync for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Unpin for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::UnsafeUnpin for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::url::common::ParsedUrl<'a>
+pub fn tst_core::url::is_multicast_v4(addr: core::net::ip_addr::Ipv4Addr) -> bool
+pub fn tst_core::url::is_multicast_v6(addr: core::net::ip_addr::Ipv6Addr) -> bool
+pub fn tst_core::url::parse_host_port(s: &str) -> core::result::Result<(core::net::ip_addr::IpAddr, u16), tst_core::url::common::UrlError>
+pub fn tst_core::url::parse_url(s: &str) -> core::result::Result<tst_core::url::common::ParsedUrl<'_>, tst_core::url::common::UrlError>
 #[non_exhaustive] pub enum tst_core::DemuxError
 pub tst_core::DemuxError::MalformedPes
 pub tst_core::DemuxError::MalformedPes::pid: u16
@@ -5491,6 +5609,60 @@ impl core::marker::Unpin for tst_core::transport::TransportError
 impl core::marker::UnsafeUnpin for tst_core::transport::TransportError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::transport::TransportError
 impl core::panic::unwind_safe::UnwindSafe for tst_core::transport::TransportError
+#[non_exhaustive] pub enum tst_core::UrlError
+pub tst_core::UrlError::BadPercentEncoding
+pub tst_core::UrlError::BadPercentEncoding::detail: alloc::string::String
+pub tst_core::UrlError::EmptyScheme
+pub tst_core::UrlError::InvalidPort
+pub tst_core::UrlError::InvalidPort::detail: alloc::string::String
+pub tst_core::UrlError::InvalidPort::got: alloc::string::String
+pub tst_core::UrlError::MalformedIpv6Literal
+pub tst_core::UrlError::MalformedIpv6Literal::got: alloc::string::String
+pub tst_core::UrlError::MissingHost
+pub tst_core::UrlError::MissingPort
+pub tst_core::UrlError::MissingSchemeSeparator
+pub tst_core::UrlError::UnclosedIpv6Bracket
+impl core::clone::Clone for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::clone(&self) -> tst_core::url::common::UrlError
+impl core::cmp::Eq for tst_core::url::common::UrlError
+impl core::cmp::PartialEq for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::eq(&self, other: &tst_core::url::common::UrlError) -> bool
+impl core::error::Error for tst_core::url::common::UrlError
+impl core::fmt::Debug for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_core::url::common::UrlError
+pub fn tst_core::url::common::UrlError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_core::url::common::UrlError
+impl core::marker::Freeze for tst_core::url::common::UrlError
+impl core::marker::Send for tst_core::url::common::UrlError
+impl core::marker::Sync for tst_core::url::common::UrlError
+impl core::marker::Unpin for tst_core::url::common::UrlError
+impl core::marker::UnsafeUnpin for tst_core::url::common::UrlError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::url::common::UrlError
+impl core::panic::unwind_safe::UnwindSafe for tst_core::url::common::UrlError
+pub struct tst_core::ParsedUrl<'a>
+pub tst_core::ParsedUrl::host: &'a str
+pub tst_core::ParsedUrl::password: core::option::Option<&'a str>
+pub tst_core::ParsedUrl::path: &'a str
+pub tst_core::ParsedUrl::port: core::option::Option<u16>
+pub tst_core::ParsedUrl::query: alloc::vec::Vec<(alloc::borrow::Cow<'a, str>, alloc::borrow::Cow<'a, str>)>
+pub tst_core::ParsedUrl::scheme: &'a str
+pub tst_core::ParsedUrl::username: core::option::Option<&'a str>
+impl<'a> core::clone::Clone for tst_core::url::common::ParsedUrl<'a>
+pub fn tst_core::url::common::ParsedUrl<'a>::clone(&self) -> tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::cmp::Eq for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::cmp::PartialEq for tst_core::url::common::ParsedUrl<'a>
+pub fn tst_core::url::common::ParsedUrl<'a>::eq(&self, other: &tst_core::url::common::ParsedUrl<'a>) -> bool
+impl<'a> core::fmt::Debug for tst_core::url::common::ParsedUrl<'a>
+pub fn tst_core::url::common::ParsedUrl<'a>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::StructuralPartialEq for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Freeze for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Send for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Sync for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::Unpin for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::marker::UnsafeUnpin for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tst_core::url::common::ParsedUrl<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tst_core::url::common::ParsedUrl<'a>
 #[non_exhaustive] pub struct tst_core::SocketStats
 pub tst_core::SocketStats::bytes_lost_recv: u64
 pub tst_core::SocketStats::bytes_received: u64

@@ -56,3 +56,4 @@ pub use cancel::SrtCancelHandle;
 pub use error::{DemuxError, KlvDecodeError, KlvEncodeError, KlvFieldError, MuxError};
 pub use klv::st0601::UasDatalinkLs;
 pub use transport::{RecvTransport, SocketStats, Transport, TransportCancel, TransportError};
+pub use url::{ParsedUrl, UrlError};

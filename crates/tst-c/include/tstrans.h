@@ -1225,7 +1225,7 @@ extern "C" {
  * no internal locks. The `unsafe extern "C"` annotation matches the
  * convention of every other `tst_*` entry point for consistency.
  */
- void tst_clear_last_error(void);
+void tst_clear_last_error(void);
 
 /**
  * Returns the C ABI contract major version at runtime.
@@ -1242,7 +1242,7 @@ extern "C" {
  * annotation matches the convention of every other `tst_*` entry
  * point for consistency.
  */
- uint32_t tst_get_abi_version_major(void);
+uint32_t tst_get_abi_version_major(void);
 
 /**
  * Returns the C ABI contract minor version at runtime.
@@ -1254,7 +1254,7 @@ extern "C" {
  *
  * Sound under any caller invocation; see [`tst_get_abi_version_major`].
  */
- uint32_t tst_get_abi_version_minor(void);
+uint32_t tst_get_abi_version_minor(void);
 
 /**
  * Read the most recent error code on this thread. Returns `0`
@@ -1263,14 +1263,14 @@ extern "C" {
  * recent failure on this thread (or `TST_E_SUCCESS` if there has been
  * none since thread start).
  */
- int tst_get_last_error(void);
+int tst_get_last_error(void);
 
 /**
  * Pointer to the most recent error message on this thread. Valid until
  * the next tst-c call on the same thread. Never NULL — empty string when
  * no error.
  */
- const char *tst_get_last_error_str(void);
+const char *tst_get_last_error_str(void);
 
 /**
  * Returns the package major version at runtime — matches
@@ -1290,7 +1290,7 @@ extern "C" {
  *
  * Sound under any caller invocation; see [`tst_get_abi_version_major`].
  */
- uint32_t tst_get_version_major(void);
+uint32_t tst_get_version_major(void);
 
 /**
  * Returns the package minor version at runtime. See
@@ -1300,7 +1300,7 @@ extern "C" {
  *
  * Sound under any caller invocation; see [`tst_get_version_major`].
  */
- uint32_t tst_get_version_minor(void);
+uint32_t tst_get_version_minor(void);
 
 /**
  * Returns the package version packed as `(M << 16) | (m << 8) | p`.
@@ -1325,7 +1325,7 @@ extern "C" {
  *
  * Sound under any caller invocation; see [`tst_get_version_major`].
  */
- uint32_t tst_get_version_packed(void);
+uint32_t tst_get_version_packed(void);
 
 /**
  * Returns the package patch version at runtime. See
@@ -1335,7 +1335,7 @@ extern "C" {
  *
  * Sound under any caller invocation; see [`tst_get_version_major`].
  */
- uint32_t tst_get_version_patch(void);
+uint32_t tst_get_version_patch(void);
 
 /**
  * Returns a NUL-terminated `"<major>.<minor>.<patch>"` C string at
@@ -1355,7 +1355,7 @@ extern "C" {
  * non-NULL and process-lifetime stable. Reading past the NUL byte is
  * undefined behavior per usual C string rules.
  */
- const char *tst_get_version_string(void);
+const char *tst_get_version_string(void);
 
 // ─── MUX SENDER ────────────────────────────────────────────
 
@@ -1367,9 +1367,9 @@ extern "C" {
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
  */
- int tst_managed_mux_sender_cancel(struct tst_managed_mux_sender_t *p);
+int tst_managed_mux_sender_cancel(struct tst_managed_mux_sender_t *p);
 
- void tst_managed_mux_sender_close(struct tst_managed_mux_sender_t *p);
+void tst_managed_mux_sender_close(struct tst_managed_mux_sender_t *p);
 
 /**
  * See [`tst_mux_sender_get_socket_stats`]. The managed variant returns
@@ -1443,7 +1443,7 @@ struct tst_managed_mux_sender_t *tst_managed_mux_sender_open(const char *srt_url
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
- int tst_managed_mux_sender_reset_stats(struct tst_managed_mux_sender_t *p);
+int tst_managed_mux_sender_reset_stats(struct tst_managed_mux_sender_t *p);
 
 /**
  * Managed sibling of [`tst_mux_sender_send_audio`]. Same semantics; routes
@@ -1807,26 +1807,26 @@ tst_video_stream_handle_t tst_mux_config_add_video_stream(struct tst_mux_config_
  * Free a mux config previously returned by `tst_mux_config_new`. No-op on
  * NULL. The config must not be used after this call.
  */
- void tst_mux_config_free(struct tst_mux_config_t *p);
+void tst_mux_config_free(struct tst_mux_config_t *p);
 
 /**
  * Create a new, empty mux config. No programs are added — call
  * `tst_mux_config_add_program` before using this config to open a muxer
  * or sender. Returns NULL only on allocation failure (OOM).
  */
- struct tst_mux_config_t *tst_mux_config_new(void);
+struct tst_mux_config_t *tst_mux_config_new(void);
 
 /**
  * Set the TS-packet output buffer capacity. Default 10000 (~1.88 MB).
  * Must be >= 10.
  */
- int tst_mux_config_set_buffer_packets(struct tst_mux_config_t *p, size_t n);
+int tst_mux_config_set_buffer_packets(struct tst_mux_config_t *p, size_t n);
 
 /**
  * Set the PCR re-emission interval for this mux config (applies to all
  * programs). Default is 40 ms. Must be in range 1..=100.
  */
- int tst_mux_config_set_pcr_interval_ms(struct tst_mux_config_t *p, uint32_t ms);
+int tst_mux_config_set_pcr_interval_ms(struct tst_mux_config_t *p, uint32_t ms);
 
 /**
  * Pin the PCR PID for the specified program. By default the muxer uses the
@@ -1867,7 +1867,7 @@ int tst_mux_config_set_program_descriptors(struct tst_mux_config_t *cfg,
  * Set the PAT/PMT re-emission interval for this mux config. Default 100 ms.
  * Must be >= 10.
  */
- int tst_mux_config_set_psi_interval_ms(struct tst_mux_config_t *p, uint32_t ms);
+int tst_mux_config_set_psi_interval_ms(struct tst_mux_config_t *p, uint32_t ms);
 
 /**
  * Set per-stream PMT descriptors for the specified KLV stream.
@@ -1914,9 +1914,9 @@ int tst_mux_config_set_stream_descriptors_for_video(struct tst_mux_config_t *cfg
  * After cancel, all `_send_*` entry points return `TST_E_CLOSED`. The
  * handle must still be `_close`'d to free.
  */
- int tst_mux_sender_cancel(struct tst_mux_sender_t *p);
+int tst_mux_sender_cancel(struct tst_mux_sender_t *p);
 
- void tst_mux_sender_close(struct tst_mux_sender_t *p);
+void tst_mux_sender_close(struct tst_mux_sender_t *p);
 
 /**
  * Read wire-level transport stats (RTT, packet loss, bandwidth, queue
@@ -1937,7 +1937,7 @@ int tst_mux_config_set_stream_descriptors_for_video(struct tst_mux_config_t *cfg
  * Caller MUST ensure `p` is a valid `*mut TstMuxSender` opened via
  * `tst_mux_sender_open` and `out` points to a writable `TstSocketStats`.
  */
- int tst_mux_sender_get_socket_stats(struct tst_mux_sender_t *p, struct tst_socket_stats_t *out);
+int tst_mux_sender_get_socket_stats(struct tst_mux_sender_t *p, struct tst_socket_stats_t *out);
 
 /**
  * Snapshot stats for a `tst_mux_sender_t` into `*out`.
@@ -1945,7 +1945,7 @@ int tst_mux_config_set_stream_descriptors_for_video(struct tst_mux_config_t *cfg
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
- int tst_mux_sender_get_stats(struct tst_mux_sender_t *p, struct tst_mux_sender_stats_t *out);
+int tst_mux_sender_get_stats(struct tst_mux_sender_t *p, struct tst_mux_sender_stats_t *out);
 
 /**
  * Snapshot codec-specific stats for one PID on a `tst_mux_sender_t` into `*out`.
@@ -1986,7 +1986,7 @@ int tst_mux_sender_get_stream_codec_stats(struct tst_mux_sender_t *p,
  * invalid value. The detail string from
  * `tst_get_last_error_str()` describes the specific problem.
  */
- struct tst_mux_sender_t *tst_mux_sender_open(const char *srt_url, struct tst_mux_config_t *cfg);
+struct tst_mux_sender_t *tst_mux_sender_open(const char *srt_url, struct tst_mux_config_t *cfg);
 
 /**
  * Reset stats counters for a `tst_mux_sender_t` to zero.
@@ -1994,7 +1994,7 @@ int tst_mux_sender_get_stream_codec_stats(struct tst_mux_sender_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
- int tst_mux_sender_reset_stats(struct tst_mux_sender_t *p);
+int tst_mux_sender_reset_stats(struct tst_mux_sender_t *p);
 
 /**
  * Send one audio frame buffer (single-stream shorthand).
@@ -2155,7 +2155,7 @@ int tst_mux_sender_send_video_to(struct tst_mux_sender_t *p,
 /**
  * Close and free the muxer. Idempotent — passing NULL is a no-op.
  */
- void tst_muxer_close(struct tst_muxer_t *p);
+void tst_muxer_close(struct tst_muxer_t *p);
 
 /**
  * Snapshot stats for a `tst_muxer_t` into `*out`.
@@ -2163,7 +2163,7 @@ int tst_mux_sender_send_video_to(struct tst_mux_sender_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
  * null, or `TST_E_CLOSED` if the muxer has been closed.
  */
- int tst_muxer_get_stats(struct tst_muxer_t *p, struct tst_muxer_stats_t *out);
+int tst_muxer_get_stats(struct tst_muxer_t *p, struct tst_muxer_stats_t *out);
 
 /**
  * Snapshot codec-specific stats for one PID on a `tst_muxer_t` into `*out`.
@@ -2196,7 +2196,7 @@ int tst_muxer_get_stream_codec_stats(struct tst_muxer_t *p,
  * free it immediately after this returns. Returns NULL on failure with
  * last-error set.
  */
- struct tst_muxer_t *tst_muxer_open(struct tst_mux_config_t *cfg);
+struct tst_muxer_t *tst_muxer_open(struct tst_mux_config_t *cfg);
 
 /**
  * Drain TS bytes into `out_buf` (capacity `out_cap`). Returns the number
@@ -2204,7 +2204,7 @@ int tst_muxer_get_stream_codec_stats(struct tst_muxer_t *p,
  * small for the next chunk. Never sets last-error — 0 is a normal return
  * value.
  */
- size_t tst_muxer_pull(struct tst_muxer_t *p, uint8_t *out_buf, size_t out_cap);
+size_t tst_muxer_pull(struct tst_muxer_t *p, uint8_t *out_buf, size_t out_cap);
 
 /**
  * Push one audio frame buffer (single-stream shorthand).
@@ -2272,7 +2272,7 @@ int tst_muxer_push_audio_to(struct tst_muxer_t *p,
  *
  * `tst_muxer_push_klv` — see `crates/tst-c/include/tstrans.h`.
  */
- int tst_muxer_push_klv(struct tst_muxer_t *p, const uint8_t *klv, size_t len, int64_t pts_90khz);
+int tst_muxer_push_klv(struct tst_muxer_t *p, const uint8_t *klv, size_t len, int64_t pts_90khz);
 
 /**
  * Push one pre-built KLV blob targeting a specific KLV elementary stream.
@@ -2368,7 +2368,7 @@ int tst_muxer_push_video_to(struct tst_muxer_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
  * null, or `TST_E_CLOSED` if the muxer has been closed.
  */
- int tst_muxer_reset_stats(struct tst_muxer_t *p);
+int tst_muxer_reset_stats(struct tst_muxer_t *p);
 
 // ─── TS SENDER ─────────────────────────────────────────────
 
@@ -2380,11 +2380,11 @@ int tst_muxer_push_video_to(struct tst_muxer_t *p,
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
  */
- int tst_managed_sender_cancel(struct tst_managed_sender_t *p);
+int tst_managed_sender_cancel(struct tst_managed_sender_t *p);
 
- void tst_managed_sender_close(struct tst_managed_sender_t *p);
+void tst_managed_sender_close(struct tst_managed_sender_t *p);
 
- int tst_managed_sender_flush(struct tst_managed_sender_t *p);
+int tst_managed_sender_flush(struct tst_managed_sender_t *p);
 
 /**
  * Managed sibling of [`tst_sender_get_socket_stats`]. Returns
@@ -2401,7 +2401,7 @@ int tst_muxer_push_video_to(struct tst_muxer_t *p,
 int tst_managed_sender_get_socket_stats(struct tst_managed_sender_t *p,
                                         struct tst_socket_stats_t *out);
 
- int tst_managed_sender_get_stats(struct tst_managed_sender_t *p, struct tst_sender_stats_t *out);
+int tst_managed_sender_get_stats(struct tst_managed_sender_t *p, struct tst_sender_stats_t *out);
 
 /**
  * Open a `tst_managed_sender_t` connected via SRT.
@@ -2422,9 +2422,9 @@ struct tst_managed_sender_t *tst_managed_sender_open(const char *srt_url,
                                                      const struct tst_sender_config_t *cfg,
                                                      const struct tst_reconnect_policy_t *policy);
 
- int tst_managed_sender_reset_stats(struct tst_managed_sender_t *p);
+int tst_managed_sender_reset_stats(struct tst_managed_sender_t *p);
 
- int tst_managed_sender_send_ts(struct tst_managed_sender_t *p, const uint8_t *bytes, size_t len);
+int tst_managed_sender_send_ts(struct tst_managed_sender_t *p, const uint8_t *bytes, size_t len);
 
 /**
  * Cancel a `tst_sender_t`. Unblocks a thread parked in `_send`
@@ -2436,21 +2436,21 @@ struct tst_managed_sender_t *tst_managed_sender_open(const char *srt_url,
  * After cancel, `_send` returns `TST_E_CLOSED`. The handle must still
  * be `_close`'d to free.
  */
- int tst_sender_cancel(struct tst_sender_t *p);
+int tst_sender_cancel(struct tst_sender_t *p);
 
- void tst_sender_close(struct tst_sender_t *p);
+void tst_sender_close(struct tst_sender_t *p);
 
- void tst_sender_config_free(struct tst_sender_config_t *p);
+void tst_sender_config_free(struct tst_sender_config_t *p);
 
- struct tst_sender_config_t *tst_sender_config_new(void);
+struct tst_sender_config_t *tst_sender_config_new(void);
 
 
 int tst_sender_config_set_framing_mode(struct tst_sender_config_t *p,
                                        enum tst_ts_framing_mode mode);
 
- int tst_sender_config_set_max_unsynced_bytes(struct tst_sender_config_t *p, size_t n);
+int tst_sender_config_set_max_unsynced_bytes(struct tst_sender_config_t *p, size_t n);
 
- int tst_sender_flush(struct tst_sender_t *p);
+int tst_sender_flush(struct tst_sender_t *p);
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
@@ -2466,7 +2466,7 @@ int tst_sender_config_set_framing_mode(struct tst_sender_config_t *p,
 int tst_sender_get_socket_stats(struct tst_sender_t *p,
                                 struct tst_socket_stats_t *out);
 
- int tst_sender_get_stats(struct tst_sender_t *p, struct tst_sender_stats_t *out);
+int tst_sender_get_stats(struct tst_sender_t *p, struct tst_sender_stats_t *out);
 
 /**
  * Open a `tst_sender_t` connected via SRT.
@@ -2482,11 +2482,11 @@ int tst_sender_get_socket_stats(struct tst_sender_t *p,
  * invalid value. The detail string from
  * `tst_get_last_error_str()` describes the specific problem.
  */
- struct tst_sender_t *tst_sender_open(const char *srt_url, const struct tst_sender_config_t *cfg);
+struct tst_sender_t *tst_sender_open(const char *srt_url, const struct tst_sender_config_t *cfg);
 
- int tst_sender_reset_stats(struct tst_sender_t *p);
+int tst_sender_reset_stats(struct tst_sender_t *p);
 
- int tst_sender_send_ts(struct tst_sender_t *p, const uint8_t *bytes, size_t len);
+int tst_sender_send_ts(struct tst_sender_t *p, const uint8_t *bytes, size_t len);
 
 // ─── RAW SENDER ────────────────────────────────────────────
 
@@ -2498,9 +2498,9 @@ int tst_sender_get_socket_stats(struct tst_sender_t *p,
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null.
  */
- int tst_managed_raw_sender_cancel(struct tst_managed_raw_sender_t *p);
+int tst_managed_raw_sender_cancel(struct tst_managed_raw_sender_t *p);
 
- void tst_managed_raw_sender_close(struct tst_managed_raw_sender_t *p);
+void tst_managed_raw_sender_close(struct tst_managed_raw_sender_t *p);
 
 /**
  * Managed sibling of [`tst_raw_sender_get_socket_stats`]. Returns
@@ -2552,7 +2552,7 @@ struct tst_managed_raw_sender_t *tst_managed_raw_sender_open(const char *srt_url
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
- int tst_managed_raw_sender_reset_stats(struct tst_managed_raw_sender_t *p);
+int tst_managed_raw_sender_reset_stats(struct tst_managed_raw_sender_t *p);
 
 
 int tst_managed_raw_sender_send(struct tst_managed_raw_sender_t *p,
@@ -2569,13 +2569,13 @@ int tst_managed_raw_sender_send(struct tst_managed_raw_sender_t *p,
  * After cancel, `_send` returns `TST_E_CLOSED`. The handle must still
  * be `_close`'d to free.
  */
- int tst_raw_sender_cancel(struct tst_raw_sender_t *p);
+int tst_raw_sender_cancel(struct tst_raw_sender_t *p);
 
- void tst_raw_sender_close(struct tst_raw_sender_t *p);
+void tst_raw_sender_close(struct tst_raw_sender_t *p);
 
- void tst_raw_sender_config_free(struct tst_raw_sender_config_t *p);
+void tst_raw_sender_config_free(struct tst_raw_sender_config_t *p);
 
- struct tst_raw_sender_config_t *tst_raw_sender_config_new(void);
+struct tst_raw_sender_config_t *tst_raw_sender_config_new(void);
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
@@ -2597,7 +2597,7 @@ int tst_raw_sender_get_socket_stats(struct tst_raw_sender_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
- int tst_raw_sender_get_stats(struct tst_raw_sender_t *p, struct tst_raw_send_stats_t *out);
+int tst_raw_sender_get_stats(struct tst_raw_sender_t *p, struct tst_raw_send_stats_t *out);
 
 /**
  * Open a `tst_raw_sender_t` connected via SRT.
@@ -2623,9 +2623,9 @@ struct tst_raw_sender_t *tst_raw_sender_open(const char *srt_url,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
  * null, or `TST_E_CLOSED` if the sender has been closed.
  */
- int tst_raw_sender_reset_stats(struct tst_raw_sender_t *p);
+int tst_raw_sender_reset_stats(struct tst_raw_sender_t *p);
 
- int tst_raw_sender_send(struct tst_raw_sender_t *p, const uint8_t *bytes, size_t len);
+int tst_raw_sender_send(struct tst_raw_sender_t *p, const uint8_t *bytes, size_t len);
 
 // ─── DEMUX RECEIVER ────────────────────────────────────────
 
@@ -2650,12 +2650,12 @@ int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
  * unrecognized `stream_kind`.
  */
- int tst_demux_config_add_treat_as(struct tst_demux_config_t *cfg, uint16_t pid, int stream_kind);
+int tst_demux_config_add_treat_as(struct tst_demux_config_t *cfg, uint16_t pid, int stream_kind);
 
 /**
  * Release a `tst_demux_config_t`. Safe to call with NULL.
  */
- void tst_demux_config_free(struct tst_demux_config_t *cfg);
+void tst_demux_config_free(struct tst_demux_config_t *cfg);
 
 /**
  * Allocate a new `tst_demux_config_t` with default values
@@ -2664,7 +2664,7 @@ int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
  * Returns `NULL` on allocation failure or internal panic.
  * Free with `tst_demux_config_free`.
  */
- struct tst_demux_config_t *tst_demux_config_new(void);
+struct tst_demux_config_t *tst_demux_config_new(void);
 
 /**
  * Enable opt-in tolerance for sync-metadata AU cells whose
@@ -2685,14 +2685,14 @@ int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
  */
- int tst_demux_config_set_cfi_tolerance(struct tst_demux_config_t *cfg, int enable);
+int tst_demux_config_set_cfi_tolerance(struct tst_demux_config_t *cfg, int enable);
 
 /**
  * Set PES reassembly caps. `0` means use the Rust-side default.
  *
  * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
  */
- int tst_demux_config_set_pes_cap(struct tst_demux_config_t *cfg, size_t per_pid, size_t total);
+int tst_demux_config_set_pes_cap(struct tst_demux_config_t *cfg, size_t per_pid, size_t total);
 
 /**
  * Set the demuxer's strict mode. `mode` is one of
@@ -2702,7 +2702,7 @@ int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
  * unrecognized `mode`.
  */
- int tst_demux_config_set_strict_mode(struct tst_demux_config_t *cfg, int mode);
+int tst_demux_config_set_strict_mode(struct tst_demux_config_t *cfg, int mode);
 
 /**
  * Cancel a `tst_demux_receiver_t`. Unblocks a thread parked in
@@ -2715,9 +2715,9 @@ int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
  * After cancel, `_recv_event` returns `TST_E_CLOSED` (not
  * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
  */
- int tst_demux_receiver_cancel(struct tst_demux_receiver_t *p);
+int tst_demux_receiver_cancel(struct tst_demux_receiver_t *p);
 
- void tst_demux_receiver_close(struct tst_demux_receiver_t *p);
+void tst_demux_receiver_close(struct tst_demux_receiver_t *p);
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
@@ -2801,12 +2801,12 @@ int tst_demux_receiver_get_stream_stats(struct tst_demux_receiver_t *p,
  * Accepts `srt://host:port?...` URLs; `?mode=listener` routes through
  * the listener path (equivalent to `_open_listener`).
  */
- struct tst_demux_receiver_t *tst_demux_receiver_open(const char *srt_url);
+struct tst_demux_receiver_t *tst_demux_receiver_open(const char *srt_url);
 
 /**
  * Explicit listener-mode open with default demux options.
  */
- struct tst_demux_receiver_t *tst_demux_receiver_open_listener(const char *srt_url);
+struct tst_demux_receiver_t *tst_demux_receiver_open_listener(const char *srt_url);
 
 /**
  * Explicit listener-mode open with a caller-supplied
@@ -2846,7 +2846,7 @@ struct tst_demux_receiver_t *tst_demux_receiver_open_with_config(const char *srt
  *
  * On any non-zero return the contents of `*out_event` are unspecified.
  */
- int tst_demux_receiver_recv_event(struct tst_demux_receiver_t *p, struct tst_event_t *out_event);
+int tst_demux_receiver_recv_event(struct tst_demux_receiver_t *p, struct tst_event_t *out_event);
 
 /**
  * Reset stats counters for a `tst_demux_receiver_t` to zero.
@@ -2856,7 +2856,7 @@ struct tst_demux_receiver_t *tst_demux_receiver_open_with_config(const char *srt
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is
  * null, `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_demux_receiver_reset_stats(struct tst_demux_receiver_t *p);
+int tst_demux_receiver_reset_stats(struct tst_demux_receiver_t *p);
 
 /**
  * Cancel a `tst_managed_demux_receiver_t`. Same shape as the plain
@@ -2868,9 +2868,9 @@ struct tst_demux_receiver_t *tst_demux_receiver_open_with_config(const char *srt
  * After cancel, `_recv_event` returns `TST_E_CLOSED` (not
  * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
  */
- int tst_managed_demux_receiver_cancel(struct tst_managed_demux_receiver_t *p);
+int tst_managed_demux_receiver_cancel(struct tst_managed_demux_receiver_t *p);
 
- void tst_managed_demux_receiver_close(struct tst_managed_demux_receiver_t *p);
+void tst_managed_demux_receiver_close(struct tst_managed_demux_receiver_t *p);
 
 /**
  * Managed sibling of [`tst_demux_receiver_get_socket_stats`](super::stats::tst_demux_receiver_get_socket_stats). Returns
@@ -2965,7 +2965,7 @@ struct tst_managed_demux_receiver_t *tst_managed_demux_receiver_open_with_config
 int tst_managed_demux_receiver_recv_event(struct tst_managed_demux_receiver_t *p,
                                           struct tst_event_t *out_event);
 
- int tst_managed_demux_receiver_reset_stats(struct tst_managed_demux_receiver_t *p);
+int tst_managed_demux_receiver_reset_stats(struct tst_managed_demux_receiver_t *p);
 
 // ─── TS RECEIVER ───────────────────────────────────────────
 
@@ -2975,9 +2975,9 @@ int tst_managed_demux_receiver_recv_event(struct tst_managed_demux_receiver_t *p
  * any thread. Idempotent. After cancel, `_recv_packet` returns
  * `TST_E_CLOSED`. The handle must still be `_close`'d to free memory.
  */
- int tst_managed_receiver_cancel(struct tst_managed_receiver_t *p);
+int tst_managed_receiver_cancel(struct tst_managed_receiver_t *p);
 
- void tst_managed_receiver_close(struct tst_managed_receiver_t *p);
+void tst_managed_receiver_close(struct tst_managed_receiver_t *p);
 
 /**
  * Managed sibling of [`tst_receiver_get_socket_stats`]. Returns
@@ -3053,7 +3053,7 @@ struct tst_managed_receiver_t *tst_managed_receiver_open_listener(const char *sr
  * function means all reconnect attempts have been exhausted — that is
  * a hard transport failure (`TST_E_TRANSPORT`), not an end-of-stream.
  */
- int tst_managed_receiver_recv_packet(struct tst_managed_receiver_t *p, uint8_t *out_packet);
+int tst_managed_receiver_recv_packet(struct tst_managed_receiver_t *p, uint8_t *out_packet);
 
 /**
  * Reset stats counters for a `tst_managed_receiver_t` to zero.
@@ -3061,7 +3061,7 @@ struct tst_managed_receiver_t *tst_managed_receiver_open_listener(const char *sr
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
  * or `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_managed_receiver_reset_stats(struct tst_managed_receiver_t *p);
+int tst_managed_receiver_reset_stats(struct tst_managed_receiver_t *p);
 
 /**
  * Cancel a `tst_receiver_t`. Unblocks a thread parked in
@@ -3074,9 +3074,9 @@ struct tst_managed_receiver_t *tst_managed_receiver_open_listener(const char *sr
  * After cancel, `_recv_packet` returns `TST_E_CLOSED` (not
  * `TST_E_END_OF_STREAM`). The handle must still be `_close`'d to free.
  */
- int tst_receiver_cancel(struct tst_receiver_t *p);
+int tst_receiver_cancel(struct tst_receiver_t *p);
 
- void tst_receiver_close(struct tst_receiver_t *p);
+void tst_receiver_close(struct tst_receiver_t *p);
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
@@ -3098,7 +3098,7 @@ int tst_receiver_get_socket_stats(struct tst_receiver_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
  * null, or `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_receiver_get_stats(struct tst_receiver_t *p, struct tst_receiver_stats_t *out);
+int tst_receiver_get_stats(struct tst_receiver_t *p, struct tst_receiver_stats_t *out);
 
 /**
  * Open a `tst_receiver_t`. Accepts `srt://host:port?...` URLs;
@@ -3109,7 +3109,7 @@ int tst_receiver_get_socket_stats(struct tst_receiver_t *p,
  * last-error for any malformed URL, unsupported key, unknown key, or
  * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
  */
- struct tst_receiver_t *tst_receiver_open(const char *srt_url);
+struct tst_receiver_t *tst_receiver_open(const char *srt_url);
 
 /**
  * Explicit listener-mode open. Forces listener mode regardless of any
@@ -3120,7 +3120,7 @@ int tst_receiver_get_socket_stats(struct tst_receiver_t *p,
  * requirement for an explicit `?mode=listener` does not apply here because
  * the entry-point name is already the authoritative listener signal.
  */
- struct tst_receiver_t *tst_receiver_open_listener(const char *srt_url);
+struct tst_receiver_t *tst_receiver_open_listener(const char *srt_url);
 
 /**
  * Block until one 188-byte MPEG-TS packet is ready, then copy it into
@@ -3141,7 +3141,7 @@ int tst_receiver_get_socket_stats(struct tst_receiver_t *p,
  *
  * On any non-zero return the contents of `out_packet` are unspecified.
  */
- int tst_receiver_recv_packet(struct tst_receiver_t *p, uint8_t *out_packet);
+int tst_receiver_recv_packet(struct tst_receiver_t *p, uint8_t *out_packet);
 
 /**
  * Reset stats counters for a `tst_receiver_t` to zero. Does not
@@ -3150,7 +3150,7 @@ int tst_receiver_get_socket_stats(struct tst_receiver_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
  * or `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_receiver_reset_stats(struct tst_receiver_t *p);
+int tst_receiver_reset_stats(struct tst_receiver_t *p);
 
 // ─── RAW RECEIVER ──────────────────────────────────────────
 
@@ -3160,9 +3160,9 @@ int tst_receiver_get_socket_stats(struct tst_receiver_t *p,
  * Idempotent. After cancel, `_recv` returns `TST_E_CLOSED`. The handle
  * must still be `_close`'d to free memory.
  */
- int tst_managed_raw_receiver_cancel(struct tst_managed_raw_receiver_t *p);
+int tst_managed_raw_receiver_cancel(struct tst_managed_raw_receiver_t *p);
 
- void tst_managed_raw_receiver_close(struct tst_managed_raw_receiver_t *p);
+void tst_managed_raw_receiver_close(struct tst_managed_raw_receiver_t *p);
 
 /**
  * Reset stats counters for a `tst_managed_raw_receiver_t` to zero.
@@ -3250,7 +3250,7 @@ int tst_managed_raw_receiver_recv(struct tst_managed_raw_receiver_t *p,
                                   size_t len,
                                   size_t *out_len);
 
- int tst_managed_raw_receiver_reset_stats(struct tst_managed_raw_receiver_t *p);
+int tst_managed_raw_receiver_reset_stats(struct tst_managed_raw_receiver_t *p);
 
 /**
  * Cancel a `tst_raw_receiver_t`. Unblocks a thread parked in `_recv`
@@ -3262,9 +3262,9 @@ int tst_managed_raw_receiver_recv(struct tst_managed_raw_receiver_t *p,
  * After cancel, `_recv` returns `TST_E_CLOSED` (not `TST_E_END_OF_STREAM`).
  * The handle must still be `_close`'d to free.
  */
- int tst_raw_receiver_cancel(struct tst_raw_receiver_t *p);
+int tst_raw_receiver_cancel(struct tst_raw_receiver_t *p);
 
- void tst_raw_receiver_close(struct tst_raw_receiver_t *p);
+void tst_raw_receiver_close(struct tst_raw_receiver_t *p);
 
 /**
  * Read wire-level transport stats for the underlying libsrt socket.
@@ -3286,7 +3286,7 @@ int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if either pointer is
  * null, or `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_raw_receiver_get_stats(struct tst_raw_receiver_t *p, struct tst_raw_recv_stats_t *out);
+int tst_raw_receiver_get_stats(struct tst_raw_receiver_t *p, struct tst_raw_recv_stats_t *out);
 
 /**
  * Open a `tst_raw_receiver_t`. Accepts `srt://host:port?...` URLs;
@@ -3297,7 +3297,7 @@ int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
  * last-error for any malformed URL, unsupported key, unknown key, or
  * invalid value. `TST_E_TRANSPORT` set on connect/bind failure.
  */
- struct tst_raw_receiver_t *tst_raw_receiver_open(const char *srt_url);
+struct tst_raw_receiver_t *tst_raw_receiver_open(const char *srt_url);
 
 /**
  * Explicit listener-mode open. Forces listener mode regardless of any
@@ -3314,7 +3314,7 @@ int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
  * expect from a `_listener`-suffixed entry point. The stricter check
  * can land in a future phase if a consumer asks.)
  */
- struct tst_raw_receiver_t *tst_raw_receiver_open_listener(const char *srt_url);
+struct tst_raw_receiver_t *tst_raw_receiver_open_listener(const char *srt_url);
 
 /**
  * Block until one message arrives. Copies up to `len` bytes into `buf`
@@ -3331,7 +3331,7 @@ int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
  *   (`*out_len` is left unmodified)
  * - `TST_E_INVALID_CONFIG` (-1) on null pointer arguments
  */
- int tst_raw_receiver_recv(struct tst_raw_receiver_t *p, uint8_t *buf, size_t len, size_t *out_len);
+int tst_raw_receiver_recv(struct tst_raw_receiver_t *p, uint8_t *buf, size_t len, size_t *out_len);
 
 /**
  * Reset stats counters for a `tst_raw_receiver_t` to zero.
@@ -3339,29 +3339,29 @@ int tst_raw_receiver_get_socket_stats(struct tst_raw_receiver_t *p,
  * Returns 0 on success, `TST_E_INVALID_CONFIG` if the pointer is null,
  * or `TST_E_CLOSED` if the receiver has been closed.
  */
- int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
+int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
 
 // ─── LIFETIME ──────────────────────────────────────────────
 
- void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
+void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
 
 // ─── OTHER ─────────────────────────────────────────────────
 
- struct tst_reconnect_policy_t *tst_reconnect_policy_new(void);
+struct tst_reconnect_policy_t *tst_reconnect_policy_new(void);
 
- int tst_reconnect_policy_set_backoff_constant_ms(struct tst_reconnect_policy_t *p, uint32_t ms);
+int tst_reconnect_policy_set_backoff_constant_ms(struct tst_reconnect_policy_t *p, uint32_t ms);
 
 
 int tst_reconnect_policy_set_backoff_exponential_ms(struct tst_reconnect_policy_t *p,
                                                     uint32_t base_ms,
                                                     uint32_t max_ms);
 
- int tst_reconnect_policy_set_gap_buffer_capacity(struct tst_reconnect_policy_t *p, size_t n);
+int tst_reconnect_policy_set_gap_buffer_capacity(struct tst_reconnect_policy_t *p, size_t n);
 
 /**
  * Set max reconnect attempts. `n < 0` means retry forever.
  */
- int tst_reconnect_policy_set_max_attempts(struct tst_reconnect_policy_t *p, int32_t n);
+int tst_reconnect_policy_set_max_attempts(struct tst_reconnect_policy_t *p, int32_t n);
 
 
 int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,

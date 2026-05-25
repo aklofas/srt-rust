@@ -214,9 +214,14 @@ fn add_section_dividers(header_path: &std::path::Path) {
             // Flush any buffered doc/attr lines plus this declaration line
             // (and any continuation lines until the `;` terminator) as one
             // chunk classified by `sym`.
+            //
+            // cbindgen 0.29.x emits single-line declarations with one
+            // leading space (e.g. ` int tst_foo(void);`) while multi-line
+            // declarations are emitted at column 0. Strip the single
+            // leading space here so all declarations start at column 0.
             let section = classify_symbol(sym, sections);
             let mut chunk = std::mem::take(&mut pending);
-            chunk.push_str(line);
+            chunk.push_str(line.strip_prefix(' ').unwrap_or(line));
             chunk.push('\n');
             // Absorb continuation lines for multi-line declarations.
             while !lines[i].trim_end().ends_with(';') {

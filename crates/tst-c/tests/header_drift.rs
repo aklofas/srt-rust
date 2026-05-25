@@ -51,6 +51,11 @@ fn committed_header_matches_cbindgen_output() {
 /// duplicate the small helper logic rather than depending on a shared
 /// module — build.rs runs before the crate compiles, so it can't import
 /// from a `tst_c::` path.
+///
+/// The `strip_prefix(' ')` call below mirrors the leading-space strip
+/// added to build.rs in Audit-2 Task 11 — cbindgen 0.29.x emits
+/// single-line declarations with one leading space; we strip it here
+/// so the test compares the same normalised form that build.rs produces.
 fn add_section_dividers(original: &str) -> String {
     let sections: &[(&[&str], &str)] = &[
         (
@@ -120,7 +125,9 @@ fn add_section_dividers(original: &str) -> String {
             }
             let section = classify_symbol(sym, sections);
             let mut chunk = std::mem::take(&mut pending);
-            chunk.push_str(line);
+            // Strip one leading space — cbindgen 0.29.x emits single-line
+            // declarations with a leading space; build.rs normalises them.
+            chunk.push_str(line.strip_prefix(' ').unwrap_or(line));
             chunk.push('\n');
             // Absorb continuation lines for multi-line declarations.
             while !lines[i].trim_end().ends_with(';') {

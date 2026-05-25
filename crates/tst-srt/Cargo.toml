@@ -22,7 +22,6 @@ libc          = { workspace = true }
 os_socketaddr = { workspace = true }
 thiserror     = { workspace = true }
 secrecy       = { workspace = true }
-url          = "2"
 # Single facade for diagnostics workspace-wide. The libsrt log handler
 # installed in `init.rs` forwards libsrt syslog levels into tracing
 # events with target="srt"; consumers wire one `tracing-subscriber`.

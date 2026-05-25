@@ -361,6 +361,7 @@ class DemuxEvent:
     Audio: ClassVar[type["_AudioEvent"]]
     Subtitle: ClassVar[type["_SubtitleEvent"]]
     Klv: ClassVar[type["_KlvEvent"]]
+    UnknownSample: ClassVar[type["_UnknownSampleEvent"]]
     Discontinuity: ClassVar[type["_DiscontinuityEvent"]]
     NonConformant: ClassVar[type["_NonConformantEvent"]]
     ReconnectDiscontinuity: ClassVar[type["_ReconnectDiscontinuityEvent"]]
@@ -428,6 +429,24 @@ class _KlvEvent(DemuxEvent):
 
 
 @dataclass(frozen=True, slots=True)
+class _UnknownSampleEvent(DemuxEvent):
+    """Sample on a PID whose stream_type the demuxer does not classify
+    as Video / Audio / Subtitle / KLV. The raw stream_type byte (per
+    PMT) and the unparsed PES payload are preserved verbatim so callers
+    can archive, forward, or post-process.
+
+    Audit-2 finding #1 — prior versions collapsed unknown samples into
+    a NonConformant diagnostic and discarded the payload bytes.
+    """
+
+    stream: StreamId
+    pts: Pts90khz
+    dts: Optional[Pts90khz]
+    stream_type: int  # raw PMT byte, 0..=255
+    payload: bytes
+
+
+@dataclass(frozen=True, slots=True)
 class _DiscontinuityEvent(DemuxEvent):
     stream: StreamId
     kind: DiscontinuityKindTag
@@ -466,6 +485,7 @@ DemuxEvent.Video = _VideoEvent
 DemuxEvent.Audio = _AudioEvent
 DemuxEvent.Subtitle = _SubtitleEvent
 DemuxEvent.Klv = _KlvEvent
+DemuxEvent.UnknownSample = _UnknownSampleEvent
 DemuxEvent.Discontinuity = _DiscontinuityEvent
 DemuxEvent.NonConformant = _NonConformantEvent
 DemuxEvent.ReconnectDiscontinuity = _ReconnectDiscontinuityEvent

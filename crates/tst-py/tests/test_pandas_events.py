@@ -44,6 +44,7 @@ from tstrans.mpegts import (  # noqa: E402
     _KlvEvent,
     _NonConformantEvent,
     _ReconnectDiscontinuityEvent,
+    _UnknownSampleEvent,
 )
 from tstrans.pandas import events_to_dataframe  # noqa: E402
 
@@ -190,3 +191,28 @@ def test_events_to_dataframe_discontinuity_has_kind_only():
     # issue and issue_kind must both be None — DiscontinuityKindTag is NOT an "issue"
     assert pd.isna(row["issue"]) or row["issue"] is None
     assert pd.isna(row["issue_kind"]) or row["issue_kind"] is None
+
+
+def test_events_to_dataframe_unknown_sample_row_shape():
+    """Audit-2 #1 — UnknownSample rows must carry kind='unknown_sample',
+    pid, raw stream_type int, and payload_len."""
+    sid = StreamId(
+        pid=0x101,
+        kind=StreamKindTag.UNKNOWN,
+        codec=None,
+        program_number=1,
+    )
+    ev = _UnknownSampleEvent(
+        stream=sid,
+        pts=Pts90khz(raw=0),
+        dts=None,
+        stream_type=0x7F,
+        payload=b"hello-private-payload",
+    )
+    df = events_to_dataframe([ev])
+    assert len(df) == 1
+    row = df.iloc[0]
+    assert row["kind"] == "unknown_sample"
+    assert row["pid"] == 0x101
+    assert row["stream_type"] == 0x7F
+    assert row["payload_len"] == len(b"hello-private-payload")

@@ -603,26 +603,17 @@ fn convert_sample_event(
             kwargs.set_item("payload", PyBytes::new_bound(py, payload))?;
             Ok(cls.call((), Some(&kwargs))?.into())
         }
-        SamplePayload::Unknown {
-            stream_type: _,
-            raw,
-        } => {
-            // No typed Video/Audio/Subtitle subclass fits; surface as
-            // NonConformant with an OTHER kind. Phase 5 (codec wrap)
-            // may add typed Unknown support if needed.
-            let nc_cls = de.getattr(intern!(py, "NonConformant"))?;
-            let kind_enum = mpegts.getattr(intern!(py, "NonConformantKind"))?;
+        SamplePayload::Unknown { stream_type, raw } => {
+            // Audit-2 #1: preserve raw bytes + stream_type instead of
+            // collapsing to a NonConformant diagnostic.
+            let cls = de.getattr(intern!(py, "UnknownSample"))?;
             let kwargs = PyDict::new_bound(py);
             kwargs.set_item("stream", stream_py)?;
-            kwargs.set_item(
-                "issue",
-                format!(
-                    "unknown stream_type sample (len={}) — Phase 5 codec wrap will add typed support",
-                    raw.len()
-                ),
-            )?;
-            kwargs.set_item("kind", kind_enum.getattr(intern!(py, "OTHER"))?)?;
-            Ok(nc_cls.call((), Some(&kwargs))?.into())
+            kwargs.set_item("pts", pts_py)?;
+            kwargs.set_item("dts", dts_py)?;
+            kwargs.set_item("stream_type", stream_type.as_byte())?;
+            kwargs.set_item("payload", PyBytes::new_bound(py, raw))?;
+            Ok(cls.call((), Some(&kwargs))?.into())
         }
     }
 }

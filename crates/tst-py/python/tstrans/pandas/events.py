@@ -69,6 +69,7 @@ def _event_to_row(event: Any) -> dict:
         "AudioEvent": "Sample",
         "SubtitleEvent": "Sample",
         "KlvEvent": "Metadata",
+        "UnknownSampleEvent": "unknown_sample",
         "ProgramMapEvent": "ProgramMap",
         "NonConformantEvent": "NonConformant",
         "DiscontinuityEvent": "Discontinuity",
@@ -113,6 +114,12 @@ def _event_to_row(event: Any) -> dict:
             row["codec"] = (
                 codec if isinstance(codec, str) else getattr(codec, "name", None)
             )
+
+    # UnknownSampleEvent carries a raw stream_type int (the PMT byte) —
+    # override the string derived from stream.kind above.
+    raw_stream_type = getattr(event, "stream_type", None)
+    if raw_stream_type is not None and isinstance(raw_stream_type, int):
+        row["stream_type"] = raw_stream_type
 
     # Payload (typed list for Video/Audio when codec parsed; bytes for KLV,
     # subtitle, and audio when codec_parse_error fell back).

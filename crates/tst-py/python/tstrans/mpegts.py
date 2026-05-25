@@ -752,28 +752,38 @@ class MuxerFileSink:
         return self._proxy
 
     def __exit__(self, exc_type, exc, tb) -> None:
-        # Drain whatever the Muxer still has pending BEFORE closing,
-        # so callers get a complete TS file even when the `with` body
-        # didn't manually drain after its last push. Wrapped in
-        # try/finally so a drain failure still closes the file.
+        # Audit-2 #2: drive cleanup with one outer try/finally so that
+        # even if drain/close raises, the atomic-mode .partial file is
+        # always removed (or replaced on success). Do not suppress the
+        # caller's exception.
+        drain_or_close_failed = False
         try:
-            _drain_muxer_to_file(self._muxer, self._fh)
-        finally:
-            self._fh.close()
-
-        if self._atomic:
-            if exc_type is None:
-                # Atomic on POSIX (rename within filesystem); atomic
-                # on Windows (Python 3.3+ `os.replace` overwrites).
-                os.replace(self._tmp_path, self._path)
-            else:
-                # Exception path: discard partial output. Suppress
-                # FileNotFoundError in case something else removed it.
+            try:
+                _drain_muxer_to_file(self._muxer, self._fh)
+            finally:
+                # Always close, even if drain raised. Both exceptions
+                # propagate at the end; close-time exception chains onto
+                # the drain-time one via Python's implicit __context__.
+                self._fh.close()
+        except BaseException:
+            drain_or_close_failed = True
+            if self._atomic:
                 try:
                     os.unlink(self._tmp_path)
                 except FileNotFoundError:
                     pass
-        # Return None — never suppress the user's exception.
+            raise
+        finally:
+            # Only on the success path: promote .partial → final dest.
+            if self._atomic and exc_type is None and not drain_or_close_failed:
+                os.replace(self._tmp_path, self._path)
+            elif self._atomic and exc_type is not None and not drain_or_close_failed:
+                # User-body exception (drain succeeded): discard partial.
+                try:
+                    os.unlink(self._tmp_path)
+                except FileNotFoundError:
+                    pass
+        # Returning None — never suppress.
 
 
 def _muxer_write_file(self, path, *, atomic: bool = False) -> MuxerFileSink:

@@ -2,6 +2,7 @@
 
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -166,3 +167,69 @@ def test_atomic_kwarg_default_is_false(tmp_path):
             proxy.push_video(_nal_aud(), pts=Pts90khz.from_raw(900_000))
             raise _MyTestError()
     assert path.exists()
+
+
+# Audit-2 #2 — atomic-mode drain/close failures must still clean up
+# the .partial tempfile so it doesn't persist on the filesystem.
+
+
+def test_atomic_sink_cleans_partial_when_drain_raises(tmp_path: Path) -> None:
+    """Audit-2 #2 — if _drain_muxer_to_file raises during __exit__, the
+    .partial tempfile must still be removed in atomic mode."""
+    from tstrans.mpegts import _drain_muxer_to_file  # noqa: F401 (import path check)
+    m = Muxer(_cfg())
+    boom = RuntimeError("drain failed")
+
+    with patch("tstrans.mpegts._drain_muxer_to_file", side_effect=boom):
+        with pytest.raises(RuntimeError, match="drain failed"):
+            with m.write_file(tmp_path / "out.ts", atomic=True):
+                pass
+
+    # No .partial file should remain in tmp_path.
+    leftovers = sorted(p.name for p in tmp_path.iterdir())
+    assert leftovers == [], f"expected empty tmp_path, got {leftovers!r}"
+    assert not (tmp_path / "out.ts").exists(), "destination must not appear on failure"
+
+
+def test_atomic_sink_cleans_partial_when_close_raises(tmp_path: Path) -> None:
+    """Audit-2 #2 — if the underlying file.close() raises, .partial must
+    still be removed."""
+    dest = tmp_path / "out.ts"
+    m = Muxer(_cfg())
+
+    class _FailingClose:
+        def __init__(self, inner):
+            self.inner = inner
+
+        def write(self, b):
+            return self.inner.write(b)
+
+        def close(self):
+            raise OSError("close failed")
+
+        @property
+        def name(self):
+            return self.inner.name
+
+    real_ntf = __import__("tempfile").NamedTemporaryFile
+
+    def _wrapper(*a, **kw):
+        return _FailingClose(real_ntf(*a, **kw))
+
+    with patch("tempfile.NamedTemporaryFile", side_effect=_wrapper):
+        with pytest.raises(OSError, match="close failed"):
+            with m.write_file(dest, atomic=True):
+                pass
+
+    leftovers = sorted(p.name for p in tmp_path.iterdir())
+    assert leftovers == [], f"expected empty tmp_path, got {leftovers!r}"
+
+
+def test_atomic_sink_user_exception_still_cleans_partial(tmp_path: Path) -> None:
+    """Existing case (sanity) — user exception in the `with` body still
+    triggers .partial cleanup. Kept explicit for the new __exit__ structure."""
+    m = Muxer(_cfg())
+    with pytest.raises(ValueError):
+        with m.write_file(tmp_path / "out.ts", atomic=True):
+            raise ValueError("user error")
+    assert sorted(p.name for p in tmp_path.iterdir()) == []

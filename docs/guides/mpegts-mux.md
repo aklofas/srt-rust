@@ -1,19 +1,29 @@
 # MPEG-TS Muxer Guide
 
+
+> **Who this is for:** You're building the sender side — combining encoded video / audio / KLV / subtitles into an MPEG-TS byte stream that conforms to STANAG 4609 / MISB ST 1402.
+
+> **You will learn:**
+> - How `MuxerConfig` declares programs, streams, and PIDs
+> - How to push video access units (`push_video`), audio frames (`push_audio`), KLV (`push_klv`), subtitles (`push_subtitle*`)
+> - PCR/DTS/PTS timing — what you supply vs what the muxer computes
+> - The default PIDs and how to override them
+> - How `MuxSender<T>` composes the muxer with a `Transport`
+> - When to use the multi-program API for EO + IR + KLV streams
+
 ## Introduction
 
-This guide covers `tst_core::mpegts::mux` — the sender-side MPEG-TS
-muxer. `Muxer` builds PES packets from encoded video, KLV metadata,
-audio, and subtitle/caption payloads, fragments them into 188-byte
-TS packets, and emits PAT, PMT (with the appropriate registration /
-metadata / language / subtitling descriptors per stream), PCR, and
-PTS at configured cadences. Each `push_video` / `push_klv` /
-`push_audio` / `push_subtitle` call corresponds to one PES packet —
-the PES boundary is the AU boundary for video and the
-metadata-record boundary for KLV. Output is deterministic: a
-function of inputs only, with no wall-clock dependency, so the same
-input sequence produces the same output bytes regardless of how the
-caller paces its calls.
+When you have encoded video, KLV metadata, audio, and subtitles and need to
+combine them into an MPEG-TS stream that conforms to STANAG 4609 / MISB
+ST 1402, `tst_core::mpegts::mux` is the engine. `Muxer` builds PES packets
+from the payloads you push, fragments them into 188-byte TS packets, and emits
+PAT, PMT (with the appropriate registration / metadata / language /
+subtitling descriptors per stream), PCR, and PTS at configured cadences. Each
+`push_video` / `push_klv` / `push_audio` / `push_subtitle` call corresponds to
+one PES packet — the PES boundary is the AU boundary for video and the
+metadata-record boundary for KLV. Output is deterministic: a function of
+inputs only, with no wall-clock dependency, so the same input sequence
+produces the same output bytes regardless of how the caller paces its calls.
 
 This is the sender-side guide. The symmetric receiver-side guide is
 [guide-mpegts-demux.md](/docs/guides/mpegts-demux.md) — `mpegts::demux` ships
@@ -879,15 +889,21 @@ shape used for video / KLV / audio.
 
 Three runnable examples cover the muxer's surface:
 
-- [../examples/muxing/mux_to_file.rs](../examples/muxing/mux_to_file.rs)
+- `cargo run -p tst-examples --example mux_to_file` — [examples/muxing/mux_to_file.rs](/examples/muxing/mux_to_file.rs)
   — H.264 + async KLV via `MuxerConfig::default()`, writes a `.ts` file.
-- [../examples/muxing/mux_h265_with_klv.rs](../examples/muxing/mux_h265_with_klv.rs)
+- `cargo run -p tst-examples --example mux_h265_with_klv` — [examples/muxing/mux_h265_with_klv.rs](/examples/muxing/mux_h265_with_klv.rs)
   — H.265 + sync KLV via the field-update form, illustrating the
   diff against the H.264 default.
-- [../examples/sending/pipeline_send_to_socket.rs](../examples/sending/pipeline_send_to_socket.rs)
+- `cargo run -p tst-examples --example pipeline_send_to_socket` — [examples/sending/pipeline_send_to_socket.rs](/examples/sending/pipeline_send_to_socket.rs)
   — the muxer composed inside `pipeline::MuxSender` and connected to an
   SRT socket. See [guide-pipeline.md](/docs/guides/pipeline.md) for the
   sender-shell layer.
+
+## See also
+
+- [guides/klv.md](/docs/guides/klv.md) — encoding the KLV bytes you pass to `push_klv`.
+- [guides/pipeline.md](/docs/guides/pipeline.md) — `MuxSender<T>` and the other pipeline shells.
+- [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — the symmetric receiver-side guide.
 
 ## What's deferred
 

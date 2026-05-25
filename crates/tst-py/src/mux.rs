@@ -285,9 +285,10 @@ impl PySubtitleStreamHandle {
 // `SubtitleCodec` is a struct-variant enum (DvbSubtitling carries
 // language + page IDs, etc.). Task 4 supports the unit-variant
 // converters; the mux-side `SubtitleCodec → Python` rendering uses the
-// flat Python `SubtitleCodec` enum (variant tag only). Construction
-// of mux-side subtitles from Python is deferred to a future task when
-// the Python `SubtitleCodec` enum gains structured payloads.
+// flat Python `SubtitleCodec` enum (variant tag only) for the streams
+// listing. Construction of mux-side subtitles from Python uses the
+// `SubtitleCodecConfig` dataclass family in `tstrans.mpegts` and the
+// `py_subtitle_codec` converter below (closeout audit finding 3).
 
 /// Translate a Python `VideoCodec` enum to the mux-side Rust variant.
 fn py_video_codec(v: &Bound<'_, PyAny>) -> PyResult<RustVideoCodec> {
@@ -359,6 +360,73 @@ fn subtitle_codec_to_py<'py>(
         RustSubtitleCodec::WebVttInTs => "WEBVTT_IN_TS",
     };
     cls.getattr(name)
+}
+
+/// Translate a Python `SubtitleCodecConfig` instance (one of
+/// `DvbSubtitlingConfig` / `DvbTeletextConfig` / `Cea708StandaloneConfig` /
+/// `WebVttInTsConfig` from `tstrans.mpegts`) to the Rust
+/// struct-variant `SubtitleCodec`.
+///
+/// Dispatches on the Python class name (`type(v).__name__`) rather than
+/// importing each class via `isinstance` — same approach as the existing
+/// enum converters. Per-field range validation is enforced by the
+/// dataclass `__post_init__` on the Python side; this converter only
+/// extracts already-validated values.
+fn py_subtitle_codec(v: &Bound<'_, PyAny>) -> PyResult<RustSubtitleCodec> {
+    let py = v.py();
+    let cls_name: String = v.get_type().getattr(intern!(py, "__name__"))?.extract()?;
+    match cls_name.as_str() {
+        "DvbSubtitlingConfig" => {
+            let language_bytes: &[u8] =
+                &v.getattr(intern!(py, "language"))?.extract::<Vec<u8>>()?;
+            if language_bytes.len() != 3 {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "DvbSubtitlingConfig.language must be 3 bytes; got {}",
+                    language_bytes.len()
+                )));
+            }
+            let mut language = [0u8; 3];
+            language.copy_from_slice(language_bytes);
+            let subtitling_type: u8 = v.getattr(intern!(py, "subtitling_type"))?.extract()?;
+            let composition_page_id: u16 =
+                v.getattr(intern!(py, "composition_page_id"))?.extract()?;
+            let ancillary_page_id: u16 = v.getattr(intern!(py, "ancillary_page_id"))?.extract()?;
+            Ok(RustSubtitleCodec::DvbSubtitling {
+                language,
+                subtitling_type,
+                composition_page_id,
+                ancillary_page_id,
+            })
+        }
+        "DvbTeletextConfig" => {
+            let language_bytes: &[u8] =
+                &v.getattr(intern!(py, "language"))?.extract::<Vec<u8>>()?;
+            if language_bytes.len() != 3 {
+                return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                    "DvbTeletextConfig.language must be 3 bytes; got {}",
+                    language_bytes.len()
+                )));
+            }
+            let mut language = [0u8; 3];
+            language.copy_from_slice(language_bytes);
+            let teletext_type: u8 = v.getattr(intern!(py, "teletext_type"))?.extract()?;
+            let magazine_number: u8 = v.getattr(intern!(py, "magazine_number"))?.extract()?;
+            let page_number: u8 = v.getattr(intern!(py, "page_number"))?.extract()?;
+            Ok(RustSubtitleCodec::DvbTeletext {
+                language,
+                teletext_type,
+                magazine_number,
+                page_number,
+            })
+        }
+        "Cea708StandaloneConfig" => Ok(RustSubtitleCodec::Cea708Standalone),
+        "WebVttInTsConfig" => Ok(RustSubtitleCodec::WebVttInTs),
+        other => Err(pyo3::exceptions::PyTypeError::new_err(format!(
+            "expected one of (DvbSubtitlingConfig, DvbTeletextConfig, \
+             Cea708StandaloneConfig, WebVttInTsConfig) from tstrans.mpegts; \
+             got {other}"
+        ))),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -553,6 +621,27 @@ impl PyMuxerProgramConfigBuilder {
         let rust_codec = py_audio_codec(codec)?;
         slf.get_mut()?
             .add_audio_with_language(pid, rust_codec, lang);
+        Ok(slf)
+    }
+
+    /// Append a subtitle / caption elementary stream to this program.
+    ///
+    /// `codec_config` must be one of the `SubtitleCodecConfig` dataclasses
+    /// from `tstrans.mpegts`: `DvbSubtitlingConfig`, `DvbTeletextConfig`,
+    /// `Cea708StandaloneConfig`, or `WebVttInTsConfig`. The Python
+    /// dataclass carries the per-codec parameters (language, page IDs,
+    /// etc.) — see each class's docstring for the field ranges.
+    ///
+    /// Returns `self` for fluent chaining. Mirrors Rust
+    /// `MuxerProgramConfigBuilder::add_subtitle` (closeout audit
+    /// finding 3 — the previously-deferred construction surface).
+    pub fn add_subtitle<'py>(
+        mut slf: PyRefMut<'py, Self>,
+        pid: u16,
+        codec_config: &Bound<'_, PyAny>,
+    ) -> PyResult<PyRefMut<'py, Self>> {
+        let rust_codec = py_subtitle_codec(codec_config)?;
+        slf.get_mut()?.add_subtitle(pid, rust_codec);
         Ok(slf)
     }
 
@@ -1127,50 +1216,59 @@ impl PyMuxer {
     }
 
     /// Push one subtitle payload onto the lone configured subtitle
-    /// stream. Argument order follows the Rust API: `(pts, payload)`.
+    /// stream. Argument order follows the Rust API: `(payload, *, pts)`.
     ///
-    /// Note: subtitle stream construction from Python is not currently
-    /// supported — `MuxerProgramConfigBuilder` does not expose an
-    /// `add_subtitle` method because the Rust mux-side `SubtitleCodec`
-    /// is a struct-variant enum (language, page IDs, ...) that the flat
-    /// Python `SubtitleCodec` enum doesn't yet model. See
-    /// `docs/deferred-features.md` for the trigger to revisit. This
-    /// method remains wired so it works once that gap closes.
+    /// `pts` is keyword-only — pass as `pts=...` (audit #9 normalization
+    /// across all `push_*` methods).
+    ///
+    /// Construct a configured subtitle stream via
+    /// `MuxerProgramConfigBuilder.add_subtitle(pid, codec_config)`,
+    /// passing one of the `SubtitleCodecConfig` dataclasses
+    /// (`DvbSubtitlingConfig`, `DvbTeletextConfig`,
+    /// `Cea708StandaloneConfig`, `WebVttInTsConfig`) from
+    /// `tstrans.mpegts`.
     ///
     /// Raises `MuxError(INVALID_USAGE)` if zero or more than one
     /// subtitle stream is configured; `MuxError(INPUT_MALFORMED)` for
     /// oversized payloads; `MuxError(BACKPRESSURE)` on a full queue.
+    #[pyo3(signature = (payload, *, pts))]
     pub fn push_subtitle(
         &mut self,
         py: Python<'_>,
-        pts: &Bound<'_, PyAny>,
         payload: &[u8],
+        pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        self.inner
-            .push_subtitle(rust_pts, payload)
-            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+        // GIL-release rationale (audit #11): see `push_video` — `payload`
+        // borrows from a `Py<PyBytes>` held by the caller's frame.
+        let res = py.allow_threads(|| self.inner.push_subtitle(rust_pts, payload));
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
     /// Push one subtitle payload onto a specific subtitle stream
     /// identified by `handle` (obtained from
-    /// `Muxer.subtitle_handles()` in Task 9). Same gating note as
-    /// [`push_subtitle`][PyMuxer::push_subtitle].
+    /// `Muxer.subtitle_handles()`).
+    ///
+    /// Argument order: `(handle, payload, *, pts)` — `payload` is
+    /// positional (mirrors `push_subtitle(payload, *, pts)`); `pts` is
+    /// keyword-only.
     ///
     /// Raises `MuxError(INVALID_USAGE)` on an out-of-range handle,
     /// `MuxError(INPUT_MALFORMED)` on oversized payload, or
     /// `MuxError(BACKPRESSURE)` on a full queue.
+    #[pyo3(signature = (handle, payload, *, pts))]
     pub fn push_subtitle_to(
         &mut self,
         py: Python<'_>,
         handle: PyRef<'_, PySubtitleStreamHandle>,
-        pts: &Bound<'_, PyAny>,
         payload: &[u8],
+        pts: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         let rust_pts = py_pts90khz(pts)?;
-        self.inner
-            .push_subtitle_to(handle.0, rust_pts, payload)
-            .map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
+        // GIL-release rationale (audit #11): see `push_video`.
+        let handle_inner = handle.0;
+        let res = py.allow_threads(|| self.inner.push_subtitle_to(handle_inner, rust_pts, payload));
+        res.map_err(|e| crate::errors::mux_error_to_pyerr(py, e))
     }
 
     // -----------------------------------------------------------------

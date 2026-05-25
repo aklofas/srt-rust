@@ -73,6 +73,7 @@ from tstrans.mpegts import (
     MuxerProgramConfigBuilder,
     Pts90khz,
     VideoCodec,
+    WebVttInTsConfig,
 )
 
 
@@ -235,6 +236,60 @@ def test_push_video_releases_gil(solo_throughput: float) -> None:
         m.push_video(nal, pts=Pts90khz.from_raw(900_000))
 
     _assert_gil_released(worker, solo_throughput, "push_video")
+
+
+def _muxer_config_video_and_subtitle() -> MuxerConfig:
+    """Single-program muxer with one video + one WebVTT subtitle stream.
+
+    Builder validation requires the program to have a PCR-eligible stream
+    (default is the first video), so the subtitle stream is paired with a
+    video stream the muxer treats as PCR carrier. The video is never
+    pushed in the subtitle GIL test.
+    """
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_subtitle(0x200, WebVttInTsConfig())
+        .build()
+    )
+    return MuxerConfigBuilder().add_program(prog).buffer_packets(1_000_000).build()
+
+
+def _max_subtitle_payload() -> bytes:
+    """Single subtitle payload near the 65 KB PES limit.
+
+    The Rust contract caps `push_subtitle` payload at 65527 bytes (the
+    `PES_packet_length` budget). 60 KB stays comfortably under both
+    DVB-sub (-3 envelope bytes) and DVB-teletext (-69) ceilings.
+    """
+    return b"WEBVTT\n\n" + b"x" * 60_000
+
+
+@pytest.mark.timeout(20)
+def test_push_subtitle_releases_gil(solo_throughput: float) -> None:
+    """Repeated push_subtitle calls (each near the 65 KB PES limit) must
+    let other Python threads run.
+
+    Each call is bounded — the PES_packet_length budget caps the payload
+    at ~65 KB — so a single call is too short to be discriminating
+    (~5ms). The test loops enough calls to cross the 50ms threshold.
+    """
+    m = Muxer(_muxer_config_video_and_subtitle())
+    payload = _max_subtitle_payload()
+
+    # 20 calls × ~5ms ≈ 100ms — comfortably over _MIN_WORKLOAD_MS (50ms).
+    # If the per-call wall clock changes, scale accordingly.
+    n_calls = 20
+
+    with _PyWorker() as worker:
+        for i in range(n_calls):
+            m.push_subtitle(payload, pts=Pts90khz.from_raw(900_000 + i * 90_000))
+            # Drain so buffer_packets doesn't overflow over the loop.
+            buf = bytearray(m.pending_packets() * 188)
+            if m.pending_packets() > 0:
+                m.pull(buf)
+
+    _assert_gil_released(worker, solo_throughput, "push_subtitle")
 
 
 @pytest.mark.timeout(20)

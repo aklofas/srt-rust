@@ -195,6 +195,156 @@ class SubtitleStreamSpec(StreamSpec):
     codec: SubtitleCodec
 
 
+# ---------------------------------------------------------------------------
+# Mux-side subtitle codec config dataclasses
+# ---------------------------------------------------------------------------
+#
+# Rust `tst_core::mpegts::mux::SubtitleCodec` is a struct-variant enum
+# (DvbSubtitling + DvbTeletext carry per-stream params; Cea708Standalone
+# + WebVttInTs are unit variants). The flat Python `SubtitleCodec` enum
+# above is the demuxer-facing discriminator only — it doesn't carry the
+# language / page-id payload the mux-side wants.
+#
+# These dataclasses model the full mux-side construction surface. Pass
+# any of them to `MuxerProgramConfigBuilder.add_subtitle(codec_config)`
+# and the PyO3 bridge translates to the Rust enum.
+#
+# Field naming matches the Rust struct fields exactly (snake_case);
+# DVB language is the ISO 639-2/B 3-letter code as a 3-byte `bytes`
+# value (lowercase ASCII), mirroring `[u8; 3]` on the Rust side.
+# `__post_init__` enforces all wire-spec ranges so misuse fails at
+# construction time, not later inside the muxer.
+
+
+@dataclass(frozen=True, slots=True)
+class DvbSubtitlingConfig:
+    """DVB subtitling (bitmap-shaped). Per ETSI EN 300 468 §6.2.41 +
+    ETSI EN 300 743.
+
+    Fields mirror `tst_core::mpegts::mux::SubtitleCodec::DvbSubtitling`:
+
+    - `language` — 3-byte ISO 639-2/B lowercase ASCII (e.g. `b"eng"`).
+    - `subtitling_type` — ETSI EN 300 468 Table 26 codepoint
+      (u8, 0..=255). Common values: 0x10 (DVB sub, no AR signalling),
+      0x14 (DVB sub for 4:3 aspect-ratio).
+    - `composition_page_id` — u16, 0..=0xFFFF.
+    - `ancillary_page_id` — u16, 0..=0xFFFF.
+    """
+
+    language: bytes
+    subtitling_type: int
+    composition_page_id: int
+    ancillary_page_id: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.language, (bytes, bytearray)) or len(self.language) != 3:
+            raise ValueError(
+                f"language must be 3 bytes (ISO 639-2/B), "
+                f"got {self.language!r}"
+            )
+        if not 0 <= self.subtitling_type <= 0xFF:
+            raise ValueError(
+                f"subtitling_type must fit u8 (0..=255); got {self.subtitling_type}"
+            )
+        if not 0 <= self.composition_page_id <= 0xFFFF:
+            raise ValueError(
+                f"composition_page_id must fit u16 (0..=0xFFFF); "
+                f"got {self.composition_page_id}"
+            )
+        if not 0 <= self.ancillary_page_id <= 0xFFFF:
+            raise ValueError(
+                f"ancillary_page_id must fit u16 (0..=0xFFFF); "
+                f"got {self.ancillary_page_id}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class DvbTeletextConfig:
+    """DVB teletext. Per ETSI EN 300 468 §6.2.43 + ETSI EN 300 706.
+
+    Fields mirror `tst_core::mpegts::mux::SubtitleCodec::DvbTeletext`:
+
+    - `language` — 3-byte ISO 639-2/B lowercase ASCII.
+    - `teletext_type` — 5-bit teletext_type, 0..=31. Common values:
+      0x01 (initial page), 0x02 (subtitle page), 0x05 (programme
+      schedule).
+    - `magazine_number` — 3-bit magazine number, 0..=7. Note: the
+      conventional "magazine 8" wraps to 0 in the 3-bit field.
+    - `page_number` — BCD-encoded page number, 0x00..=0x99. (Each
+      nibble must be 0..=9.)
+    """
+
+    language: bytes
+    teletext_type: int
+    magazine_number: int
+    page_number: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.language, (bytes, bytearray)) or len(self.language) != 3:
+            raise ValueError(
+                f"language must be 3 bytes (ISO 639-2/B), "
+                f"got {self.language!r}"
+            )
+        if not 0 <= self.teletext_type <= 0x1F:
+            raise ValueError(
+                f"teletext_type must fit 5 bits (0..=31); got {self.teletext_type}"
+            )
+        if not 0 <= self.magazine_number <= 7:
+            raise ValueError(
+                f"magazine_number must fit 3 bits (0..=7); "
+                f"got {self.magazine_number}"
+            )
+        if not 0 <= self.page_number <= 0x99:
+            raise ValueError(
+                f"page_number must be BCD-encoded (0x00..=0x99); "
+                f"got {self.page_number:#04x}"
+            )
+        # BCD validity: each nibble must be 0..=9.
+        if (self.page_number & 0x0F) > 9 or ((self.page_number >> 4) & 0x0F) > 9:
+            raise ValueError(
+                f"page_number nibbles must each be 0..=9 (BCD); "
+                f"got {self.page_number:#04x}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class Cea708StandaloneConfig:
+    """CEA-708 caption data carried as a separate elementary stream
+    (rather than embedded in H.264 / H.265 SEI).
+
+    Mirrors unit-variant `tst_core::mpegts::mux::SubtitleCodec::Cea708Standalone`
+    — no fields. The muxer auto-emits a `registration_descriptor` with
+    `format_identifier = "GA94"` (informal industry convention; see the
+    Rust docstring for the spec caveat).
+
+    **Library-internal round-trip only** — external-tool interop has
+    not been empirically verified. See `docs/deferred-features.md`
+    "CEA-708 interop" for status.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class WebVttInTsConfig:
+    """WebVTT cues carried inside MPEG-TS PES.
+
+    Mirrors unit-variant `tst_core::mpegts::mux::SubtitleCodec::WebVttInTs`
+    — no fields. The muxer auto-emits a `registration_descriptor` with
+    `format_identifier = "VTTC"` (ffmpeg `mpegtsenc.c` convention,
+    recognized by hls.js v1.7+ and mediamtx; not a normatively-defined
+    codepoint).
+    """
+
+
+# Discriminated union accepted by `MuxerProgramConfigBuilder.add_subtitle`.
+# PEP 604 union syntax — requires Python 3.10+ (the project floor).
+SubtitleCodecConfig = (
+    DvbSubtitlingConfig
+    | DvbTeletextConfig
+    | Cea708StandaloneConfig
+    | WebVttInTsConfig
+)
+
+
 class StreamKindTag(enum.Enum):
     """Discriminator for `StreamKind`. The actual codec (when applicable)
     lives on the `codec` field of `StreamInfo` / `StreamId`."""
@@ -884,6 +1034,11 @@ __all__: list[str] = [
     "KlvStreamSpec",
     "AudioStreamSpec",
     "SubtitleStreamSpec",
+    "DvbSubtitlingConfig",
+    "DvbTeletextConfig",
+    "Cea708StandaloneConfig",
+    "WebVttInTsConfig",
+    "SubtitleCodecConfig",
     "StreamKindTag",
     "MetadataKindTag",
     "DiscontinuityKindTag",

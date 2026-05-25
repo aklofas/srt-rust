@@ -221,12 +221,360 @@ def test_push_klv_invalid_handle_raises():
     assert ei.value.kind is MuxErrorKind.INVALID_USAGE
 
 
-@pytest.mark.skip(
-    reason="push_subtitle end-to-end requires deeper SubtitleCodec Python "
-    "representation (mux-side codec is struct-variant; Phase 4 follow-up)"
-)
-def test_push_subtitle_works():
-    pass  # placeholder for future deeper subtitle support
+def _subtitle_config(codec_config) -> MuxerConfig:
+    """Single-program muxer with one video + one subtitle stream.
+
+    Pair the subtitle stream with a video stream because the muxer's
+    PCR pid defaults to the first video — without one, builder validation
+    would surface a config error.
+    """
+    prog = (
+        MuxerProgramConfigBuilder(1, 0x100)
+        .add_video(0x101, VideoCodec.H264)
+        .add_subtitle(0x200, codec_config)
+        .build()
+    )
+    return MuxerConfigBuilder().add_program(prog).build()
+
+
+def test_push_subtitle_works_webvtt_round_trip():
+    """End-to-end: build a WebVTT-in-TS subtitle stream, push a cue,
+    pull TS bytes, demux, assert payload + spec match."""
+    from tstrans.mpegts import (
+        Demuxer,
+        DemuxerConfig,
+        DemuxEvent,
+        StreamKindTag,
+        SubtitleCodec as SubtitleCodecEnum,
+        WebVttInTsConfig,
+    )
+
+    cfg = _subtitle_config(WebVttInTsConfig())
+    m = Muxer(cfg)
+
+    # Sanity: builder produced a subtitle stream the muxer recognizes.
+    assert m.stats().subtitle_streams_configured == 1
+    assert len(m.subtitle_handles()) == 1
+
+    cue = b"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhello\n"
+    m.push_subtitle(cue, pts=Pts90khz.from_raw(900_000))
+    assert m.pending_packets() > 0
+
+    # Drain all TS bytes (PAT + PMT + subtitle PES).
+    buf = bytearray(m.pending_packets() * 188)
+    n = m.pull(buf)
+    assert n > 0
+    assert n % 188 == 0
+    ts_bytes = bytes(buf[:n])
+
+    # Demux and find the subtitle event.
+    d = Demuxer(DemuxerConfig())
+    d.feed(ts_bytes)
+    d.flush()
+    events = list(d)
+
+    # PMT should advertise the WebVtt subtitle stream.
+    pmts = [e for e in events if isinstance(e, DemuxEvent.ProgramMap)]
+    assert pmts, "expected at least one ProgramMap event"
+    subtitle_streams = [
+        s
+        for s in pmts[-1].programs[0].streams
+        if s.kind is StreamKindTag.SUBTITLE
+    ]
+    assert len(subtitle_streams) == 1, f"got {subtitle_streams}"
+    assert subtitle_streams[0].codec is SubtitleCodecEnum.WEBVTT_IN_TS
+    assert subtitle_streams[0].pid == 0x200
+
+    # Subtitle event payload round-trips byte-for-byte.
+    sub_events = [e for e in events if isinstance(e, DemuxEvent.Subtitle)]
+    assert sub_events, "expected at least one Subtitle event"
+    assert sub_events[0].payload == cue
+
+
+def test_push_subtitle_works_dvb_subtitling_round_trip():
+    """DVB subtitling — exercises the struct-variant config path with
+    full language + page-id parameters."""
+    from tstrans.mpegts import (
+        Demuxer,
+        DemuxerConfig,
+        DemuxEvent,
+        DvbSubtitlingConfig,
+        StreamKindTag,
+        SubtitleCodec as SubtitleCodecEnum,
+    )
+
+    cfg = _subtitle_config(
+        DvbSubtitlingConfig(
+            language=b"eng",
+            subtitling_type=0x10,
+            composition_page_id=0x1234,
+            ancillary_page_id=0x5678,
+        )
+    )
+    m = Muxer(cfg)
+    assert m.stats().subtitle_streams_configured == 1
+
+    # 3-byte DVB sub data: data_identifier=0x20, subtitle_stream_id=0x00,
+    # end_of_PES_data_field_marker=0xFF. The muxer auto-wraps the PES
+    # envelope per ETSI EN 300 743 §6.2, so callers pass raw segments.
+    payload = b"\x42\x42\x42"
+    m.push_subtitle(payload, pts=Pts90khz.from_raw(900_000))
+    assert m.pending_packets() > 0
+
+    buf = bytearray(m.pending_packets() * 188)
+    n = m.pull(buf)
+    ts_bytes = bytes(buf[:n])
+
+    d = Demuxer(DemuxerConfig())
+    d.feed(ts_bytes)
+    d.flush()
+    events = list(d)
+
+    pmts = [e for e in events if isinstance(e, DemuxEvent.ProgramMap)]
+    assert pmts
+    subtitle_streams = [
+        s
+        for s in pmts[-1].programs[0].streams
+        if s.kind is StreamKindTag.SUBTITLE
+    ]
+    # The demuxer collapses struct-variant subtitle codecs to the flat
+    # enum tag — the per-stream descriptor bytes carry the language /
+    # page IDs (not surfaced via this Python `StreamInfo` listing).
+    assert len(subtitle_streams) == 1
+    assert subtitle_streams[0].codec is SubtitleCodecEnum.DVB_SUBTITLING
+    assert subtitle_streams[0].pid == 0x200
+
+
+def test_push_subtitle_works_dvb_teletext_round_trip():
+    """DVB teletext — exercises the second struct-variant config path."""
+    from tstrans.mpegts import (
+        Demuxer,
+        DemuxerConfig,
+        DemuxEvent,
+        DvbTeletextConfig,
+        StreamKindTag,
+        SubtitleCodec as SubtitleCodecEnum,
+    )
+
+    cfg = _subtitle_config(
+        DvbTeletextConfig(
+            language=b"eng",
+            teletext_type=0x02,  # subtitle page
+            magazine_number=1,
+            page_number=0x88,
+        )
+    )
+    m = Muxer(cfg)
+    assert m.stats().subtitle_streams_configured == 1
+
+    # 1-byte data identifier (per ETSI EN 300 472 §4.1).
+    payload = b"\x10"
+    m.push_subtitle(payload, pts=Pts90khz.from_raw(900_000))
+    assert m.pending_packets() > 0
+
+    buf = bytearray(m.pending_packets() * 188)
+    n = m.pull(buf)
+    ts_bytes = bytes(buf[:n])
+
+    d = Demuxer(DemuxerConfig())
+    d.feed(ts_bytes)
+    d.flush()
+    events = list(d)
+
+    pmts = [e for e in events if isinstance(e, DemuxEvent.ProgramMap)]
+    assert pmts
+    subtitle_streams = [
+        s
+        for s in pmts[-1].programs[0].streams
+        if s.kind is StreamKindTag.SUBTITLE
+    ]
+    assert len(subtitle_streams) == 1
+    assert subtitle_streams[0].codec is SubtitleCodecEnum.DVB_TELETEXT
+    assert subtitle_streams[0].pid == 0x200
+
+
+def test_push_subtitle_works_cea708_standalone_round_trip():
+    """CEA-708 standalone — exercises the second unit-variant config."""
+    from tstrans.mpegts import (
+        Cea708StandaloneConfig,
+        Demuxer,
+        DemuxerConfig,
+        DemuxEvent,
+        StreamKindTag,
+        SubtitleCodec as SubtitleCodecEnum,
+    )
+
+    cfg = _subtitle_config(Cea708StandaloneConfig())
+    m = Muxer(cfg)
+    assert m.stats().subtitle_streams_configured == 1
+
+    payload = b"\xFF\xFF\xFF"
+    m.push_subtitle(payload, pts=Pts90khz.from_raw(900_000))
+    assert m.pending_packets() > 0
+
+    buf = bytearray(m.pending_packets() * 188)
+    n = m.pull(buf)
+    ts_bytes = bytes(buf[:n])
+
+    d = Demuxer(DemuxerConfig())
+    d.feed(ts_bytes)
+    d.flush()
+    events = list(d)
+
+    pmts = [e for e in events if isinstance(e, DemuxEvent.ProgramMap)]
+    assert pmts
+    subtitle_streams = [
+        s
+        for s in pmts[-1].programs[0].streams
+        if s.kind is StreamKindTag.SUBTITLE
+    ]
+    assert len(subtitle_streams) == 1
+    assert subtitle_streams[0].codec is SubtitleCodecEnum.CEA708_STANDALONE
+    assert subtitle_streams[0].pid == 0x200
+
+
+def test_push_subtitle_to_handle_form_works():
+    """Handle-form push works after `add_subtitle` plumbing."""
+    from tstrans.mpegts import SubtitleStreamHandle, WebVttInTsConfig
+
+    cfg = _subtitle_config(WebVttInTsConfig())
+    m = Muxer(cfg)
+    handles = m.subtitle_handles()
+    assert len(handles) == 1
+    assert isinstance(handles[0], SubtitleStreamHandle)
+
+    m.push_subtitle_to(
+        handles[0],
+        b"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nhi\n",
+        pts=Pts90khz.from_raw(900_000),
+    )
+    assert m.pending_packets() > 0
+
+
+def test_push_subtitle_to_invalid_handle_raises():
+    """Out-of-range handle surfaces as INVALID_USAGE via the
+    MuxSenderErrorKind classifier."""
+    from tstrans.mpegts import SubtitleStreamHandle, WebVttInTsConfig
+
+    cfg = _subtitle_config(WebVttInTsConfig())
+    m = Muxer(cfg)
+    bogus = SubtitleStreamHandle.from_raw((255 << 16) | 255)
+    with pytest.raises(MuxError) as ei:
+        m.push_subtitle_to(
+            bogus,
+            b"WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nx\n",
+            pts=Pts90khz.from_raw(900_000),
+        )
+    assert ei.value.kind is MuxErrorKind.INVALID_USAGE
+
+
+# ---------------------------------------------------------------------------
+# Subtitle codec config dataclass validation (__post_init__ guards)
+# ---------------------------------------------------------------------------
+
+
+def test_dvb_subtitling_config_rejects_out_of_range_page_ids():
+    """Page IDs are u16; values >= 0x10000 must be rejected at
+    construction (not later inside the muxer)."""
+    from tstrans.mpegts import DvbSubtitlingConfig
+
+    with pytest.raises(ValueError, match="composition_page_id"):
+        DvbSubtitlingConfig(
+            language=b"eng",
+            subtitling_type=0x10,
+            composition_page_id=0x10000,  # one over u16
+            ancillary_page_id=0,
+        )
+
+    with pytest.raises(ValueError, match="ancillary_page_id"):
+        DvbSubtitlingConfig(
+            language=b"eng",
+            subtitling_type=0x10,
+            composition_page_id=0,
+            ancillary_page_id=0x10000,
+        )
+
+
+def test_dvb_subtitling_config_rejects_wrong_language_length():
+    from tstrans.mpegts import DvbSubtitlingConfig
+
+    with pytest.raises(ValueError, match="language"):
+        DvbSubtitlingConfig(
+            language=b"en",  # 2 bytes — should be 3
+            subtitling_type=0x10,
+            composition_page_id=0,
+            ancillary_page_id=0,
+        )
+
+
+def test_dvb_subtitling_config_rejects_subtitling_type_out_of_u8():
+    from tstrans.mpegts import DvbSubtitlingConfig
+
+    with pytest.raises(ValueError, match="subtitling_type"):
+        DvbSubtitlingConfig(
+            language=b"eng",
+            subtitling_type=256,  # one over u8
+            composition_page_id=0,
+            ancillary_page_id=0,
+        )
+
+
+def test_dvb_teletext_config_rejects_magazine_over_seven():
+    """magazine_number is 3 bits — 0..=7. Higher values are wire-invalid."""
+    from tstrans.mpegts import DvbTeletextConfig
+
+    with pytest.raises(ValueError, match="magazine_number"):
+        DvbTeletextConfig(
+            language=b"eng",
+            teletext_type=0x02,
+            magazine_number=8,  # out of 3-bit range
+            page_number=0x88,
+        )
+
+
+def test_dvb_teletext_config_rejects_non_bcd_page_number():
+    """page_number is BCD-encoded — each nibble must be 0..=9."""
+    from tstrans.mpegts import DvbTeletextConfig
+
+    with pytest.raises(ValueError, match="page_number"):
+        # Low nibble = 0xA (10) — invalid BCD.
+        DvbTeletextConfig(
+            language=b"eng",
+            teletext_type=0x02,
+            magazine_number=1,
+            page_number=0x8A,
+        )
+
+    with pytest.raises(ValueError, match="page_number"):
+        # Over 0x99.
+        DvbTeletextConfig(
+            language=b"eng",
+            teletext_type=0x02,
+            magazine_number=1,
+            page_number=0x100,
+        )
+
+
+def test_dvb_teletext_config_rejects_teletext_type_over_31():
+    """teletext_type is a 5-bit field (0..=31)."""
+    from tstrans.mpegts import DvbTeletextConfig
+
+    with pytest.raises(ValueError, match="teletext_type"):
+        DvbTeletextConfig(
+            language=b"eng",
+            teletext_type=32,  # one over 5-bit range
+            magazine_number=1,
+            page_number=0x88,
+        )
+
+
+def test_add_subtitle_rejects_non_subtitle_codec_config():
+    """`add_subtitle` raises TypeError when passed an arbitrary object."""
+
+    with pytest.raises(TypeError, match="DvbSubtitlingConfig"):
+        MuxerProgramConfigBuilder(1, 0x100).add_video(
+            0x101, VideoCodec.H264
+        ).add_subtitle(0x200, "not_a_config")  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

@@ -26,6 +26,12 @@ Thumbs.db
 .env
 .env.local
 
+# Workspace-local Python venv for tst-py maturin development. Distinct
+# from the parent-level `.venv` used for the research PDF pipeline; this
+# one lives inside the workspace because maturin develops against the
+# crate Cargo.toml from CWD.
+/.venv/
+
 # Local Claude Code guidance — not part of the publishable repo
 /CLAUDE.md
 

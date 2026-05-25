@@ -35,7 +35,7 @@
 //! Each `VTargetPack` carries up to five nested Local Sets — `VMask`,
 //! `VObject` (and `VObject` series), `VFeature`, `VTracker`, `VChip`
 //! (and `VChip` series). Those stay as `Option<Vec<u8>>` pass-through
-//! bytes on the typed surface (see `docs/deferred-features.md`); the
+//! bytes on the typed surface (see `docs/project/deferred-features.md`); the
 //! `target_id` / centroid / bbox / confidence / priority subset
 //! printed below is the most analyst-actionable slice and the part
 //! consumers ask for first.

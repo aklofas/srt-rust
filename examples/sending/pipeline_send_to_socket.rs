@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //
     // Bind-then-step shape (`SocketBuilder` is `&mut self -> &mut Self`):
     // construct, mutate, then call the terminal `connect`. Same shape every
-    // example uses — see `docs/binding-authors.md` for how Kotlin/Swift/
+    // example uses — see `docs/reference/binding-authors.md` for how Kotlin/Swift/
     // Python bindings spell the same idiom.
     let mut sb = SocketBuilder::new();
     sb.latency(Duration::from_millis(120));

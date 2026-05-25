@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Bind-then-step shape (`SocketBuilder` is `&mut self -> &mut Self`):
     // construct, mutate, then call the terminal `config()`. This shape
     // mirrors how Kotlin/Swift/Python bindings will spell the same idiom
-    // — see `docs/binding-authors.md`.
+    // — see `docs/reference/binding-authors.md`.
     let mut sb = SocketBuilder::new();
     // Hypothetical baked-in default: 100ms latency. URL says 200ms,
     // so this gets overwritten — that's the intended behavior.
@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    who need to know which malformed URL produces which message.
     //
     // We exercise the most-common variants here. The full set lives in
-    // the parser's tests and in docs/guide-srt.md.
+    // the parser's tests and in docs/guides/srt.md.
 
     let cases: &[(&str, &str)] = &[
         ("syntax", "not-a-url"),

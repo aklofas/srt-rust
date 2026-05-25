@@ -51,7 +51,7 @@ fn main() {
     // a non-conformant capture should still yield as much extractable
     // KLV as possible. To opt into hard-fail behavior for compliance
     // testing, swap to `DemuxerBuilder::new().strict(StrictMode::Sync)
-    // .build()` (or stricter); see `docs/guide-pipeline.md` for the
+    // .build()` (or stricter); see `docs/guides/pipeline.md` for the
     // strict-mode contract.
     let mut d = Demuxer::new();
 

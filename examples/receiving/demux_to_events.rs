@@ -53,7 +53,7 @@ fn main() {
     // every recoverable problem and surfaces what it found as
     // `NonConformant` events. To opt into hard-fail behavior swap to
     // `DemuxerBuilder::new().strict(StrictMode::Sync).build()`; see
-    // `docs/guide-pipeline.md` for the strict-mode contract.
+    // `docs/guides/pipeline.md` for the strict-mode contract.
     let mut d = Demuxer::new();
 
     // Single-shot feed of the whole file. The demuxer accepts arbitrary

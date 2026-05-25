@@ -60,6 +60,6 @@ with m.write_file("out.ts") as proxy:
     proxy.push_video(nal_bytes, Pts90khz.from_raw(900_000))
 ```
 
-See [docs/guide-python.md](https://github.com/aklofas/ts-transformer/blob/main/docs/guide-python.md)
-for the full guide and [docs/guide-python-pandas.md](https://github.com/aklofas/ts-transformer/blob/main/docs/guide-python-pandas.md)
+See [docs/languages/python.md](https://github.com/aklofas/ts-transformer/blob/main/docs/languages/python.md)
+for the full guide and [docs/languages/python.md](https://github.com/aklofas/ts-transformer/blob/main/docs/languages/python.md)
 for the DataFrame / NumPy integration.

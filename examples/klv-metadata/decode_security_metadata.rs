@@ -9,7 +9,7 @@
 //! `klv_decode_file.rs`: ST 0102 is a *nested* LS (inside ST 0601
 //! Tag 48). The sibling-layer composition pattern — call
 //! `klv::st0102::decode` on `record.security_local_set.as_deref()` —
-//! is the load-bearing teaching point. See `docs/guide-klv.md`
+//! is the load-bearing teaching point. See `docs/guides/klv.md`
 //! "Typed Security Local Set" section for the rationale.
 //!
 //! Most gimbaled-platform captures don't include classification

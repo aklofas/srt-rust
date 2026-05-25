@@ -58,7 +58,7 @@ fn main() -> std::io::Result<()> {
         // here. Our own Demuxer's `extract_user_label` reads it first.
         // TSDuck will flag it as "Forbidden Descriptor Id 0xFF" — that's
         // expected; the bytes are still parsed. See
-        // docs/guide-mpegts-mux.md for the full descriptor builder menu
+        // docs/guides/mpegts-mux.md for the full descriptor builder menu
         // including spec-conformant alternatives (Component 0x50, Stream
         // Identifier 0x52).
         // Builders now return Result so oversized payloads surface as

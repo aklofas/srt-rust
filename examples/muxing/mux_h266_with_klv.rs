@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // AU_cell_data_length) before each push; pass raw KLV
         // LS bytes, not pre-wrapped bytes. PTS lives in the
         // PES header (per § 2.12.4.1). See
-        // `docs/guide-mpegts-mux.md` for the full contract.
+        // `docs/guides/mpegts-mux.md` for the full contract.
         //
         // SynchronousMetadata requires `carries_pts: true` —
         // the PTS is what lets a receiver align each metadata

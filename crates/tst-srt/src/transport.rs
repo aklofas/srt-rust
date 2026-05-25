@@ -9,6 +9,51 @@ use crate::error::{SendError, SrtErrno};
 use std::sync::Arc;
 use tst_core::transport::{SocketStats, Transport, TransportCancel, TransportError};
 
+/// SRT-backed [`Transport`] and [`tst_core::transport::RecvTransport`] impl.
+///
+/// Wraps a connected [`Socket`] and translates libsrt send/receive errors
+/// into the scheme-neutral [`TransportError`] shape. Intended to be used as
+/// the inner of `ManagedTransport` in the canonical reconnecting setup.
+///
+/// # `SocketStats` field mapping
+///
+/// When `socket_stats()` returns `Some(stats)`, fields are sourced from
+/// libsrt's `CBytePerfMon` (`bstats()`) as follows:
+///
+/// | [`SocketStats`] field | libsrt source | Notes |
+/// |---|---|---|
+/// | `rtt_us` | `msRTT` × 1000 | rounded, saturated at `u32::MAX` |
+/// | `send_bandwidth_bps` | `mbpsSendRate` × 1e6 | rounded, saturated |
+/// | `recv_bandwidth_bps` | `mbpsRecvRate` × 1e6 | rounded, saturated |
+/// | `link_bandwidth_bps` | `mbpsBandwidth` × 1e6 | rounded, saturated |
+/// | `bytes_sent` | `byteSentTotal` | |
+/// | `packets_sent` | `pktSentTotal` | |
+/// | `bytes_received` | `byteRecvTotal` | |
+/// | `packets_received` | `pktRecvTotal` | |
+/// | `bytes_lost_recv` | `byteRcvLossTotal` | |
+/// | `packets_lost_recv` | `pktRcvLossTotal` | |
+/// | `packets_lost_send` | `pktSndLossTotal` | from NAK reports |
+/// | `packets_retransmitted` | `pktRetransTotal` | sum across all retx rounds |
+/// | `packets_dropped_send` | `pktSndDropTotal` | overrun / drop-late |
+/// | `packets_dropped_recv` | `pktRcvDropTotal` | |
+/// | `send_buffer_packets` | `pktSndBuf` | spot reading |
+/// | `recv_buffer_packets` | `pktRcvBuf` | spot reading |
+///
+/// # `TransportError::Backpressure` / `Broken` `errno_code` mapping
+///
+/// For [`SrtTransport`], `errno_code` carries the libsrt `MJ_*` major
+/// category from `srt_getlasterror()`:
+///
+/// | Value | libsrt constant |
+/// |---|---|
+/// | 1 | `MJ_SETUP` |
+/// | 2 | `MJ_CONNECTION` |
+/// | 3 | `MJ_SYSTEMRES` |
+/// | 4 | `MJ_FILESYSTEM` |
+/// | 5 | `MJ_NOTSUP` |
+/// | 6 | `MJ_AGAIN` (async — typically `Backpressure`) |
+/// | 7 | `MJ_PEERERROR` |
+/// | other | raw libsrt errno value |
 pub struct SrtTransport {
     socket: Option<Socket>,
     max_payload: usize,

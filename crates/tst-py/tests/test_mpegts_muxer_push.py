@@ -579,6 +579,132 @@ def test_add_subtitle_rejects_non_subtitle_codec_config():
         ).add_subtitle(0x200, "not_a_config")  # type: ignore[arg-type]
 
 
+# bool-as-int + bytearray-as-bytes rejection — DvbSubtitlingConfig
+# -----------------------------------------------------------------------
+# `bool` is a subclass of `int` in Python, so `True` / `False` would pass
+# a plain `isinstance(x, int)` check. The dataclass must reject them with
+# TypeError so callers get a clear signal instead of silently muxing 0/1.
+# `bytearray` was previously accepted for `language` despite the dataclass
+# being frozen=True, slots=True — storing a mutable reference breaks hashing
+# and weakens the immutability contract.
+
+
+def test_dvb_subtitling_config_rejects_bool_subtitling_type():
+    """bool is not a valid int for subtitling_type — TypeError expected."""
+    from tstrans.mpegts import DvbSubtitlingConfig
+
+    with pytest.raises(TypeError, match="subtitling_type"):
+        DvbSubtitlingConfig(
+            language=b"eng",
+            subtitling_type=True,  # bool — must be rejected
+            composition_page_id=0,
+            ancillary_page_id=0,
+        )
+
+    with pytest.raises(TypeError, match="subtitling_type"):
+        DvbSubtitlingConfig(
+            language=b"eng",
+            subtitling_type=False,
+            composition_page_id=0,
+            ancillary_page_id=0,
+        )
+
+
+def test_dvb_subtitling_config_rejects_bool_composition_page_id():
+    """bool is not a valid int for composition_page_id — TypeError expected."""
+    from tstrans.mpegts import DvbSubtitlingConfig
+
+    with pytest.raises(TypeError, match="composition_page_id"):
+        DvbSubtitlingConfig(
+            language=b"eng",
+            subtitling_type=0x10,
+            composition_page_id=True,
+            ancillary_page_id=0,
+        )
+
+
+def test_dvb_subtitling_config_rejects_bool_ancillary_page_id():
+    """bool is not a valid int for ancillary_page_id — TypeError expected."""
+    from tstrans.mpegts import DvbSubtitlingConfig
+
+    with pytest.raises(TypeError, match="ancillary_page_id"):
+        DvbSubtitlingConfig(
+            language=b"eng",
+            subtitling_type=0x10,
+            composition_page_id=0,
+            ancillary_page_id=True,
+        )
+
+
+def test_dvb_subtitling_config_rejects_bytearray_language():
+    """bytearray is not accepted for language; bytes only."""
+    from tstrans.mpegts import DvbSubtitlingConfig
+
+    with pytest.raises(ValueError, match="language"):
+        DvbSubtitlingConfig(
+            language=bytearray(b"eng"),  # was previously accepted — now rejected
+            subtitling_type=0x10,
+            composition_page_id=0,
+            ancillary_page_id=0,
+        )
+
+
+# bool-as-int + bytearray-as-bytes rejection — DvbTeletextConfig
+# -----------------------------------------------------------------------
+
+
+def test_dvb_teletext_config_rejects_bool_teletext_type():
+    """bool is not a valid int for teletext_type — TypeError expected."""
+    from tstrans.mpegts import DvbTeletextConfig
+
+    with pytest.raises(TypeError, match="teletext_type"):
+        DvbTeletextConfig(
+            language=b"eng",
+            teletext_type=True,
+            magazine_number=1,
+            page_number=0x88,
+        )
+
+
+def test_dvb_teletext_config_rejects_bool_magazine_number():
+    """bool is not a valid int for magazine_number — TypeError expected."""
+    from tstrans.mpegts import DvbTeletextConfig
+
+    with pytest.raises(TypeError, match="magazine_number"):
+        DvbTeletextConfig(
+            language=b"eng",
+            teletext_type=0x02,
+            magazine_number=False,
+            page_number=0x88,
+        )
+
+
+def test_dvb_teletext_config_rejects_bool_page_number():
+    """bool is not a valid int for page_number — TypeError expected."""
+    from tstrans.mpegts import DvbTeletextConfig
+
+    with pytest.raises(TypeError, match="page_number"):
+        DvbTeletextConfig(
+            language=b"eng",
+            teletext_type=0x02,
+            magazine_number=1,
+            page_number=True,
+        )
+
+
+def test_dvb_teletext_config_rejects_bytearray_language():
+    """bytearray is not accepted for language; bytes only."""
+    from tstrans.mpegts import DvbTeletextConfig
+
+    with pytest.raises(ValueError, match="language"):
+        DvbTeletextConfig(
+            language=bytearray(b"eng"),  # was previously accepted — now rejected
+            teletext_type=0x02,
+            magazine_number=1,
+            page_number=0x88,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Task 9 — handle getters (video/audio/klv/subtitle × list + by_program + by_index)
 # ---------------------------------------------------------------------------

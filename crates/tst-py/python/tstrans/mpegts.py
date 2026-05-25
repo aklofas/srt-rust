@@ -237,19 +237,44 @@ class DvbSubtitlingConfig:
     ancillary_page_id: int
 
     def __post_init__(self) -> None:
-        if not isinstance(self.language, (bytes, bytearray)) or len(self.language) != 3:
+        # Reject bytearray: frozen+slots dataclass stores a reference, so a
+        # mutable bytearray would weaken the immutability contract and break
+        # hashing. bytes is the only accepted type.
+        if not isinstance(self.language, bytes) or len(self.language) != 3:
             raise ValueError(
                 f"language must be 3 bytes (ISO 639-2/B), "
                 f"got {self.language!r}"
+            )
+        # `bool` is a subclass of `int` in Python — exclude it explicitly.
+        if isinstance(self.subtitling_type, bool) or not isinstance(
+            self.subtitling_type, int
+        ):
+            raise TypeError(
+                f"subtitling_type must be int; "
+                f"got {type(self.subtitling_type).__name__}"
             )
         if not 0 <= self.subtitling_type <= 0xFF:
             raise ValueError(
                 f"subtitling_type must fit u8 (0..=255); got {self.subtitling_type}"
             )
+        if isinstance(self.composition_page_id, bool) or not isinstance(
+            self.composition_page_id, int
+        ):
+            raise TypeError(
+                f"composition_page_id must be int; "
+                f"got {type(self.composition_page_id).__name__}"
+            )
         if not 0 <= self.composition_page_id <= 0xFFFF:
             raise ValueError(
                 f"composition_page_id must fit u16 (0..=0xFFFF); "
                 f"got {self.composition_page_id}"
+            )
+        if isinstance(self.ancillary_page_id, bool) or not isinstance(
+            self.ancillary_page_id, int
+        ):
+            raise TypeError(
+                f"ancillary_page_id must be int; "
+                f"got {type(self.ancillary_page_id).__name__}"
             )
         if not 0 <= self.ancillary_page_id <= 0xFFFF:
             raise ValueError(
@@ -280,19 +305,44 @@ class DvbTeletextConfig:
     page_number: int
 
     def __post_init__(self) -> None:
-        if not isinstance(self.language, (bytes, bytearray)) or len(self.language) != 3:
+        # Reject bytearray: frozen+slots dataclass stores a reference, so a
+        # mutable bytearray would weaken the immutability contract and break
+        # hashing. bytes is the only accepted type.
+        if not isinstance(self.language, bytes) or len(self.language) != 3:
             raise ValueError(
                 f"language must be 3 bytes (ISO 639-2/B), "
                 f"got {self.language!r}"
+            )
+        # `bool` is a subclass of `int` in Python — exclude it explicitly.
+        if isinstance(self.teletext_type, bool) or not isinstance(
+            self.teletext_type, int
+        ):
+            raise TypeError(
+                f"teletext_type must be int; "
+                f"got {type(self.teletext_type).__name__}"
             )
         if not 0 <= self.teletext_type <= 0x1F:
             raise ValueError(
                 f"teletext_type must fit 5 bits (0..=31); got {self.teletext_type}"
             )
+        if isinstance(self.magazine_number, bool) or not isinstance(
+            self.magazine_number, int
+        ):
+            raise TypeError(
+                f"magazine_number must be int; "
+                f"got {type(self.magazine_number).__name__}"
+            )
         if not 0 <= self.magazine_number <= 7:
             raise ValueError(
                 f"magazine_number must fit 3 bits (0..=7); "
                 f"got {self.magazine_number}"
+            )
+        if isinstance(self.page_number, bool) or not isinstance(
+            self.page_number, int
+        ):
+            raise TypeError(
+                f"page_number must be int; "
+                f"got {type(self.page_number).__name__}"
             )
         if not 0 <= self.page_number <= 0x99:
             raise ValueError(

@@ -707,6 +707,14 @@ def parse_klv_universal(buf: bytes):
                     f"available {len(buf) - body_start}"
                 ),
             )
+        if body_end < len(buf):
+            raise KlvError(
+                kind=KlvErrorKind.MALFORMED_BYTES,
+                message=(
+                    f"ST 0102 universal record has {len(buf) - body_end} "
+                    f"trailing bytes after declared body length {value_len}"
+                ),
+            )
         return decode_security(buf[body_start:body_end])
     if ul == VMTI_LS_UL:
         try:
@@ -724,6 +732,14 @@ def parse_klv_universal(buf: bytes):
                 message=(
                     f"ST 0903 declared body length {value_len} exceeds "
                     f"available {len(buf) - body_start}"
+                ),
+            )
+        if body_end < len(buf):
+            raise KlvError(
+                kind=KlvErrorKind.MALFORMED_BYTES,
+                message=(
+                    f"ST 0903 universal record has {len(buf) - body_end} "
+                    f"trailing bytes after declared body length {value_len}"
                 ),
             )
         return decode_vmti(buf[body_start:body_end])

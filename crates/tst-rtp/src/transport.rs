@@ -23,6 +23,25 @@ const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
 /// RTP send-side transport: writes 12-byte RTP header + TS payload to a
 /// connected [`UdpSocket`].
+///
+/// # `SocketStats` field mapping
+///
+/// | [`SocketStats`] field | Phase 1 source |
+/// |---|---|
+/// | `bytes_sent` | Local counter, ticks per successful `send_bytes` |
+/// | `packets_sent` | Local counter, ticks per RTP packet |
+/// | `bytes_received` / `packets_received` | 0 (this is the send half) |
+/// | `rtt_us` | 0 — RTCP RR/SR ingestion is deferred past Phase 1 |
+/// | `packets_lost_send` | 0 — same; would come from RTCP RR fraction-lost |
+/// | `link_bandwidth_bps` | 0 — RTP has no link estimate |
+/// | All other fields | 0 |
+///
+/// # `TransportError::Broken` `errno_code` mapping
+///
+/// For send-side `Broken`, `errno_code` carries the OS `errno` from the
+/// underlying `sendto` call (`EAGAIN`=11, `EHOSTUNREACH`=113,
+/// `ECONNREFUSED`=111 on Linux). `Backpressure` is not produced in
+/// Phase 1 — UDP either accepts the datagram or surfaces an error.
 pub struct RtpTransport {
     socket: Option<UdpSocket>,
     /// Negotiated max UDP payload (RTP header + TS bundle) — defaults to
@@ -177,8 +196,15 @@ impl Transport for RtpTransport {
     }
 
     fn socket_stats(&self) -> Option<SocketStats> {
-        // Filled in by Task 9.
-        None
+        self.socket.as_ref()?;
+        // `SocketStats` is `#[non_exhaustive]` in tst-core, so neither
+        // a field-init expression nor `..Default::default()` works at a
+        // distance — mirror tst-srt's `map_stats` and default-then-assign.
+        #[allow(clippy::field_reassign_with_default)]
+        let mut s = SocketStats::default();
+        s.bytes_sent = self.bytes_sent;
+        s.packets_sent = self.packets_sent;
+        Some(s)
     }
 }
 
@@ -338,4 +364,24 @@ fn set_multicast_if_v4(_socket: &UdpSocket, addr: &std::net::Ipv4Addr) -> Result
         iface: addr.to_string(),
         detail: "IP_MULTICAST_IF via raw setsockopt is Unix-only in Phase 1".to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify socket_stats() now returns Some(_) once Task 9 wires up
+    /// the local counters. bytes_sent / packets_sent advance through
+    /// the integration test in Task 14; here we just check the shape.
+    #[test]
+    fn socket_stats_returns_some_when_alive() {
+        let url = RtpUrl::parse("rtp://127.0.0.1:1").unwrap();
+        let t = RtpTransport::connect_with(&url).unwrap();
+        let stats = t.socket_stats().expect("alive transport reports stats");
+        assert_eq!(stats.bytes_sent, 0);
+        assert_eq!(stats.packets_sent, 0);
+        // RTCP-derived fields should stay zero in Phase 1.
+        assert_eq!(stats.rtt_us, 0);
+        assert_eq!(stats.packets_lost_send, 0);
+    }
 }

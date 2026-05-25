@@ -774,7 +774,10 @@ fn demux_error_to_pyerr(py: Python<'_>, e: DemuxError) -> PyErr {
     // Map Rust DemuxError variants to Python DemuxErrorKind.
     let kind = match &e {
         DemuxError::Unrecoverable { .. } => "INTERNAL",
-        DemuxError::StrictRejection(_) => "INTERNAL",
+        // Audit-2 #8: StrictRejection is a distinct policy-level outcome,
+        // not an internal bug. Map to STRICT_REJECTION so callers can
+        // distinguish "demuxer enforcement" from "binding bug".
+        DemuxError::StrictRejection(_) => "STRICT_REJECTION",
         DemuxError::MalformedPsi { .. } => "BAD_PMT",
         DemuxError::MalformedPes { .. } => "BAD_PES",
         DemuxError::SyncBufExhausted { .. } => "SYNC_LOSS",

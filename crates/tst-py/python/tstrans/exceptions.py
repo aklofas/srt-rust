@@ -64,12 +64,27 @@ class MuxErrorKind(enum.IntEnum):
 
 
 class DemuxErrorKind(enum.Enum):
-    """Mirrors Rust's `tst_core::mpegts::DemuxError` variants."""
+    """Mirrors Rust's `tst_core::mpegts::DemuxError` variants.
+
+    ``STRICT_REJECTION`` is the Python-side representation of
+    ``DemuxError::StrictRejection`` — raised when ``StrictMode`` is
+    non-Off and the demuxer encounters a non-conformance that the
+    configured policy escalates to a fatal error.  The underlying
+    ``DemuxError`` message carries the specific ``NonConformantIssue``
+    name as a diagnostic string.
+
+    Matchers should include a default arm — the Rust ``DemuxError``
+    enum is ``#[non_exhaustive]`` and new variants may appear in minor
+    releases.
+    """
 
     SYNC_LOSS = "sync_loss"
     BAD_PMT = "bad_pmt"
     BAD_PES = "bad_pes"
     UNEXPECTED_EOF = "unexpected_eof"
+    # Strict-mode policy rejection — StrictMode converted a non-conformance
+    # into a fatal error.  Placed before INTERNAL (increasing severity).
+    STRICT_REJECTION = "strict_rejection"
     INTERNAL = "internal"
 
 

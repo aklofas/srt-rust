@@ -36,6 +36,12 @@ _FIXTURE_BASE = (
 _AAC_ADTS_FIXTURE = _FIXTURE_BASE / "audio" / "aac-adts.ts"
 _MP2_FIXTURE = _FIXTURE_BASE / "audio" / "mp2.ts"
 
+# Phase 1 skip-closure (2026-05-25): all four audio fixtures are checked into
+# crates/tst-core/tests/fixtures/audio/. A missing file is a packaging bug,
+# not a runtime skip condition.
+for _fx in (_AAC_ADTS_FIXTURE, _MP2_FIXTURE):
+    assert _fx.is_file(), f"checked-in audio fixture missing: {_fx}"
+
 
 def _make_h264_ts(tmp: Path) -> Path:
     """Write a small H.264 TS into *tmp* via the Muxer and return the path."""
@@ -113,10 +119,6 @@ def test_h264_video_codec_parse_error_is_none():
 # Audio: AAC-ADTS → list[AdtsFrame]
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skipif(
-    not _AAC_ADTS_FIXTURE.is_file(),
-    reason=f"AAC fixture not present: {_AAC_ADTS_FIXTURE}",
-)
 def test_aac_audio_payload_is_list():
     """AAC ADTS events from a real fixture must carry list[AdtsFrame]."""
     aac_events = [
@@ -131,10 +133,6 @@ def test_aac_audio_payload_is_list():
     )
 
 
-@pytest.mark.skipif(
-    not _AAC_ADTS_FIXTURE.is_file(),
-    reason=f"AAC fixture not present: {_AAC_ADTS_FIXTURE}",
-)
 def test_aac_audio_payload_elements_are_adts_frames():
     """Every element in an AAC Audio.payload must be AdtsFrame."""
     aac_events = [
@@ -151,10 +149,6 @@ def test_aac_audio_payload_elements_are_adts_frames():
     )
 
 
-@pytest.mark.skipif(
-    not _AAC_ADTS_FIXTURE.is_file(),
-    reason=f"AAC fixture not present: {_AAC_ADTS_FIXTURE}",
-)
 def test_aac_codec_parse_error_is_none_on_clean_stream():
     """codec_parse_error must be None for a clean ADTS stream."""
     aac_events = [
@@ -171,10 +165,6 @@ def test_aac_codec_parse_error_is_none_on_clean_stream():
 # Audio: MP2 → list[Mpeg2AudioFrame]
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skipif(
-    not _MP2_FIXTURE.is_file(),
-    reason=f"MP2 fixture not present: {_MP2_FIXTURE}",
-)
 def test_mp2_audio_payload_is_list():
     """MP2 audio events from a real fixture must carry list[Mpeg2AudioFrame]."""
     mp2_events = [
@@ -189,10 +179,6 @@ def test_mp2_audio_payload_is_list():
     )
 
 
-@pytest.mark.skipif(
-    not _MP2_FIXTURE.is_file(),
-    reason=f"MP2 fixture not present: {_MP2_FIXTURE}",
-)
 def test_mp2_audio_payload_elements_are_mpeg2_audio_frames():
     """Every element in an MP2 Audio.payload must be Mpeg2AudioFrame."""
     mp2_events = [
@@ -207,10 +193,6 @@ def test_mp2_audio_payload_elements_are_mpeg2_audio_frames():
     )
 
 
-@pytest.mark.skipif(
-    not _MP2_FIXTURE.is_file(),
-    reason=f"MP2 fixture not present: {_MP2_FIXTURE}",
-)
 def test_mp2_codec_parse_error_is_none_on_clean_stream():
     """codec_parse_error must be None for a clean MP2 stream."""
     mp2_events = [
@@ -229,11 +211,10 @@ def test_mp2_codec_parse_error_is_none_on_clean_stream():
 _AAC_LATM_FIXTURE = _FIXTURE_BASE / "audio" / "aac-latm.ts"
 _AC3_FIXTURE = _FIXTURE_BASE / "audio" / "ac3.ts"
 
+for _fx in (_AAC_LATM_FIXTURE, _AC3_FIXTURE):
+    assert _fx.is_file(), f"checked-in audio fixture missing: {_fx}"
 
-@pytest.mark.skipif(
-    not _AAC_LATM_FIXTURE.is_file(),
-    reason=f"AAC-LATM fixture not present: {_AAC_LATM_FIXTURE}",
-)
+
 def test_aac_latm_payload_is_bytes_fallback():
     """AAC-LATM typed parsing is deferred — payload must be raw bytes."""
     latm_events = [
@@ -249,10 +230,6 @@ def test_aac_latm_payload_is_bytes_fallback():
     assert s.codec_parse_error is None, "no error expected for intentional bytes fallback"
 
 
-@pytest.mark.skipif(
-    not _AC3_FIXTURE.is_file(),
-    reason=f"AC-3 fixture not present: {_AC3_FIXTURE}",
-)
 def test_ac3_payload_is_bytes_fallback():
     """AC-3 typed parsing is not yet implemented — payload must be raw bytes."""
     ac3_events = [

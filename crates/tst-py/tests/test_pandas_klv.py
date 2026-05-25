@@ -50,8 +50,7 @@ def _uas_full():
     from tstrans.klv import decode_uas_datalink
 
     blob_path = _FIXTURE_ROOT / "st0601" / "synthetic_full.klv"
-    if not blob_path.exists():
-        pytest.skip("st0601 synthetic_full fixture not present")
+    assert blob_path.exists(), f"checked-in fixture missing: {blob_path}"
     return decode_uas_datalink(blob_path.read_bytes())
 
 
@@ -60,8 +59,7 @@ def _uas_minimal():
     from tstrans.klv import decode_uas_datalink
 
     blob_path = _FIXTURE_ROOT / "st0601" / "synthetic_minimal.klv"
-    if not blob_path.exists():
-        pytest.skip("st0601 synthetic_minimal fixture not present")
+    assert blob_path.exists(), f"checked-in fixture missing: {blob_path}"
     return decode_uas_datalink(blob_path.read_bytes())
 
 

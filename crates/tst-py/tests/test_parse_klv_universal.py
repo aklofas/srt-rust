@@ -72,8 +72,7 @@ def test_dispatches_st0601_lenient():
         Path(__file__).parent.parent.parent
         / "tst-core" / "tests" / "fixtures" / "st0601" / "synthetic_minimal.klv"
     )
-    if not fx.is_file():
-        pytest.skip("synthetic_minimal.klv fixture missing")
+    assert fx.is_file(), f"checked-in fixture missing: {fx}"
     buf = fx.read_bytes()
     result = parse_klv_universal(buf)
     assert isinstance(result, UasDatalinkLs)

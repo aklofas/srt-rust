@@ -113,8 +113,7 @@ def test_extract_klv_parsed_returns_typed_when_klv_present():
         Path(__file__).parent.parent.parent
         / "tst-core" / "tests" / "fixtures" / "audio" / "mp2.ts"
     )
-    if not fx.is_file():
-        pytest.skip("mp2.ts fixture missing")
+    assert fx.is_file(), f"checked-in fixture missing: {fx}"
 
     yielded = list(_extract_klv_phase3(fx, parsed=True))
     for item in yielded:

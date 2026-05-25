@@ -78,10 +78,6 @@ def _make_aac_ts(tmp: Path) -> Path:
 # Test: clean AAC produces typed list (sanity baseline for fallback tests)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skipif(
-    not _AAC_ADTS_FIXTURE.is_file(),
-    reason=f"AAC ADTS fixture not present: {_AAC_ADTS_FIXTURE}",
-)
 def test_clean_aac_payload_yields_typed_list():
     """Sanity: clean ADTS stream from real fixture → list[AdtsFrame], no error."""
     aac_evs = [
@@ -99,10 +95,6 @@ def test_clean_aac_payload_yields_typed_list():
 # Test: codec_parse_error attribute exists even when no error
 # ---------------------------------------------------------------------------
 
-@pytest.mark.skipif(
-    not _AAC_ADTS_FIXTURE.is_file(),
-    reason=f"AAC ADTS fixture not present: {_AAC_ADTS_FIXTURE}",
-)
 def test_codec_parse_error_attribute_populated_on_clean_aac():
     """Even on a clean parse, codec_parse_error must exist and be None."""
     aac_evs = [

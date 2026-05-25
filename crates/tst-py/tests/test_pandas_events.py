@@ -55,15 +55,18 @@ _FIXTURE_ROOT = pathlib.Path(__file__).parent.parent.parent / "tst-core" / "test
 
 
 def _real_ts_fixture() -> pathlib.Path:
-    """Return a real .ts fixture path, or skip if none available."""
-    for candidate in [
+    """Return a real .ts fixture path. Hard error if none of the checked-in candidates exist."""
+    candidates = [
         "audio/aac-adts.ts",
         "subtitles/subtitle_with_klv_same_program.ts",
-    ]:
+    ]
+    for candidate in candidates:
         p = _FIXTURE_ROOT / candidate
         if p.exists():
             return p
-    pytest.skip("no real .ts fixture available")
+    raise FileNotFoundError(
+        f"no checked-in .ts fixture from {candidates} found under {_FIXTURE_ROOT}"
+    )
 
 
 # --- tests ---------------------------------------------------------------
@@ -102,8 +105,10 @@ def test_events_to_dataframe_sample_rows_have_pts_ms():
     events = list(parse_file(_real_ts_fixture()))
     df = events_to_dataframe(events)
     sample_rows = df[df["kind"] == "Sample"]
-    if len(sample_rows) == 0:
-        pytest.skip("no Sample events in fixture")
+    assert len(sample_rows) > 0, (
+        f"no Sample events in {_real_ts_fixture()} — "
+        "aac-adts.ts is expected to produce Audio/Sample events"
+    )
     # At least some Sample rows should have non-NaN pts_ms
     assert sample_rows["pts_ms"].notna().any()
 

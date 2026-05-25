@@ -15,9 +15,10 @@ not listed below are intentionally **not yet implemented**.
 | ⏳ Planned | On the roadmap, not yet implemented. |
 | ❌ Out of scope | Deferred indefinitely. |
 
-The `ts-transformer` workspace deliberately scopes to **MPEG-TS + MISB ST 0601 KLV
-over SRT**. Containers (MP4/CMAF/RIST/WebRTC), ST 0903 VMTI, raw elementary
-streams, and so on are out of scope until a consumer asks. See
+The `ts-transformer` workspace scopes to **MPEG-TS + MISB ST 0601 / 0102 / 0605 / 0903
+KLV over SRT** (with RTP and raw TCP / UDP transports in active development).
+Other containers (MP4 / CMAF), other transports (RTMP / WebRTC / RIST), and raw
+elementary streams remain out of scope until a consumer asks. See
 `crates/tst-core/tests/TEST_CORPUS.md` for the parsing-side compliance ledger
 that this document summarises.
 
@@ -322,7 +323,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 | `DemuxerBuilder` / `DemuxerConfig` | ✅ Full | Fluent builder + plain-struct config form. |
 | `DemuxEvent::ProgramMap` | ✅ Full | Emitted on PAT/PMT discovery and version-bump; carries `program_number`, `pcr_pid`, `streams`, `klv_links`. |
 | `DemuxEvent::Sample` | ✅ Full | Generic ES sample; payload typed for video / audio / subtitle, `Unknown` for unrecognized stream_types. |
-| `DemuxEvent::Metadata` | ✅ Full | Standalone metadata events; `MetadataKind::KlvSyncAuCell { metadata_service_id, sequence_number, cell_fragment_indication, decoder_config_flag, random_access_indicator }` (5 fields per H.222.0 § 2.12.4.2 Table 2-156), `KlvAsync` (bare LS), `Unknown(u8)`. |
+| `DemuxEvent::Metadata` | ✅ Full | Standalone metadata events; `MetadataKind::KlvSyncAuCell { metadata_service_id, sequence_number, cell_fragment_indication, decoder_config_flag, random_access_indicator, was_reassembled, cell_count }` (7 fields per H.222.0 § 2.12.4.2 Table 2-156 + multi-cell reassembly state), `KlvAsync` (bare LS), `Unknown(u8)`. |
 | `DemuxEvent::Discontinuity` | ✅ Full | `ContinuityJump`, `PesOversize`, `PesTotalOversize`, `AdaptationFieldFlag`. |
 | `DemuxEvent::NonConformant` | ✅ Full | Lenient-mode signal for spec violations; converts to fatal in strict modes. |
 | H.264 NAL split (stream_type 0x1B) | ✅ Full | Annex-B start codes stripped; `NalUnit::H264 { nal_type, ref_idc, payload }`. Emulation-prevention bytes preserved. |
@@ -409,18 +410,26 @@ level, color, frame rate). See [`guide-codec.md`](/docs/guides/codec.md).
 per-set functions. 13/13 corpus fixtures matched ffprobe.
 
 **H.265 notes:** hand-rolled per spec; `parse_vps` / `parse_sps` / `parse_pps` /
-`parse_parameter_sets`. Known limitation: bails with `UnsupportedProfile` on
-`scaling_list_data` and `num_short_term_ref_pic_sets > 0` paths (not
-exercised by x265 default config or current corpus; full RPS parser is a
-future enhancement).
+`parse_parameter_sets`. Full short-term RPS walker per H.265 §7.3.7 / §7.4.8
+(mirrors ffmpeg's `ff_hevc_decode_short_term_rps`) walks past
+`num_short_term_ref_pic_sets > 0` SPSes; tracks `NumDeltaPocs[]` for
+`inter_ref_pic_set_prediction_flag` inheritance. Known limitation: still
+bails with `UnsupportedProfile` on `scaling_list_data_present_flag = 1`
+SPSes (uncommon; not in x265 default config or current corpus).
 
 **H.266 notes:** hand-rolled per H.266 V4 §7.3 / §7.4; `parse_vps` /
-`parse_sps` / `parse_pps` / `parse_parameter_sets`. APS NALs (types 17 / 18),
-Picture Header NALs (type 19), and multi-layer streams (`nuh_layer_id != 0`)
-pass through unparsed. `color_info` / `frame_rate` surface as `None` until
-the deeper SPS field-walk lands. Bails `UnsupportedProfile` on
+`parse_sps` / `parse_pps` / `parse_parameter_sets`. Full SPS body walk
+(entropy_coding_sync, POC config, partition constraints, ref_pic_list_struct,
+virtual boundaries, general_timing_hrd_parameters) + `parse_h266_vui` per
+§E.2.1 recover `frame_rate` (from `num_units_in_tick` + `time_scale` —
+H.266 moves timing OUT of VUI vs. H.265) and `ColorInfo` (primaries +
+transfer + matrix via H.273). APS NALs (types 17 / 18), Picture Header
+NALs (type 19), and multi-layer streams (`nuh_layer_id != 0`) pass through
+unparsed. Bails `UnsupportedProfile` on
 `sps_subpic_info_present_flag = 1` / `sps_scaling_list_data_present_flag = 1`
-(rare; not in reference encoder defaults).
+(rare; not in reference encoder defaults). Empirical note: real VVenC
+default-preset output does NOT emit a VUI block — `color_info` stays `None`
+on those fixtures (recovery happens via the SPS body, not VUI).
 
 **AV1 notes:** OBU-shaped (not NAL-shaped); `parse_sequence_header` /
 `parse_frame_header_light` / `parse_obu_stream`. `Av1FrameHeaderLight`
@@ -471,9 +480,8 @@ to ride with the future receiver-surface plan.
 | Distribution artifacts | ✅ Full | `libtstrans.so` + `libtstrans.a` + `tstrans.h` + `tstrans.pc`. Tarball staged manually; GitHub Releases publishing not automated today. |
 | End-to-end C smoke test | ✅ Full | `tests/smoke.c` compiled by `cc` and linked against the cdylib at test time; exercises muxer push/pull + every NULL-close path + invalid-URL last-error. |
 | Live-socket roundtrip test | ✅ Full | `tests/live_pair.rs` binds a real `Listener` on 127.0.0.1, connects `tst_mux_sender_t`, sends a NAL, asserts the listener receives a TS sync byte. |
-| Linux x86_64 build | ✅ Full | cdylib + staticlib + cbindgen header + pkg-config. |
-| macOS / Windows / Linux aarch64 | ⏳ Planned | Cross-compilation follows demonstrated demand. |
-| Pre-emptive close cancellation while parked in libsrt | ✅ Full | `Sender::close()` (and the underlying `Socket::cancel_handle()`) atomically closes the SRT handle from any thread, unblocking a peer thread parked in `srt_sendmsg`/`srt_recvmsg`. See `guide-pipeline.md`. |
+| Multi-platform Tier 1 | ✅ Full (Linux x86_64 + aarch64 gating) / phase-in (macOS arm64 + Windows MSVC) | See "Build targets" section at top of this document. |
+| Pre-emptive close cancellation while parked in libsrt | ✅ Full | `Sender::close()` (and the underlying `Socket::cancel_handle()`) atomically closes the SRT handle from any thread, unblocking a peer thread parked in `srt_sendmsg`/`srt_recvmsg`. See [`pipeline.md`](/docs/guides/pipeline.md). |
 
 ---
 
@@ -546,22 +554,15 @@ covers.
 | Crate | Status | Target |
 | --- | --- | --- |
 | `srt-sys` | ✅ Full | Bindgen-generated FFI to libsrt 1.5.5; encryption via mbedTLS. |
-| `tst-core` | ✅ Full (sync) | Safe Rust API — `Socket`, `Listener`, builders, KLV. |
-| `tst-c` | ✅ Full | cdylib + staticlib + cbindgen header + pkg-config; Linux x86_64. |
+| `tst-core` | ✅ Full | Safe Rust API — MPEG-TS mux/demux, KLV substrate + typed sets (ST 0601 / 0102 / 0605 / 0903), codec parsers (H.264 / H.265 / H.266 / AV1 / AAC / MPEG-2 audio), `Transport` + `RecvTransport` traits. No SRT dependency. |
+| `tst-srt` | ✅ Full | SRT-specific safe wrapper — `Socket`, `Listener`, `SocketBuilder`, `SrtTransport`, `SrtRecvTransport`, `SrtCancelHandle`, URL parsing. Wraps libsrt 1.5.5. |
+| `tst-pipeline` | ✅ Full | Composition layer — `MuxSender<T>` / `Sender<T>` / `RawSender<T>` / `DemuxReceiver<R>` / `Receiver<R>` / `RawReceiver<R>` shells; `ManagedTransport` reconnect wrapper; `Pairer` KLV↔video alignment. Decoupled from libsrt via the `Transport`/`RecvTransport` traits. |
+| `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.5** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 gating; macOS arm64 + Windows MSVC phase-in). |
+| `tst-py` | ✅ Full | PyO3 bindings published to PyPI as **`tstrans`**. File I/O surface (inspect + offline build of `.ts`); typed KLV decode/encode for all 4 MISB sets; codec parsers; optional `[pandas]` extra for DataFrame + NumPy adapters. Live SRT transport deferred to v2. |
 | `srt-jni` | ⏳ Planned | JVM JAR for JDK 17+ consumers. |
 | `srt-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |
 
----
-
-## Platforms
-
-| Platform | Status | CI? |
-| --- | --- | --- |
-| linux-x86_64 (Ubuntu 22.04+, glibc) | ✅ Full | ✅ `.github/workflows/ci.yml` (vendored libsrt) |
-| linux-aarch64 | ⏳ Planned | not yet in CI |
-| macOS (x86_64 / aarch64) | ⏳ Planned | not yet in CI |
-| Windows (MSVC) | ⏳ Planned | not yet in CI |
-| iOS / Android | ⏳ Planned | gated on `srt-uniffi` |
+For full build-target / CI gating coverage see "Build targets" at the top of this document.
 
 ---
 
@@ -589,9 +590,9 @@ on the 16 fuzz harnesses continuously.
 These items appear in nearby specs but are explicitly **not** on the
 roadmap. They are revisitable on consumer ask — not philosophical refusals.
 
-- Containers other than MPEG-TS (MP4 / fMP4 / CMAF, Matroska / WebM, RTP).
-- Metadata sets other than ST 0601 + ST 0605 (ST 0102 typed view, ST 0903 VMTI, ST 1303 MDAP, ST 0902 minimum-set).
-- RTP / WebRTC / RTMP / RIST transports.
+- Containers other than MPEG-TS (MP4 / fMP4 / CMAF, Matroska / WebM).
+- Metadata sets other than the typed MISB family already shipped (ST 1303 MDAP, ST 0902 minimum-set).
+- WebRTC / RTMP / RIST transports (RTP and raw TCP / UDP are in active development; see top-of-document scope note).
 - ST 1607 segmented multi-PES KLV reassembly.
 - ST 1201.5 §7.1.3 special-value bit (±∞ / ±NaN passthrough).
 - Async / reactor SRT API.

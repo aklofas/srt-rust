@@ -85,7 +85,20 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_video(
             set_last_error(TstError::InvalidConfig, "null config pointer");
             return TstError::InvalidConfig as i32;
         };
-        let (prog_idx, video_within_idx) = VideoStreamHandle::from_raw(video).unpack();
+        // Trust-boundary validation — reject any caller-provided handle
+        // whose high bits are set above the canonical 8-bit layout. Without
+        // this, a forged `valid.raw() | 0x100` would mask down to the valid
+        // low byte and silently set descriptors on the wrong stream.
+        let (prog_idx, video_within_idx) = match VideoStreamHandle::try_from_raw(video) {
+            Ok(h) => h.unpack(),
+            Err(_) => {
+                set_last_error(
+                    TstError::InvalidUsage,
+                    "invalid video stream handle (non-canonical raw bits set)",
+                );
+                return TstError::InvalidUsage as i32;
+            }
+        };
         if prog_idx >= cfg.programs.len() {
             set_last_error(
                 TstError::InvalidUsage,
@@ -144,7 +157,18 @@ pub unsafe extern "C" fn tst_mux_config_set_stream_descriptors_for_klv(
             set_last_error(TstError::InvalidConfig, "null config pointer");
             return TstError::InvalidConfig as i32;
         };
-        let (prog_idx, klv_within_idx) = KlvStreamHandle::from_raw(klv).unpack();
+        // Trust-boundary validation — see VideoStreamHandle::try_from_raw
+        // rationale in tst_mux_config_set_stream_descriptors_for_video above.
+        let (prog_idx, klv_within_idx) = match KlvStreamHandle::try_from_raw(klv) {
+            Ok(h) => h.unpack(),
+            Err(_) => {
+                set_last_error(
+                    TstError::InvalidUsage,
+                    "invalid klv stream handle (non-canonical raw bits set)",
+                );
+                return TstError::InvalidUsage as i32;
+            }
+        };
         if prog_idx >= cfg.programs.len() {
             set_last_error(
                 TstError::InvalidUsage,

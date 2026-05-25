@@ -30,8 +30,33 @@ pub(crate) fn pack(program_index: usize, within_index: usize) -> u32 {
 
 /// Inverse of [`pack`]. Returns `(program_index, within_index)` with
 /// both fields independently masked back into their 4-bit slots.
+///
+/// Trust-boundary callers (FFI re-wraps from a caller-provided `u32`)
+/// must use [`try_unpack`] instead — `unpack` masks high bits silently,
+/// so a forged value with the same low byte as a valid handle would
+/// alias the wrong stream. `unpack` stays for in-process round-trips
+/// where the input was produced by [`pack`] earlier in the same process.
 pub(crate) fn unpack(packed: u32) -> (usize, usize) {
     let program = ((packed >> PROGRAM_SHIFT) & PROGRAM_MASK) as usize;
     let within = (packed & WITHIN_MASK) as usize;
     (program, within)
+}
+
+/// Validating inverse of [`pack`]. Returns `Some((program_index, within_index))`
+/// only when the raw value has no bits set outside the documented 4-bit
+/// program + 4-bit within slots. Returns `None` if any "reserved" upper
+/// bit is set — this is the discriminator a forged FFI handle trips.
+///
+/// Use this at every trust boundary that rewraps a caller-provided `u32`
+/// back into a typed handle (tst-c, tst-py, future srt-jni / srt-uniffi).
+/// Plain [`unpack`] silently masks the high bits and would route the
+/// payload to whatever valid stream the low byte happens to name.
+pub(crate) fn try_unpack(packed: u32) -> Option<(usize, usize)> {
+    const CANONICAL_MASK: u32 = (PROGRAM_MASK << PROGRAM_SHIFT) | WITHIN_MASK;
+    if packed & !CANONICAL_MASK != 0 {
+        return None;
+    }
+    let program = ((packed >> PROGRAM_SHIFT) & PROGRAM_MASK) as usize;
+    let within = (packed & WITHIN_MASK) as usize;
+    Some((program, within))
 }

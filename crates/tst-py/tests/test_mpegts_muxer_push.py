@@ -89,14 +89,19 @@ def test_push_video_invalid_nal_raises_input_malformed():
 
 
 def test_push_video_to_with_invalid_handle_raises_invalid_usage():
-    """An out-of-range handle (constructed via from_raw) surfaces as
-    InvalidStreamHandle → INVALID_USAGE per the MuxSenderErrorKind
-    classifier in tst-core/src/error.rs."""
+    """An out-of-range handle surfaces as InvalidStreamHandle →
+    INVALID_USAGE per the MuxSenderErrorKind classifier in
+    tst-core/src/error.rs. Uses a within-canonical-layout-but-not-configured
+    handle (program=15, within=15 = 0xFF) so the closeout audit's
+    `from_raw` validation passes and the push-time range check fires.
+    Forged handles with bits outside the canonical layout are covered
+    by `tests/test_handle_forge.py`."""
     from tstrans.mpegts import VideoStreamHandle
 
     m = Muxer(_simple_config())
-    # Pack program=255, within=255 — beyond any plausible muxer config.
-    bogus = VideoStreamHandle.from_raw((255 << 16) | 255)
+    # 0xFF = (program=15, within=15) — canonical layout, but no such
+    # stream is configured. Push-time range check rejects.
+    bogus = VideoStreamHandle.from_raw(0xFF)
     with pytest.raises(MuxError) as ei:
         m.push_video_to(bogus, _minimal_h264_nal_aud(), pts=Pts90khz.from_raw(900_000))
     assert ei.value.kind == MuxErrorKind.INVALID_USAGE
@@ -192,10 +197,12 @@ def test_push_klv_default_metadata_service_id():
 
 
 def test_push_audio_invalid_handle_raises():
+    # See test_push_video_to_with_invalid_handle_raises_invalid_usage for
+    # rationale on the 0xFF (canonical-but-unconfigured) handle choice.
     from tstrans.mpegts import AudioStreamHandle
 
     m = Muxer(_simple_config())
-    bad = AudioStreamHandle.from_raw((255 << 16) | 255)
+    bad = AudioStreamHandle.from_raw(0xFF)
     with pytest.raises(MuxError) as ei:
         # Audit #9 normalized arg order: (handle, frames, *, pts).
         m.push_audio_to(bad, _minimal_aac_frame(), pts=Pts90khz.from_raw(900_000))
@@ -203,10 +210,12 @@ def test_push_audio_invalid_handle_raises():
 
 
 def test_push_klv_invalid_handle_raises():
+    # See test_push_video_to_with_invalid_handle_raises_invalid_usage for
+    # rationale on the 0xFF (canonical-but-unconfigured) handle choice.
     from tstrans.mpegts import KlvStreamHandle
 
     m = Muxer(_simple_config())
-    bad = KlvStreamHandle.from_raw((255 << 16) | 255)
+    bad = KlvStreamHandle.from_raw(0xFF)
     with pytest.raises(MuxError) as ei:
         m.push_klv_to(bad, _minimal_klv_ls(), pts=Pts90khz.from_raw(900_000))
     assert ei.value.kind is MuxErrorKind.INVALID_USAGE

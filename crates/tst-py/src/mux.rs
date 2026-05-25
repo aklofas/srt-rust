@@ -133,9 +133,19 @@ pub struct PyVideoStreamHandle(pub(crate) RustVideoStreamHandle);
 
 #[pymethods]
 impl PyVideoStreamHandle {
+    /// Reconstruct a `VideoStreamHandle` from a raw `u32`.
+    ///
+    /// Validates the canonical bit layout (low 8 bits only) and rejects
+    /// any forged value with high bits set — the audit caveat is that a
+    /// forged `valid.raw() | 0x100` would otherwise mask down to the
+    /// valid low byte and route the push to the wrong elementary stream.
+    /// Raises `tstrans.exceptions.MuxError(INVALID_USAGE)` on rejection.
     #[staticmethod]
-    pub fn from_raw(raw: u32) -> Self {
-        Self(RustVideoStreamHandle::from_raw(raw))
+    pub fn from_raw(py: Python<'_>, raw: u32) -> PyResult<Self> {
+        match RustVideoStreamHandle::try_from_raw(raw) {
+            Ok(h) => Ok(Self(h)),
+            Err(e) => Err(crate::errors::mux_error_to_pyerr(py, e)),
+        }
     }
 
     #[getter]
@@ -166,9 +176,16 @@ pub struct PyAudioStreamHandle(pub(crate) RustAudioStreamHandle);
 
 #[pymethods]
 impl PyAudioStreamHandle {
+    /// Reconstruct an `AudioStreamHandle` from a raw `u32`. Same
+    /// validation contract as `VideoStreamHandle.from_raw`: raises
+    /// `MuxError(INVALID_USAGE)` if the input has high bits set
+    /// outside the canonical 8-bit packed layout.
     #[staticmethod]
-    pub fn from_raw(raw: u32) -> Self {
-        Self(RustAudioStreamHandle::from_raw(raw))
+    pub fn from_raw(py: Python<'_>, raw: u32) -> PyResult<Self> {
+        match RustAudioStreamHandle::try_from_raw(raw) {
+            Ok(h) => Ok(Self(h)),
+            Err(e) => Err(crate::errors::mux_error_to_pyerr(py, e)),
+        }
     }
 
     #[getter]
@@ -193,9 +210,16 @@ pub struct PyKlvStreamHandle(pub(crate) RustKlvStreamHandle);
 
 #[pymethods]
 impl PyKlvStreamHandle {
+    /// Reconstruct a `KlvStreamHandle` from a raw `u32`. Same
+    /// validation contract as `VideoStreamHandle.from_raw`: raises
+    /// `MuxError(INVALID_USAGE)` if the input has high bits set
+    /// outside the canonical 8-bit packed layout.
     #[staticmethod]
-    pub fn from_raw(raw: u32) -> Self {
-        Self(RustKlvStreamHandle::from_raw(raw))
+    pub fn from_raw(py: Python<'_>, raw: u32) -> PyResult<Self> {
+        match RustKlvStreamHandle::try_from_raw(raw) {
+            Ok(h) => Ok(Self(h)),
+            Err(e) => Err(crate::errors::mux_error_to_pyerr(py, e)),
+        }
     }
 
     #[getter]
@@ -226,9 +250,16 @@ pub struct PySubtitleStreamHandle(pub(crate) RustSubtitleStreamHandle);
 
 #[pymethods]
 impl PySubtitleStreamHandle {
+    /// Reconstruct a `SubtitleStreamHandle` from a raw `u32`. Same
+    /// validation contract as `VideoStreamHandle.from_raw`: raises
+    /// `MuxError(INVALID_USAGE)` if the input has high bits set
+    /// outside the canonical 8-bit packed layout.
     #[staticmethod]
-    pub fn from_raw(raw: u32) -> Self {
-        Self(RustSubtitleStreamHandle::from_raw(raw))
+    pub fn from_raw(py: Python<'_>, raw: u32) -> PyResult<Self> {
+        match RustSubtitleStreamHandle::try_from_raw(raw) {
+            Ok(h) => Ok(Self(h)),
+            Err(e) => Err(crate::errors::mux_error_to_pyerr(py, e)),
+        }
     }
 
     #[getter]

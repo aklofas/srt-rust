@@ -61,8 +61,12 @@ def test_stream_spec_subclasses_inherit_from_stream_spec_abc():
 
 
 def test_handle_raw_round_trip():
-    h = VideoStreamHandle.from_raw(0x12345678)
-    assert h.raw == 0x12345678
+    # Closeout audit Finding 1: `from_raw` now validates against the
+    # canonical 8-bit packed layout. Choose a value with no high bits
+    # set so the round-trip succeeds. Forged-handle rejection is
+    # covered by tests/test_handle_forge.py.
+    h = VideoStreamHandle.from_raw(0x78)
+    assert h.raw == 0x78
 
 
 def test_handle_equality_and_hash():
@@ -82,11 +86,15 @@ def test_handles_are_distinct_types():
 
 
 def test_handle_repr_includes_class_name_and_raw():
-    h = KlvStreamHandle.from_raw(0xDEAD)
+    # Closeout audit Finding 1: `from_raw` now validates the canonical
+    # 8-bit packed layout; 0xDEAD has high bits set and would reject.
+    # Use 0xAD = 173 (program=10, within=13) — within the canonical
+    # region while still distinctive in repr output.
+    h = KlvStreamHandle.from_raw(0xAD)
     r = repr(h)
     assert "KlvStreamHandle" in r
-    # 0xDEAD = 57005 — accept any reasonable rendering
-    assert ("57005" in r) or ("0xdead" in r.lower()) or ("DEAD" in r)
+    # 0xAD = 173 — accept any reasonable rendering
+    assert ("173" in r) or ("0xad" in r.lower()) or ("AD" in r)
 
 
 def test_handle_unpack():

@@ -63,6 +63,45 @@ fn muxer_push_video_to_invalid_handle_returns_invalid_usage() {
 }
 
 #[test]
+fn muxer_push_video_to_forged_high_bit_handle_returns_invalid_usage() {
+    // Closeout audit Finding 1: a raw handle with high bits set outside
+    // the canonical 4-bit program + 4-bit within layout MUST be rejected
+    // — not silently masked into a valid low-byte handle. Without
+    // `try_from_raw`, `valid.raw() | 0x100` aliases the genuine handle
+    // because `unpack` strips bit 8 and the push-time range check only
+    // sees the masked indices.
+    unsafe {
+        let cfg = tst_mux_config_new();
+        let prog = tst_mux_config_add_program(cfg, 1, 0x1000);
+        let h_video = tst_mux_config_add_video_stream(cfg, prog, 0x1011, TstVideoCodec::H264);
+        assert_ne!(h_video, TST_INVALID_STREAM_HANDLE);
+
+        let mux = tst_muxer_open(cfg);
+        tst_mux_config_free(cfg);
+        assert!(!mux.is_null());
+
+        // The legitimate handle pushes successfully.
+        let rc_valid =
+            tst_muxer_push_video_to(mux, h_video, NAL_SPS.as_ptr(), NAL_SPS.len(), 0, true);
+        assert_eq!(rc_valid, 0, "valid handle must push successfully");
+
+        // Forge: set bit 8 (the first reserved bit above the canonical
+        // 8-bit layout). The low byte still equals h_video — under the
+        // pre-fix masking behavior, this would silently route the push
+        // to h_video's stream. With validation, it must be rejected.
+        let forged = h_video | 0x100;
+        let rc_forged =
+            tst_muxer_push_video_to(mux, forged, NAL_SPS.as_ptr(), NAL_SPS.len(), 0, true);
+        assert_eq!(
+            rc_forged, -9, /* TST_E_INVALID_USAGE */
+            "forged handle (raw | 0x100) must be rejected, not aliased to the valid handle"
+        );
+
+        tst_muxer_close(mux);
+    }
+}
+
+#[test]
 fn add_program_invalid_handle_returns_sentinel() {
     unsafe {
         let cfg = tst_mux_config_new();

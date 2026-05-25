@@ -386,15 +386,50 @@ impl VideoStreamHandle {
     }
 
     /// Wrap a raw packed `u32` handle that was previously produced by
-    /// [`pack`](Self::pack) and returned to a C caller. Use this at FFI
-    /// push-time entry points where the handle is already packed — calling
-    /// `pack(0, raw)` would be wrong because it re-encodes `raw` as a
-    /// `within_index`, which trips the `within_index < 16` debug-assert for
-    /// any out-of-range value the C caller passes (e.g. an invalid-handle
-    /// test fixture with value 99).
+    /// [`pack`](Self::pack) **within the same process**. Use this for
+    /// in-process round-trips where the input is trusted (e.g. the
+    /// muxer received its own `.raw()` output back).
+    ///
+    /// **Do not use this at trust boundaries** (FFI, deserialization,
+    /// IPC). A caller can pass any `u32`; `from_raw` does no validation
+    /// and the downstream [`Self::unpack`] silently masks the high bits.
+    /// A forged value like `valid.raw() | 0x100` would alias the valid
+    /// low-byte stream and route the push to the wrong elementary stream.
+    /// Use [`Self::try_from_raw`] at every boundary that takes
+    /// caller-provided integers.
+    ///
+    /// Pre-existing in-muxer push-time range checks still reject handles
+    /// whose unpacked `(program_index, within_index)` is out of range —
+    /// e.g. value `99` from a C invalid-handle test — but they cannot
+    /// distinguish a forged-but-low-byte-valid handle from the genuine
+    /// one because they only see the masked indices.
     #[doc(hidden)]
     pub fn from_raw(raw: u32) -> Self {
         Self(raw)
+    }
+
+    /// Validating sibling of [`Self::from_raw`]. Returns
+    /// [`MuxError::InvalidStreamHandle`](crate::error::MuxError::InvalidStreamHandle)
+    /// if any bit outside the documented 4-bit program + 4-bit within
+    /// slots is set. Use this at every FFI / PyO3 / IPC trust boundary
+    /// that rewraps a caller-provided `u32` back into a typed handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns `MuxError::InvalidStreamHandle { kind: StreamKind::Video,
+    /// index: raw as usize }` if `raw` has any high bits set above the
+    /// 8-bit packed layout. The push-time range check still runs on
+    /// values that pass this validation — call sites get the same final
+    /// error type whether the rejection is "forged" or "out-of-range".
+    #[doc(hidden)]
+    pub fn try_from_raw(raw: u32) -> Result<Self, crate::error::MuxError> {
+        if crate::mpegts::common::handle_pack::try_unpack(raw).is_none() {
+            return Err(crate::error::MuxError::InvalidStreamHandle {
+                kind: StreamKind::Video,
+                index: raw as usize,
+            });
+        }
+        Ok(Self(raw))
     }
 }
 
@@ -437,11 +472,33 @@ impl KlvStreamHandle {
     }
 
     /// Wrap a raw packed `u32` handle that was previously produced by
-    /// [`pack`](Self::pack) and returned to a C caller. Same semantics as
-    /// [`VideoStreamHandle::from_raw`].
+    /// [`pack`](Self::pack) **within the same process**. Same in-process
+    /// round-trip semantics as [`VideoStreamHandle::from_raw`] — see that
+    /// method for the trust-boundary caveat. Use [`Self::try_from_raw`]
+    /// at FFI / PyO3 / IPC boundaries to reject forged handles.
     #[doc(hidden)]
     pub fn from_raw(raw: u32) -> Self {
         Self(raw)
+    }
+
+    /// Validating sibling of [`Self::from_raw`]. Same shape as
+    /// [`VideoStreamHandle::try_from_raw`] but tags the error with
+    /// [`StreamKind::Klv`].
+    ///
+    /// # Errors
+    ///
+    /// Returns `MuxError::InvalidStreamHandle { kind: StreamKind::Klv,
+    /// index: raw as usize }` if any high bit outside the 8-bit packed
+    /// layout is set.
+    #[doc(hidden)]
+    pub fn try_from_raw(raw: u32) -> Result<Self, crate::error::MuxError> {
+        if crate::mpegts::common::handle_pack::try_unpack(raw).is_none() {
+            return Err(crate::error::MuxError::InvalidStreamHandle {
+                kind: StreamKind::Klv,
+                index: raw as usize,
+            });
+        }
+        Ok(Self(raw))
     }
 }
 
@@ -511,11 +568,33 @@ impl AudioStreamHandle {
     }
 
     /// Wrap a raw packed `u32` handle that was previously produced by
-    /// [`pack`](Self::pack) and returned to a C caller. Same semantics as
-    /// [`VideoStreamHandle::from_raw`].
+    /// [`pack`](Self::pack) **within the same process**. Same in-process
+    /// round-trip semantics as [`VideoStreamHandle::from_raw`] — see that
+    /// method for the trust-boundary caveat. Use [`Self::try_from_raw`]
+    /// at FFI / PyO3 / IPC boundaries to reject forged handles.
     #[doc(hidden)]
     pub fn from_raw(raw: u32) -> Self {
         Self(raw)
+    }
+
+    /// Validating sibling of [`Self::from_raw`]. Same shape as
+    /// [`VideoStreamHandle::try_from_raw`] but tags the error with
+    /// [`StreamKind::Audio`].
+    ///
+    /// # Errors
+    ///
+    /// Returns `MuxError::InvalidStreamHandle { kind: StreamKind::Audio,
+    /// index: raw as usize }` if any high bit outside the 8-bit packed
+    /// layout is set.
+    #[doc(hidden)]
+    pub fn try_from_raw(raw: u32) -> Result<Self, crate::error::MuxError> {
+        if crate::mpegts::common::handle_pack::try_unpack(raw).is_none() {
+            return Err(crate::error::MuxError::InvalidStreamHandle {
+                kind: StreamKind::Audio,
+                index: raw as usize,
+            });
+        }
+        Ok(Self(raw))
     }
 }
 
@@ -595,11 +674,33 @@ impl SubtitleStreamHandle {
     }
 
     /// Wrap a raw packed `u32` handle that was previously produced by
-    /// [`pack`](Self::pack) and returned to a C caller. Same semantics as
-    /// [`VideoStreamHandle::from_raw`].
+    /// [`pack`](Self::pack) **within the same process**. Same in-process
+    /// round-trip semantics as [`VideoStreamHandle::from_raw`] — see that
+    /// method for the trust-boundary caveat. Use [`Self::try_from_raw`]
+    /// at FFI / PyO3 / IPC boundaries to reject forged handles.
     #[doc(hidden)]
     pub fn from_raw(raw: u32) -> Self {
         Self(raw)
+    }
+
+    /// Validating sibling of [`Self::from_raw`]. Same shape as
+    /// [`VideoStreamHandle::try_from_raw`] but tags the error with
+    /// [`StreamKind::Subtitle`].
+    ///
+    /// # Errors
+    ///
+    /// Returns `MuxError::InvalidStreamHandle { kind: StreamKind::Subtitle,
+    /// index: raw as usize }` if any high bit outside the 8-bit packed
+    /// layout is set.
+    #[doc(hidden)]
+    pub fn try_from_raw(raw: u32) -> Result<Self, crate::error::MuxError> {
+        if crate::mpegts::common::handle_pack::try_unpack(raw).is_none() {
+            return Err(crate::error::MuxError::InvalidStreamHandle {
+                kind: StreamKind::Subtitle,
+                index: raw as usize,
+            });
+        }
+        Ok(Self(raw))
     }
 }
 
@@ -607,3 +708,97 @@ impl SubtitleStreamHandle {
 /// Mirrors the per-program 16-video + 16-KLV stream caps; far above any
 /// realistic gimbaled-platform aggregation use case.
 pub const MAX_PROGRAMS: usize = 16;
+
+#[cfg(test)]
+mod try_from_raw_tests {
+    //! Regression tests for the trust-boundary handle-validation path
+    //! added by the closeout audit. Each `try_from_raw` must reject any
+    //! raw value with high bits set outside the 4-bit program + 4-bit
+    //! within layout, even if the low byte aliases a valid handle.
+    //!
+    //! Without `try_from_raw`, the legacy `from_raw` + `unpack` path
+    //! silently masks high bits — `valid.raw() | 0x100` would route
+    //! the payload to the same elementary stream as `valid.raw()`.
+    use super::*;
+    use crate::error::MuxError;
+
+    #[test]
+    fn video_try_from_raw_rejects_forged_high_bit() {
+        let valid = VideoStreamHandle::pack(0, 0);
+        let forged = valid.raw() | 0x100;
+        match VideoStreamHandle::try_from_raw(forged) {
+            Err(MuxError::InvalidStreamHandle { kind, index }) => {
+                assert_eq!(kind, StreamKind::Video);
+                assert_eq!(index, forged as usize);
+            }
+            other => panic!("expected InvalidStreamHandle, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn video_try_from_raw_accepts_canonical_handle() {
+        let valid = VideoStreamHandle::pack(0, 0);
+        let parsed =
+            VideoStreamHandle::try_from_raw(valid.raw()).expect("canonical handle must round-trip");
+        assert_eq!(parsed.raw(), valid.raw());
+    }
+
+    #[test]
+    fn klv_try_from_raw_rejects_forged_high_bit() {
+        let valid = KlvStreamHandle::pack(0, 0);
+        let forged = valid.raw() | 0x100;
+        match KlvStreamHandle::try_from_raw(forged) {
+            Err(MuxError::InvalidStreamHandle { kind, index }) => {
+                assert_eq!(kind, StreamKind::Klv);
+                assert_eq!(index, forged as usize);
+            }
+            other => panic!("expected InvalidStreamHandle, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn audio_try_from_raw_rejects_forged_high_bit() {
+        let valid = AudioStreamHandle::pack(0, 0);
+        let forged = valid.raw() | 0x100;
+        match AudioStreamHandle::try_from_raw(forged) {
+            Err(MuxError::InvalidStreamHandle { kind, index }) => {
+                assert_eq!(kind, StreamKind::Audio);
+                assert_eq!(index, forged as usize);
+            }
+            other => panic!("expected InvalidStreamHandle, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn subtitle_try_from_raw_rejects_forged_high_bit() {
+        let valid = SubtitleStreamHandle::pack(0, 0);
+        let forged = valid.raw() | 0x100;
+        match SubtitleStreamHandle::try_from_raw(forged) {
+            Err(MuxError::InvalidStreamHandle { kind, index }) => {
+                assert_eq!(kind, StreamKind::Subtitle);
+                assert_eq!(index, forged as usize);
+            }
+            other => panic!("expected InvalidStreamHandle, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn try_from_raw_rejects_far_upper_bit() {
+        // A 1-bit set in the upper word also rejects — defends against any
+        // future encoding shift that pushes the canonical region wider.
+        assert!(VideoStreamHandle::try_from_raw(0x0001_0000).is_err());
+        assert!(VideoStreamHandle::try_from_raw(u32::MAX).is_err());
+    }
+
+    #[test]
+    fn try_from_raw_accepts_full_canonical_layout() {
+        // (program=0xF, within=0xF) — bit 7 set, bit 8 clear: still
+        // within the 8-bit canonical region. Push-time range checks
+        // will reject on actual muxer state; validation only filters
+        // the layout-violating subset here.
+        assert!(VideoStreamHandle::try_from_raw(0xFF).is_ok());
+        assert!(KlvStreamHandle::try_from_raw(0xFF).is_ok());
+        assert!(AudioStreamHandle::try_from_raw(0xFF).is_ok());
+        assert!(SubtitleStreamHandle::try_from_raw(0xFF).is_ok());
+    }
+}

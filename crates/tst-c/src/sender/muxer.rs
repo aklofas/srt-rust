@@ -166,7 +166,18 @@ pub unsafe extern "C" fn tst_muxer_push_video_to(
         Ok(s) => s,
         Err(code) => return code,
     };
-    let stream = VideoStreamHandle::from_raw(handle);
+    // Trust-boundary validation: reject any caller-provided u32 that has
+    // bits set outside the canonical 8-bit packed layout. Without this,
+    // `valid.raw() | 0x100` would mask down to the valid low byte and
+    // alias the wrong elementary stream — the push-time range check
+    // sees only the masked indices and cannot distinguish.
+    let stream = match VideoStreamHandle::try_from_raw(handle) {
+        Ok(h) => h,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { crate::error::tst_get_last_error() };
+        }
+    };
     let pts = Pts90khz::new(pts_90khz);
     h.inner
         .with_inner_mut(|m| match m.push_video_to(stream, slice, pts, key_frame) {
@@ -204,7 +215,15 @@ pub unsafe extern "C" fn tst_muxer_push_klv_to(
         Ok(s) => s,
         Err(code) => return code,
     };
-    let stream = KlvStreamHandle::from_raw(handle);
+    // Trust-boundary validation — see VideoStreamHandle::try_from_raw rationale
+    // in tst_muxer_push_video_to above.
+    let stream = match KlvStreamHandle::try_from_raw(handle) {
+        Ok(h) => h,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { crate::error::tst_get_last_error() };
+        }
+    };
     let pts = Pts90khz::new(pts_90khz);
     h.inner.with_inner_mut(|m| {
         match m.push_klv_to(
@@ -283,7 +302,15 @@ pub unsafe extern "C" fn tst_muxer_push_audio_to(
         Ok(s) => s,
         Err(code) => return code,
     };
-    let stream = AudioStreamHandle::from_raw(handle);
+    // Trust-boundary validation — see VideoStreamHandle::try_from_raw rationale
+    // in tst_muxer_push_video_to above.
+    let stream = match AudioStreamHandle::try_from_raw(handle) {
+        Ok(h) => h,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { crate::error::tst_get_last_error() };
+        }
+    };
     let pts = Pts90khz::new(pts_90khz);
     h.inner
         .with_inner_mut(|m| match m.push_audio_to(stream, pts, slice) {
@@ -357,7 +384,15 @@ pub unsafe extern "C" fn tst_muxer_push_subtitle_to(
         Ok(s) => s,
         Err(code) => return code,
     };
-    let stream = SubtitleStreamHandle::from_raw(handle);
+    // Trust-boundary validation — see VideoStreamHandle::try_from_raw rationale
+    // in tst_muxer_push_video_to above.
+    let stream = match SubtitleStreamHandle::try_from_raw(handle) {
+        Ok(h) => h,
+        Err(e) => {
+            record_mux_error(&e);
+            return unsafe { crate::error::tst_get_last_error() };
+        }
+    };
     let pts = Pts90khz::new(pts_90khz);
     h.inner
         .with_inner_mut(|m| match m.push_subtitle_to(stream, pts, slice) {

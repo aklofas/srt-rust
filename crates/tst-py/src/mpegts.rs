@@ -513,61 +513,70 @@ fn convert_sample_event(
             let payload: &[u8] = frames;
             let (payload_py, parse_err): (PyObject, Option<PyErr>) = match codec {
                 AudioCodec::Aac => {
-                    let mut parsed: Vec<Py<crate::codec::AdtsFramePy>> = Vec::new();
-                    let mut last_err = None;
-                    for res in aac_frames(payload) {
-                        match res {
-                            Ok(f) => parsed.push(Py::new(
-                                py,
-                                crate::codec::AdtsFramePy {
-                                    inner: f.to_owned(),
-                                },
-                            )?),
-                            Err(e) => {
-                                last_err = Some(e);
-                                break;
+                    // Audit-2 #3: parse to owned frames under allow_threads so
+                    // other Python threads can run during AAC frame scanning;
+                    // only construct Py<AdtsFramePy> after re-acquiring the GIL.
+                    // Mirror of Demuxer::feed's py.allow_threads pattern.
+                    let parse_result: Result<
+                        Vec<tst_core::codec::aac::AdtsFrameOwned>,
+                        tst_core::codec::CodecParseError,
+                    > = py.allow_threads(|| {
+                        let mut owned = Vec::new();
+                        for res in aac_frames(payload) {
+                            match res {
+                                Ok(f) => owned.push(f.to_owned()),
+                                Err(e) => return Err(e),
                             }
                         }
-                    }
-                    if let Some(e) = last_err {
-                        let err = codec_parse_error_to_pyerr(py, &e, "aac");
-                        let bytes_py = PyBytes::new_bound(py, payload).into_py(py);
-                        (bytes_py, Some(err))
-                    } else {
-                        let list = pyo3::types::PyList::empty_bound(py);
-                        for f in parsed {
-                            list.append(f)?;
+                        Ok(owned)
+                    });
+                    match parse_result {
+                        Ok(frames) => {
+                            let list = pyo3::types::PyList::empty_bound(py);
+                            for f in frames {
+                                list.append(Py::new(py, crate::codec::AdtsFramePy { inner: f })?)?;
+                            }
+                            (list.into_py(py), None)
                         }
-                        (list.into_py(py), None)
+                        Err(e) => {
+                            let err = codec_parse_error_to_pyerr(py, &e, "aac");
+                            let bytes_py = PyBytes::new_bound(py, payload).into_py(py);
+                            (bytes_py, Some(err))
+                        }
                     }
                 }
                 AudioCodec::Mp2 => {
-                    let mut parsed: Vec<Py<crate::codec::Mpeg2AudioFramePy>> = Vec::new();
-                    let mut last_err = None;
-                    for res in mpegaudio_frames(payload) {
-                        match res {
-                            Ok(f) => parsed.push(Py::new(
-                                py,
-                                crate::codec::Mpeg2AudioFramePy {
-                                    inner: f.to_owned(),
-                                },
-                            )?),
-                            Err(e) => {
-                                last_err = Some(e);
-                                break;
+                    // Audit-2 #3: same GIL-release pattern as the AAC arm above,
+                    // using mpegaudio_frames and FrameOwned.
+                    let parse_result: Result<
+                        Vec<tst_core::codec::mpegaudio::FrameOwned>,
+                        tst_core::codec::CodecParseError,
+                    > = py.allow_threads(|| {
+                        let mut owned = Vec::new();
+                        for res in mpegaudio_frames(payload) {
+                            match res {
+                                Ok(f) => owned.push(f.to_owned()),
+                                Err(e) => return Err(e),
                             }
                         }
-                    }
-                    if let Some(e) = last_err {
-                        let err = codec_parse_error_to_pyerr(py, &e, "mp2");
-                        let bytes_py = PyBytes::new_bound(py, payload).into_py(py);
-                        (bytes_py, Some(err))
-                    } else {
-                        let list = pyo3::types::PyList::empty_bound(py);
-                        for f in parsed {
-                            list.append(f)?;
+                        Ok(owned)
+                    });
+                    match parse_result {
+                        Ok(frames) => {
+                            let list = pyo3::types::PyList::empty_bound(py);
+                            for f in frames {
+                                list.append(Py::new(
+                                    py,
+                                    crate::codec::Mpeg2AudioFramePy { inner: f },
+                                )?)?;
+                            }
+                            (list.into_py(py), None)
                         }
-                        (list.into_py(py), None)
+                        Err(e) => {
+                            let err = codec_parse_error_to_pyerr(py, &e, "mp2");
+                            let bytes_py = PyBytes::new_bound(py, payload).into_py(py);
+                            (bytes_py, Some(err))
+                        }
                     }
                 }
                 // AAC-LATM typed parsing deferred — fall back to bytes silently.

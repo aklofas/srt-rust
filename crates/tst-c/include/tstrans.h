@@ -604,6 +604,32 @@ typedef int32_t tst_subtitle_codec;
 #endif // __cplusplus
 
 /**
+ * `repr(i32)` mirror of `tst_core::mpegts::mux::Av1CarriageMode`.
+ *
+ * Two-valued enum: `Mpeg2TsBinding=0` (default, spec-conformant
+ * AV1-in-MPEG-2-TS binding — PES `stream_id=0xBD` and
+ * `ts_open_bitstream_unit()` framing per AV1-in-MPEG-2-TS §3.x),
+ * `InteropRawObu=1` (interop carriage matching ffmpeg / libaom /
+ * hls.js / mediamtx — PES `stream_id=0xE0` and raw OBU payload).
+ *
+ * Set on the demuxer side via `tst_demux_config_set_av1_carriage`
+ * so the receiver matches the sender's carriage; mismatched modes
+ * surface as `TST_NONCONFORMANT_CODE_AV1_WRONG_STREAM_ID` and
+ * `TST_NONCONFORMANT_CODE_AV1_MISSING_TS_OBU_FRAMING` issues.
+ */
+enum tst_av1_carriage_mode
+#ifdef __cplusplus
+  : int32_t
+#endif // __cplusplus
+ {
+  TST_AV1_CARRIAGE_MODE_MPEG2_TS_BINDING = 0,
+  TST_AV1_CARRIAGE_MODE_INTEROP_RAW_OBU = 1,
+};
+#ifndef __cplusplus
+typedef int32_t tst_av1_carriage_mode;
+#endif // __cplusplus
+
+/**
  * Opaque demux-config builder. Heap-allocated via `_new`, mutated
  * in place via setters, released via `_free`. The receiver clones
  * what it needs at `_open_with_config` time; the caller still owns
@@ -2735,6 +2761,39 @@ void tst_demux_config_free(struct tst_demux_config_t *cfg);
 struct tst_demux_config_t *tst_demux_config_new(void);
 
 /**
+ * Set the per-PID cap on the in-flight sync-metadata AU cell reassembly
+ * buffer. `cap_bytes` of `0` means use the Rust-side default (1 MiB).
+ *
+ * When the buffered inner-byte total would exceed this cap, the demuxer
+ * drops the in-flight buffer and emits a
+ * `TST_NONCONFORMANT_CODE_MULTI_CELL_AU` with
+ * `multi_cell_au_reason = TST_MULTI_CELL_AU_REASON_OVERFLOW`. Tune up
+ * for streams with unusually large sync-metadata AUs; tune down for
+ * adversarial-input scenarios where faster failure (and a tighter
+ * memory bound) is preferable.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+ */
+int tst_demux_config_set_au_cell_cap_per_pid(struct tst_demux_config_t *cfg, size_t cap_bytes);
+
+/**
+ * Set the demuxer's expected AV1 PES carriage mode. `mode` is one of
+ * `TST_AV1_CARRIAGE_MODE_MPEG2_TS_BINDING` (0, default — spec-conformant
+ * per the AV1-in-MPEG-2-TS binding) or `TST_AV1_CARRIAGE_MODE_INTEROP_RAW_OBU`
+ * (1 — matches ffmpeg / libaom / hls.js / mediamtx senders).
+ *
+ * In binding mode the demuxer expects PES `stream_id=0xBD` and
+ * `ts_open_bitstream_unit()` framing on each OBU; violations surface
+ * as `TST_NONCONFORMANT_CODE_AV1_WRONG_STREAM_ID` and
+ * `TST_NONCONFORMANT_CODE_AV1_MISSING_TS_OBU_FRAMING` issues. In
+ * interop mode the demuxer accepts raw OBUs without that framing.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
+ * unrecognized `mode`.
+ */
+int tst_demux_config_set_av1_carriage(struct tst_demux_config_t *cfg, int mode);
+
+/**
  * Enable opt-in tolerance for sync-metadata AU cells whose
  * `cell_fragment_indication` bits are set to `0b00` (Middle) or
  * `0b01` (Last) without a prior `First` cell. When enabled AND the
@@ -2754,6 +2813,22 @@ struct tst_demux_config_t *tst_demux_config_new(void);
  * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
  */
 int tst_demux_config_set_cfi_tolerance(struct tst_demux_config_t *cfg, int enable);
+
+/**
+ * Enable lenient PSI section reassembly across continuity-counter jumps.
+ * `enable` is read as a C `bool` (any non-zero value enables). Default
+ * is `false` (strict).
+ *
+ * In strict (default) mode, a continuity-counter jump on a PSI PID drops
+ * the in-flight partial section and emits a
+ * `TST_NONCONFORMANT_CODE_PSI_CC_DISCONTINUITY` diagnostic (matches
+ * ffmpeg `mpegts.c:3118-3142`). In lenient mode, the continuation
+ * packets are accepted across the jump (today's permissive behavior —
+ * the section either passes by luck or fails its CRC at the end).
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+ */
+int tst_demux_config_set_lenient_psi_reassembly(struct tst_demux_config_t *cfg, int enable);
 
 /**
  * Set PES reassembly caps. `0` means use the Rust-side default.

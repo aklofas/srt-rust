@@ -119,6 +119,7 @@ include = [
     "TstStrictMode",
     "TstAudioCodec",
     "TstSubtitleCodec",
+    "TstAv1CarriageMode",
 ]
 
 [export.rename]
@@ -194,6 +195,7 @@ include = [
 "TstStrictMode"             = "tst_strict_mode"
 "TstAudioCodec"             = "tst_audio_codec"
 "TstSubtitleCodec"          = "tst_subtitle_codec"
+"TstAv1CarriageMode"        = "tst_av1_carriage_mode"
 
 [enum]
 prefix_with_name = true

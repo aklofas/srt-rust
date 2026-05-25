@@ -128,8 +128,15 @@ class Av1CarriageMode(enum.Enum):
     `ts_open_bitstream_unit` framing). Non-conformant per the binding
     spec, but matches the de facto carriage used by those tools today.
 
-    The symmetric setting on the demuxer (`DemuxerConfig.av1_carriage`)
-    MUST match for a successful round-trip.
+    Set the same value on both sides for a successful round-trip:
+
+    - Sender side: pass to `MuxerConfigBuilder.av1_carriage(...)`.
+    - Receiver side: pass to `DemuxerConfig(av1_carriage=...)`.
+
+    A mismatch surfaces on the receiver as
+    `NonConformantKind.AV1_WRONG_STREAM_ID` plus
+    `NonConformantKind.AV1_MISSING_TS_OBU_FRAMING`; the Sample still
+    arrives via the lenient raw-OBU fallback path.
     """
 
     MPEG2_TS_BINDING = "mpeg2_ts_binding"
@@ -508,10 +515,29 @@ class DemuxerConfig:
     - `pes_cap_per_pid`, `pes_cap_total` — reassembly memory caps.
     - `cfi_tolerance` — opt-in lenient AU-cell CFI substitution
       (see MultiCellAuReason / CellFragmentIndication).
+    - `av1_carriage` — AV1 PES carriage mode the demuxer expects;
+      `None` (the default) defers to the Rust default
+      (`Av1CarriageMode.MPEG2_TS_BINDING`). Set to
+      `Av1CarriageMode.INTEROP_RAW_OBU` when receiving from
+      ffmpeg / libaom / hls.js / mediamtx senders. A mismatched value
+      against the wire carriage surfaces as
+      `NonConformantKind.AV1_WRONG_STREAM_ID` plus
+      `NonConformantKind.AV1_MISSING_TS_OBU_FRAMING`; the Sample
+      still arrives via the lenient raw-OBU fallback.
+    - `au_cell_cap_per_pid` — per-PID cap on the in-flight
+      sync-metadata AU cell reassembly buffer in bytes; `None` defers
+      to the Rust default of 1 MiB. Breach surfaces as
+      `NonConformantKind.MULTI_CELL_AU` with
+      `multi_cell_au_reason = MultiCellAuReason.OVERFLOW`.
+    - `lenient_psi_reassembly` — when False (default), PSI section
+      reassembly drops the partial section on continuity-counter
+      jumps and emits `NonConformantKind.PSI_CC_DISCONTINUITY`
+      (matches ffmpeg `mpegts.c:3118-3142`). When True, continuation
+      packets are accepted across jumps (today's permissive
+      behavior — the section either passes by luck or fails its CRC).
 
-    Other Rust-side knobs (link_klv, treat_as, av1_carriage,
-    au_cell_cap_per_pid) are not yet bridged — open an issue if you
-    need them.
+    `link_klv` and `treat_as` overrides (per-PID PMT-bypass knobs)
+    remain Rust-only today; open an issue if your use case needs them.
     """
 
     strict_mode: StrictMode = StrictMode.OFF
@@ -525,6 +551,18 @@ class DemuxerConfig:
     # event. Default False keeps the spec-strict behavior: orphan cells
     # surface only as `MULTI_CELL_AU{ORPHAN}`.
     cfi_tolerance: bool = False
+    # `None` defers to the Rust default
+    # (`Av1CarriageMode::Mpeg2TsBinding`). Storing the Python
+    # `Av1CarriageMode` value (not its `.value` string) lets the
+    # `build_demuxer()` plumbing call `value` for the
+    # already-existing Rust mapping.
+    av1_carriage: Optional[Av1CarriageMode] = None
+    # `None` defers to the Rust default of 1 MiB. Any positive int
+    # caps the in-flight AU cell reassembly buffer at that many bytes.
+    au_cell_cap_per_pid: Optional[int] = None
+    # See class docstring above for the spec-strict vs lenient PSI
+    # reassembly trade-off.
+    lenient_psi_reassembly: bool = False
 
 
 # Phase 5: re-export NalUnit / Obu / ObuExtension so callers can import

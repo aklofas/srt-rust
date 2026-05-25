@@ -7,6 +7,43 @@
 
 use libc::c_int;
 
+/// `repr(i32)` mirror of `tst_core::mpegts::mux::Av1CarriageMode`.
+///
+/// Two-valued enum: `Mpeg2TsBinding=0` (default, spec-conformant
+/// AV1-in-MPEG-2-TS binding — PES `stream_id=0xBD` and
+/// `ts_open_bitstream_unit()` framing per AV1-in-MPEG-2-TS §3.x),
+/// `InteropRawObu=1` (interop carriage matching ffmpeg / libaom /
+/// hls.js / mediamtx — PES `stream_id=0xE0` and raw OBU payload).
+///
+/// Set on the demuxer side via `tst_demux_config_set_av1_carriage`
+/// so the receiver matches the sender's carriage; mismatched modes
+/// surface as `TST_NONCONFORMANT_CODE_AV1_WRONG_STREAM_ID` and
+/// `TST_NONCONFORMANT_CODE_AV1_MISSING_TS_OBU_FRAMING` issues.
+#[repr(i32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TstAv1CarriageMode {
+    Mpeg2TsBinding = 0,
+    InteropRawObu = 1,
+}
+
+impl TstAv1CarriageMode {
+    pub(crate) fn from_c_int(v: c_int) -> Option<Self> {
+        match v {
+            0 => Some(Self::Mpeg2TsBinding),
+            1 => Some(Self::InteropRawObu),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn to_rust(self) -> tst_core::mpegts::mux::Av1CarriageMode {
+        use tst_core::mpegts::mux::Av1CarriageMode;
+        match self {
+            Self::Mpeg2TsBinding => Av1CarriageMode::Mpeg2TsBinding,
+            Self::InteropRawObu => Av1CarriageMode::InteropRawObu,
+        }
+    }
+}
+
 /// `repr(i32)` mirror of `tst_core::mpegts::demux::StrictMode`.
 ///
 /// Four-valued enum: `Off=0` (default, lenient), `TimingOnly=1`,
@@ -54,6 +91,7 @@ impl TstStrictMode {
 use libc::size_t;
 use std::collections::HashMap;
 use tst_core::mpegts::demux::{DemuxerConfig, StreamKind, StrictMode};
+use tst_core::mpegts::mux::Av1CarriageMode;
 
 /// Opaque demux-config builder. Heap-allocated via `_new`, mutated
 /// in place via setters, released via `_free`. The receiver clones
@@ -68,6 +106,27 @@ pub struct TstDemuxConfig {
     klv_link_overrides: Vec<(u16, u16)>,
     stream_kind_overrides: HashMap<u16, StreamKind>,
     cfi_tolerance: bool,
+    // `None` = use Rust-side default (`Av1CarriageMode::Mpeg2TsBinding`).
+    // Explicit `Some(_)` lets the C caller request the interop carriage
+    // when the upstream sender ships ffmpeg/libaom/hls.js framing.
+    av1_carriage: Option<Av1CarriageMode>,
+    // `None` = use Rust-side default (1 MiB).
+    au_cell_cap_per_pid: Option<usize>,
+    lenient_psi_reassembly: bool,
+}
+
+/// Build a `DemuxerConfig` from a C-side `TstDemuxConfig`. Exposed to
+/// integration tests in this crate so they can verify the C-ABI
+/// builder path end-to-end without going through a real SRT loopback.
+/// Not part of the public C ABI (no `extern "C"`).
+///
+/// # Safety
+///
+/// `cfg` must be a valid non-null pointer returned by
+/// `tst_demux_config_new` and not yet freed.
+#[doc(hidden)]
+pub unsafe fn test_build_options(cfg: *const TstDemuxConfig) -> DemuxerConfig {
+    unsafe { (*cfg).build_options() }
 }
 
 impl TstDemuxConfig {
@@ -79,8 +138,12 @@ impl TstDemuxConfig {
         cfg.pes_cap_total = self.pes_cap_total;
         cfg.klv_link_overrides = self.klv_link_overrides.clone();
         cfg.stream_kind_overrides = self.stream_kind_overrides.clone();
-        cfg.lenient_psi_reassembly = false;
+        cfg.lenient_psi_reassembly = self.lenient_psi_reassembly;
         cfg.cfi_tolerance = self.cfi_tolerance;
+        if let Some(mode) = self.av1_carriage {
+            cfg.av1_carriage = mode;
+        }
+        cfg.au_cell_cap_per_pid = self.au_cell_cap_per_pid;
         cfg
     }
 }
@@ -100,6 +163,9 @@ pub unsafe extern "C" fn tst_demux_config_new() -> *mut TstDemuxConfig {
             klv_link_overrides: Vec::new(),
             stream_kind_overrides: HashMap::new(),
             cfi_tolerance: false,
+            av1_carriage: None,
+            au_cell_cap_per_pid: None,
+            lenient_psi_reassembly: false,
         }))
     })
 }
@@ -288,6 +354,108 @@ pub unsafe extern "C" fn tst_demux_config_set_cfi_tolerance(
     })
 }
 
+/// Set the demuxer's expected AV1 PES carriage mode. `mode` is one of
+/// `TST_AV1_CARRIAGE_MODE_MPEG2_TS_BINDING` (0, default — spec-conformant
+/// per the AV1-in-MPEG-2-TS binding) or `TST_AV1_CARRIAGE_MODE_INTEROP_RAW_OBU`
+/// (1 — matches ffmpeg / libaom / hls.js / mediamtx senders).
+///
+/// In binding mode the demuxer expects PES `stream_id=0xBD` and
+/// `ts_open_bitstream_unit()` framing on each OBU; violations surface
+/// as `TST_NONCONFORMANT_CODE_AV1_WRONG_STREAM_ID` and
+/// `TST_NONCONFORMANT_CODE_AV1_MISSING_TS_OBU_FRAMING` issues. In
+/// interop mode the demuxer accepts raw OBUs without that framing.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg` or
+/// unrecognized `mode`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_config_set_av1_carriage(
+    cfg: *mut TstDemuxConfig,
+    mode: c_int,
+) -> c_int {
+    crate::panic::ffi_catch(crate::error::TstError::PanicCaught as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            crate::error::set_last_error(
+                crate::error::TstError::InvalidConfig,
+                "null config pointer",
+            );
+            return crate::error::TstError::InvalidConfig as i32;
+        };
+        let Some(parsed) = TstAv1CarriageMode::from_c_int(mode) else {
+            crate::error::set_last_error(
+                crate::error::TstError::InvalidConfig,
+                "unrecognized av1 carriage mode (valid: 0..=1)",
+            );
+            return crate::error::TstError::InvalidConfig as i32;
+        };
+        cfg.av1_carriage = Some(parsed.to_rust());
+        0
+    })
+}
+
+/// Set the per-PID cap on the in-flight sync-metadata AU cell reassembly
+/// buffer. `cap_bytes` of `0` means use the Rust-side default (1 MiB).
+///
+/// When the buffered inner-byte total would exceed this cap, the demuxer
+/// drops the in-flight buffer and emits a
+/// `TST_NONCONFORMANT_CODE_MULTI_CELL_AU` with
+/// `multi_cell_au_reason = TST_MULTI_CELL_AU_REASON_OVERFLOW`. Tune up
+/// for streams with unusually large sync-metadata AUs; tune down for
+/// adversarial-input scenarios where faster failure (and a tighter
+/// memory bound) is preferable.
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_config_set_au_cell_cap_per_pid(
+    cfg: *mut TstDemuxConfig,
+    cap_bytes: size_t,
+) -> c_int {
+    crate::panic::ffi_catch(crate::error::TstError::PanicCaught as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            crate::error::set_last_error(
+                crate::error::TstError::InvalidConfig,
+                "null config pointer",
+            );
+            return crate::error::TstError::InvalidConfig as i32;
+        };
+        cfg.au_cell_cap_per_pid = if cap_bytes == 0 {
+            None
+        } else {
+            Some(cap_bytes)
+        };
+        0
+    })
+}
+
+/// Enable lenient PSI section reassembly across continuity-counter jumps.
+/// `enable` is read as a C `bool` (any non-zero value enables). Default
+/// is `false` (strict).
+///
+/// In strict (default) mode, a continuity-counter jump on a PSI PID drops
+/// the in-flight partial section and emits a
+/// `TST_NONCONFORMANT_CODE_PSI_CC_DISCONTINUITY` diagnostic (matches
+/// ffmpeg `mpegts.c:3118-3142`). In lenient mode, the continuation
+/// packets are accepted across the jump (today's permissive behavior —
+/// the section either passes by luck or fails its CRC at the end).
+///
+/// Returns 0 on success, `TST_E_INVALID_CONFIG` on null `cfg`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_demux_config_set_lenient_psi_reassembly(
+    cfg: *mut TstDemuxConfig,
+    enable: c_int,
+) -> c_int {
+    crate::panic::ffi_catch(crate::error::TstError::PanicCaught as i32, || {
+        let Some(cfg) = (unsafe { cfg.as_mut() }) else {
+            crate::error::set_last_error(
+                crate::error::TstError::InvalidConfig,
+                "null config pointer",
+            );
+            return crate::error::TstError::InvalidConfig as i32;
+        };
+        cfg.lenient_psi_reassembly = enable != 0;
+        0
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,6 +553,139 @@ mod tests {
     #[test]
     fn set_cfi_tolerance_null_cfg_returns_invalid_config() {
         let rc = unsafe { tst_demux_config_set_cfi_tolerance(std::ptr::null_mut(), 1) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn av1_carriage_mode_round_trip() {
+        for v in 0..=1 {
+            let m = TstAv1CarriageMode::from_c_int(v).expect("recognized");
+            assert_eq!(m as i32, v);
+        }
+        assert!(TstAv1CarriageMode::from_c_int(-1).is_none());
+        assert!(TstAv1CarriageMode::from_c_int(2).is_none());
+    }
+
+    #[test]
+    fn av1_carriage_default_is_rust_default() {
+        // Absent any setter call, build_options() must produce the
+        // Rust-side default (Mpeg2TsBinding) — the C wrapper must NOT
+        // silently force a different mode.
+        unsafe {
+            let cfg = tst_demux_config_new();
+            let opts = (*cfg).build_options();
+            assert_eq!(
+                opts.av1_carriage,
+                tst_core::mpegts::mux::Av1CarriageMode::Mpeg2TsBinding
+            );
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn set_av1_carriage_toggles() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            assert_eq!(
+                tst_demux_config_set_av1_carriage(cfg, TstAv1CarriageMode::InteropRawObu as i32),
+                0,
+            );
+            assert_eq!(
+                (*cfg).build_options().av1_carriage,
+                tst_core::mpegts::mux::Av1CarriageMode::InteropRawObu
+            );
+            assert_eq!(
+                tst_demux_config_set_av1_carriage(cfg, TstAv1CarriageMode::Mpeg2TsBinding as i32),
+                0,
+            );
+            assert_eq!(
+                (*cfg).build_options().av1_carriage,
+                tst_core::mpegts::mux::Av1CarriageMode::Mpeg2TsBinding
+            );
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn set_av1_carriage_null_cfg_returns_invalid_config() {
+        let rc = unsafe { tst_demux_config_set_av1_carriage(std::ptr::null_mut(), 0) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn set_av1_carriage_invalid_value_returns_invalid_config() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            let rc = tst_demux_config_set_av1_carriage(cfg, 999);
+            assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn au_cell_cap_default_is_none() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            // `None` lets the Rust side use DEFAULT_AU_CELL_CAP_PER_PID
+            // (1 MiB). We assert by checking the option is None at the
+            // C wrapper layer — Rust-side default replacement happens in
+            // the demuxer itself.
+            let opts = (*cfg).build_options();
+            assert_eq!(opts.au_cell_cap_per_pid, None);
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn set_au_cell_cap_per_pid_sets_value() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            assert_eq!(
+                tst_demux_config_set_au_cell_cap_per_pid(cfg, 2 * 1024 * 1024),
+                0
+            );
+            assert_eq!(
+                (*cfg).build_options().au_cell_cap_per_pid,
+                Some(2 * 1024 * 1024)
+            );
+            // Zero resets back to default (None).
+            assert_eq!(tst_demux_config_set_au_cell_cap_per_pid(cfg, 0), 0);
+            assert_eq!((*cfg).build_options().au_cell_cap_per_pid, None);
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn set_au_cell_cap_per_pid_null_cfg_returns_invalid_config() {
+        let rc = unsafe { tst_demux_config_set_au_cell_cap_per_pid(std::ptr::null_mut(), 1024) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn lenient_psi_reassembly_default_is_false() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            let opts = (*cfg).build_options();
+            assert!(!opts.lenient_psi_reassembly);
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn set_lenient_psi_reassembly_toggles() {
+        unsafe {
+            let cfg = tst_demux_config_new();
+            assert_eq!(tst_demux_config_set_lenient_psi_reassembly(cfg, 1), 0);
+            assert!((*cfg).build_options().lenient_psi_reassembly);
+            assert_eq!(tst_demux_config_set_lenient_psi_reassembly(cfg, 0), 0);
+            assert!(!(*cfg).build_options().lenient_psi_reassembly);
+            tst_demux_config_free(cfg);
+        }
+    }
+
+    #[test]
+    fn set_lenient_psi_reassembly_null_cfg_returns_invalid_config() {
+        let rc = unsafe { tst_demux_config_set_lenient_psi_reassembly(std::ptr::null_mut(), 1) };
         assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
     }
 }

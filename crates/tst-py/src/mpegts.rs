@@ -24,7 +24,7 @@ use tst_core::error::DemuxError;
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::event::{AudioCodec, MultiCellAuReason};
 use tst_core::mpegts::demux::{
-    DemuxEvent, Demuxer, DemuxerBuilder, DiscontinuityKind, LinkSource, MetadataKind,
+    DemuxEvent, Demuxer, DemuxerConfig, DiscontinuityKind, LinkSource, MetadataKind,
     NonConformantIssue, ProgramMap, SamplePayload, StreamId, StreamInfo, StreamKind, StrictMode,
     SubtitleCodec, VideoCodec, VideoPayload,
 };
@@ -163,34 +163,64 @@ impl PyDemuxer {
 // ---------------------------------------------------------------------------
 
 /// Build a `Demuxer` from an optional Python `DemuxerConfig` dataclass.
+///
+/// Constructs a `DemuxerConfig` field-by-field rather than chaining
+/// the `DemuxerBuilder` setters: that lets us set
+/// `lenient_psi_reassembly` (which has no dedicated builder method
+/// today) and keep the dispatch shape uniform across the 6 bridged
+/// knobs, mirroring how the C wrapper's `build_options()` assembles
+/// its `DemuxerConfig`.
 fn build_demuxer(py: Python<'_>, config: Option<&Bound<'_, PyAny>>) -> PyResult<Demuxer> {
-    let mut b = DemuxerBuilder::new();
-    if let Some(cfg) = config {
-        let strict_attr = cfg.getattr(intern!(py, "strict_mode"))?;
-        let strict_name: String = strict_attr.getattr(intern!(py, "name"))?.extract()?;
-        let strict = match strict_name.as_str() {
-            "OFF" => StrictMode::Off,
-            "TIMING_ONLY" => StrictMode::TimingOnly,
-            // Python side uses "PSI_ONLY"; Rust renamed to DescriptorsOnly
-            // (same semantics: hard-fail on descriptor/stream-type issues).
-            "PSI_ONLY" => StrictMode::DescriptorsOnly,
-            "FULL" => StrictMode::Full,
-            other => {
-                return Err(pyo3::exceptions::PyValueError::new_err(format!(
-                    "unknown StrictMode variant: {other}"
-                )));
-            }
-        };
-        let cap_per_pid: usize = cfg.getattr(intern!(py, "pes_cap_per_pid"))?.extract()?;
-        let cap_total: usize = cfg.getattr(intern!(py, "pes_cap_total"))?.extract()?;
-        let cfi_tolerance: bool = cfg.getattr(intern!(py, "cfi_tolerance"))?.extract()?;
+    let Some(cfg) = config else {
+        return Ok(Demuxer::new());
+    };
 
-        b = b.strict(strict);
-        b = b.pes_cap_per_pid(cap_per_pid);
-        b = b.pes_cap_total(cap_total);
-        b = b.cfi_tolerance(cfi_tolerance);
+    let strict_attr = cfg.getattr(intern!(py, "strict_mode"))?;
+    let strict_name: String = strict_attr.getattr(intern!(py, "name"))?.extract()?;
+    let strict = match strict_name.as_str() {
+        "OFF" => StrictMode::Off,
+        "TIMING_ONLY" => StrictMode::TimingOnly,
+        // Python side uses "PSI_ONLY"; Rust renamed to DescriptorsOnly
+        // (same semantics: hard-fail on descriptor/stream-type issues).
+        "PSI_ONLY" => StrictMode::DescriptorsOnly,
+        "FULL" => StrictMode::Full,
+        other => {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "unknown StrictMode variant: {other}"
+            )));
+        }
+    };
+    let cap_per_pid: usize = cfg.getattr(intern!(py, "pes_cap_per_pid"))?.extract()?;
+    let cap_total: usize = cfg.getattr(intern!(py, "pes_cap_total"))?.extract()?;
+    let cfi_tolerance: bool = cfg.getattr(intern!(py, "cfi_tolerance"))?.extract()?;
+    let lenient_psi_reassembly: bool = cfg
+        .getattr(intern!(py, "lenient_psi_reassembly"))?
+        .extract()?;
+
+    let mut opts = DemuxerConfig::default();
+    opts.strict = strict;
+    opts.pes_cap_per_pid = Some(cap_per_pid);
+    opts.pes_cap_total = Some(cap_total);
+    opts.cfi_tolerance = cfi_tolerance;
+    opts.lenient_psi_reassembly = lenient_psi_reassembly;
+
+    // `av1_carriage = None` defers to the Rust default
+    // (`Av1CarriageMode::Mpeg2TsBinding`). Any explicit Python
+    // `Av1CarriageMode.*` member rides the existing
+    // `py_av1_carriage` translator from `crate::mux` for
+    // single-source-of-truth string→variant mapping.
+    let av1_attr = cfg.getattr(intern!(py, "av1_carriage"))?;
+    if !av1_attr.is_none() {
+        opts.av1_carriage = crate::mux::py_av1_carriage(&av1_attr)?;
     }
-    Ok(b.build())
+    // `au_cell_cap_per_pid = None` defers to the Rust default of
+    // 1 MiB. Any positive int caps the reassembly buffer.
+    let au_cap_attr = cfg.getattr(intern!(py, "au_cell_cap_per_pid"))?;
+    if !au_cap_attr.is_none() {
+        opts.au_cell_cap_per_pid = Some(au_cap_attr.extract::<usize>()?);
+    }
+
+    Ok(Demuxer::with_config(opts))
 }
 
 // ---------------------------------------------------------------------------

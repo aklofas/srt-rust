@@ -12,6 +12,7 @@
 
 #![warn(rustdoc::broken_intra_doc_links)]
 
+pub mod builder;
 pub mod cancel;
 pub mod clock;
 pub mod init;
@@ -19,6 +20,7 @@ pub mod packet;
 pub mod transport;
 pub mod url;
 
+pub use builder::{RtpRecvSocketBuilder, RtpSocketBuilder};
 pub use cancel::RtpCancelHandle;
 pub use clock::RtpClock;
 pub use packet::{Parsed, RTP_HEADER_LEN, RTP_PT_MP2T, RTP_VERSION, RtpHeader, RtpParseError};

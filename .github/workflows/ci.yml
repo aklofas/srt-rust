@@ -164,14 +164,31 @@ jobs:
           SRT_FORCE_VENDORED: "1"
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: Install nightly toolchain (for doc lints)
+        # Required for the cargo doc step below. Stable rustdoc 1.85
+        # silently misses `rustdoc::broken_intra_doc_links` patterns
+        # that nightly catches; the `cargo public-api` step independently
+        # uses nightly internally for `--output-format json` and was the
+        # only thing surfacing broken-link warnings (and only as printed
+        # stderr, not as failures). Investigated and switched 2026-05-25
+        # — see commit `f0754dc` body for the full reproduction.
+        # Linux-only, matches the cargo doc step's matrix guard.
+        if: matrix.name == 'linux-x86_64'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+
       - name: cargo doc (no broken intra-doc links)
         # Linux-only — workspace-state check; running it 4× across the matrix
-        # burns CI for zero added signal.
+        # burns CI for zero added signal. Uses nightly rustdoc because the
+        # stable broken-intra-doc-links lint undercounts (see preceding step
+        # for context). nightly was already a project requirement (fuzz-smoke
+        # job depends on it), so no new toolchain commitment.
         if: matrix.name == 'linux-x86_64'
         env:
           SRT_FORCE_VENDORED: "1"
           RUSTDOCFLAGS: "-D warnings"
-        run: cargo doc --workspace --no-deps --all-features
+        run: cargo +nightly doc --workspace --no-deps --all-features
 
       - name: cargo test --doc
         # Skipped on Windows MSVC pending plan #65 follow-up: doctest

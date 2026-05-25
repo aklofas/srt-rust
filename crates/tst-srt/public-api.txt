@@ -4,30 +4,30 @@ pub mod tst_srt::addr
 pub mod tst_srt::builder
 pub struct tst_srt::builder::ListenerBuilder
 impl tst_srt::builder::ListenerBuilder
-pub fn tst_srt::builder::ListenerBuilder::backlog(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::bind(&self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::listener::Listener, tst_srt::error::BindError>
+pub fn tst_srt::builder::ListenerBuilder::backlog(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::bind(&self, impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::listener::Listener, tst_srt::error::BindError>
 pub fn tst_srt::builder::ListenerBuilder::config(&self) -> tst_srt::config::ListenerConfig
-pub fn tst_srt::builder::ListenerBuilder::congestion(&mut self, c: tst_srt::options::Congestion) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::flow_window_packets(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::key_length(&mut self, kl: tst_srt::options::KeyLength) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::latency(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::latency_ms(&mut self, ms: u64) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::linger(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::loss_max_ttl(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::max_bandwidth(&mut self, bw: tst_srt::options::MaxBandwidth) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::mss(&mut self, mss: u16) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::congestion(&mut self, tst_srt::options::Congestion) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::flow_window_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::key_length(&mut self, tst_srt::options::KeyLength) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::latency(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::latency_ms(&mut self, u64) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::linger(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::loss_max_ttl(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::max_bandwidth(&mut self, tst_srt::options::MaxBandwidth) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::mss(&mut self, u16) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::new() -> Self
-pub fn tst_srt::builder::ListenerBuilder::overhead_bandwidth_pct(&mut self, pct: u8) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::packet_filter(&mut self, pf: tst_srt::options::PacketFilter) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::passphrase(&mut self, p: tst_srt::options::Passphrase) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::payload_size(&mut self, n: u16) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::recv_buf_packets(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::recv_latency(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::recv_timeout(&mut self, t: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::reuse_addr(&mut self, on: bool) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::send_timeout(&mut self, t: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::too_late_packet_drop(&mut self, on: bool) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::udp_recv_buffer_bytes(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::overhead_bandwidth_pct(&mut self, u8) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::packet_filter(&mut self, tst_srt::options::PacketFilter) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::passphrase(&mut self, tst_srt::options::Passphrase) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::payload_size(&mut self, u16) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_latency(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_timeout(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::reuse_addr(&mut self, bool) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::send_timeout(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::too_late_packet_drop(&mut self, bool) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::udp_recv_buffer_bytes(&mut self, u32) -> &mut Self
 impl core::default::Default for tst_srt::builder::ListenerBuilder
 pub fn tst_srt::builder::ListenerBuilder::default() -> tst_srt::builder::ListenerBuilder
 impl core::marker::Freeze for tst_srt::builder::ListenerBuilder
@@ -40,37 +40,37 @@ impl core::panic::unwind_safe::UnwindSafe for tst_srt::builder::ListenerBuilder
 pub struct tst_srt::builder::SocketBuilder
 impl tst_srt::builder::SocketBuilder
 pub fn tst_srt::builder::SocketBuilder::config(&self) -> tst_srt::config::SocketConfig
-pub fn tst_srt::builder::SocketBuilder::congestion(&mut self, c: tst_srt::options::Congestion) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::connect(&self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::socket::Socket, tst_srt::error::ConnectError>
-pub fn tst_srt::builder::SocketBuilder::connect_timeout(&mut self, t: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::flow_window_packets(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::input_bandwidth(&mut self, bw: u64) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::key_length(&mut self, kl: tst_srt::options::KeyLength) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::latency(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::latency_ms(&mut self, ms: u64) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::linger(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::loss_max_ttl(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::max_bandwidth(&mut self, bw: tst_srt::options::MaxBandwidth) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::mss(&mut self, mss: u16) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::congestion(&mut self, tst_srt::options::Congestion) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::connect(&self, impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::socket::Socket, tst_srt::error::ConnectError>
+pub fn tst_srt::builder::SocketBuilder::connect_timeout(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::flow_window_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::input_bandwidth(&mut self, u64) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::key_length(&mut self, tst_srt::options::KeyLength) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::latency(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::latency_ms(&mut self, u64) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::linger(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::loss_max_ttl(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::max_bandwidth(&mut self, tst_srt::options::MaxBandwidth) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::mss(&mut self, u16) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::new() -> Self
-pub fn tst_srt::builder::SocketBuilder::overhead_bandwidth_pct(&mut self, pct: u8) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::packet_filter(&mut self, pf: tst_srt::options::PacketFilter) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::passphrase(&mut self, p: tst_srt::options::Passphrase) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::payload_size(&mut self, n: u16) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::peer_latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::overhead_bandwidth_pct(&mut self, u8) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::packet_filter(&mut self, tst_srt::options::PacketFilter) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::passphrase(&mut self, tst_srt::options::Passphrase) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::payload_size(&mut self, u16) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::peer_latency(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::receiver_defaults(&mut self) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::recv_buf_packets(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::recv_latency(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::recv_timeout(&mut self, t: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::role(&mut self, role: tst_srt::options::Role) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::send_buf_packets(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::send_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_latency(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_timeout(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::role(&mut self, tst_srt::options::Role) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::send_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::send_timeout(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::sender_defaults(&mut self) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::stream_id(&mut self, id: tst_srt::options::StreamId) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::too_late_packet_drop(&mut self, on: bool) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::try_stream_id(&mut self, id: impl core::convert::TryInto<tst_srt::options::StreamId, Error = tst_srt::error::StreamIdError>) -> core::result::Result<&mut Self, tst_srt::error::OptionError>
-pub fn tst_srt::builder::SocketBuilder::udp_recv_buffer_bytes(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::udp_send_buffer_bytes(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::stream_id(&mut self, tst_srt::options::StreamId) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::too_late_packet_drop(&mut self, bool) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::try_stream_id(&mut self, impl core::convert::TryInto<tst_srt::options::StreamId, Error = tst_srt::error::StreamIdError>) -> core::result::Result<&mut Self, tst_srt::error::OptionError>
+pub fn tst_srt::builder::SocketBuilder::udp_recv_buffer_bytes(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::udp_send_buffer_bytes(&mut self, u32) -> &mut Self
 impl core::default::Default for tst_srt::builder::SocketBuilder
 pub fn tst_srt::builder::SocketBuilder::default() -> tst_srt::builder::SocketBuilder
 impl core::marker::Freeze for tst_srt::builder::SocketBuilder
@@ -107,7 +107,7 @@ pub fn tst_srt::config::ListenerConfig::clone(&self) -> tst_srt::config::Listene
 impl core::default::Default for tst_srt::config::ListenerConfig
 pub fn tst_srt::config::ListenerConfig::default() -> Self
 impl core::fmt::Debug for tst_srt::config::ListenerConfig
-pub fn tst_srt::config::ListenerConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::config::ListenerConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::config::ListenerConfig
 impl core::marker::Send for tst_srt::config::ListenerConfig
 impl core::marker::Sync for tst_srt::config::ListenerConfig
@@ -151,7 +151,7 @@ pub fn tst_srt::config::SocketConfig::clone(&self) -> tst_srt::config::SocketCon
 impl core::default::Default for tst_srt::config::SocketConfig
 pub fn tst_srt::config::SocketConfig::default() -> tst_srt::config::SocketConfig
 impl core::fmt::Debug for tst_srt::config::SocketConfig
-pub fn tst_srt::config::SocketConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::config::SocketConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::config::SocketConfig
 impl core::marker::Send for tst_srt::config::SocketConfig
 impl core::marker::Sync for tst_srt::config::SocketConfig
@@ -171,15 +171,15 @@ pub tst_srt::error::AcceptError::PeerRejected::reason: tst_srt::error::RejectRea
 pub tst_srt::error::AcceptError::System(std::io::error::Error)
 pub tst_srt::error::AcceptError::TimedOut
 impl core::convert::From<std::io::error::Error> for tst_srt::error::AcceptError
-pub fn tst_srt::error::AcceptError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::AcceptError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::AcceptError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::AcceptError) -> Self
 impl core::error::Error for tst_srt::error::AcceptError
 pub fn tst_srt::error::AcceptError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::AcceptError
-pub fn tst_srt::error::AcceptError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::AcceptError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::AcceptError
-pub fn tst_srt::error::AcceptError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::AcceptError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::AcceptError
 impl core::marker::Send for tst_srt::error::AcceptError
 impl core::marker::Sync for tst_srt::error::AcceptError
@@ -191,17 +191,17 @@ impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::AcceptError
 pub tst_srt::error::AddrError::Io(std::io::error::Error)
 pub tst_srt::error::AddrError::Resolve(alloc::string::String)
 impl core::convert::From<std::io::error::Error> for tst_srt::error::AddrError
-pub fn tst_srt::error::AddrError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::AddrError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::from(source: tst_srt::error::AddrError) -> Self
+pub fn tst_srt::error::BindError::from(tst_srt::error::AddrError) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::from(source: tst_srt::error::AddrError) -> Self
+pub fn tst_srt::error::ConnectError::from(tst_srt::error::AddrError) -> Self
 impl core::error::Error for tst_srt::error::AddrError
 pub fn tst_srt::error::AddrError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::AddrError
-pub fn tst_srt::error::AddrError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::AddrError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::AddrError
-pub fn tst_srt::error::AddrError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::AddrError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::AddrError
 impl core::marker::Send for tst_srt::error::AddrError
 impl core::marker::Sync for tst_srt::error::AddrError
@@ -219,19 +219,19 @@ pub tst_srt::error::BindError::Other::message: alloc::string::String
 pub tst_srt::error::BindError::PermissionDenied
 pub tst_srt::error::BindError::System(std::io::error::Error)
 impl core::convert::From<std::io::error::Error> for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::BindError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::from(source: tst_srt::error::AddrError) -> Self
+pub fn tst_srt::error::BindError::from(tst_srt::error::AddrError) -> Self
 impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::BindError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::BindError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::from(source: tst_srt::error::OptionError) -> Self
+pub fn tst_srt::error::BindError::from(tst_srt::error::OptionError) -> Self
 impl core::error::Error for tst_srt::error::BindError
 pub fn tst_srt::error::BindError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::BindError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::BindError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::BindError
 impl core::marker::Send for tst_srt::error::BindError
 impl core::marker::Sync for tst_srt::error::BindError
@@ -254,19 +254,19 @@ pub tst_srt::error::ConnectError::Rejected::reason: tst_srt::error::RejectReason
 pub tst_srt::error::ConnectError::System(std::io::error::Error)
 pub tst_srt::error::ConnectError::TimedOut
 impl core::convert::From<std::io::error::Error> for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::ConnectError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::from(source: tst_srt::error::AddrError) -> Self
+pub fn tst_srt::error::ConnectError::from(tst_srt::error::AddrError) -> Self
 impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::ConnectError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::ConnectError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::from(source: tst_srt::error::OptionError) -> Self
+pub fn tst_srt::error::ConnectError::from(tst_srt::error::OptionError) -> Self
 impl core::error::Error for tst_srt::error::ConnectError
 pub fn tst_srt::error::ConnectError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::ConnectError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::ConnectError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::ConnectError
 impl core::marker::Send for tst_srt::error::ConnectError
 impl core::marker::Sync for tst_srt::error::ConnectError
@@ -289,37 +289,37 @@ pub tst_srt::error::Error::Recv(tst_srt::error::RecvError)
 pub tst_srt::error::Error::Send(tst_srt::error::SendError)
 pub tst_srt::error::Error::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::error::DemuxError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::error::DemuxError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::error::DemuxError) -> Self
 impl core::convert::From<tst_core::error::KlvDecodeError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::error::KlvDecodeError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::error::KlvDecodeError) -> Self
 impl core::convert::From<tst_core::error::KlvEncodeError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::error::KlvEncodeError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::error::KlvEncodeError) -> Self
 impl core::convert::From<tst_core::error::KlvFieldError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::error::KlvFieldError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::error::KlvFieldError) -> Self
 impl core::convert::From<tst_core::error::MuxError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::error::MuxError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::error::MuxError) -> Self
 impl core::convert::From<tst_core::transport::TransportError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::transport::TransportError) -> Self
 impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::AcceptError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::AcceptError) -> Self
 impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::BindError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::BindError) -> Self
 impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::ConnectError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::ConnectError) -> Self
 impl core::convert::From<tst_srt::error::IoError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::IoError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::IoError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::OptionError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::OptionError) -> Self
 impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::RecvError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::RecvError) -> Self
 impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::SendError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::SendError) -> Self
 impl core::error::Error for tst_srt::error::Error
 pub fn tst_srt::error::Error::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::Error
-pub fn tst_srt::error::Error::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::Error
-pub fn tst_srt::error::Error::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::Error
 impl core::marker::Send for tst_srt::error::Error
 impl core::marker::Sync for tst_srt::error::Error
@@ -334,15 +334,15 @@ pub tst_srt::error::IoError::Other::message: alloc::string::String
 pub tst_srt::error::IoError::SocketClosed
 pub tst_srt::error::IoError::System(std::io::error::Error)
 impl core::convert::From<std::io::error::Error> for tst_srt::error::IoError
-pub fn tst_srt::error::IoError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::IoError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::IoError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::IoError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::IoError) -> Self
 impl core::error::Error for tst_srt::error::IoError
 pub fn tst_srt::error::IoError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::IoError
-pub fn tst_srt::error::IoError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::IoError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::IoError
-pub fn tst_srt::error::IoError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::IoError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::IoError
 impl core::marker::Send for tst_srt::error::IoError
 impl core::marker::Sync for tst_srt::error::IoError
@@ -360,23 +360,23 @@ pub tst_srt::error::OptionError::Other::kind: tst_srt::error::SrtErrno
 pub tst_srt::error::OptionError::Other::message: alloc::string::String
 pub tst_srt::error::OptionError::OutOfRange(alloc::string::String)
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::from(source: tst_srt::error::OptionError) -> Self
+pub fn tst_srt::error::BindError::from(tst_srt::error::OptionError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::from(source: tst_srt::error::OptionError) -> Self
+pub fn tst_srt::error::ConnectError::from(tst_srt::error::OptionError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::OptionError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::OptionError) -> Self
 impl core::convert::From<tst_srt::error::PacketFilterError> for tst_srt::error::OptionError
-pub fn tst_srt::error::OptionError::from(source: tst_srt::error::PacketFilterError) -> Self
+pub fn tst_srt::error::OptionError::from(tst_srt::error::PacketFilterError) -> Self
 impl core::convert::From<tst_srt::error::PassphraseError> for tst_srt::error::OptionError
-pub fn tst_srt::error::OptionError::from(source: tst_srt::error::PassphraseError) -> Self
+pub fn tst_srt::error::OptionError::from(tst_srt::error::PassphraseError) -> Self
 impl core::convert::From<tst_srt::error::StreamIdError> for tst_srt::error::OptionError
-pub fn tst_srt::error::OptionError::from(source: tst_srt::error::StreamIdError) -> Self
+pub fn tst_srt::error::OptionError::from(tst_srt::error::StreamIdError) -> Self
 impl core::error::Error for tst_srt::error::OptionError
 pub fn tst_srt::error::OptionError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::OptionError
-pub fn tst_srt::error::OptionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::OptionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::OptionError
-pub fn tst_srt::error::OptionError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::OptionError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::OptionError
 impl core::marker::Send for tst_srt::error::OptionError
 impl core::marker::Sync for tst_srt::error::OptionError
@@ -388,12 +388,12 @@ impl !core::panic::unwind_safe::UnwindSafe for tst_srt::error::OptionError
 pub tst_srt::error::PacketFilterError::InvalidCharset
 pub tst_srt::error::PacketFilterError::TooLong
 impl core::convert::From<tst_srt::error::PacketFilterError> for tst_srt::error::OptionError
-pub fn tst_srt::error::OptionError::from(source: tst_srt::error::PacketFilterError) -> Self
+pub fn tst_srt::error::OptionError::from(tst_srt::error::PacketFilterError) -> Self
 impl core::error::Error for tst_srt::error::PacketFilterError
 impl core::fmt::Debug for tst_srt::error::PacketFilterError
-pub fn tst_srt::error::PacketFilterError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::PacketFilterError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::PacketFilterError
-pub fn tst_srt::error::PacketFilterError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::PacketFilterError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::PacketFilterError
 impl core::marker::Send for tst_srt::error::PacketFilterError
 impl core::marker::Sync for tst_srt::error::PacketFilterError
@@ -407,15 +407,15 @@ pub tst_srt::error::PassphraseError::InvalidCharset
 pub tst_srt::error::PassphraseError::InvalidLength(usize)
 pub tst_srt::error::PassphraseError::Io(std::io::error::Error)
 impl core::convert::From<std::io::error::Error> for tst_srt::error::PassphraseError
-pub fn tst_srt::error::PassphraseError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::PassphraseError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::PassphraseError> for tst_srt::error::OptionError
-pub fn tst_srt::error::OptionError::from(source: tst_srt::error::PassphraseError) -> Self
+pub fn tst_srt::error::OptionError::from(tst_srt::error::PassphraseError) -> Self
 impl core::error::Error for tst_srt::error::PassphraseError
 pub fn tst_srt::error::PassphraseError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::PassphraseError
-pub fn tst_srt::error::PassphraseError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::PassphraseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::PassphraseError
-pub fn tst_srt::error::PassphraseError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::PassphraseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::PassphraseError
 impl core::marker::Send for tst_srt::error::PassphraseError
 impl core::marker::Sync for tst_srt::error::PassphraseError
@@ -434,15 +434,15 @@ pub tst_srt::error::RecvError::Other::message: alloc::string::String
 pub tst_srt::error::RecvError::System(std::io::error::Error)
 pub tst_srt::error::RecvError::TimedOut
 impl core::convert::From<std::io::error::Error> for tst_srt::error::RecvError
-pub fn tst_srt::error::RecvError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::RecvError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::RecvError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::RecvError) -> Self
 impl core::error::Error for tst_srt::error::RecvError
 pub fn tst_srt::error::RecvError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::RecvError
-pub fn tst_srt::error::RecvError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::RecvError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::RecvError
-pub fn tst_srt::error::RecvError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::RecvError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::RecvError
 impl core::marker::Send for tst_srt::error::RecvError
 impl core::marker::Sync for tst_srt::error::RecvError
@@ -495,9 +495,9 @@ impl core::clone::Clone for tst_srt::error::RejectReason
 pub fn tst_srt::error::RejectReason::clone(&self) -> tst_srt::error::RejectReason
 impl core::cmp::Eq for tst_srt::error::RejectReason
 impl core::cmp::PartialEq for tst_srt::error::RejectReason
-pub fn tst_srt::error::RejectReason::eq(&self, other: &tst_srt::error::RejectReason) -> bool
+pub fn tst_srt::error::RejectReason::eq(&self, &tst_srt::error::RejectReason) -> bool
 impl core::fmt::Debug for tst_srt::error::RejectReason
-pub fn tst_srt::error::RejectReason::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::RejectReason::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::error::RejectReason
 impl core::marker::StructuralPartialEq for tst_srt::error::RejectReason
 impl core::marker::Freeze for tst_srt::error::RejectReason
@@ -519,15 +519,15 @@ pub tst_srt::error::SendError::QueueFull
 pub tst_srt::error::SendError::System(std::io::error::Error)
 pub tst_srt::error::SendError::TimedOut
 impl core::convert::From<std::io::error::Error> for tst_srt::error::SendError
-pub fn tst_srt::error::SendError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::SendError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::SendError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::SendError) -> Self
 impl core::error::Error for tst_srt::error::SendError
 pub fn tst_srt::error::SendError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::SendError
-pub fn tst_srt::error::SendError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::SendError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::SendError
-pub fn tst_srt::error::SendError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::SendError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::SendError
 impl core::marker::Send for tst_srt::error::SendError
 impl core::marker::Sync for tst_srt::error::SendError
@@ -552,9 +552,9 @@ impl core::clone::Clone for tst_srt::error::SrtErrno
 pub fn tst_srt::error::SrtErrno::clone(&self) -> tst_srt::error::SrtErrno
 impl core::cmp::Eq for tst_srt::error::SrtErrno
 impl core::cmp::PartialEq for tst_srt::error::SrtErrno
-pub fn tst_srt::error::SrtErrno::eq(&self, other: &tst_srt::error::SrtErrno) -> bool
+pub fn tst_srt::error::SrtErrno::eq(&self, &tst_srt::error::SrtErrno) -> bool
 impl core::fmt::Debug for tst_srt::error::SrtErrno
-pub fn tst_srt::error::SrtErrno::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::SrtErrno::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::error::SrtErrno
 impl core::marker::StructuralPartialEq for tst_srt::error::SrtErrno
 impl core::marker::Freeze for tst_srt::error::SrtErrno
@@ -568,12 +568,12 @@ impl core::panic::unwind_safe::UnwindSafe for tst_srt::error::SrtErrno
 pub tst_srt::error::StreamIdError::NonAscii
 pub tst_srt::error::StreamIdError::TooLong(usize)
 impl core::convert::From<tst_srt::error::StreamIdError> for tst_srt::error::OptionError
-pub fn tst_srt::error::OptionError::from(source: tst_srt::error::StreamIdError) -> Self
+pub fn tst_srt::error::OptionError::from(tst_srt::error::StreamIdError) -> Self
 impl core::error::Error for tst_srt::error::StreamIdError
 impl core::fmt::Debug for tst_srt::error::StreamIdError
-pub fn tst_srt::error::StreamIdError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::StreamIdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::StreamIdError
-pub fn tst_srt::error::StreamIdError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::StreamIdError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::StreamIdError
 impl core::marker::Send for tst_srt::error::StreamIdError
 impl core::marker::Sync for tst_srt::error::StreamIdError
@@ -586,14 +586,14 @@ pub mod tst_srt::listener
 pub struct tst_srt::listener::Listener
 impl tst_srt::listener::Listener
 pub fn tst_srt::listener::Listener::accept(&mut self) -> core::result::Result<(tst_srt::socket::Socket, core::net::socket_addr::SocketAddr), tst_srt::error::AcceptError>
-pub fn tst_srt::listener::Listener::accept_timeout(&mut self, timeout: core::time::Duration) -> core::result::Result<(tst_srt::socket::Socket, core::net::socket_addr::SocketAddr), tst_srt::error::AcceptError>
-pub fn tst_srt::listener::Listener::bind_with(config: &tst_srt::config::ListenerConfig, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::BindError>
+pub fn tst_srt::listener::Listener::accept_timeout(&mut self, core::time::Duration) -> core::result::Result<(tst_srt::socket::Socket, core::net::socket_addr::SocketAddr), tst_srt::error::AcceptError>
+pub fn tst_srt::listener::Listener::bind_with(&tst_srt::config::ListenerConfig, impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::BindError>
 pub fn tst_srt::listener::Listener::cancel_handle(&self) -> tst_core::cancel::SrtCancelHandle
 pub fn tst_srt::listener::Listener::close(self) -> core::result::Result<(), tst_srt::error::IoError>
 pub fn tst_srt::listener::Listener::local_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
-pub fn tst_srt::listener::Listener::set_recv_timeout(&mut self, timeout: core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::listener::Listener::set_recv_timeout(&mut self, core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
 impl core::fmt::Debug for tst_srt::listener::Listener
-pub fn tst_srt::listener::Listener::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::listener::Listener::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Send for tst_srt::listener::Listener
 impl core::ops::drop::Drop for tst_srt::listener::Listener
 pub fn tst_srt::listener::Listener::drop(&mut self)
@@ -608,16 +608,16 @@ pub enum tst_srt::options::Congestion
 pub tst_srt::options::Congestion::File
 pub tst_srt::options::Congestion::Live
 impl tst_srt::options::Congestion
-pub fn tst_srt::options::Congestion::from_str_strict(s: &str) -> core::result::Result<Self, tst_srt::error::OptionError>
+pub fn tst_srt::options::Congestion::from_str_strict(&str) -> core::result::Result<Self, tst_srt::error::OptionError>
 impl core::clone::Clone for tst_srt::options::Congestion
 pub fn tst_srt::options::Congestion::clone(&self) -> tst_srt::options::Congestion
 impl core::cmp::Eq for tst_srt::options::Congestion
 impl core::cmp::PartialEq for tst_srt::options::Congestion
-pub fn tst_srt::options::Congestion::eq(&self, other: &tst_srt::options::Congestion) -> bool
+pub fn tst_srt::options::Congestion::eq(&self, &tst_srt::options::Congestion) -> bool
 impl core::default::Default for tst_srt::options::Congestion
 pub fn tst_srt::options::Congestion::default() -> tst_srt::options::Congestion
 impl core::fmt::Debug for tst_srt::options::Congestion
-pub fn tst_srt::options::Congestion::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::Congestion::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::options::Congestion
 impl core::marker::StructuralPartialEq for tst_srt::options::Congestion
 impl core::marker::Freeze for tst_srt::options::Congestion
@@ -632,16 +632,16 @@ pub tst_srt::options::KeyLength::Aes128
 pub tst_srt::options::KeyLength::Aes192
 pub tst_srt::options::KeyLength::Aes256
 impl tst_srt::options::KeyLength
-pub fn tst_srt::options::KeyLength::from_bytes(n: i32) -> core::result::Result<Self, tst_srt::error::OptionError>
+pub fn tst_srt::options::KeyLength::from_bytes(i32) -> core::result::Result<Self, tst_srt::error::OptionError>
 impl core::clone::Clone for tst_srt::options::KeyLength
 pub fn tst_srt::options::KeyLength::clone(&self) -> tst_srt::options::KeyLength
 impl core::cmp::Eq for tst_srt::options::KeyLength
 impl core::cmp::PartialEq for tst_srt::options::KeyLength
-pub fn tst_srt::options::KeyLength::eq(&self, other: &tst_srt::options::KeyLength) -> bool
+pub fn tst_srt::options::KeyLength::eq(&self, &tst_srt::options::KeyLength) -> bool
 impl core::default::Default for tst_srt::options::KeyLength
 pub fn tst_srt::options::KeyLength::default() -> tst_srt::options::KeyLength
 impl core::fmt::Debug for tst_srt::options::KeyLength
-pub fn tst_srt::options::KeyLength::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::KeyLength::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::options::KeyLength
 impl core::marker::StructuralPartialEq for tst_srt::options::KeyLength
 impl core::marker::Freeze for tst_srt::options::KeyLength
@@ -659,9 +659,9 @@ impl core::clone::Clone for tst_srt::options::MaxBandwidth
 pub fn tst_srt::options::MaxBandwidth::clone(&self) -> tst_srt::options::MaxBandwidth
 impl core::cmp::Eq for tst_srt::options::MaxBandwidth
 impl core::cmp::PartialEq for tst_srt::options::MaxBandwidth
-pub fn tst_srt::options::MaxBandwidth::eq(&self, other: &tst_srt::options::MaxBandwidth) -> bool
+pub fn tst_srt::options::MaxBandwidth::eq(&self, &tst_srt::options::MaxBandwidth) -> bool
 impl core::fmt::Debug for tst_srt::options::MaxBandwidth
-pub fn tst_srt::options::MaxBandwidth::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::MaxBandwidth::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::options::MaxBandwidth
 impl core::marker::StructuralPartialEq for tst_srt::options::MaxBandwidth
 impl core::marker::Freeze for tst_srt::options::MaxBandwidth
@@ -678,11 +678,11 @@ impl core::clone::Clone for tst_srt::options::Role
 pub fn tst_srt::options::Role::clone(&self) -> tst_srt::options::Role
 impl core::cmp::Eq for tst_srt::options::Role
 impl core::cmp::PartialEq for tst_srt::options::Role
-pub fn tst_srt::options::Role::eq(&self, other: &tst_srt::options::Role) -> bool
+pub fn tst_srt::options::Role::eq(&self, &tst_srt::options::Role) -> bool
 impl core::default::Default for tst_srt::options::Role
 pub fn tst_srt::options::Role::default() -> tst_srt::options::Role
 impl core::fmt::Debug for tst_srt::options::Role
-pub fn tst_srt::options::Role::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::Role::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::options::Role
 impl core::marker::StructuralPartialEq for tst_srt::options::Role
 impl core::marker::Freeze for tst_srt::options::Role
@@ -695,11 +695,11 @@ impl core::panic::unwind_safe::UnwindSafe for tst_srt::options::Role
 pub struct tst_srt::options::PacketFilter(_)
 impl tst_srt::options::PacketFilter
 pub fn tst_srt::options::PacketFilter::as_str(&self) -> &str
-pub fn tst_srt::options::PacketFilter::new(spec: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::PacketFilterError>
+pub fn tst_srt::options::PacketFilter::new(impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::PacketFilterError>
 impl core::clone::Clone for tst_srt::options::PacketFilter
 pub fn tst_srt::options::PacketFilter::clone(&self) -> tst_srt::options::PacketFilter
 impl core::fmt::Debug for tst_srt::options::PacketFilter
-pub fn tst_srt::options::PacketFilter::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::PacketFilter::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::options::PacketFilter
 impl core::marker::Send for tst_srt::options::PacketFilter
 impl core::marker::Sync for tst_srt::options::PacketFilter
@@ -710,13 +710,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_srt::options::PacketFilter
 pub struct tst_srt::options::Passphrase(_)
 impl tst_srt::options::Passphrase
 pub fn tst_srt::options::Passphrase::as_str(&self) -> &str
-pub fn tst_srt::options::Passphrase::from_env(var: &str) -> core::result::Result<Self, tst_srt::error::PassphraseError>
-pub fn tst_srt::options::Passphrase::from_file(path: impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tst_srt::error::PassphraseError>
-pub fn tst_srt::options::Passphrase::new(s: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::PassphraseError>
+pub fn tst_srt::options::Passphrase::from_env(&str) -> core::result::Result<Self, tst_srt::error::PassphraseError>
+pub fn tst_srt::options::Passphrase::from_file(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tst_srt::error::PassphraseError>
+pub fn tst_srt::options::Passphrase::new(impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::PassphraseError>
 impl core::clone::Clone for tst_srt::options::Passphrase
 pub fn tst_srt::options::Passphrase::clone(&self) -> tst_srt::options::Passphrase
 impl core::fmt::Debug for tst_srt::options::Passphrase
-pub fn tst_srt::options::Passphrase::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::Passphrase::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::options::Passphrase
 impl core::marker::Send for tst_srt::options::Passphrase
 impl core::marker::Sync for tst_srt::options::Passphrase
@@ -727,17 +727,17 @@ impl core::panic::unwind_safe::UnwindSafe for tst_srt::options::Passphrase
 pub struct tst_srt::options::StreamId(_)
 impl tst_srt::options::StreamId
 pub fn tst_srt::options::StreamId::as_str(&self) -> &str
-pub fn tst_srt::options::StreamId::new(s: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::StreamIdError>
+pub fn tst_srt::options::StreamId::new(impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::StreamIdError>
 impl core::clone::Clone for tst_srt::options::StreamId
 pub fn tst_srt::options::StreamId::clone(&self) -> tst_srt::options::StreamId
 impl core::convert::TryFrom<&str> for tst_srt::options::StreamId
 pub type tst_srt::options::StreamId::Error = tst_srt::error::StreamIdError
-pub fn tst_srt::options::StreamId::try_from(s: &str) -> core::result::Result<Self, Self::Error>
+pub fn tst_srt::options::StreamId::try_from(&str) -> core::result::Result<Self, Self::Error>
 impl core::convert::TryFrom<alloc::string::String> for tst_srt::options::StreamId
 pub type tst_srt::options::StreamId::Error = tst_srt::error::StreamIdError
-pub fn tst_srt::options::StreamId::try_from(s: alloc::string::String) -> core::result::Result<Self, Self::Error>
+pub fn tst_srt::options::StreamId::try_from(alloc::string::String) -> core::result::Result<Self, Self::Error>
 impl core::fmt::Debug for tst_srt::options::StreamId
-pub fn tst_srt::options::StreamId::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::StreamId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::options::StreamId
 impl core::marker::Send for tst_srt::options::StreamId
 impl core::marker::Sync for tst_srt::options::StreamId
@@ -750,21 +750,21 @@ pub struct tst_srt::socket::Socket
 impl tst_srt::socket::Socket
 pub fn tst_srt::socket::Socket::cancel_handle(&self) -> tst_core::cancel::SrtCancelHandle
 pub fn tst_srt::socket::Socket::close(self) -> core::result::Result<(), tst_srt::error::IoError>
-pub fn tst_srt::socket::Socket::connect_with(config: &tst_srt::config::SocketConfig, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::ConnectError>
+pub fn tst_srt::socket::Socket::connect_with(&tst_srt::config::SocketConfig, impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::ConnectError>
 pub fn tst_srt::socket::Socket::local_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::payload_limit(&self) -> usize
 pub fn tst_srt::socket::Socket::peer_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
-pub fn tst_srt::socket::Socket::recv(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_srt::error::RecvError>
-pub fn tst_srt::socket::Socket::send(&mut self, buf: &[u8]) -> core::result::Result<usize, tst_srt::error::SendError>
-pub fn tst_srt::socket::Socket::set_input_bandwidth(&mut self, bw: u64) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_max_bandwidth(&mut self, bw: tst_srt::options::MaxBandwidth) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_overhead_bandwidth_pct(&mut self, pct: u8) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_recv_timeout(&mut self, timeout: core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_send_timeout(&mut self, timeout: core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::socket::Socket::recv(&mut self, &mut [u8]) -> core::result::Result<usize, tst_srt::error::RecvError>
+pub fn tst_srt::socket::Socket::send(&mut self, &[u8]) -> core::result::Result<usize, tst_srt::error::SendError>
+pub fn tst_srt::socket::Socket::set_input_bandwidth(&mut self, u64) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::socket::Socket::set_max_bandwidth(&mut self, tst_srt::options::MaxBandwidth) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::socket::Socket::set_overhead_bandwidth_pct(&mut self, u8) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::socket::Socket::set_recv_timeout(&mut self, core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::socket::Socket::set_send_timeout(&mut self, core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
 pub fn tst_srt::socket::Socket::stats(&self) -> core::result::Result<tst_srt::socket::Stats, tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::stream_id(&self) -> core::option::Option<&str>
 impl core::fmt::Debug for tst_srt::socket::Socket
-pub fn tst_srt::socket::Socket::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::socket::Socket::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Send for tst_srt::socket::Socket
 impl core::ops::drop::Drop for tst_srt::socket::Socket
 pub fn tst_srt::socket::Socket::drop(&mut self)
@@ -795,7 +795,7 @@ pub tst_srt::socket::Stats::send_buffer_packets: u32
 impl core::clone::Clone for tst_srt::socket::Stats
 pub fn tst_srt::socket::Stats::clone(&self) -> tst_srt::socket::Stats
 impl core::fmt::Debug for tst_srt::socket::Stats
-pub fn tst_srt::socket::Stats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::socket::Stats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::socket::Stats
 impl core::marker::Freeze for tst_srt::socket::Stats
 impl core::marker::Send for tst_srt::socket::Stats
@@ -808,8 +808,8 @@ pub mod tst_srt::transport
 pub struct tst_srt::transport::SrtTransport
 impl tst_srt::transport::SrtTransport
 pub const tst_srt::transport::SrtTransport::DEFAULT_PAYLOAD: usize
-pub fn tst_srt::transport::SrtTransport::new(socket: tst_srt::socket::Socket) -> Self
-pub fn tst_srt::transport::SrtTransport::with_max_payload(self, n: usize) -> Self
+pub fn tst_srt::transport::SrtTransport::new(tst_srt::socket::Socket) -> Self
+pub fn tst_srt::transport::SrtTransport::with_max_payload(self, usize) -> Self
 impl core::ops::drop::Drop for tst_srt::transport::SrtTransport
 pub fn tst_srt::transport::SrtTransport::drop(&mut self)
 impl tst_core::transport::RecvTransport for tst_srt::transport::SrtTransport
@@ -817,14 +817,14 @@ pub fn tst_srt::transport::SrtTransport::cancel_handle(&self) -> core::option::O
 pub fn tst_srt::transport::SrtTransport::close(&mut self)
 pub fn tst_srt::transport::SrtTransport::is_alive(&self) -> bool
 pub fn tst_srt::transport::SrtTransport::max_payload(&self) -> usize
-pub fn tst_srt::transport::SrtTransport::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_srt::transport::SrtTransport::recv_bytes(&mut self, &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
 pub fn tst_srt::transport::SrtTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl tst_core::transport::Transport for tst_srt::transport::SrtTransport
 pub fn tst_srt::transport::SrtTransport::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_srt::transport::SrtTransport::close(&mut self)
 pub fn tst_srt::transport::SrtTransport::is_alive(&self) -> bool
 pub fn tst_srt::transport::SrtTransport::max_payload(&self) -> usize
-pub fn tst_srt::transport::SrtTransport::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_srt::transport::SrtTransport::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
 pub fn tst_srt::transport::SrtTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl core::marker::Freeze for tst_srt::transport::SrtTransport
 impl core::marker::Send for tst_srt::transport::SrtTransport
@@ -841,11 +841,11 @@ impl core::clone::Clone for tst_srt::url::Mode
 pub fn tst_srt::url::Mode::clone(&self) -> tst_srt::url::Mode
 impl core::cmp::Eq for tst_srt::url::Mode
 impl core::cmp::PartialEq for tst_srt::url::Mode
-pub fn tst_srt::url::Mode::eq(&self, other: &tst_srt::url::Mode) -> bool
+pub fn tst_srt::url::Mode::eq(&self, &tst_srt::url::Mode) -> bool
 impl core::default::Default for tst_srt::url::Mode
 pub fn tst_srt::url::Mode::default() -> tst_srt::url::Mode
 impl core::fmt::Debug for tst_srt::url::Mode
-pub fn tst_srt::url::Mode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::url::Mode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::url::Mode
 impl core::marker::StructuralPartialEq for tst_srt::url::Mode
 impl core::marker::Freeze for tst_srt::url::Mode
@@ -880,13 +880,13 @@ pub tst_srt::url::UrlError::UserinfoNotSupported
 pub tst_srt::url::UrlError::WrongScheme
 pub tst_srt::url::UrlError::WrongScheme::got: alloc::string::String
 impl core::convert::From<tst_core::url::common::UrlError> for tst_srt::url::UrlError
-pub fn tst_srt::url::UrlError::from(source: tst_core::url::common::UrlError) -> Self
+pub fn tst_srt::url::UrlError::from(tst_core::url::common::UrlError) -> Self
 impl core::error::Error for tst_srt::url::UrlError
 pub fn tst_srt::url::UrlError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::url::UrlError
-pub fn tst_srt::url::UrlError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::url::UrlError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::url::UrlError
-pub fn tst_srt::url::UrlError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::url::UrlError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::url::UrlError
 impl core::marker::Send for tst_srt::url::UrlError
 impl core::marker::Sync for tst_srt::url::UrlError
@@ -900,9 +900,9 @@ pub tst_srt::url::SrtUrl::mode: tst_srt::url::Mode
 pub tst_srt::url::SrtUrl::overlay: tst_srt::url::UrlOverlay
 pub tst_srt::url::SrtUrl::port: u16
 impl tst_srt::url::SrtUrl
-pub fn tst_srt::url::SrtUrl::parse(s: &str) -> core::result::Result<Self, tst_srt::url::UrlError>
+pub fn tst_srt::url::SrtUrl::parse(&str) -> core::result::Result<Self, tst_srt::url::UrlError>
 impl core::fmt::Debug for tst_srt::url::SrtUrl
-pub fn tst_srt::url::SrtUrl::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::url::SrtUrl::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::url::SrtUrl
 impl core::marker::Send for tst_srt::url::SrtUrl
 impl core::marker::Sync for tst_srt::url::SrtUrl
@@ -934,14 +934,14 @@ pub tst_srt::url::UrlOverlay::too_late_packet_drop: core::option::Option<bool>
 pub tst_srt::url::UrlOverlay::udp_recv_buffer_bytes: core::option::Option<u32>
 pub tst_srt::url::UrlOverlay::udp_send_buffer_bytes: core::option::Option<u32>
 impl tst_srt::url::UrlOverlay
-pub fn tst_srt::url::UrlOverlay::apply_to_listener(&self, cfg: &mut tst_srt::config::ListenerConfig)
-pub fn tst_srt::url::UrlOverlay::apply_to_socket(&self, cfg: &mut tst_srt::config::SocketConfig)
+pub fn tst_srt::url::UrlOverlay::apply_to_listener(&self, &mut tst_srt::config::ListenerConfig)
+pub fn tst_srt::url::UrlOverlay::apply_to_socket(&self, &mut tst_srt::config::SocketConfig)
 impl core::clone::Clone for tst_srt::url::UrlOverlay
 pub fn tst_srt::url::UrlOverlay::clone(&self) -> tst_srt::url::UrlOverlay
 impl core::default::Default for tst_srt::url::UrlOverlay
 pub fn tst_srt::url::UrlOverlay::default() -> tst_srt::url::UrlOverlay
 impl core::fmt::Debug for tst_srt::url::UrlOverlay
-pub fn tst_srt::url::UrlOverlay::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::url::UrlOverlay::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::url::UrlOverlay
 impl core::marker::Send for tst_srt::url::UrlOverlay
 impl core::marker::Sync for tst_srt::url::UrlOverlay
@@ -960,15 +960,15 @@ pub tst_srt::AcceptError::PeerRejected::reason: tst_srt::error::RejectReason
 pub tst_srt::AcceptError::System(std::io::error::Error)
 pub tst_srt::AcceptError::TimedOut
 impl core::convert::From<std::io::error::Error> for tst_srt::error::AcceptError
-pub fn tst_srt::error::AcceptError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::AcceptError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::AcceptError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::AcceptError) -> Self
 impl core::error::Error for tst_srt::error::AcceptError
 pub fn tst_srt::error::AcceptError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::AcceptError
-pub fn tst_srt::error::AcceptError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::AcceptError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::AcceptError
-pub fn tst_srt::error::AcceptError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::AcceptError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::AcceptError
 impl core::marker::Send for tst_srt::error::AcceptError
 impl core::marker::Sync for tst_srt::error::AcceptError
@@ -986,19 +986,19 @@ pub tst_srt::BindError::Other::message: alloc::string::String
 pub tst_srt::BindError::PermissionDenied
 pub tst_srt::BindError::System(std::io::error::Error)
 impl core::convert::From<std::io::error::Error> for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::BindError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::from(source: tst_srt::error::AddrError) -> Self
+pub fn tst_srt::error::BindError::from(tst_srt::error::AddrError) -> Self
 impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::BindError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::BindError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::from(source: tst_srt::error::OptionError) -> Self
+pub fn tst_srt::error::BindError::from(tst_srt::error::OptionError) -> Self
 impl core::error::Error for tst_srt::error::BindError
 pub fn tst_srt::error::BindError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::BindError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::BindError
-pub fn tst_srt::error::BindError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::BindError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::BindError
 impl core::marker::Send for tst_srt::error::BindError
 impl core::marker::Sync for tst_srt::error::BindError
@@ -1010,16 +1010,16 @@ pub enum tst_srt::Congestion
 pub tst_srt::Congestion::File
 pub tst_srt::Congestion::Live
 impl tst_srt::options::Congestion
-pub fn tst_srt::options::Congestion::from_str_strict(s: &str) -> core::result::Result<Self, tst_srt::error::OptionError>
+pub fn tst_srt::options::Congestion::from_str_strict(&str) -> core::result::Result<Self, tst_srt::error::OptionError>
 impl core::clone::Clone for tst_srt::options::Congestion
 pub fn tst_srt::options::Congestion::clone(&self) -> tst_srt::options::Congestion
 impl core::cmp::Eq for tst_srt::options::Congestion
 impl core::cmp::PartialEq for tst_srt::options::Congestion
-pub fn tst_srt::options::Congestion::eq(&self, other: &tst_srt::options::Congestion) -> bool
+pub fn tst_srt::options::Congestion::eq(&self, &tst_srt::options::Congestion) -> bool
 impl core::default::Default for tst_srt::options::Congestion
 pub fn tst_srt::options::Congestion::default() -> tst_srt::options::Congestion
 impl core::fmt::Debug for tst_srt::options::Congestion
-pub fn tst_srt::options::Congestion::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::Congestion::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::options::Congestion
 impl core::marker::StructuralPartialEq for tst_srt::options::Congestion
 impl core::marker::Freeze for tst_srt::options::Congestion
@@ -1044,19 +1044,19 @@ pub tst_srt::ConnectError::Rejected::reason: tst_srt::error::RejectReason
 pub tst_srt::ConnectError::System(std::io::error::Error)
 pub tst_srt::ConnectError::TimedOut
 impl core::convert::From<std::io::error::Error> for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::ConnectError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::AddrError> for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::from(source: tst_srt::error::AddrError) -> Self
+pub fn tst_srt::error::ConnectError::from(tst_srt::error::AddrError) -> Self
 impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::ConnectError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::ConnectError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::from(source: tst_srt::error::OptionError) -> Self
+pub fn tst_srt::error::ConnectError::from(tst_srt::error::OptionError) -> Self
 impl core::error::Error for tst_srt::error::ConnectError
 pub fn tst_srt::error::ConnectError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::ConnectError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::ConnectError
-pub fn tst_srt::error::ConnectError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::ConnectError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::ConnectError
 impl core::marker::Send for tst_srt::error::ConnectError
 impl core::marker::Sync for tst_srt::error::ConnectError
@@ -1079,37 +1079,37 @@ pub tst_srt::Error::Recv(tst_srt::error::RecvError)
 pub tst_srt::Error::Send(tst_srt::error::SendError)
 pub tst_srt::Error::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::error::DemuxError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::error::DemuxError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::error::DemuxError) -> Self
 impl core::convert::From<tst_core::error::KlvDecodeError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::error::KlvDecodeError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::error::KlvDecodeError) -> Self
 impl core::convert::From<tst_core::error::KlvEncodeError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::error::KlvEncodeError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::error::KlvEncodeError) -> Self
 impl core::convert::From<tst_core::error::KlvFieldError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::error::KlvFieldError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::error::KlvFieldError) -> Self
 impl core::convert::From<tst_core::error::MuxError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::error::MuxError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::error::MuxError) -> Self
 impl core::convert::From<tst_core::transport::TransportError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_srt::error::Error::from(tst_core::transport::TransportError) -> Self
 impl core::convert::From<tst_srt::error::AcceptError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::AcceptError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::AcceptError) -> Self
 impl core::convert::From<tst_srt::error::BindError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::BindError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::BindError) -> Self
 impl core::convert::From<tst_srt::error::ConnectError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::ConnectError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::ConnectError) -> Self
 impl core::convert::From<tst_srt::error::IoError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::IoError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::IoError) -> Self
 impl core::convert::From<tst_srt::error::OptionError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::OptionError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::OptionError) -> Self
 impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::RecvError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::RecvError) -> Self
 impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::SendError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::SendError) -> Self
 impl core::error::Error for tst_srt::error::Error
 pub fn tst_srt::error::Error::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::Error
-pub fn tst_srt::error::Error::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::Error
-pub fn tst_srt::error::Error::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::Error::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::Error
 impl core::marker::Send for tst_srt::error::Error
 impl core::marker::Sync for tst_srt::error::Error
@@ -1122,16 +1122,16 @@ pub tst_srt::KeyLength::Aes128
 pub tst_srt::KeyLength::Aes192
 pub tst_srt::KeyLength::Aes256
 impl tst_srt::options::KeyLength
-pub fn tst_srt::options::KeyLength::from_bytes(n: i32) -> core::result::Result<Self, tst_srt::error::OptionError>
+pub fn tst_srt::options::KeyLength::from_bytes(i32) -> core::result::Result<Self, tst_srt::error::OptionError>
 impl core::clone::Clone for tst_srt::options::KeyLength
 pub fn tst_srt::options::KeyLength::clone(&self) -> tst_srt::options::KeyLength
 impl core::cmp::Eq for tst_srt::options::KeyLength
 impl core::cmp::PartialEq for tst_srt::options::KeyLength
-pub fn tst_srt::options::KeyLength::eq(&self, other: &tst_srt::options::KeyLength) -> bool
+pub fn tst_srt::options::KeyLength::eq(&self, &tst_srt::options::KeyLength) -> bool
 impl core::default::Default for tst_srt::options::KeyLength
 pub fn tst_srt::options::KeyLength::default() -> tst_srt::options::KeyLength
 impl core::fmt::Debug for tst_srt::options::KeyLength
-pub fn tst_srt::options::KeyLength::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::KeyLength::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::options::KeyLength
 impl core::marker::StructuralPartialEq for tst_srt::options::KeyLength
 impl core::marker::Freeze for tst_srt::options::KeyLength
@@ -1149,9 +1149,9 @@ impl core::clone::Clone for tst_srt::options::MaxBandwidth
 pub fn tst_srt::options::MaxBandwidth::clone(&self) -> tst_srt::options::MaxBandwidth
 impl core::cmp::Eq for tst_srt::options::MaxBandwidth
 impl core::cmp::PartialEq for tst_srt::options::MaxBandwidth
-pub fn tst_srt::options::MaxBandwidth::eq(&self, other: &tst_srt::options::MaxBandwidth) -> bool
+pub fn tst_srt::options::MaxBandwidth::eq(&self, &tst_srt::options::MaxBandwidth) -> bool
 impl core::fmt::Debug for tst_srt::options::MaxBandwidth
-pub fn tst_srt::options::MaxBandwidth::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::MaxBandwidth::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::options::MaxBandwidth
 impl core::marker::StructuralPartialEq for tst_srt::options::MaxBandwidth
 impl core::marker::Freeze for tst_srt::options::MaxBandwidth
@@ -1172,15 +1172,15 @@ pub tst_srt::RecvError::Other::message: alloc::string::String
 pub tst_srt::RecvError::System(std::io::error::Error)
 pub tst_srt::RecvError::TimedOut
 impl core::convert::From<std::io::error::Error> for tst_srt::error::RecvError
-pub fn tst_srt::error::RecvError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::RecvError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::RecvError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::RecvError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::RecvError) -> Self
 impl core::error::Error for tst_srt::error::RecvError
 pub fn tst_srt::error::RecvError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::RecvError
-pub fn tst_srt::error::RecvError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::RecvError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::RecvError
-pub fn tst_srt::error::RecvError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::RecvError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::RecvError
 impl core::marker::Send for tst_srt::error::RecvError
 impl core::marker::Sync for tst_srt::error::RecvError
@@ -1195,11 +1195,11 @@ impl core::clone::Clone for tst_srt::options::Role
 pub fn tst_srt::options::Role::clone(&self) -> tst_srt::options::Role
 impl core::cmp::Eq for tst_srt::options::Role
 impl core::cmp::PartialEq for tst_srt::options::Role
-pub fn tst_srt::options::Role::eq(&self, other: &tst_srt::options::Role) -> bool
+pub fn tst_srt::options::Role::eq(&self, &tst_srt::options::Role) -> bool
 impl core::default::Default for tst_srt::options::Role
 pub fn tst_srt::options::Role::default() -> tst_srt::options::Role
 impl core::fmt::Debug for tst_srt::options::Role
-pub fn tst_srt::options::Role::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::Role::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::options::Role
 impl core::marker::StructuralPartialEq for tst_srt::options::Role
 impl core::marker::Freeze for tst_srt::options::Role
@@ -1221,15 +1221,15 @@ pub tst_srt::SendError::QueueFull
 pub tst_srt::SendError::System(std::io::error::Error)
 pub tst_srt::SendError::TimedOut
 impl core::convert::From<std::io::error::Error> for tst_srt::error::SendError
-pub fn tst_srt::error::SendError::from(source: std::io::error::Error) -> Self
+pub fn tst_srt::error::SendError::from(std::io::error::Error) -> Self
 impl core::convert::From<tst_srt::error::SendError> for tst_srt::error::Error
-pub fn tst_srt::error::Error::from(source: tst_srt::error::SendError) -> Self
+pub fn tst_srt::error::Error::from(tst_srt::error::SendError) -> Self
 impl core::error::Error for tst_srt::error::SendError
 pub fn tst_srt::error::SendError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::error::SendError
-pub fn tst_srt::error::SendError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::SendError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::error::SendError
-pub fn tst_srt::error::SendError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::error::SendError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::error::SendError
 impl core::marker::Send for tst_srt::error::SendError
 impl core::marker::Sync for tst_srt::error::SendError
@@ -1262,13 +1262,13 @@ pub tst_srt::UrlError::UserinfoNotSupported
 pub tst_srt::UrlError::WrongScheme
 pub tst_srt::UrlError::WrongScheme::got: alloc::string::String
 impl core::convert::From<tst_core::url::common::UrlError> for tst_srt::url::UrlError
-pub fn tst_srt::url::UrlError::from(source: tst_core::url::common::UrlError) -> Self
+pub fn tst_srt::url::UrlError::from(tst_core::url::common::UrlError) -> Self
 impl core::error::Error for tst_srt::url::UrlError
 pub fn tst_srt::url::UrlError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::url::UrlError
-pub fn tst_srt::url::UrlError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::url::UrlError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_srt::url::UrlError
-pub fn tst_srt::url::UrlError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::url::UrlError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::url::UrlError
 impl core::marker::Send for tst_srt::url::UrlError
 impl core::marker::Sync for tst_srt::url::UrlError
@@ -1279,14 +1279,14 @@ impl !core::panic::unwind_safe::UnwindSafe for tst_srt::url::UrlError
 pub struct tst_srt::Listener
 impl tst_srt::listener::Listener
 pub fn tst_srt::listener::Listener::accept(&mut self) -> core::result::Result<(tst_srt::socket::Socket, core::net::socket_addr::SocketAddr), tst_srt::error::AcceptError>
-pub fn tst_srt::listener::Listener::accept_timeout(&mut self, timeout: core::time::Duration) -> core::result::Result<(tst_srt::socket::Socket, core::net::socket_addr::SocketAddr), tst_srt::error::AcceptError>
-pub fn tst_srt::listener::Listener::bind_with(config: &tst_srt::config::ListenerConfig, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::BindError>
+pub fn tst_srt::listener::Listener::accept_timeout(&mut self, core::time::Duration) -> core::result::Result<(tst_srt::socket::Socket, core::net::socket_addr::SocketAddr), tst_srt::error::AcceptError>
+pub fn tst_srt::listener::Listener::bind_with(&tst_srt::config::ListenerConfig, impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::BindError>
 pub fn tst_srt::listener::Listener::cancel_handle(&self) -> tst_core::cancel::SrtCancelHandle
 pub fn tst_srt::listener::Listener::close(self) -> core::result::Result<(), tst_srt::error::IoError>
 pub fn tst_srt::listener::Listener::local_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
-pub fn tst_srt::listener::Listener::set_recv_timeout(&mut self, timeout: core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::listener::Listener::set_recv_timeout(&mut self, core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
 impl core::fmt::Debug for tst_srt::listener::Listener
-pub fn tst_srt::listener::Listener::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::listener::Listener::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Send for tst_srt::listener::Listener
 impl core::ops::drop::Drop for tst_srt::listener::Listener
 pub fn tst_srt::listener::Listener::drop(&mut self)
@@ -1298,30 +1298,30 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tst_srt::listener::Listener
 impl !core::panic::unwind_safe::UnwindSafe for tst_srt::listener::Listener
 pub struct tst_srt::ListenerBuilder
 impl tst_srt::builder::ListenerBuilder
-pub fn tst_srt::builder::ListenerBuilder::backlog(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::bind(&self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::listener::Listener, tst_srt::error::BindError>
+pub fn tst_srt::builder::ListenerBuilder::backlog(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::bind(&self, impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::listener::Listener, tst_srt::error::BindError>
 pub fn tst_srt::builder::ListenerBuilder::config(&self) -> tst_srt::config::ListenerConfig
-pub fn tst_srt::builder::ListenerBuilder::congestion(&mut self, c: tst_srt::options::Congestion) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::flow_window_packets(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::key_length(&mut self, kl: tst_srt::options::KeyLength) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::latency(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::latency_ms(&mut self, ms: u64) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::linger(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::loss_max_ttl(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::max_bandwidth(&mut self, bw: tst_srt::options::MaxBandwidth) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::mss(&mut self, mss: u16) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::congestion(&mut self, tst_srt::options::Congestion) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::flow_window_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::key_length(&mut self, tst_srt::options::KeyLength) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::latency(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::latency_ms(&mut self, u64) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::linger(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::loss_max_ttl(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::max_bandwidth(&mut self, tst_srt::options::MaxBandwidth) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::mss(&mut self, u16) -> &mut Self
 pub fn tst_srt::builder::ListenerBuilder::new() -> Self
-pub fn tst_srt::builder::ListenerBuilder::overhead_bandwidth_pct(&mut self, pct: u8) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::packet_filter(&mut self, pf: tst_srt::options::PacketFilter) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::passphrase(&mut self, p: tst_srt::options::Passphrase) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::payload_size(&mut self, n: u16) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::recv_buf_packets(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::recv_latency(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::recv_timeout(&mut self, t: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::reuse_addr(&mut self, on: bool) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::send_timeout(&mut self, t: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::too_late_packet_drop(&mut self, on: bool) -> &mut Self
-pub fn tst_srt::builder::ListenerBuilder::udp_recv_buffer_bytes(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::overhead_bandwidth_pct(&mut self, u8) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::packet_filter(&mut self, tst_srt::options::PacketFilter) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::passphrase(&mut self, tst_srt::options::Passphrase) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::payload_size(&mut self, u16) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_latency(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::recv_timeout(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::reuse_addr(&mut self, bool) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::send_timeout(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::too_late_packet_drop(&mut self, bool) -> &mut Self
+pub fn tst_srt::builder::ListenerBuilder::udp_recv_buffer_bytes(&mut self, u32) -> &mut Self
 impl core::default::Default for tst_srt::builder::ListenerBuilder
 pub fn tst_srt::builder::ListenerBuilder::default() -> tst_srt::builder::ListenerBuilder
 impl core::marker::Freeze for tst_srt::builder::ListenerBuilder
@@ -1357,7 +1357,7 @@ pub fn tst_srt::config::ListenerConfig::clone(&self) -> tst_srt::config::Listene
 impl core::default::Default for tst_srt::config::ListenerConfig
 pub fn tst_srt::config::ListenerConfig::default() -> Self
 impl core::fmt::Debug for tst_srt::config::ListenerConfig
-pub fn tst_srt::config::ListenerConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::config::ListenerConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::config::ListenerConfig
 impl core::marker::Send for tst_srt::config::ListenerConfig
 impl core::marker::Sync for tst_srt::config::ListenerConfig
@@ -1368,11 +1368,11 @@ impl core::panic::unwind_safe::UnwindSafe for tst_srt::config::ListenerConfig
 pub struct tst_srt::PacketFilter(_)
 impl tst_srt::options::PacketFilter
 pub fn tst_srt::options::PacketFilter::as_str(&self) -> &str
-pub fn tst_srt::options::PacketFilter::new(spec: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::PacketFilterError>
+pub fn tst_srt::options::PacketFilter::new(impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::PacketFilterError>
 impl core::clone::Clone for tst_srt::options::PacketFilter
 pub fn tst_srt::options::PacketFilter::clone(&self) -> tst_srt::options::PacketFilter
 impl core::fmt::Debug for tst_srt::options::PacketFilter
-pub fn tst_srt::options::PacketFilter::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::PacketFilter::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::options::PacketFilter
 impl core::marker::Send for tst_srt::options::PacketFilter
 impl core::marker::Sync for tst_srt::options::PacketFilter
@@ -1383,13 +1383,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_srt::options::PacketFilter
 pub struct tst_srt::Passphrase(_)
 impl tst_srt::options::Passphrase
 pub fn tst_srt::options::Passphrase::as_str(&self) -> &str
-pub fn tst_srt::options::Passphrase::from_env(var: &str) -> core::result::Result<Self, tst_srt::error::PassphraseError>
-pub fn tst_srt::options::Passphrase::from_file(path: impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tst_srt::error::PassphraseError>
-pub fn tst_srt::options::Passphrase::new(s: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::PassphraseError>
+pub fn tst_srt::options::Passphrase::from_env(&str) -> core::result::Result<Self, tst_srt::error::PassphraseError>
+pub fn tst_srt::options::Passphrase::from_file(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tst_srt::error::PassphraseError>
+pub fn tst_srt::options::Passphrase::new(impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::PassphraseError>
 impl core::clone::Clone for tst_srt::options::Passphrase
 pub fn tst_srt::options::Passphrase::clone(&self) -> tst_srt::options::Passphrase
 impl core::fmt::Debug for tst_srt::options::Passphrase
-pub fn tst_srt::options::Passphrase::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::Passphrase::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::options::Passphrase
 impl core::marker::Send for tst_srt::options::Passphrase
 impl core::marker::Sync for tst_srt::options::Passphrase
@@ -1401,21 +1401,21 @@ pub struct tst_srt::Socket
 impl tst_srt::socket::Socket
 pub fn tst_srt::socket::Socket::cancel_handle(&self) -> tst_core::cancel::SrtCancelHandle
 pub fn tst_srt::socket::Socket::close(self) -> core::result::Result<(), tst_srt::error::IoError>
-pub fn tst_srt::socket::Socket::connect_with(config: &tst_srt::config::SocketConfig, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::ConnectError>
+pub fn tst_srt::socket::Socket::connect_with(&tst_srt::config::SocketConfig, impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<Self, tst_srt::error::ConnectError>
 pub fn tst_srt::socket::Socket::local_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::payload_limit(&self) -> usize
 pub fn tst_srt::socket::Socket::peer_addr(&self) -> core::result::Result<core::net::socket_addr::SocketAddr, tst_srt::error::IoError>
-pub fn tst_srt::socket::Socket::recv(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_srt::error::RecvError>
-pub fn tst_srt::socket::Socket::send(&mut self, buf: &[u8]) -> core::result::Result<usize, tst_srt::error::SendError>
-pub fn tst_srt::socket::Socket::set_input_bandwidth(&mut self, bw: u64) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_max_bandwidth(&mut self, bw: tst_srt::options::MaxBandwidth) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_overhead_bandwidth_pct(&mut self, pct: u8) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_recv_timeout(&mut self, timeout: core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
-pub fn tst_srt::socket::Socket::set_send_timeout(&mut self, timeout: core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::socket::Socket::recv(&mut self, &mut [u8]) -> core::result::Result<usize, tst_srt::error::RecvError>
+pub fn tst_srt::socket::Socket::send(&mut self, &[u8]) -> core::result::Result<usize, tst_srt::error::SendError>
+pub fn tst_srt::socket::Socket::set_input_bandwidth(&mut self, u64) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::socket::Socket::set_max_bandwidth(&mut self, tst_srt::options::MaxBandwidth) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::socket::Socket::set_overhead_bandwidth_pct(&mut self, u8) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::socket::Socket::set_recv_timeout(&mut self, core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
+pub fn tst_srt::socket::Socket::set_send_timeout(&mut self, core::option::Option<core::time::Duration>) -> core::result::Result<(), tst_srt::error::OptionError>
 pub fn tst_srt::socket::Socket::stats(&self) -> core::result::Result<tst_srt::socket::Stats, tst_srt::error::IoError>
 pub fn tst_srt::socket::Socket::stream_id(&self) -> core::option::Option<&str>
 impl core::fmt::Debug for tst_srt::socket::Socket
-pub fn tst_srt::socket::Socket::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::socket::Socket::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Send for tst_srt::socket::Socket
 impl core::ops::drop::Drop for tst_srt::socket::Socket
 pub fn tst_srt::socket::Socket::drop(&mut self)
@@ -1428,37 +1428,37 @@ impl !core::panic::unwind_safe::UnwindSafe for tst_srt::socket::Socket
 pub struct tst_srt::SocketBuilder
 impl tst_srt::builder::SocketBuilder
 pub fn tst_srt::builder::SocketBuilder::config(&self) -> tst_srt::config::SocketConfig
-pub fn tst_srt::builder::SocketBuilder::congestion(&mut self, c: tst_srt::options::Congestion) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::connect(&self, addr: impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::socket::Socket, tst_srt::error::ConnectError>
-pub fn tst_srt::builder::SocketBuilder::connect_timeout(&mut self, t: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::flow_window_packets(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::input_bandwidth(&mut self, bw: u64) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::key_length(&mut self, kl: tst_srt::options::KeyLength) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::latency(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::latency_ms(&mut self, ms: u64) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::linger(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::loss_max_ttl(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::max_bandwidth(&mut self, bw: tst_srt::options::MaxBandwidth) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::mss(&mut self, mss: u16) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::congestion(&mut self, tst_srt::options::Congestion) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::connect(&self, impl std::net::socket_addr::ToSocketAddrs) -> core::result::Result<tst_srt::socket::Socket, tst_srt::error::ConnectError>
+pub fn tst_srt::builder::SocketBuilder::connect_timeout(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::flow_window_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::input_bandwidth(&mut self, u64) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::key_length(&mut self, tst_srt::options::KeyLength) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::latency(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::latency_ms(&mut self, u64) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::linger(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::loss_max_ttl(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::max_bandwidth(&mut self, tst_srt::options::MaxBandwidth) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::mss(&mut self, u16) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::new() -> Self
-pub fn tst_srt::builder::SocketBuilder::overhead_bandwidth_pct(&mut self, pct: u8) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::packet_filter(&mut self, pf: tst_srt::options::PacketFilter) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::passphrase(&mut self, p: tst_srt::options::Passphrase) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::payload_size(&mut self, n: u16) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::peer_latency(&mut self, d: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::overhead_bandwidth_pct(&mut self, u8) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::packet_filter(&mut self, tst_srt::options::PacketFilter) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::passphrase(&mut self, tst_srt::options::Passphrase) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::payload_size(&mut self, u16) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::peer_latency(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::receiver_defaults(&mut self) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::recv_buf_packets(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::recv_latency(&mut self, d: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::recv_timeout(&mut self, t: core::time::Duration) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::role(&mut self, role: tst_srt::options::Role) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::send_buf_packets(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::send_timeout(&mut self, t: core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_latency(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::recv_timeout(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::role(&mut self, tst_srt::options::Role) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::send_buf_packets(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::send_timeout(&mut self, core::time::Duration) -> &mut Self
 pub fn tst_srt::builder::SocketBuilder::sender_defaults(&mut self) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::stream_id(&mut self, id: tst_srt::options::StreamId) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::too_late_packet_drop(&mut self, on: bool) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::try_stream_id(&mut self, id: impl core::convert::TryInto<tst_srt::options::StreamId, Error = tst_srt::error::StreamIdError>) -> core::result::Result<&mut Self, tst_srt::error::OptionError>
-pub fn tst_srt::builder::SocketBuilder::udp_recv_buffer_bytes(&mut self, n: u32) -> &mut Self
-pub fn tst_srt::builder::SocketBuilder::udp_send_buffer_bytes(&mut self, n: u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::stream_id(&mut self, tst_srt::options::StreamId) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::too_late_packet_drop(&mut self, bool) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::try_stream_id(&mut self, impl core::convert::TryInto<tst_srt::options::StreamId, Error = tst_srt::error::StreamIdError>) -> core::result::Result<&mut Self, tst_srt::error::OptionError>
+pub fn tst_srt::builder::SocketBuilder::udp_recv_buffer_bytes(&mut self, u32) -> &mut Self
+pub fn tst_srt::builder::SocketBuilder::udp_send_buffer_bytes(&mut self, u32) -> &mut Self
 impl core::default::Default for tst_srt::builder::SocketBuilder
 pub fn tst_srt::builder::SocketBuilder::default() -> tst_srt::builder::SocketBuilder
 impl core::marker::Freeze for tst_srt::builder::SocketBuilder
@@ -1504,7 +1504,7 @@ pub fn tst_srt::config::SocketConfig::clone(&self) -> tst_srt::config::SocketCon
 impl core::default::Default for tst_srt::config::SocketConfig
 pub fn tst_srt::config::SocketConfig::default() -> tst_srt::config::SocketConfig
 impl core::fmt::Debug for tst_srt::config::SocketConfig
-pub fn tst_srt::config::SocketConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::config::SocketConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::config::SocketConfig
 impl core::marker::Send for tst_srt::config::SocketConfig
 impl core::marker::Sync for tst_srt::config::SocketConfig
@@ -1515,8 +1515,8 @@ impl core::panic::unwind_safe::UnwindSafe for tst_srt::config::SocketConfig
 pub struct tst_srt::SrtTransport
 impl tst_srt::transport::SrtTransport
 pub const tst_srt::transport::SrtTransport::DEFAULT_PAYLOAD: usize
-pub fn tst_srt::transport::SrtTransport::new(socket: tst_srt::socket::Socket) -> Self
-pub fn tst_srt::transport::SrtTransport::with_max_payload(self, n: usize) -> Self
+pub fn tst_srt::transport::SrtTransport::new(tst_srt::socket::Socket) -> Self
+pub fn tst_srt::transport::SrtTransport::with_max_payload(self, usize) -> Self
 impl core::ops::drop::Drop for tst_srt::transport::SrtTransport
 pub fn tst_srt::transport::SrtTransport::drop(&mut self)
 impl tst_core::transport::RecvTransport for tst_srt::transport::SrtTransport
@@ -1524,14 +1524,14 @@ pub fn tst_srt::transport::SrtTransport::cancel_handle(&self) -> core::option::O
 pub fn tst_srt::transport::SrtTransport::close(&mut self)
 pub fn tst_srt::transport::SrtTransport::is_alive(&self) -> bool
 pub fn tst_srt::transport::SrtTransport::max_payload(&self) -> usize
-pub fn tst_srt::transport::SrtTransport::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_srt::transport::SrtTransport::recv_bytes(&mut self, &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
 pub fn tst_srt::transport::SrtTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl tst_core::transport::Transport for tst_srt::transport::SrtTransport
 pub fn tst_srt::transport::SrtTransport::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_srt::transport::SrtTransport::close(&mut self)
 pub fn tst_srt::transport::SrtTransport::is_alive(&self) -> bool
 pub fn tst_srt::transport::SrtTransport::max_payload(&self) -> usize
-pub fn tst_srt::transport::SrtTransport::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_srt::transport::SrtTransport::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
 pub fn tst_srt::transport::SrtTransport::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl core::marker::Freeze for tst_srt::transport::SrtTransport
 impl core::marker::Send for tst_srt::transport::SrtTransport
@@ -1546,9 +1546,9 @@ pub tst_srt::SrtUrl::mode: tst_srt::url::Mode
 pub tst_srt::SrtUrl::overlay: tst_srt::url::UrlOverlay
 pub tst_srt::SrtUrl::port: u16
 impl tst_srt::url::SrtUrl
-pub fn tst_srt::url::SrtUrl::parse(s: &str) -> core::result::Result<Self, tst_srt::url::UrlError>
+pub fn tst_srt::url::SrtUrl::parse(&str) -> core::result::Result<Self, tst_srt::url::UrlError>
 impl core::fmt::Debug for tst_srt::url::SrtUrl
-pub fn tst_srt::url::SrtUrl::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::url::SrtUrl::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::url::SrtUrl
 impl core::marker::Send for tst_srt::url::SrtUrl
 impl core::marker::Sync for tst_srt::url::SrtUrl
@@ -1577,7 +1577,7 @@ pub tst_srt::Stats::send_buffer_packets: u32
 impl core::clone::Clone for tst_srt::socket::Stats
 pub fn tst_srt::socket::Stats::clone(&self) -> tst_srt::socket::Stats
 impl core::fmt::Debug for tst_srt::socket::Stats
-pub fn tst_srt::socket::Stats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::socket::Stats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_srt::socket::Stats
 impl core::marker::Freeze for tst_srt::socket::Stats
 impl core::marker::Send for tst_srt::socket::Stats
@@ -1589,17 +1589,17 @@ impl core::panic::unwind_safe::UnwindSafe for tst_srt::socket::Stats
 pub struct tst_srt::StreamId(_)
 impl tst_srt::options::StreamId
 pub fn tst_srt::options::StreamId::as_str(&self) -> &str
-pub fn tst_srt::options::StreamId::new(s: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::StreamIdError>
+pub fn tst_srt::options::StreamId::new(impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tst_srt::error::StreamIdError>
 impl core::clone::Clone for tst_srt::options::StreamId
 pub fn tst_srt::options::StreamId::clone(&self) -> tst_srt::options::StreamId
 impl core::convert::TryFrom<&str> for tst_srt::options::StreamId
 pub type tst_srt::options::StreamId::Error = tst_srt::error::StreamIdError
-pub fn tst_srt::options::StreamId::try_from(s: &str) -> core::result::Result<Self, Self::Error>
+pub fn tst_srt::options::StreamId::try_from(&str) -> core::result::Result<Self, Self::Error>
 impl core::convert::TryFrom<alloc::string::String> for tst_srt::options::StreamId
 pub type tst_srt::options::StreamId::Error = tst_srt::error::StreamIdError
-pub fn tst_srt::options::StreamId::try_from(s: alloc::string::String) -> core::result::Result<Self, Self::Error>
+pub fn tst_srt::options::StreamId::try_from(alloc::string::String) -> core::result::Result<Self, Self::Error>
 impl core::fmt::Debug for tst_srt::options::StreamId
-pub fn tst_srt::options::StreamId::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::options::StreamId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::options::StreamId
 impl core::marker::Send for tst_srt::options::StreamId
 impl core::marker::Sync for tst_srt::options::StreamId
@@ -1631,14 +1631,14 @@ pub tst_srt::UrlOverlay::too_late_packet_drop: core::option::Option<bool>
 pub tst_srt::UrlOverlay::udp_recv_buffer_bytes: core::option::Option<u32>
 pub tst_srt::UrlOverlay::udp_send_buffer_bytes: core::option::Option<u32>
 impl tst_srt::url::UrlOverlay
-pub fn tst_srt::url::UrlOverlay::apply_to_listener(&self, cfg: &mut tst_srt::config::ListenerConfig)
-pub fn tst_srt::url::UrlOverlay::apply_to_socket(&self, cfg: &mut tst_srt::config::SocketConfig)
+pub fn tst_srt::url::UrlOverlay::apply_to_listener(&self, &mut tst_srt::config::ListenerConfig)
+pub fn tst_srt::url::UrlOverlay::apply_to_socket(&self, &mut tst_srt::config::SocketConfig)
 impl core::clone::Clone for tst_srt::url::UrlOverlay
 pub fn tst_srt::url::UrlOverlay::clone(&self) -> tst_srt::url::UrlOverlay
 impl core::default::Default for tst_srt::url::UrlOverlay
 pub fn tst_srt::url::UrlOverlay::default() -> tst_srt::url::UrlOverlay
 impl core::fmt::Debug for tst_srt::url::UrlOverlay
-pub fn tst_srt::url::UrlOverlay::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_srt::url::UrlOverlay::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_srt::url::UrlOverlay
 impl core::marker::Send for tst_srt::url::UrlOverlay
 impl core::marker::Sync for tst_srt::url::UrlOverlay

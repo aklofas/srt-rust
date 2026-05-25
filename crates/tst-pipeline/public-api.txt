@@ -9,15 +9,15 @@ pub mod tst_pipeline::demux_receiver
 pub tst_pipeline::demux_receiver::DemuxReceiverErrorSource::Demux(tst_core::error::DemuxError)
 pub tst_pipeline::demux_receiver::DemuxReceiverErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::error::DemuxError> for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
-pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::from(source: tst_core::error::DemuxError) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::from(tst_core::error::DemuxError) -> Self
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
-pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
-pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
-pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 impl core::marker::Send for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 impl core::marker::Sync for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
@@ -27,20 +27,20 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::demux_receiver::D
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 pub struct tst_pipeline::demux_receiver::DemuxReceiver<R: tst_core::transport::RecvTransport>
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxReceiver<R>
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::add_byte_sink(&mut self, sink: tst_pipeline::demux_receiver::ByteSink)
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::add_byte_sink(&mut self, tst_pipeline::demux_receiver::ByteSink)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::close(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::is_alive(&self) -> bool
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::new(transport: R) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::new(R) -> Self
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::types::DemuxerConfig) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(R, tst_core::mpegts::demux::types::DemuxerConfig) -> Self
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stream_codec_stats(&self, u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::demux_receiver::DemuxReceiver<R>
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub type tst_pipeline::demux_receiver::DemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::next(&mut self) -> core::option::Option<Self::Item>
@@ -57,15 +57,15 @@ impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::demux_receiver::
 pub tst_pipeline::demux_receiver::DemuxReceiverError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::demux_receiver::DemuxReceiverError::source: tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 impl core::convert::From<tst_core::error::DemuxError> for tst_pipeline::demux_receiver::DemuxReceiverError
-pub fn tst_pipeline::demux_receiver::DemuxReceiverError::from(e: tst_core::error::DemuxError) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiverError::from(tst_core::error::DemuxError) -> Self
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::demux_receiver::DemuxReceiverError
-pub fn tst_pipeline::demux_receiver::DemuxReceiverError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiverError::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::demux_receiver::DemuxReceiverError
 pub fn tst_pipeline::demux_receiver::DemuxReceiverError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::demux_receiver::DemuxReceiverError
-pub fn tst_pipeline::demux_receiver::DemuxReceiverError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::demux_receiver::DemuxReceiverError
-pub fn tst_pipeline::demux_receiver::DemuxReceiverError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::demux_receiver::DemuxReceiverError
 pub fn tst_pipeline::demux_receiver::DemuxReceiverError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::demux_receiver::DemuxReceiverError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -88,11 +88,11 @@ impl core::clone::Clone for tst_pipeline::demux_receiver::DemuxReceiverStats
 pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::clone(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::cmp::Eq for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::cmp::PartialEq for tst_pipeline::demux_receiver::DemuxReceiverStats
-pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::eq(&self, other: &tst_pipeline::demux_receiver::DemuxReceiverStats) -> bool
+pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::eq(&self, &tst_pipeline::demux_receiver::DemuxReceiverStats) -> bool
 impl core::default::Default for tst_pipeline::demux_receiver::DemuxReceiverStats
 pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::default() -> tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::fmt::Debug for tst_pipeline::demux_receiver::DemuxReceiverStats
-pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::marker::Freeze for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::marker::Send for tst_pipeline::demux_receiver::DemuxReceiverStats
@@ -120,9 +120,9 @@ impl core::clone::Clone for tst_pipeline::ext::pairing::PairerMode
 pub fn tst_pipeline::ext::pairing::PairerMode::clone(&self) -> tst_pipeline::ext::pairing::PairerMode
 impl core::cmp::Eq for tst_pipeline::ext::pairing::PairerMode
 impl core::cmp::PartialEq for tst_pipeline::ext::pairing::PairerMode
-pub fn tst_pipeline::ext::pairing::PairerMode::eq(&self, other: &tst_pipeline::ext::pairing::PairerMode) -> bool
+pub fn tst_pipeline::ext::pairing::PairerMode::eq(&self, &tst_pipeline::ext::pairing::PairerMode) -> bool
 impl core::fmt::Debug for tst_pipeline::ext::pairing::PairerMode
-pub fn tst_pipeline::ext::pairing::PairerMode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::ext::pairing::PairerMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::ext::pairing::PairerMode
 impl core::marker::StructuralPartialEq for tst_pipeline::ext::pairing::PairerMode
 impl core::marker::Freeze for tst_pipeline::ext::pairing::PairerMode
@@ -143,9 +143,9 @@ impl core::clone::Clone for tst_pipeline::ext::pairing::PairerOutput
 pub fn tst_pipeline::ext::pairing::PairerOutput::clone(&self) -> tst_pipeline::ext::pairing::PairerOutput
 impl core::cmp::Eq for tst_pipeline::ext::pairing::PairerOutput
 impl core::cmp::PartialEq for tst_pipeline::ext::pairing::PairerOutput
-pub fn tst_pipeline::ext::pairing::PairerOutput::eq(&self, other: &tst_pipeline::ext::pairing::PairerOutput) -> bool
+pub fn tst_pipeline::ext::pairing::PairerOutput::eq(&self, &tst_pipeline::ext::pairing::PairerOutput) -> bool
 impl core::fmt::Debug for tst_pipeline::ext::pairing::PairerOutput
-pub fn tst_pipeline::ext::pairing::PairerOutput::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::ext::pairing::PairerOutput::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::ext::pairing::PairerOutput
 impl core::marker::Freeze for tst_pipeline::ext::pairing::PairerOutput
 impl core::marker::Send for tst_pipeline::ext::pairing::PairerOutput
@@ -163,9 +163,9 @@ impl core::clone::Clone for tst_pipeline::ext::pairing::KlvSample
 pub fn tst_pipeline::ext::pairing::KlvSample::clone(&self) -> tst_pipeline::ext::pairing::KlvSample
 impl core::cmp::Eq for tst_pipeline::ext::pairing::KlvSample
 impl core::cmp::PartialEq for tst_pipeline::ext::pairing::KlvSample
-pub fn tst_pipeline::ext::pairing::KlvSample::eq(&self, other: &tst_pipeline::ext::pairing::KlvSample) -> bool
+pub fn tst_pipeline::ext::pairing::KlvSample::eq(&self, &tst_pipeline::ext::pairing::KlvSample) -> bool
 impl core::fmt::Debug for tst_pipeline::ext::pairing::KlvSample
-pub fn tst_pipeline::ext::pairing::KlvSample::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::ext::pairing::KlvSample::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::ext::pairing::KlvSample
 impl core::marker::Freeze for tst_pipeline::ext::pairing::KlvSample
 impl core::marker::Send for tst_pipeline::ext::pairing::KlvSample
@@ -176,13 +176,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::ext::pairing::Klv
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::ext::pairing::KlvSample
 pub struct tst_pipeline::ext::pairing::Pairer
 impl tst_pipeline::ext::pairing::Pairer
-pub fn tst_pipeline::ext::pairing::Pairer::feed(&mut self, event: tst_core::mpegts::demux::event::DemuxEvent) -> alloc::vec::Vec<tst_pipeline::ext::pairing::PairerOutput>
+pub fn tst_pipeline::ext::pairing::Pairer::feed(&mut self, tst_core::mpegts::demux::event::DemuxEvent) -> alloc::vec::Vec<tst_pipeline::ext::pairing::PairerOutput>
 pub fn tst_pipeline::ext::pairing::Pairer::flush(&mut self) -> alloc::vec::Vec<tst_pipeline::ext::pairing::PairerOutput>
-pub fn tst_pipeline::ext::pairing::Pairer::last_before_pts(video_pid: u16, klv_pid: u16, freshness: core::option::Option<core::time::Duration>) -> Self
-pub fn tst_pipeline::ext::pairing::Pairer::new(video_pid: u16, klv_pid: u16) -> Self
+pub fn tst_pipeline::ext::pairing::Pairer::last_before_pts(u16, u16, core::option::Option<core::time::Duration>) -> Self
+pub fn tst_pipeline::ext::pairing::Pairer::new(u16, u16) -> Self
 pub fn tst_pipeline::ext::pairing::Pairer::reset_stats(&mut self)
 pub fn tst_pipeline::ext::pairing::Pairer::stats(&self) -> tst_pipeline::ext::pairing::PairerStats
-pub fn tst_pipeline::ext::pairing::Pairer::with_config(video_pid: u16, klv_pid: u16, config: tst_pipeline::ext::pairing::PairerConfig) -> Self
+pub fn tst_pipeline::ext::pairing::Pairer::with_config(u16, u16, tst_pipeline::ext::pairing::PairerConfig) -> Self
 impl core::marker::Freeze for tst_pipeline::ext::pairing::Pairer
 impl core::marker::Send for tst_pipeline::ext::pairing::Pairer
 impl core::marker::Sync for tst_pipeline::ext::pairing::Pairer
@@ -201,7 +201,7 @@ pub fn tst_pipeline::ext::pairing::PairerConfig::clone(&self) -> tst_pipeline::e
 impl core::default::Default for tst_pipeline::ext::pairing::PairerConfig
 pub fn tst_pipeline::ext::pairing::PairerConfig::default() -> Self
 impl core::fmt::Debug for tst_pipeline::ext::pairing::PairerConfig
-pub fn tst_pipeline::ext::pairing::PairerConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::ext::pairing::PairerConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::ext::pairing::PairerConfig
 impl core::marker::Send for tst_pipeline::ext::pairing::PairerConfig
 impl core::marker::Sync for tst_pipeline::ext::pairing::PairerConfig
@@ -218,11 +218,11 @@ impl core::clone::Clone for tst_pipeline::ext::pairing::PairerStats
 pub fn tst_pipeline::ext::pairing::PairerStats::clone(&self) -> tst_pipeline::ext::pairing::PairerStats
 impl core::cmp::Eq for tst_pipeline::ext::pairing::PairerStats
 impl core::cmp::PartialEq for tst_pipeline::ext::pairing::PairerStats
-pub fn tst_pipeline::ext::pairing::PairerStats::eq(&self, other: &tst_pipeline::ext::pairing::PairerStats) -> bool
+pub fn tst_pipeline::ext::pairing::PairerStats::eq(&self, &tst_pipeline::ext::pairing::PairerStats) -> bool
 impl core::default::Default for tst_pipeline::ext::pairing::PairerStats
 pub fn tst_pipeline::ext::pairing::PairerStats::default() -> tst_pipeline::ext::pairing::PairerStats
 impl core::fmt::Debug for tst_pipeline::ext::pairing::PairerStats
-pub fn tst_pipeline::ext::pairing::PairerStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::ext::pairing::PairerStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::ext::pairing::PairerStats
 impl core::marker::Freeze for tst_pipeline::ext::pairing::PairerStats
 impl core::marker::Send for tst_pipeline::ext::pairing::PairerStats
@@ -241,9 +241,9 @@ impl core::clone::Clone for tst_pipeline::ext::pairing::VideoSample
 pub fn tst_pipeline::ext::pairing::VideoSample::clone(&self) -> tst_pipeline::ext::pairing::VideoSample
 impl core::cmp::Eq for tst_pipeline::ext::pairing::VideoSample
 impl core::cmp::PartialEq for tst_pipeline::ext::pairing::VideoSample
-pub fn tst_pipeline::ext::pairing::VideoSample::eq(&self, other: &tst_pipeline::ext::pairing::VideoSample) -> bool
+pub fn tst_pipeline::ext::pairing::VideoSample::eq(&self, &tst_pipeline::ext::pairing::VideoSample) -> bool
 impl core::fmt::Debug for tst_pipeline::ext::pairing::VideoSample
-pub fn tst_pipeline::ext::pairing::VideoSample::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::ext::pairing::VideoSample::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::ext::pairing::VideoSample
 impl core::marker::Freeze for tst_pipeline::ext::pairing::VideoSample
 impl core::marker::Send for tst_pipeline::ext::pairing::VideoSample
@@ -258,16 +258,16 @@ impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_demux_receiver
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::close(&mut self)
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::is_alive(&self) -> bool
-pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::new(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::new(tst_pipeline::managed_receive::ManagedRecvTransport<R>, tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnects_count(&self) -> u64
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
-pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
-pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::with_demux_options(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, options: tst_core::mpegts::demux::types::DemuxerConfig, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::stream_codec_stats(&self, u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::with_demux_options(tst_pipeline::managed_receive::ManagedRecvTransport<R>, tst_core::mpegts::demux::types::DemuxerConfig, tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
-pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
 pub type tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::next(&mut self) -> core::option::Option<Self::Item>
@@ -286,7 +286,7 @@ pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::clone(&
 impl core::default::Default for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::default() -> tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 impl core::fmt::Debug for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
-pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 impl core::marker::Send for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 impl core::marker::Sync for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
@@ -297,7 +297,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_demux_receiv
 pub mod tst_pipeline::managed_receive
 pub struct tst_pipeline::managed_receive::ManagedRecvTransport<R: tst_core::transport::RecvTransport>
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_receive::ManagedRecvTransport<R>
-pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new(inner: R, factory: alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, policy: tst_pipeline::reconnect::ReconnectPolicy) -> Self
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new(R, alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, tst_pipeline::reconnect::ReconnectPolicy) -> Self
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_count(&self) -> u64
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicU64>
 impl<R: tst_core::transport::RecvTransport> tst_core::transport::RecvTransport for tst_pipeline::managed_receive::ManagedRecvTransport<R>
@@ -305,7 +305,7 @@ pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::cancel_handle(&se
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::close(&mut self)
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::max_payload(&self) -> usize
-pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::recv_bytes(&mut self, &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl<R> core::marker::Freeze for tst_pipeline::managed_receive::ManagedRecvTransport<R> where R: core::marker::Freeze
 impl<R> core::marker::Send for tst_pipeline::managed_receive::ManagedRecvTransport<R>
@@ -319,15 +319,15 @@ pub mod tst_pipeline::mux_sender
 pub tst_pipeline::mux_sender::MuxSenderErrorSource::Mux(tst_core::error::MuxError)
 pub tst_pipeline::mux_sender::MuxSenderErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::error::MuxError> for tst_pipeline::mux_sender::MuxSenderErrorSource
-pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::from(source: tst_core::error::MuxError) -> Self
+pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::from(tst_core::error::MuxError) -> Self
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::mux_sender::MuxSenderErrorSource
-pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::mux_sender::MuxSenderErrorSource
 pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::mux_sender::MuxSenderErrorSource
-pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::mux_sender::MuxSenderErrorSource
-pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::mux_sender::MuxSenderErrorSource
 impl core::marker::Send for tst_pipeline::mux_sender::MuxSenderErrorSource
 impl core::marker::Sync for tst_pipeline::mux_sender::MuxSenderErrorSource
@@ -338,30 +338,30 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_sender::MuxSende
 pub struct tst_pipeline::mux_sender::MuxSender<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport> tst_pipeline::mux_sender::MuxSender<T>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::close(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::new(transport: T, config: tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::new(T, tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::reset_stats(&self)
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio(&self, frames: &[u8], pts: tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio_to(&self, handle: tst_core::mpegts::mux::types::AudioStreamHandle, frames: &[u8], pts: tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv(&self, klv: &[u8], pts: tst_core::mpegts::common::Pts90khz, metadata_service_id: u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv_to(&self, handle: tst_core::mpegts::mux::types::KlvStreamHandle, klv: &[u8], pts: tst_core::mpegts::common::Pts90khz, metadata_service_id: u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle(&self, payload: &[u8], pts: tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle_to(&self, handle: tst_core::mpegts::mux::types::SubtitleStreamHandle, payload: &[u8], pts: tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video(&self, nal: &[u8], pts: tst_core::mpegts::common::Pts90khz, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, handle: tst_core::mpegts::mux::types::VideoStreamHandle, nal: &[u8], pts: tst_core::mpegts::common::Pts90khz, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to_with_dts(&self, handle: tst_core::mpegts::mux::types::VideoStreamHandle, nal: &[u8], pts: tst_core::mpegts::common::Pts90khz, dts: tst_core::mpegts::common::Pts90khz, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio_to(&self, tst_core::mpegts::mux::types::AudioStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv(&self, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv_to(&self, tst_core::mpegts::mux::types::KlvStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle_to(&self, tst_core::mpegts::mux::types::SubtitleStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video(&self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, tst_core::mpegts::mux::types::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to_with_dts(&self, tst_core::mpegts::mux::types::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::stats(&self) -> tst_pipeline::mux_sender::MuxSenderStats
-pub fn tst_pipeline::mux_sender::MuxSender<T>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::stream_codec_stats(&self, u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>
 impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::mux_sender::MuxSender<T>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSender<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::mux_sender::MuxSender<T>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::drop(&mut self)
 impl<T> !core::marker::Freeze for tst_pipeline::mux_sender::MuxSender<T>
@@ -375,15 +375,15 @@ impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_sender::MuxS
 pub tst_pipeline::mux_sender::MuxSenderError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::mux_sender::MuxSenderError::source: tst_pipeline::mux_sender::MuxSenderErrorSource
 impl core::convert::From<tst_core::error::MuxError> for tst_pipeline::mux_sender::MuxSenderError
-pub fn tst_pipeline::mux_sender::MuxSenderError::from(e: tst_core::error::MuxError) -> Self
+pub fn tst_pipeline::mux_sender::MuxSenderError::from(tst_core::error::MuxError) -> Self
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::mux_sender::MuxSenderError
-pub fn tst_pipeline::mux_sender::MuxSenderError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::mux_sender::MuxSenderError::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::mux_sender::MuxSenderError
 pub fn tst_pipeline::mux_sender::MuxSenderError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::mux_sender::MuxSenderError
-pub fn tst_pipeline::mux_sender::MuxSenderError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::mux_sender::MuxSenderError
-pub fn tst_pipeline::mux_sender::MuxSenderError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::mux_sender::MuxSenderError
 pub fn tst_pipeline::mux_sender::MuxSenderError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::mux_sender::MuxSenderError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -405,11 +405,11 @@ impl core::clone::Clone for tst_pipeline::mux_sender::MuxSenderStats
 pub fn tst_pipeline::mux_sender::MuxSenderStats::clone(&self) -> tst_pipeline::mux_sender::MuxSenderStats
 impl core::cmp::Eq for tst_pipeline::mux_sender::MuxSenderStats
 impl core::cmp::PartialEq for tst_pipeline::mux_sender::MuxSenderStats
-pub fn tst_pipeline::mux_sender::MuxSenderStats::eq(&self, other: &tst_pipeline::mux_sender::MuxSenderStats) -> bool
+pub fn tst_pipeline::mux_sender::MuxSenderStats::eq(&self, &tst_pipeline::mux_sender::MuxSenderStats) -> bool
 impl core::default::Default for tst_pipeline::mux_sender::MuxSenderStats
 pub fn tst_pipeline::mux_sender::MuxSenderStats::default() -> tst_pipeline::mux_sender::MuxSenderStats
 impl core::fmt::Debug for tst_pipeline::mux_sender::MuxSenderStats
-pub fn tst_pipeline::mux_sender::MuxSenderStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSenderStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::mux_sender::MuxSenderStats
 impl core::marker::Freeze for tst_pipeline::mux_sender::MuxSenderStats
 impl core::marker::Send for tst_pipeline::mux_sender::MuxSenderStats
@@ -423,13 +423,13 @@ pub mod tst_pipeline::raw_receiver
 #[non_exhaustive] pub enum tst_pipeline::raw_receiver::RawReceiverErrorSource
 pub tst_pipeline::raw_receiver::RawReceiverErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::raw_receiver::RawReceiverErrorSource
-pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::raw_receiver::RawReceiverErrorSource
 pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiverErrorSource
-pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::raw_receiver::RawReceiverErrorSource
-pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::raw_receiver::RawReceiverErrorSource
 impl core::marker::Send for tst_pipeline::raw_receiver::RawReceiverErrorSource
 impl core::marker::Sync for tst_pipeline::raw_receiver::RawReceiverErrorSource
@@ -442,13 +442,13 @@ impl<R: tst_core::transport::RecvTransport> tst_pipeline::raw_receiver::RawRecei
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::close(&mut self)
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::is_alive(&self) -> bool
-pub fn tst_pipeline::raw_receiver::RawReceiver<R>::new(transport: R, _config: tst_pipeline::raw_receiver::RawReceiverConfig) -> Self
+pub fn tst_pipeline::raw_receiver::RawReceiver<R>::new(R, tst_pipeline::raw_receiver::RawReceiverConfig) -> Self
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::recv_one(&mut self) -> core::result::Result<alloc::vec::Vec<u8>, tst_pipeline::raw_receiver::RawReceiverError>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::stats(&self) -> tst_pipeline::raw_receiver::RawRecvStats
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiver<R>
-pub fn tst_pipeline::raw_receiver::RawReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiver<R>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::raw_receiver::RawReceiver<R>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::drop(&mut self)
 impl<R> core::marker::Freeze for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::marker::Freeze
@@ -464,7 +464,7 @@ pub fn tst_pipeline::raw_receiver::RawReceiverConfig::clone(&self) -> tst_pipeli
 impl core::default::Default for tst_pipeline::raw_receiver::RawReceiverConfig
 pub fn tst_pipeline::raw_receiver::RawReceiverConfig::default() -> tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiverConfig
-pub fn tst_pipeline::raw_receiver::RawReceiverConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiverConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::marker::Send for tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::marker::Sync for tst_pipeline::raw_receiver::RawReceiverConfig
@@ -476,13 +476,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawRec
 pub tst_pipeline::raw_receiver::RawReceiverError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::raw_receiver::RawReceiverError::source: tst_pipeline::raw_receiver::RawReceiverErrorSource
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::raw_receiver::RawReceiverError
-pub fn tst_pipeline::raw_receiver::RawReceiverError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::raw_receiver::RawReceiverError::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::raw_receiver::RawReceiverError
 pub fn tst_pipeline::raw_receiver::RawReceiverError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiverError
-pub fn tst_pipeline::raw_receiver::RawReceiverError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::raw_receiver::RawReceiverError
-pub fn tst_pipeline::raw_receiver::RawReceiverError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::raw_receiver::RawReceiverError
 pub fn tst_pipeline::raw_receiver::RawReceiverError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::raw_receiver::RawReceiverError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -500,11 +500,11 @@ impl core::clone::Clone for tst_pipeline::raw_receiver::RawRecvStats
 pub fn tst_pipeline::raw_receiver::RawRecvStats::clone(&self) -> tst_pipeline::raw_receiver::RawRecvStats
 impl core::cmp::Eq for tst_pipeline::raw_receiver::RawRecvStats
 impl core::cmp::PartialEq for tst_pipeline::raw_receiver::RawRecvStats
-pub fn tst_pipeline::raw_receiver::RawRecvStats::eq(&self, other: &tst_pipeline::raw_receiver::RawRecvStats) -> bool
+pub fn tst_pipeline::raw_receiver::RawRecvStats::eq(&self, &tst_pipeline::raw_receiver::RawRecvStats) -> bool
 impl core::default::Default for tst_pipeline::raw_receiver::RawRecvStats
 pub fn tst_pipeline::raw_receiver::RawRecvStats::default() -> tst_pipeline::raw_receiver::RawRecvStats
 impl core::fmt::Debug for tst_pipeline::raw_receiver::RawRecvStats
-pub fn tst_pipeline::raw_receiver::RawRecvStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawRecvStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::raw_receiver::RawRecvStats
 impl core::marker::StructuralPartialEq for tst_pipeline::raw_receiver::RawRecvStats
 impl core::marker::Freeze for tst_pipeline::raw_receiver::RawRecvStats
@@ -519,13 +519,13 @@ pub mod tst_pipeline::raw_sender
 #[non_exhaustive] pub enum tst_pipeline::raw_sender::RawSenderErrorSource
 pub tst_pipeline::raw_sender::RawSenderErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::raw_sender::RawSenderErrorSource
-pub fn tst_pipeline::raw_sender::RawSenderErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::raw_sender::RawSenderErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::raw_sender::RawSenderErrorSource
 pub fn tst_pipeline::raw_sender::RawSenderErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::raw_sender::RawSenderErrorSource
-pub fn tst_pipeline::raw_sender::RawSenderErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::raw_sender::RawSenderErrorSource
-pub fn tst_pipeline::raw_sender::RawSenderErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::raw_sender::RawSenderErrorSource
 impl core::marker::Send for tst_pipeline::raw_sender::RawSenderErrorSource
 impl core::marker::Sync for tst_pipeline::raw_sender::RawSenderErrorSource
@@ -540,11 +540,11 @@ impl core::clone::Clone for tst_pipeline::raw_sender::RawSendStats
 pub fn tst_pipeline::raw_sender::RawSendStats::clone(&self) -> tst_pipeline::raw_sender::RawSendStats
 impl core::cmp::Eq for tst_pipeline::raw_sender::RawSendStats
 impl core::cmp::PartialEq for tst_pipeline::raw_sender::RawSendStats
-pub fn tst_pipeline::raw_sender::RawSendStats::eq(&self, other: &tst_pipeline::raw_sender::RawSendStats) -> bool
+pub fn tst_pipeline::raw_sender::RawSendStats::eq(&self, &tst_pipeline::raw_sender::RawSendStats) -> bool
 impl core::default::Default for tst_pipeline::raw_sender::RawSendStats
 pub fn tst_pipeline::raw_sender::RawSendStats::default() -> tst_pipeline::raw_sender::RawSendStats
 impl core::fmt::Debug for tst_pipeline::raw_sender::RawSendStats
-pub fn tst_pipeline::raw_sender::RawSendStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSendStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::raw_sender::RawSendStats
 impl core::marker::StructuralPartialEq for tst_pipeline::raw_sender::RawSendStats
 impl core::marker::Freeze for tst_pipeline::raw_sender::RawSendStats
@@ -559,13 +559,13 @@ impl<T: tst_core::transport::Transport> tst_pipeline::raw_sender::RawSender<T>
 pub fn tst_pipeline::raw_sender::RawSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::raw_sender::RawSender<T>::close(&mut self)
 pub fn tst_pipeline::raw_sender::RawSender<T>::is_alive(&self) -> bool
-pub fn tst_pipeline::raw_sender::RawSender<T>::new(transport: T, config: tst_pipeline::raw_sender::RawSenderConfig) -> Self
+pub fn tst_pipeline::raw_sender::RawSender<T>::new(T, tst_pipeline::raw_sender::RawSenderConfig) -> Self
 pub fn tst_pipeline::raw_sender::RawSender<T>::reset_stats(&mut self)
-pub fn tst_pipeline::raw_sender::RawSender<T>::send(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_pipeline::raw_sender::RawSenderError>
+pub fn tst_pipeline::raw_sender::RawSender<T>::send(&mut self, &[u8]) -> core::result::Result<(), tst_pipeline::raw_sender::RawSenderError>
 pub fn tst_pipeline::raw_sender::RawSender<T>::stats(&self) -> tst_pipeline::raw_sender::RawSendStats
 pub fn tst_pipeline::raw_sender::RawSender<T>::transport(&self) -> &T
 impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::raw_sender::RawSender<T>
-pub fn tst_pipeline::raw_sender::RawSender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSender<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::raw_sender::RawSender<T>
 pub fn tst_pipeline::raw_sender::RawSender<T>::drop(&mut self)
 impl<T> core::marker::Freeze for tst_pipeline::raw_sender::RawSender<T> where T: core::marker::Freeze
@@ -581,7 +581,7 @@ pub fn tst_pipeline::raw_sender::RawSenderConfig::clone(&self) -> tst_pipeline::
 impl core::default::Default for tst_pipeline::raw_sender::RawSenderConfig
 pub fn tst_pipeline::raw_sender::RawSenderConfig::default() -> tst_pipeline::raw_sender::RawSenderConfig
 impl core::fmt::Debug for tst_pipeline::raw_sender::RawSenderConfig
-pub fn tst_pipeline::raw_sender::RawSenderConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSenderConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::raw_sender::RawSenderConfig
 impl core::marker::Send for tst_pipeline::raw_sender::RawSenderConfig
 impl core::marker::Sync for tst_pipeline::raw_sender::RawSenderConfig
@@ -593,13 +593,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSende
 pub tst_pipeline::raw_sender::RawSenderError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::raw_sender::RawSenderError::source: tst_pipeline::raw_sender::RawSenderErrorSource
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::raw_sender::RawSenderError
-pub fn tst_pipeline::raw_sender::RawSenderError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::raw_sender::RawSenderError::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::raw_sender::RawSenderError
 pub fn tst_pipeline::raw_sender::RawSenderError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::raw_sender::RawSenderError
-pub fn tst_pipeline::raw_sender::RawSenderError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::raw_sender::RawSenderError
-pub fn tst_pipeline::raw_sender::RawSenderError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::raw_sender::RawSenderError
 pub fn tst_pipeline::raw_sender::RawSenderError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::raw_sender::RawSenderError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -622,9 +622,9 @@ impl core::clone::Clone for tst_pipeline::receiver::sync::SyncState
 pub fn tst_pipeline::receiver::sync::SyncState::clone(&self) -> tst_pipeline::receiver::sync::SyncState
 impl core::cmp::Eq for tst_pipeline::receiver::sync::SyncState
 impl core::cmp::PartialEq for tst_pipeline::receiver::sync::SyncState
-pub fn tst_pipeline::receiver::sync::SyncState::eq(&self, other: &tst_pipeline::receiver::sync::SyncState) -> bool
+pub fn tst_pipeline::receiver::sync::SyncState::eq(&self, &tst_pipeline::receiver::sync::SyncState) -> bool
 impl core::fmt::Debug for tst_pipeline::receiver::sync::SyncState
-pub fn tst_pipeline::receiver::sync::SyncState::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::sync::SyncState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::receiver::sync::SyncState
 impl core::marker::StructuralPartialEq for tst_pipeline::receiver::sync::SyncState
 impl core::marker::Freeze for tst_pipeline::receiver::sync::SyncState
@@ -638,12 +638,12 @@ pub struct tst_pipeline::receiver::sync::Syncer
 impl tst_pipeline::receiver::sync::Syncer
 pub fn tst_pipeline::receiver::sync::Syncer::new() -> Self
 pub fn tst_pipeline::receiver::sync::Syncer::next_packet(&mut self) -> core::option::Option<[u8; 188]>
-pub fn tst_pipeline::receiver::sync::Syncer::push(&mut self, bytes: &[u8])
+pub fn tst_pipeline::receiver::sync::Syncer::push(&mut self, &[u8])
 pub fn tst_pipeline::receiver::sync::Syncer::reset(&mut self)
 impl core::default::Default for tst_pipeline::receiver::sync::Syncer
 pub fn tst_pipeline::receiver::sync::Syncer::default() -> Self
 impl core::fmt::Debug for tst_pipeline::receiver::sync::Syncer
-pub fn tst_pipeline::receiver::sync::Syncer::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::sync::Syncer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::receiver::sync::Syncer
 impl core::marker::Send for tst_pipeline::receiver::sync::Syncer
 impl core::marker::Sync for tst_pipeline::receiver::sync::Syncer
@@ -654,13 +654,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::receiver::sync::Sync
 #[non_exhaustive] pub enum tst_pipeline::receiver::ReceiverErrorSource
 pub tst_pipeline::receiver::ReceiverErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::receiver::ReceiverErrorSource
-pub fn tst_pipeline::receiver::ReceiverErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::receiver::ReceiverErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::receiver::ReceiverErrorSource
 pub fn tst_pipeline::receiver::ReceiverErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::receiver::ReceiverErrorSource
-pub fn tst_pipeline::receiver::ReceiverErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::receiver::ReceiverErrorSource
-pub fn tst_pipeline::receiver::ReceiverErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::receiver::ReceiverErrorSource
 impl core::marker::Send for tst_pipeline::receiver::ReceiverErrorSource
 impl core::marker::Sync for tst_pipeline::receiver::ReceiverErrorSource
@@ -673,14 +673,14 @@ impl<R: tst_core::transport::RecvTransport> tst_pipeline::receiver::Receiver<R>
 pub fn tst_pipeline::receiver::Receiver<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::receiver::Receiver<R>::close(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::is_alive(&self) -> bool
-pub fn tst_pipeline::receiver::Receiver<R>::new(transport: R, _config: tst_pipeline::receiver::ReceiverConfig) -> Self
+pub fn tst_pipeline::receiver::Receiver<R>::new(R, tst_pipeline::receiver::ReceiverConfig) -> Self
 pub fn tst_pipeline::receiver::Receiver<R>::next_packet(&mut self) -> core::result::Result<[u8; 188], tst_pipeline::receiver::ReceiverError>
 pub fn tst_pipeline::receiver::Receiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::reset_sync(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::receiver::Receiver<R>::stats(&self) -> tst_pipeline::receiver::ReceiverStats
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::receiver::Receiver<R>
-pub fn tst_pipeline::receiver::Receiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::Receiver<R>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::receiver::Receiver<R>
 pub fn tst_pipeline::receiver::Receiver<R>::drop(&mut self)
 impl<R> core::marker::Freeze for tst_pipeline::receiver::Receiver<R> where R: core::marker::Freeze
@@ -696,7 +696,7 @@ pub fn tst_pipeline::receiver::ReceiverConfig::clone(&self) -> tst_pipeline::rec
 impl core::default::Default for tst_pipeline::receiver::ReceiverConfig
 pub fn tst_pipeline::receiver::ReceiverConfig::default() -> tst_pipeline::receiver::ReceiverConfig
 impl core::fmt::Debug for tst_pipeline::receiver::ReceiverConfig
-pub fn tst_pipeline::receiver::ReceiverConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::receiver::ReceiverConfig
 impl core::marker::Send for tst_pipeline::receiver::ReceiverConfig
 impl core::marker::Sync for tst_pipeline::receiver::ReceiverConfig
@@ -708,13 +708,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::receiver::ReceiverCo
 pub tst_pipeline::receiver::ReceiverError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::receiver::ReceiverError::source: tst_pipeline::receiver::ReceiverErrorSource
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::receiver::ReceiverError
-pub fn tst_pipeline::receiver::ReceiverError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::receiver::ReceiverError::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::receiver::ReceiverError
 pub fn tst_pipeline::receiver::ReceiverError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::receiver::ReceiverError
-pub fn tst_pipeline::receiver::ReceiverError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::receiver::ReceiverError
-pub fn tst_pipeline::receiver::ReceiverError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::receiver::ReceiverError
 pub fn tst_pipeline::receiver::ReceiverError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::receiver::ReceiverError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -734,11 +734,11 @@ impl core::clone::Clone for tst_pipeline::receiver::ReceiverStats
 pub fn tst_pipeline::receiver::ReceiverStats::clone(&self) -> tst_pipeline::receiver::ReceiverStats
 impl core::cmp::Eq for tst_pipeline::receiver::ReceiverStats
 impl core::cmp::PartialEq for tst_pipeline::receiver::ReceiverStats
-pub fn tst_pipeline::receiver::ReceiverStats::eq(&self, other: &tst_pipeline::receiver::ReceiverStats) -> bool
+pub fn tst_pipeline::receiver::ReceiverStats::eq(&self, &tst_pipeline::receiver::ReceiverStats) -> bool
 impl core::default::Default for tst_pipeline::receiver::ReceiverStats
 pub fn tst_pipeline::receiver::ReceiverStats::default() -> tst_pipeline::receiver::ReceiverStats
 impl core::fmt::Debug for tst_pipeline::receiver::ReceiverStats
-pub fn tst_pipeline::receiver::ReceiverStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::receiver::ReceiverStats
 impl core::marker::StructuralPartialEq for tst_pipeline::receiver::ReceiverStats
 impl core::marker::Freeze for tst_pipeline::receiver::ReceiverStats
@@ -759,11 +759,11 @@ impl core::clone::Clone for tst_pipeline::reconnect::BackoffStrategy
 pub fn tst_pipeline::reconnect::BackoffStrategy::clone(&self) -> tst_pipeline::reconnect::BackoffStrategy
 impl core::cmp::Eq for tst_pipeline::reconnect::BackoffStrategy
 impl core::cmp::PartialEq for tst_pipeline::reconnect::BackoffStrategy
-pub fn tst_pipeline::reconnect::BackoffStrategy::eq(&self, other: &tst_pipeline::reconnect::BackoffStrategy) -> bool
+pub fn tst_pipeline::reconnect::BackoffStrategy::eq(&self, &tst_pipeline::reconnect::BackoffStrategy) -> bool
 impl core::default::Default for tst_pipeline::reconnect::BackoffStrategy
 pub fn tst_pipeline::reconnect::BackoffStrategy::default() -> Self
 impl core::fmt::Debug for tst_pipeline::reconnect::BackoffStrategy
-pub fn tst_pipeline::reconnect::BackoffStrategy::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::reconnect::BackoffStrategy::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::reconnect::BackoffStrategy
 impl core::marker::Freeze for tst_pipeline::reconnect::BackoffStrategy
 impl core::marker::Send for tst_pipeline::reconnect::BackoffStrategy
@@ -779,11 +779,11 @@ impl core::clone::Clone for tst_pipeline::OverflowPolicy
 pub fn tst_pipeline::OverflowPolicy::clone(&self) -> tst_pipeline::OverflowPolicy
 impl core::cmp::Eq for tst_pipeline::OverflowPolicy
 impl core::cmp::PartialEq for tst_pipeline::OverflowPolicy
-pub fn tst_pipeline::OverflowPolicy::eq(&self, other: &tst_pipeline::OverflowPolicy) -> bool
+pub fn tst_pipeline::OverflowPolicy::eq(&self, &tst_pipeline::OverflowPolicy) -> bool
 impl core::default::Default for tst_pipeline::OverflowPolicy
 pub fn tst_pipeline::OverflowPolicy::default() -> tst_pipeline::OverflowPolicy
 impl core::fmt::Debug for tst_pipeline::OverflowPolicy
-pub fn tst_pipeline::OverflowPolicy::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::OverflowPolicy::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::OverflowPolicy
 impl core::marker::StructuralPartialEq for tst_pipeline::OverflowPolicy
 impl core::marker::Freeze for tst_pipeline::OverflowPolicy
@@ -797,11 +797,11 @@ pub struct tst_pipeline::reconnect::GapBuffer
 pub tst_pipeline::reconnect::GapBuffer::bytes_dropped: u64
 pub tst_pipeline::reconnect::GapBuffer::messages_dropped: u64
 impl tst_pipeline::GapBuffer
-pub fn tst_pipeline::GapBuffer::enqueue(&mut self, msg: alloc::vec::Vec<u8>) -> core::result::Result<(), tst_pipeline::reconnect::gap_buffer::GapBufferError>
+pub fn tst_pipeline::GapBuffer::enqueue(&mut self, alloc::vec::Vec<u8>) -> core::result::Result<(), tst_pipeline::reconnect::gap_buffer::GapBufferError>
 pub fn tst_pipeline::GapBuffer::front(&self) -> core::option::Option<&alloc::vec::Vec<u8>>
 pub fn tst_pipeline::GapBuffer::is_empty(&self) -> bool
 pub fn tst_pipeline::GapBuffer::len(&self) -> usize
-pub fn tst_pipeline::GapBuffer::new(capacity: usize, overflow: tst_pipeline::OverflowPolicy) -> Self
+pub fn tst_pipeline::GapBuffer::new(usize, tst_pipeline::OverflowPolicy) -> Self
 pub fn tst_pipeline::GapBuffer::pop_front(&mut self) -> core::option::Option<alloc::vec::Vec<u8>>
 impl core::marker::Freeze for tst_pipeline::GapBuffer
 impl core::marker::Send for tst_pipeline::GapBuffer
@@ -812,13 +812,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::GapBuffer
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::GapBuffer
 pub struct tst_pipeline::reconnect::ManagedTransport<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport + 'static> tst_pipeline::reconnect::ManagedTransport<T>
-pub fn tst_pipeline::reconnect::ManagedTransport<T>::new<F>(inner: T, factory: F, policy: tst_pipeline::reconnect::ReconnectPolicy) -> Self where F: core::ops::function::Fn() -> core::result::Result<T, tst_core::transport::TransportError> + core::marker::Send + core::marker::Sync + 'static
+pub fn tst_pipeline::reconnect::ManagedTransport<T>::new<F>(T, F, tst_pipeline::reconnect::ReconnectPolicy) -> Self where F: core::ops::function::Fn() -> core::result::Result<T, tst_core::transport::TransportError> + core::marker::Send + core::marker::Sync + 'static
 impl<T: tst_core::transport::Transport + 'static> tst_core::transport::Transport for tst_pipeline::reconnect::ManagedTransport<T>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::close(&mut self)
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::max_payload(&self) -> usize
-pub fn tst_pipeline::reconnect::ManagedTransport<T>::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_pipeline::reconnect::ManagedTransport<T>::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl<T> core::marker::Freeze for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Send for tst_pipeline::reconnect::ManagedTransport<T>
@@ -833,13 +833,13 @@ pub tst_pipeline::reconnect::ReconnectPolicy::gap_buffer_capacity: usize
 pub tst_pipeline::reconnect::ReconnectPolicy::max_attempts: core::option::Option<u32>
 pub tst_pipeline::reconnect::ReconnectPolicy::overflow_policy: tst_pipeline::OverflowPolicy
 impl tst_pipeline::reconnect::ReconnectPolicy
-pub fn tst_pipeline::reconnect::ReconnectPolicy::next_delay(&self, attempt: u32) -> core::option::Option<core::time::Duration>
+pub fn tst_pipeline::reconnect::ReconnectPolicy::next_delay(&self, u32) -> core::option::Option<core::time::Duration>
 impl core::clone::Clone for tst_pipeline::reconnect::ReconnectPolicy
 pub fn tst_pipeline::reconnect::ReconnectPolicy::clone(&self) -> tst_pipeline::reconnect::ReconnectPolicy
 impl core::default::Default for tst_pipeline::reconnect::ReconnectPolicy
 pub fn tst_pipeline::reconnect::ReconnectPolicy::default() -> Self
 impl core::fmt::Debug for tst_pipeline::reconnect::ReconnectPolicy
-pub fn tst_pipeline::reconnect::ReconnectPolicy::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::reconnect::ReconnectPolicy::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::reconnect::ReconnectPolicy
 impl core::marker::Send for tst_pipeline::reconnect::ReconnectPolicy
 impl core::marker::Sync for tst_pipeline::reconnect::ReconnectPolicy
@@ -852,15 +852,15 @@ pub mod tst_pipeline::sender
 pub tst_pipeline::sender::SenderErrorSource::Framing(tst_pipeline::sender::TsFramingError)
 pub tst_pipeline::sender::SenderErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::sender::SenderErrorSource
-pub fn tst_pipeline::sender::SenderErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::sender::SenderErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::convert::From<tst_pipeline::sender::TsFramingError> for tst_pipeline::sender::SenderErrorSource
-pub fn tst_pipeline::sender::SenderErrorSource::from(source: tst_pipeline::sender::TsFramingError) -> Self
+pub fn tst_pipeline::sender::SenderErrorSource::from(tst_pipeline::sender::TsFramingError) -> Self
 impl core::error::Error for tst_pipeline::sender::SenderErrorSource
 pub fn tst_pipeline::sender::SenderErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::sender::SenderErrorSource
-pub fn tst_pipeline::sender::SenderErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::SenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::sender::SenderErrorSource
-pub fn tst_pipeline::sender::SenderErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::SenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::sender::SenderErrorSource
 impl core::marker::Send for tst_pipeline::sender::SenderErrorSource
 impl core::marker::Sync for tst_pipeline::sender::SenderErrorSource
@@ -877,16 +877,16 @@ impl core::clone::Clone for tst_pipeline::sender::TsFramingError
 pub fn tst_pipeline::sender::TsFramingError::clone(&self) -> tst_pipeline::sender::TsFramingError
 impl core::cmp::Eq for tst_pipeline::sender::TsFramingError
 impl core::cmp::PartialEq for tst_pipeline::sender::TsFramingError
-pub fn tst_pipeline::sender::TsFramingError::eq(&self, other: &tst_pipeline::sender::TsFramingError) -> bool
+pub fn tst_pipeline::sender::TsFramingError::eq(&self, &tst_pipeline::sender::TsFramingError) -> bool
 impl core::convert::From<tst_pipeline::sender::TsFramingError> for tst_pipeline::sender::SenderError
-pub fn tst_pipeline::sender::SenderError::from(e: tst_pipeline::sender::TsFramingError) -> Self
+pub fn tst_pipeline::sender::SenderError::from(tst_pipeline::sender::TsFramingError) -> Self
 impl core::convert::From<tst_pipeline::sender::TsFramingError> for tst_pipeline::sender::SenderErrorSource
-pub fn tst_pipeline::sender::SenderErrorSource::from(source: tst_pipeline::sender::TsFramingError) -> Self
+pub fn tst_pipeline::sender::SenderErrorSource::from(tst_pipeline::sender::TsFramingError) -> Self
 impl core::error::Error for tst_pipeline::sender::TsFramingError
 impl core::fmt::Debug for tst_pipeline::sender::TsFramingError
-pub fn tst_pipeline::sender::TsFramingError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::TsFramingError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::sender::TsFramingError
-pub fn tst_pipeline::sender::TsFramingError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::TsFramingError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::sender::TsFramingError
 impl core::marker::Freeze for tst_pipeline::sender::TsFramingError
 impl core::marker::Send for tst_pipeline::sender::TsFramingError
@@ -902,11 +902,11 @@ impl core::clone::Clone for tst_pipeline::TsFramingMode
 pub fn tst_pipeline::TsFramingMode::clone(&self) -> tst_pipeline::TsFramingMode
 impl core::cmp::Eq for tst_pipeline::TsFramingMode
 impl core::cmp::PartialEq for tst_pipeline::TsFramingMode
-pub fn tst_pipeline::TsFramingMode::eq(&self, other: &tst_pipeline::TsFramingMode) -> bool
+pub fn tst_pipeline::TsFramingMode::eq(&self, &tst_pipeline::TsFramingMode) -> bool
 impl core::default::Default for tst_pipeline::TsFramingMode
 pub fn tst_pipeline::TsFramingMode::default() -> tst_pipeline::TsFramingMode
 impl core::fmt::Debug for tst_pipeline::TsFramingMode
-pub fn tst_pipeline::TsFramingMode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::TsFramingMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::TsFramingMode
 impl core::marker::StructuralPartialEq for tst_pipeline::TsFramingMode
 impl core::marker::Freeze for tst_pipeline::TsFramingMode
@@ -922,13 +922,13 @@ pub fn tst_pipeline::sender::Sender<T>::cancel_handle(&self) -> core::option::Op
 pub fn tst_pipeline::sender::Sender<T>::close(&mut self)
 pub fn tst_pipeline::sender::Sender<T>::flush(&mut self) -> core::result::Result<(), tst_pipeline::sender::SenderError>
 pub fn tst_pipeline::sender::Sender<T>::is_alive(&self) -> bool
-pub fn tst_pipeline::sender::Sender<T>::new(transport: T, config: tst_pipeline::sender::SenderConfig) -> Self
+pub fn tst_pipeline::sender::Sender<T>::new(T, tst_pipeline::sender::SenderConfig) -> Self
 pub fn tst_pipeline::sender::Sender<T>::reset_stats(&mut self)
-pub fn tst_pipeline::sender::Sender<T>::send_ts(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_pipeline::sender::SenderError>
+pub fn tst_pipeline::sender::Sender<T>::send_ts(&mut self, &[u8]) -> core::result::Result<(), tst_pipeline::sender::SenderError>
 pub fn tst_pipeline::sender::Sender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::sender::Sender<T>::stats(&self) -> tst_pipeline::SenderStats
 impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::sender::Sender<T>
-pub fn tst_pipeline::sender::Sender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::Sender<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::sender::Sender<T>
 pub fn tst_pipeline::sender::Sender<T>::drop(&mut self)
 impl<T> core::marker::Freeze for tst_pipeline::sender::Sender<T> where T: core::marker::Freeze
@@ -946,7 +946,7 @@ pub fn tst_pipeline::sender::SenderConfig::clone(&self) -> tst_pipeline::sender:
 impl core::default::Default for tst_pipeline::sender::SenderConfig
 pub fn tst_pipeline::sender::SenderConfig::default() -> Self
 impl core::fmt::Debug for tst_pipeline::sender::SenderConfig
-pub fn tst_pipeline::sender::SenderConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::SenderConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::sender::SenderConfig
 impl core::marker::Send for tst_pipeline::sender::SenderConfig
 impl core::marker::Sync for tst_pipeline::sender::SenderConfig
@@ -958,15 +958,15 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::sender::SenderConfig
 pub tst_pipeline::sender::SenderError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::sender::SenderError::source: tst_pipeline::sender::SenderErrorSource
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::sender::SenderError
-pub fn tst_pipeline::sender::SenderError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::sender::SenderError::from(tst_core::transport::TransportError) -> Self
 impl core::convert::From<tst_pipeline::sender::TsFramingError> for tst_pipeline::sender::SenderError
-pub fn tst_pipeline::sender::SenderError::from(e: tst_pipeline::sender::TsFramingError) -> Self
+pub fn tst_pipeline::sender::SenderError::from(tst_pipeline::sender::TsFramingError) -> Self
 impl core::error::Error for tst_pipeline::sender::SenderError
 pub fn tst_pipeline::sender::SenderError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::sender::SenderError
-pub fn tst_pipeline::sender::SenderError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::SenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::sender::SenderError
-pub fn tst_pipeline::sender::SenderError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::SenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::sender::SenderError
 pub fn tst_pipeline::sender::SenderError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::sender::SenderError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -986,11 +986,11 @@ impl core::clone::Clone for tst_pipeline::SenderStats
 pub fn tst_pipeline::SenderStats::clone(&self) -> tst_pipeline::SenderStats
 impl core::cmp::Eq for tst_pipeline::SenderStats
 impl core::cmp::PartialEq for tst_pipeline::SenderStats
-pub fn tst_pipeline::SenderStats::eq(&self, other: &tst_pipeline::SenderStats) -> bool
+pub fn tst_pipeline::SenderStats::eq(&self, &tst_pipeline::SenderStats) -> bool
 impl core::default::Default for tst_pipeline::SenderStats
 pub fn tst_pipeline::SenderStats::default() -> tst_pipeline::SenderStats
 impl core::fmt::Debug for tst_pipeline::SenderStats
-pub fn tst_pipeline::SenderStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::SenderStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::SenderStats
 impl core::marker::Freeze for tst_pipeline::SenderStats
 impl core::marker::Send for tst_pipeline::SenderStats
@@ -1003,9 +1003,9 @@ pub struct tst_pipeline::sender::TsFraming
 impl tst_pipeline::sender::TsFraming
 pub fn tst_pipeline::sender::TsFraming::flush(&mut self) -> alloc::vec::Vec<alloc::vec::Vec<u8>>
 pub fn tst_pipeline::sender::TsFraming::is_synced(&self) -> bool
-pub fn tst_pipeline::sender::TsFraming::new(max_unsynced_bytes: usize) -> Self
-pub fn tst_pipeline::sender::TsFraming::push(&mut self, bytes: &[u8]) -> (alloc::vec::Vec<alloc::vec::Vec<u8>>, &tst_pipeline::SenderStats)
-pub fn tst_pipeline::sender::TsFraming::push_strict(&mut self, bytes: &[u8]) -> core::result::Result<alloc::vec::Vec<alloc::vec::Vec<u8>>, tst_pipeline::sender::TsFramingError>
+pub fn tst_pipeline::sender::TsFraming::new(usize) -> Self
+pub fn tst_pipeline::sender::TsFraming::push(&mut self, &[u8]) -> (alloc::vec::Vec<alloc::vec::Vec<u8>>, &tst_pipeline::SenderStats)
+pub fn tst_pipeline::sender::TsFraming::push_strict(&mut self, &[u8]) -> core::result::Result<alloc::vec::Vec<alloc::vec::Vec<u8>>, tst_pipeline::sender::TsFramingError>
 pub fn tst_pipeline::sender::TsFraming::reset_stats(&mut self)
 pub fn tst_pipeline::sender::TsFraming::stats(&self) -> tst_pipeline::SenderStats
 impl core::marker::Freeze for tst_pipeline::sender::TsFraming
@@ -1028,11 +1028,11 @@ impl core::clone::Clone for tst_pipeline::shell_error::ShellErrorKind
 pub fn tst_pipeline::shell_error::ShellErrorKind::clone(&self) -> tst_pipeline::shell_error::ShellErrorKind
 impl core::cmp::Eq for tst_pipeline::shell_error::ShellErrorKind
 impl core::cmp::PartialEq for tst_pipeline::shell_error::ShellErrorKind
-pub fn tst_pipeline::shell_error::ShellErrorKind::eq(&self, other: &tst_pipeline::shell_error::ShellErrorKind) -> bool
+pub fn tst_pipeline::shell_error::ShellErrorKind::eq(&self, &tst_pipeline::shell_error::ShellErrorKind) -> bool
 impl core::fmt::Debug for tst_pipeline::shell_error::ShellErrorKind
-pub fn tst_pipeline::shell_error::ShellErrorKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::shell_error::ShellErrorKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::hash::Hash for tst_pipeline::shell_error::ShellErrorKind
-pub fn tst_pipeline::shell_error::ShellErrorKind::hash<__H: core::hash::Hasher>(&self, state: &mut __H)
+pub fn tst_pipeline::shell_error::ShellErrorKind::hash<__H: core::hash::Hasher>(&self, &mut __H)
 impl core::marker::Copy for tst_pipeline::shell_error::ShellErrorKind
 impl core::marker::StructuralPartialEq for tst_pipeline::shell_error::ShellErrorKind
 impl core::marker::Freeze for tst_pipeline::shell_error::ShellErrorKind
@@ -1072,11 +1072,11 @@ impl core::clone::Clone for tst_pipeline::reconnect::BackoffStrategy
 pub fn tst_pipeline::reconnect::BackoffStrategy::clone(&self) -> tst_pipeline::reconnect::BackoffStrategy
 impl core::cmp::Eq for tst_pipeline::reconnect::BackoffStrategy
 impl core::cmp::PartialEq for tst_pipeline::reconnect::BackoffStrategy
-pub fn tst_pipeline::reconnect::BackoffStrategy::eq(&self, other: &tst_pipeline::reconnect::BackoffStrategy) -> bool
+pub fn tst_pipeline::reconnect::BackoffStrategy::eq(&self, &tst_pipeline::reconnect::BackoffStrategy) -> bool
 impl core::default::Default for tst_pipeline::reconnect::BackoffStrategy
 pub fn tst_pipeline::reconnect::BackoffStrategy::default() -> Self
 impl core::fmt::Debug for tst_pipeline::reconnect::BackoffStrategy
-pub fn tst_pipeline::reconnect::BackoffStrategy::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::reconnect::BackoffStrategy::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::reconnect::BackoffStrategy
 impl core::marker::Freeze for tst_pipeline::reconnect::BackoffStrategy
 impl core::marker::Send for tst_pipeline::reconnect::BackoffStrategy
@@ -1089,15 +1089,15 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::BackoffSt
 pub tst_pipeline::DemuxReceiverErrorSource::Demux(tst_core::error::DemuxError)
 pub tst_pipeline::DemuxReceiverErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::error::DemuxError> for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
-pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::from(source: tst_core::error::DemuxError) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::from(tst_core::error::DemuxError) -> Self
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
-pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
-pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
-pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 impl core::marker::Send for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 impl core::marker::Sync for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
@@ -1109,15 +1109,15 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::demux_receiver::Demu
 pub tst_pipeline::MuxSenderErrorSource::Mux(tst_core::error::MuxError)
 pub tst_pipeline::MuxSenderErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::error::MuxError> for tst_pipeline::mux_sender::MuxSenderErrorSource
-pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::from(source: tst_core::error::MuxError) -> Self
+pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::from(tst_core::error::MuxError) -> Self
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::mux_sender::MuxSenderErrorSource
-pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::mux_sender::MuxSenderErrorSource
 pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::mux_sender::MuxSenderErrorSource
-pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::mux_sender::MuxSenderErrorSource
-pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::mux_sender::MuxSenderErrorSource
 impl core::marker::Send for tst_pipeline::mux_sender::MuxSenderErrorSource
 impl core::marker::Sync for tst_pipeline::mux_sender::MuxSenderErrorSource
@@ -1132,11 +1132,11 @@ impl core::clone::Clone for tst_pipeline::OverflowPolicy
 pub fn tst_pipeline::OverflowPolicy::clone(&self) -> tst_pipeline::OverflowPolicy
 impl core::cmp::Eq for tst_pipeline::OverflowPolicy
 impl core::cmp::PartialEq for tst_pipeline::OverflowPolicy
-pub fn tst_pipeline::OverflowPolicy::eq(&self, other: &tst_pipeline::OverflowPolicy) -> bool
+pub fn tst_pipeline::OverflowPolicy::eq(&self, &tst_pipeline::OverflowPolicy) -> bool
 impl core::default::Default for tst_pipeline::OverflowPolicy
 pub fn tst_pipeline::OverflowPolicy::default() -> tst_pipeline::OverflowPolicy
 impl core::fmt::Debug for tst_pipeline::OverflowPolicy
-pub fn tst_pipeline::OverflowPolicy::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::OverflowPolicy::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::OverflowPolicy
 impl core::marker::StructuralPartialEq for tst_pipeline::OverflowPolicy
 impl core::marker::Freeze for tst_pipeline::OverflowPolicy
@@ -1149,13 +1149,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::OverflowPolicy
 #[non_exhaustive] pub enum tst_pipeline::RawReceiverErrorSource
 pub tst_pipeline::RawReceiverErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::raw_receiver::RawReceiverErrorSource
-pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::raw_receiver::RawReceiverErrorSource
 pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiverErrorSource
-pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::raw_receiver::RawReceiverErrorSource
-pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::raw_receiver::RawReceiverErrorSource
 impl core::marker::Send for tst_pipeline::raw_receiver::RawReceiverErrorSource
 impl core::marker::Sync for tst_pipeline::raw_receiver::RawReceiverErrorSource
@@ -1166,13 +1166,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawRec
 #[non_exhaustive] pub enum tst_pipeline::RawSenderErrorSource
 pub tst_pipeline::RawSenderErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::raw_sender::RawSenderErrorSource
-pub fn tst_pipeline::raw_sender::RawSenderErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::raw_sender::RawSenderErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::raw_sender::RawSenderErrorSource
 pub fn tst_pipeline::raw_sender::RawSenderErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::raw_sender::RawSenderErrorSource
-pub fn tst_pipeline::raw_sender::RawSenderErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::raw_sender::RawSenderErrorSource
-pub fn tst_pipeline::raw_sender::RawSenderErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::raw_sender::RawSenderErrorSource
 impl core::marker::Send for tst_pipeline::raw_sender::RawSenderErrorSource
 impl core::marker::Sync for tst_pipeline::raw_sender::RawSenderErrorSource
@@ -1183,13 +1183,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSende
 #[non_exhaustive] pub enum tst_pipeline::ReceiverErrorSource
 pub tst_pipeline::ReceiverErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::receiver::ReceiverErrorSource
-pub fn tst_pipeline::receiver::ReceiverErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::receiver::ReceiverErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::receiver::ReceiverErrorSource
 pub fn tst_pipeline::receiver::ReceiverErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::receiver::ReceiverErrorSource
-pub fn tst_pipeline::receiver::ReceiverErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::receiver::ReceiverErrorSource
-pub fn tst_pipeline::receiver::ReceiverErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::receiver::ReceiverErrorSource
 impl core::marker::Send for tst_pipeline::receiver::ReceiverErrorSource
 impl core::marker::Sync for tst_pipeline::receiver::ReceiverErrorSource
@@ -1201,15 +1201,15 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::receiver::ReceiverEr
 pub tst_pipeline::SenderErrorSource::Framing(tst_pipeline::sender::TsFramingError)
 pub tst_pipeline::SenderErrorSource::Transport(tst_core::transport::TransportError)
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::sender::SenderErrorSource
-pub fn tst_pipeline::sender::SenderErrorSource::from(source: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::sender::SenderErrorSource::from(tst_core::transport::TransportError) -> Self
 impl core::convert::From<tst_pipeline::sender::TsFramingError> for tst_pipeline::sender::SenderErrorSource
-pub fn tst_pipeline::sender::SenderErrorSource::from(source: tst_pipeline::sender::TsFramingError) -> Self
+pub fn tst_pipeline::sender::SenderErrorSource::from(tst_pipeline::sender::TsFramingError) -> Self
 impl core::error::Error for tst_pipeline::sender::SenderErrorSource
 pub fn tst_pipeline::sender::SenderErrorSource::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::sender::SenderErrorSource
-pub fn tst_pipeline::sender::SenderErrorSource::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::SenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::sender::SenderErrorSource
-pub fn tst_pipeline::sender::SenderErrorSource::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::SenderErrorSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::sender::SenderErrorSource
 impl core::marker::Send for tst_pipeline::sender::SenderErrorSource
 impl core::marker::Sync for tst_pipeline::sender::SenderErrorSource
@@ -1228,11 +1228,11 @@ impl core::clone::Clone for tst_pipeline::shell_error::ShellErrorKind
 pub fn tst_pipeline::shell_error::ShellErrorKind::clone(&self) -> tst_pipeline::shell_error::ShellErrorKind
 impl core::cmp::Eq for tst_pipeline::shell_error::ShellErrorKind
 impl core::cmp::PartialEq for tst_pipeline::shell_error::ShellErrorKind
-pub fn tst_pipeline::shell_error::ShellErrorKind::eq(&self, other: &tst_pipeline::shell_error::ShellErrorKind) -> bool
+pub fn tst_pipeline::shell_error::ShellErrorKind::eq(&self, &tst_pipeline::shell_error::ShellErrorKind) -> bool
 impl core::fmt::Debug for tst_pipeline::shell_error::ShellErrorKind
-pub fn tst_pipeline::shell_error::ShellErrorKind::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::shell_error::ShellErrorKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::hash::Hash for tst_pipeline::shell_error::ShellErrorKind
-pub fn tst_pipeline::shell_error::ShellErrorKind::hash<__H: core::hash::Hasher>(&self, state: &mut __H)
+pub fn tst_pipeline::shell_error::ShellErrorKind::hash<__H: core::hash::Hasher>(&self, &mut __H)
 impl core::marker::Copy for tst_pipeline::shell_error::ShellErrorKind
 impl core::marker::StructuralPartialEq for tst_pipeline::shell_error::ShellErrorKind
 impl core::marker::Freeze for tst_pipeline::shell_error::ShellErrorKind
@@ -1249,11 +1249,11 @@ impl core::clone::Clone for tst_pipeline::TsFramingMode
 pub fn tst_pipeline::TsFramingMode::clone(&self) -> tst_pipeline::TsFramingMode
 impl core::cmp::Eq for tst_pipeline::TsFramingMode
 impl core::cmp::PartialEq for tst_pipeline::TsFramingMode
-pub fn tst_pipeline::TsFramingMode::eq(&self, other: &tst_pipeline::TsFramingMode) -> bool
+pub fn tst_pipeline::TsFramingMode::eq(&self, &tst_pipeline::TsFramingMode) -> bool
 impl core::default::Default for tst_pipeline::TsFramingMode
 pub fn tst_pipeline::TsFramingMode::default() -> tst_pipeline::TsFramingMode
 impl core::fmt::Debug for tst_pipeline::TsFramingMode
-pub fn tst_pipeline::TsFramingMode::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::TsFramingMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::TsFramingMode
 impl core::marker::StructuralPartialEq for tst_pipeline::TsFramingMode
 impl core::marker::Freeze for tst_pipeline::TsFramingMode
@@ -1265,20 +1265,20 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::TsFramingMode
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::TsFramingMode
 pub struct tst_pipeline::DemuxReceiver<R: tst_core::transport::RecvTransport>
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxReceiver<R>
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::add_byte_sink(&mut self, sink: tst_pipeline::demux_receiver::ByteSink)
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::add_byte_sink(&mut self, tst_pipeline::demux_receiver::ByteSink)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::close(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::is_alive(&self) -> bool
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::new(transport: R) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::new(R) -> Self
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(transport: R, options: tst_core::mpegts::demux::types::DemuxerConfig) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::with_demux_options(R, tst_core::mpegts::demux::types::DemuxerConfig) -> Self
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::stream_codec_stats(&self, u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::demux_receiver::DemuxReceiver<R>
-pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::demux_receiver::DemuxReceiver<R>
 pub type tst_pipeline::demux_receiver::DemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::demux_receiver::DemuxReceiver<R>::next(&mut self) -> core::option::Option<Self::Item>
@@ -1295,15 +1295,15 @@ impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::demux_receiver::
 pub tst_pipeline::DemuxReceiverError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::DemuxReceiverError::source: tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 impl core::convert::From<tst_core::error::DemuxError> for tst_pipeline::demux_receiver::DemuxReceiverError
-pub fn tst_pipeline::demux_receiver::DemuxReceiverError::from(e: tst_core::error::DemuxError) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiverError::from(tst_core::error::DemuxError) -> Self
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::demux_receiver::DemuxReceiverError
-pub fn tst_pipeline::demux_receiver::DemuxReceiverError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::demux_receiver::DemuxReceiverError::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::demux_receiver::DemuxReceiverError
 pub fn tst_pipeline::demux_receiver::DemuxReceiverError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::demux_receiver::DemuxReceiverError
-pub fn tst_pipeline::demux_receiver::DemuxReceiverError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::demux_receiver::DemuxReceiverError
-pub fn tst_pipeline::demux_receiver::DemuxReceiverError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::demux_receiver::DemuxReceiverError
 pub fn tst_pipeline::demux_receiver::DemuxReceiverError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::demux_receiver::DemuxReceiverError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -1326,11 +1326,11 @@ impl core::clone::Clone for tst_pipeline::demux_receiver::DemuxReceiverStats
 pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::clone(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::cmp::Eq for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::cmp::PartialEq for tst_pipeline::demux_receiver::DemuxReceiverStats
-pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::eq(&self, other: &tst_pipeline::demux_receiver::DemuxReceiverStats) -> bool
+pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::eq(&self, &tst_pipeline::demux_receiver::DemuxReceiverStats) -> bool
 impl core::default::Default for tst_pipeline::demux_receiver::DemuxReceiverStats
 pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::default() -> tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::fmt::Debug for tst_pipeline::demux_receiver::DemuxReceiverStats
-pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::demux_receiver::DemuxReceiverStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::marker::Freeze for tst_pipeline::demux_receiver::DemuxReceiverStats
 impl core::marker::Send for tst_pipeline::demux_receiver::DemuxReceiverStats
@@ -1343,11 +1343,11 @@ pub struct tst_pipeline::GapBuffer
 pub tst_pipeline::GapBuffer::bytes_dropped: u64
 pub tst_pipeline::GapBuffer::messages_dropped: u64
 impl tst_pipeline::GapBuffer
-pub fn tst_pipeline::GapBuffer::enqueue(&mut self, msg: alloc::vec::Vec<u8>) -> core::result::Result<(), tst_pipeline::reconnect::gap_buffer::GapBufferError>
+pub fn tst_pipeline::GapBuffer::enqueue(&mut self, alloc::vec::Vec<u8>) -> core::result::Result<(), tst_pipeline::reconnect::gap_buffer::GapBufferError>
 pub fn tst_pipeline::GapBuffer::front(&self) -> core::option::Option<&alloc::vec::Vec<u8>>
 pub fn tst_pipeline::GapBuffer::is_empty(&self) -> bool
 pub fn tst_pipeline::GapBuffer::len(&self) -> usize
-pub fn tst_pipeline::GapBuffer::new(capacity: usize, overflow: tst_pipeline::OverflowPolicy) -> Self
+pub fn tst_pipeline::GapBuffer::new(usize, tst_pipeline::OverflowPolicy) -> Self
 pub fn tst_pipeline::GapBuffer::pop_front(&mut self) -> core::option::Option<alloc::vec::Vec<u8>>
 impl core::marker::Freeze for tst_pipeline::GapBuffer
 impl core::marker::Send for tst_pipeline::GapBuffer
@@ -1361,16 +1361,16 @@ impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_demux_receiver
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::close(&mut self)
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::is_alive(&self) -> bool
-pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::new(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::new(tst_pipeline::managed_receive::ManagedRecvTransport<R>, tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reconnects_count(&self) -> u64
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::recv_event(&mut self) -> core::result::Result<core::option::Option<tst_core::mpegts::demux::event::DemuxEvent>, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::stats(&self) -> tst_pipeline::demux_receiver::DemuxReceiverStats
-pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
-pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::with_demux_options(transport: tst_pipeline::managed_receive::ManagedRecvTransport<R>, options: tst_core::mpegts::demux::types::DemuxerConfig, _config: tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::stream_codec_stats(&self, u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::with_demux_options(tst_pipeline::managed_receive::ManagedRecvTransport<R>, tst_core::mpegts::demux::types::DemuxerConfig, tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig) -> Self
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
-pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::iter::traits::iterator::Iterator for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>
 pub type tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::Item = core::result::Result<tst_core::mpegts::demux::event::DemuxEvent, tst_pipeline::demux_receiver::DemuxReceiverError>
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiver<R>::next(&mut self) -> core::option::Option<Self::Item>
@@ -1389,7 +1389,7 @@ pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::clone(&
 impl core::default::Default for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::default() -> tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 impl core::fmt::Debug for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
-pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 impl core::marker::Send for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 impl core::marker::Sync for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
@@ -1399,7 +1399,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_demux_rec
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_demux_receiver::ManagedDemuxReceiverConfig
 pub struct tst_pipeline::ManagedRecvTransport<R: tst_core::transport::RecvTransport>
 impl<R: tst_core::transport::RecvTransport> tst_pipeline::managed_receive::ManagedRecvTransport<R>
-pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new(inner: R, factory: alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, policy: tst_pipeline::reconnect::ReconnectPolicy) -> Self
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::new(R, alloc::boxed::Box<(dyn core::ops::function::FnMut() -> core::result::Result<R, tst_core::transport::TransportError> + core::marker::Send)>, tst_pipeline::reconnect::ReconnectPolicy) -> Self
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_count(&self) -> u64
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::reconnects_handle(&self) -> alloc::sync::Arc<core::sync::atomic::AtomicU64>
 impl<R: tst_core::transport::RecvTransport> tst_core::transport::RecvTransport for tst_pipeline::managed_receive::ManagedRecvTransport<R>
@@ -1407,7 +1407,7 @@ pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::cancel_handle(&se
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::close(&mut self)
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::is_alive(&self) -> bool
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::max_payload(&self) -> usize
-pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::recv_bytes(&mut self, buf: &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
+pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::recv_bytes(&mut self, &mut [u8]) -> core::result::Result<usize, tst_core::transport::TransportError>
 pub fn tst_pipeline::managed_receive::ManagedRecvTransport<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl<R> core::marker::Freeze for tst_pipeline::managed_receive::ManagedRecvTransport<R> where R: core::marker::Freeze
 impl<R> core::marker::Send for tst_pipeline::managed_receive::ManagedRecvTransport<R>
@@ -1418,13 +1418,13 @@ impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_recei
 impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_receive::ManagedRecvTransport<R>
 pub struct tst_pipeline::ManagedTransport<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport + 'static> tst_pipeline::reconnect::ManagedTransport<T>
-pub fn tst_pipeline::reconnect::ManagedTransport<T>::new<F>(inner: T, factory: F, policy: tst_pipeline::reconnect::ReconnectPolicy) -> Self where F: core::ops::function::Fn() -> core::result::Result<T, tst_core::transport::TransportError> + core::marker::Send + core::marker::Sync + 'static
+pub fn tst_pipeline::reconnect::ManagedTransport<T>::new<F>(T, F, tst_pipeline::reconnect::ReconnectPolicy) -> Self where F: core::ops::function::Fn() -> core::result::Result<T, tst_core::transport::TransportError> + core::marker::Send + core::marker::Sync + 'static
 impl<T: tst_core::transport::Transport + 'static> tst_core::transport::Transport for tst_pipeline::reconnect::ManagedTransport<T>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::close(&mut self)
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::max_payload(&self) -> usize
-pub fn tst_pipeline::reconnect::ManagedTransport<T>::send_bytes(&mut self, msg: &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
+pub fn tst_pipeline::reconnect::ManagedTransport<T>::send_bytes(&mut self, &[u8]) -> core::result::Result<(), tst_core::transport::TransportError>
 pub fn tst_pipeline::reconnect::ManagedTransport<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 impl<T> core::marker::Freeze for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::Send for tst_pipeline::reconnect::ManagedTransport<T>
@@ -1436,30 +1436,30 @@ impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::Manag
 pub struct tst_pipeline::MuxSender<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport> tst_pipeline::mux_sender::MuxSender<T>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles_for_program(&self, u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::close(&self)
 pub fn tst_pipeline::mux_sender::MuxSender<T>::is_alive(&self) -> bool
 pub fn tst_pipeline::mux_sender::MuxSender<T>::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::new(transport: T, config: tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::new(T, tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::reset_stats(&self)
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio(&self, frames: &[u8], pts: tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio_to(&self, handle: tst_core::mpegts::mux::types::AudioStreamHandle, frames: &[u8], pts: tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv(&self, klv: &[u8], pts: tst_core::mpegts::common::Pts90khz, metadata_service_id: u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv_to(&self, handle: tst_core::mpegts::mux::types::KlvStreamHandle, klv: &[u8], pts: tst_core::mpegts::common::Pts90khz, metadata_service_id: u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle(&self, payload: &[u8], pts: tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle_to(&self, handle: tst_core::mpegts::mux::types::SubtitleStreamHandle, payload: &[u8], pts: tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video(&self, nal: &[u8], pts: tst_core::mpegts::common::Pts90khz, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, handle: tst_core::mpegts::mux::types::VideoStreamHandle, nal: &[u8], pts: tst_core::mpegts::common::Pts90khz, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to_with_dts(&self, handle: tst_core::mpegts::mux::types::VideoStreamHandle, nal: &[u8], pts: tst_core::mpegts::common::Pts90khz, dts: tst_core::mpegts::common::Pts90khz, key_frame: bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_audio_to(&self, tst_core::mpegts::mux::types::AudioStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv(&self, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_klv_to(&self, tst_core::mpegts::mux::types::KlvStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_subtitle_to(&self, tst_core::mpegts::mux::types::SubtitleStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video(&self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to(&self, tst_core::mpegts::mux::types::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::send_video_to_with_dts(&self, tst_core::mpegts::mux::types::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_pipeline::mux_sender::MuxSenderError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::stats(&self) -> tst_pipeline::mux_sender::MuxSenderStats
-pub fn tst_pipeline::mux_sender::MuxSender<T>::stream_codec_stats(&self, pid: u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::stream_codec_stats(&self, u16) -> core::option::Option<tst_core::mpegts::stats::StreamCodecStats>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, program_number: u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
+pub fn tst_pipeline::mux_sender::MuxSender<T>::subtitle_handles_for_program(&self, u16) -> core::result::Result<alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>, tst_core::error::MuxError>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>
 impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::mux_sender::MuxSender<T>
-pub fn tst_pipeline::mux_sender::MuxSender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSender<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::mux_sender::MuxSender<T>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::drop(&mut self)
 impl<T> !core::marker::Freeze for tst_pipeline::mux_sender::MuxSender<T>
@@ -1473,15 +1473,15 @@ impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_sender::MuxS
 pub tst_pipeline::MuxSenderError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::MuxSenderError::source: tst_pipeline::mux_sender::MuxSenderErrorSource
 impl core::convert::From<tst_core::error::MuxError> for tst_pipeline::mux_sender::MuxSenderError
-pub fn tst_pipeline::mux_sender::MuxSenderError::from(e: tst_core::error::MuxError) -> Self
+pub fn tst_pipeline::mux_sender::MuxSenderError::from(tst_core::error::MuxError) -> Self
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::mux_sender::MuxSenderError
-pub fn tst_pipeline::mux_sender::MuxSenderError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::mux_sender::MuxSenderError::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::mux_sender::MuxSenderError
 pub fn tst_pipeline::mux_sender::MuxSenderError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::mux_sender::MuxSenderError
-pub fn tst_pipeline::mux_sender::MuxSenderError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::mux_sender::MuxSenderError
-pub fn tst_pipeline::mux_sender::MuxSenderError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::mux_sender::MuxSenderError
 pub fn tst_pipeline::mux_sender::MuxSenderError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::mux_sender::MuxSenderError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -1503,11 +1503,11 @@ impl core::clone::Clone for tst_pipeline::mux_sender::MuxSenderStats
 pub fn tst_pipeline::mux_sender::MuxSenderStats::clone(&self) -> tst_pipeline::mux_sender::MuxSenderStats
 impl core::cmp::Eq for tst_pipeline::mux_sender::MuxSenderStats
 impl core::cmp::PartialEq for tst_pipeline::mux_sender::MuxSenderStats
-pub fn tst_pipeline::mux_sender::MuxSenderStats::eq(&self, other: &tst_pipeline::mux_sender::MuxSenderStats) -> bool
+pub fn tst_pipeline::mux_sender::MuxSenderStats::eq(&self, &tst_pipeline::mux_sender::MuxSenderStats) -> bool
 impl core::default::Default for tst_pipeline::mux_sender::MuxSenderStats
 pub fn tst_pipeline::mux_sender::MuxSenderStats::default() -> tst_pipeline::mux_sender::MuxSenderStats
 impl core::fmt::Debug for tst_pipeline::mux_sender::MuxSenderStats
-pub fn tst_pipeline::mux_sender::MuxSenderStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::mux_sender::MuxSenderStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::mux_sender::MuxSenderStats
 impl core::marker::Freeze for tst_pipeline::mux_sender::MuxSenderStats
 impl core::marker::Send for tst_pipeline::mux_sender::MuxSenderStats
@@ -1521,13 +1521,13 @@ impl<R: tst_core::transport::RecvTransport> tst_pipeline::raw_receiver::RawRecei
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::close(&mut self)
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::is_alive(&self) -> bool
-pub fn tst_pipeline::raw_receiver::RawReceiver<R>::new(transport: R, _config: tst_pipeline::raw_receiver::RawReceiverConfig) -> Self
+pub fn tst_pipeline::raw_receiver::RawReceiver<R>::new(R, tst_pipeline::raw_receiver::RawReceiverConfig) -> Self
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::recv_one(&mut self) -> core::result::Result<alloc::vec::Vec<u8>, tst_pipeline::raw_receiver::RawReceiverError>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::stats(&self) -> tst_pipeline::raw_receiver::RawRecvStats
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiver<R>
-pub fn tst_pipeline::raw_receiver::RawReceiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiver<R>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::raw_receiver::RawReceiver<R>
 pub fn tst_pipeline::raw_receiver::RawReceiver<R>::drop(&mut self)
 impl<R> core::marker::Freeze for tst_pipeline::raw_receiver::RawReceiver<R> where R: core::marker::Freeze
@@ -1543,7 +1543,7 @@ pub fn tst_pipeline::raw_receiver::RawReceiverConfig::clone(&self) -> tst_pipeli
 impl core::default::Default for tst_pipeline::raw_receiver::RawReceiverConfig
 pub fn tst_pipeline::raw_receiver::RawReceiverConfig::default() -> tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiverConfig
-pub fn tst_pipeline::raw_receiver::RawReceiverConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiverConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::marker::Send for tst_pipeline::raw_receiver::RawReceiverConfig
 impl core::marker::Sync for tst_pipeline::raw_receiver::RawReceiverConfig
@@ -1555,13 +1555,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_receiver::RawRec
 pub tst_pipeline::RawReceiverError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::RawReceiverError::source: tst_pipeline::raw_receiver::RawReceiverErrorSource
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::raw_receiver::RawReceiverError
-pub fn tst_pipeline::raw_receiver::RawReceiverError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::raw_receiver::RawReceiverError::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::raw_receiver::RawReceiverError
 pub fn tst_pipeline::raw_receiver::RawReceiverError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::raw_receiver::RawReceiverError
-pub fn tst_pipeline::raw_receiver::RawReceiverError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::raw_receiver::RawReceiverError
-pub fn tst_pipeline::raw_receiver::RawReceiverError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::raw_receiver::RawReceiverError
 pub fn tst_pipeline::raw_receiver::RawReceiverError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::raw_receiver::RawReceiverError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -1579,11 +1579,11 @@ impl core::clone::Clone for tst_pipeline::raw_receiver::RawRecvStats
 pub fn tst_pipeline::raw_receiver::RawRecvStats::clone(&self) -> tst_pipeline::raw_receiver::RawRecvStats
 impl core::cmp::Eq for tst_pipeline::raw_receiver::RawRecvStats
 impl core::cmp::PartialEq for tst_pipeline::raw_receiver::RawRecvStats
-pub fn tst_pipeline::raw_receiver::RawRecvStats::eq(&self, other: &tst_pipeline::raw_receiver::RawRecvStats) -> bool
+pub fn tst_pipeline::raw_receiver::RawRecvStats::eq(&self, &tst_pipeline::raw_receiver::RawRecvStats) -> bool
 impl core::default::Default for tst_pipeline::raw_receiver::RawRecvStats
 pub fn tst_pipeline::raw_receiver::RawRecvStats::default() -> tst_pipeline::raw_receiver::RawRecvStats
 impl core::fmt::Debug for tst_pipeline::raw_receiver::RawRecvStats
-pub fn tst_pipeline::raw_receiver::RawRecvStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_receiver::RawRecvStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::raw_receiver::RawRecvStats
 impl core::marker::StructuralPartialEq for tst_pipeline::raw_receiver::RawRecvStats
 impl core::marker::Freeze for tst_pipeline::raw_receiver::RawRecvStats
@@ -1600,11 +1600,11 @@ impl core::clone::Clone for tst_pipeline::raw_sender::RawSendStats
 pub fn tst_pipeline::raw_sender::RawSendStats::clone(&self) -> tst_pipeline::raw_sender::RawSendStats
 impl core::cmp::Eq for tst_pipeline::raw_sender::RawSendStats
 impl core::cmp::PartialEq for tst_pipeline::raw_sender::RawSendStats
-pub fn tst_pipeline::raw_sender::RawSendStats::eq(&self, other: &tst_pipeline::raw_sender::RawSendStats) -> bool
+pub fn tst_pipeline::raw_sender::RawSendStats::eq(&self, &tst_pipeline::raw_sender::RawSendStats) -> bool
 impl core::default::Default for tst_pipeline::raw_sender::RawSendStats
 pub fn tst_pipeline::raw_sender::RawSendStats::default() -> tst_pipeline::raw_sender::RawSendStats
 impl core::fmt::Debug for tst_pipeline::raw_sender::RawSendStats
-pub fn tst_pipeline::raw_sender::RawSendStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSendStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::raw_sender::RawSendStats
 impl core::marker::StructuralPartialEq for tst_pipeline::raw_sender::RawSendStats
 impl core::marker::Freeze for tst_pipeline::raw_sender::RawSendStats
@@ -1619,13 +1619,13 @@ impl<T: tst_core::transport::Transport> tst_pipeline::raw_sender::RawSender<T>
 pub fn tst_pipeline::raw_sender::RawSender<T>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::raw_sender::RawSender<T>::close(&mut self)
 pub fn tst_pipeline::raw_sender::RawSender<T>::is_alive(&self) -> bool
-pub fn tst_pipeline::raw_sender::RawSender<T>::new(transport: T, config: tst_pipeline::raw_sender::RawSenderConfig) -> Self
+pub fn tst_pipeline::raw_sender::RawSender<T>::new(T, tst_pipeline::raw_sender::RawSenderConfig) -> Self
 pub fn tst_pipeline::raw_sender::RawSender<T>::reset_stats(&mut self)
-pub fn tst_pipeline::raw_sender::RawSender<T>::send(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_pipeline::raw_sender::RawSenderError>
+pub fn tst_pipeline::raw_sender::RawSender<T>::send(&mut self, &[u8]) -> core::result::Result<(), tst_pipeline::raw_sender::RawSenderError>
 pub fn tst_pipeline::raw_sender::RawSender<T>::stats(&self) -> tst_pipeline::raw_sender::RawSendStats
 pub fn tst_pipeline::raw_sender::RawSender<T>::transport(&self) -> &T
 impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::raw_sender::RawSender<T>
-pub fn tst_pipeline::raw_sender::RawSender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSender<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::raw_sender::RawSender<T>
 pub fn tst_pipeline::raw_sender::RawSender<T>::drop(&mut self)
 impl<T> core::marker::Freeze for tst_pipeline::raw_sender::RawSender<T> where T: core::marker::Freeze
@@ -1641,7 +1641,7 @@ pub fn tst_pipeline::raw_sender::RawSenderConfig::clone(&self) -> tst_pipeline::
 impl core::default::Default for tst_pipeline::raw_sender::RawSenderConfig
 pub fn tst_pipeline::raw_sender::RawSenderConfig::default() -> tst_pipeline::raw_sender::RawSenderConfig
 impl core::fmt::Debug for tst_pipeline::raw_sender::RawSenderConfig
-pub fn tst_pipeline::raw_sender::RawSenderConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSenderConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::raw_sender::RawSenderConfig
 impl core::marker::Send for tst_pipeline::raw_sender::RawSenderConfig
 impl core::marker::Sync for tst_pipeline::raw_sender::RawSenderConfig
@@ -1653,13 +1653,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::raw_sender::RawSende
 pub tst_pipeline::RawSenderError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::RawSenderError::source: tst_pipeline::raw_sender::RawSenderErrorSource
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::raw_sender::RawSenderError
-pub fn tst_pipeline::raw_sender::RawSenderError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::raw_sender::RawSenderError::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::raw_sender::RawSenderError
 pub fn tst_pipeline::raw_sender::RawSenderError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::raw_sender::RawSenderError
-pub fn tst_pipeline::raw_sender::RawSenderError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::raw_sender::RawSenderError
-pub fn tst_pipeline::raw_sender::RawSenderError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::raw_sender::RawSenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::raw_sender::RawSenderError
 pub fn tst_pipeline::raw_sender::RawSenderError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::raw_sender::RawSenderError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -1675,14 +1675,14 @@ impl<R: tst_core::transport::RecvTransport> tst_pipeline::receiver::Receiver<R>
 pub fn tst_pipeline::receiver::Receiver<R>::cancel_handle(&self) -> core::option::Option<alloc::sync::Arc<(dyn tst_core::transport::TransportCancel + core::marker::Send + core::marker::Sync)>>
 pub fn tst_pipeline::receiver::Receiver<R>::close(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::is_alive(&self) -> bool
-pub fn tst_pipeline::receiver::Receiver<R>::new(transport: R, _config: tst_pipeline::receiver::ReceiverConfig) -> Self
+pub fn tst_pipeline::receiver::Receiver<R>::new(R, tst_pipeline::receiver::ReceiverConfig) -> Self
 pub fn tst_pipeline::receiver::Receiver<R>::next_packet(&mut self) -> core::result::Result<[u8; 188], tst_pipeline::receiver::ReceiverError>
 pub fn tst_pipeline::receiver::Receiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::reset_sync(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::receiver::Receiver<R>::stats(&self) -> tst_pipeline::receiver::ReceiverStats
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::receiver::Receiver<R>
-pub fn tst_pipeline::receiver::Receiver<R>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::Receiver<R>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::receiver::Receiver<R>
 pub fn tst_pipeline::receiver::Receiver<R>::drop(&mut self)
 impl<R> core::marker::Freeze for tst_pipeline::receiver::Receiver<R> where R: core::marker::Freeze
@@ -1698,7 +1698,7 @@ pub fn tst_pipeline::receiver::ReceiverConfig::clone(&self) -> tst_pipeline::rec
 impl core::default::Default for tst_pipeline::receiver::ReceiverConfig
 pub fn tst_pipeline::receiver::ReceiverConfig::default() -> tst_pipeline::receiver::ReceiverConfig
 impl core::fmt::Debug for tst_pipeline::receiver::ReceiverConfig
-pub fn tst_pipeline::receiver::ReceiverConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::receiver::ReceiverConfig
 impl core::marker::Send for tst_pipeline::receiver::ReceiverConfig
 impl core::marker::Sync for tst_pipeline::receiver::ReceiverConfig
@@ -1710,13 +1710,13 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::receiver::ReceiverCo
 pub tst_pipeline::ReceiverError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::ReceiverError::source: tst_pipeline::receiver::ReceiverErrorSource
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::receiver::ReceiverError
-pub fn tst_pipeline::receiver::ReceiverError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::receiver::ReceiverError::from(tst_core::transport::TransportError) -> Self
 impl core::error::Error for tst_pipeline::receiver::ReceiverError
 pub fn tst_pipeline::receiver::ReceiverError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::receiver::ReceiverError
-pub fn tst_pipeline::receiver::ReceiverError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::receiver::ReceiverError
-pub fn tst_pipeline::receiver::ReceiverError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::receiver::ReceiverError
 pub fn tst_pipeline::receiver::ReceiverError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::receiver::ReceiverError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -1736,11 +1736,11 @@ impl core::clone::Clone for tst_pipeline::receiver::ReceiverStats
 pub fn tst_pipeline::receiver::ReceiverStats::clone(&self) -> tst_pipeline::receiver::ReceiverStats
 impl core::cmp::Eq for tst_pipeline::receiver::ReceiverStats
 impl core::cmp::PartialEq for tst_pipeline::receiver::ReceiverStats
-pub fn tst_pipeline::receiver::ReceiverStats::eq(&self, other: &tst_pipeline::receiver::ReceiverStats) -> bool
+pub fn tst_pipeline::receiver::ReceiverStats::eq(&self, &tst_pipeline::receiver::ReceiverStats) -> bool
 impl core::default::Default for tst_pipeline::receiver::ReceiverStats
 pub fn tst_pipeline::receiver::ReceiverStats::default() -> tst_pipeline::receiver::ReceiverStats
 impl core::fmt::Debug for tst_pipeline::receiver::ReceiverStats
-pub fn tst_pipeline::receiver::ReceiverStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::receiver::ReceiverStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tst_pipeline::receiver::ReceiverStats
 impl core::marker::StructuralPartialEq for tst_pipeline::receiver::ReceiverStats
 impl core::marker::Freeze for tst_pipeline::receiver::ReceiverStats
@@ -1756,13 +1756,13 @@ pub tst_pipeline::ReconnectPolicy::gap_buffer_capacity: usize
 pub tst_pipeline::ReconnectPolicy::max_attempts: core::option::Option<u32>
 pub tst_pipeline::ReconnectPolicy::overflow_policy: tst_pipeline::OverflowPolicy
 impl tst_pipeline::reconnect::ReconnectPolicy
-pub fn tst_pipeline::reconnect::ReconnectPolicy::next_delay(&self, attempt: u32) -> core::option::Option<core::time::Duration>
+pub fn tst_pipeline::reconnect::ReconnectPolicy::next_delay(&self, u32) -> core::option::Option<core::time::Duration>
 impl core::clone::Clone for tst_pipeline::reconnect::ReconnectPolicy
 pub fn tst_pipeline::reconnect::ReconnectPolicy::clone(&self) -> tst_pipeline::reconnect::ReconnectPolicy
 impl core::default::Default for tst_pipeline::reconnect::ReconnectPolicy
 pub fn tst_pipeline::reconnect::ReconnectPolicy::default() -> Self
 impl core::fmt::Debug for tst_pipeline::reconnect::ReconnectPolicy
-pub fn tst_pipeline::reconnect::ReconnectPolicy::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::reconnect::ReconnectPolicy::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::reconnect::ReconnectPolicy
 impl core::marker::Send for tst_pipeline::reconnect::ReconnectPolicy
 impl core::marker::Sync for tst_pipeline::reconnect::ReconnectPolicy
@@ -1776,13 +1776,13 @@ pub fn tst_pipeline::sender::Sender<T>::cancel_handle(&self) -> core::option::Op
 pub fn tst_pipeline::sender::Sender<T>::close(&mut self)
 pub fn tst_pipeline::sender::Sender<T>::flush(&mut self) -> core::result::Result<(), tst_pipeline::sender::SenderError>
 pub fn tst_pipeline::sender::Sender<T>::is_alive(&self) -> bool
-pub fn tst_pipeline::sender::Sender<T>::new(transport: T, config: tst_pipeline::sender::SenderConfig) -> Self
+pub fn tst_pipeline::sender::Sender<T>::new(T, tst_pipeline::sender::SenderConfig) -> Self
 pub fn tst_pipeline::sender::Sender<T>::reset_stats(&mut self)
-pub fn tst_pipeline::sender::Sender<T>::send_ts(&mut self, bytes: &[u8]) -> core::result::Result<(), tst_pipeline::sender::SenderError>
+pub fn tst_pipeline::sender::Sender<T>::send_ts(&mut self, &[u8]) -> core::result::Result<(), tst_pipeline::sender::SenderError>
 pub fn tst_pipeline::sender::Sender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::sender::Sender<T>::stats(&self) -> tst_pipeline::SenderStats
 impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::sender::Sender<T>
-pub fn tst_pipeline::sender::Sender<T>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::Sender<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::sender::Sender<T>
 pub fn tst_pipeline::sender::Sender<T>::drop(&mut self)
 impl<T> core::marker::Freeze for tst_pipeline::sender::Sender<T> where T: core::marker::Freeze
@@ -1800,7 +1800,7 @@ pub fn tst_pipeline::sender::SenderConfig::clone(&self) -> tst_pipeline::sender:
 impl core::default::Default for tst_pipeline::sender::SenderConfig
 pub fn tst_pipeline::sender::SenderConfig::default() -> Self
 impl core::fmt::Debug for tst_pipeline::sender::SenderConfig
-pub fn tst_pipeline::sender::SenderConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::SenderConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_pipeline::sender::SenderConfig
 impl core::marker::Send for tst_pipeline::sender::SenderConfig
 impl core::marker::Sync for tst_pipeline::sender::SenderConfig
@@ -1812,15 +1812,15 @@ impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::sender::SenderConfig
 pub tst_pipeline::SenderError::kind: tst_pipeline::shell_error::ShellErrorKind
 pub tst_pipeline::SenderError::source: tst_pipeline::sender::SenderErrorSource
 impl core::convert::From<tst_core::transport::TransportError> for tst_pipeline::sender::SenderError
-pub fn tst_pipeline::sender::SenderError::from(e: tst_core::transport::TransportError) -> Self
+pub fn tst_pipeline::sender::SenderError::from(tst_core::transport::TransportError) -> Self
 impl core::convert::From<tst_pipeline::sender::TsFramingError> for tst_pipeline::sender::SenderError
-pub fn tst_pipeline::sender::SenderError::from(e: tst_pipeline::sender::TsFramingError) -> Self
+pub fn tst_pipeline::sender::SenderError::from(tst_pipeline::sender::TsFramingError) -> Self
 impl core::error::Error for tst_pipeline::sender::SenderError
 pub fn tst_pipeline::sender::SenderError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_pipeline::sender::SenderError
-pub fn tst_pipeline::sender::SenderError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::SenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::fmt::Display for tst_pipeline::sender::SenderError
-pub fn tst_pipeline::sender::SenderError::fmt(&self, __formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::sender::SenderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl tst_pipeline::shell_error::ShellError for tst_pipeline::sender::SenderError
 pub fn tst_pipeline::sender::SenderError::errno_code(&self) -> core::option::Option<i32>
 pub fn tst_pipeline::sender::SenderError::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
@@ -1840,11 +1840,11 @@ impl core::clone::Clone for tst_pipeline::SenderStats
 pub fn tst_pipeline::SenderStats::clone(&self) -> tst_pipeline::SenderStats
 impl core::cmp::Eq for tst_pipeline::SenderStats
 impl core::cmp::PartialEq for tst_pipeline::SenderStats
-pub fn tst_pipeline::SenderStats::eq(&self, other: &tst_pipeline::SenderStats) -> bool
+pub fn tst_pipeline::SenderStats::eq(&self, &tst_pipeline::SenderStats) -> bool
 impl core::default::Default for tst_pipeline::SenderStats
 pub fn tst_pipeline::SenderStats::default() -> tst_pipeline::SenderStats
 impl core::fmt::Debug for tst_pipeline::SenderStats
-pub fn tst_pipeline::SenderStats::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub fn tst_pipeline::SenderStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tst_pipeline::SenderStats
 impl core::marker::Freeze for tst_pipeline::SenderStats
 impl core::marker::Send for tst_pipeline::SenderStats

@@ -58,7 +58,7 @@ All 4 Python-error ratchets use word-boundary matching (`grep -qE "Type::${v}\b"
 
 - `tst-core`: +14 lines (additive — `TryDemuxFromFile` + 2 fns + Iterator impl + marker traits).
 - `tst-pipeline` / `tst-srt`: no drift.
-- `tst-c` ABI minor: unchanged at **4** (additive C setters via opaque pointer — no `TST_ABI_VERSION_MINOR` bump needed per project policy).
+- `tst-c` ABI minor: bumped **4 → 5**. Per `docs/binding-authors.md` minor-bump policy ("new C entry points" trigger an additive bump), the 3 new demux-config setters (`tst_demux_config_set_av1_carriage` + `_set_au_cell_cap_per_pid` + `_set_lenient_psi_reassembly`) plus the new `TstAv1CarriageMode` enum (cbindgen alias `tst_av1_carriage_mode`) require a minor bump. The original "unchanged at 4 (no bump needed)" wording in the v1 of this CHANGELOG entry contradicted policy and was corrected by this follow-up.
 
 **Commits (in main order):**
 

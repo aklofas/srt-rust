@@ -261,7 +261,7 @@ three-tier scheme exposed through `tstrans.h`:
   incompatible change to the ABI shape. **0** today.
 - `TST_ABI_VERSION_MINOR` — incremented on additive, source-compatible
   changes (new event kinds, new C entry points, new error codes).
-  **4** today. History (additive bumps only — major stays at 0 pre-1.0):
+  **5** today. History (additive bumps only — major stays at 0 pre-1.0):
     - `1` (plan #62): receiver-surface initial drop.
     - `2` (validate-1 Phase 2 wrap-up): `ManagedDemuxReceiver` wired into
       `tst-c`; `TST_EVENT_RECONNECT_DISCONTINUITY = 6` added; TS-bytes
@@ -273,14 +273,20 @@ three-tier scheme exposed through `tstrans.h`:
       enum + `tst_demux_config_set_cfi_tolerance` setter. The new variant
       reuses the existing `cc_expected` + `cc_observed` field carriers
       to surface `observed_cfi` + `treated_as` without growing the struct.
+    - `5` (plan #96 demuxer-config parity, 2026-05-25):
+      new C entry points `tst_demux_config_set_av1_carriage`,
+      `tst_demux_config_set_au_cell_cap_per_pid`, and
+      `tst_demux_config_set_lenient_psi_reassembly`, plus the
+      `TstAv1CarriageMode` enum. Bridges Rust-only `DemuxerConfig`
+      knobs through the C builder.
 - `TST_ABI_VERSION_PATCH` — incremented on internal fixes that
   preserve both shape and behaviour.
 
 Bindings should compile-time-assert the minor they require:
 
 ```c
-#if TST_ABI_VERSION_MAJOR != 0 || TST_ABI_VERSION_MINOR < 4
-#  error "this binding requires tst-c ABI ≥ 0.4"
+#if TST_ABI_VERSION_MAJOR != 0 || TST_ABI_VERSION_MINOR < 5
+#  error "this binding requires tst-c ABI ≥ 0.5"
 #endif
 ```
 

@@ -41,7 +41,7 @@ ABI_HITS=()
 while IFS= read -r line; do
     ABI_HITS+=("$line")
 done < <(
-    grep -rnE 'ABI version 0\.[0-3]([^0-9]|$)' \
+    grep -rnE 'ABI version 0\.[0-4]([^0-9]|$)' \
         README.md docs/ crates/ 2>/dev/null \
         | { grep -v '^[^:]*\.lock:' || true; } \
         | { grep -v 'check-doc-abi-and-st1910-currency\.sh:' || true; }
@@ -51,7 +51,7 @@ if [ ${#ABI_HITS[@]} -gt 0 ]; then
     echo "FAIL: stale 'ABI version 0.[0-3]' references found:"
     for h in "${ABI_HITS[@]}"; do echo "  $h"; done
     echo
-    echo "Current ABI minor (per crates/tst-c/src/lib.rs TST_ABI_VERSION_MINOR): 4"
+    echo "Current ABI minor (per crates/tst-c/src/lib.rs TST_ABI_VERSION_MINOR): 5"
     echo "Update each hit to the current value."
     FAILED=1
 fi

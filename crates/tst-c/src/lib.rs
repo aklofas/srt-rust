@@ -8,7 +8,7 @@
 //! and typed demux-event surfaces all ship today (`tst_raw_receiver_*` /
 //! `tst_ts_receiver_*` / `tst_receiver_*` / `tst_demux_receiver_*`),
 //! along with the reconnecting `tst_managed_*` variants. ABI minor is
-//! `0.4` (see [`TST_ABI_VERSION_MINOR`]).
+//! `0.5` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
 
@@ -74,7 +74,7 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 4` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 5` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -88,7 +88,14 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 ///   setter. The new variant reuses the existing `cc_expected` + `cc_observed`
 ///   field carriers to surface `observed_cfi` + `treated_as` without growing
 ///   the struct.
-pub const TST_ABI_VERSION_MINOR: libc::c_int = 4;
+/// - `5` (plan #96 demuxer-config parity, 2026-05-25):
+///   `TstAv1CarriageMode` enum (mux side already had a mirror;
+///   demux side reuses it) + three new C entry points —
+///   `tst_demux_config_set_av1_carriage`,
+///   `tst_demux_config_set_au_cell_cap_per_pid`, and
+///   `tst_demux_config_set_lenient_psi_reassembly`. Bridges
+///   Rust-only demux knobs through the C builder.
+pub const TST_ABI_VERSION_MINOR: libc::c_int = 5;
 
 // =========================================================================
 // Runtime version accessors

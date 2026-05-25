@@ -1213,7 +1213,10 @@ impl PyMuxer {
     }
 
     /// Push one subtitle payload onto the lone configured subtitle
-    /// stream. Argument order follows the Rust API: `(payload, *, pts)`.
+    /// stream. Python-normalized argument order: `(payload, *, pts)` —
+    /// the underlying Rust API is `push_subtitle(pts, payload)`, but
+    /// audit #9 normalized all Python `push_*` methods to a uniform
+    /// `(payload, *, pts)` shape.
     ///
     /// `pts` is keyword-only — pass as `pts=...` (audit #9 normalization
     /// across all `push_*` methods).

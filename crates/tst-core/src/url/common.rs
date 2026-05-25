@@ -161,9 +161,12 @@ fn parse_port(s: &str) -> Result<u16, UrlError> {
     })
 }
 
+/// A single decoded query pair: `(key, value)`.
+type QueryPair<'a> = (Cow<'a, str>, Cow<'a, str>);
+
 /// Parse `key=value&key=value` into a vector of decoded pairs.
 /// Order is preserved (caller decides last-wins / first-wins semantics).
-fn parse_query(q: &str) -> Result<Vec<(Cow<'_, str>, Cow<'_, str>)>, UrlError> {
+fn parse_query(q: &str) -> Result<Vec<QueryPair<'_>>, UrlError> {
     let mut out = Vec::new();
     for pair in q.split('&') {
         if pair.is_empty() {
@@ -192,7 +195,9 @@ fn percent_decode(s: &str) -> Result<Cow<'_, str>, UrlError> {
         if bytes[i] == b'%' {
             if i + 2 >= bytes.len() {
                 return Err(UrlError::BadPercentEncoding {
-                    detail: format!("truncated escape at byte {i}: '{s}'"),
+                    detail: format!(
+                        "percent escape at offset {i} in '{s}' needs exactly 2 hex digits"
+                    ),
                 });
             }
             let h = hex_nibble(bytes[i + 1])?;
@@ -204,10 +209,13 @@ fn percent_decode(s: &str) -> Result<Cow<'_, str>, UrlError> {
             i += 1;
         }
     }
-    // UTF-8 lossy on the decoded bytes — invalid sequences become U+FFFD,
-    // which is preferable to a hard error for already-validated transport
-    // contexts (passphrase bytes may not be UTF-8 strictly).
-    Ok(Cow::Owned(String::from_utf8_lossy(&out).into_owned()))
+    String::from_utf8(out)
+        .map(Cow::Owned)
+        .map_err(|e| UrlError::BadPercentEncoding {
+            detail: format!(
+                "percent-decoded bytes in '{s}' are not valid UTF-8: {e}"
+            ),
+        })
 }
 
 fn hex_nibble(b: u8) -> Result<u8, UrlError> {
@@ -362,6 +370,13 @@ mod tests {
     #[test]
     fn parse_url_query_truncated_percent_rejected() {
         let err = parse_url("srt://h:9000?key=%2").unwrap_err();
+        assert!(matches!(err, UrlError::BadPercentEncoding { .. }));
+    }
+
+    #[test]
+    fn parse_url_query_value_non_utf8_rejected() {
+        // %FE and %FF are valid hex but never start a valid UTF-8 sequence.
+        let err = parse_url("srt://h:9000?key=%FE%FF").unwrap_err();
         assert!(matches!(err, UrlError::BadPercentEncoding { .. }));
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! These six aliases re-export the generic pipeline shells with `Box<dyn
 //! Transport>` / `Box<dyn RecvTransport>` substituted in. Bindings code
-//! (`srt-jni`, `srt-uniffi`, `tst-pyo3`) targets one concrete type per shell
+//! (`tst-jni`, `tst-uniffi`, `tst-pyo3`) targets one concrete type per shell
 //! instead of cubing per-`T` instantiation.
 //!
 //! Rust callers with a custom transport keep the generic shape (e.g.

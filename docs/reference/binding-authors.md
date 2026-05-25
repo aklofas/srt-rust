@@ -290,7 +290,7 @@ Bindings should compile-time-assert the minor they require:
 #endif
 ```
 
-`srt-jni` and `srt-uniffi` track the C ABI for binary stability and the
+`tst-jni` and `tst-uniffi` track the C ABI for binary stability and the
 Rust crate for feature parity.
 
 ## Thread-local last-error reset

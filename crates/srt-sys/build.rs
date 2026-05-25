@@ -41,7 +41,7 @@ fn main() {
     // Symbol hygiene for downstream cdylib consumers (validate-1 D6).
     //
     // Any crate that depends on srt-sys and builds as a cdylib (today
-    // tst-c; tomorrow srt-jni) should hide libsrt's static-library
+    // tst-c; tomorrow tst-jni) should hide libsrt's static-library
     // exports from its own dynamic export table. The standard Linux
     // recipe is `-Wl,--exclude-libs=ALL`, which drops every symbol
     // sourced from a static archive while leaving the cdylib's own

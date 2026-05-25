@@ -226,7 +226,7 @@ the trigger that would unblock it.
 - **Trigger to revisit:** An embedded target with a hard `no_std`
   requirement.
 
-## Multi-stream `mpegts::mux` — `srt-jni` / `srt-uniffi` binding surface
+## Multi-stream `mpegts::mux` — `tst-jni` / `tst-uniffi` binding surface
 
 - **Status:** The `tst-c` C ABI fan-out shipped — `tst_video_stream_handle_t` /
   `tst_klv_stream_handle_t` typedefs, `tst_mux_config_add_video_stream` /
@@ -235,7 +235,7 @@ the trigger that would unblock it.
   and `tst_managed_mux_sender_t`. The single-target entry points keep
   their original signatures and surface `MuxError::AmbiguousTarget` as
   `TST_E_INVALID_USAGE` on multi-stream muxers. The same handle-aware
-  shape has NOT yet landed in `srt-jni` or `srt-uniffi`.
+  shape has NOT yet landed in `tst-jni` or `tst-uniffi`.
 - **Note on Sender / RawSender:** the original deferred-features entry
   said `tst_ts_sender_*` / `tst_managed_ts_sender_*` would also gain
   `_video_to` / `_klv_to` siblings. That was wrong: `tst_pipeline::Sender`
@@ -503,7 +503,7 @@ the trigger that would unblock it.
 
 ## `pipeline::ext::pairing` C ABI / JNI / UniFFI exposure
 
-- **Status:** Rust API only. `tst-c`, `srt-jni`, `srt-uniffi` do not
+- **Status:** Rust API only. `tst-c`, `tst-jni`, `tst-uniffi` do not
   yet expose `Pairer`.
 - **Why deferred:** Receiver-side cross-language surfaces are deferred
   to the future receiver-surface plan, so all receiver-side exposure
@@ -1090,11 +1090,11 @@ the trigger that would unblock it.
   build runner + iOS-specific libsrt / mbedTLS cmake toolchain
   files (iOS SDK paths, simulator vs device arch selection,
   framework-vs-static packaging). The work is significant and
-  the field set is best landed alongside `srt-uniffi` so
+  the field set is best landed alongside `tst-uniffi` so
   consumer-facing iOS packaging shape (xcframework? CocoaPod?)
   drives the build-side decisions rather than the other way
   around.
-- **Trigger to revisit:** The `srt-uniffi` implementation plan
+- **Trigger to revisit:** The `tst-uniffi` implementation plan
   starts. iOS support lands as part of that plan, not before.
 - **Scope when added:** Three matrix entries (arm64 device,
   arm64 simulator, x86_64 simulator) under a separate iOS-
@@ -1111,10 +1111,10 @@ the trigger that would unblock it.
   + cross-compile toolchain files for both libsrt and mbedTLS
   (the NDK sysroot, libc shape, and ABI selection per target
   arch). The work is bundled with iOS as part of the future
-  `srt-uniffi` plan — mobile-binding consumers expect both
+  `tst-uniffi` plan — mobile-binding consumers expect both
   platforms together, and the JNI-style shared-library
   packaging is symmetric.
-- **Trigger to revisit:** The `srt-uniffi` implementation plan
+- **Trigger to revisit:** The `tst-uniffi` implementation plan
   starts. armv7 specifically is the most-likely-to-stay-
   deferred sub-target — only re-included if a consumer reports
   the device class matters (modern Android devices have been

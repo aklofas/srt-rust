@@ -86,7 +86,7 @@ pub use shell_error::{ShellError, ShellErrorKind};
 pub use tst_core::transport::{RecvTransport, Transport, TransportCancel, TransportError};
 
 // Re-export the concrete SRT cross-thread shutdown primitive at the
-// crate root so FFI binding authors (`srt-jni`, `srt-uniffi`,
+// crate root so FFI binding authors (`tst-jni`, `tst-uniffi`,
 // `tst-pyo3`, `tst-c`) have a single import path:
 // `tst_pipeline::SrtCancelHandle`.
 //

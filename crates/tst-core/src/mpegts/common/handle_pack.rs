@@ -48,7 +48,7 @@ pub(crate) fn unpack(packed: u32) -> (usize, usize) {
 /// bit is set — this is the discriminator a forged FFI handle trips.
 ///
 /// Use this at every trust boundary that rewraps a caller-provided `u32`
-/// back into a typed handle (tst-c, tst-py, future srt-jni / srt-uniffi).
+/// back into a typed handle (tst-c, tst-py, future tst-jni / tst-uniffi).
 /// Plain [`unpack`] silently masks the high bits and would route the
 /// payload to whatever valid stream the low byte happens to name.
 pub(crate) fn try_unpack(packed: u32) -> Option<(usize, usize)> {

@@ -95,6 +95,6 @@ Estimated long-term burden: ~1 PR/year to `google/oss-fuzz` absent base-image dr
 ## What is NOT here
 
 - **CIFuzz GHA integration**. Deferred until the first OSS-Fuzz bug is triaged and we want regression prevention on PRs.
-- **MemorySanitizer (MSan) builds**. Deferred until `srt-jni`/`srt-uniffi` introduce material new `unsafe`.
+- **MemorySanitizer (MSan) builds**. Deferred until `tst-jni`/`tst-uniffi` introduce material new `unsafe`.
 - **Coverage builds for public dashboard**. Deferred until we want to communicate fuzz reach publicly.
 - **Crash-triage SLA / bug-response policy**. Runtime concern; surfaces once bugs start arriving.

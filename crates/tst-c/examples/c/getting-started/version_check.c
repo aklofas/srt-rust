@@ -19,7 +19,7 @@
  * Why this matters:
  *
  * The 3-tier version model (package + ABI + header) lets binding authors
- * (srt-jni, srt-uniffi, pure-C consumers) detect SO/header mismatches:
+ * (tst-jni, tst-uniffi, pure-C consumers) detect SO/header mismatches:
  *
  *   - Compile-time header macros (TST_*_VERSION_*): what the header you
  *     compiled against says.

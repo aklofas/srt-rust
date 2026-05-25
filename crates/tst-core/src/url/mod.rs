@@ -17,4 +17,6 @@
 
 pub mod common;
 
-pub use common::{ParsedUrl, UrlError, is_multicast_v4, is_multicast_v6, parse_host_port, parse_url};
+pub use common::{
+    ParsedUrl, UrlError, is_multicast_v4, is_multicast_v6, parse_host_port, parse_url,
+};

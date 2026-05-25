@@ -95,7 +95,10 @@ pub fn parse_url(s: &str) -> Result<ParsedUrl<'_>, UrlError> {
 
     // Split userinfo from authority on `@`.
     let (userinfo_opt, host_port) = match authority_with_userinfo.rfind('@') {
-        Some(at) => (Some(&authority_with_userinfo[..at]), &authority_with_userinfo[at + 1..]),
+        Some(at) => (
+            Some(&authority_with_userinfo[..at]),
+            &authority_with_userinfo[at + 1..],
+        ),
         None => (None, authority_with_userinfo),
     };
     let (username, password) = match userinfo_opt {
@@ -114,7 +117,15 @@ pub fn parse_url(s: &str) -> Result<ParsedUrl<'_>, UrlError> {
         None => Vec::new(),
     };
 
-    Ok(ParsedUrl { scheme, username, password, host, port, path, query })
+    Ok(ParsedUrl {
+        scheme,
+        username,
+        password,
+        host,
+        port,
+        path,
+        query,
+    })
 }
 
 /// Split `authority[/path][?query]` into the three components. Path
@@ -221,9 +232,7 @@ fn percent_decode(s: &str) -> Result<Cow<'_, str>, UrlError> {
     String::from_utf8(out)
         .map(Cow::Owned)
         .map_err(|e| UrlError::BadPercentEncoding {
-            detail: format!(
-                "percent-decoded bytes in '{s}' are not valid UTF-8: {e}"
-            ),
+            detail: format!("percent-decoded bytes in '{s}' are not valid UTF-8: {e}"),
         })
 }
 
@@ -248,10 +257,12 @@ fn hex_nibble(b: u8) -> Result<u8, UrlError> {
 pub fn parse_host_port(s: &str) -> Result<(IpAddr, u16), UrlError> {
     let (host, port) = split_host_port(s)?;
     let port = port.ok_or(UrlError::MissingPort)?;
-    let ip: IpAddr = host.parse().map_err(|e: std::net::AddrParseError| UrlError::InvalidPort {
-        got: host.to_string(),
-        detail: format!("expected literal IPv4 or IPv6 address, got '{host}': {e}"),
-    })?;
+    let ip: IpAddr = host
+        .parse()
+        .map_err(|e: std::net::AddrParseError| UrlError::InvalidPort {
+            got: host.to_string(),
+            detail: format!("expected literal IPv4 or IPv6 address, got '{host}': {e}"),
+        })?;
     Ok((ip, port))
 }
 

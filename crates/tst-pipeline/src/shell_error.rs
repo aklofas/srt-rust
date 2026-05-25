@@ -16,7 +16,7 @@ use crate::sender::TsFramingError;
 
 /// Categorical reason for a shell-layer failure.
 ///
-/// Bindings (`tst-c`, `srt-jni`, `srt-uniffi`) map each kind directly to
+/// Bindings (`tst-c`, `tst-jni`, `tst-uniffi`) map each kind directly to
 /// a language-native error code or exception. Per-shell applicability:
 ///
 /// | Kind | MuxSender | Sender | RawSender | DemuxReceiver | Receiver | RawReceiver |

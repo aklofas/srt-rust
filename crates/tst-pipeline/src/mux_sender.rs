@@ -839,7 +839,7 @@ impl<T: Transport> Drop for MuxSender<T> {
 
 /// Type alias for [`MuxSender`] with a boxed [`Transport`] trait object.
 ///
-/// Bindings code (`srt-jni`, `srt-uniffi`, `tst-pyo3`) targets this single
+/// Bindings code (`tst-jni`, `tst-uniffi`, `tst-pyo3`) targets this single
 /// concrete type instead of cubing per-`T` instantiation. Rust callers with a
 /// custom transport keep the generic `MuxSender<MyTransport>` shape.
 ///

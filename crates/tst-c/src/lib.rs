@@ -101,7 +101,7 @@ pub const TST_ABI_VERSION_MINOR: libc::c_int = 5;
 // Runtime version accessors
 // =========================================================================
 //
-// Bindings (srt-jni, srt-uniffi, pure-C consumers) use these to verify
+// Bindings (tst-jni, tst-uniffi, pure-C consumers) use these to verify
 // the loaded shared object matches the header they compiled against:
 //
 //     assert(tst_get_abi_version_major() == TST_ABI_VERSION_MAJOR);

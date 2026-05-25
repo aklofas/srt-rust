@@ -76,7 +76,7 @@ if (tst_get_abi_version_minor() < TST_ABI_VERSION_MINOR) {
 }
 ```
 
-See [`examples/c/getting-started/version_check.c`](../../crates/tst-c/examples/c/getting-started/version_check.c) for the canonical startup pattern (matches what `srt-jni` and `srt-uniffi` will do in `JNI_OnLoad` / the UniFFI init hook).
+See [`examples/c/getting-started/version_check.c`](../../crates/tst-c/examples/c/getting-started/version_check.c) for the canonical startup pattern (matches what `tst-jni` and `tst-uniffi` will do in `JNI_OnLoad` / the UniFFI init hook).
 
 ## Hello world
 

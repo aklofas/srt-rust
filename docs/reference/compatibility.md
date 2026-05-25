@@ -386,8 +386,8 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 |---|---|
 | Rust API (`Pairer::with_config`, `Pairer::last_before_pts`, `feed`/`flush`/`stats`) | Shipped 2026-05-07 |
 | C ABI exposure | Deferred to future receiver-surface plan |
-| JNI exposure | Deferred to future `srt-jni` plan |
-| UniFFI exposure | Deferred to future `srt-uniffi` plan |
+| JNI exposure | Deferred to future `tst-jni` plan |
+| UniFFI exposure | Deferred to future `tst-uniffi` plan |
 
 ---
 
@@ -559,8 +559,8 @@ covers.
 | `tst-pipeline` | ✅ Full | Composition layer — `MuxSender<T>` / `Sender<T>` / `RawSender<T>` / `DemuxReceiver<R>` / `Receiver<R>` / `RawReceiver<R>` shells; `ManagedTransport` reconnect wrapper; `Pairer` KLV↔video alignment. Decoupled from libsrt via the `Transport`/`RecvTransport` traits. |
 | `tst-c` | ✅ Full | cdylib + staticlib + cbindgen-generated `tstrans.h` + pkg-config. ABI version **0.5** (additive minor bumps). Multi-platform Tier 1 (Linux x86_64 + aarch64 gating; macOS arm64 + Windows MSVC phase-in). |
 | `tst-py` | ✅ Full | PyO3 bindings published to PyPI as **`tstrans`**. File I/O surface (inspect + offline build of `.ts`); typed KLV decode/encode for all 4 MISB sets; codec parsers; optional `[pandas]` extra for DataFrame + NumPy adapters. Live SRT transport deferred to v2. |
-| `srt-jni` | ⏳ Planned | JVM JAR for JDK 17+ consumers. |
-| `srt-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |
+| `tst-jni` | ⏳ Planned | JVM JAR for JDK 17+ consumers. |
+| `tst-uniffi` | ⏳ Planned | iOS / Android via UniFFI (Swift / Kotlin). |
 
 For full build-target / CI gating coverage see "Build targets" at the top of this document.
 

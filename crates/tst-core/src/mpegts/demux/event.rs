@@ -268,7 +268,7 @@ pub enum MetadataKind {
     /// the AU cell carries no embedded timestamp).
     ///
     /// Field names match the spec (Table 2-156) verbatim for FFI
-    /// traceability across `tst-c` / `srt-jni` / `srt-uniffi` wrappers.
+    /// traceability across `tst-c` / `tst-jni` / `tst-uniffi` wrappers.
     KlvSyncAuCell {
         /// `metadata_service_id` u8. ST 1402.2 App. B Table 2: `0x00` typical.
         metadata_service_id: u8,

@@ -45,8 +45,8 @@ startup. Queries `tst_get_version_major/minor/patch/packed/string` and
 when all values agree.
 
 The canonical pattern for binding authors to copy into their own startup
-checks (e.g. `JNI_OnLoad` for `srt-jni`, the UniFFI init hook for
-`srt-uniffi`):
+checks (e.g. `JNI_OnLoad` for `tst-jni`, the UniFFI init hook for
+`tst-uniffi`):
 
 ```c
 if (tst_get_abi_version_major() != TST_ABI_VERSION_MAJOR) {

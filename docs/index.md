@@ -21,7 +21,7 @@
 | **Rust** | Full `Sender` / `Receiver` + low-level primitives | Embedding in a Rust app; want type-level guarantees |
 | **C** | Full sender + receiver surface (`cdylib` + `staticlib` + `tstrans.h`) | Embedded targets; cross-language linkage; maximum ABI stability |
 | **Python** | Inspect + offline build of `.ts` files; typed KLV decode/encode; DataFrame adapters | Notebooks; KLV-to-DataFrame ETL; offline processing. **No live SRT transport in v1** — file I/O only. |
-| **JVM** (planned, `srt-jni` next on roadmap) | Receive + demux (initial scope) | JVM backend consumers |
+| **JVM** (planned, `tst-jni` next on roadmap) | Receive + demux (initial scope) | JVM backend consumers |
 
 ## What kind of pages live here?
 

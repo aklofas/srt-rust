@@ -7,6 +7,32 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-srt refactor groundwork (2026-05-25)
+
+### Refactor (no behavior change)
+- Planned binding crates renamed: `srt-jni` → `tst-jni`,
+  `srt-uniffi` → `tst-uniffi`. The crates remain PLANNED (not shipped);
+  this is paperwork to align names with the `tst-*` workspace prefix
+  ahead of adding RTP/RTSP transport.
+- New `tst_core::url` module exposes scheme-neutral URL parsing helpers
+  (`ParsedUrl`, `parse_url`, `parse_host_port`, `is_multicast_v4` /
+  `_v6`) for shared use by `tst-srt`, the forthcoming `tst-rtp`, and
+  downstream consumers. `tst-srt` no longer depends on the `url` crate.
+- `SocketStats` + `TransportError::Backpressure`/`Broken.errno_code`
+  rustdoc rewritten to be transport-neutral; the libsrt
+  `CBytePerfMon` / `MJ_*` mapping now lives on `SrtTransport` itself.
+
+### Changed
+- **Behavior change in `tst_srt::url::SrtUrl` URL parsing:** percent-encoding
+  is now strict — malformed `%XY` (truncated or non-hex digits) returns
+  `Err` rather than passing through, and percent-decoded bytes must be
+  valid UTF-8. Additionally, `+` in query values is no longer decoded as
+  space (the previous behavior came from the `url` crate's form-urlencoded
+  semantics); literal `+` characters in passphrases now stay literal.
+  Embed a `+` via percent-encoding (`%2B`) if it must be in a value.
+
+---
+
 ## [Unreleased] — docs/ framing pass (Phase 2 of polish) (2026-05-25)
 
 Content + structure changes to the user-facing `docs/` surface. No code,
@@ -2177,7 +2203,7 @@ methods.
 **Wave 6 status after Plan F ships:** Plan F is the first of Wave 6's 5
 Phase-1 plans (parallel with A, B, C-KLV, C-codec). Plans D and E (Phase 2)
 wait on A and B respectively. Once all 7 land, refactor-1 is **complete**
-and the project moves to `srt-jni` binding work.
+and the project moves to `tst-jni` binding work.
 
 ---
 
@@ -3014,14 +3040,14 @@ Closes the P1 "codec-specific stats on `StreamStats`" backlog entry
   Android (arm64 + x86_64 emulator + armv7), macOS x86_64 Intel, and
   Windows MinGW — each with concrete consumer-driven triggers and a
   scope-when-added note. iOS + Android gated on the future
-  `srt-uniffi` plan; macOS Intel + MinGW gated on specific consumer
+  `tst-uniffi` plan; macOS Intel + MinGW gated on specific consumer
   asks.
 - **`README.md` Platform support subsection** under `## Building`
   listing the 4 Tier 1 platforms and cross-linking
   `docs/compatibility.md` + `docs/deferred-features.md`. Stale
   "multi-platform builds … next on the roadmap" sentence near the
-  C example removed (multi-platform ships today; only `srt-jni` /
-  `srt-uniffi` remain on the roadmap).
+  C example removed (multi-platform ships today; only `tst-jni` /
+  `tst-uniffi` remain on the roadmap).
 
 ---
 
@@ -3122,7 +3148,7 @@ See the wire-stats plan at
 See the Phase 3 plan at `docs/plans/2026-05-16-tst-c-demux-receiver.md`
 and the design doc at `docs/specs/2026-05-15-tst-c-receiver-surface-design.md`.
 This ships the complete tst-c receiver surface (Phases 1, 2, 3 all
-shipped); next-up is `srt-jni` / `srt-uniffi` cross-language bindings.
+shipped); next-up is `tst-jni` / `tst-uniffi` cross-language bindings.
 
 ---
 
@@ -3891,7 +3917,7 @@ contracts + Rust↔C ABI cross-references + three CI ratchets).
   type-level landmines. Added mid-execution after the Phase 3 plan was
   found to miss this prerequisite.
 - [`docs/binding-authors.md`](./docs/binding-authors.md) — ~150-line
-  starter guide for `srt-jni` / `srt-uniffi` / `tst-pyo3` authors.
+  starter guide for `tst-jni` / `tst-uniffi` / `tst-pyo3` authors.
   Worked Kotlin/Swift/Python/C examples plus builder + cancel-handle +
   threading + versioning sections.
 

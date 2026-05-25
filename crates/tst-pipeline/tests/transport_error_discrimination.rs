@@ -29,7 +29,7 @@
 //!   returns `TransportError::Closed`, driving `Receiver::next_packet` to
 //!   `ReceiverError { kind: EndOfStream, source: Transport(Closed) }`.
 //! - Asserting on **both** `err.kind` and `err.source` matters: `err.kind` is
-//!   what binding authors (`tst-c`, `srt-jni`, `srt-uniffi`) use for retry /
+//!   what binding authors (`tst-c`, `tst-jni`, `tst-uniffi`) use for retry /
 //!   error-code decisions; `err.source` gives power users the inner-variant
 //!   discrimination needed to route logs and telemetry.
 

@@ -358,7 +358,7 @@ pub trait RecvTransport: Send {
 // These let `Box<dyn Transport>` and `Box<dyn RecvTransport>` satisfy the
 // `T: Transport` / `T: RecvTransport` trait bounds on the pipeline shells.
 // Required for the dyn-erased aliases (`BoxedMuxSender`, `BoxedDemuxReceiver`,
-// etc.) used by the FFI binding crates (`srt-jni`, `srt-uniffi`, `tst-pyo3`).
+// etc.) used by the FFI binding crates (`tst-jni`, `tst-uniffi`, `tst-pyo3`).
 //
 // Plain forwarding — no behavior change. Both source traits are object-safe;
 // these impls let consumers wrap any `Box<dyn TraitObj>` exactly the same way

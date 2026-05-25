@@ -38,7 +38,7 @@ Each placement uses the same primitives differently. The [`guides/`](/docs/guide
 - **Subtitles** — DVB subtitling, DVB teletext, CEA-708, WebVTT-in-TS.
 - **C bindings** (`tst-c`) — `cdylib` + `staticlib`, `tstrans.h` via cbindgen, `tstrans.pc` for pkg-config. Stable ABI versioned `TST_ABI_VERSION_MAJOR/MINOR`.
 - **Python bindings** (`tst-py`, distributed as `tstrans` on PyPI) — file inspection and offline construction of `.ts` files; typed KLV decode/encode; typed `Sample.payload` (NalUnit / Obu / AdtsFrame / Mpeg2AudioFrame); optional pandas + NumPy adapters via `pip install tstrans[pandas]`.
-- **JVM bindings** — `srt-jni`, planned, next on roadmap.
+- **JVM bindings** — `tst-jni`, planned, next on roadmap.
 
 ## What's NOT in the box
 

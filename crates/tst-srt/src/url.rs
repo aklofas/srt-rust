@@ -15,7 +15,7 @@ use crate::config::{ListenerConfig, SocketConfig};
 use crate::error::OptionError;
 use crate::options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId};
 use std::time::Duration;
-use tst_core::url::common::{parse_url, UrlError as CoreUrlError};
+use tst_core::url::common::{UrlError as CoreUrlError, parse_url};
 
 /// `?latency=N` is parsed as N milliseconds (libsrt-URL canonical), but
 /// ffmpeg's URL parses it as microseconds. A user copying an ffmpeg URL

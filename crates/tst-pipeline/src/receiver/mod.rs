@@ -383,7 +383,7 @@ impl<R: RecvTransport> Receiver<R> {
 
 /// Type alias for [`Receiver`] with a boxed [`RecvTransport`] trait object.
 ///
-/// Bindings code (`srt-jni`, `srt-uniffi`, `tst-pyo3`) targets this single
+/// Bindings code (`tst-jni`, `tst-uniffi`, `tst-pyo3`) targets this single
 /// concrete type instead of cubing per-`R` instantiation. Rust callers with a
 /// custom transport keep the generic `Receiver<MyTransport>` shape.
 ///

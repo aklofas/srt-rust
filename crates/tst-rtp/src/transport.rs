@@ -618,4 +618,21 @@ mod tests {
         assert_eq!(stats.rtt_us, 0);
         assert_eq!(stats.packets_lost_send, 0);
     }
+
+    /// Compile-time check: RtpTransport satisfies Transport (so
+    /// MuxSender<RtpTransport> works) and RtpRecvTransport satisfies
+    /// RecvTransport (so DemuxReceiver<RtpRecvTransport> works).
+    /// Catches signature drift if the pipeline shell trait bounds tighten.
+    #[test]
+    fn satisfies_pipeline_trait_bounds() {
+        fn accept_send<T: Transport>(_: T) {}
+        fn accept_recv<T: RecvTransport>(_: T) {}
+        // Use port 0 / 1 to avoid binding conflicts in CI.
+        let send_url = RtpUrl::parse("rtp://127.0.0.1:1").unwrap();
+        let recv_url = RtpUrl::parse("rtp://127.0.0.1:0").unwrap();
+        let send = RtpTransport::connect_with(&send_url).unwrap();
+        let recv = RtpRecvTransport::listen_with(&recv_url).unwrap();
+        accept_send(send);
+        accept_recv(recv);
+    }
 }

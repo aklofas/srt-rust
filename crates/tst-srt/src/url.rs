@@ -15,6 +15,7 @@ use crate::config::{ListenerConfig, SocketConfig};
 use crate::error::OptionError;
 use crate::options::{Congestion, KeyLength, MaxBandwidth, PacketFilter, Passphrase, StreamId};
 use std::time::Duration;
+use tst_core::url::common::{parse_url, UrlError as CoreUrlError};
 
 /// `?latency=N` is parsed as N milliseconds (libsrt-URL canonical), but
 /// ffmpeg's URL parses it as microseconds. A user copying an ffmpeg URL
@@ -147,7 +148,7 @@ pub struct UrlOverlay {
 #[non_exhaustive]
 pub enum UrlError {
     #[error("URL parse failed: {0}")]
-    Syntax(#[from] url::ParseError),
+    Syntax(#[from] CoreUrlError),
 
     #[error("scheme must be 'srt', got '{got}'")]
     WrongScheme { got: String },
@@ -211,59 +212,33 @@ impl SrtUrl {
     /// assert_eq!(u.overlay.latency, Some(Duration::from_millis(200)));
     /// ```
     pub fn parse(s: &str) -> Result<Self, UrlError> {
-        // Tentatively accept empty-host URLs (e.g. srt://:7000?mode=listener)
-        // so we can check mode before deciding whether to reject. The url crate
-        // returns ParseError::EmptyHost for non-special schemes with no host;
-        // re-parse with a sentinel host so the url crate accepts the URL, then
-        // substitute the empty string back after.
-        let (parsed, host_was_empty) = match url::Url::parse(s) {
-            Ok(u) => (u, false),
-            Err(url::ParseError::EmptyHost) => {
-                // Safe: the url crate already tokenized `s` up to the authority before
-                // returning EmptyHost — the "://:" substring can only appear at the
-                // authority separator, not in any later query string or fragment.
-                let with_sentinel = s.replacen("://:", "://0.0.0.0:", 1);
-                match url::Url::parse(&with_sentinel) {
-                    Ok(u) => (u, true),
-                    Err(e) => return Err(UrlError::Syntax(e)),
-                }
-            }
-            Err(e) => return Err(UrlError::Syntax(e)),
-        };
+        // The common parser accepts empty-host URLs (e.g. srt://:7000?mode=listener)
+        // directly — it returns Ok with host="" rather than an error. We check
+        // mode after parsing query parameters to decide whether an empty host
+        // is acceptable (listener) or an error (caller).
+        let parsed = parse_url(s)?;
 
-        if parsed.scheme() != "srt" {
+        if parsed.scheme != "srt" {
             return Err(UrlError::WrongScheme {
-                got: parsed.scheme().to_string(),
+                got: parsed.scheme.to_string(),
             });
         }
-        if !parsed.username().is_empty() || parsed.password().is_some() {
+        if parsed.username.is_some() || parsed.password.is_some() {
             return Err(UrlError::UserinfoNotSupported);
         }
 
-        // Use parsed.host() (the enum) rather than host_str() so that IPv6
-        // addresses come back without brackets. host_str() preserves the
-        // bracketed form "[::1]"; Ipv6Addr::to_string() gives "::1".
-        let host = if host_was_empty {
-            String::new()
-        } else {
-            match parsed.host() {
-                Some(url::Host::Ipv4(addr)) => addr.to_string(),
-                Some(url::Host::Ipv6(addr)) => addr.to_string(),
-                Some(url::Host::Domain(d)) if !d.is_empty() => d.to_string(),
-                _ => String::new(),
-            }
-        };
-
-        let port = parsed.port().ok_or(UrlError::MissingPort)?;
+        // The common parser strips IPv6 brackets, so host is always the
+        // raw address string (e.g. "::1" not "[::1]").
+        let host = parsed.host.to_string();
+        let port = parsed.port.ok_or(UrlError::MissingPort)?;
 
         let mut overlay = UrlOverlay::default();
         let mut mode = Mode::Caller;
-        // url::Url::query_pairs() URL-decodes values automatically.
         // Last-occurrence wins (Q4-A): we just overwrite as we go.
-        for (key, value) in parsed.query_pairs() {
+        for (key, value) in &parsed.query {
             // mode is consumed at the SrtUrl level (not in overlay) since it
             // determines which apply_to_* method the caller should use.
-            if key == "mode" {
+            if key.as_ref() == "mode" {
                 mode = match value.as_ref() {
                     "caller" => Mode::Caller,
                     "listener" => Mode::Listener,
@@ -275,7 +250,7 @@ impl SrtUrl {
                 };
                 continue;
             }
-            apply_query_pair(&mut overlay, &key, &value)?;
+            apply_query_pair(&mut overlay, key.as_ref(), value.as_ref())?;
         }
 
         // Caller mode requires a non-empty host (need somewhere to connect).

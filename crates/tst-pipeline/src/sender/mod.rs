@@ -140,7 +140,7 @@ impl crate::shell_error::ShellError for SenderError {
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as sender:` calls `close()` on exit |
 /// | C | `tst_sender_close(sender)` (explicit; mirrors `Drop`) |
 ///
-/// See [`docs/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/srt-cancel-handle.md) for the full cancel-handle pattern.
+/// See [`docs/reference/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/reference/srt-cancel-handle.md) for the full cancel-handle pattern.
 pub struct Sender<T: Transport> {
     framing: TsFraming,
     transport: T,

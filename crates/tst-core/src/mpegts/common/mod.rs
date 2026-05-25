@@ -213,7 +213,7 @@ pub mod pid {
 /// `Pts90khz` does NOT currently implement `Add` / `Sub` / `Mul` — the
 /// wrap-vs-saturate-vs-check semantics across the 33-bit PTS rollover
 /// boundary need design work. See the "Deep typed-time migration" entry in
-/// the repository's `docs/deferred-features.md` for the follow-up plan. For
+/// the repository's `docs/project/deferred-features.md` for the follow-up plan. For
 /// now, recover the raw `i64` with [`as_ticks`] and reconstruct after
 /// arithmetic with [`new`].
 ///
@@ -255,7 +255,7 @@ impl Pts90khz {
 /// Like [`Pts90khz`], `Pcr27mhz` does not currently implement arithmetic
 /// traits. The full 27 MHz value wraps at `(1 << 33) × 300`, ≈ once every
 /// 26.5 hours; design of typed wrap-aware arithmetic is tracked in the
-/// "Deep typed-time migration" entry in `docs/deferred-features.md`.
+/// "Deep typed-time migration" entry in `docs/project/deferred-features.md`.
 #[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Pcr27mhz(u64);
@@ -308,7 +308,7 @@ pub const PCR_TICKS_PER_SECOND: u64 = 27_000_000;
 /// Standard MPEG-TS packet size in bytes, per ITU-T H.222.0 §2.4.3.2.
 ///
 /// All MPEG-TS packets in this library are exactly 188 bytes (no DVB-ASI
-/// 204-byte FEC-augmented packets — see `docs/deferred-features.md`).
+/// 204-byte FEC-augmented packets — see `docs/project/deferred-features.md`).
 pub const TS_PACKET_SIZE: usize = 188;
 
 /// MPEG-TS sync byte, per ITU-T H.222.0 §2.4.3.2. Every TS packet begins

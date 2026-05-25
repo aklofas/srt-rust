@@ -128,7 +128,7 @@ pub enum SubtitleCodec {
     /// registration_descriptor format_identifier "GA94".
     /// **Library-internal round-trip only — external-tool interop has
     /// not been empirically verified as of this writing.** See
-    /// `docs/deferred-features.md` "CEA-708 interop" for the
+    /// `docs/project/deferred-features.md` "CEA-708 interop" for the
     /// empirical-test-pending status.
     Cea708Standalone,
     /// WebVTT cues carried inside MPEG-TS PES. Marked via
@@ -136,7 +136,7 @@ pub enum SubtitleCodec {
     /// any published normative spec — see the `format_identifier_vttc`
     /// rustdoc). **Library-internal round-trip only — external-tool
     /// interop has not been empirically verified as of this writing.**
-    /// See `docs/deferred-features.md` "WebVTT-in-TS interop" for the
+    /// See `docs/project/deferred-features.md` "WebVTT-in-TS interop" for the
     /// empirical-test-pending status.
     WebVttInTs,
 }

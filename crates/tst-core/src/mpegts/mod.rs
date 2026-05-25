@@ -46,7 +46,7 @@
 //!   OBU input for AV1; one access unit per [`mux::Muxer::push_video`] call
 //!
 //! Defaults are conservative: [`mux::MuxerConfig::default`] produces a
-//! single-program H.264 + KLV stream. See `docs/compatibility.md` for the
+//! single-program H.264 + KLV stream. See `docs/reference/compatibility.md` for the
 //! full feature matrix.
 
 pub mod au_cell;

@@ -29,7 +29,7 @@
 //! - Full slice headers — only the light subset is parsed; see
 //!   [`parse_slice_header_light`].
 //!
-//! See `docs/deferred-features.md` for rationale and revisit triggers.
+//! See `docs/project/deferred-features.md` for rationale and revisit triggers.
 
 mod pps;
 mod profile_tier_level;

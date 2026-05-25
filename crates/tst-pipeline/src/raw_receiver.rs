@@ -62,7 +62,7 @@ pub struct RawRecvStats {
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as rx:` calls `close()` on exit |
 /// | C | `tst_raw_receiver_close(rx)` (explicit; mirrors `Drop`); `tst_raw_receiver_cancel(handle)` from any thread |
 ///
-/// See [`docs/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/srt-cancel-handle.md) for the full cancel-handle pattern.
+/// See [`docs/reference/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/reference/srt-cancel-handle.md) for the full cancel-handle pattern.
 pub struct RawReceiver<R: RecvTransport> {
     transport: R,
     /// Reusable scratch buffer sized to `transport.max_payload()` on
@@ -101,7 +101,7 @@ impl<R: RecvTransport> std::fmt::Debug for RawReceiver<R> {
 /// fields land.
 ///
 /// Symmetric with [`crate::RawSenderConfig`] on the send side; the
-/// symmetry is documented in `docs/conventions.md`.
+/// symmetry is documented in `docs/reference/conventions.md`.
 #[must_use]
 #[non_exhaustive]
 #[derive(Debug, Default, Clone)]

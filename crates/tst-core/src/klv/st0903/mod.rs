@@ -19,7 +19,7 @@
 //! 7 nested/sibling Local Sets (VMask, VObject, VFeature, VTracker,
 //! VChip on each `VTargetPack`; Algorithm Series and Ontology Series at
 //! the VMTI top level) stay as `Option<Vec<u8>>` pass-through bytes —
-//! typed layers deferred (see `docs/deferred-features.md`).
+//! typed layers deferred (see `docs/project/deferred-features.md`).
 //!
 //! Universal Set form of ST 0903 is out of scope (LS-only on
 //! MPEG-TS+KLV streams).
@@ -92,7 +92,7 @@
 //!   [`VMTI_LS_UL`] + outer BER length wrapper; for standalone
 //!   carriage on a dedicated KLV PID.
 //!
-//! **Deferred per `docs/deferred-features.md`:** typed nested-LS
+//! **Deferred per `docs/project/deferred-features.md`:** typed nested-LS
 //! layers (VMask, VObject, VFeature, VTracker, VChip on each
 //! [`VTargetPack`]; Algorithm Series and Ontology Series at the VMTI
 //! top level); Universal Set form of ST 0903 (LS-only on

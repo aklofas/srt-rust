@@ -370,7 +370,7 @@ pub fn teletext_descriptor_multi(
 /// spec; appears in ffmpeg's `mpegtsenc.c` emitter and is widely
 /// observed in WebVTT-in-TS captures. **Library-internal round-trip
 /// only — external-tool interop has not been empirically verified as
-/// of this writing.** See `docs/deferred-features.md` "WebVTT-in-TS
+/// of this writing.** See `docs/project/deferred-features.md` "WebVTT-in-TS
 /// interop" for the empirical-test-pending status.
 pub fn format_identifier_vttc() -> Vec<u8> {
     vec![0x05, 0x04, b'V', b'T', b'T', b'C']
@@ -383,7 +383,7 @@ pub fn format_identifier_vttc() -> Vec<u8> {
 /// in MPEG-2 video user_data**, not as a stream-level marker. **The
 /// auto-emitted descriptor here is for library-internal round-trip only
 /// — external-tool interop has not been empirically verified as of
-/// this writing.** See `docs/deferred-features.md` "CEA-708 interop"
+/// this writing.** See `docs/project/deferred-features.md` "CEA-708 interop"
 /// for the empirical-test-pending status.
 pub fn format_identifier_ga94() -> Vec<u8> {
     vec![0x05, 0x04, b'G', b'A', b'9', b'4']

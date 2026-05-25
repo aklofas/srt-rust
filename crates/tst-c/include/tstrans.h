@@ -1465,7 +1465,7 @@ int tst_managed_mux_sender_get_stream_codec_stats(struct tst_managed_mux_sender_
  * parameters apply libsrt-vocabulary options to the connection
  * (passphrase, latency, streamid, etc.). URL values override config
  * values for the same option. See
- * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ * `docs/guides/srt.md#url-parsing` for the recognized key table.
  *
  * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
  * last-error for any malformed URL, unsupported key, unknown key, or
@@ -2029,7 +2029,7 @@ int tst_mux_sender_get_stream_codec_stats(struct tst_mux_sender_t *p,
  * parameters apply libsrt-vocabulary options to the connection
  * (passphrase, latency, streamid, etc.). URL values override config
  * values for the same option. See
- * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ * `docs/guides/srt.md#url-parsing` for the recognized key table.
  *
  * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
  * last-error for any malformed URL, unsupported key, unknown key, or
@@ -2471,7 +2471,7 @@ int tst_managed_sender_get_stats(struct tst_managed_sender_t *p, struct tst_send
  * parameters apply libsrt-vocabulary options to the connection
  * (passphrase, latency, streamid, etc.). URL values override config
  * values for the same option. See
- * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ * `docs/guides/srt.md#url-parsing` for the recognized key table.
  *
  * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
  * last-error for any malformed URL, unsupported key, unknown key, or
@@ -2550,7 +2550,7 @@ int tst_sender_get_stats(struct tst_sender_t *p, struct tst_sender_stats_t *out)
  * parameters apply libsrt-vocabulary options to the connection
  * (passphrase, latency, streamid, etc.). URL values override config
  * values for the same option. See
- * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ * `docs/guides/srt.md#url-parsing` for the recognized key table.
  *
  * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
  * last-error for any malformed URL, unsupported key, unknown key, or
@@ -2616,7 +2616,7 @@ int tst_managed_raw_sender_get_stats(struct tst_managed_raw_sender_t *p,
  * parameters apply libsrt-vocabulary options to the connection
  * (passphrase, latency, streamid, etc.). URL values override config
  * values for the same option. See
- * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ * `docs/guides/srt.md#url-parsing` for the recognized key table.
  *
  * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
  * last-error for any malformed URL, unsupported key, unknown key, or
@@ -2703,7 +2703,7 @@ int tst_raw_sender_get_stats(struct tst_raw_sender_t *p, struct tst_raw_send_sta
  * parameters apply libsrt-vocabulary options to the connection
  * (passphrase, latency, streamid, etc.). URL values override config
  * values for the same option. See
- * `docs/guide-srt.md#url-parsing` for the recognized key table.
+ * `docs/guides/srt.md#url-parsing` for the recognized key table.
  *
  * Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
  * last-error for any malformed URL, unsupported key, unknown key, or

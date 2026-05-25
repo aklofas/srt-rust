@@ -92,7 +92,7 @@ pub struct MuxSenderStats {
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as sender:` calls `close()` on exit |
 /// | C | `tst_mux_sender_close(sender)` (explicit; mirrors `Drop`) |
 ///
-/// See [`docs/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/srt-cancel-handle.md) for the full cancel-handle pattern.
+/// See [`docs/reference/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/reference/srt-cancel-handle.md) for the full cancel-handle pattern.
 pub struct MuxSender<T: Transport> {
     inner: Mutex<Inner<T>>,
     /// Cancel handle snapshot, taken from the transport at construction
@@ -218,7 +218,7 @@ impl<T: Transport> MuxSender<T> {
     /// `pts: Pts90khz` is a newtype around the raw 90 kHz tick count. Construct
     /// from raw ticks with [`Pts90khz::new`] or from milliseconds with
     /// [`Pts90khz::from_millis`]. Internal arithmetic across the workspace still
-    /// uses raw `i64`; a follow-up plan tracked in `docs/deferred-features.md`
+    /// uses raw `i64`; a follow-up plan tracked in `docs/project/deferred-features.md`
     /// (landing later in this same plan) will design wrap-vs-saturate semantics
     /// on `Pts90khz` and do the full internal sweep.
     ///

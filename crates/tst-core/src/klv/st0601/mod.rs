@@ -44,7 +44,7 @@
 //! - [`decode_strict_compliance`] — adds full ST 0107.5 conformance
 //!   checks (BER canonicality, no duplicate tags, etc.).
 //!
-//! **Deferred per `docs/deferred-features.md`:** none — ST 0601
+//! **Deferred per `docs/project/deferred-features.md`:** none — ST 0601
 //! typed model is the most-complete of the 4 typed sets.
 
 pub(crate) mod decode;

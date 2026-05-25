@@ -9,7 +9,7 @@ use crate::codec::av1::model::{Av1FrameHeaderLight, Av1SequenceHeader};
 /// Light scope: extracts `frame_type` + `show_frame` + `show_existing_frame`
 /// only. Per-frame size override is always None — full decode would
 /// require reference-frame management beyond this parser's scope. See
-/// `docs/deferred-features.md`.
+/// `docs/project/deferred-features.md`.
 pub fn parse_frame_header_light(
     payload: &[u8],
     seq: &Av1SequenceHeader,

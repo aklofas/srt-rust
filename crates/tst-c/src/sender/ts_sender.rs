@@ -63,7 +63,7 @@ pub struct TstSender {
 /// parameters apply libsrt-vocabulary options to the connection
 /// (passphrase, latency, streamid, etc.). URL values override config
 /// values for the same option. See
-/// `docs/guide-srt.md#url-parsing` for the recognized key table.
+/// `docs/guides/srt.md#url-parsing` for the recognized key table.
 ///
 /// Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
 /// last-error for any malformed URL, unsupported key, unknown key, or
@@ -269,7 +269,7 @@ pub struct TstManagedSender {
 /// parameters apply libsrt-vocabulary options to the connection
 /// (passphrase, latency, streamid, etc.). URL values override config
 /// values for the same option. See
-/// `docs/guide-srt.md#url-parsing` for the recognized key table.
+/// `docs/guides/srt.md#url-parsing` for the recognized key table.
 ///
 /// Returns `NULL` with `TST_E_INVALID_CONFIG` set in the thread-local
 /// last-error for any malformed URL, unsupported key, unknown key, or

@@ -50,7 +50,7 @@ const SRT_EPOLL_IN: c_int = 0x1;
 /// | Python | Wrap as `__enter__`/`__exit__`; `with ... as listener:` calls drop on exit |
 /// | C | (deferred — `Listener` is not directly exposed at the C ABI today) |
 ///
-/// See [`docs/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/srt-cancel-handle.md) for the full cancel-handle pattern.
+/// See [`docs/reference/srt-cancel-handle.md`](https://github.com/aklofas/ts-transformer/blob/main/ts-transformer/docs/reference/srt-cancel-handle.md) for the full cancel-handle pattern.
 pub struct Listener {
     handle: srt_sys::SRTSOCKET,
     /// Shared close-once primitive. Cloned out via `cancel_handle()` so a

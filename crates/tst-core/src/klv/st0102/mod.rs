@@ -76,7 +76,7 @@
 //!   unknown enum codepoints, `OmittedValueXX` codepoints,
 //!   non-canonical BER, duplicate tags, malformed UTF-16.
 //!
-//! **Deferred per `docs/deferred-features.md`:** Universal Set form
+//! **Deferred per `docs/project/deferred-features.md`:** Universal Set form
 //! of ST 0102 (LS-only on MPEG-TS+KLV streams).
 
 pub(crate) mod decode;

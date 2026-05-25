@@ -8,7 +8,7 @@
 //!   3. All 24 Group 3 keys reject with `UnsupportedKey` carrying a
 //!      non-empty `SRTO_*` static string.
 //!   4. The honored-key count matches what's documented in
-//!      `docs/guide-srt.md` (drift between code and docs).
+//!      `docs/guides/srt.md` (drift between code and docs).
 
 use tst_srt::{SrtUrl, UrlError};
 
@@ -135,8 +135,8 @@ fn group3_keys_all_reject_with_srto() {
 #[test]
 fn guide_srt_md_keytable_count_matches() {
     // Cargo test CWD is the crate root (crates/tst-srt/), so guide-srt.md
-    // is two directories up at docs/guide-srt.md.
-    let path = "../../docs/guide-srt.md";
+    // is two directories up at docs/guides/srt.md.
+    let path = "../../docs/guides/srt.md";
     let body = std::fs::read_to_string(path).unwrap_or_else(|e| {
         panic!(
             "could not read guide-srt.md: {e}; cwd = {:?}",

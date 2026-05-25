@@ -22,7 +22,7 @@ use std::time::Duration;
 ///
 /// The `&mut self -> &mut Self` shape translates directly to Kotlin's `apply`
 /// scope, Swift's `var b = …; b.x(); b.y();`, Java's chain on a fresh local,
-/// and Python's step-wise assignment — see `docs/binding-authors.md`.
+/// and Python's step-wise assignment — see `docs/reference/binding-authors.md`.
 ///
 /// See [`SocketBuilder::sender_defaults`] / [`SocketBuilder::receiver_defaults`]
 /// for live-streaming preset bundles.
@@ -235,7 +235,7 @@ impl SocketBuilder {
     /// `tst_raw_sender_open`, `tst_managed_mux_sender_open`,
     /// `tst_managed_sender_open`, `tst_managed_raw_sender_open`. URL query
     /// parameters take the place of builder setters; see
-    /// `crates/tst-c/include/tstrans.h` and `docs/binding-authors.md`.
+    /// `crates/tst-c/include/tstrans.h` and `docs/reference/binding-authors.md`.
     ///
     /// # Errors
     /// Returns [`ConnectError`] on hostname-resolution failure, libsrt
@@ -256,7 +256,7 @@ impl SocketBuilder {
 /// The `&mut self -> &mut Self` shape mirrors [`SocketBuilder`] and translates
 /// directly to Kotlin's `apply` scope, Swift's `var b = …; b.x(); b.y();`,
 /// Java's chain on a fresh local, and Python's step-wise assignment — see
-/// `docs/binding-authors.md`.
+/// `docs/reference/binding-authors.md`.
 #[must_use]
 #[derive(Default)]
 pub struct ListenerBuilder {

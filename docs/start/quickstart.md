@@ -1,10 +1,21 @@
 # Getting Started
 
-## Audience and time budget
 
-If you're new to `ts-transformer` and want to send and receive bytes in
-10 minutes, start here. For deeper context, see
-[architecture.md](/docs/reference/architecture.md).
+> **Who this is for:** You've installed ts-transformer (or are about to) and want a working sender + receiver in 10 minutes.
+
+> **You will learn:**
+> - How to install ts-transformer in Rust, C, or Python (links per language)
+> - How to mux H.264 + KLV into a `.ts` file
+> - How to demux a `.ts` file and inspect the events
+> - How to wire a sender + receiver over loopback SRT
+> - Where to go next based on what you're building
+
+When you want to send and receive bytes over SRT in 10 minutes, start here. The
+goal of this page is to get a working program in front of you fast — for
+background on how the pieces fit together, read
+[concepts.md](/docs/start/concepts.md) or
+[architecture.md](/docs/reference/architecture.md) as a sibling read, not before
+this one.
 
 This guide walks through three runnable snippets in order: a raw send,
 a raw receive, and a video-frame send through the pipeline shell. By
@@ -214,6 +225,12 @@ Useful filter targets:
 | `tst_pipeline::managed_receive` | Receiver-side managed-transport reconnect attempts          |
 | `srt`                           | libsrt-internal logs (forwarded from the C library)         |
 | `tst_core::codec`               | Codec parser warnings (e.g., H.265 SPS parse failures)      |
+
+## See also
+
+- **Runnable example:** `cargo run -p tst-examples --example hello_world` — [examples/getting-started/hello_world.rs](/examples/getting-started/hello_world.rs)
+- [start/concepts.md](/docs/start/concepts.md) — MPEG-TS, KLV, and SRT in plain terms.
+- [reference/architecture.md](/docs/reference/architecture.md) — how the crates compose.
 
 ## Where to go next
 

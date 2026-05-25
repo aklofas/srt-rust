@@ -61,8 +61,15 @@ def parse_file(
     iterating to completion (or stopping early — chunks are read on
     demand).
 
-    Raises `tstrans.exceptions.DemuxError` in strict modes when the
-    demuxer rejects a non-conformance.
+    Raises `tstrans.exceptions.DemuxError` when the demuxer rejects a
+    non-conformance (strict modes) or when the byte stream is
+    unrecoverable. I/O failures during file reading propagate as the
+    underlying `OSError` from the `read` call. This matches the
+    contract of Rust's `tst_core::io_file::TryDemuxFromFile` (the
+    fallible streaming iterator) — both surface read and demux errors
+    rather than coercing them to early EOF. The full file-helper error
+    policy is documented in the module-level rustdoc of
+    `tst_core::io_file`.
     """
 
     p = Path(path)

@@ -80,10 +80,10 @@ keeps the public surface visible at the top of each `mod.rs`.
 
 ## Cross-references
 
-- `docs/conventions.md` — naming, constructor verbs, builder rules.
-- `docs/binding-authors.md` — JNI / UniFFI / C ABI conventions.
-- `docs/architecture.md` — crate graph and high-level pipeline model.
-- `docs/deferred-features.md` — what's not yet supported and the
+- `docs/reference/conventions.md` — naming, constructor verbs, builder rules.
+- `docs/reference/binding-authors.md` — JNI / UniFFI / C ABI conventions.
+- `docs/reference/architecture.md` — crate graph and high-level pipeline model.
+- `docs/project/deferred-features.md` — what's not yet supported and the
   trigger to revisit.
 
 ## Examples in this codebase

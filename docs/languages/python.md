@@ -79,7 +79,7 @@ NumPy views over NAL / OBU / parameter-set payloads:
 pip install 'tstrans[pandas]'
 ```
 
-See [guide-python-pandas.md](guide-python-pandas.md) for the full
+See [Pandas + NumPy adapters](#pandas--numpy-adapters) below for the full
 integration guide.
 
 ## Design
@@ -112,8 +112,7 @@ below) for the `tstrans` Python package. Requires the `[pandas]` extra:
 pip install 'tstrans[pandas]'
 ```
 
-Without the extra, `tstrans` works as documented in
-[guide-python.md](guide-python.md). Calling any pandas adapter or any
+Without the extra, `tstrans` works as documented in the core modules above. Calling any pandas adapter or any
 NumPy `.payload_np` / `.raw_rbsp_np` / `.raw_np` accessor without the
 extra raises:
 

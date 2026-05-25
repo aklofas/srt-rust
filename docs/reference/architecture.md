@@ -7,15 +7,15 @@ internal structure of `tst-core`, and the pipeline composition model that
 ties the muxer, transport, and reconnect behaviour together. It targets
 evaluators sizing up the project and contributors finding their way around;
 integrators may want it as background but should start at
-[getting-started.md](getting-started.md) if they just want to use the
+[getting-started.md](/docs/start/quickstart.md) if they just want to use the
 library.
 
 The vocabulary established here — `Transport`, `RecvTransport`, "sender
 shell", "receive shell", the layering rule — is reused by the per-module
-guides ([guide-srt.md](guide-srt.md), [guide-klv.md](guide-klv.md),
-[guide-mpegts-mux.md](guide-mpegts-mux.md),
-[guide-mpegts-demux.md](guide-mpegts-demux.md),
-[guide-pipeline.md](guide-pipeline.md)). Read this first if you plan to
+guides ([guide-srt.md](/docs/guides/srt.md), [guide-klv.md](/docs/guides/klv.md),
+[guide-mpegts-mux.md](/docs/guides/mpegts-mux.md),
+[guide-mpegts-demux.md](/docs/guides/mpegts-demux.md),
+[guide-pipeline.md](/docs/guides/pipeline.md)). Read this first if you plan to
 read more than one of those.
 
 ## Crate graph
@@ -77,7 +77,7 @@ pre-emptive close), and `Stats` (live snapshot of libsrt's internal
 counters). The `url::SrtUrl` type parses `srt://host:port?key=value&…`
 into a builder overlay using libsrt's documented option vocabulary,
 and `addr::*` handles IPv4 / IPv6 sockaddr marshalling. See
-[guide-srt.md](guide-srt.md) for the full surface.
+[guide-srt.md](/docs/guides/srt.md) for the full surface.
 
 `tst-pipeline` is the composition layer that depends on the other crates.
 It is deliberately thin: its job is composition, not new behaviour. The
@@ -90,7 +90,7 @@ implementation. Metadata typing for both directions is `klv::st0601` /
 `Transport` + `RecvTransport` impl is `SrtTransport` in `tst-srt` over
 `tst_srt::Socket` — the same wrapper handles both directions on a connected
 socket. The opt-in `tst_pipeline::ext::pairing` module ships a stateful `Pairer` for
-KLV ↔ video pairing — see `docs/guide-pipeline.md` for the
+KLV ↔ video pairing — see `docs/guides/pipeline.md` for the
 nearest-PTS / sample-and-hold strategy chooser.
 
 ## The pipeline composition model
@@ -160,7 +160,7 @@ after a transport failure — RECOVER mode auto-resyncs to the next sync
 byte, STRICT mode fails fast. `RawSender` has no recovery contract by
 construction; one `send` either lands as one SRT message or returns an
 error. The full mechanics of each shell are covered in
-[guide-pipeline.md](guide-pipeline.md).
+[guide-pipeline.md](/docs/guides/pipeline.md).
 
 ## The receive pipeline
 
@@ -287,7 +287,7 @@ internals. The heavier path is a full async reactor backed by libsrt's
 `srt_epoll_*` family with `tokio::io::unix::AsyncFd` or equivalent
 registration — better scalability, much bigger surface to design and
 test. The choice is consumer-driven; until then the sync API stays. See
-[`docs/deferred-features.md`](deferred-features.md) for the current note.
+[`docs/project/deferred-features.md`](/docs/project/deferred-features.md) for the current note.
 
 Note that "sync" applies to the public API surface — internally, the
 `MuxSender` family uses an internal mutex so the data path is safe to
@@ -299,7 +299,7 @@ producing.
 ## What's deferred
 
 The summary below points at the canonical list once; each item maps to
-an entry in [`docs/deferred-features.md`](deferred-features.md).
+an entry in [`docs/project/deferred-features.md`](/docs/project/deferred-features.md).
 
 - AV1 / H.266 carriage ships; explicit non-goals remain — full AV1 Frame Header (decoder-scope), AV1 multi-OP, `AV1_video_descriptor`, AVIF helper, H.266 APS / Picture Header NAL parsing, multi-layer H.266, `stream_type 0x32`, AV1 on `0x80`.
 - Audio frame parsers — `codec::mpegaudio` (Layer I/II/III) and `codec::aac::adts` ship; LATM (`codec::aac::latm`) and AC-3 (`codec::ac3`) are still deferred.
@@ -308,10 +308,10 @@ an entry in [`docs/deferred-features.md`](deferred-features.md).
 - Other typed MISB sets — ST 0102 (Security LS) and ST 0903 (top-level VMTI + per-target `VTargetPack`) ship as sibling-layer typed views over the substrate; nested VMTI sets (VMask / VTracker / VChip / Algorithm Series / Ontology Series) and ST 0806 RVT remain pass-through.
 - Owned-projection variants on borrowed iterator types — `VTargetSeriesIter`, `KlvIterator`, and the indexed NAL iterator are borrow-coupled today; cross-language wrappability needs owned-by-value variants.
 - `serde` / `no_std` for `klv` — pure additive; behind feature flags when added.
-- `tst-c` receiver surface — fully shipped (`tst_raw_receiver_t` Phase 1 plan #59, `tst_receiver_t` Phase 2 plan #60, `tst_demux_receiver_t` + typed `tst_event_t` tagged union + multi-program demux Phase 3 plan #62), not deferred. Listed here for cross-reference only. The two genuinely-still-deferred C-ABI hooks are `add_byte_sink` fan-out and `tst_pairer_t` (both tracked in `docs/deferred-features.md`).
+- `tst-c` receiver surface — fully shipped (`tst_raw_receiver_t` Phase 1 plan #59, `tst_receiver_t` Phase 2 plan #60, `tst_demux_receiver_t` + typed `tst_event_t` tagged union + multi-program demux Phase 3 plan #62), not deferred. Listed here for cross-reference only. The two genuinely-still-deferred C-ABI hooks are `add_byte_sink` fan-out and `tst_pairer_t` (both tracked in `docs/project/deferred-features.md`).
 - Rustdoc lift to docs.rs — these markdown files are written CommonMark-clean so the lift is mechanical when scheduled.
 
-See [`docs/deferred-features.md`](deferred-features.md) for the
+See [`docs/project/deferred-features.md`](/docs/project/deferred-features.md) for the
 canonical list and the rationale for each entry.
 
 ## See also

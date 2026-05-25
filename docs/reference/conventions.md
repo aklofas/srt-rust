@@ -310,8 +310,8 @@ caller still has the config in hand to fix.
 
 ## See also
 
-- `docs/binding-authors.md` § "Builder ownership patterns" — distinguishes
+- `docs/reference/binding-authors.md` § "Builder ownership patterns" — distinguishes
   reusable builders (`SocketBuilder::connect(&self)`) from consuming
   constructors (`Sender::new(transport, config)`).
-- `docs/architecture.md` — crate boundaries and ownership.
+- `docs/reference/architecture.md` — crate boundaries and ownership.
 - `feedback_break_freely_prerelease.md` (memory) — pre-1.0 break policy.

@@ -10,7 +10,7 @@ packets, splits H.264 / H.265 NAL units, peels H.222.0 § 2.12.4.2
 `Sample`, `Metadata`, `Discontinuity`, `NonConformant`. Bytes need not
 be 188-aligned; the demuxer handles sync recovery internally.
 
-This is the symmetric pair to [guide-mpegts-mux.md](guide-mpegts-mux.md).
+This is the symmetric pair to [guide-mpegts-mux.md](/docs/guides/mpegts-mux.md).
 The muxer goes from typed inputs (NAL units + KLV blobs) to TS bytes;
 the demuxer goes from TS bytes back to typed events. They share the
 same vocabulary — `VideoCodec`, `KlvStreamType` ↔ `MetadataKind`, PSI
@@ -336,7 +336,7 @@ disambiguates via the `registration_descriptor` `format_identifier`
 `SamplePayload::Unknown { stream_type, raw }`. The PES payload is
 preserved verbatim. Audio not declared via the recognized stream_type
 bytes also falls through here; use `treat_as` to route by-PID. See
-[deferred-features.md](deferred-features.md).
+[deferred-features.md](/docs/project/deferred-features.md).
 
 ### Multi-cell AU cell reassembly
 
@@ -488,7 +488,7 @@ with runnable examples:
   state, no per-stream pairing logic.
 
 A potential `pipeline::pairing` opt-in helper module is captured in
-[deferred-features.md](deferred-features.md) — not part of this ship.
+[deferred-features.md](/docs/project/deferred-features.md) — not part of this ship.
 
 ## Common pitfalls
 
@@ -742,7 +742,7 @@ first program.
 ## What's deferred
 
 Each item below maps to an entry in
-[deferred-features.md](deferred-features.md).
+[deferred-features.md](/docs/project/deferred-features.md).
 
 - **`tst_pipeline::ext::pairing` opt-in helper** — pairing stays consumer-side
   via cookbook recipes; library-level helper is deferred.
@@ -752,5 +752,5 @@ Each item below maps to an entry in
 - **H.266 APS / Picture Header NAL parsers** — APS NALs (types 17 / 18)
   and Picture Header NALs (type 19) pass through unparsed today.
 
-See [compatibility.md](compatibility.md)'s `mpegts::demux` block for
+See [compatibility.md](/docs/reference/compatibility.md)'s `mpegts::demux` block for
 the full feature-by-feature status.

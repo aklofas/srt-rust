@@ -193,7 +193,7 @@ fields (carried on the VPS for the operating point set).
   encoder defaults).
 - `color_info` and `frame_rate` are surfaced as `None` today — VUI walking
   is stubbed pending the deeper SPS field-walk.
-- See [deferred-features.md](deferred-features.md).
+- See [deferred-features.md](/docs/project/deferred-features.md).
 
 ## AV1 quick start
 
@@ -256,7 +256,7 @@ rather than walking individual OBUs.
 - Operating points beyond 0 are walked past but not surfaced.
 - Tile Group / Metadata / Padding OBUs pass through as
   `Obu::Other { obu_type, payload }` without further parsing.
-- See [deferred-features.md](deferred-features.md).
+- See [deferred-features.md](/docs/project/deferred-features.md).
 
 ## Error handling
 
@@ -493,5 +493,5 @@ parses A/52 §5.4.1 syncframes (sync word `0x0B77`, bsid, frame size,
 sample rate, channel layout). Both shipped in Validate-1 Sprint 2
 (commits `c9835b9` + `0ead2f9`).
 
-See `docs/deferred-features.md` for any remaining audio surface that
+See `docs/project/deferred-features.md` for any remaining audio surface that
 hasn't shipped yet.

@@ -13,7 +13,7 @@ ITU-T H.222.0 V9 § 2.12.4.2) — the muxer auto-wraps for
 What this module is *not*: a TS demuxer. Pulling KLV out of a captured
 `.ts` file is done with FFmpeg / Bento4 / `cargo run -p tst-examples --example extract_klv`
 (see Section 11). TS demux in the Rust core is on the deferred list — see
-[`mpegts::demux`](deferred-features.md) in `deferred-features.md`.
+[`mpegts::demux`](/docs/project/deferred-features.md) in `deferred-features.md`.
 
 Pick the decode entry point that fits your situation: `decode` for
 general-purpose decoding (verifies checksum, accepts any UL); reach for
@@ -185,7 +185,7 @@ verifying decoders, missing mandatory tags under
 `decode_strict_compliance`).
 
 For the complete typed-item list — which tags are typed, which are still
-pass-through — see [compatibility.md](compatibility.md).
+pass-through — see [compatibility.md](/docs/reference/compatibility.md).
 
 ## Encoding
 
@@ -348,7 +348,7 @@ Seven nested/sibling Local Sets — `VMask`, `VTracker`, `VChip`,
 `VChipSeries`, `VObjectSeries` (per-target) plus `Algorithm Series`
 and `Ontology Series` (top-level) — stay as `Option<Vec<u8>>`
 pass-through bytes. Typed layers for those are deferred (see
-[`deferred-features.md`](deferred-features.md)).
+[`deferred-features.md`](/docs/project/deferred-features.md)).
 
 ### Sibling-layer pattern
 
@@ -425,14 +425,14 @@ for all spec-conformant input (modulo IMAPB quantization).
 
 ### Universal Set form
 
-Out of scope — see [`deferred-features.md`](deferred-features.md).
+Out of scope — see [`deferred-features.md`](/docs/project/deferred-features.md).
 
 ## Sync metadata AU cell carriage
 
 Synchronous KLV in MPEG-TS uses a 5-byte `Metadata_AU_cell` header per
 ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) to wrap each KLV
 record. The wrapper is an MPEG-TS systems-layer construct, not a KLV
-substrate concern — see [guide-mpegts-mux.md](guide-mpegts-mux.md) for
+substrate concern — see [guide-mpegts-mux.md](/docs/guides/mpegts-mux.md) for
 the carriage details. The muxer auto-wraps for
 `KlvStreamType::SynchronousMetadata` streams; the demuxer surfaces the
 parsed header fields on `MetadataKind::KlvSyncAuCell`.
@@ -595,23 +595,23 @@ Three steps to take a captured `.ts`, pull the KLV out, and decode it.
 ## What's deferred
 
 Each item below maps to an entry in
-[deferred-features.md](deferred-features.md).
+[deferred-features.md](/docs/project/deferred-features.md).
 
 - ST 0102 universal-set form — the LS form ships in `klv::st0102`;
   the parallel Universal Set encoding (16-byte UL per item) is not
-  implemented. See [deferred-features.md](deferred-features.md).
+  implemented. See [deferred-features.md](/docs/project/deferred-features.md).
 - ST 0102 country-code validation — codes pass through as `String`;
   no validation against ISO 3166 / GENC / FIPS 10-4 / STANAG 1059 /
-  CAPCO tables. See [deferred-features.md](deferred-features.md).
+  CAPCO tables. See [deferred-features.md](/docs/project/deferred-features.md).
 - Other typed sets (ST 0903 VMTI, ST 0806 RVT, ...) — the substrate
   supports them; per-tag tables are missing without a driving consumer.
-  See [deferred-features.md](deferred-features.md).
+  See [deferred-features.md](/docs/project/deferred-features.md).
 - `serde` integration for typed records — wire format and JSON aren't
   isomorphic; needs an explicit decision on unknown-tag representation.
-  See [deferred-features.md](deferred-features.md).
+  See [deferred-features.md](/docs/project/deferred-features.md).
 - `no_std` support — every shipping target has `std`; flipping to
   `no_std` means replacing `Vec` / `String` / `format!` with allocator
-  equivalents. See [deferred-features.md](deferred-features.md).
+  equivalents. See [deferred-features.md](/docs/project/deferred-features.md).
 - Streaming / chunked decode — today is buffer-in / buffer-out; a
   growable streaming decoder lands behind an explicit consumer ask.
-  See [deferred-features.md](deferred-features.md).
+  See [deferred-features.md](/docs/project/deferred-features.md).

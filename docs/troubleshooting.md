@@ -145,7 +145,7 @@ This shouldn't happen under default configuration — the producer-side CFI malf
 DemuxerBuilder::new().cfi_tolerance(false).build()  // strict — disables the rescue
 ```
 
-To restore tolerance, either remove the `.cfi_tolerance(false)` call or set it back to `true`. The demuxer then payload-validates the orphan cell as one complete KLV unit (SMPTE 336M UL prefix + BER length match) and, if it passes, emits the cell as `KlvSyncAuCell{Complete}` plus a `NonConformantIssue::CfiTolerated { pid, observed_cfi, treated_as }` diagnostic so the malformation remains visible to telemetry. See [guide-mpegts-demux.md](guide-mpegts-demux.md#malformed-cell_fragment_indication-tolerance-default-on) for the full contract.
+To restore tolerance, either remove the `.cfi_tolerance(false)` call or set it back to `true`. The demuxer then payload-validates the orphan cell as one complete KLV unit (SMPTE 336M UL prefix + BER length match) and, if it passes, emits the cell as `KlvSyncAuCell{Complete}` plus a `NonConformantIssue::CfiTolerated { pid, observed_cfi, treated_as }` diagnostic so the malformation remains visible to telemetry. See [guide-mpegts-demux.md](/docs/guides/mpegts-demux.md#malformed-cell_fragment_indication-tolerance-default-on) for the full contract.
 
 **I'm running a conformance suite and want spec-strict CFI handling**
 
@@ -157,7 +157,7 @@ Set `cfi_tolerance: false` on the `DemuxerConfig`. Orphan Middle/Last cells then
 
 Strict mode requires the input bytes to start with a TS sync byte (`0x47`) at offset 0 with the standard 188-byte cadence. If your upstream producer emits a partial packet at the boundary or has any byte-level offset, strict mode rejects rather than realigning.
 
-Fix: switch to `TsFramingMode::Recover` to auto-resync, or fix the producer to emit aligned bytes from the start. See [guide-pipeline.md](guide-pipeline.md) for the framing state machine details.
+Fix: switch to `TsFramingMode::Recover` to auto-resync, or fix the producer to emit aligned bytes from the start. See [guide-pipeline.md](/docs/guides/pipeline.md) for the framing state machine details.
 
 **Receiver gets garbled TS**
 
@@ -169,7 +169,7 @@ Fix: if the receiver is still seeing garble despite zero stats, the corruption i
 
 If you previously passed pre-wrapped bytes to `Muxer::push_klv` for a `KlvStreamType::SynchronousMetadata` stream (older library versions where the caller had to wrap), the muxer now double-wraps. Strip the outer wrapper and let the muxer wrap once.
 
-Fix: pass raw KLV LS bytes (16-byte SMPTE UL + BER length + body) to `Muxer::push_klv` / `MuxSender::send_klv`; the muxer auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156). PTS lives in the PES header (§ 2.12.4.1). Asynchronous KLV streams (`KlvStreamType::PrivateData`) pass the raw 0601 LS bytes through unchanged. See [guide-mpegts-mux.md](guide-mpegts-mux.md) for the synchronous vs. asynchronous distinction.
+Fix: pass raw KLV LS bytes (16-byte SMPTE UL + BER length + body) to `Muxer::push_klv` / `MuxSender::send_klv`; the muxer auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156). PTS lives in the PES header (§ 2.12.4.1). Asynchronous KLV streams (`KlvStreamType::PrivateData`) pass the raw 0601 LS bytes through unchanged. See [guide-mpegts-mux.md](/docs/guides/mpegts-mux.md) for the synchronous vs. asynchronous distinction.
 
 **`MuxError::KlvTooLarge`**
 
@@ -189,7 +189,7 @@ Fix: use the default `BackoffStrategy::Exponential { base: Duration::from_millis
 
 The gap buffer overflowed during the disconnect window. With the default `OverflowPolicy::DropOldest` newer messages displace older ones; with `OverflowPolicy::Reject` new sends fail outright. Either way, some messages were lost between the break and the reconnect.
 
-Fix: size `gap_buffer_capacity` to your worst-case disconnect window times your send rate. The default of 256 messages is fine for a 1 Hz KLV stream over a 4-minute outage; for higher-rate video you'll want to budget more aggressively. See [guide-pipeline.md](guide-pipeline.md) for the sizing math.
+Fix: size `gap_buffer_capacity` to your worst-case disconnect window times your send rate. The default of 256 messages is fine for a 1 Hz KLV stream over a 4-minute outage; for higher-rate video you'll want to budget more aggressively. See [guide-pipeline.md](/docs/guides/pipeline.md) for the sizing math.
 
 **`max_attempts` exhausted; subsequent sends return `TransportError::Closed`**
 

@@ -699,7 +699,7 @@ the trigger that would unblock it.
   methods all live in `tst-srt`. The `tst-c::connect_srt` helper now
   calls `SocketConfig::merge_sender_defaults` instead of inlining the
   merge logic. See the "Sender / receiver presets" section in
-  `docs/guide-srt.md`.
+  `docs/guides/srt.md`.
 
 ## URL parameter coverage — bigger Group 3 keys (audit Issue 6 Cat B/C)
 
@@ -971,7 +971,7 @@ the trigger that would unblock it.
   `Muxer::push_klv_to_with_config(handle, klv, pts,
   SyncKlvConfig { random_access_indicator,
   decoder_config_flag })` — following the workspace
-  `_with_config` constructor convention (see `docs/conventions.md`).
+  `_with_config` constructor convention (see `docs/reference/conventions.md`).
 
 ## ST 1910.1 KLV-in-CMAF-emsg-box delivery
 

@@ -4,7 +4,7 @@
 
 If you're new to `ts-transformer` and want to send and receive bytes in
 10 minutes, start here. For deeper context, see
-[architecture.md](architecture.md).
+[architecture.md](/docs/reference/architecture.md).
 
 This guide walks through three runnable snippets in order: a raw send,
 a raw receive, and a video-frame send through the pipeline shell. By
@@ -217,14 +217,14 @@ Useful filter targets:
 
 ## Where to go next
 
-- [architecture.md](architecture.md) — how the pieces fit together.
-- [guide-srt.md](guide-srt.md) — `Socket`, `Listener`, encryption,
+- [architecture.md](/docs/reference/architecture.md) — how the pieces fit together.
+- [guide-srt.md](/docs/guides/srt.md) — `Socket`, `Listener`, encryption,
   latency, stats.
-- [guide-klv.md](guide-klv.md) — encoding and decoding ST 0601 KLV.
-- [guide-mpegts-mux.md](guide-mpegts-mux.md) — the TS muxer's knobs.
-- [guide-pipeline.md](guide-pipeline.md) — picking among `MuxSender`,
+- [guide-klv.md](/docs/guides/klv.md) — encoding and decoding ST 0601 KLV.
+- [guide-mpegts-mux.md](/docs/guides/mpegts-mux.md) — the TS muxer's knobs.
+- [guide-pipeline.md](/docs/guides/pipeline.md) — picking among `MuxSender`,
   `Sender`, and `RawSender`.
 - [cookbook.md](cookbook.md) — recipes for common multi-step tasks.
 - [troubleshooting.md](troubleshooting.md) — common failure modes.
-- [compatibility.md](compatibility.md) — feature-by-feature support
+- [compatibility.md](/docs/reference/compatibility.md) — feature-by-feature support
   matrix.

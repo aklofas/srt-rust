@@ -11,7 +11,7 @@ Read this guide if your data path is byte-oriented and you handle the
 framing yourself. If instead you have NAL units plus KLV blobs, pre-muxed
 TS bytes, or arbitrary application messages and want reconnect plus
 optional gap-buffering on top of an SRT socket, read
-[guide-pipeline.md](guide-pipeline.md) — `tst_pipeline::*` composes
+[guide-pipeline.md](/docs/guides/pipeline.md) — `tst_pipeline::*` composes
 `tst_srt` into ready-made sender shells.
 
 For wire-protocol details, see the IETF draft `draft-sharabayko-srt`,
@@ -86,7 +86,7 @@ Two equivalent forms construct the same `Socket`:
   `connect(addr)`, which takes `&self` and clones the inner config so
   the builder can be reused. The shape translates directly to Kotlin's
   `apply { }`, Swift's mutable local, Java's chain, and Python's
-  step-wise — see `docs/binding-authors.md`. `ListenerBuilder` follows
+  step-wise — see `docs/reference/binding-authors.md`. `ListenerBuilder` follows
   the identical shape: `&mut self -> &mut Self` mutators, terminal
   `bind(addr)` taking `&self` and cloning the inner `ListenerConfig`.
 - The config struct — `SocketConfig` — is the canonical type. Every
@@ -272,7 +272,7 @@ delay. Tune by measurement.
 
 End-to-end latency in a `pipeline::*` shell adds the muxer's PCR/PSI
 cadence and any reconnect gap-buffer to the SRT-level latency above —
-see [guide-pipeline.md](guide-pipeline.md) for the full breakdown.
+see [guide-pipeline.md](/docs/guides/pipeline.md) for the full breakdown.
 
 ## Bandwidth and packet handling
 
@@ -333,7 +333,7 @@ identifiers in source. Filter logic is intentionally caller-side:
 `Listener::accept` returns every successful handshake and the
 application's accept loop decides whether to keep the connection. See
 "Stream-ID filtering on `Listener`" in
-[`docs/deferred-features.md`](deferred-features.md) for the rationale.
+[`docs/project/deferred-features.md`](/docs/project/deferred-features.md) for the rationale.
 
 ## Packet filters
 
@@ -360,7 +360,7 @@ The spec format — FEC column / row sizing, ARQ modes, filter chaining —
 is documented upstream at the Haivision libsrt repository
 (`Haivision/srt`). A typed FEC builder is deferred — see "Typed
 packet-filter / FEC builder" in
-[`docs/deferred-features.md`](deferred-features.md).
+[`docs/project/deferred-features.md`](/docs/project/deferred-features.md).
 
 ## `Stats`
 
@@ -450,7 +450,7 @@ Recovery summary:
 | `BindError::PermissionDenied` | No | Run with the right user / capability |
 
 `ManagedTransport` (in `pipeline::*`) automates the reconnect loop on
-`SendError::ConnectionBroken`. See [guide-pipeline.md](guide-pipeline.md).
+`SendError::ConnectionBroken`. See [guide-pipeline.md](/docs/guides/pipeline.md).
 
 ## Blocking semantics
 
@@ -499,7 +499,7 @@ match listener.accept_timeout(Duration::from_millis(500)) {
 ```
 
 There is no `set_nonblocking`. Async support is deferred — see the
-sync-vs-async section in [architecture.md](architecture.md).
+sync-vs-async section in [architecture.md](/docs/reference/architecture.md).
 
 ## URL parsing
 
@@ -580,13 +580,13 @@ About two dozen libsrt URL keys are recognized by name but not yet
 exposed (the parser knows them and rejects with `UrlError::UnsupportedKey`
 carrying the libsrt `SRTO_*` name so the operator can tell whether a
 URL was malformed or asked for an option this library doesn't ship
-yet). See [`deferred-features.md`](deferred-features.md) for the full
+yet). See [`deferred-features.md`](/docs/project/deferred-features.md) for the full
 list and the trigger to revisit each one.
 
 ## What's deferred
 
 Each item below maps to an entry in
-[`docs/deferred-features.md`](deferred-features.md).
+[`docs/project/deferred-features.md`](/docs/project/deferred-features.md).
 
 - Reactor / async / `srt_epoll_*` exposure — connection counts of ten
   or fewer per process make thread-per-connection adequate.

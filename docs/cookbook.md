@@ -173,7 +173,7 @@ Runnable: [../examples/muxing/mux_to_file.rs](../examples/muxing/mux_to_file.rs)
 
 Reach for this when the encoder produces HEVC, or when the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15) instead of the default async private-data shape. Three knobs flip on `MuxerConfig`: codec → `H265`, KLV stream type → `SynchronousMetadata`, `carries_pts` → `true`.
 
-**Sync KLV auto-wraps in the muxer.** When you configure `KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) before TS-framing. Pass raw KLV LS bytes — do not pre-wrap. PTS lives in the PES header (per § 2.12.4.1). See [guide-mpegts-mux.md](guide-mpegts-mux.md) §"KLV-in-TS modes".
+**Sync KLV auto-wraps in the muxer.** When you configure `KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) before TS-framing. Pass raw KLV LS bytes — do not pre-wrap. PTS lives in the PES header (per § 2.12.4.1). See [guide-mpegts-mux.md](/docs/guides/mpegts-mux.md) §"KLV-in-TS modes".
 
 ```rust,no_run
 use tst_core::mpegts::mux::{
@@ -1083,7 +1083,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-Runnable: [../examples/codec-parsing/parse_video_parameters.rs](../examples/codec-parsing/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guide-codec.md` for the decoder-replay section.
+Runnable: [../examples/codec-parsing/parse_video_parameters.rs](../examples/codec-parsing/parse_video_parameters.rs) shows the full demux-to-parse loop; see `docs/guides/codec.md` for the decoder-replay section.
 
 ### 29. Pull sample rate and channel count out of an audio stream
 
@@ -1187,7 +1187,7 @@ Runnable: [../examples/operations/managed_reconnect.rs](../examples/operations/m
 
 Reach for this when building an operational dashboard, instrumenting a sender for production telemetry, or debugging packet loss in the field. `Socket::stats()` returns a snapshot of libsrt's per-socket counters — call it periodically and surface the deltas.
 
-The most operationally interesting fields on a sender: `bytes_sent`, `packets_lost_send_side`, `packets_retransmitted`, `rtt`, and `mbps_estimated_bandwidth`. (Loss/drop counters are split by which side observed them — read `*_send_side` on a sender, `*_recv_side` on a receiver.) There's no standalone example for this; see [guide-srt.md](guide-srt.md) §`Stats` for the full field list and [../examples/operations/managed_reconnect.rs](../examples/operations/managed_reconnect.rs) for similar peer-thread observation patterns.
+The most operationally interesting fields on a sender: `bytes_sent`, `packets_lost_send_side`, `packets_retransmitted`, `rtt`, and `mbps_estimated_bandwidth`. (Loss/drop counters are split by which side observed them — read `*_send_side` on a sender, `*_recv_side` on a receiver.) There's no standalone example for this; see [guide-srt.md](/docs/guides/srt.md) §`Stats` for the full field list and [../examples/operations/managed_reconnect.rs](../examples/operations/managed_reconnect.rs) for similar peer-thread observation patterns.
 
 ```rust,no_run
 use tst_srt::SocketBuilder;
@@ -1211,7 +1211,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-No standalone example; see [../examples/operations/managed_reconnect.rs](../examples/operations/managed_reconnect.rs) and [guide-srt.md](guide-srt.md) §`Stats`.
+No standalone example; see [../examples/operations/managed_reconnect.rs](../examples/operations/managed_reconnect.rs) and [guide-srt.md](/docs/guides/srt.md) §`Stats`.
 
 ### 20. Inject WebVTT POI cues into a live MPEG-TS uplink
 

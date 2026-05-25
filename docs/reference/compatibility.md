@@ -395,7 +395,7 @@ Composite views layered on top: `GeoPoint`, `Attitude`, `FieldOfView`,
 Stateless typed parsers for codec parameter sets. The demuxer event surface
 is unchanged — NAL bytes surface as `NalUnit` with raw RBSP. Consumers call
 these parsers explicitly when they need typed fields (resolution, profile,
-level, color, frame rate). See [`guide-codec.md`](guide-codec.md).
+level, color, frame rate). See [`guide-codec.md`](/docs/guides/codec.md).
 
 | Codec | Rust core | C ABI |
 | --- | --- | --- |

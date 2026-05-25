@@ -147,6 +147,15 @@ jobs:
         # never exported, so C callers had no constants).
         run: bash scripts/check-c-header-mirror-enum-export.sh
 
+      - name: Check doc ABI and ST 1910 currency
+        # Plan #96 Wave D ratchet — fails on stale `ABI version 0.[0-3]`
+        # in README/docs/crate docs, on bare `ST 1910` mis-cites in
+        # README/crates (correct cite for MPEG-TS Metadata_AU_cell is
+        # H.222.0 §2.12.4.2; `ST 1910.1` with the .1 suffix is allowed
+        # everywhere since it's a distinct CMAF/HLS standard), and on
+        # `receiver-surface ... pending` wording in tst-c crate docs.
+        run: bash scripts/check-doc-abi-and-st1910-currency.sh
+
       - name: cargo fmt --check
         run: cargo fmt --all -- --check
 

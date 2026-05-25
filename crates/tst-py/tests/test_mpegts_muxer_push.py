@@ -167,9 +167,9 @@ def _minimal_aac_frame() -> bytes:
 def _minimal_klv_ls() -> bytes:
     """16-byte SMPTE UL + 1-byte BER + 0-byte body = minimal LS bytes.
 
-    The muxer auto-prepends the 5-byte ST 1910 AU cell header for
-    SynchronousMetadata streams (CLAUDE.md "KLV AU cell auto-wrap"),
-    so callers pass raw KLV LS bytes only.
+    The muxer auto-prepends the 5-byte `Metadata_AU_cell` header per
+    ITU-T H.222.0 §2.12.4.2 for SynchronousMetadata streams (CLAUDE.md
+    "KLV AU cell auto-wrap"), so callers pass raw KLV LS bytes only.
     """
     return b"\x06\x0E\x2B\x34\x02\x0B\x01\x01\x0E\x01\x03\x01\x01\x00\x00\x00\x00"
 

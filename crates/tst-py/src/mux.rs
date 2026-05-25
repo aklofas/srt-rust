@@ -1151,8 +1151,8 @@ impl PyMuxer {
     /// Push one KLV local-set onto the lone configured KLV stream.
     ///
     /// `klv` is raw KLV LS bytes — for `SynchronousMetadata` streams
-    /// the muxer auto-prepends the 5-byte ST 1910 Metadata AU cell
-    /// header per H.222.0 V9 §2.12.4.2; callers must NOT pre-wrap.
+    /// the muxer auto-prepends the 5-byte `Metadata_AU_cell` header
+    /// per ITU-T H.222.0 V9 §2.12.4.2; callers must NOT pre-wrap.
     /// `PrivateData` streams pass `klv` through as-is.
     ///
     /// `metadata_service_id` selects which service the metadata AU

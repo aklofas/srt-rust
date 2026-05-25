@@ -261,16 +261,26 @@ three-tier scheme exposed through `tstrans.h`:
   incompatible change to the ABI shape. **0** today.
 - `TST_ABI_VERSION_MINOR` — incremented on additive, source-compatible
   changes (new event kinds, new C entry points, new error codes).
-  **2** today (last bumped when `ManagedDemuxReceiver` was wired into
-  `tst-c` and `TST_EVENT_RECONNECT_DISCONTINUITY = 6` was added).
+  **4** today. History (additive bumps only — major stays at 0 pre-1.0):
+    - `1` (plan #62): receiver-surface initial drop.
+    - `2` (validate-1 Phase 2 wrap-up): `ManagedDemuxReceiver` wired into
+      `tst-c`; `TST_EVENT_RECONNECT_DISCONTINUITY = 6` added; TS-bytes
+      raw-receiver pull-loop hardening + F2 C-ABI shape additions.
+    - `3` (AU cell reassembly, 2026-05-24): `TstMultiCellAuReason` +
+      `multi_cell_au_reason` field on `TstEventNonConformant`.
+    - `4` (AU cell CFI tolerance, 2026-05-24):
+      `TstNonConformantCode::CfiTolerated` (= 32) + `TstCellFragmentIndication`
+      enum + `tst_demux_config_set_cfi_tolerance` setter. The new variant
+      reuses the existing `cc_expected` + `cc_observed` field carriers
+      to surface `observed_cfi` + `treated_as` without growing the struct.
 - `TST_ABI_VERSION_PATCH` — incremented on internal fixes that
   preserve both shape and behaviour.
 
 Bindings should compile-time-assert the minor they require:
 
 ```c
-#if TST_ABI_VERSION_MAJOR != 0 || TST_ABI_VERSION_MINOR < 2
-#  error "this binding requires tst-c ABI ≥ 0.2"
+#if TST_ABI_VERSION_MAJOR != 0 || TST_ABI_VERSION_MINOR < 4
+#  error "this binding requires tst-c ABI ≥ 0.4"
 #endif
 ```
 

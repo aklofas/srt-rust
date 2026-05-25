@@ -50,7 +50,7 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 /// | Kotlin | Drain via `flush()` + `nextEvent()`, then let GC reclaim |
 /// | Swift | `deinit` calls drop; explicit `flush()` + drain before exit |
 /// | Python | `demuxer.flush()` + drain at end-of-stream; let GC reclaim |
-/// | C | (deferred to per-binding plan — receiver-surface C ABI is P0) |
+/// | C | `tst_demux_receiver_recv_event(p, &out_event)` drains into an arena-lifetime `tst_event_t`; `tst_demux_receiver_close(p)` releases the handle |
 #[derive(Debug)]
 pub struct Demuxer {
     pub(super) options: DemuxerConfig,

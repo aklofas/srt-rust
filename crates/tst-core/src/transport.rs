@@ -13,38 +13,37 @@ use thiserror::Error;
 
 /// Wire-level transport stats sourced from the underlying network library.
 ///
-/// For SRT transports these mirror `CBytePerfMon`'s cumulative fields
-/// (since-connect totals, NOT since-last-call interval rates). For other
-/// transport implementors that don't expose comparable telemetry, the
-/// [`Transport::socket_stats`] / [`RecvTransport::socket_stats`] accessor
-/// returns `None`.
-///
 /// All bandwidth fields are in bits per second; RTT is in microseconds;
-/// buffer-depth fields are in packets. See per-field rustdoc on the
-/// members below for libsrt source mappings.
+/// buffer-depth fields are in packets. Transport implementations that
+/// don't expose a particular value report `0` (or `None` from
+/// [`Transport::socket_stats`] / [`RecvTransport::socket_stats`] for the
+/// whole struct if no telemetry is available).
 ///
-/// The field set is libsrt-flavored by design; a future RIST or WebRTC
-/// transport would map what it can into these fields and zero the rest.
+/// **Per-transport mapping documentation:** each concrete `Transport` impl
+/// documents the source of each field in its own rustdoc — see
+/// [`SrtTransport`](https://docs.rs/tst-srt/latest/tst_srt/transport/struct.SrtTransport.html)
+/// for the libsrt `CBytePerfMon` mapping; future `RtpTransport` will
+/// document its RTCP-derived sources.
+///
 /// Pre-1.0 the struct is `#[non_exhaustive]` so adding a field is not a
 /// breaking change.
 #[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub struct SocketStats {
-    /// Smoothed round-trip time, microseconds. libsrt sources from
-    /// `CBytePerfMon::msRTT` (f64 ms); the SRT impl rounds to nearest
-    /// µs and saturates at `u32::MAX` (~71 minutes). `0` means "not yet
-    /// measured" (pre-first-RTT).
+    /// Smoothed round-trip time in microseconds. `0` means "not yet
+    /// measured" (no samples observed). Transports that don't expose RTT
+    /// report `0`; saturates at `u32::MAX` (~71 minutes) where the
+    /// underlying value exceeds the field range.
     pub rtt_us: u32,
 
-    /// Send-rate estimate, bits per second. From `mbpsSendRate` × 1e6
-    /// rounded and saturated.
+    /// Send-rate estimate in bits per second (application-observed, not
+    /// link-layer). `0` when the transport doesn't compute this.
     pub send_bandwidth_bps: u64,
-    /// Receive-rate estimate, bits per second. From `mbpsRecvRate` × 1e6
-    /// rounded and saturated.
+    /// Receive-rate estimate in bits per second. `0` when not computed.
     pub recv_bandwidth_bps: u64,
-    /// Link-capacity estimate, bits per second. From `mbpsBandwidth` × 1e6
-    /// rounded and saturated.
+    /// Link-capacity estimate in bits per second. `0` when the transport
+    /// has no link estimate (RTP, for example).
     pub link_bandwidth_bps: u64,
 
     /// Bytes accepted by the transport for send, cumulative since connect.
@@ -60,33 +59,31 @@ pub struct SocketStats {
     /// read `0`.
     pub packets_received: u64,
 
-    /// Bytes lost (network drops, not recovered). From
-    /// `CBytePerfMon::byteRcvLossTotal`.
+    /// Bytes lost (network drops, not recovered). `0` when the transport
+    /// can't compute byte-level loss from its loss-detection mechanism
+    /// (RTP, for example, detects loss via sequence-number gaps which
+    /// don't carry byte counts).
     pub bytes_lost_recv: u64,
-    /// Packets lost on the receive side, cumulative. From
-    /// `CBytePerfMon::pktRcvLossTotal`.
+    /// Packets lost on the receive side, cumulative.
     pub packets_lost_recv: u64,
-    /// Packets declared lost on the send side via receiver NAK feedback.
-    /// From `CBytePerfMon::pktSndLossTotal`. libsrt does not expose a
-    /// matching byte counter, so there is no `bytes_lost_send` field.
+    /// Packets declared lost on the send side via receiver feedback
+    /// (NAKs for SRT, RTCP RR fraction-lost for RTP).
     pub packets_lost_send: u64,
 
     /// Retransmitted packets (sender-side; sum over all retransmit rounds).
-    /// From `CBytePerfMon::pktRetransTotal`.
+    /// `0` for transports without retransmission (plain RTP without
+    /// RFC 4588 NACK).
     pub packets_retransmitted: u64,
 
-    /// Packets dropped by the send-side libsrt buffer (overrun or
-    /// drop-late). From `CBytePerfMon::pktSndDropTotal`.
+    /// Packets dropped by the send-side buffer (overrun or drop-late).
     pub packets_dropped_send: u64,
-    /// Packets dropped by the receive-side libsrt buffer. From
-    /// `CBytePerfMon::pktRcvDropTotal`.
+    /// Packets dropped by the receive-side buffer.
     pub packets_dropped_recv: u64,
 
     /// Current send-side buffer occupancy in packets. Spot reading; not
-    /// cumulative. From `CBytePerfMon::pktSndBuf`.
+    /// cumulative. `0` when the transport doesn't expose buffer occupancy.
     pub send_buffer_packets: u32,
     /// Current receive-side buffer occupancy in packets. Spot reading.
-    /// From `CBytePerfMon::pktRcvBuf`.
     pub recv_buffer_packets: u32,
 }
 

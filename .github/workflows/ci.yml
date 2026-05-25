@@ -359,6 +359,30 @@ jobs:
         # build so a missing exception-mapping arm fails CI fast.
         run: bash scripts/check-py-codec-error-mapping-coverage.sh
 
+      - name: check-py-demux-error-mapping-coverage
+        # Plan #96 Wave G (Finding 12): every DemuxError variant must be
+        # mapped explicitly in `demux_error_to_pyerr` instead of routing
+        # silently to INTERNAL through the non_exhaustive wildcard.
+        run: bash scripts/check-py-demux-error-mapping-coverage.sh
+
+      - name: check-py-klv-decode-error-mapping-coverage
+        # Plan #96 Wave G (Finding 12): same guardrail for KlvDecodeError
+        # — every variant maps to a specific KlvErrorKind, not INTERNAL.
+        run: bash scripts/check-py-klv-decode-error-mapping-coverage.sh
+
+      - name: check-py-klv-encode-error-mapping-coverage
+        # Plan #96 Wave G (Finding 12): same guardrail for KlvEncodeError
+        # — every variant maps to a specific KlvEncodeErrorKind, not the
+        # BUFFER_TOO_SMALL wildcard fallback.
+        run: bash scripts/check-py-klv-encode-error-mapping-coverage.sh
+
+      - name: check-py-non-conformant-kind-coverage
+        # Plan #96 Wave G (Finding 12): NonConformantKind is the public
+        # analytics surface. Verify every Rust NonConformantIssue variant
+        # has an arm in `non_conformant_kind_name` and every output kind
+        # string is a member of the Python NonConformantKind enum.
+        run: bash scripts/check-py-non-conformant-kind-coverage.sh
+
       - name: Install build prerequisites
         run: |
           sudo apt-get update

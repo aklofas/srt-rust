@@ -6,6 +6,7 @@ members = [
     "crates/tst-pipeline",
     "crates/tst-srt",
     "crates/tst-test-helpers",
+    "crates/tst-rtp",
     "crates/tst-c",
     "crates/tst-py",
     "examples",

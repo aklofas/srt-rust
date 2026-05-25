@@ -1,0 +1,26 @@
+[package]
+name        = "tst-rtp"
+description = "TS Transformer RTP transport: RTP-over-UDP carrying MPEG-TS (RFC 2250). Pure Rust, no native deps. Phase 1: data plane only — no RTSP, no RTCP."
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+tst-core   = { path = "../tst-core" }
+thiserror  = { workspace = true }
+# Random SSRC + initial RTP sequence number per RFC 3550 §5.1.
+# getrandom is the minimal dep — sized for one-shot construction-time use.
+getrandom  = "0.2"
+# Single facade for diagnostics workspace-wide.
+tracing    = { version = "0.1", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+tst-pipeline     = { path = "../tst-pipeline" }
+tst-test-helpers = { path = "../tst-test-helpers" }
+proptest         = { workspace = true }

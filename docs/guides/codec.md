@@ -1,15 +1,27 @@
 # Codec Parameter Set Guide
 
+
+> **Who this is for:** You're parsing video or audio elementary streams — H.264 / H.265 / H.266 / AV1 NAL units; AAC ADTS / MPEG-2 audio frames — and need typed access to parameter sets, slice headers, sample-rate / channel info.
+
+> **You will learn:**
+> - The NAL-unit model for H.264 / H.265 / H.266 (and the OBU model for AV1)
+> - How to extract SPS / PPS / VPS parameter sets for decoder warm-start
+> - The slice-header-light parsers added in tst-py Phase 5
+> - How audio frame parsers expose sample rate, channel layout, frame length
+> - How `Sample.payload` typing in Python varies by codec (NalUnit / Obu / AdtsFrame / Mpeg2AudioFrame / bytes)
+> - The AV1 `Mpeg2TsBinding` vs `InteropRawObu` carriage modes
+
 ## What this module is
 
-`tst_srt::codec` provides typed payload parsers for codec parameter sets —
-stateless functions that operate on raw NAL unit bytes from the demuxer.
+When you have raw NAL units from the demuxer and need typed fields out of
+them — width, height, profile, level, color space, frame rate, slice type —
+`tst_core::codec` is the parser layer. It provides stateless functions that
+operate on raw NAL unit bytes (or AV1 OBUs, or audio frame bytes).
 
 When `mpegts::demux` surfaces a `DemuxEvent::Sample`, the NAL units within
 it are raw RBSP bytes with the TS framing and PES reassembly stripped. The
 demuxer does not parse the NAL content further. Consumers that need typed
-fields — width, height, profile, level, color space, frame rate — call into
-the `codec::h264` or `codec::h265` parsers explicitly.
+fields call into the `codec::h264` or `codec::h265` parsers explicitly.
 
 This design keeps the demuxer surface minimal and dependency-free. You only
 pay for codec parsing when you need it, and the codec parsers have no
@@ -495,3 +507,10 @@ sample rate, channel layout). Both shipped in Validate-1 Sprint 2
 
 See `docs/project/deferred-features.md` for any remaining audio surface that
 hasn't shipped yet.
+
+## See also
+
+- **Runnable example:** `cargo run -p tst-examples --example parse_video_parameters` — [examples/codec-parsing/parse_video_parameters.rs](/examples/codec-parsing/parse_video_parameters.rs)
+- **Runnable example:** `cargo run -p tst-examples --example parse_audio_frames` — [examples/codec-parsing/parse_audio_frames.rs](/examples/codec-parsing/parse_audio_frames.rs)
+- [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — where the NAL units come from in the first place.
+- [reference/architecture.md](/docs/reference/architecture.md) — how `tst-core::codec` fits into the wider crate graph.

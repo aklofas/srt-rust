@@ -102,17 +102,19 @@ def _vmti_with_color(color):
 
 
 def test_encode_vtarget_pack_color_2tuple_raises():
-    """A 2-element target_color must raise ValueError, not silently drop."""
-    rec = _vmti_with_color((1, 2))
+    """A 2-element target_color must raise ValueError. Audit-2 #4 moved
+    validation to construction time (__post_init__) so the error now fires
+    at VTargetPack(...) rather than at encode_vmti(...)."""
     with pytest.raises(ValueError, match="target_color"):
-        encode_vmti(rec)
+        _vmti_with_color((1, 2))
 
 
 def test_encode_vtarget_pack_color_4tuple_raises():
-    """A 4-element target_color must raise ValueError, not silently drop."""
-    rec = _vmti_with_color((1, 2, 3, 4))
+    """A 4-element target_color must raise ValueError. Audit-2 #4 moved
+    validation to construction time (__post_init__) so the error now fires
+    at VTargetPack(...) rather than at encode_vmti(...)."""
     with pytest.raises(ValueError, match="target_color"):
-        encode_vmti(rec)
+        _vmti_with_color((1, 2, 3, 4))
 
 
 def test_encode_vtarget_pack_color_3tuple_ok():

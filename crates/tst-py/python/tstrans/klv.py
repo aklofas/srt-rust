@@ -109,6 +109,12 @@ class TimeStatus:
 
     raw: int
 
+    def __post_init__(self) -> None:
+        # Audit-2 #4 — the wire field is a single byte (0..=255); reject
+        # out-of-range values early so callers see the construction site.
+        if not 0 <= self.raw <= 0xFF:
+            raise ValueError(f"TimeStatus.raw must be 0..=255; got {self.raw}")
+
     @property
     def is_locked(self) -> bool:
         """True if bit 7 = 0 (clock locked to absolute time reference)."""
@@ -302,6 +308,24 @@ class VTargetPack:
     4=Active-Coasting. Typed enum deferred — stays as raw `int`."""
 
     target_id: int  # BER-OID, capped at u32::MAX
+
+    def __post_init__(self) -> None:
+        # Audit-2 #4 — target_color encodes as a 3-byte RGB value on the
+        # wire (ST 0903.6 §10.2.2.8 Tag 8, 3 bytes); validate at
+        # construction so callers see the error at their code site rather
+        # than at the encode boundary.
+        if self.target_color is not None:
+            tc = self.target_color
+            if len(tc) != 3:
+                raise ValueError(
+                    f"VTargetPack.target_color must be a 3-tuple (R, G, B); "
+                    f"got length {len(tc)}"
+                )
+            if not all(0 <= ch <= 255 for ch in tc):
+                raise ValueError(
+                    f"VTargetPack.target_color channels must be 0..=255; "
+                    f"got {tc!r}"
+                )
     centroid_pixel: int | None = None
     bbox_top_left_pixel: int | None = None
     bbox_bottom_right_pixel: int | None = None
@@ -459,6 +483,17 @@ class UasDatalinkLs:
 
     universal_label: bytes = b"\x00" * 16
     declared_version: int = 0
+
+    def __post_init__(self) -> None:
+        # Audit-2 #4 — universal_label is the SMPTE UL identifying this LS;
+        # it is always exactly 16 bytes on the wire. Reject other lengths
+        # at construction rather than at the encoder/PyO3 boundary.
+        if len(self.universal_label) != 16:
+            raise ValueError(
+                f"UasDatalinkLs.universal_label must be exactly 16 bytes; "
+                f"got {len(self.universal_label)}"
+            )
+
     # Identity
     mission_id: str | None = None
     platform_tail_number: str | None = None

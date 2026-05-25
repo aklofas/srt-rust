@@ -73,19 +73,19 @@ def test_encode_strict_compliance_missing_mandatory_raises():
 
 
 def test_encode_universal_label_3_bytes_raises():
-    """A 3-byte universal_label must raise ValueError, not be silently
-    replaced with the default 16-byte zero UL."""
-    rec = UasDatalinkLs(universal_label=b"\x06\x0e\x2b")
+    """A 3-byte universal_label must raise ValueError. Audit-2 #4 moved
+    validation to construction time (__post_init__) so the error now fires
+    at UasDatalinkLs(...) rather than at encode_uas_datalink(...)."""
     with pytest.raises(ValueError, match="universal_label"):
-        encode_uas_datalink(rec)
+        UasDatalinkLs(universal_label=b"\x06\x0e\x2b")
 
 
 def test_encode_universal_label_17_bytes_raises():
-    """A 17-byte universal_label must raise ValueError, not be silently
-    truncated or dropped."""
-    rec = UasDatalinkLs(universal_label=b"\x00" * 17)
+    """A 17-byte universal_label must raise ValueError. Audit-2 #4 moved
+    validation to construction time (__post_init__) so the error now fires
+    at UasDatalinkLs(...) rather than at encode_uas_datalink(...)."""
     with pytest.raises(ValueError, match="universal_label"):
-        encode_uas_datalink(rec)
+        UasDatalinkLs(universal_label=b"\x00" * 17)
 
 
 def test_encode_universal_label_16_bytes_ok():

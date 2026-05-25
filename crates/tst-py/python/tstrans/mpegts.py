@@ -33,6 +33,15 @@ class Pts90khz:
 
     raw: int
 
+    def __post_init__(self) -> None:
+        # Audit-2 #4 — fail-fast on out-of-i64 values; Rust extracts as
+        # i64 and would raise OverflowError later anyway, but the early
+        # ValueError points at the user's construction site.
+        if not -(1 << 63) <= self.raw <= (1 << 63) - 1:
+            raise ValueError(
+                f"Pts90khz.raw must fit signed i64; got {self.raw}"
+            )
+
     @classmethod
     def from_raw(cls, ticks: int) -> "Pts90khz":
         return cls(raw=int(ticks))

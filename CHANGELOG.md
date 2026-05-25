@@ -7,6 +7,38 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Plan #96 closeout-audit validation follow-ups (2026-05-25)
+
+Static-validation review of the plan #96 closeout commits (see `docs/analysis/2026-05-25-closeout-fixes-validation.md`) surfaced 6 follow-up findings: 2 release-blocking (ABI minor not bumped despite new C entry points; stale `_close` lifecycle docs), 1 medium (subtitle config validation less strict than `DemuxerConfig`), 3 low (docstring + field-comment + test-helper-stability wording drifts). All 6 closed via 6-worktree parallel SDD; no Rust functional changes (Finding 6 was doc-only by design). BASELINE 162 unchanged. **C ABI minor bumped 4 → 5** per `docs/binding-authors.md` policy.
+
+**Changed:**
+
+- `TST_ABI_VERSION_MINOR` bumped **4 → 5**. The plan #96 Wave B commit (`dc923e4`) added 3 new C entry points (`tst_demux_config_set_av1_carriage`, `_set_au_cell_cap_per_pid`, `_set_lenient_psi_reassembly`) plus the `TstAv1CarriageMode` enum (cbindgen alias `tst_av1_carriage_mode`, macros `TST_AV1_CARRIAGE_MODE_MPEG2_TS_BINDING` / `_INTEROP_RAW_OBU`). Per `docs/binding-authors.md` policy, new C entry points trigger an additive minor bump; the v1 plan #96 changelog entry's "unchanged at 4 (no bump needed per project policy)" wording contradicted that policy and was corrected in the same commit that bumped the constant. Ratchet `scripts/check-doc-abi-and-st1910-currency.sh` regex extended to forbid `ABI version 0.[0-4]`.
+- `docs/compatibility.md` row for `Lifecycle (_open / _close)`: dropped stale "`_close` is idempotent and NULL-safe; close-from-any-thread serializes through `Mutex<Option<...>>`" wording. Now matches the per-function rustdoc that Wave F established: NULL is a no-op; after a successful close the pointer is invalid and calling close again on the same non-null pointer is undefined behavior. Concurrent close-from-multiple-threads on the same live pointer is also UB.
+- `tstrans.mpegts.DvbSubtitlingConfig.__post_init__` + `DvbTeletextConfig.__post_init__`: now reject `bool` for numeric fields (`bool` is a subclass of `int` in Python — silently passed through before) and tightened `language` from `bytes | bytearray` to `bytes` only (the dataclasses are `frozen=True, slots=True`; allowing mutable `bytearray` weakened the immutability/hashability story). Mirrors the stricter `DemuxerConfig.__post_init__` validation pattern shipped by Wave H.
+- `tst_py::mux::Muxer::push_subtitle` docstring: corrected the misleading "Argument order follows the Rust API: `(payload, *, pts)`" claim. The Rust API is `push_subtitle(pts, payload)`; audit-2 #9 normalized the Python `push_*` family to a uniform `(payload, *, pts)` shape. The docstring now states this explicitly.
+- `tst_core::io_file::TryDemuxFromFile::pending_error` field comment: now accurately describes the three-phase flow (stage error on read/feed failure → drain buffered events → emit staged error + set `done = true`). Previous comment incorrectly claimed `done = true` was set at the SAME time the error was staged.
+- `tst_c::demux_config::test_build_options` rustdoc: added an explicit "Stability" note documenting that the `test_` prefix + `#[doc(hidden)]` follows the established convention in this crate (matches `lib.rs::test_clear_last_error` and siblings). The function is required to be `pub` because integration tests under `tests/` are separate crates that cannot see `pub(crate)` items.
+
+**Tests added:**
+
+- Python: 8 new tests in `crates/tst-py/tests/test_mpegts_muxer_push.py` covering bool-as-int rejection on all 6 numeric subtitle-config fields plus bytearray-as-bytes rejection on `language` for both `DvbSubtitlingConfig` and `DvbTeletextConfig`. pytest total: 708 (default; +8 vs plan #96 closeout's 698 → 700-ish + sibling diff). No Rust tests added (all other follow-ups are doc-only).
+
+**`cargo public-api` drift:** none — all changes are doc comments, Python wrappers, docs, or const-value bumps. The 3 ratcheted crates (tst-core / tst-pipeline / tst-srt) are unaffected.
+
+**Commits (in main order):**
+
+- `2e527d1` — Fix #1: tst-c ABI minor 4 → 5
+- `5671034` — Fix #2: docs/compatibility _close wording
+- `4b38338` — Fix #3: tighten subtitle config validation
+- `e32dd45` — Fix #4: push_subtitle docstring
+- `34deca7` — Fix #5: TryDemuxFromFile::pending_error field comment
+- `2f4a7f2` — Fix #6: test_build_options stability rustdoc
+
+Validation report: `docs/analysis/2026-05-25-closeout-fixes-validation.md`.
+
+---
+
 ## [Unreleased] — Core + C ABI + Python closeout audit fixes (2026-05-25)
 
 Plan #96. 16 of 17 findings from `docs/analysis/2026-05-25-core-c-python-closeout-audit.md` closed (F13 invalidated during validation — no actual double-insert in `codec_parse_error_to_pyerr`'s `ReservedValue` arm). Shipped via 8-worktree parallel SDD (Waves A–H) + 1 sequential scaffold cleanup (Wave I) + 1 cross-wave fix + 1 H+B coordination follow-up. `#[non_exhaustive]` BASELINE stays at **162**; bash ratchet count goes from 14 to **20**.

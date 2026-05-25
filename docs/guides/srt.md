@@ -1,11 +1,23 @@
 # SRT Transport Guide
 
+
+> **Who this is for:** You're integrating the SRT transport layer — opening sockets, listeners, builders; tuning latency / encryption / reconnect.
+
+> **You will learn:**
+> - How `Socket`, `Listener`, and `SocketBuilder` compose
+> - How to enable AES encryption with a passphrase
+> - The full set of supported SRT URL query parameters
+> - How `SrtCancelHandle` lets you cancel blocking I/O from another thread
+> - How `ManagedTransport` wraps a Socket for automatic reconnect
+> - When to use `SrtTransport` vs `SrtRecvTransport`
+
 ## Introduction
 
-This guide covers `tst_srt` — the safe `Socket` and `Listener`
-layer over libsrt 1.5.5. It targets Rust developers sending or receiving
-raw SRT messages directly: handshake, encryption, latency tuning, stream
-identification, statistics, and the per-call error model.
+When you need to send or receive raw SRT messages directly — handshake,
+encryption, latency tuning, stream identification, statistics, and the per-call
+error model — `tst_srt` is the layer you reach for. It's a safe Rust wrapper
+over libsrt 1.5.5 with `Socket` and `Listener` types modeled on
+`std::net::TcpStream` / `TcpListener`.
 
 Read this guide if your data path is byte-oriented and you handle the
 framing yourself. If instead you have NAL units plus KLV blobs, pre-muxed
@@ -602,3 +614,10 @@ Each item below maps to an entry in
   verbatim today.
 - Stream-ID filtering on `Listener` — kept caller-side intentionally.
 - Custom congestion-controller selection — `Live` and `File` ship.
+
+## See also
+
+- **Runnable example:** `cargo run -p tst-examples --example sender_from_url` — [examples/sending/sender_from_url.rs](/examples/sending/sender_from_url.rs)
+- **Runnable example:** `cargo run -p tst-examples --example encrypted_send_recv` — [examples/sending/encrypted_send_recv.rs](/examples/sending/encrypted_send_recv.rs)
+- [guides/pipeline.md](/docs/guides/pipeline.md) — the higher-level shells that wrap a `Socket`.
+- [reference/architecture.md](/docs/reference/architecture.md) — how `tst-srt` fits with `tst-core` and `tst-pipeline`.

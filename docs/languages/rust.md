@@ -247,7 +247,7 @@ events on the same PTS clock; aligning them is the consumer's job. The
 `Pairer` shell in `tst-pipeline::pairing` is the standard solution —
 configurable window, drop policy, and event-order preservation. See the
 [`pairing/` examples directory](/examples/pairing/) and
-[`/docs/cookbook.md`](/docs/cookbook.md).
+[`/docs/cookbook/index.md`](/docs/cookbook/index.md).
 
 ## Where this binding differs from the Rust core
 
@@ -273,7 +273,7 @@ authoritative gap list. Anything not called out there matches Rust 1:1.
 
 - [`/docs/start/concepts.md`](/docs/start/concepts.md) — the conceptual
   model (mux/demux, KLV, transport, pipeline shells) before any code.
-- [`/docs/cookbook.md`](/docs/cookbook.md) — recipes keyed to runnable
+- [`/docs/cookbook/index.md`](/docs/cookbook/index.md) — recipes keyed to runnable
   examples for the most common patterns.
 - [`/docs/guides/srt.md`](/docs/guides/srt.md) — full SRT surface:
   encryption, latency, stats, error model, URL parsing.

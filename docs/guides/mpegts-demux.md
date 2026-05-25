@@ -489,15 +489,15 @@ library can't make correctly for everyone.
 The three canonical pairing patterns are documented as cookbook recipes
 with runnable examples:
 
-- **[Recipe 12](cookbook.md): Pair sync-KLV with video AUs by nearest PTS.**
+- **[Recipe 12](../cookbook/receiving/12-pair-klv-by-pts.md): Pair sync-KLV with video AUs by nearest PTS.**
   The "frame and metadata are the same wall-clock event" workflow.
   Match on both `MetadataKind::KlvSyncAuCell` AND `MetadataKind::KlvAsync`
   (because of the AU-cell wrap-peeling case described above). Tolerance
   window is consumer domain knowledge.
-- **[Recipe 13](cookbook.md): Sample-and-hold async-KLV against video frames.**
+- **[Recipe 13](../cookbook/receiving/13-sample-hold-klv.md): Sample-and-hold async-KLV against video frames.**
   KLV at 1–10 Hz, video at 25–60 fps. Each frame uses the most recent
   KLV record where `klv.pts <= frame.pts`. Optional staleness drop.
-- **[Recipe 14](cookbook.md): EO + IR sensor pair with shared async-KLV.**
+- **[Recipe 14](../cookbook/receiving/14-eo-ir-shared-klv.md): EO + IR sensor pair with shared async-KLV.**
   Two video PIDs, one metadata PID; both videos attach the same KLV
   state, no per-stream pairing logic.
 

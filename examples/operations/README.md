@@ -14,7 +14,7 @@ disconnects: bounded backoff, gap-buffer for in-flight bytes, and
 connection-state telemetry on the `tracing` facade. Drop a sender mid-
 flight, reconnect a few seconds later, watch the example recover.
 
-Cookbook: [§2 — Survive a flaky transport with reconnect + gap buffer](../../docs/cookbook.md#2-survive-a-flaky-transport-with-reconnect--gap-buffer).
+Cookbook: [Recipe 2 — Survive a flaky transport with reconnect + gap buffer](../../docs/cookbook/operations/02-managed-transport-reconnect.md).
 
 ## 2. `tee_disk_and_demux.rs` — fan-out byte-sink pattern
 
@@ -27,5 +27,5 @@ consumers without copying: write to disk and feed a live demux loop in
 one pass. The shape that wires the receiver into both archival and
 analysis paths.
 
-Adjacent cookbook recipes: [§10 — Print live `Stats` from a sender](../../docs/cookbook.md#10-print-live-stats-from-a-sender),
-[§20 — Inject WebVTT POI cues into a live MPEG-TS uplink](../../docs/cookbook.md#20-inject-webvtt-poi-cues-into-a-live-mpeg-ts-uplink).
+Adjacent cookbook recipes: [Recipe 10 — Print live `Stats` from a sender](../../docs/cookbook/operations/10-print-live-stats.md),
+[Recipe 20 — Inject WebVTT POI cues into a live MPEG-TS uplink](../../docs/cookbook/operations/20-inject-webvtt-cues.md).

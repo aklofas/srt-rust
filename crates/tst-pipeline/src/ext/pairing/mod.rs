@@ -53,8 +53,10 @@
 //!
 //! # Cookbook
 //!
-//! See `docs/cookbook.md` recipes 24–27 for canonical realtime,
-//! batch-ingest, async sample-and-hold, and EO+IR composition patterns.
+//! See `docs/cookbook/receiving/24-pairer-realtime.md`,
+//! `25-pairer-batch.md`, `26-pairer-last-before-pts.md`, and
+//! `27-eo-ir-shared-klv-pairer.md` for canonical realtime, batch-ingest,
+//! async sample-and-hold, and EO+IR composition patterns.
 
 mod last_before;
 mod nearest;

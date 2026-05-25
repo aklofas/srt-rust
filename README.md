@@ -59,13 +59,13 @@ The repo's documentation lives under [`docs/`](docs/):
 - **[`guide-mpegts-mux.md`](docs/guides/mpegts-mux.md)** — `Config` / `ConfigBuilder`, codec + KLV-mode selection, PCR/PSI cadence, push/pull contract.
 - **[`guide-pipeline.md`](docs/guides/pipeline.md)** — picking among `MuxSender` / `Sender` / `RawSender` (send) and `DemuxReceiver` / `Receiver` / `RawReceiver` (receive); the `Transport` and `RecvTransport` traits; `ManagedTransport` / `ManagedRecvTransport` reconnect; `add_byte_sink` fan-out.
 - **[`guide-srt.md`](docs/guides/srt.md)** — `Socket` / `Listener`, encryption, latency, stats, error model.
-- **[`cookbook.md`](docs/cookbook.md)** — recipes linking to runnable examples.
+- **[`cookbook/index.md`](docs/cookbook/index.md)** — per-recipe files linking to runnable examples (grouped by sending / receiving / KLV / codecs / operations).
 - **[`troubleshooting.md`](docs/troubleshooting.md)** — diagnose build failures, connection failures, KLV rejection, TS framing issues, reconnect loops.
 - **[`deferred-features.md`](docs/project/deferred-features.md)** — what's not yet supported and the trigger conditions to revisit.
 - **[`compatibility.md`](docs/reference/compatibility.md)** — feature-by-feature support matrix.
 - **[`binding-authors.md`](docs/reference/binding-authors.md)** — entry point for `srt-jni` and `srt-uniffi` authors (plus the existing `tst-c` ABI).
 
-Runnable Rust examples live at [`examples/`](examples/) — a workspace-level `tst-examples` crate organized into 8 task-oriented subfolders. Run any with `cargo run -p tst-examples --example <name>`. See `cookbook.md` for which example illustrates which recipe.
+Runnable Rust examples live at [`examples/`](examples/) — a workspace-level `tst-examples` crate organized into 8 task-oriented subfolders. Run any with `cargo run -p tst-examples --example <name>`. See [`docs/cookbook/index.md`](docs/cookbook/index.md) for which example illustrates which recipe.
 
 ## Workspace layout
 

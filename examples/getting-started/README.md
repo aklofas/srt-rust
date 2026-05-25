@@ -31,7 +31,7 @@ When you're ready to do something real:
 - Decode the KLV blob back: [`../klv-metadata/klv_decode_file.rs`](../klv-metadata/klv_decode_file.rs)
 
 Cookbook backlink:
-[§0 — Send a single TS packet to any `Transport`](../../docs/cookbook.md#0-send-a-single-ts-packet-to-any-transport)
+[Recipe 0 — Send a single TS packet to any `Transport`](../../docs/cookbook/sending/00-send-single-packet.md)
 (the inline form of the same shape; this example is the no-transport
 mux-only twin).
 

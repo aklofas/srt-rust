@@ -13,7 +13,7 @@ Opens a `MuxSender` shell over an SRT caller socket, pushes synthetic
 H.264 + KLV at 30 fps. The receiver-side analogue is
 [`../receiving/srt_caller_dump.rs`](../receiving/srt_caller_dump.rs).
 
-Cookbook: [§0 — Send a single TS packet](../../docs/cookbook.md#0-send-a-single-ts-packet-to-any-transport).
+Cookbook: [Recipe 0 — Send a single TS packet](../../docs/cookbook/sending/00-send-single-packet.md).
 
 ## 2. `encrypted_send_recv.rs` — passphrase encryption
 
@@ -24,7 +24,7 @@ cargo run -p tst-examples --example encrypted_send_recv
 Diff from §1: pass a passphrase + key length on the `SocketBuilder`. The
 listener side runs in the same process so the example is self-contained.
 
-Cookbook: [§1 — Send video + KLV with passphrase encryption](../../docs/cookbook.md#1-send-video--klv-with-passphrase-encryption).
+Cookbook: [Recipe 1 — Send video + KLV with passphrase encryption](../../docs/cookbook/sending/01-send-encrypted.md).
 
 ## 3. `sender_from_url.rs` — config from `srt://...?...` URL
 
@@ -37,7 +37,7 @@ the way `tst-c::tst_*_open` consumes URLs. This is the surface that
 makes the same configuration trivially shareable across language
 bindings.
 
-Cookbook: [§11 — Open a sender from an `srt://...?...` URL](../../docs/cookbook.md#11-open-a-sender-from-an-srt-url).
+Cookbook: [Recipe 11 — Open a sender from an `srt://...?...` URL](../../docs/cookbook/sending/11-sender-from-url.md).
 
 ## 4. `srt_serve_ts_file.rs` — file-replay listener
 
@@ -59,4 +59,4 @@ Build your own non-SRT wire by implementing `tst_core::Transport`. The
 example wraps an in-memory `VecDeque` so you can see the shape; in
 production you'd wrap a real socket / framing layer.
 
-Cookbook: [§8 — Use a custom (non-SRT) transport](../../docs/cookbook.md#8-use-a-custom-non-srt-transport).
+Cookbook: [Recipe 8 — Use a custom (non-SRT) transport](../../docs/cookbook/sending/08-custom-transport.md).

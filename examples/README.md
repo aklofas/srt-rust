@@ -31,14 +31,14 @@ the progression is cumulative.
 
 | Folder | Covers | Cookbook |
 |---|---|---|
-| [`getting-started/`](getting-started/) | 1-page first-encounter example | [§0](../docs/cookbook.md#0-send-a-single-ts-packet-to-any-transport) |
-| [`sending/`](sending/) | SRT + transport-trait senders | [Sending](../docs/cookbook.md#sending) |
-| [`muxing/`](muxing/) | File-only mux (no SRT); single + multi-program; codecs | [Muxing](../docs/cookbook.md#muxing) |
-| [`receiving/`](receiving/) | SRT receivers + file-replay demux | [Receiving](../docs/cookbook.md#receiving) |
-| [`klv-metadata/`](klv-metadata/) | ST 0601 / ST 0102 / ST 0903 encode + decode | [KLV metadata](../docs/cookbook.md#klv-metadata) |
-| [`pairing/`](pairing/) | Video AU ↔ KLV pairing (manual + `Pairer` helper) | [Pairing](../docs/cookbook.md#pairing-video--klv) |
-| [`codec-parsing/`](codec-parsing/) | H.264 / H.265 / H.266 / AV1 parameter sets, audio, subtitles | [Codec parsing](../docs/cookbook.md#codec-parsing) |
-| [`operations/`](operations/) | Reconnect, fan-out, ops-flavored patterns | [Operations](../docs/cookbook.md#operations) |
+| [`getting-started/`](getting-started/) | 1-page first-encounter example | [Recipe 0](../docs/cookbook/sending/00-send-single-packet.md) |
+| [`sending/`](sending/) | SRT + transport-trait senders | [Sending](../docs/cookbook/index.md#-sending--produce-a-ts-stream) |
+| [`muxing/`](muxing/) | File-only mux (no SRT); single + multi-program; codecs | [Sending (mux recipes)](../docs/cookbook/index.md#-sending--produce-a-ts-stream) |
+| [`receiving/`](receiving/) | SRT receivers + file-replay demux | [Receiving](../docs/cookbook/index.md#-receiving--consume-a-ts-stream-includes-klv-to-video-pairing) |
+| [`klv-metadata/`](klv-metadata/) | ST 0601 / ST 0102 / ST 0903 encode + decode | [KLV](../docs/cookbook/index.md#-klv--encode-and-decode-metadata-directly) |
+| [`pairing/`](pairing/) | Video AU ↔ KLV pairing (manual + `Pairer` helper) | [Receiving (pairing recipes)](../docs/cookbook/index.md#-receiving--consume-a-ts-stream-includes-klv-to-video-pairing) |
+| [`codec-parsing/`](codec-parsing/) | H.264 / H.265 / H.266 / AV1 parameter sets, audio, subtitles | [Codecs](../docs/cookbook/index.md#-codecs--parse-video-and-audio-elementary-streams) |
+| [`operations/`](operations/) | Reconnect, fan-out, ops-flavored patterns | [Operations](../docs/cookbook/index.md#-operations--lifecycle-stats-shutdown-fixtures) |
 
 ## Maintainer tooling
 

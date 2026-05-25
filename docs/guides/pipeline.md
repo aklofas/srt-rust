@@ -741,7 +741,7 @@ Stay with the inline `DemuxEvent` match (cookbook recipes 12–14) when:
 | Async-KLV (1–10 Hz) against video frames | `Pairer::last_before_pts(...)` | n/a (past-only) |
 | EO + IR sharing one async-KLV stream | Two `Pairer::last_before_pts` instances side-by-side | n/a |
 
-See `docs/cookbook.md` recipes 24–27 for runnable patterns.
+See cookbook [Recipes 24–27](../cookbook/index.md#-receiving--consume-a-ts-stream-includes-klv-to-video-pairing) for runnable patterns.
 
 ### What you give up
 

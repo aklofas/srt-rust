@@ -241,7 +241,7 @@ Useful filter targets:
 - [guide-mpegts-mux.md](/docs/guides/mpegts-mux.md) — the TS muxer's knobs.
 - [guide-pipeline.md](/docs/guides/pipeline.md) — picking among `MuxSender`,
   `Sender`, and `RawSender`.
-- [cookbook.md](cookbook.md) — recipes for common multi-step tasks.
+- [cookbook/index.md](/docs/cookbook/index.md) — recipes for common multi-step tasks.
 - [troubleshooting.md](troubleshooting.md) — common failure modes.
 - [compatibility.md](/docs/reference/compatibility.md) — feature-by-feature support
   matrix.

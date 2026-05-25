@@ -219,10 +219,12 @@ pub struct TryDemuxFromFile {
     buf: Box<[u8; 65536]>,
     demuxer: Demuxer,
     pending: std::collections::VecDeque<DemuxEvent>,
-    /// `Some(_)` exactly once when an error is staged for the next
-    /// `next()` call; cleared after emission. Mutually exclusive with
-    /// `done` being false — once we set the error we also set
-    /// `done = true` so subsequent `next()` calls return `None`.
+    /// `Some(_)` while a read- or feed-error is staged. Set when a
+    /// read fails or `feed()` returns `Err`; cleared (and `done` set
+    /// to `true`) when the staged error is actually emitted to the
+    /// caller. Events already queued in `pending` drain BEFORE the
+    /// staged error surfaces, so a caller sees the successful prefix
+    /// → the error → then `None` forever.
     pending_error: Option<io::Error>,
     /// Iterator is exhausted (clean EOF reached, or an error was
     /// already emitted). Once true, `next()` only drains `pending`

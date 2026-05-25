@@ -552,14 +552,51 @@ impl Drop for RtpRecvTransport {
     }
 }
 
-/// Placeholder for multicast join — body lands in Task 11.
+/// Join the multicast group on the receive socket. IPv4 uses
+/// `join_multicast_v4(group, interface)`; IPv6 uses
+/// `join_multicast_v6(group, interface_index)`.
+///
+/// `iface` parsing matches the send-side rules in
+/// [`apply_multicast_iface`]: IPv4 takes a literal IPv4 address;
+/// IPv6 isn't supported in Phase 1 (returns
+/// [`ConnectError::IfaceUnsupported`]).
 fn apply_multicast_recv_join(
-    _socket: &UdpSocket,
-    _ip: &IpAddr,
-    _url: &RtpUrl,
+    socket: &UdpSocket,
+    ip: &IpAddr,
+    url: &RtpUrl,
 ) -> Result<(), ConnectError> {
-    // Task 11 fills this in. Unicast paths reach this branch with
-    // `is_multicast == false` and never call this function.
+    match ip {
+        IpAddr::V4(group) => {
+            let iface_v4 = match url.iface.as_deref() {
+                Some(iface) => iface.parse::<std::net::Ipv4Addr>().map_err(|e| {
+                    ConnectError::IfaceUnsupported {
+                        iface: iface.to_string(),
+                        detail: format!(
+                            "IPv4 multicast iface requires literal IPv4 address, got '{iface}': {e}"
+                        ),
+                    }
+                })?,
+                None => std::net::Ipv4Addr::UNSPECIFIED, // 0.0.0.0 — OS default
+            };
+            socket
+                .join_multicast_v4(group, &iface_v4)
+                .map_err(ConnectError::Io)?;
+        }
+        IpAddr::V6(group) => {
+            let scope_id = match url.iface.as_deref() {
+                None => 0, // Default scope.
+                Some(iface) => {
+                    return Err(ConnectError::IfaceUnsupported {
+                        iface: iface.to_string(),
+                        detail: "IPv6 multicast iface name lookup not implemented in Phase 1; ?iface= must be omitted for ipv6 receive".to_string(),
+                    });
+                }
+            };
+            socket
+                .join_multicast_v6(group, scope_id)
+                .map_err(ConnectError::Io)?;
+        }
+    }
     Ok(())
 }
 

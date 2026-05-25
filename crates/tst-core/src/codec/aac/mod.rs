@@ -117,7 +117,7 @@ pub struct AdtsFrame<'a> {
     /// channel-count indices per ISO/IEC 14496-3 Table 1.19.
     pub channel_configuration: u8,
     /// Typed channel layout. [`AacChannelLayout::PceDefined`] when
-    /// `channel_configuration == 0`; [`AacChannelLayout::Channels(n)`]
+    /// `channel_configuration == 0`; [`AacChannelLayout::Channels`]`(n)`
     /// otherwise.
     pub channel_layout: AacChannelLayout,
     pub frame_length_bytes: u32,

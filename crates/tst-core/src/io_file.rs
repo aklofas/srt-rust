@@ -33,9 +33,8 @@
 //!
 //! The matching Python entry point
 //! [`tstrans.io.parse_file`](https://github.com/aklofas/ts-transformer/blob/main/crates/tst-py/python/tstrans/io.py)
-//! is fallible by construction — it raises
-//! [`tstrans.exceptions.DemuxError`] on the same conditions that
-//! [`TryDemuxFromFile`] surfaces as `Err`.
+//! is fallible by construction — it raises `tstrans.exceptions.DemuxError`
+//! on the same conditions that [`TryDemuxFromFile`] surfaces as `Err`.
 
 use std::fs::File;
 use std::io::{self, Read, Write};

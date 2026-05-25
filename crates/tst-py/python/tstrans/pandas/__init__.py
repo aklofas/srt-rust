@@ -8,9 +8,11 @@ adapter function calls trigger the gated import. Calling an adapter
 without the extra raises ImportError with the install hint.
 """
 
-# Submodules are imported lazily inside functions to avoid pulling
-# pandas/numpy at module-import time. Users access adapters by their
-# top-level names re-exported below.
+# Adapter submodules are imported eagerly here (Python's module-level
+# imports), but they DO NOT import pandas/numpy themselves — those
+# imports are gated inside each adapter function via require_pandas().
+# Importing `tstrans.pandas` therefore does not trigger pandas or
+# numpy installation/import. Only calling an adapter does.
 
 from tstrans.pandas.klv import klv_to_dataframe
 from tstrans.pandas.events import events_to_dataframe

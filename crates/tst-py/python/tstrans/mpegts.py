@@ -1,16 +1,19 @@
-"""tstrans.mpegts — MPEG-TS packet, PES, PSI, muxer, demuxer.
+"""tstrans.mpegts — MPEG-TS packet, PES, PSI, muxer, demuxer surface.
 
-Phase 2 of the tst-py v1 plan added the demuxer surface:
+Public types:
 
-- `Pts90khz` — 90 kHz timestamp wrapper
-- `VideoCodec`, `AudioCodec`, `SubtitleCodec`, `StrictMode` enums
-- `StreamId`, `StreamInfo`, `KlvLink`, `ProgramMap` dataclasses
-- `DemuxEvent` base + subclasses (`ProgramMap`, `Video`, `Audio`,
-  `Subtitle`, `Klv`, `Discontinuity`, `NonConformant`,
-  `ReconnectDiscontinuity`)
-- `DemuxerConfig`, `Demuxer` — feed bytes, get events
-
-Phase 4 adds `Muxer` + `MuxerConfig` here.
+- `Pts90khz` — 90 kHz timestamp wrapper.
+- `VideoCodec`, `AudioCodec`, `SubtitleCodec`, `StrictMode` enums.
+- `StreamId`, `StreamInfo`, `KlvLink`, `ProgramMap` dataclasses.
+- `DemuxEvent` base + subclasses: `ProgramMap`, `Video`, `Audio`,
+  `Subtitle`, `Klv`, `UnknownSample`, `Discontinuity`, `NonConformant`,
+  `ReconnectDiscontinuity`.
+- `DemuxerConfig`, `Demuxer` — feed bytes, get events; supports
+  `strict_mode`, `pes_cap_*`, `cfi_tolerance`.
+- `MuxerConfig`, `MuxerProgramConfig`, `Muxer`, `MuxerFileSink` —
+  build TS, drain to file (with optional atomic-rename mode).
+- `MultiCellAuReason`, `CellFragmentIndication` — typed diagnostics
+  on `NonConformant` events.
 """
 
 import enum
@@ -477,11 +480,18 @@ _DEFAULT_PES_CAP_TOTAL: int = 64 * 1024 * 1024
 
 @dataclass(frozen=True, slots=True)
 class DemuxerConfig:
-    """Phase 2 minimal Demuxer configuration. Advanced knobs
-    (link_klv, treat_as, av1_carriage) are deferred — a future plan
-    will add them once a Python consumer needs them.
+    """Demuxer configuration. Mirrors Rust's
+    `tst_core::mpegts::demux::DemuxerConfig` for the knobs currently
+    exposed to Python:
 
-    Defaults mirror Rust's `tst_core::mpegts::demux::DemuxerConfig`.
+    - `strict_mode` — Off / TimingOnly / PsiOnly / Full ladder.
+    - `pes_cap_per_pid`, `pes_cap_total` — reassembly memory caps.
+    - `cfi_tolerance` — opt-in lenient AU-cell CFI substitution
+      (see MultiCellAuReason / CellFragmentIndication).
+
+    Other Rust-side knobs (link_klv, treat_as, av1_carriage,
+    au_cell_cap_per_pid) are not yet bridged — open an issue if you
+    need them.
     """
 
     strict_mode: StrictMode = StrictMode.OFF

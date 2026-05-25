@@ -10,6 +10,7 @@ description = "Runnable examples for the ts-transformer libraries. Not published
 tst-core = { path = "../crates/tst-core" }
 tst-pipeline = { path = "../crates/tst-pipeline" }
 tst-srt = { path = "../crates/tst-srt" }
+tst-rtp = { path = "../crates/tst-rtp" }
 
 # [[example]] blocks added in subsequent tasks as files arrive in subfolders.
 
@@ -24,6 +25,10 @@ path = "sending/pipeline_send_to_socket.rs"
 [[example]]
 name = "encrypted_send_recv"
 path = "sending/encrypted_send_recv.rs"
+
+[[example]]
+name = "rtp_basic"
+path = "sending/rtp_basic.rs"
 
 [[example]]
 name = "sender_from_url"

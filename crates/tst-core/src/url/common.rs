@@ -68,9 +68,10 @@ pub enum UrlError {
 /// Callers (per-transport-crate URL parsers) layer their own scheme-acceptance
 /// + key recognition on top.
 ///
-/// Percent-encoding is decoded in query values; path and host are returned
-/// verbatim (callers parse host into IP address via [`parse_host_port`] when
-/// needed).
+/// Path and host are returned verbatim (callers parse host into IP address
+/// via [`parse_host_port`] when needed). Once Task 4 lands, query values
+/// will be percent-decoded; the current `parse_url` always returns an
+/// empty query vector.
 pub fn parse_url(s: &str) -> Result<ParsedUrl<'_>, UrlError> {
     // Split scheme from rest at first `://`.
     let sep = s.find("://").ok_or(UrlError::MissingSchemeSeparator)?;
@@ -110,8 +111,9 @@ pub fn parse_url(s: &str) -> Result<ParsedUrl<'_>, UrlError> {
 /// component includes the leading `/`. Query is the substring after `?`,
 /// not yet decoded.
 fn split_path_query(rest: &str) -> (&str, &str, Option<&str>) {
-    // Find `?` first because path may contain `?` only after the path slash.
-    // Per RFC 3986 §3, query starts at the first `?` after authority.
+    // Find `?` first so that a `/` inside a query value is not mistaken
+    // for the path separator. Per RFC 3986 §3, query starts at the first
+    // `?` after authority.
     let (pre_query, query) = match rest.find('?') {
         Some(q) => (&rest[..q], Some(&rest[q + 1..])),
         None => (rest, None),
@@ -150,6 +152,8 @@ fn split_host_port(s: &str) -> Result<(&str, Option<u16>), UrlError> {
     }
 }
 
+/// Parse a port from a decimal string. Returns [`UrlError::InvalidPort`]
+/// on parse failure or out-of-range value.
 fn parse_port(s: &str) -> Result<u16, UrlError> {
     s.parse::<u16>().map_err(|e| UrlError::InvalidPort {
         got: s.to_string(),

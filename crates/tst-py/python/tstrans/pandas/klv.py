@@ -48,6 +48,10 @@ def klv_to_dataframe(records: Iterable[Any], *, mode: str = "summary"):
         TypeError: if records contain mixed types or an unsupported type.
         ImportError: if [pandas] extra not installed.
     """
+    if mode not in {"summary", "targets"}:
+        raise ValueError(
+            f"mode must be 'summary' or 'targets'; got {mode!r}"
+        )
     pd, np = require_pandas()
     records_list = list(records)
     if not records_list:

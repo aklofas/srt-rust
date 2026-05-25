@@ -264,3 +264,17 @@ def test_klv_to_dataframe_vmti_targets_mode():
     df = klv_to_dataframe([rec], mode="targets")
     assert isinstance(df.index, pd.MultiIndex)
     assert df.index.names == ["pts", "target_id"]
+
+
+# --- mode validation (audit-2 #7) ----------------------------------------
+
+
+@pytest.mark.pandas
+def test_klv_to_dataframe_rejects_invalid_mode() -> None:
+    """Audit-2 #7 — typos like mode='target' must raise, not silently
+    fall back to 'summary'."""
+    records = []  # empty — function should still validate mode first
+    with pytest.raises(ValueError, match="mode must be"):
+        klv_to_dataframe(records, mode="target")  # missing 's'
+    with pytest.raises(ValueError, match="mode must be"):
+        klv_to_dataframe(records, mode="summmary")  # typo

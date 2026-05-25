@@ -7,6 +7,165 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Python bindings audit-2 closeout (2026-05-24)
+
+10 findings from `docs/python-1/python-bindings-deep-dive-audit-2.md` + 1
+hygiene item from the Codex CFI follow-up validation memo, shipped via
+11-task parallel SDD (10 wave-1 worktrees + 1 wave-2 worktree). All
+changes are Python-side (`tstrans`) or `tst-c`-side; Rust public API of
+`tst-core` / `tst-pipeline` / `tst-srt` is unchanged (cargo public-api
+baselines diff-clean). `#[non_exhaustive]` count stays at **162**. Bash
+ratchet count goes from 13 to **14**.
+
+**Added (`tstrans` 0.1.0):**
+
+- `DemuxEvent.UnknownSample` — new event subclass carrying `stream`,
+  `pts`, `dts`, raw `stream_type: int`, and `payload: bytes` for PMT
+  entries the demuxer cannot classify as Video/Audio/Subtitle/KLV.
+  Previously these collapsed into `NonConformant` events and the raw
+  payload was discarded. `tstrans.pandas.events_to_dataframe` emits
+  `kind="unknown_sample"` rows with `stream_type` + `payload_len`.
+  (audit-2 #1)
+- `DemuxErrorKind.STRICT_REJECTION` — Python-side variant for
+  `tst_core::DemuxError::StrictRejection`. Previously mapped to
+  `INTERNAL`, obscuring the difference between strict-mode policy
+  outcomes and actual internal binding/library failures. (audit-2 #8)
+- `py.typed` marker per PEP 561 — downstream type checkers can now see
+  the inline annotations across `tstrans` instead of treating the
+  package as untyped. Ships in the wheel via maturin's `python-source`
+  mode. (audit-2 #6)
+
+**Fixed (`tstrans` 0.1.0):**
+
+- `MuxerFileSink(atomic=True)` no longer leaks `.partial` tempfiles
+  when `_drain_muxer_to_file()` or `fh.close()` raises in `__exit__`.
+  Restructured to an outer `try/finally` so cleanup always runs; the
+  caller's exception is still propagated and never suppressed.
+  (audit-2 #2)
+- `Demuxer.next_event()` no longer pins the GIL during AAC/MP2 audio
+  frame parsing. The AAC and MP2 arms of `convert_sample_event` now
+  parse to owned Rust frames under `py.allow_threads`, then construct
+  `Py<AdtsFramePy>` / `Py<Mpeg2AudioFramePy>` after re-acquiring the
+  GIL. Mirrors the discipline already used in `Demuxer.feed()`.
+  (audit-2 #3)
+- `Pts90khz`, `TimeStatus`, `UasDatalinkLs.universal_label`, and
+  `VTargetPack.target_color` now validate primitive shapes at
+  `__post_init__` rather than deferring to PyO3 / Rust encoder
+  failures. Catches typos like `Pts90khz(raw=2**63)` at the user's
+  construction site. (audit-2 #4)
+- `parse_klv_universal()` now rejects trailing bytes after the
+  declared outer BER length for ST 0102 (Security) and ST 0903 (VMTI)
+  — previously silently ignored. ST 0601 and ST 0605 paths already
+  enforced this via their family-specific decoders. (audit-2 #5)
+- `klv_to_dataframe(..., mode=...)` now raises `ValueError` on
+  invalid mode strings instead of silently returning a
+  `mode="summary"`-shaped DataFrame. Catches typos like
+  `mode="target"` (missing 's'). (audit-2 #7)
+
+**Changed (docs only):**
+
+- `tstrans.mpegts` module header docstring + `DemuxerConfig` docstring
+  + `tstrans.pandas` package comment refreshed to describe the
+  current Phase 6+ surface (`UnknownSample`, `cfi_tolerance`, codec
+  event payload types, multi-cell AU diagnostics, file sinks).
+  Previously read like the Phase 2 / Phase 4 snapshots. (audit-2 #10)
+
+**Test coverage (`tstrans` 0.1.0):**
+
+- 6 previously-skipped tests now run via synthetic fixtures in
+  `crates/tst-py/tests/_builders/` (`synthetic_klv_universal.py`) and
+  `crates/tst-py/tests/fixtures/` (`aac_minimal.ts`, `audio_aac_large.ts`).
+  Covers ST 0102 + ST 0903 pandas DataFrame paths, the GIL-release
+  smoke test for audio, the GIL-progress assertion for audio-heavy
+  captures, and a full mux→demux round-trip. The remaining 17
+  fixture-dependent skips are cataloged with revisit triggers in
+  `docs/python-1/python-bindings-skip-backlog.md` (outside the
+  published repo). Default pytest count: 631 → 634 passed (1 → 1
+  deferred-feature skip remaining); pandas pytest: 64 → 67 passed
+  (0 skipped). (audit-2 #9)
+
+**Tooling (`tst-c`):**
+
+- `cbindgen` post-processor in `crates/tst-c/build.rs` strips the
+  leading space cbindgen 0.29.x emits before single-line function
+  declarations in the generated header — affected 55 declarations
+  across `tstrans.h`, flagged by the Codex CFI follow-up validation
+  memo as a hygiene item around `tst_demux_config_set_cfi_tolerance`.
+  New `scripts/check-c-header-no-leading-space.sh` ratchet guards
+  against regression — that's the **14th** bash ratchet (added to the
+  pre-push list in `CLAUDE.md`).
+
+---
+
+## [Unreleased] — rename: `malformed_au_cell_cfi_tolerance` → `cfi_tolerance` (BREAKING) (2026-05-24)
+
+Pre-1.0 ergonomic rename across the whole AU-cell-CFI tolerance API
+surface. The original identifier (34 chars) read awkwardly in Python
+kwarg form; renamed to the short noun form so the C ABI setter
+(`tst_demux_config_set_<name>`) still reads cleanly.
+
+**Breaking changes:**
+
+- `DemuxerConfig::malformed_au_cell_cfi_tolerance` → `DemuxerConfig::cfi_tolerance`
+- `DemuxerBuilder::malformed_au_cell_cfi_tolerance(enable)` → `DemuxerBuilder::cfi_tolerance(enable)`
+- `NonConformantIssue::MalformedAuCellCfiTolerated { pid, observed_cfi, treated_as }` → `NonConformantIssue::CfiTolerated { pid, observed_cfi, treated_as }`
+
+**Python (`tstrans` 0.1.0) breaking:**
+
+- `tstrans.mpegts.DemuxerConfig(malformed_au_cell_cfi_tolerance=True)` → `DemuxerConfig(cfi_tolerance=True)`
+- `tstrans.mpegts.NonConformantKind.MALFORMED_AU_CELL_CFI_TOLERATED` → `tstrans.mpegts.NonConformantKind.CFI_TOLERATED`
+
+**C ABI (no minor bump — additive on top of unreleased state):**
+
+- `tst_demux_config_set_malformed_au_cell_cfi_tolerance(...)` → `tst_demux_config_set_cfi_tolerance(...)`
+- `TST_NONCONFORMANT_CODE_MALFORMED_AU_CELL_CFI_TOLERATED` → `TST_NONCONFORMANT_CODE_CFI_TOLERATED` (discriminator value `32` unchanged)
+
+Discriminator value `32` is preserved on both sides — only the symbol
+names change. `tst-core/public-api.txt` baseline rebumped accordingly.
+`#[non_exhaustive]` count stays at 162.
+
+---
+
+## [Unreleased] — follow-up: codex CFI review fixes + python audit findings + 13th ratchet (2026-05-24)
+
+Three small fixes from review feedback landing after the original work
+shipped.
+
+**Added:**
+
+- `TstCellFragmentIndication` enum is now actually exported in `tstrans.h`.
+  Defined in `crates/tst-c/src/event.rs` as the C mirror of Rust's
+  `CellFragmentIndication`, but cbindgen's `[export] include` allowlist
+  in `cbindgen.toml` was missing the entry — so C callers received the
+  raw `cc_expected` / `cc_observed` bytes with no constants to compare
+  against. Generated header now contains `enum tst_cell_fragment_indication`
+  with `TST_CELL_FRAGMENT_INDICATION_{MIDDLE,LAST,FIRST,COMPLETE}` constants.
+  (Caught by Codex review, `docs/analysis/2026-05-24-codex-review-au-cell-cfi-fix-validation.md`.)
+- `scripts/check-c-header-mirror-enum-export.sh` (13th bash ratchet) —
+  enumerates every `pub enum Tst*` in `crates/tst-c/src/` and asserts
+  each is in the `cbindgen.toml [export] include` allowlist. Prevents
+  the next mirror enum from regressing the same way. Wired into
+  `.github/workflows/ci.yml`.
+
+**Changed (Python audit #11 follow-up):**
+
+- The list-returning audio parsers `parse_aac_frames`,
+  `parse_aac_frames_with_resync`, `parse_mpeg2_audio_frames`, and
+  `parse_mpeg2_audio_frames_with_resync` now release the GIL during
+  heavy parse work via `py.allow_threads(...)`. Their `iter_*`
+  counterparts already did, but the list-returning equivalents were
+  missed by audit #11.
+
+**Fixed (Python audit #7 follow-up):**
+
+- `docs/guide-python-pandas.md` line 3 corrected from "NumPy zero-copy
+  views" to "NumPy snapshot views (one Rust-to-Python `bytes` copy per
+  access; see Snapshot vs zero-copy below)". The body section already
+  explained the snapshot semantics correctly; only the leading
+  paragraph contradicted it.
+
+---
+
 ## [Unreleased] — au-cell CFI tolerance mode (opt-in receive-side compatibility) (2026-05-24)
 
 **Added:**

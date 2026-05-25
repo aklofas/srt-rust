@@ -713,8 +713,11 @@ class DemuxerConfig:
 
     - `strict_mode` — Off / TimingOnly / PsiOnly / Full ladder.
     - `pes_cap_per_pid`, `pes_cap_total` — reassembly memory caps.
-    - `cfi_tolerance` — opt-in lenient AU-cell CFI substitution
-      (see MultiCellAuReason / CellFragmentIndication).
+    - `cfi_tolerance` — lenient AU-cell CFI substitution; **default
+      `True`** since the 2026-05-24 default flip (industry-wide
+      producer bug — see field docstring on `cfi_tolerance` below for
+      the rationale, and `MultiCellAuReason` / `CellFragmentIndication`
+      for the underlying enums).
     - `av1_carriage` — AV1 PES carriage mode the demuxer expects;
       `None` (the default) defers to the Rust default
       (`Av1CarriageMode.MPEG2_TS_BINDING`). Set to

@@ -10,6 +10,8 @@
 //! for this crate; non-MP2T packets are silently dropped at the
 //! transport boundary.
 
+use thiserror::Error;
+
 /// Fixed RTP header length per RFC 3550 §5.1.
 pub const RTP_HEADER_LEN: usize = 12;
 
@@ -73,6 +75,83 @@ impl RtpHeader {
     }
 }
 
+/// Why an RTP packet failed to parse.
+///
+/// At the transport boundary these are silently dropped + counter-ticked
+/// (see [`crate::transport::RtpStats::malformed_packets`]) rather than
+/// surfaced as errors — RFC 3550 §5.1 expects receivers to ignore
+/// unparseable packets and continue.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
+pub enum RtpParseError {
+    /// Packet too short to contain a fixed header (or fixed-header +
+    /// CSRC list given the CC field's count).
+    #[error("RTP packet too short: {got} < {need}")]
+    Truncated { got: usize, need: usize },
+    /// `V` (version) field was not 2.
+    #[error("unsupported RTP version: {0}")]
+    UnsupportedVersion(u8),
+    /// `PT` (payload type) was not 33 (MP2T). This crate is
+    /// MPEG-TS-over-RTP only; non-MP2T payloads are not parsed.
+    #[error("unsupported RTP payload type: {0} (expected 33 MP2T)")]
+    UnsupportedPayloadType(u8),
+}
+
+/// Result of [`RtpHeader::decode`] — header struct + offset where the
+/// payload starts in the input buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Parsed {
+    /// Decoded fixed-header fields.
+    pub header: RtpHeader,
+    /// Byte offset in the input where the application payload begins.
+    /// Equals `12 + 4*CC` for fixed-header-only packets.
+    pub payload_offset: usize,
+}
+
+impl RtpHeader {
+    /// Decode a 12-byte fixed RTP header from `buf[0..12]`, validate
+    /// `V=2` and `PT=33`, and return the parsed header + the byte
+    /// offset of the application payload (skipping any CSRC list).
+    ///
+    /// CSRC entries are skipped, not retained — Phase 1 doesn't need
+    /// them. The `X` (extension) bit is honored: if set, the extension
+    /// header is also skipped from the payload offset (added in a
+    /// follow-up to this task if interop demands it; in Phase 1, X=1
+    /// from peers is parsed but ignored — payload_offset still points
+    /// at the bytes after the fixed+CSRC header).
+    pub fn decode(buf: &[u8]) -> Result<Parsed, RtpParseError> {
+        if buf.len() < RTP_HEADER_LEN {
+            return Err(RtpParseError::Truncated {
+                got: buf.len(),
+                need: RTP_HEADER_LEN,
+            });
+        }
+        let v = (buf[0] >> 6) & 0x03;
+        if v != RTP_VERSION {
+            return Err(RtpParseError::UnsupportedVersion(v));
+        }
+        let cc = (buf[0] & 0x0F) as usize;
+        let pt = buf[1] & 0x7F;
+        if pt != RTP_PT_MP2T {
+            return Err(RtpParseError::UnsupportedPayloadType(pt));
+        }
+        let need = RTP_HEADER_LEN + cc * 4;
+        if buf.len() < need {
+            return Err(RtpParseError::Truncated {
+                got: buf.len(),
+                need,
+            });
+        }
+        let seq = u16::from_be_bytes([buf[2], buf[3]]);
+        let timestamp = u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]);
+        let ssrc = u32::from_be_bytes([buf[8], buf[9], buf[10], buf[11]]);
+        Ok(Parsed {
+            header: RtpHeader::new(seq, timestamp, ssrc),
+            payload_offset: need,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,5 +200,86 @@ mod tests {
         let h = RtpHeader::new(0, 0, 0);
         let mut buf = [0u8; 11];
         h.encode_into(&mut buf);
+    }
+
+    #[test]
+    fn decode_matches_encoded_bytes() {
+        let h = RtpHeader::new(0x1234, 0xDEADBEEF, 0xCAFE_BABE);
+        let mut buf = [0u8; 12];
+        h.encode_into(&mut buf);
+        let parsed = RtpHeader::decode(&buf).unwrap();
+        // Decode returns header + payload offset.
+        assert_eq!(parsed.header, h);
+        assert_eq!(parsed.payload_offset, 12);
+    }
+
+    #[test]
+    fn decode_rejects_wrong_version() {
+        // V=3 (top two bits = 0b11_0_0_0000 = 0xC0) — invalid.
+        let mut buf = [0u8; 12];
+        buf[0] = 0xC0;
+        buf[1] = 33;
+        let err = RtpHeader::decode(&buf).unwrap_err();
+        assert!(matches!(err, RtpParseError::UnsupportedVersion(3)));
+    }
+
+    #[test]
+    fn decode_rejects_wrong_payload_type() {
+        let mut buf = [0u8; 12];
+        buf[0] = 0x80;
+        buf[1] = 96; // dynamic PT range, not MP2T
+        let err = RtpHeader::decode(&buf).unwrap_err();
+        assert!(matches!(err, RtpParseError::UnsupportedPayloadType(96)));
+    }
+
+    #[test]
+    fn decode_accepts_marker_bit() {
+        // M=1 is informational only on receive; we don't reject it.
+        let mut buf = [0u8; 12];
+        buf[0] = 0x80;
+        buf[1] = 0x80 | 33; // M=1, PT=33
+        let parsed = RtpHeader::decode(&buf).unwrap();
+        assert_eq!(parsed.header.seq, 0);
+    }
+
+    #[test]
+    fn decode_skips_csrc_list() {
+        // CC=2 → 8 extra CSRC bytes between header and payload.
+        let mut buf = vec![0u8; 12 + 8];
+        buf[0] = 0x82; // V=2, CC=2
+        buf[1] = 33;
+        let parsed = RtpHeader::decode(&buf).unwrap();
+        assert_eq!(parsed.payload_offset, 20);
+    }
+
+    #[test]
+    fn decode_rejects_truncated() {
+        let buf = [0u8; 11];
+        let err = RtpHeader::decode(&buf).unwrap_err();
+        assert!(matches!(err, RtpParseError::Truncated { .. }));
+    }
+
+    #[test]
+    fn decode_rejects_csrc_overflow() {
+        // CC=5 needs 20 bytes of CSRC, but buf is only 12.
+        let mut buf = [0u8; 12];
+        buf[0] = 0x85; // V=2, CC=5
+        buf[1] = 33;
+        let err = RtpHeader::decode(&buf).unwrap_err();
+        assert!(matches!(err, RtpParseError::Truncated { .. }));
+    }
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn encode_decode_roundtrip(seq in any::<u16>(), ts in any::<u32>(), ssrc in any::<u32>()) {
+            let h = RtpHeader::new(seq, ts, ssrc);
+            let mut buf = [0u8; 12];
+            h.encode_into(&mut buf);
+            let parsed = RtpHeader::decode(&buf).unwrap();
+            prop_assert_eq!(parsed.header, h);
+            prop_assert_eq!(parsed.payload_offset, 12);
+        }
     }
 }

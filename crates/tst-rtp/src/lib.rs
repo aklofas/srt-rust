@@ -17,4 +17,4 @@ pub mod init;
 pub mod packet;
 
 pub use clock::RtpClock;
-pub use packet::{RTP_HEADER_LEN, RTP_PT_MP2T, RTP_VERSION, RtpHeader};
+pub use packet::{Parsed, RTP_HEADER_LEN, RTP_PT_MP2T, RTP_VERSION, RtpHeader, RtpParseError};

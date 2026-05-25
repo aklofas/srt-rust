@@ -1,12 +1,25 @@
 # Pipeline Composition Guide
 
+
+> **Who this is for:** You're composing the higher-level pipeline shells — `MuxSender`, `Sender`, `DemuxReceiver`, `Receiver`, plus the `ManagedTransport` reconnect wrappers — and want to know how the pieces fit together.
+
+> **You will learn:**
+> - The 4-quadrant matrix: `MuxSender` / `Sender` / `DemuxReceiver` / `Receiver` and when to pick each
+> - How `Transport` + `RecvTransport` traits decouple the pipeline from libsrt
+> - How `ManagedTransport` wraps a `Transport` for automatic reconnect with exponential backoff
+> - The `add_byte_sink` fan-out pattern for tee-ing streams to multiple consumers
+> - How `Pairer` aligns KLV records with video access units (sync + sample-and-hold)
+> - When to use `RawSender` / `RawReceiver` for already-muxed bytes
+
 ## Introduction
 
-This guide covers `tst_pipeline` — the composition layer that
-wires `mpegts::mux::Muxer`, the KLV codecs, and `srt::Socket` into
-ergonomic sender shells. The shells are thin: their job is to glue
-framing, metadata typing, and wire transport together with a stable
-contract, not to invent new behaviour.
+When you want a ready-made path from typed inputs (NAL units + KLV blobs, or
+pre-muxed TS bytes, or arbitrary application messages) to an SRT socket —
+optionally with reconnect and a gap buffer — `tst_pipeline` is the composition
+layer. It wires `mpegts::mux::Muxer`, the KLV codecs, and `srt::Socket` into
+ergonomic sender shells. The shells are thin: their job is to glue framing,
+metadata typing, and wire transport together with a stable contract, not to
+invent new behaviour.
 
 Reach for `pipeline::*` when you want a ready-made path from NAL units
 plus KLV blobs (or pre-muxed TS bytes, or arbitrary application
@@ -811,3 +824,10 @@ Receive side:
 - [../examples/operations/tee_disk_and_demux.rs](../examples/operations/tee_disk_and_demux.rs)
   — `add_byte_sink` fan-out: write `.ts` to disk while consuming
   typed events, in a single pass.
+
+## See also
+
+- **Runnable example:** `cargo run -p tst-examples --example pipeline_send_to_socket` — [examples/sending/pipeline_send_to_socket.rs](/examples/sending/pipeline_send_to_socket.rs)
+- [guides/srt.md](/docs/guides/srt.md) — the `Socket` and `Listener` that sit behind `SrtTransport`.
+- [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) — the muxer that `MuxSender` wraps.
+- [guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — the demuxer that `DemuxReceiver` wraps.

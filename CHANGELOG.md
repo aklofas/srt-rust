@@ -7,6 +7,62 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — docs/ framing pass (Phase 2 of polish) (2026-05-25)
+
+Content + structure changes to the user-facing `docs/` surface. No code,
+ABI, or API changes — BASELINE stays at 162, public-api baselines
+unchanged, no ABI bump.
+
+### Docs
+
+- **NEW: `docs/index.md`** — six-box landing routing 5 reader audiences
+  (cold-domain reader, evaluator, language integrator, domain expert,
+  binding author). Hero leads with reader outcome, not project mechanism.
+  Names the four Diátaxis page types (Tutorials / How-to / Reference /
+  Concepts) so readers learn the site's vocabulary.
+- **NEW: `docs/start/overview.md`** — five-minute plain-English orientation:
+  what ts-transformer streams, the three placements (source / middle /
+  display), what's in the box, what's not.
+- **NEW: `docs/start/concepts.md`** — cold-reader onramp explaining
+  MPEG-TS / KLV / SRT vocabulary (PID, PES, AU, PAT/PMT/PCR/DTS/PTS,
+  KLV/UL/BER) in plain terms with worked examples and a 22-row glossary.
+- **NEW: `docs/languages/rust.md` and `docs/languages/c.md`** — per-language
+  entry pages using an identical template (Install / Hello world / First
+  send / First receive / Gotchas / Where this binding differs from the
+  Rust core). Polyglot readers get cross-language muscle memory.
+- **REFRESHED: `docs/languages/python.md`** — restructured to match the
+  per-language template; pandas content demoted to a sub-section under
+  "Language-specific gotchas".
+- **REFRESHED: every `docs/guides/*.md` (6 files) and `docs/start/quickstart.md`** —
+  each opens with a "Who this is for" line + a bulleted "You will learn"
+  block (6–8 observable outcomes); first paragraph leads with a use case,
+  not a type definition; every guide links to at least one runnable
+  example in `tst-examples`. `quickstart.md` also re-framed to satisfy
+  the 3-minute aha-time rule (theory + architecture moved to sibling
+  reads).
+- **SPLIT: `docs/cookbook.md` → `docs/cookbook/{sending,receiving,klv,codecs,operations}/*.md`** —
+  33 recipes split into per-recipe grep-able files (11 sending, 10
+  receiving incl. pairing, 4 klv, 3 codecs, 5 operations). New
+  `docs/cookbook/index.md` catalogs them by section + by example program.
+  Each recipe gets a "When to use this" header and "Related" cross-links
+  to guides + runnable examples.
+- **REFRESHED: README hero** — leads with reader outcome ("stream live
+  H.264 / H.265 + KLV over an unreliable network in ~30 lines"), not
+  project mechanism. "New here?" pointer to `docs/index.md`. Status
+  block intact beneath the new hero.
+- **Stale `docs/cookbook.md` references** in 12+ files (README, examples
+  READMEs, source-comment refs in `crates/`, several intra-doc links)
+  updated to the new `docs/cookbook/index.md` or specific recipe paths
+  in the same commit that performed the split.
+
+### Process
+
+- Phase 2 closes the docs polish initiated by spec
+  `docs/specs/2026-05-24-docs-polish-design.md`. Both phases are
+  reorganization + reframing; no code, public-API, or ABI changes.
+
+---
+
 ## [Unreleased] — docs/ folder restructure (Phase 1 of polish) (2026-05-24)
 
 **BREAKING (docs paths only).** Restructured `docs/` from a flat 18-file tree

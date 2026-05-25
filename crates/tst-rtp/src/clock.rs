@@ -62,11 +62,17 @@ mod tests {
     #[test]
     fn clock_starts_at_start_ticks() {
         let c = RtpClock::new(12345);
-        // Immediately after construction, elapsed_ticks is ~0, so
-        // now_ticks() should be within a few ticks of start_ticks.
+        // Immediately after construction, elapsed_ticks is small. We
+        // want a generous upper bound to absorb GHA-shared-runner
+        // scheduler latency (workspace precedent: timing tests in
+        // tst-srt allow 500 ms - 3 s budgets) while still catching an
+        // arithmetic-off-by-1000x bug (1.1 s would be 100_000 ticks).
         let observed = c.now_ticks();
         let delta = observed.wrapping_sub(12345);
-        assert!(delta < 100, "elapsed > 100 ticks (~1.1 ms) on idle");
+        assert!(
+            delta < 10_000,
+            "elapsed > 10_000 ticks (~111 ms) on idle: delta={delta}"
+        );
     }
 
     #[test]

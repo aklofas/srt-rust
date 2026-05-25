@@ -16,9 +16,9 @@ not listed below are intentionally **not yet implemented**.
 | ❌ Out of scope | Deferred indefinitely. |
 
 The `ts-transformer` workspace scopes to **MPEG-TS + MISB ST 0601 / 0102 / 0605 / 0903
-KLV over SRT** (with RTP and raw TCP / UDP transports in active development).
-Other containers (MP4 / CMAF), other transports (RTMP / WebRTC / RIST), and raw
-elementary streams remain out of scope until a consumer asks. See
+KLV over SRT** (with RTP and raw TCP / UDP transports in active development; RIST
+may follow). Other containers (MP4 / CMAF), other transports (RTMP / WebRTC), and
+raw elementary streams remain out of scope until a consumer asks. See
 `crates/tst-core/tests/TEST_CORPUS.md` for the parsing-side compliance ledger
 that this document summarises.
 
@@ -592,7 +592,7 @@ roadmap. They are revisitable on consumer ask — not philosophical refusals.
 
 - Containers other than MPEG-TS (MP4 / fMP4 / CMAF, Matroska / WebM).
 - Metadata sets other than the typed MISB family already shipped (ST 1303 MDAP, ST 0902 minimum-set).
-- WebRTC / RTMP / RIST transports (RTP and raw TCP / UDP are in active development; see top-of-document scope note).
+- WebRTC / RTMP transports (RTP and raw TCP / UDP are in active development; RIST may follow — see top-of-document scope note).
 - ST 1607 segmented multi-PES KLV reassembly.
 - ST 1201.5 §7.1.3 special-value bit (±∞ / ±NaN passthrough).
 - Async / reactor SRT API.

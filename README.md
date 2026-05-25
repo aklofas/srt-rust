@@ -50,7 +50,7 @@ Python equivalent: `pip install tstrans` — see [`docs/languages/python.md`](do
 - Embed all of the above in a Rust, C, or Python app via a stable surface.
 
 **Look elsewhere if you need:**
-- **RTMP, WebRTC, or RIST** transports — those aren't on the roadmap. (SRT is shipping today; **RTP** and **raw TCP / UDP** are in active development.)
+- **RTMP** or **WebRTC** transports — not on the roadmap. (SRT is shipping today; **RTP** and **raw TCP / UDP** are in active development; **RIST** may follow.)
 - A different container — we are **MPEG-TS only** (no MP4, fMP4, HLS, DASH; pair us with FFmpeg for repackaging).
 - Arbitrary metadata schemas — we are **MISB KLV only**.
 - Video encoders or decoders — we mux + demux the wire format; pair with x264 / x265 / FFmpeg / NVENC / PyAV / a hardware codec for the actual codec work.

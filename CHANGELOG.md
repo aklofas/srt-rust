@@ -7,6 +7,77 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Core + C ABI + Python closeout audit fixes (2026-05-25)
+
+Plan #96. 16 of 17 findings from `docs/analysis/2026-05-25-core-c-python-closeout-audit.md` closed (F13 invalidated during validation — no actual double-insert in `codec_parse_error_to_pyerr`'s `ReservedValue` arm). Shipped via 8-worktree parallel SDD (Waves A–H) + 1 sequential scaffold cleanup (Wave I) + 1 cross-wave fix + 1 H+B coordination follow-up. `#[non_exhaustive]` BASELINE stays at **162**; bash ratchet count goes from 14 to **20**.
+
+**Added (cross-surface):**
+
+- `tst_core::mpegts::demux::TryDemuxFromFile` — fallible streaming iterator with `Iterator<Item = io::Result<DemuxEvent>>`. Surfaces read errors AND `demuxer.feed()` errors as `Err(io::Error)` instead of collapsing them into `eof = true; return None` like `DemuxFromFile`. `try_demux_from_file_with_config(path, config) -> io::Result<TryDemuxFromFile>` is the constructor. The lossy `DemuxFromFile` keeps working but gains a doc note pointing at the fallible alternative. (Findings 6, 14)
+- `tst_c::demux_config`: 3 new C setters bridging Rust-only knobs — `tst_demux_config_set_av1_carriage(cfg, mode)`, `tst_demux_config_set_au_cell_cap_per_pid(cfg, cap_bytes)`, `tst_demux_config_set_lenient_psi_reassembly(cfg, lenient)`. New `TstAv1CarriageMode` enum (mux side already had a mirror; demux side reuses it). (Finding 2)
+- `tstrans.mpegts.DemuxerConfig`: 3 matching Python fields — `av1_carriage: Optional[Av1CarriageMode]`, `au_cell_cap_per_pid: Optional[int]`, `lenient_psi_reassembly: bool`. `build_demuxer()` rewritten to assemble `DemuxerConfig` directly (the Rust `DemuxerBuilder` has no setter for `lenient_psi_reassembly`). (Finding 2)
+- `tstrans.mpegts`: 4 new mux-side subtitle codec dataclasses — `DvbSubtitlingConfig`, `DvbTeletextConfig`, `Cea708StandaloneConfig`, `WebVttInTsConfig` — mirroring the Rust `SubtitleCodec` struct variants exactly (`language: bytes` not `str` per Rust `[u8; 3]`; range validation in `__post_init__` for u16 page IDs, 5-bit teletext type, 3-bit magazine, BCD page numbers). New `MuxerProgramConfigBuilder.add_subtitle(codec_config)`; `push_subtitle` / `push_subtitle_to` now wrapped in `py.allow_threads` matching `push_video`'s GIL contract; signatures normalized to `(payload, *, pts)` per audit-2 #9 push_* shape. (Finding 3)
+- `tst_core::mpegts::mux::{Video,Klv,Audio,Subtitle}StreamHandle::try_from_raw(raw: u32) -> Result<Self, MuxError>` — validating constructors that reject raw values with bits set outside the canonical 4-bit program + 4-bit within-program layout. New `handle_pack::try_unpack` underpins them. Existing `from_raw(raw: u32) -> Self` kept for in-process round-trip; doc'd with the trust-boundary caveat. (Finding 1)
+
+**Changed (cross-surface):**
+
+- `tst_c` ABI: every trust-boundary rewrap site now routes through `try_from_raw` and surfaces forged-high-bit handles as `TST_E_INVALID_USAGE` instead of silently aliasing a valid stream. **14 sites across 4 files** patched (`mux_sender.rs` ×4 + `managed_mux_sender.rs` ×4 + `muxer.rs` ×4 + `config/descriptors.rs` ×2) — the audit said 4; the actual surface was 14. (Finding 1)
+- `tstrans.mpegts.<Kind>StreamHandle.from_raw(...)` (Python): same `try_from_raw` validation; forged-high-bit handles now raise `MuxError(INVALID_USAGE)` at construction instead of being accepted. (Finding 1)
+- `tst_c` close/free safety wording: rewrote the 10 ambiguous "Idempotent — passing NULL is a no-op" comments. Only 1 of 10 (on `tst_muxer_close`) was actually wrong (the other 9 are on `_cancel` functions where "Idempotent" is correct). Added consistent "Safe to call with NULL. After this call the pointer is invalid; passing the same non-null pointer twice is undefined behavior." wording to that one plus 15 close/free functions that had no doc at all. (Finding 8)
+- `docs/binding-authors.md` threading section: distinguished synchronized runtime handles (`Handle<T> = Mutex<...>`) from unsynchronized mutable config builders. Previous "Send + Sync everywhere" claim could mislead binding authors. (Finding 7)
+- `tst_demux_config_free`: wrapped in `ffi_catch((), || { ... })` matching `tst_mux_config_free`. The 15th ratchet below would have caught this regression. (Finding 9)
+- `tstrans.mpegts.DemuxerConfig.__post_init__`: fail-fast validation on all 7 fields (4 from Wave H, 3 from Wave B coordination follow-up). Invalid primitives now fail at construction instead of deep inside PyO3 extraction with opaque overflow errors. Excludes `bool` from `int` accepted-types since Python's `bool` is a subclass of `int`. (Finding 10)
+- `tstrans.mpegts._drain_muxer_to_file`: replaced per-chunk `bytes(buf[:n])` allocation with a hoisted `memoryview` slice. Bumped `_DRAIN_CHUNK_PACKETS` from 4 to 7 to align with the 1316-byte SRT bundle size common in receivers. (Finding 11)
+- `Demuxer` rustdoc per-language idiom table: C row no longer says "deferred to per-binding plan — receiver-surface C ABI is P0". Now correctly describes `tst_demux_receiver_recv_event(p, &out_event)` draining into arena-lifetime `tst_event_t` + `tst_demux_receiver_close(p)`. (Finding 15)
+- `README.md` + `docs/binding-authors.md` + `docs/compatibility.md` + `crates/tst-c/src/lib.rs`: refreshed ABI version from stale 0.2 references to actual 0.4 in the generated header. Added history entries for the 2→3 (AU cell reassembly) and 3→4 (CFI tolerance) bumps to `binding-authors.md`. `compatibility.md` receiver-side stats + multi-program demux rows updated to "shipped" status (the audit said lines 460–482 contained the stale claim; actual stale text was at lines 463 + 466). (Finding 4)
+- ST 1910 mis-cites scrubbed from MPEG-TS sync-metadata AU cell contexts. README lines 5/10/57/117 + `tst_py/src/mux.rs:1034` + `tests/test_mpegts_muxer_push.py:165` now use ST 1402 / H.222.0 §2.12.4.2 wording. ST 1910.1 kept correctly in `docs/compatibility.md:530` + `docs/deferred-features.md` CMAF/HLS context only. (Finding 5)
+- Sweeping cleanup: 85 of 149 Phase N / Task N scaffold comments removed from public Rust + C ABI + Python wrapper sources (149 → 64). Remaining 64 are load-bearing ABI history entries, current-invariant comments, or test docstrings (out of authorized scope). Incidental: 3 stale `#[allow(dead_code)] // used in later Phase 3 tasks` attrs removed from `crates/tst-c/src/config/streams.rs::from_core` (those fns are heavily used today). (Finding 17)
+
+**Added (CI ratchets, 6 new bash scripts — count goes from 14 to 20):**
+
+- `scripts/check-doc-abi-and-st1910-currency.sh` — fails on `ABI version 0.[0-3]` in README/docs/crates, on bare `ST 1910` (not `ST 1910.1`) in `crates/` or `README.md`, and on "receiver-surface ... pending" / "demux event surface ... pending" in tst-c crate-level docs. (Finding 4 + 5 guard)
+- `scripts/check-extern-c-ffi-catch-coverage.sh` — finds every `pub unsafe extern "C" fn` in tst-c (182 total); passes if body uses `ffi_catch(` OR `Handle::with_inner_{mut,ref}` (internally catches) OR is in a trivially-infallible allowlist (`tst_get_version_*`, `tst_get_abi_version_*`). 175 / 7 split today. (Finding 9 guard)
+- `scripts/check-py-demux-error-mapping-coverage.sh` — extracts `DemuxError` variants (5) from Rust; verifies each appears in `demux_error_to_pyerr` before the wildcard arm. (Finding 12 guard)
+- `scripts/check-py-klv-decode-error-mapping-coverage.sh` — same shape for `KlvDecodeError` (19 variants).
+- `scripts/check-py-klv-encode-error-mapping-coverage.sh` — same shape for `KlvEncodeError` (8 variants); accepts the `as RustE` alias.
+- `scripts/check-py-non-conformant-kind-coverage.sh` — extracts `NonConformantIssue` (33 variants) AND verifies all 32 distinct kind strings exist in the Python `NonConformantKind` enum.
+
+All 4 Python-error ratchets use word-boundary matching (`grep -qE "Type::${v}\b"`); the existing `check-py-codec-error-mapping-coverage.sh` template uses plain substring grep — separate cleanup item.
+
+**Removed:**
+
+- `DemuxerConfig` "Other Rust-side knobs (link_klv, treat_as, av1_carriage, au_cell_cap_per_pid) are not yet bridged" warning. `link_klv` and `treat_as` remain Rust-only today (low demand); the other 3 are now bridged.
+
+**Tests added (net):**
+
+- Rust: ~13 new tests across `try_from_raw` (handle_pack), `TryDemuxFromFile` (io_file), AV1 demux config round-trip (tst-c integration), `tst_demux_config_set_*` parity (tst-c unit).
+- C: 1 integration test for forged-handle rejection at C ABI boundary.
+- Python: ~46 new tests across `test_handle_forge.py` (14), `test_demux_config_validation.py` (19), `test_demux_config_parity.py` (15), subtitle round-trip + GIL release + invalid-handle in `test_mpegts_muxer_push.py` (~14), memoryview file sink (4). pytest total: 691 → 698.
+
+**`cargo public-api` drift:**
+
+- `tst-core`: +14 lines (additive — `TryDemuxFromFile` + 2 fns + Iterator impl + marker traits).
+- `tst-pipeline` / `tst-srt`: no drift.
+- `tst-c` ABI minor: unchanged at **4** (additive C setters via opaque pointer — no `TST_ABI_VERSION_MINOR` bump needed per project policy).
+
+**Commits (in main order):**
+
+- `8d4582d` — pre-wave: `klv::pack::Iter` tightened to `pub(crate)` (see prior section).
+- `4c459e9` — pre-wave: `cargo fmt` cleanup that 8d4582d missed.
+- `85962a8` — Wave G: 4 Python error-mapping ratchets.
+- `1f72f8f` — Wave E: `TryDemuxFromFile`.
+- `e6bebe4` — Wave A: forged handle rejection at trust boundaries.
+- `dd34906` — Wave F: threading docs + close/free safety + 15th ratchet.
+- `dc923e4` — Wave B: demux config parity (av1_carriage / au_cell_cap_per_pid / lenient_psi_reassembly).
+- `26cf7e1` — Wave C: Python subtitle mux API.
+- `059423e` — Wave H: DemuxerConfig fail-fast + memoryview file sink + NumPy caching docs.
+- `dbff20d` — Wave D: ABI version + ST 1910 + Demuxer C row docs refresh.
+- `37ff0ea` — cross-wave fix: narrow subtitle invalid-handle test post-Wave-A.
+- `b752f39` — Wave H+B coordination: extend `__post_init__` to validate Wave B fields.
+- `30f9059` — Wave I: Phase N / Task N scaffold sweep.
+
+---
+
 ## [Unreleased] — `klv::pack::Iter` tightened to `pub(crate)` + Universal Set machinery retired (2026-05-24)
 
 Closes the Phase 1 SemVer-ratchet deferral on `tst_core::klv::pack::Iter`

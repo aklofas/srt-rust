@@ -9,7 +9,7 @@
 
 Reach for this when the encoder produces HEVC, or when the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15) instead of the default async private-data shape. Three knobs flip on `MuxerConfig`: codec → `H265`, KLV stream type → `SynchronousMetadata`, `carries_pts` → `true`.
 
-**Sync KLV auto-wraps in the muxer.** When you configure `KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) before TS-framing. Pass raw KLV LS bytes — do not pre-wrap. PTS lives in the PES header (per § 2.12.4.1). See [guide-mpegts-mux.md](/docs/guides/mpegts-mux.md) §"KLV-in-TS modes".
+**Sync KLV auto-wraps in the muxer.** When you configure `KlvStreamType::SynchronousMetadata`, `Muxer::push_klv` auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) before TS-framing. Pass raw KLV LS bytes — do not pre-wrap. PTS lives in the PES header (per § 2.12.4.1). See [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) §"KLV-in-TS modes".
 
 ```rust,no_run
 use tst_core::mpegts::mux::{

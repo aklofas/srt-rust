@@ -26,7 +26,7 @@ inputs only, with no wall-clock dependency, so the same input sequence
 produces the same output bytes regardless of how the caller paces its calls.
 
 This is the sender-side guide. The symmetric receiver-side guide is
-[guide-mpegts-demux.md](/docs/guides/mpegts-demux.md) — `mpegts::demux` ships
+[guides/mpegts-demux.md](/docs/guides/mpegts-demux.md) — `mpegts::demux` ships
 a Rust-native TS demuxer covering the same wire shape. Consumers can
 also feed extracted bytes to FFmpeg / Bento4 / JavaCV / platform
 demuxers if they prefer.
@@ -59,7 +59,7 @@ The muxer is multi-program and multi-stream from day one. A single
 muxer" path stays terse. Multi-program / multi-stream configurations
 are constructed via the builder API (see `MuxerConfigBuilder` below)
 or by populating the `programs` field directly. See
-[compatibility.md](/docs/reference/compatibility.md) for the full per-codec /
+[reference/compatibility.md](/docs/reference/compatibility.md) for the full per-codec /
 per-feature support matrix.
 
 ## `MuxerConfig` shape
@@ -896,7 +896,7 @@ Three runnable examples cover the muxer's surface:
   diff against the H.264 default.
 - `cargo run -p tst-examples --example pipeline_send_to_socket` — [examples/sending/pipeline_send_to_socket.rs](/examples/sending/pipeline_send_to_socket.rs)
   — the muxer composed inside `pipeline::MuxSender` and connected to an
-  SRT socket. See [guide-pipeline.md](/docs/guides/pipeline.md) for the
+  SRT socket. See [guides/pipeline.md](/docs/guides/pipeline.md) for the
   sender-shell layer.
 
 ## See also
@@ -908,8 +908,8 @@ Three runnable examples cover the muxer's surface:
 ## What's deferred
 
 Each item below maps to an entry in
-[deferred-features.md](/docs/project/deferred-features.md).
+[project/deferred-features.md](/docs/project/deferred-features.md).
 
 - Audio carriage in `mpegts::mux` — gimbaled-platform streams are
   video + KLV today; no shipping consumer asks for audio. See
-  [deferred-features.md](/docs/project/deferred-features.md).
+  [project/deferred-features.md](/docs/project/deferred-features.md).

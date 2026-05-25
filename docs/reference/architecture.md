@@ -7,15 +7,15 @@ internal structure of `tst-core`, and the pipeline composition model that
 ties the muxer, transport, and reconnect behaviour together. It targets
 evaluators sizing up the project and contributors finding their way around;
 integrators may want it as background but should start at
-[getting-started.md](/docs/start/quickstart.md) if they just want to use the
+[start/quickstart.md](/docs/start/quickstart.md) if they just want to use the
 library.
 
 The vocabulary established here — `Transport`, `RecvTransport`, "sender
 shell", "receive shell", the layering rule — is reused by the per-module
-guides ([guide-srt.md](/docs/guides/srt.md), [guide-klv.md](/docs/guides/klv.md),
-[guide-mpegts-mux.md](/docs/guides/mpegts-mux.md),
-[guide-mpegts-demux.md](/docs/guides/mpegts-demux.md),
-[guide-pipeline.md](/docs/guides/pipeline.md)). Read this first if you plan to
+guides ([guides/srt.md](/docs/guides/srt.md), [guides/klv.md](/docs/guides/klv.md),
+[guides/mpegts-mux.md](/docs/guides/mpegts-mux.md),
+[guides/mpegts-demux.md](/docs/guides/mpegts-demux.md),
+[guides/pipeline.md](/docs/guides/pipeline.md)). Read this first if you plan to
 read more than one of those.
 
 ## Crate graph
@@ -77,7 +77,7 @@ pre-emptive close), and `Stats` (live snapshot of libsrt's internal
 counters). The `url::SrtUrl` type parses `srt://host:port?key=value&…`
 into a builder overlay using libsrt's documented option vocabulary,
 and `addr::*` handles IPv4 / IPv6 sockaddr marshalling. See
-[guide-srt.md](/docs/guides/srt.md) for the full surface.
+[guides/srt.md](/docs/guides/srt.md) for the full surface.
 
 `tst-pipeline` is the composition layer that depends on the other crates.
 It is deliberately thin: its job is composition, not new behaviour. The
@@ -160,7 +160,7 @@ after a transport failure — RECOVER mode auto-resyncs to the next sync
 byte, STRICT mode fails fast. `RawSender` has no recovery contract by
 construction; one `send` either lands as one SRT message or returns an
 error. The full mechanics of each shell are covered in
-[guide-pipeline.md](/docs/guides/pipeline.md).
+[guides/pipeline.md](/docs/guides/pipeline.md).
 
 ## The receive pipeline
 

@@ -14,7 +14,7 @@ When you want to send and receive bytes over SRT in 10 minutes, start here. The
 goal of this page is to get a working program in front of you fast — for
 background on how the pieces fit together, read
 [concepts.md](/docs/start/concepts.md) or
-[architecture.md](/docs/reference/architecture.md) as a sibling read, not before
+[reference/architecture.md](/docs/reference/architecture.md) as a sibling read, not before
 this one.
 
 This guide walks through three runnable snippets in order: a raw send,
@@ -234,14 +234,14 @@ Useful filter targets:
 
 ## Where to go next
 
-- [architecture.md](/docs/reference/architecture.md) — how the pieces fit together.
-- [guide-srt.md](/docs/guides/srt.md) — `Socket`, `Listener`, encryption,
+- [reference/architecture.md](/docs/reference/architecture.md) — how the pieces fit together.
+- [guides/srt.md](/docs/guides/srt.md) — `Socket`, `Listener`, encryption,
   latency, stats.
-- [guide-klv.md](/docs/guides/klv.md) — encoding and decoding ST 0601 KLV.
-- [guide-mpegts-mux.md](/docs/guides/mpegts-mux.md) — the TS muxer's knobs.
-- [guide-pipeline.md](/docs/guides/pipeline.md) — picking among `MuxSender`,
+- [guides/klv.md](/docs/guides/klv.md) — encoding and decoding ST 0601 KLV.
+- [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) — the TS muxer's knobs.
+- [guides/pipeline.md](/docs/guides/pipeline.md) — picking among `MuxSender`,
   `Sender`, and `RawSender`.
 - [cookbook/index.md](/docs/cookbook/index.md) — recipes for common multi-step tasks.
 - [troubleshooting.md](troubleshooting.md) — common failure modes.
-- [compatibility.md](/docs/reference/compatibility.md) — feature-by-feature support
+- [reference/compatibility.md](/docs/reference/compatibility.md) — feature-by-feature support
   matrix.

@@ -29,7 +29,7 @@ buffer. Reach past it — straight to `mpegts::mux::Muxer` or
 non-SRT wire, your own reconnect strategy).
 
 For the higher-level composition story, see
-[architecture.md](/docs/reference/architecture.md). This guide assumes that vocabulary.
+[reference/architecture.md](/docs/reference/architecture.md). This guide assumes that vocabulary.
 
 ## The composition model
 
@@ -73,7 +73,7 @@ Decision tree:
   equals one outbound SRT message of the exact length you passed. No
   buffering, no framing, no accumulation.
 
-See [architecture.md](/docs/reference/architecture.md)'s "Why three sender shells" for
+See [reference/architecture.md](/docs/reference/architecture.md)'s "Why three sender shells" for
 the rationale against fusing them.
 
 ## `MuxSender` walkthrough
@@ -111,7 +111,7 @@ the muxer auto-prepends a 5-byte `Metadata_AU_cell` header per ITU-T
 H.222.0 V9 § 2.12.4.2 before TS-framing. `MuxSender::send_klv` passes
 your raw KLV LS bytes through to the muxer; the muxer does the wrap.
 PTS lives in the PES header (per § 2.12.4.1). See
-[guide-mpegts-mux.md](/docs/guides/mpegts-mux.md) for the wire-format details.
+[guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) for the wire-format details.
 
 Mirroring [../examples/sending/pipeline_send_to_socket.rs](../examples/sending/pipeline_send_to_socket.rs):
 
@@ -366,7 +366,7 @@ buffer drains before the call returns.
 Reconnect runs synchronously on the calling thread — a single
 `send_bytes` call may block for the full reconnect window. Async
 reconnect is on the deferred-features list; see
-[deferred-features.md](/docs/project/deferred-features.md).
+[project/deferred-features.md](/docs/project/deferred-features.md).
 
 ## `ReconnectPolicy`
 

@@ -23,7 +23,7 @@ Read this guide if your data path is byte-oriented and you handle the
 framing yourself. If instead you have NAL units plus KLV blobs, pre-muxed
 TS bytes, or arbitrary application messages and want reconnect plus
 optional gap-buffering on top of an SRT socket, read
-[guide-pipeline.md](/docs/guides/pipeline.md) — `tst_pipeline::*` composes
+[guides/pipeline.md](/docs/guides/pipeline.md) — `tst_pipeline::*` composes
 `tst_srt` into ready-made sender shells.
 
 For wire-protocol details, see the IETF draft `draft-sharabayko-srt`,
@@ -284,7 +284,7 @@ delay. Tune by measurement.
 
 End-to-end latency in a `pipeline::*` shell adds the muxer's PCR/PSI
 cadence and any reconnect gap-buffer to the SRT-level latency above —
-see [guide-pipeline.md](/docs/guides/pipeline.md) for the full breakdown.
+see [guides/pipeline.md](/docs/guides/pipeline.md) for the full breakdown.
 
 ## Bandwidth and packet handling
 
@@ -462,7 +462,7 @@ Recovery summary:
 | `BindError::PermissionDenied` | No | Run with the right user / capability |
 
 `ManagedTransport` (in `pipeline::*`) automates the reconnect loop on
-`SendError::ConnectionBroken`. See [guide-pipeline.md](/docs/guides/pipeline.md).
+`SendError::ConnectionBroken`. See [guides/pipeline.md](/docs/guides/pipeline.md).
 
 ## Blocking semantics
 
@@ -511,7 +511,7 @@ match listener.accept_timeout(Duration::from_millis(500)) {
 ```
 
 There is no `set_nonblocking`. Async support is deferred — see the
-sync-vs-async section in [architecture.md](/docs/reference/architecture.md).
+sync-vs-async section in [reference/architecture.md](/docs/reference/architecture.md).
 
 ## URL parsing
 

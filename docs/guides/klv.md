@@ -198,7 +198,7 @@ verifying decoders, missing mandatory tags under
 `decode_strict_compliance`).
 
 For the complete typed-item list — which tags are typed, which are still
-pass-through — see [compatibility.md](/docs/reference/compatibility.md).
+pass-through — see [reference/compatibility.md](/docs/reference/compatibility.md).
 
 ## Encoding
 
@@ -445,7 +445,7 @@ Out of scope — see [`deferred-features.md`](/docs/project/deferred-features.md
 Synchronous KLV in MPEG-TS uses a 5-byte `Metadata_AU_cell` header per
 ITU-T H.222.0 V9 § 2.12.4.2 (Tables 2-155+2-156) to wrap each KLV
 record. The wrapper is an MPEG-TS systems-layer construct, not a KLV
-substrate concern — see [guide-mpegts-mux.md](/docs/guides/mpegts-mux.md) for
+substrate concern — see [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) for
 the carriage details. The muxer auto-wraps for
 `KlvStreamType::SynchronousMetadata` streams; the demuxer surfaces the
 parsed header fields on `MetadataKind::KlvSyncAuCell`.
@@ -608,26 +608,26 @@ Three steps to take a captured `.ts`, pull the KLV out, and decode it.
 ## What's deferred
 
 Each item below maps to an entry in
-[deferred-features.md](/docs/project/deferred-features.md).
+[project/deferred-features.md](/docs/project/deferred-features.md).
 
 - ST 0102 universal-set form — the LS form ships in `klv::st0102`;
   the parallel Universal Set encoding (16-byte UL per item) is not
-  implemented. See [deferred-features.md](/docs/project/deferred-features.md).
+  implemented. See [project/deferred-features.md](/docs/project/deferred-features.md).
 - ST 0102 country-code validation — codes pass through as `String`;
   no validation against ISO 3166 / GENC / FIPS 10-4 / STANAG 1059 /
-  CAPCO tables. See [deferred-features.md](/docs/project/deferred-features.md).
+  CAPCO tables. See [project/deferred-features.md](/docs/project/deferred-features.md).
 - Other typed sets (ST 0903 VMTI, ST 0806 RVT, ...) — the substrate
   supports them; per-tag tables are missing without a driving consumer.
-  See [deferred-features.md](/docs/project/deferred-features.md).
+  See [project/deferred-features.md](/docs/project/deferred-features.md).
 - `serde` integration for typed records — wire format and JSON aren't
   isomorphic; needs an explicit decision on unknown-tag representation.
-  See [deferred-features.md](/docs/project/deferred-features.md).
+  See [project/deferred-features.md](/docs/project/deferred-features.md).
 - `no_std` support — every shipping target has `std`; flipping to
   `no_std` means replacing `Vec` / `String` / `format!` with allocator
-  equivalents. See [deferred-features.md](/docs/project/deferred-features.md).
+  equivalents. See [project/deferred-features.md](/docs/project/deferred-features.md).
 - Streaming / chunked decode — today is buffer-in / buffer-out; a
   growable streaming decoder lands behind an explicit consumer ask.
-  See [deferred-features.md](/docs/project/deferred-features.md).
+  See [project/deferred-features.md](/docs/project/deferred-features.md).
 
 ## See also
 

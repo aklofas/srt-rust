@@ -195,8 +195,9 @@ impl SrtUrl {
     /// Parse `srt://host:port?key=value&...` into validated parts.
     ///
     /// Strict ASCII canonical forms (decimal-only integers, `0`/`1` for
-    /// bools, lowercase enums); the `url` crate URL-decodes percent
-    /// sequences. Last-occurrence wins on duplicate keys.
+    /// bools, lowercase enums); the common parser URL-decodes percent
+    /// sequences (`%XX` only — `+` is NOT decoded as space). Last-occurrence
+    /// wins on duplicate keys.
     ///
     /// # Example
     ///

@@ -39,7 +39,7 @@ fn rejects_wrong_scheme() {
 
 #[test]
 fn rejects_no_scheme() {
-    // Bare "host:port" doesn't have a scheme separator — url::Url rejects.
+    // Bare "host:port" doesn't have a scheme separator — the common parser rejects.
     let e = SrtUrl::parse("1.2.3.4:9000").unwrap_err();
     assert!(matches!(e, UrlError::Syntax(_)) || matches!(e, UrlError::WrongScheme { .. }));
 }
@@ -101,8 +101,8 @@ fn streamid_query() {
 
 #[test]
 fn streamid_with_embedded_equals() {
-    // url::Url splits on the FIRST `=` per RFC 3986 form-data; trailing
-    // `=` chars are part of the value.
+    // The common parser splits on the FIRST `=` per RFC 3986 form-data;
+    // trailing `=` chars are part of the value.
     let u = SrtUrl::parse("srt://1.2.3.4:9000?streamid=foo=bar").unwrap();
     assert_eq!(u.overlay.stream_id.as_ref().unwrap().as_str(), "foo=bar");
 }
@@ -460,20 +460,18 @@ fn empty_value_rejected() {
 
 #[test]
 fn invalid_percent_encoding_does_not_panic() {
-    // url::Url is lenient about malformed percent-encoding in query strings:
-    // it passes through the raw bytes (e.g. "%2" stays "%2") rather than
-    // erroring. StreamId::new accepts "%2" as valid ASCII, so the parse
-    // succeeds. What matters: no panic regardless of outcome.
+    // The common parser is strict: a truncated percent-escape like "%2" is
+    // rejected with BadPercentEncoding rather than passed through. The test
+    // asserts only that no panic occurs — an Err result is fine here.
     let _ = SrtUrl::parse("srt://1.2.3.4:9000?streamid=%2");
 }
 
 #[test]
 fn passphrase_with_plus_sign_is_literal_plus() {
-    // url::Url's query_pairs decodes `+` as space (form-urlencoded
-    // convention). For SRT URLs we want `+` literal — but rather than
-    // diverge from url::Url, document the convention: SRT URLs follow
-    // form-urlencoded, so passphrase containing `+` must be percent-
-    // encoded as `%2B`.
+    // The common parser does NOT decode `+` as space — only `%XX` sequences
+    // are decoded. A literal `+` in an SRT URL value stays as `+`. To embed
+    // a `+` in a passphrase, percent-encode it as `%2B` (which this test
+    // exercises); a raw `+` would also arrive as `+` unchanged.
     let u = SrtUrl::parse("srt://1.2.3.4:9000?passphrase=hunter%2Btoo%2Blong").unwrap();
     assert_eq!(
         u.overlay.passphrase.as_ref().unwrap().as_str(),

@@ -51,6 +51,10 @@ pub enum UrlError {
     /// IPv6 host opened with `[` but never closed with `]`.
     #[error("URL has '[' but no matching ']' in host")]
     UnclosedIpv6Bracket,
+    /// IPv6 literal had unexpected content after the closing `]`.
+    /// E.g. `[::1]garbage` rather than `[::1]:port` or `[::1]`.
+    #[error("malformed IPv6 literal: unexpected '{got}' after ']'")]
+    MalformedIpv6Literal { got: String },
     /// A `%XY` percent-escape was malformed (non-hex, truncated).
     #[error("malformed percent-encoding in URL: {detail}")]
     BadPercentEncoding { detail: String },
@@ -137,9 +141,8 @@ fn split_host_port(s: &str) -> Result<(&str, Option<u16>), UrlError> {
         } else if after.is_empty() {
             None
         } else {
-            return Err(UrlError::InvalidPort {
+            return Err(UrlError::MalformedIpv6Literal {
                 got: after.to_string(),
-                detail: "expected ':' after ']' or end of authority".into(),
             });
         };
         Ok((host, port))
@@ -229,22 +232,40 @@ fn hex_nibble(b: u8) -> Result<u8, UrlError> {
     }
 }
 
-/// Stub — implemented in Task 6.
-pub fn parse_host_port(_s: &str) -> Result<(IpAddr, u16), UrlError> {
-    todo!("Task 6 implements this")
+/// Parse a literal `IP:port` pair. The IP must be a literal IPv4 or
+/// bracketed IPv6 address — domain names return [`UrlError::InvalidPort`]
+/// because DNS resolution is the caller's responsibility.
+///
+/// Examples:
+/// - `192.168.1.10:5004` → `([192.168.1.10], 5004)`
+/// - `[2001:db8::1]:5004` → `([2001:db8::1], 5004)`
+pub fn parse_host_port(s: &str) -> Result<(IpAddr, u16), UrlError> {
+    let (host, port) = split_host_port(s)?;
+    let port = port.ok_or_else(|| UrlError::InvalidPort {
+        got: String::new(),
+        detail: "host without port not allowed".into(),
+    })?;
+    let ip: IpAddr = host.parse().map_err(|e: std::net::AddrParseError| UrlError::InvalidPort {
+        got: host.to_string(),
+        detail: format!("expected literal IPv4 or IPv6 address, got '{host}': {e}"),
+    })?;
+    Ok((ip, port))
 }
 
-/// IPv4 multicast: `224.0.0.0/4` (RFC 5771).
+/// IPv4 multicast: `224.0.0.0/4` (RFC 5771). Delegates to
+/// [`Ipv4Addr::is_multicast`] from `std`; named function exposed to
+/// match the `is_multicast_v6` shape for callers that work generically
+/// over IP family.
 #[must_use]
 pub fn is_multicast_v4(addr: Ipv4Addr) -> bool {
-    let oct = addr.octets()[0];
-    (224..=239).contains(&oct)
+    addr.is_multicast()
 }
 
-/// IPv6 multicast: `ff00::/8` (RFC 4291 §2.7).
+/// IPv6 multicast: `ff00::/8` (RFC 4291 §2.7). Delegates to
+/// [`Ipv6Addr::is_multicast`] from `std`.
 #[must_use]
 pub fn is_multicast_v6(addr: Ipv6Addr) -> bool {
-    addr.octets()[0] == 0xff
+    addr.is_multicast()
 }
 
 #[cfg(test)]
@@ -378,5 +399,49 @@ mod tests {
         // %FE and %FF are valid hex but never start a valid UTF-8 sequence.
         let err = parse_url("srt://h:9000?key=%FE%FF").unwrap_err();
         assert!(matches!(err, UrlError::BadPercentEncoding { .. }));
+    }
+
+    #[test]
+    fn parse_host_port_ipv4() {
+        let (ip, port) = parse_host_port("192.168.1.10:5004").unwrap();
+        assert_eq!(ip, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10)));
+        assert_eq!(port, 5004);
+    }
+
+    #[test]
+    fn parse_host_port_ipv6() {
+        let (ip, port) = parse_host_port("[2001:db8::1]:5004").unwrap();
+        assert_eq!(ip, IpAddr::V6("2001:db8::1".parse().unwrap()));
+        assert_eq!(port, 5004);
+    }
+
+    #[test]
+    fn parse_host_port_domain_rejected() {
+        // parse_host_port requires a literal IP; domain names need DNS
+        // resolution which is the caller's responsibility.
+        let err = parse_host_port("cam.lan:554").unwrap_err();
+        assert!(matches!(err, UrlError::InvalidPort { .. }));
+    }
+
+    #[test]
+    fn is_multicast_v4_classifies_correctly() {
+        assert!(is_multicast_v4(Ipv4Addr::new(239, 0, 0, 1)));
+        assert!(is_multicast_v4(Ipv4Addr::new(224, 0, 0, 1)));
+        assert!(!is_multicast_v4(Ipv4Addr::new(192, 168, 1, 1)));
+        assert!(!is_multicast_v4(Ipv4Addr::new(240, 0, 0, 1))); // class E
+    }
+
+    #[test]
+    fn is_multicast_v6_classifies_correctly() {
+        assert!(is_multicast_v6("ff00::1".parse().unwrap()));
+        assert!(is_multicast_v6("ff05::1".parse().unwrap()));
+        assert!(!is_multicast_v6("2001:db8::1".parse().unwrap()));
+        assert!(!is_multicast_v6("::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn parse_url_ipv6_trailing_garbage_rejected() {
+        let err = parse_url("rtp://[::1]garbage").unwrap_err();
+        assert!(matches!(err, UrlError::MalformedIpv6Literal { .. }));
     }
 }

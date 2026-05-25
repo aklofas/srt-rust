@@ -868,7 +868,7 @@ pub tst_srt::url::UrlError::MissingPort
 pub tst_srt::url::UrlError::OptionValidation
 pub tst_srt::url::UrlError::OptionValidation::key: alloc::string::String
 pub tst_srt::url::UrlError::OptionValidation::source: tst_srt::error::OptionError
-pub tst_srt::url::UrlError::Syntax(url::parser::ParseError)
+pub tst_srt::url::UrlError::Syntax(tst_core::url::common::UrlError)
 pub tst_srt::url::UrlError::UnknownKey
 pub tst_srt::url::UrlError::UnknownKey::key: alloc::string::String
 pub tst_srt::url::UrlError::UnsupportedKey
@@ -879,8 +879,8 @@ pub tst_srt::url::UrlError::UnsupportedMode::mode: alloc::string::String
 pub tst_srt::url::UrlError::UserinfoNotSupported
 pub tst_srt::url::UrlError::WrongScheme
 pub tst_srt::url::UrlError::WrongScheme::got: alloc::string::String
-impl core::convert::From<url::parser::ParseError> for tst_srt::url::UrlError
-pub fn tst_srt::url::UrlError::from(source: url::parser::ParseError) -> Self
+impl core::convert::From<tst_core::url::common::UrlError> for tst_srt::url::UrlError
+pub fn tst_srt::url::UrlError::from(source: tst_core::url::common::UrlError) -> Self
 impl core::error::Error for tst_srt::url::UrlError
 pub fn tst_srt::url::UrlError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::url::UrlError
@@ -1250,7 +1250,7 @@ pub tst_srt::UrlError::MissingPort
 pub tst_srt::UrlError::OptionValidation
 pub tst_srt::UrlError::OptionValidation::key: alloc::string::String
 pub tst_srt::UrlError::OptionValidation::source: tst_srt::error::OptionError
-pub tst_srt::UrlError::Syntax(url::parser::ParseError)
+pub tst_srt::UrlError::Syntax(tst_core::url::common::UrlError)
 pub tst_srt::UrlError::UnknownKey
 pub tst_srt::UrlError::UnknownKey::key: alloc::string::String
 pub tst_srt::UrlError::UnsupportedKey
@@ -1261,8 +1261,8 @@ pub tst_srt::UrlError::UnsupportedMode::mode: alloc::string::String
 pub tst_srt::UrlError::UserinfoNotSupported
 pub tst_srt::UrlError::WrongScheme
 pub tst_srt::UrlError::WrongScheme::got: alloc::string::String
-impl core::convert::From<url::parser::ParseError> for tst_srt::url::UrlError
-pub fn tst_srt::url::UrlError::from(source: url::parser::ParseError) -> Self
+impl core::convert::From<tst_core::url::common::UrlError> for tst_srt::url::UrlError
+pub fn tst_srt::url::UrlError::from(source: tst_core::url::common::UrlError) -> Self
 impl core::error::Error for tst_srt::url::UrlError
 pub fn tst_srt::url::UrlError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tst_srt::url::UrlError

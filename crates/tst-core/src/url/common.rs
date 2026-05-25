@@ -220,4 +220,48 @@ mod tests {
         let err = parse_url("srt://host:99999").unwrap_err();
         assert!(matches!(err, UrlError::InvalidPort { .. }));
     }
+
+    #[test]
+    fn parse_url_with_userinfo() {
+        let u = parse_url("rtsp://alice:secret@cam.lan:554/h264").unwrap();
+        assert_eq!(u.username, Some("alice"));
+        assert_eq!(u.password, Some("secret"));
+        assert_eq!(u.host, "cam.lan");
+        assert_eq!(u.port, Some(554));
+        assert_eq!(u.path, "/h264");
+    }
+
+    #[test]
+    fn parse_url_with_username_only() {
+        let u = parse_url("rtsp://alice@cam.lan/h264").unwrap();
+        assert_eq!(u.username, Some("alice"));
+        assert_eq!(u.password, None);
+    }
+
+    #[test]
+    fn parse_url_path_only() {
+        let u = parse_url("rtsp://cam.lan:554/main/sub").unwrap();
+        assert_eq!(u.path, "/main/sub");
+    }
+
+    #[test]
+    fn parse_url_ipv6_bracketed() {
+        let u = parse_url("rtp://[2001:db8::1]:5004/").unwrap();
+        assert_eq!(u.host, "2001:db8::1");
+        assert_eq!(u.port, Some(5004));
+        assert_eq!(u.path, "/");
+    }
+
+    #[test]
+    fn parse_url_ipv6_no_port() {
+        let u = parse_url("rtp://[::1]").unwrap();
+        assert_eq!(u.host, "::1");
+        assert_eq!(u.port, None);
+    }
+
+    #[test]
+    fn parse_url_ipv6_unclosed_bracket_rejected() {
+        let err = parse_url("rtp://[::1:5004").unwrap_err();
+        assert!(matches!(err, UrlError::UnclosedIpv6Bracket));
+    }
 }

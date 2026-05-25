@@ -1,325 +1,131 @@
-# TS Transformer (`ts-transformer`)
+# ts-transformer
 
-> ts-transformer streams live H.264 / H.265 video plus typed KLV metadata over an unreliable network — from a camera, sensor pod, or sensor platform to a viewer — in ~30 lines of code. Reconnect, encryption, and typed metadata decoding are handled.
->
-> Rust core. C, Python, and JVM (planned) bindings. MPEG-TS + MISB ST 0601 + SRT.
+A fast, embeddable Rust library for MPEG-TS video + KLV metadata streaming over SRT — with C, Python, and JVM (planned) bindings.
 
-**New here?** Start at [`docs/index.md`](docs/index.md) — the docs landing page routes you to whichever entry point matches what you're building.
+*The Swiss Army Knife for MPEG-TS streams.*
 
-**Status:** Sender + receiver pipelines complete, with **multi-platform Tier 1 support** — Linux x86_64 + Linux aarch64 are gating; macOS arm64 (Apple Silicon) and Windows x86_64 (MSVC) phase in (compile + link verified, runtime test promotion tracked in `docs/project/deferred-features.md`). `srt-sys` (raw FFI + vendored mbedTLS), `tst-srt` (safe `Socket` / `Listener` / config + builder API + `SrtCancelHandle`), `tst-core::klv` (typed MISB ST 0601 / ST 0102 / ST 0605 / ST 0903 over a generic SMPTE / MISB substrate), `tst-core::mpegts::mux` (multi-program TS muxer with H.264 / H.265 / H.266 / AV1 video, MP2 / AAC ADTS / AAC LATM / AC-3 audio, DVB-sub / teletext / CEA-708 / WebVTT subtitles, and typed ST 0601 / ST 0102 / ST 0605 / ST 0903 KLV per ST 1402 with H.222.0 §2.12.4.2 sync metadata AU cells), `tst-core::mpegts::demux` (receiver-side TS demuxer — bytes in, typed `DemuxEvent` out; lenient by default with four-tier `StrictMode` ladder; AU-cell unwrap; consumer-side pairing via cookbook recipes), and `tst-pipeline` (composition layer: `Transport` + `RecvTransport` traits, `MuxSender` / `Sender` / `RawSender`, `DemuxReceiver` / `Receiver` / `RawReceiver`, reconnecting `ManagedTransport` + `ManagedRecvTransport` + `ManagedDemuxReceiver`, `add_byte_sink` fan-out for tee patterns) are all implemented. `tst-c` exposes both sender and demux/receiver surfaces as a stable C ABI (`cdylib` + `staticlib` + cbindgen-generated `tstrans.h` + `tstrans.pc`; ABI version 0.5). Workspace ships hundreds of tests across both feature modes. The remaining binding crates (`srt-jni`, `srt-uniffi`) are next on the roadmap.
+[![CI](https://github.com/aklofas/ts-transformer/actions/workflows/ci.yml/badge.svg)](https://github.com/aklofas/ts-transformer/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/tstrans.svg)](https://pypi.org/project/tstrans/)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![MSRV: 1.85](https://img.shields.io/badge/MSRV-1.85-blue.svg)](rust-toolchain.toml)
 
-## Scope
+| Language | Status | Entry point |
+|---|---|---|
+| **Rust** | Shipping | [`docs/languages/rust.md`](docs/languages/rust.md) |
+| **C** | Shipping (ABI 0.5) | [`docs/languages/c.md`](docs/languages/c.md) |
+| **Python** | Shipping (`tstrans` on PyPI) | [`docs/languages/python.md`](docs/languages/python.md) |
+| **JVM** | Planned (`srt-jni` next) | [roadmap](docs/project/deferred-features.md) |
 
-- Container: **MPEG-TS**
-- Metadata: **MISB ST 0601 KLV** (multiplexed per MISB ST 1402, with sync metadata access units per ITU-T H.222.0 §2.12.4.2)
-- Transport: **SRT** (Haivision libsrt 1.5.5, vendored)
-- Encryption: **mbedTLS 3.6.6 LTS** (vendored, statically linked, on by default)
+## In 30 seconds
 
-For a feature-by-feature support matrix — SRT options, MISB specs, typed ST 0601 items, and what's planned vs. out of scope — see [`docs/reference/compatibility.md`](docs/reference/compatibility.md).
-
-## Hello, MPEG-TS
-
-Mux one H.264 access unit + one KLV blob into 188-byte TS packets — no SRT, no peer:
+Mux one H.264 access unit + one KLV blob into 188-byte MPEG-TS packets — no SRT peer, no file:
 
 ```rust
 use tst_core::mpegts::mux::{Muxer, MuxerConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Default config: one program, H.264 video on PID 0x1011, async KLV on 0x1031.
+    // Default config: one program, H.264 video on PID 0x1011, KLV on 0x1031.
     let mut muxer = Muxer::new(MuxerConfig::default())?;
 
-    // Minimal Annex-B H.264 IDR NAL: start code + nal_header + filler.
     let nal = [0x00, 0x00, 0x00, 0x01, 0x65, 0xA5, 0xA5, 0xA5];
     muxer.push_video(&nal, /* pts_90khz */ 0, /* key_frame */ true)?;
     muxer.push_klv(&[0x06, 0x0E, 0x2B, 0x34, 0xDE, 0xAD, 0xBE, 0xEF], 0, 0x00)?;
 
     let mut buf = [0u8; 1316];
-    let mut packets = Vec::new();
-    loop {
-        let n = muxer.pull(&mut buf);
-        if n == 0 { break; }
-        packets.extend_from_slice(&buf[..n]);
-    }
-    println!("muxed {} bytes ({} TS packets)", packets.len(), packets.len() / 188);
+    let n = muxer.pull(&mut buf);
+    println!("muxed {n} bytes ({} TS packets)", n / 188);
     Ok(())
 }
 ```
 
-`cargo run --example mux_to_file -- out.ts 5` runs the longer 5-second version. To send those bytes over SRT, see [`docs/start/quickstart.md`](docs/start/quickstart.md).
+Python equivalent: `pip install tstrans` — see [`docs/languages/python.md`](docs/languages/python.md).
+**Run end-to-end (mux → SRT → demux) in 10 minutes:** [`docs/start/quickstart.md`](docs/start/quickstart.md).
 
-## Architecture
+## What this is — and what it isn't
 
-A Rust core wrapping libsrt via FFI, with bindings for JVM (JNI, JDK 17+), iOS/Android (UniFFI), and embedded Linux (cdylib + cbindgen). Both directions are first-class: `mpegts::mux` muxes encoded NALs + KLV into a TS stream; `mpegts::demux` reverses it (bytes in, typed `DemuxEvent` stream out — with sync recovery, AU cell unwrap, NAL split, and lenient handling of real-world non-conformance). Consumers can still feed extracted bytes to FFmpeg / JavaCV / Bento4 if they prefer, but Rust-native demux is now the default.
+**Use ts-transformer when you need to:**
+- Stream live H.264 / H.265 / H.266 / AV1 video over an unreliable network with reconnect, encryption, and stats.
+- Carry typed MISB ST 0601 / 0102 / 0605 / 0903 KLV metadata in the same transport stream as the video.
+- Decode an existing `.ts` file or live stream into typed `DemuxEvent` items (KLV records, NAL units, audio frames, subtitles).
+- Embed all of the above in a Rust, C, or Python app via a stable surface.
 
-## Documentation
+**Look elsewhere if you need:**
+- **RTMP, WebRTC, or RIST** transports — those aren't on the roadmap. (SRT is shipping today; **RTP** and **raw TCP / UDP** are in active development.)
+- A different container — we are **MPEG-TS only** (no MP4, fMP4, HLS, DASH; pair us with FFmpeg for repackaging).
+- Arbitrary metadata schemas — we are **MISB KLV only**.
+- Video encoders or decoders — we mux + demux the wire format; pair with x264 / x265 / FFmpeg / NVENC / PyAV / a hardware codec for the actual codec work.
+- A turnkey server — we are a **library**, not MediaMTX / Nimble / Wowza.
 
-The repo's documentation lives under [`docs/`](docs/):
+## Scope
 
-- **[`getting-started.md`](docs/start/quickstart.md)** — install, first send, first receive in 10 minutes.
-- **[`architecture.md`](docs/reference/architecture.md)** — crate graph, pipeline composition model, sync vs. async stance.
-- **[`guide-codec.md`](docs/guides/codec.md)** — typed codec parameter-set parsers (`codec::h264`, `codec::h265`, `codec::h266`, `codec::av1`); stateless SPS / VPS / PPS / Sequence Header parsing from demuxer NAL / OBU bytes; shared color and frame-rate types.
-- **[`guide-klv.md`](docs/guides/klv.md)** — generic substrate plus typed ST 0601 / ST 0102 / ST 0605 / ST 0903 layers; the four-rung decode strictness ladder.
-- **[`guide-mpegts-demux.md`](docs/guides/mpegts-demux.md)** — `Demuxer`, `DemuxEvent`, `StrictMode` ladder, override surface, robustness behaviours, decoupled-pairing rationale.
-- **[`guide-mpegts-mux.md`](docs/guides/mpegts-mux.md)** — `Config` / `ConfigBuilder`, codec + KLV-mode selection, PCR/PSI cadence, push/pull contract.
-- **[`guide-pipeline.md`](docs/guides/pipeline.md)** — picking among `MuxSender` / `Sender` / `RawSender` (send) and `DemuxReceiver` / `Receiver` / `RawReceiver` (receive); the `Transport` and `RecvTransport` traits; `ManagedTransport` / `ManagedRecvTransport` reconnect; `add_byte_sink` fan-out.
-- **[`guide-srt.md`](docs/guides/srt.md)** — `Socket` / `Listener`, encryption, latency, stats, error model.
-- **[`cookbook/index.md`](docs/cookbook/index.md)** — per-recipe files linking to runnable examples (grouped by sending / receiving / KLV / codecs / operations).
-- **[`troubleshooting.md`](docs/troubleshooting.md)** — diagnose build failures, connection failures, KLV rejection, TS framing issues, reconnect loops.
-- **[`deferred-features.md`](docs/project/deferred-features.md)** — what's not yet supported and the trigger conditions to revisit.
-- **[`compatibility.md`](docs/reference/compatibility.md)** — feature-by-feature support matrix.
-- **[`binding-authors.md`](docs/reference/binding-authors.md)** — entry point for `srt-jni` and `srt-uniffi` authors (plus the existing `tst-c` ABI).
+| | |
+|---|---|
+| **Container** | MPEG-TS (single-program, multi-program; PAT / PMT / PCR auto-generated) |
+| **Video** | H.264, H.265, H.266 / VVC, AV1 |
+| **Audio** | AAC (ADTS + LATM), MPEG-2 Audio (MP2 / MP3), AC-3, EAC-3 |
+| **Subtitles** | DVB subtitling, DVB teletext, CEA-708, WebVTT-in-TS |
+| **Metadata** | MISB ST 0601 (FMV), ST 0102 (security), ST 0605 (amend tags), ST 0903 (VMTI); ST 1402 carriage + H.222.0 §2.12.4.2 Metadata AU cells |
+| **Transport** | SRT 1.5 (Haivision libsrt, vendored) shipping today; RTP and raw TCP / UDP in active development |
+| **Encryption** | AES-128 / 192 / 256 over SRT via vendored mbedTLS 3.6 LTS, on by default |
 
-Runnable Rust examples live at [`examples/`](examples/) — a workspace-level `tst-examples` crate organized into 8 task-oriented subfolders. Run any with `cargo run -p tst-examples --example <name>`. See [`docs/cookbook/index.md`](docs/cookbook/index.md) for which example illustrates which recipe.
+Full feature-by-feature matrix in [`docs/reference/compatibility.md`](docs/reference/compatibility.md).
 
-## Workspace layout
-
-```
-crates/
-  srt-sys/       raw libsrt FFI (bindgen-generated against libsrt 1.5.5)             ✅ done
-  tst-core/      parsing + codec core — klv:: ✅, mpegts::mux:: ✅, mpegts::demux:: ✅
-  tst-pipeline/  pipeline shells — MuxSender/Sender/RawSender, DemuxReceiver, etc.   ✅ done
-  tst-srt/       SRT transport + top-level examples                                  ✅ done
-  tst-c/         cdylib + staticlib + cbindgen header — Linux x86_64                 ✅ done
-  tst-py/        Python bindings via PyO3 — Demuxer/Muxer + typed KLV + codec parsers + pandas/NumPy   ✅ done
-  srt-jni/       JNI bindings — JAR for JDK 17+ JVM consumers                       ⏳ planned
-  srt-uniffi/    Swift/Kotlin via UniFFI — iOS/Android frameworks                    ⏳ planned
-vendor/
-  srt/           Haivision libsrt git submodule, pinned at v1.5.5
-  mbedtls/       mbedTLS git submodule, pinned at v3.6.6 (LTS)
-```
-
-## Crates
-
-### `srt-sys` — raw FFI bindings to libsrt
-
-Bindgen-generated against libsrt 1.5.5, edition 2024, MSRV 1.85. Exposes ~72 `srt_*` functions and the full `SRT_*` constant / type surface. Encryption is wired in via mbedTLS by default; opt out with `--no-default-features`. The build script discovers an installed libsrt via `pkg-config` first and falls back to compiling the vendored submodule (force vendored with `SRT_FORCE_VENDORED=1`).
-
-#### Features
-
-| Feature   | Default | What it does                                                                                |
-| --------- | ------- | ------------------------------------------------------------------------------------------- |
-| `mbedtls` | ✅ on    | Build vendored mbedTLS and link libsrt with `USE_ENCLIB=mbedtls` + `ENABLE_ENCRYPTION=ON`. |
-
-#### Usage
-
-```toml
-[dependencies]
-srt-sys = { git = "https://github.com/aklofas/ts-transformer" }
-
-# Or, to skip the mbedTLS build and disable encryption:
-srt-sys = { git = "https://github.com/aklofas/ts-transformer", default-features = false }
-```
-
-`srt-sys` is intended as a foundation for higher-level crates in this workspace. Most callers should use `tst-core` / `tst-srt`'s safe API rather than write `unsafe` against the raw bindings directly.
-
-### `tst-core`, `tst-pipeline`, `tst-srt` — safe Rust API
-
-Three crates built on `srt-sys`. `tst-core` holds parsing and codec logic; `tst-pipeline` holds the pipeline shells; `tst-srt` ties them together and provides examples. Together they provide:
-
-- **SRT transport** (`tst_srt`) — `Socket`, `Listener`, `SocketConfig` / `ListenerConfig`, fluent `SocketBuilder` / `ListenerBuilder`, AES-128/192/256 passphrase-based encryption, packet-filter strings, latency / bandwidth / TLPKTDROP / flow-window / SRTO_STREAMID tunables, and `Stats` snapshots. Per-call-category error model. Sync blocking API today; async / reactor are deferred. Plus `srt://host:port?key=value&...` URL parsing (libsrt vocabulary, URL-wins-over-builder precedence) — see [`docs/guides/srt.md#url-parsing`](docs/guides/srt.md#url-parsing).
-- **KLV codec** (`tst_core::klv`) — generic SMPTE / MISB substrate plus typed MISB ST 0601 / ST 0102 / ST 0605 / ST 0903 layers (see below). Also includes AU-cell wrap/unwrap for sync KLV in TS.
-- **MPEG-TS muxer** (`tst_core::mpegts::mux`) — multi-program `Muxer` carrying H.264 / H.265 / H.266 / AV1 video, MP2 / AAC / AC-3 audio, DVB-sub / teletext / CEA-708 / WebVTT subtitles, and KLV metadata (typed ST 0601, ST 0102, ST 0605, ST 0903). KLV is carried per ST 1402 — async via `stream_type 0x06` + KLVA registration descriptor, sync via the H.222.0 §2.12.4.2 `Metadata_AU_cell` header. Up to 16 programs per muxer, up to 16 streams per kind per program, per-program PCR pin. PCR/PTS/PSI cadence configurable; deterministic output (no wall-clock dependency).
-- **Pipeline composition** (`tst_pipeline`) — composes the muxer with a `Transport` (the SRT socket, or any custom transport) into ergonomic sender shells: `MuxSender` (NAL+KLV → TS → SRT, internally synchronized, lossless across transient failures), `Sender` (pre-muxed TS → SRT with sync-byte framing/recovery in RECOVER or STRICT mode), `RawSender` (one byte-blind message per send). All three are generic over `Transport`; wrap any of them with `ManagedTransport<T>` for reconnect + gap-buffer behavior with configurable backoff and overflow policy.
-
-#### Features
-
-| Feature   | Default | What it does                                                                          |
-| --------- | ------- | ------------------------------------------------------------------------------------- |
-| `mbedtls` | ✅ on    | Propagates to `srt-sys/mbedtls`. Disable with `--no-default-features` for unencrypted libsrt. |
-| `log`     | ✅ on    | Forward libsrt's internal logging through the `log` facade for `env_logger` etc.     |
-
-#### Usage
-
-```toml
-[dependencies]
-tst-srt = { git = "https://github.com/aklofas/ts-transformer" }
-```
-
-```rust
-use tst_srt::{ListenerBuilder, SocketBuilder, Passphrase};
-use std::time::Duration;
-
-// Listener side. Mutators return `&mut Self`, terminal `bind` takes
-// `&self` — bind the builder, then step.
-let mut lb = ListenerBuilder::new();
-lb.passphrase(Passphrase::new("my-shared-secret-1234")?);
-lb.latency_ms(120);
-let mut listener = lb.bind("0.0.0.0:1234")?;
-let (socket, peer) = listener.accept()?;
-
-// Caller side. Same bind-then-step pattern: terminal `connect` takes
-// `&self`, so a single fluent chain off the temporary builder dangles.
-let mut sb = SocketBuilder::new();
-sb.passphrase(Passphrase::new("my-shared-secret-1234")?);
-sb.latency_ms(120);
-sb.recv_timeout(Duration::from_secs(5));
-let mut socket = sb.connect("aircraft:1234")?;
-socket.send(b"hello")?;
-```
-
-The `SocketConfig` / `ListenerConfig` structs are the canonical configuration types — bindings (UniFFI, JNI, cbindgen) consume them as plain dictionaries / POJOs / C structs. The builders are sugar over the same types.
-
-#### KLV codec (`tst_core::klv`)
-
-A two-layer codec living in `tst-core`:
-
-- **Generic substrate** — 16-byte SMPTE Universal Labels (`UniversalLabel` with byte-level introspection + family check), BER short / long and BER-OID length codecs (`klv::length`), MISB ST 1201.5 IMAPB integer ↔ float mapping (`klv::imapb`), 16-bit running-sum checksum (`klv::checksum`), and zero-allocation iterators over local-set / universal-set packs (`klv::pack::Iter`, `RawField`, `OwnedRawField`). Honours the MISB ST 0107.5 future-proof skip rule — unknown tags pass through as `OwnedRawField` instead of being dropped or causing failure.
-- **Typed MISB ST 0601** (`klv::st0601`) — `UasDatalinkLs` flat struct mirroring the wire format with **49 of 143 typed items** (timestamp, platform attitude / airspeed, sensor lat/lon/altitude/FOV/azimuth/elevation/roll, slant range, frame center + ellipsoid heights, full-resolution corner lat/lon, full-resolution platform pitch / roll, security-LS pass-through, version, and more). Composite views: `GeoPoint`, `Attitude`, `FieldOfView`, `Corners`. Four decode entry points trade off strictness — `decode` (checksum-verified, any UL), `decode_unchecked` (skips checksum), `decode_strict` (gates on the ST 0601-family UL), and `decode_strict_compliance` (also enforces ST 0601.8-09/-11/-12 mandatory structure rules). Encoder auto-emits Tag 1 checksum and Tag 65 version when unset.
-- **Typed MISB ST 0605** (`klv::st0605`) — Precision Time Stamp Pack (`PrecisionTimeStampPack` + `TimeStatus(u8)` newtype with `is_locked` / `has_discontinuity` / `is_reverse_jump` / `reserved_bits_valid` accessors per MISB ST 0603.5 §7.4). Decode and encode for the 26-byte pack commonly multiplexed alongside ST 0601 records in real captures.
-
-For the full feature-by-feature matrix — SRT options, MISB specs, every typed ST 0601 item, decode strictness ladder, planned vs. out of scope — see [`docs/reference/compatibility.md`](docs/reference/compatibility.md).
-
-### `tst-c` — stable C ABI for the sender pipeline
-
-A binding crate that exposes `tst-pipeline` to non-Rust callers (C / C++ directly, plus anything else that can call into a C ABI). Built as `cdylib` + `staticlib` so consumers either dynamic-link `libtstrans.so` or static-link `libtstrans.a`; libsrt and mbedTLS are statically embedded into both, so consumers don't need libsrt installed system-wide. The C header (`tstrans.h`) is generated by cbindgen, committed at [`crates/tst-c/include/tstrans.h`](crates/tst-c/include/tstrans.h), and CI verifies no drift.
-
-#### What's exposed
-
-Seven opaque-handle types covering the send-side pipeline:
-
-- **`tst_muxer_t`** — standalone TS muxer utility (no transport). Push NALs and KLV blobs, pull TS bytes; useful for callers that send TS through their own transport (UDP, file, ffmpeg pipe, etc.).
-- **`tst_mux_sender_t`** / **`tst_managed_mux_sender_t`** — canonical NAL+KLV → TS → SRT sender. Plain L1 connects once; managed L2 wraps with reconnect + gap buffer.
-- **`tst_ts_sender_t`** / **`tst_managed_ts_sender_t`** — pre-muxed TS bytes → SRT, with sync framing/recovery (RECOVER auto-resync or STRICT fail-fast). Plus `tst_ts_sender_get_stats()` for `bytes_pushed` / `bytes_skipped_for_sync` / `resync_events` / `packets_sent`.
-- **`tst_raw_sender_t`** / **`tst_managed_raw_sender_t`** — byte-blind one-shot primitive. One `_send` call = one outbound SRT message of the exact length passed in.
-
-Configuration is via opaque builders (`tst_mux_config_t`, `tst_ts_sender_config_t`, `tst_raw_sender_config_t`, `tst_reconnect_policy_t`) — `_new` / setters / `_free`. Errors follow libsrt's idiom: every fallible call returns `0` on success or a negative `TST_E_*` code, with thread-local detail accessible via `tst_get_last_error()` / `tst_get_last_error_str()`.
-
-#### Distribution (Linux x86_64)
-
-`cargo build -p tst-c --release` produces:
-
-- `target/release/libtstrans.so` — runtime cdylib (~1.6 MB, libsrt + mbedTLS + libstdc++ statically embedded).
-- `target/release/libtstrans.a` — static library.
-- `target/release/include/tstrans.h` — cbindgen header.
-- `target/release/tstrans.pc` — pkg-config metadata (`pkg-config --cflags --libs tstrans`).
-
-#### Usage
-
-```c
-#include "tstrans.h"
-
-tst_mux_config_t* cfg = tst_mux_config_new();
-tst_mux_config_add_video(cfg, 0x1011, TST_VIDEO_CODEC_H264);
-tst_mux_config_add_klv(cfg, 0x1031, TST_KLV_STREAM_TYPE_PRIVATE_DATA, false);
-
-tst_mux_sender_t* s = tst_mux_sender_open("srt://10.0.0.1:9000", cfg);
-tst_mux_config_free(cfg);
-if (!s) {
-    fprintf(stderr, "open failed: %s\n", tst_get_last_error_str());
-    return 1;
-}
-
-tst_mux_sender_send_video(s, nal_bytes, nal_len, /* pts_90khz */ 0, /* key_frame */ true);
-tst_mux_sender_send_klv(s, klv_bytes, klv_len, /* pts_90khz */ 0);
-
-tst_mux_sender_close(s);
-```
-
-A complete C example lives at [`crates/tst-c/examples/c/send_synthetic.c`](crates/tst-c/examples/c/send_synthetic.c). The C ABI builds natively on Linux x86_64, Linux aarch64, macOS arm64 (Apple Silicon), and Windows x86_64 (MSVC) — see [Platform support](#platform-support) below. JVM (`srt-jni`) and iOS-Android (`srt-uniffi`) sibling crates are next on the roadmap.
-
-## Building
-
-### Prerequisites
-
-- Rust 1.85+ (MSRV declared in workspace `Cargo.toml`; `rust-toolchain.toml` pins to `stable` for local development).
-- A C/C++ toolchain (libsrt and mbedTLS are compiled from source).
-- `cmake` and `pkg-config` on `PATH`.
-- Python 3 (mbedTLS's build system uses it for code generation; default-on Ubuntu/Debian/macOS).
-
-On Debian/Ubuntu:
+## Install
 
 ```bash
-sudo apt-get install -y build-essential cmake pkg-config python3
+# Python (PyPI)
+pip install tstrans                   # core
+pip install tstrans[pandas]           # + DataFrame + NumPy adapters
+
+# Rust (git, until first crates.io publish)
+cargo add --git https://github.com/aklofas/ts-transformer tst-core
 ```
 
-### Clone with submodules
+<details>
+<summary>From source (Rust + C + vendored libsrt / mbedTLS)</summary>
 
 ```bash
 git clone --recurse-submodules https://github.com/aklofas/ts-transformer.git
-cd ts-transformer
-# Or, if already cloned without submodules:
-git submodule update --init --recursive
+cd ts-transformer/ts-transformer
+
+# Rust workspace
+SRT_FORCE_VENDORED=1 cargo build --release
+
+# C bindings (cdylib + staticlib + tstrans.h + tstrans.pc)
+SRT_FORCE_VENDORED=1 cargo build --release -p tst-c
 ```
 
-### Build & test
+The build script compiles libsrt 1.5.5 and mbedTLS 3.6.x from vendored submodules — expect 3–5 minutes on cold cache, seconds when warm. See [`docs/languages/rust.md`](docs/languages/rust.md) for feature flags (`mbedtls`, `file`, etc.).
 
-By default the build script tries `pkg-config srt ≥ 1.5.0` first, falling back to compiling the vendored `vendor/srt`. Force the vendored path with `SRT_FORCE_VENDORED=1` (recommended for reproducible builds):
+</details>
 
-```bash
-SRT_FORCE_VENDORED=1 cargo test --workspace                        # default features (mbedTLS encryption)
-SRT_FORCE_VENDORED=1 cargo test --workspace --no-default-features  # no encryption
-SRT_FORCE_VENDORED=1 cargo clippy --workspace --all-targets -- -D warnings
-cargo fmt --all -- --check
-```
+## Documentation
 
-A clean rebuild compiles libsrt and mbedTLS from source — expect 3–5 minutes the first time, seconds on warm builds. The `--no-default-features` test path skips the mbedTLS build entirely (~1–2 min faster on cold cache).
+→ **[`docs/index.md`](docs/index.md)** — the docs landing page routes 5 reader audiences (cold-domain reader, evaluator, language integrator, domain expert, binding author).
 
-### Platform support
+| If you are… | Start here |
+|---|---|
+| New to MPEG-TS / KLV / SRT | [`docs/start/concepts.md`](docs/start/concepts.md) — plain-language explainers |
+| Evaluating the library | [`docs/start/overview.md`](docs/start/overview.md) — what it does, what's in the box, what's not |
+| Writing your first code | [`docs/start/quickstart.md`](docs/start/quickstart.md) — working mux + demux in 10 minutes |
+| Building something real | [`docs/cookbook/index.md`](docs/cookbook/index.md) — 33 task-oriented recipes |
+| Looking up a type or error | [`docs/reference/`](docs/reference/) — architecture, conventions, public-API policy |
+| Wrapping for a new language | [`docs/reference/binding-authors.md`](docs/reference/binding-authors.md) — ABI, error mapping, stability tiers |
 
-**Tier 1 platforms:** Linux x86_64, Linux aarch64, macOS arm64 (Apple Silicon), Windows x86_64 (MSVC). The `cargo build` command works on all four with no platform-specific flags — vendored libsrt 1.5.5 + mbedTLS 3.6.6 build natively from the included submodules.
+## Interoperates with
 
-For the full platform support matrix (including Tier 2 and deferred platforms), see [`docs/reference/compatibility.md`](docs/reference/compatibility.md). For what isn't supported yet and what would trigger support, see [`docs/project/deferred-features.md`](docs/project/deferred-features.md).
+The wire format is standards-conformant; outputs are validated against **FFmpeg / ffprobe**, **TSDuck**, **GStreamer**, **VLC**, **mpv**, and reference MISB tooling. Use any of them as the encoder, decoder, validator, or display layer on either side of a ts-transformer pipeline.
 
-### Build the C ABI artifacts
+## Status
 
-To build just the C ABI artifacts (cdylib, staticlib, header, pc-file):
+Pre-1.0. Sender + receiver pipelines complete; **Linux x86_64 + Linux aarch64 are CI-gating**; macOS arm64 and Windows MSVC build + link verified, runtime test promotion tracked in [`docs/project/deferred-features.md`](docs/project/deferred-features.md). Hundreds of tests across both feature modes; 20 bash ratchets + `cargo public-api` baselines guard the surface on every commit.
 
-```bash
-SRT_FORCE_VENDORED=1 cargo build -p tst-c --release
-ls target/release/libtstrans.so target/release/libtstrans.a \
-   target/release/include/tstrans.h target/release/tstrans.pc
-```
+Public API may change between pre-1.0 releases; all changes recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
-### KLV examples & fixtures
+## Contributing
 
-```bash
-# Regenerate the synthetic ST 0601 fixtures committed under
-# crates/tst-core/tests/fixtures/st0601/
-cargo run --example gen_synthetic_fixtures
-
-# Extract every KLV blob from a .ts file (writes one .klv per record).
-cargo run --example extract_klv -- /path/to/capture.ts
-```
-
-Drop sensitive real-world `.ts` / `.klv` captures into `crates/tst-srt/tests/fixtures/local/` (gitignored). `tests/local_fixtures.rs` picks them up automatically and applies shape-keyed assertions documented in `crates/tst-srt/tests/TEST_CORPUS.md`.
-
-Fuzz the ST 0601 decoder (requires nightly + `cargo-fuzz`):
-
-```bash
-cd crates/tst-core
-cargo +nightly fuzz run klv_st0601_decode
-cargo +nightly fuzz run klv_iter
-```
-
-### CI
-
-CI runs `cargo fmt --check`, `cargo clippy -D warnings`, and the test suite in both feature modes (default + `--no-default-features`) against the vendored libsrt + mbedTLS builds. The platform matrix is gating on **Linux x86_64** and **Linux aarch64** (`ubuntu-latest` + `ubuntu-24.04-arm`); **macOS arm64** (`macos-14`) and **Windows x86_64 MSVC** (`windows-latest`) are phase-in with `continue-on-error: true` until their respective promotion windows close. A separate job builds `tst-core` + `tst-pipeline` against linux-musl (no libsrt), and a nightly job compile-checks every fuzz target. See [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
-
-Eleven bash ratchets in [`scripts/`](scripts/) guard cross-cutting invariants (shell-error coverage, C-ABI rustdoc coverage, no-direct `NotAvailable`/`NotFound` casts, header section uniqueness, `srt_*` symbol leak, lifecycle `ffi_catch` coverage, and more). `cargo public-api` baselines for `tst-core` / `tst-pipeline` / `tst-srt` plus a workspace-wide `#[non_exhaustive]` count guard catch public-API drift. All ratchets and the public-API diff run in CI; the same scripts can be invoked locally before pushing.
-
-## Project conventions
-
-- **Direct pushes to `main`.** Single-developer linear history; no feature branches by default.
-- **Subject-only commit messages** unless the why is non-obvious. No AI-attribution trailers.
-- **Submodules pinned by tag** (libsrt v1.5.5, mbedTLS v3.6.6 LTS). Submodule advances are deliberate, separate commits.
-- **Edition 2024, MSRV 1.85.** Bindgen emits `unsafe extern "C"` blocks (`.rust_edition(Edition2024)`).
+Issues and PRs welcome. See [`docs/reference/conventions.md`](docs/reference/conventions.md) for code style, commit message rules, and the public-API workflow.
 
 ## License
 
-Licensed under either of
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <http://www.apache.org/licenses/LICENSE-2.0>)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
-
-at your option.
-
-### Vendored dependencies
-
-- `vendor/srt` — Haivision libsrt, MPL-2.0.
-- `vendor/mbedtls` — Mbed TLS, dual-licensed Apache-2.0 / GPL-2.0-or-later.
-
-### Contribution
-
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in the work by you, as defined in the Apache-2.0 license, shall
-be dual licensed as above, without any additional terms or conditions.
+Licensed under **MIT** ([`LICENSE-MIT`](LICENSE-MIT)) or **Apache-2.0** ([`LICENSE-APACHE`](LICENSE-APACHE)) at your option.

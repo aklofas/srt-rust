@@ -358,50 +358,56 @@ demuxer drops the partial buffer and emits
 `MultiCellAuReason` naming the failure mode. Tune the cap via
 `DemuxerBuilder::au_cell_cap_per_pid(bytes)`.
 
-#### Malformed `cell_fragment_indication` tolerance (opt-in)
+#### Malformed `cell_fragment_indication` tolerance (default on)
 
-Some real-world encoders mis-set the H.222.0 V9 §2.12.4.2 Table 2-157
-`cell_fragment_indication` bits — emitting `0b00` (Middle) or `0b01`
-(Last) for what are actually single complete KLV records. Per the
-spec, the demuxer treats these as orphan continuations and rejects
-them with `NonConformantIssue::MultiCellAu { reason:
-MultiCellAuReason::Orphan }` and no metadata. ffmpeg also accepts
-these streams in practice (by stripping the 5-byte AU cell header
-without enforcing CFI semantics).
+Real-world encoders pervasively mis-set the H.222.0 V9 §2.12.4.2
+Table 2-157 `cell_fragment_indication` bits — emitting `0b00` (Middle)
+or `0b01` (Last) for what are actually single complete KLV records.
+Empirically, this is the dominant industry mode: corpus-wide
+validation across multiple gimbaled-platform vendors (251 captures,
+37 GB) found ~99% of demuxer `NonConformant` events are
+`MalformedAuCellCfiTolerated`. No other public reference decoder
+enforces CFI either — MISB ST 1402.2 Appendix B lists the four bit
+patterns without semantic explanation, FFmpeg's `mpegtsenc.c` does
+not generate the 5-byte AU cell header at all, and GStreamer's
+`tsdemux.c::parse_pes_metadata_frame` reads the flags byte but
+discards the CFI bits. Producers ship malformed CFI and nothing
+catches it.
 
-To accept such streams in `ts-transformer`, opt into receive-side
-tolerance:
-
-```rust,ignore
-use tst_core::mpegts::demux::DemuxerBuilder;
-let demuxer = DemuxerBuilder::new()
-    .cfi_tolerance(true)
-    .build();
-```
-
-When tolerance is enabled, the demuxer additionally validates the
-orphan cell's inner payload as a single complete KLV unit (SMPTE 336M
-UL prefix `06 0e 2b 34` followed by a BER length that describes
-exactly the available bytes). If validation passes, the demuxer emits:
+`ts-transformer` defaults to **tolerance on** — pragmatic for any
+consumer of real-world STANAG 4609 traffic. With tolerance enabled,
+the demuxer validates the orphan cell's inner payload as a single
+complete KLV unit (SMPTE 336M UL prefix `06 0e 2b 34` followed by a
+BER length that describes exactly the available bytes). If validation
+passes, the demuxer emits:
 
 1. A `MetadataKind::KlvSyncAuCell` event with
    `cell_fragment_indication = Complete` (the substituted value),
    `was_reassembled = false`, `cell_count = 1`, and the verbatim KLV
    payload.
-2. A `NonConformantIssue::CfiTolerated { pid,
-   observed_cfi, treated_as }` diagnostic so callers can quantify
-   the malformation, log it, or surface it to telemetry.
+2. A `NonConformantIssue::CfiTolerated { pid, observed_cfi,
+   treated_as }` diagnostic so callers can quantify the
+   malformation, log it, or surface it to telemetry.
 
-When validation fails (no recognized UL prefix, or BER length mismatch
-suggesting a real fragment), the existing strict path runs and only
-the `Orphan` diagnostic fires — tolerance does not "rescue" payloads
-that look truly fragmentary.
+When validation fails (no recognized UL prefix, or BER length
+mismatch suggesting a real fragment), the existing strict path runs
+and only the `Orphan` diagnostic fires — tolerance does not "rescue"
+payloads that look truly fragmentary.
 
-Tolerance is **opt-in** because it reinterprets wire semantics that a
-spec-strict receiver would loudly reject. Keep it off (the default)
-when you want to surface producer malformation; turn it on for
-batch-processing pipelines where you need data from known-malformed
-encoders to flow.
+For spec-strict conformance testing (e.g. validating a producer
+against the wire spec rather than consuming real-world traffic),
+disable tolerance explicitly:
+
+```rust,ignore
+use tst_core::mpegts::demux::DemuxerBuilder;
+let demuxer = DemuxerBuilder::new()
+    .cfi_tolerance(false)
+    .build();
+```
+
+Strict mode then surfaces orphan Middle/Last cells as
+`NonConformantIssue::MultiCellAu { reason: MultiCellAuReason::Orphan }`
+and emits no metadata event.
 
 ## Reading per-stream descriptors
 

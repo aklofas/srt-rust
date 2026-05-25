@@ -107,9 +107,11 @@ def probe(
     plus PCR analysis).
 
     Pass `config` to use a non-default demuxer configuration (e.g.
-    `DemuxerConfig(cfi_tolerance=True)` to detect
-    KLV in streams whose encoders mis-set the AU cell CFI bits — see
-    `tstrans.mpegts.DemuxerConfig` for the full knob list).
+    `DemuxerConfig(cfi_tolerance=False)` for spec-strict conformance
+    testing — the default is tolerance-on, which rescues KLV from
+    producer-malformed AU cell CFI bits while still emitting the
+    `CfiTolerated` diagnostic). See `tstrans.mpegts.DemuxerConfig`
+    for the full knob list.
     """
 
     p = Path(path)
@@ -213,13 +215,15 @@ def extract_klv(
     bare `Exception`) also lets binding-shape regressions (TypeError,
     AttributeError) surface naturally instead of being suppressed.
 
-    Pass `config` to use a non-default demuxer configuration. The
-    most common reason to do this today is to opt into
-    `DemuxerConfig(cfi_tolerance=True)`, which
-    rescues complete KLV records from sync-metadata streams whose
-    encoders set the AU cell `cell_fragment_indication` bits to
-    `0b00` (Middle) or `0b01` (Last) for what are actually single
-    complete records (a real-world malformation pattern). See
+    Pass `config` to use a non-default demuxer configuration. CFI
+    tolerance is **on by default** — the demuxer rescues complete KLV
+    records from sync-metadata streams whose encoders set the AU cell
+    `cell_fragment_indication` bits to `0b00` (Middle) or `0b01`
+    (Last) for what are actually single complete records (a
+    corpus-dominant real-world malformation pattern), while still
+    emitting the `CfiTolerated` diagnostic so the malformation
+    remains visible. Set `DemuxerConfig(cfi_tolerance=False)` for
+    spec-strict conformance testing. See
     `tstrans.mpegts.DemuxerConfig` for the full knob list.
     """
 

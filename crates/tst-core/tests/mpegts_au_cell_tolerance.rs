@@ -28,7 +28,7 @@
 use tst_core::mpegts::au_cell::{AuCellHeader, CellFragmentIndication, write_metadata_au_cell};
 use tst_core::mpegts::common::Pts90khz;
 use tst_core::mpegts::demux::{
-    DemuxEvent, Demuxer, DemuxerBuilder, MetadataKind, NonConformantIssue, event::MultiCellAuReason,
+    DemuxEvent, DemuxerBuilder, MetadataKind, NonConformantIssue, event::MultiCellAuReason,
 };
 use tst_core::mpegts::mux::{
     KlvStreamType, Muxer, MuxerConfig, MuxerProgramConfigBuilder, VideoCodec,
@@ -139,15 +139,10 @@ fn collect_events_with(builder: DemuxerBuilder, ts_bytes: &[u8]) -> Vec<DemuxEve
     events
 }
 
-fn collect_events(ts_bytes: &[u8]) -> Vec<DemuxEvent> {
-    let mut dem = Demuxer::new();
-    dem.feed(ts_bytes).unwrap();
-    let mut events = Vec::new();
-    while let Some(e) = dem.next_event() {
-        events.push(e);
-    }
-    events
-}
+// `collect_events` (default `Demuxer::new()`) was removed when the strict
+// path was retargeted through `collect_events_with(DemuxerBuilder::new()
+// .cfi_tolerance(false), ...)` after the 2026-05-24 default flip. All
+// callers in this file pass an explicit builder now.
 
 /// Pump enough video frames to advance PTS past the PSI cadence threshold
 /// (~100 ms), ensuring PMT lands before the KLV PES on the demuxer.
@@ -184,7 +179,10 @@ fn strict_mode_orphan_middle_with_complete_klv_stays_orphan() {
     let inner = synth_klv_record(32);
     let ts = ts_with_patched_single_cell(&inner, &inner, CellFragmentIndication::Middle, 7);
 
-    let events = collect_events(&ts);
+    // Default is now `cfi_tolerance: true`; this test specifically
+    // exercises the strict path, so opt out explicitly.
+    let builder = DemuxerBuilder::new().cfi_tolerance(false);
+    let events = collect_events_with(builder, &ts);
 
     let metas: Vec<_> = events
         .iter()

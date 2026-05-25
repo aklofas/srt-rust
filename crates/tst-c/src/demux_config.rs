@@ -168,7 +168,9 @@ pub unsafe extern "C" fn tst_demux_config_new() -> *mut TstDemuxConfig {
             pes_cap_total: None,
             klv_link_overrides: Vec::new(),
             stream_kind_overrides: HashMap::new(),
-            cfi_tolerance: false,
+            // Tolerance-by-default — see tst_core::DemuxerConfig rustdoc
+            // and CHANGELOG entry on the 2026-05-24 default flip.
+            cfi_tolerance: true,
             av1_carriage: None,
             au_cell_cap_per_pid: None,
             lenient_psi_reassembly: false,
@@ -325,19 +327,24 @@ pub unsafe extern "C" fn tst_demux_config_set_pes_cap(
     })
 }
 
-/// Enable opt-in tolerance for sync-metadata AU cells whose
+/// Toggle tolerance for sync-metadata AU cells whose
 /// `cell_fragment_indication` bits are set to `0b00` (Middle) or
-/// `0b01` (Last) without a prior `First` cell. When enabled AND the
-/// orphan cell's inner payload independently validates as a complete
-/// KLV record (SMPTE 336M UL prefix + BER length match), the demuxer
-/// emits a `KlvSyncAuCell` event with `cell_fragment_indication`
-/// substituted to `Complete` AND a
-/// `TST_NONCONFORMANT_CODE_CFI_TOLERATED` (= 32)
-/// diagnostic carrying the observed and substituted CFI bytes on
-/// `cc_expected` and `cc_observed`. Default `false` keeps the
-/// spec-strict path: orphan cells surface only as
-/// `TST_NONCONFORMANT_CODE_MULTI_CELL_AU` with reason
-/// `TST_MULTI_CELL_AU_REASON_ORPHAN`.
+/// `0b01` (Last) without a prior `First` cell. When tolerance is on
+/// AND the orphan cell's inner payload independently validates as a
+/// complete KLV record (SMPTE 336M UL prefix + BER length match), the
+/// demuxer emits a `KlvSyncAuCell` event with
+/// `cell_fragment_indication` substituted to `Complete` AND a
+/// `TST_NONCONFORMANT_CODE_CFI_TOLERATED` (= 32) diagnostic carrying
+/// the observed and substituted CFI bytes on `cc_expected` and
+/// `cc_observed`.
+///
+/// **Default `true`** — corpus-wide validation showed the
+/// producer-side CFI=00-on-single-cell-AU bug is dominant in real
+/// STANAG 4609 traffic (~99% of NonConformant events), and no other
+/// public reference decoder enforces CFI either. Set to `false` for
+/// spec-strict conformance testing: orphan cells then surface only
+/// as `TST_NONCONFORMANT_CODE_MULTI_CELL_AU` with reason
+/// `TST_MULTI_CELL_AU_REASON_ORPHAN` and no metadata event.
 ///
 /// `enable` is read as a C `bool` (any non-zero value enables).
 ///
@@ -535,11 +542,11 @@ mod tests {
     }
 
     #[test]
-    fn cfi_tolerance_default_is_false() {
+    fn cfi_tolerance_default_is_true() {
         unsafe {
             let cfg = tst_demux_config_new();
             let opts = (*cfg).build_options();
-            assert!(!opts.cfi_tolerance);
+            assert!(opts.cfi_tolerance);
             tst_demux_config_free(cfg);
         }
     }

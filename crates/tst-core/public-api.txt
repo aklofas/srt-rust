@@ -4123,7 +4123,7 @@ pub tst_core::mpegts::demux::DemuxerConfig::strict: tst_core::mpegts::demux::str
 impl core::clone::Clone for tst_core::mpegts::demux::DemuxerConfig
 pub fn tst_core::mpegts::demux::DemuxerConfig::clone(&self) -> tst_core::mpegts::demux::DemuxerConfig
 impl core::default::Default for tst_core::mpegts::demux::DemuxerConfig
-pub fn tst_core::mpegts::demux::DemuxerConfig::default() -> tst_core::mpegts::demux::DemuxerConfig
+pub fn tst_core::mpegts::demux::DemuxerConfig::default() -> Self
 impl core::fmt::Debug for tst_core::mpegts::demux::DemuxerConfig
 pub fn tst_core::mpegts::demux::DemuxerConfig::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Freeze for tst_core::mpegts::demux::DemuxerConfig

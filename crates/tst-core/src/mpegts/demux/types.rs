@@ -66,9 +66,12 @@ pub(super) const DEFAULT_PES_CAP_TOTAL: usize = 64 * 1024 * 1024;
 pub(super) const DEFAULT_AU_CELL_CAP_PER_PID: usize = 1024 * 1024;
 
 /// Caller-supplied overrides for the demuxer.
+///
+/// `Default` is hand-written (not derived) so `cfi_tolerance` can default
+/// to `true`. Every other field uses its own `Default` impl.
 #[must_use]
 #[non_exhaustive]
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct DemuxerConfig {
     pub strict: StrictMode,
     /// Per-PID PES reassembly cap. `None` uses `DEFAULT_PES_CAP_PER_PID`
@@ -119,26 +122,60 @@ pub struct DemuxerConfig {
     /// `cell_fragment_indication` bits set to `0b00` (middle) or `0b01`
     /// (last) when there is no active reassembly buffer for the PID.
     ///
-    /// Default `false` — spec-strict per H.222.0 V9 §2.12.4.2 Table 2-157:
-    /// orphan Middle/Last cells produce
-    /// [`crate::mpegts::demux::NonConformantIssue::MultiCellAu`] with
-    /// `reason = MultiCellAuReason::Orphan` and no metadata event.
+    /// **Default `true`** — pragmatic for real-world STANAG 4609 streams.
+    /// Corpus-wide validation across 251 captures (37 GB, multiple
+    /// platforms) found ~99% of `NonConformant` events in the field are
+    /// `MalformedAuCellCfiTolerated`: industry encoders default-initialize
+    /// the field to zero and ship CFI=`0b00` (Middle) on single-cell AUs
+    /// that should be `0b11` (Complete). MISB ST 1402.2 Appendix B lists
+    /// the four bit patterns without semantic explanation, and no other
+    /// public reference decoder (FFmpeg's `mpegtsenc.c`, GStreamer's
+    /// `tsdemux.c::parse_pes_metadata_frame`, TSDuck, paretech/klvdata,
+    /// jimcavoy/klvp) enforces CFI — the spec-strict reading lost its
+    /// last enforcement battery, and producers ship malformed CFI bits
+    /// without anything downstream catching it.
     ///
-    /// When `true`, the demuxer additionally validates the orphan cell's
-    /// inner payload as a single complete KLV unit (SMPTE 336M UL prefix
-    /// `06 0e 2b 34` followed by a BER length that describes exactly the
-    /// available payload). If it passes, the cell is emitted as a
+    /// When tolerance is on, the demuxer additionally validates the
+    /// orphan cell's inner payload as a single complete KLV unit
+    /// (SMPTE 336M UL prefix `06 0e 2b 34` followed by a BER length
+    /// that describes exactly the available payload). If it passes, the
+    /// cell is emitted as a
     /// [`crate::mpegts::demux::MetadataKind::KlvSyncAuCell`] with
     /// `cell_fragment_indication = Complete` AND a
     /// [`crate::mpegts::demux::NonConformantIssue::CfiTolerated`]
-    /// diagnostic so the malformation remains visible to callers.
+    /// diagnostic so the malformation remains visible to callers (this
+    /// is what makes the corpus-wide pattern observable in the first
+    /// place — tolerance recovers data without hiding the bug).
     ///
-    /// Enable for known producer-malformed sources that ship complete KLV
-    /// records under spec-middle CFI bits. Keep `false` if you want to
-    /// reject such streams loudly (the safe default for receivers that
-    /// must surface wire-format malformation, e.g. interoperability
-    /// validators).
+    /// Set to `false` for spec-strict conformance testing per
+    /// H.222.0 V9 §2.12.4.2 Table 2-157: orphan Middle/Last cells then
+    /// produce
+    /// [`crate::mpegts::demux::NonConformantIssue::MultiCellAu`] with
+    /// `reason = MultiCellAuReason::Orphan` and no metadata event. Use
+    /// when validating a producer against the wire spec rather than
+    /// consuming real-world traffic. (Note: this is asymmetric with
+    /// `lenient_psi_reassembly`, which still defaults `false`/strict.
+    /// The asymmetry is calibrated to corpus evidence — we have
+    /// empirical proof the CFI bug is dominant in real traffic; we do
+    /// not have equivalent evidence for PSI reassembly violations.)
     pub cfi_tolerance: bool,
+}
+
+impl Default for DemuxerConfig {
+    fn default() -> Self {
+        Self {
+            strict: StrictMode::default(),
+            pes_cap_per_pid: None,
+            pes_cap_total: None,
+            klv_link_overrides: Vec::new(),
+            stream_kind_overrides: HashMap::new(),
+            lenient_psi_reassembly: false,
+            av1_carriage: crate::mpegts::mux::Av1CarriageMode::default(),
+            au_cell_cap_per_pid: None,
+            // Tolerance-by-default — see field rustdoc above.
+            cfi_tolerance: true,
+        }
+    }
 }
 
 /// Per-program demuxer state. Crate-private — accessed only by `Demuxer`
@@ -245,12 +282,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_cfi_tolerance_is_false() {
-        // Strict-by-default posture: receivers must explicitly opt in to
-        // tolerate producer-malformed CFI bits. Matches lenient_psi_reassembly
-        // shape (also default false) and the project's broader
-        // "strict-default + named compatibility knob" convention.
-        assert!(!DemuxerConfig::default().cfi_tolerance);
+    fn default_cfi_tolerance_is_true() {
+        // Tolerance-by-default posture: corpus-wide validation showed
+        // the producer-side CFI=00-on-single-cell-AU bug is dominant in
+        // real STANAG 4609 traffic (~99% of NonConformant events). The
+        // CfiTolerated diagnostic still fires so the malformation stays
+        // visible to validators. Receivers can set `cfi_tolerance: false`
+        // explicitly for spec-strict conformance testing.
+        assert!(DemuxerConfig::default().cfi_tolerance);
     }
 
     #[test]

@@ -7,6 +7,148 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — `cfi_tolerance` default flipped `false` → `true` (2026-05-24)
+
+Behavior change: the `DemuxerConfig::cfi_tolerance` default flips from
+`false` (strict-by-default per H.222.0 V9 §2.12.4.2 Table 2-157) to
+`true` (tolerance-by-default — pragmatic for real-world STANAG 4609
+traffic). The config knob and its semantics are unchanged; only the
+default value moves. Callers who specifically need spec-strict
+conformance behavior must now set `cfi_tolerance: false` explicitly.
+This is recorded as a behavior change (not a hard BREAKING) because
+the wire-format diagnostic (`NonConformantIssue::CfiTolerated`) still
+fires under tolerance — producer malformation stays visible to
+validators and telemetry; only the metadata-emission behavior
+differs.
+
+### Rationale: this is an industry-wide encoder bug, not a vendor defect
+
+Corpus-wide validation against the local 251-file / 37 GB STANAG 4609
+testfiles tree (multi-platform: CI641, N4717V, N77HS, bench-11,
+test-fixtures) found ~99% of demuxer `NonConformant` events under
+tolerance mode are `MalformedAuCellCfiTolerated`. The producers ship
+`cell_fragment_indication = 0b00` (Middle) on cells that are actually
+single complete metadata Access Units (`0b11` Complete). Investigation
+of the broader ecosystem confirmed this is industry-wide:
+
+- **MISB ST 1402.2 Appendix B Table 2** lists the four CFI bit patterns
+  (`'11', '10', '01' or '00'`) with **no semantic explanation** and
+  misspells the field as `cell_fragmentation_indication` (the canonical
+  H.222.0 name is `cell_fragment_indication`, no "ation"). ST 1402 has
+  17 numbered normative requirements; **none mention CFI**.
+- **FFmpeg `libavformat/mpegtsenc.c`** sets `stream_type=0x15` for
+  `AV_PROFILE_KLVA_SYNC` but does **not** generate the 5-byte AU cell
+  header itself — application code constructs it pre-mux. Zero CFI
+  enforcement logic on the encode side.
+- **GStreamer `gst-plugins-bad/.../tsdemux.c::parse_pes_metadata_frame`**
+  reads the AU cell `flags` byte (which carries CFI in bits `[7:6]`)
+  but **never inspects the CFI bits**, never reassembles multi-cell
+  AUs, and never validates that single-cell AUs use `Complete`. Each
+  cell becomes one output buffer regardless.
+- **TSDuck, paretech/klvdata, jimcavoy/klvp, shacharmo/KlvOverMpegTSExtractor,
+  Ghazanfar373/Video_klvdata_ffmpeg, tayre/klv-decoder**: no
+  `cell_fragment_indication` references at all. GitHub-wide
+  exact-token search for the canonical field name in C code returned
+  zero hits outside `ts-transformer` itself.
+
+Combine: encoder fields default-initialize to zero → CFI lands at
+`0b00` (Middle) → no downstream decoder rejects it → producers ship
+malformed streams indefinitely. The H.222.0 specification is
+unambiguous on the bit table, but the implementer-facing MISB ST 1402
+spec is silent on semantics and no public reference decoder enforces
+the rule. Industry guides (ImpleoTV docs) consistently note that
+"in the most common implementation, the packet payload consists of a
+single metadata cell" — i.e., multi-cell fragmentation is essentially
+unused, so every cell SHOULD be `Complete`, but encoders ship
+`Middle` because of the default-zero pattern and nothing catches it.
+
+`ts-transformer` is the only public reference decoder that enforces
+CFI. Keeping strict-by-default would force every real-world consumer
+to opt into tolerance to get their KLV — a UX trap with no upside,
+since the `CfiTolerated` diagnostic still surfaces the malformation
+under tolerance mode. Tolerance becomes the pragmatic default for
+real-world traffic; strict mode remains available for conformance
+testing of a producer against the wire spec.
+
+### Asymmetry with `lenient_psi_reassembly`
+
+The sibling `lenient_psi_reassembly` knob still defaults `false`
+(strict). The asymmetry is calibrated to corpus evidence — we have
+empirical proof the CFI bug is dominant in real traffic (~99% of
+events); we do not have equivalent evidence for PSI reassembly
+violations. Per-knob defaults are set from empirical signal, not from
+a uniform "strict-default" or "lenient-default" policy.
+
+**Changed:**
+
+- `tst_core::mpegts::demux::DemuxerConfig::cfi_tolerance`: default
+  `false` → `true`. `#[derive(Default)]` replaced with a hand-written
+  `impl Default` (a derived `Default` would give `bool` field a value
+  of `false`). All other field defaults unchanged.
+- `tst_core::mpegts::demux::DemuxerBuilder::new()` / `default()`:
+  produces a tolerance-enabled demuxer. Tests exercising the strict
+  orphan path must now call `.cfi_tolerance(false)` explicitly:
+  `mpegts_au_cell_round_trip.rs::multi_cell_au_emits_non_conformant_issue_through_demuxer`
+  + `mpegts_au_cell_tolerance.rs::strict_mode_orphan_middle_with_complete_klv_stays_orphan`
+  updated to match.
+- `tst_py::mpegts::DemuxerConfig.cfi_tolerance` dataclass default
+  `False` → `True`. Docstring rewritten to lead with the new default
+  and corpus-empirical rationale.
+- `tst_py::io.parse_file` / `io.probe` / `io.extract_klv` docstring
+  examples: `DemuxerConfig(cfi_tolerance=True)` (opt in) →
+  `DemuxerConfig(cfi_tolerance=False)` (opt out for conformance).
+- `tst_c::demux_config::tst_demux_config_new`: initialises
+  `cfi_tolerance: true`. `tst_demux_config_set_cfi_tolerance` rustdoc
+  rewritten to lead with default-true and the corpus-empirical
+  rationale. Header regenerated; `tst-c::tests::header_drift`
+  unchanged otherwise.
+- `docs/guide-mpegts-demux.md` § "Malformed `cell_fragment_indication`
+  tolerance (default on)" — rewritten from opt-in framing to
+  default-on framing with industry-survey rationale.
+- `docs/troubleshooting.md` — the "I see `MultiCellAu{Orphan}` events
+  but zero typed KLV" entry now reads the inverse: default config
+  already rescues these; check whether you've explicitly disabled
+  tolerance. Added a new entry for users running conformance suites
+  who want spec-strict CFI handling.
+
+**ABI:** `TST_ABI_VERSION_MINOR` unchanged at 5. This is a
+behavior-default change on an existing field, not an additive ABI
+change — no new entry points, no new enum variants, no new error
+codes, no struct-layout change. Per `docs/binding-authors.md`
+policy, no minor bump is needed.
+
+**Public API (`cargo public-api`):** no token-level change — default
+values are not part of the public-api surface output. The 3 ratcheted
+crates (tst-core / tst-pipeline / tst-srt) are unaffected.
+
+**Tests:**
+
+- `tst-core::default_cfi_tolerance_is_false` → `_is_true`; assertion
+  flipped.
+- `tst-c::cfi_tolerance_default_is_false` → `_is_true`; assertion
+  flipped.
+- `tst-py::test_demuxer_config_default_for_tolerance_is_false` →
+  `_is_true`; `test_demuxer_config_accepts_tolerance_true` →
+  `_accepts_tolerance_false`.
+- `tst-py::test_extract_klv_strict_default_yields_zero_records_on_malformed`
+  renamed to `_strict_config_yields_zero_records_on_malformed`; now
+  passes `DemuxerConfig(cfi_tolerance=False)` explicitly. New test
+  `test_extract_klv_default_yields_records_on_malformed` covers the
+  new default's behavior.
+
+**Cross-refs:**
+
+- Corpus walk: `testfiles/notebooks/07-corpus-validation.ipynb`
+  (outside-repo; sensitive). 251 files / 37 GB, 0 parse errors,
+  381,211 NonConformant events (~99% CFI tolerated).
+- Industry survey memo (outside-repo; agent memory):
+  `reference_cfi_industry_state.md`.
+- ITU-T H.222.0 v9 (08/2023) Table 2-157 — canonical CFI bit mapping.
+- MISB ST 1402.2 Appendix B Table 2 — the implementer-facing spec
+  that omits CFI semantics.
+
+---
+
 ## [Unreleased] — Plan #96 closeout-audit validation follow-ups (2026-05-25)
 
 Static-validation review of the plan #96 closeout commits (see `docs/analysis/2026-05-25-closeout-fixes-validation.md`) surfaced 6 follow-up findings: 2 release-blocking (ABI minor not bumped despite new C entry points; stale `_close` lifecycle docs), 1 medium (subtitle config validation less strict than `DemuxerConfig`), 3 low (docstring + field-comment + test-helper-stability wording drifts). All 6 closed via 6-worktree parallel SDD; no Rust functional changes (Finding 6 was doc-only by design). BASELINE 162 unchanged. **C ABI minor bumped 4 → 5** per `docs/binding-authors.md` policy.

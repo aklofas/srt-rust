@@ -57,15 +57,17 @@ def test_cell_fragment_indication_eq_int_semantics() -> None:
     assert CellFragmentIndication.MIDDLE != CellFragmentIndication.COMPLETE
 
 
-def test_demuxer_config_default_for_tolerance_is_false() -> None:
-    """Strict-by-default — receivers must opt in to tolerate malformed CFI."""
+def test_demuxer_config_default_for_tolerance_is_true() -> None:
+    """Tolerance-by-default — corpus-dominant real-world CFI=00 producer
+    bug is rescued by default; receivers can opt out with
+    `cfi_tolerance=False` for spec-strict conformance testing."""
     cfg = DemuxerConfig()
-    assert cfg.cfi_tolerance is False
-
-
-def test_demuxer_config_accepts_tolerance_true() -> None:
-    cfg = DemuxerConfig(cfi_tolerance=True)
     assert cfg.cfi_tolerance is True
+
+
+def test_demuxer_config_accepts_tolerance_false() -> None:
+    cfg = DemuxerConfig(cfi_tolerance=False)
+    assert cfg.cfi_tolerance is False
 
 
 def test_non_conformant_kind_has_malformed_au_cell_cfi_tolerated() -> None:
@@ -229,11 +231,11 @@ def _build_ts_with_orphan_middle_cell() -> bytes:
 
 
 def test_strict_mode_orphan_middle_emits_orphan_diagnostic_only() -> None:
-    """Default config (tolerance False): orphan Middle surfaces as
-    `MULTI_CELL_AU{ORPHAN}` with zero metadata events, even when the
-    inner payload is a valid KLV record."""
+    """Strict config (cfi_tolerance=False, opt out of the new default):
+    orphan Middle surfaces as `MULTI_CELL_AU{ORPHAN}` with zero metadata
+    events, even when the inner payload is a valid KLV record."""
     ts = _build_ts_with_orphan_middle_cell()
-    events = _collect_events(Demuxer(DemuxerConfig()), ts)
+    events = _collect_events(Demuxer(DemuxerConfig(cfi_tolerance=False)), ts)
 
     klv_events = [e for e in events if isinstance(e, DemuxEvent.Klv)]
     assert len(klv_events) == 0, "strict mode: no KLV metadata events"
@@ -308,13 +310,14 @@ def _write_malformed_ts(tmp_path) -> "Path":
     return p
 
 
-def test_extract_klv_strict_default_yields_zero_records_on_malformed(tmp_path) -> None:
-    """Default extract_klv (no config) sees zero typed KLV from a
-    malformed-CFI TS — the spec-strict default rejects them."""
+def test_extract_klv_strict_config_yields_zero_records_on_malformed(tmp_path) -> None:
+    """extract_klv with explicit `cfi_tolerance=False` (opt out of the
+    new tolerance default) sees zero typed KLV from a malformed-CFI TS."""
     from tstrans.io import extract_klv
 
     ts_path = _write_malformed_ts(tmp_path)
-    records = list(extract_klv(ts_path, parsed=True))
+    cfg = DemuxerConfig(cfi_tolerance=False)
+    records = list(extract_klv(ts_path, parsed=True, config=cfg))
     # Filter to typed records only (skip_unknown defaults True so unknowns
     # are filtered out automatically).
     assert len(records) == 0, (
@@ -323,9 +326,24 @@ def test_extract_klv_strict_default_yields_zero_records_on_malformed(tmp_path) -
     )
 
 
+def test_extract_klv_default_yields_records_on_malformed(tmp_path) -> None:
+    """Default extract_klv (no config) rescues malformed-CFI records —
+    tolerance is on by default. The raw payload is the discriminator:
+    did the demuxer surface the bytes at all?"""
+    from tstrans.io import extract_klv
+
+    ts_path = _write_malformed_ts(tmp_path)
+    raw = list(extract_klv(ts_path, parsed=False))
+    assert len(raw) == 1, (
+        f"default mode: expected 1 raw KLV payload from malformed-CFI TS, "
+        f"got {len(raw)}"
+    )
+    assert len(raw[0]) == 49, "rescued payload is the 17-byte UL+length + 32-byte value"
+
+
 def test_extract_klv_with_tolerance_config_yields_records_on_malformed(tmp_path) -> None:
-    """extract_klv with config=DemuxerConfig(cfi_tolerance=True)
-    rescues the raw KLV bytes that the strict path drops."""
+    """extract_klv with explicit `cfi_tolerance=True` rescues the raw
+    KLV bytes (same behavior as default since the flip)."""
     from tstrans.io import extract_klv
 
     ts_path = _write_malformed_ts(tmp_path)

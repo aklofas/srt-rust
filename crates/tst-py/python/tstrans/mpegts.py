@@ -743,14 +743,21 @@ class DemuxerConfig:
     strict_mode: StrictMode = StrictMode.OFF
     pes_cap_per_pid: int = _DEFAULT_PES_CAP_PER_PID
     pes_cap_total: int = _DEFAULT_PES_CAP_TOTAL
-    # When True, the demuxer treats orphan Middle/Last AU cells as
-    # Complete if the inner payload independently validates as one
-    # complete KLV record (SMPTE 336M UL + BER length match). Always
-    # emits a `_NonConformantEvent` with kind
-    # `CFI_TOLERATED` alongside the rescued metadata
-    # event. Default False keeps the spec-strict behavior: orphan cells
-    # surface only as `MULTI_CELL_AU{ORPHAN}`.
-    cfi_tolerance: bool = False
+    # When True (default), the demuxer treats orphan Middle/Last AU
+    # cells as Complete if the inner payload independently validates as
+    # one complete KLV record (SMPTE 336M UL + BER length match). Always
+    # emits a `_NonConformantEvent` with kind `CFI_TOLERATED` alongside
+    # the rescued metadata event, so the producer-side malformation
+    # stays visible to validators.
+    #
+    # Default is True because corpus-wide validation showed the
+    # producer-side CFI=00-on-single-cell-AU bug is dominant in
+    # real-world STANAG 4609 traffic (~99% of NonConformant events),
+    # and no other public reference decoder enforces CFI either.
+    # Set to False for spec-strict conformance testing: orphan cells
+    # then surface only as `MULTI_CELL_AU{ORPHAN}` with no metadata
+    # event.
+    cfi_tolerance: bool = True
     # `None` defers to the Rust default
     # (`Av1CarriageMode::Mpeg2TsBinding`). Storing the Python
     # `Av1CarriageMode` value (not its `.value` string) lets the

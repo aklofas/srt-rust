@@ -363,7 +363,7 @@ fn classify_klv_opaque_inner_complete_cfi_returns_sync() {
 /// Patching to CFI=Last (0b01): 0b01_0_1_1111 = 0x5F.
 #[test]
 fn multi_cell_au_emits_non_conformant_issue_through_demuxer() {
-    use tst_core::mpegts::demux::{DemuxEvent, Demuxer, NonConformantIssue};
+    use tst_core::mpegts::demux::{DemuxEvent, NonConformantIssue};
     use tst_core::mpegts::mux::{KlvStreamType, Muxer, MuxerConfig, VideoCodec};
 
     let cfg = {
@@ -422,7 +422,12 @@ fn multi_cell_au_emits_non_conformant_issue_through_demuxer() {
     }
     assert!(patched, "AU cell flags byte not found in emitted TS");
 
-    let mut dem = Demuxer::new();
+    // Default is now `cfi_tolerance: true`. This test exercises the
+    // spec-strict orphan path, so opt out explicitly. The muxer's inner
+    // payload is a valid KLV record, so under tolerance the orphan Last
+    // would otherwise be rescued + emit `CfiTolerated` instead.
+    use tst_core::mpegts::demux::DemuxerBuilder;
+    let mut dem = DemuxerBuilder::new().cfi_tolerance(false).build();
     dem.feed(&ts_bytes).unwrap();
 
     let mut multi_cell_seen = false;

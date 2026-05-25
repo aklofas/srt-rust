@@ -50,6 +50,7 @@ pub mod io_file;
 pub mod klv;
 pub mod mpegts;
 pub mod transport;
+pub mod url;
 
 pub use cancel::SrtCancelHandle;
 pub use error::{DemuxError, KlvDecodeError, KlvEncodeError, KlvFieldError, MuxError};

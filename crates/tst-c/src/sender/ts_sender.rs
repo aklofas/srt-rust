@@ -201,6 +201,11 @@ pub unsafe extern "C" fn tst_sender_reset_stats(p: *mut TstSender) -> libc::c_in
     })
 }
 
+/// Close and free a `tst_sender_t`.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_sender_close(p: *mut TstSender) {
     crate::panic::ffi_catch((), || {
@@ -413,6 +418,11 @@ pub unsafe extern "C" fn tst_managed_sender_reset_stats(p: *mut TstManagedSender
     })
 }
 
+/// Close and free a `tst_managed_sender_t`.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_managed_sender_close(p: *mut TstManagedSender) {
     crate::panic::ffi_catch((), || {

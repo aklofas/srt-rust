@@ -1369,6 +1369,13 @@ const char *tst_get_version_string(void);
  */
 int tst_managed_mux_sender_cancel(struct tst_managed_mux_sender_t *p);
 
+/**
+ * Close and free a `tst_managed_mux_sender_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_managed_mux_sender_close(struct tst_managed_mux_sender_t *p);
 
 /**
@@ -1804,8 +1811,11 @@ tst_video_stream_handle_t tst_mux_config_add_video_stream(struct tst_mux_config_
                                                           tst_video_codec codec);
 
 /**
- * Free a mux config previously returned by `tst_mux_config_new`. No-op on
- * NULL. The config must not be used after this call.
+ * Free a mux config previously returned by `tst_mux_config_new`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
  */
 void tst_mux_config_free(struct tst_mux_config_t *p);
 
@@ -1916,6 +1926,13 @@ int tst_mux_config_set_stream_descriptors_for_video(struct tst_mux_config_t *cfg
  */
 int tst_mux_sender_cancel(struct tst_mux_sender_t *p);
 
+/**
+ * Close and free a `tst_mux_sender_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_mux_sender_close(struct tst_mux_sender_t *p);
 
 /**
@@ -2153,7 +2170,11 @@ int tst_mux_sender_send_video_to(struct tst_mux_sender_t *p,
                                  bool key_frame);
 
 /**
- * Close and free the muxer. Idempotent — passing NULL is a no-op.
+ * Close and free the muxer.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
  */
 void tst_muxer_close(struct tst_muxer_t *p);
 
@@ -2382,6 +2403,13 @@ int tst_muxer_reset_stats(struct tst_muxer_t *p);
  */
 int tst_managed_sender_cancel(struct tst_managed_sender_t *p);
 
+/**
+ * Close and free a `tst_managed_sender_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_managed_sender_close(struct tst_managed_sender_t *p);
 
 int tst_managed_sender_flush(struct tst_managed_sender_t *p);
@@ -2438,8 +2466,22 @@ int tst_managed_sender_send_ts(struct tst_managed_sender_t *p, const uint8_t *by
  */
 int tst_sender_cancel(struct tst_sender_t *p);
 
+/**
+ * Close and free a `tst_sender_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_sender_close(struct tst_sender_t *p);
 
+/**
+ * Free a sender config previously returned by `tst_sender_config_new`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_sender_config_free(struct tst_sender_config_t *p);
 
 struct tst_sender_config_t *tst_sender_config_new(void);
@@ -2500,6 +2542,13 @@ int tst_sender_send_ts(struct tst_sender_t *p, const uint8_t *bytes, size_t len)
  */
 int tst_managed_raw_sender_cancel(struct tst_managed_raw_sender_t *p);
 
+/**
+ * Close and free a `tst_managed_raw_sender_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_managed_raw_sender_close(struct tst_managed_raw_sender_t *p);
 
 /**
@@ -2571,8 +2620,23 @@ int tst_managed_raw_sender_send(struct tst_managed_raw_sender_t *p,
  */
 int tst_raw_sender_cancel(struct tst_raw_sender_t *p);
 
+/**
+ * Close and free a `tst_raw_sender_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_raw_sender_close(struct tst_raw_sender_t *p);
 
+/**
+ * Free a raw sender config previously returned by
+ * `tst_raw_sender_config_new`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_raw_sender_config_free(struct tst_raw_sender_config_t *p);
 
 struct tst_raw_sender_config_t *tst_raw_sender_config_new(void);
@@ -2653,7 +2717,11 @@ int tst_demux_config_add_link_klv(struct tst_demux_config_t *cfg,
 int tst_demux_config_add_treat_as(struct tst_demux_config_t *cfg, uint16_t pid, int stream_kind);
 
 /**
- * Release a `tst_demux_config_t`. Safe to call with NULL.
+ * Release a `tst_demux_config_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
  */
 void tst_demux_config_free(struct tst_demux_config_t *cfg);
 
@@ -2717,6 +2785,13 @@ int tst_demux_config_set_strict_mode(struct tst_demux_config_t *cfg, int mode);
  */
 int tst_demux_receiver_cancel(struct tst_demux_receiver_t *p);
 
+/**
+ * Close and free a `tst_demux_receiver_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_demux_receiver_close(struct tst_demux_receiver_t *p);
 
 /**
@@ -2870,6 +2945,13 @@ int tst_demux_receiver_reset_stats(struct tst_demux_receiver_t *p);
  */
 int tst_managed_demux_receiver_cancel(struct tst_managed_demux_receiver_t *p);
 
+/**
+ * Close and free a `tst_managed_demux_receiver_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_managed_demux_receiver_close(struct tst_managed_demux_receiver_t *p);
 
 /**
@@ -2977,6 +3059,13 @@ int tst_managed_demux_receiver_reset_stats(struct tst_managed_demux_receiver_t *
  */
 int tst_managed_receiver_cancel(struct tst_managed_receiver_t *p);
 
+/**
+ * Close and free a `tst_managed_receiver_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_managed_receiver_close(struct tst_managed_receiver_t *p);
 
 /**
@@ -3076,6 +3165,13 @@ int tst_managed_receiver_reset_stats(struct tst_managed_receiver_t *p);
  */
 int tst_receiver_cancel(struct tst_receiver_t *p);
 
+/**
+ * Close and free a `tst_receiver_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_receiver_close(struct tst_receiver_t *p);
 
 /**
@@ -3162,6 +3258,13 @@ int tst_receiver_reset_stats(struct tst_receiver_t *p);
  */
 int tst_managed_raw_receiver_cancel(struct tst_managed_raw_receiver_t *p);
 
+/**
+ * Close and free a `tst_managed_raw_receiver_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_managed_raw_receiver_close(struct tst_managed_raw_receiver_t *p);
 
 /**
@@ -3264,6 +3367,13 @@ int tst_managed_raw_receiver_reset_stats(struct tst_managed_raw_receiver_t *p);
  */
 int tst_raw_receiver_cancel(struct tst_raw_receiver_t *p);
 
+/**
+ * Close and free a `tst_raw_receiver_t`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_raw_receiver_close(struct tst_raw_receiver_t *p);
 
 /**
@@ -3343,6 +3453,14 @@ int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
 
 // ─── LIFETIME ──────────────────────────────────────────────
 
+/**
+ * Free a reconnect policy previously returned by
+ * `tst_reconnect_policy_new`.
+ *
+ * Safe to call with NULL (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ */
 void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
 
 // ─── OTHER ─────────────────────────────────────────────────

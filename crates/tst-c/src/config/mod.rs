@@ -127,8 +127,11 @@ pub unsafe extern "C" fn tst_mux_config_new() -> *mut TstMuxConfig {
     })
 }
 
-/// Free a mux config previously returned by `tst_mux_config_new`. No-op on
-/// NULL. The config must not be used after this call.
+/// Free a mux config previously returned by `tst_mux_config_new`.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_mux_config_free(p: *mut TstMuxConfig) {
     ffi_catch((), || {

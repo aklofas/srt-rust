@@ -217,6 +217,11 @@ fn finish_open(
     }))
 }
 
+/// Close and free a `tst_demux_receiver_t`.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_demux_receiver_close(p: *mut TstDemuxReceiver) {
     crate::panic::ffi_catch((), || {

@@ -213,9 +213,44 @@ shape translates directly to:
 
 ## Threading model
 
-`Send + Sync` everywhere. Bindings can move shells across threads freely.
-The exception: the `Drop` ordering across two `Send` shells is undefined,
-so consumers should drop senders before receivers when both share state.
+The threading guarantees split into two tiers — runtime handles vs.
+opaque config builders. Read both before exposing tst-c objects as
+thread-safe in your binding.
+
+**Runtime handles** (the shells produced by `tst_*_open` /
+`tst_*_open_listener`) are guarded by `Handle<T> = Mutex<...>` inside
+`tst-c`. Data-path entry points (`_send_*`, `_recv_*`, `_pull`,
+`_get_stats`, `_push_*`, etc.) acquire that lock internally. Bindings
+may safely call data-path functions on the same handle from any
+thread — concurrent calls serialize through the inner mutex. Cancel
+entry points (`_cancel`) intentionally do NOT acquire the mutex
+(they're side-channels for unblocking a parked I/O thread), so they
+can be invoked concurrently with data-path calls without
+deadlocking. Each runtime handle is `Send` (ownership can transfer
+between threads) and effectively `Sync` for data-path use through the
+inner mutex.
+
+**Opaque config builders** (`TstMuxConfig`, `TstDemuxConfig`,
+`TstSenderConfig`, `TstRawSenderConfig`, `TstReconnectPolicy`) are
+raw `Box<T>` values with unsynchronized mutable fields. Their setters
+(`tst_mux_config_add_program`, `tst_demux_config_set_strict_mode`,
+etc.) mutate through `&mut T` with NO internal locking. Bindings MUST
+either:
+
+- confine each builder pointer to a single thread for its entire
+  lifetime (recommended — builders are short-lived by design), OR
+- add a language-side lock (e.g. a Kotlin `synchronized`, a Swift
+  `NSLock`, a Python `threading.Lock`) around every setter call on a
+  shared builder.
+
+Concurrent calls to two setters on the same builder pointer from
+different threads without a language-side lock are a data race and
+undefined behavior.
+
+**Drop ordering.** Across two runtime shells that share state (e.g. a
+sender + receiver pair that both reference the same underlying SRT
+socket), `Drop` ordering is undefined. Consumers should drop senders
+before receivers when both share state.
 
 ## Versioning
 

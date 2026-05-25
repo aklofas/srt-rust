@@ -130,6 +130,15 @@ jobs:
       - name: Check lifecycle ffi_catch coverage
         run: bash scripts/check-lifecycle-ffi-catch-coverage.sh
 
+      - name: Check extern C ffi_catch coverage
+        # Superset of the lifecycle check above: every `pub unsafe
+        # extern "C" fn` in crates/tst-c/src/ must isolate panics via
+        # ffi_catch, Handle::with_inner_{mut,ref}, or be in the
+        # trivially-infallible allowlist. Caught tst_demux_config_free
+        # which had bypassed the lifecycle ratchet by being named
+        # _free (plan #96 Wave F finding #9).
+        run: bash scripts/check-extern-c-ffi-catch-coverage.sh
+
       - name: Check C header mirror-enum export
         # Catches Tst* enums declared in crates/tst-c/src/ but missing
         # from cbindgen.toml [export] include allowlist — silently

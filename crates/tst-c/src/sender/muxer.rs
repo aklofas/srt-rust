@@ -530,7 +530,11 @@ pub unsafe extern "C" fn tst_muxer_reset_stats(p: *mut TstMuxer) -> libc::c_int 
     })
 }
 
-/// Close and free the muxer. Idempotent — passing NULL is a no-op.
+/// Close and free the muxer.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_muxer_close(p: *mut TstMuxer) {
     crate::panic::ffi_catch((), || {

@@ -31,6 +31,11 @@ pub unsafe extern "C" fn tst_sender_config_new() -> *mut TstSenderConfig {
     })
 }
 
+/// Free a sender config previously returned by `tst_sender_config_new`.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_sender_config_free(p: *mut TstSenderConfig) {
     ffi_catch((), || {
@@ -97,6 +102,12 @@ pub unsafe extern "C" fn tst_raw_sender_config_new() -> *mut TstRawSenderConfig 
     })
 }
 
+/// Free a raw sender config previously returned by
+/// `tst_raw_sender_config_new`.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_raw_sender_config_free(p: *mut TstRawSenderConfig) {
     ffi_catch((), || {
@@ -123,6 +134,12 @@ pub unsafe extern "C" fn tst_reconnect_policy_new() -> *mut TstReconnectPolicy {
     })
 }
 
+/// Free a reconnect policy previously returned by
+/// `tst_reconnect_policy_new`.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_reconnect_policy_free(p: *mut TstReconnectPolicy) {
     ffi_catch((), || {

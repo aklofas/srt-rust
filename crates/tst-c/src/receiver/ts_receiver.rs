@@ -126,6 +126,11 @@ fn finish_open(transport: SrtTransport) -> *mut TstReceiver {
     }))
 }
 
+/// Close and free a `tst_receiver_t`.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_receiver_close(p: *mut TstReceiver) {
     crate::panic::ffi_catch((), || {
@@ -516,6 +521,11 @@ pub unsafe extern "C" fn tst_managed_receiver_cancel(p: *mut TstManagedReceiver)
     })
 }
 
+/// Close and free a `tst_managed_receiver_t`.
+///
+/// Safe to call with NULL (no-op). After this call the pointer is
+/// invalid; passing the same non-null pointer twice is undefined
+/// behavior (use-after-free on the consumed `Box`).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tst_managed_receiver_close(p: *mut TstManagedReceiver) {
     crate::panic::ffi_catch((), || {

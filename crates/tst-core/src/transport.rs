@@ -109,21 +109,24 @@ pub enum TransportError {
     /// is reasonable.
     ///
     /// `errno_code` carries the wire-level transport error code where the
-    /// implementation can supply one (libsrt MJ_* major category for
-    /// `SrtTransport` — `1=Setup`, `2=Connection`, `3=SystemRes`,
-    /// `4=FileSystem`, `5=Notsup`, `6=Async`, `7=PeerError`, other = raw
-    /// libsrt errno). Transports that don't expose a numeric code (test
-    /// mocks, in-memory channels, the `reconnect` orchestration layer)
-    /// pass `None`. Surfaced as a typed-source aid for JNI/UniFFI bindings
-    /// that want to discriminate on the wire-level cause without parsing
-    /// the message string.
+    /// implementation can supply one. Per-transport documentation defines
+    /// the code space:
+    /// - `SrtTransport` uses the libsrt major-category error code (see
+    ///   `tst-srt` docs for the full code table).
+    /// - `RtpTransport` (forthcoming) uses the OS `errno` from the
+    ///   underlying `sendto`/`recvfrom` call.
+    /// - Test mocks and in-memory channels pass `None`.
+    ///
+    /// Surfaced as a typed-source aid for binding-crate consumers
+    /// (`tst-jni`, `tst-uniffi`) that discriminate on the wire-level cause
+    /// without parsing the message string.
     #[error("transport temporarily unavailable: {msg}")]
     Backpressure {
         /// Human-readable diagnostic detail.
         msg: String,
-        /// Wire-level transport errno code (libsrt MJ_* major for
-        /// `SrtTransport`); `None` when the implementation doesn't
-        /// expose one.
+        /// Wire-level transport errno code; `None` when the implementation
+        /// doesn't expose one. See the variant-level doc above for the
+        /// per-transport code-space definitions.
         errno_code: Option<i32>,
     },
 

@@ -124,7 +124,6 @@ impl<'a> Iter<'a> {
         self.offset = start + consumed_tag + consumed_len + len;
         Some(Ok(RawField { tag, value }))
     }
-
 }
 
 /// Encode a KLV pack: 16-byte UL + outer length + concatenated TLVs.

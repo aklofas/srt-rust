@@ -15,7 +15,10 @@ use thiserror::Error;
 #[must_use]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedUrl<'a> {
-    /// Lowercase scheme: `"srt"`, `"rtp"`, `"rtsp"`, `"rtsps"`, etc.
+    /// Scheme as written in the URL (e.g., `"srt"`, `"rtp"`, `"rtsp"`,
+    /// `"rtsps"`). Returned verbatim — the parser does NOT case-fold;
+    /// callers that need case-insensitive comparison should use
+    /// `eq_ignore_ascii_case` or canonicalize at their layer.
     pub scheme: &'a str,
     /// `user` from `user[:password]@host` — None when no userinfo present.
     pub username: Option<&'a str>,
@@ -58,9 +61,100 @@ pub enum UrlError {
     MissingHost,
 }
 
-/// Stub — implemented in Task 2.
-pub fn parse_url(_s: &str) -> Result<ParsedUrl<'_>, UrlError> {
-    todo!("Task 2 implements this")
+/// Parse a URL of shape `scheme://[user[:password]@]host[:port][/path][?query]`.
+///
+/// The function performs structural splitting only — it does NOT validate
+/// that the scheme is one we support, or that any query keys are recognized.
+/// Callers (per-transport-crate URL parsers) layer their own scheme-acceptance
+/// + key recognition on top.
+///
+/// Percent-encoding is decoded in query values; path and host are returned
+/// verbatim (callers parse host into IP address via [`parse_host_port`] when
+/// needed).
+pub fn parse_url(s: &str) -> Result<ParsedUrl<'_>, UrlError> {
+    // Split scheme from rest at first `://`.
+    let sep = s.find("://").ok_or(UrlError::MissingSchemeSeparator)?;
+    let scheme = &s[..sep];
+    if scheme.is_empty() {
+        return Err(UrlError::EmptyScheme);
+    }
+    let rest = &s[sep + 3..];
+
+    // Split off path (first `/` outside any userinfo `@`) and query (first `?`).
+    let (authority_with_userinfo, path, query_raw) = split_path_query(rest);
+
+    // Split userinfo from authority on `@`.
+    let (userinfo_opt, host_port) = match authority_with_userinfo.rfind('@') {
+        Some(at) => (Some(&authority_with_userinfo[..at]), &authority_with_userinfo[at + 1..]),
+        None => (None, authority_with_userinfo),
+    };
+    let (username, password) = match userinfo_opt {
+        None => (None, None),
+        Some(u) => match u.find(':') {
+            Some(c) => (Some(&u[..c]), Some(&u[c + 1..])),
+            None => (Some(u), None),
+        },
+    };
+
+    // Split host[:port], handling IPv6 brackets.
+    let (host, port) = split_host_port(host_port)?;
+
+    // Query parsing: implemented in Task 4. For now, leave empty.
+    let _ = query_raw;
+    let query = Vec::new();
+
+    Ok(ParsedUrl { scheme, username, password, host, port, path, query })
+}
+
+/// Split `authority[/path][?query]` into the three components. Path
+/// component includes the leading `/`. Query is the substring after `?`,
+/// not yet decoded.
+fn split_path_query(rest: &str) -> (&str, &str, Option<&str>) {
+    // Find `?` first because path may contain `?` only after the path slash.
+    // Per RFC 3986 §3, query starts at the first `?` after authority.
+    let (pre_query, query) = match rest.find('?') {
+        Some(q) => (&rest[..q], Some(&rest[q + 1..])),
+        None => (rest, None),
+    };
+    let (authority, path) = match pre_query.find('/') {
+        Some(p) => (&pre_query[..p], &pre_query[p..]),
+        None => (pre_query, ""),
+    };
+    (authority, path, query)
+}
+
+/// Split `host[:port]` into host (without IPv6 brackets) and optional port.
+fn split_host_port(s: &str) -> Result<(&str, Option<u16>), UrlError> {
+    if let Some(rest) = s.strip_prefix('[') {
+        // IPv6 literal: `[v6]:port` or `[v6]`.
+        let close = rest.find(']').ok_or(UrlError::UnclosedIpv6Bracket)?;
+        let host = &rest[..close];
+        let after = &rest[close + 1..];
+        let port = if let Some(p) = after.strip_prefix(':') {
+            Some(parse_port(p)?)
+        } else if after.is_empty() {
+            None
+        } else {
+            return Err(UrlError::InvalidPort {
+                got: after.to_string(),
+                detail: "expected ':' after ']' or end of authority".into(),
+            });
+        };
+        Ok((host, port))
+    } else {
+        // IPv4 or domain — last `:` is the port separator.
+        match s.rfind(':') {
+            Some(c) => Ok((&s[..c], Some(parse_port(&s[c + 1..])?))),
+            None => Ok((s, None)),
+        }
+    }
+}
+
+fn parse_port(s: &str) -> Result<u16, UrlError> {
+    s.parse::<u16>().map_err(|e| UrlError::InvalidPort {
+        got: s.to_string(),
+        detail: e.to_string(),
+    })
 }
 
 /// Stub — implemented in Task 6.
@@ -79,4 +173,47 @@ pub fn is_multicast_v4(addr: Ipv4Addr) -> bool {
 #[must_use]
 pub fn is_multicast_v6(addr: Ipv6Addr) -> bool {
     addr.octets()[0] == 0xff
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_url_scheme_host_port() {
+        let u = parse_url("srt://example.com:9000").unwrap();
+        assert_eq!(u.scheme, "srt");
+        assert_eq!(u.host, "example.com");
+        assert_eq!(u.port, Some(9000));
+        assert_eq!(u.username, None);
+        assert_eq!(u.password, None);
+        assert_eq!(u.path, "");
+        assert!(u.query.is_empty());
+    }
+
+    #[test]
+    fn parse_url_no_port() {
+        let u = parse_url("rtsp://camera.lan").unwrap();
+        assert_eq!(u.scheme, "rtsp");
+        assert_eq!(u.host, "camera.lan");
+        assert_eq!(u.port, None);
+    }
+
+    #[test]
+    fn parse_url_missing_separator_rejected() {
+        let err = parse_url("srt:host:9000").unwrap_err();
+        assert!(matches!(err, UrlError::MissingSchemeSeparator));
+    }
+
+    #[test]
+    fn parse_url_empty_scheme_rejected() {
+        let err = parse_url("://host:9000").unwrap_err();
+        assert!(matches!(err, UrlError::EmptyScheme));
+    }
+
+    #[test]
+    fn parse_url_invalid_port_rejected() {
+        let err = parse_url("srt://host:99999").unwrap_err();
+        assert!(matches!(err, UrlError::InvalidPort { .. }));
+    }
 }

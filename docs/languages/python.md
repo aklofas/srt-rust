@@ -1,5 +1,38 @@
 # Python bindings (`tstrans`)
 
+> **Who this is for:** You write Python and want to inspect, build, or
+> process MPEG-TS + KLV files. Note: live SRT transport is not available
+> in v1 — use the Rust core or C bindings for live streaming.
+
+> **You will learn:**
+> - How to install `tstrans` (with or without the pandas extra)
+> - How to read a `.ts` file and inspect typed `DemuxEvent` items in ~5 lines
+> - How to build a `.ts` file by pushing video + KLV through the `Muxer`
+> - How to encode and decode all 4 MISB KLV sets (ST 0601 / 0102 / 0605 / 0903)
+> - How to drive bulk KLV → pandas DataFrame ETL with the optional `[pandas]` extra
+> - The Python-specific gotchas: GIL release, dataclass strictness, optional extras
+> - How this binding differs from the Rust core (file-only, no live SRT)
+
+## Install
+
+```bash
+pip install tstrans
+```
+
+Optional extras:
+
+```bash
+pip install 'tstrans[pandas]'   # pandas DataFrame adapters + NumPy snapshot views
+```
+
+**Minimum Python is 3.10** (bumped from 3.9 mid-Phase-2 to enable PEP 604
+union syntax and `match` statements without compat hacks).
+
+The compiled extension is imported as `tstrans._native`. Public API lives
+on `tstrans` and its topic submodules — `tstrans.io`, `tstrans.mpegts`,
+`tstrans.klv`, `tstrans.codec`, and the optional `tstrans.pandas`. Don't
+reach into `tstrans._native` directly; it may reorganize between versions.
+
 > **Status (Phase 6 shipped, 2026-05-23):** `tstrans` is feature-complete
 > for v1: file inspection + construction (`Demuxer` / `Muxer` /
 > `MuxerFileSink`), typed KLV decode + encode for ST 0601 / ST 0102 /
@@ -7,30 +40,59 @@
 > H.265 / H.266 / AV1 / AAC / MPEG-2 audio, and optional pandas
 > DataFrame adapters + NumPy snapshot views via
 > `pip install tstrans[pandas]`. ~582 pytest tests. Live SRT (v2) and
-> RTP (v3) transports remain on the roadmap. Minimum Python 3.10.
+> RTP (v3) transports remain on the roadmap.
 
-## Install (when published)
+## Hello world
 
-```
-pip install tstrans
-```
-
-Minimum Python is 3.10 (bumped from 3.9 mid-Phase-2 to enable PEP 604
-union syntax and `match` statements without compat hacks).
-
-## Quickstart
-
-Inspect a `.ts` file:
+Read a `.ts` file and print the type of each event in five lines:
 
 ```python
-from tstrans.io import parse_file, probe
+import tstrans
+
+for event in tstrans.io.parse_file("capture.ts"):
+    print(type(event).__name__)
+```
+
+## First send
+
+Build a single-program H.264 `.ts` file by pushing one access unit through
+the `Muxer`:
+
+```python
+from tstrans.mpegts import (
+    Muxer,
+    MuxerConfigBuilder,
+    MuxerProgramConfigBuilder,
+    Pts90khz,
+    VideoCodec,
+)
+
+prog = (
+    MuxerProgramConfigBuilder(program_number=1, pmt_pid=0x100)
+    .add_video(0x101, VideoCodec.H264)
+    .add_klv(0x102)
+    .build()
+)
+cfg = MuxerConfigBuilder().add_program(prog).build()
+m = Muxer(cfg)
+
+with m.write_file("out.ts") as proxy:
+    proxy.push_video(nal_bytes, Pts90khz.from_raw(900_000))
+    proxy.push_klv(klv_bytes, Pts90khz.from_raw(900_000))
+```
+
+`MuxerFileSink` (the object returned by `write_file`) is a context
+manager — `__exit__` flushes and finalizes the file; no explicit
+`close()` ceremony is needed.
+
+## First receive
+
+Demux a file and dispatch on typed events with a `match` statement:
+
+```python
+from tstrans.io import parse_file
 from tstrans.mpegts import DemuxEvent
 
-# Quick summary
-r = probe("capture.ts")
-print(r.video_codecs, r.audio_codecs, r.has_klv)
-
-# Full event stream
 for event in parse_file("capture.ts"):
     match event:
         case DemuxEvent.ProgramMap(programs=pms):
@@ -41,7 +103,16 @@ for event in parse_file("capture.ts"):
             print(f"KLV pts={p.ms}ms len={len(b)} (use tstrans.klv to decode)")
 ```
 
-### KLV typed decode
+For a quick summary without iterating every event, use `probe`:
+
+```python
+from tstrans.io import probe
+
+r = probe("capture.ts")
+print(r.video_codecs, r.audio_codecs, r.has_klv)
+```
+
+To pull typed KLV records directly:
 
 ```python
 from tstrans.io import extract_klv
@@ -70,39 +141,34 @@ accumulates per-field errors on `.field_errors`; strict mode raises
 / `encode_*_strict`) round-trip parsed records back to wire bytes.
 See the `tstrans.klv` module docstring for the full type listing.
 
-### pandas + NumPy adapters (optional)
+## Language-specific gotchas
 
-Install the optional extra to enable DataFrame adapters and snapshot
-NumPy views over NAL / OBU / parameter-set payloads:
+- **GIL released in `push_*` methods.** Long-running CPU work (large NAL
+  parses, big KLV blobs) doesn't block other Python threads. The
+  `add_subtitle()` and `push_subtitle*()` methods also release the GIL
+  (added in plan #96 Wave C).
+- **Subtitle config dataclasses reject `bool`-as-`int`.** PyO3 strictness
+  means `True` is not silently coerced to integer `1` for fields that
+  expect an integer codec selector. Same with `bytearray` vs `bytes`.
+  (Came from plan #96 validation pass.)
+- **`MuxerFileSink` is a context manager.** Use
+  `with m.write_file("out.ts") as proxy: ...`. The `__exit__` flushes +
+  finalizes the file. No explicit `close()` ceremony is needed (and a
+  double-close on the underlying handle would panic).
+- **`Sample.payload` is typed.** For H.264 / H.265 / H.266 video it's
+  `list[NalUnit]`; for AV1 it's `list[Obu]`; for AAC ADTS it's
+  `list[AdtsFrame]`; for MPEG-2 Audio it's `list[Mpeg2AudioFrame]`. For
+  subtitles + AAC-LATM, it stays raw `bytes` (no parser).
+- **abi3 build limitation.** `bytes`-like extraction uses a two-path
+  approach (one for true `bytes`, one for `memoryview` / `bytearray`)
+  because PyO3's abi3 doesn't expose a unified buffer protocol. The
+  Python API is uniform — you can pass `bytes`, `bytearray`, or a
+  `memoryview` and it works.
+- **`tstrans._native` is private.** Use `tstrans.X` (or `tstrans.mpegts.X`
+  / `tstrans.klv.X` / ...) — never `tstrans._native.X`. The `_native`
+  submodule may reorganize between versions.
 
-```bash
-pip install 'tstrans[pandas]'
-```
-
-See [Pandas + NumPy adapters](#pandas--numpy-adapters) below for the full
-integration guide.
-
-## Design
-
-See [docs/specs/2026-05-22-tst-py-design.md](../../docs/specs/2026-05-22-tst-py-design.md)
-(at parent-level project tree, outside the published repo).
-
-## Roadmap
-
-- v1 — SHIPPED 2026-05-23 (Phases 0-6).
-  - Phase 0+1 — scaffolding + exception hierarchy. SHIPPED 2026-05-22.
-  - Phase 2 — Demuxer wrap + `io.parse_file` + `io.probe`. SHIPPED 2026-05-22.
-  - Phase 3 — KLV typed decode (`UasDatalinkLs`, `parse_klv_universal`). SHIPPED 2026-05-23.
-  - Phase 4 — Muxer wrap + `Muxer.write_file` + symmetric KLV encoders. SHIPPED 2026-05-23.
-  - Phase 5 — codec parsers (`NalUnit`, `Obu`, `AdtsFrame`, `Mpeg2AudioFrame`). SHIPPED 2026-05-23.
-  - Phase 6 — pandas / NumPy adapters via `[pandas]` extra. SHIPPED 2026-05-23.
-  - Phase 7 — CI wheels + PyPI publish. UP NEXT.
-- v2 — add live SRT (Sender / Receiver / MuxSender / DemuxReceiver shells).
-- v3 — add RTP transport (MPEG-TS-over-RTP per RFC 2250).
-
----
-
-## Pandas + NumPy adapters
+### Pandas + NumPy adapters
 
 Optional pandas DataFrame adapters and NumPy snapshot views (one
 Rust-to-Python `bytes` copy per access; see [Snapshot vs zero-copy](#snapshot-vs-zero-copy)
@@ -120,7 +186,7 @@ extra raises:
 ImportError: tstrans pandas adapters require: pip install 'tstrans[pandas]'
 ```
 
-### Quick start
+#### Quick start
 
 ```python
 import tstrans.io
@@ -137,9 +203,9 @@ print(df.kind.value_counts())
 #  ProgramMap                12
 ```
 
-### DataFrame adapters
+#### DataFrame adapters
 
-#### KLV records — `klv_to_dataframe`
+##### KLV records — `klv_to_dataframe`
 
 ```python
 from tstrans.io import extract_klv
@@ -188,7 +254,7 @@ parseable even when an error `message` contains commas.
 targets = tstrans.pandas.klv_to_dataframe(vmti_records, mode="targets")
 ```
 
-#### DemuxEvents — `events_to_dataframe`
+##### DemuxEvents — `events_to_dataframe`
 
 ```python
 df = tstrans.pandas.events_to_dataframe(events)
@@ -219,7 +285,7 @@ demuxer; it never appears as a separate kind.)
 Payloads themselves stay on the original event objects — they're not
 materialised in the DataFrame.
 
-#### NAL / OBU lists — `nals_to_dataframe` / `obus_to_dataframe`
+##### NAL / OBU lists — `nals_to_dataframe` / `obus_to_dataframe`
 
 ```python
 # Extract NALs from a single video Sample
@@ -246,7 +312,7 @@ OBU schema: `obu_type`, `obu_type_name`, `temporal_id`, `spatial_id`
 (both from the optional OBU extension; NaN when absent), `payload_len`,
 and `pts_ms` if supplied.
 
-#### Audio frames — `audio_frames_to_dataframe`
+##### Audio frames — `audio_frames_to_dataframe`
 
 ```python
 from tstrans.codec import parse_aac_frames
@@ -269,7 +335,7 @@ does NOT account for skipped (garbage) bytes between recovered frames
 — if you need absolute offsets across a resync boundary, pre-compute
 them from the resync output itself.
 
-### NumPy snapshot views
+#### NumPy snapshot views
 
 Every byte-bearing class (NalUnit, Obu, AdtsFrame, Mpeg2AudioFrame, all
 H.264/H.265/H.266 SPS/PPS/VPS/SliceHeaderLight, AV1 sequence/frame
@@ -298,7 +364,7 @@ These accessors are **read-only** views — `np.frombuffer` sets
 `writeable=False` on Python `bytes`. Mutating attempts raise
 `ValueError: assignment destination is read-only` by design.
 
-#### Snapshot vs zero-copy
+##### Snapshot vs zero-copy
 
 Each `.payload_np` / `.raw_rbsp_np` / `.raw_np` access materializes a
 fresh Python `bytes` from Rust-owned storage (one copy), then NumPy
@@ -328,9 +394,9 @@ arr = np.frombuffer(nal.payload, dtype=np.uint8)
 
 Both forms are equivalent.
 
-### Common recipes
+#### Common recipes
 
-#### Plot platform altitude over time
+##### Plot platform altitude over time
 
 ```python
 df = tstrans.pandas.klv_to_dataframe(uas_records)
@@ -339,14 +405,14 @@ df["sensor_alt_m"].plot()
 df["frame_center_elev_m"].plot()
 ```
 
-#### Filter Sample events by codec
+##### Filter Sample events by codec
 
 ```python
 df = tstrans.pandas.events_to_dataframe(events)
 h264_samples = df[(df.kind == "Sample") & (df.codec == "H264")]
 ```
 
-#### NAL type histogram across an entire capture
+##### NAL type histogram across an entire capture
 
 ```python
 all_nals = []
@@ -357,7 +423,7 @@ df = tstrans.pandas.nals_to_dataframe(all_nals)
 df.nal_type_name.value_counts().plot.bar()
 ```
 
-#### Audio frame-length over byte offset
+##### Audio frame-length over byte offset
 
 ```python
 frames = list(parse_aac_frames(buf))
@@ -365,7 +431,7 @@ df = tstrans.pandas.audio_frames_to_dataframe(frames)
 df.set_index("byte_offset")["frame_length_bytes"].plot()
 ```
 
-### Troubleshooting
+#### Troubleshooting
 
 **`TypeError: klv_to_dataframe requires homogeneous record types`** — your
 input mixes ST sets (e.g. `UasDatalinkLs` + `SecurityLs`). Split into
@@ -401,3 +467,48 @@ at zero, so it represents the offset within the contiguous-frame slice
 the adapter saw. For `*_with_resync` flows, gaps caused by skipped
 garbage bytes between frames are NOT reflected. Use the resync API
 output directly when absolute byte offsets matter.
+
+## Where this binding differs from the Rust core
+
+- **File I/O only in v1.** `tstrans` v1 ships file inspection
+  (`tstrans.io.parse_file`) and offline `.ts` construction (`Muxer` +
+  `MuxerFileSink`). Live SRT transport lands in v2 (the Rust core is
+  ready; only the Python wrap is the work). RTP transport lands in v3.
+- **No raw `RawSender` / `RawReceiver`.** Only the composed `Muxer` /
+  `Demuxer` surface is wrapped. (Live SRT in v2 will add `Sender` /
+  `Receiver` wraps.)
+- **Subtitle Mux API is dataclass-driven.** Rust uses struct-variant
+  enums for subtitle codec config; Python wraps each variant as a
+  separate dataclass (`DvbSubtitlingConfig`, `DvbTeletextConfig`,
+  `Cea708StandaloneConfig`, `WebVttInTsConfig`).
+- **`add_subtitle()` and `push_subtitle*()` release the GIL.** Added in
+  plan #96 Wave C.
+- **No bindings for low-level `mpegts::demux::low_level::*`.** The Rust
+  core exposes extension points there; the Python wrap omits them
+  (would need PyO3 wrapping of trait objects).
+- **Optional `[pandas]` extra is opt-in.** The `tstrans.pandas`
+  submodule is only available if `pip install tstrans[pandas]` was
+  used. Importing without the extra raises `ImportError` with a clear
+  message.
+
+(For pandas + NumPy specifics, see the
+[Pandas + NumPy adapters](#pandas--numpy-adapters) sub-section under
+"Language-specific gotchas" above.)
+
+## Design
+
+See [docs/specs/2026-05-22-tst-py-design.md](../../docs/specs/2026-05-22-tst-py-design.md)
+(at parent-level project tree, outside the published repo).
+
+## Roadmap
+
+- v1 — SHIPPED 2026-05-23 (Phases 0-6).
+  - Phase 0+1 — scaffolding + exception hierarchy. SHIPPED 2026-05-22.
+  - Phase 2 — Demuxer wrap + `io.parse_file` + `io.probe`. SHIPPED 2026-05-22.
+  - Phase 3 — KLV typed decode (`UasDatalinkLs`, `parse_klv_universal`). SHIPPED 2026-05-23.
+  - Phase 4 — Muxer wrap + `Muxer.write_file` + symmetric KLV encoders. SHIPPED 2026-05-23.
+  - Phase 5 — codec parsers (`NalUnit`, `Obu`, `AdtsFrame`, `Mpeg2AudioFrame`). SHIPPED 2026-05-23.
+  - Phase 6 — pandas / NumPy adapters via `[pandas]` extra. SHIPPED 2026-05-23.
+  - Phase 7 — CI wheels + PyPI publish. UP NEXT.
+- v2 — add live SRT (Sender / Receiver / MuxSender / DemuxReceiver shells).
+- v3 — add RTP transport (MPEG-TS-over-RTP per RFC 2250).

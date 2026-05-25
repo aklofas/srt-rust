@@ -367,6 +367,11 @@ jobs:
           cd crates/tst-srt/fuzz
           cargo +nightly fuzz check
 
+      - name: Compile-check tst-rtp fuzz targets
+        run: |
+          cd crates/tst-rtp/fuzz
+          cargo +nightly fuzz check
+
   python-core:
     name: tst-py default tests
     runs-on: ubuntu-latest

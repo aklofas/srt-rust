@@ -452,13 +452,15 @@ def test_push_subtitle_to_handle_form_works():
 
 
 def test_push_subtitle_to_invalid_handle_raises():
-    """Out-of-range handle surfaces as INVALID_USAGE via the
-    MuxSenderErrorKind classifier."""
+    """Within-canonical-layout but unconfigured handle surfaces as
+    INVALID_USAGE at push-time via the MuxSenderErrorKind classifier.
+    (Forged-high-bit handles are rejected earlier at `from_raw` itself —
+    that contract is covered in `test_handle_forge.py`.)"""
     from tstrans.mpegts import SubtitleStreamHandle, WebVttInTsConfig
 
     cfg = _subtitle_config(WebVttInTsConfig())
     m = Muxer(cfg)
-    bogus = SubtitleStreamHandle.from_raw((255 << 16) | 255)
+    bogus = SubtitleStreamHandle.from_raw(0xFF)
     with pytest.raises(MuxError) as ei:
         m.push_subtitle_to(
             bogus,

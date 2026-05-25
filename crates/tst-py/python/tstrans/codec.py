@@ -173,9 +173,27 @@ def _make_np_property(attr_name: str):
 
     Returns a NumPy ndarray snapshot view. Each property access materializes
     a fresh Python `bytes` from Rust-owned storage (one copy of payload_length
-    bytes), then NumPy views that bytes object with zero further copies. For
-    repeated access on the same wrapped instance, cache the result manually
-    to avoid repeated Rust→Python copies.
+    bytes), then NumPy views that bytes object with zero further copies.
+
+    **The copy is NOT cached on the wrapper instance.** Every read of
+    `obj.payload_np` (or `.raw_rbsp_np` / `.raw_np`) re-runs the
+    Rust→Python `PyBytes` allocation. In tight pandas / notebook loops
+    that touch the same field repeatedly (e.g. `df["nal"].apply(lambda
+    n: n.payload_np.mean())` followed by `.apply(lambda n:
+    n.payload_np.std())`), this doubles the allocation cost.
+
+    Recommendation: cache the snapshot manually when you'll touch it more
+    than once::
+
+        # In a pandas/numpy hot loop:
+        payload = obj.payload_np   # one Rust→Python copy
+        mean = payload.mean()
+        std = payload.std()
+        # ... no further copies, all NumPy ops on the cached ndarray.
+
+    PyO3 abi3 classes cannot store side attributes cleanly across
+    versions, so transparent per-instance caching at the Rust layer is
+    not provided — the cost is deliberately surfaced to the caller.
 
     Lazy-imports numpy on first call; raises ImportError with install hint
     if [pandas] extra not installed.

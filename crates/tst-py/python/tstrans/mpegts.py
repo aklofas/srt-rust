@@ -714,6 +714,50 @@ class DemuxerConfig:
     # reassembly trade-off.
     lenient_psi_reassembly: bool = False
 
+    def __post_init__(self) -> None:
+        # F10 — fail-fast on primitive-shape violations at construction.
+        # Without this, invalid values fail deep inside `build_demuxer`
+        # in Rust (e.g. negative `pes_cap_per_pid` raises an opaque
+        # `OverflowError` from `usize` extraction) instead of pointing
+        # at the user's construction site. Mirrors the pattern used by
+        # `Pts90khz` (mpegts.py:39-47) and the KLV dataclasses.
+        if not isinstance(self.strict_mode, StrictMode):
+            raise TypeError(
+                f"strict_mode must be a StrictMode enum value; "
+                f"got {type(self.strict_mode).__name__}={self.strict_mode!r}"
+            )
+        # `bool` is a subclass of `int` in Python — exclude it explicitly
+        # so `DemuxerConfig(pes_cap_per_pid=True)` doesn't silently pass.
+        if isinstance(self.pes_cap_per_pid, bool) or not isinstance(
+            self.pes_cap_per_pid, int
+        ):
+            raise TypeError(
+                f"pes_cap_per_pid must be int; "
+                f"got {type(self.pes_cap_per_pid).__name__}"
+            )
+        if self.pes_cap_per_pid <= 0:
+            # Rust accepts 0 but a 0-byte cap means no PES can ever
+            # reassemble — effectively unusable. Reject loudly.
+            raise ValueError(
+                f"pes_cap_per_pid must be > 0; got {self.pes_cap_per_pid}"
+            )
+        if isinstance(self.pes_cap_total, bool) or not isinstance(
+            self.pes_cap_total, int
+        ):
+            raise TypeError(
+                f"pes_cap_total must be int; "
+                f"got {type(self.pes_cap_total).__name__}"
+            )
+        if self.pes_cap_total <= 0:
+            raise ValueError(
+                f"pes_cap_total must be > 0; got {self.pes_cap_total}"
+            )
+        if not isinstance(self.cfi_tolerance, bool):
+            raise TypeError(
+                f"cfi_tolerance must be bool; "
+                f"got {type(self.cfi_tolerance).__name__}"
+            )
+
 
 # Phase 5: re-export NalUnit / Obu / ObuExtension so callers can import
 # them from `tstrans.mpegts` without also importing from `tstrans.codec`.
@@ -832,14 +876,18 @@ class AudioStreamCodecStats(StreamCodecStats):
 # Muxer untouched, so callers see a near-transparent Muxer surface plus
 # the implicit drain-to-disk behavior.
 
-# Drain chunk size: 4 packets × 188 bytes. Small enough to keep memory
-# footprint low; large enough to amortize the pull() call cost.
-_DRAIN_CHUNK_PACKETS = 4
+# Drain chunk size: 7 packets × 188 = 1316 bytes — matches the common SRT
+# payload (and UDP-like MPEG-TS bundle) size of 7×188, so callers that
+# tee the file output to a transport without re-chunking get
+# packet-aligned writes for free. Small enough to keep memory footprint
+# low; large enough to amortize the pull() call cost.
+_DRAIN_CHUNK_PACKETS = 7
 _DRAIN_CHUNK_BYTES = _DRAIN_CHUNK_PACKETS * 188
 
 
 def _drain_muxer_to_file(muxer: "Muxer", fh) -> None:
-    """Pull pending packets in 4-packet chunks and write to `fh`.
+    """Pull pending packets in `_DRAIN_CHUNK_PACKETS`-packet chunks and
+    write to `fh`.
 
     Stops when pull() returns 0 or pending drops to 0. Used by both
     `MuxerDrainProxy` (after each push) and `MuxerFileSink.__exit__`
@@ -847,11 +895,17 @@ def _drain_muxer_to_file(muxer: "Muxer", fh) -> None:
     """
 
     buf = bytearray(_DRAIN_CHUNK_BYTES)
+    # F11 — hoist memoryview outside the loop. `view[:n]` is a zero-copy
+    # slice; `bytes(buf[:n])` (the prior form) allocated + copied n bytes
+    # per chunk. Real file handles (`io.BufferedWriter`) accept any
+    # buffer-protocol object, including memoryview slices, so this
+    # works transparently.
+    view = memoryview(buf)
     while muxer.pending_packets() > 0:
         n = muxer.pull(buf)
         if n == 0:
             break
-        fh.write(bytes(buf[:n]))
+        fh.write(view[:n])
 
 
 class MuxerDrainProxy:

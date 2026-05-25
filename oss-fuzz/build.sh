@@ -66,7 +66,7 @@ if [ -f oss-fuzz/targets/klv.dict ]; then
   # dict via its corresponding .options file's `dict = ` line — but since
   # we ship one dict and want it picked up automatically, naming it
   # <target>.dict makes libFuzzer find it without an explicit option.
-  for tgt in klv_iter klv_st0601_decode klv_st0102_decode klv_st0903_decode; do
+  for tgt in klv_st0601_decode klv_st0102_decode klv_st0903_decode; do
     cp oss-fuzz/targets/klv.dict "$OUT/${tgt}.dict"
   done
 fi
@@ -96,7 +96,6 @@ zip_seeds demux_pes_reassembly   crates/tst-core/tests/fixtures/regression
 zip_seeds ts_parser              crates/tst-core/tests/fixtures/regression
 
 # Committed synthetic seeds.
-zip_seeds klv_iter               oss-fuzz/targets/klv_iter_seed_corpus
 zip_seeds mpegts_au_cell_read    oss-fuzz/targets/mpegts_au_cell_read_seed_corpus
 zip_seeds audio_frame_iter       oss-fuzz/targets/audio_frame_iter_seed_corpus
 zip_seeds url_parse              oss-fuzz/targets/url_parse_seed_corpus

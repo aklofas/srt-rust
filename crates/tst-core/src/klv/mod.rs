@@ -36,7 +36,7 @@ pub mod st0605;
 pub mod st0903;
 pub mod universal_label;
 
-pub use pack::{Iter, OwnedRawField, RawField};
+pub use pack::{OwnedRawField, RawField};
 pub use st0102::{
     ClassifyingCountryCodingMethod, ObjectCountryCodingMethod, SECURITY_LS_UL,
     SecurityClassification, SecurityLs,

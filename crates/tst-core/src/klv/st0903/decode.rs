@@ -17,11 +17,11 @@ use crate::klv::st0903::vtarget_pack;
 /// are preserved in [`VmtiLs::unknown`] per ST 0107.5 §6 future-proof skip
 /// rule.
 ///
-/// Tags are walked as BER-OID per ST 0107.5 §6.3.1 via [`Iter::local_set`]
-/// — defined tags 1..=103 fit in one byte (`write_ber_oid(N) == [N]` for
-/// `N ≤ 127`), but a future ST 0903.7+ tag ≥ 128 would encode as multi-byte
-/// BER-OID. Such forward-compat tags land in [`VmtiLs::unknown`] keyed by
-/// their decoded `u32` tag value.
+/// Tags are walked as BER-OID per ST 0107.5 §6.3.1 — defined tags 1..=103
+/// fit in one byte (`write_ber_oid(N) == [N]` for `N ≤ 127`), but a future
+/// ST 0903.7+ tag ≥ 128 would encode as multi-byte BER-OID. Such
+/// forward-compat tags land in [`VmtiLs::unknown`] keyed by their decoded
+/// `u32` tag value.
 ///
 /// VTargetSeries (Tag 101) inner packs are dispatched to
 /// `vtarget_pack::read_pack`; pack-level errors land in `field_errors`
@@ -39,8 +39,6 @@ use crate::klv::st0903::vtarget_pack;
 /// [`KlvDecodeError::St0903InvalidVTargetPack`]. Tag-level
 /// malformations on the parent LS are non-fatal in lenient mode and
 /// are captured in [`VmtiLs::field_errors`] instead.
-///
-/// [`Iter::local_set`]: crate::klv::pack::Iter::local_set
 pub fn decode(bytes: &[u8]) -> Result<VmtiLs, KlvDecodeError> {
     use crate::klv::imapb::{ImapbParams, decode_imapb};
     use crate::klv::pack::Iter;

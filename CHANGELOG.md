@@ -7,6 +7,67 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — `klv::pack::Iter` tightened to `pub(crate)` + Universal Set machinery retired (2026-05-24)
+
+Closes the Phase 1 SemVer-ratchet deferral on `tst_core::klv::pack::Iter`
+(`docs/deferred-features.md` entry removed). The iterator was already
+`#[doc(hidden)] pub` and excluded from `cargo public-api --simplified`
+baselines, so the visibility tightening has zero baseline drift. The
+fuzz-target relocation precondition shipped in Phase 5 (`klv_iter.rs` was
+in `tst-core/fuzz/` already); this commit drops the now-irrelevant fuzz
+binary because its coverage is provided transitively by
+`klv_st0601_decode` / `klv_st0102_decode` / `klv_st0903_decode`.
+
+The tightening surfaced that `Iter::universal_set` + `Iter::remaining` +
+`IterMode::UniversalSet` + `next_universal_set` had no callers outside the
+deleted fuzz target and a pair of in-file tests. Per YAGNI those got
+ripped out — `Iter` is now single-mode (`{ buf, offset, finished }`) and
+local-set only. A future ST 0905 / universal-set typed decoder would add
+back a separate iterator shape (the prior universal-set path was admitted
+"included for completeness but the typed layer never calls it").
+
+**Changed (internal — no public API impact):**
+
+- `tst_core::klv::pack::Iter` is now `pub(crate)`. Removed from the
+  `pub use pack::{Iter, OwnedRawField, RawField}` re-export in
+  `crates/tst-core/src/klv/mod.rs`. `RawField` + `OwnedRawField` + the
+  `pub fn encode_pack` surface are unchanged.
+- `Iter::local_set` is now `pub(crate)`. `Iter::universal_set` +
+  `Iter::remaining` + `IterMode` + `next_universal_set` deleted.
+- `cargo public-api --simplified` baselines for tst-core, tst-pipeline,
+  tst-srt: zero drift (verified). `#[non_exhaustive]` count unchanged at
+  **162**.
+
+**Removed (fuzz / oss-fuzz integration):**
+
+- `crates/tst-core/fuzz/fuzz_targets/klv_iter.rs` deleted; matching
+  `[[bin]]` entry removed from `crates/tst-core/fuzz/Cargo.toml`.
+- `oss-fuzz/targets/klv_iter_seed_corpus/` deleted; `oss-fuzz/build.sh`
+  no longer references `klv_iter` (3-target dict loop instead of 4, one
+  fewer `zip_seeds` call). Expected next-rebuild figures: 15 targets /
+  13 seed corpora / 3 dicts (down from 16 / 14 / 4). `oss-fuzz/
+  VERIFICATION.md` gained a top-of-file note annotating the retirement
+  rather than overwriting the 2026-05-15 historical snapshot.
+
+**Docs:**
+
+- Doc-link references to `Iter::local_set` stripped from `pub fn`
+  comments in `crates/tst-core/src/klv/st0903/decode.rs` +
+  `crates/tst-core/src/klv/st0102/decode.rs` (would have warned under
+  `RUSTDOCFLAGS="-D warnings"` as "public docs link to private item").
+- `docs/deferred-features.md`: the "`klv::pack::Iter` — tighten from
+  `pub` to `pub(crate)`" entry deleted (no longer deferred).
+
+**Background:** the prior deferred-features entry claimed that after
+relocating the fuzz target into `crates/tst-core/fuzz/` the import would
+"become crate-local (`crate::klv::pack::Iter`) and the `pub(crate)`
+change is free." That claim was wrong — `cargo fuzz` sub-crates are
+separate cargo packages that depend on the parent crate externally, so
+`pub(crate)` would still have broken the import. The actual path to
+closure was deleting the fuzz binary, not relocating it.
+
+---
+
 ## [Unreleased] — Python bindings audit-2 closeout (2026-05-24)
 
 10 findings from `docs/python-1/python-bindings-deep-dive-audit-2.md` + 1

@@ -84,15 +84,14 @@ pub fn decode(buf: &[u8]) -> Result<SecurityLs, KlvDecodeError> {
 /// `klv::st0601::decode_strict_compliance` posture).
 ///
 /// Per-tag BER length encoding canonicity (ST 0107.5 §6.3.2) is NOT
-/// currently checked — body iteration via [`pack::Iter::local_set`]
-/// uses the permissive [`length::read_ber`]. A future tightening
-/// could route through [`length::read_ber_strict`] but this is
-/// deferred to keep parity with `klv::st0601`'s permissive iter
-/// shape; consumers who need canonical-BER enforcement can call
-/// [`length::read_ber_strict`] on the buffer themselves.
+/// currently checked — body iteration uses the permissive
+/// [`length::read_ber`]. A future tightening could route through
+/// [`length::read_ber_strict`] but this is deferred to keep parity with
+/// `klv::st0601`'s permissive iter shape; consumers who need
+/// canonical-BER enforcement can call [`length::read_ber_strict`] on the
+/// buffer themselves.
 ///
 /// [`OmittedValueXX`]: ClassifyingCountryCodingMethod::OmittedValue08
-/// [`pack::Iter::local_set`]: crate::klv::pack::Iter::local_set
 /// [`length::read_ber`]: crate::klv::length::read_ber
 /// [`length::read_ber_strict`]: crate::klv::length::read_ber_strict
 pub fn decode_strict(buf: &[u8]) -> Result<SecurityLs, KlvDecodeError> {

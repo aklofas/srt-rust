@@ -52,48 +52,26 @@ impl OwnedRawField {
     }
 }
 
-/// What encoding `Iter` uses for tag and length.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum IterMode {
-    LocalSet, // 1-byte tag + BER-OID length (note: ST 0601 LS uses 1-byte tag + BER-OID length)
-    UniversalSet, // 16-byte UL key + BER length
-}
-
-/// Iterator over a KLV body (post-UL, post-outer-length).
-#[doc(hidden)] // Phase 3: hidden from rustdoc; full pub(crate) blocked by external
-// fuzz consumer (crates/tst-srt/fuzz/fuzz_targets/klv_iter.rs).
-// Phase 5 will lift the consumer + demote to pub(crate).
-pub struct Iter<'a> {
+/// Iterator over a KLV body (post-UL, post-outer-length). Crate-internal:
+/// the typed decoders (`klv::st0601`, `klv::st0102`, `klv::st0605`,
+/// `klv::st0903`) are the consumer-facing API; this is BER/length-prefix
+/// substrate. Local-set form only (1-byte tag + BER-OID length); a future
+/// ST 0905 universal-set decoder would need a separate iterator.
+pub(crate) struct Iter<'a> {
     buf: &'a [u8],
     offset: usize,
-    mode: IterMode,
     finished: bool,
 }
 
 impl<'a> Iter<'a> {
     /// Iterate a local-set body: 1-byte tag + BER-OID length, repeating.
     /// Caller is responsible for stripping the outer UL + total length first.
-    pub fn local_set(buf: &'a [u8]) -> Self {
+    pub(crate) fn local_set(buf: &'a [u8]) -> Self {
         Self {
             buf,
             offset: 0,
-            mode: IterMode::LocalSet,
             finished: false,
         }
-    }
-
-    /// Iterate a universal-set body: 16-byte UL key + BER length, repeating.
-    pub fn universal_set(buf: &'a [u8]) -> Self {
-        Self {
-            buf,
-            offset: 0,
-            mode: IterMode::UniversalSet,
-            finished: false,
-        }
-    }
-
-    pub fn remaining(&self) -> &'a [u8] {
-        &self.buf[self.offset..]
     }
 }
 
@@ -104,10 +82,7 @@ impl<'a> Iterator for Iter<'a> {
         if self.finished || self.offset >= self.buf.len() {
             return None;
         }
-        match self.mode {
-            IterMode::LocalSet => self.next_local_set(),
-            IterMode::UniversalSet => self.next_universal_set(),
-        }
+        self.next_local_set()
     }
 }
 
@@ -150,49 +125,6 @@ impl<'a> Iter<'a> {
         Some(Ok(RawField { tag, value }))
     }
 
-    fn next_universal_set(&mut self) -> Option<Result<RawField<'a>, KlvDecodeError>> {
-        let start = self.offset;
-        let rest = &self.buf[start..];
-        if rest.len() < 16 {
-            self.finished = true;
-            return Some(Err(KlvDecodeError::Truncated {
-                offset: start,
-                needed: 16,
-                have: rest.len(),
-            }));
-        }
-        // Universal-set keys are full 16-byte ULs. We don't have a 16-byte tag
-        // field on RawField (u32), so we surface a stable hash of the UL bytes
-        // as the tag and the *full payload value* unchanged. Callers that want
-        // the UL key reconstruct it from the buffer offset.
-        //
-        // Practically: most consumers iterate local sets. Universal-set
-        // iteration is included for completeness but the typed layer never
-        // calls it. If a real consumer surfaces, swap RawField for a
-        // UniversalSetField type.
-        let _ = &rest[..16];
-        let after_key = &rest[16..];
-        let (len, after_len) = match read_ber(after_key) {
-            Ok(v) => v,
-            Err(e) => {
-                self.finished = true;
-                return Some(Err(e));
-            }
-        };
-        let consumed = rest.len() - after_len.len();
-        if after_len.len() < len {
-            self.finished = true;
-            return Some(Err(KlvDecodeError::Truncated {
-                offset: start + consumed,
-                needed: len,
-                have: after_len.len(),
-            }));
-        }
-        let value = &after_len[..len];
-        self.offset = start + consumed + len;
-        // Synthetic tag = 0 for universal-set entries; full UL is at &buf[start..start+16].
-        Some(Ok(RawField { tag: 0, value }))
-    }
 }
 
 /// Encode a KLV pack: 16-byte UL + outer length + concatenated TLVs.
@@ -322,14 +254,6 @@ mod tests {
     }
 
     #[test]
-    fn iter_local_set_remaining_tracks_offset() {
-        let buf = [0x01, 0x02, 0xAA, 0xBB, 0x05, 0x01, 0x42];
-        let mut it = Iter::local_set(&buf);
-        let _ = it.next().unwrap().unwrap();
-        assert_eq!(it.remaining(), &[0x05, 0x01, 0x42]);
-    }
-
-    #[test]
     fn iter_local_set_two_byte_tag() {
         // BER-OID tag 0x80 (= 0x81 0x00), len 1, [0x42]
         let buf = [0x81, 0x00, 0x01, 0x42];
@@ -337,18 +261,6 @@ mod tests {
         let f = it.next().unwrap().unwrap();
         assert_eq!(f.tag, 0x80);
         assert_eq!(f.value, &[0x42]);
-    }
-
-    #[test]
-    fn iter_universal_set_one_field() {
-        let mut buf = vec![];
-        buf.extend_from_slice(&[0xAB; 16]); // 16-byte key (any bytes; iter doesn't validate)
-        buf.push(0x03); // BER short, len = 3
-        buf.extend_from_slice(&[0x11, 0x22, 0x33]);
-        let mut it = Iter::universal_set(&buf);
-        let f = it.next().unwrap().unwrap();
-        assert_eq!(f.value, &[0x11, 0x22, 0x33]);
-        assert!(it.next().is_none());
     }
 
     #[test]

@@ -226,34 +226,6 @@ the trigger that would unblock it.
 - **Trigger to revisit:** An embedded target with a hard `no_std`
   requirement.
 
-## `klv::pack::Iter` — tighten from `pub` to `pub(crate)`
-
-- **Status:** `klv::pack::Iter<'a>` is currently `pub`. The Rust quality
-  + DX + FFI refactor (Phase 1 SemVer ratchet) intended to tighten it
-  to `pub(crate)` since the typed decoders (`klv::st0601`,
-  `klv::st0102`, `klv::st0903`) are the consumer-facing API and `Iter`
-  is just BER/IMAPB/length-prefix substrate. The tightening shipped
-  partially in Phase 1 but the actual visibility change deferred —
-  see below.
-- **Why deferred:** A pre-rename relic fuzz target lives at
-  `crates/tst-srt/fuzz/fuzz_targets/klv_iter.rs` and imports
-  `tst_core::klv::pack::Iter` directly. Tightening `Iter` to
-  `pub(crate)` would break that import. The fuzz target itself is in
-  the wrong crate (audit theme J flagged 15 of 16 fuzz targets in
-  `tst-srt/fuzz/` as exercising `tst-core` code); the right move is
-  to relocate it to `crates/tst-core/fuzz/` first, after which the
-  import becomes crate-local (`crate::klv::pack::Iter`) and the
-  `pub(crate)` change is free.
-- **Trigger to revisit:** Phase 5 of the quality refactor — fuzz
-  target relocation. Tighten `Iter` to `pub(crate)` in the same
-  commit that moves `klv_iter.rs` (and its 14 sibling tst-core-
-  exercising fuzz targets) into `tst-core/fuzz/`. Verify the fuzz
-  target still builds + runs against the tightened type.
-- **Scope when added:** One-line visibility change on the `Iter`
-  struct definition in `crates/tst-core/src/klv/pack.rs`, plus any
-  `pub fn` returning `Iter` in the same file (likely the `iter(...)`
-  constructor) since it would otherwise leak the now-private type.
-
 ## Multi-stream `mpegts::mux` — `srt-jni` / `srt-uniffi` binding surface
 
 - **Status:** The `tst-c` C ABI fan-out shipped — `tst_video_stream_handle_t` /

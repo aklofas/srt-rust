@@ -3,6 +3,13 @@
 **Run:** 2026-05-15
 **Reviewer:** andrew.klofas@gmail.com
 
+> **Subsequent change (2026-05-24):** the `klv_iter` fuzz target was retired
+> when `klv::pack::Iter` was tightened to `pub(crate)` — its coverage is
+> provided transitively by `klv_st0601_decode` / `klv_st0102_decode` /
+> `klv_st0903_decode`. Counts and inventory below are unchanged from the
+> 2026-05-15 run; re-verification before the OSS-Fuzz PR ships will produce
+> updated figures (expect 15 targets / 13 seed corpora / 3 dicts).
+
 ## Build method
 
 Built with local source mount (required because Tasks 1-10 commits are not yet pushed to

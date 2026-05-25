@@ -12,13 +12,6 @@ libfuzzer-sys = "0.4"
 tst-core      = { path = ".." }
 
 [[bin]]
-name              = "klv_iter"
-path              = "fuzz_targets/klv_iter.rs"
-test              = false
-doc               = false
-bench             = false
-
-[[bin]]
 name              = "audio_frame_iter"
 path              = "fuzz_targets/audio_frame_iter.rs"
 test              = false

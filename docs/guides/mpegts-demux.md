@@ -1,12 +1,26 @@
 # MPEG-TS Demuxer Guide
 
+
+> **Who this is for:** You're building the receiver / processing side — parsing a live MPEG-TS stream (or a `.ts` file) into typed `DemuxEvent` items.
+
+> **You will learn:**
+> - The bytes-in / events-out model: `Demuxer::push_packet` and `Demuxer::pop_event`
+> - The four-tier `StrictMode` ladder (lenient → strict-by-spec)
+> - The `DemuxEvent` variants and what payload each carries
+> - How synchronous KLV gets auto-unwrapped from H.222.0 §2.12.4.2 AU cells
+> - The opt-in `cfi_tolerance` mode and the producer-malformation pattern it handles
+> - How `DemuxReceiver<T>` composes the demuxer with a `RecvTransport`
+> - How `ManagedDemuxReceiver` adds automatic reconnect with discontinuity events
+
 ## Introduction
 
-This guide covers `tst_core::mpegts::demux` — the receiver-side MPEG-TS
-demuxer. `Demuxer` takes raw bytes off the wire (or out of a `.ts` file),
-recovers TS packet alignment, parses PSI (PAT / PMT), reassembles PES
-packets, splits H.264 / H.265 NAL units, peels H.222.0 § 2.12.4.2
-`Metadata_AU_cell` headers off sync KLV, and emits a typed event stream — `DemuxEvent::ProgramMap`,
+When you have an MPEG-TS byte stream — live off the wire or out of a `.ts`
+file — and need typed events back (program maps, video access units, KLV
+records, discontinuity markers, non-conformance diagnostics),
+`tst_core::mpegts::demux` is the engine. `Demuxer` recovers TS packet
+alignment, parses PSI (PAT / PMT), reassembles PES packets, splits H.264 /
+H.265 NAL units, peels H.222.0 § 2.12.4.2 `Metadata_AU_cell` headers off
+sync KLV, and emits a typed event stream — `DemuxEvent::ProgramMap`,
 `Sample`, `Metadata`, `Discontinuity`, `NonConformant`. Bytes need not
 be 188-aligned; the demuxer handles sync recovery internally.
 
@@ -670,22 +684,22 @@ log the override.
 
 Four runnable examples cover the demuxer's surface:
 
-- [../examples/receiving/demux_to_events.rs](../examples/receiving/demux_to_events.rs)
+- `cargo run -p tst-examples --example demux_to_events` — [examples/receiving/demux_to_events.rs](/examples/receiving/demux_to_events.rs)
   — file in, full event stream out. Triage-grade diagnostic.
-- [../examples/receiving/srt_recv_typed.rs](../examples/receiving/srt_recv_typed.rs)
+- `cargo run -p tst-examples --example srt_recv_typed` — [examples/receiving/srt_recv_typed.rs](/examples/receiving/srt_recv_typed.rs)
   — bind a listener, wrap with `pipeline::Receiver`, drain typed events
   from a live SRT peer.
-- [../examples/pairing/pair_sync_klv.rs](../examples/pairing/pair_sync_klv.rs)
+- `cargo run -p tst-examples --example pair_sync_klv` — [examples/pairing/pair_sync_klv.rs](/examples/pairing/pair_sync_klv.rs)
   — nearest-PTS pairing of KLV records with video AUs (Cookbook §12).
-- [../examples/operations/tee_disk_and_demux.rs](../examples/operations/tee_disk_and_demux.rs)
+- `cargo run -p tst-examples --example tee_disk_and_demux` — [examples/operations/tee_disk_and_demux.rs](/examples/operations/tee_disk_and_demux.rs)
   — `add_byte_sink` fan-out: write `.ts` to disk while consuming typed
   events, all in one pass.
 
 Two existing examples were also retrofitted to use `Demuxer` internally:
 
-- [../examples/klv-metadata/extract_klv.rs](../examples/klv-metadata/extract_klv.rs)
+- `cargo run -p tst-examples --example extract_klv` — [examples/klv-metadata/extract_klv.rs](/examples/klv-metadata/extract_klv.rs)
   — extract KLV records from a `.ts` capture (now `Demuxer`-driven).
-- [../examples/codec-parsing/extract_video_au.rs](../examples/codec-parsing/extract_video_au.rs)
+- `cargo run -p tst-examples --example extract_video_au` — [examples/codec-parsing/extract_video_au.rs](/examples/codec-parsing/extract_video_au.rs)
   — extract video access units, re-emit Annex-B framing.
 
 ## Multi-program parsing
@@ -754,3 +768,10 @@ Each item below maps to an entry in
 
 See [compatibility.md](/docs/reference/compatibility.md)'s `mpegts::demux` block for
 the full feature-by-feature status.
+
+## See also
+
+- **Runnable example:** `cargo run -p tst-examples --example demux_to_events` — [examples/receiving/demux_to_events.rs](/examples/receiving/demux_to_events.rs)
+- [guides/mpegts-mux.md](/docs/guides/mpegts-mux.md) — the symmetric sender-side guide.
+- [guides/klv.md](/docs/guides/klv.md) — decoding the KLV bytes the demuxer surfaces.
+- [guides/pipeline.md](/docs/guides/pipeline.md) — `DemuxReceiver<T>` and `ManagedDemuxReceiver`.

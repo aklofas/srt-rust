@@ -7,7 +7,7 @@ fail at construction, not deep inside `build_demuxer` Rust extraction.
 
 import pytest
 
-from tstrans.mpegts import DemuxerConfig, StrictMode
+from tstrans.mpegts import Av1CarriageMode, DemuxerConfig, StrictMode
 
 
 def test_valid_default_construction() -> None:
@@ -83,3 +83,45 @@ def test_cfi_tolerance_non_bool_rejected_with_typeerror() -> None:
         DemuxerConfig(cfi_tolerance=1)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="cfi_tolerance"):
         DemuxerConfig(cfi_tolerance="false")  # type: ignore[arg-type]
+
+
+# Wave B + Wave H coordination — the 3 new fields bridged in Wave B
+# (av1_carriage, au_cell_cap_per_pid, lenient_psi_reassembly) also need
+# fail-fast validation, matching the audit-2 #4 policy.
+
+
+def test_av1_carriage_accepts_none_and_enum() -> None:
+    DemuxerConfig(av1_carriage=None)
+    DemuxerConfig(av1_carriage=Av1CarriageMode.INTEROP_RAW_OBU)
+    DemuxerConfig(av1_carriage=Av1CarriageMode.MPEG2_TS_BINDING)
+
+
+def test_av1_carriage_string_rejected_with_typeerror() -> None:
+    with pytest.raises(TypeError, match="av1_carriage"):
+        DemuxerConfig(av1_carriage="interop")  # type: ignore[arg-type]
+
+
+def test_au_cell_cap_per_pid_accepts_none_and_positive_int() -> None:
+    DemuxerConfig(au_cell_cap_per_pid=None)
+    DemuxerConfig(au_cell_cap_per_pid=1)
+    DemuxerConfig(au_cell_cap_per_pid=1 << 20)
+
+
+def test_au_cell_cap_per_pid_zero_rejected_with_valueerror() -> None:
+    with pytest.raises(ValueError, match="au_cell_cap_per_pid"):
+        DemuxerConfig(au_cell_cap_per_pid=0)
+
+
+def test_au_cell_cap_per_pid_negative_rejected_with_valueerror() -> None:
+    with pytest.raises(ValueError, match="au_cell_cap_per_pid"):
+        DemuxerConfig(au_cell_cap_per_pid=-1)
+
+
+def test_au_cell_cap_per_pid_bool_rejected_with_typeerror() -> None:
+    with pytest.raises(TypeError, match="au_cell_cap_per_pid"):
+        DemuxerConfig(au_cell_cap_per_pid=True)  # type: ignore[arg-type]
+
+
+def test_lenient_psi_reassembly_non_bool_rejected_with_typeerror() -> None:
+    with pytest.raises(TypeError, match="lenient_psi_reassembly"):
+        DemuxerConfig(lenient_psi_reassembly=1)  # type: ignore[arg-type]

@@ -757,6 +757,31 @@ class DemuxerConfig:
                 f"cfi_tolerance must be bool; "
                 f"got {type(self.cfi_tolerance).__name__}"
             )
+        if self.av1_carriage is not None and not isinstance(
+            self.av1_carriage, Av1CarriageMode
+        ):
+            raise TypeError(
+                f"av1_carriage must be None or Av1CarriageMode; "
+                f"got {type(self.av1_carriage).__name__}"
+            )
+        if self.au_cell_cap_per_pid is not None:
+            if isinstance(self.au_cell_cap_per_pid, bool) or not isinstance(
+                self.au_cell_cap_per_pid, int
+            ):
+                raise TypeError(
+                    f"au_cell_cap_per_pid must be None or int; "
+                    f"got {type(self.au_cell_cap_per_pid).__name__}"
+                )
+            if self.au_cell_cap_per_pid <= 0:
+                raise ValueError(
+                    f"au_cell_cap_per_pid must be > 0 if set; "
+                    f"got {self.au_cell_cap_per_pid}"
+                )
+        if not isinstance(self.lenient_psi_reassembly, bool):
+            raise TypeError(
+                f"lenient_psi_reassembly must be bool; "
+                f"got {type(self.lenient_psi_reassembly).__name__}"
+            )
 
 
 # Phase 5: re-export NalUnit / Obu / ObuExtension so callers can import

@@ -63,6 +63,12 @@ pub enum UrlError {
     /// empty hosts and leaves the policy to the caller).
     #[error("URL must include a host")]
     MissingHost,
+    /// Port is absent in a context where it must be present (e.g.
+    /// [`parse_host_port`] requires a port). Distinct from
+    /// [`Self::InvalidPort`] which fires when a port string is present
+    /// but unparseable.
+    #[error("URL must include a port")]
+    MissingPort,
 }
 
 /// Parse a URL of shape `scheme://[user[:password]@]host[:port][/path][?query]`.
@@ -241,10 +247,7 @@ fn hex_nibble(b: u8) -> Result<u8, UrlError> {
 /// - `[2001:db8::1]:5004` → `([2001:db8::1], 5004)`
 pub fn parse_host_port(s: &str) -> Result<(IpAddr, u16), UrlError> {
     let (host, port) = split_host_port(s)?;
-    let port = port.ok_or_else(|| UrlError::InvalidPort {
-        got: String::new(),
-        detail: "host without port not allowed".into(),
-    })?;
+    let port = port.ok_or(UrlError::MissingPort)?;
     let ip: IpAddr = host.parse().map_err(|e: std::net::AddrParseError| UrlError::InvalidPort {
         got: host.to_string(),
         detail: format!("expected literal IPv4 or IPv6 address, got '{host}': {e}"),
@@ -416,11 +419,19 @@ mod tests {
     }
 
     #[test]
-    fn parse_host_port_domain_rejected() {
+    fn parse_host_port_rejects_non_literal_host() {
         // parse_host_port requires a literal IP; domain names need DNS
         // resolution which is the caller's responsibility.
         let err = parse_host_port("cam.lan:554").unwrap_err();
         assert!(matches!(err, UrlError::InvalidPort { .. }));
+    }
+
+    #[test]
+    fn parse_host_port_rejects_bare_ip_without_port() {
+        // `parse_host_port` requires both host AND port. A bare IPv4 string
+        // without `:port` should yield MissingPort (not InvalidPort).
+        let err = parse_host_port("192.168.1.10").unwrap_err();
+        assert!(matches!(err, UrlError::MissingPort));
     }
 
     #[test]

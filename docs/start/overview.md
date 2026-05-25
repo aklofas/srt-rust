@@ -45,7 +45,7 @@ Each placement uses the same primitives differently. The [`guides/`](/docs/guide
 ts-transformer is intentionally narrow. If you need any of these, look elsewhere or pair the library with a complementary tool:
 
 - **Other containers** — MPEG-TS only. No MP4, MKV, fMP4, HLS, DASH. (You can transcode + repackage on the receiver side using FFmpeg, GStreamer, etc.)
-- **Other transports** — SRT only. No RTMP, WebRTC, RTP, RIST, plain TCP/UDP.
+- **Other transports** — SRT 1.5 (Haivision libsrt, vendored) ships today. **RTP** and **raw TCP / UDP** are in active development. **RTMP, WebRTC, and RIST** are not on the roadmap.
 - **Other metadata formats** — MISB KLV only. No arbitrary user data, no raw timestamps, no proprietary metadata schemas. See [`project/deferred-features.md`](/docs/project/deferred-features.md) for what's deferred.
 - **Video encoding / decoding** — wire-format only. You bring the encoded NAL units / OBU frames; the library multiplexes them. Pair with x264 / x265 / FFmpeg / NVENC / GStreamer for the actual encode side; PyAV / FFmpeg / a hardware decoder for display.
 - **Live SRT in Python** — file I/O only in v1. Live SRT lands in `tstrans` v2 (Rust core is ready; Python wrap is the work).

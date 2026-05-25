@@ -7,6 +7,43 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — Phase 1 scoped test infrastructure (2026-05-25)
+
+Tests-only / docs-only. No public API changes, no `#[non_exhaustive]` count
+change (BASELINE stays at 162), no ABI bump.
+
+### Tests
+- Closed 15 dead-weight Python skip sites in `tst-py` (10 `@pytest.mark.skipif`
+  decorators + 5 runtime `pytest.skip` calls). Every gated fixture was already
+  checked into `crates/tst-core/tests/fixtures/`; the skips were leftover
+  defensive guards from when the fixtures were anticipated but not yet built.
+  Module-level packaging assertions added so a fixture going missing in the
+  future is a hard error, not a silent skip.
+- Added tracked seed inputs for 7 previously-empty fuzz targets under
+  `crates/*/fuzz/seeds/<target>/`: `demux_feed` (5), `demux_psi` (6,
+  including real PAT/PMT extracted from `audio/aac-adts.ts`),
+  `demux_pes_reassembly` (5), `mpegts_au_cell_read` (5),
+  `klv_st0601_decode` (4), `parse_av1_sequence_header` (2), `url_parse` (7).
+  New `scripts/seed-fuzz-corpora.sh` (idempotent) copies seeds into the
+  gitignored `corpus/` tree before `cargo +nightly fuzz run`, preserving
+  libFuzzer's accumulated runtime corpus. See
+  `crates/tst-core/fuzz/seeds/README.md` for the convention.
+- Wired `gen_pts_rollover_fixture` + `measure_pcr_jitter` into per-commit CI
+  via `crates/tst-core/tests/timing_smoke.rs`. Both `[[bin]]` targets shipped
+  for release-validation steps 8/9 (plan #83) had been unreachable from PR CI;
+  a chained smoke test now exercises both via `CARGO_BIN_EXE_*`. The fixture
+  straddles the 33-bit PTS boundary by ~3s on the post-wrap side and stays
+  well under the jitter thresholds (median ≤ 67ms, p95 ≤ 100ms).
+
+### Docs
+- Updated `docs/python-1/python-bindings-skip-backlog.md` — moved 15 closed
+  rows to a "Closed by Phase 1" section. The 3 remaining runtime skips in
+  `test_sample_payload_audio_fallback.py` require deterministic
+  ADTS-syncword corruption fixtures and are deferred per plan
+  `docs/plans/2026-05-25-scoped-test-infra-phase-1.md`.
+
+---
+
 ## [Unreleased] — `cfi_tolerance` default flipped `false` → `true` (2026-05-24)
 
 Behavior change: the `DemuxerConfig::cfi_tolerance` default flips from

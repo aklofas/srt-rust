@@ -599,9 +599,14 @@ mod phase3_server_builder_tests {
     }
 
     #[test]
-    fn rtsp_server_from_builder_stub_returns_not_started() {
+    fn rtsp_server_builder_build_succeeds_post_t7() {
+        // T3 originally wrote this test asserting Err(NotStarted) because
+        // T3's RtspServer::from_builder was a stub. T7 (Wave B) replaced
+        // the stub with the real Runtime-building impl, so build() now
+        // returns Ok. Test renamed + retargeted accordingly.
         let b = RtspServerBuilder::new("rtsp://127.0.0.1:0").unwrap();
-        let e = b.build().unwrap_err();
-        assert!(matches!(e, RtspServerError::NotStarted));
+        let server = b.build().expect("post-T7 build returns the real RtspServer");
+        // local_addr is None until start() runs the listener.
+        assert!(server.local_addr().is_none());
     }
 }

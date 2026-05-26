@@ -828,6 +828,23 @@ typedef struct tst_rtsp_client_builder_t tst_rtsp_client_builder_t;
 
 #if defined(TST_HAS_RTP)
 /**
+ * Configuration accumulator for the RTSP server.
+ *
+ * Allocated by `tst_rtsp_server_builder_new` and consumed (or freed) by
+ * `tst_rtsp_server_builder_start` (Task 8) / `tst_rtsp_server_builder_free`.
+ *
+ * Fields are stored independently rather than wrapping `RtspServerBuilder`
+ * directly.  Even though `RtspServerBuilder` uses `&mut self -> &mut Self`
+ * chain setters (which are in-place friendly), storing fields independently
+ * keeps the opaque struct layout stable across future Rust API changes and
+ * matches the T5 `TstRtspClientBuilder` pattern.  Task 8's start path
+ * constructs the final `RtspServerBuilder` from these fields.
+ */
+typedef struct TstRtspServerBuilder TstRtspServerBuilder;
+#endif
+
+#if defined(TST_HAS_RTP)
+/**
  * Opaque handle for a live RTSP client session.
  *
  * Obtained from [`tst_rtsp_client_builder_connect`].  Freed by either
@@ -1890,6 +1907,39 @@ extern "C" {
 #endif
 
 #if defined(TST_HAS_RTP)
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 #endif
 
 #if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
@@ -4248,6 +4298,23 @@ void tst_rtp_sender_close(struct TstRtpSender *p);
  */
 void tst_rtsp_client_builder_free(struct tst_rtsp_client_builder_t *builder);
 /**
+ * Free a builder without starting the server.
+ *
+ * Use this on error paths where the builder was partially configured and
+ * you want to discard it.  After this call the pointer is invalid; any
+ * further use is undefined behavior.  NULL is a no-op.
+ *
+ * Prefer `tst_rtsp_server_builder_start` (Task 8) which also consumes
+ * the builder — `_free` is the error-path companion.
+ *
+ * # Safety
+ *
+ * `builder` must be NULL, or a pointer returned by
+ * `tst_rtsp_server_builder_new` that has not yet been freed or passed to
+ * `_start`.
+ */
+void tst_rtsp_server_builder_free(struct TstRtspServerBuilder *builder);
+/**
  * Cancel any blocking RTSP I/O on the control channel.
  *
  * Sets the session's cancel flag so that any thread blocked inside a RTSP
@@ -5031,6 +5098,239 @@ void tst_rtsp_client_builder_tls_root_cert_pem(struct tst_rtsp_client_builder_t 
 
 void tst_rtsp_client_builder_transport_pref(struct tst_rtsp_client_builder_t *builder,
                                             uint32_t pref);
+/**
+ * Require HTTP Basic authentication (RFC 7617) from connecting clients.
+ *
+ * `user` and `pass` are the accepted credentials (NUL-terminated UTF-8).
+ * The auth realm defaults to `"tst-rtp"`.  The strings are copied
+ * immediately; the caller's buffers need not outlive this call.
+ *
+ * Calling any `_auth_*` entry point multiple times overwrites the
+ * previous selection — the last call wins (matches
+ * `RtspServerBuilder::auth_basic` behavior).
+ *
+ * No-op (with last-error set to `TST_E_INVALID_CONFIG`) if `builder`,
+ * `user`, or `pass` is NULL, or if either string is not valid UTF-8.
+ * Must be called before `tst_rtsp_server_builder_start`.
+ *
+ * # Safety
+ *
+ * - `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`.
+ * - `user` and `pass` must each be a valid, NUL-terminated C string valid
+ *   for the duration of this call.
+ */
+
+void tst_rtsp_server_builder_auth_basic(struct TstRtspServerBuilder *builder,
+                                        const char *user,
+                                        const char *pass);
+/**
+ * Require HTTP Digest MD5 authentication (RFC 7616 §3.4) from connecting
+ * clients.
+ *
+ * `user` and `pass` are the accepted credentials (NUL-terminated UTF-8).
+ * The auth realm defaults to `"tst-rtp"`.  The strings are copied
+ * immediately; the caller's buffers need not outlive this call.
+ *
+ * Calling any `_auth_*` entry point multiple times overwrites the
+ * previous selection — the last call wins.
+ *
+ * No-op (with last-error set to `TST_E_INVALID_CONFIG`) if `builder`,
+ * `user`, or `pass` is NULL, or if either string is not valid UTF-8.
+ * Must be called before `tst_rtsp_server_builder_start`.
+ *
+ * # Safety
+ *
+ * - `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`.
+ * - `user` and `pass` must each be a valid, NUL-terminated C string valid
+ *   for the duration of this call.
+ */
+
+void tst_rtsp_server_builder_auth_digest_md5(struct TstRtspServerBuilder *builder,
+                                             const char *user,
+                                             const char *pass);
+/**
+ * Require HTTP Digest SHA-256 authentication (RFC 7616 §3.4) from
+ * connecting clients.
+ *
+ * `user` and `pass` are the accepted credentials (NUL-terminated UTF-8).
+ * The auth realm defaults to `"tst-rtp"`.  The strings are copied
+ * immediately; the caller's buffers need not outlive this call.
+ *
+ * Calling any `_auth_*` entry point multiple times overwrites the
+ * previous selection — the last call wins.
+ *
+ * No-op (with last-error set to `TST_E_INVALID_CONFIG`) if `builder`,
+ * `user`, or `pass` is NULL, or if either string is not valid UTF-8.
+ * Must be called before `tst_rtsp_server_builder_start`.
+ *
+ * # Safety
+ *
+ * - `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`.
+ * - `user` and `pass` must each be a valid, NUL-terminated C string valid
+ *   for the duration of this call.
+ */
+
+void tst_rtsp_server_builder_auth_digest_sha256(struct TstRtspServerBuilder *builder,
+                                                const char *user,
+                                                const char *pass);
+/**
+ * Change or override the bind address.
+ *
+ * `addr` must be a NUL-terminated `rtsp://` or `rtsps://` URL string.
+ * Replaces the address set at `tst_rtsp_server_builder_new` time.  Call
+ * this to redirect the server to a different interface or port without
+ * allocating a new builder.
+ *
+ * No-op (with last-error set to `TST_E_INVALID_CONFIG`) if `builder` is
+ * NULL, `addr` is NULL, or the URL fails to parse.
+ *
+ * Must be called before `tst_rtsp_server_builder_start`.
+ *
+ * # Safety
+ *
+ * - `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`,
+ *   and not yet freed or consumed.
+ * - `addr` must be a valid, NUL-terminated C string valid for this call.
+ */
+void tst_rtsp_server_builder_bind(struct TstRtspServerBuilder *builder, const char *addr);
+/**
+ * Set the per-mount broadcast channel capacity (frame count).
+ *
+ * Each mount maintains an internal broadcast channel (tokio `broadcast`)
+ * between the `MountHandle` push path and per-client fanout tasks. When a
+ * client's task cannot keep up, the oldest enqueued frames are dropped for
+ * that client; the per-peer dropped-frame counter increments but the muxer
+ * is never back-pressured.
+ *
+ * `cap` is floored to 1. Default: 256 frames. Must be called before
+ * `tst_rtsp_server_builder_start`.
+ *
+ * # Safety
+ *
+ * `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`,
+ * and not yet freed or consumed.
+ */
+void tst_rtsp_server_builder_fanout_capacity(struct TstRtspServerBuilder *builder, uint32_t cap);
+/**
+ * Set the graceful-shutdown drain window in milliseconds.
+ *
+ * When `tst_rtsp_server_stop` (Task 9) is called, the server sends an RFC
+ * 7826 §13.5.1 Notice 5402 ("Server-Initiated TEARDOWN") ANNOUNCE to each
+ * active session, then waits up to `ms` milliseconds (plus 1 s fixed
+ * overhead) for in-flight RTP frames to drain before closing the listener
+ * and runtime. Default: 100 ms.
+ *
+ * Must be called before `tst_rtsp_server_builder_start`.
+ *
+ * # Safety
+ *
+ * `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`,
+ * and not yet freed or consumed.
+ */
+
+void tst_rtsp_server_builder_graceful_shutdown_drain_ms(struct TstRtspServerBuilder *builder,
+                                                        uint32_t ms);
+/**
+ * Set the maximum number of concurrent client sessions.
+ *
+ * When the cap is reached, new incoming connections are accepted at the TCP
+ * level and then immediately closed (with a `tracing::warn!` diagnostic).
+ * This prevents the OS from accumulating a backlog of half-open connections
+ * while still enforcing a resource ceiling.
+ *
+ * `n` is floored to 1 (zero is treated as 1). Default: 64.
+ * Must be called before `tst_rtsp_server_builder_start`.
+ *
+ * # Safety
+ *
+ * `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`,
+ * and not yet freed or consumed.
+ */
+void tst_rtsp_server_builder_max_sessions(struct TstRtspServerBuilder *builder, uint32_t n);
+/**
+ * Allocate a new RTSP server builder for binding to `addr`.
+ *
+ * `addr` must be a NUL-terminated `rtsp://` or `rtsps://` URL string
+ * specifying the bind address and port (e.g. `"rtsp://0.0.0.0:8554"`).
+ * The host must be a literal IP address — DNS names are rejected at this
+ * step because the OS kernel, not a resolver, performs the actual bind.
+ *
+ * Auth, TLS, session limits, and drain policy may be set with the
+ * `_auth_*`, `_tls_cert_pem`, `_max_sessions`, `_session_timeout`,
+ * `_fanout_capacity`, and `_graceful_shutdown_drain_ms` setters before
+ * calling `tst_rtsp_server_builder_start` (Task 8) to bind the listener
+ * and begin accepting connections.
+ *
+ * Returns a non-NULL builder pointer on success, or NULL with the
+ * thread-local last-error populated on failure (bad URL, non-IP-literal
+ * host, allocation failure, etc.).  The caller must eventually pass the
+ * pointer to `tst_rtsp_server_builder_start` (which consumes it) or
+ * `tst_rtsp_server_builder_free` (which discards it).
+ *
+ * # Safety
+ *
+ * `addr` must be a valid, NUL-terminated C string that lives for the
+ * duration of this call.  The returned pointer is owned by the caller
+ * and must not be aliased.
+ */
+struct TstRtspServerBuilder *tst_rtsp_server_builder_new(const char *addr);
+/**
+ * Set the session timeout in seconds.
+ *
+ * The server advertises this value to clients in the `Session:
+ * <id>;timeout=N` response header. Clients are expected to send keepalive
+ * pings at `N/2`; sessions that exceed `N` without any request may be
+ * dropped (server policy). Defaults to 60 s.
+ *
+ * `secs` is used as-is; a value of 0 means no advertised timeout
+ * (not recommended for production). Must be called before
+ * `tst_rtsp_server_builder_start`.
+ *
+ * # Safety
+ *
+ * `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`,
+ * and not yet freed or consumed.
+ */
+void tst_rtsp_server_builder_session_timeout(struct TstRtspServerBuilder *builder, uint32_t secs);
+/**
+ * Supply a PEM-encoded TLS certificate chain and private key for
+ * `rtsps://` binds.
+ *
+ * `cert` must point to `cert_len` bytes of PEM-encoded certificate data
+ * (one or more X.509 certificates in `-----BEGIN CERTIFICATE-----` /
+ * `-----END CERTIFICATE-----` blocks, leaf first).  `key` must point to
+ * `key_len` bytes of a PEM-encoded PKCS#8 or SEC1 private key in
+ * `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----` form.
+ *
+ * Both buffers are copied immediately; the caller's pointers need not
+ * outlive this call.  Task 8's `_start` writes the bytes to temporary
+ * paths and passes them to `RtspServerBuilder::tls_cert`.
+ *
+ * This setter is required when the bind URL uses `rtsps://`; when
+ * `rtsp://` is used, calling this setter is harmless (the bytes are
+ * stored but ignored at start time).
+ *
+ * No-op (with last-error set) if `builder`, `cert`, or `key` is NULL,
+ * or if any length is zero.
+ *
+ * Note: this setter stores the raw PEM bytes regardless of whether the
+ * `tls` cargo feature is active.  If TLS support was not compiled in and
+ * `tst_rtsp_server_builder_start` is called with an `rtsps://` URL, the
+ * start call itself will fail with `TST_E_RTSP_SERVER`.
+ *
+ * # Safety
+ *
+ * - `builder` must be non-NULL, returned by `tst_rtsp_server_builder_new`.
+ * - `cert` must point to at least `cert_len` valid bytes.
+ * - `key` must point to at least `key_len` valid bytes.
+ * - No pointer needs to outlive this call.
+ */
+
+void tst_rtsp_server_builder_tls_cert_pem(struct TstRtspServerBuilder *builder,
+                                          const uint8_t *cert,
+                                          size_t cert_len,
+                                          const uint8_t *key,
+                                          size_t key_len);
 /**
  * Consume the session's data-plane transport and return a
  * `tst_rtp_demux_receiver_t` ready for event iteration.

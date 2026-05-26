@@ -1,6 +1,6 @@
 [package]
 name        = "tst-rtp"
-description = "TS Transformer RTP transport: RTP-over-UDP carrying MPEG-TS (RFC 2250) with RTSP/1.0 + RTSP/2.0 client. Pure Rust, no native deps."
+description = "TS Transformer RTP transport: RTP-over-UDP carrying MPEG-TS (RFC 2250) with RTSP/1.0 + RTSP/2.0 client + server. Pure Rust, no native deps."
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -24,6 +24,11 @@ rtsp-types = "0.1"
 sdp-types  = "0.1"
 secrecy    = { workspace = true }
 sha2       = { version = "0.10", default-features = false }
+# Phase 3: tokio drives the RtspServer Runtime (internal-only sync facade).
+# Same feature set Phase 2 used as a dev-dep — features carry over.
+tokio      = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros"] }
+# CancellationToken for graceful-shutdown coordination across per-session tasks.
+tokio-util = { version = "0.7" }
 # Single facade for diagnostics workspace-wide.
 tracing    = { version = "0.1", default-features = false, features = ["std"] }
 
@@ -68,6 +73,5 @@ optional = true
 tst-pipeline     = { path = "../tst-pipeline" }
 tst-test-helpers = { path = "../tst-test-helpers" }
 proptest         = { workspace = true }
-# Loopback RTSP server fixture only — production client is sync (std::thread + std::net).
-tokio            = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros"] }
-tokio-util       = { version = "0.7" }
+# tokio + tokio-util were dev-only in Phase 2 (loopback fixture); promoted
+# to production [dependencies] in Phase 3 for the RtspServer Runtime.

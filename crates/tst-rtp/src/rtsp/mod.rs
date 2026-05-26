@@ -1,8 +1,8 @@
-//! RTSP/1.0 + RTSP/2.0 client (sync facade).
-//!
-//! Module layout filled in by Tasks 3-5, 12-22.
+//! RTSP/1.0 + RTSP/2.0 client (sync facade) — Phase 2.
+//! RTSP server (sync facade over internal tokio Runtime) — Phase 3.
 
 pub mod auth;
 pub mod client;
 pub mod interleaved;
 pub mod message;
+pub mod server;

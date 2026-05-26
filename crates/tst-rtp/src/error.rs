@@ -123,3 +123,86 @@ impl From<io::Error> for RtspError {
         RtspError::Io(e.kind())
     }
 }
+
+/// Failure shape for [`crate::rtsp::server::RtspServer`] lifecycle and
+/// configuration. Per-session errors (one client misbehaving) do NOT
+/// surface here — they are logged via `tracing::warn!` and the session
+/// closes; the server keeps running.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum RtspServerError {
+    /// Socket-level I/O on the listener.
+    #[error("RTSP server I/O error: {0:?}")]
+    Io(io::ErrorKind),
+
+    /// rustls server-side handshake / cert-loading failure (only emitted
+    /// when the `tls` feature is enabled).
+    #[error("RTSP server TLS error: {0}")]
+    Tls(String),
+
+    /// Bind URL parsing failed before any server lifecycle.
+    #[error("RTSP server bind URL parse error: {0}")]
+    UrlParse(#[from] UrlError),
+
+    /// The bind URL's host:port pair could not be claimed (another process
+    /// holds it, or insufficient privileges for the port).
+    #[error("bind address in use")]
+    BindAddrInUse,
+
+    /// `add_mount("/path", ...)` rejected the path — empty, doesn't start
+    /// with `/`, contains URL-reserved characters, etc.
+    #[error("invalid mount path: {detail}")]
+    InvalidMountPath { detail: String },
+
+    /// `add_multicast_mount(...)` rejected the group address — not in the
+    /// 224.0.0.0/4 or ff00::/8 ranges, or the URL is malformed.
+    #[error("invalid multicast group '{addr}': {detail}")]
+    InvalidMulticastGroup { addr: String, detail: String },
+
+    /// `add_mount("/path", ...)` called twice with the same path.
+    #[error("duplicate mount path '{path}'")]
+    DuplicateMount { path: String },
+
+    /// `MuxerConfig` failed validation (no programs declared, etc.) or
+    /// some other configuration-time invariant was violated.
+    #[error("invalid mount config: {detail}")]
+    InvalidConfig { detail: String },
+
+    /// `RtspServerBuilder::auth_*()` was called when an auth scheme was
+    /// already configured (only one scheme supported in v1).
+    #[error("auth already configured; only one auth scheme supported in v1")]
+    AuthAlreadyConfigured,
+
+    /// `start()` called twice without an intervening `stop()`.
+    #[error("RTSP server already started")]
+    AlreadyStarted,
+
+    /// `stop()`, `add_mount()`, or similar called before `start()`.
+    #[error("RTSP server not started")]
+    NotStarted,
+
+    /// Public method invoked after `stop()` completed (or after `cancel()`).
+    #[error("RTSP server has been shut down")]
+    Shutdown,
+}
+
+/// Failure shape for [`crate::rtsp::server::MountHandle`] push methods.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum MountError {
+    /// The inner muxer surfaced an error during push or drain.
+    #[error("muxer error: {0}")]
+    Mux(#[from] tst_core::error::MuxError),
+
+    /// The mount's parent server has been shut down (or the mount was
+    /// explicitly removed in a future API).
+    #[error("mount closed")]
+    Closed,
+
+    /// At least one peer's broadcast subscriber lagged past capacity; the
+    /// `dropped_frames` count is informational (the push itself
+    /// succeeded). Callers wanting end-to-end no-drop semantics can react
+    /// by slowing their push rate.
+    #[error("peer backpressure: {dropped_frames} frames dropped on slow peers")]
+    PeerBackpressure { dropped_frames: u64 },
+}

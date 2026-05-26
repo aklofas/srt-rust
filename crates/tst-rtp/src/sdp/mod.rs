@@ -1,6 +1,7 @@
 //! Thin wrapper around `sdp-types` for our DESCRIBE response parsing.
 
 use crate::error::RtspError;
+use std::net::SocketAddr;
 
 pub mod pick;
 
@@ -83,6 +84,50 @@ impl Sdp {
             session_name,
         })
     }
+
+    /// Generate the SDP body for a mount, returned by the RTSP server's
+    /// DESCRIBE handler.
+    ///
+    /// - For unicast mounts: `connection_addr` is the server's local IP;
+    ///   the `c=` line carries it and the `m=` port is 0 (RFC 4566 §5.7
+    ///   placeholder — the actual port comes from SETUP's `Transport:
+    ///   server_port=...` response).
+    /// - For multicast mounts: `connection_addr` is the multicast group
+    ///   address + port; both `c=` and the `m=` port advertise it.
+    ///
+    /// `mount_path` is the registered mount path (e.g., `/live`).
+    pub fn build_for_mount(
+        mount_path: &str,
+        connection_addr: SocketAddr,
+        is_multicast: bool,
+    ) -> bytes::Bytes {
+        let ip_family = match connection_addr.ip() {
+            std::net::IpAddr::V4(_) => "IP4",
+            std::net::IpAddr::V6(_) => "IP6",
+        };
+        let host = connection_addr.ip().to_string();
+        let m_port = if is_multicast {
+            connection_addr.port()
+        } else {
+            0
+        };
+        // Strip leading slash from mount path for the session-name (s=) line.
+        let session_name = mount_path.trim_start_matches('/');
+        let body = format!(
+            "v=0\r\n\
+             o=- 0 0 IN {family} {host}\r\n\
+             s=tst-rtp {name}\r\n\
+             t=0 0\r\n\
+             c=IN {family} {host}\r\n\
+             m=application {port} RTP/AVP 33\r\n\
+             a=control:trackID=0\r\n",
+            family = ip_family,
+            host = host,
+            name = session_name,
+            port = m_port,
+        );
+        bytes::Bytes::from(body)
+    }
 }
 
 #[cfg(test)]
@@ -132,5 +177,81 @@ a=control:trackID=1\r\n";
         let bad = b"v="; // no value, missing CRLF
         let e = Sdp::parse(bad).unwrap_err();
         assert!(matches!(e, RtspError::BadSdp { .. }));
+    }
+}
+
+#[cfg(test)]
+mod phase3_build_for_mount_tests {
+    use super::*;
+
+    #[test]
+    fn unicast_sdp_round_trips_through_parse() {
+        let addr: SocketAddr = "192.0.2.1:8554".parse().unwrap();
+        let body = Sdp::build_for_mount("/live", addr, false);
+        let parsed = Sdp::parse(&body).unwrap();
+        assert_eq!(parsed.media.len(), 1);
+        assert_eq!(parsed.media[0].payload_types, vec![33]);
+        // Unicast: m= port is 0 (placeholder per RFC 4566 §5.7).
+        assert_eq!(parsed.media[0].port, 0);
+        assert_eq!(parsed.media[0].control.as_deref(), Some("trackID=0"));
+    }
+
+    #[test]
+    fn multicast_sdp_advertises_group() {
+        let addr: SocketAddr = "239.0.0.1:5004".parse().unwrap();
+        let body = Sdp::build_for_mount("/mc", addr, true);
+        let parsed = Sdp::parse(&body).unwrap();
+        assert_eq!(parsed.media.len(), 1);
+        // Multicast: m= port carries the group port.
+        assert_eq!(parsed.media[0].port, 5004);
+        // Session-level c= should be the multicast group.
+        assert_eq!(parsed.session_connection.as_deref(), Some("239.0.0.1"));
+    }
+
+    #[test]
+    fn sdp_session_name_strips_leading_slash() {
+        let addr: SocketAddr = "127.0.0.1:8554".parse().unwrap();
+        let body = Sdp::build_for_mount("/live", addr, false);
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("s=tst-rtp live\r\n"));
+        assert!(!text.contains("s=tst-rtp /live\r\n"));
+    }
+
+    #[test]
+    fn sdp_session_name_handles_no_leading_slash() {
+        let addr: SocketAddr = "127.0.0.1:8554".parse().unwrap();
+        let body = Sdp::build_for_mount("live", addr, false);
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("s=tst-rtp live\r\n"));
+    }
+
+    #[test]
+    fn sdp_ipv6_unicast() {
+        let addr: SocketAddr = "[::1]:8554".parse().unwrap();
+        let body = Sdp::build_for_mount("/live", addr, false);
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("IN IP6"));
+        assert!(text.contains("::1"));
+    }
+
+    #[test]
+    fn sdp_multicast_ipv6() {
+        let addr: SocketAddr = "[ff02::1]:5004".parse().unwrap();
+        let body = Sdp::build_for_mount("/v6", addr, true);
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("IN IP6"));
+        assert!(text.contains("ff02::1"));
+        assert!(text.contains("m=application 5004 RTP/AVP 33"));
+    }
+
+    #[test]
+    fn sdp_terminates_lines_with_crlf() {
+        let addr: SocketAddr = "127.0.0.1:8554".parse().unwrap();
+        let body = Sdp::build_for_mount("/live", addr, false);
+        let text = std::str::from_utf8(&body).unwrap();
+        // Each declarative line ends with CRLF per RFC 4566 §5.
+        let crlf_count = text.matches("\r\n").count();
+        // v= o= s= t= c= m= a=control → 7 CRLFs.
+        assert_eq!(crlf_count, 7);
     }
 }

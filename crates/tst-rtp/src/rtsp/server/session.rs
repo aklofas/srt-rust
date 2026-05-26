@@ -81,7 +81,10 @@ pub(crate) async fn handle_connection(
     tcp: TcpStream,
     peer: SocketAddr,
 ) -> Result<(), RtspServerError> {
-    let res = handle_connection_inner(state.clone(), tcp, peer).await;
+    state.active_sessions.fetch_add(1, Ordering::Relaxed);
+    let entry = crate::rtsp::server::register_session(&state, peer);
+    let res = handle_connection_inner(state.clone(), tcp, peer, entry.clone()).await;
+    crate::rtsp::server::unregister_session(&state, &entry);
     state.active_sessions.fetch_sub(1, Ordering::Relaxed);
     res
 }
@@ -90,6 +93,7 @@ async fn handle_connection_inner(
     state: Arc<ServerState>,
     mut tcp: TcpStream,
     peer: SocketAddr,
+    session_entry: Arc<crate::rtsp::server::ActiveSession>,
 ) -> Result<(), RtspServerError> {
     tracing::info!(target: "tst_rtp::server", peer = %peer, "session opened");
     let mut session = ServerSessionState::new();
@@ -121,6 +125,10 @@ async fn handle_connection_inner(
             },
             _ = state.cancel_token.cancelled() => {
                 tracing::info!(target: "tst_rtp::server", peer = %peer, "graceful cancel observed");
+                break;
+            }
+            _ = session_entry.cancel.cancelled() => {
+                tracing::info!(target: "tst_rtp::server", peer = %peer, "per-session cancel observed");
                 break;
             }
         };
@@ -233,6 +241,7 @@ mod session_tests {
                 started: std::sync::atomic::AtomicBool::new(true),
                 shutdown: std::sync::atomic::AtomicBool::new(false),
                 local_addr: std::sync::Mutex::new(None),
+                sessions: std::sync::Mutex::new(Vec::new()),
             });
             handle_connection(state, tcp, peer).await
         });
@@ -289,6 +298,7 @@ mod session_tests {
                 started: std::sync::atomic::AtomicBool::new(true),
                 shutdown: std::sync::atomic::AtomicBool::new(false),
                 local_addr: std::sync::Mutex::new(None),
+                sessions: std::sync::Mutex::new(Vec::new()),
             });
             handle_connection(state, tcp, peer).await
         });

@@ -356,13 +356,20 @@ mod tests {
         }
     }
 
-    /// `if_nametoindex("lo")` must succeed on any Unix host (loopback
-    /// is always present). The returned ifindex is non-zero.
+    /// `if_nametoindex` for the loopback iface must succeed on any
+    /// Unix host (loopback is always present). The returned ifindex
+    /// is non-zero. Linux + FreeBSD name the iface `lo`; macOS names
+    /// it `lo0`.
     #[cfg(unix)]
     #[test]
     fn resolve_ifindex_loopback() {
-        let idx = resolve_ifindex("lo").expect("loopback iface 'lo' must resolve");
-        assert!(idx > 0, "if_nametoindex('lo') returned 0");
+        #[cfg(target_os = "macos")]
+        let iface = "lo0";
+        #[cfg(not(target_os = "macos"))]
+        let iface = "lo";
+        let idx =
+            resolve_ifindex(iface).unwrap_or_else(|e| panic!("loopback iface {iface:?}: {e}"));
+        assert!(idx > 0, "if_nametoindex({iface:?}) returned 0");
     }
 
     /// A bogus iface name must surface a typed error rather than

@@ -77,15 +77,35 @@ mod tests {
 
     #[test]
     fn clock_advances_at_90khz() {
+        // Compare RTP-tick delta against the actual wall-clock elapsed
+        // (sampled with `Instant::now()`), NOT against the requested
+        // 50 ms sleep. macOS arm64 CI runners regularly oversleep by
+        // 4x (50 ms sleep → ~200 ms elapsed) under runner load — the
+        // pre-fix `(3000..=6000)` window flaked on `Instant::elapsed`
+        // returning ~17_500 ticks. Bench-against-elapsed makes the
+        // test invariant: "ticks advance at 90 kHz of the actual time
+        // we spent in this function," regardless of sleep accuracy.
+        use std::time::Instant;
         let c = RtpClock::new(0);
+        let wall_start = Instant::now();
         let t0 = c.now_ticks();
         sleep(Duration::from_millis(50));
         let t1 = c.now_ticks();
-        let delta = t1.wrapping_sub(t0);
-        // 50 ms at 90 kHz = 4500 ticks. Allow 3000..6000 for jitter.
+        let actual_micros = wall_start.elapsed().as_micros() as u64;
+        let delta = u64::from(t1.wrapping_sub(t0));
+        // 90 kHz: expected = elapsed_us * 90 / 1000.
+        let expected = actual_micros.saturating_mul(90) / 1_000;
+        // ±5% relative tolerance with a 200-tick (~2.2 ms) absolute
+        // floor — that covers sub-microsecond skew between the
+        // `wall_start` and `t0` samples, plus the `actual_micros`
+        // / `t1` samples on the trailing edge.
+        let tol = (expected / 20).max(200);
+        let lo = expected.saturating_sub(tol);
+        let hi = expected.saturating_add(tol);
         assert!(
-            (3000..=6000).contains(&delta),
-            "delta after 50ms = {delta} ticks; expected ~4500",
+            (lo..=hi).contains(&delta),
+            "delta after {actual_micros}us = {delta} ticks; \
+             expected ~{expected} ± {tol}",
         );
     }
 

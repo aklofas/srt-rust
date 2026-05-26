@@ -21,7 +21,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 
+use tokio::io::AsyncWriteExt;
+use tokio::net::tcp::OwnedWriteHalf;
 use tokio::runtime::Runtime;
+use tokio::sync::Mutex as AsyncMutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::builder::RtspServerBuilder;
@@ -65,19 +68,26 @@ pub(crate) struct ServerState {
     pub(crate) local_addr: std::sync::Mutex<Option<SocketAddr>>,
     /// Active session registry — populated by `session::handle_connection`
     /// on accept, removed on session end. Used by `stop()` to fan out the
-    /// graceful-shutdown per-session cancel (and, in a follow-up, the
-    /// RFC 7826 §13.5.1 Notice 5402 message).
+    /// graceful-shutdown per-session cancel and the RFC 7826 §13.5.1
+    /// Notice 5402 ("Server-Initiated TEARDOWN") message.
     pub(crate) sessions: std::sync::Mutex<Vec<Arc<ActiveSession>>>,
+    /// Server-allocated CSeq counter for server-initiated requests
+    /// (the only one today is the Notice 5402 ANNOUNCE in `stop()`).
+    /// Seeded at 1_000_000 so it can't collide with client-allocated
+    /// CSeqs (which always start at 1). The client doesn't ACK
+    /// ANNOUNCE; this is a unidirectional notification.
+    pub(crate) notice_cseq: AtomicU64,
 }
 
 /// Lightweight per-session record kept on [`ServerState::sessions`] for
-/// graceful-shutdown coordination. Task 18 populates `cancel` +
-/// `session_id` + `mount_path` + `peer`. Full RFC 7826 §13.5.1 Notice
-/// 5402 ("Server-Initiated TEARDOWN") delivery over the per-session TCP
-/// write half is DEFERRED — it requires plumbing an outbound `mpsc`
-/// channel through the per-session task. For now, `stop()` cancels each
-/// session's token and lets the per-session task flush + close
-/// gracefully.
+/// graceful-shutdown coordination. `session::handle_connection_inner`
+/// populates `cancel` + `peer` at accept, mirrors `session_id` +
+/// `mount_path` from [`session::ServerSessionState`] after each SETUP /
+/// TEARDOWN, and stashes `tcp_write` after splitting the TCP. The
+/// `tcp_write` mutex is the same `Arc` the per-peer fanout task uses for
+/// RFC 7826 §14 interleaved RTP frames — `RtspServer::stop` takes the
+/// same lock to write the Notice 5402 ANNOUNCE before cancelling the
+/// session.
 #[allow(dead_code)]
 pub(crate) struct ActiveSession {
     /// RTSP session ID, once SETUP succeeded.
@@ -90,6 +100,13 @@ pub(crate) struct ActiveSession {
     pub(crate) cancel: CancellationToken,
     /// Peer address — captured at accept for logging + diagnostics.
     pub(crate) peer: SocketAddr,
+    /// Async-locked write half of the per-session TCP. Set by
+    /// `session::handle_connection_inner` once the `TcpStream` is split.
+    /// `None` for unit-test constructions that don't drive a real
+    /// connection (e.g. `register_session` in isolation). The fanout
+    /// task + the per-session response writer share this same `Arc`;
+    /// `RtspServer::stop` locks it to write the Notice 5402 ANNOUNCE.
+    pub(crate) tcp_write: std::sync::Mutex<Option<Arc<AsyncMutex<OwnedWriteHalf>>>>,
 }
 
 impl ActiveSession {
@@ -99,6 +116,7 @@ impl ActiveSession {
             mount_path: std::sync::Mutex::new(None),
             cancel: CancellationToken::new(),
             peer,
+            tcp_write: std::sync::Mutex::new(None),
         })
     }
 }
@@ -189,6 +207,49 @@ pub(crate) fn rand_seq() -> u16 {
     u16::from_be_bytes(buf)
 }
 
+/// Build the wire bytes for a server-initiated `ANNOUNCE` request
+/// carrying the RFC 7826 §13.5.1 Notice 5402 ("Server-Initiated
+/// TEARDOWN") header. Hand-rolled rather than going through
+/// [`crate::rtsp::message::RtspRequest`] because the latter normalises
+/// headers via a HashMap (unordered iteration) and we want the wire
+/// form to be deterministic + readable.
+///
+/// `host` is the server's bind host (interpolated into the request
+/// URI); `port` is the listener's bound port. `mount_path` includes the
+/// leading slash. The client doesn't ACK this request — there's no
+/// response we wait for.
+pub(crate) fn build_notice_5402_announce(
+    host: &str,
+    port: u16,
+    mount_path: &str,
+    session_id: &str,
+    cseq: u64,
+    server_value: &str,
+) -> Vec<u8> {
+    // RFC 7826 §13.5.1 / RFC 2326 §10.4 — Notice ("Notice") response
+    // header on a server-initiated ANNOUNCE conveys an end-of-stream
+    // condition. 5402 = "Server-Initiated TEARDOWN".
+    let mut out = Vec::with_capacity(256);
+    out.extend_from_slice(b"ANNOUNCE rtsp://");
+    out.extend_from_slice(host.as_bytes());
+    out.push(b':');
+    out.extend_from_slice(port.to_string().as_bytes());
+    out.extend_from_slice(mount_path.as_bytes());
+    out.extend_from_slice(b" RTSP/1.0\r\n");
+    out.extend_from_slice(b"CSeq: ");
+    out.extend_from_slice(cseq.to_string().as_bytes());
+    out.extend_from_slice(b"\r\n");
+    out.extend_from_slice(b"Notice: 5402 \"Server-Initiated TEARDOWN\"\r\n");
+    out.extend_from_slice(b"Server: ");
+    out.extend_from_slice(server_value.as_bytes());
+    out.extend_from_slice(b"\r\n");
+    out.extend_from_slice(b"Session: ");
+    out.extend_from_slice(session_id.as_bytes());
+    out.extend_from_slice(b"\r\n");
+    out.extend_from_slice(b"\r\n");
+    out
+}
+
 impl RtspServer {
     /// Internal — called from [`crate::builder::RtspServerBuilder::build`].
     /// Constructs the tokio Runtime and the shared `ServerState`.
@@ -210,6 +271,7 @@ impl RtspServer {
             shutdown: AtomicBool::new(false),
             local_addr: std::sync::Mutex::new(None),
             sessions: std::sync::Mutex::new(Vec::new()),
+            notice_cseq: AtomicU64::new(1_000_000),
         });
         Ok(Self {
             state,
@@ -427,19 +489,24 @@ impl RtspServer {
         Ok(())
     }
 
-    /// Graceful shutdown. Iterates `state.sessions` and cancels each
-    /// session's per-session token (giving the session a chance to
-    /// flush and close cleanly), fires the global `cancel_token` so the
-    /// listener stops accepting new connections, then sleeps
-    /// `graceful_shutdown_drain + 1s` to let in-flight RTP drain.
-    /// Idempotent — a second call after a completed first call is a
-    /// no-op.
+    /// Graceful shutdown. Sends an RFC 7826 §13.5.1 Notice 5402
+    /// ("Server-Initiated TEARDOWN") ANNOUNCE over each session's TCP
+    /// control channel, then cancels each session's per-session token,
+    /// fires the global `cancel_token` so the listener stops accepting
+    /// new connections, and sleeps `graceful_shutdown_drain + 1s` to
+    /// let in-flight RTP drain. Idempotent — a second call after a
+    /// completed first call is a no-op.
     ///
-    /// Full RFC 7826 §13.5.1 Notice 5402 ("Server-Initiated TEARDOWN")
-    /// delivery to each session is DEFERRED — it requires plumbing an
-    /// outbound `mpsc` channel through the per-session task and lands
-    /// as a follow-up (Wave E or hotfix). For now, sessions terminate
-    /// cleanly via per-session cancel.
+    /// The ANNOUNCE write is best-effort: a per-session write failure
+    /// (peer already disconnected, TCP reset, etc.) logs a warning and
+    /// continues. A 1 s per-session write timeout bounds the worst case
+    /// (a stuck peer that has stopped reading) so `stop()` can't hang
+    /// arbitrarily on a slow client.
+    ///
+    /// Sessions for which `mount_path` and `session_id` haven't been
+    /// populated yet (the client hasn't completed a SETUP) are skipped
+    /// for the ANNOUNCE write — there's no `Session:` value to put on
+    /// the wire — and proceed straight to per-session cancel.
     ///
     /// # Errors
     /// - [`RtspServerError::NotStarted`] if called before `start()`.
@@ -451,15 +518,86 @@ impl RtspServer {
             // Idempotent: already shut down.
             return Ok(());
         }
-        // Snapshot the active session list. Iterate + cancel each. The
-        // per-session task is responsible for flushing any in-flight
-        // RTP + closing the TCP cleanly within graceful_shutdown_drain.
+        // Snapshot the active session list. Iterate + send Notice 5402
+        // ANNOUNCE + cancel each. The per-session task is responsible
+        // for flushing any in-flight RTP + closing the TCP cleanly
+        // within graceful_shutdown_drain.
         let sessions: Vec<Arc<ActiveSession>> = self
             .state
             .sessions
             .lock()
             .map(|g| g.clone())
             .unwrap_or_default();
+        // Send the Notice 5402 ANNOUNCE over each session's TCP control
+        // channel BEFORE cancelling. The write needs an async context
+        // (the write half lives behind a tokio AsyncMutex); we
+        // block-on the runtime to keep `stop()` sync. Each per-session
+        // write is bounded by a 1 s timeout so a stuck peer can't hang
+        // `stop()` indefinitely.
+        if let Some(rt) = self.runtime.as_ref() {
+            let bind_host = self.state.builder.bind_url.host.clone();
+            let bind_port = self
+                .state
+                .local_addr
+                .lock()
+                .ok()
+                .and_then(|g| *g)
+                .map(|a| a.port())
+                .unwrap_or(self.state.builder.bind_url.port);
+            let server_value = format!("tst-rtp/{}", env!("CARGO_PKG_VERSION"));
+            for s in &sessions {
+                let Some(mount_path) = s.mount_path.lock().ok().and_then(|g| g.clone()) else {
+                    continue;
+                };
+                let Some(session_id) = s.session_id.lock().ok().and_then(|g| g.clone()) else {
+                    continue;
+                };
+                let Some(write_half) = s.tcp_write.lock().ok().and_then(|g| g.clone()) else {
+                    continue;
+                };
+                let cseq = self.state.notice_cseq.fetch_add(1, Ordering::Relaxed);
+                let bytes = build_notice_5402_announce(
+                    &bind_host,
+                    bind_port,
+                    &mount_path,
+                    &session_id,
+                    cseq,
+                    &server_value,
+                );
+                let peer = s.peer;
+                rt.block_on(async {
+                    let write_fut = async {
+                        let mut guard = write_half.lock().await;
+                        guard.write_all(&bytes).await?;
+                        guard.flush().await
+                    };
+                    match tokio::time::timeout(Duration::from_secs(1), write_fut).await {
+                        Ok(Ok(())) => {
+                            tracing::info!(
+                                target: "tst_rtp::server",
+                                peer = %peer,
+                                "graceful shutdown: Notice 5402 ANNOUNCE sent"
+                            );
+                        }
+                        Ok(Err(e)) => {
+                            tracing::warn!(
+                                target: "tst_rtp::server",
+                                peer = %peer,
+                                error = %e,
+                                "graceful shutdown: Notice 5402 ANNOUNCE write failed"
+                            );
+                        }
+                        Err(_) => {
+                            tracing::warn!(
+                                target: "tst_rtp::server",
+                                peer = %peer,
+                                "graceful shutdown: Notice 5402 ANNOUNCE timed out"
+                            );
+                        }
+                    }
+                });
+            }
+        }
         for s in &sessions {
             tracing::info!(
                 target: "tst_rtp::server",

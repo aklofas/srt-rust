@@ -142,6 +142,14 @@ async fn handle_connection_inner(
     // handler signature.
     session.tcp_write = Some(write_half.clone());
 
+    // Stash the same write-half `Arc` on the public session registry
+    // so `RtspServer::stop` can write the RFC 7826 §13.5.1 Notice 5402
+    // ANNOUNCE before cancelling. Using `if let Ok` for the std::Mutex
+    // matches the rest of the file's poison-tolerant pattern.
+    if let Ok(mut g) = session_entry.tcp_write.lock() {
+        *g = Some(write_half.clone());
+    }
+
     // Bounded read buffer — RTSP requests are typically << 4 KiB.
     let mut buf: Vec<u8> = Vec::with_capacity(8192);
 
@@ -189,6 +197,17 @@ async fn handle_connection_inner(
             };
             buf.drain(..consumed);
             let response = dispatch(&req, &state, &mut session);
+            // Mirror the per-session state's `session_id` + `mount_path`
+            // back onto the public `ActiveSession` registry entry. SETUP
+            // populates them on the 200 path; TEARDOWN clears them. The
+            // registry copies are what `RtspServer::stop` reads to build
+            // the Notice 5402 ANNOUNCE on graceful shutdown.
+            if let Ok(mut g) = session_entry.session_id.lock() {
+                g.clone_from(&session.session_id);
+            }
+            if let Ok(mut g) = session_entry.mount_path.lock() {
+                g.clone_from(&session.mount_path);
+            }
             let bytes = response.encode();
             // Lock the write half to serialize against the fanout task
             // (which holds it for RFC 7826 §14 interleaved frames).
@@ -296,6 +315,7 @@ mod session_tests {
                 shutdown: std::sync::atomic::AtomicBool::new(false),
                 local_addr: std::sync::Mutex::new(None),
                 sessions: std::sync::Mutex::new(Vec::new()),
+                notice_cseq: std::sync::atomic::AtomicU64::new(1_000_000),
             });
             handle_connection(state, tcp, peer).await
         });
@@ -353,6 +373,7 @@ mod session_tests {
                 shutdown: std::sync::atomic::AtomicBool::new(false),
                 local_addr: std::sync::Mutex::new(None),
                 sessions: std::sync::Mutex::new(Vec::new()),
+                notice_cseq: std::sync::atomic::AtomicU64::new(1_000_000),
             });
             handle_connection(state, tcp, peer).await
         });

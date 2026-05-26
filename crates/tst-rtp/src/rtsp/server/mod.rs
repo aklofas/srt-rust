@@ -271,15 +271,14 @@ mod runtime_tests {
     }
 
     #[test]
-    fn start_returns_ok_when_listener_stub_runs() {
-        // Task 7 stub: listener::run_listener returns Ok(()) immediately
-        // without setting local_addr. start() spin-waits up to 1 s and
-        // then returns Ok anyway. Task 8 will tighten this to fail if
-        // local_addr isn't set.
+    fn start_binds_listener_and_populates_local_addr() {
         let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
         server.start().unwrap();
-        // local_addr stays None because the listener stub didn't bind.
-        // Task 8's real run_listener sets it.
+        // After start() returns, local_addr() should reflect the
+        // kernel-assigned port.
+        let addr = server.local_addr().expect("listener bound");
+        assert_eq!(addr.ip().to_string(), "127.0.0.1");
+        assert!(addr.port() > 0);
     }
 
     #[test]
@@ -329,5 +328,48 @@ mod runtime_tests {
         let s = ServerStats::default();
         assert_eq!(s.active_sessions, 0);
         assert_eq!(s.total_rtp_packets_sent, 0);
+    }
+}
+
+#[cfg(test)]
+mod listener_tests {
+    use super::*;
+
+    #[test]
+    fn double_start_errors() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        server.start().unwrap();
+        let e = server.start().unwrap_err();
+        assert!(matches!(e, RtspServerError::AlreadyStarted));
+    }
+
+    #[test]
+    fn start_then_local_addr_returns_port() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        server.start().unwrap();
+        assert!(server.local_addr().unwrap().port() > 0);
+    }
+
+    #[test]
+    fn second_bind_to_same_port_fails() {
+        let first = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        first.start().unwrap();
+        let port = first.local_addr().unwrap().port();
+        // Try to bind ANOTHER server to the same port.
+        let second = RtspServer::bind(&format!("rtsp://127.0.0.1:{port}")).unwrap();
+        // start() should observe the bind failure as the listener task
+        // exits with an error and never sets local_addr. Spin-wait
+        // in start() times out, but T7's stub returns Ok regardless;
+        // post-T8, the listener fails the bind and start() returns Io.
+        // Since the spin-wait returns Ok if local_addr never populates,
+        // we instead poll local_addr — it should be None after start()
+        // returns.
+        second.start().unwrap();
+        // Give the listener task a moment to fail+exit.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert!(
+            second.local_addr().is_none(),
+            "second bind should have failed"
+        );
     }
 }

@@ -718,6 +718,21 @@ typedef struct tst_receiver_t tst_receiver_t;
 
 typedef struct tst_reconnect_policy_t tst_reconnect_policy_t;
 
+#if defined(TST_HAS_RTP)
+/**
+ * Configuration accumulator for the RTSP client.
+ *
+ * Allocated by `tst_rtsp_client_builder_new` and consumed (or freed) by
+ * `tst_rtsp_client_builder_connect` (Task 6) / `tst_rtsp_client_builder_free`.
+ *
+ * Fields are stored independently rather than wrapping `RtspClientBuilder`
+ * directly because `RtspClientBuilder` uses consuming `mut self -> Self`
+ * chain setters, making in-place C mutation cumbersome.  Task 6's connect
+ * path constructs the final `RtspClientBuilder` from these fields.
+ */
+typedef struct tst_rtsp_client_builder_t tst_rtsp_client_builder_t;
+#endif
+
 #if defined(TST_HAS_SRT)
 typedef struct tst_sender_t tst_sender_t;
 #endif
@@ -1625,6 +1640,30 @@ extern "C" {
 #endif
 
 #if defined(TST_HAS_SRT)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
 #endif
 
 #if defined(TST_HAS_SRT)
@@ -3844,6 +3883,23 @@ int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
  * behavior (use-after-free on the consumed `Box`).
  */
 void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
+/**
+ * Free a builder without connecting.
+ *
+ * Use this on error paths where the builder was partially configured and
+ * you want to discard it.  After this call the pointer is invalid; any
+ * further use is undefined behavior.  NULL is a no-op.
+ *
+ * Prefer `tst_rtsp_client_builder_connect` (Task 6) which also consumes
+ * the builder — `_free` is the error-path companion.
+ *
+ * # Safety
+ *
+ * `builder` must be NULL, or a pointer returned by
+ * `tst_rtsp_client_builder_new` that has not yet been freed or passed to
+ * `_connect`.
+ */
+void tst_rtsp_client_builder_free(struct tst_rtsp_client_builder_t *builder);
 
 // ─── OTHER ─────────────────────────────────────────────────
 
@@ -3866,6 +3922,170 @@ int tst_reconnect_policy_set_max_attempts(struct tst_reconnect_policy_t *p, int3
 
 int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
                                              enum tst_overflow_policy policy);
+/**
+ * Configure HTTP Basic credentials (RFC 7617) for this builder.
+ *
+ * Sets the username and password that will be sent in response to a
+ * `WWW-Authenticate: Basic` challenge from the server.  The server
+ * determines the auth scheme; this entry point is named `_auth_basic` for
+ * discoverability when the caller knows their device requires Basic auth.
+ *
+ * `user` and `pass` must be NUL-terminated UTF-8 strings.  They are copied
+ * immediately; the caller's buffers do not need to outlive this call.
+ *
+ * No-op (with last-error set to `TST_E_INVALID_CONFIG`) if `builder`,
+ * `user`, or `pass` is NULL, or if either string is not valid UTF-8.
+ *
+ * # Safety
+ *
+ * - `builder` must be a non-NULL pointer from `tst_rtsp_client_builder_new`.
+ * - `user` and `pass` must each be a valid, NUL-terminated C string valid
+ *   for the duration of this call.
+ */
+
+void tst_rtsp_client_builder_auth_basic(struct tst_rtsp_client_builder_t *builder,
+                                        const char *user,
+                                        const char *pass);
+/**
+ * Configure HTTP Digest MD5 credentials (RFC 7616 §3.4) for this builder.
+ *
+ * Sets the username and password that will be sent in response to a
+ * `WWW-Authenticate: Digest algorithm=MD5` challenge from the server.  The
+ * server determines the auth scheme; this entry point is named
+ * `_auth_digest_md5` for discoverability.
+ *
+ * `user` and `pass` must be NUL-terminated UTF-8 strings.  They are copied
+ * immediately; the caller's buffers do not need to outlive this call.
+ *
+ * No-op (with last-error set to `TST_E_INVALID_CONFIG`) if `builder`,
+ * `user`, or `pass` is NULL, or if either string is not valid UTF-8.
+ *
+ * # Safety
+ *
+ * - `builder` must be a non-NULL pointer from `tst_rtsp_client_builder_new`.
+ * - `user` and `pass` must each be a valid, NUL-terminated C string valid
+ *   for the duration of this call.
+ */
+
+void tst_rtsp_client_builder_auth_digest_md5(struct tst_rtsp_client_builder_t *builder,
+                                             const char *user,
+                                             const char *pass);
+/**
+ * Configure HTTP Digest SHA-256 credentials (RFC 7616 §3.4) for this
+ * builder.
+ *
+ * Sets the username and password that will be sent in response to a
+ * `WWW-Authenticate: Digest algorithm=SHA-256` challenge from the server.
+ * The server determines the auth scheme; this entry point is named
+ * `_auth_digest_sha256` for discoverability.
+ *
+ * `user` and `pass` must be NUL-terminated UTF-8 strings.  They are copied
+ * immediately; the caller's buffers do not need to outlive this call.
+ *
+ * No-op (with last-error set to `TST_E_INVALID_CONFIG`) if `builder`,
+ * `user`, or `pass` is NULL, or if either string is not valid UTF-8.
+ *
+ * # Safety
+ *
+ * - `builder` must be a non-NULL pointer from `tst_rtsp_client_builder_new`.
+ * - `user` and `pass` must each be a valid, NUL-terminated C string valid
+ *   for the duration of this call.
+ */
+
+void tst_rtsp_client_builder_auth_digest_sha256(struct tst_rtsp_client_builder_t *builder,
+                                                const char *user,
+                                                const char *pass);
+/**
+ * Enable or disable the auto-keepalive background thread.
+ *
+ * When `enabled` is `true` (the default), the builder's connect call
+ * spawns a keepalive thread that sends periodic OPTIONS requests at
+ * `session_timeout / 2` to prevent the server from expiring the
+ * session.  Pass `false` to suppress the keepalive thread — useful
+ * for short-lived sessions or when the caller manages keepalives
+ * manually.
+ *
+ * Must be called before `tst_rtsp_client_builder_connect`.
+ *
+ * # Safety
+ *
+ * `builder` must be a non-NULL pointer returned by
+ * `tst_rtsp_client_builder_new` and not yet freed or consumed.
+ */
+void tst_rtsp_client_builder_keepalive(struct tst_rtsp_client_builder_t *builder, bool enabled);
+/**
+ * Allocate a new RTSP client builder targeting `url`.
+ *
+ * `url` must be a NUL-terminated `rtsp://` or `rtsps://` URL string.
+ * Transport preference, auth credentials, keepalive policy, and (for
+ * `rtsps://`) TLS root certificates may be set with the `_transport_pref`,
+ * `_auth_*`, `_keepalive`, and `_tls_root_cert_pem` setters before calling
+ * `tst_rtsp_client_builder_connect` (Task 6) to open a live session.
+ *
+ * Returns a non-NULL builder pointer on success, or NULL with the
+ * thread-local last-error populated on failure (bad URL, allocation
+ * failure, etc.).  The caller must eventually pass the pointer to
+ * `tst_rtsp_client_builder_connect` (which consumes it) or
+ * `tst_rtsp_client_builder_free` (which discards it).
+ *
+ * # Safety
+ *
+ * `url` must be a valid, NUL-terminated C string that lives for the
+ * duration of this call.  The returned pointer is owned by the caller
+ * and must not be aliased.
+ */
+struct tst_rtsp_client_builder_t *tst_rtsp_client_builder_new(const char *url);
+/**
+ * Supply a PEM-encoded CA certificate bundle for `rtsps://` connections.
+ *
+ * `cert_pem` must point to `cert_len` bytes of PEM-encoded certificate
+ * data (one or more X.509 certificates in `-----BEGIN CERTIFICATE-----`
+ * / `-----END CERTIFICATE-----` blocks).  The bytes are copied into the
+ * builder; the caller's buffer does not need to outlive this call.
+ *
+ * When the builder connects to an `rtsps://` URL, the PEM bytes are
+ * parsed into a root certificate store and used to validate the server's
+ * TLS certificate chain.  If this setter is not called, the system native
+ * trust store is used as the default.
+ *
+ * No-op (with last-error set) if `builder` or `cert_pem` is NULL, or if
+ * `cert_len` is zero.
+ *
+ * Note: this setter stores the raw PEM bytes regardless of whether the
+ * `tls` cargo feature is active.  If TLS support was not compiled in and
+ * `tst_rtsp_client_builder_connect` is called with an `rtsps://` URL, the
+ * connect call itself will fail with `TST_E_INVALID_CONFIG`.
+ *
+ * # Safety
+ *
+ * - `builder` must be non-NULL and returned by `tst_rtsp_client_builder_new`.
+ * - `cert_pem` must point to at least `cert_len` valid bytes.
+ * - Neither pointer needs to outlive this call.
+ */
+
+void tst_rtsp_client_builder_tls_root_cert_pem(struct tst_rtsp_client_builder_t *builder,
+                                               const uint8_t *cert_pem,
+                                               size_t cert_len);
+/**
+ * Set the RTSP transport preference.
+ *
+ * `pref` values:
+ * - `0` — prefer UDP; fall back to TCP-interleaved on 461 (default)
+ * - `1` — force UDP; surface an error on 461 instead of falling back
+ * - `2` — force TCP-interleaved; skip the UDP attempt entirely
+ *
+ * Must be called before `tst_rtsp_client_builder_connect`.
+ * No-op (with last-error set to `TST_E_INVALID_CONFIG`) if `pref` is
+ * out of range or `builder` is NULL.
+ *
+ * # Safety
+ *
+ * `builder` must be a non-NULL pointer returned by
+ * `tst_rtsp_client_builder_new` and not yet freed or consumed.
+ */
+
+void tst_rtsp_client_builder_transport_pref(struct tst_rtsp_client_builder_t *builder,
+                                            uint32_t pref);
 #endif
 
 #ifdef __cplusplus

@@ -121,6 +121,82 @@ impl<T> Handle<T> {
 }
 
 // ---------------------------------------------------------------------------
+// RTSP client builder opaque handle (rtp feature)
+// ---------------------------------------------------------------------------
+
+/// Configuration accumulator for the RTSP client.
+///
+/// Allocated by `tst_rtsp_client_builder_new` and consumed (or freed) by
+/// `tst_rtsp_client_builder_connect` (Task 6) / `tst_rtsp_client_builder_free`.
+///
+/// Fields are stored independently rather than wrapping `RtspClientBuilder`
+/// directly because `RtspClientBuilder` uses consuming `mut self -> Self`
+/// chain setters, making in-place C mutation cumbersome.  Task 6's connect
+/// path constructs the final `RtspClientBuilder` from these fields.
+// Allow dead_code: url + all other fields are read by Task 6's connect path
+// which lands in a subsequent Wave B commit. The allow is removed at that time.
+#[cfg(feature = "rtp")]
+#[allow(dead_code)]
+pub struct TstRtspClientBuilder {
+    /// Parsed `rtsp://` or `rtsps://` URL.  Transport preference is
+    /// embedded via `url.transport_preference`; `transport_pref` below
+    /// overrides it if the caller explicitly called `_transport_pref`.
+    pub(crate) url: tst_rtp::url::RtspUrl,
+    /// Override for `url.transport_preference` set via
+    /// `tst_rtsp_client_builder_transport_pref`.  `None` means use the
+    /// preference already encoded in the URL (default: `PreferUdp`).
+    pub(crate) transport_pref: Option<tst_rtp::url::RtspTransportPref>,
+    /// Credentials supplied via any `_auth_*` entry point.
+    pub(crate) username: Option<String>,
+    /// Password in plain text; wrapped in `secrecy::SecretString` at
+    /// `connect` time so it is zeroed when the builder is consumed.
+    pub(crate) password: Option<String>,
+    /// When `true` (the default), `connect` spawns an auto-keepalive
+    /// thread.  Set to `false` by `tst_rtsp_client_builder_keepalive(b, false)`.
+    pub(crate) auto_keepalive: bool,
+    /// Raw PEM bytes for `rtsps://` connections.  Parsed into a
+    /// `rustls::RootCertStore` at connect time.  `None` → system trust store.
+    pub(crate) tls_root_cert_pem: Option<Vec<u8>>,
+}
+
+#[cfg(feature = "rtp")]
+impl TstRtspClientBuilder {
+    /// Construct from a parsed URL string.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(String)` with a user-facing message if the URL cannot
+    /// be parsed as an RTSP URL.
+    pub(crate) fn from_url(url_str: &str) -> Result<Self, String> {
+        let url = tst_rtp::url::RtspUrl::parse(url_str).map_err(|e| e.to_string())?;
+        Ok(Self {
+            url,
+            transport_pref: None,
+            username: None,
+            password: None,
+            auto_keepalive: true,
+            tls_root_cert_pem: None,
+        })
+    }
+
+    /// Leak the `Box` and return a raw pointer suitable for FFI.
+    pub(crate) fn into_raw(b: Box<Self>) -> *mut Self {
+        Box::into_raw(b)
+    }
+
+    /// Reconstruct the `Box` from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure `p` was returned by `into_raw` and has not
+    /// yet been freed or consumed.
+    pub(crate) unsafe fn from_raw(p: *mut Self) -> Box<Self> {
+        // SAFETY: forwarded from caller.
+        unsafe { Box::from_raw(p) }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Stream handle types (multi-stream `mpegts::mux` fan-out)
 // ---------------------------------------------------------------------------
 

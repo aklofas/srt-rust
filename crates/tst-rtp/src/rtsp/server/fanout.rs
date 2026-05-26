@@ -1,1 +1,273 @@
-//! Phase 3 — populated by subsequent tasks.
+//! Per-peer fanout subscriber task — spawned by Wave D Task 17 (PLAY
+//! handler) for each connected client. Drains the mount's broadcast
+//! channel and writes RTP frames to the peer over UDP or
+//! TCP-interleaved.
+//!
+//! Per [[feedback-wire-primitives-at-call-site-as-explicit-task]] this
+//! task ships the primitive (`spawn_peer_fanout`); the actual call site
+//! (handle_play → spawn_peer_fanout(...)) lands in Task 17.
+
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use bytes::Bytes;
+use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::broadcast;
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
+
+use crate::clock::RtpClock;
+use crate::packet::{RTP_HEADER_LEN, RtpHeader};
+
+/// Per-peer transport choice — UDP unicast or TCP-interleaved over the
+/// per-session TCP stream.
+///
+/// Multicast mounts don't spawn per-peer tasks — they have a single
+/// shared sender; see Task 14's multicast module for that path.
+#[allow(dead_code)]
+pub(crate) enum PeerTransport {
+    Udp {
+        socket: Arc<tokio::net::UdpSocket>,
+        peer_addr: SocketAddr,
+    },
+    Interleaved {
+        /// Async-locked TCP write half. Per-session task owns this; the
+        /// fanout task locks per-frame.
+        writer: Arc<AsyncMutex<tokio::net::tcp::OwnedWriteHalf>>,
+        /// SETUP-allocated channel for RTP (server's response Transport
+        /// header carried e.g. `interleaved=0-1`; RTP rides 0, RTCP 1).
+        rtp_channel: u8,
+    },
+}
+
+/// Per-peer dropped-frame counter, observable from outside the task.
+/// `MountStats::frames_dropped_total` sums these across peers.
+#[derive(Default)]
+pub(crate) struct PeerDropCounter {
+    pub(crate) dropped: AtomicU64,
+}
+
+#[allow(dead_code)]
+impl PeerDropCounter {
+    pub(crate) fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+    pub(crate) fn add(&self, n: u64) {
+        self.dropped.fetch_add(n, Ordering::Relaxed);
+    }
+    pub(crate) fn get(&self) -> u64 {
+        self.dropped.load(Ordering::Relaxed)
+    }
+}
+
+/// Spawn the per-peer fanout subscriber task. Returns a `JoinHandle` +
+/// the per-peer drop counter so the caller (Wave D Task 17 / session
+/// state) can observe progress.
+///
+/// The task exits when:
+/// - `cancel` is triggered (graceful or hard).
+/// - The broadcast channel is closed (mount removed / server shutting down).
+/// - The peer transport returns a fatal I/O error.
+///
+/// `ssrc` is the RTP SSRC for this peer (random per-peer to keep peer-side
+/// jitter buffers isolated even though they all carry identical TS bytes).
+/// `initial_seq` is the starting RTP sequence number (random per
+/// RFC 3550 §5.1 to avoid known-plaintext attacks on encrypted RTP — not
+/// strictly needed since we don't ship SRTP, but matches the convention).
+#[allow(dead_code)]
+pub(crate) fn spawn_peer_fanout(
+    mut rx: broadcast::Receiver<Bytes>,
+    transport: PeerTransport,
+    cancel: CancellationToken,
+    ssrc: u32,
+    initial_seq: u16,
+    drop_counter: Arc<PeerDropCounter>,
+) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        // Wall-clock-from-PTS happens in the muxer; here we use a session-local
+        // clock so RTP timestamps advance monotonically even if peers connect
+        // at different times.
+        let clock = RtpClock::new(0);
+        let mut seq = initial_seq;
+        loop {
+            tokio::select! {
+                payload_res = rx.recv() => match payload_res {
+                    Ok(payload) => {
+                        // Build RTP datagram: 12-byte header + payload.
+                        let mut datagram = Vec::with_capacity(RTP_HEADER_LEN + payload.len());
+                        datagram.resize(RTP_HEADER_LEN, 0);
+                        RtpHeader::new(seq, clock.now_ticks(), ssrc)
+                            .encode_into(&mut datagram);
+                        datagram.extend_from_slice(&payload);
+                        seq = seq.wrapping_add(1);
+
+                        match &transport {
+                            PeerTransport::Udp { socket, peer_addr } => {
+                                if let Err(e) = socket.send_to(&datagram, *peer_addr).await {
+                                    tracing::warn!(
+                                        target: "tst_rtp::server",
+                                        peer = %peer_addr, error = %e,
+                                        "UDP send failed; exiting fanout task"
+                                    );
+                                    return;
+                                }
+                            }
+                            PeerTransport::Interleaved { writer, rtp_channel } => {
+                                // RFC 7826 §14: `$<channel:u8><length:u16-BE><payload>`.
+                                let mut framed = Vec::with_capacity(4 + datagram.len());
+                                framed.push(b'$');
+                                framed.push(*rtp_channel);
+                                framed.extend_from_slice(&(datagram.len() as u16).to_be_bytes());
+                                framed.extend_from_slice(&datagram);
+                                let mut g = writer.lock().await;
+                                use tokio::io::AsyncWriteExt;
+                                if let Err(e) = g.write_all(&framed).await {
+                                    tracing::warn!(
+                                        target: "tst_rtp::server",
+                                        error = %e,
+                                        "interleaved write failed; exiting fanout task"
+                                    );
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        drop_counter.add(n);
+                        tracing::warn!(
+                            target: "tst_rtp::server",
+                            lagged = n,
+                            "peer lagged broadcast; frames dropped"
+                        );
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        // Mount removed or server shut down.
+                        return;
+                    }
+                },
+                _ = cancel.cancelled() => {
+                    return;
+                }
+            }
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::net::UdpSocket;
+
+    /// Spawn a UDP-peer fanout task, push 3 payloads, verify the peer
+    /// receives 3 RTP datagrams (12-byte header + payload bytes).
+    #[tokio::test]
+    async fn udp_fanout_delivers_three_frames() {
+        // Peer socket — receives what the fanout task sends.
+        let peer = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let peer_addr = peer.local_addr().unwrap();
+
+        // Fanout side: bind a sender socket + create the broadcast channel.
+        let send_sock = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let (tx, rx) = broadcast::channel::<Bytes>(8);
+        let cancel = CancellationToken::new();
+        let drop_counter = PeerDropCounter::new();
+        let transport = PeerTransport::Udp {
+            socket: send_sock,
+            peer_addr,
+        };
+        let handle = spawn_peer_fanout(
+            rx,
+            transport,
+            cancel.clone(),
+            0x12345678,
+            1000,
+            drop_counter.clone(),
+        );
+
+        // Push 3 payloads of 16 bytes each.
+        for i in 0..3u8 {
+            let mut buf = vec![0u8; 16];
+            buf[0] = i;
+            tx.send(Bytes::from(buf)).unwrap();
+        }
+
+        // Receive 3 datagrams, each 12-byte header + 16-byte payload = 28 bytes.
+        for i in 0..3u8 {
+            let mut recv = [0u8; 64];
+            let (n, _) =
+                tokio::time::timeout(std::time::Duration::from_secs(2), peer.recv_from(&mut recv))
+                    .await
+                    .expect("timeout")
+                    .unwrap();
+            assert_eq!(n, RTP_HEADER_LEN + 16);
+            // First byte of payload is the per-frame index we set above.
+            assert_eq!(recv[RTP_HEADER_LEN], i);
+        }
+
+        // Cancel — task exits cleanly.
+        cancel.cancel();
+        let _ = handle.await;
+    }
+
+    /// Drop-counter ticks when broadcast lags. Capacity 2; push 5
+    /// before the task drains any → at least 3 frames lag.
+    #[tokio::test]
+    async fn drop_counter_ticks_on_lag() {
+        let send_sock = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let peer = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let peer_addr = peer.local_addr().unwrap();
+        let (tx, rx) = broadcast::channel::<Bytes>(2); // very small
+        let cancel = CancellationToken::new();
+        let drop_counter = PeerDropCounter::new();
+        let transport = PeerTransport::Udp {
+            socket: send_sock,
+            peer_addr,
+        };
+
+        // Push 5 BEFORE spawning the task — guarantees broadcast::Sender's
+        // backlog has lagged the (yet-to-be-created) subscriber by 3 frames.
+        for i in 0..5u8 {
+            // .send may return Err once the channel rolls over, but we ignore.
+            let _ = tx.send(Bytes::from(vec![i; 8]));
+        }
+        let handle = spawn_peer_fanout(
+            rx,
+            transport,
+            cancel.clone(),
+            0xCAFEBABE,
+            1,
+            drop_counter.clone(),
+        );
+
+        // Give the task a moment to wake + observe lag.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        let dropped = drop_counter.get();
+        assert!(dropped > 0, "expected drop counter to tick; got {dropped}");
+
+        cancel.cancel();
+        let _ = handle.await;
+    }
+
+    #[tokio::test]
+    async fn cancel_exits_task() {
+        let send_sock = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let peer = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let peer_addr = peer.local_addr().unwrap();
+        let (_tx, rx) = broadcast::channel::<Bytes>(8);
+        let cancel = CancellationToken::new();
+        let drop_counter = PeerDropCounter::new();
+        let transport = PeerTransport::Udp {
+            socket: send_sock,
+            peer_addr,
+        };
+        let handle = spawn_peer_fanout(rx, transport, cancel.clone(), 0, 0, drop_counter);
+        cancel.cancel();
+        // Should exit within a reasonable bound.
+        tokio::time::timeout(std::time::Duration::from_secs(2), handle)
+            .await
+            .expect("fanout task did not exit on cancel")
+            .unwrap();
+    }
+}

@@ -33,7 +33,7 @@ pub mod receiver;
 
 // RTP/RTSP transport surface:
 #[cfg(feature = "rtp")]
-mod rtp;
+pub mod rtp;
 #[cfg(feature = "rtp")]
 mod rtsp;
 /// Re-exports of internal error helpers for integration tests. These are not

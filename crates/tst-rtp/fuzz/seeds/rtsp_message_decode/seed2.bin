@@ -1,0 +1,4 @@
+RTSP/1.0 401 Unauthorized
+CSeq: 2
+WWW-Authenticate: Digest realm="cam", nonce="abc123", algorithm=MD5, qop="auth"
+

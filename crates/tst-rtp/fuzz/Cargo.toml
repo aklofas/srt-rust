@@ -18,5 +18,19 @@ test              = false
 doc               = false
 bench             = false
 
+[[bin]]
+name              = "rtsp_message_decode"
+path              = "fuzz_targets/rtsp_message_decode.rs"
+test              = false
+doc               = false
+bench             = false
+
+[[bin]]
+name              = "rtsp_interleaved_demux"
+path              = "fuzz_targets/rtsp_interleaved_demux.rs"
+test              = false
+doc               = false
+bench             = false
+
 [workspace]
 members = []

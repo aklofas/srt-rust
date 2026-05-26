@@ -1,0 +1,5 @@
+RTSP/1.0 200 OK
+CSeq: 1
+Public: OPTIONS, DESCRIBE, SETUP, PLAY, TEARDOWN
+Server: tst-rtp-test/1.0
+

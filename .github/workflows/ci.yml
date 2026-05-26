@@ -233,6 +233,20 @@ jobs:
           SRT_FORCE_VENDORED: "1"
         run: cargo test --workspace --no-default-features
 
+      - name: cargo build (all crate types, all-features)
+        # `cargo test` only rebuilds the rlib of crates with multiple
+        # crate-types, so the cdylib at target/debug/libtstrans.{so,dylib}
+        # is whatever the LAST explicit `cargo build` left it — which is
+        # the --no-default-features build above. tst-c's `smoke.rs` test
+        # then re-links smoke.c against that stripped cdylib under the
+        # --all-features run and fails ("Undefined symbols for architecture
+        # arm64: _tst_sender_close, ..."). Surfaced 2026-05-26 on
+        # macos-arm64 in `26479673047`. Explicit build re-syncs the cdylib
+        # to the active feature set before the test step runs.
+        env:
+          SRT_FORCE_VENDORED: "1"
+        run: cargo build --workspace --all-features
+
       - name: cargo test (all features)
         # Today's feature set (`mbedtls` on srt-sys / tst-srt / tst-c,
         # `file` on tst-core) is identical to defaults, so this rail is

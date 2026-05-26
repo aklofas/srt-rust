@@ -31,6 +31,10 @@ name = "rtp_basic"
 path = "sending/rtp_basic.rs"
 
 [[example]]
+name = "rtsp_server_publish"
+path = "sending/rtsp_server_publish.rs"
+
+[[example]]
 name = "sender_from_url"
 path = "sending/sender_from_url.rs"
 

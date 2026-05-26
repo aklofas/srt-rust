@@ -7,6 +7,129 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-rtp Phase 3: RTSP server (2026-05-26)
+
+### Added — Phase 3 (RTSP server)
+
+- `RtspServer` sync facade hiding an internal tokio Runtime — accepts
+  client connections, manages sessions, fans out one Muxer's TS bytes
+  to N connected peers. Public methods: `bind`, `bind_with`,
+  `add_mount`, `add_multicast_mount`, `start`, `stop`, `local_addr`,
+  `cancel_handle`, `stats`. Drop fires hard-cancel + `runtime.shutdown_timeout(5s)`.
+- `RtspServerBuilder` chainable builder with `auth_basic`,
+  `auth_digest_md5`, `auth_digest_sha256`, `max_sessions`,
+  `session_timeout`, `fanout_capacity`, `graceful_shutdown_drain`,
+  `tls_cert(cert_pem, key_pem)` (feature `tls`).
+- `MountHandle` per-mount push surface mirroring `MuxSender::send_*`
+  signatures: `push_video`, `push_klv`, `push_audio`, `push_subtitle`
+  plus the `_to(handle, ...)` multi-stream variants and
+  `video_handles` / `klv_handles` / `audio_handles` / `subtitle_handles`
+  accessors. Internally: locks the inner Muxer, calls Muxer::push_*,
+  drains TS bytes via `Muxer::pull` at 1316-byte chunks, broadcasts
+  through a bounded `tokio::sync::broadcast` channel.
+- `MountKind::Unicast` and `MountKind::Multicast { group, ttl, iface }`
+  discriminant. Multicast mounts publish to a single shared UDP send
+  socket fed by a per-mount sender task; the SDP advertises the
+  group + per-client SETUP returns
+  `Transport: RTP/AVP;multicast;destination=...;port=...;ttl=...`.
+  TCP-interleaved against multicast → 461 per RFC 7826 §13.3.
+- `MountStats` snapshot type (`bytes_pushed`, `packets_pushed`,
+  `peer_count`, `frames_dropped_total`, `per_stream`).
+- `ServerStats` aggregate snapshot type (`active_sessions`,
+  `total_rtp_packets_sent`, `total_rtp_bytes_sent`, `mounts`).
+- `RtspServerCancelHandle` — hard-cancel handle clone-able across threads.
+- `RtspServerError` (10 `#[non_exhaustive]` variants), `MountError`
+  (3 variants).
+- `MulticastGroup::parse` + `RtspUrl::is_server_bind` /
+  `validate_for_server_bind` helpers (URL validation entry points).
+- Server-side TLS via tokio-rustls 0.26 (`feature = "tls"`); rustls
+  `ServerConfig` loaded from PEM cert + key file paths at bind time.
+- Server-side Basic + Digest (MD5 + SHA-256) auth acceptance —
+  symmetric with Phase 2's client primitives (server reconstructs the
+  same A1/A2 hash math + string-compares the `response=` attribute).
+- Server-side `spawn_server_pump` primitive for TCP-interleaved
+  transport — reads `$`-framed binary frames + RTSP requests off the
+  client's TCP read half, demuxes by SETUP-allocated channels. Mirror
+  of the client-side `spawn_client_pump` (Task 20).
+- Graceful shutdown via `RtspServer::stop()` — flips a CancellationToken,
+  iterates the active-session registry firing each per-session cancel,
+  waits the configured drain window, then drops the runtime.
+- `RtspClient::connect_with_roots(url, Option<RootCertStore>)` — new
+  public method letting callers thread a custom rustls root store
+  through to the TLS handshake (consumed by
+  `RtspClientBuilder::tls_root_certs`).
+- Rust example `examples/sending/rtsp_server_publish.rs` — chainable
+  `RtspServerBuilder`, `add_mount`, `push_video` loop, graceful `stop()`.
+- New bash ratchet `scripts/check-server-error-mapping-coverage.sh`
+  (21st in `scripts/check-*.sh`) — verifies every `RtspServerError`
+  variant is constructed somewhere under `rtsp/server/` or `builder.rs`.
+
+### Fixed — Phase 2 deferred items closed in Phase 3
+
+- **Phase 2 deferred fix 2 (TLS-side keepalive):** `RtspClient::stream`
+  refactored from raw `Stream` to `Arc<Mutex<Stream>>`. Phase 2's
+  keepalive thread used `Stream::try_clone()` which silently failed for
+  `rtsps://` because rustls `ClientConnection` isn't clonable. Now the
+  main thread and keepalive thread lock the same Stream — TLS and
+  plain TCP both work uniformly. `Stream::try_clone` removed.
+- **Phase 2 deferred fix 1 (TCP-interleaved producer thread):** Server
+  side via `spawn_server_pump` (`Task 19`) and client side via
+  `spawn_client_pump` (`Task 20`) PRIMITIVES shipped. **The actual
+  call-site wire-up of `spawn_client_pump` into `RtspClient::play()`
+  remains deferred to a Wave H follow-up** — Phase 2's
+  `RtpRecvTransport::from_mpsc_placeholder` still returns an unfed
+  channel until that lands.
+
+### Fixed — bugs surfaced by Wave F integration tests
+
+- Server `extract_mount_path` now strips trailing per-media control
+  segments (`/trackID=N`, `/streamid=N`) so SETUP URIs built by
+  `RtspClient::setup_mp2t_auto` from SDP `a=control:trackID=0` match
+  the registered base mount path. Pre-fix, all client-to-server SETUP
+  through `setup_mp2t_auto` returned 404.
+- `RtspClientBuilder::auth(user, pass)` and `tls_root_certs(...)` are
+  now actually applied to the constructed `RtspClient`. Pre-fix the
+  builder stored both fields but `connect()` discarded them. Auth gets
+  baked into `url.username/password` so the existing auth flow in
+  `options_describe` picks them up; TLS roots threaded through to
+  `TlsStream::connect` via the new `connect_with_roots` method.
+
+### Internal
+
+- tokio + tokio-util promoted from dev-dep to production dep on `tst-rtp`
+  for the `RtspServer` Runtime.
+- tokio-rustls 0.26 added as feature-gated optional dep behind `tls`.
+- rcgen 0.13 added as dev-dep for self-signed cert fixtures in the
+  TLS integration tests.
+- `time` crate pinned to 0.3.41 in `Cargo.lock` to keep MSRV 1.85
+  (rcgen 0.13 pulled 0.3.47 which requires 1.88).
+- `cargo public-api` baseline for `tst-rtp` grew ~590 lines across
+  the wave (`MountHandle`, `RtspServer`, `RtspServerBuilder`,
+  `ServerStats`, `MountStats`, `MountError`, `RtspServerError`,
+  `MulticastGroup`, `RtspServerCancelHandle`, `MountKind`,
+  `RtspClient::connect_with_roots`).
+- `#[non_exhaustive]` BASELINE bumped 183 → 188.
+- **`tst-c` ABI minor:** unchanged. No new C entry points; the C ABI
+  bindings for the RTSP server land in Phase 4.
+
+### Deferred to Wave H follow-up / Phase 4
+
+- Client-side `spawn_client_pump` wire-up into `RtspClient::play()`
+  (so TCP-interleaved RTP flows end-to-end through `DemuxReceiver`).
+- TCP-interleaved fanout on the server's per-session task (currently
+  `handle_play` returns 200 OK for TCP-interleaved transport but
+  doesn't spawn `spawn_peer_fanout` for the `Interleaved` variant —
+  RTP doesn't flow over the interleaved channel yet).
+- RTSP Notice 5402 wire delivery in `RtspServer::stop()` (currently
+  the per-session cancel signals are sent but no `ANNOUNCE` message
+  is emitted over the TCP).
+- IPv6 multicast interface binding by name (currently the iface query
+  param requires an IPv4 literal).
+- C ABI exposure of the RTSP server (Phase 4 — `tst_rtsp_server_*`
+  symbols + `TST_HAS_RTP` define in cbindgen output).
+
+---
+
 ## [Unreleased] — tst-rtp Phase 2: RTSP client + RTCP (2026-05-26)
 
 ### Added

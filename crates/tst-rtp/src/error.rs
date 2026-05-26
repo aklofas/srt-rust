@@ -168,11 +168,6 @@ pub enum RtspServerError {
     #[error("invalid mount config: {detail}")]
     InvalidConfig { detail: String },
 
-    /// `RtspServerBuilder::auth_*()` was called when an auth scheme was
-    /// already configured (only one scheme supported in v1).
-    #[error("auth already configured; only one auth scheme supported in v1")]
-    AuthAlreadyConfigured,
-
     /// `start()` called twice without an intervening `stop()`.
     #[error("RTSP server already started")]
     AlreadyStarted,

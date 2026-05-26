@@ -194,7 +194,6 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::error::RtspError
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::error::RtspError
 #[non_exhaustive] pub enum tst_rtp::error::RtspServerError
 pub tst_rtp::error::RtspServerError::AlreadyStarted
-pub tst_rtp::error::RtspServerError::AuthAlreadyConfigured
 pub tst_rtp::error::RtspServerError::BindAddrInUse
 pub tst_rtp::error::RtspServerError::DuplicateMount
 pub tst_rtp::error::RtspServerError::DuplicateMount::path: alloc::string::String
@@ -1571,7 +1570,6 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::url::RtspScheme
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::RtspScheme
 #[non_exhaustive] pub enum tst_rtp::RtspServerError
 pub tst_rtp::RtspServerError::AlreadyStarted
-pub tst_rtp::RtspServerError::AuthAlreadyConfigured
 pub tst_rtp::RtspServerError::BindAddrInUse
 pub tst_rtp::RtspServerError::DuplicateMount
 pub tst_rtp::RtspServerError::DuplicateMount::path: alloc::string::String

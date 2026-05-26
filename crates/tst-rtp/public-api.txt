@@ -562,6 +562,7 @@ pub fn tst_rtp::rtsp::auth::build_basic_response(&str, &secrecy::SecretString) -
 pub fn tst_rtp::rtsp::auth::build_digest_response(&tst_rtp::rtsp::auth::DigestContext<'_>) -> alloc::string::String
 pub fn tst_rtp::rtsp::auth::parse_challenges(&str) -> alloc::vec::Vec<tst_rtp::rtsp::auth::AuthChallenge>
 pub mod tst_rtp::rtsp::client
+pub mod tst_rtp::rtsp::client::interleaved_pump
 pub mod tst_rtp::rtsp::client::keepalive
 pub mod tst_rtp::rtsp::client::options_describe
 pub struct tst_rtp::rtsp::client::options_describe::OptionsResponse

@@ -480,6 +480,22 @@ fn set_multicast_if_v4(_socket: &UdpSocket, addr: &std::net::Ipv4Addr) -> Result
     })
 }
 
+/// Inner data source for [`RtpRecvTransport`].
+///
+/// `Udp` — the Phase 1 default: read UDP datagrams off a bound socket
+/// and strip the RTP header in `recv_bytes`.
+///
+/// `Mpsc` — the TCP-interleaved bridge introduced in Phase 2 Task 17:
+/// an `InterleavedReader` background thread parses `$<ch><len><data>`
+/// frames off the RTSP control TCP and pushes the *unwrapped* RTP
+/// payload bytes (i.e., the TS bundle, already past the 12-byte RTP
+/// header) through an mpsc channel. `recv_bytes` here just dequeues a
+/// chunk; the RTP header strip happened in the bridge thread.
+pub(crate) enum Source {
+    Udp(UdpSocket),
+    Mpsc(std::sync::mpsc::Receiver<bytes::Bytes>),
+}
+
 /// RTP receive-side transport: reads UDP datagrams, strips the 12-byte
 /// RTP header, returns the TS payload bytes to callers.
 ///
@@ -488,7 +504,9 @@ fn set_multicast_if_v4(_socket: &UdpSocket, addr: &std::net::Ipv4Addr) -> Result
 /// counter on [`Self::rtp_stats`] ticks for diagnosis. RFC 3550 §5.1
 /// expects receivers to ignore unparseable packets.
 pub struct RtpRecvTransport {
-    socket: Option<UdpSocket>,
+    /// Underlying byte source — UDP socket or mpsc-fed
+    /// TCP-interleaved bridge. `None` after [`Self::close`].
+    source: Option<Source>,
     /// Max UDP payload — used to size the recv scratch buffer.
     max_payload: usize,
     cancel: Arc<RtpCancelHandle>,
@@ -610,7 +628,7 @@ impl RtpRecvTransport {
                     Err(e) => {
                         tracing::warn!(error = %e, "rtcp socket try_clone failed; skipping reporter");
                         return Ok(Self {
-                            socket: Some(socket),
+                            source: Some(Source::Udp(socket)),
                             max_payload: url.pkt_size,
                             cancel: RtpCancelHandle::new(),
                             bytes_received: 0,
@@ -651,7 +669,7 @@ impl RtpRecvTransport {
             None => None,
         };
         Ok(Self {
-            socket: Some(socket),
+            source: Some(Source::Udp(socket)),
             max_payload: url.pkt_size,
             cancel: RtpCancelHandle::new(),
             bytes_received: 0,
@@ -684,7 +702,7 @@ impl RtpRecvTransport {
         let pkt_size = crate::url::DEFAULT_PKT_SIZE;
         let ssrc = random_u32();
         Ok(Self {
-            socket: Some(socket),
+            source: Some(Source::Udp(socket)),
             max_payload: pkt_size,
             cancel: RtpCancelHandle::new(),
             bytes_received: 0,
@@ -698,17 +716,40 @@ impl RtpRecvTransport {
         })
     }
 
-    /// Placeholder constructor for the TCP-interleaved transport bridge.
+    /// Construct an `RtpRecvTransport` whose source is an mpsc channel
+    /// fed by the RTSP client's `InterleavedReader` background thread.
     ///
-    /// Returned by [`crate::rtsp::client::session::RtspSession::into_recv_transport`]
-    /// when SETUP negotiated TCP-interleaved transport. The actual mpsc
-    /// queue + InterleavedReader pump are wired up in Wave D Task 17 of
-    /// the Phase 2 plan; until then this constructor is a no-op stub.
-    // TODO(task-17): finalize bridge — swap the inner Source enum's
-    // discriminant to feed from an mpsc::Receiver<Bytes> driven by the
-    // RtspClient's background InterleavedReader thread.
-    pub(crate) fn from_mpsc_placeholder() -> Self {
-        todo!("placeholder; Task 17 finalizes the mpsc bridge")
+    /// Used by
+    /// [`crate::rtsp::client::session::RtspSession::into_recv_transport`]
+    /// when SETUP negotiated TCP-interleaved transport. The producer
+    /// (an InterleavedReader-driven thread inside the RtspClient) parses
+    /// `$<ch><len><data>` frames off the RTSP control TCP, strips the
+    /// 12-byte RTP header, and pushes the TS bundle into `rx`'s paired
+    /// sender. `recv_bytes` on the resulting transport just dequeues a
+    /// chunk per call.
+    ///
+    /// `rx` is the consumer side of the bridge; the producer side
+    /// (`Sender<Bytes>`) is held by the InterleavedReader thread.
+    pub(crate) fn from_mpsc_placeholder(rx: std::sync::mpsc::Receiver<bytes::Bytes>) -> Self {
+        let pkt_size = crate::url::DEFAULT_PKT_SIZE;
+        let ssrc = random_u32();
+        Self {
+            source: Some(Source::Mpsc(rx)),
+            max_payload: pkt_size,
+            cancel: RtpCancelHandle::new(),
+            bytes_received: 0,
+            packets_received: 0,
+            malformed_packets: 0,
+            // No scratch needed for mpsc path — payload is already
+            // RTP-header-stripped by the bridge thread — but keep the
+            // allocation so a future code path can fall back to the
+            // shared buffer without conditional malloc.
+            scratch: vec![0u8; pkt_size],
+            rtcp_socket: None,
+            rtcp_stats: Arc::new(Mutex::new(RtcpStats::default())),
+            rtcp_reporter: None,
+            ssrc,
+        }
     }
 
     /// RTP-protocol-level stats — separate from [`SocketStats`].
@@ -730,61 +771,103 @@ impl RtpRecvTransport {
 
 impl RecvTransport for RtpRecvTransport {
     fn recv_bytes(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
-        let socket = self.socket.as_ref().ok_or(TransportError::Closed)?;
-        loop {
-            if self.cancel.is_cancelled() {
-                return Err(TransportError::ExplicitClose);
-            }
-            match socket.recv(&mut self.scratch) {
-                Ok(0) => continue, // Zero-byte recv is meaningless on UDP; loop.
-                Ok(n) => {
-                    self.bytes_received += n as u64;
-                    self.packets_received += 1;
-                    match RtpHeader::decode(&self.scratch[..n]) {
-                        Ok(parsed) => {
-                            let payload = &self.scratch[parsed.payload_offset..n];
-                            if payload.len() > buf.len() {
-                                // Caller buf too small. Treat as broken,
-                                // since the recv shell is misconfigured
-                                // (it should have sized buf to at least
-                                // max_payload()).
-                                return Err(TransportError::Broken {
-                                    msg: format!(
-                                        "recv buf too small: {} < {}",
-                                        buf.len(),
-                                        payload.len()
-                                    ),
-                                    errno_code: None,
-                                });
+        let source = self.source.as_ref().ok_or(TransportError::Closed)?;
+        match source {
+            Source::Udp(socket) => loop {
+                if self.cancel.is_cancelled() {
+                    return Err(TransportError::ExplicitClose);
+                }
+                match socket.recv(&mut self.scratch) {
+                    Ok(0) => continue, // Zero-byte recv is meaningless on UDP; loop.
+                    Ok(n) => {
+                        self.bytes_received += n as u64;
+                        self.packets_received += 1;
+                        match RtpHeader::decode(&self.scratch[..n]) {
+                            Ok(parsed) => {
+                                let payload = &self.scratch[parsed.payload_offset..n];
+                                if payload.len() > buf.len() {
+                                    // Caller buf too small. Treat as broken,
+                                    // since the recv shell is misconfigured
+                                    // (it should have sized buf to at least
+                                    // max_payload()).
+                                    return Err(TransportError::Broken {
+                                        msg: format!(
+                                            "recv buf too small: {} < {}",
+                                            buf.len(),
+                                            payload.len()
+                                        ),
+                                        errno_code: None,
+                                    });
+                                }
+                                buf[..payload.len()].copy_from_slice(payload);
+                                return Ok(payload.len());
                             }
-                            buf[..payload.len()].copy_from_slice(payload);
-                            return Ok(payload.len());
-                        }
-                        Err(parse_err) => {
-                            self.malformed_packets = self.malformed_packets.saturating_add(1);
-                            tracing::debug!(
-                                error = ?parse_err,
-                                "RTP packet rejected at recv; counter ticked",
-                            );
-                            // Drop + continue the recv loop.
-                            continue;
+                            Err(parse_err) => {
+                                self.malformed_packets = self.malformed_packets.saturating_add(1);
+                                tracing::debug!(
+                                    error = ?parse_err,
+                                    "RTP packet rejected at recv; counter ticked",
+                                );
+                                // Drop + continue the recv loop.
+                                continue;
+                            }
                         }
                     }
+                    Err(e)
+                        if e.kind() == io::ErrorKind::WouldBlock
+                            || e.kind() == io::ErrorKind::TimedOut =>
+                    {
+                        continue;
+                    }
+                    Err(e) => {
+                        let raw_errno = e.raw_os_error();
+                        let msg = format!("UDP recv failed: {e}");
+                        self.source = None;
+                        return Err(TransportError::Broken {
+                            msg,
+                            errno_code: raw_errno,
+                        });
+                    }
                 }
-                Err(e)
-                    if e.kind() == io::ErrorKind::WouldBlock
-                        || e.kind() == io::ErrorKind::TimedOut =>
-                {
-                    continue;
+            },
+            Source::Mpsc(rx) => loop {
+                if self.cancel.is_cancelled() {
+                    return Err(TransportError::ExplicitClose);
                 }
-                Err(e) => {
-                    self.socket = None;
-                    return Err(TransportError::Broken {
-                        msg: format!("UDP recv failed: {e}"),
-                        errno_code: e.raw_os_error(),
-                    });
+                // Same cancel-poll cadence as the UDP path. recv_timeout
+                // wakes on either a value arriving or the timeout
+                // elapsing — the latter just loops to re-check cancel.
+                match rx.recv_timeout(CANCEL_POLL_INTERVAL) {
+                    Ok(payload) => {
+                        if payload.len() > buf.len() {
+                            return Err(TransportError::Broken {
+                                msg: format!(
+                                    "recv buf too small: {} < {}",
+                                    buf.len(),
+                                    payload.len()
+                                ),
+                                errno_code: None,
+                            });
+                        }
+                        self.bytes_received =
+                            self.bytes_received.saturating_add(payload.len() as u64);
+                        self.packets_received = self.packets_received.saturating_add(1);
+                        buf[..payload.len()].copy_from_slice(&payload);
+                        return Ok(payload.len());
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        // The InterleavedReader thread dropped its
+                        // Sender — surface as a broken transport so
+                        // the recv shell can stop the demux loop.
+                        self.source = None;
+                        return Err(TransportError::Broken {
+                            msg: "InterleavedReader bridge disconnected".to_string(),
+                            errno_code: None,
+                        });
+                    }
                 }
-            }
+            },
         }
     }
 
@@ -793,11 +876,11 @@ impl RecvTransport for RtpRecvTransport {
     }
 
     fn is_alive(&self) -> bool {
-        self.socket.is_some()
+        self.source.is_some()
     }
 
     fn close(&mut self) {
-        self.socket = None;
+        self.source = None;
     }
 
     fn cancel_handle(&self) -> Option<Arc<dyn TransportCancel + Send + Sync>> {
@@ -805,7 +888,7 @@ impl RecvTransport for RtpRecvTransport {
     }
 
     fn socket_stats(&self) -> Option<SocketStats> {
-        self.socket.as_ref()?;
+        self.source.as_ref()?;
         #[allow(clippy::field_reassign_with_default)]
         // SocketStats is #[non_exhaustive] in tst-core, so the
         // default-and-assign pattern is the only way to construct one

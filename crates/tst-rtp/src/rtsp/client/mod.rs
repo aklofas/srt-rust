@@ -53,6 +53,18 @@ pub struct RtspClient {
     pub(crate) cancel: Arc<AtomicBool>,
     /// Last RTSP version observed in a server response.
     pub(crate) last_server_version: RtspVersion,
+    /// Shared flag the [keepalive](crate::rtsp::client::keepalive) thread
+    /// flips when a control-TCP write fails — the main thread polls this
+    /// to detect server-side session death. `None` until
+    /// [`Self::spawn_keepalive_if_needed`] runs.
+    pub(crate) session_dead: Option<Arc<AtomicBool>>,
+    /// Shared cell the main thread updates after SETUP so the keepalive
+    /// thread can emit `Session: <id>` headers. `None` until
+    /// [`Self::spawn_keepalive_if_needed`] runs.
+    pub(crate) session_id_shared: Option<Arc<std::sync::Mutex<Option<String>>>>,
+    /// JoinHandle for the rtsp-keepalive thread — joined in [`Drop`].
+    /// `None` when keepalive is disabled or hasn't been spawned yet.
+    pub(crate) keepalive_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 /// Cancel handle for the RTSP client. Covers the control plane; the
@@ -134,6 +146,9 @@ impl RtspClient {
             session_timeout: Duration::from_secs(60),
             cancel: Arc::new(AtomicBool::new(false)),
             last_server_version: RtspVersion::V1_0,
+            session_dead: None,
+            session_id_shared: None,
+            keepalive_thread: None,
         })
     }
 
@@ -152,6 +167,70 @@ impl RtspClient {
     /// Internal helper: get the next CSeq value.
     pub(crate) fn bump_cseq(&self) -> u32 {
         self.next_cseq.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Spawn the background OPTIONS-pinger.
+    ///
+    /// `override_interval` lets callers force a specific cadence
+    /// (typically supplied by `RtspClientBuilder::keepalive_interval`);
+    /// when `None`, the cadence is `session_timeout / 2`.
+    ///
+    /// Idempotent — calling twice will replace the prior handle (any
+    /// outstanding thread sees the `cancel` flag and exits at its next
+    /// 200 ms wake).
+    //
+    // Exposed `#[doc(hidden)] pub` so the integration test in
+    // `tests/rtsp_client_keepalive.rs` can drive it before
+    // `RtspClientBuilder` (Task 16, parallel land) wires it through a
+    // first-class API. Will revert to `pub(crate)` once the builder
+    // ships.
+    #[doc(hidden)]
+    pub fn spawn_keepalive_if_needed(&mut self, override_interval: Option<Duration>) {
+        let interval = override_interval.unwrap_or(self.session_timeout / 2);
+        // Wrap the TcpStream's write half in an Arc<Mutex<TcpStream>>.
+        // try_clone() yields a separate file descriptor pointing at the
+        // same socket; we hand the clone to the keepalive thread so the
+        // main thread keeps its own half for `read_response`-style reads.
+        let write_clone = self.stream.try_clone().expect("TcpStream try_clone");
+        let write_half = Arc::new(std::sync::Mutex::new(write_clone));
+        let cancel = self.cancel.clone();
+        let session_dead = Arc::new(AtomicBool::new(false));
+        let session_id = Arc::new(std::sync::Mutex::new(self.session_id.clone()));
+        self.session_dead = Some(session_dead.clone());
+        self.session_id_shared = Some(session_id.clone());
+        let handle = keepalive::spawn(
+            write_half,
+            cancel,
+            session_dead,
+            interval,
+            self.url.render_no_credentials(),
+            self.url.rtsp_version,
+            session_id,
+        );
+        self.keepalive_thread = Some(handle);
+    }
+
+    /// Returns false if the background keepalive thread has flipped the
+    /// session-dead flag (a control-TCP write failed). Returns true when
+    /// keepalive hasn't been started or hasn't observed a failure.
+    pub fn is_session_alive(&self) -> bool {
+        match &self.session_dead {
+            Some(flag) => !flag.load(Ordering::Relaxed),
+            None => true,
+        }
+    }
+}
+
+impl Drop for RtspClient {
+    fn drop(&mut self) {
+        // Flip cancel so the keepalive thread breaks out of its
+        // 200 ms-wake loop at the next poll. Then take + join the
+        // handle so the thread is reaped before the TcpStream FD it
+        // holds is closed by the main thread's `Drop`.
+        self.cancel.store(true, Ordering::Relaxed);
+        if let Some(t) = self.keepalive_thread.take() {
+            let _ = t.join();
+        }
     }
 }
 

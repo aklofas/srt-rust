@@ -1,1 +1,89 @@
-//! Background-thread RTSP OPTIONS pinger. Filled in by Task 18.
+//! Background thread sending OPTIONS at `session_timeout / 2` intervals.
+//!
+//! - Holds `Arc` clones of the RTSP client's TCP write half (Mutex-guarded)
+//!   and the `cancel` AtomicBool.
+//! - On cancel (or response error), the thread exits.
+//! - On RTSP session timeout (server stops responding), the thread sets a
+//!   shared "session_dead" flag the main thread can poll via
+//!   `RtspClient::is_session_alive`.
+
+use std::io::Write;
+use std::net::TcpStream;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
+use std::time::Duration;
+
+use crate::rtsp::message::{RtspMethod, RtspRequest};
+use crate::url::RtspVersion;
+
+/// Spawn the rtsp-keepalive background thread.
+///
+/// `cancel` flips to true when the [`crate::rtsp::client::RtspCancelHandle::cancel`]
+/// is invoked (or when the `RtspClient` is dropped). The thread polls it
+/// every 200 ms and exits cleanly at the next wake.
+///
+/// `session_dead` flips to true when a write to the control TCP fails;
+/// the main thread can poll it (via `RtspClient::is_session_alive`) and
+/// take recovery action.
+///
+/// `interval` is the OPTIONS-ping cadence — typically
+/// `session_timeout / 2` (so a 60 s server timeout pings every 30 s).
+///
+/// `session_id` is a shared cell the main thread updates when SETUP
+/// returns a new ID; the keepalive emits `Session: <id>` when present.
+/// Pre-SETUP keepalives (used as connectivity probes) omit the header.
+///
+/// CSeq starts at `1_000_000` to avoid colliding with the main thread's
+/// counter (which starts at 1 and increments per request).
+pub fn spawn(
+    write_half: Arc<Mutex<TcpStream>>,
+    cancel: Arc<AtomicBool>,
+    session_dead: Arc<AtomicBool>,
+    interval: Duration,
+    url: String,
+    version: RtspVersion,
+    session_id: Arc<Mutex<Option<String>>>,
+) -> JoinHandle<()> {
+    std::thread::Builder::new()
+        .name("rtsp-keepalive".to_string())
+        .spawn(move || {
+            let mut cseq = 1_000_000u32; // far above main-thread cseqs to avoid collision
+            loop {
+                // Wake every 200 ms to check the cancel flag — keeps
+                // teardown latency bounded even when `interval` is large
+                // (e.g., 30 s for a default 60 s session timeout).
+                let deadline = std::time::Instant::now() + interval;
+                while std::time::Instant::now() < deadline {
+                    if cancel.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                // One more cancel check before we burn the bytes on the wire.
+                if cancel.load(Ordering::Relaxed) {
+                    return;
+                }
+                cseq += 1;
+                let mut req = RtspRequest::new(RtspMethod::Options, url.clone(), version)
+                    .header("cseq", cseq.to_string())
+                    .header("user-agent", "tst-rtp/0.1");
+                if let Some(sid) = session_id.lock().unwrap().clone() {
+                    req = req.header("session", sid);
+                }
+                let bytes = req.encode();
+                let mut g = match write_half.lock() {
+                    Ok(g) => g,
+                    Err(_) => return, // poisoned — main thread crashed
+                };
+                if g.write_all(&bytes).is_err() {
+                    session_dead.store(true, Ordering::Relaxed);
+                    return;
+                }
+                // The main thread's `read_response` loop will pick up
+                // the 200 OK response from this keepalive (interleaved
+                // with any other in-flight responses by CSeq matching).
+            }
+        })
+        .expect("failed to spawn rtsp-keepalive thread")
+}

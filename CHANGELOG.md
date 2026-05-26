@@ -7,6 +7,116 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-rtp Phase 3 Wave H follow-up (2026-05-26)
+
+### Fixed — Phase 3 Wave H deferrals closed (4 of 5)
+
+- **Client-side `spawn_client_pump` wire-up into `RtspClient` (T4).**
+  Activated at SETUP via `RtspClient::activate_interleaved_pump`: spawns
+  the pump thread reading the TCP stream, demuxes `$`-framed RTP/RTCP
+  binary into per-channel mpsc receivers, and parses RTSP responses out
+  of the same byte stream into a control-message channel. Subsequent
+  `send_and_read` requests poll the pump's `ctrl_rx` (matching by CSeq;
+  keepalive responses with `CSeq >= 1_000_000` are silently discarded by
+  the main thread). `RtspSession::into_recv_transport` now hands the
+  pump's `data_rx` to `RtpRecvTransport::from_mpsc_placeholder` —
+  TCP-interleaved transport now feeds the downstream
+  `DemuxReceiver<RtpRecvTransport>` end-to-end. **RTCP routing is
+  stubbed** for now: the pump pushes RTCP frames to a tiny named drain
+  thread (`rtsp-rtcp-drain`) that discards them; a TODO marks the
+  Phase 4+ landing site for TCP-aware RTCP ingest.
+- **TCP-interleaved fanout on the server's per-session task (T1).**
+  `handle_connection_inner` now splits the per-session TCP via
+  `TcpStream::into_split()` at session start; the resulting
+  `OwnedWriteHalf` is wrapped in `Arc<tokio::sync::Mutex<…>>` and stored
+  on `ServerSessionState::tcp_write`. `handle_play`'s `TcpInterleaved`
+  branch now clones that `Arc` + the SETUP-allocated `(rtp_channel, _)`
+  pair and builds a `PeerTransport::Interleaved { writer, rtp_channel }`
+  for `spawn_peer_fanout`. RTP frames flow over the interleaved channel.
+  The per-frame mutex lock is fine for the RTSP-rate control plane vs
+  the video-rate fanout traffic — both share the same write half via
+  the same mutex.
+- **RTSP Notice 5402 wire delivery in `RtspServer::stop()` (T3).** Per
+  RFC 7826 §13.5.1, the server now sends an `ANNOUNCE rtsp://…/<mount>`
+  request with `Notice: 5402 "Server-Initiated TEARDOWN"` over each
+  active session's TCP write half before firing the per-session
+  `CancellationToken`. Uses the same `Arc<Mutex<OwnedWriteHalf>>` that
+  T1 introduced; serializes against any in-flight fanout frames so
+  ANNOUNCE bytes can never interleave mid-binary-frame. Per-session
+  write is bounded by a 1-second `tokio::time::timeout` to defend
+  against a wedged peer holding the kernel send buffer.
+- **IPv6 multicast iface binding by name (T2).** The `?iface=…` query
+  parameter on a `rtp://[group]:port` URL now treats the value as an
+  interface NAME (e.g. `"eth0"`, `"lo"`) on the IPv6 path, resolves it
+  to a kernel ifindex via `libc::if_nametoindex(3)` (Unix-only,
+  `#[cfg(unix)]`-gated), and applies the resulting 4-byte index to
+  `IPV6_MULTICAST_IF` via raw `libc::setsockopt`. Previously the IPv6
+  iface path rejected all input with "not implemented in v1". IPv4 path
+  is unchanged (still takes an IP literal — `IP_MULTICAST_IF`'s wire
+  shape).
+
+### Fixed — incomplete hotfix from `848f0b5f`
+
+- **Windows clippy `unused_variable: iface_str` in
+  `server/multicast.rs`.** The hotfix in `848f0b5f` gated the inner
+  `iface_ip` parse under `#[cfg(unix)]` but left the outer `if let
+  Some(iface_str) = iface` binding with no consumer on Windows — both
+  v4 and v6 arms reference `iface_str` only inside `#[cfg(unix)]`
+  blocks, and the `#[cfg(not(unix))]` early-return branches used static
+  strings. Fix: format `iface_str` into the `#[cfg(not(unix))]` detail
+  message of both arms (also useful diagnostic info — "requested iface
+  'eth0'" vs the generic message).
+
+### Tests
+
+- 3 new `#[cfg(unix)]` unit tests in `server/multicast.rs` covering
+  `if_nametoindex("lo")` resolution success, bogus-name error path,
+  and v6 IP-literal-as-iface-name error path.
+- 2 newly-un-ignored integration tests:
+  `rtsp_server_loopback_interleaved::client_setup_with_transport_tcp_round_trips_ts`
+  and `rtsp_server_mixed_transports::udp_and_multicast_on_same_mount`.
+- New integration test file `crates/tst-rtp/tests/rtsp_server_notice_5402.rs`
+  (2 tests): drives a full OPTIONS → DESCRIBE → SETUP → PLAY handshake
+  over a raw `TcpStream`, calls `stop()`, parses the ANNOUNCE bytes,
+  asserts start-line + Notice header + reason phrase + round-trip
+  Session header + mount path in URI.
+- `rtsp_client_interleaved_e2e::tcp_interleaved_end_to_end_round_trips_ts_bytes`
+  **stays `#[ignore]`** — the test was un-ignored briefly during the
+  Wave H merge but surfaces a hang in the post-PLAY drop sequence (test
+  runs >60s without returning). The wire-up infrastructure is verified
+  by `rtsp_server_loopback_interleaved::client_setup_with_transport_tcp_round_trips_ts`
+  (control-plane handshake + server-side fanout spawn) and
+  `rtsp_server_notice_5402` (Notice 5402 wire delivery + cancel). The
+  byte-level e2e assertion needs a follow-up debug pass to identify
+  the interaction between T1's `Arc<Mutex<OwnedWriteHalf>>` + T4's
+  pump thread + `Drop` ordering. Documented as a known issue inline in
+  the test file.
+
+### Internal
+
+- `RtspClient` and `RtspSession` lose the `Sync` auto-trait (they now
+  hold `mpsc::Receiver<Bytes>`). `Send` retained. No `pub` items added;
+  `cargo public-api` baseline regeneration absorbs the auto-trait
+  delta only.
+- `ServerSessionState` loses `UnwindSafe`/`RefUnwindSafe` (now holds
+  `OwnedWriteHalf` + `tokio::sync::Mutex`, neither of which are
+  unwind-safe). Pre-1.0 record-don't-block policy.
+- `#[non_exhaustive]` BASELINE stays at 188 (no new variants).
+- `cargo public-api` baselines for all 4 ratcheted crates (tst-core,
+  tst-pipeline, tst-srt, tst-rtp) unchanged on net — T4's auto-trait
+  flip on `RtspClient`/`RtspSession` already absorbed into the
+  in-branch regen.
+- `tst-c` ABI minor unchanged (no new C entry points; Phase 4 still
+  lands the C ABI binding for the RTSP server).
+
+### Deferred — Phase 4
+
+- **C ABI exposure of the RTSP server** (`tst_rtsp_server_*` symbols +
+  `TST_HAS_RTP` define in cbindgen output) — the one remaining item
+  from the original Wave H "5 deferrals" list. Phase 4 scope.
+
+---
+
 ## [Unreleased] — tst-rtp Phase 3: RTSP server (2026-05-26)
 
 ### Added — Phase 3 (RTSP server)
@@ -114,19 +224,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Deferred to Wave H follow-up / Phase 4
 
-- Client-side `spawn_client_pump` wire-up into `RtspClient::play()`
-  (so TCP-interleaved RTP flows end-to-end through `DemuxReceiver`).
-- TCP-interleaved fanout on the server's per-session task (currently
-  `handle_play` returns 200 OK for TCP-interleaved transport but
-  doesn't spawn `spawn_peer_fanout` for the `Interleaved` variant —
-  RTP doesn't flow over the interleaved channel yet).
-- RTSP Notice 5402 wire delivery in `RtspServer::stop()` (currently
-  the per-session cancel signals are sent but no `ANNOUNCE` message
-  is emitted over the TCP).
-- IPv6 multicast interface binding by name (currently the iface query
-  param requires an IPv4 literal).
+- ~~Client-side `spawn_client_pump` wire-up into `RtspClient::play()`~~
+  **— Closed by Wave H T4 (2026-05-26).** See the Wave H entry above.
+- ~~TCP-interleaved fanout on the server's per-session task~~ **— Closed
+  by Wave H T1 (2026-05-26).**
+- ~~RTSP Notice 5402 wire delivery in `RtspServer::stop()`~~ **— Closed
+  by Wave H T3 (2026-05-26).**
+- ~~IPv6 multicast interface binding by name~~ **— Closed by Wave H T2
+  (2026-05-26).**
 - C ABI exposure of the RTSP server (Phase 4 — `tst_rtsp_server_*`
-  symbols + `TST_HAS_RTP` define in cbindgen output).
+  symbols + `TST_HAS_RTP` define in cbindgen output). **Remains open.**
 
 ---
 

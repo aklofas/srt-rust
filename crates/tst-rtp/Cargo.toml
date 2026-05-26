@@ -1,6 +1,6 @@
 [package]
 name        = "tst-rtp"
-description = "TS Transformer RTP transport: RTP-over-UDP carrying MPEG-TS (RFC 2250). Pure Rust, no native deps. Phase 1: data plane only — no RTSP, no RTCP."
+description = "TS Transformer RTP transport: RTP-over-UDP carrying MPEG-TS (RFC 2250) with RTSP/1.0 + RTSP/2.0 client. Pure Rust, no native deps."
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -14,18 +14,48 @@ crate-type = ["rlib"]
 [dependencies]
 tst-core   = { path = "../tst-core" }
 thiserror  = { workspace = true }
+bytes      = "1"
 # Random SSRC + initial RTP sequence number per RFC 3550 §5.1.
 # getrandom is the minimal dep — sized for one-shot construction-time use.
 getrandom  = "0.2"
+md-5       = { version = "0.10", default-features = false }
+rtsp-types = "0.1"
+sdp-types  = "0.1"
+secrecy    = { workspace = true }
+sha2       = { version = "0.10", default-features = false }
 # Single facade for diagnostics workspace-wide.
 tracing    = { version = "0.1", default-features = false, features = ["std"] }
+
 # Raw setsockopt for multicast knobs not exposed on stable std::net::UdpSocket
 # in Rust 1.85: IPV6_MULTICAST_HOPS and IP_MULTICAST_IF. Unix-only; Phase 1
 # returns IfaceUnsupported on non-Unix platforms.
 [target.'cfg(unix)'.dependencies]
 libc       = { workspace = true }
 
+[features]
+default = []
+# Enable rtsps:// support via sync rustls. Phase 2 uses rustls 0.23 directly
+# (no tokio-rustls) — the client is a sync facade per master spec.
+tls = ["dep:rustls", "dep:rustls-pemfile", "dep:rustls-pki-types"]
+
+[dependencies.rustls]
+version          = "0.23"
+optional         = true
+default-features = false
+features         = ["std", "ring"]
+
+[dependencies.rustls-pemfile]
+version  = "2"
+optional = true
+
+[dependencies.rustls-pki-types]
+version  = "1"
+optional = true
+
 [dev-dependencies]
 tst-pipeline     = { path = "../tst-pipeline" }
 tst-test-helpers = { path = "../tst-test-helpers" }
 proptest         = { workspace = true }
+# Loopback RTSP server fixture only — production client is sync (std::thread + std::net).
+tokio            = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util", "sync", "macros"] }
+tokio-util       = { version = "0.7" }

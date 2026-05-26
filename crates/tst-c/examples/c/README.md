@@ -123,6 +123,31 @@ libsrt to do). The C-side analogue of the
 LD_LIBRARY_PATH=../../target/debug /tmp/socket_stats_poll srt://127.0.0.1:9000
 ```
 
+### 7. `sending/rtsp_server_publish.c` — RTSP server: unicast mount + push loop
+
+Start an RTSP server, register a `/live` mount, and push synthetic H.264 +
+MISB ST 0601 KLV frames in a 30 fps loop.  Multiple RTSP clients can connect
+simultaneously — each gets its own view of the same fanout channel.
+
+Key concepts demonstrated:
+- Builder chain: `_max_sessions`, `_session_timeout`, `_fanout_capacity`,
+  `_graceful_shutdown_drain_ms`.
+- Unicast mount registration (`tst_rtsp_server_add_unicast_mount`) and how
+  it differs from the SRT point-to-point sender.
+- Signal-safe shutdown: `tst_rtsp_server_cancel_handle` + SIGINT handler,
+  followed by `tst_rtsp_server_stop` (graceful drain + RFC 7826 Notice 5402)
+  from the main thread.
+- Per-mount stats polling (`tst_rtsp_mount_get_stats`) and server stats
+  (`tst_rtsp_server_get_stats`).
+
+```sh
+# Terminal 1 — start the server
+LD_LIBRARY_PATH=../../target/debug /tmp/rtsp_server_publish \
+    --bind rtsp://0.0.0.0:8554 --mount /live
+# Terminal 2 — play the stream
+ffplay rtsp://127.0.0.1:8554/live
+```
+
 ## Receiver-side C examples
 
 The C ABI covers both sender (mux + raw/TS sender) and receiver (demux +

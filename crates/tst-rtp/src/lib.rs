@@ -40,6 +40,7 @@ pub use rtcp::stats::RtcpStats;
 pub use rtcp::{ReceiverReport, ReportBlock, RtcpPacketType, SdesPacket, SenderReport};
 pub use rtsp::auth::{AuthChallenge, DigestAlgorithm, DigestChallenge, DigestContext};
 pub use rtsp::client::options_describe::OptionsResponse;
+pub use rtsp::client::session::RtspSession;
 pub use rtsp::client::transport_negotiation::{RtspTransportKind, TransportResponse};
 pub use rtsp::client::{RtspCancelHandle, RtspClient};
 pub use rtsp::interleaved::{Frame, InterleavedReader, InterleavedWriter, MAX_BINARY_FRAME_LEN};

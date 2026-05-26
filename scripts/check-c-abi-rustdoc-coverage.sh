@@ -322,6 +322,25 @@ ALLOWLIST=(
     "tst_rtsp_server_add_unicast_mount"
     "tst_rtsp_server_add_multicast_mount"
     "tst_rtsp_mount_handle_free"
+
+    # --- T10 server stats + cancel + stop ---
+    #     TstRtspServer / TstRtspCancelHandle / TstRtspMountHandle are tst-c–only
+    #     types wrapping tst_rtp::RtspServer / RtspServerCancelHandle /
+    #     MountHandle; no 1:1 Rust method counterpart exists in tst-pipeline /
+    #     tst-srt / tst-core to cross-ref against.
+    # Server lifecycle:
+    "tst_rtsp_server_get_stats"
+    "tst_rtsp_server_cancel_handle"
+    "tst_rtsp_cancel_handle_cancel"
+    "tst_rtsp_cancel_handle_free"
+    "tst_rtsp_server_stop"
+    "tst_rtsp_server_free"
+    # Mount stats + handle getters:
+    "tst_rtsp_mount_get_stats"
+    "tst_rtsp_mount_video_handle"
+    "tst_rtsp_mount_klv_handle"
+    "tst_rtsp_mount_audio_handle"
+    "tst_rtsp_mount_subtitle_handle"
 )
 
 # Step 1: enumerate C exports

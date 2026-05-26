@@ -813,6 +813,21 @@ typedef struct TstRtpSender TstRtpSender;
 
 #if defined(TST_HAS_RTP)
 /**
+ * Opaque cancel handle for an RTSP server.
+ *
+ * Obtained from [`tst_rtsp_server_cancel_handle`]. Clone-free — each call to
+ * `_cancel_handle` allocates a new heap-boxed copy of the underlying
+ * `RtspServerCancelHandle`, which carries a cheap `Arc<AtomicBool>`.
+ * Multiple outstanding handles can race `cancel()` calls — all are
+ * idempotent.
+ *
+ * Free with [`tst_rtsp_cancel_handle_free`].
+ */
+typedef struct tst_rtsp_cancel_handle_t tst_rtsp_cancel_handle_t;
+#endif
+
+#if defined(TST_HAS_RTP)
+/**
  * Configuration accumulator for the RTSP client.
  *
  * Allocated by `tst_rtsp_client_builder_new` and consumed (or freed) by
@@ -1425,6 +1440,54 @@ typedef struct tst_muxer_stats_t {
 } tst_muxer_stats_t;
 
 /**
+ * `repr(C)` mirror of `tst_rtp::MountStats` — per-mount stats snapshot
+ * returned by `tst_rtsp_mount_get_stats`. Size 32 B.
+ *
+ * Callers stack-allocate this struct and pass a pointer.
+ *
+ * Fields:
+ * - `bytes_pushed` — cumulative TS bytes pushed to this mount since
+ *   the mount was added (includes fanout to all peers).
+ * - `packets_pushed` — cumulative 1316-byte RTP-payload-sized chunks
+ *   broadcast since mount creation.
+ * - `peer_count` — live subscriber count on the broadcast channel.
+ *   For unicast mounts this is the number of currently-PLAYing clients;
+ *   for multicast it is typically 1 (the per-mount UDP sender task).
+ * - `frames_dropped_total` — cumulative frames dropped by lagging
+ *   subscribers that fell behind the broadcast channel head.
+ */
+typedef struct tst_mount_stats_t {
+  uint64_t bytes_pushed;
+  uint64_t packets_pushed;
+  uint64_t peer_count;
+  uint64_t frames_dropped_total;
+} tst_mount_stats_t;
+
+/**
+ * `repr(C)` mirror of `tst_rtp::ServerStats` — aggregate server stats
+ * snapshot returned by `tst_rtsp_server_get_stats`. Size 32 B.
+ *
+ * Callers stack-allocate this struct and pass a pointer; the entry point
+ * fills it in atomically from the server's internal counters.
+ *
+ * Fields:
+ * - `active_sessions` — live (accepted, not-yet-closed) client sessions.
+ *   Decrements when a session sends TEARDOWN or drops its TCP connection.
+ * - `mounts` — number of registered mount paths (unicast + multicast).
+ *   Monotonically increases; mounts are never unregistered.
+ * - `total_rtp_packets_sent` — cumulative RTP packets sent across all
+ *   peers and all mounts since the server started.
+ * - `total_rtp_bytes_sent` — cumulative RTP payload bytes (not including
+ *   UDP + IP headers) sent across all peers and all mounts.
+ */
+typedef struct tst_server_stats_t {
+  uint64_t active_sessions;
+  uint64_t mounts;
+  uint64_t total_rtp_packets_sent;
+  uint64_t total_rtp_bytes_sent;
+} tst_server_stats_t;
+
+/**
  * Sentinel returned by `tst_mux_config_add_program` on failure (null cfg
  * or other hard error). Check `tst_get_last_error()` for the reason.
  */
@@ -1914,6 +1977,12 @@ extern "C" {
 #if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 #endif
 
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
 #if defined(TST_HAS_RTP)
 #endif
 
@@ -1939,6 +2008,33 @@ extern "C" {
 #endif
 
 #if defined(TST_HAS_RTP)
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 #endif
 
 #if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
@@ -4325,6 +4421,36 @@ int tst_rtp_sender_cancel(struct TstRtpSender *p);
  */
 void tst_rtp_sender_close(struct TstRtpSender *p);
 /**
+ * Fire the hard cancel on a cancel handle.
+ *
+ * Signals the server to break out of all blocking I/O at the next poll.
+ * The listener exits its accept loop within ~100 ms; per-session tasks
+ * exit at their next `tokio::select!` wake. No TEARDOWN is sent to
+ * connected clients (they observe TCP RST or a half-close).
+ *
+ * Idempotent — repeated calls are a no-op. Safe to call on NULL (no-op).
+ *
+ * # Safety
+ *
+ * - `handle` must be NULL, or a non-freed pointer from
+ *   `tst_rtsp_server_cancel_handle`.
+ */
+void tst_rtsp_cancel_handle_cancel(struct tst_rtsp_cancel_handle_t *handle);
+/**
+ * Free a cancel handle obtained from `tst_rtsp_server_cancel_handle`.
+ *
+ * Drops the `TstRtspCancelHandle`. After this call the pointer is invalid.
+ * NULL is a no-op. Does NOT cancel the server — fire
+ * [`tst_rtsp_cancel_handle_cancel`] before this call if you want to
+ * cancel first.
+ *
+ * # Safety
+ *
+ * - `handle` must be NULL, or a non-freed pointer from
+ *   `tst_rtsp_server_cancel_handle`.
+ */
+void tst_rtsp_cancel_handle_free(struct tst_rtsp_cancel_handle_t *handle);
+/**
  * Free a builder without connecting.
  *
  * Use this on error paths where the builder was partially configured and
@@ -4375,6 +4501,25 @@ void tst_rtsp_mount_handle_free(struct TstRtspMountHandle *handle);
  * `_start`.
  */
 void tst_rtsp_server_builder_free(struct TstRtspServerBuilder *builder);
+/**
+ * Free the RTSP server handle.
+ *
+ * Drops the `Box<TstRtspServer>`. If `tst_rtsp_server_stop` was called
+ * first the inner `Option` is `None` and Drop is a no-op (the runtime
+ * was already shut down by `stop`). If `_free` is called WITHOUT a
+ * prior `_stop`, Drop fires the hard-cancel path: all per-session tasks
+ * abort at their next poll and the tokio Runtime is shut down with a 5 s
+ * budget. No RTSP TEARDOWN is sent to connected clients in this case
+ * (they observe TCP RST or half-close).
+ *
+ * NULL is a no-op. After this call the pointer is invalid.
+ *
+ * # Safety
+ *
+ * - `server` must be NULL, or a non-freed pointer from
+ *   `tst_rtsp_server_builder_start`.
+ */
+void tst_rtsp_server_free(struct TstRtspServer *server);
 /**
  * Cancel any blocking RTSP I/O on the control channel.
  *
@@ -5160,6 +5305,79 @@ void tst_rtsp_client_builder_tls_root_cert_pem(struct tst_rtsp_client_builder_t 
 void tst_rtsp_client_builder_transport_pref(struct tst_rtsp_client_builder_t *builder,
                                             uint32_t pref);
 /**
+ * Return the first configured audio stream handle for this mount.
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` when no audio stream is configured or
+ * when `handle` is NULL. Use with `tst_rtsp_mount_push_audio_to`.
+ *
+ * # Safety
+ *
+ * - `handle` must be NULL, or a non-freed pointer from
+ *   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
+ */
+tst_audio_stream_handle_t tst_rtsp_mount_audio_handle(const struct TstRtspMountHandle *handle);
+/**
+ * Snapshot per-mount stats into `*out`.
+ *
+ * `out` must be a non-NULL pointer to a caller-allocated `tst_mount_stats_t`
+ * struct. The struct is filled from the mount's internal stat counters
+ * (bytes_pushed, packets_pushed, live peer_count, frames_dropped_total).
+ *
+ * Returns 0 (`TST_E_SUCCESS`) on success, negative `TST_E_*` on failure.
+ *
+ * # Safety
+ *
+ * - `handle` must be a non-NULL, non-freed pointer from
+ *   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
+ * - `out` must be a non-NULL, writable pointer to a `tst_mount_stats_t`
+ *   struct valid for this call.
+ */
+
+int tst_rtsp_mount_get_stats(const struct TstRtspMountHandle *handle,
+                             struct tst_mount_stats_t *out);
+/**
+ * Return the first configured KLV stream handle for this mount.
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` when no KLV stream is configured or
+ * when `handle` is NULL. Use with `tst_rtsp_mount_push_klv_to`.
+ *
+ * # Safety
+ *
+ * - `handle` must be NULL, or a non-freed pointer from
+ *   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
+ */
+tst_klv_stream_handle_t tst_rtsp_mount_klv_handle(const struct TstRtspMountHandle *handle);
+/**
+ * Return the first configured subtitle stream handle for this mount.
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` when no subtitle stream is configured
+ * or when `handle` is NULL. Use with `tst_rtsp_mount_push_subtitle_to`.
+ *
+ * # Safety
+ *
+ * - `handle` must be NULL, or a non-freed pointer from
+ *   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
+ */
+
+tst_subtitle_stream_handle_t tst_rtsp_mount_subtitle_handle(const struct TstRtspMountHandle *handle);
+/**
+ * Return the first configured video stream handle for this mount.
+ *
+ * Returns a `tst_video_stream_handle_t` (packed `u32`). Use the returned
+ * value with `tst_rtsp_mount_push_video_to` to target a specific stream
+ * on a multi-stream mount. For single-stream mounts this is equivalent to
+ * using `tst_rtsp_mount_push_video` (which auto-selects the sole stream).
+ *
+ * Returns `TST_INVALID_STREAM_HANDLE` (`UINT32_MAX`) when no video stream
+ * is configured or when `handle` is NULL.
+ *
+ * # Safety
+ *
+ * - `handle` must be NULL, or a non-freed pointer from
+ *   `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`.
+ */
+tst_video_stream_handle_t tst_rtsp_mount_video_handle(const struct TstRtspMountHandle *handle);
+/**
  * Register a **multicast** mount on a started RTSP server.
  *
  * After a successful call, the server spawns a background task that drains
@@ -5506,6 +5724,74 @@ void tst_rtsp_server_builder_tls_cert_pem(struct TstRtspServerBuilder *builder,
                                           size_t cert_len,
                                           const uint8_t *key,
                                           size_t key_len);
+/**
+ * Obtain a hard-cancel handle for this server.
+ *
+ * The returned handle is heap-allocated and must be freed with
+ * [`tst_rtsp_cancel_handle_free`]. Cloning is cheap — the underlying
+ * `Arc<AtomicBool>` is shared with the server's internal cancel flag.
+ * Multiple outstanding handles can race `_cancel` calls (all idempotent).
+ *
+ * Unlike `tst_rtsp_server_stop`, cancel does NOT wait for sessions to
+ * drain, does NOT send RTSP Notice 5402, and does NOT block. It is the
+ * async / signal-handler–safe interrupt path.
+ *
+ * Returns a non-NULL `tst_rtsp_cancel_handle_t*` on success, NULL on
+ * failure with last-error set.
+ *
+ * # Safety
+ *
+ * - `server` must be a non-NULL, non-freed pointer from
+ *   `tst_rtsp_server_builder_start`.
+ */
+struct tst_rtsp_cancel_handle_t *tst_rtsp_server_cancel_handle(struct TstRtspServer *server);
+/**
+ * Snapshot aggregate server stats into `*out`.
+ *
+ * `out` must be a non-NULL pointer to a caller-allocated
+ * `tst_server_stats_t` struct. The struct is filled atomically from the
+ * server's internal counters and returned by value (the caller owns the
+ * memory). The server must be live (not freed); the call is safe after
+ * `tst_rtsp_server_stop` as long as `tst_rtsp_server_free` has not been
+ * called yet.
+ *
+ * Returns 0 (`TST_E_SUCCESS`) on success, negative `TST_E_*` on failure.
+ *
+ * # Safety
+ *
+ * - `server` must be a non-NULL, non-freed pointer from
+ *   `tst_rtsp_server_builder_start`.
+ * - `out` must be a non-NULL, writable pointer to a `tst_server_stats_t`
+ *   that is valid for this call. The caller retains ownership.
+ */
+int tst_rtsp_server_get_stats(struct TstRtspServer *server, struct tst_server_stats_t *out);
+/**
+ * Graceful shutdown — two-phase (stop then free).
+ *
+ * 1. For each active session: sends RFC 7826 §13.5.1 Notice 5402
+ *    "Server-Initiated TEARDOWN" ANNOUNCE over the session's TCP
+ *    control channel (best-effort, 1 s per-session timeout), then
+ *    cancels the per-session token.
+ * 2. Fires the global cancel token so the listener stops accepting.
+ * 3. Sleeps `drain_ms` + 1000 ms to allow in-flight RTP to drain.
+ * 4. Sets the inner `Option` to `None` (subsequent calls on this handle
+ *    return `TST_E_CLOSED`).
+ *
+ * Pass `drain_ms = 0` to use the builder's configured
+ * `graceful_shutdown_drain` (the drain the Rust `RtspServer::stop`
+ * method already adds 1 s on top of). For fine-grained control, build
+ * the server with `tst_rtsp_server_builder_graceful_shutdown_drain_ms`.
+ *
+ * Idempotent — a second call after shutdown completes returns
+ * `TST_E_SUCCESS` immediately. Returns `TST_E_INVALID_USAGE` if called
+ * before `tst_rtsp_server_builder_start`.
+ *
+ * # Safety
+ *
+ * - `server` must be a non-NULL, non-freed pointer from
+ *   `tst_rtsp_server_builder_start`.
+ */
+int tst_rtsp_server_stop(struct TstRtspServer *server, uint32_t _drain_ms);
 /**
  * Consume the session's data-plane transport and return a
  * `tst_rtp_demux_receiver_t` ready for event iteration.

@@ -145,6 +145,11 @@ include = [
     "TstAv1CarriageMode",
     # RTSP client builder handle (rtp feature — emitted inside #if defined(TST_HAS_RTP))
     "TstRtspClientBuilder",
+    # T10: RTSP server stats structs (rtp feature)
+    "TstServerStats",
+    "TstMountStats",
+    # T10: RTSP server cancel handle (rtp feature)
+    "TstRtspCancelHandle",
 ]
 
 [export.rename]
@@ -223,6 +228,11 @@ include = [
 "TstAv1CarriageMode"        = "tst_av1_carriage_mode"
 # RTSP client builder opaque handle
 "TstRtspClientBuilder"      = "tst_rtsp_client_builder_t"
+# T10: RTSP server stats structs
+"TstServerStats"            = "tst_server_stats_t"
+"TstMountStats"             = "tst_mount_stats_t"
+# T10: RTSP server cancel handle
+"TstRtspCancelHandle"       = "tst_rtsp_cancel_handle_t"
 
 [enum]
 prefix_with_name = true

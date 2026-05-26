@@ -10,13 +10,17 @@
 //! parallel implementation.
 
 use crate::transport::{ConnectError, RtpRecvTransport, RtpTransport};
-use crate::url::{DEFAULT_PKT_SIZE, RtpUrl};
+use crate::url::{DEFAULT_PKT_SIZE, RtpUrl, UrlError as RtpUrlError};
 
 /// Fluent builder for send-side [`RtpTransport`].
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct RtpSocketBuilder {
     url: RtpUrl,
+    /// Whether to auto-bind the RTCP companion socket on `port + 1`
+    /// per RFC 3550 §11. Default `true` — opt out for callers that
+    /// want pure-RTP without the reporter thread.
+    rtcp: bool,
 }
 
 impl RtpSocketBuilder {
@@ -32,7 +36,17 @@ impl RtpSocketBuilder {
                 pkt_size: DEFAULT_PKT_SIZE,
                 ssrc: None,
             },
+            rtcp: true,
         }
+    }
+
+    /// Parse an `rtp://host:port[?...]` URL into a builder.
+    pub fn from_url(url: &str) -> Result<Self, RtpUrlError> {
+        let parsed = RtpUrl::parse(url)?;
+        Ok(Self {
+            url: parsed,
+            rtcp: true,
+        })
     }
 
     /// Override TTL / hop-limit for multicast send (`IP_MULTICAST_TTL` /
@@ -61,9 +75,24 @@ impl RtpSocketBuilder {
         self
     }
 
-    /// Build the transport.
+    /// Enable or disable the auto-bound RTCP companion socket on
+    /// `port + 1`. Default `true`. Pass `false` to skip the RTCP
+    /// socket pair + reporter thread.
+    pub fn rtcp(mut self, enabled: bool) -> Self {
+        self.rtcp = enabled;
+        self
+    }
+
+    /// Build the transport. Equivalent to [`Self::connect`] but takes
+    /// `self` by value to match the builder convention.
+    pub fn build(self) -> Result<RtpTransport, ConnectError> {
+        RtpTransport::connect_with_rtcp(&self.url, self.rtcp)
+    }
+
+    /// Build the transport. Kept for backward compatibility with the
+    /// original Phase 1 builder shape.
     pub fn connect(&self) -> Result<RtpTransport, ConnectError> {
-        RtpTransport::connect_with(&self.url)
+        RtpTransport::connect_with_rtcp(&self.url, self.rtcp)
     }
 }
 
@@ -72,6 +101,10 @@ impl RtpSocketBuilder {
 #[derive(Debug, Clone)]
 pub struct RtpRecvSocketBuilder {
     url: RtpUrl,
+    /// Whether to auto-bind the RTCP companion socket on `port + 1`
+    /// per RFC 3550 §11. Default `true` — opt out for callers that
+    /// want pure-RTP without the reporter thread.
+    rtcp: bool,
 }
 
 impl RtpRecvSocketBuilder {
@@ -88,7 +121,17 @@ impl RtpRecvSocketBuilder {
                 pkt_size: DEFAULT_PKT_SIZE,
                 ssrc: None,
             },
+            rtcp: true,
         }
+    }
+
+    /// Parse an `rtp://host:port[?...]` URL into a builder.
+    pub fn from_url(url: &str) -> Result<Self, RtpUrlError> {
+        let parsed = RtpUrl::parse(url)?;
+        Ok(Self {
+            url: parsed,
+            rtcp: true,
+        })
     }
 
     /// Override the multicast-recv interface.
@@ -104,9 +147,24 @@ impl RtpRecvSocketBuilder {
         self
     }
 
-    /// Build the recv transport.
+    /// Enable or disable the auto-bound RTCP companion socket on
+    /// `port + 1`. Default `true`. Pass `false` to skip the RTCP
+    /// socket pair + reporter thread.
+    pub fn rtcp(mut self, enabled: bool) -> Self {
+        self.rtcp = enabled;
+        self
+    }
+
+    /// Build the recv transport. Takes `self` by value to match the
+    /// builder convention.
+    pub fn build(self) -> Result<RtpRecvTransport, ConnectError> {
+        RtpRecvTransport::listen_with_rtcp(&self.url, self.rtcp)
+    }
+
+    /// Build the recv transport. Kept for backward compatibility with
+    /// the original Phase 1 builder shape.
     pub fn listen(&self) -> Result<RtpRecvTransport, ConnectError> {
-        RtpRecvTransport::listen_with(&self.url)
+        RtpRecvTransport::listen_with_rtcp(&self.url, self.rtcp)
     }
 }
 

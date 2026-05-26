@@ -7,7 +7,7 @@
 
 use std::io;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportCancel, TransportError};
@@ -15,6 +15,9 @@ use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportCancel
 use crate::cancel::RtpCancelHandle;
 use crate::clock::RtpClock;
 use crate::packet::{RTP_HEADER_LEN, RtpHeader};
+use crate::rtcp::reporter::RtcpReporterHandle;
+use crate::rtcp::stats::RtcpStats;
+use crate::rtcp::{ReceiverReport, SdesPacket};
 use crate::url::{RtpUrl, UrlError as RtpUrlError};
 
 /// Wakeup interval for cancel-flag checks. Mirrors the libsrt-side 100 ms
@@ -56,6 +59,20 @@ pub struct RtpTransport {
     /// table.
     bytes_sent: u64,
     packets_sent: u64,
+    /// Companion RTCP socket bound on `port + 1` per RFC 3550 §11.
+    /// `None` when the caller opted out via `RtpSocketBuilder::rtcp(false)`.
+    /// Retained on the transport so it stays alive for the reporter
+    /// thread's lifetime — the reporter holds its own `try_clone`'d FD.
+    #[allow(dead_code)]
+    rtcp_socket: Option<UdpSocket>,
+    /// RTCP-derived counters, shared with the reporter thread (which
+    /// ticks `sr_packets_sent` on each SR emission) and any Task-8
+    /// ingest path.
+    rtcp_stats: Arc<Mutex<RtcpStats>>,
+    /// Background SR-emitter handle. Dropping this cancels + joins
+    /// the reporter thread. Held only for its `Drop` side effect.
+    #[allow(dead_code)]
+    rtcp_reporter: Option<RtcpReporterHandle>,
 }
 
 impl RtpTransport {
@@ -63,14 +80,24 @@ impl RtpTransport {
     /// return a ready-to-send transport.
     ///
     /// `url` must have scheme `rtp://` and an explicit port.
+    ///
+    /// As of Phase 2 Task 10, this also binds an RTCP companion socket
+    /// on `port + 1` and spawns the SR-emitter thread. Opt out via
+    /// [`crate::builder::RtpSocketBuilder::rtcp`].
     pub fn connect(url: &str) -> Result<Self, ConnectError> {
         let parsed = RtpUrl::parse(url).map_err(ConnectError::Url)?;
-        Self::connect_with(&parsed)
+        Self::connect_with_rtcp(&parsed, true)
     }
 
     /// Connect using an already-parsed URL — convenient for callers that
-    /// hold an `RtpUrl` (e.g., binding crates).
+    /// hold an `RtpUrl` (e.g., binding crates). RTCP defaults on.
     pub fn connect_with(url: &RtpUrl) -> Result<Self, ConnectError> {
+        Self::connect_with_rtcp(url, true)
+    }
+
+    /// Connect using an already-parsed URL with an explicit RTCP toggle.
+    /// `rtcp_enabled = false` skips the RTCP socket-pair + reporter thread.
+    pub fn connect_with_rtcp(url: &RtpUrl, rtcp_enabled: bool) -> Result<Self, ConnectError> {
         let ip: IpAddr = url.host.parse().map_err(|e: std::net::AddrParseError| {
             ConnectError::HostNotLiteral {
                 host: url.host.clone(),
@@ -95,14 +122,89 @@ impl RtpTransport {
             apply_multicast_send_knobs(&socket, &ip, url)?;
         }
         socket.connect(peer).map_err(ConnectError::Io)?;
-        Ok(Self::from_socket(socket, url))
+        // RTCP companion socket bound on `port + 1` per RFC 3550 §11.
+        // Sender binds an ephemeral local port + sends SR to peer's
+        // port+1 (the symmetric pair).
+        let rtcp_socket = if rtcp_enabled {
+            let rtcp_local: SocketAddr = match ip {
+                IpAddr::V4(_) => "0.0.0.0:0".parse().unwrap(),
+                IpAddr::V6(_) => "[::]:0".parse().unwrap(),
+            };
+            Some(UdpSocket::bind(rtcp_local).map_err(ConnectError::Io)?)
+        } else {
+            None
+        };
+        Ok(Self::from_socket(socket, url, rtcp_socket, peer))
     }
 
     /// Internal: build from an already-configured socket.
-    fn from_socket(socket: UdpSocket, url: &RtpUrl) -> Self {
+    fn from_socket(
+        socket: UdpSocket,
+        url: &RtpUrl,
+        rtcp_socket: Option<UdpSocket>,
+        peer: SocketAddr,
+    ) -> Self {
         let ssrc = url.ssrc.unwrap_or_else(random_u32);
         let next_seq = random_u32() as u16;
         let start_ticks = random_u32();
+        let rtcp_stats = Arc::new(Mutex::new(RtcpStats::default()));
+        // Spawn the SR-emitter thread when RTCP is enabled. The closure
+        // grabs its own clone of the rtcp socket FD + the stats handle;
+        // both live for the reporter thread's lifetime via Arc/`try_clone`.
+        let rtcp_reporter = match rtcp_socket.as_ref() {
+            Some(sock) => {
+                // try_clone gives the reporter its own FD ref; close
+                // semantics on the original FD stay intact.
+                let sock_clone = match sock.try_clone() {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "rtcp socket try_clone failed; skipping reporter");
+                        return Self {
+                            socket: Some(socket),
+                            max_payload: url.pkt_size,
+                            clock: RtpClock::new(start_ticks),
+                            ssrc,
+                            next_seq,
+                            cancel: RtpCancelHandle::new(),
+                            bytes_sent: 0,
+                            packets_sent: 0,
+                            rtcp_socket,
+                            rtcp_stats,
+                            rtcp_reporter: None,
+                        };
+                    }
+                };
+                let stats_clone = rtcp_stats.clone();
+                let rtcp_target = SocketAddr::new(peer.ip(), peer.port() + 1);
+                Some(RtcpReporterHandle::spawn(move || {
+                    // Phase 2 v1: SR carries running totals snapshot.
+                    // Real bytes_sent / packets_sent live on the
+                    // transport — for the v1 reporter we emit a
+                    // minimal SR (counters zero) + SDES CNAME. Full
+                    // SR counter wire-up happens in Phase 2 Task 14
+                    // (integration). The reporter thread + socket
+                    // pair are what Task 10 retrofits — the SR's
+                    // counters are a follow-up.
+                    let sr = crate::rtcp::SenderReport {
+                        ssrc,
+                        ntp_timestamp: 0,
+                        rtp_timestamp: 0,
+                        sender_packet_count: 0,
+                        sender_octet_count: 0,
+                        report_blocks: Vec::new(),
+                    };
+                    let cname = format!("tst-rtp-{ssrc:08x}");
+                    let sdes = SdesPacket { ssrc, cname };
+                    let mut compound = sr.encode();
+                    compound.extend_from_slice(&sdes.encode());
+                    let _ = sock_clone.send_to(&compound, rtcp_target);
+                    if let Ok(mut g) = stats_clone.lock() {
+                        g.sr_packets_sent = g.sr_packets_sent.saturating_add(1);
+                    }
+                }))
+            }
+            None => None,
+        };
         Self {
             socket: Some(socket),
             max_payload: url.pkt_size,
@@ -112,7 +214,19 @@ impl RtpTransport {
             cancel: RtpCancelHandle::new(),
             bytes_sent: 0,
             packets_sent: 0,
+            rtcp_socket,
+            rtcp_stats,
+            rtcp_reporter,
         }
+    }
+
+    /// Snapshot of the RTCP-derived counters. Returns a clone of the
+    /// internal `RtcpStats` (cheap — counters are plain integers).
+    pub fn rtcp_stats(&self) -> RtcpStats {
+        self.rtcp_stats
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -384,6 +498,24 @@ pub struct RtpRecvTransport {
     malformed_packets: u64,
     /// Per-recv scratch — heap allocated once.
     scratch: Vec<u8>,
+    /// Companion RTCP socket bound on `port + 1` per RFC 3550 §11.
+    /// `None` when the caller opted out via `RtpRecvSocketBuilder::rtcp(false)`.
+    #[allow(dead_code)]
+    rtcp_socket: Option<UdpSocket>,
+    /// RTCP-derived counters, shared with the reporter thread (which
+    /// ticks `rr_packets_sent` on each RR emission) and any Task-8
+    /// ingest path.
+    rtcp_stats: Arc<Mutex<RtcpStats>>,
+    /// Background RR-emitter handle. Dropping this cancels + joins
+    /// the reporter thread. Held only for its `Drop` side effect.
+    #[allow(dead_code)]
+    rtcp_reporter: Option<RtcpReporterHandle>,
+    /// Local SSRC used in the RR sender field — defaults to a random
+    /// value generated at listen time; matches the RTP send-side
+    /// pattern. Captured by the reporter closure; field retained for
+    /// reflection by Task 8 ingest paths.
+    #[allow(dead_code)]
+    ssrc: u32,
 }
 
 /// RTP-protocol-level stats separate from [`SocketStats`].
@@ -403,13 +535,23 @@ pub struct RtpStats {
 
 impl RtpRecvTransport {
     /// Bind to `url`'s host:port and (for multicast) join the group.
+    ///
+    /// As of Phase 2 Task 10, this also binds an RTCP companion socket
+    /// on `port + 1` and spawns the RR-emitter thread. Opt out via
+    /// [`crate::builder::RtpRecvSocketBuilder::rtcp`].
     pub fn listen(url: &str) -> Result<Self, ConnectError> {
         let parsed = RtpUrl::parse(url).map_err(ConnectError::Url)?;
-        Self::listen_with(&parsed)
+        Self::listen_with_rtcp(&parsed, true)
     }
 
-    /// Bind using an already-parsed URL.
+    /// Bind using an already-parsed URL. RTCP defaults on.
     pub fn listen_with(url: &RtpUrl) -> Result<Self, ConnectError> {
+        Self::listen_with_rtcp(url, true)
+    }
+
+    /// Bind using an already-parsed URL with an explicit RTCP toggle.
+    /// `rtcp_enabled = false` skips the RTCP socket-pair + reporter thread.
+    pub fn listen_with_rtcp(url: &RtpUrl, rtcp_enabled: bool) -> Result<Self, ConnectError> {
         let ip: IpAddr = url.host.parse().map_err(|e: std::net::AddrParseError| {
             ConnectError::HostNotLiteral {
                 host: url.host.clone(),
@@ -438,6 +580,76 @@ impl RtpRecvTransport {
         if is_multicast {
             apply_multicast_recv_join(&socket, &ip, url)?;
         }
+        // RTCP companion socket bound on `port + 1` per RFC 3550 §11.
+        // Receiver binds the same local-address shape as the primary
+        // RTP socket — for multicast that's ANY:port+1, for unicast
+        // that's host:port+1.
+        let rtcp_socket = if rtcp_enabled {
+            let rtcp_local: SocketAddr = if is_multicast {
+                match ip {
+                    IpAddr::V4(_) => SocketAddr::new("0.0.0.0".parse().unwrap(), url.port + 1),
+                    IpAddr::V6(_) => SocketAddr::new("::".parse().unwrap(), url.port + 1),
+                }
+            } else {
+                SocketAddr::new(ip, url.port + 1)
+            };
+            Some(UdpSocket::bind(rtcp_local).map_err(ConnectError::Io)?)
+        } else {
+            None
+        };
+        let ssrc = url.ssrc.unwrap_or_else(random_u32);
+        let rtcp_stats = Arc::new(Mutex::new(RtcpStats::default()));
+        // Spawn the RR-emitter thread when RTCP is enabled. v1: target
+        // is symmetric — RTP-port + 1 of the peer we last received
+        // from. With no peer seen yet, target the URL's host:port+1
+        // (the symmetric assumption for a known-destination receiver).
+        let rtcp_reporter = match rtcp_socket.as_ref() {
+            Some(sock) => {
+                let sock_clone = match sock.try_clone() {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "rtcp socket try_clone failed; skipping reporter");
+                        return Ok(Self {
+                            socket: Some(socket),
+                            max_payload: url.pkt_size,
+                            cancel: RtpCancelHandle::new(),
+                            bytes_received: 0,
+                            packets_received: 0,
+                            malformed_packets: 0,
+                            scratch: vec![0u8; url.pkt_size],
+                            rtcp_socket,
+                            rtcp_stats,
+                            rtcp_reporter: None,
+                            ssrc,
+                        });
+                    }
+                };
+                let stats_clone = rtcp_stats.clone();
+                // For non-multicast, the URL host is the address we
+                // bound to — so the symmetric RTCP target is host:port+1.
+                // For multicast, there's no per-peer notion here; v1
+                // doesn't emit RR until a peer is observed (Task 8's
+                // ingest path lands that wiring). For now we still
+                // spawn the thread so the rr_packets_sent counter
+                // ticks deterministically against the URL host.
+                let rtcp_target = SocketAddr::new(ip, url.port + 1);
+                Some(RtcpReporterHandle::spawn(move || {
+                    let rr = ReceiverReport {
+                        ssrc,
+                        report_blocks: Vec::new(),
+                    };
+                    let cname = format!("tst-rtp-{ssrc:08x}");
+                    let sdes = SdesPacket { ssrc, cname };
+                    let mut compound = rr.encode();
+                    compound.extend_from_slice(&sdes.encode());
+                    let _ = sock_clone.send_to(&compound, rtcp_target);
+                    if let Ok(mut g) = stats_clone.lock() {
+                        g.rr_packets_sent = g.rr_packets_sent.saturating_add(1);
+                    }
+                }))
+            }
+            None => None,
+        };
         Ok(Self {
             socket: Some(socket),
             max_payload: url.pkt_size,
@@ -446,6 +658,10 @@ impl RtpRecvTransport {
             packets_received: 0,
             malformed_packets: 0,
             scratch: vec![0u8; url.pkt_size],
+            rtcp_socket,
+            rtcp_stats,
+            rtcp_reporter,
+            ssrc,
         })
     }
 
@@ -454,6 +670,15 @@ impl RtpRecvTransport {
         RtpStats {
             malformed_packets: self.malformed_packets,
         }
+    }
+
+    /// Snapshot of the RTCP-derived counters. Returns a clone of the
+    /// internal `RtcpStats` (cheap — counters are plain integers).
+    pub fn rtcp_stats(&self) -> RtcpStats {
+        self.rtcp_stats
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
     }
 }
 

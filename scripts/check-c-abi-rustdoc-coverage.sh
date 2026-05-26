@@ -300,10 +300,12 @@ ALLOWLIST=(
     "tst_rtsp_session_cancel"
     "tst_rtsp_session_into_demux_receiver"
 
-    # --- Phase 4 RTSP server builder entry points (Task 7, Wave B) ---
+    # --- Phase 4 RTSP server entry points (Tasks 7-8, Wave B) ---
     #     TstRtspServerBuilder stores fields directly and reconstructs
-    #     RtspServerBuilder at _start time (T8). No 1:1 Rust method
-    #     counterpart in tst-pipeline / tst-srt / tst-core.
+    #     RtspServerBuilder at _start time. TstRtspServer wraps
+    #     tst_rtp::RtspServer; TstRtspMountHandle wraps tst_rtp::MountHandle.
+    #     No 1:1 Rust method counterpart in tst-pipeline / tst-srt / tst-core.
+    # T7 (builder + setter chain):
     "tst_rtsp_server_builder_new"
     "tst_rtsp_server_builder_bind"
     "tst_rtsp_server_builder_auth_basic"
@@ -315,6 +317,11 @@ ALLOWLIST=(
     "tst_rtsp_server_builder_graceful_shutdown_drain_ms"
     "tst_rtsp_server_builder_tls_cert_pem"
     "tst_rtsp_server_builder_free"
+    # T8 (start + mount creation):
+    "tst_rtsp_server_builder_start"
+    "tst_rtsp_server_add_unicast_mount"
+    "tst_rtsp_server_add_multicast_mount"
+    "tst_rtsp_mount_handle_free"
 )
 
 # Step 1: enumerate C exports

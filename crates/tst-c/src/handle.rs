@@ -290,6 +290,62 @@ impl TstRtspServerBuilder {
         // SAFETY: forwarded from caller.
         unsafe { Box::from_raw(p) }
     }
+
+    /// Construct a `tst_rtp::RtspServer` from this accumulator's fields.
+    /// Called by T8's `tst_rtsp_server_builder_start` after consuming the
+    /// builder via `from_raw`.
+    ///
+    /// TLS cert + key PEM bytes (if both present) are written to two temp
+    /// files and the paths handed to `RtspServerBuilder::tls_cert`. The
+    /// tempfile handles are dropped at end of this call — that's safe
+    /// because `tls_cert` reads + parses the PEM during `build()`, which
+    /// completes before this method returns.
+    pub(crate) fn build_server(
+        self: Box<Self>,
+    ) -> Result<tst_rtp::RtspServer, tst_rtp::RtspServerError> {
+        use crate::rtsp::server::builder::TstRtspServerAuthScheme;
+        use std::time::Duration;
+
+        let mut b = tst_rtp::RtspServerBuilder::with_url(self.bind_url);
+
+        if let (Some(scheme), Some(user), Some(pass)) =
+            (self.auth_scheme, self.auth_username, self.auth_password)
+        {
+            let secret = secrecy::SecretString::new(pass.into());
+            let realm = if self.auth_realm.is_empty() {
+                "tst-rtp"
+            } else {
+                &self.auth_realm
+            };
+            match scheme {
+                TstRtspServerAuthScheme::Basic => {
+                    b.auth_basic(realm, &user, secret);
+                }
+                TstRtspServerAuthScheme::DigestMd5 => {
+                    b.auth_digest_md5(realm, &user, secret);
+                }
+                TstRtspServerAuthScheme::DigestSha256 => {
+                    b.auth_digest_sha256(realm, &user, secret);
+                }
+            }
+        }
+
+        b.max_sessions(self.max_sessions.max(1) as usize);
+        b.session_timeout(Duration::from_secs(self.session_timeout_secs as u64));
+        b.fanout_capacity(self.fanout_capacity.max(1) as usize);
+        b.graceful_shutdown_drain(Duration::from_millis(
+            self.graceful_shutdown_drain_ms as u64,
+        ));
+
+        // TLS path: tst-c does not yet have a `tls` cargo feature, so the
+        // tst-rtp `tls` feature is off here. T7's `_tls_cert_pem` setter
+        // stores the bytes for forward-compatibility; they're consumed +
+        // discarded until a future tst-c `tls` feature lights up
+        // `RtspServerBuilder::tls_cert` (which is gated on tst-rtp `tls`).
+        let _ = (self.tls_cert_pem, self.tls_key_pem);
+
+        b.build()
+    }
 }
 
 // ---------------------------------------------------------------------------

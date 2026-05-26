@@ -828,6 +828,38 @@ typedef struct tst_rtsp_client_builder_t tst_rtsp_client_builder_t;
 
 #if defined(TST_HAS_RTP)
 /**
+ * Opaque handle for an RTSP mount.
+ *
+ * Obtained from [`super::mount::tst_rtsp_server_add_unicast_mount`] or
+ * [`super::mount::tst_rtsp_server_add_multicast_mount`]. Push methods
+ * (`push_video`, `push_klv`, etc.) land in Task 9. Freed with
+ * `tst_rtsp_mount_handle_free` (Task 9 or 10 scope).
+ *
+ * The `MountHandle` returned by the Rust API is `Clone + Send`, so multiple
+ * C handles pointing at the same mount are safe — each clone pushes to the
+ * same broadcast fanout channel.
+ */
+typedef struct TstRtspMountHandle TstRtspMountHandle;
+#endif
+
+#if defined(TST_HAS_RTP)
+/**
+ * Opaque handle for a started RTSP server.
+ *
+ * Obtained from [`super::start::tst_rtsp_server_builder_start`]. Freed (with
+ * graceful shutdown) via `tst_rtsp_server_stop` + `tst_rtsp_server_free`
+ * (Task 10), or implicitly via Drop (hard cancel).
+ *
+ * The inner `Mutex<Option<…>>` gives close-idempotence: after `_stop` or
+ * `_free` the `Option` is `None` and subsequent calls return `TST_E_CLOSED`.
+ * This mirrors the `TstRtspSession` shape used in the client surface
+ * (Task 6).
+ */
+typedef struct TstRtspServer TstRtspServer;
+#endif
+
+#if defined(TST_HAS_RTP)
+/**
  * Configuration accumulator for the RTSP server.
  *
  * Allocated by `tst_rtsp_server_builder_new` and consumed (or freed) by
@@ -1907,6 +1939,18 @@ extern "C" {
 #endif
 
 #if defined(TST_HAS_RTP)
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 #endif
 
 #if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
@@ -4298,6 +4342,23 @@ void tst_rtp_sender_close(struct TstRtpSender *p);
  */
 void tst_rtsp_client_builder_free(struct tst_rtsp_client_builder_t *builder);
 /**
+ * Free an RTSP mount handle.
+ *
+ * Drops the `TstRtspMountHandle` and its inner `MountHandle`. After this
+ * call the pointer is invalid; any further use is undefined behavior. NULL
+ * is a no-op.
+ *
+ * Push methods on a freed handle are not safe — the caller must not call
+ * any `tst_rtsp_mount_handle_*` push method after `_free`.
+ *
+ * # Safety
+ *
+ * `handle` must be NULL, or a pointer returned by
+ * `tst_rtsp_server_add_unicast_mount` / `tst_rtsp_server_add_multicast_mount`
+ * that has not yet been freed.
+ */
+void tst_rtsp_mount_handle_free(struct TstRtspMountHandle *handle);
+/**
  * Free a builder without starting the server.
  *
  * Use this on error paths where the builder was partially configured and
@@ -5099,6 +5160,86 @@ void tst_rtsp_client_builder_tls_root_cert_pem(struct tst_rtsp_client_builder_t 
 void tst_rtsp_client_builder_transport_pref(struct tst_rtsp_client_builder_t *builder,
                                             uint32_t pref);
 /**
+ * Register a **multicast** mount on a started RTSP server.
+ *
+ * After a successful call, the server spawns a background task that drains
+ * the mount's broadcast channel and sends RTP packets to the multicast
+ * `group` address. Connecting clients that SETUP against `path` receive the
+ * same group address, TTL, and optional interface in the `Transport:` header
+ * so they can join the group and receive the shared stream.
+ *
+ * `group` must be a NUL-terminated `<ip>:<port>` string (IPv4 or IPv6
+ * multicast address with port), e.g. `"239.0.0.1:5004"`. The address must
+ * be in a multicast range (IPv4 `224.0.0.0/4`, IPv6 `ff00::/8`). Port must
+ * be included.
+ *
+ * `ttl` is the IP multicast TTL / hop limit (1–255). Typical LAN values:
+ * 1 = link-local, 8 = site-local (RTP convention).
+ *
+ * `iface_name` is a NUL-terminated string identifying the outbound interface
+ * for multicast send — either an IPv4 literal (e.g. `"192.168.1.50"`) or an
+ * interface name where supported. Pass NULL to let the OS select the default
+ * multicast interface.
+ *
+ * `mux_cfg` is borrowed — the caller retains ownership and must free it.
+ *
+ * Returns a non-NULL `tst_rtsp_mount_handle_t*` on success, NULL on failure
+ * with last-error set. NULL for `iface_name` is valid (no interface
+ * override).
+ *
+ * # Safety
+ *
+ * - `server` must be a non-NULL, non-freed pointer from
+ *   `tst_rtsp_server_builder_start`.
+ * - `path` must be a NUL-terminated C string valid for this call.
+ * - `group` must be a NUL-terminated `<ip>:<port>` string.
+ * - `iface_name` may be NULL or a NUL-terminated interface string.
+ * - `mux_cfg` must be a non-NULL pointer from `tst_mux_config_new`,
+ *   valid for this call.
+ */
+
+struct TstRtspMountHandle *tst_rtsp_server_add_multicast_mount(struct TstRtspServer *server,
+                                                               const char *path,
+                                                               const char *group,
+                                                               uint8_t ttl,
+                                                               const char *iface_name,
+                                                               const struct tst_mux_config_t *mux_cfg);
+/**
+ * Register a **unicast** mount on a started RTSP server.
+ *
+ * After a successful call, connecting clients that send an RTSP SETUP
+ * request to `path` will be assigned individual UDP or TCP-interleaved
+ * transports. Each client's RTP stream is fed from the same broadcast
+ * fanout channel that the returned [`TstRtspMountHandle`] writes into.
+ *
+ * `path` must:
+ * - Be a NUL-terminated UTF-8 string.
+ * - Start with `/` (e.g. `"/live"`).
+ * - Not contain URL-reserved characters like `?` or `#`.
+ * - Not duplicate a path already registered on this server.
+ *
+ * `mux_cfg` must be a valid `tst_mux_config_t` (see `tst_mux_config_new`
+ * / `tst_mux_config_add_program`). It is borrowed for this call — the
+ * caller still owns it and must free it. The returned handle is independent
+ * of the config after this call.
+ *
+ * Returns a non-NULL `tst_rtsp_mount_handle_t*` on success, NULL on
+ * failure with last-error set. The handle must eventually be freed with
+ * `tst_rtsp_mount_handle_free` (Task 9 / 10 scope).
+ *
+ * # Safety
+ *
+ * - `server` must be a non-NULL, non-freed pointer from
+ *   `tst_rtsp_server_builder_start`.
+ * - `path` must be a NUL-terminated C string valid for this call.
+ * - `mux_cfg` must be a non-NULL pointer from `tst_mux_config_new`,
+ *   valid for this call (caller retains ownership).
+ */
+
+struct TstRtspMountHandle *tst_rtsp_server_add_unicast_mount(struct TstRtspServer *server,
+                                                             const char *path,
+                                                             const struct tst_mux_config_t *mux_cfg);
+/**
  * Require HTTP Basic authentication (RFC 7617) from connecting clients.
  *
  * `user` and `pass` are the accepted credentials (NUL-terminated UTF-8).
@@ -5292,6 +5433,40 @@ struct TstRtspServerBuilder *tst_rtsp_server_builder_new(const char *addr);
  * and not yet freed or consumed.
  */
 void tst_rtsp_server_builder_session_timeout(struct TstRtspServerBuilder *builder, uint32_t secs);
+/**
+ * Consume a builder and start the RTSP server.
+ *
+ * Internally:
+ *
+ * 1. Validates and consumes the `TstRtspServerBuilder` into a
+ *    `tst_rtp::RtspServerBuilder`.
+ * 2. Calls `RtspServerBuilder::build()` to construct the tokio `Runtime`
+ *    and allocate the `ServerState`.
+ * 3. Calls `RtspServer::start()` to spawn the listener task and spin-wait
+ *    up to 1 s for the listener to bind.
+ *
+ * On success the `builder` pointer is consumed (freed). On failure the
+ * builder is also freed; check `tst_get_last_error()` for the negative
+ * `TST_E_*` code and `tst_get_last_error_str()` for a human-readable
+ * message.
+ *
+ * Returns a non-NULL `tst_rtsp_server_t*` on success, NULL on failure.
+ * The returned pointer must eventually be freed:
+ * - Call `tst_rtsp_server_stop` for graceful shutdown (sends RFC 7826
+ *   Notice 5402 "Server-Initiated TEARDOWN" to each active session), then
+ *   `tst_rtsp_server_free` to release the handle.
+ * - Or simply `tst_rtsp_server_free` for a hard-cancel Drop path.
+ *
+ * Both `_stop` and `_free` land in Task 10's scope.
+ *
+ * # Safety
+ *
+ * `builder` must be a non-NULL pointer returned by
+ * `tst_rtsp_server_builder_new` that has not yet been freed or consumed.
+ * After this call the `builder` pointer is invalid regardless of success or
+ * failure.
+ */
+struct TstRtspServer *tst_rtsp_server_builder_start(struct TstRtspServerBuilder *builder);
 /**
  * Supply a PEM-encoded TLS certificate chain and private key for
  * `rtsps://` binds.

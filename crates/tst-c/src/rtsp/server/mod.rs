@@ -1,20 +1,23 @@
-//! RTSP server C ABI — `tst_rtsp_server_builder_*` and mount handle methods.
+//! RTSP server C ABI — `tst_rtsp_server_builder_*`, `tst_rtsp_server_*`,
+//! and mount handle methods.
 //!
 //! Wraps `tst_rtp::RtspServerBuilder`, `tst_rtp::RtspServer`, and
-//! `tst_rtp::MountHandle` with a sync C ABI. Full implementation lands
-//! in Tasks 7-9 (Waves B-C).
+//! `tst_rtp::MountHandle` with a sync C ABI.
 //!
-//! Task 7 (Wave B) ships the builder + auth + TLS + lifecycle-config entry points:
-//! - `tst_rtsp_server_builder_new` — allocate and parse bind URL
-//! - `tst_rtsp_server_builder_bind` — override the bind address
-//! - `tst_rtsp_server_builder_auth_basic` — Basic auth credentials
-//! - `tst_rtsp_server_builder_auth_digest_md5` — Digest MD5 credentials
-//! - `tst_rtsp_server_builder_auth_digest_sha256` — Digest SHA-256 credentials
-//! - `tst_rtsp_server_builder_max_sessions` — cap on concurrent sessions
-//! - `tst_rtsp_server_builder_session_timeout` — advertised session timeout
-//! - `tst_rtsp_server_builder_fanout_capacity` — broadcast channel capacity
-//! - `tst_rtsp_server_builder_graceful_shutdown_drain_ms` — drain window
-//! - `tst_rtsp_server_builder_tls_cert_pem` — TLS cert chain + private key
-//! - `tst_rtsp_server_builder_free` — discard without starting
+//! Task breakdown:
+//! - T7 (Wave B): `tst_rtsp_server_builder_new` + setter chain
+//!   (`_bind`, `_auth_basic`, `_auth_digest_md5`, `_auth_digest_sha256`,
+//!    `_max_sessions`, `_session_timeout`, `_fanout_capacity`,
+//!    `_graceful_shutdown_drain_ms`, `_tls_cert_pem`) + `_free`.
+//! - T8 (Wave B): `tst_rtsp_server_builder_start` + mount creation
+//!   (`_add_unicast_mount`, `_add_multicast_mount`, `_mount_handle_free`)
+//!   + opaque `TstRtspServer` / `TstRtspMountHandle` scaffolds.
+//! - T9 (Wave C): push methods on `TstRtspMountHandle`
+//!   (`push_video`, `push_video_to`, `push_klv`, `push_klv_to`,
+//!    `push_audio`, `push_audio_to`, `push_subtitle`, `push_subtitle_to`).
+//! - T10 (Wave C): server-level stats, stop, cancel, free.
 
 pub(crate) mod builder;
+pub(crate) mod mount;
+pub(crate) mod start;
+pub(crate) mod types;

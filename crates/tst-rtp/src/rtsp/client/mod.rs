@@ -9,6 +9,7 @@ pub mod options_describe;
 pub mod play;
 pub mod session;
 pub mod setup;
+pub mod teardown;
 pub mod tls;
 pub mod transport_negotiation;
 
@@ -153,6 +154,14 @@ impl RtspClient {
     /// Internal helper: get the next CSeq value.
     pub(crate) fn bump_cseq(&self) -> u32 {
         self.next_cseq.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Spawned by [`crate::RtspClientBuilder::connect`] when
+    /// auto-keepalive is enabled. Task 17 finalizes the body; this
+    /// stub is a no-op so the build passes during Task 16.
+    pub(crate) fn spawn_keepalive_if_needed(&mut self, _override: Option<Duration>) {
+        // TODO(task-17): spawn background thread that sends OPTIONS
+        // at session_timeout / 2 intervals.
     }
 }
 

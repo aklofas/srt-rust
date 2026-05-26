@@ -3,6 +3,16 @@
 //! that inserts domain-grouping section dividers (audit Finding 5).
 //! Drift indicates a forgotten regenerate-and-commit step.
 
+// The committed header is generated with the default feature set (srt +
+// rtp + mbedtls), so its content — section dividers, feature defines —
+// only matches cbindgen output when both `srt` and `rtp` are on. Under
+// `--no-default-features` (or `srt-only` / `rtp-only`) the defines and
+// per-transport sections diverge, so the drift assertion is meaningless.
+// Gate the test to the default-feature build only; the per-flavor
+// `tst-c feature matrix` CI jobs cover compile-level cfg-leak detection
+// via `check-c-header-conditional-sections.sh`.
+#![cfg(all(feature = "srt", feature = "rtp"))]
+
 use std::fs;
 use std::path::PathBuf;
 

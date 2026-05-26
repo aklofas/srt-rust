@@ -10,6 +10,10 @@
 //! The sender thread retries connect in a loop until the listener is
 //! bound and waiting, then sends synthetic H.264 NAL bytes and closes.
 
+// Whole file depends on `tstrans::sender::*` + `tstrans::receiver::*`
+// (both gated on `feature = "srt"`).
+#![cfg(feature = "srt")]
+
 use std::ffi::{CStr, CString};
 use std::sync::mpsc;
 use std::thread;

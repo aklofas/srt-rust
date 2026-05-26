@@ -20,6 +20,11 @@
 //! * `tst_demux_receiver_get_stream_codec_stats`             (demux_receiver.rs)
 //! * `tst_managed_demux_receiver_get_stream_codec_stats`     (demux_receiver.rs)
 
+// Every test in this file pulls in `tstrans::sender::*` or
+// `tstrans::receiver::*`, both gated behind `feature = "srt"`. Gate the
+// whole file so `cargo test --workspace --no-default-features` compiles.
+#![cfg(feature = "srt")]
+
 use std::ptr;
 
 use tstrans::error::TstError;

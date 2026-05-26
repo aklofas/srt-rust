@@ -1,5 +1,8 @@
 //! Multi-stream `mpegts::mux` fan-out via the C ABI.
 
+// Pulls in `tstrans::sender::muxer::*`, which is `cfg(feature = "srt")`.
+#![cfg(feature = "srt")]
+
 use tstrans::config::{
     TstKlvStreamType, TstProgramHandle, TstVideoCodec, tst_mux_config_add_klv_stream,
     tst_mux_config_add_program, tst_mux_config_add_video_stream, tst_mux_config_free,

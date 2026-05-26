@@ -15,6 +15,9 @@
 //! (see the `mod` declarations below). Shared helpers live here so each
 //! sibling can pick them up via `use super::*;`.
 
+// All sibling files import `tst_srt::ListenerBuilder` and
+// `tstrans::sender::*`/`receiver::*` (all `cfg(feature = "srt")`).
+#![cfg(feature = "srt")]
 #![allow(unused_unsafe)]
 
 use tstrans::error::tst_get_last_error_str;

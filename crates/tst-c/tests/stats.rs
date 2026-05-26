@@ -2,6 +2,13 @@
 //! gets exercised end-to-end against a live (loopback) or in-process
 //! handle.
 
+// 9 of the 11 tests need `tst_srt` + `tstrans::sender::*`/`receiver::*`
+// (gated on `feature = "srt"`). The 2 stats-layout tests at the top
+// don't need srt, but they're insurance against struct-layout drift —
+// running them only in srt-enabled builds is acceptable, and a unified
+// gate is simpler than 9 per-test attributes.
+#![cfg(feature = "srt")]
+
 use tstrans::stats::TstRawSendStats;
 
 #[test]

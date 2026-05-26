@@ -13,6 +13,9 @@
 //! enters recv_packet loop; the sender thread retries connect until
 //! ready, sends a synthetic aligned TS stream, then closes.
 
+// Drives the SRT-backed TS sender/receiver pair.
+#![cfg(feature = "srt")]
+
 use std::ffi::CString;
 use std::sync::mpsc;
 use std::thread;

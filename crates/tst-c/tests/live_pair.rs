@@ -8,6 +8,12 @@
 //! integration test can call the crate's Rust API directly — the same
 //! `unsafe extern "C"` functions exported to C consumers.
 
+// `tst-c`'s sender/receiver modules + the `tst-srt` dev-dep are gated
+// behind `feature = "srt"`. Skip the entire file under
+// `--no-default-features` (and `rtp-only`) so cargo test --workspace
+// compiles cleanly without the SRT layer.
+#![cfg(feature = "srt")]
+
 use std::ffi::CString;
 use std::sync::mpsc;
 use std::thread;

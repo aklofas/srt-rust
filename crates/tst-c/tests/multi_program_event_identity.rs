@@ -21,6 +21,10 @@
 //!   Muxer doesn't emit, so those are hand-built per the layout helpers used
 //!   by `tst-core/tests/mpegts_demux_strict.rs`.
 
+// Drives a real SRT loopback via `tst_raw_sender_t` → `tst_demux_receiver_t`,
+// both `cfg(feature = "srt")`.
+#![cfg(feature = "srt")]
+
 use std::ffi::{CStr, CString};
 use std::sync::mpsc;
 use std::thread;

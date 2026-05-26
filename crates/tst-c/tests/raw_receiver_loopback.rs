@@ -18,6 +18,9 @@
 //!   sends 3 messages, then calls `_close`. The FIN triggers EOS on the
 //!   receiver.
 
+// Drives the SRT-backed raw sender/receiver pair.
+#![cfg(feature = "srt")]
+
 use std::ffi::CString;
 use std::sync::mpsc;
 use std::thread;

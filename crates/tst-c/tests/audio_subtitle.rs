@@ -8,6 +8,9 @@
 //! SRT-wrapped `tst_mux_sender_send_*` tests are out of scope here —
 //! they need listener/sender boilerplate and live in `tests/url_open.rs`.
 
+// Pulls in `tstrans::sender::muxer::*`, which is `cfg(feature = "srt")`.
+#![cfg(feature = "srt")]
+
 use tstrans::config::{
     TstAudioCodec, TstProgramHandle, TstVideoCodec, tst_mux_config_add_audio_stream,
     tst_mux_config_add_audio_stream_with_language, tst_mux_config_add_program,

@@ -464,6 +464,12 @@ fn raw_receiver_end_of_stream_returns_eos_code() {
 /// does not require a network connection because `tst_muxer_t` is the
 /// standalone muxer with no transport. It validates the sentinel code path
 /// that all shell handles share.
+///
+/// `tstrans::sender::muxer` is `cfg(feature = "srt")`, so this single test
+/// is the only one in the file gated behind the srt feature — the rest of
+/// `error_routing.rs` runs unconditionally so the shell-error/transport-error
+/// mapping coverage is preserved in `--no-default-features` builds.
+#[cfg(feature = "srt")]
 #[test]
 fn handle_closed_sentinel_returns_closed_code_black_box() {
     use tstrans::config::{

@@ -5,6 +5,9 @@
 //! opens a muxer, pushes to both programs, pulls the output, and verifies
 //! the PAT carries exactly 2 program entries.
 
+// Pulls in `tstrans::sender::muxer::*`, which is `cfg(feature = "srt")`.
+#![cfg(feature = "srt")]
+
 use tstrans::config::{
     TstKlvStreamType, TstProgramHandle, TstVideoCodec, tst_mux_config_add_klv_stream,
     tst_mux_config_add_program, tst_mux_config_add_video_stream, tst_mux_config_free,

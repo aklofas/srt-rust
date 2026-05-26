@@ -138,3 +138,9 @@ raw/TS receiver) surfaces. Receiver-side C examples ship under
   extraction: dump KLV payloads as hex / file on the side of a Demuxer.
 - [`receiving/recv_raw_to_file.c`](receiving/recv_raw_to_file.c) — raw
   socket bytes (no TS framing): the lowest-level RawReceiver shape.
+- [`receiving/rtsp_client_camera.c`](receiving/rtsp_client_camera.c) —
+  full RTSP client lifecycle: builder chain with Digest MD5 auth and
+  transport preference (UDP / TCP-interleaved / auto), `_connect`,
+  `_play`, `into_demux_receiver` bridge to typed event loop, SIGINT
+  cancel, and cleanup. Canonical pattern for consuming a gimbaled-platform
+  camera stream over RTSP.

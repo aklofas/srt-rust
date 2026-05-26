@@ -59,6 +59,25 @@ impl core::marker::Unpin for tst_rtp::builder::RtspClientBuilder
 impl core::marker::UnsafeUnpin for tst_rtp::builder::RtspClientBuilder
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::builder::RtspClientBuilder
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::builder::RtspClientBuilder
+pub struct tst_rtp::builder::RtspServerBuilder
+impl tst_rtp::builder::RtspServerBuilder
+pub fn tst_rtp::builder::RtspServerBuilder::auth_basic(&mut self, &str, &str, secrecy::SecretString) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::auth_digest_md5(&mut self, &str, &str, secrecy::SecretString) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::auth_digest_sha256(&mut self, &str, &str, secrecy::SecretString) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::build(self) -> core::result::Result<tst_rtp::rtsp::server::RtspServer, tst_rtp::error::RtspServerError>
+pub fn tst_rtp::builder::RtspServerBuilder::fanout_capacity(&mut self, usize) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::graceful_shutdown_drain(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::max_sessions(&mut self, usize) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::new(&str) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
+pub fn tst_rtp::builder::RtspServerBuilder::session_timeout(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::with_url(tst_rtp::url::RtspUrl) -> Self
+impl core::marker::Freeze for tst_rtp::builder::RtspServerBuilder
+impl core::marker::Send for tst_rtp::builder::RtspServerBuilder
+impl core::marker::Sync for tst_rtp::builder::RtspServerBuilder
+impl core::marker::Unpin for tst_rtp::builder::RtspServerBuilder
+impl core::marker::UnsafeUnpin for tst_rtp::builder::RtspServerBuilder
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::builder::RtspServerBuilder
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::builder::RtspServerBuilder
 pub mod tst_rtp::cancel
 pub struct tst_rtp::cancel::RtpCancelHandle
 impl tst_rtp::cancel::RtpCancelHandle
@@ -78,6 +97,23 @@ impl core::marker::Unpin for tst_rtp::cancel::RtpCancelHandle
 impl core::marker::UnsafeUnpin for tst_rtp::cancel::RtpCancelHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::cancel::RtpCancelHandle
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::cancel::RtpCancelHandle
+pub struct tst_rtp::cancel::RtspServerCancelHandle
+impl tst_rtp::cancel::RtspServerCancelHandle
+pub fn tst_rtp::cancel::RtspServerCancelHandle::cancel(&self)
+pub fn tst_rtp::cancel::RtspServerCancelHandle::is_canceled(&self) -> bool
+impl core::clone::Clone for tst_rtp::cancel::RtspServerCancelHandle
+pub fn tst_rtp::cancel::RtspServerCancelHandle::clone(&self) -> tst_rtp::cancel::RtspServerCancelHandle
+impl core::default::Default for tst_rtp::cancel::RtspServerCancelHandle
+pub fn tst_rtp::cancel::RtspServerCancelHandle::default() -> Self
+impl core::fmt::Debug for tst_rtp::cancel::RtspServerCancelHandle
+pub fn tst_rtp::cancel::RtspServerCancelHandle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::cancel::RtspServerCancelHandle
+impl core::marker::Send for tst_rtp::cancel::RtspServerCancelHandle
+impl core::marker::Sync for tst_rtp::cancel::RtspServerCancelHandle
+impl core::marker::Unpin for tst_rtp::cancel::RtspServerCancelHandle
+impl core::marker::UnsafeUnpin for tst_rtp::cancel::RtspServerCancelHandle
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::cancel::RtspServerCancelHandle
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::cancel::RtspServerCancelHandle
 pub mod tst_rtp::clock
 pub struct tst_rtp::clock::RtpClock
 impl tst_rtp::clock::RtpClock
@@ -96,6 +132,26 @@ impl core::marker::UnsafeUnpin for tst_rtp::clock::RtpClock
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::clock::RtpClock
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::clock::RtpClock
 pub mod tst_rtp::error
+#[non_exhaustive] pub enum tst_rtp::error::MountError
+pub tst_rtp::error::MountError::Closed
+pub tst_rtp::error::MountError::Mux(tst_core::error::MuxError)
+pub tst_rtp::error::MountError::PeerBackpressure
+pub tst_rtp::error::MountError::PeerBackpressure::dropped_frames: u64
+impl core::convert::From<tst_core::error::MuxError> for tst_rtp::error::MountError
+pub fn tst_rtp::error::MountError::from(tst_core::error::MuxError) -> Self
+impl core::error::Error for tst_rtp::error::MountError
+pub fn tst_rtp::error::MountError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_rtp::error::MountError
+pub fn tst_rtp::error::MountError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::error::MountError
+pub fn tst_rtp::error::MountError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::error::MountError
+impl core::marker::Send for tst_rtp::error::MountError
+impl core::marker::Sync for tst_rtp::error::MountError
+impl core::marker::Unpin for tst_rtp::error::MountError
+impl core::marker::UnsafeUnpin for tst_rtp::error::MountError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::error::MountError
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::error::MountError
 #[non_exhaustive] pub enum tst_rtp::error::RtspError
 pub tst_rtp::error::RtspError::AuthFailed
 pub tst_rtp::error::RtspError::AuthUnsupported
@@ -136,6 +192,39 @@ impl core::marker::Unpin for tst_rtp::error::RtspError
 impl core::marker::UnsafeUnpin for tst_rtp::error::RtspError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::error::RtspError
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::error::RtspError
+#[non_exhaustive] pub enum tst_rtp::error::RtspServerError
+pub tst_rtp::error::RtspServerError::AlreadyStarted
+pub tst_rtp::error::RtspServerError::AuthAlreadyConfigured
+pub tst_rtp::error::RtspServerError::BindAddrInUse
+pub tst_rtp::error::RtspServerError::DuplicateMount
+pub tst_rtp::error::RtspServerError::DuplicateMount::path: alloc::string::String
+pub tst_rtp::error::RtspServerError::InvalidConfig
+pub tst_rtp::error::RtspServerError::InvalidConfig::detail: alloc::string::String
+pub tst_rtp::error::RtspServerError::InvalidMountPath
+pub tst_rtp::error::RtspServerError::InvalidMountPath::detail: alloc::string::String
+pub tst_rtp::error::RtspServerError::InvalidMulticastGroup
+pub tst_rtp::error::RtspServerError::InvalidMulticastGroup::addr: alloc::string::String
+pub tst_rtp::error::RtspServerError::InvalidMulticastGroup::detail: alloc::string::String
+pub tst_rtp::error::RtspServerError::Io(core::io::error::ErrorKind)
+pub tst_rtp::error::RtspServerError::NotStarted
+pub tst_rtp::error::RtspServerError::Shutdown
+pub tst_rtp::error::RtspServerError::Tls(alloc::string::String)
+pub tst_rtp::error::RtspServerError::UrlParse(tst_rtp::url::UrlError)
+impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::error::RtspServerError
+pub fn tst_rtp::error::RtspServerError::from(tst_rtp::url::UrlError) -> Self
+impl core::error::Error for tst_rtp::error::RtspServerError
+pub fn tst_rtp::error::RtspServerError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_rtp::error::RtspServerError
+pub fn tst_rtp::error::RtspServerError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::error::RtspServerError
+pub fn tst_rtp::error::RtspServerError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::error::RtspServerError
+impl core::marker::Send for tst_rtp::error::RtspServerError
+impl core::marker::Sync for tst_rtp::error::RtspServerError
+impl core::marker::Unpin for tst_rtp::error::RtspServerError
+impl core::marker::UnsafeUnpin for tst_rtp::error::RtspServerError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::error::RtspServerError
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::error::RtspServerError
 pub mod tst_rtp::init
 pub fn tst_rtp::init::init()
 pub mod tst_rtp::packet
@@ -715,6 +804,30 @@ impl core::marker::Unpin for tst_rtp::rtsp::message::RtspResponse
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::message::RtspResponse
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::message::RtspResponse
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::message::RtspResponse
+pub mod tst_rtp::rtsp::server
+pub mod tst_rtp::rtsp::server::auth
+pub mod tst_rtp::rtsp::server::builder
+pub mod tst_rtp::rtsp::server::fanout
+pub mod tst_rtp::rtsp::server::handlers
+pub mod tst_rtp::rtsp::server::interleaved_pump
+pub mod tst_rtp::rtsp::server::listener
+pub mod tst_rtp::rtsp::server::mount
+pub mod tst_rtp::rtsp::server::multicast
+pub mod tst_rtp::rtsp::server::runtime
+pub mod tst_rtp::rtsp::server::session
+pub struct tst_rtp::rtsp::server::RtspServer
+impl tst_rtp::rtsp::server::RtspServer
+pub fn tst_rtp::rtsp::server::RtspServer::bind(&str) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
+pub fn tst_rtp::rtsp::server::RtspServer::bind_with(tst_rtp::url::RtspUrl) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
+impl core::fmt::Debug for tst_rtp::rtsp::server::RtspServer
+pub fn tst_rtp::rtsp::server::RtspServer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::rtsp::server::RtspServer
+impl core::marker::Send for tst_rtp::rtsp::server::RtspServer
+impl core::marker::Sync for tst_rtp::rtsp::server::RtspServer
+impl core::marker::Unpin for tst_rtp::rtsp::server::RtspServer
+impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::RtspServer
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::RtspServer
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::RtspServer
 pub mod tst_rtp::sdp
 pub mod tst_rtp::sdp::pick
 pub fn tst_rtp::sdp::pick::pick_mp2t(&tst_rtp::sdp::Sdp) -> core::result::Result<&tst_rtp::sdp::SdpMedia, tst_rtp::error::RtspError>
@@ -723,6 +836,7 @@ pub tst_rtp::sdp::Sdp::media: alloc::vec::Vec<tst_rtp::sdp::SdpMedia>
 pub tst_rtp::sdp::Sdp::session_connection: core::option::Option<alloc::string::String>
 pub tst_rtp::sdp::Sdp::session_name: alloc::string::String
 impl tst_rtp::sdp::Sdp
+pub fn tst_rtp::sdp::Sdp::build_for_mount(&str, core::net::socket_addr::SocketAddr, bool) -> bytes::bytes::Bytes
 pub fn tst_rtp::sdp::Sdp::parse(&[u8]) -> core::result::Result<Self, tst_rtp::error::RtspError>
 impl core::clone::Clone for tst_rtp::sdp::Sdp
 pub fn tst_rtp::sdp::Sdp::clone(&self) -> tst_rtp::sdp::Sdp
@@ -908,6 +1022,8 @@ impl core::marker::UnsafeUnpin for tst_rtp::url::RtspVersion
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::url::RtspVersion
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::RtspVersion
 #[non_exhaustive] pub enum tst_rtp::url::UrlError
+pub tst_rtp::url::UrlError::BadHost
+pub tst_rtp::url::UrlError::BadHost::detail: alloc::string::String
 pub tst_rtp::url::UrlError::BadIface
 pub tst_rtp::url::UrlError::BadIface::got: alloc::string::String
 pub tst_rtp::url::UrlError::BadPktSize
@@ -941,6 +1057,8 @@ impl core::convert::From<tst_core::url::common::UrlError> for tst_rtp::url::UrlE
 pub fn tst_rtp::url::UrlError::from(tst_core::url::common::UrlError) -> Self
 impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::error::RtspError
 pub fn tst_rtp::error::RtspError::from(tst_rtp::url::UrlError) -> Self
+impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::error::RtspServerError
+pub fn tst_rtp::error::RtspServerError::from(tst_rtp::url::UrlError) -> Self
 impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::transport::ConnectError
 pub fn tst_rtp::transport::ConnectError::from(tst_rtp::url::UrlError) -> Self
 impl core::error::Error for tst_rtp::url::UrlError
@@ -957,6 +1075,23 @@ impl core::marker::Unpin for tst_rtp::url::UrlError
 impl core::marker::UnsafeUnpin for tst_rtp::url::UrlError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::url::UrlError
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::UrlError
+pub struct tst_rtp::url::MulticastGroup
+pub tst_rtp::url::MulticastGroup::addr: core::net::socket_addr::SocketAddr
+pub tst_rtp::url::MulticastGroup::iface: core::option::Option<alloc::string::String>
+pub tst_rtp::url::MulticastGroup::ttl: u8
+impl tst_rtp::url::MulticastGroup
+pub fn tst_rtp::url::MulticastGroup::parse(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
+impl core::clone::Clone for tst_rtp::url::MulticastGroup
+pub fn tst_rtp::url::MulticastGroup::clone(&self) -> tst_rtp::url::MulticastGroup
+impl core::fmt::Debug for tst_rtp::url::MulticastGroup
+pub fn tst_rtp::url::MulticastGroup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::url::MulticastGroup
+impl core::marker::Send for tst_rtp::url::MulticastGroup
+impl core::marker::Sync for tst_rtp::url::MulticastGroup
+impl core::marker::Unpin for tst_rtp::url::MulticastGroup
+impl core::marker::UnsafeUnpin for tst_rtp::url::MulticastGroup
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::url::MulticastGroup
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::MulticastGroup
 pub struct tst_rtp::url::RtpUrl
 pub tst_rtp::url::RtpUrl::host: alloc::string::String
 pub tst_rtp::url::RtpUrl::iface: core::option::Option<alloc::string::String>
@@ -990,9 +1125,11 @@ pub tst_rtp::url::RtspUrl::rtsp_version: tst_rtp::url::RtspVersion
 pub tst_rtp::url::RtspUrl::transport_preference: tst_rtp::url::RtspTransportPref
 pub tst_rtp::url::RtspUrl::username: core::option::Option<alloc::string::String>
 impl tst_rtp::url::RtspUrl
+pub fn tst_rtp::url::RtspUrl::is_server_bind(&self) -> bool
 pub fn tst_rtp::url::RtspUrl::parse(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
 pub fn tst_rtp::url::RtspUrl::render_no_credentials(&self) -> alloc::string::String
 pub fn tst_rtp::url::RtspUrl::scheme(&self) -> tst_rtp::url::RtspScheme
+pub fn tst_rtp::url::RtspUrl::validate_for_server_bind(&self) -> core::result::Result<(), tst_rtp::url::UrlError>
 impl core::clone::Clone for tst_rtp::url::RtspUrl
 pub fn tst_rtp::url::RtspUrl::clone(&self) -> tst_rtp::url::RtspUrl
 impl core::fmt::Debug for tst_rtp::url::RtspUrl
@@ -1087,6 +1224,26 @@ impl core::marker::Unpin for tst_rtp::rtsp::interleaved::Frame
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::interleaved::Frame
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::interleaved::Frame
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::interleaved::Frame
+#[non_exhaustive] pub enum tst_rtp::MountError
+pub tst_rtp::MountError::Closed
+pub tst_rtp::MountError::Mux(tst_core::error::MuxError)
+pub tst_rtp::MountError::PeerBackpressure
+pub tst_rtp::MountError::PeerBackpressure::dropped_frames: u64
+impl core::convert::From<tst_core::error::MuxError> for tst_rtp::error::MountError
+pub fn tst_rtp::error::MountError::from(tst_core::error::MuxError) -> Self
+impl core::error::Error for tst_rtp::error::MountError
+pub fn tst_rtp::error::MountError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_rtp::error::MountError
+pub fn tst_rtp::error::MountError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::error::MountError
+pub fn tst_rtp::error::MountError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::error::MountError
+impl core::marker::Send for tst_rtp::error::MountError
+impl core::marker::Sync for tst_rtp::error::MountError
+impl core::marker::Unpin for tst_rtp::error::MountError
+impl core::marker::UnsafeUnpin for tst_rtp::error::MountError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::error::MountError
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::error::MountError
 #[non_exhaustive] pub enum tst_rtp::RtcpPacketType
 pub tst_rtp::RtcpPacketType::ReceiverReport
 pub tst_rtp::RtcpPacketType::SenderReport
@@ -1135,6 +1292,8 @@ impl core::marker::UnsafeUnpin for tst_rtp::packet::RtpParseError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::packet::RtpParseError
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::packet::RtpParseError
 #[non_exhaustive] pub enum tst_rtp::RtpUrlError
+pub tst_rtp::RtpUrlError::BadHost
+pub tst_rtp::RtpUrlError::BadHost::detail: alloc::string::String
 pub tst_rtp::RtpUrlError::BadIface
 pub tst_rtp::RtpUrlError::BadIface::got: alloc::string::String
 pub tst_rtp::RtpUrlError::BadPktSize
@@ -1168,6 +1327,8 @@ impl core::convert::From<tst_core::url::common::UrlError> for tst_rtp::url::UrlE
 pub fn tst_rtp::url::UrlError::from(tst_core::url::common::UrlError) -> Self
 impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::error::RtspError
 pub fn tst_rtp::error::RtspError::from(tst_rtp::url::UrlError) -> Self
+impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::error::RtspServerError
+pub fn tst_rtp::error::RtspServerError::from(tst_rtp::url::UrlError) -> Self
 impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::transport::ConnectError
 pub fn tst_rtp::transport::ConnectError::from(tst_rtp::url::UrlError) -> Self
 impl core::error::Error for tst_rtp::url::UrlError
@@ -1267,6 +1428,39 @@ impl core::marker::Unpin for tst_rtp::url::RtspScheme
 impl core::marker::UnsafeUnpin for tst_rtp::url::RtspScheme
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::url::RtspScheme
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::RtspScheme
+#[non_exhaustive] pub enum tst_rtp::RtspServerError
+pub tst_rtp::RtspServerError::AlreadyStarted
+pub tst_rtp::RtspServerError::AuthAlreadyConfigured
+pub tst_rtp::RtspServerError::BindAddrInUse
+pub tst_rtp::RtspServerError::DuplicateMount
+pub tst_rtp::RtspServerError::DuplicateMount::path: alloc::string::String
+pub tst_rtp::RtspServerError::InvalidConfig
+pub tst_rtp::RtspServerError::InvalidConfig::detail: alloc::string::String
+pub tst_rtp::RtspServerError::InvalidMountPath
+pub tst_rtp::RtspServerError::InvalidMountPath::detail: alloc::string::String
+pub tst_rtp::RtspServerError::InvalidMulticastGroup
+pub tst_rtp::RtspServerError::InvalidMulticastGroup::addr: alloc::string::String
+pub tst_rtp::RtspServerError::InvalidMulticastGroup::detail: alloc::string::String
+pub tst_rtp::RtspServerError::Io(core::io::error::ErrorKind)
+pub tst_rtp::RtspServerError::NotStarted
+pub tst_rtp::RtspServerError::Shutdown
+pub tst_rtp::RtspServerError::Tls(alloc::string::String)
+pub tst_rtp::RtspServerError::UrlParse(tst_rtp::url::UrlError)
+impl core::convert::From<tst_rtp::url::UrlError> for tst_rtp::error::RtspServerError
+pub fn tst_rtp::error::RtspServerError::from(tst_rtp::url::UrlError) -> Self
+impl core::error::Error for tst_rtp::error::RtspServerError
+pub fn tst_rtp::error::RtspServerError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tst_rtp::error::RtspServerError
+pub fn tst_rtp::error::RtspServerError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tst_rtp::error::RtspServerError
+pub fn tst_rtp::error::RtspServerError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::error::RtspServerError
+impl core::marker::Send for tst_rtp::error::RtspServerError
+impl core::marker::Sync for tst_rtp::error::RtspServerError
+impl core::marker::Unpin for tst_rtp::error::RtspServerError
+impl core::marker::UnsafeUnpin for tst_rtp::error::RtspServerError
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::error::RtspServerError
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::error::RtspServerError
 #[non_exhaustive] pub enum tst_rtp::RtspTransportKind
 pub tst_rtp::RtspTransportKind::TcpInterleaved
 pub tst_rtp::RtspTransportKind::Udp
@@ -1387,6 +1581,23 @@ impl<W> core::marker::Unpin for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
 impl<W> core::marker::UnsafeUnpin for tst_rtp::rtsp::interleaved::InterleavedWriter<W> where W: core::marker::UnsafeUnpin
 impl<W> core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
 impl<W> core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
+pub struct tst_rtp::MulticastGroup
+pub tst_rtp::MulticastGroup::addr: core::net::socket_addr::SocketAddr
+pub tst_rtp::MulticastGroup::iface: core::option::Option<alloc::string::String>
+pub tst_rtp::MulticastGroup::ttl: u8
+impl tst_rtp::url::MulticastGroup
+pub fn tst_rtp::url::MulticastGroup::parse(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
+impl core::clone::Clone for tst_rtp::url::MulticastGroup
+pub fn tst_rtp::url::MulticastGroup::clone(&self) -> tst_rtp::url::MulticastGroup
+impl core::fmt::Debug for tst_rtp::url::MulticastGroup
+pub fn tst_rtp::url::MulticastGroup::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::url::MulticastGroup
+impl core::marker::Send for tst_rtp::url::MulticastGroup
+impl core::marker::Sync for tst_rtp::url::MulticastGroup
+impl core::marker::Unpin for tst_rtp::url::MulticastGroup
+impl core::marker::UnsafeUnpin for tst_rtp::url::MulticastGroup
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::url::MulticastGroup
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::url::MulticastGroup
 pub struct tst_rtp::OptionsResponse
 pub tst_rtp::OptionsResponse::headers: std::collections::hash::map::HashMap<alloc::string::String, alloc::string::String>
 pub tst_rtp::OptionsResponse::public_methods: alloc::vec::Vec<alloc::string::String>
@@ -1816,6 +2027,55 @@ impl core::marker::Unpin for tst_rtp::rtsp::message::RtspResponse
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::message::RtspResponse
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::message::RtspResponse
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::message::RtspResponse
+pub struct tst_rtp::RtspServer
+impl tst_rtp::rtsp::server::RtspServer
+pub fn tst_rtp::rtsp::server::RtspServer::bind(&str) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
+pub fn tst_rtp::rtsp::server::RtspServer::bind_with(tst_rtp::url::RtspUrl) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
+impl core::fmt::Debug for tst_rtp::rtsp::server::RtspServer
+pub fn tst_rtp::rtsp::server::RtspServer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::rtsp::server::RtspServer
+impl core::marker::Send for tst_rtp::rtsp::server::RtspServer
+impl core::marker::Sync for tst_rtp::rtsp::server::RtspServer
+impl core::marker::Unpin for tst_rtp::rtsp::server::RtspServer
+impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::RtspServer
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::RtspServer
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::RtspServer
+pub struct tst_rtp::RtspServerBuilder
+impl tst_rtp::builder::RtspServerBuilder
+pub fn tst_rtp::builder::RtspServerBuilder::auth_basic(&mut self, &str, &str, secrecy::SecretString) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::auth_digest_md5(&mut self, &str, &str, secrecy::SecretString) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::auth_digest_sha256(&mut self, &str, &str, secrecy::SecretString) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::build(self) -> core::result::Result<tst_rtp::rtsp::server::RtspServer, tst_rtp::error::RtspServerError>
+pub fn tst_rtp::builder::RtspServerBuilder::fanout_capacity(&mut self, usize) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::graceful_shutdown_drain(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::max_sessions(&mut self, usize) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::new(&str) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
+pub fn tst_rtp::builder::RtspServerBuilder::session_timeout(&mut self, core::time::Duration) -> &mut Self
+pub fn tst_rtp::builder::RtspServerBuilder::with_url(tst_rtp::url::RtspUrl) -> Self
+impl core::marker::Freeze for tst_rtp::builder::RtspServerBuilder
+impl core::marker::Send for tst_rtp::builder::RtspServerBuilder
+impl core::marker::Sync for tst_rtp::builder::RtspServerBuilder
+impl core::marker::Unpin for tst_rtp::builder::RtspServerBuilder
+impl core::marker::UnsafeUnpin for tst_rtp::builder::RtspServerBuilder
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::builder::RtspServerBuilder
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::builder::RtspServerBuilder
+pub struct tst_rtp::RtspServerCancelHandle
+impl tst_rtp::cancel::RtspServerCancelHandle
+pub fn tst_rtp::cancel::RtspServerCancelHandle::cancel(&self)
+pub fn tst_rtp::cancel::RtspServerCancelHandle::is_canceled(&self) -> bool
+impl core::clone::Clone for tst_rtp::cancel::RtspServerCancelHandle
+pub fn tst_rtp::cancel::RtspServerCancelHandle::clone(&self) -> tst_rtp::cancel::RtspServerCancelHandle
+impl core::default::Default for tst_rtp::cancel::RtspServerCancelHandle
+pub fn tst_rtp::cancel::RtspServerCancelHandle::default() -> Self
+impl core::fmt::Debug for tst_rtp::cancel::RtspServerCancelHandle
+pub fn tst_rtp::cancel::RtspServerCancelHandle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::cancel::RtspServerCancelHandle
+impl core::marker::Send for tst_rtp::cancel::RtspServerCancelHandle
+impl core::marker::Sync for tst_rtp::cancel::RtspServerCancelHandle
+impl core::marker::Unpin for tst_rtp::cancel::RtspServerCancelHandle
+impl core::marker::UnsafeUnpin for tst_rtp::cancel::RtspServerCancelHandle
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::cancel::RtspServerCancelHandle
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::cancel::RtspServerCancelHandle
 pub struct tst_rtp::RtspSession
 impl tst_rtp::rtsp::client::session::RtspSession
 pub fn tst_rtp::rtsp::client::session::RtspSession::into_recv_transport(self) -> tst_rtp::transport::RtpRecvTransport
@@ -1838,9 +2098,11 @@ pub tst_rtp::RtspUrl::rtsp_version: tst_rtp::url::RtspVersion
 pub tst_rtp::RtspUrl::transport_preference: tst_rtp::url::RtspTransportPref
 pub tst_rtp::RtspUrl::username: core::option::Option<alloc::string::String>
 impl tst_rtp::url::RtspUrl
+pub fn tst_rtp::url::RtspUrl::is_server_bind(&self) -> bool
 pub fn tst_rtp::url::RtspUrl::parse(&str) -> core::result::Result<Self, tst_rtp::url::UrlError>
 pub fn tst_rtp::url::RtspUrl::render_no_credentials(&self) -> alloc::string::String
 pub fn tst_rtp::url::RtspUrl::scheme(&self) -> tst_rtp::url::RtspScheme
+pub fn tst_rtp::url::RtspUrl::validate_for_server_bind(&self) -> core::result::Result<(), tst_rtp::url::UrlError>
 impl core::clone::Clone for tst_rtp::url::RtspUrl
 pub fn tst_rtp::url::RtspUrl::clone(&self) -> tst_rtp::url::RtspUrl
 impl core::fmt::Debug for tst_rtp::url::RtspUrl
@@ -1878,6 +2140,7 @@ pub tst_rtp::Sdp::media: alloc::vec::Vec<tst_rtp::sdp::SdpMedia>
 pub tst_rtp::Sdp::session_connection: core::option::Option<alloc::string::String>
 pub tst_rtp::Sdp::session_name: alloc::string::String
 impl tst_rtp::sdp::Sdp
+pub fn tst_rtp::sdp::Sdp::build_for_mount(&str, core::net::socket_addr::SocketAddr, bool) -> bytes::bytes::Bytes
 pub fn tst_rtp::sdp::Sdp::parse(&[u8]) -> core::result::Result<Self, tst_rtp::error::RtspError>
 impl core::clone::Clone for tst_rtp::sdp::Sdp
 pub fn tst_rtp::sdp::Sdp::clone(&self) -> tst_rtp::sdp::Sdp

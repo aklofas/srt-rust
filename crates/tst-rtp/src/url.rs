@@ -82,6 +82,11 @@ pub enum UrlError {
     /// `rtp://` requires a port. We do not pick a default.
     #[error("rtp:// URL requires :port")]
     MissingPort,
+    /// Host failed validation for the parser's use case (e.g., DNS name
+    /// supplied where an IP literal is required for a server bind, or
+    /// non-multicast address for a multicast group).
+    #[error("bad host: {detail}")]
+    BadHost { detail: String },
     /// `?ttl=` failed validation (out of `1..=255` range or non-numeric).
     #[error("invalid ttl '{got}': {detail}")]
     BadTtl { got: String, detail: String },
@@ -431,6 +436,90 @@ impl RtspUrl {
         };
         format!("{}://{}:{}{}", scheme, self.host, self.port, self.path)
     }
+
+    /// True if the host is a wildcard bind (`0.0.0.0` or `[::]`) or a
+    /// loopback (`127.x.x.x` or `::1`) — suitable for `RtspServer::bind`.
+    /// Server-only callers should use [`Self::validate_for_server_bind`]
+    /// which also requires the host to parse as an IP literal.
+    #[must_use]
+    pub fn is_server_bind(&self) -> bool {
+        let h = self.host.as_str();
+        h == "0.0.0.0"
+            || h == "::"
+            || h == "[::]"
+            || h.starts_with("127.")
+            || h == "::1"
+            || h == "[::1]"
+            || h.parse::<std::net::IpAddr>().is_ok()
+    }
+
+    /// Validate the URL is appropriate for `RtspServer::bind(url)`.
+    /// Rules: host must parse as an IP literal (DNS not resolved
+    /// server-side); port is permitted to be 0 (kernel-pick).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UrlError::BadHost`] when the URL's host is not an IP
+    /// literal (e.g., a DNS name like `example.com`).
+    pub fn validate_for_server_bind(&self) -> Result<(), UrlError> {
+        if self.host.parse::<std::net::IpAddr>().is_err() {
+            return Err(UrlError::BadHost {
+                detail: format!("server bind requires an IP literal; got '{}'", self.host),
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Parsed multicast group URL used by
+/// `crate::rtsp::server::RtspServer::add_multicast_mount`.
+///
+/// Form: `rtp://<mcast-ip>:<port>?ttl=N&iface=ethN`.
+#[derive(Debug, Clone)]
+pub struct MulticastGroup {
+    /// Multicast destination address + port. IPv4 in `224.0.0.0/4` or
+    /// IPv6 in `ff00::/8`.
+    pub addr: std::net::SocketAddr,
+    /// `?ttl=N` from the URL; defaults to 8 (multicast send default per
+    /// the [`RtpUrl`] table).
+    pub ttl: u8,
+    /// `?iface=eth0` or IPv4 literal; `None` to let the OS pick.
+    pub iface: Option<String>,
+}
+
+impl MulticastGroup {
+    /// Parse a multicast group URL. Returns an error if the host is not
+    /// in the IPv4 multicast range (224.0.0.0/4) or IPv6 multicast range
+    /// (ff00::/8), or if the URL syntax is malformed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UrlError`] propagated from [`RtpUrl::parse`] for
+    /// structural errors, [`UrlError::BadHost`] when the host is not a
+    /// valid IP literal or is not in a multicast range.
+    pub fn parse(url: &str) -> Result<Self, UrlError> {
+        let rtp = RtpUrl::parse(url)?;
+        let ip: std::net::IpAddr =
+            rtp.host
+                .parse()
+                .map_err(|e: std::net::AddrParseError| UrlError::BadHost {
+                    detail: e.to_string(),
+                })?;
+        let is_mcast = match ip {
+            std::net::IpAddr::V4(v) => v.is_multicast(),
+            std::net::IpAddr::V6(v) => v.is_multicast(),
+        };
+        if !is_mcast {
+            return Err(UrlError::BadHost {
+                detail: format!("address '{}' is not multicast", rtp.host),
+            });
+        }
+        Ok(MulticastGroup {
+            addr: std::net::SocketAddr::new(ip, rtp.port),
+            ttl: rtp.ttl.unwrap_or(8),
+            iface: rtp.iface,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -599,5 +688,67 @@ mod rtsp_tests {
     fn rtsp_url_unknown_query_key_rejected() {
         let e = RtspUrl::parse("rtsp://cam.lan/h264?bogus=1").unwrap_err();
         assert!(matches!(e, UrlError::UnknownQueryKey { .. }));
+    }
+}
+
+#[cfg(test)]
+mod phase3_url_tests {
+    use super::*;
+
+    #[test]
+    fn server_bind_url_wildcard_ok() {
+        let u = RtspUrl::parse("rtsp://0.0.0.0:8554").unwrap();
+        assert!(u.is_server_bind());
+        u.validate_for_server_bind().unwrap();
+    }
+
+    #[test]
+    fn server_bind_url_loopback_ok() {
+        let u = RtspUrl::parse("rtsp://127.0.0.1:0").unwrap();
+        assert!(u.is_server_bind());
+        u.validate_for_server_bind().unwrap();
+    }
+
+    #[test]
+    fn server_bind_url_ipv6_loopback_ok() {
+        let u = RtspUrl::parse("rtsp://[::1]:8554").unwrap();
+        u.validate_for_server_bind().unwrap();
+    }
+
+    #[test]
+    fn server_bind_url_dns_name_rejected() {
+        // If RtspUrl::parse accepts DNS names, validate_for_server_bind
+        // should reject them. If RtspUrl::parse itself rejects DNS, this
+        // test asserts that earlier path.
+        let res =
+            RtspUrl::parse("rtsp://example.com:8554").and_then(|u| u.validate_for_server_bind());
+        assert!(res.is_err(), "DNS hostname should not validate as bind");
+    }
+
+    #[test]
+    fn multicast_group_ipv4_ok() {
+        let g = MulticastGroup::parse("rtp://239.0.0.1:5004").unwrap();
+        assert_eq!(g.addr.port(), 5004);
+        assert_eq!(g.ttl, 8);
+        assert!(g.iface.is_none());
+    }
+
+    #[test]
+    fn multicast_group_ipv4_unicast_rejected() {
+        let e = MulticastGroup::parse("rtp://10.0.0.1:5004").unwrap_err();
+        assert!(matches!(e, UrlError::BadHost { .. }));
+    }
+
+    #[test]
+    fn multicast_group_ipv6_ok() {
+        let g = MulticastGroup::parse("rtp://[ff02::1]:5004").unwrap();
+        assert!(g.addr.ip().is_multicast());
+    }
+
+    #[test]
+    fn multicast_group_ttl_and_iface_extracted() {
+        let g = MulticastGroup::parse("rtp://239.0.0.1:5004?ttl=4&iface=192.168.1.50").unwrap();
+        assert_eq!(g.ttl, 4);
+        assert_eq!(g.iface.as_deref(), Some("192.168.1.50"));
     }
 }

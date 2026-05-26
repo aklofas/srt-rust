@@ -603,13 +603,12 @@ impl RtpRecvTransport {
         // url.port == 0) — `url.port + 1` would resolve to port 1 in
         // that case, which is privileged.
         let rtcp_socket = if rtcp_enabled {
-            let actual_rtp_port = socket
-                .local_addr()
-                .map_err(ConnectError::Io)?
-                .port();
+            let actual_rtp_port = socket.local_addr().map_err(ConnectError::Io)?.port();
             let rtcp_local: SocketAddr = if is_multicast {
                 match ip {
-                    IpAddr::V4(_) => SocketAddr::new("0.0.0.0".parse().unwrap(), actual_rtp_port + 1),
+                    IpAddr::V4(_) => {
+                        SocketAddr::new("0.0.0.0".parse().unwrap(), actual_rtp_port + 1)
+                    }
                     IpAddr::V6(_) => SocketAddr::new("::".parse().unwrap(), actual_rtp_port + 1),
                 }
             } else {

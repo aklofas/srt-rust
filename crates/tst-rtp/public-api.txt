@@ -771,6 +771,8 @@ pub fn tst_rtp::rtsp::message::RtspRequest::body(self, bytes::bytes::Bytes) -> S
 pub fn tst_rtp::rtsp::message::RtspRequest::encode(&self) -> bytes::bytes::Bytes
 pub fn tst_rtp::rtsp::message::RtspRequest::header(self, &str, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tst_rtp::rtsp::message::RtspRequest::new(tst_rtp::rtsp::message::RtspMethod, impl core::convert::Into<alloc::string::String>, tst_rtp::url::RtspVersion) -> Self
+impl tst_rtp::rtsp::message::RtspRequest
+pub fn tst_rtp::rtsp::message::RtspRequest::parse(&[u8]) -> core::result::Result<(Self, usize), tst_rtp::error::RtspError>
 impl core::clone::Clone for tst_rtp::rtsp::message::RtspRequest
 pub fn tst_rtp::rtsp::message::RtspRequest::clone(&self) -> tst_rtp::rtsp::message::RtspRequest
 impl core::fmt::Debug for tst_rtp::rtsp::message::RtspRequest
@@ -790,6 +792,7 @@ pub tst_rtp::rtsp::message::RtspResponse::status: u16
 pub tst_rtp::rtsp::message::RtspResponse::version: tst_rtp::url::RtspVersion
 impl tst_rtp::rtsp::message::RtspResponse
 pub fn tst_rtp::rtsp::message::RtspResponse::cseq(&self) -> core::option::Option<u32>
+pub fn tst_rtp::rtsp::message::RtspResponse::encode(&self) -> bytes::bytes::Bytes
 pub fn tst_rtp::rtsp::message::RtspResponse::parse(&[u8]) -> core::result::Result<(Self, usize), tst_rtp::error::RtspError>
 pub fn tst_rtp::rtsp::message::RtspResponse::session_id(&self) -> core::option::Option<&str>
 pub fn tst_rtp::rtsp::message::RtspResponse::session_timeout_secs(&self) -> core::option::Option<u64>
@@ -815,6 +818,18 @@ pub mod tst_rtp::rtsp::server::mount
 pub mod tst_rtp::rtsp::server::multicast
 pub mod tst_rtp::rtsp::server::runtime
 pub mod tst_rtp::rtsp::server::session
+pub struct tst_rtp::rtsp::server::session::ServerSessionState
+pub tst_rtp::rtsp::server::session::ServerSessionState::auth_failures: u8
+pub tst_rtp::rtsp::server::session::ServerSessionState::auth_nonce: alloc::string::String
+pub tst_rtp::rtsp::server::session::ServerSessionState::mount_path: core::option::Option<alloc::string::String>
+pub tst_rtp::rtsp::server::session::ServerSessionState::session_id: core::option::Option<alloc::string::String>
+impl core::marker::Freeze for tst_rtp::rtsp::server::session::ServerSessionState
+impl core::marker::Send for tst_rtp::rtsp::server::session::ServerSessionState
+impl core::marker::Sync for tst_rtp::rtsp::server::session::ServerSessionState
+impl core::marker::Unpin for tst_rtp::rtsp::server::session::ServerSessionState
+impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::session::ServerSessionState
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::session::ServerSessionState
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::session::ServerSessionState
 pub struct tst_rtp::rtsp::server::RtspServer
 impl tst_rtp::rtsp::server::RtspServer
 pub fn tst_rtp::rtsp::server::RtspServer::bind(&str) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
@@ -2024,6 +2039,8 @@ pub fn tst_rtp::rtsp::message::RtspRequest::body(self, bytes::bytes::Bytes) -> S
 pub fn tst_rtp::rtsp::message::RtspRequest::encode(&self) -> bytes::bytes::Bytes
 pub fn tst_rtp::rtsp::message::RtspRequest::header(self, &str, impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tst_rtp::rtsp::message::RtspRequest::new(tst_rtp::rtsp::message::RtspMethod, impl core::convert::Into<alloc::string::String>, tst_rtp::url::RtspVersion) -> Self
+impl tst_rtp::rtsp::message::RtspRequest
+pub fn tst_rtp::rtsp::message::RtspRequest::parse(&[u8]) -> core::result::Result<(Self, usize), tst_rtp::error::RtspError>
 impl core::clone::Clone for tst_rtp::rtsp::message::RtspRequest
 pub fn tst_rtp::rtsp::message::RtspRequest::clone(&self) -> tst_rtp::rtsp::message::RtspRequest
 impl core::fmt::Debug for tst_rtp::rtsp::message::RtspRequest
@@ -2043,6 +2060,7 @@ pub tst_rtp::RtspResponse::status: u16
 pub tst_rtp::RtspResponse::version: tst_rtp::url::RtspVersion
 impl tst_rtp::rtsp::message::RtspResponse
 pub fn tst_rtp::rtsp::message::RtspResponse::cseq(&self) -> core::option::Option<u32>
+pub fn tst_rtp::rtsp::message::RtspResponse::encode(&self) -> bytes::bytes::Bytes
 pub fn tst_rtp::rtsp::message::RtspResponse::parse(&[u8]) -> core::result::Result<(Self, usize), tst_rtp::error::RtspError>
 pub fn tst_rtp::rtsp::message::RtspResponse::session_id(&self) -> core::option::Option<&str>
 pub fn tst_rtp::rtsp::message::RtspResponse::session_timeout_secs(&self) -> core::option::Option<u64>

@@ -143,6 +143,8 @@ include = [
     "TstAudioCodec",
     "TstSubtitleCodec",
     "TstAv1CarriageMode",
+    # RTSP client builder handle (rtp feature — emitted inside #if defined(TST_HAS_RTP))
+    "TstRtspClientBuilder",
 ]
 
 [export.rename]
@@ -219,6 +221,8 @@ include = [
 "TstAudioCodec"             = "tst_audio_codec"
 "TstSubtitleCodec"          = "tst_subtitle_codec"
 "TstAv1CarriageMode"        = "tst_av1_carriage_mode"
+# RTSP client builder opaque handle
+"TstRtspClientBuilder"      = "tst_rtsp_client_builder_t"
 
 [enum]
 prefix_with_name = true

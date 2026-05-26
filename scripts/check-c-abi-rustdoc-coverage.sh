@@ -220,6 +220,21 @@ ALLOWLIST=(
     "tst_managed_receiver_get_socket_stats"
     "tst_managed_raw_receiver_get_socket_stats"
     "tst_managed_demux_receiver_get_socket_stats"
+
+    # --- Phase 4 RTSP client builder entry points (tst-c–only wrappers:
+    #     RtspClientBuilder uses consuming mut-self chain setters, making
+    #     in-place C mutation impossible; the C wrappers store fields
+    #     directly in TstRtspClientBuilder and reconstruct the Rust builder
+    #     at connect time — no 1:1 Rust method counterpart exists in
+    #     tst-pipeline / tst-srt / tst-core to cross-ref) ---
+    "tst_rtsp_client_builder_new"
+    "tst_rtsp_client_builder_transport_pref"
+    "tst_rtsp_client_builder_keepalive"
+    "tst_rtsp_client_builder_tls_root_cert_pem"
+    "tst_rtsp_client_builder_auth_basic"
+    "tst_rtsp_client_builder_auth_digest_md5"
+    "tst_rtsp_client_builder_auth_digest_sha256"
+    "tst_rtsp_client_builder_free"
 )
 
 # Step 1: enumerate C exports

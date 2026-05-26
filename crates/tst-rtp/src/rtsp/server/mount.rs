@@ -172,6 +172,290 @@ impl MountHandle {
     pub fn mount_kind(&self) -> &MountKind {
         &self.state.kind
     }
+
+    // ── Push surface ──────────────────────────────────────────────────────
+    //
+    // The push methods mirror `tst_pipeline::MuxSender`'s `send_*`
+    // signatures — same argument order, same semantics. Internally each
+    // push:
+    //   1. Locks the inner Muxer (Mutex<Muxer>; mutex poisoning maps to
+    //      `MountError::Closed`).
+    //   2. Calls the matching Muxer::push_* method (any MuxError surfaces
+    //      as `MountError::Mux`).
+    //   3. Drains the muxer's TS output via `Muxer::pull` into a
+    //      1316-byte (= 7 × 188) RTP-payload-sized buffer and broadcasts
+    //      each non-empty pull through the mount's fanout channel.
+    //
+    // `broadcast::Sender::send` returns `Err` only when there are no
+    // subscribers — that's the pre-PLAY state, NOT an error. We silently
+    // drop those bytes; the muxer still consumed them so producers
+    // remain free to push without first connecting a peer.
+
+    /// Push one video access unit. Mirror of
+    /// `tst_pipeline::MuxSender::send_video`.
+    ///
+    /// Drains the resulting TS bytes from the inner muxer and broadcasts
+    /// them through this mount's fanout channel (chunked at 1316 bytes
+    /// per send — the canonical RTP MPEG-TS payload size).
+    ///
+    /// # Errors
+    /// - [`crate::error::MountError::Mux`] wraps any
+    ///   [`tst_core::error::MuxError`] from the muxer (invalid NAL,
+    ///   `BufferFull`, ambiguous target, etc.).
+    /// - [`crate::error::MountError::Closed`] if the inner mutex is
+    ///   poisoned (the mount's owning task panicked while holding the
+    ///   lock).
+    /// - [`crate::error::MountError::PeerBackpressure`] is NOT raised
+    ///   here — it's a forward-looking variant for callers that want to
+    ///   observe broadcast lag. The push itself always succeeds if the
+    ///   muxer accepts the frame; missing subscribers silently drop the
+    ///   bytes.
+    pub fn push_video(
+        &self,
+        nal: &[u8],
+        pts: tst_core::mpegts::common::Pts90khz,
+        key_frame: bool,
+    ) -> Result<(), crate::error::MountError> {
+        let mut muxer = self
+            .state
+            .muxer
+            .lock()
+            .map_err(|_| crate::error::MountError::Closed)?;
+        muxer.push_video(nal, pts, key_frame)?;
+        drain_and_broadcast(&mut muxer, &self.state);
+        Ok(())
+    }
+
+    /// Push one KLV blob. Mirror of
+    /// `tst_pipeline::MuxSender::send_klv`.
+    ///
+    /// See [`Self::push_video`] for the drain + broadcast contract and
+    /// error mapping.
+    pub fn push_klv(
+        &self,
+        klv: &[u8],
+        pts: tst_core::mpegts::common::Pts90khz,
+        metadata_service_id: u8,
+    ) -> Result<(), crate::error::MountError> {
+        let mut muxer = self
+            .state
+            .muxer
+            .lock()
+            .map_err(|_| crate::error::MountError::Closed)?;
+        muxer.push_klv(klv, pts, metadata_service_id)?;
+        drain_and_broadcast(&mut muxer, &self.state);
+        Ok(())
+    }
+
+    /// Push one audio frame buffer. Mirror of
+    /// `tst_pipeline::MuxSender::send_audio`.
+    ///
+    /// See [`Self::push_video`] for the drain + broadcast contract and
+    /// error mapping.
+    pub fn push_audio(
+        &self,
+        frames: &[u8],
+        pts: tst_core::mpegts::common::Pts90khz,
+    ) -> Result<(), crate::error::MountError> {
+        let mut muxer = self
+            .state
+            .muxer
+            .lock()
+            .map_err(|_| crate::error::MountError::Closed)?;
+        muxer.push_audio(frames, pts)?;
+        drain_and_broadcast(&mut muxer, &self.state);
+        Ok(())
+    }
+
+    /// Push one subtitle payload. Mirror of
+    /// `tst_pipeline::MuxSender::send_subtitle`.
+    ///
+    /// Note: argument order is `(payload, pts)` for parity with the other
+    /// `push_*` methods on this type — the underlying
+    /// `Muxer::push_subtitle(pts, payload)` swaps them. See
+    /// [`Self::push_video`] for the drain + broadcast contract.
+    pub fn push_subtitle(
+        &self,
+        payload: &[u8],
+        pts: tst_core::mpegts::common::Pts90khz,
+    ) -> Result<(), crate::error::MountError> {
+        let mut muxer = self
+            .state
+            .muxer
+            .lock()
+            .map_err(|_| crate::error::MountError::Closed)?;
+        muxer.push_subtitle(pts, payload)?;
+        drain_and_broadcast(&mut muxer, &self.state);
+        Ok(())
+    }
+
+    // ── Multi-stream / multi-program variants ────────────────────────────
+    //
+    // Use these when the mount's `MuxerConfig` declares more than one
+    // stream of a given kind. The single-stream `push_*` methods above
+    // return `MuxError::AmbiguousTarget` in that case. Obtain a handle
+    // from the matching `*_handles()` accessor below.
+
+    /// Push to a specific video stream handle. Mirror of
+    /// `MuxSender::send_video_to`.
+    pub fn push_video_to(
+        &self,
+        handle: tst_core::mpegts::mux::VideoStreamHandle,
+        nal: &[u8],
+        pts: tst_core::mpegts::common::Pts90khz,
+        key_frame: bool,
+    ) -> Result<(), crate::error::MountError> {
+        let mut muxer = self
+            .state
+            .muxer
+            .lock()
+            .map_err(|_| crate::error::MountError::Closed)?;
+        muxer.push_video_to(handle, nal, pts, key_frame)?;
+        drain_and_broadcast(&mut muxer, &self.state);
+        Ok(())
+    }
+
+    /// Push to a specific KLV stream handle. Mirror of
+    /// `MuxSender::send_klv_to`.
+    pub fn push_klv_to(
+        &self,
+        handle: tst_core::mpegts::mux::KlvStreamHandle,
+        klv: &[u8],
+        pts: tst_core::mpegts::common::Pts90khz,
+        metadata_service_id: u8,
+    ) -> Result<(), crate::error::MountError> {
+        let mut muxer = self
+            .state
+            .muxer
+            .lock()
+            .map_err(|_| crate::error::MountError::Closed)?;
+        muxer.push_klv_to(handle, klv, pts, metadata_service_id)?;
+        drain_and_broadcast(&mut muxer, &self.state);
+        Ok(())
+    }
+
+    /// Push to a specific audio stream handle. Mirror of
+    /// `MuxSender::send_audio_to`.
+    ///
+    /// Argument order is `(handle, frames, pts)` for parity with the
+    /// other `push_*_to` methods; the underlying
+    /// `Muxer::push_audio_to(handle, pts, frames)` swaps the last two.
+    pub fn push_audio_to(
+        &self,
+        handle: tst_core::mpegts::mux::AudioStreamHandle,
+        frames: &[u8],
+        pts: tst_core::mpegts::common::Pts90khz,
+    ) -> Result<(), crate::error::MountError> {
+        let mut muxer = self
+            .state
+            .muxer
+            .lock()
+            .map_err(|_| crate::error::MountError::Closed)?;
+        muxer.push_audio_to(handle, pts, frames)?;
+        drain_and_broadcast(&mut muxer, &self.state);
+        Ok(())
+    }
+
+    /// Push to a specific subtitle stream handle. Mirror of
+    /// `MuxSender::send_subtitle_to`.
+    ///
+    /// Argument order is `(handle, payload, pts)` for parity with the
+    /// other `push_*_to` methods; the underlying
+    /// `Muxer::push_subtitle_to(handle, pts, payload)` swaps the last
+    /// two.
+    pub fn push_subtitle_to(
+        &self,
+        handle: tst_core::mpegts::mux::SubtitleStreamHandle,
+        payload: &[u8],
+        pts: tst_core::mpegts::common::Pts90khz,
+    ) -> Result<(), crate::error::MountError> {
+        let mut muxer = self
+            .state
+            .muxer
+            .lock()
+            .map_err(|_| crate::error::MountError::Closed)?;
+        muxer.push_subtitle_to(handle, pts, payload)?;
+        drain_and_broadcast(&mut muxer, &self.state);
+        Ok(())
+    }
+
+    // ── Stream-handle accessors ──────────────────────────────────────────
+    //
+    // Mirror `MuxSender::*_handles`. Each returns the declared handles in
+    // `(program, within-program)` order. A poisoned mutex returns an
+    // empty Vec (consistent with the "mount-closed" interpretation used
+    // by `stats()`).
+
+    /// List the configured video stream handles.
+    pub fn video_handles(&self) -> Vec<tst_core::mpegts::mux::VideoStreamHandle> {
+        match self.state.muxer.lock() {
+            Ok(m) => m.video_handles(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// List the configured KLV stream handles.
+    pub fn klv_handles(&self) -> Vec<tst_core::mpegts::mux::KlvStreamHandle> {
+        match self.state.muxer.lock() {
+            Ok(m) => m.klv_handles(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// List the configured audio stream handles.
+    pub fn audio_handles(&self) -> Vec<tst_core::mpegts::mux::AudioStreamHandle> {
+        match self.state.muxer.lock() {
+            Ok(m) => m.audio_handles(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// List the configured subtitle stream handles.
+    pub fn subtitle_handles(&self) -> Vec<tst_core::mpegts::mux::SubtitleStreamHandle> {
+        match self.state.muxer.lock() {
+            Ok(m) => m.subtitle_handles(),
+            Err(_) => Vec::new(),
+        }
+    }
+}
+
+/// Default RTP MPEG-TS payload size (7 × 188-byte TS packets). Matches
+/// the Phase 1 sender default.
+const RTP_PAYLOAD_SIZE: usize = 1316;
+
+/// Drain TS bytes from the locked muxer via `Muxer::pull` and broadcast
+/// each non-empty chunk through the mount's fanout channel.
+///
+/// `Muxer::pull(buf)` already chunks at the buffer's size (rounded down
+/// to a 188-byte multiple); sizing `buf` at exactly `RTP_PAYLOAD_SIZE`
+/// (= 7 × 188) means each broadcast is a single RTP payload boundary.
+///
+/// `broadcast::Sender::send` returns `Err` when there are no
+/// subscribers — silently dropped here (pre-PLAY mounts work; the
+/// muxer still consumed the bytes).
+fn drain_and_broadcast(
+    muxer: &mut std::sync::MutexGuard<'_, tst_core::mpegts::mux::Muxer>,
+    state: &MountState,
+) {
+    let mut buf = [0u8; RTP_PAYLOAD_SIZE];
+    let mut bytes_total: u64 = 0;
+    let mut packets_total: u64 = 0;
+    loop {
+        let n = muxer.pull(&mut buf);
+        if n == 0 {
+            break;
+        }
+        bytes_total = bytes_total.saturating_add(n as u64);
+        packets_total = packets_total.saturating_add(1);
+        // No subscribers → Err, suppressed.
+        let _ = state.fanout.send(Bytes::copy_from_slice(&buf[..n]));
+    }
+    if bytes_total != 0 {
+        if let Ok(mut s) = state.stats.lock() {
+            s.bytes_pushed = s.bytes_pushed.saturating_add(bytes_total);
+            s.packets_pushed = s.packets_pushed.saturating_add(packets_total);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -236,5 +520,69 @@ mod tests {
         let state = mock_unicast_mount_state();
         let handle = MountHandle { state };
         assert!(matches!(handle.mount_kind(), MountKind::Unicast));
+    }
+
+    // ── push_* surface (Task 15) ──────────────────────────────────────────
+    //
+    // Annex-B IDR with NAL type 5: `0x00 0x00 0x00 0x01 0x65 0xBB`. The
+    // muxer's first pull on a fresh stream emits PAT + PMT + video TS
+    // packets, so a single push reliably produces drained TS bytes.
+
+    use tst_core::mpegts::common::Pts90khz;
+
+    #[test]
+    fn push_video_without_subscribers_succeeds() {
+        // Pre-PLAY: no broadcast subscribers. The muxer still accepts
+        // the push; the drain happens normally and broadcast::send
+        // returns Err which we suppress.
+        let state = mock_unicast_mount_state();
+        let handle = MountHandle { state };
+        let nal = [0x00u8, 0x00, 0x00, 0x01, 0x65, 0xBB];
+        handle
+            .push_video(&nal, Pts90khz::new(0), true)
+            .expect("push succeeds even with no peers");
+    }
+
+    #[test]
+    fn push_video_updates_stats() {
+        let state = mock_unicast_mount_state();
+        let handle = MountHandle { state };
+        let nal = [0x00u8, 0x00, 0x00, 0x01, 0x65, 0xBB];
+        let initial = handle.stats();
+        handle.push_video(&nal, Pts90khz::new(0), true).unwrap();
+        let after = handle.stats();
+        assert!(
+            after.bytes_pushed > initial.bytes_pushed,
+            "bytes_pushed should grow after a push (got {} -> {})",
+            initial.bytes_pushed,
+            after.bytes_pushed,
+        );
+        assert!(
+            after.packets_pushed > initial.packets_pushed,
+            "packets_pushed should grow after a push",
+        );
+    }
+
+    #[test]
+    fn push_video_with_subscriber_delivers_to_broadcast() {
+        let state = mock_unicast_mount_state();
+        let mut rx = state.fanout.subscribe();
+        let handle = MountHandle { state };
+        let nal = [0x00u8, 0x00, 0x00, 0x01, 0x65, 0xBB];
+        handle.push_video(&nal, Pts90khz::new(0), true).unwrap();
+        // At least one chunk should arrive (PAT/PMT plus video PES).
+        let payload = rx.try_recv().expect("broadcast received chunk");
+        assert!(!payload.is_empty());
+        // Each chunk is a multiple of 188 bytes and <= 1316.
+        assert_eq!(payload.len() % 188, 0);
+        assert!(payload.len() <= RTP_PAYLOAD_SIZE);
+    }
+
+    #[test]
+    fn video_handles_returns_one_entry_for_one_program() {
+        let state = mock_unicast_mount_state();
+        let handle = MountHandle { state };
+        let handles = handle.video_handles();
+        assert_eq!(handles.len(), 1);
     }
 }

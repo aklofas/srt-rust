@@ -170,14 +170,20 @@ impl std::fmt::Debug for RtspServer {
 
 /// Random 32-bit SSRC seed for multicast mounts. Uses `getrandom`;
 /// falls back to zero on the (impossible-in-practice) error path.
-fn rand_ssrc() -> u32 {
+///
+/// `pub(crate)` so that Wave D Task 17's `handle_play` can seed a fresh
+/// per-peer SSRC for each unicast subscriber.
+pub(crate) fn rand_ssrc() -> u32 {
     let mut buf = [0u8; 4];
     let _ = getrandom::getrandom(&mut buf);
     u32::from_be_bytes(buf)
 }
 
 /// Random initial RTP sequence per RFC 3550 §5.1.
-fn rand_seq() -> u16 {
+///
+/// `pub(crate)` so that Wave D Task 17's `handle_play` can seed a fresh
+/// per-peer initial sequence number for each unicast subscriber.
+pub(crate) fn rand_seq() -> u16 {
     let mut buf = [0u8; 2];
     let _ = getrandom::getrandom(&mut buf);
     u16::from_be_bytes(buf)

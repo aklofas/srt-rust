@@ -1,0 +1,134 @@
+//! `RtspClient::setup` (explicit media) + `setup_mp2t_auto` (picks the
+//! unique PT=33 m-line). Implements UDP-first attempt with 461 →
+//! TCP-interleaved auto-fallback per RFC 7826 §17.4.6.
+
+use std::io::Write;
+
+use crate::error::RtspError;
+use crate::rtsp::client::RtspClient;
+use crate::rtsp::client::session::RtspSession;
+use crate::rtsp::client::transport_negotiation::{
+    RtspTransportKind, bind_udp_pair, build_transport_request, parse_transport_response,
+};
+use crate::rtsp::message::{RtspMethod, RtspRequest};
+use crate::sdp::pick::pick_mp2t;
+use crate::sdp::{Sdp, SdpMedia};
+use crate::url::RtspTransportPref;
+
+impl RtspClient {
+    /// Setup the unique MP2T (PT=33) media line in `sdp`.
+    ///
+    /// # Errors
+    ///
+    /// - [`RtspError::NoMp2tMedia`] / [`RtspError::MultipleMp2tMedia`] if
+    ///   the SDP does not contain exactly one PT=33 m-line.
+    /// - Any error from [`Self::setup`].
+    pub fn setup_mp2t_auto(&mut self, sdp: &Sdp) -> Result<RtspSession, RtspError> {
+        let media = pick_mp2t(sdp)?;
+        self.setup(media)
+    }
+
+    /// Setup an explicit SDP media line.
+    ///
+    /// Tries UDP first when the URL's transport preference is `PreferUdp`
+    /// or `ForceUdp`, falling back to TCP-interleaved on a 461 response
+    /// only when the preference is `PreferUdp`. Any other 4xx/5xx
+    /// surfaces immediately as [`RtspError::Protocol`].
+    ///
+    /// # Errors
+    ///
+    /// - [`RtspError::Io`] on socket-level failure.
+    /// - [`RtspError::Protocol`] on non-200 server response (after
+    ///   exhausting auto-fallback).
+    /// - [`RtspError::BadResponse`] on malformed SETUP response (missing
+    ///   `Transport:` or `Session:` headers).
+    pub fn setup(&mut self, media: &SdpMedia) -> Result<RtspSession, RtspError> {
+        let pref = self.url.transport_preference;
+        // Use control URL from media's a=control: attribute if present;
+        // otherwise fall back to URL-with-path.
+        let setup_uri = match &media.control {
+            Some(c) if c.starts_with("rtsp://") || c.starts_with("rtsps://") => c.clone(),
+            Some(c) => format!(
+                "{}/{}",
+                self.url.render_no_credentials().trim_end_matches('/'),
+                c.trim_start_matches('/')
+            ),
+            None => self.url.render_no_credentials(),
+        };
+
+        // First attempt
+        match self.attempt_setup(&setup_uri, pref) {
+            Ok(session) => Ok(session),
+            Err(RtspError::Protocol { code: 461, .. }) if pref == RtspTransportPref::PreferUdp => {
+                // Auto-fallback to TCP-interleaved
+                self.attempt_setup(&setup_uri, RtspTransportPref::ForceTcp)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn attempt_setup(
+        &mut self,
+        uri: &str,
+        pref: RtspTransportPref,
+    ) -> Result<RtspSession, RtspError> {
+        let cseq = self.bump_cseq();
+        // For UDP we need a local port pair before SETUP.
+        let local_udp = if matches!(
+            pref,
+            RtspTransportPref::PreferUdp | RtspTransportPref::ForceUdp
+        ) {
+            let (rtp, rtcp, port) = bind_udp_pair(5004)?;
+            Some((rtp, rtcp, port))
+        } else {
+            None
+        };
+        let local_port = local_udp.as_ref().map(|(_, _, p)| *p).unwrap_or(0);
+        let transport_hdr = build_transport_request(pref, local_port);
+        let req = RtspRequest::new(RtspMethod::Setup, uri.to_string(), self.url.rtsp_version)
+            .header("cseq", cseq.to_string())
+            .header("transport", transport_hdr)
+            .header("user-agent", "tst-rtp/0.1");
+        let bytes = req.encode();
+        self.stream
+            .write_all(&bytes)
+            .map_err(|e| RtspError::Io(e.kind()))?;
+        let resp = self.read_response()?;
+        if resp.status != 200 {
+            return Err(RtspError::Protocol {
+                code: resp.status,
+                reason: resp.reason,
+            });
+        }
+        // Server-rewritten Transport: tells us what was actually negotiated.
+        let server_transport = resp
+            .headers
+            .get("transport")
+            .ok_or(RtspError::BadResponse {
+                detail: "SETUP 200 missing Transport: header",
+            })?;
+        let transport = parse_transport_response(server_transport)?;
+        let sid = resp
+            .session_id()
+            .ok_or(RtspError::BadResponse {
+                detail: "SETUP 200 missing Session: header",
+            })?
+            .to_string();
+        if let Some(t) = resp.session_timeout_secs() {
+            self.session_timeout = std::time::Duration::from_secs(t);
+        }
+        self.session_id = Some(sid.clone());
+
+        // Construct RtspSession with the negotiated transport.
+        let session = match transport.kind {
+            RtspTransportKind::Udp => {
+                let (rtp, rtcp, _port) = local_udp.ok_or(RtspError::BadResponse {
+                    detail: "server replied UDP but we sent TCP-interleaved",
+                })?;
+                RtspSession::new_udp(sid, rtp, rtcp, transport, self.peer)
+            }
+            RtspTransportKind::TcpInterleaved => RtspSession::new_interleaved(sid, transport),
+        };
+        Ok(session)
+    }
+}

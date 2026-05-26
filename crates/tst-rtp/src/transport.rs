@@ -665,6 +665,52 @@ impl RtpRecvTransport {
         })
     }
 
+    /// Build an `RtpRecvTransport` from an already-bound UDP socket.
+    ///
+    /// Used by [`crate::rtsp::client::session::RtspSession::into_recv_transport`]
+    /// to wrap the UDP socket pair the RTSP SETUP exchange allocated,
+    /// without re-binding via [`Self::listen`]. RTCP is not started here
+    /// — the RTSP control plane drives RR/SR via a different path in the
+    /// SETUP-direct flow.
+    ///
+    /// The caller is responsible for any platform-specific setup
+    /// (multicast joins, TTL, etc.) before passing the socket in. This
+    /// constructor only sets the cancel-poll read timeout to match the
+    /// rest of the recv-side machinery.
+    pub(crate) fn from_udp_socket(socket: UdpSocket) -> Result<Self, ConnectError> {
+        socket
+            .set_read_timeout(Some(CANCEL_POLL_INTERVAL))
+            .map_err(ConnectError::Io)?;
+        let pkt_size = crate::url::DEFAULT_PKT_SIZE;
+        let ssrc = random_u32();
+        Ok(Self {
+            socket: Some(socket),
+            max_payload: pkt_size,
+            cancel: RtpCancelHandle::new(),
+            bytes_received: 0,
+            packets_received: 0,
+            malformed_packets: 0,
+            scratch: vec![0u8; pkt_size],
+            rtcp_socket: None,
+            rtcp_stats: Arc::new(Mutex::new(RtcpStats::default())),
+            rtcp_reporter: None,
+            ssrc,
+        })
+    }
+
+    /// Placeholder constructor for the TCP-interleaved transport bridge.
+    ///
+    /// Returned by [`crate::rtsp::client::session::RtspSession::into_recv_transport`]
+    /// when SETUP negotiated TCP-interleaved transport. The actual mpsc
+    /// queue + InterleavedReader pump are wired up in Wave D Task 17 of
+    /// the Phase 2 plan; until then this constructor is a no-op stub.
+    // TODO(task-17): finalize bridge — swap the inner Source enum's
+    // discriminant to feed from an mpsc::Receiver<Bytes> driven by the
+    // RtspClient's background InterleavedReader thread.
+    pub(crate) fn from_mpsc_placeholder() -> Self {
+        todo!("placeholder; Task 17 finalizes the mpsc bridge")
+    }
+
     /// RTP-protocol-level stats — separate from [`SocketStats`].
     pub fn rtp_stats(&self) -> RtpStats {
         RtpStats {

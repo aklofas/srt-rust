@@ -299,6 +299,16 @@ ALLOWLIST=(
     "tst_rtsp_session_teardown_and_free"
     "tst_rtsp_session_cancel"
     "tst_rtsp_session_into_demux_receiver"
+
+    # --- Phase 4 RTSP server entry points (Tasks 7-8, Wave B) ---
+    #     TstRtspServer wraps tst_rtp::RtspServer + RtspServerCancelHandle.
+    #     TstRtspMountHandle wraps tst_rtp::MountHandle.
+    #     Task 7 (T7, parallel) owns builder_new + setter chain.
+    #     Task 8 (T8) owns builder_start + add_*_mount + mount_handle_free.
+    "tst_rtsp_server_builder_start"
+    "tst_rtsp_server_add_unicast_mount"
+    "tst_rtsp_server_add_multicast_mount"
+    "tst_rtsp_mount_handle_free"
 )
 
 # Step 1: enumerate C exports

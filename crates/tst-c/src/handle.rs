@@ -197,6 +197,137 @@ impl TstRtspClientBuilder {
 }
 
 // ---------------------------------------------------------------------------
+// RTSP server builder opaque handle (rtp feature)
+// ---------------------------------------------------------------------------
+
+/// Configuration accumulator for the RTSP server.
+///
+/// Allocated by `tst_rtsp_server_builder_new` (Task 7) and consumed by
+/// `tst_rtsp_server_builder_start` (Task 8). Fields mirror
+/// [`tst_rtp::RtspServerBuilder`] setters so C callers can configure the
+/// server incrementally before calling `_start`.
+///
+/// # T7 dependency note
+///
+/// This struct is defined here as a placeholder to unblock T8's
+/// `tst_rtsp_server_builder_start` implementation. T7 (Wave B, running in
+/// parallel) owns the `tst_rtsp_server_builder_new` + setter entry points and
+/// may extend this struct. The wave-merge reconciliation resolves any
+/// duplication.
+///
+/// At minimum `bind_url` is required — the `_start` path calls
+/// `RtspServerBuilder::new(&bind_url)?.build()` to construct the Rust
+/// `RtspServer`. All optional fields default to the `RtspServerBuilder`
+/// defaults (see tst-rtp docs for per-field meanings).
+// `dead_code` allowed: all fields are set by T7's builder setters and read
+// by T8's `build_server`. The methods below (`from_url`, `into_raw`,
+// `from_raw`) are used by T8's start.rs and by tests; `dead_code` is
+// suppressed while T7's entry points are not yet in the same compilation
+// unit.
+#[cfg(feature = "rtp")]
+#[allow(dead_code)]
+pub struct TstRtspServerBuilder {
+    /// Bind URL in `rtsp://host:port` form. Required; set by `_new`.
+    pub(crate) bind_url: String,
+    /// Optional Basic auth realm (set by T7's `_auth_basic`).
+    pub(crate) auth_realm: Option<String>,
+    /// Optional auth username.
+    pub(crate) auth_username: Option<String>,
+    /// Optional auth password (plain text; wrapped at build time).
+    pub(crate) auth_password: Option<String>,
+    /// Optional auth scheme: 0 = Basic, 1 = DigestMd5, 2 = DigestSha256.
+    pub(crate) auth_scheme: Option<u32>,
+    /// Optional max concurrent sessions cap.
+    pub(crate) max_sessions: Option<usize>,
+    /// Optional fanout broadcast channel capacity (frames).
+    pub(crate) fanout_capacity: Option<usize>,
+    /// Optional graceful-shutdown drain window in milliseconds.
+    pub(crate) graceful_shutdown_drain_ms: Option<u64>,
+    /// Optional session timeout in seconds.
+    pub(crate) session_timeout_secs: Option<u64>,
+}
+
+#[cfg(feature = "rtp")]
+#[allow(dead_code)]
+impl TstRtspServerBuilder {
+    /// Construct a new builder from the bind URL string.
+    pub(crate) fn from_url(bind_url: impl Into<String>) -> Self {
+        Self {
+            bind_url: bind_url.into(),
+            auth_realm: None,
+            auth_username: None,
+            auth_password: None,
+            auth_scheme: None,
+            max_sessions: None,
+            fanout_capacity: None,
+            graceful_shutdown_drain_ms: None,
+            session_timeout_secs: None,
+        }
+    }
+
+    /// Leak the `Box` and return a raw pointer suitable for FFI.
+    pub(crate) fn into_raw(b: Box<Self>) -> *mut Self {
+        Box::into_raw(b)
+    }
+
+    /// Reconstruct the `Box` from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure `p` was returned by `into_raw` and has not
+    /// yet been freed or consumed.
+    pub(crate) unsafe fn from_raw(p: *mut Self) -> Box<Self> {
+        // SAFETY: forwarded from caller.
+        unsafe { Box::from_raw(p) }
+    }
+
+    /// Build an `RtspServerBuilder` and call `.build()` to get an
+    /// `RtspServer`. Applies all optional fields as overrides on top of the
+    /// Rust builder's defaults.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(String)` with a user-facing diagnostic if the URL parse
+    /// fails or any `RtspServerBuilder` validation fails.
+    pub(crate) fn build_server(self) -> Result<tst_rtp::RtspServer, tst_rtp::RtspServerError> {
+        use std::time::Duration;
+        let mut b = tst_rtp::RtspServerBuilder::new(&self.bind_url)?;
+        if let (Some(scheme), Some(realm), Some(user), Some(pass)) = (
+            self.auth_scheme,
+            self.auth_realm.as_deref(),
+            self.auth_username.as_deref(),
+            self.auth_password,
+        ) {
+            let secret = secrecy::SecretString::new(pass.into());
+            match scheme {
+                0 => {
+                    b.auth_basic(realm, user, secret);
+                }
+                1 => {
+                    b.auth_digest_md5(realm, user, secret);
+                }
+                _ => {
+                    b.auth_digest_sha256(realm, user, secret);
+                }
+            }
+        }
+        if let Some(n) = self.max_sessions {
+            b.max_sessions(n);
+        }
+        if let Some(n) = self.fanout_capacity {
+            b.fanout_capacity(n);
+        }
+        if let Some(ms) = self.graceful_shutdown_drain_ms {
+            b.graceful_shutdown_drain(Duration::from_millis(ms));
+        }
+        if let Some(secs) = self.session_timeout_secs {
+            b.session_timeout(Duration::from_secs(secs));
+        }
+        b.build()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Stream handle types (multi-stream `mpegts::mux` fan-out)
 // ---------------------------------------------------------------------------
 

@@ -14,6 +14,7 @@ crate-type = ["rlib"]
 [dependencies]
 tst-core   = { path = "../tst-core" }
 thiserror  = { workspace = true }
+base64     = { version = "0.22", default-features = false, features = ["std"] }
 bytes      = "1"
 # Random SSRC + initial RTP sequence number per RFC 3550 §5.1.
 # getrandom is the minimal dep — sized for one-shot construction-time use.

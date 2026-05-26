@@ -19,10 +19,14 @@ pub mod transport_negotiation;
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use bytes::Bytes;
+
 use crate::error::RtspError;
+use crate::rtsp::client::interleaved_pump::PumpStats;
 use crate::url::{RtspScheme, RtspUrl, RtspVersion};
 
 /// The control-plane byte stream — plain TCP for `rtsp://`, or
@@ -126,6 +130,45 @@ pub struct RtspClient {
     /// JoinHandle for the rtsp-keepalive thread — joined in [`Drop`].
     /// `None` when keepalive is disabled or hasn't been spawned yet.
     pub(crate) keepalive_thread: Option<std::thread::JoinHandle<()>>,
+    /// Interleaved-pump state — `Some` after a successful TCP-interleaved
+    /// SETUP has activated the producer thread that drains the control
+    /// TCP into [`mpsc`] channels (data / rtcp / ctrl). When this is
+    /// `Some`, `send_and_read` writes the outbound request under the
+    /// stream mutex but reads the response from
+    /// [`InterleavedPumpState::ctrl_rx`] (matching by CSeq) — reading the
+    /// stream directly would race against the pump.
+    pub(crate) pump_state: Option<InterleavedPumpState>,
+}
+
+/// State the main thread keeps about the interleaved producer thread.
+///
+/// Owned by [`RtspClient`] (one pump per client, since one TCP control
+/// connection per client). The pump thread is reaped in `Drop`.
+#[derive(Debug)]
+pub(crate) struct InterleavedPumpState {
+    /// Pump-only cancel flag (separate from `RtspClient::cancel` so we
+    /// can stop the pump without stopping the rest of the client; in
+    /// practice they're flipped together at `Drop`).
+    pub(crate) cancel: Arc<AtomicBool>,
+    /// Receiver for RTSP responses parsed by the pump. The pump pushes
+    /// each `CRLFCRLF`+body-bounded RTSP response here; `send_and_read`
+    /// polls this matching by CSeq once pump mode is active.
+    pub(crate) ctrl_rx: mpsc::Receiver<Bytes>,
+    /// Pump-thread handle; joined in `Drop` after `cancel` is flipped.
+    pub(crate) thread: Option<std::thread::JoinHandle<()>>,
+    /// Tiny no-op rtcp-drain thread handle. The pump routes RTCP frames
+    /// into a channel; for Phase 3 the master spec defers TCP-interleaved
+    /// RTCP ingest (Phase 2 §"Deferred: TLS-side keepalive"), so we
+    /// spawn a drain that discards them. Joined in `Drop`.
+    //
+    // TODO(tst-rtp Phase 4+): route this into the existing RTCP
+    // receiver-side stats feed once the RTCP plumbing is TCP-aware.
+    pub(crate) rtcp_drain: Option<std::thread::JoinHandle<()>>,
+    /// Observable counters from the pump. Held here so a future
+    /// diagnostic accessor (e.g. `RtspClient::pump_stats()`) can read
+    /// them without racing the pump thread. Not yet exposed publicly.
+    #[allow(dead_code)]
+    pub(crate) stats: Arc<PumpStats>,
 }
 
 /// Cancel handle for the RTSP client. Covers the control plane; the
@@ -251,6 +294,7 @@ impl RtspClient {
             session_dead: None,
             session_id_shared: None,
             keepalive_thread: None,
+            pump_state: None,
         })
     }
 
@@ -310,6 +354,79 @@ impl RtspClient {
         self.keepalive_thread = Some(handle);
     }
 
+    /// Spawn the interleaved producer thread (TCP-interleaved transport).
+    ///
+    /// Called from SETUP after a successful TCP-interleaved negotiation
+    /// (see [`crate::rtsp::client::setup`]). The pump owns reads from
+    /// the control TCP from this point on: it parses `$<ch><len><data>`
+    /// frames, routes RTP payloads to `data_rx` (the channel returned
+    /// here, which the session hands to `RtpRecvTransport`), routes
+    /// RTCP payloads to a tiny drain thread (TODO: Phase 4+ TCP-aware
+    /// RTCP ingest), and routes RTSP responses to
+    /// `InterleavedPumpState::ctrl_rx` so subsequent
+    /// [`Self::send_and_read`] calls can match by CSeq.
+    ///
+    /// Idempotent in the sense that calling it twice produces a fresh
+    /// pump and drops the previous one (the previous pump's `cancel`
+    /// flips, its `data_rx` becomes unfed and the receiver-transport
+    /// side will see `mpsc::RecvError`).
+    pub(crate) fn activate_interleaved_pump(
+        &mut self,
+        channels: interleaved_pump::InterleavedChannels,
+    ) -> mpsc::Receiver<Bytes> {
+        // Reap any prior pump (replacement semantics — should not
+        // happen in normal SETUP flow, but be defensive).
+        if let Some(prev) = self.pump_state.take() {
+            prev.cancel.store(true, Ordering::Relaxed);
+            if let Some(t) = prev.thread {
+                let _ = t.join();
+            }
+            if let Some(t) = prev.rtcp_drain {
+                let _ = t.join();
+            }
+        }
+
+        let (data_tx, data_rx) = mpsc::channel::<Bytes>();
+        let (rtcp_tx, rtcp_rx) = mpsc::channel::<Bytes>();
+        let (ctrl_tx, ctrl_rx) = mpsc::channel::<Bytes>();
+        let pump_cancel = Arc::new(AtomicBool::new(false));
+        let stats = Arc::new(interleaved_pump::PumpStats::default());
+
+        let reader = interleaved_pump::SharedStreamReader::new(self.stream.clone());
+        let thread = interleaved_pump::spawn_client_pump(
+            reader,
+            data_tx,
+            rtcp_tx,
+            ctrl_tx,
+            channels,
+            pump_cancel.clone(),
+            stats.clone(),
+        );
+
+        // RTCP drain thread — TODO: route to RTCP receiver-side stats.
+        // The master spec defers TCP-interleaved RTCP ingest; for now
+        // we discard so the channel doesn't fill and the pump's send
+        // never errors.
+        let rtcp_drain = std::thread::Builder::new()
+            .name("rtsp-rtcp-drain".to_string())
+            .spawn(move || {
+                while rtcp_rx.recv().is_ok() {
+                    // discard
+                }
+            })
+            .expect("failed to spawn rtsp-rtcp-drain thread");
+
+        self.pump_state = Some(InterleavedPumpState {
+            cancel: pump_cancel,
+            ctrl_rx,
+            thread: Some(thread),
+            rtcp_drain: Some(rtcp_drain),
+            stats,
+        });
+
+        data_rx
+    }
+
     /// Returns false if the background keepalive thread has flipped the
     /// session-dead flag (a control-TCP write failed). Returns true when
     /// keepalive hasn't been started or hasn't observed a failure.
@@ -323,17 +440,32 @@ impl RtspClient {
 
 impl Drop for RtspClient {
     fn drop(&mut self) {
-        // Best-effort TEARDOWN if a session is still active.
+        // Best-effort TEARDOWN if a session is still active. Done BEFORE
+        // flipping cancel/pump-cancel so `send_and_read` (used by
+        // teardown) still works.
         if self.session_id.is_some() {
             let _ = self.teardown();
         }
-        // Flip cancel so the keepalive thread breaks out of its
-        // 200 ms-wake loop at the next poll. Then take + join the
-        // handle so the thread is reaped before the TcpStream FD it
-        // holds is closed by the main thread's `Drop`.
+        // Flip cancel so the keepalive + pump threads break out of their
+        // wake loops at the next poll. Then take + join the handles so
+        // the threads are reaped before the TcpStream FD they hold is
+        // closed by the main thread's `Drop`.
         self.cancel.store(true, Ordering::Relaxed);
         if let Some(t) = self.keepalive_thread.take() {
             let _ = t.join();
+        }
+        if let Some(mut pump) = self.pump_state.take() {
+            pump.cancel.store(true, Ordering::Relaxed);
+            if let Some(t) = pump.thread.take() {
+                let _ = t.join();
+            }
+            // Drop the ctrl_rx so the rtcp drain (which holds no ref to
+            // it but observes via channel disconnect on the rtcp_tx
+            // side, owned by the pump thread that just exited) wakes
+            // on `recv()` returning Err and exits.
+            if let Some(t) = pump.rtcp_drain.take() {
+                let _ = t.join();
+            }
         }
     }
 }

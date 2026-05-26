@@ -20,17 +20,21 @@
 //!
 //! # Wire-up status
 //!
-//! This task ships only the `spawn_client_pump` primitive function +
-//! its unit tests. The actual wire-up into
-//! [`crate::rtsp::client::RtspClient::play`] (spawning the pump after
-//! PLAY succeeds, plumbing `data_tx` / `ctrl_rx` through
-//! `RtspSession::into_recv_transport`) is deferred to a Wave H
-//! follow-up. `RtpRecvTransport::from_mpsc_placeholder` still receives
-//! a never-fed channel from `RtspSession::into_recv_transport` until
-//! that wire-up lands.
+//! As of Phase 3 Wave H Task 4 (2026-05-26) the pump is wired into the
+//! TCP-interleaved SETUP path: `RtspClient::activate_interleaved_pump`
+//! (crate-private) spawns the pump as soon as a TCP-interleaved SETUP
+//! succeeds (so the pump is draining the wire before PLAY is sent), and
+//! [`RtspSession::into_recv_transport`](crate::rtsp::client::session::RtspSession::into_recv_transport)
+//! consumes the data-side `mpsc::Receiver<Bytes>` plumbed through
+//! `RtpRecvTransport::from_mpsc_placeholder` (crate-private). Once the
+//! pump is active, subsequent RTSP request/response exchanges
+//! (`RtspClient::send_and_read`, crate-private) write under the stream
+//! mutex but read the response from the pump's `ctrl_rx` (matched by
+//! CSeq), so reads don't race against the pump.
 
 use std::io::Read;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
@@ -38,10 +42,10 @@ use std::thread::JoinHandle;
 use bytes::Bytes;
 
 use crate::packet::RTP_HEADER_LEN;
+use crate::rtsp::client::Stream;
 
 /// Stats observable from outside the pump thread.
-#[derive(Default)]
-#[allow(dead_code)]
+#[derive(Debug, Default)]
 pub(crate) struct PumpStats {
     /// Count of complete RTSP responses (header + body) routed to
     /// `ctrl_tx`.
@@ -62,7 +66,6 @@ pub(crate) struct PumpStats {
 /// client requests `interleaved=N-M` in its Transport header; the server
 /// echoes or reassigns).
 #[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
 pub(crate) struct InterleavedChannels {
     /// Channel number for RTP data frames.
     pub(crate) rtp: u8,
@@ -92,7 +95,7 @@ pub(crate) struct InterleavedChannels {
 ///   [`std::io::ErrorKind::TimedOut`] / [`std::io::ErrorKind::WouldBlock`].
 /// - `data_tx.send()` errors (the receiver was dropped).
 /// - `reader.read()` returns a non-timeout error (logged at WARN).
-#[allow(dead_code, clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
     mut reader: R,
     data_tx: mpsc::Sender<Bytes>,
@@ -222,6 +225,45 @@ pub(crate) fn spawn_client_pump<R: Read + Send + 'static>(
             }
         })
         .expect("failed to spawn rtsp-interleaved-pump thread")
+}
+
+/// `Read` adapter that locks `Arc<Mutex<Stream>>` per call.
+///
+/// The pump runs in a background thread and shares the control TCP /
+/// TLS stream with the main thread (request writes) and the keepalive
+/// thread (OPTIONS writes). To avoid `try_clone` — which doesn't work
+/// for rustls `ClientConnection` — we lock the same `Arc<Mutex<Stream>>`
+/// once per `read()` call. Each call:
+///
+/// 1. Acquires the mutex.
+/// 2. Calls `Stream::read` (which has a ~100 ms underlying read timeout
+///    set by [`crate::rtsp::client::RtspClient::connect_with`]).
+/// 3. Releases the mutex.
+/// 4. Returns whatever the read returned (`Ok(n)`, `Ok(0)` for EOF, or
+///    `Err(WouldBlock|TimedOut)` for the timeout — the pump loops back).
+///
+/// Holding the mutex for at most ~100 ms per call is fine: RTSP is not
+/// pipelined, so the main thread only contends when it's actively
+/// sending/receiving a single request, and a 100 ms wait there is
+/// invisible compared to typical RTSP round-trip times.
+pub(crate) struct SharedStreamReader {
+    stream: Arc<Mutex<Stream>>,
+}
+
+impl SharedStreamReader {
+    pub(crate) fn new(stream: Arc<Mutex<Stream>>) -> Self {
+        Self { stream }
+    }
+}
+
+impl Read for SharedStreamReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut g = self
+            .stream
+            .lock()
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "stream mutex poisoned"))?;
+        g.read(buf)
+    }
 }
 
 #[cfg(test)]

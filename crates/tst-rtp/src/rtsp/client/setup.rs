@@ -122,7 +122,26 @@ impl RtspClient {
                 })?;
                 RtspSession::new_udp(sid, rtp, rtcp, transport, self.peer)
             }
-            RtspTransportKind::TcpInterleaved => RtspSession::new_interleaved(sid, transport),
+            RtspTransportKind::TcpInterleaved => {
+                // Spawn the interleaved producer thread NOW (before
+                // PLAY) so we don't miss the leading $-frames that the
+                // server may push immediately after its PLAY response.
+                // The pump also captures subsequent RTSP responses;
+                // `send_and_read` switches to ctrl_rx-polling mode once
+                // `self.pump_state` is `Some`.
+                //
+                // Channels: the SETUP request hard-codes `interleaved=0-1`
+                // in `build_transport_request`. The server may echo a
+                // different pair via `Transport: interleaved=N-M` — use
+                // the parsed response when present, else fall back to 0-1.
+                let (rtp_ch, rtcp_ch) = transport.interleaved.unwrap_or((0, 1));
+                let channels = crate::rtsp::client::interleaved_pump::InterleavedChannels {
+                    rtp: rtp_ch,
+                    rtcp: rtcp_ch,
+                };
+                let data_rx = self.activate_interleaved_pump(channels);
+                RtspSession::new_interleaved_with_data_rx(sid, transport, data_rx)
+            }
         };
         Ok(session)
     }

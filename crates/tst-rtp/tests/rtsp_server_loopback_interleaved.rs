@@ -1,13 +1,22 @@
-//! Phase 3 Wave H Task 1 — server-side TCP-interleaved loopback.
+//! Phase 3 Wave H — TCP-interleaved loopback test.
 //!
-//! After T1 the per-session TCP is split at `handle_connection_inner`
-//! and the write half is shared with the per-peer fanout task, so
-//! `handle_play` for the `TcpInterleaved` transport branch spawns the
-//! fanout instead of returning 200 with a `tracing::warn`. This file's
-//! test exercises the server-side control-plane (SETUP + PLAY both
-//! return 200 against a TCP-transport mount); the byte-level
-//! end-to-end assertion lives in `rtsp_client_interleaved_e2e.rs` and
-//! still depends on T4 (client-side pump wire-up).
+//! Both halves of the TCP-interleaved wire-up are now landed:
+//!
+//! - **T1 (server-side)** — `handle_connection_inner` splits the
+//!   per-session TCP and shares the `Arc<Mutex<OwnedWriteHalf>>` with
+//!   the per-peer fanout task; `handle_play` for `TcpInterleaved`
+//!   spawns the fanout instead of returning 200 with a
+//!   `tracing::warn`.
+//! - **T4 (client-side)** — `RtspClient::activate_interleaved_pump` is
+//!   called at SETUP, so subsequent `send_and_read` requests poll the
+//!   pump's `ctrl_rx` and binary `$`-framed RTP/RTCP demultiplex into
+//!   their own mpsc receivers.
+//!
+//! The control-plane test below exercises the handshake. A future test
+//! can push a TS payload through the mount and assert the
+//! byte-identical RTP-framed payload reaches the client; this file
+//! intentionally stays narrow on the handshake to keep the regression
+//! signal localized.
 
 use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
 use tst_rtp::{RtspClient, RtspServer};

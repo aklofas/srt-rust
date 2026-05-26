@@ -16,7 +16,7 @@ doctest    = false
 [features]
 default = ["srt", "rtp", "mbedtls"]
 srt     = ["dep:tst-srt"]
-rtp     = ["dep:tst-rtp"]
+rtp     = ["dep:tst-rtp", "dep:secrecy"]
 mbedtls = ["tst-srt?/mbedtls"]
 
 [dependencies]
@@ -26,6 +26,7 @@ tst-pipeline = { path = "../tst-pipeline" }
 tst-core     = { path = "../tst-core" }
 libc      = { workspace = true }
 thiserror = { workspace = true }
+secrecy   = { workspace = true, optional = true }
 
 [build-dependencies]
 cbindgen = { workspace = true }

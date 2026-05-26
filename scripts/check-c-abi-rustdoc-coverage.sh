@@ -288,6 +288,17 @@ ALLOWLIST=(
     "tst_rtp_demux_receiver_get_stream_codec_stats"
     "tst_rtp_demux_receiver_get_stream_stats"
     "tst_rtp_demux_receiver_reset_stats"
+
+    # --- Phase 4 RTSP session entry points (Task 6, Wave B) ---
+    #     TstRtspSession is the C-language projection of (RtspClient, RtspSession)
+    #     combined; into_demux_receiver bridges to the existing TstRtpDemuxReceiver.
+    #     No 1:1 Rust method counterpart in tst-pipeline / tst-srt / tst-core.
+    "tst_rtsp_client_builder_connect"
+    "tst_rtsp_session_play"
+    "tst_rtsp_session_pause"
+    "tst_rtsp_session_teardown_and_free"
+    "tst_rtsp_session_cancel"
+    "tst_rtsp_session_into_demux_receiver"
 )
 
 # Step 1: enumerate C exports

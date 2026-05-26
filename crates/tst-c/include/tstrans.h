@@ -826,6 +826,22 @@ typedef struct TstRtpSender TstRtpSender;
 typedef struct tst_rtsp_client_builder_t tst_rtsp_client_builder_t;
 #endif
 
+#if defined(TST_HAS_RTP)
+/**
+ * Opaque handle for a live RTSP client session.
+ *
+ * Obtained from [`tst_rtsp_client_builder_connect`].  Freed by either
+ * [`tst_rtsp_session_teardown_and_free`] (sends TEARDOWN first) or
+ * [`tst_rtsp_session_into_demux_receiver`] (consumes the data-plane
+ * transport into a new `TstRtpDemuxReceiver` handle).
+ *
+ * Call [`tst_rtsp_session_play`] after obtaining the session handle to
+ * begin the RTP data flow; the builder's `_connect` step only runs
+ * OPTIONS + DESCRIBE + SETUP, not PLAY.
+ */
+typedef struct TstRtspSession TstRtspSession;
+#endif
+
 #if defined(TST_HAS_SRT)
 typedef struct tst_sender_t tst_sender_t;
 #endif
@@ -1858,7 +1874,7 @@ extern "C" {
 #if defined(TST_HAS_RTP)
 #endif
 
-#if defined(TST_HAS_RTP)
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 #endif
 
 #if defined(TST_HAS_RTP)
@@ -1871,6 +1887,24 @@ extern "C" {
 #endif
 
 #if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 #endif
 
 #if defined(TST_HAS_SRT)
@@ -4213,6 +4247,42 @@ void tst_rtp_sender_close(struct TstRtpSender *p);
  * `_connect`.
  */
 void tst_rtsp_client_builder_free(struct tst_rtsp_client_builder_t *builder);
+/**
+ * Cancel any blocking RTSP I/O on the control channel.
+ *
+ * Sets the session's cancel flag so that any thread blocked inside a RTSP
+ * request/response cycle (e.g. a blocking DESCRIBE or PLAY) will break out
+ * at the next poll interval.  Safe to call from any thread. Idempotent.
+ *
+ * Note: cancels the RTSP *control plane* only. If
+ * [`tst_rtsp_session_into_demux_receiver`] has already been called, the
+ * RTP data plane is governed by `tst_rtp_demux_receiver_cancel`.
+ *
+ * Returns 0 on success, `TST_E_INVALID_CONFIG` if `session` is NULL.
+ *
+ * # Safety
+ *
+ * `session` must be NULL or a valid non-freed `*mut TstRtspSession`.
+ */
+int tst_rtsp_session_cancel(struct TstRtspSession *session);
+/**
+ * Send TEARDOWN and free the session handle.
+ *
+ * Sends an RTSP TEARDOWN request, then unconditionally drops the session
+ * and its `RtspClient` regardless of whether TEARDOWN succeeded (network
+ * errors at teardown time are recorded in last-error but do not prevent
+ * the handle from being freed).
+ *
+ * After this call the `session` pointer is invalid; any further use is
+ * undefined behavior. NULL is a no-op.
+ *
+ * # Safety
+ *
+ * `session` must be NULL, or a pointer returned by
+ * `tst_rtsp_client_builder_connect` that has not yet been freed or
+ * consumed by [`tst_rtsp_session_into_demux_receiver`].
+ */
+int tst_rtsp_session_teardown_and_free(struct TstRtspSession *session);
 
 // ─── OTHER ─────────────────────────────────────────────────
 
@@ -4842,6 +4912,35 @@ void tst_rtsp_client_builder_auth_digest_sha256(struct tst_rtsp_client_builder_t
                                                 const char *user,
                                                 const char *pass);
 /**
+ * Consume a builder and open a live RTSP session (OPTIONS → DESCRIBE → SETUP).
+ *
+ * Runs the full RTSP client-side connection sequence:
+ *
+ * 1. Reconstructs an `RtspClientBuilder` from fields stored by the
+ *    `tst_rtsp_client_builder_*` setters.
+ * 2. Calls `.connect()` to open the TCP control channel and spawn the
+ *    auto-keepalive thread (unless disabled via `tst_rtsp_client_builder_keepalive`).
+ * 3. Calls `describe()` to fetch the server's SDP.
+ * 4. Calls `setup_mp2t_auto(&sdp)` to select the first MPEG-TS media and
+ *    negotiate the transport (UDP or TCP-interleaved).
+ *
+ * **PLAY is NOT sent automatically.**  Call [`tst_rtsp_session_play`] after
+ * `_connect` to start the RTP data flow, then call
+ * [`tst_rtsp_session_into_demux_receiver`] to obtain a
+ * `tst_rtp_demux_receiver_t` for the event loop.
+ *
+ * On success the `builder` pointer is consumed (freed).  On failure the
+ * builder is also freed; check `tst_get_last_error()` / `tst_get_last_error_str()`.
+ *
+ * Returns a non-NULL `tst_rtsp_session_t*` on success, NULL on failure.
+ *
+ * # Safety
+ *
+ * `builder` must be a non-NULL pointer returned by
+ * `tst_rtsp_client_builder_new` that has not yet been freed or consumed.
+ */
+struct TstRtspSession *tst_rtsp_client_builder_connect(struct tst_rtsp_client_builder_t *builder);
+/**
  * Enable or disable the auto-keepalive background thread.
  *
  * When `enabled` is `true` (the default), the builder's connect call
@@ -4932,6 +5031,71 @@ void tst_rtsp_client_builder_tls_root_cert_pem(struct tst_rtsp_client_builder_t 
 
 void tst_rtsp_client_builder_transport_pref(struct tst_rtsp_client_builder_t *builder,
                                             uint32_t pref);
+/**
+ * Consume the session's data-plane transport and return a
+ * `tst_rtp_demux_receiver_t` ready for event iteration.
+ *
+ * This is the primary path for reading RTP data after
+ * `tst_rtsp_client_builder_connect` + `tst_rtsp_session_play`:
+ *
+ * 1. Locks the session's pair Mutex and moves out `(RtspClient, RtspSession)`.
+ * 2. Calls `RtspSession::into_recv_transport()` to get the `RtpRecvTransport`
+ *    (either a bound UDP socket or an mpsc channel fed by the TCP-interleaved
+ *    pump thread, depending on what SETUP negotiated).
+ * 3. Wraps the transport in a `DemuxReceiver` using the supplied `demux_cfg`
+ *    (or default options if NULL).
+ * 4. Returns a `*mut TstRtpDemuxReceiver` using the same opaque type as
+ *    `tst_rtp_demux_receiver_open`, so the caller can use the existing
+ *    `tst_rtp_demux_receiver_next_event` / `_cancel` / `_close` data-path
+ *    entry points unchanged.
+ *
+ * After this call the `session` handle is consumed (the inner pair is None).
+ * The RTSP control channel (`RtspClient`) is also dropped — if you need to
+ * send TEARDOWN before consuming the transport, call
+ * [`tst_rtsp_session_teardown_and_free`] instead.
+ *
+ * The returned `tst_rtp_demux_receiver_t` must eventually be freed with
+ * `tst_rtp_demux_receiver_close`.  Returns NULL on failure.
+ *
+ * # Safety
+ *
+ * - `session` must be a non-NULL, non-consumed pointer from
+ *   `tst_rtsp_client_builder_connect`.
+ * - `demux_cfg` may be NULL (default options) or a valid pointer from
+ *   `tst_demux_config_new`.
+ */
+
+struct TstRtpDemuxReceiver *tst_rtsp_session_into_demux_receiver(struct TstRtspSession *session,
+                                                                 const struct tst_demux_config_t *demux_cfg);
+/**
+ * Send an RTSP PAUSE request on the session.
+ *
+ * Suspends the RTP data flow without tearing down the session. The caller
+ * may resume by calling [`tst_rtsp_session_play`] again.
+ *
+ * Returns 0 on success, or a negative `TST_E_RTSP_*` code on failure.
+ *
+ * # Safety
+ *
+ * `session` must be a non-NULL, non-freed pointer returned by
+ * `tst_rtsp_client_builder_connect`.
+ */
+int tst_rtsp_session_pause(struct TstRtspSession *session);
+/**
+ * Send an RTSP PLAY request on the session.
+ *
+ * Must be called after [`tst_rtsp_client_builder_connect`] and before
+ * reading RTP data via [`tst_rtsp_session_into_demux_receiver`] +
+ * `tst_rtp_demux_receiver_next_event`.
+ *
+ * Returns 0 on success, or a negative `TST_E_RTSP_*` code on failure.
+ *
+ * # Safety
+ *
+ * `session` must be a non-NULL, non-freed pointer returned by
+ * `tst_rtsp_client_builder_connect`.
+ */
+int tst_rtsp_session_play(struct TstRtspSession *session);
 #endif
 
 #ifdef __cplusplus

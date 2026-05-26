@@ -39,6 +39,7 @@ pub use rtcp::reporter::{RTCP_BASE_INTERVAL, RtcpReporterHandle};
 pub use rtcp::stats::RtcpStats;
 pub use rtcp::{ReceiverReport, ReportBlock, RtcpPacketType, SdesPacket, SenderReport};
 pub use rtsp::auth::{AuthChallenge, DigestAlgorithm, DigestChallenge, DigestContext};
+pub use rtsp::client::{RtspCancelHandle, RtspClient};
 pub use rtsp::interleaved::{Frame, InterleavedReader, InterleavedWriter, MAX_BINARY_FRAME_LEN};
 pub use rtsp::message::{RtspMethod, RtspRequest, RtspResponse};
 pub use sdp::pick::pick_mp2t;

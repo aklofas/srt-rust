@@ -31,13 +31,17 @@ fn make_muxer_cfg() -> MuxerConfig {
 /// bridges the
 /// [`InterleavedReader`](tst_rtp::InterleavedReader)
 /// into that channel.
+// Phase 3 Wave H Task 4 (2026-05-26) wired the client-side pump in,
+// closing the deferral noted above. The server-side TCP-interleaved
+// fanout is still deferred (see `crates/tst-rtp/src/rtsp/server/
+// handlers.rs::handle_play` Wave-E note: "TCP-interleaved fanout
+// deferred to Wave E; PLAY returns 200 but RTP won't flow"). So this
+// test verifies the client-side wire-up: SETUP succeeds, the pump is
+// spawned + drains the wire, PLAY succeeds (server returns 200 OK),
+// `into_recv_transport` hands back an `RtpRecvTransport` whose source
+// is the pump's data channel. Byte-level round-trip assertions remain
+// `TODO` until server-side fanout lands.
 #[test]
-#[ignore = "client-side interleaved pump wire-up deferred to Wave H follow-up — \
-             spawn_client_pump primitive exists at \
-             crates/tst-rtp/src/rtsp/client/interleaved_pump.rs but \
-             RtspClient::play doesn't spawn it yet, and \
-             RtspSession::into_recv_transport hands the consumer a \
-             never-fed channel for TcpInterleaved"]
 fn tcp_interleaved_end_to_end_round_trips_ts_bytes() {
     let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
     let _mount = server.add_mount("/live", make_muxer_cfg()).unwrap();

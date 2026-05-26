@@ -202,24 +202,35 @@ impl RtspClient {
         Ok(retry)
     }
 
-    /// Write a serialized RTSP request, then read one complete response,
-    /// all under a single mutex acquisition on the stream. This makes
-    /// the request/response exchange atomic with respect to the
-    /// background keepalive thread (which shares the same
-    /// `Arc<Mutex<Stream>>` since T21).
+    /// Write a serialized RTSP request, then read one complete response.
     ///
-    /// The cancel flag is checked between read polls. The underlying
-    /// stream has a short read timeout (100 ms, set in
-    /// [`RtspClient::connect_with`]), so each `WouldBlock` / `TimedOut`
-    /// round-trip is a cancel-check opportunity.
+    /// Two read paths:
     ///
-    /// Holding the lock through the whole exchange means the keepalive
-    /// thread waits if a request is in flight — which is correct: RTSP
-    /// isn't pipelined, only one in-flight request at a time.
+    /// 1. **Pump inactive** (UDP transport or pre-SETUP): writes + reads
+    ///    happen under a single stream-mutex acquisition. The cancel
+    ///    flag is checked between read polls; the underlying stream has
+    ///    a short read timeout (100 ms, set in
+    ///    [`RtspClient::connect_with`]), so each
+    ///    `WouldBlock`/`TimedOut` round-trip is a cancel-check
+    ///    opportunity. Holding the lock through the whole exchange
+    ///    means the keepalive thread waits if a request is in flight —
+    ///    correct since RTSP isn't pipelined.
+    ///
+    /// 2. **Pump active** (TCP-interleaved post-SETUP): writes happen
+    ///    under the stream mutex (briefly, then released). The response
+    ///    is read from `pump_state.ctrl_rx` matched by CSeq, since the
+    ///    background pump thread owns reads in this mode (reading the
+    ///    stream directly here would race with the pump). Responses
+    ///    with CSeq >= 1_000_000 are silently discarded — those are
+    ///    keepalive-thread OPTIONS responses (see
+    ///    `keepalive::spawn`'s `cseq = 1_000_000u32` starting value).
     pub(crate) fn send_and_read(
         &mut self,
         request_bytes: &[u8],
     ) -> Result<RtspResponse, RtspError> {
+        if self.pump_state.is_some() {
+            return self.send_and_read_via_pump(request_bytes);
+        }
         let mut s = self.stream.lock().expect("stream mutex poisoned");
         s.write_all(request_bytes)
             .map_err(|e| RtspError::Io(e.kind()))?;
@@ -249,6 +260,73 @@ impl RtspClient {
             }
         }
     }
+
+    /// Pump-active variant of [`Self::send_and_read`]. Write under the
+    /// stream mutex (brief), then poll `ctrl_rx` matching by CSeq.
+    fn send_and_read_via_pump(&mut self, request_bytes: &[u8]) -> Result<RtspResponse, RtspError> {
+        // Parse the outbound request's CSeq so we can match it on the
+        // way back. Cheap — request_bytes is small.
+        let req_cseq = parse_cseq_from_request(request_bytes);
+        // Write under the mutex; release immediately.
+        {
+            let mut s = self.stream.lock().expect("stream mutex poisoned");
+            s.write_all(request_bytes)
+                .map_err(|e| RtspError::Io(e.kind()))?;
+        }
+        // Now poll ctrl_rx. Use a short timeout so we can re-check the
+        // cancel flag.
+        let pump = self
+            .pump_state
+            .as_ref()
+            .expect("pump_state is Some — checked by caller");
+        loop {
+            if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                return Err(RtspError::LocalCancel);
+            }
+            match pump
+                .ctrl_rx
+                .recv_timeout(std::time::Duration::from_millis(100))
+            {
+                Ok(msg_bytes) => {
+                    let (resp, _consumed) = match RtspResponse::parse(&msg_bytes) {
+                        Ok(p) => p,
+                        Err(_) => continue, // malformed; drop + keep polling
+                    };
+                    // Discard keepalive-thread responses (CSeq >= 1_000_000)
+                    // and any other response whose CSeq doesn't match
+                    // the request we just sent.
+                    match (req_cseq, resp.cseq()) {
+                        (Some(req), Some(got)) if req == got => return Ok(resp),
+                        _ => continue,
+                    }
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    // Pump exited (EOF or fatal read error).
+                    return Err(RtspError::Io(std::io::ErrorKind::UnexpectedEof));
+                }
+            }
+        }
+    }
+}
+
+/// Best-effort scan for the `CSeq:` header in a serialized request.
+/// Returns the parsed integer when found. Used only by the pump-active
+/// read path to match responses by CSeq.
+fn parse_cseq_from_request(bytes: &[u8]) -> Option<u32> {
+    // Only look at the header section (up to the first CRLFCRLF).
+    let end = bytes
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .unwrap_or(bytes.len());
+    let header_text = std::str::from_utf8(&bytes[..end]).ok()?;
+    for line in header_text.lines() {
+        let lower = line.to_ascii_lowercase();
+        if let Some(v) = lower.strip_prefix("cseq:") {
+            return v.trim().parse().ok();
+        }
+    }
+    None
 }
 
 #[cfg(test)]

@@ -606,7 +606,7 @@ pub fn tst_rtp::rtsp::client::session::RtspSession::session_id(&self) -> &str
 pub fn tst_rtp::rtsp::client::session::RtspSession::transport_kind(&self) -> tst_rtp::rtsp::client::transport_negotiation::RtspTransportKind
 impl core::marker::Freeze for tst_rtp::rtsp::client::session::RtspSession
 impl core::marker::Send for tst_rtp::rtsp::client::session::RtspSession
-impl core::marker::Sync for tst_rtp::rtsp::client::session::RtspSession
+impl !core::marker::Sync for tst_rtp::rtsp::client::session::RtspSession
 impl core::marker::Unpin for tst_rtp::rtsp::client::session::RtspSession
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::client::session::RtspSession
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::client::session::RtspSession
@@ -691,7 +691,7 @@ impl core::ops::drop::Drop for tst_rtp::rtsp::client::RtspClient
 pub fn tst_rtp::rtsp::client::RtspClient::drop(&mut self)
 impl !core::marker::Freeze for tst_rtp::rtsp::client::RtspClient
 impl core::marker::Send for tst_rtp::rtsp::client::RtspClient
-impl core::marker::Sync for tst_rtp::rtsp::client::RtspClient
+impl !core::marker::Sync for tst_rtp::rtsp::client::RtspClient
 impl core::marker::Unpin for tst_rtp::rtsp::client::RtspClient
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::client::RtspClient
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::client::RtspClient
@@ -2153,7 +2153,7 @@ impl core::ops::drop::Drop for tst_rtp::rtsp::client::RtspClient
 pub fn tst_rtp::rtsp::client::RtspClient::drop(&mut self)
 impl !core::marker::Freeze for tst_rtp::rtsp::client::RtspClient
 impl core::marker::Send for tst_rtp::rtsp::client::RtspClient
-impl core::marker::Sync for tst_rtp::rtsp::client::RtspClient
+impl !core::marker::Sync for tst_rtp::rtsp::client::RtspClient
 impl core::marker::Unpin for tst_rtp::rtsp::client::RtspClient
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::client::RtspClient
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::client::RtspClient
@@ -2288,7 +2288,7 @@ pub fn tst_rtp::rtsp::client::session::RtspSession::session_id(&self) -> &str
 pub fn tst_rtp::rtsp::client::session::RtspSession::transport_kind(&self) -> tst_rtp::rtsp::client::transport_negotiation::RtspTransportKind
 impl core::marker::Freeze for tst_rtp::rtsp::client::session::RtspSession
 impl core::marker::Send for tst_rtp::rtsp::client::session::RtspSession
-impl core::marker::Sync for tst_rtp::rtsp::client::session::RtspSession
+impl !core::marker::Sync for tst_rtp::rtsp::client::session::RtspSession
 impl core::marker::Unpin for tst_rtp::rtsp::client::session::RtspSession
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::client::session::RtspSession
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::client::session::RtspSession

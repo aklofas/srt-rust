@@ -2,20 +2,25 @@
 //! return value. Calling `into_recv_transport` converts it into a
 //! `RtpRecvTransport` ready for `DemuxReceiver::new`.
 //!
-//! Two internal variants: UDP-backed (uses an already-bound
-//! `UdpSocket` pair) and TCP-interleaved-backed (will be wired up to
-//! the InterleavedReader queue in Wave D Task 17 via the RtspClient's
-//! background thread).
+//! Two internal variants:
+//!
+//! - UDP-backed: holds the already-bound `UdpSocket` pair from SETUP.
+//! - TCP-interleaved-backed: holds the consumer side of the mpsc
+//!   channel fed by `RtspClient`'s pump thread (spawned in SETUP via
+//!   the crate-private `RtspClient::activate_interleaved_pump`).
 
 use std::net::{SocketAddr, UdpSocket};
+use std::sync::mpsc;
+
+use bytes::Bytes;
 
 use crate::rtsp::client::transport_negotiation::{RtspTransportKind, TransportResponse};
 use crate::transport::RtpRecvTransport;
 
 /// State held between SETUP and PLAY / TEARDOWN.
 //
-// `dead_code` allowed: `new_udp` / `new_interleaved` are constructed
-// by Task 13's SETUP code, which lands in parallel with this task.
+// `dead_code` allowed on legacy fields that the SETUP code path may not
+// touch on all flow combinations (peer_addr for TcpInterleaved, etc.).
 #[allow(dead_code)]
 pub struct RtspSession {
     pub(crate) session_id: String,
@@ -23,12 +28,11 @@ pub struct RtspSession {
     pub(crate) kind: RtspTransportKind,
     pub(crate) udp_sockets: Option<(UdpSocket, UdpSocket)>,
     pub(crate) peer_addr: Option<SocketAddr>,
+    /// For TcpInterleaved: consumer side of the pump's data channel.
+    /// `None` for UDP sessions.
+    pub(crate) data_rx: Option<mpsc::Receiver<Bytes>>,
 }
 
-// `dead_code` allowed: the `new_udp` / `new_interleaved` constructors
-// are called by Task 13's SETUP code, which lands in parallel with this
-// task. Once Wave C merges, those callers light up.
-#[allow(dead_code)]
 impl RtspSession {
     pub(crate) fn new_udp(
         sid: String,
@@ -43,16 +47,26 @@ impl RtspSession {
             transport,
             udp_sockets: Some((rtp, rtcp)),
             peer_addr: Some(peer),
+            data_rx: None,
         }
     }
 
-    pub(crate) fn new_interleaved(sid: String, transport: TransportResponse) -> Self {
+    /// Construct a TCP-interleaved session, carrying the pump's data
+    /// `mpsc::Receiver<Bytes>` so [`Self::into_recv_transport`] can hand
+    /// it to [`RtpRecvTransport::from_mpsc_placeholder`] for the
+    /// consumer side.
+    pub(crate) fn new_interleaved_with_data_rx(
+        sid: String,
+        transport: TransportResponse,
+        data_rx: mpsc::Receiver<Bytes>,
+    ) -> Self {
         Self {
             session_id: sid,
             kind: RtspTransportKind::TcpInterleaved,
             transport,
             udp_sockets: None,
             peer_addr: None,
+            data_rx: Some(data_rx),
         }
     }
 
@@ -82,11 +96,10 @@ impl RtspSession {
     /// For UDP: wraps the SETUP-allocated UDP socket pair into a
     /// pre-built `RtpRecvTransport` (avoiding a second `listen()` call).
     ///
-    /// For TCP-interleaved: returns an `RtpRecvTransport` whose
-    /// internal source is the `mpsc::Receiver<Bytes>` fed by the
-    /// `RtspClient`'s `InterleavedReader` background thread. The bridge
-    /// from InterleavedReader to this transport's queue is finalized in
-    /// Wave D Task 17 (Keepalive + InterleavedReader wiring).
+    /// For TCP-interleaved: returns an `RtpRecvTransport` fed by the
+    /// `mpsc::Receiver<Bytes>` populated by `RtspClient`'s
+    /// interleaved-pump thread (spawned at SETUP time by the
+    /// crate-private `RtspClient::activate_interleaved_pump`).
     pub fn into_recv_transport(self) -> RtpRecvTransport {
         match self.kind {
             RtspTransportKind::Udp => {
@@ -94,14 +107,9 @@ impl RtspSession {
                 RtpRecvTransport::from_udp_socket(rtp).expect("from_udp_socket")
             }
             RtspTransportKind::TcpInterleaved => {
-                // Task 17 wires the InterleavedReader bridge so the
-                // resulting transport feeds from an mpsc::Receiver<Bytes>
-                // populated by the RtspClient's background reader. The
-                // full producer-side spawn lands in a later wave; here
-                // we hand the consumer a never-fed channel so the
-                // transport compiles + behaves like an idle source
-                // (recv_timeout loops on cancel-flag polls).
-                let (_tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+                let rx = self
+                    .data_rx
+                    .expect("TcpInterleaved session has a pump data_rx");
                 RtpRecvTransport::from_mpsc_placeholder(rx)
             }
         }

@@ -34,4 +34,5 @@ pub use url::{DEFAULT_PKT_SIZE, RtpUrl, UrlError as RtpUrlError};
 
 // Phase 2 — populated by subsequent tasks as items become real.
 pub use error::RtspError;
+pub use rtsp::message::{RtspMethod, RtspRequest, RtspResponse};
 pub use url::{RtspScheme, RtspTransportPref, RtspUrl, RtspVersion};

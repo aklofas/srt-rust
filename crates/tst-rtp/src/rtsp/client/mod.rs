@@ -6,6 +6,7 @@
 
 pub mod keepalive;
 pub mod session;
+pub mod setup;
 pub mod tls;
 pub mod transport_negotiation;
 

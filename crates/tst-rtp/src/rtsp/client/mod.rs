@@ -5,6 +5,7 @@
 //! background keepalive pings don't interleave bytes on the wire).
 
 pub mod keepalive;
+pub mod options_describe;
 pub mod session;
 pub mod tls;
 pub mod transport_negotiation;
@@ -148,7 +149,6 @@ impl RtspClient {
     }
 
     /// Internal helper: get the next CSeq value.
-    #[allow(dead_code)] // consumed by request-building tasks later in this plan
     pub(crate) fn bump_cseq(&self) -> u32 {
         self.next_cseq.fetch_add(1, Ordering::Relaxed)
     }

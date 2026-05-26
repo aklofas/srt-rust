@@ -7,6 +7,87 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-rtp Phase 2: RTSP client + RTCP (2026-05-26)
+
+### Added
+
+- `RtspClient` sync facade for `rtsp://` and `rtsps://` URLs with the
+  full OPTIONS / DESCRIBE / SETUP / PLAY / PAUSE / TEARDOWN state
+  machine (plus automatic `Drop`-driven TEARDOWN).
+- `RtspClientBuilder` with builder-style options: `auth`,
+  `no_auto_keepalive`, `keepalive_interval`, `connect_timeout`,
+  `read_timeout`, `user_agent`, and `tls_root_certs` (feature `tls`).
+- Authentication: RFC 7617 Basic + RFC 7616 Digest (MD5, SHA-256,
+  MD5-sess, SHA-256-sess) + RFC 2617-flavored Digest for older
+  cameras. 401-driven retry inside `describe()`.
+- TCP-interleaved transport per RFC 7826 §14 (= RFC 2326 §10.12) with
+  auto-fallback from UDP on `461 Unsupported Transport`. Explicit
+  override via `?transport=tcp` / `?transport=udp` URL query params.
+- `rtsps://` over sync rustls 0.23 behind cargo feature `tls` (ring
+  backend; uses `rustls-native-certs` for the default root store).
+- `?rtsp_version=1.0|2.0` URL query, default `1.0` for maximum camera
+  interop (RFC 7826 §1.3 backward compatibility).
+- Two SDP-picker APIs: `RtspClient::setup_mp2t_auto(&sdp)` picks the
+  unique PT=33 m-line; `RtspClient::setup(&media)` is the explicit
+  override.
+- `RtspSession::into_recv_transport()` bridges into the existing
+  `DemuxReceiver<RtpRecvTransport>` pipeline. UDP variant returns
+  immediately; TCP-interleaved variant currently returns a placeholder
+  transport (producer wiring deferred).
+- RTCP RR/SR encode/decode (RFC 3550 §6.4) + `RtcpReporterHandle`
+  background thread (randomized interval per §6.2/§6.3.1) + ingest
+  (`compute_rtt_us` per §6.4.1 LSR/DLSR; RR fraction-lost feeds into
+  `SocketStats::packets_lost_send`). New `RtcpStats` exposed via
+  `RtpTransport::rtcp_stats()` and `RtpRecvTransport::rtcp_stats()`.
+- Automatic keepalive thread sending OPTIONS at half the server's
+  `Session:timeout=N` cadence (default 60 s → 30 s ping); opt-out via
+  `RtspClientBuilder::no_auto_keepalive(true)`.
+- New public types: `RtspClient`, `RtspClientBuilder`, `RtspSession`,
+  `RtspCancelHandle`, `RtspError` (15 variants), `RtspMethod`,
+  `RtspRequest`, `RtspResponse`, `RtspVersion`, `RtspScheme`,
+  `RtspTransportPref`, `RtspTransportKind`, `TransportResponse`,
+  `Sdp`, `SdpMedia`, `OptionsResponse`, `RtpInfo`, `Frame`,
+  `InterleavedReader`, `InterleavedWriter`, `ReceiverReport`,
+  `ReportBlock`, `SenderReport`, `SdesPacket`, `RtcpPacketType`,
+  `RtcpReporterHandle`, `RtcpStats`, `SrAnchor`, `AuthChallenge`,
+  `DigestAlgorithm`, `DigestChallenge`, `DigestContext`.
+- Two new fuzz harnesses: `rtsp_message_decode` (RTSP wire-format) +
+  `rtsp_interleaved_demux` (RFC 7826 §14 `$<ch><len><payload>`
+  framing). Workspace fuzz count 19 → 21.
+- Loopback RTSP server test fixture at
+  `crates/tst-rtp/tests/fixtures/rtsp_loopback_server.rs` (tokio
+  dev-dep). Supports `none`/`Basic`/`DigestMd5`/`DigestSha256` auth,
+  configurable `force_461_on_udp`.
+- Empirical interop matrix at `crates/tst-rtp/tests/INTEROP.md`
+  (manual best-effort; 6 target rows).
+- Teaching example at `examples/receiving/rtsp_client_camera.rs`.
+
+### Changed
+
+- Phase 1's `RtpRecvSocketBuilder::build()` and `RtpSocketBuilder::build()`
+  now open a second UDP socket for RTCP by default (RTP port + 1 per
+  RFC 3550 §11). Opt-out via `.rtcp(false)` on either builder. This is
+  a behavior change but additive on the public API.
+- `RtspClient.stream` is now an internal `Stream` enum dispatching
+  between plain `TcpStream` and `TlsStream` (gated on feature `tls`)
+  rather than a bare `TcpStream`. Per-method code reads/writes through
+  the `Read`/`Write` traits, transparent to callers.
+- `RtpRecvTransport` now has an internal `Source` enum dispatching
+  between UDP and mpsc (mpsc variant feeds the TCP-interleaved
+  pipeline; producer wiring still deferred).
+
+### Phase 2 implementation notes
+
+- 25 plan tasks shipped across 7 stages (Bootstrap + Waves A-F).
+- Wave parallelism: up to 6 worktrees per wave; merge coordination
+  done by main agent.
+- `#[non_exhaustive]` baseline 172 → 183 (+11; within projection of
+  +10..+15).
+- `cargo-public-api` baseline `crates/tst-rtp/public-api.txt` grew
+  from 597 to 1979 lines.
+
+---
+
 ## [Unreleased] — tst-rtp Phase 1: RTP data plane (2026-05-25)
 
 ### Added

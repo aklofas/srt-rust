@@ -18,6 +18,31 @@ use crate::error::RtspServerError;
 use crate::packet::{RTP_HEADER_LEN, RtpHeader};
 use crate::rtsp::server::fanout::PeerDropCounter;
 
+/// Resolve a network interface name (e.g. `"eth0"`, `"lo"`) to its
+/// kernel ifindex via `if_nametoindex(3)`. Returns `Err(detail)` on
+/// failure (the C call returns 0 on error and sets `errno`).
+///
+/// Used by the IPv6 multicast iface path — `IPV6_MULTICAST_IF` takes a
+/// 4-byte interface index (unlike IPv4, where `IP_MULTICAST_IF` takes
+/// the iface's local IPv4 address).
+#[cfg(unix)]
+fn resolve_ifindex(name: &str) -> Result<libc::c_uint, String> {
+    let cname = std::ffi::CString::new(name)
+        .map_err(|e| format!("iface name '{name}' contains an interior NUL byte: {e}"))?;
+    // SAFETY: `cname.as_ptr()` is a valid NUL-terminated C string for
+    // the duration of this call. `if_nametoindex` is documented to
+    // return 0 on failure (no errno guarantee on all platforms, but we
+    // surface errno when present for diagnostic value).
+    let idx = unsafe { libc::if_nametoindex(cname.as_ptr()) };
+    if idx == 0 {
+        let errno = std::io::Error::last_os_error();
+        return Err(format!(
+            "if_nametoindex('{name}') failed (returned 0): {errno}"
+        ));
+    }
+    Ok(idx)
+}
+
 /// Build the multicast send socket — binds an ephemeral local port,
 /// connects to the group address (so we can use `send` instead of
 /// `send_to` per frame), and applies TTL + optional IF.
@@ -25,11 +50,19 @@ use crate::rtsp::server::fanout::PeerDropCounter;
 /// Returns the bound `UdpSocket` ready to be wrapped in `Arc` and
 /// driven by a per-mount sender task.
 ///
+/// `iface` semantics differ by family:
+/// - **IPv4** — literal IPv4 address of the outbound local interface
+///   (the `IP_MULTICAST_IF` wire form is a 4-byte `in_addr`).
+/// - **IPv6** — interface name (e.g. `"eth0"`, `"lo"`), resolved to a
+///   kernel ifindex via `if_nametoindex(3)` (Unix-only); the
+///   `IPV6_MULTICAST_IF` wire form is a 4-byte interface index.
+///
 /// # Errors
 ///
 /// Returns [`RtspServerError::Io`] if the ephemeral bind or `connect`
 /// call fails. Returns [`RtspServerError::InvalidMulticastGroup`] when
-/// setting TTL / hop-limit / interface options fails, or when the
+/// setting TTL / hop-limit / interface options fails, when the iface
+/// name doesn't resolve to an ifindex (IPv6 path), or when the
 /// platform doesn't support the requested option (e.g. IPv6 multicast
 /// TTL on non-Unix targets).
 pub(crate) async fn build_multicast_send_socket(
@@ -151,10 +184,50 @@ pub(crate) async fn build_multicast_send_socket(
                 }
             }
             SocketAddr::V6(_) => {
-                return Err(RtspServerError::InvalidMulticastGroup {
-                    addr: group.to_string(),
-                    detail: "IPv6 multicast iface binding not implemented in v1".to_string(),
-                });
+                // IPv6 multicast IF is a 4-byte interface INDEX (not an
+                // IP literal — that's the IPv4 idiom). Resolve the iface
+                // name (e.g. "eth0", "lo") via `if_nametoindex` and pass
+                // the resulting index to IPV6_MULTICAST_IF.
+                #[cfg(unix)]
+                {
+                    use std::os::fd::AsRawFd;
+                    let ifindex = resolve_ifindex(iface_str).map_err(|detail| {
+                        RtspServerError::InvalidMulticastGroup {
+                            addr: group.to_string(),
+                            detail,
+                        }
+                    })?;
+                    let val: libc::c_uint = ifindex;
+                    // SAFETY: socket FD owned by `socket` for its
+                    // lifetime; &val is valid for size_of::<c_uint>().
+                    // ipv6(7) documents IPV6_MULTICAST_IF as taking a
+                    // 4-byte interface index.
+                    let rc = unsafe {
+                        libc::setsockopt(
+                            socket.as_raw_fd(),
+                            libc::IPPROTO_IPV6,
+                            libc::IPV6_MULTICAST_IF,
+                            &val as *const libc::c_uint as *const libc::c_void,
+                            std::mem::size_of::<libc::c_uint>() as libc::socklen_t,
+                        )
+                    };
+                    if rc != 0 {
+                        return Err(RtspServerError::InvalidMulticastGroup {
+                            addr: group.to_string(),
+                            detail: format!(
+                                "IPV6_MULTICAST_IF setsockopt failed for iface '{iface_str}' (ifindex {ifindex}): {}",
+                                std::io::Error::last_os_error()
+                            ),
+                        });
+                    }
+                }
+                #[cfg(not(unix))]
+                {
+                    return Err(RtspServerError::InvalidMulticastGroup {
+                        addr: group.to_string(),
+                        detail: "IPv6 multicast iface binding is Unix-only in v1".to_string(),
+                    });
+                }
             }
         }
     }
@@ -256,12 +329,58 @@ mod tests {
         assert!(res.is_ok());
     }
 
+    /// IPv6 `iface=` now means an interface NAME, not an IP literal.
+    /// Passing an IP literal (which is what the pre-T2 behavior
+    /// effectively rejected with InvalidMulticastGroup) must still
+    /// fail — but now via the if_nametoindex path, since no real iface
+    /// is named `::1`.
+    #[cfg(unix)]
     #[tokio::test]
-    async fn build_multicast_with_iface_v6_unsupported() {
+    async fn build_multicast_v6_rejects_ip_literal_as_iface_name() {
         let group: SocketAddr = "[ff02::1]:5004".parse().unwrap();
         let e = build_multicast_send_socket(group, 4, Some("::1"))
             .await
             .unwrap_err();
-        assert!(matches!(e, RtspServerError::InvalidMulticastGroup { .. }));
+        match e {
+            RtspServerError::InvalidMulticastGroup { detail, .. } => {
+                assert!(
+                    detail.contains("if_nametoindex"),
+                    "expected if_nametoindex failure detail, got: {detail}"
+                );
+            }
+            other => panic!("expected InvalidMulticastGroup, got {other:?}"),
+        }
     }
+
+    /// `if_nametoindex("lo")` must succeed on any Unix host (loopback
+    /// is always present). The returned ifindex is non-zero.
+    #[cfg(unix)]
+    #[test]
+    fn resolve_ifindex_loopback() {
+        let idx = resolve_ifindex("lo").expect("loopback iface 'lo' must resolve");
+        assert!(idx > 0, "if_nametoindex('lo') returned 0");
+    }
+
+    /// A bogus iface name must surface a typed error rather than
+    /// silently returning 0 or panicking.
+    #[cfg(unix)]
+    #[test]
+    fn resolve_ifindex_unknown_returns_err() {
+        let err =
+            resolve_ifindex("definitely-not-a-real-iface-zzz").expect_err("bogus iface must fail");
+        assert!(
+            err.contains("if_nametoindex"),
+            "expected if_nametoindex in detail, got: {err}"
+        );
+    }
+
+    // NOTE: an end-to-end "build_multicast_send_socket succeeds with
+    // iface='lo'" test was deliberately omitted — the function's final
+    // `socket.connect(group)` step depends on the host's IPv6 routing
+    // table having a route for the multicast group, which is not
+    // guaranteed inside CI containers (NetworkUnreachable is common).
+    // The two `resolve_ifindex_*` tests above + the
+    // `build_multicast_v6_rejects_ip_literal_as_iface_name`
+    // integration error-path test cover the new code without depending
+    // on IPv6 multicast routing.
 }

@@ -24,7 +24,9 @@ fn committed_header_matches_cbindgen_output() {
     let generated = String::from_utf8(buf).expect("cbindgen output is utf-8");
 
     // Mirror the build.rs post-process so this test compares apples to
-    // apples (the committed header is cbindgen output + section dividers).
+    // apples (the committed header is cbindgen output + feature-define
+    // injection + section dividers).
+    let generated = inject_feature_defines(&generated);
     let generated = add_section_dividers(&generated);
 
     if generated != expected {
@@ -43,6 +45,41 @@ fn committed_header_matches_cbindgen_output() {
             }
         }
         panic!("header drift");
+    }
+}
+
+/// Mirror of `build.rs::inject_feature_defines`. Uses `cfg!(feature = ...)`
+/// to detect the same feature set the build was compiled with (the test
+/// binary inherits the feature set; CARGO_FEATURE_* env vars only exist
+/// in build-script execution, not at test runtime).
+fn inject_feature_defines(content: &str) -> String {
+    let mut defines = String::new();
+    if cfg!(feature = "srt") {
+        defines.push_str("#define TST_HAS_SRT 1\n");
+    }
+    if cfg!(feature = "rtp") {
+        defines.push_str("#define TST_HAS_RTP 1\n");
+    }
+    if defines.is_empty() {
+        return content.to_string();
+    }
+    let needle = "#define TSTRANS_H";
+    let insert_pos = content.find(needle).map(|p| {
+        p + content[p..]
+            .find('\n')
+            .map(|n| n + 1)
+            .unwrap_or(needle.len())
+    });
+    match insert_pos {
+        Some(pos) => {
+            let mut out = String::with_capacity(content.len() + defines.len() + 1);
+            out.push_str(&content[..pos]);
+            out.push('\n');
+            out.push_str(&defines);
+            out.push_str(&content[pos..]);
+            out
+        }
+        None => format!("{defines}\n{content}"),
     }
 }
 

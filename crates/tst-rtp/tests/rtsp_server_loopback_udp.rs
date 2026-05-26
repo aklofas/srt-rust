@@ -64,7 +64,6 @@ fn client_describes_server_mount_returns_mp2t_sdp() {
 /// hand-craft the URI as the bare `/live` so they exercise the SETUP
 /// allocator without going through this integration seam.
 #[test]
-#[ignore = "integration bug: server's extract_mount_path doesn't strip the SDP trackID suffix; filed as Wave G follow-up"]
 fn client_setup_play_against_server_returns_200() {
     let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
     let mount = server.add_mount("/live", make_muxer_cfg()).unwrap();

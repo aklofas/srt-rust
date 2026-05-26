@@ -194,6 +194,12 @@ pub(crate) fn handle_describe(
 
 /// Extract the path component from a request URI. Handles both full
 /// `rtsp://host:port/path` and path-only `/path` forms.
+///
+/// Per-media control URLs like `a=control:trackID=0` from the SDP cause
+/// `RtspClient::setup_mp2t_auto` to append `/trackID=N` to the SETUP
+/// URI. We strip the trailing per-media segment if it's recognized
+/// (RFC 7826 §C.1.1 trackID convention) — otherwise the mount lookup
+/// misses the registered base path.
 fn extract_mount_path(uri: &str) -> String {
     // Strip scheme + authority if present.
     let path_start = if let Some(after_scheme) = uri.strip_prefix("rtsp://") {
@@ -212,6 +218,27 @@ fn extract_mount_path(uri: &str) -> String {
     // Strip any trailing query string; v1 matches the bare path component
     // of the mount as registered.
     let path = path_start.split('?').next().unwrap_or(path_start);
+    // Strip trailing per-media control segments. SDP `a=control:trackID=N`
+    // (the canonical form per RFC 7826 §C.1.1) causes RtspClient to send
+    // SETUP `<base>/trackID=N`. SETUP matches against the base mount
+    // path; the trackID segment is per-media and not part of the
+    // registered mount.
+    let path = if let Some(last_slash) = path.rfind('/') {
+        let last_seg = &path[last_slash + 1..];
+        if last_seg.starts_with("trackID=") || last_seg.starts_with("streamid=") {
+            // Keep the leading slash if it's the only one (root mount)
+            // by ensuring we don't strip to empty.
+            if last_slash == 0 {
+                "/"
+            } else {
+                &path[..last_slash]
+            }
+        } else {
+            path
+        }
+    } else {
+        path
+    };
     path.to_string()
 }
 
@@ -826,6 +853,34 @@ mod tests {
         assert_eq!(extract_mount_path("rtsp://host:8554/live?x=1"), "/live");
         // No path → root.
         assert_eq!(extract_mount_path("rtsp://host:8554"), "/");
+    }
+
+    #[test]
+    fn extract_mount_path_strips_trackid_segment() {
+        // Wave F (T23 + T25) caught the bug where RtspClient::setup_mp2t_auto
+        // appends /trackID=0 from the SDP a=control: attribute, so the
+        // SETUP URI is /live/trackID=0 but only /live is registered as
+        // a mount. The fix strips the per-media control segment.
+        assert_eq!(
+            extract_mount_path("rtsp://host:8554/live/trackID=0"),
+            "/live"
+        );
+        assert_eq!(
+            extract_mount_path("rtsp://host:8554/live/trackID=1"),
+            "/live"
+        );
+        // Also strip the alternate streamid= form (older cameras).
+        assert_eq!(
+            extract_mount_path("rtsp://host:8554/live/streamid=0"),
+            "/live"
+        );
+        // Non-track suffixes are kept (multi-segment mount paths).
+        assert_eq!(
+            extract_mount_path("rtsp://host:8554/live/audio"),
+            "/live/audio"
+        );
+        // Root mount with trackID — keep root slash.
+        assert_eq!(extract_mount_path("rtsp://host:8554/trackID=0"), "/");
     }
 
     #[test]

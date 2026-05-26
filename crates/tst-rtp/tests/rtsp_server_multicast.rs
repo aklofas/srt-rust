@@ -51,7 +51,6 @@ fn multicast_mount_describes_with_group_in_sdp() {
 /// The multicast Transport response shape is unit-tested in
 /// `handlers.rs::setup_multicast_mount_returns_multicast_transport`.
 #[test]
-#[ignore = "real-server SETUP URL has trackID suffix → 404; see handlers.rs::setup_multicast_mount_returns_multicast_transport for the underlying behavior"]
 fn multicast_setup_returns_multicast_transport() {
     let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
     let _mount = server
@@ -77,7 +76,6 @@ fn multicast_setup_returns_multicast_transport() {
 /// TCP-interleaved guard. The 461 path is unit-tested in
 /// `handlers.rs::setup_against_multicast_mount_rejects_tcp_with_461`.
 #[test]
-#[ignore = "real-server SETUP URL has trackID suffix → 404 before reaching 461; see handlers.rs::setup_against_multicast_mount_rejects_tcp_with_461 for the underlying behavior"]
 fn multicast_rejects_tcp_interleaved_with_461() {
     let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
     let _mount = server

@@ -672,6 +672,7 @@ impl tst_rtp::rtsp::client::RtspClient
 pub fn tst_rtp::rtsp::client::RtspClient::cancel_handle(&self) -> tst_rtp::rtsp::client::RtspCancelHandle
 pub fn tst_rtp::rtsp::client::RtspClient::connect(&str) -> core::result::Result<Self, tst_rtp::error::RtspError>
 pub fn tst_rtp::rtsp::client::RtspClient::connect_with(&tst_rtp::url::RtspUrl) -> core::result::Result<Self, tst_rtp::error::RtspError>
+pub fn tst_rtp::rtsp::client::RtspClient::connect_with_roots(&tst_rtp::url::RtspUrl, core::option::Option<()>) -> core::result::Result<Self, tst_rtp::error::RtspError>
 pub fn tst_rtp::rtsp::client::RtspClient::is_session_alive(&self) -> bool
 pub fn tst_rtp::rtsp::client::RtspClient::last_server_version(&self) -> tst_rtp::url::RtspVersion
 impl tst_rtp::rtsp::client::RtspClient
@@ -2134,6 +2135,7 @@ impl tst_rtp::rtsp::client::RtspClient
 pub fn tst_rtp::rtsp::client::RtspClient::cancel_handle(&self) -> tst_rtp::rtsp::client::RtspCancelHandle
 pub fn tst_rtp::rtsp::client::RtspClient::connect(&str) -> core::result::Result<Self, tst_rtp::error::RtspError>
 pub fn tst_rtp::rtsp::client::RtspClient::connect_with(&tst_rtp::url::RtspUrl) -> core::result::Result<Self, tst_rtp::error::RtspError>
+pub fn tst_rtp::rtsp::client::RtspClient::connect_with_roots(&tst_rtp::url::RtspUrl, core::option::Option<()>) -> core::result::Result<Self, tst_rtp::error::RtspError>
 pub fn tst_rtp::rtsp::client::RtspClient::is_session_alive(&self) -> bool
 pub fn tst_rtp::rtsp::client::RtspClient::last_server_version(&self) -> tst_rtp::url::RtspVersion
 impl tst_rtp::rtsp::client::RtspClient

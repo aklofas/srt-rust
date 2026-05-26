@@ -287,24 +287,30 @@ impl RtspClientBuilder {
     ///
     /// See [`RtspClient::connect_with`].
     pub fn connect(self) -> Result<RtspClient, RtspError> {
-        let mut client = RtspClient::connect_with(&self.url)?;
+        // Bake builder-supplied credentials into the URL so the
+        // auth flow (`options_describe::handle_auth_challenge_and_retry`)
+        // picks them up from `client.url.username/password`. The URL
+        // already carries credentials when the caller passed
+        // `rtsp://user:pass@host/...`; explicit builder `.auth()` calls
+        // override.
+        let mut url = self.url.clone();
+        if self.username.is_some() {
+            url.username = self.username.clone();
+        }
+        if self.password.is_some() {
+            url.password = self.password.clone();
+        }
+        #[cfg(feature = "tls")]
+        let mut client = RtspClient::connect_with_roots(&url, self.tls_root_certs.clone())?;
+        #[cfg(not(feature = "tls"))]
+        let mut client = RtspClient::connect_with_roots(&url, None)?;
         if !self.no_auto_keepalive {
             client.spawn_keepalive_if_needed(self.keepalive_interval_override);
         }
-        // `username`, `password`, `connect_timeout`, `read_timeout`,
-        // `user_agent`, and `tls_root_certs` are stored on the builder
-        // for future tasks to wire through to the client (auth flow,
-        // socket timeouts, TLS handshake) — see the plan's later
-        // waves.
-        let _ = (
-            &self.username,
-            &self.password,
-            self.connect_timeout,
-            self.read_timeout,
-            &self.user_agent,
-        );
-        #[cfg(feature = "tls")]
-        let _ = &self.tls_root_certs;
+        // `connect_timeout`, `read_timeout`, `user_agent` are stored
+        // for follow-up wiring; the TCP socket is already created with
+        // the workspace defaults in `connect_with`.
+        let _ = (self.connect_timeout, self.read_timeout, &self.user_agent);
         Ok(client)
     }
 }

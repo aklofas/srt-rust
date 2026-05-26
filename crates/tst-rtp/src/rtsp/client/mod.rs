@@ -176,6 +176,27 @@ impl RtspClient {
     ///
     /// See [`Self::connect`].
     pub fn connect_with(url: &RtspUrl) -> Result<Self, RtspError> {
+        Self::connect_with_roots(url, None)
+    }
+
+    /// Connect with an optional client-side TLS root-cert store.
+    ///
+    /// `roots = None` falls back to the platform native trust roots
+    /// (loaded via `rustls-native-certs`). `roots = Some(custom)` is
+    /// used by `RtspClientBuilder::tls_root_certs` callers that need
+    /// to trust a self-signed cert (e.g., test fixtures).
+    ///
+    /// For plain `rtsp://` URLs the roots argument is ignored.
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::connect`].
+    pub fn connect_with_roots(
+        url: &RtspUrl,
+        #[cfg(feature = "tls")] roots: Option<rustls::RootCertStore>,
+        #[cfg(not(feature = "tls"))] roots: Option<()>,
+    ) -> Result<Self, RtspError> {
+        let _ = &roots; // silence unused on non-tls builds
         let is_tls = matches!(url.scheme(), RtspScheme::Rtsps);
         #[cfg(not(feature = "tls"))]
         if is_tls {
@@ -206,7 +227,7 @@ impl RtspClient {
         let stream = if is_tls {
             #[cfg(feature = "tls")]
             {
-                Stream::Tls(Box::new(tls::TlsStream::connect(url, tcp, None)?))
+                Stream::Tls(Box::new(tls::TlsStream::connect(url, tcp, roots)?))
             }
             #[cfg(not(feature = "tls"))]
             {

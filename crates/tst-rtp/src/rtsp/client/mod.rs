@@ -4,6 +4,7 @@
 //! mutex-guarded write half (so concurrent main-thread requests and
 //! background keepalive pings don't interleave bytes on the wire).
 
+pub mod interleaved_pump;
 pub mod keepalive;
 pub mod options_describe;
 pub mod play;

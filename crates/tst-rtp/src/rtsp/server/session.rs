@@ -23,6 +23,7 @@ use crate::error::RtspServerError;
 use crate::rtsp::message::{RtspMethod, RtspRequest};
 use crate::rtsp::server::ServerState;
 use crate::rtsp::server::auth::generate_nonce;
+use crate::rtsp::server::fanout::PeerDropCounter;
 use crate::rtsp::server::handlers;
 
 /// Per-session state. Lives for the duration of one client's TCP
@@ -54,6 +55,19 @@ pub struct ServerSessionState {
     /// Interleaved RTP+RTCP channel pair (for TCP-interleaved sessions).
     /// `None` for UDP sessions or pre-SETUP.
     pub interleaved_channels: Option<(u8, u8)>,
+    /// JoinHandle for the per-peer fanout subscriber task (Wave C T13's
+    /// `spawn_peer_fanout`). `Some` after PLAY, `None` after PAUSE or
+    /// TEARDOWN. PAUSE may re-spawn on a subsequent PLAY.
+    pub fanout_handle: Option<tokio::task::JoinHandle<()>>,
+    /// CancellationToken for the per-peer task. PAUSE cancels + replaces
+    /// with a fresh token so a subsequent PLAY can re-spawn; TEARDOWN
+    /// cancels + drops the handle without replacement.
+    pub peer_cancel: tokio_util::sync::CancellationToken,
+    /// Drop counter observed by `MountStats::frames_dropped_total`. Held
+    /// here so the session can keep the `Arc` alive for the duration of
+    /// the fanout task even after PAUSE drops the JoinHandle. Field is
+    /// `pub(crate)` because `PeerDropCounter` itself is crate-private.
+    pub(crate) peer_drop_counter: Option<std::sync::Arc<PeerDropCounter>>,
 }
 
 impl ServerSessionState {
@@ -66,6 +80,9 @@ impl ServerSessionState {
             transport: None,
             udp_sockets: None,
             interleaved_channels: None,
+            fanout_handle: None,
+            peer_cancel: tokio_util::sync::CancellationToken::new(),
+            peer_drop_counter: None,
         }
     }
 }
@@ -306,10 +323,9 @@ mod session_tests {
         let mut client = tokio::net::TcpStream::connect(("127.0.0.1", port))
             .await
             .unwrap();
-        // T10 will land TEARDOWN with a real session check; the stub
-        // returns 501. The interesting assertion here is that the
-        // session task remains responsive to a follow-up request after
-        // the 501 (it doesn't crash on the unimplemented-method path).
+        // T17 implemented the real TEARDOWN handler: 200 OK after auth
+        // (no auth configured here), session state cleared, TCP closed
+        // by the dispatcher after observing 200 + TEARDOWN method.
         client
             .write_all(b"TEARDOWN rtsp://127.0.0.1/test RTSP/1.0\r\nCSeq: 1\r\n\r\n")
             .await
@@ -327,8 +343,7 @@ mod session_tests {
             }
         }
         let text = String::from_utf8_lossy(&buf);
-        // Stub returns 501 Not Implemented; T17 will tighten this.
-        assert!(text.contains("501"), "got: {}", text);
+        assert!(text.contains("200"), "got: {}", text);
 
         drop(client);
         let _ = server_handle.await;

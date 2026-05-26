@@ -179,7 +179,9 @@ pub(crate) async fn build_multicast_send_socket(
                 {
                     return Err(RtspServerError::InvalidMulticastGroup {
                         addr: group.to_string(),
-                        detail: "IP_MULTICAST_IF setsockopt is Unix-only in v1".to_string(),
+                        detail: format!(
+                            "IP_MULTICAST_IF setsockopt is Unix-only in v1 (requested iface '{iface_str}')"
+                        ),
                     });
                 }
             }
@@ -225,7 +227,9 @@ pub(crate) async fn build_multicast_send_socket(
                 {
                     return Err(RtspServerError::InvalidMulticastGroup {
                         addr: group.to_string(),
-                        detail: "IPv6 multicast iface binding is Unix-only in v1".to_string(),
+                        detail: format!(
+                            "IPv6 multicast iface binding is Unix-only in v1 (requested iface '{iface_str}')"
+                        ),
                     });
                 }
             }

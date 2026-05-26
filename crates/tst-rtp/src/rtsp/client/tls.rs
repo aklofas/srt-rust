@@ -3,8 +3,8 @@
 //! Gated on cargo feature `tls`. The wrapper hides the rustls handshake
 //! behind a [`TlsStream`] that implements `std::io::{Read, Write}` — the
 //! rest of [`super::RtspClient`] talks to the connection through the
-//! [`super::Stream`] enum, so the per-method code stays oblivious to
-//! whether the bytes go through plain TCP or TLS.
+//! internal `Stream` enum (crate-private), so the per-method code stays
+//! oblivious to whether the bytes go through plain TCP or TLS.
 //!
 //! Why sync rustls (not tokio-rustls): the master spec at
 //! `docs/specs/2026-05-25-tst-rtp-design.md` mandates a sync RTSP client
@@ -21,8 +21,8 @@ use crate::error::RtspError;
 use crate::url::RtspUrl;
 
 /// Wraps a [`TcpStream`] with rustls. Implements `Read + Write` so it
-/// can substitute for plain [`TcpStream`] in
-/// [`super::Stream::Tls`].
+/// substitutes for plain `TcpStream` in the crate-internal `Stream`
+/// enum (the `Tls` variant).
 pub struct TlsStream {
     conn: rustls::ClientConnection,
     sock: TcpStream,

@@ -8,12 +8,12 @@
 //!   `RtspClient::is_session_alive`.
 
 use std::io::Write;
-use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use crate::rtsp::client::Stream;
 use crate::rtsp::message::{RtspMethod, RtspRequest};
 use crate::url::RtspVersion;
 
@@ -36,8 +36,8 @@ use crate::url::RtspVersion;
 ///
 /// CSeq starts at `1_000_000` to avoid colliding with the main thread's
 /// counter (which starts at 1 and increments per request).
-pub fn spawn(
-    write_half: Arc<Mutex<TcpStream>>,
+pub(crate) fn spawn(
+    write_half: Arc<Mutex<Stream>>,
     cancel: Arc<AtomicBool>,
     session_dead: Arc<AtomicBool>,
     interval: Duration,

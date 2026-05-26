@@ -70,6 +70,27 @@ impl Write for Stream {
     }
 }
 
+impl Stream {
+    /// Clone the underlying byte stream for the keepalive background
+    /// thread. For plain TCP this clones the TcpStream FD; for TLS this
+    /// returns an Unsupported error because rustls `ClientConnection`
+    /// holds non-clonable cryptographic state.
+    ///
+    /// TLS-side keepalive over the same TLS session is a separate
+    /// feature (not in v1); RTSP-over-TLS callers either disable
+    /// auto-keepalive or send pings from the main thread.
+    pub(crate) fn try_clone(&self) -> std::io::Result<Stream> {
+        match self {
+            Stream::Plain(s) => s.try_clone().map(Stream::Plain),
+            #[cfg(feature = "tls")]
+            Stream::Tls(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Stream::try_clone is not supported for TLS streams",
+            )),
+        }
+    }
+}
+
 /// Sync RTSP client. One instance per server.
 ///
 /// Methods (options, describe, setup, play, pause, teardown,
@@ -261,7 +282,14 @@ impl RtspClient {
         // try_clone() yields a separate file descriptor pointing at the
         // same socket; we hand the clone to the keepalive thread so the
         // main thread keeps its own half for `read_response`-style reads.
-        let write_clone = self.stream.try_clone().expect("TcpStream try_clone");
+        // For plain TCP, clone the FD for the background thread. For TLS,
+        // try_clone returns Unsupported (rustls ClientConnection isn't
+        // clonable); in that case we skip keepalive — TLS callers either
+        // disable auto-keepalive or drive pings from the main thread.
+        let write_clone = match self.stream.try_clone() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
         let write_half = Arc::new(std::sync::Mutex::new(write_clone));
         let cancel = self.cancel.clone();
         let session_dead = Arc::new(AtomicBool::new(false));

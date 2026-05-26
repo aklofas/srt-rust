@@ -2035,6 +2035,7 @@ dependencies = [
  "cbindgen",
  "cc",
  "libc",
+ "secrecy",
  "thiserror",
  "tst-core",
  "tst-pipeline",

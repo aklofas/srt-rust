@@ -13,8 +13,14 @@
 //! - `tst_rtsp_client_builder_auth_digest_sha256` — Digest SHA-256 credentials
 //! - `tst_rtsp_client_builder_free` — discard without connecting
 //!
-//! Task 6 (Wave B) adds the connect + session entry points.
+//! Task 6 (Wave B) adds:
+//! - `tst_rtsp_client_builder_connect` — consume builder, run DESCRIBE+SETUP
+//! - `tst_rtsp_session_play` — send PLAY
+//! - `tst_rtsp_session_pause` — send PAUSE
+//! - `tst_rtsp_session_teardown_and_free` — send TEARDOWN + free
+//! - `tst_rtsp_session_cancel` — cancel blocking control-plane I/O
+//! - `tst_rtsp_session_into_demux_receiver` — bridge to TstRtpDemuxReceiver
 
 pub(crate) mod auth;
 pub(crate) mod builder;
-// session.rs lands in Task 6 (Wave B).
+pub(crate) mod session;

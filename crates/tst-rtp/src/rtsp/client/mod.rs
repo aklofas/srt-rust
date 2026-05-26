@@ -6,6 +6,7 @@
 
 pub mod keepalive;
 pub mod options_describe;
+pub mod play;
 pub mod session;
 pub mod setup;
 pub mod tls;

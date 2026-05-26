@@ -43,17 +43,6 @@ impl RtspClient {
     }
 }
 
-impl Drop for RtspClient {
-    fn drop(&mut self) {
-        // Best-effort TEARDOWN; ignore errors.
-        //
-        // Task 17 extends this body to also join the keepalive thread.
-        if self.session_id.is_some() {
-            let _ = self.teardown();
-        }
-        // Set cancel flag so background threads (keepalive,
-        // interleaved reader) exit at their next poll.
-        self.cancel
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-    }
-}
+// `Drop for RtspClient` is implemented in `client/mod.rs` (combines
+// teardown + keepalive-thread join). This file holds only the
+// teardown method itself.

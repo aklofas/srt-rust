@@ -94,11 +94,15 @@ impl RtspSession {
                 RtpRecvTransport::from_udp_socket(rtp).expect("from_udp_socket")
             }
             RtspTransportKind::TcpInterleaved => {
-                // Returns a placeholder RtpRecvTransport whose queue is
-                // populated by Task 17. Wave C's CI run is allowed to
-                // skip the interleaved end-to-end test; it lands at
-                // Wave D close.
-                RtpRecvTransport::from_mpsc_placeholder()
+                // Task 17 wires the InterleavedReader bridge so the
+                // resulting transport feeds from an mpsc::Receiver<Bytes>
+                // populated by the RtspClient's background reader. The
+                // full producer-side spawn lands in a later wave; here
+                // we hand the consumer a never-fed channel so the
+                // transport compiles + behaves like an idle source
+                // (recv_timeout loops on cancel-flag polls).
+                let (_tx, rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+                RtpRecvTransport::from_mpsc_placeholder(rx)
             }
         }
     }

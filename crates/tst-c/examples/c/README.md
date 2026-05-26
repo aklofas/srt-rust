@@ -123,6 +123,26 @@ libsrt to do). The C-side analogue of the
 LD_LIBRARY_PATH=../../target/debug /tmp/socket_stats_poll srt://127.0.0.1:9000
 ```
 
+### 7. `sending/rtp_basic.c` — RTP unicast/multicast sender (raw TS bytes)
+
+Open a `tst_rtp_sender_t` to an `rtp://` URL, push 100 synthetic 188-byte
+MPEG-TS null packets via `tst_rtp_sender_send_ts`, then close. The
+lowest-level RTP send API — caller supplies pre-built TS packets; the
+library handles RTP framing (RFC 2250), UDP packetisation, and SSRC/sequence
+management. Use `tst_rtp_mux_sender_t` instead when you need the library to
+also mux encoded video/KLV/audio into TS for you.
+
+```sh
+# unicast (loopback default)
+LD_LIBRARY_PATH=../../target/debug /tmp/rtp_basic
+
+# explicit unicast destination
+LD_LIBRARY_PATH=../../target/debug /tmp/rtp_basic --dest 192.168.1.100:5000
+
+# multicast (org-local scope, RFC 2365)
+LD_LIBRARY_PATH=../../target/debug /tmp/rtp_basic --dest 239.1.2.3:5000
+```
+
 ## Receiver-side C examples
 
 The C ABI covers both sender (mux + raw/TS sender) and receiver (demux +

@@ -34,3 +34,4 @@ pub use url::{DEFAULT_PKT_SIZE, RtpUrl, UrlError as RtpUrlError};
 
 // Phase 2 — populated by subsequent tasks as items become real.
 pub use error::RtspError;
+pub use rtsp::interleaved::{Frame, InterleavedReader, InterleavedWriter, MAX_BINARY_FRAME_LEN};

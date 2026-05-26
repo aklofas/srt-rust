@@ -7,6 +7,61 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-rtp Phase 1: RTP data plane (2026-05-25)
+
+### Added
+
+- New crate `tst-rtp` ships the RTP-over-UDP data plane carrying MPEG-TS
+  per RFC 2250 — sender + receiver, unicast + multicast (IPv4 + IPv6),
+  behind the existing `tst_core::transport::{Transport, RecvTransport}`
+  traits. `MuxSender<RtpTransport>` and `DemuxReceiver<RtpRecvTransport>`
+  now work end-to-end on `rtp://host:port` URLs alongside the existing
+  `srt://` flow.
+- `RtpHeader` (RFC 3550 §5.1 fixed header), `RtpTransport`,
+  `RtpRecvTransport`, `RtpStats` (protocol counters), `RtpUrl` (URL
+  parser with `?ttl=`, `?iface=`, `?pkt_size=`, `?ssrc=` keys),
+  `RtpSocketBuilder` + `RtpRecvSocketBuilder`. `tst_rtp::init()` is a
+  no-op exposed for symmetry with `tst_srt::init()`.
+- Pure Rust, no native deps. Direct dependencies: `getrandom` (SSRC +
+  initial sequence-number randomization), `thiserror`, `tracing`, plus
+  target-gated `libc` (cfg(unix)) for `setsockopt`-based multicast
+  knobs that aren't yet stable on `std::net::UdpSocket` (Rust 1.85).
+- New `cargo public-api` baseline at `crates/tst-rtp/public-api.txt`,
+  bringing the ratchet to 4 crates (tst-core, tst-pipeline, tst-srt,
+  tst-rtp). Fuzz harness `rtp_packet_decode` with 4 hand-built seeds;
+  CI fuzz-smoke job compile-checks the new target.
+- BASELINE `#[non_exhaustive]` count bumped 163 → 172 (observed at ship).
+- Examples: `examples/sending/rtp_basic.rs`,
+  `examples/receiving/rtp_recv_basic.rs`.
+
+### Scope
+
+- **No RTSP yet** — Phase 2 lands `RtspClient` (DESCRIBE / SETUP / PLAY)
+  and TCP-interleaved transport; the master design doc at
+  `docs/specs/2026-05-25-tst-rtp-design.md` describes the 5-phase arc.
+- **No RTCP yet** — `SocketStats.rtt_us` and `SocketStats.packets_lost_send`
+  return 0 for `RtpTransport`; the RTP-specific
+  `RtpRecvTransport::rtp_stats()` carries the malformed-packet counter
+  (the only protocol-level signal Phase 1 surfaces).
+- Timestamp source = system clock (`Instant::now()` → 90 kHz tick), M=0
+  always. Per RFC 2250 §2, decoders use the inner PES PTS for content
+  timing; the RTP timestamp is for jitter/RTCP and is not Phase 1's
+  concern.
+- Multicast send knobs (`IP_MULTICAST_TTL`, `IPV6_MULTICAST_HOPS`,
+  `IP_MULTICAST_IF`) require `cfg(unix)` — the stable Rust 1.85 std
+  `UdpSocket` doesn't expose them all yet. Windows MSVC target builds
+  compile-and-link only (per plan #65); the multicast knobs return
+  `ConnectError::IfaceUnsupported` on non-unix.
+
+### Compatibility
+
+- No breaking change to `tst-core`, `tst-pipeline`, `tst-srt`, or
+  `tst-c`. `tst-py` is unaffected (Phase 1 doesn't expose RTP to
+  Python bindings — those land in Phase 4).
+- Edition 2024, MSRV 1.85 (unchanged).
+
+---
+
 ## [Unreleased] — tst-srt refactor groundwork (2026-05-25)
 
 ### Refactor (no behavior change)

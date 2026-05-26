@@ -10,7 +10,7 @@
  *   consumers simultaneously — e.g., a UAS downlink distributed to a
  *   mission commander console, a recording server, and a map overlay
  *   service.  IP multicast delivers one UDP stream to all joiners with no
- *   sender-side fan-out, which is why STANAG 4609 / MISB ST 1910 pipelines
+ *   sender-side fan-out, which is why STANAG 4609 / MISB ST 1402 pipelines
  *   routinely use RTP+MPEG-TS over multicast inside the ground segment.
  *
  * What this example shows:

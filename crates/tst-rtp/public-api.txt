@@ -837,6 +837,7 @@ impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::mount::Moun
 pub struct tst_rtp::rtsp::server::mount::MountHandle
 impl tst_rtp::rtsp::server::mount::MountHandle
 pub fn tst_rtp::rtsp::server::mount::MountHandle::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::flush(&self)
 pub fn tst_rtp::rtsp::server::mount::MountHandle::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
 pub fn tst_rtp::rtsp::server::mount::MountHandle::mount_kind(&self) -> &tst_rtp::rtsp::server::mount::MountKind
 pub fn tst_rtp::rtsp::server::mount::MountHandle::mount_path(&self) -> &str
@@ -849,6 +850,7 @@ pub fn tst_rtp::rtsp::server::mount::MountHandle::push_subtitle(&self, &[u8], ts
 pub fn tst_rtp::rtsp::server::mount::MountHandle::push_subtitle_to(&self, tst_core::mpegts::mux::types::SubtitleStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_rtp::error::MountError>
 pub fn tst_rtp::rtsp::server::mount::MountHandle::push_video(&self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_rtp::error::MountError>
 pub fn tst_rtp::rtsp::server::mount::MountHandle::push_video_to(&self, tst_core::mpegts::mux::types::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::reset_stats(&self)
 pub fn tst_rtp::rtsp::server::mount::MountHandle::stats(&self) -> tst_rtp::rtsp::server::mount::MountStats
 pub fn tst_rtp::rtsp::server::mount::MountHandle::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
 pub fn tst_rtp::rtsp::server::mount::MountHandle::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>
@@ -1723,6 +1725,7 @@ impl<W> core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::interleaved::Int
 pub struct tst_rtp::MountHandle
 impl tst_rtp::rtsp::server::mount::MountHandle
 pub fn tst_rtp::rtsp::server::mount::MountHandle::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::flush(&self)
 pub fn tst_rtp::rtsp::server::mount::MountHandle::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
 pub fn tst_rtp::rtsp::server::mount::MountHandle::mount_kind(&self) -> &tst_rtp::rtsp::server::mount::MountKind
 pub fn tst_rtp::rtsp::server::mount::MountHandle::mount_path(&self) -> &str
@@ -1735,6 +1738,7 @@ pub fn tst_rtp::rtsp::server::mount::MountHandle::push_subtitle(&self, &[u8], ts
 pub fn tst_rtp::rtsp::server::mount::MountHandle::push_subtitle_to(&self, tst_core::mpegts::mux::types::SubtitleStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_rtp::error::MountError>
 pub fn tst_rtp::rtsp::server::mount::MountHandle::push_video(&self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_rtp::error::MountError>
 pub fn tst_rtp::rtsp::server::mount::MountHandle::push_video_to(&self, tst_core::mpegts::mux::types::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::reset_stats(&self)
 pub fn tst_rtp::rtsp::server::mount::MountHandle::stats(&self) -> tst_rtp::rtsp::server::mount::MountStats
 pub fn tst_rtp::rtsp::server::mount::MountHandle::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
 pub fn tst_rtp::rtsp::server::mount::MountHandle::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>

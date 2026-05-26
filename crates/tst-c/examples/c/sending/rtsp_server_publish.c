@@ -276,7 +276,7 @@ int main(int argc, char **argv) {
      * WHY TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA with carries_pts=true?
      *   Synchronous KLV (stream_type 0x15 / PES with PTS) lets downstream
      *   RTSP clients time-align KLV records with video frames using the
-     *   shared 90 kHz clock.  This is the ST 1402 / ST 1910 recommended
+     *   shared 90 kHz clock.  This is the ST 1402 / ST 1910.1 recommended
      *   carriage mode for mission-critical KLV.  Async (0x06) works too but
      *   gives receivers no timestamp anchor for KLV correlation.
      *

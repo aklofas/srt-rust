@@ -904,8 +904,8 @@ impl core::marker::Send for tst_rtp::rtsp::server::session::ServerSessionState
 impl core::marker::Sync for tst_rtp::rtsp::server::session::ServerSessionState
 impl core::marker::Unpin for tst_rtp::rtsp::server::session::ServerSessionState
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::session::ServerSessionState
-impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::session::ServerSessionState
-impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::session::ServerSessionState
+impl !core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::session::ServerSessionState
+impl !core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::session::ServerSessionState
 pub struct tst_rtp::rtsp::server::RtspServer
 impl tst_rtp::rtsp::server::RtspServer
 pub fn tst_rtp::rtsp::server::RtspServer::add_mount(&self, &str, tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<tst_rtp::rtsp::server::mount::MountHandle, tst_rtp::error::RtspServerError>

@@ -18,6 +18,8 @@ use std::sync::atomic::Ordering;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::net::tcp::OwnedWriteHalf;
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::error::RtspServerError;
 use crate::rtsp::message::{RtspMethod, RtspRequest};
@@ -68,6 +70,16 @@ pub struct ServerSessionState {
     /// the fanout task even after PAUSE drops the JoinHandle. Field is
     /// `pub(crate)` because `PeerDropCounter` itself is crate-private.
     pub(crate) peer_drop_counter: Option<std::sync::Arc<PeerDropCounter>>,
+    /// Async-locked write half of the per-session TCP. Populated at
+    /// session start by `handle_connection_inner` (where the `TcpStream`
+    /// is split). The PLAY handler clones this `Arc` into
+    /// `PeerTransport::Interleaved` so the per-peer fanout task can
+    /// share the control TCP for RFC 7826 §14 interleaved RTP frames.
+    /// `None` only in unit-test constructions that don't drive a real
+    /// connection (the session loop always populates it). Field is
+    /// `pub(crate)` because `OwnedWriteHalf` is a tokio internal type
+    /// we don't expose across the crate boundary.
+    pub(crate) tcp_write: Option<Arc<AsyncMutex<OwnedWriteHalf>>>,
 }
 
 impl ServerSessionState {
@@ -83,6 +95,7 @@ impl ServerSessionState {
             fanout_handle: None,
             peer_cancel: tokio_util::sync::CancellationToken::new(),
             peer_drop_counter: None,
+            tcp_write: None,
         }
     }
 }
@@ -108,12 +121,27 @@ pub(crate) async fn handle_connection(
 
 async fn handle_connection_inner(
     state: Arc<ServerState>,
-    mut tcp: TcpStream,
+    tcp: TcpStream,
     peer: SocketAddr,
     session_entry: Arc<crate::rtsp::server::ActiveSession>,
 ) -> Result<(), RtspServerError> {
     tracing::info!(target: "tst_rtp::server", peer = %peer, "session opened");
+
+    // Split the TCP up front. The write half lives behind an
+    // `Arc<AsyncMutex>` so the PLAY handler can hand a clone to the
+    // per-peer fanout task; that task interleaves RFC 7826 §14 binary
+    // RTP frames on the same TCP as the RTSP control responses. The
+    // mutex serializes the two writers so an RTSP response is never
+    // intermixed mid-bytes with a `$<channel><len><payload>` frame.
+    let (mut read_half, write_half) = tcp.into_split();
+    let write_half = Arc::new(AsyncMutex::new(write_half));
+
     let mut session = ServerSessionState::new();
+    // Populate the session's write-half handle so PLAY can clone it
+    // into `PeerTransport::Interleaved` without re-plumbing through the
+    // handler signature.
+    session.tcp_write = Some(write_half.clone());
+
     // Bounded read buffer — RTSP requests are typically << 4 KiB.
     let mut buf: Vec<u8> = Vec::with_capacity(8192);
 
@@ -129,7 +157,7 @@ async fn handle_connection_inner(
         // cancel_token gives prompt graceful-shutdown response.
         let mut chunk = [0u8; 4096];
         let n = tokio::select! {
-            r = tcp.read(&mut chunk) => match r {
+            r = read_half.read(&mut chunk) => match r {
                 Ok(0) => {
                     // Clean EOF — client disconnected.
                     break;
@@ -162,9 +190,14 @@ async fn handle_connection_inner(
             buf.drain(..consumed);
             let response = dispatch(&req, &state, &mut session);
             let bytes = response.encode();
-            if let Err(e) = tcp.write_all(&bytes).await {
-                tracing::warn!(target: "tst_rtp::server", peer = %peer, error = %e, "write failed");
-                return Ok(());
+            // Lock the write half to serialize against the fanout task
+            // (which holds it for RFC 7826 §14 interleaved frames).
+            {
+                let mut guard = write_half.lock().await;
+                if let Err(e) = guard.write_all(&bytes).await {
+                    tracing::warn!(target: "tst_rtp::server", peer = %peer, error = %e, "write failed");
+                    return Ok(());
+                }
             }
             if response.status == 401 {
                 session.auth_failures = session.auth_failures.saturating_add(1);
@@ -180,8 +213,12 @@ async fn handle_connection_inner(
                 session.auth_failures = 0;
             }
             if req.method == RtspMethod::Teardown && response.status == 200 {
-                // Clean close after TEARDOWN.
-                let _ = tcp.shutdown().await;
+                // Clean close after TEARDOWN. `shutdown` lives on the
+                // write half — take the lock to serialize against any
+                // in-flight fanout writes (fanout exits on session
+                // cancel; the lock is the safety net).
+                let mut guard = write_half.lock().await;
+                let _ = guard.shutdown().await;
                 return Ok(());
             }
         }

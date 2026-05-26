@@ -492,9 +492,11 @@ fn bind_server_udp_pair(
 /// On 200: returns Session + RTP-Info headers. For multicast mounts the
 /// per-mount sender (Task 14) drives sends, so PLAY just confirms;
 /// no per-peer task is spawned. For TCP-interleaved unicast the
-/// OwnedWriteHalf plumbing through the per-session TCP is deferred to
-/// Wave E — PLAY returns 200 with a `tracing::warn`, but RTP does not
-/// flow over the interleaved channel yet.
+/// per-session `OwnedWriteHalf` (populated by `handle_connection_inner`
+/// after the TCP split) is cloned into `PeerTransport::Interleaved` so
+/// the per-peer fanout task can write RFC 7826 §14 `$<channel><len>`
+/// frames on the same TCP as the RTSP control responses; the
+/// `AsyncMutex` around the write half serializes the two writers.
 pub(crate) fn handle_play(
     req: &RtspRequest,
     state: &Arc<ServerState>,
@@ -559,19 +561,27 @@ pub(crate) fn handle_play(
             }
         }
         RtspTransportKind::TcpInterleaved => {
-            // TCP-interleaved fanout requires the OwnedWriteHalf of the
-            // per-session TCP — owned by the session task today. Plumbing
-            // the write half through to the fanout task requires
-            // splitting the TCP at PLAY time, which is a larger refactor
-            // deferred to Wave E. PLAY returns 200 here so the client
-            // workflow proceeds, but RTP does not flow over the
-            // interleaved channel until that lands.
-            tracing::warn!(
-                target: "tst_rtp::server",
-                "TCP-interleaved fanout deferred to Wave E; PLAY returns 200 but RTP won't flow"
-            );
-            session.peer_drop_counter = Some(drop_counter);
-            return play_response_ok(req, &session_id);
+            // The per-session TCP was split in `handle_connection_inner`
+            // and the write half stashed on `session.tcp_write`. Clone
+            // the `Arc` so both the session's response writer and the
+            // fanout task can share the underlying writer via the
+            // `AsyncMutex` (serializes RTSP responses vs §14 interleaved
+            // RTP frames). The `expect` is sound: every real session
+            // populates `tcp_write` before any handler runs; only
+            // synthetic unit-test sessions leave it `None`, and those
+            // never reach PLAY with TcpInterleaved transport (SETUP
+            // wires the channel pair but the test asserts at SETUP).
+            let writer = session
+                .tcp_write
+                .clone()
+                .expect("tcp_write populated by handle_connection_inner before dispatch");
+            let (rtp_channel, _rtcp_channel) = session
+                .interleaved_channels
+                .expect("SETUP populated interleaved_channels for TcpInterleaved transport");
+            crate::rtsp::server::fanout::PeerTransport::Interleaved {
+                writer,
+                rtp_channel,
+            }
         }
     };
     let join = crate::rtsp::server::fanout::spawn_peer_fanout(

@@ -493,8 +493,9 @@ impl RtspServerBuilder {
     }
 
     /// Consume the builder and produce an [`crate::rtsp::server::RtspServer`]
-    /// ready for [`crate::rtsp::server::RtspServer::start`]. Internally
-    /// constructs the tokio Runtime and validates the configuration.
+    /// ready for `RtspServer::start` (introduced in Phase 3 Task 7).
+    /// Internally constructs the tokio Runtime and validates the
+    /// configuration.
     ///
     /// # Errors
     ///

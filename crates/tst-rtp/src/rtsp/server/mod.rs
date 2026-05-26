@@ -27,8 +27,8 @@ use crate::error::RtspServerError;
 /// one Muxer's TS bytes to N connected peers.
 ///
 /// Phase 3 implementation. The Task 3 stub returns
-/// [`RtspServerError::NotStarted`] from [`Self::from_builder`]; the real
-/// implementation lands in Task 7 (Wave B).
+/// [`RtspServerError::NotStarted`] from `from_builder` (pub(crate)); the
+/// real implementation lands in Task 7 (Wave B).
 #[derive(Debug)]
 pub struct RtspServer {
     // State added by Tasks 7-19.

@@ -4,12 +4,18 @@
 //! `crate::rtsp::auth`: the wire shapes of `WWW-Authenticate` and
 //! `Authorization` are direct mirrors. Server emits challenges; client
 //! emits responses; server verifies by recomputing the same Digest math.
+//!
+//! The `dead_code` allow at module level is scoped to this submodule:
+//! Wave A ships the primitives; Wave B's `handlers.rs` (Task 10) is the
+//! first consumer. The allow comes off when Wave B lands.
+
+#![allow(dead_code)]
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use secrecy::{ExposeSecret, SecretString};
 
-use crate::rtsp::server::builder::{ServerAuthConfig, ServerAuthScheme};
+use crate::builder::{ServerAuthConfig, ServerAuthScheme};
 
 /// Verification result. `Ok(())` means the request is authorized; any
 /// error means the request handler should reply 401 (typically with a
@@ -176,6 +182,7 @@ fn verify_digest(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compute_digest_response(
     scheme: ServerAuthScheme,
     user: &str,
@@ -510,7 +517,15 @@ mod tests {
 
     #[test]
     fn parse_kv_pairs_escaped_quotes() {
-        let m = parse_kv_pairs(r#"a="he said \"hi\""#);
-        assert_eq!(m.get("a").map(String::as_str), Some(r#"he said \"hi\"#));
+        // Parser preserves the literal backslash-escape sequences inside
+        // the quoted value — it skips over `\"` for the purpose of
+        // finding the closing `"`, but doesn't un-escape the bytes
+        // themselves. Real Authorization headers don't carry quoted
+        // strings with embedded `"`, so this is best-effort tolerance,
+        // not a faithful un-escape per RFC 7616 §3.4.
+        let m = parse_kv_pairs(r#"a="he said \"hi\"", b=ok"#);
+        // Quoted value runs `he said \"hi\"` — 14 bytes including escapes.
+        assert_eq!(m.get("a").map(String::as_str), Some(r#"he said \"hi\""#));
+        assert_eq!(m.get("b").map(String::as_str), Some("ok"));
     }
 }

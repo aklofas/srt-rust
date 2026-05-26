@@ -1,11 +1,12 @@
-//! `rtp://host:port?key=value&...` URL parsing.
+//! `rtp://host:port?key=value&...` URL parsing, plus `rtsp://` and
+//! `rtsps://` URL parsing for the Phase 2 RTSP client.
 //!
 //! Built on the scheme-neutral [`tst_core::url::common`] helpers from
-//! Plan #97. Only the `rtp://` scheme is accepted here; `rtsp://` and
-//! `rtsps://` are parsed by `tst-rtp`'s future `rtsp::client` module
-//! (Phase 2, not yet shipped).
+//! Plan #97. The `rtp://` shape is parsed by [`RtpUrl`]; the
+//! `rtsp://` / `rtsps://` shapes are parsed by [`RtspUrl`] (consumed by
+//! the Phase 2 RTSP client; see `crate::rtsp`).
 //!
-//! Supported query keys (matches the master spec table):
+//! Supported `rtp://` query keys:
 //!
 //! | Key | Value | Default |
 //! |---|---|---|
@@ -14,12 +15,20 @@
 //! | `pkt_size` | positive multiple of 188 | 1316 |
 //! | `ssrc` | u32 decimal or `0x`-prefixed hex | random |
 //!
+//! Supported `rtsp[s]://` query keys:
+//!
+//! | Key | Value | Default |
+//! |---|---|---|
+//! | `transport` | `tcp` or `udp` | absent → prefer-UDP with TCP fallback |
+//! | `rtsp_version` | `1.0` or `2.0` | `1.0` |
+//!
 //! `ttl` is wire-format-shared between IPv4 (`IP_MULTICAST_TTL`) and
 //! IPv6 (`IPV6_MULTICAST_HOPS`). The transport applies the right
 //! setsockopt based on the destination address family.
 
 use std::net::IpAddr;
 
+use secrecy::SecretString;
 use thiserror::Error;
 use tst_core::url::common::{ParsedUrl, UrlError as CoreUrlError, parse_url};
 
@@ -91,6 +100,47 @@ pub enum UrlError {
     /// silently get ignored.
     #[error("unknown rtp:// URL query key '{got}'")]
     UnknownKey { got: String },
+    /// URL scheme is not one of the supported set for the parser invoked.
+    /// Distinct from [`UrlError::WrongScheme`] which is reserved for the
+    /// `rtp://`-only [`RtpUrl`] parser; [`RtspUrl`] uses this variant
+    /// when given anything other than `rtsp://` / `rtsps://`.
+    #[error("unsupported scheme: {scheme}")]
+    BadScheme { scheme: String },
+    /// Query parameter key is recognized but its value is invalid
+    /// (e.g., `?transport=quic` on an `rtsp://` URL).
+    #[error("bad value for query parameter {key}: {value}")]
+    BadQuery { key: String, value: String },
+    /// Query parameter key is not recognized. Mirrors
+    /// [`UrlError::UnknownKey`] but uses RFC-3986 terminology and is the
+    /// variant emitted by [`RtspUrl::parse`].
+    #[error("unknown query parameter: {key}")]
+    UnknownQueryKey { key: String },
+}
+
+impl UrlError {
+    /// Map a [`tst_core::url::common::UrlError`] into the tst-rtp
+    /// `UrlError` shape. Used by both [`RtpUrl::parse`] (via `#[from]`)
+    /// and by [`RtspUrl::parse`] (explicitly, so the latter can attach
+    /// RTSP-specific context to a small number of variants).
+    pub(crate) fn from_core(e: CoreUrlError) -> Self {
+        // `CoreUrlError` is `#[non_exhaustive]`, so the `match` requires
+        // a wildcard arm by Rust rules. Every variant known at the time
+        // of writing is listed explicitly so a reviewer can audit the
+        // mapping; new variants added to `tst_core` fall through the
+        // wildcard to `UrlError::Syntax`, which preserves the original
+        // error verbatim via `#[error(transparent)]`.
+        match e {
+            CoreUrlError::MissingSchemeSeparator
+            | CoreUrlError::EmptyScheme
+            | CoreUrlError::UnclosedIpv6Bracket
+            | CoreUrlError::MalformedIpv6Literal { .. }
+            | CoreUrlError::BadPercentEncoding { .. }
+            | CoreUrlError::MissingHost
+            | CoreUrlError::MissingPort
+            | CoreUrlError::InvalidPort { .. } => UrlError::Syntax(e),
+            _ => UrlError::Syntax(e),
+        }
+    }
 }
 
 impl RtpUrl {
@@ -199,6 +249,190 @@ fn parse_iface(v: &str) -> Result<String, UrlError> {
     }
 }
 
+/// RTSP URL scheme — distinguishes plain RTSP from RTSP-over-TLS.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RtspScheme {
+    /// Plain `rtsp://` — TCP control connection without TLS.
+    Rtsp,
+    /// `rtsps://` — TCP control connection wrapped in rustls.
+    /// Requires cargo feature `tls`; URL parses fine without the
+    /// feature but `RtspClient::connect` will reject it.
+    Rtsps,
+}
+
+/// Wire-format version of outgoing RTSP request lines.
+///
+/// Most deployed IP cameras only understand `RTSP/1.0` (RFC 2326);
+/// `RTSP/2.0` (RFC 7826) is wire-identical for the OPTIONS / DESCRIBE
+/// / SETUP / PLAY / TEARDOWN subset we use (see RFC 7826 §1.3
+/// "Backward Compatibility"). Default is `V1_0` for maximum interop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RtspVersion {
+    /// `RTSP/1.0` per RFC 2326.
+    V1_0,
+    /// `RTSP/2.0` per RFC 7826.
+    V2_0,
+}
+
+impl RtspVersion {
+    /// Returns the wire-format string used on outgoing request lines
+    /// (e.g., `OPTIONS rtsp://cam/h264 RTSP/1.0`).
+    #[must_use]
+    pub fn wire_str(self) -> &'static str {
+        match self {
+            RtspVersion::V1_0 => "RTSP/1.0",
+            RtspVersion::V2_0 => "RTSP/2.0",
+        }
+    }
+}
+
+/// Per-URL transport preference — what to send in the SETUP `Transport:`
+/// header and how to react to a server 461 Unsupported Transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RtspTransportPref {
+    /// `?transport=` absent — try UDP first; on 461, auto-fall-back to
+    /// TCP-interleaved.
+    PreferUdp,
+    /// `?transport=udp` — try UDP only; on 461, surface
+    /// `RtspError::UnsupportedTransport` without TCP retry.
+    ForceUdp,
+    /// `?transport=tcp` — skip the UDP attempt; SETUP directly with
+    /// `RTP/AVP/TCP;interleaved=0-1`.
+    ForceTcp,
+}
+
+/// Parsed `rtsp://` or `rtsps://` URL.
+///
+/// Constructed by [`RtspUrl::parse`]; consumed by the Phase 2 RTSP
+/// client (`RtspClient::connect_with`).
+#[derive(Debug, Clone)]
+pub struct RtspUrl {
+    scheme: RtspScheme,
+    /// Host as written in the URL (literal IP or domain). Parsed lazily
+    /// by the RTSP client at connect time.
+    pub host: String,
+    /// Control-channel TCP port. Defaults to 554 for `rtsp://` and 322
+    /// for `rtsps://` when the URL omits the port.
+    pub port: u16,
+    /// Path component including the leading `/` (empty string when the
+    /// URL has no path). Used verbatim on the RTSP request line and for
+    /// Digest `uri=`.
+    pub path: String,
+    /// `user` from `user[:password]@host`, if present.
+    pub username: Option<String>,
+    /// `password` from `user:password@host`. Wrapped in [`SecretString`]
+    /// so it zeroes on drop and redacts in `Debug` output.
+    pub password: Option<SecretString>,
+    /// Effective transport preference; see [`RtspTransportPref`].
+    pub transport_preference: RtspTransportPref,
+    /// Effective RTSP wire-format version; see [`RtspVersion`].
+    pub rtsp_version: RtspVersion,
+}
+
+impl RtspUrl {
+    /// Parse an `rtsp://` or `rtsps://` URL into the structured form.
+    ///
+    /// Accepted query parameters:
+    /// - `transport=tcp|udp` — see [`RtspTransportPref`]; absent ==
+    ///   `PreferUdp`.
+    /// - `rtsp_version=1.0|2.0` — see [`RtspVersion`]; absent == `V1_0`.
+    ///
+    /// Unknown query keys cause [`UrlError::UnknownQueryKey`]; recognized
+    /// keys with invalid values cause [`UrlError::BadQuery`]; non-rtsp
+    /// schemes cause [`UrlError::BadScheme`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`UrlError`] when structural URL parsing fails, when the
+    /// scheme is not `rtsp` / `rtsps`, when a query value is invalid, or
+    /// when an unknown query key is present.
+    pub fn parse(s: &str) -> Result<Self, UrlError> {
+        let parsed = parse_url(s).map_err(UrlError::from_core)?;
+        let scheme = match parsed.scheme {
+            "rtsp" => RtspScheme::Rtsp,
+            "rtsps" => RtspScheme::Rtsps,
+            other => {
+                return Err(UrlError::BadScheme {
+                    scheme: other.to_string(),
+                });
+            }
+        };
+        let default_port = match scheme {
+            RtspScheme::Rtsp => 554,
+            RtspScheme::Rtsps => 322,
+        };
+        let port = parsed.port.unwrap_or(default_port);
+
+        let mut transport_preference = RtspTransportPref::PreferUdp;
+        let mut rtsp_version = RtspVersion::V1_0;
+        for (k, v) in &parsed.query {
+            match k.as_ref() {
+                "transport" => {
+                    transport_preference = match v.as_ref() {
+                        "tcp" => RtspTransportPref::ForceTcp,
+                        "udp" => RtspTransportPref::ForceUdp,
+                        other => {
+                            return Err(UrlError::BadQuery {
+                                key: "transport".to_string(),
+                                value: other.to_string(),
+                            });
+                        }
+                    };
+                }
+                "rtsp_version" => {
+                    rtsp_version = match v.as_ref() {
+                        "1.0" => RtspVersion::V1_0,
+                        "2.0" => RtspVersion::V2_0,
+                        other => {
+                            return Err(UrlError::BadQuery {
+                                key: "rtsp_version".to_string(),
+                                value: other.to_string(),
+                            });
+                        }
+                    };
+                }
+                other => {
+                    return Err(UrlError::UnknownQueryKey {
+                        key: other.to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(RtspUrl {
+            scheme,
+            host: parsed.host.to_string(),
+            port,
+            path: parsed.path.to_string(),
+            username: parsed.username.map(str::to_string),
+            password: parsed.password.map(SecretString::from),
+            transport_preference,
+            rtsp_version,
+        })
+    }
+
+    /// The URL scheme (`rtsp` or `rtsps`).
+    #[must_use]
+    pub fn scheme(&self) -> RtspScheme {
+        self.scheme
+    }
+
+    /// Render the URL string suitable for the Digest `uri=` parameter
+    /// and the RTSP request line. Includes scheme, host, port, and path;
+    /// does NOT include user credentials.
+    #[must_use]
+    pub fn render_no_credentials(&self) -> String {
+        let scheme = match self.scheme {
+            RtspScheme::Rtsp => "rtsp",
+            RtspScheme::Rtsps => "rtsps",
+        };
+        format!("{}://{}:{}{}", scheme, self.host, self.port, self.path)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,5 +523,81 @@ mod tests {
     fn rejects_bad_ssrc() {
         let err = RtpUrl::parse("rtp://h:5004?ssrc=notanint").unwrap_err();
         assert!(matches!(err, UrlError::BadSsrc { .. }));
+    }
+}
+
+#[cfg(test)]
+mod rtsp_tests {
+    use super::*;
+
+    #[test]
+    fn rtsp_url_basic_no_query() {
+        let u = RtspUrl::parse("rtsp://cam.lan:554/h264").unwrap();
+        assert_eq!(u.scheme(), RtspScheme::Rtsp);
+        assert_eq!(u.host, "cam.lan");
+        assert_eq!(u.port, 554);
+        assert_eq!(u.path, "/h264");
+        assert_eq!(u.transport_preference, RtspTransportPref::PreferUdp);
+        assert_eq!(u.rtsp_version, RtspVersion::V1_0);
+        assert!(u.username.is_none());
+        assert!(u.password.is_none());
+    }
+
+    #[test]
+    fn rtsps_url_default_port_322() {
+        let u = RtspUrl::parse("rtsps://cam.lan/h264").unwrap();
+        assert_eq!(u.scheme(), RtspScheme::Rtsps);
+        assert_eq!(u.port, 322);
+    }
+
+    #[test]
+    fn rtsp_url_default_port_554() {
+        let u = RtspUrl::parse("rtsp://cam.lan/h264").unwrap();
+        assert_eq!(u.port, 554);
+    }
+
+    #[test]
+    fn rtsp_url_transport_tcp_query() {
+        let u = RtspUrl::parse("rtsp://cam.lan/h264?transport=tcp").unwrap();
+        assert_eq!(u.transport_preference, RtspTransportPref::ForceTcp);
+    }
+
+    #[test]
+    fn rtsp_url_transport_udp_query() {
+        let u = RtspUrl::parse("rtsp://cam.lan/h264?transport=udp").unwrap();
+        assert_eq!(u.transport_preference, RtspTransportPref::ForceUdp);
+    }
+
+    #[test]
+    fn rtsp_url_transport_bad_value_rejected() {
+        let e = RtspUrl::parse("rtsp://cam.lan/h264?transport=quic").unwrap_err();
+        assert!(matches!(e, UrlError::BadQuery { .. }));
+    }
+
+    #[test]
+    fn rtsp_url_rtsp_version_2_0() {
+        let u = RtspUrl::parse("rtsp://cam.lan/h264?rtsp_version=2.0").unwrap();
+        assert_eq!(u.rtsp_version, RtspVersion::V2_0);
+    }
+
+    #[test]
+    fn rtsp_url_combined_query() {
+        let u = RtspUrl::parse("rtsp://cam.lan/h264?transport=tcp&rtsp_version=2.0").unwrap();
+        assert_eq!(u.transport_preference, RtspTransportPref::ForceTcp);
+        assert_eq!(u.rtsp_version, RtspVersion::V2_0);
+    }
+
+    #[test]
+    fn rtsp_url_credentials_extracted() {
+        let u = RtspUrl::parse("rtsp://admin:s3cret@cam.lan/h264").unwrap();
+        assert_eq!(u.username.as_deref(), Some("admin"));
+        // Password is wrapped in Secret; we only check it exists.
+        assert!(u.password.is_some());
+    }
+
+    #[test]
+    fn rtsp_url_unknown_query_key_rejected() {
+        let e = RtspUrl::parse("rtsp://cam.lan/h264?bogus=1").unwrap_err();
+        assert!(matches!(e, UrlError::UnknownQueryKey { .. }));
     }
 }

@@ -99,6 +99,10 @@ name = "rtp_recv_basic"
 path = "receiving/rtp_recv_basic.rs"
 
 [[example]]
+name = "rtsp_client_camera"
+path = "receiving/rtsp_client_camera.rs"
+
+[[example]]
 name = "klv_encode_minimal"
 path = "klv-metadata/klv_encode_minimal.rs"
 

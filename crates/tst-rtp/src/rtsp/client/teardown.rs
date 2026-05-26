@@ -1,7 +1,5 @@
 //! `RtspClient::teardown` + `Drop` impl (best-effort TEARDOWN on drop).
 
-use std::io::Write;
-
 use crate::error::RtspError;
 use crate::rtsp::client::RtspClient;
 use crate::rtsp::message::{RtspMethod, RtspRequest};
@@ -34,10 +32,7 @@ impl RtspClient {
         .header("session", sid)
         .header("user-agent", "tst-rtp/0.1");
         let bytes = req.encode();
-        self.stream
-            .write_all(&bytes)
-            .map_err(|e| RtspError::Io(e.kind()))?;
-        let _resp = self.read_response()?;
+        let _resp = self.send_and_read(&bytes)?;
         self.session_id = None;
         Ok(())
     }

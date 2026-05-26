@@ -2,8 +2,6 @@
 //! unique PT=33 m-line). Implements UDP-first attempt with 461 →
 //! TCP-interleaved auto-fallback per RFC 7826 §17.4.6.
 
-use std::io::Write;
-
 use crate::error::RtspError;
 use crate::rtsp::client::RtspClient;
 use crate::rtsp::client::session::RtspSession;
@@ -90,10 +88,7 @@ impl RtspClient {
             .header("transport", transport_hdr)
             .header("user-agent", "tst-rtp/0.1");
         let bytes = req.encode();
-        self.stream
-            .write_all(&bytes)
-            .map_err(|e| RtspError::Io(e.kind()))?;
-        let resp = self.read_response()?;
+        let resp = self.send_and_read(&bytes)?;
         if resp.status != 200 {
             return Err(RtspError::Protocol {
                 code: resp.status,

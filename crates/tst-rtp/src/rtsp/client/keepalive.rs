@@ -1,10 +1,13 @@
 //! Background thread sending OPTIONS at `session_timeout / 2` intervals.
 //!
-//! - Holds `Arc` clones of the RTSP client's TCP write half (Mutex-guarded)
-//!   and the `cancel` AtomicBool.
-//! - On cancel (or response error), the thread exits.
-//! - On RTSP session timeout (server stops responding), the thread sets a
-//!   shared "session_dead" flag the main thread can poll via
+//! - Holds an `Arc<Mutex<Stream>>` clone — the SAME stream the main
+//!   thread uses (since T21). Works uniformly for plain TCP and TLS;
+//!   the pre-T21 path tried to `try_clone` the stream FD which failed
+//!   on rustls `ClientConnection` (silently disabling keepalive for
+//!   `rtsps://` sessions).
+//! - On cancel (or write error), the thread exits.
+//! - On RTSP session timeout (server stops responding), the thread sets
+//!   a shared "session_dead" flag the main thread can poll via
 //!   `RtspClient::is_session_alive`.
 
 use std::io::Write;
@@ -68,14 +71,18 @@ pub(crate) fn spawn(
                 let mut req = RtspRequest::new(RtspMethod::Options, url.clone(), version)
                     .header("cseq", cseq.to_string())
                     .header("user-agent", "tst-rtp/0.1");
-                if let Some(sid) = session_id.lock().unwrap().clone() {
+                if let Some(sid) = session_id
+                    .lock()
+                    .expect("session id mutex poisoned")
+                    .clone()
+                {
                     req = req.header("session", sid);
                 }
                 let bytes = req.encode();
-                let mut g = match write_half.lock() {
-                    Ok(g) => g,
-                    Err(_) => return, // poisoned — main thread crashed
-                };
+                // If the stream mutex is poisoned the main thread
+                // panicked mid-request — propagate by panicking the
+                // keepalive thread too (per T21 policy).
+                let mut g = write_half.lock().expect("stream mutex poisoned");
                 if g.write_all(&bytes).is_err() {
                     session_dead.store(true, Ordering::Relaxed);
                     return;

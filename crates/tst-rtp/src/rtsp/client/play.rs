@@ -1,7 +1,5 @@
 //! `RtspClient::play` + `RtspClient::pause` + `RTP-Info:` header parsing.
 
-use std::io::Write;
-
 use crate::error::RtspError;
 use crate::rtsp::client::RtspClient;
 use crate::rtsp::message::{RtspMethod, RtspRequest};
@@ -45,10 +43,7 @@ impl RtspClient {
         .header("range", "npt=0.000-")
         .header("user-agent", "tst-rtp/0.1");
         let bytes = req.encode();
-        self.stream
-            .write_all(&bytes)
-            .map_err(|e| RtspError::Io(e.kind()))?;
-        let resp = self.read_response()?;
+        let resp = self.send_and_read(&bytes)?;
         if resp.status != 200 {
             return Err(RtspError::Protocol {
                 code: resp.status,
@@ -90,10 +85,7 @@ impl RtspClient {
         .header("session", sid)
         .header("user-agent", "tst-rtp/0.1");
         let bytes = req.encode();
-        self.stream
-            .write_all(&bytes)
-            .map_err(|e| RtspError::Io(e.kind()))?;
-        let resp = self.read_response()?;
+        let resp = self.send_and_read(&bytes)?;
         if resp.status != 200 {
             return Err(RtspError::Protocol {
                 code: resp.status,

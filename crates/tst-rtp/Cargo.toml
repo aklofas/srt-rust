@@ -37,7 +37,12 @@ libc       = { workspace = true }
 default = []
 # Enable rtsps:// support via sync rustls. Phase 2 uses rustls 0.23 directly
 # (no tokio-rustls) — the client is a sync facade per master spec.
-tls = ["dep:rustls", "dep:rustls-pemfile", "dep:rustls-pki-types"]
+tls = [
+    "dep:rustls",
+    "dep:rustls-pemfile",
+    "dep:rustls-pki-types",
+    "dep:rustls-native-certs",
+]
 
 [dependencies.rustls]
 version          = "0.23"
@@ -51,6 +56,12 @@ optional = true
 
 [dependencies.rustls-pki-types]
 version  = "1"
+optional = true
+
+# Pulls trust roots from the OS / native cert store so `rtsps://` works
+# out-of-the-box without webpki-roots being baked into the binary.
+[dependencies.rustls-native-certs]
+version  = "0.7"
 optional = true
 
 [dev-dependencies]

@@ -13,6 +13,7 @@ pub mod teardown;
 pub mod tls;
 pub mod transport_negotiation;
 
+use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -20,6 +21,54 @@ use std::time::Duration;
 
 use crate::error::RtspError;
 use crate::url::{RtspScheme, RtspUrl, RtspVersion};
+
+/// The control-plane byte stream — plain TCP for `rtsp://`, or
+/// rustls-wrapped TCP for `rtsps://` when the `tls` cargo feature is
+/// enabled.
+///
+/// Hidden behind the same `Read + Write` shape so per-method code in
+/// `options_describe.rs`, `setup.rs`, etc. is agnostic to which
+/// transport carries the bytes.
+#[derive(Debug)]
+pub(crate) enum Stream {
+    Plain(TcpStream),
+    #[cfg(feature = "tls")]
+    Tls(Box<tls::TlsStream>),
+}
+
+impl Read for Stream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Stream::Plain(s) => s.read(buf),
+            #[cfg(feature = "tls")]
+            Stream::Tls(s) => s.read(buf),
+        }
+    }
+}
+
+impl Write for Stream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Stream::Plain(s) => s.write(buf),
+            #[cfg(feature = "tls")]
+            Stream::Tls(s) => s.write(buf),
+        }
+    }
+    fn write_all(&mut self, buf: &[u8]) -> std::io::Result<()> {
+        match self {
+            Stream::Plain(s) => s.write_all(buf),
+            #[cfg(feature = "tls")]
+            Stream::Tls(s) => s.write_all(buf),
+        }
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Stream::Plain(s) => s.flush(),
+            #[cfg(feature = "tls")]
+            Stream::Tls(s) => s.flush(),
+        }
+    }
+}
 
 /// Sync RTSP client. One instance per server.
 ///
@@ -35,10 +84,11 @@ use crate::url::{RtspScheme, RtspUrl, RtspVersion};
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct RtspClient {
-    /// The TCP read half — used by the main thread + the
-    /// `InterleavedReader` background thread when TCP-interleaved
-    /// transport is in use.
-    pub(crate) stream: TcpStream,
+    /// The control-plane byte stream — plain TCP for `rtsp://`, or
+    /// rustls-wrapped TCP for `rtsps://` (under the `tls` feature).
+    /// Used by the main thread + the `InterleavedReader` background
+    /// thread when TCP-interleaved transport is in use.
+    pub(crate) stream: Stream,
     /// Negotiated URL — caller can re-parse for re-connects.
     pub(crate) url: RtspUrl,
     /// Server's connection address as we resolved it.
@@ -91,15 +141,17 @@ impl RtspCancelHandle {
 }
 
 impl RtspClient {
-    /// Connect to an `rtsp://` URL (plain TCP only — `rtsps://` lands
-    /// in a later task gated by the `tls` cargo feature).
+    /// Connect to an `rtsp://` or `rtsps://` URL. The `rtsps://` scheme
+    /// requires the `tls` cargo feature; otherwise it returns
+    /// [`RtspError::Tls`].
     ///
     /// # Errors
     ///
     /// - [`RtspError::Url`] if the URL cannot be parsed.
     /// - [`RtspError::Io`] on socket-level failure (DNS, refused, etc.).
     /// - [`RtspError::Tls`] if the URL scheme is `rtsps://` and the
-    ///   `tls` cargo feature is not enabled.
+    ///   `tls` cargo feature is not enabled, or on rustls handshake
+    ///   failure (server name validation, untrusted cert, etc.).
     pub fn connect(url: &str) -> Result<Self, RtspError> {
         let parsed = RtspUrl::parse(url)?;
         Self::connect_with(&parsed)
@@ -115,14 +167,14 @@ impl RtspClient {
     ///
     /// See [`Self::connect`].
     pub fn connect_with(url: &RtspUrl) -> Result<Self, RtspError> {
-        if matches!(url.scheme(), RtspScheme::Rtsps) {
-            #[cfg(not(feature = "tls"))]
+        let is_tls = matches!(url.scheme(), RtspScheme::Rtsps);
+        #[cfg(not(feature = "tls"))]
+        if is_tls {
             return Err(RtspError::Tls(
                 "TLS support requires the 'tls' cargo feature".into(),
             ));
-            // With the `tls` feature, a later task dispatches the
-            // rustls handshake here.
         }
+
         let host_port = (url.host.as_str(), url.port);
         let mut addrs = host_port
             .to_socket_addrs()
@@ -130,15 +182,33 @@ impl RtspClient {
         let peer = addrs
             .next()
             .ok_or(RtspError::Io(std::io::ErrorKind::AddrNotAvailable))?;
-        let stream = TcpStream::connect_timeout(&peer, Duration::from_secs(10))
+        let tcp = TcpStream::connect_timeout(&peer, Duration::from_secs(10))
             .map_err(|e| RtspError::Io(e.kind()))?;
-        stream
-            .set_read_timeout(Some(Duration::from_millis(100)))
+        tcp.set_read_timeout(Some(Duration::from_millis(100)))
             .map_err(|e| RtspError::Io(e.kind()))?;
-        stream
-            .set_write_timeout(Some(Duration::from_secs(5)))
+        tcp.set_write_timeout(Some(Duration::from_secs(5)))
             .map_err(|e| RtspError::Io(e.kind()))?;
-        stream.set_nodelay(true).ok();
+        tcp.set_nodelay(true).ok();
+
+        // Branch the stream construction. For `rtsps://` we hand the
+        // TCP socket to the rustls handshake; the resulting TlsStream
+        // exposes the same Read+Write shape the rest of the client
+        // expects.
+        let stream = if is_tls {
+            #[cfg(feature = "tls")]
+            {
+                Stream::Tls(Box::new(tls::TlsStream::connect(url, tcp, None)?))
+            }
+            #[cfg(not(feature = "tls"))]
+            {
+                // Unreachable: the early-return above already short-
+                // circuited. Kept as a compile-time guard.
+                unreachable!("tls feature disabled but rtsps:// reached connect path")
+            }
+        } else {
+            Stream::Plain(tcp)
+        };
+
         Ok(Self {
             stream,
             url: url.clone(),

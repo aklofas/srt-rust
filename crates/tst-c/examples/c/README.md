@@ -187,4 +187,10 @@ raw/TS receiver) surfaces. Receiver-side C examples ship under
   multicast demux receiver: join an IP multicast group, walk the full
   `tst_event_t` event-kind switch, and shut down gracefully on SIGINT via
   `tst_rtp_demux_receiver_cancel`. The RTP twin of
-  `recv_demux_to_console.c`.  Requires `TST_HAS_RTP`.
+  `recv_demux_to_console.c`. Requires `TST_HAS_RTP`.
+- [`receiving/rtsp_client_camera.c`](receiving/rtsp_client_camera.c) —
+  full RTSP client lifecycle: builder chain with Digest MD5 auth and
+  transport preference (UDP / TCP-interleaved / auto), `_connect`,
+  `_play`, `into_demux_receiver` bridge to typed event loop, SIGINT
+  cancel, and cleanup. Canonical pattern for consuming a gimbaled-platform
+  camera stream over RTSP.

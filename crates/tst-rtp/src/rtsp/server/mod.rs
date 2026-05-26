@@ -148,6 +148,54 @@ impl RtspServer {
         RtspServerBuilder::with_url(url).build()
     }
 
+    /// Register a unicast mount under `path`. Returns a [`MountHandle`][crate::rtsp::server::mount::MountHandle]
+    /// the caller pushes TS frames into. Multiple handles via
+    /// [`MountHandle::clone`][crate::rtsp::server::mount::MountHandle::clone]
+    /// can push from different threads.
+    ///
+    /// `path` must start with `/` and not contain URL-reserved characters
+    /// like `?` or `#`.
+    ///
+    /// # Errors
+    /// - [`RtspServerError::InvalidMountPath`] if `path` doesn't start with `/`
+    ///   or is empty / contains URL-reserved characters.
+    /// - [`RtspServerError::DuplicateMount`] if `path` is already registered.
+    /// - [`RtspServerError::InvalidConfig`] if `MuxerConfig` validation fails.
+    /// - [`RtspServerError::Shutdown`] if called after `stop()`.
+    pub fn add_mount(
+        &self,
+        path: &str,
+        cfg: tst_core::mpegts::mux::MuxerConfig,
+    ) -> Result<crate::rtsp::server::mount::MountHandle, RtspServerError> {
+        if self.state.shutdown.load(Ordering::Relaxed) {
+            return Err(RtspServerError::Shutdown);
+        }
+        if path.is_empty() || !path.starts_with('/') {
+            return Err(RtspServerError::InvalidMountPath {
+                detail: format!("path must start with '/'; got '{path}'"),
+            });
+        }
+        if path.contains('?') || path.contains('#') {
+            return Err(RtspServerError::InvalidMountPath {
+                detail: format!("path contains URL-reserved character: '{path}'"),
+            });
+        }
+        let mount_state = crate::rtsp::server::mount::MountState::new(
+            path,
+            crate::rtsp::server::mount::MountKind::Unicast,
+            cfg,
+            self.state.builder.fanout_capacity,
+        )?;
+        let mut mounts = self.state.mounts.lock().expect("mounts mutex");
+        if mounts.contains_key(path) {
+            return Err(RtspServerError::DuplicateMount {
+                path: path.to_string(),
+            });
+        }
+        mounts.insert(path.to_string(), mount_state.clone());
+        Ok(crate::rtsp::server::mount::MountHandle { state: mount_state })
+    }
+
     /// Begin accepting client connections. Spawns the listener task on
     /// the internal runtime and spin-waits up to 1 s for the listener to
     /// bind. Returns once `local_addr()` reflects the bound port.
@@ -371,5 +419,56 @@ mod listener_tests {
             second.local_addr().is_none(),
             "second bind should have failed"
         );
+    }
+}
+
+#[cfg(test)]
+mod add_mount_tests {
+    use super::*;
+    use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
+
+    fn make_muxer_cfg() -> MuxerConfig {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    }
+
+    #[test]
+    fn add_mount_returns_handle_with_path() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        let mount = server.add_mount("/live", make_muxer_cfg()).unwrap();
+        assert_eq!(mount.mount_path(), "/live");
+        assert_eq!(server.stats().mounts, 1);
+    }
+
+    #[test]
+    fn add_mount_rejects_empty_path() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        let e = server.add_mount("", make_muxer_cfg()).unwrap_err();
+        assert!(matches!(e, RtspServerError::InvalidMountPath { .. }));
+    }
+
+    #[test]
+    fn add_mount_rejects_path_without_leading_slash() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        let e = server.add_mount("live", make_muxer_cfg()).unwrap_err();
+        assert!(matches!(e, RtspServerError::InvalidMountPath { .. }));
+    }
+
+    #[test]
+    fn add_mount_rejects_duplicate_path() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        server.add_mount("/live", make_muxer_cfg()).unwrap();
+        let e = server.add_mount("/live", make_muxer_cfg()).unwrap_err();
+        assert!(matches!(e, RtspServerError::DuplicateMount { .. }));
+    }
+
+    #[test]
+    fn add_mount_path_with_query_char_rejected() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        let e = server.add_mount("/live?x=1", make_muxer_cfg()).unwrap_err();
+        assert!(matches!(e, RtspServerError::InvalidMountPath { .. }));
     }
 }

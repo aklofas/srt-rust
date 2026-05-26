@@ -9,8 +9,14 @@
 //! [`RtpRecvTransport::listen_with`]; the builder is sugar, not a
 //! parallel implementation.
 
+use std::time::Duration;
+
+use secrecy::SecretString;
+
+use crate::error::RtspError;
+use crate::rtsp::client::RtspClient;
 use crate::transport::{ConnectError, RtpRecvTransport, RtpTransport};
-use crate::url::{DEFAULT_PKT_SIZE, RtpUrl, UrlError as RtpUrlError};
+use crate::url::{DEFAULT_PKT_SIZE, RtpUrl, RtspUrl, UrlError as RtpUrlError};
 
 /// Fluent builder for send-side [`RtpTransport`].
 #[must_use]
@@ -165,6 +171,139 @@ impl RtpRecvSocketBuilder {
     /// the original Phase 1 builder shape.
     pub fn listen(&self) -> Result<RtpRecvTransport, ConnectError> {
         RtpRecvTransport::listen_with_rtcp(&self.url, self.rtcp)
+    }
+}
+
+/// Fluent builder for [`RtspClient`] with extended options (auth
+/// credentials, keepalive overrides, TLS roots, timeouts).
+///
+/// Unlike [`RtspClient::connect`] / [`RtspClient::connect_with`] which
+/// take just a URL, this builder lets callers pass credentials and
+/// keepalive policy without re-encoding them into the URL query string.
+///
+/// The builder's [`Self::connect`] always spawns the auto-keepalive
+/// background thread unless [`Self::no_auto_keepalive`] is set.
+#[must_use]
+pub struct RtspClientBuilder {
+    url: RtspUrl,
+    username: Option<String>,
+    password: Option<SecretString>,
+    no_auto_keepalive: bool,
+    keepalive_interval_override: Option<Duration>,
+    connect_timeout: Duration,
+    read_timeout: Duration,
+    user_agent: String,
+    #[cfg(feature = "tls")]
+    tls_root_certs: Option<rustls::RootCertStore>,
+}
+
+impl RtspClientBuilder {
+    /// New builder for `url`. URL-embedded credentials
+    /// (`rtsp://user:pass@host/...`) are picked up as defaults; call
+    /// [`Self::auth`] to override.
+    ///
+    /// # Errors
+    ///
+    /// - [`RtspError::Url`] if the URL cannot be parsed.
+    pub fn new(url: &str) -> Result<Self, RtspError> {
+        let parsed = RtspUrl::parse(url)?;
+        let username = parsed.username.clone();
+        let password = parsed.password.clone();
+        Ok(Self {
+            url: parsed,
+            username,
+            password,
+            no_auto_keepalive: false,
+            keepalive_interval_override: None,
+            connect_timeout: Duration::from_secs(10),
+            read_timeout: Duration::from_millis(100),
+            user_agent: "tst-rtp/0.1".into(),
+            #[cfg(feature = "tls")]
+            tls_root_certs: None,
+        })
+    }
+
+    /// Disable the auto-keepalive background thread. Default `false`
+    /// (i.e., auto-keepalive is on).
+    pub fn no_auto_keepalive(mut self, disabled: bool) -> Self {
+        self.no_auto_keepalive = disabled;
+        self
+    }
+
+    /// Override the keepalive interval. Default: `session_timeout / 2`
+    /// as derived from the server's `Session: ...;timeout=N` header.
+    pub fn keepalive_interval(mut self, t: Duration) -> Self {
+        self.keepalive_interval_override = Some(t);
+        self
+    }
+
+    /// Provide explicit credentials. Overrides anything parsed from
+    /// the URL's userinfo component.
+    pub fn auth(mut self, username: impl Into<String>, password: SecretString) -> Self {
+        self.username = Some(username.into());
+        self.password = Some(password);
+        self
+    }
+
+    /// Override the `User-Agent` header. Default: `tst-rtp/0.1`.
+    pub fn user_agent(mut self, ua: impl Into<String>) -> Self {
+        self.user_agent = ua.into();
+        self
+    }
+
+    /// TCP connect timeout. Default 10 s.
+    pub fn connect_timeout(mut self, t: Duration) -> Self {
+        self.connect_timeout = t;
+        self
+    }
+
+    /// Per-read socket timeout (poll interval for cancel + interleaved
+    /// frame reads). Default 100 ms.
+    pub fn read_timeout(mut self, t: Duration) -> Self {
+        self.read_timeout = t;
+        self
+    }
+
+    /// Override the rustls root certificate store for `rtsps://`
+    /// connections. Default: webpki-roots / system roots per the `tls`
+    /// module's policy.
+    #[cfg(feature = "tls")]
+    pub fn tls_root_certs(mut self, certs: rustls::RootCertStore) -> Self {
+        self.tls_root_certs = Some(certs);
+        self
+    }
+
+    /// Connect, returning the live client.
+    ///
+    /// For v1, the builder delegates to
+    /// [`RtspClient::connect_with`]. Task 17 will wire the
+    /// `keepalive_interval_override` field into the keepalive thread
+    /// spawn; for now the override field is stored but the spawn stub
+    /// is a no-op.
+    ///
+    /// # Errors
+    ///
+    /// See [`RtspClient::connect_with`].
+    pub fn connect(self) -> Result<RtspClient, RtspError> {
+        let mut client = RtspClient::connect_with(&self.url)?;
+        if !self.no_auto_keepalive {
+            client.spawn_keepalive_if_needed(self.keepalive_interval_override);
+        }
+        // `username`, `password`, `connect_timeout`, `read_timeout`,
+        // `user_agent`, and `tls_root_certs` are stored on the builder
+        // for future tasks to wire through to the client (auth flow,
+        // socket timeouts, TLS handshake) — see the plan's later
+        // waves.
+        let _ = (
+            &self.username,
+            &self.password,
+            self.connect_timeout,
+            self.read_timeout,
+            &self.user_agent,
+        );
+        #[cfg(feature = "tls")]
+        let _ = &self.tls_root_certs;
+        Ok(client)
     }
 }
 

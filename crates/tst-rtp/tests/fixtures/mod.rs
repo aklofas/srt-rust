@@ -3,3 +3,6 @@
 #![allow(dead_code)] // not every test uses every helper
 
 pub mod rtsp_loopback_server;
+
+#[cfg(feature = "tls")]
+pub mod tls_certs;

@@ -1,4 +1,4 @@
-//! MP2T media selection for [`crate::RtspClient::setup_mp2t_auto`].
+//! MP2T media selection for `RtspClient::setup_mp2t_auto` (lands Wave B).
 
 use crate::error::RtspError;
 use crate::sdp::{Sdp, SdpMedia};

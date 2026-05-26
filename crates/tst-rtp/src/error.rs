@@ -72,7 +72,7 @@ pub enum RtspError {
     /// from the server (length field doesn't match payload size,
     /// channel out of allocated range, etc.). The control channel
     /// surfaces this immediately; downstream
-    /// [`crate::RtpRecvTransport::recv_bytes`] then yields
+    /// `RtpRecvTransport::recv_bytes` then yields
     /// `TransportError::Broken`.
     #[error("malformed interleaved frame: {detail}")]
     InterleavedFraming { detail: &'static str },
@@ -92,7 +92,7 @@ pub enum RtspError {
     #[error("RTSP session timed out (no response to keepalive)")]
     Timeout,
 
-    /// Caller invoked [`crate::RtspCancelHandle::cancel`] mid-request.
+    /// Caller invoked `RtspCancelHandle::cancel` (lands Wave B) mid-request.
     /// The TCP write/read returned early; no server state was
     /// necessarily mutated, so caller should treat the session as
     /// indeterminate.
@@ -101,14 +101,14 @@ pub enum RtspError {
 
     /// `DESCRIBE` returned an SDP that contains no `m=` line with PT=33
     /// (MP2T, RFC 3551 §6). Only emitted by
-    /// [`crate::RtspClient::setup_mp2t_auto`]; explicit
+    /// `RtspClient::setup_mp2t_auto` (lands Wave B); explicit
     /// `setup(&media)` does not consult MP2T-ness.
     #[error("no MPEG-TS m-line in SDP (no payload type 33)")]
     NoMp2tMedia,
 
     /// `DESCRIBE` returned an SDP with multiple `m=` lines containing
     /// PT=33. Caller should fall back to explicit
-    /// [`crate::RtspClient::setup`] with a chosen media line.
+    /// `RtspClient::setup` (lands Wave B) with a chosen media line.
     #[error("multiple MPEG-TS m-lines in SDP ({count} found)")]
     MultipleMp2tMedia { count: usize },
 

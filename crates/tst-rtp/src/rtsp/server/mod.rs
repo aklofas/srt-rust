@@ -111,6 +111,21 @@ impl std::fmt::Debug for RtspServer {
     }
 }
 
+/// Random 32-bit SSRC seed for multicast mounts. Uses `getrandom`;
+/// falls back to zero on the (impossible-in-practice) error path.
+fn rand_ssrc() -> u32 {
+    let mut buf = [0u8; 4];
+    let _ = getrandom::getrandom(&mut buf);
+    u32::from_be_bytes(buf)
+}
+
+/// Random initial RTP sequence per RFC 3550 §5.1.
+fn rand_seq() -> u16 {
+    let mut buf = [0u8; 2];
+    let _ = getrandom::getrandom(&mut buf);
+    u16::from_be_bytes(buf)
+}
+
 impl RtspServer {
     /// Internal — called from [`crate::builder::RtspServerBuilder::build`].
     /// Constructs the tokio Runtime and the shared `ServerState`.
@@ -193,6 +208,120 @@ impl RtspServer {
             });
         }
         mounts.insert(path.to_string(), mount_state.clone());
+        Ok(crate::rtsp::server::mount::MountHandle { state: mount_state })
+    }
+
+    /// Register a multicast mount. The provided `group_url` is an
+    /// `rtp://<mcast-ip>:<port>?ttl=N&iface=ethN` URL pointing at the
+    /// multicast group + port to publish on. A single per-mount
+    /// background task drains the broadcast and sends to the group;
+    /// per-client SETUP responses point clients at the group.
+    ///
+    /// # Errors
+    /// - [`RtspServerError::InvalidMountPath`] — same rules as
+    ///   [`Self::add_mount`].
+    /// - [`RtspServerError::InvalidMulticastGroup`] — `group_url` is
+    ///   malformed or the host isn't multicast.
+    /// - [`RtspServerError::DuplicateMount`] — path already registered.
+    /// - [`RtspServerError::InvalidConfig`] — `MuxerConfig` validation
+    ///   failed.
+    /// - [`RtspServerError::Shutdown`] — server stopped.
+    ///
+    /// # Panics
+    ///
+    /// None directly; the per-mount sender task is spawned on the
+    /// runtime — if it panics during send, tracing emits a warn but
+    /// the server stays up.
+    pub fn add_multicast_mount(
+        &self,
+        path: &str,
+        cfg: tst_core::mpegts::mux::MuxerConfig,
+        group_url: &str,
+    ) -> Result<crate::rtsp::server::mount::MountHandle, RtspServerError> {
+        if self.state.shutdown.load(Ordering::Relaxed) {
+            return Err(RtspServerError::Shutdown);
+        }
+        if path.is_empty() || !path.starts_with('/') {
+            return Err(RtspServerError::InvalidMountPath {
+                detail: format!("path must start with '/'; got '{path}'"),
+            });
+        }
+        if path.contains('?') || path.contains('#') {
+            return Err(RtspServerError::InvalidMountPath {
+                detail: format!("path contains URL-reserved character: '{path}'"),
+            });
+        }
+        let mcast = crate::url::MulticastGroup::parse(group_url).map_err(|e| {
+            RtspServerError::InvalidMulticastGroup {
+                addr: group_url.to_string(),
+                detail: e.to_string(),
+            }
+        })?;
+        let mount_state = crate::rtsp::server::mount::MountState::new(
+            path,
+            crate::rtsp::server::mount::MountKind::Multicast {
+                group: mcast.addr,
+                ttl: mcast.ttl,
+                iface: mcast.iface.clone(),
+            },
+            cfg,
+            self.state.builder.fanout_capacity,
+        )?;
+        let mut mounts = self.state.mounts.lock().expect("mounts mutex");
+        if mounts.contains_key(path) {
+            return Err(RtspServerError::DuplicateMount {
+                path: path.to_string(),
+            });
+        }
+        mounts.insert(path.to_string(), mount_state.clone());
+        // Spawn the per-mount multicast sender task. The send socket is
+        // built async on the runtime; we use spawn so add_multicast_mount
+        // can return synchronously. If the socket build fails, the task
+        // logs and exits — caller observes via tracing/stats, not via
+        // the return value (matches the unicast handle pattern where
+        // listener errors don't unwind to the caller).
+        let rt = self.runtime.as_ref().expect("runtime present until Drop");
+        let mount_clone = mount_state.clone();
+        let cancel = self.state.cancel_token.clone();
+        let group = mcast.addr;
+        let ttl = mcast.ttl;
+        let iface = mcast.iface.clone();
+        let drop_counter = crate::rtsp::server::fanout::PeerDropCounter::new();
+        rt.spawn(async move {
+            match crate::rtsp::server::multicast::build_multicast_send_socket(
+                group,
+                ttl,
+                iface.as_deref(),
+            )
+            .await
+            {
+                Ok(sock) => {
+                    let sock = Arc::new(sock);
+                    let rx = mount_clone.fanout.subscribe();
+                    let _join = crate::rtsp::server::multicast::spawn_multicast_sender(
+                        rx,
+                        sock,
+                        cancel,
+                        rand_ssrc(),
+                        rand_seq(),
+                        drop_counter,
+                    );
+                    // The spawn_multicast_sender returns a JoinHandle we
+                    // intentionally drop — the task lives until cancel
+                    // or broadcast::Closed (which happens when MountState
+                    // is dropped → fanout sender drops → all subscribers
+                    // get Closed).
+                }
+                Err(e) => {
+                    tracing::error!(
+                        target: "tst_rtp::server::multicast",
+                        error = ?e,
+                        group = ?group,
+                        "failed to build multicast send socket; mount inactive"
+                    );
+                }
+            }
+        });
         Ok(crate::rtsp::server::mount::MountHandle { state: mount_state })
     }
 
@@ -470,5 +599,81 @@ mod add_mount_tests {
         let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
         let e = server.add_mount("/live?x=1", make_muxer_cfg()).unwrap_err();
         assert!(matches!(e, RtspServerError::InvalidMountPath { .. }));
+    }
+}
+
+#[cfg(test)]
+mod add_multicast_mount_tests {
+    use super::*;
+    use tst_core::mpegts::mux::{MuxerConfig, MuxerProgramConfigBuilder, VideoCodec};
+
+    fn make_muxer_cfg() -> MuxerConfig {
+        let mut prog = MuxerProgramConfigBuilder::new(1, 0x1000);
+        prog.add_video(0x1011, VideoCodec::H264);
+        let mut b = MuxerConfig::builder();
+        b.add_program(prog.build());
+        b.build().unwrap()
+    }
+
+    #[test]
+    fn add_multicast_mount_returns_handle_for_v4_group() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        let mount = server
+            .add_multicast_mount("/mc", make_muxer_cfg(), "rtp://239.0.0.1:5004")
+            .unwrap();
+        assert_eq!(mount.mount_path(), "/mc");
+        assert!(matches!(
+            mount.mount_kind(),
+            crate::rtsp::server::mount::MountKind::Multicast { .. }
+        ));
+    }
+
+    #[test]
+    fn add_multicast_mount_rejects_unicast_group() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        let e = server
+            .add_multicast_mount("/mc", make_muxer_cfg(), "rtp://10.0.0.1:5004")
+            .unwrap_err();
+        assert!(matches!(e, RtspServerError::InvalidMulticastGroup { .. }));
+    }
+
+    #[test]
+    fn add_multicast_mount_rejects_malformed_url() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        let e = server
+            .add_multicast_mount("/mc", make_muxer_cfg(), "not-a-url")
+            .unwrap_err();
+        assert!(matches!(e, RtspServerError::InvalidMulticastGroup { .. }));
+    }
+
+    #[test]
+    fn add_multicast_mount_rejects_duplicate_path() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        server
+            .add_multicast_mount("/mc", make_muxer_cfg(), "rtp://239.0.0.1:5004")
+            .unwrap();
+        let e = server
+            .add_multicast_mount("/mc", make_muxer_cfg(), "rtp://239.0.0.2:5004")
+            .unwrap_err();
+        assert!(matches!(e, RtspServerError::DuplicateMount { .. }));
+    }
+
+    #[test]
+    fn add_multicast_mount_carries_ttl_and_iface() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        let mount = server
+            .add_multicast_mount(
+                "/mc",
+                make_muxer_cfg(),
+                "rtp://239.0.0.1:5004?ttl=2&iface=127.0.0.1",
+            )
+            .unwrap();
+        match mount.mount_kind() {
+            crate::rtsp::server::mount::MountKind::Multicast { ttl, iface, .. } => {
+                assert_eq!(*ttl, 2);
+                assert_eq!(iface.as_deref(), Some("127.0.0.1"));
+            }
+            _ => panic!("expected Multicast"),
+        }
     }
 }

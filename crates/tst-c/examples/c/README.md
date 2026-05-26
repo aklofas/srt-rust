@@ -138,3 +138,8 @@ raw/TS receiver) surfaces. Receiver-side C examples ship under
   extraction: dump KLV payloads as hex / file on the side of a Demuxer.
 - [`receiving/recv_raw_to_file.c`](receiving/recv_raw_to_file.c) — raw
   socket bytes (no TS framing): the lowest-level RawReceiver shape.
+- [`receiving/rtp_recv_basic.c`](receiving/rtp_recv_basic.c) — RTP
+  multicast demux receiver: join an IP multicast group, walk the full
+  `tst_event_t` event-kind switch, and shut down gracefully on SIGINT via
+  `tst_rtp_demux_receiver_cancel`. The RTP twin of
+  `recv_demux_to_console.c`.  Requires `TST_HAS_RTP`.

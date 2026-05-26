@@ -551,3 +551,86 @@ jobs:
         run: |
           cd crates/tst-py
           .venv/bin/pytest tests/test_pandas_missing_extra.py -v
+
+  tst-c-feature-matrix:
+    name: tst-c feature matrix (linux-x86_64)
+    runs-on: ubuntu-latest
+    # Builds tst-c in all four feature-flag combinations and runs the
+    # `feature_matrix_compile` integration test in each mode. Catches:
+    #  1. Compile failures when features are toggled off (e.g., srt-only
+    #     build accidentally references an rtp symbol, or vice-versa).
+    #  2. cfg-leak regressions where a symbol appears in a build flavor
+    #     that should not have it — faster feedback than waiting for
+    #     check-c-header-conditional-sections.sh to run against the header.
+    #
+    # Linux-only: vendored libsrt cmake build is the reference platform.
+    # The four modes are:
+    #  - default  (srt + rtp + mbedtls)
+    #  - srt-only (--no-default-features --features srt)
+    #  - rtp-only (--no-default-features --features rtp)
+    #  - neither  (--no-default-features)  — 0 tests expected, must compile
+    env:
+      RUSTUP_TOOLCHAIN: "1.85"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: default
+            cargo_flags: ""
+          - name: srt-only
+            cargo_flags: "--no-default-features --features srt"
+          - name: rtp-only
+            cargo_flags: "--no-default-features --features rtp"
+          - name: neither
+            cargo_flags: "--no-default-features"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+
+      - name: Cache cargo + cmake artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            !target/debug/incremental
+            !target/debug/.fingerprint
+            !target/debug/deps
+          key: cargo-tst-c-matrix-${{ matrix.name }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-tst-c-matrix-${{ matrix.name }}-
+
+      - name: check-c-header-conditional-sections
+        # Verify the committed tstrans.h contains TST_HAS_SRT + TST_HAS_RTP
+        # defines and that srt-only cbindgen output has no rtp_* leak.
+        # Runs unconditionally (header is checked regardless of feature mode)
+        # because the script operates on the committed header, not a
+        # freshly-generated one.
+        run: bash scripts/check-c-header-conditional-sections.sh
+
+      - name: cargo build tst-c (${{ matrix.name }})
+        # Build tst-c with the feature combination under test. Explicit build
+        # step produces the cdylib + staticlib (cargo test alone only builds
+        # the rlib when multiple crate-types are present).
+        env:
+          SRT_FORCE_VENDORED: "1"
+        run: cargo build -p tst-c ${{ matrix.cargo_flags }}
+
+      - name: cargo test feature_matrix_compile (${{ matrix.name }})
+        # Integration test that imports feature-gated symbols by Rust path.
+        # default  → 5 tests; srt-only → 1 test; rtp-only → 4 tests;
+        # neither  → 0 tests (compile succeeds, no test bodies active).
+        env:
+          SRT_FORCE_VENDORED: "1"
+        run: cargo test -p tst-c ${{ matrix.cargo_flags }} --test feature_matrix_compile

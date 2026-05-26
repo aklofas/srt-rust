@@ -44,6 +44,21 @@ mod rtsp;
 pub use error::{
     test_clear_last_error, test_last_error_code, test_last_error_msg, test_record_shell_error,
 };
+
+// Feature-gated re-exports used by the `feature_matrix_compile` integration
+// test to verify that each cargo feature exposes the expected entry points.
+// These are thin aliases — the real `extern "C"` symbols are in their
+// respective submodules; integration tests in `tests/` cannot see
+// `pub(crate)` paths, so flat re-exports at crate root are needed.
+#[cfg(feature = "rtp")]
+pub use rtp::{tst_rtp_mux_sender_open, tst_rtp_sender_open};
+#[cfg(feature = "rtp")]
+pub use rtsp::client::builder::tst_rtsp_client_builder_new;
+#[cfg(feature = "rtp")]
+pub use rtsp::server::builder::tst_rtsp_server_builder_new;
+#[cfg(feature = "srt")]
+pub use sender::ts_sender::tst_sender_open;
+
 /// Major version (compile-time macro in the generated header).
 pub const TST_VERSION_MAJOR: libc::c_int = 0;
 /// Minor version.

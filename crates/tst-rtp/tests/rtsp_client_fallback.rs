@@ -1,3 +1,5 @@
+#![allow(clippy::field_reassign_with_default)]
+
 mod fixtures;
 use fixtures::rtsp_loopback_server::*;
 

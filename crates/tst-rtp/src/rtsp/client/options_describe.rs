@@ -4,7 +4,12 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
+use secrecy::ExposeSecret;
+
 use crate::error::RtspError;
+use crate::rtsp::auth::{
+    AuthChallenge, DigestContext, build_basic_response, build_digest_response, parse_challenges,
+};
 use crate::rtsp::client::RtspClient;
 use crate::rtsp::message::{RtspMethod, RtspRequest, RtspResponse};
 use crate::sdp::Sdp;
@@ -82,26 +87,15 @@ impl RtspClient {
     /// - [`RtspError::LocalCancel`] if the cancel handle was triggered
     ///   mid-read.
     pub fn describe(&mut self) -> Result<Sdp, RtspError> {
-        let cseq = self.bump_cseq();
-        let req = RtspRequest::new(
-            RtspMethod::Describe,
-            self.url.render_no_credentials(),
-            self.url.rtsp_version,
-        )
-        .header("cseq", cseq.to_string())
-        .header("accept", "application/sdp")
-        .header("user-agent", "tst-rtp/0.1");
-        let bytes = req.encode();
-        self.stream
-            .write_all(&bytes)
-            .map_err(|e| RtspError::Io(e.kind()))?;
-        let resp = self.read_response()?;
+        // First attempt: no Authorization header.
+        let resp = self.send_request_with_optional_auth(RtspMethod::Describe, None)?;
+        let resp = if resp.status == 401 {
+            // Server demanded auth — extract challenge, build credentials, retry.
+            self.handle_auth_challenge_and_retry(RtspMethod::Describe, &resp)?
+        } else {
+            resp
+        };
         self.last_server_version = resp.version;
-        if resp.status == 401 {
-            // Hand-off to auth-retry path lands in a later task; here we
-            // just surface a clean error for now.
-            return Err(RtspError::AuthFailed);
-        }
         if resp.status != 200 {
             return Err(RtspError::Protocol {
                 code: resp.status,
@@ -109,6 +103,109 @@ impl RtspClient {
             });
         }
         Sdp::parse(&resp.body)
+    }
+
+    /// Send a request without (or with) a pre-built Authorization
+    /// header. Used as the first attempt + the retry leg of the
+    /// challenge-response flow.
+    pub(crate) fn send_request_with_optional_auth(
+        &mut self,
+        method: RtspMethod,
+        authorization: Option<String>,
+    ) -> Result<RtspResponse, RtspError> {
+        let cseq = self.bump_cseq();
+        let mut req = RtspRequest::new(
+            method,
+            self.url.render_no_credentials(),
+            self.url.rtsp_version,
+        )
+        .header("cseq", cseq.to_string())
+        .header("accept", "application/sdp")
+        .header("user-agent", "tst-rtp/0.1");
+        if let Some(sid) = &self.session_id {
+            req = req.header("session", sid.clone());
+        }
+        if let Some(auth) = authorization {
+            req = req.header("authorization", auth);
+        }
+        let bytes = req.encode();
+        self.stream
+            .write_all(&bytes)
+            .map_err(|e| RtspError::Io(e.kind()))?;
+        self.read_response()
+    }
+
+    /// Parse WWW-Authenticate from a 401 response, build Authorization
+    /// from URL credentials, retry. Returns the retry response.
+    pub(crate) fn handle_auth_challenge_and_retry(
+        &mut self,
+        method: RtspMethod,
+        first_resp: &RtspResponse,
+    ) -> Result<RtspResponse, RtspError> {
+        let username = self.url.username.clone().ok_or(RtspError::AuthFailed)?;
+        let password = self.url.password.clone().ok_or(RtspError::AuthFailed)?;
+        let www_auth =
+            first_resp
+                .headers
+                .get("www-authenticate")
+                .ok_or(RtspError::BadResponse {
+                    detail: "401 without WWW-Authenticate header",
+                })?;
+        let challenges = parse_challenges(www_auth);
+        // Prefer Digest over Basic when both are offered.
+        let challenge = challenges
+            .iter()
+            .find(|c| matches!(c, AuthChallenge::Digest(_)))
+            .or_else(|| {
+                challenges
+                    .iter()
+                    .find(|c| matches!(c, AuthChallenge::Basic { .. }))
+            })
+            .ok_or_else(|| RtspError::AuthUnsupported {
+                scheme: "(no recognized scheme in WWW-Authenticate)".into(),
+            })?;
+
+        let method_str = match method {
+            RtspMethod::Options => "OPTIONS",
+            RtspMethod::Describe => "DESCRIBE",
+            RtspMethod::Setup => "SETUP",
+            RtspMethod::Play => "PLAY",
+            RtspMethod::Pause => "PAUSE",
+            RtspMethod::Teardown => "TEARDOWN",
+            RtspMethod::GetParameter => "GET_PARAMETER",
+        };
+        let uri = self.url.render_no_credentials();
+        let authorization = match challenge {
+            AuthChallenge::Basic { .. } => build_basic_response(&username, &password),
+            AuthChallenge::Digest(d) => {
+                // Generate a random cnonce.
+                let mut cnonce_bytes = [0u8; 16];
+                getrandom::getrandom(&mut cnonce_bytes)
+                    .map_err(|_| RtspError::Io(std::io::ErrorKind::Other))?;
+                let mut cnonce = String::with_capacity(32);
+                for b in &cnonce_bytes {
+                    use std::fmt::Write as _;
+                    let _ = write!(cnonce, "{:02x}", b);
+                }
+                let _ = password.expose_secret(); // touch to ensure non-zero
+                let ctx = DigestContext {
+                    username: &username,
+                    password: &password,
+                    method: method_str,
+                    uri: &uri,
+                    nc: 1,
+                    cnonce: &cnonce,
+                    challenge: d,
+                };
+                build_digest_response(&ctx)
+            }
+        };
+
+        let retry = self.send_request_with_optional_auth(method, Some(authorization))?;
+        if retry.status == 401 {
+            return Err(RtspError::AuthFailed);
+        }
+        Ok(retry)
     }
 
     /// Read one complete RTSP response from the stream. Honors the

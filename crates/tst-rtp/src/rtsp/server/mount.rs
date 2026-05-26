@@ -1,7 +1,24 @@
-//! Phase 3 — populated by subsequent tasks.
+//! Mount surface — placeholder for Wave C Tasks 12-15.
 
-/// Placeholder for the per-mount state that lands in Wave C (Task 12).
-/// Task 7 references this from `ServerState::mounts` so the hashmap type
-/// resolves; the real fields + impls land later.
+use std::net::SocketAddr;
+
+/// Discriminant for mount type. Wave C extends with the broadcast
+/// channel + per-mount Muxer.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
 #[allow(dead_code)]
-pub(crate) struct MountState;
+pub(crate) enum MountKind {
+    Unicast,
+    Multicast {
+        group: SocketAddr,
+        ttl: u8,
+        iface: Option<String>,
+    },
+}
+
+/// Minimal placeholder so the server-state hashmap typechecks. Wave C
+/// (Tasks 12+) replaces with the full struct holding Muxer + broadcast.
+#[allow(dead_code)]
+pub(crate) struct MountState {
+    pub(crate) kind: MountKind,
+}

@@ -51,10 +51,7 @@ impl RtspClient {
             req = req.header("session", sid.clone());
         }
         let bytes = req.encode();
-        self.stream
-            .write_all(&bytes)
-            .map_err(|e| RtspError::Io(e.kind()))?;
-        let resp = self.read_response()?;
+        let resp = self.send_and_read(&bytes)?;
         self.last_server_version = resp.version;
         if resp.status != 200 {
             return Err(RtspError::Protocol {
@@ -129,10 +126,7 @@ impl RtspClient {
             req = req.header("authorization", auth);
         }
         let bytes = req.encode();
-        self.stream
-            .write_all(&bytes)
-            .map_err(|e| RtspError::Io(e.kind()))?;
-        self.read_response()
+        self.send_and_read(&bytes)
     }
 
     /// Parse WWW-Authenticate from a 401 response, build Authorization
@@ -208,21 +202,34 @@ impl RtspClient {
         Ok(retry)
     }
 
-    /// Read one complete RTSP response from the stream. Honors the
-    /// cancel flag by checking it between read attempts.
+    /// Write a serialized RTSP request, then read one complete response,
+    /// all under a single mutex acquisition on the stream. This makes
+    /// the request/response exchange atomic with respect to the
+    /// background keepalive thread (which shares the same
+    /// `Arc<Mutex<Stream>>` since T21).
     ///
-    /// The TCP stream is set up in
-    /// [`RtspClient::connect_with`] with a short read timeout (100 ms),
-    /// so each `WouldBlock` / `TimedOut` round-trip is a cancel-check
-    /// opportunity.
-    pub(crate) fn read_response(&mut self) -> Result<RtspResponse, RtspError> {
+    /// The cancel flag is checked between read polls. The underlying
+    /// stream has a short read timeout (100 ms, set in
+    /// [`RtspClient::connect_with`]), so each `WouldBlock` / `TimedOut`
+    /// round-trip is a cancel-check opportunity.
+    ///
+    /// Holding the lock through the whole exchange means the keepalive
+    /// thread waits if a request is in flight — which is correct: RTSP
+    /// isn't pipelined, only one in-flight request at a time.
+    pub(crate) fn send_and_read(
+        &mut self,
+        request_bytes: &[u8],
+    ) -> Result<RtspResponse, RtspError> {
+        let mut s = self.stream.lock().expect("stream mutex poisoned");
+        s.write_all(request_bytes)
+            .map_err(|e| RtspError::Io(e.kind()))?;
         let mut buf = Vec::with_capacity(4096);
         let mut chunk = [0u8; 4096];
         loop {
             if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
                 return Err(RtspError::LocalCancel);
             }
-            match self.stream.read(&mut chunk) {
+            match s.read(&mut chunk) {
                 Ok(0) => return Err(RtspError::Io(std::io::ErrorKind::UnexpectedEof)),
                 Ok(n) => {
                     buf.extend_from_slice(&chunk[..n]);

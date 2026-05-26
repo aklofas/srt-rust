@@ -50,6 +50,52 @@ impl TransportCancel for RtpCancelHandle {
     }
 }
 
+/// Cancel handle for an `RtspServer` (introduced in Phase 3 Task 7).
+///
+/// `cancel()` is the HARD cancel — equivalent to a SIGKILL on the
+/// server's tokio Runtime tasks: the listener stops accepting new
+/// connections, per-session tasks abort at their next poll, and no
+/// RTSP TEARDOWN-style notification is sent to connected clients
+/// (clients will see TCP RST or a half-closed connection).
+///
+/// For graceful shutdown with session-end notification + bounded drain,
+/// use `RtspServer::stop` instead.
+///
+/// The handle is `Clone + Send + Sync`; multiple holders can race the
+/// cancel call (idempotent — repeated `cancel()` calls are a no-op).
+#[derive(Clone, Debug)]
+pub struct RtspServerCancelHandle {
+    pub(crate) cancel: Arc<AtomicBool>,
+}
+
+impl RtspServerCancelHandle {
+    /// Construct a fresh handle. Internal — `RtspServer::from_builder`
+    /// (Task 7) creates one and exposes it via `cancel_handle()`.
+    pub(crate) fn new() -> Self {
+        Self {
+            cancel: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Signal the server to break out of all blocking I/O at the next
+    /// poll. The listener exits its accept loop within ~100 ms; per-session
+    /// tasks exit at their next `select!` wake.
+    pub fn cancel(&self) {
+        self.cancel.store(true, Ordering::Relaxed);
+    }
+
+    /// Has [`Self::cancel`] been called?
+    pub fn is_canceled(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
+    }
+}
+
+impl Default for RtspServerCancelHandle {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -99,5 +145,41 @@ mod tests {
         fn accept(_: &dyn TransportCancel) {}
         let h = RtpCancelHandle::new();
         accept(&*h);
+    }
+}
+
+#[cfg(test)]
+mod phase3_server_cancel_tests {
+    use super::*;
+
+    #[test]
+    fn server_cancel_handle_toggles() {
+        let h = RtspServerCancelHandle::new();
+        assert!(!h.is_canceled());
+        h.cancel();
+        assert!(h.is_canceled());
+    }
+
+    #[test]
+    fn server_cancel_handle_clone_shares_flag() {
+        let h1 = RtspServerCancelHandle::new();
+        let h2 = h1.clone();
+        h1.cancel();
+        assert!(h2.is_canceled());
+    }
+
+    #[test]
+    fn server_cancel_handle_idempotent() {
+        let h = RtspServerCancelHandle::new();
+        h.cancel();
+        h.cancel();
+        h.cancel();
+        assert!(h.is_canceled());
+    }
+
+    #[test]
+    fn server_cancel_handle_default_is_not_canceled() {
+        let h = RtspServerCancelHandle::default();
+        assert!(!h.is_canceled());
     }
 }

@@ -261,7 +261,7 @@ three-tier scheme exposed through `tstrans.h`:
   incompatible change to the ABI shape. **0** today.
 - `TST_ABI_VERSION_MINOR` — incremented on additive, source-compatible
   changes (new event kinds, new C entry points, new error codes).
-  **5** today. History (additive bumps only — major stays at 0 pre-1.0):
+  **6** today. History (additive bumps only — major stays at 0 pre-1.0):
     - `1` (plan #62): receiver-surface initial drop.
     - `2` (validate-1 Phase 2 wrap-up): `ManagedDemuxReceiver` wired into
       `tst-c`; `TST_EVENT_RECONNECT_DISCONTINUITY = 6` added; TS-bytes
@@ -279,6 +279,16 @@ three-tier scheme exposed through `tstrans.h`:
       `tst_demux_config_set_lenient_psi_reassembly`, plus the
       `TstAv1CarriageMode` enum. Bridges Rust-only `DemuxerConfig`
       knobs through the C builder.
+    - `6` (Phase 4 Stage 1, 2026-05-26): RTP + RTSP C ABI surface.
+      Cargo features `srt` + `rtp` (both default-on) gate the SRT and
+      RTP/RTSP halves of the ABI; `TST_HAS_SRT` + `TST_HAS_RTP`
+      `#define`s in tstrans.h let consumers `#if`-test feature presence.
+      ~97 new C entry points: `tst_rtp_{sender,recv,mux_sender,demux_receiver}_*`
+      open + close + data-path methods (~46 across 4 handle families) +
+      `tst_rtsp_client_builder_*` + session methods (14) +
+      `tst_rtsp_server_builder_*` + start + add_*_mount + mount push family
+      + stats + cancel + stop (~37). 11 new error codes
+      (`TST_E_RTP_TRANSPORT` through `TST_E_RTSP_MOUNT`, -15..-25).
 - `TST_ABI_VERSION_PATCH` — incremented on internal fixes that
   preserve both shape and behaviour.
 

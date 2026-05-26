@@ -7,6 +7,59 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-c Phase 4 Stage 1: RTP + RTSP C ABI surface (2026-05-26)
+
+### Added — full Phase 4 Stage 1 C ABI
+
+- **Cargo feature flags** `srt` + `rtp` on `tst-c` (both default-on); `mbedtls`
+  retained. `--no-default-features` builds a file-I/O-only `tstrans` library.
+  `tstrans.h` emits `TST_HAS_SRT` + `TST_HAS_RTP` `#define`s (always present;
+  set to `1` when the matching feature is active, `0` otherwise) so consumer
+  C code can `#if TST_HAS_RTP` without prior knowledge of build flavor.
+- **~97 new C entry points** across 4 RTP handle families + RTSP client + server:
+    - **RTP handles** (4 concrete opaque types: `TstRtpSender`,
+      `TstRtpReceiver`, `TstRtpMuxSender`, `TstRtpDemuxReceiver`):
+      `_open` + `_close` + data-path methods (send_ts / recv_ts / push_video
+      / push_klv / push_audio / push_subtitle / push_*_to / next_event /
+      get_*_stats / cancel / reset_stats / flush) — ~46 entry points total.
+    - **RTSP client** (14 entry points): `tst_rtsp_client_builder_*` chain
+      (`new`, `transport_pref`, `rtcp`, `keepalive`, `tls_root_cert_pem`,
+      `auth_basic` / `auth_digest_md5` / `auth_digest_sha256`, `connect`,
+      `free`) + `tst_rtsp_session_*` (`play`, `pause`, `teardown_and_free`,
+      `cancel`, `into_demux_receiver` — bridges to `TstRtpDemuxReceiver`).
+    - **RTSP server** (~37 entry points): `tst_rtsp_server_builder_*` chain
+      (11: `new`, `bind`, auth × 3, `max_sessions`, `session_timeout`,
+      `fanout_capacity`, `graceful_shutdown_drain_ms`, `tls_cert_pem`,
+      `free`) + `tst_rtsp_server_builder_start` + `_add_unicast_mount` +
+      `_add_multicast_mount` + `TstRtspMountHandle` push family
+      (16: 4 single-stream + 4 `_to` variants + flush + cancel +
+      reset_stats + 4 handle getters + get_stats) +
+      `tst_rtsp_server_get_stats` + cancel-handle family + `_stop`
+      (Notice 5402 + graceful drain) + `_free`.
+- **11 new error codes** as `TstError` enum variants
+  (`-15`..`-25`): `RtpTransport`, `RtspProtocol`, `RtspAuthFailed`,
+  `RtspAuthRequired`, `RtspNotFound`, `RtspUnsupported`, `RtspTls`,
+  `RtspIo`, `RtspTimeout`, `RtspServer`, `RtspMount`. Emitted as
+  `TST_E_*` defines in `tstrans.h`.
+- **4 new C examples**: `sending/rtp_basic.c`, `receiving/rtp_recv_basic.c`,
+  `receiving/rtsp_client_camera.c`, `sending/rtsp_server_publish.c` —
+  rich teaching comments per `feedback_examples_are_teaching_code.md`.
+- **3 new bash ratchets**: `check-c-header-conditional-sections.sh` (cbindgen
+  feature-gating regression guard), `check-rtsp-error-mapping-coverage.sh`
+  (RtspError / MountError / RtspServerError → TstError variant coverage).
+- **Upstream additions to `tst-rtp`**: `MountHandle::flush` + `reset_stats`
+  surfaced (needed for C-side mount lifecycle parity); `RtspServerBuilder::with_url`
+  added so tst-c can pass a pre-parsed `RtspUrl` from its accumulator builder.
+
+### Changed — tst-c ABI minor bump 5 → 6
+
+`TST_ABI_VERSION_MINOR` 5 → 6 covering all Stage 1 additions. All changes
+are additive (no breaking renames on existing symbols); existing consumers
+continue to link unchanged. Per `docs/reference/binding-authors.md` policy,
+any new C entry point triggers an ABI minor bump.
+
+---
+
 ## [Unreleased] — tst-rtp Phase 3 Wave H follow-up (2026-05-26)
 
 ### Fixed — Phase 3 Wave H deferrals closed (4 of 5)

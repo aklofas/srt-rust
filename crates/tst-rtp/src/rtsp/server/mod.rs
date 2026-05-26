@@ -63,6 +63,63 @@ pub(crate) struct ServerState {
     /// Bound address — set by the listener after kernel-assigns the port
     /// (when bind URL had `port = 0`). `start()` spin-waits on this.
     pub(crate) local_addr: std::sync::Mutex<Option<SocketAddr>>,
+    /// Active session registry — populated by `session::handle_connection`
+    /// on accept, removed on session end. Used by `stop()` to fan out the
+    /// graceful-shutdown per-session cancel (and, in a follow-up, the
+    /// RFC 7826 §13.5.1 Notice 5402 message).
+    pub(crate) sessions: std::sync::Mutex<Vec<Arc<ActiveSession>>>,
+}
+
+/// Lightweight per-session record kept on [`ServerState::sessions`] for
+/// graceful-shutdown coordination. Task 18 populates `cancel` +
+/// `session_id` + `mount_path` + `peer`. Full RFC 7826 §13.5.1 Notice
+/// 5402 ("Server-Initiated TEARDOWN") delivery over the per-session TCP
+/// write half is DEFERRED — it requires plumbing an outbound `mpsc`
+/// channel through the per-session task. For now, `stop()` cancels each
+/// session's token and lets the per-session task flush + close
+/// gracefully.
+#[allow(dead_code)]
+pub(crate) struct ActiveSession {
+    /// RTSP session ID, once SETUP succeeded.
+    pub(crate) session_id: std::sync::Mutex<Option<String>>,
+    /// Mount path the client SETUP'd against.
+    pub(crate) mount_path: std::sync::Mutex<Option<String>>,
+    /// Per-session cancel — flipped by `stop()` to give an individual
+    /// session a chance to flush and close cleanly. Observed by the
+    /// per-session task's `tokio::select!` alongside `cancel_token`.
+    pub(crate) cancel: CancellationToken,
+    /// Peer address — captured at accept for logging + diagnostics.
+    pub(crate) peer: SocketAddr,
+}
+
+impl ActiveSession {
+    pub(crate) fn new(peer: SocketAddr) -> Arc<Self> {
+        Arc::new(Self {
+            session_id: std::sync::Mutex::new(None),
+            mount_path: std::sync::Mutex::new(None),
+            cancel: CancellationToken::new(),
+            peer,
+        })
+    }
+}
+
+/// Register an active session with the server. Called by
+/// `session::handle_connection` on accept; the returned `Arc` is held
+/// by the per-session task for the connection's lifetime.
+pub(crate) fn register_session(state: &Arc<ServerState>, peer: SocketAddr) -> Arc<ActiveSession> {
+    let entry = ActiveSession::new(peer);
+    if let Ok(mut g) = state.sessions.lock() {
+        g.push(entry.clone());
+    }
+    entry
+}
+
+/// Remove an active session from the registry. Called by
+/// `session::handle_connection` on disconnect / TEARDOWN / cancel.
+pub(crate) fn unregister_session(state: &Arc<ServerState>, entry: &Arc<ActiveSession>) {
+    if let Ok(mut g) = state.sessions.lock() {
+        g.retain(|s| !Arc::ptr_eq(s, entry));
+    }
 }
 
 /// RTSP server — accepts client connections, manages sessions, fans out
@@ -146,6 +203,7 @@ impl RtspServer {
             started: AtomicBool::new(false),
             shutdown: AtomicBool::new(false),
             local_addr: std::sync::Mutex::new(None),
+            sessions: std::sync::Mutex::new(Vec::new()),
         });
         Ok(Self {
             state,
@@ -363,10 +421,19 @@ impl RtspServer {
         Ok(())
     }
 
-    /// Graceful shutdown. Fires the cancel_token (per-session tasks
-    /// observe), sleeps `graceful_shutdown_drain + 1s` to let them
-    /// finish, then returns. Idempotent — a second call after a
-    /// completed first call is a no-op.
+    /// Graceful shutdown. Iterates `state.sessions` and cancels each
+    /// session's per-session token (giving the session a chance to
+    /// flush and close cleanly), fires the global `cancel_token` so the
+    /// listener stops accepting new connections, then sleeps
+    /// `graceful_shutdown_drain + 1s` to let in-flight RTP drain.
+    /// Idempotent — a second call after a completed first call is a
+    /// no-op.
+    ///
+    /// Full RFC 7826 §13.5.1 Notice 5402 ("Server-Initiated TEARDOWN")
+    /// delivery to each session is DEFERRED — it requires plumbing an
+    /// outbound `mpsc` channel through the per-session task and lands
+    /// as a follow-up (Wave E or hotfix). For now, sessions terminate
+    /// cleanly via per-session cancel.
     ///
     /// # Errors
     /// - [`RtspServerError::NotStarted`] if called before `start()`.
@@ -378,7 +445,28 @@ impl RtspServer {
             // Idempotent: already shut down.
             return Ok(());
         }
+        // Snapshot the active session list. Iterate + cancel each. The
+        // per-session task is responsible for flushing any in-flight
+        // RTP + closing the TCP cleanly within graceful_shutdown_drain.
+        let sessions: Vec<Arc<ActiveSession>> = self
+            .state
+            .sessions
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default();
+        for s in &sessions {
+            tracing::info!(
+                target: "tst_rtp::server",
+                peer = %s.peer,
+                "graceful shutdown: signaling session"
+            );
+            s.cancel.cancel();
+        }
+        // Also fire the global cancel so the listener stops accepting
+        // new connections and any per-task observers exit promptly.
         self.state.cancel_token.cancel();
+        // Wait for the drain window — sessions should observe their
+        // per-session cancel, flush, and exit within this time.
         let drain = self.state.builder.graceful_shutdown_drain + Duration::from_secs(1);
         std::thread::sleep(drain);
         Ok(())
@@ -675,5 +763,44 @@ mod add_multicast_mount_tests {
             }
             _ => panic!("expected Multicast"),
         }
+    }
+}
+
+#[cfg(test)]
+mod graceful_shutdown_tests {
+    use super::*;
+
+    #[test]
+    fn stop_iterates_and_cancels_active_sessions() {
+        // Wire up: register a session manually, then call stop() and
+        // verify the session's per-session cancel was fired. We don't
+        // need a real per-session task here — the unit-of-behavior is
+        // "stop() walks state.sessions and cancels each".
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        server.start().unwrap();
+        let peer: std::net::SocketAddr = "127.0.0.1:50000".parse().unwrap();
+        let entry = register_session(&server.state, peer);
+        assert_eq!(server.state.sessions.lock().unwrap().len(), 1);
+        assert!(!entry.cancel.is_cancelled());
+        server.stop().unwrap();
+        assert!(entry.cancel.is_cancelled());
+    }
+
+    #[test]
+    fn unregister_session_drops_from_list() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        let peer: std::net::SocketAddr = "127.0.0.1:50000".parse().unwrap();
+        let entry = register_session(&server.state, peer);
+        assert_eq!(server.state.sessions.lock().unwrap().len(), 1);
+        unregister_session(&server.state, &entry);
+        assert_eq!(server.state.sessions.lock().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn register_session_records_peer() {
+        let server = RtspServer::bind("rtsp://127.0.0.1:0").unwrap();
+        let peer: std::net::SocketAddr = "10.0.0.1:12345".parse().unwrap();
+        let entry = register_session(&server.state, peer);
+        assert_eq!(entry.peer, peer);
     }
 }

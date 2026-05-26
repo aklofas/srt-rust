@@ -300,6 +300,7 @@ mod tests {
             started: AtomicBool::new(true),
             shutdown: AtomicBool::new(false),
             local_addr: std::sync::Mutex::new(Some("127.0.0.1:8554".parse().unwrap())),
+            sessions: std::sync::Mutex::new(Vec::new()),
         })
     }
 
@@ -374,6 +375,7 @@ mod tests {
             started: AtomicBool::new(true),
             shutdown: AtomicBool::new(false),
             local_addr: std::sync::Mutex::new(Some("127.0.0.1:8554".parse().unwrap())),
+            sessions: std::sync::Mutex::new(Vec::new()),
         });
         let req = make_req(RtspMethod::Describe, "rtsp://127.0.0.1:8554/live");
         let mut session = ServerSessionState::new();

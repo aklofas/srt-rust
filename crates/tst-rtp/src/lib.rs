@@ -37,6 +37,7 @@ pub use builder::RtspClientBuilder;
 pub use error::RtspError;
 
 // Phase 3 — RTSP server. Populated incrementally across Waves A-G.
+pub use builder::RtspServerBuilder;
 pub use error::{MountError, RtspServerError};
 pub use rtcp::ingest::{SrAnchor, compute_rtt_us, ingest_rr, ingest_sr, system_time_to_ntp_mid};
 pub use rtcp::reporter::{RTCP_BASE_INTERVAL, RtcpReporterHandle};
@@ -50,6 +51,7 @@ pub use rtsp::client::transport_negotiation::{RtspTransportKind, TransportRespon
 pub use rtsp::client::{RtspCancelHandle, RtspClient};
 pub use rtsp::interleaved::{Frame, InterleavedReader, InterleavedWriter, MAX_BINARY_FRAME_LEN};
 pub use rtsp::message::{RtspMethod, RtspRequest, RtspResponse};
+pub use rtsp::server::RtspServer;
 pub use sdp::pick::pick_mp2t;
 pub use sdp::{Sdp, SdpMedia};
 pub use url::{RtspScheme, RtspTransportPref, RtspUrl, RtspVersion};

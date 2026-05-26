@@ -127,11 +127,6 @@
 #define TST_VERSION_PATCH 0
 
 /**
- * 24-byte wire length per RFC 3550 §6.4.1.
- */
-#define ReportBlock_WIRE_LEN 24
-
-/**
  * `repr(i32)` mirror of `tst_core::mpegts::demux::AudioCodec`.
  * On `tst_event_t.u.sample.codec` when `stream_kind == TST_STREAM_KIND_AUDIO`,
  * and on `tst_stream_info_t.codec`.

@@ -329,7 +329,6 @@ ALLOWLIST=(
     #     live in tst-rtp (not in tst-pipeline / tst-srt / tst-core). The 3
     #     lifecycle helpers (flush/cancel/reset_stats) delegate to
     #     MountHandle::{flush,reset_stats} (tst-rtp) and a C-layer AtomicBool.
-    #     No 1:1 counterpart in the three SRC_DIRS checked by this ratchet.
     "tst_rtsp_mount_push_video"
     "tst_rtsp_mount_push_klv"
     "tst_rtsp_mount_push_audio"
@@ -341,6 +340,25 @@ ALLOWLIST=(
     "tst_rtsp_mount_flush"
     "tst_rtsp_mount_cancel"
     "tst_rtsp_mount_reset_stats"
+
+    # --- T10 server stats + cancel + stop ---
+    #     TstRtspServer / TstRtspCancelHandle / TstRtspMountHandle are tst-c–only
+    #     types wrapping tst_rtp::RtspServer / RtspServerCancelHandle /
+    #     MountHandle; no 1:1 Rust method counterpart exists in tst-pipeline /
+    #     tst-srt / tst-core to cross-ref against.
+    # Server lifecycle:
+    "tst_rtsp_server_get_stats"
+    "tst_rtsp_server_cancel_handle"
+    "tst_rtsp_cancel_handle_cancel"
+    "tst_rtsp_cancel_handle_free"
+    "tst_rtsp_server_stop"
+    "tst_rtsp_server_free"
+    # Mount stats + handle getters:
+    "tst_rtsp_mount_get_stats"
+    "tst_rtsp_mount_video_handle"
+    "tst_rtsp_mount_klv_handle"
+    "tst_rtsp_mount_audio_handle"
+    "tst_rtsp_mount_subtitle_handle"
 )
 
 # Step 1: enumerate C exports

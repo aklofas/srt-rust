@@ -19,5 +19,7 @@
 
 pub(crate) mod builder;
 pub(crate) mod mount;
+pub(crate) mod mount_getters;
 pub(crate) mod start;
+pub(crate) mod stop;
 pub(crate) mod types;

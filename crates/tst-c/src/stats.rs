@@ -515,6 +515,82 @@ pub(crate) fn codec_stats_to_c(
     }
 }
 
+/// `repr(C)` mirror of `tst_rtp::ServerStats` — aggregate server stats
+/// snapshot returned by `tst_rtsp_server_get_stats`. Size 32 B.
+///
+/// Callers stack-allocate this struct and pass a pointer; the entry point
+/// fills it in atomically from the server's internal counters.
+///
+/// Fields:
+/// - `active_sessions` — live (accepted, not-yet-closed) client sessions.
+///   Decrements when a session sends TEARDOWN or drops its TCP connection.
+/// - `mounts` — number of registered mount paths (unicast + multicast).
+///   Monotonically increases; mounts are never unregistered.
+/// - `total_rtp_packets_sent` — cumulative RTP packets sent across all
+///   peers and all mounts since the server started.
+/// - `total_rtp_bytes_sent` — cumulative RTP payload bytes (not including
+///   UDP + IP headers) sent across all peers and all mounts.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct TstServerStats {
+    pub active_sessions: u64,
+    pub mounts: u64,
+    pub total_rtp_packets_sent: u64,
+    pub total_rtp_bytes_sent: u64,
+}
+
+const _TST_SERVER_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstServerStats>() == 32,
+    "TstServerStats must be 32 bytes (4 × u64)"
+);
+
+/// Fill a `TstServerStats` from a Rust `tst_rtp::ServerStats` snapshot.
+#[cfg(feature = "rtp")]
+pub(crate) fn fill_server_stats(dst: &mut TstServerStats, src: &tst_rtp::ServerStats) {
+    dst.active_sessions = src.active_sessions as u64;
+    dst.mounts = src.mounts as u64;
+    dst.total_rtp_packets_sent = src.total_rtp_packets_sent;
+    dst.total_rtp_bytes_sent = src.total_rtp_bytes_sent;
+}
+
+/// `repr(C)` mirror of `tst_rtp::MountStats` — per-mount stats snapshot
+/// returned by `tst_rtsp_mount_get_stats`. Size 32 B.
+///
+/// Callers stack-allocate this struct and pass a pointer.
+///
+/// Fields:
+/// - `bytes_pushed` — cumulative TS bytes pushed to this mount since
+///   the mount was added (includes fanout to all peers).
+/// - `packets_pushed` — cumulative 1316-byte RTP-payload-sized chunks
+///   broadcast since mount creation.
+/// - `peer_count` — live subscriber count on the broadcast channel.
+///   For unicast mounts this is the number of currently-PLAYing clients;
+///   for multicast it is typically 1 (the per-mount UDP sender task).
+/// - `frames_dropped_total` — cumulative frames dropped by lagging
+///   subscribers that fell behind the broadcast channel head.
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct TstMountStats {
+    pub bytes_pushed: u64,
+    pub packets_pushed: u64,
+    pub peer_count: u64,
+    pub frames_dropped_total: u64,
+}
+
+const _TST_MOUNT_STATS_SIZE: () = assert!(
+    std::mem::size_of::<TstMountStats>() == 32,
+    "TstMountStats must be 32 bytes (4 × u64)"
+);
+
+/// Fill a `TstMountStats` from a Rust `tst_rtp::MountStats` snapshot.
+#[cfg(feature = "rtp")]
+pub(crate) fn fill_mount_stats(dst: &mut TstMountStats, src: &tst_rtp::MountStats) {
+    dst.bytes_pushed = src.bytes_pushed;
+    dst.packets_pushed = src.packets_pushed;
+    dst.peer_count = src.peer_count as u64;
+    dst.frames_dropped_total = src.frames_dropped_total;
+}
+
 #[cfg(test)]
 mod codec_stats_tests {
     use super::*;

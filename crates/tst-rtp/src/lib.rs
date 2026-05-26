@@ -37,6 +37,7 @@ pub use builder::RtspClientBuilder;
 pub use error::RtspError;
 
 // Phase 3 — RTSP server. Populated incrementally across Waves A-G.
+pub use cancel::RtspServerCancelHandle;
 pub use error::{MountError, RtspServerError};
 pub use rtcp::ingest::{SrAnchor, compute_rtt_us, ingest_rr, ingest_sr, system_time_to_ntp_mid};
 pub use rtcp::reporter::{RTCP_BASE_INTERVAL, RtcpReporterHandle};

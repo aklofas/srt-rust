@@ -9,11 +9,13 @@
 //! [`RtpRecvTransport::listen_with`]; the builder is sugar, not a
 //! parallel implementation.
 
+#[cfg(feature = "tls")]
+use std::path::PathBuf;
 use std::time::Duration;
 
 use secrecy::SecretString;
 
-use crate::error::RtspError;
+use crate::error::{RtspError, RtspServerError};
 use crate::rtsp::client::RtspClient;
 use crate::transport::{ConnectError, RtpRecvTransport, RtpTransport};
 use crate::url::{DEFAULT_PKT_SIZE, RtpUrl, RtspUrl, UrlError as RtpUrlError};
@@ -307,6 +309,203 @@ impl RtspClientBuilder {
     }
 }
 
+// ----------------------------------------------------------------------
+// Phase 3 — server-side builder.
+// ----------------------------------------------------------------------
+
+/// Server-side auth scheme. Internal — consumed by Task 7's
+/// `RtspServer::from_builder`.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ServerAuthScheme {
+    Basic,
+    DigestMd5,
+    DigestSha256,
+}
+
+/// Server-side auth configuration carrier. Internal — consumed by
+/// Task 7's `RtspServer::from_builder`.
+#[derive(Clone)]
+#[allow(dead_code)] // `password` is held for Task 7's auth handler; read at challenge time.
+pub(crate) struct ServerAuthConfig {
+    pub(crate) scheme: ServerAuthScheme,
+    pub(crate) realm: String,
+    pub(crate) username: String,
+    pub(crate) password: secrecy::SecretString,
+}
+
+impl std::fmt::Debug for ServerAuthConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServerAuthConfig")
+            .field("scheme", &self.scheme)
+            .field("realm", &self.realm)
+            .field("username", &self.username)
+            .field("password", &"<redacted>")
+            .finish()
+    }
+}
+
+/// Builder for an [`crate::rtsp::server::RtspServer`].
+///
+/// Chainable `&mut self -> &mut Self` shape per workspace FFI-readiness
+/// convention. Build with [`Self::build`].
+///
+/// # Defaults
+///
+/// - `max_sessions`: 64
+/// - `session_timeout`: 60 s
+/// - `fanout_capacity`: 256 frames (broadcast channel size; slow peers
+///   drop oldest beyond this)
+/// - `graceful_shutdown_drain`: 100 ms
+/// - No auth, no TLS — caller adds via `auth_*()` / `tls_cert()`.
+pub struct RtspServerBuilder {
+    pub(crate) bind_url: RtspUrl,
+    pub(crate) auth: Option<ServerAuthConfig>,
+    pub(crate) max_sessions: usize,
+    pub(crate) session_timeout: Duration,
+    pub(crate) fanout_capacity: usize,
+    pub(crate) graceful_shutdown_drain: Duration,
+    #[cfg(feature = "tls")]
+    pub(crate) tls_cert_path: Option<PathBuf>,
+    #[cfg(feature = "tls")]
+    pub(crate) tls_key_path: Option<PathBuf>,
+}
+
+impl RtspServerBuilder {
+    /// Start building a server bound to `url`. The URL must use scheme
+    /// `rtsp://` or `rtsps://` and a host that parses as an IP literal
+    /// (no DNS resolution server-side).
+    ///
+    /// # Errors
+    ///
+    /// - [`RtspServerError::UrlParse`] if `url` cannot be parsed as RTSP
+    ///   or its host is not an IP literal.
+    pub fn new(url: &str) -> Result<Self, RtspServerError> {
+        let parsed = RtspUrl::parse(url).map_err(RtspServerError::UrlParse)?;
+        parsed
+            .validate_for_server_bind()
+            .map_err(RtspServerError::UrlParse)?;
+        Ok(Self::with_url(parsed))
+    }
+
+    /// Start building from an already-parsed [`RtspUrl`]. Skips the
+    /// `validate_for_server_bind` check — caller is responsible.
+    pub fn with_url(url: RtspUrl) -> Self {
+        Self {
+            bind_url: url,
+            auth: None,
+            max_sessions: 64,
+            session_timeout: Duration::from_secs(60),
+            fanout_capacity: 256,
+            graceful_shutdown_drain: Duration::from_millis(100),
+            #[cfg(feature = "tls")]
+            tls_cert_path: None,
+            #[cfg(feature = "tls")]
+            tls_key_path: None,
+        }
+    }
+
+    /// Require Basic auth (RFC 7617). Mutually exclusive with the
+    /// `auth_digest_*` methods — calling twice overwrites; calling with
+    /// a different scheme at `build()` time has the final-call wins
+    /// behavior (this builder is single-user-only in v1).
+    pub fn auth_basic(&mut self, realm: &str, username: &str, password: SecretString) -> &mut Self {
+        self.auth = Some(ServerAuthConfig {
+            scheme: ServerAuthScheme::Basic,
+            realm: realm.into(),
+            username: username.into(),
+            password,
+        });
+        self
+    }
+
+    /// Require Digest MD5 (RFC 7616 §3.4).
+    pub fn auth_digest_md5(
+        &mut self,
+        realm: &str,
+        username: &str,
+        password: SecretString,
+    ) -> &mut Self {
+        self.auth = Some(ServerAuthConfig {
+            scheme: ServerAuthScheme::DigestMd5,
+            realm: realm.into(),
+            username: username.into(),
+            password,
+        });
+        self
+    }
+
+    /// Require Digest SHA-256 (RFC 7616 §3.4).
+    pub fn auth_digest_sha256(
+        &mut self,
+        realm: &str,
+        username: &str,
+        password: SecretString,
+    ) -> &mut Self {
+        self.auth = Some(ServerAuthConfig {
+            scheme: ServerAuthScheme::DigestSha256,
+            realm: realm.into(),
+            username: username.into(),
+            password,
+        });
+        self
+    }
+
+    /// Cap on concurrent client connections. Excess connections beyond
+    /// this are accepted then immediately dropped with a `tracing::warn!`.
+    /// Defaults to 64.
+    pub fn max_sessions(&mut self, n: usize) -> &mut Self {
+        self.max_sessions = n.max(1);
+        self
+    }
+
+    /// Advertise this session timeout to clients via the `Session:
+    /// <id>;timeout=N` response header. Clients are expected to send
+    /// keepalive pings at timeout/2. Defaults to 60 s.
+    pub fn session_timeout(&mut self, t: Duration) -> &mut Self {
+        self.session_timeout = t;
+        self
+    }
+
+    /// Broadcast channel capacity (per mount). When a peer's per-session
+    /// task can't keep up, broadcast drops the oldest frames for that
+    /// peer; the per-peer dropped-frame counter ticks but the muxer is
+    /// not back-pressured. Defaults to 256.
+    pub fn fanout_capacity(&mut self, frames: usize) -> &mut Self {
+        self.fanout_capacity = frames.max(1);
+        self
+    }
+
+    /// Maximum drain window after `stop()` is called and the
+    /// session-end Notice has been emitted. Defaults to 100 ms.
+    pub fn graceful_shutdown_drain(&mut self, t: Duration) -> &mut Self {
+        self.graceful_shutdown_drain = t;
+        self
+    }
+
+    /// Configure TLS cert chain + private key paths (PEM format) for an
+    /// `rtsps://` bind. The cert + key are read at `build()` time; missing
+    /// or malformed files surface as [`RtspServerError::Tls`].
+    #[cfg(feature = "tls")]
+    pub fn tls_cert(&mut self, cert_chain_pem: PathBuf, key_pem: PathBuf) -> &mut Self {
+        self.tls_cert_path = Some(cert_chain_pem);
+        self.tls_key_path = Some(key_pem);
+        self
+    }
+
+    /// Consume the builder and produce an [`crate::rtsp::server::RtspServer`]
+    /// ready for [`crate::rtsp::server::RtspServer::start`]. Internally
+    /// constructs the tokio Runtime and validates the configuration.
+    ///
+    /// # Errors
+    ///
+    /// - [`RtspServerError::Io`] on Runtime construction failure (rare)
+    /// - [`RtspServerError::Tls`] on cert/key file load failure (when
+    ///   `tls_cert` was called)
+    pub fn build(self) -> Result<crate::rtsp::server::RtspServer, RtspServerError> {
+        crate::rtsp::server::RtspServer::from_builder(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,5 +530,77 @@ mod tests {
         let b = RtpRecvSocketBuilder::new("127.0.0.1", 0);
         // Port 0 -> OS-assigned; doesn't conflict.
         let _ = b.listen().expect("bind 127.0.0.1:0 should succeed");
+    }
+}
+
+#[cfg(test)]
+mod phase3_server_builder_tests {
+    use super::*;
+    use secrecy::SecretString;
+
+    #[test]
+    fn rtsp_server_builder_new_parses_url() {
+        let b = RtspServerBuilder::new("rtsp://0.0.0.0:8554").unwrap();
+        assert_eq!(b.bind_url.host, "0.0.0.0");
+        assert_eq!(b.bind_url.port, 8554);
+        assert!(b.auth.is_none());
+        assert_eq!(b.max_sessions, 64);
+    }
+
+    #[test]
+    fn rtsp_server_builder_loopback_port_zero() {
+        let b = RtspServerBuilder::new("rtsp://127.0.0.1:0").unwrap();
+        assert_eq!(b.bind_url.port, 0);
+    }
+
+    #[test]
+    fn rtsp_server_builder_chainable() {
+        let mut b = RtspServerBuilder::new("rtsp://127.0.0.1:0").unwrap();
+        b.max_sessions(100).fanout_capacity(512);
+        assert_eq!(b.max_sessions, 100);
+        assert_eq!(b.fanout_capacity, 512);
+    }
+
+    #[test]
+    fn rtsp_server_builder_auth_basic() {
+        let mut b = RtspServerBuilder::new("rtsp://127.0.0.1:0").unwrap();
+        b.auth_basic("tst", "admin", SecretString::new("p".into()));
+        let cfg = b.auth.as_ref().unwrap();
+        assert!(matches!(cfg.scheme, ServerAuthScheme::Basic));
+        assert_eq!(cfg.realm, "tst");
+        assert_eq!(cfg.username, "admin");
+    }
+
+    #[test]
+    fn rtsp_server_builder_auth_overwrites() {
+        let mut b = RtspServerBuilder::new("rtsp://127.0.0.1:0").unwrap();
+        b.auth_basic("tst", "admin", SecretString::new("p".into()));
+        b.auth_digest_md5("tst", "admin", SecretString::new("p".into()));
+        assert!(matches!(
+            b.auth.as_ref().unwrap().scheme,
+            ServerAuthScheme::DigestMd5
+        ));
+    }
+
+    #[test]
+    fn rtsp_server_builder_min_caps() {
+        let mut b = RtspServerBuilder::new("rtsp://127.0.0.1:0").unwrap();
+        b.max_sessions(0); // floor to 1
+        assert_eq!(b.max_sessions, 1);
+        b.fanout_capacity(0); // floor to 1
+        assert_eq!(b.fanout_capacity, 1);
+    }
+
+    #[test]
+    fn rtsp_server_bind_rejects_dns_name() {
+        let res = RtspServerBuilder::new("rtsp://example.com:8554");
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn rtsp_server_from_builder_stub_returns_not_started() {
+        let b = RtspServerBuilder::new("rtsp://127.0.0.1:0").unwrap();
+        let e = b.build().unwrap_err();
+        assert!(matches!(e, RtspServerError::NotStarted));
     }
 }

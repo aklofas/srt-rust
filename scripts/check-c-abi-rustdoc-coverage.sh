@@ -322,6 +322,25 @@ ALLOWLIST=(
     "tst_rtsp_server_add_unicast_mount"
     "tst_rtsp_server_add_multicast_mount"
     "tst_rtsp_mount_handle_free"
+
+    # --- T9 mount push methods ---
+    #     TstRtspMountHandle wraps tst_rtp::MountHandle. The 8 push methods
+    #     delegate to MountHandle::push_{video,klv,audio,subtitle}[_to] which
+    #     live in tst-rtp (not in tst-pipeline / tst-srt / tst-core). The 3
+    #     lifecycle helpers (flush/cancel/reset_stats) delegate to
+    #     MountHandle::{flush,reset_stats} (tst-rtp) and a C-layer AtomicBool.
+    #     No 1:1 counterpart in the three SRC_DIRS checked by this ratchet.
+    "tst_rtsp_mount_push_video"
+    "tst_rtsp_mount_push_klv"
+    "tst_rtsp_mount_push_audio"
+    "tst_rtsp_mount_push_subtitle"
+    "tst_rtsp_mount_push_video_to"
+    "tst_rtsp_mount_push_klv_to"
+    "tst_rtsp_mount_push_audio_to"
+    "tst_rtsp_mount_push_subtitle_to"
+    "tst_rtsp_mount_flush"
+    "tst_rtsp_mount_cancel"
+    "tst_rtsp_mount_reset_stats"
 )
 
 # Step 1: enumerate C exports

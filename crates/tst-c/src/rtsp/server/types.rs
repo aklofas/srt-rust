@@ -24,6 +24,7 @@
 //! ```
 
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
 
 /// Opaque handle for a started RTSP server.
 ///
@@ -63,16 +64,27 @@ impl TstRtspServer {
 ///
 /// Obtained from [`super::mount::tst_rtsp_server_add_unicast_mount`] or
 /// [`super::mount::tst_rtsp_server_add_multicast_mount`]. Push methods
-/// (`push_video`, `push_klv`, etc.) land in Task 9. Freed with
-/// `tst_rtsp_mount_handle_free` (Task 9 or 10 scope).
+/// (`push_video`, `push_klv`, etc.) are in Task 9. Freed with
+/// `tst_rtsp_mount_handle_free`.
 ///
 /// The `MountHandle` returned by the Rust API is `Clone + Send`, so multiple
 /// C handles pointing at the same mount are safe — each clone pushes to the
 /// same broadcast fanout channel.
+///
+/// The `cancelled` flag is C-layer-only: `tst_rtsp_mount_cancel` sets it and
+/// subsequent push calls return `TST_E_CLOSED` immediately without entering
+/// the Rust muxer. This avoids the need for a cancel-token in the Rust
+/// `MountHandle` API. Unlike transport-based handles, "cancelling" a mount
+/// handle only stops this particular C-side caller; the underlying
+/// `tst_rtp::MountHandle` (and any other C clones sharing the same broadcast
+/// Arc) continues operating.
 pub struct TstRtspMountHandle {
-    /// The inner `MountHandle`. T9 adds push methods that delegate to
-    /// `MountHandle::send_video` / `send_klv` / etc.
-    // Allow dead_code until T9 lands push methods that access this field.
-    #[allow(dead_code)]
+    /// The inner `MountHandle`.
     pub(crate) inner: tst_rtp::MountHandle,
+    /// Set by `tst_rtsp_mount_cancel`. Guards all push calls — returns
+    /// `TST_E_CLOSED` when true. Stored here (not in `MountState`) so that
+    /// multiple independent C-side mount handles can have independent cancel
+    /// states. Safe to read without the muxer lock because it is checked
+    /// before the push path acquires any lock.
+    pub(crate) cancelled: AtomicBool,
 }

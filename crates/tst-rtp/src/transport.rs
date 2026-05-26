@@ -599,17 +599,21 @@ impl RtpRecvTransport {
             apply_multicast_recv_join(&socket, &ip, url)?;
         }
         // RTCP companion socket bound on `port + 1` per RFC 3550 §11.
-        // Receiver binds the same local-address shape as the primary
-        // RTP socket — for multicast that's ANY:port+1, for unicast
-        // that's host:port+1.
+        // Use the RTP socket's actual local port (kernel-assigned when
+        // url.port == 0) — `url.port + 1` would resolve to port 1 in
+        // that case, which is privileged.
         let rtcp_socket = if rtcp_enabled {
+            let actual_rtp_port = socket
+                .local_addr()
+                .map_err(ConnectError::Io)?
+                .port();
             let rtcp_local: SocketAddr = if is_multicast {
                 match ip {
-                    IpAddr::V4(_) => SocketAddr::new("0.0.0.0".parse().unwrap(), url.port + 1),
-                    IpAddr::V6(_) => SocketAddr::new("::".parse().unwrap(), url.port + 1),
+                    IpAddr::V4(_) => SocketAddr::new("0.0.0.0".parse().unwrap(), actual_rtp_port + 1),
+                    IpAddr::V6(_) => SocketAddr::new("::".parse().unwrap(), actual_rtp_port + 1),
                 }
             } else {
-                SocketAddr::new(ip, url.port + 1)
+                SocketAddr::new(ip, actual_rtp_port + 1)
             };
             Some(UdpSocket::bind(rtcp_local).map_err(ConnectError::Io)?)
         } else {

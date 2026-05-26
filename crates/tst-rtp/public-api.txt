@@ -815,6 +815,75 @@ pub mod tst_rtp::rtsp::server::handlers
 pub mod tst_rtp::rtsp::server::interleaved_pump
 pub mod tst_rtp::rtsp::server::listener
 pub mod tst_rtp::rtsp::server::mount
+#[non_exhaustive] pub enum tst_rtp::rtsp::server::mount::MountKind
+pub tst_rtp::rtsp::server::mount::MountKind::Multicast
+pub tst_rtp::rtsp::server::mount::MountKind::Multicast::group: core::net::socket_addr::SocketAddr
+pub tst_rtp::rtsp::server::mount::MountKind::Multicast::iface: core::option::Option<alloc::string::String>
+pub tst_rtp::rtsp::server::mount::MountKind::Multicast::ttl: u8
+pub tst_rtp::rtsp::server::mount::MountKind::Unicast
+impl core::clone::Clone for tst_rtp::rtsp::server::mount::MountKind
+pub fn tst_rtp::rtsp::server::mount::MountKind::clone(&self) -> tst_rtp::rtsp::server::mount::MountKind
+impl core::fmt::Debug for tst_rtp::rtsp::server::mount::MountKind
+pub fn tst_rtp::rtsp::server::mount::MountKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::rtsp::server::mount::MountKind
+impl core::marker::Send for tst_rtp::rtsp::server::mount::MountKind
+impl core::marker::Sync for tst_rtp::rtsp::server::mount::MountKind
+impl core::marker::Unpin for tst_rtp::rtsp::server::mount::MountKind
+impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::mount::MountKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::mount::MountKind
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::mount::MountKind
+pub struct tst_rtp::rtsp::server::mount::MountHandle
+impl tst_rtp::rtsp::server::mount::MountHandle
+pub fn tst_rtp::rtsp::server::mount::MountHandle::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::mount_kind(&self) -> &tst_rtp::rtsp::server::mount::MountKind
+pub fn tst_rtp::rtsp::server::mount::MountHandle::mount_path(&self) -> &str
+pub fn tst_rtp::rtsp::server::mount::MountHandle::peer_count(&self) -> usize
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_audio(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_audio_to(&self, tst_core::mpegts::mux::types::AudioStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_klv(&self, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_klv_to(&self, tst_core::mpegts::mux::types::KlvStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_subtitle(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_subtitle_to(&self, tst_core::mpegts::mux::types::SubtitleStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_video(&self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_video_to(&self, tst_core::mpegts::mux::types::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::stats(&self) -> tst_rtp::rtsp::server::mount::MountStats
+pub fn tst_rtp::rtsp::server::mount::MountHandle::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>
+impl core::clone::Clone for tst_rtp::rtsp::server::mount::MountHandle
+pub fn tst_rtp::rtsp::server::mount::MountHandle::clone(&self) -> tst_rtp::rtsp::server::mount::MountHandle
+impl core::fmt::Debug for tst_rtp::rtsp::server::mount::MountHandle
+pub fn tst_rtp::rtsp::server::mount::MountHandle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::rtsp::server::mount::MountHandle
+impl core::marker::Send for tst_rtp::rtsp::server::mount::MountHandle
+impl core::marker::Sync for tst_rtp::rtsp::server::mount::MountHandle
+impl core::marker::Unpin for tst_rtp::rtsp::server::mount::MountHandle
+impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::mount::MountHandle
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::mount::MountHandle
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::mount::MountHandle
+#[non_exhaustive] pub struct tst_rtp::rtsp::server::mount::MountStats
+pub tst_rtp::rtsp::server::mount::MountStats::bytes_pushed: u64
+pub tst_rtp::rtsp::server::mount::MountStats::frames_dropped_total: u64
+pub tst_rtp::rtsp::server::mount::MountStats::packets_pushed: u64
+pub tst_rtp::rtsp::server::mount::MountStats::peer_count: usize
+pub tst_rtp::rtsp::server::mount::MountStats::per_stream: alloc::collections::btree::map::BTreeMap<u16, tst_core::mpegts::stats::StreamStats>
+impl core::clone::Clone for tst_rtp::rtsp::server::mount::MountStats
+pub fn tst_rtp::rtsp::server::mount::MountStats::clone(&self) -> tst_rtp::rtsp::server::mount::MountStats
+impl core::cmp::Eq for tst_rtp::rtsp::server::mount::MountStats
+impl core::cmp::PartialEq for tst_rtp::rtsp::server::mount::MountStats
+pub fn tst_rtp::rtsp::server::mount::MountStats::eq(&self, &tst_rtp::rtsp::server::mount::MountStats) -> bool
+impl core::default::Default for tst_rtp::rtsp::server::mount::MountStats
+pub fn tst_rtp::rtsp::server::mount::MountStats::default() -> tst_rtp::rtsp::server::mount::MountStats
+impl core::fmt::Debug for tst_rtp::rtsp::server::mount::MountStats
+pub fn tst_rtp::rtsp::server::mount::MountStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_rtp::rtsp::server::mount::MountStats
+impl core::marker::Freeze for tst_rtp::rtsp::server::mount::MountStats
+impl core::marker::Send for tst_rtp::rtsp::server::mount::MountStats
+impl core::marker::Sync for tst_rtp::rtsp::server::mount::MountStats
+impl core::marker::Unpin for tst_rtp::rtsp::server::mount::MountStats
+impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::mount::MountStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::mount::MountStats
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::mount::MountStats
 pub mod tst_rtp::rtsp::server::multicast
 pub mod tst_rtp::rtsp::server::runtime
 pub mod tst_rtp::rtsp::server::session
@@ -832,6 +901,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::session:
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::session::ServerSessionState
 pub struct tst_rtp::rtsp::server::RtspServer
 impl tst_rtp::rtsp::server::RtspServer
+pub fn tst_rtp::rtsp::server::RtspServer::add_mount(&self, &str, tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<tst_rtp::rtsp::server::mount::MountHandle, tst_rtp::error::RtspServerError>
+pub fn tst_rtp::rtsp::server::RtspServer::add_multicast_mount(&self, &str, tst_core::mpegts::mux::config::MuxerConfig, &str) -> core::result::Result<tst_rtp::rtsp::server::mount::MountHandle, tst_rtp::error::RtspServerError>
 pub fn tst_rtp::rtsp::server::RtspServer::bind(&str) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
 pub fn tst_rtp::rtsp::server::RtspServer::bind_with(tst_rtp::url::RtspUrl) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
 pub fn tst_rtp::rtsp::server::RtspServer::cancel_handle(&self) -> tst_rtp::cancel::RtspServerCancelHandle
@@ -1289,6 +1360,23 @@ impl core::marker::Unpin for tst_rtp::error::MountError
 impl core::marker::UnsafeUnpin for tst_rtp::error::MountError
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::error::MountError
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::error::MountError
+#[non_exhaustive] pub enum tst_rtp::MountKind
+pub tst_rtp::MountKind::Multicast
+pub tst_rtp::MountKind::Multicast::group: core::net::socket_addr::SocketAddr
+pub tst_rtp::MountKind::Multicast::iface: core::option::Option<alloc::string::String>
+pub tst_rtp::MountKind::Multicast::ttl: u8
+pub tst_rtp::MountKind::Unicast
+impl core::clone::Clone for tst_rtp::rtsp::server::mount::MountKind
+pub fn tst_rtp::rtsp::server::mount::MountKind::clone(&self) -> tst_rtp::rtsp::server::mount::MountKind
+impl core::fmt::Debug for tst_rtp::rtsp::server::mount::MountKind
+pub fn tst_rtp::rtsp::server::mount::MountKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::rtsp::server::mount::MountKind
+impl core::marker::Send for tst_rtp::rtsp::server::mount::MountKind
+impl core::marker::Sync for tst_rtp::rtsp::server::mount::MountKind
+impl core::marker::Unpin for tst_rtp::rtsp::server::mount::MountKind
+impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::mount::MountKind
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::mount::MountKind
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::mount::MountKind
 #[non_exhaustive] pub enum tst_rtp::RtcpPacketType
 pub tst_rtp::RtcpPacketType::ReceiverReport
 pub tst_rtp::RtcpPacketType::SenderReport
@@ -1626,6 +1714,58 @@ impl<W> core::marker::Unpin for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
 impl<W> core::marker::UnsafeUnpin for tst_rtp::rtsp::interleaved::InterleavedWriter<W> where W: core::marker::UnsafeUnpin
 impl<W> core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
 impl<W> core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::interleaved::InterleavedWriter<W>
+pub struct tst_rtp::MountHandle
+impl tst_rtp::rtsp::server::mount::MountHandle
+pub fn tst_rtp::rtsp::server::mount::MountHandle::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::klv_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::KlvStreamHandle>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::mount_kind(&self) -> &tst_rtp::rtsp::server::mount::MountKind
+pub fn tst_rtp::rtsp::server::mount::MountHandle::mount_path(&self) -> &str
+pub fn tst_rtp::rtsp::server::mount::MountHandle::peer_count(&self) -> usize
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_audio(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_audio_to(&self, tst_core::mpegts::mux::types::AudioStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_klv(&self, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_klv_to(&self, tst_core::mpegts::mux::types::KlvStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_subtitle(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_subtitle_to(&self, tst_core::mpegts::mux::types::SubtitleStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_video(&self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::push_video_to(&self, tst_core::mpegts::mux::types::VideoStreamHandle, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_rtp::error::MountError>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::stats(&self) -> tst_rtp::rtsp::server::mount::MountStats
+pub fn tst_rtp::rtsp::server::mount::MountHandle::subtitle_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::SubtitleStreamHandle>
+pub fn tst_rtp::rtsp::server::mount::MountHandle::video_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::VideoStreamHandle>
+impl core::clone::Clone for tst_rtp::rtsp::server::mount::MountHandle
+pub fn tst_rtp::rtsp::server::mount::MountHandle::clone(&self) -> tst_rtp::rtsp::server::mount::MountHandle
+impl core::fmt::Debug for tst_rtp::rtsp::server::mount::MountHandle
+pub fn tst_rtp::rtsp::server::mount::MountHandle::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_rtp::rtsp::server::mount::MountHandle
+impl core::marker::Send for tst_rtp::rtsp::server::mount::MountHandle
+impl core::marker::Sync for tst_rtp::rtsp::server::mount::MountHandle
+impl core::marker::Unpin for tst_rtp::rtsp::server::mount::MountHandle
+impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::mount::MountHandle
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::mount::MountHandle
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::mount::MountHandle
+#[non_exhaustive] pub struct tst_rtp::MountStats
+pub tst_rtp::MountStats::bytes_pushed: u64
+pub tst_rtp::MountStats::frames_dropped_total: u64
+pub tst_rtp::MountStats::packets_pushed: u64
+pub tst_rtp::MountStats::peer_count: usize
+pub tst_rtp::MountStats::per_stream: alloc::collections::btree::map::BTreeMap<u16, tst_core::mpegts::stats::StreamStats>
+impl core::clone::Clone for tst_rtp::rtsp::server::mount::MountStats
+pub fn tst_rtp::rtsp::server::mount::MountStats::clone(&self) -> tst_rtp::rtsp::server::mount::MountStats
+impl core::cmp::Eq for tst_rtp::rtsp::server::mount::MountStats
+impl core::cmp::PartialEq for tst_rtp::rtsp::server::mount::MountStats
+pub fn tst_rtp::rtsp::server::mount::MountStats::eq(&self, &tst_rtp::rtsp::server::mount::MountStats) -> bool
+impl core::default::Default for tst_rtp::rtsp::server::mount::MountStats
+pub fn tst_rtp::rtsp::server::mount::MountStats::default() -> tst_rtp::rtsp::server::mount::MountStats
+impl core::fmt::Debug for tst_rtp::rtsp::server::mount::MountStats
+pub fn tst_rtp::rtsp::server::mount::MountStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tst_rtp::rtsp::server::mount::MountStats
+impl core::marker::Freeze for tst_rtp::rtsp::server::mount::MountStats
+impl core::marker::Send for tst_rtp::rtsp::server::mount::MountStats
+impl core::marker::Sync for tst_rtp::rtsp::server::mount::MountStats
+impl core::marker::Unpin for tst_rtp::rtsp::server::mount::MountStats
+impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::mount::MountStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::mount::MountStats
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::mount::MountStats
 pub struct tst_rtp::MulticastGroup
 pub tst_rtp::MulticastGroup::addr: core::net::socket_addr::SocketAddr
 pub tst_rtp::MulticastGroup::iface: core::option::Option<alloc::string::String>
@@ -2077,6 +2217,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::message::RtspRes
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::message::RtspResponse
 pub struct tst_rtp::RtspServer
 impl tst_rtp::rtsp::server::RtspServer
+pub fn tst_rtp::rtsp::server::RtspServer::add_mount(&self, &str, tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<tst_rtp::rtsp::server::mount::MountHandle, tst_rtp::error::RtspServerError>
+pub fn tst_rtp::rtsp::server::RtspServer::add_multicast_mount(&self, &str, tst_core::mpegts::mux::config::MuxerConfig, &str) -> core::result::Result<tst_rtp::rtsp::server::mount::MountHandle, tst_rtp::error::RtspServerError>
 pub fn tst_rtp::rtsp::server::RtspServer::bind(&str) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
 pub fn tst_rtp::rtsp::server::RtspServer::bind_with(tst_rtp::url::RtspUrl) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
 pub fn tst_rtp::rtsp::server::RtspServer::cancel_handle(&self) -> tst_rtp::cancel::RtspServerCancelHandle

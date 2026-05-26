@@ -236,13 +236,11 @@ ALLOWLIST=(
     "tst_rtsp_client_builder_auth_digest_sha256"
     "tst_rtsp_client_builder_free"
 
-    # --- Phase 4 RTP open + close entry points (tst-c–only wrappers:
-    #     the RTP transports + Sender<RtpTransport> + DemuxReceiver use
-    #     existing tst-rtp / tst-pipeline APIs, but the C-side concrete
-    #     handle types (TstRtpSender, TstRtpReceiver, TstRtpMuxSender,
-    #     TstRtpDemuxReceiver) and their open/close lifecycle exist
-    #     only in tst-c — they're the C-language opaque-pointer projection
-    #     of those Rust types, with no 1:1 Rust counterpart) ---
+    # --- Phase 4 RTP lifecycle entry points (open + close) ---
+    #     The C-side concrete handle types (TstRtpSender, TstRtpReceiver,
+    #     TstRtpMuxSender, TstRtpDemuxReceiver) are tst-c–only projections
+    #     of the Rust pipeline types parameterized on RtpTransport /
+    #     RtpRecvTransport, with no 1:1 Rust counterpart.
     "tst_rtp_sender_open"
     "tst_rtp_sender_close"
     "tst_rtp_recv_open"
@@ -251,6 +249,45 @@ ALLOWLIST=(
     "tst_rtp_mux_sender_close"
     "tst_rtp_demux_receiver_open"
     "tst_rtp_demux_receiver_close"
+
+    # --- Phase 4 RTP data-path entry points (Fix-C) ---
+    #     Same rationale as above — tst-c–only wrappers delegating to the
+    #     same pipeline::Sender / Receiver / MuxSender / DemuxReceiver
+    #     methods that the SRT variants call, but typed on RtpTransport.
+    # TstRtpSender
+    "tst_rtp_sender_send_ts"
+    "tst_rtp_sender_cancel"
+    "tst_rtp_sender_get_stats"
+    "tst_rtp_sender_get_socket_stats"
+    "tst_rtp_sender_reset_stats"
+    # TstRtpReceiver
+    "tst_rtp_receiver_recv_ts"
+    "tst_rtp_receiver_cancel"
+    "tst_rtp_receiver_get_stats"
+    "tst_rtp_receiver_get_socket_stats"
+    "tst_rtp_receiver_reset_stats"
+    # TstRtpMuxSender
+    "tst_rtp_mux_sender_push_video"
+    "tst_rtp_mux_sender_push_video_to"
+    "tst_rtp_mux_sender_push_klv"
+    "tst_rtp_mux_sender_push_klv_to"
+    "tst_rtp_mux_sender_push_audio"
+    "tst_rtp_mux_sender_push_audio_to"
+    "tst_rtp_mux_sender_push_subtitle"
+    "tst_rtp_mux_sender_push_subtitle_to"
+    "tst_rtp_mux_sender_cancel"
+    "tst_rtp_mux_sender_get_mux_sender_stats"
+    "tst_rtp_mux_sender_get_socket_stats"
+    "tst_rtp_mux_sender_get_stream_codec_stats"
+    "tst_rtp_mux_sender_reset_stats"
+    # TstRtpDemuxReceiver
+    "tst_rtp_demux_receiver_next_event"
+    "tst_rtp_demux_receiver_cancel"
+    "tst_rtp_demux_receiver_get_stats"
+    "tst_rtp_demux_receiver_get_socket_stats"
+    "tst_rtp_demux_receiver_get_stream_codec_stats"
+    "tst_rtp_demux_receiver_get_stream_stats"
+    "tst_rtp_demux_receiver_reset_stats"
 )
 
 # Step 1: enumerate C exports

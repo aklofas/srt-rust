@@ -9,38 +9,11 @@ use crate::error::{
 };
 use crate::handle::Handle;
 use crate::sender::mux_sender::parse_c_srt_url;
+use crate::stats::TstSenderStats;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tst_pipeline::{ManagedTransport, Sender, SenderStats, TransportCancel};
+use tst_pipeline::{ManagedTransport, Sender, TransportCancel};
 use tst_srt::SrtTransport;
-
-/// Public-ABI mirror of `tst_pipeline::SenderStats`. Same fields,
-/// same units. Size 32 B (4 × u64). Caller passes a pointer to a
-/// stack-allocated struct; `tst_sender_get_stats` fills it in.
-#[repr(C)]
-#[derive(Default, Clone, Copy)]
-pub struct TstSenderStats {
-    pub bytes_pushed: u64,
-    pub bytes_skipped_for_sync: u64,
-    pub resync_events: u64,
-    pub packets_sent: u64,
-}
-
-const _TST_SENDER_STATS_SIZE: () = assert!(
-    std::mem::size_of::<TstSenderStats>() == 32,
-    "TstSenderStats must be 32 bytes (4 × u64)"
-);
-
-impl From<&SenderStats> for TstSenderStats {
-    fn from(s: &SenderStats) -> Self {
-        Self {
-            bytes_pushed: s.bytes_pushed,
-            bytes_skipped_for_sync: s.bytes_skipped_for_sync,
-            resync_events: s.resync_events,
-            packets_sent: s.packets_sent,
-        }
-    }
-}
 
 // ------------------------------------------------------------------
 // tst_sender_t (plain L1)

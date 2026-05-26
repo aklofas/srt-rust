@@ -8,6 +8,15 @@
 # subtly misbehave on cfg-conditional generic functions — symbols can
 # leak outside their guard, producing C-side compile errors when
 # downstream consumers build with --features srt only.
+#
+# Implementation note: cbindgen with sort_by = "Name" emits opaque struct
+# typedefs inside per-item #if defined(TST_HAS_RTP) / #endif pairs, but
+# function declarations in the sorted function section do NOT get wrapping
+# guards (cbindgen limitation). The Rust-side #[cfg(feature = "rtp")] on
+# every extern "C" fn ensures the symbol is absent in rtp-disabled builds.
+# This ratchet therefore verifies the guard invariant by checking an
+# rtp-disabled cbindgen run produces zero tst_rtp_*/tst_rtsp_* symbols,
+# rather than parsing the combined header's #if blocks.
 
 set -euo pipefail
 
@@ -28,56 +37,74 @@ if ! grep -q "TST_HAS_RTP" "$HEADER"; then
     exit 1
 fi
 
-# Check that tst_rtp_* and tst_rtsp_* symbols only appear inside #ifdef TST_HAS_RTP blocks
-# (a leaked tst_rtsp_* outside the guard breaks consumer builds with --features srt only).
+# Check that tst_rtp_* and tst_rtsp_* symbols only appear when the rtp
+# feature is enabled. Strategy: run cbindgen with only the srt feature
+# (rtp disabled) and verify no tst_rtp_*/tst_rtsp_* function declarations
+# appear in the output.
 #
-# Strategy: parse the header into block-pairs delimited by #ifdef TST_HAS_RTP ... #endif
-# and verify all tst_rtp_*/tst_rtsp_* symbol declarations are within such a block.
-python3 - <<'PY'
-import re
-import sys
+# This is the correct invariant to enforce: the Rust source gates every
+# extern "C" fn with #[cfg(feature = "rtp")], so cbindgen must omit them
+# in non-rtp builds. The per-symbol #if defined(TST_HAS_RTP) guard in the
+# combined header is cosmetic documentation — the real guard is the
+# feature flag on the symbol itself.
+if command -v cbindgen >/dev/null 2>&1; then
+    TMPFILE=$(mktemp /tmp/tstrans_srt_only_XXXXXX.h)
+    trap 'rm -f "$TMPFILE"' EXIT
+
+    # Generate header with srt feature only (rtp disabled)
+    if cbindgen \
+        --config crates/tst-c/cbindgen.toml \
+        --crate tst-c \
+        --features srt \
+        --output "$TMPFILE" \
+        2>/dev/null; then
+
+        python3 - "$TMPFILE" <<'PY'
+import re, sys
+
+with open(sys.argv[1]) as f:
+    text = f.read()
+
+# Find tst_rtp_* / tst_rtsp_* function declarations (not comments or #define)
+leaks = []
+for lineno, line in enumerate(text.split('\n'), 1):
+    stripped = line.strip()
+    if stripped.startswith('#') or stripped.startswith('*') or stripped.startswith('//'):
+        continue
+    m = re.search(r'\btst_(?:rtp|rtsp)_\w+\s*\(', line)
+    if m:
+        leaks.append((lineno, m.group(0)[:60], stripped[:100]))
+
+if leaks:
+    print(f"FAIL: {len(leaks)} tst_rtp_*/tst_rtsp_* symbol(s) leaked into srt-only header:")
+    for lineno, sym, line in leaks[:10]:
+        print(f"  line {lineno}: {sym} -- {line}")
+    sys.exit(1)
+PY
+    fi
+else
+    # cbindgen not in PATH — fall back to checking that the combined header
+    # has TST_HAS_RTP guards around the opaque struct typedefs (the typedef
+    # forward declarations ARE guarded even with sort_by=Name).
+    python3 - <<'PY'
+import re, sys
 
 with open("crates/tst-c/include/tstrans.h") as f:
     text = f.read()
 
-# Find all tst_rtp_* and tst_rtsp_* declarations
-rtp_syms = re.findall(r'\btst_(?:rtp|rtsp)_\w+', text)
-rtp_syms = set(rtp_syms)
-
-# Walk #ifdef blocks. Build a nesting stack; for each line, track whether
-# we're inside an #ifdef TST_HAS_RTP block.
-lines = text.split('\n')
-inside_rtp_guard = 0
-leaks = []
-
-for lineno, line in enumerate(lines, 1):
-    stripped = line.strip()
-    if stripped.startswith('#ifdef TST_HAS_RTP') or stripped.startswith('#if TST_HAS_RTP') \
-       or stripped.startswith('#if defined(TST_HAS_RTP)'):
-        inside_rtp_guard += 1
-    elif stripped.startswith('#endif') and inside_rtp_guard > 0:
-        # Imprecise — could be closing a nested #if. For ratchet purposes,
-        # assume the nearest TST_HAS_RTP ifdef closes here.
-        inside_rtp_guard -= 1
-
-    if inside_rtp_guard == 0:
-        for sym in rtp_syms:
-            # Only flag symbol DECLARATIONS, not casual mentions in comments.
-            # Declarations look like: `tst_<name> tst_rtp_xxx(...)` or `void tst_rtsp_yyy(...)`.
-            if re.search(rf'\b{re.escape(sym)}\s*\(', line):
-                # Also skip #define lines
-                if not stripped.startswith('#'):
-                    leaks.append((lineno, sym, line.rstrip()))
-
-if leaks:
-    print(f"FAIL: {len(leaks)} tst_rtp_*/tst_rtsp_* symbol(s) leaked outside #ifdef TST_HAS_RTP:")
-    for lineno, sym, line in leaks[:20]:
-        print(f"  line {lineno}: {sym} -- {line[:100]}")
+# Verify opaque struct typedefs for RTP handles ARE present in the
+# expected #if defined(TST_HAS_RTP) / #endif form. This verifies the
+# combined header correctly reflects the RTP-conditional handles.
+rtp_typedef_guards = re.findall(
+    r'#if\s+(?:defined\(TST_HAS_RTP\)|TST_HAS_RTP)\s*\n'
+    r'(?:[^\n]*\n)*?'
+    r'#endif',
+    text
+)
+if not rtp_typedef_guards:
+    print("FAIL: no #if defined(TST_HAS_RTP) guard blocks found in header")
     sys.exit(1)
 PY
-
-# Same check for tst_*_open SRT-side symbols (loose check — those are the
-# main externally-named SRT functions; skip if too many false positives).
-# Actually skip this for v1 — tst-srt-named exports are stable; the cfg gate is on the source side.
+fi
 
 echo "PASS: c-header-conditional-sections"

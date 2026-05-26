@@ -52,4 +52,5 @@ pub use rtsp::interleaved::{Frame, InterleavedReader, InterleavedWriter, MAX_BIN
 pub use rtsp::message::{RtspMethod, RtspRequest, RtspResponse};
 pub use sdp::pick::pick_mp2t;
 pub use sdp::{Sdp, SdpMedia};
+pub use url::MulticastGroup;
 pub use url::{RtspScheme, RtspTransportPref, RtspUrl, RtspVersion};

@@ -70,6 +70,37 @@ pub enum TstError {
     ///
     /// See [`TstError::NotAvailable`] for the transient counterpart.
     NotFound = -14,
+    /// (-15) RTP socket / transport error (bind/connect/send/recv).
+    /// Distinct from `Transport` which covers SRT shell errors; RTP has
+    /// no concept of a libsrt-flavored shell so it routes directly here.
+    RtpTransport = -15,
+    /// (-16) Malformed RTSP wire format or unexpected status from peer.
+    /// Generic protocol-error bucket.
+    RtspProtocol = -16,
+    /// (-17) RTSP authentication exhausted (bad credentials, or server
+    /// challenged after retry).
+    RtspAuthFailed = -17,
+    /// (-18) RTSP server requires authentication but client has no
+    /// credentials, or the offered auth scheme is unsupported.
+    RtspAuthRequired = -18,
+    /// (-19) RTSP 404 from server, or no mp2t SDP media found.
+    RtspNotFound = -19,
+    /// (-20) RTSP 461 Unsupported Transport — all transport preferences
+    /// (UDP + TCP-interleaved) exhausted by server.
+    RtspUnsupported = -20,
+    /// (-21) rustls TLS handshake or certificate validation failure
+    /// (only emitted for rtsps:// connections; feature `tls`).
+    RtspTls = -21,
+    /// (-22) socket I/O failure during an RTSP exchange (TCP close, etc.).
+    RtspIo = -22,
+    /// (-23) keepalive or request timeout on an RTSP connection.
+    RtspTimeout = -23,
+    /// (-24) RtspServerError variants (lifecycle, config — bind in use,
+    /// duplicate mount path, max sessions reached, etc.).
+    RtspServer = -24,
+    /// (-25) MountError variants from RtspServer mount surface
+    /// (underlying MuxError, backpressure, closed).
+    RtspMount = -25,
 }
 
 thread_local! {
@@ -155,22 +186,6 @@ pub unsafe extern "C" fn tst_clear_last_error() {
         set_last_error(TstError::Success, "");
     });
 }
-
-// Phase 4 — RTP + RTSP error codes (33..=43).
-// These are returned by `tst_get_last_error()` when RTSP / RTP entry
-// points fail. The codes are stable across tst-c minor versions; new
-// codes append at the end.
-pub const TST_ERROR_RTP_TRANSPORT: u32 = 33; // RTP socket / transport errors
-pub const TST_ERROR_RTSP_PROTOCOL: u32 = 34; // malformed RTSP response or unexpected status
-pub const TST_ERROR_RTSP_AUTH_FAILED: u32 = 35; // authentication exhausted (bad credentials)
-pub const TST_ERROR_RTSP_AUTH_REQUIRED: u32 = 36; // auth scheme not supported by client
-pub const TST_ERROR_RTSP_NOT_FOUND: u32 = 37; // 404 / SDP media not found
-pub const TST_ERROR_RTSP_UNSUPPORTED: u32 = 38; // 461 Unsupported Transport (all transports rejected)
-pub const TST_ERROR_RTSP_TLS: u32 = 39; // rustls handshake / certificate errors
-pub const TST_ERROR_RTSP_IO: u32 = 40; // socket I/O during RTSP exchange
-pub const TST_ERROR_RTSP_TIMEOUT: u32 = 41; // keepalive / request timeout
-pub const TST_ERROR_RTSP_SERVER: u32 = 42; // RtspServerError variants (lifecycle, config)
-pub const TST_ERROR_RTSP_MOUNT: u32 = 43; // MountError variants (mux error, backpressure, closed)
 
 use tst_core::error::MuxError;
 #[cfg(test)]
@@ -410,87 +425,76 @@ pub(crate) fn record_not_found(msg: &str) -> i32 {
 // enum definition in tst-rtp.
 // ---------------------------------------------------------------------------
 
-/// Map a [`tst_rtp::RtspError`] to the appropriate `TST_ERROR_RTSP_*` code.
+/// Map a [`tst_rtp::RtspError`] to the appropriate `TstError` variant.
 ///
 /// Explicit arms cover all 15 variants from Phase 2 closeout. The wildcard
 /// fallback is required by `#[non_exhaustive]` and maps future variants to
-/// `TST_ERROR_RTSP_PROTOCOL` (the most generic RTSP failure bucket).
+/// `TstError::RtspProtocol` (the most generic RTSP failure bucket).
 ///
 /// CI ratchet `scripts/check-rtsp-error-mapping-coverage.sh` verifies every
 /// known variant has an explicit arm.
 #[cfg(feature = "rtp")]
 #[allow(dead_code)] // used by Phase 4 Wave B RTSP entry points (Tasks 5–8)
-pub(crate) fn rtsp_error_to_code(e: &tst_rtp::RtspError) -> u32 {
+pub(crate) fn rtsp_error_to_code(e: &tst_rtp::RtspError) -> TstError {
     use tst_rtp::RtspError::*;
     match e {
-        Io(_) => TST_ERROR_RTSP_IO,
-        Tls(_) => TST_ERROR_RTSP_TLS,
-        Protocol { .. } => TST_ERROR_RTSP_PROTOCOL,
-        AuthFailed => TST_ERROR_RTSP_AUTH_FAILED,
-        AuthUnsupported { .. } => TST_ERROR_RTSP_AUTH_REQUIRED,
-        BadResponse { .. } => TST_ERROR_RTSP_PROTOCOL,
-        BadSdp { .. } => TST_ERROR_RTSP_PROTOCOL,
-        UnsupportedTransport => TST_ERROR_RTSP_UNSUPPORTED,
-        InterleavedFraming { .. } => TST_ERROR_RTSP_PROTOCOL,
-        SessionExpired => TST_ERROR_RTSP_PROTOCOL,
-        Timeout => TST_ERROR_RTSP_TIMEOUT,
-        LocalCancel => TST_ERROR_RTSP_PROTOCOL,
-        NoMp2tMedia => TST_ERROR_RTSP_NOT_FOUND,
-        MultipleMp2tMedia { .. } => TST_ERROR_RTSP_NOT_FOUND,
-        Url(_) => TST_ERROR_RTSP_PROTOCOL,
+        Io(_) => TstError::RtspIo,
+        Tls(_) => TstError::RtspTls,
+        Protocol { .. } => TstError::RtspProtocol,
+        AuthFailed => TstError::RtspAuthFailed,
+        AuthUnsupported { .. } => TstError::RtspAuthRequired,
+        BadResponse { .. } => TstError::RtspProtocol,
+        BadSdp { .. } => TstError::RtspProtocol,
+        UnsupportedTransport => TstError::RtspUnsupported,
+        InterleavedFraming { .. } => TstError::RtspProtocol,
+        SessionExpired => TstError::RtspProtocol,
+        Timeout => TstError::RtspTimeout,
+        LocalCancel => TstError::RtspProtocol,
+        NoMp2tMedia => TstError::RtspNotFound,
+        MultipleMp2tMedia { .. } => TstError::RtspNotFound,
+        Url(_) => TstError::RtspProtocol,
         // Required by #[non_exhaustive] — future variants fall through to the
         // generic protocol-error bucket. CI ratchet catches any new variant
         // that was not explicitly mapped above.
-        _ => TST_ERROR_RTSP_PROTOCOL,
+        _ => TstError::RtspProtocol,
     }
 }
 
-/// Map a [`tst_rtp::MountError`] to the appropriate `TST_ERROR_RTSP_*` code.
-///
-/// All three variants collapse to `TST_ERROR_RTSP_MOUNT`. The explicit arms
-/// satisfy the CI ratchet's coverage check.
-///
-/// CI ratchet `scripts/check-rtsp-error-mapping-coverage.sh` verifies every
-/// known variant has an explicit arm.
+/// Map a [`tst_rtp::MountError`] to the appropriate `TstError` variant.
+/// All three variants collapse to `TstError::RtspMount`.
 #[cfg(feature = "rtp")]
 #[allow(dead_code)] // used by Phase 4 Wave B mount entry points (Tasks 7–8)
-pub(crate) fn mount_error_to_code(e: &tst_rtp::MountError) -> u32 {
+pub(crate) fn mount_error_to_code(e: &tst_rtp::MountError) -> TstError {
     use tst_rtp::MountError::*;
     match e {
-        Mux(_) => TST_ERROR_RTSP_MOUNT,
-        Closed => TST_ERROR_RTSP_MOUNT,
-        PeerBackpressure { .. } => TST_ERROR_RTSP_MOUNT,
+        Mux(_) => TstError::RtspMount,
+        Closed => TstError::RtspMount,
+        PeerBackpressure { .. } => TstError::RtspMount,
         // Required by #[non_exhaustive].
-        _ => TST_ERROR_RTSP_MOUNT,
+        _ => TstError::RtspMount,
     }
 }
 
-/// Map a [`tst_rtp::RtspServerError`] to the appropriate `TST_ERROR_RTSP_*` code.
-///
-/// All 11 variants collapse to `TST_ERROR_RTSP_SERVER` — server-lifecycle
-/// errors don't benefit from per-variant C codes at Phase 4. The explicit
-/// arms satisfy the CI ratchet's coverage check.
-///
-/// CI ratchet `scripts/check-rtsp-error-mapping-coverage.sh` verifies every
-/// known variant has an explicit arm.
+/// Map a [`tst_rtp::RtspServerError`] to the appropriate `TstError` variant.
+/// All 11 variants collapse to `TstError::RtspServer`.
 #[cfg(feature = "rtp")]
 #[allow(dead_code)] // used by Phase 4 Wave B server entry points (Tasks 6–8)
-pub(crate) fn rtsp_server_error_to_code(e: &tst_rtp::RtspServerError) -> u32 {
+pub(crate) fn rtsp_server_error_to_code(e: &tst_rtp::RtspServerError) -> TstError {
     use tst_rtp::RtspServerError::*;
     match e {
-        Io(_) => TST_ERROR_RTSP_SERVER,
-        Tls(_) => TST_ERROR_RTSP_SERVER,
-        UrlParse(_) => TST_ERROR_RTSP_SERVER,
-        BindAddrInUse => TST_ERROR_RTSP_SERVER,
-        InvalidMountPath { .. } => TST_ERROR_RTSP_SERVER,
-        InvalidMulticastGroup { .. } => TST_ERROR_RTSP_SERVER,
-        DuplicateMount { .. } => TST_ERROR_RTSP_SERVER,
-        InvalidConfig { .. } => TST_ERROR_RTSP_SERVER,
-        AlreadyStarted => TST_ERROR_RTSP_SERVER,
-        NotStarted => TST_ERROR_RTSP_SERVER,
-        Shutdown => TST_ERROR_RTSP_SERVER,
+        Io(_) => TstError::RtspServer,
+        Tls(_) => TstError::RtspServer,
+        UrlParse(_) => TstError::RtspServer,
+        BindAddrInUse => TstError::RtspServer,
+        InvalidMountPath { .. } => TstError::RtspServer,
+        InvalidMulticastGroup { .. } => TstError::RtspServer,
+        DuplicateMount { .. } => TstError::RtspServer,
+        InvalidConfig { .. } => TstError::RtspServer,
+        AlreadyStarted => TstError::RtspServer,
+        NotStarted => TstError::RtspServer,
+        Shutdown => TstError::RtspServer,
         // Required by #[non_exhaustive].
-        _ => TST_ERROR_RTSP_SERVER,
+        _ => TstError::RtspServer,
     }
 }
 

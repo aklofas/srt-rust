@@ -248,6 +248,59 @@ enum tst_e
    * See [`TstError::NotAvailable`] for the transient counterpart.
    */
   TST_E_NOT_FOUND = -14,
+  /**
+   * (-15) RTP socket / transport error (bind/connect/send/recv).
+   * Distinct from `Transport` which covers SRT shell errors; RTP has
+   * no concept of a libsrt-flavored shell so it routes directly here.
+   */
+  TST_E_RTP_TRANSPORT = -15,
+  /**
+   * (-16) Malformed RTSP wire format or unexpected status from peer.
+   * Generic protocol-error bucket.
+   */
+  TST_E_RTSP_PROTOCOL = -16,
+  /**
+   * (-17) RTSP authentication exhausted (bad credentials, or server
+   * challenged after retry).
+   */
+  TST_E_RTSP_AUTH_FAILED = -17,
+  /**
+   * (-18) RTSP server requires authentication but client has no
+   * credentials, or the offered auth scheme is unsupported.
+   */
+  TST_E_RTSP_AUTH_REQUIRED = -18,
+  /**
+   * (-19) RTSP 404 from server, or no mp2t SDP media found.
+   */
+  TST_E_RTSP_NOT_FOUND = -19,
+  /**
+   * (-20) RTSP 461 Unsupported Transport — all transport preferences
+   * (UDP + TCP-interleaved) exhausted by server.
+   */
+  TST_E_RTSP_UNSUPPORTED = -20,
+  /**
+   * (-21) rustls TLS handshake or certificate validation failure
+   * (only emitted for rtsps:// connections; feature `tls`).
+   */
+  TST_E_RTSP_TLS = -21,
+  /**
+   * (-22) socket I/O failure during an RTSP exchange (TCP close, etc.).
+   */
+  TST_E_RTSP_IO = -22,
+  /**
+   * (-23) keepalive or request timeout on an RTSP connection.
+   */
+  TST_E_RTSP_TIMEOUT = -23,
+  /**
+   * (-24) RtspServerError variants (lifecycle, config — bind in use,
+   * duplicate mount path, max sessions reached, etc.).
+   */
+  TST_E_RTSP_SERVER = -24,
+  /**
+   * (-25) MountError variants from RtspServer mount surface
+   * (underlying MuxError, backpressure, closed).
+   */
+  TST_E_RTSP_MOUNT = -25,
 };
 #ifndef __cplusplus
 typedef int32_t tst_e;
@@ -717,6 +770,46 @@ typedef struct tst_receiver_t tst_receiver_t;
 #endif
 
 typedef struct tst_reconnect_policy_t tst_reconnect_policy_t;
+
+#if defined(TST_HAS_RTP)
+/**
+ * Opaque handle for an RTP-backed demux receiver.
+ *
+ * Returned by [`tst_rtp_demux_receiver_open`]. Freed with
+ * [`tst_rtp_demux_receiver_close`].
+ */
+typedef struct TstRtpDemuxReceiver TstRtpDemuxReceiver;
+#endif
+
+#if defined(TST_HAS_RTP)
+/**
+ * Opaque handle for an RTP-backed mux sender.
+ *
+ * Returned by [`tst_rtp_mux_sender_open`]. Freed with
+ * [`tst_rtp_mux_sender_close`].
+ */
+typedef struct TstRtpMuxSender TstRtpMuxSender;
+#endif
+
+#if defined(TST_HAS_RTP)
+/**
+ * Opaque handle for an RTP-backed raw TS byte receiver.
+ *
+ * Returned by [`tst_rtp_recv_open`]. Freed with
+ * [`tst_rtp_receiver_close`].
+ */
+typedef struct TstRtpReceiver TstRtpReceiver;
+#endif
+
+#if defined(TST_HAS_RTP)
+/**
+ * Opaque handle for an RTP-backed raw TS byte sender.
+ *
+ * Returned by [`tst_rtp_sender_open`]. Freed with
+ * [`tst_rtp_sender_close`].
+ */
+typedef struct TstRtpSender TstRtpSender;
+#endif
 
 #if defined(TST_HAS_RTP)
 /**
@@ -1640,6 +1733,30 @@ extern "C" {
 #endif
 
 #if defined(TST_HAS_SRT)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
+#endif
+
+#if defined(TST_HAS_RTP)
 #endif
 
 #if defined(TST_HAS_RTP)
@@ -3884,6 +4001,53 @@ int tst_raw_receiver_reset_stats(struct tst_raw_receiver_t *p);
  */
 void tst_reconnect_policy_free(struct tst_reconnect_policy_t *p);
 /**
+ * Close and free a `tst_rtp_demux_receiver_t`.
+ *
+ * Safe to call with `NULL` (no-op).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstRtpDemuxReceiver`
+ * returned by `tst_rtp_demux_receiver_open`.
+ */
+void tst_rtp_demux_receiver_close(struct TstRtpDemuxReceiver *p);
+/**
+ * Close and free a `tst_rtp_mux_sender_t`.
+ *
+ * Safe to call with `NULL` (no-op).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstRtpMuxSender` returned
+ * by `tst_rtp_mux_sender_open`.
+ */
+void tst_rtp_mux_sender_close(struct TstRtpMuxSender *p);
+/**
+ * Close and free a `tst_rtp_receiver_t`.
+ *
+ * Safe to call with `NULL` (no-op). See `tst_rtp_sender_close` for
+ * the ownership semantics.
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstRtpReceiver` returned
+ * by `tst_rtp_recv_open`.
+ */
+void tst_rtp_receiver_close(struct TstRtpReceiver *p);
+/**
+ * Close and free a `tst_rtp_sender_t`.
+ *
+ * Safe to call with `NULL` (no-op). After this call the pointer is
+ * invalid; passing the same non-null pointer twice is undefined
+ * behavior (use-after-free on the consumed `Box`).
+ *
+ * # Safety
+ *
+ * `p` must be NULL or a valid non-freed `*mut TstRtpSender` returned
+ * by `tst_rtp_sender_open`.
+ */
+void tst_rtp_sender_close(struct TstRtpSender *p);
+/**
  * Free a builder without connecting.
  *
  * Use this on error paths where the builder was partially configured and
@@ -3922,6 +4086,73 @@ int tst_reconnect_policy_set_max_attempts(struct tst_reconnect_policy_t *p, int3
 
 int tst_reconnect_policy_set_overflow_policy(struct tst_reconnect_policy_t *p,
                                              enum tst_overflow_policy policy);
+/**
+ * Open an RTP-backed `DemuxReceiver`. `demux_cfg` may be `NULL`, in
+ * which case default demux options apply (lenient mode). Returns `NULL`
+ * on error.
+ *
+ * # Safety
+ *
+ * `url` is a NUL-terminated C string. `demux_cfg` may be NULL or a
+ * valid `tst_demux_config_t*`. The returned handle must eventually be
+ * freed with `tst_rtp_demux_receiver_close`.
+ */
+
+struct TstRtpDemuxReceiver *tst_rtp_demux_receiver_open(const char *url,
+                                                        const struct tst_demux_config_t *demux_cfg);
+/**
+ * Open an RTP-backed `MuxSender` that muxes MPEG-TS in real time and
+ * sends over UDP/RTP. `mux_cfg` must be a valid `tst_mux_config_t`
+ * (constructed via `tst_mux_config_new`). Returns `NULL` on error.
+ *
+ * The mux config is borrowed — the caller still owns it and must free
+ * it. The returned handle is independent of the config after this call.
+ *
+ * # Safety
+ *
+ * `url` is a NUL-terminated C string. `mux_cfg` must be a non-null
+ * pointer to a `tst_mux_config_t` valid for this call. The returned
+ * handle must eventually be freed with `tst_rtp_mux_sender_close`.
+ */
+
+struct TstRtpMuxSender *tst_rtp_mux_sender_open(const char *url,
+                                                const struct tst_mux_config_t *mux_cfg);
+/**
+ * Open an RTP receiver listening on the unicast or multicast endpoint
+ * described by `url`. Returns `NULL` on error.
+ *
+ * For unicast, pass `rtp://0.0.0.0:port` or `rtp://127.0.0.1:port`
+ * (host is the bind address). For multicast, pass the group address
+ * (`rtp://239.0.0.1:port?iface=eth0`); the socket joins the group on
+ * `iface` (or the OS-default interface when absent).
+ *
+ * Port `0` causes the kernel to assign an ephemeral port; call
+ * `tst_rtp_receiver_local_port` (Task 6) to learn the assigned port.
+ *
+ * # Safety
+ *
+ * `url` must be a NUL-terminated C string. The returned handle must
+ * eventually be freed with `tst_rtp_receiver_close`.
+ */
+struct TstRtpReceiver *tst_rtp_recv_open(const char *url);
+/**
+ * Open an RTP sender to the unicast or multicast endpoint described by
+ * `url`. Returns `NULL` on error; check `tst_get_last_error()` for the
+ * negative error code and `tst_get_last_error_str()` for a detail message.
+ *
+ * URL form: `rtp://host:port[?ttl=N&iface=eth0&pkt_size=1316&ssrc=N]`.
+ * The transport is a UDP socket that sends RTP packets wrapping 7
+ * MPEG-TS packets per datagram (RFC 2250 §2). Multicast destinations
+ * (`224.0.0.0/4` for IPv4, `ff00::/8` for IPv6) are detected
+ * automatically from the destination address.
+ *
+ * # Safety
+ *
+ * `url` must be a NUL-terminated C string valid for the duration of
+ * this call. The returned handle must eventually be freed with
+ * `tst_rtp_sender_close`.
+ */
+struct TstRtpSender *tst_rtp_sender_open(const char *url);
 /**
  * Configure HTTP Basic credentials (RFC 7617) for this builder.
  *

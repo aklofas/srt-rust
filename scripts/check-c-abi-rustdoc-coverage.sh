@@ -235,6 +235,22 @@ ALLOWLIST=(
     "tst_rtsp_client_builder_auth_digest_md5"
     "tst_rtsp_client_builder_auth_digest_sha256"
     "tst_rtsp_client_builder_free"
+
+    # --- Phase 4 RTP open + close entry points (tst-c–only wrappers:
+    #     the RTP transports + Sender<RtpTransport> + DemuxReceiver use
+    #     existing tst-rtp / tst-pipeline APIs, but the C-side concrete
+    #     handle types (TstRtpSender, TstRtpReceiver, TstRtpMuxSender,
+    #     TstRtpDemuxReceiver) and their open/close lifecycle exist
+    #     only in tst-c — they're the C-language opaque-pointer projection
+    #     of those Rust types, with no 1:1 Rust counterpart) ---
+    "tst_rtp_sender_open"
+    "tst_rtp_sender_close"
+    "tst_rtp_recv_open"
+    "tst_rtp_receiver_close"
+    "tst_rtp_mux_sender_open"
+    "tst_rtp_mux_sender_close"
+    "tst_rtp_demux_receiver_open"
+    "tst_rtp_demux_receiver_close"
 )
 
 # Step 1: enumerate C exports

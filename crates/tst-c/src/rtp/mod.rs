@@ -123,7 +123,7 @@ pub unsafe extern "C" fn tst_rtp_sender_open(url: *const c_char) -> *mut TstRtpS
         let transport = match builder.connect() {
             Ok(t) => t,
             Err(e) => {
-                set_last_error(TstError::Transport, &format!("rtp connect: {e}"));
+                set_last_error(TstError::RtpTransport, &format!("rtp connect: {e}"));
                 return std::ptr::null_mut();
             }
         };
@@ -168,7 +168,7 @@ pub unsafe extern "C" fn tst_rtp_recv_open(url: *const c_char) -> *mut TstRtpRec
         let transport = match builder.listen() {
             Ok(t) => t,
             Err(e) => {
-                set_last_error(TstError::Transport, &format!("rtp listen: {e}"));
+                set_last_error(TstError::RtpTransport, &format!("rtp listen: {e}"));
                 return std::ptr::null_mut();
             }
         };
@@ -233,7 +233,7 @@ pub unsafe extern "C" fn tst_rtp_mux_sender_open(
         let transport = match builder.connect() {
             Ok(t) => t,
             Err(e) => {
-                set_last_error(TstError::Transport, &format!("rtp connect: {e}"));
+                set_last_error(TstError::RtpTransport, &format!("rtp connect: {e}"));
                 return std::ptr::null_mut();
             }
         };
@@ -281,7 +281,7 @@ pub unsafe extern "C" fn tst_rtp_demux_receiver_open(
         let transport = match builder.listen() {
             Ok(t) => t,
             Err(e) => {
-                set_last_error(TstError::Transport, &format!("rtp listen: {e}"));
+                set_last_error(TstError::RtpTransport, &format!("rtp listen: {e}"));
                 return std::ptr::null_mut();
             }
         };

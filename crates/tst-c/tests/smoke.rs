@@ -1,6 +1,15 @@
 //! Compiles tests/smoke.c against the cdylib produced by `cargo build`
 //! and runs the resulting binary.
 
+// `smoke.c` references `tst_muxer_*` + `tst_sender_*` + `tst_raw_sender_*`
+// + `tst_mux_sender_*` (all in `tstrans::sender::*`, gated behind
+// `feature = "srt"`). Under `--no-default-features` the cdylib has none
+// of those symbols, so `cc` link fails. CI surfaced this on macos-arm64
+// because the in-place rebuild produced a stripped dylib; the linux side
+// happened to find a cached default-features dylib so the test had been
+// passing falsely under reduced feature sets.
+#![cfg(feature = "srt")]
+
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;

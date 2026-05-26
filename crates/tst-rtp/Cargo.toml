@@ -90,5 +90,10 @@ proptest         = { workspace = true }
 # Used by server::tls unit tests (negative-path cert loading); matches the
 # `tempfile = "3"` pattern from tst-core.
 tempfile         = "3"
+# Self-signed cert + key generator for Wave F Task 24 TLS integration
+# test fixture (`tests/fixtures/tls_certs.rs`). 0.13 is the highest
+# version verified against Rust 1.85 (workspace MSRV); 0.14 was released
+# 2025-09 and might also work but 0.13 is sufficient for our needs.
+rcgen            = "0.13"
 # tokio + tokio-util were dev-only in Phase 2 (loopback fixture); promoted
 # to production [dependencies] in Phase 3 for the RtspServer Runtime.

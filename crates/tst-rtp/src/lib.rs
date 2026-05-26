@@ -36,4 +36,6 @@ pub use url::{DEFAULT_PKT_SIZE, RtpUrl, UrlError as RtpUrlError};
 pub use error::RtspError;
 pub use rtsp::auth::{AuthChallenge, DigestAlgorithm, DigestChallenge, DigestContext};
 pub use rtsp::message::{RtspMethod, RtspRequest, RtspResponse};
+pub use sdp::pick::pick_mp2t;
+pub use sdp::{Sdp, SdpMedia};
 pub use url::{RtspScheme, RtspTransportPref, RtspUrl, RtspVersion};

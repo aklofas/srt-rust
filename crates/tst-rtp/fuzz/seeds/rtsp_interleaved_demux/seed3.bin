@@ -1,0 +1,7 @@
+RTSP/1.0 200 OK
+CSeq: 4
+Content-Type: application/sdp
+Content-Length: 10
+
+v=0
+s=x

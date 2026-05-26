@@ -14,13 +14,16 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 doctest    = false
 
 [features]
-default = ["mbedtls"]
-mbedtls = ["tst-srt/mbedtls"]
+default = ["srt", "rtp", "mbedtls"]
+srt     = ["dep:tst-srt"]
+rtp     = ["dep:tst-rtp"]
+mbedtls = ["tst-srt?/mbedtls"]
 
 [dependencies]
-tst-srt       = { path = "../tst-srt", default-features = false }
-tst-core      = { path = "../tst-core" }
-tst-pipeline  = { path = "../tst-pipeline" }
+tst-srt      = { path = "../tst-srt", default-features = false, optional = true }
+tst-rtp      = { path = "../tst-rtp", default-features = false, optional = true }
+tst-pipeline = { path = "../tst-pipeline" }
+tst-core     = { path = "../tst-core" }
 libc      = { workspace = true }
 thiserror = { workspace = true }
 

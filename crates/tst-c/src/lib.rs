@@ -7,8 +7,9 @@
 //! Sender side complete; receiver side complete — raw byte, TS-aligned,
 //! and typed demux-event surfaces all ship today (`tst_raw_receiver_*` /
 //! `tst_ts_receiver_*` / `tst_receiver_*` / `tst_demux_receiver_*`),
-//! along with the reconnecting `tst_managed_*` variants. ABI minor is
-//! `0.5` (see [`TST_ABI_VERSION_MINOR`]).
+//! along with the reconnecting `tst_managed_*` variants. RTP and RTSP
+//! transport surfaces are gated on the `rtp` cargo feature. ABI minor is
+//! `0.6` (see [`TST_ABI_VERSION_MINOR`]).
 
 #![allow(clippy::missing_safety_doc)] // every extern "C" fn has a /// header documenting the contract
 
@@ -22,11 +23,19 @@ pub mod stats;
 mod ffi_slice;
 mod panic;
 
-// Sender-side surface:
+// Sender-side surface (requires SRT transport):
+#[cfg(feature = "srt")]
 pub mod sender;
 
-// Receiver-side surface:
+// Receiver-side surface (requires SRT transport):
+#[cfg(feature = "srt")]
 pub mod receiver;
+
+// RTP/RTSP transport surface:
+#[cfg(feature = "rtp")]
+mod rtp;
+#[cfg(feature = "rtp")]
+mod rtsp;
 /// Re-exports of internal error helpers for integration tests. These are not
 /// `extern "C"` and do not appear in `tstrans.h`. Named with `test_` prefix
 /// to mark their test-only intent; not gated on `#[cfg(test)]` because
@@ -74,7 +83,7 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 /// Minor version of the C ABI contract. See [`TST_ABI_VERSION_MAJOR`]
 /// for the bump policy.
 ///
-/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 5` in the
+/// Cbindgen emits this as `#define TST_ABI_VERSION_MINOR 6` in the
 /// generated header. Runtime accessor: [`tst_get_abi_version_minor`].
 ///
 /// History (additive bumps only — major stays at 0 pre-1.0):
@@ -95,7 +104,12 @@ pub const TST_ABI_VERSION_MAJOR: libc::c_int = 0;
 ///   `tst_demux_config_set_au_cell_cap_per_pid`, and
 ///   `tst_demux_config_set_lenient_psi_reassembly`. Bridges
 ///   Rust-only demux knobs through the C builder.
-pub const TST_ABI_VERSION_MINOR: libc::c_int = 5;
+/// - `6` (Phase 4 tst-rtp binding exposure, 2026-05-26):
+///   Introduces `srt` + `rtp` cargo features in `tst-c` with
+///   cbindgen `TST_HAS_SRT` / `TST_HAS_RTP` conditional emission.
+///   Existing SRT surface now gated on `feature = "srt"` (default-on).
+///   New RTP/RTSP entry points land in Tasks 2-16 behind `feature = "rtp"`.
+pub const TST_ABI_VERSION_MINOR: libc::c_int = 6;
 
 // =========================================================================
 // Runtime version accessors

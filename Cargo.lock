@@ -2038,6 +2038,7 @@ dependencies = [
  "thiserror",
  "tst-core",
  "tst-pipeline",
+ "tst-rtp",
  "tst-srt",
  "tst-test-helpers",
 ]

@@ -33,7 +33,15 @@ fn main() {
     println!("cargo:rerun-if-changed=cbindgen.toml");
     println!("cargo:rerun-if-changed=src");
 
-    // Post-process: domain-grouping section dividers (audit Finding 5).
+    // Post-process 1: inject TST_HAS_SRT / TST_HAS_RTP feature defines into
+    // the header immediately after the include guard open, so consumer C code
+    // can `#if TST_HAS_SRT` without external compiler flags. cbindgen's
+    // [defines] block emits `#if defined(TST_HAS_SRT)` guards around items
+    // but does not emit the matching `#define TST_HAS_SRT 1` — we emit it
+    // here based on the cargo features active for this build.
+    inject_feature_defines(&header_path);
+
+    // Post-process 2: domain-grouping section dividers (audit Finding 5).
     // Keys on symbol-name prefix; independent of Plan C's tst-c/src/
     // reorg (cbindgen is symbol-based, not file-based, so symbol ordering
     // stays stable across source-tree restructuring).
@@ -100,6 +108,57 @@ fn main() {
     let pc_path = profile_dir.join("tstrans.pc");
     std::fs::write(&pc_path, pc).expect("write tstrans.pc");
     println!("cargo:rerun-if-changed=tstrans.pc.in");
+}
+
+/// Inject `#define TST_HAS_SRT 1` / `#define TST_HAS_RTP 1` into the
+/// generated header immediately after the `#define TSTRANS_H` include-guard
+/// line. cbindgen's `[defines]` block wraps cfg-gated items in
+/// `#if defined(TST_HAS_SRT)` guards but does not emit the matching
+/// `#define TST_HAS_SRT 1` — this function bridges the gap.
+///
+/// Without these defines, a consumer who includes `tstrans.h` against a
+/// full-featured `libtstrans` would see no SRT symbols (the `#if defined`
+/// guards would all be false). With them, the header is self-describing:
+/// the defines reflect what the linked library actually exports.
+fn inject_feature_defines(header_path: &std::path::Path) {
+    // Collect the defines we need to inject based on cargo features active
+    // for this build. `CARGO_FEATURE_*` env vars are set by cargo for each
+    // active feature (`srt` → `CARGO_FEATURE_SRT`, etc.).
+    let mut defines = String::new();
+    if std::env::var("CARGO_FEATURE_SRT").is_ok() {
+        defines.push_str("#define TST_HAS_SRT 1\n");
+    }
+    if std::env::var("CARGO_FEATURE_RTP").is_ok() {
+        defines.push_str("#define TST_HAS_RTP 1\n");
+    }
+    if defines.is_empty() {
+        return; // nothing to inject
+    }
+
+    let content = std::fs::read_to_string(header_path).expect("read tstrans.h for feature inject");
+    // Insert after the `#define TSTRANS_H` include-guard line.
+    let needle = "#define TSTRANS_H";
+    let insert_pos = content.find(needle).map(|p| {
+        p + content[p..]
+            .find('\n')
+            .map(|n| n + 1)
+            .unwrap_or(needle.len())
+    });
+    let patched = match insert_pos {
+        Some(pos) => {
+            let mut out = String::with_capacity(content.len() + defines.len() + 1);
+            out.push_str(&content[..pos]);
+            out.push('\n');
+            out.push_str(&defines);
+            out.push_str(&content[pos..]);
+            out
+        }
+        None => {
+            // Include guard not found — prepend defines at top as fallback.
+            format!("{defines}\n{content}")
+        }
+    };
+    std::fs::write(header_path, patched).expect("write tstrans.h with feature defines");
 }
 
 /// Rewrite the cbindgen-generated header in place, inserting domain-

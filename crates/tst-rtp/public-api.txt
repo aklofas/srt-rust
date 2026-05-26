@@ -634,6 +634,7 @@ impl core::marker::UnsafeUnpin for tst_rtp::rtsp::client::transport_negotiation:
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::client::transport_negotiation::RtspTransportKind
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::client::transport_negotiation::RtspTransportKind
 pub struct tst_rtp::rtsp::client::transport_negotiation::TransportResponse
+pub tst_rtp::rtsp::client::transport_negotiation::TransportResponse::client_port: core::option::Option<(u16, u16)>
 pub tst_rtp::rtsp::client::transport_negotiation::TransportResponse::interleaved: core::option::Option<(u8, u8)>
 pub tst_rtp::rtsp::client::transport_negotiation::TransportResponse::kind: tst_rtp::rtsp::client::transport_negotiation::RtspTransportKind
 pub tst_rtp::rtsp::client::transport_negotiation::TransportResponse::server_port: core::option::Option<(u16, u16)>
@@ -890,8 +891,13 @@ pub mod tst_rtp::rtsp::server::session
 pub struct tst_rtp::rtsp::server::session::ServerSessionState
 pub tst_rtp::rtsp::server::session::ServerSessionState::auth_failures: u8
 pub tst_rtp::rtsp::server::session::ServerSessionState::auth_nonce: alloc::string::String
+pub tst_rtp::rtsp::server::session::ServerSessionState::fanout_handle: core::option::Option<tokio::runtime::task::join::JoinHandle<()>>
+pub tst_rtp::rtsp::server::session::ServerSessionState::interleaved_channels: core::option::Option<(u8, u8)>
 pub tst_rtp::rtsp::server::session::ServerSessionState::mount_path: core::option::Option<alloc::string::String>
+pub tst_rtp::rtsp::server::session::ServerSessionState::peer_cancel: tokio_util::sync::cancellation_token::CancellationToken
 pub tst_rtp::rtsp::server::session::ServerSessionState::session_id: core::option::Option<alloc::string::String>
+pub tst_rtp::rtsp::server::session::ServerSessionState::transport: core::option::Option<tst_rtp::rtsp::client::transport_negotiation::TransportResponse>
+pub tst_rtp::rtsp::server::session::ServerSessionState::udp_sockets: core::option::Option<(alloc::sync::Arc<tokio::net::udp::UdpSocket>, alloc::sync::Arc<tokio::net::udp::UdpSocket>)>
 impl core::marker::Freeze for tst_rtp::rtsp::server::session::ServerSessionState
 impl core::marker::Send for tst_rtp::rtsp::server::session::ServerSessionState
 impl core::marker::Sync for tst_rtp::rtsp::server::session::ServerSessionState
@@ -2433,6 +2439,7 @@ impl core::marker::UnsafeUnpin for tst_rtp::rtcp::ingest::SrAnchor
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtcp::ingest::SrAnchor
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtcp::ingest::SrAnchor
 pub struct tst_rtp::TransportResponse
+pub tst_rtp::TransportResponse::client_port: core::option::Option<(u16, u16)>
 pub tst_rtp::TransportResponse::interleaved: core::option::Option<(u8, u8)>
 pub tst_rtp::TransportResponse::kind: tst_rtp::rtsp::client::transport_negotiation::RtspTransportKind
 pub tst_rtp::TransportResponse::server_port: core::option::Option<(u16, u16)>

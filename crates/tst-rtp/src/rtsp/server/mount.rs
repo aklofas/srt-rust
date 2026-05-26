@@ -379,6 +379,44 @@ impl MountHandle {
         Ok(())
     }
 
+    // ── Lifecycle helpers ────────────────────────────────────────────────
+
+    /// Drain any TS packets queued in the inner muxer and broadcast them
+    /// through the mount's fanout channel.
+    ///
+    /// Call after finishing a batch of `push_*` calls to ensure all
+    /// buffered TS output is flushed to subscribers before e.g. a sleep or
+    /// a stats snapshot. This is a no-op when the muxer has no pending
+    /// output; it is always safe to call.
+    ///
+    /// Returns silently on a poisoned mutex (same interpretation as
+    /// `stats()`: the mount is closed).
+    pub fn flush(&self) {
+        if let Ok(mut muxer) = self.state.muxer.lock() {
+            drain_and_broadcast(&mut muxer, &self.state);
+        }
+    }
+
+    /// Reset all flow counters on the mount to zero.
+    ///
+    /// Mirrors `MuxSender::reset_stats`. Clears both the mount-level
+    /// `bytes_pushed` / `packets_pushed` / `frames_dropped_total`
+    /// accumulators in `MountState::stats` and the inner `Muxer`'s
+    /// per-stream counters. Per-stream entries are preserved (same
+    /// semantics as `Muxer::reset_stats`).
+    ///
+    /// Silent no-op on mutex poison.
+    pub fn reset_stats(&self) {
+        if let Ok(mut muxer) = self.state.muxer.lock() {
+            muxer.reset_stats();
+        }
+        if let Ok(mut s) = self.state.stats.lock() {
+            s.bytes_pushed = 0;
+            s.packets_pushed = 0;
+            s.frames_dropped_total = 0;
+        }
+    }
+
     // ── Stream-handle accessors ──────────────────────────────────────────
     //
     // Mirror `MuxSender::*_handles`. Each returns the declared handles in

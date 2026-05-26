@@ -832,12 +832,20 @@ typedef struct tst_rtsp_client_builder_t tst_rtsp_client_builder_t;
  *
  * Obtained from [`super::mount::tst_rtsp_server_add_unicast_mount`] or
  * [`super::mount::tst_rtsp_server_add_multicast_mount`]. Push methods
- * (`push_video`, `push_klv`, etc.) land in Task 9. Freed with
- * `tst_rtsp_mount_handle_free` (Task 9 or 10 scope).
+ * (`push_video`, `push_klv`, etc.) are in Task 9. Freed with
+ * `tst_rtsp_mount_handle_free`.
  *
  * The `MountHandle` returned by the Rust API is `Clone + Send`, so multiple
  * C handles pointing at the same mount are safe — each clone pushes to the
  * same broadcast fanout channel.
+ *
+ * The `cancelled` flag is C-layer-only: `tst_rtsp_mount_cancel` sets it and
+ * subsequent push calls return `TST_E_CLOSED` immediately without entering
+ * the Rust muxer. This avoids the need for a cancel-token in the Rust
+ * `MountHandle` API. Unlike transport-based handles, "cancelling" a mount
+ * handle only stops this particular C-side caller; the underlying
+ * `tst_rtp::MountHandle` (and any other C clones sharing the same broadcast
+ * Arc) continues operating.
  */
 typedef struct TstRtspMountHandle TstRtspMountHandle;
 #endif
@@ -1939,6 +1947,39 @@ extern "C" {
 #endif
 
 #if defined(TST_HAS_RTP)
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
+#endif
+
+#if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
 #endif
 
 #if (defined(TST_HAS_RTP) && defined(TST_HAS_RTP))
@@ -4342,6 +4383,26 @@ void tst_rtp_sender_close(struct TstRtpSender *p);
  */
 void tst_rtsp_client_builder_free(struct tst_rtsp_client_builder_t *builder);
 /**
+ * Cancel a mount handle. All subsequent `push_*` calls on this handle will
+ * return `TST_E_CLOSED` immediately without entering the muxer.
+ *
+ * Cancellation is handle-local — other `tst_rtsp_mount_handle_t` pointers
+ * to the same mount (e.g. obtained from separate `add_*_mount` calls on the
+ * same mount path) are unaffected. The underlying broadcast fanout and inner
+ * muxer continue operating for other holders.
+ *
+ * Safe to call from any thread. Idempotent — calling twice is harmless.
+ * The handle must still be freed via `tst_rtsp_mount_handle_free` to
+ * release memory.
+ *
+ * Returns `0` on success, `TST_E_INVALID_CONFIG` if `handle` is null.
+ *
+ * # Safety
+ *
+ * `handle` must be NULL or a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ */
+int tst_rtsp_mount_cancel(struct TstRtspMountHandle *handle);
+/**
  * Free an RTSP mount handle.
  *
  * Drops the `TstRtspMountHandle` and its inner `MountHandle`. After this
@@ -5159,6 +5220,208 @@ void tst_rtsp_client_builder_tls_root_cert_pem(struct tst_rtsp_client_builder_t 
 
 void tst_rtsp_client_builder_transport_pref(struct tst_rtsp_client_builder_t *builder,
                                             uint32_t pref);
+/**
+ * Drain any TS packets buffered in the mount's inner muxer and broadcast
+ * them through the mount's fanout channel.
+ *
+ * Call after finishing a batch of `push_*` calls to ensure all queued TS
+ * output is flushed to active subscribers. No-op when the muxer has no
+ * pending output. Safe to call concurrently with other `push_*` calls on
+ * separate threads; each call acquires the inner muxer mutex independently.
+ *
+ * Returns `0` on success, `TST_E_INVALID_CONFIG` if `handle` is null.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ */
+int tst_rtsp_mount_flush(struct TstRtspMountHandle *handle);
+/**
+ * Push one audio frame buffer through the mount's single audio stream
+ * (single-stream shorthand).
+ *
+ * `frames` must point to `len` bytes of pre-framed audio data (one or more
+ * ADTS or MPEG audio frames concatenated). `pts_90khz` is the presentation
+ * timestamp in 90 kHz ticks.
+ *
+ * Returns `0` on success, `TST_E_CLOSED` after `tst_rtsp_mount_cancel`,
+ * `TST_E_RTSP_MOUNT` on muxer or mount errors, `TST_E_INVALID_CONFIG` if
+ * `handle` is null.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ * `frames` must be readable for `len` bytes.
+ */
+
+int tst_rtsp_mount_push_audio(struct TstRtspMountHandle *handle,
+                              const uint8_t *frames,
+                              size_t len,
+                              int64_t pts_90khz);
+/**
+ * Push one audio frame buffer targeting a specific audio elementary stream.
+ *
+ * On a single-stream mount, prefer `tst_rtsp_mount_push_audio`.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ * `frames` must be readable for `len` bytes.
+ */
+
+int tst_rtsp_mount_push_audio_to(struct TstRtspMountHandle *handle,
+                                 tst_audio_stream_handle_t stream_handle,
+                                 const uint8_t *frames,
+                                 size_t len,
+                                 int64_t pts_90khz);
+/**
+ * Push one raw KLV blob through the mount's single KLV stream (single-stream
+ * shorthand).
+ *
+ * `klv` must point to **raw MISB Local Set bytes**. For streams configured
+ * as `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`, the muxer prepends a
+ * 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 §2.12.4.2.
+ * **Do not pre-wrap the AU cell on the caller side.** The current API uses
+ * `metadata_service_id = 0x00` per ST 1402.2 App. B Table 2.
+ *
+ * Returns `0` on success, `TST_E_CLOSED` after `tst_rtsp_mount_cancel`,
+ * `TST_E_RTSP_MOUNT` on muxer or mount errors, `TST_E_INVALID_CONFIG` if
+ * `handle` is null.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ * `klv` must be readable for `len` bytes.
+ */
+
+int tst_rtsp_mount_push_klv(struct TstRtspMountHandle *handle,
+                            const uint8_t *klv,
+                            size_t len,
+                            int64_t pts_90khz);
+/**
+ * Push one raw KLV blob targeting a specific KLV elementary stream.
+ *
+ * For `KlvStreamType::SynchronousMetadata` streams the muxer auto-wraps the
+ * caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0 V9
+ * §2.12.4.2. **Do not pre-wrap on the caller side.**
+ *
+ * On a single-stream mount, prefer `tst_rtsp_mount_push_klv`.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ * `klv` must be readable for `len` bytes.
+ */
+
+int tst_rtsp_mount_push_klv_to(struct TstRtspMountHandle *handle,
+                               tst_klv_stream_handle_t stream_handle,
+                               const uint8_t *klv,
+                               size_t len,
+                               int64_t pts_90khz);
+/**
+ * Push one subtitle payload through the mount's single subtitle stream
+ * (single-stream shorthand).
+ *
+ * `payload` is one complete logical subtitle unit (DVB-sub composition page,
+ * teletext data field, CEA-708 service block, or WebVTT cue). `pts_90khz`
+ * is the presentation timestamp in 90 kHz ticks.
+ *
+ * Returns `0` on success, `TST_E_CLOSED` after `tst_rtsp_mount_cancel`,
+ * `TST_E_RTSP_MOUNT` on muxer or mount errors, `TST_E_INVALID_CONFIG` if
+ * `handle` is null.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ * `payload` must be readable for `len` bytes.
+ */
+
+int tst_rtsp_mount_push_subtitle(struct TstRtspMountHandle *handle,
+                                 const uint8_t *payload,
+                                 size_t len,
+                                 int64_t pts_90khz);
+/**
+ * Push one subtitle payload targeting a specific subtitle elementary stream.
+ *
+ * On a single-stream mount, prefer `tst_rtsp_mount_push_subtitle`.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ * `payload` must be readable for `len` bytes.
+ */
+
+int tst_rtsp_mount_push_subtitle_to(struct TstRtspMountHandle *handle,
+                                    tst_subtitle_stream_handle_t stream_handle,
+                                    const uint8_t *payload,
+                                    size_t len,
+                                    int64_t pts_90khz);
+/**
+ * Push one Annex-B NAL through the mount's single video stream and out the
+ * RTSP broadcast fanout (single-stream shorthand).
+ *
+ * `nal` must point to `len` bytes of Annex-B NAL data (one or more NAL
+ * units with 4-byte or 3-byte start codes). `pts_90khz` is the
+ * presentation timestamp in 90 kHz ticks. `key_frame` is `true` for IDR
+ * / random-access frames.
+ *
+ * Resolves only when exactly one video stream is configured; rejects with
+ * `TST_E_RTSP_MOUNT` (`MuxError::AmbiguousTarget`) if more than one video
+ * stream is present — use `tst_rtsp_mount_push_video_to` in that case.
+ *
+ * Returns `0` on success, `TST_E_CLOSED` after `tst_rtsp_mount_cancel`,
+ * `TST_E_RTSP_MOUNT` on muxer or mount errors, `TST_E_INVALID_CONFIG` if
+ * `handle` is null.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ * `nal` must be readable for `len` bytes.
+ */
+
+int tst_rtsp_mount_push_video(struct TstRtspMountHandle *handle,
+                              const uint8_t *nal,
+                              size_t len,
+                              int64_t pts_90khz,
+                              bool key_frame);
+/**
+ * Push one Annex-B NAL targeting a specific video elementary stream.
+ *
+ * `stream_handle` is obtained from `tst_mux_config_add_video_stream` at
+ * config time and is stable. Out-of-range handles surface as
+ * `TST_E_RTSP_MOUNT` (wrapping `MuxError::InvalidStreamHandle`).
+ *
+ * On a single-stream mount, prefer `tst_rtsp_mount_push_video` — same
+ * effect, no handle required.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ * `nal` must be readable for `len` bytes.
+ */
+
+int tst_rtsp_mount_push_video_to(struct TstRtspMountHandle *handle,
+                                 tst_video_stream_handle_t stream_handle,
+                                 const uint8_t *nal,
+                                 size_t len,
+                                 int64_t pts_90khz,
+                                 bool key_frame);
+/**
+ * Reset all flow counters on the mount to zero.
+ *
+ * Clears both the mount-level accumulators (`bytes_pushed`,
+ * `packets_pushed`, `frames_dropped_total`) and the inner muxer's
+ * per-stream counters. Per-stream entries are preserved; only the flow
+ * counters inside them are zeroed. Same semantics as
+ * `tst_mux_sender_reset_stats`.
+ *
+ * Returns `0` on success, `TST_E_INVALID_CONFIG` if `handle` is null.
+ *
+ * # Safety
+ *
+ * `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+ */
+int tst_rtsp_mount_reset_stats(struct TstRtspMountHandle *handle);
 /**
  * Register a **multicast** mount on a started RTSP server.
  *

@@ -42,9 +42,20 @@
 
 use std::ffi::CStr;
 use std::os::raw::c_char;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use tst_core::mpegts::common::Pts90khz;
+use tst_core::mpegts::mux::{
+    AudioStreamHandle, KlvStreamHandle, SubtitleStreamHandle, VideoStreamHandle,
+};
 
 use crate::config::TstMuxConfig;
-use crate::error::{TstError, record_mux_error, rtsp_server_error_to_code, set_last_error};
+use crate::error::{
+    TstError, mount_error_to_code, record_mux_error, rtsp_server_error_to_code, set_last_error,
+};
+use crate::handle::{
+    TstAudioStreamHandle, TstKlvStreamHandle, TstSubtitleStreamHandle, TstVideoStreamHandle,
+};
 use crate::panic::ffi_catch;
 use crate::rtsp::server::types::{TstRtspMountHandle, TstRtspServer};
 
@@ -137,7 +148,10 @@ pub unsafe extern "C" fn tst_rtsp_server_add_unicast_mount(
         };
 
         match server_ref.add_mount(path_str, muxer_cfg) {
-            Ok(mount) => Box::into_raw(Box::new(TstRtspMountHandle { inner: mount })),
+            Ok(mount) => Box::into_raw(Box::new(TstRtspMountHandle {
+                inner: mount,
+                cancelled: AtomicBool::new(false),
+            })),
             Err(e) => {
                 let code = rtsp_server_error_to_code(&e);
                 set_last_error(code, &format!("add_unicast_mount failed: {e}"));
@@ -281,7 +295,10 @@ pub unsafe extern "C" fn tst_rtsp_server_add_multicast_mount(
         };
 
         match server_ref.add_multicast_mount(path_str, muxer_cfg, &group_url) {
-            Ok(mount) => Box::into_raw(Box::new(TstRtspMountHandle { inner: mount })),
+            Ok(mount) => Box::into_raw(Box::new(TstRtspMountHandle {
+                inner: mount,
+                cancelled: AtomicBool::new(false),
+            })),
             Err(e) => {
                 let code = rtsp_server_error_to_code(&e);
                 set_last_error(code, &format!("add_multicast_mount failed: {e}"));
@@ -316,6 +333,526 @@ pub unsafe extern "C" fn tst_rtsp_mount_handle_free(handle: *mut TstRtspMountHan
         let _ = unsafe { Box::from_raw(handle) };
         // Box drops at end of scope, running MountHandle's Drop.
     });
+}
+
+// ---------------------------------------------------------------------------
+// Push — single-stream variants
+// ---------------------------------------------------------------------------
+
+/// Push one Annex-B NAL through the mount's single video stream and out the
+/// RTSP broadcast fanout (single-stream shorthand).
+///
+/// `nal` must point to `len` bytes of Annex-B NAL data (one or more NAL
+/// units with 4-byte or 3-byte start codes). `pts_90khz` is the
+/// presentation timestamp in 90 kHz ticks. `key_frame` is `true` for IDR
+/// / random-access frames.
+///
+/// Resolves only when exactly one video stream is configured; rejects with
+/// `TST_E_RTSP_MOUNT` (`MuxError::AmbiguousTarget`) if more than one video
+/// stream is present — use `tst_rtsp_mount_push_video_to` in that case.
+///
+/// Returns `0` on success, `TST_E_CLOSED` after `tst_rtsp_mount_cancel`,
+/// `TST_E_RTSP_MOUNT` on muxer or mount errors, `TST_E_INVALID_CONFIG` if
+/// `handle` is null.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+/// `nal` must be readable for `len` bytes.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_push_video(
+    handle: *mut TstRtspMountHandle,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if h.cancelled.load(Ordering::Acquire) {
+            set_last_error(TstError::Closed, "mount handle has been cancelled");
+            return TstError::Closed as i32;
+        }
+        let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        let pts = Pts90khz::new(pts_90khz);
+        match h.inner.push_video(slice, pts, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                let code = mount_error_to_code(&e);
+                set_last_error(code, &format!("push_video failed: {e}"));
+                code as i32
+            }
+        }
+    })
+}
+
+/// Push one raw KLV blob through the mount's single KLV stream (single-stream
+/// shorthand).
+///
+/// `klv` must point to **raw MISB Local Set bytes**. For streams configured
+/// as `TST_KLV_STREAM_TYPE_SYNCHRONOUS_METADATA`, the muxer prepends a
+/// 5-byte `Metadata_AU_cell` header per ITU-T H.222.0 V9 §2.12.4.2.
+/// **Do not pre-wrap the AU cell on the caller side.** The current API uses
+/// `metadata_service_id = 0x00` per ST 1402.2 App. B Table 2.
+///
+/// Returns `0` on success, `TST_E_CLOSED` after `tst_rtsp_mount_cancel`,
+/// `TST_E_RTSP_MOUNT` on muxer or mount errors, `TST_E_INVALID_CONFIG` if
+/// `handle` is null.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+/// `klv` must be readable for `len` bytes.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_push_klv(
+    handle: *mut TstRtspMountHandle,
+    klv: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if h.cancelled.load(Ordering::Acquire) {
+            set_last_error(TstError::Closed, "mount handle has been cancelled");
+            return TstError::Closed as i32;
+        }
+        let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        let pts = Pts90khz::new(pts_90khz);
+        match h.inner.push_klv(
+            slice, pts,
+            // C ABI exposes metadata_service_id via future entry; today
+            // defaults to 0x00 per ST 1402.2 App. B Table 2.
+            0x00,
+        ) {
+            Ok(()) => 0,
+            Err(e) => {
+                let code = mount_error_to_code(&e);
+                set_last_error(code, &format!("push_klv failed: {e}"));
+                code as i32
+            }
+        }
+    })
+}
+
+/// Push one audio frame buffer through the mount's single audio stream
+/// (single-stream shorthand).
+///
+/// `frames` must point to `len` bytes of pre-framed audio data (one or more
+/// ADTS or MPEG audio frames concatenated). `pts_90khz` is the presentation
+/// timestamp in 90 kHz ticks.
+///
+/// Returns `0` on success, `TST_E_CLOSED` after `tst_rtsp_mount_cancel`,
+/// `TST_E_RTSP_MOUNT` on muxer or mount errors, `TST_E_INVALID_CONFIG` if
+/// `handle` is null.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+/// `frames` must be readable for `len` bytes.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_push_audio(
+    handle: *mut TstRtspMountHandle,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if h.cancelled.load(Ordering::Acquire) {
+            set_last_error(TstError::Closed, "mount handle has been cancelled");
+            return TstError::Closed as i32;
+        }
+        let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        let pts = Pts90khz::new(pts_90khz);
+        match h.inner.push_audio(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                let code = mount_error_to_code(&e);
+                set_last_error(code, &format!("push_audio failed: {e}"));
+                code as i32
+            }
+        }
+    })
+}
+
+/// Push one subtitle payload through the mount's single subtitle stream
+/// (single-stream shorthand).
+///
+/// `payload` is one complete logical subtitle unit (DVB-sub composition page,
+/// teletext data field, CEA-708 service block, or WebVTT cue). `pts_90khz`
+/// is the presentation timestamp in 90 kHz ticks.
+///
+/// Returns `0` on success, `TST_E_CLOSED` after `tst_rtsp_mount_cancel`,
+/// `TST_E_RTSP_MOUNT` on muxer or mount errors, `TST_E_INVALID_CONFIG` if
+/// `handle` is null.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+/// `payload` must be readable for `len` bytes.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_push_subtitle(
+    handle: *mut TstRtspMountHandle,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if h.cancelled.load(Ordering::Acquire) {
+            set_last_error(TstError::Closed, "mount handle has been cancelled");
+            return TstError::Closed as i32;
+        }
+        let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        let pts = Pts90khz::new(pts_90khz);
+        match h.inner.push_subtitle(slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                let code = mount_error_to_code(&e);
+                set_last_error(code, &format!("push_subtitle failed: {e}"));
+                code as i32
+            }
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Push — multi-stream (_to) variants
+// ---------------------------------------------------------------------------
+
+/// Push one Annex-B NAL targeting a specific video elementary stream.
+///
+/// `stream_handle` is obtained from `tst_mux_config_add_video_stream` at
+/// config time and is stable. Out-of-range handles surface as
+/// `TST_E_RTSP_MOUNT` (wrapping `MuxError::InvalidStreamHandle`).
+///
+/// On a single-stream mount, prefer `tst_rtsp_mount_push_video` — same
+/// effect, no handle required.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+/// `nal` must be readable for `len` bytes.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_push_video_to(
+    handle: *mut TstRtspMountHandle,
+    stream_handle: TstVideoStreamHandle,
+    nal: *const u8,
+    len: usize,
+    pts_90khz: i64,
+    key_frame: bool,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if h.cancelled.load(Ordering::Acquire) {
+            set_last_error(TstError::Closed, "mount handle has been cancelled");
+            return TstError::Closed as i32;
+        }
+        let slice = match unsafe { crate::ffi_slice::ffi_slice(nal, len, "nal") } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        // Trust-boundary validation — a forged handle value would silently
+        // route to the wrong elementary stream without this guard.
+        let stream = match VideoStreamHandle::try_from_raw(stream_handle) {
+            Ok(s) => s,
+            Err(e) => {
+                crate::error::record_mux_error(&e);
+                return unsafe { crate::error::tst_get_last_error() };
+            }
+        };
+        let pts = Pts90khz::new(pts_90khz);
+        match h.inner.push_video_to(stream, slice, pts, key_frame) {
+            Ok(()) => 0,
+            Err(e) => {
+                let code = mount_error_to_code(&e);
+                set_last_error(code, &format!("push_video_to failed: {e}"));
+                code as i32
+            }
+        }
+    })
+}
+
+/// Push one raw KLV blob targeting a specific KLV elementary stream.
+///
+/// For `KlvStreamType::SynchronousMetadata` streams the muxer auto-wraps the
+/// caller's bytes in a `Metadata_AU_cell` header per ITU-T H.222.0 V9
+/// §2.12.4.2. **Do not pre-wrap on the caller side.**
+///
+/// On a single-stream mount, prefer `tst_rtsp_mount_push_klv`.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+/// `klv` must be readable for `len` bytes.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_push_klv_to(
+    handle: *mut TstRtspMountHandle,
+    stream_handle: TstKlvStreamHandle,
+    klv: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if h.cancelled.load(Ordering::Acquire) {
+            set_last_error(TstError::Closed, "mount handle has been cancelled");
+            return TstError::Closed as i32;
+        }
+        let slice = match unsafe { crate::ffi_slice::ffi_slice(klv, len, "klv") } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        // Trust-boundary validation — see push_video_to rationale above.
+        let stream = match KlvStreamHandle::try_from_raw(stream_handle) {
+            Ok(s) => s,
+            Err(e) => {
+                crate::error::record_mux_error(&e);
+                return unsafe { crate::error::tst_get_last_error() };
+            }
+        };
+        let pts = Pts90khz::new(pts_90khz);
+        match h.inner.push_klv_to(
+            stream, slice, pts,
+            // C ABI exposes metadata_service_id via future entry; today
+            // defaults to 0x00 per ST 1402.2 App. B Table 2.
+            0x00,
+        ) {
+            Ok(()) => 0,
+            Err(e) => {
+                let code = mount_error_to_code(&e);
+                set_last_error(code, &format!("push_klv_to failed: {e}"));
+                code as i32
+            }
+        }
+    })
+}
+
+/// Push one audio frame buffer targeting a specific audio elementary stream.
+///
+/// On a single-stream mount, prefer `tst_rtsp_mount_push_audio`.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+/// `frames` must be readable for `len` bytes.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_push_audio_to(
+    handle: *mut TstRtspMountHandle,
+    stream_handle: TstAudioStreamHandle,
+    frames: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if h.cancelled.load(Ordering::Acquire) {
+            set_last_error(TstError::Closed, "mount handle has been cancelled");
+            return TstError::Closed as i32;
+        }
+        let slice = match unsafe { crate::ffi_slice::ffi_slice(frames, len, "frames") } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        // Trust-boundary validation — see push_video_to rationale above.
+        let stream = match AudioStreamHandle::try_from_raw(stream_handle) {
+            Ok(s) => s,
+            Err(e) => {
+                crate::error::record_mux_error(&e);
+                return unsafe { crate::error::tst_get_last_error() };
+            }
+        };
+        let pts = Pts90khz::new(pts_90khz);
+        match h.inner.push_audio_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                let code = mount_error_to_code(&e);
+                set_last_error(code, &format!("push_audio_to failed: {e}"));
+                code as i32
+            }
+        }
+    })
+}
+
+/// Push one subtitle payload targeting a specific subtitle elementary stream.
+///
+/// On a single-stream mount, prefer `tst_rtsp_mount_push_subtitle`.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+/// `payload` must be readable for `len` bytes.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_push_subtitle_to(
+    handle: *mut TstRtspMountHandle,
+    stream_handle: TstSubtitleStreamHandle,
+    payload: *const u8,
+    len: usize,
+    pts_90khz: i64,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        if h.cancelled.load(Ordering::Acquire) {
+            set_last_error(TstError::Closed, "mount handle has been cancelled");
+            return TstError::Closed as i32;
+        }
+        let slice = match unsafe { crate::ffi_slice::ffi_slice(payload, len, "payload") } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        // Trust-boundary validation — see push_video_to rationale above.
+        let stream = match SubtitleStreamHandle::try_from_raw(stream_handle) {
+            Ok(s) => s,
+            Err(e) => {
+                crate::error::record_mux_error(&e);
+                return unsafe { crate::error::tst_get_last_error() };
+            }
+        };
+        let pts = Pts90khz::new(pts_90khz);
+        match h.inner.push_subtitle_to(stream, slice, pts) {
+            Ok(()) => 0,
+            Err(e) => {
+                let code = mount_error_to_code(&e);
+                set_last_error(code, &format!("push_subtitle_to failed: {e}"));
+                code as i32
+            }
+        }
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle helpers — flush, cancel, reset_stats
+// ---------------------------------------------------------------------------
+
+/// Drain any TS packets buffered in the mount's inner muxer and broadcast
+/// them through the mount's fanout channel.
+///
+/// Call after finishing a batch of `push_*` calls to ensure all queued TS
+/// output is flushed to active subscribers. No-op when the muxer has no
+/// pending output. Safe to call concurrently with other `push_*` calls on
+/// separate threads; each call acquires the inner muxer mutex independently.
+///
+/// Returns `0` on success, `TST_E_INVALID_CONFIG` if `handle` is null.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_flush(handle: *mut TstRtspMountHandle) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        h.inner.flush();
+        0
+    })
+}
+
+/// Cancel a mount handle. All subsequent `push_*` calls on this handle will
+/// return `TST_E_CLOSED` immediately without entering the muxer.
+///
+/// Cancellation is handle-local — other `tst_rtsp_mount_handle_t` pointers
+/// to the same mount (e.g. obtained from separate `add_*_mount` calls on the
+/// same mount path) are unaffected. The underlying broadcast fanout and inner
+/// muxer continue operating for other holders.
+///
+/// Safe to call from any thread. Idempotent — calling twice is harmless.
+/// The handle must still be freed via `tst_rtsp_mount_handle_free` to
+/// release memory.
+///
+/// Returns `0` on success, `TST_E_INVALID_CONFIG` if `handle` is null.
+///
+/// # Safety
+///
+/// `handle` must be NULL or a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_cancel(handle: *mut TstRtspMountHandle) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        // Side-channel: do NOT acquire the muxer lock (a concurrent push holds
+        // it). The cancelled flag is accessible without locking; it is checked
+        // by all push methods before they acquire the muxer mutex.
+        h.cancelled.store(true, Ordering::Release);
+        0
+    })
+}
+
+/// Reset all flow counters on the mount to zero.
+///
+/// Clears both the mount-level accumulators (`bytes_pushed`,
+/// `packets_pushed`, `frames_dropped_total`) and the inner muxer's
+/// per-stream counters. Per-stream entries are preserved; only the flow
+/// counters inside them are zeroed. Same semantics as
+/// `tst_mux_sender_reset_stats`.
+///
+/// Returns `0` on success, `TST_E_INVALID_CONFIG` if `handle` is null.
+///
+/// # Safety
+///
+/// `handle` must be a valid non-freed `*mut tst_rtsp_mount_handle_t`.
+#[cfg(feature = "rtp")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tst_rtsp_mount_reset_stats(
+    handle: *mut TstRtspMountHandle,
+) -> libc::c_int {
+    ffi_catch(TstError::Internal as i32, || {
+        let Some(h) = (unsafe { handle.as_ref() }) else {
+            set_last_error(TstError::InvalidConfig, "null mount handle pointer");
+            return TstError::InvalidConfig as i32;
+        };
+        h.inner.reset_stats();
+        0
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -466,6 +1003,128 @@ mod tests {
     #[test]
     fn unicast_null_is_noop() {
         unsafe { tst_rtsp_mount_handle_free(std::ptr::null_mut()) };
+    }
+
+    // ── Push methods — null-pointer guard tests ──────────────────────────
+
+    #[test]
+    fn push_video_null_handle_returns_invalid_config() {
+        let rc = unsafe {
+            tst_rtsp_mount_push_video(
+                std::ptr::null_mut(),
+                [0x00u8, 0x00, 0x00, 0x01, 0x65, 0xBB].as_ptr(),
+                6,
+                0,
+                true,
+            )
+        };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn push_klv_null_handle_returns_invalid_config() {
+        let rc = unsafe { tst_rtsp_mount_push_klv(std::ptr::null_mut(), [0u8; 4].as_ptr(), 4, 0) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn push_audio_null_handle_returns_invalid_config() {
+        let rc =
+            unsafe { tst_rtsp_mount_push_audio(std::ptr::null_mut(), [0u8; 4].as_ptr(), 4, 0) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn push_subtitle_null_handle_returns_invalid_config() {
+        let rc =
+            unsafe { tst_rtsp_mount_push_subtitle(std::ptr::null_mut(), [0u8; 4].as_ptr(), 4, 0) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn flush_null_handle_returns_invalid_config() {
+        let rc = unsafe { tst_rtsp_mount_flush(std::ptr::null_mut()) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn cancel_null_handle_returns_invalid_config() {
+        let rc = unsafe { tst_rtsp_mount_cancel(std::ptr::null_mut()) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    #[test]
+    fn reset_stats_null_handle_returns_invalid_config() {
+        let rc = unsafe { tst_rtsp_mount_reset_stats(std::ptr::null_mut()) };
+        assert_eq!(rc, crate::error::TstError::InvalidConfig as i32);
+    }
+
+    // ── Push methods — end-to-end via a live unicast mount ───────────────
+
+    /// Helper: open a unicast mount and return the handle (raw pointer).
+    fn open_unicast_mount() -> (*mut TstRtspServer, *mut TstRtspMountHandle) {
+        let server = start_test_server();
+        assert!(!server.is_null());
+        let cfg = make_mux_cfg();
+        let path = std::ffi::CString::new("/live").unwrap();
+        let mount =
+            unsafe { tst_rtsp_server_add_unicast_mount(server, path.as_ptr(), cfg as *const _) };
+        assert!(!mount.is_null(), "unicast mount should not be null");
+        unsafe { crate::config::tst_mux_config_free(cfg) };
+        (server, mount)
+    }
+
+    #[test]
+    fn push_video_on_valid_mount_succeeds() {
+        let (server, mount) = open_unicast_mount();
+        // Minimal Annex-B IDR: 4-byte start + NAL type 5.
+        let nal = [0x00u8, 0x00, 0x00, 0x01, 0x65, 0xBB];
+        let rc = unsafe { tst_rtsp_mount_push_video(mount, nal.as_ptr(), nal.len(), 0, true) };
+        assert_eq!(rc, 0, "push_video should succeed on a fresh unicast mount");
+        unsafe { tst_rtsp_mount_handle_free(mount) };
+        unsafe {
+            let _ = Box::from_raw(server);
+        }
+    }
+
+    #[test]
+    fn cancel_then_push_video_returns_closed() {
+        let (server, mount) = open_unicast_mount();
+        let rc_cancel = unsafe { tst_rtsp_mount_cancel(mount) };
+        assert_eq!(rc_cancel, 0, "cancel should return 0");
+        let nal = [0x00u8, 0x00, 0x00, 0x01, 0x65, 0xBB];
+        let rc_push = unsafe { tst_rtsp_mount_push_video(mount, nal.as_ptr(), nal.len(), 0, true) };
+        assert_eq!(
+            rc_push,
+            crate::error::TstError::Closed as i32,
+            "push after cancel should return TST_E_CLOSED"
+        );
+        unsafe { tst_rtsp_mount_handle_free(mount) };
+        unsafe {
+            let _ = Box::from_raw(server);
+        }
+    }
+
+    #[test]
+    fn flush_on_valid_mount_returns_zero() {
+        let (server, mount) = open_unicast_mount();
+        let rc = unsafe { tst_rtsp_mount_flush(mount) };
+        assert_eq!(rc, 0);
+        unsafe { tst_rtsp_mount_handle_free(mount) };
+        unsafe {
+            let _ = Box::from_raw(server);
+        }
+    }
+
+    #[test]
+    fn reset_stats_on_valid_mount_returns_zero() {
+        let (server, mount) = open_unicast_mount();
+        let rc = unsafe { tst_rtsp_mount_reset_stats(mount) };
+        assert_eq!(rc, 0);
+        unsafe { tst_rtsp_mount_handle_free(mount) };
+        unsafe {
+            let _ = Box::from_raw(server);
+        }
     }
 
     #[test]

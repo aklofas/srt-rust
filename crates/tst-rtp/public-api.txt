@@ -819,15 +819,45 @@ pub struct tst_rtp::rtsp::server::RtspServer
 impl tst_rtp::rtsp::server::RtspServer
 pub fn tst_rtp::rtsp::server::RtspServer::bind(&str) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
 pub fn tst_rtp::rtsp::server::RtspServer::bind_with(tst_rtp::url::RtspUrl) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
+pub fn tst_rtp::rtsp::server::RtspServer::cancel_handle(&self) -> tst_rtp::cancel::RtspServerCancelHandle
+pub fn tst_rtp::rtsp::server::RtspServer::local_addr(&self) -> core::option::Option<core::net::socket_addr::SocketAddr>
+pub fn tst_rtp::rtsp::server::RtspServer::start(&self) -> core::result::Result<(), tst_rtp::error::RtspServerError>
+pub fn tst_rtp::rtsp::server::RtspServer::stats(&self) -> tst_rtp::rtsp::server::ServerStats
+pub fn tst_rtp::rtsp::server::RtspServer::stop(&self) -> core::result::Result<(), tst_rtp::error::RtspServerError>
 impl core::fmt::Debug for tst_rtp::rtsp::server::RtspServer
 pub fn tst_rtp::rtsp::server::RtspServer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_rtp::rtsp::server::RtspServer
+impl core::ops::drop::Drop for tst_rtp::rtsp::server::RtspServer
+pub fn tst_rtp::rtsp::server::RtspServer::drop(&mut self)
+impl !core::marker::Freeze for tst_rtp::rtsp::server::RtspServer
 impl core::marker::Send for tst_rtp::rtsp::server::RtspServer
 impl core::marker::Sync for tst_rtp::rtsp::server::RtspServer
 impl core::marker::Unpin for tst_rtp::rtsp::server::RtspServer
 impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::RtspServer
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::RtspServer
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::RtspServer
+#[non_exhaustive] pub struct tst_rtp::rtsp::server::ServerStats
+pub tst_rtp::rtsp::server::ServerStats::active_sessions: usize
+pub tst_rtp::rtsp::server::ServerStats::mounts: usize
+pub tst_rtp::rtsp::server::ServerStats::total_rtp_bytes_sent: u64
+pub tst_rtp::rtsp::server::ServerStats::total_rtp_packets_sent: u64
+impl core::clone::Clone for tst_rtp::rtsp::server::ServerStats
+pub fn tst_rtp::rtsp::server::ServerStats::clone(&self) -> tst_rtp::rtsp::server::ServerStats
+impl core::cmp::Eq for tst_rtp::rtsp::server::ServerStats
+impl core::cmp::PartialEq for tst_rtp::rtsp::server::ServerStats
+pub fn tst_rtp::rtsp::server::ServerStats::eq(&self, &tst_rtp::rtsp::server::ServerStats) -> bool
+impl core::default::Default for tst_rtp::rtsp::server::ServerStats
+pub fn tst_rtp::rtsp::server::ServerStats::default() -> tst_rtp::rtsp::server::ServerStats
+impl core::fmt::Debug for tst_rtp::rtsp::server::ServerStats
+pub fn tst_rtp::rtsp::server::ServerStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::rtsp::server::ServerStats
+impl core::marker::StructuralPartialEq for tst_rtp::rtsp::server::ServerStats
+impl core::marker::Freeze for tst_rtp::rtsp::server::ServerStats
+impl core::marker::Send for tst_rtp::rtsp::server::ServerStats
+impl core::marker::Sync for tst_rtp::rtsp::server::ServerStats
+impl core::marker::Unpin for tst_rtp::rtsp::server::ServerStats
+impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::ServerStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::ServerStats
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::ServerStats
 pub mod tst_rtp::sdp
 pub mod tst_rtp::sdp::pick
 pub fn tst_rtp::sdp::pick::pick_mp2t(&tst_rtp::sdp::Sdp) -> core::result::Result<&tst_rtp::sdp::SdpMedia, tst_rtp::error::RtspError>
@@ -2031,9 +2061,16 @@ pub struct tst_rtp::RtspServer
 impl tst_rtp::rtsp::server::RtspServer
 pub fn tst_rtp::rtsp::server::RtspServer::bind(&str) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
 pub fn tst_rtp::rtsp::server::RtspServer::bind_with(tst_rtp::url::RtspUrl) -> core::result::Result<Self, tst_rtp::error::RtspServerError>
+pub fn tst_rtp::rtsp::server::RtspServer::cancel_handle(&self) -> tst_rtp::cancel::RtspServerCancelHandle
+pub fn tst_rtp::rtsp::server::RtspServer::local_addr(&self) -> core::option::Option<core::net::socket_addr::SocketAddr>
+pub fn tst_rtp::rtsp::server::RtspServer::start(&self) -> core::result::Result<(), tst_rtp::error::RtspServerError>
+pub fn tst_rtp::rtsp::server::RtspServer::stats(&self) -> tst_rtp::rtsp::server::ServerStats
+pub fn tst_rtp::rtsp::server::RtspServer::stop(&self) -> core::result::Result<(), tst_rtp::error::RtspServerError>
 impl core::fmt::Debug for tst_rtp::rtsp::server::RtspServer
 pub fn tst_rtp::rtsp::server::RtspServer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tst_rtp::rtsp::server::RtspServer
+impl core::ops::drop::Drop for tst_rtp::rtsp::server::RtspServer
+pub fn tst_rtp::rtsp::server::RtspServer::drop(&mut self)
+impl !core::marker::Freeze for tst_rtp::rtsp::server::RtspServer
 impl core::marker::Send for tst_rtp::rtsp::server::RtspServer
 impl core::marker::Sync for tst_rtp::rtsp::server::RtspServer
 impl core::marker::Unpin for tst_rtp::rtsp::server::RtspServer
@@ -2197,6 +2234,29 @@ impl core::marker::Unpin for tst_rtp::rtcp::SenderReport
 impl core::marker::UnsafeUnpin for tst_rtp::rtcp::SenderReport
 impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtcp::SenderReport
 impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtcp::SenderReport
+#[non_exhaustive] pub struct tst_rtp::ServerStats
+pub tst_rtp::ServerStats::active_sessions: usize
+pub tst_rtp::ServerStats::mounts: usize
+pub tst_rtp::ServerStats::total_rtp_bytes_sent: u64
+pub tst_rtp::ServerStats::total_rtp_packets_sent: u64
+impl core::clone::Clone for tst_rtp::rtsp::server::ServerStats
+pub fn tst_rtp::rtsp::server::ServerStats::clone(&self) -> tst_rtp::rtsp::server::ServerStats
+impl core::cmp::Eq for tst_rtp::rtsp::server::ServerStats
+impl core::cmp::PartialEq for tst_rtp::rtsp::server::ServerStats
+pub fn tst_rtp::rtsp::server::ServerStats::eq(&self, &tst_rtp::rtsp::server::ServerStats) -> bool
+impl core::default::Default for tst_rtp::rtsp::server::ServerStats
+pub fn tst_rtp::rtsp::server::ServerStats::default() -> tst_rtp::rtsp::server::ServerStats
+impl core::fmt::Debug for tst_rtp::rtsp::server::ServerStats
+pub fn tst_rtp::rtsp::server::ServerStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_rtp::rtsp::server::ServerStats
+impl core::marker::StructuralPartialEq for tst_rtp::rtsp::server::ServerStats
+impl core::marker::Freeze for tst_rtp::rtsp::server::ServerStats
+impl core::marker::Send for tst_rtp::rtsp::server::ServerStats
+impl core::marker::Sync for tst_rtp::rtsp::server::ServerStats
+impl core::marker::Unpin for tst_rtp::rtsp::server::ServerStats
+impl core::marker::UnsafeUnpin for tst_rtp::rtsp::server::ServerStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtsp::server::ServerStats
+impl core::panic::unwind_safe::UnwindSafe for tst_rtp::rtsp::server::ServerStats
 pub struct tst_rtp::SrAnchor
 pub tst_rtp::SrAnchor::last_sr_ntp_mid: u32
 pub tst_rtp::SrAnchor::received_at: std::time::SystemTime

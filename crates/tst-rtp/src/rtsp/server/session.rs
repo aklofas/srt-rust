@@ -26,8 +26,8 @@ use crate::rtsp::server::auth::generate_nonce;
 use crate::rtsp::server::handlers;
 
 /// Per-session state. Lives for the duration of one client's TCP
-/// connection. Wave D extends with fan-out subscription handle and
-/// transport choice (Udp/TcpInterleaved).
+/// connection. Wave D (T16) extends with transport choice + allocated
+/// UDP sockets / interleaved channels.
 pub struct ServerSessionState {
     /// RTSP session ID — None pre-SETUP, Some after SETUP returns 200.
     pub session_id: Option<String>,
@@ -41,6 +41,19 @@ pub struct ServerSessionState {
     /// Count of consecutive 401-bounced requests. After 3 in a row the
     /// session closes (basic DoS guard).
     pub auth_failures: u8,
+    /// Transport negotiation result from SETUP. None pre-SETUP.
+    pub transport: Option<crate::rtsp::client::transport_negotiation::TransportResponse>,
+    /// Server-allocated UDP RTP+RTCP pair (for UDP-transport sessions).
+    /// `None` for TCP-interleaved sessions, multicast SETUPs, or
+    /// pre-SETUP. T17's PLAY handler hands these to the per-peer
+    /// fan-out task.
+    pub udp_sockets: Option<(
+        std::sync::Arc<tokio::net::UdpSocket>,
+        std::sync::Arc<tokio::net::UdpSocket>,
+    )>,
+    /// Interleaved RTP+RTCP channel pair (for TCP-interleaved sessions).
+    /// `None` for UDP sessions or pre-SETUP.
+    pub interleaved_channels: Option<(u8, u8)>,
 }
 
 impl ServerSessionState {
@@ -50,6 +63,9 @@ impl ServerSessionState {
             mount_path: None,
             auth_nonce: generate_nonce(),
             auth_failures: 0,
+            transport: None,
+            udp_sockets: None,
+            interleaved_channels: None,
         }
     }
 }

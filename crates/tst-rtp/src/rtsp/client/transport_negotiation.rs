@@ -30,6 +30,10 @@ pub struct TransportResponse {
     pub kind: RtspTransportKind,
     /// For UDP: server's RTP+RTCP port range from `server_port=lo-hi`.
     pub server_port: Option<(u16, u16)>,
+    /// For UDP: client's RTP+RTCP port range from `client_port=lo-hi`.
+    /// Server-side parses this from the client's SETUP request; client-side
+    /// parsers leave this as `None` (the client knew its own ports).
+    pub client_port: Option<(u16, u16)>,
     /// For TCP-interleaved: channel range from `interleaved=lo-hi`.
     pub interleaved: Option<(u8, u8)>,
     /// `ssrc=` parameter from the Transport header, if present.
@@ -48,6 +52,7 @@ pub fn parse_transport_response(header_value: &str) -> Result<TransportResponse,
         RtspTransportKind::Udp
     };
     let mut server_port = None;
+    let mut client_port = None;
     let mut interleaved = None;
     let mut ssrc = None;
     for part in header_value.split(';') {
@@ -57,6 +62,12 @@ pub fn parse_transport_response(header_value: &str) -> Result<TransportResponse,
             let lo = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
             let hi = it.next().and_then(|s| s.parse().ok()).unwrap_or(lo + 1);
             server_port = Some((lo, hi));
+        }
+        if let Some(v) = part.strip_prefix("client_port=") {
+            let mut it = v.split('-');
+            let lo = it.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+            let hi = it.next().and_then(|s| s.parse().ok()).unwrap_or(lo + 1);
+            client_port = Some((lo, hi));
         }
         if let Some(v) = part.strip_prefix("interleaved=") {
             let mut it = v.split('-');
@@ -74,6 +85,7 @@ pub fn parse_transport_response(header_value: &str) -> Result<TransportResponse,
     Ok(TransportResponse {
         kind,
         server_port,
+        client_port,
         interleaved,
         ssrc,
     })
@@ -124,6 +136,7 @@ mod tests {
         let t = parse_transport_response(h).unwrap();
         assert_eq!(t.kind, RtspTransportKind::Udp);
         assert_eq!(t.server_port, Some((6970, 6971)));
+        assert_eq!(t.client_port, Some((5004, 5005)));
     }
 
     #[test]

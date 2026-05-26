@@ -103,6 +103,11 @@ pub(crate) async fn build_multicast_send_socket(
     if let Some(iface_str) = iface {
         match group {
             SocketAddr::V4(_) => {
+                // Parse + bind iface_ip only on unix where setsockopt is
+                // available. On windows the cfg(not(unix)) early-return
+                // below surfaces the gap, but parsing was previously
+                // unconditional → unused-variable warning.
+                #[cfg(unix)]
                 let iface_ip: std::net::Ipv4Addr =
                     iface_str.parse().map_err(|e: std::net::AddrParseError| {
                         RtspServerError::InvalidMulticastGroup {

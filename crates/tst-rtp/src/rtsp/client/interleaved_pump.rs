@@ -1,18 +1,17 @@
 //! Client-side interleaved producer thread — reads `$`-prefixed binary
-//! frames + RTSP responses off the [`Stream`](super::Stream)'s read half
+//! frames + RTSP responses off the client's `Stream` read half
 //! (post-PLAY when `transport_kind == TcpInterleaved`), demuxes by
 //! channel, and routes:
 //!
 //! - Binary on `rtp_channel`: strip the 12-byte RTP header, push the
 //!   payload to `data_tx` (the `mpsc::Sender<Bytes>` paired with the
-//!   `mpsc::Receiver<Bytes>` that
-//!   [`crate::RtpRecvTransport::from_mpsc_placeholder`] consumes).
+//!   `mpsc::Receiver<Bytes>` that `RtpRecvTransport::from_mpsc_placeholder`
+//!   consumes).
 //! - Binary on `rtcp_channel`: push payload to `rtcp_tx` (the RTCP
 //!   ingest sink).
 //! - RTSP responses (`CRLFCRLF`-framed + `Content-Length` body): push to
 //!   `ctrl_tx`, which the main thread polls instead of reading the
-//!   [`Stream`](super::Stream) directly once interleaved-PLAY mode is
-//!   active.
+//!   `Stream` directly once interleaved-PLAY mode is active.
 //!
 //! Mirror of the server-side pump
 //! ([`crate::rtsp::server::interleaved_pump`]). Closes Phase 2 deferred
@@ -21,15 +20,14 @@
 //!
 //! # Wire-up status
 //!
-//! This task ships only the [`spawn_client_pump`] primitive function +
+//! This task ships only the `spawn_client_pump` primitive function +
 //! its unit tests. The actual wire-up into
 //! [`crate::rtsp::client::RtspClient::play`] (spawning the pump after
 //! PLAY succeeds, plumbing `data_tx` / `ctrl_rx` through
-//! [`crate::rtsp::client::session::RtspSession::into_recv_transport`]) is
-//! deferred to a Wave E follow-up. The
-//! [`crate::RtpRecvTransport::from_mpsc_placeholder`] still receives a
-//! never-fed channel from `RtspSession::into_recv_transport` until that
-//! wire-up lands.
+//! `RtspSession::into_recv_transport`) is deferred to a Wave H
+//! follow-up. `RtpRecvTransport::from_mpsc_placeholder` still receives
+//! a never-fed channel from `RtspSession::into_recv_transport` until
+//! that wire-up lands.
 
 use std::io::Read;
 use std::sync::Arc;
@@ -80,7 +78,7 @@ pub(crate) struct InterleavedChannels {
 /// lands the adapter).
 ///
 /// - `data_tx`: where stripped RTP payloads go (paired with
-///   [`crate::RtpRecvTransport::from_mpsc_placeholder`]).
+///   `RtpRecvTransport::from_mpsc_placeholder`).
 /// - `rtcp_tx`: where RTCP `$<rtcp_channel>` frame payloads go.
 /// - `ctrl_tx`: where RTSP response bytes go — main thread polls.
 /// - `channels`: SETUP-allocated channel pair.

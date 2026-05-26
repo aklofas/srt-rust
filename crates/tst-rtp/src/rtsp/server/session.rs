@@ -44,7 +44,7 @@ pub struct ServerSessionState {
 }
 
 impl ServerSessionState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             session_id: None,
             mount_path: None,

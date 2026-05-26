@@ -605,7 +605,9 @@ mod phase3_server_builder_tests {
         // the stub with the real Runtime-building impl, so build() now
         // returns Ok. Test renamed + retargeted accordingly.
         let b = RtspServerBuilder::new("rtsp://127.0.0.1:0").unwrap();
-        let server = b.build().expect("post-T7 build returns the real RtspServer");
+        let server = b
+            .build()
+            .expect("post-T7 build returns the real RtspServer");
         // local_addr is None until start() runs the listener.
         assert!(server.local_addr().is_none());
     }

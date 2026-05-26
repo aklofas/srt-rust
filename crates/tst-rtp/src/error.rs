@@ -124,10 +124,10 @@ impl From<io::Error> for RtspError {
     }
 }
 
-/// Failure shape for [`crate::rtsp::server::RtspServer`] lifecycle and
-/// configuration. Per-session errors (one client misbehaving) do NOT
-/// surface here — they are logged via `tracing::warn!` and the session
-/// closes; the server keeps running.
+/// Failure shape for `RtspServer` (introduced in Phase 3 Task 7)
+/// lifecycle and configuration. Per-session errors (one client
+/// misbehaving) do NOT surface here — they are logged via
+/// `tracing::warn!` and the session closes; the server keeps running.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum RtspServerError {
@@ -186,7 +186,7 @@ pub enum RtspServerError {
     Shutdown,
 }
 
-/// Failure shape for [`crate::rtsp::server::MountHandle`] push methods.
+/// Failure shape for `MountHandle` (introduced in Phase 3 Wave C) push methods.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum MountError {

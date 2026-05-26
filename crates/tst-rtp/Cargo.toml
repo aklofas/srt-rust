@@ -40,13 +40,17 @@ libc       = { workspace = true }
 
 [features]
 default = []
-# Enable rtsps:// support via sync rustls. Phase 2 uses rustls 0.23 directly
-# (no tokio-rustls) — the client is a sync facade per master spec.
+# Enable `rtsps://` support. The Phase 2 client uses sync rustls 0.23 directly
+# (no tokio-rustls) because the client is a sync facade per master spec; the
+# Phase 3 server adds `tokio-rustls` on top because the server is async (tokio
+# Runtime), and native async TLS is much cleaner than wiring sync rustls into
+# tokio via spawn_blocking.
 tls = [
     "dep:rustls",
     "dep:rustls-pemfile",
     "dep:rustls-pki-types",
     "dep:rustls-native-certs",
+    "dep:tokio-rustls",
 ]
 
 [dependencies.rustls]
@@ -69,9 +73,22 @@ optional = true
 version  = "0.7"
 optional = true
 
+# Server-side TLS (Phase 3 Task 11). tokio-rustls 0.26 wraps rustls 0.23
+# and exposes a native tokio AsyncRead+AsyncWrite TlsStream + TlsAcceptor;
+# server-side handshake is `acceptor.accept(tcp).await` — no spawn_blocking
+# bridge needed.
+[dependencies.tokio-rustls]
+version          = "0.26"
+optional         = true
+default-features = false
+features         = ["ring"]
+
 [dev-dependencies]
 tst-pipeline     = { path = "../tst-pipeline" }
 tst-test-helpers = { path = "../tst-test-helpers" }
 proptest         = { workspace = true }
+# Used by server::tls unit tests (negative-path cert loading); matches the
+# `tempfile = "3"` pattern from tst-core.
+tempfile         = "3"
 # tokio + tokio-util were dev-only in Phase 2 (loopback fixture); promoted
 # to production [dependencies] in Phase 3 for the RtspServer Runtime.

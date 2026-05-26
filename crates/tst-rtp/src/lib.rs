@@ -55,5 +55,6 @@ pub use url::{RtspScheme, RtspTransportPref, RtspUrl, RtspVersion};
 pub use builder::RtspServerBuilder;
 pub use cancel::RtspServerCancelHandle;
 pub use error::{MountError, RtspServerError};
+pub use rtsp::server::mount::{MountHandle, MountKind, MountStats};
 pub use rtsp::server::{RtspServer, ServerStats};
 pub use url::MulticastGroup;

@@ -277,9 +277,12 @@ def test_push_subtitle_releases_gil(solo_throughput: float) -> None:
     m = Muxer(_muxer_config_video_and_subtitle())
     payload = _max_subtitle_payload()
 
-    # 20 calls × ~5ms ≈ 100ms — comfortably over _MIN_WORKLOAD_MS (50ms).
-    # If the per-call wall clock changes, scale accordingly.
-    n_calls = 20
+    # Per-call wall clock is ~5 ms on a dev box, ~2 ms on fast CI runners
+    # (Ryzen 9 / GHA Ubuntu). 100 calls puts the workload at ≥200 ms even
+    # on the fast end — well over _MIN_WORKLOAD_MS (50 ms) — and stays
+    # comfortably under the 20 s @pytest.mark.timeout. The previous
+    # n_calls=20 flaked CI on 2026-05-26 (41 ms < 50 ms).
+    n_calls = 100
 
     with _PyWorker() as worker:
         for i in range(n_calls):

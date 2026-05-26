@@ -232,6 +232,159 @@ impl RtspResponse {
         }
         None
     }
+
+    /// Serialize the response to wire bytes ready to write to the TCP
+    /// stream. Mirrors [`RtspRequest::encode`] on the server side.
+    ///
+    /// Emits the status line, then headers (one per CRLF line, with the
+    /// header name title-cased dash-segment-wise for cosmetic
+    /// compatibility — RFC 7826 §5.1.1 declares headers case-insensitive
+    /// but some IP cameras do not honor that), then a blank line, then
+    /// the body (if any). Content-Length is *not* auto-injected — Task
+    /// 10's DESCRIBE handler sets it explicitly when emitting an SDP
+    /// body.
+    pub fn encode(&self) -> Bytes {
+        let mut buf = Vec::with_capacity(256 + self.body.len());
+        // Status line.
+        buf.extend_from_slice(self.version.wire_str().as_bytes());
+        buf.push(b' ');
+        buf.extend_from_slice(self.status.to_string().as_bytes());
+        buf.push(b' ');
+        buf.extend_from_slice(self.reason.as_bytes());
+        buf.extend_from_slice(b"\r\n");
+        // Headers.
+        for (k, v) in &self.headers {
+            for (i, segment) in k.split('-').enumerate() {
+                if i > 0 {
+                    buf.push(b'-');
+                }
+                let mut chars = segment.chars();
+                if let Some(c) = chars.next() {
+                    for ch in c.to_uppercase() {
+                        buf.extend_from_slice(ch.to_string().as_bytes());
+                    }
+                    for ch in chars {
+                        buf.extend_from_slice(ch.to_string().as_bytes());
+                    }
+                }
+            }
+            buf.extend_from_slice(b": ");
+            buf.extend_from_slice(v.as_bytes());
+            buf.extend_from_slice(b"\r\n");
+        }
+        buf.extend_from_slice(b"\r\n");
+        if !self.body.is_empty() {
+            buf.extend_from_slice(&self.body);
+        }
+        Bytes::from(buf)
+    }
+}
+
+impl RtspRequest {
+    /// Parse an RTSP request from wire bytes. Returns the parsed request
+    /// plus the number of bytes consumed (including any Content-Length
+    /// body). Mirrors [`RtspResponse::parse`] on the server side.
+    ///
+    /// # Errors
+    /// - [`RtspError::BadResponse`] (reused for request-side malformed
+    ///   text; we don't have a separate `BadRequest` variant in v1).
+    pub fn parse(input: &[u8]) -> Result<(Self, usize), RtspError> {
+        // 1. Find CRLFCRLF terminating headers.
+        let header_end =
+            input
+                .windows(4)
+                .position(|w| w == b"\r\n\r\n")
+                .ok_or(RtspError::BadResponse {
+                    detail: "no CRLFCRLF terminating request headers",
+                })?;
+        let header_bytes = &input[..header_end];
+        let header_text =
+            std::str::from_utf8(header_bytes).map_err(|_| RtspError::BadResponse {
+                detail: "non-UTF8 RTSP request",
+            })?;
+
+        // 2. Parse request line: "METHOD URI VERSION".
+        let mut lines = header_text.split("\r\n");
+        let request_line = lines.next().ok_or(RtspError::BadResponse {
+            detail: "empty request",
+        })?;
+        let mut parts = request_line.splitn(3, ' ');
+        let method_str = parts.next().ok_or(RtspError::BadResponse {
+            detail: "no method in request line",
+        })?;
+        let uri = parts
+            .next()
+            .ok_or(RtspError::BadResponse {
+                detail: "no URI in request line",
+            })?
+            .to_string();
+        let version_str = parts.next().ok_or(RtspError::BadResponse {
+            detail: "no version in request line",
+        })?;
+
+        let method = match method_str {
+            "OPTIONS" => RtspMethod::Options,
+            "DESCRIBE" => RtspMethod::Describe,
+            "SETUP" => RtspMethod::Setup,
+            "PLAY" => RtspMethod::Play,
+            "PAUSE" => RtspMethod::Pause,
+            "TEARDOWN" => RtspMethod::Teardown,
+            "GET_PARAMETER" => RtspMethod::GetParameter,
+            _ => {
+                return Err(RtspError::BadResponse {
+                    detail: "unsupported RTSP method",
+                });
+            }
+        };
+        let version = match version_str {
+            "RTSP/1.0" => RtspVersion::V1_0,
+            "RTSP/2.0" => RtspVersion::V2_0,
+            _ => {
+                return Err(RtspError::BadResponse {
+                    detail: "unsupported RTSP version",
+                });
+            }
+        };
+
+        // 3. Parse headers.
+        let mut headers: HashMap<String, String> = HashMap::new();
+        for line in lines {
+            if line.is_empty() {
+                continue;
+            }
+            let colon = line.find(':').ok_or(RtspError::BadResponse {
+                detail: "malformed header line",
+            })?;
+            let name = line[..colon].trim().to_ascii_lowercase();
+            let value = line[colon + 1..].trim().to_string();
+            headers.insert(name, value);
+        }
+
+        // 4. Read body per Content-Length, if any.
+        let content_length: usize = headers
+            .get("content-length")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        let body_start = header_end + 4;
+        let body_end = body_start + content_length;
+        if input.len() < body_end {
+            return Err(RtspError::BadResponse {
+                detail: "truncated body",
+            });
+        }
+        let body = Bytes::copy_from_slice(&input[body_start..body_end]);
+
+        Ok((
+            Self {
+                method,
+                uri,
+                version,
+                headers,
+                body,
+            },
+            body_end,
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -299,5 +452,112 @@ mod tests {
         let raw = b"RTSP/3.0 200 OK\r\nCSeq: 1\r\n\r\n";
         let e = RtspResponse::parse(raw).unwrap_err();
         assert!(matches!(e, RtspError::BadResponse { .. }));
+    }
+}
+
+#[cfg(test)]
+mod request_parse_tests {
+    use super::*;
+
+    #[test]
+    fn parse_options_request() {
+        let raw = b"OPTIONS rtsp://server/live RTSP/1.0\r\n\
+                    CSeq: 1\r\n\
+                    User-Agent: test\r\n\
+                    \r\n";
+        let (req, n) = RtspRequest::parse(raw).unwrap();
+        assert_eq!(req.method, RtspMethod::Options);
+        assert_eq!(req.uri, "rtsp://server/live");
+        assert_eq!(req.headers.get("cseq").map(String::as_str), Some("1"));
+        assert_eq!(n, raw.len());
+    }
+
+    #[test]
+    fn parse_describe_request_no_body() {
+        let raw = b"DESCRIBE rtsp://x/y RTSP/2.0\r\nCSeq: 5\r\n\r\n";
+        let (req, n) = RtspRequest::parse(raw).unwrap();
+        assert_eq!(req.method, RtspMethod::Describe);
+        assert_eq!(req.version, RtspVersion::V2_0);
+        assert_eq!(n, raw.len());
+    }
+
+    #[test]
+    fn parse_setup_with_transport_header() {
+        let raw = b"SETUP rtsp://x/y RTSP/1.0\r\n\
+                    CSeq: 3\r\n\
+                    Transport: RTP/AVP;unicast;client_port=5004-5005\r\n\
+                    \r\n";
+        let (req, _) = RtspRequest::parse(raw).unwrap();
+        assert_eq!(req.method, RtspMethod::Setup);
+        let t = req.headers.get("transport").unwrap();
+        assert!(t.contains("client_port=5004-5005"));
+    }
+
+    #[test]
+    fn parse_unsupported_method_errors() {
+        let raw = b"FOOBAR rtsp://x RTSP/1.0\r\n\r\n";
+        let e = RtspRequest::parse(raw).unwrap_err();
+        assert!(matches!(e, RtspError::BadResponse { .. }));
+    }
+
+    #[test]
+    fn parse_truncated_no_crlfcrlf_errors() {
+        let raw = b"OPTIONS rtsp://x RTSP/1.0\r\nCSeq: 1\r\n";
+        let e = RtspRequest::parse(raw).unwrap_err();
+        assert!(matches!(e, RtspError::BadResponse { .. }));
+    }
+
+    #[test]
+    fn parse_request_with_body() {
+        let body = b"v=0\r\ns=test\r\n";
+        let mut raw = format!(
+            "SETUP rtsp://x/y RTSP/1.0\r\nCSeq: 2\r\nContent-Length: {}\r\n\r\n",
+            body.len()
+        )
+        .into_bytes();
+        raw.extend_from_slice(body);
+        let (req, n) = RtspRequest::parse(&raw).unwrap();
+        assert_eq!(req.method, RtspMethod::Setup);
+        assert_eq!(req.body.as_ref(), body);
+        assert_eq!(n, raw.len());
+    }
+
+    #[test]
+    fn encode_response_round_trips_minimal() {
+        let mut headers = HashMap::new();
+        headers.insert("cseq".into(), "1".into());
+        let resp = RtspResponse {
+            version: RtspVersion::V1_0,
+            status: 200,
+            reason: "OK".into(),
+            headers,
+            body: Bytes::new(),
+        };
+        let wire = resp.encode();
+        let text = std::str::from_utf8(&wire).unwrap();
+        assert!(text.starts_with("RTSP/1.0 200 OK\r\n"));
+        assert!(text.contains("Cseq: 1\r\n") || text.contains("CSeq: 1\r\n"));
+        assert!(text.ends_with("\r\n\r\n"));
+    }
+
+    #[test]
+    fn encode_response_with_body_appends_body() {
+        let body = b"v=0\r\ns=test\r\n";
+        let mut headers = HashMap::new();
+        headers.insert("cseq".into(), "2".into());
+        headers.insert("content-type".into(), "application/sdp".into());
+        headers.insert("content-length".into(), body.len().to_string());
+        let resp = RtspResponse {
+            version: RtspVersion::V1_0,
+            status: 200,
+            reason: "OK".into(),
+            headers,
+            body: Bytes::copy_from_slice(body),
+        };
+        let wire = resp.encode();
+        // Should end with the body bytes (not CRLFCRLF).
+        assert!(wire.ends_with(body));
+        // And the CRLFCRLF header terminator should be present somewhere inside.
+        assert!(wire.windows(4).any(|w| w == b"\r\n\r\n"));
     }
 }

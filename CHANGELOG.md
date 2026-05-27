@@ -213,6 +213,21 @@ transports out of the box.
 
 ---
 
+## [Unreleased] — tst-tcp HLS publisher with HTTP server (2026-05-27)
+
+### Added
+
+- New `tst_core::publisher::Publisher` trait (sibling to `Transport`/`RecvTransport`) for
+  outbound-only, segment-aware sinks. First impl: `HlsPublisher` in `tst-tcp`.
+- New `tst_pipeline::MuxPublisher<P>` shell, mirroring `MuxSender<T>` but for the
+  `Publisher` trait. `send_video(..., key_frame=true)` auto-calls `cut_segment()`.
+- `tst-tcp`: new `hls` cargo feature (default-on). HLS publisher with built-in
+  hyper 1.x HTTP server, LIVE/EVENT/VOD modes, rolling segmenter, Basic auth
+  (RFC 7617), HTTPS via tokio-rustls 0.26. `hls://host:port` and `hlss://...`
+  URL schemes. KLV stays inside the .ts segments.
+
+---
+
 ## [Unreleased] — tst-udp: raw MPEG-TS over UDP (2026-05-27)
 
 ### Added

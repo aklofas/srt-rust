@@ -2214,6 +2214,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tst-rist"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "rist-sys",
+ "thiserror",
+ "tracing",
+ "tst-core",
+ "tst-pipeline",
+ "tst-test-helpers",
+]
+
+[[package]]
 name = "tst-rtp"
 version = "0.1.0"
 dependencies = [

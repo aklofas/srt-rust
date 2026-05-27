@@ -1,0 +1,30 @@
+[package]
+name        = "tst-rist"
+description = "Safe Rust wrapper around librist (RIST Simple + Main profiles)"
+version.workspace      = true
+edition.workspace      = true
+rust-version.workspace = true
+license.workspace      = true
+authors.workspace      = true
+repository.workspace   = true
+
+[lib]
+doctest = false
+
+[dependencies]
+rist-sys  = { path = "../rist-sys" }
+tst-core  = { path = "../tst-core" }
+libc      = { workspace = true }
+thiserror = { workspace = true }
+tracing   = { workspace = true }
+
+[dev-dependencies]
+tst-pipeline = { path = "../tst-pipeline" }
+tst-test-helpers = { path = "../tst-test-helpers" }
+
+[features]
+default = ["mbedtls"]
+
+# Enable AES-128/192/256 PSK encryption. Re-exports rist-sys's mbedtls feature
+# so consumers get one feature flag.
+mbedtls = ["rist-sys/mbedtls"]

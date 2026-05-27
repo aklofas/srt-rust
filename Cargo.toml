@@ -3,15 +3,16 @@ resolver = "2"
 members = [
     "crates/rist-sys",
     "crates/srt-sys",
+    "crates/tst-c",
     "crates/tst-core",
     "crates/tst-pipeline",
+    "crates/tst-py",
+    "crates/tst-rist",
+    "crates/tst-rtp",
     "crates/tst-srt",
     "crates/tst-tcp",
     "crates/tst-test-helpers",
-    "crates/tst-rtp",
     "crates/tst-udp",
-    "crates/tst-c",
-    "crates/tst-py",
     "examples",
 ]
 

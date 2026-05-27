@@ -510,7 +510,7 @@ pub(crate) enum Source {
 /// | [`SocketStats`] field | Source |
 /// |---|---|
 /// | `bytes_received` / `packets_received` | Local counters, tick per `recv_bytes` |
-/// | `rtt_us` | RTCP RR-after-SR computation (RFC 3550 §6.4.1). Populates on TCP-interleaved paths (see [`Self::from_mpsc_with_rtcp`]); `0` on UDP (RTCP ingest on UDP is not yet wired) |
+/// | `rtt_us` | RTCP RR-after-SR computation (RFC 3550 §6.4.1). Populates on TCP-interleaved RTSP client paths (the `RtspSession::into_recv_transport` route wires it via `from_mpsc_with_rtcp`); `0` on UDP (RTCP ingest on UDP is not yet wired) |
 /// | `packets_lost_send` | RTCP RR cumulative-lost field. Populates on the same paths as `rtt_us`; `0` otherwise |
 /// | `bytes_sent` / `packets_sent` | 0 (this is the receive half) |
 /// | All other fields | 0 |
@@ -1091,5 +1091,151 @@ mod tests {
         let recv = RtpRecvTransport::listen_with(&recv_url).unwrap();
         accept_send(send);
         accept_recv(recv);
+    }
+
+    /// T30 — verify that an RR pushed onto the rtcp_rx channel of an
+    /// `RtpRecvTransport` built via `from_mpsc_with_rtcp` reaches the
+    /// ingest thread, populates `RtcpStats.cumulative_lost_send`, and
+    /// is projected into `socket_stats().packets_lost_send`. Closes
+    /// the Stage 3 RR-on-interleaved-channel deliverable.
+    #[test]
+    fn rr_on_rtcp_rx_populates_packets_lost_send() {
+        use crate::rtcp::{ReceiverReport, ReportBlock};
+
+        let (_data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let (rtcp_tx, rtcp_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let t = RtpRecvTransport::from_mpsc_with_rtcp(data_rx, rtcp_rx);
+        let our_ssrc = t.ssrc;
+
+        // Build an RR whose first report block references our SSRC and
+        // reports 2024 cumulative losses.
+        let rb = ReportBlock {
+            ssrc: our_ssrc,
+            fraction_lost: 0x40, // 25% q8
+            cumulative_lost: 2024,
+            extended_highest_seq: 9000,
+            jitter: 0,
+            last_sr: 0,
+            delay_since_last_sr: 0,
+        };
+        let rr = ReceiverReport {
+            ssrc: 0xDEAD_BEEF,
+            report_blocks: vec![rb],
+        };
+        let bytes = bytes::Bytes::from(rr.encode());
+        rtcp_tx.send(bytes).expect("send RR onto rtcp_rx");
+
+        // Spin briefly for the ingest thread to wake + process.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut surfaced = 0u64;
+        while std::time::Instant::now() < deadline {
+            let s = t.socket_stats().expect("alive transport reports stats");
+            if s.packets_lost_send > 0 {
+                surfaced = s.packets_lost_send;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(
+            surfaced, 2024,
+            "expected RR-derived loss 2024 surfaced as packets_lost_send"
+        );
+
+        // RTT stays 0 because no SR anchor preceded the RR.
+        let s = t.socket_stats().expect("alive transport reports stats");
+        assert_eq!(s.rtt_us, 0);
+    }
+
+    /// T30 — verify that an SR followed by a matching RR populates
+    /// `socket_stats().rtt_us`. The RB's `last_sr` must equal the
+    /// stored anchor's mid-32 NTP for `compute_rtt_us` to fire.
+    #[test]
+    fn sr_then_rr_populates_rtt_us() {
+        use crate::rtcp::{ReceiverReport, ReportBlock, SenderReport};
+
+        let (_data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let (rtcp_tx, rtcp_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let t = RtpRecvTransport::from_mpsc_with_rtcp(data_rx, rtcp_rx);
+        let our_ssrc = t.ssrc;
+
+        // Peer SR — establishes the anchor.
+        let sr_ntp_full: u64 = 0xDEAD_BEEF_0000_0000u64; // arbitrary
+        let sr = SenderReport {
+            ssrc: 0xCAFEBABE,
+            ntp_timestamp: sr_ntp_full,
+            rtp_timestamp: 0,
+            sender_packet_count: 0,
+            sender_octet_count: 0,
+            report_blocks: vec![],
+        };
+        rtcp_tx
+            .send(bytes::Bytes::from(sr.encode()))
+            .expect("send SR");
+
+        // Give the ingest thread a moment to process the SR.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // Peer RR — RB's `last_sr` mirrors the anchor's mid-32 NTP.
+        let last_sr_mid = ((sr_ntp_full >> 16) & 0xFFFF_FFFF) as u32;
+        let rb = ReportBlock {
+            ssrc: our_ssrc,
+            fraction_lost: 0,
+            cumulative_lost: 0,
+            extended_highest_seq: 0,
+            jitter: 0,
+            last_sr: last_sr_mid,
+            delay_since_last_sr: 0,
+        };
+        let rr = ReceiverReport {
+            ssrc: 0xCAFEBABE,
+            report_blocks: vec![rb],
+        };
+        rtcp_tx
+            .send(bytes::Bytes::from(rr.encode()))
+            .expect("send RR");
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut surfaced_rtt = 0u32;
+        while std::time::Instant::now() < deadline {
+            let s = t.socket_stats().expect("alive transport reports stats");
+            if s.rtt_us > 0 {
+                surfaced_rtt = s.rtt_us;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(
+            surfaced_rtt > 0,
+            "expected SR-then-RR to surface a non-zero rtt_us, got {surfaced_rtt}"
+        );
+    }
+
+    /// T30 — verify that a malformed RTCP packet (PT=201 but truncated)
+    /// increments `rtcp_stats().rr_parse_errors` and does NOT crash
+    /// or corrupt the other stats.
+    #[test]
+    fn malformed_rr_increments_parse_error_counter() {
+        let (_data_tx, data_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let (rtcp_tx, rtcp_rx) = std::sync::mpsc::channel::<bytes::Bytes>();
+        let t = RtpRecvTransport::from_mpsc_with_rtcp(data_rx, rtcp_rx);
+
+        // 2-byte truncated "RR" — PT byte is 201 so the dispatcher
+        // attempts to decode but ReceiverReport::decode rejects on
+        // length check.
+        let bytes = bytes::Bytes::from(vec![0x80u8, 201]);
+        rtcp_tx.send(bytes).expect("send truncated RR");
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut parse_errs = 0u64;
+        while std::time::Instant::now() < deadline {
+            parse_errs = t.rtcp_stats().rr_parse_errors;
+            if parse_errs > 0 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(parse_errs, 1);
+        // Stats unaffected.
+        assert_eq!(t.rtcp_stats().rr_packets_received, 0);
     }
 }

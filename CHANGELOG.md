@@ -7,6 +7,77 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-rtp Phase 4 Stage 3: TCP-aware RTCP ingest (2026-05-26)
+
+### Fixed
+
+- **TCP-interleaved RTCP RR/SR now surface on `socket_stats()`.**
+  Prior to this stage, peer RTCP arriving on the RTSP control channel
+  (RFC 7826 §14 channel 1) was demuxed by the client interleaved pump but
+  the receiver side of the mpsc just held the frames — `socket_stats().rtt_us`
+  and `socket_stats().packets_lost_send` stayed at 0 regardless of peer
+  feedback. `RtspSession::into_recv_transport` now calls a new
+  `RtpRecvTransport::from_mpsc_with_rtcp` constructor which spawns a
+  `rtsp-rtcp-ingest` std::thread that drains the RTCP mpsc, parses each
+  frame via `SenderReport::decode` / `ReceiverReport::decode`, and feeds
+  the shared `Arc<Mutex<RtcpStats>>` via the existing `ingest_rr` /
+  `ingest_sr` free functions. `RtpRecvTransport::socket_stats()` projects
+  `RtcpStats.cumulative_lost_send` into `packets_lost_send` and
+  `RtcpStats.rtt_us` into `rtt_us` (UDP paths still project zeros — UDP
+  RTCP ingest remains deferred).
+- **`RtcpStats` gains three fields** (additive — pre-1.0): `cumulative_lost_send`,
+  `rtt_us`, `last_sr_anchor`. `ingest_sr` now persists the anchor on stats
+  (still returns it for callers); `ingest_rr` now also writes
+  `cumulative_lost_send` (clamped to >=0) and calls `compute_rtt_us` against
+  the stored anchor.
+- **`RtspClient::Drop` no longer hangs after `RtspServer::stop`.** Root cause:
+  after `server.stop()`, the server's per-session task exits and drops its
+  read half, but the write half stays open via lingering `Arc` clones held
+  by `state.sessions` and the fanout task — no FIN reaches the client. The
+  client's pump keeps timing out on reads, and the client's in-Drop
+  `teardown()` writes TEARDOWN into the kernel send buffer (succeeds, TCP
+  isn't half-closed yet) then waits forever for a response that the
+  defunct per-session task will never send. Fix: bound the in-Drop
+  teardown via a new `teardown_with_deadline(Option<Instant>)` that
+  short-circuits with `std::io::ErrorKind::TimedOut`. Drop uses a 500 ms
+  deadline. The wire bytes still go out; we just stop waiting on the
+  half-closed peer. Long-term, the server-side root cause (lingering
+  write-half Arcs after graceful shutdown) deserves an explicit
+  `shutdown().await` on each per-session write half in `RtspServer::stop`
+  — tracked separately.
+- **`tcp_interleaved_end_to_end_round_trips_ts_bytes`** un-ignored.
+  Previously `#[ignore]`'d in plan #100 Wave H follow-up after T4's
+  worktree reported pass but the merged state hung in the drop sequence.
+  Now passes in ~3 s.
+
+### Added
+
+- **`RtpRecvTransport::from_mpsc_with_rtcp(data_rx, rtcp_rx)`** — `pub(crate)`
+  constructor used by the TCP-interleaved RTSP client path. Spawns the
+  `rtsp-rtcp-ingest` thread; thread exits cleanly when the pump's
+  `Sender<Bytes>` drops.
+- **`RtspClient::teardown_with_deadline(Option<Instant>)`** — `pub(crate)`
+  bounded variant of `teardown()`. Wire bytes still go out; only the
+  response wait is bounded.
+- **`RtspClient::send_and_read_via_pump_with_deadline`** — `pub(crate)`
+  underlying primitive supporting the bounded-teardown path.
+
+### Tests
+
+- Three new transport unit tests verify the ingest pipeline end-to-end:
+  `rr_on_rtcp_rx_populates_packets_lost_send` (RR → cumulative_lost_send →
+  socket_stats.packets_lost_send), `sr_then_rr_populates_rtt_us`
+  (SR-establishes-anchor → RR-with-matching-last_sr → rtt_us > 0), and
+  `malformed_rr_increments_parse_error_counter` (truncated PT=201 →
+  rr_parse_errors increment, no panic).
+
+### Public API
+
+- `RtcpStats` field additions are additive — no removals; pre-1.0
+  policy. cargo-public-api baseline regen needed for tst-rtp.
+
+---
+
 ## [Unreleased] — tst-py Phase 4 Stage 2: `tstrans.rtp.*` (2026-05-26)
 
 ### Added — first transport bindings in Python

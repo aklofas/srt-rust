@@ -337,13 +337,16 @@ pub const tst_rtp::rtcp::reporter::RTCP_BASE_INTERVAL: core::time::Duration
 pub fn tst_rtp::rtcp::reporter::jitter_interval(core::time::Duration, u32) -> core::time::Duration
 pub mod tst_rtp::rtcp::stats
 pub struct tst_rtp::rtcp::stats::RtcpStats
+pub tst_rtp::rtcp::stats::RtcpStats::cumulative_lost_send: u32
 pub tst_rtp::rtcp::stats::RtcpStats::fraction_lost_q8: u8
 pub tst_rtp::rtcp::stats::RtcpStats::interarrival_jitter_us: u32
 pub tst_rtp::rtcp::stats::RtcpStats::last_rr_ts: core::option::Option<std::time::SystemTime>
+pub tst_rtp::rtcp::stats::RtcpStats::last_sr_anchor: core::option::Option<tst_rtp::rtcp::ingest::SrAnchor>
 pub tst_rtp::rtcp::stats::RtcpStats::last_sr_ts: core::option::Option<std::time::SystemTime>
 pub tst_rtp::rtcp::stats::RtcpStats::rr_packets_received: u64
 pub tst_rtp::rtcp::stats::RtcpStats::rr_packets_sent: u64
 pub tst_rtp::rtcp::stats::RtcpStats::rr_parse_errors: u64
+pub tst_rtp::rtcp::stats::RtcpStats::rtt_us: u32
 pub tst_rtp::rtcp::stats::RtcpStats::sr_packets_received: u64
 pub tst_rtp::rtcp::stats::RtcpStats::sr_packets_sent: u64
 pub tst_rtp::rtcp::stats::RtcpStats::sr_parse_errors: u64
@@ -1889,13 +1892,16 @@ impl core::marker::UnsafeUnpin for tst_rtp::rtcp::reporter::RtcpReporterHandle
 impl !core::panic::unwind_safe::RefUnwindSafe for tst_rtp::rtcp::reporter::RtcpReporterHandle
 impl !core::panic::unwind_safe::UnwindSafe for tst_rtp::rtcp::reporter::RtcpReporterHandle
 pub struct tst_rtp::RtcpStats
+pub tst_rtp::RtcpStats::cumulative_lost_send: u32
 pub tst_rtp::RtcpStats::fraction_lost_q8: u8
 pub tst_rtp::RtcpStats::interarrival_jitter_us: u32
 pub tst_rtp::RtcpStats::last_rr_ts: core::option::Option<std::time::SystemTime>
+pub tst_rtp::RtcpStats::last_sr_anchor: core::option::Option<tst_rtp::rtcp::ingest::SrAnchor>
 pub tst_rtp::RtcpStats::last_sr_ts: core::option::Option<std::time::SystemTime>
 pub tst_rtp::RtcpStats::rr_packets_received: u64
 pub tst_rtp::RtcpStats::rr_packets_sent: u64
 pub tst_rtp::RtcpStats::rr_parse_errors: u64
+pub tst_rtp::RtcpStats::rtt_us: u32
 pub tst_rtp::RtcpStats::sr_packets_received: u64
 pub tst_rtp::RtcpStats::sr_packets_sent: u64
 pub tst_rtp::RtcpStats::sr_parse_errors: u64

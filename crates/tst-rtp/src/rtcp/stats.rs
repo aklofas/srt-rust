@@ -25,13 +25,13 @@ pub struct RtcpStats {
     /// report block matching our SSRC (RFC 3550 §6.4.1 24-bit field,
     /// clamped to >=0). Projected into
     /// [`tst_core::transport::SocketStats::packets_lost_send`] by
-    /// [`crate::transport::RtpRecvTransport::socket_stats`].
+    /// [`crate::transport::RtpRecvTransport`]'s `socket_stats`.
     pub cumulative_lost_send: u32,
     /// Smoothed RTT in microseconds, computed from the most recent RR
     /// after a matching SR anchor was stored. `0` until at least one
     /// `(SR, RR)` pair has been observed. Projected into
     /// [`tst_core::transport::SocketStats::rtt_us`] by
-    /// [`crate::transport::RtpRecvTransport::socket_stats`].
+    /// [`crate::transport::RtpRecvTransport`]'s `socket_stats`.
     pub rtt_us: u32,
     /// Anchor from the last received SR. Held so that the next RR
     /// referencing it can drive [`crate::rtcp::ingest::compute_rtt_us`].

@@ -422,11 +422,15 @@ impl RtspClient {
 
 impl Drop for RtspClient {
     fn drop(&mut self) {
-        // Best-effort TEARDOWN if a session is still active. Done BEFORE
-        // flipping cancel/pump-cancel so `send_and_read` (used by
-        // teardown) still works.
+        // Best-effort TEARDOWN if a session is still active. Bounded to
+        // 500 ms via teardown_with_deadline so Drop stays fast even when
+        // the peer silently half-closed (e.g. RtspServer::stop cancels
+        // per-session tasks but leaves the write half open via lingering
+        // ActiveSession Arcs — TEARDOWN write succeeds into the kernel
+        // buffer but no response ever comes back).
         if self.session_id.is_some() {
-            let _ = self.teardown();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+            let _ = self.teardown_with_deadline(Some(deadline));
         }
         // Flip cancel so the keepalive + pump threads break out of their
         // wake loops at the next poll. Then take + join the handles so
@@ -443,9 +447,8 @@ impl Drop for RtspClient {
             }
             // The pump's RTCP `mpsc::Sender` is dropped along with the
             // pump thread that just exited; the rtcp_rx end was returned
-            // upward at activate time (T27) so the receiver lives with
-            // whoever consumes it (T28 plumbs it into
-            // `RtcpReporterHandle`). Nothing to reap here.
+            // upward at activate time (T27) and consumed by
+            // `RtpRecvTransport::from_mpsc_with_rtcp` (T28).
         }
     }
 }

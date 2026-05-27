@@ -18,6 +18,23 @@ impl RtspClient {
     /// - [`RtspError::BadResponse`] (or another variant) surfaced by
     ///   the response reader if the server replies malformed bytes.
     pub fn teardown(&mut self) -> Result<(), RtspError> {
+        self.teardown_with_deadline(None)
+    }
+
+    /// Variant of [`Self::teardown`] with an optional response deadline.
+    /// When `deadline` elapses with no TEARDOWN response, returns
+    /// [`RtspError::Io`] with [`std::io::ErrorKind::TimedOut`] but still
+    /// clears `session_id` (so callers know not to retry teardown).
+    ///
+    /// Called from `Drop for RtspClient` with a ~500 ms deadline so the
+    /// destructor stays bounded even when the peer silently half-closed
+    /// (no FIN on the wire). The wire bytes still go out (write_all
+    /// succeeds against the kernel send buffer); we just don't wait
+    /// forever for an answer.
+    pub(crate) fn teardown_with_deadline(
+        &mut self,
+        deadline: Option<std::time::Instant>,
+    ) -> Result<(), RtspError> {
         let sid = match &self.session_id {
             Some(s) => s.clone(),
             None => return Ok(()), // nothing to tear down
@@ -32,9 +49,19 @@ impl RtspClient {
         .header("session", sid)
         .header("user-agent", "tst-rtp/0.1");
         let bytes = req.encode();
-        let _resp = self.send_and_read(&bytes)?;
+        // Use the deadline-aware send if a pump is active; the non-pump
+        // path's `send_and_read` already bounds via cancel-poll. With a
+        // deadline, route through the pump variant unconditionally.
+        let r = if self.pump_state.is_some() {
+            self.send_and_read_via_pump_with_deadline(&bytes, deadline)
+        } else {
+            self.send_and_read(&bytes)
+        };
+        // Always clear session_id — caller asked us to tear down; if it
+        // failed, retrying won't help and we want Drop to skip on a
+        // second pass.
         self.session_id = None;
-        Ok(())
+        r.map(|_| ())
     }
 }
 

@@ -264,17 +264,31 @@ impl RtspClient {
     /// Pump-active variant of [`Self::send_and_read`]. Write under the
     /// stream mutex (brief), then poll `ctrl_rx` matching by CSeq.
     fn send_and_read_via_pump(&mut self, request_bytes: &[u8]) -> Result<RtspResponse, RtspError> {
-        // Parse the outbound request's CSeq so we can match it on the
-        // way back. Cheap — request_bytes is small.
+        self.send_and_read_via_pump_with_deadline(request_bytes, None)
+    }
+
+    /// Variant of [`Self::send_and_read_via_pump`] with an optional
+    /// hard deadline. When `deadline` elapses with no matching response,
+    /// returns [`RtspError::Io`] with [`std::io::ErrorKind::TimedOut`].
+    ///
+    /// Used by [`Self::teardown`] from within `Drop`: if the server has
+    /// silently half-closed (no FIN on the wire — e.g. when
+    /// `RtspServer::stop` cancels per-session tasks but leaves the
+    /// write half open via lingering `ActiveSession` Arcs), the
+    /// in-flight TEARDOWN write succeeds into the kernel buffer but
+    /// no response ever arrives. Without a deadline, `Drop` blocks
+    /// the whole test scope.
+    pub(crate) fn send_and_read_via_pump_with_deadline(
+        &mut self,
+        request_bytes: &[u8],
+        deadline: Option<std::time::Instant>,
+    ) -> Result<RtspResponse, RtspError> {
         let req_cseq = parse_cseq_from_request(request_bytes);
-        // Write under the mutex; release immediately.
         {
             let mut s = self.stream.lock().expect("stream mutex poisoned");
             s.write_all(request_bytes)
                 .map_err(|e| RtspError::Io(e.kind()))?;
         }
-        // Now poll ctrl_rx. Use a short timeout so we can re-check the
-        // cancel flag.
         let pump = self
             .pump_state
             .as_ref()
@@ -283,6 +297,11 @@ impl RtspClient {
             if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
                 return Err(RtspError::LocalCancel);
             }
+            if let Some(d) = deadline {
+                if std::time::Instant::now() >= d {
+                    return Err(RtspError::Io(std::io::ErrorKind::TimedOut));
+                }
+            }
             match pump
                 .ctrl_rx
                 .recv_timeout(std::time::Duration::from_millis(100))
@@ -290,11 +309,8 @@ impl RtspClient {
                 Ok(msg_bytes) => {
                     let (resp, _consumed) = match RtspResponse::parse(&msg_bytes) {
                         Ok(p) => p,
-                        Err(_) => continue, // malformed; drop + keep polling
+                        Err(_) => continue,
                     };
-                    // Discard keepalive-thread responses (CSeq >= 1_000_000)
-                    // and any other response whose CSeq doesn't match
-                    // the request we just sent.
                     match (req_cseq, resp.cseq()) {
                         (Some(req), Some(got)) if req == got => return Ok(resp),
                         _ => continue,
@@ -302,7 +318,6 @@ impl RtspClient {
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                    // Pump exited (EOF or fatal read error).
                     return Err(RtspError::Io(std::io::ErrorKind::UnexpectedEof));
                 }
             }

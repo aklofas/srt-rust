@@ -24,14 +24,15 @@ pub mod stats;
 pub mod transport;
 pub mod url;
 
-// pub use lines temporarily commented out — subsequent phase tasks
-// will uncomment as each type lands. This keeps the crate compiling
-// against empty stub modules during the scaffolding phase.
+// builder, recv, transport `pub use` lines stay commented until their
+// respective phases land — keeps the crate compiling against the stub
+// modules.
 //
 // pub use builder::{UdpRecvTransportBuilder, UdpTransportBuilder};
-// pub use config::SocketConfig;
-// pub use error::{UdpError, UdpErrorKind};
 // pub use recv::UdpRecvTransport;
-// pub use stats::UdpStats;
 // pub use transport::UdpTransport;
-// pub use url::{UdpUrl, UdpUrlError};
+
+pub use config::SocketConfig;
+pub use error::{UdpError, UdpErrorKind};
+pub use stats::UdpStats;
+pub use url::{UdpUrl, UdpUrlError};

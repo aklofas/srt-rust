@@ -41,4 +41,4 @@ mod recv_knobs;
 pub use config::SocketConfig;
 // pub use listener::TcpListener;
 pub use stats::TcpStats;
-// pub use transport::TcpTransport;
+pub use transport::TcpTransport;

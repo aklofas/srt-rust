@@ -156,14 +156,6 @@ pub(crate) struct InterleavedPumpState {
     pub(crate) ctrl_rx: mpsc::Receiver<Bytes>,
     /// Pump-thread handle; joined in `Drop` after `cancel` is flipped.
     pub(crate) thread: Option<std::thread::JoinHandle<()>>,
-    /// Tiny no-op rtcp-drain thread handle. The pump routes RTCP frames
-    /// into a channel; for Phase 3 the master spec defers TCP-interleaved
-    /// RTCP ingest (Phase 2 §"Deferred: TLS-side keepalive"), so we
-    /// spawn a drain that discards them. Joined in `Drop`.
-    //
-    // TODO(tst-rtp Phase 4+): route this into the existing RTCP
-    // receiver-side stats feed once the RTCP plumbing is TCP-aware.
-    pub(crate) rtcp_drain: Option<std::thread::JoinHandle<()>>,
     /// Observable counters from the pump. Held here so a future
     /// diagnostic accessor (e.g. `RtspClient::pump_stats()`) can read
     /// them without racing the pump thread. Not yet exposed publicly.
@@ -359,29 +351,33 @@ impl RtspClient {
     /// Called from SETUP after a successful TCP-interleaved negotiation
     /// (see [`crate::rtsp::client::setup`]). The pump owns reads from
     /// the control TCP from this point on: it parses `$<ch><len><data>`
-    /// frames, routes RTP payloads to `data_rx` (the channel returned
-    /// here, which the session hands to `RtpRecvTransport`), routes
-    /// RTCP payloads to a tiny drain thread (TODO: Phase 4+ TCP-aware
-    /// RTCP ingest), and routes RTSP responses to
-    /// `InterleavedPumpState::ctrl_rx` so subsequent
+    /// frames, routes RTP payloads to `data_rx` (one of the channels
+    /// returned here — the session hands it to `RtpRecvTransport`),
+    /// routes RTCP payloads to `rtcp_rx` (the other channel returned
+    /// here — T28 plumbs it into the `RtcpReporterHandle`), and routes
+    /// RTSP responses to `InterleavedPumpState::ctrl_rx` so subsequent
     /// [`Self::send_and_read`] calls can match by CSeq.
     ///
     /// Idempotent in the sense that calling it twice produces a fresh
     /// pump and drops the previous one (the previous pump's `cancel`
     /// flips, its `data_rx` becomes unfed and the receiver-transport
     /// side will see `mpsc::RecvError`).
+    ///
+    /// Returns `(data_rx, rtcp_rx)`. Prior to Phase 4 Stage 3 (T27) the
+    /// pump's RTCP receiver was consumed by a tiny `rtsp-rtcp-drain`
+    /// std::thread that discarded everything; that drain has been
+    /// removed and the receiver is now returned upward so a caller (T28)
+    /// can route RTCP frames into the existing `RtcpReporterHandle`
+    /// instead of black-holing them.
     pub(crate) fn activate_interleaved_pump(
         &mut self,
         channels: interleaved_pump::InterleavedChannels,
-    ) -> mpsc::Receiver<Bytes> {
+    ) -> (mpsc::Receiver<Bytes>, mpsc::Receiver<Bytes>) {
         // Reap any prior pump (replacement semantics — should not
         // happen in normal SETUP flow, but be defensive).
         if let Some(prev) = self.pump_state.take() {
             prev.cancel.store(true, Ordering::Relaxed);
             if let Some(t) = prev.thread {
-                let _ = t.join();
-            }
-            if let Some(t) = prev.rtcp_drain {
                 let _ = t.join();
             }
         }
@@ -403,28 +399,14 @@ impl RtspClient {
             stats.clone(),
         );
 
-        // RTCP drain thread — TODO: route to RTCP receiver-side stats.
-        // The master spec defers TCP-interleaved RTCP ingest; for now
-        // we discard so the channel doesn't fill and the pump's send
-        // never errors.
-        let rtcp_drain = std::thread::Builder::new()
-            .name("rtsp-rtcp-drain".to_string())
-            .spawn(move || {
-                while rtcp_rx.recv().is_ok() {
-                    // discard
-                }
-            })
-            .expect("failed to spawn rtsp-rtcp-drain thread");
-
         self.pump_state = Some(InterleavedPumpState {
             cancel: pump_cancel,
             ctrl_rx,
             thread: Some(thread),
-            rtcp_drain: Some(rtcp_drain),
             stats,
         });
 
-        data_rx
+        (data_rx, rtcp_rx)
     }
 
     /// Returns false if the background keepalive thread has flipped the
@@ -459,13 +441,11 @@ impl Drop for RtspClient {
             if let Some(t) = pump.thread.take() {
                 let _ = t.join();
             }
-            // Drop the ctrl_rx so the rtcp drain (which holds no ref to
-            // it but observes via channel disconnect on the rtcp_tx
-            // side, owned by the pump thread that just exited) wakes
-            // on `recv()` returning Err and exits.
-            if let Some(t) = pump.rtcp_drain.take() {
-                let _ = t.join();
-            }
+            // The pump's RTCP `mpsc::Sender` is dropped along with the
+            // pump thread that just exited; the rtcp_rx end was returned
+            // upward at activate time (T27) so the receiver lives with
+            // whoever consumes it (T28 plumbs it into
+            // `RtcpReporterHandle`). Nothing to reap here.
         }
     }
 }

@@ -31,6 +31,16 @@ pub struct RtspSession {
     /// For TcpInterleaved: consumer side of the pump's data channel.
     /// `None` for UDP sessions.
     pub(crate) data_rx: Option<mpsc::Receiver<Bytes>>,
+    /// For TcpInterleaved: consumer side of the pump's RTCP channel.
+    /// `None` for UDP sessions (UDP carries RTCP on its own dedicated
+    /// socket pair). T27 (Phase 4 Stage 3) wires the pump's RTCP demux
+    /// onto this `mpsc::Receiver<Bytes>`; T28 will consume it inside
+    /// [`Self::into_recv_transport`] and feed each frame to the
+    /// `RtcpReporterHandle` for receiver-side stats. Until T28 lands,
+    /// the receiver is held here and dropped at session drop — which
+    /// closes the pump's `mpsc::Sender` side and lets the pump observe
+    /// `SendError` once the consumer goes away.
+    pub(crate) rtcp_rx: Option<mpsc::Receiver<Bytes>>,
 }
 
 impl RtspSession {
@@ -48,17 +58,20 @@ impl RtspSession {
             udp_sockets: Some((rtp, rtcp)),
             peer_addr: Some(peer),
             data_rx: None,
+            rtcp_rx: None,
         }
     }
 
-    /// Construct a TCP-interleaved session, carrying the pump's data
-    /// `mpsc::Receiver<Bytes>` so [`Self::into_recv_transport`] can hand
-    /// it to [`RtpRecvTransport::from_mpsc_placeholder`] for the
-    /// consumer side.
+    /// Construct a TCP-interleaved session, carrying both the pump's
+    /// data `mpsc::Receiver<Bytes>` (so [`Self::into_recv_transport`]
+    /// can hand it to [`RtpRecvTransport::from_mpsc_placeholder`] for
+    /// the consumer side) and the pump's RTCP `mpsc::Receiver<Bytes>`
+    /// (T28 will route into `RtcpReporterHandle`).
     pub(crate) fn new_interleaved_with_data_rx(
         sid: String,
         transport: TransportResponse,
         data_rx: mpsc::Receiver<Bytes>,
+        rtcp_rx: mpsc::Receiver<Bytes>,
     ) -> Self {
         Self {
             session_id: sid,
@@ -67,6 +80,7 @@ impl RtspSession {
             udp_sockets: None,
             peer_addr: None,
             data_rx: Some(data_rx),
+            rtcp_rx: Some(rtcp_rx),
         }
     }
 

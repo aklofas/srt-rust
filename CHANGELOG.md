@@ -7,6 +7,207 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py Phase 8: `tstrans.srt` — full SRT surface (2026-05-27)
+
+### Added — second transport binding in Python (after RTP in Phase 4 Stage 2)
+
+- **New `tstrans.srt` submodule** behind cargo feature `srt = ["dep:tst-srt"]`,
+  default-on. Published wheels always include SRT; source builds that don't
+  need it can opt out via `maturin develop --no-default-features` for a
+  smaller binary that drops the libsrt + mbedTLS link. No `[srt]` pyproject
+  extra is added — there are no Python-side runtime deps to install.
+- **18 PyClasses** spanning the full live-transport surface, organized into
+  five layers that mirror the existing `tst-srt` Rust API:
+  - Low-level construction (T3): `Builder`, `Socket`, `Listener`.
+  - Raw byte transport (T2): `Sender`, `Receiver`, `SocketStats`, `SrtStats`,
+    `CancelHandle`.
+  - Mux/demux convenience (T5): `MuxSender`, `DemuxReceiver`.
+  - Reconnect policy (T6): `ReconnectPolicy`, `BackoffStrategy`,
+    `OverflowPolicy`.
+  - Auto-reconnect wrappers (T7-T8): `ManagedSender`, `ManagedReceiver`,
+    `ManagedMuxSender`, `ManagedDemuxReceiver`.
+- **Exception classes**: `SrtError` + `SrtErrorKind` IntEnum-shaped PyClass
+  in `tstrans.exceptions`, following the established kind-enum pattern
+  (`MuxError` / `DemuxError` / `KlvError` / `RtspError` / `RtpError`).
+  Kind variants: `CONFIG_INVALID`, `CONNECT_FAILED`, `TIMEOUT`, `CLOSED`,
+  `BROKEN`, `IO`, `INTERNAL`.
+
+### Per-wave breakdown
+
+- **T1 — bootstrap.** New `crates/tst-py/Cargo.toml` `srt` feature gated on
+  `tst-srt`. Empty `crates/tst-py/python/tstrans/srt.py` shim with the
+  conditional `_native.srt` import + friendly `ImportError` when the
+  feature is off. `tstrans.exceptions.{SrtError, SrtErrorKind}` exception
+  hierarchy + stub bash ratchet
+  `scripts/check-py-srt-error-mapping-coverage.sh`.
+- **T2 — transport layer.** `Sender(url)` + `Receiver(url)` PyClasses
+  wrapping `tst_srt::SrtTransport` (which implements both `Transport` and
+  `RecvTransport` — there is **no** separate `SrtRecvTransport` type, see
+  drifts below). `SocketStats` mirrors the cross-transport abstract stats;
+  `SrtStats` adds the libsrt-rich fields (`mbps_estimated_bandwidth`,
+  `bytes_lost_send_side` / `bytes_lost_recv_side` symmetric byte-loss
+  split, etc.). `CancelHandle` cancels parked recvs from another thread.
+  **Cross-crate plumbing**: `Sender::transport` + `Receiver::transport`
+  accessors added to `tst_pipeline` so the SRT-specific stats can be
+  reached through the pipeline shells; `SrtTransport::stats` exposed as
+  a top-level method on the Rust side.
+- **T3 — low-level primitives.** Hybrid `Builder(url, *, kwargs...)`
+  with fluent setters for all 12 SRT knobs. Q4-A URL precedence is
+  preserved: URL values WIN over kwargs and setters, because the
+  `UrlOverlay::apply_to_socket` unconditional overwrite runs **after**
+  the kwarg-built config. `Socket` with `into_sender` / `into_receiver`
+  / `into_mux_sender` / `into_demux_receiver` consume-and-move promotion.
+  `Listener` with `accept(timeout_ms=...)`, iterator shape (yields
+  `Socket` until `cancel_handle().cancel()` triggers `StopIteration`),
+  `local_addr()` port readback.
+- **T4 — errors.** Full `SrtError` mapping across every `tst-srt` error
+  type (`ConnectError`, `AcceptError`, `IoError`, `BuildError`, etc.)
+  with typed source preserved via PEP 3134 `from`. Real ratchet check
+  (`scripts/check-py-srt-error-mapping-coverage.sh`) replaces the T1
+  stub: every `SrtErrorKind` variant must have at least one literal
+  `make_srt_error(py, "<VARIANT>", ...)` call site under
+  `crates/tst-py/src/`.
+- **T5 — convenience wrappers.** `MuxSender.from_url(url, program_config)`
+  + `DemuxReceiver.from_url(url, *, demux_config=None)`. Same 16-method
+  push family as `tstrans.rtp.MuxSender` and `tstrans.mpegts.Muxer`
+  (`push_video` / `push_klv` / `push_audio` / `push_subtitle` + `_to`
+  variants + 4 handle getters + `stats` + `close` + context manager).
+  `DemuxReceiver` iterates `tstrans.mpegts.DemuxEvent` subclasses (no
+  duplicated event type hierarchy across transports).
+  `Socket.into_mux_sender` / `Socket.into_demux_receiver` finalizes the
+  T3 promotion path (these were `NotImplementedError` stubs in T3 until
+  T5 landed).
+- **T6 — reconnect policy.** `ReconnectPolicy(max_attempts=..., backoff=
+  BackoffStrategy.exponential(...), gap_buffer_capacity=..., overflow_policy
+  =OverflowPolicy.DROP_OLDEST)`. `BackoffStrategy.{constant, exponential}`
+  classmethod factories; `OverflowPolicy.{DROP_OLDEST, REJECT}` IntEnum-shaped
+  PyClass. Defaults mirror `tst_pipeline::ReconnectPolicy::default()`:
+  `max_attempts=10`, exponential `100ms..=10s`, `gap_buffer_capacity=256`,
+  `DROP_OLDEST`. Constructor raises `ValueError` if `gap_buffer_capacity == 0`.
+- **T7 — managed basic.** `ManagedSender.from_url(url, *, policy=None)` +
+  `ManagedReceiver.from_url(url, *, policy=None)` wrapping
+  `tst_pipeline::ManagedTransport<SrtTransport>` /
+  `ManagedRecvTransport<SrtTransport>`. Expose `send_bytes` / `recv_bytes`
+  on top of the underlying transport (no mux/demux on this layer).
+  `reconnect_attempts()` reads 0 before any break — the initial bind+accept
+  and initial connect do NOT count as reconnects.
+- **T8 — managed convenience.** `ManagedMuxSender.from_url(url, program,
+  *, policy=None)` + `ManagedDemuxReceiver.from_url(url, *, policy=None,
+  demux_config=None)`. Same 16-method push family as T5's `MuxSender`,
+  plus reconnect ergonomics. `DemuxEvent.ReconnectDiscontinuity` surfaces
+  on the consumer iterator after the managed layer heals a break.
+- **T9 — type stubs.** New `python/tstrans/srt.pyi` — 18 stub classes
+  (matching the 18 PyClasses), `mypy --strict` clean. Continues the
+  existing `py.typed` discipline established in Phase 4 Stage 2.
+- **T10 — integration tests + README + CHANGELOG.** New
+  `crates/tst-py/tests/test_srt_integration.py` with 4 end-to-end tests
+  spanning multiple PyClasses (full Builder→Socket→MuxSender/DemuxReceiver
+  pipeline, MuxSender/DemuxReceiver.from_url shortcut path, encrypted
+  loopback with `passphrase`, ManagedSender+ManagedReceiver round-trip
+  with `ReconnectPolicy`). README extended with a SRT section mirroring
+  the RTP section structure. CHANGELOG entry (this entry).
+
+### Notable design decisions
+
+- **Hybrid fluent + kwargs `Builder`.** All 12 SRT knobs are accepted as
+  both `__init__` kwargs and as chainable setter methods. URL-provided
+  values always win because the `UrlOverlay::apply_to_socket` unconditional
+  overwrite runs after the kwarg-built config. This is the same precedence
+  as the existing `tst-srt::Builder` Rust API. Decision Q4-A in the spec.
+- **`secrecy::SecretString` passphrase wrapping.** The `passphrase` kwarg
+  and the `.passphrase(...)` setter both accept a Python `str` but immediately
+  wrap it in a `secrecy::SecretString` on the Rust side. The original Python
+  `str` is never re-exposed via getters; `Builder.__repr__` redacts to
+  `<redacted>` (validated by `test_srt_builder.py::test_passphrase_setter_redacts_in_repr`).
+- **Q4-A URL precedence.** URL > setter > kwarg, in that order. Tests pin
+  this in `test_srt_builder.py` (`test_url_wins_over_kwarg_passphrase` etc.).
+- **16-method push family parity with `tstrans.rtp.MuxSender` and
+  `tstrans.mpegts.Muxer`.** Single-stream `push_{video,klv,audio,subtitle}`
+  + multi-stream `_to` variants + 4 handle getters + `stats` + `flush` /
+  `close` / context manager. Keyword-only `pts` per the plan #96 Wave C
+  normalization.
+- **4 `Managed*` wrappers built on top of T6's `ReconnectPolicy`.**
+  `ManagedSender` + `ManagedReceiver` for raw bytes (T7); `ManagedMuxSender`
+  + `ManagedDemuxReceiver` for mux/demux + auto-reconnect (T8). All four
+  consume the same `ReconnectPolicy` PyClass instance, so users can build
+  a single policy and reuse it across all four roles.
+- **No low-level `Socket.send_bytes` / `Socket.recv_bytes`.** Decision Q3-B
+  in the spec — `Socket` is a promotion-only handle; bytes work goes through
+  `into_sender()` / `into_receiver()` which produce the typed `Sender` /
+  `Receiver` wrappers.
+
+### Drifts caught + resolved during execution
+
+- **`SrtTransport` implements both `Transport` and `RecvTransport`.**
+  The plan assumed a separate `SrtRecvTransport` type would exist (by
+  analogy with `RtpTransport` / `RtpRecvTransport` in `tst-rtp`). Reality:
+  `tst-srt` uses a single `SrtTransport` type that implements both traits.
+  T2 wraps it twice — once as `Sender` (pushing via `Transport::send_bytes`),
+  once as `Receiver` (pulling via `RecvTransport::recv_bytes`) — with no
+  shared inner pyclass.
+- **`OverflowPolicy` has 2 variants, not 3.** The spec sketched
+  `DROP_OLDEST` + `DROP_NEWEST` + `BLOCK`; the real Rust enum
+  `tst_pipeline::reconnect::gap_buffer::OverflowPolicy` only ships
+  `DropOldest` (default) and `Reject`. T6 mirrors what Rust ships.
+  Documented in the `OverflowPolicy` stub docstring + the spec was
+  amended.
+- **`ManagedSender.srt_stats()` is not directly achievable.** The
+  `tst_pipeline::ManagedTransport` wrapper hides the inner
+  `SrtTransport` behind a `Box<dyn Transport>` — there's no downcast
+  path back to the SRT-specific stats. T7 surfaces this as
+  `SrtError(IO)` when called; the user can re-enter the transport
+  layer via `Sender.from_url` directly when they need
+  `mbps_estimated_bandwidth` etc.
+- **`ManagedDemuxReceiver.srt_stats()` returns `SocketStats`, not
+  `SrtStats`.** Same root cause as above — the managed layer projects
+  through the abstract `SocketStats`. Users who need the SRT-rich
+  fields read them via the `Receiver.from_url` direct path.
+- **`DemuxEvent.Metadata` is `DemuxEvent.Klv`.** The plan referenced
+  `DemuxEvent.Metadata` in test pseudo-code; the actual Python class
+  attribute is `DemuxEvent.Klv` (matching `MetadataKind::Klv*` in Rust).
+  Caught + corrected during T10 integration test authoring. Note: the
+  existing `test_srt_mux_demux.py::test_push_klv_via_loopback` has a
+  pre-existing latent bug referencing `DemuxEvent.Metadata` — the
+  isinstance check passes on the Video branch first so the bug is
+  masked. Flagged for a follow-up fix outside this commit.
+
+### Numbers
+
+- **pytest**: 818 → 928 (+110 across the phase: Wave A T2/T3/T4 added
+  ~56 tests, Wave B T5/T6 added ~31, Wave C T7/T8 added ~18, T10
+  integration added 5 tests + 1 skipped).
+- **Bash ratchets**: 25 → 26 (new
+  `scripts/check-py-srt-error-mapping-coverage.sh`, mirroring the
+  existing per-error-kind ratchet pattern).
+- **`#[non_exhaustive]` BASELINE**: stays at 198. Phase 8 adds new
+  PyClasses and PyEnums but none are marked `#[non_exhaustive]` (the
+  pattern is reserved for cross-binding-stable enums; PyO3 classes
+  go through their own ABI mechanism).
+- **`cargo-public-api` baselines**: no Rust-side public-API drift in
+  the 4 ratcheted crates. Phase 8 only adds Python bindings on top of
+  the existing `tst-srt` + `tst-pipeline` surfaces. (Verify with `cargo
+  public-api -p tst-srt --simplified` before push.)
+
+### References
+
+- Spec: `docs/specs/2026-05-27-tst-py-srt-design.md` (approved 2026-05-27,
+  10 design decisions Q1-Q10).
+- Plan: `docs/plans/2026-05-27-tst-py-srt.md` (~2800 lines, 11 tasks,
+  4 waves of parallel subagents).
+- Memory anchor: `project_phase_8_tst_py_srt_planned.md` (transitions to
+  `project_phase_8_tst_py_srt_shipped.md` after this commit).
+
+### Phase 7 unblock
+
+Phase 7 (PyPI wheels CI) was paused at false-start before Phase 8 —
+the drafted `.github/workflows/python-wheels.yml` sits uncommitted on
+disk with `--features rtp` baked into the maturin invocation. T11 Step 8
+picks it up: sed `--features rtp` → `--features rtp,srt` in the workflow
+and commits as Phase 8 closeout, so v0.1.0 PyPI wheels ship both
+transports out of the box.
+
+---
+
 ## [Unreleased] — tst-rtp Phase 4 Stage 3 follow-up: RtspServer::stop FIN on write halves (2026-05-26)
 
 ### Fixed

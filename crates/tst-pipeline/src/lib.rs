@@ -63,6 +63,7 @@ pub use dyn_aliases::{
 };
 pub use managed_demux_receiver::{ManagedDemuxReceiver, ManagedDemuxReceiverConfig};
 pub use managed_receive::ManagedRecvTransport;
+pub use mux_publisher::{MuxPublisher, MuxPublisherError, MuxPublisherStats};
 pub use mux_sender::{MuxSender, MuxSenderError, MuxSenderErrorSource, MuxSenderStats};
 // Pairing is intentionally NOT re-exported at the crate root. It lives
 // under `ext::pairing` to signal its opt-in, extension-module nature.

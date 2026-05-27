@@ -36,7 +36,6 @@ pub use error::{RistError, RistErrorKind};
 pub use stats::RistStats;
 pub use url::{RistUrl, RistUrlError};
 
+pub use builder::{RistRecvTransportBuilder, RistTransportBuilder};
 pub use recv::RistRecvTransport;
 pub use transport::RistTransport;
-
-// pub use builder::{RistRecvTransportBuilder, RistTransportBuilder};  // Wave E

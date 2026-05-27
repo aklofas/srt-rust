@@ -1,0 +1,32 @@
+[package]
+name = "tst-tcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Raw MPEG-TS over TCP (caller + listener, plain + TLS via rustls) for the tstrans pipeline"
+
+[features]
+default = ["tls"]
+tls = ["dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile"]
+
+[dependencies]
+tst-core   = { path = "../tst-core" }
+socket2    = { workspace = true }
+thiserror  = { workspace = true }
+tracing    = { workspace = true }
+
+[dependencies.rustls]
+version          = "0.23"
+optional         = true
+default-features = false
+features         = ["std", "ring"]
+
+[dependencies.rustls-native-certs]
+version  = "0.7"
+optional = true
+
+[dependencies.rustls-pemfile]
+version  = "2"
+optional = true

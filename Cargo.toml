@@ -5,6 +5,7 @@ members = [
     "crates/tst-core",
     "crates/tst-pipeline",
     "crates/tst-srt",
+    "crates/tst-tcp",
     "crates/tst-test-helpers",
     "crates/tst-rtp",
     "crates/tst-udp",

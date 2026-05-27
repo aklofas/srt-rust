@@ -1,0 +1,264 @@
+name: python-wheels
+
+# Builds `tstrans` Python wheels + sdist via maturin, then (only on tag
+# push) uploads to PyPI via trusted publishing (OIDC, no API tokens).
+#
+# Triggers:
+# - tag push `v*` — full build + publish to PyPI.
+# - workflow_dispatch — full build, no publish. Use to dry-run before
+#   tagging a release.
+# - pull_request modifying this workflow or the python-source surface —
+#   build wheels but skip the publish job. Catches workflow regressions
+#   without burning CI on every commit.
+#
+# abi3 wheels: pyo3 is built with `abi3-py310` so each platform produces
+# ONE wheel valid for Python 3.10+ instead of one per Python minor
+# version. The matrix is therefore (platform × target) only, not
+# (platform × python × target).
+#
+# Vendored dependencies: SRT_FORCE_VENDORED=1 forces tst-rtp's libsrt +
+# mbedTLS submodules to build from source — wheels are self-contained
+# (no external libsrt/mbedTLS link on the user's system).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/python-wheels.yml"
+      - "crates/tst-py/**"
+      - "crates/tst-core/**"
+      - "crates/tst-rtp/**"
+      - "crates/tst-pipeline/**"
+      - "crates/tst-srt/**"
+      - "crates/srt-sys/**"
+      - "vendor/**"
+
+permissions:
+  contents: read
+
+env:
+  # Match the pin used elsewhere in the workspace so the wheel build
+  # surface matches the test surface.
+  RUSTUP_TOOLCHAIN: "1.85"
+
+jobs:
+  linux-wheel:
+    name: wheel (linux-${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # x86_64 is the gating production target. aarch64 ships
+          # best-effort until the slow-CI issue tracked on linux-aarch64
+          # is bisected; for now `continue-on-error: true` keeps a
+          # publish-train moving even if aarch64 stalls.
+          - target: x86_64
+            continue-on-error: false
+            manylinux: 2_28
+          - target: aarch64
+            continue-on-error: true
+            manylinux: 2_28
+    continue-on-error: ${{ matrix.continue-on-error }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # PyO3/maturin-action runs maturin inside a manylinux container.
+      # `before-script-linux` installs cmake (libsrt + mbedTLS need it
+      # to build from source); the container base doesn't include it.
+      # `manylinux: 2_28` matches the spec at
+      # docs/specs/2026-05-22-tst-py-design.md and the manylinux baseline
+      # the rest of the project ratchets on.
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux }}
+          working-directory: crates/tst-py
+          # `rtp` is the only feature surface today (default-on in
+          # crates/tst-py/Cargo.toml). When `srt` lands in v2 (planned
+          # tstrans.srt submodule per docs/specs/2026-05-22-tst-py-design.md),
+          # add `--features srt` here.
+          args: --release --out dist --features rtp,srt
+          before-script-linux: |
+            # AlmaLinux 8 (manylinux_2_28) — dnf-based.
+            if command -v dnf >/dev/null 2>&1; then
+              dnf install -y cmake openssl-devel
+            elif command -v yum >/dev/null 2>&1; then
+              yum install -y cmake openssl-devel
+            elif command -v apk >/dev/null 2>&1; then
+              apk add --no-cache cmake openssl-dev musl-dev
+            fi
+        env:
+          SRT_FORCE_VENDORED: "1"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-linux-${{ matrix.target }}
+          path: crates/tst-py/dist/*.whl
+          if-no-files-found: error
+          retention-days: 7
+
+  macos-wheel:
+    name: wheel (macos-${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos-arm64 will be the gating macOS target after the
+          # 2026-05-30 promotion window in the main CI workflow; for
+          # consistency it gates here too.
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            continue-on-error: false
+          # macOS x86_64 is best-effort — Apple is winding it down and
+          # the main CI workflow doesn't gate on it. cibuildwheel via
+          # macos-13 still works.
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            continue-on-error: true
+    continue-on-error: ${{ matrix.continue-on-error }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+          targets: ${{ matrix.target }}
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          working-directory: crates/tst-py
+          # `rtp` is the only feature surface today (default-on in
+          # crates/tst-py/Cargo.toml). When `srt` lands in v2 (planned
+          # tstrans.srt submodule per docs/specs/2026-05-22-tst-py-design.md),
+          # add `--features srt` here.
+          args: --release --out dist --features rtp,srt
+        env:
+          SRT_FORCE_VENDORED: "1"
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-macos-${{ matrix.target }}
+          path: crates/tst-py/dist/*.whl
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-wheel:
+    name: wheel (windows-x86_64)
+    runs-on: windows-latest
+    # Best-effort: tst-c has windows-msvc compile+link only (runtime
+    # tests deferred — see project_plan_65). The tst-py wheel may build
+    # but isn't runtime-verified. We still cut a wheel so Windows users
+    # who want to try it have a path; we just don't gate the publish on
+    # its success.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85"
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          working-directory: crates/tst-py
+          # `rtp` is the only feature surface today (default-on in
+          # crates/tst-py/Cargo.toml). When `srt` lands in v2 (planned
+          # tstrans.srt submodule per docs/specs/2026-05-22-tst-py-design.md),
+          # add `--features srt` here.
+          args: --release --out dist --features rtp,srt
+        env:
+          SRT_FORCE_VENDORED: "1"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-windows-x86_64
+          path: crates/tst-py/dist/*.whl
+          if-no-files-found: error
+          retention-days: 7
+
+  sdist:
+    name: sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          working-directory: crates/tst-py
+          args: --out dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: crates/tst-py/dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: publish to PyPI
+    # Only on tag pushes. workflow_dispatch + PR builds are dry-runs
+    # that produce artifacts for download but don't upload anywhere.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [linux-wheel, macos-wheel, windows-wheel, sdist]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/tstrans/
+    permissions:
+      # Required for PyPI trusted publishing (OIDC). No API token
+      # configured in repository secrets — PyPI verifies the OIDC claim
+      # itself. Configure the trusted publisher on the PyPI side first:
+      # https://docs.pypi.org/trusted-publishers/
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Inventory artifacts before upload
+        run: |
+          ls -la dist/
+          echo "Wheel count: $(ls dist/*.whl 2>/dev/null | wc -l)"
+          echo "Sdist count: $(ls dist/*.tar.gz 2>/dev/null | wc -l)"
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Trusted publishing — no `password:` needed. PyPI looks up
+          # the trusted publisher config for `tstrans` and verifies the
+          # GitHub OIDC claim (repo, workflow, environment).
+          packages-dir: dist
+          # `skip-existing: true` prevents the action failing if a wheel
+          # for this version was already published (e.g. resumed run).
+          skip-existing: true

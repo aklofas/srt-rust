@@ -138,15 +138,20 @@ impl UdpUrl {
 }
 
 fn parse_u8_dec(key: &str, value: &str) -> Result<u8, UdpUrlError> {
-    value.parse().map_err(|e: std::num::ParseIntError| UdpUrlError::BadQueryValue {
-        key: key.to_string(),
-        value: value.to_string(),
-        detail: e.to_string(),
-    })
+    value
+        .parse()
+        .map_err(|e: std::num::ParseIntError| UdpUrlError::BadQueryValue {
+            key: key.to_string(),
+            value: value.to_string(),
+            detail: e.to_string(),
+        })
 }
 
 fn parse_u8_hex_or_dec(key: &str, value: &str) -> Result<u8, UdpUrlError> {
-    let v = if let Some(hex) = value.strip_prefix("0x").or_else(|| value.strip_prefix("0X")) {
+    let v = if let Some(hex) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    {
         u8::from_str_radix(hex, 16)
     } else {
         value.parse::<u8>()
@@ -165,13 +170,13 @@ fn parse_byte_size(key: &str, value: &str) -> Result<usize, UdpUrlError> {
         Some('M') | Some('m') => (&value[..value.len() - 1], 1024 * 1024),
         _ => (value, 1usize),
     };
-    let n: usize = num.parse().map_err(|e: std::num::ParseIntError| {
-        UdpUrlError::BadQueryValue {
-            key: key.to_string(),
-            value: value.to_string(),
-            detail: e.to_string(),
-        }
-    })?;
+    let n: usize =
+        num.parse()
+            .map_err(|e: std::num::ParseIntError| UdpUrlError::BadQueryValue {
+                key: key.to_string(),
+                value: value.to_string(),
+                detail: e.to_string(),
+            })?;
     Ok(n * mul)
 }
 
@@ -219,10 +224,8 @@ mod tests {
 
     #[test]
     fn knobs_pkt_size_tos_bufs_hex_suffix() {
-        let u = UdpUrl::parse(
-            "udp://239.10.0.1:5004?pkt_size=1316&tos=0xb8&sndbuf=2M&rcvbuf=8M",
-        )
-        .unwrap();
+        let u = UdpUrl::parse("udp://239.10.0.1:5004?pkt_size=1316&tos=0xb8&sndbuf=2M&rcvbuf=8M")
+            .unwrap();
         assert_eq!(u.pkt_size, Some(1316));
         assert_eq!(u.tos, Some(0xb8));
         assert_eq!(u.sndbuf, Some(2 * 1024 * 1024));

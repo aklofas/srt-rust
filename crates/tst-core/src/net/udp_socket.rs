@@ -184,17 +184,15 @@ pub fn apply_multicast_recv_join(
     match group {
         IpAddr::V4(v4_group) => {
             let iface_v4 = match iface {
-                Some(iface_str) => {
-                    iface_str.parse::<Ipv4Addr>().map_err(|e| {
-                        io::Error::new(
-                            io::ErrorKind::Unsupported,
-                            format!(
-                                "IPv4 multicast iface requires literal IPv4 address, \
+                Some(iface_str) => iface_str.parse::<Ipv4Addr>().map_err(|e| {
+                    io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        format!(
+                            "IPv4 multicast iface requires literal IPv4 address, \
                                  got '{iface_str}': {e}"
-                            ),
-                        )
-                    })?
-                }
+                        ),
+                    )
+                })?,
                 None => Ipv4Addr::UNSPECIFIED, // 0.0.0.0 — OS default
             };
             socket.join_multicast_v4(&v4_group, &iface_v4)?;

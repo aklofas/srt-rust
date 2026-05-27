@@ -1,8 +1,8 @@
 //! [`UdpRecvTransport`] — UDP receiver implementing `tst_core::transport::RecvTransport`.
 
 use std::net::{IpAddr, SocketAddr, UdpSocket};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tst_core::net::udp_socket::{apply_multicast_recv_join, bind_udp_socket};
 use tst_core::transport::{RecvTransport, SocketStats, TransportError};
@@ -43,8 +43,12 @@ impl UdpRecvTransport {
     pub fn with_config(url: &UdpUrl, cfg: &SocketConfig) -> Result<Self, UdpError> {
         let bind_addr: SocketAddr = if url.is_multicast() {
             match url.addr {
-                IpAddr::V4(_) => SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), url.port),
-                IpAddr::V6(_) => SocketAddr::new(IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED), url.port),
+                IpAddr::V4(_) => {
+                    SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), url.port)
+                }
+                IpAddr::V6(_) => {
+                    SocketAddr::new(IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED), url.port)
+                }
             }
         } else {
             SocketAddr::new(url.addr, url.port)

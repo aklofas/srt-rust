@@ -1,8 +1,8 @@
 //! [`UdpTransport`] — UDP sender implementing `tst_core::transport::Transport`.
 
 use std::net::{IpAddr, SocketAddr, UdpSocket};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tst_core::net::udp_socket::{apply_multicast_send_knobs, bind_udp_socket};
 use tst_core::transport::{SocketStats, Transport, TransportError};
@@ -49,8 +49,12 @@ impl UdpTransport {
 
         let local: SocketAddr = match (cfg.localaddr, url.addr) {
             (Some(a), _) => SocketAddr::new(a, 0),
-            (None, IpAddr::V4(_)) => SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 0),
-            (None, IpAddr::V6(_)) => SocketAddr::new(IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED), 0),
+            (None, IpAddr::V4(_)) => {
+                SocketAddr::new(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 0)
+            }
+            (None, IpAddr::V6(_)) => {
+                SocketAddr::new(IpAddr::V6(std::net::Ipv6Addr::UNSPECIFIED), 0)
+            }
         };
         let socket = bind_udp_socket(local).map_err(UdpError::Io)?;
 

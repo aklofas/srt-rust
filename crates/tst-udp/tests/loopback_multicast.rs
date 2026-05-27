@@ -45,8 +45,7 @@ fn ipv4_multicast_loopback_round_trip() {
     });
     thread::sleep(Duration::from_millis(50));
 
-    let mut send =
-        UdpTransport::connect("udp://239.55.55.2:55020?ttl=1&iface=127.0.0.1").unwrap();
+    let mut send = UdpTransport::connect("udp://239.55.55.2:55020?ttl=1&iface=127.0.0.1").unwrap();
     let payload = [0x47u8; 188];
     send.send_bytes(&payload).unwrap();
     let got = rx.recv_timeout(Duration::from_secs(5)).unwrap_or_default();

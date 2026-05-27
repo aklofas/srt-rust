@@ -21,8 +21,12 @@ use tst_udp::UdpTransport;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let input = args.next().expect("usage: send_udp <input.ts> <udp://host:port>");
-    let url = args.next().expect("usage: send_udp <input.ts> <udp://host:port>");
+    let input = args
+        .next()
+        .expect("usage: send_udp <input.ts> <udp://host:port>");
+    let url = args
+        .next()
+        .expect("usage: send_udp <input.ts> <udp://host:port>");
 
     // Build the UDP sender. For multicast destinations, this also applies
     // the TTL / iface knobs in the URL. For unicast it's just a connect().

@@ -22,8 +22,12 @@ use tst_udp::UdpRecvTransport;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
-    let url = args.next().expect("usage: recv_udp <udp://@host:port> <out.ts>");
-    let out_path = args.next().expect("usage: recv_udp <udp://@host:port> <out.ts>");
+    let url = args
+        .next()
+        .expect("usage: recv_udp <udp://@host:port> <out.ts>");
+    let out_path = args
+        .next()
+        .expect("usage: recv_udp <udp://@host:port> <out.ts>");
 
     let mut rx = UdpRecvTransport::listen(&url)?;
     let mut file = File::create(&out_path)?;

@@ -10,7 +10,7 @@ use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
 
 use tst_core::net::udp_socket::{
-    apply_multicast_recv_join, apply_multicast_send_knobs, CANCEL_POLL_INTERVAL,
+    CANCEL_POLL_INTERVAL, apply_multicast_recv_join, apply_multicast_send_knobs,
 };
 use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportCancel, TransportError};
 
@@ -884,7 +884,6 @@ fn spawn_rtcp_ingest(
         })
         .expect("failed to spawn rtsp-rtcp-ingest thread");
 }
-
 
 #[cfg(test)]
 mod tests {

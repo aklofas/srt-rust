@@ -8,8 +8,10 @@
 use std::io;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
+use tst_core::net::udp_socket::{
+    apply_multicast_recv_join, apply_multicast_send_knobs, CANCEL_POLL_INTERVAL,
+};
 use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportCancel, TransportError};
 
 use crate::cancel::RtpCancelHandle;
@@ -21,9 +23,21 @@ use crate::rtcp::stats::RtcpStats;
 use crate::rtcp::{ReceiverReport, SdesPacket, SenderReport};
 use crate::url::{RtpUrl, UrlError as RtpUrlError};
 
-/// Wakeup interval for cancel-flag checks. Mirrors the libsrt-side 100 ms
-/// `SRTO_RCVTIMEO`/`SNDTIMEO` convention.
-const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(100);
+/// Convert an `io::Error` from the shared UDP socket helpers into a
+/// `ConnectError`. `io::ErrorKind::Unsupported` (produced by
+/// `apply_multicast_iface` / `set_multicast_hops_v6` / `set_multicast_if_v4`)
+/// maps to `ConnectError::IfaceUnsupported`; everything else maps to
+/// `ConnectError::Io`.
+fn udp_err_to_connect(e: io::Error) -> ConnectError {
+    if e.kind() == io::ErrorKind::Unsupported {
+        ConnectError::IfaceUnsupported {
+            iface: String::new(),
+            detail: e.to_string(),
+        }
+    } else {
+        ConnectError::Io(e)
+    }
+}
 
 /// RTP send-side transport: writes 12-byte RTP header + TS payload to a
 /// connected [`UdpSocket`].
@@ -120,7 +134,8 @@ impl RtpTransport {
             IpAddr::V6(v6) => v6.is_multicast(),
         };
         if is_multicast {
-            apply_multicast_send_knobs(&socket, &ip, url)?;
+            apply_multicast_send_knobs(&socket, ip, url.ttl, url.iface.as_deref())
+                .map_err(udp_err_to_connect)?;
         }
         socket.connect(peer).map_err(ConnectError::Io)?;
         // RTCP companion socket bound on `port + 1` per RFC 3550 §11.
@@ -341,146 +356,6 @@ fn random_u32() -> u32 {
     u32::from_be_bytes(buf)
 }
 
-/// Apply multicast-send socket options (`IP_MULTICAST_TTL` /
-/// `IPV6_MULTICAST_HOPS`, optional `IP_MULTICAST_IF`).
-///
-/// `?ttl=N` from the URL maps to TTL on IPv4 and "hop limit" on IPv6
-/// — both `u8`-typed wire knobs that mean the same thing for routing
-/// scope. Default 8 for multicast send when the URL doesn't specify.
-///
-/// IPv4 TTL uses stable `std::net::UdpSocket::set_multicast_ttl_v4`.
-/// IPv6 hop limit and IPv4 `IP_MULTICAST_IF` are not exposed on stable
-/// std as of Rust 1.85 — we drop to `libc::setsockopt` on Unix and
-/// surface a Phase-1 `IfaceUnsupported` on non-Unix platforms when an
-/// IPv6 mcast hop or `iface=` knob is requested.
-fn apply_multicast_send_knobs(
-    socket: &UdpSocket,
-    ip: &IpAddr,
-    url: &RtpUrl,
-) -> Result<(), ConnectError> {
-    let ttl = url.ttl.unwrap_or(MCAST_DEFAULT_TTL);
-    match ip {
-        IpAddr::V4(_) => socket
-            .set_multicast_ttl_v4(ttl as u32)
-            .map_err(ConnectError::Io)?,
-        IpAddr::V6(_) => set_multicast_hops_v6(socket, ttl)?,
-    }
-    if let Some(iface) = url.iface.as_deref() {
-        apply_multicast_iface(socket, ip, iface)?;
-    }
-    Ok(())
-}
-
-/// Default multicast TTL for sends when `?ttl=` is absent — small but
-/// non-1 so single-router LAN multicast works out of the box. Matches
-/// the master spec's URL defaults table.
-const MCAST_DEFAULT_TTL: u8 = 8;
-
-/// Set `IPV6_MULTICAST_HOPS` via raw `setsockopt`. Stable std::net does
-/// not expose this in Rust 1.85 (tracking issue rust-lang/rust#92517).
-#[cfg(unix)]
-fn set_multicast_hops_v6(socket: &UdpSocket, hops: u8) -> Result<(), ConnectError> {
-    use std::os::fd::AsRawFd;
-    let val: libc::c_int = hops as libc::c_int;
-    // SAFETY: `socket.as_raw_fd()` returns an FD owned by `socket` for
-    // its lifetime; `&val` is a valid pointer to a c_int sized to
-    // `size_of::<c_int>()`. setsockopt with these args is documented in
-    // ipv6(7).
-    let rc = unsafe {
-        libc::setsockopt(
-            socket.as_raw_fd(),
-            libc::IPPROTO_IPV6,
-            libc::IPV6_MULTICAST_HOPS,
-            &val as *const libc::c_int as *const libc::c_void,
-            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
-        )
-    };
-    if rc != 0 {
-        return Err(ConnectError::Io(io::Error::last_os_error()));
-    }
-    Ok(())
-}
-
-/// Non-Unix fallback: report IPv6 multicast hop-limit knob as unsupported
-/// in Phase 1 rather than silently ignoring `?ttl=`.
-#[cfg(not(unix))]
-fn set_multicast_hops_v6(_socket: &UdpSocket, _hops: u8) -> Result<(), ConnectError> {
-    Err(ConnectError::IfaceUnsupported {
-        iface: "<ipv6-hops>".to_string(),
-        detail: "IPV6_MULTICAST_HOPS via raw setsockopt is Unix-only in Phase 1".to_string(),
-    })
-}
-
-/// Set `IP_MULTICAST_IF` for IPv4 (interface IP) or surface a Phase-1
-/// limitation for IPv6 (needs scope-id integer lookup, not yet wired).
-///
-/// IPv4 path accepts `?iface=192.168.1.50` (literal IP) directly. Name
-/// → IP resolution for unicast nameservers (e.g., `eth0`) is not done
-/// in Phase 1 — callers needing name-based binding can resolve via
-/// `if_indextoname` and pass the IP. This is the same UX libsrt's
-/// `?iface=` query parameter ships with.
-fn apply_multicast_iface(socket: &UdpSocket, ip: &IpAddr, iface: &str) -> Result<(), ConnectError> {
-    match ip {
-        IpAddr::V4(_) => {
-            let v4: std::net::Ipv4Addr = iface.parse().map_err(|e: std::net::AddrParseError| {
-                ConnectError::IfaceUnsupported {
-                    iface: iface.to_string(),
-                    detail: format!(
-                        "IPv4 multicast iface requires literal IPv4 address, got '{iface}': {e}"
-                    ),
-                }
-            })?;
-            set_multicast_if_v4(socket, &v4)?;
-        }
-        IpAddr::V6(_) => {
-            return Err(ConnectError::IfaceUnsupported {
-                iface: iface.to_string(),
-                detail: "IPv6 multicast iface name lookup not implemented in Phase 1; pre-resolve to scope-id and use the rtp:// URL form directly".to_string(),
-            });
-        }
-    }
-    Ok(())
-}
-
-/// Set `IP_MULTICAST_IF` via raw `setsockopt`. Stable std::net does not
-/// expose this in Rust 1.85 (tracking issue rust-lang/rust#92517).
-#[cfg(unix)]
-fn set_multicast_if_v4(socket: &UdpSocket, addr: &std::net::Ipv4Addr) -> Result<(), ConnectError> {
-    use std::os::fd::AsRawFd;
-    // `IP_MULTICAST_IF` accepts a 4-byte in_addr (the IP of the local
-    // interface to send out on). Pass the network-byte-order octets
-    // directly — `Ipv4Addr::octets()` is already big-endian.
-    let in_addr = libc::in_addr {
-        s_addr: u32::from_ne_bytes(addr.octets()),
-    };
-    // SAFETY: `socket.as_raw_fd()` returns an FD owned by `socket` for
-    // its lifetime; `&in_addr` is a valid pointer to a struct in_addr
-    // sized to `size_of::<in_addr>()`. setsockopt with these args is
-    // documented in ip(7).
-    let rc = unsafe {
-        libc::setsockopt(
-            socket.as_raw_fd(),
-            libc::IPPROTO_IP,
-            libc::IP_MULTICAST_IF,
-            &in_addr as *const libc::in_addr as *const libc::c_void,
-            std::mem::size_of::<libc::in_addr>() as libc::socklen_t,
-        )
-    };
-    if rc != 0 {
-        return Err(ConnectError::Io(io::Error::last_os_error()));
-    }
-    Ok(())
-}
-
-/// Non-Unix fallback: surface the iface knob as unsupported.
-#[cfg(not(unix))]
-fn set_multicast_if_v4(_socket: &UdpSocket, addr: &std::net::Ipv4Addr) -> Result<(), ConnectError> {
-    Err(ConnectError::IfaceUnsupported {
-        iface: addr.to_string(),
-        detail: "IP_MULTICAST_IF via raw setsockopt is Unix-only in Phase 1".to_string(),
-    })
-}
-
 /// Inner data source for [`RtpRecvTransport`].
 ///
 /// `Udp` — the Phase 1 default: read UDP datagrams off a bound socket
@@ -607,7 +482,8 @@ impl RtpRecvTransport {
             .set_read_timeout(Some(CANCEL_POLL_INTERVAL))
             .map_err(ConnectError::Io)?;
         if is_multicast {
-            apply_multicast_recv_join(&socket, &ip, url)?;
+            apply_multicast_recv_join(&socket, ip, url.iface.as_deref())
+                .map_err(udp_err_to_connect)?;
         }
         // RTCP companion socket bound on `port + 1` per RFC 3550 §11.
         // Use the RTP socket's actual local port (kernel-assigned when
@@ -1009,53 +885,6 @@ fn spawn_rtcp_ingest(
         .expect("failed to spawn rtsp-rtcp-ingest thread");
 }
 
-/// Join the multicast group on the receive socket. IPv4 uses
-/// `join_multicast_v4(group, interface)`; IPv6 uses
-/// `join_multicast_v6(group, interface_index)`.
-///
-/// `iface` parsing matches the send-side rules in
-/// [`apply_multicast_iface`]: IPv4 takes a literal IPv4 address;
-/// IPv6 isn't supported in Phase 1 (returns
-/// [`ConnectError::IfaceUnsupported`]).
-fn apply_multicast_recv_join(
-    socket: &UdpSocket,
-    ip: &IpAddr,
-    url: &RtpUrl,
-) -> Result<(), ConnectError> {
-    match ip {
-        IpAddr::V4(group) => {
-            let iface_v4 = match url.iface.as_deref() {
-                Some(iface) => iface.parse::<std::net::Ipv4Addr>().map_err(|e| {
-                    ConnectError::IfaceUnsupported {
-                        iface: iface.to_string(),
-                        detail: format!(
-                            "IPv4 multicast iface requires literal IPv4 address, got '{iface}': {e}"
-                        ),
-                    }
-                })?,
-                None => std::net::Ipv4Addr::UNSPECIFIED, // 0.0.0.0 — OS default
-            };
-            socket
-                .join_multicast_v4(group, &iface_v4)
-                .map_err(ConnectError::Io)?;
-        }
-        IpAddr::V6(group) => {
-            let scope_id = match url.iface.as_deref() {
-                None => 0, // Default scope.
-                Some(iface) => {
-                    return Err(ConnectError::IfaceUnsupported {
-                        iface: iface.to_string(),
-                        detail: "IPv6 multicast iface name lookup not implemented in Phase 1; ?iface= must be omitted for ipv6 receive".to_string(),
-                    });
-                }
-            };
-            socket
-                .join_multicast_v6(group, scope_id)
-                .map_err(ConnectError::Io)?;
-        }
-    }
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {

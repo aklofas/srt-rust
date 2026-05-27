@@ -2082,6 +2082,7 @@ dependencies = [
  "tst-pipeline",
  "tst-rtp",
  "tst-srt",
+ "tst-tcp",
  "tst-udp",
 ]
 
@@ -2156,6 +2157,20 @@ dependencies = [
  "tst-core",
  "tst-pipeline",
  "tst-test-helpers",
+]
+
+[[package]]
+name = "tst-tcp"
+version = "0.1.0"
+dependencies = [
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pemfile",
+ "socket2 0.5.10",
+ "thiserror",
+ "tracing",
+ "tst-core",
+ "tst-pipeline",
 ]
 
 [[package]]

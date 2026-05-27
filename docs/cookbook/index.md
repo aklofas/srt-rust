@@ -18,6 +18,7 @@ Recipe numbers are stable across edits — existing inbound links stay valid as 
 - **Recipe 3: Mux to a file (no SRT, no transport)** — [03-mux-to-file.md](sending/03-mux-to-file.md) — You want the muxer's output without any networking — building test fixtures, validating output against TSDuck/ffprobe, or running an offline pipeline.
 - **Recipe 8: Use a custom (non-SRT) transport** — [08-custom-transport.md](sending/08-custom-transport.md) — The sender shells fit but the wire isn't SRT — UDP, file, in-memory test harness, your own protocol.
 - **Recipe 9a: Send MPEG-TS over UDP** — [udp.md](sending/udp.md) — Raw UDP unicast or multicast transport — lowest-common-denominator for compatibility with ffmpeg, VLC, and STANAG 4609 receivers.
+- **Recipe 9b: Send MPEG-TS over TCP** — [tcp.md](sending/tcp.md) — Reliable-bytestream sibling of UDP, with optional TLS via rustls; pairs with `ffmpeg -listen 1 -i tcp://...` on the receiver side.
 - **Recipe 9: Mux H.265 + sync KLV** — [09-mux-h265-with-klv.md](sending/09-mux-h265-with-klv.md) — The encoder produces HEVC, or the receiver requires strict ST 1402 sync metadata (PMT stream_type 0x15) instead of the default async private-data shape.
 - **Recipe 11: Open a sender from an `srt://...?...` URL** — [11-sender-from-url.md](sending/11-sender-from-url.md) — The connection target and tuning live in deployment config files or are passed in by an orchestrator.
 - **Recipe 15: Label EO + IR + KLV streams in a multi-stream program** — [15-mux-eo-ir-klv.md](sending/15-mux-eo-ir-klv.md) — Multi-stream programs (Path 3) carry several PIDs in one program; per-stream PMT descriptors let receivers (TSDuck, ffprobe, our `Demuxer`) render which PID is which.
@@ -30,6 +31,7 @@ Recipe numbers are stable across edits — existing inbound links stay valid as 
 
 - **Recipe 4: Relay a captured `.ts` file over SRT** — [04-relay-file-to-srt.md](receiving/04-relay-file-to-srt.md) — You have a `.ts` capture you want to replay over SRT — regression-testing receivers, rebroadcasting an archive, exercising a downstream pipeline.
 - **Recipe 4a: Receive MPEG-TS over UDP** — [udp.md](receiving/udp.md) — Raw UDP unicast or multicast receiver — ingest from ffmpeg, VLC, or STANAG 4609 senders.
+- **Recipe 4b: Receive MPEG-TS over TCP** — [tcp.md](receiving/tcp.md) — Reliable receiver — accept inbound caller (listener) or connect to a producer (caller-side receive). TLS supported via `tcps://`.
 - **Recipe 5: Receive into a file** — [05-receive-to-file.md](receiving/05-receive-to-file.md) — Archiving a stream or building a test fixture from a live producer.
 - **Recipe 12: Pair sync-KLV with video AUs by nearest PTS** — [12-pair-klv-by-pts.md](receiving/12-pair-klv-by-pts.md) — An encoder emits sync-KLV synchronized to video frames (one KLV per frame, KLV PES PTS = frame PTS) and you want to consume frame + telemetry as a paired record.
 - **Recipe 13: Sample-and-hold async-KLV against video frames** — [13-sample-hold-klv.md](receiving/13-sample-hold-klv.md) — KLV is emitted independently of video — typically 1–10 Hz async metadata against 25–60 fps video.

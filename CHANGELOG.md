@@ -11,6 +11,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added — second transport binding in Python (after RTP in Phase 4 Stage 2)
 
+- New crate `tst-tcp` — raw MPEG-TS over TCP with optional TLS (rustls 0.23).
+  Single `TcpTransport` impls both `Transport` and `RecvTransport`, supporting
+  all 4 caller/listener × send/recv combinations. URL schemes: `tcp://`,
+  `tcps://`.
+
 - **New `tstrans.srt` submodule** behind cargo feature `srt = ["dep:tst-srt"]`,
   default-on. Published wheels always include SRT; source builds that don't
   need it can opt out via `maturin develop --no-default-features` for a

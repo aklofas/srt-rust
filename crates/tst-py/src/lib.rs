@@ -12,6 +12,8 @@ mod errors;
 mod klv;
 mod mpegts;
 mod mux;
+#[cfg(feature = "rtp")]
+mod rtp;
 
 use pyo3::prelude::*;
 
@@ -22,6 +24,11 @@ use pyo3::prelude::*;
 fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_function(wrap_pyfunction!(errors::raise_mux_error_for_test, m)?)?;
+    #[cfg(feature = "rtp")]
+    {
+        m.add_function(wrap_pyfunction!(errors::raise_rtsp_error_for_test, m)?)?;
+        m.add_function(wrap_pyfunction!(errors::raise_rtp_error_for_test, m)?)?;
+    }
     mpegts::register(m)?;
     klv::register(m)?;
     // Stream handle newtypes. Registered here (not in mux::register)
@@ -44,5 +51,9 @@ fn _native(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     // codec submodule — shared types, NalUnit, Obu, and per-codec
     // PyClasses.
     codec::register(m)?;
+    // rtp submodule — RTP + RTSP bindings (Wave A populates the
+    // contents).
+    #[cfg(feature = "rtp")]
+    rtp::register(m)?;
     Ok(())
 }

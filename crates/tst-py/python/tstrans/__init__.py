@@ -15,6 +15,17 @@ See the per-submodule docstrings for usage.
 from tstrans import _native, codec, exceptions, io, klv, mpegts
 from tstrans.exceptions import TstError
 
+# `rtp` import is conditional: the `tstrans.rtp` submodule raises a
+# friendly ImportError when the `rtp` cargo feature was off at build
+# time (default-on, so published wheels always include it). We import
+# it unconditionally here to surface the failure at package-import
+# time rather than first-use time.
+try:
+    from tstrans import rtp  # noqa: F401
+    _RTP_AVAILABLE = True
+except ImportError:
+    _RTP_AVAILABLE = False
+
 __version__: str = _native.__version__
 
 __all__: list[str] = [
@@ -26,3 +37,5 @@ __all__: list[str] = [
     "klv",
     "mpegts",
 ]
+if _RTP_AVAILABLE:
+    __all__.append("rtp")

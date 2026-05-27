@@ -18,12 +18,14 @@ crate-type = ["cdylib", "rlib"]
 doctest    = false
 
 [features]
-default = []
-# v2 will add: srt = ["dep:tst-srt", "dep:tst-pipeline"]
-# v3 will add: rtp = ["dep:tst-rtp"]
+default = ["rtp"]
+rtp     = ["dep:tst-rtp"]
+# Future:
+#   v2 will add: srt = ["dep:tst-srt", "dep:tst-pipeline"]
 
 [dependencies]
 tst-core = { path = "../tst-core" }
+tst-rtp  = { path = "../tst-rtp", default-features = false, optional = true }
 pyo3     = { version = "0.22", features = ["extension-module", "abi3-py310"] }
 
 [build-dependencies]

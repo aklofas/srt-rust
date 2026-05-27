@@ -241,6 +241,68 @@ class KlvEncodeError(TstError):
         self.tag = tag
 
 
+class RtspErrorKind(enum.IntEnum):
+    """Mirrors `tst_rtp::rtsp::RtspError` variants collapsed to
+    user-facing buckets. Raised by `tstrans.rtp.RtspClient` /
+    `tstrans.rtp.RtspServer` operations (connect, play, pause,
+    teardown, start, stop, add_mount).
+
+    Available only when tstrans was built with the `rtp` cargo
+    feature (default-on in published wheels).
+    """
+
+    PROTOCOL = 1
+    AUTH_FAILED = 2
+    AUTH_REQUIRED = 3
+    NOT_FOUND = 4
+    UNSUPPORTED_TRANSPORT = 5
+    TLS = 6
+    IO = 7
+    TIMEOUT = 8
+    SERVER = 9
+    MOUNT = 10
+
+
+class RtspError(TstError):
+    """Raised by `tstrans.rtp.RtspClient` / `RtspServer` / `MountHandle`
+    operations. Carries a typed `.kind` (`RtspErrorKind`) plus a
+    free-text message on `.message` / `.args[0]`."""
+
+    kind: RtspErrorKind
+    message: str
+
+    def __init__(self, *, kind: RtspErrorKind, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
+class RtpErrorKind(enum.IntEnum):
+    """Mirrors `tst_rtp::transport::RtpError` variants. Raised by
+    `tstrans.rtp.Sender` / `Receiver` / `MuxSender` / `DemuxReceiver`
+    send/recv/push operations.
+
+    Available only when tstrans was built with the `rtp` cargo
+    feature (default-on in published wheels).
+    """
+
+    TRANSPORT = 1
+    MALFORMED_PACKET = 2
+    CANCELLED = 3
+
+
+class RtpError(TstError):
+    """Raised by `tstrans.rtp` transport operations."""
+
+    kind: RtpErrorKind
+    message: str
+
+    def __init__(self, *, kind: RtpErrorKind, message: str) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
 class CodecError(TstError):
     """Codec parser failure. See `CodecErrorKind` for the variant set.
 
@@ -307,4 +369,8 @@ __all__ = [
     "KlvEncodeErrorKind",
     "CodecError",
     "CodecErrorKind",
+    "RtspError",
+    "RtspErrorKind",
+    "RtpError",
+    "RtpErrorKind",
 ]

@@ -137,6 +137,80 @@ pub fn make_klv_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyEr
     }
 }
 
+/// Build an `RtspError` Python exception. Mirror of `make_mux_error`
+/// targeting `tstrans.exceptions.RtspError` + `RtspErrorKind`.
+///
+/// `kind_variant` must be a Python-side `RtspErrorKind` Enum variant
+/// name (e.g. `"PROTOCOL"`, `"AUTH_FAILED"`, `"AUTH_REQUIRED"`,
+/// `"NOT_FOUND"`, `"UNSUPPORTED_TRANSPORT"`, `"TLS"`, `"IO"`,
+/// `"TIMEOUT"`, `"SERVER"`, `"MOUNT"`).
+#[cfg(feature = "rtp")]
+pub fn make_rtsp_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
+    let exceptions = match py.import_bound("tstrans.exceptions") {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    let kind_enum = match exceptions.getattr(intern!(py, "RtspErrorKind")) {
+        Ok(e) => e,
+        Err(e) => return e,
+    };
+    let kind_value = match kind_enum.getattr(kind_variant) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let rtsp_error_cls = match exceptions.getattr(intern!(py, "RtspError")) {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+    let kwargs = PyDict::new_bound(py);
+    if let Err(e) = kwargs.set_item("kind", kind_value) {
+        return e;
+    }
+    if let Err(e) = kwargs.set_item("message", message) {
+        return e;
+    }
+    match rtsp_error_cls.call((), Some(&kwargs)) {
+        Ok(instance) => PyErr::from_value_bound(instance),
+        Err(e) => e,
+    }
+}
+
+/// Build an `RtpError` Python exception. Mirror of `make_mux_error`
+/// targeting `tstrans.exceptions.RtpError` + `RtpErrorKind`.
+///
+/// `kind_variant` must be a Python-side `RtpErrorKind` Enum variant
+/// name (e.g. `"TRANSPORT"`, `"MALFORMED_PACKET"`, `"CANCELLED"`).
+#[cfg(feature = "rtp")]
+pub fn make_rtp_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyErr {
+    let exceptions = match py.import_bound("tstrans.exceptions") {
+        Ok(m) => m,
+        Err(e) => return e,
+    };
+    let kind_enum = match exceptions.getattr(intern!(py, "RtpErrorKind")) {
+        Ok(e) => e,
+        Err(e) => return e,
+    };
+    let kind_value = match kind_enum.getattr(kind_variant) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let rtp_error_cls = match exceptions.getattr(intern!(py, "RtpError")) {
+        Ok(c) => c,
+        Err(e) => return e,
+    };
+    let kwargs = PyDict::new_bound(py);
+    if let Err(e) = kwargs.set_item("kind", kind_value) {
+        return e;
+    }
+    if let Err(e) = kwargs.set_item("message", message) {
+        return e;
+    }
+    match rtp_error_cls.call((), Some(&kwargs)) {
+        Ok(instance) => PyErr::from_value_bound(instance),
+        Err(e) => e,
+    }
+}
+
 /// Test helper: forces a `MuxError` raise from Rust, used by
 /// `test_error_wiring.py` to confirm end-to-end wiring. Exposed only
 /// under the `_native._raise_mux_error_for_test` name.
@@ -144,6 +218,26 @@ pub fn make_klv_error(py: Python<'_>, kind_variant: &str, message: &str) -> PyEr
 #[pyo3(name = "_raise_mux_error_for_test")]
 pub fn raise_mux_error_for_test(py: Python<'_>, message: &str) -> PyResult<()> {
     Err(make_mux_error(py, "INTERNAL", message))
+}
+
+/// Test helper: forces an `RtspError` raise from Rust, exposed as
+/// `_native._raise_rtsp_error_for_test` so the
+/// `check-py-rtsp-error-mapping-coverage.sh` ratchet sees at least
+/// one call site for `make_rtsp_error` per kind variant during Wave A.
+#[cfg(feature = "rtp")]
+#[pyfunction]
+#[pyo3(name = "_raise_rtsp_error_for_test")]
+pub fn raise_rtsp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> PyResult<()> {
+    Err(make_rtsp_error(py, kind, message))
+}
+
+/// Test helper: forces an `RtpError` raise from Rust, exposed as
+/// `_native._raise_rtp_error_for_test`.
+#[cfg(feature = "rtp")]
+#[pyfunction]
+#[pyo3(name = "_raise_rtp_error_for_test")]
+pub fn raise_rtp_error_for_test(py: Python<'_>, kind: &str, message: &str) -> PyResult<()> {
+    Err(make_rtp_error(py, kind, message))
 }
 
 // ---------------------------------------------------------------------------

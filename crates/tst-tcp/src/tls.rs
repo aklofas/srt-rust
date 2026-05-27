@@ -31,3 +31,22 @@ pub fn connect_tls(_url: &TcpUrl, _cfg: &SocketConfig) -> Result<TcpTransport, T
         "TLS support landing in Phase 8".into(),
     ))
 }
+
+#[cfg(feature = "tls")]
+pub fn load_server_config(_cert_path: &str, _key_path: &str) -> Result<rustls::ServerConfig, TcpError> {
+    Err(TcpError::InvalidConfig(
+        "TLS support landing in Phase 8".into(),
+    ))
+}
+
+#[cfg(feature = "tls")]
+pub fn accept_tls(
+    _socket: std::net::TcpStream,
+    _peer: std::net::SocketAddr,
+    _cfg: &SocketConfig,
+    _server_config: std::sync::Arc<rustls::ServerConfig>,
+) -> Result<TcpTransport, TcpError> {
+    Err(TcpError::InvalidConfig(
+        "TLS support landing in Phase 8".into(),
+    ))
+}

@@ -39,6 +39,6 @@ mod recv_knobs;
 //
 // pub use builder::{TcpTransportBuilder, TcpListenerBuilder};
 pub use config::SocketConfig;
-// pub use listener::TcpListener;
+pub use listener::TcpListener;
 pub use stats::TcpStats;
 pub use transport::TcpTransport;

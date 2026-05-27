@@ -50,6 +50,7 @@ pub mod io_file;
 pub mod klv;
 pub mod mpegts;
 pub mod net;
+pub mod publisher;
 pub mod transport;
 pub mod url;
 

@@ -32,6 +32,9 @@ pub mod url;
 #[cfg(feature = "tls")]
 pub mod tls;
 
+#[cfg(feature = "hls")]
+pub mod hls;
+
 mod recv_knobs;
 
 // Re-exports populated by subsequent phase tasks. Each phase task uncomments

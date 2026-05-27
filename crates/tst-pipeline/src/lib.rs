@@ -44,6 +44,7 @@ pub mod dyn_aliases;
 pub mod ext;
 pub mod managed_demux_receiver;
 pub mod managed_receive;
+pub mod mux_publisher;
 pub mod mux_sender;
 pub mod raw_receiver;
 pub mod raw_sender;

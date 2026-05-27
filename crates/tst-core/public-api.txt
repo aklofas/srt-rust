@@ -5104,6 +5104,31 @@ pub fn tst_core::net::udp_socket::apply_multicast_send_knobs(&std::net::udp::Udp
 pub fn tst_core::net::udp_socket::bind_udp_socket(core::net::socket_addr::SocketAddr) -> std::io::error::Result<std::net::udp::UdpSocket>
 pub fn tst_core::net::udp_socket::set_multicast_hops_v6(&std::net::udp::UdpSocket, u8) -> std::io::error::Result<()>
 pub fn tst_core::net::udp_socket::set_multicast_if_v4(&std::net::udp::UdpSocket, core::net::ip_addr::Ipv4Addr) -> std::io::error::Result<()>
+pub mod tst_core::publisher
+#[non_exhaustive] pub struct tst_core::publisher::PublisherStats
+pub tst_core::publisher::PublisherStats::bytes_written: u64
+pub tst_core::publisher::PublisherStats::current_segment_age: core::option::Option<core::time::Duration>
+pub tst_core::publisher::PublisherStats::last_segment_duration: core::option::Option<core::time::Duration>
+pub tst_core::publisher::PublisherStats::segments_written: u64
+impl core::clone::Clone for tst_core::publisher::PublisherStats
+pub fn tst_core::publisher::PublisherStats::clone(&self) -> tst_core::publisher::PublisherStats
+impl core::default::Default for tst_core::publisher::PublisherStats
+pub fn tst_core::publisher::PublisherStats::default() -> tst_core::publisher::PublisherStats
+impl core::fmt::Debug for tst_core::publisher::PublisherStats
+pub fn tst_core::publisher::PublisherStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tst_core::publisher::PublisherStats
+impl core::marker::Send for tst_core::publisher::PublisherStats
+impl core::marker::Sync for tst_core::publisher::PublisherStats
+impl core::marker::Unpin for tst_core::publisher::PublisherStats
+impl core::marker::UnsafeUnpin for tst_core::publisher::PublisherStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_core::publisher::PublisherStats
+impl core::panic::unwind_safe::UnwindSafe for tst_core::publisher::PublisherStats
+pub trait tst_core::publisher::Publisher
+pub type tst_core::publisher::Publisher::Error: core::error::Error + core::marker::Send + core::marker::Sync + 'static
+pub fn tst_core::publisher::Publisher::cut_segment(&mut self) -> core::result::Result<(), Self::Error>
+pub fn tst_core::publisher::Publisher::finish(self) -> core::result::Result<(), Self::Error> where Self: core::marker::Sized
+pub fn tst_core::publisher::Publisher::push_ts(&mut self, &[u8]) -> core::result::Result<(), Self::Error>
+pub fn tst_core::publisher::Publisher::stats(&self) -> tst_core::publisher::PublisherStats
 pub mod tst_core::transport
 #[non_exhaustive] pub enum tst_core::transport::TransportError
 pub tst_core::transport::TransportError::Backpressure

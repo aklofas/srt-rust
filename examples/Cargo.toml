@@ -11,7 +11,7 @@ tst-core = { path = "../crates/tst-core" }
 tst-pipeline = { path = "../crates/tst-pipeline" }
 tst-rtp = { path = "../crates/tst-rtp" }
 tst-srt = { path = "../crates/tst-srt" }
-tst-tcp = { path = "../crates/tst-tcp" }
+tst-tcp = { path = "../crates/tst-tcp", features = ["hls"] }
 tst-udp = { path = "../crates/tst-udp" }
 
 # [[example]] blocks added in subsequent tasks as files arrive in subfolders.
@@ -59,6 +59,10 @@ path = "muxing/mux_h265_with_klv.rs"
 [[example]]
 name = "mux_h266_with_klv"
 path = "muxing/mux_h266_with_klv.rs"
+
+[[example]]
+name = "mux_to_hls"
+path = "sending/mux_to_hls.rs"
 
 [[example]]
 name = "mux_av1_with_klv"

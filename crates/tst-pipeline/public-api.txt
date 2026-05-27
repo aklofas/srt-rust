@@ -314,6 +314,64 @@ impl<R> core::marker::Unpin for tst_pipeline::managed_receive::ManagedRecvTransp
 impl<R> core::marker::UnsafeUnpin for tst_pipeline::managed_receive::ManagedRecvTransport<R> where R: core::marker::UnsafeUnpin
 impl<R> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::managed_receive::ManagedRecvTransport<R>
 impl<R> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::managed_receive::ManagedRecvTransport<R>
+pub mod tst_pipeline::mux_publisher
+#[non_exhaustive] pub enum tst_pipeline::mux_publisher::MuxPublisherError<E: core::error::Error + core::marker::Send + core::marker::Sync + 'static>
+pub tst_pipeline::mux_publisher::MuxPublisherError::Closed
+pub tst_pipeline::mux_publisher::MuxPublisherError::Mux(tst_core::error::MuxError)
+pub tst_pipeline::mux_publisher::MuxPublisherError::Publisher(E)
+impl<E: core::error::Error + core::marker::Send + core::marker::Sync + 'static> tst_pipeline::mux_publisher::MuxPublisherError<E>
+pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
+impl<E: core::fmt::Debug + core::error::Error + core::marker::Send + core::marker::Sync + 'static> core::fmt::Debug for tst_pipeline::mux_publisher::MuxPublisherError<E>
+pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::error::Error for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::error::Error + 'static + core::marker::Send + core::marker::Sync, Self: core::fmt::Debug + core::fmt::Display
+pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E> core::fmt::Display for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::fmt::Display + core::error::Error + core::marker::Send + core::marker::Sync + 'static
+pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::marker::Freeze for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::marker::Freeze
+impl<E> core::marker::Send for tst_pipeline::mux_publisher::MuxPublisherError<E>
+impl<E> core::marker::Sync for tst_pipeline::mux_publisher::MuxPublisherError<E>
+impl<E> core::marker::Unpin for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::marker::Unpin
+impl<E> core::marker::UnsafeUnpin for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::marker::UnsafeUnpin
+impl<E> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::panic::unwind_safe::RefUnwindSafe
+impl<E> core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::panic::unwind_safe::UnwindSafe
+pub struct tst_pipeline::mux_publisher::MuxPublisher<P: tst_core::publisher::Publisher>
+impl<P: tst_core::publisher::Publisher> tst_pipeline::mux_publisher::MuxPublisher<P>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::cut_segment(&self) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::finish(self) -> core::result::Result<P, tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::publisher_stats(&self) -> tst_core::publisher::PublisherStats
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_audio(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_klv(&self, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_subtitle(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_video(&self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::stats(&self) -> tst_pipeline::mux_publisher::MuxPublisherStats
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::with_config(P, tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+impl<P: tst_core::publisher::Publisher> core::fmt::Debug for tst_pipeline::mux_publisher::MuxPublisher<P>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<P> !core::marker::Freeze for tst_pipeline::mux_publisher::MuxPublisher<P>
+impl<P> core::marker::Send for tst_pipeline::mux_publisher::MuxPublisher<P> where P: core::marker::Send
+impl<P> core::marker::Sync for tst_pipeline::mux_publisher::MuxPublisher<P> where P: core::marker::Send
+impl<P> core::marker::Unpin for tst_pipeline::mux_publisher::MuxPublisher<P> where P: core::marker::Unpin
+impl<P> core::marker::UnsafeUnpin for tst_pipeline::mux_publisher::MuxPublisher<P> where P: core::marker::UnsafeUnpin
+impl<P> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::mux_publisher::MuxPublisher<P>
+impl<P> core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_publisher::MuxPublisher<P>
+#[non_exhaustive] pub struct tst_pipeline::mux_publisher::MuxPublisherStats
+pub tst_pipeline::mux_publisher::MuxPublisherStats::bytes_pushed: u64
+pub tst_pipeline::mux_publisher::MuxPublisherStats::cut_calls: u64
+pub tst_pipeline::mux_publisher::MuxPublisherStats::drain_calls: u64
+impl core::clone::Clone for tst_pipeline::mux_publisher::MuxPublisherStats
+pub fn tst_pipeline::mux_publisher::MuxPublisherStats::clone(&self) -> tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::default::Default for tst_pipeline::mux_publisher::MuxPublisherStats
+pub fn tst_pipeline::mux_publisher::MuxPublisherStats::default() -> tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::fmt::Debug for tst_pipeline::mux_publisher::MuxPublisherStats
+pub fn tst_pipeline::mux_publisher::MuxPublisherStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::marker::Freeze for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::marker::Send for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::marker::Sync for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::marker::Unpin for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::marker::UnsafeUnpin for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_publisher::MuxPublisherStats
 pub mod tst_pipeline::mux_sender
 #[non_exhaustive] pub enum tst_pipeline::mux_sender::MuxSenderErrorSource
 pub tst_pipeline::mux_sender::MuxSenderErrorSource::Mux(tst_core::error::MuxError)
@@ -1107,6 +1165,25 @@ impl core::marker::Unpin for tst_pipeline::demux_receiver::DemuxReceiverErrorSou
 impl core::marker::UnsafeUnpin for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
 impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::demux_receiver::DemuxReceiverErrorSource
+#[non_exhaustive] pub enum tst_pipeline::MuxPublisherError<E: core::error::Error + core::marker::Send + core::marker::Sync + 'static>
+pub tst_pipeline::MuxPublisherError::Closed
+pub tst_pipeline::MuxPublisherError::Mux(tst_core::error::MuxError)
+pub tst_pipeline::MuxPublisherError::Publisher(E)
+impl<E: core::error::Error + core::marker::Send + core::marker::Sync + 'static> tst_pipeline::mux_publisher::MuxPublisherError<E>
+pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::kind(&self) -> tst_pipeline::shell_error::ShellErrorKind
+impl<E: core::fmt::Debug + core::error::Error + core::marker::Send + core::marker::Sync + 'static> core::fmt::Debug for tst_pipeline::mux_publisher::MuxPublisherError<E>
+pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::error::Error for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::error::Error + 'static + core::marker::Send + core::marker::Sync, Self: core::fmt::Debug + core::fmt::Display
+pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<E> core::fmt::Display for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::fmt::Display + core::error::Error + core::marker::Send + core::marker::Sync + 'static
+pub fn tst_pipeline::mux_publisher::MuxPublisherError<E>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<E> core::marker::Freeze for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::marker::Freeze
+impl<E> core::marker::Send for tst_pipeline::mux_publisher::MuxPublisherError<E>
+impl<E> core::marker::Sync for tst_pipeline::mux_publisher::MuxPublisherError<E>
+impl<E> core::marker::Unpin for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::marker::Unpin
+impl<E> core::marker::UnsafeUnpin for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::marker::UnsafeUnpin
+impl<E> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::panic::unwind_safe::RefUnwindSafe
+impl<E> core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_publisher::MuxPublisherError<E> where E: core::panic::unwind_safe::UnwindSafe
 #[non_exhaustive] pub enum tst_pipeline::MuxSenderErrorSource
 pub tst_pipeline::MuxSenderErrorSource::Mux(tst_core::error::MuxError)
 pub tst_pipeline::MuxSenderErrorSource::Transport(tst_core::transport::TransportError)
@@ -1435,6 +1512,44 @@ impl<T> core::marker::Unpin for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> core::marker::UnsafeUnpin for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> !core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::reconnect::ManagedTransport<T>
 impl<T> !core::panic::unwind_safe::UnwindSafe for tst_pipeline::reconnect::ManagedTransport<T>
+pub struct tst_pipeline::MuxPublisher<P: tst_core::publisher::Publisher>
+impl<P: tst_core::publisher::Publisher> tst_pipeline::mux_publisher::MuxPublisher<P>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::cut_segment(&self) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::finish(self) -> core::result::Result<P, tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::publisher_stats(&self) -> tst_core::publisher::PublisherStats
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_audio(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_klv(&self, &[u8], tst_core::mpegts::common::Pts90khz, u8) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_subtitle(&self, &[u8], tst_core::mpegts::common::Pts90khz) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::send_video(&self, &[u8], tst_core::mpegts::common::Pts90khz, bool) -> core::result::Result<(), tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::stats(&self) -> tst_pipeline::mux_publisher::MuxPublisherStats
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::with_config(P, tst_core::mpegts::mux::config::MuxerConfig) -> core::result::Result<Self, tst_pipeline::mux_publisher::MuxPublisherError<<P as tst_core::publisher::Publisher>::Error>>
+impl<P: tst_core::publisher::Publisher> core::fmt::Debug for tst_pipeline::mux_publisher::MuxPublisher<P>
+pub fn tst_pipeline::mux_publisher::MuxPublisher<P>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<P> !core::marker::Freeze for tst_pipeline::mux_publisher::MuxPublisher<P>
+impl<P> core::marker::Send for tst_pipeline::mux_publisher::MuxPublisher<P> where P: core::marker::Send
+impl<P> core::marker::Sync for tst_pipeline::mux_publisher::MuxPublisher<P> where P: core::marker::Send
+impl<P> core::marker::Unpin for tst_pipeline::mux_publisher::MuxPublisher<P> where P: core::marker::Unpin
+impl<P> core::marker::UnsafeUnpin for tst_pipeline::mux_publisher::MuxPublisher<P> where P: core::marker::UnsafeUnpin
+impl<P> core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::mux_publisher::MuxPublisher<P>
+impl<P> core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_publisher::MuxPublisher<P>
+#[non_exhaustive] pub struct tst_pipeline::MuxPublisherStats
+pub tst_pipeline::MuxPublisherStats::bytes_pushed: u64
+pub tst_pipeline::MuxPublisherStats::cut_calls: u64
+pub tst_pipeline::MuxPublisherStats::drain_calls: u64
+impl core::clone::Clone for tst_pipeline::mux_publisher::MuxPublisherStats
+pub fn tst_pipeline::mux_publisher::MuxPublisherStats::clone(&self) -> tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::default::Default for tst_pipeline::mux_publisher::MuxPublisherStats
+pub fn tst_pipeline::mux_publisher::MuxPublisherStats::default() -> tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::fmt::Debug for tst_pipeline::mux_publisher::MuxPublisherStats
+pub fn tst_pipeline::mux_publisher::MuxPublisherStats::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::marker::Freeze for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::marker::Send for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::marker::Sync for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::marker::Unpin for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::marker::UnsafeUnpin for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::panic::unwind_safe::RefUnwindSafe for tst_pipeline::mux_publisher::MuxPublisherStats
+impl core::panic::unwind_safe::UnwindSafe for tst_pipeline::mux_publisher::MuxPublisherStats
 pub struct tst_pipeline::MuxSender<T: tst_core::transport::Transport>
 impl<T: tst_core::transport::Transport> tst_pipeline::mux_sender::MuxSender<T>
 pub fn tst_pipeline::mux_sender::MuxSender<T>::audio_handles(&self) -> alloc::vec::Vec<tst_core::mpegts::mux::types::AudioStreamHandle>

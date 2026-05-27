@@ -48,14 +48,12 @@ impl TcpListener {
 
         #[cfg(feature = "tls")]
         if parsed.tls {
-            let cert = parsed
-                .cert
-                .as_deref()
-                .ok_or_else(|| TcpError::InvalidConfig("tcps:// listener requires ?cert=path".into()))?;
-            let key = parsed
-                .key
-                .as_deref()
-                .ok_or_else(|| TcpError::InvalidConfig("tcps:// listener requires ?key=path".into()))?;
+            let cert = parsed.cert.as_deref().ok_or_else(|| {
+                TcpError::InvalidConfig("tcps:// listener requires ?cert=path".into())
+            })?;
+            let key = parsed.key.as_deref().ok_or_else(|| {
+                TcpError::InvalidConfig("tcps:// listener requires ?key=path".into())
+            })?;
             let server_cfg = crate::tls::load_server_config(cert, key)?;
             listener.tls_config = Some(Arc::new(server_cfg));
         }

@@ -50,7 +50,11 @@ pub enum TcpUrlError {
     #[error("host '{0}' is not a literal IPv4/IPv6 address")]
     BadHost(String),
     #[error("query param '{key}' has invalid value '{value}': {detail}")]
-    BadQueryValue { key: String, value: String, detail: String },
+    BadQueryValue {
+        key: String,
+        value: String,
+        detail: String,
+    },
     #[error("URL parse failed: {0}")]
     Parse(#[from] tst_core::url::common::UrlError),
 }
@@ -130,13 +134,14 @@ fn parse_bool(key: &str, value: &str) -> Result<bool, TcpUrlError> {
 }
 
 fn parse_duration_secs(key: &str, value: &str) -> Result<Duration, TcpUrlError> {
-    let secs: u64 = value
-        .parse()
-        .map_err(|e: std::num::ParseIntError| TcpUrlError::BadQueryValue {
-            key: key.to_string(),
-            value: value.to_string(),
-            detail: e.to_string(),
-        })?;
+    let secs: u64 =
+        value
+            .parse()
+            .map_err(|e: std::num::ParseIntError| TcpUrlError::BadQueryValue {
+                key: key.to_string(),
+                value: value.to_string(),
+                detail: e.to_string(),
+            })?;
     Ok(Duration::from_secs(secs))
 }
 
@@ -146,13 +151,13 @@ fn parse_byte_size(key: &str, value: &str) -> Result<usize, TcpUrlError> {
         Some('M') | Some('m') => (&value[..value.len() - 1], 1024 * 1024),
         _ => (value, 1usize),
     };
-    let n: usize = num.parse().map_err(|e: std::num::ParseIntError| {
-        TcpUrlError::BadQueryValue {
-            key: key.to_string(),
-            value: value.to_string(),
-            detail: e.to_string(),
-        }
-    })?;
+    let n: usize =
+        num.parse()
+            .map_err(|e: std::num::ParseIntError| TcpUrlError::BadQueryValue {
+                key: key.to_string(),
+                value: value.to_string(),
+                detail: e.to_string(),
+            })?;
     Ok(n * mul)
 }
 
@@ -184,10 +189,8 @@ mod tests {
 
     #[test]
     fn tls_listener_with_cert_key() {
-        let u = TcpUrl::parse(
-            "tcps://0.0.0.0:7001?listen=1&cert=server.crt&key=server.key",
-        )
-        .unwrap();
+        let u =
+            TcpUrl::parse("tcps://0.0.0.0:7001?listen=1&cert=server.crt&key=server.key").unwrap();
         assert!(u.tls);
         assert!(u.listen);
         assert_eq!(u.cert.as_deref(), Some("server.crt"));

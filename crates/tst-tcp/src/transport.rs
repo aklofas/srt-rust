@@ -13,11 +13,16 @@ use crate::recv_knobs::apply_knobs;
 use crate::stats::TcpStats;
 use crate::url::TcpUrl;
 
-/// Inner stream — Plain for `tcp://`, Tls for `tcps://` (Phase 8 wires Tls).
+/// Inner stream — Plain for `tcp://`, Tls for `tcps://`.
+///
+/// The TLS variant is boxed because `rustls::ClientConnection` /
+/// `ServerConnection` carry several KB of session state; without the Box,
+/// every `TcpTransport` would pay the TLS-sized footprint regardless of which
+/// variant is active (clippy `large_enum_variant`).
 pub(crate) enum InnerStream {
     Plain(TcpStream),
     #[cfg(feature = "tls")]
-    Tls(crate::tls::TlsStream),
+    Tls(Box<crate::tls::TlsStream>),
 }
 
 impl InnerStream {
@@ -89,8 +94,8 @@ impl TcpTransport {
         }
 
         let peer = SocketAddr::new(url.addr, url.port);
-        let socket = TcpStream::connect_timeout(&peer, cfg.connect_timeout_or_default())
-            .map_err(|e| {
+        let socket =
+            TcpStream::connect_timeout(&peer, cfg.connect_timeout_or_default()).map_err(|e| {
                 if e.kind() == std::io::ErrorKind::TimedOut {
                     TcpError::ConnectTimeout {
                         seconds: cfg.connect_timeout_or_default().as_secs(),
@@ -134,7 +139,7 @@ impl TcpTransport {
         cfg: &SocketConfig,
     ) -> Self {
         Self {
-            inner: InnerStream::Tls(tls),
+            inner: InnerStream::Tls(Box::new(tls)),
             pkt_size: cfg.pkt_size_or_default(),
             peer,
             stats: TcpStats::default(),

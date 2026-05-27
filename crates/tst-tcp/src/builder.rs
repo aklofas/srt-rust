@@ -86,7 +86,7 @@ impl TcpTransportBuilder {
         self
     }
 
-    /// Set the maximum payload chunk size per [`Transport::send_bytes`] call.
+    /// Set the maximum payload chunk size per `Transport::send_bytes` call.
     ///
     /// TCP is a bytestream; this is an upper bound on how much the crate
     /// accepts per single call. Larger values may reduce syscall overhead.

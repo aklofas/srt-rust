@@ -1,3 +1,93 @@
 //! Error types for the `tst-rist` crate.
-//!
-//! Populated in Wave A (Phase 3).
+
+use std::io;
+
+use thiserror::Error;
+
+/// All errors returned from `tst-rist` operations.
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum RistError {
+    #[error("URL parse failed: {0}")]
+    Url(#[from] crate::url::RistUrlError),
+
+    #[error("librist FFI error: code={code}, fn={function}")]
+    Ffi { code: i32, function: &'static str },
+
+    #[error("payload {len} exceeds max {max} bytes per send call")]
+    PayloadTooLarge { len: usize, max: usize },
+
+    #[error("transport closed by caller")]
+    Closed,
+
+    #[error("invalid configuration: {0}")]
+    InvalidConfig(String),
+
+    #[error("encryption requested but `mbedtls` feature is disabled")]
+    EncryptionDisabled,
+
+    #[error("librist context creation failed")]
+    ContextCreateFailed,
+
+    #[error("librist peer creation failed")]
+    PeerCreateFailed,
+
+    #[error("librist receive timeout (no data within {timeout_ms}ms)")]
+    RecvTimeout { timeout_ms: u32 },
+
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+}
+
+/// Flat error-kind projection for future C ABI mapping (A5/W4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+#[repr(u32)]
+pub enum RistErrorKind {
+    Url = 1,
+    Ffi = 2,
+    PayloadTooLarge = 3,
+    Closed = 4,
+    InvalidConfig = 5,
+    EncryptionDisabled = 6,
+    ContextCreateFailed = 7,
+    PeerCreateFailed = 8,
+    RecvTimeout = 9,
+    Io = 10,
+}
+
+impl RistError {
+    pub fn kind(&self) -> RistErrorKind {
+        match self {
+            Self::Url(_) => RistErrorKind::Url,
+            Self::Ffi { .. } => RistErrorKind::Ffi,
+            Self::PayloadTooLarge { .. } => RistErrorKind::PayloadTooLarge,
+            Self::Closed => RistErrorKind::Closed,
+            Self::InvalidConfig(_) => RistErrorKind::InvalidConfig,
+            Self::EncryptionDisabled => RistErrorKind::EncryptionDisabled,
+            Self::ContextCreateFailed => RistErrorKind::ContextCreateFailed,
+            Self::PeerCreateFailed => RistErrorKind::PeerCreateFailed,
+            Self::RecvTimeout { .. } => RistErrorKind::RecvTimeout,
+            Self::Io(_) => RistErrorKind::Io,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn kind_is_stable() {
+        assert_eq!(RistErrorKind::Url as u32, 1);
+        assert_eq!(RistErrorKind::Io as u32, 10);
+    }
+
+    #[test]
+    fn ffi_error_carries_code_and_function() {
+        let e = RistError::Ffi { code: -3, function: "rist_peer_create" };
+        assert_eq!(e.kind(), RistErrorKind::Ffi);
+        assert!(e.to_string().contains("-3"));
+        assert!(e.to_string().contains("rist_peer_create"));
+    }
+}

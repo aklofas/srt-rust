@@ -29,12 +29,13 @@ pub mod stats;
 pub mod transport;
 pub mod url;
 
-// Re-exports populated as types land in Wave A and beyond.
-//
-// pub use builder::{RistRecvTransportBuilder, RistTransportBuilder};
-// pub use config::{EncryptionKey, RistConfig, RistProfile};
-// pub use error::{RistError, RistErrorKind};
-// pub use recv::RistRecvTransport;
-// pub use stats::RistStats;
-// pub use transport::RistTransport;
-// pub use url::{RistUrl, RistUrlError};
+// Re-exports populated as types land. Remaining lines uncommented as Waves
+// B-E land their modules.
+pub use config::{EncryptionKey, RistConfig, RistProfile};
+pub use error::{RistError, RistErrorKind};
+pub use stats::RistStats;
+pub use url::{RistUrl, RistUrlError};
+
+// pub use builder::{RistRecvTransportBuilder, RistTransportBuilder};  // Wave E
+// pub use recv::RistRecvTransport;                                    // Wave D
+// pub use transport::RistTransport;                                   // Wave C

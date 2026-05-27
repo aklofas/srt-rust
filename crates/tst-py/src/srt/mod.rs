@@ -21,6 +21,7 @@
 pub(crate) mod demux_receiver;
 pub(crate) mod errors;
 mod lowlevel;
+pub(crate) mod managed_basic;
 pub(crate) mod mux_sender;
 pub(crate) mod policy;
 mod transport;
@@ -34,6 +35,7 @@ pub(crate) fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     mux_sender::register(&m)?;
     demux_receiver::register(&m)?;
     policy::register(&m)?;
+    managed_basic::register(&m)?;
     parent.add_submodule(&m)?;
     Ok(())
 }

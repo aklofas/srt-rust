@@ -46,6 +46,10 @@ BackoffStrategy = _srt.BackoffStrategy
 OverflowPolicy = _srt.OverflowPolicy
 ReconnectPolicy = _srt.ReconnectPolicy
 
+# Wave C T7 — auto-reconnect basic-bytes wrappers.
+ManagedSender = _srt.ManagedSender
+ManagedReceiver = _srt.ManagedReceiver
+
 
 __all__: list[str] = [
     # T2 transport
@@ -65,4 +69,7 @@ __all__: list[str] = [
     "BackoffStrategy",
     "OverflowPolicy",
     "ReconnectPolicy",
+    # T7 managed basic
+    "ManagedSender",
+    "ManagedReceiver",
 ]

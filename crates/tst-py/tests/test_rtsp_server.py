@@ -131,6 +131,54 @@ def test_digest_auth_accepts_sha256():
 # bad enum extract before `__new__` body runs).
 
 
+def test_basic_auth_realm_optional_with_default_none():
+    """The realm kwarg defaults to None (client-side use) and is
+    exposed via a getter (added at the Stage 3 extract_auth fix)."""
+    a = BasicAuth(user="x", password="x")
+    assert a.user == "x"
+    assert a.realm is None
+    b = BasicAuth(user="x", password="x", realm="protected")
+    assert b.realm == "protected"
+
+
+def test_digest_auth_realm_optional_with_default_none():
+    a = DigestAuth(user="x", password="x")
+    assert a.realm is None
+    b = DigestAuth(user="x", password="x", realm="protected")
+    assert b.realm == "protected"
+
+
+def test_server_start_with_basic_auth_requires_realm():
+    """Stage 3 extract_auth fix: BasicAuth without realm raises ValueError
+    when used as server-side config (the realm is what the server quotes
+    in WWW-Authenticate)."""
+    from tstrans.rtp import RtspServer
+
+    no_realm = BasicAuth(user="admin", password="secret")
+    cfg = RtspServerConfig(bind_addr="127.0.0.1:0", auth=no_realm)
+    with pytest.raises(ValueError, match="realm"):
+        RtspServer.start(cfg)
+
+
+def test_server_start_with_digest_auth_requires_realm():
+    from tstrans.rtp import RtspServer
+
+    no_realm = DigestAuth(user="admin", password="secret")
+    cfg = RtspServerConfig(bind_addr="127.0.0.1:0", auth=no_realm)
+    with pytest.raises(ValueError, match="realm"):
+        RtspServer.start(cfg)
+
+
+def test_server_start_with_basic_auth_and_realm_succeeds():
+    """With realm provided, the server starts and stops cleanly."""
+    from tstrans.rtp import RtspServer
+
+    auth = BasicAuth(user="admin", password="secret", realm="protected")
+    cfg = RtspServerConfig(bind_addr="127.0.0.1:0", auth=auth)
+    s = RtspServer.start(cfg)
+    s.stop(drain_ms=10)
+
+
 # ---------------------------------------------------------------------------
 # Helpers — build a minimal MuxerProgramConfig with one H.264 video stream.
 # ---------------------------------------------------------------------------

@@ -132,20 +132,31 @@ impl PyDigestAlgorithm {
 #[pyclass(name = "BasicAuth", module = "tstrans.rtp", frozen)]
 #[derive(Debug, Clone)]
 pub struct PyBasicAuth {
-    user: String,
+    pub(crate) user: String,
     /// Held as a plain Rust `String` because the Python-side surface
     /// already accepted it as a `str` (it lives in Python memory
     /// before we get it). `secrecy::SecretString` adoption happens at
     /// the `RtspClientBuilder::auth` call boundary in
     /// `PyRtspClient::connect`.
-    password: String,
+    pub(crate) password: String,
+    /// Optional auth realm. Set when this credential is used to
+    /// configure server-side authentication (the realm is what the
+    /// server quotes back in `WWW-Authenticate`). `None` for
+    /// client-side use where the realm is provided by the peer's
+    /// 401 challenge.
+    pub(crate) realm: Option<String>,
 }
 
 #[pymethods]
 impl PyBasicAuth {
     #[new]
-    fn new(user: String, password: String) -> Self {
-        Self { user, password }
+    #[pyo3(signature = (user, password, realm = None))]
+    fn new(user: String, password: String, realm: Option<String>) -> Self {
+        Self {
+            user,
+            password,
+            realm,
+        }
     }
 
     #[getter]
@@ -153,9 +164,17 @@ impl PyBasicAuth {
         &self.user
     }
 
+    #[getter]
+    fn realm(&self) -> Option<&str> {
+        self.realm.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         // Never leak the password through __repr__.
-        format!("BasicAuth(user={:?}, password=<redacted>)", self.user)
+        format!(
+            "BasicAuth(user={:?}, password=<redacted>, realm={:?})",
+            self.user, self.realm
+        )
     }
 }
 
@@ -168,20 +187,29 @@ impl PyBasicAuth {
 #[pyclass(name = "DigestAuth", module = "tstrans.rtp", frozen)]
 #[derive(Debug, Clone)]
 pub struct PyDigestAuth {
-    user: String,
-    password: String,
-    algorithm: PyDigestAlgorithm,
+    pub(crate) user: String,
+    pub(crate) password: String,
+    pub(crate) algorithm: PyDigestAlgorithm,
+    /// Same semantics as [`PyBasicAuth::realm`]: optional, server-side
+    /// configuration only.
+    pub(crate) realm: Option<String>,
 }
 
 #[pymethods]
 impl PyDigestAuth {
     #[new]
-    #[pyo3(signature = (user, password, algorithm = PyDigestAlgorithm::MD5))]
-    fn new(user: String, password: String, algorithm: PyDigestAlgorithm) -> Self {
+    #[pyo3(signature = (user, password, algorithm = PyDigestAlgorithm::MD5, realm = None))]
+    fn new(
+        user: String,
+        password: String,
+        algorithm: PyDigestAlgorithm,
+        realm: Option<String>,
+    ) -> Self {
         Self {
             user,
             password,
             algorithm,
+            realm,
         }
     }
 
@@ -195,10 +223,15 @@ impl PyDigestAuth {
         self.algorithm
     }
 
+    #[getter]
+    fn realm(&self) -> Option<&str> {
+        self.realm.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
-            "DigestAuth(user={:?}, password=<redacted>, algorithm={:?})",
-            self.user, self.algorithm
+            "DigestAuth(user={:?}, password=<redacted>, algorithm={:?}, realm={:?})",
+            self.user, self.algorithm, self.realm
         )
     }
 }

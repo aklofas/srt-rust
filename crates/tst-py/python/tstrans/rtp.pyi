@@ -191,12 +191,22 @@ class BasicAuth:
     """HTTP Basic auth credentials per RFC 7617. Frozen.
 
     Password held in Rust memory and never re-exposed to Python; only
-    `user` is readable via getter.
+    `user` and `realm` are readable via getters. `realm` is optional
+    and only used when this credential is passed as
+    `RtspServerConfig.auth` (server-side challenge); client-side use
+    reads the realm from the peer's 401.
     """
 
-    def __init__(self, user: str, password: str) -> None: ...
+    def __init__(
+        self,
+        user: str,
+        password: str,
+        realm: str | None = None,
+    ) -> None: ...
     @property
     def user(self) -> str: ...
+    @property
+    def realm(self) -> str | None: ...
     def __repr__(self) -> str: ...
 
 
@@ -205,6 +215,8 @@ class DigestAuth:
     RFC 2617 (legacy MD5). Frozen.
 
     Password held in Rust memory and never re-exposed to Python.
+    `realm` is optional; same server-side-config semantics as
+    `BasicAuth.realm`.
     """
 
     def __init__(
@@ -212,11 +224,14 @@ class DigestAuth:
         user: str,
         password: str,
         algorithm: DigestAlgorithm = ...,
+        realm: str | None = None,
     ) -> None: ...
     @property
     def user(self) -> str: ...
     @property
     def algorithm(self) -> DigestAlgorithm: ...
+    @property
+    def realm(self) -> str | None: ...
     def __repr__(self) -> str: ...
 
 

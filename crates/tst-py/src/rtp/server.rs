@@ -901,42 +901,49 @@ fn extract_optional_bytes(obj: &Bound<'_, PyAny>, attr: &str) -> PyResult<Option
 }
 
 fn extract_auth(obj: &Bound<'_, PyAny>) -> PyResult<AuthExtract> {
+    use crate::rtp::client::{PyBasicAuth, PyDigestAlgorithm, PyDigestAuth};
+
+    // Prefer Rust-side downcasting over Python-level getattr so we can
+    // read the password without exposing it via a Python-visible getter.
+    // The PyBasicAuth + PyDigestAuth pyclasses are `frozen`, so
+    // `obj.downcast::<...>()` + `.borrow()` is sound and cheap.
+    if let Ok(basic) = obj.downcast::<PyBasicAuth>() {
+        let g = basic.borrow();
+        let realm = g.realm.clone().ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "BasicAuth used for server-side config requires realm=<str>",
+            )
+        })?;
+        return Ok(AuthExtract {
+            scheme: AuthScheme::Basic,
+            realm,
+            username: g.user.clone(),
+            password: g.password.clone(),
+        });
+    }
+    if let Ok(digest) = obj.downcast::<PyDigestAuth>() {
+        let g = digest.borrow();
+        let realm = g.realm.clone().ok_or_else(|| {
+            pyo3::exceptions::PyValueError::new_err(
+                "DigestAuth used for server-side config requires realm=<str>",
+            )
+        })?;
+        let scheme = match g.algorithm {
+            PyDigestAlgorithm::SHA256 => AuthScheme::DigestSha256,
+            PyDigestAlgorithm::MD5 => AuthScheme::DigestMd5,
+        };
+        return Ok(AuthExtract {
+            scheme,
+            realm,
+            username: g.user.clone(),
+            password: g.password.clone(),
+        });
+    }
     let py = obj.py();
     let cls_name: String = obj.get_type().getattr(intern!(py, "__name__"))?.extract()?;
-    let scheme = match cls_name.as_str() {
-        "BasicAuth" => AuthScheme::Basic,
-        // The plan's "DigestAuth" dataclass (T21) lands a single class with
-        // an `algorithm` discriminator. Pre-T21 we accept either a
-        // free-form "DigestAuth" with an `algorithm` attr ("MD5" /
-        // "SHA-256") or explicit `DigestMd5Auth` / `DigestSha256Auth`
-        // sibling classes — whichever T21 settles on, the merge picks up.
-        "DigestAuth" => {
-            let algo: String = obj
-                .getattr(intern!(py, "algorithm"))
-                .and_then(|v| v.extract::<String>())
-                .unwrap_or_else(|_| "MD5".to_string());
-            match algo.to_ascii_uppercase().as_str() {
-                "SHA-256" | "SHA256" => AuthScheme::DigestSha256,
-                _ => AuthScheme::DigestMd5,
-            }
-        }
-        "DigestMd5Auth" => AuthScheme::DigestMd5,
-        "DigestSha256Auth" => AuthScheme::DigestSha256,
-        other => {
-            return Err(pyo3::exceptions::PyTypeError::new_err(format!(
-                "RtspServerConfig.auth must be None, BasicAuth, or DigestAuth; got {other}"
-            )));
-        }
-    };
-    let realm: String = obj.getattr(intern!(py, "realm"))?.extract()?;
-    let username: String = obj.getattr(intern!(py, "username"))?.extract()?;
-    let password: String = obj.getattr(intern!(py, "password"))?.extract()?;
-    Ok(AuthExtract {
-        scheme,
-        realm,
-        username,
-        password,
-    })
+    Err(pyo3::exceptions::PyTypeError::new_err(format!(
+        "RtspServerConfig.auth must be None, BasicAuth, or DigestAuth; got {cls_name}"
+    )))
 }
 
 /// Wrap a `PyMuxerProgramConfig` in a single-program `MuxerConfig` and

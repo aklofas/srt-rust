@@ -19,19 +19,24 @@ doctest    = false
 
 [features]
 default = ["rtp"]
-rtp     = ["dep:tst-rtp", "dep:secrecy"]
+# `rtp` pulls tst-rtp + tst-pipeline (the latter for the
+# `MuxSender<RtpTransport>` / `DemuxReceiver<RtpRecvTransport>`
+# convenience wrappers added by Wave B Task 23) + secrecy (for
+# RtspClientBuilder::auth + server-side auth password wrapping).
+rtp     = ["dep:tst-rtp", "dep:tst-pipeline", "dep:secrecy"]
 # Future:
-#   v2 will add: srt = ["dep:tst-srt", "dep:tst-pipeline"]
+#   v2 will add: srt = ["dep:tst-srt"] (tst-pipeline already pulled by rtp)
 
 [dependencies]
-tst-core = { path = "../tst-core" }
-tst-rtp  = { path = "../tst-rtp", default-features = false, optional = true }
-pyo3     = { version = "0.22", features = ["extension-module", "abi3-py310"] }
+tst-core     = { path = "../tst-core" }
+tst-pipeline = { path = "../tst-pipeline", optional = true }
+tst-rtp      = { path = "../tst-rtp", default-features = false, optional = true }
+pyo3         = { version = "0.22", features = ["extension-module", "abi3-py310"] }
 # Used by the `rtp` feature path — both T21 RtspClientBuilder::auth and
 # T22 server-side auth wrap user-passed passwords in `SecretString`
 # before handing them to the Rust builder. Optional + gated on
 # `feature = "rtp"` so non-rtp builds don't pull it.
-secrecy  = { workspace = true, optional = true }
+secrecy      = { workspace = true, optional = true }
 
 [build-dependencies]
 # On macOS, PyO3's `extension-module` feature requires the *consuming* crate

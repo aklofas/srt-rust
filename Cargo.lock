@@ -2094,6 +2094,7 @@ dependencies = [
  "pyo3-build-config",
  "secrecy",
  "tst-core",
+ "tst-pipeline",
  "tst-rtp",
 ]
 

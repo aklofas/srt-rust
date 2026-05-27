@@ -175,7 +175,19 @@ fn build_demuxer(py: Python<'_>, config: Option<&Bound<'_, PyAny>>) -> PyResult<
     let Some(cfg) = config else {
         return Ok(Demuxer::new());
     };
+    let opts = build_demuxer_config(py, cfg)?;
+    Ok(Demuxer::with_config(opts))
+}
 
+/// Translate a Python `DemuxerConfig` dataclass instance to a Rust
+/// `DemuxerConfig`. Crate-public so the `tstrans.rtp.DemuxReceiver`
+/// wrapper (Wave B Task 23) can share the same field-extraction
+/// logic — both surfaces accept the same dataclass and must produce
+/// identical Rust configurations.
+pub(crate) fn build_demuxer_config(
+    py: Python<'_>,
+    cfg: &Bound<'_, PyAny>,
+) -> PyResult<DemuxerConfig> {
     let strict_attr = cfg.getattr(intern!(py, "strict_mode"))?;
     let strict_name: String = strict_attr.getattr(intern!(py, "name"))?.extract()?;
     let strict = match strict_name.as_str() {
@@ -205,30 +217,23 @@ fn build_demuxer(py: Python<'_>, config: Option<&Bound<'_, PyAny>>) -> PyResult<
     opts.cfi_tolerance = cfi_tolerance;
     opts.lenient_psi_reassembly = lenient_psi_reassembly;
 
-    // `av1_carriage = None` defers to the Rust default
-    // (`Av1CarriageMode::Mpeg2TsBinding`). Any explicit Python
-    // `Av1CarriageMode.*` member rides the existing
-    // `py_av1_carriage` translator from `crate::mux` for
-    // single-source-of-truth string→variant mapping.
     let av1_attr = cfg.getattr(intern!(py, "av1_carriage"))?;
     if !av1_attr.is_none() {
         opts.av1_carriage = crate::mux::py_av1_carriage(&av1_attr)?;
     }
-    // `au_cell_cap_per_pid = None` defers to the Rust default of
-    // 1 MiB. Any positive int caps the reassembly buffer.
     let au_cap_attr = cfg.getattr(intern!(py, "au_cell_cap_per_pid"))?;
     if !au_cap_attr.is_none() {
         opts.au_cell_cap_per_pid = Some(au_cap_attr.extract::<usize>()?);
     }
 
-    Ok(Demuxer::with_config(opts))
+    Ok(opts)
 }
 
 // ---------------------------------------------------------------------------
 // Event conversion: Rust DemuxEvent → Python DemuxEvent.* instance
 // ---------------------------------------------------------------------------
 
-fn convert_event(py: Python<'_>, ev: &DemuxEvent) -> PyResult<PyObject> {
+pub(crate) fn convert_event(py: Python<'_>, ev: &DemuxEvent) -> PyResult<PyObject> {
     let mpegts = py.import_bound("tstrans.mpegts")?;
     match ev {
         DemuxEvent::ProgramMap(pm) => convert_program_map_event(py, &mpegts, pm),

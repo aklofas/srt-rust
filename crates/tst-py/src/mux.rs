@@ -1498,6 +1498,16 @@ pub struct PyMuxerStats {
     inner: RustMuxerStats,
 }
 
+impl PyMuxerStats {
+    /// Crate-private constructor used by the `tstrans.rtp.MuxSender`
+    /// wrapper (which composes a `tst_pipeline::MuxSenderStats` view
+    /// into the same shape Python callers already use for
+    /// `Muxer.stats()`).
+    pub(crate) fn from_inner(inner: RustMuxerStats) -> Self {
+        Self { inner }
+    }
+}
+
 #[pymethods]
 impl PyMuxerStats {
     /// Total 188-byte TS packets drained via [`Muxer.pull`][PyMuxer::pull].

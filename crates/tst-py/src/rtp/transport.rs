@@ -109,7 +109,7 @@ pub(crate) struct PySocketStats {
 }
 
 impl PySocketStats {
-    fn from_core(s: SocketStats) -> Self {
+    pub(crate) fn from_core(s: SocketStats) -> Self {
         Self {
             rtt_us: s.rtt_us,
             send_bandwidth_bps: s.send_bandwidth_bps,

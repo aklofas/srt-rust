@@ -31,18 +31,20 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use pyo3::exceptions::{PyNotImplementedError, PyValueError};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use secrecy::SecretString;
 use tst_rtp::error::RtspError as RustRtspError;
 use tst_rtp::rtsp::auth::DigestAlgorithm as RustDigestAlgorithm;
+use tst_rtp::rtsp::client::session::RtspSession as RustRtspSession;
 use tst_rtp::rtsp::client::{
     RtspCancelHandle as RustRtspCancelHandle, RtspClient as RustRtspClient,
 };
 use tst_rtp::{RtspClientBuilder, RtspVersion};
 
 use crate::errors::make_rtsp_error;
+use crate::rtp::demux_receiver::PyDemuxReceiver;
 
 // ---------------------------------------------------------------------------
 // Enums (Python IntEnum-equivalent PyClasses)
@@ -524,24 +526,26 @@ impl PyRtspClient {
 
         // 6. Drive the RTSP state machine to PLAY. Wrap in
         //    py.allow_threads for the full network exchange.
-        let result = py.allow_threads(|| -> Result<RustRtspClient, RustRtspError> {
-            let mut client = builder.connect()?;
-            let _opts = client.options()?;
-            let sdp = client.describe()?;
-            let _session = client.setup_mp2t_auto(&sdp)?;
-            let _rtp_info = client.play()?;
-            // Note: `_session` is dropped here — its sole purpose at
-            // Wave A is to validate SETUP completed. Wave B Task 23
-            // will keep this `RtspSession` around so it can be
-            // consumed by `into_demux_receiver`.
-            Ok(client)
-        });
+        //    Wave B (T23): retain the `RtspSession` so
+        //    `RtspSession.into_demux_receiver` can consume its
+        //    UDP-socket-pair (or TCP-interleaved mpsc rx) downstream.
+        let result = py.allow_threads(
+            || -> Result<(RustRtspClient, RustRtspSession), RustRtspError> {
+                let mut client = builder.connect()?;
+                let _opts = client.options()?;
+                let sdp = client.describe()?;
+                let session = client.setup_mp2t_auto(&sdp)?;
+                let _rtp_info = client.play()?;
+                Ok((client, session))
+            },
+        );
 
-        let client =
+        let (client, session) =
             result.map_err(|e| make_rtsp_error(py, rtsp_error_kind_str(&e), &e.to_string()))?;
 
         Ok(PyRtspSession {
             client: Arc::new(Mutex::new(Some(client))),
+            session: Arc::new(Mutex::new(Some(session))),
             torn_down: Arc::new(AtomicBool::new(false)),
         })
     }
@@ -555,8 +559,12 @@ impl PyRtspClient {
 /// remaining control-plane events (`pause` / `play` resume /
 /// `teardown`) and expose RTCP-derived stats.
 ///
-/// `into_demux_receiver` is a Wave B Task 23 surface; here it raises
-/// `NotImplementedError`.
+/// `into_demux_receiver` consumes the underlying `RtspSession` and
+/// returns a `tstrans.rtp.DemuxReceiver` over the post-SETUP RTP data
+/// plane. The control-plane methods (`pause` / `play` / `teardown`)
+/// remain usable AFTER `into_demux_receiver` is called — the
+/// session-id state lives on the `RtspClient`, which `into_demux_receiver`
+/// does NOT consume.
 ///
 /// `__enter__` / `__exit__` make `RtspSession` usable as a context
 /// manager — `__exit__` fires `teardown` best-effort.
@@ -568,6 +576,13 @@ pub struct PyRtspSession {
     /// handle owns its own `Arc<AtomicBool>` backing flag — sharing
     /// with the client doesn't require holding the mutex).
     client: Arc<Mutex<Option<RustRtspClient>>>,
+    /// The SETUP-time `RtspSession` carrying the UDP socket pair (or
+    /// TCP-interleaved mpsc receiver) for the data plane. `Option`
+    /// because `into_demux_receiver` consumes it — calling it twice on
+    /// the same `PyRtspSession` raises `RtspError(PROTOCOL)`. The
+    /// `Mutex` mirrors the `client` field's pattern so the two fields
+    /// can be accessed under uniform locking discipline.
+    session: Arc<Mutex<Option<RustRtspSession>>>,
     /// Set true by `teardown` / `__exit__` so duplicate teardowns
     /// are a no-op rather than a "session_id is None" surface from
     /// `RtspClient::teardown`. `Arc<AtomicBool>` so `__exit__` can
@@ -662,22 +677,60 @@ impl PyRtspSession {
         PyRtspStats::default()
     }
 
-    /// Bridge to a (Wave B) `tstrans.rtp.DemuxReceiver`. Raises
-    /// `NotImplementedError` until Task 23 lands.
+    /// Consume the session's data-plane (UDP socket pair or
+    /// TCP-interleaved mpsc receiver) and wrap it in a
+    /// `tstrans.rtp.DemuxReceiver` for iterating `DemuxEvent`s.
     ///
-    /// `into_*` naming matches the Rust convention even though Wave A
-    /// can't consume `self` (we still need cancel/teardown after);
-    /// `wrong_self_convention` is muted because the semantics are
-    /// "transfer ownership of the session" once Wave B lands.
+    /// The control-plane methods (`pause` / `play` / `teardown` /
+    /// `cancel_handle`) remain usable on this `RtspSession` after the
+    /// call — only the data-plane `RtspSession` (an internal Rust
+    /// value, distinct from this Python wrapper) is consumed. Calling
+    /// `into_demux_receiver` twice on the same `PyRtspSession` raises
+    /// `RtspError(PROTOCOL)`.
+    ///
+    /// `demux_config` accepts the same `tstrans.mpegts.DemuxerConfig`
+    /// dataclass the Python `Demuxer(config=...)` constructor takes;
+    /// `None` defers to the demuxer defaults.
+    ///
+    /// `into_*` naming matches the Rust convention; the
+    /// `wrong_self_convention` lint is muted because the consumed
+    /// resource is the inner data plane, not the Python wrapper.
     #[pyo3(signature = (demux_config = None))]
     #[allow(clippy::wrong_self_convention)]
-    fn into_demux_receiver(&mut self, demux_config: Option<&Bound<'_, PyAny>>) -> PyResult<()> {
-        let _ = demux_config;
-        Err(PyNotImplementedError::new_err(
-            "RtspSession.into_demux_receiver is a Wave B (Task 23) surface — \
-             once T23 lands this will consume the session and return a \
-             tstrans.rtp.DemuxReceiver",
-        ))
+    fn into_demux_receiver(
+        &mut self,
+        py: Python<'_>,
+        demux_config: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<PyDemuxReceiver> {
+        // Take the SETUP-time RtspSession; double-consume = protocol err.
+        let session = {
+            let mut guard = self
+                .session
+                .lock()
+                .map_err(|_| PyValueError::new_err("RtspSession lock poisoned"))?;
+            guard.take().ok_or_else(|| {
+                make_rtsp_error_pure(
+                    "PROTOCOL",
+                    "RtspSession.into_demux_receiver: already consumed",
+                )
+            })?
+        };
+        // Convert to RtpRecvTransport. The session's `into_recv_transport`
+        // panics only on internal-state-corruption shapes that can't
+        // happen on a SETUP-succeeded path; we don't catch_unwind here
+        // because the upstream invariants are stable. If a future
+        // tst-rtp release flips this to fallible we'll switch to
+        // map_err.
+        let transport = session.into_recv_transport();
+        // Optionally lift demux config; build with defaults otherwise.
+        let receiver = match demux_config {
+            None => PyDemuxReceiver::from_recv_transport(transport),
+            Some(cfg) => {
+                let opts = crate::mpegts::build_demuxer_config(py, cfg)?;
+                PyDemuxReceiver::from_recv_transport_with_config(transport, opts)
+            }
+        };
+        Ok(receiver)
     }
 
     fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {

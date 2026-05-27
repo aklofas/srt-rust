@@ -35,6 +35,10 @@ Receiver = _rtp.Receiver
 SocketStats = _rtp.SocketStats
 CancelHandle = _rtp.CancelHandle
 
+# Wave B T23 — MuxSender + DemuxReceiver convenience wrappers.
+MuxSender = _rtp.MuxSender
+DemuxReceiver = _rtp.DemuxReceiver
+
 # Wave A T21 — RtspClient, RtspSession, auth, config, stats.
 # BasicAuth + DigestAuth are PyClass-backed dataclass-equivalents living
 # in src/rtp/client.rs (NOT pure-Python). Both T21 client auth and T22
@@ -140,6 +144,9 @@ __all__: list[str] = [
     "Receiver",
     "SocketStats",
     "CancelHandle",
+    # T23 mux/demux convenience wrappers
+    "MuxSender",
+    "DemuxReceiver",
     # T21 RTSP client
     "RtspClient",
     "RtspSession",

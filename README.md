@@ -13,7 +13,7 @@ A fast, embeddable Rust library for MPEG-TS video + KLV metadata streaming over 
 |---|---|---|
 | **Rust** | Shipping | [`docs/languages/rust.md`](docs/languages/rust.md) |
 | **C** | Shipping (ABI 0.5) | [`docs/languages/c.md`](docs/languages/c.md) |
-| **Python** | Shipping (`tstrans` on PyPI) | [`docs/languages/python.md`](docs/languages/python.md) |
+| **Python** | Shipping (`tstrans` on PyPI; includes `tstrans.rtp` RTP + RTSP) | [`docs/languages/python.md`](docs/languages/python.md) |
 | **JVM** | Planned (`tst-jni` next) | [roadmap](docs/project/deferred-features.md) |
 
 ## In 30 seconds

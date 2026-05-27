@@ -27,9 +27,10 @@ rtp     = ["dep:tst-rtp", "dep:secrecy"]
 tst-core = { path = "../tst-core" }
 tst-rtp  = { path = "../tst-rtp", default-features = false, optional = true }
 pyo3     = { version = "0.22", features = ["extension-module", "abi3-py310"] }
-# Wrap user-supplied RTSP passwords in `secrecy::SecretString` at the
-# Rust boundary before handing them to `tst_rtp::RtspClientBuilder::auth`.
-# Optional + gated on `feature = "rtp"` so non-rtp builds don't pull it.
+# Used by the `rtp` feature path — both T21 RtspClientBuilder::auth and
+# T22 server-side auth wrap user-passed passwords in `SecretString`
+# before handing them to the Rust builder. Optional + gated on
+# `feature = "rtp"` so non-rtp builds don't pull it.
 secrecy  = { workspace = true, optional = true }
 
 [build-dependencies]

@@ -22,7 +22,18 @@ except (ImportError, AttributeError) as exc:
         "`rtp` cargo feature is enabled (it is on by default)."
     ) from exc
 
-# Re-exports populated by Wave A / Wave B tasks. Kept empty in the
-# scaffold so `from tstrans.rtp import *` is a documented no-op until
-# real types land.
-__all__: list[str] = []
+# Re-exports populated incrementally as Wave A / Wave B tasks land their
+# PyO3 types in `tstrans._native.rtp`. Wave A Task 20 lands the four
+# transport-level types below; subsequent tasks add `MuxSender`,
+# `DemuxReceiver`, `RtspClient`, `RtspServer`, `MountHandle`, etc.
+Sender = _rtp.Sender
+Receiver = _rtp.Receiver
+SocketStats = _rtp.SocketStats
+CancelHandle = _rtp.CancelHandle
+
+__all__: list[str] = [
+    "Sender",
+    "Receiver",
+    "SocketStats",
+    "CancelHandle",
+]

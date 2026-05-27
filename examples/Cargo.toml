@@ -9,6 +9,7 @@ description = "Runnable examples for the ts-transformer libraries. Not published
 [dependencies]
 tst-core = { path = "../crates/tst-core" }
 tst-pipeline = { path = "../crates/tst-pipeline" }
+tst-rist = { path = "../crates/tst-rist" }
 tst-rtp = { path = "../crates/tst-rtp" }
 tst-srt = { path = "../crates/tst-srt" }
 tst-tcp = { path = "../crates/tst-tcp", features = ["hls"] }
@@ -31,6 +32,10 @@ path = "sending/encrypted_send_recv.rs"
 [[example]]
 name = "rtp_basic"
 path = "sending/rtp_basic.rs"
+
+[[example]]
+name = "send_rist"
+path = "sending/send_rist.rs"
 
 [[example]]
 name = "rtsp_server_publish"
@@ -107,6 +112,10 @@ path = "receiving/demux_to_events.rs"
 [[example]]
 name = "rtp_recv_basic"
 path = "receiving/rtp_recv_basic.rs"
+
+[[example]]
+name = "recv_rist"
+path = "receiving/recv_rist.rs"
 
 [[example]]
 name = "rtsp_client_camera"

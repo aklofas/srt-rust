@@ -50,7 +50,7 @@ jobs:
         if: startsWith(matrix.name, 'linux-')
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config
+          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -162,6 +162,7 @@ jobs:
       - name: cargo clippy
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Install nightly toolchain (for doc lints)
@@ -187,6 +188,7 @@ jobs:
         if: matrix.name == 'linux-x86_64'
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
           RUSTDOCFLAGS: "-D warnings"
         run: cargo +nightly doc --workspace --no-deps --all-features
 
@@ -199,6 +201,7 @@ jobs:
         if: matrix.name != 'windows-msvc'
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: cargo test --doc --workspace
 
       # `cargo test` only builds the rlib of crates with multiple crate-types.
@@ -207,6 +210,7 @@ jobs:
       - name: cargo build (all crate types, with mbedtls)
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: cargo build --workspace
 
       - name: cargo test (default features, with mbedtls)
@@ -218,11 +222,13 @@ jobs:
         if: matrix.name != 'windows-msvc'
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: cargo test --workspace
 
       - name: cargo build (all crate types, no-default-features)
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: cargo build --workspace --no-default-features
 
       - name: cargo test (no-default-features, no encryption)
@@ -231,6 +237,7 @@ jobs:
         if: matrix.name != 'windows-msvc'
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: cargo test --workspace --no-default-features
 
       - name: cargo build (all crate types, all-features)
@@ -245,6 +252,7 @@ jobs:
         # to the active feature set before the test step runs.
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: cargo build --workspace --all-features
 
       - name: cargo test (all features)
@@ -258,6 +266,7 @@ jobs:
         if: matrix.name != 'windows-msvc'
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: cargo test --workspace --all-features
 
       - name: Public-API ratchet (no unintended SemVer breaks)
@@ -274,8 +283,8 @@ jobs:
         run: |
           rustup toolchain install nightly --profile minimal --no-self-update
           cargo +stable install cargo-public-api --locked --quiet
-          for crate in tst-core tst-pipeline tst-rtp tst-srt tst-tcp tst-udp; do
-            SRT_FORCE_VENDORED=1 cargo public-api -p $crate --simplified > /tmp/public-api-current-$crate.txt
+          for crate in rist-sys tst-core tst-pipeline tst-rist tst-rtp tst-srt tst-tcp tst-udp; do
+            SRT_FORCE_VENDORED=1 RIST_FORCE_VENDORED=1 cargo public-api -p $crate --simplified > /tmp/public-api-current-$crate.txt
             if ! diff -u crates/$crate/public-api.txt /tmp/public-api-current-$crate.txt; then
               echo "Public API drift in $crate. Update crates/$crate/public-api.txt or revert the change." >&2
               exit 1
@@ -288,7 +297,7 @@ jobs:
         # build). On adding a new error enum, bump the BASELINE constant.
         if: matrix.name == 'linux-x86_64'
         run: |
-          BASELINE=229
+          BASELINE=239
           OBSERVED=$(rg -c '#\[non_exhaustive\]' crates/ --type rust | awk -F: '{sum += $2} END {print sum}')
           if [ "$OBSERVED" -lt "$BASELINE" ]; then
             echo "non_exhaustive count regressed: expected >= $BASELINE, observed $OBSERVED" >&2
@@ -350,7 +359,7 @@ jobs:
       - name: Install build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config
+          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
 
       - name: Install nightly + cargo-fuzz
         run: |
@@ -370,6 +379,7 @@ jobs:
       - name: Compile-check tst-core fuzz targets
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: |
           cd crates/tst-core/fuzz
           cargo +nightly fuzz check
@@ -377,6 +387,7 @@ jobs:
       - name: Compile-check tst-srt fuzz targets
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: |
           cd crates/tst-srt/fuzz
           cargo +nightly fuzz check
@@ -446,7 +457,7 @@ jobs:
       - name: Install build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config
+          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
 
       - uses: actions/setup-python@v5
         with:
@@ -483,6 +494,7 @@ jobs:
       - name: Build tst-py (maturin develop --release)
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: |
           cd crates/tst-py
           source .venv/bin/activate
@@ -518,7 +530,7 @@ jobs:
       - name: Install build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config
+          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
 
       - uses: actions/setup-python@v5
         with:
@@ -554,6 +566,7 @@ jobs:
       - name: Build tst-py (maturin develop --release)
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: |
           cd crates/tst-py
           source .venv/bin/activate
@@ -611,7 +624,7 @@ jobs:
       - name: Install build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake pkg-config
+          sudo apt-get install -y build-essential cmake pkg-config meson ninja-build
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -645,6 +658,7 @@ jobs:
         # the rlib when multiple crate-types are present).
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: cargo build -p tst-c ${{ matrix.cargo_flags }}
 
       - name: cargo test feature_matrix_compile (${{ matrix.name }})
@@ -653,4 +667,5 @@ jobs:
         # neither  → 0 tests (compile succeeds, no test bodies active).
         env:
           SRT_FORCE_VENDORED: "1"
+          RIST_FORCE_VENDORED: "1"
         run: cargo test -p tst-c ${{ matrix.cargo_flags }} --test feature_matrix_compile

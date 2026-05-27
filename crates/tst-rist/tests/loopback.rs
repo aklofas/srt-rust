@@ -8,7 +8,6 @@
 //! ~800-1500ms — so we sleep before the first send and use a retry loop
 //! on the recv side that tolerates Backpressure timeouts.
 
-use std::net::UdpSocket;
 use std::sync::Mutex;
 use std::sync::mpsc;
 use std::thread;
@@ -19,23 +18,22 @@ use tst_rist::{
     EncryptionKey, RistProfile, RistRecvTransportBuilder, RistTransportBuilder,
 };
 
-/// Serializes RIST loopback tests within the process.
-///
-/// Cargo runs tests on multiple threads by default. The ephemeral-port +
-/// librist-bind race is brittle: two tests can each "find" the same free
-/// UDP port in their respective bind+drop windows, then race librist to
-/// rebind. Serializing the setup phase avoids the collision entirely.
+/// Serializes RIST loopback tests within this test binary. (Cross-binary
+/// serialization isn't needed because each test in this file uses a distinct
+/// hardcoded port; see PORT_SIMPLE / PORT_AES below.)
 static SERIAL: Mutex<()> = Mutex::new(());
 
-/// Bind a UDP socket to 127.0.0.1:0 to get an OS-assigned port, drop it, and
-/// return the port. Called under [`SERIAL`] so two tests don't race for the
-/// same port window.
-fn find_free_udp_port() -> u16 {
-    let s = UdpSocket::bind("127.0.0.1:0").expect("bind ephemeral");
-    let port = s.local_addr().expect("local_addr").port();
-    drop(s);
-    port
-}
+/// Hardcoded distinct ports per test. Avoids the ephemeral-bind + librist-
+/// rebind race that broke find_free_udp_port-based discovery: cargo runs
+/// integration-test binaries in parallel, each with its own static Mutex,
+/// so different files cannot synchronize through process-shared state.
+///
+/// **Simple Profile requires an EVEN port** — librist uses port + port+1 for
+/// RTP + RTCP and rist_peer_create returns -1 with "port must be even" if
+/// the bind port is odd. See vendor/librist/src/rist.c:866.
+/// Main Profile multiplexes RTCP into the same socket so any port works.
+const PORT_SIMPLE: u16 = 33010;
+const PORT_AES: u16 = 33013;
 
 /// 188 bytes of arbitrary payload — one MPEG-TS packet's worth.
 fn synthetic_ts_packet(seq_byte: u8) -> [u8; 188] {
@@ -73,7 +71,7 @@ fn drain_n(
 #[test]
 fn simple_profile_unicast_loopback_round_trip() {
     let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
-    let port = find_free_udp_port();
+    let port = PORT_SIMPLE;
     let bind_url = format!("rist://@127.0.0.1:{port}");
     let connect_url = format!("rist://127.0.0.1:{port}");
 
@@ -136,7 +134,7 @@ fn simple_profile_unicast_loopback_round_trip() {
 #[test]
 fn main_profile_aes256_loopback_round_trip() {
     let _serial = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
-    let port = find_free_udp_port();
+    let port = PORT_AES;
     let bind_url = format!("rist://@127.0.0.1:{port}");
     let connect_url = format!("rist://127.0.0.1:{port}");
     let psk = "loopback-test-secret-keep-private";

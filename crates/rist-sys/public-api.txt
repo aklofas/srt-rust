@@ -1,0 +1,595 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.45
+   Compiling glob v0.3.3
+   Compiling prettyplease v0.2.37
+   Compiling libc v0.2.186
+   Compiling cfg-if v1.0.4
+   Compiling regex-syntax v0.8.10
+   Compiling minimal-lexical v0.2.1
+   Compiling memchr v2.8.0
+   Compiling either v1.15.0
+   Compiling bindgen v0.72.1
+   Compiling log v0.4.29
+   Compiling bitflags v2.11.1
+   Compiling rustc-hash v2.1.2
+   Compiling shlex v1.3.0
+   Compiling pkg-config v0.3.33
+   Compiling libloading v0.8.9
+   Compiling itertools v0.12.1
+   Compiling clang-sys v1.8.1
+   Compiling nom v7.1.3
+   Compiling syn v2.0.117
+   Compiling regex-automata v0.4.14
+   Compiling cexpr v0.6.0
+   Compiling regex v1.12.3
+   Compiling rist-sys v0.1.0 (/home/aklofas/Projects/ts-transformer/.worktrees/tst-rist-a4/crates/rist-sys)
+warning: rist-sys@0.1.0: cargo:rustc-link-arg-cdylib was specified in the build script of rist-sys v0.1.0 (/home/aklofas/Projects/ts-transformer/.worktrees/tst-rist-a4/crates/rist-sys), but that package does not contain a cdylib target
+
+Allowing this was an unintended change in the 1.50 release, and may become an error in the future. For more information, see <https://github.com/rust-lang/cargo/issues/9562>.
+ Documenting rist-sys v0.1.0 (/home/aklofas/Projects/ts-transformer/.worktrees/tst-rist-a4/crates/rist-sys)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.93s
+pub mod rist_sys
+#[repr(C)] pub union rist_sys::rist_stats__bindgen_ty_1
+pub rist_sys::rist_stats__bindgen_ty_1::receiver_flow: rist_sys::rist_stats_receiver_flow
+pub rist_sys::rist_stats__bindgen_ty_1::sender_peer: rist_sys::rist_stats_sender_peer
+impl core::clone::Clone for rist_sys::rist_stats__bindgen_ty_1
+pub fn rist_sys::rist_stats__bindgen_ty_1::clone(&self) -> rist_sys::rist_stats__bindgen_ty_1
+impl core::default::Default for rist_sys::rist_stats__bindgen_ty_1
+pub fn rist_sys::rist_stats__bindgen_ty_1::default() -> Self
+impl core::marker::Copy for rist_sys::rist_stats__bindgen_ty_1
+impl core::marker::Freeze for rist_sys::rist_stats__bindgen_ty_1
+impl core::marker::Send for rist_sys::rist_stats__bindgen_ty_1
+impl core::marker::Sync for rist_sys::rist_stats__bindgen_ty_1
+impl core::marker::Unpin for rist_sys::rist_stats__bindgen_ty_1
+impl core::marker::UnsafeUnpin for rist_sys::rist_stats__bindgen_ty_1
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_stats__bindgen_ty_1
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_stats__bindgen_ty_1
+#[repr(C)] pub struct rist_sys::_IO_FILE
+pub rist_sys::_IO_FILE::_IO_backup_base: *mut core::ffi::primitives::c_char
+pub rist_sys::_IO_FILE::_IO_buf_base: *mut core::ffi::primitives::c_char
+pub rist_sys::_IO_FILE::_IO_buf_end: *mut core::ffi::primitives::c_char
+pub rist_sys::_IO_FILE::_IO_read_base: *mut core::ffi::primitives::c_char
+pub rist_sys::_IO_FILE::_IO_read_end: *mut core::ffi::primitives::c_char
+pub rist_sys::_IO_FILE::_IO_read_ptr: *mut core::ffi::primitives::c_char
+pub rist_sys::_IO_FILE::_IO_save_base: *mut core::ffi::primitives::c_char
+pub rist_sys::_IO_FILE::_IO_save_end: *mut core::ffi::primitives::c_char
+pub rist_sys::_IO_FILE::_IO_write_base: *mut core::ffi::primitives::c_char
+pub rist_sys::_IO_FILE::_IO_write_end: *mut core::ffi::primitives::c_char
+pub rist_sys::_IO_FILE::_IO_write_ptr: *mut core::ffi::primitives::c_char
+pub rist_sys::_IO_FILE::__pad5: usize
+pub rist_sys::_IO_FILE::_chain: *mut rist_sys::_IO_FILE
+pub rist_sys::_IO_FILE::_codecvt: *mut rist_sys::_IO_codecvt
+pub rist_sys::_IO_FILE::_cur_column: core::ffi::primitives::c_ushort
+pub rist_sys::_IO_FILE::_fileno: core::ffi::primitives::c_int
+pub rist_sys::_IO_FILE::_flags: core::ffi::primitives::c_int
+pub rist_sys::_IO_FILE::_flags2: core::ffi::primitives::c_int
+pub rist_sys::_IO_FILE::_freeres_buf: *mut core::ffi::c_void
+pub rist_sys::_IO_FILE::_freeres_list: *mut rist_sys::_IO_FILE
+pub rist_sys::_IO_FILE::_lock: *mut rist_sys::_IO_lock_t
+pub rist_sys::_IO_FILE::_markers: *mut rist_sys::_IO_marker
+pub rist_sys::_IO_FILE::_mode: core::ffi::primitives::c_int
+pub rist_sys::_IO_FILE::_offset: rist_sys::__off64_t
+pub rist_sys::_IO_FILE::_old_offset: rist_sys::__off_t
+pub rist_sys::_IO_FILE::_shortbuf: [core::ffi::primitives::c_char; 1]
+pub rist_sys::_IO_FILE::_unused2: [core::ffi::primitives::c_char; 20]
+pub rist_sys::_IO_FILE::_vtable_offset: core::ffi::primitives::c_schar
+pub rist_sys::_IO_FILE::_wide_data: *mut rist_sys::_IO_wide_data
+impl core::clone::Clone for rist_sys::_IO_FILE
+pub fn rist_sys::_IO_FILE::clone(&self) -> rist_sys::_IO_FILE
+impl core::default::Default for rist_sys::_IO_FILE
+pub fn rist_sys::_IO_FILE::default() -> Self
+impl core::fmt::Debug for rist_sys::_IO_FILE
+pub fn rist_sys::_IO_FILE::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::_IO_FILE
+impl core::marker::Freeze for rist_sys::_IO_FILE
+impl !core::marker::Send for rist_sys::_IO_FILE
+impl !core::marker::Sync for rist_sys::_IO_FILE
+impl core::marker::Unpin for rist_sys::_IO_FILE
+impl core::marker::UnsafeUnpin for rist_sys::_IO_FILE
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::_IO_FILE
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::_IO_FILE
+#[repr(C)] pub struct rist_sys::_IO_codecvt
+impl core::clone::Clone for rist_sys::_IO_codecvt
+pub fn rist_sys::_IO_codecvt::clone(&self) -> rist_sys::_IO_codecvt
+impl core::fmt::Debug for rist_sys::_IO_codecvt
+pub fn rist_sys::_IO_codecvt::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::_IO_codecvt
+impl core::marker::Freeze for rist_sys::_IO_codecvt
+impl core::marker::Send for rist_sys::_IO_codecvt
+impl core::marker::Sync for rist_sys::_IO_codecvt
+impl core::marker::Unpin for rist_sys::_IO_codecvt
+impl core::marker::UnsafeUnpin for rist_sys::_IO_codecvt
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::_IO_codecvt
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::_IO_codecvt
+#[repr(C)] pub struct rist_sys::_IO_marker
+impl core::clone::Clone for rist_sys::_IO_marker
+pub fn rist_sys::_IO_marker::clone(&self) -> rist_sys::_IO_marker
+impl core::fmt::Debug for rist_sys::_IO_marker
+pub fn rist_sys::_IO_marker::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::_IO_marker
+impl core::marker::Freeze for rist_sys::_IO_marker
+impl core::marker::Send for rist_sys::_IO_marker
+impl core::marker::Sync for rist_sys::_IO_marker
+impl core::marker::Unpin for rist_sys::_IO_marker
+impl core::marker::UnsafeUnpin for rist_sys::_IO_marker
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::_IO_marker
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::_IO_marker
+#[repr(C)] pub struct rist_sys::_IO_wide_data
+impl core::clone::Clone for rist_sys::_IO_wide_data
+pub fn rist_sys::_IO_wide_data::clone(&self) -> rist_sys::_IO_wide_data
+impl core::fmt::Debug for rist_sys::_IO_wide_data
+pub fn rist_sys::_IO_wide_data::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::_IO_wide_data
+impl core::marker::Freeze for rist_sys::_IO_wide_data
+impl core::marker::Send for rist_sys::_IO_wide_data
+impl core::marker::Sync for rist_sys::_IO_wide_data
+impl core::marker::Unpin for rist_sys::_IO_wide_data
+impl core::marker::UnsafeUnpin for rist_sys::_IO_wide_data
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::_IO_wide_data
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::_IO_wide_data
+#[repr(C)] pub struct rist_sys::librist_verifier_lookup_data_t
+pub rist_sys::librist_verifier_lookup_data_t::default_ng: bool
+pub rist_sys::librist_verifier_lookup_data_t::generator_ascii: *mut core::ffi::primitives::c_char
+pub rist_sys::librist_verifier_lookup_data_t::n_modulus_ascii: *mut core::ffi::primitives::c_char
+pub rist_sys::librist_verifier_lookup_data_t::salt: *mut u8
+pub rist_sys::librist_verifier_lookup_data_t::salt_len: usize
+pub rist_sys::librist_verifier_lookup_data_t::verifier: *mut u8
+pub rist_sys::librist_verifier_lookup_data_t::verifier_len: usize
+impl core::clone::Clone for rist_sys::librist_verifier_lookup_data_t
+pub fn rist_sys::librist_verifier_lookup_data_t::clone(&self) -> rist_sys::librist_verifier_lookup_data_t
+impl core::default::Default for rist_sys::librist_verifier_lookup_data_t
+pub fn rist_sys::librist_verifier_lookup_data_t::default() -> Self
+impl core::fmt::Debug for rist_sys::librist_verifier_lookup_data_t
+pub fn rist_sys::librist_verifier_lookup_data_t::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::librist_verifier_lookup_data_t
+impl core::marker::Freeze for rist_sys::librist_verifier_lookup_data_t
+impl !core::marker::Send for rist_sys::librist_verifier_lookup_data_t
+impl !core::marker::Sync for rist_sys::librist_verifier_lookup_data_t
+impl core::marker::Unpin for rist_sys::librist_verifier_lookup_data_t
+impl core::marker::UnsafeUnpin for rist_sys::librist_verifier_lookup_data_t
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::librist_verifier_lookup_data_t
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::librist_verifier_lookup_data_t
+#[repr(C)] pub struct rist_sys::rist_ctx
+impl core::clone::Clone for rist_sys::rist_ctx
+pub fn rist_sys::rist_ctx::clone(&self) -> rist_sys::rist_ctx
+impl core::fmt::Debug for rist_sys::rist_ctx
+pub fn rist_sys::rist_ctx::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::rist_ctx
+impl core::marker::Freeze for rist_sys::rist_ctx
+impl core::marker::Send for rist_sys::rist_ctx
+impl core::marker::Sync for rist_sys::rist_ctx
+impl core::marker::Unpin for rist_sys::rist_ctx
+impl core::marker::UnsafeUnpin for rist_sys::rist_ctx
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_ctx
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_ctx
+#[repr(C)] pub struct rist_sys::rist_data_block
+pub rist_sys::rist_data_block::flags: u32
+pub rist_sys::rist_data_block::flow_id: u32
+pub rist_sys::rist_data_block::payload: *const core::ffi::c_void
+pub rist_sys::rist_data_block::payload_len: usize
+pub rist_sys::rist_data_block::peer: *mut rist_sys::rist_peer
+pub rist_sys::rist_data_block::ref_: *mut rist_sys::rist_ref
+pub rist_sys::rist_data_block::seq: u64
+pub rist_sys::rist_data_block::ts_ntp: u64
+pub rist_sys::rist_data_block::virt_dst_port: u16
+pub rist_sys::rist_data_block::virt_src_port: u16
+impl core::clone::Clone for rist_sys::rist_data_block
+pub fn rist_sys::rist_data_block::clone(&self) -> rist_sys::rist_data_block
+impl core::default::Default for rist_sys::rist_data_block
+pub fn rist_sys::rist_data_block::default() -> Self
+impl core::fmt::Debug for rist_sys::rist_data_block
+pub fn rist_sys::rist_data_block::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::rist_data_block
+impl core::marker::Freeze for rist_sys::rist_data_block
+impl !core::marker::Send for rist_sys::rist_data_block
+impl !core::marker::Sync for rist_sys::rist_data_block
+impl core::marker::Unpin for rist_sys::rist_data_block
+impl core::marker::UnsafeUnpin for rist_sys::rist_data_block
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_data_block
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_data_block
+#[repr(C)] pub struct rist_sys::rist_logging_settings
+pub rist_sys::rist_logging_settings::log_cb: core::option::Option<fn(*mut core::ffi::c_void, rist_sys::rist_log_level, *const core::ffi::primitives::c_char) -> core::ffi::primitives::c_int>
+pub rist_sys::rist_logging_settings::log_cb_arg: *mut core::ffi::c_void
+pub rist_sys::rist_logging_settings::log_level: rist_sys::rist_log_level
+pub rist_sys::rist_logging_settings::log_socket: core::ffi::primitives::c_int
+pub rist_sys::rist_logging_settings::log_stream: *mut libc::unix::FILE
+impl core::clone::Clone for rist_sys::rist_logging_settings
+pub fn rist_sys::rist_logging_settings::clone(&self) -> rist_sys::rist_logging_settings
+impl core::default::Default for rist_sys::rist_logging_settings
+pub fn rist_sys::rist_logging_settings::default() -> Self
+impl core::fmt::Debug for rist_sys::rist_logging_settings
+pub fn rist_sys::rist_logging_settings::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::rist_logging_settings
+impl core::marker::Freeze for rist_sys::rist_logging_settings
+impl !core::marker::Send for rist_sys::rist_logging_settings
+impl !core::marker::Sync for rist_sys::rist_logging_settings
+impl core::marker::Unpin for rist_sys::rist_logging_settings
+impl core::marker::UnsafeUnpin for rist_sys::rist_logging_settings
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_logging_settings
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_logging_settings
+#[repr(C)] pub struct rist_sys::rist_oob_block
+pub rist_sys::rist_oob_block::payload: *const core::ffi::c_void
+pub rist_sys::rist_oob_block::payload_len: usize
+pub rist_sys::rist_oob_block::peer: *mut rist_sys::rist_peer
+pub rist_sys::rist_oob_block::ts_ntp: u64
+impl core::clone::Clone for rist_sys::rist_oob_block
+pub fn rist_sys::rist_oob_block::clone(&self) -> rist_sys::rist_oob_block
+impl core::default::Default for rist_sys::rist_oob_block
+pub fn rist_sys::rist_oob_block::default() -> Self
+impl core::fmt::Debug for rist_sys::rist_oob_block
+pub fn rist_sys::rist_oob_block::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::rist_oob_block
+impl core::marker::Freeze for rist_sys::rist_oob_block
+impl !core::marker::Send for rist_sys::rist_oob_block
+impl !core::marker::Sync for rist_sys::rist_oob_block
+impl core::marker::Unpin for rist_sys::rist_oob_block
+impl core::marker::UnsafeUnpin for rist_sys::rist_oob_block
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_oob_block
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_oob_block
+#[repr(C)] pub struct rist_sys::rist_peer
+impl core::clone::Clone for rist_sys::rist_peer
+pub fn rist_sys::rist_peer::clone(&self) -> rist_sys::rist_peer
+impl core::fmt::Debug for rist_sys::rist_peer
+pub fn rist_sys::rist_peer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::rist_peer
+impl core::marker::Freeze for rist_sys::rist_peer
+impl core::marker::Send for rist_sys::rist_peer
+impl core::marker::Sync for rist_sys::rist_peer
+impl core::marker::Unpin for rist_sys::rist_peer
+impl core::marker::UnsafeUnpin for rist_sys::rist_peer
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_peer
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_peer
+#[repr(C)] pub struct rist_sys::rist_peer_config
+pub rist_sys::rist_peer_config::address: [core::ffi::primitives::c_char; 256]
+pub rist_sys::rist_peer_config::address_family: core::ffi::primitives::c_int
+pub rist_sys::rist_peer_config::cname: [core::ffi::primitives::c_char; 128]
+pub rist_sys::rist_peer_config::compression: core::ffi::primitives::c_int
+pub rist_sys::rist_peer_config::congestion_control_mode: rist_sys::rist_congestion_control_mode
+pub rist_sys::rist_peer_config::initiate_conn: core::ffi::primitives::c_int
+pub rist_sys::rist_peer_config::keepalive_interval: u32
+pub rist_sys::rist_peer_config::key_rotation: u32
+pub rist_sys::rist_peer_config::key_size: core::ffi::primitives::c_int
+pub rist_sys::rist_peer_config::max_retries: u32
+pub rist_sys::rist_peer_config::miface: [core::ffi::primitives::c_char; 128]
+pub rist_sys::rist_peer_config::min_retries: u32
+pub rist_sys::rist_peer_config::physical_port: u16
+pub rist_sys::rist_peer_config::recovery_length_max: u32
+pub rist_sys::rist_peer_config::recovery_length_min: u32
+pub rist_sys::rist_peer_config::recovery_maxbitrate: u32
+pub rist_sys::rist_peer_config::recovery_maxbitrate_return: u32
+pub rist_sys::rist_peer_config::recovery_mode: rist_sys::rist_recovery_mode
+pub rist_sys::rist_peer_config::recovery_reorder_buffer: u32
+pub rist_sys::rist_peer_config::recovery_rtt_max: u32
+pub rist_sys::rist_peer_config::recovery_rtt_min: u32
+pub rist_sys::rist_peer_config::secret: [core::ffi::primitives::c_char; 128]
+pub rist_sys::rist_peer_config::session_timeout: u32
+pub rist_sys::rist_peer_config::srp_password: [core::ffi::primitives::c_char; 256]
+pub rist_sys::rist_peer_config::srp_username: [core::ffi::primitives::c_char; 256]
+pub rist_sys::rist_peer_config::timing_mode: u32
+pub rist_sys::rist_peer_config::version: core::ffi::primitives::c_int
+pub rist_sys::rist_peer_config::virt_dst_port: u16
+pub rist_sys::rist_peer_config::weight: u32
+impl core::clone::Clone for rist_sys::rist_peer_config
+pub fn rist_sys::rist_peer_config::clone(&self) -> rist_sys::rist_peer_config
+impl core::default::Default for rist_sys::rist_peer_config
+pub fn rist_sys::rist_peer_config::default() -> Self
+impl core::fmt::Debug for rist_sys::rist_peer_config
+pub fn rist_sys::rist_peer_config::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::rist_peer_config
+impl core::marker::Freeze for rist_sys::rist_peer_config
+impl core::marker::Send for rist_sys::rist_peer_config
+impl core::marker::Sync for rist_sys::rist_peer_config
+impl core::marker::Unpin for rist_sys::rist_peer_config
+impl core::marker::UnsafeUnpin for rist_sys::rist_peer_config
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_peer_config
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_peer_config
+#[repr(C)] pub struct rist_sys::rist_ref
+pub rist_sys::rist_ref::_address: u8
+impl core::clone::Clone for rist_sys::rist_ref
+pub fn rist_sys::rist_ref::clone(&self) -> rist_sys::rist_ref
+impl core::default::Default for rist_sys::rist_ref
+pub fn rist_sys::rist_ref::default() -> rist_sys::rist_ref
+impl core::fmt::Debug for rist_sys::rist_ref
+pub fn rist_sys::rist_ref::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::rist_ref
+impl core::marker::Freeze for rist_sys::rist_ref
+impl core::marker::Send for rist_sys::rist_ref
+impl core::marker::Sync for rist_sys::rist_ref
+impl core::marker::Unpin for rist_sys::rist_ref
+impl core::marker::UnsafeUnpin for rist_sys::rist_ref
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_ref
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_ref
+#[repr(C)] pub struct rist_sys::rist_stats
+pub rist_sys::rist_stats::json_size: u32
+pub rist_sys::rist_stats::stats: rist_sys::rist_stats__bindgen_ty_1
+pub rist_sys::rist_stats::stats_json: *mut core::ffi::primitives::c_char
+pub rist_sys::rist_stats::stats_type: rist_sys::rist_stats_type
+pub rist_sys::rist_stats::version: u16
+impl core::clone::Clone for rist_sys::rist_stats
+pub fn rist_sys::rist_stats::clone(&self) -> rist_sys::rist_stats
+impl core::default::Default for rist_sys::rist_stats
+pub fn rist_sys::rist_stats::default() -> Self
+impl core::marker::Copy for rist_sys::rist_stats
+impl core::marker::Freeze for rist_sys::rist_stats
+impl !core::marker::Send for rist_sys::rist_stats
+impl !core::marker::Sync for rist_sys::rist_stats
+impl core::marker::Unpin for rist_sys::rist_stats
+impl core::marker::UnsafeUnpin for rist_sys::rist_stats
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_stats
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_stats
+#[repr(C)] pub struct rist_sys::rist_stats_receiver_flow
+pub rist_sys::rist_stats_receiver_flow::bandwidth: usize
+pub rist_sys::rist_stats_receiver_flow::cname: [core::ffi::primitives::c_char; 256]
+pub rist_sys::rist_stats_receiver_flow::cur_inter_packet_spacing: u64
+pub rist_sys::rist_stats_receiver_flow::flow_id: u32
+pub rist_sys::rist_stats_receiver_flow::lost: u32
+pub rist_sys::rist_stats_receiver_flow::max_inter_packet_spacing: u64
+pub rist_sys::rist_stats_receiver_flow::min_inter_packet_spacing: u64
+pub rist_sys::rist_stats_receiver_flow::missing: u32
+pub rist_sys::rist_stats_receiver_flow::peer_count: u32
+pub rist_sys::rist_stats_receiver_flow::quality: f64
+pub rist_sys::rist_stats_receiver_flow::received: u64
+pub rist_sys::rist_stats_receiver_flow::recovered: u32
+pub rist_sys::rist_stats_receiver_flow::recovered_one_retry: u32
+pub rist_sys::rist_stats_receiver_flow::reordered: u32
+pub rist_sys::rist_stats_receiver_flow::retry_bandwidth: usize
+pub rist_sys::rist_stats_receiver_flow::rtt: u32
+pub rist_sys::rist_stats_receiver_flow::sent: u64
+pub rist_sys::rist_stats_receiver_flow::status: core::ffi::primitives::c_int
+impl core::clone::Clone for rist_sys::rist_stats_receiver_flow
+pub fn rist_sys::rist_stats_receiver_flow::clone(&self) -> rist_sys::rist_stats_receiver_flow
+impl core::default::Default for rist_sys::rist_stats_receiver_flow
+pub fn rist_sys::rist_stats_receiver_flow::default() -> Self
+impl core::fmt::Debug for rist_sys::rist_stats_receiver_flow
+pub fn rist_sys::rist_stats_receiver_flow::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::rist_stats_receiver_flow
+impl core::marker::Freeze for rist_sys::rist_stats_receiver_flow
+impl core::marker::Send for rist_sys::rist_stats_receiver_flow
+impl core::marker::Sync for rist_sys::rist_stats_receiver_flow
+impl core::marker::Unpin for rist_sys::rist_stats_receiver_flow
+impl core::marker::UnsafeUnpin for rist_sys::rist_stats_receiver_flow
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_stats_receiver_flow
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_stats_receiver_flow
+#[repr(C)] pub struct rist_sys::rist_stats_sender_peer
+pub rist_sys::rist_stats_sender_peer::bandwidth: usize
+pub rist_sys::rist_stats_sender_peer::cname: [core::ffi::primitives::c_char; 128]
+pub rist_sys::rist_stats_sender_peer::peer_id: u32
+pub rist_sys::rist_stats_sender_peer::quality: f64
+pub rist_sys::rist_stats_sender_peer::received: u64
+pub rist_sys::rist_stats_sender_peer::retransmitted: u64
+pub rist_sys::rist_stats_sender_peer::retry_bandwidth: usize
+pub rist_sys::rist_stats_sender_peer::rtt: u32
+pub rist_sys::rist_stats_sender_peer::sent: u64
+impl core::clone::Clone for rist_sys::rist_stats_sender_peer
+pub fn rist_sys::rist_stats_sender_peer::clone(&self) -> rist_sys::rist_stats_sender_peer
+impl core::default::Default for rist_sys::rist_stats_sender_peer
+pub fn rist_sys::rist_stats_sender_peer::default() -> Self
+impl core::fmt::Debug for rist_sys::rist_stats_sender_peer
+pub fn rist_sys::rist_stats_sender_peer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::rist_stats_sender_peer
+impl core::marker::Freeze for rist_sys::rist_stats_sender_peer
+impl core::marker::Send for rist_sys::rist_stats_sender_peer
+impl core::marker::Sync for rist_sys::rist_stats_sender_peer
+impl core::marker::Unpin for rist_sys::rist_stats_sender_peer
+impl core::marker::UnsafeUnpin for rist_sys::rist_stats_sender_peer
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_stats_sender_peer
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_stats_sender_peer
+#[repr(C)] pub struct rist_sys::rist_thread_callback_t
+pub rist_sys::rist_thread_callback_t::thread_callback: rist_sys::rist_thread_callback_func_t
+impl core::clone::Clone for rist_sys::rist_thread_callback_t
+pub fn rist_sys::rist_thread_callback_t::clone(&self) -> rist_sys::rist_thread_callback_t
+impl core::default::Default for rist_sys::rist_thread_callback_t
+pub fn rist_sys::rist_thread_callback_t::default() -> rist_sys::rist_thread_callback_t
+impl core::fmt::Debug for rist_sys::rist_thread_callback_t
+pub fn rist_sys::rist_thread_callback_t::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::rist_thread_callback_t
+impl core::marker::Freeze for rist_sys::rist_thread_callback_t
+impl core::marker::Send for rist_sys::rist_thread_callback_t
+impl core::marker::Sync for rist_sys::rist_thread_callback_t
+impl core::marker::Unpin for rist_sys::rist_thread_callback_t
+impl core::marker::UnsafeUnpin for rist_sys::rist_thread_callback_t
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_thread_callback_t
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_thread_callback_t
+#[repr(C)] pub struct rist_sys::rist_udp_config
+pub rist_sys::rist_udp_config::address: [core::ffi::primitives::c_char; 256]
+pub rist_sys::rist_udp_config::address_family: core::ffi::primitives::c_int
+pub rist_sys::rist_udp_config::initiate_conn: core::ffi::primitives::c_int
+pub rist_sys::rist_udp_config::miface: [core::ffi::primitives::c_char; 128]
+pub rist_sys::rist_udp_config::multiplex_filter: [core::ffi::primitives::c_char; 128]
+pub rist_sys::rist_udp_config::multiplex_mode: rist_sys::librist_multiplex_mode
+pub rist_sys::rist_udp_config::physical_port: u16
+pub rist_sys::rist_udp_config::prefix: [core::ffi::primitives::c_char; 16]
+pub rist_sys::rist_udp_config::rtp: core::ffi::primitives::c_int
+pub rist_sys::rist_udp_config::rtp_ptype: u8
+pub rist_sys::rist_udp_config::rtp_sequence: core::ffi::primitives::c_int
+pub rist_sys::rist_udp_config::rtp_timestamp: core::ffi::primitives::c_int
+pub rist_sys::rist_udp_config::stream_id: u16
+pub rist_sys::rist_udp_config::version: core::ffi::primitives::c_int
+impl core::clone::Clone for rist_sys::rist_udp_config
+pub fn rist_sys::rist_udp_config::clone(&self) -> rist_sys::rist_udp_config
+impl core::default::Default for rist_sys::rist_udp_config
+pub fn rist_sys::rist_udp_config::default() -> Self
+impl core::fmt::Debug for rist_sys::rist_udp_config
+pub fn rist_sys::rist_udp_config::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for rist_sys::rist_udp_config
+impl core::marker::Freeze for rist_sys::rist_udp_config
+impl core::marker::Send for rist_sys::rist_udp_config
+impl core::marker::Sync for rist_sys::rist_udp_config
+impl core::marker::Unpin for rist_sys::rist_udp_config
+impl core::marker::UnsafeUnpin for rist_sys::rist_udp_config
+impl core::panic::unwind_safe::RefUnwindSafe for rist_sys::rist_udp_config
+impl core::panic::unwind_safe::UnwindSafe for rist_sys::rist_udp_config
+pub const rist_sys::RIST_DEFAULT_KEEPALIVE_INTERVAL: u32
+pub const rist_sys::RIST_DEFAULT_MAX_RETRIES: u32
+pub const rist_sys::RIST_DEFAULT_MIN_RETRIES: u32
+pub const rist_sys::RIST_DEFAULT_RECOVERY_LENGTH_MAX: u32
+pub const rist_sys::RIST_DEFAULT_RECOVERY_LENGTH_MIN: u32
+pub const rist_sys::RIST_DEFAULT_RECOVERY_MAXBITRATE: u32
+pub const rist_sys::RIST_DEFAULT_RECOVERY_MAXBITRATE_RETURN: u32
+pub const rist_sys::RIST_DEFAULT_RECOVERY_REORDER_BUFFER: u32
+pub const rist_sys::RIST_DEFAULT_RECOVERY_RTT_MAX: u32
+pub const rist_sys::RIST_DEFAULT_RECOVERY_RTT_MIN: u32
+pub const rist_sys::RIST_DEFAULT_SESSION_TIMEOUT: u32
+pub const rist_sys::RIST_DEFAULT_VIRT_DST_PORT: u32
+pub const rist_sys::RIST_DEFAULT_VIRT_SRC_PORT: u32
+pub const rist_sys::RIST_ERR_INVALID_PROFILE: i32
+pub const rist_sys::RIST_ERR_INVALID_STRING_LENGTH: i32
+pub const rist_sys::RIST_ERR_MALLOC: i32
+pub const rist_sys::RIST_ERR_MISSING_CALLBACK_FUNCTION: i32
+pub const rist_sys::RIST_ERR_NULL_CREDENTIALS: i32
+pub const rist_sys::RIST_ERR_NULL_PEER: i32
+pub const rist_sys::RIST_MAX_STRING_LONG: u32
+pub const rist_sys::RIST_MAX_STRING_SHORT: u32
+pub const rist_sys::RIST_PEER_CONFIG_VERSION: u32
+pub const rist_sys::RIST_PEER_UDPSOCKET_VERSION: u32
+pub const rist_sys::RIST_STATS_VERSION: u32
+pub const rist_sys::RIST_UDP_CONFIG_VERSION: u32
+pub const rist_sys::RIST_URL_PARAM_AES_KEY_ROTATION: &[u8; 13]
+pub const rist_sys::RIST_URL_PARAM_AES_TYPE: &[u8; 9]
+pub const rist_sys::RIST_URL_PARAM_BANDWIDTH: &[u8; 10]
+pub const rist_sys::RIST_URL_PARAM_BUFFER_SIZE: &[u8; 7]
+pub const rist_sys::RIST_URL_PARAM_BUFFER_SIZE_MAX: &[u8; 11]
+pub const rist_sys::RIST_URL_PARAM_BUFFER_SIZE_MIN: &[u8; 11]
+pub const rist_sys::RIST_URL_PARAM_CNAME: &[u8; 6]
+pub const rist_sys::RIST_URL_PARAM_COMPRESSION: &[u8; 12]
+pub const rist_sys::RIST_URL_PARAM_CONGESTION_CONTROL: &[u8; 19]
+pub const rist_sys::RIST_URL_PARAM_KEEPALIVE_INT: &[u8; 19]
+pub const rist_sys::RIST_URL_PARAM_MAX_RETRIES: &[u8; 12]
+pub const rist_sys::RIST_URL_PARAM_MIFACE: &[u8; 7]
+pub const rist_sys::RIST_URL_PARAM_MIN_RETRIES: &[u8; 12]
+pub const rist_sys::RIST_URL_PARAM_MULTIPLEX_FILTER: &[u8; 17]
+pub const rist_sys::RIST_URL_PARAM_MULTIPLEX_MODE: &[u8; 15]
+pub const rist_sys::RIST_URL_PARAM_PROFILE: &[u8; 8]
+pub const rist_sys::RIST_URL_PARAM_REORDER_BUFFER: &[u8; 15]
+pub const rist_sys::RIST_URL_PARAM_RET_BANDWIDTH: &[u8; 17]
+pub const rist_sys::RIST_URL_PARAM_RTP_OUTPUT_PTYPE: &[u8; 10]
+pub const rist_sys::RIST_URL_PARAM_RTP_SEQUENCE: &[u8; 13]
+pub const rist_sys::RIST_URL_PARAM_RTP_TIMESTAMP: &[u8; 14]
+pub const rist_sys::RIST_URL_PARAM_RTT: &[u8; 4]
+pub const rist_sys::RIST_URL_PARAM_RTT_MAX: &[u8; 8]
+pub const rist_sys::RIST_URL_PARAM_RTT_MIN: &[u8; 8]
+pub const rist_sys::RIST_URL_PARAM_SECRET: &[u8; 7]
+pub const rist_sys::RIST_URL_PARAM_SESSION_TIMEOUT: &[u8; 16]
+pub const rist_sys::RIST_URL_PARAM_SRP_PASSWORD: &[u8; 9]
+pub const rist_sys::RIST_URL_PARAM_SRP_USERNAME: &[u8; 9]
+pub const rist_sys::RIST_URL_PARAM_STREAM_ID: &[u8; 10]
+pub const rist_sys::RIST_URL_PARAM_TIMING_MODE: &[u8; 12]
+pub const rist_sys::RIST_URL_PARAM_VERBOSE_LEVEL: &[u8; 14]
+pub const rist_sys::RIST_URL_PARAM_VIRT_DST_PORT: &[u8; 14]
+pub const rist_sys::RIST_URL_PARAM_VIRT_SRC_PORT: &[u8; 14]
+pub const rist_sys::RIST_URL_PARAM_WEIGHT: &[u8; 7]
+pub const rist_sys::librist_multiplex_mode_LIBRIST_MULTIPLEX_MODE_AUTO: rist_sys::librist_multiplex_mode
+pub const rist_sys::librist_multiplex_mode_LIBRIST_MULTIPLEX_MODE_IPV4: rist_sys::librist_multiplex_mode
+pub const rist_sys::librist_multiplex_mode_LIBRIST_MULTIPLEX_MODE_VIRT_DESTINATION_PORT: rist_sys::librist_multiplex_mode
+pub const rist_sys::librist_multiplex_mode_LIBRIST_MULTIPLEX_MODE_VIRT_SOURCE_PORT: rist_sys::librist_multiplex_mode
+pub const rist_sys::rist_congestion_control_mode_RIST_CONGESTION_CONTROL_MODE_AGGRESSIVE: rist_sys::rist_congestion_control_mode
+pub const rist_sys::rist_congestion_control_mode_RIST_CONGESTION_CONTROL_MODE_NORMAL: rist_sys::rist_congestion_control_mode
+pub const rist_sys::rist_congestion_control_mode_RIST_CONGESTION_CONTROL_MODE_OFF: rist_sys::rist_congestion_control_mode
+pub const rist_sys::rist_connection_status_RIST_CLIENT_CONNECTED: rist_sys::rist_connection_status
+pub const rist_sys::rist_connection_status_RIST_CLIENT_TIMED_OUT: rist_sys::rist_connection_status
+pub const rist_sys::rist_connection_status_RIST_CONNECTION_ESTABLISHED: rist_sys::rist_connection_status
+pub const rist_sys::rist_connection_status_RIST_CONNECTION_TIMED_OUT: rist_sys::rist_connection_status
+pub const rist_sys::rist_data_block_receiver_flags_RIST_DATA_FLAGS_DISCONTINUITY: rist_sys::rist_data_block_receiver_flags
+pub const rist_sys::rist_data_block_receiver_flags_RIST_DATA_FLAGS_FLOW_BUFFER_START: rist_sys::rist_data_block_receiver_flags
+pub const rist_sys::rist_data_block_receiver_flags_RIST_DATA_FLAGS_OVERFLOW: rist_sys::rist_data_block_receiver_flags
+pub const rist_sys::rist_data_block_sender_flags_RIST_DATA_FLAGS_NEED_FREE: rist_sys::rist_data_block_sender_flags
+pub const rist_sys::rist_data_block_sender_flags_RIST_DATA_FLAGS_USE_SEQ: rist_sys::rist_data_block_sender_flags
+pub const rist_sys::rist_log_level_RIST_LOG_DEBUG: rist_sys::rist_log_level
+pub const rist_sys::rist_log_level_RIST_LOG_DISABLE: rist_sys::rist_log_level
+pub const rist_sys::rist_log_level_RIST_LOG_ERROR: rist_sys::rist_log_level
+pub const rist_sys::rist_log_level_RIST_LOG_INFO: rist_sys::rist_log_level
+pub const rist_sys::rist_log_level_RIST_LOG_NOTICE: rist_sys::rist_log_level
+pub const rist_sys::rist_log_level_RIST_LOG_SIMULATE: rist_sys::rist_log_level
+pub const rist_sys::rist_log_level_RIST_LOG_WARN: rist_sys::rist_log_level
+pub const rist_sys::rist_nack_type_RIST_NACK_BITMASK: rist_sys::rist_nack_type
+pub const rist_sys::rist_nack_type_RIST_NACK_RANGE: rist_sys::rist_nack_type
+pub const rist_sys::rist_opt_RIST_OPT_THREAD_CALLBACK: rist_sys::rist_opt
+pub const rist_sys::rist_profile_RIST_PROFILE_ADVANCED: rist_sys::rist_profile
+pub const rist_sys::rist_profile_RIST_PROFILE_MAIN: rist_sys::rist_profile
+pub const rist_sys::rist_profile_RIST_PROFILE_SIMPLE: rist_sys::rist_profile
+pub const rist_sys::rist_recovery_mode_RIST_RECOVERY_MODE_DISABLED: rist_sys::rist_recovery_mode
+pub const rist_sys::rist_recovery_mode_RIST_RECOVERY_MODE_TIME: rist_sys::rist_recovery_mode
+pub const rist_sys::rist_recovery_mode_RIST_RECOVERY_MODE_UNCONFIGURED: rist_sys::rist_recovery_mode
+pub const rist_sys::rist_stats_type_RIST_STATS_RECEIVER_FLOW: rist_sys::rist_stats_type
+pub const rist_sys::rist_stats_type_RIST_STATS_SENDER_PEER: rist_sys::rist_stats_type
+pub const rist_sys::rist_timing_mode_RIST_TIMING_MODE_ARRIVAL: rist_sys::rist_timing_mode
+pub const rist_sys::rist_timing_mode_RIST_TIMING_MODE_RTC: rist_sys::rist_timing_mode
+pub const rist_sys::rist_timing_mode_RIST_TIMING_MODE_SOURCE: rist_sys::rist_timing_mode
+pub unsafe c fn rist_sys::librist_api_version() -> *const core::ffi::primitives::c_char
+pub unsafe c fn rist_sys::librist_version() -> *const core::ffi::primitives::c_char
+pub unsafe c fn rist_sys::rist_auth_handler_set(*mut rist_sys::rist_ctx, rist_sys::rist_auth_handler_connect_cb, rist_sys::rist_auth_handler_disconnect_cb, *mut core::ffi::c_void) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_connection_status_callback_set(*mut rist_sys::rist_ctx, rist_sys::connection_status_callback_t, *mut core::ffi::c_void) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_destroy(*mut rist_sys::rist_ctx) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_enable_eap_srp(*mut rist_sys::rist_peer, *const core::ffi::primitives::c_char, *const core::ffi::primitives::c_char, rist_sys::user_verifier_lookup_t, *mut core::ffi::c_void) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_enable_eap_srp_2(*mut rist_sys::rist_peer, *const core::ffi::primitives::c_char, *const core::ffi::primitives::c_char, rist_sys::user_verifier_lookup_2_t, *mut core::ffi::c_void) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_flow_id_create() -> u32
+pub unsafe c fn rist_sys::rist_jitter_max_set(*mut rist_sys::rist_ctx, core::ffi::primitives::c_int) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_log(*mut rist_sys::rist_logging_settings, rist_sys::rist_log_level, *const core::ffi::primitives::c_char)
+pub unsafe c fn rist_sys::rist_logging_set(*mut *mut rist_sys::rist_logging_settings, rist_sys::rist_log_level, core::option::Option<fn(*mut core::ffi::c_void, rist_sys::rist_log_level, *const core::ffi::primitives::c_char) -> core::ffi::primitives::c_int>, *mut core::ffi::c_void, *mut core::ffi::primitives::c_char, *mut libc::unix::FILE) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_logging_set_global(*mut rist_sys::rist_logging_settings) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_logging_settings_free(*mut *const rist_sys::rist_logging_settings) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_logging_settings_free2(*mut *mut rist_sys::rist_logging_settings) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_logging_unset_global()
+pub unsafe c fn rist_sys::rist_oob_callback_set(*mut rist_sys::rist_ctx, rist_sys::oob_callback_func_t, *mut core::ffi::c_void) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_oob_read(*mut rist_sys::rist_ctx, *mut *const rist_sys::rist_oob_block) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_oob_write(*mut rist_sys::rist_ctx, *const rist_sys::rist_oob_block) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_parse_address(*const core::ffi::primitives::c_char, *mut *const rist_sys::rist_peer_config) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_parse_address2(*const core::ffi::primitives::c_char, *mut *mut rist_sys::rist_peer_config) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_parse_udp_address(*const core::ffi::primitives::c_char, *mut *const rist_sys::rist_udp_config) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_parse_udp_address2(*const core::ffi::primitives::c_char, *mut *mut rist_sys::rist_udp_config) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_peer_config_defaults_set(*mut rist_sys::rist_peer_config) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_peer_config_free(*mut *const rist_sys::rist_peer_config) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_peer_config_free2(*mut *mut rist_sys::rist_peer_config) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_peer_create(*mut rist_sys::rist_ctx, *mut *mut rist_sys::rist_peer, *const rist_sys::rist_peer_config) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_peer_destroy(*mut rist_sys::rist_ctx, *mut rist_sys::rist_peer) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_peer_get_id(*const rist_sys::rist_peer) -> u32
+pub unsafe c fn rist_sys::rist_peer_get_socket(*mut rist_sys::rist_peer, *mut core::ffi::primitives::c_int, *mut core::ffi::primitives::c_int) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_peer_update_secret(*mut rist_sys::rist_peer, *const core::ffi::primitives::c_char) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_peer_weight_set(*mut rist_sys::rist_ctx, *mut rist_sys::rist_peer, u32) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_receiver_create(*mut *mut rist_sys::rist_ctx, rist_sys::rist_profile, *mut rist_sys::rist_logging_settings) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_receiver_data_block_free(*mut *mut rist_sys::rist_data_block)
+pub unsafe c fn rist_sys::rist_receiver_data_block_free2(*mut *mut rist_sys::rist_data_block)
+pub unsafe c fn rist_sys::rist_receiver_data_callback_set(*mut rist_sys::rist_ctx, rist_sys::receiver_data_callback_t, *mut core::ffi::c_void) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_receiver_data_callback_set2(*mut rist_sys::rist_ctx, rist_sys::receiver_data_callback2_t, *mut core::ffi::c_void) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_receiver_data_notify_fd_set(*mut rist_sys::rist_ctx, core::ffi::primitives::c_int) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_receiver_data_read(*mut rist_sys::rist_ctx, *mut *const rist_sys::rist_data_block, core::ffi::primitives::c_int) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_receiver_data_read2(*mut rist_sys::rist_ctx, *mut *mut rist_sys::rist_data_block, core::ffi::primitives::c_int) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_receiver_nack_type_set(*mut rist_sys::rist_ctx, rist_sys::rist_nack_type) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_receiver_set_output_fifo_size(*mut rist_sys::rist_ctx, u32) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_sender_create(*mut *mut rist_sys::rist_ctx, rist_sys::rist_profile, u32, *mut rist_sys::rist_logging_settings) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_sender_data_write(*mut rist_sys::rist_ctx, *const rist_sys::rist_data_block) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_sender_flow_id_get(*mut rist_sys::rist_ctx, *mut u32) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_sender_flow_id_set(*mut rist_sys::rist_ctx, u32) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_sender_npd_disable(*mut rist_sys::rist_ctx) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_sender_npd_enable(*mut rist_sys::rist_ctx) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_set_opt(*mut rist_sys::rist_ctx, rist_sys::rist_opt, *mut core::ffi::c_void, *mut core::ffi::c_void, *mut core::ffi::c_void) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_start(*mut rist_sys::rist_ctx) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_stats_callback_set(*mut rist_sys::rist_ctx, core::ffi::primitives::c_int, core::option::Option<fn(*mut core::ffi::c_void, *const rist_sys::rist_stats) -> core::ffi::primitives::c_int>, *mut core::ffi::c_void) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_stats_free(*const rist_sys::rist_stats) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_udp_config_free(*mut *const rist_sys::rist_udp_config) -> core::ffi::primitives::c_int
+pub unsafe c fn rist_sys::rist_udp_config_free2(*mut *mut rist_sys::rist_udp_config) -> core::ffi::primitives::c_int
+pub type rist_sys::_IO_lock_t = core::ffi::c_void
+pub type rist_sys::__off64_t = core::ffi::primitives::c_long
+pub type rist_sys::__off_t = core::ffi::primitives::c_long
+pub type rist_sys::connection_status_callback_t = core::option::Option<fn(*mut core::ffi::c_void, *mut rist_sys::rist_peer, rist_sys::rist_connection_status)>
+pub type rist_sys::librist_multiplex_mode = core::ffi::primitives::c_int
+pub type rist_sys::oob_callback_func_t = core::option::Option<fn(*mut core::ffi::c_void, *const rist_sys::rist_oob_block) -> core::ffi::primitives::c_int>
+pub type rist_sys::receiver_data_callback2_t = core::option::Option<fn(*mut core::ffi::c_void, *mut rist_sys::rist_data_block) -> core::ffi::primitives::c_int>
+pub type rist_sys::receiver_data_callback_t = core::option::Option<fn(*mut core::ffi::c_void, *const rist_sys::rist_data_block) -> core::ffi::primitives::c_int>
+pub type rist_sys::rist_auth_handler_connect_cb = core::option::Option<fn(*mut core::ffi::c_void, *const core::ffi::primitives::c_char, u16, *const core::ffi::primitives::c_char, u16, *mut rist_sys::rist_peer) -> core::ffi::primitives::c_int>
+pub type rist_sys::rist_auth_handler_disconnect_cb = core::option::Option<fn(*mut core::ffi::c_void, *mut rist_sys::rist_peer) -> core::ffi::primitives::c_int>
+pub type rist_sys::rist_congestion_control_mode = core::ffi::primitives::c_uint
+pub type rist_sys::rist_connection_status = core::ffi::primitives::c_uint
+pub type rist_sys::rist_data_block_receiver_flags = core::ffi::primitives::c_uint
+pub type rist_sys::rist_data_block_sender_flags = core::ffi::primitives::c_uint
+pub type rist_sys::rist_log_level = core::ffi::primitives::c_int
+pub type rist_sys::rist_nack_type = core::ffi::primitives::c_uint
+pub type rist_sys::rist_opt = core::ffi::primitives::c_uint
+pub type rist_sys::rist_profile = core::ffi::primitives::c_uint
+pub type rist_sys::rist_recovery_mode = core::ffi::primitives::c_uint
+pub type rist_sys::rist_stats_type = core::ffi::primitives::c_uint
+pub type rist_sys::rist_thread_callback_func_t = core::option::Option<fn(*mut core::ffi::c_void, core::ffi::primitives::c_int, bool, *mut core::ffi::c_void)>
+pub type rist_sys::rist_timing_mode = core::ffi::primitives::c_uint
+pub type rist_sys::user_verifier_lookup_2_t = core::option::Option<fn(*mut core::ffi::primitives::c_char, *mut rist_sys::librist_verifier_lookup_data_t, *mut core::ffi::primitives::c_int, *mut u64, *mut core::ffi::c_void)>
+pub type rist_sys::user_verifier_lookup_t = core::option::Option<fn(*mut core::ffi::primitives::c_char, *mut usize, *mut *mut core::ffi::primitives::c_char, *mut usize, *mut *mut core::ffi::primitives::c_char, *mut bool, *mut *mut core::ffi::primitives::c_char, *mut *mut core::ffi::primitives::c_char, *mut core::ffi::c_void)>

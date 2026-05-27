@@ -7,6 +7,99 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [Unreleased] — tst-py Phase 4 Stage 2: `tstrans.rtp.*` (2026-05-26)
+
+### Added — first transport bindings in Python
+
+- **New `tstrans.rtp` submodule** behind cargo feature `rtp = ["dep:tst-rtp"]`,
+  default-on. Wheels published to PyPI always include RTP; source builds via
+  `maturin develop --no-default-features` omit it. No `[rtp]` pyproject extra
+  is added because RTP has no Python-side runtime deps to install via pip.
+- **RTP transport surface** (T20): `Sender(url, *, pkt_size, ssrc)`,
+  `Receiver(url, *, pkt_size)`, `SocketStats` (16-field frozen dataclass
+  mirroring `tst_core::transport::SocketStats`), `CancelHandle` with
+  `Arc`-shared cross-thread cancellation. `.send()` / `.recv()` release the
+  GIL via `py.allow_threads`; `.stats()` / `.cancel_handle()` do not.
+  Bytes-like inputs (`bytes` / `bytearray` / `memoryview` / NumPy `uint8`)
+  via the audit-#10 two-path extraction pattern.
+- **RTSP client surface** (T21): `RtspClient.connect(config) -> RtspSession`
+  running OPTIONS/DESCRIBE/SETUP/PLAY in one call. `RtspSession.{play,
+  pause, teardown, into_demux_receiver, cancel_handle, stats}`. Auth via
+  `BasicAuth(user, password)` / `DigestAuth(user, password, algorithm)`
+  PyClass dataclasses with `secrecy::SecretString` boundary wrapping (the
+  Rust `RtspClientBuilder::auth` gets a `SecretString`; passwords never
+  re-exposed to Python via getters, redacted in `__repr__`). Transport
+  preference `TransportPref.{AUTO, UDP, TCP}` and `RtspVersion.{V1_0, V2_0}`
+  IntEnum-shaped PyClasses. `RtspClientConfig` dataclass with
+  `tls_root_certs_pem` passthrough (full TLS wiring deferred to a later
+  task — bytes survive a round-trip, current `rtsps://` builds use the
+  platform native trust roots).
+- **RTSP server surface** (T22): `RtspServer.start(config) -> RtspServer`,
+  `add_unicast_mount(path, program_config) -> MountHandle`,
+  `add_multicast_mount(path, group, *, ttl, iface, program_config)`,
+  `stats()`, `stop(*, drain_ms)` (Notice 5402 + graceful drain),
+  `cancel_handle()`, context-manager protocol. `MountHandle` exposes the
+  full 16-method push family (4 single-stream + 4 `_to` variants + 4
+  handle getters + `stats` + `flush` + `reset_stats`) matching the Rust
+  `tst_rtp::MountHandle` and the existing `tstrans.mpegts.Muxer.push_*`
+  shape (keyword-only `pts` per plan #96 Wave C normalization). All push
+  methods + `start` + `stop` release the GIL.
+- **Convenience wrappers** (T23): `MuxSender(url, program_config, *, pkt_size)`
+  wraps `tst_pipeline::MuxSender<RtpTransport>` for one-call construction;
+  `DemuxReceiver(url, *, demux_config)` wraps
+  `tst_pipeline::DemuxReceiver<RtpRecvTransport>` with `__iter__` / `__next__`
+  emitting the existing `tstrans.mpegts.DemuxEvent` subclass hierarchy.
+  `RtspSession.into_demux_receiver()` (previously a `NotImplementedError`
+  stub from T21) is now wired through `RtspSession::into_recv_transport()`
+  to return a real `DemuxReceiver`.
+- **Type stubs** (T24): `python/tstrans/rtp.pyi` — 650 lines, 31 stub
+  classes, `mypy --strict` clean. Continues the existing `py.typed`
+  discipline.
+- **2 new bash ratchets** (count 23 → 25):
+  - `scripts/check-py-rtsp-error-mapping-coverage.sh` — every
+    `RtspErrorKind` variant has at least one literal
+    `make_rtsp_error(py, "<VARIANT>", ...)` call site in `crates/tst-py/src/`.
+  - `scripts/check-py-rtp-error-mapping-coverage.sh` — same for
+    `RtpErrorKind` (3 variants).
+- **`RtspError`/`RtspErrorKind` + `RtpError`/`RtpErrorKind`** exception
+  classes in `tstrans.exceptions`. Follow the established kind-enum
+  pattern (`MuxError` / `DemuxError` / `KlvError`).
+- **End-to-end integration tests** (T25): two new tests in
+  `crates/tst-py/tests/test_rtp_integration.py` — a MuxSender ↔ DemuxReceiver
+  loopback round-trip (data plane only) and a full RtspServer → RtspClient
+  pipeline test that exercises the T23 `into_demux_receiver` bridge over
+  UDP loopback. Both pass in ~1.6s wall on local hardware.
+- **README updates**: top-level `README.md` Python row + `crates/tst-py/README.md`
+  new "RTP + RTSP transport" section with 10-line client + server snippets.
+
+### Added — tst-rtp internal (T27, partial Stage 3)
+
+- `RtspSession::activate_interleaved_pump` now returns the RTCP mpsc
+  receiver alongside the RTP data receiver instead of black-holing RTCP
+  via a `rtsp-rtcp-drain` background thread. New `rtcp_rx` field on
+  `RtspSession` holds the receiver; `into_recv_transport` drops it for
+  now (T28 will wire it into `RtcpReporterHandle` so TCP-interleaved
+  RTCP RR/SR is observable on `socket_stats()`). No public-API delta —
+  `activate_interleaved_pump` is `pub(crate)`. No C ABI delta.
+
+### Stats
+
+- pytest: 813 passed, 6 skipped, 67 deselected — up from 707 + 2 at
+  Stage 2 start.
+- non_exhaustive BASELINE 193 → 198 (5 new Wave A/B PyClass enum-shaped
+  types: `PyTransportPref`, `PyRtspVersion`, `PyDigestAlgorithm`, plus
+  PyMuxSender + PyDemuxReceiver propagation).
+
+### Deferred — Stage 3 (T28-T30)
+
+- T28: feed `rtcp_rx` into `RtcpReporterHandle` so socket stats report
+  RTCP RR/SR-derived loss + RTT on the TCP-interleaved path.
+- T29: un-ignore `tcp_interleaved_end_to_end_round_trips_ts_bytes` and
+  debug the post-PLAY drop-sequence hang.
+- T30: new RR-derived-loss test + CHANGELOG closeout.
+
+---
+
 ## [Unreleased] — tst-c Phase 4 Stage 1: RTP + RTSP C ABI surface (2026-05-26)
 
 ### Added — full Phase 4 Stage 1 C ABI

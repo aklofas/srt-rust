@@ -333,6 +333,16 @@ impl<T: Transport> Sender<T> {
     ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.transport.cancel_handle()
     }
+
+    /// Borrow the underlying transport. Bindings use this to reach
+    /// transport-specific telemetry not surfaced through the abstract
+    /// [`Transport::socket_stats`] (e.g. SRT's 17-field `Stats`).
+    ///
+    /// Returns a shared reference; mutation is intentionally not
+    /// exposed — the shell owns the transport's send-side lifecycle.
+    pub fn transport(&self) -> &T {
+        &self.transport
+    }
 }
 
 /// Type alias for [`Sender`] with a boxed [`Transport`] trait object.

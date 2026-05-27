@@ -379,6 +379,16 @@ impl<R: RecvTransport> Receiver<R> {
     ) -> Option<Arc<dyn tst_core::transport::TransportCancel + Send + Sync>> {
         self.transport.cancel_handle()
     }
+
+    /// Borrow the underlying recv-transport. Bindings use this to reach
+    /// transport-specific telemetry not surfaced through the abstract
+    /// [`RecvTransport::socket_stats`] (e.g. SRT's 17-field `Stats`).
+    ///
+    /// Returns a shared reference; mutation is intentionally not
+    /// exposed — the shell owns the transport's recv-side lifecycle.
+    pub fn transport(&self) -> &R {
+        &self.transport
+    }
 }
 
 /// Type alias for [`Receiver`] with a boxed [`RecvTransport`] trait object.

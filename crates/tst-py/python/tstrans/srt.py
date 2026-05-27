@@ -4,8 +4,13 @@ Available when tstrans was built with the `srt` cargo feature
 (default-on in published wheels). Source-built without `--features srt`
 will fail to import this submodule with a friendly ImportError.
 
-Submodule contents are populated by `tstrans._native.srt` (Wave A
-onward); Bootstrap (T1) exposes only the module shell.
+Submodule contents are populated by `tstrans._native.srt`:
+- `Sender`, `Receiver`, `SocketStats`, `SrtStats`, `CancelHandle` (Wave A T2)
+- `Socket`, `Listener`, `Builder`                                  (Wave A T3)
+- `MuxSender`, `DemuxReceiver`                                     (Wave B T5)
+- `ReconnectPolicy`, `BackoffStrategy`, `OverflowPolicy`           (Wave B T6)
+- `ManagedSender`, `ManagedReceiver`, `ManagedMuxSender`,
+  `ManagedDemuxReceiver`                                           (Wave C T7+T8)
 """
 
 from __future__ import annotations
@@ -20,5 +25,19 @@ except (ImportError, AttributeError) as exc:  # pragma: no cover
         "`srt` cargo feature is enabled (it is on by default)."
     ) from exc
 
+# Wave A T2 — transport-layer types.
+Sender = _srt.Sender
+Receiver = _srt.Receiver
+SocketStats = _srt.SocketStats
+SrtStats = _srt.SrtStats
+CancelHandle = _srt.CancelHandle
 
-__all__: list[str] = []
+
+__all__: list[str] = [
+    # T2 transport
+    "Sender",
+    "Receiver",
+    "SocketStats",
+    "SrtStats",
+    "CancelHandle",
+]

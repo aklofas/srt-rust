@@ -110,6 +110,25 @@ impl SrtTransport {
         self.max_payload = n;
         self
     }
+
+    /// Snapshot the libsrt-flavored 17-field [`Stats`] for the underlying
+    /// socket. Returns `Err(IoError::SocketClosed)` once the transport
+    /// has been closed (either explicitly via [`Transport::close`] or
+    /// implicitly after a `Broken` send/recv tore the socket down).
+    ///
+    /// Use [`Transport::socket_stats`] / [`tst_core::transport::RecvTransport::socket_stats`]
+    /// for the scheme-neutral 16-field projection; this accessor exposes
+    /// the SRT-specific extras (`mbps_estimated_bandwidth`, the
+    /// `rtt: Duration`, the symmetric send/recv-side byte-loss split).
+    ///
+    /// [`Stats`]: crate::Stats
+    pub fn stats(&self) -> Result<crate::Stats, crate::error::IoError> {
+        let socket = self
+            .socket
+            .as_ref()
+            .ok_or(crate::error::IoError::SocketClosed)?;
+        socket.stats()
+    }
 }
 
 impl Transport for SrtTransport {

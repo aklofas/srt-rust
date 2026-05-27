@@ -14,12 +14,13 @@
 //!
 //! Error mapping lives in `crate::errors::make_srt_error` (Wave A T4).
 
+mod transport;
+
 use pyo3::prelude::*;
 
 pub(crate) fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
-    // Wave A populates this. For now the module exists but exposes no
-    // classes — `import tstrans.srt` succeeds, attribute access fails.
     let m = PyModule::new_bound(parent.py(), "srt")?;
+    transport::register(&m)?;
     parent.add_submodule(&m)?;
     Ok(())
 }

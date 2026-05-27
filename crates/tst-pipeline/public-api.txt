@@ -679,6 +679,7 @@ pub fn tst_pipeline::receiver::Receiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::reset_sync(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::receiver::Receiver<R>::stats(&self) -> tst_pipeline::receiver::ReceiverStats
+pub fn tst_pipeline::receiver::Receiver<R>::transport(&self) -> &R
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::receiver::Receiver<R>
 pub fn tst_pipeline::receiver::Receiver<R>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::receiver::Receiver<R>
@@ -927,6 +928,7 @@ pub fn tst_pipeline::sender::Sender<T>::reset_stats(&mut self)
 pub fn tst_pipeline::sender::Sender<T>::send_ts(&mut self, &[u8]) -> core::result::Result<(), tst_pipeline::sender::SenderError>
 pub fn tst_pipeline::sender::Sender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::sender::Sender<T>::stats(&self) -> tst_pipeline::SenderStats
+pub fn tst_pipeline::sender::Sender<T>::transport(&self) -> &T
 impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::sender::Sender<T>
 pub fn tst_pipeline::sender::Sender<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::sender::Sender<T>
@@ -1681,6 +1683,7 @@ pub fn tst_pipeline::receiver::Receiver<R>::reset_stats(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::reset_sync(&mut self)
 pub fn tst_pipeline::receiver::Receiver<R>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::receiver::Receiver<R>::stats(&self) -> tst_pipeline::receiver::ReceiverStats
+pub fn tst_pipeline::receiver::Receiver<R>::transport(&self) -> &R
 impl<R: tst_core::transport::RecvTransport> core::fmt::Debug for tst_pipeline::receiver::Receiver<R>
 pub fn tst_pipeline::receiver::Receiver<R>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<R: tst_core::transport::RecvTransport> core::ops::drop::Drop for tst_pipeline::receiver::Receiver<R>
@@ -1781,6 +1784,7 @@ pub fn tst_pipeline::sender::Sender<T>::reset_stats(&mut self)
 pub fn tst_pipeline::sender::Sender<T>::send_ts(&mut self, &[u8]) -> core::result::Result<(), tst_pipeline::sender::SenderError>
 pub fn tst_pipeline::sender::Sender<T>::socket_stats(&self) -> core::option::Option<tst_core::transport::SocketStats>
 pub fn tst_pipeline::sender::Sender<T>::stats(&self) -> tst_pipeline::SenderStats
+pub fn tst_pipeline::sender::Sender<T>::transport(&self) -> &T
 impl<T: tst_core::transport::Transport> core::fmt::Debug for tst_pipeline::sender::Sender<T>
 pub fn tst_pipeline::sender::Sender<T>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<T: tst_core::transport::Transport> core::ops::drop::Drop for tst_pipeline::sender::Sender<T>

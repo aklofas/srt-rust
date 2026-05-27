@@ -1,0 +1,18 @@
+[package]
+name = "tst-udp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Raw MPEG-TS over UDP (unicast + multicast) for the tstrans pipeline"
+
+[dependencies]
+tst-core = { path = "../tst-core" }
+socket2 = { workspace = true }
+thiserror = { workspace = true }
+libc = { workspace = true }
+tracing = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+tst-test-helpers = { path = "../tst-test-helpers" }

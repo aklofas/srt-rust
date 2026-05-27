@@ -7,6 +7,7 @@ members = [
     "crates/tst-srt",
     "crates/tst-test-helpers",
     "crates/tst-rtp",
+    "crates/tst-udp",
     "crates/tst-c",
     "crates/tst-py",
     "examples",
@@ -30,7 +31,9 @@ cmake         = "0.1"
 pkg-config    = "0.3"
 thiserror     = "1.0"
 secrecy       = "0.10"
+socket2       = "0.5"
 log           = "0.4"
+tracing       = { version = "0.1", default-features = false, features = ["std"] }
 proptest      = "1"
 criterion     = "0.5"
 

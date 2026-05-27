@@ -36,10 +36,15 @@ impl InnerStream {
         }
     }
     fn shutdown(&mut self) {
-        if let Self::Plain(s) = self {
-            let _ = s.shutdown(std::net::Shutdown::Both);
+        match self {
+            Self::Plain(s) => {
+                let _ = s.shutdown(std::net::Shutdown::Both);
+            }
+            #[cfg(feature = "tls")]
+            Self::Tls(_) => {
+                // TLS shutdown handled in TlsStream's StreamOwned/socket drop.
+            }
         }
-        // TLS shutdown handled in TlsStream::Drop (or noop in Phase 6 stub).
     }
 }
 
@@ -119,6 +124,22 @@ impl TcpTransport {
             stats: TcpStats::default(),
             alive: Arc::new(AtomicBool::new(true)),
         })
+    }
+
+    /// Build from a TLS-wrapped stream (called by tls::connect_tls / tls::accept_tls).
+    #[cfg(feature = "tls")]
+    pub(crate) fn from_tls(
+        tls: crate::tls::TlsStream,
+        peer: SocketAddr,
+        cfg: &SocketConfig,
+    ) -> Self {
+        Self {
+            inner: InnerStream::Tls(tls),
+            pkt_size: cfg.pkt_size_or_default(),
+            peer,
+            stats: TcpStats::default(),
+            alive: Arc::new(AtomicBool::new(true)),
+        }
     }
 
     /// Peer address.

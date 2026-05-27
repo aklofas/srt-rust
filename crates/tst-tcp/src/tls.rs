@@ -1,52 +1,118 @@
 //! TLS support via rustls 0.23 (feature `tls`).
-//!
-//! Phase 6 stub. Phase 8 fills this with the real rustls 0.23 wrap.
+
+use std::io::{self, Read, Write};
+use std::net::{SocketAddr, TcpStream};
+use std::sync::Arc;
+
+use rustls::pki_types::ServerName;
+use rustls::{ClientConfig, ClientConnection, ServerConfig, ServerConnection, StreamOwned};
 
 use crate::config::SocketConfig;
 use crate::error::TcpError;
+use crate::recv_knobs::apply_knobs;
 use crate::transport::TcpTransport;
 use crate::url::TcpUrl;
 
-/// TLS stream stub — Phase 8 fills this in.
-pub struct TlsStream;
+/// TLS stream — wraps a rustls ClientConnection or ServerConnection + the underlying TcpStream.
+pub enum TlsStream {
+    Client(StreamOwned<ClientConnection, TcpStream>),
+    Server(StreamOwned<ServerConnection, TcpStream>),
+}
 
 impl TlsStream {
-    pub fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            "TLS support landing in Phase 8",
-        ))
+    pub fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Self::Client(s) => s.read(buf),
+            Self::Server(s) => s.read(buf),
+        }
+    }
+    pub fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        match self {
+            Self::Client(s) => s.write_all(buf),
+            Self::Server(s) => s.write_all(buf),
+        }
+    }
+}
+
+/// Build a TLS-wrapped TcpTransport (caller side).
+pub fn connect_tls(url: &TcpUrl, cfg: &SocketConfig) -> Result<TcpTransport, TcpError> {
+    let mut roots = rustls::RootCertStore::empty();
+
+    if let Some(ca_path) = &url.ca {
+        let ca_data = std::fs::read(ca_path).map_err(TcpError::Io)?;
+        let mut reader = std::io::BufReader::new(&ca_data[..]);
+        for cert in rustls_pemfile::certs(&mut reader) {
+            let cert = cert.map_err(TcpError::Io)?;
+            roots
+                .add(cert)
+                .map_err(|e| TcpError::Tls(format!("add CA cert: {e}")))?;
+        }
+    } else {
+        let native = rustls_native_certs::load_native_certs()
+            .map_err(|e| TcpError::Tls(format!("load native certs: {e:?}")))?;
+        for cert in native {
+            roots
+                .add(cert)
+                .map_err(|e| TcpError::Tls(format!("add native cert: {e}")))?;
+        }
     }
 
-    pub fn write_all(&mut self, _buf: &[u8]) -> std::io::Result<()> {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Unsupported,
-            "TLS support landing in Phase 8",
-        ))
-    }
+    let client_config = ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+
+    let server_name = ServerName::try_from(url.addr.to_string())
+        .map_err(|e| TcpError::Tls(format!("invalid server name: {e}")))?;
+
+    let conn = ClientConnection::new(Arc::new(client_config), server_name)
+        .map_err(|e| TcpError::Tls(format!("ClientConnection::new: {e}")))?;
+
+    let peer = SocketAddr::new(url.addr, url.port);
+    let socket = TcpStream::connect_timeout(&peer, cfg.connect_timeout_or_default())
+        .map_err(TcpError::Io)?;
+    apply_knobs(&socket, cfg).map_err(TcpError::Io)?;
+
+    let stream = StreamOwned::new(conn, socket);
+    let tls = TlsStream::Client(stream);
+    Ok(TcpTransport::from_tls(tls, peer, cfg))
 }
 
-pub fn connect_tls(_url: &TcpUrl, _cfg: &SocketConfig) -> Result<TcpTransport, TcpError> {
-    Err(TcpError::InvalidConfig(
-        "TLS support landing in Phase 8".into(),
-    ))
+/// Load a server certificate + key from PEM files.
+pub fn load_server_config(cert_path: &str, key_path: &str) -> Result<ServerConfig, TcpError> {
+    let certs = {
+        let data = std::fs::read(cert_path).map_err(TcpError::Io)?;
+        let mut reader = std::io::BufReader::new(&data[..]);
+        rustls_pemfile::certs(&mut reader)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(TcpError::Io)?
+    };
+
+    let key = {
+        let data = std::fs::read(key_path).map_err(TcpError::Io)?;
+        let mut reader = std::io::BufReader::new(&data[..]);
+        rustls_pemfile::private_key(&mut reader)
+            .map_err(TcpError::Io)?
+            .ok_or_else(|| TcpError::Tls(format!("no private key in {key_path}")))?
+    };
+
+    let config = ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(certs, key)
+        .map_err(|e| TcpError::Tls(format!("ServerConfig build: {e}")))?;
+    Ok(config)
 }
 
-#[cfg(feature = "tls")]
-pub fn load_server_config(_cert_path: &str, _key_path: &str) -> Result<rustls::ServerConfig, TcpError> {
-    Err(TcpError::InvalidConfig(
-        "TLS support landing in Phase 8".into(),
-    ))
-}
-
-#[cfg(feature = "tls")]
+/// Accept a TLS connection (called by TcpListener::accept_blocking when tls_config is set).
 pub fn accept_tls(
-    _socket: std::net::TcpStream,
-    _peer: std::net::SocketAddr,
-    _cfg: &SocketConfig,
-    _server_config: std::sync::Arc<rustls::ServerConfig>,
+    socket: TcpStream,
+    peer: SocketAddr,
+    cfg: &SocketConfig,
+    server_config: Arc<ServerConfig>,
 ) -> Result<TcpTransport, TcpError> {
-    Err(TcpError::InvalidConfig(
-        "TLS support landing in Phase 8".into(),
-    ))
+    apply_knobs(&socket, cfg).map_err(TcpError::Io)?;
+    let conn = ServerConnection::new(server_config)
+        .map_err(|e| TcpError::Tls(format!("ServerConnection::new: {e}")))?;
+    let stream = StreamOwned::new(conn, socket);
+    let tls = TlsStream::Server(stream);
+    Ok(TcpTransport::from_tls(tls, peer, cfg))
 }

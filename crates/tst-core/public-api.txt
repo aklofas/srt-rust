@@ -5094,6 +5094,16 @@ impl core::marker::Unpin for tst_core::mpegts::stats::StreamStats
 impl core::marker::UnsafeUnpin for tst_core::mpegts::stats::StreamStats
 impl core::panic::unwind_safe::RefUnwindSafe for tst_core::mpegts::stats::StreamStats
 impl core::panic::unwind_safe::UnwindSafe for tst_core::mpegts::stats::StreamStats
+pub mod tst_core::net
+pub mod tst_core::net::udp_socket
+pub const tst_core::net::udp_socket::CANCEL_POLL_INTERVAL: core::time::Duration
+pub const tst_core::net::udp_socket::MCAST_DEFAULT_TTL: u8
+pub fn tst_core::net::udp_socket::apply_multicast_iface(&std::net::udp::UdpSocket, core::net::ip_addr::IpAddr, &str) -> std::io::error::Result<()>
+pub fn tst_core::net::udp_socket::apply_multicast_recv_join(&std::net::udp::UdpSocket, core::net::ip_addr::IpAddr, core::option::Option<&str>) -> std::io::error::Result<()>
+pub fn tst_core::net::udp_socket::apply_multicast_send_knobs(&std::net::udp::UdpSocket, core::net::ip_addr::IpAddr, core::option::Option<u8>, core::option::Option<&str>) -> std::io::error::Result<()>
+pub fn tst_core::net::udp_socket::bind_udp_socket(core::net::socket_addr::SocketAddr) -> std::io::error::Result<std::net::udp::UdpSocket>
+pub fn tst_core::net::udp_socket::set_multicast_hops_v6(&std::net::udp::UdpSocket, u8) -> std::io::error::Result<()>
+pub fn tst_core::net::udp_socket::set_multicast_if_v4(&std::net::udp::UdpSocket, core::net::ip_addr::Ipv4Addr) -> std::io::error::Result<()>
 pub mod tst_core::transport
 #[non_exhaustive] pub enum tst_core::transport::TransportError
 pub tst_core::transport::TransportError::Backpressure

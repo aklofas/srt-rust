@@ -12,8 +12,12 @@
 //! - `policy` (Wave B T6): ReconnectPolicy, BackoffStrategy, OverflowPolicy
 //! - `managed` (Wave C T7+T8): ManagedSender, ManagedReceiver, ManagedMuxSender, ManagedDemuxReceiver
 //!
-//! Error mapping lives in `crate::errors::make_srt_error` (Wave A T4).
+//! Error mapping lives in `crate::srt::errors` (Wave A T4) — typed
+//! `*_to_pyerr` helpers consolidate every Rust enum that flows through
+//! the surface (UrlError / ConnectError / BindError / AcceptError /
+//! IoError / TransportError) into the 8-variant `SrtErrorKind`.
 
+pub(crate) mod errors;
 mod lowlevel;
 mod transport;
 

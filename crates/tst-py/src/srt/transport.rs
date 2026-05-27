@@ -46,91 +46,16 @@ use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use tst_core::transport::{SocketStats, TransportCancel, TransportError};
+use tst_core::transport::{SocketStats, TransportCancel};
 use tst_pipeline::{Receiver as PlReceiver, ReceiverConfig, Sender as PlSender, SenderConfig};
-use tst_srt::error::{AcceptError, BindError, ConnectError, IoError};
-use tst_srt::{
-    Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtUrl, UrlError, url::Mode,
-};
+use tst_srt::error::{AcceptError, BindError};
+use tst_srt::{Listener, ListenerConfig, Socket, SocketConfig, SrtTransport, SrtUrl, url::Mode};
 
 use crate::errors::make_srt_error;
-
-// ---------------------------------------------------------------------------
-// Error mapping
-// ---------------------------------------------------------------------------
-
-/// Map a `tst_srt::UrlError` (raised by `SrtUrl::parse`) to a
-/// `tstrans.exceptions.SrtError`.
-///
-/// Every variant collapses to `CONFIG_INVALID` — URL parse problems are
-/// caller-misconfiguration by definition. The free-text message carries
-/// the specific Rust variant.
-fn url_error_to_pyerr(py: Python<'_>, e: UrlError) -> PyErr {
-    make_srt_error(py, "CONFIG_INVALID", &e.to_string())
-}
-
-/// Map a `tst_srt::ConnectError` (raised by `Socket::connect_with`) to a
-/// `tstrans.exceptions.SrtError`.
-fn connect_error_to_pyerr(py: Python<'_>, e: ConnectError) -> PyErr {
-    match e {
-        ConnectError::InvalidAddress(_) | ConnectError::InvalidOption(_) => {
-            make_srt_error(py, "CONFIG_INVALID", &e.to_string())
-        }
-        ConnectError::TimedOut => make_srt_error(py, "TIMEOUT", &e.to_string()),
-        ConnectError::Refused
-        | ConnectError::BadEncryption { .. }
-        | ConnectError::Rejected { .. } => make_srt_error(py, "CONNECT_FAILED", &e.to_string()),
-        // System(io) and Other { .. } and any future #[non_exhaustive]
-        // additions land in CONNECT_FAILED — they describe a failure to
-        // establish the SRT session.
-        _ => make_srt_error(py, "CONNECT_FAILED", &e.to_string()),
-    }
-}
-
-/// Map a `tst_srt::BindError` (raised by `Listener::bind_with`) to a
-/// `tstrans.exceptions.SrtError`.
-fn bind_error_to_pyerr(py: Python<'_>, e: BindError) -> PyErr {
-    match e {
-        BindError::InvalidAddress(_) | BindError::InvalidOption(_) => {
-            make_srt_error(py, "CONFIG_INVALID", &e.to_string())
-        }
-        // AddressInUse / PermissionDenied / System / Other all surface as
-        // CONNECT_FAILED — the listener could not be brought up.
-        _ => make_srt_error(py, "CONNECT_FAILED", &e.to_string()),
-    }
-}
-
-/// Map a `tst_srt::AcceptError` (raised by `Listener::accept`) to a
-/// `tstrans.exceptions.SrtError`.
-fn accept_error_to_pyerr(py: Python<'_>, e: AcceptError) -> PyErr {
-    match e {
-        AcceptError::TimedOut => make_srt_error(py, "TIMEOUT", &e.to_string()),
-        AcceptError::ListenerClosed => make_srt_error(py, "CLOSED", &e.to_string()),
-        // PeerRejected / System / Other — handshake failure or socket
-        // teardown. Distinct from CONNECT_FAILED so callers can tell
-        // "I bound but the peer broke things" apart from "I could not
-        // bind at all".
-        _ => make_srt_error(py, "ACCEPT_FAILED", &e.to_string()),
-    }
-}
-
-/// Map a `tst_core::transport::TransportError` raised by
-/// `Sender::send_ts` / `Receiver::next_packet` (after the
-/// SenderError/ReceiverError unwrap) to a `tstrans.exceptions.SrtError`.
-fn transport_error_to_pyerr(py: Python<'_>, e: TransportError) -> PyErr {
-    match e {
-        TransportError::Backpressure { msg, .. } => make_srt_error(py, "WOULD_BLOCK", &msg),
-        TransportError::Broken { msg, .. } => make_srt_error(py, "BROKEN", &msg),
-        TransportError::Closed => make_srt_error(py, "CLOSED", "transport closed"),
-        TransportError::ExplicitClose => make_srt_error(py, "CLOSED", "transport explicit close"),
-        TransportError::TooLarge { len, max } => {
-            let msg = format!("payload too large: {len} bytes exceeds {max}-byte cap");
-            make_srt_error(py, "CONFIG_INVALID", &msg)
-        }
-        // Catch-all for future #[non_exhaustive] additions.
-        other => make_srt_error(py, "IO", &other.to_string()),
-    }
-}
+use crate::srt::errors::{
+    accept_error_to_pyerr, bind_error_to_pyerr, connect_error_to_pyerr, io_error_to_pyerr,
+    transport_error_to_pyerr, url_error_to_pyerr,
+};
 
 // ---------------------------------------------------------------------------
 // Bytes-like extraction (audit #10 two-path)
@@ -530,10 +455,10 @@ impl PySender {
         // this task). `IoError::SocketClosed` means the transport was
         // torn down mid-send; surface as CLOSED so callers can tell
         // it apart from the more general IO catchall.
-        let stats = inner.transport().stats().map_err(|e| match e {
-            IoError::SocketClosed => make_srt_error(py, "CLOSED", "transport socket closed"),
-            _ => make_srt_error(py, "IO", &e.to_string()),
-        })?;
+        let stats = inner
+            .transport()
+            .stats()
+            .map_err(|e| io_error_to_pyerr(py, e))?;
         Py::new(py, PySrtStats::from_srt(&stats))
     }
 
@@ -712,10 +637,10 @@ impl PyReceiver {
             .inner
             .as_ref()
             .ok_or_else(|| make_srt_error(py, "CLOSED", "receiver is closed"))?;
-        let stats = inner.transport().stats().map_err(|e| match e {
-            IoError::SocketClosed => make_srt_error(py, "CLOSED", "transport socket closed"),
-            _ => make_srt_error(py, "IO", &e.to_string()),
-        })?;
+        let stats = inner
+            .transport()
+            .stats()
+            .map_err(|e| io_error_to_pyerr(py, e))?;
         Py::new(py, PySrtStats::from_srt(&stats))
     }
 
@@ -832,28 +757,6 @@ impl PyCancelHandle {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Touch sites for every SrtErrorKind variant.
-// ---------------------------------------------------------------------------
-//
-// The T4 ratchet grep requires at least one literal
-// `make_srt_error(py, "<KIND>", ...)` call per `SrtErrorKind` variant.
-// The mapping functions above cover every variant naturally — listed
-// here for grep:
-//
-// - "CONNECT_FAILED" — connect_error_to_pyerr
-// - "ACCEPT_FAILED"  — accept_error_to_pyerr
-// - "WOULD_BLOCK"    — transport_error_to_pyerr
-// - "TIMEOUT"        — connect_error_to_pyerr, accept_error_to_pyerr
-// - "CLOSED"         — accept_error_to_pyerr, transport_error_to_pyerr,
-//                      PySender::send_bytes, PyReceiver::recv_bytes,
-//                      PyReceiver::close
-// - "BROKEN"         — transport_error_to_pyerr
-// - "CONFIG_INVALID" — url_error_to_pyerr, connect_error_to_pyerr,
-//                      bind_error_to_pyerr, PySender::from_url
-// - "IO"             — transport_error_to_pyerr catchall, send_bytes
-//                      catchall, recv_bytes catchall
 
 // ---------------------------------------------------------------------------
 // Module registration

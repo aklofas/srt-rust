@@ -83,12 +83,11 @@ pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
 ///
 /// Each variant gets its own `make_rtsp_error(py, "<KIND>", ...)` arm so
 /// the `check-py-rtsp-error-mapping-coverage.sh` ratchet sees a literal
-/// call site per kind. Variants not directly emitted by Wave A server
-/// methods (`AUTH_FAILED`, `AUTH_REQUIRED`, `NOT_FOUND`, `TIMEOUT`,
-/// `UNSUPPORTED_TRANSPORT`) get covered by the client/transport surfaces
-/// in T20/T21; see `_emit_rtsp_kind_fixtures_for_coverage` below for the
-/// ratchet-only literal call sites that anchor the SERVER + MOUNT path
-/// kinds we don't otherwise emit here.
+/// call site per kind. The kinds not emitted from this module —
+/// `AUTH_FAILED`, `AUTH_REQUIRED`, `NOT_FOUND`, `TIMEOUT`,
+/// `UNSUPPORTED_TRANSPORT` — are covered naturally by T21's client surface
+/// (`crates/tst-py/src/rtp/client.rs::rtsp_error_to_pyerr`), so the
+/// ratchet is satisfied workspace-wide without defensive stubs.
 fn server_error_to_pyerr(py: Python<'_>, e: tst_rtp::error::RtspServerError) -> PyErr {
     use tst_rtp::error::RtspServerError as E;
     let msg = e.to_string();
@@ -103,45 +102,6 @@ fn server_error_to_pyerr(py: Python<'_>, e: tst_rtp::error::RtspServerError) -> 
         E::AlreadyStarted | E::NotStarted | E::Shutdown => make_rtsp_error(py, "SERVER", &msg),
         _ => make_rtsp_error(py, "SERVER", &msg),
     }
-}
-
-/// Ratchet-only: every variant in `RtspErrorKind` must have at least one
-/// literal `make_rtsp_error(py, "<NAME>", ...)` call site in
-/// `crates/tst-py/src/` per `check-py-rtsp-error-mapping-coverage.sh`.
-///
-/// Variants this Wave A server surface naturally emits are anchored by
-/// the matching arms in `server_error_to_pyerr` / `mount_error_to_pyerr`.
-/// The remaining variants (`AUTH_FAILED`, `AUTH_REQUIRED`, `NOT_FOUND`,
-/// `TIMEOUT`, `UNSUPPORTED_TRANSPORT`) belong to the client/transport
-/// surfaces (T20/T21) and aren't reachable from this module — but the
-/// ratchet runs on all of `crates/tst-py/src/` and fires before T20/T21
-/// land. Anchor each with a comment-suppressed unreachable arm so the
-/// shell-grep ratchet finds the literal strings and the type system
-/// sees we never call this fn.
-#[allow(dead_code, unreachable_code)]
-fn _emit_rtsp_kind_fixtures_for_coverage(py: Python<'_>) -> PyErr {
-    // Ratchet anchors for variants that T20/T21 will emit naturally;
-    // until those wave tasks land, this fn keeps the bash ratchet green.
-    // The body is unreachable at runtime — `return …` on the first arm —
-    // but each call site is a literal `make_rtsp_error(py, "…", "…")` that
-    // matches the bash grep regex.
-    return make_rtsp_error(py, "AUTH_FAILED", "stub");
-    let _ = make_rtsp_error(py, "AUTH_REQUIRED", "stub");
-    let _ = make_rtsp_error(py, "NOT_FOUND", "stub");
-    let _ = make_rtsp_error(py, "TIMEOUT", "stub");
-    let _ = make_rtsp_error(py, "UNSUPPORTED_TRANSPORT", "stub");
-}
-
-/// Ratchet-only mirror for `RtpErrorKind` (`MALFORMED_PACKET`,
-/// `CANCELLED`). Wave A only emits `TRANSPORT` from the mount push
-/// path; T20 (transport bindings) emits the remaining two naturally.
-/// Anchor literal call sites here so the
-/// `check-py-rtp-error-mapping-coverage.sh` ratchet stays green
-/// until then.
-#[allow(dead_code, unreachable_code)]
-fn _emit_rtp_kind_fixtures_for_coverage(py: Python<'_>) -> PyErr {
-    return make_rtp_error(py, "MALFORMED_PACKET", "stub");
-    let _ = make_rtp_error(py, "CANCELLED", "stub");
 }
 
 /// Map an [`tst_rtp::error::MountError`] to a Python `RtspError(MOUNT)` or

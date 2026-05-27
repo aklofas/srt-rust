@@ -98,27 +98,37 @@ def test_rtsp_server_config_accepts_both_tls_pem_set():
 
 
 def test_rtsp_server_config_accepts_basic_auth():
-    auth = BasicAuth(realm="tst", username="admin", password="hunter2")
+    # BasicAuth comes from T21 (src/rtp/client.rs PyClass) — same instance
+    # type used by both RtspClientConfig.auth (client-side credentials) and
+    # RtspServerConfig.auth (server-side challenge). T21's BasicAuth shape
+    # is (user, password); the `realm` to advertise on WWW-Authenticate is
+    # a server-side concern Wave C T25 will plumb through alongside the
+    # end-to-end server-with-auth tests.
+    auth = BasicAuth(user="admin", password="hunter2")
     cfg = RtspServerConfig(auth=auth)
     assert cfg.auth is auth
 
 
 def test_rtsp_server_config_accepts_digest_auth():
-    auth = DigestAuth(realm="tst", username="admin", password="hunter2")
+    # Same T21-canonical shape: (user, password, algorithm). `algorithm`
+    # is the PyDigestAlgorithm enum (MD5 / SHA256), not a string.
+    from tstrans.rtp import DigestAlgorithm
+    auth = DigestAuth(user="admin", password="hunter2")
     cfg = RtspServerConfig(auth=auth)
-    assert cfg.auth.algorithm == "MD5"
+    assert cfg.auth.algorithm == DigestAlgorithm.MD5
 
 
-def test_digest_auth_rejects_unknown_algorithm():
-    with pytest.raises(ValueError, match="algorithm"):
-        DigestAuth(realm="x", username="x", password="x", algorithm="WHIRLPOOL")
+def test_digest_auth_accepts_sha256():
+    from tstrans.rtp import DigestAlgorithm
+    a = DigestAuth(user="x", password="x", algorithm=DigestAlgorithm.SHA256)
+    assert a.algorithm == DigestAlgorithm.SHA256
 
 
-def test_digest_auth_accepts_sha256_variants():
-    a = DigestAuth(realm="x", username="x", password="x", algorithm="SHA-256")
-    assert a.algorithm == "SHA-256"
-    b = DigestAuth(realm="x", username="x", password="x", algorithm="sha256")
-    assert b.algorithm == "sha256"
+# T22-era placeholder tests `test_digest_auth_rejects_unknown_algorithm` and
+# `test_digest_auth_accepts_sha256_variants` (string-based algorithm) were
+# removed at the T20+T21+T22 merge — the algorithm is now a typed enum so
+# unknown strings cannot reach the constructor (Python raises TypeError on
+# bad enum extract before `__new__` body runs).
 
 
 # ---------------------------------------------------------------------------

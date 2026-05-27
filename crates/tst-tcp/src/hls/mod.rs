@@ -20,10 +20,10 @@ mod segmenter;
 #[cfg(feature = "tls")]
 mod tls;
 
-// pub use lines are commented out until each phase lands its types.
+// pub use lines uncommented as each phase lands its types.
 // pub use builder::HlsPublisherBuilder;
-// pub use config::{HlsConfig, HlsMode};
-// pub use error::{HlsError, HlsErrorKind};
+pub use config::{HlsConfig, HlsMode};
+pub use error::{HlsError, HlsErrorKind};
 // pub use publisher::HlsPublisher;
 // pub use stats::HlsStats;
-// pub use url::{HlsUrl, HlsUrlError};
+pub use url::{HlsUrl, HlsUrlError};

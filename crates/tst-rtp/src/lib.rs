@@ -1,8 +1,11 @@
 //! TS Transformer RTP transport — RTP-over-UDP per RFC 3550 carrying an
 //! MPEG-TS bytestream per RFC 2250, plus an RTSP/1.0 + RTSP/2.0 client
 //! (Phase 2) and server (Phase 3) for negotiated unicast / multicast /
-//! TCP-interleaved sessions. RTCP RR/SR populates `socket_stats().rtt_us`
-//! + `packets_lost_send` end-to-end.
+//! TCP-interleaved sessions. As of Phase 4 Stage 3, RTCP RR/SR ingest is
+//! wired on the TCP-interleaved (RFC 7826 §14) client path: peer RR
+//! populates `socket_stats().packets_lost_send` from the cumulative-lost
+//! field and `socket_stats().rtt_us` from the RR-after-SR calculation
+//! (RFC 3550 §6.4.1). UDP-side RTCP ingest is deferred.
 //!
 //! This crate provides the RTP-specific concrete types. The
 //! [`Transport`](tst_core::transport::Transport) /

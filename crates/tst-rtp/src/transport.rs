@@ -15,9 +15,10 @@ use tst_core::transport::{RecvTransport, SocketStats, Transport, TransportCancel
 use crate::cancel::RtpCancelHandle;
 use crate::clock::RtpClock;
 use crate::packet::{RTP_HEADER_LEN, RtpHeader};
+use crate::rtcp::ingest::{ingest_rr, ingest_sr};
 use crate::rtcp::reporter::RtcpReporterHandle;
 use crate::rtcp::stats::RtcpStats;
-use crate::rtcp::{ReceiverReport, SdesPacket};
+use crate::rtcp::{ReceiverReport, SdesPacket, SenderReport};
 use crate::url::{RtpUrl, UrlError as RtpUrlError};
 
 /// Wakeup interval for cancel-flag checks. Mirrors the libsrt-side 100 ms
@@ -503,6 +504,16 @@ pub(crate) enum Source {
 /// CSRC list overflowing the datagram) are silently dropped — the
 /// counter on [`Self::rtp_stats`] ticks for diagnosis. RFC 3550 §5.1
 /// expects receivers to ignore unparseable packets.
+///
+/// # `SocketStats` field mapping
+///
+/// | [`SocketStats`] field | Source |
+/// |---|---|
+/// | `bytes_received` / `packets_received` | Local counters, tick per `recv_bytes` |
+/// | `rtt_us` | RTCP RR-after-SR computation (RFC 3550 §6.4.1). Populates on TCP-interleaved paths (see [`Self::from_mpsc_with_rtcp`]); `0` on UDP (RTCP ingest on UDP is not yet wired) |
+/// | `packets_lost_send` | RTCP RR cumulative-lost field. Populates on the same paths as `rtt_us`; `0` otherwise |
+/// | `bytes_sent` / `packets_sent` | 0 (this is the receive half) |
+/// | All other fields | 0 |
 pub struct RtpRecvTransport {
     /// Underlying byte source — UDP socket or mpsc-fed
     /// TCP-interleaved bridge. `None` after [`Self::close`].
@@ -755,6 +766,28 @@ impl RtpRecvTransport {
         }
     }
 
+    /// Variant of [`Self::from_mpsc_placeholder`] that also spawns a
+    /// background `rtsp-rtcp-ingest` thread to drain `rtcp_rx` (the
+    /// RTCP channel demuxed by the RTSP client's interleaved pump) and
+    /// feed each packet into the shared [`RtcpStats`] via [`ingest_rr`]
+    /// or [`ingest_sr`]. Unknown PTs (SDES/BYE/APP/etc.) are counted
+    /// as ignored and skipped.
+    ///
+    /// Used by
+    /// [`crate::rtsp::client::session::RtspSession::into_recv_transport`]
+    /// on the TCP-interleaved path. Without this constructor the RTCP
+    /// channel is silently consumed and `socket_stats().rtt_us` /
+    /// `packets_lost_send` stay at 0. The thread exits when the pump's
+    /// `Sender<Bytes>` is dropped (which produces `mpsc::RecvError`).
+    pub(crate) fn from_mpsc_with_rtcp(
+        data_rx: std::sync::mpsc::Receiver<bytes::Bytes>,
+        rtcp_rx: std::sync::mpsc::Receiver<bytes::Bytes>,
+    ) -> Self {
+        let t = Self::from_mpsc_placeholder(data_rx);
+        spawn_rtcp_ingest(rtcp_rx, t.rtcp_stats.clone(), t.ssrc);
+        t
+    }
+
     /// RTP-protocol-level stats — separate from [`SocketStats`].
     pub fn rtp_stats(&self) -> RtpStats {
         RtpStats {
@@ -899,6 +932,13 @@ impl RecvTransport for RtpRecvTransport {
         let mut s = SocketStats::default();
         s.bytes_received = self.bytes_received;
         s.packets_received = self.packets_received;
+        // Project RTCP-derived fields when ingest has populated them.
+        // Paths without an ingest thread (UDP today, mpsc-placeholder
+        // pre-T28) leave these at 0, matching prior behavior.
+        if let Ok(rtcp) = self.rtcp_stats.lock() {
+            s.rtt_us = rtcp.rtt_us;
+            s.packets_lost_send = rtcp.cumulative_lost_send as u64;
+        }
         Some(s)
     }
 }
@@ -907,6 +947,66 @@ impl Drop for RtpRecvTransport {
     fn drop(&mut self) {
         self.close();
     }
+}
+
+/// Spawn the `rtsp-rtcp-ingest` background thread.
+///
+/// Drains `rtcp_rx` (fed by the RTSP client's interleaved pump on the
+/// RFC 7826 §14 RTCP channel), parses each frame, and dispatches to
+/// [`ingest_sr`] (PT=200) or [`ingest_rr`] (PT=201). Unknown PTs
+/// (SDES/BYE/APP) are ignored — they don't affect the projected
+/// `SocketStats` fields. Parse errors increment
+/// `rtcp_stats.sr_parse_errors` / `rr_parse_errors`.
+///
+/// The thread exits cleanly when the pump's `Sender<Bytes>` drops
+/// (`rtcp_rx.recv()` returns `Err(mpsc::RecvError)`). It is detached
+/// (no join) — the transport's lifecycle holds the consumer side, and
+/// once the transport drops + the pump dies the channel closes.
+fn spawn_rtcp_ingest(
+    rtcp_rx: std::sync::mpsc::Receiver<bytes::Bytes>,
+    stats: Arc<Mutex<RtcpStats>>,
+    our_ssrc: u32,
+) {
+    std::thread::Builder::new()
+        .name("rtsp-rtcp-ingest".to_string())
+        .spawn(move || {
+            while let Ok(bytes) = rtcp_rx.recv() {
+                // RFC 3550 §6.4 — PT byte lives at offset 1 of every RTCP packet.
+                // Packets shorter than 2 bytes are non-conformant; drop silently.
+                if bytes.len() < 2 {
+                    continue;
+                }
+                let pt = bytes[1];
+                match pt {
+                    200 => match SenderReport::decode(&bytes) {
+                        Ok((sr, _)) => {
+                            if let Ok(mut g) = stats.lock() {
+                                ingest_sr(&mut g, &sr);
+                            }
+                        }
+                        Err(_) => {
+                            if let Ok(mut g) = stats.lock() {
+                                g.sr_parse_errors = g.sr_parse_errors.saturating_add(1);
+                            }
+                        }
+                    },
+                    201 => match ReceiverReport::decode(&bytes) {
+                        Ok((rr, _)) => {
+                            if let Ok(mut g) = stats.lock() {
+                                ingest_rr(&mut g, our_ssrc, &rr);
+                            }
+                        }
+                        Err(_) => {
+                            if let Ok(mut g) = stats.lock() {
+                                g.rr_parse_errors = g.rr_parse_errors.saturating_add(1);
+                            }
+                        }
+                    },
+                    _ => continue, // SDES/BYE/APP/etc. — ignored for stats.
+                }
+            }
+        })
+        .expect("failed to spawn rtsp-rtcp-ingest thread");
 }
 
 /// Join the multicast group on the receive socket. IPv4 uses

@@ -3,6 +3,8 @@
 
 use std::time::SystemTime;
 
+use crate::rtcp::ingest::SrAnchor;
+
 /// RTCP-specific protocol counters.
 #[derive(Debug, Clone, Default)]
 pub struct RtcpStats {
@@ -19,6 +21,21 @@ pub struct RtcpStats {
     pub interarrival_jitter_us: u32,
     /// Q8 fixed-point fraction-lost from the most recent RR.
     pub fraction_lost_q8: u8,
+    /// Cumulative packets lost reported by peer in the most recent RR
+    /// report block matching our SSRC (RFC 3550 §6.4.1 24-bit field,
+    /// clamped to >=0). Projected into
+    /// [`tst_core::transport::SocketStats::packets_lost_send`] by
+    /// [`crate::transport::RtpRecvTransport::socket_stats`].
+    pub cumulative_lost_send: u32,
+    /// Smoothed RTT in microseconds, computed from the most recent RR
+    /// after a matching SR anchor was stored. `0` until at least one
+    /// `(SR, RR)` pair has been observed. Projected into
+    /// [`tst_core::transport::SocketStats::rtt_us`] by
+    /// [`crate::transport::RtpRecvTransport::socket_stats`].
+    pub rtt_us: u32,
+    /// Anchor from the last received SR. Held so that the next RR
+    /// referencing it can drive [`crate::rtcp::ingest::compute_rtt_us`].
+    pub last_sr_anchor: Option<SrAnchor>,
     /// Number of RTCP packets dropped due to parse errors.
     pub rr_parse_errors: u64,
     pub sr_parse_errors: u64,

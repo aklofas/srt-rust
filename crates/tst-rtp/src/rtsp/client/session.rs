@@ -113,18 +113,28 @@ impl RtspSession {
     /// For TCP-interleaved: returns an `RtpRecvTransport` fed by the
     /// `mpsc::Receiver<Bytes>` populated by `RtspClient`'s
     /// interleaved-pump thread (spawned at SETUP time by the
-    /// crate-private `RtspClient::activate_interleaved_pump`).
-    pub fn into_recv_transport(self) -> RtpRecvTransport {
+    /// crate-private `RtspClient::activate_interleaved_pump`). The
+    /// pump's RTCP `mpsc::Receiver<Bytes>` is also handed in and drives
+    /// the new `rtsp-rtcp-ingest` thread inside the transport — that
+    /// thread populates `socket_stats().rtt_us` +
+    /// `socket_stats().packets_lost_send` from RR + SR frames arriving
+    /// on RFC 7826 §14 channel 1.
+    pub fn into_recv_transport(mut self) -> RtpRecvTransport {
         match self.kind {
             RtspTransportKind::Udp => {
                 let (rtp, _rtcp) = self.udp_sockets.expect("UDP session has sockets");
                 RtpRecvTransport::from_udp_socket(rtp).expect("from_udp_socket")
             }
             RtspTransportKind::TcpInterleaved => {
-                let rx = self
+                let data_rx = self
                     .data_rx
+                    .take()
                     .expect("TcpInterleaved session has a pump data_rx");
-                RtpRecvTransport::from_mpsc_placeholder(rx)
+                let rtcp_rx = self
+                    .rtcp_rx
+                    .take()
+                    .expect("TcpInterleaved session has a pump rtcp_rx");
+                RtpRecvTransport::from_mpsc_with_rtcp(data_rx, rtcp_rx)
             }
         }
     }
